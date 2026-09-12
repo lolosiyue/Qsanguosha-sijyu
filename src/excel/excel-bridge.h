@@ -19,6 +19,7 @@ struct ExcelBridgeOptions
     QString assetRoot;
     QString userDataRoot;
     bool legacy = false;
+    bool suppressPresentationAudio = false;
 };
 
 // One workbook, one serialized ClientCore and one owned helper. HTTP never

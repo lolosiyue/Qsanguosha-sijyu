@@ -149,14 +149,28 @@ int main(int argc, char **argv)
     int result = 0;
     quint64 lastRequest = 0;
     QJsonObject initialization;
+    QTimer shutdownPoll;
+    const bool shutdownTrace = qEnvironmentVariableIsSet("QSAN_XP_SHUTDOWN_TRACE");
+    int shutdownBeginCount = 0;
+    auto traceShutdown = [&](const QString &event, const QString &detail = QString()) {
+        if (!shutdownTrace) return;
+        logger.info("shutdown_trace", event + (detail.isEmpty() ? QString() : QStringLiteral(" ") + detail));
+    };
     auto send = [&](const QString &id, const QString &type, const QJsonObject &body = QJsonObject()) {
         return channel.send(XpControl::envelope(session, generation, id, type, body));
     };
     auto shutdown = [&]() {
         if (stopping) return;
         stopping = true;
+        ++shutdownBeginCount;
+        traceShutdown(QStringLiteral("begin count=%1").arg(shutdownBeginCount));
         send("0", "shutdown_phase", {{"phase", "stopping_rooms"}});
-        app.quit();
+        if (!server) {
+            app.quit();
+            return;
+        }
+        server->beginShutdown();
+        shutdownPoll.start();
     };
     auto fail = [&](const QString &code, const QString &message) {
         result = 1;
@@ -186,7 +200,10 @@ int main(int argc, char **argv)
         if (!requestId || requestId <= lastRequest) { fail("request_order", "Stale or repeated request"); return; }
         lastRequest = requestId;
         const QJsonObject body = message.value("body").toObject();
-        if (type == "shutdown_request") { shutdown(); return; }
+        if (type == "shutdown_request") {
+            traceShutdown(QStringLiteral("received shutdown_request"));
+            shutdown(); return;
+        }
         if (stopping) return;
         if (!initialized) {
             if (type != "initialize" || id != "1" || body.value("token").toString() != token
@@ -325,7 +342,12 @@ int main(int argc, char **argv)
                     logger.info("game", "GAME_OVER", roomId, QString(), {{"mode", mode}, {"winner", winner}});
                 });
                 QObject::connect(server.get(), &Server::initialRoomReady, &app, [&]() {
-                    if (stopping) return;
+                    if (stopping) {
+                        // A deferred initial room may publish after shutdown
+                        // began; fold it into the same non-blocking cleanup.
+                        server->beginShutdown();
+                        return;
+                    }
                     if (!server->listen()) { fail("listen_failed", "Configured endpoint is unavailable"); return; }
                     if (!initialization.value("private").toBool()) {
                         server->checkUpnpAndListServer();
@@ -409,8 +431,18 @@ int main(int argc, char **argv)
             send("0", "status", statusBody(server.get()));
     });
     statusTimer.start();
+    shutdownPoll.setInterval(25);
+    QObject::connect(&shutdownPoll, &QTimer::timeout, &app, [&]() {
+        const bool complete = !server || server->shutdownComplete();
+        if (complete) {
+            traceShutdown(QStringLiteral("poll complete"));
+            shutdownPoll.stop();
+            app.quit();
+        }
+    });
     socket.connectToServer(controlName);
     app.exec();
+    traceShutdown(QStringLiteral("shutdownFinal enter"));
     CrashHandler::beginShutdown();
     statusTimer.stop();
     send("0", "shutdown_phase", {{"phase", "room_runtime_cleanup"}});
@@ -421,6 +453,7 @@ int main(int argc, char **argv)
     EngineBootstrap::shutdown();
     Config.sync();
     logger.info("control", "shutdown_complete");
+    traceShutdown(QStringLiteral("shutdownFinal exit"));
     send("0", "shutdown_complete", {{"exitCode", result}});
     socket.flush();
     QElapsedTimer flushDeadline;

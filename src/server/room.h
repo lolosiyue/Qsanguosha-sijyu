@@ -115,6 +115,10 @@ public:
     // 喚醒 doRequest / pause 等待, 不 join worker。供 gameOver 回收前使用
     // (stopGameThreads 的 wait 會與 BlockingQueuedConnection 在 main 互鎖)。
     void abortWaitingRequests();
+    // Request every room worker to stop without waiting; the owner must keep
+    // pumping its event loop before calling stopGameThreads/destruction.
+    void requestStopGameThreads();
+    bool allGameThreadsStopped() const;
     void setApplicationBackgrounded(bool backgrounded);
     bool isApplicationBackgrounded() const;
     qint64 applicationActiveElapsed() const;

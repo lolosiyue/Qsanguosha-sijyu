@@ -13,6 +13,7 @@
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QTcpSocket>
+#include <QTcpServer>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QUrl>
@@ -29,6 +30,7 @@ bool expect(bool condition, const char *message)
 {
     if (condition)
         return true;
+    std::fprintf(stderr, "[FAIL] %s\n", message);
     qCritical().noquote() << message;
     return false;
 }
@@ -70,6 +72,20 @@ public:
             "DisableLua=false\n");
         config.close();
 
+        // Port 0 falls back to the server's default WebSocket port on this
+        // fixture, so reserve two ephemeral ports and pass them explicitly.
+        QTcpServer tcpProbe;
+        QTcpServer wsProbe;
+        if (!tcpProbe.listen(QHostAddress::LocalHost, 0)
+            || !wsProbe.listen(QHostAddress::LocalHost, 0)) {
+            *error = QStringLiteral("unable to reserve ephemeral fixture ports");
+            return false;
+        }
+        const quint16 tcpPort = tcpProbe.serverPort();
+        const quint16 wsPort = wsProbe.serverPort();
+        tcpProbe.close();
+        wsProbe.close();
+
         QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
         environment.insert(QStringLiteral("XDG_CONFIG_HOME"), xdgRoot);
         m_process.setProcessEnvironment(environment);
@@ -77,8 +93,8 @@ public:
         m_process.setWorkingDirectory(QDir::currentPath());
         m_process.setProgram(QFileInfo(serverPath).absoluteFilePath());
         m_process.setArguments({QStringLiteral("--config"), configPath,
-                                QStringLiteral("--port"), QStringLiteral("0"),
-                                QStringLiteral("--websocket-port"), QStringLiteral("0"),
+                                QStringLiteral("--port"), QString::number(tcpPort),
+                                QStringLiteral("--websocket-port"), QString::number(wsPort),
                                 QStringLiteral("--ai-delay"), QStringLiteral("0"),
                                 QStringLiteral("--seed"), QStringLiteral("2026090101")});
         m_process.start();
@@ -626,6 +642,10 @@ bool runTcpSignupRoomId(quint16 tcpPort)
         return expect(false, qPrintable(error));
     if (!first.signup(QStringLiteral("room-host"), false, 0, &firstReply, &error))
         return expect(false, qPrintable(error));
+    if (!firstReply.accepted)
+        std::fprintf(stderr, "[INFO] first signup rejected: code=%s message=%s\n",
+                     firstReply.errorCode.toUtf8().constData(),
+                     firstReply.message.toUtf8().constData());
     if (first.contentUnsupported()) {
         // Only an explicitly unsupported hello makes rejection the expected
         // result; an advertised identity must pass the room-id matrix below.
@@ -725,6 +745,8 @@ int main(int argc, char **argv)
     LiveServer server;
     if (!server.start(serverPath, &error)) {
         qCritical().noquote() << error;
+        std::fprintf(stderr, "[FAIL] websocket fixture startup: %s\n",
+                     error.toUtf8().constData());
         return 1;
     }
 
@@ -751,6 +773,9 @@ int main(int argc, char **argv)
         caseTimer.start();
         const bool passed = testCase.run();
         passedCount += passed ? 1 : 0;
+        if (!passed)
+            std::fprintf(stderr, "[FAIL] websocket case: %s\n",
+                         testCase.name.toUtf8().constData());
         qInfo().noquote() << (passed ? QStringLiteral("[PASS]") : QStringLiteral("[FAIL]"))
                           << testCase.name << QStringLiteral("(%1 ms)").arg(caseTimer.elapsed());
     }

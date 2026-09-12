@@ -1,6 +1,7 @@
 #include "excel-view.h"
 
 #include "../client/core/client-core.h"
+#include "../client/core/client-prompt.h"
 #include "../client/client-log-formatter.h"
 #include "../core/audio.h"
 #include "../core/card.h"
@@ -218,6 +219,13 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
     if (!core.hasActiveRequest()) return {};
     const InteractionRequest &request = core.activeRequest();
     const QJsonObject payload = request.toJson().value(QStringLiteral("payload")).toObject();
+    // Typed payloads normally flatten CardSelectionState; accept the nested
+    // representation emitted by older request serializers as well.
+    const QJsonObject nestedSelection = payload.value(QStringLiteral("selection")).toObject();
+    const auto payloadArray = [&payload, &nestedSelection](const QString &key) {
+        const QJsonValue direct = payload.value(key);
+        return direct.isArray() ? direct.toArray() : nestedSelection.value(key).toArray();
+    };
     QJsonArray options, cards, players, skills, declarations;
     const auto label = [](const QString &name) {
         return plainText(Sanguosha ? Sanguosha->translate(name) : name);
@@ -242,8 +250,8 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
             if (entry.isDouble() && !output->contains(entry.toInt())) output->append(entry.toInt());
     };
     for (const QString &key : {QStringLiteral("selectable_cards"), QStringLiteral("visible_cards"), QStringLiteral("cards")})
-        appendIds(payload.value(key).toArray(), &offered);
-    appendIds(payload.value(QStringLiteral("disabled_cards")).toArray(), &disabled);
+        appendIds(payloadArray(key), &offered);
+    appendIds(payloadArray(QStringLiteral("disabled_cards")), &disabled);
     const QList<int> explicitlyOffered = offered;
     appendIds(selection.value(QStringLiteral("selectable_cards")).toArray(), &offered);
     appendIds(selection.value(QStringLiteral("draft")).toObject().value(QStringLiteral("cards")).toArray(), &offered);
@@ -372,7 +380,20 @@ QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot, const
     QJsonObject view;
     const ClientGameState *state = core.state();
     view.insert(QStringLiteral("status"), state->gameValue(QStringLiteral("status")).toString());
-    view.insert(QStringLiteral("prompt"), core.hasActiveRequest() ? plainText(core.activeRequest().prompt) : QString());
+    const QString rawPrompt = core.hasActiveRequest() ? core.activeRequest().prompt : QString();
+    view.insert(QStringLiteral("prompt"), plainText(rawPrompt));
+    if (!rawPrompt.isEmpty()) {
+        const auto translate = [](const QString &key) {
+            return Sanguosha ? Sanguosha->translate(key) : key;
+        };
+        const auto playerName = [&core](const QString &name) {
+            return safePlayerName(core, name);
+        };
+        view.insert(QStringLiteral("prompt_text"),
+                    plainText(formatClientPrompt(rawPrompt, translate, playerName)));
+    } else {
+        view.insert(QStringLiteral("prompt_text"), QString());
+    }
     QJsonArray players;
     for (const QString &name : state->playerNames()) {
         const QVariantMap source = state->player(name);

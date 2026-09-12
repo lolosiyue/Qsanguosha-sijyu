@@ -57,6 +57,11 @@ using namespace QSanProtocol;
 
 namespace
 {
+static bool shutdownTraceEnabled()
+{
+	return qEnvironmentVariableIsSet("QSAN_XP_SHUTDOWN_TRACE");
+}
+
 // A QAbstractSocket may only be touched from the thread that owns it. Server
 // and the sockets it accepts both live on the main thread today, so this is a
 // direct call in practice; routing every teardown through it keeps the rule the
@@ -2002,7 +2007,12 @@ void Server::daemonize()
 
 Room *Server::createNewRoom()
 {
+	if (m_shuttingDown)
+		return nullptr;
 	waitForDisposingRooms();
+	// The wait pumps queued events, including a shutdown request.
+	if (m_shuttingDown)
+		return nullptr;
 	const GameSessionConfig sessionConfig = takeNextGameSessionConfig();
 	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
 	Room *room = new Room(this, Config.GameMode.mode_id, sessionConfig);
@@ -2060,6 +2070,11 @@ Room *Server::publishRoom(Room *room)
 
 bool Server::prepareInitialRoomAsync(QString *error)
 {
+	if (m_shuttingDown) {
+		if (error)
+			*error = tr("Server is shutting down");
+		return false;
+	}
 	if (current || m_roomPreparationThread) {
 		if (error)
 			*error = tr("Initial room preparation is already active");
@@ -2067,6 +2082,11 @@ bool Server::prepareInitialRoomAsync(QString *error)
 	}
 
 	waitForDisposingRooms();
+	if (m_shuttingDown) {
+		if (error)
+			*error = tr("Server is shutting down");
+		return false;
+	}
 	const GameSessionConfig sessionConfig = takeNextGameSessionConfig();
 	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
 	Room *room = new Room(this, Config.GameMode.mode_id, sessionConfig,
@@ -2129,6 +2149,10 @@ void Server::processNewConnection(ClientSocket *socket)
 {
 	if (socket == nullptr)
 		return;
+	if (m_shuttingDown) {
+		disconnectSocketFromOwnerThread(socket);
+		return;
+	}
 	QString addr = socket->peerAddress();
 
 	if (Config.value("BannedIP").toStringList().contains(addr)) {
@@ -2178,6 +2202,10 @@ void Server::processRequest(const QByteArray &request)
 	ServerConnectionContext *context = m_connectionContexts.value(socket, nullptr);
 	if (socket == nullptr || context == nullptr)
 		return;
+	if (m_shuttingDown) {
+		disconnectSocketFromOwnerThread(socket);
+		return;
+	}
 	SignupRequestPayload signup;
 	quint64 requestId = 0;
 	QString error;
@@ -2413,16 +2441,52 @@ void Server::gameOver()
 	scheduleDisposeRoom(room);
 }
 
+void Server::beginShutdown()
+{
+	m_shuttingDown = true;
+	const QList<Room *> activeRooms = rooms.values();
+	for (Room *room : activeRooms) {
+		if (!room)
+			continue;
+		rooms.remove(room);
+		if (current == room)
+			current = nullptr;
+		foreach (ServerPlayer *player, room->findChildren<ServerPlayer *>()) {
+			name2objname.remove(player->screenName(), player->objectName());
+			players.remove(player->objectName());
+		}
+		// Wake request waiters before the existing asynchronous disposal path.
+		room->abortWaitingRequests();
+		if (!m_disposingRooms.contains(QPointer<Room>(room)))
+			scheduleDisposeRoom(room);
+	}
+}
+
+bool Server::shutdownComplete() const
+{
+	const bool disposingRunning = disposingRoomStillRunning();
+	const bool complete = rooms.isEmpty() && m_disposingRooms.isEmpty()
+		&& !disposingRunning && m_roomPreparationThread == nullptr;
+	if (shutdownTraceEnabled()) {
+		static QString lastState;
+		const QString state = QStringLiteral("rooms=%1 disposing=%2 workers=%3 prep=%4 complete=%5")
+			.arg(rooms.size()).arg(m_disposingRooms.size()).arg(disposingRunning ? "running" : "stopped")
+			.arg(m_roomPreparationThread ? "running" : "stopped").arg(complete ? "true" : "false");
+		if (state != lastState) {
+			lastState = state;
+			qInfo().noquote() << "shutdown_trace server=shutdown_poll" << state;
+		}
+	}
+	return complete;
+}
+
 bool Server::disposingRoomStillRunning() const
 {
 	foreach (const QPointer<Room> &roomPtr, m_disposingRooms) {
 		Room *room = roomPtr.data();
 		if (!room)
 			continue;
-		if (room->isRunning())
-			return true;
-		RoomThread *rt = room->getThread();
-		if (rt && rt->isRunning())
+		if (!room->allGameThreadsStopped())
 			return true;
 	}
 	return false;
@@ -2446,8 +2510,17 @@ void Server::scheduleDisposeRoom(Room *room)
 {
 	if (!room)
 		return;
-	m_disposingRooms.append(QPointer<Room>(room));
-	QPointer<Room> roomPtr(room);
+	const QPointer<Room> roomPtr(room);
+	if (!m_disposingRooms.contains(roomPtr)) {
+		m_disposingRooms.append(roomPtr);
+		connect(room, &QObject::destroyed, this, [this, roomPtr]() {
+			m_disposingRooms.removeAll(roomPtr);
+			if (shutdownTraceEnabled())
+				qInfo().noquote() << QStringLiteral("shutdown_trace server=room_destroyed disposing=%1")
+					.arg(m_disposingRooms.size());
+		});
+	}
+	room->requestStopGameThreads();
 	QTimer::singleShot(500, this, [this, roomPtr]() {
 		if (!roomPtr) {
 			QList<QPointer<Room> >::iterator it = m_disposingRooms.begin();
@@ -2459,31 +2532,27 @@ void Server::scheduleDisposeRoom(Room *room)
 			}
 			return;
 		}
-		RoomThread *rt = roomPtr->getThread();
-		const bool workerRunning = roomPtr->isRunning() || (rt && rt->isRunning());
+		const bool workerRunning = !roomPtr->allGameThreadsStopped();
 		if (workerRunning) {
 			QTimer *pollTimer = new QTimer(this);
 			int *elapsedMs = new int(0);
 			connect(pollTimer, &QTimer::timeout, this,
-				[this, roomPtr, rt, pollTimer, elapsedMs]() {
+				[this, roomPtr, pollTimer, elapsedMs]() {
 					*elapsedMs += 100;
-					const bool stillRunning = roomPtr
-						&& (roomPtr->isRunning() || (rt && rt->isRunning()));
+					const bool stillRunning = roomPtr && !roomPtr->allGameThreadsStopped();
 					if (!stillRunning || *elapsedMs >= 10000) {
 						pollTimer->stop();
 						pollTimer->deleteLater();
 						delete elapsedMs;
-						m_disposingRooms.removeAll(roomPtr);
 						if (roomPtr && !stillRunning)
 							roomPtr->deleteLater();
 						else if (stillRunning)
-							qWarning("scheduleDisposeRoom: timeout, leaking Room");
+							qWarning("scheduleDisposeRoom: worker stop still pending");
 					}
 				});
 			pollTimer->start(100);
 			return;
 		}
-		m_disposingRooms.removeAll(roomPtr);
 		roomPtr->deleteLater();
 	});
 }

@@ -829,6 +829,40 @@ void testRulesProjectionReducer()
               .contains(QStringLiteral("wooden_ox")),
           "an empty SYNC_PILE deletes the pile key");
 
+    notify(S_COMMAND_GET_CARD, {
+        {QStringLiteral("moves"), QVariantList{QVariantMap{
+            {QStringLiteral("to_player"), QStringLiteral("sgs1")},
+            {QStringLiteral("to_place"), 4},
+            {QStringLiteral("to_pile"), QStringLiteral("olqingjian")},
+            {QStringLiteral("card_ids"), QVariantList{1073}}}}}});
+    notify(S_COMMAND_GET_CARD, {
+        {QStringLiteral("moves"), QVariantList{QVariantMap{
+            {QStringLiteral("to_player"), QStringLiteral("sgs1")},
+            {QStringLiteral("to_place"), 4},
+            {QStringLiteral("to_pile"), QStringLiteral("olqingjian")},
+            {QStringLiteral("card_ids"), QVariantList{1073}}}}}});
+    check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
+              .value(QStringLiteral("olqingjian")).toList() == QVariantList{1073},
+          "visible special movement adds a selectable pile card once");
+    notify(S_COMMAND_GET_CARD, {
+        {QStringLiteral("moves"), QVariantList{QVariantMap{
+            {QStringLiteral("to_player"), QStringLiteral("sgs1")},
+            {QStringLiteral("to_place"), 4},
+            {QStringLiteral("to_pile"), QStringLiteral("hidden_pile")},
+            {QStringLiteral("card_ids"), QVariantList{-1}}}}}});
+    check(!state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
+              .contains(QStringLiteral("hidden_pile")),
+          "hidden special movement never authorizes an unknown pile card");
+    notify(S_COMMAND_LOSE_CARD, {
+        {QStringLiteral("moves"), QVariantList{QVariantMap{
+            {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+            {QStringLiteral("from_place"), 4},
+            {QStringLiteral("from_pile"), QStringLiteral("olqingjian")},
+            {QStringLiteral("card_ids"), QVariantList{1073}}}}}});
+    check(!state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
+              .contains(QStringLiteral("olqingjian")),
+          "visible special movement removes the pile card");
+
     notify(S_COMMAND_SET_PROPERTY, {
         {QStringLiteral("player_name"), QStringLiteral("sgs1")},
         {QStringLiteral("action"), QStringLiteral("tag")},
@@ -883,11 +917,36 @@ void testRulesProjectionReducer()
     check(stored.value(QStringLiteral("correct_state")).toMap().value(QStringLiteral("public")).toInt() == 9,
           "public correct_state is stored on the instance");
 
+    notify(S_COMMAND_ATTACH_SKILL, {
+        {QStringLiteral("player_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("skill_name"), QStringLiteral("wusheng")}});
     notify(S_COMMAND_UPDATE_PLAYER_UI_STATE, {
         {QStringLiteral("player_name"), QStringLiteral("sgs1")},
-        {QStringLiteral("state"), QVariantMap{{QStringLiteral("handMax"), 5}}}});
+        {QStringLiteral("state"), QVariantMap{
+            {QStringLiteral("handMax"), 5},
+            {QStringLiteral("offensiveDistance"), -1},
+            {QStringLiteral("defensiveDistance"), 3},
+            {QStringLiteral("maxCardsSkills"), QStringList{
+                QStringLiteral("#mobilexinxianghai^-1^sgs1"), QStringLiteral("yongsi^F7^sgs2")}},
+            {QStringLiteral("offensiveSkills"), QStringList{QStringLiteral("offensive^-2^sgs1")}},
+            {QStringLiteral("defensiveSkills"), QStringList{QStringLiteral("defensive^3^sgs2")}},
+            {QStringLiteral("viewAsEquipSkills"), QStringList{QStringLiteral("crossbow^sgs1")}}}}});
     check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("hand_max")).toInt() == 5,
           "handMax from UI state is the synced hand limit");
+    check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("skills")).toStringList()
+              == QStringList{QStringLiteral("wusheng")},
+          "UI-state effect tooltips never become skills");
+    const QVariantMap uiState = state.playerValue(QStringLiteral("sgs1"),
+        QStringLiteral("ui_state")).toMap();
+    check(uiState.value(QStringLiteral("maxCardsSkills")).toStringList().contains(
+              QStringLiteral("#mobilexinxianghai^-1^sgs1"))
+              && uiState.value(QStringLiteral("maxCardsSkills")).toStringList().contains(
+                  QStringLiteral("yongsi^F7^sgs2"))
+              && uiState.value(QStringLiteral("viewAsEquipSkills")).toStringList().contains(
+                  QStringLiteral("crossbow^sgs1"))
+              && state.playerValue(QStringLiteral("sgs1"), QStringLiteral("offensive_distance")).toInt() == -1
+              && state.playerValue(QStringLiteral("sgs1"), QStringLiteral("defensive_distance")).toInt() == 3,
+          "UI-state tooltip metadata and distances remain projected");
 
     notify(S_COMMAND_UPDATE_CARD, {
         {QStringLiteral("card_id"), 11},

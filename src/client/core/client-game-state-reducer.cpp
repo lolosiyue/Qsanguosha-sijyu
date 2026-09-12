@@ -88,6 +88,34 @@ void adjustHandCount(ClientGameState *state, const QString &player, int delta)
     state->setPlayerValue(player, QStringLiteral("hand_count"), count);
 }
 
+// Keep the native Player::getPile() view in step with visible special-zone
+// movements. Unknown ids are deliberately ignored: they may affect a public
+// count, but must never become selectable card identities.
+void updateVisiblePile(ClientGameState *state, const QString &player,
+                       const QString &pileName, const QList<int> &cardIds,
+                       bool add)
+{
+    if (player.isEmpty() || pileName.isEmpty())
+        return;
+    QVariantMap piles = state->playerValue(player, QStringLiteral("piles")).toMap();
+    QVariantList values = piles.value(pileName).toList();
+    for (int cardId : cardIds) {
+        if (cardId < 0)
+            continue;
+        if (add) {
+            if (!values.contains(cardId))
+                values.append(cardId);
+        } else {
+            values.removeOne(cardId);
+        }
+    }
+    if (values.isEmpty())
+        piles.remove(pileName);
+    else
+        piles.insert(pileName, values);
+    state->setPlayerValue(player, QStringLiteral("piles"), piles);
+}
+
 void applyCardMovement(ClientGameState *state, int command, const QVariantMap &object)
 {
     // The server only marshals the whole discard pile on a state sync, so the
@@ -102,13 +130,20 @@ void applyCardMovement(ClientGameState *state, int command, const QVariantMap &o
             state, move.value(QStringLiteral("to_player")));
         const int fromPlace = move.value(QStringLiteral("from_place")).toInt();
         const int place = move.value(QStringLiteral("to_place")).toInt();
+        const QString fromPile = move.value(QStringLiteral("from_pile")).toString();
         const QString pile = move.value(QStringLiteral("to_pile")).toString();
         const QList<int> cardIds = integers(move.value(QStringLiteral("card_ids")));
         if (command == S_COMMAND_LOSE_CARD && fromPlace == 0)
             adjustHandCount(state, fromPlayer, -cardIds.size());
         if (command == S_COMMAND_GET_CARD && place == 0)
             adjustHandCount(state, owner, cardIds.size());
+        if (command == S_COMMAND_GET_CARD && place == 4)
+            updateVisiblePile(state, owner, pile, cardIds, true);
+        if (command == S_COMMAND_LOSE_CARD && fromPlace == 4)
+            updateVisiblePile(state, fromPlayer, fromPile, cardIds, false);
         for (int cardId : cardIds) {
+            if (cardId < 0)
+                continue;
             state->setCardValue(cardId, QStringLiteral("owner"), owner);
             state->setCardValue(cardId, QStringLiteral("place"), place);
             state->setCardValue(cardId, QStringLiteral("pile"), pile);
@@ -543,13 +578,8 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
                               uiState.value(QStringLiteral("offensiveDistance")));
         state->setPlayerValue(player, QStringLiteral("defensive_distance"),
                               uiState.value(QStringLiteral("defensiveDistance")));
-        static const QStringList skillFields{QStringLiteral("maxCardsSkills"),
-            QStringLiteral("offensiveSkills"), QStringLiteral("defensiveSkills"),
-            QStringLiteral("viewAsEquipSkills")};
-        for (const QString &field : skillFields) {
-            for (const QString &skill : strings(uiState.value(field)))
-                appendSkill(state, player, skill);
-        }
+        // Effect tooltips can describe another player's skill or virtual
+        // equipment. Only authoritative skill messages grant skill ownership.
         break;
     }
     case S_COMMAND_ATTACH_SKILL:
