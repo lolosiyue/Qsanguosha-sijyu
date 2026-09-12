@@ -197,6 +197,11 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
             if (hujia > 0)
                 room->addPlayerMark(sp, "@HuJia", hujia);
 
+            // 允許小型場景覆寫武將預設護甲值。
+            str = this->players.at(i)["hujia"];
+            if (!str.isEmpty())
+                room->setPlayerMark(sp, "@HuJia", qMax(0, str.toInt()));
+
             str = this->players.at(i)["acquireSkills"];
             if (str != "") {
                 room->handleAcquireDetachSkills(sp, str.split(","));
@@ -227,11 +232,38 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
             if (str != "") {
                 foreach (QString qs, str.split(",")) {
                     QStringList keys = qs.split("*");
-                    room->setPlayerMark(sp, keys[0], keys[1].toInt());
+                    if (keys.size() >= 2 && !keys[0].isEmpty())
+                        room->setPlayerMark(sp, keys[0], keys[1].toInt());
                 }
             }
 
             room->setTag("FirstRound", true);
+            str = this->players.at(i)["equipArea"];
+            if (!str.isEmpty()) {
+                static const char *areas[] = {
+                    "weapon_area", "armor_area", "defensive_horse_area",
+                    "offensive_horse_area", "treasure_area"
+                };
+                foreach (QString area, str.split(",", Qt::SkipEmptyParts)) {
+                    QStringList fields = area.split("*");
+                    bool slotOk = false, countOk = false;
+                    int slot = fields.value(0).toInt(&slotOk);
+                    int count = fields.value(1).toInt(&countOk);
+                    if (fields.size() != 2 || !slotOk || !countOk || slot < 0 || slot > 4 || count < 0 || count > 99)
+                        continue;
+                    sp->setEquipAreaCount(slot, count);
+                    sp->syncEquipAreaCount(slot);
+                    room->broadcastProperty(sp, areas[slot]);
+                }
+            }
+
+            str = this->players.at(i)["judgeArea"];
+            if (!str.isEmpty()) {
+                const bool enabled = str != "0" && str.compare("false", Qt::CaseInsensitive) != 0;
+                sp->setJudgeArea(enabled);
+                room->broadcastProperty(sp, "hasjudgearea");
+            }
+
             str = this->players.at(i)["equip"];
             foreach (QString equip, str.split(",")) {
                 bool ok;
@@ -318,8 +350,17 @@ void MiniSceneRule::loadSetting(QString path)
     if (file.open(QIODevice::ReadOnly)) {
         players.clear();
         setup.clear();
+        // Reload replaces the full scene, including options and fixed-card identity.
+        m_fixedDrawCards.clear();
+        ex_options.clear();
 
         QTextStream stream(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        // Match the editor's UTF-8 saves without discarding legacy locale files.
+        const QByteArray encoded = file.peek(file.size());
+        if (encoded.startsWith("\xEF\xBB\xBF") || QString::fromUtf8(encoded).toUtf8() == encoded)
+            stream.setCodec("UTF-8");
+#endif
         while (!stream.atEnd()) {
             QString aline = stream.readLine();
             if (aline.isEmpty()) continue;

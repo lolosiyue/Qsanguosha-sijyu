@@ -34,6 +34,7 @@ class CustomAssignDialog : public QDialog
 
 public:
     CustomAssignDialog(QWidget *parent);
+    ~CustomAssignDialog() override;
 
     QString setListText(QString name, QString role, int index = -1);
     void exchangePlayersInfo(QListWidgetItem *first, QListWidgetItem *second);
@@ -51,6 +52,8 @@ private:
     QCheckBox *max_hp_prompt, *hp_prompt;
     QSpinBox *max_hp_spin, *hp_spin;
     QSpinBox *player_draw, *marks_count;
+    QSpinBox *hujia_spin, *equip_area_spins[5];
+    QCheckBox *disable_judge_area;
     QCheckBox *self_select_general, *self_select_general2;
     QPushButton *removeEquipButton, *removeHandButton, *removeJudgeButton, *removePileButton;
     QCheckBox *set_turned, *set_chained;
@@ -77,6 +80,9 @@ private:
     QList<int> set_pile;
     QMap<QString, int> player_start_draw;
     QMap<QString, QMap<QString, int> > player_marks;
+    // Preserve scenario extensions that have no dedicated editor control.
+    QMap<QString, QMap<QString, QString> > player_extra_fields;
+    QStringList extra_options;
     QList<QLabel *> mark_icons;
     QMap<QString, bool> free_choose_general, free_choose_general2;
     QMap<QString, QStringList> player_exskills;
@@ -87,8 +93,6 @@ private:
     bool choose_general2;
     QString starter;
     bool is_ended_by_pile, is_single_turn, is_before_next;
-
-    QList<bool> set_options;
 
     QMap<QString, int> kingdom_index;
 
@@ -115,6 +119,9 @@ private slots:
     void setPlayerStartDraw(int draw_num);
     void setPlayerMarks(int value);
     void getPlayerMarks(int index);
+    void addPlayerMark();
+    void updateAdvancedState();
+    void refreshAdvancedState(const QString &name);
     void setStarter(bool toggled);
     void setMoveButtonAvaliable(bool toggled);
     void setNationality(int);
@@ -166,11 +173,15 @@ public:
 
 private:
     QButtonGroup *group;
+    QLineEdit *input_general;
+    QTabWidget *tab_widget;
+    QPushButton *ok_button;
     QWidget *createTab(const QList<const General *> &generals);
 
 private slots:
     void chooseGeneral();
     void clearGeneral();
+    void filterGenerals();
 
 signals:
     void general_chosen(const QString &name);
@@ -188,6 +199,8 @@ private:
     void addCard(const Card *card);
 
     QListWidget *card_list;
+    QLineEdit *input_card;
+    QPushButton *get_card_button;
     QString card_type, class_name;
     QList<int> excluded_card;
 
@@ -195,6 +208,8 @@ private slots:
     void askCard();
     void updateCardList();
     void updateExcluded(int card_id);
+    void updateCardButton();
+    void filterCards();
 
 signals:
     void card_chosen(int card_id);
@@ -214,6 +229,7 @@ private:
     QTextEdit *skill_info;
 
     QStringList update_skills;
+    QMap<QString, QString> skill_lookup;
 
 private slots:
     void selectSkill();
@@ -222,6 +238,7 @@ private slots:
 
     void changeSkillInfo();
     void updateSkillList();
+    void filterSkills();
 
     void getSkillFromGeneral(QString general);
 
