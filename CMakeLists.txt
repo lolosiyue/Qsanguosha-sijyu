@@ -71,8 +71,15 @@ option(QSAN_BUILD_EXCEL_TESTS
     "Build opt-in native Excel focused test executables"
     OFF
 )
+option(QSAN_BUILD_SHEETS
+    "Build the opt-in Google Sheets bridge"
+    OFF
+)
 if(QSAN_BUILD_EXCEL AND NOT WIN32)
     message(FATAL_ERROR "QSAN_BUILD_EXCEL is available on Windows only")
+endif()
+if(QSAN_BUILD_SHEETS AND NOT WIN32)
+    message(FATAL_ERROR "QSAN_BUILD_SHEETS is available on Windows only")
 endif()
 option(QSAN_BUILD_WASM_WEB_CLIENT
     "Build the persistent Web Worker client-rules runtime with Emscripten"
@@ -203,6 +210,9 @@ if(QSAN_BUILD_GUI)
 endif()
 
 if(QSAN_BUILD_EXCEL AND QSAN_AUDIO_BACKEND STREQUAL "QT")
+    list(APPEND QSAN_QT_COMPONENTS Multimedia)
+endif()
+if(QSAN_BUILD_SHEETS AND QSAN_AUDIO_BACKEND STREQUAL "QT")
     list(APPEND QSAN_QT_COMPONENTS Multimedia)
 endif()
 if(QSAN_BUILD_EXCEL_TESTS)
@@ -974,6 +984,9 @@ endif()
 if(QSAN_BUILD_EXCEL)
     include(cmake/QSanguoshaExcel.cmake)
 endif()
+if(QSAN_BUILD_SHEETS)
+    include(cmake/QSanguoshaSheets.cmake)
+endif()
 if(QSAN_BUILD_SERVER)
     add_executable(qsanguosha_server ${QSAN_DEDICATED_ENTRY_SOURCES})
     target_include_directories(qsanguosha_server PRIVATE
@@ -1696,7 +1709,7 @@ if(QSAN_BUILD_GUI)
                 -DQSAN_CONFIG=$<CONFIG>
                 -DQSAN_EXECUTABLE=$<TARGET_FILE:${QSAN_GUI_TARGET}>
                 -DQSAN_WINDEPLOYQT=${QSAN_WINDEPLOYQT}
-                -DQSAN_QML_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                "-DQSAN_QML_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/qml;${CMAKE_CURRENT_SOURCE_DIR}/ui-script"
                 -DQSAN_FMOD_RUNTIME=${QSAN_FMOD_RUNTIME}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Deploy.cmake
             DEPENDS ${QSAN_GUI_TARGET}

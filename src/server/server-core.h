@@ -61,6 +61,9 @@ public:
     void checkUpnpAndListServer();
     void startHeadlessGame();
     void startTestGame(const QString &scenarioFile, bool headless);
+    // Begin non-blocking room cleanup; callers must keep the Qt event loop alive.
+    void beginShutdown();
+    bool shutdownComplete() const;
 
 private:
     GameSessionConfig takeNextGameSessionConfig();
@@ -99,6 +102,7 @@ private:
     QHash<ClientSocket *, ServerConnectionContext *> m_connectionContexts;
     quint64 m_nextConnectionGeneration = 1;
     QThread *m_roomPreparationThread = nullptr;
+    bool m_shuttingDown = false;
 
     static bool s_hasGameSeed;
     static quint64 s_gameSeedBase;

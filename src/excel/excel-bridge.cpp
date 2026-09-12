@@ -107,7 +107,8 @@ ExcelBridge::ExcelBridge(const ExcelBridgeOptions &options, QObject *parent)
         [this](int command, const QString &text, const QVariant &payload) {
             const QString line = ExcelView::presentationText(m_core, command, text, payload);
             if (!line.isEmpty()) log(line);
-            ExcelView::playPresentationAudio(command, payload, m_options.assetRoot);
+            if (!m_options.suppressPresentationAudio)
+                ExcelView::playPresentationAudio(command, payload, m_options.assetRoot);
         });
     connect(&m_session, &ClientLiveSession::commandResult, this,
         [this](int command, bool success, const QString &message) {

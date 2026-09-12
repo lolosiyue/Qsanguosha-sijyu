@@ -64,6 +64,8 @@ LocalServerController::LocalServerController(QObject *parent) : QObject(parent)
                 m_forced = true;
                 m_deadline = 0;
                 emit logMessage(QStringLiteral("forced_shutdown: incomplete cleanup phase"));
+                if (qEnvironmentVariableIsSet("QSAN_XP_SHUTDOWN_TRACE"))
+                    qWarning("shutdown_trace controller=stop_deadline forcing_helper=true");
                 if (m_process) m_process->kill();
             } else {
                 fail(QStringLiteral("startup_timeout"));

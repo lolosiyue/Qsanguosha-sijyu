@@ -74,14 +74,24 @@ void RoomRuntime::reclaimTurnCards()
 
 void RoomRuntime::finalizeWorker()
 {
+    const auto trace = [](const char *phase) {
+        if (qEnvironmentVariableIsSet("QSAN_XP_SHUTDOWN_TRACE")) {
+            std::fprintf(stdout, "shutdown_trace worker_final=%s\n", phase);
+            std::fflush(stdout);
+        }
+    };
+    trace("enter");
     // Lua can outlive the worker: a Lua-owned QVariant boxing a CardUseStruct
     // keeps that struct's owning QSharedPointer alive until lua_close(), which
     // used to run in shutdownFinal(). Retiring the domain first left those
     // deleters pointing at freed Cards. Close the room's Lua states here so the
     // finalizers hand ownership back while the Cards are still alive.
     m_ai.shutdown();
+    trace("ai_stopped");
     m_lua.shutdown();
+    trace("lua_stopped");
     releaseShutdownRoots();
+    trace("roots_released");
     quint64 retired = 0;
     if (!globalCardLifetimeManager().finalizeWorkerDomain(this, &retired)) {
         globalCardLifetimeManager().dumpDomain(this);
