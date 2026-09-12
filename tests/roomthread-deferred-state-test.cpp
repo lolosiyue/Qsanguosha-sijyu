@@ -1,17 +1,21 @@
 #include "engine-bootstrap.h"
 #include "engine.h"
+#include "card.h"
 #include "card-lifetime-manager.h"
+#include "lua-runtime.h"
 #include "protocol.h"
 #include "protocol/protocol-message.h"
 #include "protocol/protocol-runtime.h"
 #include "room-test-access.h"
 #include "room.h"
+#include "room-runtime.h"
 #include "roomthread.h"
 #include "serverplayer.h"
 #include "settings.h"
 #include "skill.h"
 
 #include <QDebug>
+#include <QScopeGuard>
 
 #include <cstdio>
 
@@ -128,6 +132,41 @@ public:
     {
         return true;
     }
+};
+
+class TurnReclaimProbe : public TriggerSkill
+{
+public:
+    TurnReclaimProbe(QPointer<DummyCard> *card, bool *nestedAlive, bool throwTurnBroken)
+        : TriggerSkill(QStringLiteral("test-roomthread-turn-reclaim")), m_card(card),
+          m_nestedAlive(nestedAlive), m_throwTurnBroken(throwTurnBroken)
+    {
+        events << TurnStart;
+    }
+
+    bool triggerable(ServerPlayer *, Room *, TriggerEvent event, ServerPlayer *, QVariant) const override
+    {
+        return event == TurnStart;
+    }
+
+    bool trigger(TriggerEvent, Room *room, ServerPlayer *, QVariant &) const override
+    {
+        if (*m_card == nullptr) {
+            *m_card = new DummyCard;
+            (*m_card)->deleteLater();
+            QVariant nestedData;
+            room->getThread()->trigger(TurnStart, room, nullptr, nestedData);
+            *m_nestedAlive = *m_card != nullptr;
+            if (m_throwTurnBroken)
+                throw TurnBroken;
+        }
+        return false;
+    }
+
+private:
+    QPointer<DummyCard> *m_card;
+    bool *m_nestedAlive;
+    bool m_throwTurnBroken;
 };
 
 class PacketRecorder
@@ -393,6 +432,49 @@ static bool cardLifetimeMutexProfileCountsLocks()
         && profile.wait_ns >= profile.max_wait_ns;
 }
 
+static bool outerTurnReclaimsAfterNestedDispatch()
+{
+    const auto runCase = [](bool throwTurnBroken, const QString &playerName) {
+        Room room(nullptr, QStringLiteral("03_1v2"));
+        RoomTestAccess::attachThread(room);
+        ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, playerName);
+        RoomTestAccess::resetAlive(room);
+
+        QPointer<DummyCard> card;
+        bool nestedAlive = false;
+        TurnReclaimProbe probe(&card, &nestedAlive, throwTurnBroken);
+        room.getThread()->addTriggerSkill(&probe);
+
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->lua());
+        CardLifetimeManager &manager = globalCardLifetimeManager();
+        if (!manager.beginTurnReclamation(room.roomRuntime()))
+            return false;
+        auto endReclamation = qScopeGuard([&manager, &room]() {
+            manager.endTurnReclamation(room.roomRuntime());
+        });
+        const quint64 beforeScopes = manager.activeScopeDepthForDomain(room.roomRuntime());
+
+        bool caught = false;
+        QVariant data;
+        try {
+            room.getThread()->trigger(TurnStart, &room, owner, data);
+        } catch (TriggerEvent event) {
+            caught = event == TurnBroken;
+        }
+
+        const bool nestedWasProtected = nestedAlive;
+        const bool quiescent = manager.activeScopeDepthForDomain(room.roomRuntime()) == beforeScopes;
+        const bool survivedUnwind = throwTurnBroken ? caught && card != nullptr : !caught;
+        if (throwTurnBroken)
+            room.roomRuntime()->reclaimTurnCards(); // Simulate mode cleanup before this boundary.
+        const bool reclaimed = card == nullptr;
+        return nestedWasProtected && quiescent && survivedUnwind && reclaimed;
+    };
+
+    return runCase(false, QStringLiteral("turn-reclaim-owner"))
+        && runCase(true, QStringLiteral("turn-reclaim-throw-owner"));
+}
+
 }
 
 int runRoomThreadDeferredStateTests()
@@ -409,6 +491,10 @@ int runRoomThreadDeferredStateTests()
     if (!v2BrokenStillFlushesDeferredClientState()) {
         qCritical() << "RoomThread deferred state regression failed";
         return 3;
+    }
+    if (!outerTurnReclaimsAfterNestedDispatch()) {
+        qCritical() << "RoomThread outer-turn card reclamation regression failed";
+        return 4;
     }
     qInfo() << "RoomThread deferred state regression passed";
     return 0;

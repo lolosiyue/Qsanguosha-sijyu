@@ -5,6 +5,7 @@
 #include "interaction-command-registry.h"
 #include "interaction-reply-coordinator.h"
 #include "protocol/session/session-payloads.h"
+#include "protocol/rules-bundle-identity.h"
 #include "nativesocket.h"
 #include "socket.h"
 
@@ -156,6 +157,24 @@ bool ClientLiveSession::consumeFrame(const QByteArray &frame, quint64 generation
             fail(4, QStringLiteral("server_hello"), error);
             return false;
         }
+        if ((!m_options.expectedGameVersion.isEmpty()
+                && hello.gameVersion != m_options.expectedGameVersion)
+            || (!m_options.expectedModName.isEmpty()
+                && hello.modName != m_options.expectedModName)
+            || (m_options.expectedCardCount > 0
+                && hello.cardCount != m_options.expectedCardCount)) {
+            fail(5, QStringLiteral("content_version_mismatch"),
+                 QStringLiteral("the server and client package differ"));
+            return false;
+        }
+        if (!m_options.expectedRulesBundle.isEmpty()) {
+            const QString mismatch = QSanRules::compatibilityError(
+                hello.rulesBundle, m_options.expectedRulesBundle, true);
+            if (!mismatch.isEmpty()) {
+                fail(5, mismatch, QStringLiteral("the server rules do not match this client package"));
+                return false;
+            }
+        }
         if (m_core != nullptr) {
             m_core->state()->setConnectionValue(QStringLiteral("game_version"), hello.gameVersion);
             m_core->state()->setConnectionValue(QStringLiteral("mod_name"), hello.modName);
@@ -208,6 +227,13 @@ bool ClientLiveSession::consumeFrame(const QByteArray &frame, quint64 generation
         SetupPayload setup;
         if (!SetupPayload::parse(message.payload, &setup, &error)) {
             fail(4, QStringLiteral("setup_payload"), error);
+            return false;
+        }
+        // A capacity-limited frontend must never send READY for an unsupported
+        // room, including when reconnecting to an older server.
+        if (m_options.maxPlayerCount > 0 && setup.playerCount > m_options.maxPlayerCount) {
+            fail(5, QStringLiteral("frontend_player_limit"),
+                 QStringLiteral("the room exceeds this frontend's player limit"));
             return false;
         }
         if (m_core != nullptr)
@@ -360,6 +386,10 @@ bool ClientLiveSession::requestSignup(QString *error)
     signup.reconnectRequested = m_reconnectAttempt;
     signup.screenName = m_options.screenName;
     signup.avatar = m_options.avatar;
+    if (m_options.maxPlayerCount > 0) {
+        signup.hasMaxPlayers = true;
+        signup.maxPlayers = m_options.maxPlayerCount;
+    }
     ProtocolMessage request;
     if (!m_session.makeSignupRequest(signup, &request, error)
         || !writeFrame(request, error)) {

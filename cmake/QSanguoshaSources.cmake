@@ -2,15 +2,10 @@ set(QSAN_SOURCES
     src/main.cpp
     src/client/aux-skills.cpp
     src/client/client.cpp
-    src/client/client-live-session.cpp
     src/client/clientplayer.cpp
     src/client/clientstruct.cpp
     src/client/desktop-interaction-view.cpp
-    src/client/interaction-command-registry.cpp
     src/client/interaction-descriptor-registry.cpp
-    src/client/interaction-request-factory.cpp
-    src/client/interaction-reply-coordinator.cpp
-    src/client/interaction-reply-encoder.cpp
     src/core/json-gui.cpp
     src/core/oracle_helper.cpp
     src/core/record-analysis.cpp
@@ -423,9 +418,6 @@ function(qsan_finalize_client_runtime_links)
     if(TARGET qsanguosha_client_core)
         target_link_libraries(qsanguosha_client_runtime PUBLIC qsanguosha_client_core)
     endif()
-    if(TARGET qsanguosha_tui_support)
-        target_link_libraries(qsanguosha_tui_support PUBLIC qsanguosha_client_runtime)
-    endif()
 endfunction()
 cmake_language(DEFER CALL qsan_finalize_client_runtime_links)
 
@@ -435,4 +427,9 @@ include(cmake/QSanguoshaRulesFixtures.cmake)
 if(QSAN_BUILD_WASM_WEB_CLIENT)
     include(cmake/QSanguoshaRulesWasm.cmake)
     include(cmake/QSanguoshaWebClient.cmake)
+endif()
+
+if(QSAN_BUILD_WASM_SOLO)
+    include(cmake/QSanguoshaRulesWasm.cmake)
+    include(cmake/QSanguoshaWebSolo.cmake)
 endif()

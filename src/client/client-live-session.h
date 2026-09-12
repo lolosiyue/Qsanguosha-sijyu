@@ -29,6 +29,13 @@ struct ClientLiveSessionOptions
     bool automaticSignup = true;
     int connectTimeoutMs = 10000;
     int handshakeTimeoutMs = 30000;
+    // Optional frontend admission constraints. Empty/zero preserves the
+    // existing GUI/TUI handshake; Excel pins its packaged rules and capacity.
+    int maxPlayerCount = 0;
+    QString expectedGameVersion;
+    QString expectedModName;
+    int expectedCardCount = 0;
+    QJsonObject expectedRulesBundle;
 };
 
 class ClientLiveSession final : public QObject

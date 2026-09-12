@@ -50,6 +50,8 @@ public:
 
     bool initialize(QString *error = nullptr);
     void shutdownForInitFailure();
+    // Called by the game worker only after a completed outer turn unwinds.
+    void reclaimTurnCards();
     void finalizeWorker();
     void shutdownFinal();
     ShutdownState shutdownState() const { return m_shutdownState.load(); }

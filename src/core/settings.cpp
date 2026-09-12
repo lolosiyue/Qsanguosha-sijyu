@@ -185,11 +185,15 @@ Settings::Settings()
 #if defined(QSAN_XP_LEGACY)
     // The managed helper receives this before static initialization. GUI and
     // standalone settings live in the user's profile, never the asset tree.
-    : QSettings(qEnvironmentVariable("QSAN_XP_SETTINGS").isEmpty()
-        ? qEnvironmentVariable("APPDATA") + "/QSanguoshaXP/config.ini"
-        : qEnvironmentVariable("QSAN_XP_SETTINGS"), QSettings::IniFormat)
+    : QSettings(!qEnvironmentVariable("QSAN_SESSION_SETTINGS").isEmpty()
+        ? qEnvironmentVariable("QSAN_SESSION_SETTINGS")
+        : (qEnvironmentVariable("QSAN_XP_SETTINGS").isEmpty()
+            ? qEnvironmentVariable("APPDATA") + "/QSanguoshaXP/config.ini"
+            : qEnvironmentVariable("QSAN_XP_SETTINGS")), QSettings::IniFormat)
 #elif defined(Q_OS_WIN32) || defined(QSAN_WASM_RULES_FIXTURES) || defined(QSAN_WASM_CLIENT_RUNTIME)
-    : QSettings("config.ini", QSettings::IniFormat)
+    : QSettings(!qEnvironmentVariable("QSAN_SESSION_SETTINGS").isEmpty()
+        ? qEnvironmentVariable("QSAN_SESSION_SETTINGS")
+        : QStringLiteral("config.ini"), QSettings::IniFormat)
 #elif defined(ANDROID)
     : QSettings(getAndroidConfigPath(), QSettings::IniFormat)
 #else

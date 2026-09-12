@@ -99,6 +99,21 @@ img.logo {
   min-height: 4.4rem;
 }
 .table-pile .card img { height: 4.4rem; }
+.game-result {
+  flex: 0 0 auto;
+  padding: 0.55rem 0.7rem;
+  background: rgba(42, 33, 28, 0.9);
+  border: 1px solid #76513c;
+  border-radius: 10px;
+}
+.table.game-over { overflow: auto; }
+.table.game-over .photos { flex: 0 0 auto; }
+.game-result h2 { margin: 0; font-size: 1.15rem; }
+.game-result p { margin: 0.25rem 0 0; }
+.game-result-outcome { font-weight: 700; }
+.game-result-outcome.victory { color: #ffd37a; }
+.game-result-outcome.defeat { color: #ffb4a8; }
+.game-result-winners { margin: 0.2rem 0 0; padding-left: 1.2rem; }
 .log {
   grid-area: log;
   min-height: 0;
@@ -358,6 +373,32 @@ img.logo {
   border-radius: 10px;
   padding: 0.6rem;
 }
+.solo-setup {
+  display: grid;
+  gap: 0.45rem;
+  width: min(92vw, 42rem);
+  max-height: 78vh;
+  overflow: auto;
+  background: rgba(42, 33, 28, 0.9);
+  border-radius: 10px;
+  padding: 0.7rem;
+}
+.solo-setup h2 { margin: 0; }
+.solo-setup .field { display: grid; gap: 0.2rem; color: var(--muted); font-size: 0.85rem; }
+.solo-setup select, .solo-setup input { width: 100%; }
+.solo-check-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.25rem 0.5rem;
+  max-height: 10rem;
+  overflow: auto;
+  padding: 0.35rem;
+  background: rgba(26, 18, 14, 0.45);
+  border-radius: 6px;
+}
+.solo-general-list { max-height: 13rem; }
+.solo-check { display: flex; align-items: center; gap: 0.35rem; color: var(--ink); font-size: 0.82rem; }
+.solo-check input { width: auto; }
 .wait-panel { max-width: none; }
 .form .field {
   display: grid;

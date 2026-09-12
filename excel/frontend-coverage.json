@@ -1,0 +1,129 @@
+{
+  "frontend": "excel-vba",
+  "sheets": [
+    "首頁",
+    "房間設定",
+    "牌桌",
+    "詳情",
+    "戰報"
+  ],
+  "typed_presenters": 28,
+  "native_typed_presenters": 29,
+  "required_typed_presenters": 28,
+  "excluded_interactions": [
+    {
+      "command": "qml_interact",
+      "custom_type": "qsanguosha.qml",
+      "reason": "user-approved exclusion from both Excel runtime tiers",
+      "acceptance": "not-required",
+      "on_request": "explicit error; no fabricated reply"
+    }
+  ],
+  "typed_presenter_source": "src/client/interaction-command-registry.cpp",
+  "presenter_mapping": {
+    "option": [
+      "choose_general",
+      "choose_direction",
+      "choice",
+      "choose_suit",
+      "choose_kingdom",
+      "skill_invoke",
+      "trigger_order",
+      "choose_order",
+      "choose_role_3v3",
+      "surrender",
+      "luck_card",
+      "ask_general"
+    ],
+    "cards": [
+      "exchange_card",
+      "ask_peach",
+      "skill_gongxin",
+      "play_card",
+      "response_card",
+      "discard_card",
+      "nullification",
+      "show_card",
+      "amazing_grace",
+      "pindian",
+      "choose_card"
+    ],
+    "players": [
+      "choose_player"
+    ],
+    "assignment": [
+      "choose_role"
+    ],
+    "rearrangement": [
+      "skill_guanxing"
+    ],
+    "distribution": [
+      "skill_yiji"
+    ],
+    "general_arrangement": [
+      "arrange_general"
+    ]
+  },
+  "custom_types": "qml_interact is excluded by user instruction; other in-scope custom interactions still require presenters",
+  "transport": "bridge-only",
+  "json_in_cells": false,
+  "activex": false,
+  "modal_forms": false,
+  "stable_ids": true,
+  "pagination": {
+    "owner": "independent named bank",
+    "page_size": 8,
+    "row_pool": "8 per bank",
+    "image_pool": "8 per bank",
+    "updates": "JSON signature per bank; changed text only"
+  },
+  "snapshot": {
+    "view_rows": "id + skill instance",
+    "request_identity": [
+      "generation",
+      "revision",
+      "request_id"
+    ],
+    "sequence": "string"
+  },
+  "selection": {
+    "cards": "toggle unique",
+    "targets": "ordered-repeated with undo",
+    "skills": "name plus instance",
+    "declarations": "native candidate rows",
+    "preflight": "exact immutable draft and current identity gate",
+    "cancel": "request.cancelable",
+    "end_phase": "play_card schema cancel",
+    "deadline": "native remaining_ms"
+  },
+  "controls": [
+    "connect",
+    "host",
+    "local AI",
+    "catalog",
+    "ready",
+    "unready",
+    "chat",
+    "trust",
+    "untrust",
+    "surrender",
+    "reconnect",
+    "add_robot",
+    "disconnect",
+    "details",
+    "typed room settings",
+    "mode/avatar/package selection"
+  ],
+  "runtime_targets": [
+    "Excel 2010 XP32",
+    "Excel 2016/365 32/64"
+  ],
+  "status": "Debug native builds and three modern focused executables passed; no VBE or full interaction acceptance; QML excluded",
+  "known_gaps": [
+    "no Excel GUI run",
+    "no workbook/VBE acceptance",
+    "28 mapped source paths are not playable evidence",
+    "complex object-valued lists in room settings are preserved when unchanged; editing is only supported for primitive lists",
+    "focused native cases do not cover all 28 worksheet interactions or full Engine skill preflight"
+  ]
+}

@@ -39,6 +39,12 @@ const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve()
 afterEach(() => { Socket.instances = []; vi.unstubAllGlobals(); vi.stubGlobal("crypto", webcrypto); });
 
 describe("rules identity", () => {
+  it("preserves a server content rejection before validating identity metadata", async () => {
+    await expect(verifyNativeIdentity({ schema_version: 1, error_code: "rules_content_unsupported" }))
+      .rejects.toThrow("rules_content_unsupported");
+    await expect(verifyNativeIdentity({ schema_version: 1, error_code: "unknown_error" }))
+      .rejects.toThrow("rules_identity_invalid");
+  });
   it("checks the native seal and matches the same bundle", async () => {
     const value = await bundle(); expect(await verifyNativeIdentity(value)).toEqual(value);
     expect(rulesCompatibilityError(value, value)).toBe("");

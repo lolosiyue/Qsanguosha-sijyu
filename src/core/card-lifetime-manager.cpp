@@ -5,6 +5,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QEvent>
 #include <QMutexLocker>
 #include <QSet>
 
@@ -1386,8 +1387,50 @@ quint64 CardLifetimeManager::drainDomain(
     return drainImpl(domain, retiredObjects);
 }
 
+bool CardLifetimeManager::beginTurnReclamation(const void *domain)
+{
+    if (m_mode == CardLifetimeMode::ObserveOnly)
+        return true;
+    if (!domain || currentDomain != domain)
+        return false;
+    QThread *thread = QThread::currentThread();
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
+    if (m_turnReclaimThreads.contains(domain))
+        return false;
+    m_turnReclaimThreads.insert(domain, thread);
+    return true;
+}
+
+void CardLifetimeManager::endTurnReclamation(const void *domain)
+{
+    if (m_mode == CardLifetimeMode::ObserveOnly || !domain)
+        return;
+    QThread *thread = QThread::currentThread();
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
+    auto found = m_turnReclaimThreads.find(domain);
+    if (found != m_turnReclaimThreads.end() && found.value() == thread)
+        m_turnReclaimThreads.erase(found);
+}
+
+quint64 CardLifetimeManager::drainTurnDomain(const void *domain)
+{
+    if (m_mode == CardLifetimeMode::ObserveOnly || !domain
+        || currentDomain != domain)
+        return 0;
+    QList<QPointer<QObject>> retiredObjects;
+    const quint64 retired = drainImpl(domain, &retiredObjects, true);
+    // RoomThread has no event loop. Dispatch each receiver explicitly on this
+    // worker, and never process unrelated posted events or foreign-affinity Cards.
+    for (const QPointer<QObject> &guardedObject : std::as_const(retiredObjects)) {
+        QObject *object = guardedObject.data();
+        if (object && object->thread() == QThread::currentThread())
+            QCoreApplication::sendPostedEvents(object, QEvent::DeferredDelete);
+    }
+    return retired;
+}
+
 quint64 CardLifetimeManager::drainImpl(
-    const void *domain, QList<QPointer<QObject>> *retiredObjects)
+    const void *domain, QList<QPointer<QObject>> *retiredObjects, bool turnBoundary)
 {
     if (retiredObjects)
         retiredObjects->clear();
@@ -1399,16 +1442,26 @@ quint64 CardLifetimeManager::drainImpl(
     QVector<Candidate> candidates;
     {
         std::lock_guard<ProfiledMutex> lock(m_mutex);
+        QThread *currentThread = QThread::currentThread();
         if (m_mode != CardLifetimeMode::ManagedReclaim
-            || (m_ownerThread && QThread::currentThread() != m_ownerThread))
+            || (turnBoundary
+                ? (!domain || currentDomain != domain
+                   || m_turnReclaimThreads.value(domain, nullptr) != currentThread)
+                : (m_ownerThread && currentThread != m_ownerThread)))
             return 0;
         reconcileDestroyedLocked();
         for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
             if (domain && (it->domain != domain || it->baselineDomain == domain))
                 continue;
+            if (!turnBoundary && m_turnReclaimThreads.contains(it->domain))
+                continue;
             const bool domainBlocked = m_domainActiveScopes.value(it->domain, 0) > 0
                 || m_domainLuaPins.value(it->domain, 0) > 0;
-            if (!domainBlocked && it->pending && !it->nativeDelete && it->wrappers == 0
+            if (!domainBlocked && it->pending && it->token->live
+                && !it->token->originalOwner
+                && it->token->state != CardLifetimeState::Adopted
+                && it->token->state != CardLifetimeState::ObservedDefinition
+                && !it->nativeDelete && it->wrappers == 0
                 && it->nativeLeases == 0 && it->adoptionReservations == 0
                 && std::none_of(m_changeEdges.cbegin(), m_changeEdges.cend(), [&](const ChangeEdge &edge) {
                     return edge.sourceToken.get() == it->token.get() || edge.targetToken.get() == it->token.get();
@@ -1427,11 +1480,17 @@ quint64 CardLifetimeManager::drainImpl(
         if (it == m_entries.end() || it->token.get() != candidate.token.get()
             || it->token->generation != candidate.token->generation
             || (domain && (it->domain != domain || it->baselineDomain == domain))
+            || (turnBoundary && (currentDomain != domain
+                || m_turnReclaimThreads.value(domain, nullptr) != QThread::currentThread()))
+            || (!turnBoundary && m_turnReclaimThreads.contains(it->domain))
              || it->object != candidate.object
              || it->affinityThread != candidate.affinityThread
              || m_domainActiveScopes.value(it->domain, 0) > 0
              || m_domainLuaPins.value(it->domain, 0) > 0
-             || !it->pending || it->nativeDelete || it->wrappers != 0
+             || !it->pending || !it->token->live || it->token->originalOwner
+            || it->token->state == CardLifetimeState::Adopted
+            || it->token->state == CardLifetimeState::ObservedDefinition
+            || it->nativeDelete || it->wrappers != 0
             || it->nativeLeases != 0 || it->adoptionReservations != 0
             || std::any_of(m_changeEdges.cbegin(), m_changeEdges.cend(), [&](const ChangeEdge &edge) {
                 return edge.sourceToken.get() == it->token.get() || edge.targetToken.get() == it->token.get();
@@ -2105,6 +2164,7 @@ bool CardLifetimeManager::resetForTest()
         || !m_domainActiveScopes.isEmpty() || !m_domainLuaPins.isEmpty()
         || !m_runtimeLuaPins.isEmpty()
         || !m_runtimeRegistrations.isEmpty() || !m_domainBaselines.isEmpty()
+        || !m_turnReclaimThreads.isEmpty()
         || m_activeScopes != 0 || m_luaPins != 0 || m_gauge.managed_live != 0
         || m_gauge.pending_delete != 0 || m_gauge.wrapper_leases != 0
         || m_gauge.native_leases != 0 || m_gauge.lua_pins != 0

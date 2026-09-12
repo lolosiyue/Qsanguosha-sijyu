@@ -40,6 +40,9 @@ struct SignupRequestPayload
     int roomId = 0;
     bool hasRulesBundle = false;
     QJsonObject rulesBundle;
+    // Optional frontend admission cap; zero or omitted means unlimited.
+    bool hasMaxPlayers = false;
+    int maxPlayers = 0;
 
     QVariantMap toVariant() const;
     static bool parse(const QVariant &value, SignupRequestPayload *payload,

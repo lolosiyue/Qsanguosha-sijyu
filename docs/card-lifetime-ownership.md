@@ -23,10 +23,10 @@ before they are exposed to Lua or a managed Room domain.
 | `Player::equips` | outer WrappedCard pointer | RoomState | Room mutation | `Room::thread()` | PR1 / PR4 |
 | `ai-runtime` Lua callback | Lua invocation scope | runtime | pcall return | runtime owner | PR1 / PR2 / PR6 |
 | `RoomInitializationThread` Lua-held Cards | observed Card objects, including parentless/pending Cards | unpublished Room domain | normal Lua/native release and domain drain | worker pushes remaining Card trees to canonical owner and refreshes manager snapshots before publication | initialization handoff |
-| ordinary RoomThread | transient Card domain | Room | worker-final/shutdown | `Room::thread()` | PR1 / PR6 |
-| 1v1 RoomThread | transient Card domain | Room | worker-final/shutdown | `Room::thread()` | PR1 / PR6 |
-| 3v3 RoomThread | transient Card domain | Room | worker-final/shutdown | `Room::thread()` | PR1 / PR6 |
-| XMode RoomThread | transient Card domain | Room | worker-final/shutdown | `Room::thread()` | PR1 / PR6 |
+| ordinary RoomThread | transient Card domain | Room | turn-end / worker-final / shutdown | game worker for its transients; canonical owner for the remainder | PR1 / PR6 / turn-end |
+| 1v1 RoomThread | transient Card domain | Room | turn-end / worker-final / shutdown | game worker for its transients; canonical owner for the remainder | PR1 / PR6 / turn-end |
+| 3v3 RoomThread | transient Card domain | Room | turn-end / worker-final / shutdown | game worker for its transients; canonical owner for the remainder | PR1 / PR6 / turn-end |
+| XMode RoomThread | transient Card domain | Room | turn-end / worker-final / shutdown | game worker for its transients; canonical owner for the remainder | PR1 / PR6 / turn-end |
 | `SkillContext` QVariant payload | extracted `use_card`/`updated_card` plus nested `extra_data`/`interceptor_data` | tag or payload container | tag overwrite/remove or payload release | `Room::thread()` | PR8 |
 | `CorrectSkillContext` QVariant payload | extracted `card` | tag or payload container | tag overwrite/remove or payload release | `Room::thread()` | PR8 |
 
@@ -49,6 +49,47 @@ combined with runtime counters; a clean scan alone is not an ownership proof.
 The current source scan reports legacy deletion ingress separately. These sites
 remain explicitly selected by their owning boundary; the process default is ManagedReclaim after PR7, while ObserveOnly remains available for compatibility characterization; they are
 not silently treated as managed reclaim.
+
+## Turn-end reclamation
+
+The main gameplay `RoomThread` registers its Room domain for turn-end reclamation
+after binding the Lua runtime and before dispatching gameplay. While registered,
+ordinary `drain()` / `drainDomain()` calls skip that domain, including global
+drains caused by another Card's `deleteLater()`. Initialization, client-side Cards
+and independently owned `RoomState` / `WrappedCard` objects retain their existing
+ownership paths. Registration ends after worker-final cleanup and before the
+worker exits; canonical-owner shutdown can then complete its remaining drains.
+
+- Successful outer `TurnStart` return: drain after trigger locals,
+  `CardLifetimeScope`, AI event filtering and deferred UI/anytime work have
+  finished. Covers normal, 1v1, 3v3 and Hulao Pass gameplay.
+- `TurnBroken` / Hulao `StageChange`: drain after the mode's phase cleanup,
+  before resuming the turn loop; never from the throwing trigger's unwind.
+- Nested immediate or scheduled extra turn: keep the outer invocation's
+  protection. Drain the accumulated eligible Cards when the outer turn returns.
+- Still retained at turn end: keep pending until a later safe boundary; never
+  clear a tag, wrapper, lease, pin or change edge merely to reclaim a Card.
+- Game finish / worker exit: keep the existing Lua-close, worker-final and
+  canonical-owner shutdown ordering.
+
+`drainTurnDomain()` accepts only the registered worker and its current domain.
+It preserves generation, baseline, ownership, invocation, lease and affinity
+checks, and selects only pending, live, unowned transient Cards. It dispatches
+`DeferredDelete` for each selected receiver on that same thread because the game
+worker has no `exec()` event loop. It does not process unrelated queued events or
+delete foreign-affinity Cards from the worker.
+
+`CARD_LIFETIME_TURN_END room=<id> retired=<n> pending=<n> live=<n>` reports the Room,
+retirement count for that boundary and the remaining domain gauges. These are Card counts,
+not process memory measurements. Long nested extra-turn chains or references
+retained across turns can still accumulate memory; there is no forced size/age
+eviction and no claim of a hard per-turn memory bound.
+
+The asset-free `--suite card-lifetime-turn-reclaim` selector in the existing
+runtime test executable covers pending lifetime across boundaries, real worker
+destruction, retained references and domain/affinity isolation. The existing
+RoomThread deferred-state suite covers the production trigger boundary. These
+fixtures do not substitute for full-game crash or memory acceptance.
 
 ## Mutex contention diagnostics
 

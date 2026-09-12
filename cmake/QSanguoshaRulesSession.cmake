@@ -6,10 +6,11 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN AND NOT QSAN_BUILD_XP_LEGACY)
 endif()
 option(QSAN_BUILD_RULES_SESSION_TESTS "Build the production rules session lifecycle probe"
     ${qsan_session_tests_default})
-if(NOT QSAN_BUILD_RULES_SESSION_TESTS AND NOT QSAN_BUILD_WASM_WEB_CLIENT)
+if(NOT QSAN_BUILD_RULES_SESSION_TESTS AND NOT QSAN_BUILD_WASM_WEB_CLIENT
+        AND NOT QSAN_BUILD_EXCEL)
     return()
 endif()
-if(QSAN_BUILD_XP_LEGACY OR (EMSCRIPTEN AND QSAN_BUILD_RULES_SESSION_TESTS))
+if(EMSCRIPTEN AND QSAN_BUILD_RULES_SESSION_TESTS)
     message(FATAL_ERROR "The native session probe requires Qt 6 without Emscripten/XP")
 endif()
 
@@ -18,17 +19,31 @@ endif()
 add_library(qsanguosha_rules_session STATIC
     src/client/runtime/client-rules-session.cpp
     src/client/runtime/client-rules-session.h
-    src/client/runtime/client-rules-host.cpp
-    src/client/runtime/client-rules-host.h
     src/client/interaction-reply-encoder.cpp
-    src/client/runtime/client-rules-ingress.cpp
-    src/client/runtime/client-rules-ingress.h
     src/client/protocol-interaction-request-builder.cpp
     src/client/interaction-request-factory.cpp
     src/client/interaction-command-registry.cpp
 )
+if(NOT QSAN_BUILD_XP_LEGACY)
+    target_sources(qsanguosha_rules_session PRIVATE
+        src/client/runtime/client-rules-host.cpp
+        src/client/runtime/client-rules-host.h
+        src/client/runtime/client-rules-ingress.cpp
+        src/client/runtime/client-rules-ingress.h
+    )
+endif()
 target_link_libraries(qsanguosha_rules_session PUBLIC qsanguosha_client_runtime)
 set_target_properties(qsanguosha_rules_session PROPERTIES FOLDER "Libraries")
+if(QSAN_BUILD_XP_LEGACY)
+    target_include_directories(qsanguosha_rules_session BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/legacy/xp/compat/qt5)
+    target_compile_definitions(qsanguosha_rules_session PRIVATE
+        QSAN_XP_LEGACY WIN32 WINVER=0x0501 _WIN32_WINNT=0x0501)
+    if(MSVC)
+        target_compile_options(qsanguosha_rules_session PRIVATE
+            "/FI${CMAKE_CURRENT_SOURCE_DIR}/legacy/xp/compat/qt5/qsan-qt5-compat.h")
+    endif()
+endif()
 if(EMSCRIPTEN)
     target_compile_options(qsanguosha_rules_session PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-fexceptions>")
 endif()
@@ -37,6 +52,11 @@ if(MSVC)
     target_compile_definitions(qsanguosha_rules_session PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 if(NOT QSAN_BUILD_RULES_SESSION_TESTS)
+    return()
+endif()
+if(QSAN_BUILD_XP_LEGACY)
+    # XP consumes ClientRulesSession core above; the Qt6 host/probe remains
+    # outside the legacy product graph.
     return()
 endif()
 

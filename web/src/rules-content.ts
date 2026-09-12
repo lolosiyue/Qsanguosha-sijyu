@@ -58,11 +58,11 @@ export function validateContentManifest(value: unknown): ContentManifest {
 
 export type ContentFetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-export async function fetchContent(manifestValue: unknown, fetcher: ContentFetcher = fetch): Promise<Map<string, Uint8Array>> {
+export async function fetchContent(manifestValue: unknown, fetcher: ContentFetcher = fetch, includeAi = false): Promise<Map<string, Uint8Array>> {
   const manifest = validateContentManifest(manifestValue);
   const result = new Map<string, Uint8Array>();
   for (const entry of manifest.files) {
-    if (entry.role === "ai") continue;
+    if (entry.role === "ai" && !includeAi) continue;
     let response: Response;
     try {
       response = await fetcher(`/rules/content/${entry.sha256}`, {
@@ -124,9 +124,9 @@ function clearDirectory(fs: ContentFs, directory: string): void {
   }
 }
 
-export async function verifyInstalledContent(fs: ContentFs, manifestValue: unknown): Promise<void> {
+export async function verifyInstalledContent(fs: ContentFs, manifestValue: unknown, includeAi = false): Promise<void> {
   const manifest = validateContentManifest(manifestValue);
-  const expected = new Set(manifest.files.filter(entry => entry.role !== "ai").map(entry => entry.path));
+  const expected = new Set(manifest.files.filter(entry => includeAi || entry.role !== "ai").map(entry => entry.path));
   const actual: string[] = [];
   function inventory(directory: string): void {
     for (const name of fs.readdir(directory)) {
@@ -142,7 +142,7 @@ export async function verifyInstalledContent(fs: ContentFs, manifestValue: unkno
   if (actual.length !== expected.size || actual.some(path => !expected.has(path)))
     throw new Error("rules_reload_required");
   for (const entry of manifest.files) {
-    if (entry.role === "ai") continue;
+    if (entry.role === "ai" && !includeAi) continue;
     const path = `/assets/${entry.path}`;
     const stat = fs.lstat(path);
     if (!fs.isFile(stat.mode)) throw new Error("rules_reload_required");

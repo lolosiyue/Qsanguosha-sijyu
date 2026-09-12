@@ -15,6 +15,7 @@ import {
   PLACE_HAND,
   PLACE_JUDGE,
   PLACE_TABLE,
+  asBool,
   asNumber,
   asNumberList,
   asString,
@@ -26,6 +27,7 @@ import { renderCard, skillBaseName, visibleSkills } from "./ui-cards";
 import { el } from "./ui-dom";
 import { interactionView } from "./ui-interaction";
 import type { UiBind } from "./ui-types";
+import { resultRoleLabel, summarizeGameResult } from "./game-result";
 
 function playerGeneralName(player: PlayerState | undefined): string {
   return asString(player?.general) || asString(player?.avatar);
@@ -74,12 +76,14 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
   const selected = ui.selectedPlayers.includes(name);
   const clickable = bind.isPlayerClickable(name);
   const nativeRules = !!session.interaction && bind.rules.supports(session.interaction.command);
+  const gameOver = asBool(session.state.gameValue("game_over"));
   const evaluation = nativeRules && bind.rules.current(session, bind.rulesSelection())
     ? bind.rules.result : null;
   const button = el("button", {
-    class: `${kind}${name === session.state.selfName ? " self" : ""}${player?.alive === false ? " dead" : ""}${selected ? " selected" : ""}${kind === "photo" && !clickable ? " disabled" : ""}`
+    class: `${kind}${name === session.state.selfName ? " self" : ""}${player?.alive === false ? " dead" : ""}${selected ? " selected" : ""}${(gameOver || kind === "photo" && !clickable) ? " disabled" : ""}`
   });
   button.type = "button";
+  button.disabled = gameOver;
   const art = el("div", { class: "photo-art" });
   if (general)
     art.append(assetImg(fullskinUrls(general), "", "fullskin"));
@@ -142,6 +146,12 @@ function tablePileView(bind: UiBind): HTMLElement {
 
 export function tableView(bind: UiBind): HTMLElement {
   const table = el("div", { class: "table" });
+  if (asBool(bind.session.state.gameValue("game_over"))) {
+    // Keep long winner lists and the final board reachable on small viewports.
+    table.classList.add("game-over");
+    table.tabIndex = 0;
+    table.append(gameResultView(bind));
+  }
   const seats = el("div", { class: "photos" });
   for (const name of bind.session.state.playerNames) {
     if (name === bind.session.state.selfName)
@@ -152,6 +162,36 @@ export function tableView(bind: UiBind): HTMLElement {
     seats.append(el("p", { class: "status" }, ["等待其他角色"]));
   table.append(seats, tablePileView(bind));
   return table;
+}
+
+export function gameResultView(bind: UiBind): HTMLElement {
+  const { session } = bind;
+  const payload = session.state.gameValue("result");
+  const result = isObject(payload)
+    ? summarizeGameResult(payload, session.state.playerNames, session.state.selfName)
+    : { draw: false, winners: [], selfOutcome: "unknown" as const };
+  const panel = el("section", { class: "game-result", "aria-labelledby": "game-result-heading" });
+  panel.append(el("h2", { id: "game-result-heading" }, [result.draw ? "平局" : "遊戲結束"]));
+  if (result.selfOutcome === "victory")
+    panel.append(el("p", { class: "game-result-outcome victory" }, ["你方勝利"]));
+  else if (result.selfOutcome === "defeat")
+    panel.append(el("p", { class: "game-result-outcome defeat" }, ["你方敗北"]));
+  if (result.draw)
+    panel.append(el("p", { class: "status" }, ["本局沒有勝方"]));
+  else if (result.winners.length) {
+    panel.append(el("p", { class: "status" }, ["勝方"]));
+    const list = el("ul", { class: "game-result-winners" });
+    for (const winner of result.winners) {
+      const name = winner.objectName
+        ? (logPlayerName(session.state, winner.objectName) || winner.objectName)
+        : "";
+      const role = winner.role ? `（${resultRoleLabel(winner.role)}）` : "";
+      list.append(el("li", {}, [`${name || resultRoleLabel(winner.role)}${name ? role : ""}`]));
+    }
+    panel.append(list);
+  } else
+    panel.append(el("p", { class: "status" }, ["勝方資料未提供"]));
+  return panel;
 }
 
 export function logView(bind: UiBind): HTMLElement {
