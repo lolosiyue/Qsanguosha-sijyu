@@ -210,17 +210,19 @@ public:
     void setDomainBaseline(const void *domain, const QSet<const void *> &addresses);
     void unregisterDomainBaseline(const void *domain);
     quint64 entryCountForDomain(const void *domain) const;
-    // domain 已經放手(token 唔再 live)但 QObject 仲生存嘅 entry 對應嘅物件。
-    // reapDeadLocked 唔會刪走一個 object 未死嘅 entry, 所以收工前要畀 caller
-    // 有機會 flush 佢哋嘅 DeferredDelete。仲 live 嘅唔會交出嚟。
+    // Objects of entries whose domain has released them (token no longer live) but whose
+    // QObject is still alive. reapDeadLocked never deletes an entry whose object has not
+    // died, so the caller gets a chance to flush their DeferredDelete before shutdown.
+    // Still-live entries are not handed over.
     QList<QPointer<QObject>> retiredDomainObjects(const void *domain) const;
     quint64 activeScopeDepth() const;
     quint64 activeScopeDepthForDomain(const void *domain) const;
-    // 仲揸住 domain scope 嘅「函數@thread」清單, 只為診斷。
+    // List of "function@thread" pairs still holding a domain scope, for diagnostics only.
     QStringList describeDomainScopeHolders(const void *domain) const;
-    // scope 必須認住入嗰陣嘅 domain: thread-local 嘅 currentDomain 可以喺 scope
-    // 中途被 setCurrentDomain() 換走(收工路徑就係咁做), 到出嗰陣先讀就會扣錯
-    // 個 bucket, 令原本個 domain 永遠停喺 1, 收工檢查就死喺度。
+    // The scope must remember the domain it entered with: the thread-local currentDomain
+    // can be switched by setCurrentDomain() midway through the scope (the shutdown path
+    // does exactly that), and reading it only at exit would decrement the wrong bucket,
+    // leaving the original domain stuck at 1 and failing the shutdown check.
     const void *enterScope(const char *site = nullptr);
     void leaveScope(const void *domain);
     void enterLuaPin();
@@ -320,10 +322,11 @@ private:
     quint64 m_activeScopes = 0;
     quint64 m_luaPins = 0;
     QHash<const void *, quint64> m_domainActiveScopes;
-    // 邊個函數、邊條 thread 仲揸住 domain 嘅 scope。收工檢查失敗嗰陣要講得出,
-    // 因為 gauge 幾微秒之後就會歸零, 淨係印個數字睇唔出邊個 worker 未收乾淨。
-    // site 係 __builtin_FUNCTION() 嘅靜態字串, 所以擺指標入去唔使配記憶體;
-    // 要格式化就等到報告嗰陣先做, 唔好拖慢每一次玩家決策。
+    // Which function, on which thread, still holds a domain scope. Must be reportable when
+    // the shutdown check fails, because the gauge zeroes out within microseconds and a bare
+    // number does not show which worker did not clean up. site is a static string from
+    // __builtin_FUNCTION(), so storing the pointer needs no allocation; format only when
+    // reporting, never slow down each player decision.
     struct ScopeSite {
         const char *function = nullptr;
         QThread *thread = nullptr;
@@ -346,7 +349,7 @@ private:
     CardLifetimeGauge m_gauge;
 };
 
-// MSVC 冇 __builtin_FUNCTION(); 冇佢就淨係少咗個名, 唔影響行為。
+// MSVC lacks __builtin_FUNCTION(); without it only the name is lost, behavior is unaffected.
 #if defined(__GNUC__) || defined(__clang__)
 #  define QSAN_CARD_SCOPE_SITE __builtin_FUNCTION()
 #else

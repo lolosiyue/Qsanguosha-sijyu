@@ -15,21 +15,23 @@ class NetworkUiSmokeResponder;
 class RoomScene;
 class QTimer;
 
-// Linux GUI M2 的 network UI smoke。
+// The network UI smoke for Linux GUI M2.
 //
-// 同 M1 的 UiStartupSmokeController 唔同,呢個 controller 唔會自己起 MainWindow:
-// M2 要驗證的係產品正常的網絡啟動路徑
+// Unlike the M1 UiStartupSmokeController, this controller does not start
+// MainWindow itself: what M2 verifies is the product's normal network startup
+// path
 //
-//     QApplication → engine → MainWindow → -connect: → Client(真 TCP)
-//         → signup/setup → enterRoom() → RoomScene/Dashboard → 選將 → 開局
-//         → askFor 互動 → game over → 正常退出
+//     QApplication → engine → MainWindow → -connect: → Client(real TCP)
+//         → signup/setup → enterRoom() → RoomScene/Dashboard → general
+//         selection → game start → askFor interactions → game over → normal exit
 //
-// 所以 main.cpp 照常做晒佢平時做的嘢,controller 只係喺後面接駁產品已有的訊號
-// (MainWindow::roomSceneCreated、Client::socket_connected/server_connected/
-// game_started/game_over),把每一步記成 NETWORK_UI_STAGE marker,最後輸出一行
-// NETWORK_UI_RESULT 並且主動 quit,令「client clean exit」本身都係被驗證的一步。
+// So main.cpp does everything it normally does; the controller only hooks into
+// the product's existing signals afterwards (MainWindow::roomSceneCreated,
+// Client::socket_connected/server_connected/game_started/game_over), records
+// each step as a NETWORK_UI_STAGE marker, and finally emits one NETWORK_UI_RESULT
+// line and quits actively, making "client clean exit" itself a verified step.
 //
-// 真正代替真人操作的部分喺 NetworkUiSmokeResponder。
+// The part that actually stands in for a human lives in NetworkUiSmokeResponder.
 class NetworkUiSmokeController final : public QObject
 {
     Q_OBJECT
@@ -40,9 +42,11 @@ public:
 
     static bool isRequested(const QStringList &arguments);
 
-    // 喺 MainWindow 建立、-connect: 已經觸發 startConnection() 之後呼叫。
-    // 回傳 false 代表參數不合法或者根本冇 client(已輸出 failure result),
-    // caller 應該直接用 *exitCode 退出。
+    // Call after MainWindow was created and -connect: has already triggered
+    // startConnection().
+    // Returning false means the arguments are invalid or there is no client at
+    // all (a failure result has been output); the caller should exit directly
+    // with *exitCode.
     static bool begin(const QStringList &arguments, MainWindow *mainWindow, int *exitCode);
 
     // qApp->exec() 之後呼叫,回傳 smoke 的 process exit code。

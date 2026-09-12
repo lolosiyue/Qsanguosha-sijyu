@@ -12,14 +12,17 @@ namespace {
 
 const int kSchemaVersion = 1;
 
-// 一局真實網絡局（含 AI 思考時間）通常喺 2-5 分鐘之內；預設 10 分鐘留足夠餘裕，
-// 但一定有界。下限只係擋手誤，負向契約測試需要一個一定會觸發的極短 timeout。
+// A real network game (including AI thinking time) usually finishes within
+// 2-5 minutes; the default 10 minutes leaves ample headroom but is still
+// bounded. The lower bound only guards against typos; negative contract tests
+// need an ultra-short timeout that is guaranteed to trigger.
 const int kDefaultTimeoutMs = 600000;
 const int kMinimumTimeoutMs = 1000;
 const int kMaximumTimeoutMs = 3600000;
 
-// 單一 server request 未能經 UI 回覆嘅容忍時間。超過就切 trustee，令對局一定
-// 行得完；切換本身會記入 report，唔會靜靜當冇事。
+// Tolerance for a single server request waiting on a UI reply. Once exceeded,
+// switch to trustee so the game is guaranteed to finish; the switch itself is
+// recorded in the report and never silently ignored.
 const int kDefaultStallMs = 20000;
 const int kMinimumStallMs = 1000;
 const int kMaximumStallMs = 600000;
@@ -80,8 +83,9 @@ QString compactJson(const QJsonObject &payload)
     return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 }
 
-// server request → 契約互動名。只列真正需要 client 回覆嘅 interaction command
-// （Client::m_interactions 的成員），其餘一律回空字串。
+// server request → contract interaction name. Only interaction commands that
+// really require a client reply (members of Client::m_interactions) are listed;
+// everything else returns an empty string.
 const QHash<int, QString> &interactionNames()
 {
     using namespace QSanProtocol;

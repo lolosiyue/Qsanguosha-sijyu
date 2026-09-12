@@ -116,8 +116,9 @@ bool MultimediaSmokeController::isRequested(const QStringList &arguments)
 
 QString MultimediaSmokeController::fixturePath(const QString &name)
 {
-    // 預設維持舊行為（相對 CWD 的 tests/fixtures/media）；--multimedia-fixtures
-    // 係畀 package smoke 用，因為個陣 CWD 係 bundle 入面嘅 asset root。
+    // Keep the legacy default (tests/fixtures/media relative to the CWD);
+    // --multimedia-fixtures exists for the package smoke, where the CWD is the
+    // asset root inside the bundle.
     const QString root = s_active != nullptr && !s_active->m_fixtureRoot.isEmpty()
         ? s_active->m_fixtureRoot
         : QDir::current().absoluteFilePath(QStringLiteral("tests/fixtures/media"));
@@ -140,8 +141,9 @@ bool MultimediaSmokeController::begin(const QStringList &arguments, int *exitCod
         s_active = controller;
     }
     multimediaSmokePreviousHandler = qInstallMessageHandler(multimediaSmokeMessageHandler);
-    // 任何唔行 finish() 的退出路徑（例如 Engine 建構失敗直接 exit(1)）都要留低
-    // 一行 result，CI 唔會見到「marker 缺失」。
+    // Every exit path that does not go through finish() (e.g. Engine construction
+    // failing and calling exit(1) directly) must still leave a result line; CI
+    // never sees a "missing marker".
     std::atexit(&MultimediaSmokeController::reportUnfinishedAtExit);
 
     QString error;
@@ -233,8 +235,9 @@ int MultimediaSmokeController::execute()
     }
 
     if (!m_videoSource.isEmpty()) {
-        // 只改記憶體入面的 Config，唔寫返落使用者的設定檔：smoke 唔應該留低
-        // 一個壞背景畀下次正常啟動。
+        // Only mutate the in-memory Config, never write back to the user's
+        // settings file: the smoke must not leave a broken background behind
+        // for the next normal launch.
         Config.BackgroundImage = m_videoSource;
     }
 
@@ -287,7 +290,7 @@ void MultimediaSmokeController::onEventLoopEntered()
             MultimediaSmokeReport::SetupFailed);
         return;
     }
-    // setSource() 對 qrc 係同步的，signal 好可能喺 MainWindow 建構期間已經發出。
+    // setSource() is synchronous for qrc resources, so the signal may already have been emitted during MainWindow construction.
     if (m_mainWindow->isHomeSceneReady())
         onHomeSceneReady();
     else if (m_mainWindow->hasHomeSceneError())
@@ -346,8 +349,9 @@ void MultimediaSmokeController::stageUiEffect()
         return;
     m_pendingStage = QStringLiteral("ui_effect");
 
-    // fixture 的檔名故意用 button-down：classifyAudioFile() 會將佢當短 UI 音效，
-    // 即係真係行緊 QSoundEffect 嗰條路，而唔係語音 pool。
+    // The fixture filename deliberately uses button-down: classifyAudioFile()
+    // treats it as a short UI sound effect, so the QSoundEffect path is really
+    // exercised instead of the voice pool.
     const QString effect = fixturePath(QStringLiteral("button-down.wav"));
     const bool available = QFileInfo::exists(effect);
     QJsonObject details;
@@ -358,8 +362,9 @@ void MultimediaSmokeController::stageUiEffect()
 
     if (available) {
         Audio::play(effect, false);
-        // superpose=false：第二次唔應該疊住播。呢度驗嘅係唔會 crash 同唔會
-        // 每次都開新資源，實際有冇聲 CI 上驗唔到。
+        // superpose=false: the second play must not overlap. What is verified
+        // here is no crash and no fresh resource allocation per play; whether
+        // audio is actually audible cannot be verified on CI.
         Audio::play(effect, false);
         Audio::play(effect, true);
     }
@@ -385,8 +390,8 @@ void MultimediaSmokeController::stageVoice()
 
     int requested = 0;
     if (available) {
-        // 特登超出 pool 上限：要證明 player 係被回收／搶佔，而唔係每次 new 一對
-        // player+output 落去 leak。
+        // Deliberately exceed the pool cap: prove that players get recycled or
+        // preempted instead of leaking a new player+output pair per play.
         for (int i = 0; i < 12; ++i) {
             Audio::play(voice, true);
             ++requested;
@@ -416,7 +421,7 @@ void MultimediaSmokeController::stageBgm()
     if (available) {
         Audio::playBGM(bgm);
         Audio::setBGMVolume(0.5f);
-        // 同一個來源再 call 一次唔應該重新開始，亦唔應該多開一個 player。
+        // Calling again with the same source must not restart playback nor spawn an extra player.
         Audio::playBGM(bgm);
     }
     details.insert(QStringLiteral("audio"), audioDiagnostics());
@@ -436,7 +441,7 @@ void MultimediaSmokeController::stageMissingAsset()
     details.insert(QStringLiteral("missing_path"), missing);
     details.insert(QStringLiteral("missing_confirmed"), !QFileInfo::exists(missing));
 
-    // 呢三個 call 全部應該只係 warning。行到下一行就證明冇 crash。
+    // All three calls should only warn. Reaching the next line proves there was no crash.
     Audio::play(missing, false);
     Audio::play(missing, true);
     Audio::playBGM(missing);
@@ -479,7 +484,7 @@ void MultimediaSmokeController::stageVideo()
     details.insert(QStringLiteral("backdrop"), home->backgroundImage().toString());
 
     if (reason.isEmpty()) {
-        // 冇人報告過 = 分辨唔到成敗。呢個先至係真正的失敗。
+        // Nothing reported = success and failure are indistinguishable. That is the real failure.
         failStage(QStringLiteral("video"),
             QStringLiteral("HomeScene never reported a video background status"), details);
         return;
@@ -489,7 +494,7 @@ void MultimediaSmokeController::stageVideo()
             QStringLiteral("unclassified video background reason '%1'").arg(reason), details);
         return;
     }
-    // 播唔到唔係失敗，只要靜態背景頂得住而且 HomeScene 仲喺度。
+    // Failing to play is not a failure as long as the static background holds and HomeScene is still alive.
     if (!m_mainWindow || !m_mainWindow->homeSceneRootObject()) {
         failStage(QStringLiteral("video"),
             QStringLiteral("HomeScene root object did not survive the video stage"), details);
@@ -521,7 +526,7 @@ void MultimediaSmokeController::stageShutdown()
             QStringLiteral("Audio::quit() left the facade initialised"), details);
         return;
     }
-    // quit() 之後再 call 唔應該 crash：關機途中仲有可能收到 audio 請求。
+    // Calling after quit() must not crash: audio requests can still arrive during shutdown.
     Audio::play(fixturePath(QStringLiteral("voice-line.wav")), false);
     Audio::stopBGM();
 

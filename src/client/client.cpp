@@ -198,9 +198,9 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 	m_players << Self;
 
-	// F1:interaction 中間層。Client 建立佢同 desktop adapter,係因為 Client
-	// 本身就係 GUI 客戶端;一個 text／Android／WASM front-end 只需要
-	// interactionCore()->setView(自己嗰個 view) 就可以換走 desktop adapter。
+	// F1: interaction middle layer. Client wires up the desktop adapter itself because Client
+	// is the GUI front-end; a text/Android/WASM front-end only needs
+	// interactionCore()->setView(its own view) to swap out the desktop adapter.
 	m_interactionCore = new ClientCore(this);
 	m_customInteractionRegistry.registerType(QStringLiteral("qsanguosha.qml"), 1,
 		QStringLiteral("desktop.qml-loader"));
@@ -273,7 +273,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 Client::~Client()
 {
-	// View 一定要死喺 core 之前:core 唔可以 present 落一嚿死物度。
+	// The view must die before the core: the core must not present into a dead object.
 	delete m_desktopInteractionView;
 	m_desktopInteractionView = nullptr;
 	setEngineSelf(nullptr);
@@ -489,8 +489,8 @@ void Client::setup(const QVariant &setup_json)
 
 void Client::disconnectFromHost()
 {
-	// 斷線之後冇人收得到答案,pending request 即刻作廢,唔好留住一個永遠
-	// 完成唔到嘅 request。
+	// After a disconnect nobody can receive the answer, so the pending request is invalidated
+	// immediately; never keep around a request that can never complete.
 	cancelInteraction(InteractionType::None, InteractionCancelReason::Disconnected);
 	if (!m_isDisconnected && m_liveSession != nullptr) {
 		m_liveSession->disconnectGracefully();
@@ -643,9 +643,10 @@ bool Client::processServerRequest(const ProtocolMessage &message)
 
 // ── Client Architecture F1:ClientCore plumbing ─────────────────────────
 //
-// server 嘅每一個 request 到埗,舊嗰個就作廢:server 已經行咗落去,遲到嘅答案
-// 唔應該再被當成有效。未遷移嘅 interaction 亦因此唔會撞到殘留嘅 core request
-// (例如 choose direction 同 choice 共用 onPlayerMakeChoice() 呢個 slot)。
+// Every new request from the server invalidates the previous one: the server has already
+// moved on, so a late answer must not be treated as valid. Interactions that are not
+// migrated yet therefore also avoid colliding with a stale core request (e.g. choose
+// direction and choice share the onPlayerMakeChoice() slot).
 void Client::cancelInteraction(InteractionType type, InteractionCancelReason reason)
 {
 	if (m_interactionCore == nullptr)
@@ -655,8 +656,9 @@ void Client::cancelInteraction(InteractionType type, InteractionCancelReason rea
 	m_interactionCore->cancelActiveRequest(reason);
 }
 
-// core 拎嚟做 reply 驗證同 snapshot 嘅最小客戶端狀態。刻意保持「寬」:
-// 攞唔到就唔填,寧可少驗一樣,都唔可以攔錯一個合法回覆。
+// Minimal client state used by the core for reply validation and snapshots. Deliberately
+// lenient: if a value cannot be obtained, leave it unset — better to skip one check than
+// to wrongly reject a legitimate reply.
 void Client::syncInteractionState()
 {
 	if (m_interactionCore == nullptr)
@@ -672,7 +674,7 @@ void Client::syncInteractionState()
 	}
 	state->setPlayerNames(names);
 
-	// 卡 id 就係 Engine 卡表嘅 index,所以任何合法 id 都細過卡數。
+	// A card id is an index into the Engine card table, so any valid id is smaller than the card count.
 	if (Sanguosha != nullptr)
 		state->setCardIdSpace(Sanguosha->getCardCount());
 }
@@ -686,11 +688,12 @@ void Client::beginInteraction(InteractionRequest request)
 	if (request.requestId == 0)
 		request.requestId = m_dispatchingRequestId;
 
-	// 死線刻意用 server 嗰個(client timeout + gracious period)再加一段
-	// margin,而唔係 UI 倒數用嗰個 client timeout:RoomScene::doTimeout() 就係
-	// 喺 client timeout 嗰刻先送安全預設答案,如果 core 喺同一刻過期,呢個
-	// 答案就會被自己攔住,一局變成要等 server timeout 先行得落去。
-	// 過咗呢條線嘅答案,server 一定已經放棄咗,送出去亦冇意義。
+	// The deadline deliberately uses the server-side one (client timeout + gracious period)
+	// plus a margin, not the client timeout the UI counts down with: RoomScene::doTimeout()
+	// submits the safe default answer exactly at the client timeout, so if the core expired at
+	// that same instant the answer would be rejected by the core itself and the game would
+	// stall until the server timeout. Past this line the server has necessarily given up
+	// already; sending anything is pointless.
 	if (request.timeoutMs <= 0 && request.command != 0) {
 		const time_t serverTimeout = ServerInfo.getCommandTimeout(
 			static_cast<CommandType>(request.command), S_SERVER_INSTANCE);
@@ -716,10 +719,11 @@ bool Client::submitInteractionResponse(InteractionResponse response)
 	if (m_interactionCore == nullptr || !m_interactionCore->hasActiveRequest())
 		return false;
 	if (m_liveSession != nullptr) {
-		// Protocol V2 之下答案由 ClientLiveSession 直接寫上線,唔會行
-		// replyToServer(),所以 server_reply 要喺呢度補返 —— 否則呢個 signal
-		// 喺真網絡對局入面永遠唔會 emit,只有冇 live session 嘅 legacy 路徑先有。
-		// descriptor 要喺 submit 之前攞:submit 成功會清走 active request。
+		// Under Protocol V2 answers go on the wire directly via ClientLiveSession and never pass
+		// through replyToServer(), so server_reply must be filled in here — otherwise this signal
+		// would never be emitted in a real networked game; only the legacy path without a live
+		// session would trigger it.
+		// The descriptor must be taken before submit: a successful submit clears the active request.
 		const InteractionCommandDescriptor *wire
 			= InteractionCommandRegistry::find(m_interactionCore->activeRequest().type);
 		QString error;
@@ -746,7 +750,7 @@ bool Client::submitInteractionResponse(InteractionResponse response)
 		});
 }
 
-// ── DesktopInteractionView 嘅呈現 port ──────────────────────────────────
+// ── Presentation ports of DesktopInteractionView ─────────────────────────────────
 
 void Client::presentGeneralChoice(const InteractionRequest &request)
 {
@@ -790,9 +794,10 @@ void Client::presentSkillInvoke(const InteractionRequest &request)
 
 void Client::presentCardResponse(const InteractionRequest &request)
 {
-	// 呢個 request 嘅 prompt 由 builder 直接砌落 prompt_doc:當中「附加技能
-	// Notice」嗰步要讀返 document 已經 render 好嘅 HTML(prompt_doc->toHtml()),
-	// 唔可以喺呢度用一個純字串重砌。所以呢個 view 只負責狀態切換。
+	// This request's prompt is assembled directly into prompt_doc by the builder: the "append
+	// skill Notice" step reads back the HTML the document has already rendered
+	// (prompt_doc->toHtml()) and cannot be rebuilt from a plain string here. This view
+	// therefore only handles the status switch.
 	Status requested = Responding;
 	if (const CardInteractionPayload *payload = request.payloadAs<CardInteractionPayload>()) {
 		switch (static_cast<Card::HandlingMethod>(payload->selection.handlingMethod)) {
@@ -1124,7 +1129,7 @@ void Client::getCards(const QVariant &arg)
 	for (int i = 0; i < args.length(); i++) {
 		CardsMoveStruct move;
 		QList<int> actual_card_ids;
-		// V2 wire 的每個 move 係具名欄位 map；card_ids 係未遮罩嘅原始 id 列表
+		// Each move on the V2 wire is a map of named fields; card_ids is the raw unmasked id list
 		JsonUtils::tryParse(args[i].toMap().value(QStringLiteral("card_ids")), actual_card_ids);
 		if (move.tryParse(args[i])){
 			ClientPlayer *to = getPlayer(move.to_player_name);
@@ -1178,7 +1183,7 @@ void Client::loseCards(const QVariant &arg)
 	for (int i = 0; i < args.length(); i++) {
 		CardsMoveStruct move;
 		QList<int> actual_card_ids;
-		// V2 wire 的每個 move 係具名欄位 map；card_ids 係未遮罩嘅原始 id 列表
+		// Each move on the V2 wire is a map of named fields; card_ids is the raw unmasked id list
 		JsonUtils::tryParse(args[i].toMap().value(QStringLiteral("card_ids")), actual_card_ids);
 		if (move.tryParse(args[i])){
 			ClientPlayer *from = getPlayer(move.from_player_name);
@@ -1237,7 +1242,8 @@ void Client::onPlayerChooseGeneral(const QString &item_name)
 {
 	setStatus(NotActive);
 	if (item_name.isEmpty()) {
-		// 舊行為:空名唔會送任何 reply。喺 core 度就係本機放棄呢個 request。
+		// Old behavior: an empty name sends no reply at all. In the core this is a local
+		// abandonment of the request.
 		cancelInteraction(InteractionType::ChooseGeneral, InteractionCancelReason::Abandoned);
 		return;
 	}
@@ -1333,8 +1339,9 @@ void Client::onPlayerResponseCard(const Card *card, const QList<const Player *> 
 	if ((status & ClientStatusBasicMask) == Responding)
 		_m_roomState.setCurrentCardUsePattern("");
 
-	// 一次回應永遠係「一張牌」:實牌就係佢自己嘅 id,virtual card 冇實 id,
-	// 靠 toString() 上線,子卡放喺 payload 度畀其他 front-end 睇。
+	// One response is always "one card": a real card is identified by its own id; a virtual
+	// card has no real id — it goes on the wire via toString() and its subcards are placed in
+	// the payload for other front-ends to read.
 	InteractionResponse response;
 	if (card) {
 		QList<int> cardIds;
@@ -1676,10 +1683,11 @@ void Client::askForCardOrUseCard(const QVariant &cardUsage)
 		handlingMethod = wire.value(QStringLiteral("handling_method")).toInt();
 
 	CardInteractionPayload cardPayload;
-	// 合法牌嘅集合係 pattern 配對嘅結果,而 pattern 配對係 engine 規則:
-	// server 冇喺 request 入面列出可選牌,ClientCore 亦唔應該扮規則引擎自己
-	// 猜一份出嚟(猜錯就會攔住一個合法回覆)。所以呢類 request 唔枚舉,
-	// core 只執行數量、取消權、卡 id 值域同 exactly-once。
+	// The set of legal cards is the result of pattern matching, and pattern matching is engine
+	// rules: the server does not list selectable cards in the request, and ClientCore must not
+	// play rule engine and guess a set itself (a wrong guess would reject a legitimate reply).
+	// Such requests are therefore not enumerated; the core only enforces count, cancelability,
+	// card id range and exactly-once.
 	cardPayload.selection.enumerated = false;
 	cardPayload.selection.pattern = card_pattern;
 	cardPayload.selection.handlingMethod = handlingMethod;
@@ -1687,7 +1695,8 @@ void Client::askForCardOrUseCard(const QVariant &cardUsage)
 	cardPayload.selection.maxSelection = 1;
 	cardPayload.cardTextAllowed = true;
 	cardPayload.virtualCardAllowed = true;
-	// pattern 尾巴嘅 "!" 就係「唔准唔覆」,同 m_isDiscardActionRefusable 同一件事。
+	// The trailing "!" in the pattern means "refusal not allowed" — same thing as
+	// m_isDiscardActionRefusable.
 	InteractionRequest request = makeInteractionRequest(InteractionType::ResponseCard,
 		cardPayload, m_isDiscardActionRefusable);
 	request.prompt = prompt_doc->toHtml();
@@ -1725,8 +1734,8 @@ void Client::askForSkillInvoke(const QVariant &arg)
 		InteractionType::SkillInvoke, payload, true);
 	request.skillName = skill_name;
 	request.prompt = text;
-	// 發動技能係一條 yes／no 題。Dashboard 嘅 Cancel 掣就係 "no",所以佢
-	// 永遠答得起,cancelable 亦因此係 true。
+	// Invoking a skill is a yes/no question. The Dashboard's Cancel button is the "no" answer,
+	// so it can always respond, and cancelable is therefore true.
 	beginInteraction(request);
 }
 
@@ -1855,10 +1864,11 @@ void Client::onPlayerChoosePlayer(const QList<const Player *> &players)
 	foreach (const Player *p, players)
 		names << p->objectName();
 	if (players.length() < choose_min_num && !m_isDiscardActionRefusable) {
-		// UI 交上嚟嘅目標唔夠數(逾時／trust 嘅安全預設答案),就隨機補夠。
-		// 補嘅時候優先揀 server 講明可揀嗰批:舊碼由 findChildren<Player *>()
-		// 度隨機抽,抽得中一個唔喺可揀清單入面嘅玩家,server 一樣會當佢無效,
-		// 所以先行合法池係同一個結果嘅較準版本,唔會改變可見行為。
+		// If the UI submits too few targets (timeout/trust safe default answer), top up randomly.
+		// When topping up, prefer the players the server declared selectable: the old code drew
+		// randomly from findChildren<Player *>() and could pick a player outside the selectable
+		// list, which the server would likewise reject; drawing from the legal pool first is a more
+		// accurate version of the same outcome and does not change visible behavior.
 		QList<const Player*> to_choose;
 		QList<const Player*> fallback;
 		foreach (const Player *p, findChildren<const Player *>()) {
@@ -2272,10 +2282,10 @@ void Client::askForGeneral(const QVariant &arg)
 	if (!JsonUtils::tryParse(arg.toMap().value(QStringLiteral("candidates")), generals)) return;
 
 	OptionInteractionPayload payload;
-	// 清單只係建議,唔係合法答案嘅完整集合:server 喺 FreeChoose 之下收清單
-	// 以外嘅武將(player-decision-service.cpp:332),而 free-choose dialog 同
-	// --test-general 自動選將(roomscene.cpp:2255)正正會咁答。ClientCore 唔可以
-	// 攔一啲 server 本身收得起嘅答案。
+	// The list is a suggestion, not the complete set of legal answers: under FreeChoose the
+	// server accepts generals outside the list (player-decision-service.cpp:332), and the
+	// free-choose dialog plus --test-general auto-picking (roomscene.cpp:2255) answer exactly
+	// that way. ClientCore must not reject answers the server itself accepts.
 	foreach (const QString &general, generals)
 		payload.options << InteractionOption(general);
 	payload.enumerated = false;
@@ -2328,16 +2338,17 @@ void Client::askForChoice(const QVariant &ask_str)
 		}
 		return false;
 	};
-	// 連空字串都照收:server 送嘅 option 串有可能有多餘嘅 "+",split 出嚟嗰個
-	// 空項喺 dialog 度一樣會變成一個撳得嘅掣(objectName 就係空字串),而 server
-	// 收得起。core 唔可以攔一個 desktop 產生得到嘅答案。
+	// Accept even an empty string: the option list sent by the server may contain a redundant
+	// "+", and the empty item produced by split becomes a clickable button in the dialog just
+	// the same (objectName is the empty string), which the server accepts. The core must not
+	// reject an answer the desktop can produce.
 	foreach (const QString &option, options) {
 		if (!hasOption(option))
 			payload.options << InteractionOption(option);
 	}
-	// except_options 喺 dialog 度係「睇得到、撳唔到」嘅掣
-	// (roomscene.cpp:2551 createOptionBox(..., false)),所以入 model 係
-	// disabled option,而唔係唔存在。
+	// In the dialog except_options are buttons that are visible but not clickable
+	// (roomscene.cpp:2551 createOptionBox(..., false)), so they enter the model as disabled
+	// options, not as nonexistent ones.
 	foreach (const QString &option, except_options) {
 		if (option.isEmpty())
 			continue;
@@ -2352,15 +2363,17 @@ void Client::askForChoice(const QVariant &ask_str)
 		if (!found)
 			payload.options << InteractionOption(option, QString(), false);
 	}
-	// 揀項 dialog 自己嘅 objectName 就係 "cancel"(roomscene.cpp:2549):撳 Esc
-	// 關窗會經同一個 slot 用 "cancel" 覆,BossModeExpStore 亦有一個永遠 enabled
-	// 嘅 cancel 掣。server 收得起,所以 core 亦要收得起,否則關窗會變成冇覆。
+	// The option dialog's own objectName is "cancel" (roomscene.cpp:2549): closing the window
+	// with Esc replies "cancel" through the same slot, and BossModeExpStore also has a cancel
+	// button that is always enabled. The server accepts it, so the core must too, otherwise
+	// closing the window would leave the request unanswered.
 	if (!hasOption(QStringLiteral("cancel"))) {
 		InteractionOption cancel(QStringLiteral("cancel"));
 		cancel.metadata.insert(QStringLiteral("synthetic_cancel"), true);
 		payload.options << cancel;
 	}
-	// desktop chooseOption() 要嘅係 server 原本嗰三份資料,原值留喺 context。
+	// desktop chooseOption() needs the server's original three pieces of data; the raw values
+	// stay in the context.
 	InteractionRequest request = makeInteractionRequest(
 		InteractionType::Choice, payload, true);
 	request.skillName = skill_name;
@@ -2598,10 +2611,10 @@ void Client::askForSinglePeach(const QVariant &arg)
 	payload.selection.minSelection = 1;
 	payload.selection.maxSelection = 1;
 	payload.fixedTargets << dying->objectName();
-	// onPlayerResponseCard() 對實牌同 virtual card 一律送 card->toString()
-	// 做 cardText(server 兩邊都係 Card::Parse 收),所以呢類 request 一定要
-	// 收得起 cardText —— 唔係嘅話 ClientCore 會當 malformed_response 掉咗,
-	// client 由頭到尾冇答過,要等到 server 嘅 operation timeout。
+	// onPlayerResponseCard() always sends card->toString() as cardText for both real and
+	// virtual cards (the server uses Card::Parse for either), so this kind of request must
+	// accept cardText — otherwise ClientCore would drop it as malformed_response, the client
+	// would never have answered, and the game would wait for the server's operation timeout.
 	payload.cardTextAllowed = true;
 	payload.virtualCardAllowed = true;
 	InteractionRequest request = makeInteractionRequest(
@@ -2621,10 +2634,10 @@ void Client::askForCardShow(const QVariant &requestor)
 	payload.selection.pattern = QStringLiteral(".");
 	payload.selection.minSelection = 1;
 	payload.selection.maxSelection = 1;
-	// onPlayerResponseCard() 對實牌同 virtual card 一律送 card->toString()
-	// 做 cardText(server 兩邊都係 Card::Parse 收),所以呢類 request 一定要
-	// 收得起 cardText —— 唔係嘅話 ClientCore 會當 malformed_response 掉咗,
-	// client 由頭到尾冇答過,要等到 server 嘅 operation timeout。
+	// onPlayerResponseCard() always sends card->toString() as cardText for both real and
+	// virtual cards (the server uses Card::Parse for either), so this kind of request must
+	// accept cardText — otherwise ClientCore would drop it as malformed_response, the client
+	// would never have answered, and the game would wait for the server's operation timeout.
 	payload.cardTextAllowed = true;
 	payload.virtualCardAllowed = true;
 	InteractionRequest request = makeInteractionRequest(
@@ -3087,7 +3100,8 @@ void Client::askForPlayerChosen(const QVariant &players)
 		InteractionType::ChoosePlayer, payload, m_isDiscardActionRefusable);
 	request.skillName = skill_name;
 	request.prompt = text;
-	// server 送 min <= 0 就即係「可以唔揀」,同 m_isDiscardActionRefusable 同一件事。
+	// min <= 0 from the server means "choosing none is allowed" — same thing as
+	// m_isDiscardActionRefusable.
 	beginInteraction(request);
 }
 

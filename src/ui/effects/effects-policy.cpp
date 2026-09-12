@@ -70,7 +70,7 @@ bool VisualEffectsPolicy::spineEnabled() const
 
 bool VisualEffectsPolicy::gifEnabled() const
 {
-    // 使用者嘅 EnableAnimatedGenerals 依然係最終否決權；profile 只可以再收窄。
+    // The user's EnableAnimatedGenerals remains the final veto; the profile can only narrow further.
     return EffectsProfileContract::gifEnabled(m_profile)
         && Config.value(QStringLiteral("EnableAnimatedGenerals"), true).toBool();
 }

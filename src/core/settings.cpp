@@ -157,8 +157,8 @@ void applyVisualMode(const QString &mode)
 }
 #endif
 
-// 設定檔可能係手改的：非數字、負數、大過 1 都要收成一個安全值，而唔係
-// 將 0／NaN 直接交畀 audio backend。
+// Settings files may be hand-edited: non-numeric, negative or >1 values must be clamped to
+// a safe value instead of handing 0/NaN straight to the audio backend.
 static float clampVolume(const QVariant &raw, float fallback)
 {
     if (!raw.isValid())
@@ -417,9 +417,9 @@ void Settings::init()
     EnableLastWord = value("EnableLastWord", true).toBool();
     EnableBgMusic = value("EnableBgMusic", true).toBool();
     EnableCardDescription = value("EnableCardDescription", true).toBool();
-    // 音量一律經 clampVolume()：舊設定檔可能冇呢個 key，亦可能被手改成
-    // 非數字或者超出 [0,1]。任何一種情況都要有穩定預設，唔可以令 backend
-    // 收到 NaN／負數。
+    // Volumes always pass through clampVolume(): older settings files may lack the key, or
+    // it may have been hand-edited to a non-numeric value or one outside [0,1]. Every case
+    // needs a stable default; the backend must never receive NaN or negatives.
     BGMVolume = clampVolume(value("BGMVolume"), 1.0f);
     EffectVolume = clampVolume(value("EffectVolume"), 1.0f);
     FrontBGMVolume = clampVolume(value("FrontBGMVolume"), 1.0f);

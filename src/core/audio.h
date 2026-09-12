@@ -4,20 +4,22 @@
 #include <QJsonObject>
 #include <QString>
 
-// 全個 client 唯一的 audio facade。M2B-A 冇新增第二套 facade：呢個 class 保持
-// 原有的 static API（call site 一個都唔使改），只係將實作轉交畀 IAudioBackend
-// （src/ui/audio/audio-backend.h）。
+// The client's single audio facade. M2B-A adds no second facade: this class keeps the
+// original static API (zero call-site changes) and merely forwards the implementation to
+// IAudioBackend (src/ui/audio/audio-backend.h).
 //
-// 實作只會編入 GUI target（QSanguosha）。qsanguosha_engine／qsanguosha_server
-// 唔會定義 AUDIO_SUPPORT，所以 dedicated server 由頭到尾唔會拉到 Qt Multimedia。
+// The implementation is compiled into the GUI target (QSanguosha) only.
+// qsanguosha_engine/qsanguosha_server never define AUDIO_SUPPORT, so the dedicated server
+// never pulls in Qt Multimedia.
 class Audio
 {
 public:
     static void init();
     static void quit();
 
-    // filename 係短 UI 音效定係武將語音由 classifyAudioFile() 判斷，call site
-    // 唔使自己知。superpose=false 保持舊語義：同一個檔案響緊就唔重疊播。
+    // Whether filename is a short UI sound effect or a general voice is decided by
+    // classifyAudioFile(); call sites need not know. superpose=false keeps the old
+    // semantics: a file already playing is not overlapped.
     static void play(const QString &filename, bool superpose = true);
     static void stop();
 
@@ -35,7 +37,8 @@ public:
     // 目前生效的 backend 名（"fmod" / "qt" / "null"）。
     static QString backendName();
     static bool isInitialized();
-    // 有冇真正可用的輸出裝置。冇裝置唔係錯誤，只係聽唔到聲。
+    // Whether a usable output device really exists. No device is not an error; there is
+    // simply no sound.
     static bool hasOutputDevice();
     // 由 Config 讀 master／effect／voice／mute 並推落 backend。設定畫面按確定
     // 之後呼叫一次即可。

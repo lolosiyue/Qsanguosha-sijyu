@@ -12,8 +12,8 @@ const int ClientCore::CompletedHistoryLimit = 32;
 
 namespace {
 
-// process 全局單調時鐘。用 static 係因為 ClientCore 可以有幾個 instance
-// (測試會開多個),但佢哋應該讀同一條時間線。
+// Process-global monotonic clock. static because there can be several ClientCore
+// instances (tests open multiple), but they should read the same timeline.
 qint64 monotonicNow()
 {
     static QElapsedTimer timer;
@@ -132,7 +132,8 @@ ClientCore::ClientCore(QObject *parent)
 
 ClientCore::~ClientCore()
 {
-    // core 死嗰陣唔通知 view:view 通常就係跟住一齊拆。
+    // When the core dies it does not notify the view: the view is usually torn down along
+    // with it.
     m_view = nullptr;
 }
 
@@ -184,8 +185,9 @@ void ClientCore::setView(IClientInteractionView *view)
     if (m_view == view)
         return;
     m_view = view;
-    // 換 view 嗰陣如果有 request 未答,即刻餵佢:重連／換皮膚都唔應該
-    // 令玩家對住一個空畫面等一個佢睇唔到嘅 request。
+    // When swapping views with an unanswered request, present it immediately: reconnecting
+    // or reskinning must not leave the player staring at an empty screen waiting for a
+    // request they cannot see.
     if (m_view && hasActiveRequest())
         m_view->presentRequest(m_active);
 }
@@ -221,11 +223,12 @@ quint64 ClientCore::beginRequest(InteractionRequest request)
     const quint64 requestId = m_active.requestId;
     emit requestStarted(requestId);
     if (m_view) {
-        // 傳一份 copy 而唔係 m_active 嘅 reference。呈現係可以重入嘅:desktop
-        // 嘅 setStatus() 會即刻叫 RoomScene::updateStatus(),而嗰度有幾條路
-        // 會喺同一個 call stack 入面就答返呢個 request(例如 responding 狀態
-        // 搵唔到可用嘅 view-as skill,就直接覆一個空答案)。答完之後 m_active
-        // 已經清空,reference 就會指住一個唔同嘅 request。
+        // Pass a copy, not a reference to m_active. Presentation is reentrant: the desktop's
+        // setStatus() immediately calls RoomScene::updateStatus(), and several paths there
+        // answer the request within the same call stack (e.g. in the responding state, when
+        // no usable view-as skill is found, an empty answer is submitted directly). Once
+        // answered, m_active is already cleared and the reference would point at a different
+        // request.
         const InteractionRequest presented = m_active;
         m_view->presentRequest(presented);
     }
@@ -334,8 +337,8 @@ InteractionValidation ClientCore::validateAgainst(const InteractionRequest &requ
             QStringLiteral("reply carries no answer"));
     }
 
-    // 空答案一律當「取消」處理,無論 view 送 Cancel 定送一個空 selection:
-    // 唔准取消嘅 request 唔可以就咁跳過。
+    // An empty answer is always treated as "cancel", whether the view sends Cancel or an
+    // empty selection: a non-cancelable request must not slip through that way.
     if (isEmptyAnswer(response) && request.minSelection() > 0) {
         if (!request.cancelable) {
             return InteractionValidation::fail(InteractionRejection::NotCancelable,
@@ -409,8 +412,8 @@ InteractionValidation ClientCore::validateOption(const InteractionRequest &reque
     const OptionInteractionPayload *typed = request.payloadAs<OptionInteractionPayload>();
     const bool enumerated = typed == nullptr || typed->enumerated;
     if (option == nullptr) {
-        // 非枚舉 request（例如 FreeChoose 之下嘅 choose general）冇清單以外
-        // 嘅約束,但答案本身仍然唔可以係空。
+        // Non-enumerated requests (e.g. choose general under FreeChoose) have no
+        // constraints beyond the list, but the answer itself still must not be empty.
         if (!enumerated)
             return InteractionValidation::ok();
         return InteractionValidation::fail(InteractionRejection::UnknownOption,
@@ -498,9 +501,10 @@ InteractionValidation ClientCore::validateCards(const InteractionRequest &reques
         }
         seen.insert(cardId);
 
-        // 值域檢查對 enumerated 同非 enumerated 都成立:呢個唔係規則判斷,
-        // 而係「client 由頭到尾都未見過呢個 id」。
-        // ChooseCard 暗手牌與 GUI PlayerCardBox 一樣回 -1；server 再挑第一張合法牌。
+        // The range check applies to enumerated and non-enumerated alike: this is not a
+        // rules judgment, it is "the client has never seen this id".
+        // ChooseCard returns -1 for concealed hand cards, same as the GUI PlayerCardBox;
+        // the server then picks the first legal card.
         if (cardId < 0) {
             if (request.type != InteractionType::ChooseCard || cardId != -1) {
                 return InteractionValidation::fail(InteractionRejection::UnknownCard,
@@ -522,7 +526,8 @@ InteractionValidation ClientCore::validateCards(const InteractionRequest &reques
         }
     }
 
-    // virtual card 冇實 id,但一定有 cardText。數量檢查對佢嚟講係「一張牌」。
+    // A virtual card has no real id but always has cardText. For the count check it counts
+    // as "one card".
     if (!answer->cardText.isEmpty() && typed != nullptr && !typed->cardTextAllowed) {
         return InteractionValidation::fail(InteractionRejection::MalformedResponse,
             QStringLiteral("request %1 does not allow card text").arg(request.requestId));
@@ -687,8 +692,8 @@ InteractionValidation ClientCore::submitResponse(const InteractionResponse &resp
         return validation;
     }
 
-    // Exactly-once:先收檔,再通知。任何 handler 喺呢一刻再 submit 同一個
-    // request 都只會攞到 AlreadyCompleted。
+    // Exactly-once: finalize first, then notify. Any handler submitting the same request
+    // again at this point only gets AlreadyCompleted.
     const InteractionRequest finished = m_active;
     recordCompleted(finished.requestId, CompletionKind::Answered);
     clearActive();

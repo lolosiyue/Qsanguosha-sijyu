@@ -1,8 +1,9 @@
 // Linux GUI M2 network UI smoke 的 marker／exit code／command 對照契約測試。
 //
-// 只依賴 Qt Core：契約本身唔應該要開 QApplication 或者起一局真網絡局先驗到，
-// CI 亦要喺 server-only runner 上照跑。真正的網絡對局由
-// tools/autotest/gui_network_smoke.py 喺 Xvfb 下驗證。
+// Depends on Qt Core only: the contract itself must be verifiable without
+// QApplication or a real network game, and CI must run it unchanged on a
+// server-only runner. The real network game is verified by
+// tools/autotest/gui_network_smoke.py under Xvfb.
 #include "network-ui-smoke-report.h"
 
 #include <ctime>
@@ -69,8 +70,9 @@ void testStageOrder()
         QStringLiteral("general_selected"), QStringLiteral("game_started"),
         QStringLiteral("game_over"), QStringLiteral("shutdown")
     };
-    // RoomScene 喺 setup 收到即刻由 enterRoom() 建立，早過選將請求；呢個次序係
-    // 產品真實流程，唔可以為咗遷就文件而調轉。
+    // RoomScene is created by enterRoom() as soon as setup receives it, before
+    // the general-selection request; this order is the product's real flow and
+    // must not be reordered to suit the documentation.
     check(stages == expected, "stage order matches the real network startup path");
     check(stages.indexOf(QStringLiteral("room_scene"))
             < stages.indexOf(QStringLiteral("general_selected")),
@@ -122,8 +124,9 @@ void testResultLineSchema()
     check(failure.value(QStringLiteral("error")).toString() == QLatin1String("no dashboard"),
         "stage failures carry the error text");
 
-    // timeout／斷線／互動卡死同「stage 本身失敗」共用 stage 名，唯一的分辨方法
-    // 就係 reason；分唔開就等於 CI 睇唔出係邊種故障。
+    // Timeout, disconnection, and interaction stalls share the stage name with
+    // "the stage itself failed"; the only way to tell them apart is the reason.
+    // If they cannot be distinguished, CI cannot see which fault occurred.
     const QJsonObject timeout = parseMarker(
         NetworkUiSmokeReport::resultLine(false, QStringLiteral("game_over"),
             QStringLiteral("timed out"), NetworkUiSmokeReport::Timeout),
@@ -171,7 +174,7 @@ void testExitCodeMapping()
     check(R::exitCodeForFailedStage(QStringLiteral("nonsense")) == R::InternalError,
         "unknown stages fall back to InternalError");
 
-    // 每一個失敗分類都要有自己的 exit code，唔可以撞埋一齊。
+    // Every failure classification needs its own exit code; they must not collide.
     const QList<int> codes{R::Passed, R::InvalidArguments, R::ConnectFailed, R::SignupFailed,
         R::RoomSceneFailed, R::DashboardFailed, R::GeneralSelectionFailed, R::GameStartFailed,
         R::InteractionFailed, R::GameOverNotReached, R::Disconnected, R::Timeout,
@@ -230,7 +233,7 @@ void testInteractionNames()
     using namespace QSanProtocol;
     using R = NetworkUiSmokeReport;
 
-    // M2 驗收清單直接對應呢啲名；改名等於改 CI gate。
+    // The M2 acceptance checklist maps directly onto these names; renaming them changes the CI gate.
     check(R::interactionName(S_COMMAND_RESPONSE_CARD) == QLatin1String("ask_for_card"),
         "response-card requests are ask_for_card");
     check(R::interactionName(S_COMMAND_ASK_PEACH) == QLatin1String("ask_for_card"),
@@ -252,7 +255,7 @@ void testInteractionNames()
     check(R::interactionName(S_COMMAND_DISCARD_CARD) == QLatin1String("ask_for_discard"),
         "discard requests are ask_for_discard");
 
-    // Notification／reply 唔算互動，唔應該污染覆蓋率統計。
+    // Notifications and replies are not interactions and must not pollute the coverage statistics.
     check(R::interactionName(S_COMMAND_GAME_START).isEmpty(),
         "notifications are not interactions");
     check(R::interactionName(S_COMMAND_SETUP).isEmpty(),

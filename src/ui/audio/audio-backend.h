@@ -5,21 +5,21 @@
 #include <QString>
 #include <QStringList>
 
-// M2B-A 的 audio backend 抽象。
+// The M2B-A audio backend abstraction.
 //
-// 產品一直只有 `Audio` 一個 facade（src/core/audio.h），呢度唔會另開第二個
-// facade：`Audio` 保持係唯一入口，只係將實作轉交畀下面其中一個 backend。
+// The product has only ever had the one `Audio` facade (src/core/audio.h); no second
+// facade is opened here: `Audio` stays the single entry point and merely delegates to one of the backends below.
 //
 //     Audio  ──►  IAudioBackend
 //                   ├── FmodAudioBackend      Windows GUI Release
-//                   ├── QtMediaAudioBackend   Linux GUI（Qt Multimedia）
-//                   └── NullAudioBackend      dedicated server / 測試 / 降級
+//                   ├── QtMediaAudioBackend   Linux GUI (Qt Multimedia)
+//                   └── NullAudioBackend      dedicated server / tests / fallback
 //
-// backend 的選擇淨係喺 CMake（QSAN_AUDIO_BACKEND）同 audio-backend-factory.cpp
-// 一個地方發生，call site 唔會散落 #ifdef Q_OS_LINUX。
+// Backend selection happens only in one place - CMake (QSAN_AUDIO_BACKEND) and
+// audio-backend-factory.cpp; call sites never scatter #ifdef Q_OS_LINUX.
 
-// 短 UI 音效同武將語音喺 Qt backend 行兩條唔同的資源路徑（QSoundEffect 對
-// player pool），所以 facade 要話畀 backend 知呢一次係邊一類。
+// Short UI sounds and general voices run two different resource paths on the Qt
+// backend (QSoundEffect vs player pool), so the facade must tell the backend which kind this call is.
 enum class AudioChannel
 {
     Effect,
@@ -30,12 +30,12 @@ struct AudioVolumes
 {
     float master = 1.0f;
     float effect = 1.0f;
-    // 語音係音效的一個 sub-trim,而唔係另一條獨立通道:預設 1.0 時
-    // voiceGain() == effectGain(),Windows 舊有「語音跟 EffectVolume」的行為
-    // 原樣保留。
+    // Voice is a sub-trim of the effect volume, not a separate channel: at the
+    // default 1.0, voiceGain() == effectGain(), and the legacy Windows
+    // "voice follows EffectVolume" behavior is preserved as-is.
     float voice = 1.0f;
-    // BGM 音量由 call site 明確傳入（Audio::setBGMVolume），呢度只記住最後
-    // 一次的值,方便 master／mute 改變時重新套用。
+    // BGM volume is passed in explicitly by the call site (Audio::setBGMVolume);
+    // only the last value is remembered here so it can be reapplied when master / mute changes.
     float bgm = 1.0f;
     bool muted = false;
 
@@ -54,16 +54,16 @@ class IAudioBackend
 public:
     virtual ~IAudioBackend() = default;
 
-    // "fmod" / "qt" / "null"。會出現喺 multimedia smoke 的 report,所以係契約。
+    // "fmod" / "qt" / "null". Shows up in the multimedia smoke report, so it is a contract.
     virtual QString name() const = 0;
 
-    // 建立底層資源。回傳 false 代表呢個 backend 喺呢部機用唔到,facade 會轉用
-    // NullAudioBackend,而唔係讓 GUI 掛咗。
+    // Create the underlying resources. Returning false means this backend is unusable
+    // on this machine; the facade switches to NullAudioBackend instead of letting the GUI hang.
     virtual bool initialize() = 0;
     virtual void shutdown() = 0;
 
-    // 有冇真正可用的輸出裝置。無音訊裝置唔算 initialize() 失敗:GUI 照跑,
-    // 只係聽唔到聲,呢個 flag 令 smoke／診斷可以分辨兩者。
+    // Whether a truly usable output device exists. No audio device is not an
+    // initialize() failure: the GUI keeps running, just silent; this flag lets smoke / diagnostics tell the two apart.
     virtual bool hasOutputDevice() const = 0;
 
     virtual void play(const QString &filename, bool superpose, AudioChannel channel) = 0;
@@ -80,25 +80,25 @@ public:
         Q_UNUSED(suspended);
     }
 
-    // master／effect／voice／mute 改變時由 facade 推落嚟。
+    // Pushed down by the facade when master / effect / voice / mute changes.
     virtual void applyVolumes(const AudioVolumes &volumes) = 0;
 
     virtual QString version() const = 0;
 
-    // 畀 --multimedia-smoke 同 about dialog 用的結構化狀態。
+    // Structured state for --multimedia-smoke and the about dialog.
     virtual QJsonObject diagnostics() const = 0;
 };
 
-// 由 CMake 的 QSAN_AUDIO_BACKEND 決定編入邊個實作。實作喺
-// audio-backend-factory.cpp,係全個 codebase 唯一做 backend 選擇的地方。
+// CMake's QSAN_AUDIO_BACKEND decides which implementation is compiled in. The
+// implementation is in audio-backend-factory.cpp, the only backend-selection point in the whole codebase.
 IAudioBackend *createConfiguredAudioBackend();
 IAudioBackend *createNullAudioBackend();
 
 // 會預載成低延遲短音效的 audio/system/<name>.ogg 名單。
 QStringList shortUiEffectNames();
 
-// 一個播放請求屬於短 UI 音效定係語音／一次性長音效。呢個係唯一的分類點,
-// call site 唔需要自己知。
+// Whether a playback request is a short UI sound or a voice / one-shot long sound.
+// This is the only classification point; call sites need not know it themselves.
 AudioChannel classifyAudioFile(const QString &filename);
 
 #endif

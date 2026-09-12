@@ -115,8 +115,8 @@ void MagatamasBoxItem::_doHpChangeAnimation(int newHp)
 {
     if (newHp >= m_hp) return;
 
-    // 掉血嘅飛勾玉純粹係演出:真正嘅血量由 paint() 讀 m_hp 畫,所以 NONE
-    // 唔起呢個 Sprite,血量一樣即刻更新到最終值。
+    // The flying magatamas on hp loss are pure presentation: actual hp is drawn by
+    // paint() reading m_hp, so NONE skips this Sprite and hp still updates to the final value immediately.
     if (!G_EFFECTS.animationsEnabled()) {
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         return;

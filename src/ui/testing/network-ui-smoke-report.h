@@ -5,13 +5,14 @@
 #include <QString>
 #include <QStringList>
 
-// Linux GUI M2 的 network UI smoke 契約。
+// The network UI smoke contract for Linux GUI M2.
 //
-// 同 M1 的 UiStartupSmokeReport 一樣，呢個 header 只依賴 Qt Core（protocol.h 只
-// 用到 enum），令 marker schema／exit code／command 對照可以喺 server-only
-// configure 下用 CTest 直接驗，唔使開 QApplication，亦唔使起真正的網絡局。
+// Like the M1 UiStartupSmokeReport, this header depends on Qt Core only
+// (protocol.h contributes enums only), so the marker schema / exit code /
+// command mapping can be verified directly by CTest under a server-only
+// configure, without launching QApplication or a real network game.
 //
-// 真正驅動 GUI 的部分喺 NetworkUiSmokeController／NetworkUiSmokeResponder。
+// The part that actually drives the GUI lives in NetworkUiSmokeController / NetworkUiSmokeResponder.
 class NetworkUiSmokeReport
 {
 public:
@@ -22,32 +23,35 @@ public:
     // marker payload 的 schema version；欄位語意有 breaking change 先加。
     static int schemaVersion();
 
-    // 失敗分類必須夠細，令 CI artifact 一眼睇得出係邊一層爆。
-    // server 未啟動／server 中途死 → client 收唔到 connected 或者中途 disconnect，
-    // 兩者都由呢度嘅 stage + reason 區分；client crash／shutdown hang 冇 result
-    // marker，由 runner 靠 exit code 判定。
+    // Failure classification must be fine-grained enough that the CI artifact
+    // shows at a glance which layer blew up.
+    // server not started / server died midway → the client never gets connected
+    // or disconnects midway; both are separated here by stage + reason. A
+    // client crash / shutdown hang leaves no result marker and is judged by the
+    // runner via the exit code.
     enum ExitCode {
         Passed = 0,
         InvalidArguments = 1,
-        ConnectFailed = 2,          // TCP 連唔上（server 未啟動／port 錯）
+        ConnectFailed = 2,          // TCP connect failed (server not started / wrong port)
         SignupFailed = 3,           // signup／setup 未完成
         RoomSceneFailed = 4,        // RoomScene 未建立
         DashboardFailed = 5,        // Dashboard 未建立
         GeneralSelectionFailed = 6, // 選將請求未回覆
         GameStartFailed = 7,        // 未開局
         InteractionFailed = 8,      // askFor 請求無法經 UI 回覆
-        GameOverNotReached = 9,     // 開咗局但冇 game over
+        GameOverNotReached = 9,     // game started but game over never arrived
         Disconnected = 10,          // 局中被 server 斷線
         Timeout = 11,               // app 內部總 timeout
         InternalError = 12
     };
 
-    // stage 名稱，按實際發生次序。
+    // Stage names, in the order they actually occur.
     //
-    // 次序同任務書列出嘅稍有不同：RoomScene 係喺 Client::server_connected
-    // （setup 收到）即刻由 MainWindow::enterRoom 建立，早過選將請求，所以
-    // room_scene／dashboard 排喺 general_selected 之前。呢個係產品真實次序，
-    // 唔係為咗遷就測試而改。
+    // The order differs slightly from the task spec: RoomScene is created by
+    // MainWindow::enterRoom immediately on Client::server_connected (setup
+    // received), earlier than the general-selection request, so room_scene and
+    // dashboard come before general_selected. This is the product's real order,
+    // not something rearranged to suit the test.
     static QStringList stageOrder();
     static bool isKnownStage(const QString &stage);
 
@@ -81,22 +85,25 @@ public:
     static QString parseResultPath(const QStringList &arguments);
     static QString parseScreenshotPath(const QStringList &arguments);
 
-    // 失敗原因。timeout／斷線同「stage 本身失敗」共用 stage 名，靠呢個欄位分辨。
+    // Failure reason. timeout / disconnect share the stage name with "stage itself failed"; this field tells them apart.
     static const char *const ReasonOk;                  // "ok"
     static const char *const ReasonStageFailed;         // "stage_failed"
     static const char *const ReasonTimeout;             // "timeout"
     static const char *const ReasonDisconnected;        // "disconnected"
     static const char *const ReasonInteractionStalled;  // "interaction_stalled"
 
-// Protocol V2 server request → 契約互動名。runner 同 CI 用呢啲名做
-    // askFor 覆蓋率 gate，所以名唔可以隨便改。
+// Protocol V2 server request → contract interaction name. The runner and CI
+    // use these names as the askFor coverage gate, so the names must not be
+    // renamed casually.
     //
-    // 唔喺對照表內的 command 回傳空字串：呢啲係 notification／reply，唔算互動。
+    // Commands not in this table return an empty string: they are
+    // notifications/replies, not interactions.
     static QString interactionName(int commandType);
     static QStringList knownInteractionNames();
 
-    // Responder 經真正 RoomScene／Dashboard 做出嘅 UI 動作名（唔係 server
-    // command，而係「玩家做咗乜」），同 interaction 分開記。
+    // Names of UI actions the responder performed through the real
+    // RoomScene/Dashboard (not server commands but "what the player did"),
+    // recorded separately from interactions.
     static const char *const ActionPlayCard;    // "play_card"
     static const char *const ActionSelectTarget;// "select_target"
     static const char *const ActionFinishPhase; // "finish_phase"

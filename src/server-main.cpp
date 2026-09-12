@@ -234,11 +234,12 @@ int main(int argc, char **argv)
         Config.setValueOverrides(configFile.values);
     }
 
-    // 執行期版面要喺 engine bootstrap 之前解析:engine 直接 load "lua/config.lua",
-    // 冇一個真正嘅 asset root 佢會喺 constructor 入面 exit(1)。
+    // The runtime layout must be resolved before engine bootstrap: the engine loads
+    // "lua/config.lua" directly and exits with exit(1) in its constructor without a real
+    // asset root.
     {
-        // --asset-root 已經喺 app.arguments() 入面;喺度只係確認佢通過咗
-        // CLI 驗證先至用,唔會靜靜接受一個空值。
+        // --asset-root is already in app.arguments(); here it is only consumed once it has
+        // passed CLI validation, never silently accepting an empty value.
         QString pathError;
         if (!QSanRuntimePaths::resolve(app.arguments(), &pathError)) {
             QTextStream err(stderr);

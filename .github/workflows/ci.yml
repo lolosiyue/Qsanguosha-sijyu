@@ -230,11 +230,12 @@ jobs:
           & dist\tui\RelWithDebInfo\qsanguosha_tui.exe --help
           if ($LASTEXITCODE -ne 0) { throw 'Packaged TUI --help failed' }
 
-          # 測試 target 定義喺 tests/ 子目錄，所以 MSVC 會將測試 exe 放喺
-          # builds\cmake-vs2026\tests\RelWithDebInfo\，而唔係 build tree 根目錄。
-          # rules fixture runner 喺頂層，其餘測試喺 tests/；兩層都要 stage，
-          # CTestTestfile.cmake 同 executable layout 亦要原樣保留
-          # (生成嘅 CTestTestfile.cmake 內含絕對路徑)。
+          # Test targets are defined in the tests/ subdirectory, so MSVC puts the test
+          # executables under builds\cmake-vs2026\tests\RelWithDebInfo\ instead of the
+          # build tree root. The rules fixture runner is at the top level, the other
+          # tests in tests/; both layers must be staged, and the CTestTestfile.cmake and
+          # executable layout kept as-is (the generated CTestTestfile.cmake contains
+          # absolute paths).
           if ($env:GITHUB_REF -eq 'refs/heads/main') {
             $ctestStage = 'ci-handoff\ctest\builds\cmake-vs2026'
             New-Item -ItemType Directory -Path "$ctestStage\tests\RelWithDebInfo" -Force | Out-Null
@@ -416,10 +417,11 @@ jobs:
         run: |
           & .\tools\ci\fetch-extensions.ps1
 
-      # qsanguosha_server / QSanguosha 的 RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO 係
-      # source tree 的 relwithdebinfo\，所以生成的 CTestTestfile.cmake 會用該絕對路徑
-      # 呼叫 server CLI 測試。runtime artifact 以 release\ 交付(其他 job 沿用該名稱)，
-      # 喺呢度補一份 relwithdebinfo\ 令絕對路徑解析得到。
+      # The RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO of qsanguosha_server / QSanguosha
+      # points at relwithdebinfo\ in the source tree, so the generated
+      # CTestTestfile.cmake invokes the server CLI tests with that absolute path. The
+      # runtime artifact is delivered as release\ (other jobs keep that name); this step
+      # recreates a relwithdebinfo\ copy so those absolute paths resolve.
       - name: Restore RelWithDebInfo runtime layout
         shell: pwsh
         run: |

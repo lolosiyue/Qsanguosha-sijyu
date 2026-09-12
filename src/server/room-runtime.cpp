@@ -115,8 +115,8 @@ void RoomRuntime::shutdownFinal()
     const quint64 workerPins =
         globalCardLifetimeManager().gaugeForDomain(this).lua_pins;
     if (workerScopes != 0 || workerPins != 0) {
-        // 呢兩個數字幾微秒之後就會歸零(揸住嘅 thread 啱啱收工), 所以要喺檢查
-        // 嗰刻抄低, 唔可以留返畀 failShutdown 再讀一次。
+        // These two numbers zero out within microseconds (the holding thread just finished),
+        // so copy them at check time; do not leave them for failShutdown to read again.
         reportShutdownBlockers("worker-final", workerScopes, workerPins);
         failShutdown("worker-final", workerGauge);
     }
@@ -205,12 +205,13 @@ quint64 RoomRuntime::drainShutdownStage(const char *stage)
             if (object)
                 QCoreApplication::sendPostedEvents(
                     object.data(), QEvent::DeferredDelete);
-        // drainDomain 只交返佢自己 retire 嗰批(entry->pending)。其他人直接
-        // deleteLater() 落去嘅 domain 物件(例如 CardUseStruct 放走自己擁有嘅牌)
-        // 唔會出現喺嗰個名單度; 而 reapDeadLocked 只要 QObject 未死就唔會刪
-        // entry, 於是 entryCountForDomain() 永遠唔會歸零, 收工檢查必然失敗。
-        // 逐個 object 派送(唔用 process-wide flush), 同上面一樣唔會撞到另一個
-        // Room 嘅 deferred destructor; 亦只碰 domain 已經放手嗰批。
+        // drainDomain only hands back the entries it retired itself (entry->pending). Domain
+        // objects others deleteLater() directly (e.g. CardUseStruct releasing the cards it
+        // owns) never show up in that list; and reapDeadLocked keeps an entry alive as long
+        // as its QObject lives, so entryCountForDomain() would never reach zero and the
+        // shutdown check would always fail. Dispatching object by object (no process-wide
+        // flush) avoids, as above, hitting another Room's deferred destructor, and only
+        // touches the entries the domain has already released.
         const QList<QPointer<QObject>> lingering =
             globalCardLifetimeManager().retiredDomainObjects(this);
         for (const QPointer<QObject> &object : lingering) {
@@ -347,13 +348,15 @@ void RoomRuntime::reportShutdownBlockers(const char *stage, quint64 scopes,
 
 void RoomRuntime::failShutdown(const char *stage, const CardLifetimeGauge &gauge)
 {
-    // 傳入嘅 gauge 係全域數字, 一個健康嘅 process 都會有非零值(engine 的牌定義
-    // 就佔咗幾千個 entry)。真正被檢查嘅係 domain-scoped 嗰組, 所以兩組都要印,
-    // 否則 log 上見到嘅數字同失敗原因對唔上。
+    // The gauge passed in is a global number; even a healthy process has non-zero values
+    // (the engine's card definitions alone hold thousands of entries). What is actually
+    // checked is the domain-scoped set, so both groups must be printed, otherwise the
+    // number in the log will not match the failure reason.
     CardLifetimeManager &manager = globalCardLifetimeManager();
     const CardLifetimeGauge domainGauge = manager.gaugeForDomain(this);
-    // 一行一個 marker: card-lifetime contract 會數 "ROOM_RUNTIME_FAIL" 出現
-    // 次數, 所以 domain 數字要併埋落同一行, 唔可以另起一個同名前綴嘅 marker。
+    // One marker per line: the card-lifetime contract counts occurrences of
+    // "ROOM_RUNTIME_FAIL", so the domain numbers must be merged into the same line instead
+    // of starting another marker with the same prefix.
     std::fprintf(stderr, "ROOM_RUNTIME_FAIL stage=%s live=%llu pending=%llu reservations=%llu wrappers=%llu leases=%llu pins=%llu entries=%llu domain_live=%llu domain_unclaimed=%llu domain_pending=%llu domain_reservations=%llu domain_wrappers=%llu domain_leases=%llu domain_pins=%llu domain_edges=%llu domain_entries=%llu domain_scopes=%llu\n",
                  stage,
                  static_cast<unsigned long long>(gauge.managed_live),

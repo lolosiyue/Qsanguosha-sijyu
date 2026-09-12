@@ -124,12 +124,13 @@ def hex_exit(code):
         return "n/a"
     return "0x%08X" % (code & 0xFFFFFFFF)
 
-# POSIX: Popen.returncode 對被訊號殺死的行程回傳 -N (N = 訊號編號)。
+# POSIX: Popen.returncode is -N for a process killed by signal N.
 #
-# 用 getattr 而唔係直接寫 signal.SIGBUS: Windows 的 signal module 冇 SIGBUS,
-# 直接 attribute access 會喺 import 期間就 AttributeError, 令每一個 import 呢個
-# module 的 Windows runner (headless smoke、CTest 的 runner 契約測試) 即刻死,
-# 同 exit code 翻譯本身完全無關。
+# getattr is used instead of writing signal.SIGBUS directly: the signal module
+# on Windows has no SIGBUS, so direct attribute access would raise
+# AttributeError at import time, instantly killing every Windows runner that
+# imports this module (headless smoke, the CTest runner contract tests) --
+# nothing to do with exit-code translation itself.
 _POSIX_CRASH_SIGNALS = {
     getattr(signal, name)
     for name in ("SIGILL", "SIGABRT", "SIGFPE", "SIGSEGV", "SIGBUS")

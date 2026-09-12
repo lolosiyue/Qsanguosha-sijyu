@@ -28,11 +28,12 @@
 
 namespace {
 
-// game over 之後留一格時間畀 RoomScene 收尾(結算畫面、log flush),再退出。
-// 太短會喺 UI 未安頓時斬,太長只係拖慢 CI。
+// After game over, leave one slot of time for RoomScene to finish up (score
+// screen, log flush) before exiting. Too short would cut the UI down before
+// it settles; too long only slows CI.
 const int kSettleMs = 1500;
 
-// 收到 socket disconnected 之後,等幾耐先判定係「中途斷線」而唔係完局收尾。
+// After socket disconnected arrives, how long to wait before judging it a "mid-game disconnect" rather than normal end-of-game shutdown.
 const int kDisconnectVerdictMs = 2000;
 
 void writeMarker(const QString &line)
@@ -80,8 +81,9 @@ bool NetworkUiSmokeController::begin(const QStringList &arguments, MainWindow *m
     controller->m_arguments = arguments;
     controller->m_elapsed.start();
     s_active = controller;
-    // 任何唔經 complete() 的退出路徑(engine exit(1)、qFatal、未處理例外)都要留低
-    // 一行 result marker,CI 先分得出「client crash」同「契約壞咗」。
+    // Every exit path that bypasses complete() (engine exit(1), qFatal, uncaught
+    // exception) must still leave a result marker line, so CI can tell a "client
+    // crash" apart from a "broken contract".
     std::atexit(&NetworkUiSmokeController::reportUnfinishedAtExit);
 
     QString error;
@@ -136,7 +138,7 @@ void NetworkUiSmokeController::attach(MainWindow *mainWindow)
         this, &NetworkUiSmokeController::onGameStarted);
     connect(ClientInstance, &Client::game_over,
         this, &NetworkUiSmokeController::onGameOver);
-    // 平局(standoff)一樣係「局行完咗」,唔可以當 game over 未到。
+    // A standoff (draw) also means the game ran to completion; it must not be treated as "game over never reached".
     connect(ClientInstance, &Client::standoff,
         this, &NetworkUiSmokeController::onGameOver);
 
@@ -164,9 +166,11 @@ void NetworkUiSmokeController::onSocketConnected()
 
 void NetworkUiSmokeController::onSocketDisconnected()
 {
-    // Client::gameOver() 自己第一件事就係 disconnectFromHost(),之後先 emit
-    // game_over();即係正常完局都會先見到呢個訊號。所以唔可以即刻判失敗,要留一格
-    // 畀 game_over 到達;真正的中途斷線唔會有後續 game_over。
+    // Client::gameOver() first calls disconnectFromHost() and only then emits
+    // game_over(); i.e. a normal end of game also passes through this signal.
+    // So this must not be judged as failure immediately — leave one slot for
+    // game_over to arrive; a genuine mid-game disconnect has no follow-up
+    // game_over.
     if (m_finished || m_gameOver)
         return;
     QTimer::singleShot(kDisconnectVerdictMs, this,
@@ -231,8 +235,9 @@ void NetworkUiSmokeController::onRoomSceneCreated(RoomScene *scene)
         {QStringLiteral("height"), dashboard->boundingRect().height()}
     });
 
-    // Responder 一定要喺 RoomScene 之後建立:佢接的 status_changed 要行喺
-    // RoomScene::updateStatus 之後,先至見到 RoomScene 佈置好的按鈕狀態。
+    // The responder must be created after RoomScene: its status_changed
+    // connection has to run after RoomScene::updateStatus so that it sees the
+    // button state RoomScene has already laid out.
     m_responder = new NetworkUiSmokeResponder(scene, m_stallMs, this);
 }
 
@@ -252,7 +257,7 @@ void NetworkUiSmokeController::onGameStarted()
         return;
     m_gameStarted = true;
     if (!m_generalSelected) {
-        // 開局之前一定會問過選將;冇 reply 記錄即係 UI 冇覆過。
+        // The general-selection prompt always happens before the game starts; a missing reply record means the UI never answered.
         failStage(QLatin1String(NetworkUiSmokeReport::StageGeneralSelected),
             QStringLiteral("the game started without the client replying to a "
                            "general-selection request"),
@@ -291,8 +296,9 @@ void NetworkUiSmokeController::onGameOver()
         return;
     }
 
-    // 正常離開:留少少時間畀結算 UI 安頓,然後主動 quit。client clean exit 本身
-    // 就係 M2 要驗的一步,所以唔靠 runner 去 kill。
+    // Normal exit: give the score UI a moment to settle, then quit actively.
+    // A clean client exit is itself one of the steps M2 verifies, so we do not
+    // rely on the runner to kill it.
     QTimer::singleShot(kSettleMs, this, &NetworkUiSmokeController::onSettled);
 }
 
@@ -309,7 +315,7 @@ void NetworkUiSmokeController::onTimeout()
 {
     if (m_finished)
         return;
-    // 最遠去到邊一步就 blame 邊一步的下一步,令 artifact 一眼睇得出卡喺邊。
+    // Blame the step after the furthest one reached, so the artifact shows at a glance where it got stuck.
     QString stage = QLatin1String(NetworkUiSmokeReport::StageConnected);
     if (m_gameStarted)
         stage = QLatin1String(NetworkUiSmokeReport::StageGameOver);
@@ -349,11 +355,13 @@ void NetworkUiSmokeController::emitStage(const QString &stage, bool ok,
 
 void NetworkUiSmokeController::captureFailureEvidence()
 {
-    // 失敗時的 UI state 同截圖只作診斷,唔係 pixel gate。
+    // The UI state and screenshots on failure are diagnostic only, not a pixel
+    // gate.
     //
-    // RoomState 喺 Client::gameOver() 已經 unregisterRoom(),probe 會經
-    // Engine::getCurrentCardUsePattern() 摸落去,所以冇 RoomState 就唔影快照 —
-    // 診斷資料唔值得為咗佢喺失敗路徑再炸多一次。
+    // By Client::gameOver() the RoomState is already unregisterRoom()ed, and
+    // the probe reaches it via Engine::getCurrentCardUsePattern(), so a missing
+    // RoomState is excluded from the snapshot — diagnostic data is not worth
+    // another crash on the failure path.
     if (!m_roomScene.isNull() && ClientInstance && Sanguosha
         && Sanguosha->currentRoomState() != nullptr) {
         LocalResponseUiProbe probe(ClientInstance, m_roomScene, QMap<QString, int>());
@@ -448,9 +456,10 @@ QJsonObject NetworkUiSmokeController::environmentDetails() const
     details.insert(QStringLiteral("game_mode"), ServerInfo.GameMode);
     details.insert(QStringLiteral("timeout_ms"), m_timeoutMs);
     details.insert(QStringLiteral("stall_ms"), m_stallMs);
-    // M2B-B：完整一局要證明「三個 profile 有完全相同嘅遊戲規則同網絡回覆」，
-    // 所以每次網絡 smoke 都記低佢實際行緊邊個 profile、建立咗幾多高成本
-    // 物件、同埋派咗幾多次 completion。
+    // M2B-B: a full game must prove that all three profiles share identical
+    // game rules and network replies, so every network smoke records which
+    // profile it actually ran, how many expensive objects were created, and how
+    // many completions were delivered.
     details.insert(QStringLiteral("effects"), G_EFFECTS.describe());
     details.insert(QStringLiteral("effects_counters"), G_EFFECTS.countersJson());
     QJsonObject completion;
@@ -468,8 +477,9 @@ int NetworkUiSmokeController::finish(int applicationExitCode)
     if (!controller)
         return applicationExitCode;
     if (!controller->m_finished) {
-        // event loop 行完但 smoke 未有結論:例如有人關咗窗,或者 MainWindow
-        // closeEvent 直接 quit。呢個唔算 PASS。
+        // The event loop ran out but the smoke reached no verdict: e.g. someone
+        // closed the window, or MainWindow closeEvent quit directly. This does
+        // not count as a PASS.
         controller->complete(false, QLatin1String(NetworkUiSmokeReport::StageShutdown),
             QStringLiteral("the Qt event loop exited before the network UI smoke "
                            "reached a conclusion"),

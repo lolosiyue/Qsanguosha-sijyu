@@ -1,8 +1,9 @@
 // Linux GUI M2B-A multimedia smoke 的 marker／exit code／影片分類契約測試。
 //
-// 只依賴 Qt Core：契約唔應該要開 QApplication、Qt Multimedia 或者真音訊裝置先
-// 驗到。真正的 audio backend／QML media component 由
-// tools/ci/linux-gui-multimedia-smoke.sh 喺 Xvfb 下驗證。
+// Depends on Qt Core only: the contract must be verifiable without
+// QApplication, Qt Multimedia, or a real audio device. The real audio backend
+// and QML media components are verified by
+// tools/ci/linux-gui-multimedia-smoke.sh under Xvfb.
 #include "multimedia-smoke-report.h"
 
 #include <QCoreApplication>
@@ -156,7 +157,7 @@ void testVideoContract()
             == QLatin1String("codec_unsupported"),
         "video result keeps the failure classification");
 
-    // 「冇 console error」唔可以當成功：每一種失敗都要有自己的分類。
+    // "No console error" must not count as success: every failure mode needs its own classification.
     for (const QString &reason : {QStringLiteral("asset_missing"),
              QStringLiteral("backend_unavailable"), QStringLiteral("codec_unsupported"),
              QStringLiteral("playback_error"), QStringLiteral("fallback_ok"),

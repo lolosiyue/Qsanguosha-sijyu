@@ -14,8 +14,8 @@ PixmapAnimation::PixmapAnimation(QGraphicsScene *)
 
 void PixmapAnimation::advance(int phase)
 {
-    // 冇 frame 就冇「播完」可言 —— 唔可以喺呢度 emit finished(),
-    // 否則一個空 item 淨係入到 scene 就會扮播完一次。
+    // No frames means "finished playing" is meaningless - do not emit finished()
+    // here, otherwise an empty item would fake one finished playback merely by entering the scene.
     if (frames.isEmpty())
         return;
     if (phase) current++;
@@ -31,13 +31,13 @@ void PixmapAnimation::setPath(const QString &path)
     frames.clear();
     current = 0;
 
-    // do-while 會喺 frame 0 都唔存在嗰陣照塞一格入去,而
-    // getPixmapFromFileName() 缺檔案時回嘅係一張 1x1 佔位圖(唔係 null),
-    // 所以 valid() 以前永遠都係 true —— 全部 caller 嘅「缺資產就唔好播」
-    // 分支（GetPixmapAnimation 回 nullptr、_createEquipBorderAnimations
-    // 清指標）根本從來冇行過。改成 while 之後嗰啲 fallback 先至真係生效。
+    // The do-while used to insert a frame even when frame 0 did not exist, and
+    // getPixmapFromFileName() returns a 1x1 placeholder (not null) when the file is
+    // missing, so valid() was always true - every caller's "do not play when assets
+    // are missing" branches (GetPixmapAnimation returning nullptr,
+    // _createEquipBorderAnimations clearing the pointer) never ran at all. Only after switching to while do those fallbacks actually take effect.
     //
-    // 資產齊嗰陣行為完全一樣:loop 條件本來就係同一個 QFile::exists()。
+    // With assets present the behavior is identical: the loop condition was the same QFile::exists() all along.
     int i = 0;
     QString pic_path = QString("%1%2%3").arg(path).arg(i++).arg(".png");
     while (QFile::exists(pic_path)) {
@@ -48,8 +48,8 @@ void PixmapAnimation::setPath(const QString &path)
 
 void PixmapAnimation::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
-    // frames 空咗代表資產缺失。valid() 為 false 嘅 item 唔應該入到 scene,
-    // 但 paint()／boundingRect() 一律唔可以喺空 list 上面 at()。
+    // Empty frames mean missing assets. An item with valid() == false should never
+    // enter the scene, but paint() / boundingRect() must never at() into an empty list regardless.
     if (frames.isEmpty() || current < 0 || current >= frames.size())
         return;
     painter->drawPixmap(0, 0, frames.at(current));
@@ -84,10 +84,10 @@ void PixmapAnimation::start(bool permanent, int interval)
 
 void PixmapAnimation::stop()
 {
-    // GetPixmapAnimation() 同 preStart() 都係直接 startTimer(),唔經 start(),
-    // 所以 _m_timerId 未必係嗰個 timer;而未 start 過就 stop 亦係正常路徑
-    // （例如裝備框由「著」變返「熄」之前根本未著過）。killTimer(0) 係 no-op,
-    // 但以前 _m_timerId 根本未初始化,會殺一個垃圾 id。
+    // GetPixmapAnimation() and preStart() call startTimer() directly, not via
+    // start(), so _m_timerId is not necessarily that timer; stopping without a
+    // prior start is also a normal path (e.g. an equip frame switching from "on" to
+    // "off" before ever being on). killTimer(0) is a no-op, but _m_timerId used to be uninitialized and would kill a garbage id.
     if (_m_timerId != 0) {
         killTimer(_m_timerId);
         _m_timerId = 0;
@@ -106,7 +106,7 @@ void PixmapAnimation::preStart()
 
 PixmapAnimation *PixmapAnimation::GetPixmapAnimation(QGraphicsItem *parent, const QString &emotion)
 {
-    // 下面要讀 parent->boundingRect() 嚟置中,冇 parent 就冇嘢可以做。
+    // The code below reads parent->boundingRect() to center; with no parent there is nothing to do.
     if (parent == nullptr)
         return nullptr;
 

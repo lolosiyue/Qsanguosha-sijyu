@@ -11,14 +11,16 @@ Item {
 
     readonly property bool backdropIsVideoFile: /\.(mp4|webm|mkv)$/i.test(String(backdropSource))
 
-    // 影片播放需要三個條件同時成立：使用者冇關掉、multimedia 後端真係載得到、
-    // 而背景本身係影片檔。任何一個唔成立都行靜態圖片，唔會建立 Video component。
+    // Video playback requires three conditions to hold at once: the user has not
+    // disabled it, the multimedia backend actually loads, and the backdrop itself is
+    // a video file. If any one fails, a static image is used and no Video component
+    // is created.
     property bool isVideo: homeController.videoBackgroundEnabled
                            && homeController.hasVideoSupport
                            && backdropIsVideoFile
 
-    // 影片播唔到就換返一張靜態背景。呢個係 M2B-A 要求的 static fallback：
-    // HomeScene 唔會因為影片失敗而載入唔到。
+    // If the video cannot play, fall back to a static backdrop. This is the static
+    // fallback required by M2B-A: HomeScene still loads even when the video fails.
     function fallBackToStaticBackdrop(reason, message) {
         homeController.reportVideoStatus(reason, message);
         isVideo = false;

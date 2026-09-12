@@ -15,19 +15,22 @@ class PlayerCardContainer;
 class RoomScene;
 class QTimer;
 
-// Linux GUI M2：真實網絡局入面代替真人操作嘅 UI 自動回應器。
+// Linux GUI M2: UI auto-responder that stands in for a human during a real network game.
 //
-// 佢唔係另一個 client，亦唔係 in-process fake：server 的 request 經真 TCP 到
-// 呢個 process，由產品的 Client 派去產品的 RoomScene，RoomScene 照常建立 pending
-// skill／dialog／target 選擇狀態，responder 只係代替滑鼠去揀真正被 enable 嘅
-// CardItem／Photo／按鈕，最後行 RoomScene 自己的 doOkButton()／doCancelButton()
-// 把回覆送返 server。
+// It is not another client and not an in-process fake: the server's request
+// arrives over real TCP at this process, is dispatched by the product's Client
+// to the product's RoomScene, and RoomScene builds its pending skill / dialog /
+// target selection state as usual; the responder merely plays the mouse,
+// picking the genuinely enabled CardItem / Photo / button, and finally runs
+// RoomScene's own doOkButton() / doCancelButton() to send the reply back to the
+// server.
 //
-// 策略刻意保持「第一個合法選擇」而唔用隨機數：固定 seed 之下成局可重現。
+// The strategy deliberately sticks to "the first legal choice" instead of random numbers: under a fixed seed the whole game is reproducible.
 //
-// 保底：如果某個 request 喺 stallMs 之內都無法經 UI 回覆（例如遇到一個 M2 未覆蓋
-// 的互動形態），就切 trustee 令對局一定行得完，並且把 trustee_fallback 記入
-// report — 唔會靜靜當冇事發生。
+// Fallback: if some request cannot be answered through the UI within stallMs
+// (e.g. an interaction form M2 does not cover), switch to trustee so the game
+// is guaranteed to finish, and record trustee_fallback in the report — it is
+// never silently ignored.
 class NetworkUiSmokeResponder final : public QObject
 {
     Q_OBJECT
@@ -39,10 +42,12 @@ public:
     static NetworkUiSmokeResponder *instance();
     static bool isActive();
 
-    // RoomScene::chooseGeneral 的 smoke 入口。由 server 提供嘅清單揀第一個，
-    // 保證固定 seed 下可重現，亦唔會落入「揀嘅武將唔喺清單」→ server 改用
-    // _chooseDefaultGeneral 嘅不確定路徑。清單為空時回傳 false，交返 RoomScene
-    // 行原本的 FreeChooseDialog 流程。
+    // Smoke entry for RoomScene::chooseGeneral. Picks the first entry of the
+    // list provided by the server, which guarantees reproducibility under a
+    // fixed seed and avoids falling into the uncertain path where the server
+    // falls back to _chooseDefaultGeneral because the chosen general is not in
+    // the list. Returns false when the list is empty, leaving RoomScene to run
+    // its original FreeChooseDialog flow.
     bool answerChooseGeneral(const QStringList &generals);
 
     bool trusteeEngaged() const;
@@ -71,12 +76,16 @@ private:
     bool stepSkillInvoke();
     bool stepPlayerChoose();
 
-    // 用真正被 enable 嘅手牌 + 真正 selectable 嘅目標湊出一個合法出牌。
+    // Assemble a legal card play from a genuinely enabled hand card plus a
+    // genuinely selectable target.
     //
-    // 一次 step 只試一張牌:每試一張都會令 RoomScene 重算目標、重排 graphics
-    // effect,一口氣試曬成手牌等於喺同一格 event loop 內狂 churn 場景。真人唔會
-    // 咁做,而 5 人局嘅 QGraphicsScene 亦捱唔住(見 docs 記錄的繪製崩潰)。
-    // 回傳 Attempted 代表已經送出回覆;Retry 代表要下一格 event loop 再試下一張。
+    // One step tries one card only: every attempt makes RoomScene recompute
+    // targets and re-lay the graphics effects, so blasting through the whole
+    // hand in one go would churn the scene within a single event loop turn. A
+    // human would not do that, and a 5-player QGraphicsScene cannot take it
+    // either (see the rendering crashes recorded in docs).
+    // Attempted means the reply has been sent; Retry means the next card is
+    // tried on the next event loop turn.
     enum class CardAttempt { Sent, Retry, Exhausted };
     CardAttempt tryUseNextCard(bool recordPlay);
     bool trySelectTargetsFor();

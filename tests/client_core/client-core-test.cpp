@@ -1,9 +1,10 @@
-// Client Architecture F1：ClientCore 的契約測試。
+// Client Architecture F1: the ClientCore contract tests.
 //
-// 只 link Qt6::Core 同 qsanguosha_client_core：request model、response 驗證、
-// exactly-once completion、cancel／timeout 同 view 生命週期全部唔應該要開
-// QApplication、RoomScene 或者一局真遊戲先驗到。真正嘅 desktop 呈現由
-// --local-response-ui runner 喺 GUI build 度驗。
+// Links only Qt6::Core and qsanguosha_client_core: the request model, response
+// validation, exactly-once completion, cancel/timeout, and view lifecycle must
+// all be verifiable without QApplication, RoomScene, or a real game round. The
+// real desktop presentation is verified by the --local-response-ui runner in a
+// GUI build.
 #include "client-core.h"
 #include "client-game-state-reducer.h"
 #include "client-interaction-view.h"
@@ -60,9 +61,10 @@ void checkRejection(const InteractionValidation &validation, InteractionRejectio
     ++failures;
 }
 
-// ── 錄音 view ────────────────────────────────────────────────────────────
-// Desktop adapter 契約嘅測試替身：記低 ClientCore 打過嚟嘅每一個 callback，
-// 令「呈現一次／完成一次／拒絕唔會收檔」呢啲次序保證驗得到。
+// ── recording view ──────────────────────────────────────────────────────
+// Test double for the desktop adapter contract: records every callback
+// ClientCore delivers so the ordering guarantees ("present once / finish once
+// / a rejection never settles the request") can be verified.
 class RecordingView : public IClientInteractionView
 {
 public:
@@ -79,7 +81,7 @@ public:
             m_core->detachView();
     }
 
-    // view 死之前一定要同 core 解綁；呢個 helper 令測試唔使喺每個 case 重覆寫。
+    // A view must detach from the core before it dies; this helper saves each case from repeating that boilerplate.
     void attachTo(ClientCore *core)
     {
         m_core = core;
@@ -137,8 +139,9 @@ private:
     ClientCore *m_core = nullptr;
 };
 
-// 數 signal。唔用 QSignalSpy：呢個測試刻意只 link Qt6::Core，多拉一個
-// Qt6::Test 入嚟就會令「ClientCore 唔依賴 GUI」呢個 gate 冇咁鋒利。
+// Counts signals. QSignalSpy is deliberately not used: this test links only
+// Qt6::Core on purpose, and pulling in Qt6::Test would blunt the
+// "ClientCore does not depend on the GUI" gate.
 class SignalCounter
 {
 public:
@@ -204,8 +207,9 @@ InteractionRequest playerRequest()
 
 void testRequestSnapshot()
 {
-    // 任務書指定嘅 deterministic snapshot 形狀。key 排序由 QJsonObject 保證，
-    // 所以同一個 request 喺任何平台都出同一串 bytes。
+    // The deterministic snapshot shape mandated by the task spec. Key ordering
+    // is guaranteed by QJsonObject, so the same request yields the same bytes
+    // on every platform.
     InteractionRequest request = chooseCardRequest();
     checkEqual(request.toSnapshot(),
         QByteArray("{\"cancelable\":false,\"max\":1,\"min\":1,"
@@ -240,7 +244,7 @@ void testRequestSnapshot()
     // 同一個 request 序列化兩次一定出同一串 bytes。
     checkEqual(players.toSnapshot(), players.toSnapshot(), "snapshot is stable across calls");
 
-    // 非枚舉 option（FreeChoose 之下嘅 choose general）喺 snapshot 度睇得出。
+    // A non-enumerated option (choose general under FreeChoose) is visible in the snapshot.
     InteractionRequest general;
     general.requestId = 3;
     general.type = InteractionType::ChooseGeneral;
@@ -280,18 +284,18 @@ void testRequestIdentity()
     check(!core.hasActiveRequest(InteractionType::ChoosePlayer),
         "a type query does not match a different type");
 
-    // 上一個 request 未答就嚟第二個：舊嗰個以 superseded 收檔，唔會送任何答案。
+    // A second request arrives while the first is unanswered: the old one is settled as superseded and never sends any answer.
     const quint64 secondId = core.beginRequest(playerRequest());
     check(secondId == 2, "request ids keep increasing");
     check(view.trace() == QLatin1String("present(choice),cancel(superseded),present(choose_player)"),
         "a new request supersedes the pending one");
 
-    // 舊 id 嘅遲到答案唔會被當成新 request 嘅答案。
+    // A late answer for an old id is not treated as the new request's answer.
     checkRejection(core.submitResponse(InteractionResponse::makePlayers(firstId,
             QStringList() << QStringLiteral("sgs1"))),
         InteractionRejection::RequestCancelled, "a reply to a superseded request is rejected");
 
-    // 明確編號嘅 request 會推高之後嘅自動編號。
+    // An explicitly numbered request pushes up the subsequent auto-numbering.
     ClientCore explicitCore;
     InteractionRequest numbered = choiceRequest();
     numbered.requestId = 100;
@@ -319,7 +323,7 @@ void testOptionValidation()
         "an offered option is accepted");
     check(core.hasActiveRequest(), "validate() alone does not complete the request");
 
-    // 非枚舉 request 收清單以外嘅答案，但仍然唔收空答案。
+    // A non-enumerated request accepts answers outside the list, but still rejects empty answers.
     ClientCore freeCore;
     InteractionRequest general;
     general.type = InteractionType::ChooseGeneral;
@@ -357,7 +361,7 @@ void testPlayerValidation()
             QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs2"))).accepted(),
         "a legal player selection is accepted");
 
-    // cancelable（min == 0）嘅 request 收得起空答案。
+    // A cancelable request (min == 0) accepts an empty answer.
     ClientCore optionalCore;
     InteractionRequest optional = playerRequest();
     std::get<PlayerInteractionPayload>(optional.payload).selection.minSelection = 0;
@@ -397,8 +401,9 @@ void testCardValidation()
     checkRejection(disabledCore.validate(InteractionResponse::makeCards(disabledId, QList<int>() << 13)),
         InteractionRejection::DisabledCard, "a disabled card is rejected even when listed");
 
-    // 非枚舉（pattern 配對）嘅 response card：成員資格由 server 判，但值域、
-    // 數量同取消權仍然由 ClientCore 執行。
+    // A non-enumerated (pattern-matched) response card: membership is decided
+    // by the server, but the id range, count, and cancel rights are still
+    // enforced by ClientCore.
     ClientCore patternCore;
     patternCore.state()->setCardIdSpace(160);
     InteractionRequest pattern;
@@ -418,7 +423,7 @@ void testCardValidation()
         InteractionRejection::UnknownCard, "a negative card id is rejected even without a card list");
     checkRejection(patternCore.validate(InteractionResponse::makeCards(patternId, QList<int>() << 7 << 7)),
         InteractionRejection::DuplicateCard, "the same card cannot be submitted twice");
-    // virtual card 冇實 id，但一定有 toString()。
+    // A virtual card has no concrete id, but always has toString().
     check(patternCore.validate(InteractionResponse::makeCards(patternId, QList<int>(),
             QStringLiteral("jink:qiaobian[spade:7]="))).accepted(),
         "a virtual card with no concrete id counts as one card");
@@ -469,7 +474,7 @@ void testExactlyOnceCompletion()
     check(view.trace() == QLatin1String("present(choice),finish(option)"),
         "the view is told about the completion exactly once");
 
-    // 被拒嘅答案唔會收檔：request 仲喺度等一個好答案。
+    // A rejected answer does not settle the request: it stays open for a good answer.
     ClientCore retryCore;
     RecordingView retryView;
     retryView.attachTo(&retryCore);
@@ -482,7 +487,7 @@ void testExactlyOnceCompletion()
     check(retryView.trace() == QLatin1String("present(choice),reject(unknown_option),finish(option)"),
         "the view sees the rejection before the completion");
 
-    // id 對唔上嘅答案唔會完成 active request。
+    // An answer whose id does not match never completes the active request.
     ClientCore mismatchCore;
     const quint64 mismatchId = mismatchCore.beginRequest(choiceRequest());
     checkRejection(mismatchCore.submitResponse(InteractionResponse::makeOption(mismatchId + 500,
@@ -512,7 +517,7 @@ void testCancelAndTimeout()
     core.cancelActiveRequest(InteractionCancelReason::Abandoned);
     check(cancelled.count() == 1, "cancelling twice is a no-op");
 
-    // 注入時鐘：死線係測試得到嘅純數值，唔使真係等。
+    // Injected clock: the deadline is a plain number the test controls, no real waiting.
     qint64 clock = 0;
     ClientCore timed;
     timed.setClock([&clock]() { return clock; });
@@ -542,7 +547,7 @@ void testCancelAndTimeout()
     check(timedView.trace() == QLatin1String("present(choose_player),reject(request_expired),cancel(expired)"),
         "the view sees the expiry as a cancellation");
 
-    // 冇 timeout 就冇死線。
+    // No timeout means no deadline.
     ClientCore untimed;
     untimed.setClock([]() { return Q_INT64_C(1) << 40; });
     untimed.beginRequest(playerRequest());
@@ -562,14 +567,14 @@ void testViewLifecycle()
         id = core.beginRequest(playerRequest());
         check(view.events.size() == 1, "attaching a view before the request presents it once");
     }
-    // view 喺 request 未答之前死咗：core 先係真相，request 仲喺度。
+    // The view died before the request was answered: the core is the source of truth and the request is still open.
     check(core.view() == nullptr, "a destroyed view detaches itself");
     check(core.hasActiveRequest(), "the request survives the view");
     check(core.submitResponse(InteractionResponse::makePlayers(id,
             QStringList() << QStringLiteral("sgs1"))).accepted(),
         "an answer still lands with no view attached");
 
-    // 後嚟先接上嘅 view 會即刻收到未答嘅 request，唔會對住空畫面等。
+    // A view attached later immediately receives the unanswered request instead of staring at a blank screen.
     ClientCore lateCore;
     lateCore.beginRequest(choiceRequest());
     RecordingView lateView;
@@ -577,7 +582,7 @@ void testViewLifecycle()
     check(lateView.trace() == QLatin1String("present(choice)"),
         "attaching a view mid-request replays the pending request");
 
-    // 冇 view 嘅 core 一樣行得。
+    // A core without a view still works.
     ClientCore headless;
     const quint64 headlessId = headless.beginRequest(choiceRequest());
     check(headless.submitResponse(InteractionResponse::makeOption(headlessId,
@@ -589,10 +594,11 @@ void testViewLifecycle()
 
 void testViewContract()
 {
-    // Desktop adapter（DesktopInteractionView）靠呢啲保證：
-    //   1. 每個 request 恰好 present 一次；
-    //   2. 每個 request 恰好收檔一次，唔係 finish 就係 cancel，冇兩者皆有；
-    //   3. reject 唔算收檔。
+    // The desktop adapter (DesktopInteractionView) relies on these guarantees:
+    //   1. every request is presented exactly once;
+    //   2. every request is settled exactly once, either finished or cancelled,
+    //      never both;
+    //   3. a rejection does not count as settling.
     ClientCore core;
     RecordingView view;
     view.attachTo(&core);
@@ -628,10 +634,11 @@ void testViewContract()
 
 // ── 重入 ────────────────────────────────────────────────────────────────
 
-// Desktop 嘅 presentRequest() 會 setStatus()，而 RoomScene::updateStatus() 有
-// 幾條路會喺同一個 call stack 入面就答返呢個 request（例如 responding 狀態搵
-// 唔到可用嘅 view-as skill，就即刻覆一個空答案）。呢個 view 就係模擬嗰種
-// 「present 途中已經答咗」嘅行為。
+// The desktop presentRequest() calls setStatus(), and RoomScene::updateStatus()
+// has several paths that answer the request within the same call stack (for
+// example, when the responding state finds no usable view-as skill it
+// immediately submits an empty answer). This view simulates that
+// "answered while still being presented" behavior.
 class SelfAnsweringView : public IClientInteractionView
 {
 public:
@@ -652,8 +659,9 @@ public:
         m_answerOnce = false;
         accepted = m_core->submitResponse(
             InteractionResponse::makeOption(request.requestId, QStringLiteral("yes"))).accepted();
-        // 答完之後仲用得返個 request：ClientCore 一定要傳 copy，唔可以傳
-        // m_active 嘅 reference（嗰陣 m_active 已經清空）。
+        // The request must still be usable after answering: ClientCore must
+        // pass a copy, never a reference to m_active (m_active is already
+        // cleared by then).
         stillReadable = request.requestId == presentedId
             && request.type != InteractionType::None;
     }
@@ -723,7 +731,7 @@ void testGameState()
     check(state->playerNames() == (QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs3")),
         "players can join and leave");
 
-    // 未知值域就唔攔：寧可唔驗，都唔可以攔錯一個合法回覆。
+    // An unknown id range is not policed: skipping validation is preferable to wrongly rejecting a legal reply.
     ClientGameState unbounded;
     check(unbounded.isKnownCardId(9999), "an unknown card id space accepts any non-negative id");
 

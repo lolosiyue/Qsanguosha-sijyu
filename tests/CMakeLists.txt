@@ -1,5 +1,5 @@
 set(QSAN_TEST_ROOT "${CMAKE_SOURCE_DIR}")
-# 呢個目錄入面起嘅 target 全部收落 Visual Studio 嘅 "Tests" solution folder。
+# All targets defined in this directory are filed under the Visual Studio "Tests" solution folder.
 set(CMAKE_FOLDER "Tests")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -57,10 +57,11 @@ endfunction()
 
 include("${QSAN_TEST_ROOT}/cmake/QSanguoshaAndroidContentTests.cmake")
 
-# 所有「link engine + Qt6::Gui」嘅測試住喺同一個執行檔。佢哋本身嘅 link 面
-# 完全一樣(qsan_link_engine_test),分開只係多七個 Visual Studio project。
-# 每個 suite 依然行喺自己嘅 process:夾埋入嚟嗰啲仍然係原本嗰個 main(),
-# 靠 COMPILE_DEFINITIONS main=... 改名,測試檔本身一行都冇改過。
+# All tests that link the engine + Qt6::Gui live in one executable. Their link
+# surface is identical (qsan_link_engine_test); keeping them separate would
+# only add seven Visual Studio projects. Each suite still runs in its own
+# process: the merged-in suites keep their original main(), renamed via
+# COMPILE_DEFINITIONS main=..., without a single line changed in the test files.
 add_executable(qsanguosha_core_tests
     core-tests-main.cpp
     engine-smoke-test.cpp
@@ -215,10 +216,11 @@ target_link_libraries(qsanguosha_protocol_v2_contract_support PUBLIC
     Qt6::Network
 )
 
-# 協定層契約全部住喺同一個執行檔:五個 suite 嘅 link 面本身就一樣(support lib
-# 已經有 card-provenance／skill-instance／switch-context／sync-pile／player-ui-state
-# 呢幾份 source,所以 protocol-messages 唔使再自己編一份),夾埋只係少咗四個
-# Visual Studio project。每個 suite 依然行喺自己嘅 process。
+# All protocol-layer contracts live in one executable: the five suites already
+# share the same link surface (the support lib already builds the
+# card-provenance/skill-instance/switch-context/sync-pile/player-ui-state
+# sources, so protocol-messages does not compile them again); merging just
+# removes four Visual Studio projects. Each suite still runs in its own process.
 add_executable(qsanguosha_protocol_tests
     protocol-tests-main.cpp
     protocol-messages-test.cpp
@@ -288,12 +290,14 @@ if(WIN32)
     )
 endif()
 
-# Linux GUI M1／M2／M2B-A／M2B-B 嘅 marker、exit code、command 對照同效果
-# profile 契約。四個都只 link Qt6::Core:契約唔應該要開 QApplication、Qt
-# Multimedia、OpenGL 或者美術資產先驗到,所以 server-only configure 一樣跑得。
-# 夾埋一個 target 只係少咗三個 Visual Studio project,每個 suite 依然行喺
-# 自己嘅 process(見 tests/ui-contract-tests-main.cpp)。
-# AUTOMOC 要開,因為 effects 測試入面有一個帶 Q_PROPERTY 嘅最小動畫目標。
+# Contracts for the Linux GUI M1/M2/M2B-A/M2B-B markers, exit codes, command
+# mapping, and effects profiles. All four link only Qt6::Core: the contracts
+# must not require QApplication, Qt Multimedia, OpenGL, or art assets to be
+# verified, so a server-only configure works too. Merging into one target just
+# removes three Visual Studio projects; each suite still runs in its own
+# process (see tests/ui-contract-tests-main.cpp).
+# AUTOMOC is required because the effects test contains a minimal animation
+# target with a Q_PROPERTY.
 add_executable(qsanguosha_ui_contract_tests
     ui-contract-tests-main.cpp
     ui_startup_smoke/ui-startup-smoke-report-test.cpp
@@ -334,10 +338,11 @@ qsan_add_ctest(qsanguosha_effects_profile_contract qsanguosha_ui_contract_tests
     LABELS "ui;fast"
 )
 
-# Client Architecture F1:ClientCore 契約。只 link Qt6::Core 同
-# qsanguosha_client_core —— 呢個 test 一旦要拉 GUI 先 link 得到,就代表
-# ClientCore 已經漏咗 GUI 依賴入去,所以佢本身就係「ClientCore 唔依賴 GUI」
-# 呢條完成標準嘅 gate。server-only configure 一樣跑得。
+# Client Architecture F1: the ClientCore contract. It links only Qt6::Core and
+# qsanguosha_client_core -- if this test ever needed the GUI to link, that
+# would mean ClientCore had leaked a GUI dependency in, so the test itself is
+# the gate for the "ClientCore does not depend on the GUI" acceptance rule.
+# A server-only configure works too.
 add_executable(qsanguosha_client_core_tests
     client_core/client-core-test.cpp
 )
@@ -370,10 +375,11 @@ target_link_libraries(qsanguosha_client_runtime_headers_test PRIVATE
 )
 
 if(QSAN_BUILD_TUI)
-    # 四個 TUI 測試住喺同一個執行檔:佢哋嘅 link 面本身係同一個超集
-    # (live-tcp 已經同時 link engine 同 protocol v2 support),夾埋只係少咗
-    # 三個 Visual Studio project。每個 suite 依然行喺自己嘅 process,測試檔
-    # 本身一行都冇改過 —— main() 靠 COMPILE_DEFINITIONS 改名。
+    # The four TUI tests live in one executable: their link surface is already
+    # the same superset (live-tcp already links both the engine and protocol v2
+    # support), so merging just removes three Visual Studio projects. Each
+    # suite still runs in its own process and no test file changed a line --
+    # main() is renamed via COMPILE_DEFINITIONS.
     add_executable(qsanguosha_tui_tests
         tui-tests-main.cpp
         tui/tui-board-layout-test.cpp
@@ -555,8 +561,9 @@ if(QSAN_BUILD_TUI)
     )
 endif()
 
-# M3:打包契約。呢個 test 只讀 repository,唔會整包,所以每次 CI 都跑得起 ——
-# 真正整包同由成品 smoke 嗰啲喺 linux-package-ci.yml。
+# M3: the packaging contract. This test only reads the repository and never
+# builds a package, so CI can always run it -- real packaging and the artifact
+# smoke checks live in linux-package-ci.yml.
 add_test(NAME qsanguosha_packaging_contract
     COMMAND ${Python3_EXECUTABLE}
         ${QSAN_TEST_ROOT}/tools/autotest/tests/test_packaging_contract.py
@@ -586,9 +593,10 @@ if(WIN32)
     )
 endif()
 
-# dedicated server 周邊嘅測試(command line、logger、真 TCP 整合)住喺同一個
-# 執行檔:三個都唔 link engine,淨係 Qt6::Core／Qt6::Network 加 protocol v2
-# support,夾埋唔會改變任何一個嘅 link 面,只係少咗兩個 Visual Studio project。
+# The tests around the dedicated server (command line, logger, real TCP
+# integration) live in one executable: none of the three links the engine,
+# only Qt6::Core/Qt6::Network plus protocol v2 support, so merging changes no
+# suite's link surface and just removes two Visual Studio projects.
 add_executable(qsanguosha_server_support_tests
     server-support-tests-main.cpp
     server-command-line-test.cpp

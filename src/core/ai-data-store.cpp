@@ -21,10 +21,11 @@ QMutex &aiDataMutex()
 const QString AiDataRelativePath = QStringLiteral("lua/ai/data/AiData");
 const qsizetype AiDataMaximumBytes = 8 * 1024 * 1024;
 
-// AI 學習資料係執行期產生嘅使用者資料,唔可以寫返入安裝樹 —— AppImage 係
-// 唯讀 squashfs,/usr/share 亦通常唔屬於使用者。寫一律去 user data root;
-// 讀就 user data 行先,搵唔到先返去資產樹入面隨包附帶嗰份(舊有部署同開發樹
-// 嘅 user data root 本身就係資產樹,行為同以前一樣)。
+// AI learning data is user data generated at runtime and must not be written back into
+// the install tree — AppImage is a read-only squashfs and /usr/share is usually not
+// user-owned. Writes always go to the user data root; reads try the user data root first
+// and fall back to the bundled copy in the asset tree (for legacy deployments and the dev
+// tree the user data root is the asset tree, so behavior is unchanged).
 QString aiDataWritePath()
 {
     return QSanRuntimePaths::userDataPath(AiDataRelativePath);

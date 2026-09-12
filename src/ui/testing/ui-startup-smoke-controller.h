@@ -13,15 +13,17 @@
 class MainWindow;
 class QTimer;
 
-// Linux GUI M1 的真正 startup smoke。
+// The real startup smoke for Linux GUI M1.
 //
-// 同 --local-response-ui-capabilities（喺 QApplication 之前就 return 的 binary
-// capability query）唔同，呢個 controller 一定行完整 GUI startup path：
+// Unlike --local-response-ui-capabilities (a binary capability query that
+// returns before QApplication), this controller always runs the full GUI
+// startup path:
 //
 //     QApplication → engine/runtime → MainWindow → HomeScene/QML → event loop
 //
-// 佢唔會另外複製一份假的 HomeScene 啟動流程，而係直接建立產品用的 MainWindow，
-// 靠 MainWindow 自己的 home scene signal 判斷 ready，再自動退出。
+// It does not duplicate a fake HomeScene startup flow; it creates the product's
+// own MainWindow directly, judges readiness via MainWindow's home scene signal,
+// and then exits on its own.
 class UiStartupSmokeController final : public QObject
 {
     Q_OBJECT
@@ -32,12 +34,14 @@ public:
 
     static bool isRequested(const QStringList &arguments);
 
-    // 喺 QApplication 建立之後、engine bootstrap 之前呼叫：安裝 Qt message hook，
-    // 並記錄 application stage。回傳 false 代表參數不合法（已輸出 failure result）。
+    // Call after QApplication is created and before engine bootstrap: installs
+    // the Qt message hook and records the application stage. Returning false
+    // means the arguments are invalid (a failure result has been output).
     static bool begin(const QStringList &arguments, int *exitCode);
 
-    // GUI 初始化中途失敗（例如 EngineBootstrap）時呼叫：輸出 failure result 並
-    // 回傳對應 exit code。冇 begin() 過就當冇要求 smoke，回傳 fallback。
+    // Call when GUI initialization fails midway (e.g. EngineBootstrap): outputs
+    // a failure result and returns the matching exit code. If begin() never
+    // ran, treat it as no smoke requested and return the fallback.
     static int abortEarly(const QString &stage, const QString &error, int fallbackExitCode);
 
     // 走完產品正常 GUI 初始化之後呼叫：建立 MainWindow、載入 HomeScene、行 event
@@ -57,8 +61,9 @@ private slots:
 private:
     void emitStage(const QString &stage, bool ok, const QJsonObject &details = QJsonObject());
     int remainingMs() const;
-    // 同步階段（engine bootstrap／MainWindow 建構）唔會行 event loop，QTimer 唔會
-    // 觸發，所以喺每個同步檢查點主動比對 deadline。
+    // Synchronous phases (engine bootstrap / MainWindow construction) never run
+    // the event loop, so QTimer will not fire; check the deadline explicitly at
+    // each synchronous checkpoint.
     bool failIfDeadlineExceeded(const QString &stage);
     bool failIfDeadlineExceeded(const QString &stage, bool force);
     void finish(bool ok, const QString &stage, const QString &error,

@@ -39,16 +39,18 @@ void DesktopInteractionView::presentRequest(const InteractionRequest &request)
 
 void DesktopInteractionView::finishRequest(const InteractionRequest &, const InteractionResponse &)
 {
-    // Desktop 嘅收拾（prompt box 消失、stopPending、unselectAll、setStatus）一直
-    // 都喺 RoomScene 送答案之前就做咗,所以呢度冇嘢要補做。保留呢個 override
-    // 係因為佢係契約嘅一部分:第二個 view（text／Android）就要喺呢度收工。
+    // The desktop's cleanup (prompt box disappears, stopPending, unselectAll, setStatus) has
+    // always happened before RoomScene submits the answer, so there is nothing extra to do
+    // here. This override is kept because it is part of the contract: a second view
+    // (text/Android) would do its cleanup here.
 }
 
 void DesktopInteractionView::cancelRequest(const InteractionRequest &request,
     InteractionCancelReason reason)
 {
-    // 同上:desktop 嘅 request 取消一定係「下一個 server request 到咗」或者
-    // 「本機主動放棄」,兩者都已經 setStatus() 過。淨低只需要一行 log。
+    // Same as above: a desktop request cancellation is always either "the next server
+    // request arrived" or "abandoned locally", and both already went through setStatus().
+    // All that is left is one log line.
     qCDebug(qsanDesktopInteraction) << "request" << request.requestId
         << interactionTypeName(request.type) << "cancelled:"
         << interactionCancelReasonName(reason);
@@ -57,9 +59,10 @@ void DesktopInteractionView::cancelRequest(const InteractionRequest &request,
 void DesktopInteractionView::rejectResponse(const InteractionRequest &request,
     const InteractionResponse &response, const InteractionValidation &validation)
 {
-    // 被拒嘅答案唔會上線,request 亦仲喺度等一個好答案。Desktop 唔會彈窗:
-    // 玩家撳到一個唔合法嘅選擇,本身就係 UI enable 邏輯有 bug,應該喺 log
-    // 度捉,而唔係喺對局中間嚇親玩家。
+    // A rejected answer never reaches the wire and the request keeps waiting for a good
+    // one. The desktop does not pop up a dialog: the player clicking an illegal choice
+    // means the UI enable logic has a bug — catch it in the log instead of startling the
+    // player mid-game.
     qCWarning(qsanDesktopInteraction).noquote()
         << "rejected desktop reply to request" << request.requestId
         << interactionTypeName(request.type) << ":" << validation.reasonName()

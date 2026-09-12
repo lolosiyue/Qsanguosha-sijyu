@@ -80,8 +80,9 @@ void uiStartupSmokeMessageHandler(QtMsgType type, const QMessageLogContext &cont
         uiStartupSmokePreviousHandler(type, context, message);
 
     if (type == QtFatalMsg) {
-        // qFatal 之後 Qt 直接 abort，冇機會行返 finish()：喺度先補一行 result，
-        // 令 CI 見到明確的失敗 stage，而唔係「marker 缺失」。
+        // After qFatal Qt aborts directly, with no chance to run finish():
+        // write the extra result line here so CI sees a clear failure stage
+        // instead of a "missing marker".
         QMutexLocker locker(&uiStartupSmokeMessageMutex);
         UiStartupSmokeController *controller = UiStartupSmokeController::s_active;
         if (controller && !controller->m_finished) {
@@ -128,8 +129,10 @@ bool UiStartupSmokeController::begin(const QStringList &arguments, int *exitCode
         s_active = controller;
     }
     uiStartupSmokePreviousHandler = qInstallMessageHandler(uiStartupSmokeMessageHandler);
-    // Engine 建構失敗等舊有路徑會直接 exit(1)，唔會行返 finish()。登記 atexit 兜底，
-    // 保證任何退出路徑都留低一行 UI_STARTUP_RESULT，CI 唔會見到「marker 缺失」。
+    // Legacy paths such as Engine construction failure call exit(1) directly and
+    // never reach finish(). Registering an atexit safety net guarantees that
+    // every exit path leaves a UI_STARTUP_RESULT line; CI never sees a
+    // "missing marker".
     std::atexit(&UiStartupSmokeController::reportUnfinishedAtExit);
 
     QString error;
@@ -149,8 +152,9 @@ bool UiStartupSmokeController::begin(const QStringList &arguments, int *exitCode
         return false;
     }
 
-    // 到呢一步 QApplication 一定已經建立好：--ui-startup-smoke 唔會喺 QApplication
-    // 之前 return，呢個係同 --local-response-ui-capabilities 最大的分別。
+    // By this point QApplication is guaranteed to exist: --ui-startup-smoke
+    // never returns before QApplication is constructed, which is the biggest
+    // difference from --local-response-ui-capabilities.
     QApplication *application = qobject_cast<QApplication *>(qApp);
     if (!application) {
         controller->finish(false, QStringLiteral("application"),
@@ -231,7 +235,7 @@ int UiStartupSmokeController::execute()
     });
 
     m_pendingStage = QStringLiteral("main_window");
-    // 直接用產品的 MainWindow，唔另外複製一份 HomeScene 啟動流程。
+    // Uses the product's MainWindow directly instead of duplicating a HomeScene startup flow.
     MainWindow *window = new MainWindow;
     m_mainWindow = window;
     Sanguosha->setParent(window);
@@ -297,8 +301,9 @@ void UiStartupSmokeController::onEventLoopEntered()
             UiStartupSmokeReport::SetupFailed);
         return;
     }
-    // setSource() 對 qrc 係同步的，signal 通常喺 MainWindow 建構期間就已經發出，
-    // 所以要主動查一次目前狀態，唔可以淨係等 signal。
+    // setSource() is synchronous for qrc resources, so the signal has usually
+    // already been emitted during MainWindow construction; poll the current
+    // state once instead of only waiting for the signal.
     if (m_mainWindow->isHomeSceneReady())
         onHomeSceneReady();
     else if (m_mainWindow->hasHomeSceneError())

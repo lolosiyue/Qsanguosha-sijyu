@@ -546,8 +546,8 @@ int HomeGeneralModel::indexOfName(const QString &name) const
 HomeController::HomeController(QObject *parent)
     : QObject(parent)
 {
-    // 未有 QML 結論之前先寫低一個確定的狀態：唔會出現「冇人報告過」呢種
-    // 分辨唔到的空白。
+    // Write a definite state before any QML verdict arrives, so the ambiguous
+    // "nobody reported anything" blank can never appear.
     if (!videoBackgroundEnabled())
         reportVideoStatus(QStringLiteral("disabled"), QString());
     else if (!hasVideoSupport())
@@ -632,9 +632,9 @@ bool HomeController::hasVideoSupport() const
 {
 #ifdef HAS_QT_MULTIMEDIA
     static const bool backendAvailable = []() {
-        // 原本只搵 *.dll，即係 Linux 永遠答 false，影片背景喺 Linux 一定行唔到。
-        // 改成用 glob 認 plugin 名，唔再假設副檔名；QLibraryInfo 的 plugin 路徑
-        // 亦一齊搵，因為 Qt 重定位 prefix 之後 libraryPaths() 唔一定包含佢。
+        // The old code matched only *.dll, so Linux always answered false and the
+        // video background could never run there. Now plugin names are matched by glob
+        // instead of assuming an extension; QLibraryInfo's plugin path is searched too, since libraryPaths() may not include it after a relocated Qt prefix.
         QStringList roots = QCoreApplication::libraryPaths();
         roots << QLibraryInfo::path(QLibraryInfo::PluginsPath);
         roots.removeDuplicates();
@@ -656,9 +656,9 @@ bool HomeController::hasVideoSupport() const
 
 bool HomeController::videoBackgroundEnabled() const
 {
-    // videoEnabled() 已經夾埋 Config.EnableBackgroundVideo:profile 只可以再
-    // 收窄,唔會幫使用者開返佢關咗嘅影片背景。REDUCED／NONE 一律靜態背景,
-    // 連 QML Video component 都唔會 instantiate。
+    // videoEnabled() already folds in Config.EnableBackgroundVideo: the profile can
+    // only narrow further and never re-enables a video background the user turned
+    // off. REDUCED / NONE always use the static background and never instantiate a QML Video component.
     return G_EFFECTS.videoEnabled();
 }
 
@@ -675,7 +675,7 @@ bool HomeController::localFileExists(const QUrl &url) const
         return QFile::exists(url.toLocalFile());
     if (url.scheme().isEmpty())
         return QFile::exists(url.toString());
-    // qrc:／http: 之類唔喺度判斷，交返畀 media backend。
+    // qrc: / http: and the like are not judged here; left to the media backend.
     return true;
 }
 
@@ -686,7 +686,7 @@ void HomeController::reportVideoStatus(const QString &reason, const QString &err
     m_videoStatus.insert(QStringLiteral("available"), hasVideoSupport());
     m_videoStatus.insert(QStringLiteral("enabled"), videoBackgroundEnabled());
     m_videoStatus.insert(QStringLiteral("loaded"), loaded);
-    // 除咗真係播到，其餘每一種結果都代表靜態背景頂上咗。
+    // Every outcome other than actual playback means the static background took over.
     m_videoStatus.insert(QStringLiteral("fallback"), !loaded);
     m_videoStatus.insert(QStringLiteral("reason"), reason);
     m_videoStatus.insert(QStringLiteral("error"), error);

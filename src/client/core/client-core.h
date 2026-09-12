@@ -1,7 +1,7 @@
 #ifndef CLIENT_CORE_H
 #define CLIENT_CORE_H
 
-// ClientCore:protocol 同 UI 之間嘅中間層。
+// ClientCore: the middle layer between protocol and UI.
 //
 //   Protocol / Client
 //           ↓  beginRequest(InteractionRequest)
@@ -9,22 +9,23 @@
 //           ↓  IClientInteractionView::presentRequest()
 //       DesktopInteractionView / TextClient / Android / WASM
 //           ↓  submitResponse(InteractionResponse)
-//       ClientCore  ← 驗證 + exactly-once
+//       ClientCore  ← validation + exactly-once
 //           ↓  responseAccepted()
 //   Protocol / Client → replyToServer()
 //
-// ClientCore 只 link Qt Core。佢唔認識 QWidget、QGraphicsItem、QDialog、
-// QQuickItem、Dashboard、RoomScene,亦唔認識 engine 嘅 Card／Player／Skill。
+// ClientCore links only Qt Core. It knows nothing about QWidget, QGraphicsItem, QDialog,
+// QQuickItem, Dashboard or RoomScene, nor about the engine's Card/Player/Skill.
 //
-// 佢負責:
-//   - 當前 request 同 correlation ID
-//   - 可選卡牌／玩家／option、min-max、cancelable、timeout／deadline
+// It is responsible for:
+//   - the current request and its correlation ID
+//   - selectable cards/players/options, min-max, cancelable, timeout/deadline
 //   - skill/context metadata
-//   - response 驗證
+//   - response validation
 //   - exactly-once completion guard
 //
-// 佢唔負責:規則。「呢張牌配唔配到 pattern」係 server 嘅事;ClientCore 只
-// 執行 server 喺 request 入面已經寫低嘅約束。
+// It is NOT responsible for rules. "Does this card match the pattern" is the server's
+// business; ClientCore only enforces the constraints the server has already written
+// into the request.
 
 #include "client-game-state.h"
 #include "card-eligibility-provider.h"
@@ -42,7 +43,8 @@ class ClientCore : public QObject
     Q_OBJECT
 
 public:
-    // 單調毫秒時鐘。預設係 process 開機以嚟嘅 QElapsedTimer,測試可以換走。
+    // Monotonic millisecond clock. Defaults to a QElapsedTimer started at process boot;
+    // tests may swap it.
     typedef std::function<qint64()> Clock;
 
     explicit ClientCore(QObject *parent = nullptr);
@@ -56,14 +58,16 @@ public:
     ClientGameState *state() { return &m_state; }
     const ClientGameState *state() const { return &m_state; }
 
-    // View 唔屬於 ClientCore。View 死之前一定要 detachView():core 會保住
-    // pending request(佢先係真相),只係停止再通知。
+    // The view is not owned by ClientCore. detachView() must be called before the view dies:
+    // the core keeps the pending request (that is the source of truth) and merely stops
+    // notifying.
     void setView(IClientInteractionView *view);
     IClientInteractionView *view() const { return m_view; }
     void detachView();
 
-    // 開一個新 request。requestId 若為 0 就自動編號並寫返落 request。
-    // 上一個未完成嘅 request 會以 Superseded 取消,唔會送任何 reply。
+    // Opens a new request. If requestId is 0 it is auto-numbered and written back into the
+    // request. The previous unfinished request is cancelled as Superseded; no reply is sent
+    // for it.
     quint64 beginRequest(InteractionRequest request);
 
     bool hasActiveRequest() const;
@@ -71,13 +75,15 @@ public:
     const InteractionRequest &activeRequest() const { return m_active; }
     quint64 activeRequestId() const;
 
-    // 淨係驗,唔改狀態。
+    // Validate only; no state change.
     InteractionValidation validate(const InteractionResponse &response) const;
-    // 驗 + 完成。被接納嘅答案會令 request 收檔,再答一次係 AlreadyCompleted。
+    // Validate + complete. An accepted answer finalizes the request; answering again yields
+    // AlreadyCompleted.
     InteractionValidation submitResponse(const InteractionResponse &response);
 
     void cancelActiveRequest(InteractionCancelReason reason);
-    // 過咗死線就取消,回傳有冇取消到。冇死線／未到期／冇 request 都回 false。
+    // Cancels past the deadline and returns whether the cancellation happened. Returns false
+    // when there is no deadline, the deadline has not passed, or there is no request.
     bool expireIfDue();
 
     // 診斷:snapshot、smoke report 同測試會讀。
@@ -87,15 +93,15 @@ public:
     quint64 startedCount() const { return m_startedCount; }
     QJsonObject toJson() const;
 
-    // duplicate／stale reply 嘅偵測窗。夠深去接住任何合理嘅 double click,
-    // 又唔會無限增長。
+    // Detection window for duplicate/stale replies. Deep enough to absorb any reasonable
+    // double click, yet it never grows without bound.
     static const int CompletedHistoryLimit;
 
 signals:
     void requestStarted(quint64 requestId);
     void responseAccepted(quint64 requestId);
-    // rejection／reason 用 int 過 signal:queued connection 唔使為 enum class
-    // 註冊 metatype。
+    // rejection/reason cross signals as int: queued connections then need no metatype
+    // registration for the enum class.
     void responseRejected(quint64 requestId, int rejection);
     void requestCancelled(quint64 requestId, int reason);
 
