@@ -186,8 +186,8 @@ void Photo::setEmotion(const QString &emotion, bool permanent)
         _layBetween(emotion_item, _m_chainIcon, _m_roleComboBox);
 
         if (!G_EFFECTS.animationsEnabled()) {
-            // 即刻到達最終狀態：permanent 嘅（例如拼點問號）要留喺畫面，
-            // 一次性嘅淡入淡出最終狀態就係「唔見咗」。
+            // Reach the final state immediately: permanent ones (e.g. the pindian
+            // question mark) stay on screen; for one-shot fades the final state is "gone".
             G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
             emotion_item->setOpacity(permanent ? 1.0 : 0.0);
             return;
@@ -215,7 +215,7 @@ void Photo::setEmotion(const QString &emotion, bool permanent)
 
 void Photo::tremble()
 {
-    // 純裝飾：受傷震動嘅最終狀態就係「返返原位」，NONE 直接乜都唔做。
+    // Purely decorative: the final state of the damage shake is "back in place"; NONE does nothing at all.
     if (!G_EFFECTS.animationsEnabled()) {
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         return;

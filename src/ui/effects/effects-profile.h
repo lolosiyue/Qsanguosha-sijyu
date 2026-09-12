@@ -5,18 +5,18 @@
 #include <QStringList>
 #include <QVariant>
 
-// Linux GUI M2B-B 的效果 profile 契約。
+// The Linux GUI M2B-B effect profile contract.
 //
-// 呢個 header 只依賴 Qt Core：profile 名稱、feature gate、duration scale、CLI／
-// settings 解析全部係純函數，可以喺 CTest 直接驗，唔使開 QApplication、唔使有
-// OpenGL、亦唔使有任何美術資產。真正攞 Config 同記數的 runtime 門面喺
-// VisualEffectsPolicy（effects-policy.h）。
+// This header depends only on Qt Core: profile names, feature gates, duration
+// scales and CLI / settings parsing are all pure functions, verifiable directly in
+// CTest with no QApplication, no OpenGL and no art assets. The runtime facade that
+// actually reads Config and counts is VisualEffectsPolicy (effects-policy.h).
 //
-// 三個 profile 只影響「睇到啲乜」，唔會影響遊戲規則同網絡回覆：
+// The three profiles only affect what is seen, never game rules or network replies:
 //
 //   Full     完整動畫 + Spine + GIF + QML 特效 + 影片
 //   Reduced  保留必要狀態提示，縮短動畫，停用 Spine／影片／QML 全屏特效
-//   None     所有裝飾動畫即時完成，唔建立 Spine／QMovie／video object
+//   None     all decorative animations complete instantly, no Spine / QMovie / video objects created
 enum class EffectsProfile {
     Full,
     Reduced,
@@ -26,7 +26,7 @@ enum class EffectsProfile {
 class EffectsProfileContract
 {
 public:
-    // 使用者設定同測試 CLI 行同一條 policy，所以 key 同 flag 都喺呢度定一次。
+    // User settings and the test CLI follow the same policy, so keys and flags are defined here once.
     static const char *const SettingsKey;         // "EffectsProfile"
     static const char *const FlagEffectsProfile;  // "--effects-profile"
 
@@ -34,29 +34,29 @@ public:
 
     static QString profileName(EffectsProfile profile);
     static QStringList profileNames();            // {"full","reduced","none"}
-    // 大細寫唔敏感，前後空白會 trim；空字串當「冇指定」，唔算錯。
+    // Case-insensitive, surrounding whitespace trimmed; an empty string means "unspecified", not an error.
     static bool parseProfileName(const QString &text, EffectsProfile *profile);
 
     // ── Feature gate ────────────────────────────────────────────────────
-    // 全部只可以「收窄」：profile 永遠唔會開啟使用者喺設定關咗嘅嘢，
-    // 呢層邏輯喺 VisualEffectsPolicy 度同 Config 夾埋。
+    // Everything can only narrow: a profile never re-enables what the user turned
+    // off in settings; that logic is joined with Config inside VisualEffectsPolicy.
     static bool animationsEnabled(EffectsProfile profile);
     static bool spineEnabled(EffectsProfile profile);
     static bool gifEnabled(EffectsProfile profile);
     static bool videoEnabled(EffectsProfile profile);
     static bool qmlEffectsEnabled(EffectsProfile profile);
-    // 純裝飾性嘅等待（例如「等 444ms 先播拼點結果」）。Reduced 會縮短，
-    // None 一律 0：遊戲狀態要即刻到達最終位置。
+    // Purely decorative waits (e.g. "wait 444ms before showing the pindian result").
+    // Reduced shortens them; None is always 0: game state must reach its final position immediately.
     static bool decorativeDelayAllowed(EffectsProfile profile);
-    // 選中框、傷害、卡牌移動呢類「你而家要做緊乜」嘅視覺回饋。Reduced 一定
-    // 保留，否則玩家會睇唔到 pending action。
+    // Visual feedback of the "what you must do right now" kind: selection frames,
+    // damage, card moves. Reduced always keeps these, or the player cannot see the pending action.
     static bool stateFeedbackEnabled(EffectsProfile profile);
 
     // ── Duration ────────────────────────────────────────────────────────
     static qreal durationScale(EffectsProfile profile);   // 1.0 / 0.3 / 0.0
-    // scale 之後嘅毫秒數。Reduced 唔會壓到 0（0 會令 Qt 喺 start() 入面同步
-    // 派 finished()，製造重入）；None 一定係 0，但 None 嘅 call site 應該直接
-    // 唔起動畫，用 EffectsCompletion::completeNow() 收工。
+    // Milliseconds after scaling. Reduced never compresses to 0 (0 makes Qt emit
+    // finished() synchronously inside start(), causing reentry); None is always 0,
+    // but None call sites should skip the animation entirely and finish via EffectsCompletion::completeNow().
     static int scaledDuration(EffectsProfile profile, int durationMs);
 
     // ── CLI ─────────────────────────────────────────────────────────────
@@ -71,12 +71,12 @@ public:
     static CliOverride parseCliOverride(const QStringList &arguments);
 
     // ── Resolution ──────────────────────────────────────────────────────
-    // 優先次序：CLI override > 使用者設定 > 預設。CLI 值唔合法會退返落設定，
-    // 並且喺 error 度講明點解 —— 靜靜地當冇指定係最難查嘅一種。
+    // Priority: CLI override > user setting > default. An invalid CLI value falls
+    // back to the setting, with the reason stated in error - silently treating it as unspecified is the hardest to debug.
     struct Resolution {
         EffectsProfile profile = EffectsProfile::Full;
         QString source;   // "cli" / "settings" / "default"
-        QString error;    // 非空 = CLI 或設定值唔合法（已經退返落次一級）
+        QString error;    // non-empty = invalid CLI or setting value (already fell back to the next tier)
     };
     static Resolution resolve(const QStringList &arguments, const QVariant &settingsValue);
 };

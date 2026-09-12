@@ -10,9 +10,10 @@
 #endif
 
 #ifndef QSAN_BIN_TO_DATA_RELATIVE
-// bin/ 相對 share/qsanguosha/ 的位置，由 CMake 依 GNUInstallDirs 算出。
-// 刻意用相對路徑而唔係 CMAKE_INSTALL_FULL_DATADIR：binary 入面唔應該
-// 燒死絕對路徑，安裝樹要可以整個搬走／解壓到任何地方都行得到。
+// Location of share/qsanguosha/ relative to bin/, computed by CMake from GNUInstallDirs.
+// Deliberately a relative path instead of CMAKE_INSTALL_FULL_DATADIR: no absolute path may
+// be burned into the binary; the install tree must keep working after being moved or
+// unpacked anywhere.
 #define QSAN_BIN_TO_DATA_RELATIVE "../share/qsanguosha"
 #endif
 
@@ -22,9 +23,9 @@ using QSanRuntimePaths::AssetRootSource;
 
 QSanRuntimePaths::Resolution g_resolution;
 
-// 一個目錄夠唔夠資格做 asset root：engine bootstrap 一定要開到呢兩個檔，
-// 開唔到就會喺 constructor 入面 exit(1)。用佢哋做 marker，等我哋喺
-// 「揀錯 root 然後靜靜死」之前就發現問題。
+// What qualifies a directory as the asset root: the engine bootstrap must be able to open
+// these two files, otherwise it exits with exit(1) in its constructor. Using them as
+// markers lets us fail before "wrong root chosen, then die quietly".
 bool looksLikeAssetRoot(const QString &path)
 {
     if (path.isEmpty())
@@ -68,8 +69,9 @@ void recordCandidate(const QString &source, const QString &path, const QString &
         QStringLiteral("%1=%2=%3").arg(source, path.isEmpty() ? QStringLiteral("<unset>") : path, verdict));
 }
 
-// 明確指定嘅 root（CLI／env）唔合格就係硬錯誤。靜靜落 fallback 會令
-// 「我明明指咗 --asset-root」變成一個查極都查唔到嘅 bug。
+// An explicitly specified root (CLI/env) that fails validation is a hard error. Falling
+// back silently would turn "I did pass --asset-root" into a bug that is nearly impossible
+// to trace.
 bool acceptExplicitRoot(const QString &raw, const QString &sourceLabel, AssetRootSource source,
                         bool *failed)
 {
@@ -78,8 +80,8 @@ bool acceptExplicitRoot(const QString &raw, const QString &sourceLabel, AssetRoo
         return false;
     const QString absolute = cleanedAbsolutePath(raw);
     if (!QDir(absolute).exists()) {
-        // 「唔存在」同「存在但唔係目錄」係兩個唔同嘅打錯法（後者通常係指咗
-        // 一個檔案），講得準先幫到手。
+        // "Does not exist" and "exists but is not a directory" are two different typos (the
+        // latter usually points at a file); being precise is what actually helps.
         const bool existsButNotADirectory = QFileInfo::exists(absolute);
         recordCandidate(sourceLabel, absolute,
                         existsButNotADirectory ? QStringLiteral("not-a-directory")
@@ -123,9 +125,10 @@ bool tryCandidate(const QString &path, const QString &sourceLabel, AssetRootSour
     return true;
 }
 
-// 安裝／打包出嚟嘅 asset root 唔應該被寫入（AppImage 係唯讀 squashfs，
-// /usr/share 通常唔屬於使用者）。開發樹就維持舊行為，record／AiData 照舊
-// 寫喺工作目錄，唔會突然搬走開發者慣用嘅檔案。
+// An installed/packaged asset root must not be written to (AppImage is a read-only
+// squashfs, /usr/share is usually not user-owned). The dev tree keeps the old behavior:
+// record/AiData stay in the working directory, so the files developers are used to do not
+// suddenly move away.
 bool assetRootIsPackaged(AssetRootSource source)
 {
     switch (source) {
@@ -151,9 +154,9 @@ QString xdgUserDataRoot()
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     return appData.isEmpty() ? QString() : QDir(appData).filePath(QStringLiteral("userdata"));
 #else
-    // 刻意唔靠 QCoreApplication 嘅 organizationName／applicationName：
-    // 呢兩個值喺 GUI 同 dedicated server 之間唔一定一樣，但兩者要寫入同一個
-    // 使用者資料目錄。
+    // Deliberately not based on QCoreApplication's organizationName/applicationName: those
+    // two may differ between the GUI and the dedicated server, yet both must write into
+    // the same user data directory.
     const QString generic =
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
     if (generic.isEmpty())
@@ -217,19 +220,20 @@ bool resolve(const QStringList &arguments, QString *error)
     if (g_resolution.error.isEmpty() && g_resolution.assetRoot.isEmpty()
         && !g_resolution.applicationDir.isEmpty()) {
         const QDir appDir(g_resolution.applicationDir);
-        // 安裝／可攜版面行先：一個打包好嘅 binary 唔應該因為使用者
-        // 碰巧喺一個舊 source tree 入面開佢，就走去用嗰邊嘅資產。
+        // Installed/portable layouts come first: a packaged binary must not use the assets
+        // of some old source tree just because the user happened to launch it from inside
+        // one.
         tryCandidate(appDir.filePath(QStringLiteral(QSAN_BIN_TO_DATA_RELATIVE)),
                      QStringLiteral("installed-prefix"), AssetRootSource::InstalledPrefix)
             || tryCandidate(appDir.filePath(QStringLiteral("share/qsanguosha")),
                             QStringLiteral("portable-bundle"), AssetRootSource::PortableBundle)
             || tryCandidate(QDir::currentPath(), QStringLiteral("working-directory"),
                             AssetRootSource::WorkingDirectory)
-            // application-parent 行先過 application-dir:build 輸出目錄
-            // (relwithdebinfo/)有時只得 deploy-server 抄過去嘅 lua/,係一份
-            // 唔完整嘅樹;佢上一層先至係真正齊料嘅 source tree。真正嘅
-            // 平面部署目錄(exe 同 lua/ 同一層)上一層唔會有 lua/config.lua,
-            // 所以照樣落返 application-dir。
+            // application-parent ranks above application-dir: a build output directory
+            // (relwithdebinfo/) sometimes only has the lua/ copied over by deploy-server,
+            // an incomplete tree; the real complete source tree is one level up. A true flat
+            // deployment directory (exe next to lua/) has no lua/config.lua one level up,
+            // so it falls through to application-dir as usual.
             || tryCandidate(appDir.filePath(QStringLiteral("..")),
                             QStringLiteral("application-parent"),
                             AssetRootSource::ApplicationParent)
@@ -256,8 +260,9 @@ bool resolve(const QStringList &arguments, QString *error)
     g_resolution.resolved = true;
 
     if (g_resolution.error.isEmpty()) {
-        // 過渡橋樑：engine／skin bank 仍然用 "lua/..."、"image/..." 相對路徑。
-        // 一次過改 CWD 令佢哋指向解析出嚟嘅 asset root，而唔係使用者嘅 CWD。
+        // Transitional bridge: the engine and skin bank still use relative paths like
+        // "lua/..." and "image/...". Switch CWD once so they point at the resolved asset
+        // root instead of the user's CWD.
         if (!QDir::setCurrent(g_resolution.assetRoot))
             g_resolution.error = QStringLiteral("Unable to enter the QSanguosha data directory: %1")
                                      .arg(g_resolution.assetRoot);

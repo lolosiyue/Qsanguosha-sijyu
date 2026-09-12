@@ -171,8 +171,9 @@ QJsonObject LocalResponseUiProbe::snapshot() const
         Photo *photo = it.value();
         QJsonObject player;
         player.insert(QStringLiteral("object_name"), it.key());
-        // probe 只係報告工具:遇到殘缺狀態要照報出嚟,唔可以自己 crash —— 佢
-        // 專門喺失敗路徑先行,喺度 crash 會連原本嗰個失敗證據都一齊燒埋。
+        // The probe is only a reporting tool: it must report broken states as
+        // they are instead of crashing itself — it runs precisely on failure
+        // paths, and a crash here would burn the original failure evidence too.
         if (photo == nullptr) {
             player.insert(QStringLiteral("missing"), true);
             players.append(player);

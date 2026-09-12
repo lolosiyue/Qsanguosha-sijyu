@@ -46,8 +46,8 @@ inline unique_ptr<T> make_unique(Args&&... args)
 #include <QtQml>
 #endif
 
-// bundled FMOD header 只喺 Windows Release 的 include path。AUDIO_SUPPORT 而家
-// 淨係代表「有 audio facade」，所以呢度要用 backend 專屬的定義。
+// The bundled FMOD header is only on the Windows Release include path. AUDIO_SUPPORT now
+// only means "an audio facade exists", so a backend-specific define is needed here.
 #ifdef QSAN_AUDIO_BACKEND_FMOD
 #include <fmod.hpp>
 #endif

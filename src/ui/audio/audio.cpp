@@ -9,10 +9,10 @@
 #endif
 #include <QJsonArray>
 
-// Audio facade 的實作。呢度只做三件事：
-//   * 揀 backend（一次，經 createConfiguredAudioBackend()）；
-//   * 記住音量狀態，令 master／mute 可以套用到所有通道；
-//   * 保證任何 call site 喺未 init()／已 quit() 的情況下都唔會 crash。
+// Implementation of the Audio facade. It only does three things:
+//   * pick the backend (once, via createConfiguredAudioBackend());
+//   * remember volume state so master / mute can be applied to every channel;
+//   * guarantee that no call site crashes when init() has not run or quit() already has.
 namespace {
 
 IAudioBackend *g_backend = nullptr;
@@ -50,8 +50,8 @@ void Audio::init()
 
     g_backend = createConfiguredAudioBackend();
     if (g_backend && !g_backend->initialize()) {
-        // backend 用唔到（冇 FMOD system、Qt Multimedia plugin 缺失⋯）唔可以令
-        // GUI 掛咗：降級去 null backend，遊戲照跑，只係冇聲。
+        // An unusable backend (no FMOD system, missing Qt Multimedia plugin, ...)
+        // must not hang the GUI: degrade to the null backend; the game keeps running, just without sound.
         qWarning().noquote() << "Audio: backend" << g_backend->name()
                              << "failed to initialize; falling back to the null backend";
         delete g_backend;

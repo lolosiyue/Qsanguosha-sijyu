@@ -47,9 +47,9 @@ ConfigDialog::ConfigDialog(QWidget *parent)
             Config.setValue("EnablePointerEffect", v);
         }
     });
-    // 效果 profile 同 --effects-profile 行同一個 VisualEffectsPolicy:呢度改嘅
-    // 係同一個 object,唔係第二套設定。即時生效兼寫入 QSettings,取消時由
-    // restoreVisualSettings() 復原。
+    // The effect profile and --effects-profile share one VisualEffectsPolicy: what
+    // changes here is the same object, not a second set of settings. It takes effect
+    // immediately and writes to QSettings; on cancel, restoreVisualSettings() reverts it.
 #if defined(QSAN_XP_LEGACY)
     // XP is a fixed raster profile; do not expose an option that cannot take effect.
     ui->effectsProfileLabel->hide();
@@ -66,9 +66,9 @@ ConfigDialog::ConfigDialog(QWidget *parent)
         });
 #endif
 
-    // 指標式 connect:restoreVisualSettings() 唔喺 slots: 區,舊嘅 SLOT() 字串
-    // 喺 runtime 先報 "No such slot" 然後靜靜咁唔接 —— 即係㩒取消都唔會還原
-    // 已經即時套用兼寫咗入 QSettings 嘅預覽設定。指標式會喺編譯期擋住呢件事。
+    // Pointer-based connect: restoreVisualSettings() is not in the slots: section,
+    // so the old SLOT() string only fails at runtime ("No such slot") and silently
+    // never connects - Cancel would leave already-applied, QSettings-persisted preview settings unrestored. Pointer-based connect catches this at compile time.
     connect(this, &QDialog::accepted, this, &ConfigDialog::saveConfig);
     connect(this, &QDialog::rejected, this, &ConfigDialog::restoreVisualSettings);
 
@@ -309,8 +309,8 @@ void ConfigDialog::saveConfig()
     Config.FrontBGMVolume = volume;
     Config.setValue("FrontBGMVolume", volume);
 
-    // M2B-A：master／voice／mute 同影片背景。key 名 Windows 同 Linux 共用，
-    // 舊設定檔冇呢幾個 key 時 Settings::init() 已經有穩定預設。
+    // M2B-A: master / voice / mute and video background. Key names are shared between
+    // Windows and Linux; when older config files lack these keys, Settings::init() already provides stable defaults.
     Config.MasterVolume = ui->masterVolumeSlider->value() / 100.0f;
     Config.setValue("MasterVolume", Config.MasterVolume);
     Config.VoiceVolume = ui->voiceVolumeSlider->value() / 100.0f;

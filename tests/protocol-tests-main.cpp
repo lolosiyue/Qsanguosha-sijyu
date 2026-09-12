@@ -1,7 +1,8 @@
-// 協定層契約測試共用執行檔。五個 suite 全部只需要 Qt6::Core／Qt6::Network 同
-// qsanguosha_protocol_v2_contract_support(reply-adapter 再加 client_core),
-// 冇一個要 engine 或者 GUI,所以夾埋一個 target 唔會改變任何一個測試嘅
-// link 面。每個 suite 依然行喺自己嘅 process。
+// Shared executable for the protocol-layer contract tests. All five suites
+// need only Qt6::Core/Qt6::Network and qsanguosha_protocol_v2_contract_support
+// (reply-adapter additionally links client_core); none needs the engine or the
+// GUI, so merging them into one target changes no suite's link surface. Each
+// suite still runs in its own process.
 #include "test-suite.h"
 
 #include <QCoreApplication>
@@ -14,7 +15,7 @@ int runInteractionReplyAdapterTests(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
-    // 子 suite 各自會起自己嘅 QCoreApplication,所以呢條路唔可以先起一個。
+    // Each sub-suite creates its own QCoreApplication, so this path must not create one first.
     const QString suite = parseSuite(argc, argv);
     if (suite == QLatin1String("protocol-messages"))
         return runProtocolMessagesTests();

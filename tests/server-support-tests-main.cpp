@@ -1,7 +1,8 @@
-// dedicated server 周邊(command line、logger、真 TCP 整合)嘅測試共用執行檔。
-// 三個 suite 都唔 link engine,淨係 Qt6::Core／Qt6::Network 加
-// qsanguosha_protocol_v2_contract_support,所以夾埋唔會改變任何一個嘅 link 面。
-// 每個 suite 依然行喺自己嘅 process。
+// Shared executable for the tests around the dedicated server (command line,
+// logger, real TCP integration). None of the three suites links the engine --
+// only Qt6::Core/Qt6::Network plus qsanguosha_protocol_v2_contract_support --
+// so merging them changes no suite's link surface. Each suite still runs in
+// its own process.
 #include "test-suite.h"
 
 #include <QCoreApplication>
@@ -12,8 +13,9 @@ int runServerCommandLineTests(int argc, char **argv);
 int runServerLoggerTests(int argc, char **argv);
 int runServerNetworkIntegrationTests(int argc, char **argv);
 
-// --suite 係 dispatcher 自己嘅參數,唔可以漏落去 suite 本身:
-// server-command-line-test 嘅 parser 遇到未知參數係即刻 fail 嘅。
+// --suite belongs to the dispatcher itself and must not leak through to the
+// suite: the server-command-line-test parser fails immediately on unknown
+// arguments.
 static int stripSuiteArgument(int argc, char **argv, std::vector<char *> &filtered)
 {
     filtered.clear();
@@ -30,7 +32,7 @@ static int stripSuiteArgument(int argc, char **argv, std::vector<char *> &filter
 
 int main(int argc, char **argv)
 {
-    // 子 suite 各自會起自己嘅 QCoreApplication。
+    // Each sub-suite creates its own QCoreApplication.
     const QString suite = parseSuite(argc, argv);
     std::vector<char *> filtered;
     const int filteredArgc = stripSuiteArgument(argc, argv, filtered);

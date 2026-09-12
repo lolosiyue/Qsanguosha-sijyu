@@ -36,8 +36,9 @@ def sine_wav(seconds: float, frequency: float, amplitude: float = 0.2) -> bytes:
     return struct.pack("<4sI4s", b"RIFF", riff_size, b"WAVE") + fmt_chunk + data_chunk
 
 
-# button-down 的檔名唔係求其改：classifyAudioFile() 靠 basename 認短 UI 音效，
-# 所以呢個 fixture 一定要叫呢個名先會行 QSoundEffect 嗰條路。
+# The button-down filename is not chosen at random: classifyAudioFile() recognizes
+# short UI sound effects by basename, so this fixture must use exactly this name to
+# take the QSoundEffect path.
 FIXTURES = {
     "button-down.wav": (0.08, 880.0),
     "voice-line.wav": (0.15, 440.0),

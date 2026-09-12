@@ -7,19 +7,19 @@
 #include <QString>
 #include <QStringList>
 
-// 全個 GUI 唯一問「呢個效果做唔做得」嘅地方。
+// The only place in the GUI that asks "is this effect allowed".
 //
-// 唔准喺 UI code 散落
+// Never scatter this across UI code:
 //
 //     #ifdef Q_OS_LINUX
 //         skipAnimation();
 //     #endif
 //
-// 一律問呢個 policy。Profile 只可以收窄：使用者喺設定關咗嘅嘢，Full profile
-// 都唔會幫佢開返。
+// Always ask this policy instead. A profile may only narrow: what the user turned
+// off in settings, even the Full profile will not turn back on.
 //
-// 生命周期：main() 喺 QApplication 之後、任何 UI 之前 call initialize()。
-// 未 initialize 就問嘅 call site 會攞到預設 profile（Full），唔會 crash。
+// Lifetime: main() calls initialize() after QApplication and before any UI.
+// Call sites that ask before initialize() get the default profile (Full) and do not crash.
 class VisualEffectsPolicy
 {
 public:
@@ -41,22 +41,22 @@ public:
     bool animationsEnabled() const;
     bool spineEnabled() const;
     bool gifEnabled() const;
-    // Reduced 只用首幀：物件照建（角色框唔可以因為冇 GIF 就唔見），但唔會播。
+    // Reduced uses only the first frame: the objects are still created (the character frame must not vanish for lack of a GIF) but never played.
     bool gifPlaybackAllowed() const;
     bool videoEnabled() const;
     bool qmlEffectsEnabled() const;
     bool decorativeDelayAllowed() const;
-    // profile == None 嘅捷徑：唔好起動畫，直接到最終狀態 + completeNow()。
+    // Shortcut for profile == None: skip the animation, go straight to the final state + completeNow().
     bool immediate() const { return m_profile == EffectsProfile::None; }
 
-    // 純裝飾嘅動畫時長。None → 0，Reduced → 明顯縮短，Full → 原值。
+    // Duration of purely decorative animations. None -> 0, Reduced -> noticeably shortened, Full -> original value.
     int scaledDuration(int durationMs) const;
-    // 裝飾性延遲（QTimer::singleShot 嗰類）。None → 0。
+    // Decorative delays (QTimer::singleShot and the like). None -> 0.
     int scaledDelay(int delayMs) const;
 
     // ── Instrumentation ─────────────────────────────────────────────────
-    // effects smoke 靠呢啲數驗「NONE 真係冇建立 Spine／QMovie／video object」，
-    // 同埋「REDUCED 載入嘅高成本效果比 FULL 少」。
+    // The effects smoke uses these counters to verify that "NONE really creates no
+    // Spine / QMovie / video objects" and that "REDUCED loads fewer high-cost effects than FULL".
     enum Counter {
         SpineItemsCreated,
         MovieObjectsCreated,

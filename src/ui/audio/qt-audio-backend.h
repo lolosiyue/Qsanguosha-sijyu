@@ -16,17 +16,17 @@ class QMediaPlayer;
 class QSoundEffect;
 QT_END_NAMESPACE
 
-// Linux GUI 的 backend，行 Qt Multimedia。
+// Backend for the Linux GUI, running Qt Multimedia.
 //
-// 資源策略（三條路徑刻意分開，唔會共用同一個 player）：
+// Resource policy (three paths deliberately kept separate, never sharing a player):
 //
-//   * 短 UI 音效：少量常用音效預載成 QSoundEffect（低延遲、可重播）。
-//     只預載 preloadedEffectNames() 嗰幾個，唔會將武將語音轉檔或者全部載入記憶體。
-//   * 武將語音：固定大小的 QMediaPlayer + QAudioOutput pool。同時播放有上限，
-//     播完自動回收；pool 滿就搶最舊嗰個，永遠唔會每次播放都 new 一對。
-//   * BGM：獨立一個 player／output，唔會同語音 pool 混用。
+//   * Short UI sounds: a small set of frequently used sounds preloaded as QSoundEffect (low latency, replayable).
+//     Only preloads the names in preloadedEffectNames(); general voices are never transcoded or fully loaded into memory.
+//   * General voices: a fixed-size QMediaPlayer + QAudioOutput pool with a cap on
+//     simultaneous playback, recycled automatically when finished; when the pool is full the oldest slot is evicted - a pair is never newed per playback.
+//   * BGM: its own player / output, never mixed with the voice pool.
 //
-// 冇音訊裝置、冇檔案、codec 唔支援都只係 warning + 降級，唔會 crash。
+// No audio device, missing file, or unsupported codec is just a warning + degradation, never a crash.
 class QtMediaAudioBackend final : public IAudioBackend
 {
 public:
@@ -53,8 +53,8 @@ public:
     QJsonObject diagnostics() const override;
 
 private:
-    // 一個可重用的 player+output。effect 同 voice 各有自己一組，數量固定，
-    // 所以播放永遠唔會 new 一對新的落去 leak。
+    // A reusable player+output. Effect and voice each have their own fixed-size set,
+    // so playback never news a fresh pair that could leak.
     struct PlayerSlot
     {
         QMediaPlayer *player = nullptr;
@@ -64,10 +64,10 @@ private:
         bool suspendedByApplication = false;
     };
 
-    // 建資源；已經建好就即刻回 true。shutdown() 之後再收到播放請求會重新建，
-    // 所以 backend 層面「shutdown 完再 play」係安全的 no-crash 路徑而唔係 UB。
-    //（透過 Audio facade 呼叫 quit() 時 backend 本身會被 delete，所以嗰條路
-    // 依然同 Windows 一樣係終局 —— 呢個 guard 只係守住 backend 直接用嘅情況。）
+    // Create resources; return true immediately if already created. Playback requests
+    // arriving after shutdown() recreate them, so at the backend level "play after shutdown" is a safe no-crash path, not UB.
+    // (When quit() is invoked through the Audio facade the backend itself is deleted, so that path
+    // remains terminal as on Windows - this guard only covers direct backend use.)
     bool ensureReady();
     void teardown();
 
@@ -82,11 +82,11 @@ private:
 
     QObject *m_root = nullptr;
     QHash<QString, QSoundEffect *> m_effects;
-    // QSoundEffect 載入唔到（例如 codec 唔支援）的音效改行 player pool，
-    // 唔會每次重試都再 log 一次。
+    // Sounds that QSoundEffect cannot load (e.g. unsupported codec) switch to the
+    // player pool; retries do not log again every time.
     QSet<QString> m_effectFallback;
-    // QSoundEffect 撐唔到的短音效跌落自己嗰個細 pool，唔會佔用語音 slot：
-    // 撳一下按鈕唔應該打斷一句武將台詞。
+    // Short sounds QSoundEffect cannot handle fall into their own small pool and
+    // never occupy voice slots: one button press should not interrupt a voice line.
     QVector<PlayerSlot> m_effectSlots;
     QVector<PlayerSlot> m_voices;
     QMediaPlayer *m_bgm = nullptr;

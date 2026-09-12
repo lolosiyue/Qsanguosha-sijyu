@@ -2,9 +2,10 @@ import QtQuick
 import QtMultimedia
 import "."
 
-// 首頁影片背景。用 MediaPlayer + VideoOutput 而唔用 Video：Video 冇 expose
-// mediaStatus，分唔出「載入成功」同「格式唔支援」，而 M2B-A 要求呢兩者要
-// 分得開。冇接 audioOutput，所以背景影片一定係無聲。
+// Home page video backdrop. Uses MediaPlayer + VideoOutput instead of Video: Video
+// does not expose mediaStatus, so "loaded successfully" and "format unsupported"
+// cannot be told apart, while M2B-A requires the two to be distinguished. No
+// audioOutput is connected, so the backdrop video is always silent.
 Item {
     id: root
 

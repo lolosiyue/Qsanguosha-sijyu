@@ -165,8 +165,8 @@ QPointF CardItem::homePos() const
 
 void CardItem::goBack(bool playAnimation, bool doFade)
 {
-    // NONE profile：唔起動畫，直接落最終位置。所有 caller 嘅語意都保住 ——
-    // goBack(false) 本來就係「即刻返位」嗰條 branch。
+    // NONE profile: no animation, straight to the final position. Every caller's
+    // semantics are preserved - goBack(false) was already the "return immediately" branch.
     if (playAnimation && !G_EFFECTS.animationsEnabled()) {
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         playAnimation = false;
@@ -197,8 +197,8 @@ QAbstractAnimation *CardItem::getGoBackAnimation(bool doFade, bool smoothTransit
     }
     QPropertyAnimation *goback = new QPropertyAnimation(this, "pos");
     goback->setEasingCurve(QEasingCurve::OutQuad);
-    // REDUCED 縮短、FULL 原值。0 唔會喺呢度出現：NONE 行唔到落嚟（goBack 已經
-    // 轉咗 playAnimation=false，_playMoveCardsAnimation 亦已經走咗 skip branch）。
+    // REDUCED shortens, FULL keeps the original value. 0 never occurs here: NONE
+    // cannot reach this point (goBack already set playAnimation=false, and _playMoveCardsAnimation already took the skip branch).
     goback->setDuration(qMax(1, G_EFFECTS.scaledDuration(duration)));
     goback->setEndValue(home_pos);
     m_currentAnimation = goback;

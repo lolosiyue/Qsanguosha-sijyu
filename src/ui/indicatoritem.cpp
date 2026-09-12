@@ -17,8 +17,8 @@ IndicatorItem::IndicatorItem(const QPointF &start, const QPointF &real_finish, P
 void IndicatorItem::doAnimation()
 {
     if (!G_EFFECTS.animationsEnabled()) {
-        // 指示線冇最終狀態要保留:即刻收工,但一定經 event loop 拆自己,
-        // 唔可以喺 caller 手上炸咗個啱啱 addItem 落 scene 嘅 item。
+        // The indicator line has no final state to preserve: finish immediately, but
+        // always tear itself down via the event loop - it must not blow up in the caller's hands right after addItem put it into the scene.
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         EffectsCompletion::completeNow(this, [this]() { deleteLater(); });
         return;

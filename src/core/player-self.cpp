@@ -1,7 +1,8 @@
 #include "player.h"
 
-// engine 側的 Self。宣告喺 src/client/clientplayer.h 的 QSAN_ENGINE_BUILD 分支，
-// 但 core 不得反向依賴 client header，所以喺呢度自行開 namespace 定義。
+// The engine-side Self. It is declared in the QSAN_ENGINE_BUILD branch of
+// src/client/clientplayer.h, but core must not depend back on client headers, so the
+// namespace and definition are opened here.
 namespace QSanEngine {
 Player *Self = nullptr;
 }

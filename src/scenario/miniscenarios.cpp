@@ -392,7 +392,7 @@ MiniScene::MiniScene(const QString &name)
 void MiniScene::setupCustom(QString name) const
 {
     if (name == "") name = "custom_scenario";
-    // 自訂劇本可以係使用者自己存低嘅,亦可以係隨包附帶嗰啲。
+    // Custom scenarios may be saved by the user or bundled with the package.
     name = QSanRuntimePaths::readablePath(
         QStringLiteral("etc/customScenes/") + name + QStringLiteral(".txt"));
 

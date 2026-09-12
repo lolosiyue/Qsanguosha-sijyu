@@ -76,10 +76,11 @@ bool snapshotKeepsSerializedTagsUnchanged()
     return ok;
 }
 
-// GameRule 喺每次 CardUsed 都會喺玩家身上寫 ComboMovesCard: 一個 CardTagOwner
-// 包住 server 自己 clone 出嚟嘅牌。呢個值過唔到 JSON 邊界, 未剔走之前令第一
-// 回合之後每一個 turn snapshot 都變 ineligible, save() 一開頭就 return false,
-// takeover/replay 只剩得 turn_001 一個節點。
+// GameRule writes ComboMovesCard onto the player on every CardUsed: a
+// CardTagOwner wrapping a card the server cloned itself. That value cannot
+// cross the JSON boundary; until it is stripped it makes every turn snapshot
+// after the first turn ineligible, so save() returns false right away and
+// takeover/replay are left with turn_001 as the only node.
 bool snapshotStaysEligibleWithAComboMovesTag()
 {
     Room room(nullptr, QStringLiteral("03_1v2"));
@@ -94,9 +95,9 @@ bool snapshotStaysEligibleWithAComboMovesTag()
     {
         const GameSnapshot snapshot(&room);
         const GlobalSnapshot state = snapshot.getState();
-        // 一個淨係得個殼嘅 fixture room 本身就唔 eligible (冇實體牌、冇 Lua
-        // runtime), 所以唔可以直接斷言 eligible; 要斷言嘅係「唔會多咗一個因
-        // ComboMovesCard 而起嘅 unsupported 理由」。
+        // A bare shell of a fixture room is not eligible by itself (no real
+        // cards, no Lua runtime), so do not assert eligible directly; assert
+        // instead that no unsupported reason caused by ComboMovesCard is added.
         for (const QString &reason : state.unsupportedState) {
             ok &= expect(!reason.contains(tagKey),
                          qPrintable(QStringLiteral("ComboMovesCard must not make a "
@@ -117,9 +118,10 @@ bool snapshotStaysEligibleWithAComboMovesTag()
     return ok;
 }
 
-// 四個讀取點 (tenyear.cpp 的 Juchui / ThJizhanmc / ThZhuitao, 同 swig/qvariant.i
-// 的 QVariant::toCard()) 一律用 value<const Card*>()。冇註冊 converter 嘅話
-// QVariant 會靜靜地還 nullptr, 技能唔會發動亦唔會報錯。
+// The four read sites (Juchui / ThJizhanmc / ThZhuitao in tenyear.cpp, and
+// QVariant::toCard() in swig/qvariant.i) all use value<const Card*>(). Without
+// a registered converter QVariant silently returns nullptr, the skill never
+// triggers, and nothing reports an error.
 bool cardTagOwnerConvertsToACardPointer()
 {
     Card *owned = new DummyCard;

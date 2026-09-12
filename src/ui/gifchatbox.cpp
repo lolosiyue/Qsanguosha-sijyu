@@ -11,7 +11,7 @@ GifChatBox::GifChatBox(QWidget *parent)
 
     m_gifTimer = new QTimer(this);
     connect(m_gifTimer, SIGNAL(timeout()), this, SLOT(updateGifFrames()));
-    // 唔准播 GIF 就連個 10Hz 嘅刷新 timer 都唔開。
+    // If GIF playback is disallowed, do not even start the 10Hz refresh timer.
     if (G_EFFECTS.gifPlaybackAllowed())
         m_gifTimer->start(100);
 }

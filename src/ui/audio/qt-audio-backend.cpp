@@ -18,13 +18,13 @@
 
 namespace {
 
-// 同時播放的上限。超過就搶最舊嗰個 slot，唔會無限開 player。
+// Cap on simultaneous playback. Once exceeded, the oldest slot is evicted; players are never spawned without limit.
 const int kMaxVoices = 8;
-// 短 UI 音效的 fallback pool 細好多：連續撳掣唔應該搶走語音 slot。
+// The short-UI-sound fallback pool is much smaller: rapid button presses must not steal voice slots.
 const int kMaxEffects = 4;
 
-// Qt 的音量係線性振幅；UI 的 slider 係感知刻度，兩者要換算，否則
-// 半格 slider 聽落幾乎冇細過。
+// Qt volume is linear amplitude; the UI slider is perceptual, so the two must be
+// converted, otherwise half a slider step would barely sound quieter.
 float toLinear(float perceptual)
 {
     const float clamped = qBound(0.0f, perceptual, 1.0f);
@@ -45,8 +45,8 @@ QtMediaAudioBackend::~QtMediaAudioBackend()
 
 QStringList QtMediaAudioBackend::preloadedEffectNames()
 {
-    // 名單同 classifyAudioFile() 共用同一個來源,唔會出現「當成短音效播,但係
-    // 冇預載」嘅唔一致。
+    // The list shares one source with classifyAudioFile(), so the inconsistency of
+    // "played as a short sound but never preloaded" cannot happen.
     return shortUiEffectNames();
 }
 
@@ -87,8 +87,8 @@ bool QtMediaAudioBackend::ensureReady()
     m_root = new QObject;
     m_root->setObjectName(QStringLiteral("QtMediaAudioBackend"));
 
-    // 無輸出裝置唔算 initialize 失敗:GUI 照跑,只係聽唔到聲。呢個 flag 令
-    // multimedia smoke 分辨到「backend 壞咗」同「呢部機／CI runner 冇音效卡」。
+    // No output device does not count as initialize failure: the GUI keeps running,
+    // just silent. This flag lets multimedia smoke tell "backend broken" from "this machine / CI runner has no sound card".
     m_hasOutputDevice = !QMediaDevices::defaultAudioOutput().isNull();
     if (!m_hasOutputDevice)
         qWarning("QtMediaAudioBackend: no default audio output device; running silently");
@@ -106,7 +106,7 @@ bool QtMediaAudioBackend::ensureReady()
             noteError(QStringLiteral("bgm"), message);
         });
 
-    // 預載短音效。缺檔案唔係錯誤:clean checkout 本身就冇入庫音訊資產。
+    // Preload short sounds. A missing file is not an error: a clean checkout has no committed audio assets to begin with.
     foreach (const QString &effect, preloadedEffectNames()) {
         QString path = resolve(QStringLiteral("audio/system/%1.ogg").arg(effect));
 #ifdef Q_OS_ANDROID
@@ -160,8 +160,8 @@ QSoundEffect *QtMediaAudioBackend::effectFor(const QString &path)
     QSoundEffect *effect = new QSoundEffect(m_root);
     effect->setSource(QUrl::fromLocalFile(path));
     effect->setVolume(toLinear(m_volumes.effectGain()));
-    // QSoundEffect 走 QAudioDecoder,唔係所有 codec 都撐。載入失敗就永久標記
-    // 呢個檔案改行 player pool,唔會每次播放都重試同重複 log。
+    // QSoundEffect goes through QAudioDecoder, which not every codec supports. On
+    // load failure the file is permanently marked to run on the player pool, with no retry or repeated log on every playback.
     QObject::connect(effect, &QSoundEffect::statusChanged, m_root, [this, effect, path]() {
         if (effect->status() != QSoundEffect::Error)
             return;
@@ -208,8 +208,8 @@ void QtMediaAudioBackend::play(const QString &filename, bool superpose, AudioCha
             effect->play();
             return;
         }
-        // QSoundEffect 撐唔到（例如呢部機的 QAudioDecoder 解唔到 .ogg）就跌落
-        // 短音效自己嗰個 pool，而唔係語音 pool。
+        // When QSoundEffect cannot handle it (e.g. this machine's QAudioDecoder
+        // cannot decode .ogg), fall back to the short-sound pool, not the voice pool.
         playPooled(m_effectSlots, path, superpose, m_volumes.effectGain(),
             &m_effectStarted, &m_effectEvicted);
         return;
@@ -224,7 +224,7 @@ bool QtMediaAudioBackend::playPooled(QVector<PlayerSlot> &pool, const QString &p
 {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
 
-    // superpose=false 的舊語義:同一個檔案仲響緊就唔重疊播多次。
+    // Old semantics of superpose=false: while the same file is still playing, do not overlap it with another play.
     if (!superpose) {
         for (const PlayerSlot &slot : std::as_const(pool)) {
             if (slot.source == path && slot.player
@@ -241,7 +241,7 @@ bool QtMediaAudioBackend::playPooled(QVector<PlayerSlot> &pool, const QString &p
         }
     }
     if (!chosen) {
-        // pool 滿:搶最舊嗰個。上限固定,所以唔會 leak player/output。
+        // Pool full: evict the oldest one. The cap is fixed, so no player/output leak.
         for (PlayerSlot &slot : pool) {
             if (!chosen || slot.startedAt < chosen->startedAt)
                 chosen = &slot;
@@ -423,7 +423,7 @@ void QtMediaAudioBackend::teardown()
     if (!m_ready && !m_root)
         return;
 
-    // 先停低,再拆 object:唔可以喺 decoder 仲行緊嗰陣直接刪 player。
+    // Stop first, then tear down the object: never delete the player while its decoder is still running.
     for (QSoundEffect *effect : std::as_const(m_effects)) {
         if (effect)
             effect->stop();
@@ -450,8 +450,8 @@ void QtMediaAudioBackend::teardown()
     m_bgmSource.clear();
     m_bgmSuspendedByApplication = false;
 
-    // m_root 係所有 player／output／effect 的 parent,一 delete 就全部收乾淨,
-    // 唔會留低 active QObject 或者 decoder thread。
+    // m_root is the parent of every player / output / effect; one delete cleans
+    // everything up, leaving no active QObject or decoder thread behind.
     delete m_root;
     m_root = nullptr;
     m_ready = false;

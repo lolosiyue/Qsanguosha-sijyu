@@ -28,9 +28,11 @@ from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
                            HEADLESS_FINISHED)
 
 MAX_SEED: Final[int] = (1 << 32) - 1
-# 模式 ID 以 registry 為準。首選向 qsanguosha_server --list-game-modes 問, 問唔到
-# 先用呢個靜態表 (2026-09-04 的 registry 內容) 兜底 —— 唔好淨係寫死一個模式,
-# 之前寫死 {"08p"} 令 --modes 05p 直接 exit 2, 但產品路徑本身完全正常。
+# Mode IDs are governed by the registry. Prefer asking
+# qsanguosha_server --list-game-modes; if that fails, fall back to this static
+# table (the 2026-09-04 registry contents) -- never hard-code a single mode:
+# hard-coding {"08p"} made --modes 05p exit 2 even though the product path was
+# perfectly fine.
 FALLBACK_REAL_MODES: Final[frozenset[str]] = frozenset({
     "02_1v1", "02p", "03_1v2", "03p", "04_1v3", "04_2v2", "04_boss", "04p",
     "05_ol", "05p", "06_3v3", "06_XMode", "06_ol", "06p", "06pd", "07p",
@@ -39,7 +41,7 @@ FALLBACK_REAL_MODES: Final[frozenset[str]] = frozenset({
 
 
 def registered_real_modes(exe_root: str) -> frozenset[str]:
-    """向 server registry 問實際註冊咗嘅模式 ID; 失敗就用靜態表。"""
+    """Ask the server registry for the mode IDs actually registered; fall back to the static table."""
     try:
         server = find_exe(exe_root, "qsanguosha_server")
     except FileNotFoundError:
@@ -250,10 +252,12 @@ def validate_final_gauges(
     orphan_failures: list[str] = []
     current_game: int | None = None
     completed: set[int] = set()
-    # 產品係喺下一局嘅 banner 印咗之後先拆房, 所以第 N 局嘅 FINAL_GAUGE 通常出
-    # 喺 "Starting headless game N+1" 之後, 最後一局嗰個更加喺 done 之後。用
-    # 「已完成但未收到 marker」嘅 FIFO 對號, 唔可以照 current_game 歸屬,
-    # 否則第 1 局永遠 missing, 最後一個 marker 永遠 marker-outside-game。
+    # The product tears down the room only after the next game's banner is
+    # printed, so game N's FINAL_GAUGE usually appears after
+    # "Starting headless game N+1", and the last game's after done. Match
+    # markers through the FIFO of "completed but no marker received yet" games
+    # instead of attributing by current_game, otherwise game 1 is always
+    # missing and the last marker is always marker-outside-game.
     awaiting_marker: list[int] = []
     done_seen = False
     marker_count = 0

@@ -911,7 +911,7 @@ git commit -m "feat(tui): add a diffing character grid for the board UI"
 - Consumes: 無。
 - Produces:
   - `class TuiTerminal : public QObject`
-    - `explicit TuiTerminal(int inFd = STDIN_FILENO, int outFd = STDOUT_FILENO, QObject *parent = nullptr)` — 收 fd 而非寫死 `STDIN_FILENO`／`STDOUT_FILENO`。測試傳 pipe fd，非 TTY 路徑因此確定成立；若寫死，喺開發者終端直接跑測試會真係把該終端切入 raw mode 與 alternate screen。
+    - `explicit TuiTerminal(int inFd = STDIN_FILENO, int outFd = STDOUT_FILENO, QObject *parent = nullptr)` — 收 fd 而非寫死 `STDIN_FILENO`／`STDOUT_FILENO`。測試傳 pipe fd，非 TTY 路徑因此確定成立；若寫死，在開發者終端直接執行測試會真的把該終端切入 raw mode 與 alternate screen。
     - `bool enter(QString *error)` — 存 termios、關 `ICANON|ECHO`（**保留 `ISIG`**）、`ESC[?1049h`、隱藏游標、裝 signal handler。失敗回 false 並填 `error`。
     - `void leave()` — 還原；可重入，第二次是 no-op。
     - `QSize size() const` — 目前 `rows × cols`；查不到時回 `QSize(24, 80)`。

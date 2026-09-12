@@ -174,10 +174,12 @@ bool strictPayloadContracts(QString *error)
         return false;
     }
 
-    // Room::takeAG(nullptr, ...) — "剔走一張冇人拿嘅牌" —— 送出嘅 domain list
-    // 第一格係 null QVariant。Client::takeAG 以「冇 taker 欄位」代表呢個情況,
-    // 而 taker 係 FieldShape::String, 所以 encoder 必須略過該欄; 照原樣送出會
-    // 驗證失敗, 令 to_notify 入面每一個真人 socket 被 fail-closed 斷線。
+    // Room::takeAG(nullptr, ...) -- "pick up a card nobody has taken" -- sends
+    // a domain list whose first entry is a null QVariant. Client::takeAG
+    // represents this case by omitting the "taker" field, and taker is
+    // FieldShape::String, so the encoder must skip that field; sending it as-is
+    // fails validation and fail-closed disconnects every human socket in
+    // to_notify.
     ProtocolMessage takeAG = roomNotification(S_COMMAND_TAKE_AMAZING_GRACE, {});
     takeAG.payload = QVariantList{QVariant(), 7, false};
     if (!ProtocolPayloadRegistry::encodeObjectPayload(takeAG, &encoded, error))

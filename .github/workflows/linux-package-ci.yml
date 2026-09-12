@@ -3,18 +3,20 @@ name: Linux package CI
 # Linux GUI M3:build the shipping artifacts and smoke-test the artifacts
 # themselves.
 #
-# 獨立 build-tree Linux GUI CI 已移除；呢度只驗真正落到玩家手上嗰個檔案。
-# 一個 build-tree binary 靠絕對 RPATH 搵到 Qt、靠 repository 搵到資產，所以
-# 佢可以完全通過本機 M0–M2B 但個包一放上去就開唔到 —— 呢個差別就係 M3
-# 存在嘅原因。
+# The standalone build-tree Linux GUI CI has been removed; only the file that actually
+# reaches players is verified here. A build-tree binary finds Qt via absolute RPATH and
+# assets via the repository, so it can fully pass local M0–M2B while the packaged
+# artifact fails to launch - that difference is exactly why M3 exists.
 #
-# 刻意唔喺每次改 source 都跑:整包 + 全套 smoke 要成半個鐘。改動 packaging
-# 相關路徑、開 PR 去 debug／main、push main、打 tag、或者手動 dispatch 先至跑；
-# push debug 唔會喺 PR gate 之後再重複整包。
+# Deliberately not run on every source change: a full package plus the complete smoke
+# suite takes about half an hour. It runs only when packaging-related paths change,
+# when a PR targets debug/main, on push to main, on tags, or on manual dispatch;
+# a push to debug does not repackage again after the PR gate.
 #
-# GUI 對局(gui_network_smoke.py)一樣唔喺呢度跑:runner 冇美術／音訊資產,
-# 缺資產打完一局 client 同 server 會一齊 SIGSEGV,同本 PR 無關。呢個決定同
-# 本機驗證做法見 AGENTS.md「GUI runtime 唔入 CI」。
+# A GUI game (gui_network_smoke.py) likewise does not run here: the runner has no
+# art/audio assets, and with assets missing the client and server both SIGSEGV after
+# one game, unrelated to the PR. For this decision and the local verification
+# practice, see AGENTS.md "GUI runtime stays out of CI".
 
 on:
   pull_request:
@@ -57,10 +59,10 @@ concurrency:
 
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
-  # AppImage type2 runtime。upstream 只有一個 rolling "continuous" release,
-  # 所以呢度釘住實測過嗰個 build 嘅 sha256;佢重新 build 之後呢個 job 會即刻
-  # 紅燈,要人手驗過新 runtime 再更新呢個值 —— 唔可以靜靜咁食一個未驗過嘅
-  # 二進位入包。
+  # AppImage type2 runtime. Upstream only publishes a rolling "continuous" release, so
+  # the sha256 of the actually tested build is pinned here; once upstream rebuilds this
+  # job goes red immediately, and the value must be updated only after a human verified
+  # the new runtime - never silently swallow an unverified binary into the package.
   QSAN_APPIMAGE_RUNTIME_SHA256: 1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
 
 jobs:
@@ -135,8 +137,9 @@ jobs:
             -r tools/ci/requirements.txt
           echo "$RUNNER_TEMP/qsanguosha-ci-venv/bin" >> "$GITHUB_PATH"
 
-      # extensions/ 同 lua/ai/ 係 required assets:冇佢哋個包裝得成但開唔到局。
-      # 所以 fetch 失敗要喺呢度紅燈,而唔係出一個壞包。
+      # extensions/ and lua/ai/ are required assets: without them the package builds
+      # but no game can start, so a fetch failure must go red here instead of shipping
+      # a broken package.
       - name: Fetch Lua AI and extensions
         run: bash tools/ci/fetch-extensions.sh "$GITHUB_WORKSPACE"
 
@@ -225,7 +228,8 @@ jobs:
             --kind portable --label portable --platform offscreen --no-xvfb \
             --process-timeout 300
 
-      # xcb 係真正開 native window 嗰條路,offscreen 唔可以當作唯一證據。
+      # xcb is the path that really opens a native window; offscreen alone does not
+      # count as proof.
       - name: Portable bundle startup smoke under Xvfb (xcb)
         run: |
           root=$(find "$RUNNER_TEMP/portable check" -maxdepth 1 -mindepth 1 -type d | head -n 1)
@@ -233,8 +237,9 @@ jobs:
             --platform xcb --label portable-xvfb-xcb \
             --timeout-ms 60000 --process-timeout 300
 
-      # CI container 冇 FUSE,所以 AppImage 要用佢自己嘅 --appimage-extract。
-      # 呢個亦係 AppImage 用家喺冇 libfuse2 嘅機上會行嘅路徑。
+      # The CI container has no FUSE, so the AppImage must use its own
+      # --appimage-extract. This is also the path AppImage users take on machines
+      # without libfuse2.
       - name: Extract the AppImage without FUSE
         run: |
           mkdir -p "$RUNNER_TEMP/appimage check"
@@ -306,8 +311,8 @@ jobs:
             >"$RUNNER_TEMP/server-only-assets.json"
           echo "server-only install OK"
 
-      # DESTDIR 係 distro packaging 嘅入口(.deb/.rpm 全部靠佢)。壞咗嘅話
-      # downstream packaging 會即刻死,所以喺度守住。
+      # DESTDIR is the entry point for distro packaging (.deb/.rpm all rely on it). If
+      # it breaks, downstream packaging dies immediately, so this guards it here.
       - name: The install tree honours DESTDIR
         run: |
           DESTDIR="$RUNNER_TEMP/destdir" cmake --install build/package --prefix /usr --strip \

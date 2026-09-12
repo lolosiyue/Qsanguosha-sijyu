@@ -18,8 +18,9 @@
 #include <QtGlobal>
 
 class Player;
-// engine 側的 Self 放喺 QSanEngine namespace，避免同 GUI 的 `ClientPlayer *Self`
-// 在 Itanium ABI（GCC／Clang）下撞名；詳見 src/client/clientplayer.h。
+// The engine-side Self lives in the QSanEngine namespace so it does not clash
+// with the GUI's `ClientPlayer *Self` under the Itanium ABI (GCC/Clang); see
+// src/client/clientplayer.h.
 namespace QSanEngine {
 extern Player *Self;
 }

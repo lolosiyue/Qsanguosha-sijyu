@@ -13,20 +13,22 @@
 class MainWindow;
 class QTimer;
 
-// Linux GUI M2B-B 的 effects smoke。
+// The effects smoke for Linux GUI M2B-B.
 //
-// 同 M1 startup／M2B-A multimedia 一樣，行的係產品本身的路徑：QApplication →
-// engine → MainWindow → HomeScene，然後喺同一個 process 入面問產品用嘅
-// VisualEffectsPolicy 同驅動產品用嘅效果 class（EffectsCompletion、
-// PixmapAnimation、EmotionItem／QMovie、SpineGlItem），唔會另外開一套假嘅
-// 效果系統。
+// Like the M1 startup and M2B-A multimedia smokes, this runs the product's own
+// path: QApplication → engine → MainWindow → HomeScene, then queries the
+// product's VisualEffectsPolicy and drives the product's effect classes
+// (EffectsCompletion, PixmapAnimation, EmotionItem/QMovie, SpineGlItem) inside
+// the same process, without spinning up a fake effect system.
 //
-// CI 上冇正式美術資產亦冇 GPU，所以通過條件係「profile 解析啱、feature gate
-// 跟契約、completion exactly once、缺／壞資產降級、唔應該建立嘅物件冇建立、
-// 關得乾淨、冇 crash／hang」，而唔係「畫面睇落一樣」。
+// CI has neither real art assets nor a GPU, so the pass criteria are "profile
+// resolved correctly, feature gates follow the contract, completion delivered
+// exactly once, missing or broken assets degrade gracefully, objects that must
+// not be created are not created, clean teardown, no crash or hang" — not
+// "the visuals look identical".
 //
-// 完整一局 NONE／REDUCED 對局由 tools/autotest/gui_network_smoke.py 加
-// --effects-profile 驗；呢度唔會複製一份 RoomScene 驅動器。
+// A full NONE/REDUCED game is verified by tools/autotest/gui_network_smoke.py
+// with --effects-profile; this smoke does not duplicate a RoomScene driver.
 class EffectsSmokeController final : public QObject
 {
     Q_OBJECT
@@ -59,8 +61,9 @@ private:
     void emitStage(const QString &stage, bool ok, const QJsonObject &details = QJsonObject());
     void failStage(const QString &stage, const QString &error,
         const QJsonObject &details = QJsonObject());
-    // 每個 stage 之間都要行返幾轉 event loop：completion 係 queued 派送嘅，
-    // 同步連環 call 會驗到一個未派完嘅狀態。
+    // A few event loop turns must run between stages: completion is delivered
+    // via queued connections, and synchronous back-to-back calls would only
+    // observe a partially delivered state.
     void scheduleNext(void (EffectsSmokeController::*slot)(), int delayMs = 60);
     int remainingMs() const;
     bool failIfDeadlineExceeded(const QString &stage, bool force = false);
@@ -88,9 +91,9 @@ private:
     bool m_finished = false;
     int m_exitCode = EffectsSmokeReport::Passed;
 
-    // completion stage 嘅結果要留到 budget stage 一齊報。
+    // The completion stage's results are reported together with the budget stage.
     QJsonObject m_completionResult;
-    // stage 開始之前記低嘅 counter，用嚟分辨「呢個 stage 建立咗幾多」。
+    // Counter snapshot taken before a stage starts, used to tell how many objects this stage created.
     QJsonObject m_countersBeforeAssets;
 
     QJsonArray m_stages;

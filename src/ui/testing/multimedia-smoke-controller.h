@@ -13,14 +13,16 @@
 class MainWindow;
 class QTimer;
 
-// Linux GUI M2B-A 的 multimedia smoke。
+// The multimedia smoke for Linux GUI M2B-A.
 //
-// 同 M1 的 startup smoke 一樣，行的係產品本身的路徑：QApplication → engine →
-// MainWindow → HomeScene/QML，然後喺同一個 process 入面驅動真正的 Audio facade
-// （唔會另外開一套假的 audio 系統），最後讀 HomeController 報告返嚟的影片狀態。
+// Like the M1 startup smoke, this runs the product's own path: QApplication →
+// engine → MainWindow → HomeScene/QML, then drives the real Audio facade inside
+// the same process (without spinning up a fake audio system), and finally reads
+// the video state reported by HomeController.
 //
-// CI 上冇音訊裝置亦冇影片資產，所以通過條件係「物件建立得到、來源收得落、
-// 缺檔案／缺裝置有降級、關得乾淨、冇 crash／hang」，而唔係「真係聽到聲」。
+// CI has neither an audio device nor video assets, so the pass criteria are
+// "objects can be created, sources can be set, missing files or devices degrade
+// gracefully, clean teardown, no crash or hang" — not "sound is actually heard".
 class MultimediaSmokeController final : public QObject
 {
     Q_OBJECT
@@ -63,8 +65,9 @@ private:
     void writeReportFile();
     QJsonObject environmentDetails() const;
     QJsonObject audioDiagnostics() const;
-    // fixture 目錄：tests/fixtures/media/。缺失時 stage 唔會失敗，只會標記
-    // fixture_available=false —— 缺 fixture 同 backend 壞咗要分得開。
+    // Fixture directory: tests/fixtures/media/. When it is missing the stage
+    // does not fail, it only sets fixture_available=false — a missing fixture
+    // must be distinguishable from a broken backend.
     static QString fixturePath(const QString &name);
     int execute();
 

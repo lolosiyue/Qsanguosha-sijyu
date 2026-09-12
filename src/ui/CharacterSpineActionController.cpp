@@ -430,8 +430,8 @@ bool CharacterSpineActionController::triggerAction(const QString &playerId,
                                                     bool isLocalPlayer,
                                                     const QPointF &attackDirection)
 {
-    // RoomScene 喺 spineEnabled() 為 false 嗰陣根本唔會建立呢個 controller,
-    // 但 controller 亦要自己守住:唔准 Spine 就一個 skeleton 都唔起。
+    // RoomScene never creates this controller when spineEnabled() is false,
+    // but the controller must also guard itself: with Spine disallowed, no skeleton is created at all.
     if (!G_EFFECTS.spineEnabled())
         return false;
 

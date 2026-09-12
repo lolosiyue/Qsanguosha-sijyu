@@ -668,26 +668,26 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	animations = new EffectAnimation();
 	animations->setParent(this);
 
-	// 唔准改返 BspTreeIndex（Qt 預設）。呢個 scene 用預設 index 會喺對局中途
-	// SIGSEGV：崩潰點喺 QGraphicsSceneBspTree::climbTree()，佢由 BSP leaf 清單讀出
-	// 一個已經銷毀嘅 item 指針再解引用。已證實其中一個殘留來源係
-	// PlayerCardContainer::updateMark() 同步 delete 標記按鈕嘅 QGraphicsProxyWidget
-	// （ASan 喺崩潰當刻 describe 出 alloc/free 兩條 stack），嗰個已經修好；但單修佢
-	// 唔夠 —— 真 allocator 之下仍有未識別嘅殘留來源。
+	// Do not switch back to BspTreeIndex (the Qt default). With the default index this scene
+	// SIGSEGVs mid-game: the crash point is QGraphicsSceneBspTree::climbTree(), which reads an
+	// already-destroyed item pointer from a BSP leaf list and dereferences it. One confirmed
+	// source of stale entries was PlayerCardContainer::updateMark() synchronously deleting
+	// the mark buttons' QGraphicsProxyWidget (ASan described both alloc and free stacks at the
+	// crash moment); that one is fixed, but fixing it alone was not enough - under the real allocator unidentified stale sources remain.
 	//
-	// 兩個 index 實作收到同一批 removeItem()/deleteItem() 呼叫，但只有 BSP 嗰個會留低
-	// 殘留項目；QGraphicsSceneLinearIndex 唔會。實測（05p seed 20260909，同一 binary，
-	// 只差呢一行）：BspTree 5/5 崩、NoIndex 0/5；ASan build 係 8/8 對 0/17。
+	// Both index implementations receive the same removeItem()/deleteItem() calls, but only the BSP
+	// one leaves stale entries behind; QGraphicsSceneLinearIndex does not. Measured (05p seed 20260909, same binary,
+	// only this line changed): BspTree crashed 5/5, NoIndex 0/5; on the ASan build 8/8 vs 0/17.
 	//
-	// NoIndex 對呢個 scene 亦係 Qt 文件本身建議嘅選擇：item 大量持續移動（成手飛緊嘅
-	// CardItem）時 BSP 樹要不斷重建，NoIndex 嘅 O(1) 增刪反而更合適，代價係查找變 O(n)，
-	// 而本 scene 嘅 item 數量遠未到需要索引嘅規模。
+	// NoIndex is also the choice Qt's own documentation recommends for this scene: with many items
+	// moving constantly (a hand of flying CardItems) the BSP tree would be rebuilt nonstop;
+	// NoIndex's O(1) insert/remove fits better at the cost of O(n) lookups, and this scene's item count is far below the scale that needs an index.
 	setItemIndexMethod(QGraphicsScene::NoIndex);
 
 	// ── Spine pop-out action controller ──
-	// spineEnabled() 為 false（REDUCED／NONE）就完全唔建立 controller：
-	// 冇 controller 就唔會有 skeleton、atlas texture 或者 GL 資源。所有
-	// call site 本身已經 null-guard，語意唔變。
+	// When spineEnabled() is false (REDUCED / NONE) no controller is created at all:
+	// no controller means no skeleton, atlas texture or GL resources. Every
+	// call site already null-guards, so semantics are unchanged.
 #if QSAN_ENABLE_SPINE
 	if (G_EFFECTS.spineEnabled()) {
 		_spineActionController = new CharacterSpineActionController(this, this);
@@ -2758,10 +2758,10 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 	if(!main_window->isActiveWindow())
 		Sanguosha->playSystemAudioEffect("prelude");
 
-	// Linux GUI M2 network smoke: 由 server 送嚟嘅清單揀第一個(名稱排序後),
-	// 令固定 seed 下成局可重現。放喺 --test-general 之前,因為 --test-general
-	// 揀嘅武將多數唔喺 5 選 1 清單內, server 會靜靜改用 _chooseDefaultGeneral,
-	// 反而令選將結果唔確定。
+	// Linux GUI M2 network smoke: pick the first entry of the server-sent list (after
+	// name sorting) so the whole game is reproducible under a fixed seed. This runs
+	// before --test-general because --test-general's general is usually not in the
+	// 5-choose-1 list, and the server would silently fall back to _chooseDefaultGeneral, making the choice uncertain.
 	if (NetworkUiSmokeResponder::isActive() && Config.AutoPickGeneral.isEmpty()) {
 		m_autoPickGeneralAskCount++;
 		if (NetworkUiSmokeResponder::instance()->answerChooseGeneral(generals))
@@ -4443,10 +4443,10 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 	case Client::AskForPlayerChoose: {
 		showPromptBox();
 
-		// F1:選人嘅約束由結構化 request 嚟,唔再由 Client 幾個公開欄位嚟。
-		// 數值同以前逐個一樣(askForPlayerChosen() 就係由同一份 server
-		// payload 砌呢個 request),所以 UI 行為唔變;分別係規則約束而家有
-		// 一個單一出處,而唔係散落喺 Client 嘅可寫欄位度。
+		// F1: the choice constraints come from the structured request, no longer from
+		// several public Client fields. The values are identical to before one by one
+		// (askForPlayerChosen() builds this request from the same server payload), so UI
+		// behavior is unchanged; the difference is that the rule constraints now have a single source of truth instead of being scattered across writable Client fields.
 		const PlayerInteractionPayload *payload = activeRequest != nullptr
 			? activeRequest->payloadAs<PlayerInteractionPayload>() : nullptr;
 		const QStringList selectablePlayers = payload != nullptr
@@ -4704,12 +4704,12 @@ void RoomScene::doCancelButton()
 		break;
 	}
 	case Client::AskForShowOrPindian: {
-		// 展示／拼點係強制回應(minSelection=1、cancelable=false):送空答案會
-		// 俾 ClientCore 當「取消一個唔准取消嘅 request」擋落嚟,結果係 client
-		// 由頭到尾冇覆過,玩家要等到 server 嘅 operation timeout 先過到。
-		// server 收到空答案本來就係自己 getRandomHandCard()(player-decision-
-		// service.cpp askForCardShow／askForPindian),所以呢度改為本機交一張
-		// 手牌出去:同樣係「唔揀就隨便一張」,但即刻答得到。
+		// Show / pindian are mandatory responses (minSelection=1, cancelable=false):
+		// sending an empty answer gets rejected by ClientCore as "cancelling a
+		// non-cancelable request", leaving the client unanswered until the server's
+		// operation timeout. When the server gets an empty answer it just uses its own
+		// getRandomHandCard() anyway (player-decision-service.cpp askForCardShow /
+		// askForPindian), so here we answer locally with a hand card instead: still "a random one if nothing chosen", but it answers immediately.
 		const Card *fallback = dashboard->getSelected();
 		if (fallback == nullptr && Self != nullptr) {
 			const QList<const Card *> handcards = Self->getHandcards();
@@ -5939,11 +5939,11 @@ void RoomScene::onGameStart()
 
 	trust_button->setEnabled(true);
 
-	// 自動化測試: 開局即托管, 避免真人操作阻塞對局。
+	// Automated testing: entrust (auto-play) right from the start so human input never blocks the game.
 	//
-	// M2 network smoke 除外:托管之後 server 端 AI 會接手回覆,askFor 請求就唔會
-	// 再到達 client 嘅 RoomScene,而「請求經真 TCP 到 UI、再由 UI 覆返 server」
-	// 正正就係 M2 要證明嘅嘢。responder 自己有 stall watchdog,真係卡住先切托管。
+	// Except in the M2 network smoke: once entrusted, the server-side AI replies, so
+	// askFor requests never reach the client's RoomScene - but "request over real TCP
+	// to the UI and the UI replying to the server" is exactly what M2 proves. The responder has its own stall watchdog; entrust kicks in only when truly stuck.
 	if (isAutoTestClient() && !NetworkUiSmokeResponder::isActive()
 		&& Self && Self->getState() != "trust") {
 		QTimer::singleShot(500, this, [this]() {
@@ -6186,8 +6186,8 @@ QGraphicsObject*RoomScene::getAnimationObject(const QString&name) const
 
 void RoomScene::doMovingAnimation(const QString&name,const QStringList&args)
 {
-	// 純裝飾（無懈可擊嘅飛行圖示）：NONE 唔建立任何 item，最終狀態就係
-	// 「畫面冇多咗嘢」。遊戲流程唔會等呢個動畫。
+	// Purely decorative (the flying Nullification icon): NONE creates no items at
+	// all; the final state is "nothing extra on screen". The game flow never waits for this animation.
 	if (!G_EFFECTS.animationsEnabled()) {
 		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 		return;
@@ -6255,9 +6255,9 @@ void RoomScene::doAppearingAnimation(const QString&name,const QStringList&args)
 
 void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 {
-	// Lightbox 係一塊蓋住成張枱嘅半透明 rect，靠動畫 finished() 先至拆走。
-	// NONE profile 唔可以起佢：起咗但唔播動畫就永遠拆唔走。呢個亦係下面
-	// missing-asset 修正嘅同一個問題。
+	// The lightbox is a semi-transparent rect covering the whole table, removed only
+	// via the animation's finished(). The NONE profile must not create it: created
+	// without playing, it could never be removed. Same issue as the missing-asset fix below.
 	if (!G_EFFECTS.animationsEnabled()) {
 		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 		return;
@@ -6319,14 +6319,14 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 			pma->moveBy(-sceneRect().width()*_m_roomLayout->m_infoPlaneWidthPercentage/2,0);
 			connect(pma,SIGNAL(finished()),this,SLOT(removeLightBox()));
 		} else {
-			// image/system/emotion/<name>/0.png 唔喺度（clean checkout 冇正式
-			// 美術資產就係咁）。塊 lightbox 係 80% 不透明,而佢淨係靠
-			// PixmapAnimation::finished() 拆走 —— 冇動畫就冇 finished(),
-			// 塊嘢會永遠蓋住成張枱,遊戲仲玩得但係乜都睇唔到。
+			// image/system/emotion/<name>/0.png is missing (exactly what a clean
+			// checkout without real art assets looks like). The lightbox is 80% opaque
+			// and is removed only by PixmapAnimation::finished() - no animation means no
+			// finished(), so the rect would cover the table forever: the game stays playable but nothing is visible.
 			//
-			// 呢條 branch 以前係死 code:PixmapAnimation::setPath() 嘅 do-while
-			// 令 valid() 永遠 true,所以 GetPixmapAnimation() 從來冇回過
-			// nullptr。setPath() 改成 while 之後呢度先至真係行得到。
+			// This branch used to be dead code: PixmapAnimation::setPath()'s do-while
+			// made valid() always true, so GetPixmapAnimation() never returned
+			// nullptr. Only after setPath() became a while loop does this branch actually run.
 			qWarning("[RoomScene] lightbox animation '%s' has no frames; removing the lightbox",
 				qPrintable(word.mid(5)));
 			removeItem(lightbox);
@@ -6336,8 +6336,8 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 #ifndef Q_OS_WINRT
 #if QSAN_ENABLE_QML
     else if(word.startsWith("skill=")){  // 重新启用武将特效的使用异步动画
-        // 全屏 QML 技能特效只喺 FULL 行。REDUCED／NONE 直接清走 lightbox：
-        // 呢個 rect 本身就係俾 QML 疊層蓋住嘅，冇疊層就唔可以留低。
+        // Full-screen QML skill effects run only under FULL. REDUCED / NONE clears the lightbox directly:
+        // this rect exists to be covered by the QML overlay; without the overlay it must not remain.
         if (!G_EFFECTS.qmlEffectsEnabled()) {
             G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
             removeItem(lightbox);
@@ -6521,12 +6521,12 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 #endif
 #if QSAN_ENABLE_SPINE
     else if(word.startsWith("spine=")){
-        // Spine 动态全屏特效——render as QGraphicsItem (SpineGlItem)
+        // Spine dynamic full-screen effect -- render as QGraphicsItem (SpineGlItem)
         // NOTE: Cannot use QOpenGLWidget overlay because FitView already
         // uses QOpenGLWidget as viewport; Qt 5 forbids nested QOpenGLWidgets.
         //
-        // REDUCED／NONE 一個 SpineGlItem 都唔會 new：唔會讀 atlas／skel，
-        // 唔會分配 GL texture，亦唔會等 animationFinished。
+        // REDUCED / NONE never new a SpineGlItem: no atlas / skel reads, no GL
+        // texture allocation, no waiting on animationFinished.
         if (!G_EFFECTS.spineEnabled()) {
             G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
             removeItem(lightbox);
@@ -6708,8 +6708,8 @@ void RoomScene::showIndicator(const QString&from,const QString&to)
 	QPointF start = obj1->sceneBoundingRect().center();
 	QPointF finish = obj2->sceneBoundingRect().center();
 
-	// 指示線係一次性嘅裝飾：REDUCED 保留（縮短）令玩家仲睇到「邊個指住邊個」，
-	// NONE 唔起 —— 佢冇最終狀態要到達，遊戲流程亦冇等佢。
+	// Indicator lines are one-shot decoration: REDUCED keeps them (shortened) so the
+	// player still sees who points at whom; NONE skips them - they have no final state to reach and the game flow never waits for them.
 	if (G_EFFECTS.animationsEnabled()) {
 		IndicatorItem*indicator = new IndicatorItem(start,finish,ClientInstance->getPlayer(from));
 		indicator->setPos(qMin(start.x(),finish.x()),qMin(start.y(),finish.y()));
@@ -7294,8 +7294,8 @@ void RoomScene::showPindianBox(const QString&from_name,int from_id,const QString
 
 	bringToFront(pindian_box);
 	pindian_box->appear();
-	// 444ms 純粹係「等副牌翻開先報結果」嘅演出時間。NONE 直接 0ms:
-	// 結果一樣係經 event loop 派出去,唔會喺呢度重入。
+	// The 444ms is purely presentation time: "wait for the secondary card to flip
+	// before reporting the result". NONE uses 0ms directly: the result is still delivered via the event loop, no reentry here.
 	QTimer::singleShot(G_EFFECTS.scaledDelay(444),this,SLOT(doPindianAnimation()));
 }
 
@@ -7303,8 +7303,8 @@ void RoomScene::doPindianAnimation()
 {
 	if(pindian_box->isVisible()&&pindian_from_card){
 		QString emotion = pindian_success ? "success" : "no-success";
-		// 唔准動畫（NONE）或者缺資產,兩條路都一定要收返個盒 —— 呢度就係
-		// 「completion callback 靠動畫播完」最容易 hang 嘅位。
+		// Whether animations are disallowed (NONE) or assets are missing, both paths
+		// must still collect the box - this is the spot where "completion callback waits for the animation to finish" is most likely to hang.
 		PixmapAnimation*pma = G_EFFECTS.animationsEnabled()
 			? PixmapAnimation::GetPixmapAnimation(pindian_from_card,emotion)
 			: nullptr;

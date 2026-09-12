@@ -29,7 +29,7 @@
 #include "game-session-config.h"
 #include "game-snapshot.h"
 #include "replay-takeover-validation.h"
-// 自動化測試診斷同 --asset-root 轉發都用 QSanRuntimePaths，唔止 XP legacy 路徑。
+// Automated-test diagnostics and the --asset-root forwarding both use QSanRuntimePaths, not just the XP legacy path.
 #include "runtime-paths.h"
 #ifdef QSAN_XP_LEGACY
 #include "local-server-controller.h"
@@ -2223,8 +2223,8 @@ void MainWindow::on_actionAbout_fmod_triggered()
 	content.append(tr("Official site: <a href='%1' style = \"color:#0072c1; \">%1</a> <br/>").arg(address));
 
 #ifdef AUDIO_SUPPORT
-	// Linux 唔會連 FMOD：呢個對話框而家報告實際生效嘅 backend，否則喺 Qt
-	// backend 上面會顯示一個同 FMOD 無關嘅版本號，睇落好似 FMOD 真係載咗。
+	// Linux does not link FMOD: this dialog reports the actually active backend,
+	// otherwise on the Qt backend it would show an FMOD-unrelated version number that looks as if FMOD were really loaded.
 	content.append(tr("Audio backend in use: %1 <br/>").arg(Audio::backendName()));
 	content.append(tr("Current versionn %1 <br/>").arg(Audio::getVersion()));
 #endif

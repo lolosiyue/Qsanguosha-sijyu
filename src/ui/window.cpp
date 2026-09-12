@@ -149,8 +149,8 @@ void Window::appear()
 void Window::disappear()
 {
     if (!G_EFFECTS.animationsEnabled()) {
-        // 最終狀態:完全透明;keep_when_disappear 之外仲要拆走個 window。
-        // deleteLater 必須經 event loop,唔可以喺 caller 嘅 stack 上面拆。
+        // Final state: fully transparent; besides keep_when_disappear, the window must also be torn down.
+        // deleteLater must go through the event loop; never tear it down on the caller's stack.
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         scaleTransform->setXScale(1.05);
         scaleTransform->setYScale(0.95);

@@ -114,8 +114,9 @@ bool MultimediaSmokeReport::isKnownVideoReason(const QString &reason)
 
 bool MultimediaSmokeReport::isAcceptableVideoReason(const QString &reason)
 {
-    // 播得到、關咗、或者任何一種「播唔到但靜態背景頂得住」都算通過。
-    // 唯一唔接受的係 reason 本身唔認識 —— 即係報告漏咗分類。
+    // Played, stopped, or any "could not play but the static background held"
+    // outcome counts as a pass. The only unacceptable case is an unrecognized
+    // reason — that means the report missed a classification.
     return isKnownVideoReason(reason);
 }
 

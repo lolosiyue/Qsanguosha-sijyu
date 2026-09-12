@@ -237,7 +237,7 @@ EffectsSmokeReport::ObjectBudget EffectsSmokeReport::budgetFor(const QString &pr
 {
     ObjectBudget budget;
     if (profileName == QLatin1String("none")) {
-        // NONE 嘅硬性定義：一個高成本效果物件都唔准建立。
+        // Hard definition of NONE: not a single expensive effect object may be created.
         budget.spineItems = 0;
         budget.movieObjects = 0;
         budget.qmlOverlays = 0;
@@ -245,13 +245,13 @@ EffectsSmokeReport::ObjectBudget EffectsSmokeReport::budgetFor(const QString &pr
         return budget;
     }
     if (profileName == QLatin1String("reduced")) {
-        // REDUCED 保留 QMovie（只用首幀），但唔准有 Spine／QML 疊層／影片。
+        // REDUCED keeps QMovie (first frame only) but forbids Spine, QML overlays, and video.
         budget.spineItems = 0;
         budget.qmlOverlays = 0;
         budget.videoObjects = 0;
         return budget;
     }
-    return budget;  // full：冇上限
+    return budget;  // full: no cap
 }
 
 bool EffectsSmokeReport::withinBudget(const ObjectBudget &budget, const QJsonObject &counters,

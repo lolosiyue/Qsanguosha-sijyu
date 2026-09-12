@@ -12,10 +12,11 @@
 #include <cstdio>
 #include <mutex>
 
-// CardTagOwner 只係 tag 上嘅擁有權包裝, 但讀取端一律用 value<const Card*>()
-// (tenyear.cpp 的 Juchui / ThJizhanmc / ThZhuitao, 同 swig/qvariant.i 的
-// QVariant::toCard())。冇 converter 嘅話 QVariant 會靜靜地還 nullptr,
-// 技能唔會發動亦唔會報錯, 所以喺呢度一次過補返兩個方向。
+// CardTagOwner is only an ownership wrapper on the tag, but readers always use
+// value<const Card*>() (tenyear.cpp's Juchui / ThJizhanmc / ThZhuitao, and
+// swig/qvariant.i's QVariant::toCard()). Without a converter QVariant silently returns
+// nullptr — the skill just never triggers, with no error — so both directions are
+// covered here in one place.
 static struct CardTagOwnerConverterRegistrar {
     CardTagOwnerConverterRegistrar()
     {
@@ -1923,9 +1924,10 @@ void CardLifetimeManager::dumpDomain(const void *domain) const
         if (it->object)
             ++withObject;
     }
-    // 失敗條件計嘅係 entryCountForDomain(), 佢唔理 token->live。所以呢度要連
-    // 已經唔 live 但仲掛喺 domain 上嘅 entry 一齊列出嚟, 否則 live=0 嘅時候
-    // 一行都唔會印, 睇 log 嘅人淨係見到一個「4」而唔知係邊四個。
+    // The failure condition counts entryCountForDomain(), which ignores token->live. So
+    // entries that are no longer live but still attached to the domain must be listed here
+    // too; otherwise nothing is printed when live=0 and the log reader only sees a "4"
+    // without knowing which four.
     struct DomainEntryLine {
         const void *address;
         const void *object;
@@ -2027,8 +2029,9 @@ QList<QPointer<QObject>> CardLifetimeManager::retiredDomainObjects(const void *d
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
         if (it->domain != domain || it->baselineDomain == domain)
             continue;
-        // 只交出 domain 已經放手嘅(token 唔再 live)。仲 live 嘅牌可能只係
-        // 排咗一個 deleteLater 等 event loop, 提早派送會喺人哋腳下拆咗佢。
+        // Only hand over entries the domain has already released (token no longer live).
+        // Still-live cards may merely have a deleteLater queued waiting for the event loop;
+        // dispatching them early would destroy them under someone's feet.
         if (it->token->live || it->object.isNull())
             continue;
         objects.append(it->object);
@@ -2064,7 +2067,8 @@ void CardLifetimeManager::leaveScope(const void *domain)
     if (m_activeScopes > 0)
         --m_activeScopes;
     if (domain != currentDomain) {
-        // 唔係錯誤, 但值得知: 有人喺 scope 入面換咗 domain。扣返入嗰陣嗰個。
+        // Not an error, but worth knowing: someone switched the domain inside the scope.
+        // Charge it back to the one at entry.
         std::fprintf(stderr, "CARD_LIFETIME_SCOPE_DOMAIN_MOVED entered=%llx current=%llx\n",
                      static_cast<unsigned long long>(reinterpret_cast<quintptr>(domain)),
                      static_cast<unsigned long long>(reinterpret_cast<quintptr>(currentDomain)));

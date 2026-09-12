@@ -1103,8 +1103,8 @@ void CustomAssignDialog::setMoveButtonAvaliable(bool toggled)
 
 void CustomAssignDialog::accept()
 {
-    // 使用者自訂劇本一律存喺使用者可寫目錄:安裝樹/AppImage 唯讀,寫返入去
-    // 只會靜靜咁失敗。
+    // User-custom scenarios are always stored in a user-writable directory: the install
+    // tree/AppImage is read-only, and writing back there would only fail silently.
     const QString customScenario =
         QSanRuntimePaths::userDataPath(QStringLiteral("etc/customScenes/custom_scenario.txt"));
     if (save(customScenario)) {
