@@ -100,8 +100,12 @@ class SelfTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
             (root / "extensions").mkdir()
-            (root / "extensions/Ab.lua").write_text("")
-            (root / "extensions/aB.lua").write_text("")
+            # These distinct NTFS names collide under Python lower().  This
+            # exercises that contract; it does not claim universal filesystem
+            # portability. ASCII case pairs cannot coexist on default Windows.
+            (root / "extensions/\u0130.lua").write_text("")
+            (root / "extensions/i\u0307.lua").write_text("")
+            self.assertEqual(len(list((root / "extensions").iterdir())), 2)
             with self.assertRaisesRegex(AssertionError, "collide case-insensitively"):
                 on_disk(root)
 
@@ -129,8 +133,10 @@ class SelfTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
             (root / "extensions").mkdir()
-            (root / "extensions/Ab.lua").write_text("")
-            (root / "extensions/aB.lua").write_text("")
+            # Keep the fixture creatable on case-insensitive Windows filesystems.
+            (root / "extensions/\u0130.lua").write_text("")
+            (root / "extensions/i\u0307.lua").write_text("")
+            self.assertEqual(len(list((root / "extensions").iterdir())), 2)
             result = subprocess.run(
                 [sys.executable, str(ROOT / "tools/generate-extension-manifest.py"), str(root)],
                 capture_output=True, text=True, check=False)
