@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""fetch-extensions.sh must copy the extensions repository's whole .lua tree.
+"""fetch-extensions.sh must copy the AI tree whole and the extension tree flat.
 
-The repository keeps runtime content in subdirectories (extensions/temp, ai/isolated,
-ai/temp).  A copy that only takes the top level still reports success, and the loss shows
-up much later as an engine bootstrap failure:
+The repository keeps AI content in subdirectories (ai/isolated, ai/temp) and a copy
+that only takes the top level loses it; the loss shows up much later as an engine
+bootstrap failure:
 
     Lua script error: lua/sanguosha.lua extensions/gaoda.lua:19598:
     attempt to concatenate a nil value (field '?')
 
-so this checks the fetch itself against a fixture repository.
+Extensions are the opposite case.  lua/config.lua's extension_names is the only
+thing the loader reads, and the Web admission gate (declared-v1) rejects the whole
+bundle when any undeclared .lua sits under extensions/ or lua/ - see
+contentScanIsDeclared() in src/core/rules-bundle-exporter.cpp.  Copying
+extensions/temp therefore does not add content the engine can use, it only makes
+the server answer rules_bundle={"error_code": "rules_content_unsupported"} and
+refuse every Web client.  So this checks the fetch itself against a fixture
+repository, in both directions.
 """
 
 from __future__ import annotations
@@ -30,8 +37,9 @@ FIXTURE_FILES = {
     "ai/isolated/ask-for-use-card.lua": "-- isolated\n",
     "ai/temp/glory-ai.lua": "-- nested ai\n",
     "extensions/standard.lua": "-- extension\n",
-    "extensions/temp/extraheg.lua": "-- nested extension\n",
+    "extensions/temp/extraheg.lua": "-- undeclared nested extension\n",
     "lua/luaoldenemy_lib.lua": "-- lua lib\n",
+    "lua/nested/extra.lua": "-- undeclared nested lua\n",
 }
 
 # Where each fixture file has to land under the checkout root.
@@ -42,8 +50,14 @@ EXPECTED = {
     "ai/isolated/ask-for-use-card.lua": "lua/ai/isolated/ask-for-use-card.lua",
     "ai/temp/glory-ai.lua": "lua/ai/temp/glory-ai.lua",
     "extensions/standard.lua": "extensions/standard.lua",
-    "extensions/temp/extraheg.lua": "extensions/temp/extraheg.lua",
     "lua/luaoldenemy_lib.lua": "lua/luaoldenemy_lib.lua",
+}
+
+# Undeclared content the declared-v1 scan would reject; it must stay out of the tree.
+# lua/ai/ is the one subtree the scan exempts, which is why ai/ is copied whole.
+FORBIDDEN = {
+    "extensions/temp/extraheg.lua": "extensions/temp/extraheg.lua",
+    "lua/nested/extra.lua": "lua/nested/extra.lua",
 }
 
 
@@ -90,6 +104,9 @@ def main() -> int:
         for source, destination in EXPECTED.items():
             if not (checkout / destination).is_file():
                 problems.append("%s did not reach %s" % (source, destination))
+        for source, destination in FORBIDDEN.items():
+            if (checkout / destination).exists():
+                problems.append("%s was copied to %s; declared-v1 rejects it" % (source, destination))
         # The AI loader patch has to survive the copy, or mixed-case packages break on
         # case-sensitive filesystems.
         smart_ai = checkout / "lua" / "ai" / "smart-ai.lua"
