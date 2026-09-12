@@ -748,6 +748,55 @@ bool CardLifetimeManager::markAdopted(const std::shared_ptr<const CardLifetimeTo
     return true;
 }
 
+bool CardLifetimeManager::retireAdopted(
+    Card *card, const std::function<bool(Card *, QThread *)> &moveToWorker)
+{
+    if (!card || m_mode != CardLifetimeMode::ManagedReclaim)
+        return false;
+    QThread *const currentThread = QThread::currentThread();
+    std::shared_ptr<const CardLifetimeToken> token;
+    bool moveHere = false;
+    {
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
+        const auto found = m_entries.find(card);
+        if (found == m_entries.end() || !found->token->live
+            || found->object.data() != static_cast<QObject *>(card)
+            || found->token->state != CardLifetimeState::Adopted
+            || found->baselineDomain != nullptr)
+            return false;
+        token = found->token;
+        // Only the domain's registered turn worker may take the card: any other
+        // thread would leave it where neither drainTurnDomain() nor the shutdown
+        // drainDomain() on the canonical owner can reach it.
+        moveHere = found->domain != nullptr && found->domain == currentDomain
+            && m_turnReclaimThreads.value(found->domain, nullptr) == currentThread
+            && card->thread() != currentThread;
+    }
+    // QObject affinity changes run outside the manager mutex.
+    if (moveHere && moveToWorker)
+        moveToWorker(card, currentThread);
+
+    const QThread *affinity = card->thread();
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
+    const auto found = m_entries.find(card);
+    if (found == m_entries.end() || found->token.get() != token.get()
+        || found->token->generation != token->generation || !found->token->live
+        || found->token->state != CardLifetimeState::Adopted)
+        return false;
+    // The wrapper no longer owns this generation: native/wrapper leases, adoption
+    // reservations and change edges now decide when drainImpl() may free it.
+    found->token->originalOwner = false;
+    found->token->state = CardLifetimeState::PendingDelete;
+    found->affinityThread = const_cast<QThread *>(affinity);
+    if (!found->pending) {
+        found->pending = true;
+        ++m_gauge.pending_delete;
+    }
+    ++m_gauge.native_delete_requested;
+    updatePeaksLocked();
+    return true;
+}
+
 bool CardLifetimeManager::reserveAdoption(const std::shared_ptr<const CardLifetimeToken> &token)
 {
     std::lock_guard<ProfiledMutex> lock(m_mutex);

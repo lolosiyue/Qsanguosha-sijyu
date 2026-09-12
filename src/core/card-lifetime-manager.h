@@ -13,6 +13,7 @@
 #include <QtGlobal>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <initializer_list>
 
@@ -144,6 +145,15 @@ public:
 
     bool requestNativeDelete(const std::shared_ptr<const CardLifetimeToken> &token);
     bool markAdopted(const std::shared_ptr<const CardLifetimeToken> &token);
+    // A WrappedCard replaced the adopted inner card. Instead of deleting it while
+    // payload leases may still hold its pointer, return it to lease-gated reclamation.
+    // On the registered turn-reclaim worker of the card's domain, the card is first
+    // moved to that worker (via moveToWorker) so drainTurnDomain() frees it there;
+    // otherwise it stays with its current owner for drain()/drainDomain().
+    // Returns false when the card is not a managed adopted card; the caller keeps
+    // ownership in that case.
+    bool retireAdopted(Card *card,
+                       const std::function<bool(Card *, QThread *)> &moveToWorker);
     bool reserveAdoption(const std::shared_ptr<const CardLifetimeToken> &token);
     void cancelAdoption(const std::shared_ptr<const CardLifetimeToken> &token, bool transferFailed = false);
     bool requestLuaDelete(const void *card, QByteArray *error = nullptr);
