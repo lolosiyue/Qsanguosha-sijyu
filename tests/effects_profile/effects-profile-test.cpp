@@ -1,8 +1,9 @@
-// Linux GUI M2B-B 效果 profile 的契約測試。
+// Contract tests for the Linux GUI M2B-B effects profiles.
 //
-// 只依賴 Qt Core：profile 解析、feature gate、duration scale、CLI override 同
-// exactly-once completion 都唔應該要開 QApplication、OpenGL 或者任何美術資產先
-// 驗到。真正嘅 RoomScene／Spine／QMovie 行為由 --effects-smoke 喺 Xvfb 下驗。
+// Depends on Qt Core only: profile resolution, feature gates, duration scale,
+// CLI override, and exactly-once completion must all be verifiable without
+// QApplication, OpenGL, or any art assets. The real RoomScene/Spine/QMovie
+// behavior is verified by --effects-smoke under Xvfb.
 #include "effects-completion.h"
 #include "effects-profile.h"
 
@@ -27,7 +28,7 @@ void check(bool condition, const char *what)
     ++failures;
 }
 
-// 只有一個 qreal property 嘅最小動畫目標，唔使拉 GUI 入嚟。
+// A minimal animation target with a single qreal property, so the GUI is not pulled in.
 class AnimationTarget : public QObject
 {
     Q_OBJECT
@@ -41,8 +42,8 @@ private:
     qreal m_value = 0.0;
 };
 
-// 行 event loop 直到 predicate 成立或者夠鐘。completeNow() 係 queued 嘅，
-// 所以每個等待都一定要真係入過 event loop。
+// Runs the event loop until the predicate holds or the budget runs out.
+// completeNow() is queued, so every wait must really have entered the event loop.
 template <typename Predicate>
 void spin(Predicate predicate, int budgetMs = 2000)
 {
@@ -50,7 +51,7 @@ void spin(Predicate predicate, int budgetMs = 2000)
     timer.start();
     while (!predicate() && timer.elapsed() < budgetMs)
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-    // 再多行一轉，令 deleteLater 之類嘅 deferred event 有機會落地。
+    // One more turn so deferred events such as deleteLater get a chance to land.
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
@@ -136,7 +137,7 @@ void testFeatureGates()
     check(!EffectsProfileContract::decorativeDelayAllowed(EffectsProfile::None),
         "none allows no decorative delay");
 
-    // 三個 profile 都要保留狀態回饋 —— 否則玩家會睇唔到 pending action。
+    // All three profiles must keep state feedback -- otherwise players cannot see the pending action.
     check(EffectsProfileContract::stateFeedbackEnabled(EffectsProfile::Full)
             && EffectsProfileContract::stateFeedbackEnabled(EffectsProfile::Reduced)
             && EffectsProfileContract::stateFeedbackEnabled(EffectsProfile::None),
@@ -162,8 +163,9 @@ void testDurationScale()
     check(EffectsProfileContract::scaledDuration(EffectsProfile::None, 600) == 0,
         "none turns 600ms into 0ms");
 
-    // 呢個係防重入嘅關鍵：Reduced 唔可以壓到 0，因為 zero-duration 動畫喺
-    // QAbstractAnimation::start() 入面就同步 emit finished()。
+    // This is the re-entrancy safeguard: Reduced must never clamp to 0, because
+    // a zero-duration animation emits finished() synchronously inside
+    // QAbstractAnimation::start().
     check(EffectsProfileContract::scaledDuration(EffectsProfile::Reduced, 1) == 1,
         "reduced never scales a positive duration down to zero");
     check(EffectsProfileContract::scaledDuration(EffectsProfile::Reduced, 2) == 1,
@@ -207,7 +209,7 @@ void testCliOverride()
             "a missing value is reported");
     }
     {
-        // 下一個 token 又係 flag：當冇畀值，唔好食咗人哋個 flag。
+        // The next token is another flag: when no value is given, do not swallow the flag.
         const auto cli = EffectsProfileContract::parseCliOverride(
             QStringList{ QStringLiteral("--effects-profile"), QStringLiteral("--effects-smoke") });
         check(cli.present && !cli.valid,
@@ -266,7 +268,7 @@ void testResolution()
             "a bad stored setting falls back to the default and reports why");
     }
     {
-        // 設定壞咗但 CLI 啱：照跑 CLI 嗰個 profile。
+        // A corrupt setting but a valid CLI: run the CLI's profile.
         const auto resolution = EffectsProfileContract::resolve(
             QStringList{ QStringLiteral("--effects-profile=none") },
             QVariant(QStringLiteral("sparkly")));
@@ -291,7 +293,7 @@ void testCompletionOnFinish()
     spin([&calls]() { return calls > 0; });
     check(calls == 1, "a finished animation delivers exactly one completion");
 
-    // 動畫 DeleteWhenStopped 之後仲會 emit destroyed —— 唔可以再派多一次。
+    // After DeleteWhenStopped the animation still emits destroyed -- it must not deliver a second time.
     spin([]() { return false; }, 60);
     check(calls == 1, "the animation's later destruction does not re-deliver");
 }
@@ -301,12 +303,12 @@ void testCompletionOnDestroyDuringAnimation()
     AnimationTarget target;
     int calls = 0;
     QPropertyAnimation *animation = new QPropertyAnimation(&target, "value");
-    animation->setDuration(60000);   // 唔會自然播完
+    animation->setDuration(60000);   // will never finish on its own
     animation->setEndValue(1.0);
     EffectsCompletion::whenFinished(animation, &target, [&calls]() { ++calls; });
     animation->start();
 
-    // 播到一半拆咗個動畫：等緊佢嘅流程一定要繼續，唔可以永遠等唔到。
+    // The animation is destroyed mid-run: the flow waiting on it must continue and never wait forever.
     delete animation;
     spin([&calls]() { return calls > 0; });
     check(calls == 1, "destroying a running animation still delivers one completion");
@@ -322,7 +324,7 @@ void testCompletionCancelledWhenContextDies()
     EffectsCompletion::whenFinished(animation, context, [&calls]() { ++calls; });
     animation->start();
 
-    // context 死咗：callback 唔可以派落死物。
+    // The context died: the callback must not be delivered to a dead object.
     delete context;
     spin([]() { return false; }, 120);
     check(calls == 0, "a completion is cancelled when its context dies");
@@ -336,7 +338,7 @@ void testCompletionTimeoutFallback()
     AnimationTarget target;
     int calls = 0;
     QPropertyAnimation *animation = new QPropertyAnimation(&target, "value");
-    animation->setDuration(60000);   // 卡死嘅動畫
+    animation->setDuration(60000);   // a stalled animation
     animation->setEndValue(1.0);
     EffectsCompletion::whenFinished(animation, &target, [&calls]() { ++calls; }, 30);
     animation->start();
@@ -358,8 +360,8 @@ void testCompleteNowIsQueuedAndExactlyOnce()
 
     EffectsCompletion::completeNow(&context, [&]() {
         ++calls;
-        // 呢個 callback 唔可以喺 completeNow() 未 return 之前就行 ——
-        // 重入正正就係 duration=0 動畫嘅老問題。
+        // This callback must not run before completeNow() returns --
+        // re-entrancy is exactly the old duration=0 animation problem.
         if (!returned)
             reentered = true;
     });
@@ -414,14 +416,14 @@ void testCompletionCounters()
     spin([]() { return false; }, 60);
     check(EffectsCompletion::cancelledCount() >= 1, "a cancellation is counted");
     check(EffectsCompletion::deliveredCount() == 1, "a cancellation is not counted as a delivery");
-    // 呢個先至係 anti-hang 嘅可量度形式：開過幾多個，就要 settle 幾多個。
+    // This is the measurable form of the anti-hang guarantee: every completion issued must settle.
     check(EffectsCompletion::pendingCount() == 0,
         "every issued completion settles as either delivered or cancelled");
     check(EffectsCompletion::issuedCount()
             == EffectsCompletion::deliveredCount() + EffectsCompletion::cancelledCount(),
         "issued == delivered + cancelled");
 
-    // whenFinished(nullptr) 會轉交畀 completeNow()：唔可以計兩次 issued。
+    // whenFinished(nullptr) forwards to completeNow(): issued must not be counted twice.
     const quint64 before = EffectsCompletion::issuedCount();
     EffectsCompletion::whenFinished(nullptr, &context, [&calls]() { ++calls; });
     check(EffectsCompletion::issuedCount() == before + 1,

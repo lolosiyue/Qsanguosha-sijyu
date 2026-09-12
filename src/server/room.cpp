@@ -320,10 +320,11 @@ void Room::clearControllerRelation(ServerPlayer *player)
 
 bool Room::stopGameThreads(int timeoutMs)
 {
-	// Room 自己就係一條 QThread(Room::run -> GameSessionController::run), 而且
-	// 揀將／出牌嗰啲 blocking 請求就係喺佢身上行嘅。唔等佢收工就行落
-	// RoomRuntime::shutdownFinal(), 會撞到佢仲喺 askForGeneral 入面揸住一個
-	// CardLifetimeScope, 收工檢查即刻 qFatal(server exit 6)。
+	// Room itself is a QThread (Room::run -> GameSessionController::run), and the blocking
+	// requests such as general picking / card playing run on it. Calling
+	// RoomRuntime::shutdownFinal() without waiting for it to finish would hit it still
+	// holding a CardLifetimeScope inside askForGeneral, and the shutdown check would
+	// immediately qFatal (server exit 6).
 	QList<QThread *> workers;
 	workers << thread_3v3.data() << thread_xmode.data() << thread_1v1.data()
 		<< thread << this;
@@ -5965,7 +5966,8 @@ void Room::initializeReplayRecordPath()
 			return;
 	}
 
-	// replay 係使用者資料,唔可以寫入安裝樹/AppImage(唯讀)。
+	// Replays are user data and must not be written into the install tree/AppImage
+	// (read-only).
 	const QString recordDir = QSanRuntimePaths::recordDir();
 
 	const QString replayPath = recordDir + QStringLiteral("/")

@@ -1,19 +1,20 @@
 #ifndef CLIENT_INTERACTION_MODEL_H
 #define CLIENT_INTERACTION_MODEL_H
 
-// Client Architecture F1：server 問嘢／client 答嘢嘅純資料模型。
+// Client Architecture F1: the pure data model for "server asks / client answers".
 //
-// 呢個 header 只准依賴 Qt Core。入面唔可以出現 QWidget、QGraphicsItem、
-// QDialog、QQuickItem、Dashboard、RoomScene 或者任何 engine 型別（Card、
-// Player、Skill）。Interaction 只用得 wire 上面已經有嘅原始值：卡 id、玩家
-// objectName、option 字串。
+// This header may depend on Qt Core only. It must not contain QWidget, QGraphicsItem,
+// QDialog, QQuickItem, Dashboard, RoomScene or any engine type (Card, Player, Skill).
+// Interactions use only the raw values already present on the wire: card ids, player
+// objectNames, option strings.
 //
-// 咁樣做嘅原因係：一個 request 要可以同時餵得起 desktop RoomScene、將來嘅
-// text client、Android client 同 WASM lite，而佢哋唯一嘅共通語言就係
-// 「揀邊個 option / 邊啲玩家 / 邊啲卡」。
+// The reason: one request must be able to feed the desktop RoomScene, a future text
+// client, an Android client and WASM lite alike, and their only common language is
+// "which option / which players / which cards".
 //
-// 規則真相仍然喺 server。呢層唔會判斷「呢張牌合唔合法」，只會執行 server
-// 喺 request 入面已經講明嘅約束（可選集合、數量、可唔可以取消、死線）。
+// Rule truth stays on the server. This layer never judges "is this card legal"; it only
+// enforces the constraints the server stated in the request (selectable set, counts,
+// cancelability, deadline).
 
 #include <QJsonObject>
 #include <QList>
@@ -23,9 +24,9 @@
 
 #include <variant>
 
-// F1 第一個垂直切片遷移嘅五類 interaction。其餘（guanxing、gongxin、yiji、
-// AG、pindian、trigger order、nullification……）仍然行舊路,見
-// docs/client-core-interaction-model.md 嘅 remaining 清單。
+// The five interaction kinds migrated in F1's first vertical slice. The rest (guanxing,
+// gongxin, yiji, AG, pindian, trigger order, nullification, ...) still take the old path;
+// see the remaining list in docs/client-core-interaction-model.md.
 enum class InteractionType
 {
     None = 0,
@@ -60,12 +61,12 @@ enum class InteractionType
     QmlInteract
 };
 
-// snapshot／log 用嘅穩定字串，唔會跟住 enum 次序漂移。
+// Stable strings for snapshots/logs; they never drift with enum ordering.
 QString interactionTypeName(InteractionType type);
 InteractionType interactionTypeFromName(const QString &name);
 
-// 一個可揀項。value 係送返 server 嗰個字串,label 淨係畀 view 顯示。
-// ClientCore 只認 value。
+// One selectable item. value is the string sent back to the server; label is only for
+// view display. ClientCore only recognizes value.
 struct InteractionOption
 {
     QString value;
@@ -79,14 +80,15 @@ struct InteractionOption
     QJsonObject toJson() const;
 };
 
-// 卡牌選擇約束。
+// Card selection constraints.
 //
-// enumerated == true  → selectableCards 就係合法集合,ClientCore 會強制檢查
-//                       成員資格。server 有send過清單嘅 request（AG、
-//                       choose card、guanxing……）屬呢類。
-// enumerated == false → 合法集合喺 client 層無法枚舉,因為佢係 pattern 配對
-//                       嘅結果,而 pattern 配對係 engine 規則。ClientCore
-//                       唔會扮規則引擎去猜,只會驗數量、取消權同 id 值域。
+// enumerated == true  → selectableCards is the legal set; ClientCore enforces membership.
+//                       Requests where the server sent a list (AG, choose card,
+//                       guanxing, ...) belong here.
+// enumerated == false → the legal set cannot be enumerated on the client, because it is
+//                       the result of pattern matching and pattern matching is engine
+//                       rules. ClientCore does not play rule engine and guess; it only
+//                       validates count, cancelability and the id range.
 struct CardSelectionState
 {
     bool enumerated = false;
@@ -95,13 +97,14 @@ struct CardSelectionState
     int minSelection = 0;
     int maxSelection = 0;
     QString pattern;
-    int handlingMethod = -1;  // Card::HandlingMethod 嘅原始值,-1 = 未指定
+    int handlingMethod = -1;  // raw value of Card::HandlingMethod, -1 = unspecified
 
     bool isActive() const;
     QJsonObject toJson() const;
 };
 
-// 玩家選擇約束。selectablePlayers 永遠係枚舉嘅：server 一定會 send 清單。
+// Player selection constraints. selectablePlayers is always enumerated: the server
+// always sends the list.
 struct PlayerSelectionState
 {
     QStringList selectablePlayers;
@@ -281,23 +284,24 @@ enum class InteractionResponseShape
 
 QString interactionResponseShapeName(InteractionResponseShape shape);
 
-// 一個 server request 嘅完整結構化描述。
+// Fully structured description of one server request.
 struct InteractionRequest
 {
-    // ClientCore 派嘅 correlation ID,單調遞增,由 1 開始。0 = 未編號。
+    // Correlation ID assigned by ClientCore, monotonically increasing, starting at 1.
+    // 0 = unassigned.
     quint64 requestId = 0;
     // Protocol V2 message_id 直接存入 requestId，作完整 quint64 關聯。
     InteractionType type = InteractionType::None;
-    // QSanProtocol::CommandType 嘅原始值。ClientCore 唔 include protocol.h,
-    // 所以用 int 儲住。
+    // Raw value of QSanProtocol::CommandType. ClientCore does not include protocol.h, so
+    // it is stored as int.
     int command = 0;
 
     QString skillName;
     QString prompt;
     bool cancelable = false;
 
-    // 0 = 冇死線。deadlineMs 係 ClientCore clock 嘅單調毫秒數,由 beginRequest()
-    // 按 timeoutMs 計出嚟。
+    // 0 = no deadline. deadlineMs is a monotonic millisecond value on the ClientCore clock,
+    // computed by beginRequest() from timeoutMs.
     qint64 timeoutMs = 0;
     qint64 deadlineMs = 0;
 
@@ -309,7 +313,7 @@ struct InteractionRequest
     QVariantMap metadata;
 
     bool isValid() const;
-    // 按 type 決定邊條 selection 維度有效,畀 snapshot 同驗證共用。
+    // Which selection dimension is valid, by type; shared by snapshot and validation.
     int minSelection() const;
     int maxSelection() const;
     bool hasOption(const QString &value) const;
@@ -322,8 +326,9 @@ struct InteractionRequest
     }
 
     QJsonObject toJson() const;
-    // 穩定排序、compact 嘅 JSON。QJsonObject 本身按 key 排序,所以同一個
-    // request 喺任何平台都出同一串 bytes —— snapshot test 靠呢個。
+    // Deterministically ordered, compact JSON. QJsonObject already sorts by key, so the same
+    // request yields the same byte string on every platform — the snapshot test relies on
+    // this.
     QByteArray toSnapshot() const;
 };
 
@@ -335,10 +340,10 @@ enum class InteractionResponseKind
     GeneralArrangement,
     Custom,
     None = 0,
-    Cancel,   // 放棄／唔答。只有 cancelable request 收
-    Option,   // 揀咗一個 option value
-    Players,  // 揀咗零個或多個玩家
-    Cards     // 揀咗零張或多張卡(可以帶 virtual card 嘅 text)
+    Cancel,   // give up / no answer. Only cancelable requests accept it
+    Option,   // picked one option value
+    Players,  // picked zero or more players
+    Cards     // picked zero or more cards (may carry a virtual card's text)
 };
 
 QString interactionResponseKindName(InteractionResponseKind kind);
@@ -434,21 +439,22 @@ struct InteractionResponse
     QByteArray toSnapshot() const;
 };
 
-// 拒絕原因。每一個都對應完成標準入面「ClientCore 必須拒絕」嗰張清單。
+// Rejection reasons. Each one corresponds to an entry in the "ClientCore must reject"
+// list of the completion criteria.
 enum class InteractionRejection
 {
     CommandMismatch = 17,
     MalformedResponse,
     UnsupportedInteraction,
     None = 0,
-    NoActiveRequest,           // 而家冇 request 等緊答
-    RequestIdMismatch,         // reply 嘅 id 唔係 active request
-    AlreadyCompleted,          // duplicate reply:呢個 request 已經答咗
+    NoActiveRequest,           // no request currently awaiting an answer
+    RequestIdMismatch,         // reply's id is not the active request
+    AlreadyCompleted,          // duplicate reply: this request was already answered
     RequestCancelled,          // request 已取消後再 reply
     RequestExpired,            // request 已過期
-    KindMismatch,              // 答案種類同 request 對唔上
-    UnknownOption,             // 唔存在嘅 option
-    DisabledOption,            // 存在但 server 標咗唔可揀
+    KindMismatch,              // answer kind does not match the request
+    UnknownOption,             // nonexistent option
+    DisabledOption,            // exists but the server marked it non-selectable
     UnknownPlayer,             // 非 selectable player
     DuplicatePlayer,
     UnknownCard,               // 非 selectable card／id 超出值域
@@ -457,7 +463,7 @@ enum class InteractionRejection
     UnknownGeneral = 20,
     DuplicateGeneral,
     SelectionCountOutOfRange,  // selection 數量錯誤
-    NotCancelable              // 唔准取消嘅 request 收到空答案
+    NotCancelable              // non-cancelable request received an empty answer
 };
 
 QString interactionRejectionName(InteractionRejection rejection);
@@ -474,13 +480,13 @@ struct InteractionValidation
     static InteractionValidation fail(InteractionRejection rejection, const QString &detail = QString());
 };
 
-// request 唔係由答案完成嗰陣嘅原因。
+// Why a request ended without being completed by an answer.
 enum class InteractionCancelReason
 {
-    Superseded = 0,  // 下一個 server request 到咗
-    Expired,         // 過咗死線
-    Abandoned,       // 本機主動放棄(唔會送 reply)
-    Disconnected     // 連線斷咗／局終
+    Superseded = 0,  // the next server request arrived
+    Expired,         // deadline passed
+    Abandoned,       // abandoned locally (no reply is sent)
+    Disconnected     // connection lost / game over
 };
 
 QString interactionCancelReasonName(InteractionCancelReason reason);

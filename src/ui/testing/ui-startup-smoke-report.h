@@ -5,11 +5,12 @@
 #include <QString>
 #include <QStringList>
 
-// Linux GUI M1 的 startup smoke 契約。
+// The startup smoke contract for Linux GUI M1.
 //
-// 呢個 header 只依賴 Qt Core，冇任何 Widgets／Quick／QML 依賴，方便 CTest 直接
-// 驗證 marker schema 同 exit code 契約，唔使開 QApplication。實際驅動 GUI 的部分
-// 喺 UiStartupSmokeController。
+// This header depends on Qt Core only, with no Widgets/Quick/QML dependency, so
+// CTest can verify the marker schema and exit code contract directly without
+// launching QApplication. The part that actually drives the GUI lives in
+// UiStartupSmokeController.
 class UiStartupSmokeReport
 {
 public:
@@ -49,13 +50,15 @@ public:
     static QString parseReportPath(const QStringList &arguments);
     static bool parseStartupPage(const QStringList &arguments, QString *page, QString *error);
 
-    // 缺少 optional 美術資源（icon／立繪／音效）唔應該升級成 fatal：clean checkout
-    // 本身就冇入庫呢啲檔案。真正的 QML component load 失敗由 QQuickWidget::Error
-    // 判定，唔靠 warning 文字。
+    // Missing optional art assets (icons, character art, sounds) must not be
+    // escalated to fatal: a clean checkout does not commit these files in the
+    // first place. A genuine QML component load failure is judged by
+    // QQuickWidget::Error, not by warning text.
     static bool isOptionalAssetWarning(const QString &message);
 
-    // result 的失敗原因；timeout 同「stage 本身失敗」用同一個 stage 名，靠呢個欄位
-    // 分辨，所以 timeout 一定會 map 去 Timeout exit code。
+    // Failure reason of the result; timeout and "stage itself failed" share the
+    // same stage name and are told apart by this field, so a timeout always maps
+    // to the Timeout exit code.
     static const char *const ReasonOk;          // "ok"
     static const char *const ReasonStageFailed; // "stage_failed"
     static const char *const ReasonTimeout;     // "timeout"

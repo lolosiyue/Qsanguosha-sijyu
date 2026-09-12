@@ -12,8 +12,9 @@ int runEnumReflectionTests();
 int runPackagePolicyTests();
 int runMigratedGeneralPackageTests();
 int runEquipsNullifiedTests();
-// 以下 suite 本身係獨立 test 檔嘅 main(),由 CMake 用 COMPILE_DEFINITIONS
-// main=... 改名夾埋入嚟,所以簽名保持同原本一模一樣。
+// The suites below are the main() functions of standalone test files, merged
+// in by CMake via COMPILE_DEFINITIONS main=... renaming, so the signatures
+// stay identical to the originals.
 int runCardOverviewClassifierTests(int argc, char **argv);
 int runCardOverviewModelTests(int argc, char **argv);
 int runLocalResponseUiCaseTests(int argc, char **argv);
@@ -24,8 +25,8 @@ int runPhotoLayoutFitTests();
 
 int main(int argc, char **argv)
 {
-    // 夾埋入嚟嘅 suite 各自會起自己嘅 QCoreApplication,所以要喺起 application
-    // 之前就交俾佢哋。
+    // Each merged-in suite creates its own QCoreApplication, so hand control
+    // to the suites before creating the application here.
     {
         const QString merged = parseSuite(argc, argv);
         if (merged == QLatin1String("card-overview-classifier"))

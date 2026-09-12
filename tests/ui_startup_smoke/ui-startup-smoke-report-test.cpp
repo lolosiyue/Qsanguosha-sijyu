@@ -1,8 +1,8 @@
 // Linux GUI M1 startup smoke 的 marker／exit code 契約測試。
 //
-// 只依賴 Qt Core：契約本身唔應該要開 QApplication 先驗到，CI 亦要喺 server-only
-// runner 上照跑。真正的 GUI 啟動由 tools/ci/linux-gui-startup-smoke.sh 喺 Xvfb 下
-// 驗證。
+// Depends on Qt Core only: the contract itself must be verifiable without
+// QApplication, and CI must run it unchanged on a server-only runner. The real
+// GUI startup is verified by tools/ci/linux-gui-startup-smoke.sh under Xvfb.
 #include "ui-startup-smoke-report.h"
 
 #include <QCoreApplication>
@@ -208,7 +208,7 @@ void testArgumentParsing()
 
 void testOptionalAssetClassification()
 {
-    // Clean checkout 冇入庫 optional 美術資源，呢啲 warning 唔可以當成 QML 載入失敗。
+    // A clean checkout does not commit the optional art assets, so these warnings must not be treated as QML load failures.
     check(UiStartupSmokeReport::isOptionalAssetWarning(
             QStringLiteral("qrc:/QSanguosha/Home/HomeNavButton.qml:187:9: QML Image: "
                            "Cannot open: qrc:/QSanguosha/Home/icons/home.svg")),
@@ -221,7 +221,7 @@ void testOptionalAssetClassification()
             QStringLiteral("Cannot open: audio/system/BGM/front-bgm.ogg")),
         "a missing audio clip is an optional asset warning");
 
-    // 真正的 QML component 失敗唔可以被降級成 warning。
+    // A real QML component failure must not be downgraded to a warning.
     check(!UiStartupSmokeReport::isOptionalAssetWarning(
             QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml:2:1: "
                            "module \"QtQuick.Controls\" is not installed")),

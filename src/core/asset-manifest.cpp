@@ -25,7 +25,7 @@ void collect(const QJsonObject &object, const QString &key, bool required,
         QSanAssetManifest::Entry entry;
         entry.path = path;
         entry.required = required;
-        // 目錄同檔案都要算，所以用 exists() 而唔係 QFile::exists()。
+        // Directories count as well as files, hence exists() instead of QFile::exists().
         entry.present = QFileInfo::exists(root.filePath(path));
         entries.append(entry);
     }
@@ -70,8 +70,9 @@ Report inspect(const QString &assetRoot, const QString &manifestPath)
         : QFileInfo(manifestPath).absoluteFilePath();
     QFile file(report.manifestPath);
     if (!file.exists()) {
-        // 冇 manifest 唔係錯：開發樹同舊有部署都冇。呢個時候唔會扮成
-        // 「所有資產齊全」，而係老實講「冇 manifest 可以驗」。
+        // A missing manifest is not an error: the dev tree and legacy deployments have none.
+        // In that case do not pretend "all assets present"; honestly report "no manifest to
+        // verify".
         return report;
     }
     if (!file.open(QIODevice::ReadOnly)) {
@@ -135,7 +136,7 @@ QStringList diagnostics(const Report &report)
             "This installation is incomplete; reinstall the package or pass --asset-root."));
     }
     if (!missingOptional.isEmpty()) {
-        // 大型美術／音訊包唔喺 core package 入面，缺咗係常態。
+        // The large art/audio packs are not part of the core package; their absence is normal.
         lines.append(QStringLiteral("missing optional (%1): %2")
                          .arg(missingOptional.size())
                          .arg(missingOptional.join(QStringLiteral(", "))));

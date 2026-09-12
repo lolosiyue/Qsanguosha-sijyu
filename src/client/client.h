@@ -295,21 +295,23 @@ public:
 
     void setSelf(ClientPlayer *newSelf);
 
-    // ── Client Architecture F1:結構化 interaction ────────────────────────
+    // ── Client Architecture F1: structured interaction ───────────────────
     //
-    // Client 依然係 protocol／transport 層:佢收 packet、砌 InteractionRequest,
-    // 交畀 ClientCore,再喺 core 接納答案之後先真正 replyToServer()。規則真相
-    // 留喺 server,UI 只負責呈現同收集答案。
+    // Client remains the protocol/transport layer: it receives packets, builds
+    // InteractionRequests and hands them to ClientCore, and only calls
+    // replyToServer() for real after the core accepts the answer. Rule truth stays
+    // on the server; the UI is only responsible for presenting and collecting answers.
     //
-    // 已遷移嘅五類:choose general／choice／choose player／skill invoke／
-    // response card。其餘 interaction 仍然行舊路,見
-    // docs/client-core-interaction-model.md。
+    // Five kinds already migrated: choose general / choice / choose player / skill
+    // invoke / response card. Other interactions still take the old path, see
+    // docs/client-core-interaction-model.md.
     ClientCore *interactionCore() const { return m_interactionCore; }
     QJsonArray interactionInventory() const;
 
-    // DesktopInteractionView 用嘅呈現 port。每一個都係原本 askForXxx() 尾段
-    // 嗰一兩行(emit signal + setStatus)原封不動搬過嚟,所以 RoomScene／
-    // Dashboard 一行都唔使改,desktop 外觀同操作亦保證唔變。
+    // Presentation ports used by DesktopInteractionView. Each one is the last line or two
+    // of the original askForXxx() (emit signal + setStatus) moved over verbatim, so
+    // RoomScene/Dashboard need not change a single line and the desktop look and
+    // behavior are guaranteed unchanged.
     void presentGeneralChoice(const InteractionRequest &request) override;
     void presentOptionChoice(const InteractionRequest &request) override;
     void presentPlayerChoice(const InteractionRequest &request) override;
@@ -337,8 +339,8 @@ public:
     void presentArrangeGeneral(const InteractionRequest &request) override;
     void presentQmlInteraction(const InteractionRequest &request) override;
 
-    // 唯一 UI reply 入口：填 identity、交畀 ClientCore validate/complete，
-    // accepted 後由 typed encoder 產生並送出唯一一次 V2 wire reply。
+    // The only UI reply entry: fill in identity, hand to ClientCore for validate/complete;
+    // once accepted, the typed encoder produces and sends the single V2 wire reply.
     bool submitInteractionResponse(InteractionResponse response);
 
 public slots:
@@ -416,8 +418,9 @@ private:
     void updatePileNum();
     // prompt_doc 都寫埋。
     QString setPromptList(const QStringList &text);
-    // 淨係計字串,唔掂 prompt_doc:已遷移嘅 interaction 由 DesktopInteractionView
-    // 負責呈現,所以 request builder 唔應該喺呢個階段寫 UI 文件。
+    // Only builds strings, never touches prompt_doc: migrated interactions are presented
+    // by DesktopInteractionView, so the request builder must not write UI documents at
+    // this stage.
     QString formatPromptList(const QStringList &text);
     QString _processCardPattern(const QString &pattern);
     void commandFormatWarning(const QString &str, const QRegularExpression &rx, const char *command);
@@ -452,9 +455,10 @@ signals:
     void version_checked(const QString &version_number, const QString &mod_name, int card_num);
     void server_connected();
     void error_message(const QString &msg);
-    // 傳輸層觀測點:socket 真正接通 / 每個 server request 到埗 / 每個 client reply
-    // 送出。自動化測試靠呢三個訊號分辨「連唔上」「連到但冇 request」「有 request
-    // 但冇覆」,唔使解析 log 文字。無人連線時成本等同一次空 emit。
+    // Transport-layer observation points: socket actually connected / each server request
+    // arriving / each client reply sent. Automated tests use these three signals to
+    // distinguish "cannot connect", "connected but no request" and "request but no reply"
+    // without parsing log text. With nobody connected the cost equals one empty emit.
     void socket_connected();
     void socket_disconnected();
     void server_request(int commandType);

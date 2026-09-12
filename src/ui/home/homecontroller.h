@@ -87,10 +87,10 @@ class HomeController final : public QObject
     Q_PROPERTY(QUrl characterImage READ characterImage NOTIFY characterImageChanged)
     Q_PROPERTY(QUrl logoImage READ logoImage CONSTANT)
     Q_PROPERTY(bool hasVideoSupport READ hasVideoSupport CONSTANT)
-    // 使用者設定的影片背景開關；關咗就完全唔會建立 QML Video component。
+    // User setting for the video background; when off, no QML Video component is created at all.
     Q_PROPERTY(bool videoBackgroundEnabled READ videoBackgroundEnabled CONSTANT)
-    // 影片背景的結構化結果。QML 一有結論就寫返落嚟，--multimedia-smoke 直接讀
-    // 呢個 map，唔會靠「有冇 console error」判斷成敗。
+    // Structured result for the video background. QML writes its verdict here as soon
+    // as it has one; --multimedia-smoke reads this map instead of judging success by "console error or not".
     Q_PROPERTY(QVariantMap videoStatus READ videoStatus NOTIFY videoStatusChanged)
     Q_PROPERTY(bool isDarkTheme READ isDarkTheme NOTIFY themeChanged)
     Q_PROPERTY(QString playerName READ playerName NOTIFY playerInfoChanged)
@@ -114,12 +114,12 @@ public:
     bool hasVideoSupport() const;
     bool videoBackgroundEnabled() const;
     QVariantMap videoStatus() const;
-    // QML 報告影片背景的最終狀態。reason 用 MultimediaSmokeReport 嗰套字串
-    // （ok / not_requested / disabled / asset_missing / backend_unavailable /
-    // codec_unsupported / playback_error / fallback_ok）。
+    // Final state of the video background as reported by QML. reason uses the
+    // MultimediaSmokeReport string set (ok / not_requested / disabled / asset_missing / backend_unavailable /
+    // codec_unsupported / playback_error / fallback_ok).
     Q_INVOKABLE void reportVideoStatus(const QString &reason, const QString &error);
-    // 靜態背景真係頂上咗之後叫一次。刻意同 reportVideoStatus() 分開：原本嘅失敗
-    // 原因唔可以被 "fallback_ok" 蓋走，否則 CI 分唔出係缺資產定係 codec 唔支援。
+    // Called once the static background has actually taken over. Deliberately separate from reportVideoStatus():
+    // the original failure reason must not be overwritten by "fallback_ok", or CI cannot tell missing assets from unsupported codecs.
     Q_INVOKABLE void confirmVideoFallback();
     Q_INVOKABLE bool localFileExists(const QUrl &url) const;
 

@@ -2,17 +2,19 @@ cmake_minimum_required(VERSION 3.28)
 
 project(QSanguosha LANGUAGES C CXX)
 
-# CTest 只係用嚟跑本機同 CI 嘅測試,由頭到尾冇用過 CDash。include(CTest) 除咗
-# BUILD_TESTING option 同 enable_testing() 之外,仲會多開 28 個
-# Continuous*/Nightly*/Experimental* dashboard target —— Visual Studio 會將每一個
-# 都變成 solution 入面一個 project,佔咗成個 solution 一半以上。所以只取要用嗰兩樣。
+# CTest is only used to run local and CI tests; CDash is never used. Besides the
+# BUILD_TESTING option and enable_testing(), include(CTest) also spawns 28 extra
+# Continuous*/Nightly*/Experimental* dashboard targets - Visual Studio turns each into
+# a solution project that occupies over half the solution, so only the two needed
+# pieces are used.
 option(BUILD_TESTING "Build the testing tree." ON)
 if(BUILD_TESTING)
     enable_testing()
 endif()
 
-# Visual Studio / Xcode: 將 test 同 CMake 自帶嘅 ALL_BUILD／ZERO_CHECK／RUN_TESTS
-# 之類收埋落 solution folder,唔好喺根目錄平鋪。Ninja／Makefile 會忽略呢兩個屬性。
+# Visual Studio / Xcode: tuck the test targets and CMake's built-in ALL_BUILD /
+# ZERO_CHECK / RUN_TESTS into a solution folder instead of flattening them at the
+# root. Ninja / Makefile generators ignore these two properties.
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMake")
 
@@ -90,15 +92,15 @@ if(QSAN_BUILD_WASM_SOLO)
     add_link_options(-pthread)
 endif()
 
-# Audio backend。GUI client 用邊個實作由呢個變數單點決定，call site 冇任何
-# 平台 #ifdef：
+# Audio backend. A single variable decides which implementation the GUI client uses;
+# call sites contain no platform #ifdef:
 #
-#   FMOD  Windows GUI Release（bundled fmodex，行為同以前一樣）
-#   QT    Linux GUI（Qt Multimedia）
-#   NULL  dedicated server／CI／任何唔想出聲的 build
+#   FMOD  Windows GUI Release (bundled fmodex, behaves exactly as before)
+#   QT    Linux GUI (Qt Multimedia)
+#   NULL  dedicated server / CI / any build that must stay silent
 #
-# dedicated server 唔會編入任何 audio 檔案，所以 NULL 亦係 server-only build
-# 的自然預設。
+# The dedicated server does not compile in any audio files, so NULL is also the
+# natural default for server-only builds.
 if(WIN32)
     set(QSAN_AUDIO_BACKEND_DEFAULT "FMOD")
 elseif(QSAN_BUILD_GUI)
@@ -209,13 +211,14 @@ endif()
 
 list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
 
-# GUI 產品的 Qt baseline 在 Windows 與 Linux 保持一致。GUI source 用到
-# Qt 6.5 才加入的 API（例如 QStyleHints::colorScheme()），且 Windows 正式
-# toolchain 已經係 Qt 6.11.1，所以 GUI build 明確要求 6.11。
+# The Qt baseline of the GUI product is consistent between Windows and Linux. GUI
+# sources use APIs only added in Qt 6.5 (e.g. QStyleHints::colorScheme()), and the
+# production Windows toolchain is already Qt 6.11.1, so GUI builds explicitly require
+# 6.11.
 #
-# server-only build 刻意唔套用呢個下限：dedicated server 只需要
-# Core／Network（Qt6 再加 WebSockets），要繼續可以用 distro 提供的 Qt 6.x
-# （例如 Ubuntu 24.04 的 6.4.2）建置。XP／Qt 5.6.3 不找 WebSockets。
+# The server-only build deliberately skips this floor: the dedicated server only needs
+# Core/Network (plus WebSockets on Qt6) and must stay buildable against the
+# distro-provided Qt 6.x (e.g. 6.4.2 on Ubuntu 24.04). XP/Qt 5.6.3 does not use WebSockets.
 set(QSAN_QT_GUI_MINIMUM_VERSION 6.11)
 
 if(QSAN_BUILD_GUI OR WIN32)
@@ -527,9 +530,9 @@ target_include_directories(qsanguosha_engine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
     ${CMAKE_CURRENT_SOURCE_DIR}/src/client
-    # package／scenario 嘅 TU include 到 client.h,而 client.h 而家見到
-    # ClientCore。呢個係 header-only 依賴:engine 唔會 link
-    # qsanguosha_client_core,亦冇 call 過佢任何 symbol。
+    # TUs from package/scenario include client.h, and client.h now sees ClientCore.
+    # This is a header-only dependency: the engine neither links qsanguosha_client_core
+    # nor calls any of its symbols.
     ${CMAKE_CURRENT_SOURCE_DIR}/src/client/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/package
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
@@ -605,14 +608,14 @@ if(QSAN_ENABLE_WEBSOCKETS)
     target_link_libraries(qsanguosha_websocket PUBLIC
         Qt6::WebSockets
     )
-    # engine 只提供 compile usage requirement,唔可以做 link item。static
-    # library 的 PRIVATE 依然會以 $<LINK_ONLY:> 傳去 consumer,而 executable
-    # 那邊是 $<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>;同一個 link item
-    # 帶兩種 feature,CMake 3.28(Ubuntu 24.04 / Docker builder 的 apt cmake)會
-    # fatal「Impossible to link target ... has already occurred with the
-    # feature 'WHOLE_ARCHIVE'」。新版 CMake 放寬咗,所以 GitHub runner 預裝的
-    # cmake 見唔到,只有 Docker CI 會紅。用 $<COMPILE_ONLY:> 斬斷傳遞,真正連
-    # engine 的責任留返畀最終 executable。
+    # The engine only provides a compile usage requirement; it must not become a link
+    # item. A static library's PRIVATE still reaches consumers as $<LINK_ONLY:>, while
+    # the executable side is $<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>; one link
+    # item carrying two features makes CMake 3.28 (the apt cmake on Ubuntu 24.04 /
+    # Docker builders) fatal with "Impossible to link target ... has already occurred
+    # with the feature 'WHOLE_ARCHIVE'". Newer CMake relaxed this, so the preinstalled
+    # cmake on GitHub runners never sees it; only Docker CI goes red. $<COMPILE_ONLY:>
+    # cuts the propagation; linking the real engine remains the final executable's job.
     target_link_libraries(qsanguosha_websocket PRIVATE
         "$<COMPILE_ONLY:qsanguosha_engine>"
     )
@@ -640,16 +643,18 @@ foreach(qsan_engine_link IN LISTS qsan_engine_links)
     endif()
 endforeach()
 
-# Client Architecture F1:ClientCore。
+# Client Architecture F1: ClientCore.
 #
-# 中間層自己一個 static library,而唔係 GUI target 入面嘅幾個 .cpp,係為咗令
-# 「ClientCore 唔依賴 GUI」由 build system 保證,而唔係靠人自律:下面嘅
-# allowlist gate 只准 Qt6::Core,所以任何人試圖喺 ClientCore 度 include
-# QWidget／QQuickItem／Dashboard／RoomScene 都會喺 configure 或者 link 爆。
+# The middle layer is its own static library instead of a few .cpp files inside the
+# GUI target, so that "ClientCore does not depend on the GUI" is enforced by the
+# build system rather than by discipline: the allowlist gate below only permits
+# Qt6::Core, so anyone trying to include QWidget/QQuickItem/Dashboard/RoomScene from
+# ClientCore blows up at configure or link time.
 #
-# 佢亦刻意唔 link qsanguosha_engine:interaction model 只講卡 id、玩家
-# objectName 同 option 字串,規則真相仍然喺 server。dedicated server build
-# 一樣會起呢個 target,所以 server-only configure 都驗得到佢冇 GUI 依賴。
+# It also deliberately does not link qsanguosha_engine: the interaction model only
+# speaks card ids, player objectNames and option strings; the rules truth stays on
+# the server. The dedicated server build creates this target too, so a server-only
+# configure also verifies it has no GUI dependency.
 set(QSAN_CLIENT_CORE_SOURCES
     src/client/core/client-core.cpp
     src/client/core/client-core.h
@@ -836,14 +841,14 @@ if(QSAN_BUILD_TUI)
         Qt6::Core
         Qt6::Network
     )
-    # engine 只提供 compile usage requirement,唔可以做 link item。static
-    # library 的 PRIVATE 依然會以 $<LINK_ONLY:> 傳去 consumer,而 executable
-    # 那邊是 $<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>;同一個 link item
-    # 帶兩種 feature,CMake 3.28(Ubuntu 24.04 / Docker builder 的 apt cmake)會
-    # fatal「Impossible to link target ... has already occurred with the
-    # feature 'WHOLE_ARCHIVE'」。新版 CMake 放寬咗,所以 GitHub runner 預裝的
-    # cmake 見唔到,只有 Docker CI 會紅。用 $<COMPILE_ONLY:> 斬斷傳遞,真正連
-    # engine 的責任留返畀最終 executable。
+    # The engine only provides a compile usage requirement; it must not become a link
+    # item. A static library's PRIVATE still reaches consumers as $<LINK_ONLY:>, while
+    # the executable side is $<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>; one link
+    # item carrying two features makes CMake 3.28 (the apt cmake on Ubuntu 24.04 /
+    # Docker builders) fatal with "Impossible to link target ... has already occurred
+    # with the feature 'WHOLE_ARCHIVE'". Newer CMake relaxed this, so the preinstalled
+    # cmake on GitHub runners never sees it; only Docker CI goes red. $<COMPILE_ONLY:>
+    # cuts the propagation; linking the real engine remains the final executable's job.
     target_link_libraries(qsanguosha_tui_support PRIVATE
         "$<COMPILE_ONLY:qsanguosha_engine>"
     )
@@ -1025,28 +1030,31 @@ endif()
 # ---------------------------------------------------------------------------
 # Linux install layout (M3)
 #
-# 三個 install component,令「GUI 包」同「server 包」可以各自出貨:
+# Three install components so the "GUI package" and the "server package" can ship
+# separately:
 #
-#   qsan_data    lua / extensions / lang / etc —— 兩邊都要的規則資料
-#   qsan_server  dedicated server binary、systemd unit、server 文件
-#   qsan_gui     GUI binary、介面資產、desktop entry、圖示
+#   qsan_data    lua / extensions / lang / etc - rules data needed by both sides
+#   qsan_server  dedicated server binary, systemd unit, server docs
+#   qsan_gui     GUI binary, UI assets, desktop entry, icons
 #
-# server-only 安裝因此唔會拉到任何 GUI 資產,亦唔會拉到 Qt GUI runtime。
+# A server-only install therefore pulls in neither GUI assets nor the Qt GUI runtime.
 # ---------------------------------------------------------------------------
 if(UNIX AND NOT ANDROID)
     set(QSAN_DATA_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/qsanguosha")
 
-    # bin/ 望去 share/qsanguosha/ 的相對路徑。runtime resolver 用呢個而唔用
-    # 絕對的 CMAKE_INSTALL_FULL_DATADIR:binary 入面唔應該燒死安裝機器的路徑,
-    # 而且 portable bundle 同 AppImage 要可以解壓到任何地方都行得到。
+    # Relative path from bin/ to share/qsanguosha/. The runtime resolver uses this
+    # instead of the absolute CMAKE_INSTALL_FULL_DATADIR: a binary must not bake in
+    # the installing machine's paths, and the portable bundle / AppImage must work
+    # when unpacked anywhere.
     file(RELATIVE_PATH QSAN_BIN_TO_DATA_RELATIVE
         "${CMAKE_INSTALL_FULL_BINDIR}"
         "${CMAKE_INSTALL_FULL_DATADIR}/qsanguosha"
     )
-    # bin/ 望去私有 Qt runtime 的相對路徑。Qt 自己的 library／plugin／QML
-    # plugin 都已經帶 $ORIGIN-relative RUNPATH,而且假設標準 prefix 版面
-    # (lib/、plugins/<type>/、qml/<Module>/ 全部 $ORIGIN/../../lib),所以
-    # 私有 runtime 必須照抄呢個版面 —— 咁就唔需要 patchelf 改寫每個 Qt .so。
+    # Relative path from bin/ to the private Qt runtime. Qt's own library/plugin/QML
+    # plugins already carry $ORIGIN-relative RUNPATH and assume the standard prefix
+    # layout (lib/, plugins/<type>/, qml/<Module>/ all under $ORIGIN/../../lib), so the
+    # private runtime must replicate this layout - then no patchelf is needed to
+    # rewrite every Qt .so.
     set(QSAN_PRIVATE_QT_DIR "${CMAKE_INSTALL_LIBDIR}/qsanguosha/qt")
     file(RELATIVE_PATH QSAN_BIN_TO_QT_LIB_RELATIVE
         "${CMAKE_INSTALL_FULL_BINDIR}"
@@ -1057,13 +1065,14 @@ if(UNIX AND NOT ANDROID)
         QSAN_BIN_TO_DATA_RELATIVE="${QSAN_BIN_TO_DATA_RELATIVE}"
     )
 
-    # 資產清單:安裝樹入面實際有乜嘢係「冇咗行唔到」、乜嘢係「冇咗只係少啲
-    # 聲畫」。GUI 專用資產只有喺 GUI build 先至列入 required。
-    # 唔係每個 build context 都有齊呢啲目錄:Docker server image 嘅
-    # .dockerignore 就特登剔走 GUI/client 資產(qss/、skins/、ui-script/),
-    # 而 extensions/ 同 lua/ai/ 係 build 入面 fetch 返嚟。
-    # install(DIRECTORY) 撞到唔存在嘅目錄會直接 fatal,所以逐個檢查存在先裝;
-    # 「應該有但係冇」由資產清單負責大聲講出嚟,而唔係喺 install 中途炸。
+    # Asset manifest: what actually exists in the install tree that is "cannot run
+    # without it" vs "missing it only loses some sound/art". GUI-only assets are listed
+    # as required only for GUI builds. Not every build context has all of these
+    # directories: the Docker server image's .dockerignore deliberately excludes the
+    # GUI/client assets (qss/, skins/, ui-script/), while extensions/ and lua/ai/ are
+    # fetched during the build. install(DIRECTORY) fatals outright on a missing
+    # directory, so each is checked for existence before installing; "should exist but
+    # does not" is loudly reported by the asset manifest instead of exploding mid-install.
     set(QSAN_DATA_DIRECTORIES lua)
     foreach(qsan_data_directory lang etc extensions)
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${qsan_data_directory}")
@@ -1088,10 +1097,11 @@ if(UNIX AND NOT ANDROID)
         font
         hero-skin
     )
-    # lang/ 冇咗唔會 crash —— sgs.GetFileNames() 對住一個唔存在嘅目錄回空
-    # list,遊戲照跑,只係顯示內部名而唔係中文。dedicated server 一路以嚟
-    # (Docker image)就係咁行。但一個冇翻譯嘅 GUI 對玩家嚟講唔算能用,
-    # 所以 GUI build 當佢係 required。
+    # A missing lang/ does not crash - sgs.GetFileNames() returns an empty list for a
+    # non-existent directory, the game keeps running and just shows internal names
+    # instead of Chinese. The dedicated server (Docker image) has always run that way.
+    # But a GUI without translations is not usable for players, so GUI builds treat it
+    # as required.
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lang")
         if(QSAN_BUILD_GUI)
             list(APPEND QSAN_ASSET_REQUIRED lang/zh_CN)
@@ -1109,16 +1119,17 @@ if(UNIX AND NOT ANDROID)
         list(APPEND QSAN_ASSET_OPTIONAL
             translations/sanguosha.qm
             translations/qt_zh_CN.qm
-            # 首頁 QML 圖示同背景:唔入庫,clean checkout 開 GUI 一定會見到
-            # 一批 "QML Image: Cannot open" warning。列喺度令嗰批 warning
-            # 由「唔知係咩」變成「manifest 講明預期缺失」。
+            # Home page QML icons and backdrops: not stored in the repository, so a GUI
+            # launched from a clean checkout always shows a batch of "QML Image: Cannot
+            # open" warnings. Listing them here turns those warnings from "unknown
+            # origin" into "expected-missing as documented by the manifest".
             qml/home/icons
             image/system/backdrop
         )
     endif()
 
-    # 版本欄位:game_version 跟 src/core/version.h,asset_pack_version 描述
-    # 呢個 core package 帶咗邊一套資產(唔包大型美術／音訊)。
+    # Version fields: game_version follows src/core/version.h; asset_pack_version
+    # describes which asset set this core package carries (large art/audio excluded).
     file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/src/core/version.h" qsan_version_line
         REGEX "Number\\[\\] *= *\"")
     string(REGEX REPLACE ".*\"([^\"]+)\".*" "\\1" QSAN_GAME_VERSION "${qsan_version_line}")
@@ -1138,10 +1149,11 @@ if(UNIX AND NOT ANDROID)
         "${QSAN_ASSET_MANIFEST_FILE}"
         @ONLY
     )
-    # 刻意唔喺 source tree 放一份:GUI build 同 server-only build 的 required
-    # 清單唔同,兩個 build directory 會互相覆寫同一個檔案,令開發樹嘅
-    # --asset-report 講緊邊個 build 完全睇彩數。開發樹冇 manifest 係正常情況,
-    # QSanAssetManifest::inspect() 會老實報「無法驗證」而唔係報錯。
+    # Deliberately not written into the source tree: the GUI build and the server-only
+    # build have different required lists, and two build directories would overwrite
+    # the same file, making the dev tree's --asset-report a coin toss as to which build
+    # it describes. A missing manifest in the dev tree is the normal state;
+    # QSanAssetManifest::inspect() honestly reports "cannot verify" instead of erroring.
 
     install(DIRECTORY ${QSAN_DATA_DIRECTORIES}
         DESTINATION "${QSAN_DATA_INSTALL_DIR}"
@@ -1167,8 +1179,9 @@ if(UNIX AND NOT ANDROID AND QSAN_BUILD_SERVER)
         "${QSAN_SYSTEMD_SERVICE_FILE}"
         @ONLY
     )
-    # 私有 Qt runtime 喺 distro 式安裝根本唔存在,個時 loader 直接落系統 Qt;
-    # 喺 portable／AppImage 就會命中 bundle 入面嗰份。同一個 binary 兩邊都啱。
+    # The private Qt runtime does not exist at all in a distro-style install; there the
+    # loader falls straight through to the system Qt. In the portable/AppImage layouts
+    # it hits the bundled copy instead. The same binary is correct in both cases.
     set_target_properties(qsanguosha_server PROPERTIES
         INSTALL_RPATH "$ORIGIN/${QSAN_BIN_TO_QT_LIB_RELATIVE}"
     )
@@ -1328,8 +1341,9 @@ if(QSAN_BUILD_GUI)
             )
             target_compile_definitions(${QSAN_GUI_TARGET} PRIVATE QSAN_AUDIO_BACKEND_FMOD)
         else()
-            # bundled fmodex.lib 只喺 Release 連結，所以 FMOD 實作亦只喺 Release
-            # 編入；Debug 落返 null backend，同以前「Debug 冇 AUDIO_SUPPORT」一樣冇聲。
+            # The bundled fmodex.lib only links in Release, so the FMOD implementation is
+            # only compiled in for Release as well; Debug falls back to the null backend,
+            # silent just like the old "Debug has no AUDIO_SUPPORT".
             target_sources(${QSAN_GUI_TARGET} PRIVATE
                 "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/ui/audio/fmod-audio-backend.cpp>"
                 src/ui/audio/fmod-audio-backend.h
@@ -1370,8 +1384,9 @@ if(QSAN_BUILD_GUI)
     endif()
 
     if(WIN32)
-        # bundled Freetype／FMOD／vld header 只供 Windows 使用；放喺 Linux include
-        # path 會遮蔽系統 Freetype header（ft2build.h 與 <freetype/*.h> 混版）。
+        # The bundled Freetype/FMOD/vld headers are Windows-only; putting them on the
+        # Linux include path would shadow the system Freetype headers (ft2build.h mixed
+        # with <freetype/*.h> of a different version).
         target_include_directories(${QSAN_GUI_TARGET} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
@@ -1407,10 +1422,10 @@ if(QSAN_BUILD_GUI)
         USING_PCH
         QT_DEPRECATED_WARNINGS
         QT_BIN_DIR="${QSAN_QT_BIN_DIR}"
-        # facade 喺所有 GUI config 都存在（最差情況係 null backend），所以
-        # AUDIO_SUPPORT 而家係「呢個 target 有 audio facade」而唔再係
-        # 「呢個 target 連得到 FMOD」。engine／server target 一樣冇呢個定義，
-        # 佢哋照舊唔會拉到任何 audio 實作。
+        # The facade exists in every GUI config (worst case the null backend), so
+        # AUDIO_SUPPORT now means "this target has an audio facade" instead of
+        # "this target can reach FMOD". The engine/server targets do not define it
+        # either; as before they pull in no audio implementation.
         AUDIO_SUPPORT
         QSAN_AUDIO_BACKEND_NAME="${QSAN_AUDIO_BACKEND}"
     )
@@ -1715,8 +1730,9 @@ if(UNIX AND NOT ANDROID AND QSAN_BUILD_GUI)
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
         COMPONENT qsan_gui
     )
-    # 同 shared data 一樣:有先裝,冇就由資產清單報「required 缺失」,
-    # 而唔係喺 install 中途 fatal。package smoke 會因此紅燈。
+    # Same as the shared data: install only when present, otherwise the asset manifest
+    # reports a "required missing" entry instead of a fatal error mid-install. The
+    # package smoke then goes red because of it.
     set(QSAN_GUI_DATA_DIRECTORIES "")
     foreach(qsan_gui_directory qss skins ui-script)
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${qsan_gui_directory}")
@@ -1729,8 +1745,9 @@ if(UNIX AND NOT ANDROID AND QSAN_BUILD_GUI)
             COMPONENT qsan_gui
         )
     endif()
-    # 翻譯放喺 share/qsanguosha/translations/;resolver 會由嗰度載,搵唔到
-    # 先返 asset root(舊有部署嘅 .qm 就係擺喺 root)。
+    # Translations live in share/qsanguosha/translations/; the resolver loads from
+    # there and only falls back to the asset root (legacy deployments place their .qm
+    # files at the root).
     install(FILES ${qsan_qm_files} qt_zh_CN.qm
         DESTINATION "${QSAN_DATA_INSTALL_DIR}/translations"
         COMPONENT qsan_gui
@@ -1762,8 +1779,9 @@ if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
-# Visual Studio solution 分組:三個產品執行檔留喺根目錄,中介靜態庫收埋。
-# 用 if(TARGET) 係因為 server-only／XP legacy 配置唔會起齊全部。
+# Visual Studio solution grouping: the three product executables stay at the root and
+# the intermediate static libraries are tucked away. if(TARGET) is used because
+# server-only / XP legacy configurations do not build all of them.
 foreach(qsan_library
     qsanguosha_engine
     qsanguosha_websocket

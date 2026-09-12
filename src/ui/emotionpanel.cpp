@@ -9,8 +9,8 @@ QMap<int, QString> EmotionPanel::emotionIdToPath;
 EmotionItem::EmotionItem(const QString &imagePath, int emotionId, QWidget *parent)
     : QLabel(parent), m_emotionId(emotionId), m_imagePath(imagePath), m_movie(nullptr)
 {
-    // NONE profile 一個 QMovie 都唔會 new;REDUCED 建立但唔播,只顯示首幀。
-    // 兩種情況表情面板都仲用得,只係唔會郁。
+    // NONE profile never news a QMovie; REDUCED creates one but does not play it, showing only the first frame.
+    // The emote panel stays usable in both cases; it just does not move.
     bool showing = false;
     if (imagePath.toLower().endsWith(".gif") && G_EFFECTS.gifEnabled()) {
         m_movie = new QMovie(imagePath, QByteArray(), this);
@@ -21,8 +21,8 @@ EmotionItem::EmotionItem(const QString &imagePath, int emotionId, QWidget *paren
             if (G_EFFECTS.gifPlaybackAllowed()) {
                 m_movie->start();
             } else {
-                // jumpToFrame(0) 令 QLabel 有嘢畫;唔 start() 就唔會有 decode
-                // 同 frame timer。
+                // jumpToFrame(0) gives the QLabel something to draw; without start()
+                // there is no decoding and no frame timer.
                 m_movie->jumpToFrame(0);
             }
             showing = true;
@@ -32,8 +32,8 @@ EmotionItem::EmotionItem(const QString &imagePath, int emotionId, QWidget *paren
         }
     }
 
-    // 靜態路：非 GIF、profile 唔准 QMovie、或者 QMovie 讀唔到個檔案,
-    // 三種都落呢度。讀唔到就落返數字 placeholder,個格永遠唔會空白。
+    // Static path: not a GIF, the profile forbids QMovie, or QMovie cannot read the
+    // file - all three land here. If unreadable, fall back to the number placeholder; the cell is never blank.
     if (!showing) {
         m_originalPixmap = QPixmap(imagePath);
         if (!m_originalPixmap.isNull()) {

@@ -63,8 +63,8 @@ QJsonObject NullAudioBackend::diagnostics() const
     QJsonObject payload;
     payload.insert(QStringLiteral("backend"), name());
     payload.insert(QStringLiteral("output_device"), false);
-    // 唔係錯誤:呢個 backend 就係設計成收咗請求之後乜都唔做。計數留低,
-    // smoke 先至可以證明 call site 真係行過,而唔係靜靜地冇 call。
+    // Not an error: this backend is designed to do nothing after accepting a request.
+    // The counters are kept so smoke tests can prove the call site really ran, instead of silently never calling.
     payload.insert(QStringLiteral("effect_requests"), m_effectRequests);
     payload.insert(QStringLiteral("voice_requests"), m_voiceRequests);
     payload.insert(QStringLiteral("bgm_requests"), m_bgmRequests);

@@ -271,9 +271,10 @@ bool restoreCards(Room *room, TakeoverScenario *scenario)
     return true;
 }
 
-// GameSnapshot 捕捉時把 tag 內的 ServerPlayer* 換成 {"__player": "<objectName>"}
-// （見 game-snapshot.cpp 的 normalizePlayerRefs）。呢度按名解返 runtime 指標,
-// 解唔到就放一個 null ServerPlayer*, 唔好留低一個技能睇唔明的 map。
+// GameSnapshot replaces the ServerPlayer* inside a tag with {"__player": "<objectName>"}
+// when capturing (see normalizePlayerRefs in game-snapshot.cpp). Here the runtime pointer
+// is resolved back by name; if it cannot be resolved, store a null ServerPlayer* rather
+// than leaving a map the skill cannot understand.
 QVariant resolvePlayerRefs(const QVariant &value, const TakeoverScenario *scenario)
 {
     if (value.userType() == QMetaType::QVariantList) {

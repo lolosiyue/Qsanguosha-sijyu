@@ -3,10 +3,10 @@
 
 #include "audio-backend.h"
 
-// 冇聲音的 backend。三種情況會用到:
-//   * QSAN_AUDIO_BACKEND=NULL 的 build(dedicated server／CI);
-//   * Windows Debug(FMOD 只喺 Release 連結,同舊行為一樣冇聲);
-//   * 真 backend initialize() 失敗時的降級。
+// The silent backend. Used in three cases:
+//   * QSAN_AUDIO_BACKEND=NULL builds (dedicated server / CI);
+//   * Windows Debug (FMOD links only in Release - silent, same as the old behavior);
+//   * fallback when a real backend's initialize() fails.
 class NullAudioBackend final : public IAudioBackend
 {
 public:

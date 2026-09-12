@@ -7,8 +7,9 @@ namespace {
 
 const int kSchemaVersion = 1;
 const int kDefaultTimeoutMs = 15000;
-// 下限只係為咗擋 0／負數之類的手誤；負向契約測試需要一個一定會觸發的
-// 極短 timeout，所以唔可以定得太高。實際使用建議 >= 15000。
+// The lower bound only guards against typos such as 0 or negative values;
+// negative contract tests need an ultra-short timeout that is guaranteed to
+// trigger, so it must not be set too high. For real use, >= 15000 is recommended.
 const int kMinimumTimeoutMs = 100;
 const int kMaximumTimeoutMs = 120000;
 
@@ -151,8 +152,9 @@ bool UiStartupSmokeReport::parseStartupPage(const QStringList &arguments, QStrin
 
 bool UiStartupSmokeReport::isOptionalAssetWarning(const QString &message)
 {
-    // 圖片／影片／音效載入失敗：clean checkout 冇入庫呢啲 optional 美術資源，
-    // HomeScene 本身照樣載入成功，只係渲染時少咗貼圖。
+    // Image / video / sound load failures: a clean checkout does not commit
+    // these optional art assets, so HomeScene still loads successfully and only
+    // renders with some textures missing.
     static const QRegularExpression assetPattern(
         QStringLiteral("(Cannot open|Error decoding|Failed to load|File not found|"
                        "Protocol \"\" is unknown|no such file or directory)"),

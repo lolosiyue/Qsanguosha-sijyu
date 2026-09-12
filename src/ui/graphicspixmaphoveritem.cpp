@@ -324,8 +324,8 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
         m_staticPixmap = staticPixmap;
     }
 
-    // gifEnabled() 已經夾埋使用者嘅 EnableAnimatedGenerals;NONE profile 一個
-    // QMovie 都唔會 new,角色框落返上面已經 setPixmap 咗嘅靜態立繪。
+    // gifEnabled() already folds in the user's EnableAnimatedGenerals; under the
+    // NONE profile no QMovie is created and the character frame keeps the static portrait set via setPixmap above.
     if (hasGif && G_EFFECTS.gifEnabled()) {
         if (!m_movie) {
             m_movie = new QMovie(gifPath, QByteArray(), this);
@@ -365,9 +365,9 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
                 m_proxyWidget->setPos(0, 0);
             }
 
-            // item 未入 scene 嗰陣 addWidget 做唔到,m_proxyWidget 會留返 null。
-            // 原本嘅寫法跟住就 m_proxyWidget->show(),即係 nullptr deref。
-            // 冇 proxy 就落返靜態立繪,唔可以拖冧成個角色框。
+            // While the item is not in a scene, addWidget cannot run and m_proxyWidget
+            // stays null. The old code then called m_proxyWidget->show() - a nullptr deref.
+            // Without a proxy, fall back to the static portrait; never crash the whole character frame.
             if (!m_proxyWidget) {
                 m_isAnimated = false;
                 m_movie->stop();
@@ -380,7 +380,7 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
             if (G_EFFECTS.gifPlaybackAllowed())
                 m_movie->start();
             else
-                m_movie->jumpToFrame(0);   // REDUCED:只顯示首幀,唔行 decode loop
+                m_movie->jumpToFrame(0);   // REDUCED: show first frame only, no decode loop
             m_proxyWidget->show();
             setPixmap(QPixmap());
             return;

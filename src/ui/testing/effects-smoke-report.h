@@ -5,20 +5,22 @@
 #include <QString>
 #include <QStringList>
 
-// Linux GUI M2B-B 的 effects smoke 契約。
+// The effects smoke contract for Linux GUI M2B-B.
 //
-// 同 M1／M2／M2B-A 一樣，呢個 header 只依賴 Qt Core：marker schema、exit code
-// 對照、stage 名同參數解析都可以喺 CTest 直接驗，唔使開 QApplication、唔使有
-// OpenGL、亦唔使有任何美術資產。真正驅動 GUI 的部分喺 EffectsSmokeController。
+// Like M1/M2/M2B-A, this header depends on Qt Core only: the marker schema,
+// exit code mapping, stage names, and argument parsing can all be verified
+// directly by CTest without launching QApplication, without OpenGL, and
+// without any art assets. The part that actually drives the GUI lives in
+// EffectsSmokeController.
 //
-// 通過條件唔係「畫面靚」，而係：
-//   - 解析出嚟嘅 profile 同 CLI／設定講嘅一樣
-//   - 每個 feature gate 都跟 profile 契約
-//   - completion 一定係 exactly once（播完、跳過、中途銷毀、timeout 都一樣）
-//   - 缺／壞資產一律降級成靜態 UI，唔 crash、唔 hang
-//   - NONE profile 一個 Spine／QMovie／QML overlay／video object 都冇建立
-//   - REDUCED 載入嘅高成本效果比 FULL 少
-//   - 收檔之後冇殘留嘅效果 QObject
+// The pass criteria are not "pretty visuals" but:
+//   - the resolved profile matches what the CLI and the settings claim
+//   - every feature gate follows the profile contract
+//   - completion is always exactly once (finished, skipped, destroyed midway, timeout alike)
+//   - missing or broken assets always degrade to static UI, without crashing or hanging
+//   - the NONE profile creates no Spine, QMovie, QML overlay, or video object at all
+//   - REDUCED loads fewer expensive effects than FULL
+//   - no effect QObject is left behind after teardown
 class EffectsSmokeReport
 {
 public:
@@ -31,10 +33,10 @@ public:
     enum ExitCode {
         Passed = 0,
         SetupFailed = 1,          // QApplication／engine／MainWindow 未能建立
-        PolicyStageFailed = 2,    // profile 解析或者 feature gate 唔對
-        CompletionStageFailed = 3,// exactly-once 契約破咗
-        AssetStageFailed = 4,     // 缺／壞資產冇降級（gif／spine／animation）
-        BudgetStageFailed = 5,    // profile 唔應該建立嘅物件建立咗
+        PolicyStageFailed = 2,    // profile resolution or feature gate mismatch
+        CompletionStageFailed = 3,// exactly-once contract violated
+        AssetStageFailed = 4,     // missing or broken asset failed to degrade (gif/spine/animation)
+        BudgetStageFailed = 5,    // profile created objects it must not create
         Timeout = 6,              // app 內部 timeout
         InvalidArguments = 7,
         InternalError = 8
@@ -54,8 +56,9 @@ public:
     static const char *const FlagEffectsSmoke;    // "--effects-smoke"
     static const char *const FlagReportPath;      // "--effects-report"
     static const char *const FlagTimeoutMs;       // "--effects-timeout-ms"
-    // fixture 根目錄。預設 tests/fixtures/effects/；缺失時 stage 唔會失敗，
-    // 只會標記 fixtures_available=false —— 缺 fixture 同真係壞咗要分得開。
+    // Fixture root directory. Defaults to tests/fixtures/effects/; when it is
+    // missing the stage does not fail, it only sets fixtures_available=false —
+    // a missing fixture must be distinguishable from a genuinely broken one.
     static const char *const FlagFixtureRoot;     // "--effects-fixtures"
 
     static int defaultTimeoutMs();
@@ -86,8 +89,9 @@ public:
     static ExitCode exitCodeForFailedStage(const QString &stage);
 
     // ── Profile budget ──────────────────────────────────────────────────
-    // 每個 profile 准許建立幾多個高成本物件。-1 = 冇上限。呢個表就係
-    // 「NONE 唔建立 Spine／QMovie／video object」嘅可執行定義。
+    // How many expensive objects each profile may create. -1 = no cap. This
+    // table is the executable definition of "NONE creates no Spine, QMovie,
+    // or video object".
     struct ObjectBudget {
         int spineItems = -1;
         int movieObjects = -1;

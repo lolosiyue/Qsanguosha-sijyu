@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
-"""真實網路測試 runner (串行)。
+"""Real-network test runner (serial).
 
-流程 (每個模式):
-  1. 啟動一次 qsanguosha_server.exe --game-mode <模式> --autotest-log <檔> (常駐)
-  2. 每局 spawn 一個 GUI client:
-     QSanguosha.exe -connect:127.0.0.1 --test-general <武將> --auto-robots
-     (client 自動選將、自動填 AI 開局、自動托管)
-  3. 以 server 的 [AUTOTEST] 標記檔判定開局/結束, 按 PID 殺 client
-  4. 模式跑完後殺 server, 進入下一個模式
+Flow (per mode):
+  1. Start qsanguosha_server.exe --game-mode <mode> --autotest-log <file> once (persistent)
+  2. Spawn one GUI client per game:
+     QSanguosha.exe -connect:127.0.0.1 --test-general <general> --auto-robots
+     (the client picks a general, fills the AI lobby and enables trust on its own)
+  3. Detect game start/end from the server's [AUTOTEST] marker files, kill the client by PID
+  4. After a mode finishes, kill the server and move on to the next mode
 
-跨平台: 執行檔名、process 啟動與清理、exit code 解讀全部走 runner_common,
-所以同一份 runner 喺 Windows 同 Linux 都行得到。Linux 上 GUI client 需要一個
-可用的 DISPLAY (WSLg 或者外部 Xvfb); 單局的合約驗證請改用 gui_network_smoke.py,
-本 runner 的責任係 soak。
+Cross-platform: executable names, process spawn/cleanup and exit-code
+interpretation all go through runner_common, so the same runner works on
+Windows and Linux. The GUI client on Linux needs an available DISPLAY (WSLg
+or an external Xvfb); for single-game contract validation use
+gui_network_smoke.py instead — this runner's job is soak.
 
-用法:
+Usage:
     python network_runner.py --exe-root L:\\finaldebug\\QSanguosha-v2 ^
         --modes 10p,20p,02_1v1,05p --runs 2 --general zhenji
 """
@@ -259,7 +260,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 marker_offset = 0
             time.sleep(1)
     finally:
-        # 成功同失敗路徑都行同一條有界清理, 唔會留低孤兒 server。
+        # Success and failure paths both run the same bounded cleanup; no orphan server is left behind.
         terminate_tree(proc)
         close_proc(proc)
     return results

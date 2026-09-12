@@ -1,34 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Linux GUI M2: 一局真實 TCP 網絡對局的 GUI runtime smoke。
+"""Linux GUI M2: GUI runtime smoke over one real TCP network game.
 
-為何唔直接擴 network_runner.py
-------------------------------
-`network_runner.py` 的責任是 **soak**：常駐 server、每個模式連跑 N 局、遇到閃退
-就重啟 server 重試、以「通過局數 / 總局數」作結論。M2 要的是相反的東西——**一局
-固定 seed 的合約驗證**：任何一個 stage 缺失即失敗、禁止 retry-until-pass、必須
-確認 client/server 各自乾淨退出、必須留低結構化 result。把兩種語意塞進同一個
-runner 只會令「retry 直到偶然 PASS」變成一個 flag 之遙。
+Why not just extend network_runner.py
+--------------------------------------
+`network_runner.py` is a **soak** runner: one persistent server, N consecutive
+games per mode, restart the server and retry on crash, and conclude with
+"games passed / games total". M2 needs the opposite — **contract validation of
+a single fixed-seed game**: any missing stage fails, retry-until-pass is
+forbidden, clean client/server exit is mandatory, and a structured result must
+be written. Squeezing both semantics into one runner would leave "retry until
+a lucky PASS" one flag away.
 
-真正共用的部分（執行檔定位、跨平台 spawn / process-tree 清理 / exit code 解讀、
-空閒 port、log 標記解析）已經抽到 `runner_common.py`，兩個 runner 都用同一份；
-本檔只保留 M2 專屬的流程與判定。
+The genuinely shared parts (executable discovery, cross-platform spawn /
+process-tree cleanup / exit-code interpretation, free-port picking, log marker
+parsing) already live in `runner_common.py` and both runners use that one
+copy; this file keeps only the M2-specific flow and verdicts.
 
-流程
+Flow
 ----
-    1. 借一個空閒 TCP port
-    2. 起 qsanguosha_server --port P --game-mode M --seed S --autotest-log ...
-    3. 等 port 真的 listen
-    4. 起 GUI client（可選 Xvfb）：
+    1. Borrow a free TCP port
+    2. Start qsanguosha_server --port P --game-mode M --seed S --autotest-log ...
+    3. Wait until the port is really listening
+    4. Start the GUI client (optionally under Xvfb):
            QSanguosha -connect:127.0.0.1:P --auto-robots
                       --network-ui-smoke --network-ui-smoke-result <json>
-       client 自己會跑到 game over 然後正常退出
-    5. 驗 client 的 NETWORK_UI_STAGE / NETWORK_UI_RESULT 契約
-    6. 驗 server 的 [AUTOTEST] game start / game over 標記
-    7. 有界地請 server 收工（POSIX SIGTERM），確認冇孤兒、port 已釋放
-    8. 寫低結構化 summary
+       the client runs to game over by itself and then exits normally
+    5. Validate the client NETWORK_UI_STAGE / NETWORK_UI_RESULT contract
+    6. Validate the server [AUTOTEST] game start / game over markers
+    7. Shut the server down in a bounded way (POSIX SIGTERM), verifying that no
+       orphans remain and the port is released
+    8. Write a structured summary
 
-用法：
+Usage:
     python3 tools/autotest/gui_network_smoke.py \\
         --exe-root . --mode 02p --seed 20260828 \\
         --artifact-dir gui-network-artifacts --xvfb
@@ -124,7 +128,7 @@ def sha256_of(path):
 
 
 def extensions_commit(repo_root):
-    """extensions/ 是 fetch 落嚟的外部內容，記錄它的來源 commit 以便重現。"""
+    """extensions/ is external content pulled in by fetch; record its source commit for reproducibility."""
     for candidate in (os.path.join(repo_root, "extensions"),
                       os.path.join(repo_root, "lua", "ai")):
         if not os.path.isdir(candidate):
@@ -143,10 +147,12 @@ def extensions_commit(repo_root):
 
 
 def write_server_config(path, args):
-    """產生確定性的 server 設定 overlay。
+    """Produce a deterministic server settings overlay.
 
-    唔靠開發機留低嘅 config.ini：M2 要求同一個 seed 喺 CI 同本機得出同一局，
-    所以隨機座位、雙將、作弊等會改變牌局的開關全部喺度寫死。"""
+    It must not rely on a config.ini left behind on a developer machine: M2
+    requires the same seed to produce the same game on CI and locally, so
+    every switch that could alter the deal (random seating, dual generals,
+    cheats, ...) is hardcoded here."""
     lines = [
         "[General]",
         "RandomSeat=false",
@@ -206,7 +212,7 @@ def build_client_command(args, client_exe, port, result_path, screenshot_path):
     if args.effects_profile:
         command += ["--effects-profile", args.effects_profile]
     if args.xvfb:
-        # -a 自動揀空閒 display number，令平行 CI job 唔會爭同一個 :99。
+        # -a picks a free display number automatically so parallel CI jobs do not fight over the same :99.
         command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24"] + command
     return command
 
@@ -218,7 +224,7 @@ def evaluate(args, summary, stages, results, client_code, server_markers):
     stage_status = {}
     for stage in stages:
         name = stage.get("stage")
-        # 同一個 stage 只可以報一次；重複代表契約壞咗。
+        # A stage may be reported only once; a duplicate means the contract is broken.
         if name in stage_status:
             problems.append("stage %r was reported more than once" % name)
         stage_status[name] = bool(stage.get("ok"))
@@ -256,8 +262,9 @@ def evaluate(args, summary, stages, results, client_code, server_markers):
         elif not stage_status[stage]:
             problems.append("stage %r reported ok=false" % stage)
 
-    # M2B-B: 要求咗邊個 profile 就一定要真係行嗰個。默默退返 full 會令
-    # 「NONE 完成一局」變成一個只證明咗 full 嘅綠色 job。
+    # M2B-B: whichever profile was requested must be the one that actually ran.
+    # Silently falling back to full would turn "NONE completed a game" into a
+    # green job that only proved full.
     effects = (result.get("effects") or {})
     summary["effects"] = {
         "requested": args.effects_profile,
@@ -274,7 +281,7 @@ def evaluate(args, summary, stages, results, client_code, server_markers):
             problems.append("--effects-profile did not become the resolution source "
                             "(got %r)" % effects.get("source"))
         if args.effects_profile == "none":
-            # NONE 嘅硬性定義:一局打完都唔准建立呢啲物件。
+            # The hard definition of NONE: creating any of these objects during a game is forbidden.
             counters = result.get("effects_counters") or {}
             for key in ("spine_items", "movie_objects", "qml_overlays", "video_objects"):
                 created = counters.get(key)
@@ -301,8 +308,9 @@ def evaluate(args, summary, stages, results, client_code, server_markers):
 
     lifecycle = summary["lifecycle"]
     server_issues = []
-    # dedicated server 係常駐的:對局完咗佢應該仍然企喺度,等我哋開口先收工。
-    # "already" 代表佢喺我哋出聲之前就已經走咗 —— 即係佢自己死咗。
+    # The dedicated server is meant to stay resident: after a game it should
+    # still be standing by until we ask it to shut down.
+    # "already" means it was gone before we spoke -- i.e. it died on its own.
     if lifecycle["server_shutdown"] != "graceful":
         server_issues.append("the server did not shut down cleanly on request (%s, exit=%s)"
                              % (lifecycle["server_shutdown"],
@@ -371,14 +379,16 @@ def main():
                         help="容許 responder 中途切 trustee (預設: 視為失敗)")
     parser.add_argument("--effects-profile", default=None,
                         choices=("full", "reduced", "none"),
-                        help="M2B-B: 用邊個效果 profile 跑呢一局。三個 profile 必須有"
-                             "完全相同嘅遊戲規則同網絡回覆,所以呢個 flag 唔准改任何"
-                             "通過條件——只係換咗畫面上做啲乜。")
+                        help="M2B-B: which effects profile to run this game with. The three"
+                             "profiles must share exactly the same game rules and network"
+                             "replies, so this flag must not change any pass criteria —"
+                             "it only changes what is rendered on screen.")
     parser.add_argument("--known-base-defect", action="append", default=[],
                         choices=sorted(KNOWN_BASE_DEFECTS),
-                        help="把指定的已知 base 缺陷降級為警告 (仍然會偵測、列印同"
-                             "寫入 summary)。只可以用喺已經對照過 base 並且證實"
-                             "同本分支無關的缺陷")
+                        help="Downgrade the given known base defect to a warning (still"
+                             "detected, printed, and recorded in the summary). Only for"
+                             "defects already verified against base as unrelated to this"
+                             "branch")
     args = parser.parse_args()
 
     args.require_interactions = [name.strip() for name in
@@ -495,7 +505,7 @@ def main():
             summary["lifecycle"]["client_exit_name"] = describe_exit(client_code)
             print("client exit     : %s" % describe_exit(client_code))
     finally:
-        # 成功、失敗、被 Ctrl-C 都走同一條清理路徑，唔會留低孤兒或者佔住 port。
+        # Success, failure, and Ctrl-C all take the same cleanup path; no orphans are left behind and no port stays occupied.
         code = finalize(summary, summary_path, server, client, port, args,
                         client_log=client_log if started_client else None,
                         marker_file=marker_file, result_path=result_path)
@@ -507,7 +517,7 @@ def finalize(summary, summary_path, server, client, port, args,
     """收尾：關 server、檢查孤兒、驗契約、寫 summary。成功與失敗路徑共用。"""
     lifecycle = summary["lifecycle"]
 
-    # client 一定要已經走；正常路徑佢自己退出，異常路徑喺度斬埋成棵樹。
+    # The client must already be gone; on the normal path it exits by itself, on the error path the whole tree is killed here.
     if client is not None:
         code, how = terminate_tree(client)
         if lifecycle["client_exit"] is None:
@@ -535,8 +545,10 @@ def finalize(summary, summary_path, server, client, port, args,
     if marker_file:
         marker_text = read_text(marker_file)
         server_markers["game_start"] = MARK_GAME_START in marker_text
-        # 對局結束之後 client 會正常斷線,server 會為咗收拾房間再寫多一行冇 winner
-        # 的 "game over"。真正的結果係第一行有 winner 嗰個,唔可以被收尾嗰行蓋過。
+        # After the game ends the client disconnects normally, and the server
+        # writes one more winner-less "game over" line while cleaning up the
+        # room. The real result is the first line that has a winner; it must
+        # not be overwritten by that closing line.
         for line in marker_text.splitlines():
             match = MARK_GAME_OVER.search(line)
             if not match:

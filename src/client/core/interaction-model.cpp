@@ -60,8 +60,8 @@ QJsonArray toJsonArray(const QStringList &values)
     return array;
 }
 
-// QVariantMap 入面可能有 view 塞落去嘅任意值。snapshot 要穩定,所以只收
-// JSON 表達得到嘅嘢,其餘轉字串。
+// A QVariantMap may hold arbitrary values stuffed in by the view. Snapshots must be
+// stable, so only JSON-expressible values are kept; everything else becomes a string.
 QJsonObject toJsonObject(const QVariantMap &map)
 {
     QJsonObject object;
@@ -368,8 +368,9 @@ const InteractionOption *InteractionRequest::option(const QString &value) const
 
 QJsonObject InteractionRequest::toJson() const
 {
-    // 永遠出嘅 key:type／request_id／min／max／cancelable。其餘只喺有內容
-    // 嗰陣先出,令 snapshot 讀得明而唔會被一堆預設值淹沒。
+    // Keys always emitted: type/request_id/min/max/cancelable. Everything else is emitted
+    // only when it has content, keeping snapshots readable instead of drowning them in
+    // default values.
     QJsonObject object;
     object.insert(QStringLiteral("type"), interactionTypeName(type));
     object.insert(QStringLiteral("request_id"), static_cast<qint64>(requestId));

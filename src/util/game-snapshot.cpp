@@ -167,10 +167,11 @@ bool checkMap(const QVariantMap &map, const QString &path, QString *error)
     return isJsonSafe(map, path, error);
 }
 
-// tag 裡面嘅 ServerPlayer* 換成 {"__player": "<objectName>"}。指標唔係 JSON 值,
-// 但佢指嘅玩家喺 snapshot 內部已經有名, 所以呢個轉換無損; restore 由
-// takeover-scenario.cpp 按名解返 runtime 指標。其他指標(例如 Card*)唔會被換走,
-// 仍然會令 snapshot ineligible。
+// ServerPlayer* inside a tag is replaced with {"__player": "<objectName>"}. A pointer is
+// not a JSON value, but the player it points to already has a name inside the snapshot,
+// so the conversion is lossless; restore resolves the runtime pointer back by name in
+// takeover-scenario.cpp. Other pointers (e.g. Card*) are not replaced and still make the
+// snapshot ineligible.
 QVariant normalizePlayerRefs(const QVariant &value)
 {
     switch (value.userType()) {
@@ -205,11 +206,12 @@ QVariantMap normalizeTagMap(const QVariantMap &tags)
     return normalizePlayerRefs(QVariant(tags)).toMap();
 }
 
-// 只可以放「server 側短暫持有一張自己 clone 出嚟嘅 Card」嘅 tag。呢類 tag 過唔到
-// JSON 邊界, 而且就算勉強寫低一個替代值, restore 之後讀取端(value<const Card*>)
-// 一樣攞到 nullptr, 所以捕捉時直接略過, 由遊戲流程喺下一次事件重建。
-// 其他未知嘅非 JSON 值仍然要令 snapshot ineligible —— 唔好用呢個名單去掩蓋
-// 新出現嘅狀態損失。
+// Only tags holding "a Card the server side temporarily owns as its own clone" may be
+// listed. Such tags cannot cross the JSON boundary, and even if a stand-in value were
+// forced in, the reader (value<const Card*>) would still get nullptr after restore, so
+// they are skipped at capture time and rebuilt by the game flow on the next event. Other
+// unknown non-JSON values must still make the snapshot ineligible — never use this list
+// to paper over newly appearing state loss.
 const QStringList &volatilePlayerTags()
 {
     static const QStringList names{QStringLiteral("ComboMovesCard")};
@@ -773,9 +775,10 @@ bool capturePlayer(ServerPlayer *player, PlayerSnapshot *snapshot, QString *erro
         snapshot->dynamicProperties[key] = value;
     }
     snapshot->tags = player->getAllTags();
-    // GameRule 喺每次 CardUsed 都會寫 ComboMovesCard (一張 CardTagOwner 持有嘅
-    // clone), 即第一回合之後基本必然存在。唔剔走佢, 每一個 turn snapshot 都會
-    // 因為呢一個 tag 變 ineligible, takeover/replay 就淨返第一個節點。
+    // GameRule writes ComboMovesCard on every CardUsed (a clone held by a CardTagOwner), so
+    // from the first turn on it basically always exists. If it were not excluded, every
+    // turn snapshot would become ineligible because of this one tag and takeover/replay
+    // would be left with only the first node.
     for (const QString &volatileTag : volatilePlayerTags())
         snapshot->tags.remove(volatileTag);
     snapshot->tags = normalizeTagMap(snapshot->tags);

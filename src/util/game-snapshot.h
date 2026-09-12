@@ -12,10 +12,11 @@ class Room;
 class ServerPlayer;
 
 namespace GameSnapshotTags {
-// 技能好興喺 room／player tag 裡面擺一個 ServerPlayer*(房內另一名玩家)。指標
-// 本身唔係 JSON 值, 但佢指嘅嘢喺 snapshot 內部已經有名(players[].objectName),
-// 所以捕捉時換成 {"__player": "<objectName>"} 呢個單鍵標記無損咁記低,
-// restore 再按名解返 runtime 指標(takeover-scenario.cpp)。
+// Skills like to stash a ServerPlayer* (another player in the room) in room or player
+// tags. A pointer is not a JSON value by itself, but what it points to already has a name
+// inside the snapshot (players[].objectName), so at capture time it is losslessly
+// recorded as the single-key marker {"__player": "<objectName>"}, and restore resolves
+// the runtime pointer back by name (takeover-scenario.cpp).
 inline constexpr char PlayerRefKey[] = "__player";
 }
 

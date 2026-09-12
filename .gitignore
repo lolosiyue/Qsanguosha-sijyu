@@ -34,8 +34,8 @@ xp-release/
 xp-relwithdebinfo/
 dmp/
 image/
-# 只忽略 repo 根目錄嘅音訊素材樹。未錨定嘅 "audio/" 會連 src/ui/audio/
-# (audio backend 原始碼) 一齊靜靜咁忽略咗。
+# Only the audio asset tree at the repo root is ignored. An unanchored "audio/"
+# would also silently ignore src/ui/audio/ (the audio backend source code).
 /audio/
 font/
 hero-skin/

@@ -8,8 +8,8 @@ const char *const EffectsProfileContract::FlagEffectsProfile = "--effects-profil
 
 namespace {
 
-// Reduced 唔係「快少少」，而係「明顯短」：0.3 令 600ms 嘅卡牌移動變 180ms，
-// 仲睇得出張牌去咗邊，但唔會再等。
+// Reduced is not "slightly faster" but "noticeably shorter": 0.3 turns a 600ms card
+// move into 180ms - you can still see where the card went, without the wait.
 const qreal kReducedDurationScale = 0.3;
 
 }
@@ -68,8 +68,8 @@ bool EffectsProfileContract::animationsEnabled(EffectsProfile profile)
 
 bool EffectsProfileContract::spineEnabled(EffectsProfile profile)
 {
-    // Spine 係最貴嘅一種效果（skeleton + atlas texture + GL context），
-    // Reduced 亦唔行，只保留靜態立繪。
+    // Spine is the most expensive kind of effect (skeleton + atlas texture + GL
+    // context); Reduced skips it too, keeping only the static portrait.
     return profile == EffectsProfile::Full;
 }
 
@@ -97,8 +97,8 @@ bool EffectsProfileContract::decorativeDelayAllowed(EffectsProfile profile)
 
 bool EffectsProfileContract::stateFeedbackEnabled(EffectsProfile)
 {
-    // 三個 profile 都要有狀態回饋 —— None 只係即刻到達最終狀態，
-    // 唔係唔顯示。
+    // All three profiles still provide state feedback - None just reaches the final
+    // state immediately; that is not the same as showing nothing.
     return true;
 }
 
@@ -122,8 +122,8 @@ int EffectsProfileContract::scaledDuration(EffectsProfile profile, int durationM
     if (profile == EffectsProfile::None)
         return 0;
     const int scaled = qRound(durationMs * durationScale(profile));
-    // Reduced 唔准落到 0：zero-duration animation 喺 QAbstractAnimation::start()
-    // 入面同步 emit finished()，會令 call site 重入。
+    // Reduced must not drop to 0: a zero-duration animation emits finished()
+    // synchronously inside QAbstractAnimation::start(), reentering the call site.
     return qMax(1, scaled);
 }
 
@@ -141,12 +141,12 @@ EffectsProfileContract::parseCliOverride(const QStringList &arguments)
         if (argument.startsWith(inlinePrefix)) {
             sawFlag = true;
             raw = argument.mid(inlinePrefix.size());
-            continue;  // 後面出現嘅覆蓋前面，同 repo 其他 flag 一致
+            continue;  // later occurrences override earlier ones, consistent with other flags in this repo
         }
         if (argument == flag) {
             sawFlag = true;
             raw = (i + 1 < arguments.size()) ? arguments.at(i + 1) : QString();
-            // 下一個 token 又係 flag 就當冇畀值
+            // If the next token is another flag, treat it as "no value given"
             if (raw.startsWith(QLatin1String("--")))
                 raw.clear();
             continue;
@@ -205,7 +205,7 @@ EffectsProfileContract::resolve(const QStringList &arguments, const QVariant &se
         if (cli.valid) {
             resolution.profile = cli.profile;
             resolution.source = QStringLiteral("cli");
-            // CLI 覆蓋成功就唔再帶住設定嗰個錯 —— 佢已經無關痛癢。
+            // Once the CLI override succeeds, stop carrying the settings error - it is irrelevant now.
             resolution.error = settingsError;
         } else {
             resolution.error = cli.error;

@@ -1,16 +1,16 @@
 #ifndef DESKTOP_INTERACTION_VIEW_H
 #define DESKTOP_INTERACTION_VIEW_H
 
-// Desktop（RoomScene／Dashboard）嘅 IClientInteractionView 實作。
+// IClientInteractionView implementation for the desktop (RoomScene/Dashboard).
 //
-// 呢個 adapter 係 F1 嘅相容策略:結構化 request 入,現有 desktop 呈現出。
-// 佢刻意唔 include RoomScene、Dashboard 或者任何 QWidget —— desktop 嘅呈現
-// 一直都係經 Client 嘅 signal 同 status 驅動,所以 adapter 只需要 call
-// Client 上面幾個 presentXxx() port,RoomScene／Dashboard 嘅 slot 一行都唔使
-// 改,外觀同操作亦因此保證唔變。
+// This adapter is F1's compatibility strategy: structured requests in, existing desktop
+// presentation out. It deliberately does not include RoomScene, Dashboard or any QWidget
+// — desktop presentation has always been driven by Client's signals and status, so the
+// adapter only needs to call Client's presentXxx() ports and none of RoomScene/Dashboard's
+// slots change a line, guaranteeing the look and behavior stay identical.
 //
-// 將來嘅 TextClient／Android／WASM Lite 只需要寫自己嗰個
-// IClientInteractionView,再 core->setView() 就得,唔使掂 Client。
+// A future TextClient/Android/WASM Lite only needs to write its own
+// IClientInteractionView and call core->setView(); Client stays untouched.
 
 #include "client-interaction-view.h"
 

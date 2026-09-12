@@ -1,6 +1,7 @@
-// TUI 嘅測試共用執行檔。佢哋嘅 link 面本身就係同一個超集
-// (client_core + tui_support + engine + protocol v2 support + Core/Network),
-// 分開只係多三個 Visual Studio project。每個 suite 依然行喺自己嘅 process。
+// Shared executable for the TUI tests. Their link surfaces are already the
+// same superset (client_core + tui_support + engine + protocol v2 support +
+// Core/Network); keeping them separate would only add three Visual Studio
+// projects. Each suite still runs in its own process.
 #include "test-suite.h"
 
 #include <QCoreApplication>
@@ -25,7 +26,7 @@ int runTuiUiParityTests(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
-    // 子 suite 各自會起自己嘅 QCoreApplication。
+    // Each sub-suite creates its own QCoreApplication.
     const QString suite = parseSuite(argc, argv);
     if (suite == QLatin1String("board-layout"))
         return runTuiBoardLayoutTests(argc, argv);

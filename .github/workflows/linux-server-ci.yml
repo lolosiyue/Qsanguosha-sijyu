@@ -137,9 +137,9 @@ jobs:
           test -f "$install_root/share/qsanguosha/lua/config.lua"
           test -d "$install_root/share/qsanguosha/extensions"
 
-      # Level 2 覆蓋真實 TCP handshake／signup；Level 1 與 shutdown smoke 重疊，
-      # Level 3 完整 02p 對局只留給 main 的 full CTest。
-      # bf1f85d 把 25 個測試執行檔合併成 6 個, 每個用 --suite 揀子案。
+      # Level 2 covers the real TCP handshake/signup; Level 1 overlaps the shutdown
+      # smoke, and Level 3's full 02p game is left to main's full CTest.
+      # bf1f85d merged 25 test executables into 6, each picking a sub-suite via --suite.
       - name: Run protocol contract suites directly
         if: github.ref != 'refs/heads/main'
         run: 'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_protocol_tests'

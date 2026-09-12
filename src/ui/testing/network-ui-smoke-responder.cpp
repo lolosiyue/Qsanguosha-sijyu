@@ -21,13 +21,16 @@
 
 namespace {
 
-// UI 動作之間留一格 event loop：dialog show()／pending skill 的動畫喺呢段時間
-// 內安頓好，responder 先至讀 enabled 狀態。太短會讀到中途狀態，太長會拖慢成局。
+// Leave one event loop slot between UI actions: dialog show() and pending-skill
+// animations settle during that time, and only then does the responder read the
+// enabled state. Too short would read a half-settled state; too long slows the
+// whole game.
 const int kStepDelayMs = 60;
 const int kStallPollMs = 1000;
 
-// 單次出牌最多試幾多個目標。真實牌最多都係全場，呢個上限只係擋 pathological
-// 情況下的無限迴圈。
+// Maximum number of targets tried for a single card play. A real card targets
+// at most the whole table; this cap only guards against infinite loops in
+// pathological cases.
 const int kMaxTargetsPerCard = 16;
 
 void collectCardItems(QGraphicsItem *parent, QList<CardItem *> *result)
@@ -61,9 +64,10 @@ NetworkUiSmokeResponder::NetworkUiSmokeResponder(RoomScene *scene, int stallMs, 
     m_stallTimer->start();
 
     if (ClientInstance) {
-        // RoomScene 喺自己的 constructor 已經接咗 status_changed，所以呢條連線
-        // 一定行喺 RoomScene::updateStatus 之後：responder 睇到的係 RoomScene
-        // 已經佈置好的按鈕／pending skill 狀態。
+        // RoomScene already connects status_changed in its own constructor, so
+        // this connection is guaranteed to run after RoomScene::updateStatus:
+        // what the responder sees is the button / pending-skill state that
+        // RoomScene has already laid out.
         connect(ClientInstance, &Client::status_changed,
             this, &NetworkUiSmokeResponder::onStatusChanged);
         connect(ClientInstance, &Client::server_request,
@@ -197,8 +201,9 @@ void NetworkUiSmokeResponder::engageTrustee(const QString &reason)
     m_requestPending = false;
     recordAction(QLatin1String(NetworkUiSmokeReport::ActionTrusteeFallback));
 
-    // 對局要行得完先驗證到 game over；切 trustee 之後 server 端 AI 接手，
-    // 但呢件事一定會出現喺 report 同 stdout，唔會扮成正常路徑。
+    // game over can only be verified if the game finishes; after switching to
+    // trustee the server-side AI takes over, but this fact always appears in
+    // the report and on stdout and is never disguised as a normal path.
     fprintf(stderr, "network-ui-smoke: falling back to trustee (%s)\n",
         qPrintable(reason));
     fflush(stderr);
@@ -244,9 +249,11 @@ void NetworkUiSmokeResponder::onStep()
     if (handled)
         return;
 
-    // RoomScene::doTimeout() 係產品自己為每一個 status 定義嘅安全預設回覆
-    // （撳 cancel／揀第一張 AG 牌／交空目標…）。M2 未特別處理嘅互動形態走呢條路，
-    // 依然係經真正 RoomScene 出 reply，而唔係繞過 UI 直接砌 packet。
+    // RoomScene::doTimeout() is the product's own safe default reply for every
+    // status (press cancel, pick the first AG card, submit an empty target
+    // list, ...). Interaction forms not specifically handled by M2 go this way,
+    // still sending the reply through the real RoomScene instead of bypassing
+    // the UI and assembling packets directly.
     m_scene->doTimeout();
     recordAction(QLatin1String(NetworkUiSmokeReport::ActionDecline));
 }
@@ -279,7 +286,7 @@ QList<PlayerCardContainer *> NetworkUiSmokeResponder::selectableTargets() const
             continue;
         items << item;
     }
-    // QMap::keys() 已經按指標排序，指標次序唔穩定；改用玩家 objectName 排序。
+    // QMap::keys() is sorted by pointer, and pointer order is unstable; sort by the players' objectName instead.
     std::sort(items.begin(), items.end(),
         [this](PlayerCardContainer *left, PlayerCardContainer *right) {
             const ClientPlayer *leftPlayer = m_scene->item2player.value(left);
@@ -354,7 +361,7 @@ NetworkUiSmokeResponder::CardAttempt NetworkUiSmokeResponder::tryUseNextCard(boo
     item->clickItem();
     if (!item->isSelected() && m_scene->dashboard->getSelected() == nullptr
         && m_scene->dashboard->getPendings().isEmpty())
-        return CardAttempt::Retry; // 撳唔郁（例如 view-as skill 拒絕呢張牌）
+        return CardAttempt::Retry; // cannot click (e.g. a view-as skill rejects this card)
 
     if (trySelectTargetsFor() && clickButton(QStringLiteral("ok"))) {
         recordAction(recordPlay ? QLatin1String(NetworkUiSmokeReport::ActionPlayCard)
@@ -371,13 +378,14 @@ bool NetworkUiSmokeResponder::stepPlaying()
     case CardAttempt::Sent:
         return true;
     case CardAttempt::Retry:
-        scheduleStep(); // 下一格 event loop 再試下一張,畀場景喘啖氣
+        scheduleStep(); // try the next card on the next event loop turn, letting the scene breathe
         return true;
     case CardAttempt::Exhausted:
         break;
     }
-    // 冇合法出牌就結束出牌階段：discard_button 喺 Playing 狀態即係「結束」，
-    // RoomScene::doDiscardButton() 會 onPlayerResponseCard(nullptr)。
+    // With no legal play, end the play phase: discard_button in the Playing
+    // state means "finish", and RoomScene::doDiscardButton() will call
+    // onPlayerResponseCard(nullptr).
     if (clickButton(QStringLiteral("discard"))) {
         recordAction(QLatin1String(NetworkUiSmokeReport::ActionFinishPhase));
         return true;
@@ -388,7 +396,7 @@ bool NetworkUiSmokeResponder::stepPlaying()
 bool NetworkUiSmokeResponder::stepResponding(Client::Status status)
 {
     Q_UNUSED(status)
-    // 有得回應就回應（證明 askForCard 真係經 UI 打得返出去），冇就 cancel。
+    // Respond when a response is possible (proving askForCard really goes back out through the UI); otherwise cancel.
     switch (tryUseNextCard(true)) {
     case CardAttempt::Sent:
         return true;
@@ -453,8 +461,9 @@ bool NetworkUiSmokeResponder::stepExecDialog()
     if (dialog == nullptr || !dialog->isVisible())
         return false;
 
-    // askForChoice／選花色／選勢力都係一堆 objectName 帶語意的按鈕，撳第一個
-    // enabled 嘅，固定 seed 下可重現。
+    // askForChoice, suit selection, and kingdom selection are all groups of
+    // buttons whose objectName carries meaning; press the first enabled one,
+    // reproducible under a fixed seed.
     const QList<QAbstractButton *> buttons = dialog->findChildren<QAbstractButton *>();
     for (QAbstractButton *button : buttons) {
         if (button == nullptr || !button->isEnabled() || !button->isVisible())
@@ -485,8 +494,9 @@ bool NetworkUiSmokeResponder::stepPlayerChoose()
     if (m_scene.isNull())
         return false;
 
-    // choose_skill 已經由 RoomScene 起咗 pending，合法目標就係 selectable 的
-    // Photo／Dashboard；撳夠人數之後 ok_button 會自己 enable。
+    // choose_skill is already pending, set up by RoomScene; the legal targets
+    // are the selectable Photo/Dashboard items, and ok_button enables itself
+    // once enough targets are pressed.
     for (int added = 0; added < kMaxTargetsPerCard; ++added) {
         if (m_scene->ok_button != nullptr && m_scene->ok_button->isEnabled())
             break;

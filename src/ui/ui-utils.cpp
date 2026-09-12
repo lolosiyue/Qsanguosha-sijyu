@@ -99,7 +99,7 @@ QString QSanUiUtils::QSanFreeTypeFont::resolveFont(const QString &fontName)
         QStringList extsToTry;
         QString sysfolder = QStandardPaths::writableLocation(QStandardPaths::FontsLocation);
         dirsToResolve.push_back(sysfolder);
-        // 字型隨資產走,唔係跟使用者碰巧喺邊度開遊戲。
+        // Fonts travel with the assets, not with wherever the user happens to launch the game.
         dirsToResolve.push_back(QSanRuntimePaths::assetRoot());
         dirsToResolve.push_back(QSanRuntimePaths::assetPath(QStringLiteral("font")));
         extsToTry.push_back("ttf");

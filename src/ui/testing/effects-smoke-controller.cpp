@@ -59,8 +59,8 @@ QString environmentValue(const char *name)
     return qEnvironmentVariableIsSet(name) ? qEnvironmentVariable(name) : QString();
 }
 
-// 只有一個 qreal property 嘅最小動畫目標。用產品嘅 EffectsCompletion 驅動佢，
-// 唔會另外寫一套 completion 邏輯。
+// Minimal animation target with a single qreal property. Drives it through the
+// product's EffectsCompletion instead of building a separate completion path.
 class SmokeAnimationTarget : public QObject
 {
     Q_OBJECT
@@ -157,7 +157,7 @@ bool EffectsSmokeController::begin(const QStringList &arguments, int *exitCode)
         s_active = controller;
     }
     effectsSmokePreviousHandler = qInstallMessageHandler(effectsSmokeMessageHandler);
-    // 任何唔行 finish() 的退出路徑都要留低一行 result，CI 唔會見到「marker 缺失」。
+    // Every exit path that does not go through finish() must still leave a result line; CI never sees a "missing marker".
     std::atexit(&EffectsSmokeController::reportUnfinishedAtExit);
 
     QString error;
@@ -315,9 +315,10 @@ void EffectsSmokeController::scheduleNext(void (EffectsSmokeController::*slot)()
 }
 
 // ── stage: policy ────────────────────────────────────────────────────────────
-// 產品用嘅 policy 解析出嚟嘅 profile，一定要同 CLI／設定講嘅一致，而且每個
-// feature gate 都要跟 EffectsProfileContract。呢個 stage 就係「設定同測試
-// CLI 行同一條 policy」嘅可執行證明。
+// The profile resolved by the product's policy must match what the CLI and the
+// settings claim, and every feature gate must follow EffectsProfileContract.
+// This stage is the executable proof that "settings and the test CLI run the
+// same policy".
 void EffectsSmokeController::stagePolicy()
 {
     if (m_finished)
@@ -338,7 +339,7 @@ void EffectsSmokeController::stagePolicy()
         return;
     }
 
-    // CLI 講咗乜就一定要係乜。
+    // Whatever the CLI claims must be exactly what happens.
     const auto cli = EffectsProfileContract::parseCliOverride(m_arguments);
     if (cli.present && cli.valid && cli.profile != profile) {
         failStage(m_pendingStage,
@@ -355,8 +356,9 @@ void EffectsSmokeController::stagePolicy()
         return;
     }
 
-    // Feature gate 唔可以脫離契約。policy 只准喺契約之上再收窄（例如使用者
-    // 關咗影片背景），所以呢度驗「契約話唔得 → policy 一定唔得」。
+    // Feature gates must not deviate from the contract. The policy may only
+    // narrow further on top of the contract (e.g. the user disabled the video
+    // background), so this verifies "contract says no -> policy must say no".
     struct GateCheck {
         const char *name;
         bool contract;
@@ -382,7 +384,7 @@ void EffectsSmokeController::stagePolicy()
             return;
         }
     }
-    // animationsEnabled 係最核心嘅一個：契約話得，policy 唔可以自把自為關咗佢。
+    // animationsEnabled is the most critical one: when the contract allows it, the policy must not disable it on its own.
     if (EffectsProfileContract::animationsEnabled(profile) && !G_EFFECTS.animationsEnabled()) {
         failStage(m_pendingStage,
             QStringLiteral("profile '%1' allows animations but the policy disabled them")
@@ -415,14 +417,16 @@ void EffectsSmokeController::stagePolicy()
 
     writeMarker(EffectsSmokeReport::profileLine(details));
     emitStage(m_pendingStage, true, details);
-    // Policy 驗完先至清 counter：MainWindow／HomeScene 建構期間建立咗乜，
-    // 唔應該算落個別 asset stage 度，但一定要留喺 budget stage 裡面數。
+    // Only clear the counters after the policy stage: whatever MainWindow or
+    // HomeScene construction created must not be charged to individual asset
+    // stages, but it must still be counted in the budget stage.
     scheduleNext(&EffectsSmokeController::stageCompletion);
 }
 
 // ── stage: completion ────────────────────────────────────────────────────────
-// exactly-once 契約：播完、跳過、播到一半俾人拆、卡死靠 watchdog —— 四條路
-// 每條都要恰好派一次；context 死咗就一次都唔准派。
+// exactly-once contract: played to the end, skipped, destroyed mid-play, or
+// stuck and reaped by the watchdog — each of the four paths must deliver
+// exactly once; once the context is dead, none may deliver at all.
 void EffectsSmokeController::stageCompletion()
 {
     if (m_finished)
@@ -431,7 +435,7 @@ void EffectsSmokeController::stageCompletion()
 
     EffectsCompletion::resetCounters();
 
-    // 用 shared_ptr 收數，因為 callback 可能喺呢個 function return 之後先派。
+    // Collect via shared_ptr because callbacks may fire only after this function returns.
     auto counts = QSharedPointer<QJsonObject>::create();
     auto finished = QSharedPointer<int>::create(0);
     auto skipped = QSharedPointer<int>::create(0);
@@ -448,12 +452,12 @@ void EffectsSmokeController::stageCompletion()
     EffectsCompletion::whenFinished(finishAnim, finishTarget, [finished]() { ++(*finished); });
     finishAnim->start(QAbstractAnimation::DeleteWhenStopped);
 
-    // 2. 跳過動畫（NONE profile 嘅正路）。
+    // 2. Skipping the animation (the normal path under the NONE profile).
     auto *skipTarget = new SmokeAnimationTarget;
     skipTarget->setParent(this);
     EffectsCompletion::completeNow(skipTarget, [skipped]() { ++(*skipped); });
 
-    // 3. 播到一半俾人拆咗個動畫。
+    // 3. The animation gets destroyed halfway through playback.
     auto *destroyTarget = new SmokeAnimationTarget;
     destroyTarget->setParent(this);
     auto *destroyAnim = new QPropertyAnimation(destroyTarget, "value");
@@ -464,7 +468,7 @@ void EffectsSmokeController::stageCompletion()
     destroyAnim->start();
     delete destroyAnim;
 
-    // 4. 卡死嘅動畫，靠 watchdog 收尾。
+    // 4. A stuck animation reaped by the watchdog.
     auto *stallTarget = new SmokeAnimationTarget;
     stallTarget->setParent(this);
     auto *stallAnim = new QPropertyAnimation(stallTarget, "value");
@@ -475,7 +479,7 @@ void EffectsSmokeController::stageCompletion()
         40);
     stallAnim->start();
 
-    // 5. context 死咗：一次都唔准派。
+    // 5. Dead context: no delivery allowed at all.
     auto *doomedTarget = new SmokeAnimationTarget;
     EffectsCompletion::completeNow(doomedTarget, [orphaned]() { ++(*orphaned); });
     delete doomedTarget;
@@ -523,7 +527,7 @@ void EffectsSmokeController::stageCompletion()
         }
 
         emitStage(m_pendingStage, true, details);
-        // asset stage 只計佢哋自己建立咗幾多物件。
+        // Asset stages only count the objects they created themselves.
         G_EFFECTS.resetCounters();
         m_countersBeforeAssets = G_EFFECTS.countersJson();
         scheduleNext(&EffectsSmokeController::stageAnimation);
@@ -531,9 +535,11 @@ void EffectsSmokeController::stageCompletion()
 }
 
 // ── stage: animation ─────────────────────────────────────────────────────────
-// PixmapAnimation 係 lightbox／表情／判定框嘅骨幹。呢度要證明兩件事：
-// 有 frame 就載得到；冇 frame 就一定回 nullptr（call site 靠呢個 nullptr
-// 決定要唔要即刻拆走 lightbox，缺資產嘅 hang 就係咁嚟）。
+// PixmapAnimation is the backbone of the lightbox, emotion icons, and judgment
+// boxes. Two things must be proven here: with frames it loads; without frames
+// it must return nullptr (call sites rely on that nullptr to decide whether to
+// tear the lightbox down immediately — that is exactly where the missing-asset
+// hang comes from).
 void EffectsSmokeController::stageAnimation()
 {
     if (m_finished)
@@ -557,12 +563,14 @@ void EffectsSmokeController::stageAnimation()
         }
     }
 
-    // 缺資產嘅合約：GetPixmapAnimation() 一定要回 nullptr。lightbox、裝備框
-    // 同拼點盒都係靠呢個 nullptr 決定「即刻收工」，佢一旦回一個冇 frame 嘅
-    // item，等緊 finished() 嗰邊就永遠等唔到。
+    // Missing-asset contract: GetPixmapAnimation() must return nullptr. The
+    // lightbox, equipment frame, and judge box all rely on that nullptr to
+    // decide "finish right now"; if it returned a frame-less item, whatever
+    // waits on finished() would wait forever.
     //
-    // 用真 parent（唔係 nullptr）先至驗到正嘢：nullptr 會喺 parent guard 度
-    // 提早 return，個 assertion 就變成永遠成立但乜都冇證明。
+    // A real parent (not nullptr) is required to prove anything meaningful:
+    // nullptr would return early at the parent guard, making the assertion
+    // permanently true while proving nothing.
     QGraphicsScene probeScene;
     QGraphicsRectItem *probeParent = probeScene.addRect(QRectF(0, 0, 64, 64));
     PixmapAnimation *missing = PixmapAnimation::GetPixmapAnimation(probeParent,
@@ -579,8 +587,9 @@ void EffectsSmokeController::stageAnimation()
     details.insert(QStringLiteral("missing_emotion_frame_count"),
         PixmapAnimation::GetFrameCount(QStringLiteral("qsan-effects-smoke-missing-emotion")));
 
-    // 同一條路：資產喺度就要真係攞到 item，唔係次次都 nullptr —— 咁樣上面
-    // 個 assertion 先至分得開「缺資產」同「呢個 function 已經壞晒」。
+    // Same path in reverse: when the asset exists we must actually get an item,
+    // not nullptr every time — that is what lets the assertion above separate
+    // "missing asset" from "this function is broken".
     if (fixturesAvailable) {
         PixmapAnimation present;
         present.setPath(frameDir + QLatin1Char('/'));
@@ -592,8 +601,9 @@ void EffectsSmokeController::stageAnimation()
 }
 
 // ── stage: gif ───────────────────────────────────────────────────────────────
-// 行產品嘅 EmotionItem（QLabel + QMovie）。四個 fixture 覆蓋：正常動畫、單幀、
-// 截斷、完全唔係 GIF。任何一個都唔准 crash，亦唔准令 label 變成空白。
+// Runs the product's EmotionItem (QLabel + QMovie). Four fixtures cover: a
+// normal animation, a single frame, a truncated file, and a non-GIF file.
+// None of them may crash, and none may leave the label blank.
 void EffectsSmokeController::stageGif()
 {
     if (m_finished)
@@ -634,7 +644,7 @@ void EffectsSmokeController::stageGif()
         entry.insert(QStringLiteral("movie_created"), movie != nullptr);
         entry.insert(QStringLiteral("movie_running"),
             movie != nullptr && movie->state() == QMovie::Running);
-        // 缺／壞 GIF 之後,label 唔可以又冇 movie 又冇任何內容。
+        // After a missing or broken GIF the label must not end up with neither a movie nor any content.
         entry.insert(QStringLiteral("has_visible_content"),
             movie != nullptr || !item->pixmap().isNull() || !item->text().isEmpty());
         results.insert(QLatin1String(gifCase.name), entry);
@@ -682,9 +692,11 @@ void EffectsSmokeController::stageGif()
 }
 
 // ── stage: spine ─────────────────────────────────────────────────────────────
-// 冇合法嘅合成 Spine fixture（見 tests/fixtures/effects/README.md），所以呢度
-// 驗嘅係 lifecycle 同降級：唔准 Spine 就一個 SpineGlItem 都唔起；准 Spine 但
-// 資產缺／壞／大細寫唔啱，一律要載入失敗並且乾淨拆走，唔可以 crash。
+// There is no valid synthetic Spine fixture (see tests/fixtures/effects/README.md),
+// so this stage verifies lifecycle and degradation: when Spine is disallowed,
+// not a single SpineGlItem may be created; when Spine is allowed but the asset
+// is missing, broken, or mismatched in letter case, loading must fail and the
+// item must be torn down cleanly, without crashing.
 void EffectsSmokeController::stageSpine()
 {
     if (m_finished)
@@ -699,8 +711,9 @@ void EffectsSmokeController::stageSpine()
         G_EFFECTS.counter(VisualEffectsPolicy::SpineItemsCreated));
 
     if (!spineEnabled) {
-        // 唔准就唔准：呢個 stage 唔會自己 new 一個 SpineGlItem 嚟「試吓」，
-        // 因為咁樣就唔再係喺驗產品行為。
+        // Disallowed means disallowed: this stage never news up its own
+        // SpineGlItem to "try it out", because that would no longer be testing
+        // the product's behavior.
         details.insert(QStringLiteral("spine_items_created"), 0);
         details.insert(QStringLiteral("note"),
             QStringLiteral("profile forbids Spine; no skeleton was constructed"));
@@ -716,8 +729,8 @@ void EffectsSmokeController::stageSpine()
     const SpineCase cases[] = {
         {"missing", "spine/no-such-skeleton"},
         {"malformed", "spine/broken/broken"},
-        // Linux 係大細寫敏感嘅：Windows 上面行得通嘅路徑喺呢度一定要
-        // 乾淨咁失敗，唔可以 crash。
+        // Linux is case-sensitive: a path that works on Windows must fail
+        // cleanly here, without crashing.
         {"wrong_case", "spine/BROKEN/Broken"}
     };
 
@@ -730,7 +743,7 @@ void EffectsSmokeController::stageSpine()
         entry.insert(QStringLiteral("loaded"), loaded);
         entry.insert(QStringLiteral("playing"), item->isPlaying());
         results.insert(QLatin1String(spineCase.name), entry);
-        // 壞資產唔可以扮載到。
+        // Broken assets must not pretend to load.
         if (loaded) {
             details.insert(QStringLiteral("cases"), results);
             delete item;
@@ -739,7 +752,7 @@ void EffectsSmokeController::stageSpine()
                     .arg(QLatin1String(spineCase.name)), details);
             return;
         }
-        // 載入失敗之後拆走 —— 呢個 delete 就係 destroy-during-lifecycle 嘅驗證。
+        // Torn down after the load failure — this delete is the destroy-during-lifecycle verification.
         delete item;
     }
 
@@ -752,7 +765,7 @@ void EffectsSmokeController::stageSpine()
 }
 
 // ── stage: budget ────────────────────────────────────────────────────────────
-// 「NONE 唔建立 Spine／QMovie／video object」由呢度執行。
+// "NONE creates no Spine, QMovie, or video object" is enforced here.
 void EffectsSmokeController::stageBudget()
 {
     if (m_finished)
@@ -764,7 +777,7 @@ void EffectsSmokeController::stageBudget()
     details.insert(QStringLiteral("counters"), counters);
     details.insert(QStringLiteral("profile"), G_EFFECTS.profileName());
 
-    // Spine stage 喺 FULL 會特登建立幾個 probe 嚟驗降級,唔應該計落 budget。
+    // Under FULL the Spine stage deliberately creates a few probes to verify degradation; these must not be charged to the budget.
     if (G_EFFECTS.spineEnabled())
         counters.insert(QStringLiteral("spine_items"), 0);
 
@@ -794,20 +807,25 @@ void EffectsSmokeController::stageShutdown()
         return;
     m_pendingStage = QLatin1String(EffectsSmokeReport::StageShutdown);
 
-    // 特登唔 delete MainWindow：產品將 Engine setParent(MainWindow)，拆窗
-    // 就等於拆 engine，之後正常退出路徑會踩返落去。呢個 smoke 驗嘅係「效果
-    // 物件收得乾淨」，唔係「拆得起 engine」——後者係 M1 startup smoke 嘅事。
-    // MainWindow::closeEvent() 係產品嘅正常退出路徑，會直接 qApp->quit()。
-    // 所以呢度先 hide()：event loop 要留返到下面驗完先收。真正 close()
-    // 喺 finish() 之後先叫，咁樣既驗到嘢，又行過產品自己嗰條關窗路。
+    // Deliberately does not delete MainWindow: the product setParent()s Engine
+    // to MainWindow, so tearing down the window also tears down the engine,
+    // and the normal exit path would then walk into it. This smoke verifies
+    // "effect objects are cleaned up", not "the engine can be torn down" — the
+    // latter belongs to the M1 startup smoke.
+    // MainWindow::closeEvent() is the product's normal exit path and calls
+    // qApp->quit() directly. So we only hide() here: the event loop must stay
+    // alive until the checks below finish. The real close() runs after
+    // finish(), which both exercises the product's own window-close path and
+    // still verifies everything.
     if (qApp)
         qApp->setQuitOnLastWindowClosed(false);
     if (m_mainWindow)
         m_mainWindow->hide();
 
-    // 行多兩轉 event loop，令 deleteLater 真係落地，再睇返有冇 completion
-    // 吊喺半空。issued != delivered + cancelled 就代表有一條流程永遠等唔到
-    // callback —— 呢個先至係 NONE profile 最怕嗰種 hang。
+    // Spin the event loop a couple more turns so deleteLater actually lands,
+    // then check whether any completion is left dangling. issued !=
+    // delivered + cancelled means some flow will never receive its callback —
+    // exactly the kind of hang the NONE profile must avoid.
     QTimer::singleShot(150, this, [this]() {
         if (m_finished)
             return;
@@ -841,9 +859,10 @@ void EffectsSmokeController::stageShutdown()
         finish(true, QLatin1String(EffectsSmokeReport::StageShutdown), QString(),
             EffectsSmokeReport::Passed);
 
-        // 結論已經寫低，而家先行產品自己嗰條關窗路（closeEvent 會
-        // CrashHandler::beginShutdown() 然後 qApp->quit()）。行唔行到呢一步
-        // 唔會改變 exit code —— finish() 已經定咗。
+        // The verdict is already recorded; now walk the product's own
+        // window-close path (closeEvent calls CrashHandler::beginShutdown()
+        // then qApp->quit()). Whether we get here or not does not change the
+        // exit code — finish() has already fixed it.
         if (m_mainWindow)
             m_mainWindow->close();
     });

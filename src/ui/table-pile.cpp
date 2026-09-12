@@ -88,8 +88,8 @@ void TablePile::_fadeOutCardsLocked(const QList<CardItem *> &cards)
 	if (cards.isEmpty()) return;
 
 	if (!G_EFFECTS.animationsEnabled()) {
-		// 最終狀態:張牌透明兼且要拆走。deleteLater() 本來就係排隊嘅,
-		// 所以呢度唔會喺 caller 手上炸咗 m_visibleCards 入面嘅 item。
+		// Final state: the card becomes transparent and must be removed. deleteLater()
+		// is queued anyway, so this never blows up items inside m_visibleCards in the caller's hands.
 		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 		foreach (CardItem *toRemove, cards) {
 			toRemove->setZValue(0.0);
@@ -107,7 +107,7 @@ void TablePile::_fadeOutCardsLocked(const QList<CardItem *> &cards)
 		toRemove->setZValue(0.0);
 		toRemove->setHomeOpacity(0.0);
 		toRemove->setHomePos(QPointF(toRemove->homePos().x(), toRemove->homePos().y()));
-		// duration 由 getGoBackAnimation() 自己 scale,唔可以喺呢度再 scale 一次。
+		// getGoBackAnimation() scales the duration itself; do not scale it a second time here.
 		group->addAnimation(toRemove->getGoBackAnimation(true, false, 1000));
 		toRemove->deleteLater();
 	}
@@ -203,7 +203,7 @@ void TablePile::adjustCards()
 	_disperseCards(m_visibleCards, m_cardsDisplayRegion, Qt::AlignCenter, true, true);
 
 	if (!G_EFFECTS.animationsEnabled()) {
-		// 牌堆嘅牌一定要到達 home 位同 home 透明度,唔係就會攤喺原位。
+		// Pile cards must reach the home position and home opacity, otherwise they stay stranded in place.
 		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 		foreach(CardItem *card_item, m_visibleCards){
 			card_item->goBack(false);

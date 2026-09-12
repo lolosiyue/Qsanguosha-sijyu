@@ -1352,19 +1352,19 @@ void Dashboard::_setEquipBorderAnimation(int index, bool turnOn)
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
         _m_equipAnim[index]->start();
     } else {
-        // 裝備選中／取消嘅最終狀態:區塊移到 newPos、完全不透明。
+        // Final state of equip select / deselect: the block moves to newPos, fully opaque.
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         _m_equipRegions[index]->setPos(newPos);
         _m_equipRegions[index]->setOpacity(255);
     }
 
-    // _createEquipBorderAnimations() 喺 image/system/emotion/equipborder/ 缺失
-    // 嗰陣會將呢個指標設做 nullptr,而 Q_ASSERT 喺 Release／RelWithDebInfo 係
-    // no-op,跟住就會 nullptr deref。
+    // When image/system/emotion/equipborder/ is missing, _createEquipBorderAnimations()
+    // sets this pointer to nullptr, while Q_ASSERT is a no-op in Release /
+    // RelWithDebInfo - followed by a nullptr deref.
     //
-    // 呢條 branch 以前係死 code:PixmapAnimation::setPath() 嘅 do-while 令
-    // valid() 永遠 true,所以指標從來冇被設做 nullptr。setPath() 改成 while
-    // 之後缺資產先至真係會落呢度。
+    // This branch used to be dead code: PixmapAnimation::setPath()'s do-while made
+    // valid() always true, so the pointer was never set to nullptr. Only after
+    // setPath() became a while loop does a missing asset actually reach here.
     if (_m_equipBorders[index] != nullptr && G_EFFECTS.animationsEnabled()) {
         if (turnOn) {
             _m_equipBorders[index]->show();
@@ -2215,7 +2215,7 @@ void Dashboard::_startHoverScaleAnimation(CardItem *card, qreal endScale, QEasin
     }
 
     if (!G_EFFECTS.animationsEnabled()) {
-        // hover 放大嘅最終狀態就係目標倍率,即刻套用。
+        // The final state of hover zoom is the target scale; apply it immediately.
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         card->setScale(endScale);
         return;

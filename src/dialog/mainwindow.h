@@ -73,25 +73,25 @@ public:
     LocalServerController *localServerController() const { return localServer; }
 #endif
 
-    // Linux GUI M1 startup smoke 用的觀測點。HomeScene 的載入結果本身就係
-    // MainWindow 的狀態，喺度公開出嚟，測試就唔使另外複製一份啟動流程。
+    // Observation point for the Linux GUI M1 startup smoke. The HomeScene load
+    // result is MainWindow state itself; exposing it here saves tests from duplicating the startup flow.
     bool isHomeSceneReady() const;
     bool hasHomeSceneError() const;
     QString homeSceneError() const;
     QQuickItem *homeSceneRootObject() const;
     QUrl homeSceneSource() const;
     QString homeRenderHostName() const;
-    // M2B-A multimedia smoke 的觀測點：影片背景的結果狀態由 HomeController 持有，
-    // 呢度只係將已有的 object 公開出嚟，唔會另外複製一次首頁載入流程。
+    // Observation point for the M2B-A multimedia smoke: the video-background result
+    // state is held by HomeController; this only exposes the existing object, without duplicating the home load flow.
     HomeController *homeSceneController() const;
 
 signals:
     void homeSceneReady();
     void homeSceneFailed(const QString &error);
 
-    // Linux GUI M2 network smoke 用的觀測點。RoomScene 唔喺 startup path,而係喺
-    // 收到 server setup 之後由 enterRoom() 建立,所以要另外一個 seam;同 M1 一樣,
-    // 呢度只係報告 MainWindow 本身已有的狀態,測試唔使複製一次進房流程。
+    // Observation point for the Linux GUI M2 network smoke. RoomScene is not on
+    // the startup path - it is created by enterRoom() after the server setup arrives - so it needs its own seam. As with M1,
+    // this only reports state MainWindow already has; tests need not duplicate the room-entry flow.
     void roomSceneCreated(RoomScene *scene);
 
 protected:
