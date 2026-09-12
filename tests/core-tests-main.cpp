@@ -12,6 +12,7 @@ int runEnumReflectionTests();
 int runPackagePolicyTests();
 int runMigratedGeneralPackageTests();
 int runEquipsNullifiedTests();
+int runUserNameResolutionTests();
 // The suites below are the main() functions of standalone test files, merged
 // in by CMake via COMPILE_DEFINITIONS main=... renaming, so the signatures
 // stay identical to the originals.
@@ -96,5 +97,7 @@ int main(int argc, char **argv)
         return runPackagePolicyTests();
     if (suite == QLatin1String("package-ownership"))
         return runMigratedGeneralPackageTests();
+    if (suite == QLatin1String("user-name"))
+        return runUserNameResolutionTests();
     return 64;
 }
