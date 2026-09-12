@@ -19,6 +19,7 @@ before they are exposed to Lua or a managed Room domain.
 | `gamerule.cpp:556 ComboMovesCard` | `CardTagOwner` tag payload (`QVariant::fromValue(CardTagOwner{...})`) | Room game-rule cleanup | deferred legacy deleteLater (`owner.card->deleteLater()`) plus tag remove | Room thread | PR1 / PR4 |
 | `gamerule.cpp:1345 judge card` | Card deferred delete | judge cleanup | deferred legacy deleteLater | Room thread | PR1 / PR4 |
 | `generic-cardcontainer-ui.cpp:990-1231 simulated equips` | Card deferred delete | UI simulation cleanup | deferred legacy deleteLater | UI thread | PR1 / PR4 |
+| `ClientRulesSession::applyDeclaration` | temporary declaration Card and projected Player tag | synchronous query Scene | exact QObject deferred delete, delivered by Scene destruction after JSON evaluation | client rules worker | client declaration boundary |
 | `RoomState::m_cards` | WrappedCard map | RoomState | reset/destructor | `Room::thread()` | PR1 / PR5 / PR7 |
 | `Player::equips` | outer WrappedCard pointer | RoomState | Room mutation | `Room::thread()` | PR1 / PR4 |
 | `ai-runtime` Lua callback | Lua invocation scope | runtime | pcall return | runtime owner | PR1 / PR2 / PR6 |
@@ -45,6 +46,16 @@ leaving it unclassified means either a silently dropped tag or an unleased raw C
 
 Unknown rows are a gate failure. The checker is intentionally static and is
 combined with runtime counters; a clean scan alone is not an ownership proof.
+
+`ClientRulesSession::applyDeclaration` follows the client selection runtime's
+existing temporary-card boundary. It queues each clone for QObject deletion
+before any rejection can return. Successful declarations remain available through
+the projected Player tag until the synchronous query has built its JSON result;
+`Scene::~Scene()` delivers their deferred deletes while those Players still exist.
+No native pointer escapes the query. The exact upcast-delete site is classified
+separately because calling `Card::deleteLater()` would also drain unrelated Cards
+through the global manager; this exception does not permit a Room-owned Card to
+bypass managed reclamation.
 
 The current source scan reports legacy deletion ingress separately. These sites
 remain explicitly selected by their owning boundary; the process default is ManagedReclaim after PR7, while ObserveOnly remains available for compatibility characterization; they are

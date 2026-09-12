@@ -7,6 +7,7 @@
 
 #include <QFile>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QCryptographicHash>
 #include <QJsonDocument>
@@ -684,13 +685,22 @@ void Replayer::run()
                     break;
                 }
                 const unsigned long slice = static_cast<unsigned long>(qMin<qint64>(remainingDelay, 20));
+                QElapsedTimer sleepTimer;
+                sleepTimer.start();
                 msleep(slice);
-                remainingDelay -= slice;
+                // Windows may round a sleep up to coarse timer ticks. Count
+                // actual sleep time, excluding any capture-boundary wait,
+                // so those ticks do not accumulate into playback drift.
+                remainingDelay -= qMax<qint64>(1, sleepTimer.elapsed());
                 QMutexLocker locker(&mutex);
                 if (m_stopRequested) {
                     stoppedDuringDelay = true;
                     break;
                 }
+                // Stop the stale delay as soon as a seek wins the race. The
+                // dispatch-locked check below performs the generation handoff.
+                if (m_seekGeneration != handledSeekGeneration)
+                    break;
             }
             if (stoppedDuringDelay)
                 break;

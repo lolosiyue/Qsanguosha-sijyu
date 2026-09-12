@@ -424,7 +424,12 @@ bool replayStateCaptureBarrierIsEventAligned()
     ok = expect(spinUntil([&]() { return seekAppliedPairIndexes.contains(0); }, 500),
                 QStringLiteral("seek fixture first event applied")) && ok;
     seeking.seekToPosition(0);
-    ok = expect(spinUntil([&]() { return !seeking.isRunning(); }, 2500),
+    ok = expect(spinUntil([&]() {
+                    return !seeking.isRunning()
+                        && !seekAppliedPairIndexes.isEmpty()
+                        && seekAppliedPairIndexes.constLast() == 1
+                        && seekElapsedSeconds.count(1) == 1;
+                }, 2500),
                 QStringLiteral("seek worker reaches target end")) && ok;
     ok = expect(!seekAppliedPairIndexes.isEmpty()
                     && seekAppliedPairIndexes.constLast() == 1

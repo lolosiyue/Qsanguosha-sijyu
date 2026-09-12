@@ -23,6 +23,7 @@
     "`Card::tag`",
     "`CardMoveReason::m_extraData`",
     "`CardUseStruct::m_ownedCard`",
+    "`ClientRulesSession::applyDeclaration`",
     "`CorrectSkillContext` QVariant payload",
     "`DummyCard` decision paths",
     "`Player::ComboMovesCard`",
@@ -62,6 +63,11 @@
       "site": "src/package/inovation.cpp:3762",
       "category": "raw_delete",
       "reason": "legacy InovationFengzhuVS probe owns the cloned candidate; it is never returned or stored"
+    },
+    {
+      "site": "src/client/runtime/client-rules-session.cpp:553",
+      "category": "upcast_delete",
+      "reason": "Query-local declaration clone; synchronous Scene delivers deferred deletion after JSON evaluation while projected Players exist, without globally draining unrelated Cards"
     },
     {
       "site": "src/client/runtime/client-selection-runtime.h:358",

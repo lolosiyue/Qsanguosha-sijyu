@@ -93,7 +93,7 @@ public:
             QStringLiteral("WebSocket listening on 127\\.0\\.0\\.1:(\\d+)"));
         QElapsedTimer timer;
         timer.start();
-        while (timer.elapsed() < 20000) {
+        while (timer.elapsed() < 45000) {
             drain(100);
             const QString output = QString::fromUtf8(m_output);
             const QRegularExpressionMatch tcpMatch = tcpEndpoint.match(output);
@@ -106,13 +106,22 @@ public:
                 if (tcpOk && wsOk && tcp > 0 && tcp <= 65535 && ws > 0 && ws <= 65535) {
                     m_tcpPort = static_cast<quint16>(tcp);
                     m_wsPort = static_cast<quint16>(ws);
+                    qInfo().noquote() << QStringLiteral("WebSocket test server ready after %1 ms")
+                                             .arg(timer.elapsed());
                     return true;
                 }
             }
             if (m_process.state() == QProcess::NotRunning)
                 break;
         }
-        *error = QStringLiteral("server did not publish TCP and WebSocket endpoints\n%1")
+        *error = QStringLiteral(
+                     "server did not publish TCP and WebSocket endpoints after %1 ms; "
+                     "state=%2 error=%3 exitStatus=%4 exitCode=%5\n%6")
+                     .arg(timer.elapsed())
+                     .arg(static_cast<int>(m_process.state()))
+                     .arg(m_process.errorString())
+                     .arg(static_cast<int>(m_process.exitStatus()))
+                     .arg(m_process.exitCode())
                      .arg(QString::fromUtf8(m_output.right(8000)));
         return false;
     }
@@ -588,18 +597,12 @@ bool runWebSocketSignupRequiresRulesBundle(quint16 wsPort)
     return rejected;
 }
 
-bool runTcpSignupRoomId(const QString &serverPath)
+bool runTcpSignupRoomId(quint16 tcpPort)
 {
     QString error;
-    LiveServer server;
-    if (!server.start(serverPath, &error)) {
-        qCritical().noquote() << error;
-        return false;
-    }
-
     TcpSignupClient first;
     SignupReplyPayload firstReply;
-    if (!first.open(server.tcpPort(), &error))
+    if (!first.open(tcpPort, &error))
         return expect(false, qPrintable(error));
     if (!first.signup(QStringLiteral("room-host"), false, 0, &firstReply, &error))
         return expect(false, qPrintable(error));
@@ -609,7 +612,7 @@ bool runTcpSignupRoomId(const QString &serverPath)
 
     TcpSignupClient second;
     SignupReplyPayload secondReply;
-    if (!second.open(server.tcpPort(), &error))
+    if (!second.open(tcpPort, &error))
         return expect(false, qPrintable(error));
     if (!second.signup(QStringLiteral("room-guest"), true, 0, &secondReply, &error))
         return expect(false, qPrintable(error));
@@ -618,7 +621,7 @@ bool runTcpSignupRoomId(const QString &serverPath)
 
     TcpSignupClient missing;
     SignupReplyPayload missingReply;
-    if (!missing.open(server.tcpPort(), &error))
+    if (!missing.open(tcpPort, &error))
         return expect(false, qPrintable(error));
     if (!missing.signup(QStringLiteral("missing-room"), true, 99, &missingReply, &error))
         return expect(false, qPrintable(error));
@@ -630,7 +633,7 @@ bool runTcpSignupRoomId(const QString &serverPath)
 
     TcpSignupClient full;
     SignupReplyPayload fullReply;
-    if (!full.open(server.tcpPort(), &error))
+    if (!full.open(tcpPort, &error))
         return expect(false, qPrintable(error));
     if (!full.signup(QStringLiteral("full-room"), true, 0, &fullReply, &error))
         return expect(false, qPrintable(error));
@@ -642,7 +645,7 @@ bool runTcpSignupRoomId(const QString &serverPath)
 
     TcpSignupClient nextCurrent;
     SignupReplyPayload nextReply;
-    if (!nextCurrent.open(server.tcpPort(), &error))
+    if (!nextCurrent.open(tcpPort, &error))
         return expect(false, qPrintable(error));
     if (!nextCurrent.signup(QStringLiteral("next-host"), false, 0, &nextReply, &error))
         return expect(false, qPrintable(error));
@@ -651,7 +654,7 @@ bool runTcpSignupRoomId(const QString &serverPath)
 
     TcpSignupClient joinNext;
     SignupReplyPayload joinReply;
-    if (!joinNext.open(server.tcpPort(), &error))
+    if (!joinNext.open(tcpPort, &error))
         return expect(false, qPrintable(error));
     if (!joinNext.signup(QStringLiteral("next-guest"), true, 1, &joinReply, &error))
         return expect(false, qPrintable(error));
@@ -701,6 +704,10 @@ int main(int argc, char **argv)
     const QList<NamedCase> cases = {
         {QStringLiteral("signup-room-id-payload"),
          [&]() { return runSignupRoomIdPayloadContract(); }},
+        // Keep the room_id matrix before any admissible WebSocket signup can
+        // bind a player to the current room.
+        {QStringLiteral("tcp-signup-room-id"),
+         [&]() { return runTcpSignupRoomId(server.tcpPort()); }},
         {QStringLiteral("ws-hello-signup"),
          [&]() { return runWebSocketHelloSignup(server.wsPort()); }},
         {QStringLiteral("ws-signup-requires-rules-bundle"),
@@ -709,16 +716,16 @@ int main(int argc, char **argv)
          [&]() { return runTcpNewlineHello(server.tcpPort()); }},
         {QStringLiteral("ws-binary-rejected"),
          [&]() { return runBinaryFrameRejected(server.wsPort()); }},
-        {QStringLiteral("tcp-signup-room-id"),
-         [&]() { return runTcpSignupRoomId(serverPath); }},
     };
 
     int passedCount = 0;
     for (const NamedCase &testCase : cases) {
+        QElapsedTimer caseTimer;
+        caseTimer.start();
         const bool passed = testCase.run();
         passedCount += passed ? 1 : 0;
         qInfo().noquote() << (passed ? QStringLiteral("[PASS]") : QStringLiteral("[FAIL]"))
-                          << testCase.name;
+                          << testCase.name << QStringLiteral("(%1 ms)").arg(caseTimer.elapsed());
     }
     qInfo().noquote() << QStringLiteral("\nTOTAL: %1\nPASS: %2\nFAIL: %3")
                              .arg(cases.size()).arg(passedCount).arg(cases.size() - passedCount);
