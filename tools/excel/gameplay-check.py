@@ -1,5 +1,6 @@
 """Run one bridge game with a real isolated Excel parent; not VBA UI acceptance."""
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -16,13 +17,20 @@ import win32com.client
 import win32process
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise RuntimeError('bridge HTTP redirect rejected')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--asset-root', type=Path)
     parser.add_argument('--timeout', type=int, default=900)
     args = parser.parse_args()
     root, output = args.root.resolve(), args.output.resolve()
+    asset_root = args.asset_root.resolve() if args.asset_root else root
     output.mkdir(parents=True, exist_ok=False)
     nonce = str(uuid.uuid4())
     private = Path(os.environ['TEMP']) / 'QSanguoshaExcel' / nonce
@@ -38,15 +46,20 @@ def main():
     env['QT_PLUGIN_PATH'] = 'H:/Qt6111/6.11.1/msvc2022_64/plugins'
     env['QSAN_SESSION_SETTINGS'] = str(private / 'config.ini')
     env['QSAN_USER_DATA_ROOT'] = str(private / 'data')
+    for name in ('LUA_PATH', 'LUA_CPATH', 'LUA_INIT', 'LUA_PATH_5_4', 'LUA_CPATH_5_4', 'LUA_INIT_5_4'):
+        env.pop(name, None)
     existing = {p.pid for p in psutil.process_iter(['name']) if (p.info['name'] or '').lower() == 'excel.exe'}
     excel = None
     process = None
     ready = None
     owned_excel = False
     report = {'driver': 'Python HTTP / real Excel parent', 'vba_ui': 'not-tested', 'mode': '05p', 'game_over': False}
+    report['asset_root'] = str(asset_root)
+    report['started_at'] = datetime.now(timezone.utc).isoformat()
+    report['driver_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     native_log = (output / 'bridge.log').open('wb')
     transcript = (output / 'ipc.jsonl').open('w', encoding='utf-8')
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     sequence = '0'
     snapshot = {'generation': '0', 'revision': '0'}
     command_id = 0
@@ -81,7 +94,7 @@ def main():
         report['bridge_sha256'] = hashlib.sha256(executable.read_bytes()).hexdigest()
         report['helper_sha256'] = hashlib.sha256((root / 'excel-debug/QSanguoshaExcelServer.exe').read_bytes()).hexdigest()
         process = subprocess.Popen([str(executable), '--bootstrap', str(bootstrap), '--nonce', nonce,
-            '--parent-pid', str(excel_pid), '--asset-root', str(root)], cwd=private, env=env,
+            '--parent-pid', str(excel_pid), '--asset-root', str(asset_root)], cwd=private, env=env,
             stdout=native_log, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
         report['bridge_pid'] = process.pid
         print('START Excel=%s bridge=%s' % (excel_pid, process.pid), flush=True)
@@ -140,7 +153,7 @@ def main():
                 report['game_over'] = True
                 report['final_game'] = game
                 (output / 'final-snapshot.json').write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding='utf-8')
-                print('GAME_OVER ' + json.dumps(game, ensure_ascii=False), flush=True)
+                print('GAME_OVER ' + json.dumps({key: game.get(key) for key in ('winner', 'result', 'round')}, ensure_ascii=False), flush=True)
                 break
             for event in update.get('events', []):
                 if event.get('kind') == 'error':
@@ -148,7 +161,8 @@ def main():
                     raise RuntimeError('bridge error: ' + str(event['data'].get('code')))
             if time.monotonic() >= next_progress:
                 print('PROGRESS ' + json.dumps({'connection': snapshot.get('connection'), 'status': view.get('status'),
-                    'request': request_id, 'players': len(view.get('players', [])), 'game': game}, ensure_ascii=False), flush=True)
+                    'request': request_id, 'players': len(view.get('players', [])),
+                    'game': {key: game.get(key) for key in ('started', 'game_over', 'round', 'focus')}}, ensure_ascii=False), flush=True)
                 next_progress = time.monotonic() + 20
             time.sleep(.5)
         if not report['game_over']:
@@ -192,6 +206,19 @@ def main():
                     owned.wait(10)
                     report['excel_forced_stop'] = True
         excel = None
+        if owned_excel:
+            try:
+                owned = psutil.Process(excel_pid)
+                if owned.create_time() == report['excel_created']:
+                    owned.wait(timeout=10)
+                report['excel_exited'] = True
+            except psutil.NoSuchProcess:
+                report['excel_exited'] = True
+            except psutil.TimeoutExpired:
+                report['excel_exited'] = False
+                owned.terminate()
+                owned.wait(timeout=10)
+                report['excel_forced_stop'] = True
         logs = private / 'data/server/logs'
         if logs.is_dir():
             target = output / 'helper-logs'
@@ -206,7 +233,11 @@ def main():
             except OSError:
                 report['ipc_port_released'] = True
         report['bootstrap_removed'] = not bootstrap.exists()
-        report['passed'] = bool(report['game_over'] and report.get('bridge_exit') == 0 and not report['remaining_children'] and not report.get('excel_forced_stop'))
+        report['finished_at'] = datetime.now(timezone.utc).isoformat()
+        report['passed'] = bool(report['game_over'] and report.get('bridge_exit') == 0
+            and report.get('shutdown_ack') and report.get('ipc_port_released')
+            and report['bootstrap_removed'] and report.get('excel_exited')
+            and not report['remaining_children'] and not report.get('excel_forced_stop'))
         (output / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         native_log.close()
         transcript.close()

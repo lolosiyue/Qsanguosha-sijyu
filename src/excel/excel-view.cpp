@@ -350,6 +350,23 @@ QJsonObject catalog(const ClientCore &, const QString &assetRoot, bool legacy)
     return result;
 }
 
+QJsonObject publicState(const ClientCore &core)
+{
+    const ClientGameState *state = core.state();
+    // Core retains protocol data such as the shuffled deck. Export only this
+    // public summary; cards and players use the authorized worksheet views.
+    const bool gameOver = state->gameValue(QStringLiteral("game_over")).toBool();
+    QJsonObject game{{QStringLiteral("started"), state->gameValue(QStringLiteral("started")).toBool()},
+        {QStringLiteral("game_over"), gameOver},
+        {QStringLiteral("status"), state->gameValue(QStringLiteral("status")).toString()},
+        {QStringLiteral("round"), state->gameValue(QStringLiteral("round")).toInt()},
+        {QStringLiteral("draw_pile_count"), state->gameValue(QStringLiteral("draw_pile_count")).toInt()}};
+    if (gameOver)
+        game.insert(QStringLiteral("result"), QJsonObject::fromVariantMap(
+            state->gameValue(QStringLiteral("result")).toMap()));
+    return {{QStringLiteral("game"), game}};
+}
+
 QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot, const QStringList &logs)
 {
     QJsonObject view;
