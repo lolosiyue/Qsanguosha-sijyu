@@ -29,7 +29,8 @@ public:
 
     explicit Server(QObject *parent,
                     const GameSessionConfig &initialSessionConfig = GameSessionConfig(),
-                    InitialRoomPolicy initialRoomPolicy = InitialRoomPolicy::Immediate);
+                    InitialRoomPolicy initialRoomPolicy = InitialRoomPolicy::Immediate,
+                    ServerSocket *injectedSocket = nullptr);
     ~Server() override;
 
     friend class BanIpDialog;

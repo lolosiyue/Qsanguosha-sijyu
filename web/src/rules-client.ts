@@ -160,7 +160,8 @@ export class RulesController {
     const identity = await verifyNativeIdentity(hello.rules_bundle);
     if (generation !== session.generation || generation !== this.generation || this.disposed)
       throw new Error("rules_reload_required");
-    if (identity.code_id !== this.code?.code_id) throw new Error("rules_version_mismatch");
+    if (identity.code_id !== this.code?.code_id)
+      throw new Error(`rules_version_mismatch: server code ${identity.code_id}, runtime code ${this.code?.code_id}`);
     if (!isObject(hello.rules_content)) throw new Error("rules_content_unsupported");
     const content = hello.rules_content;
     if (!this.ready || this.identity?.bundle_id !== identity.bundle_id

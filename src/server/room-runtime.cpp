@@ -55,6 +55,23 @@ RoomRuntime::~RoomRuntime()
     shutdownFinal();
 }
 
+void RoomRuntime::reclaimTurnCards()
+{
+    if (isClosing())
+        return;
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    // A turn boundary is not ownership release: retained cards remain pending
+    // for a later turn, and foreign-affinity objects stay on their owner path.
+    const quint64 retired = manager.drainTurnDomain(this);
+    const CardLifetimeGauge gauge = manager.gaugeForDomain(this);
+    std::fprintf(stdout, "CARD_LIFETIME_TURN_END room=%d retired=%llu pending=%llu live=%llu\n",
+                 m_room ? m_room->getId() : -1,
+                 static_cast<unsigned long long>(retired),
+                 static_cast<unsigned long long>(gauge.pending_delete),
+                 static_cast<unsigned long long>(gauge.managed_live));
+    std::fflush(stdout);
+}
+
 void RoomRuntime::finalizeWorker()
 {
     // Lua can outlive the worker: a Lua-owned QVariant boxing a CardUseStruct

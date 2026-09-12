@@ -736,7 +736,10 @@ void evaluateEnumerated(const Prompt &prompt, const QJsonObject &selection,
         const QList<int> bottom = optionalCardIds(selection.value(QStringLiteral("bottom")), count);
         QList<int> merged = top;
         merged.append(bottom);
-        QSet<int> unique(merged.constBegin(), merged.constEnd());
+        // Qt 5.6 has no iterator-range QSet constructor.
+        QSet<int> unique;
+        for (int id : merged)
+            unique.insert(id);
         if (unique.size() != merged.size() || !sameCardSet(merged, value->cardIds))
             reason = QStringLiteral("rearrangement_incomplete");
         else if (top.size() < value->minTop || top.size() > value->maxTop

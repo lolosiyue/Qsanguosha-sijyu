@@ -9,16 +9,28 @@
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QVariantMap>
 #include <memory>
 
 class LocalServerController : public QObject
 {
     Q_OBJECT
 public:
+    // Optional host selection for adapters such as the Excel bridge. An empty
+    // field retains the legacy XP GUI executable/path and Config behaviour.
+    struct LaunchOptions {
+        QString helperPath;
+        QString assetRoot;
+        QString dataRoot;
+        QString buildIdentity;
+        QVariantMap settings;
+    };
     enum class State { Idle, Launching, Handshaking, Initializing, Ready, Stopping };
     enum class Ownership { OwnedPrivate, OwnedHost };
     explicit LocalServerController(QObject *parent = nullptr);
     ~LocalServerController() override;
+    void configure(const LaunchOptions &options) { m_helperOpts = options; }
+    LaunchOptions helperOpts() const { return m_helperOpts; }
     bool start(Ownership ownership, bool hostOnly, const GameSessionConfig &config,
                const QString &replayPath = QString());
     void stop();
@@ -74,5 +86,6 @@ private:
     bool m_forced = false;
     bool m_takeoverPending = false;
     qint64 m_takeoverDeadline = 0;
+    LaunchOptions m_helperOpts;
 };
 #endif

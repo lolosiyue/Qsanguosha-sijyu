@@ -10,12 +10,14 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QEventLoop>
 #include <QMetaObject>
 #include <QJsonArray>
 #include <QRegularExpression>
 #include <QThread>
 #include <QTimer>
+#include <QSet>
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -24,6 +26,7 @@
 #include <QStringList>
 #include "lua.hpp"
 #include <cstdio>
+#include <atomic>
 #include <limits>
 #include <new>
 
@@ -405,7 +408,9 @@ void parseLifetimeReceipt(LifetimeChildReceipt &receipt)
     }
 }
 
-LifetimeChildReceipt runLifetimeChild(const QStringList &arguments, int timeoutMs = 30000)
+// Full-content Room bootstrap, especially the two-Room overlap fixture, can
+// exceed 30 seconds in Debug. Keep a bounded minute without weakening checks.
+LifetimeChildReceipt runLifetimeChild(const QStringList &arguments, int timeoutMs = 60000)
 {
     LifetimeChildReceipt receipt;
     receipt.arguments = arguments;
@@ -1082,8 +1087,8 @@ int runCardLifetimeTests()
     for (const auto &shutdownCase : shutdownCases) {
         const LifetimeChildReceipt receipt = runLifetimeChild(
             {QStringLiteral("--suite"), QStringLiteral("card-lifetime-shutdown"),
-             shutdownCase.first},
-            30000);
+               shutdownCase.first},
+            60000);
         const QString expectedStage = shutdownCase.first == QLatin1String("lua-pin")
             ? QStringLiteral("worker-final") : QStringLiteral("postclose");
         adversarialShutdown = adversarialShutdown
@@ -1608,4 +1613,197 @@ int runCardLifetimeDerivedCardConversionTests()
     fprintf(stdout, "DERIVED_CARD_CONVERSION %s\n",
             QJsonDocument(marker).toJson(QJsonDocument::Compact).constData());
     return initialized && conversionSucceeded ? 0 : 73;
+}
+
+int runCardLifetimeTurnReclaimTests()
+{
+    // The global manager must be constructed on the owner thread before the
+    // no-event-loop worker starts; the worker then exercises its own domain.
+    globalCardLifetimeManager();
+    CardLifetimeManager manager(CardLifetimeMode::ManagedReclaim,
+                                QThread::currentThread());
+    CardLifetimeManager observeOnly(CardLifetimeMode::ObserveOnly);
+    static int turnDomain = 0;
+    static int otherDomain = 0;
+    const void *mainPreviousDomain = CardLifetimeManager::setCurrentDomain(&turnDomain);
+    QPointer<Card> ownerAffinityCard = new DummyCard;
+    const auto ownerAffinityToken = manager.observeCard(ownerAffinityCard);
+    CARD_LIFETIME_CHECK(ownerAffinityToken && manager.requestNativeDelete(ownerAffinityToken));
+    const quint64 domainEntryBaseline = manager.entryCountForDomain(&turnDomain);
+    CardLifetimeManager::setCurrentDomain(mainPreviousDomain);
+    QPointer<QObject> unrelatedQueued;
+
+    QPointer<Card> ordinaryCard;
+    QPointer<Card> eligibleCard;
+    QPointer<Card> leaseCard;
+    QPointer<Card> wrapperCard;
+    QPointer<Card> reservationCard;
+    QPointer<Card> edgeSource;
+    QPointer<Card> edgeTarget;
+    QPointer<Card> scopeCard;
+    QPointer<Card> pinCard;
+    QPointer<Card> baselineCard;
+    QPointer<Card> definitionCard;
+    QPointer<Card> adoptedCard;
+    QPointer<Card> otherCard;
+    QPointer<Card> postRegistrationCard;
+    QThread *eligibleDestructorThread = nullptr;
+    std::atomic<int> workerStage {0};
+    std::atomic<bool> workerOk {true};
+
+    CARD_LIFETIME_CHECK(observeOnly.beginTurnReclamation(&turnDomain));
+    CARD_LIFETIME_CHECK(observeOnly.drainTurnDomain(&turnDomain) == 0);
+    observeOnly.endTurnReclamation(&turnDomain);
+
+    std::unique_ptr<QThread> worker(QThread::create([&] {
+        const void *previous = CardLifetimeManager::setCurrentDomain(&turnDomain);
+        workerOk = manager.beginTurnReclamation(&turnDomain);
+        workerOk = workerOk && !manager.beginTurnReclamation(&turnDomain);
+        workerOk = workerOk && manager.beginTurnReclamation(nullptr) == false;
+        const void *wrong = CardLifetimeManager::setCurrentDomain(&otherDomain);
+        workerOk = workerOk && manager.beginTurnReclamation(&turnDomain) == false;
+        CardLifetimeManager::setCurrentDomain(wrong);
+
+        auto pending = [&](QPointer<Card> &holder) {
+            holder = new DummyCard;
+            const auto token = manager.observeCard(holder);
+            workerOk = workerOk && token && manager.requestNativeDelete(token);
+            return token;
+        };
+        const auto ordinaryToken = pending(ordinaryCard);
+        const auto eligibleToken = pending(eligibleCard);
+        QObject::connect(eligibleCard.data(), &QObject::destroyed, [&] {
+            eligibleDestructorThread = QThread::currentThread();
+        });
+        const auto leaseToken = pending(leaseCard);
+        const auto wrapperToken = pending(wrapperCard);
+        const auto reservationToken = pending(reservationCard);
+        const auto edgeSourceToken = pending(edgeSource);
+        const auto edgeTargetToken = pending(edgeTarget);
+        baselineCard = new DummyCard;
+        const auto baselineToken = manager.observeCard(baselineCard);
+        manager.setDomainBaseline(&turnDomain, {baselineCard});
+        workerOk = workerOk && manager.requestNativeDelete(baselineToken);
+        definitionCard = new DummyCard;
+        const auto definitionToken = manager.observeCard(definitionCard, true);
+        adoptedCard = new DummyCard;
+        const auto adoptedToken = manager.observeCard(adoptedCard);
+        CardLifetimeManager::setCurrentDomain(&otherDomain);
+        otherCard = new DummyCard;
+        const auto otherToken = manager.observeCard(otherCard);
+        workerOk = workerOk && otherToken && manager.requestNativeDelete(otherToken);
+        CardLifetimeManager::setCurrentDomain(&turnDomain);
+        unrelatedQueued = new QObject;
+        unrelatedQueued->deleteLater();
+
+        workerOk = workerOk && ordinaryToken && eligibleToken && leaseToken
+            && wrapperToken && reservationToken && edgeSourceToken && edgeTargetToken
+            && baselineToken && definitionToken && adoptedToken;
+        workerOk = workerOk && manager.retainNativeLease(leaseToken);
+        workerOk = workerOk && manager.retainWrapper(wrapperToken);
+        workerOk = workerOk && manager.reserveAdoption(reservationToken);
+        workerOk = workerOk && manager.addChangeEdge(edgeSource, edgeTarget);
+        workerOk = workerOk && manager.requestNativeDelete(definitionToken);
+        workerOk = workerOk && manager.requestNativeDelete(adoptedToken);
+        workerOk = workerOk && manager.markAdopted(adoptedToken);
+        workerStage = 1;
+        while (workerStage.load() == 1)
+            QThread::msleep(1);
+        workerOk = workerOk && manager.drainTurnDomain(&otherDomain) == 0;
+        workerOk = workerOk && manager.drainTurnDomain(&turnDomain) == 2;
+        workerOk = workerOk && eligibleCard.isNull();
+        workerOk = workerOk && eligibleDestructorThread == QThread::currentThread();
+        workerOk = workerOk && !baselineCard.isNull();
+        workerOk = workerOk && ordinaryCard.isNull() && !unrelatedQueued.isNull()
+            && !leaseCard.isNull() && !wrapperCard.isNull()
+            && !reservationCard.isNull() && !edgeSource.isNull()
+            && !edgeTarget.isNull();
+
+        pending(scopeCard);
+        const void *scopeDomain = manager.enterScope("turn-reclaim-test");
+        const void *nestedScopeDomain = manager.enterScope("turn-reclaim-test-nested");
+        workerOk = workerOk && manager.drainTurnDomain(&turnDomain) == 0
+            && manager.activeScopeDepthForDomain(&turnDomain) == 2
+            && !scopeCard.isNull();
+
+        manager.leaveScope(nestedScopeDomain);
+        workerOk = workerOk && manager.drainTurnDomain(&turnDomain) == 0
+            && manager.activeScopeDepthForDomain(&turnDomain) == 1;
+        manager.leaveScope(scopeDomain);
+        pending(pinCard);
+        manager.enterLuaPin();
+        workerOk = workerOk && manager.drainTurnDomain(&turnDomain) == 0
+            && !pinCard.isNull();
+        manager.leaveLuaPin();
+        manager.releaseNativeLease(leaseToken);
+        manager.releaseWrapper(wrapperToken);
+        manager.cancelAdoption(reservationToken);
+        manager.removeChangeEdges(edgeSource);
+        workerOk = workerOk && manager.drainTurnDomain(&turnDomain) == 7;
+        workerOk = workerOk && leaseCard.isNull() && wrapperCard.isNull()
+            && reservationCard.isNull() && edgeSource.isNull() && edgeTarget.isNull()
+            && scopeCard.isNull() && pinCard.isNull();
+
+        // Three batches under one registration prove entries return to baseline.
+        for (int i = 0; i < 3; ++i) {
+            QPointer<Card> batch = new DummyCard;
+            const auto token = manager.observeCard(batch);
+            workerOk = workerOk && token && manager.requestNativeDelete(token)
+                && manager.drainTurnDomain(&turnDomain) == 1 && batch.isNull();
+            workerOk = workerOk && manager.entryCountForDomain(&turnDomain)
+                == domainEntryBaseline + 2;
+        }
+        workerOk = workerOk && manager.entryCountForDomain(&turnDomain)
+            == domainEntryBaseline + 2;
+        manager.endTurnReclamation(&turnDomain);
+        QCoreApplication::sendPostedEvents(unrelatedQueued.data(), QEvent::DeferredDelete);
+        workerOk = workerOk && unrelatedQueued.isNull();
+        delete baselineCard.data();
+        delete definitionCard.data();
+        delete adoptedCard.data();
+        delete otherCard.data();
+        CardLifetimeManager::setCurrentDomain(previous);
+        workerStage = 2;
+    }));
+    worker->start();
+    const qint64 deadline = QDateTime::currentMSecsSinceEpoch() + 5000;
+    while (workerStage.load() == 0 && QDateTime::currentMSecsSinceEpoch() < deadline)
+        QThread::msleep(1);
+    CARD_LIFETIME_CHECK(workerStage.load() == 1);
+    CARD_LIFETIME_CHECK(manager.drain() == 0);
+    CARD_LIFETIME_CHECK(manager.drainDomain(&turnDomain) == 0);
+    CARD_LIFETIME_CHECK(!ownerAffinityCard.isNull());
+    const void *foreignPrevious = CardLifetimeManager::setCurrentDomain(&turnDomain);
+    CARD_LIFETIME_CHECK(manager.drainTurnDomain(&turnDomain) == 0);
+    CardLifetimeManager::setCurrentDomain(foreignPrevious);
+    // A foreign thread cannot end another thread's registration.
+    manager.endTurnReclamation(&turnDomain);
+    workerStage = 2;
+    CARD_LIFETIME_CHECK(worker->wait(5000));
+    CARD_LIFETIME_CHECK(workerOk.load());
+    worker.reset();
+
+    CARD_LIFETIME_CHECK(ordinaryCard.isNull());
+    CARD_LIFETIME_CHECK(scopeCard.isNull() && pinCard.isNull());
+    CARD_LIFETIME_CHECK(baselineCard.isNull() && definitionCard.isNull()
+                        && adoptedCard.isNull() && otherCard.isNull());
+    CARD_LIFETIME_CHECK(unrelatedQueued.isNull());
+    manager.unregisterDomainBaseline(&turnDomain);
+    CARD_LIFETIME_CHECK(manager.entryCountForDomain(&turnDomain) == domainEntryBaseline);
+    CARD_LIFETIME_CHECK(manager.entryCountForDomain(&otherDomain) == 0);
+
+    // Once registration ends, the owner's ordinary drain path is restored.
+    const void *previous = CardLifetimeManager::setCurrentDomain(&turnDomain);
+    postRegistrationCard = new DummyCard;
+    const auto postToken = manager.observeCard(postRegistrationCard);
+    CARD_LIFETIME_CHECK(postToken && manager.requestNativeDelete(postToken));
+    CARD_LIFETIME_CHECK(manager.drainTurnDomain(&turnDomain) == 0);
+    CARD_LIFETIME_CHECK(manager.drain() == 2);
+    QCoreApplication::sendPostedEvents(postRegistrationCard.data(), QEvent::DeferredDelete);
+    QCoreApplication::sendPostedEvents(ownerAffinityCard.data(), QEvent::DeferredDelete);
+    CardLifetimeManager::setCurrentDomain(previous);
+    CARD_LIFETIME_CHECK(postRegistrationCard.isNull());
+    CARD_LIFETIME_CHECK(ownerAffinityCard.isNull());
+    std::fprintf(stdout, "CARD_LIFETIME_TURN_RECLAIM PASS\n");
+    return 0;
 }

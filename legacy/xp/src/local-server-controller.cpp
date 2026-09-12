@@ -17,7 +17,7 @@ QString parentCreationTime()
     return QString::number((quint64(created.dwHighDateTime) << 32) | created.dwLowDateTime);
 }
 
-bool captureSettings(const QString &path)
+bool captureSettings(const QString &path, const QVariantMap &settings)
 {
     // Keep unknown extension keys too; do not project the snapshot down to just
     // the dedicated CLI's schema. GUI-only metatypes are not game settings.
@@ -40,6 +40,10 @@ bool captureSettings(const QString &path)
     snapshot.setValue("EnableAI", Config.EnableAI);
     snapshot.setValue("OriginAIDelay", Config.OriginAIDelay);
     snapshot.setValue("DisableLua", Config.DisableLua);
+    // Adapter-specific values are a one-session overlay. They may include
+    // unknown extension keys, while the GUI-owned Config remains untouched.
+    for (auto it = settings.cbegin(); it != settings.cend(); ++it)
+        snapshot.setValue(it.key(), it.value());
     snapshot.sync();
     return snapshot.status() == QSettings::NoError;
 }
@@ -120,29 +124,40 @@ bool LocalServerController::start(Ownership ownership, bool hostOnly,
     QString error;
     m_session = XpControl::randomIdentity(&error);
     m_token = XpControl::randomIdentity(&error);
-    const QString helper = QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("QSanguoshaXPServer.exe");
+    const QString helper = m_helperOpts.helperPath.isEmpty()
+        ? QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("QSanguoshaXPServer.exe")
+        : QFileInfo(m_helperOpts.helperPath).absoluteFilePath();
     if (m_session.isEmpty() || m_token.isEmpty() || !QFileInfo(helper).isFile()) {
         emit failed(error.isEmpty() ? QStringLiteral("helper_missing: ") + helper : error);
         return false;
     }
     const QString parentTime = parentCreationTime();
     if (parentTime.isEmpty()) { emit failed(QStringLiteral("parent_identity_unavailable")); return false; }
-    const QString sessions = QSanRuntimePaths::userDataPath("sessions");
-    const QString diagnostics = QSanRuntimePaths::userDataPath("logs");
+    const QString assetRoot = m_helperOpts.assetRoot.isEmpty()
+        ? QSanRuntimePaths::assetRoot() : QFileInfo(m_helperOpts.assetRoot).absoluteFilePath();
+    const QString dataRoot = m_helperOpts.dataRoot.isEmpty()
+        ? QSanRuntimePaths::userDataRoot() : QFileInfo(m_helperOpts.dataRoot).absoluteFilePath();
+    if (!QFileInfo(assetRoot).isDir() || (!QFileInfo(dataRoot).isDir() && !QDir().mkpath(dataRoot))) {
+        emit failed(QStringLiteral("helper_paths_invalid")); return false;
+    }
+    const QString sessions = QDir(dataRoot).filePath("sessions");
+    const QString diagnostics = QDir(dataRoot).filePath("logs");
     if (!QDir().mkpath(sessions) || !QDir().mkpath(diagnostics)) {
         emit failed(QStringLiteral("session_directory_unwritable")); return false;
     }
     m_directory.reset(new QTemporaryDir(QDir(sessions).filePath("xp-XXXXXX")));
     const QString settings = m_directory->path() + "/config.ini";
-    if (!m_directory->isValid() || !captureSettings(settings)) {
+    if (!m_directory->isValid() || !captureSettings(settings, m_helperOpts.settings)) {
         emit failed(QStringLiteral("session_settings_unwritable")); return false;
     }
-    const QString runtime = XpControl::runtimeHash(QSanRuntimePaths::assetRoot(), &error);
+    const QString runtime = XpControl::runtimeHash(assetRoot, &error);
     if (runtime.isEmpty()) { emit failed(error); return false; }
-    m_initialize = {{"build", XpControl::buildIdentity()}, {"token", m_token},
+    const QString build = m_helperOpts.buildIdentity.isEmpty()
+        ? XpControl::buildIdentity() : m_helperOpts.buildIdentity;
+    m_initialize = {{"build", build}, {"token", m_token},
         {"settings", settings}, {"settingsHash", XpControl::fileHash(settings)},
-        {"runtime", runtime}, {"assetRoot", QSanRuntimePaths::assetRoot()},
-        {"dataRoot", QSanRuntimePaths::userDataRoot()},
+        {"runtime", runtime}, {"assetRoot", assetRoot},
+        {"dataRoot", dataRoot},
         {"private", ownership == Ownership::OwnedPrivate}, {"hostOnly", hostOnly},
         {"seed", QString::number(config.seed)}, {"takeover", config.takeover}};
     if (config.takeover) {
@@ -168,9 +183,11 @@ bool LocalServerController::start(Ownership ownership, bool hostOnly,
     environment.insert("QSAN_XP_PARENT_PID", QString::number(QCoreApplication::applicationPid()));
     environment.insert("QSAN_XP_PARENT_CREATED", parentTime);
     environment.insert("QSAN_XP_SETTINGS", settings);
-    environment.insert("QSAN_USER_DATA_ROOT", QSanRuntimePaths::userDataRoot());
+    // Common native helper contract; the XP name remains for old binaries.
+    environment.insert("QSAN_SESSION_SETTINGS", settings);
+    environment.insert("QSAN_USER_DATA_ROOT", dataRoot);
     process->setProcessEnvironment(environment);
-    process->setWorkingDirectory(QCoreApplication::applicationDirPath());
+    process->setWorkingDirectory(QFileInfo(helper).absolutePath());
     const QString diagnosticStem = QDir(diagnostics).filePath(
         QStringLiteral("xp-server-") + m_session.left(16));
     const QString stdoutPath = diagnosticStem + QStringLiteral(".stdout.log");
@@ -185,7 +202,11 @@ bool LocalServerController::start(Ownership ownership, bool hostOnly,
         transition(State::Handshaking, 8000);
         emit progress(QStringLiteral("Authenticating local server..."));
     });
+#if QT_VERSION >= QT_VERSION_CHECK(5, 6, 0)
+    connect(process, &QProcess::errorOccurred,
+#else
     connect(process, static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::error),
+#endif
         this, [this, process, generation](QProcess::ProcessError) {
             if (m_process != process || m_generation != generation) return;
             if (m_state == State::Stopping) {
@@ -212,7 +233,7 @@ bool LocalServerController::start(Ownership ownership, bool hostOnly,
             });
         });
     transition(State::Launching, 8000);
-    process->start(helper, QStringList() << "--managed" << "--asset-root" << QSanRuntimePaths::assetRoot());
+    process->start(helper, QStringList() << "--managed" << "--asset-root" << assetRoot);
     return true;
 }
 
@@ -256,7 +277,7 @@ void LocalServerController::receive(XpControl::Channel *channel, const QJsonObje
             channel->socket()->abort(); return;
         }
         m_channel = channel;
-        if (body.value("build").toString() != XpControl::buildIdentity()) {
+        if (body.value("build").toString() != m_initialize.value("build").toString()) {
             fail(QStringLiteral("helper_build_mismatch")); return;
         }
         // XP optical media can spend over 90 seconds loading the shared rules

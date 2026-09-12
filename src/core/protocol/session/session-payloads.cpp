@@ -229,6 +229,8 @@ QVariantMap SignupRequestPayload::toVariant() const
         object.insert(QStringLiteral("room_id"), roomId);
     if (hasRulesBundle)
         object.insert(QStringLiteral("rules_bundle"), rulesBundle.toVariantMap());
+    if (hasMaxPlayers)
+        object.insert(QStringLiteral("max_players"), maxPlayers);
     return object;
 }
 
@@ -274,6 +276,19 @@ bool SignupRequestPayload::parse(const QVariant &value, SignupRequestPayload *pa
         }
         parsed.hasRoomId = true;
         parsed.roomId = parsedRoomId;
+    }
+    if (object.contains(QStringLiteral("max_players"))) {
+        if (schemaVersion != SchemaVersion)
+            return fail(error, QStringLiteral("SignupRequestPayload.max_players requires schema_version 2"));
+        int parsedMaxPlayers = 0;
+        if (!ProtocolMessageUtils::tryParseInt(
+                object.value(QStringLiteral("max_players")), parsedMaxPlayers)
+            || parsedMaxPlayers < 0 || parsedMaxPlayers > 1000
+            || (parsedMaxPlayers != 0 && parsedMaxPlayers < 2)) {
+            return fail(error, QStringLiteral("SignupRequestPayload.max_players must be 0 or an integral value from 2 to 1000"));
+        }
+        parsed.hasMaxPlayers = true;
+        parsed.maxPlayers = parsedMaxPlayers;
     }
     *payload = parsed;
     return true;

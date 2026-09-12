@@ -1,0 +1,57 @@
+{
+  "schema": "qsanguosha.excel.acceptance-matrix.v1",
+  "status": "pending",
+  "scope": {
+    "required_standard_interactions": 28,
+    "excluded_interactions": [
+      "qml_interact/qsanguosha.qml"
+    ],
+    "exclusion_reason": "user-approved for the xlsm frontend in both runtime tiers",
+    "qml_dependencies": "inventory and disclose; do not claim those paths are playable",
+    "other_special_presenters": "required"
+  },
+  "checkpoint": "CP1-focused",
+  "source_head": "a209a2a78b09bba5b7b41862844f0f86b5c456bd",
+  "targets": [
+    {
+      "os": "Windows 10/11",
+      "arch": "x64",
+      "runtime_tier": "modern",
+      "qt": "Qt6",
+      "max_players": null,
+      "office": [
+        "Excel modern Office 2016+ x86",
+        "Excel modern Office 2016+ x64"
+      ]
+    },
+    {
+      "os": "Windows XP/7/8.1/10",
+      "arch": "x86",
+      "runtime_tier": "legacy",
+      "qt": "Qt5.6",
+      "seat_range": "2-10",
+      "max_players": 10,
+      "office": [
+        "Excel 2010 x86"
+      ]
+    }
+  ],
+  "gates": {
+    "inventory": "pending",
+    "candidate_package": "pending",
+    "vba_binary_and_module_hash": "manual-vbe-gate",
+    "static_check": "passed",
+    "runtime_excel": "not-run",
+    "gameplay": "not-run",
+    "modern_debug_build": "passed",
+    "legacy_debug_build": "passed",
+    "focused_execution": "passed-modern-native",
+    "release_build": "not-run"
+  },
+  "limitations": [
+    "Source inventory is evidence, not proof of complete registration coverage.",
+    "Debug builds and three modern native focused executables passed; all 28 Excel interaction paths, Release, deployment, Excel, VBE, legacy execution, full cleanup, CI and full gameplay remain unverified."
+  ],
+  "build_evidence": "builds/excel-cp1-build-evidence.json",
+  "focused_evidence": "builds/excel-cp1-focused/results.json"
+}

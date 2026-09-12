@@ -13,6 +13,7 @@
 #include "game-snapshot-service.h"
 #include "banpair.h"
 #include "crashhandler.h"
+#include "websocket-gateway.h"
 #include <QCoreApplication>
 #include <QFileInfo>
 #include <QHostAddress>
@@ -22,6 +23,7 @@
 #include <QTimer>
 #include <windows.h>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 int qsanStandaloneServerMain(int argc, char **argv);
@@ -101,8 +103,17 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; ++i)
         if (QByteArray(argv[i]) == "--managed") managed = true;
     if (!managed) {
-        if (qEnvironmentVariable("QSAN_USER_DATA_ROOT").isEmpty())
-            qsanXpSetEnvironment("QSAN_USER_DATA_ROOT", qEnvironmentVariable("APPDATA") + "/QSanguoshaXP");
+        if (qEnvironmentVariable("QSAN_USER_DATA_ROOT").isEmpty()) {
+            // This managed entry is also linked by the Qt6 Excel helper. Use
+            // the Unicode Windows environment without importing Qt5 shims.
+            const QString root = qEnvironmentVariable("APPDATA")
+#ifdef QSAN_XP_LEGACY
+                + QStringLiteral("/QSanguoshaXP");
+#else
+                + QStringLiteral("/QSanguoshaExcel");
+#endif
+            _wputenv_s(L"QSAN_USER_DATA_ROOT", reinterpret_cast<const wchar_t *>(root.utf16()));
+        }
         return qsanStandaloneServerMain(argc, argv);
     }
 
@@ -243,6 +254,11 @@ int main(int argc, char **argv)
                     }
                 }
                 Server::isHeadlessMode = true;
+#if QSAN_ENABLE_WEBSOCKETS
+                // The modern managed entry bypasses standalone main; register
+                // its socket factory before Server constructs the transports.
+                qsanLinkWebSocketGateway();
+#endif
                 server.reset(new Server(nullptr, game, Server::InitialRoomPolicy::Deferred));
                 QObject::connect(server.get(), &Server::newPlayer, &app, [&](ServerPlayer *player) {
                     Room *room = player->getRoom();

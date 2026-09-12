@@ -188,7 +188,7 @@ QVariantMap effectiveServerConfiguration()
 }
 }
 
-#ifdef QSAN_XP_LEGACY
+#if defined(QSAN_XP_LEGACY) || defined(QSAN_MANAGED_SERVER_ENTRY)
 int qsanStandaloneServerMain(int argc, char **argv)
 #else
 int main(int argc, char **argv)
