@@ -1,6 +1,8 @@
 #ifndef _UI_UTILS_H
 #define _UI_UTILS_H
 
+#include <QtGlobal>
+
 namespace QSanUiUtils {
     // This is in no way a generic diation fuction. It is some dirty trick that
     // produces a shadow image for a pixmap whose foreground mask is binaryImage
@@ -8,7 +10,7 @@ namespace QSanUiUtils {
     void makeGray(QPixmap &pixmap);
     void shadowCleanUp(void *data);
 
-#ifndef ANDROID
+#ifndef Q_OS_ANDROID
     namespace QSanFreeTypeFont {
         int *loadFont(const QString &fontPath);
         QString resolveFont(const QString &fontName);
@@ -39,7 +41,7 @@ namespace QSanUiUtils {
             QSize &fontSize, int spacing, QRect boundingBox,
             Qt::Alignment align);
     }
-#endif // !ANDROID
+#endif // !Q_OS_ANDROID
 }
 
 #endif

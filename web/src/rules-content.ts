@@ -1,8 +1,10 @@
-import { sha256 } from "./rules-identity";
+import { canonical, sha256 } from "./rules-identity";
 
 export type ContentRole = "rules" | "presentation" | "ai";
 export interface ContentEntry { path: string; role: ContentRole; size: number; sha256: string }
-export interface ContentManifest { schema_version: 1; profile: "declared-v1"; files: ContentEntry[] }
+export interface RuntimeExtension { name: string; script: string; dependencies: string[]; libs: string[]; lang: string[]; ai: string[] }
+export interface RuntimeContent { schema_version: 2; profile: "declared-v2"; extensions: RuntimeExtension[] }
+export interface ContentManifest { schema_version: 2; profile: "declared-v2"; runtime_content: RuntimeContent; files: ContentEntry[] }
 
 const CORE = new Set(["lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua",
   "lua/sgs_ex.lua", "lua/lib/json.lua"]);
@@ -27,8 +29,55 @@ export function validateContentManifest(value: unknown): ContentManifest {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     throw new Error("rules_content_unsupported");
   const object = value as Record<string, unknown>;
-  if (object.schema_version !== 1 || object.profile !== "declared-v1")
+  if (object.schema_version !== 2 || object.profile !== "declared-v2")
     throw new Error("rules_content_unsupported");
+  const runtime = object.runtime_content;
+  if (runtime === null || typeof runtime !== "object" || Array.isArray(runtime))
+    throw new Error("rules_content_unsupported");
+  const runtimeObject = runtime as Record<string, unknown>;
+  if (runtimeObject.schema_version !== 2 || runtimeObject.profile !== "declared-v2"
+      || !Array.isArray(runtimeObject.extensions)) throw new Error("rules_content_unsupported");
+  const names = new Set<string>();
+  const declaredPaths = new Set<string>();
+  const runtimeExtensions: RuntimeExtension[] = [];
+  for (const raw of runtimeObject.extensions) {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new Error("rules_content_unsupported");
+    const extension = raw as Record<string, unknown>;
+    const name = extension.name;
+    const script = extension.script;
+    const dependencies = extension.dependencies;
+    const libs = extension.libs;
+    const lang = extension.lang;
+    const ai = extension.ai;
+    if (typeof name !== "string" || !name || names.has(name) || typeof script !== "string"
+        || !Array.isArray(dependencies) || !Array.isArray(libs) || !Array.isArray(lang) || !Array.isArray(ai)
+        || !dependencies.every(item => typeof item === "string") || !libs.every(item => typeof item === "string")
+        || !lang.every(item => typeof item === "string") || !ai.every(item => typeof item === "string"))
+      throw new Error("rules_content_unsupported");
+    const validDeclaredPath = (path: string, role: "script" | "libs" | "lang" | "ai") => {
+      if (!validPath(path) || declaredPaths.has(path)) return false;
+      const permitted = role === "script" ? /^extensions\/[^/]+\.lua$/.test(path)
+        : role === "libs" ? path.startsWith("lua/") && !path.startsWith("lua/ai/")
+          && !CORE.has(path) && path !== "lua/lib/middleclass.lua"
+        : role === "lang" ? path.startsWith("lang/")
+        : path.startsWith("lua/ai/") || path === "lua/lib/middleclass.lua";
+      if (permitted) declaredPaths.add(path);
+      return permitted;
+    };
+    if (!validDeclaredPath(script, "script")
+        || !(libs as string[]).every(path => validDeclaredPath(path, "libs"))
+        || !(lang as string[]).every(path => validDeclaredPath(path, "lang"))
+        || !(ai as string[]).every(path => validDeclaredPath(path, "ai")))
+      throw new Error("rules_content_unsupported");
+    const seenDependencies = new Set<string>();
+    for (const dependency of dependencies as string[]) {
+      if (!names.has(dependency) || seenDependencies.has(dependency)) throw new Error("rules_content_unsupported");
+      seenDependencies.add(dependency);
+    }
+    names.add(name);
+    runtimeExtensions.push({ name, script, dependencies: [...dependencies as string[]],
+      libs: [...libs as string[]], lang: [...lang as string[]], ai: [...ai as string[]] });
+  }
   if (!Array.isArray(object.files) || object.files.length === 0 || object.files.length > 8192)
     throw new Error("rules_content_unsupported");
   const seen = new Set<string>();
@@ -53,7 +102,8 @@ export function validateContentManifest(value: unknown): ContentManifest {
     const entry = files.find(item => item.path === path);
     if (!entry || entry.role !== "rules") throw new Error("rules_content_unsupported");
   }
-  return { schema_version: 1, profile: "declared-v1", files };
+  return { schema_version: 2, profile: "declared-v2",
+    runtime_content: { schema_version: 2, profile: "declared-v2", extensions: runtimeExtensions }, files };
 }
 
 export type ContentFetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -94,7 +144,8 @@ export interface ContentFs {
   rmdir?(path: string): void;
 }
 
-export function installContent(fs: ContentFs, files: Map<string, Uint8Array>): void {
+export function installContent(fs: ContentFs, files: Map<string, Uint8Array>,
+                               runtimeContent?: RuntimeContent): void {
   if (!fs.unlink || !fs.rmdir) throw new Error("rules_reload_required");
   clearDirectory(fs, "/assets");
   fs.mkdirTree("/assets");
@@ -103,6 +154,9 @@ export function installContent(fs: ContentFs, files: Map<string, Uint8Array>): v
     fs.mkdirTree(full.slice(0, full.lastIndexOf("/")));
     fs.writeFile(full, bytes);
   }
+  if (runtimeContent)
+    fs.writeFile("/assets/runtime-content.json",
+      new TextEncoder().encode(JSON.stringify(runtimeContent)));
 }
 
 function clearDirectory(fs: ContentFs, directory: string): void {
@@ -134,11 +188,24 @@ export async function verifyInstalledContent(fs: ContentFs, manifestValue: unkno
       const path = `${directory}/${name}`;
       const stat = fs.lstat(path);
       if (fs.isDir(stat.mode)) inventory(path);
-      else if (fs.isFile(stat.mode)) actual.push(path.slice("/assets/".length));
+      else if (fs.isFile(stat.mode)) {
+        if (path !== "/assets/runtime-content.json") actual.push(path.slice("/assets/".length));
+      }
       else throw new Error("rules_reload_required");
     }
   }
   inventory("/assets");
+  // This sidecar selects the rules that Engine actually loads. Exclude it
+  // from the Lua inventory, but bind its contents to the validated manifest.
+  try {
+    const path = "/assets/runtime-content.json";
+    if (!fs.isFile(fs.lstat(path).mode)) throw new Error();
+    const bytes = fs.readFile(path);
+    const installed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (canonical(installed) !== canonical(manifest.runtime_content)) throw new Error();
+  } catch {
+    throw new Error("rules_reload_required");
+  }
   if (actual.length !== expected.size || actual.some(path => !expected.has(path)))
     throw new Error("rules_reload_required");
   for (const entry of manifest.files) {

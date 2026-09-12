@@ -7,8 +7,11 @@
 #include "SpineGlItem.h"  // for QtSpineTextureLoader
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QFile>
 #include <QSurfaceFormat>
+#include <QOpenGLContext>
+#include <QOffscreenSurface>
 #include <QMatrix4x4>
 #include <QPainter>
 #include <cstring>
@@ -43,14 +46,17 @@ SpineEffectWidget::SpineEffectWidget(QWidget *parent)
     // 60fps timer
     _frameTimer.setInterval(16);
     connect(&_frameTimer, &QTimer::timeout, this, &SpineEffectWidget::onFrameTimer);
+#ifdef Q_OS_ANDROID
+    connect(qGuiApp, &QGuiApplication::applicationStateChanged,
+            this, &SpineEffectWidget::onApplicationStateChanged);
+#endif
 }
 
 SpineEffectWidget::~SpineEffectWidget() {
     stopEffect();
-    makeCurrent();
+    disconnect(_contextConnection);
+    onContextAboutToBeDestroyed();
     cleanupSpine();
-    delete _shader;
-    doneCurrent();
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -68,9 +74,14 @@ bool SpineEffectWidget::playEffectFiles(const QString &atlasPath, const QString 
     qWarning("[SpineEW] playEffectFiles: atlas='%s' skel='%s' anim='%s'",
              qPrintable(atlasPath), qPrintable(skelPath), qPrintable(animationName));
     _autoClose = autoClose;
+    _pausedForBackground = false;
 
     // Make sure GL context is current
     makeCurrent();
+    if (!context() || QOpenGLContext::currentContext() != context()) {
+        emit effectError(QStringLiteral("Spine OpenGL context is unavailable"));
+        return false;
+    }
 
     if (!loadSpineData(atlasPath, skelPath)) {
         qWarning("[SpineEW] loadSpineData FAILED");
@@ -141,7 +152,16 @@ bool SpineEffectWidget::playEffectFiles(const QString &atlasPath, const QString 
     _playing = true;
     _elapsed.start();
     _lastTime = 0;
+#ifdef Q_OS_ANDROID
+    if (qGuiApp && qGuiApp->applicationState() == Qt::ApplicationActive) {
+        _frameTimer.start();
+    } else {
+        _playing = false;
+        _pausedForBackground = true;
+    }
+#else
     _frameTimer.start();
+#endif
 
     show();
     raise();
@@ -160,6 +180,7 @@ void SpineEffectWidget::setClickThrough(bool enabled) {
 
 void SpineEffectWidget::stopEffect() {
     _playing = false;
+    _pausedForBackground = false;
     _frameTimer.stop();
     if (_animState)
         _animState->clearTracks();
@@ -185,37 +206,108 @@ void SpineEffectWidget::setSpineOffset(float x, float y) {
 void SpineEffectWidget::initializeGL() {
     initializeOpenGLFunctions();
 
+    disconnect(_contextConnection);
+    _contextConnection = connect(context(), &QOpenGLContext::aboutToBeDestroyed,
+                                 this, &SpineEffectWidget::onContextAboutToBeDestroyed,
+                                 Qt::DirectConnection);
+    if (_textureLoader)
+        _textureLoader->reloadTextures();
+
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // transparent
 
     // Create shader
     _shader = new QOpenGLShaderProgram(this);
 
-    const char *vs =
-        "#version 120\n"
-        "attribute vec2 aPos;\n"
-        "attribute vec2 aUV;\n"
-        "attribute vec4 aColor;\n"
-        "varying vec2 vUV;\n"
-        "varying vec4 vColor;\n"
-        "uniform mat4 uMVP;\n"
+    const bool gles = context()->isOpenGLES();
+    const char *vs = gles ?
+        "#version 100\nprecision mediump float;\n"
+        "attribute vec2 aPos; attribute vec2 aUV; attribute vec4 aColor;\n"
+        "varying vec2 vUV; varying vec4 vColor; uniform mat4 uMVP;\n"
         "void main() {\n"
         "    vUV = aUV;\n"
         "    vColor = aColor;\n"
         "    gl_Position = uMVP * vec4(aPos, 0.0, 1.0);\n"
-        "}\n";
-
-    const char *fs =
+        "}\n" :
         "#version 120\n"
-        "varying vec2 vUV;\n"
-        "varying vec4 vColor;\n"
-        "uniform sampler2D uTexture;\n"
+        "attribute vec2 aPos; attribute vec2 aUV; attribute vec4 aColor;\n"
+        "varying vec2 vUV; varying vec4 vColor; uniform mat4 uMVP;\n"
+        "void main() { vUV = aUV; vColor = aColor;"
+        " gl_Position = uMVP * vec4(aPos, 0.0, 1.0); }\n";
+
+    const char *fs = gles ?
+        "#version 100\nprecision mediump float;\n"
+        "varying vec2 vUV; varying vec4 vColor; uniform sampler2D uTexture;\n"
+        "void main() { gl_FragColor = texture2D(uTexture, vUV) * vColor; }\n" :
+        "#version 120\n"
+        "varying vec2 vUV; varying vec4 vColor; uniform sampler2D uTexture;\n"
         "void main() {\n"
         "    gl_FragColor = texture2D(uTexture, vUV) * vColor;\n"
         "}\n";
 
-    _shader->addShaderFromSourceCode(QOpenGLShader::Vertex, vs);
-    _shader->addShaderFromSourceCode(QOpenGLShader::Fragment, fs);
-    _shader->link();
+    const bool vertexOk = _shader->addShaderFromSourceCode(QOpenGLShader::Vertex, vs);
+    const bool fragmentOk = _shader->addShaderFromSourceCode(QOpenGLShader::Fragment, fs);
+    const bool linkOk = vertexOk && fragmentOk && _shader->link();
+    if (!linkOk) {
+        qWarning("[SpineEW] Spine shader setup failed (GLES=%d): %s",
+                 gles, qPrintable(_shader->log()));
+        delete _shader;
+        _shader = nullptr;
+        return;
+    }
+    if (_playing) {
+        _elapsed.restart();
+        _lastTime = 0;
+    }
+}
+
+#ifdef Q_OS_ANDROID
+void SpineEffectWidget::onApplicationStateChanged(Qt::ApplicationState state) {
+    const bool background = state != Qt::ApplicationActive;
+    if (background) {
+        if (_playing) {
+            _playing = false;
+            _frameTimer.stop();
+            _pausedForBackground = true;
+        }
+        return;
+    }
+    if (state == Qt::ApplicationActive && _pausedForBackground) {
+        _pausedForBackground = false;
+        _playing = true;
+        _elapsed.restart();
+        _lastTime = 0;
+        _frameTimer.start();
+    }
+}
+#endif
+
+void SpineEffectWidget::onContextAboutToBeDestroyed() {
+    QOpenGLContext *previous = QOpenGLContext::currentContext();
+    QSurface *previousSurface = previous ? previous->surface() : nullptr;
+    makeCurrent();
+    // A detached/destroying viewport may no longer have a usable window
+    // surface. The owner can still release shared resources on a pbuffer.
+    QOffscreenSurface cleanupSurface;
+    if (context() && QOpenGLContext::currentContext() != context()
+        && context()->isValid()) {
+        cleanupSurface.setFormat(context()->format());
+        cleanupSurface.create();
+        if (cleanupSurface.isValid())
+            context()->makeCurrent(&cleanupSurface);
+    }
+    if (QOpenGLContext::currentContext() != context()) {
+        // Never release a texture using an unrelated current context.
+        if (QOpenGLContext *current = QOpenGLContext::currentContext())
+            current->doneCurrent();
+    }
+    if (_textureLoader)
+        _textureLoader->releaseTextures();
+    delete _shader;
+    _shader = nullptr;
+    doneCurrent();
+    if (previous && previousSurface)
+        previous->makeCurrent(previousSurface);
+    // Keep the complete CPU AnimationState (time, queues and callbacks).
 }
 
 void SpineEffectWidget::resizeGL(int w, int h) {
@@ -244,7 +336,7 @@ void SpineEffectWidget::paintGL() {
 // ─── Private slots ──────────────────────────────────────────────────────────
 
 void SpineEffectWidget::onFrameTimer() {
-    if (!_playing || !_skeleton || !_animState) return;
+    if (!_playing || !_skeleton || !_animState || !_shader) return;
 
     float currentTime = _elapsed.elapsed() / 1000.0f;
     float delta = currentTime - _lastTime;

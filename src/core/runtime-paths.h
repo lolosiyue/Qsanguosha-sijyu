@@ -17,7 +17,7 @@
 // 「一個真正存在、被驗證過嘅資產目錄」。
 namespace QSanRuntimePaths
 {
-// asset root 由邊個來源決定。順序即係優先級。
+// asset root 由邊個來源決定；Android 私有目錄排在 CLI／env 之後。
 enum class AssetRootSource {
     None,
     CommandLine,        // --asset-root <path>
@@ -27,6 +27,7 @@ enum class AssetRootSource {
     WorkingDirectory,   // 目前工作目錄（開發樹的既有行為）
     ApplicationDir,     // binary 隔籬（Windows deploy 版面）
     ApplicationParent,  // <appDir>/..（source tree 出面嘅 build 輸出目錄）
+    AndroidApplicationData, // <AppDataLocation>/runtime（APK 逐檔補齊的可寫副本）
 };
 
 struct Resolution
@@ -57,7 +58,7 @@ QString applicationDir();
 QString assetRoot();
 QString userDataRoot();
 
-// assetRoot 下面嘅唯讀資產。relative 為空時等於 assetRoot()。
+// assetRoot 下面嘅資產；Android 是可寫副本。relative 為空時等於 assetRoot()。
 QString assetPath(const QString &relative);
 // userDataRoot 下面嘅可寫檔案；會順手建立 parent directory。
 QString userDataPath(const QString &relative);

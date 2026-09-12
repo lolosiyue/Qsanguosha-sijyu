@@ -1,4 +1,5 @@
 #include "generaloverview.h"
+#include <QtGlobal>
 #include "ui_generaloverview.h"
 #include "engine.h"
 #include "settings.h"
@@ -266,10 +267,10 @@ GeneralOverview *GeneralOverview::getInstance(QWidget *main_window)
         Overview = new GeneralOverview(main_window);
 	else{
 		//Overview->hide();
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
 		delete Overview;
         Overview = new GeneralOverview(main_window);
-#endif // ANDROID
+#endif // Q_OS_ANDROID
 	}
 
     return Overview;

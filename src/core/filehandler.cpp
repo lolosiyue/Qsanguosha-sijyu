@@ -1,7 +1,8 @@
 
+#include <QtGlobal>
 #include "filehandler.h"
 //#include <QDir>
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
 //#include "android_assets.h"
 #endif
 
@@ -62,7 +63,7 @@ QString FileHandler::processPath(const QString &rawPath)
     }/*
 
     // 安卓平台路径适配
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     // 如果是相对路径，且不是绝对路径，则使用安卓数据目录
     if (!processedPath.startsWith("/") && !processedPath.contains(":")) {
         QString androidDataPath = AndroidAssets::getWritableDataPath();

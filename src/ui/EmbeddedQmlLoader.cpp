@@ -4,7 +4,7 @@
 //#include <QQmlContext>
 #include <QQuickItem>
 //#include <QApplication>
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
 //#include "android_assets.h"
 #endif
 
@@ -47,7 +47,7 @@ bool EmbeddedQmlLoader::loadQmlOverlay(QWidget *parentWindow,
     // 检查文件存在性 - 支持PC和安卓平台
     QString fullPath = qmlFile;/*
     if (!QFile::exists(fullPath)) {
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
         // 安卓平台：使用外部存储路径
         QString androidDataPath = AndroidAssets::getWritableDataPath();
         fullPath = androidDataPath + "/" + qmlFile;
@@ -75,7 +75,7 @@ bool EmbeddedQmlLoader::loadQmlOverlay(QWidget *parentWindow,
     // 创建QQuickWidget（直接在父窗口上）
     m_qmlWidget = new QQuickWidget(parentWindow);
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     // 安卓平台特殊设置 - 防止抢夺焦点
     m_qmlWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
     m_qmlWidget->setAttribute(Qt::WA_ShowWithoutActivating, true);  // 显示但不激活
@@ -121,7 +121,7 @@ void EmbeddedQmlLoader::setupQmlWidget()
 {
     if (!m_qmlWidget) return;
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     // 安卓平台特殊设置
     m_qmlWidget->setClearColor(Qt::transparent);  // 恢复透明背景
     m_qmlWidget->setAttribute(Qt::WA_TranslucentBackground, true);
@@ -228,7 +228,7 @@ void EmbeddedQmlLoader::show()
         m_qmlWidget->show();
         m_qmlWidget->raise();
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
         // 安卓平台：显示QML后恢复焦点，但不影响按钮
         if (m_parentWindow) {
             m_parentWindow->raise();
@@ -260,7 +260,7 @@ void EmbeddedQmlLoader::close()
         m_qmlWidget = nullptr;
     }
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     // 安卓平台：QML关闭后恢复焦点
     if (m_parentWindow) {
         m_parentWindow->raise();

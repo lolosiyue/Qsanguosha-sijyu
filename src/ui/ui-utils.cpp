@@ -2,7 +2,7 @@
 
 #include "runtime-paths.h"
 
-#ifndef ANDROID
+#ifndef Q_OS_ANDROID
 #include FT_FREETYPE_H
 #include FT_BITMAP_H
 #include FT_OUTLINE_H
@@ -72,7 +72,7 @@ void QSanUiUtils::makeGray(QPixmap &pixmap)
     pixmap = QPixmap::fromImage(img);
 }
 
-#ifndef ANDROID
+#ifndef Q_OS_ANDROID
 
 static FT_Library  _ftlib;
 static bool _ftLibInitialized = false;
@@ -497,4 +497,4 @@ bool QSanUiUtils::QSanFreeTypeFont::paintQStringMultiLine(QPainter *painter, QSt
     delete[] newImage;
     return true;
 }
-#endif // !ANDROID
+#endif // !Q_OS_ANDROID

@@ -47,6 +47,7 @@ public:
     void playBGM(const QString &filename) override;
     void setBGMVolume(float volume) override;
     void stopBGM() override;
+    void setApplicationSuspended(bool suspended) override;
     void applyVolumes(const AudioVolumes &volumes) override;
     QString version() const override;
     QJsonObject diagnostics() const override;
@@ -60,6 +61,7 @@ private:
         QAudioOutput *output = nullptr;
         QString source;
         qint64 startedAt = 0;
+        bool suspendedByApplication = false;
     };
 
     // 建資源；已經建好就即刻回 true。shutdown() 之後再收到播放請求會重新建，
@@ -90,6 +92,8 @@ private:
     QMediaPlayer *m_bgm = nullptr;
     QAudioOutput *m_bgmOutput = nullptr;
     QString m_bgmSource;
+    bool m_bgmSuspendedByApplication = false;
+    bool m_applicationSuspended = false;
 
     AudioVolumes m_volumes;
     bool m_ready = false;

@@ -7,6 +7,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -162,6 +163,7 @@ public:
         ServerHelloPayload payload;
         if (!ServerHelloPayload::parse(hello.payload, &payload, error))
             return false;
+        m_rulesBundle = payload.rulesBundle;
         m_lastIncomingId = hello.messageId;
         return true;
     }
@@ -173,6 +175,8 @@ public:
         payload.reconnectRequested = reconnectRequested;
         payload.screenName = name;
         payload.avatar = QString();
+        payload.hasRulesBundle = !m_rulesBundle.isEmpty();
+        payload.rulesBundle = m_rulesBundle;
         ProtocolMessage signup;
         signup.type = ProtocolMessageType::Request;
         signup.source = ProtocolEndpoint::Client;
@@ -316,6 +320,7 @@ private:
     }
 
     QTcpSocket m_socket;
+    QJsonObject m_rulesBundle;
     ProtocolCodecRouter m_router;
     ProtocolFrameBuffer m_frames;
     ProtocolMessageIdGenerator m_outgoingIds;

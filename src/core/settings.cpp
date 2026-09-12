@@ -194,7 +194,7 @@ Settings::Settings()
     : QSettings(!qEnvironmentVariable("QSAN_SESSION_SETTINGS").isEmpty()
         ? qEnvironmentVariable("QSAN_SESSION_SETTINGS")
         : QStringLiteral("config.ini"), QSettings::IniFormat)
-#elif defined(ANDROID)
+#elif defined(Q_OS_ANDROID)
     : QSettings(getAndroidConfigPath(), QSettings::IniFormat)
 #else
     : QSettings("QSanguosha.org", "QSanguosha")
@@ -231,7 +231,7 @@ QVariantMap Settings::valueOverrides() const
     return m_valueOverrides;
 }
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
 QString Settings::getAndroidConfigPath()
 {
     // Fallback to standard Android path
@@ -259,7 +259,7 @@ void Settings::reinitializeConfigFile()
 
 void Settings::init()
 {
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     // First, try to reinitialize with the correct config file
     reinitializeConfigFile();
 #endif
@@ -377,7 +377,13 @@ void Settings::init()
     AddGodGeneral = value("AddGodGeneral", true).toBool();
     GeneralVersionDedup = value("GeneralVersionDedup", false).toBool();
 
-#ifdef Q_OS_WIN32
+#ifdef Q_OS_ANDROID
+    // Android has no desktop USER environment. Read the same key that the
+    // connection dialog writes, retaining older uppercase-key installations.
+    UserName = value("UserName", value("USERNAME", tr("Sanguosha-fans"))).toString();
+    if (UserName.trimmed().isEmpty())
+        UserName = tr("Sanguosha-fans");
+#elif defined(Q_OS_WIN32)
     UserName = value("UserName", qgetenv("USERNAME")).toString();
 #else
     UserName = value("USERNAME", qgetenv("USER")).toString();
@@ -425,7 +431,12 @@ void Settings::init()
     BackgroundImage = value("BackgroundImage", "image/system/backdrop/new-version.jpg").toString();
 
     BubbleChatBoxKeepTime = value("BubbleChatboxKeepTime", 2000).toInt();
+#ifdef Q_OS_ANDROID
+    // Start with larger visible table controls; keep the player's saved scale.
+    UIScale = qBound(1.0, value("UIScale", 1.25).toDouble(), 2.0);
+#else
     UIScale = qBound(1.0, value("UIScale", 1.0).toDouble(), 2.0);
+#endif
 
     VisualMode = value("VisualMode", "normal").toString();
     if (VisualMode != "normal" && VisualMode != "grayscale" && VisualMode != "highcontrast")

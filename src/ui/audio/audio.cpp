@@ -4,6 +4,9 @@
 #include "settings.h"
 
 #include <QDebug>
+#ifdef Q_OS_ANDROID
+#include <QGuiApplication>
+#endif
 #include <QJsonArray>
 
 // Audio facade 的實作。呢度只做三件事：
@@ -15,6 +18,7 @@ namespace {
 IAudioBackend *g_backend = nullptr;
 AudioVolumes g_volumes;
 bool g_initialized = false;
+bool g_applicationSuspended = false;
 
 AudioVolumes volumesFromConfig()
 {
@@ -34,6 +38,16 @@ void Audio::init()
     if (g_initialized)
         return;
 
+#ifdef Q_OS_ANDROID
+    // MainWindow can be constructed before Audio::init(), and the first
+    // application-state callback may therefore arrive before a backend exists.
+    // Recover the actual Android state here instead of losing that transition.
+    if (qGuiApp) {
+        const Qt::ApplicationState state = qGuiApp->applicationState();
+        g_applicationSuspended = state != Qt::ApplicationActive;
+    }
+#endif
+
     g_backend = createConfiguredAudioBackend();
     if (g_backend && !g_backend->initialize()) {
         // backend 用唔到（冇 FMOD system、Qt Multimedia plugin 缺失⋯）唔可以令
@@ -45,6 +59,8 @@ void Audio::init()
         g_backend->initialize();
     }
     g_initialized = g_backend != nullptr;
+    if (g_backend)
+        g_backend->setApplicationSuspended(g_applicationSuspended);
     applyConfigVolumes();
 }
 
@@ -89,6 +105,13 @@ void Audio::stopBGM()
 {
     if (g_backend)
         g_backend->stopBGM();
+}
+
+void Audio::setApplicationSuspended(bool suspended)
+{
+    g_applicationSuspended = suspended;
+    if (g_backend)
+        g_backend->setApplicationSuspended(suspended);
 }
 
 QString Audio::getVersion()

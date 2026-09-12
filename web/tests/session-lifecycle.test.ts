@@ -6,7 +6,7 @@ import { Command, decodeMessage, encodeMessage, type JsonObject, type MessageTyp
 const hash = "a".repeat(64);
 const identity: JsonObject = {
   schema_version: 1, protocol_version: 2, bridge_schema: 2, ruleset: "sijyu",
-  content_profile: "declared-v1", bundle_id: hash, code_id: hash, cpp_hash: hash,
+  content_profile: "declared-v2", bundle_id: hash, code_id: hash, cpp_hash: hash,
   card_registry_hash: hash, lua_hash: hash, bindings_abi: hash,
   packages: ["standard"], interaction_schemas: { "1": hash }
 };

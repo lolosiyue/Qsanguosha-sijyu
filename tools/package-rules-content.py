@@ -42,8 +42,10 @@ def _validate_role_path(relative: str, role: str) -> None:
 def package(bundle_path: Path, asset_root: Path, destination: Path) -> int:
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     manifest = bundle.get("rules_content")
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1 \
-            or manifest.get("profile") != "declared-v1" or not isinstance(manifest.get("files"), list):
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2 \
+            or manifest.get("profile") != "declared-v2" \
+            or not isinstance(manifest.get("runtime_content"), dict) \
+            or not isinstance(manifest.get("files"), list):
         raise ValueError("invalid rules_content manifest")
     if destination.is_symlink() or any(parent.is_symlink() for parent in destination.parents):
         raise ValueError("destination must not be a symlink")
@@ -86,8 +88,9 @@ class PackageTests(unittest.TestCase):
             digest = hashlib.sha256(b"rules").hexdigest()
             (dest).mkdir(); (dest / "keep").write_bytes(b"keep")
             bundle = root / "bundle.json"
-            bundle.write_text(json.dumps({"rules_content": {"schema_version": 1,
-                "profile": "declared-v1", "files": [{"path": "lua/config.lua", "role": "rules",
+            bundle.write_text(json.dumps({"rules_content": {"schema_version": 2,
+                "profile": "declared-v2", "runtime_content": {"schema_version": 2,
+                "profile": "declared-v2", "extensions": []}, "files": [{"path": "lua/config.lua", "role": "rules",
                 "size": 5, "sha256": digest}]}}), encoding="utf-8")
             self.assertEqual(package(bundle, assets, dest), 1)
             self.assertTrue((dest / "keep").is_file())
@@ -103,16 +106,18 @@ class PackageTests(unittest.TestCase):
                                ("lua/lib/middleclass.lua", "rules"),
                                ("extensions/x.lua", "presentation")):
                 bundle = root / "bundle.json"
-                bundle.write_text(json.dumps({"rules_content": {"schema_version": 1,
-                    "profile": "declared-v1", "files": [{"path": path, "role": role,
+                bundle.write_text(json.dumps({"rules_content": {"schema_version": 2,
+                    "profile": "declared-v2", "runtime_content": {"schema_version": 2,
+                    "profile": "declared-v2", "extensions": []}, "files": [{"path": path, "role": role,
                     "size": 0, "sha256": "0" * 64}]}}), encoding="utf-8")
                 with self.assertRaises(ValueError): package(bundle, assets, dest)
 
             source = assets / "lua/x.lua"; source.parent.mkdir(parents=True, exist_ok=True)
             source.write_bytes(b"x")
             digest = hashlib.sha256(b"x").hexdigest()
-            bundle.write_text(json.dumps({"rules_content": {"schema_version": 1,
-                "profile": "declared-v1", "files": [
+            bundle.write_text(json.dumps({"rules_content": {"schema_version": 2,
+                "profile": "declared-v2", "runtime_content": {"schema_version": 2,
+                "profile": "declared-v2", "extensions": []}, "files": [
                     {"path": "lua/x.lua", "role": "rules", "size": 1, "sha256": digest},
                     {"path": "lua/missing.lua", "role": "rules", "size": 0, "sha256": "0" * 64}]}}),
                 encoding="utf-8")
@@ -125,8 +130,9 @@ class PackageTests(unittest.TestCase):
             source = assets / "lua/empty.lua"; source.parent.mkdir(parents=True); source.write_bytes(b"")
             digest = hashlib.sha256(b"").hexdigest()
             bundle = root / "bundle.json"
-            bundle.write_text(json.dumps({"rules_content": {"schema_version": 1,
-                "profile": "declared-v1", "files": [{"path": "lua/empty.lua", "role": "rules",
+            bundle.write_text(json.dumps({"rules_content": {"schema_version": 2,
+                "profile": "declared-v2", "runtime_content": {"schema_version": 2,
+                "profile": "declared-v2", "extensions": []}, "files": [{"path": "lua/empty.lua", "role": "rules",
                 "size": 0, "sha256": digest}]}}), encoding="utf-8")
             self.assertEqual(package(bundle, assets, dest), 1)
             self.assertEqual((dest / digest).read_bytes(), b"")
@@ -137,20 +143,23 @@ class PackageTests(unittest.TestCase):
             source = assets / "lua/x.lua"; source.parent.mkdir(parents=True); source.write_bytes(b"a")
             digest = hashlib.sha256(b"b").hexdigest()
             bundle = root / "bundle.json"
-            bundle.write_text(json.dumps({"rules_content": {"schema_version": 1,
-                "profile": "declared-v1", "files": [{"path": "lua/x.lua", "role": "rules",
+            bundle.write_text(json.dumps({"rules_content": {"schema_version": 2,
+                "profile": "declared-v2", "runtime_content": {"schema_version": 2,
+                "profile": "declared-v2", "extensions": []}, "files": [{"path": "lua/x.lua", "role": "rules",
                 "size": 1, "sha256": digest}]}}), encoding="utf-8")
             with self.assertRaises(ValueError): package(bundle, assets, dest)
             link = assets / "lua/link.lua"
             link.symlink_to(source)
-            bundle.write_text(json.dumps({"rules_content": {"schema_version": 1,
-                "profile": "declared-v1", "files": [{"path": "lua/link.lua", "role": "rules",
+            bundle.write_text(json.dumps({"rules_content": {"schema_version": 2,
+                "profile": "declared-v2", "runtime_content": {"schema_version": 2,
+                "profile": "declared-v2", "extensions": []}, "files": [{"path": "lua/link.lua", "role": "rules",
                 "size": 1, "sha256": hashlib.sha256(b"a").hexdigest()}]}}), encoding="utf-8")
             with self.assertRaises(ValueError): package(bundle, assets, dest)
             dangling = assets / "lua/dangling.lua"
             dangling.symlink_to(assets / "lua/no-such.lua")
-            bundle.write_text(json.dumps({"rules_content": {"schema_version": 1,
-                "profile": "declared-v1", "files": [{"path": "lua/dangling.lua", "role": "rules",
+            bundle.write_text(json.dumps({"rules_content": {"schema_version": 2,
+                "profile": "declared-v2", "runtime_content": {"schema_version": 2,
+                "profile": "declared-v2", "extensions": []}, "files": [{"path": "lua/dangling.lua", "role": "rules",
                 "size": 1, "sha256": hashlib.sha256(b"a").hexdigest()}]}}), encoding="utf-8")
             with self.assertRaises(ValueError): package(bundle, assets, dest)
 

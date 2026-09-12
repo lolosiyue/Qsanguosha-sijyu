@@ -263,13 +263,13 @@ bool RequestCoordinator::broadcastRequest(QList<ServerPlayer *> players, Command
         controllerMap[requestTarget(player)] << player;
 
     QList<ServerPlayer *> pendingPlayers;
-    QElapsedTimer timer;
-    timer.start();
+    const qint64 clockStart = m_room.applicationActiveElapsed();
     for (QMap<ServerPlayer *, QList<ServerPlayer *> >::const_iterator it = controllerMap.constBegin();
          it != controllerMap.constEnd(); ++it) {
         const QList<ServerPlayer *> &group = it.value();
         if (group.length() == 1) {
-            time_t remainTime = timeOut - timer.elapsed();
+            m_room.waitForApplicationForeground();
+            time_t remainTime = timeOut - (m_room.applicationActiveElapsed() - clockStart);
             if (remainTime < 0)
                 remainTime = 0;
             request(group.first(), command, group.first()->m_commandArgs, remainTime, false);
@@ -279,7 +279,8 @@ bool RequestCoordinator::broadcastRequest(QList<ServerPlayer *> players, Command
 
         int index = 0;
         while (index < group.length()) {
-            time_t remainTime = timeOut - timer.elapsed();
+            m_room.waitForApplicationForeground();
+            time_t remainTime = timeOut - (m_room.applicationActiveElapsed() - clockStart);
             if (remainTime < 0)
                 remainTime = 0;
             request(group.at(index), command, group.at(index)->m_commandArgs, remainTime, true);
@@ -287,7 +288,8 @@ bool RequestCoordinator::broadcastRequest(QList<ServerPlayer *> players, Command
         }
     }
     foreach (ServerPlayer *player, pendingPlayers) {
-        time_t remainTime = timeOut - timer.elapsed();
+        m_room.waitForApplicationForeground();
+        time_t remainTime = timeOut - (m_room.applicationActiveElapsed() - clockStart);
         if (remainTime < 0)
             remainTime = 0;
         getResult(player, remainTime);
@@ -306,8 +308,7 @@ ServerPlayer *RequestCoordinator::raceRequest(QList<ServerPlayer *> players,
 
     QMap<ServerPlayer *, int> controllerIndex;
     RaceVerifyContext context = { validateFunc, funcArg };
-    QElapsedTimer timer;
-    timer.start();
+    const qint64 clockStart = m_room.applicationActiveElapsed();
 
     while (true) {
         QList<ServerPlayer *> activePlayers;
@@ -321,7 +322,8 @@ ServerPlayer *RequestCoordinator::raceRequest(QList<ServerPlayer *> players,
         if (activePlayers.isEmpty())
             return nullptr;
 
-        time_t remainTime = timeOut - timer.elapsed();
+        m_room.waitForApplicationForeground();
+        time_t remainTime = timeOut - (m_room.applicationActiveElapsed() - clockStart);
         if (remainTime < 0)
             remainTime = 0;
 
@@ -354,7 +356,7 @@ ServerPlayer *RequestCoordinator::raceRequest(QList<ServerPlayer *> players,
              it != controllerMap.constEnd(); ++it)
             controllerIndex[it.key()] = controllerIndex.value(it.key(), 0) + 1;
 
-        if (timer.elapsed() >= timeOut)
+        if (m_room.applicationActiveElapsed() - clockStart >= timeOut)
             return nullptr;
     }
 }
@@ -364,39 +366,37 @@ ServerPlayer *RequestCoordinator::getRaceResult(QList<ServerPlayer *> players, C
                                                 ResponseVerifyFunction validateFunc,
                                                 void *funcArg)
 {
-    QElapsedTimer timer;
-    timer.start();
-    bool validResult = false;
+    const qint64 clockStart = m_room.applicationActiveElapsed();
+    bool roomSemaphoreHeld = false;
+    ServerPlayer *result = nullptr;
     for (int i = 0; i < players.size(); ++i) {
+        roomSemaphoreHeld = false;
         bool acquired = true;
         if (Config.OperationNoLimit)
-            m_raceRequestSemaphore.acquire();
+            acquired = acquireRaceSignal(-1);
         else {
-            time_t remainTime = timeOut - timer.elapsed();
+            time_t remainTime = timeOut - (m_room.applicationActiveElapsed() - clockStart);
             if (remainTime < 0)
                 remainTime = 0;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
-            acquired = m_raceRequestSemaphore.tryAcquire(1, QDeadlineTimer(static_cast<int>(remainTime)));
-#else
-            acquired = m_raceRequestSemaphore.tryAcquire(1, remainTime);
-#endif
+            acquired = acquireRaceSignal(remainTime);
         }
-        bool roomSemaphoreHeld = false;
         if (!acquired)
-            roomSemaphoreHeld = m_roomSemaphore.tryAcquire(1);
-        else
-            roomSemaphoreHeld = true;
+            break;
+        // A race reply hands ownership of m_roomSemaphore to this waiter;
+        // timeout/abort must acquire the otherwise idle semaphore itself.
+        roomSemaphoreHeld = acquired;
 
         if (m_raceWinner == nullptr) {
             if (roomSemaphoreHeld)
                 m_roomSemaphore.release();
+            roomSemaphoreHeld = false;
             continue;
         }
 
         if (validateFunc == nullptr
             || (m_raceWinner->m_isClientResponseReady
                 && (m_room.*validateFunc)(m_raceWinner, m_raceWinner->getClientReply(), funcArg))) {
-            validResult = true;
+            result = m_raceWinner;
             break;
         }
 
@@ -404,11 +404,20 @@ ServerPlayer *RequestCoordinator::getRaceResult(QList<ServerPlayer *> players, C
         m_raceWinner = nullptr;
         if (roomSemaphoreHeld)
             m_roomSemaphore.release();
+        roomSemaphoreHeld = false;
     }
 
-    if (!validResult)
-        m_roomSemaphore.acquire();
+    // A response may have handed the semaphore over just after our timeout.
+    // Accept that real handoff as well as an idle semaphore; a plain acquire
+    // here would deadlock behind a sender that has already returned.
+    while (!roomSemaphoreHeld) {
+        roomSemaphoreHeld = m_roomSemaphore.tryAcquire(1);
+        if (!roomSemaphoreHeld)
+            roomSemaphoreHeld = m_raceRequestSemaphore.tryAcquire(1, 100);
+    }
     m_raceStarted = false;
+    m_raceWinner = nullptr;
+    m_roomSemaphore.release();
     foreach (ServerPlayer *player, players) {
         player->acquireLock(ServerPlayer::SEMA_MUTEX);
         player->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
@@ -416,8 +425,8 @@ ServerPlayer *RequestCoordinator::getRaceResult(QList<ServerPlayer *> players, C
         player->m_expectedReplyMessageId = 0;
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
     }
-    m_roomSemaphore.release();
-    return m_raceWinner;
+    m_room.waitForApplicationForeground();
+    return result;
 }
 
 bool RequestCoordinator::getResult(ServerPlayer *player, time_t timeOut)
@@ -433,12 +442,7 @@ bool RequestCoordinator::getResult(ServerPlayer *player, time_t timeOut)
     if (player->isOnline() || !redirectedTargetName.isEmpty()) {
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
 
-        if (Config.OperationNoLimit) {
-            const time_t kMaxWaitMs = 600000;
-            player->tryAcquireLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE, kMaxWaitMs);
-        } else {
-            player->tryAcquireLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE, timeOut);
-        }
+        acquireInteractive(player, Config.OperationNoLimit ? 600000 : timeOut);
 
         player->acquireLock(ServerPlayer::SEMA_MUTEX);
         validResult = player->m_isClientResponseReady;
@@ -450,6 +454,50 @@ bool RequestCoordinator::getResult(ServerPlayer *player, time_t timeOut)
     if (!redirectedTargetName.isEmpty())
         clearDualControlRequest(player);
     return validResult && !player->getClientReply().isNull();
+}
+
+bool RequestCoordinator::waitsAborted() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_waitsAborted;
+}
+
+bool RequestCoordinator::acquireInteractive(ServerPlayer *player, time_t timeOut)
+{
+    const qint64 clockStart = m_room.applicationActiveElapsed();
+    while (!waitsAborted()) {
+        m_room.waitForApplicationForeground();
+        if (waitsAborted()) return false;
+        const time_t remaining = timeOut - (m_room.applicationActiveElapsed() - clockStart);
+        const time_t slice = qBound<time_t>(time_t(0), remaining, time_t(100));
+        const bool acquired = player->tryAcquireLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE, slice);
+        // Interactive signals do not carry the room semaphore. Preserve the
+        // pending reply through backgrounding before returning to game logic.
+        if (acquired || remaining <= 0) {
+            m_room.waitForApplicationForeground();
+            return acquired;
+        }
+    }
+    return false;
+}
+
+bool RequestCoordinator::acquireRaceSignal(time_t timeOut)
+{
+    const qint64 clockStart = m_room.applicationActiveElapsed();
+    while (!waitsAborted()) {
+        // A race signal carries m_roomSemaphore ownership. Drain handoffs even
+        // in the background so another socket callback cannot block the GUI
+        // that must deliver the foreground event. getRaceResult pauses only
+        // after releasing all room/player locks.
+        const time_t remaining = timeOut < 0 ? 100
+            : timeOut - (m_room.applicationActiveElapsed() - clockStart);
+        if (remaining <= 0 && !m_room.isApplicationBackgrounded())
+            return m_raceRequestSemaphore.tryAcquire(1);
+        const time_t slice = remaining <= 0 ? 100 : qMin<time_t>(remaining, 100);
+        if (m_raceRequestSemaphore.tryAcquire(1, static_cast<int>(slice)))
+            return true;
+    }
+    return false;
 }
 
 bool RequestCoordinator::verifyRaceReply(ServerPlayer *player, const QVariant &reply,
@@ -561,8 +609,12 @@ void RequestCoordinator::processResponse(
         m_roomSemaphore.acquire();
         if (m_raceStarted) {
             // Keep the winner assignment as the last state write before waking the race waiter.
-            m_raceWinner = replyOwner;
-            m_raceRequestSemaphore.release();
+            if (waitsAborted())
+                m_roomSemaphore.release();
+            else {
+                m_raceWinner = replyOwner;
+                m_raceRequestSemaphore.release();
+            }
         } else {
             m_roomSemaphore.release();
             if (replyOwner == player || replyOwner->m_isWaitingReply)
@@ -574,6 +626,10 @@ void RequestCoordinator::processResponse(
 
 void RequestCoordinator::unblockWaits()
 {
-    m_raceRequestSemaphore.release();
-    m_roomSemaphore.release();
+    {
+        QMutexLocker locker(&m_mutex);
+        m_waitsAborted = true;
+    }
+    // Waiters poll this flag in bounded slices. A fake race signal would
+    // falsely transfer ownership of m_roomSemaphore and corrupt its count.
 }

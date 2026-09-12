@@ -73,6 +73,13 @@ public:
     virtual void setBGMVolume(float volume) = 0;
     virtual void stopBGM() = 0;
 
+    // Backends without a resumable playback implementation intentionally keep
+    // the compatibility no-op.  Qt Multimedia overrides this for Android.
+    virtual void setApplicationSuspended(bool suspended)
+    {
+        Q_UNUSED(suspended);
+    }
+
     // master／effect／voice／mute 改變時由 facade 推落嚟。
     virtual void applyVolumes(const AudioVolumes &volumes) = 0;
 

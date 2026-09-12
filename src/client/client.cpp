@@ -71,7 +71,7 @@ static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 }
 
 Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedSocket,
-               bool takeoverRecord, bool initialReconnectRequested)
+               bool takeoverRecord, bool initialReconnectRequested, bool fallbackToFreshSignup)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
 	m_client_lua(nullptr), m_original_self(nullptr),
@@ -244,10 +244,12 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		options.screenName = Config.UserName;
 		options.avatar = Config.UserAvatar;
 		options.reconnectRequested = initialReconnectRequested;
-		options.fallbackToFreshSignup = initialReconnectRequested;
+		options.fallbackToFreshSignup = initialReconnectRequested && fallbackToFreshSignup;
 		options.automaticSignup = false;
 		options.host = Config.HostAddress;
 		options.port = Config.value("ServerPort", "9527").toString().toUShort();
+		if (Sanguosha != nullptr)
+			options.localRulesBundle = Sanguosha->rulesBundleIdentity();
 		const qsizetype separator = options.host.lastIndexOf(QLatin1Char(':'));
 		if (separator > 0 && options.host.indexOf(QLatin1Char(':')) == separator) {
 			bool portOk = false;

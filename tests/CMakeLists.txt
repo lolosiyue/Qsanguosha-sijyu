@@ -55,6 +55,8 @@ function(qsan_add_ctest name executable)
     endif()
 endfunction()
 
+include("${QSAN_TEST_ROOT}/cmake/QSanguoshaAndroidContentTests.cmake")
+
 # 所有「link engine + Qt6::Gui」嘅測試住喺同一個執行檔。佢哋本身嘅 link 面
 # 完全一樣(qsan_link_engine_test),分開只係多七個 Visual Studio project。
 # 每個 suite 依然行喺自己嘅 process:夾埋入嚟嗰啲仍然係原本嗰個 main(),
@@ -89,6 +91,37 @@ add_executable(qsanguosha_core_tests
     # other side of merge 7fdf0c6); the fold in bf1f85d never picked this source up.
     ${QSAN_TEST_ROOT}/src/util/replay-diagnostic-exporter.cpp
 )
+
+# Keep the Android extraction regression small and deterministic.  These files
+# model the qrc prefix used by the Android product without pulling the full
+# media package into the core test executable.
+set(QSAN_ANDROID_ASSET_FIXTURE_ROOT
+    "${QSAN_TEST_ROOT}/tests/fixtures/android-assets")
+set_source_files_properties(
+    "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}/config.fixture"
+    PROPERTIES QT_RESOURCE_ALIAS "config.ini")
+set_source_files_properties(
+    "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}/extension.fixture"
+    PROPERTIES QT_RESOURCE_ALIAS "extensions/android_fixture.lua")
+set_source_files_properties(
+    "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}/nested-extension.fixture"
+    PROPERTIES QT_RESOURCE_ALIAS "extensions/nested/child.lua")
+set_source_files_properties(
+    "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}/ai.fixture"
+    PROPERTIES QT_RESOURCE_ALIAS "lua/ai/android_fixture-ai.lua")
+qt_add_resources(qsanguosha_core_tests qsan_android_asset_fixtures
+    PREFIX "/assets"
+    BASE "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}"
+    FILES
+        "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}/config.fixture"
+        "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}/extension.fixture"
+        "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}/nested-extension.fixture"
+        "${QSAN_ANDROID_ASSET_FIXTURE_ROOT}/ai.fixture"
+)
+if(NOT ANDROID)
+    target_sources(qsanguosha_core_tests PRIVATE
+        ${QSAN_TEST_ROOT}/src/core/android_assets.cpp)
+endif()
 set_source_files_properties(card-overview-classifier-test.cpp
     PROPERTIES COMPILE_DEFINITIONS main=runCardOverviewClassifierTests)
 set_source_files_properties(card-overview-model-test.cpp

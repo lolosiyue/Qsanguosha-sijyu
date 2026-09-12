@@ -19,6 +19,8 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonParseError>
 //#include "protocol.h"
 #include "lua-wrapper.h"
 //#include "room-state.h"
@@ -78,6 +80,53 @@ QSanRules::ContentManifest readContentManifest(lua_State *lua)
     }
     lua_settop(lua, top);
     return QSanRules::parseContentManifest(entries);
+}
+
+QSanRules::ContentManifest readRuntimeContentDescriptor()
+{
+    QString path = QSanRuntimePaths::assetPath(QStringLiteral("runtime-content.json"));
+    // Android ships the immutable baseline under assets/; desktop may provide
+    // the shorter override name beside its runtime files.
+    if (!QFile::exists(path))
+        path = QSanRuntimePaths::assetPath(QStringLiteral("runtime-content-base.json"));
+    QFile file(path);
+    if (!file.exists())
+        return {};
+    QSanRules::ContentManifest result;
+    if (!file.open(QIODevice::ReadOnly)) {
+        result.error = QStringLiteral("runtime-content.json cannot be opened");
+        return result;
+    }
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        result.error = QStringLiteral("runtime-content.json is not valid JSON");
+        return result;
+    }
+    return QSanRules::parseRuntimeContent(document.object());
+}
+
+bool installRuntimeExtensionOrder(lua_State *lua, const QSanRules::ContentManifest &manifest)
+{
+    const int top = lua_gettop(lua);
+    lua_getglobal(lua, "config");
+    if (!lua_istable(lua, -1)) {
+        lua_settop(lua, top);
+        return false;
+    }
+    lua_newtable(lua);
+    int index = 1;
+    for (const auto &entry : manifest.entries) {
+        const QByteArray script = entry.script.toUtf8();
+        lua_pushlstring(lua, script.constData(), static_cast<size_t>(script.size()));
+        lua_rawseti(lua, -2, index++);
+    }
+    lua_pushliteral(lua, "extension_names");
+    lua_pushvalue(lua, -2);
+    lua_rawset(lua, -4);
+    lua_pop(lua, 1); // replacement extension_names table
+    lua_settop(lua, top);
+    return true;
 }
 
 template<typename T>
@@ -383,6 +432,23 @@ Engine::Engine(bool isManualMode)
         qCritical() << "invalid extension_names declaration:" << m_rulesContentManifest.error;
         exit(1);
     }
+    // The descriptor is optional for desktop compatibility.  Its absence
+    // leaves the config.lua declaration as the effective runtime content.
+    const QSanRules::ContentManifest descriptor = readRuntimeContentDescriptor();
+    if (descriptor.descriptorPresent || !descriptor.error.isEmpty()) {
+        if (!descriptor.isValid()) {
+            qCritical() << "invalid runtime-content.json:" << descriptor.error;
+            exit(1);
+        }
+        m_rulesContentManifest = descriptor;
+        // Merge the validated effective order before sanguosha.lua loads any
+        // extension, allowing an external descriptor to add scripts while
+        // retaining config.lua as the immutable fallback declaration.
+        if (!installRuntimeExtensionOrder(bootstrapLua, m_rulesContentManifest)) {
+            qCritical() << "runtime-content.json cannot update config.extension_names";
+            exit(1);
+        }
+    }
     // config.lua was captured before execution. Its declaration selects phase
     // two, which still precedes all extension code; never relabel a loaded VM.
     const QJsonObject declared = QSanRules::declaredLuaSnapshot(m_rulesContentManifest);
@@ -492,11 +558,11 @@ Engine::Engine(bool isManualMode)
         }
     }
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
 	foreach (Skill*skill, findChildren<Skill*>()) {
 		if(skill->isVisible()) skill->initMediaSource();
 	}
-#endif // ANDROID
+#endif // Q_OS_ANDROID
 
     if (isManualMode) {
         ManualSkillList allSkills;

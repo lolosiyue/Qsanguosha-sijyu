@@ -52,7 +52,9 @@ self.onmessage = async event => {
     const module = await factory(options);
     require(!aborted && typeof module._qsan_client_stream === 'function', 'stream export missing/initialization aborted');
     const content = plan.content;
-    require(content?.schema_version === 1 && content.profile === 'declared-v1'
+    require(content?.schema_version === 2 && content.profile === 'declared-v2'
+      && content.runtime_content?.schema_version === 2
+      && content.runtime_content.profile === 'declared-v2'
       && Array.isArray(content.files), 'missing declared content manifest');
     module.FS.mkdirTree('/assets');
     for (const entry of content.files) {
@@ -66,6 +68,8 @@ self.onmessage = async event => {
       module.FS.mkdirTree(path.slice(0, path.lastIndexOf('/')));
       module.FS.writeFile(path, contentBytes);
     }
+    module.FS.writeFile('/assets/runtime-content.json',
+      new TextEncoder().encode(JSON.stringify(content.runtime_content)));
     const initialized = module._qsan_client_initialize();
     if (initialized !== 0) {
       let reason = '';

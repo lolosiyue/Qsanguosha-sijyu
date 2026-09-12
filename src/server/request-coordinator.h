@@ -54,6 +54,9 @@ private:
     void processResponse(ServerPlayer *player,
                          const QSanProtocol::ProtocolMessage &message);
     void unblockWaits();
+    bool waitsAborted() const;
+    bool acquireInteractive(ServerPlayer *player, time_t timeOut);
+    bool acquireRaceSignal(time_t timeOut);
 
     Room &m_room;
     QSemaphore m_raceRequestSemaphore;
@@ -65,6 +68,7 @@ private:
     bool m_raceStarted;
     ServerPlayer *m_raceWinner;
     mutable QMutex m_mutex;
+    bool m_waitsAborted = false;
 };
 
 #endif

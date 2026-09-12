@@ -413,11 +413,12 @@ def check(args):
                         raise AssertionError("live server content manifest differs from native export")
                     signup = {"v": 2, "type": "request", "source": "client", "destination": "lobby", "message_id": "1",
                               "command": command["SIGNUP"], "payload": {"schema_version": 2, "reconnect_requested": False,
-                              "screen_name": "w2-legacy-tcp", "avatar": "caocao"}}
+                              "screen_name": "w2-protocol-v2-tcp", "avatar": "caocao",
+                              "rules_bundle": identity["rules_bundle"]}}
                     sock.sendall(json.dumps(signup, separators=(",", ":")).encode() + b"\n")
                     reply = read_frame(stream)
                     if reply["command"] != command["SIGNUP"] or reply["payload"].get("accepted") is not True:
-                        raise AssertionError("legacy TCP signup rejected")
+                        raise AssertionError("Protocol V2 TCP signup rejected")
                 routes = {"/browser/" + path.relative_to(args.probe).as_posix(): path
                           for path in args.probe.rglob("*") if path.is_file()}
                 routes["/case.json"] = json.dumps({"ws": f"ws://127.0.0.1:{ws}", "native": identity, "variants": variants}).encode()
@@ -525,7 +526,7 @@ def check(args):
                         server.wait(timeout=5)
                     except subprocess.TimeoutExpired:
                         server.kill(); server.wait(timeout=5)
-    print("PASS: native/WASM identity, live admission and legacy TCP")
+    print("PASS: native/WASM identity and live Protocol V2 admission")
 
 
 def check_native_only(args):

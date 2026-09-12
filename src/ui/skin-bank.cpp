@@ -140,7 +140,7 @@ bool IQSanComponentSkin::QSanSimpleTextFont::tryParse(const QVariant &args)
 	if (_m_fontBank.contains(fontPath))
 		m_fontFace = _m_fontBank[fontPath];
 	else {
-#ifndef ANDROID
+#ifndef Q_OS_ANDROID
 		m_fontFace = QSanUiUtils::QSanFreeTypeFont::loadFont(fontPath);
 		_m_fontBank[fontPath] = m_fontFace;
 #else
@@ -193,7 +193,7 @@ void IQSanComponentSkin::QSanSimpleTextFont::paintText(QPainter *painter, QRect 
 	const QString &text) const
 {
 	if (pos.width() <= 0 || pos.height() <= 0 || m_fontSize.width() <= 0 || m_fontSize.height() <= 0) return;
-#ifndef ANDROID
+#ifndef Q_OS_ANDROID
 	QSize actualSize = m_fontSize;
 	if ((align & Qt::TextWrapAnywhere) && !m_vertical)
 		QSanUiUtils::QSanFreeTypeFont::paintQStringMultiLine(painter, text, m_fontFace, m_color,

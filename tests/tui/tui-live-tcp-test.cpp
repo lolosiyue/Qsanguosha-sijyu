@@ -122,6 +122,10 @@ private:
                 fail(error);
                 return;
             }
+            if (!request.hasRulesBundle) {
+                fail(QStringLiteral("native Protocol V2 signup omitted rules identity"));
+                return;
+            }
             if (m_connectionCount == 1)
                 m_initialSignupSeen = !request.reconnectRequested;
             else
@@ -441,6 +445,10 @@ int main(int argc, char *argv[])
     options.automaticSignup = false;
     options.connectTimeoutMs = 1000;
     options.handshakeTimeoutMs = 1000;
+    // Transport fixture has no Engine; inject a stand-in identity to assert
+    // that ClientLiveSession serializes the local bundle on every signup.
+    options.localRulesBundle = QJsonObject{{QStringLiteral("content_profile"),
+                                            QStringLiteral("declared-v2")}};
     session.connectToServer(options);
 
     QTimer watchdog;

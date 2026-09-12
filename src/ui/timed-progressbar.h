@@ -11,6 +11,7 @@ public:
     {
         this->setTextVisible(false);
     }
+    void setApplicationSuspended(bool suspended, bool offline);
     inline void setTimerEnabled(bool enabled)
     {
         m_mutex.lock();
@@ -44,6 +45,8 @@ protected:
     bool m_autoHide;
     int m_timer;
     time_t m_step, m_max, m_val;
+    bool m_applicationSuspended = false;
+    bool m_suspendOffline = false;
     QRecursiveMutex m_mutex;
 };
 

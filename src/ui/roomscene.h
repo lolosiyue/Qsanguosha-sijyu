@@ -13,6 +13,8 @@
 #include "skin-bank.h"
 //#include "sprite.h"
 #include "timed-progressbar.h"
+#include <QMargins>
+#include <QPointer>
 #if QSAN_ENABLE_SPINE
 #include "CharacterSpineActionController.h"
 #endif
@@ -51,6 +53,7 @@ class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
 class QPushButton;
+class QMovie;
 #ifdef QSAN_XP_LEGACY
 class LocalServerController;
 #endif
@@ -206,6 +209,11 @@ public:
     void changeTextEditBackground();
     void adjustItems();
     void applyUiElementScale(qreal scale);
+    void setTouchUiEnabled(bool enabled);
+    void setSafeAreaMargins(const QMargins &margins);
+    bool touchUiEnabled() const;
+    void setApplicationSuspended(bool suspended, bool offline);
+    void refreshTouchTargets(qreal viewportScale);
     void showIndicator(const QString &from, const QString &to);
     void showPromptBox();
     void closeAllDialogs();
@@ -294,6 +302,7 @@ public slots:
 
     void setChatBoxVisibleSlot();
     void onEmotionIconSelected(int emotionId);
+    void showTouchCardPreview(CardItem *card);
     void pause();
 
     void addRobot();
@@ -334,6 +343,15 @@ private:
     QMainWindow *main_window;
     QSanButton *ok_button, *cancel_button, *discard_button;
     QSanButton *trust_button;
+    bool m_touchUiEnabled = false;
+    QMargins m_safeAreaMargins;
+    bool m_applicationSuspended = false;
+    bool m_suspendOffline = false;
+    bool m_timerPausedByApplication = false;
+    bool m_dashboardEnabledBeforeSuspend = true;
+    QList<bool> m_photoEnabledBeforeSuspend;
+    QList<QPointer<QAbstractAnimation>> m_appPausedAnimations;
+    QList<QPointer<QMovie>> m_appPausedMovies;
     QMenu *miscellaneous_menu, *change_general_menu;
     Window *prompt_box, *pindian_box;
     CardItem *pindian_from_card, *pindian_to_card;

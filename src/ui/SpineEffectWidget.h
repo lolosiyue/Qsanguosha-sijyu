@@ -87,6 +87,10 @@ protected:
 private slots:
     void onFrameTimer();
     void onAutoClose();
+    void onContextAboutToBeDestroyed();
+#ifdef Q_OS_ANDROID
+    void onApplicationStateChanged(Qt::ApplicationState state);
+#endif
 
 private:
     bool loadSpineData(const QString &atlasPath, const QString &skelPath);
@@ -126,6 +130,9 @@ private:
     };
     QVector<Vertex> _vertices;
     QVector<GLuint> _indices;
+
+    bool _pausedForBackground = false;
+    QMetaObject::Connection _contextConnection;
 };
 
 #endif // SPINE_EFFECT_WIDGET_H

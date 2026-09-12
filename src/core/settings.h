@@ -2,6 +2,7 @@
 #define _SETTINGS_H
 
 #include <QSettings>
+#include <QtGlobal>
 #ifndef QSAN_ENGINE_BUILD
 #include <QColor>
 #include <QFont>
@@ -24,7 +25,7 @@ public:
     Q_INVOKABLE QVariant getValue(const QString &key, const QVariant &defaultValue = QVariant()) const {
         return value(key, defaultValue);
     }
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     void reinitializeConfigFile();
 #endif
 
@@ -126,7 +127,7 @@ public:
     static const int S_MOVE_CARD_ANIMATION_DURATION;
     static const int S_JUDGE_ANIMATION_DURATION;
     static const int S_JUDGE_LONG_DELAY;
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
 private:
     static QString getAndroidConfigPath();
 #endif

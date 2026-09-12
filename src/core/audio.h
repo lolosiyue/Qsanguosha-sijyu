@@ -25,6 +25,10 @@ public:
     static void setBGMVolume(float volume);
     static void stopBGM();
 
+    // Android application lifecycle hook.  Background suspension is a backend
+    // concern; unsupported backends keep their existing no-op behaviour.
+    static void setApplicationSuspended(bool suspended);
+
     static QString getVersion();
 
     // ── M2B-A 新增的觀測／設定接口 ──────────────────────────────────────
