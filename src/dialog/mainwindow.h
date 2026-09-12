@@ -28,6 +28,10 @@ class QQmlEngine;
 class HomeController;
 class PointerEffectOverlay;
 class Replayer;
+#ifdef Q_OS_ANDROID
+class QMenu;
+class QToolButton;
+#endif
 #ifdef QSAN_XP_LEGACY
 class LocalServerController;
 #endif
@@ -198,6 +202,9 @@ private slots:
     void on_actionView_ban_list_triggered();
 
     void on_actionManage_Ban_IP_triggered();
+#ifdef Q_OS_ANDROID
+    void handleApplicationStateChanged(Qt::ApplicationState state);
+#endif
 
 private:
     struct ReplayRestoreState {
@@ -220,6 +227,23 @@ private:
     ReplayRestoreState m_replayRestoreState;
     bool m_takeoverInProgress = false;
     bool m_takeoverGameStarted = false;
+#ifdef Q_OS_ANDROID
+    bool m_androidLocalRoomWaitingForForeground = false;
+    bool m_androidLocalRoomActive = false;
+    bool m_androidLocalServerListening = false;
+    bool m_androidApplicationBackgrounded = false;
+    bool m_androidAwaitingStateSync = false;
+    QToolButton *m_androidMenuButton = nullptr;
+    QMenu *m_androidMenu = nullptr;
+
+    void setupAndroidUi();
+    void updateAndroidSafeArea();
+    void updateAndroidLocalRoomLifecycle(bool backgrounded);
+    QString androidOfflineMarkerPath() const;
+    void writeAndroidOfflineMarker(const QString &reason);
+    void clearAndroidOfflineMarker();
+    void restoreAndroidOfflineMarker();
+#endif
 };
 
 #endif

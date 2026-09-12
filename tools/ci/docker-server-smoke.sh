@@ -217,7 +217,7 @@ docker exec "$server_container" /bin/sh -exc '
     set -- $(grep "^Uid:" /proc/1/status)
     test "$2" -eq 9527
     test "$(readlink /proc/1/exe)" = /opt/qsanguosha/bin/qsanguosha_server
-    # declared-v1 rejects symlinks, so the entrypoint installs read-only copies.
+    # declared-v2 rejects symlinks, so the entrypoint installs read-only copies.
     for resource in lua extensions lang; do
         test -d "/data/$resource"
         test ! -L "/data/$resource"

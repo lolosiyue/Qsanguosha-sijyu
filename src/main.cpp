@@ -19,10 +19,6 @@
 #include <QQuickStyle>
 #include <QSGRendererInterface>
 
-#ifdef ANDROID
-#include "android_assets.h"
-#endif
-
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QVariantMap>
@@ -40,6 +36,12 @@
 #include "testing/network-ui-smoke-controller.h"
 #include "testing/ui-startup-smoke-controller.h"
 #include "websocket-gateway.h"
+#ifdef Q_OS_ANDROID
+#include "android-content-store.h"
+#include "android-content-dialog.h"
+#include "android-dialog-fit.h"
+#include <QMessageBox>
+#endif
 
 int main(int argc, char *argv[]) {
     CrashHandler::install();
@@ -101,9 +103,6 @@ int main(int argc, char *argv[]) {
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
-#ifdef ANDROID
-	AndroidAssets::copyAssetsToWritableLocation();
-#endif
     // headless 模式 (-server / --headless) 只用 QCoreApplication,
     // 不載入 QPA 平台插件與 QtWidgets/QML:記憶體↓、無桌面環境可跑、啟動加快。
     QStringList appArgs;
@@ -153,6 +152,13 @@ int main(int argc, char *argv[]) {
 
     if (argc > 1 && strcmp(argv[1], "-manual") == 0) {
         new QCoreApplication(argc, argv);
+#ifdef Q_OS_ANDROID
+        QString pathError;
+        if (!QSanRuntimePaths::resolve(qApp->arguments(), &pathError)) {
+            fprintf(stderr, "%s\n", qPrintable(pathError));
+            return 6;
+        }
+#endif
         if (!EngineBootstrap::initialize(true))
             return 1;
         return 0;
@@ -163,6 +169,22 @@ int main(int argc, char *argv[]) {
         // 主頁自訂 contentItem／indicator；Windows 原生樣式不支援會報錯並閃爍
         QQuickStyle::setStyle(QStringLiteral("Basic"));
     }
+
+#ifdef Q_OS_ANDROID
+    AndroidContentStore androidContent;
+    if (!headlessApp) {
+        installAndroidDialogFit(qobject_cast<QApplication *>(QCoreApplication::instance()));
+        QString contentError;
+        AndroidContentDialog::configure(&androidContent);
+        if (!AndroidContentDialog::prepareStartup(&contentError)) {
+            QMessageBox::critical(nullptr, QStringLiteral("資源初始化失敗"), contentError);
+            return 6;
+        }
+        // Keep all game creation behind complete media validation and recovery.
+        if (!AndroidContentDialog::prepareForGame()) return 0;
+        qApp->setProperty("androidRuntimeRoot", androidContent.runtimeRoot());
+    }
+#endif
 
     // 執行期版面：一定要喺任何 smoke controller、engine、資產讀取之前解析。
     // 舊有嘅「CWD 有冇 lua/config.lua」平台 #ifdef 已經由呢個 resolver 取代，
@@ -296,6 +318,15 @@ int main(int argc, char *argv[]) {
     qApp->installTranslator(&qt_translator);
     qApp->installTranslator(&translator);
 
+#ifdef Q_OS_ANDROID
+    if (!headlessApp) {
+        QString contentError;
+        if (!androidContent.beginBootAttempt(&contentError)) {
+            QMessageBox::critical(nullptr, QStringLiteral("無法記錄啟動狀態"), contentError);
+            return 6;
+        }
+    }
+#endif
     if (!EngineBootstrap::initialize()) {
         Server::writeHeadlessLog("ERROR: EngineBootstrap::initialize failed");
         if (uiStartupSmoke)
@@ -522,6 +553,16 @@ int main(int argc, char *argv[]) {
     }
 
     MainWindow *main_window = new MainWindow;
+#ifdef Q_OS_ANDROID
+    const auto completeAndroidBoot = [&androidContent, main_window] {
+        QString error;
+        if (!androidContent.markBootSuccessful(&error))
+            QMessageBox::warning(main_window, QStringLiteral("無法完成啟動記錄"), error);
+    };
+    if (main_window->isHomeSceneReady()) completeAndroidBoot();
+    else QObject::connect(main_window, &MainWindow::homeSceneReady, main_window, completeAndroidBoot,
+                          Qt::SingleShotConnection);
+#endif
     Sanguosha->setParent(main_window);
     main_window->show();
 

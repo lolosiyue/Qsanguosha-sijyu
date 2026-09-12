@@ -37,6 +37,9 @@ self.onmessage = async ({ data }) => {
       fs.mkdirTree(path.slice(0, path.lastIndexOf('/')));
       fs.writeFile(path, bytes);
     }
+    if (data.content?.runtime_content)
+      fs.writeFile('/assets/runtime-content.json',
+        enc.encode(JSON.stringify(data.content.runtime_content)));
     if (module._qsan_client_initialize() !== 0) fail('native initialize failed');
     const registry = JSON.parse(dec.decode(module.FS.readFile('/work/init.json')));
     const records = [];

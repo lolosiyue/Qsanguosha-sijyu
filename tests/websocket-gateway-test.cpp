@@ -143,7 +143,7 @@ private:
     quint16 m_wsPort = 0;
 };
 
-// An empty rulesBundle omits rules_bundle from the signup, as legacy TCP does.
+// An empty rulesBundle intentionally omits rules_bundle for the negative test.
 QByteArray encodeSignup(quint64 messageId, const QString &screenName,
                         bool hasRoomId, int roomId, const QJsonObject &rulesBundle,
                         QString *error)
@@ -181,7 +181,7 @@ bool decodeMessage(const QByteArray &frame, ProtocolMessage *message, QString *e
 // the server's (docs/rules-bundle-identity.md). This client is built from the
 // same tree as the server, so it answers with the identity the hello advertises,
 // the same bundle a matching Web client would send. A server whose content is
-// not declared-v1 advertises {"error_code": ...} in place of an identity.
+// not declared-v2 advertises {"error_code": ...} in place of an identity.
 bool helloRulesBundle(const ProtocolMessage &hello, QJsonObject *bundle, QString *error)
 {
     ServerHelloPayload payload;
@@ -260,7 +260,7 @@ bool runWebSocketHelloSignup(quint16 wsPort)
         return expect(false, qPrintable(error));
 
     // An expanded data tree (undeclared Lua, etc/ scenarios; the repository
-    // checkout is one) serves legacy TCP but must refuse every Web client.
+    // checkout is one) cannot admit clients until it has a declared-v2 identity.
     // Framing is still checked on the refusal.
     const QString identityError = rulesBundle.value(QStringLiteral("error_code")).toString();
     const bool admissible = identityError.isEmpty();
@@ -268,7 +268,7 @@ bool runWebSocketHelloSignup(quint16 wsPort)
         if (!expect(identityError == QLatin1String("rules_content_unsupported"),
                     "hello advertised an unexpected rules identity error"))
             return false;
-        qInfo().noquote() << "[INFO] server content is not declared-v1;"
+        qInfo().noquote() << "[INFO] server content is not declared-v2;"
                           << "WebSocket signup is expected to be rejected";
     }
 
@@ -498,8 +498,8 @@ public:
     bool connected = false;
 };
 
-// Legacy TCP admission needs no rules bundle, and the room_id rules do not
-// depend on the transport, so they stay testable from an expanded data tree.
+// Native Protocol V2 admission carries the hello-matched local rules bundle;
+// the separate WebSocket missing-bundle case above remains a rejection test.
 class TcpSignupClient
 {
 public:
@@ -511,13 +511,31 @@ public:
             return false;
         }
         ProtocolMessage hello;
-        return waitFor(S_COMMAND_CHECK_VERSION, ProtocolMessageType::Notification, &hello, error);
+        if (!waitFor(S_COMMAND_CHECK_VERSION, ProtocolMessageType::Notification, &hello, error))
+            return false;
+        if (!helloRulesBundle(hello, &rulesBundle, error))
+            return false;
+        // A checkout without declared-v2 content advertises an error object
+        // in hello. Native TCP keeps its legacy admission contract there;
+        // only an actual identity is echoed back to the server.
+        if (rulesBundle.contains(QStringLiteral("error_code"))) {
+            const QString identityError = rulesBundle.value(QStringLiteral("error_code")).toString();
+            if (identityError != QLatin1String("rules_content_unsupported")) {
+                *error = QStringLiteral("unexpected rules identity error: %1").arg(identityError);
+                return false;
+            }
+            m_contentUnsupported = true;
+            rulesBundle = QJsonObject();
+        }
+        return true;
     }
+
+    bool contentUnsupported() const { return m_contentUnsupported; }
 
     bool signup(const QString &name, bool hasRoomId, int roomId,
                 SignupReplyPayload *reply, QString *error)
     {
-        QByteArray request = encodeSignup(1, name, hasRoomId, roomId, QJsonObject(), error);
+        QByteArray request = encodeSignup(1, name, hasRoomId, roomId, rulesBundle, error);
         if (request.isEmpty())
             return false;
         request.append('\n');
@@ -574,6 +592,8 @@ private:
     }
 
     QTcpSocket socket;
+    QJsonObject rulesBundle;
+    bool m_contentUnsupported = false;
     ProtocolFrameBuffer frames;
     QList<ProtocolMessage> messages;
 };
@@ -606,6 +626,13 @@ bool runTcpSignupRoomId(quint16 tcpPort)
         return expect(false, qPrintable(error));
     if (!first.signup(QStringLiteral("room-host"), false, 0, &firstReply, &error))
         return expect(false, qPrintable(error));
+    if (first.contentUnsupported()) {
+        // Only an explicitly unsupported hello makes rejection the expected
+        // result; an advertised identity must pass the room-id matrix below.
+        return expect(!firstReply.accepted
+                          && firstReply.errorCode == QLatin1String("rules_identity_required"),
+                      "undeclared-v2 TCP signup was not rejected with rules_identity_required");
+    }
     if (!expect(firstReply.accepted, "first signup without room_id was rejected")
         || !expect(firstReply.roomId == 0, "first signup reply room_id was not 0"))
         return false;

@@ -1,4 +1,5 @@
 #include "asset-manifest.h"
+#include "android_assets.h"
 #include "runtime-paths.h"
 
 #include <QCoreApplication>
@@ -44,6 +45,14 @@ bool writeFile(const QString &path, const QString &content)
         return false;
     QTextStream(&file) << content;
     return true;
+}
+
+QString readFile(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return QString();
+    return QString::fromUtf8(file.readAll());
 }
 
 // A directory only counts as an asset root when the two Lua files the engine
@@ -309,6 +318,124 @@ bool unsupportedManifestSchemaIsRejected()
     return expect(!report.error.isEmpty(), "an unknown manifest schema was accepted")
         && expect(!report.complete(), "an unreadable manifest claimed completeness");
 }
+
+// Android follows TODO/human's deployment rule: bundled files fill the
+// writable tree on every start, while files the user already edited stay in
+// place.  Keep this regression in the existing runtime-paths process so the
+// source and packaging checks share one small QtCore fixture.
+bool androidAssetsCopyNestedLuaAndAi()
+{
+    QTemporaryDir directory;
+    const QString target = directory.filePath(QStringLiteral("runtime"));
+    QString error;
+    const bool copiedExtensions = AndroidAssets::copyAssetDir(
+        QStringLiteral("extensions"), target + QStringLiteral("/extensions"), &error);
+    if (!expect(copiedExtensions, "bundled extensions were not copied")
+        || !expect(error.isEmpty(), "copying bundled extensions reported an error"))
+        return false;
+
+    error.clear();
+    const bool copiedAi = AndroidAssets::copyAssetDir(
+        QStringLiteral("lua/ai"), target + QStringLiteral("/lua/ai"), &error);
+    return expect(copiedAi, "bundled Lua AI files were not copied")
+        && expect(error.isEmpty(), "copying bundled Lua AI reported an error")
+        && expect(readFile(target + QStringLiteral("/extensions/android_fixture.lua"))
+                       == QStringLiteral("return 'bundled extension'\n"),
+                   "the nested extension content was not released")
+        && expect(readFile(target + QStringLiteral("/extensions/nested/child.lua"))
+                       == QStringLiteral("return 'nested extension'\n"),
+                   "the nested extension directory was not released")
+        && expect(readFile(target + QStringLiteral("/lua/ai/android_fixture-ai.lua"))
+                       == QStringLiteral("return 'bundled ai'\n"),
+                   "the nested Lua AI content was not released");
+}
+
+bool androidAssetsPreserveEditedFilesAndFillMissingFiles()
+{
+    QTemporaryDir directory;
+    const QString target = directory.filePath(QStringLiteral("runtime"));
+    const QString extension = target + QStringLiteral("/extensions/android_fixture.lua");
+    const QString config = target + QStringLiteral("/config.ini");
+    const QString ai = target + QStringLiteral("/lua/ai/android_fixture-ai.lua");
+    QString error;
+
+    if (!AndroidAssets::copyAssetDir(QStringLiteral("extensions"),
+                                     target + QStringLiteral("/extensions"), &error)
+        || !AndroidAssets::copyAssetFile(QStringLiteral("config.ini"), config, &error))
+        return expect(false, "unable to create the first Android asset release");
+
+    if (!writeFile(extension, QStringLiteral("return 'user extension'\n"))
+        || !writeFile(config, QStringLiteral("[user]\nchanged=true\n")))
+        return expect(false, "unable to edit the first Android asset release");
+
+    // The second startup supplies a directory that was absent from the first
+    // release.  It must be added without replacing the edited files.
+    error.clear();
+    const bool recopiedRoot = AndroidAssets::copyAssetDir(QString(), target, &error);
+    return expect(recopiedRoot,
+                  "the second Android asset release failed")
+        && expect(QFile::exists(ai), "the second release did not fill the missing Lua AI")
+        && expect(readFile(extension) == QStringLiteral("return 'user extension'\n"),
+                   "re-extraction overwrote an edited extension")
+        && expect(readFile(config) == QStringLiteral("[user]\nchanged=true\n"),
+                   "re-extraction overwrote the user config");
+}
+
+bool androidAssetsRejectMissingSourceWithoutFinalFile()
+{
+    QTemporaryDir directory;
+    const QString target = directory.filePath(QStringLiteral("runtime/missing.lua"));
+    QString error;
+    const bool copied = AndroidAssets::copyAssetFile(
+        QStringLiteral("lua/not-present.lua"), target, &error);
+    return expect(!copied, "a missing Android asset was accepted")
+        && expect(!error.isEmpty(), "a missing Android asset returned no error")
+        && expect(!QFile::exists(target), "a missing Android asset left a final file");
+}
+
+bool androidAssetsRejectMissingDirectoryAndOccupiedTarget()
+{
+    QTemporaryDir directory;
+    const QString missingTarget = directory.filePath(QStringLiteral("runtime/missing"));
+    QString error;
+    const bool copiedMissingDirectory = AndroidAssets::copyAssetDir(
+        QStringLiteral("lua/not-present"), missingTarget, &error);
+    if (!expect(!copiedMissingDirectory, "a missing Android asset directory was accepted")
+        || !expect(!error.isEmpty(), "a missing Android asset directory returned no error"))
+        return false;
+
+    const QString occupiedTarget = directory.filePath(QStringLiteral("runtime/occupied.lua"));
+    if (!QDir().mkpath(occupiedTarget))
+        return expect(false, "unable to create the occupied target directory");
+    error.clear();
+    const bool copiedToDirectory = AndroidAssets::copyAssetFile(
+        QStringLiteral("extensions/android_fixture.lua"), occupiedTarget, &error);
+    return expect(!copiedToDirectory, "an Android asset target directory was accepted")
+        && expect(!error.isEmpty(), "an occupied Android asset target returned no error")
+        && expect(QDir(occupiedTarget).exists(), "the occupied target directory was removed");
+}
+
+#if defined(Q_OS_UNIX)
+bool androidAssetsRejectSymlinkParent()
+{
+    QTemporaryDir directory;
+    const QString realParent = directory.filePath(QStringLiteral("real"));
+    const QString linkedParent = directory.filePath(QStringLiteral("linked"));
+    // An already existing child must not bypass validation of its linked parent.
+    if (!QDir().mkpath(realParent + QStringLiteral("/nested"))
+        || !QFile::link(realParent, linkedParent))
+        return expect(false, "unable to create the symlink parent fixture");
+
+    const QString target = linkedParent + QStringLiteral("/nested/new.lua");
+    QString error;
+    const bool copied = AndroidAssets::copyAssetFile(
+        QStringLiteral("extensions/android_fixture.lua"), target, &error);
+    return expect(!copied, "an Android asset followed a symlink parent")
+        && expect(!error.isEmpty(), "a symlink parent rejection returned no error")
+        && expect(!QFile::exists(realParent + QStringLiteral("/nested/new.lua")),
+                   "a symlink parent caused a file to be written into the real tree");
+}
+#endif
 }
 
 int main(int argc, char **argv)
@@ -332,5 +459,17 @@ int main(int argc, char **argv)
         return 8;
     if (!unsupportedManifestSchemaIsRejected())
         return 9;
+    if (!androidAssetsCopyNestedLuaAndAi())
+        return 10;
+    if (!androidAssetsPreserveEditedFilesAndFillMissingFiles())
+        return 11;
+    if (!androidAssetsRejectMissingSourceWithoutFinalFile())
+        return 12;
+    if (!androidAssetsRejectMissingDirectoryAndOccupiedTarget())
+        return 13;
+#if defined(Q_OS_UNIX)
+    if (!androidAssetsRejectSymlinkParent())
+        return 14;
+#endif
     return 0;
 }

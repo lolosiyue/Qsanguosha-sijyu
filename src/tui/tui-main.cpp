@@ -353,6 +353,8 @@ int main(int argc, char *argv[])
     options.session.screenName = screenName;
     options.session.avatar = avatar;
     options.session.reconnectRequested = parser.isSet(reconnectOption);
+    if (Sanguosha != nullptr)
+        options.session.localRulesBundle = Sanguosha->rulesBundleIdentity();
     options.ansiEnabled = outputIsTerminal() && !parser.isSet(plainOption)
         && !parser.isSet(noColorOption) && !qEnvironmentVariableIsSet("NO_COLOR");
     options.logFile = parser.value(logFileOption);

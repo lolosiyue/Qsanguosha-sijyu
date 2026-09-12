@@ -1,4 +1,5 @@
 #include "roomscene.h"
+#include "game-view.h"
 #include "runtime-paths.h"
 #include "skill-dialog-registry.h"
 #include "choosetriggerorderbox.h"
@@ -74,6 +75,9 @@
 #include <QMutexLocker>
 #include <QSet>
 #include <QMenu>
+#include <QToolTip>
+#include <QCoreApplication>
+#include <QMovie>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -315,6 +319,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(dashboard,SIGNAL(card_to_use()),this,SLOT(doOkButton()));
 	connect(dashboard,SIGNAL(dialogOptionSelectionChanged(bool)),this,SLOT(onDialogOptionSelectionChanged(bool)));
 	connect(dashboard,SIGNAL(cardActionButtonClicked(QString,int)),this,SLOT(onCardActionButtonClicked(QString,int)));
+	connect(dashboard,SIGNAL(cardPreviewRequested(CardItem *)),this,SLOT(showTouchCardPreview(CardItem *)));
 	//connect(dashboard,SIGNAL(add_equip_skill(const Skill*,bool)),this,SLOT(addSkillButton(const Skill*,bool)));
 	//connect(dashboard,SIGNAL(remove_equip_skill(QString)),this,SLOT(detachSkill(QString)));
 
@@ -1752,6 +1757,133 @@ void RoomScene::applyUiElementScale(qreal scale)
 	scaleCenter(self_box);
 	scaleCenter(enemy_box);
 	scaleCenter(control_panel);
+}
+
+void RoomScene::setTouchUiEnabled(bool enabled)
+{
+    if (m_touchUiEnabled == enabled)
+        return;
+    m_touchUiEnabled = enabled;
+    if (dashboard)
+        dashboard->setTouchUiEnabled(enabled);
+    if (dashboard)
+        dashboard->refreshLayout();
+}
+
+void RoomScene::setSafeAreaMargins(const QMargins &margins)
+{
+    m_safeAreaMargins = margins;
+    for (QGraphicsView *view : views()) {
+        if (FitView *fitView = dynamic_cast<FitView *>(view))
+            fitView->setSafeAreaMargins(margins);
+    }
+}
+
+bool RoomScene::touchUiEnabled() const
+{
+    return m_touchUiEnabled;
+}
+
+void RoomScene::setApplicationSuspended(bool suspended, bool offline)
+{
+    if (m_applicationSuspended == suspended && m_suspendOffline == offline)
+        return;
+
+    if (QCoreApplication *app = QCoreApplication::instance()) {
+        app->setProperty("qsan.application_suspended", suspended);
+        app->setProperty("qsan.application_suspended_offline", offline);
+    }
+
+    const bool wasSuspended = m_applicationSuspended;
+    if (suspended && !wasSuspended) {
+        m_suspendOffline = offline;
+        m_timerPausedByApplication = offline && m_timerLabel != nullptr && !m_timerLabel->isPaused();
+        m_dashboardEnabledBeforeSuspend = dashboard == nullptr || dashboard->isEnabled();
+        m_photoEnabledBeforeSuspend.clear();
+        for (Photo *photo : photos)
+            m_photoEnabledBeforeSuspend << (photo == nullptr || photo->isEnabled());
+        m_appPausedAnimations.clear();
+        for (QAbstractAnimation *animation : findChildren<QAbstractAnimation *>()) {
+            if (animation->state() == QAbstractAnimation::Running) {
+                m_appPausedAnimations << QPointer<QAbstractAnimation>(animation);
+                animation->pause();
+            }
+        }
+        m_appPausedMovies.clear();
+        for (QMovie *movie : findChildren<QMovie *>()) {
+            if (movie->state() == QMovie::Running) {
+                m_appPausedMovies << QPointer<QMovie>(movie);
+                movie->setPaused(true);
+            }
+        }
+        if (offline && m_timerLabel)
+            m_timerLabel->pause();
+    }
+
+    m_applicationSuspended = suspended;
+    m_suspendOffline = offline;
+    if (dashboard) {
+        dashboard->setApplicationSuspended(suspended, offline);
+        if (suspended || wasSuspended)
+            dashboard->setEnabled(suspended ? false : m_dashboardEnabledBeforeSuspend);
+    }
+    for (int i = 0; i < photos.size(); ++i) {
+        Photo *photo = photos.at(i);
+        if (photo) {
+            photo->setApplicationSuspended(suspended, offline);
+            if (suspended || wasSuspended)
+                photo->setEnabled(suspended ? false : (i < m_photoEnabledBeforeSuspend.size()
+                    ? m_photoEnabledBeforeSuspend.at(i) : true));
+        }
+    }
+    if (suspended) {
+        for (CardItem *item : general_items) {
+            if (item)
+                item->cancelTouchPreview();
+        }
+    }
+
+    if (!suspended && m_timerPausedByApplication && m_timerLabel) {
+        m_timerLabel->resume();
+        m_timerPausedByApplication = false;
+    }
+    if (!suspended) {
+        for (const QPointer<QAbstractAnimation> &animation : m_appPausedAnimations)
+            if (animation && animation->state() == QAbstractAnimation::Paused) animation->resume();
+        for (const QPointer<QMovie> &movie : m_appPausedMovies)
+            if (movie && movie->state() == QMovie::Paused) movie->setPaused(false);
+        m_appPausedAnimations.clear();
+        m_appPausedMovies.clear();
+    }
+}
+
+void RoomScene::refreshTouchTargets(qreal viewportScale)
+{
+    Q_UNUSED(viewportScale);
+    if (!m_touchUiEnabled || dashboard == nullptr)
+        return;
+    dashboard->setTouchTargetMinimum(48.0);
+    for (QSanButton *button : {ok_button, cancel_button, discard_button})
+        if (button) button->setTouchTargetMinimum(48.0);
+}
+
+void RoomScene::showTouchCardPreview(CardItem *card)
+{
+#ifdef Q_OS_ANDROID
+    if (!m_touchUiEnabled || card == nullptr || card->toolTip().isEmpty() || views().isEmpty())
+        return;
+    QGraphicsView *view = views().first();
+    // FitView already excludes the system/keyboard margins from its viewport.
+    const QRect viewportRect = view->viewport()->rect();
+    if (viewportRect.isEmpty())
+        return;
+    QPoint point = view->mapFromScene(card->sceneBoundingRect().center());
+    point.setX(qBound(viewportRect.left(), point.x(), viewportRect.right()));
+    point.setY(qBound(viewportRect.top(), point.y(), viewportRect.bottom()));
+    QToolTip::showText(view->viewport()->mapToGlobal(point), card->toolTip(), view->viewport(), viewportRect);
+#else
+    Q_UNUSED(card);
+#endif
 }
 
 void RoomScene::_dispersePhotos(QList<Photo*>&photos,QRectF fillRegion,
@@ -6260,7 +6392,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
         // 连接信号
         connect(embeddedLoader,&EmbeddedQmlLoader::effectFinished,[embeddedLoader,this](){
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
             // 安卓平台：特效结束后更新按钮位置
             QPointer<Dashboard> safeDashboard = dashboard;
             if(safeDashboard){
@@ -6336,7 +6468,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
         // 连接信号
         connect(embeddedLoader,&EmbeddedQmlLoader::effectFinished,[embeddedLoader,this](){
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
             // 安卓平台：幽灵特效结束后更新按钮位置
             QPointer<Dashboard> safeDashboard = dashboard;
             if(safeDashboard){
@@ -6946,6 +7078,7 @@ void RoomScene::startGeneralSelection()
 	foreach (CardItem*item,general_items){
 		item->setFlag(QGraphicsItem::ItemIsFocusable);
 		connect(item,SIGNAL(double_clicked()),this,SLOT(selectGeneral()));
+		connect(item,SIGNAL(touchPreviewRequested(CardItem *)),this,SLOT(showTouchCardPreview(CardItem *)));
 	}
 }
 

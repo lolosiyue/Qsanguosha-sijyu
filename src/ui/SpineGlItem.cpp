@@ -8,12 +8,14 @@
 #include <QPainter>
 #include <QOpenGLWidget>
 #include <QOpenGLContext>
+#include <QOffscreenSurface>
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QImage>
 #include <QDir>
 #include <QFile>
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QtMath>
 #include <cstring>
 #include <cstddef>
@@ -26,11 +28,37 @@
 //  QtSpineTextureLoader
 // ═══════════════════════════════════════════════════════════════════════════
 
+struct QtSpineTextureLoader::TexturePage {
+    QString path;
+    QOpenGLTexture *texture = nullptr;
+};
+
 QtSpineTextureLoader::QtSpineTextureLoader() {}
 
 QtSpineTextureLoader::~QtSpineTextureLoader() {
+    releaseTextures();
     qDeleteAll(_textures);
-    _textures.clear();
+}
+
+void QtSpineTextureLoader::releaseTextures() {
+    for (TexturePage *page : _textures) {
+        delete page->texture;
+        page->texture = nullptr;
+    }
+}
+
+void QtSpineTextureLoader::reloadTextures() {
+    for (TexturePage *page : _textures) {
+        if (page->texture)
+            continue;
+        const QImage image(page->path);
+        if (image.isNull())
+            continue;
+        page->texture = new QOpenGLTexture(image, QOpenGLTexture::DontGenerateMipMaps);
+        page->texture->setMinificationFilter(QOpenGLTexture::Linear);
+        page->texture->setMagnificationFilter(QOpenGLTexture::Linear);
+        page->texture->setWrapMode(QOpenGLTexture::ClampToEdge);
+    }
 }
 
 void QtSpineTextureLoader::load(void *&textureHandle, const spine::String &path) {
@@ -66,20 +94,24 @@ void QtSpineTextureLoader::load(void *&textureHandle, const spine::String &path)
     tex->setMagnificationFilter(QOpenGLTexture::Linear);
     tex->setWrapMode(QOpenGLTexture::ClampToEdge);
 
-    _textures.append(tex);
-    textureHandle = tex;
+    auto *page = new TexturePage;
+    page->path = qpath;
+    page->texture = tex;
+    _textures.append(page);
+    textureHandle = page;
 }
 
 void QtSpineTextureLoader::unload(void *textureHandle) {
-    QOpenGLTexture *tex = static_cast<QOpenGLTexture *>(textureHandle);
-    if (tex) {
-        _textures.removeAll(tex);
-        delete tex;
+    auto *page = static_cast<TexturePage *>(textureHandle);
+    if (page) {
+        _textures.removeAll(page);
+        delete page->texture;
+        delete page;
     }
 }
 
 QOpenGLTexture *QtSpineTextureLoader::getTexture(void *handle) {
-    return static_cast<QOpenGLTexture *>(handle);
+    return handle ? static_cast<TexturePage *>(handle)->texture : nullptr;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -111,11 +143,20 @@ SpineGlItem::SpineGlItem(QGraphicsItem *parent)
     // 60fps update timer
     _timer.setInterval(16); // ~60 FPS
     connect(&_timer, &QTimer::timeout, this, &SpineGlItem::onTimer);
+#ifdef Q_OS_ANDROID
+    connect(qGuiApp, &QGuiApplication::applicationStateChanged,
+            this, &SpineGlItem::onApplicationStateChanged);
+#endif
 }
 
 SpineGlItem::~SpineGlItem() {
     stop();
-    cleanupGL();
+    onContextAboutToBeDestroyed();
+    _animState.reset();
+    _animStateData.reset();
+    _skeleton.reset();
+    delete _skeletonData;
+    _skeletonData = nullptr;
 }
 
 // ─── Loading ────────────────────────────────────────────────────────────────
@@ -133,10 +174,27 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
         return false;
     }
 
+    if (_glContext && _glContext != QOpenGLContext::currentContext())
+        onContextAboutToBeDestroyed();
+    _glContext = QOpenGLContext::currentContext();
+    if (scene()) {
+        for (QGraphicsView *view : scene()->views()) {
+            auto *viewport = qobject_cast<QOpenGLWidget *>(view->viewport());
+            if (viewport && viewport->context() == _glContext) {
+                _glViewport = viewport;
+                break;
+            }
+        }
+    }
+    connect(_glContext, &QOpenGLContext::aboutToBeDestroyed,
+            this, &SpineGlItem::onContextAboutToBeDestroyed,
+            Qt::ConnectionType(Qt::DirectConnection | Qt::UniqueConnection));
+
     // Clean up previous
     _animState.reset();
     _animStateData.reset();
     _skeleton.reset();
+    delete _skeletonData;
     _skeletonData = nullptr;
     _atlas.reset();
     _textureLoader.reset();
@@ -359,6 +417,7 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
 
 void SpineGlItem::play(bool loop) {
     _loop = loop;
+    _pausedForBackground = false;
     _playing = true;
 
     if (!_pendingAnim.isEmpty() && _animState) {
@@ -381,11 +440,21 @@ void SpineGlItem::play(bool loop) {
 
     _elapsed.start();
     _lastTime = 0;
+#ifdef Q_OS_ANDROID
+    if (qGuiApp && qGuiApp->applicationState() == Qt::ApplicationActive) {
+        _timer.start();
+    } else {
+        _playing = false;
+        _pausedForBackground = true;
+    }
+#else
     _timer.start();
+#endif
 }
 
 void SpineGlItem::pause() {
     _playing = false;
+    _pausedForBackground = false;
     _timer.stop();
 }
 
@@ -394,12 +463,17 @@ void SpineGlItem::resume() {
         _playing = true;
         _elapsed.restart();
         _lastTime = 0;
-        _timer.start();
+#ifdef Q_OS_ANDROID
+        onApplicationStateChanged(qGuiApp->applicationState());
+#endif
+        if (_playing)
+            _timer.start();
     }
 }
 
 void SpineGlItem::stop() {
     _playing = false;
+    _pausedForBackground = false;
     _timer.stop();
     if (_animState)
         _animState->clearTracks();
@@ -473,7 +547,8 @@ QRectF SpineGlItem::boundingRect() const {
 
 void SpineGlItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) {
     Q_UNUSED(option);
-    Q_UNUSED(widget);
+    if (auto *viewport = qobject_cast<QOpenGLWidget *>(widget))
+        _glViewport = viewport;
 
     if (!_skeleton || !_animState)
         return;
@@ -487,7 +562,7 @@ void SpineGlItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
 // ─── Private ────────────────────────────────────────────────────────────────
 
 void SpineGlItem::onTimer() {
-    if (!_playing || !_skeleton || !_animState) return;
+    if (!_playing || !_skeleton || !_animState || !_glInitialized) return;
 
     float currentTime = _elapsed.elapsed() / 1000.0f;
     float delta = currentTime - _lastTime;
@@ -518,35 +593,52 @@ void SpineGlItem::initGL() {
     QOpenGLFunctions *gl = context->functions();
     if (!gl) return;
 
+    _glContext = context;
+    connect(context, &QOpenGLContext::aboutToBeDestroyed,
+            this, &SpineGlItem::onContextAboutToBeDestroyed,
+            Qt::ConnectionType(Qt::DirectConnection | Qt::UniqueConnection));
+    if (_textureLoader)
+        _textureLoader->reloadTextures();
+
     // Create shader program
     _shader = new QOpenGLShaderProgram();
 
-    const char *vertexShader =
-        "#version 120\n"
-        "attribute vec2 aPos;\n"
-        "attribute vec2 aUV;\n"
-        "attribute vec4 aColor;\n"
-        "varying vec2 vUV;\n"
-        "varying vec4 vColor;\n"
-        "uniform mat4 uMVP;\n"
+    const bool gles = context->isOpenGLES();
+    const char *vertexShader = gles ?
+        "#version 100\nprecision mediump float;\n"
+        "attribute vec2 aPos; attribute vec2 aUV; attribute vec4 aColor;\n"
+        "varying vec2 vUV; varying vec4 vColor; uniform mat4 uMVP;\n"
         "void main() {\n"
         "    vUV = aUV;\n"
         "    vColor = aColor;\n"
         "    gl_Position = uMVP * vec4(aPos, 0.0, 1.0);\n"
-        "}\n";
-
-    const char *fragmentShader =
+        "}\n" :
         "#version 120\n"
-        "varying vec2 vUV;\n"
-        "varying vec4 vColor;\n"
-        "uniform sampler2D uTexture;\n"
+        "attribute vec2 aPos; attribute vec2 aUV; attribute vec4 aColor;\n"
+        "varying vec2 vUV; varying vec4 vColor; uniform mat4 uMVP;\n"
+        "void main() { vUV = aUV; vColor = aColor;"
+        " gl_Position = uMVP * vec4(aPos, 0.0, 1.0); }\n";
+
+    const char *fragmentShader = gles ?
+        "#version 100\nprecision mediump float;\n"
+        "varying vec2 vUV; varying vec4 vColor; uniform sampler2D uTexture;\n"
+        "void main() { gl_FragColor = texture2D(uTexture, vUV) * vColor; }\n" :
+        "#version 120\n"
+        "varying vec2 vUV; varying vec4 vColor; uniform sampler2D uTexture;\n"
         "void main() {\n"
         "    gl_FragColor = texture2D(uTexture, vUV) * vColor;\n"
         "}\n";
 
-    _shader->addShaderFromSourceCode(QOpenGLShader::Vertex, vertexShader);
-    _shader->addShaderFromSourceCode(QOpenGLShader::Fragment, fragmentShader);
-    _shader->link();
+    const bool vertexOk = _shader->addShaderFromSourceCode(QOpenGLShader::Vertex, vertexShader);
+    const bool fragmentOk = _shader->addShaderFromSourceCode(QOpenGLShader::Fragment, fragmentShader);
+    const bool linkOk = vertexOk && fragmentOk && _shader->link();
+    if (!linkOk) {
+        qWarning("[SpineGlItem] Spine shader setup failed (GLES=%d): %s",
+                 gles, qPrintable(_shader->log()));
+        delete _shader;
+        _shader = nullptr;
+        return;
+    }
 
     _vbo.create();
     _vbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
@@ -555,6 +647,10 @@ void SpineGlItem::initGL() {
     _vboCapacity = 0;
     _iboCapacity = 0;
     _glInitialized = true;
+    if (_playing) {
+        _elapsed.restart();
+        _lastTime = 0;
+    }
 }
 
 void SpineGlItem::cleanupGL() {
@@ -569,6 +665,73 @@ void SpineGlItem::cleanupGL() {
     _vboCapacity = 0;
     _iboCapacity = 0;
     _glInitialized = false;
+}
+
+#ifdef Q_OS_ANDROID
+void SpineGlItem::onApplicationStateChanged(Qt::ApplicationState state) {
+    const bool background = state != Qt::ApplicationActive;
+    if (background) {
+        if (_playing) {
+            _playing = false;
+            _timer.stop();
+            _pausedForBackground = true;
+        }
+        return;
+    }
+    if (state == Qt::ApplicationActive && _pausedForBackground) {
+        _pausedForBackground = false;
+        _playing = true;
+        _elapsed.restart();
+        _lastTime = 0;
+        _timer.start();
+    }
+}
+#endif
+
+void SpineGlItem::onContextAboutToBeDestroyed() {
+    QOpenGLContext *previous = QOpenGLContext::currentContext();
+    QSurface *previousSurface = previous ? previous->surface() : nullptr;
+    // aboutToBeDestroyed does not make the owning viewport current for us.
+    if (_glContext && previous != _glContext && _glViewport
+        && _glViewport->context() == _glContext)
+        _glViewport->makeCurrent();
+    if (_glContext && QOpenGLContext::currentContext() != _glContext && scene()) {
+        for (QGraphicsView *view : scene()->views()) {
+            auto *viewport = qobject_cast<QOpenGLWidget *>(view->viewport());
+            if (viewport && viewport->context() == _glContext) {
+                viewport->makeCurrent();
+                break;
+            }
+        }
+    }
+    // A detached/destroying viewport may no longer have a usable window
+    // surface. The owner can still release shared resources on a pbuffer.
+    QOffscreenSurface cleanupSurface;
+    if (_glContext && QOpenGLContext::currentContext() != _glContext
+        && _glContext->isValid()) {
+        cleanupSurface.setFormat(_glContext->format());
+        cleanupSurface.create();
+        if (cleanupSurface.isValid())
+            _glContext->makeCurrent(&cleanupSurface);
+    }
+    if (QOpenGLContext::currentContext() != _glContext) {
+        // Lost/invalid owner: discard CPU wrappers with no foreign context.
+        // The destroyed context reclaims its GL allocation; Qt buffer/program
+        // resource guards defer deletion without retaining stale IDs here.
+        if (QOpenGLContext *current = QOpenGLContext::currentContext())
+            current->doneCurrent();
+    }
+    if (_textureLoader)
+        _textureLoader->releaseTextures();
+    cleanupGL();
+    if (_glContext)
+        disconnect(_glContext, nullptr, this, nullptr);
+    _glContext = nullptr;
+    _glViewport = nullptr;
+    if (previous && previousSurface)
+        previous->makeCurrent(previousSurface);
+    else if (QOpenGLContext *current = QOpenGLContext::currentContext())
+        current->doneCurrent();
 }
 
 void SpineGlItem::renderSpine(QPainter *painter) {
@@ -589,6 +752,8 @@ void SpineGlItem::renderSpine(QPainter *painter) {
         gl->glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     }
 
+    if (_glContext && _glContext != context)
+        onContextAboutToBeDestroyed();
     if (!_glInitialized)
         initGL();
 

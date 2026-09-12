@@ -31,11 +31,18 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
     setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
 }
 
+void FitView::setSafeAreaMargins(const QMargins &margins)
+{
+    setViewportMargins(margins);
+}
+
 void FitView::setUiScale(qreal scale)
 {
     m_uiScale = qBound<qreal>(1.0, scale, 2.0);
-    if (auto *roomScene = qobject_cast<RoomScene *>(scene()))
+    if (auto *roomScene = qobject_cast<RoomScene *>(scene())) {
         roomScene->applyUiElementScale(m_uiScale);
+        roomScene->refreshTouchTargets(transform().m11());
+    }
 }
 
 void FitView::refit()
@@ -85,6 +92,7 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
         if (newSceneRect != roomScene->sceneRect())
             fitInView(roomScene->sceneRect(), Qt::KeepAspectRatio);
         roomScene->applyUiElementScale(m_uiScale);
+        roomScene->refreshTouchTargets(transform().m11());
         setBackgroundBrush(false);
         return;
     }

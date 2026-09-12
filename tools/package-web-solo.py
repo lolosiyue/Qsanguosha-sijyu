@@ -105,9 +105,11 @@ def _load_rules(bundle_path: Path, asset_root: Path) -> list[dict]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise _error(f"invalid rules bundle: {bundle_path}") from error
     manifest = bundle.get("rules_content") if isinstance(bundle, dict) else None
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1 \
-            or manifest.get("profile") != "declared-v1" or not isinstance(manifest.get("files"), list):
-        raise _error("rules bundle lacks a declared-v1 rules_content manifest")
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2 \
+            or manifest.get("profile") != "declared-v2" \
+            or not isinstance(manifest.get("runtime_content"), dict) \
+            or not isinstance(manifest.get("files"), list):
+        raise _error("rules bundle lacks a declared-v2 rules_content manifest")
     result: list[dict] = []
     seen: set[str] = set()
     for entry in manifest["files"]:
@@ -381,6 +383,11 @@ def package(args: argparse.Namespace) -> None:
         raise _error("solo runtime seal mismatch; rebuild or reseal the paired artifacts")
     _verify_client_runtime(web_dist)
     rules = _load_rules(bundle, asset_root)
+    try:
+        bundle_payload = json.loads(bundle.read_bytes())
+        runtime_content = bundle_payload["rules_content"]["runtime_content"]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as error:
+        raise _error("rules bundle runtime content descriptor is missing") from error
     ai = _collect_ai(asset_root)
     destination = args.destination.absolute()
     if _unsafe(destination):
@@ -411,7 +418,9 @@ def package(args: argparse.Namespace) -> None:
     for relative, path in ai:
         size, digest = _hash_file(path)
         content.append({"path": relative, "role": "ai", "size": size, "sha256": digest})
-    manifest["content"] = {"schema_version": 1, "profile": "declared-v1", "files": content}
+    manifest["content"] = {"schema_version": 2, "profile": "declared-v2",
+                            "runtime_content": runtime_content,
+                            "files": content}
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".qsan-solo-", dir=str(destination.parent)) as temporary:

@@ -6,6 +6,7 @@
 #include "client.h"
 #include "skin-bank.h"
 #include "card-overview-data.h"
+#include <QtGlobal>
 
 static CardOverview *Overview;
 
@@ -15,10 +16,10 @@ CardOverview *CardOverview::getInstance(QWidget *main_window)
         Overview = new CardOverview(main_window);
 	else{
 		//Overview->hide();
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
 		delete Overview;
         Overview = new CardOverview(main_window);
-#endif // ANDROID
+#endif // Q_OS_ANDROID
 	}
 
     return Overview;

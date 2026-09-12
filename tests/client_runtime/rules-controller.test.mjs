@@ -110,13 +110,14 @@ async function setup(options = {}) {
       : JSON.stringify(value);
   code.code_id = await sha(new TextEncoder().encode(`qsan-rules-code-v1\0${canonical({ ...code })}`));
   const bundle = { schema_version: 1, protocol_version: 2, bridge_schema: RULES_BRIDGE_SCHEMA,
-    ruleset: 'standard', content_profile: 'declared-v1',
+    ruleset: 'standard', content_profile: 'declared-v2',
     cpp_hash: digest,
     card_registry_hash: digest, lua_hash: digest, bindings_abi: digest, packages: ['standard'],
     interaction_schemas: code.interaction_schemas, code_id: code.code_id };
   bundle.bundle_id = await sha(new TextEncoder().encode(
     `qsan-rules-bundle-v1\0${canonical(bundle)}`));
-  const content = { schema_version: 1, profile: 'declared-v1', files: [] };
+  const content = { schema_version: 2, profile: 'declared-v2',
+    runtime_content: { schema_version: 2, profile: 'declared-v2', extensions: [] }, files: [] };
   if (options.cached)
     localStorage.setItem('qsan-rules-content-v1', JSON.stringify({ identity: bundle, content }));
   const controller = new module.namespace.RulesController(() => {});

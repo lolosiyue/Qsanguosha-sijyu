@@ -167,14 +167,14 @@ def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
         if not isinstance(version, str) or not version:
             raise SmokeFailure("version handshake body is not a non-empty string")
 
-        # TCP signup succeeds without a rules identity, but every Web client is
-        # refused unless the hello carries a sealed declared-v1 one. A symlinked
+        # Every Protocol V2 signup carries the sealed local rules identity; the
+        # hello identity is reused for this native TCP smoke client. A symlinked
         # asset root or an undeclared Lua file shows up here as error_code.
         rules_bundle = hello_payload.get("rules_bundle")
         if not isinstance(rules_bundle, dict) or "error_code" in rules_bundle:
             raise SmokeFailure(f"server cannot admit Web clients: rules_bundle={rules_bundle!r}")
-        if rules_bundle.get("content_profile") != "declared-v1" or not rules_bundle.get("bundle_id"):
-            raise SmokeFailure(f"hello rules_bundle is not a sealed declared-v1 identity: {rules_bundle!r}")
+        if rules_bundle.get("content_profile") != "declared-v2" or not rules_bundle.get("bundle_id"):
+            raise SmokeFailure(f"hello rules_bundle is not a sealed declared-v2 identity: {rules_bundle!r}")
 
         signup_id = stream.send(
             "request",
@@ -186,6 +186,7 @@ def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
                 "reconnect_requested": False,
                 "screen_name": arguments.name,
                 "avatar": "",
+                "rules_bundle": rules_bundle,
             },
         )
 

@@ -208,7 +208,7 @@ async function initialize(requestGeneration: number, serverIdentity: unknown, co
   if (!record(code) || code.code_id !== server.code_id) throw new Error("rules_version_mismatch");
   const content = validateContentManifest(contentValue);
   const files = await fetchContent(content);
-  installContent(runtime.FS, files);
+  installContent(runtime.FS, files, content.runtime_content);
   await verifyInstalledContent(runtime.FS, content);
   if (aborted) throw new Error("WASM initialization aborted");
   const status = runtime._qsan_client_initialize();

@@ -108,7 +108,15 @@ bool QtMediaAudioBackend::ensureReady()
 
     // 預載短音效。缺檔案唔係錯誤:clean checkout 本身就冇入庫音訊資產。
     foreach (const QString &effect, preloadedEffectNames()) {
-        const QString path = resolve(QStringLiteral("audio/system/%1.ogg").arg(effect));
+        QString path = resolve(QStringLiteral("audio/system/%1.ogg").arg(effect));
+#ifdef Q_OS_ANDROID
+        // Android ships tiny PCM copies in the APK because its QSoundEffect
+        // backend may reject the external OGG codec. Keep OGG as fallback.
+        const QString androidWav = resolve(
+            QStringLiteral("resource/android/%1.wav").arg(effect));
+        if (QFileInfo::exists(androidWav))
+            path = androidWav;
+#endif
         if (path.isEmpty() || !QFileInfo::exists(path))
             continue;
         if (effectFor(path))
@@ -169,12 +177,22 @@ QSoundEffect *QtMediaAudioBackend::effectFor(const QString &path)
 
 void QtMediaAudioBackend::play(const QString &filename, bool superpose, AudioChannel channel)
 {
-    if (filename.isEmpty())
+    if (filename.isEmpty() || m_applicationSuspended)
         return;
     if (!ensureReady())
         return;
 
-    const QString path = resolve(filename);
+    QString path = resolve(filename);
+#ifdef Q_OS_ANDROID
+    if (channel == AudioChannel::Effect) {
+        // Prefer the APK-provided PCM asset by basename, then retain the
+        // caller's OGG path for media-import and non-Android fallbacks.
+        const QString androidWav = resolve(QStringLiteral("resource/android/%1.wav")
+                                                .arg(QFileInfo(filename).completeBaseName()));
+        if (QFileInfo::exists(androidWav))
+            path = androidWav;
+    }
+#endif
     if (!QFileInfo::exists(path)) {
         // 缺檔案只係 warning。呢條路本身就會發生:語音資產係 optional。
         ++m_missingFiles;
@@ -238,6 +256,7 @@ bool QtMediaAudioBackend::playPooled(QVector<PlayerSlot> &pool, const QString &p
 
     chosen->source = path;
     chosen->startedAt = now;
+    chosen->suspendedByApplication = false;
     chosen->output->setVolume(toLinear(gain));
     chosen->player->setSource(QUrl::fromLocalFile(path));
     chosen->player->play();
@@ -258,6 +277,7 @@ void QtMediaAudioBackend::stopAll()
             if (slot.player)
                 slot.player->stop();
             slot.source.clear();
+            slot.suspendedByApplication = false;
         }
     }
     stopBGM();
@@ -265,7 +285,7 @@ void QtMediaAudioBackend::stopAll()
 
 void QtMediaAudioBackend::playBGM(const QString &filename)
 {
-    if (filename.isEmpty())
+    if (filename.isEmpty() || m_applicationSuspended)
         return;
     if (!ensureReady())
         return;
@@ -296,9 +316,65 @@ void QtMediaAudioBackend::setBGMVolume(float volume)
 void QtMediaAudioBackend::stopBGM()
 {
     m_bgmSource.clear();
+    m_bgmSuspendedByApplication = false;
     if (m_bgm) {
         m_bgm->stop();
         m_bgm->setSource(QUrl());
+    }
+}
+
+void QtMediaAudioBackend::setApplicationSuspended(bool suspended)
+{
+    if (m_applicationSuspended == suspended)
+        return;
+
+    m_applicationSuspended = suspended;
+    if (!m_ready)
+        return;
+
+    if (suspended) {
+        // QSoundEffect has no pause API.  Stop short effects; they are not
+        // marked, so resume cannot replay an effect the user already heard.
+        for (QSoundEffect *effect : std::as_const(m_effects)) {
+            if (effect)
+                effect->stop();
+        }
+        for (QVector<PlayerSlot> *pool : {&m_effectSlots, &m_voices}) {
+            for (PlayerSlot &slot : *pool) {
+                if (slot.player
+                    && slot.player->playbackState() == QMediaPlayer::PlayingState) {
+                    slot.player->pause();
+                    slot.suspendedByApplication = true;
+                }
+            }
+        }
+        if (m_bgm && m_bgm->playbackState() == QMediaPlayer::PlayingState) {
+            m_bgm->pause();
+            m_bgmSuspendedByApplication = true;
+        }
+        return;
+    }
+
+    // Resume only players paused by this lifecycle transition and still
+    // holding the same source.  stopAll()/stopBGM() clear the markers, while
+    // a replacement cannot be queued during suspension.
+    for (QVector<PlayerSlot> *pool : {&m_effectSlots, &m_voices}) {
+        for (PlayerSlot &slot : *pool) {
+            if (!slot.suspendedByApplication)
+                continue;
+            const bool resumable = slot.player && !slot.source.isEmpty()
+                && slot.player->playbackState() == QMediaPlayer::PausedState;
+            slot.suspendedByApplication = false;
+            if (resumable)
+                slot.player->play();
+        }
+    }
+    if (m_bgmSuspendedByApplication) {
+        const bool resumable = m_bgm && !m_bgmSource.isEmpty()
+            && m_bgm->playbackState() == QMediaPlayer::PausedState;
+        m_bgmSuspendedByApplication = false;
+        if (resumable)
+            m_bgm->play();
     }
 }
 
@@ -372,6 +448,7 @@ void QtMediaAudioBackend::teardown()
     m_bgm = nullptr;
     m_bgmOutput = nullptr;
     m_bgmSource.clear();
+    m_bgmSuspendedByApplication = false;
 
     // m_root 係所有 player／output／effect 的 parent,一 delete 就全部收乾淨,
     // 唔會留低 active QObject 或者 decoder thread。

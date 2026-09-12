@@ -2,6 +2,9 @@
 #define _CARD_ITEM_H
 
 #include "qsan-selectable-item.h"
+#ifdef Q_OS_ANDROID
+#include <QBasicTimer>
+#endif
 #include "qsanbutton.h"
 #include "settings.h"
 
@@ -74,6 +77,7 @@ public:
     void setCompactHandNameWidth(qreal width);
 
     void setFrozen(bool is_frozen);
+    void cancelTouchPreview();
 
     inline void showFootnote()
     {
@@ -106,6 +110,9 @@ private slots:
     void currentAnimationDestroyed();
 
 protected:
+#ifdef Q_OS_ANDROID
+    bool sceneEvent(QEvent *event) override;
+#endif
     void _initialize();
     QAbstractAnimation *m_currentAnimation;
     QImage _m_footnoteImage;
@@ -140,6 +147,10 @@ private:
     bool auto_back, frozen;
     bool m_isShiny;
     QList<CardActionButton *> m_actionButtons;
+#ifdef Q_OS_ANDROID
+    QBasicTimer m_touchLongPressTimer;
+    bool m_touchLongPressTriggered;
+#endif
 
 signals:
     void toggle_discards();
@@ -151,6 +162,12 @@ signals:
     void leave_hover();
     void movement_animation_finished();
     void actionButtonClicked(const QString &buttonId, int cardId);
+    void touchPreviewRequested(CardItem *card);
+
+#ifdef Q_OS_ANDROID
+protected:
+    void timerEvent(QTimerEvent *event) override;
+#endif
 };
 
 class CardActionButton : public QSanButton

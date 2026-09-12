@@ -68,7 +68,7 @@ bool Recorder::recordMessage(const ProtocolMessage &message, QString *error)
 
 bool Recorder::save(const QString &filename) const
 {
-    qDebug(filename.toUtf8().data());
+    qDebug("%s", filename.toUtf8().constData());
     if (filename.endsWith(".txt")) {
         return buffer.saveText(filename);
     } else if (filename.endsWith(".png")) {

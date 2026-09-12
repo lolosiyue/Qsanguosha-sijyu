@@ -193,11 +193,14 @@ QJsonObject exportContentManifest(const Engine &engine)
                 QCryptographicHash::Sha256).toHex())}});
     }
     // Seal the bytes read for delivery against the already loaded VM.
+    deliveredRules.insert(QStringLiteral("@runtime-content"),
+        runtimeContentDigest(manifest));
     if (digest(QStringLiteral("qsan-lua-closure-v1"), deliveredRules)
         != identity.value(QStringLiteral("lua_hash")).toString())
         return {};
-    return {{QStringLiteral("schema_version"), 1},
-            {QStringLiteral("profile"), QStringLiteral("declared-v1")},
+    return {{QStringLiteral("schema_version"), 2},
+            {QStringLiteral("profile"), QStringLiteral("declared-v2")},
+            {QStringLiteral("runtime_content"), runtimeContentDescriptor(manifest)},
             {QStringLiteral("files"), files}};
 }
 
@@ -219,10 +222,13 @@ QJsonObject exportIdentity(const Engine &engine, const QJsonObject &loadedLua)
         return {};
     QJsonObject identity = exportCodeIdentity();
     identity.insert(QStringLiteral("ruleset"), engine.getMODName());
-    identity.insert(QStringLiteral("content_profile"), QStringLiteral("declared-v1"));
+    identity.insert(QStringLiteral("content_profile"), QStringLiteral("declared-v2"));
     identity.insert(QStringLiteral("packages"), QJsonArray::fromStringList(engine.rulesPackageOrder()));
     identity.insert(QStringLiteral("card_registry_hash"), digest(QStringLiteral("qsan-card-registry-v1"), registry));
-    identity.insert(QStringLiteral("lua_hash"), digest(QStringLiteral("qsan-lua-closure-v1"), loadedLua));
+    QJsonObject identityLua = loadedLua;
+    identityLua.insert(QStringLiteral("@runtime-content"), runtimeContentDigest(manifest));
+    identity.insert(QStringLiteral("lua_hash"),
+        digest(QStringLiteral("qsan-lua-closure-v1"), identityLua));
     return seal(identity);
 }
 }

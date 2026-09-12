@@ -115,6 +115,10 @@ public:
     // 喚醒 doRequest / pause 等待, 不 join worker。供 gameOver 回收前使用
     // (stopGameThreads 的 wait 會與 BlockingQueuedConnection 在 main 互鎖)。
     void abortWaitingRequests();
+    void setApplicationBackgrounded(bool backgrounded);
+    bool isApplicationBackgrounded() const;
+    qint64 applicationActiveElapsed() const;
+    void waitForApplicationForeground();
     bool canPause(ServerPlayer*p) const;
     void tryPause();
     // 單機(對 AI)：除房主外全是 robot。用於放寬隨時投降，已陣亡的其他真人仍算聯機。
@@ -785,6 +789,9 @@ private:
     ServerPlayer*current;
     QStack<DamageStruct> m_damageStack;
     bool game_paused;
+    bool application_backgrounded;
+    qint64 application_active_elapsed;
+    QElapsedTimer application_elapsed_timer;
     QList<AI*> ais;
 	bool AIHumanized;
 

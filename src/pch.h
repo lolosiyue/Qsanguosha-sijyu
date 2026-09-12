@@ -1,13 +1,15 @@
 #ifndef PCH_H
 #define PCH_H
 
+#include <QtGlobal>
+
 #if defined(_MSC_VER) && !defined(QSAN_XP_LEGACY)
 #pragma execution_character_set("utf-8")
 #endif
 
 //#define LOGNETWORK
 
-#ifndef ANDROID
+#ifndef Q_OS_ANDROID
 #include <ft2build.h>
 #endif
 

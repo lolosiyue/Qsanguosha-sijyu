@@ -71,6 +71,66 @@
         "QSAN_BUILD_GUI": "ON",
         "QSAN_BUILD_SERVER": "ON"
       }
+    },
+    {
+      "name": "android-arm64-debug",
+      "displayName": "Android arm64-v8a (Qt 6.11.1, Debug)",
+      "generator": "Ninja",
+      "toolchainFile": "$env{QSAN_ANDROID_QT_ROOT}/lib/cmake/Qt6/qt.toolchain.cmake",
+      "binaryDir": "${sourceDir}/builds/android-arm64-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "$env{QSAN_ANDROID_QT_ROOT}",
+        "QT_HOST_PATH": "$env{QSAN_QT_HOST_PATH}",
+        "ANDROID_SDK_ROOT": "$env{ANDROID_SDK_ROOT}",
+        "ANDROID_NDK_ROOT": "$env{ANDROID_NDK_ROOT}",
+        "CMAKE_ANDROID_NDK": "$env{ANDROID_NDK_ROOT}",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-28",
+        "QT_ANDROID_ABIS": "arm64-v8a",
+        "QT_ANDROID_COMPILE_SDK_VERSION": "36",
+        "QT_ANDROID_MIN_SDK_VERSION": "28",
+        "QT_ANDROID_TARGET_SDK_VERSION": "36",
+        "QT_ANDROID_SDK_BUILD_TOOLS_REVISION": "36.0.0",
+        "QSAN_ANDROID_FREETYPE_ROOT": "$env{QSAN_ANDROID_FREETYPE_ROOT}",
+        "BUILD_TESTING": "OFF",
+        "QSAN_BUILD_GUI": "ON",
+        "QSAN_BUILD_SERVER": "OFF",
+        "QSAN_BUILD_TUI": "OFF",
+        "QSAN_BUILD_EXCEL": "OFF",
+        "QSAN_BUILD_EXCEL_TESTS": "OFF",
+        "QSAN_AUDIO_BACKEND": "QT"
+      }
+    },
+    {
+      "name": "android-arm64-release",
+      "displayName": "Android arm64-v8a (Qt 6.11.1, Release)",
+      "generator": "Ninja",
+      "toolchainFile": "$env{QSAN_ANDROID_QT_ROOT}/lib/cmake/Qt6/qt.toolchain.cmake",
+      "binaryDir": "${sourceDir}/builds/android-arm64-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "$env{QSAN_ANDROID_QT_ROOT}",
+        "QT_HOST_PATH": "$env{QSAN_QT_HOST_PATH}",
+        "ANDROID_SDK_ROOT": "$env{ANDROID_SDK_ROOT}",
+        "ANDROID_NDK_ROOT": "$env{ANDROID_NDK_ROOT}",
+        "CMAKE_ANDROID_NDK": "$env{ANDROID_NDK_ROOT}",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-28",
+        "QT_ANDROID_ABIS": "arm64-v8a",
+        "QT_ANDROID_COMPILE_SDK_VERSION": "36",
+        "QT_ANDROID_MIN_SDK_VERSION": "28",
+        "QT_ANDROID_TARGET_SDK_VERSION": "36",
+        "QT_ANDROID_SDK_BUILD_TOOLS_REVISION": "36.0.0",
+        "QSAN_ANDROID_FREETYPE_ROOT": "$env{QSAN_ANDROID_FREETYPE_ROOT}",
+        "BUILD_TESTING": "OFF",
+        "QSAN_BUILD_GUI": "ON",
+        "QSAN_BUILD_SERVER": "OFF",
+        "QSAN_BUILD_TUI": "OFF",
+        "QSAN_BUILD_EXCEL": "OFF",
+        "QSAN_BUILD_EXCEL_TESTS": "OFF",
+        "QSAN_AUDIO_BACKEND": "QT"
+      }
     }
   ],
   "buildPresets": [
@@ -177,6 +237,26 @@
       "displayName": "Linux GUI client (GCC, Debug)",
       "configurePreset": "linux-gui-gcc-debug",
       "targets": ["QSanguosha"]
+    },
+    {
+      "name": "android-arm64-debug",
+      "configurePreset": "android-arm64-debug",
+      "targets": ["QSanguosha"]
+    },
+    {
+      "name": "android-arm64-release",
+      "configurePreset": "android-arm64-release",
+      "targets": ["QSanguosha"]
+    },
+    {
+      "name": "android-arm64-debug-apk",
+      "configurePreset": "android-arm64-debug",
+      "targets": ["apk"]
+    },
+    {
+      "name": "android-arm64-release-apk",
+      "configurePreset": "android-arm64-release",
+      "targets": ["apk"]
     }
   ]
 }
