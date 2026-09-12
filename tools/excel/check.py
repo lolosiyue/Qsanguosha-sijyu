@@ -5,6 +5,7 @@ import argparse, hashlib, json, re, zipfile
 from pathlib import Path
 
 REQUIRED = ("WinHttp.WinHttpRequest.5.1", "/v1/commands", "/v1/updates", "Authorization", "X-QSan-Session", "Application.OnTime")
+REQUIRED_TREES = ("lua", "extensions", "lang", "image", "audio")
 FIELDS = ("schema", "status", "capabilities", "ipc_version", "stop_entry", "runtime_tiers", "runtime_tier", "max_players", "binary_targets", "files", "dependencies", "source_identity", "main_sha256", "extensions_sha256", "xlsm", "trust_access")
 EXPECTED_BINARIES = {
     "modern": {"QSanguoshaExcelBridge.exe", "QSanguoshaExcelServer.exe"},
@@ -33,13 +34,21 @@ def main() -> int:
     p.add_argument("--tier", choices=sorted(EXPECTED_BINARIES), required=True)
     p.add_argument("--api-contract", type=Path, help="defaults to docs/excel-ipc.md")
     a = p.parse_args()
+    contract = (a.api_contract or Path(__file__).resolve().parents[2] / "docs" / "excel-ipc.md").resolve()
+    errors = []
+    if not contract.is_file():
+        errors.append(f"API contract is missing: {contract}")
+        contract_text = ""
+    else:
+        contract_text = contract.read_text(encoding="utf-8", errors="ignore")
     sources = [x for x in a.vba_source.rglob("*") if x.is_file() and x.suffix.lower() in (".bas", ".cls", ".frm")]
     text = "\n".join(x.read_text(encoding="utf-8", errors="ignore") for x in sources)
     missing = [item for item in REQUIRED if item.lower() not in text.lower()]
+    contract_missing = [item for item in ("/v1/commands", "/v1/updates", "/v1/shutdown") if item.lower() not in contract_text.lower()]
     manifest = json.loads(a.manifest.read_text(encoding="utf-8"))
     absent = [field for field in FIELDS if field not in manifest]
-    errors = []
     if missing: errors.append("missing VBA/API markers: " + ", ".join(missing))
+    if contract_missing: errors.append("API contract is missing required endpoints: " + ", ".join(contract_missing))
     if absent: errors.append("missing manifest fields: " + ", ".join(absent))
     if not sources: errors.append("VBA source directory contains no .bas/.cls/.frm exports")
     if manifest.get("runtime_tiers") != [a.tier]: errors.append(f"manifest must contain only {a.tier} runtime tier")
@@ -98,6 +107,36 @@ def main() -> int:
                     errors.append(f"VBE export module missing: {relative}")
                 elif hashlib.sha256(module.read_bytes()).hexdigest() != expected:
                     errors.append(f"VBE export module hash mismatch: {relative}")
+    actual_files = {
+        path.relative_to(manifest_root).as_posix()
+        for path in manifest_root.rglob("*")
+        if path.is_file() and path.name != "release-manifest.json" and ".git" not in path.parts
+    }
+    entries = manifest.get("files")
+    if not isinstance(entries, list) or not entries:
+        errors.append("manifest files list is absent or empty")
+    else:
+        listed_files = [entry.get("path") if isinstance(entry, dict) else None for entry in entries]
+        if any(path is None for path in listed_files):
+            errors.append("manifest contains an invalid file entry")
+        listed_set = {path for path in listed_files if isinstance(path, str)}
+        if len(listed_set) != len(listed_files):
+            errors.append("manifest files list contains duplicate paths")
+        missing_files = sorted(actual_files - listed_set)
+        extra_files = sorted(listed_set - actual_files)
+        if missing_files:
+            errors.append("manifest omits packaged files: " + ", ".join(missing_files[:8]))
+        if extra_files:
+            errors.append("manifest lists files absent from package: " + ", ".join(extra_files[:8]))
+    for required_tree in REQUIRED_TREES:
+        if not (manifest_root / required_tree).is_dir():
+            errors.append(f"manifest package is missing runtime tree: {required_tree}")
+    for binary in EXPECTED_BINARIES[a.tier]:
+        binary_path = manifest_root / binary
+        if not binary_path.is_file():
+            errors.append(f"manifest package is missing binary: {binary}")
+    if not (manifest_root / "LaunchExcel.vbs").is_file():
+        errors.append("manifest package is missing LaunchExcel.vbs")
     if errors:
         for error in errors: print("ERROR: " + error)
         return 1

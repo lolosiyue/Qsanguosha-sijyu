@@ -36,3 +36,39 @@ python tools/excel/check.py --tier modern --vba-source excel/vba --manifest stag
 ```
 
 這只檢查 VBA/API marker 與 manifest coverage，不啟動 Excel 或 runtime。
+
+## Office 尚未可用時的 runtime-only trial
+
+Office 啟用前只能建立 `runtime-only-trial`：包內沒有 `.xlsm`，manifest 會明確標記
+`workbook.status=missing`／`no-vba-binary`，因此不可直接宣稱可玩。完成後由 Office
+可用環境建立模板、匯入 `vba-source/import-cp950-crlf` 的八個模組、編譯儲存 `.xlsm`，
+再重新匯出全部模組與 hash，才可進入正式 `package.py` gate；不修改 Trust Center 或
+全域 AccessVBOM。
+
+runtime-only staging（只在 Windows Release x64 產物與內容已準備後執行）：
+
+```powershell
+python tools/excel/stage-trial.py --root . --binary-dir .\release --dest "$env:USERPROFILE\Downloads\excel-release\modern"
+python tools/excel/stage-trial.py --root . --dest "$env:USERPROFILE\Downloads\excel-release\modern" --finalize
+```
+
+## Modern x64 trial staging
+
+現代試用包的目標是 `Downloads\excel-release\modern`，根目錄必須同時有
+`QSanguoshaExcelBridge.exe`、`QSanguoshaExcelServer.exe`、`LaunchExcel.vbs`
+及實際含 `xl/vbaProject.bin` 的 `.xlsm`。兩個 exe 應取自同一個 Release x64
+部署輸出；Qt6 runtime DLL（含 `Qt6Core.dll`、`Qt6Network.dll`、必要的
+`Qt6WebSockets.dll` 等）與 `platforms\qwindows.dll` 必須按部署工具產出的目錄
+加入，FMOD 則加入與該建置相符的 `fmodex64.dll`（檔名依實際 FMOD 版本核對）。
+這些 DLL/plugin 以 `--dll` 或額外 `--tree` 傳入，封裝器會記錄雜湊，但不代替
+乾淨 Windows 的 DLL 依賴閉包驗收。
+
+內容樹固定包含 `lua\`（以及 `lua\ai\`）、`extensions\`、`lang\`、`image\`
+與 `audio\`。目前內容準備沿用 declared Lua/AI closure；未列入 closure 的暫存
+擴展或劇本不可默認視為可玩。QML presenter（`qml_interact`／`qsanguosha.qml`）
+依專案決議排除。
+
+工作簿預期提供五張工作表：`首頁`（連線／建房與玩家設定）、`房間設定`（目錄與
+模式設定）、`牌桌`（手牌、玩家、互動與出牌）、`戰報`（聊天／事件）、`詳情`
+（卡牌／武將／技能／玩家／牌堆詳情）。封裝工具只驗證檔案與 VBA binary/hash；
+工作表名稱、VBE 編譯及實際 Excel 操作仍須人工 gate。

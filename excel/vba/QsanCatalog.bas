@@ -102,6 +102,14 @@ End Sub
 Public Function QsanCatalog_Settings() As Object
     QsanCatalog_Save
     If mSettings Is Nothing Then Set mSettings = QsanDict()
+    ' A workbook can host before catalog has been fetched.  Keep the native
+    ' helper's required server identity and the trial mode in that path.
+    If Not mSettings.Exists("ServerName") Then
+        mSettings.Add "ServerName", "Excel Server"
+    ElseIf Len(Trim$(CStr(mSettings("ServerName")))) = 0 Then
+        mSettings("ServerName") = "Excel Server"
+    End If
+    If Not mSettings.Exists("GameMode") Then mSettings.Add "GameMode", "05p"
     Set QsanCatalog_Settings = mSettings
 End Function
 Public Sub QsanCatalog_Select(ByVal action As String, ByVal key As String)

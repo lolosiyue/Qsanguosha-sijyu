@@ -10,6 +10,30 @@ class ExcelViewTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void publicStateDoesNotExposeProtocolSecrets()
+    {
+        ClientCore core;
+        core.state()->setGameValue(QStringLiteral("started"), true);
+        core.state()->setGameValue(QStringLiteral("draw_pile"), QVariantList{7, 9, 3});
+        core.state()->setGameValue(QStringLiteral("draw_pile_count"), 3);
+        core.state()->setGameValue(QStringLiteral("guanxing"), QVariantList{7, 9});
+        core.state()->setGameValue(QStringLiteral("result"), QVariantMap{{QStringLiteral("winner"), QStringLiteral("rebel")}});
+        core.state()->setPlayerValue(QStringLiteral("other"), QStringLiteral("hand"), QVariantList{9});
+        core.state()->setCardValue(9, QStringLiteral("owner"), QStringLiteral("other"));
+        const QJsonObject state = ExcelView::publicState(core);
+        QCOMPARE(state.keys(), QStringList{QStringLiteral("game")});
+        const QJsonObject game = state.value(QStringLiteral("game")).toObject();
+        QVERIFY(game.value(QStringLiteral("started")).toBool());
+        QCOMPARE(game.value(QStringLiteral("draw_pile_count")).toInt(), 3);
+        QVERIFY(!game.contains(QStringLiteral("draw_pile")));
+        QVERIFY(!game.contains(QStringLiteral("guanxing")));
+        QVERIFY(!game.contains(QStringLiteral("result")));
+        core.state()->setGameValue(QStringLiteral("game_over"), true);
+        QCOMPARE(ExcelView::publicState(core).value(QStringLiteral("game")).toObject()
+                     .value(QStringLiteral("result")).toObject().value(QStringLiteral("winner")).toString(),
+                 QStringLiteral("rebel"));
+    }
+
     void snapshotIsRedactedAndNormalized()
     {
         ClientCore core;

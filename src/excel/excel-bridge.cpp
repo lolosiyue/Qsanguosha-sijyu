@@ -217,11 +217,7 @@ void ExcelBridge::log(const QString &text)
 
 QJsonObject ExcelBridge::snapshot() const
 {
-    QJsonObject state = m_core.state()->toJson();
-    // Presentation history can contain raw protocol payloads; only formatted,
-    // authorized lines cross the workbook boundary.
-    state.remove(QStringLiteral("presentation_events"));
-    state.remove(QStringLiteral("flow_counts"));
+    const QJsonObject state = ExcelView::publicState(m_core);
     QJsonObject interaction;
     if (m_core.hasActiveRequest()) {
         interaction = m_interactions.requestJson();
