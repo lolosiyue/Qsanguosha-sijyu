@@ -7,7 +7,7 @@ before they are exposed to Lua or a managed Room domain.
 | Site | Representation | Owner | Lease/release | Affinity | Implementation |
 | --- | --- | --- | --- | --- | --- |
 | `Card::Clone` | native Card pointer | caller | caller destruction | caller | PR1 / PR4 |
-| `WrappedCard::m_card` | native Card pointer | WrappedCard | replacement/destructor | Room thread for managed adoption | PR4 / PR5 |
+| `WrappedCard::m_card` | native Card pointer | WrappedCard | destructor; replacement retires the old generation through `retireAdopted()` (lease-gated drain, never inline delete) | canonical owner while adopted; a retired card returns to the registered turn worker of its domain | PR4 / PR5 / adoption retirement |
 | SWIG Card exposure | generation token | Card owner | wrapper release | invoking runtime | PR2 |
 | `Card::tag` | QVariant matrix | containing Card | overwrite/remove/destructor | containing Card | PR5 |
 | `Card::change_cards` | generation sidecar edge | source Card | source destruction | containing Card | PR4 / PR5 |
@@ -111,6 +111,24 @@ nanoseconds and maximum wait nanoseconds. The trace adds an atomic counter and a
 optimistic `tryLock()` to each acquisition, so trace runs are diagnostic evidence,
 not timing acceptance. The profile does not attribute contention to a Room/domain
 and does not include the separate card-association mutex.
+
+## Adopted inner card retirement
+
+`WrappedCard::takeOver()` / `copyEverythingFrom()` replace the adopted inner card
+(view-as delayed tricks, filter skills, `Room::resetCard` when a modified card enters
+the discard pile). The replaced generation may still be the running receiver
+(`DelayedTrick::onNullified()` throws itself and thereby resets its own wrapper), and
+payloads such as `CardMoveReason::m_extraData` hold native leases on its raw pointer.
+Deleting it inline freed it under those holders; the next payload copy dereferenced
+it in `retainVariantPayload()`.
+
+`CardLifetimeManager::retireAdopted()` therefore turns the `Adopted` generation into
+`PendingDelete` instead. On the domain's registered turn worker the card is first moved
+back to that worker, so `drainTurnDomain()` frees it at the next quiescent turn end once
+leases, wrappers, reservations and change edges are gone. Elsewhere it keeps its owner
+and is reclaimed by `drain()` or the shutdown `drainDomain()`. Unmanaged cards and
+`ObserveOnly` mode keep the previous destruction. `card-lifetime-wrapped-adoption`
+covers both the canonical-owner and the turn-worker paths.
 
 ## Initialization worker handoff
 
