@@ -201,11 +201,58 @@ function payloadOptions(payload: JsonObject): string[] {
 
 export function interactionView(bind: UiBind): HTMLElement {
   const { session, ui } = bind;
-  const root = el("section", { class: "prompt" });
+  // Keep one stable interaction envelope so content changes never move the
+  // confirmation/cancellation controls. The existing command branches still
+  // own their handlers and payload validation; only their mounting point is
+  // normalized here.
+  const root = el("div", { class: "interaction-content" });
+  const shell = el("section", { class: "interaction prompt" });
+  const header = el("header", { class: "interaction-header" });
+  const actions = el("div", { class: "interaction-actions" });
+  const confirmSlot = el("span", { class: "interaction-action-slot interaction-confirm-slot" });
+  const cancelSlot = el("span", { class: "interaction-action-slot interaction-cancel-slot" });
+  actions.append(confirmSlot, cancelSlot);
+  shell.append(header, root, actions);
+
+  const finalize = (): HTMLElement => {
+    const buttons = Array.from(root.children)
+      .filter((node): node is HTMLButtonElement => node instanceof HTMLButtonElement);
+    if (buttons.length === 2) {
+      // Every two-action branch constructs its primary action first and its
+      // cancellation/pass action second. This also covers 是／否 and 結束出牌
+      // without inferring semantics from translated button text or colour.
+      confirmSlot.append(buttons[0]);
+      cancelSlot.append(buttons[1]);
+    } else if (buttons.length === 1) {
+      const button = buttons[0];
+      (button.textContent?.trim() === "取消" ? cancelSlot : confirmSlot).append(button);
+    } else {
+      // Auxiliary controls are normally nested in candidate/draft rows. Keep
+      // any unexpected direct controls visible in content rather than treating
+      // them as confirmation semantics.
+      for (const button of buttons)
+        root.append(button);
+    }
+    if (!confirmSlot.querySelector("button")) {
+      const placeholder = el("button", { class: "interaction-action-placeholder" }, ["確定"]);
+      placeholder.type = "button";
+      placeholder.disabled = true;
+      placeholder.setAttribute("aria-hidden", "true");
+      confirmSlot.append(placeholder);
+    }
+    if (!cancelSlot.querySelector("button")) {
+      const placeholder = el("button", { class: "interaction-action-placeholder" }, ["取消"]);
+      placeholder.type = "button";
+      placeholder.disabled = true;
+      placeholder.setAttribute("aria-hidden", "true");
+      cancelSlot.append(placeholder);
+    }
+    return shell;
+  };
   const interaction = session.interaction;
   if (asBool(session.state.gameValue("game_over"))) {
     root.append(el("p", { class: "status" }, ["遊戲已結束"]));
-    return root;
+    return finalize();
   }
   if (!interaction) {
     if (!asBool(session.state.gameValue("started")))
@@ -216,17 +263,19 @@ export function interactionView(bind: UiBind): HTMLElement {
     const surrender = el("button", { class: "danger" }, ["投降"]);
     surrender.addEventListener("click", () => session.surrender());
     root.append(trust, surrender);
-    return root;
+    return finalize();
   }
   const { command, payload, messageId } = interaction;
-  root.append(el("h2", {}, [INTERACTION_TITLES[command] ?? `詢問 ${command}`]));
+  header.append(el("h2", {}, [INTERACTION_TITLES[command] ?? `詢問 ${command}`]));
   const prompt = asString(payload.prompt) || asString(payload.skill_name);
   if (prompt) {
     const text = asString(payload.prompt)
       ? formatInteractionPrompt(prompt, (name) => logPlayerName(session.state, name))
       : tr(prompt);
-    root.append(el("p", {}, [text]));
+    header.append(el("p", { class: "interaction-prompt" }, [text]));
   }
+  if (session.remainingInteractionMs() !== null)
+    header.append(el("span", { class: "interaction-deadline", role: "timer", "aria-live": "off" }));
   if (session.interactionError)
     root.append(el("p", { class: "error" }, [session.interactionError]));
 
@@ -247,10 +296,18 @@ export function interactionView(bind: UiBind): HTMLElement {
     const options = payloadOptions(payload);
     root.append(generalPicker(bind, options, (value) => {
       ui.selectedOption = value;
-      submit(() => replyForCommand(command, { option: value }));
+      bind.render();
     }));
+    const ok = el("button", { class: "primary" }, ["確定"]);
+    ok.disabled = !ui.selectedOption || !options.includes(ui.selectedOption);
+    ok.addEventListener("click", () => {
+      if (!ui.selectedOption)
+        return;
+      submit(() => replyForCommand(command, { option: ui.selectedOption }));
+    });
+    root.append(ok);
     root.append(cancel);
-    return root;
+    return finalize();
   }
 
   if (hasCommand(command, [
@@ -261,10 +318,18 @@ export function interactionView(bind: UiBind): HTMLElement {
     const options = payloadOptions(payload);
     root.append(optionButtons(bind, options, (value) => {
       ui.selectedOption = value;
-      submit(() => replyForCommand(command, { option: value }));
+      bind.render();
     }));
+    const ok = el("button", { class: "primary" }, ["確定"]);
+    ok.disabled = !ui.selectedOption || !options.includes(ui.selectedOption);
+    ok.addEventListener("click", () => {
+      if (!ui.selectedOption || !options.includes(ui.selectedOption))
+        return;
+      submit(() => replyForCommand(command, { option: ui.selectedOption }));
+    });
+    root.append(ok);
     root.append(cancel);
-    return root;
+    return finalize();
   }
 
   if (command === Command.INVOKE_SKILL || command === Command.SURRENDER || command === Command.LUCK_CARD) {
@@ -273,14 +338,24 @@ export function interactionView(bind: UiBind): HTMLElement {
     yes.addEventListener("click", () => submit(() => replyForCommand(command, { bool: true })));
     no.addEventListener("click", () => submit(() => replyForCommand(command, { bool: false })));
     root.append(yes, no);
-    return root;
+    return finalize();
   }
 
   if (command === Command.CHOOSE_ORDER) {
-    root.append(optionButtons(bind, ["0", "1"], (value) => {
-      submit(() => replyForCommand(command, { int: Number(value) }));
+    const options = ["0", "1"];
+    root.append(optionButtons(bind, options, (value) => {
+      ui.selectedOption = value;
+      bind.render();
     }));
-    return root;
+    const ok = el("button", { class: "primary" }, ["確定"]);
+    ok.disabled = !options.includes(ui.selectedOption);
+    ok.addEventListener("click", () => {
+      if (!options.includes(ui.selectedOption))
+        return;
+      submit(() => replyForCommand(command, { int: Number(ui.selectedOption) }));
+    });
+    root.append(ok, cancel);
+    return finalize();
   }
 
   if (command === Command.CHOOSE_ROLE) {
@@ -307,7 +382,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       return replyForCommand(command, { assignments });
     }));
     root.append(ok, cancel);
-    return root;
+    return finalize();
   }
 
   if (command === Command.CHOOSE_PLAYER) {
@@ -315,7 +390,7 @@ export function interactionView(bind: UiBind): HTMLElement {
     const ok = el("button", { class: "primary" }, ["送出"]);
     ok.addEventListener("click", () => submit(() => replyForCommand(command, { players: ui.selectedPlayers })));
     root.append(ok, cancel);
-    return root;
+    return finalize();
   }
 
   if (command === Command.SKILL_GUANXING) {
@@ -355,7 +430,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       zone(ui.bottom, true, false),
       nativeConfirm(bind, command, messageId, submit, "確定")
     );
-    return root;
+    return finalize();
   }
 
   if (command === Command.SKILL_YIJI) {
@@ -392,7 +467,7 @@ export function interactionView(bind: UiBind): HTMLElement {
         : `可交給：${candidates.map((name) => logPlayerName(session.state, name)).join("、") || "（無）"}`
     ]));
     root.append(nativeConfirm(bind, command, messageId, submit, "交給所選玩家"), cancel);
-    return root;
+    return finalize();
   }
 
   if (command === Command.ARRANGE_GENERAL) {
@@ -406,7 +481,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       generals: ui.selectedOption ? [ui.selectedOption, ...generals.filter((item) => item !== ui.selectedOption)] : generals
     })));
     root.append(ok, cancel);
-    return root;
+    return finalize();
   }
 
   if (command === Command.QML_INTERACT) {
@@ -419,7 +494,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       submit(() => replyForCommand(command, { qml: JSON.parse(area.value) as JsonObject }));
     });
     root.append(el("p", {}, ["未知 QML type 請填 JSON 或取消"]), area, ok, cancel);
-    return root;
+    return finalize();
   }
 
   if (command === Command.CHOOSE_CARD) {
@@ -451,7 +526,7 @@ export function interactionView(bind: UiBind): HTMLElement {
     const ok = el("button", { class: "primary" }, ["選這張"]);
     ok.addEventListener("click", () => submit(() => replyForCommand(command, { cardId: ui.selectedCards[0] ?? -1 })));
     root.append(row, ok, cancel);
-    return root;
+    return finalize();
   }
 
   if (command === Command.SKILL_GONGXIN) {
@@ -478,7 +553,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       row.append(card);
     }
     root.append(row, nativeConfirm(bind, command, messageId, submit), cancel);
-    return root;
+    return finalize();
   }
 
   if (command === Command.AMAZING_GRACE) {
@@ -489,7 +564,7 @@ export function interactionView(bind: UiBind): HTMLElement {
     const ok = el("button", { class: "primary" }, ["送出"]);
     ok.addEventListener("click", () => submit(() => replyForCommand(command, { cardId: ui.selectedCards[0] ?? 0 })));
     root.append(row, ok, cancel);
-    return root;
+    return finalize();
   }
 
   if (bind.rules.supports(command)) {
@@ -608,7 +683,7 @@ export function interactionView(bind: UiBind): HTMLElement {
     if (command === Command.PLAY_CARD)
       pass.addEventListener("click", () => submit(() => replyForCommand(command, { cancelled: true })));
     root.append(el("p", {}, ["依序選牌，再點目標頭像加一票；已選項目可單獨移除"]), ok, pass);
-    return root;
+    return finalize();
   }
 
   if (hasCommand(command, [Command.SHOW_CARD, Command.PINDIAN, Command.EXCHANGE_CARD, Command.DISCARD_CARD])) {
@@ -630,9 +705,9 @@ export function interactionView(bind: UiBind): HTMLElement {
       submit(() => replyForCommand(command, { cardText: physicalCardText(bind, ui.selectedCards) }));
     });
     root.append(el("p", {}, ["選牌後送出"]), ok, cancel);
-    return root;
+    return finalize();
   }
 
   root.append(el("p", { class: "error" }, [`未覆蓋的互動 ${command}`]), cancel);
-  return root;
+  return finalize();
 }

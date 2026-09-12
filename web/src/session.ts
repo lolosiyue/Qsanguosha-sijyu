@@ -82,6 +82,12 @@ export class LiveSession {
   private interactionDeadline: number | null = null;
   private interactionTimer: ReturnType<typeof setTimeout> | undefined;
 
+  /** Presentation reads the same deadline used by sendReply and expiry. */
+  remainingInteractionMs(): number | null {
+    return this.interaction && this.interactionDeadline !== null
+      ? Math.max(0, this.interactionDeadline - performance.now()) : null;
+  }
+
   private clearInteraction(): void {
     if (this.interactionTimer !== undefined)
       clearTimeout(this.interactionTimer);

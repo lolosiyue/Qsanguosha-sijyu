@@ -19,14 +19,16 @@ import {
   asNumber,
   asNumberList,
   asString,
+  asStringList,
   isObject
 } from "./protocol";
-import type { PlayerState } from "./state";
+import type { PlayerState, PresentationEvent } from "./state";
 import type { RulesSkill } from "./rules-client";
-import { renderCard, skillBaseName, visibleSkills } from "./ui-cards";
+import { cardLabel, renderCard, skillBaseName, visibleSkills } from "./ui-cards";
 import { el } from "./ui-dom";
 import { interactionView } from "./ui-interaction";
 import type { UiBind } from "./ui-types";
+import { nativeSeatRegion, seatLabel, seatRing } from "./ui-seat-layout";
 import { resultRoleLabel, summarizeGameResult } from "./game-result";
 
 function playerGeneralName(player: PlayerState | undefined): string {
@@ -83,6 +85,10 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
     class: `${kind}${name === session.state.selfName ? " self" : ""}${player?.alive === false ? " dead" : ""}${selected ? " selected" : ""}${(gameOver || kind === "photo" && !clickable) ? " disabled" : ""}`
   });
   button.type = "button";
+  button.dataset.focusKey = `player-${name}`;
+  button.setAttribute("aria-pressed", String(selected));
+  button.classList.toggle("current", asString(session.state.gameValue("current_player")) === name);
+  button.classList.toggle("focused", asStringList(session.state.gameValue("focus")).includes(name));
   button.disabled = gameOver;
   const art = el("div", { class: "photo-art" });
   if (general)
@@ -90,8 +96,9 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
   const kingdom = asString(player?.kingdom);
   if (kingdom)
     art.append(assetImg(kingdomIconUrls(kingdom), "", "kingdom"));
-  const role = asString(player?.role) || "unknown";
-  art.append(assetImg(roleIconUrls(role), "", "role"));
+  const role = asString(player?.role);
+  if (role)
+    art.append(assetImg(roleIconUrls(role), "", "role"));
   const hp = asNumber(player?.hp);
   const maxHp = asNumber(player?.max_hp);
   const mag = el("div", { class: "magatamas" });
@@ -109,9 +116,53 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
       targetRangeLabel(session.state, session.state.selfName, name, evaluation)
     ]));
   art.append(meta);
+  const marks = isObject(player?.marks)
+    ? Object.entries(player.marks).filter(([, value]) => asNumber(value) !== 0)
+      .map(([key, value]) => `${tr(key)}×${asNumber(value)}`).join("、")
+    : "";
+  const equipCount = session.state.cardsForPlayer(name, PLACE_EQUIP).length;
+  const judgeCount = session.state.cardsForPlayer(name, PLACE_DELAYED_TRICK).length;
+  const equipNames = session.state.cardsForPlayer(name, PLACE_EQUIP)
+    .map((id) => cardLabel(bind, id)).filter(Boolean).join("、");
+  const pileValue = player?.piles;
+  const pileText = isObject(pileValue)
+    ? Object.entries(pileValue).map(([key, value]) => `${tr(key)} ${asNumberList(value).length}`)
+      .filter((item) => !item.endsWith(" 0")).join("、")
+    : "";
+  const focusPlayers = asStringList(session.state.gameValue("focus"));
+  const phase = asString(player?.phase);
+  const phaseLabel: Record<string, string> = {
+    round_start: "回合開始", start: "開始", judge: "判定", draw: "摸牌",
+    play: "出牌", discard: "棄牌", finish: "回合結束", not_active: "非行動"
+  };
+  const stateText = [
+    asNumber(player?.seat, -1) > 0 ? `第 ${asNumber(player?.seat)} 席` : "座次未提供",
+    player?.alive === false ? "已死亡" : "",
+    selected ? "✓ 已選目標" : "",
+    kingdom ? `勢力 ${tr(kingdom)}` : "",
+    role ? `身分 ${tr(role)}` : "",
+    player?.chained === true ? "連環" : "",
+    player?.faceup === false ? "背面" : "",
+    marks ? `標記 ${marks}` : "",
+    equipNames ? `裝備 ${equipNames}` : `裝備 ${equipCount}`,
+    `判定 ${judgeCount}`,
+    pileText ? `牌堆 ${pileText}` : "",
+    phase ? `階段 ${phaseLabel[phase] ?? phase}` : "",
+    asString(session.state.gameValue("current_player")) === name ? "目前回合" : "",
+    focusPlayers.includes(name) ? "目前焦點" : ""
+  ].filter(Boolean).join(" · ");
   button.append(art);
+  if (stateText)
+    button.append(el("div", { class: "photo-details" }, [stateText]));
   button.addEventListener("click", () => bind.togglePlayer(name));
   const wrap = el("div", { class: `${kind}-wrap` });
+  wrap.dataset.player = name;
+  wrap.dataset.alive = player?.alive === false ? "false" : "true";
+  wrap.dataset.seat = String(asNumber(player?.seat, -1));
+  const handCount = session.state.playerValue(name, "hand_count");
+  if (typeof handCount === "number" || typeof handCount === "string")
+    wrap.dataset.handCount = String(asNumber(handCount));
+  wrap.setAttribute("aria-label", seatLabel(bind, name, 0));
   wrap.append(button);
   const tricks = session.state.cardsForPlayer(name, PLACE_DELAYED_TRICK);
   if (tricks.length) {
@@ -145,6 +196,7 @@ function tablePileView(bind: UiBind): HTMLElement {
 }
 
 export function tableView(bind: UiBind): HTMLElement {
+  const { ui } = bind;
   const table = el("div", { class: "table" });
   if (asBool(bind.session.state.gameValue("game_over"))) {
     // Keep long winner lists and the final board reachable on small viewports.
@@ -152,16 +204,92 @@ export function tableView(bind: UiBind): HTMLElement {
     table.tabIndex = 0;
     table.append(gameResultView(bind));
   }
-  const seats = el("div", { class: "photos" });
-  for (const name of bind.session.state.playerNames) {
+  const seats = el("div", { class: "photos seat-ring", role: "list", "aria-label": "座位環" });
+  const ring = seatRing(bind);
+  const seatFilter = bind.session.interaction ? (ui.presentation?.seatFilter ?? "all") : "all";
+  const legalCount = ring.filter((name) => name !== bind.session.state.selfName
+    && bind.isPlayerClickable(name)).length;
+  ring.forEach((name, index) => {
     if (name === bind.session.state.selfName)
-      continue;
-    seats.append(photoCard(bind, name, "photo"));
-  }
-  if (!seats.childElementCount)
+      return;
+    const card = photoCard(bind, name, "photo");
+    card.dataset.seatOrder = String(index);
+    card.dataset.region = nativeSeatRegion(bind, name);
+    card.dataset.legal = bind.isPlayerClickable(name) ? "true" : "false";
+    card.setAttribute("role", "listitem");
+    card.setAttribute("aria-label", seatLabel(bind, name, index));
+    seats.append(card);
+  });
+  // Keep every card in native ring order; CSS applies legal filtering only in strip mode.
+  seats.dataset.filter = seatFilter;
+  if (!ring.some((name) => name !== bind.session.state.selfName))
     seats.append(el("p", { class: "status" }, ["等待其他角色"]));
-  table.append(seats, tablePileView(bind));
+  const seatToolbar = el("nav", { class: "seat-toolbar", "aria-label": "座位巡覽" });
+  const focus = uiFocusPlayer(bind);
+  const filterButton = el("button", { type: "button", class: seatFilter === "legal" ? "active" : "" },
+    [seatFilter === "legal" ? `可選目標 ${legalCount} / ${ring.length}` : `全部座位（可選 ${legalCount}）`]);
+  filterButton.disabled = !bind.session.interaction;
+  filterButton.setAttribute("aria-pressed", seatFilter === "legal" ? "true" : "false");
+  filterButton.addEventListener("click", () => {
+    ui.presentation ??= {};
+    ui.presentation.seatFilter = seatFilter === "legal" ? "all" : "legal";
+    bind.render();
+  });
+  seatToolbar.append(filterButton);
+  const currentIndex = () => {
+    const saved = bind.ui.presentation?.browsedSeatIndex ?? 0;
+    return ring.length ? ((saved % ring.length) + ring.length) % ring.length : -1;
+  };
+  const move = (step: number) => {
+    if (!ring.length || seatFilter === "legal" && !legalCount) return;
+    let nextIndex = (currentIndex() + step + ring.length) % ring.length;
+    for (let tried = 0; seatFilter === "legal" && tried < ring.length && !bind.isPlayerClickable(ring[nextIndex]); ++tried)
+      nextIndex = (nextIndex + step + ring.length) % ring.length;
+    ui.presentation ??= {};
+    ui.presentation.browsedSeatIndex = nextIndex;
+    const next = ring[nextIndex];
+    const node = seats.querySelector<HTMLElement>(`[data-player="${CSS.escape(next)}"]`);
+    if (node) seats.scrollLeft = node.offsetLeft - (seats.clientWidth - node.clientWidth) / 2;
+  };
+  const jump = (name: string) => {
+    ui.presentation ??= {};
+    if (name === bind.session.state.selfName) {
+      document.querySelector<HTMLElement>(".dashboard .dash")?.focus({ preventScroll: true });
+      return;
+    }
+    if (seatFilter === "legal" && !bind.isPlayerClickable(name)) {
+      ui.presentation.seatFilter = "all";
+      ui.presentation.focusPlayer = "";
+      bind.render();
+      return;
+    }
+    ui.presentation.browsedSeatIndex = Math.max(0, ring.indexOf(name));
+    const node = seats.querySelector<HTMLElement>(`[data-player="${CSS.escape(name)}"]`);
+    if (node) seats.scrollLeft = node.offsetLeft - (seats.clientWidth - node.clientWidth) / 2;
+  };
+  for (const [label, action] of [["上一位", () => move(-1)], ["下一位", () => move(1)],
+    ["目前焦點", () => { if (focus) jump(focus); }], ["回到自己", () => {
+      ui.presentation ??= {};
+      ui.presentation.browsedSeatIndex = -1;
+      document.querySelector<HTMLElement>(".dashboard .dash")?.focus({ preventScroll: true });
+    }] ] as const) {
+    const button = el("button", { type: "button" }, [label]);
+    button.disabled = label === "目前焦點" && !focus;
+    button.addEventListener("click", action);
+    seatToolbar.append(button);
+  }
+  table.append(seatToolbar);
+  const center = el("div", { class: "table-center" });
+  center.append(tablePileView(bind));
+  table.append(seats, center);
   return table;
+}
+
+function uiFocusPlayer(bind: UiBind): string {
+  const focus = asStringList(bind.session.state.gameValue("focus"));
+  if (focus.length)
+    return focus[0];
+  return asString(bind.session.state.gameValue("current_player"));
 }
 
 export function gameResultView(bind: UiBind): HTMLElement {
@@ -196,23 +324,109 @@ export function gameResultView(bind: UiBind): HTMLElement {
 
 export function logView(bind: UiBind): HTMLElement {
   const { session, ui } = bind;
-  const log = el("div", { class: "log" });
-  for (const event of session.state.presentationEvents.slice(-80)) {
+  const panel = el("section", { class: "log-panel", "aria-label": "戰報與房內聊天" });
+  const battle = el("div", { class: "log battle-log", role: "log", "aria-label": "戰報" });
+  const chat = el("div", { class: "log chat-log", role: "log", "aria-label": "房內聊天" });
+  ui.presentation ??= {};
+  ui.presentation.mobileLogCollapsed ??= window.matchMedia("(max-width: 719px), (orientation: portrait)").matches;
+  const filter = ui.presentation.battleFilter ?? "all";
+  const filterBar = el("div", { class: "battle-filters", role: "toolbar", "aria-label": "戰報篩選" });
+  const filterNames: Array<[typeof filter, string]> = [["all", "全部"], ["mine", "我的"], ["damage", "傷害"], ["skill", "技能"]];
+  const categoriesOf = (event: PresentationEvent): string[] => {
+    const payload = event.payload ?? {};
+    const type = asString(payload.log_type);
+    const from = asString(payload.from_player);
+    const targets = asStringList(payload.to_players);
+    const mine = from === session.state.selfName || targets.includes(session.state.selfName);
+    const damage = /#(?:Damage|LoseHp|Recover|GetHp|ChangeHp)/u.test(type)
+      || event.command === Command.CHANGE_HP;
+    const skill = /#(?:UseSkill|InvokeSkill|Skill)/u.test(type);
+    const categories: string[] = [];
+    if (mine) categories.push("mine");
+    if (damage) categories.push("damage");
+    if (skill) categories.push("skill");
+    return categories.length ? categories : ["all"];
+  };
+  for (const [value, label] of filterNames) {
+    const button = el("button", { type: "button", class: value === filter ? "active" : "" }, [label]);
+    button.addEventListener("click", () => {
+      ui.presentation ??= {};
+      ui.presentation.battleFilter = value;
+      bind.render();
+    });
+    filterBar.append(button);
+  }
+  // Bound each stream independently so a busy battle log cannot erase chat history.
+  const events = session.state.presentationEvents;
+  const visibleEvents = [
+    ...events.filter((event) => event.command !== Command.SPEAK).slice(-80),
+    ...events.filter((event) => event.command === Command.SPEAK).slice(-80)
+  ];
+  for (const event of visibleEvents) {
     const line = formatPresentationEvent(event, (name) =>
       event.command === Command.SPEAK
         ? (asString(session.state.player(name)?.screen_name) || name)
         : logPlayerName(session.state, name));
-    if (line)
-      log.append(el("p", {}, [line]));
+    if (!line)
+      continue;
+    const target = event.command === Command.SPEAK ? chat : battle;
+    const item = el("p", { "data-category": categoriesOf(event).join(" ") }, [line]);
+    if (target === battle && filter !== "all" && !item.dataset.category?.split(" ").includes(filter))
+      item.hidden = true;
+    target.append(item);
   }
-  log.addEventListener("scroll", () => {
-    ui.logPinned = log.scrollHeight - log.scrollTop - log.clientHeight < 32;
+  battle.addEventListener("scroll", () => {
+    ui.logPinned = battle.scrollHeight - battle.scrollTop - battle.clientHeight < 32;
+    ui.presentation ??= {};
+    ui.presentation.battleScrollTop = battle.scrollTop;
+  });
+  chat.addEventListener("scroll", () => {
+    ui.presentation ??= {};
+    ui.presentation.chatScrollTop = chat.scrollTop;
+    ui.presentation.chatPinned = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 32;
   });
   requestAnimationFrame(() => {
     if (ui.logPinned)
-      log.scrollTop = log.scrollHeight;
+      battle.scrollTop = battle.scrollHeight;
+    else
+      battle.scrollTop = ui.presentation?.battleScrollTop ?? 0;
+    if (ui.presentation?.chatPinned ?? true)
+      chat.scrollTop = chat.scrollHeight;
+    else
+      chat.scrollTop = ui.presentation?.chatScrollTop ?? 0;
   });
-  return log;
+  const chatForm = el("form", { class: "chat-form" });
+  const draft = el("input", { id: "room-chat", class: "chat-draft", "data-focus-key": "room-chat", placeholder: "房內聊天", "aria-label": "房內聊天" });
+  draft.value = ui.presentation?.chatDraft ?? "";
+  draft.addEventListener("input", () => {
+    ui.presentation ??= {};
+    ui.presentation.chatDraft = draft.value;
+  });
+  const send = el("button", { type: "submit" }, ["送出"]);
+  chatForm.append(draft, send);
+  chatForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = draft.value.trim();
+    if (!text) return;
+    if (session.phase !== "active") return;
+    ui.presentation ??= {};
+    ui.presentation.chatDraft = "";
+    draft.value = "";
+    session.chat(text);
+  });
+  const collapsed = ui.presentation.mobileLogCollapsed === true;
+  const collapse = el("button", { type: "button", class: "log-collapse", "aria-expanded": String(!collapsed), "aria-label": collapsed ? "展開戰報與聊天" : "收起戰報與聊天" }, [collapsed ? "展開訊息" : "收起訊息"]);
+  collapse.addEventListener("click", () => {
+    ui.presentation ??= {};
+    ui.presentation.mobileLogCollapsed = !ui.presentation.mobileLogCollapsed;
+    bind.render();
+  });
+  if (collapsed)
+    panel.classList.add("is-collapsed");
+  panel.append(el("h2", { class: "sr-only" }, ["訊息流"]), collapse, filterBar,
+    el("h2", { class: "log-header" }, ["戰報"]), battle,
+    el("h2", { class: "log-header" }, ["聊天"]), chat, chatForm);
+  return panel;
 }
 
 function pileRow(bind: UiBind, player: string): HTMLElement {
@@ -292,10 +506,15 @@ function skillBar(bind: UiBind): HTMLElement {
 function handView(bind: UiBind): HTMLElement {
   const hand = el("div", { class: "hand" });
   const ids = bind.session.state.cardsForPlayer(bind.session.state.selfName, PLACE_HAND);
+  hand.style.setProperty("--hand-count", String(ids.length));
   if (ids.length === 0)
     hand.append(el("span", { class: "status" }, ["手牌空"]));
-  for (const id of ids)
-    hand.append(renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
+  for (const [index, id] of ids.entries()) {
+    const card = el("div", { class: "hand-card" });
+    card.style.setProperty("--hand-index", String(index));
+    card.append(renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
+    hand.append(card);
+  }
   return hand;
 }
 
@@ -310,7 +529,10 @@ export function dashboardView(bind: UiBind): HTMLElement {
     equips.append(el("span", { class: "status" }, ["裝備空"]));
   for (const id of equipIds)
     equips.append(renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
-  body.append(equips, pileRow(bind, self), skillBar(bind), handView(bind), interactionView(bind));
+  body.append(equips, pileRow(bind, self), skillBar(bind), handView(bind));
   dash.append(body);
+  const interaction = interactionView(bind);
+  interaction.classList.add("dashboard-interaction");
+  dash.append(interaction);
   return dash;
 }

@@ -54,7 +54,7 @@ function field(label: string, input: HTMLElement): HTMLElement {
 export function soloSetup(host: SoloUiHost): HTMLElement {
   const controller = host.controller;
   const panel = el("section", { class: "solo-setup", "aria-labelledby": "solo-heading" });
-  panel.append(el("h2", { id: "solo-heading" }, ["單機對局"]));
+  panel.append(el("div", { class: "section-heading" }, [el("div", {}, [el("h2", { id: "solo-heading" }, ["單機對局"]), el("p", { class: "status" }, ["使用現有單機內容，設定只保留在這台裝置。"])]), el("span", { class: "phase-badge" }, ["可用"])]));
   if (controller.status === "idle" || controller.status === "loading") {
     const load = el("button", { class: "primary", type: "button" }, [controller.status === "loading" ? "準備中…" : "開始設定"]);
     load.disabled = controller.status === "loading";
@@ -71,11 +71,11 @@ export function soloSetup(host: SoloUiHost): HTMLElement {
   }
   const catalog = controller.catalog;
   const options = catalogOptions(catalog);
-  const mode = el("select");
+  const mode = el("select", { id: "solo-mode", "data-focus-key": "solo-mode" });
   for (const item of catalog.modes)
     mode.append(el("option", { value: item.id }, [`${item.name}（${item.player_count}人）`]));
   mode.value = options.mode;
-  const packageSearch = el("input", { type: "search", placeholder: "搜尋武將／卡牌包" });
+  const packageSearch = el("input", { id: "solo-package-search", "data-focus-key": "solo-package-search", type: "search", placeholder: "搜尋武將／卡牌包" });
   const packageList = el("div", { class: "solo-check-list" });
   const selectedPackages = new Set(options.enabled_packages);
   const renderPackages = () => {
@@ -93,7 +93,7 @@ export function soloSetup(host: SoloUiHost): HTMLElement {
   packageSearch.addEventListener("input", renderPackages);
   renderPackages();
 
-  const generalSearch = el("input", { type: "search", placeholder: "搜尋武將" });
+  const generalSearch = el("input", { id: "solo-general-search", "data-focus-key": "solo-general-search", type: "search", placeholder: "搜尋武將" });
   const generalList = el("div", { class: "solo-check-list solo-general-list" });
   const bannedGenerals = new Set(options.ban_generals);
   const renderGenerals = () => {
@@ -109,10 +109,10 @@ export function soloSetup(host: SoloUiHost): HTMLElement {
   };
   generalSearch.addEventListener("input", renderGenerals);
   renderGenerals();
-  const name = el("input", { value: host.name, placeholder: "暱稱" });
-  const avatar = el("input", { value: host.avatar, placeholder: "頭像" });
-  const timeout = el("input", { type: "number", min: "0", max: "3600", step: "1", value: String(options.operation_timeout) });
-  const delay = el("input", { type: "number", min: "0", max: "60000", step: "1", value: String(options.ai_delay) });
+  const name = el("input", { id: "solo-name", "data-focus-key": "solo-name", value: host.name, placeholder: "暱稱" });
+  const avatar = el("input", { id: "solo-avatar", "data-focus-key": "solo-avatar", value: host.avatar, placeholder: "頭像" });
+  const timeout = el("input", { id: "solo-timeout", "data-focus-key": "solo-timeout", type: "number", min: "0", max: "3600", step: "1", value: String(options.operation_timeout) });
+  const delay = el("input", { id: "solo-delay", "data-focus-key": "solo-delay", type: "number", min: "0", max: "60000", step: "1", value: String(options.ai_delay) });
   const submit = el("button", { class: "primary", type: "button" }, ["開始單機對局"]);
   const busy = controller.status === "starting" || controller.status === "running" || controller.status === "stopping";
   submit.disabled = busy;
@@ -133,9 +133,13 @@ export function soloSetup(host: SoloUiHost): HTMLElement {
     saveOptions(next);
     host.start(next);
   });
-  panel.append(field("暱稱", name), field("頭像", avatar), field("模式", mode), field("啟用武將／卡牌包", packageSearch), packageList,
-    field("額外禁用武將", generalSearch), generalList, field("操作逾時（秒，0 為不限時）", timeout),
-    field("電腦行動延遲（毫秒）", delay), submit);
+  const content = el("div", { class: "solo-options" }, [field("暱稱", name), field("頭像代號", avatar), field("模式", mode)]);
+  const advanced = el("details", { class: "solo-advanced" });
+  advanced.append(el("summary", {}, ["進階設定", el("small", {}, ["卡牌包、禁用武將與節奏"])]),
+    field("啟用武將／卡牌包", packageSearch), packageList,
+    field("額外禁用武將", generalSearch), generalList,
+    field("操作逾時（秒，0 為不限時）", timeout), field("電腦行動延遲（毫秒）", delay));
+  panel.append(content, advanced, submit);
   return panel;
 }
 

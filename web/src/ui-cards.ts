@@ -85,14 +85,55 @@ export function renderCard(
   });
   button.type = "button";
   const objectName = cardObjectName(bind, cardId);
+  const label = hidden ? "暗牌" : cardLabel(bind, cardId);
+  // Keep selection and visibility states available to keyboard and assistive
+  // technology; CSS can then present the same state without guessing.
+  button.dataset.cardId = String(cardId);
+  button.dataset.cardLabel = label;
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", selected ? "true" : "false");
+  button.setAttribute("aria-disabled", (!selectable).toString());
+  button.setAttribute("aria-description", "長按查看牌面");
+  button.title = label;
   const face = hidden
     ? assetImg([CARD_BACK_URL], CARD_BACK_URL)
     : assetImg([cardFaceUrl(objectName)], UNKNOWN_CARD_URL);
-  const caption = el("span", { class: "card-caption" }, [hidden ? "暗牌" : cardLabel(bind, cardId)]);
+  const caption = el("span", { class: "card-caption" }, [label]);
   button.append(face, caption);
-  if (!selectable)
-    return button;
-  button.addEventListener("click", () => {
+  if (selected)
+    button.append(el("span", { class: "card-selected-badge", "aria-hidden": "true" }, ["✓ 已選"]));
+
+  let longPressTimer: ReturnType<typeof setTimeout> | undefined;
+  let longPressHandled = false;
+  button.addEventListener("pointerdown", () => {
+    longPressHandled = false;
+    longPressTimer = setTimeout(() => {
+      longPressHandled = true;
+      button.classList.add("inspecting");
+      button.dataset.inspecting = "true";
+      button.title = `牌面：${label}`;
+    }, 500);
+  });
+  const clearLongPress = () => {
+    if (longPressTimer !== undefined)
+      clearTimeout(longPressTimer);
+    longPressTimer = undefined;
+  };
+  button.addEventListener("pointerup", clearLongPress);
+  button.addEventListener("pointercancel", clearLongPress);
+  button.addEventListener("pointerleave", clearLongPress);
+  button.addEventListener("click", (event) => {
+    if (longPressHandled) {
+      longPressHandled = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    button.classList.remove("inspecting");
+    delete button.dataset.inspecting;
+    // Display-only cards remain inspectable, but can never mutate selection.
+    if (!selectable)
+      return;
     const mode = session.interaction ? useMode(session.interaction.command) : "free";
     const nativeRules = !!session.interaction && bind.rules.supports(session.interaction.command);
     if (nativeRules && !bind.isCardClickable(cardId))
