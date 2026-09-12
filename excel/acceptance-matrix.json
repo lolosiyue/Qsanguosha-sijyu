@@ -38,20 +38,27 @@
   ],
   "gates": {
     "inventory": "pending",
-    "candidate_package": "pending",
+    "candidate_package": "runtime-only-trial-staged; xlsm-missing",
     "vba_binary_and_module_hash": "manual-vbe-gate",
     "static_check": "passed",
-    "runtime_excel": "not-run",
-    "gameplay": "not-run",
+    "runtime_excel": "parent-process-only; VBA not tested",
+    "gameplay": "modern-05p-game-over-before-privacy-fix; full acceptance failed",
     "modern_debug_build": "passed",
     "legacy_debug_build": "passed",
     "focused_execution": "passed-modern-native",
-    "release_build": "not-run"
+    "release_build": "passed-modern-x64; legacy-release-not-run",
+    "cleanup": "bridge-helper-passed; Excel-Quit-rejected-forced-stop",
+    "public_state_regression": "modern-focused-10-passed; corrected-binary-full-game-not-run",
+    "release_dependency_cli": "passed-19-x64-PE-and-two-help; no-Engine-game-VBA-acceptance"
   },
   "limitations": [
     "Source inventory is evidence, not proof of complete registration coverage.",
-    "Debug builds and three modern native focused executables passed; all 28 Excel interaction paths, Release, deployment, Excel, VBE, legacy execution, full cleanup, CI and full gameplay remain unverified."
+    "Modern 05P reached GAME_OVER with a real Excel parent and HTTP driver, not worksheet VBA. Excel required forced termination. Public snapshot leak was then fixed and focused-tested; corrected binary full game, current legacy build, all-mode/content coverage, packaging and CI remain unverified."
   ],
   "build_evidence": "builds/excel-cp1-build-evidence.json",
-  "focused_evidence": "builds/excel-cp1-focused/results.json"
+  "focused_evidence": "builds/excel-cp1-focused/results.json",
+  "gameplay_evidence": "builds/excel-gameplay-05p-06/acceptance-summary.json",
+  "public_state_evidence": "builds/excel-public-state-focused/result.json",
+  "trial_folder": "C:/Users/a3160/Downloads/excel-release",
+  "trial_scope": "user approved remainder only because local Office activation blocks VBE"
 }

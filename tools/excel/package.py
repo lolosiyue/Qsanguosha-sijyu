@@ -152,6 +152,8 @@ def main() -> int:
     if len(tree_names) != len(args.tree):
         raise ValueError("duplicate runtime tree destinations")
     lua_root = next(p.resolve() for p in args.tree if p.resolve().name == "lua")
+    if any(not p.resolve().is_dir() for p in args.tree):
+        raise ValueError("every --tree input must be an existing directory")
     if not (lua_root / "ai").is_dir() or not any((lua_root / "ai").glob("*.lua")):
         raise ValueError("the lua runtime tree must include lua/ai scripts")
     dest.parent.mkdir(parents=True, exist_ok=True)
