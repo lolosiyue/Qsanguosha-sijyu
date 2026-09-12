@@ -320,6 +320,10 @@
 <context>
     <name>CardAssignDialog</name>
     <message>
+        <source>Search cards by name, ID or package</source>
+        <translation>按卡牌名称、内部名、编号或扩展包搜索</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/customassigndialog.cpp" line="1674"/>
         <source>Custom Card Chosen</source>
         <translation>自定义卡牌</translation>
@@ -1698,6 +1702,178 @@
 <context>
     <name>CustomAssignDialog</name>
     <message>
+        <source>Add mark by name</source>
+        <translation>按名称添加标记</translation>
+    </message>
+    <message>
+        <source>General default</source>
+        <translation>武将默认值</translation>
+    </message>
+    <message>
+        <source>Initial armor</source>
+        <translation>初始护甲</translation>
+    </message>
+    <message>
+        <source>Weapon slots</source>
+        <translation>武器栏数量</translation>
+    </message>
+    <message>
+        <source>Armor slots</source>
+        <translation>防具栏数量</translation>
+    </message>
+    <message>
+        <source>Defensive horse slots</source>
+        <translation>防御坐骑栏数量</translation>
+    </message>
+    <message>
+        <source>Offensive horse slots</source>
+        <translation>进攻坐骑栏数量</translation>
+    </message>
+    <message>
+        <source>Treasure slots</source>
+        <translation>宝物栏数量</translation>
+    </message>
+    <message>
+        <source>Default (1)</source>
+        <translation>默认（1 格）</translation>
+    </message>
+    <message>
+        <source>0 abolishes this area; larger values expand it.</source>
+        <translation>0 表示废除该区域，大于 1 表示扩充。</translation>
+    </message>
+    <message>
+        <source>Abolish judging area</source>
+        <translation>废除判定区</translation>
+    </message>
+    <message>
+        <source>Player count</source>
+        <translation>玩家人数</translation>
+    </message>
+    <message>
+        <source>Player settings</source>
+        <translation>玩家设置</translation>
+    </message>
+    <message>
+        <source>Advanced state</source>
+        <translation>进阶状态</translation>
+    </message>
+    <message>
+        <source>Scene rules</source>
+        <translation>场景规则</translation>
+    </message>
+    <message>
+        <source>Internal mark name (for example @HuJia)</source>
+        <translation>标记内部名称（例如 @HuJia）</translation>
+    </message>
+    <message>
+        <source>Mark names cannot contain spaces or , : * |.</source>
+        <translation>标记名称不能含空白或 , : * |。</translation>
+    </message>
+    <message>
+        <source>Mini scenario settings (*.txt)</source>
+        <translation>小型场景设置 (*.txt)</translation>
+    </message>
+    <message>
+        <source>Cannot read scene: %1</source>
+        <translation>无法读取场景：%1</translation>
+    </message>
+    <message>
+        <source>Line %1: %2</source>
+        <translation>第 %1 行：%2</translation>
+    </message>
+    <message>
+        <source>Invalid or duplicate draw-pile card.</source>
+        <translation>牌堆中存在无效或重复的卡牌。</translation>
+    </message>
+    <message>
+        <source>Invalid or repeated field.</source>
+        <translation>字段格式无效或重复。</translation>
+    </message>
+    <message>
+        <source>A scene needs 2 to 10 players with valid generals.</source>
+        <translation>场景须包含 2 至 10 名玩家，并设置有效武将。</translation>
+    </message>
+    <message>
+        <source>Unknown general: %1</source>
+        <translation>未知武将：%1</translation>
+    </message>
+    <message>
+        <source>Unsupported player role: %1</source>
+        <translation>不支持的玩家身份：%1</translation>
+    </message>
+    <message>
+        <source>Invalid value for %1.</source>
+        <translation>%1 的数值无效。</translation>
+    </message>
+    <message>
+        <source>HP exceeds the configured maximum.</source>
+        <translation>体力超过设置的上限，或上限调整后小于 1。</translation>
+    </message>
+    <message>
+        <source>Invalid judging-area state.</source>
+        <translation>判定区状态无效。</translation>
+    </message>
+    <message>
+        <source>Invalid mark; expected name*count.</source>
+        <translation>标记格式无效，请使用 名称*数量。</translation>
+    </message>
+    <message>
+        <source>Invalid equipment area; expected slot*count.</source>
+        <translation>装备栏格式无效，请使用 栏位编号*数量。</translation>
+    </message>
+    <message>
+        <source>Unknown kingdom: %1</source>
+        <translation>未知势力：%1</translation>
+    </message>
+    <message>
+        <source>Unsupported winner: %1</source>
+        <translation>不支持的胜利阵营：%1</translation>
+    </message>
+    <message>
+        <source>Invalid or duplicate card in %1.</source>
+        <translation>%1 中存在无效或重复的卡牌。</translation>
+    </message>
+    <message>
+        <source>A scene needs 2 to 10 players and exactly one starter.</source>
+        <translation>场景须包含 2 至 10 名玩家，并且恰好指定一名先手。</translation>
+    </message>
+    <message>
+        <source>%1: equipment exceeds the available slots.</source>
+        <translation>%1：装备数量超过可用栏位。</translation>
+    </message>
+    <message>
+        <source>%1: the abolished judging area still has cards.</source>
+        <translation>%1：已废除的判定区仍配置了卡牌。</translation>
+    </message>
+    <message>
+        <source>%1: a card is assigned more than once or is unavailable.</source>
+        <translation>%1：卡牌被重复分配或当前不可用。</translation>
+    </message>
+    <message>
+        <source>The draw-pile ending rule needs a configured pile.</source>
+        <translation>牌堆耗尽的结局条件需要预设牌堆。</translation>
+    </message>
+    <message>
+        <source>Cannot save scene: %1</source>
+        <translation>无法保存场景：%1</translation>
+    </message>
+    <message>
+        <source>Restore the judging area before assigning cards.</source>
+        <translation>请先恢复判定区，再配置判定牌。</translation>
+    </message>
+    <message>
+        <source>Equipment exceeds the available slots.</source>
+        <translation>装备数量超过可用栏位。</translation>
+    </message>
+    <message>
+        <source>The abolished judging area still has cards.</source>
+        <translation>已废除的判定区仍配置了卡牌。</translation>
+    </message>
+    <message>
+        <source>Conflicting or incomplete ending rules.</source>
+        <translation>结局条件互相冲突或缺少必要设置。</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/customassigndialog.cpp" line="31"/>
         <source>Custom mini scene</source>
         <translation>自定义小型场景</translation>
@@ -2489,6 +2665,10 @@
 <context>
     <name>GeneralAssignDialog</name>
     <message>
+        <source>Search generals by name, ID or package</source>
+        <translation>按武将名称、内部名或扩展包搜索</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/customassigndialog.cpp" line="1566"/>
         <source>Mini choose generals</source>
         <translation>小型场景选将</translation>
@@ -3090,6 +3270,69 @@
 </context>
 <context>
     <name>MainWindow</name>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="445"/>
+        <source>LOCAL GAME</source>
+        <translation>本地对局</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="451"/>
+        <source>Preparing local game</source>
+        <translation>正在准备本地游戏</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="461"/>
+        <source>Rules, AI, and room services are being prepared.</source>
+        <translation>正在准备规则、AI 与房间服务。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="500"/>
+        <source>Authenticating local server...</source>
+        <translation>正在验证本地服务器……</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="502"/>
+        <source>Validating shared rules...</source>
+        <translation>正在验证共享规则……</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="504"/>
+        <source>Initializing rules and extensions...</source>
+        <translation>正在初始化规则与扩展……</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="506"/>
+        <source>Preparing initial room...</source>
+        <translation>正在准备初始房间……</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="926"/>
+        <location filename="../src/dialog/mainwindow.cpp" line="937"/>
+        <source>Initializing local rules and AI...</source>
+        <translation>正在初始化本地规则和 AI……</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="849"/>
+        <location filename="../src/dialog/mainwindow.cpp" line="978"/>
+        <source>Starting local server...</source>
+        <translation>正在启动本地服务器……</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="973"/>
+        <location filename="../src/dialog/mainwindow.cpp" line="986"/>
+        <source>Connecting to local room...</source>
+        <translation>正在连接本地房间……</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="1085"/>
+        <source>Preparing replay takeover...</source>
+        <translation>正在准备接管录像对局……</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp" line="742"/>
+        <source>Stopping local server...</source>
+        <translation>正在停止本地服务器……</translation>
+    </message>
     <message>
         <location filename="../src/dialog/mainwindow.ui" line="14"/>
         <location filename="../src/dialog/mainwindow.cpp" line="49"/>
@@ -5998,6 +6241,14 @@ P = 你自己, R = 你所在的房间</translation>
 </context>
 <context>
     <name>SkillAssignDialog</name>
+    <message>
+        <source>Search skills by name or ID</source>
+        <translation>按技能名称或内部名搜索</translation>
+    </message>
+    <message>
+        <source>Choose a completion to add a skill; typing also filters assigned skills.</source>
+        <translation>从补全列表选择技能后添加；输入文字也会筛选已配置的技能。</translation>
+    </message>
     <message>
         <location filename="../src/dialog/customassigndialog.cpp" line="1769"/>
         <location filename="../src/dialog/customassigndialog.cpp" line="1846"/>

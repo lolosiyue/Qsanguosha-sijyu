@@ -42,7 +42,11 @@
 #endif
 #include <QStackedWidget>
 #include <QLabel>
+#include <QFrame>
+#include <QPainter>
+#include <QPixmap>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QVBoxLayout>
 #if QSAN_ENABLE_QML
 #include <QQuickWidget>
@@ -87,6 +91,85 @@ QString requestedHomeRenderHost()
     }
     return QStringLiteral("widget");
 }
+
+QString localLoadingBackdropPath()
+{
+	QStringList candidates;
+	const QString configuredPath = Config.BackgroundImage.trimmed();
+	if (!configuredPath.isEmpty()) {
+		candidates << (QDir::isAbsolutePath(configuredPath)
+			? configuredPath : QSanRuntimePaths::assetPath(configuredPath));
+	}
+	candidates << QSanRuntimePaths::assetPath(
+		QStringLiteral("image/system/backdrop/default.jpg"));
+	candidates << QSanRuntimePaths::assetPath(
+		QStringLiteral("image/system/backdrop/new-version.jpg"));
+
+	for (const QString &candidate : candidates) {
+		if (QFileInfo(candidate).isFile())
+			return candidate;
+	}
+	return QString();
+}
+
+class LocalLoadingPage final : public QWidget
+{
+public:
+	explicit LocalLoadingPage(QWidget *parent = nullptr)
+		: QWidget(parent)
+	{
+		setAttribute(Qt::WA_OpaquePaintEvent);
+	}
+
+	void setBackgroundImage(const QString &path)
+	{
+		if (path == m_backgroundPath)
+			return;
+		m_backgroundPath = path;
+		m_background = QPixmap(path);
+		update();
+	}
+
+protected:
+	void paintEvent(QPaintEvent *) override
+	{
+		QPainter painter(this);
+		painter.setRenderHint(QPainter::SmoothPixmapTransform);
+		painter.fillRect(rect(), QColor(QStringLiteral("#081321")));
+
+		if (!m_background.isNull() && width() > 0 && height() > 0) {
+			const qreal targetRatio = qreal(width()) / qreal(height());
+			const qreal imageRatio = qreal(m_background.width())
+				/ qreal(m_background.height());
+			QRectF sourceRect(QPointF(0, 0), m_background.size());
+			if (targetRatio > imageRatio) {
+				const qreal sourceHeight = m_background.width() / targetRatio;
+				sourceRect.setTop((m_background.height() - sourceHeight) / 2.0);
+				sourceRect.setHeight(sourceHeight);
+			} else {
+				const qreal sourceWidth = m_background.height() * targetRatio;
+				sourceRect.setLeft((m_background.width() - sourceWidth) / 2.0);
+				sourceRect.setWidth(sourceWidth);
+			}
+			painter.drawPixmap(QRectF(rect()), m_background, sourceRect);
+		}
+
+		QLinearGradient shade(0, 0, width(), height());
+		shade.setColorAt(0.0, QColor(3, 10, 19, 220));
+		shade.setColorAt(0.55, QColor(8, 20, 33, 168));
+		shade.setColorAt(1.0, QColor(3, 10, 18, 205));
+		painter.fillRect(rect(), shade);
+
+		QLinearGradient lowerFade(0, height() * 0.35, 0, height());
+		lowerFade.setColorAt(0.0, QColor(5, 13, 23, 0));
+		lowerFade.setColorAt(1.0, QColor(5, 13, 23, 145));
+		painter.fillRect(rect(), lowerFade);
+	}
+
+private:
+	QString m_backgroundPath;
+	QPixmap m_background;
+};
 
 }
 
@@ -319,45 +402,112 @@ void MainWindow::reloadHomePage()
 
 void MainWindow::setupLocalLoadingPage()
 {
-	localLoadingPage = new QWidget(pageStack);
+	LocalLoadingPage *loadingPage = new LocalLoadingPage(pageStack);
+	loadingPage->setBackgroundImage(localLoadingBackdropPath());
+	localLoadingPage = loadingPage;
 	localLoadingPage->setObjectName(QStringLiteral("localRoomLoadingPage"));
 	localLoadingPage->setStyleSheet(QStringLiteral(
-		"#localRoomLoadingPage { background: #0B1A2E; color: #E7F1FF; }"
-		"QLabel { color: #E7F1FF; }"));
+		"QFrame#localLoadingPanel {"
+		" background-color: rgba(8, 18, 31, 218);"
+		" border: 1px solid rgba(226, 190, 119, 108);"
+		" border-radius: 18px;"
+		"}"
+		"QLabel#localLoadingEyebrow { color: #E6C179; font-size: 12px; font-weight: 700; }"
+		"QLabel#localLoadingTitle { color: #FFF8E9; }"
+		"QLabel#localLoadingSubtitle { color: #B9C9DA; font-size: 14px; }"
+		"QLabel#localLoadingStatus { color: #F7FAFE; font-size: 15px; font-weight: 600; }"
+		"QFrame#localLoadingDivider { background: rgba(226, 190, 119, 72); border: none; }"
+		"QProgressBar#localLoadingProgress {"
+		" min-height: 8px; max-height: 8px; border: none; border-radius: 4px;"
+		" background: rgba(226, 236, 247, 35);"
+		"}"
+		"QProgressBar#localLoadingProgress::chunk {"
+		" border-radius: 4px; background: #D9AD5C;"
+		"}"
+		"QPushButton#localLoadingCancel {"
+		" min-width: 150px; padding: 8px 22px; color: #FFF8E9;"
+		" border: 1px solid rgba(226, 190, 119, 120); border-radius: 6px;"
+		" background: rgba(8, 18, 31, 205);"
+		"}"
+		"QPushButton#localLoadingCancel:hover { background: rgba(217, 173, 92, 95); }"));
 
 	QVBoxLayout *layout = new QVBoxLayout(localLoadingPage);
-	layout->setContentsMargins(48, 48, 48, 48);
-	layout->addStretch();
+	layout->setContentsMargins(42, 36, 42, 36);
+	layout->addStretch(2);
 
-	QLabel *title = new QLabel(tr("Preparing local game"), localLoadingPage);
+	QFrame *panel = new QFrame(localLoadingPage);
+	panel->setObjectName(QStringLiteral("localLoadingPanel"));
+	panel->setMinimumWidth(520);
+	panel->setMaximumWidth(680);
+	QVBoxLayout *panelLayout = new QVBoxLayout(panel);
+	panelLayout->setContentsMargins(54, 42, 54, 44);
+
+	QLabel *eyebrow = new QLabel(tr("LOCAL GAME"), panel);
+	eyebrow->setObjectName(QStringLiteral("localLoadingEyebrow"));
+	eyebrow->setAlignment(Qt::AlignCenter);
+	panelLayout->addWidget(eyebrow);
+	panelLayout->addSpacing(9);
+
+	QLabel *title = new QLabel(tr("Preparing local game"), panel);
+	title->setObjectName(QStringLiteral("localLoadingTitle"));
 	QFont titleFont = title->font();
-	titleFont.setPointSize(qMax(18, titleFont.pointSize() + 8));
+	titleFont.setPointSize(qMax(24, titleFont.pointSize() + 12));
 	titleFont.setBold(true);
 	title->setFont(titleFont);
 	title->setAlignment(Qt::AlignCenter);
-	layout->addWidget(title);
+	panelLayout->addWidget(title);
 
-	localLoadingStatus = new QLabel(localLoadingPage);
+	QLabel *subtitle = new QLabel(
+		tr("Rules, AI, and room services are being prepared."), panel);
+	subtitle->setObjectName(QStringLiteral("localLoadingSubtitle"));
+	subtitle->setAlignment(Qt::AlignCenter);
+	subtitle->setWordWrap(true);
+	panelLayout->addSpacing(8);
+	panelLayout->addWidget(subtitle);
+
+	QFrame *divider = new QFrame(panel);
+	divider->setObjectName(QStringLiteral("localLoadingDivider"));
+	divider->setFixedHeight(1);
+	panelLayout->addSpacing(24);
+	panelLayout->addWidget(divider);
+
+	localLoadingStatus = new QLabel(panel);
+	localLoadingStatus->setObjectName(QStringLiteral("localLoadingStatus"));
 	localLoadingStatus->setAlignment(Qt::AlignCenter);
 	localLoadingStatus->setWordWrap(true);
-	layout->addSpacing(16);
-	layout->addWidget(localLoadingStatus);
+	localLoadingStatus->setMinimumHeight(42);
+	panelLayout->addSpacing(18);
+	panelLayout->addWidget(localLoadingStatus);
 
-	localLoadingProgress = new QProgressBar(localLoadingPage);
+	localLoadingProgress = new QProgressBar(panel);
+	localLoadingProgress->setObjectName(QStringLiteral("localLoadingProgress"));
 	localLoadingProgress->setRange(0, 0);
 	localLoadingProgress->setTextVisible(false);
-	localLoadingProgress->setMaximumWidth(420);
-	layout->addSpacing(12);
-	layout->addWidget(localLoadingProgress, 0, Qt::AlignHCenter);
-	layout->addStretch();
+	localLoadingProgress->setMaximumWidth(500);
+	panelLayout->addSpacing(7);
+	panelLayout->addWidget(localLoadingProgress);
+
+	layout->addWidget(panel, 0, Qt::AlignHCenter);
+	layout->addStretch(3);
 
 	pageStack->addWidget(localLoadingPage);
 }
 
 void MainWindow::showLocalLoadingPage(const QString &status)
 {
+	static_cast<LocalLoadingPage *>(localLoadingPage)->setBackgroundImage(
+		localLoadingBackdropPath());
+	QString displayStatus = status;
+	if (status == QLatin1String("Authenticating local server..."))
+		displayStatus = tr("Authenticating local server...");
+	else if (status == QLatin1String("Validating shared rules..."))
+		displayStatus = tr("Validating shared rules...");
+	else if (status == QLatin1String("Initializing rules and extensions..."))
+		displayStatus = tr("Initializing rules and extensions...");
+	else if (status == QLatin1String("Preparing initial room..."))
+		displayStatus = tr("Preparing initial room...");
 	if (localLoadingStatus)
-		localLoadingStatus->setText(status);
+		localLoadingStatus->setText(displayStatus);
 	if (localLoadingProgress)
 		localLoadingProgress->show();
 	menuBar()->hide();
@@ -736,7 +886,8 @@ void MainWindow::setupLocalServerController()
 {
 	localServer = new LocalServerController(this);
 	QPushButton *cancel = new QPushButton(tr("Cancel"), localLoadingPage);
-	localLoadingPage->layout()->addWidget(cancel);
+	cancel->setObjectName(QStringLiteral("localLoadingCancel"));
+	localLoadingPage->layout()->addWidget(cancel, 0, Qt::AlignHCenter);
 	connect(cancel, &QPushButton::clicked, this, [this]() {
 		if (m_takeoverInProgress) rollbackTakeover(QString());
 		else { localServer->stop(); showHomePage(); }
