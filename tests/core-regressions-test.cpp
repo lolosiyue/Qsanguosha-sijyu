@@ -7,6 +7,7 @@
 #include "player.h"
 #include "room.h"
 #include "runtime/client-target-evaluator.h"
+#include "settings.h"
 #include "skill.h"
 #include "standard.h"
 #include "structs.h"
@@ -336,5 +337,80 @@ int runCardParseTests()
     }
 
     qInfo() << "Card::Parse LuaSkillCard #objectName regression passed";
+    return 0;
+}
+
+namespace {
+class EnvironmentGuard
+{
+public:
+    explicit EnvironmentGuard(const char *name)
+        : m_name(name), m_had(qEnvironmentVariableIsSet(name)), m_value(qgetenv(name))
+    {
+    }
+    ~EnvironmentGuard()
+    {
+        if (m_had)
+            qputenv(m_name, m_value);
+        else
+            qunsetenv(m_name);
+    }
+
+private:
+    const char *m_name;
+    bool m_had;
+    QByteArray m_value;
+};
+}
+
+// 首次啟動嘅玩家名。Linux 冇 USERNAME，而 USER 都冇嘅環境（容器、env -i、systemd）
+// 會得到空名，Protocol V2 signup 拒絕空 screen_name，「快速加入」就一直卡喺
+// Connecting to local room。Linux 以前仲讀錯 key（USERNAME），連線對話框寫入嘅
+// UserName 重開就冇咗。
+int runUserNameResolutionTests()
+{
+    EnvironmentGuard userName("USERNAME");
+    EnvironmentGuard user("USER");
+    EnvironmentGuard logName("LOGNAME");
+    qunsetenv("USERNAME");
+    qunsetenv("USER");
+    qunsetenv("LOGNAME");
+
+    if (Settings::resolveUserName(QStringLiteral("  Alice "), QStringLiteral("Legacy")) != QStringLiteral("Alice")) {
+        qCritical() << "a stored UserName must win, trimmed";
+        return 1;
+    }
+    if (Settings::resolveUserName(QString(), QStringLiteral("Legacy")) != QStringLiteral("Legacy")) {
+        qCritical() << "the legacy Linux USERNAME settings key must be honoured when UserName is unset";
+        return 2;
+    }
+    qputenv("LOGNAME", "logname-user");
+    if (Settings::resolveUserName(QString(), QString()) != QStringLiteral("logname-user")) {
+        qCritical() << "LOGNAME must be used when USERNAME and USER are unset";
+        return 3;
+    }
+    qputenv("USER", "user-user");
+    if (Settings::resolveUserName(QString(), QString()) != QStringLiteral("user-user")) {
+        qCritical() << "USER must be preferred over LOGNAME";
+        return 4;
+    }
+    qputenv("USERNAME", "windows-user");
+    if (Settings::resolveUserName(QString(), QString()) != QStringLiteral("windows-user")) {
+        qCritical() << "USERNAME must be preferred over USER";
+        return 5;
+    }
+    qunsetenv("USERNAME");
+    qunsetenv("USER");
+    qunsetenv("LOGNAME");
+    if (Settings::resolveUserName(QString(), QString()) != QStringLiteral("Player")) {
+        qCritical() << "with no stored name and no login variable the name must not be empty";
+        return 6;
+    }
+    if (Settings::resolveUserName(QStringLiteral("   "), QStringLiteral(" ")) != QStringLiteral("Player")) {
+        qCritical() << "a blank stored name must not be used";
+        return 7;
+    }
+
+    qInfo() << "first-run user name resolution passed";
     return 0;
 }

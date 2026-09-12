@@ -60,6 +60,9 @@ const Resolution &resolution();
 QString applicationDir();
 QString assetRoot();
 QString userDataRoot();
+// asset root 係咪打包版面（--asset-root／QSAN_ASSET_ROOT／安裝樹／可攜包）。
+// 未 resolve 或者開發樹就係 false。
+bool isPackaged();
 
 // Assets under assetRoot; on Android this is a writable copy. With relative empty, returns
 // assetRoot().

@@ -272,6 +272,12 @@ int EffectsSmokeController::execute()
             QStringLiteral("event loop exited before the effects smoke completed"),
             EffectsSmokeReport::SetupFailed);
     }
+    // Destroy the window - and with it the QQuickWidget's QML engine - while QApplication is
+    // still alive.  The QML type loader thread resolves its disk cache path through
+    // QStandardPaths::writableLocation(), which dereferences the application object, so an
+    // engine that outlives main() segfaults whenever a load is still in flight (reproducible
+    // with a cold QML cache: a fresh HOME crashed every run, a warm one almost never).
+    delete m_mainWindow.data();
     return m_exitCode != EffectsSmokeReport::Passed ? m_exitCode : rc;
 }
 
