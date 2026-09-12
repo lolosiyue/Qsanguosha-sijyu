@@ -21,6 +21,10 @@ public:
     bool hasValueOverride(const QString &key) const;
     void setValueOverrides(const QVariantMap &overrides);
     QVariantMap valueOverrides() const;
+    // First non-blank of: the stored UserName, the legacy Linux "USERNAME" key, the
+    // login name (USERNAME, USER, LOGNAME), "Player".  Never empty: the server refuses
+    // a signup without a screen name.
+    static QString resolveUserName(const QString &stored, const QString &legacyStored);
     Q_INVOKABLE QVariant getValue(const QString &key, const QVariant &defaultValue = QVariant()) const {
         return value(key, defaultValue);
     }
