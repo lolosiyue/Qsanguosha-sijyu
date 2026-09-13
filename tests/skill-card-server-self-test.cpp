@@ -9,8 +9,10 @@
 #include "engine-runtime-context.h"
 #include "card.h"
 #include "engine.h"
+#include "general.h"
 #include "player.h"
 #include "room-state.h"
+#include "skill.h"
 
 // Regression: the server revalidates every client/AI-selected use through
 // Room::areCardTargetsLegal(), where the engine-global Self is always nullptr.
@@ -21,6 +23,9 @@
 //   the play-phase activation, before the property exists, and dereferenced the
 //   null clone (08p network soak SIGSEGV, 2026-09-13).
 // - MTYinglveCard::targetFixed() read the global Self directly.
+// - Guhuo-style cards read their declared card from a client-only Self tag in
+//   the play phase, and a few target filters/enablement checks used the
+//   global Self instead of their player parameter.
 //
 // The package headers drag in UI headers, so cards are built through the engine
 // registry.
@@ -40,6 +45,11 @@ public:
     QString getGameMode() const override { return QStringLiteral("test"); }
     Player *getNextAlive(int = 1) const override { return const_cast<ServerSelfProbePlayer *>(this); }
     Player *getLastAlive(int = 1) const override { return const_cast<ServerSelfProbePlayer *>(this); }
+    int getHandcardNum() const override { return m_handcardNum; }
+    void setHandcardNum(int num) { m_handcardNum = num; }
+
+private:
+    int m_handcardNum = 0;
 };
 
 class ServerSelfContext : public EngineRuntimeContext
@@ -172,6 +182,103 @@ bool runMTYinglveChecks(ServerSelfContext &context, ServerSelfProbePlayer &owner
     return ok;
 }
 
+// Guhuo-style cards carry the declared card name in user_string (see their
+// viewAs); the client additionally keeps it in a Self tag set by the dialog,
+// which the server never has. In the play phase the server must still answer
+// from user_string instead of dereferencing the missing Self.
+bool runDeclaredCardChecks(const char *className, ServerSelfProbePlayer &owner,
+                           ServerSelfProbePlayer &other)
+{
+    const QList<const Player *> none;
+    const QByteArray name(className);
+    std::unique_ptr<SkillCard> card(Sanguosha->cloneSkillCard(QString::fromLatin1(className)));
+    if (!check(card != nullptr, (name + " is not registered").constData()))
+        return false;
+    bool ok = true;
+
+    card->setUserString(QStringLiteral("duel"));
+    ok &= check(!card->targetFixed(), (name + ": declared duel is not target-fixed").constData());
+    ok &= check(card->targetFilter(none, &other, &owner),
+                (name + ": declared duel may target another player").constData());
+    ok &= check(!card->targetFilter(none, &owner, &owner),
+                (name + ": declared duel cannot target its user").constData());
+    ok &= check(card->targetsFeasible(QList<const Player *>{&other}, &owner),
+                (name + ": declared duel with a target is feasible").constData());
+    ok &= check(!card->targetsFeasible(none, &owner),
+                (name + ": declared duel without a target is not feasible").constData());
+
+    card->setUserString(QStringLiteral("ex_nihilo"));
+    ok &= check(card->targetFixed(), (name + ": declared ex_nihilo is target-fixed").constData());
+    ok &= check(card->targetsFeasible(none, &owner),
+                (name + ": declared ex_nihilo without targets is feasible").constData());
+
+    // Nothing declared: answer without touching the missing engine Self.
+    card->setUserString(QString());
+    ok &= check(!card->targetsFeasible(QList<const Player *>{&other}, &owner),
+                (name + ": nothing declared is not feasible").constData());
+    card->targetFixed();
+    return ok;
+}
+
+bool runPlayerParameterChecks(ServerSelfContext &context, ServerSelfProbePlayer &owner,
+                              ServerSelfProbePlayer &other)
+{
+    const QList<const Player *> none;
+    bool ok = true;
+
+    // Target filters that must consult their Self parameter, not the engine global.
+    std::unique_ptr<Card> yanxiao(Sanguosha->cloneCard(QStringLiteral("YanxiaoCard")));
+    if (check(yanxiao != nullptr, "YanxiaoCard is not registered")) {
+        ok &= check(yanxiao->targetFilter(none, &other, &owner), "yanxiao may target a player");
+        ok &= check(!yanxiao->targetFilter(QList<const Player *>{&other}, &owner, &owner),
+                    "yanxiao takes a single target");
+    } else {
+        ok = false;
+    }
+
+    std::unique_ptr<SkillCard> zhufu(Sanguosha->cloneSkillCard(QStringLiteral("ZhufuCard")));
+    if (check(zhufu != nullptr, "ZhufuCard is not registered")) {
+        ok &= check(zhufu->targetFilter(none, &other, &owner), "zhufu may target another player");
+        ok &= check(!zhufu->targetFilter(none, &owner, &owner), "zhufu cannot target its user");
+    } else {
+        ok = false;
+    }
+
+    std::unique_ptr<SkillCard> wulie(Sanguosha->cloneSkillCard(QStringLiteral("OLWulieCard")));
+    if (check(wulie != nullptr, "OLWulieCard is not registered")) {
+        owner.setHp(1);
+        ok &= check(wulie->targetFilter(none, &other, &owner), "olwulie may target another player");
+        ok &= check(!wulie->targetFilter(none, &owner, &owner), "olwulie cannot target its user");
+        ok &= check(!wulie->targetFilter(QList<const Player *>{&other}, &other, &owner),
+                    "olwulie is limited by its user's hp");
+    } else {
+        ok = false;
+    }
+
+    std::unique_ptr<SkillCard> jieyin(Sanguosha->cloneSkillCard(QStringLiteral("TenyearJieyinCard")));
+    if (check(jieyin != nullptr, "TenyearJieyinCard is not registered")) {
+        const int armorId = 9101;
+        context.addCard(armorId, QStringLiteral("eight_diagram"));
+        jieyin->addSubcard(armorId);
+        other.setGender(General::Male);
+        ok &= check(jieyin->targetFilter(none, &other, &owner),
+                    "tenyear jieyin may give an equip to a male without that slot");
+    } else {
+        ok = false;
+    }
+
+    // View-as enablement consults its player argument.
+    const ViewAsSkill *xiedou = Sanguosha->getViewAsSkill(QStringLiteral("xiedou"));
+    if (check(xiedou != nullptr, "xiedou is not registered")) {
+        owner.setHandcardNum(3);
+        ok &= check(!xiedou->isEnabledAtPlay(&owner), "xiedou needs its user to have equips");
+        owner.setHandcardNum(0);
+    } else {
+        ok = false;
+    }
+    return ok;
+}
+
 } // namespace
 
 int runSkillCardServerSelfTests()
@@ -192,6 +299,13 @@ int runSkillCardServerSelfTests()
 
     bool ok = runShimouChecks(owner, other);
     ok &= runMTYinglveChecks(context, owner, other);
+    for (const char *className : {"GuhuoCard", "NosGuhuoCard", "HuomoCard", "InovationFengzhuCard",
+                                  "ZhanyiViewAsBasicCard", "TaoluanCard", "YHYurenCard",
+                                  "MTZhiheCard", "YizanCard", "MobileZhiMiewuCard",
+                                  "OLGuhuoCard", "JinBingxinCard"}) {
+        ok &= runDeclaredCardChecks(className, owner, other);
+    }
+    ok &= runPlayerParameterChecks(context, owner, other);
     if (!ok)
         return 2;
     qInfo() << "skill-card-server-self: PASS";

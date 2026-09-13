@@ -1044,7 +1044,7 @@ bool MobileZhiMiewuCard::targetFixed() const
 		return card->targetFixed();
 	}
 
-	const Card*_card = Self->getTag("mobilezhimiewu").value<const Card*>();
+	const Card*_card = Self ? Self->getTag("mobilezhimiewu").value<const Card*>() : nullptr;
 	if (_card == nullptr)
 		return false;
 

@@ -10641,7 +10641,7 @@ bool YizanCard::targetFixed() const
 		return card->targetFixed();
 	}
 
-	const Card *dc = Self->getTag("yizan").value<const Card *>();
+	const Card *dc = Self ? Self->getTag("yizan").value<const Card *>() : nullptr;
 	return dc && dc->targetFixed();
 }
 

@@ -1473,11 +1473,11 @@ bool GuhuoCard::targetFilter(const QList<const Player *> &targets, const Player 
         return false;
     }
 
-    const Card *_card = Self->getTag("guhuo").value<const Card *>();
-    if (_card == nullptr)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("guhuo").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card) : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == nullptr)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card);
     card->setCanRecast(false);
     card->deleteLater();
     return card && card->targetFilter(targets, to_select, Self);
@@ -1496,11 +1496,11 @@ bool GuhuoCard::targetFixed() const
         return true;
     }
 
-    const Card *_card = Self->getTag("guhuo").value<const Card *>();
-    if (_card == nullptr)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("guhuo").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card) : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == nullptr)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card);
     card->setCanRecast(false);
     card->deleteLater();
     return card && card->targetFixed();
@@ -1519,11 +1519,11 @@ bool GuhuoCard::targetsFeasible(const QList<const Player *> &targets, const Play
         return true;
     }
 
-    const Card *_card = Self->getTag("guhuo").value<const Card *>();
-    if (_card == nullptr)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("guhuo").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card) : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == nullptr)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card);
     card->setCanRecast(false);
     card->deleteLater();
     return card && card->targetsFeasible(targets, Self);
@@ -2135,11 +2135,11 @@ bool NosGuhuoCard::targetFilter(const QList<const Player *> &targets, const Play
         return false;
     }
 
-    const Card *_card = Self->getTag("nosguhuo").value<const Card *>();
-    if (_card == nullptr)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("nosguhuo").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card) : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == nullptr)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card);
     card->setCanRecast(false);
     card->deleteLater();
     return card->targetFilter(targets, to_select, Self);
@@ -2158,11 +2158,11 @@ bool NosGuhuoCard::targetFixed() const
         return true;
     }
 
-    const Card *_card = Self->getTag("nosguhuo").value<const Card *>();
-    if (_card == nullptr)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("nosguhuo").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card) : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == nullptr)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card);
     card->setCanRecast(false);
     card->deleteLater();
     return card->targetFixed();
@@ -2181,11 +2181,11 @@ bool NosGuhuoCard::targetsFeasible(const QList<const Player *> &targets, const P
         return true;
     }
 
-    const Card *_card = Self->getTag("nosguhuo").value<const Card *>();
-    if (_card == nullptr)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("nosguhuo").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card) : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == nullptr)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card);
     card->setCanRecast(false);
     card->deleteLater();
     return card->targetsFeasible(targets, Self);
