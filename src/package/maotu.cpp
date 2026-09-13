@@ -3491,42 +3491,41 @@ MTYinglveCard::MTYinglveCard()
     mute = true;
 }
 
-bool MTYinglveCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
+// The card recorded in mtyinglve_cardID, cloned so it can only be used (not
+// recast). Returns nullptr when there is no record or the room lacks the card.
+static Card *cloneMTYinglveCard(const Player *player)
 {
-    int id = Self->getMark("mtyinglve_cardID") - 1;
-    if (id < 0) return false;
+    if (!player) return nullptr;
+    int id = player->getMark("mtyinglve_cardID") - 1;
+    if (id < 0) return nullptr;
     const Card *c = Sanguosha->getCard(id);
-    if (!c) return false;
+    if (!c) return nullptr;
     Card *card = Sanguosha->cloneCard(c);
+    if (!card) return nullptr;
     card->addSubcard(c);
     card->setCanRecast(false);
     card->deleteLater();
+    return card;
+}
+
+bool MTYinglveCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
+{
+    Card *card = cloneMTYinglveCard(Self);
     return card && card->targetFilter(targets, to_select, Self);
 }
 
 bool MTYinglveCard::targetFixed() const
 {
-    int id = Self->getMark("mtyinglve_cardID") - 1;
-    if (id < 0) return false;
-    const Card *c = Sanguosha->getCard(id);
-    if (!c) return false;
-    Card *card = Sanguosha->cloneCard(c);
-    card->addSubcard(c);
-    card->setCanRecast(false);
-    card->deleteLater();
+    // The server has no engine Self. Report not-fixed there so
+    // Room::areCardTargetsLegal checks the use through the player-aware
+    // targetFilter/targetsFeasible, which handle target-fixed cards as well.
+    Card *card = cloneMTYinglveCard(Self);
     return card && card->targetFixed();
 }
 
 bool MTYinglveCard::targetsFeasible(const QList<const Player *> &targets, const Player *Self) const
 {
-    int id = Self->getMark("mtyinglve_cardID") - 1;
-    if (id < 0) return false;
-    const Card *c = Sanguosha->getCard(id);
-    if (!c) return false;
-    Card *card = Sanguosha->cloneCard(c);
-    card->addSubcard(c);
-    card->setCanRecast(false);
-    card->deleteLater();
+    Card *card = cloneMTYinglveCard(Self);
     return card && card->targetsFeasible(targets, Self);
 }
 
