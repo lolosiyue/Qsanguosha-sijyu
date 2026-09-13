@@ -3203,7 +3203,13 @@ bool YHYurenCard::targetFilter(const QList<const Player *> &targets, const Playe
 		return card && card->targetFilter(targets, to_select, Self) && !Self->isProhibited(to_select, card, targets);
 	}
 
-	const Card *card = Self->getTag("yhyuren").value<const Card *>();
+	// The server has no engine Self or dialog tag; fall back to the declared card.
+	const Card *card = Self ? Self->getTag("yhyuren").value<const Card *>() : nullptr;
+	if (!card) {
+	    Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+	    if (declared) declared->deleteLater();
+	    card = declared;
+	}
 	return card && card->targetFilter(targets, to_select, Self) && !Self->isProhibited(to_select, card, targets);
 }
 
@@ -3218,7 +3224,13 @@ bool YHYurenCard::targetFixed() const
 		return card && card->targetFixed();
 	}
 
-	const Card *card = Self->getTag("yhyuren").value<const Card *>();
+	// The server has no engine Self or dialog tag; fall back to the declared card.
+	const Card *card = Self ? Self->getTag("yhyuren").value<const Card *>() : nullptr;
+	if (!card) {
+	    Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+	    if (declared) declared->deleteLater();
+	    card = declared;
+	}
 	return card && card->targetFixed();
 }
 
@@ -3233,7 +3245,13 @@ bool YHYurenCard::targetsFeasible(const QList<const Player *> &targets, const Pl
 		return card && card->targetsFeasible(targets, Self);
 	}
 
-	const Card *card = Self->getTag("yhyuren").value<const Card *>();
+	// The server has no engine Self or dialog tag; fall back to the declared card.
+	const Card *card = Self ? Self->getTag("yhyuren").value<const Card *>() : nullptr;
+	if (!card) {
+	    Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+	    if (declared) declared->deleteLater();
+	    card = declared;
+	}
 	return card && card->targetsFeasible(targets, Self);
 }
 

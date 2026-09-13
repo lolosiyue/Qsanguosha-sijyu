@@ -1003,7 +1003,13 @@ bool TaoluanCard::targetFilter(const QList<const Player *> &targets, const Playe
     } else if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE) {
         return false;
     }
-    const Card *card = Self->getTag(this_skill_name).value<const Card *>();
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *card = Self ? Self->getTag(this_skill_name).value<const Card *>() : nullptr;
+    if (!card) {
+        Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+        if (declared) declared->deleteLater();
+        card = declared;
+    }
     return card && card->targetFilter(targets, to_select, Self);
 }
 
@@ -1019,7 +1025,13 @@ bool TaoluanCard::targetFixed() const
         return true;
     }
 
-    const Card *card = Self->getTag(this_skill_name).value<const Card *>();
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *card = Self ? Self->getTag(this_skill_name).value<const Card *>() : nullptr;
+    if (!card) {
+        Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+        if (declared) declared->deleteLater();
+        card = declared;
+    }
     return card && card->targetFixed();
 }
 
@@ -1035,7 +1047,13 @@ bool TaoluanCard::targetsFeasible(const QList<const Player *> &targets, const Pl
         return true;
     }
 
-    const Card *card = Self->getTag(this_skill_name).value<const Card *>();
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *card = Self ? Self->getTag(this_skill_name).value<const Card *>() : nullptr;
+    if (!card) {
+        Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+        if (declared) declared->deleteLater();
+        card = declared;
+    }
     return card && card->targetsFeasible(targets, Self);
 }
 

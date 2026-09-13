@@ -2140,7 +2140,7 @@ bool MTZhiheCard::targetFixed() const
 		return card->targetFixed();
 	}
 
-    const Card *_card = Self->getTag("mtzhihe").value<const Card *>();
+    const Card *_card = Self ? Self->getTag("mtzhihe").value<const Card *>() : nullptr;
     if (_card == nullptr)
         return true;
 
