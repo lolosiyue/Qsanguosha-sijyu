@@ -3324,7 +3324,7 @@ bool JinBingxinCard::targetFixed() const
 		card->deleteLater();
 		return card->targetFixed();
 	}
-	card = Self->getTag("jinbingxin").value<Card *>();
+	card = Self ? Self->getTag("jinbingxin").value<Card *>() : nullptr;
 	return card && card->targetFixed();
 }
 

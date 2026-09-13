@@ -1288,7 +1288,7 @@ YanxiaoCard::YanxiaoCard(Suit suit, int number)
     will_throw = false;
 }
 
-bool YanxiaoCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const
+bool YanxiaoCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
     if (Self->isProhibited(to_select,this))
         return false;

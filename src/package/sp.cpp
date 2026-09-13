@@ -1681,7 +1681,13 @@ bool ZhanyiViewAsBasicCard::targetFilter(const QList<const Player *> &targets, c
         return false;
     }
 
-    const Card *card = Self->getTag("zhanyi").value<const Card *>();
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *card = Self ? Self->getTag("zhanyi").value<const Card *>() : nullptr;
+    if (!card) {
+        Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+        if (declared) declared->deleteLater();
+        card = declared;
+    }
     return card && card->targetFilter(targets, to_select, Self);
 }
 
@@ -1695,7 +1701,13 @@ bool ZhanyiViewAsBasicCard::targetFixed() const
         return true;
     }
 
-    const Card *card = Self->getTag("zhanyi").value<const Card *>();
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *card = Self ? Self->getTag("zhanyi").value<const Card *>() : nullptr;
+    if (!card) {
+        Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+        if (declared) declared->deleteLater();
+        card = declared;
+    }
     return card && card->targetFixed();
 }
 
@@ -1710,7 +1722,13 @@ bool ZhanyiViewAsBasicCard::targetsFeasible(const QList<const Player *> &targets
         return true;
     }
 
-    const Card *card = Self->getTag("zhanyi").value<const Card *>();
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *card = Self ? Self->getTag("zhanyi").value<const Card *>() : nullptr;
+    if (!card) {
+        Card *declared = Sanguosha->cloneCard(user_string.split("+").first());
+        if (declared) declared->deleteLater();
+        card = declared;
+    }
     return card && card->targetsFeasible(targets, Self);
 }
 

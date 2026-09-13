@@ -2363,7 +2363,7 @@ public:
 
     bool isEnabledAtPlay(const Player *player) const
     {
-        return !player->hasFlag("XiedouUsed") && player->getHandcardNum() > player->getEquips().length() && Self->getEquips().length() > 0;
+        return !player->hasFlag("XiedouUsed") && player->getHandcardNum() > player->getEquips().length() && player->getEquips().length() > 0;
     }
 
     bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const
@@ -3551,11 +3551,12 @@ bool InovationFengzhuCard::targetFilter(const QList<const Player *> &targets, co
         return card && card->targetFilter(targets, to_select, Self) && !Self->isProhibited(to_select, card, targets);
     }
 
-    const Card *_card = Self->getTag("inovation_fengzhu").value<const Card *>();
-    if (_card == NULL)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("inovation_fengzhu").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card->objectName(), Card::NoSuit, 0)
+        : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == NULL)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card->objectName(), Card::NoSuit, 0);
     card->setCanRecast(false);
     card->deleteLater();
     return card && card->targetFilter(targets, to_select, Self) && !Self->isProhibited(to_select, card, targets);
@@ -3570,11 +3571,12 @@ bool InovationFengzhuCard::targetFixed() const
         return card && card->targetFixed();
     }
 
-    const Card *_card = Self->getTag("inovation_fengzhu").value<const Card *>();
-    if (_card == NULL)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("inovation_fengzhu").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card->objectName(), Card::NoSuit, 0)
+        : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == NULL)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card->objectName(), Card::NoSuit, 0);
     card->setCanRecast(false);
     card->deleteLater();
     return card && card->targetFixed();
@@ -3589,11 +3591,12 @@ bool InovationFengzhuCard::targetsFeasible(const QList<const Player *> &targets,
         return card && card->targetsFeasible(targets, Self);
     }
 
-    const Card *_card = Self->getTag("inovation_fengzhu").value<const Card *>();
-    if (_card == NULL)
+    // The server has no engine Self or dialog tag; fall back to the declared card.
+    const Card *_card = Self ? Self->getTag("inovation_fengzhu").value<const Card *>() : nullptr;
+    Card *card = _card ? Sanguosha->cloneCard(_card->objectName(), Card::NoSuit, 0)
+        : Sanguosha->cloneCard(user_string.split("+").first());
+    if (card == NULL)
         return false;
-
-    Card *card = Sanguosha->cloneCard(_card->objectName(), Card::NoSuit, 0);
     card->setCanRecast(false);
     card->deleteLater();
     return card && card->targetsFeasible(targets, Self);

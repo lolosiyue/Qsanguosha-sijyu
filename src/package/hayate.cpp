@@ -2319,7 +2319,7 @@ ZhufuCard::ZhufuCard()
 {
 }
 
-bool ZhufuCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const
+bool ZhufuCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
     return targets.length() < 4 && to_select != Self;
 }

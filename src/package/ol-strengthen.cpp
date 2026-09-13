@@ -773,7 +773,7 @@ bool OLGuhuoCard::targetFixed() const
 		return card->targetFixed();
 	}
 
-	const Card *_card = Self->getTag("olguhuo").value<const Card *>();
+	const Card *_card = Self ? Self->getTag("olguhuo").value<const Card *>() : nullptr;
 	if (_card == nullptr)
 		return false;
 
@@ -1857,7 +1857,7 @@ OLWulieCard::OLWulieCard()
 	mute = true;
 }
 
-bool OLWulieCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const
+bool OLWulieCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
 	return targets.length() < Self->getHp() && to_select != Self;
 }
@@ -4175,7 +4175,7 @@ bool OLGanluCard::targetFilter(const QList<const Player *> &targets, const Playe
 
 void OLGanluCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
-	if(qAbs(targets.first()->getEquips().length() - targets.last()->getEquips().length()) > Self->getLostHp()){
+	if(qAbs(targets.first()->getEquips().length() - targets.last()->getEquips().length()) > source->getLostHp()){
 		room->throwCard(this,getSkillName(),source);
 	}
 	LogMessage log;

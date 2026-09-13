@@ -128,7 +128,7 @@ TenyearJieyinCard::TenyearJieyinCard()
 	handling_method = Card::MethodNone;
 }
 
-bool TenyearJieyinCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const
+bool TenyearJieyinCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
 	if (!targets.isEmpty()||!to_select->isMale()) return false;
 	const Card *card = Sanguosha->getCard(getEffectiveId());
