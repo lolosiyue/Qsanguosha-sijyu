@@ -136,13 +136,20 @@ void WrappedCard::adoptCard(Card *card, bool requireId)
     if (oldCard) {
         m_isModified = true;
         // Legacy takeOver()/copyEverythingFrom() hand the retired inner card's
-        // tags (and, for takeOver, its flags) to the replacement before deleting.
+        // tags (and, for takeOver, its flags) to the replacement before retiring it.
         for (auto it = oldCard->tag.cbegin(); it != oldCard->tag.cend(); ++it)
             card->setTag(it.key(), it.value());
         if (!requireId)
             card->setFlags(oldCard->getFlags());
-        const bool destroyed = destroyOwnedCard(oldCard);
-        Q_ASSERT(destroyed);
+        // The replaced card may still be the running receiver (for example a
+        // nullified view-as DelayedTrick whose onNullified() throws itself into the
+        // discard pile, which resets this wrapper), and event payloads such as
+        // CardMoveReason::m_extraData lease its raw pointer. Deleting it here freed
+        // it under those holders; hand it back to lease-gated reclamation instead.
+        if (!lifetimeManager.retireAdopted(oldCard, moveCardToOwner)) {
+            const bool destroyed = destroyOwnedCard(oldCard);
+            Q_ASSERT(destroyed);
+        }
     }
     m_card = card;
     lifetimeManager.cancelAdoption(token);
