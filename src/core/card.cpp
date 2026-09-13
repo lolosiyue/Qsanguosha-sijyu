@@ -401,18 +401,11 @@ QString Card::getLogName() const
 		suit_char = QString("<img src='image/system/log/%1.png' height=12/>").arg(getSuitString());
 		break;
 	}
-	case NoSuitRed: {
-		suit_char = tr("NoSuitRed");
+	case NoSuitRed:
+	case NoSuitBlack:
+	case NoSuit:
+		suit_char = Sanguosha->translate(getSuitString());
 		break;
-	}
-	case NoSuitBlack: {
-		suit_char = tr("NoSuitBlack");
-		break;
-	}
-	case NoSuit: {
-		suit_char = tr("NoSuit");
-		break;
-	}
 	default:
 		break;
 	}

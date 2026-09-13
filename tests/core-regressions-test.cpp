@@ -1,6 +1,7 @@
 #include "card.h"
 #include "ai.h"
 #include "engine-bootstrap.h"
+#include "engine.h"
 #include "general.h"
 #include "lua-wrapper.h"
 #include "package.h"
@@ -337,6 +338,39 @@ int runCardParseTests()
     }
 
     qInfo() << "Card::Parse LuaSkillCard #objectName regression passed";
+
+    // Virtual cards are created as Slash(NoSuit, 0). getLogName() formats
+    // them as 杀[suit]; if the suit string is the raw Qt tr() key, the log
+    // shows [NoSuit] instead of 无色. That started after lupdate marked the
+    // Card context translations vanished when card.cpp left the GUI target.
+    const struct {
+        Card::Suit suit;
+        const char *key;
+        const char *raw;
+    } colorless[] = {
+        {Card::NoSuit, "no_suit", "NoSuit"},
+        {Card::NoSuitRed, "no_suit_red", "NoSuitRed"},
+        {Card::NoSuitBlack, "no_suit_black", "NoSuitBlack"},
+    };
+    for (const auto &entry : colorless) {
+        Slash slash(entry.suit, 0);
+        const QString logName = slash.getLogName();
+        const QString translated = Sanguosha->translate(QLatin1String(entry.key));
+        if (translated.isEmpty() || translated == QLatin1String(entry.key)) {
+            qCritical() << "lang is missing" << entry.key;
+            return 9;
+        }
+        if (logName.contains(QLatin1String(entry.raw))) {
+            qCritical() << "getLogName left" << entry.raw << "untranslated:" << logName;
+            return 10;
+        }
+        if (!logName.contains(translated)) {
+            qCritical() << "getLogName missing" << translated << "got" << logName;
+            return 11;
+        }
+    }
+
+    qInfo() << "Card::getLogName colorless-suit translation passed";
     return 0;
 }
 
