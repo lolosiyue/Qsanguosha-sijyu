@@ -12,6 +12,7 @@ int runEnumReflectionTests();
 int runPackagePolicyTests();
 int runMigratedGeneralPackageTests();
 int runEquipsNullifiedTests();
+int runShimouCardTests();
 int runUserNameResolutionTests();
 // The suites below are the main() functions of standalone test files, merged
 // in by CMake via COMPILE_DEFINITIONS main=... renaming, so the signatures
@@ -74,6 +75,9 @@ int main(int argc, char **argv)
         const int equipsNullified = runEquipsNullifiedTests();
         if (equipsNullified != 0)
             return 170 + equipsNullified;
+        const int shimouCard = runShimouCardTests();
+        if (shimouCard != 0)
+            return 180 + shimouCard;
         return runEnumReflectionTests();
     };
 
@@ -81,6 +85,8 @@ int main(int argc, char **argv)
         return runAll();
     if (suite == QLatin1String("equips-nullified"))
         return runEquipsNullifiedTests();
+    if (suite == QLatin1String("shimou-card"))
+        return runShimouCardTests();
     if (suite == QLatin1String("self-bridge"))
         return runEngineSelfBridgeTests();
     if (suite == QLatin1String("card-parse"))

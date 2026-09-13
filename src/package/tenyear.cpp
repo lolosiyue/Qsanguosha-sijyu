@@ -5219,44 +5219,59 @@ ShimouCard::ShimouCard()
 	handling_method = Card::MethodUse;
 }
 
+// The forced follow-up ("@@shimou!") uses the trick recorded in shimouPN
+// ("shimou1:<user>:<card>") on behalf of <user>. Returns nullptr while the record
+// is missing or names no card; the play-phase activation runs before it exists.
+static Card *cloneShimouFollowUp(const Player *owner, const Player *&user)
+{
+	user = owner;
+	if (!owner) return nullptr;
+	QStringList pnts = owner->property("shimouPN").toString().split(":");
+	if (pnts.length() < 3) return nullptr;
+	Card *card = Sanguosha->cloneCard(pnts.last());
+	if (!card) return nullptr;
+	card->setSkillName("shimou");
+	card->deleteLater();
+	foreach (const Player *p, owner->getAliveSiblings(true)){
+		if(pnts[1]==p->objectName()){
+			user = p;
+			break;
+		}
+	}
+	return card;
+}
+
 bool ShimouCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
 	if (Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE)
 		return false;
-	QStringList pnts = Self->property("shimouPN").toString().split(":");
-	Card *card = Sanguosha->cloneCard(pnts.last());
-	card->setSkillName("shimou");
-	card->deleteLater();
-	foreach (const Player *p, Self->getAliveSiblings(true)){
-		if(pnts[1]==p->objectName())
-			return card->targetFilter(targets, to_select, p);
-	}
-	return card->targetFilter(targets, to_select, Self);
+	// The activation chooses its own targets in onUse.
+	if (user_string.isEmpty()) return false;
+	const Player *user = nullptr;
+	Card *card = cloneShimouFollowUp(Self, user);
+	return card && card->targetFilter(targets, to_select, user);
 }
 
 bool ShimouCard::targetFixed() const
 {
-	if (user_string.isEmpty()||!Self) return true;
-	QStringList pnts = Self->property("shimouPN").toString().split(":");
-	Card *card = Sanguosha->cloneCard(pnts.last());
-	card->setSkillName("shimou");
-	card->deleteLater();
-	return card->targetFixed();
+	if (user_string.isEmpty()) return true;
+	// The server has no engine Self. Report not-fixed there so
+	// Room::areCardTargetsLegal checks the follow-up through the player-aware
+	// targetFilter/targetsFeasible, which handle target-fixed tricks as well.
+	if (!Self) return false;
+	const Player *user = nullptr;
+	Card *card = cloneShimouFollowUp(Self, user);
+	return !card || card->targetFixed();
 }
 
 bool ShimouCard::targetsFeasible(const QList<const Player *> &targets, const Player *Self) const
 {
 	if (Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE)
 		return true;
-	QStringList pnts = Self->property("shimouPN").toString().split(":");
-	Card *card = Sanguosha->cloneCard(pnts.last());
-	card->setSkillName("shimou");
-	card->deleteLater();
-	foreach (const Player *p, Self->getAliveSiblings(true)){
-		if(pnts[1]==p->objectName())
-			return card->targetsFeasible(targets, p);
-	}
-	return card->targetsFeasible(targets, Self);
+	if (user_string.isEmpty()) return targets.isEmpty();
+	const Player *user = nullptr;
+	Card *card = cloneShimouFollowUp(Self, user);
+	return card && card->targetsFeasible(targets, user);
 }
 
 void ShimouCard::onUse(Room *room, CardUseStruct &use) const
