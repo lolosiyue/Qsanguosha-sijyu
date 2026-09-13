@@ -237,6 +237,122 @@ def test_legacy_network_runner_is_no_longer_windows_only() -> None:
     print("PASS test_legacy_network_runner_is_no_longer_windows_only")
 
 
+def _drive_network_runner(start_outcomes, runs):
+    """Run network_runner.run_mode against scripted fakes.
+
+    start_outcomes is consumed once per client launch: "start" means the game
+    started (and then finishes normally), "died" means the server exited
+    before the start marker.  Returns (results, client launch count)."""
+    import tempfile
+    import types
+
+    import network_runner as nr
+
+    outcomes = list(start_outcomes)
+    launches = []
+    pending_over = []
+
+    class Proc:
+        def poll(self):
+            return None
+
+    def fake_spawn(cmd, cwd, log_path, console=False, env=None):
+        if "--auto-robots" in cmd:
+            launches.append(cmd)
+        return Proc()
+
+    def fake_wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=None):
+        if pending_over:
+            pending_over.pop()
+            return "[AUTOTEST] game over lord", start_offset
+        outcome = outcomes.pop(0) if outcomes else "start"
+        if outcome == "died":
+            return "SERVER_DIED", start_offset
+        pending_over.append(True)
+        return "[AUTOTEST] game start", start_offset
+
+    patches = {
+        "find_exe": lambda root, name: name,
+        "spawn": fake_spawn,
+        "wait_port": lambda port, timeout, proc=None: True,
+        "wait_for_marker": fake_wait_for_marker,
+        "wait_exit": lambda proc, timeout: 0,
+        "terminate_tree": lambda proc: None,
+        "close_proc": lambda proc: None,
+        "tail_lines": lambda path, n: [],
+        "log_has_smart_ai_failure": lambda path: False,
+        "_backup_runtime_files": lambda workdir, run_dir, run_id: None,
+        "restart_server": lambda *a, **k: Proc(),
+        "time": types.SimpleNamespace(sleep=lambda s: None, time=lambda: 0),
+    }
+    saved = {name: getattr(nr, name) for name in patches}
+    try:
+        for name, value in patches.items():
+            setattr(nr, name, value)
+        with tempfile.TemporaryDirectory() as tmp:
+            args = types.SimpleNamespace(log_dir=tmp, port=1, console=False, general2="")
+            results = nr.run_mode(args, tmp, tmp, "08p", runs, "zhenji")
+    finally:
+        for name, value in saved.items():
+            setattr(nr, name, value)
+    return results, len(launches)
+
+
+def test_network_runner_retries_the_same_game_after_a_pre_start_server_crash() -> None:
+    results, launches = _drive_network_runner(["died", "start", "start"], runs=2)
+    passed = [r["run"] for r in results if r["ok"]]
+    assert passed == [1, 2], (
+        "a server crash before game start must retry that game, not consume it: "
+        f"got results {results}"
+    )
+    assert launches == 3, f"expected 2 games + 1 retry, got {launches} client launches"
+    crashed = [r for r in results if not r["ok"]]
+    assert len(crashed) == 1 and crashed[0]["run"] == 1, (
+        f"the pre-start crash must still be reported as a failure: {results}"
+    )
+    print("PASS test_network_runner_retries_the_same_game_after_a_pre_start_server_crash")
+
+
+def test_network_runner_bounds_pre_start_crash_retries() -> None:
+    results, launches = _drive_network_runner(["died"] * 50, runs=1)
+    assert launches <= 1 + nr_max_start_retries(), (
+        f"pre-start crash retries must be bounded, got {launches} client launches"
+    )
+    assert results and not any(r["ok"] for r in results), results
+    print("PASS test_network_runner_bounds_pre_start_crash_retries")
+
+
+def test_wait_for_marker_reads_markers_written_before_the_server_died() -> None:
+    import tempfile
+
+    import network_runner as nr
+
+    class Dead:
+        def poll(self):
+            return -11
+
+    with tempfile.TemporaryDirectory() as tmp:
+        marker = Path(tmp) / "autotest.log"
+        marker.write_text("[AUTOTEST] addRobot\n[AUTOTEST] game start\n", encoding="utf-8")
+        line, _ = nr.wait_for_marker(str(marker), lambda l: nr.MARK_GAME_START in l,
+                                     5, 0, server_proc=Dead())
+        assert line == "[AUTOTEST] game start", (
+            "a server that wrote the start marker and then crashed must be seen as "
+            f"started (so the crash is classified mid-game), got {line!r}"
+        )
+        marker.write_text("[AUTOTEST] addRobot\n", encoding="utf-8")
+        line, _ = nr.wait_for_marker(str(marker), lambda l: nr.MARK_GAME_START in l,
+                                     5, 0, server_proc=Dead())
+        assert line == "SERVER_DIED", f"no start marker + dead server must be SERVER_DIED, got {line!r}"
+    print("PASS test_wait_for_marker_reads_markers_written_before_the_server_died")
+
+
+def nr_max_start_retries() -> int:
+    import network_runner as nr
+
+    return nr.MAX_START_RETRIES
+
+
 def test_runner_uses_real_tcp_with_a_fixed_recorded_seed() -> None:
     text = read(RUNNER)
     assert "free_tcp_port()" in text, (
@@ -565,6 +681,9 @@ def main() -> int:
         test_controller_reports_every_exit_path,
         test_runner_common_is_cross_platform,
         test_legacy_network_runner_is_no_longer_windows_only,
+        test_network_runner_retries_the_same_game_after_a_pre_start_server_crash,
+        test_network_runner_bounds_pre_start_crash_retries,
+        test_wait_for_marker_reads_markers_written_before_the_server_died,
         test_runner_uses_real_tcp_with_a_fixed_recorded_seed,
         test_evaluator_accepts_a_complete_successful_run,
         test_evaluator_rejects_a_missing_result_marker,
