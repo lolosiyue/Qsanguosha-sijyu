@@ -40,6 +40,7 @@ GAME_TIMEOUT: Final[int] = int(
     os.environ.get("QSAN_NETWORK_GAME_TIMEOUT", "3600")
 )  # 可由環境變數覆寫的單局有界上限 (秒)
 CLIENT_JOIN_TIMEOUT = 120     # 等 client 連上並開局 (秒)
+MAX_START_RETRIES = 2         # server 開局前閃退時, 同一局最多重試次數
 
 
 def read_markers(log_path, offset):
@@ -57,13 +58,15 @@ def wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=No
     offset = start_offset
     deadline = time.time() + timeout
     while time.time() < deadline:
-        # 自動化測試: 等待期間監控 server 存活 — 閃退時提前回傳 SERVER_DIED
-        if server_proc is not None and server_proc.poll() is not None:
-            return "SERVER_DIED", offset
+        # 自動化測試: 等待期間監控 server 存活 — 閃退時提前回傳 SERVER_DIED。
+        # 先取存活狀態再讀標記: 死前寫下的標記仍算數, 開局後隨即閃退才不會被當成開局前閃退
+        died = server_proc is not None and server_proc.poll() is not None
         offset, lines = read_markers(log_path, offset)
         for line in lines:
             if predicate(line):
                 return line, offset
+        if died:
+            return "SERVER_DIED", offset
         time.sleep(0.3)
     return None, offset
 
@@ -136,8 +139,14 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
         print("  server 就緒 (port %d)" % port)
 
         marker_offset = 0
-        for run_id in range(1, runs + 1):
-            client_log = os.path.join(run_dir, "run%d.log" % run_id)
+        run_id = 0
+        start_retries = 0
+        while run_id < runs:
+            if start_retries == 0:
+                run_id += 1
+            # 重試用獨立檔名, 保留閃退那次嘗試的 client log
+            client_log = os.path.join(run_dir, "run%d%s.log" % (
+                run_id, "-retry%d" % start_retries if start_retries else ""))
             # 自動化測試: 閃退局沒有完整 record; 唯一即時記錄是
             # <workdir>/record/debug.txt 與 lua/ai/cstring{,Event},
             # 下局開始即被覆寫。在 spawn 新 client 前各複製一份,
@@ -157,21 +166,32 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 CLIENT_JOIN_TIMEOUT, marker_offset, server_proc=proc)
             ccode = None
             if start_line == "SERVER_DIED":
-                # 自動化測試: server 閃退 — 重啟後重試本局
+                # 自動化測試: server 閃退 — 記一筆失敗, 重啟後重試本局 (有上限)
                 terminate_tree(client)
                 close_proc(client)
                 ctx = tail_lines(marker_file, 20)
                 for line in ctx:
                     print("          %s" % line)
+                results.append({"run": run_id, "ok": False,
+                                "note": "server crashed before game start (attempt %d)"
+                                        % (start_retries + 1),
+                                "exit_name": "server"})
+                if start_retries < MAX_START_RETRIES:
+                    start_retries += 1
+                    reason = "server 閃退, 重啟後重試本局 (%d/%d)" % (
+                        start_retries, MAX_START_RETRIES)
+                else:
+                    start_retries = 0
+                    print("  [FAIL] 局 %d: server 開局前連續閃退, 放棄本局" % run_id)
+                    reason = "server 開局前連續閃退, 重啟後繼續下一局"
                 proc = restart_server(args, exe_root, workdir, mode, proc,
-                                      marker_file, server_log, server_exe,
-                                      "server 閃退, 重啟後重試本局")
+                                      marker_file, server_log, server_exe, reason)
                 if proc is None:
                     break
                 marker_offset = 0
-                run_id -= 1  # 本局重試
                 time.sleep(1)
                 continue
+            start_retries = 0
             if start_line is None:
                 ccode = wait_exit(client, 5)
                 if ccode is None:
