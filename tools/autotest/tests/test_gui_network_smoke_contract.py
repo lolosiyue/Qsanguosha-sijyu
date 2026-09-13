@@ -242,7 +242,9 @@ def _drive_network_runner(start_outcomes, runs):
 
     start_outcomes is consumed once per client launch: "start" means the game
     started (and then finishes normally), "died" means the server exited
-    before the start marker.  Returns (results, client launch count)."""
+    before the start marker, and "client_lost" means the game started but the
+    client exited before game over (the server still finishes the game).
+    Returns (results, client launch count, restart_server call count)."""
     import tempfile
     import types
 
@@ -251,6 +253,7 @@ def _drive_network_runner(start_outcomes, runs):
     outcomes = list(start_outcomes)
     launches = []
     pending_over = []
+    restarts = []
 
     class Proc:
         def poll(self):
@@ -261,28 +264,36 @@ def _drive_network_runner(start_outcomes, runs):
             launches.append(cmd)
         return Proc()
 
-    def fake_wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=None):
+    def fake_wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=None,
+                             client_proc=None):
         if pending_over:
+            if pending_over[-1] == "client_lost" and client_proc is not None:
+                pending_over[-1] = "start"
+                return "CLIENT_DIED", start_offset
             pending_over.pop()
             return "[AUTOTEST] game over lord", start_offset
         outcome = outcomes.pop(0) if outcomes else "start"
         if outcome == "died":
             return "SERVER_DIED", start_offset
-        pending_over.append(True)
+        pending_over.append(outcome)
         return "[AUTOTEST] game start", start_offset
+
+    def fake_restart_server(*args, **kwargs):
+        restarts.append(args[-1] if args else kwargs.get("reason"))
+        return Proc()
 
     patches = {
         "find_exe": lambda root, name: name,
         "spawn": fake_spawn,
         "wait_port": lambda port, timeout, proc=None: True,
         "wait_for_marker": fake_wait_for_marker,
-        "wait_exit": lambda proc, timeout: 0,
+        "wait_exit": lambda proc, timeout: 1,
         "terminate_tree": lambda proc: None,
         "close_proc": lambda proc: None,
         "tail_lines": lambda path, n: [],
         "log_has_smart_ai_failure": lambda path: False,
         "_backup_runtime_files": lambda workdir, run_dir, run_id: None,
-        "restart_server": lambda *a, **k: Proc(),
+        "restart_server": fake_restart_server,
         "time": types.SimpleNamespace(sleep=lambda s: None, time=lambda: 0),
     }
     saved = {name: getattr(nr, name) for name in patches}
@@ -295,11 +306,11 @@ def _drive_network_runner(start_outcomes, runs):
     finally:
         for name, value in saved.items():
             setattr(nr, name, value)
-    return results, len(launches)
+    return results, len(launches), len(restarts)
 
 
 def test_network_runner_retries_the_same_game_after_a_pre_start_server_crash() -> None:
-    results, launches = _drive_network_runner(["died", "start", "start"], runs=2)
+    results, launches, _ = _drive_network_runner(["died", "start", "start"], runs=2)
     passed = [r["run"] for r in results if r["ok"]]
     assert passed == [1, 2], (
         "a server crash before game start must retry that game, not consume it: "
@@ -314,7 +325,7 @@ def test_network_runner_retries_the_same_game_after_a_pre_start_server_crash() -
 
 
 def test_network_runner_bounds_pre_start_crash_retries() -> None:
-    results, launches = _drive_network_runner(["died"] * 50, runs=1)
+    results, launches, _ = _drive_network_runner(["died"] * 50, runs=1)
     assert launches <= 1 + nr_max_start_retries(), (
         f"pre-start crash retries must be bounded, got {launches} client launches"
     )
@@ -345,6 +356,98 @@ def test_wait_for_marker_reads_markers_written_before_the_server_died() -> None:
                                      5, 0, server_proc=Dead())
         assert line == "SERVER_DIED", f"no start marker + dead server must be SERVER_DIED, got {line!r}"
     print("PASS test_wait_for_marker_reads_markers_written_before_the_server_died")
+
+
+def test_network_runner_reports_a_client_lost_mid_game() -> None:
+    results, launches, restarts = _drive_network_runner(["client_lost", "start"], runs=2)
+    assert [r["run"] for r in results] == [1, 2], results
+    lost, normal = results
+    assert not lost["ok"] and "client" in lost["note"] and "winner=lord" in lost["note"], (
+        f"a client that exits before game over must fail that game, got {lost}"
+    )
+    assert normal["ok"], f"the next game must still run and pass, got {normal}"
+    assert launches == 2 and restarts == 0, (
+        "a client lost without a crash signal leaves the server healthy: no retry, "
+        f"no restart (launches={launches}, restarts={restarts})"
+    )
+    print("PASS test_network_runner_reports_a_client_lost_mid_game")
+
+
+class _FakeClock:
+    """Deterministic stand-in for network_runner.time: sleep() advances now."""
+
+    def __init__(self, on_sleep=None):
+        self.now = 1000.0
+        self.sleeps = 0
+        self.on_sleep = on_sleep
+
+    def time(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps += 1
+        self.now += seconds
+        if self.on_sleep:
+            self.on_sleep(self.sleeps)
+
+
+def _wait_with_clock(clock, marker, **kwargs):
+    import network_runner as nr
+
+    saved = nr.time
+    nr.time = clock
+    try:
+        return nr.wait_for_marker(str(marker), lambda l: nr.MARK_GAME_OVER.search(l),
+                                  3600, 0, **kwargs)
+    finally:
+        nr.time = saved
+
+
+def test_wait_for_marker_reports_a_client_that_exits_before_the_marker() -> None:
+    import tempfile
+
+    import network_runner as nr
+
+    class Alive:
+        def poll(self):
+            return None
+
+    class Exited:
+        def poll(self):
+            return 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        marker = Path(tmp) / "autotest.log"
+        marker.write_text("[AUTOTEST] game start\n", encoding="utf-8")
+
+        clock = _FakeClock()
+        line, _ = _wait_with_clock(clock, marker, server_proc=Alive(), client_proc=Exited())
+        assert line == "CLIENT_DIED", f"an exited client with no game over must be reported, got {line!r}"
+        assert clock.now - 1000.0 >= nr.CLIENT_EXIT_GRACE, (
+            "the client verdict must wait out the grace period for a game-over marker"
+        )
+
+        # A client that quits as the game ends: the marker lands inside the grace.
+        def write_over(sleeps):
+            if sleeps == 2:
+                with open(marker, "a", encoding="utf-8") as f:
+                    f.write("[AUTOTEST] game over rebel\n")
+
+        line, _ = _wait_with_clock(_FakeClock(write_over), marker,
+                                   server_proc=Alive(), client_proc=Exited())
+        assert line == "[AUTOTEST] game over rebel", (
+            f"a game-over marker inside the grace period is a normal end, got {line!r}"
+        )
+
+        # A dead server still wins over a lost client.
+        class Dead:
+            def poll(self):
+                return -11
+
+        marker.write_text("[AUTOTEST] game start\n", encoding="utf-8")
+        line, _ = _wait_with_clock(_FakeClock(), marker, server_proc=Dead(), client_proc=Exited())
+        assert line == "SERVER_DIED", f"a dead server must be reported first, got {line!r}"
+    print("PASS test_wait_for_marker_reports_a_client_that_exits_before_the_marker")
 
 
 def nr_max_start_retries() -> int:
@@ -684,6 +787,8 @@ def main() -> int:
         test_network_runner_retries_the_same_game_after_a_pre_start_server_crash,
         test_network_runner_bounds_pre_start_crash_retries,
         test_wait_for_marker_reads_markers_written_before_the_server_died,
+        test_network_runner_reports_a_client_lost_mid_game,
+        test_wait_for_marker_reports_a_client_that_exits_before_the_marker,
         test_runner_uses_real_tcp_with_a_fixed_recorded_seed,
         test_evaluator_accepts_a_complete_successful_run,
         test_evaluator_rejects_a_missing_result_marker,

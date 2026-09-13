@@ -41,6 +41,7 @@ GAME_TIMEOUT: Final[int] = int(
 )  # 可由環境變數覆寫的單局有界上限 (秒)
 CLIENT_JOIN_TIMEOUT = 120     # 等 client 連上並開局 (秒)
 MAX_START_RETRIES = 2         # server 開局前閃退時, 同一局最多重試次數
+CLIENT_EXIT_GRACE = 10        # client 退出後等局末標記的寬限 (秒)
 
 
 def read_markers(log_path, offset):
@@ -54,19 +55,29 @@ def read_markers(log_path, offset):
     return new_offset, data.decode("utf-8", errors="replace").splitlines()
 
 
-def wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=None):
+def wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=None,
+                    client_proc=None):
     offset = start_offset
     deadline = time.time() + timeout
+    client_deadline = None
     while time.time() < deadline:
         # 自動化測試: 等待期間監控 server 存活 — 閃退時提前回傳 SERVER_DIED。
         # 先取存活狀態再讀標記: 死前寫下的標記仍算數, 開局後隨即閃退才不會被當成開局前閃退
         died = server_proc is not None and server_proc.poll() is not None
+        client_gone = client_proc is not None and client_proc.poll() is not None
         offset, lines = read_markers(log_path, offset)
         for line in lines:
             if predicate(line):
                 return line, offset
         if died:
             return "SERVER_DIED", offset
+        # client 退出 (如 WSLg compositor 崩潰斷線) 時 server 仍會託管打完該局;
+        # 給一段寬限等標記, 以免把「局末 client 先退出」誤判為局中斷線
+        if client_gone:
+            if client_deadline is None:
+                client_deadline = time.time() + CLIENT_EXIT_GRACE
+            elif time.time() >= client_deadline:
+                return "CLIENT_DIED", offset
         time.sleep(0.3)
     return None, offset
 
@@ -211,9 +222,21 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 time.sleep(1)
                 continue
 
+            game_started_at = time.time()
             over_line, marker_offset = wait_for_marker(
                 marker_file, lambda l: MARK_GAME_OVER.search(l),
-                GAME_TIMEOUT, marker_offset, server_proc=proc)
+                GAME_TIMEOUT, marker_offset, server_proc=proc, client_proc=client)
+            lost_note = ""
+            if over_line == "CLIENT_DIED":
+                # 自動化測試: client 局中退出 — server 會託管該座位打完;
+                # 記下斷線, 等局末再開下一局, 以免新 client 撞上仍在進行的房間
+                lost_code = client.poll()
+                lost_note = "client 局中退出 exit=%s %s" % (lost_code, describe_exit(lost_code))
+                print("  [WARN] 局 %d: %s, 等 server 打完本局" % (run_id, lost_note))
+                remaining = max(1, GAME_TIMEOUT - (time.time() - game_started_at))
+                over_line, marker_offset = wait_for_marker(
+                    marker_file, lambda l: MARK_GAME_OVER.search(l),
+                    remaining, marker_offset, server_proc=proc)
             if over_line == "SERVER_DIED":
                 # 自動化測試: server 閃退 — 該局記失敗, 重啟後繼續下一局
                 terminate_tree(client)
@@ -222,7 +245,8 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 for line in ctx:
                     print("          %s" % line)
                 results.append({"run": run_id, "ok": False,
-                                "note": "server crashed mid-game", "exit_name": "server"})
+                                "note": "; ".join(n for n in ("server crashed mid-game", lost_note) if n),
+                                "exit_name": "server"})
                 print("  [FAIL] 局 %d: server 局中閃退" % run_id)
                 proc = restart_server(args, exe_root, workdir, mode, proc,
                                       marker_file, server_log, server_exe,
@@ -240,13 +264,19 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
             crashed = is_crash_code(ccode)
             ctx = tail_lines(marker_file, 20) if crashed else []
             if over_line is None:
-                results.append({"run": run_id, "ok": False, "note": "game timeout",
+                results.append({"run": run_id, "ok": False,
+                                "note": "; ".join(n for n in ("game timeout", lost_note) if n),
                                 "exit_name": describe_exit(ccode)})
                 print("  [FAIL] 局 %d: 對局逾時 (%ds), 已殺 client" % (run_id, GAME_TIMEOUT))
             else:
                 m = MARK_GAME_OVER.search(over_line)
                 winner = m.group(1) or "none"
-                if crashed:
+                if lost_note and not crashed:
+                    results.append({"run": run_id, "ok": False,
+                                    "note": "winner=%s; %s" % (winner, lost_note),
+                                    "exit_name": describe_exit(ccode)})
+                    print("  [FAIL] 局 %d: 結束 winner=%s, 但 %s" % (run_id, winner, lost_note))
+                elif crashed:
                     results.append({"run": run_id, "ok": False,
                                     "note": "winner=%s; client 閃退 %s" % (winner, describe_exit(ccode)),
                                     "exit_name": describe_exit(ccode)})
