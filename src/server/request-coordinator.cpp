@@ -8,9 +8,11 @@
 #include "serverplayer.h"
 #include "settings.h"
 
+#include <QDeadlineTimer>
 #include <QElapsedTimer>
 #include <QMap>
 #include <QMutexLocker>
+#include <QSemaphore>
 #include <QStringList>
 
 #include <functional>
@@ -18,6 +20,17 @@
 using namespace QSanProtocol;
 
 namespace {
+
+// Same rule as ServerPlayer::tryAcquireLock(): static Qt builds (the single-thread
+// WASM kit) omit the int-timeout wrapper, so use the deadline overload there.
+bool tryAcquireFor(QSemaphore &semaphore, int timeoutMs)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+    return semaphore.tryAcquire(1, QDeadlineTimer(timeoutMs));
+#else
+    return semaphore.tryAcquire(1, timeoutMs);
+#endif
+}
 
 class ScopedCallback
 {
@@ -413,7 +426,7 @@ ServerPlayer *RequestCoordinator::getRaceResult(QList<ServerPlayer *> players, C
     while (!roomSemaphoreHeld) {
         roomSemaphoreHeld = m_roomSemaphore.tryAcquire(1);
         if (!roomSemaphoreHeld)
-            roomSemaphoreHeld = m_raceRequestSemaphore.tryAcquire(1, 100);
+            roomSemaphoreHeld = tryAcquireFor(m_raceRequestSemaphore, 100);
     }
     m_raceStarted = false;
     m_raceWinner = nullptr;
@@ -494,7 +507,7 @@ bool RequestCoordinator::acquireRaceSignal(time_t timeOut)
         if (remaining <= 0 && !m_room.isApplicationBackgrounded())
             return m_raceRequestSemaphore.tryAcquire(1);
         const time_t slice = remaining <= 0 ? 100 : qMin<time_t>(remaining, 100);
-        if (m_raceRequestSemaphore.tryAcquire(1, static_cast<int>(slice)))
+        if (tryAcquireFor(m_raceRequestSemaphore, static_cast<int>(slice)))
             return true;
     }
     return false;
