@@ -115,6 +115,7 @@ int main(int argc, char **argv)
             {QStringLiteral("initial-room-close"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-initial-room-close")}, 60000},
             {QStringLiteral("initialization-handoff"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-initialization-handoff")}, 10000},
             {QStringLiteral("turn-reclaim"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-turn-reclaim")}, 10000},
+            {QStringLiteral("wrapped-adoption"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-wrapped-adoption")}, 10000},
             {QStringLiteral("card-lifetime"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime")}, 600000},
             {QStringLiteral("card-lifetime-lua"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-lua")}},
             {QStringLiteral("synthetic-30"), {

@@ -52,6 +52,10 @@
 #endif
 
 #include <algorithm>
+#include <cstdlib>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 using namespace QSanProtocol;
 
@@ -60,6 +64,17 @@ namespace
 static bool shutdownTraceEnabled()
 {
 	return qEnvironmentVariableIsSet("QSAN_XP_SHUTDOWN_TRACE");
+}
+
+// A finished Room frees its card clones, Lua states and AI runtime, but glibc keeps
+// that heap on its free lists, so each game leaves the process a room's worth larger
+// (05p: in-use stays flat while RSS settles near 1.7 GB, versus ~0.8 GB when trimmed).
+// Hand it back once the Room is gone.
+static void releaseFreedRoomHeap()
+{
+#if defined(__GLIBC__)
+	malloc_trim(0);
+#endif
 }
 
 // A QAbstractSocket may only be touched from the thread that owns it. Server
@@ -2515,6 +2530,8 @@ void Server::scheduleDisposeRoom(Room *room)
 		m_disposingRooms.append(roomPtr);
 		connect(room, &QObject::destroyed, this, [this, roomPtr]() {
 			m_disposingRooms.removeAll(roomPtr);
+			// destroyed fires before the Room's QObject children are deleted.
+			QTimer::singleShot(0, this, [] { releaseFreedRoomHeap(); });
 			if (shutdownTraceEnabled())
 				qInfo().noquote() << QStringLiteral("shutdown_trace server=room_destroyed disposing=%1")
 					.arg(m_disposingRooms.size());
@@ -2781,14 +2798,38 @@ void Server::startHeadlessGame()
         // blocking 會互等死鎖。改非阻塞輪詢: main thread 每 100ms 檢查
         // RoomThread 是否已結束, 結束後才 deleteLater 並啟動下一局;
         // 逾時 10s 強制推進 (writeHeadlessLog ERROR 標記)。
-        QTimer::singleShot(500, this, [this, roomPtr, currentGameCount, gameLimit]() {
+        auto continueAfterRoom = [this, currentGameCount, gameLimit]() {
+            releaseFreedRoomHeap();
+            if (currentGameCount < gameLimit) {
+                startHeadlessGame();
+            } else {
+                Server::writeHeadlessLog(">>> All games completed. Exiting. <<<");
+                qApp->quit();
+            }
+        };
+        // Build the next Room only once the finished one is really destroyed:
+        // starting it straight after deleteLater() kept both games' card clones,
+        // Lua states and AI runtimes alive together, and the freed heap was then
+        // never returned. destroyed fires inside ~QObject, before the Room's
+        // children go, so the next step is queued behind it.
+        auto disposeThenContinue = [this, continueAfterRoom](const QPointer<Room> &room) {
+            if (!room) {
+                continueAfterRoom();
+                return;
+            }
+            connect(room.data(), &QObject::destroyed, this, [this, continueAfterRoom]() {
+                QTimer::singleShot(0, this, continueAfterRoom);
+            });
+            room->deleteLater();
+        };
+        QTimer::singleShot(500, this, [this, roomPtr, currentGameCount, disposeThenContinue]() {
             if (roomPtr) {
                 RoomThread *rt = roomPtr->getThread();
                 if (rt && rt->isRunning()) {
                     QTimer *pollTimer = new QTimer(this);
                     int *elapsedMs = new int(0);
                     connect(pollTimer, &QTimer::timeout, this,
-                        [this, roomPtr, rt, pollTimer, elapsedMs, currentGameCount, gameLimit]() {
+                        [roomPtr, rt, pollTimer, elapsedMs, currentGameCount, disposeThenContinue]() {
                             *elapsedMs += 100;
                             const bool finished = !rt->isRunning();
                             if (finished || *elapsedMs >= 10000) {
@@ -2799,28 +2840,14 @@ void Server::startHeadlessGame()
                                 pollTimer->stop();
                                 pollTimer->deleteLater();
                                 delete elapsedMs;
-                                if (roomPtr) {
-                                    roomPtr->deleteLater();
-                                }
-                                if (currentGameCount < gameLimit) {
-                                    startHeadlessGame();
-                                } else {
-                                    Server::writeHeadlessLog(">>> All games completed. Exiting. <<<");
-                                    qApp->quit();
-                                }
+                                disposeThenContinue(roomPtr);
                             }
                         });
                     pollTimer->start(100);
                     return;
                 }
-                roomPtr->deleteLater();
             }
-            if (currentGameCount < gameLimit) {
-                startHeadlessGame();
-            } else {
-                Server::writeHeadlessLog(">>> All games completed. Exiting. <<<");
-                qApp->quit();
-            }
+            disposeThenContinue(roomPtr);
         });
     });
 
