@@ -809,6 +809,7 @@ add_executable(qsanguosha_server_tests
     game-snapshot-tags-test.cpp
     roomthread-deferred-state-test.cpp
     gongqiao-equip-test.cpp
+    songwei-once-test.cpp
 )
 qsan_link_engine_test(qsanguosha_server_tests)
 qsan_add_ctest(qsanguosha_server_unit qsanguosha_server_tests
@@ -817,6 +818,10 @@ qsan_add_ctest(qsanguosha_server_unit qsanguosha_server_tests
 )
 qsan_add_ctest(qsanguosha_gongqiao_equip qsanguosha_server_tests
     SUITE gongqiao-equip
+    LABELS "gameplay;server;fast"
+)
+qsan_add_ctest(qsanguosha_songwei_once qsanguosha_server_tests
+    SUITE songwei-once
     LABELS "gameplay;server;fast"
 )
 

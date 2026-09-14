@@ -1293,7 +1293,7 @@ public:
 	MobileMouSongwei() : TriggerSkill("mobilemousongwei$")
 	{
 		events << EventPhaseStart;
-		//view_as_skill = new MobileMouSongweivs;
+		view_as_skill = new MobileMouSongweivs;
 	}
 
 	bool triggerable(const ServerPlayer *target) const

@@ -35,6 +35,7 @@ int runPlayerDecisionServiceTests();
 int runGameSnapshotTagsTests();
 int runRoomThreadDeferredStateTests();
 int runGongqiaoEquipTests();
+int runSongweiOnceTests();
 
 static int runSelectedSuite(const QString &suite, int argc, char **argv)
 {
@@ -68,6 +69,8 @@ static int runSelectedSuite(const QString &suite, int argc, char **argv)
         return runRoomThreadDeferredStateTests();
     if (suite == QLatin1String("gongqiao-equip"))
         return runGongqiaoEquipTests();
+    if (suite == QLatin1String("songwei-once"))
+        return runSongweiOnceTests();
     return 64;
 }
 
@@ -95,6 +98,7 @@ int main(int argc, char **argv)
         {QStringLiteral("player-decision"), {QStringLiteral("--suite"), QStringLiteral("player-decision")}, 900000},
         {QStringLiteral("roomthread-deferred-state"),
          {QStringLiteral("--suite"), QStringLiteral("roomthread-deferred-state")}},
-        {QStringLiteral("gongqiao-equip"), {QStringLiteral("--suite"), QStringLiteral("gongqiao-equip")}}
+        {QStringLiteral("gongqiao-equip"), {QStringLiteral("--suite"), QStringLiteral("gongqiao-equip")}},
+        {QStringLiteral("songwei-once"), {QStringLiteral("--suite"), QStringLiteral("songwei-once")}}
     });
 }
