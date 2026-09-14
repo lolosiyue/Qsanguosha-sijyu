@@ -189,6 +189,19 @@ AIResult AI::decide(const AIRequest &request)
             result.action.skillActionContext.sourceRef = use.sourceRef;
             result.action.skillActionContext.activationQuotaAvailable = true;
             result.action.skillActionContext.sourceQuotaAvailable = true;
+        } else if (const ActiveSkillCard *active = qobject_cast<const ActiveSkillCard *>(use.card)) {
+            if (!active->getActivationSkillName().isEmpty()
+                && active->getActivationSkillInstanceId() > 0) {
+                // SkillCard::toString() 只有類名, Card::Parse 還原不出 V2 技能與 instance;
+                // 改以 instance 交給 applyResult 重建上下文並造 proxy。
+                result.action.legacyCardString.clear();
+                result.action.selectedCardIds = active->getSubcards();
+                result.action.userString = active->getUserString();
+                result.action.hasSkillActionContext = true;
+                result.action.skillActionContext.activationRef = SkillInstanceRef(self->objectName(),
+                    SkillInstanceKey(active->getActivationSkillName(),
+                                     active->getActivationSkillInstanceId()));
+            }
         }
         return result;
     }
