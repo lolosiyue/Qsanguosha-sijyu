@@ -243,7 +243,8 @@ def _drive_network_runner(start_outcomes, runs):
     start_outcomes is consumed once per client launch: "start" means the game
     started (and then finishes normally), "died" means the server exited
     before the start marker, and "client_lost" means the game started but the
-    client exited before game over (the server still finishes the game).
+    client exited before game over (the server still finishes the game), and
+    "timeout" means the game started but game over never arrived in time.
     Returns (results, client launch count, restart_server call count)."""
     import tempfile
     import types
@@ -270,7 +271,8 @@ def _drive_network_runner(start_outcomes, runs):
             if pending_over[-1] == "client_lost" and client_proc is not None:
                 pending_over[-1] = "start"
                 return "CLIENT_DIED", start_offset
-            pending_over.pop()
+            if pending_over.pop() == "timeout":
+                return None, start_offset
             return "[AUTOTEST] game over lord", start_offset
         outcome = outcomes.pop(0) if outcomes else "start"
         if outcome == "died":
@@ -371,6 +373,22 @@ def test_network_runner_reports_a_client_lost_mid_game() -> None:
         f"no restart (launches={launches}, restarts={restarts})"
     )
     print("PASS test_network_runner_reports_a_client_lost_mid_game")
+
+
+def test_network_runner_restarts_the_server_after_a_game_timeout() -> None:
+    results, launches, restarts = _drive_network_runner(["timeout", "start"], runs=2)
+    assert [r["run"] for r in results] == [1, 2], results
+    timed_out, normal = results
+    assert not timed_out["ok"] and "timeout" in timed_out["note"], (
+        f"a game that never reaches game over must fail, got {timed_out}"
+    )
+    assert normal["ok"], f"the next game must still run and pass, got {normal}"
+    assert launches == 2 and restarts == 1, (
+        "a timed-out room keeps running on the server and holds the killed client's "
+        "screen name, so the server must be restarted before the next game "
+        f"(launches={launches}, restarts={restarts})"
+    )
+    print("PASS test_network_runner_restarts_the_server_after_a_game_timeout")
 
 
 class _FakeClock:
@@ -788,6 +806,7 @@ def main() -> int:
         test_network_runner_bounds_pre_start_crash_retries,
         test_wait_for_marker_reads_markers_written_before_the_server_died,
         test_network_runner_reports_a_client_lost_mid_game,
+        test_network_runner_restarts_the_server_after_a_game_timeout,
         test_wait_for_marker_reports_a_client_that_exits_before_the_marker,
         test_runner_uses_real_tcp_with_a_fixed_recorded_seed,
         test_evaluator_accepts_a_complete_successful_run,
