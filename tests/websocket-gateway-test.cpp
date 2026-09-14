@@ -514,8 +514,9 @@ public:
     bool connected = false;
 };
 
-// Native Protocol V2 admission carries the hello-matched local rules bundle;
-// the separate WebSocket missing-bundle case above remains a rejection test.
+// Native TCP keeps legacy admission (docs/rules-bundle-identity.md): a missing
+// or unsealed rules bundle is accepted, a supplied sealed bundle is compared.
+// The separate WebSocket missing-bundle case above remains a rejection test.
 class TcpSignupClient
 {
 public:
@@ -547,6 +548,7 @@ public:
     }
 
     bool contentUnsupported() const { return m_contentUnsupported; }
+    void setRulesBundle(const QJsonObject &bundle) { rulesBundle = bundle; }
 
     bool signup(const QString &name, bool hasRoomId, int roomId,
                 SignupReplyPayload *reply, QString *error)
@@ -646,13 +648,11 @@ bool runTcpSignupRoomId(quint16 tcpPort)
         std::fprintf(stderr, "[INFO] first signup rejected: code=%s message=%s\n",
                      firstReply.errorCode.toUtf8().constData(),
                      firstReply.message.toUtf8().constData());
-    if (first.contentUnsupported()) {
-        // Only an explicitly unsupported hello makes rejection the expected
-        // result; an advertised identity must pass the room-id matrix below.
-        return expect(!firstReply.accepted
-                          && firstReply.errorCode == QLatin1String("rules_identity_required"),
-                      "undeclared-v2 TCP signup was not rejected with rules_identity_required");
-    }
+    // An undeclared-v2 hello leaves the client without an identity to echo;
+    // native TCP still admits it on the legacy path, so the room_id matrix
+    // runs either way.
+    if (first.contentUnsupported())
+        qInfo().noquote() << "[INFO] server content is not declared-v2; TCP signs up without a rules bundle";
     if (!expect(firstReply.accepted, "first signup without room_id was rejected")
         || !expect(firstReply.roomId == 0, "first signup reply room_id was not 0"))
         return false;
@@ -716,6 +716,40 @@ bool runTcpSignupRoomId(quint16 tcpPort)
     return true;
 }
 
+// Older desktop clients send the Engine's unsealed error stub as rules_bundle.
+// Native TCP treats it as no identity and admits the legacy signup; WebSocket
+// still rejects the same stub as an invalid identity.
+bool runUnsealedRulesBundleByTransport(quint16 tcpPort, quint16 wsPort)
+{
+    const QJsonObject stub{{QStringLiteral("error_code"),
+                            QStringLiteral("rules_content_unsupported")}};
+    QString error;
+    TcpSignupClient tcp;
+    SignupReplyPayload tcpReply;
+    if (!tcp.open(tcpPort, &error))
+        return expect(false, qPrintable(error));
+    tcp.setRulesBundle(stub);
+    if (!tcp.signup(QStringLiteral("unsealed-tcp"), false, 0, &tcpReply, &error))
+        return expect(false, qPrintable(error));
+    const bool tcpAccepted = expect(tcpReply.accepted,
+                                    "TCP signup with an unsealed rules bundle was rejected");
+    tcp.close();
+
+    WebSocketSignupClient ws;
+    SignupReplyPayload wsReply;
+    if (!ws.open(wsPort, &error))
+        return expect(false, qPrintable(error));
+    ws.rulesBundle = stub;
+    if (!ws.signup(QStringLiteral("unsealed-ws"), false, 0, &wsReply, &error))
+        return expect(false, qPrintable(error));
+    const bool wsRejected = expect(!wsReply.accepted
+                                       && wsReply.errorCode == QLatin1String("rules_identity_invalid"),
+                                   "WebSocket signup with an unsealed rules bundle was not "
+                                   "rejected as rules_identity_invalid");
+    ws.close();
+    return tcpAccepted && wsRejected;
+}
+
 }
 
 int main(int argc, char **argv)
@@ -757,6 +791,8 @@ int main(int argc, char **argv)
         // bind a player to the current room.
         {QStringLiteral("tcp-signup-room-id"),
          [&]() { return runTcpSignupRoomId(server.tcpPort()); }},
+        {QStringLiteral("unsealed-rules-bundle-by-transport"),
+         [&]() { return runUnsealedRulesBundleByTransport(server.tcpPort(), server.wsPort()); }},
         {QStringLiteral("ws-hello-signup"),
          [&]() { return runWebSocketHelloSignup(server.wsPort()); }},
         {QStringLiteral("ws-signup-requires-rules-bundle"),

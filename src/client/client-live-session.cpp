@@ -386,9 +386,10 @@ bool ClientLiveSession::requestSignup(QString *error)
     signup.reconnectRequested = m_reconnectAttempt;
     signup.screenName = m_options.screenName;
     signup.avatar = m_options.avatar;
-    // Protocol V2 admission always carries the owning product's local
-    // identity, including reconnects and native TCP sessions.
-    if (!m_options.localRulesBundle.isEmpty()) {
+    // Only a sealed identity is admission metadata. The desktop Engine's
+    // error stub is omitted so native TCP keeps legacy signup; WebSocket
+    // still fails closed because that transport requires a bundle.
+    if (QSanRules::validate(m_options.localRulesBundle)) {
         signup.hasRulesBundle = true;
         signup.rulesBundle = m_options.localRulesBundle;
     }
