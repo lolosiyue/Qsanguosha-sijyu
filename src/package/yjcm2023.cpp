@@ -42,6 +42,15 @@ static bool safeTurnCardToEquip(Room *room, ServerPlayer *source, int cardId, co
 	WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
 	if (!wrapped)
 		return false;
+
+	// 移入装备区时 updateCardsChange 会 refilter，把牌重置回引擎原牌；
+	// #zhizhe 的 tag 与技能必须在移动前就位，否则非装备牌进装备区
+	QStringList info;
+	info << equipObjectName << rawCard->getSuitString() << QString::number(rawCard->getNumber());
+	room->setTag("ZhizheFilter_" + QString::number(cardId), info.join("+"));
+	foreach (ServerPlayer *p, room->getAlivePlayers())
+		room->acquireSkill(p, "#zhizhe");
+
 	wrapped->takeOver(equipCard);
 	room->notifyUpdateCard(source, cardId, wrapped);
 
@@ -156,15 +165,9 @@ void GongqiaoCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 		return;
 	if (!safeTurnCardToEquip(room, source, getEffectiveId(), equipObjectName, "gongqiao"))
 		return;
-	QStringList info;
-	info << equipObjectName << getSuitString() << QString::number(getNumber());
-	room->setTag("ZhizheFilter_" + QString::number(getEffectiveId()), info.join("+"));
-	info = room->getTag("gongqiaoEquip").toStringList();
+	QStringList info = room->getTag("gongqiaoEquip").toStringList();
 	info << QString::number(getEffectiveId());
 	room->setTag("gongqiaoEquip", info);
-
-    foreach (ServerPlayer *q, room->getAlivePlayers())
-		room->acquireSkill(q, "#zhizhe");
 }
 
 class GongqiaoVs : public OneCardViewAsSkill
