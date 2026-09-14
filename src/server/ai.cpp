@@ -369,11 +369,15 @@ const Card *TrustAI::askForCard(const QString &pattern, const QString &prompt, c
     Q_UNUSED(prompt);
     Q_UNUSED(data);
 
-    response_skill->setPattern(pattern);
-    foreach(const Card *card, self->getCards("he")){
-        if(self->isCardLimited(card, method)) continue;
-		if(response_skill->matchPattern(self, card)) return card;
-	}
+    QString match = pattern;
+    if (match.endsWith(QLatin1Char('!')))
+        match.chop(1);
+    foreach (const Card *card, self->getCards("he")) {
+        if (self->isCardLimited(card, method))
+            continue;
+        if (Sanguosha->matchPattern(match, self, card))
+            return card;
+    }
     return nullptr;
 }
 
