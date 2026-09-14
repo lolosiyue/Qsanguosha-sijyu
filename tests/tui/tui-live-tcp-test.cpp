@@ -3,6 +3,7 @@
 #include "protocol-interaction-request-builder.h"
 #include "protocol/gameplay/protocol-gameplay-payload-registry.h"
 #include "protocol/session/session-payloads.h"
+#include "protocol/rules-bundle-identity.h"
 
 #include <QCoreApplication>
 #include <QEventLoop>
@@ -10,6 +11,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QJsonArray>
+#include <QJsonObject>
 
 #include <cstdio>
 #include <functional>
@@ -445,10 +448,21 @@ int main(int argc, char *argv[])
     options.automaticSignup = false;
     options.connectTimeoutMs = 1000;
     options.handshakeTimeoutMs = 1000;
-    // Transport fixture has no Engine; inject a stand-in identity to assert
-    // that ClientLiveSession serializes the local bundle on every signup.
-    options.localRulesBundle = QJsonObject{{QStringLiteral("content_profile"),
-                                            QStringLiteral("declared-v2")}};
+    // Transport fixture has no Engine; inject a sealed identity so signup
+    // still serializes a real bundle (unsealed stubs are omitted on TCP).
+    options.localRulesBundle = QSanRules::seal(QJsonObject{
+        {QStringLiteral("schema_version"), QSanRules::IdentitySchema},
+        {QStringLiteral("protocol_version"), 2},
+        {QStringLiteral("bridge_schema"), QSanRules::BridgeSchema},
+        {QStringLiteral("ruleset"), QStringLiteral("sijyu")},
+        {QStringLiteral("content_profile"), QStringLiteral("declared-v2")},
+        {QStringLiteral("cpp_hash"), QSanRules::digest(QStringLiteral("cpp"), QStringLiteral("tui-tcp"))},
+        {QStringLiteral("card_registry_hash"), QSanRules::digest(QStringLiteral("cards"), QJsonArray{})},
+        {QStringLiteral("lua_hash"), QSanRules::digest(QStringLiteral("lua"), QStringLiteral("tui-tcp"))},
+        {QStringLiteral("bindings_abi"), QSanRules::digest(QStringLiteral("abi"), QStringLiteral("tui-tcp"))},
+        {QStringLiteral("packages"), QJsonArray{QStringLiteral("standard")}},
+        {QStringLiteral("interaction_schemas"), QJsonObject{
+            {QStringLiteral("37"), QSanRules::digest(QStringLiteral("interaction"), QStringLiteral("use-card-v1"))}}}});
     session.connectToServer(options);
 
     QTimer watchdog;
