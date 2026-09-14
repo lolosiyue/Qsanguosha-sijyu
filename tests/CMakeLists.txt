@@ -808,11 +808,16 @@ add_executable(qsanguosha_server_tests
     player-decision-service-test.cpp
     game-snapshot-tags-test.cpp
     roomthread-deferred-state-test.cpp
+    gongqiao-equip-test.cpp
 )
 qsan_link_engine_test(qsanguosha_server_tests)
 qsan_add_ctest(qsanguosha_server_unit qsanguosha_server_tests
     LABELS server
     TIMEOUT 1800
+)
+qsan_add_ctest(qsanguosha_gongqiao_equip qsanguosha_server_tests
+    SUITE gongqiao-equip
+    LABELS "gameplay;server;fast"
 )
 
 add_executable(qsanguosha_roomthread_perf_tests
