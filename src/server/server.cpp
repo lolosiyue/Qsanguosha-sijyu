@@ -2274,11 +2274,15 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 		rejectConnection(context, code, message);
 	};
 
-    // Gate both signup and reconnect before any Room/player ownership changes.
-    const QString rulesError = signup.hasRulesBundle && !QSanRules::validate(signup.rulesBundle)
-        ? QStringLiteral("rules_identity_invalid")
-        : QSanRules::compatibilityError(Sanguosha->rulesBundleIdentity(), signup.rulesBundle,
-                                        true);
+    // WebSocket requires a sealed identity. Native TCP keeps the W2 legacy path:
+    // a desktop tree cannot seal declared-v2, so an Engine error stub is omitted
+    // rather than treated as a submitted web identity.
+    const bool required = socket->requiresRulesBundle();
+    QJsonObject clientBundle = signup.hasRulesBundle ? signup.rulesBundle : QJsonObject();
+    if (!required && !clientBundle.isEmpty() && !QSanRules::validate(clientBundle))
+        clientBundle = QJsonObject();
+    const QString rulesError = QSanRules::compatibilityError(
+        Sanguosha->rulesBundleIdentity(), clientBundle, required);
     if (!rulesError.isEmpty()) {
         const QString message = rulesError == QLatin1String("rules_version_mismatch")
             ? tr("規則版本不相符；請更新至與伺服器相同的版本。")
