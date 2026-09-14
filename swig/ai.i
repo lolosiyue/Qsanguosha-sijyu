@@ -399,8 +399,12 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 		room->output(result);
 		return TrustAI::askForCard(pattern, prompt, data, method);
 	}
-	const QString result = lua_tostring(L, -1);
-	lua_pop(L, 1);
+	// nresults=2: first return is the card string, second is an optional
+	// cardsview request. A single Lua return is padded with nil, so reading
+	// the top of stack treated SmartAI's compulsive ".!" answer as empty.
+	const char *cstr = lua_tostring(L, -2);
+	const QString result = cstr ? QString::fromUtf8(cstr) : QString();
+	lua_pop(L, 2);
 	if (result.isEmpty())
 		return TrustAI::askForCard(pattern, prompt, data, method);
 

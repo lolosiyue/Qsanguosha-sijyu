@@ -80,7 +80,7 @@ def write_server_config(path, operation_timeout, ai_delay, enable_ai=True):
         handle.write("\n".join(lines))
 
 
-def write_tui_script(path, reconnect, connection_only=False):
+def write_tui_script(path, reconnect, connection_only=False, game_timeout_ms=600000):
     lines = [
         "wait active 30000",
     ]
@@ -99,7 +99,7 @@ def write_tui_script(path, reconnect, connection_only=False):
         ]
     if not connection_only:
         lines += [
-            "wait game_over 600000",
+            "wait game_over %d" % game_timeout_ms,
             "assert state game.game_over true",
             "assert state game.status game_over",
         ]
@@ -173,6 +173,8 @@ def parse_args(argv=None):
     parser.add_argument("--ai-delay", type=int, default=0)
     parser.add_argument("--server-startup-timeout", type=int, default=30)
     parser.add_argument("--process-timeout", type=int, default=900)
+    parser.add_argument("--game-timeout-ms", type=int, default=600000,
+                        help="TUI script wait game_over timeout in milliseconds")
     return parser.parse_args(argv)
 
 
@@ -203,7 +205,8 @@ def main(argv=None):
             os.remove(path)
     write_server_config(paths["config"], args.operation_timeout, args.ai_delay,
                         not args.connection_only)
-    write_tui_script(paths["script"], args.reconnect, args.connection_only)
+    write_tui_script(paths["script"], args.reconnect, args.connection_only,
+                     args.game_timeout_ms)
 
     port = free_tcp_port()
     summary = {
