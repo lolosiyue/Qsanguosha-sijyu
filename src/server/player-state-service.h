@@ -29,6 +29,13 @@ public:
 	void safeSetPlayerProperty(ServerPlayer *player, const char *propertyName,
 		const QVariant &value);
 
+	bool isRoleRevealed(const ServerPlayer *player) const;
+	bool canSeeRole(const ServerPlayer *viewer, const ServerPlayer *target) const;
+	void revealRole(ServerPlayer *player, const QString &value = QString());
+	void revealRoleTo(ServerPlayer *viewer, ServerPlayer *target);
+	void grantRoleVisibility(ServerPlayer *viewer, const ServerPlayer *target);
+	void syncRole(ServerPlayer *viewer, const ServerPlayer *target);
+
 	void setPlayerMark(ServerPlayer *player, const QString &mark, int value,
 		QList<ServerPlayer *> onlyViewers);
 	void addPlayerMark(ServerPlayer *player, const QString &mark, int addNum,

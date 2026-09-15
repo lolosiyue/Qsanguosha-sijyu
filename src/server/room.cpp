@@ -1693,10 +1693,8 @@ void Room::syncTakeoverPlayerState()
 	for (ServerPlayer *player : getPlayers()) {
 		for (const char *property : properties)
 			broadcastProperty(player, property);
-		if (Sanguosha->hasShowRoleMode(mode) || player->isLord() || player->isDead())
-			broadcastProperty(player, "role");
-		else
-			notifyProperty(player, player, "role");
+		for (ServerPlayer *viewer : getPlayers())
+			syncRole(viewer, player);
 		player->refreshUIState();
 	}
 	for (ServerPlayer *receiver : getPlayers())
@@ -3652,12 +3650,51 @@ void Room::startGame()
 
 bool Room::notifyProperty(ServerPlayer*player, const ServerPlayer*owner, const char*property_name, const QString&value)
 {
+	// Compatibility for private disclosure; service transport itself is read-only.
+	if (owner && QString::fromLatin1(property_name) == QLatin1String("role")
+		&& (value.isEmpty() || value == owner->getRole()))
+		m_playerState->grantRoleVisibility(player, owner);
 	return m_playerState->notifyProperty(player, owner, property_name, value);
+}
+
+QString Room::aiStateRevision() const
+{
+    return QString::number(roomRuntime()->stateRevision());
 }
 
 bool Room::broadcastProperty(ServerPlayer*owner, const char*property_name, const QString&value)
 {
+	// Legacy extensions publish roles here; new code uses revealRole explicitly.
+	if (owner && QString::fromLatin1(property_name) == QLatin1String("role")) {
+		m_playerState->revealRole(owner, value);
+		return true;
+	}
 	return m_playerState->broadcastProperty(owner, property_name, value);
+}
+
+bool Room::isRoleRevealed(const ServerPlayer *player) const
+{
+	return m_playerState->isRoleRevealed(player);
+}
+
+bool Room::canSeeRole(const ServerPlayer *viewer, const ServerPlayer *target) const
+{
+	return m_playerState->canSeeRole(viewer, target);
+}
+
+void Room::revealRole(ServerPlayer *player)
+{
+	m_playerState->revealRole(player);
+}
+
+void Room::revealRoleTo(ServerPlayer *viewer, ServerPlayer *target)
+{
+	m_playerState->revealRoleTo(viewer, target);
+}
+
+void Room::syncRole(ServerPlayer *viewer, const ServerPlayer *target)
+{
+	m_playerState->syncRole(viewer, target);
 }
 
 void Room::broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QVariant &value)

@@ -1449,6 +1449,7 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 	room->notifyProperty(player, this, "hp");
 	room->notifyProperty(player, this, "gender");
 	room->notifyProperty(player, this, "player_seat");
+	room->syncRole(player, this);
 
 	//if (getKingdom() != getGeneral()->getKingdom())
 		room->notifyProperty(player, this, "kingdom");
@@ -1459,7 +1460,6 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 			room->notifyProperty(player, this, "phase");
 	} else if (!isRest()) {
 		room->notifyProperty(player, this, "alive");
-		room->notifyProperty(player, this, "role");
 		room->doNotify(player, S_COMMAND_KILL_PLAYER, objectName());
 	}
 
@@ -1469,8 +1469,10 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 	if (isChained())
 		room->notifyProperty(player, this, "chained");
 
-	foreach(const QByteArray &property_name, propertys)
+	foreach(const QByteArray &property_name, propertys) {
+		if (property_name == "role" || property_name == "role_shown") continue;
 		room->notifyProperty(player, this, property_name.constData());
+	}
 
 	room->notifyPlayerUIState(player, this, m_uiState);
 

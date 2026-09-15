@@ -791,6 +791,83 @@ static bool officialLianyingHandlerMatchesIsolated()
     return !unsupported.handled && unsupported.errorCode.isEmpty();
 }
 
+static bool modePolicyAndRoleVisibilityAreRoomLocal()
+{
+    Room first(nullptr, QStringLiteral("02_1v1"));
+    Room second(nullptr, QStringLiteral("02_1v1"));
+    EngineRuntimeContextScope contextScope(*Sanguosha, &first);
+    ServerPlayer *a = RoomTestAccess::addRobotPlayer(first);
+    ServerPlayer *b = RoomTestAccess::addRobotPlayer(first);
+    ServerPlayer *outsider = RoomTestAccess::addRobotPlayer(second);
+    ServerPlayer *outsideTarget = RoomTestAccess::addRobotPlayer(second);
+    a->setObjectName(QStringLiteral("policy-a"));
+    b->setObjectName(QStringLiteral("policy-b"));
+    outsider->setObjectName(QStringLiteral("policy-a"));
+    outsideTarget->setObjectName(QStringLiteral("policy-b"));
+    a->setRole(QStringLiteral("fixture_identity_a"));
+    b->setRole(QStringLiteral("fixture_identity_b"));
+    outsider->setRole(QStringLiteral("fixture_identity_a"));
+    outsideTarget->setRole(QStringLiteral("fixture_identity_b"));
+    second.revealRole(outsideTarget);
+    if (!first.canSeeRole(a, a) || first.isRoleRevealed(a)
+        || first.canSeeRole(a, b) || first.canSeeRole(outsider, a)) return false;
+
+    quint64 revision = first.roomRuntime()->stateRevision();
+    first.revealRoleTo(a, b);
+    if (!first.canSeeRole(a, b) || first.isRoleRevealed(b)
+        || first.roomRuntime()->stateRevision() == revision) return false;
+    revision = first.roomRuntime()->stateRevision();
+    first.syncRole(a, b);
+    first.revealRoleTo(a, b);
+    if (first.roomRuntime()->stateRevision() != revision) return false;
+
+    // Identity replacement must invalidate knowledge, even if a later role has the same name.
+    b->setRole(QStringLiteral("fixture_identity_c"));
+    b->setRole(QStringLiteral("fixture_identity_b"));
+    if (first.canSeeRole(a, b)) return false;
+    AIWorldView world = first.buildAIWorldView(a);
+    if (!world.self.roleVisible || world.self.roleRevealed || world.players.size() != 1
+        || world.players.first().roleVisible || !world.players.first().role.isEmpty()) return false;
+
+    first.revealRole(b);
+    if (!first.isRoleRevealed(b) || !first.canSeeRole(a, b)) return false;
+    revision = first.roomRuntime()->stateRevision();
+    first.revealRole(b);
+    first.syncRole(a, b);
+    if (first.roomRuntime()->stateRevision() != revision) return false;
+    {
+        LuaRuntime::Binding binding(first.roomRuntime()->lua());
+        lua_State *L = first.getLuaState();
+        const int top = lua_gettop(L);
+        if (luaL_dostring(L, "sgs.registerModeAI('02_1v1', {"
+            "relation=function(ctx, from, to) return 'friend' end})") != 0) return false;
+        lua_settop(L, top);
+    }
+    world = first.buildAIWorldView(a);
+    if (world.revision != revision || first.roomRuntime()->stateRevision() != revision
+        || world.modeId != first.getMode()
+        || world.modePolicy.value("relations").toObject().value(a->objectName()).toObject()
+            .value(b->objectName()).toString() != QStringLiteral("friend")) return false;
+    // The same mode ID in a second Room has no registration or mind from the first.
+    const AIWorldView isolated = second.buildAIWorldView(outsider);
+    if (!isolated.modePolicy.value("managed").toBool()
+        || isolated.modePolicy.value("relations").toObject().value(outsider->objectName()).toObject()
+            .value(outsideTarget->objectName()).toString() != QStringLiteral("unknown")) return false;
+    return true;
+}
+
+static bool pureModePolicyContract()
+{
+    LuaRuntime runtime(LuaRuntime::Auxiliary);
+    QString error;
+    if (!runtime.initialize(&error)
+        || !runtime.loadScript(QStringLiteral("tests/lua/mode-ai-contract.lua"), &error)) {
+        qCritical().noquote() << error;
+        return false;
+    }
+    return true;
+}
+
 static bool aiWorldViewIsScopedAndRevisioned()
 {
     std::unique_ptr<Room> room(new Room(nullptr, QStringLiteral("02_1v1")));
@@ -1164,7 +1241,8 @@ int runRoomRuntimeIsolationTests()
         qCritical() << "AI route registry did not preserve exact/default/frozen routing";
         return 12;
     }
-    if (!aiWorldViewIsScopedAndRevisioned()) {
+    if (!modePolicyAndRoleVisibilityAreRoomLocal() || !pureModePolicyContract()
+        || !aiWorldViewIsScopedAndRevisioned()) {
         qCritical() << "AI world view scope or state revision gate failed";
         return 17;
     }

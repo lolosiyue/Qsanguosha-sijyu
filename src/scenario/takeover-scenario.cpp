@@ -101,7 +101,8 @@ void restorePlayer(Room *room, TakeoverScenario *scenario, ServerPlayer *player,
 
     if (!snapshot.kingdom.isEmpty())
         room->setPlayerProperty(player, "kingdom", snapshot.kingdom);
-    room->setPlayerProperty(player, "role", snapshot.role);
+    // Restore is state loading, not a new public identity revelation.
+    player->setRole(snapshot.role);
 
     player->setFlags(QStringLiteral("."));
     for (const QString &flag : snapshot.flags)
@@ -139,6 +140,17 @@ void restorePlayer(Room *room, TakeoverScenario *scenario, ServerPlayer *player,
         player->setProperty(name.constData(), QVariant());
     foreach (const QString &key, snapshot.dynamicProperties.keys())
         player->setProperty(key.toUtf8().constData(), snapshot.dynamicProperties.value(key));
+    // Private identity grants use player IDs; takeover may remap the recorded seats.
+    QVariantMap visibility = player->property("_role_visibility").toMap();
+    if (!visibility.isEmpty()) {
+        QStringList viewers;
+        for (const QString &name : visibility.value("viewers").toStringList()) {
+            if (ServerPlayer *viewer = scenario->runtimePlayer(name))
+                viewers << viewer->objectName();
+        }
+        visibility.insert("viewers", viewers);
+        player->setProperty("_role_visibility", visibility);
+    }
     player->clearTags();
     foreach (const QString &key, snapshot.tags.keys())
         player->setTag(key, resolvePlayerRefs(snapshot.tags.value(key), scenario));
