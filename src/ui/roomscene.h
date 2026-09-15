@@ -324,6 +324,7 @@ protected:
 private:
     void _getSceneSizes(QSize &minSize, QSize &maxSize);
     bool _shouldIgnoreDisplayMove(CardsMoveStruct &movement);
+    QString _describeMoveForDiagnostics(const CardsMoveStruct &move) const;
     bool _processCardsMove(CardsMoveStruct &move, bool isLost);
     bool _m_isInDragAndUseMode;
     bool _m_superDragStarted;
