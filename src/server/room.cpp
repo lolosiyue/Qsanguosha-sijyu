@@ -388,6 +388,8 @@ void Room::requestStopGameThreads()
 	traceRoomWorkers("request_stop", this, {thread_3v3.data(), thread_xmode.data(),
 		thread_1v1.data(), thread, this});
 
+	m_stopRequested.store(true);
+
 	m_gameSession->abort(GameSessionController::TerminationCause::Shutdown);
 	{
 		QMutexLocker locker(&m_mutex);
@@ -1739,6 +1741,12 @@ void Room::trySinglePlayerSurrender()
 	if (!owner) return;
 	// 單機無人表決，makeSurrender 必走 gameOver 拋 GameFinished，由 RoomThread::run 接住。
 	makeSurrender(owner);
+}
+
+void Room::throwIfStopRequested() const
+{
+	if (m_stopRequested.load() && thread && QThread::currentThread() == thread)
+		throw GameFinished;
 }
 
 void Room::tryPause()
