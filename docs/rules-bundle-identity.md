@@ -8,12 +8,16 @@ exchange. The retired V1/V2 capability negotiation is not reintroduced.
 | Connection | Missing identity | Supplied identity |
 |---|---|---|
 | WebSocket | Reject before Room/player binding | Validate and compare |
-| Native TCP desktop/TUI | Preserve legacy signup | Validate and compare |
+| Native TCP desktop/TUI | Preserve legacy signup | Compare a sealed identity; ignore an unsealed one |
 
 The transport requirement comes from the server-owned socket implementation,
 not an untrusted client type string. The common gate runs before fresh signup,
-room selection and reconnect ownership transfer. An explicit empty or malformed
-`rules_bundle` never counts as missing metadata on legacy TCP.
+room selection and reconnect ownership transfer. A desktop tree cannot seal a
+declared-v2 identity, so older native clients sent the Engine's error stub as
+`rules_bundle`. On native TCP an empty or unsealed `rules_bundle` is therefore
+treated as no identity and keeps the legacy signup; a sealed identity is still
+compared. Clients now send only a sealed identity. On WebSocket the same stub
+is rejected as `rules_identity_invalid`.
 
 Hello keeps outer `schema_version: 1`; Signup keeps version 2 (and the existing
 legacy version 1 parser). Both add an optional `rules_bundle` object. Older

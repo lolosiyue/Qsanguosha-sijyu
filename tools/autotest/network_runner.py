@@ -286,12 +286,16 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                     results.append({"run": run_id, "ok": True, "note": "winner=%s" % winner,
                                     "exit_name": ""})
                     print("  [PASS] 局 %d: 結束, winner=%s" % (run_id, winner))
-            if crashed:
+            if crashed or over_line is None:
                 for line in ctx:
                     print("          %s" % line)
+                # A timed-out room keeps running on the server with the killed client's
+                # seat held for reconnect, so the next client's signup is rejected as a
+                # duplicate screen name until that room ends. Restart the server instead.
+                reason = ("client 閃退, 重啟 server 後繼續" if crashed
+                          else "對局逾時, 重啟 server 後繼續")
                 proc = restart_server(args, exe_root, workdir, mode, proc,
-                                      marker_file, server_log, server_exe,
-                                      "client 閃退, 重啟 server 後繼續")
+                                      marker_file, server_log, server_exe, reason)
                 if proc is None:
                     break
                 marker_offset = 0

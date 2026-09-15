@@ -60,7 +60,7 @@
       "reason": "legacy Shouyang decision scope owns the temporary DummyCard until synchronous obtainCard returns"
     },
     {
-      "site": "src/package/inovation.cpp:3762",
+      "site": "src/package/inovation.cpp:3765",
       "category": "raw_delete",
       "reason": "legacy InovationFengzhuVS probe owns the cloned candidate; it is never returned or stored"
     },

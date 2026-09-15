@@ -1274,30 +1274,19 @@ AI *ServerPlayer::getAI() const
 {
 	if (room != nullptr) {
 		ServerPlayer *actualController = room->getActualController(const_cast<ServerPlayer *>(this));
-		if (actualController != nullptr && actualController->getState() == "trust" && ai != nullptr) {
-			if (actualController != this)
-				return ai;
-
-			foreach (ServerPlayer *candidate, room->getAllPlayers(true)) {
-				if (candidate == this)
-					continue;
-				if (room->getActualController(candidate) == this)
-					return ai;
-			}
-		}
-
 		if (actualController != nullptr && actualController != this && actualController->isOnline())
 			return nullptr;
 	}
 
-    if (getState()=="online")
-        return nullptr;
+	if (getState() == "online")
+		return nullptr;
 
-    if (onsole_owner == nullptr || onsole_owner->getState()=="online")
-        return nullptr;
-    else if (Config.EnableCheat||getState()!="trust")
-        return ai;
-    return trust_ai;
+	if (onsole_owner == nullptr || onsole_owner->getState() == "online")
+		return nullptr;
+
+	if (ai != nullptr)
+		return ai;
+	return trust_ai;
 }
 
 AI *ServerPlayer::getSmartAI() const
