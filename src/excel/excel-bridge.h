@@ -63,6 +63,7 @@ private:
     QJsonObject m_selection;
     QJsonArray m_events;
     QStringList m_logs;
+    QList<int> m_renPile;
     struct CachedCommand { QByteArray fingerprint; QJsonObject response; };
     QHash<QString, CachedCommand> m_commands;
     QStringList m_commandOrder;

@@ -2,6 +2,10 @@
 
 #include "card.h"
 #include "engine.h"
+#include "protocol.h"
+#include <QList>
+#include <QPair>
+#include <QSet>
 
 namespace {
 
@@ -218,4 +222,249 @@ QString formatClientLog(const ClientLogFormatRequest &request, const ClientLogFo
                     wrapOr(style.wrapArg, translateOr(style, args[i])));
     }
     return log.trimmed();
+}
+
+// Shared text frontend presentation, originally implemented by the TUI.
+QString clientPlainLogText(const QString &text)
+{
+    static const QSet<QString> breaks{QStringLiteral("br"), QStringLiteral("p"),
+        QStringLiteral("div"), QStringLiteral("tr")};
+
+    QString result;
+    result.reserve(text.size());
+    QString tag;
+    bool inTag = false;
+    for (QChar character : text) {
+        if (character == QLatin1Char('<')) {
+            inTag = true;
+            tag.clear();
+        } else if (inTag && character == QLatin1Char('>')) {
+            inTag = false;
+            // "br", "br/", "br /" and "/br" all name the same tag.
+            const QString name = tag.trimmed().section(QLatin1Char(' '), 0, 0)
+                .remove(QLatin1Char('/')).toLower();
+            if (breaks.contains(name))
+                result.append(QLatin1Char(' '));
+        } else if (inTag) {
+            tag.append(character);
+        } else {
+            result.append(character);
+        }
+    }
+    // A lone "<" a player typed in chat is text, not the start of a tag.
+    if (inTag)
+        result.append(QLatin1Char('<')).append(tag);
+
+    // The same templates escape the characters they cannot spell literally.
+    static const QList<QPair<QString, QString>> entities{
+        {QStringLiteral("&nbsp;"), QStringLiteral(" ")},
+        {QStringLiteral("&lt;"), QStringLiteral("<")},
+        {QStringLiteral("&gt;"), QStringLiteral(">")},
+        {QStringLiteral("&quot;"), QStringLiteral("\"")},
+        {QStringLiteral("&#39;"), QStringLiteral("'")},
+        {QStringLiteral("&amp;"), QStringLiteral("&")}};
+    for (const auto &entity : entities)
+        result.replace(entity.first, entity.second, Qt::CaseInsensitive);
+
+    return result.simplified();
+}
+
+QString clientCardDisplayText(int cardId)
+{
+    // Prefer the room's own copy: a card the server has rewritten (a suit or a
+    // name changed by a skill) only differs from the printed card there.
+    // Engine::getCard() resolves through the registered room context, so it is
+    // null whenever no game is running -- getEngineCard() reads the engine's own
+    // table and needs no room, which is the right answer then.
+    const Card *card = nullptr;
+    if (Sanguosha != nullptr) {
+        card = Sanguosha->getCard(cardId);
+        if (card == nullptr)
+            card = Sanguosha->getEngineCard(cardId);
+    }
+    if (card == nullptr) {
+        const QString key = QStringLiteral("tui_card_unknown");
+        const QString text = Sanguosha ? Sanguosha->translate(key) : key;
+        return (text.isEmpty() ? key : text).arg(cardId);
+    }
+
+    QString name = Sanguosha->translate(card->objectName());
+    if (name.isEmpty())
+        name = card->objectName();
+
+    QString suit;
+    if (card->getSuit() != Card::NoSuit) {
+        suit = Sanguosha->translate(card->getSuitString());
+        if (suit.isEmpty())
+            suit = card->getSuitString();
+    }
+    const QString number = card->getNumber() > 0 ? card->getNumberString() : QString();
+
+    if (suit.isEmpty() && number.isEmpty())
+        return name;
+    return QStringLiteral("%1[%2%3]").arg(name, suit, number);
+}
+
+QString clientLogPlayerName(const QVariantMap &player, const QString &objectName)
+{
+    QString general = player.value(QStringLiteral("general")).toString();
+    if (general.isEmpty())
+        general = player.value(QStringLiteral("avatar")).toString();
+    if (general.isEmpty())
+        return objectName;
+    auto translate = [](const QString &name) {
+        if (Sanguosha == nullptr)
+            return name;
+        const QString translated = Sanguosha->translate(name);
+        return translated.isEmpty() ? name : translated;
+    };
+    QString name = translate(general);
+    const QString deputy = player.value(QStringLiteral("deputy_general")).toString();
+    if (!deputy.isEmpty())
+        name += QLatin1Char('/') + translate(deputy);
+    return name;
+}
+
+
+namespace {
+
+QString translateOrKeep(const QString &key)
+{
+    if (key.isEmpty() || Sanguosha == nullptr)
+        return key;
+    const QString translated = Sanguosha->translate(key);
+    return translated.isEmpty() ? key : translated;
+}
+
+QString resolveName(const ClientLogPlayerNameResolver &playerName, const QString &objectName)
+{
+    if (objectName.isEmpty())
+        return QString();
+    const QString resolved = playerName ? playerName(objectName) : QString();
+    return resolved.isEmpty() ? objectName : resolved;
+}
+
+ClientLogFormatStyle clientTextLogStyle(const ClientLogPlayerNameResolver &playerName)
+{
+    ClientLogFormatStyle style;
+    style.cardJoin = QStringLiteral("、");
+    style.toJoin = QStringLiteral("、");
+    style.phrases = engineUseCardPhrases();
+    style.translate = [](const QString &key) { return translateOrKeep(key); };
+    // Without this the formatter falls back to Engine::getCard(), which needs a
+    // room context the text client never registers: %card then resolved to
+    // nothing and equip / damage-source lines lost their card entirely. No room
+    // means no filtered card either, so both branches read the engine table.
+    style.cardById = [](int id, bool useRoomCard) -> const Card * {
+        if (Sanguosha == nullptr)
+            return nullptr;
+        // $JudgeResult / $PasteCard want the card as the room currently holds
+        // it; the room is only registered while a game is running, so fall back
+        // to the printed card either way.
+        const Card *card = useRoomCard ? Sanguosha->getCard(id) : nullptr;
+        return card != nullptr ? card : Sanguosha->getEngineCard(id);
+    };
+    style.cardLogName = [](const Card *card) {
+        if (card->getId() >= 0)
+            return clientCardDisplayText(card->getId());
+        QString name = translateOrKeep(card->objectName());
+        const QString skill = translateOrKeep(card->getSkillName());
+        if (!skill.isEmpty() && skill != name)
+            name = QStringLiteral("%1（%2）").arg(name, skill);
+        return name;
+    };
+    style.playerName = [playerName](const QString &name) {
+        return resolveName(playerName, name);
+    };
+    return style;
+}
+
+ClientLogFormatRequest requestFromSkillLog(const QVariantMap &payload)
+{
+    ClientLogFormatRequest request;
+    request.type = payload.value(QStringLiteral("log_type")).toString();
+    request.from = payload.value(QStringLiteral("from_player")).toString();
+    request.tos = payload.value(QStringLiteral("to_players")).toStringList();
+    request.cardString = payload.value(QStringLiteral("card_string")).toString();
+    const QStringList arguments = payload.value(QStringLiteral("arguments")).toStringList();
+    if (arguments.size() > 0)
+        request.arg = arguments.at(0);
+    if (arguments.size() > 1)
+        request.arg2 = arguments.at(1);
+    if (arguments.size() > 2)
+        request.arg3 = arguments.at(2);
+    if (arguments.size() > 3)
+        request.arg4 = arguments.at(3);
+    if (arguments.size() > 4)
+        request.arg5 = arguments.at(4);
+    return request;
+}
+
+} // namespace
+
+QString formatClientSkillLogText(const QVariantMap &payload, const ClientLogPlayerNameResolver &playerName)
+{
+    // lang writes several templates for the desktop log box, tags and all --
+    // "#AskForPeaches" asks for a <b><font>桃</font></b>.
+    return clientPlainLogText(
+        formatClientLog(requestFromSkillLog(payload), clientTextLogStyle(playerName)));
+}
+
+QString formatClientGameEventText(const QVariantMap &payload, const ClientLogPlayerNameResolver &playerName)
+{
+    ClientLogFormatRequest request;
+    request.from = payload.value(QStringLiteral("player_name")).toString();
+    switch (payload.value(QStringLiteral("event")).toInt()) {
+    case QSanProtocol::S_GAME_EVENT_PLAYER_QUITDYING:
+        request.type = QStringLiteral("#QuitDying");
+        break;
+    case QSanProtocol::S_GAME_EVENT_PLAYER_REFORM:
+        request.type = QStringLiteral("#PlayerReform");
+        break;
+    case QSanProtocol::S_GAME_EVENT_CHANGE_HERO:
+        if (payload.value(QStringLiteral("send_log")).toBool())
+            return QString();
+        request.type = QStringLiteral("#ChangeHero");
+        request.arg = payload.value(QStringLiteral("general_name")).toString();
+        break;
+    case QSanProtocol::S_GAME_EVENT_HUASHEN:
+        request.type = QStringLiteral("#HuaShen");
+        request.arg = payload.value(QStringLiteral("skill_name")).toString();
+        request.arg2 = payload.value(QStringLiteral("general_name")).toString();
+        break;
+    default:
+        return QString();
+    }
+    return clientPlainLogText(formatClientLog(request, clientTextLogStyle(playerName)));
+}
+
+QString formatClientPresentationText(int command, const QString &fallbackText,
+                                 const QVariant &payload,
+                                 const ClientLogPlayerNameResolver &playerName)
+{
+    switch (command) {
+    case QSanProtocol::S_COMMAND_LOG_SKILL:
+        return formatClientSkillLogText(payload.toMap(), playerName);
+    case QSanProtocol::S_COMMAND_LOG_EVENT:
+        return formatClientGameEventText(payload.toMap(), playerName);
+    case QSanProtocol::S_COMMAND_SPEAK: {
+        const QVariantMap chat = payload.toMap();
+        const QString said = clientPlainLogText(chat.value(QStringLiteral("text")).toString());
+        if (said.isEmpty())
+            return QString();
+        return QStringLiteral("%1: %2").arg(
+            resolveName(playerName, chat.value(QStringLiteral("speaker")).toString()), said);
+    }
+    case QSanProtocol::S_COMMAND_ANIMATE:
+    case QSanProtocol::S_COMMAND_SET_EMOTION:
+    // The desktop answers these with a skill bubble on the avatar and a table
+    // repaint; its log box stays silent, and the battle log already carries
+    // #InvokeSkill / #TriggerSkill for anything worth reading. Without this the
+    // transcript shows the reducer's own debug text ("sgs2 invoked eight_diagram").
+    case QSanProtocol::S_COMMAND_INVOKE_SKILL:
+    case QSanProtocol::S_COMMAND_CHANGE_TABLE_BG:
+        return QString();
+    default:
+        return fallbackText;
+    }
 }

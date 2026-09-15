@@ -83,7 +83,7 @@ function readDraft_() {
   if (!meta || !decimal_(meta.request_id) || meta.request_id === '0' || meta.shape === 'none') throw new Error('目前沒有待回覆互動。');
   const count = Number(get_('action_rows', '0'));
   if (!count) throw new Error('互動選項尚未載入，請重新整理。');
-  const rows = sheet_('QSAN Actions').getRange(QSAN.FIRST, 1, count, QSAN.COLS).getValues();
+  const rows = sheet_('QSAN Actions').getRange(actionFirst_(), 1, count, QSAN.COLS).getValues();
   // Candidate metadata is presentation, not authorization. Every draft is
   // revalidated by native against this exact request/generation/revision.
   return {meta: meta, draft: draftFromRows_(meta, rows)};

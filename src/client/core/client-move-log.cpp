@@ -1,6 +1,7 @@
 #include "client-move-log.h"
 
 #include "protocol.h"
+#include "client-game-state.h"
 
 namespace {
 
@@ -291,4 +292,44 @@ QList<ClientLogRecord> synthesizeMaxHpChangeLogs(const QString &who, int hp, int
 {
     return {record(QStringLiteral("#GetHp"), who, {}, QString(), QString::number(hp),
                    QString::number(maxHpAfter))};
+}
+
+QList<ClientLogRecord> synthesizeClientMessageLogs(const ClientGameState *state, QList<int> *renPile,
+    const QSanProtocol::ProtocolMessage &message)
+{
+    using namespace QSanProtocol;
+    if (state == nullptr || message.type != ProtocolMessageType::Notification)
+        return {};
+
+    if (message.command == S_COMMAND_GAME_START
+        || (message.command == S_COMMAND_STATE_SYNC
+            && message.payload.toMap().value(QStringLiteral("phase")).toString()
+                == QLatin1String("begin"))) {
+        if (renPile != nullptr)
+            renPile->clear();
+    }
+
+    QList<ClientLogRecord> records;
+    if (message.command == S_COMMAND_GET_CARD || message.command == S_COMMAND_LOSE_CARD) {
+        records = synthesizeCardMovementLogs(message.command, message.payload.toMap(),
+                                             renPile);
+    } else if (message.command == S_COMMAND_CHANGE_HP) {
+        const QVariantMap payload = message.payload.toMap();
+        const QString who = payload.value(QStringLiteral("player_name")).toString();
+        records = synthesizeHpChangeLogs(
+            payload,
+            state->playerValue(who, QStringLiteral("hp")).toInt(),
+            state->playerValue(who, QStringLiteral("max_hp")).toInt());
+    } else if (message.command == S_COMMAND_CHANGE_MAXHP) {
+        const QVariantMap payload = message.payload.toMap();
+        const QString who = payload.value(QStringLiteral("player_name")).toString();
+        records = synthesizeMaxHpChangeLogs(
+            who,
+            state->playerValue(who, QStringLiteral("hp")).toInt(),
+            state->playerValue(who, QStringLiteral("max_hp")).toInt());
+    } else {
+        return {};
+    }
+
+    return records;
 }

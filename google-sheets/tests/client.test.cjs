@@ -59,6 +59,70 @@ function row(bank, id, options = {}) {
     options.enabled !== false, 'detail', options.skill || '', options.instance || 0, ''];
 }
 
+test('room seats preserve circular order, dead seats and self for 1 to 20 players without overlapping zones', () => {
+  const c = context();
+  for (let count = 1; count <= 20; ++count) {
+    const players = Array.from({length: count}, (_, i) => ({id: 'p' + i, seat: i + 1, alive: i !== 1}));
+    const self = Math.floor(count / 2);
+    const plan = c.roomPlan_({view: {self_name: 'p' + self, players: players.slice().reverse(), hand: Array(40).fill({id: 1})}});
+    assert.equal(plan.seats.length, count);
+    assert.equal(plan.seats.at(-1).player.id, 'p' + self);
+    assert.equal(plan.seats.at(-1).row, plan.bottom);
+    assert.deepEqual(plain(plan.seats.slice(0, -1).map(s => s.player.id)),
+      players.slice(self + 1).concat(players.slice(0, self)).map(p => p.id));
+    const occupied = new Set();
+    for (const zone of c.roomZones_(plan)) {
+      assert.ok(zone.height > 0);
+      for (let r = zone.row; r < zone.row + zone.height; ++r) {
+        assert.ok(r < plan.first - 1, zone.key + ' must stay above candidates');
+        for (let col = zone.col; col < zone.col + zone.width; ++col) {
+          const key = r + ':' + col;
+          assert.ok(!occupied.has(key), zone.key + ' overlaps ' + key);
+          occupied.add(key);
+        }
+      }
+    }
+  }
+});
+
+test('room only displays authorized table cards and hand, with newest battle logs first', () => {
+  const c = context(), blocks = [];
+  c.prepareRoom_ = () => {};
+  c.writeBlock_ = (...args) => blocks.push(args);
+  c.renderRoom_({view: {self_name: 'p1', players: [{id: 'p1', seat: 1}],
+    cards: [{id: 1, label: '處理中的殺', place: 7}, {id: 2, label: '已棄置的牌', place: 5},
+      {id: 3, label: '裝備牌', place: 1}, {id: 4, label: '不可見牌名', hidden: true, place: 7}],
+    hand: [{id: 5, label: '自己的桃', suit: 'heart', number: 12}], logs: ['較舊戰報', '最新戰報']},
+    state: {cards: [{label: '原始狀態不直接呈現'}]}, interaction: {prompt: '請打出一張閃'}}, {type: 'response_card'});
+  const value = key => blocks.find(b => b[1] === 'room_' + key)[4][0][0];
+  assert.equal(value('pile'), '處理中的殺、暗牌');
+  assert.equal(value('hand'), '自己的桃[♥Q]');
+  assert.equal(value('prompt'), '請打出一張閃');
+  assert.equal(value('log_0'), '最新戰報');
+  assert.equal(value('log_1'), '較舊戰報');
+  assert.ok(!JSON.stringify(blocks).includes('原始狀態不直接呈現'));
+});
+
+test('room layout migration retains selected draft at its new row', () => {
+  const c = context(), cells = new Map();
+  const rows = [row('card', 0), row('player', 'p2', {order: '1,3'}), row('player', 'p3', {order: '2'})];
+  const range = (r, col, height = 1, width = 1) => {
+    const out = {getValues: () => Array.from({length: height}, (_, i) => Array.from({length: width}, (_, j) => cells.get((r + i) + ':' + (col + j)) ?? '')),
+      setValues(values) { values.forEach((row, i) => row.forEach((v, j) => cells.set((r + i) + ':' + (col + j), v))); return out; },
+      clearContent() { for (let i = 0; i < height; ++i) for (let j = 0; j < width; ++j) cells.delete((r + i) + ':' + (col + j)); return out; }};
+    for (const method of ['breakApart', 'clearDataValidations', 'setBackground', 'setFontColor', 'setFontWeight', 'setVerticalAlignment', 'setWrap', 'merge', 'setNumberFormat']) out[method] = () => out;
+    return out;
+  };
+  const sheet = {getRange: range, getLastRow: () => 12, setFrozenRows() {}, setHiddenGridlines() {}, setColumnWidth() {}, setRowHeights() {}};
+  c.sheet_ = () => sheet; c.ensureRange_ = (_, ...args) => range(...args);
+  c.put_('action_rows', rows.length); range(7, 1, rows.length, 11).setValues(rows);
+  c.prepareRoom_(c.roomPlan_({view: {self_name: 'p1', players: [{id: 'p1', seat: 1}]}}));
+  c.requirePaired_ = () => {};
+  c.saveJson_('meta', {generation: '1', revision: '2', request_id: '3', shape: 'cards'});
+  assert.ok(c.actionFirst_() > 7);
+  assert.deepEqual(plain(c.readDraft_().draft), {cards: [0], targets: ['p2', 'p3', 'p2']});
+});
+
 test('option replies contain no card fields; zero-valued options remain strings', () => {
   const c = context();
   assert.deepEqual(plain(c.draftFromRows_({shape: 'option'}, [row('option', 0)])), {option: '0'});
@@ -217,7 +281,7 @@ test('onOpen installs the complete operational menu with bound handlers', () => 
     ['item', '提交選擇', 'submitSheetDraft'],
     ['item', '取消／結束出牌', 'cancelDraft'],
     ['item', '重試待確認指令', 'retryPending'],
-    ['item', '檢視目前列詳情', 'detailsFromSheet'],
+      ['item', '查詢詳情（座位／項目）', 'detailsFromSheet'],
     ['item', '離開並關閉會話', 'disconnect'],
     ['install']
   ]);
@@ -227,27 +291,31 @@ test('render projects native snapshot state and GAME_OVER winner into worksheet 
   const c = context(); const blocks = [];
   c.writeBlock_ = (...args) => blocks.push(args);
   c.renderActions_ = () => {};
+  c.prepareRoom_ = () => {};
   c.saveJson_ = () => {};
   c.json_ = () => null;
   c.render_({generation: '4', revision: '8', request_id: '12', connection: 'connected',
     interaction: {type: 'choose_player', payload: {players: []}, min: 1, max: 1},
     view: {prompt: '@resolution', prompt_text: '結算', players: [{id: 'p1', label: '主公', hp: 2, max_hp: 4, hand_count: 3,
       alive: true, general_label: '曹操', equip: ['青釭劍'], marks: {忠: 1}}],
-      hand: [{id: 0, label: '殺', detail: 'basic'}], cards: [], skills: [], logs: ['勝負已定']},
+      hand: [{id: 0, label: '殺', detail: ':slash', description: '出牌階段，對一名角色使用。', image: '/v1/assets/hidden-code'}], cards: [], skills: [], logs: ['勝負已定']},
     state: {game: {game_over: true, result: '主公勝'}}});
   const board = blocks.find(x => x[0] === 'QSAN Board')[4];
-  assert.equal(blocks.find(x => x[1] === 'action_title')[4][1][1], '結算');
+  assert.equal(blocks.find(x => x[1] === 'room_prompt')[4][0][0], '對局結束：主公勝');
   assert.deepEqual(plain(board[1].slice(0, 3)), ['狀態', '', 'connected']);
   assert.equal(board[1][6], 'GAME_OVER');
   assert.equal(board[3][0], '勝方');
   assert.equal(board[3][2], '主公勝');
   assert.deepEqual(plain(board[4].slice(0, 7)), ['player', 'p1', '主公', '2/4', 3, '曹操；青釭劍；忠：1', '存活']);
   assert.deepEqual(plain(board[5].slice(0, 3)), ['card', 0, '殺']);
+  assert.equal(board[5][7], '出牌階段，對一名角色使用。');
+  assert.equal(board[5][10], '');
+  assert.ok(!JSON.stringify(blocks).includes('/v1/assets/hidden-code'));
 });
 
 test('render leaves native pre-selection hp fields blank', () => {
   const c = context(); const blocks = [];
-  c.writeBlock_ = (...args) => blocks.push(args); c.renderActions_ = () => {}; c.saveJson_ = () => {};
+  c.writeBlock_ = (...args) => blocks.push(args); c.renderActions_ = () => {}; c.saveJson_ = () => {}; c.prepareRoom_ = () => {};
   c.json_ = () => null;
   c.render_({generation: '1', revision: '1', request_id: '1', connection: 'connected', interaction: {},
     view: {players: [{id: 'p1', label: '未選將', equip: [{label: '青釭劍', image: '/opaque'}]}]}, state: {game: {}}});
@@ -275,7 +343,7 @@ test('poll returns the same skill-aware prompt used by the worksheet', () => {
   assert.equal(c.poll().prompt, '是否發動技能「酒詩」？');
 });
 
-test('actions checkbox writes booleans with General number format', () => {
+test('actions keep checkboxes while displaying full descriptions without image identifiers', () => {
   const c = context(); let storedRows = [], formats = [];
   const range = {setNumberFormat(value) { formats.push(value); return this; }, setValues(rows) {
       if (rows.length && rows[0].length === 1 && storedRows.length) rows.forEach((r, i) => { storedRows[i][3] = r[0]; });
@@ -283,8 +351,83 @@ test('actions checkbox writes booleans with General number format', () => {
     clearContent() { return this; }, clearDataValidations() { return this; }, setDataValidation() { return this; }, setBackground() { return this; }, setWrapStrategy() { return this; }};
   c.sheet_ = () => ({getRange() { return range; }}); c.ensureRange_ = () => range;
   c.SpreadsheetApp.newDataValidation = () => ({requireCheckbox() { return this; }, build() { return {}; }});
-  c.renderActions_({shape: 'option', generation: '1', request_id: '1'}, {options: [{id: 'caocao', label: '曹操'}]}, false);
+  c.renderActions_({shape: 'option', generation: '1', request_id: '1'}, {options: [{id: 'caocao', label: '曹操',
+    detail: ':caocao', description: '奸雄：你受到傷害後，可以獲得造成此傷害的牌。\n護駕：主公技。', image: '/v1/assets/not-for-cells'}]}, false);
   assert.equal(storedRows[0][3], false); assert.ok(formats.includes('General'));
+  assert.match(storedRows[0][7], /奸雄.*\n護駕/);
+  assert.equal(storedRows[0][10], '');
+  assert.equal(c.description_({detail: ':untranslated'}), '');
+  assert.equal(c.description_({description: ':missing', detail: '已翻譯說明'}), '已翻譯說明');
+  c.renderActions_({shape: 'general_arrangement', generation: '1', request_id: '2', generals: ['caocao']},
+    {generals: [{id: 'caocao', label: '曹操', description: '完整武將技能'}]}, false);
+  assert.equal(storedRows[0][7], '完整武將技能');
+});
+
+test('room seat details resolve merged title/body by displayed player ID and keep images out of text', () => {
+  const c = context(), calls = [], blocks = [];
+  c.prepareRoom_ = () => {}; c.writeBlock_ = (...args) => blocks.push(args);
+  c.renderRoom_({view: {self_name: 'self', players: [{id: 'dead', seat: 2, alive: false}, {id: 'self', seat: 2}]}}, {});
+  c.put_('action_first', 44);
+  const sheet = {getName: () => 'QSAN Actions'};
+  let selected = {row: 5, col: 5, height: 1, width: 3};
+  const range = {getSheet: () => sheet, getRow: () => selected.row, getColumn: () => selected.col,
+    getNumRows: () => selected.height, getNumColumns: () => selected.width};
+  c.SpreadsheetApp.getActiveRange = () => range;
+  c.sheet_ = () => sheet;
+  const asset = '/v1/assets/' + 'a'.repeat(64);
+  c.command_ = (name, args) => {
+    calls.push([name, plain(args)]);
+    return {id: args.key, label: '角色', description: '完整技能說明', general_image: asset,
+      marks: {'@raw_mark': 7}, equip: [{label: '青釭劍', image: asset}]};
+  };
+  c.endpoint_ = () => 'https://host.test'; c.put_('token', 'token'); c.put_('session', 'session');
+  c.UrlFetchApp = {fetch(url, options) {
+    assert.equal(url, 'https://host.test' + asset);
+    assert.equal(options.headers.Authorization, 'Bearer token');
+    return {getAllHeaders: () => ({'Content-Type': 'image/png'}), getResponseCode: () => 200, getContent: () => [1, 2]};
+  }};
+  c.outcome_ = (status, extra) => ({status, ...extra});
+  let result = c.detailsFromSheet();
+  assert.deepEqual(calls[0], ['details', {kind: 'player', key: 'dead'}]);
+  assert.match(result.detailText, /完整標記：@raw_mark：7/);
+  assert.match(result.detailText, /說明：完整技能說明/);
+  assert.match(result.detailImage, /^data:image\/png;base64,/);
+  assert.ok(!result.detailText.includes('/v1/assets/'));
+  assert.ok(!JSON.stringify(blocks).includes('/v1/assets/'));
+  selected = {row: 27, col: 5, height: 5, width: 3};
+  c.detailsFromSheet();
+  assert.equal(calls[1][1].key, 'self');
+  selected = {row: 12, col: 5, height: 1, width: 3};
+  assert.throws(() => c.detailsFromSheet(), /請選取一個座位/);
+  selected = {row: 5, col: 5, height: 6, width: 4};
+  assert.throws(() => c.detailsFromSheet(), /請選取一個座位/);
+  assert.equal(calls.length, 2);
+});
+
+test('ordinary choice details remain local and choose-general details use native general rules', () => {
+  const c = context(), calls = [];
+  const sheet = {getName: () => 'QSAN Actions', getRange: () => ({getValues: () => [['option', 'yes', '是', false, '', '', true, '發動技能']]})};
+  c.SpreadsheetApp.getActiveRange = () => ({getSheet: () => sheet, getRow: () => 44});
+  c.sheet_ = () => sheet; c.writeBlock_ = () => {}; c.outcome_ = (_, extra) => extra;
+  c.put_('action_first', 44); c.saveJson_('meta', {type: 'skill_invoke'});
+  c.command_ = (name, args) => { calls.push([name, plain(args)]); return {label: '武將', description: '完整武將說明'}; };
+  assert.match(c.detailsFromSheet().detailText, /發動技能/);
+  assert.equal(calls.length, 0);
+  c.saveJson_('meta', {type: 'choose_general'});
+  assert.match(c.detailsFromSheet().detailText, /完整武將說明/);
+  assert.equal(calls[0][1].kind, 'general');
+});
+
+test('sidebar preserves selected details through polling and replaces them on the next query', () => {
+  const c = sidebarContext();
+  c.show({detailText: '<b>完整標記</b>\n@mark：1', detailImage: 'data:image/png;base64,AQI='});
+  assert.equal(c.element('detailText').textContent, '<b>完整標記</b>\n@mark：1');
+  assert.equal(c.element('detailText').hidden, false);
+  c.show({status: 'active'});
+  assert.match(c.element('detailText').textContent, /@mark：1/);
+  c.show({detailText: '下一張牌的說明', detailImage: ''});
+  assert.equal(c.element('detailText').textContent, '下一張牌的說明');
+  assert.equal(c.element('detailImage').hidden, true);
 });
 
 test('board marks summary bounds internal turn marks without changing source data', () => {

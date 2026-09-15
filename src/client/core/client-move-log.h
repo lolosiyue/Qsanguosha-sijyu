@@ -1,6 +1,7 @@
 #ifndef CLIENT_MOVE_LOG_H
 #define CLIENT_MOVE_LOG_H
 
+#include "protocol/protocol-message.h"
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -32,5 +33,10 @@ QList<ClientLogRecord> synthesizeCardMovementLogs(int command, const QVariantMap
 QList<ClientLogRecord> synthesizeHpChangeLogs(const QVariantMap &payload, int hpAfter,
                                               int maxHp);
 QList<ClientLogRecord> synthesizeMaxHpChangeLogs(const QString &who, int hp, int maxHpAfter);
+
+class ClientGameState;
+// Call after the reducer has applied the notification, as in the TUI.
+QList<ClientLogRecord> synthesizeClientMessageLogs(const ClientGameState *state, QList<int> *renPile,
+    const QSanProtocol::ProtocolMessage &message);
 
 #endif
