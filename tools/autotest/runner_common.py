@@ -138,6 +138,23 @@ _POSIX_CRASH_SIGNALS = {
 }
 
 
+def _posix_signal_number(code):
+    """把 POSIX exit code 還原成訊號編號, 不是訊號死則回傳 None。
+
+    兩種形態都要認:
+    - Popen.returncode: 被訊號 N 殺死時回 -N。
+    - 128+N: shell 慣例。client 經 xvfb-run 之類的 shell wrapper 啟動時,
+      wrapper 看到的是 shell 的 $?, SIGSEGV 回傳的是 139 而不是 -11;
+      不認這個形態就會把 SIGSEGV 誤標成「應用程式退出碼, 非崩潰」。"""
+    if code is None:
+        return None
+    if code < 0:
+        return -code
+    if 128 < code < 128 + 64:
+        return code - 128
+    return None
+
+
 def describe_exit(code):
     """exit code 翻譯。Windows 給 NTSTATUS 名, POSIX 給訊號名。"""
     if code is None:
@@ -145,12 +162,13 @@ def describe_exit(code):
     if not IS_WINDOWS:
         if code == 0:
             return "0 (正常結束)"
-        if code < 0:
+        signo = _posix_signal_number(code)
+        if signo is not None:
             try:
-                name = signal.Signals(-code).name
+                name = signal.Signals(signo).name
             except ValueError:
-                name = "SIG%d" % -code
-            return "%s (被訊號終止)" % name
+                name = "SIG%d" % signo
+            return "%s (%d, 被訊號終止)" % (name, code)
         return "%d (應用程式退出碼, 非崩潰)" % code
     h = code & 0xFFFFFFFF
     if h == 0:
@@ -163,12 +181,14 @@ def is_crash_code(code):
     """判斷 exit code 是否代表閃退。
 
     Windows: NTSTATUS 高位 0xC0000000+ 或 0x80000003 斷點。
-    POSIX: 被 SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE 終止 (returncode 為 -N)。
+    POSIX: 被 SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE 終止 (returncode 為 -N,
+    或經 shell wrapper 時的 128+N)。
     兩邊的 exit=1 等小值都是應用程式自行 return, 不是閃退。"""
     if code is None:
         return False
     if not IS_WINDOWS:
-        return code < 0 and -code in {int(s) for s in _POSIX_CRASH_SIGNALS}
+        signo = _posix_signal_number(code)
+        return signo is not None and signo in {int(s) for s in _POSIX_CRASH_SIGNALS}
     h = code & 0xFFFFFFFF
     return h == 0x80000003 or h >= 0xC0000000
 

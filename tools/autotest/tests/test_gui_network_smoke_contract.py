@@ -214,6 +214,13 @@ def test_runner_common_is_cross_platform() -> None:
     if not rc.IS_WINDOWS:
         assert rc.is_crash_code(-11) is True, "SIGSEGV must be reported as a crash"
         assert "SIGSEGV" in rc.describe_exit(-11)
+        # A shell wrapper (xvfb-run) reports signal death as 128+N, not -N:
+        # exit 139 must not be mislabeled as a non-crash application exit code.
+        assert rc.is_crash_code(139) is True, "128+SIGSEGV must be reported as a crash"
+        assert "SIGSEGV" in rc.describe_exit(139)
+        assert rc.is_crash_code(134) is True, "128+SIGABRT must be reported as a crash"
+        assert rc.is_crash_code(143) is False, "128+SIGTERM is termination, not a crash"
+        assert rc.is_crash_code(11) is False, "the smoke's timeout exit code is not a crash"
     else:
         assert rc.is_crash_code(0xC0000005 - (1 << 32)) is True
 
