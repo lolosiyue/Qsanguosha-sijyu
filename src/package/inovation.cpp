@@ -4717,6 +4717,24 @@ public:
 
 
 
+// inovation_fengbi: 標記技（封弊）——效果實作在
+// PlayerDecisionService::askForCardChosen（他人不可指名其手牌）
+// 與 PlayerCardContainer::updateHandcardNum（對其他玩家隱藏手牌數）
+class InovationFengbi : public TriggerSkill
+{
+public:
+    InovationFengbi() : TriggerSkill("inovation_fengbi")
+    {
+        frequency = Compulsory;
+        events << NonTrigger;
+    }
+
+    bool trigger(TriggerEvent, Room *, ServerPlayer *, QVariant &) const
+    {
+        return false;
+    }
+};
+
 InovationPackage::InovationPackage()
     : Package("inovation")
 {
@@ -4834,6 +4852,7 @@ InovationPackage::InovationPackage()
     chiaki->addSkill(new Ningju);
     chiaki->addSkill(new Zhinian);
     skills << new Chengxu;
+    skills << new InovationFengbi;
 
     General *shizuo = new General(this, "inovation_Shizuo", "real", 7);
     shizuo->addSkill(new Baonu);

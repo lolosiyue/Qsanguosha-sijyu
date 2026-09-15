@@ -943,6 +943,8 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		// stop huashen animation
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		if(skill_name.contains("huashen")) container->stopHuaShen();
+		// inovation_fengbi：取得／失去封弊後刷新手牌數顯示
+		if(skill_name=="inovation_fengbi"&&container) container->updateHandcardNum();
 		//container->updateAvatarTooltip();
 		break;
 	}
@@ -956,6 +958,10 @@ void RoomScene::handleGameEvent(const QVariant&args)
 
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		container->updateAvatarTooltip();*/
+		if(skill_name=="inovation_fengbi"){
+			PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
+			if(container) container->updateHandcardNum();
+		}
 		break;
 	}
 	case S_GAME_EVENT_ADD_SKILL: {
@@ -967,6 +973,10 @@ void RoomScene::handleGameEvent(const QVariant&args)
 
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		container->updateAvatarTooltip();*/
+		if(skill_name=="inovation_fengbi"){
+			PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
+			if(container) container->updateHandcardNum();
+		}
 		break;
 	}
 	case S_GAME_EVENT_LOSE_SKILL: {
@@ -978,6 +988,10 @@ void RoomScene::handleGameEvent(const QVariant&args)
 
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		container->updateAvatarTooltip();*/
+		if(skill_name=="inovation_fengbi"){
+			PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
+			if(container) container->updateHandcardNum();
+		}
 		break;
 	}
 	case S_GAME_EVENT_PREPARE_SKILL:
