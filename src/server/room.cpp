@@ -822,7 +822,10 @@ void Room::updateStateItem()
 			continue;
 		}
 		QChar c = abbreviation.at(0);
-		if (p->isDead()&&!p->property("RestPlayer").toBool()) c = c.toLower();
+		QString hideFrom = p->property("HideDeathIconFrom").toString();
+		bool hideDeathIcon = p->property("HideDeathIcon").toBool();
+		if (p->isDead() && !p->property("RestPlayer").toBool() && hideFrom.isEmpty() && !hideDeathIcon)
+			c = c.toLower();
 		roles.append(c);
 	}
 

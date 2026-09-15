@@ -5550,7 +5550,7 @@ void RoomScene::killPlayer(const QString&who)
 		dashboard->update();
 		general = Self->getGeneral();
 		item2player.remove(dashboard);
-		if(ServerInfo.GameMode=="02_1v1")
+		if(ServerInfo.GameMode=="02_1v1" && !Self->property("HideDeathIcon").toBool())
 			self_box->killPlayer(general->objectName());/*
 		foreach (const Skill*skill,Self->getVisibleSkills())
 			detachSkill(skill->objectName());*/
@@ -5566,7 +5566,8 @@ void RoomScene::killPlayer(const QString&who)
 		photo->update();
 		item2player.remove(photo);
 		general = photo->getPlayer()->getGeneral();
-		if(ServerInfo.GameMode=="02_1v1")
+		const ClientPlayer*deadPlayer = photo->getPlayer();
+		if(ServerInfo.GameMode=="02_1v1" && !(deadPlayer && deadPlayer->property("HideDeathIcon").toBool()))
 			enemy_box->killPlayer(general->objectName());
 	}
 	if(Config.EnableEffects&&Config.EnableLastWord&&!Self->hasFlag("marshalling"))
