@@ -6,6 +6,7 @@
 #include "core/client-core.h"
 #include "dashboard.h"
 #include "engine.h"
+#include "game-control-panel.h"
 #include "photo.h"
 #include "playercardbox.h"
 #include "qsanbutton.h"
@@ -252,6 +253,10 @@ int LocalResponseUiProbe::openDialogCount() const
 {
     int count = 0;
     for (QWidget *widget : QApplication::topLevelWidgets()) {
+        // Persistent presentation windows intentionally survive a reply. Count
+        // request dialogs here so the existing final-state check remains useful.
+        if (qobject_cast<GameControlPanel *>(widget) || qobject_cast<GameTextSnapshotDialog *>(widget))
+            continue;
         if (qobject_cast<QDialog *>(widget) && widget->isVisible())
             ++count;
     }

@@ -3175,22 +3175,22 @@
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="29"/>
         <source>Run Next Case Action</source>
-        <translation type="unfinished"></translation>
+        <translation>运行下一步操作</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="30"/>
         <source>Run Remaining Case Actions</source>
-        <translation type="unfinished"></translation>
+        <translation>运行剩余操作</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="31"/>
         <source>Save Snapshot</source>
-        <translation type="unfinished"></translation>
+        <translation>保存快照</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="32"/>
         <source>Save Screenshot</source>
-        <translation type="unfinished"></translation>
+        <translation>保存截图</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="33"/>
@@ -3200,72 +3200,84 @@
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="35"/>
         <source>Local askFor UI Inspector</source>
-        <translation type="unfinished"></translation>
+        <translation>本地 askFor 界面检查器</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="40"/>
         <source>Case</source>
-        <translation type="unfinished"></translation>
+        <translation>用例</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="41"/>
         <source>Mode</source>
-        <translation type="unfinished"></translation>
+        <translation>模式</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="42"/>
         <source>Request command / serial</source>
-        <translation type="unfinished"></translation>
+        <translation>请求命令／序号</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="43"/>
         <source>Client status / pattern</source>
-        <translation type="unfinished"></translation>
+        <translation>客户端状态／模式</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="44"/>
         <source>Presentation assertion</source>
-        <translation type="unfinished"></translation>
+        <translation>呈现断言</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="45"/>
         <source>Reply received</source>
-        <translation type="unfinished"></translation>
+        <translation>已收到回复</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="46"/>
         <source>Reply command</source>
-        <translation type="unfinished"></translation>
+        <translation>回复命令</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="47"/>
         <source>Reply body</source>
-        <translation type="unfinished"></translation>
+        <translation>回复内容</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="48"/>
         <source>Final result</source>
-        <translation type="unfinished"></translation>
+        <translation>最终结果</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="63"/>
         <source>Pending</source>
-        <translation type="unfinished"></translation>
+        <translation>待检查</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="65"/>
         <source>Awaiting presentation</source>
-        <translation type="unfinished"></translation>
+        <translation>等待呈现</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="89"/>
         <source>Yes</source>
-        <translation type="unfinished">是</translation>
+        <translation>是</translation>
     </message>
     <message>
         <location filename="../src/ui/testing/local-response-ui-inspector.cpp" line="89"/>
         <source>No</source>
-        <translation type="unfinished">否</translation>
+        <translation>否</translation>
+    </message>
+    <message>
+        <source>Game Control Panel (&amp;G)</source>
+        <translation>游戏操作面板(&amp;G)</translation>
+    </message>
+    <message>
+        <source>Game State Text (&amp;I)</source>
+        <translation>游戏状态文字(&amp;I)</translation>
+    </message>
+    <message>
+        <source>&amp;Close</source>
+        <translation>关闭(&amp;C)</translation>
     </message>
 </context>
 <context>
@@ -4252,6 +4264,14 @@
         <location filename="../src/dialog/mainwindow.cpp" line="523"/>
         <source>Select a reply file</source>
         <translation>请选择录像文件</translation>
+    </message>
+    <message>
+        <source>Game State</source>
+        <translation>游戏状态</translation>
+    </message>
+    <message>
+        <source>Game Control Panel</source>
+        <translation>游戏操作面板</translation>
     </message>
 </context>
 <context>
@@ -6457,6 +6477,368 @@ P = 你自己, R = 你所在的房间</translation>
         <location filename="../src/dialog/connectiondialog.cpp" line="149"/>
         <source>Refresh</source>
         <translation>刷新</translation>
+    </message>
+</context>
+<context>
+    <name>GameControlPanel</name>
+    <message>
+        <source>Game Controls</source>
+        <translation>游戏操作</translation>
+    </message>
+    <message>
+        <source>Current prompt</source>
+        <translation>当前提示</translation>
+    </message>
+    <message>
+        <source>Actions and options</source>
+        <translation>行动与选项</translation>
+    </message>
+    <message>
+        <source>Skills</source>
+        <translation>技能</translation>
+    </message>
+    <message>
+        <source>Cards</source>
+        <translation>牌</translation>
+    </message>
+    <message>
+        <source>Players and targets</source>
+        <translation>玩家与目标</translation>
+    </message>
+    <message>
+        <source>Arrange cards (draw the first card in each list first)</source>
+        <translation>调整牌堆顺序（列表第一张最先摸到）</translation>
+    </message>
+    <message>
+        <source>Top of deck</source>
+        <translation>牌堆顶</translation>
+    </message>
+    <message>
+        <source>Bottom of deck</source>
+        <translation>牌堆底</translation>
+    </message>
+    <message>
+        <source>Move earlier (&amp;U)</source>
+        <translation>往前一张(&amp;U)</translation>
+    </message>
+    <message>
+        <source>Move later (&amp;D)</source>
+        <translation>往后一张(&amp;D)</translation>
+    </message>
+    <message>
+        <source>Move to top (&amp;T)</source>
+        <translation>移到牌堆顶(&amp;T)</translation>
+    </message>
+    <message>
+        <source>Move to bottom (&amp;B)</source>
+        <translation>移到牌堆底(&amp;B)</translation>
+    </message>
+    <message>
+        <source>Confirm (&amp;C)</source>
+        <translation>确认(&amp;C)</translation>
+    </message>
+    <message>
+        <source>Cancel selection or response</source>
+        <translation>取消选择或响应</translation>
+    </message>
+    <message>
+        <source>Finish play phase</source>
+        <translation>结束出牌</translation>
+    </message>
+    <message>
+        <source>Close panel</source>
+        <translation>关闭面板</translation>
+    </message>
+    <message>
+        <source>%1; %2</source>
+        <translation>%1；%2</translation>
+    </message>
+    <message>
+        <source>Current prompt: %1</source>
+        <translation>当前提示：%1</translation>
+    </message>
+</context>
+<context>
+    <name>GameTextSnapshotDialog</name>
+    <message>
+        <source>Game State</source>
+        <translation>游戏状态</translation>
+    </message>
+    <message>
+        <source>Game state snapshot</source>
+        <translation>游戏状态快照</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>更新</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+</context>
+<context>
+    <name>DesktopGamePresentation</name>
+    <message>
+        <source>Cancel selection or response</source>
+        <translation>取消选择或响应</translation>
+    </message>
+    <message>
+        <source>Finish play phase</source>
+        <translation>结束出牌</translation>
+    </message>
+    <message>
+        <source>Unknown card</source>
+        <translation>未知牌</translation>
+    </message>
+    <message>
+        <source>%1, %2 %3, ID %4</source>
+        <translation>%1，%2 %3，编号 %4</translation>
+    </message>
+    <message>
+        <source>No game connection is active.</source>
+        <translation>当前没有游戏连接。</translation>
+    </message>
+    <message>
+        <source>Return to the game before taking an action.</source>
+        <translation>请返回游戏前台后再操作。</translation>
+    </message>
+    <message>
+        <source>Replays only support viewing the game state.</source>
+        <translation>录像仅支持查看游戏状态。</translation>
+    </message>
+    <message>
+        <source>Connection or state synchronization is not complete.</source>
+        <translation>连接或状态同步尚未完成。</translation>
+    </message>
+    <message>
+        <source>No action currently needs a response.</source>
+        <translation>当前没有需要响应的操作。</translation>
+    </message>
+    <message>
+        <source>This action has timed out.</source>
+        <translation>此操作已超时。</translation>
+    </message>
+    <message>
+        <source>
+Skill options: %1</source>
+        <translation>
+技能选项：%1</translation>
+    </message>
+    <message>
+        <source>This skill option is currently unavailable</source>
+        <translation>此技能选项当前不可用</translation>
+    </message>
+    <message>
+        <source>This skill has no available options. Cancel the skill selection.</source>
+        <translation>此技能当前没有可用选项，请取消技能选择。</translation>
+    </message>
+    <message>
+        <source>Gongxin cards are still synchronizing. Please wait.</source>
+        <translation>攻心牌区仍在同步，请稍候。</translation>
+    </message>
+    <message>
+        <source>View only</source>
+        <translation>仅供查看</translation>
+    </message>
+    <message>
+        <source>Gongxin: %1
+Revealed cards: %2
+%3</source>
+        <translation>攻心：%1
+已展示的牌：%2
+%3</translation>
+    </message>
+    <message>
+        <source>Select an available card and confirm. Confirm without a selection to take no action.</source>
+        <translation>选择一张可操作的牌后确认；未选牌时确认表示不操作。</translation>
+    </message>
+    <message>
+        <source>This request is view only. Confirm to finish viewing.</source>
+        <translation>本次仅供查看，确认以结束查看。</translation>
+    </message>
+    <message>
+        <source>Skill trigger order is still synchronizing. Please wait.</source>
+        <translation>技能触发顺序仍在同步，请稍候。</translation>
+    </message>
+    <message>
+        <source>Skill trigger options do not match the current request. Please wait.</source>
+        <translation>技能触发选项与当前请求不一致，请稍候。</translation>
+    </message>
+    <message>
+        <source>Select the next skill to invoke, then confirm.</source>
+        <translation>请选择下一个发动的技能，再按确认。</translation>
+    </message>
+    <message>
+        <source> You may cancel this invocation.</source>
+        <translation>可以取消本次发动。</translation>
+    </message>
+    <message>
+        <source> A selection is required; cancellation is not allowed.</source>
+        <translation>本次必须选择，不能取消。</translation>
+    </message>
+    <message>
+        <source>No trigger options are available. Waiting for a request update.</source>
+        <translation>当前没有可用的触发选项，等待请求更新。</translation>
+    </message>
+    <message>
+        <source>The current Guanxing piles cannot be edited.</source>
+        <translation>当前观星牌堆不可操作。</translation>
+    </message>
+    <message>
+        <source>Guanxing piles are still synchronizing. Please wait.</source>
+        <translation>观星牌堆仍在同步，请稍候。</translation>
+    </message>
+    <message>
+        <source>
+Top: %1 cards (%2–%3); bottom: %4 cards (%5–%6). Select a card and use the move buttons to arrange it.</source>
+        <translation>
+牌堆顶 %1 张（%2～%3），牌堆底 %4 张（%5～%6）。选中一张牌后，用移动按钮调整顺序。</translation>
+    </message>
+    <message>
+        <source>Adjust the pile sizes to the allowed range before confirming.</source>
+        <translation>请将牌堆张数调整至允许范围后确认。</translation>
+    </message>
+    <message>
+        <source>Yes</source>
+        <translation>是</translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation>否</translation>
+    </message>
+    <message>
+        <source>This option is currently unavailable</source>
+        <translation>此选项当前不可用</translation>
+    </message>
+    <message>
+        <source>This option requires a dedicated interface. Use the original window.</source>
+        <translation>此选项需要专用界面，请使用原有窗口。</translation>
+    </message>
+    <message>
+        <source>This action (%1) requires a dedicated interface. Use the original window.</source>
+        <translation>此操作（%1）需要专用界面，请使用原有窗口。</translation>
+    </message>
+    <message>
+        <source>Distribution options are still synchronizing. Please wait.</source>
+        <translation>分配选项仍在同步，请稍候。</translation>
+    </message>
+    <message>
+        <source>
+Distribution: %1 selected, %2–%3 allowed, %4 remaining. Select one recipient and confirm.</source>
+        <translation>
+分配：已选 %1 张，可选 %2～%3 张，剩余 %4 张。选择一名接收者后确认。</translation>
+    </message>
+    <message>
+        <source>This card cannot currently be selected</source>
+        <translation>当前不能选择此牌</translation>
+    </message>
+    <message>
+        <source>Equipment: %1</source>
+        <translation>装备：%1</translation>
+    </message>
+    <message>
+        <source>This equipment cannot currently be selected</source>
+        <translation>当前不能选择此装备</translation>
+    </message>
+    <message>
+        <source>This player cannot currently be selected</source>
+        <translation>当前不能选择此玩家</translation>
+    </message>
+    <message>
+        <source> (options)</source>
+        <translation>（选项）</translation>
+    </message>
+    <message>
+        <source>This skill cannot currently be invoked</source>
+        <translation>当前不能发动此技能</translation>
+    </message>
+    <message>
+        <source>Connection or state synchronization is not complete. Refresh later.</source>
+        <translation>连接或状态同步尚未完成，请稍后更新。</translation>
+    </message>
+    <message>
+        <source>Confirm</source>
+        <translation>确认</translation>
+    </message>
+    <message>
+        <source>
+Available actions: %1</source>
+        <translation>
+可用操作：%1</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>无</translation>
+    </message>
+    <message>
+        <source>
+Recent events:</source>
+        <translation>
+近期事件：</translation>
+    </message>
+    <message>
+        <source>%1. %2</source>
+        <translation>%1. %2</translation>
+    </message>
+</context>
+<context>
+    <name>GameViewState</name>
+    <message>
+        <source>卡牌 %1</source>
+        <translation>卡牌 %1</translation>
+    </message>
+    <message>
+        <source>未知 %1 張</source>
+        <translation>未知 %1 张</translation>
+    </message>
+    <message>
+        <source>%1 張</source>
+        <translation>%1 张</translation>
+    </message>
+    <message>
+        <source>無</source>
+        <translation>无</translation>
+    </message>
+    <message>
+        <source>本人：%1　體力 %2/%3</source>
+        <translation>你：%1　体力 %2/%3</translation>
+    </message>
+    <message>
+        <source>階段：%1</source>
+        <translation>阶段：%1</translation>
+    </message>
+    <message>
+        <source>目前玩家：%1</source>
+        <translation>当前玩家：%1</translation>
+    </message>
+    <message>
+        <source>操作角色：%1</source>
+        <translation>操作角色：%1</translation>
+    </message>
+    <message>
+        <source>牌堆：%1　棄牌堆：%2</source>
+        <translation>牌堆：%1　弃牌堆：%2</translation>
+    </message>
+    <message>
+        <source>未知</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <source>%1 手牌：%2</source>
+        <translation>%1 手牌：%2</translation>
+    </message>
+    <message>
+        <source>%1｜座位 %2｜體力 %3/%4｜手牌 %5｜距離 %6｜裝備：%7｜判定：%8｜私有牌堆：%9</source>
+        <translation>%1｜座位 %2｜体力 %3/%4｜手牌 %5｜距离 %6｜装备：%7｜判定：%8｜私有牌堆：%9</translation>
+    </message>
+    <message>
+        <source>目前提示：%1</source>
+        <translation>当前提示：%1</translation>
     </message>
 </context>
 </TS>

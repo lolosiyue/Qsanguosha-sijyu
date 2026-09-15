@@ -30,6 +30,9 @@
 #include "recorder.h"
 #include "replay-diagnostic-exporter.h"
 #include "game-snapshot.h"
+#if !defined(QSAN_XP_LEGACY)
+#include "desktop-game-presentation.h"
+#endif
 #include "replay-timeline.h"
 #include "replay-index.h"
 #include "indicatoritem.h"
@@ -466,6 +469,17 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	connect(card_container,SIGNAL(item_chosen(int)),ClientInstance,SLOT(onPlayerChooseAG(int)));
 	connect(card_container,SIGNAL(item_gongxined(int)),ClientInstance,SLOT(onPlayerReplyGongxin(int)));
+	connect(ClientInstance->interactionCore(), &ClientCore::requestStarted, this, [this]() {
+		// A replacement may keep the same Client status. Its old local skill
+		// choices must not be reinterpreted as a draft for the new request.
+		if (m_presentedDialog && m_presentedDialogRequest != ClientInstance->interactionCore()->activeRequestId())
+			clearPresentedDialogSkill(true);
+	});
+	connect(ClientInstance->interactionCore(), &ClientCore::requestCancelled, this, [this]() {
+		if (m_presentedDialog) clearPresentedDialogSkill(true);
+		if (card_container->gongxinActive()) card_container->clear();
+		if (m_chooseTriggerOrderBox->hasActiveChoice()) m_chooseTriggerOrderBox->clear();
+	});
 
 	connect(ClientInstance,SIGNAL(ag_filled(QList<int>,QList<int>)),this,SLOT(fillCards(QList<int>,QList<int>)));
 	connect(ClientInstance,SIGNAL(ag_taken(ClientPlayer*,int,bool)),this,SLOT(takeAmazingGrace(ClientPlayer*,int,bool)));
@@ -820,6 +834,10 @@ void RoomScene::exitOnsoleContext()
 
 RoomScene::~RoomScene()
 {
+#if !defined(QSAN_XP_LEGACY)
+	delete m_gamePresentation;
+	m_gamePresentation = nullptr;
+#endif
 	if (m_pendingReplayCaptureId != 0 && ClientInstance
 		&& ClientInstance->getReplayer()) {
 		ClientInstance->getReplayer()->cancelStateCaptureBoundary(
@@ -2445,6 +2463,14 @@ void RoomScene::updateSelectedTargets()
 
 void RoomScene::keyReleaseEvent(QKeyEvent*event)
 {
+#if !defined(QSAN_XP_LEGACY)
+	// QAction consumes the key press; do not let its release select the I card.
+	if (event->key() == Qt::Key_I
+		&& event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier)) {
+		event->accept();
+		return;
+	}
+#endif
 	if(!Config.EnableHotKey) return;
 	if(chat_edit->hasFocus()) return;
 
@@ -3630,6 +3656,9 @@ void RoomScene::refreshSkillInstanceButtonLabels(const QString &baseName)
 
 bool RoomScene::shouldUseDashboardDialogPresenter(QDialog *dialog) const
 {
+#if !defined(QSAN_XP_LEGACY)
+	if (qobject_cast<GuhuoDialog *>(dialog) || qobject_cast<TiansuanDialog *>(dialog)) return true;
+#endif
 	return qobject_cast<JuguanDialog *>(dialog) != nullptr;
 }
 
@@ -3637,6 +3666,9 @@ void RoomScene::wireSkillDialog(QSanSkillButton *button, QDialog *dialog)
 {
 	if (button == nullptr || dialog == nullptr)
 		return;
+	// Record the existing resolver's result, including legacy getDialog-only
+	// skills. The text panel must not instantiate dialogs to classify buttons.
+	button->setProperty("gamePresentationNeedsDialog", true);
 
 	if (dialog->parent() != main_window)
 		dialog->setParent(main_window, Qt::Dialog);
@@ -3684,18 +3716,28 @@ void RoomScene::presentSkillDialog(QSanSkillButton *button, QDialog *dialog)
 			activateDirectly = true;
 		else
 			collectDialogPresenterOptions(juguanDialog, optionNames, enabledOptions, tooltips);
+	} else if (TiansuanDialog *tiansuanDialog = qobject_cast<TiansuanDialog *>(dialog)) {
+		tiansuanDialog->prepareOptions();
+		optionNames = tiansuanDialog->getOptionNames();
+		foreach (const QString &option, optionNames) {
+			if (tiansuanDialog->isButtonEnabled(option)) enabledOptions << option;
+			tooltips.insert(option, Sanguosha->translate(option));
+		}
 	} else {
 		return;
 	}
 
-	if (activateDirectly || enabledOptions.isEmpty()) {
+	if (activateDirectly || (enabledOptions.isEmpty() && !qobject_cast<TiansuanDialog *>(dialog))) {
 		activateSkill(skill);
 		return;
 	}
 
 	m_presentedDialogSkillButton = button;
 	m_presentedDialog = dialog;
-	dashboard->showDialogOptions(dialog->objectName(), optionNames, enabledOptions, tooltips);
+	m_presentedDialogRequest = ClientInstance->interactionCore()->activeRequestId();
+	if (!optionNames.isEmpty())
+		dashboard->showDialogOptions(dialog->objectName(), optionNames, enabledOptions, tooltips,
+			qobject_cast<TiansuanDialog *>(dialog) != nullptr);
 	ok_button->setEnabled(false);
 	cancel_button->setEnabled(true);
 }
@@ -3710,6 +3752,7 @@ void RoomScene::clearPresentedDialogSkill(bool resetButtonState)
 
 	m_presentedDialogSkillButton = nullptr;
 	m_presentedDialog = nullptr;
+	m_presentedDialogRequest = 0;
 }
 
 void RoomScene::activateSkill(const ViewAsSkill *skill)
@@ -3753,13 +3796,27 @@ void RoomScene::activateSkill(const ViewAsSkill *skill)
 
 bool RoomScene::applyPresentedDialogOption(const QString &optionName)
 {
-	if (optionName.isEmpty() || m_presentedDialog == nullptr)
+	if (!isPresentedDialogOptionEnabled(optionName))
 		return false;
 
 	if (GuhuoDialog *guhuoDialog = qobject_cast<GuhuoDialog *>(m_presentedDialog))
 		return guhuoDialog->applyOption(optionName);
 	if (JuguanDialog *juguanDialog = qobject_cast<JuguanDialog *>(m_presentedDialog))
 		return juguanDialog->applyOption(optionName);
+	if (TiansuanDialog *tiansuanDialog = qobject_cast<TiansuanDialog *>(m_presentedDialog))
+		return tiansuanDialog->applyOption(optionName);
+	return false;
+}
+
+bool RoomScene::isPresentedDialogOptionEnabled(const QString &optionName) const
+{
+	if (optionName.isEmpty() || !m_presentedDialog) return false;
+	const ClientCore *core = ClientInstance->interactionCore();
+	if (!core->hasActiveRequest() || core->activeRequestId() != m_presentedDialogRequest) return false;
+	if (core->activeRequest().deadlineMs > 0 && core->now() >= core->activeRequest().deadlineMs) return false;
+	if (auto *dialog = qobject_cast<GuhuoDialog *>(m_presentedDialog)) return dialog->isButtonEnabled(optionName);
+	if (auto *dialog = qobject_cast<JuguanDialog *>(m_presentedDialog)) return dialog->isButtonEnabled(optionName);
+	if (auto *dialog = qobject_cast<TiansuanDialog *>(m_presentedDialog)) return dialog->isButtonEnabled(optionName);
 	return false;
 }
 
@@ -3912,8 +3969,7 @@ void RoomScene::useSelectedCard()
 		break;
 	}
 	case Client::AskForGongxin: {
-		card_container->clear();
-		ClientInstance->onPlayerReplyGongxin();
+		card_container->submitGongxin(card_container->selectedGongxinCard());
 		break;
 	}
 	case Client::AskForTriggerOrder: {
@@ -4070,8 +4126,12 @@ void RoomScene::doTimeout()
 			doCancelButton();
 		break;
 	}
-	case Client::AskForGuanxing:
 	case Client::AskForGongxin: {
+		// A draft is not consent to submit on timeout.
+		card_container->submitGongxin();
+		break;
+	}
+	case Client::AskForGuanxing: {
 		ok_button->click();
 		break;
 	}
@@ -4261,6 +4321,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 	switch (newStatus&Client::ClientStatusBasicMask){
 	case Client::NotActive: {
+		if (oldStatus == Client::AskForTriggerOrder) m_chooseTriggerOrderBox->clear();
 		if(oldStatus==Client::ExecDialog){
 			if(m_playerCardBox){
 				m_playerCardBox->clear();
@@ -4269,7 +4330,10 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 			}
 			if(m_choiceDialog!=nullptr&&m_choiceDialog->isVisible())
 				m_choiceDialog->hide();
-		} else if(oldStatus==Client::AskForGuanxing||oldStatus==Client::AskForGongxin){
+		} else if(oldStatus==Client::AskForGongxin){
+			// Cancellation may already have restored an older retained display.
+			if (card_container->gongxinActive()) card_container->clear();
+		} else if(oldStatus==Client::AskForGuanxing){
 			m_guanxingBox->clear();
 			if(!card_container->retained())
 				card_container->clear();
@@ -4564,7 +4628,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 void RoomScene::onSkillDeactivated()
 {
-	if (dashboard->isShowingDialogOptions()) {
+	if (m_presentedDialog != nullptr) {
 		clearPresentedDialogSkill(false);
 		ok_button->setEnabled(false);
 		cancel_button->setEnabled(false);
@@ -4676,16 +4740,18 @@ void RoomScene::updateTrustButton()
 void RoomScene::doOkButton()
 {
 	if(!ok_button->isEnabled()) return;
-	if (dashboard->isShowingDialogOptions()) {
+	if (m_presentedDialog != nullptr) {
 		const ViewAsSkill *skill = m_presentedDialogSkillButton != nullptr ? m_presentedDialogSkillButton->getViewAsSkill() : nullptr;
 		QString optionName = dashboard->selectedDialogOption();
 		if (!applyPresentedDialogOption(optionName))
 			return;
+		const bool selectAll = m_presentedDialog->objectName() == "qice";
 		clearPresentedDialogSkill(false);
 		activateSkill(skill);
+		if (selectAll) dashboard->selectAll();
 		return;
 	}
-	if(card_container->retained()) card_container->clear();
+	if(card_container->retained() && ClientInstance->getStatus() != Client::AskForGongxin) card_container->clear();
 	useSelectedCard();
 	if(onsole_target!=""){
 		onsole_target = "";
@@ -4696,7 +4762,7 @@ void RoomScene::doOkButton()
 void RoomScene::doCancelButton()
 {
 	if(card_container->retained()) card_container->clear();
-	if (dashboard->isShowingDialogOptions()) {
+	if (m_presentedDialog != nullptr) {
 		dashboard->skillButtonDeactivated();
 		clearPresentedDialogSkill(true);
 		dashboard->enableCards();
@@ -5825,10 +5891,10 @@ void RoomScene::fillCards(const QList<int>&card_ids,const QList<int>&disabled_id
 
 void RoomScene::doGongxin(const QList<int>&card_ids,bool enable_heart,QList<int> enabled_ids)
 {
+	if (card_container->gongxinActive()) card_container->clear();
 	fillCards(card_ids);
-	if(enable_heart)
-		card_container->startGongxin(enabled_ids);
-	else{
+	card_container->startGongxin(enable_heart ? enabled_ids : QList<int>());
+	if(!enable_heart){
 		card_container->addCloseButton();
 		//QTimer::singleShot(6666,this,SLOT(hideContainer()));
 	}

@@ -112,6 +112,27 @@ classic 模式是 Qt Core／Network 上的 line-oriented text client。
 
 ### 3.2 完整 snapshot 與 event
 
+**2026-09-16 共用呈現契約首批實作**：`src/client/core/` 新增
+`GameViewState`、`GameActionModel`、`GameEventStream`，分別承接本節原先規劃的
+`ClientSnapshot`、§3.3 `ActionCatalog` 及呈現事件游標。沿用既有
+`ClientGameState`／typed request，不建立第二套 reducer；純文字可取得已授權手牌、
+裝備、判定區、私有牌堆與操作提示。首批接入 modern Qt 桌面的文字快照及操作面板。
+接續批次讓 TUI controller 在已提交的 state／request／選擇草稿變更後產生共用投影；
+board 保留既有排版，使用 GameViewState 的手牌與玩家牌區資訊，`/status` 提供共用
+文字快照。GameActionModel 顯示目前規則已確認的候選與選擇狀態，GameEventStream
+提供帶 generation／sequence 的近期事件，保留 200 筆上限。指令仍經既有 parser、
+ClientCore 與 reply encoder，不從顯示名稱反推 ID；未知合法性不能列作可用。
+本批取得限定授權後，Windows TUI／既有測試 target build 及單次 board-view focused
+均 PASS（15.09 秒）；實際 terminal／完整 frontend port／所有互動能力仍是各自的
+驗收範圍，不能由 board fixture 推定完整對局通過。
+同日下一批 Qt 接入遺計逐次分配、觀星上下牌堆排序與既有技能選項；
+`GameActionModel` 追加 `top_cards`／`bottom_cards` 有序草稿投影及 `action_context`，
+TUI 複雜排序與分配仍沿用既有指令，不能以 Qt 的實作推定 TUI 已完成複雜互動驗收。
+後續 Qt 特殊互動批次沿用 `action_context` 接入攻心揭示牌、技能觸發順序及
+蠱惑／據鞍／天算選項。選項與技能實例 ID 不從翻譯文字反推；攻心只讀取目前
+請求揭示的牌。後續 TUI 投影不改網路協定或 Lua／SWIG API，亦不搬入桌面物件。
+詳細介面與支援清單見 [ClientCore 文件](client-core-interaction-model.md#shared-game-presentation-and-desktop-keyboard-panel)。
+
 `ClientSnapshot` 至少包含：
 
 - connection、server、room、mode、owner、ready、reconnect 狀態；

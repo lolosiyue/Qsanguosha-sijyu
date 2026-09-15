@@ -944,174 +944,22 @@ static bool choiceOverrideForceCancelAndFallback()
                   "a single choice skips the + split path");
 }
 
-static bool choiceClientAnswer()
+static bool choiceClientV2Answer()
 {
-    DecisionFixture v1Fixture(QStringLiteral("online"));
-    ClientReplyAgent v1Agent(v1Fixture.room, v1Fixture.player, ProtocolVersion::V2);
-    v1Agent.replyByCommand.insert(S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("right"));
-    const QString v1Answer = v1Fixture.room.askForChoice(
-        v1Fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
-    const QStringList v1Choices = v1Fixture.probe.payloads(ChoiceMade);
-    if (!expect(v1Agent.protocolReady && !v1Agent.parseFailed,
-                "V1 online choice protocol is ready")
-        || !expect(v1Answer == QStringLiteral("right"),
-                   "V1 online choice reply is accepted")
-        || !expect(QJsonDocument::fromJson(v1Agent.lastRequestWire).isObject()
-                       && QJsonDocument::fromJson(v1Agent.lastReplyWire).isObject(),
-                   "first V2 choice request and reply are objects")) {
-        return false;
-    }
-
-    DecisionFixture v2Fixture(QStringLiteral("online"));
-    ClientReplyAgent v2Agent(v2Fixture.room, v2Fixture.player, ProtocolVersion::V2);
-    v2Agent.replyByCommand.insert(S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("right"));
-    const QString v2Answer = v2Fixture.room.askForChoice(
-        v2Fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
-    const QStringList v2Choices = v2Fixture.probe.payloads(ChoiceMade);
-    if (!expect(v2Agent.protocolReady && !v2Agent.parseFailed,
-                "V2 online choice protocol is ready")
-        || !expect(v2Answer == QStringLiteral("right"),
-                   "V2 online choice reply is accepted")
-        || !expect(QJsonDocument::fromJson(v2Agent.lastRequestWire).isObject()
-                       && QJsonDocument::fromJson(v2Agent.lastReplyWire).isObject(),
-                   "V2 choice request and reply are objects")) {
-        return false;
-    }
-
-    return expect(v1Answer == v2Answer, "V1 and V2 choice answers match")
-        && expect(v1Choices == QStringList{QStringLiteral("skillChoice:tuxi:right")}
-                      && v2Choices == v1Choices,
-                  "V1 and V2 ChoiceMade payloads match exactly");
-}
-
-static bool simpleChoiceClientV1V2Parity()
-{
-    auto wireMatchesVersion = [](const ClientReplyAgent &agent,
-                                 ProtocolVersion version) {
-        const QJsonDocument request = QJsonDocument::fromJson(agent.lastRequestWire);
-        const QJsonDocument reply = QJsonDocument::fromJson(agent.lastReplyWire);
-        return version == ProtocolVersion::V2
-            ? request.isObject() && reply.isObject()
-            : request.isArray() && reply.isArray();
-    };
-
-    DecisionFixture generalV1(QStringLiteral("online"));
-    ClientReplyAgent generalV1Agent(
-        generalV1.room, generalV1.player, ProtocolVersion::V2);
-    generalV1Agent.replyByCommand.insert(
-        S_COMMAND_CHOOSE_GENERAL, QStringLiteral("liubei"));
-    const QString generalV1Answer = generalV1.room.askForGeneral(
-        generalV1.player,
-        QStringList{QStringLiteral("caocao"), QStringLiteral("liubei")});
-
-    DecisionFixture generalV2(QStringLiteral("online"));
-    ClientReplyAgent generalV2Agent(
-        generalV2.room, generalV2.player, ProtocolVersion::V2);
-    generalV2Agent.replyByCommand.insert(
-        S_COMMAND_CHOOSE_GENERAL, QStringLiteral("liubei"));
-    const QString generalV2Answer = generalV2.room.askForGeneral(
-        generalV2.player,
-        QStringList{QStringLiteral("caocao"), QStringLiteral("liubei")});
-    if (!expect(generalV1Answer == generalV2Answer
-                    && generalV2Answer == QStringLiteral("liubei"),
-                "V1/V2 choose general gameplay answers match")
-        || !expect(wireMatchesVersion(generalV1Agent, ProtocolVersion::V2)
-                       && wireMatchesVersion(generalV2Agent, ProtocolVersion::V2),
-                   "choose general uses versioned request and reply wire")) {
-        return false;
-    }
-
-    DecisionFixture suitV1(QStringLiteral("online"));
-    ClientReplyAgent suitV1Agent(suitV1.room, suitV1.player, ProtocolVersion::V2);
-    suitV1Agent.replyByCommand.insert(S_COMMAND_CHOOSE_SUIT, QStringLiteral("diamond"));
-    const Card::Suit suitV1Answer = suitV1.room.askForSuit(
-        suitV1.player, QStringLiteral("test"));
-
-    DecisionFixture suitV2(QStringLiteral("online"));
-    ClientReplyAgent suitV2Agent(suitV2.room, suitV2.player, ProtocolVersion::V2);
-    suitV2Agent.replyByCommand.insert(S_COMMAND_CHOOSE_SUIT, QStringLiteral("diamond"));
-    const Card::Suit suitV2Answer = suitV2.room.askForSuit(
-        suitV2.player, QStringLiteral("test"));
-    if (!expect(suitV1Answer == suitV2Answer && suitV2Answer == Card::Diamond,
-                "V1/V2 choose suit gameplay answers match")
-        || !expect(wireMatchesVersion(suitV1Agent, ProtocolVersion::V2)
-                       && wireMatchesVersion(suitV2Agent, ProtocolVersion::V2),
-                   "choose suit uses versioned request and reply wire")) {
-        return false;
-    }
-
-    DecisionFixture kingdomV1(QStringLiteral("online"));
-    ClientReplyAgent kingdomV1Agent(
-        kingdomV1.room, kingdomV1.player, ProtocolVersion::V2);
-    kingdomV1Agent.replyByCommand.insert(
-        S_COMMAND_CHOOSE_KINGDOM, QStringLiteral("shu"));
-    const QString kingdomV1Answer = kingdomV1.room.askForKingdom(
-        kingdomV1.player, QStringLiteral("test"),
-        QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
-
-    DecisionFixture kingdomV2(QStringLiteral("online"));
-    ClientReplyAgent kingdomV2Agent(
-        kingdomV2.room, kingdomV2.player, ProtocolVersion::V2);
-    kingdomV2Agent.replyByCommand.insert(
-        S_COMMAND_CHOOSE_KINGDOM, QStringLiteral("shu"));
-    const QString kingdomV2Answer = kingdomV2.room.askForKingdom(
-        kingdomV2.player, QStringLiteral("test"),
-        QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
-    if (!expect(kingdomV1Answer == kingdomV2Answer
-                    && kingdomV2Answer == QStringLiteral("shu"),
-                "V1/V2 choose kingdom gameplay answers match")
-        || !expect(wireMatchesVersion(kingdomV1Agent, ProtocolVersion::V2)
-                       && wireMatchesVersion(kingdomV2Agent, ProtocolVersion::V2),
-                   "choose kingdom uses versioned request and reply wire")) {
-        return false;
-    }
-
-    DecisionFixture orderV1(QStringLiteral("online"));
-    ClientReplyAgent orderV1Agent(orderV1.room, orderV1.player, ProtocolVersion::V2);
-    orderV1Agent.replyByCommand.insert(
-        S_COMMAND_CHOOSE_ORDER, static_cast<int>(S_CAMP_COOL));
-    const QString orderV1Answer = PlayerDecisionServiceTestAccess::askForOrder(
-        orderV1.room, orderV1.player, QStringLiteral("warm"));
-
-    DecisionFixture orderV2(QStringLiteral("online"));
-    ClientReplyAgent orderV2Agent(orderV2.room, orderV2.player, ProtocolVersion::V2);
-    orderV2Agent.replyByCommand.insert(
-        S_COMMAND_CHOOSE_ORDER, static_cast<int>(S_CAMP_COOL));
-    const QString orderV2Answer = PlayerDecisionServiceTestAccess::askForOrder(
-        orderV2.room, orderV2.player, QStringLiteral("warm"));
-    if (!expect(orderV1Answer == orderV2Answer
-                    && orderV2Answer == QStringLiteral("cool"),
-                "V1/V2 choose order gameplay answers match")
-        || !expect(wireMatchesVersion(orderV1Agent, ProtocolVersion::V2)
-                       && wireMatchesVersion(orderV2Agent, ProtocolVersion::V2),
-                   "choose order uses numeric V1 and enum-string V2 wire")) {
-        return false;
-    }
-
-    DecisionFixture invokeV1(QStringLiteral("online"));
-    ClientReplyAgent invokeV1Agent(invokeV1.room, invokeV1.player, ProtocolVersion::V2);
-    invokeV1Agent.replyByCommand.insert(S_COMMAND_INVOKE_SKILL, true);
-    const bool invokeV1Answer = invokeV1.room.askForSkillInvoke(
-        invokeV1.player, QStringLiteral("test_skill"),
-        QStringLiteral("playerdata:decision-other"), false);
-
-    DecisionFixture invokeV2(QStringLiteral("online"));
-    ClientReplyAgent invokeV2Agent(invokeV2.room, invokeV2.player, ProtocolVersion::V2);
-    invokeV2Agent.replyByCommand.insert(S_COMMAND_INVOKE_SKILL, true);
-    const bool invokeV2Answer = invokeV2.room.askForSkillInvoke(
-        invokeV2.player, QStringLiteral("test_skill"),
-        QStringLiteral("playerdata:decision-other"), false);
-    return expect(invokeV1Answer == invokeV2Answer && invokeV2Answer,
-                  "V1/V2 invoke skill gameplay answers match")
-        && expect(wireMatchesVersion(invokeV1Agent, ProtocolVersion::V2)
-                      && wireMatchesVersion(invokeV2Agent, ProtocolVersion::V2),
-                  "invoke skill uses versioned request and reply wire")
-        && expect(!generalV1Agent.parseFailed && !generalV2Agent.parseFailed
-                      && !suitV1Agent.parseFailed && !suitV2Agent.parseFailed
-                      && !kingdomV1Agent.parseFailed && !kingdomV2Agent.parseFailed
-                      && !orderV1Agent.parseFailed && !orderV2Agent.parseFailed
-                      && !invokeV1Agent.parseFailed && !invokeV2Agent.parseFailed,
-                  "simple choice differential agents parse every frame");
+    DecisionFixture fixture(QStringLiteral("online"));
+    ClientReplyAgent agent(fixture.room, fixture.player, ProtocolVersion::V2);
+    agent.replyByCommand.insert(S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("right"));
+    const QString answer = fixture.room.askForChoice(
+        fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
+    return expect(agent.protocolReady && !agent.parseFailed,
+                  "V2 online choice protocol is ready")
+        && expect(answer == QStringLiteral("right"), "V2 online choice reply is accepted")
+        && expect(QJsonDocument::fromJson(agent.lastRequestWire).isObject()
+                      && QJsonDocument::fromJson(agent.lastReplyWire).isObject(),
+                  "V2 choice request and reply are objects")
+        && expect(fixture.probe.payloads(ChoiceMade)
+                      == QStringList{QStringLiteral("skillChoice:tuxi:right")},
+                  "V2 ChoiceMade payload contains the accepted answer");
 }
 
 static bool suitKingdomGeneralAndModeChoices()
@@ -2696,8 +2544,7 @@ int runPlayerDecisionServiceTests()
     run(skillInvokeOverrideAndAiPreservePayloads, "skill-invoke", 6);
     run(skillInvokeClientAnswerAndNotifyFalse, "skill-invoke-client", 7);
     run(choiceOverrideForceCancelAndFallback, "choice", 8);
-    run(choiceClientAnswer, "choice-client", 9);
-    run(simpleChoiceClientV1V2Parity, "simple-choice-client", 10);
+    run(choiceClientV2Answer, "choice-client-v2", 9);
     run(suitKingdomGeneralAndModeChoices, "suit-kingdom-general", 11);
     run(suitKingdomGeneralClientAndInvalidReplies, "client-invalid", 12);
     run(orderAndRolePreserveLegacyFallbacks, "order-role", 13);

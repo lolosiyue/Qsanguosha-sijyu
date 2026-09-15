@@ -2,6 +2,8 @@
 #define CHOOSETRIGGERORDERBOX_H
 
 #include <QGraphicsObject>
+#include <QList>
+#include <QString>
 
 #include "graphicsbox.h"
 
@@ -66,10 +68,12 @@ private:
     bool isPreferentialSkillOf(const TriggerOptionButton *other) const;
 
     void construct();
+    void setSelected(bool selected);
 
     ClientSkillContext detail;
     int times;
     int mull;
+    bool selected;
 
     int width;
 };
@@ -79,11 +83,28 @@ class ChooseTriggerOrderBox : public GraphicsBox
     Q_OBJECT
 
 public:
+    struct KeyboardOption {
+        QString id;
+        QString label;
+        bool enabled;
+        bool selected;
+    };
+
     ChooseTriggerOrderBox();
 
     QRectF boundingRect() const override;
     void chooseOption(const QVariantList &options, bool optional);
     void clear();
+
+    QList<KeyboardOption> keyboardOptions() const;
+    bool selectChoice(const QString &choice, bool selected);
+    QString selectedChoice() const;
+    bool submitChoice(const QString &choice);
+    bool canCancelChoice() const;
+    bool hasActiveChoice() const { return m_active; }
+
+signals:
+    void draftChanged(const QString &choice);
 
 public slots:
     void reply();
@@ -98,6 +119,8 @@ private:
 
     QVariantList options;
     bool optional;
+    bool m_active;
+    QString m_selectedChoice;
     int m_minimumWidth;
 
     Button *cancel;

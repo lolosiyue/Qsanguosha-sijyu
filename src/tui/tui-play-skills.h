@@ -32,6 +32,11 @@ void tuiFillSkillCandidates(const ClientGameState &state, const QString &pattern
 // ever a mark on the listing: a wrong hint must not become a wall.
 QString tuiSkillActivationHint(const QString &skillName, int instanceId,
                                CardUseStruct::CardUseReason reason, const QString &pattern);
+// The shared TUI action projection needs to distinguish "available" from
+// "the runtime has no opinion"; the hint-only helper intentionally does not.
+bool tuiSkillActivationAvailable(const QString &skillName, int instanceId,
+                                 CardUseStruct::CardUseReason reason,
+                                 const QString &pattern, bool *known);
 
 // viewAs / V2 createCard → Card::toString() for the wire.
 //

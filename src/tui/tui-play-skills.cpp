@@ -31,6 +31,17 @@ QString tuiSkillActivationHint(const QString &skillName, int instanceId,
     return tuiText("tui_skill_unavailable");
 }
 
+bool tuiSkillActivationAvailable(const QString &skillName, int instanceId,
+                                 CardUseStruct::CardUseReason reason,
+                                 const QString &pattern, bool *known)
+{
+    const ClientRules::SkillActivationResult result
+        = ClientRules::evaluateSkillActivation(skillName, instanceId, reason, pattern);
+    if (known != nullptr)
+        *known = result.known;
+    return result.known && result.available;
+}
+
 QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skillName,
                                     int instanceId, const QList<int> &subcardIds,
                                     QString *error, const Card **builtCard)

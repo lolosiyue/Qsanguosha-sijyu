@@ -3,6 +3,7 @@ import { installRulesCardCatalog, installRulesTranslations, resetRulesTranslatio
 import { Command, asNumber, asString, isObject, type JsonObject } from "./protocol";
 import { INTERACTION_COMMANDS } from "./replies";
 import type { LiveSession } from "./session";
+import { gameActionModel, isSharedPresentation, type GameActionModel, type SharedPresentation } from "./game-presentation";
 
 export interface RulesSelection {
   card_ids: number[];
@@ -101,6 +102,7 @@ const FRAME_BACKLOG = 4096;
 // correlation the runtime itself reported, never a browser-composed snapshot.
 export class RulesController {
   result: RulesEvaluation | null = null;
+  presentation: SharedPresentation | null = null;
   status = "idle";
   error = "";
   private worker: Worker | null = null;
@@ -114,6 +116,9 @@ export class RulesController {
   private native: NativeStatus = UNBOUND;
   private inFlight: { query: Query | null; id: number } | null = null;
   private resultKey = "";
+  private eventCursor = "0";
+  private actionModelKey = "";
+  private actionModelRevision = 0;
   private sequence = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private session: LiveSession | null = null;
@@ -248,6 +253,29 @@ export class RulesController {
       && this.generation === session.generation
       && this.native.requestId === (session.interaction?.messageId ?? "")
       && this.resultKey === this.key(this.native.revision, this.native.requestId, selection);
+  }
+
+  actionModel(): GameActionModel | null {
+    const selection = this.desired?.selection;
+    if (!this.result || !selection || !this.session || !this.current(this.session, selection)) return null;
+    const key = JSON.stringify([this.native.generation, this.native.revision,
+      this.native.requestId, this.resultKey, selection]);
+    if (key !== this.actionModelKey) {
+      this.actionModelKey = key;
+      this.actionModelRevision = this.actionModelRevision >= Number.MAX_SAFE_INTEGER
+        ? 1 : this.actionModelRevision + 1;
+    }
+    return gameActionModel(this.result, selection, String(this.native.generation),
+      String(this.actionModelRevision));
+  }
+
+  currentPresentation(): SharedPresentation | null {
+    const view = this.presentation;
+    return view && this.native.generation === this.generation && this.native.active
+      && !this.native.failed && !this.native.synchronizing
+      && view.session_generation === String(this.native.generation)
+      && view.presentation_revision === String(this.native.revision)
+      && view.request_id === this.native.requestId ? view : null;
   }
 
   // Exact bytes, in transport order, including every frame this client sent.
@@ -411,6 +439,18 @@ export class RulesController {
       this.status = parsed.known ? "ready" : "unsupported";
       this.error = parsed.known ? "" : parsed.reason;
     }
+    const presentation: unknown = last.presentation;
+    if (query === null && isSharedPresentation(presentation)) {
+      if (presentation.session_generation !== String(this.native.generation)
+          || presentation.presentation_revision !== String(this.native.revision)
+          || presentation.request_id !== this.native.requestId)
+        throw new Error("WASM presentation snapshot correlation mismatch");
+      const previousEvents = this.presentation?.session_generation === presentation.session_generation
+        ? this.presentation.events : [];
+      this.presentation = { ...presentation,
+        events: [...previousEvents, ...presentation.events].slice(-200) };
+      this.eventCursor = presentation.event_cursor;
+    }
     this.pump();
     this.onChange();
   }
@@ -449,7 +489,7 @@ export class RulesController {
     this.inFlight = { query, id };
     this.armTimeout(10000, "WASM 規則串流逾時；請重新連線");
     this.worker?.postMessage({ schema_version: 1, type: "stream",
-      generation: this.generation, id, ops });
+      generation: this.generation, id, ops, event_cursor: this.eventCursor });
   }
 
   private armTimeout(milliseconds: number, message: string): void {
@@ -490,6 +530,10 @@ export class RulesController {
     this.ready = false;
     this.frames = [];
     this.native = UNBOUND;
+    this.presentation = null;
+    this.eventCursor = "0";
+    this.actionModelKey = "";
+    this.actionModelRevision = 0;
     this.desired = null;
     this.desiredKey = "";
     this.rejectedKey = "";

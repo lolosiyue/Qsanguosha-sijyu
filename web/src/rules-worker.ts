@@ -279,13 +279,25 @@ function stream(message: Record<string, unknown>): void {
   const results: Record<string, unknown>[] = [];
   for (const operation of message.ops as unknown[]) {
     if (!record(operation) || operation.schema_version !== 1 || operation.generation !== generation
-        || (operation.action !== "frame" && operation.action !== "query")) {
+      || (operation.action !== "frame" && operation.action !== "query")) {
       throw new Error("WASM stream operations must be current-generation frames or queries");
     }
     const result = runStream(operation);
     results.push(result);
     // A rejected operation ends the batch; the controller decides what is fatal.
     if (result.success !== true) break;
+  }
+  // Append one native presentation snapshot after the committed frame batch.
+  // STATE_SYNC remains private until its end notification has been reduced.
+  const last = results[results.length - 1];
+  if (last?.success === true && record(last.status) && last.status.synchronizing === false
+      && (message.ops as unknown[]).some(operation => record(operation) && operation.action === "frame")) {
+    const status = last.status;
+    if (!integer(status.revision, 0) || typeof status.request_id !== "string"
+        || typeof message.event_cursor !== "string")
+      throw new Error("Native presentation correlation is invalid");
+    results.push(runStream({ schema_version: 1, action: "presentation", generation,
+      revision: status.revision, request_id: status.request_id, event_cursor: message.event_cursor }));
   }
   worker.postMessage({ schema_version: 1, type: "stream", generation, id: message.id, results });
 }

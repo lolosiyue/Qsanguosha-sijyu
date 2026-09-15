@@ -3,6 +3,8 @@
 
 #include "tui-board-layout.h"
 #include "tui-resolvers.h"
+#include "core/game-action-model.h"
+#include "core/game-view-state.h"
 
 #include <QString>
 #include <QStringList>
@@ -25,6 +27,13 @@ struct TuiBoardViewState
     // one frame instead of adding a row the fixed-height input pane does not
     // have -- see the comment above drawInput() in the .cpp for why.
     QString notice;
+    // These are projections of ClientGameState and the active typed request.
+    // The raw state remains available for board-only fields absent from the
+    // shared contract, while overlapping cards/player identity use the shared
+    // projection below.
+    GameViewState presentation;
+    GameActionModel actions;
+    bool hasPresentation = false;
 };
 
 // Paints one ClientGameState into a TuiScreen: room (seat ring or, before
@@ -53,7 +62,8 @@ public:
     // hand-line-count and seat-order math render() already owns, instead of
     // keeping a second copy that could silently drift from what actually gets
     // drawn.
-    TuiBoardGeometry computeGeometry(const ClientGameState &state, int rows, int cols) const;
+    TuiBoardGeometry computeGeometry(const ClientGameState &state, int rows, int cols,
+                                     const GameViewState *presentation = nullptr) const;
 
     // Which page (0-based) `name`'s seat lands on within `geometry` -- pass
     // the geometry this same view just computed for the same state. Returns

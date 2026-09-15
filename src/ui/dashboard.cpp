@@ -25,9 +25,9 @@ class DashboardDialogOptionItem : public QGraphicsObject
 {
 public:
     DashboardDialogOptionItem(Dashboard *dashboard, const QString &optionName, const QString &tooltip,
-        const QSize &size, QGraphicsItem *parent = nullptr)
+        const QSize &size, QGraphicsItem *parent = nullptr, bool textOnly = false)
         : QGraphicsObject(parent), m_dashboard(dashboard), m_optionName(optionName), m_size(size),
-          m_selected(false), m_hovered(false), m_baseZValue(0)
+          m_selected(false), m_hovered(false), m_baseZValue(0), m_textOnly(textOnly)
     {
         setObjectName(optionName);
         setAcceptedMouseButtons(Qt::LeftButton);
@@ -68,9 +68,17 @@ protected:
     {
         painter->setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
 
-        QPixmap pixmap = G_ROOM_SKIN.getCardMainPixmap(m_optionName, true)
-            .scaled(m_size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        painter->drawPixmap(QRect(QPoint(0, 0), m_size), pixmap);
+        if (m_textOnly) {
+            // Non-card choices (for example Tiansuan lots) have no card artwork.
+            painter->fillRect(boundingRect(), QColor(40, 40, 40));
+            painter->setPen(Qt::white);
+            painter->drawText(boundingRect().adjusted(8, 8, -8, -8), Qt::AlignCenter | Qt::TextWordWrap,
+                Sanguosha->translate(m_optionName));
+        } else {
+            QPixmap pixmap = G_ROOM_SKIN.getCardMainPixmap(m_optionName, true)
+                .scaled(m_size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            painter->drawPixmap(QRect(QPoint(0, 0), m_size), pixmap);
+        }
 
         QRectF borderRect = boundingRect().adjusted(1, 1, -1, -1);
         QColor borderColor = m_selected ? QColor(0xF5, 0xD7, 0x6E)
@@ -158,6 +166,7 @@ private:
     bool m_hovered;
     QPointF m_homePos;
     qreal m_baseZValue;
+    bool m_textOnly;
 };
 
 }
@@ -1106,7 +1115,7 @@ void Dashboard::skillButtonDeactivated()
 }
 
 void Dashboard::showDialogOptions(const QString &skillName, const QStringList &optionNames,
-    const QStringList &enabledOptions, const QMap<QString, QString> &tooltips)
+    const QStringList &enabledOptions, const QMap<QString, QString> &tooltips, bool textOnly)
 {
     hideDialogOptions();
     hideFilterContainer();
@@ -1135,7 +1144,7 @@ void Dashboard::showDialogOptions(const QString &skillName, const QStringList &o
         if (tooltip.isEmpty())
             tooltip = Sanguosha->translate(optionName);
 
-        DashboardDialogOptionItem *item = new DashboardDialogOptionItem(this, optionName, tooltip, optionSize, _m_middleFrame);
+        DashboardDialogOptionItem *item = new DashboardDialogOptionItem(this, optionName, tooltip, optionSize, _m_middleFrame, textOnly);
         item->setZValue(5);
         item->setEnabled(enabledOptions.contains(optionName));
         m_dialogOptionItems << item;

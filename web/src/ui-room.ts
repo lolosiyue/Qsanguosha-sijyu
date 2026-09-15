@@ -468,18 +468,19 @@ function skillBar(bind: UiBind): HTMLElement {
       ? evaluation.skills.find((candidate) =>
         candidate.name === skill.name && candidate.instance_id === skill.instanceId)
       : undefined;
+    const candidate = rules.actionModel()?.skills.find((item) => item.id === JSON.stringify([skill.name, skill.instanceId]));
     const button = el("button", {
       class: `skill-btn${selected ? " primary" : ""}`,
       title: skillHint(detail, desc || tr(skill.name))
     }, [tr(skill.name)]);
-    const available = !!detail?.available;
+    const available = !!candidate?.enabled;
     // Descriptions remain visible; only native ViewAs candidates can be activated.
     if (!selected && (!nativeRules || !available))
       button.disabled = true;
     button.addEventListener("click", () => {
       const current = rules.current(session, bind.rulesSelection()) ? rules.result : null;
-      if (!selected && (!current?.known || !current.skills.some((candidate) =>
-        candidate.name === skill.name && candidate.instance_id === skill.instanceId && candidate.available)))
+      const currentAction = rules.actionModel()?.skills.find((item) => item.id === JSON.stringify([skill.name, skill.instanceId]));
+      if (!selected && (!current?.known || !currentAction?.enabled))
         return;
       if (selected) {
         ui.selectedOption = "";

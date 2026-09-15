@@ -2,6 +2,8 @@
 #define CLIENT_RULES_INGRESS_H
 
 #include "client-game-state.h"
+#include "game-event-stream.h"
+#include "game-view-state.h"
 #include "interaction-model.h"
 #include "protocol/protocol-runtime.h"
 #include "protocol/session/client-session-controller.h"
@@ -23,6 +25,8 @@ public:
                       QString *error = nullptr) const;
     QJsonObject status() const;
     QJsonObject view() const;
+    QJsonObject presentation(int generation, int revision, const QString &requestId,
+                             const QString &eventCursor) const;
     void invalidate();
 
 private:
@@ -38,6 +42,7 @@ private:
     QJsonObject m_identity;
     QSanProtocol::ProtocolMessage m_request;
     InteractionRequest m_interaction;
+    GameEventStream m_events;
     QMap<quint64, int> m_outgoingRequests;
     quint64 m_lastOutgoing = 0;
     int m_generation = -1;

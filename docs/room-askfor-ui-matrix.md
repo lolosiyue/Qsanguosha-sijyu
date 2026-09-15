@@ -46,6 +46,28 @@ Inspect mode 的順序是：
 
 ## Inspector
 
+Bootstrap 的 `ADD_PLAYER` 與 `SET_PROPERTY`（含 flags）使用目前 Protocol V2
+具名欄位物件；screen name 保留原文。通知編碼失敗會立即回傳命令與原因，
+由既有報告記錄 `failed_stage=bootstrap` 或 `request_setup`，不繼續注入後續通知。
+排列座位前先確認所有玩家已建立，空白／重複玩家名稱會作為 fixture 錯誤回報。
+後续「改到能用為止」授權下，已修復翻譯 Lua 語法阻塞、Inspect 15 秒自動回覆、
+空牌堆 Tab 導致移牌失效，以及 mirror notification 被誤算為 terminal reply。
+兩案真實 Widgets 鍵盤驗收 **PASS**：觀星 49.69 秒、攻心 51.85 秒，均只送一次
+正確最終回覆、程序 exit 0、未強制終止；NVDA 人工讀屏仍 **NOT RUN**。詳見
+`builds/inspector-repair-20260916/validation.md`。
+
+Inspect 模式的 operation timeout 為 0，避免閱讀／操作時自動代答；其餘模式維持
+原倒數。呈現完成後焦點位於「遊戲操作面板」，空白鍵開啟；Alt+G／Alt+I 可開啟
+面板／文字快照，Alt+C 關閉 Inspector。面板內 Alt+U／D 調整前後順序、Alt+T／B
+移到牌堆頂／底、Alt+C 確認；Escape 關閉面板並恢復來源視窗焦點。
+
+「遊戲操作面板」與「遊戲狀態文字」按鈕直接開啟當前 production RoomScene 的
+共用呈現介面，供人工 Tab／方向鍵／空白鍵與讀屏核對。這兩個按鈕不執行 fixture
+actions；回覆仍由原 Inspector 捕捉與比對。它們不驗證主視窗的選單／快捷鍵、
+live TCP 重連或完整對局；NVDA 人工結果須另外記錄。
+`open_dialog_count` 仍核對請求對話框是否關閉，僅排除會刻意保留的
+GameControlPanel／GameTextSnapshotDialog；其他技能或請求 Dialog 照常計入。
+
 Inspector 顯示：
 
 - Case、Mode

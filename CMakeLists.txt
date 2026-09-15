@@ -218,6 +218,9 @@ endif()
 if(QSAN_BUILD_EXCEL_TESTS)
     list(APPEND QSAN_QT_COMPONENTS Test)
 endif()
+if(BUILD_TESTING AND QSAN_BUILD_GUI AND NOT QSAN_BUILD_XP_LEGACY)
+    list(APPEND QSAN_QT_COMPONENTS Test)
+endif()
 
 list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
 
@@ -677,6 +680,12 @@ set(QSAN_CLIENT_CORE_SOURCES
     src/client/core/card-eligibility-provider.h
     src/client/core/client-game-state.cpp
     src/client/core/client-game-state.h
+    src/client/core/game-view-state.cpp
+    src/client/core/game-view-state.h
+    src/client/core/game-action-model.cpp
+    src/client/core/game-action-model.h
+    src/client/core/game-event-stream.cpp
+    src/client/core/game-event-stream.h
     src/client/core/client-game-state-reducer.cpp
     src/client/core/client-game-state-reducer.h
     src/client/core/client-interaction-view.h
@@ -1681,6 +1690,8 @@ if(QSAN_BUILD_GUI)
             TS_FILES "${translation_source}"
             SOURCES
                 ${QSAN_SOURCES}
+                # The shared snapshot formatter is linked through ClientCore.
+                src/client/core/game-view-state.cpp
                 src/core/engine.cpp
                 ${QSAN_FORMS}
                 qml/home/HomeScene.qml

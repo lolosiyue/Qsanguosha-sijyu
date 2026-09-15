@@ -242,6 +242,10 @@ bool LocalResponseUiController::bootstrap(QString *error)
 
     const QJsonObject selfObject = bootstrapObject.value(QStringLiteral("self")).toObject();
     const QString selfName = selfObject.value(QStringLiteral("object_name")).toString(QStringLiteral("self"));
+    if (selfName.isEmpty()) {
+        *error = QStringLiteral("bootstrap self object_name is empty");
+        return false;
+    }
 
     m_socket = new TestClientSocket;
     m_client = new Client(this, QString(), m_socket);
@@ -295,7 +299,9 @@ bool LocalResponseUiController::bootstrap(QString *error)
     setupPayload.serverName = QStringLiteral("local-response-ui");
     setupPayload.gameMode = modeId;
     setupPayload.gameRuleMode = QStringLiteral("normal");
-    setupPayload.operationTimeout = 15;
+    // Inspect waits for a human; the production countdown must not auto-reply
+    // while the user reads the prompt or operates the keyboard panel.
+    setupPayload.operationTimeout = m_mode == RunnerMode::Inspect ? 0 : 15;
     setupPayload.nullificationCountdown = 8;
     setupPayload.playerCount = mode.player_count;
     ProtocolMessage setup;
@@ -311,6 +317,10 @@ bool LocalResponseUiController::bootstrap(QString *error)
     }
     m_socket->clearSentPackets();
 
+    if (!Self) {
+        *error = QStringLiteral("bootstrap session did not create the local player");
+        return false;
+    }
     Self->setObjectName(selfName);
     Self->setScreenName(selfObject.value(QStringLiteral("screen_name")).toString(QStringLiteral("Tester")));
 
@@ -338,12 +348,33 @@ bool LocalResponseUiController::bootstrap(QString *error)
             *error = QStringLiteral("bootstrap player object_name is empty");
             return false;
         }
-        JsonArray body;
-        body << name << QString::fromLatin1(screenName.toUtf8().toBase64()) << avatar;
-        injectNotification(S_COMMAND_ADD_PLAYER, body);
+        if (m_client->findChild<ClientPlayer *>(name)) {
+            *error = QStringLiteral("duplicate bootstrap player '%1'").arg(name);
+            return false;
+        }
+        // The current wire contract uses named fields and plain screen-name text.
+        const QVariantMap body {
+            { QStringLiteral("schema_version"), 1 },
+            { QStringLiteral("player_name"), name },
+            { QStringLiteral("screen_name"), screenName },
+            { QStringLiteral("avatar"), avatar }
+        };
+        if (!injectNotification(S_COMMAND_ADD_PLAYER, body, error))
+            return false;
     }
 
-    auto setProperties = [this](const QString &name, const QJsonObject &player) {
+    auto setProperty = [this, error](const QString &name, const QString &property,
+                                    const QString &value) {
+        const QVariantMap body {
+            { QStringLiteral("schema_version"), 1 },
+            { QStringLiteral("action"), QStringLiteral("property") },
+            { QStringLiteral("player_name"), name },
+            { QStringLiteral("property_name"), property },
+            { QStringLiteral("string_value"), value }
+        };
+        return injectNotification(S_COMMAND_SET_PROPERTY, body, error);
+    };
+    auto setProperties = [this, error, &setProperty](const QString &name, const QJsonObject &player) {
         static const QMap<QString, QString> properties {
             { QStringLiteral("general"), QStringLiteral("general") },
             { QStringLiteral("general2"), QStringLiteral("general2") },
@@ -357,31 +388,47 @@ bool LocalResponseUiController::bootstrap(QString *error)
         for (auto property = properties.cbegin(); property != properties.cend(); ++property) {
             if (!player.contains(property.key()))
                 continue;
-            JsonArray body;
-            body << name << property.value() << jsonScalarText(player.value(property.key()));
-            injectNotification(S_COMMAND_SET_PROPERTY, body);
+            if (!setProperty(name, property.value(), jsonScalarText(player.value(property.key()))))
+                return false;
         }
         const QJsonObject marks = player.value(QStringLiteral("marks")).toObject();
-        for (auto mark = marks.constBegin(); mark != marks.constEnd(); ++mark)
-            injectNotification(S_COMMAND_SET_MARK, JsonArray() << name << mark.key() << mark.value().toInt());
-        for (const QJsonValue &flag : player.value(QStringLiteral("flags")).toArray())
-            injectNotification(S_COMMAND_SET_PROPERTY,
-                JsonArray() << name << QStringLiteral("flags") << flag.toString());
+        for (auto mark = marks.constBegin(); mark != marks.constEnd(); ++mark) {
+            if (!injectNotification(S_COMMAND_SET_MARK,
+                    JsonArray() << name << mark.key() << mark.value().toInt(), error))
+                return false;
+        }
+        for (const QJsonValue &flag : player.value(QStringLiteral("flags")).toArray()) {
+            if (!setProperty(name, QStringLiteral("flags"), flag.toString()))
+                return false;
+        }
+        return true;
     };
     JsonArray seats;
     seats << selfName;
     for (const QJsonValue &value : players)
         seats << value.toObject().value(QStringLiteral("object_name")).toString();
-    injectNotification(S_COMMAND_ARRANGE_SEATS, seats);
+    // Client::arrangeSeats requires all names to resolve before it sets seats.
+    // A rejected fixture must fail here instead of reaching that native callback.
+    for (const QVariant &seat : seats) {
+        if (!m_client->findChild<ClientPlayer *>(seat.toString())) {
+            *error = QStringLiteral("bootstrap seat player '%1' was not created").arg(seat.toString());
+            return false;
+        }
+    }
+    if (!injectNotification(S_COMMAND_ARRANGE_SEATS, seats, error))
+        return false;
 
     // The production client registers its EngineRuntimeContext only when the
     // room sends GAME_START. All request UI paths read the current RoomState.
-    injectNotification(S_COMMAND_GAME_START, JsonArray());
+    if (!injectNotification(S_COMMAND_GAME_START, JsonArray(), error))
+        return false;
 
-    setProperties(selfName, selfObject);
+    if (!setProperties(selfName, selfObject))
+        return false;
     for (const QJsonValue &value : players) {
         const QJsonObject player = value.toObject();
-        setProperties(player.value(QStringLiteral("object_name")).toString(), player);
+        if (!setProperties(player.value(QStringLiteral("object_name")).toString(), player))
+            return false;
     }
 
     const QJsonArray skills = selfObject.value(QStringLiteral("skills")).toArray();
@@ -391,7 +438,8 @@ bool LocalResponseUiController::bootstrap(QString *error)
             *error = QStringLiteral("bootstrap skill '%1' is not loaded").arg(skillName);
             return false;
         }
-        injectNotification(S_COMMAND_ATTACH_SKILL, JsonArray() << selfName << skillName);
+        if (!injectNotification(S_COMMAND_ATTACH_SKILL, JsonArray() << selfName << skillName, error))
+            return false;
     }
 
     if (!resolveCards(error))
@@ -476,8 +524,9 @@ bool LocalResponseUiController::resolveCards(QString *error)
         movePayload << move.toVariant();
     }
     if (movePayload.size() > 1) {
-        injectNotification(S_COMMAND_LOSE_CARD, movePayload);
-        injectNotification(S_COMMAND_GET_CARD, movePayload);
+        if (!injectNotification(S_COMMAND_LOSE_CARD, movePayload, error)
+            || !injectNotification(S_COMMAND_GET_CARD, movePayload, error))
+            return false;
     }
 
     QJsonObject bootstrapReport;
@@ -486,7 +535,8 @@ bool LocalResponseUiController::resolveCards(QString *error)
     return true;
 }
 
-void LocalResponseUiController::injectNotification(CommandType command, const QVariant &body)
+bool LocalResponseUiController::injectNotification(CommandType command, const QVariant &body,
+    QString *error)
 {
     ProtocolMessage message;
     message.type = ProtocolMessageType::Notification;
@@ -496,10 +546,16 @@ void LocalResponseUiController::injectNotification(CommandType command, const QV
     message.command = command;
     message.hasPayload = !body.isNull();
     message.payload = body;
-    QString error;
-    const QByteArray wire = ProtocolCodecRouter().encode(message, &error);
-    if (!wire.isEmpty())
-        m_socket->injectServerPacket(QString::fromUtf8(wire));
+    QString encodeError;
+    const QByteArray wire = ProtocolCodecRouter().encode(message, &encodeError);
+    if (wire.isEmpty()) {
+        // Propagate the first failure to execute()'s existing stage/error report.
+        *error = QStringLiteral("cannot encode notification %1: %2")
+            .arg(static_cast<int>(command)).arg(encodeError);
+        return false;
+    }
+    m_socket->injectServerPacket(QString::fromUtf8(wire));
+    return true;
 }
 
 bool LocalResponseUiController::prepareRequest(QString *error)
@@ -517,8 +573,9 @@ bool LocalResponseUiController::prepareRequest(QString *error)
             &disabledIds, error)) {
         return false;
     }
-    injectNotification(S_COMMAND_FILL_AMAZING_GRACE,
-        JsonArray() << JsonUtils::toJsonArray(cardIds) << JsonUtils::toJsonArray(disabledIds));
+    if (!injectNotification(S_COMMAND_FILL_AMAZING_GRACE,
+            JsonArray() << JsonUtils::toJsonArray(cardIds) << JsonUtils::toJsonArray(disabledIds), error))
+        return false;
     flushEvents();
     return true;
 }
@@ -667,6 +724,9 @@ void LocalResponseUiController::injectRequest()
         if (m_inspector) {
             m_inspector->setPresentationResult(QStringLiteral("PASS"));
             m_inspector->setFinalResult(QStringLiteral("Awaiting manual input"));
+            m_inspector->raise();
+            m_inspector->activateWindow();
+            m_inspector->gameControlsButton()->setFocus();
         }
         captureScreenshot(QStringLiteral("presented"));
         if (!persistReport(QStringLiteral("INSPECTING")))
@@ -809,6 +869,12 @@ void LocalResponseUiController::createInspector(const QString &command, int seri
         this, &LocalResponseUiController::saveManualSnapshot);
     connect(m_inspector->screenshotButton(), &QPushButton::clicked,
         this, &LocalResponseUiController::saveManualScreenshot);
+    // Inspect the production draft and reply route; these buttons never run
+    // fixture actions or substitute a synthetic GameActionModel.
+    connect(m_inspector->gameControlsButton(), &QPushButton::clicked,
+        m_scene, &RoomScene::showGameControlPanel);
+    connect(m_inspector->gameTextButton(), &QPushButton::clicked,
+        m_scene, &RoomScene::showGameStateSnapshot);
     connect(m_inspector->closeButton(), &QPushButton::clicked,
         this, &LocalResponseUiController::closeInspection);
     m_inspector->show();
@@ -923,8 +989,24 @@ void LocalResponseUiController::processInspectReply()
 {
     if (m_mode != RunnerMode::Inspect || m_closing)
         return;
+    // Guanxing edits emit mirror notifications before the terminal reply.
+    // Count reply frames, not packets, so editing neither completes the case
+    // nor becomes a false duplicate submission.
+    int replyCount = 0;
+    for (const QString &raw : m_socket->sentPackets()) {
+        ProtocolMessage outgoing;
+        if (!ProtocolCodecRouter().decode(raw.toUtf8(), &outgoing).success) {
+            setInspectFailure(AssertionFailed, QStringLiteral("expect_reply"),
+                QStringLiteral("captured outbound frame is not valid Protocol V2"));
+            return;
+        }
+        if (outgoing.type == ProtocolMessageType::Reply)
+            ++replyCount;
+    }
+    if (replyCount == 0)
+        return;
     if (m_replyProcessed) {
-        if (m_socket->sentPackets().size() > 1)
+        if (replyCount > 1)
             setInspectFailure(AssertionFailed, QStringLiteral("expect_reply"),
                 QStringLiteral("multiple terminal replies were captured"));
         return;

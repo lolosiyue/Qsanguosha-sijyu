@@ -23,7 +23,10 @@ CardContainer::CardContainer()
     close_button->setParentItem(this);
     close_button->setPos(517, 21);
     close_button->hide();
-    connect(close_button, SIGNAL(clicked()), this, SLOT(clear()));
+    connect(close_button, &CloseButton::clicked, this, [this]() {
+        if (m_gongxinActive) submitGongxin();
+        else clear();
+    });
     scene_width = 0;
     itemCount = 0;
 }
@@ -40,6 +43,9 @@ QRectF CardContainer::boundingRect() const
 
 void CardContainer::fillCards(const QList<int> &card_ids, const QList<int> &disabled_ids)
 {
+    m_gongxinActive = false;
+    m_gongxinSelection = -1;
+    m_gongxinEnabled.clear();
     if (card_ids.isEmpty() && items.isEmpty())
         return;
     QList<CardItem *> card_items;
@@ -113,6 +119,9 @@ bool CardContainer::retained()
 
 void CardContainer::clear()
 {
+    m_gongxinActive = false;
+    m_gongxinSelection = -1;
+    m_gongxinEnabled.clear();
     foreach (CardItem *item, items) {
         item->hide();
         delete item;
@@ -129,6 +138,7 @@ void CardContainer::clear()
         if (retained && close_button)
             close_button->show();
     }
+    emit gongxinDraftChanged();
 }
 
 void CardContainer::freezeCards(bool is_frozen)
@@ -197,13 +207,56 @@ void CardContainer::startChoose()
 
 void CardContainer::startGongxin(const QList<int> &enabled_ids)
 {
-    if (enabled_ids.isEmpty()) return;
+    m_gongxinActive = true;
+    m_gongxinSelection = -1;
+    m_gongxinEnabled = enabled_ids;
     foreach (CardItem *item, items) {
-        if (enabled_ids.contains(item->getId()))
-            connect(item, SIGNAL(double_clicked()), this, SLOT(gongxinItem()));
-        else
-            item->setEnabled(false);
+        item->setSelected(false);
+        item->setEnabled(item->getId() >= 0 && enabled_ids.contains(item->getId()));
+        connect(item, &CardItem::clicked, this, &CardContainer::selectGongxinItem, Qt::UniqueConnection);
+        connect(item, &CardItem::double_clicked, this, &CardContainer::gongxinItem, Qt::UniqueConnection);
     }
+    emit gongxinDraftChanged();
+}
+
+bool CardContainer::selectGongxinCard(int cardId, bool selected)
+{
+    if (!m_gongxinActive || !isVisible() || cardId < 0 || !m_gongxinEnabled.contains(cardId)) return false;
+    CardItem *candidate = nullptr;
+    for (CardItem *item : items)
+        if (item->getId() == cardId && item->isEnabled()) candidate = item;
+    if (!candidate) return false;
+    const int next = selected ? cardId : (m_gongxinSelection == cardId ? -1 : m_gongxinSelection);
+    if (next == m_gongxinSelection) return true;
+    m_gongxinSelection = next;
+    for (CardItem *item : items) {
+        const bool wasSelected = item->isSelected();
+        item->setSelected(item->getId() == next);
+        item->setHomePos(item->homePos() + QPointF(0, (item->isSelected() ? -15 : 0) - (wasSelected ? -15 : 0)));
+        item->setPos(item->homePos());
+        item->update();
+    }
+    emit gongxinDraftChanged();
+    return true;
+}
+
+bool CardContainer::submitGongxin(int cardId)
+{
+    if (!m_gongxinActive || !isVisible()) return false;
+    if (cardId >= 0 && !selectGongxinCard(cardId, true)) return false;
+    // The status callback may clear this container synchronously. Consume the
+    // draft first, and never clear a restored or replacement card display.
+    const QList<CardItem *> submittedItems = items;
+    m_gongxinActive = false;
+    emit item_gongxined(cardId);
+    if (!m_gongxinActive && items == submittedItems) clear();
+    return true;
+}
+
+void CardContainer::selectGongxinItem()
+{
+    if (CardItem *item = qobject_cast<CardItem *>(sender()))
+        selectGongxinCard(item->getId(), m_gongxinSelection != item->getId());
 }
 
 void CardContainer::addCloseButton()
@@ -232,10 +285,7 @@ void CardContainer::chooseItem()
 void CardContainer::gongxinItem()
 {
     CardItem *card_item = qobject_cast<CardItem *>(sender());
-    if (card_item) {
-        emit item_gongxined(card_item->getId());
-        clear();
-    }
+    if (card_item) submitGongxin(card_item->getId());
 }
 
 CloseButton::CloseButton()
@@ -265,7 +315,7 @@ void CardContainer::view(const ClientPlayer *player)
 }
 
 GuanxingBox::GuanxingBox()
-    : CardContainer()
+    : CardContainer(), type(0)
 {
 }
 
@@ -345,6 +395,83 @@ void GuanxingBox::doGuanxing(const QList<int> &cardIds, int type)
         cardItem->setHomePos(pos);
         cardItem->goBack(true);
     }
+    emit draftChanged();
+}
+
+QList<int> GuanxingBox::cardIds(const QList<CardItem *> &items) const
+{
+    QList<int> ids;
+    foreach (CardItem *item, items) {
+        if (item != NULL && item->getCard() != NULL)
+            ids << item->getCard()->getId();
+    }
+    return ids;
+}
+
+QList<int> GuanxingBox::topCards() const
+{
+    return cardIds(upItems);
+}
+
+QList<int> GuanxingBox::bottomCards() const
+{
+    return cardIds(downItems);
+}
+
+bool GuanxingBox::editable() const
+{
+    return isVisible() && (!upItems.isEmpty() || !downItems.isEmpty())
+        && zhuge.isEmpty() && (type == -1 || type == 0 || type == 1);
+}
+
+bool GuanxingBox::moveCard(int cardId, bool toBottom, int index)
+{
+    if (!editable() || (type == 1 && toBottom) || (type == -1 && !toBottom))
+        return false;
+
+    CardItem *item = NULL;
+    bool fromBottom = false;
+    int fromIndex = -1;
+    for (int i = 0; i < upItems.size(); ++i) {
+        if (upItems.at(i)->getCard()->getId() == cardId) {
+            item = upItems.at(i);
+            fromIndex = i;
+            break;
+        }
+    }
+    if (item == NULL) {
+        for (int i = 0; i < downItems.size(); ++i) {
+            if (downItems.at(i)->getCard()->getId() == cardId) {
+                item = downItems.at(i);
+                fromBottom = true;
+                fromIndex = i;
+                break;
+            }
+        }
+    }
+    if (item == NULL)
+        return false;
+
+    QList<CardItem *> *fromItems = fromBottom ? &downItems : &upItems;
+    QList<CardItem *> *toItems = toBottom ? &downItems : &upItems;
+    const int destinationSize = toItems->size() - (fromItems == toItems ? 1 : 0);
+    if (index < 0 || index > destinationSize)
+        return false;
+
+    const int fromPos = fromBottom ? -fromIndex - 1 : fromIndex + 1;
+    fromItems->removeAt(fromIndex);
+    applyMove(item, toBottom, index, fromPos);
+    return true;
+}
+
+void GuanxingBox::applyMove(CardItem *item, bool toBottom, int index, int fromPos)
+{
+    QList<CardItem *> *items = toBottom ? &downItems : &upItems;
+    items->insert(index, item);
+    const int toPos = toBottom ? -index - 1 : index + 1;
+    ClientInstance->onPlayerDoGuanxingStep(fromPos, toPos);
+    adjust();
+    emit draftChanged();
 }
 
 void GuanxingBox::mirrorGuanxingStart(const QString &who, bool up_only, const QList<int> &cards)
@@ -436,11 +563,7 @@ void GuanxingBox::onItemReleased()
     const int startX = 25 + (oddRow ? 0 : (cardWidth / 2 + cardInterval / 2));
     int c = (item->x() + item->boundingRect().width() / 2 - startX) / cardWidth;
     c = qBound(0, c, items->length());
-    items->insert(c, item);
-
-    int toPos = toUpItems ? c + 1: -c - 1;
-    ClientInstance->onPlayerDoGuanxingStep(fromPos, toPos);
-    adjust();
+    applyMove(item, !toUpItems, c, fromPos);
 }
 
 void GuanxingBox::onItemClicked()
@@ -448,21 +571,16 @@ void GuanxingBox::onItemClicked()
     CardItem *item = qobject_cast<CardItem *>(sender());
     if (item == NULL || type != 0) return;
 
-    int fromPos, toPos;
+    int fromPos;
     if (upItems.contains(item)) {
         fromPos = upItems.indexOf(item) + 1;
-        toPos = -downItems.size() - 1;
         upItems.removeOne(item);
-        downItems.append(item);
+        applyMove(item, true, downItems.size(), fromPos);
     } else {
         fromPos = -downItems.indexOf(item) - 1;
-        toPos = upItems.size() + 1;
         downItems.removeOne(item);
-        upItems.append(item);
+        applyMove(item, false, upItems.size(), fromPos);
     }
-
-    ClientInstance->onPlayerDoGuanxingStep(fromPos, toPos);
-    adjust();
 }
 
 void GuanxingBox::adjust()
@@ -544,6 +662,7 @@ void GuanxingBox::clear()
 
     prepareGeometryChange();
     hide();
+    emit draftChanged();
 }
 
 void GuanxingBox::reply()

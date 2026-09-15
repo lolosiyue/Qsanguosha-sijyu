@@ -11,7 +11,7 @@ namespace {
 QLabel *makeValueLabel(QWidget *parent)
 {
     QLabel *label = new QLabel(parent);
-    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     label->setWordWrap(true);
     return label;
 }
@@ -19,7 +19,7 @@ QLabel *makeValueLabel(QWidget *parent)
 }
 
 LocalResponseUiInspector::LocalResponseUiInspector(QWidget *parent)
-    : QWidget(parent, Qt::Tool),
+    : QWidget(parent, Qt::Window),
       m_caseValue(makeValueLabel(this)), m_modeValue(makeValueLabel(this)),
       m_requestValue(makeValueLabel(this)), m_clientValue(makeValueLabel(this)),
       m_presentationValue(makeValueLabel(this)),
@@ -30,7 +30,9 @@ LocalResponseUiInspector::LocalResponseUiInspector(QWidget *parent)
       m_remainingActionsButton(new QPushButton(tr("Run Remaining Case Actions"), this)),
       m_snapshotButton(new QPushButton(tr("Save Snapshot"), this)),
       m_screenshotButton(new QPushButton(tr("Save Screenshot"), this)),
-      m_closeButton(new QPushButton(tr("Close"), this))
+      m_gameControlsButton(new QPushButton(tr("Game Control Panel (&G)"), this)),
+      m_gameTextButton(new QPushButton(tr("Game State Text (&I)"), this)),
+      m_closeButton(new QPushButton(tr("&Close"), this))
 {
     setWindowTitle(tr("Local askFor UI Inspector"));
     setAttribute(Qt::WA_DeleteOnClose, false);
@@ -57,6 +59,10 @@ LocalResponseUiInspector::LocalResponseUiInspector(QWidget *parent)
 
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->addLayout(fields);
+    auto *presentation = new QHBoxLayout;
+    presentation->addWidget(m_gameControlsButton);
+    presentation->addWidget(m_gameTextButton);
+    layout->addLayout(presentation);
     layout->addStretch();
     layout->addLayout(actions);
 
@@ -100,4 +106,6 @@ QPushButton *LocalResponseUiInspector::nextActionButton() const { return m_nextA
 QPushButton *LocalResponseUiInspector::remainingActionsButton() const { return m_remainingActionsButton; }
 QPushButton *LocalResponseUiInspector::snapshotButton() const { return m_snapshotButton; }
 QPushButton *LocalResponseUiInspector::screenshotButton() const { return m_screenshotButton; }
+QPushButton *LocalResponseUiInspector::gameControlsButton() const { return m_gameControlsButton; }
+QPushButton *LocalResponseUiInspector::gameTextButton() const { return m_gameTextButton; }
 QPushButton *LocalResponseUiInspector::closeButton() const { return m_closeButton; }

@@ -1,6 +1,7 @@
 #include "client-rules-ingress.h"
 
 #include "client-game-state-reducer.h"
+#include "engine.h"
 #include "protocol-interaction-request-builder.h"
 #include "protocol/protocol-payload-registry.h"
 #include "protocol/rules-bundle-identity.h"
@@ -50,6 +51,7 @@ bool ClientRulesIngress::reset(int generation, const QJsonObject &identity, QStr
     m_failed = false;
     m_outgoingRequests.clear();
     clearRequest();
+    m_events.reset(static_cast<quint64>(generation));
     return true;
 }
 
@@ -99,6 +101,8 @@ bool ClientRulesIngress::acceptFrame(int generation, bool sent, const QByteArray
     if (!(sent ? outgoing(message, &detail) : incoming(message, &detail)))
         return fail(detail, error);
     ++m_revision;
+    if (!m_syncActive)
+        m_events.synchronize(m_state, static_cast<quint64>(m_generation));
     return true;
 }
 
@@ -305,4 +309,66 @@ QJsonObject ClientRulesIngress::view() const
 {
     // Deliberately never expose the uncommitted STATE_SYNC accumulator.
     return snapshot(m_state);
+}
+
+QJsonObject ClientRulesIngress::presentation(int generation, int revision,
+                                             const QString &requestId,
+                                             const QString &eventCursor) const
+{
+    const QString currentRequest = m_hasRequest ? QString::number(m_request.messageId) : QString();
+    if (generation != m_generation || revision != m_revision || requestId != currentRequest
+        || m_failed || m_syncActive)
+        return {};
+
+    bool cursorOk = eventCursor.isEmpty();
+    quint64 cursor = 0;
+    if (!eventCursor.isEmpty())
+        cursor = eventCursor.toULongLong(&cursorOk);
+    if (!cursorOk)
+        return {};
+
+    GameViewFormatOptions options;
+    // The focused/turn player is not proof that this client operates that seat.
+    options.operatingPlayer = m_state.selfName();
+    options.stateReady = m_session.phase() == ClientSessionPhase::Active;
+    options.translate = [](const QString &key) {
+        return Sanguosha != nullptr ? Sanguosha->translate(key) : key;
+    };
+    options.playerLabel = [this](const QString &name) {
+        const QVariantMap player = m_state.player(name);
+        const QString general = player.value(QStringLiteral("general")).toString();
+        const QString screen = player.value(QStringLiteral("screen_name"), name).toString();
+        if (general.isEmpty())
+            return screen;
+        const QString translated = Sanguosha != nullptr ? Sanguosha->translate(general) : general;
+        return translated + QStringLiteral("（") + screen + QStringLiteral("）");
+    };
+    options.cardLabel = [](int id) {
+        const Card *card = Sanguosha != nullptr ? Sanguosha->getCard(id) : nullptr;
+        if (card == nullptr)
+            return QString();
+        const QString name = Sanguosha->translate(card->objectName());
+        const QString suit = Sanguosha->translate(card->getSuitString());
+        return QStringLiteral("%1，%2 %3（%4）").arg(name, suit, card->getNumberString()).arg(id);
+    };
+    options.phaseLabel = [](const QString &phase) {
+        const QString key = QStringLiteral("tui_name_phase_") + phase;
+        const QString translated = Sanguosha != nullptr ? Sanguosha->translate(key) : key;
+        return translated == key ? phase : translated;
+    };
+    const GameViewState viewState = GameViewState::fromState(m_state,
+        m_hasRequest ? &m_interaction : nullptr, static_cast<quint64>(m_generation),
+        static_cast<quint64>(m_revision), options);
+    QJsonArray events;
+    const QList<GamePresentationEvent> recent = m_events.since(cursor);
+    for (const GamePresentationEvent &event : recent)
+        events.append(QJsonObject::fromVariantMap(event.toVariantMap()));
+    return {{QStringLiteral("schema_version"), 1},
+        {QStringLiteral("session_generation"), QString::number(m_generation)},
+        {QStringLiteral("presentation_revision"), QString::number(m_revision)},
+        {QStringLiteral("request_id"), currentRequest},
+        {QStringLiteral("view_state"), viewState.toJson()},
+        {QStringLiteral("plain_text"), viewState.toPlainText()},
+        {QStringLiteral("events"), events},
+        {QStringLiteral("event_cursor"), QString::number(m_events.nextSequence() - 1)}};
 }

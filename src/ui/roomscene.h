@@ -53,6 +53,7 @@ class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
 class QPushButton;
+class DesktopGamePresentation;
 class QMovie;
 #ifdef QSAN_XP_LEGACY
 class LocalServerController;
@@ -193,6 +194,7 @@ public:
 class RoomScene : public QGraphicsScene
 {
     Q_OBJECT
+    friend class DesktopGamePresentation;
     friend class ReplayerControlBar;
     friend class LocalResponseUiProbe;
     friend class NetworkUiSmokeController;
@@ -206,6 +208,8 @@ public:
 
     RoomScene(QMainWindow *main_window);
     ~RoomScene();
+    void showGameStateSnapshot();
+    void showGameControlPanel();
     void changeTextEditBackground();
     void adjustItems();
     void applyUiElementScale(qreal scale);
@@ -323,6 +327,9 @@ protected:
 
 private:
     void _getSceneSizes(QSize &minSize, QSize &maxSize);
+#if !defined(QSAN_XP_LEGACY)
+    DesktopGamePresentation *m_gamePresentation = nullptr;
+#endif
     bool _shouldIgnoreDisplayMove(CardsMoveStruct &movement);
     QString _describeMoveForDiagnostics(const CardsMoveStruct &move) const;
     bool _processCardsMove(CardsMoveStruct &move, bool isLost);
@@ -376,6 +383,7 @@ private:
     QList<QSanSkillButton *> m_skillButtons;
     QSanSkillButton *m_presentedDialogSkillButton;
     QDialog *m_presentedDialog;
+    quint64 m_presentedDialogRequest = 0;
 
     ResponseSkill *response_skill;
     ShowOrPindianSkill *showorpindian_skill;
@@ -566,6 +574,7 @@ private:
     void clearPresentedDialogSkill(bool resetButtonState = false);
     void activateSkill(const ViewAsSkill *skill);
     bool applyPresentedDialogOption(const QString &optionName);
+    bool isPresentedDialogOptionEnabled(const QString &optionName) const;
 
 #if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
     // for animation effects

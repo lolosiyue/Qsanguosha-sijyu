@@ -306,6 +306,7 @@ public:
     // invoke / response card. Other interactions still take the old path, see
     // docs/client-core-interaction-model.md.
     ClientCore *interactionCore() const { return m_interactionCore; }
+    ClientLiveSession *liveSession() const { return m_liveSession; }
     QJsonArray interactionInventory() const;
 
     // Presentation ports used by DesktopInteractionView. Each one is the last line or two

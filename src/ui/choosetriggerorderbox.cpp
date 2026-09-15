@@ -12,6 +12,7 @@
 #include <QDebug>
 #include <QGraphicsProxyWidget>
 #include <QGraphicsSceneMouseEvent>
+#include <QPen>
 #include <QPropertyAnimation>
 
 static qreal initialOpacity = 0.8;
@@ -141,6 +142,7 @@ TriggerOptionButton::TriggerOptionButton(QGraphicsObject *parent, const QVariant
     : QGraphicsObject(parent)
     , times(1)
     , mull(0)
+    , selected(false)
     , width(width)
 {
     detail.tryParse(skillDetail);
@@ -152,6 +154,7 @@ TriggerOptionButton::TriggerOptionButton(QGraphicsObject *parent, const ClientSk
     , detail(skillDetail)
     , times(1)
     , mull(0)
+    , selected(false)
     , width(width)
 {
     construct();
@@ -182,7 +185,8 @@ void TriggerOptionButton::paint(QPainter *painter, const QStyleOptionGraphicsIte
     painter->setRenderHint(QPainter::Antialiasing);
     painter->save();
     painter->setBrush(Qt::black);
-    painter->setPen(QColor(Sanguosha->getKingdomColor(Self->getGeneral()->getKingdom())));
+    painter->setPen(selected ? QPen(QColor(255, 215, 0), 3)
+                             : QPen(QColor(Sanguosha->getKingdomColor(Self->getGeneral()->getKingdom()))));
     QRectF rect = boundingRect();
     painter->drawRoundedRect(rect, 5, 5);
     painter->restore();
@@ -279,8 +283,17 @@ void TriggerOptionButton::needDisabled(bool disabled)
     }
 }
 
+void TriggerOptionButton::setSelected(bool selected)
+{
+    if (this->selected == selected)
+        return;
+    this->selected = selected;
+    update();
+}
+
 ChooseTriggerOrderBox::ChooseTriggerOrderBox()
     : optional(true)
+    , m_active(false)
     , m_minimumWidth(0)
     , cancel(new Button(tr("cancel"), 0.6))
     , progressBar(nullptr)
@@ -329,6 +342,7 @@ QRectF ChooseTriggerOrderBox::boundingRect() const
 
 void ChooseTriggerOrderBox::chooseOption(const QVariantList &options, bool optional)
 {
+    clear();
     this->options = options;
     this->optional = optional;
     title = tr("Please Select Trigger Order");
@@ -367,6 +381,7 @@ void ChooseTriggerOrderBox::chooseOption(const QVariantList &options, bool optio
 
     prepareGeometryChange();
     moveToCenter();
+    m_active = true;
     show();
 
     int y = m_topBlankWidth;
@@ -403,16 +418,27 @@ void ChooseTriggerOrderBox::chooseOption(const QVariantList &options, bool optio
 
 void ChooseTriggerOrderBox::clear()
 {
+    m_active = false;
+    if (!m_selectedChoice.isEmpty()) {
+        m_selectedChoice.clear();
+        emit draftChanged(m_selectedChoice);
+    }
+
     if (progressBar != nullptr) {
+        disconnect(progressBar, &QSanCommandProgressBar::timedOut, this, &ChooseTriggerOrderBox::reply);
         progressBar->hide();
         progressBar->deleteLater();
         progressBar = nullptr;
     }
 
-    foreach (TriggerOptionButton *button, optionButtons)
+    foreach (TriggerOptionButton *button, optionButtons) {
+        disconnect(button, nullptr, this, nullptr);
+        button->hide();
         button->deleteLater();
+    }
 
     optionButtons.clear();
+    options.clear();
 
     cancel->hide();
 
@@ -421,26 +447,116 @@ void ChooseTriggerOrderBox::clear()
 
 void ChooseTriggerOrderBox::reply()
 {
-    QString choice;
-    if (sender() != nullptr) {
-        choice = sender()->objectName();
-    }
+    if (!m_active)
+        return;
 
-    if (choice.isEmpty()) {
-        if (optional) {
-            choice = "cancel";
-        } else {
-            if (!options.isEmpty()) {
-                QVariantMap m = options.first().toMap();
-                ClientSkillContext detail;
-                detail.tryParse(m);
-                choice = detail.toString();
-            } else {
-                choice = "cancel";
-            }
+    QObject *source = sender();
+    for (TriggerOptionButton *button : optionButtons) {
+        if (button == source) {
+            selectChoice(button->objectName(), true);
+            submitChoice(button->objectName());
+            return;
         }
     }
 
-    ClientInstance->onPlayerChooseTriggerOrder(choice);
-    clear();
+    if (source == cancel) {
+        submitChoice("cancel");
+        return;
+    }
+
+    // Ignore delayed callbacks from a progress bar that belonged to a cleared request.
+    if (source != nullptr && source != progressBar)
+        return;
+
+    // Timeout keeps the established fallback: first option when mandatory, cancel when optional.
+    if (optional) {
+        submitChoice("cancel");
+    } else if (!options.isEmpty()) {
+        ClientSkillContext detail;
+        detail.tryParse(options.first().toMap());
+        submitChoice(detail.toString());
+    } else {
+        // Preserve the legacy timeout fallback for a malformed mandatory empty request.
+        m_active = false;
+        ClientInstance->onPlayerChooseTriggerOrder("cancel");
+        clear();
+    }
+}
+
+QList<ChooseTriggerOrderBox::KeyboardOption> ChooseTriggerOrderBox::keyboardOptions() const
+{
+    QList<KeyboardOption> result;
+    if (!m_active)
+        return result;
+    result.reserve(optionButtons.size());
+    for (const TriggerOptionButton *button : optionButtons) {
+        KeyboardOption option;
+        option.id = button->objectName();
+        option.label = TriggerOptionButton::displayedTextOf(button->detail, button->times, button->mull);
+        // needDisabled() only dims the hover presentation; it does not remove eligibility.
+        option.enabled = true;
+        option.selected = option.id == m_selectedChoice;
+        result.append(option);
+    }
+    return result;
+}
+
+bool ChooseTriggerOrderBox::selectChoice(const QString &choice, bool selected)
+{
+    if (!m_active || !isVisible())
+        return false;
+
+    bool found = false;
+    for (const TriggerOptionButton *button : optionButtons) {
+        if (button->objectName() == choice) {
+            found = true;
+            break;
+        }
+    }
+    if (!found)
+        return false;
+
+    const QString nextChoice = selected ? choice : (m_selectedChoice == choice ? QString() : m_selectedChoice);
+    if (nextChoice != m_selectedChoice) {
+        m_selectedChoice = nextChoice;
+        for (TriggerOptionButton *button : optionButtons)
+            button->setSelected(button->objectName() == m_selectedChoice);
+        emit draftChanged(m_selectedChoice);
+    }
+    return true;
+}
+
+QString ChooseTriggerOrderBox::selectedChoice() const
+{
+    return m_selectedChoice;
+}
+
+bool ChooseTriggerOrderBox::submitChoice(const QString &choice)
+{
+    if (!m_active || !isVisible())
+        return false;
+
+    bool valid = choice == "cancel" ? canCancelChoice() : false;
+    if (!valid) {
+        for (const TriggerOptionButton *button : optionButtons) {
+            if (button->objectName() == choice) {
+                valid = true;
+                break;
+            }
+        }
+    }
+    if (!valid)
+        return false;
+
+    m_active = false;
+    // The Client entry point represents cancellation as an empty choice. The
+    // literal "cancel" is a UI identifier, not one of the request's skill IDs.
+    ClientInstance->onPlayerChooseTriggerOrder(choice == "cancel" ? QString() : choice);
+    if (!m_active) clear(); // A synchronous replacement owns a new active draft.
+    return true;
+}
+
+bool ChooseTriggerOrderBox::canCancelChoice() const
+{
+    return m_active && isVisible() && optional;
 }

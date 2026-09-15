@@ -157,6 +157,17 @@ void TuiBoardPresenter::interactionChanged(const InteractionRequest *request)
     schedulePaint();
 }
 
+void TuiBoardPresenter::setSharedPresentation(const GameViewState &state,
+    const GameActionModel &actions)
+{
+    m_viewState.presentation = state;
+    m_viewState.actions = actions;
+    // Projection presence is separate from readiness: after disconnect or
+    // during resync, an incomplete snapshot must not reopen raw-state fallbacks.
+    m_viewState.hasPresentation = true;
+    schedulePaint();
+}
+
 void TuiBoardPresenter::setCompleter(std::function<QString(const QString &, QStringList *)> completer)
 {
     m_editor.setCompleter(std::move(completer));
@@ -233,7 +244,8 @@ void TuiBoardPresenter::followPlayer(const QString &name)
     if (m_state == nullptr || name.isEmpty())
         return;
     const TuiBoardGeometry geometry =
-        m_boardView.computeGeometry(*m_state, m_screen.rows(), m_screen.cols());
+        m_boardView.computeGeometry(*m_state, m_screen.rows(), m_screen.cols(),
+            m_viewState.hasPresentation ? &m_viewState.presentation : nullptr);
     m_viewState.page = m_boardView.pageForPlayer(*m_state, geometry, name);
 }
 
@@ -273,7 +285,8 @@ void TuiBoardPresenter::repaint()
 
     if (m_state != nullptr) {
         const TuiBoardGeometry geometry =
-            m_boardView.computeGeometry(*m_state, m_screen.rows(), m_screen.cols());
+            m_boardView.computeGeometry(*m_state, m_screen.rows(), m_screen.cols(),
+                m_viewState.hasPresentation ? &m_viewState.presentation : nullptr);
         m_pageCount = geometry.pageCount;
     }
 

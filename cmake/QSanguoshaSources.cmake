@@ -21,6 +21,8 @@ set(QSAN_SOURCES
     src/dialog/distanceviewdialog.cpp
     src/dialog/generaloverview.cpp
     src/dialog/mainwindow.cpp
+    src/dialog/widget-accessibility.cpp
+    src/dialog/widget-accessibility.h
     src/dialog/mainwindowserverlist.cpp
     src/dialog/maxcardsviewdialog.cpp
     src/dialog/roleassigndialog.cpp
@@ -147,6 +149,10 @@ set(QSAN_SOURCES
     src/ui/replay-timeline.cpp
     src/ui/rolecombobox.cpp
     src/ui/roomscene.cpp
+    src/ui/desktop-game-presentation.cpp
+    src/ui/desktop-game-presentation.h
+    src/ui/game-control-panel.cpp
+    src/ui/game-control-panel.h
     src/ui/skin-bank.cpp
     src/ui/skill-dialog-registry.cpp
     src/ui/SpineAnimationManager.cpp

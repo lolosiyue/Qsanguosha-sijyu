@@ -72,6 +72,9 @@ public:
     void shutdown() override;
     void stateChanged(const ClientGameState &state) override;
     void interactionChanged(const InteractionRequest *request) override;
+    // Installs the shared pure-value projections built by the controller. The
+    // ClientGameState pointer remains the source for board-only presentation.
+    void setSharedPresentation(const GameViewState &state, const GameActionModel &actions);
 
     // A manual flip: sets the page and marks it manual (see handleKey()'s
     // paging branch and the auto-follow comments on stateChanged()/

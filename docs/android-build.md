@@ -4,6 +4,19 @@
 
 ## 固定工具鏈與目錄
 
+### 共用遊戲呈現入口（2026-09-16，尚未裝置驗收）
+
+對局右上角「More actions」選單提供「遊戲狀態」與「遊戲操作面板」。兩者沿用
+桌面的 `GameViewState`／`GameActionModel` 與 RoomScene 草稿，不另外實作 QML
+回覆或規則。文字快照主動更新、可複製；操作面板使用標準 Widgets、整頁捲動及
+至少 48 logical-pixel 觸控高度。關閉面板不取消請求，背景及同步未完成時停用操作。
+
+支援與限制見 [共用呈現契約](client-core-interaction-model.md#other-client-adapters)。
+此批 Android build、裝置觸控／外接鍵盤、TalkBack 均 **NOT RUN**；桌面測試結果
+不能代替 Android gate。
+
+### 建置預設值
+
 以下是腳本與 CMake preset 的預設值。改用其他位置時，必須明確傳入參數或設定環境變數，勿混用不同 Qt／NDK 版本。
 
 | 工具 | 版本 | 預設位置 |

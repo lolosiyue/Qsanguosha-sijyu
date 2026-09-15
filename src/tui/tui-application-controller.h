@@ -3,6 +3,9 @@
 
 #include "client-live-session.h"
 #include "core/client-core.h"
+#include "core/game-action-model.h"
+#include "core/game-event-stream.h"
+#include "core/game-view-state.h"
 #include "tui-command.h"
 #include "tui-input.h"
 #include "tui-interaction-view.h"
@@ -81,6 +84,7 @@ private:
     // Advisory only: the parser still accepts whatever the player types.
     QString resolveCardHint(int cardId) const;
     QString resolvePlayerHint(const QString &objectName) const;
+    QString resolvePlayerDistance(const QString &objectName, bool *known = nullptr) const;
     // Where the engine would let this card be aimed, before anything is picked.
     TuiRenderer::CardTargets cardTargetAdvice(const Card *card) const;
     // Object name -> our copy of that player, for the target-advice functions.
@@ -143,9 +147,15 @@ private:
     QString presentationText(int command, const QString &fallbackText,
                              const QVariant &payload) const;
     QStringList completionExtraTokens() const;
+    void refreshSharedPresentation(bool advanceRevision);
+    GameActionModel sharedActionModel(const InteractionRequest *request) const;
 
     TuiApplicationOptions m_options;
     ClientCore m_core;
+    GameEventStream m_eventStream;
+    GameViewState m_gameViewState;
+    GameActionModel m_gameActionModel;
+    quint64 m_presentationRevision = 0;
     // Owns the room the engine resolves cards through; no QObject parent,
     // it is a value member the controller destroys itself.
     TuiRoomContext m_roomContext;

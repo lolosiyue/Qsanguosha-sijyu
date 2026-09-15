@@ -27,7 +27,7 @@ public:
     void clearChoice() const;
     bool shouldPopup() const;
     bool hasEnabledOptions() const;
-    bool isButtonEnabled(const QString &button_name) const;
+    virtual bool isButtonEnabled(const QString &button_name) const;
 
 public slots:
     void popup();
@@ -92,6 +92,10 @@ class TiansuanDialog : public QDialog
 
 public:
     static TiansuanDialog *getInstance(const QString &name, const QString &choices = QString());
+    void prepareOptions();
+    QStringList getOptionNames() const;
+    bool isButtonEnabled(const QString &choice) const;
+    bool applyOption(const QString &choice);
 
 public slots:
     void popup();
@@ -100,7 +104,7 @@ public slots:
 private:
     explicit TiansuanDialog(const QString &name, const QString &choices = QString());
     QAbstractButton *createChoiceButton(const QString &choice);
-    bool MarkJudge(const QString &choice);
+    bool MarkJudge(const QString &choice) const;
     QButtonGroup *group;
     QVBoxLayout *button_layout;
     QString tiansuan_choices;

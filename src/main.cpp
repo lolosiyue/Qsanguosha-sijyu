@@ -8,6 +8,9 @@
 #include <QStringList>
 
 #include "mainwindow.h"
+#if !defined(QSAN_XP_LEGACY)
+#include "widget-accessibility.h"
+#endif
 #include "settings.h"
 #include "banpair.h"
 #include "server.h"
@@ -167,6 +170,9 @@ int main(int argc, char *argv[]) {
         new QCoreApplication(argc, argv);
     else {
         new QApplication(argc, argv);
+#if !defined(QSAN_XP_LEGACY)
+        installWidgetAccessibility(QCoreApplication::instance());
+#endif
         // 主頁自訂 contentItem／indicator；Windows 原生樣式不支援會報錯並閃爍
         QQuickStyle::setStyle(QStringLiteral("Basic"));
     }

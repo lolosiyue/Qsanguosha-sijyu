@@ -378,6 +378,37 @@ qsan_add_ctest(qsanguosha_effects_profile_contract qsanguosha_ui_contract_tests
 add_executable(qsanguosha_client_core_tests
     client_core/client-core-test.cpp
 )
+add_executable(qsanguosha_game_presentation_tests client_core/game-presentation-test.cpp)
+target_link_libraries(qsanguosha_game_presentation_tests PRIVATE qsanguosha_client_core Qt6::Core)
+if(MSVC)
+    target_compile_options(qsanguosha_game_presentation_tests PRIVATE /utf-8)
+endif()
+qsan_add_ctest(qsanguosha_game_presentation_contract qsanguosha_game_presentation_tests
+    LABELS "client-core;presentation" TIMEOUT 30)
+
+if(TARGET Qt6::Widgets AND TARGET Qt6::Test AND TARGET QSanguosha)
+    add_executable(qsanguosha_widget_accessibility_tests
+        ui/widget-accessibility-test.cpp
+        ${QSAN_TEST_ROOT}/src/dialog/widget-accessibility.cpp)
+    target_link_libraries(qsanguosha_widget_accessibility_tests PRIVATE Qt6::Widgets Qt6::Test)
+    set_target_properties(qsanguosha_widget_accessibility_tests PROPERTIES AUTOMOC ON)
+    qsan_add_ctest(qsanguosha_widget_accessibility_contract qsanguosha_widget_accessibility_tests
+        LABELS "ui;accessibility" TIMEOUT 30)
+
+    add_executable(qsanguosha_game_control_panel_tests
+        ui/game-control-panel-test.cpp
+        ${QSAN_TEST_ROOT}/src/ui/game-control-panel.cpp
+        ${QSAN_TEST_ROOT}/src/ui/game-control-panel.h)
+    target_include_directories(qsanguosha_game_control_panel_tests PRIVATE ${QSAN_TEST_ROOT}/src/ui)
+    target_link_libraries(qsanguosha_game_control_panel_tests PRIVATE qsanguosha_client_core Qt6::Widgets Qt6::Test)
+    set_target_properties(qsanguosha_game_control_panel_tests PROPERTIES AUTOMOC ON)
+    if(MSVC)
+        target_compile_options(qsanguosha_widget_accessibility_tests PRIVATE /utf-8)
+        target_compile_options(qsanguosha_game_control_panel_tests PRIVATE /utf-8)
+    endif()
+    qsan_add_ctest(qsanguosha_game_control_panel_contract qsanguosha_game_control_panel_tests
+        LABELS "ui;presentation" TIMEOUT 30)
+endif()
 target_link_libraries(qsanguosha_client_core_tests PRIVATE
     qsanguosha_client_core
     Qt6::Core
@@ -854,19 +885,6 @@ qsan_add_ctest(qsanguosha_server_unit qsanguosha_server_tests
     LABELS server
     TIMEOUT 1800
 )
-qsan_add_ctest(qsanguosha_gongqiao_equip qsanguosha_server_tests
-    SUITE gongqiao-equip
-    LABELS "gameplay;server;fast"
-)
-qsan_add_ctest(qsanguosha_songwei_once qsanguosha_server_tests
-    SUITE songwei-once
-    LABELS "gameplay;server;fast"
-)
-qsan_add_ctest(qsanguosha_ai_active_skill_activation qsanguosha_server_tests
-    SUITE ai-active-skill-activation
-    LABELS "server;fast"
-)
-
 add_executable(qsanguosha_roomthread_perf_tests
     roomthread-perf-main.cpp
     roomthread-deferred-state-test.cpp
