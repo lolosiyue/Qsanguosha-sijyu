@@ -488,8 +488,8 @@ public:
                                    QString *target = NULL, int *multiplier = NULL,
                                    int *instanceId = NULL);
 
-    virtual void onShimingSuccess(Room *room, ServerPlayer *player) const {}
-    virtual void onShimingFail(Room *room, ServerPlayer *player) const {}
+    virtual void onShimingSuccess(Room *room, ServerPlayer *player, const SkillInstanceRef &ref) const {}
+    virtual void onShimingFail(Room *room, ServerPlayer *player, const SkillInstanceRef &ref) const {}
 
 protected:
     int m_baseAmount;

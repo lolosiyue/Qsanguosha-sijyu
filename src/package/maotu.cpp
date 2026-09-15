@@ -227,9 +227,21 @@ public:
         waked_skills = "tenyearshensu,baobian,#mtnianchou";
     }
 
-    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (player->getMark(objectName()) > 0) return false;
+        const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+        foreach (int id, ids) {
+            if (!player->hasSkillInstance(objectName(), id) || player->isSkillInvalid(objectName(), id)) continue;
+            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(objectName(), id));
+            if (triggerInstance(event, room, player, data, ref)) return true;
+        }
+        return false;
+    }
+
+    bool triggerInstance(TriggerEvent event, Room *room, ServerPlayer *player,
+                         QVariant &data, const SkillInstanceRef &ref) const
+    {
+        if (room->getShimingStatus(ref) > 0) return false;
 
         if (event == EventPhaseStart) {
             if (player->getPhase() != Player::RoundStart) return false;
@@ -240,13 +252,14 @@ public:
             room->addPlayerMark(t, "mtnianchou_to-Clear");
 
             if (player->getHp() != 1) return false;
-            room->sendShimingLog(player, this, false);
-            room->handleAcquireDetachSkills(player, "-mtxianzheng|-mtnianchou|baobian");
+            if (!room->sendShimingLog(ref, false)) return false;
+            room->detachSkillFromPlayer(player, ref.key.toString());
+            room->handleAcquireDetachSkills(player, "-mtxianzheng|baobian");
         } else {
             DeathStruct death = data.value<DeathStruct>();
             if (death.who == player || !death.who) return false;
             if (!death.damage || death.damage->from != player) return false;
-            room->sendShimingLog(player, this);
+            if (!room->sendShimingLog(ref)) return false;
 
             QString choices = "draw";
             if (player->isWounded()) choices = "recover+draw";

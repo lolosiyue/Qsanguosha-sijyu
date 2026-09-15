@@ -1560,9 +1560,21 @@ public:
         frequency = NotCompulsory;
     }
 
-    bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (player->getMark(objectName()) > 0) return false;
+        const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+        foreach (int id, ids) {
+            if (!player->hasSkillInstance(objectName(), id) || player->isSkillInvalid(objectName(), id)) continue;
+            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(objectName(), id));
+            if (triggerInstance(event, room, player, data, ref)) return true;
+        }
+        return false;
+    }
+
+    bool triggerInstance(TriggerEvent event, Room *room, ServerPlayer *player,
+                         QVariant &data, const SkillInstanceRef &ref) const
+    {
+        if (room->getShimingStatus(ref) > 0) return false;
         if  (event == DamageInflicted) {
             int num = 0;
             foreach (int id, player->handCards() + player->getEquipsId()) {
@@ -1577,13 +1589,13 @@ public:
         } else if (event == EventPhaseStart) {
             if (player->getPhase() != Player::Start) return false;
             if (player->getLostHp() == 0 && player->isKongcheng()) {
-                room->sendShimingLog(player, this);
+                if (!room->sendShimingLog(ref)) return false;
                 room->handleAcquireDetachSkills(player, "secondmobilexinxuancun");
             }
         } else {
             DyingStruct dying = data.value<DyingStruct>();
             if (dying.who != player) return false;
-            room->sendShimingLog(player, this, false);
+            if (!room->sendShimingLog(ref, false)) return false;
             room->loseMaxHp(player, 1, "secondmobilexinqingyu");
         }
         return false;
@@ -2589,15 +2601,27 @@ public:
         frequency = NotCompulsory;
     }
 
-    bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (player->getMark("secondmobilexinmibei") > 0) return false;
+        const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+        foreach (int id, ids) {
+            if (!player->hasSkillInstance(objectName(), id) || player->isSkillInvalid(objectName(), id)) continue;
+            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(objectName(), id));
+            if (triggerInstance(event, room, player, data, ref)) return true;
+        }
+        return false;
+    }
+
+    bool triggerInstance(TriggerEvent event, Room *room, ServerPlayer *player,
+                         QVariant &data, const SkillInstanceRef &ref) const
+    {
+        if (room->getShimingStatus(ref) > 0) return false;
         if (event == EventPhaseEnd) {
             if (player->getPhase() != Player::Discard) return false;
             if (player->getMark("secondmobilexinmibei-Clear") <= 0) return false;
             QString bei = player->property("second_mobilexin_wangling_bei").toString();
             if (!bei.isEmpty()) return false;
-            room->sendShimingLog(player, this, false, 2);
+            if (!room->sendShimingLog(ref, false, 2)) return false;
             room->loseMaxHp(player, 1, "secondmobilexinmibei");
         } else {
             CardUseStruct use = data.value<CardUseStruct>();
@@ -2616,7 +2640,7 @@ public:
             int basic = hash["basic"], equip = hash["equip"], trick = hash["trick"];
             if (basic < 2 || equip < 2 || trick < 2) return false;
 
-            room->sendShimingLog(player, this, true, 1);
+            if (!room->sendShimingLog(ref, true, 1)) return false;
             DummyCard*dummy = new DummyCard();
             foreach (int id, room->getDrawPile()) {
                 const Card*card = Sanguosha->getCard(id);
@@ -2721,90 +2745,109 @@ class XinPowei : public TriggerSkill
 public:
     XinPowei() : TriggerSkill("xinpowei")
     {
-		shiming_skill = true;
+        shiming_skill = true;
         events << GameStart << Damaged << EventPhaseStart << Dying;
-		waked_skills = "xinshenzhuo";
+        waked_skills = "xinshenzhuo";
     }
-    bool triggerable(const ServerPlayer*target) const
+    bool triggerable(const ServerPlayer *target) const override
     {
         return target && target->isAlive();
     }
-    bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+
+    void setTargets(Room *room, ServerPlayer *owner, int id, const QStringList &targets) const
+    {
+        if (!owner->hasSkillInstance(objectName(), id)) return;
+        owner->setSkillInstanceStateValue(objectName(), id, "powei_targets", targets);
+        // Public display is a projection. Eligibility reads only instance state.
+        foreach (ServerPlayer *p, room->getAllPlayers(true)) {
+            bool marked = false;
+            foreach (ServerPlayer *holder, room->getAllPlayers(true)) {
+                foreach (int instanceID, holder->getSkillInstanceIds(objectName())) {
+                    if (holder->getSkillInstanceStateValue(objectName(), instanceID, "powei_targets")
+                        .toStringList().contains(p->objectName())) marked = true;
+                }
+            }
+            room->setPlayerMark(p, "&stscdlwei", marked ? 1 : 0);
+        }
+    }
+
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (event == Damaged) {
-            player->loseAllMarks("&stscdlwei");
-        } else if(event == Dying){
-            DyingStruct dying = data.value<DyingStruct>();
-			if(dying.who==player&&player->hasSkill(objectName())&&player->getMark(objectName())<1){
-				player->peiyin("powei",3);
-				room->sendShimingLog(player,this,false);
-				room->recover(player,RecoverStruct(objectName(),player,1-player->getHp()));
-				foreach (ServerPlayer*p, room->getAllPlayers())
-					p->loseAllMarks("&stscdlwei");
-				player->throwAllEquips(objectName());
-			}
-        } else if(event == EventPhaseStart){
-			if(player->getPhase()==Player::RoundStart){
-				if(player->hasSkill(objectName())&&player->getMark(objectName())<1){
-					bool has = true;
-					foreach (ServerPlayer*p, room->getAlivePlayers()) {
-						has = p->getMark("&stscdlwei")>0;
-						if(has) break;
-					}
-					if(has){
-						room->sendCompulsoryTriggerLog(player,objectName());
-						player->peiyin("powei",1);
-						QList<ServerPlayer*>tps;
-						foreach (ServerPlayer*p, room->getAllPlayers()) {
-							if(p->getMark("&stscdlwei")>0){
-								ServerPlayer*tp = p->getNextAlive();
-								if(tp==player) tp = tp->getNextAlive();
-								if(tp!=p){
-									p->loseAllMarks("&stscdlwei");
-									tps << tp;
-								}
-							}
-						}
-						foreach (ServerPlayer*p, tps) {
-							p->gainMark("&stscdlwei");
-						}
-					}else{
-						player->peiyin("powei",2);
-						room->sendShimingLog(player,this,true);
-						room->acquireSkill(player,"xinshenzhuo");
-					}
-				}
-				if(player->getMark("&stscdlwei")>0){
-					foreach (ServerPlayer*p, room->getAllPlayers()) {
-						if(p->hasSkill(objectName())&&p->askForSkillInvoke(this,player)){
-							p->peiyin("powei",1);
-							room->insertAttackRangePair(player,p);
-							player->addMark("stscdlwei"+p->objectName());
-							if(room->askForCard(p,".","xinpowei0:"+player->objectName(),QVariant::fromValue(player))){
-								room->damage(DamageStruct(objectName(),p,player));
-							}else if(p->getHp()>=player->getHp()&&player->getHandcardNum()>0){
-								int id = room->askForCardChosen(p,player,"h",objectName());
-								if(id>=0) room->obtainCard(p,id,false);
-							}
-						}
-					}
-				}
-			}else if(player->getPhase()==Player::NotActive){
-				foreach (ServerPlayer*p, room->getAlivePlayers()) {
-					if(p->getMark("stscdlwei"+p->objectName())>0){
-						player->removeMark("stscdlwei"+p->objectName());
-						room->removeAttackRangePair(player,p);
-					}
-				}
-			}
-        } else {
-            if (player->hasSkill(objectName())){
-				room->sendCompulsoryTriggerLog(player,objectName());
-				player->peiyin("powei",1);
-				foreach (ServerPlayer*p, room->getOtherPlayers(player)) {
-					if(p->getMark("&stscdlwei")<1) p->gainMark("&stscdlwei");
-				}
-			}
+            foreach (ServerPlayer *owner, room->getAllPlayers(true)) {
+                foreach (int id, owner->getSkillInstanceIds(objectName())) {
+                    QStringList targets = owner->getSkillInstanceStateValue(objectName(), id, "powei_targets").toStringList();
+                    if (targets.removeAll(player->objectName()) > 0) setTargets(room, owner, id, targets);
+                }
+            }
+            return false;
+        }
+        if (event == EventPhaseStart && player->getPhase() == Player::NotActive) {
+            foreach (ServerPlayer *p, room->getAlivePlayers()) {
+                if (player->getMark("stscdlwei" + p->objectName()) > 0) {
+                    player->setMark("stscdlwei" + p->objectName(), 0);
+                    room->removeAttackRangePair(player, p);
+                }
+            }
+            return false;
+        }
+        const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+        foreach (int id, ids) {
+            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(objectName(), id));
+            if (!player->hasSkillInstance(objectName(), id) || player->isSkillInvalid(objectName(), id)
+                || room->getShimingStatus(ref) != 0) continue;
+            if (event == GameStart) {
+                QStringList targets;
+                foreach (ServerPlayer *p, room->getOtherPlayers(player)) targets << p->objectName();
+                room->sendCompulsoryTriggerLog(player, objectName());
+                player->peiyin("powei", 1);
+                setTargets(room, player, id, targets);
+            } else if (event == Dying && data.value<DyingStruct>().who == player) {
+                player->peiyin("powei", 3);
+                if (!room->sendShimingLog(ref, false)) continue;
+                setTargets(room, player, id, QStringList());
+                room->recover(player, RecoverStruct(objectName(), player, 1 - player->getHp()));
+                player->throwAllEquips(objectName());
+            } else if (event == EventPhaseStart && player->getPhase() == Player::RoundStart) {
+                const QStringList targets = player->getSkillInstanceStateValue(objectName(), id, "powei_targets").toStringList();
+                QStringList moved;
+                bool has = false;
+                foreach (ServerPlayer *p, room->getAlivePlayers()) {
+                    if (!targets.contains(p->objectName())) continue;
+                    has = true;
+                    ServerPlayer *next = p->getNextAlive();
+                    if (next == player) next = next->getNextAlive();
+                    if (!moved.contains(next->objectName())) moved << next->objectName();
+                }
+                if (has) {
+                    room->sendCompulsoryTriggerLog(player, objectName());
+                    player->peiyin("powei", 1);
+                    setTargets(room, player, id, moved);
+                } else {
+                    player->peiyin("powei", 2);
+                    if (room->sendShimingLog(ref)) room->acquireSkill(player, "xinshenzhuo");
+                }
+            }
+        }
+        if (event == EventPhaseStart && player->getPhase() == Player::RoundStart) {
+            foreach (ServerPlayer *owner, room->getAllPlayers()) {
+                const QList<int> ownerIds = owner->getValidSkillInstanceIds(objectName());
+                foreach (int id, ownerIds) {
+                    if (!owner->hasSkillInstance(objectName(), id) || owner->isSkillInvalid(objectName(), id)) continue;
+                    if (!owner->getSkillInstanceStateValue(objectName(), id, "powei_targets")
+                        .toStringList().contains(player->objectName())) continue;
+                    if (!owner->askForSkillInvoke(this, player)) continue;
+                    owner->peiyin("powei", 1);
+                    room->insertAttackRangePair(player, owner);
+                    player->setMark("stscdlwei" + owner->objectName(), 1);
+                    if (room->askForCard(owner, ".", "xinpowei0:" + player->objectName(), QVariant::fromValue(player))) {
+                        room->damage(DamageStruct(objectName(), owner, player));
+                    } else if (owner->getHp() >= player->getHp() && player->getHandcardNum() > 0) {
+                        int cardID = room->askForCardChosen(owner, player, "h", objectName());
+                        if (cardID >= 0) room->obtainCard(owner, cardID, false);
+                    }
+                }
+            }
         }
         return false;
     }

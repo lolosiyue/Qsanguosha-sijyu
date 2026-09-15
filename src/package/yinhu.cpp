@@ -822,9 +822,21 @@ public:
 		events << EventPhaseEnd;
 	}
 
-	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
-	{
-		if (player->getMark(objectName()) > 0 || player->getPhase() != Player::Play) return false;
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+        foreach (int id, ids) {
+            if (!player->hasSkillInstance(objectName(), id) || player->isSkillInvalid(objectName(), id)) continue;
+            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(objectName(), id));
+            if (triggerInstance(event, room, player, data, ref)) return true;
+        }
+        return false;
+    }
+
+    bool triggerInstance(TriggerEvent event, Room *room, ServerPlayer *player,
+                         QVariant &data, const SkillInstanceRef &ref) const
+    {
+		if (room->getShimingStatus(ref) > 0 || player->getPhase() != Player::Play) return false;
 		if (!player->canDiscard(player, "h") || player->getHandcardNum() < 2) return false;
 		if (!room->askForDiscard(player, objectName(), 2, 2, true, false, "@yhjifeng-discard", ".", objectName())) return false;
 		room->broadcastSkillInvoke(this, 1);
@@ -845,14 +857,14 @@ public:
 
 		Card::Suit suit = card->getSuit();
 		if (suit == Card::Diamond) {
-			room->sendShimingLog(player, objectName());
+			if (!room->sendShimingLog(ref)) return false;
 			room->acquireSkill(player, "olhuoji");
 			if (player->isDead()) return false;
 			int number = card->getNumber();
 			ServerPlayer *target = room->askForPlayerChosen(player, room->getAlivePlayers(), objectName(), "@yhjifeng-target:" + QString::number(number));
 			room->addPlayerMark(target, "&yhjfkuangfeng", number);
 		} else if (suit == Card::Spade) {
-			room->sendShimingLog(player, objectName(), false);
+			if (!room->sendShimingLog(ref, false)) return false;
 			room->acquireSkill(player, "bazhen");
 			player->throwAllHandCards();
 		}
@@ -3821,8 +3833,20 @@ public:
 		shiming_skill = true;
 	}
 
-	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
-	{
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+        foreach (int id, ids) {
+            if (!player->hasSkillInstance(objectName(), id) || player->isSkillInvalid(objectName(), id)) continue;
+            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(objectName(), id));
+            if (triggerInstance(event, room, player, data, ref)) return true;
+        }
+        return false;
+    }
+
+    bool triggerInstance(TriggerEvent event, Room *room, ServerPlayer *player,
+                         QVariant &data, const SkillInstanceRef &ref) const
+    {
 		QStringList phase_names;
 		phase_names << "judge" << "draw" << "play" << "discard";
 
@@ -3830,7 +3854,7 @@ public:
 			QString diy = data.toString();
 			if (!diy.startsWith("yhkudu_lose_phase_")) return false;
 
-			if (player->getMark("@yhtanyouMark") > 0) {
+			if (!player->getSkillInstanceStateValue(objectName(), ref.key.instanceID, "tanyou_used", false).toBool()) {
 				QList<ServerPlayer *> targets;
 				foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
 					if (p->getMaxHp() > 1)
@@ -3839,16 +3863,18 @@ public:
 
 				if (!targets.isEmpty()) {
 					ServerPlayer *t = room->askForPlayerChosen(player, targets, objectName(), "@yhtanyou-target", true, true);
-					if (t) {
+					if (t && player->hasSkillInstance(objectName(), ref.key.instanceID)
+                        && !player->getSkillInstanceStateValue(objectName(), ref.key.instanceID, "tanyou_used", false).toBool()) {
 						player->peiyin(this, 1);
 
-						room->removePlayerMark(player, "@yhtanyouMark");
+						player->setSkillInstanceStateValue(objectName(), ref.key.instanceID, "tanyou_used", true);
+                        room->removePlayerMark(player, "@yhtanyouMark");
 						room->doSuperLightbox(player, objectName());
 
-						QStringList names = player->getTag("YHTanyouPlayers").toStringList();
+						QStringList names = player->getSkillInstanceStateValue(objectName(), ref.key.instanceID, "tanyou_players").toStringList();
 						if (!names.contains(t->objectName())) {
 							names << t->objectName();
-							player->setTag("YHTanyouPlayers", names);
+							player->setSkillInstanceStateValue(objectName(), ref.key.instanceID, "tanyou_players", names);
 						}
 
 						room->loseMaxHp(t, 1, objectName());
@@ -3858,7 +3884,7 @@ public:
 				}
 			}
 
-			if (player->getMark(objectName()) > 0) return false;
+			if (room->getShimingStatus(ref) > 0) return false;
 
 			bool lose_all = true;
 			foreach (QString phase_name, phase_names) {
@@ -3869,11 +3895,11 @@ public:
 			}
 			if (!lose_all) return false;
 
-			room->sendShimingLog(player, this);
+			if (!room->sendShimingLog(ref)) return false;
 
 			QList<ServerPlayer *> players;
 			players << player;
-			QStringList names = player->getTag("YHTanyouPlayers").toStringList();
+			QStringList names = player->getSkillInstanceStateValue(objectName(), ref.key.instanceID, "tanyou_players").toStringList();
 			foreach (QString name, names) {
 				ServerPlayer *p = room->findChild<ServerPlayer *>(name);
 				if (p && p->isAlive() && !players.contains(p))
@@ -3891,12 +3917,12 @@ public:
 			room->addPlayerMark(player, "yhkudu");
 			room->changeTranslation(player, "yhkudu", 2);
 		} else {
-			if (player->getMark(objectName()) > 0) return false;
+			if (room->getShimingStatus(ref) > 0) return false;
 			DyingStruct dying = data.value<DyingStruct>();
 			if (!dying.who) return false;
-			QStringList names = player->getTag("YHTanyouPlayers").toStringList();
+			QStringList names = player->getSkillInstanceStateValue(objectName(), ref.key.instanceID, "tanyou_players").toStringList();
 			if (dying.who == player || names.contains(dying.who->objectName())) {
-				room->sendShimingLog(player, this, false);
+				if (!room->sendShimingLog(ref, false)) return false;
 				room->handleAcquireDetachSkills(player, "-yhkunmo");
 
 				foreach (QString phase_name, phase_names)
