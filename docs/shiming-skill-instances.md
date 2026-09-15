@@ -94,14 +94,13 @@ Deliberate shared effects, **not mission status storage**:
 
 ## External Lua content
 
-`extensions/` and `lua/ai/` are ignored runtime inputs from
-`lolosiyue/extensions`, not tracked source in this repository. The tested input
-was commit `0f47a94cb83097f900ac7093f14bacd942c7d0b2`.
-`tools/patches/shiming-instances.patch` delivers the corresponding migration;
-`tools/ci/fetch-extensions.sh` applies it after fetching, accepts already-applied
-content, and fails explicitly on incompatible drift. Existing installations can
-apply it from the game root with `git apply tools/patches/shiming-instances.patch`.
-No external repository is edited or published by this task.
+`extensions/` and `lua/ai/` are ignored runtime inputs maintained in
+`lolosiyue/extensions`. Mission migration is maintained directly in that
+external repository. `tools/ci/fetch-extensions.sh` fetches its Lua content
+without applying a mission migration patch from this repository.
+Use an external revision compatible with the exact-reference mission API.
+The inventory below describes the required integration contract; it is not
+verification of a particular current external revision.
 
 | External file | Migration |
 | --- | --- |
@@ -132,4 +131,4 @@ different owners with the same ID, single-instance transitions, duplicate logs,
 reset, invalid/stale refs, removal/reacquisition, reentrant completion callbacks,
 owner-only deltas/snapshots, Weiming/Powei/Qingyu package behavior, and Lua exact
 callback/event/dispatch bindings. `QSAN_TEST_SHIMING_EXTERNAL=1` additionally
-tests patched external Powei/Fuhan/Ganglie behavior. No new build target is needed.
+tests external Powei/Fuhan/Ganglie behavior. No new build target is needed.
