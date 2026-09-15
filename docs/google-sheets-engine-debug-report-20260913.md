@@ -51,6 +51,18 @@ Google Sheets 五個前端檔案已安裝並授權，實際完成配對、開房
 
 曾有「payload.selection 巢狀欄位漏讀」的初步判斷；後續審查發現目前 `InteractionRequest::toJson()` 會展平該欄位，因此新增的 nested fallback 不是此次根因修復。該相容分支仍留在未提交修改中，後續整理應評估撤除，不應把它列為已證明必要的修復。
 
+### E2 後續：PR #38 本地整理（2026-09-15）
+
+使用者已指定處理 PR #38 的 E2。PR 補上命名牌堆的多牌／逐張移出／快照回歸，以及原生清儉候選、合法選牌與移出後拒絕的探測，並撤除未證明必要的 nested selection fallback。
+
+審查發現 PR 原探測會在來源資產目錄建立缺少的 Lua 擴展替身並永久留下。本地已改由 `check-olqingjian-pile.py` 沿用既有 `stage_builtin_assets()`，在暫存目錄準備內建內容；啟動前隔離工作目錄與平台設定路徑，原生探測不再建立替身。
+
+使用者核准限定驗證與更新 PR 後，Windows Debug 三個指定目標均建置成功；直接執行的 ClientCore、隔離清儉探測與 ExcelView 均 exit 0（ExcelView 12 項通過）。原生探測確認空牌堆拒絕、GET 後出現候選／合法選牌 can_confirm、LOSE 後再次拒絕；來源 extensions 與 lua 共 278 個 Lua 檔案的前後路徑與 SHA-256 完全一致。靜態 diff／AST 檢查與獨立審查通過。
+
+本地證據目錄：`builds/pr38-e2-20260915/`，包含 `configure.log`、`build.log`、三組 stdout／stderr、`olqingjian-pile-sync.json` 及資產雜湊清單。ClientCore 此次直接執行不含可選 GUI interaction inventory generator；未執行本地 CTest、完整測試或完整對局。
+
+清儉探測只證明內建原生規則候選／選牌與回覆物件產生，未驗證伺服器實際分配、真實 Sheets 或 GAME_OVER。PR 原版本的三項遠端 CI 顯示成功，不代表後續修訂已取得新 CI 結果；E3、E4 不在本次範圍。
+
 ## E3：進行中關閉失敗
 
 | 證據 | 結果 |
