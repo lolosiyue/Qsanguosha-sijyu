@@ -129,3 +129,8 @@ rg -n --no-heading "Event(Acquire|Lose)Skill.*data\.toString|data\.toString.*Eve
 - [ ] 逐一確認其餘呼叫是 stack、ensure、replace 或 temporary。
 - [ ] 對 temporary／replace 呼叫保存並使用 `acquireSkill()` 回傳的 instanceID。
 - [x] 將 EventAcquire/Lose 的 C++ 與 Lua 字串 listener 遷移至 `SkillChangeStruct` typed 讀取。
+
+## SI：使命技實例遷移
+
+目前 shiming API、C++／外部 Lua 呼叫點及刻意保留的共用效果，見
+[使命技實例 API 與遷移清單](shiming-skill-instances.md)。

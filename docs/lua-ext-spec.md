@@ -191,13 +191,17 @@ skill_name = sgs.CreateTriggerSkillV2 {
     can_trigger = function(self, target) ... end,
     check_custom_usage = function(self, ctx) ... end, -- Limit_Custom 的可用性
     on_add_usage = function(self, ctx) ... end,       -- Limit_Custom 成功後提交
-    on_shiming_success = function(self, event, player, data, ask_who) ... end,
-    on_shiming_fail = function(self, event, player, data, ask_who) ... end,
+    on_shiming_success = function(self, room, player, ref) ... end,
+    on_shiming_fail = function(self, room, player, ref) ... end,
     dynamic_frequency = function(self, player) ... end,
 }
 ```
 
 參考 `docs/TriggerSkillV2系統說明.md` 獲取完整 V2 流程說明。
+
+使命狀態 API 現在只接受精確 `SkillInstanceRef`（通常為 `ctx:getActivationRef()`）。
+事件資料用 `data:toSkillInstanceRef()`；完成回調的第四參數為同一 ref。
+詳見 [使命技實例 API 與遷移清單](shiming-skill-instances.md)。
 
 配額引用規則：
 

@@ -97,6 +97,11 @@ struct RoomTestAccess
         room.notifySkillInstanceState(owner, instance, operation, key, value);
     }
 
+    static void notifySkillInstanceSnapshot(Room &room, ServerPlayer *receiver)
+    {
+        room.notifySkillInstanceSnapshot(receiver);
+    }
+
     static SkillInstanceRef resolveRoot(Room &room, const SkillInstanceRef &ref)
     {
         return room.resolveSkillInstanceRootRef(ref);
