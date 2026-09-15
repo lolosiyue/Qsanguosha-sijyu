@@ -3659,7 +3659,7 @@ bool Room::notifyProperty(ServerPlayer*player, const ServerPlayer*owner, const c
 
 QString Room::aiStateRevision() const
 {
-    return QString::number(roomRuntime()->stateRevision());
+    return QString::number(m_runtime->stateRevision());
 }
 
 bool Room::broadcastProperty(ServerPlayer*owner, const char*property_name, const QString&value)
