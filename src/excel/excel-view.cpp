@@ -219,12 +219,10 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
     if (!core.hasActiveRequest()) return {};
     const InteractionRequest &request = core.activeRequest();
     const QJsonObject payload = request.toJson().value(QStringLiteral("payload")).toObject();
-    // Typed payloads normally flatten CardSelectionState; accept the nested
-    // representation emitted by older request serializers as well.
-    const QJsonObject nestedSelection = payload.value(QStringLiteral("selection")).toObject();
-    const auto payloadArray = [&payload, &nestedSelection](const QString &key) {
-        const QJsonValue direct = payload.value(key);
-        return direct.isArray() ? direct.toArray() : nestedSelection.value(key).toArray();
+    // InteractionRequest::toJson() already flattens CardSelectionState onto
+    // payload. Nested payload.selection is not a current wire shape.
+    const auto payloadArray = [&payload](const QString &key) {
+        return payload.value(key).toArray();
     };
     QJsonArray options, cards, players, skills, declarations;
     const auto label = [](const QString &name) {
