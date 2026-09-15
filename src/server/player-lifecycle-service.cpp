@@ -284,7 +284,7 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
     m_notifier.sendLog(log, QList<ServerPlayer *>());
 
     m_room.broadcastProperty(victim, "alive");
-    m_room.broadcastProperty(victim, "role");
+    m_room.revealRole(victim);
     m_notifier.doBroadcastNotify(S_COMMAND_KILL_PLAYER, victim->objectName());
 
     m_eventDispatcher.dispatch(GameOverJudge, victim, data);

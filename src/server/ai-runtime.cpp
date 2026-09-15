@@ -282,6 +282,11 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "chained");
     setStringField(state, "kingdom", player.kingdom);
     setStringField(state, "role", player.role);
+    setStringField(state, "controller", player.controller);
+    lua_pushboolean(state, player.roleRevealed);
+    lua_setfield(state, -2, "role_revealed");
+    lua_pushboolean(state, player.roleVisible);
+    lua_setfield(state, -2, "role_visible");
     setStringField(state, "general", player.generalName);
     setStringField(state, "general2", player.general2Name);
     pushAICards(state, player.equips);
@@ -302,6 +307,11 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
 void pushAIWorldView(lua_State *state, const AIWorldView &world)
 {
     lua_createtable(state, 0, 6);
+    setStringField(state, "mode_id", world.modeId);
+    lua_pushboolean(state, world.customRoles);
+    lua_setfield(state, -2, "custom_roles");
+    pushAIJsonValue(state, world.modePolicy);
+    lua_setfield(state, -2, "mode_policy");
     setStringField(state, "revision", QString::number(world.revision));
     pushAIPlayerView(state, world.self);
     lua_setfield(state, -2, "self");
@@ -318,6 +328,105 @@ void pushAIWorldView(lua_State *state, const AIWorldView &world)
     lua_setfield(state, -2, "current_phase");
 }
 
+}
+
+void AiLuaRuntime::pushWorldView(lua_State *state, const AIWorldView &world)
+{
+    pushAIWorldView(state, world);
+}
+
+void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world)
+{
+    world.modePolicy = QJsonObject{{"managed", world.customRoles},
+        {"relations", QJsonObject()}, {"objectives", QJsonObject()}};
+    if (!world.self.objectName.isEmpty()) {
+        world.modePolicy.insert("relations", QJsonObject{{world.self.objectName,
+            QJsonObject{{world.self.objectName, "friend"}}}});
+        world.modePolicy.insert("objectives", QJsonObject{{world.self.objectName, -3}});
+    }
+    if (!runtime.rawState()) return;
+    LuaRuntime::Binding binding(runtime);
+    LuaRuntime::LuaInvocationScope invocation(runtime);
+    lua_State *state = runtime.rawState();
+    const int top = lua_gettop(state);
+    // Reentrancy is tracked in this Room's registry, never a process-global AI table.
+    lua_getfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
+    const bool active = lua_toboolean(state, -1);
+    lua_pop(state, 1);
+    if (active) {
+        world.modePolicy.insert("managed", true);
+        return;
+    }
+    lua_getglobal(state, "sgs");
+    if (!lua_istable(state, -1)) { lua_settop(state, top); return; }
+    lua_getfield(state, -1, "evaluateModeAI");
+    if (!lua_isfunction(state, -1)) { lua_settop(state, top); return; }
+    lua_pushboolean(state, true);
+    lua_setfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
+    pushAIWorldView(state, world);
+    const int status = LuaRuntime::protectedCall(state, 1, 1, 0);
+    lua_pushboolean(state, false);
+    lua_setfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
+    if (status != 0 || !lua_istable(state, -1)) {
+        world.modePolicy.insert("managed", true);
+        lua_settop(state, top);
+        return;
+    }
+    const int result = lua_gettop(state);
+    lua_getfield(state, result, "managed");
+    world.modePolicy.insert("managed", world.customRoles || bool(lua_toboolean(state, -1)));
+    lua_pop(state, 1);
+    lua_getfield(state, result, "predictable");
+    world.modePolicy.insert("predictable", bool(lua_toboolean(state, -1)));
+    lua_pop(state, 1);
+    QStringList names{world.self.objectName};
+    for (const AIPlayerView &player : world.players) names << player.objectName;
+    QJsonObject relations;
+    lua_getfield(state, result, "relations");
+    if (lua_istable(state, -1)) {
+        for (const QString &from : names) {
+            lua_getfield(state, -1, from.toUtf8().constData());
+            QJsonObject row;
+            if (lua_istable(state, -1)) {
+                for (const QString &to : names) {
+                    lua_getfield(state, -1, to.toUtf8().constData());
+                    QString relation;
+                    if (lua_type(state, -1) == LUA_TSTRING && readBoundedString(state, -1, relation)
+                        && (relation == "friend" || relation == "enemy"
+                            || relation == "neutral" || relation == "unknown"))
+                        row.insert(to, relation);
+                    lua_pop(state, 1);
+                }
+            }
+            relations.insert(from, row);
+            lua_pop(state, 1);
+        }
+    }
+    lua_pop(state, 1);
+    world.modePolicy.insert("relations", relations);
+    QJsonObject objectives;
+    lua_getfield(state, result, "objectives");
+    if (lua_istable(state, -1)) {
+        for (const QString &name : names) {
+            lua_getfield(state, -1, name.toUtf8().constData());
+            const double value = lua_tonumber(state, -1);
+            if (lua_type(state, -1) == LUA_TNUMBER && std::isfinite(value)
+                && value >= -5 && value <= 5) objectives.insert(name, value);
+            lua_pop(state, 1);
+        }
+    }
+    lua_pop(state, 1);
+    world.modePolicy.insert("objectives", objectives);
+    lua_getfield(state, result, "game_process");
+    const double process = lua_tonumber(state, -1);
+    if (lua_type(state, -1) == LUA_TNUMBER && std::isfinite(process))
+        world.modePolicy.insert("game_process", process);
+    lua_pop(state, 1);
+    lua_getfield(state, result, "process_label");
+    QString label;
+    if (lua_type(state, -1) == LUA_TSTRING && readBoundedString(state, -1, label))
+        world.modePolicy.insert("process_label", label);
+    lua_settop(state, top);
 }
 
 AiRouteRegistry::AiRouteRegistry()

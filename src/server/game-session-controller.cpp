@@ -250,8 +250,9 @@ void GameSessionController::prepareForStart()
 			m_room.broadcastProperty(runtimePlayer, "general");
 			if (!saved->general2.isEmpty())
 				m_room.broadcastProperty(runtimePlayer, "general2");
-			if (Sanguosha->hasShowRoleMode(m_room.getMode()) || runtimePlayer->isLord())
-				m_room.broadcastProperty(runtimePlayer, "role");
+			runtimePlayer->setShownRole(saved->roleShown);
+			if (saved->roleShown)
+				m_room.revealRole(runtimePlayer);
 			else
 				m_room.notifyProperty(runtimePlayer, runtimePlayer, "role");
 		}
@@ -275,14 +276,14 @@ void GameSessionController::prepareForStart()
 				human->setGeneralName("sujiang");
 				m_room.broadcastProperty(human, "general");
 				human->setRole("lord");
-				m_room.broadcastProperty(human, "role");
+				m_room.revealRole(human);
 
 				foreach(ServerPlayer*p, m_room.getPlayers()){
 					if (p == human) continue;
 					p->setGeneralName("sujiang");
 					m_room.broadcastProperty(p, "general");
 					p->setRole("rebel");
-					m_room.broadcastProperty(p, "role");
+					m_room.revealRole(p);
 				}
 			}
 		}
@@ -298,7 +299,7 @@ void GameSessionController::prepareForStart()
 				}
 				player->setRole(roles[i]);
 				if (m_room.scenario->exposeRoles()||roles[i]=="lord")
-					m_room.broadcastProperty(player, "role");
+					m_room.revealRole(player);
 				else
 					m_room.notifyProperty(player, player, "role");
 			}
@@ -357,7 +358,7 @@ void GameSessionController::prepareForStart()
 								all_players[i]->setRole(roles[i]);
 			for (int i = 0; i < players.count(); i++){
 				if (Sanguosha->hasShowRoleMode(m_room.mode) || players[i]->getRole() == "lord")
-					m_room.broadcastProperty(players[i], "role");
+					m_room.revealRole(players[i]);
 				else
 					m_room.notifyProperty(players[i], players[i], "role");
 			}
@@ -374,7 +375,7 @@ void GameSessionController::prepareForStart()
 			for (int i = 0; i < 4; i++){
 				if (players[i] == lord) players[i]->setRole("lord");
 				else players[i]->setRole("rebel");
-				m_room.broadcastProperty(players[i], "role");
+				m_room.revealRole(players[i]);
 			}
 			m_room.adjustSeats();
 			return;
@@ -1187,7 +1188,7 @@ void GameSessionController::assignRoles()
 		players[i]->setRole(roles[i]);
 		if (showAllRoles || (roles[i] == "lord"&&!ServerInfo.EnableHegemony))
 			//|| mode == "06_ol"|| mode == "05_ol" || mode == "04_1v3" || mode == "04_boss" || mode == "08_defense" || mode == "03_1v2" || mode == "04_2v2")
-			m_room.broadcastProperty(players[i], "role", roles[i]);
+			m_room.revealRole(players[i]);
 		else
 			m_room.notifyProperty(players[i], players[i], "role");
 	}

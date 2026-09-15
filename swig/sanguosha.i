@@ -6,6 +6,7 @@
 #include "engine.h"
 #include "wrapped-card.h"
 #include "ai.h"
+#include "ai-runtime.h"
 #include "room.h"
 #include "roomthread.h"
 #include "lua-wrapper.h"
@@ -24,6 +25,12 @@ extern Player *Self;
 %include "native.i"
 %include "qvariant.i"
 %include "list.i"
+
+// World views cross Lua boundaries as owned primitive tables, never userdata.
+%typemap(out) AIWorldView %{
+    AiLuaRuntime::pushWorldView(L, $1);
+    SWIG_arg++;
+%}
 
 %init %{
 	lua_CFunction cardGc = [](lua_State *state) -> int {
@@ -2590,6 +2597,13 @@ public:
 	void updateStateItem();
 	bool notifyProperty(ServerPlayer*playerToNotify, const ServerPlayer*propertyOwner, const char*propertyName, const char*value = nullptr);
 	bool broadcastProperty(ServerPlayer*player, const char*property_name, const char*value = nullptr);
+	bool isRoleRevealed(const ServerPlayer *player) const;
+	bool canSeeRole(const ServerPlayer *viewer, const ServerPlayer *target) const;
+	void revealRole(ServerPlayer *player);
+	void revealRoleTo(ServerPlayer *viewer, ServerPlayer *target);
+	void syncRole(ServerPlayer *viewer, const ServerPlayer *target);
+	AIWorldView buildAIWorldView(ServerPlayer *viewer) const;
+	QString aiStateRevision() const;
 
 	int getBossModeExpMult(int level) const;
 
