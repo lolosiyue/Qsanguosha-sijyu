@@ -391,12 +391,29 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         return true;
     }
 
-    if (!request.hasSkillActionContext || !result.action.hasSkillActionContext)
+    if (!result.action.hasSkillActionContext)
         return false;
-    const AiSkillActionContext &context = request.skillActionContext;
-    if (result.action.skillActionContext.activationRef != context.activationRef
-        || result.action.skillActionContext.sourceRef != context.sourceRef)
+    AIRequest playRequest;
+    if (!request.hasSkillActionContext) {
+        // 出牌階段的 Activate 請求不帶技能上下文; AI 選了 V2 主動技時由結果指明 instance,
+        // 這裡按該 instance 重新建立上下文 (歸屬、canActivate、次數都重驗) 再造 proxy。
+        const SkillInstanceRef &claimed = result.action.skillActionContext.activationRef;
+        if (request.kind != AIRequest::Activate
+            || claimed.ownerObjectName != player->objectName())
+            return false;
+        const SkillInstance *instance = player->findSkillInstance(claimed.key.skillName,
+                                                                  claimed.key.instanceID);
+        if (!instance
+            || !buildSkillActionRequest(player, *instance, request.reason, request.pattern,
+                                        request.prompt, request.handlingMethod, playRequest)
+            || playRequest.skillActionContext.activationRef != claimed)
+            return false;
+    } else if (result.action.skillActionContext.activationRef != request.skillActionContext.activationRef
+        || result.action.skillActionContext.sourceRef != request.skillActionContext.sourceRef) {
         return false;
+    }
+    const AiSkillActionContext &context = request.hasSkillActionContext
+        ? request.skillActionContext : playRequest.skillActionContext;
     const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(
         Sanguosha->getViewAsSkill(context.getActivationSkillName()));
     if (!skill) return false;

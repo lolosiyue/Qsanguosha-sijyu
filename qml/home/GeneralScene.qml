@@ -1465,6 +1465,8 @@ Item {
                                         width: parent.width
                                         visible: root.detailsReady && String(details.information || "").length > 0
                                         text: details.information || ""
+                                        // 簡介常以填充字元開頭再接 <i>/<br>，AutoText 認不成 HTML。
+                                        textFormat: TextEdit.RichText
                                         color: HomeTheme.pillText
                                         font.pixelSize: 13
                                     }
@@ -1484,11 +1486,9 @@ Item {
                                             width: skillColumn.width
                                             height: skillBody.height + 16
                                             radius: 8
-                                            color: modelData.related ? HomeTheme.relatedSkillBg : HomeTheme.nativeSkillBg
+                                            color: HomeTheme.nativeSkillBg
                                             border.width: 1
-                                            border.color: modelData.related
-                                                          ? HomeTheme.skillNameRelated
-                                                          : HomeTheme.tabSkillsBorder
+                                            border.color: HomeTheme.tabSkillsBorder
 
                                             Column {
                                                 id: skillBody
@@ -1504,12 +1504,6 @@ Item {
                                                     ParallelogramPlate {
                                                         label: modelData.displayName || ""
                                                         related: modelData.related === true
-                                                    }
-
-                                                    MetaBadge {
-                                                        visible: modelData.related === true
-                                                        label: root.ui("GeneralOverview", "衍生")
-                                                        accent: HomeTheme.skillNameRelated
                                                     }
 
                                                     Repeater {
