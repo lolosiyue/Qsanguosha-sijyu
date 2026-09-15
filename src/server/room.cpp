@@ -5081,89 +5081,57 @@ void Room::sendCompulsoryTriggerLog(ServerPlayer*player, const Skill*skill, int 
 	if (skill) sendCompulsoryTriggerLog(player, skill->objectName(), true, true, type);
 }
 
-void Room::sendShimingLog(ServerPlayer*player, const QString&skill_name, bool finish_or_failed, int index)
+bool Room::sendShimingLog(const SkillInstanceRef &ref, bool finish_or_failed, int index)
 {
-	LogMessage log;
-	log.from = player;
-	log.arg = skill_name;
-	log.type = finish_or_failed ? "#FinishShiMing" : "#ShiMingFailed";
-	if (index <= 0) index = finish_or_failed ? 2 : 3;
-	broadcastSkillInvoke(skill_name, index, player);
-	addPlayerMark(player, skill_name);
-	sendLog(log);
-	notifySkillInvoked(player, skill_name);
+    if (getShimingStatus(ref) != 0) return false;
+    return setShimingStatus(ref, finish_or_failed ? 1 : 2, index);
 }
 
-void Room::sendShimingLog(ServerPlayer*player, const Skill*skill, bool finish_or_failed, int index)
+bool Room::setShimingStatus(const SkillInstanceRef &ref, int status, int index)
 {
-	if (skill) sendShimingLog(player, skill->objectName(), finish_or_failed, index);
+    if (!ref.isValid() || status < 0 || status > 2) return false;
+    ServerPlayer *player = findPlayerByObjectName(ref.ownerObjectName, true);
+    if (!player || !player->hasSkillInstance(ref.key.skillName, ref.key.instanceID)) return false;
+    if (getShimingStatus(ref) == status) return false;
+
+    QVariantMap state = player->getSkillInstanceState(ref.key.skillName, ref.key.instanceID);
+    const qulonglong revision = state.value("shiming_revision").toULongLong() + 1;
+    state.insert("shiming_status", status);
+    state.insert("shiming_revision", revision);
+    player->setSkillInstanceState(ref.key.skillName, ref.key.instanceID, state);
+    if (status == 0) return true;
+
+    LogMessage log;
+    log.from = player;
+    log.arg = ref.key.skillName; // Public logs intentionally display the base name.
+    log.type = status == 1 ? "#FinishShiMing" : "#ShiMingFailed";
+    sendLog(log);
+    broadcastSkillInvoke(ref.key.skillName, index > 0 ? index : (status == 1 ? 2 : 3), player);
+    notifySkillInvoked(player, ref.key.skillName);
+
+    QVariant data = QVariant::fromValue(ref);
+    thread->trigger(status == 1 ? EventShimingSuccess : EventShimingFail, this, player, data);
+    // Event listeners may detach the instance or change its outcome. Never redirect
+    // the delayed callback to a surviving same-name instance.
+    if (!player->hasSkillInstance(ref.key.skillName, ref.key.instanceID)
+        || getShimingStatus(ref) != status
+        || player->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID,
+                                              "shiming_revision").toULongLong() != revision) return true;
+    const TriggerSkillV2 *skill = qobject_cast<const TriggerSkillV2 *>(Sanguosha->getSkill(ref.key.skillName));
+    if (skill) {
+        if (status == 1) skill->onShimingSuccess(this, player, ref);
+        else skill->onShimingFail(this, player, ref);
+    }
+    return true;
 }
 
-void Room::setShimingStatus(ServerPlayer*player, const QString&skillName, int status)
+int Room::getShimingStatus(const SkillInstanceRef &ref) const
 {
-	QString successMark = skillName + "__success";
-	QString failMark = skillName + "__fail";
-
-	if (status == 1) {
-		if (player->getMark(successMark) > 0) return;
-		removePlayerMark(player, failMark, player->getMark(failMark));
-		addPlayerMark(player, successMark);
-
-		LogMessage log;
-		log.type = "#FinishShiMing";
-		log.from = player;
-		log.arg = skillName;
-		sendLog(log);
-		broadcastSkillInvoke(skillName, 2, player);
-		notifySkillInvoked(player, skillName);
-
-		QVariant data = skillName;
-		thread->trigger(EventShimingSuccess, this, player, data);
-
-		const Skill *skill = Sanguosha->getSkill(skillName);
-		if (skill) {
-			const TriggerSkillV2 *v2Skill = qobject_cast<const TriggerSkillV2 *>(skill);
-			if (v2Skill) {
-				v2Skill->onShimingSuccess(this, player);
-			}
-		}
-	} else if (status == 2) {
-		if (player->getMark(failMark) > 0) return;
-		removePlayerMark(player, successMark, player->getMark(successMark));
-		addPlayerMark(player, failMark);
-
-		LogMessage log;
-		log.type = "#ShiMingFailed";
-		log.from = player;
-		log.arg = skillName;
-		sendLog(log);
-		broadcastSkillInvoke(skillName, 3, player);
-		notifySkillInvoked(player, skillName);
-
-		QVariant data = skillName;
-		thread->trigger(EventShimingFail, this, player, data);
-
-		const Skill *skill = Sanguosha->getSkill(skillName);
-		if (skill) {
-			const TriggerSkillV2 *v2Skill = qobject_cast<const TriggerSkillV2 *>(skill);
-			if (v2Skill) {
-				v2Skill->onShimingFail(this, player);
-			}
-		}
-	} else {
-		removePlayerMark(player, successMark, player->getMark(successMark));
-		removePlayerMark(player, failMark, player->getMark(failMark));
-	}
-}
-
-int Room::getShimingStatus(ServerPlayer*player, const QString&skillName) const
-{
-	QString successMark = skillName + "__success";
-	QString failMark = skillName + "__fail";
-
-	if (player->getMark(successMark) > 0) return 1;
-	if (player->getMark(failMark) > 0) return 2;
-	return 0;
+    if (!ref.isValid()) return 0;
+    ServerPlayer *player = findPlayerByObjectName(ref.ownerObjectName, true);
+    if (!player || !player->hasSkillInstance(ref.key.skillName, ref.key.instanceID)) return 0;
+    return player->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID,
+                                              "shiming_status", 0).toInt();
 }
 
 void Room::showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_viewer, bool self_can_see)

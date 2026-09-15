@@ -77,8 +77,8 @@ public:
 	virtual bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const;
 	void onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
 	                 ServerPlayer *player, SkillContext &ctx) const;
-	void onShimingSuccess(Room *room, ServerPlayer *player) const;
-	void onShimingFail(Room *room, ServerPlayer *player) const;
+	void onShimingSuccess(Room *room, ServerPlayer *player, const SkillInstanceRef &ref) const;
+	void onShimingFail(Room *room, ServerPlayer *player, const SkillInstanceRef &ref) const;
 
 	LuaFunction on_record;
 	LuaFunction can_trigger;
@@ -1485,7 +1485,7 @@ bool LuaTriggerSkillV2::trigger(TriggerEvent triggerEvent, Room *room, ServerPla
 	return TriggerSkillV2::trigger(triggerEvent, room, player, data, owner);
 }
 
-void LuaTriggerSkillV2::onShimingSuccess(Room *room, ServerPlayer *player) const
+void LuaTriggerSkillV2::onShimingSuccess(Room *room, ServerPlayer *player, const SkillInstanceRef &ref) const
 {
 	if (on_shiming_success == 0)
 		return;
@@ -1501,7 +1501,9 @@ void LuaTriggerSkillV2::onShimingSuccess(Room *room, ServerPlayer *player) const
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	int error = LuaRuntime::protectedCall(L, 3, 0, 0);
+	SWIG_NewPointerObj(L, new SkillInstanceRef(ref), SWIGTYPE_p_SkillInstanceRef, SWIG_POINTER_OWN);
+
+	int error = LuaRuntime::protectedCall(L, 4, 0, 0);
 	if (error) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
@@ -1509,7 +1511,7 @@ void LuaTriggerSkillV2::onShimingSuccess(Room *room, ServerPlayer *player) const
 	}
 }
 
-void LuaTriggerSkillV2::onShimingFail(Room *room, ServerPlayer *player) const
+void LuaTriggerSkillV2::onShimingFail(Room *room, ServerPlayer *player, const SkillInstanceRef &ref) const
 {
 	if (on_shiming_fail == 0)
 		return;
@@ -1525,7 +1527,9 @@ void LuaTriggerSkillV2::onShimingFail(Room *room, ServerPlayer *player) const
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	int error = LuaRuntime::protectedCall(L, 3, 0, 0);
+	SWIG_NewPointerObj(L, new SkillInstanceRef(ref), SWIGTYPE_p_SkillInstanceRef, SWIG_POINTER_OWN);
+
+	int error = LuaRuntime::protectedCall(L, 4, 0, 0);
 	if (error) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);

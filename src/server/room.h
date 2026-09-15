@@ -256,11 +256,10 @@ public:
     void sendLog(const LogMessage&log, ServerPlayer*player);
     void sendCompulsoryTriggerLog(ServerPlayer*player, const QString&skill_name, bool notify_skill = true, bool broadcast = false, int type = -1);
     void sendCompulsoryTriggerLog(ServerPlayer*player, const Skill*skill, int type = -1);
-    void sendShimingLog(ServerPlayer*player, const QString&skill_name, bool finish_or_failed = true, int index = -1);
-    void sendShimingLog(ServerPlayer*player, const Skill*skill, bool finish_or_failed = true, int index = -1);
-
-    void setShimingStatus(ServerPlayer*player, const QString&skillName, int status);
-    int getShimingStatus(ServerPlayer*player, const QString&skillName) const;
+    // Exact references only. Invalid/stale references never fall back by name.
+    bool sendShimingLog(const SkillInstanceRef &ref, bool finish_or_failed = true, int index = -1);
+    bool setShimingStatus(const SkillInstanceRef &ref, int status, int index = -1);
+    int getShimingStatus(const SkillInstanceRef &ref) const;
 
     void showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, ServerPlayer*only_viewer , bool self_can_see = true);
