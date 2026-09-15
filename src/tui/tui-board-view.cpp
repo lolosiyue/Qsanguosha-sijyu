@@ -127,17 +127,18 @@ QStringList seatOrderFromSelf(const ClientGameState &state)
 // count for 曹操): a narrow opponent cell has room for a role, a hand count
 // and an equipment count, but not "装【青釭剑】【八卦阵】" as well.
 QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState &state,
-                            const QString &name, bool isSelf, int width)
+                            const QString &name, bool isSelf, int width,
+                            const GameViewPlayer *projected, bool projectedCurrent)
 {
     const QVariantMap player = state.player(name);
     const int seat = player.value(QStringLiteral("seat")).toInt();
     const QString generalName = player.value(QStringLiteral("general")).toString();
     const QString kingdom = translatedKingdom(resolvers, generalName);
-    const int hp = player.value(QStringLiteral("hp")).toInt();
-    const int maxHp = player.value(QStringLiteral("max_hp")).toInt();
-    const bool alive = state.isPlayerAlive(name);
-    const bool current = !name.isEmpty()
-        && name == state.gameValue(QStringLiteral("current_player")).toString();
+    const int hp = projected != nullptr ? projected->hp : player.value(QStringLiteral("hp")).toInt();
+    const int maxHp = projected != nullptr ? projected->maxHp : player.value(QStringLiteral("max_hp")).toInt();
+    const bool alive = projected != nullptr ? projected->alive : state.isPlayerAlive(name);
+    const bool current = !name.isEmpty() && (projected != nullptr ? projectedCurrent
+        : name == state.gameValue(QStringLiteral("current_player")).toString());
 
     // The desktop's own photo shows the general's face and name for every
     // seat, self included -- never the human's screen handle -- so line 1
@@ -176,10 +177,19 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
     const QString roleCode = player.value(QStringLiteral("role")).toString();
     const QString role = roleCode.isEmpty()
         ? QString() : (resolvers.name ? resolvers.name(roleCode) : roleCode);
-    const int handCount = player.value(QStringLiteral("hand_count"),
-        state.cardsForPlayer(name, Player::PlaceHand).size()).toInt();
-    const QList<int> equip = state.cardsForPlayer(name, Player::PlaceEquip);
-    const QList<int> judge = state.cardsForPlayer(name, Player::PlaceDelayedTrick);
+    const int handCount = projected != nullptr ? projected->handCount
+        : player.value(QStringLiteral("hand_count"), state.cardsForPlayer(name, Player::PlaceHand).size()).toInt();
+    QList<QString> equip;
+    QList<QString> judge;
+    if (projected != nullptr) {
+        for (const GameViewCard &card : projected->equipment) equip.append(card.label);
+        for (const GameViewCard &card : projected->judging) judge.append(card.label);
+    } else {
+        for (int id : state.cardsForPlayer(name, Player::PlaceEquip))
+            equip.append(cardName(resolvers, id));
+        for (int id : state.cardsForPlayer(name, Player::PlaceDelayedTrick))
+            judge.append(cardName(resolvers, id));
+    }
 
     QString line2 = role;
     if (!line2.isEmpty())
@@ -194,8 +204,8 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
     if (!equip.isEmpty()) {
         if (isSelf) {
             line2 += QStringLiteral(" 装");
-            for (int cardId : equip)
-                line2 += QStringLiteral("【%1】").arg(cardName(resolvers, cardId));
+            for (const QString &label : equip)
+                line2 += QStringLiteral("【%1】").arg(label);
         } else {
             line2 += QStringLiteral(" 装%1").arg(equip.size());
         }
@@ -203,8 +213,8 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
     if (!judge.isEmpty()) {
         if (isSelf) {
             line2 += QStringLiteral(" 判");
-            for (int cardId : judge)
-                line2 += QStringLiteral("【%1】").arg(cardName(resolvers, cardId));
+            for (const QString &label : judge)
+                line2 += QStringLiteral("【%1】").arg(label);
         } else {
             line2 += QStringLiteral(" 判%1").arg(judge.size());
         }
@@ -376,13 +386,25 @@ void drawWaitingRoom(TuiScreen &screen, const TuiResolvers &resolvers,
     }
 }
 
+const GameViewPlayer *projectedPlayer(const GameViewState *presentation, const QString &name)
+{
+    if (presentation == nullptr) return nullptr;
+    for (const GameViewPlayer &player : presentation->players)
+        if (player.name == name) return &player;
+    return nullptr;
+}
+
 void drawSelf(TuiScreen &screen, const TuiResolvers &resolvers, const ClientGameState &state,
-             const TuiBoardGeometry &geom)
+             const GameViewState *presentation, const TuiBoardGeometry &geom)
 {
     const QString self = state.selfName();
     if (self.isEmpty())
         return;
-    const QStringList lines = playerCellLines(resolvers, state, self, true, geom.self.cols);
+    const GameViewPlayer *projected = projectedPlayer(presentation, self);
+    if (presentation != nullptr && projected == nullptr)
+        return;
+    const QStringList lines = playerCellLines(resolvers, state, self, true, geom.self.cols,
+        projected, presentation != nullptr && presentation->currentPlayer == self);
     // Bold rather than a drawn box: an actual border would have to steal one
     // of the cell's three content rows, and spec §3.1's worked example shows
     // no border glyph around 时语's cell either -- just the ▶ prefix and the
@@ -392,9 +414,10 @@ void drawSelf(TuiScreen &screen, const TuiResolvers &resolvers, const ClientGame
         screen.putText(geom.self.row + i, geom.self.col, lines.at(i), TuiAttr::Bold, geom.self.cols);
 }
 
-TuiAttr cellAttr(const ClientGameState &state, const QString &name)
+TuiAttr cellAttr(const ClientGameState &state, const QString &name,
+                 const GameViewPlayer *projected)
 {
-    if (!state.isPlayerAlive(name))
+    if (projected != nullptr ? !projected->alive : !state.isPlayerAlive(name))
         return TuiAttr::Dead;
     if (state.playerValue(name, QStringLiteral("flags")).toStringList()
             .contains(QStringLiteral("Global_Dying"))) {
@@ -444,7 +467,7 @@ void drawPile(TuiScreen &screen, const ClientGameState &state, const TuiBoardGeo
 }
 
 void drawSeatRing(TuiScreen &screen, const TuiResolvers &resolvers, const ClientGameState &state,
-                  const TuiBoardGeometry &geom, int page)
+                  const GameViewState *presentation, const TuiBoardGeometry &geom, int page)
 {
     const QStringList order = seatOrderFromSelf(state);
     for (const TuiSeatSlot &slot : geom.seatSlots) {
@@ -453,8 +476,12 @@ void drawSeatRing(TuiScreen &screen, const TuiResolvers &resolvers, const Client
         if (slot.seatOffset < 1 || slot.seatOffset > order.size())
             continue;
         const QString &name = order.at(slot.seatOffset - 1);
-        const QStringList lines = playerCellLines(resolvers, state, name, false, slot.rect.cols);
-        const TuiAttr attr = cellAttr(state, name);
+        const GameViewPlayer *projected = projectedPlayer(presentation, name);
+        if (presentation != nullptr && projected == nullptr)
+            continue;
+        const QStringList lines = playerCellLines(resolvers, state, name, false, slot.rect.cols,
+            projected, presentation != nullptr && presentation->currentPlayer == name);
+        const TuiAttr attr = cellAttr(state, name, projected);
         for (int i = 0; i < lines.size() && i < slot.rect.rows; ++i)
             screen.putText(slot.rect.row + i, slot.rect.col, lines.at(i), attr, slot.rect.cols);
     }
@@ -496,11 +523,31 @@ void drawHand(TuiScreen &screen, const TuiBoardGeometry &geom, const QStringList
 // below-the-floor path (§3.5) draws no frame and passes the whole width --
 // hard-coding col 1 / cols-2 there wasted a column at each edge on exactly
 // the size where every column counts.
+QString actionSummary(const GameActionModel &model)
+{
+    if (!model.requestId || !model.supported) return {};
+    const auto enabledCount = [](const QList<GameActionEntry> &entries) {
+        return static_cast<int>(std::count_if(entries.cbegin(), entries.cend(),
+            [](const GameActionEntry &entry) { return entry.enabled; }));
+    };
+    QStringList counts;
+    if (!model.actions.isEmpty()) counts << QStringLiteral("选项%1").arg(enabledCount(model.actions));
+    if (!model.cards.isEmpty()) counts << QStringLiteral("牌%1").arg(enabledCount(model.cards));
+    if (!model.players.isEmpty()) counts << QStringLiteral("目标%1").arg(enabledCount(model.players));
+    if (!model.skills.isEmpty()) counts << QStringLiteral("技能%1").arg(enabledCount(model.skills));
+    if (model.canCancel) counts << QStringLiteral("可取消");
+    if (model.canConfirm) counts << QStringLiteral("可确认");
+    return counts.isEmpty() ? QString() : QStringLiteral("可选：") + counts.join(QLatin1Char(' '));
+}
+
 void drawInput(TuiScreen &screen, const TuiBoardGeometry &geom, const TuiBoardViewState &view,
                int col, int width)
 {
     const bool hasNotice = !view.notice.isEmpty();
-    screen.putText(geom.input.row, col, tuiPadTo(hasNotice ? view.notice : view.promptLine, width),
+    const QString summary = actionSummary(view.actions);
+    const QString prompt = hasNotice ? view.notice : view.promptLine;
+    const QString promptWithActions = summary.isEmpty() ? prompt : summary + QStringLiteral("｜") + prompt;
+    screen.putText(geom.input.row, col, tuiPadTo(promptWithActions, width),
                    hasNotice ? TuiAttr::Danger : TuiAttr::Normal);
     if (geom.input.rows < 2)
         return;
@@ -519,13 +566,19 @@ void drawInput(TuiScreen &screen, const TuiBoardGeometry &geom, const TuiBoardVi
 // computeGeometry()'s callers only ever want the geometry, so they leave it
 // null.
 TuiBoardGeometry geometryFor(const TuiResolvers &resolvers, const ClientGameState &state,
-                            int rows, int cols, QStringList *handLinesOut = nullptr)
+                            int rows, int cols, const GameViewState *presentation,
+                            QStringList *handLinesOut = nullptr)
 {
     QStringList handEntries;
-    const QList<int> handCards = state.cardsForPlayer(state.selfName(), Player::PlaceHand);
-    for (int cardId : handCards)
-        handEntries << QStringLiteral("[%1]%2").arg(handEntries.size() + 1)
-            .arg(cardName(resolvers, cardId));
+    const GameViewPlayer *self = projectedPlayer(presentation, state.selfName());
+    if (presentation == nullptr) {
+        const QList<int> handCards = state.cardsForPlayer(state.selfName(), Player::PlaceHand);
+        for (int cardId : handCards)
+            handEntries << QStringLiteral("[%1]%2").arg(handEntries.size() + 1).arg(cardName(resolvers, cardId));
+    } else if (self != nullptr && self->handVisible) {
+        for (const GameViewCard &card : self->hand)
+            handEntries << QStringLiteral("[%1]%2").arg(handEntries.size() + 1).arg(card.label);
+    }
     QStringList handLines;
     const int handInteriorWidth = std::max(1, cols - 2);
     const int handLineCount = layoutHandLines(handEntries, handInteriorWidth, &handLines);
@@ -551,7 +604,8 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     const int rows = screen->rows();
     const int cols = screen->cols();
     QStringList handLines;
-    const TuiBoardGeometry geom = geometryFor(m_resolvers, state, rows, cols, &handLines);
+    const GameViewState *presentation = view.hasPresentation ? &view.presentation : nullptr;
+    const TuiBoardGeometry geom = geometryFor(m_resolvers, state, rows, cols, presentation, &handLines);
 
     screen->clear();
 
@@ -597,8 +651,8 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     drawFrame(*screen, geom, roomTitle);
 
     if (started) {
-        drawSeatRing(*screen, m_resolvers, state, geom, view.page);
-        drawSelf(*screen, m_resolvers, state, geom);
+        drawSeatRing(*screen, m_resolvers, state, presentation, geom, view.page);
+        drawSelf(*screen, m_resolvers, state, presentation, geom);
     } else {
         drawWaitingRoom(*screen, m_resolvers, state, geom);
     }
@@ -608,9 +662,10 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     drawInput(*screen, geom, view, 1, screen->cols() - 2);
 }
 
-TuiBoardGeometry TuiBoardView::computeGeometry(const ClientGameState &state, int rows, int cols) const
+TuiBoardGeometry TuiBoardView::computeGeometry(const ClientGameState &state, int rows, int cols,
+                                               const GameViewState *presentation) const
 {
-    return geometryFor(m_resolvers, state, rows, cols);
+    return geometryFor(m_resolvers, state, rows, cols, presentation);
 }
 
 int TuiBoardView::pageForPlayer(const ClientGameState &state, const TuiBoardGeometry &geometry,

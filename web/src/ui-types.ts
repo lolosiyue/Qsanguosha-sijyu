@@ -33,6 +33,10 @@ export interface UiPresentationState {
   battleScrollTop?: number;
   seatScrollLeft?: number;
   mobileLogCollapsed?: boolean;
+  /** Frozen explicit snapshot; it changes only when the user refreshes it. */
+  accessibleSnapshot?: string;
+  snapshotNotice?: string;
+  snapshotOpen?: boolean;
 }
 
 export interface UiBind {

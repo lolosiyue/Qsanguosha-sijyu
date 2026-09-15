@@ -174,6 +174,8 @@ int ClientRulesHost::stream()
             fields.unite({QStringLiteral("direction"), QStringLiteral("frame")});
         else if (action == QLatin1String("query"))
             fields.unite({QStringLiteral("revision"), QStringLiteral("request_id"), QStringLiteral("selection")});
+        else if (action == QLatin1String("presentation"))
+            fields.unite({QStringLiteral("revision"), QStringLiteral("request_id"), QStringLiteral("event_cursor")});
         QString reason;
         bool success = false;
         QJsonObject response;
@@ -222,6 +224,23 @@ int ClientRulesHost::stream()
             else {
                 response.insert(QStringLiteral("state"), m_ingress.view());
                 success = true;
+            }
+        } else if (action == QLatin1String("presentation")) {
+            if (!index(operation.value(QStringLiteral("revision")))
+                || !operation.value(QStringLiteral("request_id")).isString()
+                || !operation.value(QStringLiteral("event_cursor")).isString()) {
+                reason = QStringLiteral("invalid_stream_presentation");
+            } else {
+                const QJsonObject presentation = m_ingress.presentation(generation,
+                    operation.value(QStringLiteral("revision")).toInt(),
+                    operation.value(QStringLiteral("request_id")).toString(),
+                    operation.value(QStringLiteral("event_cursor")).toString());
+                if (presentation.isEmpty())
+                    reason = QStringLiteral("stream_stale_presentation");
+                else {
+                    response.insert(QStringLiteral("presentation"), presentation);
+                    success = true;
+                }
             }
         } else {
             reason = QStringLiteral("unknown_stream_action");

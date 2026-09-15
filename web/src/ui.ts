@@ -1,12 +1,14 @@
 import { Command, asBool, asNumberList, asString, asStringList } from "./protocol";
 import { LiveSession, defaultWsUrl, parseRoute } from "./session";
 import { RulesController } from "./rules-client";
+import { tr } from "./i18n";
 import {
   applySceneBackground,
   defaultTableBgUrl,
   lobbyBackgroundUrl
 } from "./backdrop";
 import { assetImg, fullskinUrls } from "./assets";
+import { cardLabel } from "./ui-cards";
 import { connectForm, sharePanel, waitingRoom } from "./ui-connect";
 import { el } from "./ui-dom";
 import { dashboardView, logView, tableView } from "./ui-room";
@@ -87,8 +89,8 @@ function isCardClickable(cardId: number): boolean {
   if (rules.supports(interaction.command)) {
     if (ui.selectedCards.includes(cardId))
       return true;
-    const result = rules.current(session, rulesSelection()) ? rules.result : null;
-    return !!result?.known && result.selectable_cards.includes(cardId);
+    const model = rules.current(session, rulesSelection()) ? rules.actionModel() : null;
+    return !!model?.supported && model.cards.some((card) => card.id === String(cardId) && card.enabled);
   }
   return true;
 }
@@ -98,8 +100,8 @@ function isPlayerClickable(name: string): boolean {
   if (!interaction)
     return false;
   if (rules.supports(interaction.command)) {
-    const result = rules.current(session, rulesSelection()) ? rules.result : null;
-    return !!result?.known && result.next_targets.candidates.includes(name);
+    const model = rules.current(session, rulesSelection()) ? rules.actionModel() : null;
+    return !!model?.supported && model.players.some((player) => player.id === name && player.enabled);
   }
   if (interaction.command === Command.CHOOSE_PLAYER)
     return asStringList(interaction.payload.players).includes(name);
@@ -214,6 +216,83 @@ function readablePhase(): string {
   }
 }
 
+let snapshotPanel: HTMLDetailsElement | null = null;
+
+function accessibleSnapshot(bind: UiBind): HTMLElement {
+  const { session, rules, ui } = bind;
+  const presentation = ui.presentation ??= {};
+  if (snapshotPanel) return snapshotPanel;
+  const panel = el("details", { class: "accessible-snapshot" });
+  panel.open = presentation.snapshotOpen === true;
+  panel.addEventListener("toggle", () => { presentation.snapshotOpen = panel.open; });
+  panel.append(el("summary", {}, ["遊戲狀態文字快照"]));
+  const notice = el("p", { role: "status" }, [presentation.snapshotNotice || "按更新快照讀取共享狀態。"]);
+  const snapshotText = el("textarea", { readonly: "", tabindex: "0", "aria-label": "凍結的遊戲狀態文字快照" });
+  snapshotText.dataset.focusKey = "accessible-snapshot-text";
+  snapshotText.rows = 12;
+  snapshotText.value = presentation.accessibleSnapshot || "尚未建立快照。";
+  const refresh = el("button", { type: "button" }, ["更新快照"]);
+  refresh.dataset.focusKey = "accessible-snapshot-refresh";
+  refresh.addEventListener("click", () => {
+    const view = rules.currentPresentation();
+    if (!view) {
+      presentation.snapshotNotice = "共享狀態尚未更新完成，請稍後重試。";
+      notice.textContent = presentation.snapshotNotice;
+      return;
+    }
+    const model = rules.current(session, rulesSelection()) ? rules.actionModel() : null;
+    const actionLines = model ? [
+      ...model.cards.filter((item) => item.enabled).map((item) => {
+        const id = Number(item.id);
+        return `可選卡牌：${Number.isSafeInteger(id) ? cardLabel(bind, id) : item.label}（${item.id}）`;
+      }),
+      ...model.players.filter((item) => item.enabled).map((item) => {
+        const player = session.state.player(item.id);
+        const general = asString(player?.general) || asString(player?.avatar);
+        const screen = asString(player?.screen_name, item.id);
+        return `可選目標：${general ? `${tr(general)}（${screen}）` : screen}`;
+      }),
+      ...model.skills.filter((item) => item.enabled).map((item) => `可用技能：${tr(item.label)}`),
+      ...model.actions.filter((item) => item.enabled).map((item) => `可用選項：${tr(item.label)}`),
+      model.can_confirm ? "可確認目前選擇" : "目前不能確認",
+      model.can_cancel ? "可取消" : "不能取消",
+      model.can_finish ? "可結束出牌階段" : ""
+    ].filter(Boolean) : ["目前沒有可用的共享操作模型；規則尚未判定。"];
+    const events = view.events.slice(-10).map((event) => event.text).filter(Boolean);
+    presentation.accessibleSnapshot = [view.plain_text, "可用操作：", ...actionLines,
+      ...(events.length ? ["近期事件：", ...events] : [])].join("\n");
+    presentation.snapshotNotice = "快照已凍結；按更新快照以讀取較新的狀態。";
+    snapshotText.value = presentation.accessibleSnapshot;
+    notice.textContent = presentation.snapshotNotice;
+    copy.disabled = false;
+    snapshotText.focus({ preventScroll: true });
+    snapshotText.setSelectionRange(0, 0);
+  });
+  const copy = el("button", { type: "button" }, ["複製快照"]);
+  copy.dataset.focusKey = "accessible-snapshot-copy";
+  copy.disabled = !presentation.accessibleSnapshot;
+  copy.addEventListener("click", () => {
+    const text = presentation.accessibleSnapshot;
+    if (!text) return;
+    const clipboard = navigator.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      presentation.snapshotNotice = "此連線環境無法存取剪貼簿；可直接選取快照文字。";
+      notice.textContent = "此連線環境無法存取剪貼簿；可直接選取快照文字。";
+      return;
+    }
+    void clipboard.writeText(text).then(() => {
+      presentation.snapshotNotice = "快照已複製。";
+      notice.textContent = presentation.snapshotNotice;
+    }).catch(() => {
+      presentation.snapshotNotice = "無法使用剪貼簿；可直接選取快照文字。";
+      notice.textContent = presentation.snapshotNotice;
+    });
+  });
+  panel.append(el("div", { class: "snapshot-content" }, [refresh, copy, notice, snapshotText]));
+  snapshotPanel = panel;
+  return panel;
+}
+
 function startSolo(options: import("./solo-client").SoloOptions): void {
   ui.name = localStorage.getItem("qsan-name") || "web-player";
   ui.avatar = localStorage.getItem("qsan-avatar") || "caocao";
@@ -261,12 +340,16 @@ export function render(): void {
     selectionRequest = request;
     resetSelection();
   }
+  const root = app();
+  const snapshot = accessibleSnapshot(bind);
+  if (snapshot.parentElement !== root)
+    root.append(snapshot);
+  root.querySelector<HTMLElement>(":scope > .app")?.remove();
   seedSelection();
   rules.update(session, rulesSelection());
-  const root = app();
-  root.replaceChildren();
   const shell = el("div", { class: "app" });
   if (session.phase === "idle" || session.phase === "connecting" || session.phase === "failed") {
+    snapshot.hidden = true;
     applySceneBackground(lobbyBackgroundUrl());
     const logo = assetImg(["/assets/logo/logo.png"], "", "logo");
     logo.alt = "QSanguosha";
@@ -302,6 +385,7 @@ export function render(): void {
   applySceneBackground(tableBg);
   if (!asBool(session.state.gameValue("started"))
       && !asBool(session.state.gameValue("game_over"))) {
+    snapshot.hidden = true;
     if (session.isLocal && session.phase === "active" && localWaitingGeneration !== session.generation) {
       localWaitingGeneration = session.generation;
       session.addRobots();
@@ -319,6 +403,7 @@ export function render(): void {
     return;
   }
   shell.className = "app room";
+  snapshot.hidden = false;
   shell.append(toolbar, tableView(bind), logView(bind), dashboardView(bind));
   root.append(shell);
   disposeBoardLayout = setupBoardLayout(shell, bind);

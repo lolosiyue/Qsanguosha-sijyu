@@ -443,6 +443,85 @@ void testBoardTooSmall()
     compareGolden(QStringLiteral("board-too-small"), text);
 }
 
+void testBoardConsumesSharedPresentation()
+{
+    ClientGameState state;
+    state.setSelfName(QStringLiteral("sgs1"));
+    addPlayer(&state, QStringLiteral("sgs1"), 1, QStringLiteral("zhaoyun"), 3, 4,
+              QStringLiteral("lord"));
+    addPlayer(&state, QStringLiteral("sgs2"), 2, QStringLiteral("caocao"), 4, 4,
+              QStringLiteral("rebel"));
+    state.setPlayerNames({QStringLiteral("sgs1"), QStringLiteral("sgs2")});
+    state.setGameValue(QStringLiteral("status"), QStringLiteral("active"));
+    state.setGameValue(QStringLiteral("current_player"), QStringLiteral("sgs1"));
+    state.setGameValue(QStringLiteral("round"), 1);
+    state.setGameValue(QStringLiteral("draw_pile_count"), 20);
+    const int rawCard = firstCardOfClassWithSuit("Slash");
+    check(rawCard >= 0, "the engine has a suited card for the shared snapshot fixture");
+    if (rawCard >= 0) {
+        state.setCardValue(rawCard, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(rawCard, QStringLiteral("place"), Player::PlaceHand);
+    }
+    const int rawEquip = firstCardOfClassWithSuit("Weapon");
+    if (rawEquip >= 0) {
+        state.setCardValue(rawEquip, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(rawEquip, QStringLiteral("place"), Player::PlaceEquip);
+    }
+    const int rawJudging = firstCardOfClassWithSuit("Indulgence");
+    if (rawJudging >= 0) {
+        state.setCardValue(rawJudging, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(rawJudging, QStringLiteral("place"), Player::PlaceDelayedTrick);
+    }
+
+    TuiBoardViewState viewState;
+    viewState.hasPresentation = true;
+    viewState.presentation.ready = true;
+    GameViewPlayer self;
+    self.name = QStringLiteral("sgs1");
+    self.self = true;
+    self.alive = true;
+    self.hp = 2;
+    self.maxHp = 4;
+    self.handCount = 7;
+    self.handVisible = true;
+    self.hand.append({rawCard, QStringLiteral("共用快照牌"), QStringLiteral("hand"), true});
+    viewState.presentation.players.append(self);
+    viewState.actions.requestId = 42;
+    viewState.actions.supported = true;
+    viewState.actions.canConfirm = true;
+    viewState.actions.cards.append({QString::number(rawCard), QStringLiteral("共用快照牌"), true, false, {}});
+
+    TuiScreen screen;
+    screen.resize(24, 80);
+    TuiBoardView view(testResolvers());
+    view.render(&screen, state, viewState);
+    const QString text = screen.toPlainText();
+    check(text.contains(QStringLiteral("共用快照牌")),
+          "the board hand is drawn from the shared recipient-visible snapshot");
+    check(text.contains(QStringLiteral("手7")),
+          "overlapping player hand count comes from the shared snapshot");
+    check(text.contains(QStringLiteral("可选：牌1 可确认")),
+          "the active action model drives the board's live eligibility summary");
+
+    const QString rawHandLabel = testResolvers().card(rawCard);
+    TuiBoardViewState hiddenHand = viewState;
+    hiddenHand.presentation.players[0].handVisible = false;
+    hiddenHand.presentation.players[0].hand.clear();
+    view.render(&screen, state, hiddenHand);
+    check(rawCard < 0 || !screen.toPlainText().contains(rawHandLabel),
+          "an explicitly hidden snapshot hand never falls back to raw card identities");
+    check(rawEquip < 0 || !screen.toPlainText().contains(testResolvers().card(rawEquip)),
+          "equipment identities omitted by the snapshot stay hidden on the board");
+    check(rawJudging < 0 || !screen.toPlainText().contains(testResolvers().card(rawJudging)),
+          "judging identities omitted by the snapshot stay hidden on the board");
+
+    TuiBoardViewState missingProjection = viewState;
+    missingProjection.presentation.players.clear();
+    view.render(&screen, state, missingProjection);
+    check(rawCard < 0 || !screen.toPlainText().contains(rawHandLabel),
+          "a missing self projection never falls back to raw hand identities");
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -460,6 +539,7 @@ int main(int argc, char **argv)
     testBoard09pPage2();
     testBoardHandOverflow();
     testBoardTooSmall();
+    testBoardConsumesSharedPresentation();
 
     std::printf("[AUTOTEST] TUI_BOARD_VIEW_RESULT status=%s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;

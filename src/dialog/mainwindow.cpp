@@ -195,6 +195,23 @@ MainWindow::MainWindow(QWidget *parent)
 {
 	ui->setupUi(this);
 
+#if !defined(QSAN_XP_LEGACY)
+	// Keep the state shortcut independent of the table's legacy hotkey setting.
+	QAction *stateAction = ui->menuView->addAction(tr("Game State"));
+	stateAction->setObjectName(QStringLiteral("actionGameStateSnapshot"));
+	stateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+	// The snapshot and control panel are separate non-modal top-level windows.
+	stateAction->setShortcutContext(Qt::ApplicationShortcut);
+	connect(stateAction, &QAction::triggered, this, [this]() {
+		if (RoomScene *room = qobject_cast<RoomScene *>(scene)) room->showGameStateSnapshot();
+	});
+	QAction *controlAction = ui->menuView->addAction(tr("Game Control Panel"));
+	controlAction->setObjectName(QStringLiteral("actionGameControlPanel"));
+	connect(controlAction, &QAction::triggered, this, [this]() {
+		if (RoomScene *room = qobject_cast<RoomScene *>(scene)) room->showGameControlPanel();
+	});
+#endif
+
 	setWindowTitle(tr("Sanguosha")+" 岁末 "+Sanguosha->getVersionNumber());
 
 	// 啟動即在大廳,登記給 crash handler(進入對局/回放時由 RoomScene 更新)
@@ -771,6 +788,7 @@ void MainWindow::setupAndroidUi()
 	m_androidMenuButton->setObjectName(QStringLiteral("androidOverflowButton"));
 	m_androidMenuButton->setText(QStringLiteral("\u22EE"));
 	m_androidMenuButton->setToolTip(tr("More actions"));
+	m_androidMenuButton->setAccessibleName(tr("More actions"));
 	m_androidMenuButton->setMinimumSize(QSize(52, 52));
 	m_androidMenuButton->setAutoRaise(false);
 	m_androidMenu = new QMenu(m_androidMenuButton);
@@ -778,6 +796,11 @@ void MainWindow::setupAndroidUi()
 		AndroidContentDialog::openManager(this);
 	});
 	m_androidMenu->addSeparator();
+	// Reuse the same actions and RoomScene presentation draft as the desktop.
+	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameStateSnapshot")))
+		m_androidMenu->addAction(action);
+	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameControlPanel")))
+		m_androidMenu->addAction(action);
 	m_androidMenu->addAction(ui->actionView_Discarded);
 	m_androidMenu->addAction(ui->actionView_distance);
 	m_androidMenu->addAction(ui->actionView_Maxcards);

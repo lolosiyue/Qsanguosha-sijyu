@@ -49,6 +49,8 @@ public:
     void appendPresentationEvent(int command, const QString &text,
                                  const QVariant &payload = QVariant());
     QVariantList presentationEvents() const { return m_presentationEvents; }
+    quint64 firstPresentationEventSequence() const { return m_firstPresentationEventSequence; }
+    quint64 nextPresentationEventSequence() const { return m_nextPresentationEventSequence; }
 
     QJsonObject toJson() const;
 
@@ -66,6 +68,8 @@ private:
     QMap<int, QVariant> m_latestPayloads;
     QMap<int, int> m_flowCounts;
     QVariantList m_presentationEvents;
+    quint64 m_firstPresentationEventSequence = 1;
+    quint64 m_nextPresentationEventSequence = 1;
     int m_cardIdSpace = 0;
 };
 

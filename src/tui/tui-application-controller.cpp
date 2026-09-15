@@ -82,6 +82,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
              }),
       m_input(this)
 {
+    m_gameViewState.ready = false;
     // m_terminal is constructed but not enter()'d here -- taking the
     // terminal into raw mode and the alternate screen only makes sense once
     // start() has confirmed the rest of startup will go ahead, so that call
@@ -120,12 +121,15 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     // nullptr-then-request, which is exactly what should end up on screen.
     connect(&m_core, &ClientCore::requestStarted, this, [this](quint64) {
         m_presenter->interactionChanged(&m_core.activeRequest());
+        refreshSharedPresentation(true);
     });
     connect(&m_core, &ClientCore::responseAccepted, this, [this](quint64) {
         m_presenter->interactionChanged(nullptr);
+        refreshSharedPresentation(true);
     });
     connect(&m_core, &ClientCore::requestCancelled, this, [this](quint64, int) {
         m_presenter->interactionChanged(nullptr);
+        refreshSharedPresentation(true);
     });
     connect(&m_input, &TuiInput::lineReady, this, &TuiApplicationController::handleInputLine);
     connect(&m_input, &TuiInput::endOfInput, this, [this]() { requestExit(0); });
@@ -199,6 +203,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
         // call site that has to run on every ClientGameState change, which is
         // exactly what ClientLiveSession::stateChanged already fires on.
         m_presenter->stateChanged(*m_core.state());
+        refreshSharedPresentation(true);
         const QString syncId = m_core.state()->connectionValue(
             QStringLiteral("sync_id")).toString();
         if (m_core.state()->connectionValue(QStringLiteral("sync_phase"))
@@ -217,6 +222,12 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
         if (m_core.state()->gameValue(QStringLiteral("game_over")).toBool())
             writeDump(m_renderer.renderState(*m_core.state()));
     });
+    connect(&m_session, &ClientLiveSession::connectionChanged, this,
+        [this]() { refreshSharedPresentation(false); });
+    connect(&m_session, &ClientLiveSession::sessionActive, this,
+        [this](bool) { refreshSharedPresentation(false); });
+    connect(&m_session, &ClientLiveSession::disconnected, this,
+        [this]() { refreshSharedPresentation(false); });
     connect(&m_session, &ClientLiveSession::frontendMessageReceived, this,
         [this](const ProtocolMessage &message) {
             // The room has to be registered before anything renders a card, so
@@ -333,6 +344,194 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
 // rather than at every translation unit that merely includes this class's
 // header (see the declaration's own comment).
 TuiApplicationController::~TuiApplicationController() = default;
+
+void TuiApplicationController::refreshSharedPresentation(bool advanceRevision)
+{
+    if (advanceRevision)
+        ++m_presentationRevision;
+
+    const quint64 generation = m_session.generation();
+    m_eventStream.synchronize(*m_core.state(), generation);
+
+    GameViewFormatOptions options;
+    options.operatingPlayer = m_core.state()->selfName();
+    options.authorizedHandPlayers << m_core.state()->selfName();
+    options.stateReady = m_session.isActive() && !m_session.isStateSyncActive();
+    options.translate = [this](const QString &key) { return m_renderer.nameText(key); };
+    options.cardLabel = [this](int id) { return resolveCardDisplayText(id); };
+    options.playerLabel = [this](const QString &name) { return resolvePlayerName(name); };
+    options.phaseLabel = [this](const QString &phase) { return m_renderer.nameText(phase); };
+    options.distanceLabel = [this](const QString &from, const QString &to) {
+        return from == m_core.state()->selfName() ? resolvePlayerDistance(to) : QString();
+    };
+    const InteractionRequest *request = m_core.hasActiveRequest()
+        ? &m_core.activeRequest() : nullptr;
+    const auto build = [this, generation, request, &options]() {
+        m_gameViewState = GameViewState::fromState(*m_core.state(), request, generation,
+            m_presentationRevision, options);
+        m_gameActionModel = sharedActionModel(request);
+    };
+    const QJsonObject previousView = m_gameViewState.toJson();
+    const QJsonObject previousActions = m_gameActionModel.toJson();
+    build();
+    if (!advanceRevision && (m_gameViewState.toJson() != previousView
+                             || m_gameActionModel.toJson() != previousActions)) {
+        // Connection, synchronization and deadline changes are presentation
+        // state too. Keep the model's version monotonic when one is observed
+        // by an opportunistic refresh such as /status.
+        ++m_presentationRevision;
+        build();
+    }
+    if (m_boardPresenter != nullptr)
+        m_boardPresenter->setSharedPresentation(m_gameViewState, m_gameActionModel);
+}
+
+GameActionModel TuiApplicationController::sharedActionModel(
+    const InteractionRequest *request) const
+{
+    GameActionModel model;
+    model.sessionGeneration = m_session.generation();
+    model.presentationRevision = m_presentationRevision;
+    if (request == nullptr || !request->isValid()) {
+        model.unsupportedReason = QStringLiteral("目前沒有待處理的互動。");
+        return model;
+    }
+
+    model.request = *request;
+    model.requestId = request->requestId;
+    model.prompt = m_renderer.interactionTitle(*request);
+    if (!m_session.isActive() || m_session.isStateSyncActive()) {
+        model.unsupportedReason = QStringLiteral("連線尚未完成狀態同步。");
+        return model;
+    }
+    if (request->deadlineMs > 0 && m_core.now() >= request->deadlineMs) {
+        model.unsupportedReason = QStringLiteral("此請求已逾時。");
+        return model;
+    }
+    model.canCancel = request->cancelable;
+    model.minSelection = request->minSelection();
+    model.maxSelection = request->maxSelection();
+    model.actionContext = m_pending.active ? QStringLiteral("target-stage")
+                                           : QStringLiteral("request");
+    bool recognized = false;
+
+    const auto appendOptions = [&model](const QList<InteractionOption> &options) {
+        for (const InteractionOption &option : options) {
+            model.actions.append({option.value,
+                option.label.isEmpty() ? option.value : option.label,
+                option.enabled, false, option.enabled ? QString() : QStringLiteral("目前不可選")});
+        }
+    };
+    if (const auto *options = request->payloadAs<OptionInteractionPayload>()) {
+        appendOptions(options->options);
+        recognized = true;
+    } else if (const auto *orderChoices = request->payloadAs<ChooseOrderInteractionPayload>()) {
+        appendOptions(orderChoices->options);
+        recognized = true;
+    } else if (const auto *order = request->payloadAs<TriggerOrderInteractionPayload>()) {
+        for (const TriggerOrderOption &option : order->options) {
+            const QString label = resolveNameText(option.skillName);
+            model.actions.append({option.responseValue, label, true, false, QString()});
+        }
+        recognized = true;
+    }
+
+    if (const auto *players = request->payloadAs<PlayerInteractionPayload>()) {
+        for (const QString &name : players->selection.selectablePlayers)
+            model.players.append({name, resolvePlayerName(name), true,
+                m_pending.chosen.contains(name), QString()});
+        model.minSelection = players->selection.minSelection;
+        model.maxSelection = players->selection.maxSelection;
+        recognized = true;
+    }
+
+    if (const auto *cards = request->payloadAs<CardInteractionPayload>()) {
+        recognized = true;
+        const QList<int> candidates = cards->selection.enumerated
+            ? cards->selection.selectableCards : cards->suggestedCards;
+        const bool identitiesAllowed = cards->cardTextAllowed || cards->handCardsVisible;
+        const ClientPlayer *self = m_players.self();
+        for (int id : candidates) {
+            const Card *card = Sanguosha != nullptr ? Sanguosha->getCard(id) : nullptr;
+            const bool ruleContextKnown = self != nullptr && card != nullptr;
+            QString reason;
+            bool enabled = cards->selection.enumerated && ruleContextKnown && identitiesAllowed;
+            if (!cards->selection.enumerated && identitiesAllowed) {
+                // The provider suggestions are advisory. Promote one only when
+                // the TUI's existing rule resolver has a live card/player and
+                // confirms the active prompt's method/pattern constraints.
+                if (!ruleContextKnown) {
+                    reason = QStringLiteral("合法性尚未確認");
+                } else {
+                    reason = resolveCardHint(id);
+                    enabled = reason.isEmpty();
+                    if (enabled && request->type == InteractionType::PlayCard) {
+                        const TuiRenderer::CardTargets targets = resolveCardTargets(id);
+                        if (!targets.known || (!targets.targetFixed && targets.targets.isEmpty())) {
+                            enabled = false;
+                            reason = QStringLiteral("目標合法性尚未確認");
+                        }
+                    }
+                    if (!enabled && reason.isEmpty())
+                        reason = QStringLiteral("合法性尚未確認");
+                }
+            }
+            const QString label = identitiesAllowed && ruleContextKnown
+                ? resolveCardDisplayText(id) : QStringLiteral("未公開牌");
+            const QString stableId = identitiesAllowed ? QString::number(id) : QString();
+            if (!identitiesAllowed)
+                reason = QStringLiteral("牌面未授權展示");
+            else if (!ruleContextKnown && reason.isEmpty())
+                reason = QStringLiteral("卡牌合法性尚未確認");
+            model.cards.append({stableId, label, enabled, false,
+                enabled ? QString() : reason});
+        }
+        if (cards->selection.enumerated) {
+            for (int id : cards->selection.disabledCards) {
+                const bool visible = cards->cardTextAllowed || cards->handCardsVisible;
+                model.cards.append({visible ? QString::number(id) : QString(),
+                    visible ? resolveCardDisplayText(id) : QStringLiteral("未公開牌"),
+                    false, false, QStringLiteral("目前不可選")});
+            }
+        }
+        for (const SkillActivationCandidate &skill : cards->skillCandidates) {
+            const QString id = QStringLiteral("%1:%2").arg(skill.skillName).arg(skill.instanceId);
+            bool availabilityKnown = false;
+            const bool available = tuiSkillActivationAvailable(skill.skillName,
+                skill.instanceId, m_skillReason, m_hintPattern, &availabilityKnown);
+            const QString reason = !availabilityKnown
+                ? QStringLiteral("合法性尚未確認")
+                : (available ? QString() : resolveSkillHint(skill.skillName, skill.instanceId));
+            model.skills.append({id, resolveNameText(skill.skillName),
+                availabilityKnown && available, false, reason});
+        }
+        model.minSelection = cards->selection.minSelection;
+        model.maxSelection = cards->selection.maxSelection;
+    }
+
+    if (m_pending.active) {
+        for (const QString &name : m_pending.chosen) {
+            bool found = false;
+            for (GameActionEntry &entry : model.players) {
+                if (entry.id == name) {
+                    entry.selected = true;
+                    entry.enabled = false;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                model.players.append({name, resolvePlayerName(name), false, true,
+                    QStringLiteral("已選目標；其他目標尚待規則確認")});
+        }
+        model.canConfirm = false; // Target-stage confirmation stays in the existing checked parser path.
+        model.canCancel = true;   // pass/cancel abandons this local draft only.
+    }
+    model.supported = recognized;
+    if (!recognized)
+        model.unsupportedReason = QStringLiteral("TUI 尚未為此互動類型提供操作目錄。");
+    return model;
+}
 
 bool TuiApplicationController::start(QString *error)
 {
@@ -517,13 +716,18 @@ bool TuiApplicationController::resumeTargetStage(const InteractionResponse &resp
         return false;
     m_pending.active = true;
     m_pending.chosen = cards->targets;
+    refreshSharedPresentation(true);
     printTargetStage(card, step);
     return true;
 }
 
 void TuiApplicationController::clearPendingActivation()
 {
+    const bool changed = m_pending.active || !m_pending.firstLine.isEmpty()
+        || !m_pending.chosen.isEmpty();
     m_pending = PendingActivation{};
+    if (changed)
+        refreshSharedPresentation(true);
 }
 
 void TuiApplicationController::handleBoardKeyEvents(const QVector<TuiKeyEvent> &events)
@@ -680,7 +884,57 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
     if (intent.type == TuiCommandType::Help) {
         writeDump(tuiText("tui_help"));
     } else if (intent.type == TuiCommandType::Status) {
-        writeOutput(m_renderer.renderState(*m_core.state()));
+        refreshSharedPresentation(false);
+        QStringList lines;
+        if (m_gameViewState.ready) {
+            lines << m_gameViewState.toPlainText();
+            const QVariantMap connection = m_core.state()->connection();
+            const QVariantMap setup = m_core.state()->setup();
+            lines << QStringLiteral("連線：%1:%2　模式：%3")
+                .arg(connection.value(QStringLiteral("host")).toString(),
+                     connection.value(QStringLiteral("port")).toString(),
+                     m_renderer.nameText(setup.value(QStringLiteral("game_mode")).toString()));
+        } else {
+            lines << m_renderer.renderState(*m_core.state());
+        }
+        const auto appendEligible = [&lines](const QString &heading,
+                                              const QList<GameActionEntry> &entries) {
+            QStringList values;
+            for (const GameActionEntry &entry : entries) {
+                if (!entry.enabled) continue;
+                const QString identity = entry.id.isEmpty() ? QString() : QStringLiteral("#%1 ").arg(entry.id);
+                values << identity + entry.label;
+            }
+            if (!values.isEmpty()) lines << heading + values.join(QStringLiteral("、"));
+        };
+        QStringList selectedTargets;
+        for (const GameActionEntry &entry : m_gameActionModel.players)
+            if (entry.selected) selectedTargets << entry.label;
+        if (m_gameActionModel.requestId != 0) {
+            lines << QStringLiteral("操作狀態 rev=%1 request=%2：%3")
+                .arg(QString::number(m_gameActionModel.presentationRevision),
+                     QString::number(m_gameActionModel.requestId), m_gameActionModel.prompt);
+            if (m_gameActionModel.supported) {
+                appendEligible(QStringLiteral("可用選項："), m_gameActionModel.actions);
+                appendEligible(QStringLiteral("可用卡牌："), m_gameActionModel.cards);
+                appendEligible(QStringLiteral("可用目標："), m_gameActionModel.players);
+                appendEligible(QStringLiteral("可用技能："), m_gameActionModel.skills);
+            } else {
+                lines << QStringLiteral("操作目錄未支援：") + m_gameActionModel.unsupportedReason;
+            }
+            if (!selectedTargets.isEmpty())
+                lines << QStringLiteral("已選目標草稿：") + selectedTargets.join(QStringLiteral("、"));
+        }
+        const QList<GamePresentationEvent> events = m_eventStream.events();
+        const int first = qMax(0, events.size() - 5);
+        for (int i = first; i < events.size(); ++i) {
+            const GamePresentationEvent &event = events.at(i);
+            lines << QStringLiteral("事件 g%1/#%2 cmd=%3：%4")
+                .arg(QString::number(event.generation), QString::number(event.sequence))
+                .arg(event.command)
+                .arg(TuiRenderer::sanitize(event.text, 512));
+        }
+        writeOutput(lines.join(QLatin1Char('\n')));
     } else if (intent.type == TuiCommandType::Players) {
         writeDump(m_renderer.renderPlayers(*m_core.state()));
     } else if (intent.type == TuiCommandType::Hand) {
@@ -881,12 +1135,27 @@ QString TuiApplicationController::resolveHandCardHint(int cardId) const
 
 QString TuiApplicationController::resolvePlayerHint(const QString &objectName) const
 {
+    bool known = false;
+    const QString distance = resolvePlayerDistance(objectName, &known);
+    if (!known)
+        return QString();
+    return tuiText("tui_hand_hint_distance").arg(distance);
+}
+
+QString TuiApplicationController::resolvePlayerDistance(const QString &objectName, bool *known) const
+{
+    if (known != nullptr)
+        *known = false;
     const ClientPlayer *self = m_players.self();
     const ClientPlayer *target = m_players.player(objectName);
     if (self == nullptr || target == nullptr || self == target)
         return QString();
     const int distance = self->distanceTo(target);
-    return distance > 0 ? tuiText("tui_hand_hint_distance").arg(distance) : QString();
+    if (distance <= 0)
+        return QString();
+    if (known != nullptr)
+        *known = true;
+    return QString::number(distance);
 }
 
 QString TuiApplicationController::resolveNameText(const QString &name) const

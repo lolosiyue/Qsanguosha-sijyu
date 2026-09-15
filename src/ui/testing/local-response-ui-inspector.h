@@ -8,6 +8,8 @@ class QPushButton;
 
 class LocalResponseUiInspector final : public QWidget
 {
+    // Give tr() the same context that lupdate records in the TS catalog.
+    Q_OBJECT
 public:
     explicit LocalResponseUiInspector(QWidget *parent = nullptr);
 
@@ -24,6 +26,8 @@ public:
     QPushButton *remainingActionsButton() const;
     QPushButton *snapshotButton() const;
     QPushButton *screenshotButton() const;
+    QPushButton *gameControlsButton() const;
+    QPushButton *gameTextButton() const;
     QPushButton *closeButton() const;
 
 private:
@@ -40,6 +44,8 @@ private:
     QPushButton *m_remainingActionsButton;
     QPushButton *m_snapshotButton;
     QPushButton *m_screenshotButton;
+    QPushButton *m_gameControlsButton;
+    QPushButton *m_gameTextButton;
     QPushButton *m_closeButton;
 };
 

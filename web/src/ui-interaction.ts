@@ -170,12 +170,19 @@ function nativeConfirm(
   label = "送出"
 ): HTMLButtonElement {
   const evaluation = nativeEvaluation(bind);
+  const actions = bind.rules.actionModel();
   const ok = el("button", { class: "primary" }, [label]);
-  ok.disabled = !evaluation?.known || !evaluation.can_confirm || !evaluation.wire;
+  ok.disabled = !actions?.supported || !actions.can_confirm || !evaluation?.wire;
   ok.addEventListener("click", () => submit(() => {
     const current = nativeEvaluation(bind);
-    if (!current?.known || !current.can_confirm || !current.wire)
+    const currentActions = bind.rules.actionModel();
+    if (!current?.known || !currentActions?.supported || !currentActions.can_confirm || !current.wire)
       throw new Error("規則尚未完成目前選擇的判定");
+    // A retained/queued button must not confirm a newer selection or reconnect.
+    if (!actions || actions.session_generation !== currentActions.session_generation
+        || actions.presentation_revision !== currentActions.presentation_revision
+        || actions.request_id !== currentActions.request_id)
+      throw new Error("此操作畫面已過期，請使用更新後的確認按鈕");
     if (current.wire.command !== replyCommand(command) || current.wire.reply_to !== messageId)
       throw new Error("此規則結果已不屬於目前詢問");
     // The native reply encoder owns the canonical payload for this request.
@@ -435,9 +442,10 @@ export function interactionView(bind: UiBind): HTMLElement {
 
   if (command === Command.SKILL_YIJI) {
     const evaluation = nativeEvaluation(bind);
+    const actionModel = bind.rules.actionModel();
     const native = nativePayload(evaluation);
     const ids = asNumberList(native.cards ?? payload.card_ids);
-    const selectable = new Set(evaluation?.known ? evaluation.selectable_cards : ids);
+    const selectable = new Set(actionModel?.cards.filter((item) => item.enabled).map((item) => Number(item.id)) ?? []);
     root.append(...rulesStatus(bind, evaluation));
     root.append(el("p", {}, [
       `選牌再點座位：${countHint(asNumber(evaluation?.selection_min, -1),
@@ -460,7 +468,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       }
       row.append(card);
     }
-    const candidates = evaluation?.next_targets.candidates ?? asStringList(payload.players);
+    const candidates = actionModel?.players.filter((item) => item.enabled).map((item) => item.id) ?? [];
     root.append(row, el("p", { class: "status" }, [
       ui.selectedPlayers.length
         ? `交給 ${logPlayerName(session.state, ui.selectedPlayers[0])}`
@@ -531,11 +539,11 @@ export function interactionView(bind: UiBind): HTMLElement {
 
   if (command === Command.SKILL_GONGXIN) {
     const evaluation = nativeEvaluation(bind);
+    const actionModel = bind.rules.actionModel();
     const native = nativePayload(evaluation);
     const ids = [...new Set(asNumberList(native.visible_cards ?? payload.card_ids)
       .concat(asNumberList(payload.enabled_card_ids)))];
-    const selectable = new Set(evaluation?.known
-      ? evaluation.selectable_cards : asNumberList(payload.enabled_card_ids));
+    const selectable = new Set(actionModel?.cards.filter((item) => item.enabled).map((item) => Number(item.id)) ?? []);
     root.append(...rulesStatus(bind, evaluation));
     const row = el("div", { class: "cards" });
     for (const id of ids) {
@@ -663,7 +671,8 @@ export function interactionView(bind: UiBind): HTMLElement {
     ]);
     const extras = [...new Set(
       asNumberList(payload.card_ids).concat(
-        asNumberList(payload.enabled_card_ids), evaluation?.selectable_cards ?? [])
+        asNumberList(payload.enabled_card_ids),
+        bind.rules.actionModel()?.cards.filter((item) => item.enabled).map((item) => Number(item.id)) ?? [])
     )].filter((id) => !inDashboard.has(id));
     const grouped = new Map<string, number[]>();
     for (const id of extras) {

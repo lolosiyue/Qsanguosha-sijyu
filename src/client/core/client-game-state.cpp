@@ -6,6 +6,7 @@ void ClientGameState::reset()
     m_setup.clear();
     m_selfName.clear();
     m_cardIdSpace = 0;
+    m_nextPresentationEventSequence = 1;
     resetGameplayState();
 }
 
@@ -18,6 +19,7 @@ void ClientGameState::resetGameplayState()
     m_latestPayloads.clear();
     m_flowCounts.clear();
     m_presentationEvents.clear();
+    m_firstPresentationEventSequence = m_nextPresentationEventSequence;
 }
 
 void ClientGameState::setConnectionValue(const QString &key, const QVariant &value)
@@ -207,8 +209,11 @@ void ClientGameState::appendPresentationEvent(int command, const QString &text,
         event.insert(QStringLiteral("payload"), payload);
     m_presentationEvents.append(event);
     constexpr int eventLimit = 200;
-    while (m_presentationEvents.size() > eventLimit)
+    ++m_nextPresentationEventSequence;
+    while (m_presentationEvents.size() > eventLimit) {
         m_presentationEvents.removeFirst();
+        ++m_firstPresentationEventSequence;
+    }
 }
 
 QJsonObject ClientGameState::toJson() const

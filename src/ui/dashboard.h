@@ -33,6 +33,7 @@ class Dashboard : public PlayerCardContainer
 {
     Q_OBJECT
     friend class LocalResponseUiProbe;
+    friend class DesktopGamePresentation;
 
 public:
     enum SortType
@@ -108,7 +109,7 @@ public:
     void updatePending();
     void clearPendings();
     void showDialogOptions(const QString &skillName, const QStringList &optionNames,
-        const QStringList &enabledOptions, const QMap<QString, QString> &tooltips);
+        const QStringList &enabledOptions, const QMap<QString, QString> &tooltips, bool textOnly = false);
     void hideDialogOptions();
     bool isShowingDialogOptions() const;
     QString selectedDialogOption() const;

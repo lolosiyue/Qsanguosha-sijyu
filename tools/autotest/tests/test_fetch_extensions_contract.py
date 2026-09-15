@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -82,6 +83,12 @@ def main() -> int:
     if not SCRIPT.is_file():
         print("missing %s" % SCRIPT, file=sys.stderr)
         return 2
+    # Resolve PATH first: Windows process lookup can otherwise select the
+    # System32 WSL launcher before a Git Bash placed earlier on PATH.
+    bash = shutil.which("bash")
+    if bash is None:
+        print("FETCH_EXTENSIONS_RESULT FAIL (bash not found on PATH)", file=sys.stderr)
+        return 2
     with tempfile.TemporaryDirectory() as directory:
         base = pathlib.Path(directory)
         repository = base / "extensions-repo"
@@ -93,7 +100,7 @@ def main() -> int:
         environment["QSAN_EXTENSIONS_REPO"] = repository.as_uri()
         environment["QSAN_EXTENSIONS_REF"] = "main"
         environment.pop("GITHUB_ENV", None)
-        result = subprocess.run(["bash", str(SCRIPT), str(checkout)], env=environment,
+        result = subprocess.run([bash, str(SCRIPT), str(checkout)], env=environment,
                                 capture_output=True, text=True)
         if result.returncode != 0:
             print(result.stdout + result.stderr, file=sys.stderr)

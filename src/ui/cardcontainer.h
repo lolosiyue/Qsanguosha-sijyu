@@ -34,6 +34,10 @@ public:
     QList<CardItem *> getItems() const { return items; }
     void startChoose();
     void startGongxin(const QList<int> &enabled_ids);
+    bool gongxinActive() const { return m_gongxinActive; }
+    int selectedGongxinCard() const { return m_gongxinSelection; }
+    bool selectGongxinCard(int cardId, bool selected);
+    bool submitGongxin(int cardId = -1);
     void addCloseButton();
     void view(const ClientPlayer *player);
     virtual QRectF boundingRect() const;
@@ -67,10 +71,17 @@ private slots:
     void grabItem();
     void chooseItem();
     void gongxinItem();
+    void selectGongxinItem();
+
+private:
+    bool m_gongxinActive = false;
+    int m_gongxinSelection = -1;
+    QList<int> m_gongxinEnabled;
 
 signals:
     void item_chosen(int card_id);
     void item_gongxined(int card_id);
+    void gongxinDraftChanged();
 };
 
 class GuanxingBox : public CardContainer
@@ -81,6 +92,13 @@ public:
     GuanxingBox();
     void reply();
     virtual QRectF boundingRect() const;
+
+    // Read and edit the active local Guanxing draft; index is the insertion
+    // position after removing the card from its current pile.
+    QList<int> topCards() const;
+    QList<int> bottomCards() const;
+    bool editable() const;
+    bool moveCard(int cardId, bool toBottom, int index);
 
 protected:
     virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
@@ -100,9 +118,14 @@ private:
     QList<CardItem *> upItems, downItems;
     int type;
     void adjust();
+    QList<int> cardIds(const QList<CardItem *> &items) const;
+    void applyMove(CardItem *item, bool toBottom, int index, int fromPos);
     int itemNumberOfFirstRow() const;
     bool isOneRow() const;
     QString zhuge;
+
+signals:
+    void draftChanged();
 };
 
 class GuanxingXBox : public GuanxingBox

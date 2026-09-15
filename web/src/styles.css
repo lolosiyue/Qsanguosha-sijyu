@@ -94,6 +94,12 @@ details[open] > summary { margin-bottom: .7rem; }
 .toolbar strong { color: var(--accent); letter-spacing: .05em; }
 .toolbar > .status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbar .error { margin: 0; font-size: .75rem; }
+.accessible-snapshot { position: fixed; z-index: 60; top: .35rem; right: .8rem; }
+.accessible-snapshot summary { cursor: pointer; color: var(--accent); font-size: .78rem; }
+.accessible-snapshot .snapshot-content { position: absolute; z-index: 50; top: calc(100% + .45rem); right: 0; width: min(74vw, 36rem); max-height: 62dvh; overflow: auto; padding: .8rem; border: 1px solid var(--line); border-radius: .6rem; background: #10191df5; box-shadow: 0 .5rem 2rem #0009; }
+.accessible-snapshot .snapshot-content button { margin-right: .45rem; }
+.accessible-snapshot .snapshot-content p { font-size: .78rem; }
+.accessible-snapshot textarea { box-sizing: border-box; width: 100%; max-height: 48dvh; overflow: auto; resize: vertical; white-space: pre-wrap; overflow-wrap: anywhere; padding: .65rem; border: 1px solid var(--line); border-radius: .4rem; background: #081012; color: var(--text); font: inherit; font-size: .82rem; }
 .share { display: flex; flex-wrap: wrap; gap: .6rem; align-items: start; }
 .share code { overflow-wrap: anywhere; }
 .share canvas { background: #fff; border-radius: .3rem; }

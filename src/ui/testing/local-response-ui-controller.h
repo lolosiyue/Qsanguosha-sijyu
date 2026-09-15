@@ -87,7 +87,8 @@ private:
     bool validateNamedStates(const QJsonObject &expected, const QJsonArray &actual,
         const QString &nameKey, const QString &path);
 
-    void injectNotification(QSanProtocol::CommandType command, const QVariant &body);
+    bool injectNotification(QSanProtocol::CommandType command, const QVariant &body,
+        QString *error);
     void recordAssertion(const QString &path, const QJsonValue &expected,
         const QJsonValue &actual, bool passed);
     void flushEvents();

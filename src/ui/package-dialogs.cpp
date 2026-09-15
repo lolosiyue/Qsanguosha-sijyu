@@ -77,7 +77,7 @@ const Card *GuhuoDialog::getOptionCard(const QString &option_name) const
 bool GuhuoDialog::applyOption(const QString &option_name)
 {
     const Card *card = getOptionCard(option_name);
-    if (card == nullptr || Self == nullptr)
+    if (card == nullptr || Self == nullptr || !isButtonEnabled(option_name))
         return false;
     Self->setTag(objectName(), QVariant::fromValue(card));
     return true;
@@ -323,8 +323,9 @@ TiansuanDialog::TiansuanDialog(const QString &name, const QString &choices)
     connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectChoice(QAbstractButton *)));
 }
 
-bool TiansuanDialog::MarkJudge(const QString &choice)
+bool TiansuanDialog::MarkJudge(const QString &choice) const
 {
+    if (Self == nullptr) return false;
     const QString mark = objectName() + "_tiansuan_remove_" + choice;
     foreach (const QString &mark_name, Self->getMarkNames()) {
         if (mark_name.startsWith(mark) && Self->getMark(mark_name) > 0)
@@ -333,23 +334,57 @@ bool TiansuanDialog::MarkJudge(const QString &choice)
     return true;
 }
 
-void TiansuanDialog::popup()
+void TiansuanDialog::prepareOptions()
 {
-    Self->removeTag(objectName());
-    QStringList choices = tiansuan_choices.split(",", Qt::SkipEmptyParts);
-    foreach (const QString &choice, choices) {
-        if (!MarkJudge(choice))
-            continue;
+    if (Self != nullptr) Self->removeTag(objectName());
+    // This singleton is reused across requests. Rebuild its widgets from the
+    // same stable choices the table and keyboard presenter consume.
+    for (QAbstractButton *button : group->buttons()) {
+        group->removeButton(button);
+        button_layout->removeWidget(button);
+        delete button;
+    }
+    for (const QString &choice : getOptionNames()) {
         QAbstractButton *button = createChoiceButton(choice);
+        button->setEnabled(isButtonEnabled(choice));
         button_layout->addWidget(button);
     }
-    if (!group->buttons().isEmpty())
-        exec();
+}
+
+QStringList TiansuanDialog::getOptionNames() const
+{
+    QStringList choices = tiansuan_choices.split(",", Qt::SkipEmptyParts);
+    choices.removeDuplicates();
+    return choices;
+}
+
+bool TiansuanDialog::isButtonEnabled(const QString &choice) const
+{
+    return getOptionNames().contains(choice) && MarkJudge(choice);
+}
+
+bool TiansuanDialog::applyOption(const QString &choice)
+{
+    if (!isButtonEnabled(choice)) return false;
+    Self->setTag(objectName(), choice);
+    return true;
+}
+
+void TiansuanDialog::popup()
+{
+    prepareOptions();
+    for (QAbstractButton *button : group->buttons()) {
+        if (button->isEnabled()) {
+            button->setFocus();
+            exec();
+            return;
+        }
+    }
 }
 
 void TiansuanDialog::selectChoice(QAbstractButton *button)
 {
-    Self->setTag(objectName(), button->objectName());
+    if (button == nullptr || !applyOption(button->objectName())) return;
     emit onButtonClick();
     accept();
 }

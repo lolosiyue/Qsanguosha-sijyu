@@ -54,6 +54,7 @@ public:
     void reconnect();
     void disconnectGracefully();
     bool isActive() const;
+    bool isStateSyncActive() const { return m_syncActive; }
     quint64 generation() const;
     ClientLiveSessionOptions options() const { return m_options; }
 
