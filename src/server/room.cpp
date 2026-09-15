@@ -3882,8 +3882,21 @@ bool Room::notifyMoveCards(bool isLostPhase, QList<CardsMoveStruct>&moves, bool 
 		JsonArray arg;
 		arg << moveId;
 		for (int i = 0; i < moves.length(); i++){
-			moves[i].open = visible || moves[i].isRelevant(player);
-			arg << moves[i].toVariant();
+			CardsMoveStruct recipientMove = moves[i];
+			recipientMove.open = visible || recipientMove.isRelevant(player);
+			if (!recipientMove.open) {
+				// Keep redaction at the recipient boundary; the shared move retains its real IDs.
+				for (int &cardId : recipientMove.card_ids) {
+					const Card *card = cardId >= 0 ? this->getCard(cardId) : nullptr;
+					const bool visibleSpecialOrigin = card
+						&& (recipientMove.from_place == Player::PlaceSpecial
+							|| recipientMove.from_place == Player::DrawPile)
+						&& card->hasFlag("visible");
+					if (!visibleSpecialOrigin)
+						cardId = Card::S_UNKNOWN_CARD_ID;
+				}
+			}
+			arg << recipientMove.toVariant();
 		}
 		doNotify(player, isLostPhase ? S_COMMAND_LOSE_CARD : S_COMMAND_GET_CARD, arg);
 	}

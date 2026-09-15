@@ -23,6 +23,36 @@ function context() {
   for (const file of ['Client.gs', 'Draft.gs', 'Table.gs']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../apps-script', file), 'utf8'), c);
   c.changeDocument = value => { doc = value; }; return c;
 }
+function sidebarContext() {
+  const elements = new Map(); let pending = false, nextResult = null, success, failure, runner;
+  const document = {getElementById: id => {
+      if (!elements.has(id)) elements.set(id, {value: '', textContent: '', className: '', hidden: false, src: '', disabled: false});
+      return elements.get(id);
+    }, querySelectorAll: () => []};
+  const api = {
+    withSuccessHandler(fn) { success = fn; return runner; },
+    withFailureHandler(fn) { failure = fn; return runner; }
+  };
+  runner = new Proxy(api, {get(target, key) {
+    if (key in target) return target[key].bind(target);
+    return () => {
+      const result = nextResult; nextResult = null;
+      if (key === 'getClientState') return success({paired: false, endpoint: ''});
+      if (result && result.error) return failure({message: result.error});
+      return success(result ? result.value : {state: {pending}, status: 'connected'});
+    };
+  }});
+  const c = vm.createContext({document, google: {script: {run: runner}}, setTimeout: () => 1, clearTimeout() {}});
+  const html = fs.readFileSync(path.join(__dirname, '../apps-script/Sidebar.html'), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/);
+  assert.ok(script, 'Sidebar script block exists');
+  vm.runInContext(script[1], c);
+  c.setPending = value => { pending = value; };
+  c.respondWithError = error => { nextResult = {error}; };
+  c.respondWith = value => { nextResult = {value}; };
+  c.element = id => elements.get(id);
+  return c;
+}
 function plain(value) { return JSON.parse(JSON.stringify(value)); }
 function row(bank, id, options = {}) {
   return [bank, String(id), 'display label', options.selected !== false, options.order || '', options.side || '',
@@ -103,6 +133,52 @@ test('uncertain command persists and retry sends the original id and payload', (
   received = null; c.retryPending(); assert.equal(received, null);
 });
 
+test('read-only update transport failure is safe to retry without creating a pending command', () => {
+  const c = context(); c.put_('token', 'token'); c.put_('session', 'session-a'); c.put_('endpoint', 'https://host.test');
+  c.UrlFetchApp = {fetch() { throw new Error('network down'); }};
+  assert.throws(() => c.fetch_('/v1/updates?after=0'), /安全重試更新，沒有送出遊戲指令/);
+  assert.equal(c.pending_(), null);
+});
+
+test('uncertain command transport failure keeps pending payload and directs retry of the same command', () => {
+  const c = context(); c.put_('token', 'token'); c.put_('session', 'session-a'); c.put_('endpoint', 'https://host.test');
+  c.UrlFetchApp = {fetch() { throw new Error('network down'); }};
+  assert.throws(() => c.command_('chat', {text: 'hello'}), /重試待確認指令.*不要重新操作/);
+  assert.equal(c.pending_().name, 'chat');
+  assert.equal(c.pending_().args.text, 'hello');
+});
+
+test('successful polling clears read errors but keeps unresolved command warning visible', () => {
+  const c = sidebarContext();
+  vm.runInContext("lastError = '牌桌更新失敗'; lastErrorKind = 'poll'; call('poll', [], show, true);", c);
+  assert.equal(c.element('status').className, 'status ok');
+  assert.doesNotMatch(c.element('status').textContent, /牌桌更新失敗/);
+  c.setPending(true);
+  vm.runInContext("lastError = '牌桌更新失敗'; lastErrorKind = 'poll'; call('poll', [], show, true);", c);
+  assert.equal(c.element('status').className, 'status error');
+  assert.match(c.element('status').textContent, /前一遊戲指令仍待確認/);
+});
+
+test('successful polling preserves action rejection until a successful explicit action', () => {
+  const c = sidebarContext();
+  c.respondWithError('原生拒絕：選擇不合法');
+  vm.runInContext("call('submitSheetDraft', [], show, false);", c);
+  assert.match(c.element('status').textContent, /原生拒絕：選擇不合法/);
+  c.respondWithError('牌桌更新失敗：連線逾時');
+  vm.runInContext("call('poll', [], show, true);", c);
+  assert.equal(c.element('status').className, 'status error');
+  assert.match(c.element('status').textContent, /原生拒絕：選擇不合法/);
+  assert.match(c.element('status').textContent, /牌桌更新失敗：連線逾時/);
+  c.respondWith({state: {pending: false}, status: 'connected'});
+  vm.runInContext("call('poll', [], show, true);", c);
+  assert.equal(c.element('status').className, 'status error');
+  assert.match(c.element('status').textContent, /原生拒絕：選擇不合法/);
+  c.respondWith({state: {pending: false}, status: '操作成功'});
+  vm.runInContext("call('readyFromSheet', [], show, false);", c);
+  assert.equal(c.element('status').className, 'status ok');
+  assert.doesNotMatch(c.element('status').textContent, /原生拒絕：選擇不合法/);
+});
+
 test('non-clean closed shutdown clears credentials but preserves visible failure', () => {
   const c = context(); c.put_('token', 'token'); c.put_('session', 'session-a'); c.put_('endpoint', 'https://host.test');
   c.fetch_ = () => ({api_version: 1, session: 'session-a', ok: false, closed: true, native_exit_code: 86});
@@ -178,6 +254,25 @@ test('render leaves native pre-selection hp fields blank', () => {
   const board = blocks.find(x => x[0] === 'QSAN Board')[4];
   assert.deepEqual(plain(board[4].slice(0, 5)), ['player', 'p1', '未選將', '', '']);
   assert.equal(board[4][5], '青釭劍');
+});
+
+test('skill invocation prompt resolves the native skill identity and keeps explicit prompts', () => {
+  const c = context();
+  assert.equal(c.interactionPrompt_({interaction: {type: 'skill_invoke', skill: 's4_jiushi'},
+    view: {skills: [{name: 's4_jiushi', label: '酒詩'}]}}), '是否發動技能「酒詩」？');
+  assert.equal(c.interactionPrompt_({interaction: {type: 'skill_invoke', skill: 'unknown_skill'}, view: {skills: []}}),
+    '是否發動技能「unknown_skill」？');
+  assert.equal(c.interactionPrompt_({interaction: {type: 'skill_invoke', skill: 's4_jiushi', prompt: '原生提示'},
+    view: {prompt_text: '格式化提示', skills: [{name: 's4_jiushi', label: '酒詩'}]}}), '格式化提示');
+});
+
+test('poll returns the same skill-aware prompt used by the worksheet', () => {
+  const c = context(); c.put_('token', 'token'); c.put_('session', 'session-a');
+  c.render_ = () => {};
+  c.fetch_ = () => ({api_version: 1, session: 'session-a', sequence: '1', connection: 'connected',
+    snapshot: {generation: '1', revision: '2', request_id: '3', interaction: {type: 'skill_invoke', skill: 's4_jiushi'},
+      view: {skills: [{name: 's4_jiushi', label: '酒詩'}]}, state: {game: {}}}});
+  assert.equal(c.poll().prompt, '是否發動技能「酒詩」？');
 });
 
 test('actions checkbox writes booleans with General number format', () => {

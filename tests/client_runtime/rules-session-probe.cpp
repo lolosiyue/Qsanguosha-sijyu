@@ -1,7 +1,13 @@
 // Direct consumer of the production host. No TUI/fixture evaluator or rule stubs.
 #include "client-rules-host.h"
+#include "client-game-state.h"
 #include "client-player-model.h"
+#include "client-room-context.h"
 #include "engine.h"
+extern "C" {
+#include "lauxlib.h"
+#include "lua.h"
+}
 #include "rules-bundle-exporter.h"
 #include "protocol.h"
 #include "server-info.h"
@@ -13,8 +19,10 @@
 #include <QJsonDocument>
 #include <QPointer>
 #include <QSaveFile>
+#include <QSet>
 #include <cstdio>
 #include <stdexcept>
+#include <string>
 
 namespace {
 void check(bool value, const char *message)
@@ -40,6 +48,166 @@ QJsonObject parse(const QByteArray &bytes)
     const auto document = QJsonDocument::fromJson(bytes, &error);
     check(error.error == QJsonParseError::NoError && document.isObject(), "invalid host JSON");
     return document.object();
+}
+QString suitName(int suit)
+{
+    switch (suit) {
+    case Card::Spade: return QStringLiteral("spade");
+    case Card::Heart: return QStringLiteral("heart");
+    case Card::Club: return QStringLiteral("club");
+    case Card::Diamond: return QStringLiteral("diamond");
+    default: return QStringLiteral("no_suit");
+    }
+}
+QJsonObject requestedCardMetadata(const QJsonObject &request, const QJsonObject &registry)
+{
+    const QJsonObject state = request.value(QStringLiteral("state")).toObject();
+    const QString selfName = state.value(QStringLiteral("self_name")).toString();
+    QSet<int> wanted;
+    for (const QJsonValue &value : request.value(QStringLiteral("selection")).toObject()
+             .value(QStringLiteral("card_ids")).toArray()) {
+        if (value.isDouble())
+            wanted.insert(value.toInt(-1));
+    }
+    for (const QJsonValue &value : state.value(QStringLiteral("cards")).toArray()) {
+        const QJsonObject card = value.toObject();
+        if (card.value(QStringLiteral("owner")).toString() == selfName
+            && card.value(QStringLiteral("place")).toInt(-1) == Player::PlaceHand)
+            wanted.insert(card.value(QStringLiteral("id")).toInt(-1));
+    }
+
+    QJsonArray cards;
+    for (const QJsonValue &value : registry.value(QStringLiteral("registry")).toArray()) {
+        const QJsonObject card = value.toObject();
+        const int id = card.value(QStringLiteral("id")).toInt(-1);
+        if (!wanted.contains(id))
+            continue;
+        const int suit = card.value(QStringLiteral("suit")).toInt(-1);
+        cards.append(QJsonObject{{QStringLiteral("id"), id},
+            {QStringLiteral("name"), card.value(QStringLiteral("object_name"))},
+            {QStringLiteral("suit"), suitName(suit)}});
+    }
+    return {{QStringLiteral("card_count"), registry.value(QStringLiteral("card_count"))},
+        {QStringLiteral("requested_cards"), cards},
+        {QStringLiteral("zujuetu_registered"), Sanguosha != nullptr
+            && Sanguosha->getViewAsSkill(QStringLiteral("zujuetu")) != nullptr}};
+}
+void checkLuaBoolean(lua_State *lua, const char *script, const char *message)
+{
+    const int stackTop = lua_gettop(lua);
+    if (luaL_dostring(lua, script) != LUA_OK) {
+        const char *error = lua_tostring(lua, -1);
+        const std::string detail = error != nullptr ? error : "Lua binding probe failed";
+        lua_settop(lua, stackTop);
+        throw std::runtime_error(detail);
+    }
+    const bool result = lua_toboolean(lua, -1) != 0;
+    lua_settop(lua, stackTop);
+    check(result, message);
+}
+void checkProjectedSelfBinding(lua_State *lua, int cardCount, int cardId)
+{
+    ClientGameState state;
+    state.setCardIdSpace(cardCount);
+    state.setSelfName(QStringLiteral("sgs1"));
+    state.setPlayerNames({QStringLiteral("sgs1")});
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("seat"), 1);
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("alive"), true);
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("hand_count"), 1);
+    state.setCardValue(cardId, QStringLiteral("owner"), QStringLiteral("sgs1"));
+    state.setCardValue(cardId, QStringLiteral("place"), Player::PlaceHand);
+
+    // Match production Scene ownership: players release card pointers before the room.
+    ClientRoomContext room(&state);
+    ClientPlayerModel players(&state);
+    room.setOwnerResolver([&players](int id) { return players.cardOwner(id); });
+    room.enterGame();
+    players.sync();
+    check(QSanEngine::Self == players.self(), "player projection did not set engine Self");
+    checkLuaBoolean(lua,
+        "return sgs.Self ~= nil and sgs.Self:getHandcardNum() == 1 "
+        "and sgs.Self:getHandcards():length() == 1",
+        "Lua sgs.Self did not expose the projected hand");
+    checkLuaBoolean(lua,
+        "local ok = pcall(function() sgs.Self = nil end); "
+        "return not ok and sgs.Self ~= nil and sgs.Self:getHandcardNum() == 1",
+        "Lua sgs.Self assignment was not rejected");
+
+    state.setCardValue(cardId, QStringLiteral("owner"), QString());
+    state.setCardValue(cardId, QStringLiteral("place"), Player::DiscardPile);
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("hand_count"), 0);
+    players.sync();
+    checkLuaBoolean(lua,
+        "return sgs.Self ~= nil and sgs.Self:getHandcardNum() == 0 "
+        "and sgs.Self:getHandcards():length() == 0",
+        "Lua sgs.Self did not expose an empty projected hand");
+    players.clear();
+    check(QSanEngine::Self == nullptr, "clearing projected players retained native Self");
+    checkLuaBoolean(lua, "return sgs.Self == nil", "Lua sgs.Self remained set after clear");
+}
+int runRequestProbe(ClientRulesHost &host, const QString &requestFile, const QString &outputFile,
+                    const QString &work, const QString &resultPath, const QString &inputPath)
+{
+    QJsonObject output{{QStringLiteral("schema_version"), 1},
+        {QStringLiteral("status"), QStringLiteral("DIAGNOSTIC")},
+        {QStringLiteral("initialize_exit"), -1}, {QStringLiteral("evaluate_exit"), -1},
+        {QStringLiteral("shutdown_exit"), -1}, {QStringLiteral("evaluation"), QJsonValue(QJsonValue::Null)},
+        {QStringLiteral("evaluation_error"), QString()},
+        {QStringLiteral("native_registry"), QJsonObject()}};
+    bool resultAvailable = false;
+    if (!QDir().mkpath(work))
+        output.insert(QStringLiteral("probe_error"), QStringLiteral("cannot create isolated work directory"));
+    else {
+        const int initExit = host.initialize();
+        output.insert(QStringLiteral("initialize_exit"), initExit);
+        if (initExit != 0) {
+            output.insert(QStringLiteral("evaluation_error"), QStringLiteral("native initialization failed"));
+        } else {
+            try {
+                const QJsonObject registry = parse(read(work + "/init.json"));
+                QJsonObject input = parse(read(requestFile));
+                QJsonObject state = input.value(QStringLiteral("state")).toObject();
+                if (!state.contains(QStringLiteral("card_id_space"))) {
+                    state.insert(QStringLiteral("card_id_space"), registry.value(QStringLiteral("card_count")));
+                    input.insert(QStringLiteral("state"), state);
+                }
+                output.insert(QStringLiteral("native_registry"), requestedCardMetadata(input, registry));
+                write(inputPath, encode(input));
+                QFile::remove(resultPath);
+                const int evaluateExit = host.evaluate();
+                output.insert(QStringLiteral("evaluate_exit"), evaluateExit);
+                if (QFile::exists(resultPath)) {
+                    resultAvailable = true;
+                    QJsonParseError parseError;
+                    const QJsonDocument response = QJsonDocument::fromJson(read(resultPath), &parseError);
+                    if (parseError.error == QJsonParseError::NoError && response.isObject()) {
+                        const QJsonObject evaluation = response.object();
+                        output.insert(QStringLiteral("evaluation"), evaluation);
+                        if (evaluateExit != 0 || !evaluation.value(QStringLiteral("known")).toBool())
+                            output.insert(QStringLiteral("evaluation_error"), evaluation.value(QStringLiteral("reason"))
+                                .toString(QStringLiteral("native evaluation failed")));
+                    } else {
+                        output.insert(QStringLiteral("evaluation_error"),
+                            QStringLiteral("invalid evaluation output: ") + parseError.errorString());
+                    }
+                } else {
+                    output.insert(QStringLiteral("evaluation_error"), QStringLiteral("evaluation output missing"));
+                }
+                if (evaluateExit != 0 && output.value(QStringLiteral("evaluation_error")).toString().isEmpty())
+                    output.insert(QStringLiteral("evaluation_error"), QStringLiteral("evaluation transport exit %1").arg(evaluateExit));
+            } catch (const std::exception &error) {
+                output.insert(QStringLiteral("evaluation_error"), QString::fromUtf8(error.what()));
+            }
+        }
+    }
+    output.insert(QStringLiteral("shutdown_exit"), host.shutdown());
+    output.insert(QStringLiteral("result_file_captured"), resultAvailable);
+    write(outputFile, encode(output));
+    std::fprintf(stderr, "[AUTOTEST] RULES_SESSION_DIAGNOSTIC init=%d evaluate=%d shutdown=%d\n",
+        output.value(QStringLiteral("initialize_exit")).toInt(),
+        output.value(QStringLiteral("evaluate_exit")).toInt(),
+        output.value(QStringLiteral("shutdown_exit")).toInt());
+    return 0;
 }
 QJsonObject globals()
 {
@@ -115,11 +283,12 @@ int main(int argc, char **argv)
 {
     try {
         // No QCoreApplication here: the production host must create and own it.
-        check((argc == 5 || argc == 6) && QString::fromLocal8Bit(argv[1]) == "--asset-root"
+        check((argc == 5 || argc == 6 || argc == 7) && QString::fromLocal8Bit(argv[1]) == "--asset-root"
             && QString::fromLocal8Bit(argv[3]) == "--output", "expected --asset-root DIR --output FILE");
         const bool withExtensions = argc == 6
             && QString::fromLocal8Bit(argv[5]) == "--with-extensions";
-        check(argc != 6 || withExtensions, "unknown probe option");
+        const bool requestProbe = argc == 7 && QString::fromLocal8Bit(argv[5]) == "--probe-request";
+        check((argc != 6 || withExtensions) && (argc != 7 || requestProbe), "unknown probe option");
         const QString assets = QDir(QString::fromLocal8Bit(argv[2])).absolutePath();
         const QString output = QDir::current().absoluteFilePath(QString::fromLocal8Bit(argv[4]));
         const QString work = QDir::current().absoluteFilePath("work");
@@ -128,6 +297,9 @@ int main(int argc, char **argv)
         const QString resultPath = work + "/result.json";
         const QString inputPath = work + "/request.json";
         ClientRulesHost host(assets, work, user);
+        if (requestProbe)
+            return runRequestProbe(host, QDir(QString::fromLocal8Bit(argv[6])).absolutePath(),
+                                   output, work, resultPath, inputPath);
         write(resultPath, "{\"can_confirm\":true}");
         check(host.evaluate() == 3 && parse(read(resultPath)).value("known") == QJsonValue(false),
               "evaluate before initialize must fail without stale success");
@@ -159,6 +331,7 @@ int main(int argc, char **argv)
             }
         }
         check(slash >= 0 && red >= 0, "builtin registry must supply Slash and a red subcard");
+        checkProjectedSelfBinding(lua, registry.value("card_count").toInt(), slash);
         if (withExtensions)
             check(extensionCard >= 0 && !extensionClass.isEmpty(), "declared animecard extension card missing");
         const int count = registry.value("card_count").toInt();

@@ -101,6 +101,17 @@ function meta_(snapshot) {
     roles: payload.roles || [], generals: payload.generals || [], enumerated: payload.enumerated !== false,
     min: req.min, max: req.max};
 }
+function interactionPrompt_(snapshot) {
+  // Keep native prompt text; skill identity fills only an otherwise empty prompt.
+  const req = snapshot.interaction || {}, view = snapshot.view || {};
+  const prompt = view.prompt_text || view.prompt || req.prompt || (req.ui && req.ui.prompt) || (req.payload && req.payload.prompt) || '';
+  if (prompt) return prompt;
+  const skill = String(req.skill || '').trim();
+  if (!skill) return req.type === 'none' || !req.type ? '等待互動' : '目前輪到你處理此互動。';
+  const match = (view.skills || []).find(s => s && (s.name === skill || s.id === skill));
+  const label = match && (match.label || match.name || match.id) || skill;
+  return req.type === 'skill_invoke' ? '是否發動技能「' + label + '」？' : '技能「' + label + '」：請處理目前互動。';
+}
 function render_(snapshot) {
   const meta = meta_(snapshot), previous = json_('meta', null), req = snapshot.interaction || {}, view = snapshot.view || {};
   const game = (snapshot.state || {}).game || {};
@@ -108,9 +119,8 @@ function render_(snapshot) {
   if (!previous || previous.revision !== meta.revision || !sameRequest) {
     drop_('preflight'); writeBlock_('QSAN Actions', 'preflight_text', 3, 1, [['預檢', '待重新預檢']], 2);
   }
-  const prompt = view.prompt_text || view.prompt || req.prompt || (req.ui && req.ui.prompt) || (req.payload && req.payload.prompt) || '';
   writeBlock_('QSAN Actions', 'action_title', 1, 1,
-    [['目前互動', meta.type], ['提示', prompt || (meta.type === 'none' ? '等待互動' : '目前輪到你處理此互動。')]], 2);
+    [['目前互動', meta.type], ['提示', interactionPrompt_(snapshot)]], 2);
   writeBlock_('QSAN Actions', 'action_help', 4, 1,
     [['選擇範圍', String(meta.min === undefined ? '' : meta.min) + ' ～ ' + String(meta.max === undefined ? '' : meta.max)],
      ['操作', meta.shape === 'unsupported' ? '此互動不支援，未送出回覆。' : '勾選後可填順序；技能先預檢取得宣告選項。觀星填 top/bottom；角色分配填角色 ID。']], 2);

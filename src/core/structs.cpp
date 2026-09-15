@@ -227,7 +227,10 @@ bool CardsMoveStruct::tryParse(const QVariant &arg)
 	if (!parsed.open){
         for (int i = 0; i < parsed.card_ids.length(); i++){
 			if(parsed.from_place==Player::PlaceSpecial||parsed.from_place==Player::DrawPile){
-				if(Sanguosha->getCard(parsed.card_ids[i])->hasFlag("visible")) continue;
+				const int cardId = parsed.card_ids[i];
+				const Card *card = cardId >= 0 && Sanguosha
+					? Sanguosha->getCard(cardId) : nullptr;
+				if(card && card->hasFlag("visible")) continue;
 			}
 			parsed.card_ids[i] = Card::S_UNKNOWN_CARD_ID;
 		}

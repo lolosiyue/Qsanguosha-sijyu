@@ -12,6 +12,10 @@
 #include "card-lifetime-manager.h"
 #include <stdexcept>
 
+namespace QSanEngine {
+extern Player *Self;
+}
+
 //#include <QDir>
 
 %}
@@ -2711,6 +2715,13 @@ SWIG_arg++;
 
 %include "luaskills.i"
 %include "ai.i"
+
+/* Skill callbacks read the engine's current player through sgs.Self. */
+%rename(Self) QSanEngine::Self;
+%immutable QSanEngine::Self;
+namespace QSanEngine {
+	extern Player *Self;
+}
 
 %extend LuaTriggerSkill {
 	QString objectName() const {

@@ -139,6 +139,15 @@ HTTPS 通道後方的配對與會話路由來源為 `google-sheets/gateway.py`�
 [原生除錯報告](google-sheets-engine-debug-report-20260913.md)，其中分開列出初版
 55/55 CTest、最新精準驗證、未完成 gate 與已保留的未提交原生修改。
 
+## 2026-09-15 後續驗收
+
+真實 SGS 已部署技能提示與錯誤恢復修正；前端 24/24、gateway 12/12 focused tests
+及 Sheets 目標增量建置通過。唯一一局真人 05P 在第二輪絕途保留牌預檢受阻，
+未取得 GAME_OVER／勝方；正常關閉再現 E3（exit 86），程序與埠已清理。
+未擴大原生修復，完整驗收仍未完成。詳見 [本輪驗收報告](google-sheets-acceptance-20260915.md)。
+
+後續另行授權修復與驗收後，已於同日完成一局真人儲存格 05P：第五輪 GAME_OVER、主公＋忠臣勝，原生 exit 0，無強制終止且程序／埠清理通過。仍有文字與取消呈現缺口、多人及逐類互動待驗，見[修復後完整對局報告](google-sheets-live-acceptance-20260915-fixed.md)。
+
 ## Google 官方限制參考
 
 以下於 2026-09-12 查閱；限制可能調整，部署時需重新核對。

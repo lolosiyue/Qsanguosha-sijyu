@@ -79,6 +79,14 @@ Google Sheets 五個前端檔案已安裝並授權，實際完成配對、開房
 
 診斷開關 `QSAN_XP_SHUTDOWN_TRACE=1` 已加入 helper 關閉、Server 清理狀態、Room worker/destructor、Lua finalization 與 controller deadline。**沒有延長 timeout、降低清理判據或把強制終止算成功。**使用者拒絕了最後一次讀取新私有診斷的提權請求，凜未以其他路徑繞過；之後依指示停止除錯。
 
+### E3 後續：共用引擎例外清理修正（2026-09-15）
+
+依使用者授權，以 Sheets／Web 的共用原生引擎關閉問題追查。已以真正 RoomRuntime 工作執行緒重現：`GameFinished` 穿過 Lua C API 後，MSVC `/EHsc` 省略 invocation 解構，留下 depth 2、domain pin 1。改為 engine C++ `/EHs /EHc-` 後，同一案例 depth/pins 歸零、兩個 Lua runtime 關閉、RoomRuntime Closed；原有 Lua-held CardUseStruct 清理與 active-pin 拒絕案例也符合預期。相關目標建置通過。
+
+這是共用引擎根因與 focused 修復證據；尚未重跑真實 Sheets／Web 關閉或完整對局，也未因此關閉 E4。詳見 [E3 原生關閉修正與驗證](e3-native-shutdown-fix-20260915.md)。
+
+後續 Sheets 單局已通過 GAME_OVER、勝方、原生 exit 0 與程序／埠清理；E4 收件者封包遮蔽與消費端 focused 檢查亦通過。詳見[修復紀錄](google-sheets-completion-20260915.md)與[修復後真人驗收](google-sheets-live-acceptance-20260915-fixed.md)。Web、多人文件隔離與全部互動覆蓋仍須分開驗收。
+
 ## E4：待確認的牌面可見性
 
 審查發現不能只用 `card_id >= 0` 代表玩家有權看見牌面：移牌資料另有 `open`，中間序列化函式可能仍攜帶正 ID。尚未追完送至客戶端前是否另行遮罩，所以這是一項需追完資料流的疑慮，不是已證實的線上洩漏。

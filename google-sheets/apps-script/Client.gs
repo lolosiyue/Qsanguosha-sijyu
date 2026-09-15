@@ -61,7 +61,17 @@ function fetch_(path, body, base) {
   if (body !== undefined) args.payload = JSON.stringify(body);
   let response;
   try { response = UrlFetchApp.fetch(endpoint_(base) + path, args); }
-  catch (_) { throw new Error('結果未確認；請按「重試待確認指令」，不要重新出牌。'); }
+  catch (_) {
+    if (body === undefined && path.indexOf('/v1/updates?') === 0)
+      throw new Error('牌桌更新失敗；可以安全重試更新，沒有送出遊戲指令。');
+    if (path === '/v1/commands')
+      throw new Error('遊戲指令結果未確認；請按「重試待確認指令」，不要重新操作。');
+    if (path === '/v1/shutdown')
+      throw new Error('關閉結果未確認；憑證仍保留，請重試離開並核對主機狀態。');
+    if (path === '/v1/pair')
+      throw new Error('配對結果未確認；請用相同網址與配對碼重試。');
+    throw new Error('服務請求失敗；請檢查連線後重試。');
+  }
   const status = response.getResponseCode();
   if (status >= 300 && status < 400) throw new Error('已拒絕重新導向；請核對服務網址。');
   let value; try { value = JSON.parse(response.getContentText()); } catch (_) { throw new Error('回覆無效，結果未確認。'); }
@@ -132,7 +142,7 @@ function poll() {
     if (reply.api_version !== 1 || reply.session !== get_('session', '') || !decimal_(reply.sequence) || !reply.snapshot) throw new Error('牌桌更新身分不符。');
     render_(reply.snapshot); put_('sequence', reply.sequence);
     const snap = reply.snapshot, game = (snap.state || {}).game || {};
-    return outcome_(snap.connection || '已更新', {prompt: (snap.view || {}).prompt || '', gameOver: game.game_over === true, winner: text_(game.result || '')});
+    return outcome_(snap.connection || '已更新', {prompt: interactionPrompt_(snap), gameOver: game.game_over === true, winner: text_(game.result || '')});
   });
 }
 function applySelection_(selection, draft) {

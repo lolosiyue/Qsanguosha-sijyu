@@ -111,10 +111,12 @@
     "game_over": "human operated to GAME_OVER with winner and clean session shutdown"
   },
   "known_gaps": [
-    "No native Sheets target build or focused test execution in this checkpoint",
-    "No live Google authorization, Apps Script deployment or worksheet acceptance",
-    "28 source mappings are not 28 passed interaction tests",
-    "Human 05p game, multiplayer, helper cleanup and CI acceptance not run",
+    "28 source mappings are not 28 passed live interaction tests",
+    "2026-09-15 fixed one-human four-AI 05P passed at round 5 GAME_OVER, lord+loyalist winner, native exit 0 and process/port cleanup; prior blocked game remains historical evidence",
+    "Missing Lua sgs.Self is fixed and focused zujuetu legal/illegal selections pass; the successful live game used nyarz_lvbu_god and did not exercise zujuetu again",
+    "Live presentation gaps: generic ask_peach prompt, raw skill/parameterized choice/winner labels, and optional choose_player shown as 0..1 while cancellation is refused",
+    "E4 recipient wire redaction and consumer projection focused tests pass; live multiplayer document/session isolation remains unverified",
+    "CI acceptance and deployable package acceptance remain unverified",
     "Complex object-valued room settings retain native defaults; worksheet edits support primitive settings and string lists"
   ],
   "implementation": {
