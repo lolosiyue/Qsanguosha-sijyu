@@ -809,7 +809,9 @@ void PlayerCardContainer::updateHandcardNum()
         _m_handCardNumText->setZValue(100);
     }
     _m_handCardNumText->setPos(mapFromItem(_getAvatarParent(), QPointF(wideArea.x(), wideArea.y())));
-    _m_handCardNumText->setVisible(true);
+    // inovation_fengbi：手牌數只對持有者本人以外的玩家隱藏
+    const bool hideHandcardNum = m_player && m_player != Self && m_player->hasSkill("inovation_fengbi");
+    _m_handCardNumText->setVisible(!hideHandcardNum);
 
     if (!m_player) return;
     int limitBase = m_player->getHp();

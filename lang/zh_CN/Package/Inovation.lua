@@ -738,4 +738,7 @@ return {
 	["kuisi$"] = "image=image/animate/kuisi.png",
 	["lunpo$"] = "image=image/animate/lunpo.png",
 	["zhinian$"] = "image=image/animate/zhinian.png",
+
+	["inovation_fengbi"] = "封弊",
+	[":inovation_fengbi"] = "锁定技。其他角色无法获知你的手牌数。当你装备区或判定区有牌时，其他角色无法变动你的手牌。",
 }

@@ -597,21 +597,48 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
     }
     int card_id = -1;
 
+    // inovation_fengbi：目標持有封弊且選擇者非本人時，手牌不可被指名；
+    // 裝備區／判定區有牌可選則剝去 "h"，只剩手牌可選時由伺服器直接隨機，
+    // 不下發 S_COMMAND_CHOOSE_CARD 對話框
+    QString flags_copy = flags;
+    bool fengbi_random_pick = false;
+    if (who->hasSkill(QStringLiteral("inovation_fengbi")) && who != player) {
+        if (!who->getEquips().isEmpty() && flags_copy.contains(QLatin1Char('e')))
+            flags_copy.remove(QLatin1Char('h'));
+        else if (!who->getJudgingArea().isEmpty() && flags_copy.contains(QLatin1Char('j')))
+            flags_copy.remove(QLatin1Char('h'));
+        else
+            fengbi_random_pick = true;
+    }
+
     QVariant over = findTestOverride(player, "card_chosen", reason);
     if (over.isValid() && over.canConvert<int>()) {
         card_id = over.toInt();
+    } else if (fengbi_random_pick) {
+        QList<const Card *> candidates;
+        foreach (const Card *c, who->getCards(flags_copy)) {
+            if (disabled_ids.contains(c->getId()))
+                continue;
+            if (method == Card::MethodDiscard && !player->canDiscard(who, c->getId()))
+                continue;
+            if (method == Card::MethodGet && !player->canGet(who, c->getId()))
+                continue;
+            candidates << c;
+        }
+        if (!candidates.isEmpty())
+            card_id = candidates.at(m_room.roomRuntime()->rng().bounded(candidates.size()))->getId();
     } else {
         AI *ai = player->getAI();
         if (ai) {
             QElapsedTimer timer;
             timer.start();
             player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-            card_id = ai->askForCardChosen(who, flags, reason, method);
+            card_id = ai->askForCardChosen(who, flags_copy, reason, method);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
             JsonArray arg;
-            arg << who->objectName() << flags << reason << handcard_visible;
+            arg << who->objectName() << flags_copy << reason << handcard_visible;
             arg << (int)method << JsonUtils::toJsonArray(disabled_ids) << can_cancel;
             if (m_room.doRequest(player, S_COMMAND_CHOOSE_CARD, arg, true)) {
                 const QVariant &clientReply = player->getClientReply();
@@ -621,13 +648,13 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
                 ai = player->getAI();
                 if (ai) {
                     player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-                    card_id = ai->askForCardChosen(who, flags, reason, method);
+                    card_id = ai->askForCardChosen(who, flags_copy, reason, method);
                 }
             }
         }
     }
     if (card_id == -1 && !can_cancel) {
-        foreach (const Card *c, who->getCards(flags)) {
+        foreach (const Card *c, who->getCards(flags_copy)) {
             if (disabled_ids.contains(c->getId()))
                 continue;
             bool can_take = true;
