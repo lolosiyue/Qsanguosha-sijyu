@@ -70,18 +70,6 @@ copy_lua_tree "$clone_dir/ai" "$ai_target"
 copy_lua_top_level "$clone_dir/extensions" "$extensions_target"
 copy_lua_top_level "$clone_dir/lua" "$lua_target"
 
-# SI changes the mission API to exact SkillInstanceRef values. Keep fetched
-# external callers in step with that API until the migration lands upstream.
-shiming_patch="$root/tools/patches/shiming-instances.patch"
-if git -C "$root" apply --check "$shiming_patch"; then
-    git -C "$root" apply "$shiming_patch"
-elif git -C "$root" apply --reverse --check "$shiming_patch"; then
-    echo 'Shiming instance migration already present in external content'
-else
-    echo 'Shiming instance migration does not match fetched Lua content' >&2
-    exit 1
-fi
-
 # Workaround (upstream bug in lolosiyue/extensions): the AI load loop uses the
 # lowercased package name as filename ("lua/ai/"..sl), but the files on disk are
 # mixed-case (e.g. NyarzFirst-ai.lua). On case-sensitive filesystems dofile()
