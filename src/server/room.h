@@ -10,6 +10,7 @@
 #include "event-dispatcher.h"
 #include "protocol/protocol-message.h"
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <QPointer>
@@ -129,6 +130,10 @@ public:
     bool isSinglePlayerMode() const;
     // 單機投降就地消費：已收到投降且確為單機時 makeSurrender(房主)。由 RoomThread::delay 呼叫。
     void trySinglePlayerSurrender();
+    // Cooperative stop point for the game thread: once requestStopGameThreads() has
+    // run, unwinds the game with GameFinished (the same path gameOver takes) instead
+    // of letting AI seats play on until the current turn ends.
+    void throwIfStopRequested() const;
     int getLack() const;
     QString getMode() const;
     const Scenario*getScenario() const;
@@ -817,6 +822,7 @@ private:
     GameSessionConfig m_sessionConfig;
     QString m_takeoverError;
     bool m_takeoverRestoring = false;
+    std::atomic_bool m_stopRequested{false};
 
     JsonArray m_fillAGarg;
     QList<JsonArray> m_takeAGargs;
