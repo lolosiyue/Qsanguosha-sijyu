@@ -346,6 +346,14 @@ int main(int argc, char *argv[]) {
                 QStringLiteral("EngineBootstrap::initialize failed"), 1);
         return 1;
     }
+    // The legacy aboutToQuit->deleteLater hook frees Engine inside execCleanup's
+    // deferred-delete drain while the global Sanguosha pointer still refers to
+    // it. MainWindow, QApplication and the top-level scene are all intentionally
+    // leaked, so teardown code (deferred deletes queued after Engine's, atexit
+    // hooks) keeps dereferencing Sanguosha -> UAF on e.g. Engine::m_rooms.
+    // Every other entry point (server/tui/excel/sheets) already disconnects
+    // this hook; the engine is reclaimed by process exit anyway.
+    QObject::disconnect(qApp, SIGNAL(aboutToQuit()), Sanguosha, SLOT(deleteLater()));
     // Engine 已就緒,把真實版本號補登記給 crash handler(install() 時拿不到)
     CrashHandler::setVersion(Sanguosha->getVersionNumber().toUtf8().constData());
 #ifdef AUDIO_SUPPORT
