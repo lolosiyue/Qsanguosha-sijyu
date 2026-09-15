@@ -462,5 +462,18 @@ CommonTranslationTable = {
 	["equip_slot_occupied"] = "此装备位被 %1 占据",
 
 
+
+	-- ported from QSanguosha20260807
+	["break_equip"] = "",
+	["phase0"] = "回合开始阶段",
+	["phase1"] = "准备阶段",
+	["phase2"] = "判定阶段",
+	["phase3"] = "摸牌阶段",
+	["phase4"] = "出牌阶段",
+	["phase5"] = "弃牌阶段",
+	["phase6"] = "结束阶段",
+	["phase7"] = "回合外阶段",
+	["phase8"] = "无阶段",
+	["west"] = "西",
 }
 return CommonTranslationTable
