@@ -417,7 +417,9 @@ if(TARGET qsanguosha_rules_session)
         target_compile_definitions(qsanguosha_olqingjian_pile_probe PRIVATE _CRT_SECURE_NO_WARNINGS)
     endif()
     add_test(NAME qsanguosha_olqingjian_pile_sync
-        COMMAND qsanguosha_olqingjian_pile_probe
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/client_runtime/check-olqingjian-pile.py"
+            --runner $<TARGET_FILE:qsanguosha_olqingjian_pile_probe>
             --asset-root "${QSAN_TEST_ROOT}"
             --output "${CMAKE_CURRENT_BINARY_DIR}/olqingjian-pile-sync.json")
     set_tests_properties(qsanguosha_olqingjian_pile_sync PROPERTIES

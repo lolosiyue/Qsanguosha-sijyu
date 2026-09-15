@@ -1,4 +1,6 @@
 #include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTextStream>
@@ -378,10 +380,11 @@ int main(int argc, char **argv)
         QTimer shutdownTimer;
         shutdownTimer.setInterval(100);
         QObject::connect(&shutdownTimer, &QTimer::timeout, &app,
-            [&app, &console, &logger]() {
+            [&app, &console, &logger, &shutdownTimer]() {
                 const int shutdownCode = requestedShutdownCode();
                 if (shutdownCode < 0)
                     return;
+                shutdownTimer.stop();
 #if defined(Q_OS_WIN)
                 const QString message = QStringLiteral(
                     "Shutdown requested by console control %1").arg(shutdownCode);
@@ -462,6 +465,27 @@ int main(int argc, char **argv)
                                     {QStringLiteral("mode"), snapshot.gameMode}});
             console.start();
             result = app.exec();
+            // Destroying a Room with a live RoomThread joins it from main, while the
+            // RoomThread may be blocked in a BlockingQueuedConnection to main
+            // (Room::signalSetProperty) and the join times out into qFatal. Stop the
+            // rooms through the non-blocking disposal path while main still pumps.
+            if (!server.shutdownComplete()) {
+                server.beginShutdown();
+                QEventLoop drainLoop;
+                QTimer drainPoll;
+                QElapsedTimer drainTimer;
+                drainTimer.start();
+                QObject::connect(&drainPoll, &QTimer::timeout, &drainLoop,
+                    [&server, &drainLoop, &drainTimer]() {
+                        if (server.shutdownComplete() || drainTimer.elapsed() >= 30000)
+                            drainLoop.quit();
+                    });
+                drainPoll.start(25);
+                drainLoop.exec();
+                if (!server.shutdownComplete())
+                    logger.warning(QStringLiteral("server"),
+                        QStringLiteral("Rooms did not stop within the shutdown deadline"));
+            }
             CrashHandler::beginShutdown();
         }
     }

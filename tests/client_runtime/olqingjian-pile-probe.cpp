@@ -13,14 +13,10 @@
 
 #include <QCoreApplication>
 #include <QDir>
-#include <QFile>
-#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QRegularExpression>
 #include <QSaveFile>
-#include <QSet>
 #include <QTemporaryDir>
 #include <cstdio>
 #include <stdexcept>
@@ -122,33 +118,6 @@ QJsonArray jsonInts(const QVariantList &values)
     return array;
 }
 
-// extensions/ is gitignored private content. CI checkouts still declare those
-// scripts in lua/config.lua, so Engine::Engine() would exit(1) on loadfile.
-// Missing files become hidden no-op packages; existing files are left alone.
-void ensureExtensionStubs(const QString &assets)
-{
-    QFile config(QDir(assets).filePath(QStringLiteral("lua/config.lua")));
-    check(config.open(QIODevice::ReadOnly), "cannot read lua/config.lua");
-    const QString text = QString::fromUtf8(config.readAll());
-    static const QRegularExpression pathRe(QStringLiteral("extensions/[A-Za-z0-9_.-]+\\.lua"));
-    QRegularExpressionMatchIterator it = pathRe.globalMatch(text);
-    QSet<QString> paths;
-    while (it.hasNext())
-        paths.insert(it.next().captured());
-    check(!paths.isEmpty(), "lua/config.lua did not declare any extension scripts");
-    for (const QString &relative : paths) {
-        const QString path = QDir(assets).filePath(relative);
-        if (QFile::exists(path))
-            continue;
-        check(QDir().mkpath(QFileInfo(path).absolutePath()), "cannot create extensions directory");
-        QSaveFile file(path);
-        check(file.open(QIODevice::WriteOnly)
-                  && file.write("-- CI stub; private extension assets are not in this checkout\n"
-                                "return { hidden = true }\n")
-                  && file.commit(),
-              "cannot write extension stub");
-    }
-}
 }
 
 int main(int argc, char **argv)
@@ -164,11 +133,9 @@ int main(int argc, char **argv)
         isolated.setAutoRemove(true);
         const QString user = isolated.filePath(QStringLiteral("userdata"));
         check(QDir().mkpath(user), "cannot create isolated userdata directory");
-        ensureExtensionStubs(assets);
-
-        // ClientRulesHost::initialize also writes the production registry, which
-        // rejects a checkout whose gitignored extension files were stubbed.
-        // This probe only needs Engine + ClientRulesSession::evaluate().
+        // The launcher stages builtin-only assets before this process starts.
+        // Exercise the production Engine + ClientRulesSession without writing
+        // extension placeholders into the caller's asset directory.
         int argcHolder = 1;
         char name[] = "qsanguosha_olqingjian_pile_probe";
         char *argvHolder[] = {name, nullptr};

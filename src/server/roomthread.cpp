@@ -1371,6 +1371,8 @@ void RoomThread::reclaimCompletedTurn()
 
 bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
+	if (room)
+		room->throwIfStopRequested();
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	if (m_perfTraceEnabled)
 		++m_triggerDispatchProfile.triggerCount;
@@ -1514,6 +1516,7 @@ void RoomThread::delay(long secs)
 	if (secs<0) secs = Config.AIDelay;
 	if (Config.AIDelay>0&&room->property("to_test").isNull())
 		msleep(secs);
+	room->throwIfStopRequested();
 	// 單機投降高頻消費點：AI 每步都會路過。非單機／無訊號時只是一次 bool 判斷。
 	room->trySinglePlayerSurrender();
 }
