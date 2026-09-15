@@ -1244,6 +1244,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillTargetConfirming, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
+		selected_ctx->targets = selected_ctx->updated_targets;
 
 		selected_ctx->current_event = EventSkillInvoking;
 		ctx_data = QVariant::fromValue(*selected_ctx);
