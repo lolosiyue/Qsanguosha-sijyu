@@ -48,13 +48,17 @@ on_shiming_fail = function(self, room, player, ref) ... end
 The first three completion callback arguments are unchanged; the previous
 `lua-ext-spec.md` event/data/ask_who signature was inaccurate.
 
-`sgs.CreateShimingTriggerSkill(spec)` is an explicit legacy migration adapter.
-Its `on_trigger(self, event, player, data, room, ref)` runs once for each valid
-instance on the event player, using a snapshot of IDs and revalidating each.
-A true result still interrupts the event. It does not implicitly resolve a
-different owner; cross-player observers must enumerate owners explicitly.
-`Player:getValidSkillInstanceIds(name)` is now exposed through SWIG.
-The ordinary legacy scheduler and unrelated skills retain their behavior.
+Mission skills use `sgs.CreateTriggerSkillV2 { shiming_skill = true, ... }`.
+`can_trigger(self, event, room, player, data)` returns eligible exact keys;
+`on_cost` and `on_effect` use `ctx:getActivationRef()` and `ctx.original_data`.
+RoomThread expands and validates instances through the existing V2 dispatcher.
+Automatic mission events use compulsory frequency so completing a mission does
+not introduce an optional trigger-order cancellation. Selectors filter event
+conditions and pending instances; effects revalidate after intervening V2 hooks.
+Completion callbacks remain on the same V2 definition. No mission factory or
+legacy callback adapter is required. Cross-player selectors use the existing
+V2 owner-return format. The ordinary legacy scheduler is unchanged.
+`Player:getValidSkillInstanceIds(name)` is exposed through SWIG.
 
 ## Inventory and deliberate shared effects
 
@@ -102,9 +106,9 @@ No external repository is edited or published by this task.
 | External file | Migration |
 | --- | --- |
 | `extensions/scarlet.lua` | V2 `s4_fuhan`, `s4_ganglie`: exact selectors/status/callback refs; Ganglie attacker history is per instance |
-| `extensions/newgenerals.lua` | `powei`, `mouhuoji`: explicit dispatch; Mouhuoji damage history and self-detach are exact |
-| `extensions/rushB.lua` | `rushB_moubazhen`: instance card-name record, exact completion/self-detach |
-| `extensions/DragonLoke.lua` | `dl_chaju`: exact card-origin progress and outcome; independent completion guards |
+| `extensions/newgenerals.lua` | `powei`, `mouhuoji`: standard V2 dispatch; Mouhuoji damage history and self-detach are exact |
+| `extensions/rushB.lua` | `rushB_moubazhen`: standard V2 dispatch, instance card-name record, exact completion/self-detach |
+| `extensions/DragonLoke.lua` | `dl_chaju`: standard V2 dispatch, exact card-origin progress and outcome; independent completion guards |
 | `extensions/sijyu.lua` | `sijyu_xinghan`: explicit owner/ref enumeration and instance partner identity |
 | `lua/ai/mobile-ai.lua`, `lua/ai/scarlet-ai.lua` | Remove old status mark reads; use explicit aggregate outcome heuristics |
 

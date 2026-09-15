@@ -18,28 +18,6 @@ local function configureUsage(skill, spec)
 	end
 end
 
--- Opt-in migration adapter: the legacy scheduler still calls once, but this
--- mission callback receives an exact reference for each currently valid copy.
--- Cross-player observers should explicitly enumerate their actual owners instead.
-function sgs.CreateShimingTriggerSkill(spec)
-    local callback = assert(spec.on_trigger)
-    local copy = {}
-    for key, value in pairs(spec) do copy[key] = value end
-    copy.shiming_skill = true
-    copy.on_trigger = function(self, event, player, data, room)
-        local ids = sgs.QList2Table(player:getValidSkillInstanceIds(self:objectName()))
-        for _, id in ipairs(ids) do
-            if player:hasSkillInstance(self:objectName(), id)
-                and not player:isSkillInvalid(self:objectName(), id) then
-                local ref = sgs.SkillInstanceRef(player:objectName(), sgs.SkillInstanceKey(self:objectName(), id))
-                if callback(self, event, player, data, room, ref) then return true end
-            end
-        end
-        return false
-    end
-    return sgs.CreateTriggerSkill(copy)
-end
-
 -- trigger skills
 function sgs.CreateTriggerSkill(spec)
 	assert(type(spec.name)=="string")
