@@ -95,7 +95,8 @@ int main(int argc, char **argv)
                 || requestedCase == QLatin1String("lease")
                 || requestedCase == QLatin1String("reservation")
                 || requestedCase == QLatin1String("lua-pin")
-                || requestedCase == QLatin1String("overlap")) {
+                || requestedCase == QLatin1String("overlap")
+                || requestedCase == QLatin1String("lua-exception-unwind")) {
                 char *fixtureArgv[] = {argv[0], argv[3], nullptr};
                 return runCardLifetimeShutdownFixture(2, fixtureArgv);
             }
@@ -112,6 +113,7 @@ int main(int argc, char **argv)
             {QStringLiteral("lua-runtime"), {QStringLiteral("--suite"), QStringLiteral("lua-runtime")}},
             {QStringLiteral("room-runtime"), {QStringLiteral("--suite"), QStringLiteral("room-runtime")}},
             {QStringLiteral("room-lua-teardown"), {QStringLiteral("--suite"), QStringLiteral("room-lua-teardown")}},
+            {QStringLiteral("lua-exception-unwind"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-shutdown"), QStringLiteral("lua-exception-unwind")}, 60000},
             {QStringLiteral("initial-room-close"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-initial-room-close")}, 60000},
             {QStringLiteral("initialization-handoff"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-initialization-handoff")}, 10000},
             {QStringLiteral("turn-reclaim"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-turn-reclaim")}, 10000},

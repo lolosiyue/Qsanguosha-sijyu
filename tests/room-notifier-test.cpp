@@ -1,4 +1,5 @@
 #include "engine-bootstrap.h"
+#include "engine.h"
 #include "json.h"
 #include "protocol.h"
 #include "protocol/protocol-runtime.h"
@@ -12,6 +13,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <cstdio>
 
 using namespace QSanProtocol;
 
@@ -32,7 +34,12 @@ public:
         QObject::connect(player, &ServerPlayer::message_ready, player,
                          [this, player](const QByteArray &message) {
             ProtocolMessage packet;
-            if (!ProtocolCodecRouter().decode(message, &packet).success) {
+            const auto decoded = ProtocolCodecRouter().decode(message, &packet);
+            if (!decoded.success) {
+                std::fprintf(stderr,
+                             "[room-notifier privacy] wire decode failed receiver=%s bytes=%d\n",
+                             player->objectName().toUtf8().constData(),
+                             static_cast<int>(message.size()));
                 parseFailed = true;
                 return;
             }
@@ -94,6 +101,336 @@ static bool expectCount(const MessageRecorder &recorder, ServerPlayer *receiver,
         return true;
     qCritical() << context << "expected" << expected << "packets, got" << actual;
     return false;
+}
+
+static QVariantMap firstMovePayload(const MessageRecorder &recorder,
+                                    ServerPlayer *receiver, CommandType command)
+{
+    const PacketRecord *record = recorder.first(receiver, command);
+    if (!record) {
+        std::fprintf(stderr, "[room-notifier privacy] missing packet receiver=%s command=%d count=%d\n",
+                     receiver ? receiver->objectName().toUtf8().constData() : "<null>",
+                     static_cast<int>(command), recorder.count(receiver, command));
+        return QVariantMap();
+    }
+    if (record->body.userType() != QMetaType::QVariantMap) {
+        std::fprintf(stderr,
+                     "[room-notifier privacy] packet body is not map receiver=%s command=%d userType=%d\n",
+                     receiver ? receiver->objectName().toUtf8().constData() : "<null>",
+                     static_cast<int>(command), record->body.userType());
+        return QVariantMap();
+    }
+    const QVariantMap payload = record->body.toMap();
+    const QVariantList moves = payload.value(QStringLiteral("moves")).toList();
+    if (moves.isEmpty() || moves.first().userType() != QMetaType::QVariantMap) {
+        std::fprintf(stderr,
+                     "[room-notifier privacy] moves shape invalid receiver=%s command=%d hasMoves=%d movesType=%d count=%d keys=%s\n",
+                     receiver ? receiver->objectName().toUtf8().constData() : "<null>",
+                     static_cast<int>(command), payload.contains(QStringLiteral("moves")),
+                     payload.value(QStringLiteral("moves")).userType(),
+                     static_cast<int>(moves.size()),
+                     payload.keys().join(QLatin1Char(',')).toUtf8().constData());
+        return QVariantMap();
+    }
+    return moves.first().toMap();
+}
+
+static bool firstCardIdIs(const QVariantMap &move, int expected)
+{
+    const QVariantList cardIds = move.value(QStringLiteral("card_ids")).toList();
+    return !cardIds.isEmpty() && cardIds.first().toInt() == expected;
+}
+
+static QString moveIdsText(const QVariantMap &move)
+{
+    if (!move.contains(QStringLiteral("card_ids")))
+        return QStringLiteral("<missing>");
+    const QVariantList ids = move.value(QStringLiteral("card_ids")).toList();
+    QStringList values;
+    for (const QVariant &id : ids)
+        values << (id.isValid() ? id.toString() : QStringLiteral("<invalid>"));
+    return values.join(QLatin1Char(','));
+}
+
+static bool expectMove(const char *stage, const char *recipient, const QVariantMap &move,
+                       bool expectedOpen, int expectedCardId)
+{
+    const bool hasOpen = move.contains(QStringLiteral("open"));
+    const bool actualOpen = move.value(QStringLiteral("open")).toBool();
+    const bool cardMatches = firstCardIdIs(move, expectedCardId);
+    if (hasOpen && actualOpen == expectedOpen && cardMatches)
+        return true;
+
+    const QByteArray stageBytes(stage);
+    const QByteArray recipientBytes(recipient);
+    const QByteArray idsBytes(moveIdsText(move).toUtf8());
+    const QByteArray keysBytes(move.keys().join(QLatin1Char(',')).toUtf8());
+    std::fprintf(stderr,
+                 "[room-notifier privacy] mismatch stage=%s recipient=%s expectedOpen=%d actualOpen=%s expectedCardId=%d actualCardIds=[%s] keys=[%s]\n",
+                 stageBytes.constData(), recipientBytes.constData(), expectedOpen,
+                 hasOpen ? (actualOpen ? "true" : "false") : "<missing>",
+                 expectedCardId, idsBytes.constData(), keysBytes.constData());
+    return false;
+}
+
+static bool expectMovePacketCount(const MessageRecorder &recorder, ServerPlayer *receiver,
+                                  CommandType command, int expected, const char *stage)
+{
+    const int actual = recorder.count(receiver, command);
+    if (actual == expected)
+        return true;
+    std::fprintf(stderr,
+                 "[room-notifier privacy] packet count mismatch stage=%s receiver=%s command=%d expected=%d actual=%d parseFailed=%d\n",
+                 stage, receiver ? receiver->objectName().toUtf8().constData() : "<null>",
+                 static_cast<int>(command), expected, actual, recorder.parseFailed);
+    return false;
+}
+
+static void printRoomNotifierStage(const char *stage)
+{
+    std::fprintf(stderr, "[room-notifier stage] %s\n", stage);
+    std::fflush(stderr);
+}
+
+static bool movePayloadHidesUnauthorizedIds(Room &room, MessageRecorder &recorder,
+                                            ServerPlayer *owner, ServerPlayer *destination,
+                                            ServerPlayer *observer,
+                                            ServerPlayer *controlledPeer)
+{
+    const int privatePileId = 12;
+    const int hiddenHandId = 13;
+    const int visibleFlagId = 14;
+    const int openPileId = 15;
+    if (!room.getCard(privatePileId) || !room.getCard(hiddenHandId)
+        || !room.getCard(visibleFlagId) || !room.getCard(openPileId)) {
+        std::fprintf(stderr,
+                     "[room-notifier privacy] fixture card missing roomCards id12=%d id13=%d id14=%d id15=%d\n",
+                     room.getCard(privatePileId) != nullptr,
+                     room.getCard(hiddenHandId) != nullptr,
+                     room.getCard(visibleFlagId) != nullptr,
+                     room.getCard(openPileId) != nullptr);
+        return false;
+    }
+
+    printRoomNotifierStage("privacy.private-pile");
+    owner->setPileOpen(QStringLiteral("privacy_test"), owner->objectName());
+    recorder.clear();
+
+    CardsMoveStruct privatePileMove(privatePileId, owner, destination, Player::PlaceSpecial,
+                                    Player::PlaceHand,
+                                    CardMoveReason(CardMoveReason::S_REASON_TRANSFER,
+                                                   owner->objectName()));
+    privatePileMove.open = true;
+    privatePileMove.from_pile_name = QStringLiteral("privacy_test");
+    QList<CardsMoveStruct> privatePileMoves;
+    privatePileMoves << privatePileMove;
+    room.notifyMoveCards(true, privatePileMoves, false,
+                         QList<ServerPlayer *>() << owner << observer);
+    room.notifyMoveCards(false, privatePileMoves, false,
+                         QList<ServerPlayer *>() << owner << observer);
+
+    const QVariantMap ownerLose = firstMovePayload(recorder, owner, S_COMMAND_LOSE_CARD);
+    const QVariantMap observerLose = firstMovePayload(recorder, observer, S_COMMAND_LOSE_CARD);
+    const QVariantMap ownerGet = firstMovePayload(recorder, owner, S_COMMAND_GET_CARD);
+    const QVariantMap observerGet = firstMovePayload(recorder, observer, S_COMMAND_GET_CARD);
+    const QVariantList privateIds = observerLose.value(QStringLiteral("card_ids")).toList();
+    CardsMoveStruct parsedHiddenPileMove;
+    if (recorder.parseFailed) {
+        std::fprintf(stderr, "[room-notifier privacy] decode failed during private pile GET/LOSE\n");
+        return false;
+    }
+    if (!expectMove("private-pile-LOSE-owner", owner->objectName().toUtf8().constData(),
+                    ownerLose, true, privatePileId)
+        || !expectMove("private-pile-LOSE-observer", observer->objectName().toUtf8().constData(),
+                       observerLose, false, Card::S_UNKNOWN_CARD_ID)
+        || !expectMove("private-pile-GET-owner", owner->objectName().toUtf8().constData(),
+                       ownerGet, true, privatePileId)
+        || !expectMove("private-pile-GET-observer", observer->objectName().toUtf8().constData(),
+                       observerGet, false, Card::S_UNKNOWN_CARD_ID))
+        return false;
+    if (privateIds.size() != 1 || privateIds.first().toInt() != Card::S_UNKNOWN_CARD_ID) {
+        std::fprintf(stderr,
+                     "[room-notifier privacy] parsed observer LOSE ids count=%d actualFirst=%s expected=%d\n",
+                     static_cast<int>(privateIds.size()), privateIds.isEmpty() ? "<empty>"
+                         : privateIds.first().toString().toUtf8().constData(),
+                     Card::S_UNKNOWN_CARD_ID);
+        return false;
+    }
+    if (!parsedHiddenPileMove.tryParse(observerLose)) {
+        std::fprintf(stderr, "[room-notifier privacy] CardsMoveStruct::tryParse rejected observer private-pile LOSE payload\n");
+        return false;
+    }
+    if (parsedHiddenPileMove.card_ids != (QList<int>() << Card::S_UNKNOWN_CARD_ID)) {
+        std::fprintf(stderr,
+                     "[room-notifier privacy] parsed observer private-pile ids differ, count=%d first=%d expected=%d\n",
+                     static_cast<int>(parsedHiddenPileMove.card_ids.size()),
+                     parsedHiddenPileMove.card_ids.isEmpty() ? 0
+                         : parsedHiddenPileMove.card_ids.first(),
+                     Card::S_UNKNOWN_CARD_ID);
+        return false;
+    }
+    if (!expectMovePacketCount(recorder, owner, S_COMMAND_LOSE_CARD, 1,
+                               "private-pile-owner-LOSE")
+        || !expectMovePacketCount(recorder, observer, S_COMMAND_LOSE_CARD, 1,
+                                  "private-pile-observer-LOSE")
+        || !expectMovePacketCount(recorder, owner, S_COMMAND_GET_CARD, 1,
+                                  "private-pile-owner-GET")
+        || !expectMovePacketCount(recorder, observer, S_COMMAND_GET_CARD, 1,
+                                  "private-pile-observer-GET")
+        || !expectMovePacketCount(recorder, destination, S_COMMAND_LOSE_CARD, 0,
+                                  "controlled-destination-LOSE")
+        || !expectMovePacketCount(recorder, destination, S_COMMAND_GET_CARD, 0,
+                                  "controlled-destination-GET")
+        || !expectMovePacketCount(recorder, controlledPeer, S_COMMAND_LOSE_CARD, 0,
+                                  "controlled-peer-LOSE")
+        || !expectMovePacketCount(recorder, controlledPeer, S_COMMAND_GET_CARD, 0,
+                                  "controlled-peer-GET"))
+        return false;
+    if (privatePileMoves.first().card_ids.first() != privatePileId
+        || !privatePileMoves.first().open) {
+        std::fprintf(stderr,
+                     "[room-notifier privacy] shared move mutated ids=%d open=%d expectedId=%d open=1\n",
+                     privatePileMoves.first().card_ids.first(), privatePileMoves.first().open,
+                     privatePileId);
+        return false;
+    }
+
+    printRoomNotifierStage("privacy.authorized-pile-viewer");
+    owner->setPileOpen(QStringLiteral("authorized_viewer_test"), observer->objectName());
+    recorder.clear();
+    CardsMoveStruct authorizedPileMove(openPileId, owner, destination,
+                                       Player::PlaceSpecial, Player::PlaceHand,
+                                       CardMoveReason(CardMoveReason::S_REASON_TRANSFER,
+                                                      owner->objectName()));
+    authorizedPileMove.from_pile_name = QStringLiteral("authorized_viewer_test");
+    QList<CardsMoveStruct> authorizedPileMoves;
+    authorizedPileMoves << authorizedPileMove;
+    room.notifyMoveCards(true, authorizedPileMoves, false,
+                         QList<ServerPlayer *>() << observer);
+    room.notifyMoveCards(false, authorizedPileMoves, false,
+                         QList<ServerPlayer *>() << observer);
+    const QVariantMap authorizedLose = firstMovePayload(
+        recorder, observer, S_COMMAND_LOSE_CARD);
+    const QVariantMap authorizedGet = firstMovePayload(
+        recorder, observer, S_COMMAND_GET_CARD);
+    if (recorder.parseFailed) {
+        std::fprintf(stderr, "[room-notifier privacy] decode failed during authorized-pile GET/LOSE\n");
+        return false;
+    }
+    if (!expectMove("authorized-pile-LOSE", observer->objectName().toUtf8().constData(),
+                    authorizedLose, true, openPileId)
+        || !expectMove("authorized-pile-GET", observer->objectName().toUtf8().constData(),
+                       authorizedGet, true, openPileId)
+        || !expectMovePacketCount(recorder, observer, S_COMMAND_LOSE_CARD, 1,
+                                  "authorized-pile-LOSE")
+        || !expectMovePacketCount(recorder, observer, S_COMMAND_GET_CARD, 1,
+                                  "authorized-pile-GET"))
+        return false;
+
+    printRoomNotifierStage("privacy.hidden-hand");
+    recorder.clear();
+    CardsMoveStruct hiddenHandMove(hiddenHandId, owner, destination, Player::PlaceHand,
+                                   Player::PlaceHand,
+                                   CardMoveReason(CardMoveReason::S_REASON_TRANSFER,
+                                                  owner->objectName()));
+    QList<CardsMoveStruct> hiddenHandMoves;
+    hiddenHandMoves << hiddenHandMove;
+    room.notifyMoveCards(true, hiddenHandMoves, false,
+                         QList<ServerPlayer *>() << owner << observer);
+    const QVariantMap ownerHand = firstMovePayload(recorder, owner, S_COMMAND_LOSE_CARD);
+    const QVariantMap observerHand = firstMovePayload(recorder, observer, S_COMMAND_LOSE_CARD);
+    if (recorder.parseFailed) {
+        std::fprintf(stderr, "[room-notifier privacy] decode failed during hidden-hand LOSE\n");
+        return false;
+    }
+    if (!expectMove("hidden-hand-LOSE-owner", owner->objectName().toUtf8().constData(),
+                    ownerHand, true, hiddenHandId)
+        || !expectMove("hidden-hand-LOSE-observer", observer->objectName().toUtf8().constData(),
+                       observerHand, false, Card::S_UNKNOWN_CARD_ID))
+        return false;
+    if (hiddenHandMoves.first().card_ids.first() != hiddenHandId) {
+        std::fprintf(stderr,
+                     "[room-notifier privacy] shared hidden-hand move id mutated actual=%d expected=%d\n",
+                     hiddenHandMoves.first().card_ids.first(), hiddenHandId);
+        return false;
+    }
+
+    printRoomNotifierStage("privacy.visible-special");
+    room.setCardFlag(visibleFlagId, QStringLiteral("visible"));
+    CardsMoveStruct visibleFlagMove(visibleFlagId, owner, destination, Player::PlaceSpecial,
+                                   Player::PlaceHand,
+                                   CardMoveReason(CardMoveReason::S_REASON_TRANSFER,
+                                                  owner->objectName()));
+    visibleFlagMove.from_pile_name = QStringLiteral("privacy_test");
+    QList<CardsMoveStruct> visibleFlagMoves;
+    visibleFlagMoves << visibleFlagMove;
+    recorder.clear();
+    room.notifyMoveCards(true, visibleFlagMoves, false,
+                         QList<ServerPlayer *>() << observer);
+    room.notifyMoveCards(false, visibleFlagMoves, false,
+                         QList<ServerPlayer *>() << observer);
+    const QVariantMap visibleFlagPayload = firstMovePayload(
+        recorder, observer, S_COMMAND_LOSE_CARD);
+    const QVariantMap visibleFlagGetPayload = firstMovePayload(
+        recorder, observer, S_COMMAND_GET_CARD);
+    room.clearCardFlag(visibleFlagId, nullptr);
+    if (recorder.parseFailed) {
+        std::fprintf(stderr, "[room-notifier privacy] decode failed during visible-special GET/LOSE\n");
+        return false;
+    }
+    if (!expectMove("visible-special-LOSE", observer->objectName().toUtf8().constData(),
+                    visibleFlagPayload, false, visibleFlagId)
+        || !expectMove("visible-special-GET", observer->objectName().toUtf8().constData(),
+                       visibleFlagGetPayload, false, visibleFlagId))
+        return false;
+
+    printRoomNotifierStage("privacy.visible-draw-pile");
+    room.setCardFlag(visibleFlagId, QStringLiteral("visible"));
+    CardsMoveStruct visibleDrawPileMove(visibleFlagId, owner, destination,
+                                        Player::DrawPile, Player::PlaceHand,
+                                        CardMoveReason(CardMoveReason::S_REASON_TRANSFER,
+                                                       owner->objectName()));
+    QList<CardsMoveStruct> visibleDrawPileMoves;
+    visibleDrawPileMoves << visibleDrawPileMove;
+    recorder.clear();
+    room.notifyMoveCards(true, visibleDrawPileMoves, false,
+                         QList<ServerPlayer *>() << observer);
+    room.notifyMoveCards(false, visibleDrawPileMoves, false,
+                         QList<ServerPlayer *>() << observer);
+    const QVariantMap visibleDrawLose = firstMovePayload(
+        recorder, observer, S_COMMAND_LOSE_CARD);
+    const QVariantMap visibleDrawGet = firstMovePayload(
+        recorder, observer, S_COMMAND_GET_CARD);
+    room.clearCardFlag(visibleFlagId, nullptr);
+    if (recorder.parseFailed) {
+        std::fprintf(stderr, "[room-notifier privacy] decode failed during visible-draw-pile GET/LOSE\n");
+        return false;
+    }
+    if (!expectMove("visible-draw-pile-LOSE", observer->objectName().toUtf8().constData(),
+                    visibleDrawLose, false, visibleFlagId)
+        || !expectMove("visible-draw-pile-GET", observer->objectName().toUtf8().constData(),
+                       visibleDrawGet, false, visibleFlagId))
+        return false;
+
+    printRoomNotifierStage("privacy.public-origin");
+    recorder.clear();
+    CardsMoveStruct publicOriginMove(hiddenHandId, owner, destination, Player::DiscardPile,
+                                     Player::PlaceHand,
+                                     CardMoveReason(CardMoveReason::S_REASON_TRANSFER,
+                                                    owner->objectName()));
+    QList<CardsMoveStruct> publicOriginMoves;
+    publicOriginMoves << publicOriginMove;
+    room.notifyMoveCards(true, publicOriginMoves, false,
+                         QList<ServerPlayer *>() << observer);
+    const QVariantMap publicOriginPayload = firstMovePayload(
+        recorder, observer, S_COMMAND_LOSE_CARD);
+    if (recorder.parseFailed) {
+        std::fprintf(stderr, "[room-notifier privacy] decode failed during public-origin LOSE\n");
+        return false;
+    }
+    return expectMove("public-discard-origin-LOSE",
+                      observer->objectName().toUtf8().constData(),
+                      publicOriginPayload, true, hiddenHandId);
 }
 
 static bool directNotificationArrivesOnce(Room &room, MessageRecorder &recorder,
@@ -371,45 +708,67 @@ static bool akarinVisibilityFollowsRecipients(Room &room, MessageRecorder &recor
 int runRoomNotifierTests()
 {
     QString error;
+    printRoomNotifierStage("engine-bootstrap.begin");
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;
         return 1;
     }
+    printRoomNotifierStage("engine-bootstrap.complete");
 
+    printRoomNotifierStage("room.construct.begin");
     Room room(nullptr, QStringLiteral("02_1v1"));
+    printRoomNotifierStage("room.construct.complete");
+    EngineRuntimeContextScope runtimeScope(*Sanguosha, &room);
+    printRoomNotifierStage("room-state.reset.begin");
+    room.roomRuntime()->state().reset();
+    printRoomNotifierStage("room-state.reset.complete");
     ServerPlayer *controller = RoomTestAccess::addPlayer(room, QStringLiteral("controller"));
     ServerPlayer *firstControlled = RoomTestAccess::addPlayer(room, QStringLiteral("controlled_b"));
     ServerPlayer *secondControlled = RoomTestAccess::addPlayer(room, QStringLiteral("controlled_c"));
+    ServerPlayer *privateObserver = RoomTestAccess::addPlayer(room, QStringLiteral("private_observer"));
 
         MessageRecorder recorder;
     recorder.watch(controller);
     recorder.watch(firstControlled);
     recorder.watch(secondControlled);
+    recorder.watch(privateObserver);
 
+    printRoomNotifierStage("suite.direct-notify");
     qInfo() << "room notifier test: direct";
     if (!directNotificationArrivesOnce(room, recorder, controller))
         return 2;
+    printRoomNotifierStage("suite.controller-route");
     qInfo() << "room notifier test: controller";
     if (!controllerReceivesLogicalPlayerNotification(room, recorder, controller,
                                                      firstControlled, secondControlled))
         return 3;
+    printRoomNotifierStage("suite.controller-deduplication");
     qInfo() << "room notifier test: deduplication";
     if (!sharedControllerIsDeduplicated(room, recorder, controller,
                                         firstControlled, secondControlled))
         return 4;
+    printRoomNotifierStage("suite.skill-state");
     qInfo() << "room notifier test: skill state";
     if (!ownerOnlySkillStateFollowsController(room, recorder, controller,
                                               firstControlled, secondControlled))
         return 5;
+    printRoomNotifierStage("suite.presentation");
     qInfo() << "room notifier test: presentation";
     if (!presentationPayloadsStayStable(room, recorder, controller,
                                         firstControlled, secondControlled))
         return 6;
+    printRoomNotifierStage("suite.akarin-visibility");
     qInfo() << "room notifier test: Akarin visibility";
     if (!akarinVisibilityFollowsRecipients(room, recorder, controller,
                                            firstControlled, secondControlled))
         return 7;
+    printRoomNotifierStage("suite.card-movement-privacy");
+    qInfo() << "room notifier test: card movement privacy";
+    if (!movePayloadHidesUnauthorizedIds(room, recorder, controller, firstControlled,
+                                         privateObserver, secondControlled))
+        return 8;
 
     qInfo() << "room notifier behavior passed";
+    printRoomNotifierStage("suite.complete");
     return 0;
 }

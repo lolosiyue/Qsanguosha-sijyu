@@ -74,9 +74,15 @@ void RoomRuntime::reclaimTurnCards()
 
 void RoomRuntime::finalizeWorker()
 {
-    const auto trace = [](const char *phase) {
+    const auto trace = [this](const char *phase) {
         if (qEnvironmentVariableIsSet("QSAN_XP_SHUTDOWN_TRACE")) {
-            std::fprintf(stdout, "shutdown_trace worker_final=%s\n", phase);
+            // Distinguish an invocation still on the stack from stale pin accounting.
+            const CardLifetimeGauge gauge = globalCardLifetimeManager().gaugeForDomain(this);
+            std::fprintf(stdout, "shutdown_trace worker_final=%s game_depth=%d ai_depth=%d "
+                         "game_closed=%d ai_closed=%d domain_pins=%llu\n", phase,
+                         m_lua.invocationDepth(), m_ai.lua().invocationDepth(),
+                         int(m_lua.isClosed()), int(m_ai.lua().isClosed()),
+                         static_cast<unsigned long long>(gauge.lua_pins));
             std::fflush(stdout);
         }
     };

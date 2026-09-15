@@ -1,6 +1,7 @@
 #include "excel/excel-view.h"
 
 #include "client/core/client-core.h"
+#include "client/core/client-game-state-reducer.h"
 #include "core/protocol.h"
 
 #include <QtTest>
@@ -160,6 +161,85 @@ private slots:
         const QJsonObject detail = ExcelView::details(core, QString(), QStringLiteral("card"), QStringLiteral("4"));
         QVERIFY(detail.value(QStringLiteral("hidden")).toBool());
         QVERIFY(!detail.contains(QStringLiteral("object_name")));
+    }
+
+    void redactedMovementStaysPrivateInExcelProjection()
+    {
+        ClientCore core;
+        core.state()->setSelfName(QStringLiteral("self"));
+        core.state()->setPlayerValue(QStringLiteral("other"), QStringLiteral("hand_count"), 4);
+
+        const auto reduceMove = [&core](int command, const QString &fromPlayer,
+                                        int fromPlace, const QString &fromPile,
+                                        const QString &toPlayer, int toPlace,
+                                        const QString &toPile, int cardId) {
+            const QVariantMap move{
+                {QStringLiteral("from_player"), fromPlayer},
+                {QStringLiteral("from_place"), fromPlace},
+                {QStringLiteral("from_pile"), fromPile},
+                {QStringLiteral("to_player"), toPlayer},
+                {QStringLiteral("to_place"), toPlace},
+                {QStringLiteral("to_pile"), toPile},
+                {QStringLiteral("card_ids"), QVariantList{cardId}},
+                {QStringLiteral("open"), false}};
+            const ClientStateReduction result = ClientGameStateReducer::applyNotification(
+                core.state(), command,
+                QVariantMap{{QStringLiteral("schema_version"), 1},
+                            {QStringLiteral("moves"), QVariantList{move}}});
+            QVERIFY(result.success);
+        };
+
+        // Hidden-hand and private-pile movement expose only the redacted sentinel.
+        reduceMove(QSanProtocol::S_COMMAND_LOSE_CARD, QStringLiteral("other"), 0,
+                   QString(), QString(), 4, QStringLiteral("private_cache"), -1);
+        QCOMPARE(core.state()->playerValue(QStringLiteral("other"), QStringLiteral("hand_count")).toInt(), 3);
+        reduceMove(QSanProtocol::S_COMMAND_GET_CARD, QString(), -1, QString(),
+                   QStringLiteral("other"), 0, QString(), -1);
+        QCOMPARE(core.state()->playerValue(QStringLiteral("other"), QStringLiteral("hand_count")).toInt(), 4);
+        reduceMove(QSanProtocol::S_COMMAND_GET_CARD, QString(), -1, QString(),
+                   QStringLiteral("other"), 4, QStringLiteral("private_cache"), -1);
+
+        const QJsonObject snapshot = ExcelView::snapshotView(core, QString());
+        QVERIFY(snapshot.value(QStringLiteral("cards")).toArray().isEmpty());
+        QVERIFY(!core.state()->card(42).contains(QStringLiteral("owner")));
+        QString error;
+        QVERIFY(ExcelView::details(core, QString(), QStringLiteral("card"),
+                                   QStringLiteral("42"), &error).isEmpty());
+        QCOMPARE(error, QStringLiteral("detail_not_found"));
+        QVERIFY(ExcelView::details(core, QString(), QStringLiteral("pile"),
+                                   QStringLiteral("other:private_cache"), &error).isEmpty());
+        QCOMPARE(error, QStringLiteral("detail_not_found"));
+        bool foundOpponent = false;
+        for (const QJsonValue &rowValue : snapshot.value(QStringLiteral("players")).toArray()) {
+            const QJsonObject row = rowValue.toObject();
+            if (row.value(QStringLiteral("id")).toString() == QStringLiteral("other")) {
+                foundOpponent = true;
+                QCOMPARE(row.value(QStringLiteral("hand_count")).toInt(), 4);
+                QVERIFY(!row.contains(QStringLiteral("piles"))
+                        || !row.value(QStringLiteral("piles")).toObject()
+                                .contains(QStringLiteral("private_cache")));
+            }
+        }
+        QVERIFY(foundOpponent);
+
+        // An identified card in the viewer's special pile remains usable.
+        reduceMove(QSanProtocol::S_COMMAND_GET_CARD, QString(), -1, QString(),
+                   QStringLiteral("self"), 4, QStringLiteral("visible_cache"), 12);
+        InteractionRequest request;
+        request.type = InteractionType::ResponseCard;
+        request.payload = CardInteractionPayload();
+        auto *cards = std::get_if<CardInteractionPayload>(&request.payload);
+        cards->selection.selectableCards = {12};
+        cards->selection.enumerated = true;
+        core.beginRequest(request);
+        const QJsonObject detail = ExcelView::details(core, QString(), QStringLiteral("card"),
+                                                       QStringLiteral("12"), &error);
+        QVERIFY(!detail.isEmpty());
+        const QJsonArray candidates = ExcelView::interactionUi(core, QString())
+            .value(QStringLiteral("cards")).toArray();
+        QCOMPARE(candidates.size(), 1);
+        QCOMPARE(candidates.first().toObject().value(QStringLiteral("id")).toString(),
+                 QStringLiteral("12"));
     }
 
     void skillsPreserveInstanceIdentity()

@@ -12,15 +12,18 @@ body{font:13px Arial,sans-serif;padding:10px;color:#202124}h3{margin:0 0 8px}lab
 <div class="grid"><button onclick="startPolling()">開始更新</button><button id="stop-updates" onclick="stopPolling()">停止更新</button></div><button onclick="leave()">關閉本文件會話</button><button onclick="invoke('abandonPair','已清除過期配對')">清除過期配對</button>
 <div id="status" class="status">讀取連線狀態中…</div><img id="detailImage" hidden alt="詳情圖片">
 <script>
-let inflight=false,timer=null,epoch=0,backoff=2000,polling=false,lastError='';
+let inflight=false,timer=null,epoch=0,backoff=2000,polling=false,lastError='',lastErrorKind='';
 const $=id=>document.getElementById(id);
 // Stopping polling stays reachable while a Google request is in flight.
 function busy(v){inflight=v;document.querySelectorAll('button').forEach(b=>{if(b.id!=='stop-updates')b.disabled=v})}
-function show(x,f){
+function show(x,f,kind){
   let text=typeof x==='string'?x:(x&&x.error)||(x&&x.lastError)||(x&&x.status)||f||'操作完成';
   if(x&&x.gameOver)text='GAME_OVER\n勝方：'+(x.winner||'請查看牌桌結果');
   else if(x&&x.prompt)text+='\n'+x.prompt;
-  if(x&&(x.error||x.lastError))lastError=x.error||x.lastError;
+  if(x&&(x.error||x.lastError)){
+    const errorKind=kind||'action';
+    if(errorKind!=='poll'||(lastErrorKind!=='action'&&lastErrorKind!=='pending')){lastError=x.error||x.lastError;lastErrorKind=errorKind;}
+  }
   $('status').textContent=lastError?lastError+'\n'+text:text;
   $('status').className='status '+(lastError?'error':'ok');
   if(x&&Object.prototype.hasOwnProperty.call(x,'detailImage')){
@@ -34,10 +37,14 @@ function call(name,args,onOk,isPoll){
   if(inflight)return;if(timer)clearTimeout(timer);timer=null;busy(true);const serial=epoch;
   google.script.run.withSuccessHandler(x=>{
     busy(false);if(serial!==epoch){schedule();return;}
-    backoff=2000;if(!isPoll)lastError='';(onOk||show)(x);schedule();
+    backoff=2000;
+    if(isPoll&&x&&x.state&&x.state.pending){lastError='前一遊戲指令仍待確認；請按「重試待確認指令」。';lastErrorKind='pending';}
+    else if(isPoll&&lastErrorKind==='poll'){lastError='';lastErrorKind='';}
+    else if(!isPoll){lastError='';lastErrorKind='';}
+    (onOk||show)(x);schedule();
   }).withFailureHandler(e=>{
     busy(false);if(serial!==epoch){schedule();return;}
-    backoff=Math.min(backoff*2,30000);show({error:e.message||String(e)});schedule();
+    backoff=Math.min(backoff*2,30000);show({error:e.message||String(e)},undefined,isPoll?'poll':'action');schedule();
   })[name].apply(null,args||[]);
 }
 function invoke(name,f){call(name,[],x=>show(x,f),false)}

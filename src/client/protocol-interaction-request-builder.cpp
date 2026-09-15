@@ -431,6 +431,8 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         descriptor->command, descriptor->responseShape, std::move(payload), cancelable);
     built.requestId = message.messageId;
     built.prompt = promptOf(object);
+    if (built.prompt.isEmpty() && descriptor->command == S_COMMAND_NULLIFICATION)
+        built.prompt = object.value(QStringLiteral("trick_name")).toString();
     built.skillName = object.value(QStringLiteral("skill_name")).toString();
     *request = std::move(built);
     return request->isValid() || fail(error,

@@ -473,6 +473,43 @@ void builderContract()
                   QStringLiteral("p1")),
           "response-card advertises the same numbered players");
 
+    ProtocolMessage nullification;
+    nullification.type = ProtocolMessageType::Request;
+    nullification.source = ProtocolEndpoint::Room;
+    nullification.destination = ProtocolEndpoint::Client;
+    nullification.command = S_COMMAND_NULLIFICATION;
+    nullification.hasPayload = true;
+    const auto buildsNullification = [&](const QVariantMap &payload, const QString &prompt) {
+        nullification.messageId = ++messageId;
+        nullification.payload = payload;
+        InteractionRequest request;
+        QString error;
+        if (!ProtocolInteractionRequestBuilder::build(nullification, state, &request, &error))
+            return false;
+        const auto *card = request.payloadAs<CardInteractionPayload>();
+        return request.type == InteractionType::Nullification
+            && request.prompt == prompt
+            && card != nullptr
+            && card->selection.pattern == QLatin1String("nullification")
+            && card->sourcePlayer == QLatin1String("p1")
+            && card->fixedTargets == QStringList{QStringLiteral("p2")};
+    };
+    check(buildsNullification({{QStringLiteral("trick_name"), QStringLiteral("duel")},
+                               {QStringLiteral("source_player"), QStringLiteral("p1")},
+                               {QStringLiteral("target_player"), QStringLiteral("p2")}},
+                              QStringLiteral("duel")),
+          "nullification falls back to the wire trick name and preserves source and target");
+    check(buildsNullification({{QStringLiteral("prompt"), QStringLiteral("existing_prompt")},
+                               {QStringLiteral("trick_name"), QStringLiteral("duel")},
+                               {QStringLiteral("source_player"), QStringLiteral("p1")},
+                               {QStringLiteral("target_player"), QStringLiteral("p2")}},
+                              QStringLiteral("existing_prompt")),
+          "nullification keeps an explicit prompt ahead of the trick-name fallback");
+    check(buildsNullification({{QStringLiteral("source_player"), QStringLiteral("p1")},
+                               {QStringLiteral("target_player"), QStringLiteral("p2")}},
+                              QString()),
+          "nullification without a trick name leaves the prompt empty");
+
     // Choose-general is enumerated only when the server really does restrict
     // the answer to the listed candidates. Under FreeChoose (and the scripted
     // modes) the server takes any general name, so an enumerated payload would

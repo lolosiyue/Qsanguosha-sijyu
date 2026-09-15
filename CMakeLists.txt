@@ -588,6 +588,12 @@ if(MSVC)
         target_compile_definitions(qsanguosha_engine PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
     endif()
     target_compile_options(qsanguosha_engine PRIVATE /utf-8 /bigobj /MP8)
+    # Room cancellation propagates TriggerEvent through Lua's extern-C API.
+    # /EHsc can omit invocation/lease destructors across that boundary. Keep
+    # synchronous C++ unwinding, including C callbacks, for engine and PCH.
+    # /EHs maps to MSBuild SyncCThrow; /EHc- also clears Ninja's default /EHsc.
+    target_compile_options(qsanguosha_engine PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/EHs;/EHc->")
 endif()
 
 target_precompile_headers(qsanguosha_engine PRIVATE

@@ -1,8 +1,9 @@
 # Google Sheets 對局前端
 
-狀態：原生 target 與完整 Debug 建置成功；本地 CTest 55/55 通過。
-五個 Apps Script 檔案已安裝到使用者的測試文件，完成 Google 授權、HTTPS 配對、
-原生開房及選將候選呈現。真實儲存格操作仍在驗收；不能把原生 probe 當作完整 Sheets 對局。
+狀態：2026-09-15 已完成一局真實儲存格操作的 05P（真人 1＋AI 4、無託管），第五輪
+GAME_OVER、主公＋忠臣勝；原生 exit 0、無強制終止，程序與埠清理通過。
+五個 Apps Script 檔案已安裝到使用者的測試文件。此結果證明單局可玩，仍有文字／取消呈現
+缺口及多人、逐類互動、CI／交付包待驗；詳見[真人驗收報告](../docs/google-sheets-live-acceptance-20260915-fixed.md)。
 需求與驗收基準見 [設計文件](../docs/google-sheets-client.md)。
 
 ## 組成
@@ -129,7 +130,24 @@ stdin，原生 bridge 會停止並以失敗退出碼回報。明確離開使用 
 診斷。這些只能證明所記錄的程序結果，仍須額外核對 helper、埠與 GAME_OVER。
 程式不刪除整個 runtime 或診斷目錄；刪除歷史診斷應由主機管理者決定。
 
-## 驗證檢查點
+## 2026-09-15 共用規則與隱私修復
+
+絕途的 `sgs.Self` 缺失、無懈可擊錦囊名稱及 E4 移牌 ID 遮蔽已修復並通過相關 focused
+驗證；Sheets bridge/helper 已重新建置與部署 runtime。絕途合法單牌可確認，同花色重複選牌仍被拒絕。
+E3 的原生獨立修復已有 focused 證據；**修復後真人 Sheets 完整對局及正常關閉已通過**。
+詳見 [共用規則修復與驗證](../docs/google-sheets-completion-20260915.md)。
+
+## 2026-09-15 前一局真人驗證
+
+前端提示與錯誤恢復已更新到真實 SGS，前端 **24/24**、gateway **12/12** focused
+tests 及 Sheets 目標增量建置通過。本輪唯一一局真人 05P 在第二輪「絕途」保留牌
+預檢受阻，沒有 GAME_OVER／勝方；正常關閉再現 **E3（exit 86）**。程序與埠已清理，
+但不算正常退出或完整驗收。未啟用託管、未重開對局、未延伸原生除錯。
+
+完整現場、已測互動與限制見 [2026-09-15 驗收報告](../docs/google-sheets-acceptance-20260915.md)。
+更新 Apps Script 後須重新載入 Sheets，再從 QSanGuosha 選單重開側欄。
+
+## 2026-09-13 歷史驗證檢查點
 
 | Gate | 目前狀態／下一步 |
 |---|---|
