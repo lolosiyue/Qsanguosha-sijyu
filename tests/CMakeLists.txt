@@ -421,7 +421,7 @@ if(TARGET qsanguosha_rules_session)
             --asset-root "${QSAN_TEST_ROOT}"
             --output "${CMAKE_CURRENT_BINARY_DIR}/olqingjian-pile-sync.json")
     set_tests_properties(qsanguosha_olqingjian_pile_sync PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/olqingjian-pile-sync"
+        WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
         LABELS "client;client-runtime;fast"
         TIMEOUT 240
         RUN_SERIAL TRUE)
@@ -429,7 +429,6 @@ if(TARGET qsanguosha_rules_session)
         set_property(TEST qsanguosha_olqingjian_pile_sync PROPERTY ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/olqingjian-pile-sync")
 endif()
 
 # Compile the public runtime surface using only its own usage requirements.
