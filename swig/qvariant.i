@@ -195,6 +195,10 @@ public:
 		$self->setValue(QVariant::fromValue(*scs));
 	}
 
+	SkillInstanceRef toSkillInstanceRef() const {
+		return $self->value<SkillInstanceRef>();
+	}
+
 	SkillChangeStruct toSkillChange() const{
 		return $self->value<SkillChangeStruct>();
 	}

@@ -841,34 +841,48 @@ public:
 	{
 		return target&&target->isAlive();
 	}
-	bool trigger(TriggerEvent event,Room*room,ServerPlayer*player,QVariant&data) const
-	{
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event == PreHpRecover) {
+            RecoverStruct recover = data.value<RecoverStruct>();
+            if (recover.card && recover.card->hasFlag("iflitian2Bf")) {
+                recover.recover++;
+                data.setValue(recover);
+            }
+            return false;
+        }
+        const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+        foreach (int id, ids) {
+            if (!player->hasSkillInstance(objectName(), id) || player->isSkillInvalid(objectName(), id)) continue;
+            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(objectName(), id));
+            if (triggerInstance(event, room, player, data, ref)) return true;
+        }
+        return false;
+    }
+
+    bool triggerInstance(TriggerEvent event, Room *room, ServerPlayer *player,
+                         QVariant &data, const SkillInstanceRef &ref) const
+    {
 		if(event==EventPhaseStart){
-			if(player->getPhase()==Player::Start&&player->hasSkill(objectName())&&player->getMark(objectName())<1){
+			if(player->getPhase()==Player::Start&&player->hasSkill(objectName())&&room->getShimingStatus(ref)<1){
 				foreach(ServerPlayer*p,room->getOtherPlayers(player)){
 					if(p->getHandcardNum()>player->getHandcardNum()||p->getHp()>player->getHp())
 						return false;
 				}
-				room->sendShimingLog(player,this,true);
+				if (!room->sendShimingLog(ref,true)) return false;
 				room->gainMaxHp(player,1,objectName());
 				room->handleAcquireDetachSkills(player,"-ifanjie|ifhuangchu");
 			}
 		}else if(event==TargetConfirmed){
 			CardUseStruct use = data.value<CardUseStruct>();
 			if(use.card->isKindOf("Peach")&&use.to.contains(player)
-			&&player->hasSkill(objectName())&&player->getMark(objectName())<1){
+			&&player->hasSkill(objectName())&&room->getShimingStatus(ref)<1){
 				room->sendCompulsoryTriggerLog(player,this);
 				if(use.from!=player){
 					use.nullified_list << player->objectName();
 					data.setValue(use);
 				}else
 					room->setCardFlag(use.card,"iflitian2Bf");
-			}
-		}else if(event==PreHpRecover){
-			RecoverStruct recover = data.value<RecoverStruct>();
-			if(recover.card&&recover.card->hasFlag("iflitian2Bf")){
-				recover.recover++;
-				data.setValue(recover);
 			}
 		}
 		return false;

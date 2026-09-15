@@ -417,6 +417,7 @@ public:
 	bool isSkillInvalid(const char *skill_name, int instanceId = 0) const;
 	int getSkillInstanceId(const char*skill_name) const;
 	QList<int> getSkillInstanceIds(const char*skill_name) const;
+	QList<int> getValidSkillInstanceIds(const char*skill_name) const;
 	QVariant getSkillInstanceCorrectStateValue(const char *skillName, int instanceID, const char *key, const QVariant &defaultValue = QVariant()) const;
 	QList<SkillInstanceKey> getChildSkillInstanceKeys(const SkillInstanceKey &parent) const;
 	QString getSkillDescription() const;
@@ -2332,10 +2333,9 @@ public:
 	void sendLog(const LogMessage&log, ServerPlayer*player);
 	void sendCompulsoryTriggerLog(ServerPlayer*player, const char*skill_name, bool notify_skill = true, bool broadcast = false, int type = -1);
 	void sendCompulsoryTriggerLog(ServerPlayer*player, const Skill*skill, int type = -1);
-	void sendShimingLog(ServerPlayer*player, const char*skill_name, bool finish_or_failed = true, int index = -1);
-	void sendShimingLog(ServerPlayer*player, const Skill*skill, bool finish_or_failed = true, int index = -1);
-	void setShimingStatus(ServerPlayer*player, const char*skillName, int status);
-	int getShimingStatus(ServerPlayer*player, const char*skillName) const;
+	bool sendShimingLog(const SkillInstanceRef &ref, bool finish_or_failed = true, int index = -1);
+	bool setShimingStatus(const SkillInstanceRef &ref, int status, int index = -1);
+	int getShimingStatus(const SkillInstanceRef &ref) const;
     void showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players = QList<ServerPlayer*>());

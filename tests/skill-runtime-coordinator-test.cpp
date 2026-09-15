@@ -7,6 +7,10 @@
 #include "serverplayer.h"
 #include "skill.h"
 #include "skill-instance-utils.h"
+#include "lua-runtime.h"
+#include "lua.hpp"
+#include "protocol/protocol-runtime.h"
+#include "protocol/skill-instance-message.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -128,6 +132,349 @@ static bool executionRegistry(Room &room, ServerPlayer *owner,
     return room.findSkillExecution(executionId) == nullptr;
 }
 
+
+#define SHIMING_CHECK(condition) do { if (!(condition)) { \
+    qCritical() << "Shiming check failed at line" << __LINE__ << #condition; return false; \
+} } while (false)
+
+class ShimingCallbackProbe : public TriggerSkillV2
+{
+public:
+    ShimingCallbackProbe() : TriggerSkillV2("test-shiming-callback") { shiming_skill = true; }
+    bool trigger(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return false; }
+    void onShimingSuccess(Room *, ServerPlayer *, const SkillInstanceRef &ref) const override
+    { successes << ref; }
+    void onShimingFail(Room *, ServerPlayer *, const SkillInstanceRef &ref) const override
+    { failures << ref; }
+    mutable QList<SkillInstanceRef> successes, failures;
+};
+
+class ShimingEventProbe : public TriggerSkill
+{
+public:
+    ShimingEventProbe() : TriggerSkill("test-shiming-events")
+    {
+        global = true;
+        events << EventShimingSuccess << EventShimingFail;
+    }
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const SkillInstanceRef ref = data.value<SkillInstanceRef>();
+        refs << ref;
+        eventsSeen << event;
+        ownerMatches = ownerMatches && ref.ownerObjectName == player->objectName();
+        if (removeRef == ref) player->removeSkillInstance(ref.key.skillName, ref.key.instanceID);
+        if (resetRef == ref) {
+            resetRef = SkillInstanceRef();
+            room->setShimingStatus(ref, 0);
+            room->setShimingStatus(ref, 1);
+        }
+        return false;
+    }
+    mutable QList<SkillInstanceRef> refs;
+    mutable QList<TriggerEvent> eventsSeen;
+    mutable bool ownerMatches = true;
+    SkillInstanceRef removeRef;
+    mutable SkillInstanceRef resetRef;
+};
+
+static bool shimingInstancePipeline()
+{
+    ShimingCallbackProbe skill;
+    ShimingEventProbe probe;
+    Sanguosha->addSkills(QList<const Skill *>() << &skill);
+    Room room(nullptr, "02_1v1");
+    RoomTestAccess::attachThread(room, &probe);
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, "shiming-owner");
+    ServerPlayer *other = RoomTestAccess::addOrdinaryPlayer(room, "shiming-other");
+    room.setCurrent(owner);
+    auto acquire = [&](ServerPlayer *p) {
+        return SkillInstanceRef(p->objectName(), SkillInstanceKey(skill.objectName(),
+            room.acquireSkill(p, skill.objectName(), false, false, false)));
+    };
+    const SkillInstanceRef first = acquire(owner), second = acquire(owner), foreign = acquire(other);
+    QList<SkillInstanceMessage> ownerPackets, otherPackets;
+    int logs = 0;
+    bool logLabelsMatch = true;
+    auto watch = [&](ServerPlayer *p, QList<SkillInstanceMessage> &packets) {
+        QObject::connect(p, &ServerPlayer::message_ready, p, [&, p](const QByteArray &frame) {
+            QSanProtocol::ProtocolMessage message;
+            if (!QSanProtocol::ProtocolCodecRouter().decode(frame, &message).success) return;
+            if (message.command == QSanProtocol::S_COMMAND_SKILL_INSTANCE) {
+                SkillInstanceMessage state;
+                if (state.tryParse(message.payload)) packets << state;
+            }
+            if (p == owner && message.command == QSanProtocol::S_COMMAND_LOG_SKILL) {
+                ++logs;
+                const QVariantMap body = message.payload.toMap();
+                logLabelsMatch = logLabelsMatch && body.value("from_player").toString() == owner->objectName()
+                    && body.value("arguments").toList().value(0).toString() == skill.objectName();
+            }
+        });
+    };
+    watch(owner, ownerPackets);
+    watch(other, otherPackets);
+    SHIMING_CHECK(room.getShimingStatus(first) == 0 && room.getShimingStatus(second) == 0);
+    SHIMING_CHECK(room.setShimingStatus(first, 1));
+    SHIMING_CHECK(room.getShimingStatus(first) == 1 && room.getShimingStatus(second) == 0);
+    SHIMING_CHECK(room.sendShimingLog(second, false, 4));
+    SHIMING_CHECK(room.getShimingStatus(first) == 1 && room.getShimingStatus(second) == 2);
+    SHIMING_CHECK(room.getShimingStatus(foreign) == 0);
+    SHIMING_CHECK(skill.successes == QList<SkillInstanceRef>{first});
+    SHIMING_CHECK(skill.failures == QList<SkillInstanceRef>{second});
+    SHIMING_CHECK(probe.refs == (QList<SkillInstanceRef>{first, second}) && probe.ownerMatches);
+    SHIMING_CHECK(probe.eventsSeen == (QList<TriggerEvent>{EventShimingSuccess, EventShimingFail}));
+    SHIMING_CHECK(!room.sendShimingLog(first) && !room.sendShimingLog(second, false));
+    SHIMING_CHECK(logs == 2 && logLabelsMatch && ownerPackets.size() == 2 && otherPackets.isEmpty());
+    SHIMING_CHECK(ownerPackets[0].instanceId == first.key.instanceID
+        && ownerPackets[0].value.toMap().value("shiming_status").toInt() == 1);
+    SHIMING_CHECK(ownerPackets[1].instanceId == second.key.instanceID
+        && ownerPackets[1].value.toMap().value("shiming_status").toInt() == 2);
+    SHIMING_CHECK(owner->getMark(skill.objectName()) == 0
+        && owner->getMark(skill.objectName() + "__success") == 0);
+    RoomTestAccess::notifySkillInstanceSnapshot(room, owner);
+    RoomTestAccess::notifySkillInstanceSnapshot(room, other);
+    const SkillInstanceMessage snapshot = ownerPackets.last(), observerSnapshot = otherPackets.last();
+    SHIMING_CHECK(snapshot.action == SkillInstanceMessage::Snapshot);
+    int ownStates = 0;
+    for (const auto &entry : snapshot.entries) {
+        if (entry.ownerName == owner->objectName()) {
+            ++ownStates;
+            SHIMING_CHECK(entry.privateState.value("shiming_status").toInt()
+                == (entry.instance.instanceID == first.key.instanceID ? 1 : 2));
+        }
+    }
+    SHIMING_CHECK(ownStates == 2);
+    for (const auto &entry : observerSnapshot.entries)
+        if (entry.ownerName == owner->objectName()) SHIMING_CHECK(entry.privateState.isEmpty());
+    const int oldLogs = logs;
+    SHIMING_CHECK(!room.setShimingStatus(SkillInstanceRef(owner->objectName(), SkillInstanceKey(skill.objectName(), 0)), 1));
+    SHIMING_CHECK(!room.setShimingStatus(SkillInstanceRef("missing", first.key), 1));
+    SHIMING_CHECK(!room.setShimingStatus(second, 3) && logs == oldLogs);
+    SHIMING_CHECK(owner->removeSkillInstance(skill.objectName(), first.key.instanceID));
+    SHIMING_CHECK(!room.setShimingStatus(first, 2) && room.getShimingStatus(second) == 2);
+    const SkillInstanceRef third = acquire(owner);
+    SHIMING_CHECK(third.key.instanceID > second.key.instanceID && room.getShimingStatus(third) == 0);
+    probe.removeRef = third;
+    SHIMING_CHECK(room.setShimingStatus(third, 1) && skill.successes.size() == 1);
+    probe.resetRef = second;
+    SHIMING_CHECK(room.setShimingStatus(second, 1));
+    SHIMING_CHECK(skill.successes == (QList<SkillInstanceRef>{first, second}));
+    SHIMING_CHECK(room.getShimingStatus(second) == 1);
+    // Single-instance compatibility: success/fail/reset, idempotence and owner identity.
+    SHIMING_CHECK(room.setShimingStatus(foreign, 1));
+    SHIMING_CHECK(room.setShimingStatus(foreign, 2));
+    SHIMING_CHECK(room.setShimingStatus(foreign, 0));
+    SHIMING_CHECK(room.getShimingStatus(foreign) == 0 && room.getShimingStatus(second) == 1);
+    qInfo() << "Shiming dual-instance, single-instance, stale/reentrant callback and owner-only snapshot tests passed";
+    return true;
+}
+
+static bool shimingLuaCallbacks()
+{
+    Room room(nullptr, "02_1v1");
+    RoomTestAccess::attachThread(room);
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, "lua-shiming-owner");
+    room.setCurrent(owner);
+    EngineRuntimeContextScope engineScope(*Sanguosha, &room);
+    LuaRuntime::Binding binding(*room.luaRuntime());
+    lua_State *L = room.getLuaState();
+    const char *script = R"lua(
+        si_callbacks = {}
+        si_skill = sgs.CreateTriggerSkillV2 {
+            name = "test-shiming-lua", events = {}, shiming_skill = true,
+            on_shiming_success = function(self, room, player, ref)
+                assert(ref.ownerObjectName == player:objectName())
+                assert(room:getShimingStatus(ref) == 1)
+                table.insert(si_callbacks, ref.key.instanceID * 10 + 1)
+            end,
+            on_shiming_fail = function(self, room, player, ref)
+                assert(ref.ownerObjectName == player:objectName())
+                assert(room:getShimingStatus(ref) == 2)
+                table.insert(si_callbacks, ref.key.instanceID * 10 + 2)
+            end,
+        }
+        si_dispatch = sgs.CreateTriggerSkillV2 {
+            name = "test-shiming-lua-v2", events = {sgs.Dying},
+            shiming_skill = true, frequency = sgs.Skill_Compulsory,
+            can_trigger = function(self, event, room, player, data)
+                if player and player:hasSkill(self:objectName()) then return self:objectName() end
+                return false
+            end,
+            on_cost = function(self, event, room, player, ctx)
+                return room:getShimingStatus(ctx:getActivationRef()) == 0
+            end,
+            on_effect = function(self, event, room, player, ctx)
+                local ref = ctx:getActivationRef()
+                if room:getShimingStatus(ref) == 0 then room:sendShimingLog(ref, false) end
+                return false
+            end,
+        }
+        si_event = sgs.CreateTriggerSkill {
+            name = "test-shiming-lua-event", events = {sgs.EventShimingFail}, global = true,
+            on_trigger = function(self, event, player, data, room)
+                local ref = data:toSkillInstanceRef()
+                assert(ref.ownerObjectName == player:objectName())
+                player:setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "event_seen", sgs.QVariant(true))
+                return false
+            end,
+        }
+        local skills = sgs.SkillList()
+        skills:append(si_skill)
+        skills:append(si_dispatch)
+        skills:append(si_event)
+        sgs.Sanguosha:addSkills(skills)
+    )lua";
+    if (luaL_dostring(L, script) != 0) {
+        qCritical() << lua_tostring(L, -1); lua_pop(L, 1); return false;
+    }
+    const int first = room.acquireSkill(owner, "test-shiming-lua", false, false, false);
+    const int second = room.acquireSkill(owner, "test-shiming-lua", false, false, false);
+    SHIMING_CHECK(room.setShimingStatus(SkillInstanceRef(owner->objectName(), SkillInstanceKey("test-shiming-lua", first)), 1));
+    SHIMING_CHECK(room.setShimingStatus(SkillInstanceRef(owner->objectName(), SkillInstanceKey("test-shiming-lua", second)), 2));
+    const QByteArray assertion = QString("assert(#si_callbacks == 2 and si_callbacks[1] == %1 and si_callbacks[2] == %2)")
+        .arg(first * 10 + 1).arg(second * 10 + 2).toUtf8();
+    if (luaL_dostring(L, assertion.constData()) != 0) {
+        qCritical() << lua_tostring(L, -1); lua_pop(L, 1); return false;
+    }
+    const TriggerSkillV2 *dispatch = qobject_cast<const TriggerSkillV2 *>(Sanguosha->getSkill("test-shiming-lua-v2"));
+    const TriggerSkill *eventProbe = Sanguosha->getTriggerSkill("test-shiming-lua-event");
+    SHIMING_CHECK(dispatch && eventProbe);
+    room.getThread()->addTriggerSkill(eventProbe);
+    const int a1 = room.acquireSkill(owner, dispatch->objectName(), false, false, false);
+    const int a2 = room.acquireSkill(owner, dispatch->objectName(), false, false, false);
+    const SkillInstanceRef r1(owner->objectName(), SkillInstanceKey(dispatch->objectName(), a1));
+    const SkillInstanceRef r2(owner->objectName(), SkillInstanceKey(dispatch->objectName(), a2));
+    room.addSkillInvalidity(owner, dispatch->objectName(), "test", "test", a1);
+    QVariant data;
+    // Exercise RoomThread V2 expansion and invalid-instance filtering.
+    room.getThread()->trigger(Dying, &room, owner, data);
+    SHIMING_CHECK(room.getShimingStatus(r1) == 0 && room.getShimingStatus(r2) == 2);
+    SHIMING_CHECK(owner->getSkillInstanceStateValue(dispatch->objectName(), a2, "event_seen").toBool());
+    SHIMING_CHECK(!owner->getSkillInstanceStateValue(dispatch->objectName(), a1, "event_seen").toBool());
+    room.removeSkillInvalidity(owner, dispatch->objectName(), "test", "test", a1);
+    // Exercise RoomThread V2 expansion and invalid-instance filtering.
+    room.getThread()->trigger(Dying, &room, owner, data);
+    SHIMING_CHECK(room.getShimingStatus(r1) == 2 && room.getShimingStatus(r2) == 2);
+    qInfo() << "Shiming Lua exact-reference callbacks, events and dispatch tests passed";
+    return true;
+}
+
+
+static bool shimingPackageTriggers()
+{
+    Room room(nullptr, "04p");
+    RoomTestAccess::attachThread(room);
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, "mission-owner");
+    ServerPlayer *victim = RoomTestAccess::addOrdinaryPlayer(room, "mission-victim");
+    ServerPlayer *third = RoomTestAccess::addOrdinaryPlayer(room, "mission-third");
+    RoomTestAccess::resetAlive(room);
+    owner->setNext(victim); victim->setNext(third); third->setNext(owner);
+    for (ServerPlayer *p : {owner, victim, third}) { p->setMaxHp(4); p->setHp(4); }
+    room.setCurrent(owner);
+    auto acquire = [&](const QString &name) {
+        return SkillInstanceRef(owner->objectName(), SkillInstanceKey(name,
+            room.acquireSkill(owner, name, false, false, false)));
+    };
+    const TriggerSkill *weiming = Sanguosha->getTriggerSkill("weiming");
+    const TriggerSkill *powei = Sanguosha->getTriggerSkill("xinpowei");
+    const TriggerSkill *qingyu = Sanguosha->getTriggerSkill("secondmobilexinqingyu");
+    SHIMING_CHECK(weiming && powei && qingyu);
+    const SkillInstanceRef w1 = acquire("weiming"), w2 = acquire("weiming");
+    owner->setSkillInstanceStateValue("weiming", w1.key.instanceID, "weiming_targets", QStringList{victim->objectName()});
+    owner->setSkillInstanceStateValue("weiming", w2.key.instanceID, "weiming_targets", QStringList{third->objectName()});
+    DamageStruct damage("test", owner, victim);
+    DeathStruct death; death.who = victim; death.damage = &damage;
+    QVariant data = QVariant::fromValue(death);
+    weiming->trigger(Death, &room, victim, data);
+    SHIMING_CHECK(room.getShimingStatus(w1) == 2 && room.getShimingStatus(w2) == 1);
+    SHIMING_CHECK(victim->getSkillInstanceIds("weiming").isEmpty());
+    // Both missions saw the same death, but only one had marked that victim.
+    SHIMING_CHECK(owner->getSkillInstanceStateValue("weiming", w1.key.instanceID, "weiming_targets").toStringList().isEmpty());
+    const SkillInstanceRef p1 = acquire("xinpowei"), p2 = acquire("xinpowei");
+    data = QVariant();
+    powei->trigger(GameStart, &room, owner, data);
+    owner->setSkillInstanceStateValue("xinpowei", p1.key.instanceID, "powei_targets", QStringList());
+    owner->setPhase(Player::RoundStart);
+    powei->trigger(EventPhaseStart, &room, owner, data);
+    SHIMING_CHECK(room.getShimingStatus(p1) == 1 && room.getShimingStatus(p2) == 0);
+    SHIMING_CHECK(owner->getSkillInstanceStateValue("xinpowei", p2.key.instanceID, "powei_targets").toStringList().size() == 2);
+    SHIMING_CHECK(owner->getSkillInstanceIds("xinshenzhuo").size() == 1);
+    // One completed Qingyu copy must not suppress failure of its pending sibling.
+    const SkillInstanceRef q1 = acquire("secondmobilexinqingyu"), q2 = acquire("secondmobilexinqingyu");
+    SHIMING_CHECK(room.setShimingStatus(q1, 1));
+    DyingStruct dying; dying.who = owner;
+    data = QVariant::fromValue(dying);
+    qingyu->trigger(Dying, &room, owner, data);
+    SHIMING_CHECK(room.getShimingStatus(q1) == 1 && room.getShimingStatus(q2) == 2 && owner->getMaxHp() == 3);
+    qingyu->trigger(Dying, &room, owner, data);
+    SHIMING_CHECK(owner->getMaxHp() == 3);
+    // A fresh single instance follows the old failure path exactly once.
+    room.detachSkillFromPlayer(owner, q1.key.toString(), false, false, false);
+    room.detachSkillFromPlayer(owner, q2.key.toString(), false, false, false);
+    const SkillInstanceRef q3 = acquire("secondmobilexinqingyu");
+    qingyu->trigger(Dying, &room, owner, data);
+    SHIMING_CHECK(room.getShimingStatus(q3) == 2 && owner->getMaxHp() == 2);
+    qInfo() << "Shiming Weiming/Powei/Qingyu package dual-instance and single-instance tests passed";
+    return true;
+}
+
+
+static bool shimingExternalLuaMigration()
+{
+    if (!qEnvironmentVariableIsSet("QSAN_TEST_SHIMING_EXTERNAL")) return true;
+    Room room(nullptr, "02_1v1");
+    RoomTestAccess::attachThread(room);
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, "external-owner");
+    ServerPlayer *target = RoomTestAccess::addOrdinaryPlayer(room, "external-target");
+    RoomTestAccess::resetAlive(room);
+    room.setCurrent(owner);
+    owner->setMaxHp(4); owner->setHp(4);
+    target->setMaxHp(4); target->setHp(4);
+    EngineRuntimeContextScope engineScope(*Sanguosha, &room);
+    LuaRuntime::Binding binding(*room.luaRuntime());
+    auto acquire = [&](const QString &name) {
+        return SkillInstanceRef(owner->objectName(), SkillInstanceKey(name,
+            room.acquireSkill(owner, name, false, false, false)));
+    };
+    const TriggerSkillV2 *powei = qobject_cast<const TriggerSkillV2 *>(Sanguosha->getSkill("powei"));
+    SHIMING_CHECK(powei);
+    const SkillInstanceRef p1 = acquire("powei"), p2 = acquire("powei");
+    QVariant data;
+    room.getThread()->trigger(CardFinished, &room, owner, data);
+    SHIMING_CHECK(room.getShimingStatus(p1) == 1 && room.getShimingStatus(p2) == 1);
+    SHIMING_CHECK(owner->getSkillInstanceIds("shenzhuo").size() == 2);
+    room.getThread()->trigger(CardFinished, &room, owner, data);
+    SHIMING_CHECK(owner->getSkillInstanceIds("shenzhuo").size() == 2);
+    const TriggerSkillV2 *fuhan = qobject_cast<const TriggerSkillV2 *>(Sanguosha->getSkill("s4_fuhan"));
+    SHIMING_CHECK(fuhan);
+    const SkillInstanceRef f1 = acquire("s4_fuhan"), f2 = acquire("s4_fuhan");
+    owner->setSkillInstanceStateValue("s4_fuhan", f1.key.instanceID, "shiming_status", 1);
+    owner->setPhase(Player::Play);
+    const TriggerList fuhanTriggers = fuhan->triggerable(EventPhaseEnd, &room, owner, data);
+    SHIMING_CHECK(fuhanTriggers.value(owner) == QStringList{f2.key.toString()});
+    const TriggerSkillV2 *ganglie = qobject_cast<const TriggerSkillV2 *>(Sanguosha->getSkill("s4_ganglie"));
+    SHIMING_CHECK(ganglie);
+    const SkillInstanceRef g1 = acquire("s4_ganglie"), g2 = acquire("s4_ganglie");
+    DamageStruct damage("test", target, owner);
+    data = QVariant::fromValue(damage);
+    SkillContext ctx;
+    ctx.owner = owner; ctx.activationRef = g1; ctx.sourceRef = g1;
+    ctx.skill_name = "s4_ganglie"; ctx.instanceID = g1.key.instanceID; ctx.original_data = &data;
+    ganglie->record(Damaged, &room, owner, ctx);
+    SHIMING_CHECK(owner->getSkillInstanceStateValue("s4_ganglie", g1.key.instanceID, "attackers").toString().contains(target->objectName()));
+    SHIMING_CHECK(owner->getSkillInstanceStateValue("s4_ganglie", g2.key.instanceID, "attackers").toString().isEmpty());
+    DamageStruct killing("test", owner, target);
+    DeathStruct death; death.who = target; death.damage = &killing;
+    data = QVariant::fromValue(death);
+    const TriggerList ganglieTriggers = ganglie->triggerable(Death, &room, owner, data);
+    SHIMING_CHECK(ganglieTriggers.value(owner) == QStringList{g1.key.toString()});
+    qInfo() << "Shiming external Lua Powei/Fuhan/Ganglie migration tests passed";
+    return true;
+}
+
+#undef SHIMING_CHECK
+
 static bool lifecycleAndRuntimeFacade()
 {
     DistanceSkillV2 rootSkill(QStringLiteral("test-skill-runtime-root"));
@@ -200,6 +547,8 @@ int runSkillRuntimeCoordinatorTests()
         qCritical() << "SkillRuntimeCoordinator regression failed";
         return 2;
     }
+    if (!shimingInstancePipeline() || !shimingPackageTriggers() || !shimingLuaCallbacks()
+        || !shimingExternalLuaMigration()) return 3;
     qInfo() << "SkillRuntimeCoordinator regression passed";
     return 0;
 }
