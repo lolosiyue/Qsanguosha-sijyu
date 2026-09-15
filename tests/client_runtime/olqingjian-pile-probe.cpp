@@ -3,19 +3,25 @@
 #include "card.h"
 #include "client-game-state.h"
 #include "client-game-state-reducer.h"
-#include "client-rules-host.h"
 #include "client-rules-session.h"
+#include "engine-bootstrap.h"
 #include "engine.h"
 #include "player.h"
 #include "protocol.h"
+#include "runtime-paths.h"
 #include "skill.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
+#include <QTemporaryDir>
 #include <cstdio>
 #include <stdexcept>
 
@@ -53,7 +59,8 @@ QJsonObject player(const QString &name, int seat, const QStringList &skills)
         {"phase", "not_active"}, {"skills", QJsonArray::fromStringList(skills)}};
 }
 
-QJsonObject olqingjianRequest(int count, int cardId, const QJsonObject &state)
+QJsonObject olqingjianRequest(const QJsonObject &state,
+                              const QJsonArray &cardIds, const QJsonArray &targets)
 {
     return {{"schema_version", 1}, {"generation", 0}, {"revision", 0},
         {"request_id", "18446744073709551615"},
@@ -61,9 +68,17 @@ QJsonObject olqingjianRequest(int count, int cardId, const QJsonObject &state)
         {"payload", QJsonObject{{"pattern", "@@olqingjian!"},
             {"handling_method", static_cast<int>(Card::MethodNone)}}},
         {"state", state},
-        {"selection", QJsonObject{{"card_ids", QJsonArray{cardId}},
-            {"targets", QJsonArray{"sgs2"}}, {"skill_name", "olqingjian"},
-            {"skill_instance_id", 0}, {"user_string", ""}}}};
+        {"selection", QJsonObject{{"card_ids", cardIds}, {"targets", targets},
+            {"skill_name", "olqingjian"}, {"skill_instance_id", 0}, {"user_string", ""}}}};
+}
+
+bool jsonContainsInt(const QJsonArray &values, int id)
+{
+    for (const QJsonValue &entry : values) {
+        if (entry.toInt() == id)
+            return true;
+    }
+    return false;
 }
 
 void applyMove(ClientGameState *state, int command, const QString &fromPlayer,
@@ -106,6 +121,34 @@ QJsonArray jsonInts(const QVariantList &values)
         array.append(value.toInt());
     return array;
 }
+
+// extensions/ is gitignored private content. CI checkouts still declare those
+// scripts in lua/config.lua, so Engine::Engine() would exit(1) on loadfile.
+// Missing files become hidden no-op packages; existing files are left alone.
+void ensureExtensionStubs(const QString &assets)
+{
+    QFile config(QDir(assets).filePath(QStringLiteral("lua/config.lua")));
+    check(config.open(QIODevice::ReadOnly), "cannot read lua/config.lua");
+    const QString text = QString::fromUtf8(config.readAll());
+    static const QRegularExpression pathRe(QStringLiteral("extensions/[A-Za-z0-9_.-]+\\.lua"));
+    QRegularExpressionMatchIterator it = pathRe.globalMatch(text);
+    QSet<QString> paths;
+    while (it.hasNext())
+        paths.insert(it.next().captured());
+    check(!paths.isEmpty(), "lua/config.lua did not declare any extension scripts");
+    for (const QString &relative : paths) {
+        const QString path = QDir(assets).filePath(relative);
+        if (QFile::exists(path))
+            continue;
+        check(QDir().mkpath(QFileInfo(path).absolutePath()), "cannot create extensions directory");
+        QSaveFile file(path);
+        check(file.open(QIODevice::WriteOnly)
+                  && file.write("-- CI stub; private extension assets are not in this checkout\n"
+                                "return { hidden = true }\n")
+                  && file.commit(),
+              "cannot write extension stub");
+    }
+}
 }
 
 int main(int argc, char **argv)
@@ -116,25 +159,39 @@ int main(int argc, char **argv)
               "expected --asset-root DIR --output FILE");
         const QString assets = QDir(QString::fromLocal8Bit(argv[2])).absolutePath();
         const QString output = QDir::current().absoluteFilePath(QString::fromLocal8Bit(argv[4]));
-        const QString work = QDir::current().absoluteFilePath(QStringLiteral("work"));
-        const QString user = QDir::current().absoluteFilePath(QStringLiteral("userdata"));
-        check(QDir().mkpath(work), "cannot create isolated work directory");
+        QTemporaryDir isolated(QDir::temp().filePath(QStringLiteral("olqingjian-pile-XXXXXX")));
+        check(isolated.isValid(), "cannot create isolated work directory");
+        isolated.setAutoRemove(true);
+        const QString user = isolated.filePath(QStringLiteral("userdata"));
+        check(QDir().mkpath(user), "cannot create isolated userdata directory");
+        ensureExtensionStubs(assets);
 
-        ClientRulesHost host(assets, work, user);
-        check(host.initialize() == 0, "production initialization failed");
+        // ClientRulesHost::initialize also writes the production registry, which
+        // rejects a checkout whose gitignored extension files were stubbed.
+        // This probe only needs Engine + ClientRulesSession::evaluate().
+        int argcHolder = 1;
+        char name[] = "qsanguosha_olqingjian_pile_probe";
+        char *argvHolder[] = {name, nullptr};
+        QCoreApplication application(argcHolder, argvHolder);
+        QCoreApplication::setApplicationName(QStringLiteral("qsanguosha_client"));
+        qputenv("QSAN_ASSET_ROOT", assets.toUtf8());
+        qputenv("QSAN_USER_DATA_ROOT", user.toUtf8());
+        QString error;
+        check(QSanRuntimePaths::resolve(application.arguments(), &error),
+              qPrintable(QStringLiteral("runtime path resolve failed: %1").arg(error)));
+        check(EngineBootstrap::initialize(false, &error) && EngineBootstrap::hasLuaState(),
+              qPrintable(QStringLiteral("engine initialization failed: %1").arg(error)));
         check(Sanguosha != nullptr && Sanguosha->getViewAsSkill(QStringLiteral("olqingjian")) != nullptr,
               "olqingjian ViewAs skill missing from production registry");
 
         int slash = -1;
-        const QJsonObject registry = ClientRulesSession().registry();
-        for (const auto &entry : registry.value(QStringLiteral("registry")).toArray()) {
-            const auto card = entry.toObject();
-            if (slash < 0 && card.value(QStringLiteral("object_name")) == QJsonValue(QStringLiteral("slash")))
-                slash = card.value(QStringLiteral("id")).toInt();
+        const int count = Sanguosha->getCardCount();
+        for (int id = 0; id < count; ++id) {
+            const Card *card = Sanguosha->getEngineCard(id);
+            if (slash < 0 && card != nullptr && card->objectName() == QLatin1String("slash"))
+                slash = id;
         }
         check(slash >= 0, "builtin registry must supply Slash");
-        const int count = registry.value(QStringLiteral("card_count")).toInt();
-        check(count == Sanguosha->getCardCount(), "registry card_count drifted from Engine");
 
         ClientGameState state;
         state.setCardIdSpace(count);
@@ -161,9 +218,11 @@ int main(int argc, char **argv)
         state.setCardValue(slash, QStringLiteral("open"), true);
 
         QJsonArray cases;
-        const auto evaluate = [&](const char *label, bool expectConfirm, const char *expectReason) {
+        const auto evaluate = [&](const char *label, const QJsonArray &cardIds,
+                                  const QJsonArray &targets, bool expectConfirm,
+                                  const char *expectReason) {
             const QJsonObject result = ClientRulesSession().evaluate(
-                olqingjianRequest(count, slash, snapshotState(state)));
+                olqingjianRequest(snapshotState(state), cardIds, targets));
             const QString reason = result.value(QStringLiteral("reason")).toString();
             const bool confirm = result.value(QStringLiteral("can_confirm")).toBool();
             const bool known = result.value(QStringLiteral("known")).toBool();
@@ -183,7 +242,8 @@ int main(int argc, char **argv)
             return result;
         };
 
-        evaluate("card_fields_without_player_pile", false, "subcard_rejected");
+        evaluate("card_fields_without_player_pile", QJsonArray{slash}, QJsonArray{"sgs2"},
+                 false, "subcard_rejected");
         check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
                   .value(QStringLiteral("olqingjian")).toList().isEmpty(),
               "control case must start with an empty named pile");
@@ -195,14 +255,13 @@ int main(int argc, char **argv)
                   .value(QStringLiteral("olqingjian")).toList() == QVariantList{slash},
               "GET_CARD must insert the visible olqingjian pile id");
 
-        const QJsonObject ok = evaluate("get_card_sync_allows_distribute", true, "");
-        const QJsonArray selectable = ok.value(QStringLiteral("selectable_cards")).toArray();
-        bool offered = false;
-        for (const QJsonValue &entry : selectable) {
-            if (entry.toInt() == slash)
-                offered = true;
-        }
-        check(offered, "legal 清儉 selection did not advertise the pile card");
+        const QJsonObject offered = evaluate("get_card_sync_offers_pile", QJsonArray{}, QJsonArray{},
+                                             false, "incomplete_card_selection");
+        check(jsonContainsInt(offered.value(QStringLiteral("selectable_cards")).toArray(), slash),
+              "olqingjian pile card was not offered as a selectable candidate");
+
+        const QJsonObject ok = evaluate("get_card_sync_allows_distribute", QJsonArray{slash},
+                                        QJsonArray{"sgs2"}, true, "");
         check(ok.value(QStringLiteral("wire")).isObject(), "confirmed selection produced no wire reply");
 
         applyMove(&state, QSanProtocol::S_COMMAND_LOSE_CARD, QStringLiteral("sgs1"), QString(),
@@ -211,9 +270,10 @@ int main(int argc, char **argv)
         check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
                   .value(QStringLiteral("olqingjian")).toList().isEmpty(),
               "LOSE_CARD must drop the named pile id");
-        evaluate("lose_card_clears_distribute_pool", false, "subcard_rejected");
+        evaluate("lose_card_clears_distribute_pool", QJsonArray{slash}, QJsonArray{"sgs2"},
+                 false, "subcard_rejected");
 
-        check(host.shutdown() == 0, "graceful shutdown failed");
+        EngineBootstrap::shutdown();
         writeFile(output, encode({{"schema_version", 1}, {"status", "PASS"},
             {"card_id", slash}, {"card_count", count}, {"cases", cases}}));
         std::fprintf(stderr, "[AUTOTEST] OLQINGJIAN_PILE_SYNC status=PASS card_id=%d\n", slash);
