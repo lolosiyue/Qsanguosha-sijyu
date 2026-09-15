@@ -596,8 +596,8 @@ int ViewAsSkillV2::getBaseAmount() const
 int ViewAsSkillV2::getEffectiveAmount(const SkillContext &context) const
 {
     if (context.hasModifiedAmount())
-        return context.modified_amount;
-    return context.amount;
+        return qMax(0, context.modified_amount);
+    return qMax(0, context.amount);
 }
 
 SkillInstanceRef ViewAsSkillV2::getAmountRef(const SkillContext &context) const
@@ -857,11 +857,16 @@ bool TriggerSkillV2::effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillCon
 bool TriggerSkillV2::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                                   SkillContext &ctx, ServerPlayer *target) const
 {
+    if (!room || !target || !target->isAlive())
+        return false;
+
+    const SkillContext identity = ctx;
+    ctx.is_canceled = false;
     ctx.current_event = EventSkillEffectTarget;
     QVariant ctx_data = QVariant::fromValue(ctx);
-    
-    bool skip = room->getThread()->trigger(EventSkillEffectTarget, room, player, ctx_data);
-    
+
+    bool skip = room->getThread()->trigger(EventSkillEffectTarget, room, target, ctx_data);
+
     const SkillContext &updated = ctx_data.value<SkillContext>();
     ctx.is_canceled = updated.is_canceled;
     ctx.bypass_cost = updated.bypass_cost;
@@ -869,10 +874,25 @@ bool TriggerSkillV2::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPl
     ctx.is_forced = updated.is_forced;
     ctx.modified_amount = updated.modified_amount;
     ctx.modified_amount_set = updated.modified_amount_set;
-    
+
+    // EffectTarget interceptors may update effect state, but never execution identity.
+    ctx.skill_name = identity.skill_name;
+    ctx.sourceRef = identity.sourceRef;
+    ctx.activationRef = identity.activationRef;
+    ctx.initiator = identity.initiator;
+    ctx.invoker = identity.invoker;
+    ctx.owner = identity.owner;
+    ctx.use_card = identity.use_card;
+    ctx.original_data = identity.original_data;
+    ctx.instanceID = identity.instanceID;
+    ctx.executionID = identity.executionID;
+    ctx.manual_effect = identity.manual_effect;
+    ctx.amount = identity.amount;
+    ctx.current_event = EventSkillEffectTarget;
+
     if (skip)
         return false;
-    
+
     return effectTarget(triggerEvent, room, player, ctx, target);
 }
 
@@ -925,8 +945,8 @@ int TriggerSkillV2::getBaseAmount() const
 int TriggerSkillV2::getEffectiveAmount(const SkillContext &ctx) const
 {
     if (ctx.hasModifiedAmount())
-        return ctx.modified_amount;
-    return ctx.amount;
+        return qMax(0, ctx.modified_amount);
+    return qMax(0, ctx.amount);
 }
 
 QString TriggerSkillV2::parseSkillName(const QString &fullName, QString *source,
