@@ -829,6 +829,10 @@ void testRulesProjectionReducer()
               .contains(QStringLiteral("wooden_ox")),
           "an empty SYNC_PILE deletes the pile key");
 
+    auto namedPile = [&state](const QString &pileName) {
+        return state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
+            .value(pileName).toList();
+    };
     notify(S_COMMAND_GET_CARD, {
         {QStringLiteral("moves"), QVariantList{QVariantMap{
             {QStringLiteral("to_player"), QStringLiteral("sgs1")},
@@ -841,9 +845,12 @@ void testRulesProjectionReducer()
             {QStringLiteral("to_place"), 4},
             {QStringLiteral("to_pile"), QStringLiteral("olqingjian")},
             {QStringLiteral("card_ids"), QVariantList{1073}}}}}});
-    check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
-              .value(QStringLiteral("olqingjian")).toList() == QVariantList{1073},
+    check(namedPile(QStringLiteral("olqingjian")) == QVariantList{1073},
           "visible special movement adds a selectable pile card once");
+    check(state.card(1073).value(QStringLiteral("place")).toInt() == 4
+              && state.card(1073).value(QStringLiteral("pile")).toString()
+                  == QStringLiteral("olqingjian"),
+          "GET_CARD still records the card's special-zone owner fields");
     notify(S_COMMAND_GET_CARD, {
         {QStringLiteral("moves"), QVariantList{QVariantMap{
             {QStringLiteral("to_player"), QStringLiteral("sgs1")},
@@ -853,12 +860,33 @@ void testRulesProjectionReducer()
     check(!state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
               .contains(QStringLiteral("hidden_pile")),
           "hidden special movement never authorizes an unknown pile card");
+    notify(S_COMMAND_GET_CARD, {
+        {QStringLiteral("moves"), QVariantList{QVariantMap{
+            {QStringLiteral("to_player"), QStringLiteral("sgs1")},
+            {QStringLiteral("to_place"), 4},
+            {QStringLiteral("to_pile"), QStringLiteral("olqingjian")},
+            {QStringLiteral("card_ids"), QVariantList{18}}}}}});
+    check(namedPile(QStringLiteral("olqingjian")) == (QVariantList{1073, 18}),
+          "a second visible pile card appends without replacing the first");
+    const QJsonArray jsonPile = state.toJson().value(QStringLiteral("players")).toArray()
+        .at(0).toObject().value(QStringLiteral("piles")).toObject()
+        .value(QStringLiteral("olqingjian")).toArray();
+    check(jsonPile.size() == 2 && jsonPile.at(0).toInt() == 1073 && jsonPile.at(1).toInt() == 18,
+          "toJson snapshot carries the named pile used by ClientRulesSession");
     notify(S_COMMAND_LOSE_CARD, {
         {QStringLiteral("moves"), QVariantList{QVariantMap{
             {QStringLiteral("from_player"), QStringLiteral("sgs1")},
             {QStringLiteral("from_place"), 4},
             {QStringLiteral("from_pile"), QStringLiteral("olqingjian")},
             {QStringLiteral("card_ids"), QVariantList{1073}}}}}});
+    check(namedPile(QStringLiteral("olqingjian")) == QVariantList{18},
+          "losing one visible pile card leaves the remaining id");
+    notify(S_COMMAND_LOSE_CARD, {
+        {QStringLiteral("moves"), QVariantList{QVariantMap{
+            {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+            {QStringLiteral("from_place"), 4},
+            {QStringLiteral("from_pile"), QStringLiteral("olqingjian")},
+            {QStringLiteral("card_ids"), QVariantList{18}}}}}});
     check(!state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
               .contains(QStringLiteral("olqingjian")),
           "visible special movement removes the pile card");

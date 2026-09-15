@@ -396,6 +396,43 @@ qsan_add_ctest(qsanguosha_client_core_contract qsanguosha_client_core_tests
     TIMEOUT 120
 )
 
+# E2: GET/LOSE named-pile projection plus a legal 清儉 ViewAs submit.
+# Independent of the rules-session lifecycle corpus so WASM ABI labels stay put.
+if(TARGET qsanguosha_rules_session)
+    add_executable(qsanguosha_olqingjian_pile_probe
+        client_runtime/olqingjian-pile-probe.cpp)
+    target_link_libraries(qsanguosha_olqingjian_pile_probe PRIVATE
+        qsanguosha_client_core
+        qsanguosha_rules_session
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
+    set_target_properties(qsanguosha_olqingjian_pile_probe PROPERTIES FOLDER "Tests")
+    if(WIN32)
+        set_target_properties(qsanguosha_olqingjian_pile_probe PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>")
+        target_link_libraries(qsanguosha_olqingjian_pile_probe PRIVATE
+            "$<$<CONFIG:Release>:dbghelp>" "$<$<CONFIG:Release>:user32>" "$<$<CONFIG:Release>:gdi32>")
+    endif()
+    if(MSVC)
+        target_compile_options(qsanguosha_olqingjian_pile_probe PRIVATE /utf-8 /bigobj)
+        target_compile_definitions(qsanguosha_olqingjian_pile_probe PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+    add_test(NAME qsanguosha_olqingjian_pile_sync
+        COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_CURRENT_SOURCE_DIR}/client_runtime/check-olqingjian-pile.py"
+            --runner $<TARGET_FILE:qsanguosha_olqingjian_pile_probe>
+            --asset-root "${QSAN_TEST_ROOT}"
+            --output "${CMAKE_CURRENT_BINARY_DIR}/olqingjian-pile-sync.json")
+    set_tests_properties(qsanguosha_olqingjian_pile_sync PROPERTIES
+        WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+        LABELS "client;client-runtime;fast"
+        TIMEOUT 240
+        RUN_SERIAL TRUE)
+    if(WIN32)
+        set_property(TEST qsanguosha_olqingjian_pile_sync PROPERTY ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
+endif()
+
 # Compile the public runtime surface using only its own usage requirements.
 # No engine/TUI target may mask missing includes or compile definitions here.
 # Keep this check enabled when the TUI product is disabled as well.
