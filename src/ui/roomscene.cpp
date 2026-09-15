@@ -3250,6 +3250,19 @@ GenericCardContainer*RoomScene::_getGenericCardContainer(Player::Place place,con
 	return nullptr;
 }
 
+QString RoomScene::_describeMoveForDiagnostics(const CardsMoveStruct&move) const
+{
+	int seated = 0;
+	foreach (Photo*photo,photos)
+		if(photo->getPlayer()!=nullptr) seated++;
+	return QStringLiteral("from=%1(%2) to=%3(%4) from_place=%5 to_place=%6 ids=%7 reason=%8 skill=%9 self=%10 photos=%11/%12")
+		.arg(move.from_player_name).arg(move.from?"found":"null")
+		.arg(move.to_player_name).arg(move.to?"found":"null")
+		.arg(int(move.from_place)).arg(int(move.to_place))
+		.arg(ListI2S(move.card_ids).join("+")).arg(move.reason.m_reason).arg(move.reason.m_skillName)
+		.arg(Self?Self->objectName():QString()).arg(seated).arg(photos.length());
+}
+
 bool RoomScene::_shouldIgnoreDisplayMove(CardsMoveStruct&movement)
 {
 	if(movement.to_pile_name.startsWith('#')||movement.from_pile_name.startsWith('#'))
@@ -3324,6 +3337,16 @@ void RoomScene::getCards(int moveId,QList<CardsMoveStruct> card_moves)
 		}
 		keepGetCardLog(card_moves[i]);
 		GenericCardContainer*to_container = _getGenericCardContainer(card_moves[i].to_place,card_moves[i].to);
+		if(to_container==nullptr){
+			// The destination has no seat on this scene (seen once in a 20p soak right after
+			// the lianying AI fallback); drop the animation rather than dereference null.
+			qWarning().noquote() << "RoomScene::getCards: no container for" << _describeMoveForDiagnostics(card_moves[i]);
+			foreach (CardItem*card,cards){
+				card->setVisible(false);
+				card->deleteLater();
+			}
+			continue;
+		}
 		if(card_moves[i].from||card_moves[i].from_place==Player::PlaceTable){
 			foreach (Photo*photo,photos)
 				photo->setZValue(to_container==photo?2:1);
@@ -3341,6 +3364,11 @@ void RoomScene::loseCards(int moveId,QList<CardsMoveStruct> card_moves)
 		if(_shouldIgnoreDisplayMove(card_moves[i])) continue;
 		card_container->m_currentPlayer = (ClientPlayer*)card_moves[i].to;
 		GenericCardContainer*from_container = _getGenericCardContainer(card_moves[i].from_place,card_moves[i].from);
+		if(from_container==nullptr){
+			qWarning().noquote() << "RoomScene::loseCards: no container for" << _describeMoveForDiagnostics(card_moves[i]);
+			_m_cardsMoveStash[moveId].append(QList<CardItem*>());
+			continue;
+		}
 		QList<CardItem*> cards = from_container->removeCardItems(card_moves[i].card_ids,card_moves[i].from_place);
 		foreach(CardItem*card,cards)
 			card->setEnabled(false);
