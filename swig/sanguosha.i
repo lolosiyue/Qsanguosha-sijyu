@@ -1674,6 +1674,33 @@ if (!globalCardLifetimeManager().observeLive($1) || !$1->lifetimeIsLive()) {
 }
 %}
 
+// Rejecting nil above is deliberate: many engine hooks dereference the card,
+// and Lua scripts rely on the error instead of a null crash. whocard is the
+// exception: it is optional (askForUseCard*/askForUseSlashTo* check it for
+// null) and extensions pass nil to reach the trailing flag argument.
+%typemap(in) const Card *whocard
+%{
+if (lua_isnil(L, $input)) {
+    $1 = nullptr;
+} else {
+    if (lua_islightuserdata(L, $input)) {
+        lua_pushliteral(L, "Lua error: attempt to use deleted Card");
+        SWIG_fail;
+    }
+    void *cardPointer;
+    cardPointer = nullptr;
+    if (!SWIG_IsOK(SWIG_ConvertPtr(L, $input, &cardPointer, SWIGTYPE_p_Card, 0)) || cardPointer == nullptr) {
+        lua_pushliteral(L, "expected Card userdata");
+        SWIG_fail;
+    }
+    $1 = ($1_ltype)cardPointer;
+    if (!globalCardLifetimeManager().observeLive($1) || !$1->lifetimeIsLive()) {
+        lua_pushliteral(L, "Lua error: attempt to use deleted Card");
+        SWIG_fail;
+    }
+}
+%}
+
 class WrappedCard: public Card {
 public:
 	void takeOver(Card*card);

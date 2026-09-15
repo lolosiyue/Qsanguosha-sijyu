@@ -51,6 +51,18 @@ struct RoomTestAccess
         return player;
     }
 
+    static AIRequest makePlayActivateRequest(Room &room, ServerPlayer *player)
+    {
+        return room.makeAIRequest(player, AIRequest::Activate, CardUseStruct::CARD_USE_REASON_PLAY,
+                                  QString(), QString(), Card::MethodUse);
+    }
+
+    static bool decideAiAction(Room &room, ServerPlayer *player, const AIRequest &request,
+                               CardUseStruct &use)
+    {
+        return room.decideAiAction(player, request, use);
+    }
+
     static ServerPlayer *addListedPlayer(Room &room, const QString &objectName)
     {
         ServerPlayer *player = new ServerPlayer(&room);

@@ -18,12 +18,12 @@ Item {
     readonly property color baYellow: "#FFD84D"
 
     // 技能名：亮／暗都維持對比，勿用 btnPrimary（暗色過深）
+    // 衍生技名條相對本體技反相：亮色對齊實體卡黑底白字；暗色改淺底深字，避免黑條埋進海軍藍底。
     readonly property color skillName: isDark ? "#7EDAF2" : "#0B6B8A"
-    readonly property color skillNameRelated: isDark ? "#B7D4E4" : "#3A7A94"
+    readonly property color skillNameRelated: isDark ? "#0B1A2E" : "#FFF8EC"
     readonly property color skillPlate: isDark ? "#553AA8D4" : "#CCE4F4"
-    readonly property color skillPlateRelated: isDark ? "#221A334C" : "#14FFFFFF"
+    readonly property color skillPlateRelated: isDark ? "#E8F3FA" : "#1A1A1A"
     readonly property color nativeSkillBg: isDark ? "#221A334C" : "#66E8F3FB"
-    readonly property color relatedSkillBg: isDark ? "#18142838" : "#55F3F0EA"
     readonly property color hiddenBadge: isDark ? "#C4A15A" : "#B8892E"
     readonly property color hiddenBadgeText: "#FFF8EC"
     readonly property color tabSkillsBg: isDark ? "#33203A58" : "#88DCEAF6"

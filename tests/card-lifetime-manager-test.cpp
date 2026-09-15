@@ -1275,6 +1275,37 @@ int runCardLifetimeLuaTests()
         }
         generatedOwningClones = generatedOwningClones && foundCloneBody;
     }
+    // whocard alone may be nil: every generated askForUseCard*/askForUseSlashTo*
+    // overload that takes it must guard nil, and ordinary Card parameters
+    // (matchExpPattern's card) must not.
+    const auto wrapperBody = [&generatedText](const QByteArray &name) {
+        const QByteArray prefix = "static int _wrap_" + name + "(lua_State* L) {";
+        const int start = generatedText.indexOf(prefix);
+        if (start < 0)
+            return QByteArray();
+        const int end = generatedText.indexOf("\nstatic int _wrap_", start + prefix.size());
+        return generatedText.mid(start, (end < 0 ? generatedText.size() : end) - start);
+    };
+    int whocardOverloads = 0;
+    bool nilWhocardAccepted = !generatedText.isEmpty();
+    for (const QByteArray &function : {QByteArray("Room_askForUseCard"),
+                                       QByteArray("Room_askForUseCardStruct"),
+                                       QByteArray("Room_askForUseSlashTo"),
+                                       QByteArray("Room_askForUseSlashToStruct")}) {
+        for (int overload = 0; overload < 64; ++overload) {
+            const QByteArray body = wrapperBody(function + "__SWIG_" + QByteArray::number(overload));
+            if (body.isEmpty())
+                break;
+            // Overloads that stop before whocard do not convert a Card at all.
+            if (!body.contains("(Card const *)arg"))
+                continue;
+            ++whocardOverloads;
+            nilWhocardAccepted = nilWhocardAccepted && body.contains("lua_isnil(L, ");
+        }
+    }
+    nilWhocardAccepted = nilWhocardAccepted && whocardOverloads > 0
+        && !wrapperBody("Engine_matchExpPattern").isEmpty()
+        && !wrapperBody("Engine_matchExpPattern").contains("lua_isnil(L, ");
     const bool auditedCardRoots = generatedText.contains("\"Horse *\"")
         && generatedText.contains("\"OffensiveHorse *\"")
         && generatedText.contains("\"DefensiveHorse *\"")
@@ -1298,6 +1329,7 @@ int runCardLifetimeLuaTests()
     bool cardList = false;
     bool sameGeneration = false;
     bool lightuserdataRejected = false;
+    bool nilCardRejected = false;
     bool aliasMetatables = false;
     bool stockNonCard = false;
     bool duplicateGcReleasedOnce = false;
@@ -1421,6 +1453,29 @@ int runCardLifetimeLuaTests()
                 lua_pop(state, 1);
             }
         }
+        {
+            // A nil Card stays a Lua error for ordinary parameters: engine hooks
+            // such as ExpPattern::match dereference the card, and Lua
+            // ProhibitSkills rely on the error instead of a null crash.
+            // SkillContext::use_card is declared after the Card typemaps, so its
+            // setter runs the strict in-typemap without needing a Room.
+            LuaRuntime::Binding binding(runtime);
+            LuaRuntime::LuaInvocationScope invocation(runtime);
+            lua_State *state = runtime.state();
+            const char *nilCardScript =
+                "local context = sgs.SkillContext()\n"
+                "local ok, err = pcall(function() context.use_card = nil end)\n"
+                "return not ok and tostring(err):find('expected Card userdata', 1, true) ~= nil, tostring(err)\n";
+            if (luaL_loadstring(state, nilCardScript) == 0 && lua_pcall(state, 0, 2, 0) == 0) {
+                nilCardRejected = lua_toboolean(state, -2) != 0;
+                if (!nilCardRejected)
+                    luaError = QString::fromUtf8(lua_tostring(state, -1));
+                lua_pop(state, 2);
+            } else {
+                luaError = QString::fromUtf8(lua_tostring(state, -1));
+                lua_pop(state, 1);
+            }
+        }
         wrapperLeasesBeforeClose = globalCardLifetimeManager().gauge().wrapper_leases;
         runtime.shutdown();
         wrapperLeasesAfterClose = globalCardLifetimeManager().gauge().wrapper_leases;
@@ -1439,6 +1494,8 @@ int runCardLifetimeLuaTests()
     marker.insert(QStringLiteral("cardlist"), cardList);
     marker.insert(QStringLiteral("mustget"), mustGet);
     marker.insert(QStringLiteral("lightuserdata"), lightuserdataRejected);
+    marker.insert(QStringLiteral("nil_card_rejected"), nilCardRejected);
+    marker.insert(QStringLiteral("nil_whocard_accepted"), nilWhocardAccepted);
     marker.insert(QStringLiteral("same_generation"), sameGeneration);
     marker.insert(QStringLiteral("alias_metatables"), aliasMetatables);
     marker.insert(QStringLiteral("stock_noncard"), stockNonCard);
@@ -1456,7 +1513,7 @@ int runCardLifetimeLuaTests()
     return luaExecuted && wrapperHasCardDispatch && generatedOwningClones
         && auditedCardRoots && ownerZero && ownerOne
         && cardList && mustGet && sameGeneration && lightuserdataRejected
-        && aliasMetatables && stockNonCard && duplicateGcReleasedOnce
+        && nilCardRejected && nilWhocardAccepted && aliasMetatables && stockNonCard && duplicateGcReleasedOnce
         && duplicateGcIdempotent && owningCloneDestroyedOnce
         && wrapperLeasesReleased ? 0 : 71;
 }

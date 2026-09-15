@@ -2087,6 +2087,69 @@ static bool cardResponseOverrideProvidedAndRetry()
                   "timeout without AI returns null");
 }
 
+static bool expPatternDotVsDotDot()
+{
+    if (!Sanguosha || Sanguosha->getCardCount() < 1)
+        return expect(false, "engine has at least one card");
+
+    DecisionFixture fixture;
+    CardTable cards(fixture.room);
+    giveHand(fixture.player, QList<int>{0}, &fixture.room);
+    const Card *card = Sanguosha->getCard(0);
+    const bool dot = Sanguosha->matchPattern(QStringLiteral("."), fixture.player, card);
+    const bool dotdot = Sanguosha->matchPattern(QStringLiteral(".."), fixture.player, card);
+    const bool piped = Sanguosha->matchPattern(QStringLiteral(".|."), fixture.player, card);
+    const bool rawDotdot = Sanguosha->matchExpPattern(QStringLiteral(".."), fixture.player, card);
+    return expect(dot, ". alias matches a hand card")
+        && expect(dotdot, ".. alias matches any card")
+        && expect(piped, ".|. matches a hand card")
+        && expect(!rawDotdot, "raw ExpPattern .. is not the registered alias");
+}
+
+static bool trustUsesSmartAiWhenPresent()
+{
+    const bool savedCheat = Config.EnableCheat;
+    Config.EnableCheat = false;
+
+    DecisionFixture fixture;
+    fixture.player->setState(QStringLiteral("trust"));
+    AI *smart = fixture.player->getSmartAI();
+    const bool usesSmart = fixture.player->getAI() == smart;
+
+    fixture.player->setAI(nullptr);
+    AI *fallback = fixture.player->getAI();
+    const bool usesFallback = fallback != nullptr && fallback != smart;
+
+    fixture.player->setAI(smart);
+    fixture.player->setState(QStringLiteral("online"));
+    const bool onlineHasNoAi = fixture.player->getAI() == nullptr;
+
+    Config.EnableCheat = savedCheat;
+    return expect(smart != nullptr, "fixture installed SmartAI")
+        && expect(usesSmart, "trust uses SmartAI when setAI is present")
+        && expect(usesFallback, "trust falls back to trust_ai when SmartAI is absent")
+        && expect(onlineHasNoAi, "online still has no AI");
+}
+
+static bool trustAiCompulsiveDotBangPicksHand()
+{
+    if (!Sanguosha || Sanguosha->getCardCount() < 1)
+        return expect(false, "engine has at least one card");
+
+    DecisionFixture fixture;
+    CardTable cards(fixture.room);
+    giveHand(fixture.player, QList<int>{0}, &fixture.room);
+    const Card *picked = fixture.ai()->askForCard(
+        QStringLiteral(".!"), QStringLiteral("beiyu0:"), QVariant(), Card::MethodNone);
+    const Card *viaRoom = fixture.room.askForCard(
+        fixture.player, QStringLiteral(".!"), QStringLiteral("beiyu0:"), QVariant(),
+        Card::MethodNone);
+    return expect(picked == Sanguosha->getCard(0),
+                  "TrustAI treats .! as compulsive and returns a hand card")
+        && expect(viaRoom == Sanguosha->getCard(0),
+                  "Room askForCard .! MethodNone uses the TrustAI fallback");
+}
+
 static bool discardExchangeYijiAndGuanxing()
 {
     if (!Sanguosha || Sanguosha->getCardCount() < 3)
@@ -2649,6 +2712,9 @@ int runPlayerDecisionServiceTests()
     run(pindianEmitsNoChoiceMade, "pindian", 22);
     run(pindianRaceBroadcastIndependentFallback, "pindian-race", 23);
     run(cardResponseOverrideProvidedAndRetry, "card-response", 24);
+    run(expPatternDotVsDotDot, "exp-pattern-dot-vs-dotdot", 32);
+    run(trustUsesSmartAiWhenPresent, "trust-uses-smart-ai", 31);
+    run(trustAiCompulsiveDotBangPicksHand, "trust-ai-dot-bang", 30);
     run(discardExchangeYijiAndGuanxing, "discard-yiji-guanxing", 25);
     run(activateUseCardAndSlashFlags, "activate-use-card", 26);
     run(nullificationPeachTriggerOrderAndResidual, "reactive-trigger-order", 27);
