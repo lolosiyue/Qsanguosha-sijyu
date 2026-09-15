@@ -493,12 +493,14 @@ return {
 	["mobileshensu2"] = "跳过摸牌和出牌阶段",
 	["mobileshensu3"] = "跳过出牌和弃牌阶段",
 
-
-
-
-
-
-
-
-
+	["mobile_st_standard"] = "手杀界·标准",
+	["mobile_st_wind"] = "手杀界·风",
+	["mobile_st_thicket"] = "手杀界·林",
+	["mobile_st_fire"] = "手杀界·火",
+	["mobile_st_mountain"] = "手杀界·山",
+	["mobile_st_yj2011"] = "手杀界·一将2011",
+	["mobile_st_yj2012"] = "手杀界·一将2012",
+	["mobile_st_yj2013"] = "手杀界·一将2013",
+	["mobile_st_yj2014"] = "手杀界·一将2014",
+	["mobile_st_yj2015"] = "手杀界·一将2015",
 }

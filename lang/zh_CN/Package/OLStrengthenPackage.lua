@@ -646,4 +646,15 @@ return {
 	["oljiexiantu"] = "献图",
 	[":oljiexiantu"] = "其他角色出牌阶段开始时，你可以摸至多两张牌，然后交给其等量牌。此阶段结束时，若其造成伤害小于你以此法交给其的牌数，你失去1点体力。",
 
+	["ol_st_standard"] = "OL界·标准",
+	["ol_st_wind"] = "OL界·风",
+	["ol_st_thicket"] = "OL界·林",
+	["ol_st_fire"] = "OL界·火",
+	["ol_st_mountain"] = "OL界·山",
+	["ol_st_yj2011"] = "OL界·一将2011",
+	["ol_st_yj2012"] = "OL界·一将2012",
+	["ol_st_yj2013"] = "OL界·一将2013",
+	["ol_st_yj2014"] = "OL界·一将2014",
+	["ol_st_yj2015"] = "OL界·一将2015",
+	["ol_st_yc2016"] = "OL界·一将2016",
 }
