@@ -276,7 +276,11 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
     LogMessage log;
     log.to << victim;
     log.type = "#Contingency";
-    log.arg = Config.EnableHegemony ? victim->getKingdom() : victim->getRole();
+    QString hideFrom = victim->property("HideDeathIconFrom").toString();
+    if (!hideFrom.isEmpty() || victim->property("HideDeathIcon").toBool())
+        log.arg = "unknown";
+    else
+        log.arg = Config.EnableHegemony ? victim->getKingdom() : victim->getRole();
     if (reason && reason->from) {
         log.from = reason->from;
         log.type = reason->from == victim ? "#Suicide" : "#Murder";

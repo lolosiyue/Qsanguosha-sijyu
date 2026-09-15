@@ -2088,7 +2088,16 @@ void PlayerCardContainer::_updateDeathIcon()
 
 void PlayerCardContainer::killPlayer()
 {
-    _m_roleComboBox->fix(m_player->getRole());
+    bool hideDeathIcon = false;
+    QString hideFrom = m_player->property("HideDeathIconFrom").toString();
+    if (!hideFrom.isEmpty()) {
+        QString myRole = Self->getRole();
+        QString myName = Self->objectName();
+        hideDeathIcon = hideFrom.contains(myRole) || hideFrom.contains(myName);
+    }
+    if (!hideDeathIcon)
+        hideDeathIcon = m_player->property("HideDeathIcon").toBool();
+    _m_roleComboBox->fix(hideDeathIcon ? "unknown" : m_player->getRole());
 	_m_roleComboBox->setEnabled(m_player->property("RestPlayer").toBool());
     _updateDeathIcon();
     //_m_saveMeIcon->hide();
@@ -2105,7 +2114,9 @@ void PlayerCardContainer::killPlayer()
         _m_deathIcon->hide();
         _m_votesGot = 6;
         updateVotes(false, true);
-    } else
+    } else if (hideDeathIcon)
+        _m_deathIcon->hide();
+    else
         _m_deathIcon->show();
 }
 

@@ -688,7 +688,16 @@ void Dashboard::killPlayer()
 {
     trusting_item->hide();
     trusting_text->hide();
-	_m_roleComboBox->fix(m_player->getRole());
+	bool hideDeathIcon = false;
+	QString hideFrom = m_player->property("HideDeathIconFrom").toString();
+	if (!hideFrom.isEmpty()) {
+		QString myRole = Self->getRole();
+		QString myName = Self->objectName();
+		hideDeathIcon = hideFrom.contains(myRole) || hideFrom.contains(myName);
+	}
+	if (!hideDeathIcon)
+		hideDeathIcon = m_player->property("HideDeathIcon").toBool();
+	_m_roleComboBox->fix(hideDeathIcon ? "unknown" : m_player->getRole());
 	_m_roleComboBox->setEnabled(m_player->property("RestPlayer").toBool());
     _updateDeathIcon();
     _m_saveMeIcon->hide();
@@ -701,7 +710,8 @@ void Dashboard::killPlayer()
         setGraphicsEffect(effect);
     }
     refresh(true);
-	_m_deathIcon->show();
+	if (!hideDeathIcon)
+		_m_deathIcon->show();
     if (ServerInfo.GameMode == "04_1v3" && !m_player->isLord()) {
         _m_votesGot = 6;
         updateVotes(false);
