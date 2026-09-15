@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 #include <functional>
 
 class Card;
@@ -61,5 +62,15 @@ QString formatClientLog(const ClientLogFormatRequest &request,
                         const ClientLogFormatStyle &style);
 
 ClientLogUseCardPhrases engineUseCardPhrases();
+
+// TUI and spreadsheet adapters use the same localized, plain-text transcript.
+using ClientLogPlayerNameResolver = std::function<QString(const QString &)>;
+QString clientPlainLogText(const QString &text);
+QString clientCardDisplayText(int cardId);
+QString clientLogPlayerName(const QVariantMap &player, const QString &objectName);
+QString formatClientSkillLogText(const QVariantMap &payload, const ClientLogPlayerNameResolver &playerName);
+QString formatClientGameEventText(const QVariantMap &payload, const ClientLogPlayerNameResolver &playerName);
+QString formatClientPresentationText(int command, const QString &fallbackText,
+                                    const QVariant &payload, const ClientLogPlayerNameResolver &playerName);
 
 #endif

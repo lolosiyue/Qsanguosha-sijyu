@@ -85,7 +85,7 @@ function onOpen() {
     .addItem('連線與操作控制', 'showSidebar').addSeparator().addItem('載入房間目錄', 'catalogFromSheet')
     .addItem('預檢選擇', 'previewSheetDraft').addItem('提交選擇', 'submitSheetDraft')
     .addItem('取消／結束出牌', 'cancelDraft').addItem('重試待確認指令', 'retryPending')
-    .addItem('檢視目前列詳情', 'detailsFromSheet').addItem('離開並關閉會話', 'disconnect').addToUi();
+    .addItem('查詢詳情（座位／項目）', 'detailsFromSheet').addItem('離開並關閉會話', 'disconnect').addToUi();
 }
 function showSidebar() { SpreadsheetApp.getUi().showSidebar(HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('三國殺・Sheets')); }
 function pair(base, code) {
@@ -149,7 +149,7 @@ function applySelection_(selection, draft) {
   const meta = json_('meta', {});
   if (selection.generation !== meta.generation || selection.revision !== meta.revision || selection.request_id !== meta.request_id) throw new Error('預檢已過期，請重新整理牌桌。');
   saveJson_('preflight', {hash: digest_(JSON.stringify({meta: meta, draft: draft})), can_confirm: selection.can_confirm === true});
-  writeBlock_('QSAN Actions', 'preflight_text', 3, 1, [['預檢', selection.can_confirm ? '可以確認' : String(selection.reason || '請繼續選擇')]], 2);
+  renderPreflight_('預檢：' + (selection.can_confirm ? '可以確認' : String(selection.reason || '請繼續選擇')));
   if (selection.ui) renderActions_(meta, selection.ui, true);
 }
 function previewSheetDraft() {

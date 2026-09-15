@@ -53,6 +53,21 @@ QString plainText(QString text)
     return text.left(30000);
 }
 
+QString ruleDescription(const QString &name, bool isGeneral = false)
+{
+    if (!Sanguosha || name.isEmpty()) return {};
+    // Generals have a composed skill description, not a :general translation.
+    if (isGeneral) {
+        const General *general = Sanguosha->getGeneral(name);
+        return general ? plainText(general->getSkillDescription(true)) : QString();
+    }
+    if (const Skill *skill = Sanguosha->getSkill(name))
+        return plainText(skill->getDescription());
+    const QString key = QStringLiteral(":") + name;
+    const QString translated = Sanguosha->translate(key);
+    return translated == key ? QString() : plainText(translated);
+}
+
 QString imagePath(const QString &root, const QString &name)
 {
     if (root.isEmpty() || name.isEmpty())
@@ -154,7 +169,7 @@ QJsonObject cardDetails(const ClientCore &core, const QString &key, const QStrin
                 value.insert(QStringLiteral("suit"), card->getSuitString());
                 value.insert(QStringLiteral("number"), card->getNumber());
             }
-            value.insert(QStringLiteral("description"), plainText(Sanguosha->translate(QStringLiteral(":") + name)));
+            value.insert(QStringLiteral("description"), ruleDescription(name));
             const QString image = faceImage(assetRoot, name, false);
             if (!image.isEmpty()) value.insert(QStringLiteral("image"), image);
         }
@@ -169,44 +184,6 @@ QString safePlayerName(const ClientCore &core, const QString &name)
     const QVariantMap player = core.state()->player(name);
     const QString screen = player.value(QStringLiteral("screen_name")).toString();
     return screen.isEmpty() ? name : screen;
-}
-
-ClientLogFormatRequest logRequest(const QVariantMap &payload)
-{
-    ClientLogFormatRequest request;
-    request.type = payload.value(QStringLiteral("log_type")).toString();
-    request.from = payload.value(QStringLiteral("from_player")).toString();
-    request.tos = payload.value(QStringLiteral("to_players")).toStringList();
-    request.cardString = payload.value(QStringLiteral("card_string")).toString();
-    const QStringList args = payload.value(QStringLiteral("arguments")).toStringList();
-    if (args.size() > 0) request.arg = args.at(0);
-    if (args.size() > 1) request.arg2 = args.at(1);
-    if (args.size() > 2) request.arg3 = args.at(2);
-    if (args.size() > 3) request.arg4 = args.at(3);
-    if (args.size() > 4) request.arg5 = args.at(4);
-    return request;
-}
-
-ClientLogFormatStyle logStyle(ClientCore &core)
-{
-    ClientLogFormatStyle style;
-    style.phrases = engineUseCardPhrases();
-    style.cardJoin = QStringLiteral(", ");
-    style.toJoin = QStringLiteral(", ");
-    style.translate = [](const QString &key) {
-        if (Sanguosha == nullptr) return key;
-        const QString value = Sanguosha->translate(key);
-        return value.isEmpty() ? key : value;
-    };
-    style.cardById = [](int id, bool roomCard) -> const Card * {
-        if (Sanguosha == nullptr) return nullptr;
-        return roomCard ? Sanguosha->getCard(id) : Sanguosha->getEngineCard(id);
-    };
-    style.cardLogName = [](const Card *card) {
-        return card == nullptr ? QString() : card->getLogName();
-    };
-    style.playerName = [&core](const QString &name) { return safePlayerName(core, name); };
-    return style;
 }
 
 } // namespace
@@ -224,7 +201,7 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
     const auto payloadArray = [&payload](const QString &key) {
         return payload.value(key).toArray();
     };
-    QJsonArray options, cards, players, skills, declarations;
+    QJsonArray options, cards, players, skills, declarations, generals;
     const auto label = [](const QString &name) {
         return plainText(Sanguosha ? Sanguosha->translate(name) : name);
     };
@@ -239,8 +216,15 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
             const General *general = Sanguosha->getGeneral(id);
             if (general) item.insert(QStringLiteral("image"), generalImage(assetRoot, general));
         }
-        item.insert(QStringLiteral("detail"), label(QStringLiteral(":") + name));
+        const bool choosingGeneral = request.type == InteractionType::ChooseGeneral;
+        item.insert(QStringLiteral("detail"), ruleDescription(choosingGeneral ? id : name, choosingGeneral));
         options.append(item);
+    }
+    for (const QJsonValue &entry : payload.value(QStringLiteral("generals")).toArray()) {
+        const QString name = entry.toString();
+        QJsonObject item = row(name, label(name));
+        item.insert(QStringLiteral("description"), ruleDescription(name, true));
+        generals.append(item);
     }
     QList<int> offered, disabled;
     const auto appendIds = [](const QJsonArray &array, QList<int> *output) {
@@ -272,7 +256,7 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
                 if (card) {
                     item = row(QString::number(id), label(card->objectName()));
                     item.insert(QStringLiteral("image"), faceImage(assetRoot, card->objectName(), false));
-                    item.insert(QStringLiteral("detail"), label(QStringLiteral(":") + card->objectName()));
+                    item.insert(QStringLiteral("detail"), ruleDescription(card->objectName()));
                 }
             }
             if (item.isEmpty() || item.value(QStringLiteral("hidden")).toBool()) continue;
@@ -299,14 +283,17 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
         item.insert(QStringLiteral("id"), name + QLatin1Char(':') + QString::number(item.value(QStringLiteral("instance_id")).toInt()));
         item.insert(QStringLiteral("label"), label(name));
         item.insert(QStringLiteral("enabled"), item.value(QStringLiteral("available")).toBool(true));
-        item.insert(QStringLiteral("detail"), label(QStringLiteral(":") + name));
+        item.insert(QStringLiteral("detail"), ruleDescription(name));
         skills.append(item);
     }
-    for (const QJsonValue &entry : selection.value(QStringLiteral("declarations")).toArray())
-        declarations.append(row(entry.toString(), label(entry.toString())));
+    for (const QJsonValue &entry : selection.value(QStringLiteral("declarations")).toArray()) {
+        QJsonObject item = row(entry.toString(), label(entry.toString()));
+        item.insert(QStringLiteral("description"), ruleDescription(entry.toString()));
+        declarations.append(item);
+    }
     return {{QStringLiteral("options"), options}, {QStringLiteral("cards"), cards},
         {QStringLiteral("players"), players}, {QStringLiteral("skills"), skills},
-        {QStringLiteral("declarations"), declarations}};
+        {QStringLiteral("declarations"), declarations}, {QStringLiteral("generals"), generals}};
 }
 
 QJsonObject catalog(const ClientCore &, const QString &assetRoot, bool legacy)
@@ -377,6 +364,13 @@ QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot, const
 {
     QJsonObject view;
     const ClientGameState *state = core.state();
+    view.insert(QStringLiteral("self_name"), state->selfName());
+    if (core.hasActiveRequest() && Sanguosha) {
+        const QString type = core.activeRequest().toJson().value(QStringLiteral("type")).toString();
+        const QString key = QStringLiteral("tui_interaction_") + type;
+        const QString label = Sanguosha->translate(key);
+        view.insert(QStringLiteral("interaction_label"), plainText(label == key ? type : label));
+    }
     view.insert(QStringLiteral("status"), state->gameValue(QStringLiteral("status")).toString());
     const QString rawPrompt = core.hasActiveRequest() ? core.activeRequest().prompt : QString();
     view.insert(QStringLiteral("prompt"), plainText(rawPrompt));
@@ -399,6 +393,12 @@ QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot, const
         item.insert(QStringLiteral("id"), name);
         item.insert(QStringLiteral("label"), plainText(safePlayerName(core, name)));
         item.insert(QStringLiteral("seat"), source.value(QStringLiteral("seat")).toInt());
+        const QString phase = source.value(QStringLiteral("phase")).toString();
+        if (!phase.isEmpty() && phase != QLatin1String("not_active") && Sanguosha) {
+            const QString key = QStringLiteral("tui_name_phase_") + phase;
+            const QString label = Sanguosha->translate(key);
+            if (label != key) item.insert(QStringLiteral("phase_label"), plainText(label));
+        }
         // Hidden opponent cards have no face records; retain the public count.
         item.insert(QStringLiteral("hand_count"), source.value(QStringLiteral("hand_count"),
             name == state->selfName() ? state->cardsForPlayer(name, 0).size() : 0).toInt());
@@ -477,6 +477,11 @@ QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot, const
     view.insert(QStringLiteral("players"), players);
     view.insert(QStringLiteral("hand"), hand);
     view.insert(QStringLiteral("cards"), publicCards);
+    for (qsizetype i = 0; i < skills.size(); ++i) {
+        QJsonObject item = skills.at(i).toObject();
+        item.insert(QStringLiteral("description"), ruleDescription(item.value(QStringLiteral("name")).toString()));
+        skills[i] = item;
+    }
     view.insert(QStringLiteral("skills"), skills);
     QStringList formattedLogs;
     for (const QString &line : logs) formattedLogs.append(plainText(line));
@@ -510,7 +515,14 @@ QJsonObject details(const ClientCore &core, const QString &assetRoot, const QStr
     } else if (kind == QLatin1String("player")) {
         for (const QJsonValue &player : snapshotView(core, assetRoot).value(QStringLiteral("players")).toArray()) {
             if (player.toObject().value(QStringLiteral("id")).toString() == key) {
-                result = player.toObject(); break;
+                result = player.toObject();
+                QStringList descriptions;
+                for (const QString &field : {QStringLiteral("general"), QStringLiteral("deputy_general")}) {
+                    const QString description = ruleDescription(result.value(field).toString(), true);
+                    if (!description.isEmpty()) descriptions.append(description);
+                }
+                result.insert(QStringLiteral("description"), descriptions.join(QLatin1Char('\n')));
+                break;
             }
         }
     } else if (kind == QLatin1String("pile")) {
@@ -541,36 +553,12 @@ QJsonObject details(const ClientCore &core, const QString &assetRoot, const QStr
 
 QString presentationText(ClientCore &core, int command, const QString &fallback, const QVariant &payload)
 {
-    if (command == QSanProtocol::S_COMMAND_LOG_SKILL) {
-        const QString text = formatClientLog(logRequest(payload.toMap()), logStyle(core));
-        return plainText(text);
-    }
-    if (command == QSanProtocol::S_COMMAND_LOG_EVENT) {
-        const QVariantMap event = payload.toMap();
-        ClientLogFormatRequest request;
-        request.from = event.value(QStringLiteral("player_name")).toString();
-        switch (event.value(QStringLiteral("event")).toInt()) {
-        case QSanProtocol::S_GAME_EVENT_PLAYER_QUITDYING: request.type = QStringLiteral("#QuitDying"); break;
-        case QSanProtocol::S_GAME_EVENT_PLAYER_REFORM: request.type = QStringLiteral("#PlayerReform"); break;
-        case QSanProtocol::S_GAME_EVENT_CHANGE_HERO:
-            request.type = QStringLiteral("#ChangeHero");
-            request.arg = event.value(QStringLiteral("general_name")).toString();
-            break;
-        case QSanProtocol::S_GAME_EVENT_HUASHEN:
-            request.type = QStringLiteral("#HuaShen");
-            request.arg = event.value(QStringLiteral("skill_name")).toString();
-            request.arg2 = event.value(QStringLiteral("general_name")).toString();
-            break;
-        default: return QString();
-        }
-        return plainText(formatClientLog(request, logStyle(core)));
-    }
-    if (command == QSanProtocol::S_COMMAND_SPEAK) {
-        const QVariantMap chat = payload.toMap();
-        const QString text = chat.value(QStringLiteral("text")).toString().trimmed();
-        return text.isEmpty() ? QString() : plainText(QStringLiteral("%1: %2").arg(chat.value(QStringLiteral("speaker")).toString(), text));
-    }
-    return plainText(fallback);
+    // Chat keeps the screen name; battle logs use TUI's translated generals.
+    const auto names = [&core, command](const QString &name) {
+        return command == QSanProtocol::S_COMMAND_SPEAK ? safePlayerName(core, name)
+            : clientLogPlayerName(core.state()->player(name), name);
+    };
+    return plainText(formatClientPresentationText(command, fallback, payload, names));
 }
 
 bool playPresentationAudio(int command, const QVariant &payload, const QString &assetRoot)

@@ -1,4 +1,5 @@
 #include "excel-bridge.h"
+#include "../client/core/client-move-log.h"
 #include "excel-view.h"
 
 #include "engine.h"
@@ -103,6 +104,18 @@ ExcelBridge::ExcelBridge(const ExcelBridgeOptions &options, QObject *parent)
     connect(&m_core, &ClientCore::requestCancelled, this, [this](quint64, int) { changed(); });
     connect(&m_session, &ClientLiveSession::connectionChanged, this,
         [this](const QString &state) { event(QStringLiteral("connection"), {{QStringLiteral("state"), state}}); });
+    connect(&m_session, &ClientLiveSession::frontendMessageReceived, this,
+        [this](const ProtocolMessage &message) {
+            // Same post-reducer movement/HP transcript as TUI, including ren-pile tracking.
+            for (const auto &record : synthesizeClientMessageLogs(m_core.state(), &m_renPile, message)) {
+                const QVariantMap payload = record.toSkillLogMap();
+                const QString line = ExcelView::presentationText(m_core,
+                    QSanProtocol::S_COMMAND_LOG_SKILL, QString(), payload);
+                if (line.isEmpty()) continue;
+                m_core.state()->appendPresentationEvent(QSanProtocol::S_COMMAND_LOG_SKILL, line, payload);
+                log(line);
+            }
+        });
     connect(&m_session, &ClientLiveSession::presentationEvent, this,
         [this](int command, const QString &text, const QVariant &payload) {
             const QString line = ExcelView::presentationText(m_core, command, text, payload);

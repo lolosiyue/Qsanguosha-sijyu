@@ -77,6 +77,8 @@ function setup_() {
     Object.keys(props.getProperties()).filter(k => k.startsWith(p + 'block_')).forEach(k => props.deleteProperty(k));
     drop_('actions_signature');
   });
+  // Upgrade the owned Actions sheet in place; the draft remains the same table.
+  drop_('room_layout');
   const room = sheet_('QSAN Room');
   if (!room.getRange(1, 1).getValue()) {
     writeBlock_('QSAN Room', 'room_initial', 1, 1, [
@@ -89,9 +91,141 @@ function setup_() {
       ['OperationNoLimit', '布林', true], ['CountDownSeconds', '整數', 0]
     ], 3);
   }
-  writeBlock_('QSAN Actions', 'action_header', 6, 1,
-    [['項目類型', '識別碼', '名稱', '選取', '順序（可填 1,3）', 'top／bottom／角色', '可用', '說明', '技能名稱', '技能實例', '圖片識別碼']], 11);
-  writeBlock_('QSAN Details', 'detail_header', 1, 1, [['詳情', '在牌桌、互動或目錄選取一列，再按檢視詳情']], 2);
+  writeBlock_('QSAN Details', 'detail_header', 1, 1, [['詳情', '選取房間座位或清單項目，再按「查詢詳情」；結果亦顯示於側欄']], 2);
+}
+function description_(item) {
+  // Accept both native description fields; never show an untranslated lookup key.
+  return [item.description, item.detail].map(text_).find(value => value.trim() && !/^:[^\s]+$/.test(value.trim())) || '';
+}
+function actionFirst_() { return Number(get_('action_first', String(QSAN.FIRST))); }
+function roomPlan_(snapshot) {
+  const view = snapshot.view || {}, state = snapshot.state || {};
+  const self = view.self_name || state.self_name || '';
+  const players = (view.players || []).slice().sort((a, b) => Number(a.seat || 0) - Number(b.seat || 0));
+  const index = players.findIndex(p => p.id === self);
+  // Preserve seat order, including dead players, and rotate only around self.
+  const ordered = index < 0 ? players : players.slice(index + 1).concat(players.slice(0, index));
+  const topCount = Math.min(ordered.length, ordered.length % 2 ? 3 : 2);
+  const sideCount = (ordered.length - topCount) / 2;
+  const bands = Math.max(2, sideCount), bottom = 12 + bands * 7;
+  const topColumns = topCount === 1 ? [5] : topCount === 2 ? [1, 9] : [1, 5, 9];
+  const seats = [];
+  ordered.forEach((player, i) => {
+    if (i < sideCount) seats.push({player, row: 12 + (sideCount - 1 - i) * 7, col: 1});
+    else if (i < sideCount + topCount) seats.push({player, row: 5, col: topColumns[i - sideCount]});
+    else seats.push({player, row: 12 + (i - sideCount - topCount) * 7, col: 9});
+  });
+  if (index >= 0) seats.push({player: players[index], row: bottom, col: 5, self: true});
+  const hand = view.hand || [], handHeight = Math.max(3, Math.ceil(hand.length / 5));
+  return {seats, bottom, handHeight, first: bottom + handHeight + 15};
+}
+function roomCardText_(card) {
+  if (!card || card.hidden) return '暗牌';
+  const suit = {spade: '♠', club: '♣', heart: '♥', diamond: '♦'}[card.suit] || '';
+  const number = {1: 'A', 11: 'J', 12: 'Q', 13: 'K'}[card.number] || card.number || '';
+  return (card.label || card.name || '未知牌') + (suit || number ? '[' + suit + number + ']' : '');
+}
+function roomPhase_(player) {
+  return player.phase_label || ({round_start: '回合開始', start: '準備階段', judge: '判定階段', draw: '摸牌階段',
+    play: '出牌階段', discard: '棄牌階段', finish: '結束階段', not_active: '', none: ''}[player.phase] || player.phase || '');
+}
+function roomSeatText_(seat, view) {
+  const p = seat.player, roles = {lord: '主公', loyalist: '忠臣', rebel: '反賊', renegade: '內奸'};
+  const hp = p.hp == null || p.max_hp == null ? '體力待定' : '體力 ' + p.hp + '/' + p.max_hp;
+  const judgments = (view.cards || []).filter(c => c.owner === p.id && Number(c.place) === 2);
+  return [
+    [p.general_label, p.deputy_general_label].filter(Boolean).join('／') || '等待選將',
+    hp + '　手牌 ' + (p.hand_count == null ? '?' : p.hand_count),
+    [p.alive === false ? '陣亡' : '', roles[p.role] || p.role || '', roomPhase_(p), p.chained ? '連環' : '', p.face_up === false ? '翻面' : ''].filter(Boolean).join(' · '),
+    '裝備：' + (equipLabels_(p.equip) || '無'),
+    '判定：' + (judgments.map(roomCardText_).join('、') || '無'),
+    marksSummary_(p.marks)
+  ].filter(Boolean).join('\n');
+}
+function roomZones_(plan) {
+  return [{key: 'title', row: 1, col: 1, height: 1, width: 11},
+    {key: 'status', row: 2, col: 1, height: 2, width: 11},
+    {key: 'pile_title', row: 12, col: 5, height: 1, width: 3},
+    {key: 'pile', row: 13, col: 5, height: 3, width: 3},
+    {key: 'prompt_title', row: 17, col: 5, height: 1, width: 3},
+    {key: 'prompt', row: 18, col: 5, height: plan.bottom - 21, width: 3},
+    {key: 'preflight', row: plan.bottom - 3, col: 5, height: 2, width: 3},
+    {key: 'hand_title', row: plan.bottom + 7, col: 1, height: 1, width: 11},
+    {key: 'hand', row: plan.bottom + 8, col: 1, height: plan.handHeight, width: 11},
+    {key: 'skills', row: plan.bottom + 8 + plan.handHeight, col: 1, height: 2, width: 11},
+    {key: 'help', row: plan.first - 4, col: 1, height: 3, width: 11},
+    {key: 'log_title', row: 4, col: 13, height: 1, width: 4}]
+    .concat(plan.seats.flatMap((seat, i) => [
+      {key: 'seat_title_' + i, row: seat.row, col: seat.col, height: 1, width: 3},
+      {key: 'seat_' + i, row: seat.row + 1, col: seat.col, height: 5, width: 3}]))
+    .concat(Array.from({length: Math.floor((plan.first - 6) / 2)}, (_, i) => ({key: 'log_' + i, row: i * 2 + 5, col: 13, height: 2, width: 4})));
+}
+function prepareRoom_(plan) {
+  const signature = digest_(JSON.stringify({version: 2, first: plan.first, seats: plan.seats.map(s => [s.row, s.col]), handHeight: plan.handHeight}));
+  if (get_('room_layout', '') === signature) return;
+  const sheet = sheet_('QSAN Actions'), first = actionFirst_(), count = Number(get_('action_rows', '0'));
+  drop_('room_seats');
+  // Capture the draft before changing merged ranges or moving its candidate table.
+  const prior = count ? sheet.getRange(first, 1, count, QSAN.COLS).getValues() : [];
+  const height = Math.max(first + count, plan.first + count, sheet.getLastRow());
+  ensureRange_(sheet, 1, 1, height, 16).breakApart().clearContent().clearDataValidations().setBackground('#eef3f0').setFontColor('#20382e').setFontWeight('normal').setVerticalAlignment('top').setWrap(true);
+  sheet.setFrozenRows(3); sheet.setHiddenGridlines(true);
+  [85, 90, 155, 55, 95, 100, 70, 200, 90, 70, 65, 18, 95, 95, 95, 95].forEach((width, i) => sheet.setColumnWidth(i + 1, width));
+  sheet.setRowHeights(1, height, 24);
+  roomZones_(plan).forEach(zone => {
+    const range = sheet.getRange(zone.row, zone.col, zone.height, zone.width).merge();
+    const heading = /title/.test(zone.key);
+    range.setBackground(heading ? '#254d3d' : '#ffffff').setFontColor(heading ? '#ffffff' : '#20382e').setFontWeight(heading ? 'bold' : 'normal');
+  });
+  sheet.getRange(18, 5, plan.bottom - 21, 3).setBackground('#fff0c7');
+  // Clear only rendering caches: request identity, credentials and pending commands survive.
+  const props = PropertiesService.getUserProperties(), prefix = prefix_() + 'block_';
+  Object.keys(props.getProperties()).filter(k => k.startsWith(prefix + 'room_') || k.startsWith(prefix + 'action_header')).forEach(k => props.deleteProperty(k));
+  put_('action_first', plan.first); drop_('actions_signature');
+  put_('room_preflight_row', plan.bottom - 3);
+  if (prior.length) sheet.getRange(plan.first, 1, prior.length, QSAN.COLS).setNumberFormat('@').setValues(prior.map(r => r.map((v, i) => i === 10 ? '' : safe_(v))));
+  put_('room_layout', signature);
+}
+function renderRoom_(snapshot, meta) {
+  const plan = roomPlan_(snapshot), view = snapshot.view || {}, game = (snapshot.state || {}).game || {};
+  prepareRoom_(plan);
+  const zones = roomZones_(plan), put = (key, value) => {
+    const zone = zones.find(z => z.key === key);
+    writeBlock_('QSAN Actions', 'room_' + key, zone.row, zone.col, [[value]], 1);
+  };
+  put('title', '三國殺 · 遊戲房間（選取座位 → 側欄「查詢詳情」）');
+  put('status', [game.game_over ? '對局結束 · ' + text_(game.result || '') : '第 ' + (game.round || 0) + ' 回合',
+    game.draw_pile_count == null ? '' : '牌堆剩餘 ' + game.draw_pile_count, snapshot.connection || ''].filter(Boolean).join('　｜　'));
+  plan.seats.forEach((seat, i) => {
+    const p = seat.player;
+    put('seat_title_' + i, (roomPhase_(p) ? '▶ ' : '') + (seat.self ? '本人 · ' : '') + (p.seat ? p.seat + ' 號位 · ' : '') + (p.label || p.id));
+    put('seat_' + i, roomSeatText_(seat, view));
+  });
+  // Map the displayed rectangles to player IDs, never to mutable seat numbers.
+  saveJson_('room_seats', plan.seats.map(s => ({row: s.row, col: s.col, id: s.player.id})));
+  // PlaceTable is 7; equipment, delayed tricks and discard pile are separate zones.
+  put('pile_title', '處理區 · Table pile');
+  put('pile', (view.cards || []).filter(c => Number(c.place) === 7).map(roomCardText_).join('、') || '目前沒有處理中的牌');
+  put('prompt_title', '目前行動 · ' + (view.interaction_label || meta.type));
+  put('prompt', game.game_over ? '對局結束：' + text_(game.result || '') : interactionPrompt_(snapshot));
+  put('preflight', get_('preflight_message', '預檢：待重新預檢'));
+  put('hand_title', '本人手牌 · ' + (view.hand || []).length + ' 張');
+  put('hand', (view.hand || []).map(roomCardText_).join('　｜　') || '沒有手牌');
+  put('skills', '技能：' + ((view.skills || []).map(s => s.label || s.name || s.id).join('、') || '無'));
+  put('help', '下方 D 欄勾選卡牌／目標／選項；E 欄指定順序。技能先預檢取得宣告；觀星在 F 欄填 top/bottom。\n' +
+    (meta.shape === 'unsupported' ? '此互動不支援，未送出回覆。' : '選擇範圍：' + (meta.min == null ? '' : meta.min) + ' ～ ' + (meta.max == null ? '' : meta.max)) +
+    (meta.cancelable ? '　可由選單或側欄取消／結束出牌。' : ''));
+  put('log_title', '戰報 · 最新在上（完整記錄見 QSAN Log）');
+  const logCount = Math.floor((plan.first - 6) / 2), logs = (view.logs || []).slice(-logCount).reverse();
+  for (let i = 0; i < logCount; ++i) put('log_' + i, logs[i] || '');
+  writeBlock_('QSAN Actions', 'action_header', plan.first - 1, 1,
+    [['項目類型', '識別碼', '名稱', '選取', '順序（可填 1,3）', 'top／bottom／角色', '可用', '說明', '技能名稱', '技能實例', '']], 11);
+}
+function renderPreflight_(message) {
+  // The central preflight panel has a fixed relation to the seat ring, independent of hand size.
+  const row = Number(get_('room_preflight_row', '3'));
+  put_('preflight_message', message);
+  writeBlock_('QSAN Actions', 'room_preflight', row, row === 3 ? 1 : 5, [[message]], 1);
 }
 function meta_(snapshot) {
   const req = snapshot.interaction || {}, payload = req.payload || {};
@@ -116,18 +250,14 @@ function render_(snapshot) {
   const meta = meta_(snapshot), previous = json_('meta', null), req = snapshot.interaction || {}, view = snapshot.view || {};
   const game = (snapshot.state || {}).game || {};
   const sameRequest = previous && previous.generation === meta.generation && previous.request_id === meta.request_id;
+  renderRoom_(snapshot, meta);
   if (!previous || previous.revision !== meta.revision || !sameRequest) {
-    drop_('preflight'); writeBlock_('QSAN Actions', 'preflight_text', 3, 1, [['預檢', '待重新預檢']], 2);
+    drop_('preflight'); renderPreflight_('預檢：待重新預檢');
   }
-  writeBlock_('QSAN Actions', 'action_title', 1, 1,
-    [['目前互動', meta.type], ['提示', interactionPrompt_(snapshot)]], 2);
-  writeBlock_('QSAN Actions', 'action_help', 4, 1,
-    [['選擇範圍', String(meta.min === undefined ? '' : meta.min) + ' ～ ' + String(meta.max === undefined ? '' : meta.max)],
-     ['操作', meta.shape === 'unsupported' ? '此互動不支援，未送出回覆。' : '勾選後可填順序；技能先預檢取得宣告選項。觀星填 top/bottom；角色分配填角色 ID。']], 2);
   const ui = Object.assign({}, req.ui || {});
   if ((!ui.skills || !ui.skills.length) && meta.shape === 'cards') ui.skills = view.skills || [];
   renderActions_(meta, ui, !!sameRequest);
-  const board = [['牌桌', '識別碼', '名稱', '體力', '手牌數', '武將／裝備／標記', '狀態', '說明', '技能名稱', '實例', '圖片'],
+  const board = [['牌桌', '識別碼', '名稱', '體力', '手牌數', '武將／裝備／標記', '狀態', '說明', '技能名稱', '實例', ''],
     ['狀態', '', snapshot.connection || '', '', '', '', game.game_over ? 'GAME_OVER' : (view.status || game.status || ''), '', '', '', ''],
     ['回合／牌堆', game.round === undefined ? '' : game.round, game.draw_pile_count === undefined ? '' : '牌堆剩餘：' + game.draw_pile_count, '', '', '', '', '', '', '', ''],
     ['勝方', '', text_(game.result || ''), '', '', '', '', '', '', '', '']];
@@ -138,17 +268,18 @@ function render_(snapshot) {
     const label = p.label || p.id;
     board.push(['player', p.id, label, (hp === '' && maxHp === '') ? '' : String(hp) + '/' + String(maxHp), handCount,
       [p.general_label, p.deputy_general_label, equipLabels_(p.equip), marksSummary_(p.marks)].filter(Boolean).join('；'),
-      (p.alive === false ? '陣亡' : '存活') + (p.role ? '；身分：' + ({lord:'主公', loyalist:'忠臣', rebel:'反賊', renegade:'內奸'}[p.role] || p.role) : '') + (p.phase && p.phase !== 'not_active' ? '；階段：' + p.phase : ''), p.detail || '', '', '', p.general_image || '']);
+      (p.alive === false ? '陣亡' : '存活') + (p.role ? '；身分：' + ({lord:'主公', loyalist:'忠臣', rebel:'反賊', renegade:'內奸'}[p.role] || p.role) : '') + (p.phase && p.phase !== 'not_active' ? '；階段：' + p.phase : ''), description_(p), '', '', '']);
   });
-  (view.hand || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', '本人手牌', '', c.detail || '', '', '', c.image || '']));
-  (view.cards || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', '公開牌區', '', c.detail || '', '', '', c.image || '']));
-  (view.skills || []).forEach(s => board.push(['skill', s.name || s.id, s.label, '', '', '本人技能', '', s.detail || '', s.name || s.id, s.instance_id || s.skill_instance_id || 0, '']));
+  (view.hand || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', '本人手牌', '', description_(c), '', '', '']));
+  (view.cards || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', '公開牌區', '', description_(c), '', '', '']));
+  (view.skills || []).forEach(s => board.push(['skill', s.name || s.id, s.label, '', '', '本人技能', '', description_(s), s.name || s.id, s.instance_id || s.skill_instance_id || 0, '']));
   writeBlock_('QSAN Board', 'board', 1, 1, board, 11);
   writeBlock_('QSAN Log', 'log', 1, 1, [['戰報']].concat((view.logs || []).map(x => [x])), 1);
   // Commit the new identity only once its candidate rows were written.
   saveJson_('meta', meta);
 }
 function renderActions_(meta, ui, preserve) {
+  const first = actionFirst_();
   const rows = [], add = (bank, items) => (items || []).forEach((x, index) => {
     if (typeof x === 'string' || typeof x === 'number') x = {id: String(x), label: String(x)};
     const instance = x.instance_id || x.skill_instance_id || 0;
@@ -158,7 +289,7 @@ function renderActions_(meta, ui, preserve) {
     const id = bank === 'skill' ? skillName + ':' + instance : (x.id === undefined ? String(x.name || '') : String(x.id));
     rows.push([bank, id, x.label || x.name || x.id || '',
       bank === 'rearrange' || bank === 'assignment', bank === 'rearrange' ? String(index + 1) : '', bank === 'rearrange' ? 'top' : '',
-      x.enabled !== false, x.detail || '', skillName, instance, x.image || '']);
+      x.enabled !== false, description_(x), skillName, instance, '']);
   });
   if (meta.shape === 'option') { add('option', ui.options); if (!meta.enumerated) add('option', [{id: '', label: '自行輸入選項識別碼（第二欄）'}]); }
   if (['cards', 'distribution'].indexOf(meta.shape) >= 0) add('card', ui.cards);
@@ -166,26 +297,26 @@ function renderActions_(meta, ui, preserve) {
   if (meta.shape === 'cards') { add('skill', ui.skills); add('declaration', ui.declarations); }
   if (meta.shape === 'assignment') add('assignment', ui.players);
   if (meta.shape === 'rearrangement') add('rearrange', ui.cards);
-  if (meta.shape === 'general_arrangement') add('general', meta.generals);
+  if (meta.shape === 'general_arrangement') add('general', ui.generals && ui.generals.length ? ui.generals : meta.generals);
   const signature = digest_(JSON.stringify({schema: 'actions-checkbox-v2', generation: meta.generation, request: meta.request_id, rows: rows}));
   if (preserve && get_('actions_signature', '') === signature) return;
   const sheet = sheet_('QSAN Actions'), count = Number(get_('action_rows', '0')), old = {};
-  if (preserve && count) sheet.getRange(QSAN.FIRST, 1, count, QSAN.COLS).getValues().forEach(r => { old[r[0] + '\n' + r[1] + '\n' + r[9]] = r; });
+  if (preserve && count) sheet.getRange(first, 1, count, QSAN.COLS).getValues().forEach(r => { old[r[0] + '\n' + r[1] + '\n' + r[9]] = r; });
   rows.forEach(r => { const prior = old[r[0] + '\n' + r[1] + '\n' + r[9]]; if (prior) {
     r[3] = prior[3] === true || String(prior[3]).toLowerCase() === 'true' || String(prior[3]) === '是';
     r[4] = prior[4]; r[5] = prior[5];
   } else r[3] = Boolean(r[3]); });
-  if (count) sheet.getRange(QSAN.FIRST, 1, count, QSAN.COLS).clearContent().clearDataValidations();
+  if (count) sheet.getRange(first, 1, count, QSAN.COLS).clearContent().clearDataValidations();
   if (rows.length) {
-    ensureRange_(sheet, QSAN.FIRST, 1, rows.length, QSAN.COLS).setNumberFormat('@').setValues(rows.map(r => r.map(safe_)));
+    ensureRange_(sheet, first, 1, rows.length, QSAN.COLS).setNumberFormat('@').setValues(rows.map(r => r.map(safe_)));
     // Column D is a real boolean checkbox column; text format turns false into a literal string.
-    sheet.getRange(QSAN.FIRST, 4, rows.length, 1).setNumberFormat('General').setValues(rows.map(r => [Boolean(r[3])]));
+    sheet.getRange(first, 4, rows.length, 1).setNumberFormat('General').setValues(rows.map(r => [Boolean(r[3])]));
     // Validation creates checkboxes without resetting already selected values.
-    sheet.getRange(QSAN.FIRST, 4, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
-    sheet.getRange(QSAN.FIRST, 4, rows.length, 3).setBackground('#e9f3ff');
-    sheet.getRange(QSAN.FIRST, 11, rows.length, 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
-    if (meta.shape === 'rearrangement') sheet.getRange(QSAN.FIRST, 6, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['top', 'bottom'], true).setAllowInvalid(false).build());
-    if (meta.shape === 'assignment' && meta.roles.length) sheet.getRange(QSAN.FIRST, 6, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(meta.roles, true).setAllowInvalid(false).build());
+    sheet.getRange(first, 4, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+    sheet.getRange(first, 4, rows.length, 3).setBackground('#e9f3ff');
+    sheet.getRange(first, 11, rows.length, 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+    if (meta.shape === 'rearrangement') sheet.getRange(first, 6, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['top', 'bottom'], true).setAllowInvalid(false).build());
+    if (meta.shape === 'assignment' && meta.roles.length) sheet.getRange(first, 6, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(meta.roles, true).setAllowInvalid(false).build());
   }
   put_('action_rows', rows.length); put_('actions_signature', signature);
 }
@@ -211,31 +342,51 @@ function catalogFromSheet() {
     return outcome_('目錄已寫入 QSAN Catalog；額外設定加入 QSAN Room。');
   });
 }
+function roomSeatAt_(range) {
+  const r = range.getRow(), col = range.getColumn();
+  const endRow = r + range.getNumRows() - 1, endCol = col + range.getNumColumns() - 1;
+  return json_('room_seats', []).find(s => r >= s.row && endRow < s.row + 6 && col >= s.col && endCol < s.col + 3);
+}
+function detailValues_(value) {
+  // Asset references stay in the transport and image loader, including nested equipment.
+  if (Array.isArray(value)) return value.map(detailValues_);
+  if (!value || typeof value !== 'object') return value;
+  const result = {};
+  Object.keys(value).filter(k => k !== 'image' && !k.endsWith('_image')).forEach(k => { result[k] = detailValues_(value[k]); });
+  return result;
+}
 function detailsFromSheet() {
   return locked_(function() {
     const range = SpreadsheetApp.getActiveRange(); if (!range) throw new Error('請先選取一個項目列。');
     const sheet = range.getSheet(), name = sheet.getName();
     if (['QSAN Board', 'QSAN Actions', 'QSAN Catalog'].indexOf(name) < 0) throw new Error('請在牌桌、互動或目錄選取項目。');
-    sheet_(name); const row = sheet.getRange(range.getRow(), 1, 1, 11).getValues()[0];
+    sheet_(name);
+    const inRoom = name === 'QSAN Actions' && range.getRow() < actionFirst_();
+    const seat = inRoom ? roomSeatAt_(range) : null;
+    if (inRoom && !seat) throw new Error('請選取一個座位的標題或內容，再按「查詢詳情」；卡牌／技能可在下方清單選取。');
+    const row = seat ? ['player', seat.id, '', '', '', '', '', '', '', '', ''] : sheet.getRange(range.getRow(), 1, 1, 11).getValues()[0];
     let kind = String(row[0]), key = String(row[1]);
     if (kind === 'rearrange') kind = 'card';
     if (kind === 'assignment') kind = 'player';
     if (kind === 'skill') key = String(row[8] || key);
-    if (kind === 'option') kind = 'general';
+    // Ordinary yes/no or skill options are not general IDs.
+    if (kind === 'option' && json_('meta', {}).type === 'choose_general') kind = 'general';
     const supported = ['card', 'player', 'skill', 'general', 'pile'];
     let result;
     if (supported.indexOf(kind) >= 0) result = command_('details', {kind: kind, key: key});
-    else result = {label: row[2], detail: row[7] || row[3]};
+    else result = {label: row[2], description: row[7] || ''};
     const rows = [['項目', result.label || row[2]], ['識別碼', key]];
-    Object.keys(result).filter(k => k !== 'image').forEach(k => rows.push([k, text_(result[k])]));
+    const visible = detailValues_(result), labels = {description: '說明', detail: '說明', marks: '完整標記', equip: '裝備', hp: '體力', max_hp: '體力上限', hand_count: '手牌數'};
+    Object.keys(visible).filter(k => k !== 'id' && k !== 'label').forEach(k => rows.push([labels[k] || k, text_(visible[k])]));
     writeBlock_('QSAN Details', 'details', 2, 1, rows, 2);
-    const asset = result.image || row[10]; let image = '';
+    const asset = result.image || result.general_image; let image = '';
     if (typeof asset === 'string' && /^\/v1\/assets\/[0-9a-f]{64}$/.test(asset)) {
       const response = UrlFetchApp.fetch(endpoint_() + asset, {followRedirects: false, validateHttpsCertificates: true,
         muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + get_('token', ''), 'X-QSan-Session': get_('session', '')}});
       const headers = response.getAllHeaders(), mimeKey = Object.keys(headers).find(k => k.toLowerCase() === 'content-type'), mime = String(headers[mimeKey] || '');
       if (response.getResponseCode() === 200 && /^image\/(png|jpeg|gif)$/.test(mime)) image = 'data:' + mime + ';base64,' + Utilities.base64Encode(response.getContent());
     }
-    return outcome_('詳情已寫入 QSAN Details。', {detailImage: image});
+    return outcome_('詳情已顯示於側欄，並寫入 QSAN Details。', {detailImage: image,
+      detailText: rows.map(r => r[0] + '：' + r[1]).join('\n')});
   });
 }

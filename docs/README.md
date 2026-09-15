@@ -105,7 +105,10 @@
 | [excel-ipc.md](excel-ipc.md) | Excel 橋 wire contract |
 | [excel-implementation-status.md](excel-implementation-status.md) | Excel 進度檢查點 |
 | [excel-trial-readme.txt](excel-trial-readme.txt) | Excel portable 試用包終端使用者說明（附檔） |
-| [google-sheets-client.md](google-sheets-client.md) | Google Sheets 客戶端（`QSAN_BUILD_SHEETS`；未追蹤新檔） |
+| [google-sheets-client.md](google-sheets-client.md) | Google Sheets 客戶端、房間布局及驗收邊界（`QSAN_BUILD_SHEETS`） |
+| [google-sheets-room-validation-20260916.md](google-sheets-room-validation-20260916.md) | 房間布局與 TUI 共用戰報的建置／短測試結果 |
+| [google-sheets-room-trust-acceptance-20260916.md](google-sheets-room-trust-acceptance-20260916.md) | 線上部署、05P 託管完整對局與正常清理；版面可讀性待修項 |
+| [google-sheets-details-validation-20260916.md](google-sheets-details-validation-20260916.md) | 完整說明、圖片識別碼隱藏及座位詳情：增量建置、30/30 前端短測試與線上腳本更新 |
 
 ## 9. Lua 擴展規範
 
