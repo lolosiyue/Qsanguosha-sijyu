@@ -179,8 +179,8 @@ public:
     virtual bool checkCustomUsage(const SkillContext &ctx) const override;
     virtual void addUsage(const SkillContext &ctx) const override;
 
-    void onShimingSuccess(Room *room, ServerPlayer *player) const override;
-    void onShimingFail(Room *room, ServerPlayer *player) const override;
+    void onShimingSuccess(Room *room, ServerPlayer *player, const SkillInstanceRef &ref) const override;
+    void onShimingFail(Room *room, ServerPlayer *player, const SkillInstanceRef &ref) const override;
 
     LuaFunction on_record;
     LuaFunction can_trigger;

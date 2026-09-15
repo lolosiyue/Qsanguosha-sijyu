@@ -14038,6 +14038,19 @@ public:
 	}
 };
 
+// Xietu's upgrade is shared by that separate skill. Success takes precedence
+// over failure when independent Weiming missions have different outcomes.
+static int xietuShimingOutcome(const Player *player)
+{
+    int outcome = 0;
+    foreach (int id, player->getSkillInstanceIds("weiming")) {
+        const int status = player->getSkillInstanceStateValue("weiming", id, "shiming_status", 0).toInt();
+        if (status == 1) return 1;
+        if (status == 2) outcome = 2;
+    }
+    return outcome;
+}
+
 XietuCard::XietuCard()
 {
 	mute = true;
@@ -14052,7 +14065,7 @@ void XietuCard::onEffect(CardEffectStruct &effect) const
 {
 	ServerPlayer *from = effect.from, *to = effect.to;
 	Room *room = from->getRoom();
-	if(from->getMark("weimingShiming")==1){
+	if(xietuShimingOutcome(from)==1){
 		QStringList choices;
 		if(from->getMark("xietu1-PlayClear")<1)
 			choices << "xietu1";
@@ -14069,7 +14082,7 @@ void XietuCard::onEffect(CardEffectStruct &effect) const
 		}
 	}else if(from->getChangeSkillState(getSkillName())==1){
 		room->setChangeSkillState(from,getSkillName(),2);
-		if(from->getMark("weimingShiming")==2){
+		if(xietuShimingOutcome(from)==2){
 			from->peiyin(getSkillName(),qsanRandomBounded(2)+3);
 			room->recover(from,RecoverStruct(getSkillName(),from));
 			room->askForDiscard(to,getSkillName(),2,2,false,true);
@@ -14079,7 +14092,7 @@ void XietuCard::onEffect(CardEffectStruct &effect) const
 		}
 	}else{
 		room->setChangeSkillState(from,getSkillName(),1);
-		if(from->getMark("weimingShiming")==2){
+		if(xietuShimingOutcome(from)==2){
 			from->peiyin(getSkillName(),qsanRandomBounded(2)+3);
 			from->drawCards(1,getSkillName());
 			room->damage(DamageStruct(getSkillName(),from,to));
@@ -14101,7 +14114,7 @@ public:
 	bool isEnabledAtPlay(const Player *player) const
 	{
 		int m = 1;
-		if(player->getMark("weimingShiming")==1)
+		if(xietuShimingOutcome(player)==1)
 			m = 2;
 		return player->usedTimes("XietuCard") < m;
 	}
@@ -14115,63 +14128,68 @@ public:
 class Weiming : public TriggerSkill
 {
 public:
-	Weiming() : TriggerSkill("weiming")
-	{
-		events << Death << EventPhaseStart;
-		shiming_skill = true;
-	}
-	bool triggerable(const ServerPlayer *target) const
-	{
-		return target!=nullptr;
-	}
+    Weiming() : TriggerSkill("weiming")
+    {
+        events << Death << EventPhaseStart;
+        shiming_skill = true;
+    }
 
-	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
-	{
-		if(event==EventPhaseStart){
-			if(player->getPhase()==Player::Play&&player->isAlive()
-				&&player->getMark("weimingShiming")<1&&player->hasSkill(objectName())){
-				QList<ServerPlayer *> tos;
-				foreach (ServerPlayer *p, room->getOtherPlayers(player)){
-					if(p->getMark("&weiming+#"+player->objectName())<1){
-						tos << p;
-					}
-				}
-				ServerPlayer *to = room->askForPlayerChosen(player,tos,objectName(),"weiming0",false,true);
-				if(to){
-					room->broadcastSkillInvoke(objectName(),player,2);
-					room->setPlayerMark(to,"&weiming+#"+player->objectName(),1);
-				}
-			}
-		}else{
-			DeathStruct death = data.value<DeathStruct>();
-			if(death.who==player){
-				foreach (ServerPlayer *p, room->getOtherPlayers(player)){
-					if(p->getMark("weimingShiming")<1&&p->hasSkill(objectName())){
-						if(player->getMark("&weiming+#"+p->objectName())>0){
-							room->setPlayerMark(p,"weimingShiming",2);
-							room->sendShimingLog(player,objectName(),false,1);
-							foreach (ServerPlayer *q, room->getOtherPlayers(p)){
-								room->setPlayerMark(q,"&weiming+#"+p->objectName(),0);
-							}
-							room->changeTranslation(p,"xietu1",Sanguosha->translate(":xietu4"));
-							room->changeTranslation(p,"xietu2",Sanguosha->translate(":xietu5"));
-							room->changeTranslation(p,"xietu",p->getChangeSkillState("xietu"));
-						}else if(death.damage&&death.damage->from==p){
-							room->setPlayerMark(p,"weimingShiming",1);
-							room->sendShimingLog(player,objectName(),true,3);
-							foreach (ServerPlayer *q, room->getOtherPlayers(p)){
-								room->setPlayerMark(q,"&weiming+#"+p->objectName(),0);
-							}
-							int n = p->getChangeSkillState("xietu");
-							room->setPlayerMark(p, QString("&xietu+%1_num").arg(n), 0);
-							room->changeTranslation(p,"xietu",3);
-						}
-					}
-				}
-			}
-		}
-		return false;
-	}
+    bool triggerable(const ServerPlayer *target) const override { return target != nullptr; }
+
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        QList<ServerPlayer *> owners;
+        if (event == EventPhaseStart) {
+            if (!player->isAlive() || player->getPhase() != Player::Play) return false;
+            owners << player;
+        } else {
+            if (data.value<DeathStruct>().who != player) return false;
+            owners = room->getOtherPlayers(player);
+        }
+        foreach (ServerPlayer *owner, owners) {
+            const QList<int> ids = owner->getValidSkillInstanceIds(objectName());
+            foreach (int id, ids) {
+                const SkillInstanceRef ref(owner->objectName(), SkillInstanceKey(objectName(), id));
+                if (!owner->hasSkillInstance(objectName(), id) || owner->isSkillInvalid(objectName(), id)
+                    || room->getShimingStatus(ref) != 0) continue;
+                QStringList targets = owner->getSkillInstanceStateValue(objectName(), id, "weiming_targets").toStringList();
+                const QString displayMark = "&weiming+#" + owner->objectName() + "+" + QString::number(id) + "_num";
+                if (event == EventPhaseStart) {
+                    QList<ServerPlayer *> candidates;
+                    foreach (ServerPlayer *p, room->getOtherPlayers(owner))
+                        if (!targets.contains(p->objectName())) candidates << p;
+                    if (candidates.isEmpty()) continue;
+                    ServerPlayer *to = room->askForPlayerChosen(owner, candidates, objectName(), "weiming0", false, true);
+                    if (!to || !owner->hasSkillInstance(objectName(), id) || room->getShimingStatus(ref) != 0) continue;
+                    room->broadcastSkillInvoke(objectName(), owner, 2);
+                    targets << to->objectName();
+                    owner->setSkillInstanceStateValue(objectName(), id, "weiming_targets", targets);
+                    room->setPlayerMark(to, displayMark, 1);
+                } else {
+                    DeathStruct death = data.value<DeathStruct>();
+                    const bool failed = targets.contains(player->objectName());
+                    if (!failed && (!death.damage || death.damage->from != owner)) continue;
+                    if (!room->sendShimingLog(ref, !failed, failed ? 1 : 3)) continue;
+                    owner->removeSkillInstanceStateValue(objectName(), id, "weiming_targets");
+                    foreach (ServerPlayer *p, room->getAllPlayers(true))
+                        room->setPlayerMark(p, displayMark, 0);
+                    // Xietu is a separate skill: its player-wide upgrade is an explicit
+                    // projection of all live Weiming outcomes, never mission storage.
+                    const int outcome = xietuShimingOutcome(owner);
+                    if (outcome == 1) {
+                        const int n = owner->getChangeSkillState("xietu");
+                        room->setPlayerMark(owner, QString("&xietu+%1_num").arg(n), 0);
+                        room->changeTranslation(owner, "xietu", 3);
+                    } else if (outcome == 2) {
+                        room->changeTranslation(owner, "xietu1", Sanguosha->translate(":xietu4"));
+                        room->changeTranslation(owner, "xietu2", Sanguosha->translate(":xietu5"));
+                        room->changeTranslation(owner, "xietu", owner->getChangeSkillState("xietu"));
+                    }
+                }
+            }
+        }
+        return false;
+    }
 };
 
 class Chengxiong : public TriggerSkill
@@ -20708,9 +20726,33 @@ public:
 		return target&&target->isAlive();
 	}
 
-	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-	{
-		if(player->getMark("zhongaoBan")>0)
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event == CardUsed) {
+            const QList<int> ids = player->getSkillInstanceIds(objectName());
+            bool pending = ids.isEmpty();
+            foreach (int id, ids)
+                if (room->getShimingStatus(SkillInstanceRef(player->objectName(), SkillInstanceKey(objectName(), id))) == 0)
+                    pending = true;
+            if (!pending) return false;
+            CardUseStruct use = data.value<CardUseStruct>();
+            if (use.card->getTypeId() > 0 && player->getPhase() == Player::Play)
+                player->addMark("zhongaoUse-PlayClear");
+            return false;
+        }
+        const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+        foreach (int id, ids) {
+            if (!player->hasSkillInstance(objectName(), id) || player->isSkillInvalid(objectName(), id)) continue;
+            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(objectName(), id));
+            if (triggerInstance(event, room, player, data, ref)) return true;
+        }
+        return false;
+    }
+
+    bool triggerInstance(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                         QVariant &data, const SkillInstanceRef &ref) const
+    {
+		if(room->getShimingStatus(ref)>0)
 			return false;
 		if(triggerEvent==GameStart){
 			if(player->hasSkill(objectName())){
@@ -20720,10 +20762,9 @@ public:
 		}else if(triggerEvent==Death){
 			DeathStruct death = data.value<DeathStruct>();
 			if(death.damage&&death.damage->from==player&&player->hasSkill(objectName())){
-				player->addMark("zhongaoBan");
 				if(player->getGeneralName().contains("weiyan"))
 					player->setAvatarIcon("mobilebs_weiyan2");
-				room->sendShimingLog(player,this,true,qsanRandomBounded(2)+2);
+				if (!room->sendShimingLog(ref,true,qsanRandomBounded(2)+2)) return false;
 				player->addMark("zhongaoUptenyearkuanggu");
 				room->changeTranslation(player,"tenyearkuanggu",1);
 				if(player->getMark("zhongaoUse-PlayClear")<player->getMark("zhuangshi1-PlayClear")){
@@ -20734,10 +20775,6 @@ public:
 					else player->drawCards(1,objectName());
 				}
 			}
-		}else if(triggerEvent==CardUsed){
-			CardUseStruct use = data.value<CardUseStruct>();
-			if(use.card->getTypeId()>0&&player->getPhase()==Player::Play)
-				player->addMark("zhongaoUse-PlayClear");
 		}else {
 			if(triggerEvent==Dying){
 				DyingStruct dy = data.value<DyingStruct>();
@@ -20747,8 +20784,7 @@ public:
 				if(!str.contains("skillInvoke:zhuangshi")||str.contains(":yes")) return false;
 			}
 			if(player->hasSkill(objectName())){
-				player->addMark("zhongaoBan");
-				room->sendShimingLog(player,this,false,qsanRandomBounded(2)+4);
+				if (!room->sendShimingLog(ref,false,qsanRandomBounded(2)+4)) return false;
 				room->handleAcquireDetachSkills(player,"-zhuangshi|kunfen");
 				if(player->getGeneralName().contains("weiyan"))
 					player->setAvatarIcon("mobilebs_weiyan3");
