@@ -630,90 +630,13 @@ if(QSAN_BUILD_TUI)
         Qt6::Core
         Qt6::Network
     )
-    qsan_add_ctest(qsanguosha_tui_board_layout qsanguosha_tui_tests
-        SUITE board-layout
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_board_presenter qsanguosha_tui_tests
-        SUITE board-presenter
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_board_view qsanguosha_tui_tests
-        SUITE board-view
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_card_text qsanguosha_tui_tests
-        SUITE card-text
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_client_player qsanguosha_tui_tests
-        SUITE client-player
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_log_text qsanguosha_tui_tests
-        SUITE log-text
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_play_skills qsanguosha_tui_tests
-        SUITE play-skills
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_target_advice qsanguosha_tui_tests
-        SUITE target-advice
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_contract qsanguosha_tui_tests
-        SUITE contract
-        LABELS "client;tui;protocol;fast"
-        TIMEOUT 30
-    )
-    qsan_add_ctest(qsanguosha_tui_live_tcp qsanguosha_tui_tests
-        SUITE live-tcp
-        LABELS "client;tui;protocol;network;fast"
-        TIMEOUT 15
-    )
-    qsan_add_ctest(qsanguosha_tui_presenter qsanguosha_tui_tests
-        SUITE presenter
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_text_width qsanguosha_tui_tests
-        SUITE text-width
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_screen qsanguosha_tui_tests
-        SUITE screen
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_terminal qsanguosha_tui_tests
-        SUITE terminal
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_line_editor qsanguosha_tui_tests
-        SUITE line-editor
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_ui_mode qsanguosha_tui_tests
-        SUITE ui-mode
-        LABELS "client;tui;fast"
-        TIMEOUT 120
-    )
-    qsan_add_ctest(qsanguosha_tui_ui_parity qsanguosha_tui_tests
-        SUITE ui-parity
-        LABELS "client;tui;protocol;fast"
-        TIMEOUT 180
+    # One registration, seventeen sub-suites: tui-tests-main.cpp already runs
+    # every suite in its own process when no --suite is given, the same way
+    # qsanguosha_server_unit does. Seventeen CTest entries bought nothing but
+    # seventeen more process launches and a CMake block to keep in sync.
+    qsan_add_ctest(qsanguosha_tui qsanguosha_tui_tests
+        LABELS "client;tui;protocol;network"
+        TIMEOUT 900
     )
 endif()
 

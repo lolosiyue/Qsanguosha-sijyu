@@ -64,10 +64,9 @@ typed request and reply schemas. Cancellation is represented by named boolean
 discriminators such as `cancelled` or `has_value`; QML is not a legacy adapter.
 The generated interaction matrix is
 [`artifacts/client-core-interaction-matrix.json`](../artifacts/client-core-interaction-matrix.json).
-The production TUI/GUI shared-state coverage of every Room-to-Client flow is
-[`artifacts/tui-flow-coverage.json`](../artifacts/tui-flow-coverage.json); its
-contract rejects unclassified flows, silent drops, or an interaction without a
-registered presenter.
+The TUI registry contract still rejects an interaction without a registered
+presenter; the per-flow classification table it used to publish was dropped
+because keeping it current cost more than it caught.
 
 ## Framing and errors
 

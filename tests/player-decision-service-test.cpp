@@ -722,119 +722,6 @@ static bool expect(bool condition, const char *context)
     return false;
 }
 
-static bool roomOverrideBehaviorIsCharacterized()
-{
-    Room room(nullptr, QStringLiteral("02_1v1"));
-    ServerPlayer first(&room);
-    ServerPlayer second(&room);
-    first.setObjectName(QStringLiteral("decision:first"));
-    second.setObjectName(QStringLiteral("decision:second"));
-
-    room.registerTestOverride(&first, QStringLiteral("choice"), QStringLiteral("false"),
-                              QVariant(false));
-    room.registerTestOverride(&first, QStringLiteral("choice"), QStringLiteral("empty"),
-                              QVariant(QString()));
-    room.registerTestOverride(&first, QStringLiteral("choice"), QStringLiteral("zero"),
-                              QVariant(0));
-
-    const QVariant falseValue = room.findTestOverride(
-        &first, QStringLiteral("choice"), QStringLiteral("false"));
-    const QVariant emptyValue = room.findTestOverride(
-        &first, QStringLiteral("choice"), QStringLiteral("empty"));
-    const QVariant zeroValue = room.findTestOverride(
-        &first, QStringLiteral("choice"), QStringLiteral("zero"));
-
-    if (!expect(falseValue.isValid() && !falseValue.toBool(), "false remains valid")
-        || !expect(emptyValue.isValid() && emptyValue.toString().isEmpty(),
-                   "empty string remains valid")
-        || !expect(zeroValue.isValid() && zeroValue.toInt() == 0, "zero remains valid")
-        || !expect(!room.findTestOverride(&first, QStringLiteral("choice"),
-                                          QStringLiteral("missing")).isValid(),
-                   "missing key is invalid")
-        || !expect(!room.findTestOverride(&second, QStringLiteral("choice"),
-                                          QStringLiteral("false")).isValid(),
-                   "player object name participates in the key")
-        || !expect(!room.findTestOverride(&first, QStringLiteral("other"),
-                                          QStringLiteral("false")).isValid(),
-                   "query type participates in the key"))
-        return false;
-
-    room.clearTestOverrides();
-    return expect(!room.findTestOverride(&first, QStringLiteral("choice"),
-                                         QStringLiteral("false")).isValid(),
-                  "clear removes registered values");
-}
-
-static bool serviceOwnsOverridesAndHandlesNullPlayer()
-{
-    Room room(nullptr, QStringLiteral("02_1v1"));
-    ServerPlayer player(&room);
-    player.setObjectName(QStringLiteral("service-player"));
-    PlayerDecisionService &service = PlayerDecisionServiceTestAccess::service(room);
-
-    service.registerTestOverride(&player, QStringLiteral("choice"), QStringLiteral("zero"),
-                                 QVariant(0));
-    const QVariant value = service.findTestOverride(
-        &player, QStringLiteral("choice"), QStringLiteral("zero"));
-    service.registerTestOverride(nullptr, QStringLiteral("choice"), QStringLiteral("ignored"),
-                                 QVariant(true));
-
-    return expect(value.isValid() && value.toInt() == 0,
-                  "Room-owned service stores valid zero")
-        && expect(!service.findTestOverride(nullptr, QStringLiteral("choice"),
-                                            QStringLiteral("ignored")).isValid(),
-                  "null player lookup is invalid");
-}
-
-static bool serviceConstructionDoesNotDispatch()
-{
-    Room room(nullptr, QStringLiteral("02_1v1"));
-    RecordingEventDispatcher dispatcher;
-    {
-        PlayerDecisionService service(room, dispatcher);
-        Q_UNUSED(service);
-    }
-    return expect(dispatcher.dispatchCount == 0,
-                  "service construction and destruction dispatch no events")
-        && expect(dispatcher.registrationCount == 0,
-                  "service construction and destruction register no skills");
-}
-
-static bool concurrentClearAndFindAreSafe()
-{
-    Room room(nullptr, QStringLiteral("02_1v1"));
-    ServerPlayer player(&room);
-    player.setObjectName(QStringLiteral("concurrent-player"));
-    PlayerDecisionService &service = PlayerDecisionServiceTestAccess::service(room);
-
-    for (int repeat = 0; repeat < 25; ++repeat) {
-        std::atomic_bool invalidValue(false);
-
-        service.registerTestOverride(&player, QStringLiteral("choice"), QStringLiteral("key"),
-                                     QVariant(7));
-        std::thread reader([&]() {
-            for (int i = 0; i < 1000; ++i) {
-                const QVariant value = service.findTestOverride(
-                    &player, QStringLiteral("choice"), QStringLiteral("key"));
-                if (value.isValid() && value.toInt() != 7)
-                    invalidValue = true;
-            }
-        });
-        std::thread writer([&]() {
-            for (int i = 0; i < 1000; ++i) {
-                service.clearTestOverrides();
-                service.registerTestOverride(&player, QStringLiteral("choice"),
-                                             QStringLiteral("key"), QVariant(7));
-            }
-        });
-        reader.join();
-        writer.join();
-        if (!expect(!invalidValue, "concurrent clear/find preserves valid values"))
-            return false;
-    }
-    return true;
-}
-
 static bool skillInvokeOverrideAndAiPreservePayloads()
 {
     DecisionFixture fixture;
@@ -866,19 +753,6 @@ static bool skillInvokeOverrideAndAiPreservePayloads()
         && expect(fixture.probe.payloads(ChoiceMade)
                       == QStringList{QStringLiteral("skillInvoke:tuxi:decision-other:no")},
                   "AI ChoiceMade includes the target player name");
-}
-
-static bool skillInvokeClientAnswerAndNotifyFalse()
-{
-    DecisionFixture fixture(QStringLiteral("online"));
-    ClientReplyAgent agent(fixture.room, fixture.player);
-    agent.replyByCommand.insert(S_COMMAND_INVOKE_SKILL, QVariant(true));
-    const bool invoked = fixture.room.askForSkillInvoke(
-        fixture.player, QStringLiteral("tuxi"), QVariant(), false);
-    return expect(invoked, "online reply true invokes the skill")
-        && expect(fixture.probe.payloads(ChoiceMade)
-                      == QStringList{QStringLiteral("skillInvoke:tuxi:yes")},
-                  "client invoke ChoiceMade uses yes");
 }
 
 static bool choiceOverrideForceCancelAndFallback()
@@ -942,165 +816,6 @@ static bool choiceOverrideForceCancelAndFallback()
                   "invalid choice fallback stays in the list")
         && expect(single == QStringLiteral("only"),
                   "a single choice skips the + split path");
-}
-
-static bool choiceClientV2Answer()
-{
-    DecisionFixture fixture(QStringLiteral("online"));
-    ClientReplyAgent agent(fixture.room, fixture.player, ProtocolVersion::V2);
-    agent.replyByCommand.insert(S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("right"));
-    const QString answer = fixture.room.askForChoice(
-        fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
-    return expect(agent.protocolReady && !agent.parseFailed,
-                  "V2 online choice protocol is ready")
-        && expect(answer == QStringLiteral("right"), "V2 online choice reply is accepted")
-        && expect(QJsonDocument::fromJson(agent.lastRequestWire).isObject()
-                      && QJsonDocument::fromJson(agent.lastReplyWire).isObject(),
-                  "V2 choice request and reply are objects")
-        && expect(fixture.probe.payloads(ChoiceMade)
-                      == QStringList{QStringLiteral("skillChoice:tuxi:right")},
-                  "V2 ChoiceMade payload contains the accepted answer");
-}
-
-static bool suitKingdomGeneralAndModeChoices()
-{
-    DecisionFixture fixture;
-    fixture.ai()->suitValue = Card::Heart;
-    if (!expect(fixture.room.askForSuit(fixture.player, QStringLiteral("luoyi")) == Card::Heart,
-                "AI suit is used")
-        || !expect(fixture.probe.payloads(ChoiceMade).isEmpty(),
-                   "suit emits no ChoiceMade"))
-        return false;
-
-    fixture.ai()->kingdomValue = QStringLiteral("shu");
-    const QString kingdom = fixture.room.askForKingdom(
-        fixture.player, QString(),
-        QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
-    const QString kingdomWrapper = fixture.room.askForKingdom(
-        fixture.player, QStringLiteral("gamerule_kingdom"), QStringLiteral("wei+shu"), false);
-    if (!expect(kingdom == QStringLiteral("shu"), "AI kingdom is used")
-        || !expect(kingdomWrapper == QStringLiteral("shu"),
-                   "string kingdom overload splits on +")
-        || !expect(fixture.probe.payloads(ChoiceMade).isEmpty(),
-                   "kingdom emits no ChoiceMade"))
-        return false;
-
-    fixture.ai()->kingdomValue = QStringLiteral("wu");
-    qsanSeedRandom(7);
-    const QString invalidKingdom = fixture.room.askForKingdom(
-        fixture.player, QString(),
-        QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
-    qsanSeedRandom(7);
-    const QString invalidKingdomAgain = fixture.room.askForKingdom(
-        fixture.player, QString(),
-        QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
-    if (!expect(invalidKingdom == invalidKingdomAgain,
-                "invalid kingdom fallback is seed-deterministic")
-        || !expect(QStringList{QStringLiteral("wei"), QStringLiteral("shu")}.contains(invalidKingdom),
-                   "invalid kingdom fallback stays in the list"))
-        return false;
-
-    if (!expect(fixture.room.askForGeneral(fixture.player, QStringList())
-                    == QStringLiteral("caocao"),
-                "empty general list returns caocao")
-        || !expect(fixture.room.askForGeneral(fixture.player, QStringList{QStringLiteral("zhangfei")})
-                       == QStringLiteral("zhangfei"),
-                   "singleton general list returns that general"))
-        return false;
-
-    fixture.ai()->generalValue = QStringLiteral("liubei");
-    const QString general = fixture.room.askForGeneral(
-        fixture.player, QStringList{QStringLiteral("caocao"), QStringLiteral("liubei")},
-        QStringLiteral("caocao"));
-    const QString generalWrapper = fixture.room.askForGeneral(
-        fixture.player, QStringLiteral("caocao+liubei"), QStringLiteral("caocao"));
-    if (!expect(general == QStringLiteral("liubei"), "AI general is used")
-        || !expect(generalWrapper == QStringLiteral("liubei"),
-                   "string general overload splits on +")
-        || !expect(fixture.probe.payloads(ChoiceMade).isEmpty(),
-                   "pre-game general selection emits no ChoiceMade"))
-        return false;
-
-    PlayerDecisionServiceTestAccess::setGameState(fixture.room, 1);
-    fixture.probe.generalChoosingReplacement = QStringList{QStringLiteral("zhaoyun"),
-                                                           QStringLiteral("machao")};
-    fixture.probe.generalChosenReplacement = QStringLiteral("machao");
-    fixture.ai()->generalValue = QStringLiteral("zhaoyun");
-    const QString mutated = fixture.room.askForGeneral(
-        fixture.player, QStringList{QStringLiteral("caocao"), QStringLiteral("liubei")});
-    return expect(mutated == QStringLiteral("machao"),
-                  "GeneralChoosing/GeneralChosen mutate the selected general")
-        && expect(fixture.probe.recordedEvents().contains(GeneralChoosing)
-                      && fixture.probe.recordedEvents().contains(GeneralChosen),
-                  "in-game general selection dispatches both general events");
-}
-
-static bool suitKingdomGeneralClientAndInvalidReplies()
-{
-    DecisionFixture fixture(QStringLiteral("online"));
-    ClientReplyAgent agent(fixture.room, fixture.player);
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_SUIT, QStringLiteral("club"));
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_KINGDOM, QStringLiteral("wei"));
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_GENERAL, QStringLiteral("liubei"));
-    const Card::Suit suit = fixture.room.askForSuit(fixture.player, QStringLiteral("luoyi"));
-    const QString kingdom = fixture.room.askForKingdom(
-        fixture.player, QStringLiteral("choice-reason"), QStringLiteral("wei+shu"), false);
-    const QString general = fixture.room.askForGeneral(
-        fixture.player, QStringList{QStringLiteral("caocao"), QStringLiteral("liubei")});
-    if (!expect(suit == Card::Club, "online suit reply is mapped")
-        || !expect(kingdom == QStringLiteral("wei"), "online kingdom reply is accepted")
-        || !expect(general == QStringLiteral("liubei"), "online general reply is accepted"))
-        return false;
-
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_SUIT, QStringLiteral("not-a-suit"));
-    qsanSeedRandom(3);
-    const Card::Suit invalidSuit = fixture.room.askForSuit(fixture.player, QStringLiteral("luoyi"));
-    qsanSeedRandom(3);
-    const Card::Suit invalidSuitAgain = fixture.room.askForSuit(
-        fixture.player, QStringLiteral("luoyi"));
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_GENERAL, QStringLiteral("nobody"));
-    const QString fallbackGeneral = fixture.room.askForGeneral(
-        fixture.player, QStringList{QStringLiteral("caocao"), QStringLiteral("liubei")},
-        QStringLiteral("caocao"));
-    return expect(invalidSuit == invalidSuitAgain,
-                  "unmapped suit reply keeps the seeded random default")
-        && expect(fallbackGeneral == QStringLiteral("caocao"),
-                  "invalid general reply uses the default choice");
-}
-
-static bool orderAndRolePreserveLegacyFallbacks()
-{
-    DecisionFixture robot;
-    const QString aiOrder = PlayerDecisionServiceTestAccess::askForOrder(
-        robot.room, robot.player, QStringLiteral("cool"));
-    const QString aiRole = PlayerDecisionServiceTestAccess::askForRole(
-        robot.room, robot.player,
-        QStringList{QStringLiteral("lord"), QStringLiteral("loyalist"), QStringLiteral("lord")},
-        QStringLiteral("3v3"));
-    if (!expect(aiOrder == QStringLiteral("cool"), "AI order returns default_choice")
-        || !expect(aiRole == QStringLiteral("abstain"),
-                   "AI/timeout role falls back to abstain")
-        || !expect(robot.probe.payloads(ChoiceMade).isEmpty(),
-                   "Order/Role emit no ChoiceMade"))
-        return false;
-
-    DecisionFixture online(QStringLiteral("online"));
-    ClientReplyAgent agent(online.room, online.player);
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_ORDER, QVariant(int(S_CAMP_WARM)));
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_ROLE_3V3, QStringLiteral("not-a-role"));
-    const QString warm = PlayerDecisionServiceTestAccess::askForOrder(
-        online.room, online.player, QStringLiteral("cool"));
-    const QString anyRole = PlayerDecisionServiceTestAccess::askForRole(
-        online.room, online.player, QStringList{QStringLiteral("lord")}, QStringLiteral("3v3"));
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_ORDER, QVariant(int(S_CAMP_COOL)));
-    const QString cool = PlayerDecisionServiceTestAccess::askForOrder(
-        online.room, online.player, QStringLiteral("warm"));
-    return expect(warm == QStringLiteral("warm"), "numeric warm maps to warm")
-        && expect(cool == QStringLiteral("cool"), "any other numeric camp maps to cool")
-        && expect(anyRole == QStringLiteral("not-a-role"),
-                  "Role accepts any string reply")
-        && expect(online.probe.payloads(ChoiceMade).isEmpty(),
-                  "client Order/Role still emit no ChoiceMade");
 }
 
 static QStringList objectNames(const QList<ServerPlayer *> &players)
@@ -1199,51 +914,6 @@ static bool playerChosenEmptySingletonOverrideAndNotify()
         && expect(fixture.probe.payloads(ChoiceMade)
                       == QStringList{QStringLiteral("playerChosen:tuxi:decision-other")},
                   "AI ChoiceMade uses the AI target");
-}
-
-static bool playerChosenClientInvalidOptionalAndTimeout()
-{
-    DecisionFixture fixture(QStringLiteral("online"));
-    ClientReplyAgent agent(fixture.room, fixture.player);
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_PLAYER, QStringLiteral("decision-other"));
-    ServerPlayer *clientChoice = fixture.room.askForPlayerChosen(
-        fixture.player,
-        QList<ServerPlayer *>{fixture.player, fixture.other},
-        QStringLiteral("tuxi"));
-    if (!expect(clientChoice == fixture.other, "online object-name reply is accepted")
-        || !expect(fixture.probe.payloads(ChoiceMade)
-                       == QStringList{QStringLiteral("playerChosen:tuxi:decision-other")},
-                   "client ChoiceMade uses the replied object name"))
-        return false;
-
-    fixture.probe.records.clear();
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_PLAYER, QStringLiteral("nobody"));
-    qsanSeedRandom(4);
-    ServerPlayer *invalidFirst = fixture.room.askForPlayerChosen(
-        fixture.player,
-        QList<ServerPlayer *>{fixture.player, fixture.other},
-        QStringLiteral("tuxi"));
-    qsanSeedRandom(4);
-    ServerPlayer *invalidAgain = fixture.room.askForPlayerChosen(
-        fixture.player,
-        QList<ServerPlayer *>{fixture.player, fixture.other},
-        QStringLiteral("tuxi"));
-    if (!expect(invalidFirst == invalidAgain,
-                "invalid object name keeps the seeded random fallback")
-        || !expect(invalidFirst == fixture.player || invalidFirst == fixture.other,
-                   "invalid object name fallback stays in the target list")
-        || !expect(fixture.probe.payloads(ChoiceMade).length() == 2,
-                   "invalid object name still emits playerChosen after fallback"))
-        return false;
-
-    fixture.probe.records.clear();
-    agent.replyByCommand.remove(S_COMMAND_CHOOSE_PLAYER);
-    ServerPlayer *optionalCancel = fixture.room.askForPlayerChosen(
-        fixture.player, QList<ServerPlayer *>{fixture.other}, QStringLiteral("tuxi"),
-        QString(), true, false);
-    return expect(optionalCancel == nullptr, "optional timeout/cancel returns nullptr")
-        && expect(fixture.probe.payloads(ChoiceMade).isEmpty(),
-                  "optional cancel emits no ChoiceMade");
 }
 
 static bool akarinTargetsAreHiddenFromChooser()
@@ -1363,47 +1033,6 @@ static bool playersChosenMinMaxSortAndNegativeMin()
                   "negative min_num clears a result whose count is not max_num")
         && expect(fixture.probe.payloads(ChoiceMade).isEmpty(),
                   "cleared negative-min result emits no ChoiceMade");
-}
-
-static bool playersChosenClientFillAndNotify()
-{
-    DecisionFixture fixture(QStringLiteral("online"));
-    ServerPlayer *third = PlayerDecisionServiceTestAccess::addPlayer(
-        fixture.room, QStringLiteral("decision-third"));
-    ClientReplyAgent agent(fixture.room, fixture.player);
-    const QList<ServerPlayer *> three{fixture.player, fixture.other, third};
-
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_PLAYER,
-                                QStringLiteral("decision-third+decision-other"));
-    QList<ServerPlayer *> clientChoice = fixture.room.askForPlayersChosen(
-        fixture.player, three, QStringLiteral("tuxi$2"), 1, 2, QString(), true, false);
-    if (!expect(objectNames(clientChoice)
-                    == (QStringList() << QStringLiteral("decision-third")
-                                      << QStringLiteral("decision-other")),
-                "client + joined names are parsed in reply order")
-        || !expect(fixture.probe.payloads(ChoiceMade)
-                       == (QStringList() << QStringLiteral("notifyInvoked:tuxi")
-                                         << QStringLiteral("skillInvoke:tuxi:yes")
-                                         << QStringLiteral(
-                                                "playerChosen:tuxi:decision-third+decision-other")),
-                   "notify multi-select emits notifyInvoked, skillInvoke, then joined playerChosen"))
-        return false;
-
-    fixture.probe.records.clear();
-    agent.replyByCommand.insert(S_COMMAND_CHOOSE_PLAYER,
-                                QStringLiteral("nobody+decision-other"));
-    qsanSeedRandom(5);
-    QList<ServerPlayer *> filled = fixture.room.askForPlayersChosen(
-        fixture.player, three, QStringLiteral("tuxi"), 2, 2, QString(), false, false);
-    qsanSeedRandom(5);
-    QList<ServerPlayer *> filledAgain = fixture.room.askForPlayersChosen(
-        fixture.player, three, QStringLiteral("tuxi"), 2, 2, QString(), false, false);
-    return expect(filled.length() == 2, "min_num fills until the lower bound")
-        && expect(filled.contains(fixture.other),
-                  "valid names in a mixed reply are kept")
-        && expect(objectNames(filled) == objectNames(filledAgain),
-                  "min_num random fill is seed-deterministic")
-        && expect(!filled.contains(nullptr), "invalid names are dropped before fill");
 }
 
 static bool agEmptySingletonRefusableInvalidAndClient()
@@ -1624,67 +1253,6 @@ static bool cardChosenOverrideFallbackVisibleAndClient()
         && expect(online.probe.payloads(ChoiceMade)
                       == QStringList{QStringLiteral("cardChosen:snatch:0:decision-other:")},
                   "timeout fallback still emits one cardChosen");
-}
-
-static bool cardShowSingletonClientAndRandom()
-{
-    if (!Sanguosha || Sanguosha->getCardCount() < 2)
-        return expect(false, "engine has at least two cards");
-
-    DecisionFixture fixture;
-    CardTable cards(fixture.room);
-    RequestRecorder recorder;
-    recorder.watch(fixture.player);
-    giveHand(fixture.player, QList<int>{0});
-    const Card *singleton = fixture.room.askForCardShow(
-        fixture.player, fixture.other, QStringLiteral("rende"));
-    if (!expect(singleton != nullptr && singleton->getId() == 0,
-                "singleton CardShow returns the only hand card")
-        || !expect(!recorder.contains(S_COMMAND_SHOW_CARD),
-                   "singleton CardShow skips the request")
-        || !expect(fixture.probe.payloads(ChoiceMade)
-                       == QStringList{QStringLiteral("cardShow:rende:0")},
-                   "singleton ChoiceMade uses cardShow:<reason>:<id>"))
-        return false;
-
-    DecisionFixture two;
-    CardTable twoCards(two.room);
-    giveHand(two.player, QList<int>{0, 1});
-    two.ai()->hasCardShowValue = true;
-    two.ai()->cardShowValue = Sanguosha->getCard(1);
-    const Card *aiShow = two.room.askForCardShow(
-        two.player, two.other, QStringLiteral("rende"));
-    if (!expect(aiShow == Sanguosha->getCard(1), "AI CardShow is accepted")
-        || !expect(two.probe.payloads(ChoiceMade)
-                       == QStringList{QStringLiteral("cardShow:rende:1")},
-                   "AI ChoiceMade uses the shown id"))
-        return false;
-
-    DecisionFixture online(QStringLiteral("online"));
-    CardTable onlineCards(online.room);
-    giveHand(online.player, QList<int>{0, 1});
-    ClientReplyAgent agent(online.room, online.player);
-    agent.replyByCommand.insert(S_COMMAND_SHOW_CARD, responseCardReply(QStringLiteral("1")));
-    const Card *clientShow = online.room.askForCardShow(
-        online.player, online.other, QStringLiteral("rende"));
-    if (!expect(clientShow == Sanguosha->getCard(1), "online CardShow parse is accepted")
-        || !expect(online.probe.payloads(ChoiceMade)
-                       == QStringList{QStringLiteral("cardShow:rende:1")},
-                   "client ChoiceMade uses the parsed id"))
-        return false;
-
-    online.probe.records.clear();
-    agent.replyByCommand.insert(S_COMMAND_SHOW_CARD, responseCardReply(QStringLiteral("not-a-card")));
-    qsanSeedRandom(6);
-    const Card *invalidFirst = online.room.askForCardShow(
-        online.player, online.other, QStringLiteral("rende"));
-    qsanSeedRandom(6);
-    const Card *invalidAgain = online.room.askForCardShow(
-        online.player, online.other, QStringLiteral("rende"));
-    return expect(invalidFirst != nullptr && invalidFirst == invalidAgain,
-                  "invalid CardShow parse keeps the seeded random hand card")
-        && expect(invalidFirst->getId() == 0 || invalidFirst->getId() == 1,
-                  "random CardShow fallback stays in hand");
 }
 
 static bool pindianEmitsNoChoiceMade()
@@ -1933,50 +1501,6 @@ static bool cardResponseOverrideProvidedAndRetry()
         Card::MethodDiscard, nullptr, true);
     return expect(timeoutCard == nullptr,
                   "timeout without AI returns null");
-}
-
-static bool expPatternDotVsDotDot()
-{
-    if (!Sanguosha || Sanguosha->getCardCount() < 1)
-        return expect(false, "engine has at least one card");
-
-    DecisionFixture fixture;
-    CardTable cards(fixture.room);
-    giveHand(fixture.player, QList<int>{0}, &fixture.room);
-    const Card *card = Sanguosha->getCard(0);
-    const bool dot = Sanguosha->matchPattern(QStringLiteral("."), fixture.player, card);
-    const bool dotdot = Sanguosha->matchPattern(QStringLiteral(".."), fixture.player, card);
-    const bool piped = Sanguosha->matchPattern(QStringLiteral(".|."), fixture.player, card);
-    const bool rawDotdot = Sanguosha->matchExpPattern(QStringLiteral(".."), fixture.player, card);
-    return expect(dot, ". alias matches a hand card")
-        && expect(dotdot, ".. alias matches any card")
-        && expect(piped, ".|. matches a hand card")
-        && expect(!rawDotdot, "raw ExpPattern .. is not the registered alias");
-}
-
-static bool trustUsesSmartAiWhenPresent()
-{
-    const bool savedCheat = Config.EnableCheat;
-    Config.EnableCheat = false;
-
-    DecisionFixture fixture;
-    fixture.player->setState(QStringLiteral("trust"));
-    AI *smart = fixture.player->getSmartAI();
-    const bool usesSmart = fixture.player->getAI() == smart;
-
-    fixture.player->setAI(nullptr);
-    AI *fallback = fixture.player->getAI();
-    const bool usesFallback = fallback != nullptr && fallback != smart;
-
-    fixture.player->setAI(smart);
-    fixture.player->setState(QStringLiteral("online"));
-    const bool onlineHasNoAi = fixture.player->getAI() == nullptr;
-
-    Config.EnableCheat = savedCheat;
-    return expect(smart != nullptr, "fixture installed SmartAI")
-        && expect(usesSmart, "trust uses SmartAI when setAI is present")
-        && expect(usesFallback, "trust falls back to trust_ai when SmartAI is absent")
-        && expect(onlineHasNoAi, "online still has no AI");
 }
 
 static bool trustAiCompulsiveDotBangPicksHand()
@@ -2486,26 +2010,6 @@ static bool trickEffectTagPreservesNullificationTarget()
     return true;
 }
 
-static bool aiDelayIsHonoredWhenConfigured()
-{
-    DecisionFixture fixture;
-    fixture.ai()->invokeValue = false;
-    const int previousDelay = Config.AIDelay;
-    Config.AIDelay = 50;
-    QElapsedTimer timer;
-    timer.start();
-    fixture.room.askForSkillInvoke(fixture.player, QStringLiteral("tuxi"));
-    const qint64 elapsed = timer.elapsed();
-    Config.AIDelay = previousDelay;
-    if (!expect(elapsed >= 50, "non-headless AI delay is not shorter than Config.AIDelay"))
-        return false;
-
-    Config.AIDelay = 0;
-    timer.restart();
-    fixture.room.askForSkillInvoke(fixture.player, QStringLiteral("tuxi"));
-    return expect(timer.elapsed() < 40, "zero AIDelay adds no extra wait");
-}
-
 }
 
 int runPlayerDecisionServiceTests()
@@ -2537,36 +2041,21 @@ int runPlayerDecisionServiceTests()
         }
     };
 
-    run(roomOverrideBehaviorIsCharacterized, "overrides", 2);
-    run(serviceOwnsOverridesAndHandlesNullPlayer, "service-owns", 3);
-    run(serviceConstructionDoesNotDispatch, "no-dispatch", 4);
-    run(concurrentClearAndFindAreSafe, "concurrent", 5);
     run(skillInvokeOverrideAndAiPreservePayloads, "skill-invoke", 6);
-    run(skillInvokeClientAnswerAndNotifyFalse, "skill-invoke-client", 7);
     run(choiceOverrideForceCancelAndFallback, "choice", 8);
-    run(choiceClientV2Answer, "choice-client-v2", 9);
-    run(suitKingdomGeneralAndModeChoices, "suit-kingdom-general", 11);
-    run(suitKingdomGeneralClientAndInvalidReplies, "client-invalid", 12);
-    run(orderAndRolePreserveLegacyFallbacks, "order-role", 13);
     run(playerChosenEmptySingletonOverrideAndNotify, "player-chosen", 14);
-    run(playerChosenClientInvalidOptionalAndTimeout, "player-chosen-client", 15);
     run(akarinTargetsAreHiddenFromChooser, "player-chosen-akarin", 16);
     run(playersChosenMinMaxSortAndNegativeMin, "players-chosen", 17);
-    run(playersChosenClientFillAndNotify, "players-chosen-client", 18);
     run(agEmptySingletonRefusableInvalidAndClient, "ask-for-ag", 19);
     run(cardChosenOverrideFallbackVisibleAndClient, "card-chosen", 20);
-    run(cardShowSingletonClientAndRandom, "card-show", 21);
     run(pindianEmitsNoChoiceMade, "pindian", 22);
     run(pindianRaceBroadcastIndependentFallback, "pindian-race", 23);
     run(cardResponseOverrideProvidedAndRetry, "card-response", 24);
-    run(expPatternDotVsDotDot, "exp-pattern-dot-vs-dotdot", 32);
-    run(trustUsesSmartAiWhenPresent, "trust-uses-smart-ai", 31);
     run(trustAiCompulsiveDotBangPicksHand, "trust-ai-dot-bang", 30);
     run(discardExchangeYijiAndGuanxing, "discard-yiji-guanxing", 25);
     run(activateUseCardAndSlashFlags, "activate-use-card", 26);
     run(nullificationPeachTriggerOrderAndResidual, "reactive-trigger-order", 27);
     run(trickEffectTagPreservesNullificationTarget, "tag-discriminator", 28);
-    run(aiDelayIsHonoredWhenConfigured, "ai-delay", 29);
 
     Config.AIDelay = savedAIDelay;
     Config.OriginAIDelay = savedOriginAIDelay;

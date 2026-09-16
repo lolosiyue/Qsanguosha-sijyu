@@ -358,12 +358,11 @@ Ctrl+Break 經原子旗標交回 Qt event loop；關閉主控台與 fatal signal
 | `tui-board-view-test.cpp` | 由 `ClientGameState` fixture 出發的整幅畫面 golden |
 | `tui-ui-parity-test.cpp` | §1 不變式 1 與 2 |
 
-Golden 檔置於 `tests/tui/golden/*.txt`，以 `QSAN_TUI_GOLDEN_WRITE=1` 重生，
-沿用現有 `QSAN_TUI_COVERAGE_WRITE=1` 的做法。
+Golden 檔置於 `tests/tui/golden/*.txt`，以 `QSAN_TUI_GOLDEN_WRITE=1` 重生。
 
 ### 7.2 Parity 測試即驗收閘
 
-`tui-ui-parity-test` 對 `artifacts/tui-flow-coverage.json` 中有 presenter 的
+`tui-ui-parity-test` 對 `InteractionCommandRegistry` 中有 presenter 的
 **29 個 interaction request** 逐一執行 classic／board 對照，board 側額外插入
 翻頁、開關 overlay、resize 事件，斷言交給 `ClientCore` 的
 `InteractionResponse` 逐欄相同。任何一條不同即紅燈。

@@ -33,11 +33,9 @@ Production GUI 同樣使用 `ClientLiveSession`、`ClientGameStateReducer`、
 `ClientGameState`、`ClientCore` 及相同 reply encoder；`Client` 只把共用訊息轉成
 既有 GUI signals。Replay 仍走獨立 Replay V2 playback 邊界，從不進入 TUI。
 
-Room→Client 的機器可讀覆蓋表位於
-[`artifacts/tui-flow-coverage.json`](../artifacts/tui-flow-coverage.json)：107 條
-production flow 已逐條記錄 parser／DTO、reducer、affected state、renderer
-visibility、reconnect behavior 及 focused test。當前 gate 為 63/63 個
-state-bearing flow 有 reducer、29/29 個 interaction request 有 presenter、
+Room→Client 的逐條分類表（`artifacts/tui-flow-coverage.json`）已移除——維護它的
+成本高於它攔到的問題。`tui-contract` 仍守住 29/29 個 interaction request 有
+presenter；其餘原本記錄的 gate 為 63/63 個 state-bearing flow 有 reducer、
 unclassified=0、silent drops=0。音訊與動畫是已登記的 text-mode no-op；emotion
 與 log 類流程會成為 presentation event。戰鬥日誌（`S_COMMAND_LOG_SKILL`）與
 game event（`S_COMMAND_LOG_EVENT`）由 `src/tui/tui-log-text.cpp` 呼叫 client
@@ -51,8 +49,7 @@ colon list：`key:%src:%dest:%arg:%arg2`）。出牌階段 ViewAs／SkillCard �
 `viewAs` 組線在 `src/tui/tui-play-skills.cpp`。仁區追蹤對齊 `RoomScene::RenPile`，
 `GAME_START`／`STATE_SYNC begin` 清空。`event 9`
 （`S_GAME_EVENT_UPDATE_SKILL`）仍不進戰報。core reducer 不把 GET_CARD 改成
-presentation。分類異動後需以 `QSAN_TUI_COVERAGE_WRITE=1` 重跑
-`qsanguosha_tui_contract_tests` 重生上述 artifact。
+presentation。
 
 ## 啟動及 CLI
 
