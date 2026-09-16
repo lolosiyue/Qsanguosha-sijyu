@@ -84,8 +84,8 @@ void RoomThread1v1::run()
 	first->setRole("lord");
 	next->setRole("renegade");
 
-	room->broadcastProperty(first, "role");
-	room->broadcastProperty(next, "role");
+	room->revealRole(first);
+	room->revealRole(next);
 	room->adjustSeats();
 
 	if (rule == "2013") {

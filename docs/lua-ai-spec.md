@@ -747,6 +747,10 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 
 #### 15.2.1 AIWorldView
 
+模式／身份 hook 與 Room 身份明示服務的介面、相容界線及驗證狀態見
+[AI 身份、陣營與身份明示解耦](ai-identity-mode-decoupling-plan.md)。模式規則與觀察者推測
+狀態保留在每個 Room 的 Lua VM，`mode_policy` 僅傳遞已驗證的純值判定至隔離 AI。
+
 `request.world_view` 是 request 建立當下的 immutable value snapshot，不含 `Room *`、
 `ServerPlayer *`、`Card *`、`QVariant` userdata 或 Lua userdata。
 

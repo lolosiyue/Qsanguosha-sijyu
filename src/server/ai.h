@@ -60,6 +60,9 @@ struct AIPlayerView {
     bool chained;
     QString kingdom;
     QString role;
+    bool roleRevealed = false;
+    bool roleVisible = false;
+    QString controller;
     QString generalName;
     QString general2Name;
     QList<AICardView> equips;
@@ -75,6 +78,9 @@ struct AIPlayerView {
 
 struct AIWorldView {
     quint64 revision;
+    QString modeId;
+    bool customRoles = false;
+    QJsonObject modePolicy;
     AIPlayerView self;
     QList<AIPlayerView> players;
     QList<AICardView> handCards;
