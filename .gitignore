@@ -73,3 +73,12 @@ lua/examples/
 etc/testScenes/active-skill-v2-lua-smoke.txt
 .wrangler/
 web/public/rules/
+
+# Package media remains user/runtime supplied; package code and manifests are tracked.
+/packages/*/image/
+/packages/*/audio/
+/packages/*/video/
+/packages/*/fonts/
+/packages/*/archives/
+/packages/*/inventory.generated.json
+/packages/*/generated/inventory.json

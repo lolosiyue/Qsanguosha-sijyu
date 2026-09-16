@@ -1,9 +1,11 @@
 #include "android-zip-reader.h"
 
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QHash>
 #include <QSet>
 #include <QStorageInfo>
+#include <QThread>
 
 #include <limits>
 #include <sys/stat.h>
@@ -12,6 +14,7 @@
 namespace {
 constexpr quint64 kBufferSize = 256 * 1024;
 constexpr quint64 kSpoolReserve = 64 * 1024 * 1024;
+constexpr qint64 kSourceIdleTimeoutMs = 4000;
 
 bool addChecked(quint64 a, quint64 b, quint64 *out)
 {
@@ -135,11 +138,27 @@ bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::Import
         if (!m_spool.open() || !m_spool.resize(0))
             return fail(error, QStringLiteral("cannot create ZIP spool: ") + m_spool.errorString());
         QByteArray buffer(int(kBufferSize), Qt::Uninitialized);
+        const qint64 expectedBytes = !source.isSequential() && sourceStart >= 0 && sourceSize > sourceStart
+            ? sourceSize - sourceStart : -1;
+        QElapsedTimer idleTimer;
+        idleTimer.start();
         for (;;) {
             if (cancel && cancel->load()) return fail(error, QStringLiteral("import cancelled"));
             const qint64 n = source.read(buffer.data(), buffer.size());
             if (n < 0) return fail(error, source.errorString());
-            if (!n) { if (!source.atEnd()) return fail(error, QStringLiteral("source made no progress")); break; }
+            if (!n) {
+                if (source.atEnd()) break;
+                // Preserve bounded provider retries only on the spool fallback;
+                // seekable SAF sources keep the upstream direct-read fast path.
+                if (expectedBytes >= 0 && m_archiveSize == quint64(expectedBytes)
+                    && source.size() == sourceSize) break;
+                if (idleTimer.elapsed() >= kSourceIdleTimeoutMs)
+                    return fail(error, QStringLiteral("source stalled while reading ZIP (copied=%1, position=%2, size=%3)")
+                        .arg(m_archiveSize).arg(source.pos()).arg(source.size()));
+                QThread::msleep(10);
+                continue;
+            }
+            idleTimer.restart();
             if (!addChecked(m_archiveSize, quint64(n), &m_archiveSize)) return fail(error, QStringLiteral("archive size overflow"));
             if (m_limits.maxArchiveBytes && m_archiveSize > m_limits.maxArchiveBytes) return fail(error, QStringLiteral("archive size limit exceeded"));
             const QStorageInfo storage(QFileInfo(m_spool.fileName()).absolutePath());

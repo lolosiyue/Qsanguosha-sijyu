@@ -2,6 +2,9 @@
 #include "lua.hpp"
 #include "card.h"
 #include "game-rng.h"
+#include "package-catalog.h"
+#include "runtime-paths.h"
+#include <QDir>
 #ifdef QSAN_XP_LEGACY
 #include "legacy/xp/src/xp-lua-paths.h"
 #endif
@@ -19,6 +22,51 @@ extern "C" {
 }
 
 namespace {
+
+int packagePath(lua_State *state)
+{
+    const QString reference = QString::fromUtf8(luaL_checkstring(state, 1));
+    QString error;
+    const QString path = QSanPackages::resolve(QSanRuntimePaths::assetRoot(), reference, &error);
+    if (path.isEmpty()) {
+        lua_pushnil(state);
+        lua_pushstring(state, error.toUtf8().constData());
+        return 2;
+    }
+    lua_pushstring(state, path.toUtf8().constData());
+    return 1;
+}
+
+int packageDataPath(lua_State *state)
+{
+    const QString id = QString::fromUtf8(luaL_checkstring(state, 1));
+    const QString relative = QString::fromUtf8(luaL_optstring(state, 2, ""));
+    const QString root = QSanPackages::packageDataPath(id);
+    // Writable names cannot escape the package's user-data directory.
+    const bool safe = relative.isEmpty() || (QRegularExpression(QStringLiteral("^[A-Za-z0-9_./-]+$")).match(relative).hasMatch()
+        && !relative.startsWith(QLatin1Char('/')) && !relative.split(QLatin1Char('/')).contains(QStringLiteral(".."))
+        && !relative.split(QLatin1Char('/')).contains(QStringLiteral(".")));
+    if (root.isEmpty() || !safe) {
+        lua_pushnil(state);
+        lua_pushliteral(state, "invalid package data path");
+        return 2;
+    }
+    const QString path = relative.isEmpty() ? root : QDir(root).filePath(relative);
+    lua_pushstring(state, path.toUtf8().constData());
+    return 1;
+}
+
+void installPackageLuaApi(lua_State *state)
+{
+    lua_getglobal(state, "sgs");
+    if (lua_istable(state, -1)) {
+        lua_pushcfunction(state, packagePath);
+        lua_setfield(state, -2, "PackagePath");
+        lua_pushcfunction(state, packageDataPath);
+        lua_setfield(state, -2, "PackageDataPath");
+    }
+    lua_pop(state, 1);
+}
 
 const char kLua52Compatibility[] = R"lua(
 do
@@ -268,6 +316,7 @@ lua_State *CreateLuaState()
         return nullptr;
     }
     luaopen_sgs(L);
+    installPackageLuaApi(L);
     return L;
 }
 
@@ -283,6 +332,7 @@ lua_State *CreateLuaState(quint64 seed)
     }
     installGameRandom(L);
     luaopen_sgs(L);
+    installPackageLuaApi(L);
     return L;
 }
 
@@ -297,6 +347,7 @@ lua_State *CreateLuaState(LuaAllocatorFunction allocator, void *userData)
         return nullptr;
     }
     luaopen_sgs(L);
+    installPackageLuaApi(L);
     return L;
 }
 
@@ -312,6 +363,7 @@ lua_State *CreateLuaState(LuaAllocatorFunction allocator, void *userData, quint6
     }
     installGameRandom(L);
     luaopen_sgs(L);
+    installPackageLuaApi(L);
     return L;
 }
 

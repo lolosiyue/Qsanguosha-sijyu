@@ -2,6 +2,7 @@
 
 #include "audio-backend.h"
 #include "settings.h"
+#include "runtime-paths.h"
 
 #include <QDebug>
 #ifdef Q_OS_ANDROID
@@ -79,7 +80,8 @@ void Audio::play(const QString &filename, bool superpose)
 {
     if (!g_backend)
         return;
-    g_backend->play(filename, superpose, classifyAudioFile(filename));
+    const QString resolved = QSanRuntimePaths::assetPath(filename);
+    if (!resolved.isEmpty()) g_backend->play(resolved, superpose, classifyAudioFile(filename));
 }
 
 void Audio::stop()
@@ -91,7 +93,7 @@ void Audio::stop()
 void Audio::playBGM(const QString &filename)
 {
     if (g_backend)
-        g_backend->playBGM(filename);
+        g_backend->playBGM(QSanRuntimePaths::assetPath(filename));
 }
 
 void Audio::setBGMVolume(float volume)

@@ -1,0 +1,29 @@
+{
+  "unresolved": [
+    "This local pilot version is not a release version.",
+    "No image or audio files are included; add only after ownership is verified."
+  ],
+  "manifest": {
+    "schema_version": 1,
+    "id": "sijyu",
+    "version": "0.0.0-local",
+    "engine_api": 1,
+    "dependencies": [],
+    "extensions": [
+      {
+        "name": "sijyu",
+        "script": "lua/sijyu.lua",
+        "dependencies": [],
+        "libs": [],
+        "lang": [],
+        "ai": ["lua/ai/sijyu-ai.lua"]
+      }
+    ],
+    "assets": {}
+  },
+  "files": {
+    "extensions/sijyu.lua": "lua/sijyu.lua",
+    "lua/ai/sijyu-ai.lua": "lua/ai/sijyu-ai.lua"
+  },
+  "asset_owners": {}
+}

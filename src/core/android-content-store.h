@@ -31,6 +31,7 @@ public:
     {
         QString id;
         QString version;
+        QString packageVersion;
         QString role;
         QString state;
         bool enabled = true;
@@ -69,6 +70,9 @@ public:
     bool stageExtension(QIODevice &source, const QString &filename,
                         const QString &bundleId, Cancelled *cancel = nullptr,
                         const Progress &progress = Progress(), QString *error = nullptr);
+    bool stageModularPackage(QIODevice &source, const QString &filename,
+                             Cancelled *cancel = nullptr,
+                             const Progress &progress = Progress(), QString *error = nullptr);
 
     // 以下操作只修改 pending 版本，下一次啟動才生效。
     bool setPackageEnabled(const QString &packageId, bool enabled, QString *error = nullptr);
@@ -89,7 +93,7 @@ private:
     QString m_baseRoot;
     bool m_prepared = false;
     bool loadSnapshot(const QString &id, QVariantMap *snapshot, QString *error,
-                      bool inspectMedia = true) const;
+                      bool inspectMedia = false) const;
     bool publishSnapshot(const QVariantMap &snapshot, QString *version, QString *error, Cancelled *cancel = nullptr);
     bool stageSnapshot(const QVariantMap &snapshot, QString *error, Cancelled *cancel = nullptr);
     bool commitState(const QVariantMap &state, QString *error);

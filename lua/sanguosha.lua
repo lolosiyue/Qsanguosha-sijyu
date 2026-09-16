@@ -16,12 +16,56 @@ package.path = package.path .. ";./lua/lib/?.lua"
 dofile "lua/utilities.lua"
 dofile "lua/sgs_ex.lua"
 
+-- Package modules keep a qualified require cache. Unqualified imports first
+-- consult this package's declared modules, then retain the legacy search path.
+local function package_module_name(path)
+	return path:gsub("%.lua$", ""):gsub("/", ".")
+end
+local original_require = require
+local function package_chunk(path)
+	local id = path:match("^packages/([^/]+)/")
+	if not id then return assert(loadfile(path)) end
+	local env = setmetatable({}, {__index = _G, __newindex = _G})
+	rawset(env, "require", function(name)
+		local qualified = "packages." .. id .. ".lua." .. name
+		if package.preload[qualified] then return original_require(qualified) end
+		return original_require(name)
+	end)
+	return assert(loadfile(path, "t", env))
+end
+for _, path in ipairs(sgs.GetConfigList("package_lua")) do
+	-- The client rules filesystem omits server-only AI. Register modules lazily
+	-- so their payload is required only in the runtime that actually uses them.
+	package.preload[package_module_name(path)] = function(...)
+		return package_chunk(path)(...)
+	end
+end
+function sgs.RequirePackage(id, name)
+	assert(id:match("^[a-z0-9][a-z0-9_-]*$") and name:match("^[%w_.-]+$"), "invalid package module")
+	return require("packages." .. id .. ".lua." .. name)
+end
+function sgs.LoadPackageScript(path)
+	return package_chunk(path)()
+end
+
 local package_names = {}
-for _, script in ipairs(sgs.GetConfigList("extension_names")) do
-	local module_name = "extensions." .. script:match("^extensions/(.+)%.lua$")
+local extension_ids = sgs.GetConfigList("extension_ids")
+for entry_index, script in ipairs(sgs.GetConfigList("extension_names")) do
+	local legacy_name = script:match("^extensions/(.+)%.lua$")
+	local module_name = legacy_name and ("extensions." .. legacy_name) or package_module_name(script)
 	-- Load the declared path exactly: require's dotted-name search would turn
 	-- a valid filename such as probe.one.lua into probe/one.lua.
-	package.preload[module_name] = assert(loadfile(script))
+	local chunk = package_chunk(script)
+	local old_module = "extensions." .. (extension_ids[entry_index] or legacy_name or module_name)
+	if not legacy_name then
+		package.preload[old_module] = function() return require(module_name) end
+	end
+	package.preload[module_name] = function(...)
+		local result = chunk(...)
+		-- Lua 5.1-style module() exports to its historic extension name.
+		if result == nil and not legacy_name then return package.loaded[old_module] end
+		return result
+	end
 	local loaded = require(module_name)
 	if sgs.GetConfig("DisableLua", false) then continue end
 	if type(loaded) == "table" and loaded.hidden ~= true then -- need to consider the compatibility of 'module'
@@ -159,5 +203,13 @@ if not sgs.Sanguosha:isLuaDefinitionsLoaded() then
 		for _, file in ipairs(sgs.GetFileNames(lang_dir)) do
 			load_translation(("%s/%s"):format(lang_dir, file))
 		end
+	end
+	for _, file in ipairs(sgs.GetConfigList("package_lang")) do
+		-- Translation remains presentation content and does not change rules IDs.
+		local locale = file:match("/translation/([a-z][a-z]_[A-Z][A-Z])/")
+		if locale and locale ~= lang then continue end
+		local values = sgs.LoadPackageScript(file)
+		assert(type(values) == "table", "package translation must return a table: " .. file)
+		sgs.LoadTranslationTable(values)
 	end
 end

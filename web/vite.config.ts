@@ -8,6 +8,9 @@ import { defineConfig, type Plugin } from "vite";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(root, "..");
 const imageRoot = path.resolve(repoRoot, "image");
+// Runtime package trees are supplied at launch; source defaults keep local dev simple.
+const runtimeRoot = path.resolve(process.env.QSAN_RUNTIME_ROOT ?? repoRoot);
+const packageRoot = path.resolve(runtimeRoot, "packages");
 // Bind this Web loader to the deployment emitted by the native/WASM build.
 // An unprovisioned frontend can build, but cannot enable native rules at runtime.
 const bundlePath = path.resolve(root, "public/rules/qsanguosha_client_wasm.bundle.json");
@@ -19,8 +22,24 @@ const MIME: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
   ".svg": "image/svg+xml",
-  ".gif": "image/gif"
+  ".gif": "image/gif",
+  ".ogg": "audio/ogg",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".flac": "audio/flac",
+  ".m4a": "audio/mp4",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".lua": "text/plain; charset=utf-8",
+  ".json": "application/json; charset=utf-8"
 };
 
 function isInsideRoot(file: string, dir: string): boolean {
@@ -32,8 +51,32 @@ function isInsideRoot(file: string, dir: string): boolean {
 }
 
 function assetRelativePath(req: IncomingMessage): string {
-  const raw = decodeURIComponent((req.url ?? "").split("?")[0] ?? "").replace(/^[/\\]+/, "");
+  let raw = "";
+  try { raw = decodeURIComponent((req.url ?? "").split("?")[0] ?? ""); }
+  catch { return ""; }
+  raw = raw.replace(/^[/\\]+/, "");
   return raw.replace(/^assets[/\\]/, "");
+}
+
+function servePackageFile(req: IncomingMessage, res: ServerResponse, _next: () => void): void {
+  // Package misses must remain HTTP errors, rather than falling through to the SPA.
+  const reject = (status: number): void => { res.statusCode = status; res.end(); };
+  const relative = assetRelativePath(req).replace(/^packages[/\\]/, "");
+  if (!/^[A-Za-z0-9_./-]+$/.test(relative)
+      || relative.split("/").some(part => !part || part === "." || part === "..")) { reject(403); return; }
+  const file = path.resolve(packageRoot, relative);
+  if (!isInsideRoot(file, packageRoot)) { reject(403); return; }
+  if (!fs.existsSync(file)) { reject(404); return; }
+  try {
+    const realRoot = fs.realpathSync(packageRoot);
+    const realFile = fs.realpathSync(file);
+    if (!isInsideRoot(realFile, realRoot)) { reject(403); return; }
+    if (!fs.statSync(realFile).isFile()) { reject(404); return; }
+    const ext = path.extname(realFile).toLowerCase();
+    if (!(ext in MIME)) { reject(404); return; }
+    res.setHeader("Content-Type", MIME[ext]);
+    fs.createReadStream(realFile).pipe(res);
+  } catch { reject(404); }
 }
 
 function serveLocalImage(req: IncomingMessage, res: ServerResponse, next: () => void): void {
@@ -116,6 +159,7 @@ function localImagePlugin(): Plugin {
         next();
       });
       server.middlewares.use("/assets", serveLocalImage);
+      server.middlewares.use("/packages", servePackageFile);
     },
     configurePreviewServer(server) {
       server.middlewares.use((req, res, next) => {
@@ -126,6 +170,7 @@ function localImagePlugin(): Plugin {
         next();
       });
       server.middlewares.use("/assets", serveLocalImage);
+      server.middlewares.use("/packages", servePackageFile);
     }
   };
 }
