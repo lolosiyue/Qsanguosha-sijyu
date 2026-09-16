@@ -4,7 +4,6 @@
 #include "rules-content-manifest.h"
 
 #include <QBuffer>
-#include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
@@ -22,8 +21,11 @@
 #include <QStorageInfo>
 #include <QTemporaryDir>
 #include <QUuid>
-#ifdef Q_OS_ANDROID
+#ifdef Q_OS_UNIX
 #include <unistd.h>
+#endif
+#ifdef Q_OS_ANDROID
+#include <fcntl.h>
 #endif
 
 namespace {
@@ -70,27 +72,67 @@ bool extensionPath(const QString &path)
     static const QSet<QString> core{ "lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua", "lua/sgs_ex.lua", "lua/lib/json.lua" };
     return !core.contains(path) && (path.startsWith("extensions/") || path.startsWith("lua/") || path.startsWith("lang/"));
 }
-bool directory(const QString &path, QString *error)
+bool directory(const QString &path, QString *error, QSet<QString> *checked = nullptr)
 {
     QFileInfo info(path);
+    if (checked && checked->contains(info.absoluteFilePath())) return true;
     if (info.isSymLink()) return fail(error, "content directory is a symbolic link: " + path);
     const QString parent = info.absolutePath();
-    if (parent != info.absoluteFilePath() && !directory(parent, error)) return false;
-    if (info.exists()) return info.isDir() || fail(error, "not a directory: " + path);
-    return QDir().mkpath(path) || fail(error, "cannot create directory: " + path);
-}
-bool regular(const QString &path)
-{
-    QFileInfo info(path);
-    if (!info.isFile() || info.isSymLink()) return false;
-    QDir parent = info.dir();
-    while (true) {
-        if (QFileInfo(parent.absolutePath()).isSymLink()) return false;
-        if (!parent.cdUp()) break;
-    }
+    if (parent != info.absoluteFilePath() && !directory(parent, error, checked)) return false;
+    if (info.exists() ? !info.isDir() : !QDir().mkpath(path)) return fail(error, "cannot create directory: " + path);
+    if (checked) checked->insert(info.absoluteFilePath());
     return true;
 }
-bool jsonRead(const QString &path, QVariantMap *map, QString *error, QString *sha256 = nullptr)
+bool realParents(const QString &path, QSet<QString> *checked = nullptr)
+{
+    QDir parent = QFileInfo(path).dir();
+    QStringList visited;
+    while (true) {
+        if (checked && checked->contains(parent.absolutePath())) break;
+        if (QFileInfo(parent.absolutePath()).isSymLink()) return false;
+        visited.append(parent.absolutePath());
+        if (!parent.cdUp()) break;
+    }
+    if (checked) for (const QString &dir : visited) checked->insert(dir);
+    return true;
+}
+bool regular(const QString &path, QSet<QString> *checked = nullptr)
+{
+    const QFileInfo info(path);
+    return info.isFile() && !info.isSymLink() && realParents(path, checked);
+}
+QString mediaSource(const QString &store, const QString &reference, const QString &path)
+{
+    if (!mediaPath(path)) return {};
+    if (reference == "base") return store + "/baseline/runtime/" + path;
+    if (versionId(reference)) return store + "/blobs/" + reference + "/runtime/" + path;
+    return {};
+}
+bool runtimeFile(const QString &store, const QString &root, const QString &path,
+                 const QVariantMap &mediaSources, const QVariantMap &mediaRoots,
+                 const QString &expectedReference, QSet<QString> *checked)
+{
+    const QString target = root + "/runtime/" + path;
+    const QString top = path.section('/', 0, 0);
+    if (mediaPath(path) && mediaRoots.contains(top)) {
+        const QString reference = mediaRoots.value(top).toString();
+        const QString source = mediaSource(store, reference, path);
+        const QFileInfo link(root + "/runtime/" + top);
+        const QString sourceRoot = QFileInfo(mediaSource(store, reference, top + "/sentinel")).absolutePath();
+        return !source.isEmpty() && reference == expectedReference && link.isSymLink()
+            && realParents(link.absoluteFilePath(), checked) && link.symLinkTarget() == sourceRoot
+            && regular(source, checked);
+    }
+    if (regular(target, checked)) return true; // Existing physical snapshots remain readable.
+    const QString source = mediaSource(store, mediaSources.value(path).toString(), path);
+    const QFileInfo info(target);
+    // Only store-created, metadata-bound media links cross the snapshot boundary.
+    // ZIP links, undeclared directory links, Lua links and arbitrary targets stay invalid.
+    return !source.isEmpty() && mediaSources.value(path).toString() == expectedReference
+        && info.isSymLink() && realParents(target, checked)
+        && info.symLinkTarget() == source && regular(source, checked);
+}
+bool jsonRead(const QString &path, QVariantMap *map, QString *error)
 {
     QFile file(path);
     if ((!path.startsWith(":/") && !regular(path)) || !file.open(QIODevice::ReadOnly)
@@ -100,7 +142,6 @@ bool jsonRead(const QString &path, QVariantMap *map, QString *error, QString *sh
     const QJsonDocument document = QJsonDocument::fromJson(bytes, &parse);
     if (parse.error != QJsonParseError::NoError || !document.isObject()) return fail(error, "invalid content JSON: " + path);
     *map = document.object().toVariantMap();
-    if (sha256) *sha256 = QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex());
     return true;
 }
 bool jsonWrite(const QString &path, const QVariantMap &map, QString *error)
@@ -124,16 +165,18 @@ bool space(const QString &path, quint64 bytes, QString *error)
     return true;
 }
 bool copyFile(const QString &source, const QString &target, QString *error, bool shareMedia = false,
-              AndroidContentStore::Cancelled *cancel = nullptr)
+              AndroidContentStore::Cancelled *cancel = nullptr, QSet<QString> *checked = nullptr)
 {
     if (cancelled(cancel, error)) return false;
-    if (!source.startsWith(":/") && !regular(source)) return fail(error, "non-regular content source: " + source);
-    if (!directory(QFileInfo(target).absolutePath(), error) || QFileInfo(target).isSymLink()) return false;
-#ifdef Q_OS_ANDROID
-    // Only immutable media payloads share storage across snapshots. Lua and
-    // baseline capture remain physical copies; replacing links uses QSaveFile.
-    if (shareMedia && !QFileInfo::exists(target)
-        && ::link(QFile::encodeName(source).constData(), QFile::encodeName(target).constData()) == 0) return true;
+    if (!source.startsWith(":/") && !regular(source, checked)) return fail(error, "non-regular content source: " + source);
+    if (!directory(QFileInfo(target).absolutePath(), error, checked) || QFileInfo(target).isSymLink()) return false;
+#ifdef Q_OS_UNIX
+    // App-private media blobs outlive every referring snapshot. Unlike hard
+    // links, these references need no Android link permission or payload copy.
+    if (shareMedia) {
+        if (::symlink(QFile::encodeName(source).constData(), QFile::encodeName(target).constData()) == 0) return true;
+        return fail(error, "cannot reference shared media: " + target);
+    }
 #else
     Q_UNUSED(shareMedia);
 #endif
@@ -166,18 +209,22 @@ QStringList treeFiles(const QString &root, QString *error)
     }
     return result;
 }
-QString digest(const QString &path, QString *error, AndroidContentStore::Cancelled *cancel = nullptr)
+bool sameContents(const QString &left, const QString &right, bool *same, QString *error)
 {
-    QFile file(path);
-    if ((!path.startsWith(":/") && !regular(path)) || !file.open(QIODevice::ReadOnly)) { fail(error, "cannot hash content"); return {}; }
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    while (!file.atEnd()) {
-        if (cancelled(cancel, error)) return {};
-        const QByteArray block = file.read(256 * 1024);
-        if (block.isEmpty() && file.error() != QFileDevice::NoError) { fail(error, "content hash read failed"); return {}; }
-        hash.addData(block);
+    // Only the one-time legacy migration compares bytes, to preserve user edits.
+    // Neither imports nor normal startup calculate content hashes.
+    QFile a(left), b(right);
+    if (!a.open(QIODevice::ReadOnly) || !b.open(QIODevice::ReadOnly)) return fail(error, "cannot read legacy content");
+    *same = false;
+    if (a.size() != b.size()) return true;
+    while (!a.atEnd()) {
+        const QByteArray lhs = a.read(256 * 1024), rhs = b.read(256 * 1024);
+        if (a.error() != QFileDevice::NoError || b.error() != QFileDevice::NoError)
+            return fail(error, "legacy content read failed");
+        if (lhs != rhs) return true;
     }
-    return QString::fromLatin1(hash.result().toHex());
+    *same = b.atEnd();
+    return true;
 }
 QStringList entryFiles(const QVariantMap &entry)
 {
@@ -284,73 +331,59 @@ void AndroidContentStore::refreshPackages()
 }
 
 bool AndroidContentStore::loadSnapshot(const QString &id, QVariantMap *snapshot, QString *error,
-                                       const QVariantMap &validated, QVariantMap *receipt) const
+                                       bool inspectMedia) const
 {
     if (!versionId(id)) return fail(error, "invalid content version id");
     const QString root = QDir(m_storeRoot).filePath("versions/" + id);
-    QString metadataHash, descriptorHash;
-    if (!jsonRead(root + "/metadata.json", snapshot, error, &metadataHash)) return false;
+    if (!jsonRead(root + "/metadata.json", snapshot, error)) return false;
     QVariantMap runtimeDescriptor;
-    if (!jsonRead(root + "/runtime/runtime-content.json", &runtimeDescriptor, error, &descriptorHash)) return false;
+    if (!jsonRead(root + "/runtime/runtime-content.json", &runtimeDescriptor, error)) return false;
     const auto parsed = QSanRules::parseRuntimeContent(QJsonObject::fromVariantMap(runtimeDescriptor));
     if (!parsed.isValid()) return fail(error, parsed.error);
-    QVariantMap checked{{"active", id}, {"metadata_sha256", metadataHash}, {"descriptor_sha256", descriptorHash}};
-    // Only prepareStartup may reuse a receipt, after checking the APK/baseline
-    // revisions and excluding pending changes and failed boots. Payloads are
-    // validated on change; ordinary boots inspect only these core sentinels.
-    const bool reuse = validated.value("active").toString() == id
-        && validated.value("metadata_sha256").toString() == metadataHash
-        && validated.value("descriptor_sha256").toString() == descriptorHash;
     for (const QString &path : {QStringLiteral("lua/config.lua"), QStringLiteral("lua/sanguosha.lua"),
                                 QStringLiteral("lua/ai/smart-ai.lua")})
         if (!regular(root + "/runtime/" + path)) return fail(error, "content version is incomplete: " + path);
-    if (reuse) {
-        snapshot->insert("media_ready", validated.value("media_ready", false));
-        checked.insert("media_ready", snapshot->value("media_ready"));
-        if (receipt) *receipt = checked;
-        return true;
-    }
     QVariantList entries;
+    QSet<QString> checkedDirectories, enabledVersions;
+    const QVariantMap mediaSources = snapshot->value("media_sources").toMap();
+    const QVariantMap mediaRoots = snapshot->value("media_roots").toMap();
     bool completeMedia = false;
     bool mediaValid = true;
     for (const QVariant &value : snapshot->value("packages").toList()) {
         const QVariantMap p = effective(value.toMap());
         if (p.isEmpty()) continue;
+        enabledVersions.insert(p.value("version").toString());
+        const bool mediaPackage = p.value("role").toString() == "media";
+        if (mediaPackage && p.value("complete_media").toBool()) completeMedia = true;
+        // Successful import is persistent installation state. New APK image
+        // names and missing optional media never trigger a startup rescan.
+        if (mediaPackage && !inspectMedia) continue;
         entries << p.value("entries").toList();
         for (const QString &path : p.value("files").toStringList()) {
             if (!safePath(path)) return fail(error, "invalid snapshot package path");
-            if (!regular(root + "/runtime/" + path)) {
+            if (mediaPath(path) && !inspectMedia) continue;
+            if (!runtimeFile(m_storeRoot, root, path, mediaSources, mediaRoots, p.value("version").toString(), &checkedDirectories)) {
                 if (mediaPath(path)) mediaValid = false;
                 else return fail(error, "content package file is missing: " + path);
             }
         }
-        if (p.value("role").toString() == "media" && p.value("complete_media").toBool()) {
-            completeMedia = true;
-            const QVariantList records = p.value("media_records").toList();
-            if (records.size() != p.value("files").toStringList().size()) mediaValid = false;
-            for (const QVariant &record : records) {
-                const QVariantMap r = record.toMap();
-                const QString path = r.value("path").toString();
-                if (!mediaPath(path) || !regular(root + "/runtime/" + path)
-                    || quint64(QFileInfo(root + "/runtime/" + path).size()) != r.value("size").toULongLong())
-                    mediaValid = false;
-            }
-            QVariantMap inventory;
-            if (!jsonRead(":/assets/media-inventory.json", &inventory, error)) return false;
-            const QStringList files = p.value("files").toStringList();
-            const QSet<QString> names(files.cbegin(), files.cend());
-            if (inventory.value("files").toStringList().isEmpty()) return fail(error, "APK media inventory is missing");
-            for (const QString &path : inventory.value("files").toStringList())
-                if (!names.contains(path)) mediaValid = false;
-        }
+    }
+    // Constant-size directory checks prevent a forged link from redirecting
+    // the selected runtime outside its own private blob; no payload is read.
+    for (auto it = mediaRoots.cbegin(); it != mediaRoots.cend(); ++it) {
+        const QString source = mediaSource(m_storeRoot, it.value().toString(), it.key() + "/sentinel");
+        const QFileInfo link(root + "/runtime/" + it.key());
+        if ((it.key() != "image" && it.key() != "audio" && it.key() != "font")
+            || source.isEmpty() || !enabledVersions.contains(it.value().toString())
+            || !link.isSymLink() || !realParents(link.absoluteFilePath(), &checkedDirectories)
+            || link.symLinkTarget() != QFileInfo(source).absolutePath()
+            || !realParents(source, &checkedDirectories)) mediaValid = false;
     }
     if (QJsonObject::fromVariantMap(descriptor(entries)) != QJsonObject::fromVariantMap(runtimeDescriptor))
         return fail(error, "snapshot descriptor does not match its packages");
     snapshot->insert("media_ready", completeMedia && mediaValid);
     for (const QString &path : QSanRules::manifestDeliveredFiles(parsed) + QSanRules::manifestServerOnlyFiles(parsed))
         if (!regular(root + "/runtime/" + path)) return fail(error, "content version is incomplete: " + path);
-    checked.insert("media_ready", snapshot->value("media_ready"));
-    if (receipt) *receipt = checked;
     return true;
 }
 
@@ -420,13 +453,11 @@ bool AndroidContentStore::prepareStartup(QString *error)
         if (!scanError.isEmpty()) return fail(error, scanError);
         for (const QString &path : deployedFiles) {
             if (!safePath(path)) return fail(error, "invalid legacy runtime path");
-            const QString existingHash = digest(deployed + '/' + path, error);
-            if (existingHash.isEmpty()) return false;
             if (!QFileInfo::exists(":/assets/" + path)) changed.insert(path);
             else {
-                const QString originalHash = digest(":/assets/" + path, error);
-                if (originalHash.isEmpty()) return false;
-                if (existingHash != originalHash) changed.insert(path);
+                bool same = false;
+                if (!sameContents(deployed + '/' + path, ":/assets/" + path, &same, error)) return false;
+                if (!same) changed.insert(path);
             }
         }
         QVariantMap initial{{"packages", packages}};
@@ -517,21 +548,13 @@ bool AndroidContentStore::prepareStartup(QString *error)
             if (!jsonWrite(baseMetadata, base, error)) return false;
         }
     }
-    QVariantMap validation = m_state.value("startup_validation").toMap();
-    if (refreshBaseline || hasPending() || needsRecovery() || m_state.value("pending_invalid").toBool()
-        || m_state.value("upgrade_conflict").toBool() || !m_state.value("recovery_error").toString().isEmpty()
-        || validation.value("schema").toInt() != 1 || !validation.contains("media_ready")
-        || validation.value("active") != m_state.value("active")
-        || validation.value("apk_revision").toString() != apkRevision
-        || validation.value("baseline_revision") != base.value("revision")) validation.clear();
-    // A pending selection and the final active load often refer to the same
-    // immutable version. Validate it once under this store lock.
-    QMap<QString, QVariantMap> loadedSnapshots, receipts;
+    // The imported private snapshot is already published. Startup selects it;
+    // it does not hash resources or rescan media after an APK/receipt change.
+    QMap<QString, QVariantMap> loadedSnapshots;
     const auto loadForStartup = [&](const QString &id, QVariantMap *snapshot, QString *loadError) {
         if (loadedSnapshots.contains(id)) { *snapshot = loadedSnapshots.value(id); return true; }
-        QVariantMap receipt;
-        if (!loadSnapshot(id, snapshot, loadError, validation, &receipt)) return false;
-        loadedSnapshots.insert(id, *snapshot); receipts.insert(id, receipt);
+        if (!loadSnapshot(id, snapshot, loadError, false)) return false;
+        loadedSnapshots.insert(id, *snapshot);
         return true;
     };
     if (m_state.value("active").toString().isEmpty()) {
@@ -561,7 +584,12 @@ bool AndroidContentStore::prepareStartup(QString *error)
         QVariantMap state = m_state;
         if (valid) {
             QString activated = selected;
-            if (checked.value("baseline_revision") != base.value("revision")) {
+            bool migrateMedia = false;
+#ifdef Q_OS_ANDROID
+            // Reuse existing blobs when upgrading physical snapshots; no ZIP reimport.
+            migrateMedia = checked.value("media_storage").toInt() != 1;
+#endif
+            if (checked.value("baseline_revision") != base.value("revision") || migrateMedia) {
                 // Compose from the latest pending edits, preserving existing
                 // names/order/enabled flags while appending new bundled names.
                 QString migrationError;
@@ -604,12 +632,6 @@ bool AndroidContentStore::prepareStartup(QString *error)
     }
     QVariantMap state = m_state;
     state.remove("startup_validation");
-    if (!apkRevision.isEmpty() && !needsRecovery() && !hasPending() && receipts.contains(active)) {
-        QVariantMap receipt = receipts.value(active);
-        receipt.insert("schema", 1); receipt.insert("apk_revision", apkRevision);
-        receipt.insert("baseline_revision", base.value("revision"));
-        state.insert("startup_validation", receipt);
-    }
     if (!commitState(state, error)) return false;
     m_prepared = true;
     refreshPackages();
@@ -621,6 +643,8 @@ bool AndroidContentStore::prepareStartup(QString *error)
 
 bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *version, QString *error, Cancelled *cancel)
 {
+    QElapsedTimer timer;
+    timer.start();
     if (cancelled(cancel, error)) return false;
     QVariantMap base;
     if (!jsonRead(m_storeRoot + "/baseline/metadata.json", &base, error)) return false;
@@ -630,6 +654,8 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
     for (const QVariant &value : base.value("packages").toList())
         for (const QString &path : value.toMap().value("files").toStringList()) baselineOwned.insert(key(path));
     QMap<QString, QString> sources;
+    QVariantMap mediaSources;
+    QSet<QString> checkedDirectories;
     QString scanError;
     const QStringList baseFiles = treeFiles(m_baseRoot, &scanError);
     if (!scanError.isEmpty()) return fail(error, scanError);
@@ -638,18 +664,21 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
         if (!safePath(path)) return fail(error, "invalid baseline path");
         if (!baselineOwned.contains(key(path)) && path != "runtime-content.json" && path != "runtime-content-base.json")
             sources.insert(path, m_baseRoot + '/' + path);
+        if (mediaPath(path)) mediaSources.insert(path, "base");
     }
     const QVariantMap legacy = composed.value("legacy_overrides").toMap();
     for (auto it = legacy.cbegin(); it != legacy.cend(); ++it) {
         if (!safePath(it.key()) || !versionId(it.value().toString()) || baselineOwned.contains(key(it.key())))
             return fail(error, "invalid preserved legacy override");
         const QString source = m_storeRoot + "/blobs/" + it.value().toString() + "/runtime/" + it.key();
-        if (!regular(source)) return fail(error, "preserved legacy override is missing");
+        if (!regular(source, &checkedDirectories)) return fail(error, "preserved legacy override is missing");
         sources.insert(it.key(), source);
+        if (mediaPath(it.key())) mediaSources.insert(it.key(), it.value());
     }
     QSet<QString> ids, owners;
     QVariantList entries;
     bool completeMedia = false;
+    QSet<QString> wholeMediaBlobs;
     for (const QVariant &value : composed.value("packages").toList()) {
         if (cancelled(cancel, error)) return false;
         const QVariantMap original = value.toMap();
@@ -669,18 +698,22 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
             owners.insert(key(path));
             if (blob != "base" && !(p.value("role").toString() == "media" ? mediaPath(path) : extensionPath(path)))
                 return fail(error, "package attempts to replace protected runtime content: " + path);
-            if (!regular(root + '/' + path)) return fail(error, "package payload is missing: " + path);
+            if (!regular(root + '/' + path, &checkedDirectories)) return fail(error, "package payload is missing: " + path);
             // Imported content may replace media and a same-package bundled
             // payload, but never an unrelated core Lua/runtime file.
             if (sources.contains(path) && !mediaPath(path)) return fail(error, "package collides with baseline content: " + path);
             sources.insert(path, root + '/' + path);
+            if (mediaPath(path)) mediaSources.insert(path, blob);
         }
         for (const QVariant &entry : p.value("entries").toList()) {
             for (const QString &path : entryFiles(entry.toMap()))
                 if (!fileSet.contains(path)) return fail(error, "descriptor references a file outside its package: " + path);
             entries.append(entry);
         }
-        if (p.value("role").toString() == "media" && p.value("complete_media").toBool()) completeMedia = true;
+        if (p.value("role").toString() == "media" && p.value("complete_media").toBool()) {
+            completeMedia = true;
+            wholeMediaBlobs.insert(blob);
+        }
     }
     const QVariantMap contentDescriptor = descriptor(entries);
     const auto parsed = QSanRules::parseRuntimeContent(QJsonObject::fromVariantMap(contentDescriptor));
@@ -690,7 +723,7 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
     for (auto it = sources.cbegin(); it != sources.cend(); ++it) {
         if (portable.contains(key(it.key()))) return fail(error, "case-colliding runtime paths");
         portable.insert(key(it.key()));
-#ifdef Q_OS_ANDROID
+#ifdef Q_OS_UNIX
         if (!mediaPath(it.key()))
 #endif
             bytes += quint64(QFileInfo(it.value()).size());
@@ -698,9 +731,44 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
     if (!space(m_storeRoot, bytes, error)) return false;
     QTemporaryDir temp(m_storeRoot + "/staging/version-XXXXXX");
     if (!temp.isValid()) return fail(error, "cannot stage content version");
-    for (auto it = sources.cbegin(); it != sources.cend(); ++it)
-        if (!copyFile(it.value(), temp.path() + "/runtime/" + it.key(), error, mediaPath(it.key()), cancel)) return false;
+    QVariantMap mediaRoots;
+#ifdef Q_OS_UNIX
+    QMap<QString, QString> candidates;
+    for (auto it = mediaSources.cbegin(); it != mediaSources.cend(); ++it) {
+        const QString top = it.key().section('/', 0, 0);
+        if (!candidates.contains(top)) candidates.insert(top, it.value().toString());
+        else if (candidates.value(top) != it.value().toString()) candidates[top].clear();
+    }
+    for (auto it = candidates.cbegin(); it != candidates.cend(); ++it) {
+        if (!versionId(it.value()) || !wholeMediaBlobs.contains(it.value())) continue;
+        if (cancelled(cancel, error) || !directory(temp.path() + "/runtime", error, &checkedDirectories)) return false;
+        const QString source = m_storeRoot + "/blobs/" + it.value() + "/runtime/" + it.key();
+        const QString target = temp.path() + "/runtime/" + it.key();
+        // The enabled complete media package owns every selected file beneath
+        // this root. Three directory references replace tens of thousands of copies.
+        if (::symlink(QFile::encodeName(source).constData(), QFile::encodeName(target).constData()) != 0)
+            return fail(error, "cannot reference shared media directory: " + target);
+        mediaRoots.insert(it.key(), it.value());
+    }
+#endif
+    for (auto it = sources.cbegin(); it != sources.cend(); ++it) {
+        if (mediaRoots.contains(it.key().section('/', 0, 0))) continue;
+        if (!copyFile(it.value(), temp.path() + "/runtime/" + it.key(), error, mediaPath(it.key()), cancel, &checkedDirectories)) return false;
+    }
     QVariantMap metadata = composed;
+#ifdef Q_OS_UNIX
+    for (auto it = mediaSources.begin(); it != mediaSources.end();) {
+        if (mediaRoots.contains(it.key().section('/', 0, 0))) it = mediaSources.erase(it);
+        else ++it;
+    }
+    metadata.insert("media_storage", 1);
+    metadata.insert("media_sources", mediaSources);
+    metadata.insert("media_roots", mediaRoots);
+#else
+    metadata.remove("media_storage");
+    metadata.remove("media_sources");
+    metadata.remove("media_roots");
+#endif
     metadata.insert("media_ready", completeMedia);
     metadata.insert("descriptor", contentDescriptor);
     if (!jsonWrite(temp.path() + "/runtime/runtime-content.json", contentDescriptor, error)
@@ -710,6 +778,9 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
     if (!QDir().rename(temp.path(), m_storeRoot + "/versions/" + id)) return fail(error, "cannot publish complete content version");
     temp.setAutoRemove(false);
     *version = id;
+    qInfo("Android content snapshot: shared_roots=%lld copy_bytes=%llu elapsed_ms=%lld",
+          static_cast<long long>(mediaRoots.size()), static_cast<unsigned long long>(bytes),
+          static_cast<long long>(timer.elapsed()));
     return true;
 }
 
@@ -986,14 +1057,41 @@ QVariantMap withPackage(const QVariantMap &snapshot, QVariantMap package)
 }
 bool extractFile(AndroidZipReader &reader, const AndroidZipReader::Entry &entry,
                  const QString &path, AndroidContentStore::Cancelled *cancel,
-                 const AndroidContentStore::Progress &progress, QString *error)
+                 const AndroidContentStore::Progress &progress, QString *error,
+                 QSet<QString> *checked = nullptr)
 {
-    if (!directory(QFileInfo(path).absolutePath(), error)) return false;
+    if (!directory(QFileInfo(path).absolutePath(), error, checked)) return false;
+#ifdef Q_OS_ANDROID
+    // This path is inside an unpublished QTemporaryDir. Stage each new file
+    // without a per-file fsync; syncStagedPayload flushes the whole batch before
+    // its directory is published. Active/previous files are never overwritten.
+    QFile output(path);
+    if (!output.open(QIODevice::WriteOnly | QIODevice::NewOnly)) return fail(error, "cannot stage imported file");
+    if (!reader.extract(entry, output, cancel, progress, error)) return false;
+    return output.flush() || fail(error, "cannot flush imported file");
+#else
     QSaveFile output(path);
     output.setDirectWriteFallback(false);
     if (!output.open(QIODevice::WriteOnly)) return fail(error, "cannot stage imported file");
     if (!reader.extract(entry, output, cancel, progress, error)) return false;
     return output.commit() || fail(error, "cannot publish imported file");
+#endif
+}
+bool syncStagedPayload(const QString &root, QString *error)
+{
+#ifdef Q_OS_ANDROID
+    // API 28 (our minimum) provides syncfs. One durable boundary replaces
+    // tens of thousands of QSaveFile::commit filesystem syncs during import.
+    const int fd = ::open(QFile::encodeName(root).constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return fail(error, "cannot open staged payload for synchronization");
+    const int result = ::syncfs(fd);
+    ::close(fd);
+    if (result != 0) return fail(error, "cannot synchronize staged payload");
+#else
+    Q_UNUSED(root);
+    Q_UNUSED(error);
+#endif
+    return true;
 }
 QVariantList inferEntries(const QStringList &files)
 {
@@ -1035,6 +1133,8 @@ bool coverage(const QVariantList &entries, const QStringList &files, QString *er
 
 bool AndroidContentStore::stageMedia(QIODevice &source, Cancelled *cancel, const Progress &progress, QString *error)
 {
+    QElapsedTimer timer;
+    timer.start();
     if (!m_prepared) return fail(error, "content store has not been prepared");
     QLockFile lock(m_lockPath); if (!lock.tryLock(1000)) return fail(error, "content store is busy");
     ImportLimits limits;
@@ -1044,6 +1144,7 @@ bool AndroidContentStore::stageMedia(QIODevice &source, Cancelled *cancel, const
     limits.maxEntries = 200000; limits.maxCompressionRatio = 200;
     AndroidZipReader reader(m_storeRoot + QStringLiteral("/staging"));
     if (!reader.open(source, limits, cancel, error)) return false;
+    const qint64 archiveReady = timer.elapsed();
     const AndroidZipReader::Entry *manifestEntry = nullptr;
     QMap<QString, const AndroidZipReader::Entry *> payload;
     quint64 total = 0;
@@ -1061,34 +1162,25 @@ bool AndroidContentStore::stageMedia(QIODevice &source, Cancelled *cancel, const
         return fail(error, "invalid media manifest");
     QMap<QString, QVariantMap> records;
     QSet<QString> folded;
-    static const QRegularExpression hashPattern(QStringLiteral("^[0-9a-fA-F]{64}$"));
     for (const QVariant &value : manifest.value("files").toList()) {
         const QVariantMap record = value.toMap();
         const QString path = record.value("path").toString();
         if (!mediaPath(path) || !payload.contains(path) || folded.contains(key(path))
-            || !hashPattern.match(record.value("sha256").toString()).hasMatch()
             || record.value("size").toULongLong() != payload.value(path)->uncompressedSize)
-            return fail(error, "media manifest path, size or digest mismatch: " + path);
+            return fail(error, "media manifest path or size mismatch: " + path);
         folded.insert(key(path)); records.insert(path, record);
     }
     if (records.size() != payload.size() || payload.isEmpty()) return fail(error, "media manifest does not exactly describe ZIP payload");
-    QVariantMap inventory;
-    if (!jsonRead(":/assets/media-inventory.json", &inventory, error)) return false;
-    const QStringList required = inventory.value("files").toStringList();
-    if (inventory.value("format").toInt() != 1 || inventory.value("role").toString() != "media-inventory" || required.isEmpty())
-        return fail(error, "APK media inventory is invalid");
-    for (const QString &path : required)
-        if (!mediaPath(path) || !payload.contains(path)) return fail(error, "complete media package is missing: " + path);
     if (!space(m_storeRoot, total, error)) return false;
     QTemporaryDir temp(m_storeRoot + "/staging/media-XXXXXX");
     if (!temp.isValid()) return fail(error, "cannot stage media package");
     quint64 completed = 0;
+    QSet<QString> checkedDirectories;
     for (auto it = payload.cbegin(); it != payload.cend(); ++it) {
         if (cancelled(cancel, error)) return false;
         const Progress report = [&](quint64 done, quint64) { if (progress) progress(completed + done, total); };
         const QString path = temp.path() + "/runtime/" + it.key();
-        if (!extractFile(reader, *it.value(), path, cancel, report, error)) return false;
-        if (digest(path, error, cancel) != records.value(it.key()).value("sha256").toString().toLower()) return fail(error, "media SHA-256 mismatch: " + it.key());
+        if (!extractFile(reader, *it.value(), path, cancel, report, error, &checkedDirectories)) return false;
         completed += it.value()->uncompressedSize;
     }
     const QString blob = uuid();
@@ -1096,13 +1188,18 @@ bool AndroidContentStore::stageMedia(QIODevice &source, Cancelled *cancel, const
     package.insert("role", "media"); package.insert("complete_media", true);
     package.insert("media_records", manifest.value("files"));
     package.insert("archiveBytes", reader.archiveSize()); package.insert("expandedBytes", total);
-    package.insert("sha256", QString::fromLatin1(QCryptographicHash::hash(QJsonDocument::fromVariant(manifest).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex()));
+    if (!syncStagedPayload(temp.path(), error) || cancelled(cancel, error)) return false;
+    const qint64 payloadReady = timer.elapsed();
     if (!jsonWrite(temp.path() + "/package.json", package, error)) return false;
     if (cancelled(cancel, error)) return false;
     if (!QDir().rename(temp.path(), m_storeRoot + "/blobs/" + blob)) return fail(error, "cannot publish media payload");
     temp.setAutoRemove(false);
     const bool result = stageSnapshot(withPackage(m_snapshot, package), error, cancel);
     if (!result) collectUnusedVersions();
+    qInfo("Android media import: success=%d files=%lld archive_ms=%lld payload_ms=%lld snapshot_ms=%lld total_ms=%lld",
+          result ? 1 : 0, static_cast<long long>(payload.size()), static_cast<long long>(archiveReady),
+          static_cast<long long>(payloadReady - archiveReady), static_cast<long long>(timer.elapsed() - payloadReady),
+          static_cast<long long>(timer.elapsed()));
     return result;
 }
 
@@ -1161,10 +1258,11 @@ bool AndroidContentStore::stageExtension(QIODevice &source, const QString &filen
         } else entries = inferEntries(files);
         if (!coverage(entries, files, error) || !space(m_storeRoot, total, error)) return false;
         quint64 completed = 0;
+        QSet<QString> checkedDirectories;
         for (const auto &entry : reader.entries()) {
             if (entry.directory || entry.path == "runtime-content.json") continue;
             const Progress report = [&](quint64 done, quint64) { if (progress) progress(completed + done, total); };
-            if (!extractFile(reader, entry, temp.path() + "/runtime/" + entry.path, cancel, report, error)) return false;
+            if (!extractFile(reader, entry, temp.path() + "/runtime/" + entry.path, cancel, report, error, &checkedDirectories)) return false;
             completed += entry.uncompressedSize;
         }
         archiveBytes = reader.archiveSize();
@@ -1173,6 +1271,7 @@ bool AndroidContentStore::stageExtension(QIODevice &source, const QString &filen
     const QString blob = uuid();
     QVariantMap package = infoMap(bundleId, blob, files, entries, false);
     package.insert("archiveBytes", archiveBytes); package.insert("expandedBytes", total);
+    if (!syncStagedPayload(temp.path(), error) || cancelled(cancel, error)) return false;
     if (!jsonWrite(temp.path() + "/package.json", package, error)) return false;
     if (!QDir().rename(temp.path(), m_storeRoot + "/blobs/" + blob)) return fail(error, "cannot publish extension payload");
     temp.setAutoRemove(false);

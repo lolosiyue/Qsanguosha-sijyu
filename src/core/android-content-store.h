@@ -13,7 +13,8 @@
 // Android 私有內容的 staged store。
 //
 // 所有變更先寫入新版本，下一次啟動由 prepareStartup() 驗證後切換；
-// 因此 Engine 永遠只會看到一棵完整、可回復的實體 runtime 樹。
+// Engine 看到完整、可回復的 runtime 樹；不可變聲畫引用同一私有 blob，
+// 不因 Lua／APK 基線更新複製媒體。規則／Lua 仍為各版本的獨立實體檔。
 class AndroidContentStore
 {
 public:
@@ -88,7 +89,7 @@ private:
     QString m_baseRoot;
     bool m_prepared = false;
     bool loadSnapshot(const QString &id, QVariantMap *snapshot, QString *error,
-                      const QVariantMap &validated = {}, QVariantMap *receipt = nullptr) const;
+                      bool inspectMedia = true) const;
     bool publishSnapshot(const QVariantMap &snapshot, QString *version, QString *error, Cancelled *cancel = nullptr);
     bool stageSnapshot(const QVariantMap &snapshot, QString *error, Cancelled *cancel = nullptr);
     bool commitState(const QVariantMap &state, QString *error);

@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QTextStream>
+#include <algorithm>
 
 #include <zlib.h>
 #ifdef Q_OS_WIN
@@ -130,14 +131,15 @@ QByteArray extensionZip(const QByteArray &body)
     return zip({{QByteArrayLiteral("runtime-content.json"), descriptor}, {QByteArrayLiteral("extensions/addon.lua"), body}});
 }
 
-QByteArray mediaZip()
+QByteArray mediaZip(bool badHash = false)
 {
     const QList<QPair<QByteArray, QByteArray>> payload{{"image/base.png", "image"}, {"audio/base.ogg", "audio"}, {"font/base.ttf", "font"}};
     QJsonArray records;
     QList<ZipItem> items;
     quint64 expanded = 0;
     for (const auto &entry : payload) {
-        const QByteArray digest = QCryptographicHash::hash(entry.second, QCryptographicHash::Sha256).toHex();
+        const QByteArray digest = badHash ? QByteArray(64, '0')
+            : QCryptographicHash::hash(entry.second, QCryptographicHash::Sha256).toHex();
         records.append(QJsonObject{{"path", QString::fromLatin1(entry.first)}, {"size", entry.second.size()},
                                    {"sha256", QString::fromLatin1(digest)}});
         items.append({entry.first, entry.second}); expanded += quint64(entry.second.size());
@@ -189,6 +191,71 @@ bool readerCases()
     if (!readerRejects(shortExtra, "ZIP64 value outside its extra field")) return false;
     AndroidZipReader reader; AndroidContentStore::ImportLimits limits; QString error;
     return check(reader.open(source, limits, nullptr, &error), "ZIP64") && check(reader.entries().size() == 1, "ZIP64 entry count");
+}
+
+class SequentialArchive final : public QIODevice
+{
+public:
+    explicit SequentialArchive(const QByteArray &bytes) : m_bytes(bytes) { open(QIODevice::ReadOnly); }
+    bool isSequential() const override { return true; }
+    bool atEnd() const override { return m_offset == m_bytes.size() && QIODevice::bytesAvailable() == 0; }
+    qint64 bytesAvailable() const override { return m_bytes.size() - m_offset + QIODevice::bytesAvailable(); }
+protected:
+    qint64 readData(char *data, qint64 maximum) override {
+        const qint64 count = qMin<qint64>(maximum, m_bytes.size() - m_offset);
+        std::copy_n(m_bytes.constData() + m_offset, count, data);
+        m_offset += count;
+        return count;
+    }
+    qint64 writeData(const char *, qint64) override { return -1; }
+private:
+    QByteArray m_bytes;
+    qint64 m_offset = 0;
+};
+
+bool indexedReaderCases()
+{
+    QTemporaryDir root;
+    if (!check(root.isValid(), "indexed reader root")) return false;
+    AndroidContentStore::ImportLimits limits;
+    QString error;
+    QList<ZipItem> items;
+    for (int i = 0; i < 256; ++i)
+        items.append({QByteArray::number(i) + ".lua", QByteArray::number(i)});
+    const QByteArray archive = zip(items);
+    QBuffer source;
+    source.setData(archive); source.open(QIODevice::ReadOnly);
+    AndroidZipReader reader(root.path());
+    if (!check(reader.open(source, limits, nullptr, &error), "open seekable ZIP: " + error)) return false;
+    if (!check(QDir(root.path()).entryList(QDir::Files).isEmpty(), "seekable source has no spool copy")) return false;
+    // Extract in reverse order: the lookup must bind the supplied entry, not
+    // accidentally depend on extraction order or the source's current offset.
+    for (int i = int(reader.entries().size()) - 1; i >= 0; --i) {
+        QBuffer output; output.open(QIODevice::WriteOnly);
+        if (!check(reader.extract(reader.entries().at(i), output, nullptr, {}, &error), "indexed extraction")) return false;
+        if (!check(output.data() == QByteArray::number(i), "indexed payload")) return false;
+    }
+    auto forged = reader.entries().last();
+    forged.crcValue ^= 1;
+    QBuffer rejected; rejected.open(QIODevice::WriteOnly);
+    if (!check(!reader.extract(forged, rejected, nullptr, {}, &error) && rejected.data().isEmpty(),
+               "index rejects modified entry before writing")) return false;
+
+    SequentialArchive sequential(archive);
+    if (!check(reader.open(sequential, limits, nullptr, &error), "sequential provider spool: " + error)) return false;
+    if (!check(QDir(root.path()).entryList({"archive-*.zip"}, QDir::Files).size() == 1, "one sequential spool")) return false;
+    QBuffer sequentialOutput; sequentialOutput.open(QIODevice::WriteOnly);
+    if (!check(reader.extract(reader.entries().last(), sequentialOutput, nullptr, {}, &error)
+               && sequentialOutput.data() == "255", "sequential extraction")) return false;
+    source.seek(0);
+    if (!check(reader.open(source, limits, nullptr, &error)
+               && QDir(root.path()).entryList(QDir::Files).isEmpty(), "reader reuse releases old spool")) return false;
+
+    QByteArray duplicate = zip({{"first.lua", "a"}, {"second.lua", "b"}});
+    const QByteArray central("PK\x01\x02", 4);
+    const qsizetype second = duplicate.indexOf(central, duplicate.indexOf(central) + 4);
+    for (int i = 0; i < 4; ++i) duplicate[second + 42 + i] = 0;
+    return check(readerRejects(duplicate, "duplicate local header offset"), "duplicate indexed offset rejected");
 }
 
 bool spoolRecoveryCases()
@@ -296,118 +363,171 @@ bool storeCases()
     return check(recovering.recoverPrevious(&error), "recover previous version: " + error);
 }
 
+bool sharedMediaCases()
+{
+    QTemporaryDir root;
+    if (!check(root.isValid(), "shared media root")) return false;
+    QString error;
+    AndroidContentStore initial(root.path());
+    if (!check(initial.prepareStartup(&error), "shared media prepare")) return false;
+    QBuffer media; media.setData(mediaZip()); media.open(QIODevice::ReadOnly);
+    if (!check(initial.stageMedia(media, nullptr, {}, &error), "shared media import: " + error)) return false;
+    AndroidContentStore ready(root.path());
+    if (!check(ready.prepareStartup(&error) && ready.mediaReady(), "shared media activation")) return false;
+    const QString originalRuntime = ready.runtimeRoot();
+    const QString payload = QFileInfo(originalRuntime + "/image/base.png").canonicalFilePath();
+#ifdef Q_OS_UNIX
+    if (!check(QFileInfo(originalRuntime + "/image").isSymLink()
+               && payload.startsWith(root.path() + "/content/blobs/"), "complete media uses shared directory")) return false;
+#endif
+    // Cancellation must not replace the active media blob.
+    QBuffer cancelled; cancelled.setData(mediaZip()); cancelled.open(QIODevice::ReadOnly);
+    AndroidContentStore::Cancelled cancel(false);
+    if (!check(!ready.stageMedia(cancelled, &cancel, [&](quint64, quint64) { cancel.store(true); }, &error)
+               && !ready.hasPending(), "cancelled media preserves active version")) return false;
+    QBuffer extension; extension.setData(extensionZip("new Lua only")); extension.open(QIODevice::ReadOnly);
+    if (!check(ready.stageExtension(extension, "addon.zip", "addon", nullptr, {}, &error), "Lua update with shared media")) return false;
+    AndroidContentStore updated(root.path());
+    if (!check(updated.prepareStartup(&error) && updated.mediaReady(), "apply Lua update")) return false;
+#ifdef Q_OS_UNIX
+    if (!check(QFileInfo(updated.runtimeRoot() + "/image/base.png").canonicalFilePath() == payload,
+               "Lua update reuses exact media file")) return false;
+#endif
+    QVariantMap baseline;
+    const QString baselinePath = root.path() + "/content/baseline/metadata.json";
+    if (!check(readMap(baselinePath, &baseline), "read baseline for upgrade")) return false;
+    baseline.insert("revision", "shared-media-baseline-upgrade");
+    if (!check(writeMap(baselinePath, baseline), "advance baseline revision")) return false;
+    AndroidContentStore upgraded(root.path());
+    if (!check(upgraded.prepareStartup(&error) && upgraded.mediaReady(), "baseline migration: " + error)) return false;
+#ifdef Q_OS_UNIX
+    if (!check(QFileInfo(upgraded.runtimeRoot() + "/image/base.png").canonicalFilePath() == payload
+               && !QFileInfo::exists(originalRuntime) && QFileInfo::exists(payload),
+               "baseline migration and old-version GC preserve shared blob")) return false;
+#endif
+    if (!check(upgraded.rollback(&error), "stage shared media rollback: " + error)) return false;
+    AndroidContentStore rolledBack(root.path());
+    if (!check(rolledBack.prepareStartup(&error) && rolledBack.mediaReady(), "activate shared media rollback")) return false;
+#ifdef Q_OS_UNIX
+    if (!check(QFileInfo(rolledBack.runtimeRoot() + "/image/base.png").canonicalFilePath() == payload,
+               "rollback reuses original media")) return false;
+    // A forged directory link cannot redirect the runtime outside the blob
+    // recorded by this package, even if the external file has the same size.
+    QTemporaryDir outside;
+    if (!check(outside.isValid(), "outside media-link fixture root")) return false;
+    QFile outsideFile(outside.path() + "/base.png");
+    if (!outsideFile.open(QIODevice::WriteOnly) || outsideFile.write("image") != 5) return false;
+    outsideFile.close();
+    const QString link = rolledBack.runtimeRoot() + "/image";
+    if (!check(QFile::remove(link) && QFile::link(outside.path(), link), "forge media root link")) return false;
+    QVariantMap state;
+    const QString statePath = root.path() + "/content/state.json";
+    if (!readMap(statePath, &state)) return false;
+    state.remove("startup_validation");
+    if (!writeMap(statePath, state)) return false;
+    AndroidContentStore forged(root.path());
+    if (!check(forged.prepareStartup(&error) && !forged.mediaReady(), "reject forged media root")) return false;
+    if (!check(QDir(root.path()).removeRecursively() && QFileInfo::exists(outsideFile.fileName()),
+               "snapshot cleanup never traverses media directory links")) return false;
+#endif
+    return true;
+}
+
+bool mixedMediaCases()
+{
+#ifdef Q_OS_UNIX
+    QTemporaryDir root;
+    if (!check(root.isValid(), "mixed media root")) return false;
+    QString error;
+    AndroidContentStore store(root.path());
+    if (!store.prepareStartup(&error)) return false;
+    QBuffer media; media.setData(mediaZip()); media.open(QIODevice::ReadOnly);
+    if (!store.stageMedia(media, nullptr, {}, &error)) return false;
+    AndroidContentStore ready(root.path());
+    if (!ready.prepareStartup(&error) || !ready.mediaReady()) return false;
+    const QString payload = QFileInfo(ready.runtimeRoot() + "/image/base.png").canonicalFilePath();
+    QBuffer mixed;
+    mixed.setData(zip({{"extensions/addon.lua", "mixed Lua"}, {"image/addon.png", "extra image"}}));
+    mixed.open(QIODevice::ReadOnly);
+    if (!check(ready.stageExtension(mixed, "addon.zip", "addon", nullptr, {}, &error), "mixed media import: " + error)) return false;
+    AndroidContentStore applied(root.path());
+    if (!check(applied.prepareStartup(&error) && applied.mediaReady(), "mixed media activation")) return false;
+    if (!check(!QFileInfo(applied.runtimeRoot() + "/image").isSymLink()
+               && QFileInfo(applied.runtimeRoot() + "/image/base.png").isSymLink()
+               && QFileInfo(applied.runtimeRoot() + "/image/addon.png").isSymLink()
+               && QFileInfo(applied.runtimeRoot() + "/image/base.png").canonicalFilePath() == payload,
+               "mixed root uses exact per-file references without copying media")) return false;
+    if (!applied.setPackageEnabled("addon", false, &error)) return false;
+    AndroidContentStore disabled(root.path());
+    if (!check(disabled.prepareStartup(&error) && disabled.mediaReady()
+               && QFileInfo(disabled.runtimeRoot() + "/image").isSymLink()
+               && !QFileInfo::exists(disabled.runtimeRoot() + "/image/addon.png"),
+               "disabled extension media cannot leak through whole-directory sharing")) return false;
+#endif
+    return true;
+}
+
 bool warmStartCases()
 {
-    // A successful receipt makes an unchanged restart cheap and must not
-    // publish another immutable version.
-    QTemporaryDir warmRoot;
-    if (!check(warmRoot.isValid(), "warm start root")) return false;
+    QTemporaryDir root;
+    if (!check(root.isValid(), "warm start root")) return false;
     QString error;
-    AndroidContentStore first(warmRoot.path());
-    if (!check(first.prepareStartup(&error), "warm start initial prepare: " + error)) return false;
+    AndroidContentStore first(root.path());
+    if (!check(first.prepareStartup(&error), "initial startup")) return false;
     const QString active = first.status().value("active").toString();
-    const QVariantMap receipt = first.status().value("startup_validation").toMap();
-    if (!check(receipt.value("schema").toInt() == 1 && !receipt.value("apk_revision").toString().isEmpty()
-               && receipt.value("active").toString() == active
-               && !receipt.value("metadata_sha256").toString().isEmpty()
-               && !receipt.value("descriptor_sha256").toString().isEmpty(),
-               "startup validation receipt")) return false;
-    const int versions = versionCount(warmRoot.path());
-    AndroidContentStore second(warmRoot.path());
-    if (!check(second.prepareStartup(&error), "warm start cached prepare: " + error)) return false;
-    if (!check(second.status().value("active").toString() == active
-               && versionCount(warmRoot.path()) == versions
-               && second.status().value("startup_validation").toMap() == receipt,
-               "unchanged restart reuses receipt")) return false;
+    const int versions = versionCount(root.path());
+    AndroidContentStore second(root.path());
+    if (!check(second.prepareStartup(&error)
+               && second.status().value("active").toString() == active
+               && versionCount(root.path()) == versions
+               && !second.status().contains("startup_validation"), "startup has no hash receipt")) return false;
 
-    // Missing, malformed, and stale receipts must all fall back to full
-    // validation and receive a fresh receipt.
-    const auto refreshReceipt = [&](const QString &caseName, const std::function<void(QVariantMap &)> &mutate) {
-        QVariantMap state;
-        if (!readMap(warmRoot.path() + "/content/state.json", &state)) return false;
-        QVariantMap changed = state.value("startup_validation").toMap();
-        mutate(changed); state.insert("startup_validation", changed);
-        if (!writeMap(warmRoot.path() + "/content/state.json", state)) return false;
-        AndroidContentStore restarted(warmRoot.path());
-        if (!restarted.prepareStartup(&error)) return false;
-        const QVariantMap refreshed = restarted.status().value("startup_validation").toMap();
-        return check(refreshed.value("schema").toInt() == 1
-                     && refreshed.value("active").toString() == active
-                     && refreshed != changed,
-                     caseName);
-    };
-    if (!refreshReceipt("missing receipt refresh", [](QVariantMap &map) { map.clear(); })) return false;
-    if (!refreshReceipt("schema mismatch refresh", [](QVariantMap &map) { map.insert("schema", 99); })) return false;
-    if (!refreshReceipt("APK revision mismatch refresh", [](QVariantMap &map) { map.insert("apk_revision", QString(64, QLatin1Char('0'))); })) return false;
+    // Older manifests may include hashes. They no longer decide whether the
+    // installed media can be used, even when every advertised hash is wrong.
+    QBuffer media; media.setData(mediaZip(true)); media.open(QIODevice::ReadOnly);
+    if (!check(second.stageMedia(media, nullptr, {}, &error), "media import ignores SHA fields: " + error)) return false;
+    AndroidContentStore applied(root.path());
+    if (!check(applied.prepareStartup(&error) && applied.mediaReady(), "activate media without hash checking")) return false;
+    if (!check(QFile::remove(applied.runtimeRoot() + "/image/base.png"), "remove optional image")) return false;
+    QVariantMap state;
+    const QString statePath = root.path() + "/content/state.json";
+    if (!readMap(statePath, &state)) return false;
+    state.insert("startup_validation", QVariantMap{{"media_ready", false}, {"metadata_sha256", "obsolete"}});
+    if (!writeMap(statePath, state)) return false;
+    QVariantMap baseline;
+    const QString basePath = root.path() + "/content/baseline/metadata.json";
+    if (!readMap(basePath, &baseline)) return false;
+    baseline.insert("apk_revision", "previous-apk");
+    if (!writeMap(basePath, baseline)) return false;
+    AndroidContentStore restarted(root.path());
+    if (!check(restarted.prepareStartup(&error) && restarted.mediaReady()
+               && !restarted.status().contains("startup_validation"),
+               "APK refresh and old receipt do not rescan missing media")) return false;
 
-    // Metadata changes invalidate the receipt but remain recoverable. A
-    // descriptor mismatch is a real content failure and enters recovery.
-    QVariantMap metadata;
-    if (!check(readMap(warmRoot.path() + "/content/versions/" + active + "/metadata.json", &metadata),
-               "read active metadata")) return false;
-    const QString oldMetadataHash = first.status().value("startup_validation").toMap().value("metadata_sha256").toString();
-    metadata.insert("warm_start_probe", true);
-    if (!check(writeMap(warmRoot.path() + "/content/versions/" + active + "/metadata.json", metadata),
-               "mutate active metadata")) return false;
-    AndroidContentStore metadataChanged(warmRoot.path());
-    if (!check(metadataChanged.prepareStartup(&error), "metadata change full validation: " + error)) return false;
-    if (!check(metadataChanged.status().value("startup_validation").toMap().value("metadata_sha256").toString() != oldMetadataHash,
-               "metadata change refreshes receipt")) return false;
-
+    // Real configuration/descriptor errors still need recovery; this is
+    // ordinary loading, not a resource hash or media inventory gate.
     QVariantMap descriptor;
-    if (!check(readMap(warmRoot.path() + "/content/versions/" + active + "/runtime/runtime-content.json", &descriptor),
-               "read active descriptor")) return false;
+    const QString descriptorPath = restarted.runtimeRoot() + "/runtime-content.json";
+    if (!readMap(descriptorPath, &descriptor)) return false;
     descriptor.insert("extensions", QVariantList());
-    if (!check(writeMap(warmRoot.path() + "/content/versions/" + active + "/runtime/runtime-content.json", descriptor),
-               "mutate active descriptor")) return false;
-    AndroidContentStore descriptorChanged(warmRoot.path());
-    if (!check(descriptorChanged.prepareStartup(&error) && descriptorChanged.needsRecovery()
-               && !descriptorChanged.status().value("recovery_error").toString().isEmpty(),
-               "descriptor mismatch enters recovery")) return false;
+    if (!writeMap(descriptorPath, descriptor)) return false;
+    AndroidContentStore invalid(root.path());
+    if (!check(invalid.prepareStartup(&error) && invalid.needsRecovery(), "invalid descriptor recovery")) return false;
 
-    // Core sentinels remain checked on the cached path; a missing sentinel
-    // must never be hidden by a matching receipt.
-    QTemporaryDir sentinelRoot;
-    if (!check(sentinelRoot.isValid(), "sentinel root")) return false;
-    AndroidContentStore sentinel(sentinelRoot.path());
-    if (!check(sentinel.prepareStartup(&error), "sentinel initial prepare: " + error)) return false;
-    const QString sentinelActive = sentinel.status().value("active").toString();
-    if (!check(QFile::remove(sentinelRoot.path() + "/content/versions/" + sentinelActive + "/runtime/lua/config.lua"),
-               "remove core sentinel")) return false;
-    AndroidContentStore missingSentinel(sentinelRoot.path());
-    if (!check(missingSentinel.prepareStartup(&error) && missingSentinel.needsRecovery(),
-               "missing core sentinel enters recovery")) return false;
-
-    // Media is deliberately outside the normal cached scan. Removing it is
-    // visible only after a receipt miss/full validation, preserving startup
-    // performance while retaining an explicit recovery path.
-    QTemporaryDir mediaRoot;
-    if (!check(mediaRoot.isValid(), "media warm start root")) return false;
-    AndroidContentStore mediaStore(mediaRoot.path());
-    if (!check(mediaStore.prepareStartup(&error), "media initial prepare: " + error)) return false;
-    QBuffer media; media.setData(mediaZip()); media.open(QIODevice::ReadOnly);
-    if (!check(mediaStore.stageMedia(media, nullptr, {}, &error), "stage media for warm start: " + error)) return false;
-    AndroidContentStore mediaApplied(mediaRoot.path());
-    if (!check(mediaApplied.prepareStartup(&error) && mediaApplied.mediaReady(), "apply media for warm start: " + error)) return false;
-    const QString mediaActive = mediaApplied.status().value("active").toString();
-    if (!check(QFile::remove(mediaRoot.path() + "/content/versions/" + mediaActive + "/runtime/image/base.png"),
-               "remove private media payload")) return false;
-    AndroidContentStore mediaCached(mediaRoot.path());
-    if (!check(mediaCached.prepareStartup(&error) && mediaCached.mediaReady(),
-               "cached startup does not rescan media")) return false;
-    QVariantMap mediaState;
-    if (!check(readMap(mediaRoot.path() + "/content/state.json", &mediaState), "read media state")) return false;
-    mediaState.remove("startup_validation");
-    if (!check(writeMap(mediaRoot.path() + "/content/state.json", mediaState), "remove media receipt")) return false;
-    AndroidContentStore mediaFull(mediaRoot.path());
-    return check(mediaFull.prepareStartup(&error) && !mediaFull.mediaReady(),
-                 "full validation detects missing media");
+    QTemporaryDir coreRoot;
+    if (!check(coreRoot.isValid(), "core fixture root")) return false;
+    AndroidContentStore core(coreRoot.path());
+    if (!core.prepareStartup(&error) || !QFile::remove(core.runtimeRoot() + "/lua/config.lua")) return false;
+    AndroidContentStore missingCore(coreRoot.path());
+    return check(missingCore.prepareStartup(&error) && missingCore.needsRecovery(), "missing core configuration recovery");
 }
+
 }
 
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
     Q_INIT_RESOURCE(android_content_fixture);
-    return readerCases() && spoolRecoveryCases() && storeCases() && warmStartCases() ? 0 : 1;
+    return readerCases() && indexedReaderCases() && spoolRecoveryCases() && storeCases()
+        && sharedMediaCases() && mixedMediaCases() && warmStartCases() ? 0 : 1;
 }
