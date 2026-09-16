@@ -163,7 +163,7 @@ int main(int argc, char **argv)
     }
 
     // Regions must match the desktop, not just be internally consistent with
-    // each other: every row of RoomScene's s_regularSeatIndex opens with a
+    // each other: every row of SeatRingTable::regularSeatRegions opens with a
     // right-side region, so the downstream neighbour sits at the player's
     // right there, and the ring must actually reach the top row instead of
     // piling every opponent down one column.

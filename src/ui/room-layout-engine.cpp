@@ -1,6 +1,7 @@
 #include "room-layout-engine.h"
 
 #include "photo-layout-fit.h"
+#include "seat-ring-table.h"
 
 #include <QtGlobal>
 #include <Qt>
@@ -11,48 +12,26 @@ namespace RoomLayoutEngine
 {
 namespace
 {
-const int regularSeatRegions[][20] = {
-    { 1 }, { 5, 6 }, { 5, 1, 6 }, { 3, 1, 1, 4 }, { 3, 1, 1, 1, 4 },
-    { 5, 5, 1, 1, 6, 6 }, { 5, 5, 1, 1, 1, 6, 6 },
-    { 3, 3, 7, 7, 7, 7, 4, 4 }, { 3, 3, 7, 7, 7, 7, 7, 4, 4 },
-    { 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4 },
-    { 3, 3, 3, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-    { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-    { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-    { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-    { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-    { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
-    { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
-    { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
-    { 3, 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4, 4 }
-};
-const int hulaoSeatRegions[4][3] = {
-    { 1, 1, 1 }, { 3, 3, 1 }, { 3, 1, 4 }, { 1, 4, 4 }
-};
-const int threeVThreeSeatRegions[3][5] = {
-    { 3, 1, 1, 1, 4 }, { 1, 1, 1, 4, 4 }, { 3, 3, 1, 1, 1 }
-};
-
 bool selectSeatRegions(const Input &input, const int *&regions, bool &pkMode)
 {
     if (input.photoCount < 1 || input.photoCount > 19)
         return false;
     if (!input.gameStarted || input.mode == Mode::Regular) {
-        regions = regularSeatRegions[input.photoCount - 1];
+        regions = SeatRingTable::regularSeatRegions[input.photoCount - 1];
         pkMode = false;
         return true;
     }
     if (input.mode == Mode::Hulao || input.mode == Mode::Boss) {
         if (input.photoCount > 3 || input.selfSeat < 1 || input.selfSeat > 4)
             return false;
-        regions = hulaoSeatRegions[input.selfSeat - 1];
+        regions = SeatRingTable::hulaoSeatRegions[input.selfSeat - 1];
         pkMode = true;
         return true;
     }
     if (input.mode == Mode::ThreeVThree) {
         if (input.photoCount > 5 || input.selfSeat < 1 || input.selfSeat > 6)
             return false;
-        regions = threeVThreeSeatRegions[(input.selfSeat - 1) % 3];
+        regions = SeatRingTable::threeVThreeSeatRegions[(input.selfSeat - 1) % 3];
         pkMode = true;
         return true;
     }

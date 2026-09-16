@@ -41,16 +41,17 @@ int ceilDiv(int numerator, int denominator)
 // ladder from spec 3.6 -- and, for the ring (cellCols >= 3), on `n` itself:
 // see below for why the split cannot be a fixed function of the grid alone.
 //
-// This reduces RoomScene::updateTable()'s s_regularSeatIndex (roomscene.cpp,
-// ~line 1771) to the same three regions it ultimately buckets into. Per the
-// diagram at roomscene.cpp:~1848 ("| 4 | table | 3 |", region 5 = 0+3, region
+// This reduces the shared seat ring table (SeatRingTable::regularSeatRegions in
+// src/client/core/seat-ring-table.h) to the same three regions it ultimately
+// buckets into. Per the seatAreas[8] rectangles the desktop builds from it
+// (src/ui/room-layout-engine.cpp, "| 4 | table | 3 |", region 5 = 0+3, region
 // 6 = 2+4) regions 3 and 5 sit on the RIGHT (x = col2, AlignRight) and 4 and
 // 6 sit on the LEFT (x = pad, AlignLeft); 1 and 7 are the top row.
 //
 // The WITHIN-region direction also comes from the desktop, not just the
-// region membership: RoomScene::updateTable() (roomscene.cpp:~1949) appends
-// left-column (4/6) seats in seat order but PREPENDS top-row and right-column
-// (1/7, 3/5) seats, and _dispersePhotos then lays each region's list out
+// region membership: RoomLayoutEngine::compute() appends left-column (4/6)
+// seats in seat order but PREPENDS top-row and right-column (1/7, 3/5) seats,
+// and disperse() then lays each region's list out
 // left-to-right (top) or top-to-bottom (sides) in list order. Net effect: the
 // right column reads bottom-to-top, the top row reads right-to-left, and the
 // left column reads top-to-bottom -- one continuous counter-clockwise ring
