@@ -105,8 +105,8 @@ bool AndroidZipReader::fail(QString *error, const QString &message)
 
 AndroidZipReader::AndroidZipReader(const QString &spoolDirectory)
 {
-    // Android imports must spool on the app's writable private filesystem.
-    // Keep Qt's default temporary location for standalone desktop callers.
+    // Non-seekable Android providers spool on the app's private filesystem.
+    // Seekable providers need no copy; desktop fallback keeps Qt's temp location.
     if (!spoolDirectory.isEmpty())
         m_spool.setFileTemplate(spoolDirectory + QStringLiteral("/archive-XXXXXX.zip"));
 }
@@ -114,30 +114,49 @@ AndroidZipReader::AndroidZipReader(const QString &spoolDirectory)
 bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::ImportLimits &limits,
                             std::atomic_bool *cancel, QString *error)
 {
-    m_entries.clear(); m_archiveSize = 0; m_centralOffset = 0; m_limits = limits;
+    m_entries.clear(); m_entryByOffset.clear(); m_archiveSize = 0; m_centralOffset = 0; m_limits = limits;
+    m_input = nullptr;
     if (m_spool.isOpen()) m_spool.close();
-    if (!m_spool.open() || !m_spool.resize(0))
-        return fail(error, QStringLiteral("cannot create ZIP spool: ") + m_spool.errorString());
-    QByteArray buffer(int(kBufferSize), Qt::Uninitialized);
-    for (;;) {
-        if (cancel && cancel->load()) return fail(error, QStringLiteral("import cancelled"));
-        const qint64 n = source.read(buffer.data(), buffer.size());
-        if (n < 0) return fail(error, source.errorString());
-        if (!n) { if (!source.atEnd()) return fail(error, QStringLiteral("source made no progress")); break; }
-        if (!addChecked(m_archiveSize, quint64(n), &m_archiveSize)) return fail(error, QStringLiteral("archive size overflow"));
-        if (m_limits.maxArchiveBytes && m_archiveSize > m_limits.maxArchiveBytes) return fail(error, QStringLiteral("archive size limit exceeded"));
-        const QStorageInfo storage(QFileInfo(m_spool.fileName()).absolutePath());
-        if (storage.isValid() && storage.bytesAvailable() < qint64(kSpoolReserve)) return fail(error, QStringLiteral("insufficient spool storage"));
-        qint64 written = 0;
-        while (written < n) {
-            const qint64 chunk = m_spool.write(buffer.constData() + written, n - written);
-            if (chunk <= 0) return fail(error, m_spool.errorString());
-            written += chunk;
+    if (!m_spool.fileName().isEmpty()) m_spool.remove();
+    if (cancel && cancel->load()) return fail(error, QStringLiteral("import cancelled"));
+    const qint64 sourceStart = source.pos();
+    const qint64 sourceSize = source.size();
+    // Local SAF files can seek. Keep their descriptor instead of copying the
+    // entire ZIP into private storage; pipes/providers still use bounded spool.
+    if (!source.isSequential() && sourceStart == 0 && sourceSize >= 22 && source.seek(sourceSize - 1)) {
+        if (!source.seek(0)) return fail(error, QStringLiteral("cannot rewind ZIP source"));
+        m_archiveSize = quint64(sourceSize);
+        if (m_limits.maxArchiveBytes && m_archiveSize > m_limits.maxArchiveBytes)
+            return fail(error, QStringLiteral("archive size limit exceeded"));
+        m_input = &source;
+    } else {
+        if (source.pos() != sourceStart && !source.seek(sourceStart))
+            return fail(error, QStringLiteral("cannot restore ZIP source position"));
+        if (!m_spool.open() || !m_spool.resize(0))
+            return fail(error, QStringLiteral("cannot create ZIP spool: ") + m_spool.errorString());
+        QByteArray buffer(int(kBufferSize), Qt::Uninitialized);
+        for (;;) {
+            if (cancel && cancel->load()) return fail(error, QStringLiteral("import cancelled"));
+            const qint64 n = source.read(buffer.data(), buffer.size());
+            if (n < 0) return fail(error, source.errorString());
+            if (!n) { if (!source.atEnd()) return fail(error, QStringLiteral("source made no progress")); break; }
+            if (!addChecked(m_archiveSize, quint64(n), &m_archiveSize)) return fail(error, QStringLiteral("archive size overflow"));
+            if (m_limits.maxArchiveBytes && m_archiveSize > m_limits.maxArchiveBytes) return fail(error, QStringLiteral("archive size limit exceeded"));
+            const QStorageInfo storage(QFileInfo(m_spool.fileName()).absolutePath());
+            if (storage.isValid() && storage.bytesAvailable() < qint64(kSpoolReserve)) return fail(error, QStringLiteral("insufficient spool storage"));
+            qint64 written = 0;
+            while (written < n) {
+                const qint64 chunk = m_spool.write(buffer.constData() + written, n - written);
+                if (chunk <= 0) return fail(error, m_spool.errorString());
+                written += chunk;
+            }
         }
+        if (!m_spool.flush()) return fail(error, QStringLiteral("cannot flush ZIP spool"));
+        m_input = &m_spool;
     }
-    if (!m_spool.flush() || m_archiveSize < 22) return fail(error, QStringLiteral("invalid ZIP archive"));
+    if (m_archiveSize < 22) return fail(error, QStringLiteral("invalid ZIP archive"));
     const quint64 tailSize = qMin<quint64>(m_archiveSize, 65557); QByteArray tail;
-    if (!readAt(m_spool, m_archiveSize - tailSize, qsizetype(tailSize), &tail)) return fail(error, QStringLiteral("cannot read ZIP footer"));
+    if (!readAt(*m_input, m_archiveSize - tailSize, qsizetype(tailSize), &tail)) return fail(error, QStringLiteral("cannot read ZIP footer"));
     qsizetype eocd = -1;
     for (qsizetype p = tail.size() - 22; p >= 0; --p)
         if (tail.mid(p, 4) == QByteArray("PK\x05\x06", 4) && quint64(p + 22 + u16(tail, p + 20)) == quint64(tail.size())) { eocd = p; break; }
@@ -151,7 +170,7 @@ bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::Import
         const qsizetype locator = tail.lastIndexOf(QByteArray("PK\x06\x07", 4), eocd - 1);
         if (locator < 0 || locator + 20 != eocd || u32(tail, locator + 4) != 0 || u32(tail, locator + 16) != 1) return fail(error, QStringLiteral("invalid ZIP64 locator"));
         QByteArray record; const quint64 recordOffset = u64(tail, locator + 8);
-        if (!readAt(m_spool, recordOffset, 56, &record) || record.left(4) != QByteArray("PK\x06\x06", 4)) return fail(error, QStringLiteral("invalid ZIP64 end record"));
+        if (!readAt(*m_input, recordOffset, 56, &record) || record.left(4) != QByteArray("PK\x06\x06", 4)) return fail(error, QStringLiteral("invalid ZIP64 end record"));
         const quint64 recordSize = u64(record, 4); quint64 recordEnd = 0, recordLength = 0;
         if (recordSize < 44 || !addChecked(recordSize, 12, &recordLength)
             || !addChecked(recordOffset, recordLength, &recordEnd)
@@ -164,13 +183,13 @@ bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::Import
     m_centralOffset = centralOffset;
     const quint64 maxEntries = m_limits.maxEntries ? m_limits.maxEntries : 100000;
     if (count > maxEntries || count > quint64(std::numeric_limits<int>::max())) return fail(error, QStringLiteral("ZIP entry count limit exceeded"));
-    if (!m_spool.seek(qint64(centralOffset))) return fail(error, QStringLiteral("cannot seek central directory"));
+    if (!m_input->seek(qint64(centralOffset))) return fail(error, QStringLiteral("cannot seek central directory"));
     QSet<QString> names, filePaths, directoryPaths;
     QHash<QString, QString> pathComponents;
     quint64 cursor = centralOffset, expandedTotal = 0, metadataBytes = 0;
     for (quint64 i = 0; i < count; ++i) {
         if (cancel && cancel->load()) return fail(error, QStringLiteral("import cancelled"));
-        QByteArray header = m_spool.read(46);
+        QByteArray header = m_input->read(46);
         if (header.size() != 46 || header.left(4) != QByteArray("PK\x01\x02", 4)) return fail(error, QStringLiteral("invalid central entry"));
         const quint16 madeBy = u16(header, 4), flags = u16(header, 8), method = u16(header, 10);
         const quint16 nameLength = u16(header, 28), extraLength = u16(header, 30), commentLength = u16(header, 32);
@@ -178,8 +197,8 @@ bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::Import
         if (metadataBytes > 16 * 1024 * 1024) return fail(error, QStringLiteral("ZIP metadata memory limit exceeded"));
         if (u16(header, 34) != 0) return fail(error, QStringLiteral("multipart ZIP entry is unsupported"));
         if ((flags & 1) || (flags & 0x20) || (flags & 0x40) || method != 0 && method != 8) return fail(error, QStringLiteral("encrypted, multipart, or unsupported ZIP entry"));
-        const QByteArray rawName = m_spool.read(nameLength), extra = m_spool.read(extraLength);
-        if (rawName.size() != nameLength || extra.size() != extraLength || m_spool.read(commentLength).size() != commentLength) return fail(error, QStringLiteral("truncated central entry"));
+        const QByteArray rawName = m_input->read(nameLength), extra = m_input->read(extraLength);
+        if (rawName.size() != nameLength || extra.size() != extraLength || m_input->read(commentLength).size() != commentLength) return fail(error, QStringLiteral("truncated central entry"));
         QString path; if (!safePath(rawName, &path)) return fail(error, QStringLiteral("unsafe or invalid UTF-8 ZIP path"));
         QString collisionPath = path; if (collisionPath.endsWith('/')) collisionPath.chop(1);
         const QString key = collisionPath.toCaseFolded(); if (names.contains(key)) return fail(error, QStringLiteral("ZIP path collision: %1").arg(path)); names.insert(key);
@@ -209,6 +228,8 @@ bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::Import
         if (method == 0 && compressed != expanded) return fail(error, QStringLiteral("stored ZIP entry size mismatch"));
         if (m_limits.maxCompressionRatio && expanded > 0 && (compressed == 0 || (expanded > compressed && (expanded - 1) / compressed >= m_limits.maxCompressionRatio))) return fail(error, QStringLiteral("compression ratio limit exceeded"));
         if (!addChecked(expandedTotal, expanded, &expandedTotal) || (m_limits.maxExpandedBytes && expandedTotal > m_limits.maxExpandedBytes)) return fail(error, QStringLiteral("expanded size limit exceeded"));
+        if (m_entryByOffset.contains(offset)) return fail(error, QStringLiteral("duplicate ZIP local header offset"));
+        m_entryByOffset.insert(offset, m_entries.size());
         Entry entry; entry.path = path; entry.originalName = QString::fromUtf8(rawName); entry.rawName = rawName; entry.flags = flags; entry.method = method; entry.externalAttributes = attributes; entry.compressedSize = compressed; entry.uncompressedSize = expanded; entry.crcValue = u32(header, 16); entry.localHeaderOffset = offset; entry.directory = directory; m_entries.append(entry);
         quint64 next = 0; if (!addChecked(cursor, 46 + nameLength + extraLength + commentLength, &next) || next > centralOffset + centralSize) return fail(error, QStringLiteral("central entry exceeds central directory")); cursor = next;
     }
@@ -219,19 +240,21 @@ bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::Import
 bool AndroidZipReader::extract(const Entry &entry, QIODevice &destination, std::atomic_bool *cancel,
                                const AndroidContentStore::Progress &progress, QString *error)
 {
-    bool knownEntry = false;
-    for (const Entry &candidate : m_entries) {
-        if (candidate.localHeaderOffset == entry.localHeaderOffset && candidate.rawName == entry.rawName
-            && candidate.compressedSize == entry.compressedSize && candidate.uncompressedSize == entry.uncompressedSize) {
-            knownEntry = true; break;
-        }
-    }
-    if (!knownEntry) return fail(error, QStringLiteral("unknown ZIP entry"));
+    // Index membership once: scanning every central entry for every file makes
+    // a full media import quadratic. Keep all header fields bound to the index.
+    const auto found = m_entryByOffset.constFind(entry.localHeaderOffset);
+    if (found == m_entryByOffset.cend()) return fail(error, QStringLiteral("unknown ZIP entry"));
+    const Entry &candidate = m_entries.at(found.value());
+    if (candidate.rawName != entry.rawName || candidate.path != entry.path
+        || candidate.compressedSize != entry.compressedSize || candidate.uncompressedSize != entry.uncompressedSize
+        || candidate.flags != entry.flags || candidate.method != entry.method || candidate.crcValue != entry.crcValue
+        || candidate.externalAttributes != entry.externalAttributes || candidate.directory != entry.directory)
+        return fail(error, QStringLiteral("modified ZIP entry"));
     if (entry.directory) return true;
-    QByteArray local; if (!readAt(m_spool, entry.localHeaderOffset, 30, &local) || local.left(4) != QByteArray("PK\x03\x04", 4)) return fail(error, QStringLiteral("local header mismatch"));
+    QByteArray local; if (!readAt(*m_input, entry.localHeaderOffset, 30, &local) || local.left(4) != QByteArray("PK\x03\x04", 4)) return fail(error, QStringLiteral("local header mismatch"));
     const quint16 localFlags = u16(local, 6), localMethod = u16(local, 8), nameLength = u16(local, 26), extraLength = u16(local, 28);
     QByteArray localName, localExtra; quint64 nameOffset = 0, dataOffset = 0;
-    if (!addChecked(entry.localHeaderOffset, 30, &nameOffset) || !readAt(m_spool, nameOffset, nameLength, &localName) || !addChecked(nameOffset, nameLength, &dataOffset) || !readAt(m_spool, dataOffset, extraLength, &localExtra) || !addChecked(dataOffset, extraLength, &dataOffset) || !within(dataOffset, entry.compressedSize, m_centralOffset)) return fail(error, QStringLiteral("truncated local header or payload"));
+    if (!addChecked(entry.localHeaderOffset, 30, &nameOffset) || !readAt(*m_input, nameOffset, nameLength, &localName) || !addChecked(nameOffset, nameLength, &dataOffset) || !readAt(*m_input, dataOffset, extraLength, &localExtra) || !addChecked(dataOffset, extraLength, &dataOffset) || !within(dataOffset, entry.compressedSize, m_centralOffset)) return fail(error, QStringLiteral("truncated local header or payload"));
     if (localName != entry.rawName || localFlags != entry.flags || localMethod != entry.method) return fail(error, QStringLiteral("local header does not match central entry"));
     const quint32 localCrc = u32(local, 14); quint64 localCompressed = u32(local, 18), localExpanded = u32(local, 22); const bool descriptor = (entry.flags & 8) != 0;
     const bool needLocalCompressed = localCompressed == 0xffffffffU, needLocalExpanded = localExpanded == 0xffffffffU;
@@ -240,20 +263,22 @@ bool AndroidZipReader::extract(const Entry &entry, QIODevice &destination, std::
     if (descriptor && localCrc && localCrc != 0xffffffffU && localCrc != entry.crcValue) return fail(error, QStringLiteral("local header CRC mismatch"));
     if (descriptor && localCompressed && localCompressed != 0xffffffffU && localCompressed != entry.compressedSize) return fail(error, QStringLiteral("local header compressed size mismatch"));
     if (descriptor && localExpanded && localExpanded != 0xffffffffU && localExpanded != entry.uncompressedSize) return fail(error, QStringLiteral("local header expanded size mismatch"));
-    if (!m_spool.seek(qint64(dataOffset))) return fail(error, QStringLiteral("cannot seek ZIP payload"));
+    if (!m_input->seek(qint64(dataOffset))) return fail(error, QStringLiteral("cannot seek ZIP payload"));
     QByteArray input(int(kBufferSize), Qt::Uninitialized), output(int(kBufferSize), Qt::Uninitialized); quint64 left = entry.compressedSize, written = 0; uLong crc = crc32(0L, Z_NULL, 0); z_stream stream{}; bool ended = entry.method == 0;
     if (entry.method == 8 && inflateInit2(&stream, -MAX_WBITS) != Z_OK) return fail(error, QStringLiteral("cannot initialize deflate"));
     auto writeAll = [&](const char *data, qint64 size) { qint64 done = 0; while (done < size) { if (cancel && cancel->load()) return false; const qint64 n = destination.write(data + done, size - done); if (n <= 0) return false; done += n; } return true; };
     auto writeChunk = [&](qint64 size) { if (!size) return true; quint64 next = 0; if (!addChecked(written, quint64(size), &next) || next > entry.uncompressedSize) return false; crc = crc32(crc, reinterpret_cast<const Bytef *>(output.constData()), uInt(size)); if (!writeAll(output.constData(), size)) return false; written = next; if (progress) progress(written, entry.uncompressedSize); return true; };
     while (left || !ended) {
         if (cancel && cancel->load()) { if (entry.method == 8) inflateEnd(&stream); return fail(error, QStringLiteral("import cancelled")); }
-        if (entry.method == 0) { const qint64 n = m_spool.read(output.data(), qMin<quint64>(left, kBufferSize)); if (n <= 0) { if (entry.method == 8) inflateEnd(&stream); return fail(error, QStringLiteral("truncated ZIP payload")); } left -= quint64(n); if (!writeChunk(n)) return fail(error, QStringLiteral("cannot write staged entry")); continue; }
-        if (!stream.avail_in && left) { const qint64 n = m_spool.read(input.data(), qMin<quint64>(left, kBufferSize)); if (n <= 0) { inflateEnd(&stream); return fail(error, QStringLiteral("truncated ZIP payload")); } left -= quint64(n); stream.next_in = reinterpret_cast<Bytef *>(input.data()); stream.avail_in = uInt(n); }
+        if (entry.method == 0) { const qint64 n = m_input->read(output.data(), qMin<quint64>(left, kBufferSize)); if (n <= 0) { if (entry.method == 8) inflateEnd(&stream); return fail(error, QStringLiteral("truncated ZIP payload")); } left -= quint64(n); if (!writeChunk(n)) return fail(error, QStringLiteral("cannot write staged entry")); continue; }
+        if (!stream.avail_in && left) { const qint64 n = m_input->read(input.data(), qMin<quint64>(left, kBufferSize)); if (n <= 0) { inflateEnd(&stream); return fail(error, QStringLiteral("truncated ZIP payload")); } left -= quint64(n); stream.next_in = reinterpret_cast<Bytef *>(input.data()); stream.avail_in = uInt(n); }
         const uInt beforeIn = stream.avail_in; const quint64 beforeWritten = written; stream.next_out = reinterpret_cast<Bytef *>(output.data()); stream.avail_out = uInt(output.size()); const int result = inflate(&stream, Z_NO_FLUSH);
         if (!writeChunk(output.size() - stream.avail_out)) { inflateEnd(&stream); return fail(error, QStringLiteral("entry expansion limit or write failure")); }
         if (result == Z_STREAM_END) { ended = true; if (stream.avail_in || left) { inflateEnd(&stream); return fail(error, QStringLiteral("trailing compressed data")); } }
         else if (result != Z_OK) { inflateEnd(&stream); return fail(error, QStringLiteral("invalid deflate stream or early end")); }
         if (beforeIn == stream.avail_in && beforeWritten == written) { inflateEnd(&stream); return fail(error, QStringLiteral("deflate made no progress")); }
     }
-    if (entry.method == 8) inflateEnd(&stream); if (written != entry.uncompressedSize || quint32(crc) != entry.crcValue) return fail(error, QStringLiteral("ZIP CRC or size mismatch")); return true;
+    if (entry.method == 8) inflateEnd(&stream);
+    if (written != entry.uncompressedSize || quint32(crc) != entry.crcValue) return fail(error, QStringLiteral("ZIP CRC or size mismatch"));
+    return true;
 }

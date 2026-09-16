@@ -2,6 +2,116 @@
 
 本頁是目前 Android `arm64-v8a` 工作流程：建立 APK、產生外部聲畫 ZIP、以 Android 系統檔案選擇器（Storage Access Framework，SAF）匯入，以及靜態稽核。手機與實機不在本輪範圍；裝置驗證限 Android Emulator。
 
+**版本固定規則：Android 不再雜湊資源、不逐檔掃描聲畫，也不因圖片缺檔擋住開局。**
+已安裝媒體在 APK 更新後繼續沿用；新增圖片不觸發全包重匯。
+詳細契約見 [Android 版本固定規則](android-first-release.md#android-版本固定規則2026-09-16)。
+
+## 本機唯一日常環境（2026-09-16 起）
+
+**使用者要求：只用下面這一套，保留 App 資料、媒體與建置快取。**
+本頁是日常 Android 操作的唯一入口；後文的首次安裝教學不代表每次建置都要重做。
+
+| 用途 | 固定位置／值 |
+|---|---|
+| Android 建置來源 | `L:\finaldebug\qsan-responsive-acceptance`，持續重用此工作樹 |
+| Debug 建置目錄 | `L:\finaldebug\qsan-responsive-acceptance\builds\android-arm64-debug` |
+| 共用工具鏈 | `L:\finaldebug\QSanguosha-v2\builds\android-toolchain`；Gradle cache 為其 `gradle` 子目錄 |
+| AVD home | `H:\qsan-validation\room-responsive-20260916\avd` |
+| 唯一 AVD／序號 | `Responsive_API_33`／`emulator-5586`，沿用既有 12 GiB userdata |
+| Emulator | `C:\Users\a3160\AppData\Local\Android\Sdk\emulator\emulator.exe` |
+| ADB | `L:\finaldebug\QSanguosha-v2\builds\android-toolchain\sdk\platform-tools\adb.exe` |
+| 媒體原包 | `H:\qsan-validation\room-responsive-20260916\qsan-media.zip` |
+| App | `org.qsanguosha.game`，保持相同簽章，以 `install -r` 更新 |
+
+路徑中的日期是既有名稱，**不得換成當天日期再建一份**。每次任務只另建小型日誌目錄，
+不另建 AVD、Android source worktree、SDK、Gradle cache、APK build tree 或完整媒體副本。
+其他歷史 Android 目錄不是備用日常入口，也不要因本規則自動刪除它們。
+
+### 每次修改的固定順序
+
+1. 核對上述工作樹的來源版本；它不是主工作區的自動鏡像。先一次對齊本次授權的
+   C++／Java／Lua／翻譯／資源清單並記錄差異，保留不相關修改，不使用破壞性重設。
+2. 在同一建置目錄增量建置一次；不清除 CMake／Gradle cache，不用 `--fresh`、
+   `--clean-first`，不先安裝半套資源再補建第二個 APK。
+3. 重用已啟動的 `emulator-5586`；未啟動時只啟動上述既有 AVD。不存在或離線時先
+   報告具體原因，不能改用新 AVD、`-wipe-data` 或重新初始化來掩蓋問題。
+4. 正常關閉 App 後執行 `install -r`。不 uninstall、不 `pm clear`，不因 UI／C++
+   改動重新產生、傳輸或匯入聲畫 ZIP；安裝失敗時保留資料並記錄錯誤。
+5. 檢查首頁及媒體可用狀態，再執行已授權的驗收。建置、媒體啟用與完整對局分開記錄。
+
+固定增量建置與更新命令（建置／驗收仍遵守當輪授權）：
+
+```powershell
+$androidSource = 'L:\finaldebug\qsan-responsive-acceptance'
+$androidToolchain = 'L:\finaldebug\QSanguosha-v2\builds\android-toolchain'
+$adb = Join-Path $androidToolchain 'sdk\platform-tools\adb.exe'
+$serial = 'emulator-5586'
+$apk = Join-Path $androidSource 'builds\android-arm64-debug\cmake\android-app\android-build\build\outputs\apk\debug\android-build-debug.apk'
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "$androidSource\tools\build-android.ps1" `
+  -Configuration Debug -ToolchainRoot $androidToolchain
+if ($LASTEXITCODE -ne 0) { throw 'Android build failed; do not install an older APK.' }
+& $adb -s $serial install -r $apk
+if ($LASTEXITCODE -ne 0) { throw 'APK update failed; retain app data and inspect the error.' }
+& $adb -s $serial shell am start -W -n org.qsanguosha.game/org.qtproject.qt.android.bindings.QtActivity
+```
+
+既有 AVD 未啟動時，使用下面的同一份定義；執行前以固定 ADB 的 `devices -l` 核對，
+已有 `emulator-5586` 就跳過，不啟動第二個實例：
+
+```powershell
+$savedAvdHome = $env:ANDROID_AVD_HOME
+$savedSdkRoot = $env:ANDROID_SDK_ROOT
+$savedAndroidHome = $env:ANDROID_HOME
+try {
+    $adb = 'L:\finaldebug\QSanguosha-v2\builds\android-toolchain\sdk\platform-tools\adb.exe'
+    $devices = & $adb devices
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing Android devices.' }
+    if ($devices -match '^emulator-5586\s') {
+        throw 'The fixed emulator already exists; reuse it or inspect its offline state.'
+    }
+    $env:ANDROID_AVD_HOME = 'H:\qsan-validation\room-responsive-20260916\avd'
+    $env:ANDROID_SDK_ROOT = 'C:\Users\a3160\AppData\Local\Android\Sdk'
+    $env:ANDROID_HOME = $env:ANDROID_SDK_ROOT
+    if (!(Test-Path -LiteralPath "$env:ANDROID_AVD_HOME\Responsive_API_33.ini")) {
+        throw 'The fixed AVD is missing. Do not create a replacement automatically.'
+    }
+    Start-Process -FilePath 'C:\Users\a3160\AppData\Local\Android\Sdk\emulator\emulator.exe' `
+      -ArgumentList '-avd Responsive_API_33 -port 5586 -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect' `
+      -WindowStyle Hidden
+} finally {
+    $env:ANDROID_AVD_HOME = $savedAvdHome
+    $env:ANDROID_SDK_ROOT = $savedSdkRoot
+    $env:ANDROID_HOME = $savedAndroidHome
+}
+```
+
+### 何時才需要媒體操作
+
+| 變更 | 日常處理 |
+|---|---|
+| 只有 C++／UI，APK 資源名稱與內容不變 | 增量建置、`install -r`；沿用媒體與啟動快取 |
+| Lua／翻譯／APK 內建資源變動 | 先對齊來源再建置；保留已匯入媒體，只處理必要的規則／UI 版本切換，不掃描或雜湊聲畫 |
+| 使用者確實要更新媒體 | 更新媒體；APK 新增圖片不自動觸發重匯，也不因圖片缺檔擋局 |
+| 資料被清除、媒體損壞、升級衝突 | 保存錯誤並判斷原因；不自動清除資料或重匯整包 |
+
+**已觀察到的耗時原因**：2026-09-16 首次 ZIP 匯入 34,511 個檔案，約 17 分鐘；
+100% 只表示解壓進度，後面仍會建立可用版本。此 AVD 的 SELinux 拒絕硬連結
+（hard link），程式退回逐檔實體複製。新增 APK 基線資源也觸發了第二輪版本複製；
+這不是重新選 ZIP 匯入，但同樣會耗時、占用數 GB；該次啟動內容準備實測 879,382 ms。
+這些是舊 APK 數據。[新資源流程的來源修正](android-extension-runtime.md#2026-09-16-匯入更新效能修正來源檢查點)
+已移除平方次數 ZIP 比對、可 seek 來源的 spool／重複雜湊讀取及媒體版本複製。
+新 APK 已實測建立 3 個媒體目錄引用：快照 28,261 ms，只複製約 33 MB 規則／介面。
+該次舊檢查在 60 秒停止。後續移除資源雜湊與聲畫掃描的 APK 已實測內容準備
+6,924 ms，缺 8 張圖片未擋住連線；對局仍因 AudioTrack 崩潰而未完成。
+首次完整匯入新耗時未重測，不能用啟動秒數代替。
+
+首次匯入期間 Download ZIP、私有 spool、解壓 blob 與 runtime 版本可能同時存在，
+12 GiB 分割區曾接近滿載。日常不要重複保留傳輸副本；匯入完成後清理本輪傳輸檔，
+保留 H 碟原包與 App 私有資料。不要手動刪除 content store 的 baseline／blobs／versions。
+
+此環境是 API 33 x86_64 的 ARM translation／4 KiB pages；不等同實機或折疊機驗收。
+
 ## 固定工具鏈與目錄
 
 ### 共用遊戲呈現入口（2026-09-16，尚未裝置驗收）
@@ -55,7 +165,8 @@ FreeType 原始碼需解壓為 `builds/android-toolchain/src/freetype-2.14.3/CMa
 
 ## 建置 APK
 
-從倉庫根目錄執行。腳本會暫時設定 Android、Java、Qt 及獨立 Gradle cache，完成後還原 PowerShell 環境；亦會先建立 FreeType Android static dependency。
+以下為通用建置參考；本機日常只執行上方「本機唯一日常環境」的固定命令。
+腳本會暫時設定 Android、Java、Qt 及獨立 Gradle cache，完成後還原 PowerShell 環境；亦會先建立 FreeType Android static dependency。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-android.ps1 -Configuration Debug
@@ -110,7 +221,7 @@ python tools/android/test-runtime-descriptor.py
 
 既有安裝遵守 missing-only，原有同名包宣告不會被新版 APK 靜默覆寫。因此舊測試版的無效宣告不能只靠 `install -r` 修好；需透過整包管理匯入有效宣告，或在隔離測試副本使用明確 `--asset-root`。後者只算診斷部署，不能當作正常升級驗收。
 
-## 產生外部聲畫 ZIP
+## 首次部署或媒體確實變更時：產生外部聲畫 ZIP
 
 APK 只附基本字型、UI WAV 與必要 runtime 資源；完整媒體用實際封裝器產生：
 
@@ -125,16 +236,16 @@ python tools/android/create-media-package.py . builds/android-release/qsan-media
 python tools/android/create-media-package.py . builds/android-release/qsan-media.zip --manifest-only
 ```
 
-## 模擬器安裝與 SAF 匯入
+## 首次部署或媒體確實變更時：SAF 匯入
 
 ```powershell
-adb devices -l
-$serial = 'emulator-5580' # 換成 devices 清單內本輪選定的序號。
-adb -s $serial install -r 'builds/android-arm64-debug/cmake/android-app/android-build/build/outputs/apk/debug/android-build-debug.apk'
-adb -s $serial shell am start -W -n org.qsanguosha.game/org.qtproject.qt.android.bindings.QtActivity
+& $adb devices -l
+$serial = 'emulator-5586' # 本機固定 AVD；安裝路徑使用上方固定工作流的 $apk。
+& $adb -s $serial install -r $apk
+& $adb -s $serial shell am start -W -n org.qsanguosha.game/org.qtproject.qt.android.bindings.QtActivity
 ```
 
-完整聲畫必須走 App 內的 SAF：在資源管理按「匯入聲畫」、選取 `qsan-media.zip`、等待完整性檢查成功，再重新啟動 App 使 active version 生效。SAF 會串流到 App 私有 staging；`adb push` 到外部路徑不算完成匯入。取消、切背景或空間不足時應保留上一 active 版本。
+首次安裝媒體走 App 內的 SAF：在資源管理按「匯入聲畫」、選取 `qsan-media.zip`、等待解壓與暫存完成，再重新啟動 App 使 active version 生效。不做資源雜湊檢查；可 seek 的來源直接讀取，其他來源使用私有 staging spool。`adb push` 到外部路徑不算完成匯入。取消、切背景或空間不足時保留上一 active 版本；日常更新不重匯。
 
 ```powershell
 adb -s $serial logcat -v threadtime | Tee-Object builds/android-emulator-logcat.txt

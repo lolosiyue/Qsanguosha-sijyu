@@ -4,6 +4,7 @@
 #include "android-content-store.h"
 
 #include <QTemporaryFile>
+#include <QHash>
 
 class AndroidZipReader
 {
@@ -28,13 +29,16 @@ public:
     const QList<Entry> &entries() const { return m_entries; }
     bool extract(const Entry &entry, QIODevice &destination,
                  std::atomic_bool *cancel, const AndroidContentStore::Progress &progress,
-                 QString *error = nullptr);
+                  QString *error = nullptr);
     quint64 archiveSize() const { return m_archiveSize; }
 
 private:
     bool fail(QString *error, const QString &message);
+    // Caller keeps source open until extraction ends; sequential sources use m_spool.
+    QIODevice *m_input = nullptr;
     QTemporaryFile m_spool;
     QList<Entry> m_entries;
+    QHash<quint64, qsizetype> m_entryByOffset;
     quint64 m_archiveSize = 0;
     quint64 m_centralOffset = 0;
     AndroidContentStore::ImportLimits m_limits;
