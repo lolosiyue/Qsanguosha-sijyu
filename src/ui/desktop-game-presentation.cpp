@@ -68,6 +68,8 @@ bool cardInteraction(InteractionType type)
 DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     : QObject(scene), m_scene(scene), m_client(ClientInstance)
 {
+    qRegisterMetaType<GameViewState>();
+    qRegisterMetaType<GameActionModel>();
     // Queue publication until the existing signal chain has finished updating
     // card eligibility, targets and buttons (including an atomic STATE_SYNC).
     connect(scene, &QGraphicsScene::changed, this, [this]() { scheduleRefresh(); });
@@ -106,9 +108,47 @@ DesktopGamePresentation::~DesktopGamePresentation()
     delete m_snapshot;
 }
 
+void DesktopGamePresentation::setLiveConsumer(QObject *consumer, bool live)
+{
+    if (!consumer) return;
+    if (live) {
+        if (m_liveConsumers.contains(consumer)) return;
+        const auto connection = connect(consumer, &QObject::destroyed, this, [this, consumer]() {
+            m_liveConsumers.remove(consumer);
+            if (m_liveConsumers.isEmpty()) m_forcePresentation = false;
+        });
+        m_liveConsumers.insert(consumer, connection);
+        m_forcePresentation = true;
+        requestRefresh();
+        return;
+    }
+    const auto it = m_liveConsumers.find(consumer);
+    if (it == m_liveConsumers.end()) return;
+    disconnect(it.value());
+    m_liveConsumers.erase(it);
+    if (m_liveConsumers.isEmpty()) m_forcePresentation = false;
+}
+
+void DesktopGamePresentation::requestRefresh()
+{
+    if (!m_liveConsumers.isEmpty()) m_forcePresentation = true;
+    scheduleRefresh();
+}
+
+void DesktopGamePresentation::submitIntent(const QString &kind, const QString &id, bool selected,
+                                          quint64 generation, quint64 revision, quint64 requestId)
+{
+    QTimer::singleShot(0, this, [this, kind, id, selected, generation, revision, requestId]() {
+        // A checkable widget may have toggled locally before an old press is
+        // rejected. Publish the authoritative draft even if its revision is unchanged.
+        if (!m_liveConsumers.isEmpty()) m_forcePresentation = true;
+        applyIntent(kind, id, selected, generation, revision, requestId);
+    });
+}
+
 void DesktopGamePresentation::scheduleRefresh()
 {
-    if (!m_panel || !m_panel->isVisible() || m_refreshPending) return;
+    if ((m_liveConsumers.isEmpty() && (!m_panel || !m_panel->isVisible())) || m_refreshPending) return;
     m_refreshPending = true;
     QTimer::singleShot(0, this, [this]() {
         m_refreshPending = false;
@@ -376,8 +416,12 @@ GameActionModel DesktopGamePresentation::actionModel() const
         if (!player) continue;
         const bool enabled = item->isSelected()
             || (item->isEnabled() && item->flags().testFlag(QGraphicsItem::ItemIsSelectable));
-        model.players.append({player->objectName(), playerLabel(player->objectName()),
-            enabled, item->isSelected(), enabled ? QString() : tr("This player cannot currently be selected")});
+        GameActionEntry entry{player->objectName(), playerLabel(player->objectName()),
+            enabled, item->isSelected(), enabled ? QString() : tr("This player cannot currently be selected")};
+        // Dead Hulao players reuse getVotes() for their reform countdown.
+        entry.selectedVotes = item->isSelected() ? qMax(item->getVotes(), 1) : 0;
+        entry.maxVotes = item->maxVotes();
+        model.players.append(entry);
     }
     // Stable seat order, independent of the QMap's graphics-object addresses.
     const QStringList seats = core->state()->playerNames();
@@ -385,7 +429,7 @@ GameActionModel DesktopGamePresentation::actionModel() const
         return seats.indexOf(a.id) < seats.indexOf(b.id);
     });
     for (QSanSkillButton *button : m_scene->m_skillButtons) {
-        if (!button->getViewAsSkill() || !button->isVisible()) continue;
+        if (!button->getViewAsSkill() || !button->isVisibleTo(m_scene->dashboard)) continue;
         const bool dialogNeeded = button->property("gamePresentationNeedsDialog").toBool()
             || button->getSkill()->getDialogInfo().isValid();
         const bool enabled = button->isEnabled();
@@ -422,6 +466,15 @@ void DesktopGamePresentation::refresh()
     next.presentationRevision = m_revision;
     m_model = next;
     if (m_panel) m_panel->setModel(m_model);
+    if (!m_liveConsumers.isEmpty()) {
+        const GameViewState state = viewState();
+        const QJsonObject projected = state.toJson();
+        if (m_forcePresentation || projected != m_lastPublishedView) {
+            m_lastPublishedView = projected;
+            m_forcePresentation = false;
+            emit presentationChanged(state, m_model);
+        }
+    }
 }
 
 GameViewState DesktopGamePresentation::viewState() const
@@ -555,6 +608,21 @@ void DesktopGamePresentation::applyIntent(const QString &kind, const QString &id
     } else if (kind == QLatin1String("player") && enabledEntry(m_model.players)) {
         for (PlayerCardContainer *item : m_scene->item2player.keys())
             if (m_scene->item2player.value(item)->objectName() == id) item->setSelected(selected);
+    } else if (kind == QLatin1String("player-add-vote")
+               || kind == QLatin1String("player-remove-vote")) {
+        const bool addVote = kind == QLatin1String("player-add-vote");
+        for (PlayerCardContainer *item : m_scene->item2player.keys()) {
+            const ClientPlayer *player = m_scene->item2player.value(item);
+            if (!player || player->objectName() != id) continue;
+            const GameActionEntry *entry = nullptr;
+            for (const GameActionEntry &candidate : m_model.players)
+                if (candidate.id == id) { entry = &candidate; break; }
+            if (!entry) break;
+            if ((addVote && entry->enabled && entry->selectedVotes < entry->maxVotes)
+                || (!addVote && entry->selected && entry->selectedVotes > 0))
+                item->changeVotes(addVote ? 1 : -1);
+            break;
+        }
     } else if (kind == QLatin1String("skill") && enabledEntry(m_model.skills)) {
         for (QSanSkillButton *button : m_scene->m_skillButtons)
             if (button->objectName() == id && button->isDown() != selected) { button->click(); break; }

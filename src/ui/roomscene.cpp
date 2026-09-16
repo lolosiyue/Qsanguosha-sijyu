@@ -4,7 +4,7 @@
 #include "skill-dialog-registry.h"
 #include "choosetriggerorderbox.h"
 #include "photo.h"
-#include "photo-layout-fit.h"
+#include "room-layout-engine.h"
 #include "dashboard.h"
 #include "table-pile.h"
 #include "ui-rng.h"
@@ -32,6 +32,7 @@
 #include "game-snapshot.h"
 #if !defined(QSAN_XP_LEGACY)
 #include "desktop-game-presentation.h"
+#include "room-overlay-host.h"
 #endif
 #include "replay-timeline.h"
 #include "replay-index.h"
@@ -835,6 +836,8 @@ void RoomScene::exitOnsoleContext()
 RoomScene::~RoomScene()
 {
 #if !defined(QSAN_XP_LEGACY)
+    // Detach the secondary document views before their scene-owned sources die.
+    delete m_overlayHost;
 	delete m_gamePresentation;
 	m_gamePresentation = nullptr;
 #endif
@@ -1641,106 +1644,228 @@ void RoomScene::switchReplayPerspective(const QString &player_name)
 	emit ClientInstance->switch_control_context(player_name);
 }
 
-void RoomScene::_getSceneSizes(QSize&minSize,QSize&maxSize)
+RoomLayoutEngine::Input RoomScene::layoutInput(const QRectF &viewport, bool clampScene) const
 {
-	if(photos.size() >= 8){
-		minSize = _m_roomLayout->m_minimumSceneSize10Player;
-		maxSize = _m_roomLayout->m_maximumSceneSize10Player;
-	} else {
-		minSize = _m_roomLayout->m_minimumSceneSize;
-		maxSize = _m_roomLayout->m_maximumSceneSize;
-	}
+    RoomLayoutEngine::Input input;
+    input.viewport = viewport;
+    input.clampScene = clampScene;
+    input.photoCount = photos.size();
+    input.selfSeat = Self ? Self->getSeat() : 0;
+    input.gameStarted = game_started;
+    if (ServerInfo.GameMode == "04_1v3")
+        input.mode = RoomLayoutEngine::Mode::Hulao;
+    else if (ServerInfo.GameMode == "04_boss")
+        input.mode = RoomLayoutEngine::Mode::Boss;
+    else if (ServerInfo.GameMode == "06_3v3")
+        input.mode = RoomLayoutEngine::Mode::ThreeVThree;
+
+    input.minimumSceneSize = photos.size() >= 8
+        ? _m_roomLayout->m_minimumSceneSize10Player : _m_roomLayout->m_minimumSceneSize;
+    input.maximumSceneSize = photos.size() >= 8
+        ? _m_roomLayout->m_maximumSceneSize10Player : _m_roomLayout->m_maximumSceneSize;
+    auto &skin = input.skin;
+    skin.scenePadding = _m_roomLayout->m_scenePadding;
+    skin.photoRoomPadding = _m_roomLayout->m_photoRoomPadding;
+    skin.photoDashboardPadding = _m_roomLayout->m_photoDashboardPadding;
+    skin.roleBoxHeight = _m_roomLayout->m_roleBoxHeight;
+    skin.infoPlaneWidthPercentage = _m_roomLayout->m_infoPlaneWidthPercentage;
+    skin.logBoxHeightPercentage = _m_roomLayout->m_logBoxHeightPercentage;
+    skin.chatBoxHeightPercentage = _m_roomLayout->m_chatBoxHeightPercentage;
+    skin.chatTextBoxHeight = _m_roomLayout->m_chatTextBoxHeight;
+    skin.photoHDistance = _m_roomLayout->m_photoHDistance;
+    skin.photoVDistance = _m_roomLayout->m_photoVDistance;
+    skin.discardPilePadding = _m_roomLayout->m_discardPilePadding;
+    skin.discardPileMinWidth = _m_roomLayout->m_discardPileMinWidth;
+    skin.dashboardNormalHeight = G_DASHBOARD_LAYOUT.m_normalHeight;
+    skin.dashboardFloatingAreaHeight = G_DASHBOARD_LAYOUT.m_floatingAreaHeight;
+    skin.cardNormalHeight = _m_commonLayout->m_cardNormalHeight;
+
+    input.dashboardHeight = dashboard->boundingRect().height();
+    input.avatarSceneHeight = dashboard->getAvatarAreaSceneBoundingRect().height();
+    input.chatButtonSize = chat_widget->boundingRect().size();
+    if (self_box)
+        input.selfBoxSize = self_box->boundingRect().size();
+    if (enemy_box)
+        input.enemyBoxSize = enemy_box->boundingRect().size();
+    const auto photoSize = [](const QSanRoomSkin::PhotoLayout &layout) {
+        return QSize(layout.m_normalWidth, layout.m_normalHeight);
+    };
+    input.smallPhotoSize = photoSize(G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeSmall));
+    input.normalPhotoSize = photoSize(G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeNormal));
+    input.bigPhotoSize = photoSize(G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeBig));
+    return input;
+}
+
+void RoomScene::adjustItems(const QSizeF &viewportSize)
+{
+    if (viewportSize.isEmpty())
+        return;
+    // FitView passes its usable viewport, after safe-area/keyboard margins.
+    setSceneRect(QRectF(QPointF(0, 0), viewportSize));
+    adjustItems();
+}
+
+#if !defined(QSAN_XP_LEGACY)
+DesktopGamePresentation *RoomScene::gamePresentation()
+{
+    if (!m_gamePresentation)
+        m_gamePresentation = new DesktopGamePresentation(this);
+    return m_gamePresentation;
+}
+
+void RoomScene::attachOverlay(RoomOverlayHost *overlay)
+{
+    m_overlayHost = overlay;
+    overlay->setPresentation(gamePresentation());
+    overlay->setDocuments(log_box->document(), chat_box->document(), chat_edit);
+    connect(overlay, &RoomOverlayHost::sendChatRequested, this, [this]() {
+        if (chat_edit->isEnabled()) speak();
+    });
+    connect(overlay, &RoomOverlayHost::controlsRequested, this, &RoomScene::showGameControlPanel);
+}
+
+void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled)
+{
+    m_responsiveInput = input;
+    if (m_responsiveEnabled == enabled)
+        return;
+    m_responsiveEnabled = enabled;
+    // Opacity keeps the canonical selection and eligibility intact. Hiding or
+    // disabling a selected QGraphicsItem would clear the target/card draft.
+    const qreal opacity = enabled ? 0.0 : 1.0;
+    dashboard->setOpacity(opacity);
+    log_box_widget->setOpacity(opacity);
+    chat_box_widget->setOpacity(opacity);
+    chat_edit_widget->setOpacity(opacity);
+    chat_widget->setOpacity(opacity);
+    m_rolesBox->setOpacity(opacity);
+    if (enabled) {
+        m_legacyPromptVisible = prompt_box->isVisible();
+        prompt_box->hide();
+        m_tablePile->setScale(1.0);
+        control_panel->setScale(1.0);
+        if (self_box) self_box->setScale(1.0);
+        if (enemy_box) enemy_box->setScale(1.0);
+    }
+    if (!enabled) {
+        prompt_box->setVisible(m_legacyPromptVisible);
+        for (Photo *photo : photos)
+            photo->setOpacity(1.0);
+        m_responsiveLayout = RoomLayoutEngine::ResponsiveResult();
+    }
+    gamePresentation()->requestRefresh();
+}
+
+void RoomScene::applyResponsiveLayout()
+{
+    const auto legacy = layoutInput(sceneRect(), false);
+    auto input = m_responsiveInput;
+    input.photoCount = photos.size();
+    input.selfSeat = Self ? Self->getSeat() : 0;
+    const qreal scale = qBound<qreal>(1.0, Config.UIScale, 2.0);
+    input.smallPhotoSize = legacy.smallPhotoSize * scale;
+    m_responsiveLayout = RoomLayoutEngine::computeResponsive(input);
+    const auto &layout = m_responsiveLayout;
+    if (!layout.valid)
+        return;
+    const bool ribbon = layout.seatPresentation == RoomLayoutEngine::SeatPresentation::Ribbon;
+    m_pixmapDeviceScale = qBound<qreal>(1.0, main_window->devicePixelRatioF(), 4.0);
+
+    // Dashboard still owns cards, view-as selections and skill dialogs. Only its
+    // presentation is replaced by the overlay's persistent interaction zones.
+    dashboard->setScale(1.0);
+    dashboard->setPos(layout.interactionRect.topLeft());
+    dashboard->setWidth(qMax(int(legacy.minimumSceneSize.width()), int(layout.interactionRect.width())));
+
+    RoomLayoutEngine::Result table;
+    table.valid = table.seatsValid = true;
+    table.tableCenter = layout.tableCenter;
+    table.photoBaseSize = legacy.smallPhotoSize;
+    table.photoScale = scale;
+    table.floatingArea = QRect(QPoint(0, 0), layout.tableRect.size().toSize());
+    table.discardPileSize = QSize(qMax(1, int(layout.tableRect.width() / 2)),
+                                  qMax(1, int(layout.tableRect.height() / 3)));
+    table.timerPosition = layout.tableRect.topLeft();
+    for (int i = 0; i < photos.size(); ++i) {
+        RoomLayoutEngine::PhotoPlacement place;
+        place.position = i < layout.photos.size() ? layout.photos[i].center : layout.seatsRect.center();
+        place.floatingArea = table.floatingArea;
+        table.photos.append(place);
+        photos[i]->setScale(1.0);
+        photos[i]->setOpacity(ribbon ? 0.0 : 1.0);
+    }
+    applyTableLayout(table);
+    m_chooseTriggerOrderBox->setPos(layout.tableRect.center());
+    if (self_box) self_box->setPos(layout.tableRect.bottomLeft());
+    if (enemy_box) enemy_box->setPos(layout.tableRect.topRight() - QPointF(enemy_box->boundingRect().width(), 0));
+    m_tablew = qMax(1, int(layout.mainRect.width()));
+    m_tableh = qMax(1, int(layout.tableRect.height()));
+    if (m_tableBgPixmapOrig.width() <= 1 || m_tableBgPixmapOrig.height() <= 1)
+        m_tableBgPixmapOrig = G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_TABLE_BG);
+    m_tableBg->setPixmap(scaledPixmapForDevice(m_tableBgPixmapOrig, layout.mainRect.size().toSize(), m_pixmapDeviceScale));
+    m_tableBg->setPos(layout.mainRect.topLeft());
+    emit responsiveGeometryChanged();
+}
+#endif
+
+void RoomScene::applyLayout(const RoomLayoutEngine::Result &layout)
+{
+    _m_infoPlane = layout.infoRect;
+    m_logSizeWithChat = layout.logSizeWithChat;
+    m_logSizeWithoutChat = layout.logSizeWithoutChat;
+    m_rolesBoxBackground = scaledPixmapForDevice(m_rolesBoxBackgroundOrig,
+        QSize(qRound(_m_infoPlane.width()), _m_roomLayout->m_roleBoxHeight), m_pixmapDeviceScale);
+    m_rolesBox->setPixmap(m_rolesBoxBackground);
+    m_rolesBox->setPos(layout.roleBoxPosition);
+
+    log_box_widget->setPos(layout.logRect.topLeft());
+    log_box->resize(m_logSizeWithChat);
+    chat_box_widget->setPos(layout.chatBoxPosition);
+    // QWidget takes ints here: QSizeF::toSize() would round instead of preserving truncation.
+    chat_box->resize(int(layout.chatRect.width()), int(layout.chatRect.height()));
+    chat_edit_widget->setPos(layout.chatEditPosition);
+    chat_edit->resize(int(layout.chatEditSize.width()), int(layout.chatEditSize.height()));
+    chat_widget->setPos(layout.chatButtonPosition);
+    if (self_box)
+        self_box->setPos(layout.selfBoxPosition);
+    if (enemy_box)
+        enemy_box->setPos(layout.enemyBoxPosition);
+
+    m_tablew = layout.backgroundSize.width();
+    m_tableh = layout.backgroundTableHeight;
+    if (m_tableBgPixmapOrig.width() == 1 || m_tableBgPixmapOrig.height() == 1)
+        m_tableBgPixmapOrig = G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_TABLE_BG);
+    m_tableBgPixmap = scaledPixmapForDevice(m_tableBgPixmapOrig, layout.backgroundSize, m_pixmapDeviceScale);
+    m_tableBg->setPos(0, 0);
+    m_tableBg->setPixmap(m_tableBgPixmap);
+    applyTableLayout(layout);
 }
 
 void RoomScene::adjustItems()
 {
-	QRectF displayRegion = sceneRect();
+#if !defined(QSAN_XP_LEGACY)
+    if (m_responsiveEnabled) {
+        applyResponsiveLayout();
+        return;
+    }
+#endif
+    auto input = layoutInput(sceneRect(), true);
+    const auto frame = RoomLayoutEngine::compute(input);
+    if (!frame.valid)
+        return;
+    if (sceneRect() != frame.sceneRect)
+        setSceneRect(frame.sceneRect);
+    m_pixmapDeviceScale = qBound(1.0, main_window->devicePixelRatioF() / frame.sceneScale, 4.0);
 
-	QSanSkinFactory&factory = QSanSkinFactory::getInstance();
-	QSize minSize,maxSize;
-	_getSceneSizes(minSize,maxSize);
+    // Preserve the legacy ordering: setWidth refreshes the right frame. Its scene
+    // height (including the existing UIScale) is measured only after that update.
+    dashboard->setX(frame.dashboardRect.x());
+    dashboard->setWidth(int(frame.dashboardRect.width()));
+    dashboard->setY(frame.dashboardRect.y());
+    input.dashboardHeight = dashboard->boundingRect().height();
+    input.avatarSceneHeight = dashboard->getAvatarAreaSceneBoundingRect().height();
+    applyLayout(RoomLayoutEngine::compute(input));
 
-	// update the sizes since we have reloaded the skin.
-	_getSceneSizes(minSize,maxSize);
-
-	// Clamp the logical scene between the skin's design bounds.
-	// UIScale 不改 layout：座位／Dashboard 座標仍按 1.0x 排，元素稍後 applyUiElementScale。
-	double sceneScale = 1.0;
-	if (displayRegion.width() > 0.0 && displayRegion.height() > 0.0) {
-		const double width = displayRegion.width();
-		const double height = displayRegion.height();
-		const double minimumScale = qMax(minSize.width() / width, minSize.height() / height);
-		double scale = qMax(minimumScale, 1.0);
-		if (maxSize.isValid()) {
-			const double maximumScale = qMin(maxSize.width() / width, maxSize.height() / height);
-			scale = qMax(minimumScale, qMin(1.0, maximumScale));
-		}
-
-		sceneScale = scale;
-		if (!qFuzzyCompare(scale, 1.0)
-			|| !qFuzzyIsNull(displayRegion.left()) || !qFuzzyIsNull(displayRegion.top())) {
-			displayRegion = QRectF(0.0, 0.0, width * scale, height * scale);
-			setSceneRect(displayRegion);
-		}
-	}
-	m_pixmapDeviceScale = qBound(1.0,
-		main_window->devicePixelRatioF() / sceneScale, 4.0);
-
-	int padding = _m_roomLayout->m_scenePadding;
-	displayRegion.moveLeft(displayRegion.x()+padding);
-	displayRegion.moveTop(displayRegion.y()+padding);
-	displayRegion.setWidth(displayRegion.width()-padding*2);
-	displayRegion.setHeight(displayRegion.height()-padding*2);
-
-	// set dashboard
-	dashboard->setX(displayRegion.x());
-	dashboard->setWidth(displayRegion.width());
-	dashboard->setY(displayRegion.height()-dashboard->boundingRect().height());
-
-	// set infoplane
-	_m_infoPlane.setWidth(displayRegion.width()*_m_roomLayout->m_infoPlaneWidthPercentage);
-	_m_infoPlane.moveRight(displayRegion.right());
-	_m_infoPlane.setTop(displayRegion.top()+_m_roomLayout->m_roleBoxHeight);
-	_m_infoPlane.setBottom(displayRegion.bottom()-dashboard->getAvatarAreaSceneBoundingRect().height()-_m_roomLayout->m_chatTextBoxHeight);
-	m_rolesBoxBackground = scaledPixmapForDevice(m_rolesBoxBackgroundOrig,
-		QSize(qRound(_m_infoPlane.width()), _m_roomLayout->m_roleBoxHeight),
-		m_pixmapDeviceScale);
-	m_rolesBox->setPixmap(m_rolesBoxBackground);
-	m_rolesBox->setPos(_m_infoPlane.left(),displayRegion.top());
-
-	log_box_widget->setPos(_m_infoPlane.topLeft());
-	log_box->resize(_m_infoPlane.width(),_m_infoPlane.height()*_m_roomLayout->m_logBoxHeightPercentage);
-	chat_box_widget->setPos(_m_infoPlane.left(),_m_infoPlane.bottom()-_m_infoPlane.height()*_m_roomLayout->m_chatBoxHeightPercentage);
-	chat_box->resize(_m_infoPlane.width(),_m_infoPlane.bottom()-chat_box_widget->y());
-	chat_edit_widget->setPos(_m_infoPlane.left(),_m_infoPlane.bottom());
-	chat_edit->resize(_m_infoPlane.width()-chat_widget->boundingRect().width(),_m_roomLayout->m_chatTextBoxHeight);
-	chat_widget->setPos(_m_infoPlane.right()-chat_widget->boundingRect().width(),
-		chat_edit_widget->y()+(_m_roomLayout->m_chatTextBoxHeight-chat_widget->boundingRect().height())/2);
-
-	padding += _m_roomLayout->m_photoRoomPadding;
-	if(self_box)
-		self_box->setPos(_m_infoPlane.left()-padding-self_box->boundingRect().width(),
-		sceneRect().height()-padding-self_box->boundingRect().height()
-		- G_DASHBOARD_LAYOUT.m_normalHeight-G_DASHBOARD_LAYOUT.m_floatingAreaHeight);
-	if(enemy_box)
-		enemy_box->setPos(padding*2,padding*2);
-
-	//padding -= _m_roomLayout->m_photoRoomPadding;
-	m_tablew = displayRegion.width();
-	m_tableh = displayRegion.height();
-
-	if(m_tableBgPixmapOrig.width()==1||m_tableBgPixmapOrig.height()==1)
-		m_tableBgPixmapOrig = G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_TABLE_BG);
-
-	m_tableBgPixmap = scaledPixmapForDevice(m_tableBgPixmapOrig,
-		QSize(m_tablew, m_tableh), m_pixmapDeviceScale);
-
-	m_tableBg->setPos(0,0);
-	m_tableBg->setPixmap(m_tableBgPixmap);
-
-	m_tableh -= _m_roomLayout->m_photoDashboardPadding;
-
-	updateTable();
 	updateRoles(m_roleState);
 	setChatBoxVisible(chat_box_widget->isVisible());
 
@@ -1765,6 +1890,12 @@ void RoomScene::adjustItems()
 
 void RoomScene::applyUiElementScale(qreal scale)
 {
+#if !defined(QSAN_XP_LEGACY)
+    // Responsive placements already account for the measured UI scale. Scaling
+    // every Photo again here would invalidate the ring's no-overlap decision.
+    if (m_responsiveEnabled)
+        return;
+#endif
 	scale = qBound<qreal>(1.0, scale, 2.0);
 
 	auto scaleAt = [scale](QGraphicsItem *item, const QPointF &origin) {
@@ -1918,218 +2049,42 @@ void RoomScene::showTouchCardPreview(CardItem *card)
 #endif
 }
 
-void RoomScene::_dispersePhotos(QList<Photo*>&photos,QRectF fillRegion,
-	Qt::Orientation orientation,Qt::Alignment align)
-{
-	int numPhotos = photos.size();
-	if(numPhotos==0) return;
-	double photoWidth = m_photoWidth * m_photoScale;
-	double photoHeight = m_photoHeight * m_photoScale;
-	Qt::Alignment hAlign = align&Qt::AlignHorizontal_Mask;
-	Qt::Alignment vAlign = align&Qt::AlignVertical_Mask;
-
-	double startX = 0, startY = 0, stepX = 0, stepY = 0;
-
-	if(orientation==Qt::Horizontal){
-		stepX = qMax(photoWidth + G_ROOM_LAYOUT.m_photoHDistance * m_photoScale,
-			fillRegion.width() / numPhotos);
-	} else {
-		double minStepY = G_ROOM_LAYOUT.m_photoVDistance * m_photoScale + photoHeight;
-		double availableHeight = fillRegion.height();
-		if (numPhotos > 1) {
-			double maxStepY = availableHeight / numPhotos;
-			stepY = qMax(minStepY, maxStepY);
-		} else {
-			stepY = minStepY;
-		}
-	}
-
-	switch (vAlign){
-	case Qt::AlignTop: startY = fillRegion.top()+photoHeight/2;break;
-	case Qt::AlignBottom: startY = fillRegion.bottom()-photoHeight/2-stepY*(numPhotos-1);break;
-	case Qt::AlignVCenter: startY = fillRegion.center().y()-stepY*(numPhotos-1)/2.0;break;
-	default: Q_ASSERT(false);
-	}
-	switch (hAlign){
-	case Qt::AlignLeft: startX = fillRegion.left()+photoWidth/2;break;
-	case Qt::AlignRight: startX = fillRegion.right()-photoWidth/2-stepX*(numPhotos-1);break;
-	case Qt::AlignHCenter: startX = fillRegion.center().x()-stepX*(numPhotos-1)/2.0;break;
-	default: Q_ASSERT(false);
-	}
-
-	for (int i = 0;i < numPhotos;i++)
-		photos[i]->setPos(QPointF(startX+stepX*i, startY+stepY*i));
-}
-
 void RoomScene::updateTable()
 {
-	static const int s_regularSeatIndex[][20] = {
-		{ 1 },
-		{ 5, 6 },
-		{ 5, 1, 6 },
-		{ 3, 1, 1, 4 },
-		{ 3, 1, 1, 1, 4 },
-		{ 5, 5, 1, 1, 6, 6 },
-		{ 5, 5, 1, 1, 1, 6, 6 },
-		{ 3, 3, 7, 7, 7, 7, 4, 4 },
-		{ 3, 3, 7, 7, 7, 7, 7, 4, 4 },
-		{ 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4 },
-		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
-		{ 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
-		{ 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
-		{ 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
-		{ 3, 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4, 4 }
-	};
-	static const int s_hulaoSeatIndex[][3] = {
-		{ 1, 1, 1 },
-		{ 3, 3, 1 },
-		{ 3, 1, 4 },
-		{ 1, 4, 4 }
-	};
-	static const int s_kof3v3SeatIndex[][5] = {
-		{ 3, 1, 1, 1, 4 },
-		{ 1, 1, 1, 4, 4 },
-		{ 3, 3, 1, 1, 1 }
-	};
+#if !defined(QSAN_XP_LEGACY)
+    if (m_responsiveEnabled) {
+        applyResponsiveLayout();
+        return;
+    }
+#endif
+    // Seat reordering and control-context switches must not apply the viewport
+    // clamp a second time. They consume the already established scene bounds.
+    const auto layout = RoomLayoutEngine::compute(layoutInput(sceneRect(), false));
+    applyTableLayout(layout);
+}
 
-	int pad = _m_roomLayout->m_scenePadding+_m_roomLayout->m_photoRoomPadding;
-	int tablew = log_box_widget->x()-pad*2;
-	int tableh = sceneRect().height()-pad*2-dashboard->boundingRect().height();
-	if((ServerInfo.GameMode=="04_1v3"||ServerInfo.GameMode=="06_3v3")&&game_started)
-		tableh -= _m_roomLayout->m_photoVDistance;
+void RoomScene::applyTableLayout(const RoomLayoutEngine::Result &layout)
+{
+    if (!layout.valid || !layout.seatsValid || layout.photos.size() != photos.size())
+        return;
+    m_photoWidth = layout.photoBaseSize.width();
+    m_photoHeight = layout.photoBaseSize.height();
+    m_photoScale = layout.photoScale;
+    for (Photo *photo : photos)
+        photo->updatePhotoSize(m_photoWidth, m_photoHeight, m_photoScale);
 
-	bool pkMode = false;
-	const int *seatToRegion = s_regularSeatIndex[photos.length()-1];
-	if((ServerInfo.GameMode=="04_1v3"||ServerInfo.GameMode=="04_boss")&&game_started){
-		seatToRegion = s_hulaoSeatIndex[Self->getSeat()-1];
-		pkMode = true;
-	} else if(ServerInfo.GameMode=="06_3v3"&&game_started){
-		seatToRegion = s_kof3v3SeatIndex[(Self->getSeat()-1) % 3];
-		pkMode = true;
-	}
+    dashboard->setFloatingArea(layout.floatingArea);
+    m_tableCenterPos = layout.tableCenter;
+    control_panel->setPos(m_tableCenterPos);
+    m_tablePile->setPos(m_tableCenterPos);
+    m_tablePile->setSize(layout.discardPileSize.width(), layout.discardPileSize.height());
+    m_tablePile->adjustCards();
+    card_container->setPos(m_tableCenterPos);
+    m_guanxingBox->setPos(m_tableCenterPos - QPointF(m_guanxingBox->boundingRect().width() / 2,
+        m_guanxingBox->boundingRect().height() / 2));
+    m_guhuoBox->setPos(m_tableCenterPos);
+    m_timerLabel->setPos(layout.timerPosition);
 
-	PhotoLayoutFit::RegionCounts regionCounts {};
-	for (int i = 0; i < photos.length(); ++i)
-		++regionCounts[seatToRegion[i]];
-
-	const QSanRoomSkin::PhotoLayout &smallLayout = G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeSmall);
-	const QSanRoomSkin::PhotoLayout &normalLayout = G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeNormal);
-	const QSanRoomSkin::PhotoLayout &bigLayout = G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeBig);
-	const PhotoLayoutFit::Result photoFit = PhotoLayoutFit::choose(
-		tablew, tableh, regionCounts,
-		_m_roomLayout->m_photoHDistance, _m_roomLayout->m_photoVDistance,
-		{ static_cast<double>(smallLayout.m_normalWidth), static_cast<double>(smallLayout.m_normalHeight) },
-		{ static_cast<double>(normalLayout.m_normalWidth), static_cast<double>(normalLayout.m_normalHeight) },
-		{ static_cast<double>(bigLayout.m_normalWidth), static_cast<double>(bigLayout.m_normalHeight) });
-
-	const QSanRoomSkin::PhotoLayout *photoLayout = &smallLayout;
-	if (photoFit.tier == PhotoLayoutFit::LayoutTier::Big)
-		photoLayout = &bigLayout;
-	else if (photoFit.tier == PhotoLayoutFit::LayoutTier::Normal)
-		photoLayout = &normalLayout;
-	m_photoWidth = photoLayout->m_normalWidth;
-	m_photoHeight = photoLayout->m_normalHeight;
-	m_photoScale = photoFit.scale;
-	foreach(Photo *photo, photos)
-		photo->updatePhotoSize(m_photoWidth, m_photoHeight, m_photoScale);
-
-	double photow = m_photoWidth * m_photoScale;
-	double photoh = m_photoHeight * m_photoScale;
-
-	// Layout:
-	//    col1           col2
-	// _______________________
-	// |_2_|______1_______|_0_| row1
-	// |   |              |   |
-	// | 4 |    table     | 3 |
-	// |___|______________|___|
-	// |      dashboard       |
-	// ------------------------
-	// region 5 = 0+3,region 6 = 2+4,region 7 = 0+1+2
-
-	double hGap = _m_roomLayout->m_photoHDistance * m_photoScale;
-	double vGap = _m_roomLayout->m_photoVDistance * m_photoScale;
-	double col1 = photow+hGap;
-	double col2 = tablew-col1;
-	double row1 = photoh+vGap;
-	double row2 = tableh;
-
-	const int C_NUM_REGIONS = 8;
-	QRectF seatRegions[] = {
-		QRectF(col2,pad,col1,row1),
-		QRectF(col1,pad,col2-col1,row1),
-		QRectF(pad,pad,col1,row1),
-		QRectF(col2,row1,col1,row2-row1),
-		QRectF(pad,row1,col1,row2-row1),
-		QRectF(col2,pad,col1,row2),
-		QRectF(pad,pad,col1,row2),
-		QRectF(pad,pad,col1+col2,row1)
-	};
-
-	static Qt::Alignment aligns[] = {
-		Qt::AlignRight | Qt::AlignTop,
-		Qt::AlignHCenter | Qt::AlignTop,
-		Qt::AlignLeft | Qt::AlignTop,
-		Qt::AlignRight | Qt::AlignVCenter,
-		Qt::AlignLeft | Qt::AlignVCenter,
-		Qt::AlignRight | Qt::AlignVCenter,
-		Qt::AlignLeft | Qt::AlignVCenter,
-		Qt::AlignHCenter | Qt::AlignTop,
-	};
-
-	static Qt::Alignment kofAligns[] = {
-		Qt::AlignRight | Qt::AlignTop,
-		Qt::AlignHCenter | Qt::AlignTop,
-		Qt::AlignLeft | Qt::AlignTop,
-		Qt::AlignRight | Qt::AlignBottom,
-		Qt::AlignLeft | Qt::AlignBottom,
-		Qt::AlignRight | Qt::AlignBottom,
-		Qt::AlignLeft | Qt::AlignBottom,
-		Qt::AlignHCenter | Qt::AlignTop,
-	};
-
-	Qt::Orientation orients[] = {
-		Qt::Horizontal,
-		Qt::Horizontal,
-		Qt::Horizontal,
-		Qt::Vertical,
-		Qt::Vertical,
-		Qt::Vertical,
-		Qt::Vertical,
-		Qt::Horizontal
-	};
-
-	QRectF tableRect(col1,row1,col2-col1,row2-row1);
-
-	QRect tableBottomBar(0,0,log_box_widget->x()-col1,G_DASHBOARD_LAYOUT.m_floatingAreaHeight);
-	tableBottomBar.moveBottomLeft(QPoint((int)tableRect.left(),0));
-	dashboard->setFloatingArea(tableBottomBar);
-
-	m_tableCenterPos = tableRect.center();
-	control_panel->setPos(m_tableCenterPos);
-	m_tablePile->setPos(m_tableCenterPos);
-	m_tablePile->setSize(qMax((int)tableRect.width()-_m_roomLayout->m_discardPilePadding*2,
-		_m_roomLayout->m_discardPileMinWidth),_m_commonLayout->m_cardNormalHeight);
-	m_tablePile->adjustCards();
-	card_container->setPos(m_tableCenterPos);
-	m_guanxingBox->setPos(m_tableCenterPos - QPointF(m_guanxingBox->boundingRect().width() / 2, m_guanxingBox->boundingRect().height() / 2));
-	m_guhuoBox->setPos(m_tableCenterPos);
-
-	m_timerLabel->setPos(QPointF(width()*0.77,-1));
-
-	/*if(nullptr!=prompt_box_widget){
-		QRectF promptBoxRect = prompt_box_widget->boundingRect();
-		int promptBoxWidth = promptBoxRect.width();
-		int promptBoxHeight = promptBoxRect.height();
-		QRectF progressBarRect = dashboard->getProgressBarSceneBoundingRect();
-		int xShift = (promptBoxWidth-progressBarRect.width())/2;
-		prompt_box_widget->setPos(progressBarRect.x()-xShift,
-			progressBarRect.y()-promptBoxHeight);
-	}*/
 	QRectF progressBarRect = dashboard->getProgressBarSceneBoundingRect();
 	QRectF promptBoxRect = prompt_box_widget->boundingRect();
 	int promptBoxWidth = promptBoxRect.width();
@@ -2140,32 +2095,12 @@ void RoomScene::updateTable()
 	pausing_item->setRect(sceneRect());
 	pausing_item->setPos(0,0);
 
-	QList<Photo*> photosInRegion[C_NUM_REGIONS];
-	for (int i = 0;i < photos.length();i++){
-		int regionIndex = seatToRegion[i];
-		if(regionIndex==4||regionIndex==6)
-			photosInRegion[regionIndex].append(photos[i]);
-		else
-			photosInRegion[regionIndex].prepend(photos[i]);
-	}
-	for (int i = 0;i < C_NUM_REGIONS;i++){
-		if(photosInRegion[i].isEmpty()) continue;
-		Qt::Alignment align = aligns[i];
-		if(pkMode) align = kofAligns[i];
-
-		QRect floatingArea(0, 0, G_ROOM_LAYOUT.m_photoHDistance, photoLayout->m_normalHeight);
-		// if the photo is on the right edge of table
-		if(i==0||i==3||i==5||i==8) floatingArea.moveRight(0);
-		else floatingArea.moveLeft(photoLayout->m_normalWidth);
-
-		foreach(Photo*photo,photosInRegion[i])
-			photo->setFloatingArea(floatingArea);
-		_dispersePhotos(photosInRegion[i],seatRegions[i],orients[i],align);
-	}
-
-	// ── Spine pop-out: refresh seat geometry after layout changes ──
+    for (int i = 0; i < photos.size(); ++i) {
+        photos[i]->setFloatingArea(layout.photos[i].floatingArea);
+        photos[i]->setPos(layout.photos[i].position);
+    }
 #if QSAN_ENABLE_SPINE
-	updateSpineSeatGeometry();
+    updateSpineSeatGeometry();
 #endif
 }
 
@@ -2456,10 +2391,18 @@ void RoomScene::updateSelectedTargets()
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
 	if(card){
 		const ClientPlayer*player = item2player.value(item,nullptr);
-		if(item->isSelected())
-			selected_targets.append(player);
-		else {
+        const int previousVotes = selected_targets.count(player);
+		if(item->isSelected()) {
+            // Mouse, keyboard and target chips share one ordered vote draft.
+            // Reconcile counts rather than appending on every change signal.
+            const int votes = qMax(1, item->getVotes());
+            while (selected_targets.count(player) < votes)
+                selected_targets.append(player);
+            while (selected_targets.count(player) > votes)
+                selected_targets.removeAt(selected_targets.lastIndexOf(player));
+		} else
 			selected_targets.removeAll(player);
+        if (selected_targets.count(player) < previousVotes) {
 			foreach (const Player*cp,selected_targets){
 				QList<const Player*> tempPlayers = QList<const Player*>(selected_targets);
 				tempPlayers.removeAll(cp);
@@ -4163,6 +4106,12 @@ void RoomScene::doTimeout()
 
 void RoomScene::showPromptBox()
 {
+#if !defined(QSAN_XP_LEGACY)
+    if (m_responsiveEnabled) {
+        gamePresentation()->requestRefresh();
+        return;
+    }
+#endif
 	bringToFront(prompt_box);
 	prompt_box->appear();
 }
@@ -7569,16 +7518,12 @@ void RoomScene::setChatBoxVisible(bool show)
 		chat_box_widget->show();
 		chat_edit->show();
 		chat_widget->show();
-		log_box->resize(_m_infoPlane.width(),
-			_m_infoPlane.height()*_m_roomLayout->m_logBoxHeightPercentage);
+		log_box->resize(m_logSizeWithChat);
 	} else {
 		chat_box_widget->hide();
 		chat_edit->hide();
 		chat_widget->hide();
-		log_box->resize(_m_infoPlane.width(),
-			_m_infoPlane.height()*(_m_roomLayout->m_logBoxHeightPercentage
-			+ _m_roomLayout->m_chatBoxHeightPercentage)
-			+ _m_roomLayout->m_chatTextBoxHeight);
+		log_box->resize(m_logSizeWithoutChat);
 	}
 }
 
@@ -7954,4 +7899,3 @@ void RoomScene::onCardActionButtonClicked(const QString &buttonId, int cardId)
 		}
 	}
 }
-

@@ -39,6 +39,12 @@ QString safeText(QString value)
     return value.simplified();
 }
 
+QString translatedLabel(const QString &key, const GameViewFormatOptions &options)
+{
+    const QString translated = options.translate ? options.translate(key) : QString();
+    return safeText(translated.isEmpty() ? key : translated);
+}
+
 QString pileText(const QVariantMap &piles)
 {
     QStringList values;
@@ -109,6 +115,15 @@ QJsonObject GameViewPlayer::toJson() const
             {QStringLiteral("distance_from_operating_player"), distanceFromOperatingPlayer},
             {QStringLiteral("alive"), alive}, {QStringLiteral("self"), self},
             {QStringLiteral("hand_visible"), handVisible},
+            {QStringLiteral("face_up"), QJsonValue::fromVariant(faceUp)},
+            {QStringLiteral("chained"), QJsonValue::fromVariant(chained)},
+            {QStringLiteral("removed"), QJsonValue::fromVariant(removed)},
+            {QStringLiteral("role"), role},
+            {QStringLiteral("hand_max"), handMax},
+            {QStringLiteral("offensive_distance"), offensiveDistance},
+            {QStringLiteral("defensive_distance"), defensiveDistance},
+            {QStringLiteral("marks"), QJsonObject::fromVariantMap(marks)},
+            {QStringLiteral("skills"), QJsonArray::fromStringList(skills)},
             {QStringLiteral("hand"), handJson}, {QStringLiteral("equipment"), equipmentJson},
             {QStringLiteral("judging"), judgingJson},
             {QStringLiteral("piles"), QJsonObject::fromVariantMap(piles)}};
@@ -153,9 +168,23 @@ GameViewState GameViewState::fromState(const ClientGameState &state,
         player.hp = data.value(QStringLiteral("hp")).toInt();
         player.maxHp = data.value(QStringLiteral("max_hp")).toInt();
         player.handCount = qMax(0, data.value(QStringLiteral("hand_count")).toInt());
+        player.handMax = data.value(QStringLiteral("hand_max"), -1).toInt();
+        player.offensiveDistance = data.value(QStringLiteral("offensive_distance"), -1).toInt();
+        player.defensiveDistance = data.value(QStringLiteral("defensive_distance"), -1).toInt();
+        const QVariantMap marks = data.value(QStringLiteral("marks")).toMap();
+        for (auto mark = marks.constBegin(); mark != marks.constEnd(); ++mark)
+            player.marks.insert(translatedLabel(mark.key(), options), mark.value());
+        const QStringList skills = data.value(QStringLiteral("skills")).toStringList();
+        for (const QString &skill : skills)
+            player.skills.append(translatedLabel(skill, options));
         if (!options.operatingPlayer.isEmpty() && options.distanceLabel)
             player.distanceFromOperatingPlayer = safeText(options.distanceLabel(options.operatingPlayer, name));
         player.alive = data.value(QStringLiteral("alive"), true).toBool();
+        player.faceUp = data.value(QStringLiteral("faceup"));
+        player.chained = data.value(QStringLiteral("chained"));
+        player.removed = data.value(QStringLiteral("removed"));
+        if (data.contains(QStringLiteral("role")))
+            player.role = translatedLabel(data.value(QStringLiteral("role")).toString(), options);
         player.self = name == view.selfName;
         // Only the recipient's hand has authorized identities. Opponents expose counts only.
         const bool handVisible = player.self || options.authorizedHandPlayers.contains(name);

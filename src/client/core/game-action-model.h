@@ -14,6 +14,8 @@ struct GameActionEntry
     bool enabled = true;
     bool selected = false;
     QString reason;
+    int selectedVotes = 0;
+    int maxVotes = 0;
 
     QJsonObject toJson() const;
 };
@@ -48,5 +50,7 @@ struct GameActionModel
     bool isCurrentFor(quint64 generation, quint64 revision, quint64 request) const;
     QJsonObject toJson() const;
 };
+
+Q_DECLARE_METATYPE(GameActionModel)
 
 #endif

@@ -6,6 +6,7 @@
 #include "game-view-state.h"
 #include <QObject>
 #include <QPointer>
+#include <QHash>
 
 class Client;
 class RoomScene;
@@ -21,8 +22,17 @@ class DesktopGamePresentation : public QObject
 public:
     explicit DesktopGamePresentation(RoomScene *scene);
     ~DesktopGamePresentation() override;
+    // Register responsive views that need live state; the receiver is tracked by QObject lifetime.
+    void setLiveConsumer(QObject *consumer, bool live);
+    void requestRefresh();
+    // Intents are queued, then revalidated against the current generation, revision and request.
+    void submitIntent(const QString &kind, const QString &id, bool selected,
+                      quint64 generation, quint64 revision, quint64 requestId);
     void showSnapshot();
     void showControls();
+
+signals:
+    void presentationChanged(const GameViewState &view, const GameActionModel &actions);
 
 private:
     void scheduleRefresh();
@@ -47,6 +57,9 @@ private:
     quint64 m_draftGeneration = 0;
     QString m_option;
     bool m_refreshPending = false;
+    QHash<QObject *, QMetaObject::Connection> m_liveConsumers;
+    QJsonObject m_lastPublishedView;
+    bool m_forcePresentation = false;
 };
 
 #endif

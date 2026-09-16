@@ -43,8 +43,18 @@ struct GameViewPlayer
     int handCount = 0;
     QString distanceFromOperatingPlayer;
     bool alive = true;
+    QVariant faceUp;
+    QVariant chained;
+    QVariant removed;
+    QString role;
     bool self = false;
     bool handVisible = false;
+    // Public/recipient-projected dashboard details for the lightweight inspector.
+    int handMax = -1;
+    int offensiveDistance = -1;
+    int defensiveDistance = -1;
+    QVariantMap marks;
+    QStringList skills;
     QList<GameViewCard> hand;
     QList<GameViewCard> equipment;
     QList<GameViewCard> judging;
@@ -82,5 +92,7 @@ struct GameViewState
     QJsonObject toJson() const;
     QString toPlainText() const;
 };
+
+Q_DECLARE_METATYPE(GameViewState)
 
 #endif

@@ -210,6 +210,11 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(controlAction, &QAction::triggered, this, [this]() {
 		if (RoomScene *room = qobject_cast<RoomScene *>(scene)) room->showGameControlPanel();
 	});
+    QAction *inspectorAction = ui->menuView->addAction(tr("Player Details"));
+    inspectorAction->setObjectName(QStringLiteral("actionRoomPlayerInspector"));
+    connect(inspectorAction, &QAction::triggered, this, [this]() {
+        if (gameView) gameView->showPlayerInspector();
+    });
 #endif
 
 	setWindowTitle(tr("Sanguosha")+" 岁末 "+Sanguosha->getVersionNumber());
@@ -801,6 +806,8 @@ void MainWindow::setupAndroidUi()
 		m_androidMenu->addAction(action);
 	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameControlPanel")))
 		m_androidMenu->addAction(action);
+    if (auto *action = findChild<QAction *>(QStringLiteral("actionRoomPlayerInspector")))
+        m_androidMenu->addAction(action);
 	m_androidMenu->addAction(ui->actionView_Discarded);
 	m_androidMenu->addAction(ui->actionView_distance);
 	m_androidMenu->addAction(ui->actionView_Maxcards);
@@ -822,6 +829,7 @@ void MainWindow::updateAndroidSafeArea()
 	QMargins margins;
 	if (windowHandle())
 		margins = windowHandle()->safeAreaMargins();
+    const QMargins systemMargins = margins;
 	const QRect windowRect = geometry();
 	QRect keyboardRect = qApp->inputMethod()->keyboardRectangle().toRect();
 	if (QWindow *focusWindow = QGuiApplication::focusWindow())
@@ -832,6 +840,7 @@ void MainWindow::updateAndroidSafeArea()
 	const int right = qMax(8, margins.right() + 8);
 	const int top = qMax(8, margins.top() + 8);
 	m_androidMenuButton->move(pageStack->width() - m_androidMenuButton->width() - right, top);
+    gameView->setStableSafeAreaMargins(systemMargins);
 	gameView->setSafeAreaMargins(margins);
 	if (scene) {
 		if (RoomScene *roomScene = qobject_cast<RoomScene *>(scene))

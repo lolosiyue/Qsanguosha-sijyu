@@ -149,6 +149,8 @@ set(QSAN_SOURCES
     src/ui/replay-timeline.cpp
     src/ui/rolecombobox.cpp
     src/ui/roomscene.cpp
+    src/ui/room-layout-engine.cpp
+    src/ui/room-layout-engine.h
     src/ui/desktop-game-presentation.cpp
     src/ui/desktop-game-presentation.h
     src/ui/game-control-panel.cpp
@@ -174,6 +176,14 @@ set(QSAN_SOURCES
     src/util/replay-game-state.cpp
     src/util/replay-index.cpp
 )
+
+if(NOT QSAN_BUILD_XP_LEGACY)
+    list(APPEND QSAN_SOURCES
+        src/ui/room-overlay-host.cpp
+        src/ui/room-overlay-host.h
+        src/ui/room-window-posture.cpp
+        src/ui/room-window-posture.h)
+endif()
 
 set(QSAN_LUA_SOURCES
     src/lua/lapi.c

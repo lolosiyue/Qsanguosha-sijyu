@@ -25,6 +25,7 @@ int runRuntimePathsTests(int argc, char **argv);
 int runReplayGameStateTests(int argc, char *argv[]);
 int runTakeoverSnapshotTests(int argc, char **argv);
 int runPhotoLayoutFitTests();
+int runRoomLayoutEngineTests();
 
 int main(int argc, char **argv)
 {
@@ -46,6 +47,8 @@ int main(int argc, char **argv)
             return runTakeoverSnapshotTests(argc, argv);
         if (merged == QLatin1String("photo-layout-fit"))
             return runPhotoLayoutFitTests();
+        if (merged == QLatin1String("room-layout-engine"))
+            return runRoomLayoutEngineTests();
     }
 
     QCoreApplication application(argc, argv);

@@ -15,7 +15,9 @@ QJsonObject GameActionEntry::toJson() const
 {
     return {{QStringLiteral("id"), id}, {QStringLiteral("label"), label},
             {QStringLiteral("enabled"), enabled}, {QStringLiteral("selected"), selected},
-            {QStringLiteral("reason"), reason}};
+            {QStringLiteral("reason"), reason},
+            {QStringLiteral("selected_votes"), selectedVotes},
+            {QStringLiteral("max_votes"), maxVotes}};
 }
 
 bool GameActionModel::isCurrentFor(quint64 generation, quint64 revision,

@@ -13,8 +13,14 @@
 #include "skin-bank.h"
 //#include "sprite.h"
 #include "timed-progressbar.h"
+#include "room-layout-engine.h"
 #include <QMargins>
 #include <QPointer>
+
+namespace RoomLayoutEngine {
+struct Input;
+struct Result;
+}
 #if QSAN_ENABLE_SPINE
 #include "CharacterSpineActionController.h"
 #endif
@@ -47,6 +53,7 @@ class ClientLogBox;
 class ChatWidget;
 class EmotionPanel;
 class GifChatBox;
+class RoomOverlayHost;
 class QSanSelectableItem;
 class EffectAnimation;
 class GiftItem;
@@ -212,6 +219,13 @@ public:
     void showGameControlPanel();
     void changeTextEditBackground();
     void adjustItems();
+    void adjustItems(const QSizeF &viewportSize);
+#if !defined(QSAN_XP_LEGACY)
+    void attachOverlay(RoomOverlayHost *overlay);
+    void setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled);
+    const RoomLayoutEngine::ResponsiveResult &responsiveLayout() const { return m_responsiveLayout; }
+    DesktopGamePresentation *gamePresentation();
+#endif
     void applyUiElementScale(qreal scale);
     void setTouchUiEnabled(bool enabled);
     void setSafeAreaMargins(const QMargins &margins);
@@ -326,9 +340,17 @@ protected:
     virtual void contextMenuEvent(QGraphicsSceneContextMenuEvent *event);
 
 private:
-    void _getSceneSizes(QSize &minSize, QSize &maxSize);
+    RoomLayoutEngine::Input layoutInput(const QRectF &viewport, bool clampScene) const;
+    void applyLayout(const RoomLayoutEngine::Result &layout);
+    void applyTableLayout(const RoomLayoutEngine::Result &layout);
 #if !defined(QSAN_XP_LEGACY)
     DesktopGamePresentation *m_gamePresentation = nullptr;
+    QPointer<RoomOverlayHost> m_overlayHost;
+    bool m_responsiveEnabled = false;
+    bool m_legacyPromptVisible = false;
+    RoomLayoutEngine::ResponsiveInput m_responsiveInput;
+    RoomLayoutEngine::ResponsiveResult m_responsiveLayout;
+    void applyResponsiveLayout();
 #endif
     bool _shouldIgnoreDisplayMove(CardsMoveStruct &movement);
     QString _describeMoveForDiagnostics(const CardsMoveStruct &move) const;
@@ -549,7 +571,6 @@ private:
 
     // re-layout attempts
     bool game_started;
-    void _dispersePhotos(QList<Photo *> &photos, QRectF disperseRegion, Qt::Orientation orientation, Qt::Alignment align);
 
     void _cancelAllFocus();
     bool isPrimarySkill(const Skill *skill) const;
@@ -557,6 +578,8 @@ private:
     int _m_currentStage;
 
     QRectF _m_infoPlane;
+    QSize m_logSizeWithChat = QSize(0, 0);
+    QSize m_logSizeWithoutChat = QSize(0, 0);
 
     bool _m_bgEnabled;
     QString _m_bgMusicPath;
@@ -676,6 +699,7 @@ void onGameStart();
 
 signals:
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
+    void responsiveGeometryChanged();
     void restart();
     void return_to_start();
     void game_over_dialog_rejected();

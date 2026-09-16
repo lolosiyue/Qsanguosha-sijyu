@@ -78,6 +78,8 @@ add_executable(qsanguosha_core_tests
     replay-game-state/replay-game-state-test.cpp
     takeover-snapshot/takeover-snapshot-test.cpp
     photo-layout-fit-test.cpp
+    room-layout-engine-test.cpp
+    ${QSAN_TEST_ROOT}/src/ui/room-layout-engine.cpp
     ${QSAN_TEST_ROOT}/src/ui/card-overview-data.cpp
     ${QSAN_TEST_ROOT}/src/ui/card-overview-data.h
     ${QSAN_TEST_ROOT}/src/ui/home/homecardmodel.cpp
@@ -165,6 +167,11 @@ qsan_add_ctest(qsanguosha_takeover_snapshot_contract qsanguosha_core_tests
 qsan_add_ctest(qsanguosha_photo_layout_fit qsanguosha_core_tests
     SUITE photo-layout-fit
     LABELS "ui;fast"
+)
+qsan_add_ctest(qsanguosha_room_layout_engine qsanguosha_core_tests
+    SUITE room-layout-engine
+    LABELS "ui;fast"
+    TIMEOUT 60
 )
 qsan_add_ctest(qsanguosha_engine_smoke qsanguosha_core_tests
     SUITE engine-smoke

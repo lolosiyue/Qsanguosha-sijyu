@@ -243,7 +243,14 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 
 Qt 6 使用原生 DPI；應用程式 `UIScale` 範圍 1.0–2.0、步進 0.05、預設 1.0。主題可選系統／淺色／深色，新安裝預設跟隨系統。必須保留 Spine、GIF、重播、轉換卡牌與多技能 UI 行為。
 
-Android 固定橫向顯示，處理安全區、Android 返回鍵、虛擬鍵盤及至少 48dp 的觸控目標；手機版不提供直向房間介面。
+Android 正式預設仍固定橫向，處理安全區、Android 返回鍵、虛擬鍵盤及至少 48dp 的觸控目標。
+PR3–7 原始碼加入手動 Responsive preview；預覽開啟時暫時允許旋轉，關閉後還原原方向。
+直向、單手、Book／Tabletop 尚未完成本批 APK／GUI／模擬器驗收。
+
+後續 Qt／Android 自適應版面依[RoomLayoutEngine 七階段計畫](room-layout-engine-plan.md)推進。
+第一檢查點只抽出並接入既有橫向幾何，不改上述交付基線；Compact Portrait 完成驗收的
+檢查點才解除方向限制並更新本節。既有 GameViewState／GameActionModel 與 Qt 操作入口
+繼續共用，不建立第二套遊戲狀態或回覆路徑。
 
 ## 9. 診斷、日誌與 LuaAI 除錯
 
