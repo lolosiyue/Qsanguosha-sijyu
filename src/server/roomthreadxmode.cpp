@@ -224,6 +224,6 @@ void RoomThreadXMode::assignRoles(const QString &scheme)
     room->replacePlayerOrder(players);
 
     foreach(ServerPlayer *player, players)
-        room->broadcastProperty(player, "role");
+        room->revealRole(player);
 }
 

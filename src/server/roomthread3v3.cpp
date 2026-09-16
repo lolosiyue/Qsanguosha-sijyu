@@ -304,6 +304,6 @@ void RoomThread3v3::assignRoles(const QString &scheme)
     }
 
     foreach(ServerPlayer *player, room->getPlayers())
-        room->broadcastProperty(player, "role");
+        room->revealRole(player);
 }
 

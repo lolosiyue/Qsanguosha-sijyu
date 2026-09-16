@@ -116,6 +116,65 @@ bool PlayerStateService::isAkarin(ServerPlayer *player, ServerPlayer *to) const
 		.contains(to->objectName());
 }
 
+bool PlayerStateService::isRoleRevealed(const ServerPlayer *player) const
+{
+	return player && player->getRoom() == &m_room && player->hasShownRole();
+}
+
+bool PlayerStateService::canSeeRole(const ServerPlayer *viewer, const ServerPlayer *target) const
+{
+	if (!viewer || !target || viewer->getRoom() != &m_room || target->getRoom() != &m_room)
+		return false;
+	if (viewer == target || isRoleRevealed(target)) return true;
+	// JSON-safe private state survives takeover; a grant applies to one identity only.
+	const QVariantMap grant = target->property("_role_visibility").toMap();
+	return grant.value("role").toString() == target->getRole()
+		&& grant.value("viewers").toStringList().contains(viewer->objectName());
+}
+
+void PlayerStateService::grantRoleVisibility(ServerPlayer *viewer, const ServerPlayer *target)
+{
+	if (!viewer || !target || viewer->getRoom() != &m_room || target->getRoom() != &m_room
+		|| canSeeRole(viewer, target)) return;
+	QVariantMap grant = target->property("_role_visibility").toMap();
+	QStringList viewers;
+	if (grant.value("role").toString() == target->getRole())
+		viewers = grant.value("viewers").toStringList();
+	viewers << viewer->objectName();
+	grant.insert("role", target->getRole());
+	grant.insert("viewers", viewers);
+	if (QThread::currentThread() == target->thread())
+		const_cast<ServerPlayer *>(target)->setProperty("_role_visibility", grant);
+	else
+		emit m_room.signalSetProperty(const_cast<ServerPlayer *>(target), "_role_visibility", grant);
+	m_runtime.advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+}
+
+void PlayerStateService::revealRole(ServerPlayer *player, const QString &value)
+{
+	if (!player || player->getRoom() != &m_room) return;
+	// Mutation precedes transport; the existing signal advances revision only on change.
+	if (QThread::currentThread() == player->thread()) player->setShownRole(true);
+	else emit m_room.signalSetProperty(player, "role_shown", true);
+	broadcastProperty(player, "role_shown", QString());
+	broadcastProperty(player, "role", value);
+}
+
+void PlayerStateService::revealRoleTo(ServerPlayer *viewer, ServerPlayer *target)
+{
+	grantRoleVisibility(viewer, target);
+	syncRole(viewer, target);
+}
+
+void PlayerStateService::syncRole(ServerPlayer *viewer, const ServerPlayer *target)
+{
+	if (!viewer || !target || viewer->getRoom() != &m_room || target->getRoom() != &m_room)
+		return;
+	// Reconnect replays state without creating visibility grants.
+	notifyProperty(viewer, target, "role_shown", QString());
+	if (canSeeRole(viewer, target)) notifyProperty(viewer, target, "role", QString());
+}
+
 void PlayerStateService::setPlayerProperty(ServerPlayer *player,
 	const char *propertyName, const QVariant &value)
 {
@@ -144,7 +203,10 @@ void PlayerStateService::setPlayerProperty(ServerPlayer *player,
 		player->refreshUIState();
 	}
 
-	broadcastProperty(player, propertyName, QString());
+	if (std::strcmp(propertyName, "role") == 0)
+		revealRole(player); // Preserve the public setPlayerProperty(role) contract.
+	else
+		broadcastProperty(player, propertyName, QString());
 
 	if (same) return;
 	if (m_runtime.stateRevision() == revisionBefore)
@@ -422,8 +484,6 @@ bool PlayerStateService::notifyProperty(ServerPlayer *player,
 bool PlayerStateService::broadcastProperty(ServerPlayer *owner,
 	const char *propertyName, const QString &value)
 {
-	if (std::strcmp(propertyName, "role") == 0)
-		owner->setShownRole(true);
 	owner->addProperty(propertyName);
 
 	const QString property = QString::fromLatin1(propertyName);
