@@ -2364,7 +2364,7 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 			if (!general.contains("(lord)"))
 				selectableGenerals << general;
 		}
-		if (!selectableGenerals.contains(pick) && !selectableGenerals.isEmpty())
+		if (!ServerInfo.FreeChoose && !selectableGenerals.contains(pick) && !selectableGenerals.isEmpty())
 			pick = selectableGenerals.at(UiRng::bounded(selectableGenerals.size()));
 		QFile diag(QSanRuntimePaths::userDataPath("client_autotest_diag.log"));
 		if (diag.open(QIODevice::Append | QIODevice::Text)) {
