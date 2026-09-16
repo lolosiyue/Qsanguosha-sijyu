@@ -31,6 +31,10 @@
 #include "replay-takeover-validation.h"
 // Automated-test diagnostics and the --asset-root forwarding both use QSanRuntimePaths, not just the XP legacy path.
 #include "runtime-paths.h"
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+#include "package-manager-dialog.h"
+#include <QMenu>
+#endif
 #ifdef QSAN_XP_LEGACY
 #include "local-server-controller.h"
 #include <QInputDialog>
@@ -293,6 +297,13 @@ MainWindow::MainWindow(QWidget *parent)
 
 	addAction(ui->actionShow_Hide_Menu);
 	addAction(ui->actionFullscreen);
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	QMenu *packageMenu = menuBar()->addMenu(tr("Packages"));
+	packageMenu->addAction(tr("Manage packages..."), this, [this]() {
+		PackageManagerDialog::openManager(QSanRuntimePaths::assetRoot(),
+			QSanRuntimePaths::userDataRoot(), this);
+	});
+#endif
 
 	connect(ui->actionRestart_Game, SIGNAL(triggered()), this, SLOT(startConnection()));
 	connect(ui->actionReturn_to_Main_Menu, &QAction::triggered, this, [this]() {

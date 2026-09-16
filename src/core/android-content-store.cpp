@@ -1,6 +1,7 @@
 #include "android-content-store.h"
 #include "android-zip-reader.h"
 #include "android_assets.h"
+#include "package-catalog.h"
 #include "rules-content-manifest.h"
 
 #include <QBuffer>
@@ -31,6 +32,8 @@
 namespace {
 constexpr qint64 kJsonLimit = 32 * 1024 * 1024;
 constexpr quint64 kReserve = 64 * 1024 * 1024;
+constexpr int kBootstrapVersion = 1;
+constexpr int kPresentationVersion = 1;
 bool cancelled(AndroidContentStore::Cancelled *cancel, QString *error);
 bool fail(QString *error, const QString &message)
 {
@@ -64,6 +67,12 @@ QString key(const QString &path) { return path.toCaseFolded(); }
 bool mediaPath(const QString &path)
 {
     return safePath(path) && (path.startsWith("image/") || path.startsWith("audio/") || path.startsWith("font/"));
+}
+bool optionalMediaPath(const QString &path)
+{
+    if (mediaPath(path)) return true;
+    // Modular media follows the same optional-presentation policy as legacy media.
+    return safePath(path) && path.startsWith("packages/") && mediaPath(path.section('/', 2));
 }
 bool extensionPath(const QString &path)
 {
@@ -165,9 +174,13 @@ bool space(const QString &path, quint64 bytes, QString *error)
     return true;
 }
 bool copyFile(const QString &source, const QString &target, QString *error, bool shareMedia = false,
-              AndroidContentStore::Cancelled *cancel = nullptr, QSet<QString> *checked = nullptr)
+              AndroidContentStore::Cancelled *cancel = nullptr, QSet<QString> *checked = nullptr,
+              bool optionalMedia = false)
 {
     if (cancelled(cancel, error)) return false;
+    // Snapshot composition copies existing payloads, but an absent optional
+    // image must not prevent a Lua/package update from activating.
+    if (optionalMedia && !QFileInfo::exists(source) && !QFileInfo(source).isSymLink()) return true;
     if (!source.startsWith(":/") && !regular(source, checked)) return fail(error, "non-regular content source: " + source);
     if (!directory(QFileInfo(target).absolutePath(), error, checked) || QFileInfo(target).isSymLink()) return false;
 #ifdef Q_OS_UNIX
@@ -236,6 +249,10 @@ QVariantMap descriptor(const QVariantList &entries)
 {
     return {{"schema_version", 2}, {"profile", "declared-v2"}, {"extensions", entries}};
 }
+QVariantMap descriptor(const QSanRules::ContentManifest &manifest)
+{
+    return QSanRules::runtimeContentDescriptor(manifest).toVariantMap();
+}
 QVariantMap effective(const QVariantMap &package)
 {
     // Disable means the whole package is absent. Restoring APK bytes is an
@@ -247,6 +264,137 @@ QVariantMap infoMap(const QString &id, const QString &blob, const QStringList &f
     return {{"id", id}, {"version", blob}, {"role", "extension"}, {"enabled", true},
             {"bundled", bundled}, {"files", files}, {"entries", entries}};
 }
+QVariantMap modularInfo(const QSanPackages::Package &package, const QString &blob,
+                        const QStringList &files, bool bundled)
+{
+    QVariantMap result{{"id", package.id}, {"version", blob}, {"package_version", package.version},
+                       {"role", "modular"}, {"enabled", true}, {"bundled", bundled},
+                       {"files", files}, {"manifest", package.manifest.toVariantMap()}};
+    return result;
+}
+QStringList modularFiles(const QSanPackages::Package &package)
+{
+    QStringList files{QStringLiteral("packages/%1/manifest.json").arg(package.id)};
+    for (const QJsonValue &value : package.manifest.value(QStringLiteral("files")).toArray())
+        files << QStringLiteral("packages/%1/%2").arg(package.id, value.toObject().value(QStringLiteral("path")).toString());
+    files.removeDuplicates();
+    return files;
+}
+QJsonObject modularRulesMetadata(QJsonObject manifest)
+{
+    // APK artwork inventory changes must not enter the rule-upgrade conflict
+    // gate. Keep the active package metadata until an explicit package update.
+    manifest.remove(QStringLiteral("assets"));
+    QJsonArray files;
+    for (const QJsonValue &value : manifest.value(QStringLiteral("files")).toArray())
+        if (!mediaPath(value.toObject().value(QStringLiteral("path")).toString())) files.append(value);
+    manifest.insert(QStringLiteral("files"), files);
+    return manifest;
+}
+QStringList ownedFiles(const QVariantMap &package)
+{
+    // Retired APK files remain owned while a modular replacement is active.
+    // Otherwise snapshot composition would resurrect them as loose core files.
+    QStringList files = package.value("files").toStringList();
+    const QVariantMap fallback = package.value("fallback").toMap();
+    if (!fallback.isEmpty()) files << ownedFiles(fallback);
+    files.removeDuplicates();
+    return files;
+}
+QVariantList orderedEntries(const QVariantMap &package)
+{
+    QVariantList entries = package.value("entries").toList();
+    if (package.value("role").toString() != "modular") return entries;
+    QSet<QString> names;
+    for (const QVariant &entry : package.value("manifest").toMap().value("extensions").toList())
+        names.insert(entry.toMap().value("name").toString());
+    // Keep only replaced legacy entries as order anchors. The final v3 merge
+    // substitutes sealed package paths before any descriptor is published.
+    for (const QVariant &entry : orderedEntries(package.value("fallback").toMap()))
+        if (names.contains(entry.toMap().value("name").toString())) entries << entry;
+    return entries;
+}
+bool addBundledModularPackage(QVariantList *packages, const QVariantMap &package, QString *error)
+{
+    for (QVariant &value : *packages) {
+        const QVariantMap old = value.toMap();
+        if (key(old.value("id").toString()) != key(package.value("id").toString())) continue;
+        QVariantMap replacement = package;
+        replacement.insert("fallback", old);
+        if (old.value("id") != package.value("id") || old.value("role").toString() != "extension"
+            || !old.value("bundled").toBool() || old.value("version").toString() != "base"
+            || orderedEntries(replacement).size() != old.value("entries").toList().size())
+            return fail(error, "bundled modular package conflicts with a legacy package: " + package.value("id").toString());
+        value = replacement;
+        return true;
+    }
+    packages->append(package);
+    return true;
+}
+bool normalizeBundledPackages(QVariantList *packages, QString *error)
+{
+    // An interrupted first boot of the initial implementation may have saved
+    // both rows before snapshot publication rejected their duplicate ID.
+    for (int i = packages->size() - 1; i >= 0; --i) {
+        const QVariantMap modular = packages->at(i).toMap();
+        if (modular.value("role").toString() != "modular" || !modular.value("bundled").toBool()
+            || modular.value("version").toString() != "base") continue;
+        bool duplicate = false;
+        for (int j = 0; j < packages->size(); ++j)
+            if (j != i && packages->at(j).toMap().value("id") == modular.value("id")) duplicate = true;
+        if (!duplicate) continue;
+        packages->removeAt(i);
+        bool preservedOverride = false;
+        for (QVariant &value : *packages) {
+            QVariantMap old = value.toMap();
+            if (old.value("id") != modular.value("id") || old.value("bundled").toBool()) continue;
+            QVariantList fallback{old.value("fallback")};
+            if (old.value("role").toString() != "extension"
+                || !addBundledModularPackage(&fallback, modular, error)) return false;
+            old.insert("fallback", fallback.first());
+            value = old; preservedOverride = true; break;
+        }
+        if (preservedOverride) continue;
+        if (!addBundledModularPackage(packages, modular, error)) return false;
+    }
+    return true;
+}
+QVariantMap mergeApkPresentation(QVariantMap package, const QVariantList &apkEntries)
+{
+    // Only APK-owned translation declarations advance. Rule scripts, support
+    // libraries, AI, package versions and existing override bytes stay pinned.
+    QVariantMap fallback = package.value("fallback").toMap();
+    if (!fallback.isEmpty()) package.insert("fallback", mergeApkPresentation(fallback, apkEntries));
+    if (package.value("role").toString() != "extension") return package;
+    QVariantList entries = package.value("entries").toList();
+    QStringList files = package.value("files").toStringList();
+    QStringList baselineLang = package.value("apk_presentation").toStringList();
+    for (QVariant &value : entries) {
+        QVariantMap entry = value.toMap();
+        for (const QVariant &apkValue : apkEntries) {
+            const QVariantMap apk = apkValue.toMap();
+            if (entry.value("name") != apk.value("name")) continue;
+            QStringList lang = entry.value("lang").toStringList();
+            for (const QString &path : apk.value("lang").toStringList()) {
+                if (!safePath(path) || !path.startsWith("lang/") || !path.endsWith(".lua")) continue;
+                if (!lang.contains(path)) lang << path;
+                if (!files.contains(path)) {
+                    files << path;
+                    if (package.value("version").toString() != "base") baselineLang << path;
+                }
+            }
+            // Keep an unchanged JSON array's QVariant representation intact;
+            // QStringList and JSON's QVariantList are not QVariant-equal.
+            if (lang != entry.value("lang").toStringList()) entry.insert("lang", lang);
+            break;
+        }
+        value = entry;
+    }
+    package.insert("entries", entries);
+    if (files != package.value("files").toStringList()) package.insert("files", files);
+    if (!baselineLang.isEmpty()) { baselineLang.removeDuplicates(); package.insert("apk_presentation", baselineLang); }
+    return package;
+}
 bool mergeBaselinePackages(const QVariantMap &snapshot, const QVariantMap &base,
                            QVariantMap *merged, QString *error)
 {
@@ -257,14 +405,30 @@ bool mergeBaselinePackages(const QVariantMap &snapshot, const QVariantMap &base,
         const QString id = bundled.value("id").toString();
         baselineIds << id;
         bool found = false;
-        for (const QVariant &existing : packages) {
-            const QVariantMap p = existing.toMap();
+        for (QVariant &existing : packages) {
+            QVariantMap p = existing.toMap();
             if (key(p.value("id").toString()) != key(id)) continue;
             // A prior bundled override keeps its fallback. An unrelated user
             // package with the newly introduced name must not be overwritten.
             if (p.value("id").toString() != id
                 || (!p.value("bundled").toBool() && !p.value("fallback").toMap().value("bundled").toBool()))
                 return fail(error, "new APK package conflicts with a user package: " + id);
+            // Reconcile presentation before comparing the legacy order anchor;
+            // new translations must not prevent the same-ID modular migration.
+            if (snapshot.value("baseline_revision") != base.value("revision")) {
+                p = mergeApkPresentation(p, orderedEntries(bundled));
+                existing = p;
+            }
+            if (snapshot.value("baseline_revision") != base.value("revision")
+                && p.value("bundled").toBool() && p.value("version").toString() == "base"
+                && !p.value("keep_legacy").toBool()
+                && p.value("role").toString() == "extension" && bundled.value("role").toString() == "modular"
+                && QJsonArray::fromVariantList(p.value("entries").toList())
+                    == QJsonArray::fromVariantList(bundled.value("fallback").toMap().value("entries").toList())) {
+                QVariantMap migrated = bundled;
+                migrated.insert("enabled", p.value("enabled", true));
+                existing = migrated;
+            }
             found = true;
             break;
         }
@@ -322,6 +486,7 @@ void AndroidContentStore::refreshPackages()
         const QVariantMap map = value.toMap();
         PackageInfo p;
         p.id = map.value("id").toString(); p.version = map.value("version").toString();
+        p.packageVersion = map.value("package_version").toString();
         p.role = map.value("role").toString(); p.enabled = map.value("enabled", true).toBool();
         p.bundled = map.value("bundled").toBool(); p.state = p.enabled ? "enabled" : "disabled";
         p.files = map.value("files").toStringList(); p.archiveBytes = map.value("archiveBytes").toULongLong();
@@ -358,12 +523,12 @@ bool AndroidContentStore::loadSnapshot(const QString &id, QVariantMap *snapshot,
         // Successful import is persistent installation state. New APK image
         // names and missing optional media never trigger a startup rescan.
         if (mediaPackage && !inspectMedia) continue;
-        entries << p.value("entries").toList();
+        entries << orderedEntries(p);
         for (const QString &path : p.value("files").toStringList()) {
             if (!safePath(path)) return fail(error, "invalid snapshot package path");
-            if (mediaPath(path) && !inspectMedia) continue;
+            if (optionalMediaPath(path) && !inspectMedia) continue;
             if (!runtimeFile(m_storeRoot, root, path, mediaSources, mediaRoots, p.value("version").toString(), &checkedDirectories)) {
-                if (mediaPath(path)) mediaValid = false;
+                if (optionalMediaPath(path)) mediaValid = false;
                 else return fail(error, "content package file is missing: " + path);
             }
         }
@@ -379,8 +544,16 @@ bool AndroidContentStore::loadSnapshot(const QString &id, QVariantMap *snapshot,
             || link.symLinkTarget() != QFileInfo(source).absolutePath()
             || !realParents(source, &checkedDirectories)) mediaValid = false;
     }
-    if (QJsonObject::fromVariantMap(descriptor(entries)) != QJsonObject::fromVariantMap(runtimeDescriptor))
-        return fail(error, "snapshot descriptor does not match its packages");
+    const auto legacyManifest = QSanRules::parseRuntimeContent(QJsonObject::fromVariantMap(descriptor(entries)));
+    if (!legacyManifest.isValid()) return fail(error, legacyManifest.error);
+    const QSanPackages::Catalog modularCatalog = QSanPackages::loadCatalog(root + "/runtime", false, false);
+    if (!modularCatalog.isValid()) return fail(error, modularCatalog.error);
+    const auto expectedManifest = QSanRules::mergePackageContent(legacyManifest,
+        QSanPackages::extensionDescriptors(modularCatalog), QSanPackages::packageDescriptors(modularCatalog));
+    if (!expectedManifest.isValid()
+        || QJsonObject::fromVariantMap(descriptor(expectedManifest)) != QJsonObject::fromVariantMap(runtimeDescriptor))
+        return fail(error, expectedManifest.error.isEmpty()
+            ? QStringLiteral("snapshot descriptor does not match its packages") : expectedManifest.error);
     snapshot->insert("media_ready", completeMedia && mediaValid);
     for (const QString &path : QSanRules::manifestDeliveredFiles(parsed) + QSanRules::manifestServerOnlyFiles(parsed))
         if (!regular(root + "/runtime/" + path)) return fail(error, "content version is incomplete: " + path);
@@ -399,7 +572,7 @@ bool AndroidContentStore::prepareStartup(QString *error)
         || !directory(m_storeRoot + "/blobs", error)) return false;
     // A killed process cannot run QTemporaryDir's destructor. Under the store
     // lock, only our known temporary directories are eligible for cleanup.
-    static const QRegularExpression temporaryName(QStringLiteral("^(base|legacy|version|media|extension)-[A-Za-z0-9]{6}$"));
+    static const QRegularExpression temporaryName(QStringLiteral("^(base|legacy|version|media|extension|modular)-[A-Za-z0-9]{6}$"));
     for (const QFileInfo &info : QDir(m_storeRoot + "/staging").entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
         if (!info.isSymLink() && temporaryName.match(info.fileName()).hasMatch()) QDir(info.absoluteFilePath()).removeRecursively();
     // QTemporaryFile also needs recovery after process death during SAF reads.
@@ -419,6 +592,8 @@ bool AndroidContentStore::prepareStartup(QString *error)
     static const QRegularExpression revisionPattern(QStringLiteral("^[0-9a-f]{64}$"));
     if (!revisionPattern.match(apkRevision).hasMatch()) apkRevision.clear();
     const bool refreshBaseline = apkRevision.isEmpty() || base.value("apk_revision").toString() != apkRevision
+        || base.value("bootstrap_version").toInt() != kBootstrapVersion
+        || base.value("presentation_version").toInt() != kPresentationVersion
         || base.value("revision").toString().isEmpty() || needsRecovery()
         || !QFileInfo(m_baseRoot).isDir();
     // Missing-only deployment is needed on installation/upgrade/recovery,
@@ -448,11 +623,25 @@ bool AndroidContentStore::prepareStartup(QString *error)
         if (!space(m_storeRoot, bytes, error)) return false;
         for (const QString &path : files)
             if (!copyFile(":/assets/" + path, temp.path() + "/runtime/" + path, error)) return false;
+        const QSanPackages::Catalog bundledCatalog = QSanPackages::loadCatalog(temp.path() + "/runtime", false, false);
+        if (!bundledCatalog.isValid()) return fail(error, bundledCatalog.error);
+        for (const QSanPackages::Package &package : bundledCatalog.packages)
+            if (!addBundledModularPackage(&packages, modularInfo(package, "base", modularFiles(package), true), error))
+                return false;
         QSet<QString> changed;
+        QSet<QString> sealedPackagePaths;
+        for (const QVariant &value : packages) {
+            const QVariantMap package = value.toMap();
+            if (package.value("role").toString() == "modular")
+                for (const QString &path : package.value("files").toStringList()) sealedPackagePaths.insert(key(path));
+        }
         const QStringList deployedFiles = treeFiles(deployed, &scanError);
         if (!scanError.isEmpty()) return fail(error, scanError);
         for (const QString &path : deployedFiles) {
             if (!safePath(path)) return fail(error, "invalid legacy runtime path");
+            // A bundled modular package is migrated as one unit. Do not turn
+            // individual legacy edits into undeclared partial package overrides.
+            if (sealedPackagePaths.contains(key(path))) continue;
             if (!QFileInfo::exists(":/assets/" + path)) changed.insert(path);
             else {
                 bool same = false;
@@ -470,12 +659,17 @@ bool AndroidContentStore::prepareStartup(QString *error)
             QSet<QString> capture = changed;
             for (QVariant &value : selected) {
                 const QVariantMap original = value.toMap();
-                const QStringList owned = original.value("files").toStringList();
+                const QStringList owned = ownedFiles(original);
                 bool modified = false;
                 for (const QString &path : owned) { packageOwned.insert(path); if (changed.contains(path)) modified = true; }
                 if (!modified) continue;
-                for (const QString &path : owned) capture.insert(path);
                 QVariantMap overridePackage = original;
+                // Preserve edited CP1 legacy payloads as a whole extension;
+                // removing that override explicitly restores the modular APK.
+                if (original.value("role").toString() == "modular"
+                    && original.value("fallback").toMap().value("role").toString() == "extension")
+                    overridePackage = original.value("fallback").toMap();
+                for (const QString &path : overridePackage.value("files").toStringList()) capture.insert(path);
                 overridePackage.insert("version", blob); overridePackage.insert("bundled", false);
                 overridePackage.insert("fallback", original); value = overridePackage;
             }
@@ -496,9 +690,21 @@ bool AndroidContentStore::prepareStartup(QString *error)
         temp.setAutoRemove(false);
     }
     if (!jsonRead(baseMetadata, &base, error)) return false;
-    // APK upgrades extend the original tree without replacing any existing
-    // inode. The revision is published only after every missing file exists;
-    // interruption simply retries the remaining files on the next launch.
+    QVariantList normalizedPackages = base.value("packages").toList();
+    QVariantMap normalizedInitial = base.value("initial_snapshot").toMap();
+    QVariantList normalizedInitialPackages = normalizedInitial.value("packages").toList();
+    if (!normalizeBundledPackages(&normalizedPackages, error)
+        || !normalizeBundledPackages(&normalizedInitialPackages, error)) return false;
+    if (normalizedPackages != base.value("packages").toList()
+        || normalizedInitialPackages != normalizedInitial.value("packages").toList()) {
+        normalizedInitial.insert("packages", normalizedInitialPackages);
+        base.insert("packages", normalizedPackages); base.insert("initial_snapshot", normalizedInitial);
+        base.insert("revision", uuid());
+        if (!jsonWrite(baseMetadata, base, error)) return false;
+    }
+    // APK upgrades extend the original tree; only the APK-owned bootstrap
+    // follows the APK revision. Snapshot copies and captured user edits remain
+    // independent. Publish the revision after all replacements/copies finish.
     if (refreshBaseline) {
         QVariantMap currentDescriptor;
         if (!jsonRead(":/assets/runtime-content-base.json", &currentDescriptor, error)) return false;
@@ -507,30 +713,130 @@ bool AndroidContentStore::prepareStartup(QString *error)
         QString resourceError;
         const QStringList currentFiles = treeFiles(":/assets", &resourceError);
         if (!resourceError.isEmpty()) return fail(error, resourceError);
-        bool baselineChanged = base.value("revision").toString().isEmpty();
+        quint64 incomingPackageBytes = 0;
+        for (const QString &path : currentFiles)
+            if (path.startsWith(QStringLiteral("packages/")))
+                incomingPackageBytes += quint64(QFileInfo(":/assets/" + path).size());
+        if (incomingPackageBytes && !space(m_storeRoot, incomingPackageBytes, error)) return false;
+        QTemporaryDir incomingPackages(m_storeRoot + "/staging/base-XXXXXX");
+        if (!incomingPackages.isValid()) return fail(error, "cannot stage bundled modular packages");
+        for (const QString &path : currentFiles) {
+            if (!path.startsWith(QStringLiteral("packages/"))) continue;
+            if (!copyFile(":/assets/" + path, incomingPackages.path() + "/runtime/" + path, error)) return false;
+        }
+        const QSanPackages::Catalog incomingCatalog = QSanPackages::loadCatalog(incomingPackages.path() + "/runtime", false, false);
+        if (!incomingCatalog.isValid()) return fail(error, incomingCatalog.error);
+        bool baselineChanged = base.value("revision").toString().isEmpty()
+            || base.value("presentation_version").toInt() != kPresentationVersion;
         QStringList knownResources = base.value("resource_paths").toStringList();
         QSet<QString> knownResourceSet(knownResources.cbegin(), knownResources.cend());
         for (const QString &path : currentFiles) {
+            // Modular trees are admitted and copied as complete checksum-sealed packages below.
+            if (path.startsWith(QStringLiteral("packages/"))) continue;
             if (!knownResourceSet.contains(path)) {
                 knownResourceSet.insert(path); knownResources << path; baselineChanged = true;
             }
             const QString target = m_baseRoot + '/' + path;
-            if (!QFileInfo::exists(target)) {
+            if (path == QStringLiteral("lua/sanguosha.lua")
+                && (base.value("apk_revision").toString() != apkRevision
+                    || base.value("bootstrap_version").toInt() != kBootstrapVersion)) {
+                // The bootstrap must understand the package layout shipped by
+                // this APK. QSaveFile replaces only the baseline file atomically;
+                // advancing its revision composes a new immutable active snapshot.
+                if (QFileInfo::exists(target) && !regular(target))
+                    return fail(error, "non-regular baseline bootstrap: " + path);
+                if (!space(m_storeRoot, quint64(QFileInfo(":/assets/" + path).size()), error)
+                    || !copyFile(":/assets/" + path, target, error)) return false;
+                baselineChanged = true;
+            } else if (!QFileInfo::exists(target)) {
                 if (!space(m_storeRoot, quint64(QFileInfo(":/assets/" + path).size()), error)
                     || !AndroidAssets::copyAssetFile(path, target, error)) return false;
                 baselineChanged = true;
             } else if (!regular(target)) return fail(error, "non-regular baseline content: " + path);
         }
         QVariantList baselinePackages = base.value("packages").toList();
+        const QSanPackages::Catalog existingCatalog = QSanPackages::loadCatalog(m_baseRoot, false, false);
+        if (!existingCatalog.isValid()) return fail(error, existingCatalog.error);
+        QStringList packageConflicts;
+        for (const QSanPackages::Package &package : incomingCatalog.packages) {
+            const QSanPackages::Package *existing = nullptr;
+            for (const QSanPackages::Package &candidate : existingCatalog.packages)
+                if (candidate.id == package.id) { existing = &candidate; break; }
+            bool metadataPresent = false;
+            bool metadataModular = false;
+            bool legacyMigration = false;
+            for (const QVariant &item : baselinePackages) {
+                const QVariantMap old = item.toMap();
+                if (key(old.value("id").toString()) != key(package.id)) continue;
+                if (old.value("id").toString() == package.id && old.value("role").toString() == "extension"
+                    && old.value("bundled").toBool() && old.value("version").toString() == "base") {
+                    QVariantList candidate{old};
+                    if (addBundledModularPackage(&candidate, modularInfo(package, "base", modularFiles(package), true), error)) {
+                        metadataPresent = true; legacyMigration = true; break;
+                    }
+                }
+                if (old.value("id").toString() != package.id || old.value("role").toString() != "modular") {
+                    packageConflicts << package.id;
+                    metadataPresent = true;
+                    break;
+                }
+                metadataPresent = true;
+                metadataModular = true;
+                break;
+            }
+            if (existing && modularRulesMetadata(existing->manifest) != modularRulesMetadata(package.manifest)) {
+                packageConflicts << package.id;
+                if (!metadataPresent) {
+                    baselinePackages.append(modularInfo(*existing, "base", modularFiles(*existing), true));
+                    baselineChanged = true;
+                }
+                continue;
+            }
+            if (metadataPresent && !metadataModular && !legacyMigration) continue;
+            if (metadataPresent && !existing && !legacyMigration) {
+                packageConflicts << package.id;
+                continue;
+            }
+            if (existing) {
+                if (!metadataPresent || legacyMigration) {
+                    if (!addBundledModularPackage(&baselinePackages, modularInfo(*existing, "base", modularFiles(*existing), true), error))
+                        return false;
+                    baselineChanged = true;
+                }
+                continue;
+            }
+
+            const QStringList files = modularFiles(package);
+            quint64 packageBytes = 0;
+            for (const QString &path : files) packageBytes += quint64(QFileInfo(incomingPackages.path() + "/runtime/" + path).size());
+            if (!space(m_storeRoot, packageBytes, error)) return false;
+            QTemporaryDir packageStage(m_storeRoot + "/staging/modular-XXXXXX");
+            if (!packageStage.isValid()) return fail(error, "cannot stage a complete APK modular package");
+            for (const QString &path : files)
+                if (!copyFile(incomingPackages.path() + "/runtime/" + path,
+                              packageStage.path() + "/runtime/" + path, error, false, nullptr, nullptr,
+                              optionalMediaPath(path))) return false;
+            const QString sourceDirectory = packageStage.path() + "/runtime/packages/" + package.id;
+            const QString targetDirectory = m_baseRoot + "/packages/" + package.id;
+            if (!directory(QFileInfo(targetDirectory).absolutePath(), error)
+                || !QDir().rename(sourceDirectory, targetDirectory))
+                return fail(error, "cannot atomically add bundled modular package: " + package.id);
+            if (!addBundledModularPackage(&baselinePackages, modularInfo(package, "base", files, true), error)) return false;
+            for (const QString &path : files)
+                if (!knownResourceSet.contains(path)) { knownResourceSet.insert(path); knownResources << path; }
+            baselineChanged = true;
+        }
         for (const QVariant &entry : currentDescriptor.value("extensions").toList()) {
             const QVariantMap e = entry.toMap();
             const QString id = e.value("name").toString();
             if (!packageId(id)) return fail(error, "invalid new bundled package name");
             bool present = false;
-            for (const QVariant &p : baselinePackages) {
+            for (QVariant &p : baselinePackages) {
                 const QString oldId = p.toMap().value("id").toString();
                 if (key(oldId) == key(id)) {
                     if (oldId != id) return fail(error, "case-colliding APK package name: " + id);
+                    const QVariantMap merged = mergeApkPresentation(p.toMap(), {e});
+                    if (merged != p.toMap()) { p = merged; baselineChanged = true; }
                     present = true; break;
                 }
             }
@@ -545,7 +851,20 @@ bool AndroidContentStore::prepareStartup(QString *error)
         }
         if (baselineChanged || base.value("apk_revision").toString() != apkRevision) {
             base.insert("apk_revision", apkRevision);
+            // Metadata-only migration marker also repairs old baselines whose
+            // failed launch already recorded this same APK resource revision.
+            base.insert("bootstrap_version", kBootstrapVersion);
+            base.insert("presentation_version", kPresentationVersion);
             if (!jsonWrite(baseMetadata, base, error)) return false;
+        }
+        if (!packageConflicts.isEmpty()) {
+            packageConflicts.removeDuplicates();
+            QVariantMap conflictState = m_state;
+            conflictState.insert("boot_attempt", true);
+            conflictState.insert("upgrade_conflict", true);
+            conflictState.insert("recovery_error", QStringLiteral("APK modular package changed; preserving the previous complete package: %1")
+                .arg(packageConflicts.join(QStringLiteral(", "))));
+            if (!commitState(conflictState, error)) return false;
         }
     }
     // The imported private snapshot is already published. Startup selects it;
@@ -651,8 +970,12 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
     QVariantMap composed;
     if (!mergeBaselinePackages(snapshot, base, &composed, error)) return false;
     QSet<QString> baselineOwned;
-    for (const QVariant &value : base.value("packages").toList())
-        for (const QString &path : value.toMap().value("files").toStringList()) baselineOwned.insert(key(path));
+    QSet<QString> baselineLang;
+    for (const QVariant &value : base.value("packages").toList()) {
+        for (const QString &path : ownedFiles(value.toMap())) baselineOwned.insert(key(path));
+        for (const QVariant &entry : orderedEntries(value.toMap()))
+            for (const QString &path : entry.toMap().value("lang").toStringList()) baselineLang.insert(path);
+    }
     QMap<QString, QString> sources;
     QVariantMap mediaSources;
     QSet<QString> checkedDirectories;
@@ -668,10 +991,15 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
     }
     const QVariantMap legacy = composed.value("legacy_overrides").toMap();
     for (auto it = legacy.cbegin(); it != legacy.cend(); ++it) {
-        if (!safePath(it.key()) || !versionId(it.value().toString()) || baselineOwned.contains(key(it.key())))
+        if (!safePath(it.key()) || !versionId(it.value().toString())
+            || (baselineOwned.contains(key(it.key())) && !baselineLang.contains(it.key())))
             return fail(error, "invalid preserved legacy override");
+        // A newly declared APK translation can already have a user override.
+        // Its source is selected with the owning package below, never discarded.
+        if (baselineOwned.contains(key(it.key()))) continue;
         const QString source = m_storeRoot + "/blobs/" + it.value().toString() + "/runtime/" + it.key();
-        if (!regular(source, &checkedDirectories)) return fail(error, "preserved legacy override is missing");
+        if (!optionalMediaPath(it.key()) && !regular(source, &checkedDirectories))
+            return fail(error, "preserved legacy override is missing");
         sources.insert(it.key(), source);
         if (mediaPath(it.key())) mediaSources.insert(it.key(), it.value());
     }
@@ -692,32 +1020,45 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
         const QString root = blob == "base" ? m_baseRoot : m_storeRoot + "/blobs/" + blob + "/runtime";
         const QStringList files = p.value("files").toStringList();
         const QSet<QString> fileSet(files.cbegin(), files.cend());
+        const QStringList apkPresentation = p.value("apk_presentation").toStringList();
+        for (const QString &path : apkPresentation)
+            if (!fileSet.contains(path) || !baselineLang.contains(path))
+                return fail(error, "invalid APK presentation source: " + path);
         for (const QString &path : files) {
             if (cancelled(cancel, error)) return false;
             if (!safePath(path) || owners.contains(key(path))) return fail(error, "content path is owned by another enabled package: " + path);
             owners.insert(key(path));
-            if (blob != "base" && !(p.value("role").toString() == "media" ? mediaPath(path) : extensionPath(path)))
+            const bool modularPath = p.value("role").toString() == "modular"
+                && path.startsWith(QStringLiteral("packages/%1/").arg(id));
+            if (blob != "base" && !(p.value("role").toString() == "media" ? mediaPath(path)
+                                   : p.value("role").toString() == "modular" ? modularPath : extensionPath(path)))
                 return fail(error, "package attempts to replace protected runtime content: " + path);
-            if (!regular(root + '/' + path, &checkedDirectories)) return fail(error, "package payload is missing: " + path);
+            // Installed media is optional. Recomposition must not turn an APK
+            // update or package removal into an exhaustive media-presence gate.
+            QString source = root + '/' + path;
+            if (apkPresentation.contains(path)) source = m_baseRoot + '/' + path;
+            if (baselineLang.contains(path) && legacy.contains(path))
+                source = m_storeRoot + "/blobs/" + legacy.value(path).toString() + "/runtime/" + path;
+            if (!optionalMediaPath(path) && !regular(source, &checkedDirectories))
+                return fail(error, "package payload is missing: " + path);
             // Imported content may replace media and a same-package bundled
             // payload, but never an unrelated core Lua/runtime file.
             if (sources.contains(path) && !mediaPath(path)) return fail(error, "package collides with baseline content: " + path);
-            sources.insert(path, root + '/' + path);
+            sources.insert(path, source);
             if (mediaPath(path)) mediaSources.insert(path, blob);
         }
         for (const QVariant &entry : p.value("entries").toList()) {
             for (const QString &path : entryFiles(entry.toMap()))
                 if (!fileSet.contains(path)) return fail(error, "descriptor references a file outside its package: " + path);
-            entries.append(entry);
         }
+        entries << orderedEntries(p);
         if (p.value("role").toString() == "media" && p.value("complete_media").toBool()) {
             completeMedia = true;
             wholeMediaBlobs.insert(blob);
         }
     }
-    const QVariantMap contentDescriptor = descriptor(entries);
-    const auto parsed = QSanRules::parseRuntimeContent(QJsonObject::fromVariantMap(contentDescriptor));
-    if (!parsed.isValid()) return fail(error, parsed.error);
+    const auto legacyManifest = QSanRules::parseRuntimeContent(QJsonObject::fromVariantMap(descriptor(entries)));
+    if (!legacyManifest.isValid()) return fail(error, legacyManifest.error);
     quint64 bytes = 0;
     QSet<QString> portable;
     for (auto it = sources.cbegin(); it != sources.cend(); ++it) {
@@ -753,8 +1094,15 @@ bool AndroidContentStore::publishSnapshot(const QVariantMap &snapshot, QString *
 #endif
     for (auto it = sources.cbegin(); it != sources.cend(); ++it) {
         if (mediaRoots.contains(it.key().section('/', 0, 0))) continue;
-        if (!copyFile(it.value(), temp.path() + "/runtime/" + it.key(), error, mediaPath(it.key()), cancel, &checkedDirectories)) return false;
+        if (!copyFile(it.value(), temp.path() + "/runtime/" + it.key(), error, mediaPath(it.key()),
+                      cancel, &checkedDirectories, optionalMediaPath(it.key()))) return false;
     }
+    const QSanPackages::Catalog modularCatalog = QSanPackages::loadCatalog(temp.path() + "/runtime", false, false);
+    if (!modularCatalog.isValid()) return fail(error, modularCatalog.error);
+    const auto contentManifest = QSanRules::mergePackageContent(legacyManifest,
+        QSanPackages::extensionDescriptors(modularCatalog), QSanPackages::packageDescriptors(modularCatalog));
+    if (!contentManifest.isValid()) return fail(error, contentManifest.error);
+    const QVariantMap contentDescriptor = descriptor(contentManifest);
     QVariantMap metadata = composed;
 #ifdef Q_OS_UNIX
     for (auto it = mediaSources.begin(); it != mediaSources.end();) {
@@ -984,7 +1332,14 @@ bool AndroidContentStore::removePackage(const QString &id, QString *error)
         QVariantMap p = list[i].toMap();
         if (p.value("id").toString() != id) continue;
         found = true;
-        if (!p.value("fallback").toMap().isEmpty()) list[i] = p.value("fallback");
+        if (!p.value("fallback").toMap().isEmpty()) {
+            QVariantMap restored = p.value("fallback").toMap();
+            // An explicit return to the legacy APK package survives later
+            // unrelated baseline revisions; only new migrations are automatic.
+            if (p.value("role").toString() == "modular" && restored.value("role").toString() == "extension")
+                restored.insert("keep_legacy", true);
+            list[i] = restored;
+        }
         else if (p.value("bundled").toBool()) { p.insert("enabled", false); list[i] = p; }
         else list.removeAt(i);
         break;
@@ -1022,10 +1377,8 @@ bool AndroidContentStore::rollback(QString *error)
 
 bool AndroidContentStore::exportDescriptor(QIODevice &destination, QString *error) const
 {
-    QVariantList entries;
-    for (const QVariant &value : m_snapshot.value("packages").toList())
-        entries << effective(value.toMap()).value("entries").toList();
-    const QByteArray bytes = QJsonDocument::fromVariant(descriptor(entries)).toJson(QJsonDocument::Indented);
+    const QVariantMap current = m_snapshot.value("descriptor").toMap();
+    const QByteArray bytes = QJsonDocument::fromVariant(current).toJson(QJsonDocument::Indented);
     qint64 written = 0;
     while (written < bytes.size()) {
         const qint64 n = destination.write(bytes.constData() + written, bytes.size() - written);
@@ -1276,6 +1629,91 @@ bool AndroidContentStore::stageExtension(QIODevice &source, const QString &filen
     if (!QDir().rename(temp.path(), m_storeRoot + "/blobs/" + blob)) return fail(error, "cannot publish extension payload");
     temp.setAutoRemove(false);
     const bool result = stageSnapshot(withPackage(m_snapshot, package), error, cancel);
+    if (!result) collectUnusedVersions();
+    return result;
+}
+
+bool AndroidContentStore::stageModularPackage(QIODevice &source, const QString &filename,
+                                             Cancelled *cancel, const Progress &progress,
+                                             QString *error)
+{
+    if (!m_prepared) return fail(error, "content store has not been prepared");
+    if (!safePath(filename) || filename.contains('/') || !filename.endsWith(".zip", Qt::CaseInsensitive))
+        return fail(error, "modular package import must be a ZIP file");
+    QLockFile lock(m_lockPath);
+    if (!lock.tryLock(1000)) return fail(error, "content store is busy");
+    QTemporaryDir temp(m_storeRoot + "/staging/modular-XXXXXX");
+    if (!temp.isValid()) return fail(error, "cannot stage modular package");
+
+    ImportLimits limits;
+    limits.maxArchiveBytes = quint64(512) * 1024 * 1024;
+    limits.maxExpandedBytes = quint64(1024) * 1024 * 1024;
+    limits.maxEntryBytes = quint64(128) * 1024 * 1024;
+    limits.maxEntries = 100000;
+    limits.maxCompressionRatio = 200;
+    AndroidZipReader reader(m_storeRoot + QStringLiteral("/staging"));
+    if (!reader.open(source, limits, cancel, error)) return false;
+
+    const AndroidZipReader::Entry *manifestEntry = nullptr;
+    for (const auto &entry : reader.entries()) {
+        if (entry.directory) continue;
+        if (entry.path == QStringLiteral("manifest.json")) {
+            manifestEntry = &entry;
+            continue;
+        }
+    }
+    if (!manifestEntry) return fail(error, "modular package ZIP must contain root manifest.json");
+    QVariantMap rawManifest;
+    if (!readZipJson(reader, *manifestEntry, &rawManifest, cancel, error)) return false;
+    const QString id = rawManifest.value("id").toString();
+    static const QRegularExpression modularId(QStringLiteral("^[a-z0-9][a-z0-9_-]*$"));
+    if (!modularId.match(id).hasMatch()) return fail(error, "invalid modular package id");
+
+    const QString packageRoot = temp.path() + QStringLiteral("/runtime/packages/") + id;
+    if (!directory(packageRoot, error)) return false;
+    // Use archive metadata to reject undeclared payloads during extraction.
+    // This does not enumerate installed media or inspect their checksums.
+    QSet<QString> declaredPaths{QStringLiteral("manifest.json")};
+    for (const QVariant &file : rawManifest.value("files").toList())
+        declaredPaths.insert(file.toMap().value("path").toString());
+    quint64 expanded = 0;
+    for (const auto &entry : reader.entries()) {
+        if (entry.directory) continue;
+        if (!declaredPaths.contains(entry.path)) return fail(error, "undeclared modular package payload: " + entry.path);
+        expanded += entry.uncompressedSize;
+    }
+    if (!space(m_storeRoot, expanded, error)) return false;
+    quint64 completed = 0;
+    for (const auto &entry : reader.entries()) {
+        if (entry.directory) continue;
+        const QString target = entry.path == QStringLiteral("manifest.json")
+            ? packageRoot + QStringLiteral("/manifest.json")
+            : packageRoot + QLatin1Char('/') + entry.path;
+        const Progress report = [&](quint64 done, quint64) {
+            if (progress) progress(completed + done, expanded);
+        };
+        if (!extractFile(reader, entry, target, cancel, report, error)) return false;
+        completed += entry.uncompressedSize;
+    }
+
+    QString validationError;
+    const QSanPackages::Package package = QSanPackages::parsePackage(packageRoot, &validationError, false, false);
+    if (!validationError.isEmpty()) return fail(error, validationError);
+    const QStringList files = modularFiles(package);
+    for (const QString &path : files)
+        if (!optionalMediaPath(path) && !regular(temp.path() + "/runtime/" + path))
+            return fail(error, "modular package payload is missing: " + path);
+    if (!syncStagedPayload(packageRoot, error)) return false;
+
+    const QString blob = uuid();
+    QVariantMap metadata = modularInfo(package, blob, files, false);
+    metadata.insert("archiveBytes", reader.archiveSize());
+    metadata.insert("expandedBytes", expanded);
+    if (!jsonWrite(temp.path() + "/package.json", metadata, error)) return false;
+    if (!QDir().rename(temp.path(), m_storeRoot + "/blobs/" + blob))
+        return fail(error, "cannot publish modular package payload");
+    temp.setAutoRemove(false);
+    const bool result = stageSnapshot(withPackage(m_snapshot, metadata), error, cancel);
     if (!result) collectUnusedVersions();
     return result;
 }

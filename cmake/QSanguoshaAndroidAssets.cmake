@@ -108,6 +108,31 @@ function(qsan_add_android_runtime_assets target)
         list(APPEND qsan_android_files "${qsan_android_file}")
     endforeach()
 
+    # Modular packages are ordinary asset trees: keep their manifests and
+    # every package-relative payload path intact in Qt resources.
+    file(GLOB qsan_android_package_manifests CONFIGURE_DEPENDS
+        "${qsan_android_root}/packages/*/manifest.json")
+    foreach(qsan_android_manifest IN LISTS qsan_android_package_manifests)
+        get_filename_component(qsan_android_package_root "${qsan_android_manifest}" DIRECTORY)
+        file(GLOB_RECURSE qsan_android_package_files CONFIGURE_DEPENDS
+            "${qsan_android_package_root}/*")
+        foreach(qsan_android_file IN LISTS qsan_android_package_files)
+            if(IS_DIRECTORY "${qsan_android_file}")
+                continue()
+            endif()
+            if(IS_SYMLINK "${qsan_android_file}")
+                message(FATAL_ERROR "Android package assets cannot contain symlinks: '${qsan_android_file}'")
+            endif()
+            file(RELATIVE_PATH qsan_android_relative "${qsan_android_root}" "${qsan_android_file}")
+            string(REPLACE "\\" "/" qsan_android_relative "${qsan_android_relative}")
+            if(qsan_android_relative MATCHES "(^|/)(\\.git|\\.svn|\\.hg|logs|temp)(/|$)"
+                OR qsan_android_relative MATCHES "(\\.bak([.-].*)?|\\.backup|\\.sync-conflict-)")
+                continue()
+            endif()
+            list(APPEND qsan_android_files "${qsan_android_file}")
+        endforeach()
+    endforeach()
+
     # Settings::init uses simli by default; retain a CJK fallback in the base APK.
     foreach(qsan_android_font font/simli.ttf font/DroidSansFallback.ttf)
         if(NOT EXISTS "${qsan_android_root}/${qsan_android_font}")
