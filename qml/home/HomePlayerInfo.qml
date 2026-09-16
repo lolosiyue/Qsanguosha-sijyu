@@ -6,6 +6,7 @@ Item {
     id: root
 
     property int avatarSize: 64
+    property bool compact: false
 
     implicitWidth: avatarCircle.width + 14 + nameColumn.width
     implicitHeight: avatarSize
@@ -56,9 +57,11 @@ Item {
         anchors.left: avatarCircle.right
         anchors.leftMargin: 14
         anchors.verticalCenter: parent.verticalCenter
+        width: root.compact ? Math.max(0, root.width - avatarCircle.width - 14) : implicitWidth
 
         Text {
             id: nameText
+            width: root.compact ? nameColumn.width : implicitWidth
 
             text: homeController.playerName
 

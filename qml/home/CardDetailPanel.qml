@@ -9,6 +9,7 @@ Item {
     id: root
 
     property var cardModel
+    property bool compact: false
     property var detail: ({})
     readonly property int cardId: detail && detail.cardId !== undefined ? detail.cardId : -1
     readonly property var firstVisibleAction: cardId >= 0 ? detailScroll : null
@@ -123,12 +124,15 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            RowLayout {
+            GridLayout {
+                columns: root.compact ? 1 : 2
                 visible: root.cardId >= 0
                 Layout.fillWidth: true
-                spacing: HomeTheme.cardDetailHeroGap
+                rowSpacing: HomeTheme.cardDetailHeroGap
+                columnSpacing: HomeTheme.cardDetailHeroGap
 
                 Rectangle {
+                    Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: HomeTheme.cardDetailImageWidth
                     Layout.preferredHeight: HomeTheme.cardDetailImageHeight
                     radius: HomeTheme.cardControlRadius

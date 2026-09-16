@@ -1,7 +1,17 @@
 #include "android-dialog-fit.h"
+#include "settings.h"
 
 #include <QApplication>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QAbstractButton>
+#include <QMainWindow>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QComboBox>
+#include <QAbstractSpinBox>
+#include <QTabWidget>
+#include <QScopedValueRollback>
 #include <QEvent>
 #include <QFileDialog>
 #include <QGuiApplication>
@@ -26,6 +36,9 @@ public:
 
     bool eventFilter(QObject *watched, QEvent *event) override
     {
+        if (qobject_cast<QMainWindow *>(watched)
+            && (event->type() == QEvent::Resize || event->type() == QEvent::Move))
+            QTimer::singleShot(0, this, [this] { refitAll(); });
         auto *dialog = qobject_cast<QDialog *>(watched);
         if (!dialog || !isEligible(dialog))
             return QObject::eventFilter(watched, event);
@@ -46,7 +59,7 @@ public:
     void refitAll()
     {
         for (QWidget *widget : m_application->topLevelWidgets()) {
-            if (auto *dialog = qobject_cast<QDialog *>(widget); dialog && isEligible(dialog))
+            if (auto *dialog = qobject_cast<QDialog *>(widget); dialog && dialog->isVisible() && isEligible(dialog))
                 fit(dialog);
         }
     }
@@ -54,6 +67,10 @@ public:
 private:
     static bool isEligible(QDialog *dialog)
     {
+#ifndef Q_OS_ANDROID
+        if (!Config.responsiveUiEnabled() && !dialog->property("androidDialogFitWrapped").toBool())
+            return false;
+#endif
         if (qobject_cast<QFileDialog *>(dialog))
             return false; // Native Android picker owns its own geometry.
         if (dialog->property("nativeQFileDialog").toBool())
@@ -83,6 +100,17 @@ private:
             return {};
 
         QRect available = screen->availableGeometry();
+#ifndef Q_OS_ANDROID
+        // Preview uses the main window's viewport, not the whole desktop monitor.
+        if (Config.responsiveUiEnabled()) {
+            for (QWidget *owner = dialog->parentWidget(); owner; owner = owner->parentWidget()) {
+                if (qobject_cast<QMainWindow *>(owner)) {
+                    available = available.intersected(QRect(owner->mapToGlobal(QPoint()), owner->size()));
+                    break;
+                }
+            }
+        }
+#endif
         if (QWindow *window = dialog->windowHandle()) {
             const QMargins safe = window->safeAreaMargins();
             available.adjust(safe.left(), safe.top(), -safe.right(), -safe.bottom());
@@ -102,6 +130,10 @@ private:
 
     static void fit(QDialog *dialog)
     {
+        // Layout transfer can deliver Resize synchronously; one pass owns geometry.
+        static bool fitting = false;
+        if (fitting) return;
+        QScopedValueRollback<bool> guard(fitting, true);
         const QRect available = availableGeometry(dialog);
         if (available.isEmpty())
             return;
@@ -117,8 +149,9 @@ private:
             return;
         }
 
+        const bool responsive = Config.responsiveUiEnabled();
         const QSize preferred = dialog->sizeHint().expandedTo(dialog->minimumSizeHint());
-        if ((preferred.height() > available.height() || preferred.width() > available.width())
+        if ((responsive || preferred.height() > available.height() || preferred.width() > available.width())
             && !dialog->property("androidDialogFitWrapped").toBool())
             wrapContents(dialog);
         // Preserve the original content layout's minimum inside the scroll
@@ -127,12 +160,31 @@ private:
             dialog->setMinimumSize(0, 0);
             dialog->layout()->setSizeConstraint(QLayout::SetNoConstraint);
         }
-        QSize bounded = preferred.boundedTo(available.size());
+        QWidget *footer = dialog->findChild<QWidget *>(QStringLiteral("responsiveDialogFooter"));
+        if (footer) {
+            const Qt::Alignment side = responsive && Config.oneHandedness() == 1 ? Qt::AlignLeft
+                : responsive && Config.oneHandedness() == 2 ? Qt::AlignRight : Qt::AlignHCenter;
+            dialog->layout()->setAlignment(footer, side);
+            const bool narrow = responsive && available.width() < 600;
+            if (auto *box = qobject_cast<QDialogButtonBox *>(footer))
+                box->setOrientation(narrow ? Qt::Vertical : Qt::Horizontal);
+            else if (auto *box = qobject_cast<QBoxLayout *>(footer->layout()))
+                box->setDirection(narrow ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+        }
+        QSize bounded = (responsive ? dialog->sizeHint() : preferred).boundedTo(available.size());
+        if (responsive && (available.width() < 600 || available.height() > available.width()))
+            bounded.setWidth(available.width());
         bounded.setWidth(qMax(1, bounded.width()));
         bounded.setHeight(qMax(1, bounded.height()));
         dialog->setMaximumSize(available.size());
         dialog->resize(bounded);
-        dialog->move(available.center() - QPoint(dialog->width() / 2, dialog->height() / 2));
+        const int y = responsive && Config.oneHandedness() != 0
+            ? available.bottom() - dialog->height() + 1
+            : available.center().y() - dialog->height() / 2;
+        const int x = responsive && Config.oneHandedness() == 1 ? available.left()
+            : responsive && Config.oneHandedness() == 2 ? available.right() - dialog->width() + 1
+            : available.center().x() - dialog->width() / 2;
+        dialog->move(x, y);
 
     }
 
@@ -142,6 +194,45 @@ private:
         if (!oldLayout || dialog->property("androidDialogFitWrapped").toBool())
             return;
 
+        QWidget *footer = nullptr;
+        // Detach only a recognised bottom action row. Confirmation stays outside scrolling.
+        if (auto *column = qobject_cast<QVBoxLayout *>(oldLayout); column && column->count()) {
+            QLayoutItem *last = column->itemAt(column->count() - 1);
+            if (qobject_cast<QDialogButtonBox *>(last->widget())) {
+                last = column->takeAt(column->count() - 1);
+                footer = last->widget();
+                delete last;
+            } else if (auto *row = qobject_cast<QHBoxLayout *>(last->layout())) {
+                bool buttonsOnly = true;
+                for (int i = 0; i < row->count(); ++i) {
+                    auto *item = row->itemAt(i);
+                    if (!item->spacerItem() && !qobject_cast<QAbstractButton *>(item->widget()))
+                        buttonsOnly = false;
+                }
+                if (buttonsOnly) {
+                    column->takeAt(column->count() - 1);
+                    row->setParent(nullptr);
+                    footer = new QWidget(dialog);
+                    footer->setLayout(row);
+                }
+            }
+        }
+        if (footer) {
+            footer->setObjectName(QStringLiteral("responsiveDialogFooter"));
+            for (auto *button : footer->findChildren<QAbstractButton *>())
+                button->setMinimumHeight(48);
+        }
+        if (Config.responsiveUiEnabled()) {
+            for (QWidget *control : dialog->findChildren<QWidget *>()) {
+                if (qobject_cast<QAbstractButton *>(control) || qobject_cast<QLineEdit *>(control)
+                    || qobject_cast<QComboBox *>(control) || qobject_cast<QAbstractSpinBox *>(control))
+                    control->setMinimumHeight(48);
+            }
+        }
+        for (auto *form : dialog->findChildren<QFormLayout *>())
+            form->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        for (auto *tabs : dialog->findChildren<QTabWidget *>())
+            tabs->setUsesScrollButtons(true);
         auto *body = new QWidget;
         // QWidget transfers the existing layout from its previous widget.
         // Keep grid/form placement, spans, stretches and button-box structure.
@@ -152,7 +243,8 @@ private:
         scroll->setWidget(body);
         auto *layout = new QVBoxLayout(dialog);
         layout->setContentsMargins(0, 0, 0, 0);
-        layout->addWidget(scroll);
+        layout->addWidget(scroll, 1);
+        if (footer) layout->addWidget(footer);
         dialog->setProperty("androidDialogFitWrapped", true);
     }
 
@@ -168,6 +260,16 @@ void installAndroidDialogFit(QApplication *application)
         return;
     auto *filter = new AndroidDialogFitFilter(application);
     application->installEventFilter(filter);
+    QObject::connect(&Config, &Settings::uiLayoutChanged, filter, [filter] {
+        QTimer::singleShot(0, filter, [filter] { filter->refitAll(); });
+    });
+    QObject::connect(application, &QApplication::focusChanged, filter,
+        [](QWidget *, QWidget *focused) {
+            for (QWidget *parent = focused; parent; parent = parent->parentWidget()) {
+                if (auto *scroll = qobject_cast<QScrollArea *>(parent))
+                    scroll->ensureWidgetVisible(focused);
+            }
+        });
     application->setProperty("androidDialogFitInstalled", true);
     if (QInputMethod *inputMethod = QGuiApplication::inputMethod()) {
         QObject::connect(inputMethod, &QInputMethod::keyboardRectangleChanged,

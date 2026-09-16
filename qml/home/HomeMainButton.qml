@@ -8,6 +8,8 @@ AbstractButton {
     property url iconSource: ""
     property string leadingText: ""
     property bool primary: false
+    property bool compact: false
+    property bool tile: false
     property bool highContrast: homeController && homeController.visualMode === "highcontrast"
 
     implicitWidth: control.primary ? 470 : 440
@@ -99,10 +101,11 @@ AbstractButton {
             id: iconCircle
 
             anchors.left: parent.left
-            anchors.leftMargin: 14
+            anchors.leftMargin: control.tile ? 12 : 14
             anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: control.tile ? -17 : 0
 
-            width: control.height - 28
+            width: control.tile ? 28 : control.height - 28
             height: width
             radius: width / 2
 
@@ -114,7 +117,7 @@ AbstractButton {
             Image {
                 anchors.centerIn: parent
 
-                width: parent.width * 0.5
+                width: parent.width * (control.tile ? 0.8 : 0.5)
                 height: width
 
                 source: control.iconSource
@@ -127,17 +130,20 @@ AbstractButton {
             id: leadingLabel
 
             visible: control.leadingText !== ""
-            width: visible ? Math.min(168, implicitWidth) : 0
+            // Stack the mode above the action on narrow screens; keep the original icon.
+            width: visible ? (control.compact ? Math.max(0, control.width - iconCircle.width - (control.tile ? 32 : 58))
+                                              : Math.min(168, implicitWidth)) : 0
 
             anchors.left: iconCircle.right
             anchors.leftMargin: visible ? 12 : 0
             anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: control.compact ? -16 : 0
 
             text: control.leadingText
             elide: Text.ElideRight
             color: control.primary ? HomeTheme.btnPrimaryText : HomeTheme.baNavy
             opacity: 0.82
-            font.pixelSize: control.highContrast
+            font.pixelSize: control.tile ? 14 : control.highContrast
                             ? Math.max(16, control.height * 0.24)
                             : Math.max(15, control.height * 0.22)
             font.weight: Font.DemiBold
@@ -146,7 +152,7 @@ AbstractButton {
         Rectangle {
             id: leadingDivider
 
-            visible: leadingLabel.visible
+            visible: leadingLabel.visible && !control.compact
             width: 1
             height: Math.max(18, control.height * 0.36)
 
@@ -161,18 +167,20 @@ AbstractButton {
         Text {
             id: label
 
-            anchors.left: leadingDivider.visible ? leadingDivider.right : iconCircle.right
-            anchors.leftMargin: leadingDivider.visible ? 12 : 20
+            anchors.left: control.tile ? parent.left : (leadingDivider.visible ? leadingDivider.right : iconCircle.right)
+            anchors.leftMargin: control.tile ? 8 : (leadingDivider.visible ? 12 : 20)
             anchors.right: parent.right
-            anchors.rightMargin: 24
+            anchors.rightMargin: control.tile ? 8 : 24
             anchors.verticalCenter: parent.verticalCenter
 
             text: control.text
+            anchors.verticalCenterOffset: control.tile || (control.compact && leadingLabel.visible) ? 16 : 0
+            elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
 
             color: control.primary ? HomeTheme.btnPrimaryText : HomeTheme.baNavy
-            font.pixelSize: control.highContrast
+            font.pixelSize: control.tile ? 18 : control.highContrast
                             ? Math.max(22, control.height * 0.32)
                             : Math.max(20, control.height * 0.28)
             font.weight: control.highContrast ? Font.Bold : Font.DemiBold

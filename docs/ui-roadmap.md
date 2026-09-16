@@ -299,6 +299,11 @@ Qt／Android 自適應版面已拆成[七階段實作計畫](room-layout-engine-
 後續直向採「空間足夠保留座次環、不足轉席位帶」，不以方向單獨決定骨架。
 PR3–7 已加入手動 Responsive preview、玩家詳情、互動區、席位帶及摺疊姿態橋接。
 原始碼、Windows Debug 建置與三項 focused 驗證已完成，Android APK 亦已建置；預設仍為 LegacyLandscape，Responsive preview 的 GUI／Android 互動驗收尚未完成。
+後續已補全程直向／單手操作來源：首頁常駐入口、共用偏好、窄版首頁、進房前對話框與返回首頁的旋轉延續；此修訂已於 2026-09-16 完成 Windows Debug GUI 增量建置並開啟供人工驗證；GUI 互動與 Android 仍待验收，不能引用前述 PR3–7 focused 結果為通過。
+
+人工預覽後修正視覺方向：直向必須重排原生 client 元件，保留圖示、角色立繪、牌面與皮膚。
+首頁已重用原版 QML 元件並通過增量建置；牌桌目前隱藏 Dashboard、以文字操作區代替的做法仍須重做，不能視為最終 UI。
+武將／卡牌一覽已補直向一覽、詳情與篩選切換；移除整張桌面子 Scene 的水平平移，保留原生立繪、牌面、資料及操作，人工互動仍待確認。
 
 UI 概念上要做的四件事（與 `roomscene.cpp` 的拆分互為表裡，但本文件只談呈現）：
 

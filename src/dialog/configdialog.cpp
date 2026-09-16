@@ -8,6 +8,7 @@
 #include "clientstruct.h"
 #include "effects/effects-policy.h"
 #include "effects/effects-profile.h"
+#include <QSignalBlocker>
 #ifdef AUDIO_SUPPORT
 #include "audio.h"
 #endif
@@ -16,6 +17,30 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     : QDialog(parent), ui(new Ui::ConfigDialog)
 {
     ui->setupUi(this);
+#if !defined(QSAN_XP_LEGACY)
+    auto *layoutGroup = new QGroupBox(tr("直向與單手操作"), this);
+    auto *layoutOptions = new QVBoxLayout(layoutGroup);
+    m_responsiveLayout = new QCheckBox(tr("自適應版面（首頁、對話框與牌桌）"), layoutGroup);
+    m_oneHandedness = new QComboBox(layoutGroup);
+    m_oneHandedness->setAccessibleName(tr("單手操作"));
+    m_oneHandedness->addItems({tr("雙手／無偏好"), tr("左手操作"), tr("右手操作")});
+    layoutOptions->addWidget(m_responsiveLayout);
+    layoutOptions->addWidget(m_oneHandedness);
+    ui->envLayout->insertWidget(0, layoutGroup);
+    connect(m_responsiveLayout, &QCheckBox::toggled, this, [this](bool enabled) {
+        if (!m_loading) Config.setResponsiveUiEnabled(enabled);
+    });
+    connect(m_oneHandedness, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int hand) {
+        if (m_loading) return;
+        Config.setOneHandedness(hand);
+        if (hand != 0) Config.setResponsiveUiEnabled(true);
+    });
+    connect(&Config, &Settings::uiLayoutChanged, this, [this] {
+        const QSignalBlocker layoutBlock(m_responsiveLayout), handBlock(m_oneHandedness);
+        m_responsiveLayout->setChecked(Config.responsiveUiEnabled());
+        m_oneHandedness->setCurrentIndex(Config.oneHandedness());
+    });
+#endif
     loadConfig();
 
     connect(ui->enableEffectCheckBox, SIGNAL(toggled(bool)), ui->enableLastWordCheckBox, SLOT(setEnabled(bool)));
@@ -90,6 +115,8 @@ void ConfigDialog::loadConfig()
 {
     // 程式設定 widget 值時不觸發預覽(避免每次開啟 dialog 就重套 palette / 重載主頁)
     m_loading = true;
+    if (m_responsiveLayout) m_responsiveLayout->setChecked(Config.responsiveUiEnabled());
+    if (m_oneHandedness) m_oneHandedness->setCurrentIndex(Config.oneHandedness());
     // 主题:0/1/2 直对 Qt::ColorScheme {Unknown(跟随系统), Light, Dark}
     switch (qBound(0, Config.ColorScheme, 2)) {
     case 1: ui->themeLightRadio->setChecked(true); break;
@@ -181,6 +208,8 @@ void ConfigDialog::showEvent(QShowEvent *event)
 void ConfigDialog::snapshotVisualSettings()
 {
     m_visual.colorScheme = Config.ColorScheme;
+    m_visual.responsiveLayout = Config.responsiveUiEnabled();
+    m_visual.oneHandedness = Config.oneHandedness();
     m_visual.uiScale = Config.UIScale;
     m_visual.backgroundImage = Config.BackgroundImage;
     m_visual.visualMode = Config.VisualMode;
@@ -214,6 +243,8 @@ void ConfigDialog::previewVisualMode()
 
 void ConfigDialog::restoreVisualSettings()
 {
+    Config.setOneHandedness(m_visual.oneHandedness);
+    Config.setResponsiveUiEnabled(m_visual.responsiveLayout);
     if (m_visual.colorScheme != Config.ColorScheme) {
         Config.ColorScheme = m_visual.colorScheme;
         applyColorScheme(m_visual.colorScheme);

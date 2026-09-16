@@ -35,7 +35,9 @@ Item {
         }
 
         Text {
-            Layout.preferredWidth: HomeTheme.cardPaginationLabelWidth
+            Layout.preferredWidth: Math.min(HomeTheme.cardPaginationLabelWidth,
+                Math.max(0, root.width - HomeTheme.cardPaginationButtonWidth * 2 - HomeTheme.cardSectionGap * 4))
+            elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
             text: homeController.qtTranslate("CardScene", "Page %1 of %2")
                   .arg(root.pageIndex + 1).arg(root.pageCount)

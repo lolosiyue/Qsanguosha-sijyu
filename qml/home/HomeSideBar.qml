@@ -3,8 +3,11 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import "."
 
-ColumnLayout {
+GridLayout {
     id: panel
+    property bool compact: false
+    property bool portraitRail: false
+    columns: compact && !portraitRail ? 4 : 1
 
     property alias settingsBtn: settingsBtn
     property alias aboutBtn: aboutBtn
@@ -16,14 +19,16 @@ ColumnLayout {
     signal updateClicked()
     signal themeToggleClicked()
 
-    spacing: 10
+    rowSpacing: 10
+    columnSpacing: 10
 
     BASlantedPanel {
-        Layout.preferredWidth: 124
+        Layout.columnSpan: panel.columns
+        Layout.preferredWidth: panel.compact ? panel.width : 124
         Layout.preferredHeight: 32
         Layout.alignment: Qt.AlignHCenter
 
-        visible: versionLabel.text !== ""
+        visible: !panel.portraitRail && versionLabel.text !== ""
         slant: -0.08
         cornerRadius: 8
         shadowBlur: 6
@@ -46,10 +51,14 @@ ColumnLayout {
 
     BAToolButton {
         id: themeToggle
+        implicitWidth: panel.portraitRail ? 56 : 72
 
         Layout.alignment: Qt.AlignHCenter
 
         Accessible.name: qsTranslate("HomeScene", "Toggle theme")
+        Layout.fillWidth: panel.compact
+        KeyNavigation.tab: panel.portraitRail ? aboutBtn : settingsBtn
+        KeyNavigation.backtab: updateBtn
 
         iconSource: homeController.isDarkTheme
                     ? "qrc:/QSanguosha/Home/icons/moon.svg"
@@ -63,10 +72,16 @@ ColumnLayout {
 
     BAToolButton {
         id: settingsBtn
+        visible: !panel.portraitRail
 
         Layout.alignment: Qt.AlignHCenter
+        Layout.fillWidth: panel.compact
+        implicitWidth: panel.portraitRail ? 56 : panel.compact ? 64 : 124
 
-        text: qsTranslate("HomeScene", "Settings")
+        text: panel.compact ? "" : qsTranslate("HomeScene", "Settings")
+        Accessible.name: qsTranslate("HomeScene", "Settings")
+        ToolTip.visible: hovered
+        ToolTip.text: Accessible.name
         iconSource: "qrc:/QSanguosha/Home/icons/settings.svg"
 
         onClicked: panel.settingsClicked()
@@ -79,27 +94,37 @@ ColumnLayout {
         id: aboutBtn
 
         Layout.alignment: Qt.AlignHCenter
+        Layout.fillWidth: panel.compact
+        implicitWidth: panel.portraitRail ? 56 : panel.compact ? 64 : 124
 
-        text: qsTranslate("HomeScene", "About")
+        text: panel.compact ? "" : qsTranslate("HomeScene", "About")
+        Accessible.name: qsTranslate("HomeScene", "About")
+        ToolTip.visible: hovered
+        ToolTip.text: Accessible.name
         iconSource: "qrc:/QSanguosha/Home/icons/about.svg"
 
         onClicked: panel.aboutClicked()
 
         KeyNavigation.tab: updateBtn
-        KeyNavigation.backtab: settingsBtn
+        KeyNavigation.backtab: panel.portraitRail ? themeToggle : settingsBtn
     }
 
     BAToolButton {
         id: updateBtn
 
         Layout.alignment: Qt.AlignHCenter
+        Layout.fillWidth: panel.compact
+        implicitWidth: panel.portraitRail ? 56 : panel.compact ? 64 : 124
 
-        text: qsTranslate("HomeScene", "Check for updates")
+        text: panel.compact ? "" : qsTranslate("HomeScene", "Check for updates")
+        Accessible.name: qsTranslate("HomeScene", "Check for updates")
+        ToolTip.visible: hovered
+        ToolTip.text: Accessible.name
         iconSource: "qrc:/QSanguosha/Home/icons/update.svg"
 
         onClicked: panel.updateClicked()
 
-        KeyNavigation.tab: settingsBtn
+        KeyNavigation.tab: panel.portraitRail ? themeToggle : settingsBtn
         KeyNavigation.backtab: aboutBtn
     }
 }

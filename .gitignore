@@ -21,6 +21,13 @@ __pycache__/
 # home QML 介面圖片資源
 qml/home/assets/*.png
 qml/home/icons/*.svg
+# Source-controlled vector controls; other local placeholder assets remain excluded.
+!qml/home/icons/quick-join.svg
+!qml/home/icons/join-game.svg
+!qml/home/icons/server.svg
+!qml/home/icons/settings.svg
+!qml/home/icons/about.svg
+!qml/home/icons/update.svg
 qml/home/nav/*.png
 
 # Debug 工作樹執行期產物／素材（L 本機有、不入庫）
