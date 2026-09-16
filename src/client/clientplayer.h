@@ -59,7 +59,7 @@ public:
 
 private:
     bool useExactHandInfo() const;
-    int handcard_num;
+    int handcard_num; // Movement count, including cards whose identity is hidden.
     QList<const Card *> known_cards;
     QList<int> hand_ids;
     QTextDocument *mark_doc;

@@ -1129,7 +1129,7 @@ void Client::getCards(const QVariant &arg)
 	for (int i = 0; i < args.length(); i++) {
 		CardsMoveStruct move;
 		QList<int> actual_card_ids;
-		// Each move on the V2 wire is a map of named fields; card_ids is the raw unmasked id list
+		// Wire IDs are already redacted for this recipient and may contain -1.
 		JsonUtils::tryParse(args[i].toMap().value(QStringLiteral("card_ids")), actual_card_ids);
 		if (move.tryParse(args[i])){
 			ClientPlayer *to = getPlayer(move.to_player_name);
@@ -1145,7 +1145,8 @@ void Client::getCards(const QVariant &arg)
 				foreach(int card_id, move.card_ids){
 					if (move.to_place == Player::DrawPile) pile_num++;
 					else if (move.to_place == Player::DiscardPile) discarded_list.prepend(card_id);
-					else if (move.to) to->addCard(card_id, move.to_place);
+					else if (move.to && move.to_place != Player::PlaceHand)
+						to->addCard(card_id, move.to_place);
 					//_getSingleCard(card_id, move); // DDHEJ->DDHEJ, DDH/EJ->EJ
 				}
 			}
@@ -1183,7 +1184,7 @@ void Client::loseCards(const QVariant &arg)
 	for (int i = 0; i < args.length(); i++) {
 		CardsMoveStruct move;
 		QList<int> actual_card_ids;
-		// Each move on the V2 wire is a map of named fields; card_ids is the raw unmasked id list
+		// Wire IDs are already redacted for this recipient and may contain -1.
 		JsonUtils::tryParse(args[i].toMap().value(QStringLiteral("card_ids")), actual_card_ids);
 		if (move.tryParse(args[i])){
 			ClientPlayer *from = getPlayer(move.from_player_name);
@@ -1212,7 +1213,7 @@ void Client::loseCards(const QVariant &arg)
 					else if (move.from_place == Player::DrawPile){
 						if(!Self->hasFlag("marshalling"))
 							pile_num--;
-					}else if (move.from)
+					}else if (move.from && move.from_place != Player::PlaceHand)
 						from->removeCard(card_id, move.from_place);
 					//_loseSingleCard(card_id, move); // DDHEJ->DDHEJ, DDH/EJ->EJ
 				}
