@@ -4906,6 +4906,33 @@
     </message>
 </context>
 <context>
+    <name>RoomDebugDialogs</name>
+    <message>
+        <source>Warning</source>
+        <translation>警告</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>无</translation>
+    </message>
+    <message>
+        <source>This function is only allowed at your play phase!</source>
+        <translation>此功能只能在自己的出牌阶段使用!</translation>
+    </message>
+    <message>
+        <source>No victims now!</source>
+        <translation>暂时没有阵亡者!</translation>
+    </message>
+    <message>
+        <source>Reviving wand</source>
+        <translation>复活魔杖</translation>
+    </message>
+    <message>
+        <source>Please select a player to revive</source>
+        <translation>请选择要复活的角色</translation>
+    </message>
+</context>
+<context>
     <name>RoomScene</name>
     <message>
         <location filename="../src/ui/roomscene.cpp" line="475"/>
@@ -5200,34 +5227,6 @@
         <location filename="../src/ui/roomscene.cpp" line="4389"/>
         <source>Save replay record</source>
         <translation>保存录像</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/roomscene.cpp" line="4569"/>
-        <source>None</source>
-        <translation>无</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/roomscene.cpp" line="4603"/>
-        <location filename="../src/ui/roomscene.cpp" line="4614"/>
-        <location filename="../src/ui/roomscene.cpp" line="4625"/>
-        <location filename="../src/ui/roomscene.cpp" line="4636"/>
-        <source>This function is only allowed at your play phase!</source>
-        <translation>此功能只能在自己的出牌阶段使用!</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/roomscene.cpp" line="4651"/>
-        <source>No victims now!</source>
-        <translation>暂时没有阵亡者!</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/roomscene.cpp" line="4656"/>
-        <source>Reviving wand</source>
-        <translation>复活魔杖</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/roomscene.cpp" line="4657"/>
-        <source>Please select a player to revive</source>
-        <translation>请选择要复活的角色</translation>
     </message>
     <message>
         <location filename="../src/ui/roomscene.cpp" line="4689"/>
