@@ -17,6 +17,7 @@ private:
     Ui::ConfigDialog *ui;
     QCheckBox *m_responsiveLayout = nullptr;
     QComboBox *m_oneHandedness = nullptr;
+    QLineEdit *m_portraitBackground = nullptr;
     void showFont(QLineEdit *lineedit, const QFont &font);
 
     // 「顯示」分頁視角元素設定的快照:開起 dialog 時記住已套用的值,
@@ -27,6 +28,7 @@ private:
         int oneHandedness = 0;
         qreal uiScale = 1.0;
         QString backgroundImage;
+        QString portraitBackgroundImage;
         QString visualMode;
         bool noIndicator = false;
         bool noEquipAnim = false;

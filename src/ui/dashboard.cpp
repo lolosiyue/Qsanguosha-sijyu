@@ -381,6 +381,10 @@ void Dashboard::_adjustComponentZValues(bool killed)
     _layUnder(_m_leftFrame);
     _layUnder(_m_middleFrame);
     _layBetween(button_widget, _m_middleFrame, _m_roleComboBox);
+    // Player refresh reapplies the landscape stacking order. In portrait the
+    // equipment parent must stay above the avatar parent, not just after resize.
+    if (!m_responsiveSize.isEmpty())
+        _m_leftFrame->setZValue(_m_rightFrame->zValue() + 1.0);
     //_layBetween(_m_rightFrameBg, _m_faceTurnedIcon, _m_equipRegions[4]);
 }
 
@@ -404,6 +408,8 @@ void Dashboard::repaintAll(bool all)
     updateScreenName(m_player->screenName());
 
     PlayerCardContainer::repaintAll(all);
+    if (!m_responsiveSize.isEmpty())
+        _updateFrames();
 	if(all){
 		QList<CardItem *> card_items = _createCards(m_player->handCards());
 		for (int i = 0; i < m_handCards.length(); i++)
@@ -439,6 +445,31 @@ void Dashboard::_updateSkillDockGeometry()
     const QSanRoomSkin::DashboardLayout *layout = useDoubleLayout ? _dlayoutDouble : _dlayout;
     if (layout == nullptr)
         return;
+
+    if (!m_responsiveSize.isEmpty()) {
+        const auto geometry = _responsiveGeometry(m_responsiveSize);
+        const qreal dockLeft = 0;
+        const qreal dockWidth = qMax(1.0, geometry.handRect.width());
+        const qreal splitWidth = dockWidth / (m_secondarySkillDock ? 2.0 : 1.0);
+        const qreal dockScale = qMin(1.0, splitWidth / qMax(1, layout->m_skillButtonsSize[0].width()));
+        _m_skillDock->setParentItem(this);
+        _m_skillDock->setScale(dockScale);
+        _m_skillDock->setWidth(qRound(splitWidth / dockScale));
+        _m_skillDock->setPos(dockLeft, 108);
+        if (m_secondarySkillDock) {
+            m_secondarySkillDock->setParentItem(this);
+            m_secondarySkillDock->setScale(dockScale);
+            m_secondarySkillDock->setWidth(qRound(splitWidth / dockScale));
+            m_secondarySkillDock->setPos(dockLeft + splitWidth, 108);
+        }
+        return;
+    }
+    _m_skillDock->setParentItem(_m_rightFrame);
+    _m_skillDock->setScale(1.0);
+    if (m_secondarySkillDock) {
+        m_secondarySkillDock->setParentItem(_m_rightFrame);
+        m_secondarySkillDock->setScale(1.0);
+    }
 
     int rightFrameHeight = _m_rightFrame->boundingRect().height();
     int minDockWidth = layout->m_skillButtonsSize[0].width();
@@ -588,6 +619,10 @@ void Dashboard::setApplicationSuspended(bool suspended, bool offline)
 
 void Dashboard::_updateFrames()
 {
+    if (!m_responsiveSize.isEmpty()) {
+        _updateResponsiveFrames();
+        return;
+    }
     const QSanRoomSkin::DashboardLayout *layout = _dlayout;
     const ClientPlayer *player = getPlayer();
     bool isDouble = (player && player->getGeneral2());
@@ -643,6 +678,95 @@ void Dashboard::_updateFrames()
     if (_m_handCardNumText) updateHandcardNum();
     if (isShowingDialogOptions())
         _layoutDialogOptions();
+}
+
+RoomLayoutEngine::DashboardGeometry Dashboard::_responsiveGeometry(const QSizeF &size) const
+{
+    const ClientPlayer *player = getPlayer();
+    const int rightWidth = player && player->getGeneral2() ? _dlayoutDouble->m_rightWidth : _dlayout->m_rightWidth;
+    return RoomLayoutEngine::computeDashboard(size, G_COMMON_LAYOUT.m_cardNormalHeight + 150.0,
+        QSizeF(_dlayout->m_leftWidth, _dlayout->m_normalHeight),
+        QSizeF(rightWidth, _m_rightFrame->boundingRect().height()), m_handedness);
+}
+
+qreal Dashboard::responsiveHeight(qreal width) const
+{
+    return _responsiveGeometry(QSizeF(width, 0)).height;
+}
+
+void Dashboard::setResponsiveGeometry(const QSizeF &size, RoomLayoutEngine::Handedness handedness)
+{
+    if (m_responsiveSize == size && m_handedness == handedness)
+        return;
+    prepareGeometryChange();
+    m_responsiveSize = size;
+    m_handedness = handedness;
+    if (!size.isEmpty())
+        _m_width = qRound(size.width());
+    else
+        _m_width = qMax(_m_width, _dlayout->m_leftWidth + _dlayoutDouble->m_rightWidth + getButtonWidgetWidth());
+    // Reparent only the existing button frame; all actions and card selections survive rotation.
+    button_widget->setParentItem(size.isEmpty() ? _m_middleFrame : _m_groupMain);
+    _m_leftFrame->setScale(1.0);
+    _m_leftFrame->setPos(0, 0);
+    _m_leftFrame->setZValue(0);
+    _paintLeftFrame();
+    _m_rightFrame->setScale(1.0);
+    button_widget->setScale(1.0);
+    if (size.isEmpty()) {
+        button_widget->setPixmap(G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_DASHBOARD_BUTTON_SET_BG)
+            .scaled(_dlayout->m_buttonSetSize));
+        RoomSceneInstance->redrawDashboardButtons();
+    }
+    qreal x = size.isEmpty() ? _dlayout->m_leftWidth : 0.0;
+    for (QSanButton *button : {m_btnReverseSelection, m_btnFilterCard, m_btnSortHandcard,
+                               m_btnNoNullification, m_btnShefu, m_btnRenPile}) {
+        button->setPos(x, -button->boundingRect().height());
+        x += button->boundingRect().width();
+    }
+    _updateFrames();
+    if (m_renPileTextItem->isVisible()) {
+        const QRectF text = m_renPileTextItem->boundingRect();
+        m_renPileTextItem->setPos(m_btnRenPile->pos()
+            + QPointF((m_btnRenPile->boundingRect().width() - text.width()) / 2.0,
+                (m_btnRenPile->boundingRect().height() - text.height()) / 2.0));
+    }
+    _updateEquips();
+    adjustCards(false);
+}
+
+void Dashboard::_updateResponsiveFrames()
+{
+    _paintRightFrame();
+    const auto geometry = _responsiveGeometry(m_responsiveSize);
+    _paintMiddleFrame(geometry.handRect.toRect());
+    // Keep equipment icons interactive over the portrait, without the opaque left panel.
+    QPixmap equipmentCanvas(_dlayout->m_leftWidth, _dlayout->m_normalHeight);
+    equipmentCanvas.fill(Qt::transparent);
+    _m_leftFrame->setPixmap(equipmentCanvas);
+    _m_leftFrame->setScale(geometry.equipmentScale);
+    _m_leftFrame->setZValue(_m_rightFrame->zValue() + 1.0);
+    _m_rightFrame->setScale(geometry.footerScale);
+    QPixmap actionCanvas(qRound(m_responsiveSize.width()), 48);
+    actionCanvas.fill(Qt::transparent);
+    button_widget->setPixmap(actionCanvas);
+    button_widget->setScale(1.0);
+    _m_leftFrame->setPos(geometry.equipmentPosition);
+    _m_rightFrame->setPos(geometry.avatarPosition);
+    button_widget->setPos(0, 0);
+    RoomSceneInstance->layoutDashboardButtons(geometry);
+    _m_groupDeath->setPos(0, 0);
+    QPixmap deathCanvas(m_responsiveSize.toSize());
+    deathCanvas.fill(Qt::transparent);
+    _m_groupDeath->setPixmap(deathCanvas);
+    QPainterPath path;
+    path.addRect(boundingRect());
+    trusting_item->setPath(path);
+    trusting_item->setPos(0, 0);
+    trusting_text->setPos(qMax(0.0, (m_responsiveSize.width() - trusting_text->boundingRect().width()) / 2),
+        geometry.handRect.center().y());
+    if (_m_handCardNumText) updateHandcardNum();
+    if (isShowingDialogOptions()) _layoutDialogOptions();
 }
 
 void Dashboard::_paintLeftFrame()
@@ -930,15 +1054,15 @@ void Dashboard::unselectAll(const CardItem *except)
 
 QRectF Dashboard::boundingRect() const
 {
-    return QRectF(0, 0, _m_width, _m_layout->m_normalHeight);
+    return QRectF(0, 0, _m_width, m_responsiveSize.isEmpty() ? _m_layout->m_normalHeight : m_responsiveSize.height());
 }
 
 void Dashboard::setWidth(int width)
 {
     prepareGeometryChange();
-    adjustCards(true);
     _m_width = width;
     _updateFrames();
+    adjustCards(true);
     _updateDeathIcon();
 }
 
@@ -1206,7 +1330,7 @@ void Dashboard::_layoutDialogOptions()
     int count = m_dialogOptionItems.length();
     qreal leftPadding = 8;
     qreal availableWidth = qMax<qreal>(itemSize.width(),
-        _m_middleFrame->boundingRect().width() - getButtonWidgetWidth() - leftPadding * 2);
+        _m_middleFrame->boundingRect().width() - (m_responsiveSize.isEmpty() ? getButtonWidgetWidth() : 0) - leftPadding * 2);
     qreal step = itemSize.width();
     if (count > 1)
         step = qMin<qreal>(itemSize.width() * 0.62, (availableWidth - itemSize.width()) / (count - 1));
@@ -1442,6 +1566,11 @@ void Dashboard::_adjustCards()
     QSanRoomSkin::DashboardLayout *layout = (QSanRoomSkin::DashboardLayout *)_m_layout;
     int middleWidth = _m_width - layout->m_leftWidth - layout->m_rightWidth - getButtonWidgetWidth();
     QRect rowRect = QRect(layout->m_leftWidth, layout->m_normalHeight - cardHeight - 3, middleWidth, cardHeight);
+    if (!m_responsiveSize.isEmpty()) {
+        const auto geometry = _responsiveGeometry(m_responsiveSize);
+        rowRect = QRect(8, qRound(geometry.handRect.bottom()) - cardHeight - 4,
+            qMax(G_COMMON_LAYOUT.m_cardNormalWidth, qRound(geometry.handRect.width()) - 16), cardHeight);
+    }
     auto disperseRow = [this, &rowRect](QList<CardItem *> &cards) {
         qreal compactNameWidth = 0.0;
         if (cards.length() > 1) {

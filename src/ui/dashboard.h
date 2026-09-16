@@ -10,6 +10,7 @@
 #include "protocol.h"
 //#include "timed-progressbar.h"
 #include "generic-cardcontainer-ui.h"
+#include "room-layout-engine.h"
 
 #include <QHash>
 #include <QEasingCurve>
@@ -46,6 +47,8 @@ public:
     ~Dashboard();
     virtual QRectF boundingRect() const;
     void setWidth(int width);
+    void setResponsiveGeometry(const QSizeF &size, RoomLayoutEngine::Handedness handedness);
+    qreal responsiveHeight(qreal width) const;
     int getMiddleWidth();
     inline QRectF getAvatarArea()
     {
@@ -303,6 +306,10 @@ protected:
     void _createRight();
     void _createMiddle();
     void _updateFrames();
+    void _updateResponsiveFrames();
+    RoomLayoutEngine::DashboardGeometry _responsiveGeometry(const QSizeF &size) const;
+    QSizeF m_responsiveSize;
+    RoomLayoutEngine::Handedness m_handedness = RoomLayoutEngine::Handedness::None;
     void _updateSkillDockGeometry();
     void _clearSkillDock(QSanInvokeSkillDock *dock);
 

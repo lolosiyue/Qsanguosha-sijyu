@@ -67,7 +67,39 @@ QRectF QSanButton::boundingRect() const
 
 void QSanButton::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
+    if (!m_actionText.isEmpty()) {
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        const bool disabled = _m_state == S_STATE_DISABLED;
+        const bool pressed = _m_state == S_STATE_DOWN;
+        const bool hover = _m_state == S_STATE_HOVER;
+        const QRectF rect(1, 1, _m_size.width() - 2, _m_size.height() - 2);
+        QLinearGradient fill(rect.topLeft(), rect.bottomLeft());
+        fill.setColorAt(0, disabled ? QColor(48, 44, 52) : pressed ? QColor(55, 40, 66)
+            : hover ? QColor(115, 85, 126) : QColor(85, 63, 99));
+        fill.setColorAt(1, disabled ? QColor(35, 32, 39) : QColor(39, 29, 51));
+        painter->setBrush(fill);
+        painter->setPen(QPen(disabled ? QColor(99, 89, 102) : QColor(205, 181, 132), 1.5));
+        painter->drawRoundedRect(rect, 6, 6);
+        QFont font = painter->font();
+        font.setFamily(QStringLiteral("KaiTi"));
+        font.setPixelSize(20);
+        font.setBold(true);
+        painter->setFont(font);
+        painter->setPen(disabled ? QColor(153, 144, 156) : QColor(255, 240, 209));
+        painter->drawText(rect.translated(0, pressed ? 1 : 0), Qt::AlignCenter, m_actionText);
+        painter->restore();
+        return;
+    }
     painter->drawPixmap(0, 0, _m_bgPixmap[(int)_m_state]);
+}
+
+void QSanButton::setActionText(const QString &text)
+{
+    if (m_actionText == text) return;
+    m_actionText = text;
+    setSize(_m_size);
+    update();
 }
 
 void QSanButton::setSize(QSize newSize)
@@ -75,6 +107,10 @@ void QSanButton::setSize(QSize newSize)
     prepareGeometryChange();
     _m_size = newSize;
     setTouchTargetMinimum(_m_touchTargetMinimum);
+    if (!m_actionText.isEmpty()) {
+        _m_mask = QRegion(QRect(QPoint(0, 0), newSize));
+        return;
+    }
     if (_m_size.width() == 0 || _m_size.height() == 0) {
         _m_mask = QRegion();
         return;

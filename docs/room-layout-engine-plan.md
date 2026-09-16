@@ -162,6 +162,57 @@ PR3–7 授權的來源／建置／focused 檢查點已完成；Responsive previ
   證據為 `builds/portrait-preview-20260916/catalog-build.log`。已啟動新版交由人工確認直向互動；
   未使用 Computer Use、未執行 CTest，不代表 Android 或完整對局驗收。
 
+### 房間原生直向排版（2026-09-16）
+
+- 本輪取代 PR4／PR5 的文字手牌、目標及動作面板；使用原有 Dashboard、CardItem、Photo、技能及確認／取消元件。
+- 窄版將手牌與自身裝備／武將／操作鈕分成兩列；左手模式將原生操作鈕移到左側。寬版沿用原生橫向 Dashboard。
+- Layout Engine 根據皮膚尺寸計算兩列位置與縮放，保留原有選牌、技能、目標及選項物件；旋轉不重建選取草稿。
+- 席位放不下時顯示原生武將框，頁面頂部捲動條切換可見席位；離頁目標僅透明，不隱藏／停用，以免清除選取。
+- 原生提示框恢復顯示並限制在主區寬度；詳情及聊天由輔助 Overlay 提供；戰報後續改回原生元件（見下）。詳情關閉時不再要求即時資料投影。
+- 新增席位分頁邊界及單／雙將、左右手的原生框重疊檢查。建置與驗證紀錄：
+  `builds/portrait-preview-20260916/native-room-build.log`、`native-room-layout-test.log`。
+  Debug GUI 與 focused executable 建置 PASS；直接執行 `--suite room-layout-engine` exit 0，
+  diff whitespace 檢查通過。已開啟新版 GUI，GUI 視覺／操作留待人工確認；
+  未執行 CTest、Computer Use、完整對局或 Android 驗收。
+
+### 人工回饋修訂：覆蓋式自身框與直向背景（2026-09-17）
+
+- 自身武將固定在右下，裝備圖示覆蓋其下半部，移除裝備欄的不透明底板；手牌使用左側寬度。
+- 技能按鈕移至手牌上方、武將左側，沿用原技能 Dock；確認／取消按鈕依單手偏好排列。
+- 直向對手使用頂部席位列，單一對手居中；人數超出寬度仍使用既有席位捲動。
+- `UI/PortraitBackgroundImage` 獨立保存直向背景，設定頁提供選圖及恢復預設，取消會還原。
+  首頁、房間及本機載入畫面共用此直向設定；原 `BackgroundImage`／橫向桌布不變。
+  房內直向停用橫向桌布區塊，背景保持完整連續。
+- 載入標題改為「少女祈禱中」，保留真實進度與取消操作；一覽頁載入提示使用相同文案。
+  素材僅放於本機 `image/system/portrait/`，不納入 Git 或 Qt resources。
+  圖片可選；未提供時仍顯示載入文字，直向桌布使用純色底，不回退橫向桌布。
+- 本輪驗證紀錄另存 `builds/portrait-preview-20260916/portrait-refinement-*`，不沿用前版 GUI 驗收。
+  Debug GUI 增量建置 PASS；QML 靜態檢查 exit 0（保留 context property 的 unqualified 提示）；
+  `--suite room-layout-engine` PASS。原席位列下置斷言已隨需求改為上置，僅重建 focused target 後重跑。
+  新版 GUI 已啟動供人工確認；未執行 Computer Use、CTest、完整對局或 Android 建置。
+
+### 自身裝備可見性與獨立操作鈕（2026-09-17）
+
+- 裝備覆蓋層原先只在排版時提到武將上方；角色 refresh 隨後重套橫向堆疊順序，會把裝備壓回武將後面。
+  `Dashboard::_adjustComponentZValues` 現在於每次刷新時保留直向裝備的上層位置。
+- 依人工選擇，確定／取消改為手牌上方兩個獨立大按鈕，使用原生紫金配色與文字。
+  沿用同一批 `QSanButton` 物件、信號、啟用狀態及快捷鍵；只改繪製外觀與幾何。
+- 結束／托管列在武將上方，技能在主操作列下方；右手模式將確定鈕放至主操作列右側。
+  關閉直向版時，恢復原皮膚按鈕與命中區域。
+- 幾何檢查補上主操作鈕至少 48 邏輯像素、各按鈕不重疊及不越界。
+  本輪紀錄：`builds/portrait-preview-20260916/portrait-actions-*`；裝備實際顯示仍需人工進房確認。
+  Debug GUI 建置、版面 focused executable 與 diff whitespace 檢查 PASS；首次連結遇到
+  LNK1104（暫時無法開啟既存 obj），一次增量重試通過，未清除建置目錄。
+  已開啟新版供人工驗證；未執行 CTest、Computer Use、完整對局或 Android 建置。
+
+### 還原原版戰報與橫向配置（2026-09-17）
+
+- 一般視窗轉回橫向時回到原版 RoomScene 配置，包含戰報、聊天及原皮膚 Dashboard；折疊分區仍保留。
+- 移除自製戰報面板。直向三橫選單切換原本的 ClientLogBox，保留格式、連結、捲動及同一份內容。
+- 直向戰報展開於牌桌上方，不移動對手或手牌；橫向不再顯示殘留的 Overlay 戰報／聊天。
+- 素材不提交。Debug GUI／focused target 增量建置 PASS；`--suite room-layout-engine` exit 0，
+  記錄為 `builds/portrait-preview-20260916/native-log-*`。GUI 旋轉仍待人工驗收；未跑 CTest 或完整對局。
+
 ## 架構邊界
 
 - Layout Engine 僅接收 Qt Core 值型別與 skin 尺寸，不讀取 QGraphicsItem、Config、

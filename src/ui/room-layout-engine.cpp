@@ -372,7 +372,7 @@ bool placeRing(ResponsiveResult &result, int photoCount, const QSize &photoSize,
 }
 
 bool placeRibbon(ResponsiveResult &result, int photoCount, const QSize &photoSize,
-                 double gap, const QRectF &area)
+                 double gap, const QRectF &area, int firstVisibleSeat)
 {
     result.seatPresentation = SeatPresentation::Ribbon;
     const double height = photoSize.height() + gap;
@@ -381,19 +381,53 @@ bool placeRibbon(ResponsiveResult &result, int photoCount, const QSize &photoSiz
         result.photos.clear();
         return true;
     }
-    result.seatsRect = QRectF(area.left(), area.bottom() - height, area.width(), height);
-    result.tableRect.setBottom(qMax(result.tableRect.top(), result.seatsRect.top() - gap));
+    result.seatsRect = QRectF(area.left(), area.top(), area.width(), height);
+    result.tableRect.setTop(qMin(result.tableRect.bottom(), result.seatsRect.bottom() + gap));
     result.photos.reserve(photoCount);
+    result.visibleSeatCount = qMin(photoCount, qMax(1, int((area.width() + gap) / (photoSize.width() + gap))));
+    result.firstVisibleSeat = qBound(0, firstVisibleSeat, qMax(0, photoCount - result.visibleSeatCount));
+    const double usedWidth = result.visibleSeatCount * (photoSize.width() + gap) - gap;
     for (int i = 0; i < photoCount; ++i) {
         ResponsivePhotoPlacement placement;
         placement.seat = i;
-        placement.center = QPointF(result.seatsRect.left() + photoSize.width() / 2.0
-                                       + i * (photoSize.width() + gap),
-                                   result.seatsRect.center().y());
+        const int slot = i - result.firstVisibleSeat;
+        placement.visible = slot >= 0 && slot < result.visibleSeatCount;
+        placement.center = QPointF(result.seatsRect.center().x() - usedWidth / 2.0 + photoSize.width() / 2.0
+                                       + slot * (photoSize.width() + gap),
+                                   result.seatsRect.top() + photoSize.height() / 2.0);
         result.photos.append(placement);
     }
     return true;
 }
+}
+
+DashboardGeometry computeDashboard(const QSizeF &available, double handHeight,
+    const QSizeF &equipment, const QSizeF &avatar,
+    Handedness handedness)
+{
+    DashboardGeometry result;
+    const double gap = 8.0;
+    const double heroWidth = qMin(avatar.width(), qMin(210.0, available.width() * 0.32));
+    result.footerScale = heroWidth / qMax(1.0, avatar.width());
+    result.height = qMax(handHeight, avatar.height() * result.footerScale);
+    const double height = available.height() > 0.0 ? available.height() : result.height;
+    const double heroHeight = avatar.height() * result.footerScale;
+    result.avatarPosition = QPointF(available.width() - heroWidth, qMax(0.0, height - heroHeight));
+    // Equipment shares the hero footprint, like Photo, instead of adding a third column.
+    result.equipmentScale = qMin(heroWidth / qMax(1.0, equipment.width()),
+        heroHeight * 0.75 / qMax(1.0, equipment.height()));
+    result.equipmentPosition = QPointF(result.avatarPosition.x() + (heroWidth - equipment.width() * result.equipmentScale) / 2,
+        height - equipment.height() * result.equipmentScale);
+    result.handRect = QRectF(0, 0, qMax(1.0, available.width() - heroWidth - gap), height);
+    const double primaryWidth = qMax(1.0, (result.handRect.width() - gap) / 2.0);
+    const QRectF leftAction(0, 0, primaryWidth, 48);
+    const QRectF rightAction(primaryWidth + gap, 0, primaryWidth, 48);
+    result.confirmRect = handedness == Handedness::Right ? rightAction : leftAction;
+    result.cancelRect = handedness == Handedness::Right ? leftAction : rightAction;
+    const double auxiliaryWidth = qMax(1.0, (heroWidth - 4.0) / 2.0);
+    result.finishRect = QRectF(result.avatarPosition.x(), 0, auxiliaryWidth, 48);
+    result.trustRect = QRectF(result.avatarPosition.x() + auxiliaryWidth + 4.0, 0, auxiliaryWidth, 48);
+    return result;
 }
 
 ResponsiveResult computeResponsive(const ResponsiveInput &input)
@@ -405,7 +439,8 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
         || !qIsFinite(input.gap) || input.gap < 0.0
         || !qIsFinite(input.minimumTouchTarget) || input.minimumTouchTarget <= 0.0
         || !qIsFinite(input.headerHeight) || input.headerHeight < 0.0
-        || !qIsFinite(input.interactionHeightFraction) || input.interactionHeightFraction <= 0.0)
+        || !qIsFinite(input.interactionHeightFraction) || input.interactionHeightFraction <= 0.0
+        || !qIsFinite(input.minimumInteractionHeight) || input.minimumInteractionHeight < 0.0)
         return result;
 
     // Accept platform fold snapshots only when they describe a real, contained hinge/crease.
@@ -505,16 +540,25 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
         result.mainRect.setTop(result.headerRect.bottom());
     }
     result.tableRect = result.mainRect;
-    if (result.interactionRect.isEmpty())
+    if (result.interactionRect.isEmpty()) {
         result.interactionRect = bottomZone(result.mainRect, input.interactionHeightFraction, 400.0);
-    else if (result.profile == Profile::Tabletop)
+        if (input.minimumInteractionHeight > 0.0) {
+            const double height = qMin(result.mainRect.height() * 0.65,
+                qMax(result.interactionRect.height(), input.minimumInteractionHeight));
+            result.interactionRect.setTop(result.mainRect.bottom() - height);
+        }
+    } else if (result.profile == Profile::Tabletop)
         result.interactionRect = inset(result.interactionRect, qMin(gap, result.interactionRect.height() / 4.0));
 
     if (!usesTabletopInteractionPane)
         result.tableRect.setBottom(qMax(result.tableRect.top(), result.interactionRect.top() - gap));
 
     // Visible log/chat panels occupy only the table band above interaction controls.
-    if ((input.logVisible || input.chatVisible) && validRect(result.tableRect)) {
+    if (input.logVisible && !input.chatVisible
+        && input.stableRect.height() > input.stableRect.width() && validRect(result.tableRect)) {
+        // The native log opens over the table, leaving seats and the hand in place.
+        result.logRect = result.tableRect;
+    } else if ((input.logVisible || input.chatVisible) && validRect(result.tableRect)) {
         const double panelWidth = qMin(result.tableRect.width() * 0.28, 320.0);
         const double panelHeight = result.tableRect.height();
         const QRectF panelColumn(result.tableRect.right() - panelWidth, result.tableRect.top(),
@@ -549,10 +593,11 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
     result.seatsRect = result.tableRect;
     result.seatPresentation = SeatPresentation::Ring;
     const QRectF seatArea = result.tableRect;
-    if (!placeRing(result, input.photoCount, input.smallPhotoSize, gap)) {
+    const bool portraitSeats = input.stableRect.height() > input.stableRect.width();
+    if ((portraitSeats && input.photoCount > 0) || !placeRing(result, input.photoCount, input.smallPhotoSize, gap)) {
         result.photos.clear();
         result.tableRect = seatArea;
-        if (!placeRibbon(result, input.photoCount, input.smallPhotoSize, gap, seatArea)) {
+        if (!placeRibbon(result, input.photoCount, input.smallPhotoSize, gap, seatArea, input.firstVisibleSeat)) {
             result.valid = false;
             return result;
         }

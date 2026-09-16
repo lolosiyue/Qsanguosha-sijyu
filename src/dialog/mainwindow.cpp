@@ -512,13 +512,16 @@ void MainWindow::setupLocalLoadingPage()
 	QVBoxLayout *panelLayout = new QVBoxLayout(panel);
 	panelLayout->setContentsMargins(54, 42, 54, 44);
 
-	QLabel *eyebrow = new QLabel(tr("LOCAL GAME"), panel);
+	QLabel *eyebrow = new QLabel(panel);
+	const QPixmap maiden(QSanRuntimePaths::assetPath(QStringLiteral("image/system/portrait/praying-maiden.svg")));
+	if (!maiden.isNull())
+		eyebrow->setPixmap(maiden.scaled(144, 132, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 	eyebrow->setObjectName(QStringLiteral("localLoadingEyebrow"));
 	eyebrow->setAlignment(Qt::AlignCenter);
 	panelLayout->addWidget(eyebrow);
 	panelLayout->addSpacing(9);
 
-	QLabel *title = new QLabel(tr("Preparing local game"), panel);
+	QLabel *title = new QLabel(tr("少女祈禱中"), panel);
 	title->setObjectName(QStringLiteral("localLoadingTitle"));
 	QFont titleFont = title->font();
 	titleFont.setPointSize(qMax(24, titleFont.pointSize() + 12));
@@ -529,7 +532,7 @@ void MainWindow::setupLocalLoadingPage()
 	panelLayout->addWidget(title);
 
 	QLabel *subtitle = new QLabel(
-		tr("Rules, AI, and room services are being prepared."), panel);
+		tr("稍候片刻，即將進入牌局。"), panel);
 	subtitle->setObjectName(QStringLiteral("localLoadingSubtitle"));
 	subtitle->setAlignment(Qt::AlignCenter);
 	subtitle->setWordWrap(true);
@@ -581,8 +584,12 @@ void MainWindow::setupLocalLoadingPage()
 
 void MainWindow::showLocalLoadingPage(const QString &status)
 {
-	static_cast<LocalLoadingPage *>(localLoadingPage)->setBackgroundImage(
-		localLoadingBackdropPath());
+    const bool portrait = Config.responsiveUiEnabled() && height() > width();
+    QString backdrop = portrait ? Config.value("UI/PortraitBackgroundImage",
+        "image/system/portrait/portrait-background.svg").toString() : localLoadingBackdropPath();
+    if (portrait && !QFileInfo(backdrop).isFile())
+        backdrop = QStringLiteral("image/system/portrait/portrait-background.svg");
+	static_cast<LocalLoadingPage *>(localLoadingPage)->setBackgroundImage(backdrop);
 	QString displayStatus = status;
 	if (status == QLatin1String("Authenticating local server..."))
 		displayStatus = tr("Authenticating local server...");

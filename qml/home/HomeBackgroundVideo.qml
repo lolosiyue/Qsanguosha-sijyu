@@ -4,10 +4,11 @@ import "."
 
 Item {
     id: root
+    readonly property bool portrait: Config.responsiveUiEnabled && height > width
 
     property url backdropSource: {
-        var cfg = homeController.backgroundImage;
-        return cfg.toString() !== "" ? cfg : homeController.randomBackdrop();
+        var cfg = portrait ? homeController.portraitBackgroundImage : homeController.backgroundImage;
+        return cfg.toString() !== "" ? cfg : (portrait ? "" : homeController.randomBackdrop());
     }
 
     property bool isVideo: {
@@ -17,7 +18,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: HomeTheme.windowBg
+        color: root.portrait ? "#344f65" : HomeTheme.windowBg
 
         Image {
             anchors.fill: parent
@@ -29,7 +30,7 @@ Item {
 
             onStatusChanged: {
                 if (status === Image.Error && backdropSource.toString() !== "")
-                    backdropSource = homeController.randomBackdrop();
+                    backdropSource = root.portrait ? "" : homeController.randomBackdrop();
             }
         }
 
@@ -44,7 +45,7 @@ Item {
             loops: MediaPlayer.Infinite
 
             onErrorOccurred: {
-                backdropSource = homeController.randomBackdrop();
+                backdropSource = root.portrait ? "" : homeController.randomBackdrop();
             }
 
             // Qt 6 的 Video 不會自動播放，source 就緒後需呼叫 play() 才會有畫面

@@ -3,10 +3,11 @@ import "."
 
 Item {
     id: root
+    readonly property bool portrait: Config.responsiveUiEnabled && height > width
 
     property url backdropSource: {
-        var cfg = homeController.backgroundImage;
-        return cfg.toString() !== "" ? cfg : homeController.randomBackdrop();
+        var cfg = portrait ? homeController.portraitBackgroundImage : homeController.backgroundImage;
+        return cfg.toString() !== "" ? cfg : (portrait ? "" : homeController.randomBackdrop());
     }
 
     readonly property bool backdropIsVideoFile: /\.(mp4|webm|mkv)$/i.test(String(backdropSource))
@@ -24,8 +25,8 @@ Item {
     function fallBackToStaticBackdrop(reason, message) {
         homeController.reportVideoStatus(reason, message);
         isVideo = false;
-        var next = homeController.randomBackdrop();
-        if (next.toString() !== "" && next !== backdropSource)
+        var next = root.portrait ? "" : homeController.randomBackdrop();
+        if (root.portrait || (next.toString() !== "" && next !== backdropSource))
             backdropSource = next;
         // 保留原因，只額外標記「靜態背景已經頂上」。
         homeController.confirmVideoFallback();
@@ -44,7 +45,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: HomeTheme.windowBg
+        color: root.portrait ? "#344f65" : HomeTheme.windowBg
 
         Image {
             id: backdropImage
@@ -59,6 +60,10 @@ Item {
 
             onStatusChanged: {
                 if (status === Image.Error && backdropSource.toString() !== "") {
+                    if (root.portrait) {
+                        backdropSource = ""
+                        return
+                    }
                     var next = homeController.randomBackdrop()
                     if (next.toString() !== "" && next !== backdropSource)
                         backdropSource = next

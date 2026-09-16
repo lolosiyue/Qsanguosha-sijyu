@@ -42,6 +42,8 @@ public:
         return _m_style;
     }
     void setRect(QRect rect);
+    // Optional rectangular native action face; keeps the same state and click signals.
+    void setActionText(const QString &text);
     // Expands only the interactive envelope; the painted button and layout stay unchanged.
     void setTouchTargetMinimum(qreal minimumSize);
     virtual QRectF boundingRect() const;
@@ -67,6 +69,7 @@ protected:
     QString _m_buttonName;
     QRegion _m_mask;
     QSize _m_size;
+    QString m_actionText;
     qreal _m_touchTargetPadding = 0.0;
     qreal _m_touchTargetMinimum = 0.0;
     // @todo: currently this is an extremely dirty hack. Refactor the button states to
