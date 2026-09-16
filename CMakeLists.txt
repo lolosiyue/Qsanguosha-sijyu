@@ -408,6 +408,8 @@ add_library(qsanguosha_engine STATIC
     src/core/player.h
     src/core/protocol.cpp
     src/core/protocol/protocol-codec.h
+    src/core/protocol/arrange-seats-message.cpp
+    src/core/protocol/arrange-seats-message.h
     src/core/protocol/card-provenance-message.cpp
     src/core/protocol/card-provenance-message.h
     src/core/protocol/gameplay/multiple-choice-payload.cpp

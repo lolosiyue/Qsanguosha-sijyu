@@ -705,6 +705,58 @@ static bool akarinVisibilityFollowsRecipients(Room &room, MessageRecorder &recor
 
 }
 
+// docs/focus-relation-protocol-decision.md 2.3 / 4.1: the play direction is
+// state, so every seat ring carries it -- the opening arrange included, because
+// a replay seek can only rewind a value that is re-asserted from index 0.  The
+// battle log under the flip is narration a reconnecting client never sees.
+// adjustSeats, swapSeat and reversePlayOrder all publish through one
+// Room::broadcastSeatRing(), so one of them is enough to pin that read; the
+// roster-level direction bookkeeping is covered in room-roster-test.
+static bool seatRingCarriesPlayDirection(Room &room, MessageRecorder &recorder,
+                                         ServerPlayer *player)
+{
+    QStringList expectedNames;
+    foreach (ServerPlayer *seatPlayer, room.getPlayers())
+        expectedNames << seatPlayer->objectName();
+
+    recorder.clear();
+    room.adjustSeats();
+    const PacketRecord *opened = recorder.first(player, S_COMMAND_ARRANGE_SEATS);
+    if (!expectCount(recorder, player, S_COMMAND_ARRANGE_SEATS, 1,
+                     "opening arrange publishes seats")
+        || opened == nullptr)
+        return false;
+    const QVariantMap openedBody = opened->body.toMap();
+    if (openedBody.value(QStringLiteral("schema_version")).toInt() != 2
+        || openedBody.value(QStringLiteral("player_names")).toStringList() != expectedNames
+        || !openedBody.contains(QStringLiteral("play_order_reversed"))
+        || openedBody.value(QStringLiteral("play_order_reversed")).toBool()) {
+        qCritical() << "opening seat ring did not carry a cleared direction" << openedBody;
+        return false;
+    }
+
+    recorder.clear();
+    room.reversePlayOrder();
+    const PacketRecord *reversed = recorder.first(player, S_COMMAND_ARRANGE_SEATS);
+    if (!expectCount(recorder, player, S_COMMAND_ARRANGE_SEATS, 1, "reverse republishes seats")
+        || reversed == nullptr)
+        return false;
+    if (!reversed->body.toMap().value(QStringLiteral("play_order_reversed")).toBool()) {
+        qCritical() << "reversed seat ring lost its direction" << reversed->body;
+        return false;
+    }
+
+    recorder.clear();
+    room.reversePlayOrder();
+    const PacketRecord *restored = recorder.first(player, S_COMMAND_ARRANGE_SEATS);
+    if (restored == nullptr
+        || restored->body.toMap().value(QStringLiteral("play_order_reversed")).toBool()) {
+        qCritical() << "restoring the original order did not republish the direction";
+        return false;
+    }
+    return !recorder.parseFailed;
+}
+
 int runRoomNotifierTests()
 {
     QString error;
@@ -767,6 +819,10 @@ int runRoomNotifierTests()
     if (!movePayloadHidesUnauthorizedIds(room, recorder, controller, firstControlled,
                                          privateObserver, secondControlled))
         return 8;
+    printRoomNotifierStage("suite.seat-ring-direction");
+    qInfo() << "room notifier test: seat ring direction";
+    if (!seatRingCarriesPlayDirection(room, recorder, controller))
+        return 9;
 
     qInfo() << "room notifier behavior passed";
     printRoomNotifierStage("suite.complete");

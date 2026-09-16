@@ -732,6 +732,7 @@ private:
     void addPlayerToRoster(ServerPlayer *player);
     void removePlayerFromRoster(ServerPlayer *player);
     void replacePlayerOrder(const QList<ServerPlayer *> &players);
+    void broadcastSeatRing();
     void executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
                           const QString &reason, const SkillInstanceRef &sourceRef);
     void processScheduledExtraTurns();

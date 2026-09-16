@@ -40,7 +40,8 @@ void GameEventStream::synchronize(const ClientGameState &state, quint64 generati
         if (sequence > m_nextSequence) m_nextSequence = sequence;
         GamePresentationEvent event{m_generation, sequence,
             value.value(QStringLiteral("command")).toInt(),
-            value.value(QStringLiteral("text")).toString(), QVariant()};
+            value.value(QStringLiteral("text")).toString(),
+            value.value(QStringLiteral("payload"))};
         m_events.append(event);
         m_nextSequence = sequence + 1;
         while (m_events.size() > MaximumEvents) m_events.removeFirst();

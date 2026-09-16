@@ -1903,7 +1903,6 @@
             "reply_command_id": 0,
             "required_fields": [
                 "schema_version",
-                "taker",
                 "card_id",
                 "move_cards"
             ],
@@ -2715,6 +2714,8 @@
             "message_type": "notification",
             "migration_status": "complete",
             "optional_fields": [
+                "rules_bundle",
+                "rules_content"
             ],
             "parser": "ProtocolPayloadRegistry::validateObjectPayload",
             "producer": "ServerConnectionContext",
@@ -2954,6 +2955,7 @@
             "message_type": "notification",
             "migration_status": "complete",
             "optional_fields": [
+                "play_order_reversed"
             ],
             "parser": "ProtocolPayloadRegistry::validateObjectPayload",
             "producer": "Room/RoomNotifier",
@@ -3148,7 +3150,8 @@
             "message_type": "request",
             "migration_status": "complete",
             "optional_fields": [
-                "room_id"
+                "room_id",
+                "rules_bundle"
             ],
             "parser": "ProtocolPayloadRegistry::validateObjectPayload",
             "producer": "Client",

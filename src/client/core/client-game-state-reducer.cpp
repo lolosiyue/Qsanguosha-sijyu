@@ -502,6 +502,9 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         state->setPlayerNames(names);
         for (int i = 0; i < names.size(); ++i)
             state->setPlayerValue(names.at(i), QStringLiteral("seat"), i + 1);
+        // Absent on schema 1; the seat ring then runs in its original direction.
+        state->setGameValue(QStringLiteral("play_order_reversed"),
+                            object.value(QStringLiteral("play_order_reversed"), false).toBool());
         break;
     }
     case S_COMMAND_START_IN_X_SECONDS:

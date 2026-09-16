@@ -1,5 +1,6 @@
 #include "game-view-state.h"
 #include "client-prompt.h"
+#include "protocol.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -156,6 +157,7 @@ GameViewState GameViewState::fromState(const ClientGameState &state,
     const QVariant drawPileCount = state.gameValue(QStringLiteral("draw_pile_count"));
     view.drawPileCount = drawPileCount.isValid() ? drawPileCount.toInt() : -1;
     view.discardPileCount = state.gameValue(QStringLiteral("discard_pile")).toList().size();
+    view.playOrderReversed = state.gameValue(QStringLiteral("play_order_reversed")).toBool();
     view.ready = options.stateReady;
 
     for (const QString &name : state.playerNames()) {
@@ -231,12 +233,40 @@ GameViewState GameViewState::fromState(const ClientGameState &state,
             view.privatePiles = safePiles;
         view.players.append(player);
     }
-    // Presentation payloads may contain protocol fields unsuitable for a public snapshot.
+    // Presentation payloads may contain protocol fields unsuitable for a public
+    // snapshot, so the narration keeps carrying text only and the settlement
+    // relation below is a named whitelist rather than the payload itself.
     for (const QVariant &raw : state.presentationEvents()) {
         const QVariantMap event = raw.toMap();
         view.recentEvents.append(QVariantMap{
             {QStringLiteral("command"), event.value(QStringLiteral("command"))},
             {QStringLiteral("text"), safeText(event.value(QStringLiteral("text")).toString())}});
+        if (event.value(QStringLiteral("command")).toInt() != QSanProtocol::S_COMMAND_LOG_SKILL)
+            continue;
+        const QVariantMap log = event.value(QStringLiteral("payload")).toMap();
+        const QString logType = log.value(QStringLiteral("log_type")).toString();
+        if (logType.isEmpty()) continue;
+        QVariantMap relation{{QStringLiteral("log_type"), logType}};
+        const QString from = log.value(QStringLiteral("from_player")).toString();
+        if (!from.isEmpty()) {
+            relation.insert(QStringLiteral("from"), from);
+            relation.insert(QStringLiteral("from_label"), playerLabel(from, options));
+        }
+        QStringList targets, targetLabels;
+        for (const QString &target : log.value(QStringLiteral("to_players")).toStringList()) {
+            if (target.isEmpty()) continue;
+            targets << target;
+            targetLabels << playerLabel(target, options);
+        }
+        if (!targets.isEmpty()) {
+            relation.insert(QStringLiteral("to"), targets);
+            relation.insert(QStringLiteral("to_labels"), targetLabels);
+        }
+        const QString card = log.value(QStringLiteral("card_string")).toString();
+        // 1.4: the log is a narration, not a settlement chain -- the card string
+        // is what links a nullification back to the trick it answered.
+        if (!card.isEmpty()) relation.insert(QStringLiteral("card"), card);
+        view.recentRelations.append(relation);
     }
     return view;
 }
@@ -257,7 +287,9 @@ QJsonObject GameViewState::toJson() const
             {QStringLiteral("prompt"), prompt}, {QStringLiteral("draw_pile_count"), drawPileCount},
             {QStringLiteral("discard_pile_count"), discardPileCount}, {QStringLiteral("players"), playerArray},
             {QStringLiteral("private_piles"), QJsonObject::fromVariantMap(privatePiles)},
-            {QStringLiteral("recent_events"), QJsonArray::fromVariantList(recentEvents)}};
+            {QStringLiteral("play_order_reversed"), playOrderReversed},
+            {QStringLiteral("recent_events"), QJsonArray::fromVariantList(recentEvents)},
+            {QStringLiteral("recent_relations"), QJsonArray::fromVariantList(recentRelations)}};
 }
 
 QString GameViewState::toPlainText() const
