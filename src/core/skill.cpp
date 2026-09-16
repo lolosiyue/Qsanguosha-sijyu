@@ -1,4 +1,5 @@
 #include "skill.h"
+#include "runtime-paths.h"
 #include "settings.h"
 #include "engine.h"
 #include "room.h"
@@ -246,13 +247,13 @@ void Skill::initMediaSource()
     sources.clear();
 
     for (int i = 1;; i++) {
-        QString effect_file = QString("audio/skill/%1%2.ogg").arg(objectName()).arg(i);
+        QString effect_file = QSanRuntimePaths::assetPath(QString("audio/skill/%1%2.ogg").arg(objectName()).arg(i));
         if (QFile::exists(effect_file)) sources << effect_file;
         else break;
     }
 
     if (sources.isEmpty()) {
-        QString effect_file = QString("audio/skill/%1.ogg").arg(objectName());
+        QString effect_file = QSanRuntimePaths::assetPath(QString("audio/skill/%1.ogg").arg(objectName()));
         if (QFile::exists(effect_file)) sources << effect_file;/*
 		else if(objectName().contains("_")){
 			QString Name2 = objectName().split("_").last();

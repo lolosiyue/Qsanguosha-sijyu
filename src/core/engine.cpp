@@ -2,6 +2,7 @@
 #include "rules-bundle-exporter.h"
 #include "qt-collection-utils.h"
 #include "runtime-paths.h"
+#include "package-runtime.h"
 #include "version.h"
 #include "ai-data-store.h"
 #include "aux-skills.h"
@@ -389,7 +390,24 @@ QStringList Engine::rulesDeclaredList(const QString &key) const
 {
     if (key == QLatin1String("extension_names"))
         return QSanRules::manifestScripts(m_rulesContentManifest);
-    return {};
+    QStringList paths;
+    for (const auto &entry : m_rulesContentManifest.entries) {
+        if (key == QLatin1String("extension_ids")) {
+            paths << entry.name;
+        } else if (key == QLatin1String("package_lua")) {
+            if (entry.script.startsWith(QLatin1String("packages/"))) paths << entry.script;
+            for (const auto &path : entry.libs)
+                if (path.startsWith(QLatin1String("packages/"))) paths << path;
+        } else if (key == QLatin1String("package_lang")) {
+            for (const auto &path : entry.lang)
+                if (path.startsWith(QLatin1String("packages/"))) paths << path;
+        } else if (key == QLatin1String("package_ai")) {
+            for (const auto &path : entry.ai)
+                if (path.startsWith(QLatin1String("packages/"))) paths << path;
+        }
+    }
+    paths.removeDuplicates();
+    return paths;
 }
 
 Engine::Engine(bool isManualMode)
@@ -401,6 +419,12 @@ Engine::Engine(bool isManualMode)
 #endif // LOGNETWORK
 
     Sanguosha = this;
+
+    QString packageError;
+    if (!QSanPackages::prepareRuntime(&packageError)) {
+        qCritical().noquote() << "Unable to prepare packages:" << packageError;
+        exit(1);
+    }
 
     m_rulesLuaSnapshot = QSanRules::coreLuaSnapshot();
 
@@ -428,6 +452,7 @@ Engine::Engine(bool isManualMode)
     removed_default_lords = GetConfigFromLuaState(bootstrapLua, "removed_default_lords").toStringList();
 
     m_rulesContentManifest = readContentManifest(bootstrapLua);
+    const QSanRules::ContentManifest legacyContent = m_rulesContentManifest;
     if (!m_rulesContentManifest.isValid()) {
         qCritical() << "invalid extension_names declaration:" << m_rulesContentManifest.error;
         exit(1);
@@ -448,6 +473,12 @@ Engine::Engine(bool isManualMode)
             qCritical() << "runtime-content.json cannot update config.extension_names";
             exit(1);
         }
+    }
+    m_rulesContentManifest = QSanPackages::effectiveContent(m_rulesContentManifest, legacyContent);
+    if (!m_rulesContentManifest.isValid()
+        || !installRuntimeExtensionOrder(bootstrapLua, m_rulesContentManifest)) {
+        qCritical().noquote() << "Unable to activate packages:" << m_rulesContentManifest.error;
+        exit(1);
     }
     // config.lua was captured before execution. Its declaration selects phase
     // two, which still precedes all extension code; never relabel a loaded VM.
@@ -535,6 +566,10 @@ Engine::Engine(bool isManualMode)
     const bool loadedLuaDefinitions = DoLuaScript(bootstrapLua, "lua/sanguosha.lua");
     m_loadingLuaDefinitions = false;
     if (!loadedLuaDefinitions) {
+        exit(1);
+    }
+    if (!QSanPackages::completeBoot(&packageError)) {
+        qCritical().noquote() << "Unable to complete package boot:" << packageError;
         exit(1);
     }
 
@@ -2514,8 +2549,9 @@ bool Engine::playSystemAudioEffect(const QString &name, bool superpose) const
 
 bool Engine::playAudioEffect(const QString &filename, bool superpose) const
 {
-    if(filename.isEmpty()||!Config.EnableEffects||!QFile::exists(filename)) return false;
-	emit const_cast<Engine *>(this)->audioEffectRequested(filename, superpose);
+    const QString resolved = QSanRuntimePaths::assetPath(filename);
+    if (filename.isEmpty() || !Config.EnableEffects || resolved.isEmpty() || !QFile::exists(resolved)) return false;
+	emit const_cast<Engine *>(this)->audioEffectRequested(resolved, superpose);
 	return true;
 }
 

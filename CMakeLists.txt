@@ -373,6 +373,10 @@ add_library(qsanguosha_engine STATIC
     src/core/asset-manifest.cpp
     src/core/asset-manifest.h
     src/core/rules-content-manifest.cpp
+    src/core/package-catalog.cpp
+    src/core/package-catalog.h
+    src/core/package-runtime.cpp
+    src/core/package-runtime.h
     src/core/runtime-paths.cpp
     src/core/runtime-paths.h
     src/core/engine.cpp
@@ -536,6 +540,24 @@ if(ANDROID)
     target_link_libraries(qsanguosha_engine PUBLIC z)
 endif()
 
+# Desktop package installation uses the same bounded ZIP reader as Android.
+if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT QSAN_BUILD_XP_LEGACY)
+    find_package(ZLIB QUIET)
+    if(ZLIB_FOUND)
+        set(QSAN_PACKAGE_ZLIB ZLIB::ZLIB)
+    elseif(WIN32)
+        find_package(Qt6 REQUIRED COMPONENTS ZlibPrivate)
+        set(QSAN_PACKAGE_ZLIB Qt6::ZlibPrivate)
+    else()
+        find_package(ZLIB REQUIRED)
+        set(QSAN_PACKAGE_ZLIB ZLIB::ZLIB)
+    endif()
+    target_sources(qsanguosha_engine PRIVATE
+        src/core/package-store.cpp src/core/package-store.h
+        src/core/android-zip-reader.cpp src/core/android-zip-reader.h)
+    target_link_libraries(qsanguosha_engine PUBLIC ${QSAN_PACKAGE_ZLIB})
+endif()
+
 set_source_files_properties(${QSAN_LUA_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 list(REMOVE_ITEM QSAN_SOURCES src/util/game-snapshot.cpp)
 list(REMOVE_ITEM QSAN_SOURCES src/client/aux-skills.cpp)
@@ -659,6 +681,10 @@ endif()
 
 get_target_property(qsan_engine_links qsanguosha_engine LINK_LIBRARIES)
 set(_qsan_engine_qt_allowlist ${QSAN_ENGINE_QT_LIBS})
+# Qt's bundled zlib is a compression dependency and introduces no GUI module.
+if(QSAN_PACKAGE_ZLIB STREQUAL "Qt6::ZlibPrivate")
+    list(APPEND _qsan_engine_qt_allowlist Qt6::ZlibPrivate)
+endif()
 foreach(qsan_engine_link IN LISTS qsan_engine_links)
     if(qsan_engine_link MATCHES "^Qt6::" AND NOT qsan_engine_link IN_LIST _qsan_engine_qt_allowlist)
         message(FATAL_ERROR "qsanguosha_engine links forbidden Qt target: ${qsan_engine_link}")
@@ -1296,6 +1322,10 @@ if(QSAN_BUILD_GUI)
         )
         qsan_configure_android_target(${QSAN_GUI_TARGET})
         qsan_add_android_runtime_assets(${QSAN_GUI_TARGET})
+    endif()
+    if(NOT ANDROID AND NOT QSAN_BUILD_XP_LEGACY)
+        target_sources(${QSAN_GUI_TARGET} PRIVATE
+            src/dialog/package-manager-dialog.cpp src/dialog/package-manager-dialog.h)
     endif()
 
     if(NOT QSAN_BUILD_XP_LEGACY)

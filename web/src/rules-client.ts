@@ -4,6 +4,7 @@ import { Command, asNumber, asString, isObject, type JsonObject } from "./protoc
 import { INTERACTION_COMMANDS } from "./replies";
 import type { LiveSession } from "./session";
 import { gameActionModel, isSharedPresentation, type GameActionModel, type SharedPresentation } from "./game-presentation";
+import { installPackageAssets, resetPackageAssets } from "./package-assets";
 
 export interface RulesSelection {
   card_ids: number[];
@@ -151,6 +152,7 @@ export class RulesController {
           await this.loadContent(cached.identity, cached.content);
           if (generation !== session.generation || generation !== this.generation || this.disposed)
             throw new Error("rules_reload_required");
+          installPackageAssets(cached.content);
           return this.identity;
         } catch {
           if (generation !== session.generation || generation !== this.generation || this.disposed)
@@ -183,6 +185,7 @@ export class RulesController {
       await this.loadContent(identity, content);
     }
     if (generation !== session.generation || this.disposed) throw new Error("rules_reload_required");
+    installPackageAssets(content);
     installRulesTranslations(this.pendingTranslations);
     this.admitted = true;
     this.saveCache(identity, content);
@@ -514,6 +517,7 @@ export class RulesController {
   }
 
   private releaseWorker(): void {
+    resetPackageAssets();
     this.prepareWait?.reject(new Error("rules_reload_required"));
     this.prepareWait = null;
     this.code = null;

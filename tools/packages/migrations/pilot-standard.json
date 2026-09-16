@@ -1,0 +1,16 @@
+{
+  "unresolved": [
+    "No image or audio files are included; add only after ownership is verified."
+  ],
+  "manifest": {
+    "schema_version": 1,
+    "id": "standard",
+    "version": "0.0.0-local",
+    "engine_api": 1,
+    "dependencies": [],
+    "extensions": [],
+    "assets": {}
+  },
+  "files": {},
+  "asset_owners": {}
+}
