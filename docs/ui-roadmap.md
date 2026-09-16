@@ -61,10 +61,12 @@
 2. **上家與下家的方位**可讀，且與 `CHOOSE_DIRECTION` 決定的順逆時針一致。
 3. **座次號**與環上位置一致（距離計算、「你左邊那位」這類語言才能被理解）。
 
-C++ 原版把這件事實作成 8 個矩形區的 U 形分配表（`RoomScene::updateTable()` 的
-`s_regularSeatIndex`）。**這張表就是全專案的座次環規範**，其他殼應複用它的語義，
-而不是各自發明排列。1v3、3v3 有專用表（`s_hulaoSeatIndex`、`s_kof3v3SeatIndex`），
-任何殼要支援這些模式時同樣沿用。
+C++ 原版把這件事實作成 8 個矩形區的 U 形分配表。**這張表就是全專案的座次環規範**，
+其他殼應複用它的語義，而不是各自發明排列。1v3、3v3 有專用表，任何殼要支援這些模式時同樣沿用。
+三張表都在 `src/client/core/seat-ring-table.h`（`regularSeatRegions` /
+`hulaoSeatRegions` / `threeVThreeSeatRegions`）；Qt 桌面直接讀，web 殼在
+`web/src/ui-seat-layout.ts` 保有一份 TypeScript 副本，由
+`web/scripts/check-seat-ring-sync.mjs` 釘住不得漂移。
 
 **人數上限與降級**：該表只覆蓋到 **20 人**；超過即無定義。因此座次環有三種呈現層級，
 按可用面積與人數自動降級：

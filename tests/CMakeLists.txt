@@ -150,6 +150,8 @@ target_include_directories(qsanguosha_core_tests PRIVATE
     ${QSAN_TEST_ROOT}/src/ui/home
     ${QSAN_TEST_ROOT}/src/ui/testing
     ${QSAN_TEST_ROOT}/src/util
+    # room-layout-engine.cpp reads the shared seat ring table from here.
+    ${QSAN_TEST_ROOT}/src/client/core
 )
 qsan_add_ctest(qsanguosha_runtime_paths qsanguosha_core_tests
     SUITE runtime-paths

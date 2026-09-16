@@ -2,7 +2,9 @@ import { asNumber, asString, asStringList } from "./protocol";
 import type { UiBind } from "./ui-types";
 import { playerHandLabel } from "./player-metrics";
 
-// Exact region rows from RoomScene::updateTable; the row index is opponent count - 1.
+// Exact region rows from src/client/core/seat-ring-table.h; the row index is opponent
+// count - 1. These must stay byte-identical to the C++ tables -- scripts/check-seat-ring-sync.mjs
+// fails the build if they drift. Change the header first, then mirror it here.
 const REGULAR: readonly number[][] = [
   [1],
   [5, 6],
