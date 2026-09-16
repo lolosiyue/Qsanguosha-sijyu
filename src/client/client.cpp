@@ -12,6 +12,7 @@
 #include "runtime-paths.h"
 #include "settings.h"
 #include "ui-rng.h"
+#include "card-lifetime-manager.h"
 #include "engine.h"
 #include "lua.hpp"
 #include "choosegeneraldialog.h"
@@ -79,6 +80,12 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_dispatchingRequestId(0)
 {
 	ClientInstance = this;
+	// A GUI host runs its Server on this very thread, so the Room's RoomRuntime
+	// claims the thread's card-lifetime domain when it is constructed and holds it
+	// until the Room dies. Client-side cards outlive the Room they happen to be
+	// created under, so leave this thread unattributed, exactly as it is in a client
+	// process with no embedded server.
+	CardLifetimeManager::setCurrentDomain(nullptr);
 	m_isGameOver = false;
 	m_isDisconnected = true;
 
@@ -1442,6 +1449,8 @@ void Client::activate(const QVariant &)
 void Client::startGame(const QVariant &pile)
 {
 	Sanguosha->registerRoom(this);
+	// A rematch builds its Room after this Client, reclaiming the thread's domain.
+	CardLifetimeManager::setCurrentDomain(nullptr);
 	_m_roomState.reset();
 
 	setAvailableCards(pile.toMap());
