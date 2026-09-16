@@ -2952,18 +2952,20 @@ QString Player::getLogName() const
 
 void Player::removeCard(int id, Place place)
 {
+    // Unknown client cards have no physical Card instance to remove.
+    if (id < 0) return;
     switch (place){
     case PlaceHand: {
 		foreach(const Card *h, handcards){
-			if(h->getId()==id)
+			if(h && h->getId()==id)
 				handcards.removeOne(h);
 		}
         break;
     }case PlaceEquip: {
-        removeEquip(Sanguosha->getCard(id));
+        if (const Card *card = Sanguosha->getCard(id)) removeEquip(card);
         break;
     }case PlaceDelayedTrick: {
-        removeDelayedTrick(Sanguosha->getCard(id));
+        if (const Card *card = Sanguosha->getCard(id)) removeDelayedTrick(card);
         break;
     }case PlaceSpecial: {
 		foreach(QString pile_name, piles.keys()){
@@ -2986,19 +2988,23 @@ QList<const Card *> Player::getHandcards() const
 
 void Player::addCard(int id, Place place)
 {
+    // Keep the shared physical-card collections free of hidden/unresolved cards.
+    if (id < 0) return;
+    const Card *card = Sanguosha->getCard(id);
+    if (card == nullptr) return;
     switch (place){
     case PlaceHand: {
 		foreach(const Card *h, handcards){
-			if(h->getId()==id)
+			if(h && h->getId()==id)
 				return;
 		}
-        handcards << Sanguosha->getCard(id);
+        handcards << card;
         break;
     }case PlaceEquip: {
-        setEquip(Sanguosha->getCard(id));
+        setEquip(card);
         break;
     }case PlaceDelayedTrick: {
-        addDelayedTrick(Sanguosha->getCard(id));
+        addDelayedTrick(card);
         break;
     }default:
         break;

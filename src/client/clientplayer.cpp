@@ -7,7 +7,7 @@
 ClientPlayer *Self = nullptr;
 
 ClientPlayer::ClientPlayer(Client *client)
-	: Player(client)//, handcard_num(0)
+	: Player(client), handcard_num(0)
 {
 	mark_doc = new QTextDocument(this);
 }
@@ -55,6 +55,7 @@ bool ClientPlayer::useExactHandInfo() const
 
 void ClientPlayer::addKnownHandCard(const Card *card)
 {
+	if (card == nullptr) return;
 	foreach (const Card *kc, known_cards) {
 		if(kc->getId()==card->getId())
 			return;
@@ -64,24 +65,22 @@ void ClientPlayer::addKnownHandCard(const Card *card)
 
 void ClientPlayer::addCard(int id, Place place)
 {
+	if (place == PlaceHand) {
+		addHandIds(QList<int>() << id);
+		return;
+	}
 	if(id<0) return;
 	Player::addCard(id, place);
-	if(place==PlaceHand){
-		if (this != Self)
-			addKnownHandCard(Sanguosha->getCard(id));
-		if(!hand_ids.contains(id)) hand_ids << id;
-		if(hand_ids.size()>1) qsanShuffle(hand_ids);
-	}
 }
 
 void ClientPlayer::removeCard(int id, Place place)
 {
+	if (place == PlaceHand) {
+		removeHandIds(QList<int>() << id);
+		return;
+	}
 	if(id<0) return;
 	Player::removeCard(id, place);
-	if(place==PlaceHand){
-		known_cards.removeAll(Sanguosha->getCard(id));
-		hand_ids.removeAll(id);
-	}
 }
 
 /*switch (place) {
@@ -160,7 +159,7 @@ QList<const Card *> ClientPlayer::getHandcards() const
 int ClientPlayer::getHandcardNum() const
 {
 	if (!useExactHandInfo())
-		return Player::getHandcardNum();
+		return handcard_num;
 	return hand_ids.size();
 }
 
@@ -192,7 +191,14 @@ void ClientPlayer::retainVisibleKnownHandcards()
 void ClientPlayer::addHandIds(const QList<int> &card_ids)
 {
 	foreach(int id, card_ids){
+		if (id < Card::S_UNKNOWN_CARD_ID) continue;
+		// A redacted card contributes to the count, never to the pointer list.
+		++handcard_num;
+		if (id == Card::S_UNKNOWN_CARD_ID) continue;
+		const Card *card = Sanguosha->getCard(id);
+		if (card == nullptr) continue;
 		Player::addCard(id,PlaceHand);
+		if (this != Self) addKnownHandCard(card);
 		if(hand_ids.contains(id)) continue;
 		hand_ids << id;
 	}
@@ -203,10 +209,22 @@ void ClientPlayer::addHandIds(const QList<int> &card_ids)
 void ClientPlayer::removeHandIds(const QList<int> &card_ids)
 {
 	foreach(int id, card_ids){
+		if (id < Card::S_UNKNOWN_CARD_ID) continue;
+		handcard_num = qMax(0, handcard_num - 1);
+		if (id == Card::S_UNKNOWN_CARD_ID) {
+			// An unidentified loss invalidates exact membership; retain only the count.
+			foreach (const Card *card, Player::getHandcards()) {
+				if (card) Player::removeCard(card->getId(), PlaceHand);
+			}
+			hand_ids.clear();
+			if (!hasFlag("S_REASON_SWAP")) known_cards.clear();
+			continue;
+		}
 		Player::removeCard(id,PlaceHand);
 		hand_ids.removeAll(id);
+		known_cards.removeAll(Sanguosha->getCard(id));
 	}
-	if(hand_ids.isEmpty()&&!hasFlag("S_REASON_SWAP"))
+	if(handcard_num == 0&&!hasFlag("S_REASON_SWAP"))
 		known_cards.clear();
 }
 
@@ -216,7 +234,9 @@ void ClientPlayer::setKnownCards(QList<int> card_ids)
 	QList<int> exact_ids;
 	foreach(int cardId, card_ids){
 		if(cardId < 0) continue;
-		known_cards << Sanguosha->getCard(cardId);
+		const Card *card = Sanguosha->getCard(cardId);
+		if (card == nullptr) continue;
+		known_cards << card;
 		exact_ids << cardId;
 	}
 	if (this == Self)
@@ -229,10 +249,10 @@ void ClientPlayer::setKnownCards(QList<int> card_ids)
 void ClientPlayer::setKnownCards(QList<const Card*> cards)
 {
 	known_cards.clear();
-	known_cards = cards;
 	QList<int> exact_ids;
 	foreach (const Card *card, cards) {
 		if (card == nullptr || card->getId() < 0) continue;
+		known_cards << card;
 		exact_ids << card->getId();
 	}
 	if (this == Self)

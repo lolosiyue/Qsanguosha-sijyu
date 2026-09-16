@@ -7,6 +7,7 @@ int runLuaCompatibilityTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
 int runCardMoveReasonTests();
+int runHiddenPhysicalCardTests();
 int runClientTargetEvaluatorTests();
 int runEnumReflectionTests();
 int runPackagePolicyTests();
@@ -51,6 +52,9 @@ int main(int argc, char **argv)
     const QString suite = parseSuite(argc, argv);
 
     const auto runAll = []() {
+        const int hiddenCards = runHiddenPhysicalCardTests();
+        if (hiddenCards != 0)
+            return hiddenCards;
         const int luaCompatibility = runLuaCompatibilityTests();
         if (luaCompatibility != 0)
             return 130 + luaCompatibility;
@@ -83,6 +87,8 @@ int main(int argc, char **argv)
 
     if (suite.isEmpty() || suite == QLatin1String("engine-smoke"))
         return runAll();
+    if (suite == QLatin1String("hidden-physical-cards"))
+        return runHiddenPhysicalCardTests();
     if (suite == QLatin1String("equips-nullified"))
         return runEquipsNullifiedTests();
     if (suite == QLatin1String("skill-card-server-self"))

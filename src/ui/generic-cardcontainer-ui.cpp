@@ -2249,6 +2249,11 @@ bool PlayerCardContainer::canBeSelected()
 void PlayerCardContainer::showHandcardViewer()
 {
     if (!m_player || m_player == Self) return;
+    // Fengbi also hides cached known cards and the viewer's total/back-card count.
+    if (m_player->hasSkill("inovation_fengbi")) {
+        if (m_handcardWindow) m_handcardWindow->hide();
+        return;
+    }
 
     if (m_handcardWindow) {
         updateHandcardViewer();
@@ -2296,6 +2301,11 @@ void PlayerCardContainer::showHandcardViewer()
 void PlayerCardContainer::updateHandcardViewer()
 {
     if (!m_handcardWindow || !m_handcardContainer || !m_player) return;
+    // Skill acquisition refreshes handcard UI; revoke an already-open viewer too.
+    if (m_player != Self && m_player->hasSkill("inovation_fengbi")) {
+        m_handcardWindow->hide();
+        return;
+    }
 
     m_handcardWindow->setTitle(QString("%1%2").arg(m_player->getLogName()).arg(tr("'s Handcards")));
 

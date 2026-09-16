@@ -119,6 +119,30 @@ public:
 // whitelists -- this one in structs.cpp and the wire one in
 // protocol-payload-registry.cpp -- have to accept it, or the move never
 // survives a round trip.
+int runHiddenPhysicalCardTests()
+{
+    QObject owner;
+    TargetEvaluatorPlayer player(&owner, QStringLiteral("hidden-hand"));
+    // The second redacted draw previously dereferenced the first null entry.
+    // This also checks that hidden IDs need no engine/card lookup at all.
+    player.addCard(Card::S_UNKNOWN_CARD_ID, Player::PlaceHand);
+    player.addCard(Card::S_UNKNOWN_CARD_ID, Player::PlaceHand);
+    player.removeCard(Card::S_UNKNOWN_CARD_ID, Player::PlaceHand);
+    if (!player.getHandcards().isEmpty()) {
+        qCritical() << "redacted card IDs must not enter the physical hand";
+        return 1;
+    }
+    player.addCard(Card::S_UNKNOWN_CARD_ID, Player::PlaceEquip);
+    player.addCard(Card::S_UNKNOWN_CARD_ID, Player::PlaceDelayedTrick);
+    player.removeCard(Card::S_UNKNOWN_CARD_ID, Player::PlaceEquip);
+    player.removeCard(Card::S_UNKNOWN_CARD_ID, Player::PlaceDelayedTrick);
+    if (!player.getEquips().isEmpty() || !player.getJudgingArea().isEmpty()) {
+        qCritical() << "redacted card IDs must not enter physical card zones";
+        return 2;
+    }
+    return 0;
+}
+
 int runCardMoveReasonTests()
 {
     const CardMoveReason sentinel(CardMoveReason::S_MASK_BASIC_REASON,
