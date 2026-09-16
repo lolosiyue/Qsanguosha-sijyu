@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QSet>
 
 namespace QSanRules {
 namespace {
@@ -79,12 +80,17 @@ bool contentScanIsDeclared(const ContentManifest &manifest)
         }
     }
     const QStringList declared = manifestDeliveredFiles(manifest);
+    const QStringList declaredAi = manifestServerOnlyFiles(manifest);
+    QSet<QString> replacedLegacyScripts;
+    for (const auto &entry : manifest.entries)
+        if (entry.script.startsWith(QLatin1String("packages/")))
+            replacedLegacyScripts.insert(QStringLiteral("extensions/%1.lua").arg(entry.name));
     // AI is optional on client deployments, even when declared as server metadata.
     const QStringList required = coreFiles() + declared;
     for (const auto &path : required)
         if (!regularAsset(path)) return false;
     // Server-only AI is excluded by path, but must obey the same symlink rule.
-    for (const char *root : {"lua", "extensions", "lang"}) {
+    for (const char *root : {"lua", "extensions", "lang", "packages"}) {
         const QString directory = QSanRuntimePaths::assetPath(QLatin1String(root));
         if (QFileInfo(directory).isSymLink()) return false;
         QDirIterator it(directory, QDir::Files | QDir::Dirs | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
@@ -93,10 +99,12 @@ bool contentScanIsDeclared(const ContentManifest &manifest)
             it.next();
             const QString path = QLatin1String(root) + QLatin1Char('/') + QDir(directory).relativeFilePath(it.filePath());
             if (it.fileInfo().isSymLink()) return false;
-            const bool serverOnlyAi = path.startsWith(QLatin1String("lua/ai/"))
+            const bool legacyServerOnlyAi = path.startsWith(QLatin1String("lua/ai/"))
                 || path == QLatin1String("lua/lib/middleclass.lua");
             if (it.fileInfo().isFile() && path.endsWith(QLatin1String(".lua"), Qt::CaseInsensitive)
-                && !coreFiles().contains(path) && !declared.contains(path) && !serverOnlyAi)
+                && !coreFiles().contains(path) && !declared.contains(path)
+                && !declaredAi.contains(path) && !legacyServerOnlyAi
+                && !replacedLegacyScripts.contains(path))
                 return false;
         }
     }
@@ -198,9 +206,10 @@ QJsonObject exportContentManifest(const Engine &engine)
     if (digest(QStringLiteral("qsan-lua-closure-v1"), deliveredRules)
         != identity.value(QStringLiteral("lua_hash")).toString())
         return {};
-    return {{QStringLiteral("schema_version"), 2},
-            {QStringLiteral("profile"), QStringLiteral("declared-v2")},
-            {QStringLiteral("runtime_content"), runtimeContentDescriptor(manifest)},
+    const QJsonObject runtime = runtimeContentDescriptor(manifest);
+    return {{QStringLiteral("schema_version"), runtime.value(QStringLiteral("schema_version"))},
+            {QStringLiteral("profile"), runtime.value(QStringLiteral("profile"))},
+            {QStringLiteral("runtime_content"), runtime},
             {QStringLiteral("files"), files}};
 }
 

@@ -10,9 +10,16 @@
 
 #include <QGuiApplication>
 #include <QPixmapCache>
+#include "runtime-paths.h"
 #include <QScreen>
 
 using namespace JsonUtils;
+
+static bool packageAssetExists(const QString &path)
+{
+    return QFile::exists(QSanRuntimePaths::assetPath(path));
+}
+
 
 QPixmap scaledPixmapForDevice(const QPixmap &source, const QSize &logicalSize,
     qreal deviceScale, Qt::AspectRatioMode aspectMode)
@@ -482,10 +489,10 @@ QPixmap QSanRoomSkin::getGeneralPixmapForPhoto(const QString &generalName, Gener
 		int skin_index = Config.value("HeroSkin/" + gn, 0).toInt();
 		QString fulldualSkinPath = QString("hero-skin/%1/%2/fulldual.png").arg(actualGn).arg(skin_index);
 		
-		if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
-			pixmap.load(fulldualSkinPath);
-		} else if (QFile::exists(fulldualPath)) {
-			pixmap.load(fulldualPath);
+		if (skin_index > 0 && packageAssetExists(fulldualSkinPath)) {
+			pixmap.load(QSanRuntimePaths::assetPath(fulldualSkinPath));
+		} else if (packageAssetExists(fulldualPath)) {
+			pixmap.load(QSanRuntimePaths::assetPath(fulldualPath));
 		}
 	}
 	
@@ -525,7 +532,7 @@ QString QSanRoomSkin::getPlayerAudioEffectPath(const QString &eventName, const Q
 	}
 
 	// Resource Alias fallback: if original eventName yielded no audio, retry with alias
-	if ((fileName.isEmpty() || !QFile::exists(fileName)) && !eventName.isEmpty()) {
+	if ((fileName.isEmpty() || !packageAssetExists(fileName)) && !eventName.isEmpty()) {
 		QString aliasEvent = Sanguosha->getResourceAlias("audios", eventName);
 		if (aliasEvent != eventName) {
 			QString aliasFileName = QString(S_SKIN_KEY_PLAYER_AUDIO_EFFECT).arg(category).arg(aliasEvent);
@@ -614,7 +621,7 @@ QString QSanRoomSkin::getPlayerAudioEffectPathWithGeneral(const QString &eventNa
 		}
 
 		QString heroskinCardPath = QString("hero-skin/%1/%2/card").arg(cardAudioGn).arg(skinIndex);
-		if (QFile::exists(heroskinCardPath)) {
+		if (packageAssetExists(heroskinCardPath)) {
 			QStringList filters;
 			filters << "*.ogg" << "*.wav";
 			QDir dir(heroskinCardPath);
@@ -649,7 +656,7 @@ QString QSanRoomSkin::getPlayerAudioEffectPathWithGeneral(const QString &eventNa
 	}
 
 	QString nativeCardPath = QString("audio/card/%1").arg(cardAudioGn);
-	if (QFile::exists(nativeCardPath)) {
+	if (packageAssetExists(nativeCardPath)) {
 		QStringList filters;
 		filters << "*.ogg" << "*.wav";
 		QDir dir(nativeCardPath);
@@ -911,7 +918,7 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 		QString groupKey = key.arg(S_SKIN_KEY_DEFAULT);
 		QString fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
 		fileName = fileNameToResolve.arg(arg);
-		if (!QFile::exists(fileName)) {
+		if (!packageAssetExists(fileName)) {
 			bool isGeneralCard = Sanguosha->getGeneral(arg) != nullptr;
 			if (isGeneralCard) {
 				groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
@@ -921,7 +928,7 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 				// Fallback to default2 (e.g., qun.png for kingdom icons) when file doesn't exist
 				groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
 				fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
-				if (!fileNameToResolve.isEmpty() && QFile::exists(fileNameToResolve)) {
+				if (!fileNameToResolve.isEmpty() && packageAssetExists(fileNameToResolve)) {
 					fileName = fileNameToResolve;
 				}
 			}
@@ -929,14 +936,14 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 	}
 
 	// Image parameter fallback: use setImage general's picture when file doesn't exist
-	if (!QFile::exists(fileName) && !arg.isEmpty()) {
+	if (!packageAssetExists(fileName) && !arg.isEmpty()) {
 		QString general_name = arg;
 		const General *general = Sanguosha->getGeneral(general_name);
 		if (general && !general->getImage().isEmpty()) {
 			QString groupKey = key.arg(S_SKIN_KEY_DEFAULT);
 			QString fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
 			fileName = fileNameToResolve.arg(general->getImage());
-			if (!QFile::exists(fileName)) {
+			if (!packageAssetExists(fileName)) {
 				groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
 				fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
 				fileName = fileNameToResolve.arg(general->getImage());
@@ -953,15 +960,15 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 			
 			if (skin_index > 0) {
 				QString heroskinFile = QString("hero-skin/%1/%2/full.png").arg(actualGn).arg(skin_index);
-				if (QFile::exists(heroskinFile)) {
+				if (packageAssetExists(heroskinFile)) {
 					fileName = heroskinFile;
 				} else {
 					QString heroskinCard = QString("hero-skin/%1/%2/card.jpg").arg(actualGn).arg(skin_index);
-					if (QFile::exists(heroskinCard)) {
+					if (packageAssetExists(heroskinCard)) {
 						fileName = heroskinCard;
 					}
 				}
-			}else if(!QFile::exists(fileName)){
+			}else if(!packageAssetExists(fileName)){
 				fileName.replace(gn, gn.split("_").last());
 			}
 		}
@@ -969,7 +976,7 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 
 	// Resource Alias fallback: if file still not found, try alias mapping
 	// Skip when on a heroskin path — skins are general-specific, alias is for base images only
-	if (!QFile::exists(fileName) && !arg.isEmpty() && !fileName.contains("hero-skin/") && !fileName.contains("/heroskin/")) {
+	if (!packageAssetExists(fileName) && !arg.isEmpty() && !fileName.contains("hero-skin/") && !fileName.contains("/heroskin/")) {
 		QString aliasArg = Sanguosha->getResourceAlias("generals", arg);
 		if (aliasArg != arg) {
 			QString aliasKey = key.arg(aliasArg);
@@ -979,7 +986,7 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 				QString groupKey = key.arg(S_SKIN_KEY_DEFAULT);
 				QString fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
 				fileName = fileNameToResolve.arg(aliasArg);
-				if (!QFile::exists(fileName)) {
+				if (!packageAssetExists(fileName)) {
 					groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
 					fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
 					fileName = fileNameToResolve.arg(aliasArg);
@@ -994,11 +1001,11 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 					
 					if (skin_index > 0) {
 						QString heroskinFile = QString("hero-skin/%1/%2/full.png").arg(actualGn).arg(skin_index);
-						if (QFile::exists(heroskinFile)) {
+						if (packageAssetExists(heroskinFile)) {
 							fileName = heroskinFile;
 						} else {
 							QString heroskinCard = QString("hero-skin/%1/%2/card.jpg").arg(actualGn).arg(skin_index);
-							if (QFile::exists(heroskinCard)) {
+							if (packageAssetExists(heroskinCard)) {
 								fileName = heroskinCard;
 							}
 						}
@@ -1040,9 +1047,10 @@ QPixmap IQSanComponentSkin::getPixmapFileName(const QString &key) const
 	return _readConfig(_m_imageConfig, key);
 }
 
-QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &fileName, bool cache) const
+QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &sourceFileName, bool cache) const
 {
-    if (fileName == "deprecated" || fileName.isEmpty())
+    const QString fileName = QSanRuntimePaths::assetPath(sourceFileName);
+    if (sourceFileName == "deprecated" || sourceFileName.isEmpty() || fileName.isEmpty())
         return QPixmap(1, 1);
     else {
         QPixmap pixmap;
@@ -1051,9 +1059,9 @@ QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &fileName, bool 
         const int suffixPos = fileName.lastIndexOf('.');
         if (suffixPos > 0 && !fileName.left(suffixPos).endsWith("@2x"))
             highDpiFileName = fileName.left(suffixPos) + "@2x" + fileName.mid(suffixPos);
-        const bool hasHighDpiFile = !highDpiFileName.isEmpty() && QFile::exists(highDpiFileName);
+        const bool hasHighDpiFile = !highDpiFileName.isEmpty() && packageAssetExists(highDpiFileName);
 
-        if (!QFile::exists(fileName) && !hasHighDpiFile) {
+        if (!packageAssetExists(fileName) && !hasHighDpiFile) {
             QString name = extractCardNameFromPath(fileName);
             if (!name.isEmpty()) {
                 bool isCardPath = fileName.contains("image/card/") && !fileName.contains("image/generals/card");
@@ -1959,7 +1967,7 @@ QPixmap IQSanComponentSkin::generateFallbackCardImage(const QString &cardName, c
 	if (pixmap.isNull())
 		return QPixmap(1, 1);
 
-	if (!backgroundImagePath.isEmpty() && QFile::exists(backgroundImagePath)) {
+	if (!backgroundImagePath.isEmpty() && packageAssetExists(backgroundImagePath)) {
 		QPixmap bg(backgroundImagePath);
 		if (!bg.isNull()) {
 			pixmap = bg.scaled(actualSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
@@ -2038,7 +2046,7 @@ QPixmap IQSanComponentSkin::generateFallbackEquipImage(const QString &equipName,
 		backgroundImagePath = Config.value("FallbackImage/EquipBackgroundImage", "image/equips/default.png").toString();
 	}
 
-	if (!backgroundImagePath.isEmpty() && QFile::exists(backgroundImagePath)) {
+	if (!backgroundImagePath.isEmpty() && packageAssetExists(backgroundImagePath)) {
 		QPixmap bg(backgroundImagePath);
 		if (!bg.isNull()) {
 			pixmap = bg.scaled(actualSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);

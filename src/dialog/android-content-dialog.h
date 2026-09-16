@@ -28,7 +28,7 @@ public:
 private:
     void refresh();
     void revealStatus();
-    void importFile(bool media, bool singleLua);
+    void importFile(bool media, bool singleLua, bool modularPackage = false);
     void run(const std::function<bool(QString *)> &operation);
     void movePackage(int offset);
     void exportOrder();

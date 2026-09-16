@@ -112,4 +112,75 @@ describe("rules content delivery", () => {
     files.set("/assets/stale.lua", new Uint8Array());
     await expect(verifyInstalledContent(fs, value)).rejects.toThrow("rules_reload_required");
   });
+
+  it("keeps v2 descriptors compatible and accepts a verified v3 package Lua closure", async () => {
+    expect(validateContentManifest(manifest()).schema_version).toBe(2);
+    const emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const runtime_content = { schema_version: 3, profile: "packages-v1", packages: [{
+      id: "addon", version: "1.2.0", dependencies: [],
+      assets: { "image/generals/card/custom.jpg": "image/generals/card/custom.jpg" }
+    }], extensions: [{ name: "game_entry", script: "packages/addon/lua/addon.lua",
+      dependencies: [], libs: ["packages/addon/lua/lib/helper.lua"],
+      lang: ["packages/addon/translation/addon.lua"], ai: ["packages/addon/lua/ai/addon-ai.lua"] }] };
+    const value = { schema_version: 3, profile: "packages-v1", runtime_content, files: [
+      ...core.map(path => ({ path, role: "rules", size: 0, sha256: emptyHash })),
+      { path: "packages/addon/lua/addon.lua", role: "rules", size: 0, sha256: emptyHash },
+      { path: "packages/addon/lua/lib/helper.lua", role: "rules", size: 0, sha256: emptyHash },
+      { path: "packages/addon/translation/addon.lua", role: "presentation", size: 0, sha256: emptyHash },
+      { path: "packages/addon/lua/ai/addon-ai.lua", role: "ai", size: 0, sha256: emptyHash }
+    ] };
+    const validated = validateContentManifest(value);
+    expect(validated.runtime_content.schema_version).toBe(3);
+    expect(validated.runtime_content).toEqual(runtime_content);
+
+    const files = new Map<string, Uint8Array>();
+    const fs = {
+      mkdirTree() {}, writeFile(path: string, bytes: Uint8Array) { files.set(path, bytes); },
+      readFile(path: string) { return files.get(path) ?? new Uint8Array(); },
+      readdir(path: string) {
+        const prefix = path.endsWith("/") ? path : `${path}/`;
+        return [...new Set([...files.keys()].filter(key => key.startsWith(prefix))
+          .map(key => key.slice(prefix.length).split("/")[0]))];
+      },
+      lstat(path: string) { return { mode: files.has(path) ? 1 : 2 }; },
+      isDir(mode: number) { return mode === 2; }, isFile(mode: number) { return mode === 1; },
+      unlink(path: string) { files.delete(path); }, rmdir() {}
+    };
+    installContent(fs, new Map(validated.files.map(entry => [entry.path, new Uint8Array()])) as Map<string, Uint8Array>,
+      validated.runtime_content);
+    await verifyInstalledContent(fs, value, true);
+  });
+
+  it("rejects v3 unknown owners, path traversal, and case-colliding paths", () => {
+    const runtime_content = { schema_version: 3, profile: "packages-v1", packages: [
+      { id: "addon", version: "1", dependencies: [], assets: {} }
+    ], extensions: [{ name: "addon_entry", script: "packages/addon/lua/addon.lua",
+      dependencies: [], libs: [], lang: [], ai: [] }] };
+    const base = { schema_version: 3, profile: "packages-v1", runtime_content, files: [
+      ...core.map(path => ({ path, role: "rules", size: 0, sha256: hash })),
+      { path: "packages/addon/lua/addon.lua", role: "rules", size: 0, sha256: hash }
+    ] };
+    for (const bad of [
+      { ...base, files: [...base.files, { path: "packages/other/lua/x.lua", role: "rules", size: 0, sha256: hash }] },
+      { ...base, files: [...base.files, { path: "packages/addon/lua/../evil.lua", role: "rules", size: 0, sha256: hash }] },
+      { ...base, files: [...base.files, { path: "lua/Config.lua", role: "rules", size: 0, sha256: hash }] }
+    ]) expect(() => validateContentManifest(bad)).toThrow("rules_content_unsupported");
+    const badAssets = { ...base, runtime_content: { ...runtime_content, packages: [
+      { id: "addon", version: "1", dependencies: [], assets: { "image/../escape": "image/escape" } }
+    ] } };
+    expect(() => validateContentManifest(badAssets)).toThrow("rules_content_unsupported");
+  });
+
+  it("rejects case-folded extension-name collisions only in the v3 profile", () => {
+    const extensions = ["Foo", "foo"].map((name, index) => ({ name,
+      script: `extensions/${index ? "b" : "a"}.lua`, dependencies: [], libs: [], lang: [], ai: [] }));
+    const v2 = { ...manifest(), runtime_content: {
+      schema_version: 2, profile: "declared-v2", extensions
+    } };
+    expect(validateContentManifest(v2).runtime_content.extensions).toHaveLength(2);
+    const v3 = { schema_version: 3, profile: "packages-v1", runtime_content: {
+      schema_version: 3, profile: "packages-v1", packages: [], extensions
+    }, files: core.map(path => ({ path, role: "rules", size: 0, sha256: hash })) };
+    expect(() => validateContentManifest(v3)).toThrow("rules_content_unsupported");
+  });
 });

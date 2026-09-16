@@ -13,13 +13,50 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 #include <algorithm>
+#include <functional>
 
+#include <cstring>
+#include <utility>
 #include <zlib.h>
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
 #endif
 
 namespace {
+class TemporaryZeroReadDevice final : public QIODevice
+{
+public:
+    explicit TemporaryZeroReadDevice(QByteArray bytes, bool staleEof = false)
+        : m_bytes(std::move(bytes)), m_staleEof(staleEof) {}
+    bool isSequential() const override { return !m_staleEof; }
+    bool atEnd() const override { return !m_staleEof && m_offset == m_bytes.size(); }
+    qint64 size() const override { return m_bytes.size(); }
+    // A provider may advertise a fixed size while refusing seek; exercise the
+    // spool fallback instead of the direct-seek path covered separately below.
+    bool seek(qint64) override { return false; }
+
+protected:
+    qint64 readData(char *data, qint64 maxSize) override
+    {
+        if (!m_returnedTemporaryZero) {
+            m_returnedTemporaryZero = true;
+            return 0;
+        }
+        const qint64 count = qMin(maxSize, qint64(m_bytes.size()) - m_offset);
+        if (count <= 0) return 0;
+        memcpy(data, m_bytes.constData() + m_offset, size_t(count));
+        m_offset += count;
+        return count;
+    }
+    qint64 writeData(const char *, qint64) override { return -1; }
+
+private:
+    QByteArray m_bytes;
+    qint64 m_offset = 0;
+    bool m_returnedTemporaryZero = false;
+    bool m_staleEof = false;
+};
+
 struct ZipItem {
     QByteArray name;
     QByteArray data;
@@ -131,6 +168,25 @@ QByteArray extensionZip(const QByteArray &body)
     return zip({{QByteArrayLiteral("runtime-content.json"), descriptor}, {QByteArrayLiteral("extensions/addon.lua"), body}});
 }
 
+QByteArray modularPackageZip(const QByteArray &body, bool corruptHash = false)
+{
+    const QByteArray relativePath = QByteArrayLiteral("lua/addon.lua");
+    QByteArray hash = QCryptographicHash::hash(body, QCryptographicHash::Sha256).toHex();
+    if (corruptHash) hash[0] = hash[0] == '0' ? '1' : '0';
+    const QJsonObject file{{"path", QString::fromLatin1(relativePath)}, {"role", "rules"},
+                           {"size", body.size()}, {"sha256", QString::fromLatin1(hash)}};
+    const QJsonObject extension{{"name", "modular-addon"}, {"script", QString::fromLatin1(relativePath)},
+        {"dependencies", QJsonArray{}}, {"libs", QJsonArray{}}, {"lang", QJsonArray{}}, {"ai", QJsonArray{}}};
+    const QJsonObject optionalImage{{"path", "image/general/missing.png"}, {"role", "data"},
+        {"size", 5}, {"sha256", QString(64, QLatin1Char('0'))}};
+    const QJsonObject manifest{{"schema_version", 1}, {"id", "demo"}, {"version", "1.0.0"},
+        {"engine_api", 1}, {"dependencies", QJsonArray{}}, {"extensions", QJsonArray{extension}},
+        {"assets", QJsonObject{{"image/general/missing.png", "image/general/missing.png"}}},
+        {"files", QJsonArray{file, optionalImage}}};
+    return zip({{QByteArrayLiteral("manifest.json"), QJsonDocument(manifest).toJson(QJsonDocument::Compact)},
+                {relativePath, body}});
+}
+
 QByteArray mediaZip(bool badHash = false)
 {
     const QList<QPair<QByteArray, QByteArray>> payload{{"image/base.png", "image"}, {"audio/base.ogg", "audio"}, {"font/base.ttf", "font"}};
@@ -170,6 +226,16 @@ bool readerCases()
 {
     const QByteArray normal = zip({{QByteArrayLiteral("ok.lua"), QByteArrayLiteral("x")}});
     if (!check(!normal.isEmpty(), "zip helper creates an archive")) return false;
+    TemporaryZeroReadDevice intermittent(normal);
+    intermittent.open(QIODevice::ReadOnly);
+    AndroidZipReader intermittentReader; AndroidContentStore::ImportLimits intermittentLimits; QString intermittentError;
+    if (!check(intermittentReader.open(intermittent, intermittentLimits, nullptr, &intermittentError),
+               "reader retries a transient zero-byte source read: " + intermittentError)) return false;
+    TemporaryZeroReadDevice staleEof(normal, true);
+    staleEof.open(QIODevice::ReadOnly);
+    AndroidZipReader staleEofReader;
+    if (!check(staleEofReader.open(staleEof, intermittentLimits, nullptr, &intermittentError),
+               "reader recognizes a fully copied fixed length with stale EOF: " + intermittentError)) return false;
     if (!readerRejects(zip({{QByteArrayLiteral("../escape.lua"), QByteArrayLiteral("x")}}), "traversal")) return false;
     if (!readerRejects(zip({{QByteArrayLiteral("A.lua"), QByteArrayLiteral("x")}, {QByteArrayLiteral("a.lua"), QByteArrayLiteral("y")}}), "case collision")) return false;
     if (!readerRejects(zip({{QByteArrayLiteral("A/x.lua"), QByteArrayLiteral("x")}, {QByteArrayLiteral("a/y.lua"), QByteArrayLiteral("y")}}), "case collision in directory component")) return false;
@@ -467,6 +533,209 @@ bool mixedMediaCases()
     return true;
 }
 
+bool modularPackageCases()
+{
+    QTemporaryDir root;
+    if (!check(root.isValid(), "modular package root")) return false;
+    QString error;
+    AndroidContentStore store(root.path());
+    if (!check(store.prepareStartup(&error), "prepare modular package store: " + error)) return false;
+
+    // Android ignores old SHA values and missing optional images for modular
+    // packages too; required Lua and descriptor validation remain in force.
+    QBuffer source;
+    source.setData(modularPackageZip("return true", true));
+    source.open(QIODevice::ReadOnly);
+    const bool staged = store.stageModularPackage(source, "demo.zip", nullptr, {}, &error);
+    if (!check(staged,
+               "stage modular package without checksum/media completeness gate: " + error)) return false;
+    AndroidContentStore installed(root.path());
+    if (!check(installed.prepareStartup(&error), "apply modular package: " + error)) return false;
+    const QString runtime = installed.runtimeRoot();
+    QFile manifest(runtime + "/packages/demo/manifest.json");
+    QFile payload(runtime + "/packages/demo/lua/addon.lua");
+    if (!check(manifest.open(QIODevice::ReadOnly) && payload.open(QIODevice::ReadOnly),
+               "package manifest and payload are installed under packages/<id>")) return false;
+    if (!check(!installed.needsRecovery()
+               && !QFileInfo::exists(runtime + "/packages/demo/image/general/missing.png"),
+               "missing optional modular image does not block startup")) return false;
+    QVariantMap descriptor;
+    if (!check(readMap(runtime + "/runtime-content.json", &descriptor)
+               && descriptor.value("schema_version").toInt() == 3
+               && descriptor.value("profile").toString() == "packages-v1",
+               "modular package publishes runtime descriptor v3")) return false;
+    const QVariantList packages = descriptor.value("packages").toList();
+    const QVariantList extensions = descriptor.value("extensions").toList();
+    if (!check(packages.size() == 1 && packages.first().toMap().value("id").toString() == "demo"
+               && extensions.size() == 3
+               && extensions.at(0).toMap().value("name").toString() == "base"
+               && extensions.at(0).toMap().value("script").toString() == "extensions/base.lua"
+               && extensions.at(1).toMap().value("name").toString() == "addon"
+               && extensions.at(1).toMap().value("script").toString() == "extensions/addon.lua"
+               && extensions.at(2).toMap().value("name").toString() == "modular-addon"
+               && extensions.at(2).toMap().value("script").toString() == "packages/demo/lua/addon.lua",
+               "descriptor preserves bundled extension order and appends package extension")) return false;
+
+    if (!check(installed.removePackage("demo", &error), "stage modular package removal: " + error)) return false;
+    AndroidContentStore removed(root.path());
+    if (!check(removed.prepareStartup(&error), "apply modular package removal: " + error)) return false;
+    QFile removedPayload(removed.runtimeRoot() + "/packages/demo/lua/addon.lua");
+    if (!check(!removedPayload.exists(), "removed modular package is absent from effective runtime")) return false;
+    QVariantMap restored;
+    return check(readMap(removed.runtimeRoot() + "/runtime-content.json", &restored)
+                 && restored.value("schema_version").toInt() == 2,
+                 "removing the last modular package restores the v2 legacy descriptor");
+}
+
+bool bootstrapUpgradeCases(bool sameApkRevision)
+{
+    QTemporaryDir root;
+    if (!check(root.isValid(), "bootstrap upgrade root")) return false;
+    const auto writeBytes = [](const QString &path, const QByteArray &bytes) {
+        if (!QDir().mkpath(QFileInfo(path).absolutePath())) return false;
+        QFile file(path);
+        return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(bytes) == bytes.size();
+    };
+    const auto readBytes = [](const QString &path) {
+        QFile file(path);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    };
+    const QByteArray overrideBytes("-- preserved user addon\n");
+    if (!writeBytes(root.path() + "/runtime/extensions/addon.lua", overrideBytes)) return false;
+    QString error;
+    AndroidContentStore initial(root.path());
+    if (!initial.prepareStartup(&error)) return false;
+    QBuffer media; media.setData(mediaZip()); media.open(QIODevice::ReadOnly);
+    if (!initial.stageMedia(media, nullptr, {}, &error)) return false;
+    AndroidContentStore installed(root.path());
+    if (!installed.prepareStartup(&error)) return false;
+    const QString oldRuntime = installed.runtimeRoot();
+    const QString oldAudio = QFileInfo(oldRuntime + "/audio/base.ogg").canonicalFilePath();
+    const QByteArray legacyLoader("-- old APK bootstrap\n");
+    if (!writeBytes(root.path() + "/content/baseline/runtime/lua/sanguosha.lua", legacyLoader)
+        || !writeBytes(oldRuntime + "/lua/sanguosha.lua", legacyLoader)) return false;
+    QVariantMap baseline;
+    const QString baselinePath = root.path() + "/content/baseline/metadata.json";
+    if (!readMap(baselinePath, &baseline)) return false;
+    if (sameApkRevision) baseline.remove("bootstrap_version");
+    else baseline.insert("apk_revision", "previous-apk");
+    if (!writeMap(baselinePath, baseline)) return false;
+
+    AndroidContentStore upgraded(root.path());
+    const bool prepared = upgraded.prepareStartup(&error);
+    if (!check(prepared && !upgraded.needsRecovery(), "bootstrap APK upgrade: " + error)) return false;
+    QVariantMap migrated;
+    if (!check(readMap(baselinePath, &migrated) && migrated.value("bootstrap_version").toInt() == 1,
+               "bootstrap repair publishes its metadata migration marker")) return false;
+    const QByteArray apkLoader = readBytes(":/assets/lua/sanguosha.lua");
+    if (!check(!apkLoader.isEmpty() && upgraded.runtimeRoot() != oldRuntime
+               && readBytes(upgraded.runtimeRoot() + "/lua/sanguosha.lua") == apkLoader
+               && readBytes(oldRuntime + "/lua/sanguosha.lua") == legacyLoader,
+               "APK bootstrap activates without changing the previous snapshot")) return false;
+    if (!check(upgraded.mediaReady()
+               && readBytes(upgraded.runtimeRoot() + "/extensions/addon.lua") == overrideBytes,
+               "bootstrap refresh preserves media and captured user override")) return false;
+#ifdef Q_OS_UNIX
+    if (!check(QFileInfo(upgraded.runtimeRoot() + "/audio/base.ogg").canonicalFilePath() == oldAudio,
+               "bootstrap refresh reuses the same media blob")) return false;
+#else
+    Q_UNUSED(oldAudio);
+#endif
+    return true;
+}
+
+bool presentationUpgradeCases(bool userOverride, bool looseTranslationOverride)
+{
+    QTemporaryDir root;
+    if (!check(root.isValid(), "presentation upgrade root")) return false;
+    const QString translation = "lang/zh_CN/Audio/AddedPackageLines.lua";
+    const auto writeBytes = [](const QString &path, const QByteArray &bytes) {
+        if (!QDir().mkpath(QFileInfo(path).absolutePath())) return false;
+        QFile file(path);
+        return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(bytes) == bytes.size();
+    };
+    const auto readBytes = [](const QString &path) {
+        QFile file(path);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    };
+    const QByteArray customScript("-- user rule version must stay pinned\n");
+    if (userOverride && !writeBytes(root.path() + "/runtime/extensions/addon.lua", customScript)) return false;
+    QString error;
+    AndroidContentStore initial(root.path());
+    if (!initial.prepareStartup(&error)) return false;
+    QBuffer media; media.setData(mediaZip()); media.open(QIODevice::ReadOnly);
+    if (!initial.stageMedia(media, nullptr, {}, &error)) return false;
+    AndroidContentStore installed(root.path());
+    if (!installed.prepareStartup(&error)) return false;
+    const QString oldRuntime = installed.runtimeRoot();
+    const QByteArray oldScript = readBytes(oldRuntime + "/extensions/addon.lua");
+    const QString baselinePath = root.path() + "/content/baseline/metadata.json";
+    const QString snapshotPath = QFileInfo(oldRuntime).absolutePath() + "/metadata.json";
+    QVariantMap baseline, snapshot, content;
+    if (!readMap(baselinePath, &baseline) || !readMap(snapshotPath, &snapshot)
+        || !readMap(oldRuntime + "/runtime-content.json", &content)) return false;
+    const auto stripEntries = [&](QVariantList entries) {
+        for (QVariant &value : entries) {
+            QVariantMap entry = value.toMap();
+            QStringList lang = entry.value("lang").toStringList(); lang.removeAll(translation);
+            entry.insert("lang", lang); value = entry;
+        }
+        return entries;
+    };
+    std::function<QVariantMap(QVariantMap)> stripPackage = [&](QVariantMap package) {
+        QStringList files = package.value("files").toStringList(); files.removeAll(translation);
+        package.insert("files", files); package.insert("entries", stripEntries(package.value("entries").toList()));
+        if (package.contains("fallback")) package.insert("fallback", stripPackage(package.value("fallback").toMap()));
+        return package;
+    };
+    for (QVariantMap *metadata : {&baseline, &snapshot}) {
+        QVariantList packages = metadata->value("packages").toList();
+        for (QVariant &package : packages) package = stripPackage(package.toMap());
+        metadata->insert("packages", packages);
+    }
+    // Reproduce the failed same-APK upgrade: the file was copied, declarations
+    // were retained, and bootstrap/APK revision markers already look current.
+    baseline.remove("presentation_version");
+    content.insert("extensions", stripEntries(content.value("extensions").toList()));
+    snapshot.insert("descriptor", content);
+    const QByteArray customTranslation("return { custom = 'kept' }\n");
+    QString overridePath;
+    if (looseTranslationOverride) {
+        const QString blob = "11111111-1111-4111-8111-111111111111";
+        overridePath = root.path() + "/content/blobs/" + blob + "/runtime/" + translation;
+        if (!writeBytes(overridePath, customTranslation)) return false;
+        QVariantMap overrides = snapshot.value("legacy_overrides").toMap();
+        overrides.insert(translation, blob); snapshot.insert("legacy_overrides", overrides);
+    }
+    if (!writeMap(baselinePath, baseline) || !writeMap(snapshotPath, snapshot)
+        || !writeMap(oldRuntime + "/runtime-content.json", content)) return false;
+    const QByteArray previousDescriptorBytes = readBytes(oldRuntime + "/runtime-content.json");
+    AndroidContentStore upgraded(root.path());
+    const bool prepared = upgraded.prepareStartup(&error);
+    if (!check(prepared && !upgraded.needsRecovery(), "repair APK translation declarations: " + error)) return false;
+    QVariantMap repaired;
+    if (!readMap(upgraded.runtimeRoot() + "/runtime-content.json", &repaired)) return false;
+    int declarations = 0;
+    for (const QVariant &value : repaired.value("extensions").toList())
+        declarations += value.toMap().value("lang").toStringList().count(translation);
+    const QByteArray expected = looseTranslationOverride ? customTranslation : readBytes(":/assets/" + translation);
+    if (!check(declarations == 1 && upgraded.runtimeRoot() != oldRuntime && upgraded.mediaReady()
+               && readBytes(upgraded.runtimeRoot() + '/' + translation) == expected
+               && readBytes(upgraded.runtimeRoot() + "/extensions/addon.lua") == oldScript,
+               "new translation is declared once while media and retained rules stay intact")) return false;
+    if (!check(!userOverride || oldScript == customScript, "user rule override remains active")) return false;
+    if (!check(overridePath.isEmpty() || readBytes(overridePath) == customTranslation,
+               "loose translation override blob is retained")) return false;
+    // Compare persisted bytes: JSON arrays deserialize as QVariantList rather
+    // than the QStringList used while constructing the old fixture metadata.
+    if (!check(!previousDescriptorBytes.isEmpty()
+               && readBytes(oldRuntime + "/runtime-content.json") == previousDescriptorBytes,
+               "translation upgrade does not rewrite the previous snapshot")) return false;
+    AndroidContentStore warm(root.path());
+    return check(warm.prepareStartup(&error) && warm.runtimeRoot() == upgraded.runtimeRoot(),
+                 "presentation marker prevents repeated migration");
+}
+
 bool warmStartCases()
 {
     QTemporaryDir root;
@@ -524,10 +793,128 @@ bool warmStartCases()
 
 }
 
+bool bundledMigrationCases(const QString &upgradeRoot)
+{
+    QString error;
+    const auto modularActive = [&](AndroidContentStore &store) {
+        QVariantMap manifest;
+        if (!readMap(store.runtimeRoot() + "/runtime-content.json", &manifest)) return false;
+        const QVariantList entries = manifest.value("extensions").toList();
+        int count = 0;
+        for (const auto &package : store.packages()) if (package.id == "base") ++count;
+        const bool valid = count == 1 && entries.size() == 2
+            && entries.at(0).toMap().value("script").toString() == "packages/base/lua/base.lua"
+            && entries.at(1).toMap().value("name").toString() == "addon"
+            && !QFileInfo::exists(store.runtimeRoot() + "/extensions/base.lua");
+        if (!valid) QTextStream(stderr) << "Migration descriptor: " << QJsonDocument::fromVariant(manifest).toJson(QJsonDocument::Compact)
+            << " base rows=" << count << " legacy exists=" << QFileInfo::exists(store.runtimeRoot() + "/extensions/base.lua") << '\n';
+        return valid;
+    };
+    QTemporaryDir root;
+    AndroidContentStore fresh(root.path());
+    const bool prepared = fresh.prepareStartup(&error);
+    if (!check(prepared, "prepare bundled migration: " + error)) return false;
+    if (!check(modularActive(fresh), "bundled migration keeps one ID and original extension order")) return false;
+    if (!check(fresh.setPackageEnabled("base", false, &error), "disable migrated bundle: " + error)) return false;
+    AndroidContentStore disabled(root.path());
+    if (!check(disabled.prepareStartup(&error)
+        && !QFileInfo::exists(disabled.runtimeRoot() + "/extensions/base.lua")
+        && !QFileInfo::exists(disabled.runtimeRoot() + "/packages/base/manifest.json"), "disable removes both legacy and modular payloads: " + error)) return false;
+    if (!check(disabled.removePackage("base", &error), "restore legacy fallback: " + error)) return false;
+    AndroidContentStore restored(root.path());
+    if (!check(restored.prepareStartup(&error)
+        && QFileInfo::exists(restored.runtimeRoot() + "/extensions/base.lua")
+        && !QFileInfo::exists(restored.runtimeRoot() + "/packages/base/manifest.json"), "explicit removal restores legacy across restart: " + error)) return false;
+    QVariantMap laterBase;
+    const QString laterBasePath = root.path() + "/content/baseline/metadata.json";
+    if (!readMap(laterBasePath, &laterBase)) return false;
+    laterBase.insert("revision", "11111111-1111-4111-8111-111111111111");
+    if (!writeMap(laterBasePath, laterBase)) return false;
+    AndroidContentStore later(root.path());
+    if (!check(later.prepareStartup(&error)
+        && QFileInfo::exists(later.runtimeRoot() + "/extensions/base.lua")
+        && !QFileInfo::exists(later.runtimeRoot() + "/packages/base/manifest.json"), "explicit legacy choice survives a later baseline revision: " + error)) return false;
+
+    QTemporaryDir editedRoot;
+    QDir().mkpath(editedRoot.path() + "/runtime/extensions");
+    QFile edited(editedRoot.path() + "/runtime/extensions/base.lua");
+    if (!edited.open(QIODevice::WriteOnly) || edited.write("-- preserved CP1 edit\n") < 0) return false;
+    edited.close();
+    AndroidContentStore preserved(editedRoot.path());
+    if (!check(preserved.prepareStartup(&error), "preserve legacy edit during modular migration: " + error)) return false;
+    QFile saved(preserved.runtimeRoot() + "/extensions/base.lua");
+    if (!check(saved.open(QIODevice::ReadOnly) && saved.readAll() == "-- preserved CP1 edit\n", "legacy edit bytes retained")) return false;
+    saved.close();
+    QVariantMap interruptedBase, interruptedState;
+    const QString editedBasePath = editedRoot.path() + "/content/baseline/metadata.json";
+    const QString editedStatePath = editedRoot.path() + "/content/state.json";
+    if (!readMap(editedBasePath, &interruptedBase) || !readMap(editedStatePath, &interruptedState)) return false;
+    QVariantList oldBase = interruptedBase.value("packages").toList();
+    QVariantMap newPackage = oldBase.first().toMap();
+    const QVariant oldPackage = newPackage.take("fallback");
+    oldBase[0] = oldPackage; oldBase.append(newPackage);
+    QVariantMap initial = interruptedBase.value("initial_snapshot").toMap();
+    QVariantList oldInitial = initial.value("packages").toList();
+    QVariantMap oldOverride = oldInitial.first().toMap();
+    oldOverride.insert("fallback", oldPackage);
+    oldInitial[0] = oldOverride; oldInitial.append(newPackage);
+    initial.insert("packages", oldInitial);
+    interruptedBase.insert("packages", oldBase); interruptedBase.insert("initial_snapshot", initial);
+    interruptedState.remove("active"); interruptedState.remove("startup_validation");
+    if (!writeMap(editedBasePath, interruptedBase) || !writeMap(editedStatePath, interruptedState)) return false;
+    AndroidContentStore editedRecovery(editedRoot.path());
+    if (!check(editedRecovery.prepareStartup(&error), "recover duplicate metadata with CP1 edits: " + error)) return false;
+    QFile recoveredEdit(editedRecovery.runtimeRoot() + "/extensions/base.lua");
+    if (!check(recoveredEdit.open(QIODevice::ReadOnly) && recoveredEdit.readAll() == "-- preserved CP1 edit\n", "duplicate recovery keeps the user override active")) return false;
+    recoveredEdit.close();
+    if (!check(editedRecovery.removePackage("base", &error), "remove legacy edit override: " + error)) return false;
+    AndroidContentStore original(editedRoot.path());
+    if (!check(original.prepareStartup(&error) && modularActive(original), "removing edit restores modular APK bundle: " + error)) return false;
+
+    AndroidContentStore upgraded(upgradeRoot);
+    if (!check(upgraded.prepareStartup(&error) && modularActive(upgraded), "upgrade existing bundled legacy package in place: " + error)) return false;
+
+    // Recreate metadata saved by the failed first-boot implementation, before
+    // any active snapshot could be published. Recovery must need no pm clear.
+    QTemporaryDir interruptedRoot;
+    AndroidContentStore before(interruptedRoot.path());
+    if (!before.prepareStartup(&error)) return false;
+    QVariantMap baseline, state;
+    const QString baselinePath = interruptedRoot.path() + "/content/baseline/metadata.json";
+    const QString statePath = interruptedRoot.path() + "/content/state.json";
+    if (!readMap(baselinePath, &baseline) || !readMap(statePath, &state)) return false;
+    QVariantList packages = baseline.value("packages").toList();
+    QVariantMap modular = packages.first().toMap();
+    packages[0] = modular.take("fallback");
+    packages.append(modular);
+    baseline.insert("packages", packages);
+    baseline.insert("initial_snapshot", QVariantMap{{"packages", packages}});
+    state.remove("active"); state.remove("startup_validation");
+    if (!writeMap(baselinePath, baseline) || !writeMap(statePath, state)) return false;
+    AndroidContentStore recovered(interruptedRoot.path());
+    return check(recovered.prepareStartup(&error) && modularActive(recovered), "recover duplicate metadata from interrupted first boot: " + error);
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
     Q_INIT_RESOURCE(android_content_fixture);
-    return readerCases() && indexedReaderCases() && spoolRecoveryCases() && storeCases()
-        && sharedMediaCases() && mixedMediaCases() && warmStartCases() ? 0 : 1;
+    Q_CLEANUP_RESOURCE(android_modular_migration_fixture);
+    if (!application.arguments().contains("--bundled-migration-only")
+        && !(readerCases() && indexedReaderCases() && spoolRecoveryCases() && storeCases()
+             && sharedMediaCases() && mixedMediaCases() && modularPackageCases()
+             && bootstrapUpgradeCases(false) && bootstrapUpgradeCases(true)
+             && presentationUpgradeCases(false, false) && presentationUpgradeCases(true, false)
+             && presentationUpgradeCases(true, true) && warmStartCases())) return 1;
+    QTemporaryDir upgradeRoot;
+    QString error;
+    AndroidContentStore legacy(upgradeRoot.path());
+    if (!legacy.prepareStartup(&error)) return 1;
+    QVariantMap baseline;
+    const QString path = upgradeRoot.path() + "/content/baseline/metadata.json";
+    if (!readMap(path, &baseline)) return 1;
+    baseline.remove("apk_revision");
+    if (!writeMap(path, baseline)) return 1;
+    Q_INIT_RESOURCE(android_modular_migration_fixture);
+    return bundledMigrationCases(upgradeRoot.path()) ? 0 : 1;
 }

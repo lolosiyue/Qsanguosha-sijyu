@@ -166,6 +166,7 @@ AndroidContentDialog::AndroidContentDialog(bool startup, QWidget *parent)
     };
     add(QStringLiteral("匯入完整聲畫 ZIP"), [this] { importFile(true, false); });
     add(QStringLiteral("匯入擴展 ZIP"), [this] { importFile(false, false); });
+    add(QStringLiteral("匯入模組化套件 ZIP"), [this] { importFile(false, false, true); });
     add(QStringLiteral("匯入單一 Lua"), [this] { importFile(false, true); });
     add(QStringLiteral("啟用／停用整包"), [this] {
         const QString id = selectedPackage();
@@ -251,8 +252,9 @@ void AndroidContentDialog::refresh()
     const QString selected = selectedPackage();
     m_packages->clear();
     for (const auto &p : contentStore->packages()) {
-        auto *item = new QListWidgetItem(QStringLiteral("%1  · %2%3")
-            .arg(p.id, p.enabled ? QStringLiteral("已啟用") : QStringLiteral("已停用"),
+        const QString version = p.packageVersion.isEmpty() ? QString() : QStringLiteral(" · v%1").arg(p.packageVersion);
+        auto *item = new QListWidgetItem(QStringLiteral("%1%2  · %3%4")
+            .arg(p.id, version, p.enabled ? QStringLiteral("已啟用") : QStringLiteral("已停用"),
                  p.bundled ? QStringLiteral(" · 隨包原版") : QString()), m_packages);
         item->setData(Qt::UserRole, p.id);
         if (p.id == selected) m_packages->setCurrentItem(item);
@@ -316,7 +318,7 @@ void AndroidContentDialog::run(const std::function<bool(QString *)> &operation)
     m_worker->start();
 }
 
-void AndroidContentDialog::importFile(bool media, bool singleLua)
+void AndroidContentDialog::importFile(bool media, bool singleLua, bool modularPackage)
 {
     const QUrl url = QFileDialog::getOpenFileUrl(this, QStringLiteral("選擇匯入檔案"), QUrl(),
         singleLua ? QStringLiteral("Lua (*.lua);;所有檔案 (*)")
@@ -324,7 +326,7 @@ void AndroidContentDialog::importFile(bool media, bool singleLua)
     if (url.isEmpty()) return;
     QString filename = QFileInfo(url.path()).fileName();
     QString bundle;
-    if (!media) {
+    if (!media && !modularPackage) {
         bool ok = false;
         const QString proposal = QFileInfo(filename).completeBaseName()
             .replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_.-]")), QStringLiteral("_"));
@@ -341,15 +343,16 @@ void AndroidContentDialog::importFile(bool media, bool singleLua)
         revealStatus();
         return;
     }
-    run([this, url, media, filename, bundle](QString *error) {
+    run([this, url, media, filename, bundle, modularPackage](QString *error) {
         QFile file(devicePath(url));
         if (!file.open(QIODevice::ReadOnly)) { *error = file.errorString(); return false; }
         const auto progress = [this](quint64 done, quint64 total) {
             const int value = total ? int(qMin(100.0, double(done) * 100.0 / double(total))) : 0;
             QMetaObject::invokeMethod(this, [this, value] { m_progress->setValue(value); }, Qt::QueuedConnection);
         };
-        return media ? contentStore->stageMedia(file, &m_cancel, progress, error)
-            : contentStore->stageExtension(file, filename, bundle, &m_cancel, progress, error);
+        if (media) return contentStore->stageMedia(file, &m_cancel, progress, error);
+        if (modularPackage) return contentStore->stageModularPackage(file, filename, &m_cancel, progress, error);
+        return contentStore->stageExtension(file, filename, bundle, &m_cancel, progress, error);
     });
 }
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -74,11 +75,12 @@ def _relative(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
-def _safe_relative(relative: str) -> None:
+def _safe_relative(relative: str) -> str:
     if not isinstance(relative, str) or "\\" in relative or not relative \
             or relative.startswith("/") or any(part in {"", ".", ".."} for part in relative.split("/")) \
             or not re.fullmatch(r"[A-Za-z0-9_./-]+", relative):
         raise _error("invalid content path")
+    return relative
 
 
 def _declared_source(root: Path, relative: str) -> Path:
@@ -105,11 +107,19 @@ def _load_rules(bundle_path: Path, asset_root: Path) -> list[dict]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise _error(f"invalid rules bundle: {bundle_path}") from error
     manifest = bundle.get("rules_content") if isinstance(bundle, dict) else None
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2 \
-            or manifest.get("profile") != "declared-v2" \
+    is_v2 = isinstance(manifest, dict) and manifest.get("schema_version") == 2 \
+        and manifest.get("profile") == "declared-v2"
+    is_v3 = isinstance(manifest, dict) and manifest.get("schema_version") == 3 \
+        and manifest.get("profile") == "packages-v1"
+    if not isinstance(manifest, dict) or not (is_v2 or is_v3) \
             or not isinstance(manifest.get("runtime_content"), dict) \
             or not isinstance(manifest.get("files"), list):
-        raise _error("rules bundle lacks a declared-v2 rules_content manifest")
+        raise _error("rules bundle lacks supported runtime content")
+    package_values = manifest["runtime_content"].get("packages", [])
+    if not isinstance(package_values, list) or not isinstance(manifest["runtime_content"].get("extensions"), list):
+        raise _error("invalid runtime content descriptor")
+    package_ids = {item.get("id") for item in package_values
+                   if isinstance(item, dict) and isinstance(item.get("id"), str)}
     result: list[dict] = []
     seen: set[str] = set()
     for entry in manifest["files"]:
@@ -117,12 +127,22 @@ def _load_rules(bundle_path: Path, asset_root: Path) -> list[dict]:
             raise _error("invalid rules_content manifest entry")
         relative, role, expected_size, expected_hash = (entry["path"], entry["role"],
                                                          entry["size"], entry["sha256"])
-        if relative in seen or role not in CONTENT_ROLES or not isinstance(expected_size, int) \
+        if relative in seen or role not in {"rules", "presentation", "ai"} or not isinstance(expected_size, int) \
                 or isinstance(expected_size, bool) or expected_size < 0 \
                 or not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
             raise _error("invalid rules_content manifest entry")
-        if role == "presentation":
+        if relative.startswith("packages/") and is_v3:
+            parts = relative.split("/")
+            package_id = parts[1] if len(parts) > 2 else ""
+            valid_role = package_id in package_ids and ((role == "presentation"
+                and relative.startswith(f"packages/{package_id}/translation/") and relative.endswith(".lua"))
+                or (role == "ai" and relative.startswith(f"packages/{package_id}/lua/ai/") and relative.endswith(".lua"))
+                or (role == "rules" and relative.startswith(f"packages/{package_id}/lua/")
+                    and not relative.startswith(f"packages/{package_id}/lua/ai/") and relative.endswith(".lua")))
+        elif role == "presentation":
             valid_role = relative.startswith("lang/") and relative.endswith(".lua")
+        elif role == "ai":
+            valid_role = relative.startswith("lua/ai/") or relative == MIDDLECLASS
         else:
             valid_role = (re.fullmatch(r"extensions/[A-Za-z0-9_.-]+\.lua", relative) is not None
                           or relative.startswith("lua/")) and not relative.startswith("lua/ai/") \
@@ -138,26 +158,204 @@ def _load_rules(bundle_path: Path, asset_root: Path) -> list[dict]:
     return result
 
 
-def _declared_entries(config_path: Path) -> list[str]:
+def _load_packages(package_root: Path) -> list[dict]:
+    """Validate package inventories and return deterministic local URL records."""
+    if _unsafe(package_root) or not package_root.exists():
+        return []
+    if not package_root.is_dir():
+        raise _error("packages root must be a directory")
+    manifests: list[tuple[str, Path, dict]] = []
+    folded_ids: set[str] = set()
+    for directory in sorted(package_root.iterdir(), key=lambda item: item.name.casefold()):
+        if directory.name.casefold() == "readme.md" and directory.is_file() and not _unsafe(directory):
+            continue
+        if _unsafe(directory) or not directory.is_dir():
+            raise _error(f"package root contains unsupported entry: {directory}")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", directory.name):
+            raise _error(f"invalid package directory id: {directory.name}")
+        if directory.name.casefold() in folded_ids:
+            raise _error(f"case-insensitive package id collision: {directory.name}")
+        folded_ids.add(directory.name.casefold())
+        manifest_path = _require_file(directory / "manifest.json", "package manifest")
+        try:
+            manifest = json.loads(manifest_path.read_bytes())
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise _error(f"invalid package manifest: {manifest_path}") from error
+        if not isinstance(manifest, dict) or manifest.get("schema_version") != 1 \
+                or manifest.get("id") != directory.name or not isinstance(manifest.get("version"), str) \
+                or manifest.get("engine_api") != 1 or not isinstance(manifest.get("dependencies"), list) \
+                or not isinstance(manifest.get("files"), list):
+            raise _error(f"invalid package manifest metadata: {manifest_path}")
+        manifests.append((directory.name, directory, manifest))
+    ids = {package_id for package_id, _, _ in manifests}
+    records: list[dict] = []
+    global_asset_aliases: set[str] = set()
+    for package_id, directory, manifest in manifests:
+        dependencies = manifest["dependencies"]
+        if any(not isinstance(value, str) or value not in ids for value in dependencies):
+            raise _error(f"package dependency is missing or invalid: {package_id}")
+        if len({value.casefold() for value in dependencies}) != len(dependencies) \
+                or package_id in dependencies:
+            raise _error(f"package has duplicate or self dependency: {package_id}")
+        raw_assets = manifest.get("assets")
+        if not isinstance(raw_assets, dict) or any(not isinstance(alias, str) or not isinstance(target, str)
+                                                   for alias, target in raw_assets.items()):
+            raise _error(f"invalid package asset mapping: {package_id}")
+        for alias in raw_assets:
+            _safe_relative(alias)
+            target = raw_assets[alias]
+            _safe_relative(target)
+            if (not alias.startswith(("image/", "audio/"))
+                    or not target.startswith(("image/", "audio/", "data/"))
+                    or alias.split("/", 1)[0] != target.split("/", 1)[0]):
+                raise _error(f"invalid package asset mapping: {alias} -> {target}")
+            if alias.casefold() in global_asset_aliases:
+                raise _error(f"package asset alias collision: {alias}")
+            global_asset_aliases.add(alias.casefold())
+        extensions = []
+        lua_files = []
+        extension_names: set[str] = set()
+        raw_extensions = manifest.get("extensions")
+        if not isinstance(raw_extensions, list):
+            raise _error(f"invalid package extension list: {package_id}")
+        for extension in raw_extensions:
+            if not isinstance(extension, dict) or not isinstance(extension.get("name"), str) \
+                    or extension["name"] in extension_names:
+                raise _error(f"invalid package extension declaration: {package_id}")
+            extension_names.add(extension["name"])
+            paths: dict[str, list[str]] = {}
+            for field, prefix, role in (("libs", "lua/", "rules"),
+                                         ("lang", "translation/", "presentation"),
+                                         ("ai", "lua/ai/", "ai")):
+                values = extension.get(field)
+                if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+                    raise _error(f"invalid {field} declaration: {package_id}/{extension['name']}")
+                paths[field] = [f"packages/{package_id}/{_safe_relative(value)}" for value in values]
+            script = extension.get("script")
+            _safe_relative(script)
+            if not script.startswith("lua/") or script.startswith("lua/ai/") or not script.endswith(".lua"):
+                raise _error(f"invalid package extension script: {package_id}/{script}")
+            dependencies_for_extension = extension.get("dependencies")
+            if not isinstance(dependencies_for_extension, list) or not all(
+                    isinstance(value, str) for value in dependencies_for_extension):
+                raise _error(f"invalid extension dependencies: {package_id}/{extension['name']}")
+            extensions.append({"name": extension["name"], "script": f"packages/{package_id}/{script}",
+                "dependencies": dependencies_for_extension,
+                "libs": paths["libs"], "lang": paths["lang"], "ai": paths["ai"]})
+        declared_code = {extension["script"] for extension in extensions}
+        for extension in extensions:
+            declared_code.update(extension["libs"])
+            declared_code.update(extension["lang"])
+            declared_code.update(extension["ai"])
+        seen: set[str] = set()
+        for entry in manifest["files"]:
+            if not isinstance(entry, dict) or set(entry) != CONTENT_KEYS:
+                raise _error(f"invalid package file record: {package_id}")
+            relative, role, expected_size, expected_hash = (entry["path"], entry["role"],
+                entry["size"], entry["sha256"])
+            _safe_relative(relative)
+            if relative.casefold() in seen or role not in {"rules", "ai", "presentation", "data"} \
+                    or not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size < 0 \
+                    or not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+                raise _error(f"invalid package file record: {package_id}/{relative}")
+            valid_role = (role == "rules" and relative.startswith("lua/") and not relative.startswith("lua/ai/") and relative.endswith(".lua")) \
+                or (role == "ai" and relative.startswith("lua/ai/") and relative.endswith(".lua")) \
+                or (role == "presentation" and relative.startswith("translation/") and relative.endswith(".lua")) \
+                or (role == "data" and relative.startswith(("image/", "audio/", "data/")))
+            if not valid_role or relative.casefold() == "manifest.json":
+                raise _error(f"package path does not match role: {package_id}/{relative}")
+            seen.add(relative.casefold())
+            source = _require_file(directory / relative, f"package file {package_id}/{relative}")
+            size, digest = _hash_file(source)
+            if size != expected_size or digest != expected_hash:
+                raise _error(f"package file hash or size mismatch: {package_id}/{relative}")
+            if role != "data":
+                namespaced = f"packages/{package_id}/{relative}"
+                if namespaced not in declared_code:
+                    raise _error(f"package Lua file is not declared by an extension: {namespaced}")
+                lua_files.append({"path": namespaced, "role": role, "size": size, "sha256": digest})
+        # Verify the sealed inventory covers every physical package file.
+        listed = {entry["path"] for entry in manifest["files"]}
+        for current, directories, filenames in os.walk(directory, followlinks=False):
+            current_path = Path(current)
+            for name in directories:
+                if _unsafe(current_path / name):
+                    raise _error(f"package contains a symlink: {package_id}/{_relative(current_path / name, directory)}")
+            for name in filenames:
+                path = current_path / name
+                relative = _relative(path, directory)
+                if _unsafe(path) or not path.is_file():
+                    raise _error(f"package contains a non-regular path: {package_id}/{relative}")
+                if relative != "manifest.json" and relative not in listed:
+                    raise _error(f"unlisted package file: {package_id}/{relative}")
+        # Keep the complete declared alias map, including optional targets absent
+        # from this package's sealed payload; consumers use absence to avoid fallback.
+        declared_relative = {path.split("/", 2)[2].casefold() for path in declared_code}
+        if not declared_relative.issubset(seen):
+            raise _error(f"package extension declarations are missing file records: {package_id}")
+        records.append({"id": package_id, "version": manifest["version"],
+                        "dependencies": dependencies, "assets": raw_assets,
+                        "extensions": extensions, "lua_files": lua_files,
+                        "root": directory, "files": manifest["files"]})
+    by_id = {package["id"]: package for package in records}
+    ordered: list[dict] = []
+    emitted: set[str] = set()
+    pending = list(records)
+    while pending:
+        ready = next((package for package in pending
+                      if all(dependency in by_id and dependency in emitted
+                             for dependency in package["dependencies"])), None)
+        if ready is None:
+            unresolved = ", ".join(package["id"] for package in pending)
+            raise _error(f"package dependencies are missing or cyclic: {unresolved}")
+        ordered.append(ready)
+        emitted.add(ready["id"])
+        pending.remove(ready)
+    return ordered
+
+
+def _copy_packages(packages: list[dict], destination: Path) -> None:
+    for package in packages:
+        package_target = destination / package["id"]
+        package_target.mkdir(parents=True, exist_ok=True)
+        source_manifest = package["root"] / "manifest.json"
+        shutil.copyfile(source_manifest, package_target / "manifest.json")
+        for entry in package["files"]:
+            relative = entry["path"]
+            source = _require_file(package["root"] / relative, f"package file {relative}")
+            target = package_target.joinpath(*relative.split("/"))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            if _hash_file(target) != (entry["size"], entry["sha256"]):
+                raise _error(f"package changed during packaging: {package['id']}/{relative}")
+
+
+def _declared_entries(config_path: Path, allow_empty: bool = False) -> list[str]:
     config = config_path.read_text(encoding="utf-8")
     block = re.search(r"extension_names\s*=\s*\{(.*?)\}", config, re.S)
     if block is None:
         raise _error("lua/config.lua has no extension_names declaration")
     entries = re.findall(r'"([^"\n]+)"', block.group(1))
-    if not entries:
+    if not entries and not allow_empty:
         raise _error("lua/config.lua extension_names declaration is empty")
     return entries
 
 
 def _declared_closure(asset_root: Path) -> list[str]:
     config = _require_file(asset_root / "lua/config.lua", "lua/config.lua")
+    packages = _load_packages(asset_root / "packages")
+    package_extension_names = {extension["name"] for package in packages
+                               for extension in package["extensions"]}
     paths = list(CORE_BOOTSTRAP)
     seen = set(paths)
-    for entry in _declared_entries(config):
+    for entry in _declared_entries(config, allow_empty=bool(packages)):
         fields = entry.split(";")
         script = fields[0]
         if not re.fullmatch(r"extensions/[A-Za-z0-9_.-]+\.lua", script):
             raise _error(f"invalid extension script declaration: {script}")
+        # A package extension replaces its same-named legacy entry as a unit.
+        if Path(script).stem in package_extension_names:
+            continue
         if script in seen:
             raise _error(f"duplicate declared content path: {script}")
         paths.append(script)
@@ -181,6 +379,16 @@ def _declared_closure(asset_root: Path) -> list[str]:
                     raise _error(f"duplicate declared content path: {relative}")
                 paths.append(relative)
                 seen.add(relative)
+    for package in packages:
+        manifest_relative = f"packages/{package['id']}/manifest.json"
+        paths.append(manifest_relative)
+        seen.add(manifest_relative)
+        for entry in package["files"]:
+            relative = f"packages/{package['id']}/{entry['path']}"
+            if relative in seen:
+                raise _error(f"duplicate declared package path: {relative}")
+            paths.append(relative)
+            seen.add(relative)
     for relative in paths:
         _require_file(asset_root / relative, f"declared content {relative}")
     return paths
@@ -382,13 +590,49 @@ def package(args: argparse.Namespace) -> None:
     if actual_seal != _runtime_seal(module, wasm):
         raise _error("solo runtime seal mismatch; rebuild or reseal the paired artifacts")
     _verify_client_runtime(web_dist)
-    rules = _load_rules(bundle, asset_root)
     try:
         bundle_payload = json.loads(bundle.read_bytes())
         runtime_content = bundle_payload["rules_content"]["runtime_content"]
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as error:
         raise _error("rules bundle runtime content descriptor is missing") from error
     ai = _collect_ai(asset_root)
+    packages = _load_packages(asset_root / "packages")
+    # Native client-rules exports omit server-only files. The Solo server still
+    # needs every declared package AI payload in its verified content closure.
+    for package in packages:
+        ai.extend((f"packages/{package['id']}/{entry['path']}", package["root"] / entry["path"])
+                  for entry in package["files"] if entry["role"] == "ai")
+    bundle_rules_content = bundle_payload.get("rules_content", {})
+    if packages and (bundle_rules_content.get("schema_version") != 3
+                     or bundle_rules_content.get("profile") != "packages-v1"):
+        raise _error("package catalogs require a fresh packages-v1 rules bundle; re-export the rules bundle")
+    rules = _load_rules(bundle, asset_root)
+    package_descriptors = [{key: package[key] for key in ("id", "version", "dependencies", "assets")}
+                           for package in packages]
+    if packages:
+        rules_manifest = bundle_rules_content
+        exported_runtime = runtime_content
+        if exported_runtime.get("schema_version") != 3 \
+                or exported_runtime.get("profile") != "packages-v1":
+            raise _error("package catalogs require a fresh packages-v1 rules bundle; re-export the rules bundle")
+        if exported_runtime.get("packages") != package_descriptors:
+            raise _error("rules bundle package metadata differs from the local package catalog; re-export it")
+        exported_extensions = exported_runtime.get("extensions", [])
+        exported_by_name = {entry.get("name"): entry for entry in exported_extensions
+                            if isinstance(entry, dict) and isinstance(entry.get("name"), str)}
+        if len(exported_by_name) != len(exported_extensions):
+            raise _error("rules bundle has invalid or duplicate extension declarations; re-export it")
+        local_package_extensions = {extension["name"]: extension for package in packages
+                                    for extension in package["extensions"]}
+        exported_package_extensions = {entry["name"]: entry for entry in exported_extensions
+                                       if isinstance(entry.get("script"), str)
+                                       and entry["script"].startswith("packages/")}
+        if exported_package_extensions != local_package_extensions:
+            raise _error("rules bundle package extensions differ from local package catalog; re-export it")
+        for package in packages:
+            for extension in package["extensions"]:
+                if exported_by_name.get(extension["name"]) != extension:
+                    raise _error("rules bundle extension declaration differs from local package catalog; re-export it")
     destination = args.destination.absolute()
     if _unsafe(destination):
         raise _error("destination must not be a symlink or reparse point")
@@ -400,27 +644,51 @@ def package(args: argparse.Namespace) -> None:
     if destination == web_dist or destination == asset_root:
         raise _error("destination must differ from input roots")
     # Staging beneath a copied tree would recursively copy the staging directory.
-    copied_roots = [web_dist, *(asset_root / name for name in ("image", "audio", "lua", "extensions", "lang"))]
+    copied_roots = [web_dist, *(asset_root / name for name in
+        ("image", "audio", "lua", "extensions", "lang", "packages"))]
     if any(destination == root or root in destination.parents for root in copied_roots):
         raise _error("destination must be outside copied input trees")
 
     # Validate all output names and collisions before touching the destination.
+    if packages and (web_dist / "packages").exists() and any((web_dist / "packages").iterdir()):
+        raise _error("Web distribution already contains package paths")
     web_assets = web_dist / "assets"
     web_asset_names = set()
     if web_assets.exists():
         web_asset_names = {path.relative_to(web_assets).as_posix() for path in web_assets.rglob("*") if path.is_file()}
-    media_files = [path.relative_to(asset_root / "image").as_posix() for path in (asset_root / "image").rglob("*") if path.is_file()] \
-        if (asset_root / "image").is_dir() else []
+    image_root = asset_root / "image"
+    audio_root = asset_root / "audio"
+    media_files = [path.relative_to(image_root).as_posix() for path in image_root.rglob("*") if path.is_file()] \
+        if image_root.is_dir() else []
     if web_asset_names.intersection(media_files):
         raise _error("image files collide with Vite assets")
 
     content = rules[:]
+    content_by_path = {entry["path"]: entry for entry in content}
     for relative, path in ai:
         size, digest = _hash_file(path)
-        content.append({"path": relative, "role": "ai", "size": size, "sha256": digest})
-    manifest["content"] = {"schema_version": 2, "profile": "declared-v2",
-                            "runtime_content": runtime_content,
-                            "files": content}
+        entry = {"path": relative, "role": "ai", "size": size, "sha256": digest}
+        previous = content_by_path.get(relative)
+        if previous is not None and previous != entry:
+            raise _error(f"AI content conflicts with rules bundle: {relative}")
+        if previous is None:
+            content.append(entry)
+            content_by_path[relative] = entry
+    if packages:
+        runtime_v3 = {"schema_version": 3, "profile": "packages-v1",
+                      "extensions": list(runtime_content.get("extensions", [])),
+                      "packages": package_descriptors}
+        manifest["content"] = {"schema_version": 3, "profile": "packages-v1",
+                               "runtime_content": runtime_v3, "files": content}
+    elif runtime_content.get("schema_version") == 3:
+        if runtime_content.get("packages", []):
+            raise _error("packages-v1 rules bundle requires its package roots under asset-root/packages")
+        manifest["content"] = {"schema_version": 3, "profile": "packages-v1",
+            "runtime_content": runtime_content, "files": content}
+    else:
+        # Existing runtime-content-v2 bundles remain supported during migration.
+        manifest["content"] = {"schema_version": 2, "profile": "declared-v2",
+                                "runtime_content": runtime_content, "files": content}
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".qsan-solo-", dir=str(destination.parent)) as temporary:
@@ -428,8 +696,12 @@ def package(args: argparse.Namespace) -> None:
         _copy_tree(web_dist, staged)
         assets = staged / "assets"
         assets.mkdir(parents=True, exist_ok=True)
-        _copy_media(asset_root / "image", assets, "image", web_asset_names.copy())
-        _copy_media(asset_root / "audio", staged / "audio", "audio", set())
+        if image_root.is_dir() and (not packages or any(path.is_file() for path in image_root.rglob("*"))):
+            _copy_media(image_root, assets, "image", web_asset_names.copy())
+        if audio_root.is_dir() and (not packages or any(path.is_file() for path in audio_root.rglob("*"))):
+            _copy_media(audio_root, staged / "audio", "audio", set())
+        if packages:
+            _copy_packages(packages, staged / "packages")
         rules_content = staged / "rules/content"
         for entry in content:
             source = _declared_source(asset_root, entry["path"]) if entry["role"] in CONTENT_ROLES \

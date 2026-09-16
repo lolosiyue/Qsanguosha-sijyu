@@ -1,9 +1,14 @@
 #include "runtime-paths.h"
+#include "package-catalog.h"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QSet>
 
 #ifdef Q_OS_ANDROID
 #include "android_assets.h"
@@ -22,6 +27,8 @@ namespace
 using QSanRuntimePaths::AssetRootSource;
 
 QSanRuntimePaths::Resolution g_resolution;
+QMutex g_packageDiagnosticMutex;
+QSet<QString> g_packageDiagnostics;
 
 // What qualifies a directory as the asset root: the engine bootstrap must be able to open
 // these two files, otherwise it exits with exit(1) in its constructor. Using them as
@@ -303,6 +310,20 @@ QString assetPath(const QString &relative)
     const QString root = assetRoot();
     if (relative.isEmpty())
         return root;
+    if (relative.startsWith(QLatin1String("package://"))
+        || relative.startsWith(QLatin1String("image/")) || relative.startsWith(QLatin1String("audio/"))) {
+        QString error;
+        const QString resolved = QSanPackages::resolve(root, relative, &error);
+        if (!error.isEmpty()) {
+            // Explicit package references never search another package on failure.
+            QMutexLocker lock(&g_packageDiagnosticMutex);
+            if (g_packageDiagnostics.size() < 128 && !g_packageDiagnostics.contains(error)) {
+                g_packageDiagnostics.insert(error);
+                qWarning().noquote() << "Package asset:" << error;
+            }
+        }
+        return resolved;
+    }
     if (root.isEmpty())
         return relative;
     return QDir(root).filePath(relative);
@@ -394,6 +415,10 @@ QVariantMap describe()
     map.insert(QStringLiteral("user_data_root"), g_resolution.userDataRoot);
     map.insert(QStringLiteral("packaged"), assetRootIsPackaged(g_resolution.assetRootSource));
     map.insert(QStringLiteral("candidates"), g_resolution.candidates);
+    {
+        QMutexLocker lock(&g_packageDiagnosticMutex);
+        map.insert(QStringLiteral("package_asset_errors"), QStringList(g_packageDiagnostics.values()));
+    }
     if (!g_resolution.error.isEmpty())
         map.insert(QStringLiteral("error"), g_resolution.error);
     return map;
@@ -402,5 +427,8 @@ QVariantMap describe()
 void resetForTesting()
 {
     g_resolution = Resolution();
+    QSanPackages::clearCatalog();
+    QMutexLocker lock(&g_packageDiagnosticMutex);
+    g_packageDiagnostics.clear();
 }
 }

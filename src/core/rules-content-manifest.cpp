@@ -2,6 +2,7 @@
 
 #include <QRegularExpression>
 #include <QSet>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QCryptographicHash>
@@ -59,6 +60,109 @@ QString validatePath(const QString &role, const QString &path)
             return QStringLiteral("ai path is not server-only AI content");
     }
     return {};
+}
+
+bool validPackageId(const QString &id)
+{
+    static const QRegularExpression expression(QStringLiteral("^[a-z0-9][a-z0-9_-]*$"));
+    return expression.match(id).hasMatch();
+}
+
+bool safeV3Path(const QString &path)
+{
+    if (path.isEmpty() || path.startsWith(QLatin1Char('/')) || path.contains(QLatin1Char('\\'))
+        || path.contains(QLatin1Char('%')) || path.contains(QLatin1Char('?'))
+        || path.contains(QLatin1Char('#')))
+        return false;
+    for (const QChar character : path)
+        if (character.unicode() < 0x20)
+            return false;
+    for (const QString &part : path.split(QLatin1Char('/'), Qt::KeepEmptyParts))
+        if (part.isEmpty() || part == QLatin1String(".") || part == QLatin1String(".."))
+            return false;
+    return true;
+}
+
+bool validV3LuaPath(const QString &path)
+{
+    static const QRegularExpression expression(QStringLiteral("^[A-Za-z0-9_./-]+\\.lua$"));
+    return safeV3Path(path) && expression.match(path).hasMatch();
+}
+
+bool validPackageAssetPath(const QString &path)
+{
+    return safeV3Path(path) && (path.startsWith(QLatin1String("image/"))
+        || path.startsWith(QLatin1String("audio/")));
+}
+
+bool validatePackages(const QJsonArray &packages, QSet<QString> *ids, QString *error)
+{
+    QHash<QString, QStringList> dependenciesById;
+    QHash<QString, QString> aliases;
+    for (int index = 0; index < packages.size(); ++index) {
+        const QJsonValue value = packages.at(index);
+        if (!value.isObject()) {
+            *error = QStringLiteral("package %1 must be an object").arg(index);
+            return false;
+        }
+        const QJsonObject object = value.toObject();
+        const QString id = object.value(QStringLiteral("id")).toString();
+        const QString version = object.value(QStringLiteral("version")).toString();
+        if (!validPackageId(id) || version.isEmpty() || ids->contains(id)) {
+            *error = QStringLiteral("package %1 has an invalid id, version, or duplicate id").arg(index);
+            return false;
+        }
+        ids->insert(id);
+        if (!object.value(QStringLiteral("dependencies")).isArray()) {
+            *error = QStringLiteral("package %1 dependencies must be an array").arg(index);
+            return false;
+        }
+        QStringList dependencies;
+        QSet<QString> seen;
+        for (const QJsonValue &dependencyValue : object.value(QStringLiteral("dependencies")).toArray()) {
+            if (!dependencyValue.isString()) {
+                *error = QStringLiteral("package %1 has invalid dependencies").arg(index);
+                return false;
+            }
+            const QString dependency = dependencyValue.toString();
+            if (!validPackageId(dependency) || dependency == id || seen.contains(dependency)) {
+                *error = QStringLiteral("package %1 has invalid dependencies").arg(index);
+                return false;
+            }
+            seen.insert(dependency);
+            dependencies.append(dependency);
+        }
+        dependenciesById.insert(id, dependencies);
+        if (!object.value(QStringLiteral("assets")).isObject()) {
+            *error = QStringLiteral("package %1 assets must be an object").arg(index);
+            return false;
+        }
+        const QJsonObject assets = object.value(QStringLiteral("assets")).toObject();
+        for (auto it = assets.begin(); it != assets.end(); ++it) {
+            const QString alias = it.key();
+            const QString target = it.value().toString();
+            if (!it.value().isString() || !validPackageAssetPath(alias)
+                || !validPackageAssetPath(target)
+                || (alias.startsWith(QLatin1String("image/")) != target.startsWith(QLatin1String("image/")))
+                || aliases.contains(alias.toCaseFolded())) {
+                *error = QStringLiteral("package %1 has invalid or colliding asset mapping: %2").arg(id, alias);
+                return false;
+            }
+            aliases.insert(alias.toCaseFolded(), id);
+        }
+    }
+    QSet<QString> emitted;
+    for (int index = 0; index < packages.size(); ++index) {
+        const QString id = packages.at(index).toObject().value(QStringLiteral("id")).toString();
+        for (const QString &dependency : dependenciesById.value(id)) {
+            if (!ids->contains(dependency) || !emitted.contains(dependency)) {
+                *error = QStringLiteral("package order violates dependency: %1 -> %2").arg(id, dependency);
+                return false;
+            }
+        }
+        emitted.insert(id);
+    }
+    return true;
 }
 
 QString scriptName(const QString &script)
@@ -138,15 +242,30 @@ ContentManifest parseRuntimeContent(const QJsonObject &descriptor)
 {
     ContentManifest manifest;
     manifest.descriptorPresent = true;
-    if (descriptor.value(QStringLiteral("schema_version")).toInt(-1) != 2
-        || descriptor.value(QStringLiteral("profile")).toString() != QLatin1String("declared-v2")
+    const int schema = descriptor.value(QStringLiteral("schema_version")).toInt(-1);
+    const bool v3 = schema == 3
+        && descriptor.value(QStringLiteral("profile")).toString() == QLatin1String("packages-v1");
+    if ((!v3 && (schema != 2
+        || descriptor.value(QStringLiteral("profile")).toString() != QLatin1String("declared-v2")))
         || !descriptor.value(QStringLiteral("extensions")).isArray()) {
         manifest.error = QStringLiteral("runtime-content.json has an invalid schema");
         return manifest;
     }
+    QSet<QString> packageIds;
+    if (v3) {
+        if (!descriptor.value(QStringLiteral("packages")).isArray()) {
+            manifest.error = QStringLiteral("runtime-content.json packages must be an array");
+            return manifest;
+        }
+        manifest.packages = descriptor.value(QStringLiteral("packages")).toArray();
+        if (!validatePackages(manifest.packages, &packageIds, &manifest.error))
+            return manifest;
+    }
     const QJsonArray extensions = descriptor.value(QStringLiteral("extensions")).toArray();
     QSet<QString> names;
+    QSet<QString> foldedNames;
     QSet<QString> paths;
+    QSet<QString> foldedPaths;
     for (int index = 0; index < extensions.size(); ++index) {
         const QJsonValue raw = extensions.at(index);
         if (!raw.isObject()) {
@@ -157,28 +276,68 @@ ContentManifest parseRuntimeContent(const QJsonObject &descriptor)
         ManifestEntry entry;
         entry.name = object.value(QStringLiteral("name")).toString();
         entry.script = object.value(QStringLiteral("script")).toString();
-        if (entry.name.isEmpty() || names.contains(entry.name)) {
+        if (entry.name.isEmpty() || names.contains(entry.name)
+            || (v3 && foldedNames.contains(entry.name.toCaseFolded()))) {
             manifest.error = QStringLiteral("extension %1 has a duplicate or empty name").arg(index);
             return manifest;
         }
-        QString reason = validatePath(QStringLiteral("script"), entry.script);
-        if (!reason.isEmpty() || paths.contains(entry.script)) {
+        const QString packageId = entry.script.startsWith(QLatin1String("packages/"))
+            ? entry.script.section(QLatin1Char('/'), 1, 1) : QString();
+        QString reason;
+        if (v3 && entry.script.startsWith(QLatin1String("packages/"))) {
+            const QString prefix = QStringLiteral("packages/%1/lua/").arg(packageId);
+            if (!validPackageId(packageId) || !packageIds.contains(packageId)
+                || !entry.script.startsWith(prefix) || !entry.script.endsWith(QLatin1String(".lua"))
+                || entry.script.startsWith(prefix + QLatin1String("ai/"))
+                || !validV3LuaPath(entry.script))
+                reason = QStringLiteral("script must be under its declared package lua directory");
+        } else {
+            reason = validatePath(QStringLiteral("script"), entry.script);
+            if (v3 && packageId.size())
+                reason = QStringLiteral("package entry script must use packages/<id>/lua/");
+        }
+        if (!reason.isEmpty() || paths.contains(entry.script)
+            || (v3 && foldedPaths.contains(entry.script.toCaseFolded()))) {
             manifest.error = QStringLiteral("extension %1 has an invalid or duplicate script").arg(index);
             return manifest;
         }
         names.insert(entry.name);
+        foldedNames.insert(entry.name.toCaseFolded());
         paths.insert(entry.script);
+        foldedPaths.insert(entry.script.toCaseFolded());
         const auto readPaths = [&](const QString &key, const QString &role,
                                    QStringList *target) -> bool {
             const QJsonValue value = object.value(key);
             if (value.isUndefined()) return true;
             if (!value.isArray()) return false;
             for (const auto &item : value.toArray()) {
+                if (!item.isString()) return false;
                 const QString path = item.toString();
-                if (path.isEmpty() || paths.contains(path)) return false;
-                const QString pathError = validatePath(role, path);
+                if (path.isEmpty() || paths.contains(path)
+                    || (v3 && foldedPaths.contains(path.toCaseFolded()))) return false;
+                QString pathError;
+                if (v3 && path.startsWith(QLatin1String("packages/"))) {
+                    const QString prefix = QStringLiteral("packages/%1/").arg(packageId);
+                    const bool ownerOk = validPackageId(packageId) && packageIds.contains(packageId)
+                        && path.startsWith(prefix) && validV3LuaPath(path);
+                    const bool roleOk = role == QLatin1String("lang")
+                        ? path.startsWith(QStringLiteral("packages/%1/translation/").arg(packageId))
+                            && path.endsWith(QLatin1String(".lua"))
+                        : role == QLatin1String("ai")
+                        ? path.startsWith(prefix + QLatin1String("lua/ai/"))
+                            && path.endsWith(QLatin1String(".lua"))
+                        : path.startsWith(prefix + QLatin1String("lua/"))
+                            && !path.startsWith(prefix + QLatin1String("lua/ai/"))
+                            && path.endsWith(QLatin1String(".lua"));
+                    if (!ownerOk || !roleOk) return false;
+                } else if (v3 && packageId.size()) {
+                    return false;
+                } else {
+                    pathError = validatePath(role, path);
+                }
                 if (!pathError.isEmpty()) return false;
                 paths.insert(path);
+                foldedPaths.insert(path.toCaseFolded());
                 target->append(path);
             }
             target->sort();
@@ -226,16 +385,64 @@ ContentManifest parseRuntimeContent(const QJsonObject &descriptor)
 QJsonObject runtimeContentDescriptor(const ContentManifest &manifest)
 {
     QJsonArray extensions;
-    for (const auto &entry : manifest.entries)
+    for (const auto &entry : manifest.entries) {
         extensions.append(QJsonObject{{QStringLiteral("name"), entry.name},
             {QStringLiteral("script"), entry.script},
             {QStringLiteral("dependencies"), QJsonArray::fromStringList(entry.dependencies)},
             {QStringLiteral("libs"), QJsonArray::fromStringList(entry.libs)},
             {QStringLiteral("lang"), QJsonArray::fromStringList(entry.lang)},
             {QStringLiteral("ai"), QJsonArray::fromStringList(entry.ai)}});
-    return {{QStringLiteral("schema_version"), 2},
-            {QStringLiteral("profile"), QStringLiteral("declared-v2")},
-            {QStringLiteral("extensions"), extensions}};
+    }
+    QJsonObject result{{QStringLiteral("schema_version"), manifest.packages.isEmpty() ? 2 : 3},
+        {QStringLiteral("profile"), manifest.packages.isEmpty()
+            ? QStringLiteral("declared-v2") : QStringLiteral("packages-v1")},
+        {QStringLiteral("extensions"), extensions}};
+    if (!manifest.packages.isEmpty())
+        result.insert(QStringLiteral("packages"), manifest.packages);
+    return result;
+}
+
+ContentManifest mergePackageContent(const ContentManifest &legacy,
+                                    const QJsonArray &packageExtensions,
+                                    const QJsonArray &packageDescriptors)
+{
+    if (!legacy.isValid()) return legacy;
+    QJsonObject descriptor = runtimeContentDescriptor(legacy);
+    QJsonArray entries = descriptor.value(QStringLiteral("extensions")).toArray();
+    QHash<QString, int> slotByName;
+    QSet<QString> mergedNames;
+    for (int index = 0; index < entries.size(); ++index)
+        slotByName.insert(entries.at(index).toObject().value(QStringLiteral("name")).toString(), index);
+    for (const QJsonValue &value : packageExtensions) {
+        if (!value.isObject()) {
+            ContentManifest failed;
+            failed.error = QStringLiteral("package extension must be an object");
+            return failed;
+        }
+        const QString name = value.toObject().value(QStringLiteral("name")).toString();
+        if (name.isEmpty()) {
+            ContentManifest failed;
+            failed.error = QStringLiteral("package extension has an empty name");
+            return failed;
+        }
+        if (mergedNames.contains(name)) {
+            ContentManifest failed;
+            failed.error = QStringLiteral("duplicate package extension name: %1").arg(name);
+            return failed;
+        }
+        mergedNames.insert(name);
+        if (slotByName.contains(name))
+            entries.replace(slotByName.value(name), value);
+        else {
+            slotByName.insert(name, entries.size());
+            entries.append(value);
+        }
+    }
+    descriptor.insert(QStringLiteral("schema_version"), 3);
+    descriptor.insert(QStringLiteral("profile"), QStringLiteral("packages-v1"));
+    descriptor.insert(QStringLiteral("extensions"), entries);
+    descriptor.insert(QStringLiteral("packages"), packageDescriptors);
+    return parseRuntimeContent(descriptor);
 }
 
 QByteArray runtimeContentCanonical(const ContentManifest &manifest)
