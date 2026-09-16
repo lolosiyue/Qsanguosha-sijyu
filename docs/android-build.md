@@ -296,6 +296,43 @@ viewport，避免模擬器上已觀察到的 OpenGL 破圖與前後景 EGL conte
 首頁約 49 秒才就緒，第一次自動化 48 秒子預算逾時仍保留為失敗，不外推為啟動效能通過。
 證據位於 `builds/android-silent-20260916/report.md`；完整对局、實機、CI 及 GPU 特效未驗收。
 
+## AAudio CFI 音訊橋接：已確認故障機制（2026-09-16）
+
+由既有兩宗 AudioTrack 崩潰（PID 7606／3856）的二進位 tombstone，
+已取得 callback、Qt guest、ndk_translation helper 及 fault shadow 的必要映射。
+host AAudio 準備呼叫的 x86_64 stub 位於匿名 rwx 區域，內嵌目標分別指向
+Qt Multimedia ARM64 程式碼及 libndk_translation.so；兩份 stub 去除 ASLR
+立即數後一致。
+
+同 BuildId libdl.so 的 __cfi_slowpath+29 是讀取 16-bit shadow 的指令；
+兩次 fault 都精確落在不可讀的 [anon:cfi shadow]，尚未執行 callback 或
+CFI 型別失敗處理。這已確認該映像／ARM 橋接路徑的 CFI 整合失效，
+仍未定位 translator／linker 的具體實作錯誤，也未核實任何已修復版本。
+
+詳細映射、指令、擷取限制及後續驗證方向見
+`builds/android-audio-investigation-20260916/cfi-boundary-confirmed.md`。
+二進位擷取仍有每筆 256 KiB 限制，但上述必要映射完整可見。
+本輪未建置、安裝或重新啟用音訊；保留 NULL 隔離。
+WAV、音量零、Qt push mode 或單設 QT_MEDIA_BACKEND 都不能保證避開此回呼。
+
+## 開局後主執行緒 0x58：隱藏手牌修正（2026-09-16）
+
+`builds/android-complete-game-20260916-0952/` 的 PID 4915 崩潰使用 NULL 音訊與
+software／raster APK。完整 SYSTEM_TOMBSTONE 的記憶體指令，與 APK 同 BuildId
+`d1808843aa1fec0b24370989114ee5b943f8f6ee` 的 native 符號相符：
+`Player::addCard()` 呼叫空卡牌的 `Card::getId()`，讀取 `this + 0x58`。
+
+該 Android 固定工作樹漏帶主分支 `5097690` 的隱藏手牌修正。開局收到的 `-1`
+代表未知牌，只能增加手牌張數，不能放入實體 `Card *` 清單；同一筆手牌移動也
+不能重複計入。更新 APK 前須將該提交的 `src/core/player.cpp`、
+`src/client/client.cpp`、`src/client/clientplayer.cpp/.h` 一起對齊到固定 Android
+工作樹，不能只同步 UI／音訊檔案。保留其他工作樹差異，不作整樹覆蓋。
+
+本輪已補入這組修正並通過 `git apply --check`／`git diff --check`；
+APK 重建與開局回歸尚待執行。這個空卡牌缺陷與前節的 AAudio CFI callback
+崩潰不同，修復它不代表恢復有聲。完整證據與驗證狀態見
+`builds/android-mainthread-investigation-20260916/`。
+
 ## 驗證限制與故障分類
 
 目前只驗證 Android Emulator。x86_64 模擬器執行 arm64 APK 時包含 ARM translation layer，不能代替 arm64 實機、Android 9/16 或 16 KB page-size 環境。最新 API 33 模擬器的已知音訊閃退位於 AAudio CFI callback under translation；目前證據不能把它歸因於某一個 OGG 檔案。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。四個短 UI WAV 只降低 codec 依賴，不代表完整 OGG 已驗收。

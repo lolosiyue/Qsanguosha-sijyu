@@ -18,7 +18,7 @@ set(QSAN_ANDROID_API 36 CACHE STRING
 set(QSAN_ANDROID_NDK_VERSION "27.2.12479018" CACHE STRING
     "Required Android NDK version")
 set(QSAN_ANDROID_FREETYPE_ROOT "$ENV{QSAN_ANDROID_FREETYPE_ROOT}" CACHE PATH
-    "Prefix containing the Android arm64-v8a static FreeType package")
+    "Prefix containing the static FreeType package built for QSAN_ANDROID_ABI")
 
 if(NOT Qt6_VERSION VERSION_EQUAL "6.11.1")
     message(FATAL_ERROR
