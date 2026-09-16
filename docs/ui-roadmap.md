@@ -290,6 +290,12 @@ W1、W2 是骨架，**必須先做**；W3 之後可並行。W1–W4 完成後，
 
 **定位**：功能完整度的基準線，也是**特效層的唯一顯示地**（§0）。其他殼可以少做，但不能與它語義相左。
 
+Qt／Android 自適應版面已拆成[七階段實作計畫](room-layout-engine-plan.md)。
+先建立 LegacyLandscape 純幾何基線，再接既有共用呈現模型、Inspector、直向與單手等版面；
+後續直向採「空間足夠保留座次環、不足轉席位帶」，不以方向單獨決定骨架。
+PR3–7 已加入手動 Responsive preview、玩家詳情、互動區、席位帶及摺疊姿態橋接。
+原始碼、Windows Debug 建置與三項 focused 驗證已完成，Android APK 亦已建置；預設仍為 LegacyLandscape，Responsive preview 的 GUI／Android 互動驗收尚未完成。
+
 UI 概念上要做的四件事（與 `roomscene.cpp` 的拆分互為表裡，但本文件只談呈現）：
 
 1. **佈局檔案化**：座次區表、間距、面板比例已經是資料（`_m_roomLayout`），應繼續外移，

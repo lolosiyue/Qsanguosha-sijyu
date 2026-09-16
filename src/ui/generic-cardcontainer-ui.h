@@ -80,6 +80,8 @@ public:
     {
         _m_maxVotes = maxVotes;
     }
+    int maxVotes() const { return _m_maxVotes; }
+    bool changeVotes(int delta);
     // See _m_floatingArea for more information
     inline QRect getFloatingArea() const
     {

@@ -2206,6 +2206,24 @@ void PlayerCardContainer::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     }
 }
 
+bool PlayerCardContainer::changeVotes(int delta)
+{
+    if (delta != 1 && delta != -1)
+        return false;
+    const int current = isSelected() ? qMax(1, _m_votesGot) : 0;
+    const int next = current + delta;
+    // Removing a vote remains possible after a target becomes unavailable.
+    if (next < 0 || (delta > 0 && (!canBeSelected() || next > _m_maxVotes)))
+        return false;
+    const bool selectedBefore = isSelected();
+    _m_votesGot = next;
+    setSelected(next > 0);
+    if (selectedBefore == isSelected())
+        emit selected_changed();
+    updateVotes();
+    return true;
+}
+
 void PlayerCardContainer::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *)
 {
     if (Config.EnableDoubleClick)

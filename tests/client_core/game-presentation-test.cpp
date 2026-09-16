@@ -29,6 +29,14 @@ void viewStateContracts()
     state.setPlayerValue(QStringLiteral("self"), QStringLiteral("hp"), 3);
     state.setPlayerValue(QStringLiteral("self"), QStringLiteral("max_hp"), 4);
     state.setPlayerValue(QStringLiteral("self"), QStringLiteral("hand_count"), 1);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("hand_max"), 4);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("offensive_distance"), 1);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("defensive_distance"), 2);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("faceup"), false);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("chained"), true);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("role"), QStringLiteral("lord"));
+    state.setPlayerMark(QStringLiteral("self"), QStringLiteral("@round"), 3);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("skills"), QStringList{QStringLiteral("visible_skill")});
     state.setPlayerValue(QStringLiteral("other"), QStringLiteral("seat"), 2);
     state.setPlayerValue(QStringLiteral("other"), QStringLiteral("hp"), 2);
     state.setPlayerValue(QStringLiteral("other"), QStringLiteral("max_hp"), 3);
@@ -58,7 +66,11 @@ void viewStateContracts()
     options.phaseLabel = [](const QString &phase) { return QStringLiteral("Play translated"); };
     options.cardLabel = [](int id) { return QStringLiteral("Card-%1").arg(id); };
     options.translate = [](const QString &text) {
-        return text == QStringLiteral("ask") ? QStringLiteral("請求 %src") : text;
+        if (text == QStringLiteral("ask")) return QStringLiteral("請求 %src");
+        if (text == QStringLiteral("visible_skill")) return QStringLiteral("Visible Skill");
+        if (text == QStringLiteral("@round")) return QStringLiteral("Round");
+        if (text == QStringLiteral("lord")) return QStringLiteral("Lord");
+        return text;
     };
     options.distanceLabel = [](const QString &, const QString &) { return QString(); };
     InteractionRequest request;
@@ -73,6 +85,14 @@ void viewStateContracts()
     check(view.players.size() == 2 && view.players.first().seat == 1
           && view.players.first().hp == 3 && view.players.first().hand.size() == 1,
           "view includes public player fields and own visible hand");
+    check(view.players.first().handMax == 4 && view.players.first().offensiveDistance == 1
+          && view.players.first().defensiveDistance == 2
+          && view.players.first().faceUp.toBool() == false
+          && view.players.first().chained.toBool()
+          && view.players.first().role == QStringLiteral("Lord")
+          && view.players.first().marks.value(QStringLiteral("Round")).toInt() == 3
+          && view.players.first().skills.contains(QStringLiteral("Visible Skill")),
+          "inspector projection includes recipient-visible dashboard details");
     check(view.players.last().hand.isEmpty() && view.players.last().handCount == 5,
           "opponent hand exposes count without card identities");
     check(!json.contains("private-secret") && !json.contains("Card-21"),
@@ -125,12 +145,20 @@ void actionModelContracts()
     model.request.requestId = Q_UINT64_C(18446744073709551610);
     model.request.type = InteractionType::Choice;
     model.cards.append({QStringLiteral("card:7"), QStringLiteral("Display only"), true, true, {}});
+    GameActionEntry votedPlayer{QStringLiteral("other"), QStringLiteral("Other"), true, true, {}};
+    votedPlayer.selectedVotes = 2;
+    votedPlayer.maxVotes = 3;
+    model.players.append(votedPlayer);
     check(model.isCurrentFor(4, 8, 16) && !model.isCurrentFor(4, 9, 16),
           "selection draft is rejected when its presentation revision becomes stale");
     const QJsonObject entry = model.toJson().value(QStringLiteral("cards")).toArray().first().toObject();
     check(entry.value(QStringLiteral("id")).toString() == QStringLiteral("card:7")
           && entry.value(QStringLiteral("label")).toString() == QStringLiteral("Display only"),
           "action entries keep stable ids separate from display labels");
+    const QJsonObject votes = model.toJson().value(QStringLiteral("players")).toArray().first().toObject();
+    check(votes.value(QStringLiteral("selected_votes")).toInt() == 2
+          && votes.value(QStringLiteral("max_votes")).toInt() == 3,
+          "player actions preserve current multi-vote count and legal maximum");
     check(model.toJson().value(QStringLiteral("request")).toObject()
               .value(QStringLiteral("request_id")).toString() == QStringLiteral("18446744073709551610"),
           "embedded request preserves complete quint64 correlation id");
