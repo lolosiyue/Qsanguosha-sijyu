@@ -1,4 +1,5 @@
 #include "ai-decision-coordinator.h"
+#include "ai-runtime.h"
 
 #include "engine.h"
 #include "room.h"
@@ -196,8 +197,11 @@ void AiDecisionCoordinator::setMarkVisibility(const ServerPlayer *owner, const Q
 
 AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer) const
 {
+    EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
     AIWorldView world;
+    world.modeId = m_room.getMode();
     world.revision = m_room.roomRuntime()->stateRevision();
+    if (!viewer || viewer->getRoom() != &m_room) return world;
     ServerPlayer *current = m_room.getCurrent();
     world.currentPlayer = current ? current->objectName() : QString();
     world.currentPhase = current ? int(current->getPhase()) : int(Player::NotActive);
@@ -206,6 +210,18 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer) const
     foreach (ServerPlayer *player, m_room.getAllPlayers(true)) {
         AIPlayerView playerView;
         playerView.objectName = player->objectName();
+        // Resolve control links without getActualController's repair/mutation path.
+        QSet<const ServerPlayer *> controllers;
+        ServerPlayer *controller = player;
+        while (controller && !controllers.contains(controller)) {
+            controllers.insert(controller);
+            const QString name = controller->getTag("Controller_Name").toString();
+            if (name.isEmpty()) break;
+            ServerPlayer *next = m_room.findPlayerByObjectName(name, true);
+            if (!next) break;
+            controller = next;
+        }
+        playerView.controller = controller ? controller->objectName() : player->objectName();
         playerView.seat = player->getSeat();
         playerView.hp = player->getHp();
         playerView.maxHp = player->getMaxHp();
@@ -223,7 +239,10 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer) const
             || player->hasShownOneGeneral() || player->isDead();
         if (seesIdentity)
             playerView.kingdom = player->getKingdom();
-        if (player == viewer || player->hasShownRole() || player->isLord() || player->isDead())
+        world.customRoles = world.customRoles || player->getRoleEnum() == Player::UnknownRole;
+        playerView.roleRevealed = m_room.isRoleRevealed(player);
+        playerView.roleVisible = m_room.canSeeRole(viewer, player);
+        if (playerView.roleVisible)
             playerView.role = player->getRole();
         if (player == viewer || !hegemony || player->hasShownGeneral() || player->isDead())
             playerView.generalName = player->getGeneralName();
@@ -272,6 +291,7 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer) const
             world.players << playerView;
         }
     }
+    AiLuaRuntime::evaluateModePolicy(m_room.roomRuntime()->lua(), world);
     return world;
 }
 

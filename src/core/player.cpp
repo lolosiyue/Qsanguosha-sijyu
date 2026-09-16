@@ -451,6 +451,8 @@ void Player::setRole(const QString &role)
 {
     if (this->role != role){
         this->role = role;
+        // Private knowledge belongs to this assignment, including A -> B -> A changes.
+        setProperty("_role_visibility", QVariant());
         emit role_changed(role);
     }
 }
