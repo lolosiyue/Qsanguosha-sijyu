@@ -271,6 +271,31 @@ $readelf = Join-Path $env:LOCALAPPDATA 'Android\Sdk\ndk\27.2.12479018\toolchains
 
 逐一檢查 APK 內每個 `.so` 的 ELF Machine 為 AArch64，所有 `LOAD` segment 的 Align 至少為 `0x4000`；只檢查主程式或 ELF header 不足以證明所有依賴符合 16 KB。`apksigner` 需先將上面的 JDK 21 設為該程序的 `JAVA_HOME`。
 
+## Android 暫時靜音（2026-09-16）
+
+Android Debug／Release preset、CMake Android 預設與 `tools/build-android.ps1`
+均選擇既有 `NULL` 音訊後端，暫停音效、武將語音及 BGM。這是使用者同意的暫時
+繞過方案；原有 Qt6 Multimedia 路徑會觸發 AAudio callback 崩潰，尚未證明已修復。
+Qt Multimedia 仍供其他介面／影片功能使用。Windows 與 Linux 的音訊預設不變。
+
+不需 FMOD SDK、不更換第三方庫、不刪除已匯入媒體。日常建置沿用上方固定工作樹、
+建置快取及 AVD。若另行授權調查有聲版本，才用 `-AudioBackend QT`（或 CMake
+`-DQSAN_AUDIO_BACKEND=QT`）重新啟用原音訊路徑。
+
+驗收須區分「靜音 APK 建置／啟動／前後景成功」與「音訊缺陷修復」；前者不代表後者，
+也不代表完整對局通過。
+
+同日的 Android 啟動修復檢查點改用 Qt Quick `software` 後端及既有 raster 牌桌
+viewport，避免模擬器上已觀察到的 OpenGL 破圖與前後景 EGL context 失效。
+選擇在第一個 Quick window 建立前完成；Windows／Linux 保持原有 OpenGL 路徑。
+這是相容性繞過，GPU shader 特效與影片顯示可能受限，不能當作完整視覺功能驗收。
+軟體後端限制見 [Qt 官方文件](https://doc.qt.io/qt-6/qtquick-visualcanvas-adaptations-software.html)。
+
+本次靜音＋software Debug APK 已增量建置（exit 0）、覆蓋安裝，確認首頁顯示、
+「關於」對話框與已就緒首頁的前後景恢復（同一 PID，17.8 秒檢查無崩潰）。
+首頁約 49 秒才就緒，第一次自動化 48 秒子預算逾時仍保留為失敗，不外推為啟動效能通過。
+證據位於 `builds/android-silent-20260916/report.md`；完整对局、實機、CI 及 GPU 特效未驗收。
+
 ## 驗證限制與故障分類
 
 目前只驗證 Android Emulator。x86_64 模擬器執行 arm64 APK 時包含 ARM translation layer，不能代替 arm64 實機、Android 9/16 或 16 KB page-size 環境。最新 API 33 模擬器的已知音訊閃退位於 AAudio CFI callback under translation；目前證據不能把它歸因於某一個 OGG 檔案。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。四個短 UI WAV 只降低 codec 依賴，不代表完整 OGG 已驗收。

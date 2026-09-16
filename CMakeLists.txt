@@ -110,6 +110,9 @@ endif()
 # natural default for server-only builds.
 if(WIN32)
     set(QSAN_AUDIO_BACKEND_DEFAULT "FMOD")
+elseif(ANDROID)
+    # Temporary Android workaround for the AAudio callback crash.
+    set(QSAN_AUDIO_BACKEND_DEFAULT "NULL")
 elseif(QSAN_BUILD_GUI)
     set(QSAN_AUDIO_BACKEND_DEFAULT "QT")
 else()

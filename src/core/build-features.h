@@ -18,7 +18,12 @@
 #endif
 
 #ifndef QSAN_USE_RASTER_VIEWPORT
+#if defined(__ANDROID__)
+// Keep Android QWidget composition independent of the lifecycle of EGL surfaces.
+#define QSAN_USE_RASTER_VIEWPORT 1
+#else
 #define QSAN_USE_RASTER_VIEWPORT 0
+#endif
 #endif
 
 #endif
