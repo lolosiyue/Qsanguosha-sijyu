@@ -661,6 +661,11 @@ ServerPlayer *PlayerLifecycleService::insertPlayerMidGame(ServerPlayer *before,
         if (triggerSkill)
             m_eventDispatcher.registerTriggerSkill(triggerSkill);
     }
+    // The summoned player has no AI yet, and drawCards dispatches DrawNCards,
+    // whose handler calls target->getSmartAI()->filterEvent() with no null
+    // check (roomthread.cpp).  Attach one the same way every other path here
+    // does, before anything can trigger.
+    m_room.resetAI(player);
     m_cardMovement.drawCards(player, 4, "InitialHandCards", true, false);
     return player;
 }
