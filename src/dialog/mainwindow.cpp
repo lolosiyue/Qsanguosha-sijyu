@@ -1133,7 +1133,7 @@ void MainWindow::setupLocalServerController()
 	localServer = new LocalServerController(this);
 	QPushButton *cancel = new QPushButton(tr("Cancel"), localLoadingPage);
 	cancel->setObjectName(QStringLiteral("localLoadingCancel"));
-	localLoadingPage->layout()->addWidget(cancel, 0, Qt::AlignHCenter);
+	static_cast<QBoxLayout *>(localLoadingPage->layout())->addWidget(cancel, 0, Qt::AlignHCenter);
 	connect(cancel, &QPushButton::clicked, this, [this]() {
 		if (m_takeoverInProgress) rollbackTakeover(QString());
 		else { localServer->stop(); showHomePage(); }

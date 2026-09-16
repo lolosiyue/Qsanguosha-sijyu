@@ -38,8 +38,8 @@ QString plainAccessibleText(QString text)
 
 QString effectiveAccessibleName(QWidget *widget)
 {
-    QAccessibleInterface *interface = QAccessible::queryAccessibleInterface(widget);
-    return interface ? interface->text(QAccessible::Name).trimmed() : QString();
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(widget);
+    return iface ? iface->text(QAccessible::Name).trimmed() : QString();
 }
 
 QString fallbackNameFor(QWidget *widget)

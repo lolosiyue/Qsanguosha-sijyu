@@ -195,7 +195,7 @@ Result compute(const Input &input)
         return result;
     result.seatsValid = true;
 
-    const PhotoLayoutFit::LayoutDimensions small = {
+    const PhotoLayoutFit::LayoutDimensions smallDims = {
         static_cast<double>(input.smallPhotoSize.width()), static_cast<double>(input.smallPhotoSize.height()) };
     const PhotoLayoutFit::LayoutDimensions normal = {
         static_cast<double>(input.normalPhotoSize.width()), static_cast<double>(input.normalPhotoSize.height()) };
@@ -203,7 +203,7 @@ Result compute(const Input &input)
         static_cast<double>(input.bigPhotoSize.width()), static_cast<double>(input.bigPhotoSize.height()) };
     const PhotoLayoutFit::Result fit = PhotoLayoutFit::choose(
         result.tableWidth, result.tableHeight, regionCounts, input.skin.photoHDistance,
-        input.skin.photoVDistance, small, normal, big);
+        input.skin.photoVDistance, smallDims, normal, big);
     result.photoTier = fit.tier == PhotoLayoutFit::LayoutTier::Big ? PhotoTier::Big
         : fit.tier == PhotoLayoutFit::LayoutTier::Normal ? PhotoTier::Normal : PhotoTier::Small;
     result.photoScale = fit.scale;
