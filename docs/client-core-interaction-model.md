@@ -326,8 +326,6 @@ debug\QSanguosha.exe --interaction-inventory artifacts\client-core-interaction-m
 The artifact contract is schema version 3, total 29, direct typed 29, and
 implicit passthrough 0. Focused executables cover registry completeness,
 presenter dispatch, response validation, typed reply encoding, and artifact
-drift. TUI 對所有 Room→Client production flow 的 reducer／presentation／interaction／
-session 分類另見
-[`artifacts/tui-flow-coverage.json`](../artifacts/tui-flow-coverage.json)。Local CTest
+drift. Local CTest
 不屬本次本機 gate；remote cross-platform、production GUI 及完整 live TCP game 仍是
 分開的驗收證據。
