@@ -99,7 +99,7 @@
         "QSAN_BUILD_TUI": "OFF",
         "QSAN_BUILD_EXCEL": "OFF",
         "QSAN_BUILD_EXCEL_TESTS": "OFF",
-        "QSAN_AUDIO_BACKEND": "QT"
+        "QSAN_AUDIO_BACKEND": "NULL"
       }
     },
     {
@@ -129,7 +129,7 @@
         "QSAN_BUILD_TUI": "OFF",
         "QSAN_BUILD_EXCEL": "OFF",
         "QSAN_BUILD_EXCEL_TESTS": "OFF",
-        "QSAN_AUDIO_BACKEND": "QT"
+        "QSAN_AUDIO_BACKEND": "NULL"
       }
     }
   ],

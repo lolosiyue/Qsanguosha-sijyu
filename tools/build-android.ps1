@@ -9,6 +9,8 @@ param(
     [string]$JavaRoot = '',
     [string]$CMakeExe = '',
     [string]$NinjaExe = 'H:\Qt6111\Tools\Ninja\ninja.exe',
+    [ValidateSet('QT', 'NULL')]
+    [string]$AudioBackend = 'NULL',
     [ValidateRange(1, 32)]
     [int]$Parallel = 8
 )
@@ -97,7 +99,9 @@ try {
         Invoke-CMake -CMakeArguments @('--install', $freeTypeBuild)
     }
     $preset = "android-arm64-$($Configuration.ToLowerInvariant())"
-    Invoke-CMake -CMakeArguments @('--preset', $preset, "-DCMAKE_MAKE_PROGRAM=$NinjaExe")
+    $configureArguments = @('--preset', $preset, "-DCMAKE_MAKE_PROGRAM=$NinjaExe",
+        "-DQSAN_AUDIO_BACKEND=$AudioBackend")
+    Invoke-CMake -CMakeArguments $configureArguments
     Invoke-CMake -CMakeArguments @('--build', '--preset', "$preset-apk", '--parallel', "$Parallel")
 } finally {
     Pop-Location

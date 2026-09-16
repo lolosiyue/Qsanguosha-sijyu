@@ -101,10 +101,17 @@ int main(int argc, char *argv[]) {
     format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
     QSurfaceFormat::setDefaultFormat(format);
 
+#ifdef Q_OS_ANDROID
+    // Android's translated GLES context can be lost during Activity recreation.
+    // Pair software Qt Quick with the existing raster FitView viewport.
+    QQuickWindow::setSceneGraphBackend(QStringLiteral("software"));
+    qInfo("Android rendering: Qt Quick software, raster viewport");
+#else
     // QOpenGLWidget and QQuickWidget must use the same graphics API when
     // they are composed in the same top-level window.
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#endif
 
     // headless 模式 (-server / --headless) 只用 QCoreApplication,
     // 不載入 QPA 平台插件與 QtWidgets/QML:記憶體↓、無桌面環境可跑、啟動加快。
