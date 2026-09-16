@@ -4933,6 +4933,13 @@
     </message>
 </context>
 <context>
+    <name>KofArrangeController</name>
+    <message>
+        <source>Complete</source>
+        <translation>完成</translation>
+    </message>
+</context>
+<context>
     <name>RoomScene</name>
     <message>
         <location filename="../src/ui/roomscene.cpp" line="475"/>
@@ -5347,11 +5354,6 @@
         <location filename="../src/ui/roomscene.cpp" line="6184"/>
         <source>Are you sure to surrender ?</source>
         <translation>你真的要投降吗？</translation>
-    </message>
-    <message>
-        <location filename="../src/ui/roomscene.cpp" line="6461"/>
-        <source>Complete</source>
-        <translation>完成</translation>
     </message>
     <message>
         <location filename="../src/ui/roomscene.cpp" line="4366"/>

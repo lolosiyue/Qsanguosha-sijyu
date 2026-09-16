@@ -150,6 +150,7 @@ set(QSAN_SOURCES
     src/ui/rolecombobox.cpp
     src/ui/roomscene.cpp
     src/ui/room-debug-dialogs.cpp
+    src/ui/kof-arrange-controller.cpp
     src/ui/room-layout-engine.cpp
     src/ui/room-layout-engine.h
     src/ui/desktop-game-presentation.cpp
@@ -344,6 +345,7 @@ set(QSAN_MOC_HEADERS
     src/ui/rolecombobox.h
     src/ui/roomscene.h
     src/ui/room-debug-dialogs.h
+    src/ui/kof-arrange-controller.h
     src/ui/skin-bank.h
     src/ui/SpineAnimationManager.h
     src/ui/SpineEffectWidget.h

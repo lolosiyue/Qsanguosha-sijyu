@@ -54,6 +54,7 @@ class ChatWidget;
 class EmotionPanel;
 class GifChatBox;
 class RoomOverlayHost;
+class KofArrangeController;
 class QSanSelectableItem;
 class EffectAnimation;
 class GiftItem;
@@ -394,12 +395,7 @@ private:
     QList<Photo *> gift_highlighted_photos;
 
     // for 3v3 & 1v1 mode
-    QSanSelectableItem *selector_box;
-    QList<CardItem *> general_items, up_generals, down_generals;
-    CardItem *to_change;
-    QList<QGraphicsRectItem *> arrange_rects;
-    QList<CardItem *> arrange_items;
-    Button *arrange_button;
+    KofArrangeController *m_kofArrange;
     KOFOrderBox *enemy_box, *self_box;
     QPointF m_tableCenterPos;
     ReplayerControlBar *m_replayControl;
@@ -463,9 +459,6 @@ private:
     void updateReplayTimeline(int secs);
     void onReplayTimelineTimeChanged(int secs);
     void onReplayTimelineNodeClicked(int nodeIndex);
-
-    void fillGenerals1v1(const QStringList &names);
-    void fillGenerals3v3(const QStringList &names);
 
     void showPindianBox(const QString &from_name, int from_id, const QString &to_name, int to_id, const QString &reason);
     void setChatBoxVisible(bool show);
@@ -617,15 +610,6 @@ void onGameStart();
     void doPindianAnimation();
 
     // 3v3 mode & 1v1 mode
-    void fillGenerals(const QStringList &names);
-    void takeGeneral(const QString &who, const QString &name, const QString &rule);
-    void recoverGeneral(int index, const QString &name);
-    void startGeneralSelection();
-    void selectGeneral();
-    void startArrange(const QString &to_arrange);
-    void toggleArrange();
-    void finishArrange();
-    void changeGeneral(const QString &general);
     void revealGeneral(bool self, const QString &general);
     void trust();
 
