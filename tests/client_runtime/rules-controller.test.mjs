@@ -14,7 +14,8 @@ const ts = require(process.env.QSAN_TYPESCRIPT || 'typescript');
 // only for the browser Worker, the timers and the i18n card catalog. Command
 // numbers, the bridge schema and the identity predicate therefore come from the
 // shipped sources instead of a copy that can silently drift out of date.
-const REAL_MODULES = new Set(['./protocol', './replies', './rules-identity', './game-presentation']);
+const REAL_MODULES = new Set(['./protocol', './replies', './rules-identity', './game-presentation',
+  './package-assets', './rules-content']);
 
 function transpile(name) {
   const source = readFileSync(new URL(`../../web/src/${name}.ts`, import.meta.url), 'utf8');
@@ -117,7 +118,11 @@ async function setup(options = {}) {
   bundle.bundle_id = await sha(new TextEncoder().encode(
     `qsan-rules-bundle-v1\0${canonical(bundle)}`));
   const content = { schema_version: 2, profile: 'declared-v2',
-    runtime_content: { schema_version: 2, profile: 'declared-v2', extensions: [] }, files: [] };
+    runtime_content: { schema_version: 2, profile: 'declared-v2', extensions: [] },
+    // The real package-asset installer validates the required core inventory.
+    files: ['lua/config.lua', 'lua/sanguosha.lua', 'lua/utilities.lua',
+      'lua/sgs_ex.lua', 'lua/lib/json.lua'].map(path => ({ path, role: 'rules', size: 0,
+        sha256: digest })) };
   if (options.cached)
     localStorage.setItem('qsan-rules-content-v1', JSON.stringify({ identity: bundle, content }));
   const controller = new module.namespace.RulesController(() => {});
@@ -252,7 +257,8 @@ test('changed content replaces the Worker and stale replies cannot mutate the ne
   assert.equal(s.translationCalls.filter(value => value && value.native_key === 'native').length, 1);
   const old = s.workers[0];
   s.session.generation = 2;
-  const changed = { ...s.content, files: [{ path: 'lua/config.lua', role: 'rules', size: 1, sha256: 'c'.repeat(64) }] };
+  const changed = { ...s.content, files: s.content.files.map(entry => entry.path === 'lua/config.lua'
+    ? { ...entry, size: 1, sha256: 'c'.repeat(64) } : entry) };
   await s.controller.initialize(s.session);
   const initialized = s.controller.initialize(s.session,
     { rules_bundle: s.bundle, rules_content: changed });
