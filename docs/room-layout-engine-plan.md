@@ -59,8 +59,8 @@
 | PR 7 | WindowManager Java listener → JNI → Qt thread → FitView → 純幾何；處理 separating／occluding、零寬 crease、平攤雙屏、Book／Tabletop、小 pane 回退、失效回呼及鍵盤遮擋。缺少姿態時使用一般 profile |
 
 新入口為 **View → Player Details**（Android overflow 同一 action），或牌桌左上角
-選單。**Responsive preview** 只在明確開啟時啟用本批 profile；不持久化此開關。
-Android 預覽期間允許旋轉，關閉後還原原先 orientation；Manifest 的正式橫向限制
+選單。原 PR3–7 的 **Responsive preview** 為房內暫時開關；後續全域入口修訂見下文。
+Android 開啟自適應版面期間允許旋轉（包含首頁），關閉後還原原先 orientation；Manifest 的正式橫向限制
 仍保留，待 Compact GUI／APK 驗收後另行解除。XP 不編入 Overlay／WindowManager。
 
 手牌按鈕以原模型的穩定 ID 同步選取，寬度在可讀下限內壓縮，再局部水平捲動；
@@ -95,6 +95,72 @@ SHA-256 一致。保留既有 FreeType 缺少 PDB 警告，未修改第三方程
 `builds/android-content-performance-20260916/no-hash-run/summary.md`。
 PR3–7 授權的來源／建置／focused 檢查點已完成；Responsive preview 的互動與折疊姿態
 驗收仍待完成，不把一般橫向對局或資源啟動成功記為該項通過。
+
+## 全程直向與單手操作修訂（2026-09-16，來源檢查點）
+
+使用者明確修正範圍：直向與單手操作不能只在進入房間後生效。
+
+| 入口／流程 | 本次來源行為 |
+| --- | --- |
+| 首頁常駐入口 | 「版面與單手操作」位於未縮放的可用視窗底部；進房前即可啟用自適應、左手或右手操作 |
+| 共用偏好 | `Settings` 提供 `responsiveUiEnabled`／`oneHandedness` 與變更信號；`UI/ResponsiveLayout` 保存開關，沿用 `UI/RoomHandedness` 舊偏好，首頁、設定與房內同步 |
+| 窄視窗／直向首頁 | 可用寬度小於 900 或高大於寬時，啟用自適應後切換實際邏輯像素版面；快速加入／加入／開房靠下排列，底部導覽保持可操作；左／右手將控制組靠向對應側 |
+| 武將／卡牌頁 | 保留同一 Loader 與選取狀態，直向時詳細桌面面板改在可水平捲動容器內顯示，底部導覽維持可讀觸控尺寸；尚非完整手機版詳情頁重新設計 |
+| 加入房間 | 原絕對座標表單改用實際 layout，原連線、頭像與歷史處理不變；自適應時隨可用視窗配置 |
+| 開房／設定等 QWidget 對話框 | 沿用 Android 對話框適配器至現代桌面；內容可捲動，識別出的底部按鈕列留在捲動區外，窄畫面改直列，依左右手靠邊。原生檔案選擇器維持平台管理 |
+| 設定與取消 | 顯示分頁加入共用版面設定，變更即時呈現；取消沿用既有快照機制還原 |
+| 本機載入畫面 | 自適應時移除 520px 最小寬度，避免隱藏頁面卡住房外視窗寬度 |
+| Android | 回首頁不再撤銷旋轉；首頁可用區與版面彈出面板避開系統安全邊界。既有單一建置／AVD／媒體政策不變 |
+| XP | 不編入新的對話框適配器，保留舊連線布局及橫向行為 |
+
+來源與靜態檢查完成；使用者另行授權後，Windows GUI 增量 configure／Debug `QSanguosha`
+建置 PASS（exit 0，2026-09-16 22:54）。已用獨立 session 設定啟動 480×820、
+自適應開啟／右手偏好的可見 GUI，交由使用者人工驗證，全程不用 Computer Use。
+建置紀錄：`builds/portrait-preview-20260916/{configure.log,build.log,build-exit.txt}`。
+既有 FreeType 缺少 PDB 與 main.cpp 的 nodiscard 警告保留。
+此修訂的 **GUI 互動／Android APK 驗收仍未完成**；既有 PR3–7 focused PASS 不涵蓋它。
+人工範圍為首頁 → 加入／建立房間 → 牌桌 → 返回首頁及設定取消；本次未執行 CTest 或完整對局。
+
+### 原生視覺修正（2026-09-16）
+
+人工預覽回饋：直向 GUI 應保留原版 client 的圖示、立繪、牌面與皮膚，
+不能以 Web／純文字操作面板作為最終設計。此要求取代先前「有可操作按鈕即完成」的呈現假設。
+
+- 首頁改為重用 `HomePlayerInfo`、`CharacterLayer`、`MainActionPanel`、
+  `HomeBottomBar`、`HomeSideBar`；保留圖示／人物素材、Logo、斜角面板、主題、焦點與選中效果。
+- compact 只調整上述元件的幾何；快速加入的模式名稱改為上下排列，工具列改為橫排，
+  導覽列不足寬時局部捲動。單手偏好仍只決定操作區位置，不換成另一套 UI。
+- 版面設定入口沿用 `BAToolButton`，設定選項沿用 `HomeMainButton`；刪除純文字 `HomeCompactButton`。
+- **牌桌尚未符合此視覺要求**：`RoomScene::setResponsiveLayout` 仍令原生 Dashboard 透明，
+  `RoomOverlayHost` 用文字手牌與席位替代。後續應重排原生 Dashboard／CardItem／Photo，
+  保留皮膚與可見資訊；不能只替文字按鈕加 icon 就宣告完成。
+- 本輪首頁來源檢查點：9 個相關 QML 的 qmllint PASS；Debug `QSanguosha` 增量建置 PASS（exit 0），
+  紀錄於 `builds/portrait-preview-20260916/native-style-build.log`。已開啟新版供人工視覺驗收，未使用 Computer Use。
+  不把首頁修正推算為牌桌、Android 或完整對局通過。
+
+### 直向首頁構圖修訂（使用者參考圖 2）
+
+- 大立繪由玩家資訊下緣延伸至底部，主操作浮在立繪前方的左右下側，不再將角色壓縮成按鈕上方縮圖。
+- 加入／建立房間分為兩個次要入口，快速加入位於下方另一側；左右手偏好鏡像主要操作位置。
+- 五項人物導覽列固定安全區最底、全寬顯示，其下不放其他按鈕；單手模式不縮窄導覽列。
+- 「版面與單手操作」位置尚未定案，直向暫收至既有「設定」對話框，取消首頁獨立底列。
+- 主題／關於／更新工具縮為側邊圖示列；版本仍可由關於查看。
+- 原有快速加入／加入／伺服器／設定／關於／更新 SVG 實際為同一藍色圓點，改為對應用途的向量圖示。
+- 此批只調整首頁呈現；不改遊戲規則、牌桌或 Android 啟動。靜態檢查與 Debug GUI 增量建置通過
+  （`builds/portrait-preview-20260916/composition-build.log`，exit 0），已開啟新版供人工確認構圖；未使用 Computer Use。
+
+### 武將／卡牌一覽直向版（2026-09-16）
+
+- 移除首頁子 Scene 的 1360 最小內容寬；直向以實際可用寬度呈現，不橫向平移整個桌面頁面。
+- 共用原生樣式的一覽／詳情／篩選切換列；列表、詳情和篩選實例持續保留，切換不重建資料模型。
+- 武將依寬度顯示 2–多欄立繪，點擊或 Enter 開啟全寬詳情；技能、語音、皮膚、設為頭像及禁將沿用原操作。
+  詳情採縱向捲動，篩選及換膚面板限制在可用視窗內；橫向格數與表格偏好仍保留。
+- 卡牌網格改為牌面在上、資料在下，詳情保留效果／語音／可能出現卡牌的次序，排序、重載、分頁與篩選照常保留。
+- 直向各區不套桌面整頁縮放；鍵盤焦點不得進入隱藏欄，Escape 先返回一覽，底部人物導覽列維持貼底。
+- 本批來源檢查點：QML 靜態檢查及 diff whitespace 檢查通過；既有 GeneralScene ComboBox delegate
+  `parent.highlighted` 型別提示仍在。Windows Debug GUI 增量建置 PASS（exit 0），
+  證據為 `builds/portrait-preview-20260916/catalog-build.log`。已啟動新版交由人工確認直向互動；
+  未使用 Computer Use、未執行 CTest，不代表 Android 或完整對局驗收。
 
 ## 架構邊界
 

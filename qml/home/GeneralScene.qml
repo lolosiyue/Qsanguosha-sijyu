@@ -10,6 +10,7 @@ Item {
 
     component ThemeCheckBox: Basic.CheckBox {
         id: box
+        implicitHeight: root.compact ? HomeTheme.compactTouch : Math.max(implicitContentHeight, implicitIndicatorHeight) + topPadding + bottomPadding
         padding: 4
         contentItem: Text {
             text: box.text
@@ -45,6 +46,7 @@ Item {
         property string label: ""
         property color accent: HomeTheme.baDockBorder
         implicitWidth: badgeText.implicitWidth + 16
+        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
         implicitHeight: 24
         radius: 4
         color: HomeTheme.btnSecondary
@@ -54,6 +56,8 @@ Item {
             id: badgeText
             anchors.centerIn: parent
             text: parent.label
+            width: Math.max(0, parent.width - 16)
+            elide: Text.ElideRight
             color: HomeTheme.btnSecondaryText
             font.pixelSize: 12
         }
@@ -68,6 +72,7 @@ Item {
         selectionColor: HomeTheme.baSky
         font.pixelSize: 15
         activeFocusOnPress: true
+        onActiveFocusChanged: if (activeFocus) root.revealDetailControl(this)
     }
 
     component ParallelogramPlate: Item {
@@ -129,6 +134,7 @@ Item {
     }
 
     component ThemeField: Basic.TextField {
+        implicitHeight: root.compact ? HomeTheme.compactTouch : 32
         color: HomeTheme.btnSecondaryText
         placeholderTextColor: HomeTheme.pillText
         font.pixelSize: 16
@@ -199,9 +205,35 @@ Item {
     property var packageFilter: []
     property int detailTab: 0
     property real uiScale: 1.0
+    property bool compact: Config.responsiveUiEnabled && (width < 900 || height > width)
+    property int compactPane: 0
+    readonly property int visibleColumns: compact
+        ? Math.max(2, Math.floor(generalGrid.width / HomeTheme.catalogGeneralTileWidth)) : gridColumns
+    readonly property var navigationEntry: searchField
+    readonly property var navigationExit: compact && compactPane === 0 ? generalGrid : banBtn
+    signal navigationEndpointChanged()
+    onNavigationExitChanged: navigationEndpointChanged()
+    function showCompactPane(pane) {
+        compactPane = pane
+        Qt.callLater(function() {
+            if (pane === 0) generalGrid.forceActiveFocus()
+            else detailFlick.forceActiveFocus()
+        })
+    }
+    function revealDetailControl(item) {
+        if (!compact || compactPane !== 1 || !item) return
+        var ancestor = item.parent
+        while (ancestor && ancestor !== detailLayout) ancestor = ancestor.parent
+        if (!ancestor) return
+        var point = item.mapToItem(detailLayout, 0, 0)
+        if (point.y < detailFlick.contentY) detailFlick.contentY = Math.max(0, point.y)
+        else if (point.y + item.height > detailFlick.contentY + detailFlick.height)
+            detailFlick.contentY = Math.min(Math.max(0, detailFlick.contentHeight - detailFlick.height),
+                                          point.y + item.height - detailFlick.height)
+    }
     property int gridColumns: 5
     property bool gridColsReady: false
-    readonly property bool tableMode: gridColumns >= HomeTheme.generalGridMaxColumns
+    readonly property bool tableMode: !compact && gridColumns >= HomeTheme.generalGridMaxColumns
     property bool keyboardReady: false
     property alias searchField: searchField
     property alias banBtn: banBtn
@@ -331,9 +363,11 @@ Item {
     function handleListKeys(event) {
         if (!catalog || catalog.count <= 0)
             return
-        var cols = root.tableMode ? 1 : Math.max(1, root.gridColumns)
+        var cols = root.tableMode ? 1 : Math.max(1, root.visibleColumns)
         var page = root.tableMode ? 12 : cols * 3
-        if (event.key === Qt.Key_Left)
+        if (root.compact && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+            root.showCompactPane(1)
+        } else if (event.key === Qt.Key_Left)
             root.moveSelection(root.tableMode ? 0 : -1)
         else if (event.key === Qt.Key_Right)
             root.moveSelection(root.tableMode ? 0 : 1)
@@ -394,6 +428,8 @@ Item {
             skinPanel.visible = false
         else if (filterPanel.visible)
             filterPanel.visible = false
+        else if (root.compact && root.compactPane !== 0)
+            root.showCompactPane(0)
         else
             homeController.openHome()
     }
@@ -406,16 +442,16 @@ Item {
 
     Column {
         anchors.fill: parent
-        anchors.leftMargin: HomeTheme.generalPageHMargin
-        anchors.rightMargin: HomeTheme.generalPageHMargin
-        anchors.topMargin: HomeTheme.generalPageTopMargin
+        anchors.leftMargin: root.compact ? 0 : HomeTheme.generalPageHMargin
+        anchors.rightMargin: root.compact ? 0 : HomeTheme.generalPageHMargin
+        anchors.topMargin: root.compact ? 0 : HomeTheme.generalPageTopMargin
         anchors.bottomMargin: HomeTheme.generalPageBottomMargin
         spacing: HomeTheme.generalPanelGap
 
         BASlantedPanel {
             id: header
             width: parent.width
-            height: HomeTheme.generalHeaderHeight
+            height: root.compact ? HomeTheme.catalogCompactHeaderHeight : HomeTheme.generalHeaderHeight
             slant: -0.08
             cornerRadius: 10
             shadowBlur: 0
@@ -425,14 +461,17 @@ Item {
             borderColor: HomeTheme.baDockBorder
             shadowColor: HomeTheme.baDockShadow
 
-            RowLayout {
+            GridLayout {
+                columns: root.compact ? 2 : 6
                 anchors.fill: parent
-                anchors.leftMargin: 28
-                anchors.rightMargin: 28
+                anchors.leftMargin: root.compact ? HomeTheme.compactMargin : 28
+                anchors.rightMargin: root.compact ? HomeTheme.compactMargin : 28
                 anchors.bottomMargin: 8
-                spacing: 18
+                rowSpacing: HomeTheme.compactGap
+                columnSpacing: root.compact ? HomeTheme.compactGap : 18
 
                 Text {
+                    visible: !root.compact
                     text: root.ui("GeneralOverview", "General Overview")
                     color: HomeTheme.btnSecondaryText
                     font.pixelSize: 28
@@ -440,6 +479,7 @@ Item {
                 }
 
                 Rectangle {
+                    Layout.columnSpan: root.compact ? 2 : 1
                     Layout.fillWidth: true
                     Layout.maximumWidth: 480
                     Layout.preferredHeight: 48
@@ -509,7 +549,8 @@ Item {
 
                 Basic.ComboBox {
                     id: kingdomCombo
-                    Layout.preferredWidth: 220
+                    Layout.preferredWidth: root.compact ? 140 : 220
+                    Layout.fillWidth: root.compact
                     Layout.preferredHeight: 48
                     model: root.kingdomOptions
                     textRole: "label"
@@ -628,13 +669,15 @@ Item {
                 BAToolButton {
                     id: filterBtn
                     text: root.ui("GeneralOverview", "Search...")
-                    implicitWidth: 140
+                    implicitWidth: root.compact ? 100 : 140
+                    Layout.fillWidth: root.compact
                     onClicked: filterPanel.visible = !filterPanel.visible
                     KeyNavigation.tab: colSlider
                     KeyNavigation.backtab: kingdomCombo
                 }
 
                 Text {
+                    visible: !root.compact
                     text: String(catalog ? catalog.count : 0)
                     color: HomeTheme.btnSecondaryText
                     font.pixelSize: 22
@@ -643,6 +686,7 @@ Item {
 
                 BASlantedPanel {
                     id: colSliderPanel
+                    visible: !root.compact
                     Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
                     implicitWidth: 204
                     implicitHeight: 44
@@ -723,13 +767,29 @@ Item {
             }
         }
 
+            CatalogPaneBar {
+                id: compactBar
+                visible: root.compact
+                width: parent.width
+                height: visible ? HomeTheme.compactTouch : 0
+                currentIndex: filterPanel.visible ? 2 : root.compactPane
+                itemCount: root.catalog ? root.catalog.count : 0
+                detailsEnabled: root.selectedName.length > 0
+                onActivated: function(index) {
+                    if (index === 2) filterPanel.visible = true
+                    else root.showCompactPane(index)
+                }
+            }
+
             Row {
                 width: parent.width
-                height: parent.height - header.height - HomeTheme.generalPanelGap
+                height: Math.max(0, parent.height - header.height - HomeTheme.generalPanelGap
+                                 - (root.compact ? compactBar.height + HomeTheme.generalPanelGap : 0))
                 spacing: HomeTheme.generalPanelGap
 
             BASlantedPanel {
-                width: Math.round((parent.width - HomeTheme.generalPanelGap) * HomeTheme.generalListShare)
+                visible: !root.compact || root.compactPane === 0
+                width: root.compact ? parent.width : Math.round((parent.width - HomeTheme.generalPanelGap) * HomeTheme.generalListShare)
                 height: parent.height
                 slant: 0
                 cornerRadius: 10
@@ -750,15 +810,15 @@ Item {
                     focus: !root.tableMode
                     keyNavigationEnabled: false
                     activeFocusOnTab: true
-                    cellWidth: HomeTheme.generalCellWidth(width, root.gridColumns)
-                    cellHeight: HomeTheme.generalCellHeight(width, root.gridColumns)
+                    cellWidth: root.compact ? Math.floor(width / root.visibleColumns) : HomeTheme.generalCellWidth(width, root.gridColumns)
+                    cellHeight: root.compact ? cellWidth * HomeTheme.generalCellAspect : HomeTheme.generalCellHeight(width, root.gridColumns)
                     cacheBuffer: cellHeight * 2
                     reuseItems: false
                     model: (root.tableMode || root.catalogPending) ? null : root.catalog
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: HomeScrollBar { }
-                    KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
-                    KeyNavigation.backtab: colSlider
+                    KeyNavigation.tab: root.compact ? compactBar.detailButton : (skinBtn.visible ? skinBtn : avatarBtn)
+                    KeyNavigation.backtab: root.compact ? compactBar.listButton : colSlider
                     Keys.onPressed: function(event) { root.handleListKeys(event) }
                     onWidthChanged: {
                         if (root.gridColsReady || width <= 1)
@@ -926,7 +986,10 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.selectGeneral(delegateRoot.name)
+                                onClicked: {
+                                    root.selectGeneral(delegateRoot.name)
+                                    if (root.compact) root.showCompactPane(1)
+                                }
                             }
                         }
                     }
@@ -1166,7 +1229,8 @@ Item {
 
             BASlantedPanel {
                 id: detailPanel
-                width: Math.round((parent.width - HomeTheme.generalPanelGap) * (1.0 - HomeTheme.generalListShare))
+                visible: !root.compact || root.compactPane === 1
+                width: root.compact ? parent.width : Math.round((parent.width - HomeTheme.generalPanelGap) * (1.0 - HomeTheme.generalListShare))
                 height: parent.height
                 slant: 0
                 cornerRadius: 10
@@ -1177,14 +1241,41 @@ Item {
                 borderColor: HomeTheme.baDockBorder
                 clip: true
 
-                RowLayout {
+                Flickable {
+                    id: detailFlick
                     anchors.fill: parent
                     anchors.margins: 14
-                    spacing: 12
+                    contentWidth: width
+                    contentHeight: detailLayout.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    activeFocusOnTab: root.compact
+                    ScrollBar.vertical: HomeScrollBar { }
+                    KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
+                    KeyNavigation.backtab: compactBar.detailButton
+                    Keys.onPressed: function(event) {
+                        if (!root.compact) return
+                        var step = event.key === Qt.Key_Down ? 48 : event.key === Qt.Key_Up ? -48
+                                 : event.key === Qt.Key_PageDown ? height : event.key === Qt.Key_PageUp ? -height : 0
+                        if (!step) return
+                        contentY = Math.max(0, Math.min(contentHeight - height, contentY + step))
+                        event.accepted = true
+                    }
+
+                GridLayout {
+                    id: detailLayout
+                    columns: root.compact ? 1 : 2
+                    width: detailFlick.width
+                    // Keep the original skill/voice panels; the portrait detail scrolls vertically.
+                    height: root.compact ? Math.max(detailFlick.height, HomeTheme.catalogDetailContentHeight, implicitHeight)
+                                         : detailFlick.height
+                    rowSpacing: 12
+                    columnSpacing: 12
 
                     Item {
-                        Layout.preferredWidth: Math.round(detailPanel.width * 0.33)
-                        Layout.fillHeight: true
+                        Layout.preferredWidth: root.compact ? detailLayout.width : Math.round(detailPanel.width * 0.33)
+                        Layout.preferredHeight: root.compact ? HomeTheme.catalogPortraitHeight : -1
+                        Layout.fillHeight: !root.compact
                         clip: true
                         transformOrigin: Item.Top
                         scale: root.uiScale
@@ -1218,7 +1309,7 @@ Item {
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        Layout.fillHeight: !root.compact
                         transformOrigin: Item.TopLeft
                         scale: root.uiScale
                         spacing: 8
@@ -1296,7 +1387,7 @@ Item {
                             font.pixelSize: 13
                         }
 
-                        Row {
+                        Flow {
                             Layout.fillWidth: true
                             visible: root.detailsReady
                             spacing: 10
@@ -1421,7 +1512,8 @@ Item {
 
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.fillHeight: true
+                            Layout.fillHeight: !root.compact
+                            Layout.preferredHeight: root.compact ? skillColumn.height + 20 : -1
                             visible: root.detailTab === 0
                             radius: 8
                             color: HomeTheme.tabSkillsBg
@@ -1429,6 +1521,7 @@ Item {
                             border.color: HomeTheme.tabSkillsBorder
 
                             Flickable {
+                                interactive: !root.compact
                                 anchors.fill: parent
                                 anchors.margins: 10
                                 contentWidth: width
@@ -1540,7 +1633,8 @@ Item {
 
                         Rectangle {
                             Layout.fillWidth: true
-                            Layout.fillHeight: true
+                            Layout.fillHeight: !root.compact
+                            Layout.preferredHeight: root.compact ? lineListColumn.height + 20 : -1
                             visible: root.detailTab === 1
                             radius: 8
                             color: HomeTheme.tabVoiceBg
@@ -1548,6 +1642,7 @@ Item {
                             border.color: HomeTheme.tabVoiceBorder
 
                             Flickable {
+                                interactive: !root.compact
                                 anchors.fill: parent
                                 anchors.margins: 10
                                 contentWidth: width
@@ -1651,6 +1746,7 @@ Item {
 
                             BAToolButton {
                                 id: skinBtn
+                                onActiveFocusChanged: if (activeFocus) root.revealDetailControl(this)
                                 visible: details.hasSkin === true
                                 Layout.fillWidth: true
                                 implicitWidth: 80
@@ -1663,6 +1759,7 @@ Item {
 
                             BAToolButton {
                                 id: avatarBtn
+                                onActiveFocusChanged: if (activeFocus) root.revealDetailControl(this)
                                 Layout.fillWidth: true
                                 implicitWidth: 80
                                 implicitHeight: 48
@@ -1680,6 +1777,7 @@ Item {
 
                             BAToolButton {
                                 id: banBtn
+                                onActiveFocusChanged: if (activeFocus) root.revealDetailControl(this)
                                 Layout.fillWidth: true
                                 implicitWidth: 80
                                 implicitHeight: 48
@@ -1696,6 +1794,7 @@ Item {
                             }
                         }
                     }
+                }
                 }
             }
         }
@@ -1749,8 +1848,8 @@ Item {
 
         BASlantedPanel {
             anchors.centerIn: parent
-            width: Math.min(parent.width - 80, 760)
-            height: Math.min(parent.height - 80, 520)
+            width: Math.min(parent.width - (root.compact ? 16 : 80), 760)
+            height: Math.min(parent.height - (root.compact ? 16 : 80), 520)
             slant: -0.04
             cornerRadius: 12
             shadowBlur: 0
@@ -1766,18 +1865,18 @@ Item {
                 anchors.margins: 20
                 spacing: 12
 
-                Row {
+                RowLayout {
                     width: parent.width
                     spacing: 12
 
                     Text {
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
                         text: root.ui("GeneralOverview", "changeHeroSkin")
                         color: HomeTheme.btnSecondaryText
                         font.pixelSize: 22
                         font.bold: true
                     }
-
-                    Item { width: parent.width - 220; height: 1 }
 
                     BAToolButton {
                         implicitWidth: 88
@@ -1867,6 +1966,10 @@ Item {
         visible: false
         anchors.fill: parent
         z: 80
+        onVisibleChanged: {
+            if (visible) Qt.callLater(function() { nicknameField.forceActiveFocus() })
+            else if (root.visible) filterBtn.forceActiveFocus()
+        }
 
         MouseArea {
             anchors.fill: parent
@@ -1875,8 +1978,8 @@ Item {
 
         BASlantedPanel {
             anchors.centerIn: parent
-            width: 920
-            height: 640
+            width: Math.min(parent.width - 16, 920)
+            height: Math.min(parent.height - 16, 640)
             slant: -0.04
             cornerRadius: 12
             shadowBlur: 0
@@ -1891,7 +1994,8 @@ Item {
 
             Flickable {
                 anchors.fill: parent
-                anchors.margins: 28
+                anchors.margins: root.compact ? HomeTheme.compactMargin : 28
+                anchors.topMargin: root.compact ? HomeTheme.compactTouch + HomeTheme.compactMargin * 2 : 28
                 contentWidth: width
                 contentHeight: filterColumn.height
                 clip: true
@@ -1926,7 +2030,7 @@ Item {
                         }
                         ThemeField {
                             id: nicknameField
-                            width: 280
+                            width: Math.max(80, Math.min(280, filterColumn.width - 102))
                             placeholderText: "?, *"
                             text: root.nicknameFilter
                             onTextChanged: root.nicknameFilter = text
@@ -1939,7 +2043,8 @@ Item {
                         font.bold: true
                     }
 
-                    Row {
+                    Flow {
+                        width: parent.width
                         spacing: 16
                         Repeater {
                             model: [
@@ -1958,10 +2063,13 @@ Item {
                         }
                     }
 
-                    Row {
-                        spacing: 12
+                    GridLayout {
+                        width: parent.width
+                        columns: root.compact ? 2 : 4
+                        rowSpacing: 12
+                        columnSpacing: 12
                         Text {
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
                             text: root.ui("GeneralSearch", "MaxHp Min")
                             color: HomeTheme.btnSecondaryText
                         }
@@ -1980,7 +2088,7 @@ Item {
                             onValueModified: root.hpMin = value
                         }
                         Text {
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
                             text: root.ui("GeneralSearch", "MaxHp Max")
                             color: HomeTheme.btnSecondaryText
                         }
@@ -2062,6 +2170,19 @@ Item {
                             }
                         }
                     }
+                }
+            }
+            BAToolButton {
+                visible: root.compact
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: HomeTheme.compactMargin
+                implicitHeight: HomeTheme.compactTouch
+                text: qsTr("返回一覽")
+                onClicked: {
+                    filterPanel.visible = false
+                    root.rebuild()
+                    root.showCompactPane(0)
                 }
             }
         }

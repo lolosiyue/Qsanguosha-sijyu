@@ -14,6 +14,8 @@
 class Settings : public QSettings
 {
     Q_OBJECT
+    Q_PROPERTY(bool responsiveUiEnabled READ responsiveUiEnabled WRITE setResponsiveUiEnabled NOTIFY uiLayoutChanged)
+    Q_PROPERTY(int oneHandedness READ oneHandedness WRITE setOneHandedness NOTIFY uiLayoutChanged)
 
 public:
     explicit Settings();
@@ -33,6 +35,29 @@ public:
     void reinitializeConfigFile();
 #endif
 
+    // One persisted preference is shared by the lobby, dialogs and room.
+    bool responsiveUiEnabled() const {
+        return value(QStringLiteral("UI/ResponsiveLayout"), false).toBool();
+    }
+    void setResponsiveUiEnabled(bool enabled) {
+        if (responsiveUiEnabled() == enabled) return;
+        setValue(QStringLiteral("UI/ResponsiveLayout"), enabled);
+        emit uiLayoutChanged();
+    }
+    int oneHandedness() const {
+        return qBound(0, value(QStringLiteral("UI/RoomHandedness"), 0).toInt(), 2);
+    }
+    void setOneHandedness(int hand) {
+        hand = qBound(0, hand, 2);
+        if (oneHandedness() == hand) return;
+        setValue(QStringLiteral("UI/RoomHandedness"), hand);
+        emit uiLayoutChanged();
+    }
+
+signals:
+    void uiLayoutChanged();
+
+public:
     // server side
     QString ServerName;
     int CountDownSeconds;

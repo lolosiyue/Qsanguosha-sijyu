@@ -9,6 +9,20 @@ Item {
 
     readonly property bool isDark: homeController.isDarkTheme
 
+    // Compact application shell: dimensions stay in logical pixels, never canvas scale.
+    readonly property int compactMargin: 12
+    readonly property int compactGap: 8
+    readonly property int compactTouch: 48
+    readonly property int compactText: 16
+    readonly property int compactRadius: 8
+    readonly property int compactHandWidth: 360
+    readonly property int catalogCompactHeaderHeight: 124
+    readonly property int catalogGeneralTileWidth: 108
+    readonly property int catalogCardTileWidth: 140
+    readonly property int catalogCardMetaHeight: 130
+    readonly property int catalogDetailContentHeight: 840
+    readonly property int catalogPortraitHeight: 180
+
     // —— BA 語意色 ——
     readonly property color baNavy: isDark ? "#D6E8F4" : "#073B5B"
     readonly property color baBlue: isDark ? "#8FBDD4" : "#185879"

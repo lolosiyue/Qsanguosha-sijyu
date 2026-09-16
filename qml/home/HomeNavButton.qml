@@ -11,6 +11,8 @@ AbstractButton {
     property url characterSource: ""
 
     property bool active: false
+    property bool compact: false
+    readonly property real iconExtent: compact ? Math.max(0, Math.min(width - 12, height - 40)) : 105
     property real characterScale: 1.0
     property bool highContrast: homeController && homeController.visualMode === "highcontrast"
 
@@ -153,7 +155,8 @@ AbstractButton {
             anchors.top: parent.top
             anchors.topMargin: 2
 
-            width: control.active ? 96 : (control.hovered ? 88 : 80)
+            width: control.compact ? control.iconExtent
+                                   : (control.active ? 96 : (control.hovered ? 88 : 80))
             height: width
             radius: width / 2
 
@@ -191,7 +194,7 @@ AbstractButton {
             anchors.top: parent.top
             anchors.topMargin: 0
 
-            width: 105 * control.characterScale
+            width: control.iconExtent * control.characterScale
             height: width
 
             source: control.resolvedIcon

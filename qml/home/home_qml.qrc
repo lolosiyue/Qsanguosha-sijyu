@@ -1,6 +1,10 @@
 <RCC>
   <qresource prefix="/QSanguosha/Home">
+    <file alias="CatalogPaneBar.qml">CatalogPaneBar.qml</file>
     <file alias="HomeScene.qml">HomeScene.qml</file>
+    <file alias="HomeLayoutControls.qml">HomeLayoutControls.qml</file>
+    <file alias="HomeCompactShell.qml">HomeCompactShell.qml</file>
+
     <file alias="GeneralScene.qml">GeneralScene.qml</file>
     <file alias="CardScene.qml">CardScene.qml</file>
     <file alias="CardBrowserTile.qml">CardBrowserTile.qml</file>

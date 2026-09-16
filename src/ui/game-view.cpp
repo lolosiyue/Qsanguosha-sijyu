@@ -44,6 +44,11 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
         sharedPosture->setObjectName(QStringLiteral("roomWindowPosture"));
     }
     m_posture = sharedPosture;
+    m_responsiveEnabled = Config.responsiveUiEnabled();
+    m_posture->setResponsivePreview(m_responsiveEnabled);
+    connect(&Config, &Settings::uiLayoutChanged, this, [this] {
+        setResponsiveRoomEnabled(Config.responsiveUiEnabled());
+    });
     connect(m_posture, &RoomWindowPosture::postureChanged, this, [this]() { refit(); });
 #endif
 }
@@ -53,7 +58,8 @@ void FitView::setScene(QGraphicsScene *next)
     QGraphicsView::setScene(next);
 #if !defined(QSAN_XP_LEGACY)
     if (!qobject_cast<RoomScene *>(next)) {
-        if (m_posture) m_posture->setResponsivePreview(false);
+        // Rotation is an application preference; returning home keeps it enabled.
+        if (m_posture) m_posture->setResponsivePreview(m_responsiveEnabled);
         delete m_overlay;
         m_overlay = nullptr;
         m_overlayRoom = nullptr;
@@ -85,6 +91,7 @@ void FitView::setResponsiveRoomEnabled(bool enabled)
 {
 #if !defined(QSAN_XP_LEGACY)
     m_responsiveEnabled = enabled;
+    Config.setResponsiveUiEnabled(enabled);
     if (m_posture) m_posture->setResponsivePreview(enabled);
     m_hasPreviousProfile = false;
     if (m_overlay && m_overlay->responsiveEnabled() != enabled)

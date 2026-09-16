@@ -31,6 +31,10 @@ Item {
 
     property string visualMode: homeController ? homeController.visualMode : "normal"
     property real uiScale: 1.0
+    readonly property bool compact: Config.responsiveUiEnabled
+                                    && (width < 900 || height > width)
+    readonly property var navBar: compact ? compactShell : bottomBar
+    onCompactChanged: Qt.callLater(restoreHomeKeyboard)
     readonly property bool generalsOpen: homeController.currentPage === "generals"
     readonly property bool cardsOpen: homeController.currentPage === "cards"
     readonly property bool subPageOpen: generalsOpen || cardsOpen
@@ -65,6 +69,10 @@ Item {
     Item {
         id: contentHost
         anchors.fill: parent
+        anchors.leftMargin: root.SafeArea.margins.left
+        anchors.topMargin: root.SafeArea.margins.top
+        anchors.rightMargin: root.SafeArea.margins.right
+        anchors.bottomMargin: root.SafeArea.margins.bottom
         clip: true
         // 僅在灰階/高對比時離屏合成；Qt 6 saturation -1.0 才是去色（0.0 為不變）
         layer.enabled: root.visualMode !== "normal"
@@ -83,6 +91,7 @@ Item {
         // UIScale 只作用在各元素自己的 transform，不缩放整張畫布。
         Item {
             id: uiCanvas
+            visible: !root.compact
 
             anchors.centerIn: parent
 
@@ -242,9 +251,10 @@ Item {
 
             Loader {
                 id: generalPage
+                parent: root.compact ? compactShell.pageHost : uiCanvas
 
                 anchors.fill: parent
-                anchors.bottomMargin: 148
+                anchors.bottomMargin: root.compact ? 0 : 148
                 z: 40
                 asynchronous: true
                 active: root.generalsMounted
@@ -252,7 +262,7 @@ Item {
                 visible: root.generalsOpen && !root.generalPageBusy
                 onStatusChanged: {
                     if (status === Loader.Ready && generalPage.item) {
-                        generalPage.item.uiScale = root.uiScale
+                        generalPage.item.uiScale = root.compact ? 1.0 : root.uiScale
                         if (root.generalsOpen) {
                             root.applyGeneralsNavGraph()
                             generalPage.item.takeKeyboard()
@@ -263,9 +273,24 @@ Item {
 
             Binding {
                 target: generalPage.item
-                property: "uiScale"
-                value: root.uiScale
+                property: "compact"
+                value: root.compact
                 when: generalPage.item !== null
+            }
+
+            Binding {
+                target: generalPage.item
+                property: "uiScale"
+                value: root.compact ? 1.0 : root.uiScale
+                when: generalPage.item !== null
+            }
+
+            Connections {
+                target: generalPage.item
+                ignoreUnknownSignals: true
+                function onNavigationEndpointChanged() {
+                    if (root.generalsOpen) Qt.callLater(root.applyGeneralsNavGraph)
+                }
             }
 
             // Loader 編譯期間先畫面板骨架；Ready 後揭 GeneralScene，立繪再分幀載入
@@ -448,9 +473,10 @@ Item {
 
             Loader {
                 id: cardPage
+                parent: root.compact ? compactShell.pageHost : uiCanvas
 
                 anchors.fill: parent
-                anchors.bottomMargin: 148
+                anchors.bottomMargin: root.compact ? 0 : 148
                 z: 40
                 asynchronous: true
                 active: root.cardsMounted
@@ -458,7 +484,7 @@ Item {
                 visible: root.cardsOpen && !root.cardPageBusy
                 onStatusChanged: {
                     if (status === Loader.Ready && cardPage.item) {
-                        cardPage.item.uiScale = root.uiScale
+                        cardPage.item.uiScale = root.compact ? 1.0 : root.uiScale
                         if (root.cardsOpen) {
                             root.applyCardsNavGraph()
                             cardPage.item.takeKeyboard()
@@ -469,8 +495,15 @@ Item {
 
             Binding {
                 target: cardPage.item
+                property: "compact"
+                value: root.compact
+                when: cardPage.item !== null
+            }
+
+            Binding {
+                target: cardPage.item
                 property: "uiScale"
-                value: root.uiScale
+                value: root.compact ? 1.0 : root.uiScale
                 when: cardPage.item !== null
             }
 
@@ -589,6 +622,31 @@ Item {
         }
     }
 
+    HomeCompactShell {
+        id: compactShell
+        parent: contentHost
+        anchors.fill: parent
+        anchors.margins: HomeTheme.compactMargin
+        anchors.bottomMargin: 0
+        visible: root.compact
+        subPageOpen: root.subPageOpen
+        pageLoading: root.generalPageBusy || root.cardPageBusy
+    }
+    // This entry is outside the scaled landscape canvas and remains reachable on every home page.
+    HomeLayoutControls {
+        id: layoutControls
+        parent: contentHost
+        // Portrait uses the existing Settings dialog, leaving the dock at the bottom.
+        visible: !root.compact
+        safeInsets: root.SafeArea.margins
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: HomeTheme.compactMargin
+        x: Config.oneHandedness === 1 ? HomeTheme.compactMargin
+           : parent.width - width - HomeTheme.compactMargin
+        width: Math.min(implicitWidth, parent.width - HomeTheme.compactMargin * 2)
+        z: 150
+    }
+
     HomePointerFx {
         anchors.fill: parent
         z: 200
@@ -596,6 +654,7 @@ Item {
 
     // 鍵盤方向鍵導航圖：各面板按鈕之間的上下左右連線
     function applyHomeNavGraph() {
+        if (root.compact) return
         actionPanel.quickJoinBtn.KeyNavigation.right = sideBar.settingsBtn
         actionPanel.joinGameBtn.KeyNavigation.right = sideBar.aboutBtn
         actionPanel.startServerBtn.KeyNavigation.right = sideBar.updateBtn
@@ -650,23 +709,31 @@ Item {
         var g = generalPage.item
         if (!g)
             return
-        g.banBtn.KeyNavigation.tab = bottomBar.generalsBtn
-        g.searchField.KeyNavigation.backtab = bottomBar.settingsBtn
-        bottomBar.homeBtn.KeyNavigation.up = g.searchField
-        bottomBar.generalsBtn.KeyNavigation.up = g.searchField
-        bottomBar.cardsBtn.KeyNavigation.up = g.searchField
-        bottomBar.replaysBtn.KeyNavigation.up = g.searchField
-        bottomBar.settingsBtn.KeyNavigation.up = g.searchField
-        bottomBar.settingsBtn.KeyNavigation.tab = g.searchField
-        bottomBar.homeBtn.KeyNavigation.backtab = g.banBtn
+        if (root.compact) {
+            applyCompactCatalogNav(g.navigationEntry, g.navigationExit)
+            return
+        }
+        g.banBtn.KeyNavigation.tab = root.navBar.generalsBtn
+        g.searchField.KeyNavigation.backtab = root.navBar.settingsBtn
+        root.navBar.homeBtn.KeyNavigation.up = g.searchField
+        root.navBar.generalsBtn.KeyNavigation.up = g.searchField
+        root.navBar.cardsBtn.KeyNavigation.up = g.searchField
+        root.navBar.replaysBtn.KeyNavigation.up = g.searchField
+        root.navBar.settingsBtn.KeyNavigation.up = g.searchField
+        root.navBar.settingsBtn.KeyNavigation.tab = g.searchField
+        root.navBar.homeBtn.KeyNavigation.backtab = g.banBtn
     }
 
     function applyCardsNavGraph() {
         var c = cardPage.item
         if (!c)
             return
+        if (root.compact) {
+            applyCompactCatalogNav(c.navigationEntry, c.lastControl)
+            return
+        }
         c.backButton.KeyNavigation.tab = c.sortControl
-        c.backButton.KeyNavigation.backtab = bottomBar.settingsBtn
+        c.backButton.KeyNavigation.backtab = root.navBar.settingsBtn
         c.sortControl.KeyNavigation.tab = c.themeButton
         c.sortControl.KeyNavigation.backtab = c.backButton
         c.themeButton.KeyNavigation.tab = c.reloadButton
@@ -674,23 +741,40 @@ Item {
         c.reloadButton.KeyNavigation.tab = c.searchField
         c.reloadButton.KeyNavigation.backtab = c.themeButton
         c.searchField.KeyNavigation.backtab = c.reloadButton
-        c.lastControl.KeyNavigation.tab = bottomBar.cardsBtn
-        c.lastControl.KeyNavigation.down = bottomBar.cardsBtn
-        bottomBar.homeBtn.KeyNavigation.up = c.searchField
-        bottomBar.generalsBtn.KeyNavigation.up = c.searchField
-        bottomBar.cardsBtn.KeyNavigation.up = c.lastControl
-        bottomBar.replaysBtn.KeyNavigation.up = c.searchField
-        bottomBar.settingsBtn.KeyNavigation.up = c.searchField
-        bottomBar.settingsBtn.KeyNavigation.tab = c.backButton
-        bottomBar.cardsBtn.KeyNavigation.backtab = c.lastControl
+        c.lastControl.KeyNavigation.tab = root.navBar.cardsBtn
+        c.lastControl.KeyNavigation.down = root.navBar.cardsBtn
+        root.navBar.homeBtn.KeyNavigation.up = c.searchField
+        root.navBar.generalsBtn.KeyNavigation.up = c.searchField
+        root.navBar.cardsBtn.KeyNavigation.up = c.lastControl
+        root.navBar.replaysBtn.KeyNavigation.up = c.searchField
+        root.navBar.settingsBtn.KeyNavigation.up = c.searchField
+        root.navBar.settingsBtn.KeyNavigation.tab = c.backButton
+        root.navBar.cardsBtn.KeyNavigation.backtab = c.lastControl
     }
 
     function restoreHomeKeyboard() {
+        if (root.compact) {
+            if (root.generalsOpen) applyGeneralsNavGraph()
+            else if (root.cardsOpen) applyCardsNavGraph()
+            root.navBar.homeBtn.forceActiveFocus()
+            return
+        }
         applyHomeNavGraph()
         if (actionPanel.visible)
             actionPanel.quickJoinBtn.forceActiveFocus()
         else
-            bottomBar.homeBtn.forceActiveFocus()
+            root.navBar.homeBtn.forceActiveFocus()
+    }
+
+    function applyCompactCatalogNav(entry, endpoint) {
+        if (!entry || !endpoint) return
+        entry.KeyNavigation.backtab = root.navBar.settingsBtn
+        endpoint.KeyNavigation.tab = root.navBar.homeBtn
+        root.navBar.homeBtn.KeyNavigation.backtab = endpoint
+        root.navBar.settingsBtn.KeyNavigation.tab = entry
+        var buttons = [root.navBar.homeBtn, root.navBar.generalsBtn, root.navBar.cardsBtn,
+                       root.navBar.replaysBtn, root.navBar.settingsBtn]
+        for (var i = 0; i < buttons.length; ++i) buttons[i].KeyNavigation.up = entry
     }
 
     // 首頁站穩後再偷載：800ms 空等，避免跟進場動畫搶 IO／解碼。

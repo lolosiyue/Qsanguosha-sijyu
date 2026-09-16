@@ -57,8 +57,11 @@ RoomOverlayHost::RoomOverlayHost(QWidget *parent)
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_TranslucentBackground);
     setAttribute(Qt::WA_NoSystemBackground);
-    m_handedness = static_cast<RoomLayoutEngine::Handedness>(
-        qBound(0, Config.value(QStringLiteral("UI/RoomHandedness"), 0).toInt(), 2));
+    m_handedness = static_cast<RoomLayoutEngine::Handedness>(Config.oneHandedness());
+    connect(&Config, &Settings::uiLayoutChanged, this, [this] {
+        m_handedness = static_cast<RoomLayoutEngine::Handedness>(Config.oneHandedness());
+        emit layoutPreferencesChanged();
+    });
     createPersistentUi();
     connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *focused) {
         if (!focused || !isAncestorOf(focused)) return;
@@ -748,9 +751,7 @@ void RoomOverlayHost::updateInspector()
 void RoomOverlayHost::saveHandedness(RoomLayoutEngine::Handedness value)
 {
     if (m_handedness == value) return;
-    m_handedness = value;
-    Config.setValue(QStringLiteral("UI/RoomHandedness"), static_cast<int>(value));
-    emit layoutPreferencesChanged();
+    Config.setOneHandedness(static_cast<int>(value));
 }
 
 void RoomOverlayHost::updateGeometry()

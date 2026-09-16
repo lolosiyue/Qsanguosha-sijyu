@@ -3,7 +3,7 @@
 
 class QApplication;
 
-// Installs the Android-only geometry adapter for widget dialogs.  Existing
+// Fits Android dialogs and opt-in desktop responsive dialogs. Existing
 // dialog signals and QDialog::accept()/reject() semantics remain untouched.
 void installAndroidDialogFit(QApplication *application);
 

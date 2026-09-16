@@ -1315,12 +1315,16 @@ if(QSAN_BUILD_GUI)
         )
     endif()
 
+    if(NOT QSAN_BUILD_XP_LEGACY)
+        target_sources(${QSAN_GUI_TARGET} PRIVATE
+            src/dialog/android-dialog-fit.cpp
+            src/dialog/android-dialog-fit.h
+        )
+    endif()
     if(ANDROID)
         target_sources(${QSAN_GUI_TARGET} PRIVATE
             src/dialog/android-content-dialog.cpp
             src/dialog/android-content-dialog.h
-            src/dialog/android-dialog-fit.cpp
-            src/dialog/android-dialog-fit.h
         )
         qsan_configure_android_target(${QSAN_GUI_TARGET})
         qsan_add_android_runtime_assets(${QSAN_GUI_TARGET})

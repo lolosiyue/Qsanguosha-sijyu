@@ -11,6 +11,8 @@ Item {
     property alias settingsBtn: settingsBtn
 
     property int currentIndex: 0
+    property bool compact: false
+    readonly property real buttonWidth: compact ? (width - 16) / 5 : 160
 
     signal homeClicked()
     signal generalsClicked()
@@ -53,12 +55,13 @@ Item {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 4
 
-        spacing: 28
+        spacing: root.compact ? 0 : 28
 
         HomeNavButton {
             id: homeBtn
 
-            width: 160
+            width: root.buttonWidth
+            compact: root.compact
             height: parent.height
 
             text: qsTranslate("HomeScene", "Home")
@@ -79,7 +82,8 @@ Item {
         HomeNavButton {
             id: generalsBtn
 
-            width: 160
+            width: root.buttonWidth
+            compact: root.compact
             height: parent.height
 
             text: qsTranslate("HomeScene", "Generals")
@@ -100,7 +104,8 @@ Item {
         HomeNavButton {
             id: cardsBtn
 
-            width: 160
+            width: root.buttonWidth
+            compact: root.compact
             height: parent.height
 
             text: qsTranslate("HomeScene", "Cards")
@@ -121,7 +126,8 @@ Item {
         HomeNavButton {
             id: replaysBtn
 
-            width: 160
+            width: root.buttonWidth
+            compact: root.compact
             height: parent.height
 
             text: qsTranslate("HomeScene", "Replays")
@@ -142,7 +148,8 @@ Item {
         HomeNavButton {
             id: settingsBtn
 
-            width: 160
+            width: root.buttonWidth
+            compact: root.compact
             height: parent.height
 
             text: qsTranslate("HomeScene", "Settings")

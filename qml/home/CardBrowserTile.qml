@@ -15,6 +15,7 @@ Item {
     required property var tagLabels
     required property url imageUrl
     property bool selected: false
+    property bool compact: false
     property bool keyboardFocus: false
     property bool highContrast: homeController.visualMode === "highcontrast"
     signal activated(int cardId)
@@ -66,14 +67,15 @@ Item {
         }
     }
 
-    Row {
+    Item {
+        id: tileContent
         anchors.fill: parent
         anchors.margins: HomeTheme.cardGridGap
-        spacing: HomeTheme.cardSectionGap
 
         Item {
-            width: Math.min(HomeTheme.cardTileImageMaxWidth, parent.width * 0.38)
-            height: parent.height
+            id: tileImage
+            width: root.compact ? parent.width : Math.min(HomeTheme.cardTileImageMaxWidth, parent.width * 0.38)
+            height: root.compact ? Math.max(0, parent.height - metadata.implicitHeight - HomeTheme.cardSectionGap) : parent.height
 
             Rectangle {
                 anchors.fill: parent
@@ -94,8 +96,10 @@ Item {
         }
 
         Column {
-            width: parent.width - parent.children[0].width - parent.spacing
-            anchors.verticalCenter: parent.verticalCenter
+            id: metadata
+            x: root.compact ? 0 : tileImage.width + HomeTheme.cardSectionGap
+            y: root.compact ? tileImage.height + HomeTheme.cardSectionGap : (parent.height - height) / 2
+            width: parent.width - x
             spacing: HomeTheme.cardTileTextGap
 
             Text {
@@ -108,7 +112,7 @@ Item {
             }
 
             Rectangle {
-                width: typeText.implicitWidth + HomeTheme.cardBadgeHPadding * 2
+                width: Math.min(parent.width, typeText.implicitWidth + HomeTheme.cardBadgeHPadding * 2)
                 height: HomeTheme.cardBadgeHeight
                 radius: HomeTheme.cardBadgeRadius
                 color: root.typeKey === "BasicCard" ? HomeTheme.cardBadgeBasic
@@ -117,6 +121,8 @@ Item {
                                                      : HomeTheme.cardBadgeSkill
                 Text {
                     id: typeText
+                    width: Math.max(0, parent.width - HomeTheme.cardBadgeHPadding * 2)
+                    elide: Text.ElideRight
                     anchors.centerIn: parent
                     text: root.typeDisplay
                     color: HomeTheme.cardBadgeText

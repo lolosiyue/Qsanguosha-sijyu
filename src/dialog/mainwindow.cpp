@@ -43,6 +43,9 @@
 #include "settings.h"
 #include "button.h"
 #include "build-features.h"
+#if !defined(QSAN_XP_LEGACY)
+#include "android-dialog-fit.h"
+#endif
 #if QSAN_ENABLE_QML
 #include "homecontroller.h"
 #include "pointer-effect-overlay.h"
@@ -198,6 +201,9 @@ MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), ui(new Ui::MainWindow), server(nullptr)
 {
 	ui->setupUi(this);
+#if !defined(QSAN_XP_LEGACY)
+    installAndroidDialogFit(qApp); // Shared fitting also serves desktop portrait preview.
+#endif
 
 #if !defined(QSAN_XP_LEGACY)
 	// Keep the state shortcut independent of the table's legacy hotkey setting.
@@ -519,6 +525,7 @@ void MainWindow::setupLocalLoadingPage()
 	titleFont.setBold(true);
 	title->setFont(titleFont);
 	title->setAlignment(Qt::AlignCenter);
+	title->setWordWrap(true);
 	panelLayout->addWidget(title);
 
 	QLabel *subtitle = new QLabel(
@@ -554,6 +561,21 @@ void MainWindow::setupLocalLoadingPage()
 	layout->addWidget(panel, 0, Qt::AlignHCenter);
 	layout->addStretch(3);
 
+#if !defined(QSAN_XP_LEGACY)
+    auto fitLoadingPage = [this, panel, layout, panelLayout] {
+        const bool compact = Config.responsiveUiEnabled();
+        panel->setMinimumWidth(compact ? 0 : 520);
+        layout->setContentsMargins(compact ? 12 : 42, compact ? 12 : 36,
+                                   compact ? 12 : 42, compact ? 12 : 36);
+        panelLayout->setContentsMargins(compact ? 12 : 54, compact ? 20 : 42,
+                                        compact ? 12 : 54, compact ? 20 : 44);
+        // A hidden loading page must not impose a landscape minimum on the whole stack.
+        localLoadingPage->setSizePolicy(compact ? QSizePolicy::Ignored : QSizePolicy::Preferred,
+                                         compact ? QSizePolicy::Ignored : QSizePolicy::Preferred);
+    };
+    connect(&Config, &Settings::uiLayoutChanged, this, fitLoadingPage);
+    fitLoadingPage();
+#endif
 	pageStack->addWidget(localLoadingPage);
 }
 

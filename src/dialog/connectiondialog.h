@@ -23,6 +23,7 @@ public:
 private:
     Ui::ConnectionDialog *ui;
     MainWindowServerList *mwServerList;
+    void setPreferredWidth(int width);
 
 private slots:
     void on_detectLANButton_clicked();

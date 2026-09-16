@@ -8,6 +8,20 @@ Item {
     objectName: "cardScene"
 
     property real uiScale: 1.0
+    property bool compact: Config.responsiveUiEnabled && (width < 900 || height > width)
+    property int compactPane: 0
+    readonly property var navigationEntry: compact ? sortBox : backButton
+    function showCompactPane(pane) {
+        compactPane = pane
+        Qt.callLater(function() {
+            var target = pane === 0 ? cardGrid : pane === 1 ? details.firstVisibleAction : filters.searchField
+            if (target) target.forceActiveFocus()
+        })
+    }
+    function openCard(cardId) {
+        selectCard(cardId)
+        if (compact && selectedCardId >= 0) showCompactPane(1)
+    }
     readonly property var cardModel: homeController.cardModel
     property int selectedCardId: -1
     property var selectedDetail: ({})
@@ -24,12 +38,17 @@ Item {
     property alias sortControl: sortBox
     property alias themeButton: themeButton
     property alias reloadButton: reloadButton
-    readonly property var lastControl: pagination.lastEnabledButton
-                                       || details.lastVisibleAction || cardGrid
+    readonly property var lastControl: compact
+        ? (compactPane === 2 ? filters.resetButton : compactPane === 1
+           ? (details.lastVisibleAction || compactBar.detailButton) : (pagination.lastEnabledButton || cardGrid))
+        : (pagination.lastEnabledButton || details.lastVisibleAction || cardGrid)
     signal navigationEndpointChanged()
 
     focus: true
-    Keys.onEscapePressed: homeController.openHome()
+    Keys.onEscapePressed: {
+        if (compact && compactPane !== 0) showCompactPane(0)
+        else homeController.openHome()
+    }
     onLastControlChanged: navigationEndpointChanged()
 
     function selectCard(cardId) {
@@ -53,10 +72,14 @@ Item {
     }
 
     function takeKeyboard() {
-        filters.searchField.forceActiveFocus()
+        if (compact) showCompactPane(compactPane)
+        else filters.searchField.forceActiveFocus()
     }
 
     function transferKeyboardFocus(target, event, reason) {
+        // A compact pane must never transfer focus into a hidden sibling pane.
+        if (compact && target === filters.resetButton) target = compactBar.filterButton
+        if (compact && target === details.firstVisibleAction) target = compactBar.detailButton
         if (!target) {
             event.accepted = false
             return
@@ -71,6 +94,26 @@ Item {
     }
 
     function applyInternalNavGraph() {
+        if (compact) {
+            sortBox.tabTarget = themeButton
+            sortBox.backtabTarget = compactBar.listButton
+            themeButton.KeyNavigation.tab = reloadButton
+            reloadButton.KeyNavigation.tab = compactBar.listButton
+            compactBar.listButton.KeyNavigation.tab = compactBar.detailButton
+            compactBar.detailButton.KeyNavigation.tab = compactBar.filterButton
+            compactBar.filterButton.KeyNavigation.tab = compactPane === 2 ? filters.searchField
+                : compactPane === 1 ? (details.firstVisibleAction || compactBar.listButton) : cardGrid
+            filters.searchField.KeyNavigation.backtab = compactBar.filterButton
+            filters.resetButton.KeyNavigation.tab = compactBar.listButton
+            var compactActions = details.visibleActions
+            for (var j = 0; j < compactActions.length; ++j) {
+                compactActions[j].KeyNavigation.backtab = j > 0 ? compactActions[j - 1] : compactBar.detailButton
+                compactActions[j].KeyNavigation.tab = j + 1 < compactActions.length
+                    ? compactActions[j + 1] : compactBar.listButton
+            }
+            navigationEndpointChanged()
+            return
+        }
         backButton.KeyNavigation.right = sortBox
         sortBox.leftTarget = backButton
         sortBox.rightTarget = themeButton
@@ -117,6 +160,8 @@ Item {
     }
 
     onSelectedDetailChanged: Qt.callLater(applyInternalNavGraph)
+    onCompactPaneChanged: Qt.callLater(applyInternalNavGraph)
+    onCompactChanged: Qt.callLater(applyInternalNavGraph)
 
     Connections {
         target: filters
@@ -142,16 +187,16 @@ Item {
 
     Column {
         anchors.fill: parent
-        anchors.leftMargin: HomeTheme.cardPageHMargin
-        anchors.rightMargin: HomeTheme.cardPageHMargin
-        anchors.topMargin: HomeTheme.cardPageTopMargin
+        anchors.leftMargin: root.compact ? 0 : HomeTheme.cardPageHMargin
+        anchors.rightMargin: root.compact ? 0 : HomeTheme.cardPageHMargin
+        anchors.topMargin: root.compact ? 0 : HomeTheme.cardPageTopMargin
         anchors.bottomMargin: HomeTheme.cardPageBottomMargin
         spacing: HomeTheme.cardPanelGap
 
         BASlantedPanel {
             id: headerPanel
             width: parent.width
-            height: HomeTheme.cardHeaderHeight
+            height: root.compact ? HomeTheme.catalogCompactHeaderHeight : HomeTheme.cardHeaderHeight
             transformOrigin: Item.Top
             scale: root.uiScale
             slant: -0.05
@@ -165,14 +210,17 @@ Item {
             accentVisible: true
             accentColor: HomeTheme.cardAccent
 
-            RowLayout {
+            GridLayout {
+                columns: root.compact ? 3 : 6
                 anchors.fill: parent
-                anchors.leftMargin: HomeTheme.cardHeaderPadding
-                anchors.rightMargin: HomeTheme.cardHeaderPadding
-                spacing: HomeTheme.cardPanelGap
+                anchors.leftMargin: root.compact ? HomeTheme.compactMargin : HomeTheme.cardHeaderPadding
+                anchors.rightMargin: root.compact ? HomeTheme.compactMargin : HomeTheme.cardHeaderPadding
+                columnSpacing: root.compact ? HomeTheme.compactGap : HomeTheme.cardPanelGap
+                rowSpacing: HomeTheme.compactGap
 
                 BAToolButton {
                     id: backButton
+                    visible: !root.compact
                     Layout.preferredWidth: HomeTheme.cardHeaderButtonWidth
                     Layout.preferredHeight: HomeTheme.cardActionButtonExtent
                     text: homeController.qtTranslate("CardScene", "Back")
@@ -180,22 +228,28 @@ Item {
                 }
 
                 ColumnLayout {
+                    Layout.columnSpan: root.compact ? 3 : 1
                     Layout.fillWidth: true
                     spacing: HomeTheme.cardHeaderTitleGap
                     Text {
+                        Layout.fillWidth: true
                         text: homeController.qtTranslate("CardScene", "Card Overview")
                         color: HomeTheme.cardTextPrimary
-                        font.pixelSize: HomeTheme.cardTitleFontSize
+                        font.pixelSize: root.compact ? HomeTheme.cardSectionTitleFontSize : HomeTheme.cardTitleFontSize
                         font.bold: true
                     }
                     Text {
-                        text: homeController.qtTranslate("CardScene", "Browse card types and their physical variants")
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        text: root.compact ? homeController.qtTranslate("CardScene", "%1 card types · %2 physical cards").arg(root.modelCount).arg(root.physicalCount)
+                             : homeController.qtTranslate("CardScene", "Browse card types and their physical variants")
                         color: HomeTheme.cardTextSecondary
                         font.pixelSize: HomeTheme.cardCaptionFontSize
                     }
                 }
 
                 Rectangle {
+                    visible: !root.compact
                     Layout.preferredWidth: countText.implicitWidth + HomeTheme.cardCountBadgeHPadding * 2
                     Layout.preferredHeight: HomeTheme.cardCountBadgeHeight
                     radius: HomeTheme.cardCountBadgeHeight / 2
@@ -215,7 +269,8 @@ Item {
 
                 CardComboBox {
                     id: sortBox
-                    Layout.preferredWidth: HomeTheme.cardSortWidth
+                    Layout.preferredWidth: root.compact ? HomeTheme.catalogCardTileWidth : HomeTheme.cardSortWidth
+                    Layout.fillWidth: root.compact
                     Layout.preferredHeight: HomeTheme.cardControlHeight
                     textRole: "label"
                     valueRole: "key"
@@ -245,7 +300,7 @@ Item {
 
                 BAToolButton {
                     id: reloadButton
-                    Layout.preferredWidth: HomeTheme.cardHeaderButtonWidth
+                    Layout.preferredWidth: root.compact ? HomeTheme.compactTouch + HomeTheme.compactGap : HomeTheme.cardHeaderButtonWidth
                     Layout.preferredHeight: HomeTheme.cardActionButtonExtent
                     text: homeController.qtTranslate("CardScene", "Reload")
                     onClicked: {
@@ -256,14 +311,27 @@ Item {
             }
         }
 
+        CatalogPaneBar {
+            id: compactBar
+            width: parent.width
+            height: visible ? HomeTheme.compactTouch : 0
+            visible: root.compact
+            currentIndex: root.compactPane
+            itemCount: root.modelCount
+            detailsEnabled: root.selectedCardId >= 0
+            onActivated: function(index) { root.showCompactPane(index) }
+        }
+
         Row {
             width: parent.width
-            height: parent.height - HomeTheme.cardHeaderHeight - HomeTheme.cardPanelGap
+            height: Math.max(0, parent.height - headerPanel.height - HomeTheme.cardPanelGap
+                             - (root.compact ? compactBar.height + HomeTheme.cardPanelGap : 0))
             spacing: HomeTheme.cardPanelGap
 
             CardFilterPanel {
                 id: filters
-                width: HomeTheme.cardFilterWidth
+                visible: !root.compact || root.compactPane === 2
+                width: root.compact ? parent.width : HomeTheme.cardFilterWidth
                 height: parent.height
                 cardModel: root.cardModel
                 sortKey: root.sortKey
@@ -274,7 +342,8 @@ Item {
 
             Item {
                 id: gridPanel
-                width: parent.width - HomeTheme.cardFilterWidth - HomeTheme.cardDetailWidth
+                visible: !root.compact || root.compactPane === 0
+                width: root.compact ? parent.width : parent.width - HomeTheme.cardFilterWidth - HomeTheme.cardDetailWidth
                        - HomeTheme.cardPanelGap * 2
                 height: parent.height
                 transformOrigin: Item.Top
@@ -302,8 +371,8 @@ Item {
                     anchors.bottomMargin: HomeTheme.cardGridBottomInset
                     clip: true
                     model: root.cardModel
-                    cellWidth: Math.floor(width / 4)
-                    cellHeight: Math.floor(height / 3)
+                    cellWidth: Math.floor(width / (root.compact ? Math.max(2, Math.floor(width / HomeTheme.catalogCardTileWidth)) : 4))
+                    cellHeight: root.compact ? cellWidth * 1.4 + HomeTheme.catalogCardMetaHeight : Math.floor(height / 3)
                     keyNavigationWraps: false
                     activeFocusOnTab: true
                     reuseItems: false
@@ -315,7 +384,7 @@ Item {
                     // are accepted here; interior arrows continue to move the selection.
                     Keys.priority: Keys.BeforeItem
                     Keys.onTabPressed: function(event) {
-                        root.transferKeyboardFocus(details.firstVisibleAction
+                        root.transferKeyboardFocus(root.compact ? compactBar.detailButton : details.firstVisibleAction
                                                    || pagination.firstEnabledButton,
                                                    event, Qt.TabFocusReason)
                     }
@@ -361,10 +430,10 @@ Item {
                             event.accepted = false
                         }
                     }
-                    Keys.onReturnPressed: root.selectCard(root.cardModel.cardIdAt(currentIndex))
-                    Keys.onEnterPressed: root.selectCard(root.cardModel.cardIdAt(currentIndex))
+                    Keys.onReturnPressed: root.openCard(root.cardModel.cardIdAt(currentIndex))
+                    Keys.onEnterPressed: root.openCard(root.cardModel.cardIdAt(currentIndex))
                     Keys.onSpacePressed: function(event) {
-                        root.selectCard(root.cardModel.cardIdAt(currentIndex))
+                        root.openCard(root.cardModel.cardIdAt(currentIndex))
                         event.accepted = true
                     }
 
@@ -390,6 +459,7 @@ Item {
                         height: cardGrid.cellHeight
 
                         CardBrowserTile {
+                            compact: root.compact
                             anchors.fill: parent
                             anchors.margins: Math.floor(HomeTheme.cardGridGap / 2)
                             cardId: cardDelegate.cardId
@@ -407,7 +477,7 @@ Item {
                                            && cardGrid.currentIndex === cardDelegate.index
                             onActivated: function(cardId) {
                                 cardGrid.currentIndex = cardDelegate.index
-                                root.selectCard(cardId)
+                                root.openCard(cardId)
                             }
                         }
                     }
@@ -443,7 +513,9 @@ Item {
 
             CardDetailPanel {
                 id: details
-                width: HomeTheme.cardDetailWidth
+                visible: !root.compact || root.compactPane === 1
+                compact: root.compact
+                width: root.compact ? parent.width : HomeTheme.cardDetailWidth
                 height: parent.height
                 cardModel: root.cardModel
                 detail: root.selectedDetail

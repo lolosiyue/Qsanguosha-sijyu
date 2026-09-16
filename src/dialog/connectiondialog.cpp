@@ -5,6 +5,9 @@
 #include "detector.h"
 #include "skin-bank.h"
 #include "mainwindowserverlist.h"
+#include <QFormLayout>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
 
 static const int ShrinkWidth = 285;
 static const int ExpandWidth = 826;
@@ -37,6 +40,28 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
 {
     ui->setupUi(this);
     mwServerList=nullptr;
+#if !defined(QSAN_XP_LEGACY)
+    auto *fields = new QFormLayout;
+    fields->setRowWrapPolicy(QFormLayout::WrapLongRows);
+    fields->addRow(ui->nameLabel, ui->nameLineEdit);
+    fields->addRow(ui->hostLabel, ui->hostComboBox);
+    auto *body = new QVBoxLayout(ui->groupBox);
+    body->addLayout(fields);
+    body->addWidget(ui->avatarLabel);
+    body->addWidget(ui->avatarPixmap, 0, Qt::AlignHCenter);
+    for (QPushButton *button : {ui->changeAvatarButton, ui->detectLANButton,
+                               ui->clearHistoryButton, ui->pushButtonFindServer})
+        body->addWidget(button);
+    delete ui->layoutWidget; // Its fields now belong to the form above.
+    auto *layout = new QVBoxLayout(this);
+    layout->addWidget(ui->groupBox);
+    layout->addWidget(ui->avatarList, 1);
+    layout->addWidget(ui->reconnectionCheckBox);
+    auto *actions = new QHBoxLayout;
+    actions->addWidget(ui->connectButton);
+    actions->addWidget(ui->cancelButton);
+    layout->addLayout(actions);
+#endif
 
     ui->nameLineEdit->setText(Config.UserName);
     ui->nameLineEdit->setMaxLength(64);
@@ -53,8 +78,19 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
 
     ui->reconnectionCheckBox->setChecked(Config.value("EnableReconnection", false).toBool());
 
+#if defined(QSAN_XP_LEGACY)
     setFixedHeight(height());
-    setFixedWidth(ShrinkWidth);
+#endif
+    setPreferredWidth(ShrinkWidth);
+}
+
+void ConnectionDialog::setPreferredWidth(int width)
+{
+#if defined(QSAN_XP_LEGACY)
+    setFixedWidth(width);
+#else
+    if (!Config.responsiveUiEnabled()) resize(width, sizeHint().height());
+#endif
 }
 
 ConnectionDialog::~ConnectionDialog()
@@ -89,11 +125,11 @@ void ConnectionDialog::on_changeAvatarButton_clicked()
             on_avatarList_itemDoubleClicked(selected);
         else {
             hideAvatarList();
-            setFixedWidth(ShrinkWidth);
+            setPreferredWidth(ShrinkWidth);
         }
     } else {
         showAvatarList();
-        setFixedWidth(ExpandWidth);
+        setPreferredWidth(ExpandWidth);
     }
 }
 
@@ -106,7 +142,7 @@ void ConnectionDialog::on_avatarList_itemDoubleClicked(QListWidgetItem *item)
     Config.setValue("UserAvatar", general_name);
     hideAvatarList();
 
-    setFixedWidth(ShrinkWidth);
+    setPreferredWidth(ShrinkWidth);
 }
 
 void ConnectionDialog::on_clearHistoryButton_clicked()
