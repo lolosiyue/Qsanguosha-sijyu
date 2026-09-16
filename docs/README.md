@@ -21,6 +21,7 @@
 | [safe-view-as-equip.md](safe-view-as-equip.md) | 手牌安全視為裝備的 C++ 範式與 Lua 端正確做法 |
 | [preselection-meta-skill.md](preselection-meta-skill.md) | PreSelectionMetaSkill 六層接線說明 |
 | [anytime-skill.md](anytime-skill.md) | AnytimeSkill 全鏈路（C++／Lua／protocol／client） |
+| [shiming-skill-instances.md](shiming-skill-instances.md) | 使命技能 `SkillInstanceRef` 契約與外部 Lua 遷移盤點 |
 | [新型技能重製文檔.md](新型技能重製文檔.md) | 技能重製總覽入口，指向各 V2 權威文檔 |
 
 ## 2. 卡牌、模式與對局規則
@@ -36,6 +37,7 @@
 | [一人多控初版说明.md](一人多控初版说明.md) | 多操控房（`setPlayerController`／`SWITCH_CONTEXT`） |
 | [中途召喚系統說明.md](中途召喚系統說明.md) | 對局中途加入玩家（`PlayerLifecycleService`） |
 | [鏖戰模式說明.md](鏖戰模式說明.md) | 鏖戰（Melee）模式技能與 `E` 旗標 |
+| [ai-identity-mode-decoupling-plan.md](ai-identity-mode-decoupling-plan.md) | AI 身份／陣營與身份明示解耦計畫（原始碼已寫，尚未建置驗證） |
 
 ## 3. GUI 互動、皮膚與 UI 路線
 
@@ -47,6 +49,7 @@
 | [guhuo-dialog-refactor.md](guhuo-dialog-refactor.md) | 蠱惑對話框薄 presenter 重構範式（第三階段未做） |
 | [engine-gui-decoupling-implementation-plan.md](engine-gui-decoupling-implementation-plan.md) | Engine/GUI 解耦計畫（M1 殘餘：約 34 處 `getDialog()`） |
 | [ui-roadmap.md](ui-roadmap.md) | 八項共通 UI 契約與 P1–P8 產品線路線圖 |
+| [room-layout-engine-plan.md](room-layout-engine-plan.md) | 房間自適應版面 `RoomLayoutEngine` 實作計畫（PR 3–7 已寫碼，未驗收） |
 | [windows-gui-crash-handoff.md](windows-gui-crash-handoff.md) | Windows GUI 崩潰交接書（§4 六嫌疑點未修） |
 | [hero-skin-guide.md](hero-skin-guide.md) | 皮膚系統完整文檔（資源查找、翻譯、Spine、GIF 動圖） |
 | [dynamic-skin-guide.md](dynamic-skin-guide.md) | Spine 動態皮膚與 `skin=` lightbox 用法 |
@@ -105,10 +108,7 @@
 | [excel-ipc.md](excel-ipc.md) | Excel 橋 wire contract |
 | [excel-implementation-status.md](excel-implementation-status.md) | Excel 進度檢查點 |
 | [excel-trial-readme.txt](excel-trial-readme.txt) | Excel portable 試用包終端使用者說明（附檔） |
-| [google-sheets-client.md](google-sheets-client.md) | Google Sheets 客戶端、房間布局及驗收邊界（`QSAN_BUILD_SHEETS`） |
-| [google-sheets-room-validation-20260916.md](google-sheets-room-validation-20260916.md) | 房間布局與 TUI 共用戰報的建置／短測試結果 |
-| [google-sheets-room-trust-acceptance-20260916.md](google-sheets-room-trust-acceptance-20260916.md) | 線上部署、05P 託管完整對局與正常清理；版面可讀性待修項 |
-| [google-sheets-details-validation-20260916.md](google-sheets-details-validation-20260916.md) | 完整說明、圖片識別碼隱藏及座位詳情：增量建置、30/30 前端短測試與線上腳本更新 |
+| [google-sheets-client.md](google-sheets-client.md) | Google Sheets 客戶端、房間布局及驗收邊界（`QSAN_BUILD_SHEETS`）；含已知缺口清單 |
 
 ## 9. Lua 擴展規範
 
@@ -126,6 +126,7 @@
 | [反转出牌顺序与调虎离山逻辑说明.md](反转出牌顺序与调虎离山逻辑说明.md) | 出牌順序反轉與調虎離山 |
 | [場景切換與語音動畫移植說明.md](場景切換與語音動畫移植說明.md) | `changeBackground`／`setLoopEmotion`／lightbox 場景切換 |
 | [手牌篩選功能說明.md](手牌篩選功能說明.md) | Dashboard 手牌篩選容器 |
+| [assets-migration-20260807.md](assets-migration-20260807.md) | QSanguosha20260807 發行版素材移植清單（565 已複製／22 刻意跳過；R2 孤兒 key 待刪） |
 
 ## 11. 開發流程（本地私有，`.git/info/exclude` 排除）
 
@@ -133,6 +134,9 @@
 |------|------|
 | [testing-conventions.md](testing-conventions.md) | 測試組織與 `qsan_add_ctest()` 入口慣例（本地） |
 | [武將稽核-2025.md](武將稽核-2025.md) | 2025 官方武將覆蓋稽核（本地工作文檔） |
+| [武將稽核-2026.md](武將稽核-2026.md) | 2026 官方武將覆蓋稽核（本地工作文檔） |
+| [小程序稽核.md](小程序稽核.md) | 小程序版武將覆蓋稽核（本地工作文檔） |
+| [新服稽核.md](新服稽核.md) | 新服武將覆蓋稽核（本地工作文檔） |
 
 ## 12. 設計 spec（superpowers）
 
@@ -144,4 +148,4 @@
 
 **附檔**：`server.ini.example`（server 設定範例）。
 
-**維護**：本索引由 2026-09-12 全量文檔稽核建立；當天已刪除 12 份存檔／過期文檔（清單見 git 歷史與 `STRUCTURE.md` 墓碑註記）。
+**維護**：本索引由 2026-09-12 全量文檔稽核建立；當天已刪除 12 份存檔／過期文檔（清單見 git 歷史與 `STRUCTURE.md` 墓碑註記）。2026-09-16 再刪除 8 份 Google Sheets 逐輪驗證報告（E1–E5 已修、單局驗收已過），未驗收缺口併入 `google-sheets-client.md`。
