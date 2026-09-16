@@ -4940,6 +4940,13 @@
     </message>
 </context>
 <context>
+    <name>RoomReplayController</name>
+    <message>
+        <source>Save replay record</source>
+        <translation>保存录像</translation>
+    </message>
+</context>
+<context>
     <name>RoomScene</name>
     <message>
         <location filename="../src/ui/roomscene.cpp" line="475"/>

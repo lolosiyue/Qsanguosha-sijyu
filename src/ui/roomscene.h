@@ -41,8 +41,6 @@ class Photo;
 class Dashboard;
 class GenericCardContainer;
 class TablePile;
-class ReplayTimeline;
-class ReplayIndex;
 class PlayerCardContainer;
 class ResponseSkill;
 class ShowOrPindianSkill;
@@ -55,17 +53,14 @@ class EmotionPanel;
 class GifChatBox;
 class RoomOverlayHost;
 class KofArrangeController;
+class RoomReplayController;
 class QSanSelectableItem;
 class EffectAnimation;
 class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
-class QPushButton;
 class DesktopGamePresentation;
 class QMovie;
-#ifdef QSAN_XP_LEGACY
-class LocalServerController;
-#endif
 
 #if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
 #include <QQmlEngine>
@@ -83,44 +78,6 @@ public:
 private:
     QSanSelectableItem *avatars[3];
     int revealed;
-};
-
-class ReplayerControlBar : public QGraphicsObject
-{
-    Q_OBJECT
-
-public:
-    ReplayerControlBar(Dashboard *dashboard);
-    static QString FormatTime(int secs);
-    virtual QRectF boundingRect() const;
-    void setExportInProgress(bool inProgress);
-
-public slots:
-    void setTime(int secs);
-    void setSpeed(qreal speed);
-
-signals:
-    // MainWindow owns the transactional teardown/restart.  The control bar
-    // only chooses a verified snapshot and a live seat key.
-    void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
-    void exportRequested();
-
-protected:
-    virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
-    static const int S_BUTTON_GAP = 3;
-    static const int S_BUTTON_WIDTH = 25;
-    static const int S_BUTTON_HEIGHT = 21;
-
-private:
-    void requestTakeover();
-    void updateTakeoverAvailability();
-
-    QLabel *time_label;
-    QPushButton *takeover_button;
-    QPushButton *export_button;
-    QString duration_str;
-    qreal speed;
-    bool export_in_progress;
 };
 
 class PromptInfoItem : public QGraphicsTextItem
@@ -399,13 +356,9 @@ private:
     KofArrangeController *m_kofArrange;
     KOFOrderBox *enemy_box, *self_box;
     QPointF m_tableCenterPos;
-    ReplayerControlBar *m_replayControl;
-    ReplayTimeline *m_replayTimeline;
+    RoomReplayController *m_replay;
     QAction *m_switchPerspectiveAction;
     QString m_currentPerspective;
-    QString m_pendingReplayBundlePath;
-    quint64 m_pendingReplayCaptureId = 0;
-    bool m_replayExportInProgress = false;
 
     struct _MoveCardsClassifier
     {
@@ -448,18 +401,6 @@ private:
     void freeze();
     void addRestartButton(QDialog *dialog);
     QGraphicsPixmapItem *createDashboardButtons();
-    void createReplayControlBar();
-    void createReplayTimeline();
-    void exportReplayDiagnosticBundle();
-    void onReplayStateCaptureReady(quint64 requestId,
-        const QJsonObject &clientCore, int lastAppliedPairIndex,
-        qint64 elapsedMs);
-    void finishReplayDiagnosticExport(const QJsonObject &stateNow,
-        bool includeStateNow, const QString &stateNowOmission);
-    void setReplayExportInProgress(bool inProgress);
-    void updateReplayTimeline(int secs);
-    void onReplayTimelineTimeChanged(int secs);
-    void onReplayTimelineNodeClicked(int nodeIndex);
 
     void showPindianBox(const QString &from_name, int from_id, const QString &to_name, int to_id, const QString &reason);
     void setChatBoxVisible(bool show);
@@ -513,13 +454,6 @@ private:
     bool _m_bgEnabled;
     QString _m_bgMusicPath;
 
-    void recorderAutoSave();
-#ifdef QSAN_XP_LEGACY
-    LocalServerController *localReplayController() const;
-    void finalizeLocalReplay(const QString &filename, bool reportFailure);
-    QString m_xpReplayGeneration;
-    QHash<QString, bool> m_xpReplayExports;
-#endif
     bool shouldUseDashboardDialogPresenter(QDialog *dialog) const;
     void wireSkillDialog(QSanSkillButton *button, QDialog *dialog);
     void presentSkillDialog(QSanSkillButton *button, QDialog *dialog);
