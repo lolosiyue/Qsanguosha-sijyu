@@ -82,6 +82,8 @@ struct ResponsiveInput
     double minimumTouchTarget = 48.0;
     double headerHeight = 0.0;
     double interactionHeightFraction = 0.38;
+    double minimumInteractionHeight = 0.0;
+    int firstVisibleSeat = 0;
     bool inspectorRequested = false;
     bool inspectorPinned = false;
     bool logVisible = false;
@@ -92,6 +94,7 @@ struct ResponsivePhotoPlacement
 {
     int seat = 0;
     QPointF center;
+    bool visible = true;
 };
 
 struct ResponsiveResult
@@ -113,7 +116,28 @@ struct ResponsiveResult
     QRectF chatRect;
     QRectF safeInteractionRect;
     QVector<ResponsivePhotoPlacement> photos;
+    int firstVisibleSeat = 0;
+    int visibleSeatCount = 0;
 };
+
+// Native skin frames are rearranged, retaining their original children and input.
+struct DashboardGeometry
+{
+    QRectF handRect;
+    QPointF equipmentPosition;
+    QPointF avatarPosition;
+    QRectF confirmRect;
+    QRectF cancelRect;
+    QRectF finishRect;
+    QRectF trustRect;
+    double footerScale = 1.0;
+    double equipmentScale = 1.0;
+    double height = 0.0;
+};
+
+DashboardGeometry computeDashboard(const QSizeF &available, double handHeight,
+    const QSizeF &equipment, const QSizeF &avatar,
+    Handedness handedness);
 
 struct SkinMetrics
 {

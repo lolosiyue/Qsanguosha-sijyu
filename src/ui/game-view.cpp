@@ -166,11 +166,25 @@ void FitView::setBackgroundBrush(bool centerAsOrigin)
     if (centerAsOrigin)
         transform.translate(-targetSize.width() / 2.0, -targetSize.height() / 2.0);
     QPixmap source;
-    const QString sourceKey = QStringLiteral("qsan-background:") + Config.BackgroundImage;
+    const bool portrait = Config.responsiveUiEnabled() && targetSize.height() > targetSize.width();
+    const QString path = portrait ? Config.value(QStringLiteral("UI/PortraitBackgroundImage"),
+        QStringLiteral("image/system/portrait/portrait-background.svg")).toString() : Config.BackgroundImage;
+    const QString sourceKey = QStringLiteral("qsan-background:") + path;
     if (!QPixmapCache::find(sourceKey, &source)) {
-        source.load(Config.BackgroundImage);
+        source.load(path);
+        if (source.isNull() && portrait)
+            source.load(QStringLiteral("image/system/portrait/portrait-background.svg"));
         if (!source.isNull())
             QPixmapCache::insert(sourceKey, source);
+    }
+    if (portrait && source.isNull()) {
+        scene()->setBackgroundBrush(QColor(QStringLiteral("#344f65")));
+        return;
+    }
+    if (portrait && !source.isNull()) {
+        source = source.scaled(targetSize, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        source = source.copy((source.width() - targetSize.width()) / 2,
+            (source.height() - targetSize.height()) / 2, targetSize.width(), targetSize.height());
     }
     QBrush brush(scaledPixmapForDevice(source, targetSize, devicePixelRatioF()));
     brush.setTransform(transform);
@@ -214,6 +228,7 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
         input.logVisible = m_overlay->logVisible();
         input.chatVisible = m_overlay->chatVisible();
         input.handedness = m_overlay->handedness();
+        input.firstVisibleSeat = m_overlay->firstVisibleSeat();
         if (m_posture) {
             const auto posture = m_posture->value();
             input.fold.posture = posture.mode == RoomWindowPosture::Mode::Book
@@ -235,7 +250,12 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
             input.fold.separating = posture.separating;
             input.fold.occluding = posture.occluding;
         }
-        roomScene->setResponsiveLayout(input, m_responsiveEnabled);
+        // Ordinary landscape restores the original GUI, even after portrait rotation.
+        const bool responsiveRoom = m_responsiveEnabled
+            && (input.stableRect.height() > input.stableRect.width()
+                || input.fold.posture != RoomLayoutEngine::FoldPosture::None
+                || input.fold.separating || input.fold.occluding);
+        roomScene->setResponsiveLayout(input, responsiveRoom);
 #endif
         const QRectF newSceneRect(QPointF(0, 0), QSizeF(viewportSize));
         roomScene->adjustItems(QSizeF(viewportSize));
@@ -246,7 +266,7 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
         roomScene->refreshTouchTargets(transform().m11());
         setBackgroundBrush(false);
 #if !defined(QSAN_XP_LEGACY)
-        if (m_responsiveEnabled) {
+        if (responsiveRoom) {
             const auto &layout = roomScene->responsiveLayout();
             m_previousProfile = layout.profile;
             m_hasPreviousProfile = layout.valid;

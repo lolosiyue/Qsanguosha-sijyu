@@ -235,10 +235,10 @@ int runRoomLayoutEngineTests()
     responsive.availableRect = responsive.stableRect;
     responsiveResult = computeResponsive(responsive);
     if (responsiveResult.profile != Profile::CompactPortrait
-        || responsiveResult.seatPresentation != SeatPresentation::Ring
-        || responsiveResult.photos[0].center.x() <= responsiveResult.seatsRect.center().x()
-        || responsiveResult.photos[0].center.y() <= responsiveResult.seatsRect.center().y())
-        return failed(20, "compact portrait ring");
+        || responsiveResult.seatPresentation != SeatPresentation::Ribbon
+        || responsiveResult.seatsRect.top() != responsiveResult.mainRect.top()
+        || responsiveResult.seatsRect.bottom() >= responsiveResult.tableRect.top())
+        return failed(20, "compact portrait opponents above table");
     for (int i = 0; i < responsiveResult.photos.size(); ++i) {
         const QPointF &center = responsiveResult.photos[i].center;
         const QRectF photoRect(center.x() - responsive.smallPhotoSize.width() / 2.0,
@@ -263,7 +263,7 @@ int runRoomLayoutEngineTests()
     if (!responsiveResult.valid || responsiveResult.seatPresentation != SeatPresentation::Ribbon
         || responsiveResult.photos.size() != 3
         || responsiveResult.seatsRect.height() < responsive.smallPhotoSize.height()
-        || responsiveResult.tableRect.bottom() >= responsiveResult.seatsRect.top())
+        || responsiveResult.tableRect.top() <= responsiveResult.seatsRect.bottom())
         return failed(21, "small viewport ribbon fallback");
 
     responsive.stableRect = QRectF(0.0, 0.0, 768.0, 1024.0);
@@ -421,5 +421,61 @@ int runRoomLayoutEngineTests()
         || headerResult.headerRect.intersects(headerResult.interactionRect))
         return failed(38, "launcher reserved in unoccluded pane");
 
+    // Every off-page seat remains represented so paging never remaps target identity.
+    headerInput.fold = FoldInfo();
+    headerInput.stableRect = headerInput.availableRect = QRectF(0, 0, 390, 844);
+    headerInput.photoCount = 19;
+    headerInput.minimumInteractionHeight = 400;
+    headerInput.firstVisibleSeat = 99;
+    const auto paged = computeResponsive(headerInput);
+    int visibleSeats = 0;
+    for (int i = 0; i < paged.photos.size(); ++i) {
+        const auto &seat = paged.photos[i];
+        if (seat.seat != i) return failed(39, "paging preserves seat identity");
+        if (!seat.visible) continue;
+        ++visibleSeats;
+        if (!paged.seatsRect.contains(QRectF(seat.center - QPointF(47, 54), QSizeF(94, 108))))
+            return failed(40, "native seat frame stays inside ribbon");
+    }
+    if (visibleSeats != paged.visibleSeatCount || visibleSeats < 1 || !paged.photos.last().visible)
+        return failed(41, "last page is reachable and clamped");
+
+    for (int width : {320, 390, 480, 640}) {
+        for (int avatarWidth : {171, 341}) {
+            for (Handedness hand : {Handedness::Left, Handedness::Right}) {
+                const QSizeF equipment(164, 170), avatar(avatarWidth, 200);
+                const auto native = computeDashboard(QSizeF(width, 400), 230, equipment, avatar, hand);
+                const QRectF bounds(0, 0, width, 400);
+                const QRectF equip(native.equipmentPosition, equipment * native.equipmentScale);
+                const QRectF hero(native.avatarPosition, avatar * native.footerScale);
+                const QRectF actions = native.confirmRect;
+                if (!bounds.contains(equip) || !bounds.contains(hero) || !bounds.contains(actions)
+                    || !hero.adjusted(-0.001, -0.001, 0.001, 0.001).contains(equip)
+                    || hero.intersects(actions) || native.handRect.intersects(hero))
+                    return failed(42, "equipment overlays hero while hand and actions stay clear");
+                if (hand == Handedness::Left ? !closeTo(actions.left(), 0) : !closeTo(actions.right(), native.handRect.right()))
+                    return failed(43, "native actions follow handedness");
+                if (actions.height() < 48 || native.cancelRect.height() < 48
+                    || actions.width() < 48 || native.cancelRect.width() < 48
+                    || actions.intersects(native.cancelRect)
+                    || native.finishRect.intersects(native.trustRect)
+                    || !bounds.contains(native.cancelRect) || !bounds.contains(native.trustRect))
+                    return failed(45, "independent native actions remain separated and touch sized");
+            }
+        }
+    }
+    headerInput.photoCount = 1;
+    const auto duel = computeResponsive(headerInput);
+    if (duel.photos.size() != 1 || !duel.photos.first().visible
+        || !closeTo(duel.photos.first().center.x(), duel.mainRect.center().x())
+        || duel.photos.first().center.y() >= duel.tableRect.top())
+        return failed(44, "single opponent centered at top");
+    // Opening the native log must not reflow seats or cover the hand.
+    headerInput.logVisible = true;
+    const auto logOpen = computeResponsive(headerInput);
+    if (logOpen.logRect.isEmpty() || !closeTo(logOpen.logRect.width(), duel.mainRect.width())
+        || logOpen.logRect.intersects(logOpen.interactionRect)
+        || logOpen.photos.first().center != duel.photos.first().center)
+        return failed(46, "portrait native log leaves seats and hand in place");
     return 0;
 }

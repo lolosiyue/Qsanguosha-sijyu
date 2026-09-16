@@ -84,6 +84,7 @@ class HomeController final : public QObject
                READ updateAvailable
                NOTIFY updateAvailableChanged)
     Q_PROPERTY(QUrl backgroundImage READ backgroundImage CONSTANT)
+    Q_PROPERTY(QUrl portraitBackgroundImage READ portraitBackgroundImage CONSTANT)
     Q_PROPERTY(QUrl characterImage READ characterImage NOTIFY characterImageChanged)
     Q_PROPERTY(QUrl logoImage READ logoImage CONSTANT)
     Q_PROPERTY(bool hasVideoSupport READ hasVideoSupport CONSTANT)
@@ -109,6 +110,7 @@ public:
     QString version() const;
     bool updateAvailable() const;
     QUrl backgroundImage() const;
+    QUrl portraitBackgroundImage() const;
     QUrl characterImage() const;
     QUrl logoImage() const;
     bool hasVideoSupport() const;

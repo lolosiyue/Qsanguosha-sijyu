@@ -59,7 +59,7 @@ Item {
     Text {
         anchors.centerIn: pages
         visible: shell.subPageOpen && shell.pageLoading
-        text: qsTr("載入中…")
+        text: qsTr("少女祈禱中…")
         color: HomeTheme.btnSecondaryText
         font.pixelSize: HomeTheme.compactText
     }

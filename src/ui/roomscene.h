@@ -175,6 +175,7 @@ public:
     void updateTable();
     void updateVolumeConfig();
     void redrawDashboardButtons();
+    void layoutDashboardButtons(const RoomLayoutEngine::DashboardGeometry &geometry);
     const ClientPlayer *getDashboardPlayer() const;
     inline QMainWindow *mainWindow()
     {

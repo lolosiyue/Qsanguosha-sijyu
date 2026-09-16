@@ -1720,7 +1720,7 @@ void RoomScene::attachOverlay(RoomOverlayHost *overlay)
 {
     m_overlayHost = overlay;
     overlay->setPresentation(gamePresentation());
-    overlay->setDocuments(log_box->document(), chat_box->document(), chat_edit);
+    overlay->setChatDocument(chat_box->document(), chat_edit);
     connect(overlay, &RoomOverlayHost::sendChatRequested, this, [this]() {
         if (chat_edit->isEnabled()) speak();
     });
@@ -1736,22 +1736,23 @@ void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &inp
     // Opacity keeps the canonical selection and eligibility intact. Hiding or
     // disabling a selected QGraphicsItem would clear the target/card draft.
     const qreal opacity = enabled ? 0.0 : 1.0;
-    dashboard->setOpacity(opacity);
+    dashboard->setOpacity(1.0);
     log_box_widget->setOpacity(opacity);
     chat_box_widget->setOpacity(opacity);
     chat_edit_widget->setOpacity(opacity);
     chat_widget->setOpacity(opacity);
     m_rolesBox->setOpacity(opacity);
     if (enabled) {
-        m_legacyPromptVisible = prompt_box->isVisible();
-        prompt_box->hide();
+        prompt_box->resetTransform();
         m_tablePile->setScale(1.0);
         control_panel->setScale(1.0);
         if (self_box) self_box->setScale(1.0);
         if (enemy_box) enemy_box->setScale(1.0);
     }
     if (!enabled) {
-        prompt_box->setVisible(m_legacyPromptVisible);
+        dashboard->setResponsiveGeometry(QSizeF(), RoomLayoutEngine::Handedness::None);
+        prompt_box->setScale(1.0);
+        prompt_box->shift();
         for (Photo *photo : photos)
             photo->setOpacity(1.0);
         m_responsiveLayout = RoomLayoutEngine::ResponsiveResult();
@@ -1767,18 +1768,31 @@ void RoomScene::applyResponsiveLayout()
     input.selfSeat = Self ? Self->getSeat() : 0;
     const qreal scale = qBound<qreal>(1.0, Config.UIScale, 2.0);
     input.smallPhotoSize = legacy.smallPhotoSize * scale;
+    // Measure the selected fold/split pane before reserving the skin's native footer.
+    const auto measured = RoomLayoutEngine::computeResponsive(input);
+    const qreal interactionWidth = measured.interactionRect.width();
+    input.minimumInteractionHeight = interactionWidth < 700.0
+        ? dashboard->responsiveHeight(interactionWidth) : legacy.skin.dashboardNormalHeight;
     m_responsiveLayout = RoomLayoutEngine::computeResponsive(input);
     const auto &layout = m_responsiveLayout;
     if (!layout.valid)
         return;
-    const bool ribbon = layout.seatPresentation == RoomLayoutEngine::SeatPresentation::Ribbon;
     m_pixmapDeviceScale = qBound<qreal>(1.0, main_window->devicePixelRatioF(), 4.0);
 
-    // Dashboard still owns cards, view-as selections and skill dialogs. Only its
-    // presentation is replaced by the overlay's persistent interaction zones.
-    dashboard->setScale(1.0);
-    dashboard->setPos(layout.interactionRect.topLeft());
-    dashboard->setWidth(qMax(int(legacy.minimumSceneSize.width()), int(layout.interactionRect.width())));
+    // Reflow the canonical native items; rotation must not replace cards or clear a draft.
+    if (layout.interactionRect.width() < 700.0) {
+        dashboard->setScale(1.0);
+        dashboard->setPos(layout.interactionRect.topLeft());
+        dashboard->setResponsiveGeometry(layout.interactionRect.size(), input.handedness);
+    } else {
+        dashboard->setResponsiveGeometry(QSizeF(), RoomLayoutEngine::Handedness::None);
+        const int nativeWidth = qMax(int(legacy.minimumSceneSize.width()), int(layout.interactionRect.width()));
+        const qreal dashboardScale = layout.interactionRect.width() / nativeWidth;
+        dashboard->setWidth(nativeWidth);
+        dashboard->setScale(dashboardScale);
+        dashboard->setPos(layout.interactionRect.left(),
+            layout.interactionRect.bottom() - legacy.skin.dashboardNormalHeight * dashboardScale);
+    }
 
     RoomLayoutEngine::Result table;
     table.valid = table.seatsValid = true;
@@ -1795,9 +1809,26 @@ void RoomScene::applyResponsiveLayout()
         place.floatingArea = table.floatingArea;
         table.photos.append(place);
         photos[i]->setScale(1.0);
-        photos[i]->setOpacity(ribbon ? 0.0 : 1.0);
+        const bool visible = i < layout.photos.size() && layout.photos[i].visible;
+        photos[i]->setOpacity(visible ? 1.0 : 0.0);
     }
     applyTableLayout(table);
+    // Open the original ClientLogBox from the hamburger menu; retain its document,
+    // native styling, links and scrolling instead of creating a second log view.
+    const bool showLog = input.logVisible && layout.logRect.isValid();
+    log_box_widget->setOpacity(showLog ? 1.0 : 0.0);
+    if (showLog) {
+        log_box_widget->setScale(1.0);
+        log_box_widget->setPos(layout.logRect.topLeft());
+        log_box->resize(layout.logRect.size().toSize());
+    }
+    // Floating marks and countdown stay immediately above the native hand row.
+    dashboard->setFloatingArea(QRect(0, -50, qRound(layout.interactionRect.width()), 50));
+    const qreal promptScale = qMin(1.0, qMax(0.1, (layout.mainRect.width() - 24.0)
+        / prompt_box->boundingRect().width()));
+    prompt_box->setScale(promptScale);
+    prompt_box->setPos(layout.mainRect.center().x() - prompt_box->boundingRect().width() * promptScale / 2.0,
+        qMax(layout.mainRect.top(), layout.interactionRect.top() - prompt_box->boundingRect().height() * promptScale - 8.0));
     m_chooseTriggerOrderBox->setPos(layout.tableRect.center());
     if (self_box) self_box->setPos(layout.tableRect.bottomLeft());
     if (enemy_box) enemy_box->setPos(layout.tableRect.topRight() - QPointF(enemy_box->boundingRect().width(), 0));
@@ -1807,12 +1838,15 @@ void RoomScene::applyResponsiveLayout()
         m_tableBgPixmapOrig = G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_TABLE_BG);
     m_tableBg->setPixmap(scaledPixmapForDevice(m_tableBgPixmapOrig, layout.mainRect.size().toSize(), m_pixmapDeviceScale));
     m_tableBg->setPos(layout.mainRect.topLeft());
+    // Portrait has one continuous backdrop; do not paint the landscape table strip over it.
+    m_tableBg->setVisible(input.stableRect.height() <= input.stableRect.width());
     emit responsiveGeometryChanged();
 }
 #endif
 
 void RoomScene::applyLayout(const RoomLayoutEngine::Result &layout)
 {
+    m_tableBg->setVisible(true);
     _m_infoPlane = layout.infoRect;
     m_logSizeWithChat = layout.logSizeWithChat;
     m_logSizeWithoutChat = layout.logSizeWithoutChat;
@@ -4109,12 +4143,6 @@ void RoomScene::doTimeout()
 
 void RoomScene::showPromptBox()
 {
-#if !defined(QSAN_XP_LEGACY)
-    if (m_responsiveEnabled) {
-        gamePresentation()->requestRefresh();
-        return;
-    }
-#endif
 	bringToFront(prompt_box);
 	prompt_box->appear();
 }
@@ -7048,6 +7076,8 @@ void RoomScene::updateVolumeConfig()
 
 void RoomScene::redrawDashboardButtons()
 {
+    for (QSanButton *button : {ok_button, cancel_button, discard_button, trust_button})
+        button->setActionText(QString());
 	ok_button->redraw();
 	ok_button->setRect(G_DASHBOARD_LAYOUT.m_confirmButtonArea);
 
@@ -7059,6 +7089,19 @@ void RoomScene::redrawDashboardButtons()
 
 	trust_button->redraw();
 	trust_button->setRect(G_DASHBOARD_LAYOUT.m_trustButtonArea);
+}
+
+void RoomScene::layoutDashboardButtons(const RoomLayoutEngine::DashboardGeometry &geometry)
+{
+    // Reuse the canonical buttons: eligibility, timeout and keyboard actions are unchanged.
+    ok_button->setActionText(tr("確定"));
+    cancel_button->setActionText(tr("取消"));
+    ok_button->setRect(geometry.confirmRect.toRect());
+    cancel_button->setRect(geometry.cancelRect.toRect());
+    discard_button->setActionText(tr("結束"));
+    trust_button->setActionText(tr("托管"));
+    discard_button->setRect(geometry.finishRect.toRect());
+    trust_button->setRect(geometry.trustRect.toRect());
 }
 
 void RoomScene::recorderAutoSave()

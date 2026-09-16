@@ -725,6 +725,15 @@ void HomeController::switchQmlScene(const QUrl &source)
     });
 }
 
+QUrl HomeController::portraitBackgroundImage() const
+{
+    const QString path = Config.value(QStringLiteral("UI/PortraitBackgroundImage"),
+        QStringLiteral("image/system/portrait/portrait-background.svg")).toString();
+    if (!QFileInfo(path).isFile()) return QUrl();
+    if (path.startsWith(QLatin1String(":"))) return QUrl(QStringLiteral("qrc") + path);
+    return QUrl::fromLocalFile(QDir::current().absoluteFilePath(path));
+}
+
 QString HomeController::currentPage() const
 {
     return m_currentPage;

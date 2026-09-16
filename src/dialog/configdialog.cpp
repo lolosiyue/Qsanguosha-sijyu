@@ -26,6 +26,31 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     m_oneHandedness->addItems({tr("雙手／無偏好"), tr("左手操作"), tr("右手操作")});
     layoutOptions->addWidget(m_responsiveLayout);
     layoutOptions->addWidget(m_oneHandedness);
+    layoutOptions->addWidget(new QLabel(tr("直向背景（獨立保存）"), layoutGroup));
+    m_portraitBackground = new QLineEdit(layoutGroup);
+    m_portraitBackground->setReadOnly(true);
+    m_portraitBackground->setText(Config.value("UI/PortraitBackgroundImage").toString());
+    layoutOptions->addWidget(m_portraitBackground);
+    auto *portraitButtons = new QHBoxLayout;
+    auto *browsePortrait = new QPushButton(tr("選擇直向背景"), layoutGroup);
+    auto *resetPortrait = new QPushButton(tr("恢復直向預設"), layoutGroup);
+    portraitButtons->addWidget(browsePortrait);
+    portraitButtons->addWidget(resetPortrait);
+    layoutOptions->addLayout(portraitButtons);
+    const auto previewPortrait = [this](const QString &path) {
+        m_portraitBackground->setText(path);
+        Config.setValue("UI/PortraitBackgroundImage", path);
+        emit bg_changed();
+        emit previewChanged();
+    };
+    connect(browsePortrait, &QPushButton::clicked, this, [this, previewPortrait] {
+        const QString path = QFileDialog::getOpenFileName(this, tr("選擇直向背景"),
+            QString(), tr("Images (*.png *.bmp *.jpg *.jpeg *.webp *.svg)"));
+        if (!path.isEmpty()) previewPortrait(path);
+    });
+    connect(resetPortrait, &QPushButton::clicked, this, [previewPortrait] {
+        previewPortrait(QStringLiteral("image/system/portrait/portrait-background.svg"));
+    });
     ui->envLayout->insertWidget(0, layoutGroup);
     connect(m_responsiveLayout, &QCheckBox::toggled, this, [this](bool enabled) {
         if (!m_loading) Config.setResponsiveUiEnabled(enabled);
@@ -212,6 +237,8 @@ void ConfigDialog::snapshotVisualSettings()
     m_visual.oneHandedness = Config.oneHandedness();
     m_visual.uiScale = Config.UIScale;
     m_visual.backgroundImage = Config.BackgroundImage;
+    m_visual.portraitBackgroundImage = Config.value("UI/PortraitBackgroundImage",
+        "image/system/portrait/portrait-background.svg").toString();
     m_visual.visualMode = Config.VisualMode;
     m_visual.noIndicator = Config.value("NoIndicator").toBool();
     m_visual.noEquipAnim = Config.value("NoEquipAnim").toBool();
@@ -243,6 +270,11 @@ void ConfigDialog::previewVisualMode()
 
 void ConfigDialog::restoreVisualSettings()
 {
+    if (Config.value("UI/PortraitBackgroundImage").toString() != m_visual.portraitBackgroundImage) {
+        Config.setValue("UI/PortraitBackgroundImage", m_visual.portraitBackgroundImage);
+        if (m_portraitBackground) m_portraitBackground->setText(m_visual.portraitBackgroundImage);
+        emit bg_changed();
+    }
     Config.setOneHandedness(m_visual.oneHandedness);
     Config.setResponsiveUiEnabled(m_visual.responsiveLayout);
     if (m_visual.colorScheme != Config.ColorScheme) {
