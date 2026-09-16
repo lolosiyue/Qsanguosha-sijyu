@@ -136,6 +136,92 @@ void viewStateContracts()
           "translated prompt strips markup and control-line injection");
 }
 
+// docs/ui-roadmap.md 2.3: the L0 tier must be permanently readable without any
+// interaction, and the judgement it states is "miss one and the player has to
+// remember or guess". The list below is that tier, transcribed; a shell can only
+// honour it if the shared projection carries every item, so this locks the
+// projection rather than any one shell's rendering.
+void l0DensityContracts()
+{
+    ClientGameState state;
+    state.setSelfName(QStringLiteral("self"));
+    state.setPlayerNames({QStringLiteral("self")});
+    state.setGameValue(QStringLiteral("current_player"), QStringLiteral("self"));
+    state.setGameValue(QStringLiteral("current_phase"), QStringLiteral("play"));
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("hp"), 3);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("max_hp"), 4);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("hand_count"), 2);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("role"), QStringLiteral("loyalist"));
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("kingdom"), QStringLiteral("shu"));
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("alive"), true);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("faceup"), false);
+    state.setPlayerValue(QStringLiteral("self"), QStringLiteral("chained"), true);
+    state.setPlayerMark(QStringLiteral("self"), QStringLiteral("@rescue"), 1);
+    state.setCardValue(41, QStringLiteral("owner"), QStringLiteral("self"));
+    state.setCardValue(41, QStringLiteral("place"), 1);
+    state.setCardValue(41, QStringLiteral("object_name"), QStringLiteral("crossbow"));
+    state.setCardValue(42, QStringLiteral("owner"), QStringLiteral("self"));
+    state.setCardValue(42, QStringLiteral("place"), 2);
+    state.setCardValue(42, QStringLiteral("object_name"), QStringLiteral("lightning"));
+
+    const QJsonObject view = GameViewState::fromState(state).toJson();
+    const QJsonObject player = view.value(QStringLiteral("players")).toArray().first().toObject();
+
+    // 回合／階段 lives on the state, the rest per player.
+    check(!view.value(QStringLiteral("phase_id")).toString().isEmpty()
+          && !view.value(QStringLiteral("current_player_name")).toString().isEmpty(),
+          "L0 keeps the round/phase and the current player on the shared state");
+
+    // hp / max hp / hand count / role / kingdom / alive / face-up / chained /
+    // marks / equipment / judging zone.
+    static const char *const kL0Keys[] = {
+        "hp", "max_hp", "hand_count", "role", "kingdom", "alive",
+        "face_up", "chained", "marks", "equipment", "judging"
+    };
+    QStringList missing;
+    for (const char *key : kL0Keys) {
+        if (!player.contains(QLatin1String(key)))
+            missing << QLatin1String(key);
+    }
+    const QByteArray l0Message = missing.isEmpty()
+        ? QByteArrayLiteral("L0 projects every permanently visible player field")
+        : QByteArrayLiteral("L0 is missing ") + missing.join(QLatin1String(", ")).toUtf8();
+    check(missing.isEmpty(), l0Message.constData());
+
+    // Presence alone would pass on a default-constructed field, so pin the values
+    // that came from the state for the two that carry no default.
+    check(player.value(QStringLiteral("kingdom")).toString() == QStringLiteral("shu")
+          && player.value(QStringLiteral("role")).toString() == QStringLiteral("loyalist"),
+          "L0 identity and kingdom carry the values the server set, not defaults");
+    check(player.value(QStringLiteral("marks")).toObject().contains(QStringLiteral("@rescue"))
+          && player.value(QStringLiteral("equipment")).toArray().size() == 1
+          && player.value(QStringLiteral("judging")).toArray().size() == 1,
+          "L0 marks, equipment and judging zone survive the projection");
+}
+
+// docs/ui-roadmap.md 2.2: the envelope opens with a deadline meter, so the
+// countdown has to be one shared projection instead of a subtraction each shell
+// repeats. The deadline instant itself is still live -- ClientCore's timer is
+// armed for deadlineMs + 1.
+void deadlineProjectionContracts()
+{
+    InteractionRequest request;
+    request.type = InteractionType::Choice;
+    request.timeoutMs = 15000;
+    request.deadlineMs = 15000;
+    check(request.remainingMs(0) == 15000 && request.remainingMs(14999) == 1,
+          "remaining time counts down from the deadline on the ClientCore clock");
+    check(request.remainingMs(15000) == 0 && request.remainingMs(20000) == 0,
+          "remaining time never goes negative once the deadline passes");
+    check(!request.isExpired(14999) && !request.isExpired(15000) && request.isExpired(15001),
+          "the deadline instant is still live and expiry starts one tick later");
+
+    InteractionRequest untimed;
+    untimed.type = InteractionType::Choice;
+    check(untimed.remainingMs(1 << 20) == -1 && !untimed.isExpired(1 << 20),
+          "a request without a deadline reports no countdown and never expires");
+}
+
 void actionModelContracts()
 {
     GameActionModel model;
@@ -191,6 +277,8 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     viewStateContracts();
+    l0DensityContracts();
+    deadlineProjectionContracts();
     actionModelContracts();
     eventStreamContracts();
     return failures == 0 ? 0 : 1;

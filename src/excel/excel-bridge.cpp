@@ -239,8 +239,7 @@ QJsonObject ExcelBridge::snapshot() const
         interaction.insert(QStringLiteral("revision"), QString::number(m_revision));
         interaction.insert(QStringLiteral("ui"), ExcelView::interactionUi(m_core, m_options.assetRoot, m_selection));
         const InteractionRequest &request = m_core.activeRequest();
-        const qint64 remaining = request.deadlineMs > 0
-            ? qMax<qint64>(0, request.deadlineMs - m_core.now()) : -1;
+        const qint64 remaining = request.remainingMs(m_core.now());
         interaction.insert(QStringLiteral("remaining_ms"), static_cast<double>(remaining));
     }
     return {{QStringLiteral("generation"), QString::number(m_session.generation())},

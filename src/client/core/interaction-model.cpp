@@ -302,6 +302,16 @@ bool InteractionRequest::isValid() const
     return type != InteractionType::None;
 }
 
+qint64 InteractionRequest::remainingMs(qint64 now) const
+{
+    return deadlineMs > 0 ? qMax<qint64>(0, deadlineMs - now) : -1;
+}
+
+bool InteractionRequest::isExpired(qint64 now) const
+{
+    return deadlineMs > 0 && now > deadlineMs;
+}
+
 int InteractionRequest::minSelection() const
 {
     if (const PlayerInteractionPayload *value = payloadAs<PlayerInteractionPayload>())

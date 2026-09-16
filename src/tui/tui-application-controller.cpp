@@ -404,7 +404,7 @@ GameActionModel TuiApplicationController::sharedActionModel(
         model.unsupportedReason = QStringLiteral("連線尚未完成狀態同步。");
         return model;
     }
-    if (request->deadlineMs > 0 && m_core.now() >= request->deadlineMs) {
+    if (request->isExpired(m_core.now())) {
         model.unsupportedReason = QStringLiteral("此請求已逾時。");
         return model;
     }

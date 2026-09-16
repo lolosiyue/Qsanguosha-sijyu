@@ -305,6 +305,13 @@ struct InteractionRequest
     qint64 timeoutMs = 0;
     qint64 deadlineMs = 0;
 
+    // Shared countdown projection: every shell reads the deadline through these two
+    // instead of re-deriving "deadlineMs - now" on its own. `now` is a ClientCore
+    // clock value. remainingMs() returns -1 when there is no deadline; the deadline
+    // instant itself is still live, matching ClientCore::scheduleDeadlineTimer().
+    qint64 remainingMs(qint64 now) const;
+    bool isExpired(qint64 now) const;
+
     InteractionResponseShape responseSchema = InteractionResponseShape::None;
     InteractionPayload payload;
 
