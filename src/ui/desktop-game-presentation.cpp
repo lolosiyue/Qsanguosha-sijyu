@@ -217,7 +217,7 @@ GameActionModel DesktopGamePresentation::actionModel() const
     if (model.prompt.isEmpty()) model.prompt = plain(request.prompt);
     model.minSelection = request.minSelection();
     model.maxSelection = request.maxSelection();
-    if (request.deadlineMs > 0 && core->now() >= request.deadlineMs) {
+    if (request.isExpired(core->now())) {
         model.unsupportedReason = tr("This action has timed out.");
         return model;
     }

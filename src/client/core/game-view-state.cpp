@@ -119,6 +119,7 @@ QJsonObject GameViewPlayer::toJson() const
             {QStringLiteral("chained"), QJsonValue::fromVariant(chained)},
             {QStringLiteral("removed"), QJsonValue::fromVariant(removed)},
             {QStringLiteral("role"), role},
+            {QStringLiteral("kingdom"), kingdom},
             {QStringLiteral("hand_max"), handMax},
             {QStringLiteral("offensive_distance"), offensiveDistance},
             {QStringLiteral("defensive_distance"), defensiveDistance},
@@ -185,6 +186,8 @@ GameViewState GameViewState::fromState(const ClientGameState &state,
         player.removed = data.value(QStringLiteral("removed"));
         if (data.contains(QStringLiteral("role")))
             player.role = translatedLabel(data.value(QStringLiteral("role")).toString(), options);
+        if (data.contains(QStringLiteral("kingdom")))
+            player.kingdom = translatedLabel(data.value(QStringLiteral("kingdom")).toString(), options);
         player.self = name == view.selfName;
         // Only the recipient's hand has authorized identities. Opponents expose counts only.
         const bool handVisible = player.self || options.authorizedHandPlayers.contains(name);

@@ -47,6 +47,7 @@ struct GameViewPlayer
     QVariant chained;
     QVariant removed;
     QString role;
+    QString kingdom;
     bool self = false;
     bool handVisible = false;
     // Public/recipient-projected dashboard details for the lightweight inspector.

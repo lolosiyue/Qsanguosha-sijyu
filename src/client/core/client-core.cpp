@@ -321,7 +321,7 @@ InteractionValidation ClientCore::validate(const InteractionResponse &response) 
                 .arg(response.command).arg(m_active.command));
     }
 
-    if (m_active.deadlineMs > 0 && now() > m_active.deadlineMs) {
+    if (m_active.isExpired(now())) {
         return InteractionValidation::fail(InteractionRejection::RequestExpired,
             QStringLiteral("request %1 expired").arg(m_active.requestId));
     }
@@ -723,9 +723,7 @@ void ClientCore::cancelActiveRequest(InteractionCancelReason reason)
 
 bool ClientCore::expireIfDue()
 {
-    if (!hasActiveRequest() || m_active.deadlineMs <= 0)
-        return false;
-    if (now() <= m_active.deadlineMs)
+    if (!hasActiveRequest() || !m_active.isExpired(now()))
         return false;
     cancelActiveRequest(InteractionCancelReason::Expired);
     return true;
