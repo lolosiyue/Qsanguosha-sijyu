@@ -1,6 +1,8 @@
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Debug',
+    [ValidateSet('arm64-v8a', 'x86_64')]
+    [string]$Abi = 'arm64-v8a',
     [string]$ToolchainRoot = '',
     [string]$QtRoot = '',
     [string]$QtHostPath = 'H:\Qt6111\6.11.1\msvc2022_64',
@@ -17,8 +19,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
+# Qt names the arm64 target directory android_arm64_v8a but the x86_64 one android_x86_64;
+# presets and the FreeType prefixes use the shorter arm64 / x86_64 tags.
+$qtAbiTag = if ($Abi -eq 'arm64-v8a') { 'arm64_v8a' } else { $Abi }
+$abiTag = if ($Abi -eq 'arm64-v8a') { 'arm64' } else { $Abi }
 if (!$ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot 'builds/android-toolchain' }
-if (!$QtRoot) { $QtRoot = Join-Path $ToolchainRoot 'qt/6.11.1/android_arm64_v8a' }
+if (!$QtRoot) { $QtRoot = Join-Path $ToolchainRoot "qt/6.11.1/android_$qtAbiTag" }
 if (!$SdkRoot) { $SdkRoot = Join-Path $ToolchainRoot 'sdk' }
 if (!$NdkRoot) {
     $NdkRoot = Join-Path $env:LOCALAPPDATA 'Android/Sdk/ndk/27.2.12479018'
@@ -38,8 +44,8 @@ if (!$CMakeExe) {
 }
 
 $freeTypeSource = Join-Path $ToolchainRoot 'src/freetype-2.14.3'
-$freeTypeBuild = Join-Path $ToolchainRoot 'freetype-build-arm64'
-$freeTypeRoot = Join-Path $ToolchainRoot 'freetype-arm64'
+$freeTypeBuild = Join-Path $ToolchainRoot "freetype-build-$abiTag"
+$freeTypeRoot = Join-Path $ToolchainRoot "freetype-$abiTag"
 foreach ($required in @(
     $CMakeExe, $NinjaExe,
     (Join-Path $QtRoot 'lib/cmake/Qt6/qt.toolchain.cmake'),
@@ -90,7 +96,7 @@ try {
     if (!(Test-Path -LiteralPath (Join-Path $freeTypeRoot 'lib/libfreetype.a'))) {
         Invoke-CMake -CMakeArguments @('-S', $freeTypeSource, '-B', $freeTypeBuild, '-G', 'Ninja',
             "-DCMAKE_MAKE_PROGRAM=$NinjaExe", "-DCMAKE_TOOLCHAIN_FILE=$NdkRoot/build/cmake/android.toolchain.cmake",
-            '-DANDROID_ABI=arm64-v8a', '-DANDROID_PLATFORM=android-28',
+            "-DANDROID_ABI=$Abi", '-DANDROID_PLATFORM=android-28',
             '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON', '-DCMAKE_BUILD_TYPE=Release',
             '-DCMAKE_POSITION_INDEPENDENT_CODE=ON', "-DCMAKE_INSTALL_PREFIX=$freeTypeRoot",
             '-DBUILD_SHARED_LIBS=OFF', '-DFT_DISABLE_ZLIB=ON', '-DFT_DISABLE_BZIP2=ON',
@@ -98,7 +104,7 @@ try {
         Invoke-CMake -CMakeArguments @('--build', $freeTypeBuild, '--parallel', "$Parallel")
         Invoke-CMake -CMakeArguments @('--install', $freeTypeBuild)
     }
-    $preset = "android-arm64-$($Configuration.ToLowerInvariant())"
+    $preset = "android-$abiTag-$($Configuration.ToLowerInvariant())"
     $configureArguments = @('--preset', $preset, "-DCMAKE_MAKE_PROGRAM=$NinjaExe",
         "-DQSAN_AUDIO_BACKEND=$AudioBackend")
     Invoke-CMake -CMakeArguments $configureArguments
