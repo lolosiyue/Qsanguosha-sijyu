@@ -82,9 +82,14 @@ struct GameViewState
     QString prompt;
     int drawPileCount = -1;
     int discardPileCount = 0;
+    bool playOrderReversed = false;
     QList<GameViewPlayer> players;
     QVariantMap privatePiles;
     QVariantList recentEvents;
+    // docs/ui-roadmap.md 2.7 asks who is acting on whom.  The battle log already
+    // carries that as structured fields, so it is projected as relations rather
+    // than re-derived from the narration in recentEvents.
+    QVariantList recentRelations;
 
     static GameViewState fromState(const ClientGameState &state,
                                    const InteractionRequest *request = nullptr,

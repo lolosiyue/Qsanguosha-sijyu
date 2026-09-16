@@ -3,6 +3,7 @@
 #include "../../src/client/core/game-action-model.h"
 #include "../../src/client/core/game-event-stream.h"
 #include "../../src/client/core/game-view-state.h"
+#include "../../src/core/protocol.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
@@ -271,6 +272,65 @@ void eventStreamContracts()
           && stream.events().first().sequence == 6,
           "event stream retains at most 200 sequenced events");
 }
+
+// docs/focus-relation-protocol-decision.md 1.3: the battle log already carries
+// the settlement relation as structured fields, and two projection layers used
+// to drop it. Damage and somebody else's nullification are the two cases
+// docs/ui-roadmap.md 2.7 names, so both have to reach the shared model.
+void settlementRelationContracts()
+{
+    ClientGameState state;
+    state.setSelfName(QStringLiteral("sgs1"));
+    state.setPlayerNames({QStringLiteral("sgs1"), QStringLiteral("sgs2")});
+    state.appendPresentationEvent(QSanProtocol::S_COMMAND_LOG_SKILL,
+        QStringLiteral("#Damage sgs1"),
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("log_type"), QStringLiteral("#Damage")},
+                    {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+                    {QStringLiteral("to_players"), QStringList{QStringLiteral("sgs2")}},
+                    {QStringLiteral("arguments"), QStringList{QStringLiteral("1"), QStringLiteral("fire")}}});
+    state.appendPresentationEvent(QSanProtocol::S_COMMAND_LOG_SKILL,
+        QStringLiteral("#NullificationDetails sgs2"),
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("log_type"), QStringLiteral("#NullificationDetails")},
+                    {QStringLiteral("from_player"), QStringLiteral("sgs2")},
+                    {QStringLiteral("to_players"), QStringList{QStringLiteral("sgs1")}},
+                    {QStringLiteral("card_string"), QStringLiteral("slash:_dismantlement")}});
+
+    GameEventStream stream;
+    stream.synchronize(state, 1);
+    const QList<GamePresentationEvent> imported = stream.since(0);
+    check(imported.size() == 2
+          && imported.at(0).payload.toMap().value(QStringLiteral("from_player")).toString()
+                 == QStringLiteral("sgs1"),
+          "the event stream imports the log payload instead of dropping it");
+
+    const GameViewState view = GameViewState::fromState(state);
+    check(view.recentEvents.size() == 2 && view.recentRelations.size() == 2,
+          "narration and settlement relation are projected side by side");
+    const QVariantMap damage = view.recentRelations.value(0).toMap();
+    check(damage.value(QStringLiteral("log_type")).toString() == QStringLiteral("#Damage")
+          && damage.value(QStringLiteral("from")).toString() == QStringLiteral("sgs1")
+          && damage.value(QStringLiteral("to")).toStringList()
+                 == QStringList{QStringLiteral("sgs2")},
+          "#Damage keeps its source and target through the projection");
+    const QVariantMap nullified = view.recentRelations.value(1).toMap();
+    check(nullified.value(QStringLiteral("from")).toString() == QStringLiteral("sgs2")
+          && nullified.value(QStringLiteral("to")).toStringList()
+                 == QStringList{QStringLiteral("sgs1")}
+          && nullified.value(QStringLiteral("card")).toString()
+                 == QStringLiteral("slash:_dismantlement"),
+          "#NullificationDetails keeps source, target and the card it answered");
+
+    // 2.3: the direction is protocol state now, and absent means not reversed.
+    check(!GameViewState::fromState(state).playOrderReversed,
+          "play direction defaults to the original order when nothing set it");
+    state.setGameValue(QStringLiteral("play_order_reversed"), true);
+    check(GameViewState::fromState(state).playOrderReversed
+          && GameViewState::fromState(state).toJson()
+                 .value(QStringLiteral("play_order_reversed")).toBool(),
+          "a reversed seat ring reaches every shell through the shared projection");
+}
 }
 
 int main(int argc, char **argv)
@@ -281,5 +341,6 @@ int main(int argc, char **argv)
     deadlineProjectionContracts();
     actionModelContracts();
     eventStreamContracts();
+    settlementRelationContracts();
     return failures == 0 ? 0 : 1;
 }

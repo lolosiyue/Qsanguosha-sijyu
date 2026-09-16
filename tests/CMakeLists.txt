@@ -280,6 +280,7 @@ add_library(qsanguosha_protocol_v2_contract_support STATIC
     ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/protocol-gameplay-payload-registry.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/simple-choice-payloads.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/typed-interaction-payloads.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/arrange-seats-message.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/card-provenance-message.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/protocol-message.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/protocol-runtime.cpp

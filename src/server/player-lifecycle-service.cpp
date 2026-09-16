@@ -13,6 +13,7 @@
 #include "ai.h"
 #include "banpair.h"
 #include "engine.h"
+#include "protocol/arrange-seats-message.h"
 #include "protocol/switch-context-message.h"
 #include "protocol/session/session-payloads.h"
 #include "settings.h"
@@ -649,10 +650,11 @@ ServerPlayer *PlayerLifecycleService::insertPlayerMidGame(ServerPlayer *before,
         m_room.broadcastProperty(players[i], "seat");
     }
 
-    QStringList playerCircle;
+    ArrangeSeatsMessage seats;
     foreach (ServerPlayer *existing, players)
-        playerCircle << existing->objectName();
-    m_notifier.doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(playerCircle));
+        seats.playerNames << existing->objectName();
+    seats.playOrderReversed = m_roster.isPlayOrderReversed();
+    m_notifier.doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, seats.toVariant());
 
     foreach (const Skill *skill, player->getVisibleSkillList()) {
         const TriggerSkill *triggerSkill = qobject_cast<const TriggerSkill *>(skill);
@@ -687,13 +689,14 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
     m_room.notifyProperty(player, player, "role");
     m_room.notifyProperty(player, player, "flags", "marshalling");
 
-    QStringList playerCircle;
+    ArrangeSeatsMessage seats;
     foreach (ServerPlayer *existing, m_roster.players()) {
         if (existing != player)
             existing->introduceTo(player);
-        playerCircle << existing->objectName();
+        seats.playerNames << existing->objectName();
     }
-    m_notifier.doNotify(player, S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(playerCircle));
+    seats.playOrderReversed = m_roster.isPlayOrderReversed();
+    m_notifier.doNotify(player, S_COMMAND_ARRANGE_SEATS, seats.toVariant());
 
     foreach (ServerPlayer *dynamicPlayer, m_dynamicPlayers) {
         QVariantMap info{{QStringLiteral("schema_version"), 1},

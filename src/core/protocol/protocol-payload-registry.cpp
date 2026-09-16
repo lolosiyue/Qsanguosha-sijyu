@@ -1,5 +1,6 @@
 #include "protocol-payload-registry.h"
 
+#include "arrange-seats-message.h"
 #include "card-provenance-message.h"
 #include "protocol.h"
 #include "protocol-message-utils.h"
@@ -499,6 +500,7 @@ bool validateGenericSchema(const QString &schema, const QVariant &value,
         {QStringLiteral("stop_current"), FieldShape::Boolean},
         {QStringLiteral("hidden"), FieldShape::Boolean},
         {QStringLiteral("open"), FieldShape::Boolean},
+        {QStringLiteral("play_order_reversed"), FieldShape::Boolean},
         {QStringLiteral("player_names"), FieldShape::StringList},
         {QStringLiteral("winner_tokens"), FieldShape::StringList},
         {QStringLiteral("roles"), FieldShape::StringList},
@@ -530,6 +532,8 @@ int expectedSchemaVersion(const QString &schema)
         return SignupRequestPayload::SchemaVersion;
     if (schema == QLatin1String("SignupReplyPayload"))
         return SignupReplyPayload::SchemaVersion;
+    if (schema == QLatin1String("ArrangeSeatsPayload"))
+        return ArrangeSeatsMessage::SchemaVersion;
     return 1;
 }
 
@@ -539,6 +543,8 @@ bool schemaVersionAllowed(const QString &schema, int version)
         return version == 1 || version == SignupRequestPayload::SchemaVersion;
     if (schema == QLatin1String("SignupReplyPayload"))
         return version == 1 || version == SignupReplyPayload::SchemaVersion;
+    if (schema == QLatin1String("ArrangeSeatsPayload"))
+        return version == 1 || version == ArrangeSeatsMessage::SchemaVersion;
     return version == expectedSchemaVersion(schema);
 }
 
@@ -1424,6 +1430,10 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
             descriptor.optionalFields.append(QStringLiteral("rules_bundle"));
         if (descriptor.targetSchema == QLatin1String("ServerHelloPayload"))
             descriptor.optionalFields.append(QStringLiteral("rules_content"));
+        // Absent on schema 1, which is what every replay recorded before the
+        // direction became protocol state still carries.
+        if (descriptor.targetSchema == QLatin1String("ArrangeSeatsPayload"))
+            descriptor.optionalFields.append(QStringLiteral("play_order_reversed"));
         descriptor.currentPayloadShape = QStringLiteral("typed_object");
         descriptor.parser = descriptor.targetSchema == QLatin1String("InteractionRequestPayload")
             || descriptor.targetSchema == QLatin1String("InteractionReplyPayload")

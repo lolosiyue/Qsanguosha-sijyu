@@ -15,6 +15,7 @@
 #include "player-lifecycle-service.h"
 #include "player-state-service.h"
 #include "skill-runtime-coordinator.h"
+#include "protocol/arrange-seats-message.h"
 #include "protocol/card-provenance-message.h"
 #include "protocol/session/session-payloads.h"
 #include "protocol/skill-instance-message.h"
@@ -2307,16 +2308,21 @@ void Room::assignRoles()
 	m_gameSession->assignRoles();
 }
 
+void Room::broadcastSeatRing()
+{
+	ArrangeSeatsMessage seats;
+	foreach(ServerPlayer*player, getPlayers())
+		seats.playerNames << player->objectName();
+	seats.playOrderReversed = m_roster->isPlayOrderReversed();
+	doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, seats.toVariant());
+}
+
 void Room::swapSeat(ServerPlayer*a, ServerPlayer*b)
 {
 	m_roster->swapSeats(a, b);
-	const QList<ServerPlayer *> players = getPlayers();
-	QStringList player_circle;
-	foreach(ServerPlayer*player, players)
-		player_circle << player->objectName();
-	doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(player_circle));
+	broadcastSeatRing();
 
-	foreach (ServerPlayer *player, players) {
+	foreach (ServerPlayer *player, getPlayers()) {
 		broadcastProperty(player, "seat");
 		broadcastProperty(player, "player_seat");
 	}
@@ -2327,14 +2333,11 @@ void Room::adjustSeats()
 	m_roster->adjustSeats(mode == "02_1v1");
 	const QList<ServerPlayer *> players = getPlayers();
 
-	QStringList player_circle;
-	for (int i = 0; i < players.length(); i++){
+	for (int i = 0; i < players.length(); i++)
 		broadcastProperty(players[i], "player_seat");
-		player_circle << players[i]->objectName();
-	}
 
 	// tell the players about the seat, and the first is always the lord
-	doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(player_circle));
+	broadcastSeatRing();
 }
 
 int Room::getCardFromPile(const QString&card_pattern)
@@ -4399,6 +4402,9 @@ bool Room::doAura(ServerPlayer* player, QString aura){
 void Room::reversePlayOrder()
 {
 	m_roster->reversePlayOrder();
+	// The direction is state, so it is republished on every flip -- a replay
+	// seek rebuilds it by replaying the ring, not by reading the log below.
+	broadcastSeatRing();
 	int count = getPlayers().length();
 	if (count < 2) return;
 

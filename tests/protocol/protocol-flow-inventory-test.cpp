@@ -205,7 +205,62 @@ bool strictPayloadContracts(QString *error)
         *error = QStringLiteral("a real taker must survive the encoder");
         return false;
     }
-    return ProtocolPayloadRegistry::validateObjectPayload(encoded, error);
+    if (!ProtocolPayloadRegistry::validateObjectPayload(encoded, error))
+        return false;
+
+    // docs/focus-relation-protocol-decision.md 2.3 / 4.2: the seat ring carries
+    // the play direction on schema 2, and schema 1 stays acceptable because
+    // every replay recorded before the flag existed still carries it.
+    ProtocolMessage seats = roomNotification(S_COMMAND_ARRANGE_SEATS, {});
+    seats.payload = QVariantList{QStringLiteral("sgs1"), QStringLiteral("sgs2")};
+    if (!ProtocolPayloadRegistry::encodeObjectPayload(seats, &encoded, error))
+        return false;
+    const QVariantMap legacySeats = encoded.payload.toMap();
+    if (legacySeats.value(QStringLiteral("schema_version")).toInt() != 1
+        || legacySeats.value(QStringLiteral("player_names")).toStringList()
+            != QStringList{QStringLiteral("sgs1"), QStringLiteral("sgs2")}) {
+        *error = QStringLiteral("a bare seat array must still normalise to schema 1");
+        return false;
+    }
+    if (!ProtocolPayloadRegistry::validateObjectPayload(encoded, error))
+        return false;
+
+    QVariantMap directedSeats {
+        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("player_names"), QStringList{QStringLiteral("sgs1"), QStringLiteral("sgs2")}},
+        {QStringLiteral("play_order_reversed"), true}
+    };
+    seats.payload = directedSeats;
+    if (!ProtocolPayloadRegistry::encodeObjectPayload(seats, &encoded, error))
+        return false;
+    if (!encoded.payload.toMap().value(QStringLiteral("play_order_reversed")).toBool()) {
+        *error = QStringLiteral("schema 2 seats lost the play direction in the encoder");
+        return false;
+    }
+    if (!ProtocolPayloadRegistry::validateObjectPayload(encoded, error))
+        return false;
+
+    directedSeats.insert(QStringLiteral("play_order_reversed"), QStringLiteral("true"));
+    seats.payload = directedSeats;
+    if (ProtocolPayloadRegistry::validateObjectPayload(seats, error)) {
+        *error = QStringLiteral("wrongly typed play direction was accepted");
+        return false;
+    }
+    error->clear();
+
+    // A named object without a schema version misses the pass-through and is
+    // wrapped again as player_names, so the double wrap must fail loudly here
+    // rather than on a live socket.
+    seats.payload = QVariantMap{
+        {QStringLiteral("player_names"), QStringList{QStringLiteral("sgs1")}},
+        {QStringLiteral("play_order_reversed"), true}
+    };
+    if (ProtocolPayloadRegistry::encodeObjectPayload(seats, &encoded, error)) {
+        *error = QStringLiteral("an unversioned seat object must not encode");
+        return false;
+    }
+    error->clear();
+    return true;
 }
 }
 

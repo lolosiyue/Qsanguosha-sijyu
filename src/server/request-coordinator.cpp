@@ -3,6 +3,7 @@
 #include "protocol/session/session-payloads.h"
 
 #include "json.h"
+#include "protocol/arrange-seats-message.h"
 #include "protocol/switch-context-message.h"
 #include "room.h"
 #include "serverplayer.h"
@@ -138,11 +139,12 @@ void RequestCoordinator::notifyArrangeSeats(ServerPlayer *player)
     if (player == nullptr)
         return;
 
-    QStringList playerCircle;
+    ArrangeSeatsMessage seats;
     foreach (ServerPlayer *seatPlayer, m_room.getPlayers())
-        playerCircle << seatPlayer->objectName();
+        seats.playerNames << seatPlayer->objectName();
+    seats.playOrderReversed = m_room.isPlayOrderReversed();
 
-    m_room.doNotify(player, S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(playerCircle));
+    m_room.doNotify(player, S_COMMAND_ARRANGE_SEATS, seats.toVariant());
 }
 
 void RequestCoordinator::clearDualControlRequest(ServerPlayer *player, bool restoreContext)
