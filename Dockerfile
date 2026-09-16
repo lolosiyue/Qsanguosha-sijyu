@@ -19,6 +19,7 @@ RUN apt-get update \
         python3-venv \
         qt6-base-dev \
         qt6-websockets-dev \
+        zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -74,6 +75,7 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         libqt6network6 \
         libqt6websockets6 \
+        zlib1g \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 9527 qsanguosha \
     && useradd --uid 9527 --gid 9527 \
