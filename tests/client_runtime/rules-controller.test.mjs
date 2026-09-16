@@ -14,7 +14,7 @@ const ts = require(process.env.QSAN_TYPESCRIPT || 'typescript');
 // only for the browser Worker, the timers and the i18n card catalog. Command
 // numbers, the bridge schema and the identity predicate therefore come from the
 // shipped sources instead of a copy that can silently drift out of date.
-const REAL_MODULES = new Set(['./protocol', './replies', './rules-identity']);
+const REAL_MODULES = new Set(['./protocol', './replies', './rules-identity', './game-presentation']);
 
 function transpile(name) {
   const source = readFileSync(new URL(`../../web/src/${name}.ts`, import.meta.url), 'utf8');

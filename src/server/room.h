@@ -384,6 +384,14 @@ public:
     bool broadcastResetCard(const QList<ServerPlayer*>&players, int cardId);
 
     bool broadcastProperty(ServerPlayer*owner, const char*property_name, const QString&value = "");
+    bool isRoleRevealed(const ServerPlayer *player) const;
+    bool canSeeRole(const ServerPlayer *viewer, const ServerPlayer *target) const;
+    void revealRole(ServerPlayer *player);
+    void revealRoleTo(ServerPlayer *viewer, ServerPlayer *target);
+    void syncRole(ServerPlayer *viewer, const ServerPlayer *target);
+    // Lua policy hooks consume only the viewer's visible snapshot and revision.
+    AIWorldView buildAIWorldView(ServerPlayer *viewer) const;
+    QString aiStateRevision() const;
     void broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QVariant &value);
     void notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state);
     void notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner, const PlayerUIState &state);
@@ -746,7 +754,6 @@ private:
     bool areCardTargetsLegal(const CardUseStruct &use) const;
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                           const ActiveSkillRequest &request) const;
-    AIWorldView buildAIWorldView(ServerPlayer *viewer) const;
     bool isAIMarkVisibleTo(const ServerPlayer *owner, const QString &mark,
                            const ServerPlayer *viewer) const;
     AIRequest makeAIRequest(ServerPlayer *player, AIRequest::DecisionKind kind,

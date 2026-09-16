@@ -68,6 +68,8 @@ public:
     ~AiLuaRuntime();
 
     bool initialize(QString *error = nullptr);
+    static void pushWorldView(lua_State *state, const AIWorldView &world);
+    static void evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world);
     void shutdown();
     void seed(quint64 seed);
 
