@@ -78,6 +78,8 @@
 #include <QQuickView>
 #endif
 #include <QTimer>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
@@ -1025,6 +1027,29 @@ void MainWindow::closeEvent(QCloseEvent *event)
 		return;
 	}
 #endif
+	// 本程序自己託管 Server,而 Room 的收尾是非同步的: beginShutdown() 只提出
+	// 要求,要 event loop 繼續泵事件才會完成。直接 quit() 會讓 main 一邊拆 Room,
+	// 遊戲執行緒一邊還在讀它;而卡在 BlockingQueuedConnection 回 main 的
+	// RoomThread (Room::signalSetProperty) 永遠回不來。
+	if (server && !server->shutdownComplete()) {
+		// 收尾期間事件照泵,先收起視窗,免得再接到一次關閉而重入。
+		hide();
+		QPointer<Server> hostedServer(server);
+		hostedServer->beginShutdown();
+		QEventLoop drainLoop;
+		QTimer drainPoll;
+		QElapsedTimer drainTimer;
+		drainTimer.start();
+		connect(&drainPoll, &QTimer::timeout, &drainLoop,
+			[&drainLoop, &drainTimer, hostedServer]() {
+				if (!hostedServer || hostedServer->shutdownComplete()
+					|| drainTimer.elapsed() >= 30000)
+					drainLoop.quit();
+			});
+		drainPoll.start(25);
+		drainLoop.exec();
+	}
+
 	// 主視窗被關 = 正常退出。此後退出清理階段(Engine 析構、Lua 關閉、
 	// __gc 終結器經 SWIG 回調 C++ 物件)出的崩潰不再上報 —— 玩家已主動退出。
 	CrashHandler::beginShutdown();
