@@ -86,7 +86,7 @@ bool PlayerDecisionService::askForSkillInvoke(ServerPlayer *player, const QStrin
         if (ai) {
             QElapsedTimer timer;
             timer.start();
-            invoked = ai->askForSkillInvoke(skillName, data);
+            m_room.decideAiSkillInvoke(player, skillName, data, invoked);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -107,7 +107,7 @@ bool PlayerDecisionService::askForSkillInvoke(ServerPlayer *player, const QStrin
             } else {
                 ai = player->getAI();
                 if (ai)
-                    invoked = ai->askForSkillInvoke(skillName, data);
+                    m_room.decideAiSkillInvoke(player, skillName, data, invoked);
             }
         }
     }
@@ -170,7 +170,7 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
             if (ai) {
                 QElapsedTimer timer;
                 timer.start();
-                answer = ai->askForChoice(skill_name, effectiveChoices, data);
+                m_room.decideAiChoice(player, skill_name, effectiveChoices, data, answer);
                 if (Config.AIDelay > timer.elapsed())
                     m_room.thread->delay(Config.AIDelay - timer.elapsed());
             } else {
@@ -185,7 +185,7 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
                 } else {
                     ai = player->getAI();
                     if (ai)
-                        answer = ai->askForChoice(skill_name, effectiveChoices, data);
+                        m_room.decideAiChoice(player, skill_name, effectiveChoices, data, answer);
                 }
             }
         }
@@ -208,7 +208,7 @@ Card::Suit PlayerDecisionService::askForSuit(ServerPlayer *player, const QString
     Card::Suit suit = Card::AllSuits[qsanRandomBounded(4)];
     AI *ai = player->getAI();
     if (ai)
-        suit = ai->askForSuit(reason);
+        m_room.decideAiSuit(player, reason, suit);
     else if (m_room.doRequest(player, S_COMMAND_CHOOSE_SUIT, QVariant(), true)) {
         if (player->getClientReply().toString() == "spade")
             suit = Card::Spade;
@@ -221,7 +221,7 @@ Card::Suit PlayerDecisionService::askForSuit(ServerPlayer *player, const QString
     } else {
         ai = player->getAI();
         if (ai)
-            suit = ai->askForSuit(reason);
+            m_room.decideAiSuit(player, reason, suit);
     }
     return suit;
 }
@@ -249,10 +249,7 @@ QString PlayerDecisionService::askForKingdom(ServerPlayer *player, const QString
     QString result = kingdoms.first();
     AI *ai = player->getAI();
     if (ai) {
-        if (reason.isEmpty() || reason.contains("gamerule_"))
-            result = ai->askForKingdom(kingdoms);
-        else
-            result = ai->askForChoice(reason, kingdoms.join("+"), QVariant());
+        m_room.decideAiKingdom(player, reason, kingdoms, result);
     } else {
         JsonArray arg;
         arg << kingdoms.join("+");
@@ -263,10 +260,7 @@ QString PlayerDecisionService::askForKingdom(ServerPlayer *player, const QString
         } else {
             ai = player->getAI();
             if (ai) {
-                if (reason.isEmpty() || reason.contains("gamerule_"))
-                    result = ai->askForKingdom(kingdoms);
-                else
-                    result = ai->askForChoice(reason, kingdoms.join("+"), QVariant());
+                m_room.decideAiKingdom(player, reason, kingdoms, result);
             }
         }
     }
@@ -322,7 +316,7 @@ QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QString
     if (ai) {
         QElapsedTimer timer;
         timer.start();
-        chosenGeneral = ai->askForGeneral(actualGenerals, default_choice, reason);
+        m_room.decideAiGeneral(player, actualGenerals, default_choice, reason, chosenGeneral);
         if (m_room.thread && Config.AIDelay - timer.elapsed() > 0)
             m_room.thread->delay(Config.AIDelay - timer.elapsed());
     } else if (player->isOnline()) {
@@ -401,7 +395,7 @@ int PlayerDecisionService::askForAG(ServerPlayer *player, const QList<int> &card
         if (ai) {
             QElapsedTimer timer;
             timer.start();
-            card_id = ai->askForAG(card_ids, refusable, reason);
+            m_room.decideAiAmazingGrace(player, card_ids, refusable, reason, card_id);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -413,7 +407,7 @@ int PlayerDecisionService::askForAG(ServerPlayer *player, const QList<int> &card
             } else {
                 ai = player->getAI();
                 if (ai)
-                    card_id = ai->askForAG(card_ids, refusable, reason);
+                    m_room.decideAiAmazingGrace(player, card_ids, refusable, reason, card_id);
             }
         }
     }
@@ -456,7 +450,7 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
             if (ai) {
                 QElapsedTimer timer;
                 timer.start();
-                choice = ai->askForPlayerChosen(targets, log.arg);
+                m_room.decideAiPlayerChosen(player, targets, log.arg, choice);
                 if (Config.AIDelay > timer.elapsed())
                     m_room.thread->delay(Config.AIDelay - timer.elapsed());
             } else {
@@ -472,7 +466,7 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
                 } else {
                     ai = player->getAI();
                     if (ai)
-                        choice = ai->askForPlayerChosen(targets, log.arg);
+                        m_room.decideAiPlayerChosen(player, targets, log.arg, choice);
                 }
             }
         }
@@ -521,7 +515,7 @@ QList<ServerPlayer *> PlayerDecisionService::askForPlayersChosen(
         if (ai) {
             QElapsedTimer timer;
             timer.start();
-            log.to = ai->askForPlayersChosen(targets, log.arg, max_num, min_num);
+            m_room.decideAiPlayersChosen(player, targets, log.arg, max_num, min_num, log.to);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -542,7 +536,7 @@ QList<ServerPlayer *> PlayerDecisionService::askForPlayersChosen(
             } else {
                 ai = player->getAI();
                 if (ai)
-                    log.to = ai->askForPlayersChosen(targets, log.arg, max_num, min_num);
+                    m_room.decideAiPlayersChosen(player, targets, log.arg, max_num, min_num, log.to);
             }
         }
         if (log.to.length() < min_num) {
@@ -633,7 +627,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
             QElapsedTimer timer;
             timer.start();
             player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-            card_id = ai->askForCardChosen(who, flags_copy, reason, method);
+            m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -648,7 +642,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
                 ai = player->getAI();
                 if (ai) {
                     player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-                    card_id = ai->askForCardChosen(who, flags_copy, reason, method);
+                    m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
                 }
             }
         }
@@ -688,7 +682,7 @@ const Card *PlayerDecisionService::askForCardShow(ServerPlayer *player, ServerPl
     if (player->getHandcardNum() > 1) {
         AI *ai = player->getAI();
         if (ai)
-            card = ai->askForCardShow(requestor, reason);
+            card = m_room.decideAiCardShow(player, requestor, reason);
         else if (m_room.doRequest(player, S_COMMAND_SHOW_CARD, requestor->objectName(), true)) {
             JsonArray clientReply = player->getClientReply().value<JsonArray>();
             if (clientReply.size() > 0)
@@ -696,7 +690,7 @@ const Card *PlayerDecisionService::askForCardShow(ServerPlayer *player, ServerPl
         } else {
             ai = player->getAI();
             if (ai)
-                card = ai->askForCardShow(requestor, reason);
+                card = m_room.decideAiCardShow(player, requestor, reason);
         }
     }
     if (!card)
@@ -724,7 +718,7 @@ const Card *PlayerDecisionService::askForPindian(ServerPlayer *player, ServerPla
     if (ai) {
         QElapsedTimer timer;
         timer.start();
-        card = ai->askForPindian(from, reason);
+        card = m_room.decideAiPindian(player, from, reason);
         if (Config.AIDelay > timer.elapsed())
             m_room.thread->delay(Config.AIDelay - timer.elapsed());
     } else if (m_room.doRequest(player, S_COMMAND_PINDIAN,
@@ -736,7 +730,7 @@ const Card *PlayerDecisionService::askForPindian(ServerPlayer *player, ServerPla
     } else {
         ai = player->getAI();
         if (ai)
-            card = ai->askForPindian(from, reason);
+            card = m_room.decideAiPindian(player, from, reason);
     }
     if (!card)
         card = player->getRandomHandCard();
@@ -767,12 +761,12 @@ QList<const Card *> PlayerDecisionService::askForPindianRace(ServerPlayer *from,
     if (!from_card) {
         AI *ai = from->getAI();
         if (ai)
-            from_card = ai->askForPindian(from, reason);
+            from_card = m_room.decideAiPindian(from, from, reason);
     }
     if (!to_card) {
         AI *ai = to->getAI();
         if (ai)
-            to_card = ai->askForPindian(from, reason);
+            to_card = m_room.decideAiPindian(to, from, reason);
     }
     QList<ServerPlayer *> players;
     if (!from_card) {
@@ -801,7 +795,7 @@ QList<const Card *> PlayerDecisionService::askForPindianRace(ServerPlayer *from,
             } else {
                 AI *ai = player->getAI();
                 if (ai)
-                    card = ai->askForPindian(from, reason);
+                    card = m_room.decideAiPindian(player, from, reason);
             }
             if (card == nullptr)
                 card = player->getRandomHandCard();
@@ -872,7 +866,17 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
             foreach (const SkillContext &ctx, contexts) {
                 skillsMap[ctx.owner] << ctx.skill_name;
             }
-            answer = ai->askForTriggerOrder(reason, skillsMap, optional, data);
+            QStringList triggerCandidates;
+            foreach (const SkillContext &ctx, contexts) {
+                QString candidate = ctx.skill_name;
+                if (ctx.instanceID > 0)
+                    candidate += "#" + QString::number(ctx.instanceID);
+                if (ctx.owner && ctx.owner != player)
+                    candidate += ":" + ctx.owner->objectName();
+                triggerCandidates << candidate;
+            }
+            m_room.decideAiTriggerOrder(player, reason, triggerCandidates, skillsMap,
+                                        optional, data, answer);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -1075,7 +1079,7 @@ const Card* PlayerDecisionService::_askForNullification(const Card*trick, Server
 					             static_cast<const void *>(to),
 					             static_cast<const void *>(TrickEffect.from), positive ? 1 : 0);
 				}
-				use.card = ai->askForNullification(TrickEffect.card, TrickEffect.from, TrickEffect.to, positive);
+				use.card = m_room.decideAiNullification(player, TrickEffect.card, TrickEffect.from, TrickEffect.to, positive);
 				if (use.card){
 					use.from = player;
 					if (Config.AIDelay>timer.elapsed())
@@ -1158,7 +1162,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 			if (ai){
 				QElapsedTimer timer;
 				timer.start();
-				resp.m_card = ai->askForCard(_pattern, prompt, data, method);
+				resp.m_card = m_room.decideAiResponseCard(player, _pattern, prompt, data, method);
 				if (Config.AIDelay>timer.elapsed())
 					m_room.thread->delay(Config.AIDelay-timer.elapsed());
 			} else {
@@ -1178,7 +1182,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 					}
 				}else{
 					ai = player->getAI();
-					if (ai) resp.m_card = ai->askForCard(_pattern, prompt, data, method);
+					if (ai) resp.m_card = m_room.decideAiResponseCard(player, _pattern, prompt, data, method);
 				}
 			}
 			}
@@ -1594,7 +1598,7 @@ const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, Server
 	if (ai){
 		QElapsedTimer timer;
 		timer.start();
-		card = ai->askForSinglePeach(dying);
+		card = m_room.decideAiSinglePeach(player, dying);
 		if (Config.AIDelay>timer.elapsed())
 			m_room.thread->delay(Config.AIDelay-timer.elapsed());
 	}else{
@@ -1610,7 +1614,7 @@ const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, Server
 			}
 		}else{
 			ai = player->getAI();
-			if(ai) card = ai->askForSinglePeach(dying);
+			if(ai) card = m_room.decideAiSinglePeach(player, dying);
 		}
 	}
 	if (card){
@@ -1715,11 +1719,13 @@ Card* PlayerDecisionService::askForDiscard(ServerPlayer*player, const QString&re
 		}
 	}
 	if(to_discard.length()>min_num||(optional&&to_discard.length()==min_num)){
+		const QList<int> ai_candidates = to_discard;
 		AI*ai = player->getAI();
 		if (ai){
 			QElapsedTimer timer;
 			timer.start();
-			to_discard = ai->askForDiscard(reason, discard_num, min_num, optional, include_equip, pattern);
+			to_discard.clear();
+			m_room.decideAiDiscard(player, reason, discard_num, min_num, optional, include_equip, pattern, ai_candidates, to_discard);
 			if (Config.AIDelay>timer.elapsed())
 				m_room.thread->delay(Config.AIDelay-timer.elapsed());
 		} else {
@@ -1730,7 +1736,10 @@ Card* PlayerDecisionService::askForDiscard(ServerPlayer*player, const QString&re
 				JsonUtils::tryParse(player->getClientReply(),to_discard);
 			}else{
 				ai = player->getAI();
-				if(ai) to_discard = ai->askForDiscard(reason, discard_num, min_num, optional, include_equip, pattern);
+				if(ai) {
+					to_discard.clear();
+					m_room.decideAiDiscard(player, reason, discard_num, min_num, optional, include_equip, pattern, ai_candidates, to_discard);
+				}
 				//else if(!optional) to_discard = player->forceToDiscard(min_num, include_equip, true, pattern);
 			}
 		}
@@ -1817,12 +1826,14 @@ Card* PlayerDecisionService::askForExchange(ServerPlayer*player, const QString&r
 		}
 	}
 	if(to_exchange.length()>min_num||(optional&&to_exchange.length()==min_num)){
+		const QList<int> ai_candidates = to_exchange;
 		AI*ai = player->getAI();
 		player->setFlags("Global_AIDiscardExchanging");
 		if (ai){// share the same callback interface
 			QElapsedTimer timer;
 			timer.start();
-			to_exchange = ai->askForDiscard(reason, exchange_num, min_num, optional, include_equip, pattern);
+			to_exchange.clear();
+			m_room.decideAiDiscard(player, reason, exchange_num, min_num, optional, include_equip, pattern, ai_candidates, to_exchange);
 			if (Config.AIDelay>timer.elapsed())
 				m_room.thread->delay(Config.AIDelay-timer.elapsed());
 		} else {
@@ -1833,7 +1844,10 @@ Card* PlayerDecisionService::askForExchange(ServerPlayer*player, const QString&r
 				JsonUtils::tryParse(player->getClientReply(), to_exchange);
 			else{
 				ai = player->getAI();
-				if(ai) to_exchange = ai->askForDiscard(reason, exchange_num, min_num, optional, include_equip, pattern);
+				if(ai) {
+					to_exchange.clear();
+					m_room.decideAiDiscard(player, reason, exchange_num, min_num, optional, include_equip, pattern, ai_candidates, to_exchange);
+				}
 				//else if(!optional) to_exchange = player->forceToDiscard(min_num, include_equip, false, pattern);
 			}
 		}
@@ -1874,7 +1888,7 @@ PlayerDecisionService::GuanxingSelection PlayerDecisionService::askForGuanxingSe
 		if (ai){
 			QElapsedTimer timer;
 			timer.start();
-			ai->askForGuanxing(cards, top_cards, bottom_cards, guanxing_type);
+			m_room.decideAiGuanxing(zhuge, cards, guanxing_type, top_cards, bottom_cards);
 			if (Config.AIDelay>timer.elapsed())
 				m_room.thread->delay(Config.AIDelay-timer.elapsed());
 		} else {
@@ -1892,7 +1906,7 @@ PlayerDecisionService::GuanxingSelection PlayerDecisionService::askForGuanxingSe
 				}
 			}else{
 				ai = zhuge->getAI();
-				if(ai) ai->askForGuanxing(cards, top_cards, bottom_cards, guanxing_type);
+				if(ai) m_room.decideAiGuanxing(zhuge, cards, guanxing_type, top_cards, bottom_cards);
 			}
 		}
 	}/*
@@ -1940,7 +1954,7 @@ CardsMoveStruct PlayerDecisionService::askForYijiStruct(ServerPlayer*guojia, QLi
 		foreach(ServerPlayer*p, players)
 			player_names << p->objectName();
 		guojia->setTag("yijiForAI", player_names);
-		target = ai->askForYiji(cards, skill_name, card_id);
+		m_room.decideAiYiji(guojia, cards, skill_name, players, target, card_id);
 		if (card_id>=0) move.card_ids << card_id;
 		if (Config.AIDelay>timer.elapsed())
 			m_room.thread->delay(Config.AIDelay-timer.elapsed());
@@ -1962,7 +1976,7 @@ CardsMoveStruct PlayerDecisionService::askForYijiStruct(ServerPlayer*guojia, QLi
 				foreach(ServerPlayer*p, players)
 					player_names << p->objectName();
 				guojia->setTag("yijiForAI", player_names);
-				target = ai->askForYiji(cards, skill_name, card_id);
+				m_room.decideAiYiji(guojia, cards, skill_name, players, target, card_id);
 				if (card_id>=0) move.card_ids << card_id;
 			}
 		}

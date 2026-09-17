@@ -39,6 +39,8 @@ struct AiShadowAuditSummary {
     quint64 matches = 0;
     quint64 mismatches = 0;
     quint64 errors = 0;
+    // How often the legacy AI answered because the isolated side could not.
+    quint64 legacyFallbacks = 0;
 };
 
 class AiRouteRegistry
@@ -95,6 +97,13 @@ public:
                            const AIResult &shadowResult);
     const QList<AiShadowAuditEntry> &shadowAudits() const { return m_shadowAudits; }
     const AiShadowAuditSummary &shadowAuditSummary() const { return m_shadowAuditSummary; }
+    // Per callback name, so the switch-over can be judged entry by entry.
+    AiShadowAuditSummary shadowAuditSummary(const QString &callbackName) const
+    {
+        return m_callbackAuditSummaries.value(callbackName);
+    }
+    QStringList auditedCallbacks() const { return m_callbackAuditSummaries.keys(); }
+    void recordLegacyFallback(const QString &callbackName);
 
 private:
     class ExecutionBinding
@@ -134,6 +143,7 @@ private:
     int m_shadowAuditLimit;
     QList<AiShadowAuditEntry> m_shadowAudits;
     AiShadowAuditSummary m_shadowAuditSummary;
+    QHash<QString, AiShadowAuditSummary> m_callbackAuditSummaries;
 };
 
 #endif

@@ -2742,10 +2742,131 @@ bool Room::applyAIResult(ServerPlayer *player, const AIRequest &request,
 	return m_aiDecisions->applyResult(player, request, result, cardUse);
 }
 
+void Room::recordAiEvent(int triggerEvent, ServerPlayer *target, const QVariant &data)
+{
+	m_aiDecisions->recordEvent(triggerEvent, target, data);
+}
+
 bool Room::decideAiAction(ServerPlayer *player, const AIRequest &request,
                           CardUseStruct &cardUse) const
 {
 	return m_aiDecisions->decide(player, request, cardUse);
+}
+
+bool Room::decideAiSkillInvoke(ServerPlayer *player, const QString &skillName,
+                               const QVariant &data, bool &invoked) const
+{
+	return m_aiDecisions->decideSkillInvoke(player, skillName, data, invoked);
+}
+
+bool Room::decideAiChoice(ServerPlayer *player, const QString &skillName,
+                          const QString &choices, const QVariant &data, QString &answer) const
+{
+	return m_aiDecisions->decideChoice(player, skillName, choices, data, answer);
+}
+
+bool Room::decideAiSuit(ServerPlayer *player, const QString &reason, Card::Suit &suit) const
+{
+	return m_aiDecisions->decideSuit(player, reason, suit);
+}
+
+bool Room::decideAiKingdom(ServerPlayer *player, const QString &reason,
+                           const QStringList &kingdoms, QString &answer) const
+{
+	return m_aiDecisions->decideKingdom(player, reason, kingdoms, answer);
+}
+
+bool Room::decideAiGeneral(ServerPlayer *player, const QStringList &generals,
+                           const QString &defaultChoice, const QString &reason,
+                           QString &answer) const
+{
+	return m_aiDecisions->decideGeneral(player, generals, defaultChoice, reason, answer);
+}
+
+bool Room::decideAiDiscard(ServerPlayer *player, const QString &reason, int discardNum,
+                           int minNum, bool optional, bool includeEquip, const QString &pattern,
+                           const QList<int> &candidates, QList<int> &cards) const
+{
+	return m_aiDecisions->decideDiscard(player, reason, discardNum, minNum, optional,
+	                                    includeEquip, pattern, candidates, cards);
+}
+
+bool Room::decideAiAmazingGrace(ServerPlayer *player, const QList<int> &cardIds, bool refusable,
+                                const QString &reason, int &cardId) const
+{
+	return m_aiDecisions->decideAmazingGrace(player, cardIds, refusable, reason, cardId);
+}
+
+bool Room::decideAiCardChosen(ServerPlayer *player, ServerPlayer *who, const QString &flags,
+                              const QString &reason, Card::HandlingMethod method,
+                              int &cardId) const
+{
+	return m_aiDecisions->decideCardChosen(player, who, flags, reason, method, cardId);
+}
+
+bool Room::decideAiYiji(ServerPlayer *player, const QList<int> &cards, const QString &reason,
+                        const QList<ServerPlayer *> &candidates, ServerPlayer *&target,
+                        int &cardId) const
+{
+	return m_aiDecisions->decideYiji(player, cards, reason, candidates, target, cardId);
+}
+
+bool Room::decideAiPlayerChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
+                                const QString &reason, ServerPlayer *&choice) const
+{
+	return m_aiDecisions->decidePlayerChosen(player, targets, reason, choice);
+}
+
+bool Room::decideAiPlayersChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
+                                 const QString &reason, int maxNum, int minNum,
+                                 QList<ServerPlayer *> &chosen) const
+{
+	return m_aiDecisions->decidePlayersChosen(player, targets, reason, maxNum, minNum, chosen);
+}
+const Card *Room::decideAiResponseCard(ServerPlayer *player, const QString &pattern,
+                                       const QString &prompt, const QVariant &data,
+                                       Card::HandlingMethod method) const
+{
+	return m_aiDecisions->decideResponseCard(player, pattern, prompt, data, method);
+}
+
+const Card *Room::decideAiNullification(ServerPlayer *player, const Card *trick,
+                                        ServerPlayer *from, ServerPlayer *to,
+                                        bool positive) const
+{
+	return m_aiDecisions->decideNullification(player, trick, from, to, positive);
+}
+
+const Card *Room::decideAiCardShow(ServerPlayer *player, ServerPlayer *requestor,
+                                   const QString &reason) const
+{
+	return m_aiDecisions->decideCardShow(player, requestor, reason);
+}
+
+const Card *Room::decideAiPindian(ServerPlayer *player, ServerPlayer *requestor,
+                                  const QString &reason) const
+{
+	return m_aiDecisions->decidePindian(player, requestor, reason);
+}
+
+const Card *Room::decideAiSinglePeach(ServerPlayer *player, ServerPlayer *dying) const
+{
+	return m_aiDecisions->decideSinglePeach(player, dying);
+}
+
+bool Room::decideAiGuanxing(ServerPlayer *player, const QList<int> &cards, int guanxingType,
+                            QList<int> &up, QList<int> &bottom) const
+{
+	return m_aiDecisions->decideGuanxing(player, cards, guanxingType, up, bottom);
+}
+
+bool Room::decideAiTriggerOrder(ServerPlayer *player, const QString &reason,
+                                const QStringList &candidates,
+                                QMap<ServerPlayer *, QStringList> &skills, bool optional,
+                                const QVariant &data, QString &answer) const
+{
+	return m_aiDecisions->decideTriggerOrder(player, reason, candidates, skills, optional,
+	                                         data, answer);
 }
 
 bool Room::decideAiSkillAction(ServerPlayer *player, CardUseStruct::CardUseReason reason,

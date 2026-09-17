@@ -19,13 +19,54 @@ struct AICardView {
     int suit;
     int number;
     QString skillName;
+    // Card classification and structure. subcardIds is empty for a concrete card.
+    int typeId;
+    int handlingMethod;
+    bool virtualCard;
+    bool targetFixed;
+    bool damageCard;
+    QList<int> subcardIds;
     bool red;
     bool black;
     QStringList kindOfNames;
 
     AICardView()
         : cardId(-1), effectiveId(-1), suit(int(Card::NoSuit)), number(0),
+          typeId(int(Card::TypeSkill)), handlingMethod(int(Card::MethodNone)),
+          virtualCard(false), targetFixed(false), damageCard(false),
           red(false), black(false) {}
+};
+
+// A named pile. The count is what the viewer may know about its size; the ids only
+// appear when the pile is open to this viewer. An open pile with no cards is a known
+// empty pile, which is not the same as a closed one.
+struct AICardPileView {
+    QString name;
+    int count;
+    bool open;
+    bool handPile;
+    QList<int> cardIds;
+
+    AICardPileView() : count(0), open(false), handPile(false) {}
+};
+
+// What one card of the viewer may legally do in the request being asked. The lists are
+// computed once by the authority: the isolated side never queries the Engine live.
+// legalTargets holds the targets that pass targetFilter and the prohibition skills
+// with nothing else selected yet; picking one may narrow the rest, which is why
+// maxTargets and targetFixed travel with it.
+struct AICardCandidateView {
+    int cardId;
+    bool available;
+    bool limited;
+    bool jilei;
+    bool targetFixed;
+    int maxTargets;
+    QStringList legalTargets;
+
+    AICardCandidateView()
+        : cardId(-1), available(false), limited(false), jilei(false),
+          targetFixed(false), maxTargets(0) {}
 };
 
 struct AISkillView {
@@ -36,12 +77,21 @@ struct AISkillView {
     bool hasAmountOverride;
     int amount;
     bool hasPrivateState;
+    // Skill classification: the native class chain from the leaf up, so a legacy
+    // inherits("FilterSkill") check becomes a value comparison.
+    QStringList skillClasses;
+    int frequency; // Skill::Frequency; 0 when the skill has no instance data
+    bool lordSkill;
+    bool attachedLordSkill;
+    bool lordSkillEffective;
     QJsonObject state;
     QJsonObject correctState;
 
     AISkillView()
         : instanceId(0), source(int(SourceInnate)), invalid(false),
-          hasAmountOverride(false), amount(0), hasPrivateState(false) {}
+          hasAmountOverride(false), amount(0), hasPrivateState(false),
+          frequency(0), lordSkill(false),
+          attachedLordSkill(false), lordSkillEffective(false) {}
 };
 
 struct AIPlayerView {
@@ -69,11 +119,53 @@ struct AIPlayerView {
     QList<AICardView> judgingArea;
     QMap<QString, int> publicMarks;
     QList<AISkillView> skills;
+    // Hand cards of another player that this viewer may see. The viewer's own hand is
+    // world.handCards; handVisible says the whole hand is open, so a card missing from
+    // knownCards is known absent rather than unknown.
+    QList<AICardView> knownCards;
+    bool handVisible;
+    QList<AICardPileView> piles;
+    QList<int> displayCards;
+    // Derived player values the shared entries ask for.
+    int maxCards;
+    int hujia;
+    int attackRange;
+    int gender;
+    bool lord;
+    // Equip slot index -> occupying card id; a free slot is simply absent.
+    QMap<int, int> equipSlots;
 
     AIPlayerView()
         : seat(0), hp(0), maxHp(0), handcardCount(0), phase(int(Player::NotActive)),
           alive(false), dead(true), removed(false), kongcheng(true), wounded(false),
-          faceUp(true), chained(false) {}
+          faceUp(true), chained(false), handVisible(false), maxCards(0), hujia(0),
+          attackRange(1), gender(int(General::Sexless)), lord(false) {}
+};
+
+// One gameplay event, already turned into values. The sequence orders events within a
+// Room and the revision says which board state they belong to. Card ids are split:
+// cardIds are public, privateCardIds only reach privateViewer.
+struct AIEventView {
+    quint64 sequence;
+    quint64 revision;
+    int triggerEvent;
+    QString kind;
+    QString from;
+    QString to;
+    QStringList targets;
+    QString cardName;
+    QString reason;
+    QList<int> cardIds;
+    QList<int> privateCardIds;
+    QString privateViewer;
+    int amount;
+    int nature;
+    int place;
+    bool good;
+
+    AIEventView()
+        : sequence(0), revision(0), triggerEvent(0), amount(0), nature(0),
+          place(int(Player::PlaceUnknown)), good(false) {}
 };
 
 struct AIWorldView {
@@ -84,8 +176,18 @@ struct AIWorldView {
     AIPlayerView self;
     QList<AIPlayerView> players;
     QList<AICardView> handCards;
+    // Public zone: every id in it is known to everyone.
+    QList<AICardView> discardPile;
+    // Preserve roster order independently of the viewer-first value projection.
+    QStringList playerOrder;
+    QStringList alivePlayerOrder;
     QString currentPlayer;
     int currentPhase;
+    // Board distances among the living, source player first. Computed by the authority
+    // because distance depends on the source's own skills and equipment.
+    QMap<QString, QMap<QString, int>> distances;
+    // Recent events this viewer may know about, oldest first.
+    QList<AIEventView> events;
 
     AIWorldView() : revision(0), currentPhase(int(Player::NotActive)) {}
 };
@@ -110,8 +212,33 @@ struct AiSkillActionContext {
     bool isSourceQuotaAvailable() const { return sourceQuotaAvailable; }
 };
 
+// Value-typed candidates and limits for the non-card decisions: string choices,
+// counts, cancelability and the authoritative default. No QVariant, Card * or
+// ServerPlayer * crosses in here.
+struct AIChoiceOptions {
+    QString reason;
+    // Which question is being asked, when one decision kind serves several of them.
+    QString question;
+    QStringList choices;
+    // Candidate cards and players of a selection. Only ids and object names cross.
+    QList<int> cardIds;
+    QStringList playerNames;
+    QString defaultChoice;
+    bool hasDefaultChoice;
+    bool optional;
+    int minCount;
+    int maxCount;
+
+    AIChoiceOptions()
+        : hasDefaultChoice(false), optional(false), minCount(1), maxCount(1) {}
+};
+
 struct AIRequest {
-    enum DecisionKind { Activate, UseCard };
+    enum DecisionKind {
+        Activate, UseCard, SkillInvoke, Choice, Suit, Kingdom, General,
+        Discard, AmazingGrace, CardChosen, Yiji, PlayerChosen, PlayersChosen,
+        RespondCard, Guanxing, TriggerOrder
+    };
 
     DecisionKind kind;
     quint64 decisionId;
@@ -124,6 +251,12 @@ struct AIRequest {
     AIWorldView worldView;
     bool hasSkillActionContext;
     AiSkillActionContext skillActionContext;
+    // Every skill instance this player could activate for this request. The single
+    // skillActionContext above stays the one the request was built for, if any.
+    QList<AiSkillActionContext> skillActions;
+    AIChoiceOptions choiceOptions;
+    // Only the card decisions carry candidates; the other kinds leave this empty.
+    QList<AICardCandidateView> cardCandidates;
 
     AIRequest()
         : kind(UseCard), decisionId(0), stateRevision(0),
@@ -180,19 +313,41 @@ struct AiLegacyRequestView {
     bool isSourceQuotaAvailable() const { return request.isSourceQuotaAvailable(); }
 };
 
+// A value description of a card the AI wants built: the name of an engine card, the
+// suit and number to clone it with, the view-as skill behind it and the cards paid for
+// it. The AI never constructs a Card; the authority does, after checking ownership.
+struct AICardSpec {
+    QString name;
+    int suit;
+    int number;
+    QString skillName;
+    QList<int> subcardIds;
+
+    AICardSpec() : suit(int(Card::SuitToBeDecided)), number(0) {}
+    bool isValid() const { return !name.isEmpty(); }
+};
+
 struct CardActionSpec {
     QString legacyCardString;
+    // One concrete card of the player, named by id. -1 when the answer names the card
+    // some other way (a legacy string, a card spec or a skill action).
+    int useCardId;
     QList<int> selectedCardIds;
+    // The second ordered group of a two-pile answer: the guanxing bottom.
+    QList<int> bottomCardIds;
     QStringList selectedTargetNames;
     QString userString;
+    bool hasCardSpec;
+    AICardSpec cardSpec;
     bool hasSkillActionContext;
     AiSkillActionContext skillActionContext;
 
-    CardActionSpec() : hasSkillActionContext(false) {}
+    CardActionSpec() : useCardId(-1), hasCardSpec(false), hasSkillActionContext(false) {}
 };
 
 struct AIResult {
-    enum ActionKind { Pass, UseCard };
+    // Answer carries the value-typed reply of every non-card decision kind.
+    enum ActionKind { Pass, UseCard, Answer };
 
     ActionKind kind;
     bool handled;
