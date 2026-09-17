@@ -36,6 +36,24 @@ npm install
 npm run dev
 ```
 
+WebSocket signup requires the server to seal a `declared-v2` rules identity:
+the content scan must match `lua/config.lua` `extension_names` exactly. A
+development worktree fails the seal when it carries undeclared Lua (for
+example `extensions/temp/*.lua`) or `etc/`, and the server then rejects every
+Web client with `rules_content_unsupported`. Native TCP clients are not
+affected (W2 legacy path). Run the server from a clean declared closure
+instead — the scan exempts `lua/ai/` as server-only content:
+
+```powershell
+python tools\package-web-solo.py --prepare-content --asset-root . `
+  --destination builds\web-declared-content
+Copy-Item config.ini builds\web-declared-content\
+Copy-Item -Recurse lua\ai builds\web-declared-content\lua\
+Push-Location builds\web-declared-content
+<repo>\debug\qsanguosha_server.exe --port 9527 --websocket-port 9528
+Pop-Location
+```
+
 Open `http://127.0.0.1:5173/` to join `current`, or
 `http://<host>:5173/room/<roomId>` to sit in that waiting room. The page
 connects to `ws://<same-host>:9528` unless `?ws=` or the connection form

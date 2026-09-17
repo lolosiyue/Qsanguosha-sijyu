@@ -2647,6 +2647,9 @@ const CardLimitSkill*Engine::getCardLimitSkill(const QString &skill_name) const
 
 const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, const Card*card, const QList<const Player*> &others) const
 {
+    // A null card can never be prohibited; ProhibitSkill implementations deref
+    // it unconditionally (cf. MobileYongFangzong AV from a stale tag toCard()).
+    if (!card) return nullptr;
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (from && from->inherits("ClientPlayer")) return nullptr;

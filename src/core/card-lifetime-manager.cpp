@@ -1186,7 +1186,14 @@ bool CardLifetimeManager::retainVariantPayload(const void *owner, const QVariant
             return true;
         }
         const char *typeName = QMetaType::typeName(item.userType());
-        if (typeName && (qstrcmp(typeName, "Card*") == 0 || qstrcmp(typeName, "const Card*") == 0)) {
+        // const Card* and Card* are distinct metatypes; value<Card*>() on a
+        // "const Card*" variant cannot drop constness and yields nullptr, which
+        // previously caused silent tag rejection (e.g. "liuli-card").
+        if (typeName && qstrcmp(typeName, "const Card*") == 0) {
+            cards.push_back(item.value<const Card *>());
+            return true;
+        }
+        if (typeName && qstrcmp(typeName, "Card*") == 0) {
             cards.push_back(item.value<Card *>());
             return true;
         }
@@ -1219,6 +1226,7 @@ bool CardLifetimeManager::retainVariantPayload(const void *owner, const QVariant
         const auto token = observeCard(const_cast<Card *>(card));
         if (!token || !retainNativeLease(token)) {
             for (const auto &held : tokens) releaseNativeLease(held);
+            if (error) *error = "card not observable or lease failed";
             return false;
         }
         tokens.push_back(token);

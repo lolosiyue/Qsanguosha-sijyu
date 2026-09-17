@@ -350,6 +350,12 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 requires an existing host destination directory; passing a nonexistent filename
 as the destination causes VirtualBox `VERR_FILE_NOT_FOUND`.
 
+A single recursive `copyto` of the full portable payload (≈2.7 GB, ~35k files)
+exceeds the per-session guest-control object limit and fails mid-copy with
+`VERR_GSTCTL_MAX_CID_OBJECTS_REACHED`. Move large payloads through the ISO
+route instead: `new-xp-iso.ps1`, `storageattach` to the VM's DVD, then run
+`INSTALL.CMD /NoLaunch` in the guest for the clean `xcopy` install.
+
 ### Visible XP desktop
 
 The current VM's visible Explorer desktop logs in as `Administrator`, while
