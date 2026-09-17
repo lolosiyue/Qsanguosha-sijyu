@@ -9,6 +9,15 @@ SmartAIView:hasSkills，詳見 [契約規格 §15.2.2](lua-ai-spec.md#1522-共�
 
 ## 架構順序的目前狀態（2026-09-17）
 
+外部 AI 腳本的同步狀態：`lua/ai/` 不在本倉庫版控內，對應
+[lolosiyue/extensions](https://github.com/lolosiyue/extensions) 的 `ai/`。第二至十六批的
+Lua 端改動（`smart-ai.lua`、`value-boundary.lua`、`isolated-bootstrap.lua`、
+`isolated-facades.lua`、`isolated/ask-for-use-card.lua`、`isolated/ask-for-choice.lua`、
+`isolated/decision-core.lua`）已同步並提交為該倉庫 `main` 的 `e33a1f4`（尚未 push）。
+該倉庫 `core.autocrlf=true`，所以工作區換行會轉成 CRLF，內容與本工作樹逐字相同；
+`ai/data/` 是執行期資料，不納入同步。
+
+
 | 項 | 內容 | 狀態 |
 |---|---|---|
 | 1 | 共用入口型別契約 | 程式完成（第三批） |
