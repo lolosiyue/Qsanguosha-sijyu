@@ -806,7 +806,7 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
         request.kind, callbackName, request.choiceOptions.reason);
     bool isolatedAnswer = false;
     if (route == AiRouteIsolated) {
-        result = m_room.roomRuntime()->ai().decideShadow(request);
+        result = m_room.roomRuntime()->ai().decideIsolated(request);
         // An isolated answer counts only while it still belongs to this decision and
         // this board state. A stale one is dropped and the legacy AI answers instead;
         // the stamp is never rewritten to make an old answer acceptable.
@@ -815,17 +815,10 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
             && result.decisionId == request.decisionId
             && result.stateRevision == request.stateRevision
             && request.stateRevision == m_room.roomRuntime()->stateRevision();
-        if (!isolatedAnswer) {
-            m_room.roomRuntime()->ai().recordLegacyFallback(callbackName);
+        if (!isolatedAnswer)
             result = legacy(request);
-        }
     } else {
         result = legacy(request);
-        if (route == AiRouteShadow) {
-            const AIResult shadowResult = m_room.roomRuntime()->ai().decideShadow(request);
-            m_room.roomRuntime()->ai().recordShadowAudit(request, callbackName,
-                request.choiceOptions.reason, result, shadowResult);
-        }
     }
     if (!result.handled || !result.errorCode.isEmpty())
         return false;
@@ -1355,33 +1348,13 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
     const AiRoute route = m_room.roomRuntime()->ai().routes().routeFor(
         request.kind, callbackName, request.choiceOptions.reason);
     if (route == AiRouteIsolated) {
-        const AIResult result = m_room.roomRuntime()->ai().decideShadow(request);
+        const AIResult result = m_room.roomRuntime()->ai().decideIsolated(request);
         const Card *answered = responseCard(player, request, result);
         if (answered)
             return answered;
         // Unhandled, stale or unowned answers keep the legacy card, pointer and all.
-        m_room.roomRuntime()->ai().recordLegacyFallback(callbackName);
-        return legacy();
     }
-    const Card *official = legacy();
-    if (route == AiRouteShadow) {
-        AIResult officialResult;
-        officialResult.decisionId = request.decisionId;
-        officialResult.stateRevision = request.stateRevision;
-        officialResult.handled = true;
-        if (official) {
-            officialResult.kind = AIResult::Answer;
-            // Audit only: the identity is the effective id, virtual cards keep their string.
-            if (official->isVirtualCard())
-                officialResult.action.userString = official->toString();
-            else
-                officialResult.action.selectedCardIds << official->getEffectiveId();
-        }
-        const AIResult shadowResult = m_room.roomRuntime()->ai().decideShadow(request);
-        m_room.roomRuntime()->ai().recordShadowAudit(request, callbackName,
-            request.choiceOptions.reason, officialResult, shadowResult);
-    }
-    return official;
+    return legacy();
 }
 
 const Card *AiDecisionCoordinator::responseCard(ServerPlayer *player, const AIRequest &request,
@@ -1573,21 +1546,17 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
     }
 
     AIResult result;
+    bool liveLegacyResult = route == AiRouteLegacyAdapted;
     if (route == AiRouteIsolated) {
-        result = m_room.roomRuntime()->ai().decideShadow(request);
+        result = m_room.roomRuntime()->ai().decideIsolated(request);
         if (!result.handled || !result.errorCode.isEmpty()) {
-            m_room.roomRuntime()->ai().recordLegacyFallback(callbackName);
             result = player->getAI()->decide(request);
+            liveLegacyResult = true;
         }
     } else {
         result = player->getAI()->decide(request);
-        if (route == AiRouteShadow) {
-            const AIResult shadowResult = m_room.roomRuntime()->ai().decideShadow(request);
-            m_room.roomRuntime()->ai().recordShadowAudit(request, callbackName, skillName,
-                result, shadowResult);
-        }
     }
-    if (route == AiRouteLegacyAdapted) {
+    if (liveLegacyResult) {
         // Live Lua already ran on the current Room. getTurnUse / fillSkillCards
         // may bump stateRevision (marks, skill instance, card moves). Stamping the
         // pre-callback revision then fail-closes a filled turnUse as Pass, which

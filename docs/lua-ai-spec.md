@@ -701,17 +701,18 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   value-only request、viewer-scoped `AIWorldView`、decision-scoped `AiRng` 與 `AiData`。
 - `LegacyDirect` 僅供過渡；`LegacyAdapted` 將既有 `activate`／`askForUseCard` 結果複製成
   `AIResult`，再走通用 Room 驗證 gate。
-- 新 AI 使用 `Isolated`；第一階段 `Isolated Shadow` 以同一 request 與獨立 deterministic
-  `AiRng` 計算，只把 official/shadow 差異寫入 bounded audit，不影響正式結果。遷移期間
-  同一 Room 可按 callback 混用 `LegacyAdapted` 與 `Isolated`，共享 C++ `AiDataStore`。
+- 決策預設走 `Isolated`：isolated handler 未覆蓋、拒答或出錯時一律回退該玩家的
+  legacy AI（2026-09-18 移除 Shadow 雙跑比對階段）。遷移期間同一 Room 可按 callback
+  混用 `LegacyAdapted`／`LegacyDirect` 與 `Isolated`，共享 C++ `AiDataStore`。
 - `AiData` 持久化由 C++ `AiDataStore` 管理固定路徑、JSON/大小驗證、process lock 與
   原子寫入；Isolated VM 不取得 raw `io`、`os`、`coroutine` 或 native `sgs` binding，
   只可呼叫 `ai_data.read()`／`ai_data.write(json)`。C++ 會重建只含 primitive enum 的安全
   `sgs` table；`Player::Phase`、`Card::Suit` 與 `Card::HandlingMethod` 常數由各自 `staticMetaObject` 的 `QMetaEnum`
   反射注入，不另維護手寫 key/value 清單。
-- `AiLegacyDirectCallbacks`、`AiLegacyAdaptedCallbacks`、`AiIsolatedCallbacks`、
-  `AiShadowCallbacks` 可用 `activate`、`askForUseCard` 或 `askForUseCard:skill_name`
-  設定 callback 級路由；Room 初始化後路由表凍結。
+- `AiLegacyDirectCallbacks`、`AiLegacyAdaptedCallbacks`、`AiIsolatedCallbacks`
+  可用 `activate`、`askForUseCard` 或 `askForUseCard:skill_name` 設定 callback 級路由；
+  Room 初始化後路由表凍結。未設定的 callback 預設 `Isolated`，由 isolated 端拒答回退
+  legacy。
 - `isolated-bootstrap.lua` 只管理 generic handler registry、dispatch 與統一的結果轉換（§15.2.3）；C++ 在 sandbox 安裝後、
   configured scripts 之前 mandatory 載入 `isolated-facades.lua`。後者是整個 Isolated Runtime
   共用的 value facade 層，不屬於 `AiIsolatedScripts` allowlist，也不依賴任何 decision-specific
@@ -723,8 +724,8 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   instruction budget 保護，超限時只停用該 Room 的 Isolated VM，不阻塞 Room 建立。
 - `AiIsolatedScripts` 只接受 `lua/ai/isolated/` 下的單一 `.lua` 檔名；腳本在 mandatory
   runtime 層就緒後由 C++ loader 載入。
-- `askForUseCard` 預設進入 Shadow，`activate` 在自己的 Shadow 階段開始前維持
-  `LegacyAdapted`。`ask-for-use-card.lua` 只提供 use-card pattern／skill registry 與
+- 所有 decision kind 預設 `Isolated` 路由，isolated 端回 unhandled 時回退 legacy。
+  `ask-for-use-card.lua` 只提供 use-card pattern／skill registry 與
   decision-specific dispatch；pattern handler 使用
   `ai_skill_use[pattern] = function(self, prompt, request)` 註冊，legacy 形狀的
   callback 另由 `ai_skill_use_legacy` 註冊（§15.2.3）。`PlayerView`
@@ -738,11 +739,10 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   `AIWorldView` 完整重現的確定分支：自身 phase 不晚於 `Play` 且 `lianying` mark 為 1；
   handler 透過 `self.player` 與 C++ 注入的 `sgs.Player_Play` 判斷，不含 phase magic number；
   需要 move/effect userdata 或友方排序的其餘分支維持 `NotCovered`。
-- Shadow audit 以 `NotCovered`、`Match`、`Mismatch`、`Error` 四態分類並維持固定大小的
-  累積計數；pattern 與 result payload 只保留 capped value/hash。只有 `Match`／`Mismatch`
-  代表可用於穩定度比較的已覆蓋 decision。
-- `AIResult` boundary 限制單字串 64 KiB、選牌 2048 張、目標 64 名；Shadow audit 僅保留
-  capped value/hash 摘要與有限筆數，避免 payload 從 Lua allocator 放大到 C++ heap。
+- 覆蓋狀態以 `ai_coverage` 申報觀察：isolated 端拒答、結果過期或出錯時回退 legacy，
+  不另留計數器。
+- `AIResult` boundary 限制單字串 64 KiB、選牌 2048 張、目標 64 名，避免 payload 從 Lua
+  allocator 放大到 C++ heap。
 - AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI fallback；
   memory/instruction 錯誤在 callback 返回後才重建 VM。
 
@@ -964,10 +964,10 @@ adapter，兩張表也不互為 alias。
 | `{kind="pass"}` | 明示拒答 |
 | 其他（含 `kind="use_card"`） | 例外；出牌動作不是值型答案 |
 
-路由沿用同一張表：新 kind 沒有預設路由，`routeFor` 回 `LegacyDirect`，所以不設定時行為
-與改動前一致。`AiIsolatedCallbacks` 等四份設定的 callback 名稱現在由一份白名單決定，
-含 `askForSkillInvoke`、`askForChoice`、`askForSuit`、`askForKingdom`、`askForGeneral`。
-Shadow 走同一個 audit。隔離結果過期（decision id 或 revision 不符）直接不採用；legacy 答案
+路由沿用同一張表：未設定的 kind／callback 由 `routeFor` 回 `Isolated`（2026-09-18 起），
+isolated 端拒答即回退 legacy。`AiIsolatedCallbacks` 等三份設定的 callback 名稱由一份白名單
+決定，含 `askForSkillInvoke`、`askForChoice`、`askForSuit`、`askForKingdom`、
+`askForGeneral`。隔離結果過期（decision id 或 revision 不符）直接不採用；legacy 答案
 與 `LegacyAdapted` 出牌一樣，按 callback 執行後的 revision 蓋章，這是既有相容路徑。
 
 隔離 handler 出錯或拒答時回退舊 AI 的答案，呼叫點原本的預設值與驗證都不動——錯誤不會
@@ -1010,8 +1010,8 @@ C++ 端再做一次授權檢查：答案裡的牌必須在 `card_ids` 內、玩�
 是自己的手牌 ID，`options.players` 放該詢問的關係人（無懈的來源與目標、拼點對手、瀕死者）。
 
 這族的舊答案是 `const Card *`，可能是轉化出來的虛擬牌。虛擬牌轉成字串再 parse 回來會換一
-個物件，影響回應的驗證與生命週期，因此 **legacy 路由的指標原樣回傳**，不繞經值模型；
-Shadow 只為了比對而把官方答案投影成 ID 或字串記進 audit。隔離路由只接受
+個物件，影響回應的驗證與生命週期，因此 **legacy 路由的指標原樣回傳**，不繞經值模型。
+隔離路由只接受
 `{cards = {id}}`，且該 ID 必須是這名玩家手上或裝備區的實體牌，否則整份答案作廢並回退舊
 AI。轉化牌（view-as）要等值型出牌與造卡批次，本批不接受。
 
@@ -1293,9 +1293,13 @@ VM，這一層不變。
 與 `card_id` 三者只能擇一，權威端收到 `card_id` 時先驗持有，再從 Engine 取那張牌，AI 不經手
 任何 Card 物件。
 
-`decision-core.lua` 另註冊了通用 `activate` handler：沒有候選投影時回 unhandled（交回舊 AI），
-有候選但沒有可行方案時回 pass。它排在預設腳本裡，但 `activate` 的預設路由仍是
-`LegacyAdapted`，所以要等路由切到 Shadow／Isolated 才會實際參與。
+`decision-core.lua` 另註冊了通用 `activate` handler，並提供逐技能 registry
+`ai_skill_activate[skill_name] = function(self, request)`：一般 activate 依
+`request.skill_actions` 順序逐一問有註冊的技能，先回非 nil 者勝；帶 `skill_action` 的
+逐實例探測只派給 `ai_skill_activate[probe.activation_skill]`，沒註冊或拒答就回
+unhandled 交給 legacy 的實例感知路徑。都沒人接才走 `planTurnUse()`：沒有候選投影時回
+unhandled（交回舊 AI），有候選但沒有可行方案時回 pass。`activate` 預設路由為
+`Isolated`（2026-09-18 起），此 handler 直接參與決策。
 
 2026-09-17：程式與原生案例完成（`decisionCorePlansATurnFromCandidates`），尚未建置或執行。
 
@@ -1318,49 +1322,37 @@ VM，這一層不變。
 沒有申報就是沒覆蓋——切換路由與驗收要看這份報告，而不是「跑跑看有沒有錯」。
 
 回退邊界同樣明確：隔離 handler 回 unhandled、結果過期或執行出錯時，一律由舊 AI 作答，
-audit 分別記成 `NotCovered` 與 `Error`，不會靜默吞掉。
+不會靜默吞掉。
 
 2026-09-17：程式與原生案例完成（`coverageReportListsWhatIsWired`），尚未建置或執行。
 
 #### 15.2.17 切換與驗收程序
 
-切換以 callback 為單位，一律 `LegacyDirect/LegacyAdapted → Shadow → Isolated`，靠資料決定而
-不是感覺：
+2026-09-18：Shadow 雙跑比對機制移除。路由改為 isolated-first——所有未設定的
+kind／callback 預設 `Isolated`，isolated 端拒答、結果過期或出錯時回退 legacy。遷移靠
+`ai_coverage` 申報清單觀察：某 key 有 isolated handler 就由新版作答，否則自然落在
+legacy，不再需要事前路由設定。要釘回舊版仍可用
+`AiLegacyDirectCallbacks`／`AiLegacyAdaptedCallbacks`。
 
-| 統計 | 來源 | 判讀 |
-|---|---|---|
-| 覆蓋 | `ai_coverage.covers(kind, key)` | 沒申報就是沒接，Shadow 也不必開 |
-| `NotCovered` | shadow audit | 隔離側沒有 handler；不是差異 |
-| `Match`／`Mismatch` | shadow audit | 只有這兩者能拿來比穩定度 |
-| `Error` | shadow audit | 隔離 handler 出錯或回傳非法結果 |
-| `legacyFallbacks` | `AiShadowAuditSummary::legacyFallbacks` | 走 Isolated 路由但最後由舊 AI 作答的次數（未覆蓋、過期、出錯都算） |
+建議的驗收門檻（需另獲建置與執行授權）：
 
-統計同時有全域與逐 callback 兩份（`shadowAuditSummary()` 與
-`shadowAuditSummary(callbackName)`／`auditedCallbacks()`），所以「哪個入口還在回退」是可以
-列出來的清單，不是模糊印象。
-
-建議的每個入口驗收門檻（需另獲建置與執行授權）：
-
-1. 開 Shadow 跑完整對局，`Error` 必須為 0，`Mismatch` 要能逐筆解釋（不同但同樣合法，或確定
-   是舊 AI 的既有缺陷）。
-2. `NotCovered` 比例與 `ai_coverage` 的申報一致：沒申報的 key 才允許 NotCovered。
-3. 切 Isolated 後 `legacyFallbacks` 只應來自仍未覆蓋的 key；清單要能對得上第 2 點。
-4. 隔離性：`tests/room-runtime-isolation-test.cpp` 全綠（含 VM 分離、沙箱封鎖、可見性、
+1. 完整對局中已覆蓋的 key 不應持續回退——以 `ai_coverage` 申報對照實際行為判斷。
+2. 隔離性：`tests/room-runtime-isolation-test.cpp` 全綠（含 VM 分離、沙箱封鎖、可見性、
    代理契約、值型詢問、候選授權、決策核心與覆蓋率報告）。
-5. 重建：指令／記憶體上限觸發後 VM 重建，`ai_memory` 歸零而決策仍能繼續（既有案例
+3. 重建：指令／記憶體上限觸發後 VM 重建，`ai_memory` 歸零而決策仍能繼續（既有案例
    `aiInstructionLimitRebuildsRuntime`）。
-6. 效能：以 `QSAN_AI_PROBE=1` 比較切換前後單次決策耗時，候選與距離投影不應讓熱路徑退化。
+4. 效能：以 `QSAN_AI_PROBE=1` 比較切換前後單次決策耗時；isolated-first 讓每個決策都付一次
+   快照投影與 Lua 呼叫，未覆蓋 key 的固定成本要可接受。
 
-這一節描述的是程序與門檻。實際跑完整對局、量效能與逐筆解釋差異需要建置與執行授權，
-在此之前不宣稱任何入口已完成切換。
-
-2026-09-17：統計與覆蓋率機制完成，驗收本身尚未執行。
+這一節描述的是程序與門檻。實際跑完整對局與量效能需要建置與執行授權，在此之前不宣稱
+任何入口已完成驗收。
 
 ### 15.3 RoomThread 邊界
 
 `RoomThread` 同步執行 AI callback 與 Gameplay callback。`activate`／`askForUseCard`
 在同一 gate 取得 request、執行 callback、驗證 result，再交給既有 `Room::useCard` 或
-response resolver；Shadow 結果只能產生 audit value，不得回寫 Room 或等待另一條執行緒。
+response resolver；isolated 結果未通過驗證時直接回退 legacy，不得回寫 Room 或等待另一條
+執行緒。
 
 ### 15.4 pcall 保護模式
 

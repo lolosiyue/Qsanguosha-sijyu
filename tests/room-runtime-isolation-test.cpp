@@ -418,18 +418,19 @@ static bool aiSandboxBlocksHostLibraries(Room &room)
 static bool aiRoutesSelectExactDefaultAndFreeze()
 {
     AiRouteRegistry routes;
-    if (routes.routeFor(AIRequest::Activate) != AiRouteLegacyAdapted
-        || routes.routeFor(AIRequest::UseCard) != AiRouteShadow
-        || !routes.setCallbackRoute(QStringLiteral("ask_for_card"), QString(), AiRouteIsolated)
-        || !routes.setCallbackRoute(QStringLiteral("ask_for_card"), QStringLiteral("special"), AiRouteShadow)
-        || routes.routeFor(AIRequest::UseCard, QStringLiteral("ask_for_card"), QStringLiteral("special")) != AiRouteShadow
-        || routes.routeFor(AIRequest::UseCard, QStringLiteral("ask_for_card"), QStringLiteral("ordinary")) != AiRouteIsolated) {
+    // 2026-09-18: Shadow 機制移除後，未設定的 kind／callback 一律預設 Isolated。
+    if (routes.routeFor(AIRequest::Activate) != AiRouteIsolated
+        || routes.routeFor(AIRequest::UseCard) != AiRouteIsolated
+        || !routes.setCallbackRoute(QStringLiteral("ask_for_card"), QString(), AiRouteLegacyDirect)
+        || !routes.setCallbackRoute(QStringLiteral("ask_for_card"), QStringLiteral("special"), AiRouteLegacyAdapted)
+        || routes.routeFor(AIRequest::UseCard, QStringLiteral("ask_for_card"), QStringLiteral("special")) != AiRouteLegacyAdapted
+        || routes.routeFor(AIRequest::UseCard, QStringLiteral("ask_for_card"), QStringLiteral("ordinary")) != AiRouteLegacyDirect) {
         return false;
     }
     routes.freeze();
-    return !routes.setDecisionRoute(AIRequest::UseCard, AiRouteShadow)
-        && !routes.setCallbackRoute(QStringLiteral("ask_for_card"), QStringLiteral("late"), AiRouteShadow)
-        && routes.routeFor(AIRequest::UseCard, QStringLiteral("ask_for_card"), QStringLiteral("special")) == AiRouteShadow;
+    return !routes.setDecisionRoute(AIRequest::UseCard, AiRouteLegacyAdapted)
+        && !routes.setCallbackRoute(QStringLiteral("ask_for_card"), QStringLiteral("late"), AiRouteLegacyAdapted)
+        && routes.routeFor(AIRequest::UseCard, QStringLiteral("ask_for_card"), QStringLiteral("special")) == AiRouteLegacyAdapted;
 }
 
 static bool isolatedInitializationIsBudgeted()
@@ -522,9 +523,9 @@ static bool sharedFacadesAreAvailableToAllDecisions()
     request.worldView.self.skills << skill;
 
     request.kind = AIRequest::Activate;
-    const AIResult activate = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult activate = room.roomRuntime()->ai().decideIsolated(request);
     request.kind = AIRequest::UseCard;
-    const AIResult useCard = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult useCard = room.roomRuntime()->ai().decideIsolated(request);
     if (!activate.handled || activate.kind != AIResult::Pass
         || !activate.errorCode.isEmpty() || !useCard.handled
         || useCard.kind != AIResult::Pass || !useCard.errorCode.isEmpty()) {
@@ -533,14 +534,14 @@ static bool sharedFacadesAreAvailableToAllDecisions()
 
     request.worldView.self.objectName = QStringLiteral("wrong-viewer");
     request.kind = AIRequest::Activate;
-    const AIResult invalidActivate = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult invalidActivate = room.roomRuntime()->ai().decideIsolated(request);
     request.kind = AIRequest::UseCard;
-    const AIResult invalidUseCard = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult invalidUseCard = room.roomRuntime()->ai().decideIsolated(request);
     return !invalidActivate.handled && invalidActivate.errorCode.isEmpty()
         && !invalidUseCard.handled && invalidUseCard.errorCode.isEmpty();
 }
 
-static bool productionIsolatedScriptAndShadowAudit(Room &room)
+static bool productionIsolatedScriptAndFallback(Room &room)
 {
     AIRequest probe;
     probe.kind = AIRequest::UseCard;
@@ -612,7 +613,7 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
     invalidSkill.correctState.insert(QStringLiteral("public"), 3);
     probe.worldView.self.skills << invalidSkill;
     probe.pattern = QStringLiteral("not-migrated");
-    const AIResult loadedHandler = room.roomRuntime()->ai().decideShadow(probe);
+    const AIResult loadedHandler = room.roomRuntime()->ai().decideIsolated(probe);
     if (loadedHandler.handled || !loadedHandler.errorCode.isEmpty())
         return false;
 
@@ -698,7 +699,7 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
     }
 
     probe.pattern = QStringLiteral("facade-probe");
-    const AIResult facadeResult = room.roomRuntime()->ai().decideShadow(probe);
+    const AIResult facadeResult = room.roomRuntime()->ai().decideIsolated(probe);
     if (!facadeResult.handled || facadeResult.kind != AIResult::Pass
         || !facadeResult.errorCode.isEmpty()) {
         qCritical() << "Value facade probe failed"
@@ -714,7 +715,7 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
         QStringLiteral("shadow-robot"),
         SkillInstanceKey(QStringLiteral("shadow-skill"), 1));
     skillProbe.skillActionContext.sourceRef = skillProbe.skillActionContext.activationRef;
-    const AIResult skillResult = room.roomRuntime()->ai().decideShadow(skillProbe);
+    const AIResult skillResult = room.roomRuntime()->ai().decideIsolated(skillProbe);
     if (!skillResult.handled || skillResult.kind != AIResult::Pass
         || !skillResult.errorCode.isEmpty())
         return false;
@@ -732,23 +733,21 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
         return false;
     }
 
-    const int auditCount = room.roomRuntime()->ai().shadowAudits().size();
-    const AiShadowAuditSummary summary = room.roomRuntime()->ai().shadowAuditSummary();
     notCovered.pattern = QStringLiteral("not-migrated");
     CardUseStruct notCoveredUse;
     const bool notCoveredDecided = RoomTestAccess::decide(
         room, player, notCovered, notCoveredUse);
 
-    AIRequest matching = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
-    matching.pattern = QStringLiteral("shadow-match");
-    CardUseStruct matchingUse;
-    const bool matchingDecided = RoomTestAccess::decide(room, player, matching, matchingUse);
+    AIRequest answered = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
+    answered.pattern = QStringLiteral("shadow-match");
+    CardUseStruct answeredUse;
+    const bool answeredDecided = RoomTestAccess::decide(room, player, answered, answeredUse);
 
-    AIRequest mismatching = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
-    mismatching.pattern = QStringLiteral("shadow-use");
-    CardUseStruct mismatchingUse;
-    const bool mismatchingDecided = RoomTestAccess::decide(
-        room, player, mismatching, mismatchingUse);
+    AIRequest rejected = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
+    rejected.pattern = QStringLiteral("shadow-use");
+    CardUseStruct rejectedUse;
+    const bool rejectedDecided = RoomTestAccess::decide(
+        room, player, rejected, rejectedUse);
 
     AIRequest failing = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
     failing.pattern = QStringLiteral("shadow-error");
@@ -756,27 +755,10 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
     const bool failingDecided = RoomTestAccess::decide(room, player, failing, failingUse);
     player->setAI(nullptr);
 
-    const QList<AiShadowAuditEntry> &audits = room.roomRuntime()->ai().shadowAudits();
-    const AiShadowAuditSummary &updated = room.roomRuntime()->ai().shadowAuditSummary();
-    if (!notCoveredDecided || !matchingDecided || !mismatchingDecided || !failingDecided
-        || notCoveredUse.card || matchingUse.card || mismatchingUse.card || failingUse.card
-        || audits.size() != auditCount + 4
-        || updated.notCovered != summary.notCovered + 1
-        || updated.matches != summary.matches + 1
-        || updated.mismatches != summary.mismatches + 1
-        || updated.errors != summary.errors + 1)
-        return false;
-    const AiShadowAuditEntry &notCoveredAudit = audits.at(auditCount);
-    const AiShadowAuditEntry &matchingAudit = audits.at(auditCount + 1);
-    const AiShadowAuditEntry &mismatchingAudit = audits.at(auditCount + 2);
-    const AiShadowAuditEntry &errorAudit = audits.at(auditCount + 3);
-    return notCoveredAudit.decisionId == notCovered.decisionId
-        && notCoveredAudit.callbackName == QStringLiteral("askForUseCard")
-        && notCoveredAudit.pattern == QStringLiteral("not-migrated")
-        && notCoveredAudit.comparison == AiShadowNotCovered
-        && matchingAudit.comparison == AiShadowMatch
-        && mismatchingAudit.comparison == AiShadowMismatch
-        && errorAudit.comparison == AiShadowError;
+    // 2026-09-18：UseCard 預設走 isolated——未覆蓋與錯誤的 request 回退 legacy（TrustAI
+    // 一律 "."，視為 pass）；shadow-use 回傳引擎不認識的牌字串，在 applyResult 驗證關被拒答。
+    return notCoveredDecided && answeredDecided && !rejectedDecided && failingDecided
+        && !notCoveredUse.card && !answeredUse.card && !rejectedUse.card && !failingUse.card;
 }
 
 static AIRequest adapterRequest(const QString &pattern, const QString &prompt,
@@ -847,10 +829,10 @@ static bool legacyCallbackAbiAndResultConversion(Room &room)
         }
     }
 
-    const AIResult legacyAbi = room.roomRuntime()->ai().decideShadow(
+    const AIResult legacyAbi = room.roomRuntime()->ai().decideIsolated(
         adapterRequest(QStringLiteral("legacy-abi"), QStringLiteral("legacy-prompt:extra"),
                        Card::MethodResponse));
-    const AIResult newAbi = room.roomRuntime()->ai().decideShadow(
+    const AIResult newAbi = room.roomRuntime()->ai().decideIsolated(
         adapterRequest(QStringLiteral("new-abi"), QStringLiteral("new-prompt"),
                        Card::MethodUse));
     if (!legacyAbi.handled || legacyAbi.kind != AIResult::UseCard
@@ -863,10 +845,10 @@ static bool legacyCallbackAbiAndResultConversion(Room &room)
     }
 
     // A compulsory request refuses "." and keeps searching; an optional one accepts it.
-    const AIResult compulsory = room.roomRuntime()->ai().decideShadow(
+    const AIResult compulsory = room.roomRuntime()->ai().decideIsolated(
         adapterRequest(QStringLiteral("@@compulsory!"),
                        QStringLiteral("fallback-prompt:target"), Card::MethodUse));
-    const AIResult declined = room.roomRuntime()->ai().decideShadow(
+    const AIResult declined = room.roomRuntime()->ai().decideIsolated(
         adapterRequest(QStringLiteral("optional-decline"),
                        QStringLiteral("fallback-prompt:target"), Card::MethodUse));
     if (!compulsory.handled || compulsory.kind != AIResult::UseCard
@@ -880,10 +862,10 @@ static bool legacyCallbackAbiAndResultConversion(Room &room)
 
     // An unregistered request stays unhandled and a broken answer stays an error;
     // neither may arrive as a legal pass.
-    const AIResult unhandled = room.roomRuntime()->ai().decideShadow(
+    const AIResult unhandled = room.roomRuntime()->ai().decideIsolated(
         adapterRequest(QStringLiteral("not-registered"), QStringLiteral("no-handler"),
                        Card::MethodUse));
-    const AIResult invalid = room.roomRuntime()->ai().decideShadow(
+    const AIResult invalid = room.roomRuntime()->ai().decideIsolated(
         adapterRequest(QStringLiteral("invalid-answer"), QStringLiteral("no-handler"),
                        Card::MethodUse));
     if (unhandled.handled || !unhandled.errorCode.isEmpty()
@@ -905,7 +887,7 @@ static bool legacyCallbackAbiAndResultConversion(Room &room)
     skillRequest.skillActionContext.sourceRef = skillRequest.skillActionContext.activationRef;
     skillRequest.skillActionContext.activationQuotaAvailable = true;
     skillRequest.skillActionContext.sourceQuotaAvailable = true;
-    const AIResult skillResult = room.roomRuntime()->ai().decideShadow(skillRequest);
+    const AIResult skillResult = room.roomRuntime()->ai().decideIsolated(skillRequest);
     if (!skillResult.handled || skillResult.kind != AIResult::UseCard
         || !skillResult.action.legacyCardString.isEmpty()
         || skillResult.action.selectedCardIds != QList<int>({7})
@@ -1180,7 +1162,7 @@ static bool decisionCorePlansATurnFromCandidates()
     peachCandidate.available = false;
     request.cardCandidates << slashCandidate << peachCandidate;
 
-    const AIResult planned = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult planned = room.roomRuntime()->ai().decideIsolated(request);
     if (!planned.handled || planned.kind != AIResult::UseCard
         || planned.action.useCardId != 7
         || planned.action.selectedTargetNames != QStringList({QStringLiteral("core-enemy")})
@@ -1199,10 +1181,10 @@ static bool decisionCorePlansATurnFromCandidates()
     unusable.available = true;
     unusable.limited = true;
     blocked.cardCandidates << unusable;
-    const AIResult passed = room.roomRuntime()->ai().decideShadow(blocked);
+    const AIResult passed = room.roomRuntime()->ai().decideIsolated(blocked);
     AIRequest empty = request;
     empty.cardCandidates.clear();
-    const AIResult nothingLegal = room.roomRuntime()->ai().decideShadow(empty);
+    const AIResult nothingLegal = room.roomRuntime()->ai().decideIsolated(empty);
     return passed.handled && passed.kind == AIResult::Pass && passed.errorCode.isEmpty()
         && nothingLegal.handled && nothingLegal.kind == AIResult::Pass;
 }
@@ -1268,22 +1250,16 @@ static bool officialLianyingHandlerMatchesIsolated()
             return false;
         official = officialLuaAI->decide(request);
     }
-    const AIResult shadow = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult isolated = room.roomRuntime()->ai().decideIsolated(request);
     if (!official.handled || official.kind != AIResult::UseCard
         || official.action.legacyCardString
             != QStringLiteral("@LianyingCard=.->lianying-owner")
-        || !shadow.handled || shadow.kind != AIResult::UseCard
-        || shadow.action.legacyCardString != official.action.legacyCardString)
-        return false;
-
-    room.roomRuntime()->ai().recordShadowAudit(
-        request, QStringLiteral("askForUseCard"), QString(), official, shadow);
-    const AiShadowComparison comparison = room.roomRuntime()->ai().shadowAudits().last().comparison;
-    if (comparison != AiShadowMatch)
+        || !isolated.handled || isolated.kind != AIResult::UseCard
+        || isolated.action.legacyCardString != official.action.legacyCardString)
         return false;
 
     request.worldView.self.publicMarks.insert(QStringLiteral("lianying"), 2);
-    const AIResult unsupported = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult unsupported = room.roomRuntime()->ai().decideIsolated(request);
     return !unsupported.handled && unsupported.errorCode.isEmpty();
 }
 
@@ -1543,32 +1519,6 @@ static bool aiWorldViewIsScopedAndRevisioned()
         && RoomTestAccess::applyResult(*room, viewer, fresh, result, use);
 }
 
-static bool shadowAuditPayloadIsBounded(Room &room)
-{
-    AIRequest request;
-    request.decisionId = 9001;
-    request.pattern = QString(200000, QLatin1Char('p'));
-    AIResult official;
-    official.handled = true;
-    official.action.legacyCardString = QString(200000, QLatin1Char('x'));
-    official.action.userString = QString(200000, QLatin1Char('y'));
-    for (int index = 0; index < 5000; ++index)
-        official.action.selectedCardIds << index;
-    for (int index = 0; index < 500; ++index)
-        official.action.selectedTargetNames << QString(1000, QLatin1Char('t'));
-    AIResult shadow;
-    room.roomRuntime()->ai().recordShadowAudit(request, QStringLiteral("askForUseCard"),
-                                               QString(), official, shadow);
-    const AiShadowAuditEntry &entry = room.roomRuntime()->ai().shadowAudits().last();
-    return entry.pattern.size() < 128
-        && entry.comparison == AiShadowNotCovered
-        && entry.officialResult.action.legacyCardString.size() < 128
-        && entry.officialResult.action.userString.size() < 128
-        && entry.officialResult.action.selectedCardIds.size() == 32
-        && entry.officialResult.action.selectedTargetNames.size() == 32
-        && entry.officialResult.action.selectedTargetNames.first().size() < 128;
-}
-
 static bool ownedAiProxyUsesValueLifetime()
 {
     QPointer<Card> pointer = new ActiveSkillCard;
@@ -1587,7 +1537,7 @@ static bool ownedAiProxyUsesValueLifetime()
     return pointer.isNull();
 }
 
-static bool loadAiShadowHandler(Room &room)
+static bool loadIsolatedTestHandler(Room &room)
 {
     LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
     lua_State *L = room.roomRuntime()->ai().lua().state();
@@ -1607,9 +1557,9 @@ static bool loadAiShadowHandler(Room &room)
         "targets = {'target_a', 'target_b'}, user_string = 'metadata' } end)") == 0;
 }
 
-static bool aiShadowParsesPassAndUseCard(Room &room)
+static bool aiIsolatedParsesPassAndUseCard(Room &room)
 {
-    if (!loadAiShadowHandler(room))
+    if (!loadIsolatedTestHandler(room))
         return false;
 
     AIRequest request;
@@ -1617,7 +1567,7 @@ static bool aiShadowParsesPassAndUseCard(Room &room)
     request.viewerObjectName = QStringLiteral("ai_player");
     request.worldView.self.objectName = request.viewerObjectName;
     request.pattern = QStringLiteral("pass");
-    const AIResult pass = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult pass = room.roomRuntime()->ai().decideIsolated(request);
     if (!pass.handled || pass.kind != AIResult::Pass || !pass.errorCode.isEmpty())
         return false;
 
@@ -1631,12 +1581,12 @@ static bool aiShadowParsesPassAndUseCard(Room &room)
     otherPlayer.publicMarks.insert(QStringLiteral("ready"), 2);
     request.worldView.players << otherPlayer;
     request.pattern = QStringLiteral("world");
-    const AIResult world = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult world = room.roomRuntime()->ai().decideIsolated(request);
     if (!world.handled || world.kind != AIResult::Pass || !world.errorCode.isEmpty())
         return false;
 
     request.pattern = QStringLiteral("use");
-    const AIResult useCard = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult useCard = room.roomRuntime()->ai().decideIsolated(request);
     if (!useCard.handled || useCard.kind != AIResult::UseCard || !useCard.errorCode.isEmpty()
         || useCard.action.legacyCardString != QStringLiteral("@test=4")
         || useCard.action.selectedCardIds != QList<int>({4, 17})
@@ -1649,7 +1599,7 @@ static bool aiShadowParsesPassAndUseCard(Room &room)
     request.skillActionContext.activationRef = SkillInstanceRef(
         QStringLiteral("owner"), SkillInstanceKey(QStringLiteral("skill"), 1));
     request.skillActionContext.sourceRef = request.skillActionContext.activationRef;
-    const AIResult structured = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult structured = room.roomRuntime()->ai().decideIsolated(request);
     if (!structured.handled || structured.kind != AIResult::UseCard
         || !structured.errorCode.isEmpty() || !structured.action.hasSkillActionContext
         || structured.action.skillActionContext.activationRef
@@ -1657,11 +1607,11 @@ static bool aiShadowParsesPassAndUseCard(Room &room)
         return false;
 
     request.pattern = QStringLiteral("huge");
-    const AIResult invalidNumber = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult invalidNumber = room.roomRuntime()->ai().decideIsolated(request);
     if (invalidNumber.errorCode != QStringLiteral("AI_INVALID_RESULT"))
         return false;
     request.pattern = QStringLiteral("too_many");
-    const AIResult oversized = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult oversized = room.roomRuntime()->ai().decideIsolated(request);
     return oversized.errorCode == QStringLiteral("AI_INVALID_RESULT");
 }
 
@@ -1679,7 +1629,7 @@ static bool aiInstructionLimitRebuildsRuntime(Room &room)
     request.kind = AIRequest::Activate;
     request.viewerObjectName = QStringLiteral("ai_player");
     request.worldView.self.objectName = request.viewerObjectName;
-    const AIResult result = room.roomRuntime()->ai().decideShadow(request);
+    const AIResult result = room.roomRuntime()->ai().decideIsolated(request);
     return result.errorCode == QStringLiteral("AI_INSTRUCTION_LIMIT")
         && room.roomRuntime()->ai().lua().rawState()
         && room.roomRuntime()->ai().lua().generation() > generation;
@@ -1777,17 +1727,17 @@ int runRoomRuntimeIsolationTests()
         qCritical() << "The isolated coverage report did not match the wired handlers";
         return 27;
     }
-    if (!productionIsolatedScriptAndShadowAudit(*first)
-        || !shadowAuditPayloadIsBounded(*first) || !ownedAiProxyUsesValueLifetime()) {
-        qCritical() << "Production isolated loading, shadow audit, or proxy ownership failed";
+    if (!productionIsolatedScriptAndFallback(*first)
+        || !ownedAiProxyUsesValueLifetime()) {
+        qCritical() << "Production isolated loading or proxy ownership failed";
         return 15;
     }
     if (!legacyCallbackAbiAndResultConversion(*first)) {
         qCritical() << "Legacy callback ABI or result conversion contract failed";
         return 23;
     }
-    if (!aiShadowParsesPassAndUseCard(*second)) {
-        qCritical() << "AI shadow result parsing failed";
+    if (!aiIsolatedParsesPassAndUseCard(*second)) {
+        qCritical() << "AI isolated result parsing failed";
         return 13;
     }
     if (!aiInstructionLimitRebuildsRuntime(*first)) {
@@ -1826,7 +1776,7 @@ int runRoomRuntimeIsolationTests()
     lua_State *firstAiState = first->roomRuntime()->ai().lua().rawState();
     first.reset();
     if (LuaRuntime::fromState(firstState) != nullptr || LuaRuntime::fromState(firstAiState) != nullptr
-        || !invokeIncrement(*second, secondCallback, 41) || !aiShadowParsesPassAndUseCard(*second)) {
+        || !invokeIncrement(*second, secondCallback, 41) || !aiIsolatedParsesPassAndUseCard(*second)) {
         qCritical() << "Destroying one room invalidated another room runtime";
         return 10;
     }
