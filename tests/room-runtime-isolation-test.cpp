@@ -19,6 +19,7 @@
 #include <QEvent>
 #include <QElapsedTimer>
 #include <QMetaEnum>
+#include <QJsonObject>
 #include <QPointer>
 #include <QSemaphore>
 #include <QThread>
@@ -349,6 +350,26 @@ static bool aiStatesAreIsolated(Room &first, Room &second)
         && secondAiState != firstGameState;
 }
 
+// The sandbox sgs table is expected on top of the stack.
+static bool aiSandboxExposesMetaEnum(lua_State *L, const QMetaObject &metaObject,
+                                     const char *enumeratorName, const char *fieldPrefix)
+{
+    const int enumeratorIndex = metaObject.indexOfEnumerator(enumeratorName);
+    if (enumeratorIndex < 0)
+        return false;
+    const QMetaEnum enumerator = metaObject.enumerator(enumeratorIndex);
+    for (int index = 0; index < enumerator.keyCount(); ++index) {
+        const QByteArray fieldName = QByteArray(fieldPrefix) + enumerator.key(index);
+        lua_getfield(L, -1, fieldName.constData());
+        const bool matches = lua_type(L, -1) == LUA_TNUMBER
+            && lua_tointeger(L, -1) == enumerator.value(index);
+        lua_pop(L, 1);
+        if (!matches)
+            return false;
+    }
+    return true;
+}
+
 static bool aiSandboxBlocksHostLibraries(Room &room)
 {
     LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
@@ -369,22 +390,11 @@ static bool aiSandboxBlocksHostLibraries(Room &room)
         lua_pop(L, 1);
         return false;
     }
-    const int phaseIndex = Player::staticMetaObject.indexOfEnumerator("Phase");
-    if (phaseIndex < 0) {
+    if (!aiSandboxExposesMetaEnum(L, Player::staticMetaObject, "Phase", "Player_")
+        || !aiSandboxExposesMetaEnum(L, Card::staticMetaObject, "HandlingMethod", "Card_")
+        || !aiSandboxExposesMetaEnum(L, Player::staticMetaObject, "Place", "Player_")) {
         lua_pop(L, 1);
         return false;
-    }
-    const QMetaEnum phases = Player::staticMetaObject.enumerator(phaseIndex);
-    for (int index = 0; index < phases.keyCount(); ++index) {
-        const QByteArray fieldName = QByteArray("Player_") + phases.key(index);
-        lua_getfield(L, -1, fieldName.constData());
-        const bool matches = lua_type(L, -1) == LUA_TNUMBER
-            && lua_tointeger(L, -1) == phases.value(index);
-        lua_pop(L, 1);
-        if (!matches) {
-            lua_pop(L, 1);
-            return false;
-        }
     }
     lua_getfield(L, -1, "Sanguosha");
     const bool nativeSgsBlocked = lua_isnil(L, -1);
@@ -447,6 +457,20 @@ static bool sharedFacadesAreAvailableToAllDecisions()
         return false;
 
     {
+        LuaRuntime &runtime = room.roomRuntime()->ai().lua();
+        LuaRuntime::Binding luaBinding(runtime);
+        const int top = lua_gettop(runtime.state());
+        QString adapterError;
+        const bool loaded = runtime.loadScript(
+            QStringLiteral("tests/lua/isolated-adapter-contract.lua"), &adapterError);
+        lua_settop(runtime.state(), top);
+        if (!loaded) {
+            qCritical().noquote() << adapterError;
+            return false;
+        }
+    }
+
+    {
         LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
         lua_State *L = room.roomRuntime()->ai().lua().state();
         if (luaL_dostring(L,
@@ -457,6 +481,9 @@ static bool sharedFacadesAreAvailableToAllDecisions()
             "if getmetatable(self) ~= SmartAIView or getmetatable(player) ~= PlayerView "
             "or request ~= self.request or self.world ~= request.world_view "
             "or player:getHp() ~= 2 or #equips ~= 1 "
+            "or getmetatable(self.room) ~= RoomView or self.room:getCurrent() ~= player "
+            "or self.room:getPlayers()[1] ~= player or self.room:getAlivePlayers()[1] ~= player "
+            "or #player:getHandcards() ~= 1 or not player:getHandcards()[1]:isKindOf('Slash') "
             "or getmetatable(equips[1]) ~= CardView or not equips[1]:isKindOf('Slash') "
             "or #skills ~= 1 or getmetatable(skills[1]) ~= SkillView "
             "or skills[1]:getStateValue('count') ~= 2 then return nil end; "
@@ -474,6 +501,11 @@ static bool sharedFacadesAreAvailableToAllDecisions()
     request.viewerObjectName = QStringLiteral("shared-facade-owner");
     request.worldView.self.objectName = request.viewerObjectName;
     request.worldView.self.hp = 2;
+    request.worldView.self.alive = true;
+    request.worldView.self.dead = false;
+    request.worldView.currentPlayer = request.viewerObjectName;
+    request.worldView.playerOrder << request.viewerObjectName;
+    request.worldView.alivePlayerOrder << request.viewerObjectName;
 
     AICardView equip;
     equip.objectName = QStringLiteral("slash");
@@ -481,6 +513,7 @@ static bool sharedFacadesAreAvailableToAllDecisions()
     equip.kindOfNames << QStringLiteral("Slash") << QStringLiteral("BasicCard")
                       << QStringLiteral("Card");
     request.worldView.self.equips << equip;
+    request.worldView.handCards << equip;
 
     AISkillView skill;
     skill.skillName = QStringLiteral("shared-facade-skill");
@@ -746,6 +779,469 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
         && errorAudit.comparison == AiShadowError;
 }
 
+static AIRequest adapterRequest(const QString &pattern, const QString &prompt,
+                                Card::HandlingMethod method)
+{
+    AIRequest request;
+    request.kind = AIRequest::UseCard;
+    request.viewerObjectName = QStringLiteral("adapter-owner");
+    request.pattern = pattern;
+    request.prompt = prompt;
+    request.handlingMethod = method;
+    request.worldView.self.objectName = request.viewerObjectName;
+    request.worldView.self.alive = true;
+    request.worldView.self.dead = false;
+    request.worldView.currentPlayer = request.viewerObjectName;
+    request.worldView.playerOrder << request.viewerObjectName;
+    request.worldView.alivePlayerOrder << request.viewerObjectName;
+    return request;
+}
+
+static bool legacyCallbackAbiAndResultConversion(Room &room)
+{
+    {
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
+        lua_State *L = room.roomRuntime()->ai().lua().state();
+        // A legacy-style callback keeps method third, the stripped pattern fourth and
+        // the skill-action request fifth; the new ABI keeps the request itself third.
+        if (luaL_dostring(L,
+            "ai_skill_use_legacy['legacy-abi'] = "
+            "function(self, prompt, method, pattern, request) "
+            "if prompt ~= 'legacy-prompt:extra' or method ~= sgs.Card_MethodResponse "
+            "or pattern ~= 'legacy-abi' or request ~= nil then return '.' end; "
+            "return '@legacy=' .. pattern end; "
+            "ai_skill_use['new-abi'] = function(self, prompt, request) "
+            "if type(request) ~= 'table' or request ~= self.request "
+            "or prompt ~= request.prompt or request.pattern ~= 'new-abi' then return '.' end; "
+            "return { kind = 'use_card', card = '@new=' .. request.pattern } end; "
+            "ai_skill_use_legacy['@@compulsory!'] = function(self, prompt, method, pattern) "
+            "if pattern ~= '@@compulsory' then return '@stripped=' .. tostring(pattern) end; "
+            "return '.' end; "
+            "ai_skill_use_legacy['optional-decline'] = function() return '.' end; "
+            "ai_skill_use['fallback-prompt'] = function(self, prompt, request) "
+            "return { kind = 'use_card', card = '@prompt=' .. request.pattern } end; "
+            "ai_skill_use['skill-pattern'] = function() "
+            "return { kind = 'use_card', card = '@pattern=lost' } end; "
+            "ai_register_use_card_legacy_skill_handler('adapter-skill', "
+            "function(self, prompt, method, pattern, request) "
+            "if not request or not request:isValid() "
+            "or request:getActivationSkillName() ~= 'adapter-skill' "
+            "or request:getActivationInstanceId() ~= 1 "
+            "or not request:isActivationQuotaAvailable() "
+            "or request:getInitiator() ~= self.player then return '.' end; "
+            "return { accepted = true, cards = { 7 }, "
+            "targets = { self.player:objectName() } } end); "
+            "ai_skill_use['invalid-answer'] = function() return 7 end") != 0) {
+            lua_pop(L, 1);
+            return false;
+        }
+        // One key, one ABI: the duplicate is refused, the standing handler is kept.
+        if (luaL_dostring(L,
+            "if pcall(function() ai_skill_use_legacy['new-abi'] = function() end end) "
+            "or pcall(function() ai_skill_use['legacy-abi'] = function() end end) "
+            "or pcall(ai_register_use_card_skill_handler, 'adapter-skill', function() end) "
+            "then error('a conflicting registration was accepted') end; "
+            "ai_skill_use['new-abi'] = ai_skill_use['new-abi']") != 0) {
+            lua_pop(L, 1);
+            return false;
+        }
+    }
+
+    const AIResult legacyAbi = room.roomRuntime()->ai().decideShadow(
+        adapterRequest(QStringLiteral("legacy-abi"), QStringLiteral("legacy-prompt:extra"),
+                       Card::MethodResponse));
+    const AIResult newAbi = room.roomRuntime()->ai().decideShadow(
+        adapterRequest(QStringLiteral("new-abi"), QStringLiteral("new-prompt"),
+                       Card::MethodUse));
+    if (!legacyAbi.handled || legacyAbi.kind != AIResult::UseCard
+        || legacyAbi.action.legacyCardString != QStringLiteral("@legacy=legacy-abi")
+        || !newAbi.handled || newAbi.kind != AIResult::UseCard
+        || newAbi.action.legacyCardString != QStringLiteral("@new=new-abi")) {
+        qCritical() << "Callback ABI arguments were not routed to the registered shape"
+                    << legacyAbi.action.legacyCardString << newAbi.action.legacyCardString;
+        return false;
+    }
+
+    // A compulsory request refuses "." and keeps searching; an optional one accepts it.
+    const AIResult compulsory = room.roomRuntime()->ai().decideShadow(
+        adapterRequest(QStringLiteral("@@compulsory!"),
+                       QStringLiteral("fallback-prompt:target"), Card::MethodUse));
+    const AIResult declined = room.roomRuntime()->ai().decideShadow(
+        adapterRequest(QStringLiteral("optional-decline"),
+                       QStringLiteral("fallback-prompt:target"), Card::MethodUse));
+    if (!compulsory.handled || compulsory.kind != AIResult::UseCard
+        || compulsory.action.legacyCardString != QStringLiteral("@prompt=@@compulsory!")
+        || !declined.handled || declined.kind != AIResult::Pass
+        || !declined.errorCode.isEmpty()) {
+        qCritical() << "Compulsory dispatch did not separate a refusal from a decision"
+                    << compulsory.action.legacyCardString << int(declined.kind);
+        return false;
+    }
+
+    // An unregistered request stays unhandled and a broken answer stays an error;
+    // neither may arrive as a legal pass.
+    const AIResult unhandled = room.roomRuntime()->ai().decideShadow(
+        adapterRequest(QStringLiteral("not-registered"), QStringLiteral("no-handler"),
+                       Card::MethodUse));
+    const AIResult invalid = room.roomRuntime()->ai().decideShadow(
+        adapterRequest(QStringLiteral("invalid-answer"), QStringLiteral("no-handler"),
+                       Card::MethodUse));
+    if (unhandled.handled || !unhandled.errorCode.isEmpty()
+        || invalid.errorCode != QStringLiteral("AI_RUNTIME_ERROR")
+        || invalid.kind != AIResult::Pass || invalid.handled) {
+        qCritical() << "Unhandled and failing answers were not kept apart"
+                    << unhandled.handled << invalid.errorCode << invalid.handled;
+        return false;
+    }
+
+    // The skill tier wins over the pattern tier, and a legacy structured answer
+    // becomes the value result.
+    AIRequest skillRequest = adapterRequest(QStringLiteral("skill-pattern"),
+                                            QStringLiteral("no-handler"), Card::MethodUse);
+    skillRequest.hasSkillActionContext = true;
+    skillRequest.skillActionContext.activationRef = SkillInstanceRef(
+        skillRequest.viewerObjectName,
+        SkillInstanceKey(QStringLiteral("adapter-skill"), 1));
+    skillRequest.skillActionContext.sourceRef = skillRequest.skillActionContext.activationRef;
+    skillRequest.skillActionContext.activationQuotaAvailable = true;
+    skillRequest.skillActionContext.sourceQuotaAvailable = true;
+    const AIResult skillResult = room.roomRuntime()->ai().decideShadow(skillRequest);
+    if (!skillResult.handled || skillResult.kind != AIResult::UseCard
+        || !skillResult.action.legacyCardString.isEmpty()
+        || skillResult.action.selectedCardIds != QList<int>({7})
+        || skillResult.action.selectedTargetNames
+            != QStringList({skillRequest.viewerObjectName})) {
+        qCritical() << "Skill dispatch or legacy result conversion failed"
+                    << skillResult.action.legacyCardString
+                    << skillResult.action.selectedCardIds.size();
+        return false;
+    }
+    return true;
+}
+
+static bool valueDecisionsRouteThroughTheIsolatedVm()
+{
+    // Routes are frozen at Room construction, so the configuration comes first.
+    ScopedConfigValue scripts(QStringLiteral("AiIsolatedScripts"),
+                              QStringList({QStringLiteral("ask-for-choice.lua")}));
+    ScopedConfigValue isolatedCallbacks(QStringLiteral("AiIsolatedCallbacks"),
+        QStringList({QStringLiteral("askForSkillInvoke"), QStringLiteral("askForChoice"),
+                     QStringLiteral("askForSuit"), QStringLiteral("askForKingdom"),
+                     QStringLiteral("askForGeneral"), QStringLiteral("askForDiscard"),
+                     QStringLiteral("askForAG"), QStringLiteral("askForCardChosen"),
+                     QStringLiteral("askForYiji"), QStringLiteral("askForPlayerChosen"),
+                     QStringLiteral("askForPlayersChosen"),
+                     QStringLiteral("askForSinglePeach")}));
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    ServerPlayer *player = RoomTestAccess::addRobotPlayer(room);
+    player->setObjectName(QStringLiteral("value-owner"));
+    std::unique_ptr<TrustAI> ai(new TrustAI(player));
+    player->setAI(ai.get());
+
+    {
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
+        lua_State *L = room.roomRuntime()->ai().lua().state();
+        if (luaL_dostring(L,
+            // Every value handler receives (self, options, request): the candidates and
+            // limits arrive as values, never as a QVariant.
+            "ai_skill_invoke['yes-skill'] = function(self, options, request) "
+            "if options.reason ~= 'yes-skill' or request.kind ~= 'skill_invoke' "
+            "or #options.choices ~= 2 or options.choices[1] ~= 'yes' "
+            "or options.default_choice ~= 'no' or not options.optional "
+            "or getmetatable(self) ~= SmartAIView then return nil end; return true end; "
+            "ai_skill_invoke['no-skill'] = function() return false end; "
+            "ai_skill_choice['pick'] = function(self, options) "
+            "if #options.choices ~= 3 or options.default_choice ~= nil then return nil end; "
+            "return options.choices[2] end; "
+            "ai_skill_choice['bad-answer'] = function() return 7 end; "
+            "ai_skill_suit['suit-reason'] = function(self, options) "
+            "return options.choices[3] end; "
+            "ai_skill_kingdom['kingdom-reason'] = function(self, options) "
+            "return { kind = 'answer', answer = options.choices[1] } end; "
+            "ai_general_choice['general-reason'] = function(self, options) "
+            "if options.default_choice ~= 'zhangfei' then return nil end; "
+            "return 'guanyu' end") != 0) {
+            lua_pop(L, 1);
+            return false;
+        }
+    }
+
+    bool invoked = false;
+    if (!room.decideAiSkillInvoke(player, QStringLiteral("yes-skill"), QVariant(), invoked)
+        || !invoked)
+        return false;
+    if (!room.decideAiSkillInvoke(player, QStringLiteral("no-skill"), QVariant(), invoked)
+        || invoked)
+        return false;
+    // An unregistered reason falls back to the legacy AI instead of inventing an answer.
+    if (!room.decideAiSkillInvoke(player, QStringLiteral("unregistered"), QVariant(), invoked)
+        || invoked)
+        return false;
+
+    QString answer;
+    if (!room.decideAiChoice(player, QStringLiteral("pick"), QStringLiteral("a+b+c"),
+                             QVariant(), answer)
+        || answer != QStringLiteral("b"))
+        return false;
+    // A broken handler is an error, so the legacy AI answers instead; the result is
+    // still one of the candidates and never the malformed value.
+    answer = QStringLiteral("untouched");
+    if (!room.decideAiChoice(player, QStringLiteral("bad-answer"), QStringLiteral("a+b"),
+                             QVariant(), answer)
+        || (answer != QStringLiteral("a") && answer != QStringLiteral("b")))
+        return false;
+
+    Card::Suit suit = Card::NoSuit;
+    if (!room.decideAiSuit(player, QStringLiteral("suit-reason"), suit)
+        || suit != Card::AllSuits[2])
+        return false;
+
+    QString kingdom;
+    if (!room.decideAiKingdom(player, QStringLiteral("kingdom-reason"),
+                              QStringList({QStringLiteral("wu"), QStringLiteral("shu")}), kingdom)
+        || kingdom != QStringLiteral("wu"))
+        return false;
+
+    QString general;
+    if (!room.decideAiGeneral(player, QStringList({QStringLiteral("guanyu"),
+                                                   QStringLiteral("zhangfei")}),
+                              QStringLiteral("zhangfei"), QStringLiteral("general-reason"),
+                              general)
+        || general != QStringLiteral("guanyu"))
+        return false;
+    // Selections answer with ids and object names; the candidates come from the request.
+    {
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
+        lua_State *L = room.roomRuntime()->ai().lua().state();
+        if (luaL_dostring(L,
+            "ai_skill_askforag['ag-reason'] = function(self, options) "
+            "if #options.card_ids ~= 2 or not options.optional then return nil end; "
+            "return options.card_ids[2] end; "
+            "ai_skill_discard['discard-reason'] = function(self, options, request) "
+            "if options.min_count ~= 1 or options.max_count ~= 2 "
+            "or request.pattern ~= '.' or #options.card_ids ~= 3 then return nil end; "
+            "return { options.card_ids[1], options.card_ids[3] } end; "
+            "ai_skill_discard['bad-discard'] = function(self, options) return { 999 } end; "
+            "ai_skill_playerchosen['player-reason'] = function(self, options) "
+            "return options.players[2] end; "
+            "ai_skill_playerschosen['players-reason'] = function(self, options) "
+            "if options.max_count ~= 2 or options.min_count ~= 1 then return nil end; "
+            "return { options.players[2], options.players[1] } end; "
+            "ai_skill_askforyiji['yiji-reason'] = function(self, options) "
+            "return { kind = 'answer', cards = { options.card_ids[1] }, "
+            "targets = { options.players[1] } } end; "
+            "ai_skill_cardchosen['card-chosen-reason'] = function(self, options) "
+            "if #options.players ~= 1 or options.choices[1] ~= 'he' then return nil end; "
+            "return 42 end") != 0) {
+            lua_pop(L, 1);
+            return false;
+        }
+    }
+
+    ServerPlayer *other = RoomTestAccess::addRobotPlayer(room);
+    other->setObjectName(QStringLiteral("value-other"));
+    QList<ServerPlayer *> candidates;
+    candidates << player << other;
+
+    int cardId = -1;
+    if (!room.decideAiAmazingGrace(player, QList<int>({5, 9}), true,
+                                   QStringLiteral("ag-reason"), cardId)
+        || cardId != 9)
+        return false;
+
+    QList<int> discarded;
+    if (!room.decideAiDiscard(player, QStringLiteral("discard-reason"), 2, 1, true, false,
+                              QStringLiteral("."), QList<int>({1, 2, 3}), discarded)
+        || discarded != QList<int>({1, 3}))
+        return false;
+    // A card the question never offered is refused, so the call site keeps its own list.
+    discarded.clear();
+    if (room.decideAiDiscard(player, QStringLiteral("bad-discard"), 2, 1, true, false,
+                             QStringLiteral("."), QList<int>({1, 2, 3}), discarded)
+        || !discarded.isEmpty())
+        return false;
+
+    ServerPlayer *chosen = nullptr;
+    if (!room.decideAiPlayerChosen(player, candidates, QStringLiteral("player-reason"), chosen)
+        || chosen != other)
+        return false;
+
+    QList<ServerPlayer *> chosenList;
+    if (!room.decideAiPlayersChosen(player, candidates, QStringLiteral("players-reason"), 2, 1,
+                                    chosenList)
+        || chosenList != QList<ServerPlayer *>({other, player}))
+        return false;
+
+    ServerPlayer *receiver = nullptr;
+    int yijiCard = -1;
+    if (!room.decideAiYiji(player, QList<int>({7, 8}), QStringLiteral("yiji-reason"),
+                           candidates, receiver, yijiCard)
+        || receiver != player || yijiCard != 7)
+        return false;
+
+    int chosenCard = -1;
+    if (!room.decideAiCardChosen(player, other, QStringLiteral("he"),
+                                 QStringLiteral("card-chosen-reason"), Card::MethodDiscard,
+                                 chosenCard)
+        || chosenCard != 42)
+        return false;
+
+    // Card responses: the request names its question, and an id the player does not
+    // hold is refused, so the legacy card (here: none) stands.
+    {
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
+        lua_State *L = room.roomRuntime()->ai().lua().state();
+        if (luaL_dostring(L,
+            "respond_seen = ''; "
+            "ai_skill_singlepeach['single_peach'] = function(self, options, request) "
+            "respond_seen = table.concat({request.kind, options.question, options.reason, "
+            "request.pattern, tostring(#options.card_ids), options.players[1]}, '|'); "
+            "return 4242 end") != 0) {
+            lua_pop(L, 1);
+            return false;
+        }
+    }
+    if (room.decideAiSinglePeach(player, other) != nullptr)
+        return false;
+    {
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
+        lua_State *L = room.roomRuntime()->ai().lua().state();
+        lua_getglobal(L, "respond_seen");
+        const QString seen = QString::fromUtf8(lua_tostring(L, -1));
+        lua_pop(L, 1);
+        if (seen != QStringLiteral("respond_card|askForSinglePeach|single_peach|peach|0|value-other"))
+            return false;
+    }
+
+    player->setAI(nullptr);
+    return true;
+}
+
+static bool decisionCorePlansATurnFromCandidates()
+{
+    ScopedConfigValue scripts(QStringLiteral("AiIsolatedScripts"),
+                              QStringList({QStringLiteral("decision-core.lua")}));
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    if (!room.roomRuntime()->ai().lua().rawState())
+        return false;
+
+    AIRequest request;
+    request.kind = AIRequest::Activate;
+    request.viewerObjectName = QStringLiteral("core-owner");
+    request.worldView.self.objectName = request.viewerObjectName;
+    request.worldView.self.alive = true;
+    request.worldView.self.dead = false;
+    request.worldView.self.hp = 4;
+    request.worldView.self.attackRange = 1;
+    request.worldView.currentPlayer = request.viewerObjectName;
+    request.worldView.playerOrder << request.viewerObjectName << QStringLiteral("core-enemy");
+    request.worldView.alivePlayerOrder = request.worldView.playerOrder;
+
+    AIPlayerView enemy;
+    enemy.objectName = QStringLiteral("core-enemy");
+    enemy.alive = true;
+    enemy.dead = false;
+    enemy.hp = 1;
+    enemy.handcardCount = 0;
+    enemy.handVisible = true;
+    request.worldView.players << enemy;
+
+    AICardView slash;
+    slash.cardId = 7;
+    slash.effectiveId = 7;
+    slash.objectName = QStringLiteral("slash");
+    slash.className = QStringLiteral("Slash");
+    slash.kindOfNames << QStringLiteral("Slash") << QStringLiteral("BasicCard");
+    AICardView peach;
+    peach.cardId = 9;
+    peach.effectiveId = 9;
+    peach.objectName = QStringLiteral("peach");
+    peach.className = QStringLiteral("Peach");
+    peach.kindOfNames << QStringLiteral("Peach") << QStringLiteral("BasicCard");
+    request.worldView.handCards << slash << peach;
+
+    QJsonObject relations, ownRow, objectives;
+    ownRow.insert(QStringLiteral("core-enemy"), QStringLiteral("enemy"));
+    relations.insert(request.viewerObjectName, ownRow);
+    objectives.insert(QStringLiteral("core-enemy"), 5);
+    QJsonObject policy;
+    policy.insert(QStringLiteral("managed"), true);
+    policy.insert(QStringLiteral("relations"), relations);
+    policy.insert(QStringLiteral("objectives"), objectives);
+    request.worldView.modePolicy = policy;
+
+    AICardCandidateView slashCandidate;
+    slashCandidate.cardId = 7;
+    slashCandidate.available = true;
+    slashCandidate.maxTargets = 1;
+    slashCandidate.legalTargets << QStringLiteral("core-enemy");
+    AICardCandidateView peachCandidate;
+    peachCandidate.cardId = 9;
+    peachCandidate.available = false;
+    request.cardCandidates << slashCandidate << peachCandidate;
+
+    const AIResult planned = room.roomRuntime()->ai().decideShadow(request);
+    if (!planned.handled || planned.kind != AIResult::UseCard
+        || planned.action.useCardId != 7
+        || planned.action.selectedTargetNames != QStringList({QStringLiteral("core-enemy")})
+        || !planned.errorCode.isEmpty()) {
+        qCritical() << "Generic turn plan failed" << planned.handled << int(planned.kind)
+                    << planned.action.useCardId << planned.errorCode;
+        return false;
+    }
+
+    // Candidates that exist but are all unusable mean pass: the question was asked
+    // and nothing legal came out of it.
+    AIRequest blocked = request;
+    blocked.cardCandidates.clear();
+    AICardCandidateView unusable;
+    unusable.cardId = 7;
+    unusable.available = true;
+    unusable.limited = true;
+    blocked.cardCandidates << unusable;
+    const AIResult passed = room.roomRuntime()->ai().decideShadow(blocked);
+    AIRequest empty = request;
+    empty.cardCandidates.clear();
+    const AIResult nothingLegal = room.roomRuntime()->ai().decideShadow(empty);
+    return passed.handled && passed.kind == AIResult::Pass && passed.errorCode.isEmpty()
+        && nothingLegal.handled && nothingLegal.kind == AIResult::Pass;
+}
+
+static bool coverageReportListsWhatIsWired()
+{
+    ScopedConfigValue scripts(QStringLiteral("AiIsolatedScripts"),
+                              QStringList({QStringLiteral("ask-for-use-card.lua"),
+                                           QStringLiteral("ask-for-choice.lua"),
+                                           QStringLiteral("decision-core.lua"),
+                                           QStringLiteral("standard-ai.lua")}));
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
+    lua_State *L = room.roomRuntime()->ai().lua().state();
+    // The report is built from what the registries actually hold, never assumed.
+    if (luaL_dostring(L,
+        "ai_skill_choice['covered-choice'] = function() return 'a' end; "
+        "ai_cardshow['covered-show'] = function() return 7 end; "
+        "coverage_probe = table.concat({"
+        "tostring(ai_coverage.covers('use_card', '@@lianying')), "
+        "tostring(ai_coverage.covers('use_card', 'never-registered')), "
+        "tostring(ai_coverage.covers('choice', 'covered-choice')), "
+        "tostring(ai_coverage.covers('respond_card', 'askForCardShow:covered-show')), "
+        "tostring(ai_coverage.covers('activate')), "
+        "tostring(ai_coverage.covers('guanxing')), "
+        "tostring(#ai_coverage.summary() > 0)}, '|')") != 0) {
+        lua_pop(L, 1);
+        return false;
+    }
+    lua_getglobal(L, "coverage_probe");
+    const QString probe = QString::fromUtf8(lua_tostring(L, -1));
+    lua_pop(L, 1);
+    if (probe != QStringLiteral("true|false|true|true|true|false|true")) {
+        qCritical() << "Coverage report did not match what is wired" << probe;
+        return false;
+    }
+    return true;
+}
+
 static bool officialLianyingHandlerMatchesIsolated()
 {
     Room room(nullptr, QStringLiteral("02_1v1"));
@@ -868,6 +1364,19 @@ static bool pureModePolicyContract()
     return true;
 }
 
+static bool pureValueBoundaryContract()
+{
+    // The shared type boundary is plain Lua, so it runs without a Room or the Engine.
+    LuaRuntime runtime(LuaRuntime::Auxiliary);
+    QString error;
+    if (!runtime.initialize(&error)
+        || !runtime.loadScript(QStringLiteral("tests/lua/value-boundary-contract.lua"), &error)) {
+        qCritical().noquote() << error;
+        return false;
+    }
+    return true;
+}
+
 static bool aiWorldViewIsScopedAndRevisioned()
 {
     std::unique_ptr<Room> room(new Room(nullptr, QStringLiteral("02_1v1")));
@@ -933,6 +1442,8 @@ static bool aiWorldViewIsScopedAndRevisioned()
         || request.worldView.self.kongcheng || !request.worldView.self.wounded
         || request.worldView.currentPlayer != viewer->objectName()
         || request.worldView.currentPhase != int(Player::Play)
+        || request.worldView.playerOrder != QStringList({viewer->objectName(), other->objectName()})
+        || request.worldView.alivePlayerOrder != request.worldView.playerOrder
         || !physicalHandCard || request.worldView.handCards.size() != 1
         || request.worldView.players.size() != 1)
         return false;
@@ -1241,6 +1752,10 @@ int runRoomRuntimeIsolationTests()
         qCritical() << "AI route registry did not preserve exact/default/frozen routing";
         return 12;
     }
+    if (!pureValueBoundaryContract()) {
+        qCritical() << "Shared value boundary contract failed";
+        return 24;
+    }
     if (!modePolicyAndRoleVisibilityAreRoomLocal() || !pureModePolicyContract()
         || !aiWorldViewIsScopedAndRevisioned()) {
         qCritical() << "AI world view scope or state revision gate failed";
@@ -1250,10 +1765,26 @@ int runRoomRuntimeIsolationTests()
         qCritical() << "Official lianying handler did not match isolated AI";
         return 21;
     }
+    if (!valueDecisionsRouteThroughTheIsolatedVm()) {
+        qCritical() << "Value-typed AI decisions did not route through the isolated VM";
+        return 25;
+    }
+    if (!decisionCorePlansATurnFromCandidates()) {
+        qCritical() << "The generic decision core did not plan a turn from candidates";
+        return 26;
+    }
+    if (!coverageReportListsWhatIsWired()) {
+        qCritical() << "The isolated coverage report did not match the wired handlers";
+        return 27;
+    }
     if (!productionIsolatedScriptAndShadowAudit(*first)
         || !shadowAuditPayloadIsBounded(*first) || !ownedAiProxyUsesValueLifetime()) {
         qCritical() << "Production isolated loading, shadow audit, or proxy ownership failed";
         return 15;
+    }
+    if (!legacyCallbackAbiAndResultConversion(*first)) {
+        qCritical() << "Legacy callback ABI or result conversion contract failed";
+        return 23;
     }
     if (!aiShadowParsesPassAndUseCard(*second)) {
         qCritical() << "AI shadow result parsing failed";

@@ -1464,11 +1464,13 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 				i = 0;
 			}
 		}
+		room->recordAiEvent(int(triggerEvent), target, data);
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		event_stack.pop_back();// pop event stack
 		flushOutermostDeferredWork(room);
 
     }catch (TriggerEvent throwed_event) {
+		room->recordAiEvent(int(triggerEvent), target, data);
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		event_stack.pop_back();// pop event stack
 		flushOutermostDeferredWork(room);

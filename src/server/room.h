@@ -757,6 +757,7 @@ private:
                                           const ActiveSkillRequest &request) const;
     bool isAIMarkVisibleTo(const ServerPlayer *owner, const QString &mark,
                            const ServerPlayer *viewer) const;
+    void recordAiEvent(int triggerEvent, ServerPlayer *target, const QVariant &data);
     AIRequest makeAIRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
                             CardUseStruct::CardUseReason reason, const QString &pattern,
                             const QString &prompt, Card::HandlingMethod method) const;
@@ -769,6 +770,49 @@ private:
                              Card::HandlingMethod method, CardUseStruct &cardUse) const;
     bool decideAiAction(ServerPlayer *player, const AIRequest &request,
                         CardUseStruct &cardUse) const;
+    bool decideAiSkillInvoke(ServerPlayer *player, const QString &skillName,
+                             const QVariant &data, bool &invoked) const;
+    bool decideAiChoice(ServerPlayer *player, const QString &skillName, const QString &choices,
+                        const QVariant &data, QString &answer) const;
+    bool decideAiSuit(ServerPlayer *player, const QString &reason, Card::Suit &suit) const;
+    bool decideAiKingdom(ServerPlayer *player, const QString &reason,
+                         const QStringList &kingdoms, QString &answer) const;
+    bool decideAiGeneral(ServerPlayer *player, const QStringList &generals,
+                         const QString &defaultChoice, const QString &reason,
+                         QString &answer) const;
+    bool decideAiDiscard(ServerPlayer *player, const QString &reason, int discardNum,
+                         int minNum, bool optional, bool includeEquip, const QString &pattern,
+                         const QList<int> &candidates, QList<int> &cards) const;
+    bool decideAiAmazingGrace(ServerPlayer *player, const QList<int> &cardIds, bool refusable,
+                              const QString &reason, int &cardId) const;
+    bool decideAiCardChosen(ServerPlayer *player, ServerPlayer *who, const QString &flags,
+                            const QString &reason, Card::HandlingMethod method,
+                            int &cardId) const;
+    bool decideAiYiji(ServerPlayer *player, const QList<int> &cards, const QString &reason,
+                      const QList<ServerPlayer *> &candidates, ServerPlayer *&target,
+                      int &cardId) const;
+    bool decideAiPlayerChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
+                              const QString &reason, ServerPlayer *&choice) const;
+    bool decideAiPlayersChosen(ServerPlayer *player, const QList<ServerPlayer *> &targets,
+                               const QString &reason, int maxNum, int minNum,
+                               QList<ServerPlayer *> &chosen) const;
+    const Card *decideAiResponseCard(ServerPlayer *player, const QString &pattern,
+                                     const QString &prompt, const QVariant &data,
+                                     Card::HandlingMethod method) const;
+    const Card *decideAiNullification(ServerPlayer *player, const Card *trick,
+                                      ServerPlayer *from, ServerPlayer *to,
+                                      bool positive) const;
+    const Card *decideAiCardShow(ServerPlayer *player, ServerPlayer *requestor,
+                                 const QString &reason) const;
+    const Card *decideAiPindian(ServerPlayer *player, ServerPlayer *requestor,
+                                const QString &reason) const;
+    const Card *decideAiSinglePeach(ServerPlayer *player, ServerPlayer *dying) const;
+    bool decideAiGuanxing(ServerPlayer *player, const QList<int> &cards, int guanxingType,
+                          QList<int> &up, QList<int> &bottom) const;
+    bool decideAiTriggerOrder(ServerPlayer *player, const QString &reason,
+                             const QStringList &candidates,
+                             QMap<ServerPlayer *, QStringList> &skills, bool optional,
+                             const QVariant &data, QString &answer) const;
     bool applyAIResult(ServerPlayer *player, const AIRequest &request,
                        const AIResult &result, CardUseStruct &cardUse) const;
     bool reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);

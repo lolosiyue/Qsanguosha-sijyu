@@ -4,6 +4,7 @@
 #include "lua-runtime.h"
 #include "lua.hpp"
 #include "settings.h"
+#include "skill.h"
 
 #include <QDebug>
 #include <QCryptographicHash>
@@ -45,9 +46,18 @@ bool sameAiResult(const AIResult &first, const AIResult &second)
         && first.handled == second.handled
         && first.errorCode == second.errorCode
         && first.action.legacyCardString == second.action.legacyCardString
+        && first.action.useCardId == second.action.useCardId
         && first.action.selectedCardIds == second.action.selectedCardIds
+        && first.action.bottomCardIds == second.action.bottomCardIds
         && first.action.selectedTargetNames == second.action.selectedTargetNames
         && first.action.userString == second.action.userString
+        && first.action.hasCardSpec == second.action.hasCardSpec
+        && (!first.action.hasCardSpec
+            || (first.action.cardSpec.name == second.action.cardSpec.name
+                && first.action.cardSpec.suit == second.action.cardSpec.suit
+                && first.action.cardSpec.number == second.action.cardSpec.number
+                && first.action.cardSpec.skillName == second.action.cardSpec.skillName
+                && first.action.cardSpec.subcardIds == second.action.cardSpec.subcardIds))
         && first.action.hasSkillActionContext == second.action.hasSkillActionContext
         && (!first.action.hasSkillActionContext
             || (first.action.skillActionContext.activationRef
@@ -90,8 +100,16 @@ AIResult auditResult(const AIResult &source)
     result.stateRevision = source.stateRevision;
     result.errorCode = auditString(source.errorCode);
     result.action.legacyCardString = auditString(source.action.legacyCardString);
+    result.action.useCardId = source.action.useCardId;
     result.action.userString = auditString(source.action.userString);
+    result.action.hasCardSpec = source.action.hasCardSpec;
+    result.action.cardSpec.name = auditString(source.action.cardSpec.name);
+    result.action.cardSpec.skillName = auditString(source.action.cardSpec.skillName);
+    result.action.cardSpec.suit = source.action.cardSpec.suit;
+    result.action.cardSpec.number = source.action.cardSpec.number;
+    result.action.cardSpec.subcardIds = source.action.cardSpec.subcardIds.mid(0, AiAuditListLimit);
     result.action.selectedCardIds = source.action.selectedCardIds.mid(0, AiAuditListLimit);
+    result.action.bottomCardIds = source.action.bottomCardIds.mid(0, AiAuditListLimit);
     foreach (const QString &target, source.action.selectedTargetNames.mid(0, AiAuditListLimit))
         result.action.selectedTargetNames << auditString(target);
     result.action.hasSkillActionContext = source.action.hasSkillActionContext;
@@ -156,6 +174,22 @@ void pushAICardView(lua_State *state, const AICardView &card)
     lua_pushinteger(state, card.number);
     lua_setfield(state, -2, "number");
     setStringField(state, "skill_name", card.skillName);
+    lua_pushinteger(state, card.typeId);
+    lua_setfield(state, -2, "type_id");
+    lua_pushinteger(state, card.handlingMethod);
+    lua_setfield(state, -2, "handling_method");
+    lua_pushboolean(state, card.virtualCard);
+    lua_setfield(state, -2, "virtual_card");
+    lua_pushboolean(state, card.targetFixed);
+    lua_setfield(state, -2, "target_fixed");
+    lua_pushboolean(state, card.damageCard);
+    lua_setfield(state, -2, "damage_card");
+    lua_createtable(state, int(card.subcardIds.size()), 0);
+    for (int index = 0; index < card.subcardIds.size(); ++index) {
+        lua_pushinteger(state, card.subcardIds.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "subcards");
     lua_pushboolean(state, card.red);
     lua_setfield(state, -2, "red");
     lua_pushboolean(state, card.black);
@@ -235,6 +269,20 @@ void pushAISkillView(lua_State *state, const AISkillView &skill)
     lua_setfield(state, -2, "has_amount_override");
     lua_pushinteger(state, skill.amount);
     lua_setfield(state, -2, "amount");
+    lua_createtable(state, int(skill.skillClasses.size()), 0);
+    for (int index = 0; index < skill.skillClasses.size(); ++index) {
+        pushQString(state, skill.skillClasses.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "skill_classes");
+    lua_pushinteger(state, skill.frequency);
+    lua_setfield(state, -2, "frequency");
+    lua_pushboolean(state, skill.lordSkill);
+    lua_setfield(state, -2, "lord_skill");
+    lua_pushboolean(state, skill.attachedLordSkill);
+    lua_setfield(state, -2, "attached_lord_skill");
+    lua_pushboolean(state, skill.lordSkillEffective);
+    lua_setfield(state, -2, "lord_skill_effective");
     if (skill.hasPrivateState) {
         pushAIJsonValue(state, skill.state);
         lua_setfield(state, -2, "state");
@@ -280,6 +328,22 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "face_up");
     lua_pushboolean(state, player.chained);
     lua_setfield(state, -2, "chained");
+    lua_pushinteger(state, player.maxCards);
+    lua_setfield(state, -2, "max_cards");
+    lua_pushinteger(state, player.hujia);
+    lua_setfield(state, -2, "hujia");
+    lua_pushinteger(state, player.attackRange);
+    lua_setfield(state, -2, "attack_range");
+    lua_pushinteger(state, player.gender);
+    lua_setfield(state, -2, "gender");
+    lua_pushboolean(state, player.lord);
+    lua_setfield(state, -2, "lord");
+    lua_createtable(state, 0, int(player.equipSlots.size()));
+    for (auto slot = player.equipSlots.constBegin(); slot != player.equipSlots.constEnd(); ++slot) {
+        lua_pushinteger(state, slot.value());
+        lua_rawseti(state, -2, slot.key() + 1);
+    }
+    lua_setfield(state, -2, "equip_slots");
     setStringField(state, "kingdom", player.kingdom);
     setStringField(state, "role", player.role);
     setStringField(state, "controller", player.controller);
@@ -302,11 +366,44 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "public_marks");
     pushAISkills(state, player.skills);
     lua_setfield(state, -2, "skills");
+    pushAICards(state, player.knownCards);
+    lua_setfield(state, -2, "known_cards");
+    lua_pushboolean(state, player.handVisible);
+    lua_setfield(state, -2, "hand_visible");
+    lua_createtable(state, int(player.piles.size()), 0);
+    for (int index = 0; index < player.piles.size(); ++index) {
+        const AICardPileView &pile = player.piles.at(index);
+        lua_createtable(state, 0, 5);
+        setStringField(state, "name", pile.name);
+        lua_pushinteger(state, pile.count);
+        lua_setfield(state, -2, "count");
+        lua_pushboolean(state, pile.open);
+        lua_setfield(state, -2, "open");
+        lua_pushboolean(state, pile.handPile);
+        lua_setfield(state, -2, "hand_pile");
+        // A closed pile has no id list at all: absent means unknown, not empty.
+        if (pile.open) {
+            lua_createtable(state, int(pile.cardIds.size()), 0);
+            for (int cardIndex = 0; cardIndex < pile.cardIds.size(); ++cardIndex) {
+                lua_pushinteger(state, pile.cardIds.at(cardIndex));
+                lua_rawseti(state, -2, cardIndex + 1);
+            }
+            lua_setfield(state, -2, "card_ids");
+        }
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "piles");
+    lua_createtable(state, int(player.displayCards.size()), 0);
+    for (int index = 0; index < player.displayCards.size(); ++index) {
+        lua_pushinteger(state, player.displayCards.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "display_cards");
 }
 
 void pushAIWorldView(lua_State *state, const AIWorldView &world)
 {
-    lua_createtable(state, 0, 6);
+    lua_createtable(state, 0, 11);
     setStringField(state, "mode_id", world.modeId);
     lua_pushboolean(state, world.customRoles);
     lua_setfield(state, -2, "custom_roles");
@@ -323,6 +420,72 @@ void pushAIWorldView(lua_State *state, const AIWorldView &world)
     lua_setfield(state, -2, "players");
     pushAICards(state, world.handCards);
     lua_setfield(state, -2, "hand_cards");
+    pushAICards(state, world.discardPile);
+    lua_setfield(state, -2, "discard_pile");
+    // IDs only: RoomView resolves these against this request's visible players.
+    lua_createtable(state, int(world.playerOrder.size()), 0);
+    for (int index = 0; index < world.playerOrder.size(); ++index) {
+        pushQString(state, world.playerOrder.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "player_order");
+    lua_createtable(state, int(world.alivePlayerOrder.size()), 0);
+    for (int index = 0; index < world.alivePlayerOrder.size(); ++index) {
+        pushQString(state, world.alivePlayerOrder.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "alive_player_order");
+    lua_createtable(state, 0, int(world.distances.size()));
+    for (auto from = world.distances.constBegin(); from != world.distances.constEnd(); ++from) {
+        lua_createtable(state, 0, int(from.value().size()));
+        for (auto to = from.value().constBegin(); to != from.value().constEnd(); ++to) {
+            lua_pushinteger(state, to.value());
+            const QByteArray key = to.key().toUtf8();
+            lua_setfield(state, -2, key.constData());
+        }
+        const QByteArray key = from.key().toUtf8();
+        lua_setfield(state, -2, key.constData());
+    }
+    lua_setfield(state, -2, "distances");
+    lua_createtable(state, int(world.events.size()), 0);
+    for (int index = 0; index < world.events.size(); ++index) {
+        const AIEventView &event = world.events.at(index);
+        lua_createtable(state, 0, 13);
+        lua_pushinteger(state, lua_Integer(event.sequence));
+        lua_setfield(state, -2, "sequence");
+        setStringField(state, "revision", QString::number(event.revision));
+        lua_pushinteger(state, event.triggerEvent);
+        lua_setfield(state, -2, "trigger_event");
+        setStringField(state, "kind", event.kind);
+        setStringField(state, "from", event.from);
+        setStringField(state, "to", event.to);
+        setStringField(state, "card_name", event.cardName);
+        setStringField(state, "reason", event.reason);
+        lua_pushinteger(state, event.amount);
+        lua_setfield(state, -2, "amount");
+        lua_pushinteger(state, event.nature);
+        lua_setfield(state, -2, "nature");
+        lua_pushinteger(state, event.place);
+        lua_setfield(state, -2, "place");
+        lua_pushboolean(state, event.good);
+        lua_setfield(state, -2, "good");
+        lua_createtable(state, int(event.targets.size()), 0);
+        for (int targetIndex = 0; targetIndex < event.targets.size(); ++targetIndex) {
+            pushQString(state, event.targets.at(targetIndex));
+            lua_rawseti(state, -2, targetIndex + 1);
+        }
+        lua_setfield(state, -2, "targets");
+        QList<int> ids = event.cardIds;
+        ids << event.privateCardIds;
+        lua_createtable(state, int(ids.size()), 0);
+        for (int idIndex = 0; idIndex < ids.size(); ++idIndex) {
+            lua_pushinteger(state, ids.at(idIndex));
+            lua_rawseti(state, -2, idIndex + 1);
+        }
+        lua_setfield(state, -2, "card_ids");
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "events");
     setStringField(state, "current_player", world.currentPlayer);
     lua_pushinteger(state, world.currentPhase);
     lua_setfield(state, -2, "current_phase");
@@ -608,6 +771,13 @@ AIResult AiLuaRuntime::decideShadow(const AIRequest &request)
     return result;
 }
 
+void AiLuaRuntime::recordLegacyFallback(const QString &callbackName)
+{
+    // A fallback is not a match and not an error: it is the isolated side declining.
+    ++m_shadowAuditSummary.legacyFallbacks;
+    ++m_callbackAuditSummaries[callbackName].legacyFallbacks;
+}
+
 void AiLuaRuntime::recordShadowAudit(const AIRequest &request,
                                      const QString &callbackName,
                                      const QString &skillName,
@@ -621,18 +791,23 @@ void AiLuaRuntime::recordShadowAudit(const AIRequest &request,
     entry.pattern = auditString(request.pattern);
     entry.officialResult = auditResult(officialResult);
     entry.shadowResult = auditResult(shadowResult);
+    AiShadowAuditSummary &callbackSummary = m_callbackAuditSummaries[callbackName];
     if (!officialResult.errorCode.isEmpty() || !shadowResult.errorCode.isEmpty()) {
         entry.comparison = AiShadowError;
         ++m_shadowAuditSummary.errors;
+        ++callbackSummary.errors;
     } else if (!shadowResult.handled) {
         entry.comparison = AiShadowNotCovered;
         ++m_shadowAuditSummary.notCovered;
+        ++callbackSummary.notCovered;
     } else if (sameAiResult(officialResult, shadowResult)) {
         entry.comparison = AiShadowMatch;
         ++m_shadowAuditSummary.matches;
+        ++callbackSummary.matches;
     } else {
         entry.comparison = AiShadowMismatch;
         ++m_shadowAuditSummary.mismatches;
+        ++callbackSummary.mismatches;
     }
     while (m_shadowAudits.size() >= m_shadowAuditLimit)
         m_shadowAudits.removeFirst();
@@ -793,7 +968,13 @@ bool AiLuaRuntime::installSandbox(QString *error)
 
     lua_newtable(state);
     if (!setMetaEnumFields(state, Player::staticMetaObject, "Phase", "Player_")
-        || !setMetaEnumFields(state, Card::staticMetaObject, "Suit", "Card_")) {
+        || !setMetaEnumFields(state, Card::staticMetaObject, "Suit", "Card_")
+        // Legacy-style callbacks receive the handling method as their third argument.
+        || !setMetaEnumFields(state, Card::staticMetaObject, "HandlingMethod", "Card_")
+        || !setMetaEnumFields(state, Player::staticMetaObject, "Place", "Player_")
+        || !setMetaEnumFields(state, Card::staticMetaObject, "CardType", "Card_")
+        || !setMetaEnumFields(state, Skill::staticMetaObject, "Frequency", "Skill_")
+        || !setMetaEnumFields(state, General::staticMetaObject, "Gender", "General_")) {
         lua_pop(state, 1);
         if (error)
             *error = QStringLiteral("AI-safe meta enum is unavailable");
@@ -803,14 +984,30 @@ bool AiLuaRuntime::installSandbox(QString *error)
     return true;
 }
 
+// Only the callbacks that actually build an AIRequest can be routed.
+static const QStringList &aiRoutableCallbackNames()
+{
+    static const QStringList names = QStringList()
+        << QStringLiteral("activate") << QStringLiteral("askForUseCard")
+        << QStringLiteral("askForSkillInvoke") << QStringLiteral("askForChoice")
+        << QStringLiteral("askForSuit") << QStringLiteral("askForKingdom")
+        << QStringLiteral("askForGeneral") << QStringLiteral("askForDiscard")
+        << QStringLiteral("askForAG") << QStringLiteral("askForCardChosen")
+        << QStringLiteral("askForYiji") << QStringLiteral("askForPlayerChosen")
+        << QStringLiteral("askForPlayersChosen") << QStringLiteral("askForCard")
+        << QStringLiteral("askForNullification") << QStringLiteral("askForCardShow")
+        << QStringLiteral("askForPindian") << QStringLiteral("askForSinglePeach")
+        << QStringLiteral("askForGuanxing") << QStringLiteral("askForTriggerOrder");
+    return names;
+}
+
 void AiLuaRuntime::loadConfiguredRoutes()
 {
     const auto addRoutes = [this](const QString &key, AiRoute route) {
         foreach (const QString &entry, Config.value(key).toStringList()) {
             const QStringList parts = entry.split(QChar(':'));
             const QString callbackName = parts.value(0).trimmed();
-            if (callbackName != QStringLiteral("activate")
-                && callbackName != QStringLiteral("askForUseCard"))
+            if (!aiRoutableCallbackNames().contains(callbackName))
                 continue;
             m_routes.setCallbackRoute(callbackName, parts.value(1).trimmed(), route);
         }
@@ -826,6 +1023,8 @@ bool AiLuaRuntime::loadConfiguredScripts(QString *error)
     static const QRegularExpression fileNamePattern(
         QStringLiteral("^[A-Za-z0-9_-]+\\.lua$"));
     const QStringList defaultScripts({QStringLiteral("ask-for-use-card.lua"),
+                                      QStringLiteral("ask-for-choice.lua"),
+                                      QStringLiteral("decision-core.lua"),
                                       QStringLiteral("standard-ai.lua")});
     const QStringList configuredScripts = Config.value(
         QStringLiteral("AiIsolatedScripts"), defaultScripts).toStringList();
@@ -879,10 +1078,49 @@ bool AiLuaRuntime::loadScriptWithBudget(const QString &path, qint64 instructionB
     return false;
 }
 
+static const char *aiDecisionKindName(AIRequest::DecisionKind kind)
+{
+    switch (kind) {
+    case AIRequest::Activate: return "activate";
+    case AIRequest::UseCard: return "use_card";
+    case AIRequest::SkillInvoke: return "skill_invoke";
+    case AIRequest::Choice: return "choice";
+    case AIRequest::Suit: return "suit";
+    case AIRequest::Kingdom: return "kingdom";
+    case AIRequest::General: return "general";
+    case AIRequest::Discard: return "discard";
+    case AIRequest::AmazingGrace: return "amazing_grace";
+    case AIRequest::CardChosen: return "card_chosen";
+    case AIRequest::Yiji: return "yiji";
+    case AIRequest::PlayerChosen: return "player_chosen";
+    case AIRequest::PlayersChosen: return "players_chosen";
+    case AIRequest::RespondCard: return "respond_card";
+    case AIRequest::Guanxing: return "guanxing";
+    case AIRequest::TriggerOrder: return "trigger_order";
+    }
+    return "unknown";
+}
+
+static void pushAiSkillAction(lua_State *state, const AiSkillActionContext &action)
+{
+    lua_createtable(state, 0, 8);
+    setStringField(state, "activation_owner", action.getActivationOwner());
+    setStringField(state, "activation_skill", action.getActivationSkillName());
+    lua_pushinteger(state, action.getActivationInstanceId());
+    lua_setfield(state, -2, "activation_instance");
+    setStringField(state, "source_owner", action.getSourceOwner());
+    setStringField(state, "source_skill", action.getSourceSkillName());
+    lua_pushinteger(state, action.getSourceInstanceID());
+    lua_setfield(state, -2, "source_instance");
+    lua_pushboolean(state, action.isActivationQuotaAvailable());
+    lua_setfield(state, -2, "activation_quota_available");
+    lua_pushboolean(state, action.isSourceQuotaAvailable());
+    lua_setfield(state, -2, "source_quota_available");
+}
 void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
 {
     lua_createtable(state, 0, 10);
-    lua_pushstring(state, request.kind == AIRequest::Activate ? "activate" : "use_card");
+    lua_pushstring(state, aiDecisionKindName(request.kind));
     lua_setfield(state, -2, "kind");
     lua_pushstring(state, request.getDecisionId().toUtf8().constData());
     lua_setfield(state, -2, "decision_id");
@@ -898,30 +1136,312 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
     lua_setfield(state, -2, "prompt");
     lua_pushinteger(state, request.handlingMethod);
     lua_setfield(state, -2, "handling_method");
+    if (request.kind == AIRequest::Activate || request.kind == AIRequest::UseCard
+        || request.kind == AIRequest::RespondCard) {
+        lua_createtable(state, int(request.cardCandidates.size()), 0);
+        for (int index = 0; index < request.cardCandidates.size(); ++index) {
+            const AICardCandidateView &candidate = request.cardCandidates.at(index);
+            lua_createtable(state, 0, 7);
+            lua_pushinteger(state, candidate.cardId);
+            lua_setfield(state, -2, "card_id");
+            lua_pushboolean(state, candidate.available);
+            lua_setfield(state, -2, "available");
+            lua_pushboolean(state, candidate.limited);
+            lua_setfield(state, -2, "limited");
+            lua_pushboolean(state, candidate.jilei);
+            lua_setfield(state, -2, "jilei");
+            lua_pushboolean(state, candidate.targetFixed);
+            lua_setfield(state, -2, "target_fixed");
+            lua_pushinteger(state, candidate.maxTargets);
+            lua_setfield(state, -2, "max_targets");
+            lua_createtable(state, int(candidate.legalTargets.size()), 0);
+            for (int targetIndex = 0; targetIndex < candidate.legalTargets.size(); ++targetIndex) {
+                pushQString(state, candidate.legalTargets.at(targetIndex));
+                lua_rawseti(state, -2, targetIndex + 1);
+            }
+            lua_setfield(state, -2, "legal_targets");
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "card_candidates");
+    }
     pushAIWorldView(state, request.worldView);
     lua_setfield(state, -2, "world_view");
+    if (!request.choiceOptions.reason.isEmpty()) {
+        const AIChoiceOptions &choiceOptions = request.choiceOptions;
+        lua_createtable(state, 0, 7);
+        setStringField(state, "reason", choiceOptions.reason);
+        if (!choiceOptions.question.isEmpty())
+            setStringField(state, "question", choiceOptions.question);
+        lua_createtable(state, int(choiceOptions.choices.size()), 0);
+        for (int index = 0; index < choiceOptions.choices.size(); ++index) {
+            pushQString(state, choiceOptions.choices.at(index));
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "choices");
+        lua_createtable(state, int(choiceOptions.cardIds.size()), 0);
+        for (int index = 0; index < choiceOptions.cardIds.size(); ++index) {
+            lua_pushinteger(state, choiceOptions.cardIds.at(index));
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "card_ids");
+        lua_createtable(state, int(choiceOptions.playerNames.size()), 0);
+        for (int index = 0; index < choiceOptions.playerNames.size(); ++index) {
+            pushQString(state, choiceOptions.playerNames.at(index));
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "players");
+        // A missing default is not the empty string: only publish one when it exists.
+        if (choiceOptions.hasDefaultChoice)
+            setStringField(state, "default_choice", choiceOptions.defaultChoice);
+        lua_pushboolean(state, choiceOptions.optional);
+        lua_setfield(state, -2, "optional");
+        lua_pushinteger(state, choiceOptions.minCount);
+        lua_setfield(state, -2, "min_count");
+        lua_pushinteger(state, choiceOptions.maxCount);
+        lua_setfield(state, -2, "max_count");
+        lua_setfield(state, -2, "options");
+    }
+    lua_createtable(state, int(request.skillActions.size()), 0);
+    for (int index = 0; index < request.skillActions.size(); ++index) {
+        pushAiSkillAction(state, request.skillActions.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "skill_actions");
     if (request.hasSkillActionContext) {
-        lua_createtable(state, 0, 8);
-        lua_pushstring(state, request.getActivationOwner().toUtf8().constData());
-        lua_setfield(state, -2, "activation_owner");
-        lua_pushstring(state, request.getActivationSkillName().toUtf8().constData());
-        lua_setfield(state, -2, "activation_skill");
-        lua_pushinteger(state, request.getActivationInstanceId());
-        lua_setfield(state, -2, "activation_instance");
-        lua_pushstring(state, request.getSourceOwner().toUtf8().constData());
-        lua_setfield(state, -2, "source_owner");
-        lua_pushstring(state, request.getSourceSkillName().toUtf8().constData());
-        lua_setfield(state, -2, "source_skill");
-        lua_pushinteger(state, request.getSourceInstanceID());
-        lua_setfield(state, -2, "source_instance");
-        lua_pushboolean(state, request.isActivationQuotaAvailable());
-        lua_setfield(state, -2, "activation_quota_available");
-        lua_pushboolean(state, request.isSourceQuotaAvailable());
-        lua_setfield(state, -2, "source_quota_available");
+        pushAiSkillAction(state, request.skillActionContext);
         lua_setfield(state, -2, "skill_action");
     }
 }
 
+// Selected cards and targets have the same value shape for a card action and for a
+// selection answer, so both kinds read them through these two helpers.
+static bool readSelectedCards(lua_State *state, AIResult &result)
+{
+    lua_getfield(state, -1, "cards");
+    if (lua_isnil(state, -1)) {
+        lua_pop(state, 1);
+        return true;
+    }
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        return false;
+    }
+    const size_t count = lua_rawlen(state, -1);
+    if (count > AiMaxSelectedCards) {
+        lua_pop(state, 1);
+        return false;
+    }
+    for (size_t index = 1; index <= count; ++index) {
+        lua_rawgeti(state, -1, index);
+        if (lua_type(state, -1) != LUA_TNUMBER) {
+            lua_pop(state, 2);
+            return false;
+        }
+        const lua_Number number = lua_tonumber(state, -1);
+        int cardId = 0;
+        const bool validCardId = aiResultInteger(number, cardId);
+        lua_pop(state, 1);
+        if (!validCardId || result.action.selectedCardIds.contains(cardId)) {
+            lua_pop(state, 1);
+            return false;
+        }
+        result.action.selectedCardIds << cardId;
+    }
+    lua_pop(state, 1);
+    return true;
+}
+
+// The bottom pile of a two-pile answer keeps its own order, so it is read separately.
+static bool readBottomCards(lua_State *state, AIResult &result)
+{
+    lua_getfield(state, -1, "bottom_cards");
+    if (lua_isnil(state, -1)) {
+        lua_pop(state, 1);
+        return true;
+    }
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        return false;
+    }
+    const size_t count = lua_rawlen(state, -1);
+    if (count > AiMaxSelectedCards) {
+        lua_pop(state, 1);
+        return false;
+    }
+    for (size_t index = 1; index <= count; ++index) {
+        lua_rawgeti(state, -1, index);
+        if (lua_type(state, -1) != LUA_TNUMBER) {
+            lua_pop(state, 2);
+            return false;
+        }
+        const lua_Number number = lua_tonumber(state, -1);
+        int cardId = 0;
+        const bool validCardId = aiResultInteger(number, cardId);
+        lua_pop(state, 1);
+        if (!validCardId || result.action.bottomCardIds.contains(cardId)
+            || result.action.selectedCardIds.contains(cardId)) {
+            lua_pop(state, 1);
+            return false;
+        }
+        result.action.bottomCardIds << cardId;
+    }
+    lua_pop(state, 1);
+    return true;
+}
+
+static bool readSelectedTargets(lua_State *state, AIResult &result)
+{
+    lua_getfield(state, -1, "targets");
+    if (lua_isnil(state, -1)) {
+        lua_pop(state, 1);
+        return true;
+    }
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        return false;
+    }
+    const size_t count = lua_rawlen(state, -1);
+    if (count > AiMaxSelectedTargets) {
+        lua_pop(state, 1);
+        return false;
+    }
+    for (size_t index = 1; index <= count; ++index) {
+        lua_rawgeti(state, -1, index);
+        if (lua_type(state, -1) != LUA_TSTRING) {
+            lua_pop(state, 2);
+            return false;
+        }
+        QString targetName;
+        if (!readBoundedString(state, -1, targetName)) {
+            lua_pop(state, 2);
+            return false;
+        }
+        result.action.selectedTargetNames << targetName;
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+    return true;
+}
+
+// The value card spec: a description of the card to build, never a built card.
+static bool readCardSpec(lua_State *state, AIResult &result)
+{
+    lua_getfield(state, -1, "card_spec");
+    if (lua_isnil(state, -1)) {
+        lua_pop(state, 1);
+        return true;
+    }
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        return false;
+    }
+    AICardSpec spec;
+    lua_getfield(state, -1, "name");
+    const bool nameOk = lua_type(state, -1) == LUA_TSTRING
+        && readBoundedString(state, -1, spec.name) && !spec.name.isEmpty();
+    lua_pop(state, 1);
+    if (!nameOk) {
+        lua_pop(state, 1);
+        return false;
+    }
+    lua_getfield(state, -1, "suit");
+    if (!lua_isnil(state, -1)) {
+        int suit = 0;
+        if (lua_type(state, -1) != LUA_TNUMBER
+            || !aiResultInteger(lua_tonumber(state, -1), suit)
+            || suit < int(Card::SuitToBeDecided) || suit > int(Card::NoSuit)) {
+            lua_pop(state, 2);
+            return false;
+        }
+        spec.suit = suit;
+    }
+    lua_pop(state, 1);
+    lua_getfield(state, -1, "number");
+    if (!lua_isnil(state, -1)) {
+        int number = 0;
+        if (lua_type(state, -1) != LUA_TNUMBER
+            || !aiResultInteger(lua_tonumber(state, -1), number)
+            || number < 0 || number > 13) {
+            lua_pop(state, 2);
+            return false;
+        }
+        spec.number = number;
+    }
+    lua_pop(state, 1);
+    lua_getfield(state, -1, "skill");
+    if (!lua_isnil(state, -1)) {
+        if (lua_type(state, -1) != LUA_TSTRING
+            || !readBoundedString(state, -1, spec.skillName)) {
+            lua_pop(state, 2);
+            return false;
+        }
+    }
+    lua_pop(state, 1);
+    lua_getfield(state, -1, "subcards");
+    if (!lua_isnil(state, -1)) {
+        if (!lua_istable(state, -1)) {
+            lua_pop(state, 2);
+            return false;
+        }
+        const size_t count = lua_rawlen(state, -1);
+        if (count > AiMaxSelectedCards) {
+            lua_pop(state, 2);
+            return false;
+        }
+        for (size_t index = 1; index <= count; ++index) {
+            lua_rawgeti(state, -1, index);
+            int cardId = 0;
+            const bool validCardId = lua_type(state, -1) == LUA_TNUMBER
+                && aiResultInteger(lua_tonumber(state, -1), cardId) && cardId >= 0;
+            lua_pop(state, 1);
+            if (!validCardId || spec.subcardIds.contains(cardId)) {
+                lua_pop(state, 2);
+                return false;
+            }
+            spec.subcardIds << cardId;
+        }
+    }
+    lua_pop(state, 2);
+    result.action.hasCardSpec = true;
+    result.action.cardSpec = spec;
+    return true;
+}
+
+// The answer may name which skill instance it used; the authority re-derives and
+// re-checks it, so only the identity crosses.
+static bool readResultSkillAction(lua_State *state, AIResult &result)
+{
+    lua_getfield(state, -1, "skill_action");
+    if (lua_isnil(state, -1)) {
+        lua_pop(state, 1);
+        return true;
+    }
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        return false;
+    }
+    QString skillName;
+    lua_getfield(state, -1, "skill");
+    const bool skillOk = lua_type(state, -1) == LUA_TSTRING
+        && readBoundedString(state, -1, skillName) && !skillName.isEmpty();
+    lua_pop(state, 1);
+    int instanceId = 0;
+    lua_getfield(state, -1, "instance");
+    const bool instanceOk = lua_type(state, -1) == LUA_TNUMBER
+        && aiResultInteger(lua_tonumber(state, -1), instanceId) && instanceId > 0;
+    lua_pop(state, 1);
+    QString owner;
+    lua_getfield(state, -1, "owner");
+    const bool ownerOk = lua_isnil(state, -1)
+        || (lua_type(state, -1) == LUA_TSTRING && readBoundedString(state, -1, owner));
+    lua_pop(state, 2);
+    if (!skillOk || !instanceOk || !ownerOk)
+        return false;
+    result.action.hasSkillActionContext = true;
+    result.action.skillActionContext.activationRef = SkillInstanceRef(owner,
+        SkillInstanceKey(skillName, instanceId));
+    return true;
+}
 bool AiLuaRuntime::parseResult(lua_State *state, AIResult &result) const
 {
     if (!lua_istable(state, -1))
@@ -942,9 +1462,39 @@ bool AiLuaRuntime::parseResult(lua_State *state, AIResult &result) const
         result.kind = AIResult::Pass;
         return true;
     }
+    if (kind == QStringLiteral("answer")) {
+        result.kind = AIResult::Answer;
+        lua_getfield(state, -1, "answer");
+        if (!lua_isnil(state, -1)) {
+            if (lua_type(state, -1) != LUA_TSTRING) {
+                lua_pop(state, 1);
+                return false;
+            }
+            if (!readBoundedString(state, -1, result.action.userString)) {
+                lua_pop(state, 1);
+                return false;
+            }
+        }
+        lua_pop(state, 1);
+        if (!readSelectedCards(state, result) || !readSelectedTargets(state, result))
+            return false;
+        return readBottomCards(state, result);
+    }
     if (kind != QStringLiteral("use_card"))
         return false;
     result.kind = AIResult::UseCard;
+
+    lua_getfield(state, -1, "card_id");
+    if (!lua_isnil(state, -1)) {
+        int useCardId = 0;
+        if (lua_type(state, -1) != LUA_TNUMBER
+            || !aiResultInteger(lua_tonumber(state, -1), useCardId) || useCardId < 0) {
+            lua_pop(state, 1);
+            return false;
+        }
+        result.action.useCardId = useCardId;
+    }
+    lua_pop(state, 1);
 
     lua_getfield(state, -1, "card");
     if (!lua_isnil(state, -1)) {
@@ -959,63 +1509,12 @@ bool AiLuaRuntime::parseResult(lua_State *state, AIResult &result) const
     }
     lua_pop(state, 1);
 
-    lua_getfield(state, -1, "cards");
-    if (!lua_isnil(state, -1)) {
-        if (!lua_istable(state, -1)) {
-            lua_pop(state, 1);
-            return false;
-        }
-        const size_t count = lua_rawlen(state, -1);
-        if (count > AiMaxSelectedCards) {
-            lua_pop(state, 1);
-            return false;
-        }
-        for (size_t index = 1; index <= count; ++index) {
-            lua_rawgeti(state, -1, index);
-            if (lua_type(state, -1) != LUA_TNUMBER) {
-                lua_pop(state, 2);
-                return false;
-            }
-            const lua_Number number = lua_tonumber(state, -1);
-            int cardId = 0;
-            const bool validCardId = aiResultInteger(number, cardId);
-            lua_pop(state, 1);
-            if (!validCardId || result.action.selectedCardIds.contains(cardId)) {
-                lua_pop(state, 1);
-                return false;
-            }
-            result.action.selectedCardIds << cardId;
-        }
-    }
-    lua_pop(state, 1);
-
-    lua_getfield(state, -1, "targets");
-    if (!lua_isnil(state, -1)) {
-        if (!lua_istable(state, -1)) {
-            lua_pop(state, 1);
-            return false;
-        }
-        const size_t count = lua_rawlen(state, -1);
-        if (count > AiMaxSelectedTargets) {
-            lua_pop(state, 1);
-            return false;
-        }
-        for (size_t index = 1; index <= count; ++index) {
-            lua_rawgeti(state, -1, index);
-            if (lua_type(state, -1) != LUA_TSTRING) {
-                lua_pop(state, 2);
-                return false;
-            }
-            QString targetName;
-            if (!readBoundedString(state, -1, targetName)) {
-                lua_pop(state, 2);
-                return false;
-            }
-            result.action.selectedTargetNames << targetName;
-            lua_pop(state, 1);
-        }
-    }
-    lua_pop(state, 1);
+    if (!readSelectedCards(state, result) || !readSelectedTargets(state, result))
+        return false;
+    if (!readCardSpec(state, result))
+        return false;
+    if (!readResultSkillAction(state, result))
+        return false;
 
     lua_getfield(state, -1, "user_string");
     if (!lua_isnil(state, -1)) {

@@ -52,13 +52,14 @@ def read_text(path):
         return handle.read()
 
 
-def write_server_config(path, operation_timeout, ai_delay, enable_ai=True):
+def write_server_config(path, operation_timeout, ai_delay, enable_ai=True,
+                        free_choose=False):
     lines = [
         "[General]",
         "RandomSeat=false",
         "Enable2ndGeneral=false",
-        "EnableCheat=false",
-        "FreeChoose=false",
+        "EnableCheat=%s" % ("true" if free_choose else "false"),
+        "FreeChoose=%s" % ("true" if free_choose else "false"),
         "EnableBasara=false",
         "EnableHegemony=false",
         "EnableSame=false",
@@ -80,12 +81,22 @@ def write_server_config(path, operation_timeout, ai_delay, enable_ai=True):
         handle.write("\n".join(lines))
 
 
-def write_tui_script(path, reconnect, connection_only=False, game_timeout_ms=600000):
+def write_tui_script(path, reconnect, connection_only=False, game_timeout_ms=600000,
+                     general=""):
     lines = [
         "wait active 30000",
     ]
     if connection_only:
         lines.append("assert state connection.state active")
+    elif general:
+        # 指定武將需由 client 親自回答 choose_general; 先填滿開局,
+        # 選完才開 trust 託管, 否則 server AI 會先搶答選將.
+        lines += [
+            "/addrobot all",
+            "wait interaction choose_general 120000",
+            general,
+            "/trust on",
+        ]
     else:
         lines += [
             "/trust on",
@@ -166,6 +177,9 @@ def parse_args(argv=None):
     parser.add_argument("--artifact-dir", default="ci-logs/tui-real-tcp")
     parser.add_argument("--mode", default="03_1v2")
     parser.add_argument("--seed", type=int, default=20260831)
+    parser.add_argument("--general", default="",
+                        help="自由選將: server 開 EnableCheat+FreeChoose, TUI 親自回答"
+                             " choose_general 後才開 trust (空 = AI 自選)")
     parser.add_argument("--reconnect", action="store_true")
     parser.add_argument("--connection-only", action="store_true",
                         help="short real-TCP signup/setup/ready smoke; never full-game evidence")
@@ -204,9 +218,9 @@ def main(argv=None):
         if os.path.isfile(path):
             os.remove(path)
     write_server_config(paths["config"], args.operation_timeout, args.ai_delay,
-                        not args.connection_only)
+                        not args.connection_only, bool(args.general))
     write_tui_script(paths["script"], args.reconnect, args.connection_only,
-                     args.game_timeout_ms)
+                     args.game_timeout_ms, args.general)
 
     port = free_tcp_port()
     summary = {
@@ -215,6 +229,7 @@ def main(argv=None):
         "run": {
             "mode": args.mode,
             "seed": args.seed,
+            "general": args.general,
             "reconnect": args.reconnect,
             "connection_only": args.connection_only,
             "port": port,
