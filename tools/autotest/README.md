@@ -58,7 +58,7 @@ python tools\autotest\network_runner.py `
 
 輸出: `tools\autotest\autotest-logs\network\<時間戳>\<mode>\server.log` / `runN.log`
 + `summary-network-<時間>.csv` (彙總表在 `autotest-logs\` 根目錄)。
-`--modes` 預設 `10p,20p,02_1v1,05p`、`--runs` 預設 2、`--general` 預設 `zhenji`。
+`--modes` 預設 `10p,20p,02_1v1,05p,06_3v3,04_1v3`、`--runs` 預設 2、`--general` 預設 `zhenji`。
 
 `--port` 可指定 server 監聽 port (預設 9527); 平行跑多份時各自指定。
 

@@ -82,24 +82,72 @@ await evalJs(`(() => {
 })()`);
 console.log("[driver] signup submitted, avatar =", GENERAL);
 
-// In-page autopilot: fills lobby, readies, picks the designated general,
-// confirms it, then enables trust so the server AI plays the seat out.
+// In-page autopilot: fills lobby, readies, assigns roles (FreeAssign CHOOSE_ROLE
+// panel), picks the designated general (rewritten over the wire when the server
+// allows FreeChoose), then enables trust so the server AI plays the seat out.
 await evalJs(`(() => {
-  window.__auto = { robots:false, ready:false, picked:false, confirmed:false,
-                    trusted:false, done:false, result:"", pickerSeen:0 };
+  window.__auto = { robots:false, ready:false, roleAssigned:false, picked:false,
+                    confirmed:false, trusted:false, done:false, result:"",
+                    pickerSeen:0, genRewritten:0 };
   const byText = (t) => [...document.querySelectorAll("button")]
     .find(b => b.textContent.trim() === t && !b.disabled);
+  const panelOf = (title) => {
+    const h = [...document.querySelectorAll("h2")].find(x => x.textContent.includes(title));
+    return h ? h.closest("section") : null;
+  };
+  // Rewrite CHOOSE_GENERAL(10)/ASK_GENERAL(65) replies so the server-side
+  // FreeChoose cheat accepts the designated general even when it is not in
+  // the offered list. WebSocket.prototype.send is resolved at call time.
+  if (!window.__genPatcher) {
+    const origSend = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (data) {
+      if (typeof data === "string") {
+        try {
+          const m = JSON.parse(data);
+          if (m && m.type === "reply" && (m.command === 10 || m.command === 65)
+              && m.payload && typeof m.payload === "object") {
+            m.payload.general = ${JSON.stringify(GENERAL)};
+            window.__auto.genRewritten++;
+            data = JSON.stringify(m);
+          }
+        } catch (e) { /* non-JSON frame */ }
+      }
+      return origSend.call(this, data);
+    };
+    window.__genPatcher = true;
+  }
   setInterval(() => {
     const a = window.__auto;
     if (document.querySelector(".wait-panel")) {
       if (!a.robots) { const b = byText("加滿機器人"); if (b) { b.click(); a.robots = true; } }
       else if (!a.ready) { const b = byText("準備"); if (b) { b.click(); a.ready = true; } }
     }
+    // FreeAssign: assign a valid 20p spread (1 lord / 8 loyalist / 10 rebel /
+    // 1 renegade) across the seat selects, then submit.
+    const rolePanel = panelOf("分配身分");
+    if (rolePanel && !a.roleAssigned) {
+      const sels = [...rolePanel.querySelectorAll("select")];
+      const roles = ["lord", "loyalist","loyalist","loyalist","loyalist",
+        "loyalist","loyalist","loyalist","loyalist",
+        "rebel","rebel","rebel","rebel","rebel","rebel","rebel","rebel","rebel","rebel",
+        "renegade"];
+      if (sels.length) {
+        sels.forEach((s, i) => {
+          if (roles[i]) { s.value = roles[i]; s.dispatchEvent(new Event("change", { bubbles: true })); }
+        });
+        a.roleAssigned = true;
+      }
+    } else if (a.roleAssigned && !a.roleSent) {
+      const ok = rolePanel && [...rolePanel.querySelectorAll("button")]
+        .find(b => b.textContent.trim() === "送出" && !b.disabled);
+      if (ok) { ok.click(); a.roleSent = true; }
+    }
     const pick = document.querySelector(".general-pick");
     if (pick && !a.picked) {
       a.pickerSeen++;
-      const btn = [...pick.querySelectorAll("button")]
-        .find(b => (b.querySelector("img")?.getAttribute("src") ?? "").includes(${JSON.stringify(GENERAL)}));
+      const btns = [...pick.querySelectorAll("button")];
+      const btn = btns.find(b => (b.querySelector("img")?.getAttribute("src") ?? "").includes(${JSON.stringify(GENERAL)}))
+        ?? btns[0];
       if (btn) { btn.click(); a.picked = true; }
     } else if (a.picked && !a.confirmed) {
       const ok = byText("確定");
@@ -122,7 +170,7 @@ for (;;) {
   const state = await evalJs(`JSON.stringify({ a: window.__auto, phase: document.querySelector('.phase-badge')?.textContent ?? '' })`)
     .then((s) => JSON.parse(s));
   const brief = state.a
-    ? `robots=${state.a.robots} ready=${state.a.ready} pickers=${state.a.pickerSeen} picked=${state.a.picked} confirmed=${state.a.confirmed} trusted=${state.a.trusted} done=${state.a.done}`
+    ? `robots=${state.a.robots} ready=${state.a.ready} roles=${state.a.roleSent ?? false} pickers=${state.a.pickerSeen} picked=${state.a.picked} gen_rw=${state.a.genRewritten ?? 0} confirmed=${state.a.confirmed} trusted=${state.a.trusted} done=${state.a.done}`
     : "no-state";
   if (brief !== last) { console.log(`[driver] ${new Date().toISOString()} ${brief}`); last = brief; }
   if (state.a?.done) {

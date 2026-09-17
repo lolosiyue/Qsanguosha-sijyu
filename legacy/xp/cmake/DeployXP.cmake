@@ -117,7 +117,7 @@ file(COPY_FILE "${qsan_fmod_runtime}" "${qsan_output_dir}/${qsan_fmod_name}"
     ONLY_IF_DIFFERENT)
 file(WRITE "${qsan_output_dir}/qt.conf" "[Paths]\nPlugins=.\n")
 
-set(qsan_required_asset_directories lua lang qss skins image extensions)
+set(qsan_required_asset_directories lua lang qss skins image extensions font)
 set(qsan_optional_asset_directories audio etc listserver)
 find_program(QSAN_ROBOCOPY robocopy REQUIRED)
 function(qsan_copy_asset_directory qsan_asset_dir qsan_required)

@@ -331,6 +331,7 @@ def main():
         sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description="QSanguosha 真實網路測試 runner")
     common_args(parser)
+    parser.set_defaults(modes="10p,20p,02_1v1,05p,06_3v3,04_1v3")
     parser.add_argument("--runs", type=int, default=2, help="每個模式要跑的局數 (預設 2)")
     parser.add_argument("--general", default="zhenji",
                         help="client 自動選將主將 (02_1v1 請用 x0; 預設 zhenji)")
