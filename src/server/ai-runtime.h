@@ -13,34 +13,7 @@ struct lua_Debug;
 enum AiRoute {
     AiRouteLegacyDirect,
     AiRouteLegacyAdapted,
-    AiRouteIsolated,
-    AiRouteShadow
-};
-
-enum AiShadowComparison {
-    AiShadowNotCovered,
-    AiShadowMatch,
-    AiShadowMismatch,
-    AiShadowError
-};
-
-struct AiShadowAuditEntry {
-    quint64 decisionId = 0;
-    QString callbackName;
-    QString skillName;
-    QString pattern;
-    AIResult officialResult;
-    AIResult shadowResult;
-    AiShadowComparison comparison = AiShadowNotCovered;
-};
-
-struct AiShadowAuditSummary {
-    quint64 notCovered = 0;
-    quint64 matches = 0;
-    quint64 mismatches = 0;
-    quint64 errors = 0;
-    // How often the legacy AI answered because the isolated side could not.
-    quint64 legacyFallbacks = 0;
+    AiRouteIsolated
 };
 
 class AiRouteRegistry
@@ -91,19 +64,7 @@ public:
     const LuaRuntime &lua() const { return m_lua; }
     AiRouteRegistry &routes() { return m_routes; }
     const AiRouteRegistry &routes() const { return m_routes; }
-    AIResult decideShadow(const AIRequest &request);
-    void recordShadowAudit(const AIRequest &request, const QString &callbackName,
-                           const QString &skillName, const AIResult &officialResult,
-                           const AIResult &shadowResult);
-    const QList<AiShadowAuditEntry> &shadowAudits() const { return m_shadowAudits; }
-    const AiShadowAuditSummary &shadowAuditSummary() const { return m_shadowAuditSummary; }
-    // Per callback name, so the switch-over can be judged entry by entry.
-    AiShadowAuditSummary shadowAuditSummary(const QString &callbackName) const
-    {
-        return m_callbackAuditSummaries.value(callbackName);
-    }
-    QStringList auditedCallbacks() const { return m_callbackAuditSummaries.keys(); }
-    void recordLegacyFallback(const QString &callbackName);
+    AIResult decideIsolated(const AIRequest &request);
 
 private:
     class ExecutionBinding
@@ -140,10 +101,6 @@ private:
     qint64 m_initializationInstructionBudget;
     qint64 m_instructionsRemaining;
     bool m_instructionLimitExceeded;
-    int m_shadowAuditLimit;
-    QList<AiShadowAuditEntry> m_shadowAudits;
-    AiShadowAuditSummary m_shadowAuditSummary;
-    QHash<QString, AiShadowAuditSummary> m_callbackAuditSummaries;
 };
 
 #endif

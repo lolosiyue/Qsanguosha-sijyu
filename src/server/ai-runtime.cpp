@@ -7,7 +7,6 @@
 #include "skill.h"
 
 #include <QDebug>
-#include <QCryptographicHash>
 #include <QJsonArray>
 #include <QMetaEnum>
 #include <QRegularExpression>
@@ -24,8 +23,6 @@ const size_t AiHardMemoryLimit = 128u * 1024u * 1024u;
 const size_t AiMaxResultStringBytes = 64u * 1024u;
 const size_t AiMaxSelectedCards = 2048u;
 const size_t AiMaxSelectedTargets = 64u;
-const int AiAuditListLimit = 32;
-const int AiAuditStringLimit = 512;
 
 bool aiResultInteger(lua_Number number, int &value)
 {
@@ -38,83 +35,6 @@ bool aiResultInteger(lua_Number number, int &value)
         return false;
     value = converted;
     return true;
-}
-
-bool sameAiResult(const AIResult &first, const AIResult &second)
-{
-    return first.kind == second.kind
-        && first.handled == second.handled
-        && first.errorCode == second.errorCode
-        && first.action.legacyCardString == second.action.legacyCardString
-        && first.action.useCardId == second.action.useCardId
-        && first.action.selectedCardIds == second.action.selectedCardIds
-        && first.action.bottomCardIds == second.action.bottomCardIds
-        && first.action.selectedTargetNames == second.action.selectedTargetNames
-        && first.action.userString == second.action.userString
-        && first.action.hasCardSpec == second.action.hasCardSpec
-        && (!first.action.hasCardSpec
-            || (first.action.cardSpec.name == second.action.cardSpec.name
-                && first.action.cardSpec.suit == second.action.cardSpec.suit
-                && first.action.cardSpec.number == second.action.cardSpec.number
-                && first.action.cardSpec.skillName == second.action.cardSpec.skillName
-                && first.action.cardSpec.subcardIds == second.action.cardSpec.subcardIds))
-        && first.action.hasSkillActionContext == second.action.hasSkillActionContext
-        && (!first.action.hasSkillActionContext
-            || (first.action.skillActionContext.activationRef
-                    == second.action.skillActionContext.activationRef
-                && first.action.skillActionContext.sourceRef
-                    == second.action.skillActionContext.sourceRef));
-}
-
-const char *shadowComparisonName(AiShadowComparison comparison)
-{
-    switch (comparison) {
-    case AiShadowNotCovered:
-        return "not_covered";
-    case AiShadowMatch:
-        return "match";
-    case AiShadowMismatch:
-        return "mismatch";
-    case AiShadowError:
-        return "error";
-    }
-    return "unknown";
-}
-
-QString auditString(const QString &value)
-{
-    if (value.size() <= AiAuditStringLimit)
-        return value;
-    const QByteArray bytes = value.toUtf8();
-    return QStringLiteral("sha256:%1 bytes:%2")
-        .arg(QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()))
-        .arg(bytes.size());
-}
-
-AIResult auditResult(const AIResult &source)
-{
-    AIResult result;
-    result.kind = source.kind;
-    result.handled = source.handled;
-    result.decisionId = source.decisionId;
-    result.stateRevision = source.stateRevision;
-    result.errorCode = auditString(source.errorCode);
-    result.action.legacyCardString = auditString(source.action.legacyCardString);
-    result.action.useCardId = source.action.useCardId;
-    result.action.userString = auditString(source.action.userString);
-    result.action.hasCardSpec = source.action.hasCardSpec;
-    result.action.cardSpec.name = auditString(source.action.cardSpec.name);
-    result.action.cardSpec.skillName = auditString(source.action.cardSpec.skillName);
-    result.action.cardSpec.suit = source.action.cardSpec.suit;
-    result.action.cardSpec.number = source.action.cardSpec.number;
-    result.action.cardSpec.subcardIds = source.action.cardSpec.subcardIds.mid(0, AiAuditListLimit);
-    result.action.selectedCardIds = source.action.selectedCardIds.mid(0, AiAuditListLimit);
-    result.action.bottomCardIds = source.action.bottomCardIds.mid(0, AiAuditListLimit);
-    foreach (const QString &target, source.action.selectedTargetNames.mid(0, AiAuditListLimit))
-        result.action.selectedTargetNames << auditString(target);
-    result.action.hasSkillActionContext = source.action.hasSkillActionContext;
-    result.action.skillActionContext = source.action.skillActionContext;
-    return result;
 }
 
 bool readBoundedString(lua_State *state, int index, QString &value)
@@ -595,8 +515,6 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world)
 AiRouteRegistry::AiRouteRegistry()
     : m_frozen(false)
 {
-    m_decisionRoutes.insert(int(AIRequest::Activate), AiRouteLegacyAdapted);
-    m_decisionRoutes.insert(int(AIRequest::UseCard), AiRouteShadow);
 }
 
 bool AiRouteRegistry::setDecisionRoute(AIRequest::DecisionKind kind, AiRoute route)
@@ -628,7 +546,7 @@ AiRoute AiRouteRegistry::routeFor(AIRequest::DecisionKind kind,
         if (m_callbackRoutes.contains(callbackDefault))
             return m_callbackRoutes.value(callbackDefault);
     }
-    return m_decisionRoutes.value(int(kind), AiRouteLegacyDirect);
+    return m_decisionRoutes.value(int(kind), AiRouteIsolated);
 }
 
 QString AiRouteRegistry::callbackKey(const QString &callbackName,
@@ -640,7 +558,7 @@ QString AiRouteRegistry::callbackKey(const QString &callbackName,
 AiLuaRuntime::AiLuaRuntime(Room *room)
     : m_room(room), m_lua(LuaRuntime::Auxiliary), m_instructionBudget(2000000),
       m_initializationInstructionBudget(500000), m_instructionsRemaining(0),
-      m_instructionLimitExceeded(false), m_shadowAuditLimit(256)
+      m_instructionLimitExceeded(false)
 {
 }
 
@@ -659,8 +577,6 @@ bool AiLuaRuntime::initialize(QString *error)
         Config.value(QStringLiteral("AiLuaInstructionBudget"), 2000000).toLongLong());
     m_initializationInstructionBudget = qMax<qint64>(10000,
         Config.value(QStringLiteral("AiLuaInitializationInstructionBudget"), 500000).toLongLong());
-    m_shadowAuditLimit = qBound(1,
-        Config.value(QStringLiteral("AiShadowAuditLimit"), 256).toInt(), 4096);
     m_lua.setMemoryLimits(size_t(softMiB) * 1024u * 1024u,
                           size_t(hardMiB) * 1024u * 1024u);
     if (!m_lua.initialize(error))
@@ -708,7 +624,7 @@ bool AiLuaRuntime::restoreRngState(const GameRng::State &state, QString *error)
     return m_rng.restoreState(state, error);
 }
 
-AIResult AiLuaRuntime::decideShadow(const AIRequest &request)
+AIResult AiLuaRuntime::decideIsolated(const AIRequest &request)
 {
     AIResult result;
     result.decisionId = request.decisionId;
@@ -769,60 +685,6 @@ AIResult AiLuaRuntime::decideShadow(const AIRequest &request)
             qWarning().noquote() << "Unable to rebuild AI Lua runtime:" << error;
     }
     return result;
-}
-
-void AiLuaRuntime::recordLegacyFallback(const QString &callbackName)
-{
-    // A fallback is not a match and not an error: it is the isolated side declining.
-    ++m_shadowAuditSummary.legacyFallbacks;
-    ++m_callbackAuditSummaries[callbackName].legacyFallbacks;
-}
-
-void AiLuaRuntime::recordShadowAudit(const AIRequest &request,
-                                     const QString &callbackName,
-                                     const QString &skillName,
-                                     const AIResult &officialResult,
-                                     const AIResult &shadowResult)
-{
-    AiShadowAuditEntry entry;
-    entry.decisionId = request.decisionId;
-    entry.callbackName = callbackName;
-    entry.skillName = auditString(skillName);
-    entry.pattern = auditString(request.pattern);
-    entry.officialResult = auditResult(officialResult);
-    entry.shadowResult = auditResult(shadowResult);
-    AiShadowAuditSummary &callbackSummary = m_callbackAuditSummaries[callbackName];
-    if (!officialResult.errorCode.isEmpty() || !shadowResult.errorCode.isEmpty()) {
-        entry.comparison = AiShadowError;
-        ++m_shadowAuditSummary.errors;
-        ++callbackSummary.errors;
-    } else if (!shadowResult.handled) {
-        entry.comparison = AiShadowNotCovered;
-        ++m_shadowAuditSummary.notCovered;
-        ++callbackSummary.notCovered;
-    } else if (sameAiResult(officialResult, shadowResult)) {
-        entry.comparison = AiShadowMatch;
-        ++m_shadowAuditSummary.matches;
-        ++callbackSummary.matches;
-    } else {
-        entry.comparison = AiShadowMismatch;
-        ++m_shadowAuditSummary.mismatches;
-        ++callbackSummary.mismatches;
-    }
-    while (m_shadowAudits.size() >= m_shadowAuditLimit)
-        m_shadowAudits.removeFirst();
-    m_shadowAudits << entry;
-    if (Config.value(QStringLiteral("AiShadowAuditLog"), false).toBool()) {
-        qDebug().noquote() << "AiShadowAudit"
-            << QStringLiteral("decision=%1 callback=%2 skill=%3 pattern=%4 comparison=%5 "
-                              "official=%6/%7 shadow=%8/%9 totals=%10/%11/%12/%13")
-                .arg(entry.decisionId).arg(callbackName, entry.skillName, entry.pattern)
-                .arg(QString::fromLatin1(shadowComparisonName(entry.comparison)))
-                .arg(int(officialResult.kind)).arg(officialResult.errorCode)
-                .arg(int(shadowResult.kind)).arg(shadowResult.errorCode)
-                .arg(m_shadowAuditSummary.notCovered).arg(m_shadowAuditSummary.matches)
-                .arg(m_shadowAuditSummary.mismatches).arg(m_shadowAuditSummary.errors);
-    }
 }
 
 AiLuaRuntime::ExecutionBinding::ExecutionBinding(AiLuaRuntime &runtime)
@@ -1015,7 +877,6 @@ void AiLuaRuntime::loadConfiguredRoutes()
     addRoutes(QStringLiteral("AiLegacyDirectCallbacks"), AiRouteLegacyDirect);
     addRoutes(QStringLiteral("AiLegacyAdaptedCallbacks"), AiRouteLegacyAdapted);
     addRoutes(QStringLiteral("AiIsolatedCallbacks"), AiRouteIsolated);
-    addRoutes(QStringLiteral("AiShadowCallbacks"), AiRouteShadow);
 }
 
 bool AiLuaRuntime::loadConfiguredScripts(QString *error)
