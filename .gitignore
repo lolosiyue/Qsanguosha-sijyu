@@ -29,6 +29,7 @@ qml/home/icons/*.svg
 !qml/home/icons/about.svg
 !qml/home/icons/update.svg
 qml/home/nav/*.png
+qml/home/art/
 
 # Debug 工作樹執行期產物／素材（L 本機有、不入庫）
 debug/
