@@ -1308,7 +1308,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 			request.pattern = m_room.m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = responseCtx.initiator;
             request.activationRef = responseCtx.activationRef;
-            request.selectedCardIds = resp.m_card->getSubcards();
+            request.setCardSelection(resp.m_card);
 			const bool paidCost = responseActiveSkill->cost(&m_room, responseCtx, request);
             restoreSkillContextIdentity(responseCtx, responseIdentity);
             responseCtx.invoker = responseIdentity.invoker;
@@ -1370,7 +1370,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 			request.pattern = m_room.m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = responseCtx.initiator;
             request.activationRef = responseCtx.activationRef;
-            request.selectedCardIds = resp.m_card->getSubcards();
+            request.setCardSelection(resp.m_card);
 			const bool paid = responseActiveSkill->pay(&m_room, responseCtx, request);
             restoreSkillContextIdentity(responseCtx, responseIdentity);
             responseCtx.invoker = responseInvoker;

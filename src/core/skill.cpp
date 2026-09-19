@@ -473,6 +473,13 @@ QList<int> ViewAsSkill::getExpandPileCardIds(const Player *player) const
     return uniqueResult;
 }
 
+void ActiveSkillRequest::setCardSelection(const Card *card)
+{
+    selectedCardIds = card ? card->getSubcards() : QList<int>();
+    const SkillCard *proxy = card ? qobject_cast<const SkillCard *>(card->getRealCard()) : nullptr;
+    userString = proxy ? proxy->getUserString() : (card ? card->objectName() : QString());
+}
+
 ViewAsSkillV2::ViewAsSkillV2(const QString &name, int n)
     : ViewAsSkill(name), m_n(qMax(0, n)), m_baseAmount(1)
 {

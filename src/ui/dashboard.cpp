@@ -2225,6 +2225,13 @@ void Dashboard::updatePending()
         activeRequest.initiator = m_player;
         activeRequest.activationRef = SkillInstanceRef(m_player->objectName(),
             SkillInstanceKey(activeSkill->objectName(), m_viewAsSkillInstanceID));
+        // Guhuo's dialog stores a client-local declaration. Capture it in the
+        // request; the server must reconstruct from the submitted card instead.
+        if (activeRequest.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && activeSkill->getDialogInfo().type == QStringLiteral("guhuo")) {
+            const Card *declared = m_player->getTag(activeSkill->objectName()).value<const Card *>();
+            if (declared) activeRequest.userString = declared->objectName();
+        }
         foreach (const Card *card, cards)
             activeRequest.selectedCardIds << card->getEffectiveId();
     }

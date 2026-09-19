@@ -50,6 +50,9 @@
 - `bypass_cost` 不免除普通卡 subcards。
 - 不實作 V2 custom target hooks。
 
+guhuo 選牌、宣告牌名重建與回應時的二次選擇，見
+[以 s4_ganglu 為例的 V2 寫法](view-as-skill-v2-guhuo.md)。
+
 ### 4.2 通用 proxy custom action
 
 適用於舊技能需要專屬 SkillCard effect，但不需要專屬 C++ Card 類型。
