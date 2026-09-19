@@ -138,6 +138,7 @@ config = {
 		"extensions/leo.lua;ai=lua/ai/leo-ai.lua",
 		"extensions/lol2015.lua;ai=lua/ai/lol2015-ai.lua",
 		"extensions/Loong.lua;ai=lua/ai/Loong-ai.lua",
+		"extensions/lolihime.lua;ai=lua/ai/lolihime-ai.lua",
 		"extensions/LuaOldEnemy.lua;libs=lua/luaoldenemy_lib.lua",
 		"extensions/LuaOldEnemyGirls.lua;ai=lua/ai/LuaOldEnemyGirls-ai.lua",
 		"extensions/mcompetition.lua;ai=lua/ai/mcompetition-ai.lua",
