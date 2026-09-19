@@ -121,6 +121,75 @@ bool playPhaseActivationKeepsTheSkill()
     return ok;
 }
 
+// No custom target callbacks: declared ordinary cards must use native rules.
+class DeclaredCardSkill : public ViewAsSkillV2
+{
+public:
+    DeclaredCardSkill() : ViewAsSkillV2("test-v2-declared-card") {}
+    bool canActivate(const ActiveSkillRequest &) const override { return true; }
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (request.userString != "slash" && request.userString != "jink") return nullptr;
+        Card *card = Sanguosha->cloneCard(request.userString);
+        card->setSkillName(objectName());
+        card->deleteLater();
+        return card;
+    }
+};
+
+bool declaredOrdinaryCardUsesNativeTargets()
+{
+    DeclaredCardSkill skill;
+    Sanguosha->addSkills(QList<const Skill *>() << &skill);
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    EngineRuntimeContextScope scope(*Sanguosha, &room);
+    RoomTestAccess::attachThread(room);
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, "declarer");
+    ServerPlayer *target = RoomTestAccess::addOrdinaryPlayer(room, "target");
+    owner->setSeat(1);
+    target->setSeat(2);
+    room.setCurrent(owner);
+    owner->setPhase(Player::Play);
+    const int id = room.acquireSkill(owner, skill.objectName(), false, false, false);
+    ActiveSkillRequest request;
+    request.initiator = owner;
+    request.activationRef = SkillInstanceRef(owner->objectName(), SkillInstanceKey(skill.objectName(), id));
+    request.reason = CardUseStruct::CARD_USE_REASON_PLAY;
+    request.userString = "slash";
+    request.selectedTargetNames << target->objectName();
+    const Card *slash = RoomTestAccess::resolveActiveRequest(room, owner, &skill, request);
+    if (!expect(slash && slash->isKindOf("Slash"), "ordinary Slash needs no V2 target hooks")) return false;
+    ActiveSkillRequest reconstructed;
+    reconstructed.setCardSelection(slash);
+    if (!expect(reconstructed.userString == "slash", "ordinary declaration survives reconstruction")) return false;
+    CardUseStruct use(slash, owner);
+    use.activationRef = request.activationRef;
+    use.to << target;
+    if (!expect(RoomTestAccess::cardTargetsLegal(room, use), "native Slash accepts another player")) return false;
+    use.to.clear();
+    use.to << owner;
+    if (!expect(!RoomTestAccess::cardTargetsLegal(room, use),
+                "native Slash rejects self target")) return false;
+    use.to.clear();
+    if (!expect(!RoomTestAccess::cardTargetsLegal(room, use),
+                "play Slash rejects missing target")) return false;
+    request.selectedTargetNames.clear();
+    request.reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
+    request.userString = "jink";
+    const Card *jink = RoomTestAccess::resolveActiveRequest(room, owner, &skill, request);
+    if (!expect(jink && jink->isKindOf("Jink"), "pure response Jink needs no target")) return false;
+    request.reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+    request.userString = "slash";
+    slash = RoomTestAccess::resolveActiveRequest(room, owner, &skill, request);
+    if (!expect(slash != nullptr, "askForCard may defer response-use targets")) return false;
+    use.card = slash;
+    if (!expect(!RoomTestAccess::cardTargetsLegal(room, use), "actual Slash submission still needs targets")) return false;
+    ActiveSkillCard proxy;
+    proxy.setUserString("peach+analeptic");
+    reconstructed.setCardSelection(&proxy);
+    return expect(reconstructed.userString == "peach+analeptic", "proxy keeps opaque declaration");
+}
+
 } // namespace
 
 int runAiActiveSkillActivationTests()
@@ -132,6 +201,8 @@ int runAiActiveSkillActivationTests()
     }
     if (!playPhaseActivationKeepsTheSkill())
         return 2;
+    if (!declaredOrdinaryCardUsesNativeTargets())
+        return 3;
     qInfo() << "ai-active-skill-activation regression passed";
     return 0;
 }

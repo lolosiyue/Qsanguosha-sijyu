@@ -2741,7 +2741,7 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 			Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
 		// resolveActiveSkillRequest() has already checked V2's independent target
 		// contract; its proxy card intentionally rejects generic targetFilter().
-		if (activeSkill) return true;
+		if (activeSkill && qobject_cast<const ActiveSkillCard *>(use.card->getRealCard())) return true;
 	}
 
 	QList<const Player *> selected;
@@ -2784,22 +2784,6 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 		if (!skill->isUsable(usageCtx))
 			return nullptr;
 	}
-	if (skill->targetMode() == ViewAsSkillV2::NoTarget && !request.selectedTargetNames.isEmpty())
-		return nullptr;
-	QList<const Player *> selectedTargets;
-	QSet<QString> selectedTargetNames;
-	if (skill->targetMode() == ViewAsSkillV2::SelectTargets) {
-		foreach (const QString &name, request.selectedTargetNames) {
-			if (selectedTargetNames.contains(name)) return nullptr;
-			ServerPlayer *candidate = findPlayerByObjectName(name);
-			if (!candidate || !skill->canSelectTarget(request, selectedTargets, candidate))
-				return nullptr;
-			selectedTargetNames.insert(name);
-			selectedTargets << candidate;
-		}
-		if (!skill->targetsFeasible(request, selectedTargets)) return nullptr;
-	}
-
 	QSet<int> selectable;
 	foreach (const Card *owned, player->getCards("he"))
 		selectable.insert(owned->getEffectiveId());
@@ -2828,6 +2812,24 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 		sourceRef = checked.activationRef;
 	if (!sourceRef.isValid()) return nullptr;
 	mutableCard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
+
+	// Ordinary cards use areCardTargetsLegal() at the client/AI submission gate.
+	// Pure responses have no targets; server-created uses may supply authoritative
+	// targets even for target-fixed cards (for example Peach during rescue).
+	const bool proxy = qobject_cast<const ActiveSkillCard *>(card->getRealCard()) != nullptr;
+	if (!proxy) return card;
+	if (skill->targetMode() == ViewAsSkillV2::NoTarget)
+		return request.selectedTargetNames.isEmpty() ? card : nullptr;
+	QList<const Player *> selectedTargets;
+	QSet<QString> selectedTargetNames;
+	foreach (const QString &name, request.selectedTargetNames) {
+		if (selectedTargetNames.contains(name)) return nullptr;
+		ServerPlayer *candidate = findPlayerByObjectName(name);
+		if (!candidate || !skill->canSelectTarget(request, selectedTargets, candidate)) return nullptr;
+		selectedTargetNames.insert(name);
+		selectedTargets << candidate;
+	}
+	if (!skill->targetsFeasible(request, selectedTargets)) return nullptr;
 	return card;
 }
 
@@ -3244,7 +3246,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			request.pattern = m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = skillCardCtx.initiator;
 			request.activationRef = skillCardCtx.activationRef;
-			request.selectedCardIds = use.card->getSubcards();
+			request.setCardSelection(use.card);
 			foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
 			const bool paidCost = activeSkill->cost(this, skillCardCtx, request);
 			restoreSkillCardIdentity(skillCardCtx);
@@ -3308,7 +3310,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			request.pattern = m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = skillCardCtx.initiator;
 			request.activationRef = skillCardCtx.activationRef;
-			request.selectedCardIds = use.card->getSubcards();
+			request.setCardSelection(use.card);
 			foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
 			const bool paid = activeSkill->pay(this, skillCardCtx, request);
 			restoreSkillCardIdentity(skillCardCtx);
@@ -3359,7 +3361,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		request.pattern = m_runtime->state().getCurrentCardUsePattern();
 		request.initiator = use.from;
 		request.activationRef = use.activationRef;
-		request.selectedCardIds = use.card->getSubcards();
+		request.setCardSelection(use.card);
 		foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
 		key = historySkill->historyKey(request);
 	}

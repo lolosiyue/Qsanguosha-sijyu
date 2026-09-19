@@ -899,14 +899,10 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         request.pattern = m_room.roomRuntime()->state().getCurrentCardUsePattern();
         request.initiator = use.from;
         request.activationRef = use.activationRef;
-        request.selectedCardIds = use.card->getSubcards();
+        request.setCardSelection(use.card);
         if (activeSkill->targetMode() != ViewAsSkillV2::NoTarget) {
             foreach (ServerPlayer *target, use.to)
                 request.selectedTargetNames << target->objectName();
-        }
-        if (use.card->isKindOf("SkillCard")) {
-            request.userString = qobject_cast<const SkillCard *>(
-                use.card->getRealCard())->getUserString();
         }
         const Card *serverCard = m_room.resolveActiveSkillRequest(use.from,
                                                                   activeSkill,

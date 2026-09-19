@@ -70,6 +70,9 @@ struct ActiveSkillRequest {
 
     ActiveSkillRequest() : reason(CardUseStruct::CARD_USE_REASON_UNKNOWN), initiator(nullptr) {}
 
+    // Preserve proxy declarations; ordinary conversions carry their canonical card name.
+    void setCardSelection(const Card *card);
+
     CardUseStruct::CardUseReason getReason() const { return reason; }
     QString getPattern() const { return pattern; }
     const Player *getInitiator() const { return initiator; }

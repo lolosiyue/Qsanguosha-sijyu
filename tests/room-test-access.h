@@ -17,6 +17,17 @@
 
 struct RoomTestAccess
 {
+    static const Card *resolveActiveRequest(Room &room, ServerPlayer *player,
+                                            const ViewAsSkillV2 *skill, const ActiveSkillRequest &request)
+    {
+        return room.resolveActiveSkillRequest(player, skill, request);
+    }
+
+    static bool cardTargetsLegal(Room &room, const CardUseStruct &use)
+    {
+        return room.areCardTargetsLegal(use);
+    }
+
     static ServerPlayer *addPlayer(Room &room, const QString &objectName)
     {
         ServerPlayer *player = new ServerPlayer(&room);
