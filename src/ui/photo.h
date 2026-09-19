@@ -27,7 +27,7 @@ public:
     explicit Photo();
     ~Photo();
     const ClientPlayer *getPlayer() const;
-    void projectOverview(const QString &general, const QString &kingdom, int hp, int maxHp,
+    bool projectOverview(const QString &general, const QString &kingdom, int hp, int maxHp,
         int handCount, int handMax, bool hideHandCount, bool alive);
     void speak(const QString &content);
     virtual void repaintAll(bool all = false);

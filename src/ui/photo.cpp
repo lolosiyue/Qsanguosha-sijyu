@@ -57,12 +57,12 @@ Photo::Photo() : PlayerCardContainer(), m_giftHighlighted(false), m_giftHighligh
 }
 
 // A read-only Photo uses the same native controls without binding another ClientPlayer.
-void Photo::projectOverview(const QString &general, const QString &kingdom, int hp, int maxHp,
+bool Photo::projectOverview(const QString &general, const QString &kingdom, int hp, int maxHp,
     int handCount, int handMax, bool hideHandCount, bool alive)
 {
     const QString projection = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
         .arg(general, kingdom).arg(hp).arg(maxHp).arg(handCount).arg(handMax).arg(hideHandCount).arg(alive);
-    if (m_overviewProjection == projection) return;
+    if (m_overviewProjection == projection) return false;
     m_overviewProjection = projection;
     const QString name = general.isEmpty() ? QStringLiteral("anjiang") : general;
     _m_avatarIcon->setGeneralImage(G_ROOM_SKIN.getGeneralPixmapForPhoto(name,
@@ -87,6 +87,8 @@ void Photo::projectOverview(const QString &general, const QString &kingdom, int 
     }
     _m_handCardNumText->setVisible(!hideHandCount);
     _m_groupMain->setOpacity(alive ? 1.0 : 0.35);
+    // Callers only need to restore transient frames when this projection changed.
+    return true;
 }
 
 Photo::~Photo()

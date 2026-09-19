@@ -115,18 +115,17 @@ public:
     }
     QRectF boundingRect() const override { return QRectF(0, 0, MiniWidth, MiniHeight); }
     void project(const GameViewPlayer &player, const QString &focus, bool responding) {
-        // Cache only identity plus HP/death/hand/focus; unrelated player data does not repaint.
+        // Photo owns the portrait cache; only this item's caption/death mark is cached here.
         const bool hidden = !player.self && player.skills.contains(Sanguosha->translate(QStringLiteral("inovation_fengbi")));
-        const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9|%10|%11")
-            .arg(player.name, player.general).arg(player.hp).arg(player.maxHp).arg(player.handCount)
-            .arg(player.handMax).arg(player.alive).arg(player.self).arg(focus).arg(hidden).arg(responding);
         name = player.name;
-        if (key == stateKey) return;
-        stateKey = key; alive = player.alive; self = player.self; mark = focus;
-        photo->projectOverview(player.general, player.kingdom, player.hp, player.maxHp,
+        const bool photoChanged = photo->projectOverview(player.general, player.kingdom, player.hp, player.maxHp,
             player.handCount, player.handMax, hidden, player.alive);
         // Reapply after the value projection, which hides non-mini native controls.
-        photo->setFrame(responding ? Photo::S_FRAME_RESPONDING : Photo::S_FRAME_NO_FRAME);
+        if (photoChanged || responseFrame != responding)
+            photo->setFrame(responding ? Photo::S_FRAME_RESPONDING : Photo::S_FRAME_NO_FRAME);
+        responseFrame = responding;
+        if (alive == player.alive && self == player.self && mark == focus) return;
+        alive = player.alive; self = player.self; mark = focus;
         update();
     }
     void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override {
@@ -161,9 +160,9 @@ protected:
     }
     void wheelEvent(QGraphicsSceneWheelEvent *e) override { if (wheeled) wheeled(e->delta() > 0 ? -1 : 1); e->accept(); }
 private:
-    QString stateKey, mark;
+    QString mark;
     Photo *photo;
-    bool alive = true, self = false, moved = false;
+    bool alive = true, self = false, moved = false, responseFrame = false;
     QPointF start, last;
 };
 
@@ -240,15 +239,15 @@ public:
         setPos(value.topLeft()); positionPhoto(); update();
     }
     void project(const GameViewPlayer *player, const QString &caption) {
-        const QJsonObject next = player ? player->toJson() : QJsonObject();
-        if (snapshot == next && title == caption) return;
-        snapshot = next; title = caption; hasPlayer = player != nullptr;
-        photo->setVisible(hasPlayer);
+        // Let Photo compare its own visible fields instead of serializing the full player.
         if (player) {
-            value = *player;
             photo->projectOverview(player->general, player->kingdom, player->hp, player->maxHp,
                 player->handCount, player->handMax, !player->self && player->skills.contains(Sanguosha->translate(QStringLiteral("inovation_fengbi"))), player->alive);
         }
+        const QString nextLabel = player ? player->label : QString();
+        if (hasPlayer == (player != nullptr) && label == nextLabel && title == caption) return;
+        title = caption; label = nextLabel; hasPlayer = player != nullptr;
+        photo->setVisible(hasPlayer);
         setToolTip(caption + (player ? QLatin1Char('\n') + player->label : QString()));
         positionPhoto(); update();
     }
@@ -264,7 +263,7 @@ protected:
         p->drawText(QRectF(6, 2, rect.width() - 12, 24), Qt::AlignCenter,
             metrics.elidedText(title, Qt::ElideRight, rect.width() - 12));
         if (hasPlayer) p->drawText(QRectF(6, 30, rect.width() - 12, 22), Qt::AlignCenter,
-            metrics.elidedText(value.label, Qt::ElideRight, rect.width() - 12));
+            metrics.elidedText(label, Qt::ElideRight, rect.width() - 12));
         p->restore();
     }
 private:
@@ -275,8 +274,7 @@ private:
         photo->setPos((rect.width() - native.width() * scale) / 2, 56);
     }
     QRectF rect;
-    QJsonObject snapshot;
-    GameViewPlayer value;
+    QString label;
     Photo *photo;
     bool hasPlayer = false;
 };
@@ -404,16 +402,19 @@ struct LargeRoomOverview::Data
     }
     void bind(MiniRow *row, const QString &id, bool candidate, bool selected) {
         auto *mini = row->item(id);
-        mini->dragged = [row](qreal delta) { row->scroll(delta); };
-        mini->wheeled = [this, row, candidate](int delta) { if (candidate) cycle(delta); else row->scroll(delta * MiniStep); };
-        mini->hovered = [this, candidate](const QString &name) { if (candidate) hover(name); };
-        mini->unhovered = [this, candidate] { if (candidate && lockedPlayer.isEmpty()) { preview.clear(); refreshFocus(); } };
-        mini->clicked = [this, candidate, selected](const QString &name, bool right, bool removeCorner) {
-            const bool chosen = targets.value(name).selected;
-            if (selected || (chosen && removeCorner)) vote(name, true);
-            else if (candidate || right) vote(name, chosen);
-            else inspect(name);
-        };
+        // Each item stays in its row; callbacks read the current targets/actions at invocation.
+        if (!mini->clicked) {
+            mini->dragged = [row](qreal delta) { row->scroll(delta); };
+            mini->wheeled = [this, row, candidate](int delta) { if (candidate) cycle(delta); else row->scroll(delta * MiniStep); };
+            mini->hovered = [this, candidate](const QString &name) { if (candidate) hover(name); };
+            mini->unhovered = [this, candidate] { if (candidate && lockedPlayer.isEmpty()) { preview.clear(); refreshFocus(); } };
+            mini->clicked = [this, candidate, selected](const QString &name, bool right, bool removeCorner) {
+                const bool chosen = targets.value(name).selected;
+                if (selected || (chosen && removeCorner)) vote(name, true);
+                else if (candidate || right) vote(name, chosen);
+                else inspect(name);
+            };
+        }
         const auto *p = player(id); if (!p) return;
         QString focus;
         if (id == view.currentPlayer) focus = QCoreApplication::translate("LargeRoomOverview", "Turn");
@@ -435,7 +436,6 @@ struct LargeRoomOverview::Data
         for (const QString &id : overview->order) {
             const auto entry = targets.value(id);
             const bool enabled = actions.supported && targets.contains(id) && entry.enabled;
-            if (enabled) legal << id;
             if (entry.selected) selected << id;
             if (!onlyLegal || enabled) candidateIds << id;
             bind(overview, id, false, false);
@@ -455,12 +455,13 @@ struct LargeRoomOverview::Data
                 return targets.value(a).enabled;
             return overview->order.indexOf(a) < overview->order.indexOf(b);
         };
-        std::stable_sort(candidateIds.begin(), candidateIds.end(), less);
-        std::stable_sort(legal.begin(), legal.end(), less);
+        // Seat order is already stable; keyboard navigation follows the displayed candidates.
+        if (sortMode != 0) std::stable_sort(candidateIds.begin(), candidateIds.end(), less);
+        for (const QString &id : candidateIds)
+            if (actions.supported && targets.contains(id) && targets.value(id).enabled) legal << id;
         candidates->order = candidateIds; draft->order = selected;
         for (const QString &id : candidateIds) bind(candidates, id, true, false);
         for (const QString &id : selected) bind(draft, id, false, true);
-        overview->arrange(); candidates->arrange(); draft->arrange();
         QString reason;
         if (legal.isEmpty()) {
             if (!actions.supported) reason = actions.unsupportedReason;
@@ -527,7 +528,9 @@ struct LargeRoomOverview::Data
         if (!players.contains(lockedPlayer)) lockedPlayer.clear();
         setText(relation, QCoreApplication::translate("LargeRoomOverview", "Current resolution: ") + description);
         refreshRows(); refreshDetails();
+        // setLayout arranges each row once, after both data and geometry are current.
         if (!layout.mainRect.isEmpty()) owner->setLayout(layout);
+        else { overview->arrange(); candidates->arrange(); draft->arrange(); }
     }
 };
 
@@ -576,7 +579,6 @@ void LargeRoomOverview::setLayout(const RoomLayoutEngine::ResponsiveResult &layo
 {
     if (boundingRect() != layout.mainRect) prepareGeometryChange();
     d->layout = layout;
-    if (scene()) scene()->installEventFilter(this);
     const QRectF header = layout.headerRect;
     qreal buttonsWidth = 12;
     for (auto *button : {d->jumpFocus, d->jumpSelf, d->lock}) buttonsWidth += button->boundingRect().width();
@@ -626,6 +628,15 @@ void LargeRoomOverview::setLayout(const RoomLayoutEngine::ResponsiveResult &layo
     d->close->setPos(popup.right() - d->close->boundingRect().width() - 8, popup.bottom() - 34);
     d->detailClip->setRect(QRectF(8, 32, w - 16, h - 76));
     d->detailText->setX(0); d->detailText->setTextWidth(w - 16); d->detailText->viewportHeight = h - 76;
+}
+
+QVariant LargeRoomOverview::itemChange(GraphicsItemChange change, const QVariant &value)
+{
+    // Follow scene ownership instead of reinstalling the filter on every layout refresh.
+    if (change == ItemSceneChange && scene()) scene()->removeEventFilter(this);
+    const QVariant result = QGraphicsObject::itemChange(change, value);
+    if (change == ItemSceneHasChanged && scene()) scene()->installEventFilter(this);
+    return result;
 }
 
 bool LargeRoomOverview::eventFilter(QObject *watched, QEvent *event)

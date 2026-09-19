@@ -426,10 +426,7 @@ export function applyNotification(
       state.setGameValue("starts_in_seconds", asNumber(payload.seconds));
       break;
     case Command.GAME_START:
-      state.setGameValue("focus", []);
-      state.setGameValue("focus_command", null);
-      state.setGameValue("focus_countdown", {});
-      state.setGameValue("focus_resolution_id", "");
+      state.clearResponseFocus();
       state.setGameValue("active_resolutions", []);
       state.setGameValue("resolution_available", false);
       state.setGameValue("started", true);
@@ -441,11 +438,8 @@ export function applyNotification(
       state.setGameValue("table_bg_locked", false);
       break;
     case Command.GAME_OVER:
-      state.setGameValue("focus_command", null);
-      state.setGameValue("focus_countdown", {});
       state.setGameValue("active_resolutions", []);
-      state.setGameValue("focus", []);
-      state.setGameValue("focus_resolution_id", "");
+      state.clearResponseFocus();
       state.setGameValue("game_over", true);
       state.setGameValue("status", "game_over");
       state.setGameValue("result", payload);
@@ -693,12 +687,8 @@ export function applyNotification(
       state.setGameValue("resolution_available", true);
       const focusId = asString(state.gameValue("focus_resolution_id"));
       const frames = payload.frames as JsonValue[];
-      if (payload.phase === "reset" || (focusId && !frames.some((frame) => isRecord(frame) && frame.id === focusId))) {
-        state.setGameValue("focus", []);
-        state.setGameValue("focus_command", null);
-        state.setGameValue("focus_countdown", {});
-        state.setGameValue("focus_resolution_id", "");
-      }
+      if (payload.phase === "reset" || (focusId && !frames.some((frame) => isRecord(frame) && frame.id === focusId)))
+        state.clearResponseFocus();
       break;
     }
     case Command.ADD_HISTORY: {

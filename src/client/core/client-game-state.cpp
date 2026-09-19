@@ -22,6 +22,15 @@ void ClientGameState::resetGameplayState()
     m_firstPresentationEventSequence = m_nextPresentationEventSequence;
 }
 
+void ClientGameState::clearResponseFocus()
+{
+    // Resolution frames and availability have separate lifecycle semantics.
+    setGameValue(QStringLiteral("focus"), QStringList());
+    setGameValue(QStringLiteral("focus_command"), QVariant());
+    setGameValue(QStringLiteral("focus_countdown"), QVariantMap());
+    setGameValue(QStringLiteral("focus_resolution_id"), QString());
+}
+
 void ClientGameState::setConnectionValue(const QString &key, const QVariant &value)
 {
     m_connection.insert(key, value);
