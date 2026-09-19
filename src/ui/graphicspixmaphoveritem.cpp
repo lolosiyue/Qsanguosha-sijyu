@@ -106,6 +106,12 @@ void GraphicsPixmapHoverItem::paint(QPainter *painter,
     if (pixmap().isNull()) {
         return;
     }
+    // The settled portrait is already a pixmap. Only a skin transition needs
+    // an intermediate compositing surface and the secondary-avatar mask.
+    if (m_val <= 0) {
+        QGraphicsPixmapItem::paint(painter, option, nullptr);
+        return;
+    }
 
     //此处不能使用static来定义tempPix，因为普通界面和全幅界面使用的图片尺寸不一样
     QPixmap tempPix(pixmap().size());
@@ -167,7 +173,9 @@ void GraphicsPixmapHoverItem::timerEvent(QTimerEvent *)
         return;
     }
 
-    update();
+    // Hidden seats still finish the transition, but need no intermediate paint.
+    if (isVisible())
+        update();
 }
 
 void GraphicsPixmapHoverItem::startChangeHeroSkinAnimation(const QString &generalName)

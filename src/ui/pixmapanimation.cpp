@@ -16,14 +16,18 @@ void PixmapAnimation::advance(int phase)
 {
     // No frames means "finished playing" is meaningless - do not emit finished()
     // here, otherwise an empty item would fake one finished playback merely by entering the scene.
-    if (frames.isEmpty())
+    if (frames.isEmpty() || !phase)
         return;
-    if (phase) current++;
+    const int previous = current;
+    current++;
     if (current >= frames.size()) {
         current = 0;
         emit finished();
     }
-    update();
+    // Keep time/completion semantics while avoiding a scene repaint for an
+    // unchanged frame (including one-frame loops) or an invisible item.
+    if (current != previous && isVisible())
+        update();
 }
 
 void PixmapAnimation::setPath(const QString &path)

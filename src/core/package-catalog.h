@@ -38,6 +38,8 @@ QString resolve(const QString &runtimeRoot, const QString &reference, QString *e
 void installCatalog(const Catalog &catalog);
 void clearCatalog();
 Catalog activeCatalog();
+// Asset consumers invalidate cached results when the installed catalog changes.
+quint64 catalogRevision();
 
 // Writable package data follows the engine's platform-specific user-data location.
 QString packageDataPath(const QString &id);

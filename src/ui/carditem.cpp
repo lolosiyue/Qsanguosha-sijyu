@@ -6,8 +6,11 @@
 #include "skin-bank.h"
 #include "ui-rng.h"
 #include "effects/effects-policy.h"
+#include "package-catalog.h"
+#include "runtime-paths.h"
 
 #include <QPainterPath>
+#include <QDir>
 
 void CardItem::_initialize()
 {
@@ -112,6 +115,8 @@ void CardItem::setEnabled(bool enabled)
 
 void CardItem::setConvertedCardName(const QString &cardObjectName, const QString &name)
 {
+    if (m_convertedCardObjectName == cardObjectName && m_convertedCardName == name)
+        return;
     m_convertedCardObjectName = cardObjectName;
     m_convertedCardName = name;
     update();
@@ -393,18 +398,51 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
 
     const Card *card = Sanguosha->getEngineCard(m_cardId);
     const Card *card_now = Sanguosha->getCard(m_cardId, false);
-	bool zhizhe = card_now && card->objectName().contains("_zhizhe_");
+    bool zhizhe = card && card_now && card->objectName().contains("_zhizhe_");
     if (_m_isUnknownGeneral)
         painter->drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, G_ROOM_SKIN.getPixmap(QString("generalCardBack"), QString(), true));
-    else{
-        if (zhizhe)
-            painter->drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, G_ROOM_SKIN.getCardMainPixmap(card_now->objectName(), true));
-        else
-            painter->drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, G_ROOM_SKIN.getCardMainPixmap(objectName(), true));
-	}
+    else {
+        const QString faceName = zhizhe ? card_now->objectName() : objectName();
+        if (card || m_hasVirtualCardVisual) {
+            const QString assetRoot = QSanRuntimePaths::assetRoot();
+            const QString root = assetRoot.isEmpty() ? QDir::currentPath() : assetRoot;
+            const quint64 skinRevision = G_ROOM_SKIN.visualRevision();
+            const quint64 catalogRevision = QSanPackages::catalogRevision();
+            const bool assetsChanged = m_faceAssetRoot != root
+                || m_faceSkinRevision != skinRevision || m_faceCatalogRevision != catalogRevision;
+            if (assetsChanged) {
+                m_suitPixmap = QPixmap();
+                m_numberPixmap = QPixmap();
+            }
+            if (m_facePixmap.isNull() || m_faceName != faceName || assetsChanged) {
+                m_facePixmap = G_ROOM_SKIN.getCardMainPixmap(faceName, true);
+                m_faceName = faceName;
+                m_faceAssetRoot = root;
+                m_faceSkinRevision = skinRevision;
+                m_faceCatalogRevision = catalogRevision;
+            }
+            painter->drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, m_facePixmap);
+        } else {
+            // General cards retain live per-general hero-skin selection.
+            painter->drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, G_ROOM_SKIN.getCardMainPixmap(faceName, true));
+        }
+    }
+    const auto drawSuitAndNumber = [this, painter](Card::Suit suit, int number, bool black, bool showNumber) {
+        if (m_suitPixmap.isNull() || m_paintedSuit != int(suit)) {
+            m_suitPixmap = G_ROOM_SKIN.getCardSuitPixmap(suit);
+            m_paintedSuit = int(suit);
+        }
+        if (showNumber && (m_numberPixmap.isNull() || m_paintedNumber != number || m_paintedNumberBlack != black)) {
+            m_numberPixmap = G_ROOM_SKIN.getCardNumberPixmap(number, black);
+            m_paintedNumber = number;
+            m_paintedNumberBlack = black;
+        }
+        painter->drawPixmap(G_COMMON_LAYOUT.m_cardSuitArea, m_suitPixmap);
+        if (showNumber)
+            painter->drawPixmap(G_COMMON_LAYOUT.m_cardNumberArea, m_numberPixmap);
+    };
     if (card&&!(card_now&&card_now->isKindOf("Xumou"))) {
-		painter->drawPixmap(G_COMMON_LAYOUT.m_cardSuitArea, G_ROOM_SKIN.getCardSuitPixmap(card->getSuit()));
-		painter->drawPixmap(G_COMMON_LAYOUT.m_cardNumberArea, G_ROOM_SKIN.getCardNumberPixmap(card->getNumber(), card->isBlack()));
+        drawSuitAndNumber(card->getSuit(), card->getNumber(), card->isBlack(), true);
 		QStringList footnotes;
         if (zhizhe) {
 			footnotes << Sanguosha->translate(card_now->getSkillName());
@@ -442,9 +480,7 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
             }
 		}
 	} else if (m_hasVirtualCardVisual) {
-		painter->drawPixmap(G_COMMON_LAYOUT.m_cardSuitArea, G_ROOM_SKIN.getCardSuitPixmap(m_virtualCardSuit));
-		if (m_virtualCardNumber > 0)
-			painter->drawPixmap(G_COMMON_LAYOUT.m_cardNumberArea, G_ROOM_SKIN.getCardNumberPixmap(m_virtualCardNumber, m_virtualCardBlack));
+        drawSuitAndNumber(m_virtualCardSuit, m_virtualCardNumber, m_virtualCardBlack, m_virtualCardNumber > 0);
 		if (_m_showFootnote)
 			painter->drawImage(G_COMMON_LAYOUT.m_cardFootnoteArea, _m_footnoteImage);
     }
@@ -587,6 +623,13 @@ void CardItem::setFootnote(const QString &desc)
     const IQSanComponentSkin::QSanShadowTextFont &font = G_COMMON_LAYOUT.m_cardFootnoteFont;
     QRect rect = G_COMMON_LAYOUT.m_cardFootnoteArea;
     rect.moveTopLeft(QPoint(0, 0));
+    // paint() also calls this setter: unchanged text must not rasterize again.
+    const quint64 revision = G_ROOM_SKIN.visualRevision();
+    if (!_m_footnoteImage.isNull() && m_footnoteText == desc
+        && _m_footnoteImage.size() == rect.size() && m_footnoteSkinRevision == revision)
+        return;
+    m_footnoteText = desc;
+    m_footnoteSkinRevision = revision;
     _m_footnoteImage = QImage(rect.size(), QImage::Format_ARGB32);
     _m_footnoteImage.fill(Qt::transparent);
     QPainter painter(&_m_footnoteImage);
@@ -599,6 +642,12 @@ void CardItem::setYingbiannote(const QString &desc)
     const IQSanComponentSkin::QSanShadowTextFont &font = G_COMMON_LAYOUT.m_cardFootnoteFont;
     QRect rect = G_COMMON_LAYOUT.m_cardYingbianArea;
     rect.moveTopLeft(QPoint(0, 0));
+    const quint64 revision = G_ROOM_SKIN.visualRevision();
+    if (!_m_yingbiannoteImage.isNull() && m_yingbianText == desc
+        && _m_yingbiannoteImage.size() == rect.size() && m_yingbianSkinRevision == revision)
+        return;
+    m_yingbianText = desc;
+    m_yingbianSkinRevision = revision;
     _m_yingbiannoteImage = QImage(rect.size(), QImage::Format_ARGB32);
     _m_yingbiannoteImage.fill(Qt::transparent);
     QPainter painter(&_m_yingbiannoteImage);
