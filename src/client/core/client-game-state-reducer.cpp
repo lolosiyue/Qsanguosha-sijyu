@@ -525,10 +525,7 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         break;
     case S_COMMAND_GAME_START:
         state->setGameValue(QStringLiteral("active_resolutions"), QVariantList());
-        state->setGameValue(QStringLiteral("focus"), QStringList());
-        state->setGameValue(QStringLiteral("focus_command"), QVariant());
-        state->setGameValue(QStringLiteral("focus_countdown"), QVariantMap());
-        state->setGameValue(QStringLiteral("focus_resolution_id"), QString());
+        state->clearResponseFocus();
         state->setGameValue(QStringLiteral("resolution_available"), false);
         state->setGameValue(QStringLiteral("started"), true);
         state->setGameValue(QStringLiteral("game_over"), false);
@@ -539,10 +536,7 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         break;
     case S_COMMAND_GAME_OVER:
         state->setGameValue(QStringLiteral("active_resolutions"), QVariantList());
-        state->setGameValue(QStringLiteral("focus_command"), QVariant());
-        state->setGameValue(QStringLiteral("focus_countdown"), QVariantMap());
-        state->setGameValue(QStringLiteral("focus"), QStringList());
-        state->setGameValue(QStringLiteral("focus_resolution_id"), QString());
+        state->clearResponseFocus();
         state->setGameValue(QStringLiteral("game_over"), true);
         state->setGameValue(QStringLiteral("status"), QStringLiteral("game_over"));
         state->setGameValue(QStringLiteral("result"), object);
@@ -823,12 +817,8 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         bool focusAlive = focusId.isEmpty();
         for (const QVariant &frame : object.value(QStringLiteral("frames")).toList())
             focusAlive |= frame.toMap().value(QStringLiteral("id")).toString() == focusId;
-        if (!focusAlive || object.value(QStringLiteral("phase")) == QLatin1String("reset")) {
-            state->setGameValue(QStringLiteral("focus"), QStringList());
-            state->setGameValue(QStringLiteral("focus_countdown"), QVariantMap());
-            state->setGameValue(QStringLiteral("focus_command"), QVariant());
-            state->setGameValue(QStringLiteral("focus_resolution_id"), QString());
-        }
+        if (!focusAlive || object.value(QStringLiteral("phase")) == QLatin1String("reset"))
+            state->clearResponseFocus();
         break;
     }
     case S_COMMAND_ADD_HISTORY: {

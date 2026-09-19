@@ -11,6 +11,7 @@ class ClientGameState
 public:
     void reset();
     void resetGameplayState();
+    void clearResponseFocus();
 
     void setConnectionValue(const QString &key, const QVariant &value);
     QVariant connectionValue(const QString &key) const;

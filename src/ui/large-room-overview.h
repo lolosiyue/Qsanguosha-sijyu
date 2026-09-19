@@ -17,6 +17,7 @@ public:
     QRectF boundingRect() const override;
     void paint(QPainter *, const QStyleOptionGraphicsItem *, QWidget *) override {}
 protected:
+    QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
     struct Data;

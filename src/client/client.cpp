@@ -276,10 +276,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 			ClientGameState *state = m_interactionCore->state();
 			state->setGameValue(QStringLiteral("active_resolutions"), QVariantList());
 			state->setGameValue(QStringLiteral("resolution_available"), false);
-			state->setGameValue(QStringLiteral("focus"), QStringList());
-			state->setGameValue(QStringLiteral("focus_resolution_id"), QString());
-			state->setGameValue(QStringLiteral("focus_command"), QVariant());
-			state->setGameValue(QStringLiteral("focus_countdown"), QVariantMap());
+			state->clearResponseFocus();
 			emit gamePresentationStateChanged();
 		}, Qt::QueuedConnection);
 		connect(replayer, &Replayer::replayEventDispatched,

@@ -216,18 +216,19 @@ QStringList Player::getFlagList() const
 
 void Player::setFlags(const QString &flag)
 {
-    if (flag == ".")
+    if (flag == ".") {
+        // clearFlags owns the notification, including the unchanged-state check.
         clearFlags();
-    else{
-		const bool removing = flag.startsWith("-");
-		const QString name = removing ? flag.mid(1) : flag;
-		if (flags.contains(name) == !removing) return;
-		if (flag.startsWith("-")){
-			flags.remove(flag.mid(1));
-		} else
-			flags.insert(flag);
-		}
-		emit gameplay_property_changed();
+        return;
+    }
+    const bool removing = flag.startsWith("-");
+    const QString name = removing ? flag.mid(1) : flag;
+    if (flags.contains(name) == !removing) return;
+    if (removing)
+        flags.remove(name);
+    else
+        flags.insert(name);
+    emit gameplay_property_changed();
 }
 
 bool Player::hasFlag(const QString &flag) const

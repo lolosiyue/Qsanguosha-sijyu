@@ -69,6 +69,14 @@ export class ClientGameState {
     this.presentationEvents = [];
   }
 
+  clearResponseFocus(): void {
+    // Resolution frames and availability have separate lifecycle semantics.
+    this.setGameValue("focus", []);
+    this.setGameValue("focus_command", null);
+    this.setGameValue("focus_countdown", {});
+    this.setGameValue("focus_resolution_id", "");
+  }
+
   setConnectionValue(key: string, value: JsonValue): void {
     this.connection[key] = value;
   }
