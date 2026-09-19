@@ -523,7 +523,7 @@ void MainWindow::setupLocalLoadingPage()
 	panelLayout->addWidget(eyebrow);
 	panelLayout->addSpacing(9);
 
-	QLabel *title = new QLabel(tr("少女祈禱中"), panel);
+	QLabel *title = new QLabel(tr("Maiden at prayer"), panel);
 	title->setObjectName(QStringLiteral("localLoadingTitle"));
 	QFont titleFont = title->font();
 	titleFont.setPointSize(qMax(24, titleFont.pointSize() + 12));
@@ -534,7 +534,7 @@ void MainWindow::setupLocalLoadingPage()
 	panelLayout->addWidget(title);
 
 	QLabel *subtitle = new QLabel(
-		tr("稍候片刻，即將進入牌局。"), panel);
+		tr("Please wait, the game will begin shortly."), panel);
 	subtitle->setObjectName(QStringLiteral("localLoadingSubtitle"));
 	subtitle->setAlignment(Qt::AlignCenter);
 	subtitle->setWordWrap(true);
@@ -565,6 +565,16 @@ void MainWindow::setupLocalLoadingPage()
 
 	layout->addWidget(panel, 0, Qt::AlignHCenter);
 	layout->addStretch(3);
+
+#ifndef QSAN_XP_LEGACY
+	QPushButton *cancel = new QPushButton(tr("Cancel"), localLoadingPage);
+	cancel->setObjectName(QStringLiteral("localLoadingCancel"));
+	layout->addWidget(cancel, 0, Qt::AlignHCenter);
+	connect(cancel, &QPushButton::clicked, this, [this]() {
+		if (m_takeoverInProgress) rollbackTakeover(QString());
+		else showHomePage();
+	});
+#endif
 
 #if !defined(QSAN_XP_LEGACY)
     auto fitLoadingPage = [this, panel, layout, panelLayout] {
@@ -607,6 +617,8 @@ void MainWindow::showLocalLoadingPage(const QString &status)
 		localLoadingProgress->show();
 	menuBar()->hide();
 	pageStack->setCurrentWidget(localLoadingPage);
+	// Paint the transition before synchronous client/scene setup can block the GUI.
+	localLoadingPage->repaint();
 #if QSAN_ENABLE_QML
 	if (m_pointerOverlay)
 		m_pointerOverlay->setPageEnabled(false);
@@ -793,6 +805,8 @@ void MainWindow::showHomePage()
 #endif
 
 	if (ClientInstance) {
+		// Cancellation must not dispatch a late room-entry/error callback.
+		ClientInstance->disconnect(this);
 		ClientInstance->disconnectFromHost();
 		delete ClientInstance;
 		ClientInstance = nullptr;
@@ -1196,6 +1210,11 @@ void MainWindow::on_actionStart_Server_triggered()
 	if (seed.isValid()) session.seed = seed.toULongLong();
 	localServer->start(LocalServerController::Ownership::OwnedHost, accept_type == 1, session);
 #else
+	if (accept_type != 1) {
+		// Hosting and joining uses the same deferred room preparation as solo play.
+		startLocalConsoleGame();
+		return;
+	}
 	server = new Server(this);
 	if (!server->listen()) {
 		QMessageBox::warning(this, tr("Warning"), tr("Can not start server!"));
@@ -1604,7 +1623,7 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 			rollbackTakeover(tr("Takeover server MOD does not match the client"));
 			return;
 		}
-		QMessageBox::warning(this, tr("Warning"), tr("Client MOD name is not same as the server!"));
+		networkError(tr("Client MOD name is not same as the server!"));
 		return;
 	}
 
@@ -1613,7 +1632,7 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 			rollbackTakeover(tr("Takeover server card catalog does not match the client"));
 			return;
 		}
-		QMessageBox::warning(this, tr("Warning"), "你与服务器的卡牌数或将包数不同，无法加入游戏！");
+		networkError(tr("The server card or general catalog does not match the client."));
 		return;
 	}
 
@@ -1641,7 +1660,7 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 	static QString link = "https://gitee.com/L-T-Y/QSanguosha-v2";
 
 	text.append(tr("Download link : <a href='%1'>%1</a> <br/>").arg(link));
-	QMessageBox::warning(this, tr("Warning"), text);
+	networkError(text);
 }
 
 void MainWindow::startConnection()
@@ -1651,6 +1670,12 @@ void MainWindow::startConnection()
 
 void MainWindow::startConnectionWithReconnect(bool reconnectRequested)
 {
+	// Every fresh room entry shares the loading page; foreground state recovery
+	// keeps its existing room visible until synchronization has finished.
+#ifdef Q_OS_ANDROID
+	if (!m_androidAwaitingStateSync)
+#endif
+		showLocalLoadingPage(tr("Connecting to game room..."));
 	// A newly created in-process server has no reconnect target; local callers
 	// explicitly pass false while external connections retain the saved option.
 	bool fallbackToFreshSignup = true;
@@ -1741,6 +1766,19 @@ void MainWindow::networkError(const QString &error_msg)
 		rollbackTakeover(error_msg);
 		return;
 	}
+	if (pageStack->currentWidget() == localLoadingPage) {
+		QPointer<Client> failedClient = ClientInstance;
+		// Stop late version/signup callbacks now, but delete the client only after
+		// its signal emission unwinds. A cancelled/replaced attempt must stay gone.
+		if (failedClient) failedClient->disconnect(this);
+		QTimer::singleShot(0, this, [this, failedClient, error_msg]() {
+			if (!failedClient || failedClient != ClientInstance
+				|| pageStack->currentWidget() != localLoadingPage) return;
+			showHomePage();
+			if (isVisible()) QMessageBox::warning(this, tr("Network error"), error_msg);
+		});
+		return;
+	}
 #ifdef QSAN_XP_LEGACY
 	if (m_localClientPending) {
 		m_localClientPending = false;
@@ -1762,6 +1800,7 @@ void BackLoader::preload()
 
 void MainWindow::enterRoom()
 {
+	showLocalLoadingPage(tr("Preparing game room..."));
 #ifdef QSAN_XP_LEGACY
 	m_localClientPending = false;
 	// A private ephemeral endpoint is session state, not a saved address.
