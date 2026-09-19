@@ -1,6 +1,7 @@
 #include "engine-bootstrap.h"
 #include "engine.h"
 #include "aux-skills.h"
+#include "basicai.h"
 #include "card.h"
 #include "game-rng.h"
 #include "game-snapshot.h"
@@ -15,6 +16,7 @@
 #include "replay/replay-codec.h"
 #include "room.h"
 #include "room-runtime.h"
+#include "roomthread.h"
 #include "server-info.h"
 #include "serverplayer.h"
 #include "settings.h"
@@ -23,6 +25,7 @@
 #include "skill-registry.h"
 
 #include <QDebug>
+#include <QJsonDocument>
 #include <QFileInfo>
 #include <QScopedValueRollback>
 #include <QTemporaryDir>
@@ -39,10 +42,180 @@ public:
     QString getGameMode() const override { return QStringLiteral("test"); }
     Player *getNextAlive(int = 1) const override { return const_cast<TestPlayer *>(this); }
     Player *getLastAlive(int = 1) const override { return const_cast<TestPlayer *>(this); }
+    void cacheSkillValidity(const QString &name, bool valid) { m_skillValidityCache[name] = valid; }
+    void retainInnateDescription(const QString &name) { skills << name; }
 };
+
+class TooltipTestSkill : public Skill
+{
+public:
+    explicit TooltipTestSkill(const QString &name) : Skill(name) {}
+    void setRelated(const QString &name) { waked_skills = name; }
+};
+
+static bool skillDescriptionAuthorityTests();
+
+int runSkillDescriptionTests()
+{
+    QString error;
+    if (!EngineBootstrap::initialize(false, &error)) {
+        qCritical() << error;
+        return 1;
+    }
+    TooltipTestSkill skill("test-tooltip-instance"), related("test-tooltip-related");
+    skill.setRelated(related.objectName());
+    Sanguosha->addSkills(QList<const Skill *>() << &skill << &related);
+    Sanguosha->addTranslationEntry(":" + skill.objectName(), "[NoAutoRep]Original body");
+    Sanguosha->addTranslationEntry(":" + skill.objectName() + "x", "[NoAutoRep]Suffix body");
+    Sanguosha->addTranslationEntry("^" + skill.objectName(), "Oracle sentinel");
+    Sanguosha->addTranslationEntry(":" + related.objectName(), "[NoAutoRep]Related body");
+
+    TestPlayer owner, observer;
+    owner.setObjectName("tooltip-owner");
+    // Even an object with the same name must not gain access to another replica's state.
+    observer.setObjectName(owner.objectName());
+    const QString name = skill.objectName();
+    const QByteArray globalKey = ("changeTranslation" + name).toUtf8();
+    const QByteArray firstKey = ("changeTranslation" + name + "#1").toUtf8();
+    SkillInstance first;
+    first.skillName = name;
+    first.instanceID = 1;
+    first.source = SourceInnate;
+    first.bindHead = 1;
+    owner.upsertSkillInstance(first);
+    SkillInstance second = first;
+    second.instanceID = 2;
+    second.source = SourceAttached;
+    second.bindHead = 2;
+    second.parentRef = SkillInstanceRef("source-owner", SkillInstanceKey(name, 1));
+    owner.upsertSkillInstance(second);
+    const auto check = [](bool ok, const char *message) {
+        if (!ok) qCritical() << "skill-description:" << message;
+        return ok;
+    };
+    if (!check(skill.getDescription(&owner, 1) == "Original body", "original fallback")) return 2;
+    // Empty summaries and passive skills do not add placeholder rows; dual-general
+    // labels depend on the player's actual second general, not an instance binding.
+    QString compact = owner.getSkillDescription(&owner);
+    if (!check(!compact.contains(Player::tr("Usage: %1").arg(""))
+        && !compact.contains(Player::tr("Skill state: %1: %2").arg("", ""))
+        && !compact.contains(Player::tr(" / Head general"))
+        && !compact.contains(Player::tr(" / Deputy general")), "empty single-general tooltip")) return 2;
+    owner.setSkillDescriptionState({{name + "#1", QVariantMap{{"scope", "none"}}}}, {}, {});
+    compact = owner.getSkillDescription(&owner);
+    if (!check(!compact.contains("usage:") && !compact.contains(Player::tr("Usage: %1").arg("")),
+               "None usage omitted from both summary and technical details")) return 2;
+    owner.setGeneral2Name("caocao");
+    compact = owner.getSkillDescription(&owner);
+    if (!check(compact.contains(Player::tr(" / Head general"))
+        && compact.contains(Player::tr(" / Deputy general")), "dual-general labels retained")) return 2;
+    owner.setGeneral2Name(QString());
+
+    owner.setProperty(globalKey.constData(), "[NoAutoRep]Shared body {draw} {target}");
+    owner.setSkillDescriptionSwap(name, "{draw}", "two");
+    owner.setSkillDescriptionSwap(name, "{target}", "everyone");
+    owner.setSkillDescriptionSwap(name, "{draw}", "three", 1);
+    if (!check(skill.getDescription(&owner, 1) == "Shared body three everyone"
+               && skill.getDescription(&owner, 2) == "Shared body two everyone"
+               && skill.getDescription(&owner) == "Shared body two everyone",
+               "global swaps inherited, instance key wins before substitution")) return 3;
+    owner.setProperty(firstKey.constData(), "x");
+    if (!check(skill.getDescription(&owner, 1) == "Suffix body"
+               && skill.getDescription(&owner, 2).startsWith("Shared body"), "instance suffix override")) return 4;
+    owner.setProperty(firstKey.constData(), "[NoAutoRep]Different body");
+    QString tooltip = owner.getSkillDescription(&owner);
+    if (!check(tooltip.contains("Different body") && tooltip.count("Shared body") == 1,
+               "distinct instance bodies")) return 5;
+    owner.setProperty(firstKey.constData(), QVariant());
+    owner.setProperty(globalKey.constData(), "[NoAutoRep]Shared body");
+    owner.setSkillInstanceStateValue(name, 1, "secret", "<private-one>");
+    owner.setSkillInstanceStateValue(name, 2, "targets", QStringList{"private-two"});
+    owner.setSkillInstanceCorrectStateValue(name, 2, "offset", -2);
+    owner.setSkillInstanceAmountOverride(name, 2, 3);
+    tooltip = owner.getSkillDescription(&owner);
+    const int firstPosition = tooltip.indexOf("<b>#1</b>");
+    const int secondPosition = tooltip.indexOf("<b>#2</b>");
+    if (!check(tooltip.count("Shared body") == 1 && tooltip.count("Oracle sentinel") == 1
+               && firstPosition >= 0 && secondPosition > firstPosition
+               && tooltip.indexOf("&lt;private-one&gt;") > firstPosition
+               && tooltip.indexOf("&lt;private-one&gt;") < secondPosition
+               && tooltip.indexOf("private-two") > secondPosition
+               && !tooltip.contains("<private-one>") && tooltip.contains("amountOverride: 3")
+               && tooltip.contains("source-owner") && tooltip.contains("correctState"),
+               "grouped body, isolated details, escaped raw data and absolute override")) return 6;
+    if (!check(!owner.getSkillDescription().contains("private-")
+               && !owner.getSkillDescription(&observer).contains("private-")
+               && owner.getSkillDescription(&observer).contains("correctState"),
+               "private state requires exact viewer; public corrections remain visible")) return 7;
+    observer.upsertSkillInstance(first);
+    observer.setSkillInstanceStateValue(name, 1, "secret", "other-holder-secret");
+    if (!check(observer.getSkillDescription(&observer).contains("other-holder-secret")
+               && !owner.getSkillDescription(&owner).contains("other-holder-secret"),
+               "same skill and instance ID on different holders stay isolated")) return 7;
+    const QString relatedSection = tooltip.mid(tooltip.indexOf("#01A5AF"));
+    if (!check(relatedSection.contains("Related body") && !relatedSection.contains("instanceID:"),
+               "related text is not ownership")) return 8;
+
+    int changes = 0;
+    QObject::connect(&owner, &Player::skill_state_changed, &owner, [&changes]() { ++changes; });
+    owner.removeSkillInstanceState(name, 1);
+    owner.resetSkillInstanceAmountOverride(name, 2);
+    owner.clearSkillInstanceCorrectState(name, 2);
+    owner.setSkillDescriptionSwap(name, "unused", "updated", 1);
+    owner.setProperty(firstKey.constData(), "[NoAutoRep]Transient body");
+    if (!check(changes == 5 && !owner.getSkillDescription(&owner).contains("private-one")
+               && !owner.getSkillDescription(&owner).contains("amountOverride"), "reset and refresh signals")) return 9;
+    owner.removeSkillInstance(name, 1);
+    if (!check(!owner.getSkillDescription(&owner).contains("<b>#1</b>")
+               && owner.getSkillDescriptionSwap(name, 1).isEmpty()
+               && !owner.property(firstKey.constData()).isValid(), "removed instance has no residual text")) return 10;
+    owner.cacheSkillValidity(name, false);
+    if (!check(owner.getSkillDescription().contains("<font color=\"#bab8ba\">Shared body</font>"),
+               "cached invalidity retained without evaluating rules")) return 11;
+    // Snapshot reconstruction may follow property synchronization: preserve its text,
+    // while private instance state must come only from the replacement snapshot.
+    owner.setProperty(("changeTranslation" + name + "#2").toUtf8().constData(), "[NoAutoRep]Current snapshot");
+    owner.clearSkillInstances();
+    if (!check(!owner.getSkillDescription(&owner).contains("instanceID:"), "empty snapshot has no instances")) return 12;
+    owner.upsertSkillInstance(second);
+    tooltip = owner.getSkillDescription(&owner);
+    if (!check(tooltip.contains("Current snapshot") && !tooltip.contains("private-two"),
+               "snapshot replaces private state while retaining separately synced text")) return 12;
+    second.visible = false;
+    owner.upsertSkillInstance(second);
+    if (!check(!owner.getSkillDescription(&owner).contains("Current snapshot"), "hidden instance is omitted")) return 13;
+    owner.clearSkillInstances();
+    owner.retainInnateDescription(name);
+    owner.setAlive(false);
+    tooltip = owner.getSkillDescription(&owner);
+    if (!check(tooltip.contains("Shared body") && tooltip.contains("Oracle sentinel")
+               && !tooltip.contains("instanceID:"), "death fallback remains descriptive, not ownership")) return 14;
+    if (!skillDescriptionAuthorityTests()) return 15;
+    qInfo() << "skill-description passed";
+    return 0;
+}
 
 struct RoomTestAccess
 {
+    static void prepareDescriptionRules(Room &room, ServerPlayer *current)
+    {
+        room.thread = new RoomThread(&room);
+        room.thread->setParent(&room);
+        room.current = current;
+        // Rule events require an AI event receiver even in a non-playing fixture.
+        // No AI decision/gameplay is exercised by this focused test.
+        for (ServerPlayer *player : room.getAllPlayers(true)) {
+            auto *events = new BasicAI(player);
+            events->setParent(player);
+            player->setAI(events);
+        }
+    }
+    static bool reserveUsage(Room &room, const ViewAsSkillV2 *skill, const SkillContext &context)
+    { return room.reserveActiveSkillUsage(skill, context); }
+    static void releaseUsage(Room &room, const ViewAsSkillV2 *skill, const SkillContext &context)
+    { room.releaseActiveSkillUsage(skill, context); }
+    static void commitUsage(Room &room, const ViewAsSkillV2 *skill, const SkillContext &context)
+    { room.commitActiveSkillUsage(skill, context); }
     static ServerPlayer *addPlayer(Room &room, const QString &objectName)
     {
         ServerPlayer *player = new ServerPlayer(&room);
@@ -67,6 +240,180 @@ struct RoomTestAccess
         room.startGame();
     }
 };
+
+class TooltipQuotaSkill : public ViewAsSkillV2
+{
+public:
+    TooltipQuotaSkill() : ViewAsSkillV2("test-tooltip-quota") { m_baseAmount = 2; }
+    LimitScope scope = Limit_Turn;
+    SkillInstanceRef sharedRef;
+    mutable int ruleQueries = 0;
+    LimitScope getLimitScope() const override { return scope; }
+    SkillInstanceRef getUsageRef(const SkillContext &context) const override
+    { ++ruleQueries; return sharedRef.isValid() ? sharedRef : context.activationRef; }
+    int getMaxUsageLimit(const SkillContext &context) const override
+    { ++ruleQueries; return context.invoker->getMark("test-tooltip-cap"); }
+};
+
+static bool skillDescriptionAuthorityTests()
+{
+    const auto check = [](bool ok, const char *message) {
+        if (!ok) qCritical() << "skill-description authority:" << message;
+        return ok;
+    };
+    TooltipQuotaSkill skill;
+    TooltipTestSkill root("test-tooltip-quota-root");
+    Sanguosha->addSkills(QList<const Skill *>() << &skill << &root);
+    Sanguosha->addTranslationEntry(":" + skill.objectName(), "[NoAutoRep]Quota body");
+    Sanguosha->addTranslationEntry("@" + skill.objectName() + ".state.targets", "記錄目標");
+    Sanguosha->addTranslationEntry("@" + skill.objectName() + ".state.targets.type", "players");
+    Sanguosha->addTranslationEntry("@" + skill.objectName() + ".amount", "摸牌張數");
+    Room room(nullptr, "02_1v1");
+    ServerPlayer *owner = RoomTestAccess::addPlayer(room, "quota-owner");
+    ServerPlayer *holder = RoomTestAccess::addPlayer(room, "quota-holder");
+    RoomTestAccess::prepareDescriptionRules(room, owner);
+    owner->setMark("test-tooltip-cap", 2);
+    SkillInstance instance;
+    instance.skillName = skill.objectName();
+    instance.instanceID = 1;
+    owner->upsertSkillInstance(instance);
+    SkillInstance second = instance;
+    second.instanceID = 2;
+    owner->upsertSkillInstance(second);
+    SkillInstance rootInstance = instance;
+    rootInstance.skillName = root.objectName();
+    holder->upsertSkillInstance(rootInstance);
+    skill.sharedRef = SkillInstanceRef(holder->objectName(), rootInstance.key());
+    SkillContext context;
+    context.owner = context.invoker = context.initiator = owner;
+    context.skill_name = skill.objectName();
+    context.instanceID = 1;
+    context.activationRef = SkillInstanceRef(owner->objectName(), instance.key());
+    context.sourceRef = skill.sharedRef;
+    const QString key = SkillInstanceUtils::formatName(instance.skillName, 1);
+    const QString key2 = SkillInstanceUtils::formatName(instance.skillName, 2);
+    QVariantMap usage = room.describeSkillUsage(owner, instance);
+    const QString mark = usage.value("mark").toString();
+    holder->setMark(mark, 1);
+    if (!check(RoomTestAccess::reserveUsage(room, &skill, context), "reserve actual shared quota")) return false;
+    PlayerUIState state;
+    PlayerUIStateBuilder::buildSkillDescriptions(state, *owner, room);
+    usage = state.skillUsage.value(key).toMap();
+    if (!check(usage.value("holder") == holder->objectName() && usage.value("used").toInt() == 1
+        && usage.value("limit").toInt() == 2 && usage.value("reserved").toInt() == 1
+        && usage.value("shared").toBool()
+        && usage.value("counter") == state.skillUsage.value(key2).toMap().value("counter"),
+        "cross-player usage holder, shared identity and reservation")) return false;
+    if (!check(!RoomTestAccess::reserveUsage(room, &skill, context), "reservation consumes remaining availability")) return false;
+    RoomTestAccess::releaseUsage(room, &skill, context);
+    if (!check(room.describeSkillUsage(owner, instance).value("reserved").toInt() == 0
+        && holder->getMark(mark) == 1, "cancel releases without committing")) return false;
+    if (!RoomTestAccess::reserveUsage(room, &skill, context)) return false;
+    RoomTestAccess::commitUsage(room, &skill, context);
+    if (!check(holder->getMark(mark) == 2 && room.describeSkillUsage(owner, instance).value("reserved").toInt() == 0,
+               "commit transfers reservation to the authoritative mark")) return false;
+    skill.resetUsage(context);
+    owner->setMark("test-tooltip-cap", 3);
+    usage = room.describeSkillUsage(owner, instance);
+    if (!check(usage.value("used").toInt() == 0 && usage.value("limit").toInt() == 3,
+               "reset and dynamic limit use current rules")) return false;
+    for (Skill::LimitScope scope : {Skill::Limit_Round, Skill::Limit_Turn, Skill::Limit_Phase, Skill::Limit_Game}) {
+        skill.scope = scope;
+        skill.setPhaseName(scope == Skill::Limit_Phase ? "play" : "");
+        usage = room.describeSkillUsage(owner, instance);
+        const QString counterMark = usage.value("mark").toString();
+        holder->setMark(counterMark, 2);
+        skill.resetUsage(context);
+        if (!check(room.describeSkillUsage(owner, instance).value("used").toInt() == 0,
+                   "scope-specific reset matches the rule mark")) return false;
+    }
+    skill.scope = Skill::Limit_Custom;
+    usage = room.describeSkillUsage(owner, instance);
+    if (!check(!usage.contains("used") && !usage.contains("limit"), "custom usage is not a fabricated generic quota")) return false;
+    skill.setProperty("DescriptionUsageMark", "custom-counter");
+    skill.setProperty("DescriptionUsageScope", "自訂週期");
+    skill.setProperty("DescriptionUsageLimit", 4);
+    owner->setMark("custom-counter", 2);
+    if (!check(room.describeSkillUsage(owner, instance).value("used").toInt() == 2,
+               "explicit custom adapter reads the declared mark")) return false;
+    skill.setProperty("DescriptionUsageMark", QVariant());
+    skill.scope = Skill::Limit_None;
+    if (!check(room.describeSkillUsage(owner, instance).value("scope") == "none", "no generic limit is explicit")) return false;
+    skill.scope = Skill::Limit_Turn;
+    if (!check(room.setSkillInstanceAmount(holder, context.activationRef, 3, "test-source"), "amount change")) return false;
+    const QVariantMap provenance = owner->getSkillInstanceStateValue(instance.skillName, 1, "__description_amount").toMap();
+    if (!check(provenance.value("source_player") == holder->objectName() && provenance.value("value").toInt() == 3,
+               "amount source is recorded at mutation, not guessed")) return false;
+    owner->setSkillInstanceStateValue(instance.skillName, 1, "targets", QStringList{"<private-target>"});
+    owner->setTag("SkillInvalidityRecords", QStringList{key + "|quota-holder|recorded-reason"});
+    owner->setCardLimitation("use", "BasicCard", "test-source", true);
+    owner->setMark("description-effect-Clear", 1);
+    if (!check(room.setSkillEffectDescription(owner, "test-effect", "<effect>", skill.sharedRef,
+               "至本回合結束", "description-effect-Clear"), "declared external effect")) return false;
+    PlayerUIStateBuilder::buildSkillDescriptions(state, *owner, room);
+    if (!check(!state.skillValidity.value(key).toBool() && state.skillValidity.value(key2).toBool()
+        && state.skillEffects.size() == 3, "per-instance invalidity and separate effects")) return false;
+
+    // Exercise the actual JSON wire representation and backward-compatible replacement.
+    PlayerUIState parsed;
+    const QVariant wire = QJsonDocument::fromJson(QJsonDocument::fromVariant(state.toVariant()).toJson()).toVariant();
+    if (!check(parsed.tryParse(wire) && parsed == state, "UI state wire round trip")) return false;
+    const PlayerUIState publicState = state.forObserver();
+    if (!check(publicState.skillUsage.isEmpty() && publicState.skillEffects.isEmpty()
+        && publicState.skillValidity == state.skillValidity, "observer payload redacts private data")) return false;
+    PlayerUIState withPublicEffect = state;
+    withPublicEffect.skillEffects << QVariantMap{{"kind", "declared"}, {"text", "public effect"}, {"public", true}};
+    if (!check(withPublicEffect.forObserver().skillEffects.size() == 1,
+               "only explicitly public effect summaries survive redaction")) return false;
+    TestPlayer replica, observer;
+    replica.setObjectName(owner->objectName());
+    observer.setObjectName(owner->objectName());
+    replica.upsertSkillInstance(*owner->findSkillInstance(instance.skillName, 1));
+    replica.upsertSkillInstance(second);
+    replica.setSkillInstanceState(instance.skillName, 1, owner->getSkillInstanceState(instance.skillName, 1));
+    replica.setSkillDescriptionState(parsed.skillUsage, parsed.skillValidity, parsed.skillEffects);
+    const int queries = skill.ruleQueries;
+    QString tooltip = replica.getSkillDescription(&replica);
+    if (!check(tooltip.contains(Player::tr("Skill state: %1: %2").arg("記錄目標", "&lt;private-target&gt;")) && tooltip.contains("2 → 3")
+        && tooltip.contains(Player::tr("Current effects")) && tooltip.contains("&lt;effect&gt;")
+        && tooltip.contains(Player::tr("%1 shared count, see %2").arg(Player::tr("This turn"), skill.objectName() + " #1")) && skill.ruleQueries == queries,
+        "readable state, absolute delta, shared quota and escaped effects with no UI rule evaluation")) return false;
+    if (!check(!replica.getSkillDescription(&observer).contains("private-target")
+        && !replica.getSkillDescription(&observer).contains(Player::tr("Current effects"))
+        && !replica.getSkillDescription(&observer).contains("usage:"), "viewer pointer privacy guard")) return false;
+    replica.setSkillInstanceCorrectStateValue(instance.skillName, 1, "offset", 2);
+    replica.setSkillInstanceStateValue(instance.skillName, 1, "__description_correct",
+        QVariantMap{{"offset", QVariantMap{{"source_player", "old-source"}, {"value", 2}}}});
+    replica.clearSkillInstanceCorrectState(instance.skillName, 1);
+    replica.setSkillInstanceCorrectStateValue(instance.skillName, 1, "offset", 2);
+    if (!check(!replica.getSkillInstanceStateValue(instance.skillName, 1, "__description_correct").isValid(),
+               "direct correction reset cannot revive stale provenance")) return false;
+    owner->setTag("SkillInvalidityRecords", QStringList());
+    owner->clearCardLimitation(true);
+    owner->setMark("description-effect-Clear", 0);
+    PlayerUIStateBuilder::buildSkillDescriptions(state, *owner, room);
+    if (!check(state.skillEffects.isEmpty() && state.skillValidity.value(key).toBool(), "effects disappear with authoritative reset")) return false;
+    owner->setMark("description-effect-Clear", 1);
+    PlayerUIStateBuilder::buildSkillDescriptions(state, *owner, room);
+    if (!check(state.skillEffects.isEmpty(), "reused mark does not resurrect retired effect provenance")) return false;
+    room.removeSkillEffectDescription(owner, "test-effect");
+    if (!check(owner->getTag("SkillEffectDescriptions").toMap().isEmpty(), "effect explicit removal")) return false;
+    room.resetSkillInstanceAmount(holder, context.activationRef);
+    if (!check(!owner->getSkillInstanceStateValue(instance.skillName, 1, "__description_amount").isValid(),
+               "reset removes amount provenance")) return false;
+    owner->removeSkillInstance(instance.skillName, 1);
+    PlayerUIStateBuilder::buildSkillDescriptions(state, *owner, room);
+    if (!check(!state.skillUsage.contains(key) && state.skillUsage.contains(key2), "lost instance removes its cache entry")) return false;
+    holder->removeSkillInstance(rootInstance.skillName, 1);
+    if (!check(room.describeSkillUsage(owner, second).value("unavailable").toBool(), "lost shared root fails closed")) return false;
+    QVariantMap legacy = parsed.toVariant().toMap();
+    legacy.remove("skillUsage"); legacy.remove("skillValidity"); legacy.remove("skillEffects");
+    if (!check(parsed.tryParse(legacy) && parsed.skillUsage.isEmpty() && parsed.skillEffects.isEmpty(),
+               "legacy/snapshot replacement clears stale summaries")) return false;
+    owner->setAlive(false);
+    PlayerUIStateBuilder::buildSkillDescriptions(state, *owner, room);
+    return check(state.skillUsage.isEmpty() && state.skillEffects.isEmpty(), "death clears live summaries");
+}
 
 class TestPhysicalViewAsSkill : public OneCardViewAsSkill
 {

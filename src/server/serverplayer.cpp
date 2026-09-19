@@ -57,6 +57,34 @@ ServerPlayer::ServerPlayer(Room *room)
     connect(this, &Player::hp_changed, this, advanceProperty, Qt::DirectConnection);
     connect(this, &Player::kingdom_changed, this, advanceProperty, Qt::DirectConnection);
     connect(this, &Player::gameplay_property_changed, this, advanceProperty, Qt::DirectConnection);
+    const auto dirtyDescriptions = [this]() {
+        if (this->room && this->room->getThread())
+            this->room->getThread()->markSkillDescriptionsDirty();
+    };
+    // Direct connection only flips an atomic flag. Evaluation is deferred to
+    // the rule thread's event/request boundary, never the GUI QObject thread.
+    connect(this, &Player::skill_set_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::skill_state_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::mark_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::mark_changed, this, [this]() {
+        QVariantMap effects = getTag("SkillEffectDescriptions").toMap();
+        bool changed = false;
+        for (auto it = effects.begin(); it != effects.end();) {
+            const QString mark = it.value().toMap().value("active_mark").toString();
+            if (!mark.isEmpty() && getMark(mark) <= 0) { it = effects.erase(it); changed = true; }
+            else ++it;
+        }
+        // Retire the descriptor with its real counter, so a later reuse of the
+        // same mark cannot resurrect an old source or expiration condition.
+        if (changed) setTag("SkillEffectDescriptions", effects);
+    }, Qt::DirectConnection);
+    connect(this, &Player::phase_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::card_limitation_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::general_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::general2_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::state_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::hp_changed, this, dirtyDescriptions, Qt::DirectConnection);
+    connect(this, &Player::gameplay_property_changed, this, dirtyDescriptions, Qt::DirectConnection);
     connect(this, &Player::phase_changed, this, [this]() {
         if (this->room && this->room->roomRuntime())
             this->room->roomRuntime()->advanceStateRevision(RoomRuntime::TurnStateChanged);
@@ -94,6 +122,7 @@ void ServerPlayer::setTag(const QString &key, const QVariant &value)
 	if (tag.contains(key) && tag.value(key) == value) return;
 	Player::setTag(key, value);
 	if (!room) return;
+    if (room->getThread()) room->getThread()->markSkillDescriptionsDirty();
 
 	bool safe = false;
         switch (value.userType()) {
@@ -122,6 +151,16 @@ void ServerPlayer::refreshUIState()
     if (state == m_uiState)
         return;
 
+    m_uiState = state;
+    room->notifyPlayerUIState(this, state);
+}
+
+void ServerPlayer::refreshSkillDescriptionState()
+{
+    if (!room) return;
+    PlayerUIState state = m_uiState;
+    PlayerUIStateBuilder::buildSkillDescriptions(state, *this, *room);
+    if (state == m_uiState) return;
     m_uiState = state;
     room->notifyPlayerUIState(this, state);
 }

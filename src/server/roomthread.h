@@ -5,6 +5,7 @@
 
 #include <QHash>
 #include <QSet>
+#include <atomic>
 
 class GameRule;
 
@@ -57,6 +58,8 @@ public:
     // Coalesce presentation work inside triggers; requests flush before input.
     bool deferPlayerUiState(ServerPlayer *player);
     void flushPlayerUiState();
+    void markSkillDescriptionsDirty();
+    void refreshSkillDescriptions();
 
     void addPlayerSkills(ServerPlayer *player, bool invoke_game_start = false);
 
@@ -107,6 +110,8 @@ private:
     bool m_playerUiStateDirty = false;
     bool m_flushingPlayerUiState = false;
     QSet<ServerPlayer *> m_pendingPlayerUiState;
+    std::atomic_bool m_skillDescriptionsDirty{true};
+    bool m_refreshingSkillDescriptions = false;
     bool m_distanceCacheDirty = false;
     bool m_perfTraceEnabled;
     int m_profileRoomId;

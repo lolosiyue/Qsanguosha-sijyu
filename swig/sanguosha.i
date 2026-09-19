@@ -2394,6 +2394,10 @@ public:
 		CardUseStruct::CardUseReason reason, const char *pattern, const char *prompt,
 		Card::HandlingMethod method) const;
 	int getSkillInstanceAmount(const SkillInstanceRef &ref) const;
+    bool setSkillEffectDescription(ServerPlayer *target, const char *id, const char *description,
+                                  const SkillInstanceRef &sourceRef, const char *expiry = "",
+                                  const char *activeMark = "", bool publicEffect = false);
+    void removeSkillEffectDescription(ServerPlayer *target, const char *id);
 	bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount, const char *reason = "");
 	bool addSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int delta, const char *reason = "");
 	bool resetSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, const char *reason = "");

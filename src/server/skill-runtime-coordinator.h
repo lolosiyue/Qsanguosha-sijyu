@@ -67,6 +67,7 @@ public:
     bool resolveCardSkillInstance(CardUseStruct &use);
 
     bool reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
+    QVariantMap describeSkillUsage(ServerPlayer *owner, const SkillInstance &instance) const;
     void releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
 

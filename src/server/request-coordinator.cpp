@@ -190,6 +190,7 @@ void RequestCoordinator::clearDualControlRequest(ServerPlayer *player, bool rest
 bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
                                  const QVariant &arg, time_t timeOut, bool wait)
 {
+    if (m_room.getThread()) m_room.getThread()->refreshSkillDescriptions();
     ServerPlayer *actual = m_room.getActualController(player);
     ServerPlayer *target = requestTarget(player);
     bool redirectedToController = actual != nullptr && target == actual && actual != player
@@ -278,6 +279,7 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
 bool RequestCoordinator::broadcastRequest(QList<ServerPlayer *> players, CommandType command,
                                           time_t timeOut)
 {
+    if (m_room.getThread()) m_room.getThread()->refreshSkillDescriptions();
     QMap<ServerPlayer *, QList<ServerPlayer *> > controllerMap;
     foreach (ServerPlayer *player, players)
         controllerMap[requestTarget(player)] << player;
@@ -322,6 +324,7 @@ ServerPlayer *RequestCoordinator::raceRequest(QList<ServerPlayer *> players,
                                               ResponseVerifyFunction validateFunc,
                                               void *funcArg)
 {
+    if (m_room.getThread()) m_room.getThread()->refreshSkillDescriptions();
     QMap<ServerPlayer *, QList<ServerPlayer *> > controllerMap;
     foreach (ServerPlayer *player, players)
         controllerMap[requestTarget(player)] << player;

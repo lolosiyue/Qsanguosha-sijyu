@@ -95,6 +95,9 @@ QVariant PlayerUIState::toVariant() const
     result.insert("offensiveSkills", toStringArray(offensiveSkills));
     result.insert("defensiveSkills", toStringArray(defensiveSkills));
     result.insert("viewAsEquipSkills", toStringArray(viewAsEquipSkills));
+    if (!skillUsage.isEmpty()) result.insert("skillUsage", skillUsage);
+    if (!skillValidity.isEmpty()) result.insert("skillValidity", skillValidity);
+    if (!skillEffects.isEmpty()) result.insert("skillEffects", skillEffects);
     return result;
 }
 
@@ -126,6 +129,31 @@ bool PlayerUIState::tryParse(const QVariant &value)
         || !tryParseStringList(map.value("viewAsEquipSkills"), parsed.viewAsEquipSkills))
         return false;
 
+    // Optional for older recordings/servers; absence replaces, never retains, a cache.
+    for (const QString &key : {QStringLiteral("skillUsage"), QStringLiteral("skillValidity")}) {
+        if (map.contains(key) && map.value(key).userType() != QMetaType::QVariantMap)
+            return false;
+    }
+    if (map.contains("skillEffects") && map.value("skillEffects").userType() != QMetaType::QVariantList)
+        return false;
+    parsed.skillUsage = map.value("skillUsage").toMap();
+    parsed.skillValidity = map.value("skillValidity").toMap();
+    parsed.skillEffects = map.value("skillEffects").toList();
+    for (auto it = parsed.skillValidity.cbegin(); it != parsed.skillValidity.cend(); ++it) {
+        if (it.value().userType() != QMetaType::Bool) return false;
+    }
+    for (auto it = parsed.skillUsage.cbegin(); it != parsed.skillUsage.cend(); ++it) {
+        if (it.value().userType() != QMetaType::QVariantMap) return false;
+        const QVariantMap usage = it.value().toMap();
+        if (usage.value("scope").userType() != QMetaType::QString) return false;
+        for (const QString &key : {QStringLiteral("used"), QStringLiteral("limit"), QStringLiteral("reserved")}) {
+            int number = 0;
+            if (usage.contains(key) && !tryParseInt(usage.value(key), number)) return false;
+        }
+    }
+    for (const QVariant &effect : parsed.skillEffects) {
+        if (effect.userType() != QMetaType::QVariantMap) return false;
+    }
     *this = parsed;
     return true;
 }
@@ -138,7 +166,21 @@ bool PlayerUIState::operator==(const PlayerUIState &other) const
         && maxCardsSkills == other.maxCardsSkills
         && offensiveSkills == other.offensiveSkills
         && defensiveSkills == other.defensiveSkills
-        && viewAsEquipSkills == other.viewAsEquipSkills;
+        && viewAsEquipSkills == other.viewAsEquipSkills
+        && skillUsage == other.skillUsage
+        && skillValidity == other.skillValidity
+        && skillEffects == other.skillEffects;
+}
+
+PlayerUIState PlayerUIState::forObserver() const
+{
+    PlayerUIState result = *this;
+    result.skillUsage.clear();
+    result.skillEffects.clear();
+    for (const QVariant &effect : skillEffects) {
+        if (effect.toMap().value("public").toBool()) result.skillEffects << effect;
+    }
+    return result;
 }
 
 QVariant PlayerUIStateMessage::toVariant() const

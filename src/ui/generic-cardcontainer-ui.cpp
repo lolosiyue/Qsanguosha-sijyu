@@ -1384,6 +1384,12 @@ void PlayerCardContainer::setPlayer(ClientPlayer *player)
         connect(player, SIGNAL(Mark_changed(QString, int)), this, SLOT(updateMark(QString, int)));
         connect(player, SIGNAL(role_changed(QString)), _m_roleComboBox, SLOT(fix(QString)));
         connect(player, SIGNAL(hp_changed()), this, SLOT(updateHp()));
+        // Deliver after snapshot/upsert mutations finish, including parent/bind metadata.
+        const auto tooltipConnection = Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection);
+        connect(player, &Player::skill_set_changed, this,
+                &PlayerCardContainer::updateAvatarTooltip, tooltipConnection);
+        connect(player, &Player::skill_state_changed, this,
+                &PlayerCardContainer::updateAvatarTooltip, tooltipConnection);
 
         QTextDocument *textDoc = m_player->getMarkDoc();
         Q_ASSERT(_m_markItem);
@@ -1783,10 +1789,17 @@ void PlayerCardContainer::onAvatarHoverLeave()
 
 void PlayerCardContainer::updateAvatarTooltip()
 {
+    if (!m_player) {
+        if (_m_avatarArea) _m_avatarArea->setToolTip(QString());
+        if (_m_avatarIcon) _m_avatarIcon->setToolTip(QString());
+        if (_m_smallAvatarArea) _m_smallAvatarArea->setToolTip(QString());
+        if (_m_smallAvatarIcon) _m_smallAvatarIcon->setToolTip(QString());
+        return;
+    }
     if (m_player) {
         const General *general = m_player->getGeneral();
         QString oracle = general ? general->getOracleText() : QString();
-        QString description = m_player->getSkillDescription();
+        QString description = m_player->getSkillDescription(Self);
         QString fullTooltip = buildOracleTooltip(oracle, description);
         _m_avatarArea->setToolTip(fullTooltip);
         if (_m_avatarIcon)
@@ -1795,7 +1808,7 @@ void PlayerCardContainer::updateAvatarTooltip()
         QString deputyTooltip;
         const General *general2 = m_player->getGeneral2();
         if (general2)
-            deputyTooltip = buildOracleTooltip(general2->getOracleText(), general2->getSkillDescription(true));
+            deputyTooltip = buildOracleTooltip(general2->getOracleText(), description);
         else if (m_player->property("avatarIcon2").toString() != "")
             deputyTooltip = Sanguosha->translate(m_player->property("avatarIcon2").toString());
 
