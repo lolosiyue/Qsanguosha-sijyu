@@ -275,6 +275,7 @@ const STATE_COMMANDS = new Set<number>([
   Command.REVIVE_PLAYER, Command.SHOW_CARD, Command.SHOW_VIRTUAL_CARD,
   Command.CARD_PROVENANCE, Command.UPDATE_PLAYER_UI_STATE, Command.UPDATE_CARD,
   Command.SET_MARK, Command.ATTACH_SKILL, Command.SKILL_INSTANCE, Command.MOVE_FOCUS,
+  Command.RESOLUTION_STATE,
   Command.SHOW_ALL_CARDS, Command.SKILL_GONGXIN, Command.ADD_HISTORY,
   Command.FIXED_DISTANCE, Command.ATTACK_RANGE, Command.CARD_LIMITATION,
   Command.NULLIFICATION_ASKED, Command.ENABLE_SURRENDER, Command.EXCHANGE_KNOWN_CARDS,
@@ -308,6 +309,30 @@ export function classifyNotification(command: number): FlowDisposition {
   return "unclassified";
 }
 
+// Match the native whitelist and decimal IDs; no Number conversion of IDs.
+function validResolutionState(payload: JsonObject): boolean {
+  if (Object.keys(payload).length !== 3 || payload.schema_version !== 1
+      || !["begin", "update", "end", "reset"].includes(asString(payload.phase))
+      || !Array.isArray(payload.frames)) return false;
+  if ((payload.phase === "begin" || payload.phase === "update") && payload.frames.length === 0) return false;
+  const ids = new Set<string>();
+  let parent = "";
+  for (const frame of payload.frames) {
+    if (!isRecord(frame) || Object.keys(frame).length !== 8) return false;
+    for (const key of ["id", "parent_id", "kind", "actor", "source", "affected", "card_name"])
+      if (typeof frame[key] !== "string") return false;
+    const id = frame.id as string;
+    if (!/^[1-9][0-9]*$/.test(id) || id.length > 20
+        || (id.length === 20 && id > "18446744073709551615") || ids.has(id)
+        || frame.parent_id !== parent || !Array.isArray(frame.targets)
+        || frame.targets.some((target) => typeof target !== "string")
+        || !["card", "effect", "damage", "recover", "judge", "dying", "skill"].includes(asString(frame.kind))) return false;
+    ids.add(id);
+    parent = id;
+  }
+  return true;
+}
+
 export function applyNotification(
   state: ClientGameState,
   command: number,
@@ -330,6 +355,15 @@ export function applyNotification(
   const schemaVersion = asNumber(payload.schema_version, -1);
   if (schemaVersion <= 0) {
     result.detail = `room notification ${command} has no valid schema_version`;
+    return result;
+  }
+  if (command === Command.RESOLUTION_STATE && !validResolutionState(payload)) {
+    result.detail = "Invalid ResolutionStatePayload";
+    return result;
+  }
+  if (command === Command.ARRANGE_SEATS && (schemaVersion !== 1 && schemaVersion !== 2
+      || (schemaVersion === 2 && typeof payload.play_order_reversed !== "boolean"))) {
+    result.detail = "Invalid ArrangeSeatsPayload direction";
     return result;
   }
   state.recordFlow(command, payload);
@@ -384,12 +418,20 @@ export function applyNotification(
       const names = strings(payload.player_names);
       state.setPlayerNames(names);
       names.forEach((name, index) => state.setPlayerValue(name, "seat", index + 1));
+      state.setGameValue("play_order_reversed", asBool(payload.play_order_reversed));
+      state.setGameValue("play_order_known", schemaVersion === 2);
       break;
     }
     case Command.START_IN_X_SECONDS:
       state.setGameValue("starts_in_seconds", asNumber(payload.seconds));
       break;
     case Command.GAME_START:
+      state.setGameValue("focus", []);
+      state.setGameValue("focus_command", null);
+      state.setGameValue("focus_countdown", {});
+      state.setGameValue("focus_resolution_id", "");
+      state.setGameValue("active_resolutions", []);
+      state.setGameValue("resolution_available", false);
       state.setGameValue("started", true);
       state.setGameValue("game_over", false);
       state.setGameValue("status", "active");
@@ -399,6 +441,11 @@ export function applyNotification(
       state.setGameValue("table_bg_locked", false);
       break;
     case Command.GAME_OVER:
+      state.setGameValue("focus_command", null);
+      state.setGameValue("focus_countdown", {});
+      state.setGameValue("active_resolutions", []);
+      state.setGameValue("focus", []);
+      state.setGameValue("focus_resolution_id", "");
       state.setGameValue("game_over", true);
       state.setGameValue("status", "game_over");
       state.setGameValue("result", payload);
@@ -635,6 +682,23 @@ export function applyNotification(
       const players = strings(payload.player_names).map((name) => resolvePlayerName(state, name));
       state.setGameValue("focus", players);
       state.setGameValue("focus_countdown", payload.countdown ?? null);
+      state.setGameValue("focus_command", payload.command ?? null);
+      const frames = state.gameValue("active_resolutions");
+      const last = Array.isArray(frames) ? frames[frames.length - 1] : undefined;
+      state.setGameValue("focus_resolution_id", isRecord(last) ? asString(last.id) : "");
+      break;
+    }
+    case Command.RESOLUTION_STATE: {
+      state.setGameValue("active_resolutions", payload.frames ?? []);
+      state.setGameValue("resolution_available", true);
+      const focusId = asString(state.gameValue("focus_resolution_id"));
+      const frames = payload.frames as JsonValue[];
+      if (payload.phase === "reset" || (focusId && !frames.some((frame) => isRecord(frame) && frame.id === focusId))) {
+        state.setGameValue("focus", []);
+        state.setGameValue("focus_command", null);
+        state.setGameValue("focus_countdown", {});
+        state.setGameValue("focus_resolution_id", "");
+      }
       break;
     }
     case Command.ADD_HISTORY: {

@@ -30,6 +30,7 @@
 #if !defined(QSAN_XP_LEGACY)
 #include "desktop-game-presentation.h"
 #include "room-overlay-host.h"
+#include "large-room-overview.h"
 #endif
 #include "indicatoritem.h"
 #include "generaloverview.h"
@@ -268,6 +269,9 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	current_gift_type = QString();
 
 	// create photos
+#if !defined(QSAN_XP_LEGACY) && !defined(Q_OS_ANDROID)
+    G_EFFECTS.setLargeRoom(Sanguosha->getPlayerCount(ServerInfo.GameMode) > 20);
+#endif
 	for (int i = 1;i < Sanguosha->getPlayerCount(ServerInfo.GameMode);i++){
 		Photo*photo = new Photo;
 		photo->setZValue(1);
@@ -805,9 +809,11 @@ void RoomScene::exitOnsoleContext()
 
 RoomScene::~RoomScene()
 {
+    G_EFFECTS.setLargeRoom(false);
 #if !defined(QSAN_XP_LEGACY)
     // Detach the secondary document views before their scene-owned sources die.
     delete m_overlayHost;
+    delete m_largeRoomOverview;
 	delete m_gamePresentation;
 	m_gamePresentation = nullptr;
 #endif
@@ -1275,11 +1281,19 @@ void RoomScene::attachOverlay(RoomOverlayHost *overlay)
         if (chat_edit->isEnabled()) speak();
     });
     connect(overlay, &RoomOverlayHost::controlsRequested, this, &RoomScene::showGameControlPanel);
+    connect(overlay, &RoomOverlayHost::nativeChatToggleRequested, this, &RoomScene::setChatBoxVisibleSlot);
 }
 
 void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled)
 {
+    G_EFFECTS.setLargeRoom(enabled && input.largeRoom);
     m_responsiveInput = input;
+    if (enabled && input.largeRoom && !m_largeRoomOverview) {
+        m_largeRoomOverview = new LargeRoomOverview(gamePresentation());
+        addItem(m_largeRoomOverview);
+    }
+    if (m_largeRoomOverview) m_largeRoomOverview->setVisible(enabled && input.largeRoom);
+    gamePresentation()->setLiveConsumer(this, enabled && input.largeRoom);
     if (m_responsiveEnabled == enabled)
         return;
     m_responsiveEnabled = enabled;
@@ -1312,25 +1326,59 @@ void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &inp
 
 void RoomScene::applyResponsiveLayout()
 {
-    const auto legacy = layoutInput(sceneRect(), false);
+    auto legacy = layoutInput(sceneRect(), false);
     auto input = m_responsiveInput;
     input.photoCount = photos.size();
     input.selfSeat = Self ? Self->getSeat() : 0;
+    input.promptHeight = prompt_box->boundingRect().height() + 16.0;
     const qreal scale = qBound<qreal>(1.0, Config.UIScale, 2.0);
     input.smallPhotoSize = legacy.smallPhotoSize * scale;
-    // Measure the selected fold/split pane before reserving the skin's native footer.
-    const auto measured = RoomLayoutEngine::computeResponsive(input);
-    const qreal interactionWidth = measured.interactionRect.width();
-    input.minimumInteractionHeight = interactionWidth < 700.0
-        ? dashboard->responsiveHeight(interactionWidth) : legacy.skin.dashboardNormalHeight;
-    m_responsiveLayout = RoomLayoutEngine::computeResponsive(input);
+    const bool nativeChrome = input.largeRoom
+        && input.stableRect.width() >= input.stableRect.height();
+    RoomLayoutEngine::Result nativeFrame;
+    if (nativeChrome) {
+        // Restore the original skin before measuring its avatar and right column.
+        dashboard->setResponsiveGeometry(QSizeF(), RoomLayoutEngine::Handedness::None);
+        dashboard->setScale(1.0);
+        nativeFrame = RoomLayoutEngine::compute(legacy);
+        dashboard->setWidth(int(nativeFrame.dashboardRect.width()));
+        legacy.dashboardHeight = dashboard->boundingRect().height();
+        legacy.avatarSceneHeight = dashboard->getAvatarAreaSceneBoundingRect().height();
+        nativeFrame = RoomLayoutEngine::compute(legacy);
+        dashboard->setPos(nativeFrame.dashboardRect.topLeft());
+        m_responsiveLayout = RoomLayoutEngine::computeLargeRoom(input, nativeFrame);
+    } else {
+        // Measure the selected fold/split pane before reserving the skin's native footer.
+        const auto measured = RoomLayoutEngine::computeResponsive(input);
+        const qreal interactionWidth = measured.interactionRect.width();
+        input.minimumInteractionHeight = interactionWidth < 700.0
+            ? dashboard->responsiveHeight(interactionWidth) : legacy.skin.dashboardNormalHeight;
+        m_responsiveLayout = RoomLayoutEngine::computeResponsive(input);
+        chat_box_widget->setOpacity(0.0);
+        chat_edit_widget->setOpacity(0.0);
+        chat_widget->setOpacity(0.0);
+        m_rolesBox->setOpacity(0.0);
+    }
     const auto &layout = m_responsiveLayout;
-    if (!layout.valid)
+    if (!layout.valid) {
+        // A transient zero-sized viewport must not leave native input invisible.
+        dashboard->setOpacity(1.0);
+        for (Photo *photo : photos) photo->setOpacity(1.0);
+        emit responsiveGeometryChanged();
         return;
+    }
     m_pixmapDeviceScale = qBound<qreal>(1.0, main_window->devicePixelRatioF(), 4.0);
 
     // Reflow the canonical native items; rotation must not replace cards or clear a draft.
-    if (layout.interactionRect.width() < 700.0) {
+    if (nativeChrome) {
+        applyLayout(nativeFrame);
+        for (QGraphicsItem *item : {static_cast<QGraphicsItem *>(log_box_widget),
+                static_cast<QGraphicsItem *>(chat_box_widget), static_cast<QGraphicsItem *>(chat_edit_widget),
+                static_cast<QGraphicsItem *>(chat_widget), static_cast<QGraphicsItem *>(m_rolesBox)})
+            item->setOpacity(1.0);
+        updateRoles(m_roleState);
+        setChatBoxVisible(chat_box_widget->isVisible());
+    } else if (layout.interactionRect.width() < 700.0) {
         dashboard->setScale(1.0);
         dashboard->setPos(layout.interactionRect.topLeft());
         dashboard->setResponsiveGeometry(layout.interactionRect.size(), input.handedness);
@@ -1348,7 +1396,8 @@ void RoomScene::applyResponsiveLayout()
     table.valid = table.seatsValid = true;
     table.tableCenter = layout.tableCenter;
     table.photoBaseSize = legacy.smallPhotoSize;
-    table.photoScale = scale;
+    table.photoScale = nativeChrome
+        ? qreal(input.smallPhotoSize.width()) / legacy.smallPhotoSize.width() : scale;
     table.floatingArea = QRect(QPoint(0, 0), layout.tableRect.size().toSize());
     table.discardPileSize = QSize(qMax(1, int(layout.tableRect.width() / 2)),
                                   qMax(1, int(layout.tableRect.height() / 3)));
@@ -1357,17 +1406,21 @@ void RoomScene::applyResponsiveLayout()
         RoomLayoutEngine::PhotoPlacement place;
         place.position = i < layout.photos.size() ? layout.photos[i].center : layout.seatsRect.center();
         place.floatingArea = table.floatingArea;
-        table.photos.append(place);
         photos[i]->setScale(1.0);
-        const bool visible = i < layout.photos.size() && layout.photos[i].visible;
+        bool visible = i < layout.photos.size() && layout.photos[i].visible;
+        // Canonical Photos retain draft/eligibility ownership. The overview is a
+        // separate value projection; no seat is removed or moved into a focus slot.
+        if (input.largeRoom) visible = false;
+        table.photos.append(place);
         photos[i]->setOpacity(visible ? 1.0 : 0.0);
     }
     applyTableLayout(table);
-    // Open the original ClientLogBox from the hamburger menu; retain its document,
-    // native styling, links and scrolling instead of creating a second log view.
-    const bool showLog = input.logVisible && layout.logRect.isValid();
+    if (m_largeRoomOverview && input.largeRoom) m_largeRoomOverview->setLayout(layout);
+    // Keep the original ClientLogBox permanently on the right in large landscape
+    // rooms; portrait opens this same document, links and scroll state from the menu.
+    const bool showLog = (input.logVisible || layout.logAlwaysVisible) && layout.logRect.isValid();
     log_box_widget->setOpacity(showLog ? 1.0 : 0.0);
-    if (showLog) {
+    if (showLog && !nativeChrome) {
         log_box_widget->setScale(1.0);
         log_box_widget->setPos(layout.logRect.topLeft());
         log_box->resize(layout.logRect.size().toSize());
@@ -1382,6 +1435,11 @@ void RoomScene::applyResponsiveLayout()
     m_chooseTriggerOrderBox->setPos(layout.tableRect.center());
     if (self_box) self_box->setPos(layout.tableRect.bottomLeft());
     if (enemy_box) enemy_box->setPos(layout.tableRect.topRight() - QPointF(enemy_box->boundingRect().width(), 0));
+    if (nativeChrome) {
+        // applyLayout already restored the original backdrop and its cached pixmap.
+        emit responsiveGeometryChanged();
+        return;
+    }
     m_tablew = qMax(1, int(layout.mainRect.width()));
     m_tableh = qMax(1, int(layout.tableRect.height()));
     if (m_tableBgPixmapOrig.width() <= 1 || m_tableBgPixmapOrig.height() <= 1)
@@ -1709,6 +1767,7 @@ void RoomScene::addPlayer(ClientPlayer*player)
 
     photo->setPlayer(player);
     photos << photo;
+    emit seatCountChanged();
     name2photo[player->objectName()] = photo;
 
     item2player.insert(photo, player);
@@ -3833,10 +3892,13 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 	dashboard->updateTransferButtons();
 
+	// General selection can refresh skill buttons before GAME_START registers
+	// a thread-local Engine room. The Client already owns the request state.
+	const QString skillPattern = ClientInstance->getRoomState()->getCurrentCardUsePattern();
 	foreach (QSanSkillButton*button,m_skillButtons){
 		const ViewAsSkill*vsSkill = button->getViewAsSkill();
 		if(vsSkill){
-			QString pattern = Sanguosha->getCurrentCardUsePattern();
+			const QString &pattern = skillPattern;
 			CardUseStruct::CardUseReason reason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
 			if(newStatus==Client::Playing){
 				reason = CardUseStruct::CARD_USE_REASON_PLAY;

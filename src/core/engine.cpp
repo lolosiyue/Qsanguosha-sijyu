@@ -540,6 +540,11 @@ Engine::Engine(bool isManualMode)
     modes.insert("10p", GameModeStruct("10p", tr("10 players (1 renegade)"), 10));
     modes.insert("10pz", GameModeStruct("10pz", tr("10 players (0 renegade)"), 10));
     modes.insert("20p", GameModeStruct("20p", tr("20 players (1 renegade)"), 20));
+    // Large rooms must carry explicit roles: the legacy identity table ends at 20.
+    // Keep the ordinary identity reward/win policies; this initial ratio is experimental.
+    modes.insert("50p", GameModeStruct("50p", tr("50 人局（1 主／23 忠／25 反／1 內，實驗性）"), 50,
+        QStringLiteral("Z") + QString(23, QLatin1Char('C'))
+            + QString(25, QLatin1Char('F')) + QStringLiteral("N")));
 
     auto applyModePolicies = [this](const QString &id, const QString &reward, const QString &win) {
         modes[id].reward_policy = reward;
@@ -558,7 +563,7 @@ Engine::Engine(bool isManualMode)
                  << "02p" << "03p" << "04p" << "05p"
                  << "06p" << "06pd" << "07p"
                  << "08p" << "08pd" << "08pz"
-                 << "09p" << "10p" << "10pd" << "10pz" << "20p");
+                 << "09p" << "10p" << "10pd" << "10pz" << "20p" << "50p");
 
     connect(qApp, SIGNAL(aboutToQuit()), this, SLOT(deleteLater()));
 
@@ -2491,7 +2496,9 @@ QList<int> Engine::getRandomCards(bool derivative) const
         exclude_disaster = !Config.value("3v3/UsingExtension").toBool() || Config.value("3v3/ExcludeDisasters", true).toBool();
     }
     QList<int> list;
-	for (int cardId = 0; cardId < getCardCount(); ++cardId) {
+    // The deck definition is stable during enumeration; resolve its bound once.
+    const int cardCount = getCardCount();
+	for (int cardId = 0; cardId < cardCount; ++cardId) {
 		const Card *card = getEngineCard(cardId);
 		if (!card) continue;
 		if(card->objectName().startsWith("_")){

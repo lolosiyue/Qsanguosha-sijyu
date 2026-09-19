@@ -23,6 +23,7 @@
 #include "socket.h"
 
 #include <QMutexLocker>
+#include <QMetaMethod>
 #include <QThread>
 
 using namespace QSanProtocol;
@@ -48,33 +49,34 @@ ServerPlayer::ServerPlayer(Room *room)
         if (this->room && this->room->roomRuntime())
             this->room->roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
     };
-    connect(this, &Player::general_changed, this, advanceProperty);
-    connect(this, &Player::general2_changed, this, advanceProperty);
-    connect(this, &Player::role_changed, this, advanceProperty);
-    connect(this, &Player::state_changed, this, advanceProperty);
-    connect(this, &Player::hp_changed, this, advanceProperty);
-    connect(this, &Player::kingdom_changed, this, advanceProperty);
-    connect(this, &Player::gameplay_property_changed, this, advanceProperty);
+    // Version changes must be visible to the next worker-side snapshot immediately.
+    connect(this, &Player::general_changed, this, advanceProperty, Qt::DirectConnection);
+    connect(this, &Player::general2_changed, this, advanceProperty, Qt::DirectConnection);
+    connect(this, &Player::role_changed, this, advanceProperty, Qt::DirectConnection);
+    connect(this, &Player::state_changed, this, advanceProperty, Qt::DirectConnection);
+    connect(this, &Player::hp_changed, this, advanceProperty, Qt::DirectConnection);
+    connect(this, &Player::kingdom_changed, this, advanceProperty, Qt::DirectConnection);
+    connect(this, &Player::gameplay_property_changed, this, advanceProperty, Qt::DirectConnection);
     connect(this, &Player::phase_changed, this, [this]() {
         if (this->room && this->room->roomRuntime())
             this->room->roomRuntime()->advanceStateRevision(RoomRuntime::TurnStateChanged);
-    });
+    }, Qt::DirectConnection);
     connect(this, &Player::mark_changed, this, [this]() {
         if (this->room && this->room->roomRuntime())
             this->room->roomRuntime()->advanceStateRevision(RoomRuntime::PlayerMarkChanged);
-    });
+    }, Qt::DirectConnection);
     connect(this, &Player::skill_set_changed, this, [this]() {
         if (this->room && this->room->roomRuntime())
             this->room->roomRuntime()->advanceStateRevision(RoomRuntime::SkillSetChanged);
-    });
+    }, Qt::DirectConnection);
     connect(this, &Player::skill_state_changed, this, [this]() {
         if (this->room && this->room->roomRuntime())
             this->room->roomRuntime()->advanceStateRevision(RoomRuntime::SkillInstanceStateChanged);
-    });
+    }, Qt::DirectConnection);
     connect(this, &Player::card_limitation_changed, this, [this]() {
         if (this->room && this->room->roomRuntime())
             this->room->roomRuntime()->advanceStateRevision(RoomRuntime::CardLimitationChanged);
-    });
+    }, Qt::DirectConnection);
 }
 
 ServerPlayer::~ServerPlayer()
@@ -114,6 +116,7 @@ void ServerPlayer::setTag(const QString &key, const QVariant &value)
 void ServerPlayer::refreshUIState()
 {
     if (!room || !getGeneral() || !isAlive()) return;
+    if (room->getThread() && room->getThread()->deferPlayerUiState(this)) return;
 
     const PlayerUIState state = PlayerUIStateBuilder::build(*this, *room);
     if (state == m_uiState)
@@ -547,6 +550,13 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message,
 	// Numbering, encoding and queueing happen together: a frame numbered here
 	// must also be queued here, or a send from another thread could overtake it.
 	QMutexLocker outboundLocker(&m_outboundMutex);
+	// Bots without a wire observer or replay recorder consume no notifications.
+	// Keep requests, numbering callbacks and replay-only recipients on the full
+	// path; controller forwarding has already happened in RoomNotifier.
+	static const QMetaMethod readySignal = QMetaMethod::fromSignal(&ServerPlayer::message_ready);
+	if (message.type == ProtocolMessageType::Notification && !onNumbered
+		&& !recordBuffer && !isSignalConnected(readySignal))
+		return 0;
 	if (message.messageId == 0)
 		message.messageId = m_protocolMessageIds.next();
 

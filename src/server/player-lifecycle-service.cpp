@@ -784,5 +784,7 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
     }
 
     sync.phase = QStringLiteral("end");
+    // This snapshot remains staged until STATE_SYNC end commits it atomically.
+    m_room.notifyResolutionState(QStringLiteral("reset"), player);
     m_notifier.doNotify(player, S_COMMAND_STATE_SYNC, sync.toVariant());
 }

@@ -865,6 +865,34 @@ private:
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
 
     QVariantMap tag;
+    // Presentation-only lifecycle, owned by the room execution thread.
+    class ResolutionScope
+    {
+    public:
+        ResolutionScope(Room &room, const QString &kind, const ServerPlayer *actor,
+            const ServerPlayer *source, const ServerPlayer *affected, const QString &cardName = QString());
+        // A skill scope stays private until the existing public invocation fires.
+        ResolutionScope(Room &room, const QString &pendingSkill);
+        ~ResolutionScope();
+        bool discloseSkill(const QString &skill, const ServerPlayer *actor);
+        void update(const ServerPlayer *source, const ServerPlayer *affected);
+        ResolutionScope(const ResolutionScope &) = delete;
+        ResolutionScope &operator=(const ResolutionScope &) = delete;
+    private:
+        void begin(const QString &kind, const ServerPlayer *actor, const ServerPlayer *source,
+                   const ServerPlayer *affected, const QString &cardName);
+        Room &m_room;
+        QString m_id;
+        QString m_pendingSkill;
+    };
+    QList<ResolutionScope *> m_pendingResolutionScopes;
+    mutable QMutex m_resolutionMutex;
+    QVariantList m_resolutionFrames;
+    QVariantMap m_resolutionFocus;
+    QString m_resolutionFocusId;
+    QElapsedTimer m_resolutionFocusElapsed;
+    quint64 m_nextResolutionId = 1;
+    void notifyResolutionState(const QString &phase, ServerPlayer *recipient = nullptr);
     std::unique_ptr<Scenario> m_ownedScenario;
     const Scenario*scenario;
 

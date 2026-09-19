@@ -172,10 +172,20 @@ def test_rejects_malformed_seed_before_starting_child(tmp_path: Path) -> None:
 
 
 def test_rejects_synthetic_actor_counts_as_product_modes(tmp_path: Path) -> None:
-    for mode in ("30p", "50p"):
+    for mode in ("30p", "49p", "51p"):
         result = invoke(tmp_path, "--mode", mode)
         assert result.returncode != 0
         assert mode in result.stderr
+
+
+def test_accepts_registered_50p_mode_without_running_a_real_game(tmp_path: Path) -> None:
+    # No installed server: exercise the fallback registry and the fake child only.
+    result = invoke(tmp_path, "--mode", "50p", "--exe-root", str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    rows = read_rows(tmp_path / "summary.csv")
+    assert len(rows) == 1
+    assert rows[0]["mode"] == "50p"
+    assert rows[0]["ok"] == "True"
 
 
 def test_validates_one_final_gauge_per_game_and_persists_zero_fields(

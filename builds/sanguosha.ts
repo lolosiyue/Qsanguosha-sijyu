@@ -6849,4 +6849,233 @@ Recent events:</source>
         <translation>当前提示：%1</translation>
     </message>
 </context>
+<context>
+    <name>LargeRoomOverview</name>
+    <message>
+        <source>Expand focus</source>
+        <translation>展開焦點</translation>
+    </message>
+    <message>
+        <source>Collapse focus</source>
+        <translation>收縮焦點</translation>
+    </message>
+    <message>
+        <source>Self</source>
+        <translation>自己</translation>
+    </message>
+    <message>
+        <source>Observation locked</source>
+        <translation>已鎖定觀察</translation>
+    </message>
+    <message>
+        <source>Target preview</source>
+        <translation>目標預覽</translation>
+    </message>
+    <message>
+        <source>Primary focus</source>
+        <translation>主焦點 · 結算角色</translation>
+    </message>
+    <message>
+        <source>Source / target</source>
+        <translation>次焦點 · 來源／目標</translation>
+    </message>
+    <message>
+        <source>Following - Lock</source>
+        <translation>跟隨中 · 鎖定</translation>
+    </message>
+    <message>
+        <source>Locked - Follow</source>
+        <translation>已鎖定 · 跟隨</translation>
+    </message>
+    <message>
+        <source>Player details (scroll to browse)</source>
+        <translation>玩家詳細資料（滾輪捲動）</translation>
+    </message>
+    <message>
+        <source>HP %1/%2 - Hand %3 - Limit %4</source>
+        <translation>體力 %1/%2 · 手牌 %3 · 上限 %4</translation>
+    </message>
+    <message>
+        <source>Distance %1 - Attack modifier %2 - Defense modifier %3</source>
+        <translation>距離 %1 · 進攻修正 %2 · 防禦修正 %3</translation>
+    </message>
+    <message>
+        <source>Alive</source>
+        <translation>存活</translation>
+    </message>
+    <message>
+        <source>Dead</source>
+        <translation>陣亡</translation>
+    </message>
+    <message>
+        <source>Face down</source>
+        <translation>翻面</translation>
+    </message>
+    <message>
+        <source>Face up</source>
+        <translation>正面</translation>
+    </message>
+    <message>
+        <source>Chained</source>
+        <translation>連環</translation>
+    </message>
+    <message>
+        <source>Unchained</source>
+        <translation>未連環</translation>
+    </message>
+    <message>
+        <source>Removed</source>
+        <translation>移出遊戲</translation>
+    </message>
+    <message>
+        <source>Role: %1 - Kingdom: %2</source>
+        <translation>身分：%1 · 勢力：%2</translation>
+    </message>
+    <message>
+        <source>Equipment: </source>
+        <translation>裝備：</translation>
+    </message>
+    <message>
+        <source>Judging: </source>
+        <translation>判定：</translation>
+    </message>
+    <message>
+        <source>Skills: </source>
+        <translation>技能：</translation>
+    </message>
+    <message>
+        <source>Mark %1: %2</source>
+        <translation>標記 %1：%2</translation>
+    </message>
+    <message>
+        <source>Pile %1: %2</source>
+        <translation>牌堆 %1：%2</translation>
+    </message>
+    <message>
+        <source>Turn</source>
+        <translation>回合</translation>
+    </message>
+    <message>
+        <source>Resolution</source>
+        <translation>◆ 結算</translation>
+    </message>
+    <message>
+        <source>No player selection is required</source>
+        <translation>目前沒有需要選取的角色</translation>
+    </message>
+    <message>
+        <source>No legal targets for this card or skill</source>
+        <translation>目前牌／技能沒有合法目標</translation>
+    </message>
+    <message>
+        <source>Legal targets %1 / %2 - Selected %3%4</source>
+        <translation>可選目標 %1 / %2　已選 %3%4</translation>
+    </message>
+    <message>
+        <source>No active resolution</source>
+        <translation>目前沒有活動結算</translation>
+    </message>
+    <message>
+        <source>Resolution information is not synchronized</source>
+        <translation>結算資訊尚未同步</translation>
+    </message>
+    <message>
+        <source>Using a card</source>
+        <translation>使用牌</translation>
+    </message>
+    <message>
+        <source>Card effect</source>
+        <translation>牌的效果</translation>
+    </message>
+    <message>
+        <source>Damage</source>
+        <translation>傷害</translation>
+    </message>
+    <message>
+        <source>Recovery</source>
+        <translation>回復體力</translation>
+    </message>
+    <message>
+        <source>Judgement</source>
+        <translation>判定</translation>
+    </message>
+    <message>
+        <source>Dying rescue</source>
+        <translation>瀕死求救</translation>
+    </message>
+    <message>
+        <source>Skill effect</source>
+        <translation>技能效果</translation>
+    </message>
+    <message>
+        <source>%1 is resolving %2</source>
+        <translation>%1 正在結算 %2</translation>
+    </message>
+    <message>
+        <source>
+Waiting for %1 to respond</source>
+        <translation>
+正在等待 %1 回應</translation>
+    </message>
+    <message>
+        <source>Current resolution: </source>
+        <translation>當前結算：</translation>
+    </message>
+    <message>
+        <source>Jump to focus</source>
+        <translation>跳回當前焦點</translation>
+    </message>
+    <message>
+        <source>Jump to self</source>
+        <translation>跳回自己</translation>
+    </message>
+    <message>
+        <source>Lock observation</source>
+        <translation>鎖定觀察</translation>
+    </message>
+    <message>
+        <source>Legal targets only</source>
+        <translation>只看可選</translation>
+    </message>
+    <message>
+        <source>All players</source>
+        <translation>全部角色</translation>
+    </message>
+    <message>
+        <source>Sort: seat</source>
+        <translation>排序：座次</translation>
+    </message>
+    <message>
+        <source>Sort: distance</source>
+        <translation>排序：距離</translation>
+    </message>
+    <message>
+        <source>Sort: proximity</source>
+        <translation>排序：鄰近</translation>
+    </message>
+    <message>
+        <source>Sort: legality</source>
+        <translation>排序：合法性</translation>
+    </message>
+    <message>
+        <source>Close details</source>
+        <translation>關閉詳細卡</translation>
+    </message>
+    <message>
+        <source>%1 -&gt; %2: %3</source>
+        <translation>%1 → %2：%3</translation>
+    </message>
+    <message>
+        <source>%1 - %2 - %3 - %4</source>
+        <translation>%1 · %2 · %3 · %4</translation>
+    </message>
+    <message>
+        <source>, </source>
+        <translation>、</translation>
+    </message>
+    <message>
+        <source> - </source>
+        <translation> · </translation>
+    </message>
+</context>
 </TS>

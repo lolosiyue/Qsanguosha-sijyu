@@ -558,9 +558,9 @@ void RoomRuntime::seedRandom(quint64 seed)
 void RoomRuntime::advanceStateRevision(StateMutation mutation)
 {
     Q_UNUSED(mutation);
-    ++m_stateRevision;
-    if (m_stateRevision == 0)
-        ++m_stateRevision;
+    // Mutations may originate in either the Room worker or the owning Qt thread.
+    if (m_stateRevision.fetch_add(1, std::memory_order_relaxed) == quint64(-1))
+        m_stateRevision.fetch_add(1, std::memory_order_relaxed);
 }
 
 void RoomRuntime::addPackage(Package *package)

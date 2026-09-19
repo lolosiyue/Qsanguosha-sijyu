@@ -27,6 +27,8 @@ public:
     explicit Photo();
     ~Photo();
     const ClientPlayer *getPlayer() const;
+    void projectOverview(const QString &general, const QString &kingdom, int hp, int maxHp,
+        int handCount, int handMax, bool hideHandCount, bool alive);
     void speak(const QString &content);
     virtual void repaintAll(bool all = false);
     QList<CardItem *> removeCardItems(const QList<int> &card_id, Player::Place place);
@@ -127,6 +129,7 @@ protected:
     QGraphicsRectItem *_m_duanchangMask;
 
 private:
+    QString m_overviewProjection;
     void _applyLayoutTransform(const QSanRoomSkin::PhotoLayout *layout);
 };
 

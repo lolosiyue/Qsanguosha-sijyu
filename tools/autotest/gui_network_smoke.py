@@ -163,7 +163,10 @@ def write_server_config(path, args):
         "EnableHegemony=false",
         "EnableSame=false",
         "EnableLuckCard=false",
-        "EnableAI=true",
+        # Room::askForLuckCard reads this count; the legacy boolean alone
+        # leaves the server default (-1, unlimited) and can loop forever.
+        "LuckCardTimes=0",
+        "EnableAI=%s" % ("true" if args.ai == "on" else "false"),
         "AIHumanized=false",
         "OperationNoLimit=false",
         "CountDownSeconds=0",
@@ -354,7 +357,7 @@ def main():
                         help="固定遊戲 seed (unsigned 十進位整數)")
     parser.add_argument("--artifact-dir", default="gui-network-artifacts")
     parser.add_argument("--label", default=None, help="artifact 檔名前綴 (預設: 模式名)")
-    parser.add_argument("--platform", default="xcb", choices=("xcb", "offscreen"),
+    parser.add_argument("--platform", default="xcb", choices=("xcb", "offscreen", "windows"),
                         help="Qt platform plugin (預設: xcb)")
     parser.add_argument("--xvfb", dest="xvfb", action="store_true", default=False,
                         help="用 xvfb-run 起 client (CI 用)")
@@ -372,6 +375,8 @@ def main():
                         help="server 端每次操作的倒數 (秒)")
     parser.add_argument("--ai-delay", type=int, default=0,
                         help="server AI 思考延遲 (毫秒, CI 用 0)")
+    parser.add_argument("--ai", choices=("on", "off"), default="on",
+                        help="SmartAI 開關；off 使用內建 TrustAI，僅作明確標示的 GUI 隔離驗證")
     parser.add_argument("--require-interactions",
                         default=",".join(DEFAULT_REQUIRED_INTERACTIONS),
                         help="必須經真 UI 覆過的互動名, 逗號分隔")
@@ -434,6 +439,7 @@ def main():
             "extensions_commit": extensions_commit(exe_root),
             "operation_timeout": args.operation_timeout,
             "ai_delay": args.ai_delay,
+            "ai": args.ai,
             "process_timeout": args.process_timeout,
             "client_timeout_ms": args.client_timeout_ms,
             "stall_ms": args.stall_ms,
@@ -471,7 +477,7 @@ def main():
         "--autotest-log", marker_file,
         "--operation-timeout", str(args.operation_timeout),
         "--ai-delay", str(args.ai_delay),
-        "--ai", "on",
+        "--ai", args.ai,
         "--log-level", "debug",
     ]
     server = spawn(server_command, workdir, server_log)

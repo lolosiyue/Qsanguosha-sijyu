@@ -449,6 +449,7 @@ public slots:
     void onPlayerChooseOrder();
 
 signals:
+    void gamePresentationStateChanged();
     void replayStateCaptureReady(quint64 requestId,
                                  const QJsonObject &clientCore,
                                  int lastAppliedPairIndex,

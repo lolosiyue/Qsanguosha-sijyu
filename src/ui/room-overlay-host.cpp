@@ -90,10 +90,15 @@ void RoomOverlayHost::createPersistentUi()
             m_logVisible = !m_logVisible; updateGeometry(); emit layoutPreferencesChanged();
         });
         logAction->setCheckable(true);
-        logAction->setChecked(m_logVisible);
-        logAction->setEnabled(m_responsiveEnabled
+        logAction->setChecked(m_logVisible || m_layout.logAlwaysVisible);
+        logAction->setEnabled(!m_layout.logAlwaysVisible
+            && (m_responsiveEnabled || m_layout.profile == RoomLayoutEngine::Profile::LargeRoom)
             && m_layout.profile != RoomLayoutEngine::Profile::LegacyLandscape);
         menu->addAction(tr("Chat"), this, [this] {
+            if (m_layout.nativeChrome) {
+                emit nativeChatToggleRequested();
+                return;
+            }
             m_chatVisible = !m_chatVisible; updateGeometry(); emit layoutPreferencesChanged();
         });
         auto *hand = menu->addMenu(tr("One-handed layout"));
@@ -120,6 +125,8 @@ void RoomOverlayHost::createPersistentUi()
     m_nativeSeatScroll = new QScrollBar(Qt::Horizontal, this);
     m_nativeSeatScroll->setObjectName(QStringLiteral("roomNativeSeatScroll"));
     m_nativeSeatScroll->setAccessibleName(tr("Player seats"));
+    // Include native seat paging in Tab navigation; QScrollBar defaults to NoFocus.
+    m_nativeSeatScroll->setFocusPolicy(Qt::StrongFocus);
     m_nativeSeatScroll->setSingleStep(1);
     connect(m_nativeSeatScroll, &QScrollBar::valueChanged, this, &RoomOverlayHost::layoutPreferencesChanged);
     m_inspector = makePanel(this);
@@ -364,7 +371,7 @@ void RoomOverlayHost::updateGeometry()
     const QRect header = widgetRect(m_layout.headerRect);
     m_launcher->setGeometry(pane.left() + 8,
         header.isEmpty() ? pane.top() + 8 : header.top() + (header.height() - 48) / 2, 48, 48);
-    const bool active = m_responsiveEnabled && m_layout.valid
+    const bool active = (m_responsiveEnabled || m_layout.profile == RoomLayoutEngine::Profile::LargeRoom) && m_layout.valid
         && m_layout.profile != RoomLayoutEngine::Profile::LegacyLandscape;
     const QRect inspectorRect = widgetRect(m_layout.inspectorRect);
     const bool permanentSplit = !inspectorRect.isEmpty()
@@ -399,6 +406,7 @@ void RoomOverlayHost::updateGeometry()
     if (auto *closeInspector = m_inspector->findChild<QToolButton *>(QStringLiteral("roomInspectorClose")))
         closeInspector->setEnabled(!permanentSplit);
     const bool ribbon = active && m_layout.seatPresentation == RoomLayoutEngine::SeatPresentation::Ribbon
+        && m_layout.profile != RoomLayoutEngine::Profile::LargeRoom
         && !widgetRect(m_layout.seatsRect).isEmpty();
     const int hiddenSeats = qMax(0, m_layout.photos.size() - m_layout.visibleSeatCount);
     m_nativeSeatScroll->setVisible(ribbon && hiddenSeats > 0);
@@ -409,9 +417,10 @@ void RoomOverlayHost::updateGeometry()
         m_nativeSeatScroll->setValue(m_layout.firstVisibleSeat);
         // Keep the paging control in the reserved header, clear of all native targets.
         m_nativeSeatScroll->setGeometry(m_launcher->geometry().right() + 8,
-            m_launcher->y(), qMax(0, pane.width() - 72), 48);
+            m_launcher->y(), qMax(0, (header.isEmpty() ? pane.right() : header.right())
+                - m_launcher->geometry().right() - 8), 48);
     }
-    m_chatPanel->setVisible(active && m_chatVisible);
+    m_chatPanel->setVisible(active && m_chatVisible && !m_layout.nativeChrome);
     updateMask();
 }
 

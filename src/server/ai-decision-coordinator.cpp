@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "room.h"
 #include "server-info.h"
+#include "settings.h"
 #include "skill-runtime-coordinator.h"
 #include "standard.h"
 
@@ -476,13 +477,33 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer) const
             world.players << playerView;
         }
     }
-    foreach (ServerPlayer *from, m_room.getAlivePlayers()) {
-        QMap<QString, int> row;
-        foreach (ServerPlayer *to, m_room.getAlivePlayers()) {
-            if (from != to)
-                row.insert(to->objectName(), from->distanceTo(to));
+    const auto distancePlayers = m_room.getAlivePlayers();
+    const auto distanceSkills = Sanguosha->getDistanceSkills();
+    const quint64 distanceRevision = m_room.roomRuntime()->stateRevision();
+    const quint64 skillGeneration = SkillSet::generation();
+    if (m_distanceCacheValid && m_distanceRevision == distanceRevision
+        && m_distanceSkillGeneration == skillGeneration
+        && m_distancePlayers == distancePlayers && m_distanceSkills == distanceSkills) {
+        world.distances = m_worldDistances;
+    } else {
+        foreach (ServerPlayer *from, distancePlayers) {
+            QMap<QString, int> row;
+            foreach (ServerPlayer *to, distancePlayers) {
+                if (from != to)
+                    row.insert(to->objectName(), from->distanceTo(to));
+            }
+            world.distances.insert(from->objectName(), row);
         }
-        world.distances.insert(from->objectName(), row);
+        // A callback that mutates gameplay must never publish a reusable stale table.
+        m_distanceCacheValid = distanceRevision == m_room.roomRuntime()->stateRevision()
+            && skillGeneration == SkillSet::generation();
+        if (m_distanceCacheValid) {
+            m_distanceRevision = distanceRevision;
+            m_distanceSkillGeneration = skillGeneration;
+            m_distancePlayers = distancePlayers;
+            m_distanceSkills = distanceSkills;
+            m_worldDistances = world.distances;
+        }
     }
     foreach (const int cardId, m_room.getDiscardPile()) {
         if (const Card *card = Sanguosha->getCard(cardId))
@@ -515,6 +536,10 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     request.pattern = pattern;
     request.prompt = prompt;
     request.handlingMethod = method;
+    // --ai off selects the native fallback. It must not build the quadratic
+    // isolated snapshot or allow an isolated Lua handler to override that AI.
+    if (!Config.EnableAI)
+        return request;
     request.worldView = buildWorldView(player);
     if (player && (kind == AIRequest::Activate || kind == AIRequest::UseCard
                    || kind == AIRequest::RespondCard)) {
@@ -802,8 +827,10 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
     if (fromIsolated)
         *fromIsolated = false;
     if (!player || !player->getAI()) return false;
-    const AiRoute route = m_room.roomRuntime()->ai().routes().routeFor(
-        request.kind, callbackName, request.choiceOptions.reason);
+    const AiRoute route = Config.EnableAI
+        ? m_room.roomRuntime()->ai().routes().routeFor(
+            request.kind, callbackName, request.choiceOptions.reason)
+        : AiRouteLegacyDirect;
     bool isolatedAnswer = false;
     if (route == AiRouteIsolated) {
         result = m_room.roomRuntime()->ai().decideIsolated(request);
@@ -1345,8 +1372,10 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
                                                   const LegacyCard &legacy) const
 {
     if (!player || !player->getAI()) return nullptr;
-    const AiRoute route = m_room.roomRuntime()->ai().routes().routeFor(
-        request.kind, callbackName, request.choiceOptions.reason);
+    const AiRoute route = Config.EnableAI
+        ? m_room.roomRuntime()->ai().routes().routeFor(
+            request.kind, callbackName, request.choiceOptions.reason)
+        : AiRouteLegacyDirect;
     if (route == AiRouteIsolated) {
         const AIResult result = m_room.roomRuntime()->ai().decideIsolated(request);
         const Card *answered = responseCard(player, request, result);
@@ -1524,8 +1553,9 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
     } probeGuard{probeTimer, player, callbackName, request};
     const QString skillName = request.hasSkillActionContext
         ? request.skillActionContext.getActivationSkillName() : QString();
-    const AiRoute route = m_room.roomRuntime()->ai().routes().routeFor(request.kind,
-        callbackName, skillName);
+    const AiRoute route = Config.EnableAI
+        ? m_room.roomRuntime()->ai().routes().routeFor(request.kind, callbackName, skillName)
+        : AiRouteLegacyDirect;
     if (route == AiRouteLegacyDirect) {
         if (request.hasSkillActionContext)
             return false;
@@ -1575,7 +1605,7 @@ bool AiDecisionCoordinator::decideSkillAction(
     const QString &pattern, const QString &prompt, Card::HandlingMethod method,
     CardUseStruct &cardUse) const
 {
-    if (!player || !player->getAI()) return false;
+    if (!Config.EnableAI || !player || !player->getAI()) return false;
     foreach (const SkillInstance &instance, player->getSkillInstances()) {
         AIRequest request;
         if (!buildSkillActionRequest(player, instance, reason, pattern, prompt, method, request))

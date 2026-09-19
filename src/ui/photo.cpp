@@ -1,4 +1,5 @@
 #include "photo.h"
+#include "magatamas-item.h"
 //#include "clientplayer.h"
 //#include "settings.h"
 #include "carditem.h"
@@ -53,6 +54,39 @@ Photo::Photo() : PlayerCardContainer(), m_giftHighlighted(false), m_giftHighligh
 
     _createControls();
     repaintAll();
+}
+
+// A read-only Photo uses the same native controls without binding another ClientPlayer.
+void Photo::projectOverview(const QString &general, const QString &kingdom, int hp, int maxHp,
+    int handCount, int handMax, bool hideHandCount, bool alive)
+{
+    const QString projection = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
+        .arg(general, kingdom).arg(hp).arg(maxHp).arg(handCount).arg(handMax).arg(hideHandCount).arg(alive);
+    if (m_overviewProjection == projection) return;
+    m_overviewProjection = projection;
+    const QString name = general.isEmpty() ? QStringLiteral("anjiang") : general;
+    _m_avatarIcon->setGeneralImage(G_ROOM_SKIN.getGeneralPixmapForPhoto(name,
+        QSanRoomSkin::GeneralIconSize(_m_layout->m_avatarSize), false), _m_layout->m_avatarArea.size());
+    _paintPixmap(_m_handCardBg, _m_layout->m_handCardArea,
+        _getPixmap(QSanRoomSkin::S_SKIN_KEY_HANDCARDNUM, kingdom.isEmpty() ? QStringLiteral("qun") : kingdom), _getAvatarParent());
+    paintHp(hp, maxHp);
+    paintHandcardNum(handCount, hp, handMax, hideHandCount);
+    // Keep only the native portrait/frame/HP/hand controls; details belong to L1.
+    const QList<QGraphicsItem *> kept = {_m_avatarIcon, _m_mainFrame, _m_handCardBg, _m_handCardNumText, _m_hpBox};
+    QList<QGraphicsItem *> pending = childItems();
+    while (!pending.isEmpty()) {
+        QGraphicsItem *item = pending.takeLast();
+        bool keep = kept.contains(item);
+        for (auto *leaf : kept) keep = keep || item->isAncestorOf(leaf) || leaf->isAncestorOf(item);
+        bool insideControl = false;
+        for (auto *leaf : kept) insideControl = insideControl || leaf->isAncestorOf(item);
+        if (!insideControl) item->setVisible(keep);
+        item->setAcceptedMouseButtons(Qt::NoButton);
+        item->setAcceptHoverEvents(false);
+        pending.append(item->childItems());
+    }
+    _m_handCardNumText->setVisible(!hideHandCount);
+    _m_groupMain->setOpacity(alive ? 1.0 : 0.35);
 }
 
 Photo::~Photo()
@@ -331,7 +365,7 @@ void Photo::setFrame(FrameType type)
         if (_m_focusFrame) {
             if (_m_saveMeIcon && _m_saveMeIcon->isVisible())
                 setFrame(S_FRAME_SOS);
-            else if (m_player->getPhase() != Player::NotActive)
+            else if (m_player && m_player->getPhase() != Player::NotActive)
                 setFrame(S_FRAME_PLAYING);
             else
                 _m_focusFrame->hide();

@@ -29,8 +29,10 @@ public:
     void initialize(const QStringList &arguments);
     bool isInitialized() const { return m_initialized; }
 
-    EffectsProfile profile() const { return m_profile; }
-    QString profileName() const { return EffectsProfileContract::profileName(m_profile); }
+    EffectsProfile profile() const { return m_largeRoom ? EffectsProfile::None : m_profile; }
+    QString profileName() const { return EffectsProfileContract::profileName(profile()); }
+    // Session-only reduction; leaving the room restores the user's chosen profile.
+    void setLargeRoom(bool enabled) { m_largeRoom = enabled; }
     QString source() const { return m_source; }
     QString resolutionError() const { return m_error; }
 
@@ -47,7 +49,7 @@ public:
     bool qmlEffectsEnabled() const;
     bool decorativeDelayAllowed() const;
     // Shortcut for profile == None: skip the animation, go straight to the final state + completeNow().
-    bool immediate() const { return m_profile == EffectsProfile::None; }
+    bool immediate() const { return profile() == EffectsProfile::None; }
 
     // Duration of purely decorative animations. None -> 0, Reduced -> noticeably shortened, Full -> original value.
     int scaledDuration(int durationMs) const;
@@ -80,6 +82,7 @@ private:
     QString m_source = QStringLiteral("default");
     QString m_error;
     bool m_initialized = false;
+    bool m_largeRoom = false;
     quint64 m_counters[CounterCount] = {};
 };
 

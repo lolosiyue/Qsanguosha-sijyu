@@ -1,5 +1,7 @@
 // QtCore-only contract checks for the shared game presentation projections.
 #include "../../src/client/core/client-game-state.h"
+#include "../../src/client/core/client-game-state-reducer.h"
+#include "../../src/core/protocol/resolution-state-message.h"
 #include "../../src/client/core/game-action-model.h"
 #include "../../src/client/core/game-event-stream.h"
 #include "../../src/client/core/game-view-state.h"
@@ -342,5 +344,62 @@ int main(int argc, char **argv)
     actionModelContracts();
     eventStreamContracts();
     settlementRelationContracts();
+    // A deep child disappears back to its parent, independently of retained logs.
+    ClientGameState state;
+    state.setSelfName(QStringLiteral("a"));
+    state.setPlayerNames({QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c")});
+    auto frame = [](const QString &id, const QString &parent, const QString &kind,
+                    const QString &actor, const QString &source, const QString &affected) {
+        return QVariantMap{{QStringLiteral("id"), id}, {QStringLiteral("parent_id"), parent},
+            {QStringLiteral("kind"), kind}, {QStringLiteral("actor"), actor},
+            {QStringLiteral("source"), source}, {QStringLiteral("affected"), affected},
+            {QStringLiteral("targets"), QVariantList{affected}}, {QStringLiteral("card_name"), QString()}};
+    };
+    const QVariantMap parent = frame("9007199254740993", "", "effect", "b", "a", "b");
+    const QVariantMap child = frame("9007199254740994", "9007199254740993", "card", "c", "c", "");
+    ResolutionStateMessage resolution;
+    resolution.phase = QStringLiteral("begin");
+    resolution.frames = {parent, child};
+    auto reduce = [&] {
+        return ClientGameStateReducer::applyNotification(&state,
+            QSanProtocol::S_COMMAND_RESOLUTION_STATE, resolution.toVariant()).success;
+    };
+    check(reduce() && reduce() && GameViewState::fromState(state).activeResolutions.size() == 2,
+          "duplicate lifecycle delivery replaces the stack and preserves decimal IDs");
+    QVariantMap focus{{QStringLiteral("schema_version"), 1},
+        {QStringLiteral("player_names"), QVariantList{QStringLiteral("b"), QStringLiteral("c")}},
+        {QStringLiteral("command"), QSanProtocol::S_COMMAND_NULLIFICATION},
+        {QStringLiteral("countdown"), QVariantMap{{QStringLiteral("type"), 0}}}};
+    check(ClientGameStateReducer::applyNotification(&state, QSanProtocol::S_COMMAND_MOVE_FOCUS, focus).success,
+          "multiple response participants remain separate from resolution actor");
+    const auto waiting = GameViewState::fromState(state);
+    check(waiting.responseFocus == QStringList{QStringLiteral("b"), QStringLiteral("c")}
+          && waiting.focusResolutionId == QStringLiteral("9007199254740994"),
+          "response focus links to the active layer without changing its source");
+    resolution.phase = QStringLiteral("end"); resolution.frames = {parent};
+    check(reduce() && GameViewState::fromState(state).activeResolutions.size() == 1
+          && GameViewState::fromState(state).responseFocus.isEmpty(),
+          "child end restores the parent and clears the child's response focus");
+    const QVariantList before = GameViewState::fromState(state).activeResolutions;
+    QVariantMap bad = child; bad[QStringLiteral("parent_id")] = QStringLiteral("missing");
+    resolution.frames = {parent, bad};
+    check(!reduce() && GameViewState::fromState(state).activeResolutions == before,
+          "orphan parent is rejected without mutating presentation state");
+    bad = parent; bad[QStringLiteral("private_hand")] = QVariantList{42};
+    resolution.frames = {bad};
+    check(!reduce(), "unapproved private payload fields cannot enter resolution state");
+    bad = parent; bad[QStringLiteral("id")] = 42;
+    resolution.frames = {bad};
+    check(!reduce(), "numeric resolution IDs are rejected");
+    resolution.phase = QStringLiteral("reset"); resolution.frames = {parent, child};
+    check(reduce() && GameViewState::fromState(state).activeResolutions.size() == 2,
+          "reconnect reset replaces state with the authoritative complete stack");
+    resolution.frames.clear();
+    check(reduce() && GameViewState::fromState(state).resolutionAvailable
+          && GameViewState::fromState(state).activeResolutions.isEmpty(),
+          "empty reset means known idle, distinct from an old replay lacking lifecycle");
+    state.resetGameplayState();
+    check(!GameViewState::fromState(state).resolutionAvailable,
+          "new session cannot inherit the previous resolution availability");
     return failures == 0 ? 0 : 1;
 }

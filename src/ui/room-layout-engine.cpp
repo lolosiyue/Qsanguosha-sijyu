@@ -401,6 +401,43 @@ bool placeRibbon(ResponsiveResult &result, int photoCount, const QSize &photoSiz
 }
 }
 
+ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &frame)
+{
+    ResponsiveResult result;
+    if (!frame.valid || input.photoCount < 20 || input.photoCount > 49
+        || input.smallPhotoSize.isEmpty())
+        return result;
+    result.profile = Profile::LargeRoom;
+    result.nativeChrome = result.logAlwaysVisible = true;
+    result.mainRect = frame.sceneRect;
+    result.logRect = frame.logRect;
+    result.chatRect = frame.chatRect;
+    result.interactionRect = result.safeInteractionRect = frame.dashboardRect;
+    // Only the opponent area changes: the skin still owns the entire right column.
+    const QRectF area(frame.displayRect.left(), frame.displayRect.top(),
+        frame.infoRect.left() - frame.displayRect.left() - input.gap,
+        frame.dashboardRect.top() - frame.displayRect.top() - input.gap - qMax(0.0, input.promptHeight));
+    result.headerRect = QRectF(area.topLeft(), QSizeF(area.width(), 48.0));
+    const double gap = qMin(8.0, input.gap);
+    const double miniHeight = qBound(44.0, (area.height() - 48.0 - 32.0 - 140.0 - 3 * gap) / 2.0, 144.0);
+    result.seatsRect = QRectF(area.left(), result.headerRect.bottom(), area.width(), miniHeight);
+    result.actionsRect = QRectF(area.left(), area.bottom() - miniHeight - 32.0, area.width(), miniHeight + 32.0);
+    const QRectF content(area.left(), result.seatsRect.bottom() + gap, area.width(),
+        qMax(1.0, result.actionsRect.top() - result.seatsRect.bottom() - 2 * gap));
+    result.resolutionRect = QRectF(content.topLeft(), QSizeF(qMin(500.0, content.width() * 0.62), content.height()));
+    result.tableRect = content;
+    result.tableRect.setLeft(result.resolutionRect.right() + input.gap);
+    // Canonical Photos stay in the scene as input owners, never as overview tiles.
+    for (int i = 0; i < input.photoCount; ++i) {
+        ResponsivePhotoPlacement place;
+        place.seat = i; place.center = result.tableRect.center(); place.visible = false;
+        result.photos.append(place);
+    }
+    result.tableCenter = result.tableRect.center();
+    result.valid = validRect(result.tableRect) && result.photos.size() == input.photoCount;
+    return result;
+}
+
 DashboardGeometry computeDashboard(const QSizeF &available, double handHeight,
     const QSizeF &equipment, const QSizeF &avatar,
     Handedness handedness)
@@ -434,7 +471,7 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
 {
     ResponsiveResult result;
     if (!validRect(input.stableRect) || !validRect(input.availableRect)
-        || input.photoCount < 0 || input.photoCount > 19
+        || input.photoCount < 0 || input.photoCount > (input.largeRoom ? 49 : 19)
         || input.smallPhotoSize.width() <= 0 || input.smallPhotoSize.height() <= 0
         || !qIsFinite(input.gap) || input.gap < 0.0
         || !qIsFinite(input.minimumTouchTarget) || input.minimumTouchTarget <= 0.0
@@ -442,6 +479,23 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
         || !qIsFinite(input.interactionHeightFraction) || input.interactionHeightFraction <= 0.0
         || !qIsFinite(input.minimumInteractionHeight) || input.minimumInteractionHeight < 0.0)
         return result;
+
+    if (input.largeRoom && input.photoCount >= 20) {
+        const QRectF area = input.availableRect;
+        const double controls = qMin(area.height() * 0.42, qMax(180.0, input.minimumInteractionHeight));
+        Result frame;
+        frame.valid = true;
+        frame.sceneRect = frame.displayRect = area;
+        frame.dashboardRect = QRectF(area.left(), area.bottom() - controls, area.width(), controls);
+        frame.infoRect = QRectF(area.right(), area.top(), 0, 0);
+        result = computeLargeRoom(input, frame);
+        result.nativeChrome = result.logAlwaysVisible = false;
+        // Portrait uses the same overview and candidate semantics; the original
+        // log remains an on-demand overlay, independent of roster browsing.
+        if (input.logVisible) result.logRect = result.resolutionRect;
+        if (input.chatVisible) result.chatRect = result.tableRect;
+        return result;
+    }
 
     // Accept platform fold snapshots only when they describe a real, contained hinge/crease.
     // A separating zero-width/height crease is valid; orientation comes from posture.

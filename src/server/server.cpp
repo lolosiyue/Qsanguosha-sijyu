@@ -1105,6 +1105,11 @@ QGroupBox *ServerDialog::createGameModeBox()
 	//QStringList modenames;
 	//QRadioButton *button0;
 	QMap<QString, GameModeStruct> modes = Sanguosha->getAvailableModes();
+#if defined(Q_OS_ANDROID) || defined(QSAN_XP_LEGACY)
+    // M1's large-room presentation is available only in the modern desktop GUI.
+    // Keep the shared registry intact for protocol/replay metadata.
+    modes.remove(QStringLiteral("50p"));
+#endif
 	QSet<QString> groupedModes;
 	QSet<QString> groupNameSet;
 	QMapIterator<QString, GameModeStruct> groupIt(modes);

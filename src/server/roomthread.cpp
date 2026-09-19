@@ -1,5 +1,6 @@
 #include "roomthread.h"
 #include "card-lifetime-manager.h"
+#include "lua.hpp"
 #include "room.h"
 #include "engine.h"
 #include "gamerule.h"
@@ -7,6 +8,7 @@
 #include "standard.h"
 #include "exppattern.h"
 #include "skill-instance-utils.h"
+#include "skill-set-generation.h"
 #include "crashhandler.h"
 #include <QDebug>
 #include <QJsonDocument>
@@ -865,6 +867,13 @@ void RoomThread::run()
 		qWarning("Cannot register the Room worker for turn-end Card reclamation");
 		return;
 	}
+	if (room->getPlayers().size() > 20 && room->getLuaState()) {
+		// Large rooms create many short-lived Lua argument wrappers. Collect them
+		// during play instead of leaving a long finalizer backlog for lua_close.
+		// Switch at the idle worker boundary under the normal Lua lifetime pin.
+		LuaRuntime::LuaInvocationScope invocation(room->roomRuntime()->lua());
+		lua_gc(room->getLuaState(), LUA_GCGEN, 0, 0);
+	}
 
 	foreach(const TriggerSkill*triggerSkill, Sanguosha->getGlobalTriggerSkills())
 		addTriggerSkill(triggerSkill);
@@ -952,13 +961,38 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 		return;
 
 	const QList<ServerPlayer *> players = targetRoom->getAllPlayers(true);
+	// Cache ownership only. Validity (marks, flags, invalidity skills) remains a
+	// live hasSkill() query, and the existing generation tracks instance changes.
+	static thread_local QPointer<Room> ownerRoom;
+	static thread_local quint64 ownerGeneration = 0;
+	static thread_local QList<ServerPlayer *> ownerRoster;
+	static thread_local QHash<QString, QSet<ServerPlayer *>> possibleOwners;
+	const quint64 generation = SkillSet::generation();
+	if (ownerRoom != targetRoom || ownerGeneration != generation || ownerRoster != players) {
+		possibleOwners.clear();
+		foreach (ServerPlayer *player, players) {
+			foreach (const QString &name, player->getSkillNames()) {
+				possibleOwners[name].insert(player);
+				possibleOwners[SkillInstanceUtils::baseName(name)].insert(player);
+			}
+		}
+		ownerRoom = targetRoom;
+		ownerGeneration = generation;
+		ownerRoster = players;
+	}
+	// A nested Room dispatch must not replace this invocation's ownership view.
+	const auto owners = possibleOwners;
 	QHash<const TriggerSkill *, double> priorities;
 	priorities.reserve(skills.length());
 	foreach (TriggerSkill *skill, skills) {
 		double len = players.length();
 		double priority = skill->getPriority(triggerEvent);
+		const QString skillName = skill->objectName();
+		const auto candidates = owners.value(skillName);
 		foreach (ServerPlayer *player, players) {
-			if (player->hasSkill(skill->objectName(), includeLose)) {
+			// A callback may acquire a skill while priorities are being queried.
+			if ((SkillSet::generation() != generation || candidates.contains(player))
+				&& player->hasSkill(skillName, includeLose)) {
 				priority += len / 100.0;
 				break;
 			}
@@ -979,6 +1013,7 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 	};
 
 	std::stable_sort(skills.begin(), skills.end(), compareByPriority);
+	++m_triggerTableRevision[triggerEvent];
 	if (v2_skill_table[triggerEvent].length() > 1) {
 		std::stable_sort(v2_skill_table[triggerEvent].begin(),
 			v2_skill_table[triggerEvent].end(), compareByPriority);
@@ -1216,6 +1251,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		triggeredSkills.insert(key);
 
 		// 格式二支援：cost 使用 selected_ctx->owner（技能擁有者）作為 player
+		Room::ResolutionScope resolution(*room, skillName);
 		bool do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx);
 		if (!do_cost)
 			continue;
@@ -1287,6 +1323,8 @@ void RoomThread::refreshDistanceCacheIfDirty(Room *room)
 		distancePropertyName(player);
 
 	foreach(ServerPlayer *from, players) {
+		// Shutdown need not finish a presentation-only all-pairs refresh.
+		if (isInterruptionRequested()) return;
 		QHash<const ServerPlayer *, int> &lastDistances = m_lastBroadcastDistances[from];
 		foreach(ServerPlayer *to, players) {
 			if (from == to) continue;
@@ -1306,16 +1344,37 @@ void RoomThread::refreshDistanceCacheIfDirty(Room *room)
 	}
 }
 
+bool RoomThread::deferPlayerUiState(ServerPlayer *player)
+{
+	// Shutdown must not spend another turn rebuilding Lua-backed presentation.
+	if (isInterruptionRequested()) return true;
+	if (m_flushingPlayerUiState || event_stack.isEmpty()) return false;
+	m_pendingPlayerUiState.insert(player);
+	return true;
+}
+
+void RoomThread::flushPlayerUiState()
+{
+	if (!room || isInterruptionRequested() || m_flushingPlayerUiState) return;
+	const bool allPlayers = m_playerUiStateDirty;
+	const auto pending = m_pendingPlayerUiState;
+	m_playerUiStateDirty = false;
+	m_pendingPlayerUiState.clear();
+	if (!allPlayers && pending.isEmpty()) return;
+	m_flushingPlayerUiState = true;
+	auto resetFlushing = qScopeGuard([this]() { m_flushingPlayerUiState = false; });
+	// Iterate the live roster, preserving notification order and ignoring removals.
+	foreach (ServerPlayer *player, room->getAlivePlayers()) {
+		if (isInterruptionRequested()) return;
+		if (allPlayers || pending.contains(player)) player->refreshUIState();
+	}
+}
+
 void RoomThread::flushOutermostDeferredWork(Room *room)
 {
-	if (!room || !event_stack.isEmpty()) return;
+	if (!room || !event_stack.isEmpty() || isInterruptionRequested()) return;
 
-	if (m_playerUiStateDirty) {
-		// PlayerUIState owns the existing server-to-client UI notification path.
-		m_playerUiStateDirty = false;
-		foreach (ServerPlayer *player, room->getAlivePlayers())
-			player->refreshUIState();
-	}
+	flushPlayerUiState();
 
 	refreshDistanceCacheIfDirty(room);
 
@@ -1440,7 +1499,8 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 			flushOutermostDeferredWork(room);
 			return broken;
 		}
-		QList<TriggerSkill*>triggered;
+		// This is membership only; event order still comes from skill_table.
+		QSet<TriggerSkill *> triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
 			TriggerSkill*ts = skill_table[triggerEvent][i];
 			if (m_perfTraceEnabled)
@@ -1448,12 +1508,14 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 			if (m_triggerSkillTraits.value(ts).v2) continue;
 			if (triggered.contains(ts)) continue;
 			triggered << ts;
+			const quint64 tableRevision = m_triggerTableRevision[triggerEvent];
 			if(triggerEvent==EnterDying||triggerEvent==Dying||triggerEvent==AskForPeaches){
 				if(!data.value<DyingStruct>().who->hasFlag("Global_Dying")) break;
 			}
 			if (ts->triggerable(target,room,triggerEvent,target,data)) {
 				if(ts->getFrequency(target)==Skill::Wake&&!ts->canWake(triggerEvent,target,data,room)) continue;
 				room->tryPause();
+				Room::ResolutionScope resolution(*room, ts->objectName());
 				broken = ts->trigger(triggerEvent,room,target,data);
 				if(triggerEvent!=SkillTriggered&&room->getTag("notifyInvoked:"+ts->objectName()).toBool()){
 					room->removeTag("notifyInvoked:"+ts->objectName());
@@ -1461,7 +1523,9 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 					trigger(SkillTriggered,room,target,skillName);
 				}
 				if(broken) break;
-				i = 0;
+				// Nested dispatch or newly registered skills may reorder this table.
+				// A stable table can continue directly instead of rescanning its prefix.
+				if (tableRevision != m_triggerTableRevision[triggerEvent]) i = -1;
 			}
 		}
 		room->recordAiEvent(int(triggerEvent), target, data);
@@ -1500,6 +1564,7 @@ void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 	foreach (TriggerEvent event, skill->getTriggerEvents()) {
 		TriggerSkill *registeredSkill = const_cast<TriggerSkill *>(skill);
 		skill_table[event] << registeredSkill;
+		++m_triggerTableRevision[event];
 		if (traits.v2)
 			v2_skill_table[event] << registeredSkill;
 		if(skill_table[event].length()<2) continue;

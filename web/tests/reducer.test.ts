@@ -4,6 +4,41 @@ import { applyNotification } from "../src/reducer";
 import { ClientGameState } from "../src/state";
 
 describe("reducer", () => {
+  it("replaces nested resolution state and rejects private or orphaned frames atomically", () => {
+    const state = new ClientGameState();
+    const parent = { id: "9007199254740993", parent_id: "", kind: "effect",
+      actor: "b", source: "a", affected: "b", targets: ["b"], card_name: "" };
+    const child = { ...parent, id: "9007199254740994", parent_id: parent.id, kind: "card", actor: "c" };
+    const payload = { schema_version: 1, phase: "begin", frames: [parent, child] };
+    expect(applyNotification(state, Command.RESOLUTION_STATE, payload).success).toBe(true);
+    expect(applyNotification(state, Command.RESOLUTION_STATE, payload).success).toBe(true);
+    expect(state.gameValue("active_resolutions")).toEqual([parent, child]);
+    applyNotification(state, Command.MOVE_FOCUS, { schema_version: 1, player_names: ["b", "c"], command: Command.NULLIFICATION });
+    expect(state.gameValue("focus_resolution_id")).toBe(child.id);
+    expect(applyNotification(state, Command.RESOLUTION_STATE, { ...payload, phase: "end", frames: [parent] }).success).toBe(true);
+    expect(state.gameValue("focus")).toEqual([]);
+    for (const bad of [{ ...child, parent_id: "missing" }, { ...child, private_hand: [12] }, { ...child, id: 42 }]) {
+      expect(applyNotification(state, Command.RESOLUTION_STATE, { ...payload, frames: [parent, bad] }).success).toBe(false);
+      expect(state.gameValue("active_resolutions")).toEqual([parent]);
+    }
+    expect(applyNotification(state, Command.RESOLUTION_STATE, { ...payload, phase: "reset", frames: [] }).success).toBe(true);
+    expect(state.gameValue("resolution_available")).toBe(true);
+    expect(state.gameValue("active_resolutions")).toEqual([]);
+    applyNotification(state, Command.GAME_START, { schema_version: 1, card_ids: [] });
+    expect(state.gameValue("resolution_available")).toBe(false);
+  });
+
+  it("requires authoritative direction on schema 2 but accepts old replay seats", () => {
+    const state = new ClientGameState();
+    const seats = { schema_version: 2, player_names: ["a", "b"] };
+    expect(applyNotification(state, Command.ARRANGE_SEATS, seats).success).toBe(false);
+    expect(applyNotification(state, Command.ARRANGE_SEATS, { ...seats, play_order_reversed: "true" }).success).toBe(false);
+    expect(applyNotification(state, Command.ARRANGE_SEATS, { ...seats, play_order_reversed: true }).success).toBe(true);
+    expect(state.gameValue("play_order_known")).toBe(true);
+    expect(state.gameValue("play_order_reversed")).toBe(true);
+    expect(applyNotification(state, Command.ARRANGE_SEATS, { ...seats, schema_version: 1 }).success).toBe(true);
+    expect(state.gameValue("play_order_known")).toBe(false);
+  });
   it("marks GAME_START on the game object", () => {
     const state = new ClientGameState();
     const result = applyNotification(state, Command.GAME_START, {

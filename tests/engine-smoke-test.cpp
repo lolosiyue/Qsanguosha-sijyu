@@ -24,6 +24,7 @@
 
 #include <QDebug>
 #include <QFileInfo>
+#include <QScopedValueRollback>
 #include <QTemporaryDir>
 
 class TestPlayer : public Player
@@ -53,6 +54,11 @@ struct RoomTestAccess
     static bool resolveCardSkillInstance(Room &room, CardUseStruct &use)
     {
         return room.resolveCardSkillInstance(use);
+    }
+
+    static void assignRoles(Room &room)
+    {
+        room.assignRoles();
     }
 
     static void startVirtualGame(Room &room)
@@ -415,6 +421,66 @@ static bool collidingSkillNamesStayWithTheirOwnGenerals()
         }
     }
     return ok;
+}
+
+int runLargeRoomModeTests()
+{
+    QString error;
+    if (!EngineBootstrap::initialize(false, &error)) {
+        qCritical() << "large-room mode initialization failed:" << error;
+        return 1;
+    }
+    const QString modeId = QStringLiteral("50p");
+    const GameModeStruct mode = Sanguosha->getGameMode(modeId);
+    const QStringList roles = Sanguosha->getRoleList(modeId);
+    if (!mode.isValid() || Sanguosha->getPlayerCount(modeId) != 50
+        || !Sanguosha->getAvailableModes().contains(modeId)
+        || !Sanguosha->getGroupModes(QStringLiteral("身份模式")).contains(modeId)
+        || roles.size() != 50 || roles.count(QStringLiteral("lord")) != 1
+        || roles.count(QStringLiteral("loyalist")) != 23
+        || roles.count(QStringLiteral("rebel")) != 25
+        || roles.count(QStringLiteral("renegade")) != 1
+        || mode.reward_policy != QLatin1String("identity")
+        || mode.win_policy != QLatin1String("identity")
+        || !mode.lord_welfare || !mode.shuffle_seats) {
+        qCritical() << "50p must be selectable with the agreed identity configuration";
+        return 2;
+    }
+
+    // Exercise actual room admission/assignment without starting Lua AI or gameplay.
+    // Fifty seats must all receive a role; non-lord identities remain hidden.
+    const QScopedValueRollback<bool> hegemony(Config.EnableHegemony, false);
+    const QScopedValueRollback<bool> serverHegemony(ServerInfo.EnableHegemony, false);
+    Room room(nullptr, modeId, GameSessionConfig(), Room::RuntimeInitializationPolicy::Deferred);
+    for (int seat = 0; seat < 49; ++seat)
+        RoomTestAccess::addPlayer(room, QStringLiteral("large-seat-%1").arg(seat));
+    if (room.isFull() || room.getLack() != 1) {
+        qCritical() << "50p room filled before the fiftieth seat";
+        return 3;
+    }
+    RoomTestAccess::addPlayer(room, QStringLiteral("large-seat-49"));
+    if (!room.isFull() || room.getLack() != 0) {
+        qCritical() << "50p room did not fill at fifty seats";
+        return 4;
+    }
+    RoomTestAccess::assignRoles(room);
+    QStringList assigned;
+    for (const ServerPlayer *player : room.getPlayers()) {
+        assigned << player->getRole();
+        if (player->hasShownRole() != player->isLord()) {
+            qCritical() << "50p must expose only the lord's identity";
+            return 5;
+        }
+    }
+    assigned.sort();
+    QStringList expected = roles;
+    expected.sort();
+    if (assigned != expected) {
+        qCritical() << "50p assignment lost or changed an identity";
+        return 6;
+    }
+    qInfo() << "LARGE_ROOM_MODE_OK seats=50 lord=1 loyalist=23 rebel=25 renegade=1";
+    return 0;
 }
 
 int runEngineSmokeTests()

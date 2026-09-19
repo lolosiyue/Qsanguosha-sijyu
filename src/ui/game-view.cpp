@@ -114,11 +114,12 @@ void FitView::ensureRoomOverlay(RoomScene *room)
     if (m_posture) m_posture->setResponsivePreview(m_responsiveEnabled);
     m_overlay->setResponsiveEnabled(m_responsiveEnabled);
     room->attachOverlay(m_overlay);
+    connect(room, &RoomScene::seatCountChanged, this, &FitView::refit, Qt::QueuedConnection);
     connect(m_overlay, &RoomOverlayHost::responsiveEnabledChanged, this,
             [this](bool enabled) { setResponsiveRoomEnabled(enabled); });
     connect(m_overlay, &RoomOverlayHost::layoutPreferencesChanged, this, [this]() { refit(); });
     connect(room, &RoomScene::responsiveGeometryChanged, m_overlay, [this, room]() {
-        if (m_overlay && m_responsiveEnabled)
+        if (m_overlay && (m_responsiveEnabled || room->largeRoomRequired()))
             m_overlay->setLayoutResult(room->responsiveLayout());
     });
     connect(room, &QObject::destroyed, m_overlay, &QObject::deleteLater);
@@ -251,10 +252,15 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
             input.fold.occluding = posture.occluding;
         }
         // Ordinary landscape restores the original GUI, even after portrait rotation.
-        const bool responsiveRoom = m_responsiveEnabled
+        bool largeRoom = false;
+#if !defined(Q_OS_ANDROID)
+        largeRoom = roomScene->largeRoomRequired();
+#endif
+        input.largeRoom = largeRoom;
+        const bool responsiveRoom = largeRoom || (m_responsiveEnabled
             && (input.stableRect.height() > input.stableRect.width()
                 || input.fold.posture != RoomLayoutEngine::FoldPosture::None
-                || input.fold.separating || input.fold.occluding);
+                || input.fold.separating || input.fold.occluding));
         roomScene->setResponsiveLayout(input, responsiveRoom);
 #endif
         const QRectF newSceneRect(QPointF(0, 0), QSizeF(viewportSize));

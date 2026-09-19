@@ -42,6 +42,7 @@ signals:
     void responsiveEnabledChanged(bool enabled);
     void sendChatRequested();
     void controlsRequested();
+    void nativeChatToggleRequested();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

@@ -205,6 +205,7 @@ void GameSessionController::gameOver(const QString &winner, TerminationCause cau
 		{QStringLiteral("standoff"), winner == QLatin1String(".")},
 		{QStringLiteral("winner_tokens"), winnerTokens},
 		{QStringLiteral("roles"), all_roles}};
+	m_room.notifyResolutionState(QStringLiteral("reset"));
 	m_room.doBroadcastNotify(S_COMMAND_GAME_OVER, arg);
 	throw GameFinished;
 }
@@ -1241,6 +1242,12 @@ void GameSessionController::startGame()
 			//if (mode == "06_3v3" || mode == "06_XMode")
 				//broadcastProperty(player, "role");
 		}
+	}
+
+	// All non-lord choices have already been collected as one broadcast round.
+	// Publish the complete roster before potentially slow per-player AI setup,
+	// otherwise clients appear to be selecting generals one seat at a time.
+	foreach (ServerPlayer *player, players) {
 		// setup AI
 		AI*ai = m_room.cloneAI(player);
 		m_room.ais << ai;
@@ -1256,6 +1263,7 @@ void GameSessionController::startGame()
 		m_room.notifySkillInstanceSnapshot(receiver);
 
 	m_room.doBroadcastNotify(S_COMMAND_GAME_START, JsonUtils::toJsonArray(m_room.m_cardMovement->drawPile()));
+	m_room.notifyResolutionState(QStringLiteral("reset"));
 
 	if (!transitionTo(State::Initializing))
 		return;

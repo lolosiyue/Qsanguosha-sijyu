@@ -164,6 +164,9 @@ protected:
     virtual QGraphicsItem *_getDeathIconParent() = 0;
     virtual QString getResourceKeyName() = 0;
 
+    // Shared skin rendering for live Photos and recipient-scoped overview Photos.
+    void paintHp(int hp, int maxHp);
+    void paintHandcardNum(int count, int hp, int maximum, bool hidden, bool hasPlayer = true);
     void _createRoleComboBox();
     void _updateProgressBar(); // a dirty function used by the class itself only.
     void _updateDeathIcon();

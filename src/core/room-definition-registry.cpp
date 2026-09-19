@@ -95,6 +95,7 @@ void RoomDefinitionRegistry::clear()
     m_packages.clear();
     m_generals.clear();
     m_cards.clear();
+    m_cardSpan = 0;
     m_cardIds.clear();
     m_cardTemplates.clear();
     m_patterns.clear();
@@ -145,6 +146,7 @@ void RoomDefinitionRegistry::indexPackage(Package *package)
         }
         card->setId(id);
         m_cards.insert(id, card);
+        m_cardSpan = qMax(m_cardSpan, id + 1);
         m_cardIds.insert(card, id);
         if (!m_cardTemplates.contains(card->objectName()))
             m_cardTemplates.insert(card->objectName(), card);
@@ -269,10 +271,9 @@ const Card *RoomDefinitionRegistry::cardTemplate(const QString &name) const
 
 int RoomDefinitionRegistry::cardCount(int bootstrapCount) const
 {
-    int count = bootstrapCount;
-    foreach (int id, m_cards.keys())
-        count = qMax(count, id + 1);
-    return count;
+    // IDs can be sparse; retain the upper bound at insertion instead of
+    // rebuilding a key list in every deck/snapshot enumeration condition.
+    return qMax(bootstrapCount, m_cardSpan);
 }
 
 const CardPattern *RoomDefinitionRegistry::pattern(const QString &name) const

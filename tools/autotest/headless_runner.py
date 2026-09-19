@@ -30,13 +30,13 @@ from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
 MAX_SEED: Final[int] = (1 << 32) - 1
 # Mode IDs are governed by the registry. Prefer asking
 # qsanguosha_server --list-game-modes; if that fails, fall back to this static
-# table (the 2026-09-04 registry contents) -- never hard-code a single mode:
+# table (the 2026-09-19 registry contents) -- never hard-code a single mode:
 # hard-coding {"08p"} made --modes 05p exit 2 even though the product path was
 # perfectly fine.
 FALLBACK_REAL_MODES: Final[frozenset[str]] = frozenset({
     "02_1v1", "02p", "03_1v2", "03p", "04_1v3", "04_2v2", "04_boss", "04p",
     "05_ol", "05p", "06_3v3", "06_XMode", "06_ol", "06p", "06pd", "07p",
-    "08_defense", "08p", "08pd", "08pz", "09p", "10p", "10pd", "10pz", "20p",
+    "08_defense", "08p", "08pd", "08pz", "09p", "10p", "10pd", "10pz", "20p", "50p",
 })
 
 
@@ -47,8 +47,10 @@ def registered_real_modes(exe_root: str) -> frozenset[str]:
     except FileNotFoundError:
         return FALLBACK_REAL_MODES
     try:
+        # Qt's mode list is UTF-8, independent of the Windows console code page.
         out = subprocess.run([server, "--list-game-modes"], capture_output=True,
-                             text=True, timeout=60, cwd=resolve_workdir(exe_root))
+                             text=True, encoding="utf-8", errors="replace",
+                             timeout=60, cwd=resolve_workdir(exe_root))
     except (OSError, subprocess.SubprocessError):
         return FALLBACK_REAL_MODES
     if out.returncode != 0:
