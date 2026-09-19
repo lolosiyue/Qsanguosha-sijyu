@@ -1,4 +1,5 @@
 #include "room.h"
+#include "protocol/resolution-state-message.h"
 #include "qt-collection-utils.h"
 #include "runtime-paths.h"
 #include "card-lifetime-manager.h"
@@ -56,6 +57,116 @@
 #endif
 
 using namespace QSanProtocol;
+
+// Presentation scopes contain public execution only, never candidate scans or
+// private request bodies. Unwinding restores the parent without touching rules.
+Room::ResolutionScope::ResolutionScope(Room &room, const QString &kind, const ServerPlayer *actor,
+    const ServerPlayer *source, const ServerPlayer *affected, const QString &cardName)
+    : m_room(room)
+{
+    begin(kind, actor, source, affected, cardName);
+}
+
+Room::ResolutionScope::ResolutionScope(Room &room, const QString &pendingSkill)
+    : m_room(room), m_pendingSkill(pendingSkill)
+{
+    m_room.m_pendingResolutionScopes.append(this);
+}
+
+void Room::ResolutionScope::begin(const QString &kind, const ServerPlayer *actor,
+    const ServerPlayer *source, const ServerPlayer *affected, const QString &cardName)
+{
+    {
+        QMutexLocker locker(&m_room.m_resolutionMutex);
+        const auto name = [](const ServerPlayer *player) { return player ? player->objectName() : QString(); };
+        m_id = QString::number(m_room.m_nextResolutionId++);
+        const QString parent = m_room.m_resolutionFrames.isEmpty() ? QString()
+            : m_room.m_resolutionFrames.last().toMap().value(QStringLiteral("id")).toString();
+        m_room.m_resolutionFrames.append(QVariantMap{
+            {QStringLiteral("id"), m_id}, {QStringLiteral("parent_id"), parent},
+            {QStringLiteral("kind"), kind}, {QStringLiteral("actor"), name(actor)},
+            {QStringLiteral("source"), name(source)}, {QStringLiteral("affected"), name(affected)},
+            {QStringLiteral("targets"), affected ? QVariantList{name(affected)} : QVariantList()},
+            {QStringLiteral("card_name"), cardName}});
+    }
+    m_room.notifyResolutionState(QStringLiteral("begin"));
+}
+
+bool Room::ResolutionScope::discloseSkill(const QString &skill, const ServerPlayer *actor)
+{
+    if (skill != m_pendingSkill) return false;
+    if (m_id.isEmpty())
+        begin(QStringLiteral("skill"), actor, actor, nullptr, QString());
+    return true;
+}
+
+Room::ResolutionScope::~ResolutionScope()
+{
+    m_room.m_pendingResolutionScopes.removeOne(this);
+    bool ended = false;
+    {
+        QMutexLocker locker(&m_room.m_resolutionMutex);
+        for (int i = m_room.m_resolutionFrames.size() - 1; i >= 0; --i) {
+            if (m_room.m_resolutionFrames[i].toMap().value(QStringLiteral("id")) != m_id) continue;
+            while (m_room.m_resolutionFrames.size() > i) m_room.m_resolutionFrames.removeLast();
+            ended = true;
+            break;
+        }
+    }
+    if (ended) m_room.notifyResolutionState(QStringLiteral("end"));
+}
+
+void Room::ResolutionScope::update(const ServerPlayer *source, const ServerPlayer *affected)
+{
+    {
+        QMutexLocker locker(&m_room.m_resolutionMutex);
+        const auto name = [](const ServerPlayer *player) { return player ? player->objectName() : QString(); };
+        if (m_room.m_resolutionFrames.isEmpty()) return;
+        QVariantMap frame = m_room.m_resolutionFrames.last().toMap();
+        if (frame.value(QStringLiteral("id")) != m_id) return;
+        frame[QStringLiteral("source")] = name(source);
+        frame[QStringLiteral("actor")] = affected ? name(affected) : name(source);
+        frame[QStringLiteral("affected")] = name(affected);
+        frame[QStringLiteral("targets")] = affected ? QVariantList{name(affected)} : QVariantList();
+        if (frame == m_room.m_resolutionFrames.last().toMap()) return;
+        m_room.m_resolutionFrames.last() = frame;
+    }
+    m_room.notifyResolutionState(QStringLiteral("update"));
+}
+
+void Room::notifyResolutionState(const QString &phase, ServerPlayer *recipient)
+{
+    ResolutionStateMessage message;
+    message.phase = phase;
+    QVariantMap focus;
+    {
+        QMutexLocker locker(&m_resolutionMutex);
+        if (!recipient && phase == QLatin1String("reset")) m_resolutionFrames.clear();
+        message.frames = m_resolutionFrames;
+        bool focusAlive = m_resolutionFocusId.isEmpty();
+        for (const QVariant &frame : m_resolutionFrames)
+            focusAlive |= frame.toMap().value(QStringLiteral("id")).toString() == m_resolutionFocusId;
+        if (!focusAlive || (!recipient && phase == QLatin1String("reset"))) {
+            m_resolutionFocus.clear();
+            m_resolutionFocusId.clear();
+        }
+        focus = m_resolutionFocus;
+        // Reconnection resumes the remaining countdown, never a fresh timeout.
+        QVariantMap countdown = focus.value(QStringLiteral("countdown")).toMap();
+        if (recipient && m_resolutionFocusElapsed.isValid()
+            && countdown.value(QStringLiteral("type")).toInt() == Countdown::S_COUNTDOWN_USE_SPECIFIED) {
+            const qlonglong maximum = countdown.value(QStringLiteral("maximum")).toLongLong();
+            const qlonglong current = countdown.value(QStringLiteral("current")).toLongLong() + m_resolutionFocusElapsed.elapsed();
+            if (current >= maximum) focus.clear();
+            else { countdown[QStringLiteral("current")] = current; focus[QStringLiteral("countdown")] = countdown; }
+        }
+    }
+    // Do not hold a presentation lock while invoking transport callbacks.
+    if (recipient) {
+        doNotify(recipient, S_COMMAND_RESOLUTION_STATE, message.toVariant());
+        if (!focus.isEmpty()) doNotify(recipient, S_COMMAND_MOVE_FOCUS, focus);
+    } else doBroadcastNotify(S_COMMAND_RESOLUTION_STATE, message.toVariant());
+}
 
 namespace {
 
@@ -720,6 +831,7 @@ void Room::outputEventStack()
 
 void Room::enterDying(ServerPlayer*player, DamageStruct*reason, HpLostStruct*hplost)
 {
+	ResolutionScope resolution(*this, QStringLiteral("dying"), player, reason ? reason->from : nullptr, player);
 	setPlayerFlag(player, "Global_Dying");
 	QStringList currentdying = getTag("CurrentDying").toStringList();
 	currentdying << player->objectName();
@@ -840,6 +952,7 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 
 void Room::judge(JudgeStruct&judge_struct)
 {
+	ResolutionScope resolution(*this, QStringLiteral("judge"), judge_struct.who, nullptr, judge_struct.who);
 	//Q_ASSERT(judge_struct.who != nullptr);
 	QVariant data = QVariant::fromValue(&judge_struct);
 	thread->trigger(StartJudge, this, judge_struct.who, data);
@@ -1224,7 +1337,7 @@ bool Room::notifyMoveFocus(ServerPlayer*player, CommandType command)
 	Countdown countdown;
 	countdown.type = Countdown::S_COUNTDOWN_USE_SPECIFIED;
 	countdown.max = ServerInfo.getCommandTimeout(command, S_CLIENT_INSTANCE);
-	return notifyMoveFocus(QList<ServerPlayer*>() << player, S_COMMAND_MOVE_FOCUS, countdown);
+	return notifyMoveFocus(QList<ServerPlayer*>() << player, command, countdown);
 }
 
 bool Room::notifyMoveFocus(const QList<ServerPlayer*>&players, CommandType command, Countdown countdown)
@@ -1236,6 +1349,15 @@ bool Room::notifyMoveFocus(const QList<ServerPlayer*>&players, CommandType comma
 		else arg1 << p->objectName();
 	}
 	arg << QVariant(arg1) << command << countdown.toVariant();
+	{
+		QMutexLocker locker(&m_resolutionMutex);
+		m_resolutionFocus = {{QStringLiteral("schema_version"), 1},
+			{QStringLiteral("player_names"), arg1}, {QStringLiteral("command"), int(command)},
+			{QStringLiteral("countdown"), countdown.toVariant()}};
+		m_resolutionFocusId = m_resolutionFrames.isEmpty() ? QString()
+			: m_resolutionFrames.last().toMap().value(QStringLiteral("id")).toString();
+		m_resolutionFocusElapsed.restart();
+	}
 	return doBroadcastNotify(S_COMMAND_MOVE_FOCUS, arg);
 }
 
@@ -3012,6 +3134,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	const Card*card = use.card->validate(use);
 	if(card==nullptr) return false;
 	notifyCardProvenance("use", use.from, card, use.sourceRef, use.activationRef);
+	// Provenance already publishes the card; private target drafts stay private.
+	ResolutionScope resolution(*this, QStringLiteral("card"), use.from, use.from, nullptr, card->objectName());
 
 	bool isSkillCard = card->isKindOf("SkillCard");
 	bool isViewAsCard = !isSkillCard && card->isVirtualCard() && !card->getSkillName().isEmpty();
@@ -3460,6 +3584,7 @@ bool Room::changeMaxHpForAwakenSkill(ServerPlayer*player, int magnitude, const Q
 void Room::recover(ServerPlayer*player, const RecoverStruct&recover, bool set_emotion)
 {
 	if (player->isDead() || recover.recover <= 0) return;
+	ResolutionScope resolution(*this, QStringLiteral("recover"), player, recover.who, player);
 
 	QVariant data = QVariant::fromValue(recover);
 	if (thread->trigger(StartHpRecover,this,player,data)||player->getLostHp()<=0||thread->trigger(PreHpRecover,this,player,data)) return;
@@ -3543,6 +3668,7 @@ bool Room::cardEffect(const Card*card, ServerPlayer*from, ServerPlayer*to, bool 
 
 bool Room::cardEffect(CardEffectStruct&effect)
 {
+	ResolutionScope resolution(*this, QStringLiteral("effect"), effect.to, effect.from, effect.to);
 	bool cancel = false;
 	QVariant data = QVariant::fromValue(effect);
 	if (effect.to->isAlive()){ // Be care!!!
@@ -3550,6 +3676,7 @@ bool Room::cardEffect(CardEffectStruct&effect)
 		thread->trigger(CardEffect, this, effect.to, data);
 		effect = data.value<CardEffectStruct>();
 		// Make sure that effectiveness of Slash isn't judged here!
+		resolution.update(effect.from, effect.to);
 		if (thread->trigger(CardEffected, this, effect.to, data)){
 			if (effect.to->hasFlag("Global_NonSkillNullify"))
 				effect.to->setFlags("-Global_NonSkillNullify");
@@ -3574,6 +3701,7 @@ bool Room::isJinkEffected(ServerPlayer*user, const Card*jink)
 void Room::damage(DamageStruct damage)
 {
 	if (damage.damage<1 || !damage.to->isAlive()) return;
+	ResolutionScope resolution(*this, QStringLiteral("damage"), damage.to, damage.from, damage.to);
 
 	try {
 		bool prevented = true;
@@ -3605,6 +3733,7 @@ void Room::damage(DamageStruct damage)
 			damage = data.value<DamageStruct>();
 
 			prevented = false;
+			resolution.update(damage.from, damage.to);
 			m_damageStack.push_back(damage);
 			setTag("CurrentDamageStruct", data);
 
@@ -4134,6 +4263,9 @@ void Room::notifySkillInvoked(ServerPlayer*player, const QString&skill_name)
 		JsonArray args;
 		args << QSanProtocol::S_GAME_EVENT_SKILL_INVOKED << player->objectName() << skill_name;
 		doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+		// Only an already-public invocation may disclose a selected skill scope.
+		for (int i = m_pendingResolutionScopes.size() - 1; i >= 0; --i)
+			if (m_pendingResolutionScopes[i]->discloseSkill(skill_name, player)) break;
 	}
 	QVariant data = "notifyInvoked:"+skill_name;
 	thread->trigger(ChoiceMade, this, player, data);
@@ -4408,7 +4540,10 @@ void Room::setTag(const QString&key, const QVariant&value)
 		qWarning("Room tag '%s' rejected: %s", qPrintable(key), error.constData());
 		return;
 	}
+	const bool changed = !tag.contains(key) || tag.value(key) != value;
 	tag.insert(key, value);
+	if (changed && roomRuntime())
+		roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
 	if (scenario) scenario->onTagSet(this, key);
 }
 
@@ -4420,7 +4555,8 @@ QVariant Room::getTag(const QString&key) const
 void Room::removeTag(const QString&key)
 {
 	globalCardLifetimeManager().releaseVariantTag(this, key.toUtf8());
-	tag.remove(key);
+	if (tag.remove(key) && roomRuntime())
+		roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
 }
 
 void Room::setEmotion(ServerPlayer*target, const QString&emotion)
@@ -5238,6 +5374,31 @@ QList<ServerPlayer*> Room::getLieges(const QString&kingdom, ServerPlayer*lord) c
 void Room::sendLog(const LogMessage&log, QList<ServerPlayer*>players)
 {
 	m_notifier->sendLog(log, players);
+    if (!players.isEmpty()) return; // Private logs never broaden the public stack.
+    if (log.type == QLatin1String("#TriggerSkill") && log.from) {
+        for (int i = m_pendingResolutionScopes.size() - 1; i >= 0; --i)
+            if (m_pendingResolutionScopes[i]->discloseSkill(log.arg, log.from)) break;
+    }
+    if (log.type == QLatin1String("#UseCard") && log.from) {
+        bool changed = false;
+        {
+            QMutexLocker locker(&m_resolutionMutex);
+            for (int i = m_resolutionFrames.size() - 1; i >= 0; --i) {
+                QVariantMap frame = m_resolutionFrames[i].toMap();
+                if (frame.value(QStringLiteral("kind")) != QLatin1String("card")) continue;
+                QVariantList targets;
+                for (const ServerPlayer *player : log.to) if (player) targets << player->objectName();
+                // Final public targets, after PreCardUsed; do not publish a draft.
+                frame[QStringLiteral("targets")] = targets;
+                frame[QStringLiteral("actor")] = log.from->objectName();
+                frame[QStringLiteral("source")] = log.from->objectName();
+                changed = frame != m_resolutionFrames[i].toMap();
+                m_resolutionFrames[i] = frame;
+                break;
+            }
+        }
+        if (changed) notifyResolutionState(QStringLiteral("update"));
+    }
 }
 
 void Room::sendLog(const LogMessage&log, ServerPlayer*player)

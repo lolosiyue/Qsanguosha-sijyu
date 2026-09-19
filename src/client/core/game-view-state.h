@@ -60,6 +60,7 @@ struct GameViewPlayer
     QList<GameViewCard> equipment;
     QList<GameViewCard> judging;
     QVariantMap piles;
+    QString general;
 
     QJsonObject toJson() const;
 };
@@ -90,6 +91,13 @@ struct GameViewState
     // carries that as structured fields, so it is projected as relations rather
     // than re-derived from the narration in recentEvents.
     QVariantList recentRelations;
+    bool playOrderKnown = false;
+    QStringList responseFocus;
+    quint64 responseFocusRevision = 0;
+    QVariantMap responseCountdown;
+    QString focusResolutionId;
+    bool resolutionAvailable = false;
+    QVariantList activeResolutions;
 
     static GameViewState fromState(const ClientGameState &state,
                                    const InteractionRequest *request = nullptr,

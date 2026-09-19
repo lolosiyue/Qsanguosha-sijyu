@@ -3986,14 +3986,42 @@
             ],
             "source": "room",
             "target_typed_schema": "StateSyncPayload"
+        },
+        {
+            "command": "S_COMMAND_RESOLUTION_STATE",
+            "command_id": 134,
+            "consumer": "ClientGameStateReducer",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientGameStateReducer"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "phase",
+                "frames"
+            ],
+            "source": "room",
+            "target_typed_schema": "ResolutionStatePayload"
         }
     ],
     "schema_version": 1,
     "summary": {
         "implicit_passthrough": 0,
-        "production_flow_count": 145,
-        "typed_complete": 145,
-        "typed_registry_flow_count": 145,
+        "production_flow_count": 146,
+        "typed_complete": 146,
+        "typed_registry_flow_count": 146,
         "unclassified_production_flow": 0
     },
     "unused_or_retired_commands": [

@@ -54,6 +54,9 @@ public:
     // Invalidates only the client-facing distanceTo_* synchronization cache.
     // Server-side game rules continue to call Player::distanceTo() directly.
     void markDistanceCacheDirty();
+    // Coalesce presentation work inside triggers; requests flush before input.
+    bool deferPlayerUiState(ServerPlayer *player);
+    void flushPlayerUiState();
 
     void addPlayerSkills(ServerPlayer *player, bool invoke_game_start = false);
 
@@ -102,6 +105,8 @@ private:
 
     Room *room;
     bool m_playerUiStateDirty = false;
+    bool m_flushingPlayerUiState = false;
+    QSet<ServerPlayer *> m_pendingPlayerUiState;
     bool m_distanceCacheDirty = false;
     bool m_perfTraceEnabled;
     int m_profileRoomId;
@@ -112,6 +117,7 @@ private:
     QString order;
 
     QList<TriggerSkill *> skill_table[NumOfEvents];
+    quint64 m_triggerTableRevision[NumOfEvents] = {};
     QList<TriggerSkill *> v2_skill_table[NumOfEvents];
     QList<const TriggerSkill *> skillSet;
     QHash<const TriggerSkill *, TriggerSkillTraits> m_triggerSkillTraits;

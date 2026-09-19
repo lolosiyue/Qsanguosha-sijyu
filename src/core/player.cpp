@@ -219,11 +219,15 @@ void Player::setFlags(const QString &flag)
     if (flag == ".")
         clearFlags();
     else{
+		const bool removing = flag.startsWith("-");
+		const QString name = removing ? flag.mid(1) : flag;
+		if (flags.contains(name) == !removing) return;
 		if (flag.startsWith("-")){
 			flags.remove(flag.mid(1));
 		} else
 			flags.insert(flag);
-	}
+		}
+		emit gameplay_property_changed();
 }
 
 bool Player::hasFlag(const QString &flag) const
@@ -233,7 +237,9 @@ bool Player::hasFlag(const QString &flag) const
 
 void Player::clearFlags()
 {
+    if (flags.isEmpty()) return;
     flags.clear();
+    emit gameplay_property_changed();
 }
 
 int Player::getAttackRange(bool include_weapon) const
@@ -304,11 +310,12 @@ bool Player::inMyAttackRange(const Player *other, QList<int> card_ids, bool chen
 void Player::setFixedDistance(const Player *player, int distance)
 {
     fixed_distance.insert(player, distance);
+    emit gameplay_property_changed();
 }
 
 void Player::removeFixedDistance(const Player *player, int distance)
 {
-    fixed_distance.remove(player, distance);
+    if (fixed_distance.remove(player, distance)) emit gameplay_property_changed();
 }
 
 void Player::insertAttackRangePair(const Player *player)
@@ -2979,8 +2986,9 @@ void Player::removeCard(int id, Place place)
 		}
         break;
     }default:
-        break;
+        return;
     }
+    emit gameplay_property_changed();
 }
 
 QList<const Card *> Player::getHandcards() const
@@ -3009,8 +3017,9 @@ void Player::addCard(int id, Place place)
         addDelayedTrick(card);
         break;
     }default:
-        break;
+        return;
     }
+    emit gameplay_property_changed();
 }
 
 bool Player::isLastHandCard(const Card *card, bool contain) const
@@ -3143,6 +3152,7 @@ void Player::setTag(const QString &key, const QVariant &value) {
     }
     if (tag.value(key) == value) return;
     tag[key] = value;
+    emit gameplay_property_changed();
 }
 
 QVariant Player::getTag(const QString &key, const QVariant &defaultValue) const {
@@ -3151,16 +3161,24 @@ QVariant Player::getTag(const QString &key, const QVariant &defaultValue) const 
 
 void Player::removeTag(const QString &key) {
     globalCardLifetimeManager().releaseVariantTag(this, key.toUtf8());
-    tag.remove(key);
+    if (tag.remove(key)) emit gameplay_property_changed();
 }
 
 void Player::clearTags() {
     globalCardLifetimeManager().releaseVariantTags(this);
+    if (tag.isEmpty()) return;
     tag.clear();
+    emit gameplay_property_changed();
 }
 
 bool Player::setProperty(const char* name, const QVariant& value) {
-    return ThreadSafeHelper::setProperty(this, name, value);
+    const QVariant before = property(name);
+    const bool result = ThreadSafeHelper::setProperty(this, name, value);
+    // Named gameplay properties already signal through their setters. Dynamic
+    // properties can also feed Lua rules; distanceTo_* is derived presentation.
+    if (metaObject()->indexOfProperty(name) < 0 && !QByteArray(name).startsWith("distanceTo_")
+        && before != property(name)) emit gameplay_property_changed();
+    return result;
 }
 
 

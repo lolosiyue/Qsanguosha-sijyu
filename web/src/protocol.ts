@@ -123,7 +123,8 @@ export const Command = {
   SKILL_INSTANCE: 130,
   CARD_PROVENANCE: 131,
   UPDATE_PLAYER_UI_STATE: 132,
-  STATE_SYNC: 133
+  STATE_SYNC: 133,
+  RESOLUTION_STATE: 134
 } as const;
 
 export type CardUseMode = "play" | "response" | "discard" | "free";

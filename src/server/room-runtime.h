@@ -72,7 +72,7 @@ public:
     SkillExecutionRegistry &skillExecutions() { return m_skillExecutions; }
     SkillInstanceAttachmentRegistry &attachedSkills() { return m_attachedSkills; }
     quint64 nextDecisionId() { return ++m_nextDecisionId; }
-    quint64 stateRevision() const { return m_stateRevision; }
+    quint64 stateRevision() const { return m_stateRevision.load(std::memory_order_relaxed); }
     void advanceStateRevision(StateMutation mutation);
     void seedRandom(quint64 seed);
 
@@ -140,7 +140,7 @@ private:
     bool m_loadingDefinitions;
     bool m_definitionsLoaded;
     quint64 m_nextDecisionId;
-    quint64 m_stateRevision;
+    std::atomic<quint64> m_stateRevision;
     std::atomic<ShutdownState> m_shutdownState {ShutdownState::Running};
     bool m_finalMarkerEmitted = false;
     const void *m_previousDomain = nullptr;

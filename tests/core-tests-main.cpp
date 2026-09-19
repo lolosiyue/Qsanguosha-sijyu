@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 
 int runEngineSmokeTests();
+int runLargeRoomModeTests();
 int runLuaCompatibilityTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
@@ -67,6 +68,9 @@ int main(int argc, char **argv)
         const int smoke = runEngineSmokeTests();
         if (smoke != 0)
             return smoke;
+        const int largeRoomMode = runLargeRoomModeTests();
+        if (largeRoomMode != 0)
+            return 190 + largeRoomMode;
         const int bridge = runEngineSelfBridgeTests();
         if (bridge != 0)
             return bridge;
@@ -90,6 +94,8 @@ int main(int argc, char **argv)
 
     if (suite.isEmpty() || suite == QLatin1String("engine-smoke"))
         return runAll();
+    if (suite == QLatin1String("large-room-mode"))
+        return runLargeRoomModeTests();
     if (suite == QLatin1String("hidden-physical-cards"))
         return runHiddenPhysicalCardTests();
     if (suite == QLatin1String("equips-nullified"))

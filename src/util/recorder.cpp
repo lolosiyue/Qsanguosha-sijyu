@@ -846,6 +846,7 @@ void Replayer::seekToPosition(int pairIndex)
         m_currentPairIndex.store(pairIndex, std::memory_order_relaxed);
     }
 
+    emit seek_started();
     emit elasped(elapsedSecondsForUi(m_events.at(pairIndex).elapsedMs));
 
     for (int i = 0; i <= pairIndex; i++)

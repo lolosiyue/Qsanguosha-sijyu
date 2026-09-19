@@ -33,7 +33,8 @@ enum class Profile
     Medium,
     ExpandedSplit,
     Book,
-    Tabletop
+    Tabletop,
+    LargeRoom
 };
 
 enum class Handedness
@@ -75,12 +76,14 @@ struct ResponsiveInput
     FoldInfo fold;
     Handedness handedness = Handedness::None;
     int photoCount = 0; // Other players; placement order is the input index order.
+    bool largeRoom = false; // Desktop only; never indexes legacy seat tables.
     int selfSeat = 0;
     QSize smallPhotoSize;
     QSizeF inspectorMinimumSize = QSizeF(320.0, 0.0);
     double gap = 16.0;
     double minimumTouchTarget = 48.0;
     double headerHeight = 0.0;
+    double promptHeight = 0.0; // Space above the native hand reserved for its live prompt.
     double interactionHeightFraction = 0.38;
     double minimumInteractionHeight = 0.0;
     int firstVisibleSeat = 0;
@@ -109,11 +112,14 @@ struct ResponsiveResult
     QRectF interactionRect;
     QRectF inspectorRect;
     QRectF seatsRect;
+    QRectF resolutionRect;
     QRectF actionsRect;
     QRectF handRect;
     QRectF promptRect;
     QRectF logRect;
     QRectF chatRect;
+    bool logAlwaysVisible = false; // Landscape large rooms retain the native right-hand log.
+    bool nativeChrome = false; // Use the skin's original log/chat, roles and background.
     QRectF safeInteractionRect;
     QVector<ResponsivePhotoPlacement> photos;
     int firstVisibleSeat = 0;
@@ -223,6 +229,7 @@ struct Result
 
 Result compute(const Input &input);
 ResponsiveResult computeResponsive(const ResponsiveInput &input);
+ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &frame);
 }
 
 #endif

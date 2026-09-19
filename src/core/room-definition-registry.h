@@ -78,6 +78,7 @@ private:
     QHash<QString, const General *> m_generals;
 
     QHash<int, const Card *> m_cards;
+    int m_cardSpan = 0;
     QHash<const Card *, int> m_cardIds;
     QHash<QString, const Card *> m_cardTemplates;
 

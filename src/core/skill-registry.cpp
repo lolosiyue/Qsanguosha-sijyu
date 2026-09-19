@@ -8,9 +8,12 @@ template<typename T>
 QList<const T *> castSkills(const QList<QPointer<Skill>> &skills)
 {
     QList<const T *> result;
-    foreach (const QPointer<Skill> &skill, skills)
-        if (skill) result << dynamic_cast<const T *>(skill.data());
-    result.removeAll(nullptr);
+    result.reserve(skills.size());
+    // add() already validates each category with dynamic_cast. Keep the weak
+    // lifetime check, but do not repeat RTTI for every rule query and seat pair.
+    foreach (const QPointer<Skill> &skill, skills) {
+        if (Skill *live = skill.data()) result << static_cast<const T *>(live);
+    }
     return result;
 }
 

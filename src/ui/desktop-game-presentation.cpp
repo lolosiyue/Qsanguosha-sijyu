@@ -85,6 +85,8 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     });
 #endif
     if (!m_client) return;
+    connect(m_client, &Client::gamePresentationStateChanged, this,
+        [this]() { m_stateDirty = true; scheduleRefresh(); });
     connect(m_client, &Client::status_changed, this, [this]() { m_stateDirty = true; scheduleRefresh(); });
     ClientCore *core = m_client->interactionCore();
     connect(core, &ClientCore::requestStarted, this, [this]() { scheduleRefresh(); });

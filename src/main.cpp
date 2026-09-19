@@ -361,8 +361,7 @@ int main(int argc, char *argv[]) {
     }
     // The legacy aboutToQuit->deleteLater hook frees Engine inside execCleanup's
     // deferred-delete drain while the global Sanguosha pointer still refers to
-    // it. MainWindow, QApplication and the top-level scene are all intentionally
-    // leaked, so teardown code (deferred deletes queued after Engine's, atexit
+    // it. Teardown code (deferred deletes queued after Engine's, atexit
     // hooks) keeps dereferencing Sanguosha -> UAF on e.g. Engine::m_rooms.
     // Every other entry point (server/tui/excel/sheets) already disconnects
     // this hook; the engine is reclaimed by process exit anyway.
@@ -596,6 +595,16 @@ int main(int argc, char *argv[]) {
     Sanguosha->setParent(main_window);
     main_window->show();
 
+    const auto releaseGui = [main_window] {
+        // Retain the existing Engine lifetime boundary: GUI deletion must not
+        // run native/Lua engine teardown through MainWindow's QObject children.
+        Sanguosha->setParent(nullptr);
+        delete main_window;
+        // AA_ShareOpenGLContexts keeps a global context alive beyond individual
+        // widgets; QApplication must release it before Qt's static caches die.
+        delete QCoreApplication::instance();
+    };
+
 #ifdef AUDIO_SUPPORT
     Audio::init();
 	Config.FrontBGMVolume = Config.value("FrontBGMVolume", 1.0f).toFloat();
@@ -658,8 +667,10 @@ int main(int argc, char *argv[]) {
     // without the explicit flag.
     if (NetworkUiSmokeController::isRequested(arguments)) {
         int smokeExitCode = 0;
-        if (!NetworkUiSmokeController::begin(arguments, main_window, &smokeExitCode))
+        if (!NetworkUiSmokeController::begin(arguments, main_window, &smokeExitCode)) {
+            releaseGui();
             return smokeExitCode;
+        }
     }
 
     // 自動化測試診斷
@@ -675,7 +686,11 @@ int main(int argc, char *argv[]) {
 
     const int rc = qApp->exec();
     CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
+    // Finalize smoke observations before releasing their scene. UI teardown is
+    // shared by normal close and timeout, without destroying the live Engine.
+    int exitCode = rc;
     if (NetworkUiSmokeController::isRequested(arguments))
-        return NetworkUiSmokeController::finish(rc);
-    return rc;
+        exitCode = NetworkUiSmokeController::finish(rc);
+    releaseGui();
+    return exitCode;
 }

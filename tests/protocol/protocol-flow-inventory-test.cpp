@@ -240,6 +240,13 @@ bool strictPayloadContracts(QString *error)
     if (!ProtocolPayloadRegistry::validateObjectPayload(encoded, error))
         return false;
 
+    QVariantMap missingDirection = directedSeats;
+    missingDirection.remove(QStringLiteral("play_order_reversed"));
+    seats.payload = missingDirection;
+    if (ProtocolPayloadRegistry::validateObjectPayload(seats, error)) {
+        *error = QStringLiteral("schema 2 without play direction was accepted");
+        return false;
+    }
     directedSeats.insert(QStringLiteral("play_order_reversed"), QStringLiteral("true"));
     seats.payload = directedSeats;
     if (ProtocolPayloadRegistry::validateObjectPayload(seats, error)) {
@@ -301,12 +308,12 @@ int main(int argc, char **argv)
 
     const QJsonObject summary = ProtocolPayloadRegistry::inventoryJson()
         .value(QStringLiteral("summary")).toObject();
-    if (summary.value(QStringLiteral("production_flow_count")).toInt() != 145
-        || summary.value(QStringLiteral("typed_registry_flow_count")).toInt() != 145
-        || summary.value(QStringLiteral("typed_complete")).toInt() != 145
+    if (summary.value(QStringLiteral("production_flow_count")).toInt() != 146
+        || summary.value(QStringLiteral("typed_registry_flow_count")).toInt() != 146
+        || summary.value(QStringLiteral("typed_complete")).toInt() != 146
         || summary.value(QStringLiteral("implicit_passthrough")).toInt() != 0
         || summary.value(QStringLiteral("unclassified_production_flow")).toInt() != 0) {
-        return fail(QStringLiteral("inventory summary is not 145/145 typed-complete"));
+        return fail(QStringLiteral("inventory summary is not 146/146 typed-complete"));
     }
     QTextStream(stdout) << "PROTOCOL_FLOW_MATRIX_OK flows="
                         << summary.value(QStringLiteral("production_flow_count")).toInt()

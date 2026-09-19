@@ -1102,10 +1102,41 @@ void MainWindow::moveEvent(QMoveEvent *event)
 
 MainWindow::~MainWindow()
 {
+	shutdownUi();
 	delete ui;
-	gameView->deleteLater();
-	if (scene) scene->deleteLater();
 	QSanSkinFactory::destroyInstance();
+}
+
+void MainWindow::shutdownUi()
+{
+	if (!pageStack)
+		return;
+	setUpdatesEnabled(false);
+	hide();
+#if QSAN_ENABLE_QML
+	delete m_pointerOverlay;
+	m_pointerOverlay = nullptr;
+	// Unload bindings before the global Config object begins destruction.
+	setHomeSceneSource(QUrl());
+#endif
+	// Secondary document views must detach before the scene's documents die.
+	// Keep Engine/Client and the GL viewport alive while destroying scene items.
+	gameView->setScene(nullptr);
+	delete scene;
+	scene = nullptr;
+
+	// Destroy both rendering hosts synchronously. deleteLater cannot be relied
+	// on after exec(), and live GL contexts must not reach Qt's static teardown.
+	QWidget *pages = takeCentralWidget();
+	pageStack = nullptr;
+	gameView = nullptr;
+	homePageWidget = nullptr;
+	homeWidget = nullptr;
+	homeWindow = nullptr;
+	localLoadingPage = nullptr;
+	localLoadingStatus = nullptr;
+	localLoadingProgress = nullptr;
+	delete pages;
 }
 
 void MainWindow::gotoScene(QGraphicsScene *newScene)

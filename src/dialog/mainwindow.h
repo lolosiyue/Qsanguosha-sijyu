@@ -120,6 +120,7 @@ private slots:
     void restoreFromConfig();
 
 private:
+    void shutdownUi();
     void setupLocalLoadingPage();
     void showLocalLoadingPage(const QString &status);
     void completeLocalRoomStart();

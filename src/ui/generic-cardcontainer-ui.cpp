@@ -479,12 +479,17 @@ void PlayerCardContainer::updatePhase()
         _clearPixmap(_m_phaseIcon);
 }
 
+void PlayerCardContainer::paintHp(int hp, int maxHp)
+{
+    _m_hpBox->setHp(hp);
+    _m_hpBox->setMaxHp(maxHp);
+    _m_hpBox->update();
+}
+
 void PlayerCardContainer::updateHp()
 {
     //Q_ASSERT(_m_hpBox && _m_saveMeIcon && m_player);
-    _m_hpBox->setHp(m_player->getHp());
-    _m_hpBox->setMaxHp(m_player->getMaxHp());
-    _m_hpBox->update();
+    paintHp(m_player->getHp(), m_player->getMaxHp());
     _m_saveMeIcon->setVisible(m_player->isAlive()&&m_player->hasFlag("Global_Dying"));
     _updateEquips();
     updateHandcardNum();
@@ -765,7 +770,7 @@ void PlayerCardContainer::updateDuanchang()
     return;
 }
 
-void PlayerCardContainer::updateHandcardNum()
+void PlayerCardContainer::paintHandcardNum(int handcardNum, int hp, int maxCards, bool hideHandcardNum, bool hasPlayer)
 {
     QString num = "0";
     QRect area = _m_layout->m_handCardArea;
@@ -777,10 +782,7 @@ void PlayerCardContainer::updateHandcardNum()
     image.fill(Qt::transparent);
     QPainter imagePainter(&image);
 
-    if (m_player) {
-        int handcardNum = m_player->getHandcardNum();
-        int hp = m_player->getHp();
-        const int maxCards = m_player->uiState().handMax;
+    if (hasPlayer) {
 
         int W = wideArea.width(), H = wideArea.height();
         int midW = W / 10;
@@ -810,8 +812,15 @@ void PlayerCardContainer::updateHandcardNum()
     }
     _m_handCardNumText->setPos(mapFromItem(_getAvatarParent(), QPointF(wideArea.x(), wideArea.y())));
     // inovation_fengbi：手牌數只對持有者本人以外的玩家隱藏
-    const bool hideHandcardNum = m_player && m_player != Self && m_player->hasSkill("inovation_fengbi");
     _m_handCardNumText->setVisible(!hideHandcardNum);
+
+}
+
+void PlayerCardContainer::updateHandcardNum()
+{
+    paintHandcardNum(m_player ? m_player->getHandcardNum() : 0,
+        m_player ? m_player->getHp() : 0, m_player ? m_player->uiState().handMax : 0,
+        m_player && m_player != Self && m_player->hasSkill("inovation_fengbi"), m_player != nullptr);
 
     if (!m_player) return;
     int limitBase = m_player->getHp();

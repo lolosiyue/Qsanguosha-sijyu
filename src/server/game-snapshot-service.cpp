@@ -2,6 +2,7 @@
 
 #include "game-snapshot.h"
 #include "room.h"
+#include "settings.h"
 
 #include <QDebug>
 #include <QCryptographicHash>
@@ -36,6 +37,11 @@ void GameSnapshotService::saveSnapshot(const QString &type, const QString &playe
         return;
 
     const quint64 turnSerial = ++m_nextTurnSerial;
+
+    // Takeover already rejects these configurations. Keep the turn serial, but
+    // skip serializing the table and Lua state only to discard it at save time.
+    if (!Config.EnableAI || Config.DisableLua)
+        return;
 
     // GameSnapshot v2 reads this scoped tag into its explicit turnSerial field.
     // Do not leave the implementation detail in the live room tags.

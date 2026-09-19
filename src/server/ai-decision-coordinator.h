@@ -10,6 +10,7 @@
 #include <functional>
 
 class Room;
+class DistanceSkill;
 class SkillRuntimeCoordinator;
 
 class AiDecisionCoordinator
@@ -126,6 +127,13 @@ private:
     QHash<QString, QSet<QString>> m_markViewers;
     QList<AIEventView> m_events;
     quint64 m_eventSequence = 0;
+    // Only the room-wide geometry is shared; hidden cards and policy stay viewer-scoped.
+    mutable bool m_distanceCacheValid = false;
+    mutable quint64 m_distanceRevision = 0;
+    mutable quint64 m_distanceSkillGeneration = 0;
+    mutable QList<ServerPlayer *> m_distancePlayers;
+    mutable QList<const DistanceSkill *> m_distanceSkills;
+    mutable QMap<QString, QMap<QString, int>> m_worldDistances;
 };
 
 #endif

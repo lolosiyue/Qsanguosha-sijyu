@@ -1,4 +1,5 @@
 #include "client-game-state-reducer.h"
+#include "protocol/resolution-state-message.h"
 
 #include "client-game-state.h"
 #include "protocol.h"
@@ -375,6 +376,7 @@ ClientFlowDisposition ClientGameStateReducer::classifyNotification(int command)
     case S_COMMAND_ATTACH_SKILL:
     case S_COMMAND_SKILL_INSTANCE:
     case S_COMMAND_MOVE_FOCUS:
+    case S_COMMAND_RESOLUTION_STATE:
     case S_COMMAND_SHOW_ALL_CARDS:
     case S_COMMAND_SKILL_GONGXIN:
     case S_COMMAND_ADD_HISTORY:
@@ -452,6 +454,15 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         return result;
     }
 
+    if (command == S_COMMAND_RESOLUTION_STATE) {
+        ResolutionStateMessage resolution;
+        if (!ResolutionStateMessage::parse(payload, &resolution, &result.detail)) return result;
+    }
+    if (command == S_COMMAND_ARRANGE_SEATS && ((schemaVersion != 1 && schemaVersion != 2)
+        || (schemaVersion == 2 && object.value(QStringLiteral("play_order_reversed")).userType() != QMetaType::Bool))) {
+        result.detail = QStringLiteral("Invalid ArrangeSeatsPayload direction");
+        return result;
+    }
     state->recordFlow(command, payload);
     if (result.disposition == ClientFlowDisposition::PresentationEvent
         || result.disposition == ClientFlowDisposition::ExplicitTextIrrelevant) {
@@ -505,6 +516,7 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         // Absent on schema 1; the seat ring then runs in its original direction.
         state->setGameValue(QStringLiteral("play_order_reversed"),
                             object.value(QStringLiteral("play_order_reversed"), false).toBool());
+        state->setGameValue(QStringLiteral("play_order_known"), schemaVersion >= 2);
         break;
     }
     case S_COMMAND_START_IN_X_SECONDS:
@@ -512,6 +524,12 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
                             object.value(QStringLiteral("seconds")));
         break;
     case S_COMMAND_GAME_START:
+        state->setGameValue(QStringLiteral("active_resolutions"), QVariantList());
+        state->setGameValue(QStringLiteral("focus"), QStringList());
+        state->setGameValue(QStringLiteral("focus_command"), QVariant());
+        state->setGameValue(QStringLiteral("focus_countdown"), QVariantMap());
+        state->setGameValue(QStringLiteral("focus_resolution_id"), QString());
+        state->setGameValue(QStringLiteral("resolution_available"), false);
         state->setGameValue(QStringLiteral("started"), true);
         state->setGameValue(QStringLiteral("game_over"), false);
         state->setGameValue(QStringLiteral("status"), QStringLiteral("active"));
@@ -520,6 +538,11 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
                             object.value(QStringLiteral("card_ids")).toList().size());
         break;
     case S_COMMAND_GAME_OVER:
+        state->setGameValue(QStringLiteral("active_resolutions"), QVariantList());
+        state->setGameValue(QStringLiteral("focus_command"), QVariant());
+        state->setGameValue(QStringLiteral("focus_countdown"), QVariantMap());
+        state->setGameValue(QStringLiteral("focus"), QStringList());
+        state->setGameValue(QStringLiteral("focus_resolution_id"), QString());
         state->setGameValue(QStringLiteral("game_over"), true);
         state->setGameValue(QStringLiteral("status"), QStringLiteral("game_over"));
         state->setGameValue(QStringLiteral("result"), object);
@@ -787,6 +810,25 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         state->setGameValue(QStringLiteral("focus"), players);
         state->setGameValue(QStringLiteral("focus_countdown"),
                             object.value(QStringLiteral("countdown")));
+        state->setGameValue(QStringLiteral("focus_command"), object.value(QStringLiteral("command")));
+        const QVariantList frames = state->gameValue(QStringLiteral("active_resolutions")).toList();
+        state->setGameValue(QStringLiteral("focus_resolution_id"), frames.isEmpty()
+            ? QString() : frames.last().toMap().value(QStringLiteral("id")).toString());
+        break;
+    }
+    case S_COMMAND_RESOLUTION_STATE: {
+        state->setGameValue(QStringLiteral("active_resolutions"), object.value(QStringLiteral("frames")));
+        state->setGameValue(QStringLiteral("resolution_available"), true);
+        const QString focusId = state->gameValue(QStringLiteral("focus_resolution_id")).toString();
+        bool focusAlive = focusId.isEmpty();
+        for (const QVariant &frame : object.value(QStringLiteral("frames")).toList())
+            focusAlive |= frame.toMap().value(QStringLiteral("id")).toString() == focusId;
+        if (!focusAlive || object.value(QStringLiteral("phase")) == QLatin1String("reset")) {
+            state->setGameValue(QStringLiteral("focus"), QStringList());
+            state->setGameValue(QStringLiteral("focus_countdown"), QVariantMap());
+            state->setGameValue(QStringLiteral("focus_command"), QVariant());
+            state->setGameValue(QStringLiteral("focus_resolution_id"), QString());
+        }
         break;
     }
     case S_COMMAND_ADD_HISTORY: {

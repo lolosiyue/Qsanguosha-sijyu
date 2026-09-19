@@ -60,51 +60,51 @@ void VisualEffectsPolicy::setProfile(EffectsProfile profile, bool persist)
 
 bool VisualEffectsPolicy::animationsEnabled() const
 {
-    return EffectsProfileContract::animationsEnabled(m_profile);
+    return EffectsProfileContract::animationsEnabled(profile());
 }
 
 bool VisualEffectsPolicy::spineEnabled() const
 {
-    return EffectsProfileContract::spineEnabled(m_profile);
+    return EffectsProfileContract::spineEnabled(profile());
 }
 
 bool VisualEffectsPolicy::gifEnabled() const
 {
     // The user's EnableAnimatedGenerals remains the final veto; the profile can only narrow further.
-    return EffectsProfileContract::gifEnabled(m_profile)
+    return EffectsProfileContract::gifEnabled(profile())
         && Config.value(QStringLiteral("EnableAnimatedGenerals"), true).toBool();
 }
 
 bool VisualEffectsPolicy::gifPlaybackAllowed() const
 {
-    return gifEnabled() && m_profile == EffectsProfile::Full;
+    return gifEnabled() && profile() == EffectsProfile::Full;
 }
 
 bool VisualEffectsPolicy::videoEnabled() const
 {
-    return EffectsProfileContract::videoEnabled(m_profile) && Config.EnableBackgroundVideo;
+    return EffectsProfileContract::videoEnabled(profile()) && Config.EnableBackgroundVideo;
 }
 
 bool VisualEffectsPolicy::qmlEffectsEnabled() const
 {
-    return EffectsProfileContract::qmlEffectsEnabled(m_profile);
+    return EffectsProfileContract::qmlEffectsEnabled(profile());
 }
 
 bool VisualEffectsPolicy::decorativeDelayAllowed() const
 {
-    return EffectsProfileContract::decorativeDelayAllowed(m_profile);
+    return EffectsProfileContract::decorativeDelayAllowed(profile());
 }
 
 int VisualEffectsPolicy::scaledDuration(int durationMs) const
 {
-    return EffectsProfileContract::scaledDuration(m_profile, durationMs);
+    return EffectsProfileContract::scaledDuration(profile(), durationMs);
 }
 
 int VisualEffectsPolicy::scaledDelay(int delayMs) const
 {
     if (!decorativeDelayAllowed())
         return 0;
-    return EffectsProfileContract::scaledDuration(m_profile, delayMs);
+    return EffectsProfileContract::scaledDuration(profile(), delayMs);
 }
 
 void VisualEffectsPolicy::note(Counter counter)
@@ -162,6 +162,6 @@ QJsonObject VisualEffectsPolicy::describe() const
     description.insert(QStringLiteral("qml_effects"), qmlEffectsEnabled());
     description.insert(QStringLiteral("decorative_delay"), decorativeDelayAllowed());
     description.insert(QStringLiteral("duration_scale"),
-        EffectsProfileContract::durationScale(m_profile));
+        EffectsProfileContract::durationScale(profile()));
     return description;
 }

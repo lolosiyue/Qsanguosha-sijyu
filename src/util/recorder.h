@@ -144,6 +144,7 @@ signals:
     void speed_changed(qreal speed);
     void node_reached(int nodeIndex);
     void seek_finished();
+    void seek_started();
     void stateCaptureBoundaryReached(quint64 requestId);
 };
 

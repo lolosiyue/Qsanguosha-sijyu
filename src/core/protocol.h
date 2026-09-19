@@ -178,7 +178,8 @@ namespace QSanProtocol {
         S_COMMAND_SKILL_INSTANCE = 130,
         S_COMMAND_CARD_PROVENANCE = 131,
         S_COMMAND_UPDATE_PLAYER_UI_STATE = 132,
-        S_COMMAND_STATE_SYNC = 133
+        S_COMMAND_STATE_SYNC = 133,
+        S_COMMAND_RESOLUTION_STATE = 134
     };
 
     enum GuanxingStepType

@@ -111,7 +111,7 @@ QJsonObject GameViewPlayer::toJson() const
     for (const GameViewCard &card : equipment) equipmentJson.append(card.toJson());
     for (const GameViewCard &card : judging) judgingJson.append(card.toJson());
     return {{QStringLiteral("name"), name}, {QStringLiteral("label"), label},
-            {QStringLiteral("seat"), seat}, {QStringLiteral("hp"), hp},
+            {QStringLiteral("seat"), seat}, {QStringLiteral("general"), general}, {QStringLiteral("hp"), hp},
             {QStringLiteral("max_hp"), maxHp}, {QStringLiteral("hand_count"), handCount},
             {QStringLiteral("distance_from_operating_player"), distanceFromOperatingPlayer},
             {QStringLiteral("alive"), alive}, {QStringLiteral("self"), self},
@@ -158,7 +158,19 @@ GameViewState GameViewState::fromState(const ClientGameState &state,
     view.drawPileCount = drawPileCount.isValid() ? drawPileCount.toInt() : -1;
     view.discardPileCount = state.gameValue(QStringLiteral("discard_pile")).toList().size();
     view.playOrderReversed = state.gameValue(QStringLiteral("play_order_reversed")).toBool();
+    view.playOrderKnown = state.gameValue(QStringLiteral("play_order_known")).toBool();
+    view.responseFocus = state.gameValue(QStringLiteral("focus")).toStringList();
+    view.responseFocusRevision = state.flowCount(QSanProtocol::S_COMMAND_MOVE_FOCUS);
+    view.responseCountdown = state.gameValue(QStringLiteral("focus_countdown")).toMap();
+    view.focusResolutionId = state.gameValue(QStringLiteral("focus_resolution_id")).toString();
+    view.resolutionAvailable = state.gameValue(QStringLiteral("resolution_available")).toBool();
+    view.activeResolutions = state.gameValue(QStringLiteral("active_resolutions")).toList();
     view.ready = options.stateReady;
+    // Empty MOVE_FOCUS means all living recipients, not "the first player".
+    if (view.responseFocus.isEmpty() && state.gameValue(QStringLiteral("focus_command")).isValid()) {
+        for (const QString &name : state.playerNames())
+            if (state.player(name).value(QStringLiteral("alive"), true).toBool()) view.responseFocus << name;
+    }
 
     for (const QString &name : state.playerNames()) {
         if (!state.hasPlayer(name))
@@ -168,6 +180,7 @@ GameViewState GameViewState::fromState(const ClientGameState &state,
         player.name = name;
         player.label = playerLabel(name, options);
         player.seat = data.value(QStringLiteral("seat"), -1).toInt();
+        player.general = data.value(QStringLiteral("general")).toString();
         player.hp = data.value(QStringLiteral("hp")).toInt();
         player.maxHp = data.value(QStringLiteral("max_hp")).toInt();
         player.handCount = qMax(0, data.value(QStringLiteral("hand_count")).toInt());
@@ -288,6 +301,13 @@ QJsonObject GameViewState::toJson() const
             {QStringLiteral("discard_pile_count"), discardPileCount}, {QStringLiteral("players"), playerArray},
             {QStringLiteral("private_piles"), QJsonObject::fromVariantMap(privatePiles)},
             {QStringLiteral("play_order_reversed"), playOrderReversed},
+            {QStringLiteral("play_order_known"), playOrderKnown},
+            {QStringLiteral("response_focus"), QJsonArray::fromStringList(responseFocus)},
+            {QStringLiteral("response_focus_revision"), QString::number(responseFocusRevision)},
+            {QStringLiteral("response_countdown"), QJsonObject::fromVariantMap(responseCountdown)},
+            {QStringLiteral("focus_resolution_id"), focusResolutionId},
+            {QStringLiteral("resolution_available"), resolutionAvailable},
+            {QStringLiteral("active_resolutions"), QJsonArray::fromVariantList(activeResolutions)},
             {QStringLiteral("recent_events"), QJsonArray::fromVariantList(recentEvents)},
             {QStringLiteral("recent_relations"), QJsonArray::fromVariantList(recentRelations)}};
 }

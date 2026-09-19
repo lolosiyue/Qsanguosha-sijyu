@@ -477,5 +477,65 @@ int runRoomLayoutEngineTests()
         || logOpen.logRect.intersects(logOpen.interactionRect)
         || logOpen.photos.first().center != duel.photos.first().center)
         return failed(46, "portrait native log leaves seats and hand in place");
+    // Large-room geometry is a desktop opt-in, separate from the legacy table.
+    ResponsiveInput large;
+    large.smallPhotoSize = QSize(94, 108);
+    large.promptHeight = 56.0;
+    large.largeRoom = true;
+    for (const QSize size : {QSize(1366, 768), QSize(1920, 1080), QSize(800, 600)}) {
+        large.stableRect = large.availableRect = QRectF(QPointF(), size);
+        for (int count : {20, 29, 49}) {
+            large.photoCount = count;
+            auto native = standardInput();
+            native.viewport = large.availableRect;
+            native.clampScene = false;
+            native.photoCount = count;
+            const auto frame = compute(native);
+            const auto layout = computeLargeRoom(large, frame);
+            if (!layout.valid || layout.profile != Profile::LargeRoom || layout.photos.size() != count
+                || layout.seatsRect.isEmpty() || layout.resolutionRect.isEmpty() || layout.actionsRect.isEmpty()
+                || layout.seatsRect.intersects(layout.interactionRect)
+                || layout.tableRect.intersects(layout.seatsRect)
+                || layout.resolutionRect.intersects(layout.tableRect)
+                || layout.resolutionRect.intersects(layout.actionsRect)
+                || layout.actionsRect.intersects(layout.interactionRect))
+                return failed(47, "overview, resolution, candidates and native hand occupy separate regions");
+            if (!layout.nativeChrome || !layout.logAlwaysVisible || layout.logRect != frame.logRect
+                || layout.chatRect != frame.chatRect
+                || layout.logRect.intersects(layout.seatsRect)
+                || layout.logRect.intersects(layout.resolutionRect))
+                return failed(54, "large landscape preserves the skin's original log and chat geometry");
+            for (int i = 0; i < count; ++i) {
+                if (layout.photos[i].seat != i || layout.photos[i].visible)
+                    return failed(48, "canonical Photos remain input owners rather than paged overview tiles");
+            }
+            large.firstVisibleSeat = count - 1;
+            const auto browsed = computeLargeRoom(large, frame);
+            if (browsed.seatsRect != layout.seatsRect || browsed.resolutionRect != layout.resolutionRect
+                || browsed.tableRect != layout.tableRect || browsed.logRect != layout.logRect)
+                return failed(53, "overview scrolling cannot reposition the resolution panel or native log");
+            large.firstVisibleSeat = 0;
+        }
+    }
+    large.photoCount = 49;
+    large.stableRect = large.availableRect = QRectF(0, 0, 600, 900);
+    const auto largePortrait = computeResponsive(large);
+    large.logVisible = true;
+    const auto largePortraitLog = computeResponsive(large);
+    if (!largePortrait.valid || largePortrait.logAlwaysVisible || !largePortrait.logRect.isEmpty()
+        || !largePortraitLog.valid || largePortraitLog.logRect.isEmpty()
+        || largePortraitLog.logRect.intersects(largePortraitLog.interactionRect)
+        || largePortraitLog.seatsRect != largePortrait.seatsRect)
+        return failed(55, "large portrait opens the native log without moving seats or covering the hand");
+    large.logVisible = false;
+    large.photoCount = 19;
+    if (computeResponsive(large).profile == Profile::LargeRoom)
+        return failed(49, "20 players stay on the existing responsive layout");
+    large.photoCount = 50;
+    if (computeResponsive(large).valid)
+        return failed(50, "more than 50 total players remains rejected");
+    large.photoCount = 49; large.largeRoom = false;
+    if (computeResponsive(large).valid)
+        return failed(51, "mobile and ordinary responsive layouts do not opt into M1");
     return 0;
 }

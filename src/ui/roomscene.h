@@ -60,6 +60,7 @@ class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
 class DesktopGamePresentation;
+class LargeRoomOverview;
 class QMovie;
 
 #if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
@@ -117,6 +118,7 @@ public:
     void attachOverlay(RoomOverlayHost *overlay);
     void setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled);
     const RoomLayoutEngine::ResponsiveResult &responsiveLayout() const { return m_responsiveLayout; }
+    bool largeRoomRequired() const { return photos.size() >= 20 && photos.size() <= 49; }
     DesktopGamePresentation *gamePresentation();
 #endif
     void applyUiElementScale(qreal scale);
@@ -244,6 +246,7 @@ private:
     bool m_legacyPromptVisible = false;
     RoomLayoutEngine::ResponsiveInput m_responsiveInput;
     RoomLayoutEngine::ResponsiveResult m_responsiveLayout;
+    LargeRoomOverview *m_largeRoomOverview = nullptr;
     void applyResponsiveLayout();
 #endif
     bool _shouldIgnoreDisplayMove(CardsMoveStruct &movement);
@@ -554,6 +557,7 @@ void onGameStart();
 signals:
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
     void responsiveGeometryChanged();
+    void seatCountChanged();
     void restart();
     void return_to_start();
     void game_over_dialog_rejected();

@@ -6,6 +6,7 @@
 #include "protocol/arrange-seats-message.h"
 #include "protocol/switch-context-message.h"
 #include "room.h"
+#include "roomthread.h"
 #include "serverplayer.h"
 #include "settings.h"
 
@@ -258,6 +259,10 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
 
         resultTarget = player;
     }
+
+    // Present all coalesced state before the client can answer this request.
+    if (m_room.getThread())
+        m_room.getThread()->flushPlayerUiState();
 
     // The expected id has to be visible before the frame leaves, otherwise a
     // reply that comes back fast enough is rejected for answering id 0.
