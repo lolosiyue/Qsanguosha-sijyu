@@ -3283,6 +3283,26 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Maiden at prayer</source>
+        <translation>少女祈禱中</translation>
+    </message>
+    <message>
+        <source>Please wait, the game will begin shortly.</source>
+        <translation>稍候片刻，即將進入牌局。</translation>
+    </message>
+    <message>
+        <source>Connecting to game room...</source>
+        <translation>正在連線至遊戲房間……</translation>
+    </message>
+    <message>
+        <source>Preparing game room...</source>
+        <translation>正在準備遊戲房間……</translation>
+    </message>
+    <message>
+        <source>The server card or general catalog does not match the client.</source>
+        <translation>伺服器的卡牌或武將目錄與客戶端不同，無法加入遊戲。</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/mainwindow.cpp" line="445"/>
         <source>LOCAL GAME</source>
         <translation>本地对局</translation>
