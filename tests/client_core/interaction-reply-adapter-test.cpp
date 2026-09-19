@@ -79,6 +79,22 @@ void testCardEncoders()
             && payload.value(QStringLiteral("card_id")).toInt() == 7,
         "single-card reply uses an explicit card_id");
 
+    reply = InteractionReplyEncoder::cardId(
+        requestFor(S_COMMAND_CHOOSE_CARD),
+        InteractionResponse::makeCards(1, QList<int>() << -1));
+    payload = reply.payload.toMap();
+    check(!payload.value(QStringLiteral("cancelled")).toBool()
+            && payload.contains(QStringLiteral("card_id"))
+            && payload.value(QStringLiteral("card_id")).toInt() == -1,
+        "concealed hand selection stays distinct from cancellation");
+
+    reply = InteractionReplyEncoder::cardId(
+        requestFor(S_COMMAND_CHOOSE_CARD), InteractionResponse::makeCancel(1));
+    payload = reply.payload.toMap();
+    check(payload.value(QStringLiteral("cancelled")).toBool()
+            && !payload.contains(QStringLiteral("card_id")),
+        "choose-card cancellation has no hidden-hand sentinel");
+
     reply = InteractionReplyEncoder::amazingGraceCardId(
         requestFor(S_COMMAND_AMAZING_GRACE), InteractionResponse::makeCancel(1));
     payload = reply.payload.toMap();

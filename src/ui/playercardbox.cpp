@@ -343,9 +343,11 @@ void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint 
             else if (method == Card::MethodGet && !Self->canGet(player, card->getEffectiveId())) enabled = false;
             item->setEnabled(enabled);
         } else {
-            bool enabled = true;
-            if (method == Card::MethodDiscard && !Self->canDiscard(player, "h")) enabled = false;
-            else if (method == Card::MethodGet && !Self->canGet(player, "h")) enabled = false;
+            // Concealed cards are count-only on the client. The known-card list
+            // cannot decide whether one is legal; the server resolves the reply.
+            bool enabled = !player->isKongcheng();
+            if (method == Card::MethodDiscard || method == Card::MethodGet)
+                enabled = enabled && Self->isAlive() && player->isAlive();
             item->setEnabled(enabled);
         }
         connect(item, &CardItem::clicked, this, &PlayerCardBox::reply);
@@ -393,5 +395,6 @@ void PlayerCardBox::reply()
 void PlayerCardBox::cancel()
 {
     clear();
-    ClientInstance->onPlayerChooseCard(-1);
+    // -1 selects a concealed hand card; -2 is the client's cancel sentinel.
+    ClientInstance->onPlayerChooseCard(-2);
 }

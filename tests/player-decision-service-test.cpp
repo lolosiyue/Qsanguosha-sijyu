@@ -1245,6 +1245,33 @@ static bool cardChosenOverrideFallbackVisibleAndClient()
                    "client ChoiceMade uses the replied id"))
         return false;
 
+    // Tuixinzhifu picks twice before moving either card, and allows cancellation.
+    agent.replyByCommand.insert(S_COMMAND_CHOOSE_CARD, -1);
+    const int hiddenFirst = online.room.askForCardChosen(
+        online.player, online.other, QStringLiteral("hej"), QStringLiteral("yj_tuixinzhifu"),
+        false, Card::MethodNone, QList<int>(), true);
+    const int hiddenSecond = online.room.askForCardChosen(
+        online.player, online.other, QStringLiteral("hej"), QStringLiteral("yj_tuixinzhifu"),
+        false, Card::MethodNone, QList<int>{hiddenFirst}, true);
+    const int hiddenExhausted = online.room.askForCardChosen(
+        online.player, online.other, QStringLiteral("hej"), QStringLiteral("yj_tuixinzhifu"),
+        false, Card::MethodNone, QList<int>{0, 1}, true);
+    if (!expect(hiddenFirst == 0 && hiddenSecond == 1,
+                "optional hidden-hand picks resolve and skip the first selected card")
+        || !expect(hiddenExhausted == -1, "disabled hand cards cannot be selected again"))
+        return false;
+
+    QVariantMap cancelReply;
+    cancelReply.insert(QStringLiteral("schema_version"), 1);
+    cancelReply.insert(QStringLiteral("cancelled"), true);
+    agent.replyByCommand.insert(S_COMMAND_CHOOSE_CARD, cancelReply);
+    const int clientCanceled = online.room.askForCardChosen(
+        online.player, online.other, QStringLiteral("hej"), QStringLiteral("yj_tuixinzhifu"),
+        false, Card::MethodNone, QList<int>(), true);
+    if (!expect(clientCanceled == -1, "explicit cancellation does not select a hand card")
+        || !expect(!agent.parseFailed, "hidden-hand and cancel replies pass the wire codec"))
+        return false;
+
     online.probe.records.clear();
     agent.replyByCommand.remove(S_COMMAND_CHOOSE_CARD);
     const int timeoutId = online.room.askForCardChosen(
