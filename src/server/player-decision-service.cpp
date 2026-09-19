@@ -596,6 +596,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
     // 不下發 S_COMMAND_CHOOSE_CARD 對話框
     QString flags_copy = flags;
     bool fengbi_random_pick = false;
+    bool choose_hidden_hand = false;
     if (who->hasSkill(QStringLiteral("inovation_fengbi")) && who != player) {
         if (!who->getEquips().isEmpty() && flags_copy.contains(QLatin1Char('e')))
             flags_copy.remove(QLatin1Char('h'));
@@ -636,8 +637,12 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
             arg << (int)method << JsonUtils::toJsonArray(disabled_ids) << can_cancel;
             if (m_room.doRequest(player, S_COMMAND_CHOOSE_CARD, arg, true)) {
                 const QVariant &clientReply = player->getClientReply();
-                if (JsonUtils::isNumber(clientReply))
+                if (JsonUtils::isNumber(clientReply)) {
                     card_id = clientReply.toInt();
+                    // A numeric -1 selects a card back; cancellation has no payload.
+                    choose_hidden_hand = card_id == Card::S_UNKNOWN_CARD_ID
+                        && flags_copy.contains(QLatin1Char('h'));
+                }
             } else {
                 ai = player->getAI();
                 if (ai) {
@@ -647,8 +652,10 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
             }
         }
     }
-    if (card_id == -1 && !can_cancel) {
-        foreach (const Card *c, who->getCards(flags_copy)) {
+    if (card_id == -1 && (choose_hidden_hand || !can_cancel)) {
+        // Resolve card backs within the hand only, including optional/repeated picks.
+        const QString candidate_flags = choose_hidden_hand ? QStringLiteral("h") : flags_copy;
+        foreach (const Card *c, who->getCards(candidate_flags)) {
             if (disabled_ids.contains(c->getId()))
                 continue;
             bool can_take = true;
