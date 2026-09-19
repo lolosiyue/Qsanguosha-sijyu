@@ -13,6 +13,10 @@
 #include <src/util/ThreadSafeHelper.h>
 #include "ai-probe.h"
 #include "skill-set-generation.h"
+#include <QDynamicPropertyChangeEvent>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
 Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
@@ -2051,6 +2055,10 @@ bool Player::removeSkillInstance(const QString &skillName, int instanceID)
     if (noInstancesRemain)
         m_skillInstances.erase(outerIt);
 
+    // Removed identities must not carry text into a later snapshot reusing that ID.
+    description_s2k2v.remove(formatted);
+    setProperty(("changeTranslation" + formatted).toUtf8().constData(), QVariant());
+
     acquired_skills.removeOne(formatted);
     head_acquired_skills.remove(formatted);
     deputy_acquired_skills.remove(formatted);
@@ -2245,6 +2253,7 @@ bool Player::setSkillInstanceAmountOverride(const QString &skillName, int instan
         return true;
     innerIt.value().hasAmountOverride = true;
     innerIt.value().amountOverride = amount;
+    innerIt.value().state.remove("__description_amount");
     emit skill_state_changed();
     return true;
 }
@@ -2259,6 +2268,7 @@ bool Player::resetSkillInstanceAmountOverride(const QString &skillName, int inst
         return true;
     innerIt.value().hasAmountOverride = false;
     innerIt.value().amountOverride = 0;
+    innerIt.value().state.remove("__description_amount");
     emit skill_state_changed();
     return true;
 }
@@ -2288,6 +2298,10 @@ bool Player::setSkillInstanceCorrectStateValue(const QString &skillName, int ins
     if (innerIt.value().correctState.contains(key) && innerIt.value().correctState.value(key) == value)
         return true;
     innerIt.value().correctState.insert(key, value);
+    QVariantMap sources = innerIt.value().state.value("__description_correct").toMap();
+    sources.remove(key);
+    if (sources.isEmpty()) innerIt.value().state.remove("__description_correct");
+    else innerIt.value().state.insert("__description_correct", sources);
     emit skill_state_changed();
     return true;
 }
@@ -2300,6 +2314,10 @@ bool Player::removeSkillInstanceCorrectStateValue(const QString &skillName, int 
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end() || !innerIt.value().correctState.contains(key)) return false;
     innerIt.value().correctState.remove(key);
+    QVariantMap sources = innerIt.value().state.value("__description_correct").toMap();
+    sources.remove(key);
+    if (sources.isEmpty()) innerIt.value().state.remove("__description_correct");
+    else innerIt.value().state.insert("__description_correct", sources);
     emit skill_state_changed();
     return true;
 }
@@ -2312,13 +2330,149 @@ bool Player::clearSkillInstanceCorrectState(const QString &skillName, int instan
     if (innerIt == outerIt->end()) return false;
     if (innerIt.value().correctState.isEmpty()) return true;
     innerIt.value().correctState.clear();
+    innerIt.value().state.remove("__description_correct");
     emit skill_state_changed();
     return true;
 }
 
+bool Player::event(QEvent *event)
+{
+    if (event->type() == QEvent::DynamicPropertyChange) {
+        const auto *change = static_cast<QDynamicPropertyChangeEvent *>(event);
+        if (change->propertyName().startsWith("changeTranslation"))
+            emit skill_state_changed();
+    }
+    return QObject::event(event);
+}
+
+void Player::setSkillDescriptionState(const QVariantMap &usage, const QVariantMap &validity,
+                                      const QVariantList &effects)
+{
+    if (m_skillDescriptionUsage == usage && m_skillDescriptionValidity == validity
+        && m_skillDescriptionEffects == effects) return;
+    m_skillDescriptionUsage = usage;
+    m_skillDescriptionValidity = validity;
+    m_skillDescriptionEffects = effects;
+    emit skill_state_changed();
+}
+
+QVariantList Player::getCardLimitationDetails() const
+{
+    QVariantList result;
+    for (auto method = card_limitation.cbegin(); method != card_limitation.cend(); ++method) {
+        QStringList patterns = method.value();
+        patterns.removeDuplicates();
+        for (const QString &pattern : patterns) {
+            result << QVariantMap{{"method", static_cast<int>(method.key())}, {"pattern", pattern},
+                {"reason", card_limitation_reasons.value(method.key()).value(pattern)},
+                {"single_turn", pattern.endsWith("$1")}};
+        }
+    }
+    return result;
+}
+
+namespace {
+QString descriptionLabel(const QString &key)
+{
+    const QString translated = Sanguosha->translate(key);
+    return translated == key ? QString() : translated;
+}
+
+QString descriptionJson(const QVariant &value)
+{
+    if (value.userType() == QMetaType::QString) return value.toString();
+    // Serialise a one-element array so both primitive and structured state work.
+    const QByteArray json = QJsonDocument(QJsonArray::fromVariantList({value})).toJson(QJsonDocument::Compact);
+    return QString::fromUtf8(json.mid(1, json.size() - 2));
+}
+
+QString descriptionPlayerName(const Player *holder, const QString &name)
+{
+    if (name.isEmpty()) return QString();
+    QList<const Player *> players = holder->getSiblings();
+    players << holder;
+    for (const Player *player : players) {
+        if (player && player->objectName() == name)
+            return player->screenName().isEmpty() ? name : player->screenName();
+    }
+    return name;
+}
+
+QString descriptionStateValue(const Player *holder, const QString &key, const QVariant &value)
+{
+    const QString type = descriptionLabel(key + ".type");
+    if (type == "player") return descriptionPlayerName(holder, value.toString());
+    if (type == "players") {
+        QStringList names;
+        if (value.userType() == QMetaType::QStringList) {
+            for (const QString &name : value.toStringList()) names << descriptionPlayerName(holder, name);
+        } else {
+            for (const QVariant &name : value.toList()) names << descriptionPlayerName(holder, name.toString());
+        }
+        return names.join(QStringLiteral("、"));
+    }
+    const QString translated = descriptionLabel(key + ".value." + value.toString());
+    return translated.isEmpty() ? descriptionJson(value) : translated;
+}
+
+QString descriptionEffect(const Player *holder, const QVariantMap &effect)
+{
+    QString text;
+    const QString kind = effect.value("kind").toString();
+    if (kind == "invalidity") {
+        QString name;
+        const int id = SkillInstanceUtils::parseName(effect.value("target_skill").toString(), name);
+        text = name == "all" ? Player::tr("Non-equipment skills are invalid")
+                              : Player::tr("%1%2 is invalid").arg(Sanguosha->translate(name),
+                                    id > 0 ? QString(" #%1").arg(id) : QString());
+    } else if (kind == "card_limit") {
+        QString method;
+        switch (static_cast<Card::HandlingMethod>(effect.value("method").toInt())) {
+        case Card::MethodUse: method = Player::tr("Use"); break;
+        case Card::MethodResponse: method = Player::tr("Respond"); break;
+        case Card::MethodDiscard: method = Player::tr("Discard"); break;
+        default: method = Player::tr("Action %1").arg(effect.value("method").toInt()); break;
+        }
+        const QString reason = effect.value("reason").toString();
+        const QString authored = descriptionLabel("@" + reason + ".effect");
+        text = authored.isEmpty() ? Player::tr("Card %1 is restricted (pattern: %2)").arg(method, effect.value("pattern").toString())
+                                  : authored;
+    } else {
+        text = Sanguosha->translate(effect.value("text").toString());
+    }
+    QStringList parts;
+    parts << text.toHtmlEscaped();
+    const QString sourcePlayer = descriptionPlayerName(holder, effect.value("source_player").toString());
+    const QString sourceSkill = effect.value("source_skill").toString();
+    QStringList source;
+    if (!sourcePlayer.isEmpty()) source << sourcePlayer;
+    if (!sourceSkill.isEmpty()) {
+        QString name = Sanguosha->translate(sourceSkill);
+        if (effect.value("source_instance").toInt() > 0)
+            name += QString(" #%1").arg(effect.value("source_instance").toInt());
+        source << name;
+    }
+    if (!source.isEmpty()) parts << Player::tr("Source: %1").arg(source.join(" / ").toHtmlEscaped());
+    const QString reason = effect.value("reason").toString();
+    if (!reason.isEmpty()) parts << Player::tr("Reason: %1").arg(Sanguosha->translate(reason).toHtmlEscaped());
+    parts << Player::tr("Target: %1").arg(descriptionPlayerName(holder,
+        effect.value("target", holder->objectName()).toString()).toHtmlEscaped());
+    QString expiry = effect.value("expiry").toString();
+    if (effect.value("single_turn").toBool()) expiry = Player::tr("Until the end of this turn");
+    if (!expiry.isEmpty()) parts << Player::tr("Ends: %1").arg(Sanguosha->translate(expiry).toHtmlEscaped());
+    return parts.join("<br/>");
+}
+}
+
 QString Player::getSkillDescription() const
 {
+    return getSkillDescription(nullptr);
+}
+
+QString Player::getSkillDescription(const Player *viewer) const
+{
     QString description;
+    QMap<QString, QString> displayedCounters;
     QStringList relateds;
 	QList<const Skill *> visibleSkills = getVisibleSkillList();
 	bool useInnateSkillsAfterDeath = isDead() && visibleSkills.isEmpty();
@@ -2347,12 +2501,12 @@ QString Player::getSkillDescription() const
     foreach(const Skill *skill, visibleSkills){
         if (skill->isAttachedLordSkill() || basara_list.contains(skill))
             continue;
-        QString desc = skill->getDescription(this);
+        const QString skillName = skill->objectName();
+        bool skillValid = true;
 		{
 			// Use cached skill validity to avoid calling into Lua from UI thread
 			bool skillOwned = ownsSkill(skill->objectName())
 				|| (useInnateSkillsAfterDeath && skills.contains(skill->objectName()));
-			bool skillValid = true;
 			if (skillOwned) {
 				if (!skill->isAttachedLordSkill() && !skill->property("IgnoreInvalidity").toBool() && skill->isVisible()) {
 					QMutexLocker locker(&m_skillCacheMutex);
@@ -2361,15 +2515,193 @@ QString Player::getSkillDescription() const
 			} else {
 				skillValid = false;
 			}
-			if (!skillValid) desc = "<font color=\"#bab8ba\">" + desc + "</font>";
 		}
-		QString oracle = skill->getOracleText(this);
-		if (!oracle.isEmpty()) {
-			description += QString("<b>%1</b>：%2<br/><font color=\"#bab8ba\">%3</font><br/><br/>").arg(Sanguosha->translate(skill->objectName())).arg(desc).arg(oracle);
-		} else {
-			description += QString("<b>%1</b>：%2<br/><br/>").arg(Sanguosha->translate(skill->objectName())).arg(desc);
-		}
-		desc = skill->getWakedSkills();
+
+        // Keep ownership in the player's instance table, never infer it from related skills.
+        // Group equal rendered bodies, preserving the stable instance-ID order.
+        QStringList bodies;
+        QList<QStringList> details;
+        QList<bool> groupValid;
+        foreach (int id, getSkillInstanceIds(skillName)) {
+            const SkillInstance *instance = findSkillInstance(skillName, id);
+            if (!instance || !instance->visible)
+                continue;
+            const QString body = skill->getDescription(this, id);
+            int group = bodies.indexOf(body);
+            if (group < 0) {
+                group = bodies.size();
+                bodies << body;
+                details.append(QStringList());
+                groupValid.append(false);
+            }
+            QString source;
+            switch (instance->source) {
+            case SourceInnate: source = tr("Innate"); break;
+            case SourceAcquired: source = tr("Acquired"); break;
+            case SourceAttached: source = tr("Attached skill"); break;
+            case SourceHelper: source = tr("Related helper"); break;
+            }
+            // A head/deputy label only distinguishes actual dual-general players.
+            if (getGeneral2()) {
+                if (instance->bindHead == 1) source += tr(" / Head general");
+                else if (instance->bindHead == 2) source += tr(" / Deputy general");
+            }
+            QString detail = QString("<b>#%1</b> %2").arg(id).arg(source.toHtmlEscaped());
+            const QString instanceKey = SkillInstanceUtils::formatName(skillName, id);
+            const bool instanceValid = m_skillDescriptionValidity.value(instanceKey, skillValid).toBool();
+            groupValid[group] = groupValid.at(group) || instanceValid;
+            const QVariantMap usage = viewer == this ? m_skillDescriptionUsage.value(instanceKey).toMap()
+                                                     : QVariantMap();
+            const QVariantMap privateState = viewer == this ? getSkillInstanceState(skillName, id) : QVariantMap();
+            // Only actual counter summaries deserve a usage row; absent/None/custom
+            // without counts must not add placeholders to every passive skill.
+            const bool hasUsage = usage.contains("used") && usage.contains("limit")
+                && usage.value("scope").toString() != "none";
+            if (hasUsage) {
+                QString usageText;
+                const QString scope = usage.value("scope").toString();
+                if (scope == "unavailable" || usage.value("unavailable").toBool())
+                    usageText = tr("Counter unavailable");
+                else {
+                    QString scopeText;
+                    if (scope == "round") scopeText = tr("This round");
+                    else if (scope == "turn") scopeText = tr("This turn");
+                    else if (scope == "game") scopeText = tr("This game");
+                    else if (scope == "phase") {
+                        const QString phaseName = usage.value("phase").toString();
+                        scopeText = phaseName.isEmpty() ? tr("This phase")
+                            : tr("%1 count").arg(Sanguosha->translate(phaseName));
+                    } else scopeText = Player::tr(Sanguosha->translate(usage.value("scope_label",
+                        QStringLiteral("Custom scope")).toString()).toUtf8().constData());
+                    const QString counter = usage.value("counter").toString();
+                    // A shared count is rendered once; differing dynamic caps remain per-skill.
+                    const QString displayKey = counter + ":" + QString::number(usage.value("limit").toInt());
+                    if (!counter.isEmpty() && displayedCounters.contains(displayKey)) {
+                        usageText = tr("%1 shared count, see %2").arg(scopeText, displayedCounters.value(displayKey));
+                    } else {
+                        usageText = tr("%1: used %2 / %3 times").arg(scopeText)
+                            .arg(usage.value("used").toInt()).arg(usage.value("limit").toInt());
+                        if (usage.value("shared").toBool()) usageText += tr(" (shared count)");
+                        if (usage.value("limit").toInt() <= 0) usageText += tr(" (no uses currently available)");
+                        if (usage.value("reserved").toInt() > 0)
+                            usageText += tr("; %1 reserved, not yet committed").arg(usage.value("reserved").toInt());
+                        if (!counter.isEmpty()) displayedCounters.insert(displayKey,
+                            Sanguosha->translate(skillName) + QString(" #%1").arg(id));
+                    }
+                    if (!usage.value("label").toString().isEmpty()) usageText += tr("; %1").arg(Player::tr(Sanguosha->translate(
+                        usage.value("label").toString()).toUtf8().constData()));
+                }
+                detail += "<br/>" + tr("Usage: %1").arg(usageText.toHtmlEscaped());
+            }
+
+            // Author labels are plain translation data; formatting never executes a rule callback.
+            const auto readableState = [this, &skillName, &detail](const QString &category,
+                                                                  const QVariantMap &values) {
+                int described = 0;
+                for (auto it = values.cbegin(); it != values.cend(); ++it) {
+                    if (it.key().startsWith("__description_")) continue;
+                    QString labelKey = "@" + skillName + "." + category + "." + it.key();
+                    QString label = descriptionLabel(labelKey);
+                    if (label.isEmpty() && category == "state") {
+                        labelKey = "@skill-state." + it.key();
+                        label = descriptionLabel(labelKey);
+                    }
+                    if (label.isEmpty()) continue;
+                    const QString value = descriptionStateValue(this, labelKey, it.value());
+                    detail += "<br/>" + (category == "state" ? tr("Skill state: %1: %2") : tr("Modification: %1: %2"))
+                        .arg(label.toHtmlEscaped(), value.toHtmlEscaped());
+                    ++described;
+                }
+                return described;
+            };
+            if (viewer == this) {
+                int rawCount = 0;
+                for (auto it = privateState.cbegin(); it != privateState.cend(); ++it)
+                    if (!it.key().startsWith("__description_")) ++rawCount;
+                const int described = readableState("state", privateState);
+                if (described < rawCount)
+                    detail += "<br/>" + tr("Skill state: %1 more entries (see technical details)").arg(rawCount - described);
+            }
+            readableState("correct", instance->correctState);
+            const QVariantMap correctionSources = privateState.value("__description_correct").toMap();
+            for (auto it = correctionSources.cbegin(); it != correctionSources.cend(); ++it) {
+                const QVariantMap change = it.value().toMap();
+                if (!instance->correctState.contains(it.key()) || instance->correctState.value(it.key()) != change.value("value")) continue;
+                const QString label = descriptionLabel("@" + skillName + ".correct." + it.key());
+                const QString source = descriptionPlayerName(this, change.value("source_player").toString());
+                if (!label.isEmpty() && !source.isEmpty())
+                    detail += "<br/>" + tr("%1 modified by: %2").arg(label.toHtmlEscaped(), source.toHtmlEscaped());
+            }
+            if (instance->hasAmountOverride) {
+                const QString label = descriptionLabel("@" + skillName + ".amount");
+                if (!label.isEmpty()) {
+                    const QString amount = usage.contains("base_amount")
+                        ? QString("%1 → %2").arg(usage.value("base_amount").toInt()).arg(instance->amountOverride)
+                        : QString::number(instance->amountOverride);
+                    detail += "<br/>" + tr("Modification: %1: %2").arg(label.toHtmlEscaped(), amount);
+                }
+                const QVariantMap provenance = privateState.value("__description_amount").toMap();
+                if (!provenance.isEmpty() && provenance.value("value").toInt() == instance->amountOverride) {
+                    const QString source = descriptionPlayerName(this, provenance.value("source_player").toString());
+                    if (!source.isEmpty()) detail += "<br/>" + tr("Modified by: %1").arg(source.toHtmlEscaped());
+                    const QString reason = provenance.value("reason").toString();
+                    if (!reason.isEmpty()) detail += "<br/>" + tr("Modification reason: %1").arg(Sanguosha->translate(reason).toHtmlEscaped());
+                }
+            }
+
+            // Raw values stay secondary: amountOverride is an absolute value, not a delta.
+            // Do not invent a semantic label, modifier source, expiry or activation result.
+            QStringList technical;
+            technical << QString("owner: %1; skill: %2; instanceID: %3")
+                .arg(objectName().toHtmlEscaped(), skillName.toHtmlEscaped()).arg(id);
+            if (instance->parentRef.isValid()) {
+                const SkillInstanceRef &parent = instance->parentRef;
+                technical << QString("parentRef: %1 / %2 #%3")
+                    .arg(parent.ownerObjectName.toHtmlEscaped(), parent.key.skillName.toHtmlEscaped())
+                    .arg(parent.key.instanceID);
+            }
+            if (instance->hasAmountOverride)
+                technical << tr("Absolute override amountOverride: %1").arg(instance->amountOverride);
+            const auto appendState = [&technical](const QString &name, const QVariantMap &values) {
+                if (values.isEmpty()) return;
+                const QString json = QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(values))
+                                                       .toJson(QJsonDocument::Compact));
+                technical << name + ": " + json.toHtmlEscaped();
+            };
+            appendState("correctState", instance->correctState);
+            if (hasUsage) appendState("usage", usage);
+            // Pointer identity is deliberate: matching objectName alone is not authorization.
+            // This reads only the local replica, never a room/server or another player's state.
+            if (viewer == this)
+                appendState("state", getSkillInstanceState(skillName, id));
+            detail += QString("<br/><small><font color=\"#888888\">%1<br/>%2</font></small>")
+                .arg(tr("Technical details"), technical.join("<br/>"));
+            // Equal bodies can contain both valid and invalid instances. Grey the
+            // affected instance's details without adding a redundant status row.
+            if (!instanceValid) detail = "<font color=\"#bab8ba\">" + detail + "</font>";
+            details[group] << detail;
+        }
+        // Death/legacy descriptions have no runtime instance and must not fabricate one.
+        if (bodies.isEmpty()) {
+            if (!getSkillInstanceIds(skillName).isEmpty())
+                continue; // Runtime instances exist but none may be shown.
+            bodies << skill->getDescription(this);
+            details.append(QStringList());
+            groupValid.append(skillValid);
+        }
+        const QString oracle = skill->getOracleText(this);
+        for (int group = 0; group < bodies.size(); ++group) {
+            QString body = bodies.at(group);
+            if (!groupValid.at(group)) body = "<font color=\"#bab8ba\">" + body + "</font>";
+            description += QString("<b>%1</b>：%2<br/>")
+                .arg(Sanguosha->translate(skillName), body);
+            if (!oracle.isEmpty())
+                description += QString("<font color=\"#bab8ba\">%1</font><br/>").arg(oracle);
+            if (!details.at(group).isEmpty())
+                description += details.at(group).join("<br/>") + "<br/>";
+            description += "<br/>";
+        }
+		QString desc = skill->getWakedSkills();
 		if(desc.isEmpty()) continue;
 		relateds << desc.split(",");
     }
@@ -2387,6 +2719,15 @@ QString Player::getSkillDescription() const
 			}
 		}
 	}
+    QStringList effects;
+    for (const QVariant &effect : m_skillDescriptionEffects) {
+        if (viewer == this || effect.toMap().value("public").toBool())
+            effects << descriptionEffect(this, effect.toMap());
+    }
+    if (!effects.isEmpty()) {
+        description += "<b>" + tr("Current effects") + "</b><br/>";
+        description += effects.join("<br/><br/>") + "<br/><br/>";
+    }
     if (description.isEmpty()) description = tr("No skills");
 	else description.replace("\n", "<br/>");
     return description;
@@ -3106,6 +3447,7 @@ void Player::setSkillDescriptionSwap(const QString &skill_name, const QString &k
 		_value = Sanguosha->translate(value);
 	swap[key] = _value;
 	description_s2k2v[storageKey] = swap;
+    emit skill_state_changed();
 }
 
 QHash<QString, QString> Player::getSkillDescriptionSwap(const QString &skill_name, int instanceId) const

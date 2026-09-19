@@ -3827,6 +3827,11 @@ class YHTanyou : public TriggerSkill
 public:
 	YHTanyou() : TriggerSkill("yhtanyou")
 	{
+        // This one-shot effect uses private instance state, not the public UI mark.
+        setProperty("DescriptionUsageState", "tanyou_used");
+        setProperty("DescriptionUsageLimit", 1);
+        setProperty("DescriptionUsageScope", QT_TRANSLATE_NOOP("Player", "This game"));
+        setProperty("DescriptionUsageLabel", QT_TRANSLATE_NOOP("Player", "Limited effect"));
 		events << EventForDiy << Dying;
 		frequency = Limited;
 		limit_mark = "@yhtanyouMark";
@@ -3879,6 +3884,9 @@ public:
 
 						room->loseMaxHp(t, 1, objectName());
 						room->addPlayerMark(t, "&yhtanyou_buff");
+                        room->setSkillEffectDescription(t,
+                            QString("yhtanyou:%1:%2").arg(player->objectName()).arg(ref.key.instanceID),
+                            "@yhtanyou.effect", ref, "@yhtanyou.effect.expiry", "&yhtanyou_buff", true);
 					}
 
 				}

@@ -432,6 +432,13 @@ public:
                                                 const QString &pattern, const QString &prompt,
                                                 Card::HandlingMethod method) const;
     int getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok = nullptr) const;
+    QVariantMap describeSkillUsage(ServerPlayer *owner, const SkillInstance &instance) const;
+    // Descriptive metadata only. The skill removes its entry when its effect ends.
+    bool setSkillEffectDescription(ServerPlayer *target, const QString &id,
+                                   const QString &description, const SkillInstanceRef &sourceRef,
+                                   const QString &expiry = QString(), const QString &activeMark = QString(),
+                                   bool publicEffect = false);
+    void removeSkillEffectDescription(ServerPlayer *target, const QString &id);
     bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
                                 const QString &reason = QString());
     bool addSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int delta,

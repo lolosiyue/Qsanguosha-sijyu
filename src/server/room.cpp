@@ -3824,6 +3824,37 @@ int Room::getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok) const
 	return m_skillRuntime->getSkillInstanceAmount(ref, ok);
 }
 
+QVariantMap Room::describeSkillUsage(ServerPlayer *owner, const SkillInstance &instance) const
+{
+    return m_skillRuntime->describeSkillUsage(owner, instance);
+}
+
+bool Room::setSkillEffectDescription(ServerPlayer *target, const QString &id,
+                                     const QString &description, const SkillInstanceRef &sourceRef,
+                                     const QString &expiry, const QString &activeMark, bool publicEffect)
+{
+    if (!target || target->getRoom() != this || id.isEmpty() || description.isEmpty()) return false;
+    if (!activeMark.isEmpty() && target->getMark(activeMark) <= 0) return false;
+    if (sourceRef.isValid()) {
+        const ServerPlayer *source = findPlayerByObjectName(sourceRef.ownerObjectName, true);
+        if (!source || !source->hasSkillInstance(sourceRef.key.skillName, sourceRef.key.instanceID)) return false;
+    }
+    QVariantMap descriptions = target->getTag("SkillEffectDescriptions").toMap();
+    descriptions.insert(id, QVariantMap{{"text", description}, {"source_player", sourceRef.ownerObjectName},
+        {"source_skill", sourceRef.key.skillName}, {"source_instance", sourceRef.key.instanceID},
+        {"expiry", expiry}, {"active_mark", activeMark}, {"public", publicEffect}});
+    // Map tags stay server-side; only explicitly public entries reach observers.
+    target->setTag("SkillEffectDescriptions", descriptions);
+    return true;
+}
+
+void Room::removeSkillEffectDescription(ServerPlayer *target, const QString &id)
+{
+    if (!target || target->getRoom() != this) return;
+    QVariantMap descriptions = target->getTag("SkillEffectDescriptions").toMap();
+    if (descriptions.remove(id)) target->setTag("SkillEffectDescriptions", descriptions);
+}
+
 bool Room::setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
                                   const QString &reason)
 {

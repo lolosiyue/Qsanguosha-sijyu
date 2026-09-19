@@ -1,4 +1,5 @@
 #include "roomthread.h"
+#include <QScopedValueRollback>
 #include "card-lifetime-manager.h"
 #include "lua.hpp"
 #include "room.h"
@@ -1346,35 +1347,54 @@ void RoomThread::refreshDistanceCacheIfDirty(Room *room)
 
 bool RoomThread::deferPlayerUiState(ServerPlayer *player)
 {
-	// Shutdown must not spend another turn rebuilding Lua-backed presentation.
-	if (isInterruptionRequested()) return true;
-	if (m_flushingPlayerUiState || event_stack.isEmpty()) return false;
-	m_pendingPlayerUiState.insert(player);
-	return true;
+    // Shutdown must not spend another turn rebuilding Lua-backed presentation.
+    if (isInterruptionRequested()) return true;
+    if (m_flushingPlayerUiState || event_stack.isEmpty()) return false;
+    m_pendingPlayerUiState.insert(player);
+    return true;
 }
 
 void RoomThread::flushPlayerUiState()
 {
-	if (!room || isInterruptionRequested() || m_flushingPlayerUiState) return;
-	const bool allPlayers = m_playerUiStateDirty;
-	const auto pending = m_pendingPlayerUiState;
-	m_playerUiStateDirty = false;
-	m_pendingPlayerUiState.clear();
-	if (!allPlayers && pending.isEmpty()) return;
-	m_flushingPlayerUiState = true;
-	auto resetFlushing = qScopeGuard([this]() { m_flushingPlayerUiState = false; });
-	// Iterate the live roster, preserving notification order and ignoring removals.
-	foreach (ServerPlayer *player, room->getAlivePlayers()) {
-		if (isInterruptionRequested()) return;
-		if (allPlayers || pending.contains(player)) player->refreshUIState();
-	}
+    if (isRunning() && QThread::currentThread() != this) return;
+    if (!room || isInterruptionRequested() || m_flushingPlayerUiState) return;
+    const bool allPlayers = m_playerUiStateDirty;
+    const bool descriptions = m_skillDescriptionsDirty.exchange(false);
+    const auto pending = m_pendingPlayerUiState;
+    m_playerUiStateDirty = false;
+    m_pendingPlayerUiState.clear();
+    if (!allPlayers && !descriptions && pending.isEmpty()) return;
+    QScopedValueRollback<bool> flushing(m_flushingPlayerUiState, true);
+    QScopedValueRollback<bool> refreshing(m_refreshingSkillDescriptions, true);
+    // Full UI refresh already includes descriptions. Evaluate each player once,
+    // retaining the live-roster order and clearing dead players' stale summaries.
+    foreach (ServerPlayer *player, room->getAllPlayers(true)) {
+        if (isInterruptionRequested()) return;
+        if (player->isAlive() && player->getGeneral() && (allPlayers || pending.contains(player)))
+            player->refreshUIState();
+        else if (descriptions || allPlayers)
+            player->refreshSkillDescriptionState();
+    }
+}
+
+void RoomThread::markSkillDescriptionsDirty()
+{
+    // Signals may originate outside the room worker. Only mark here, never run Lua.
+    m_skillDescriptionsDirty.store(true);
+}
+
+void RoomThread::refreshSkillDescriptions()
+{
+    if (isRunning() && QThread::currentThread() != this) return;
+    if (m_refreshingSkillDescriptions) return;
+    // Requests use the same batch boundary as ordinary deferred presentation.
+    flushPlayerUiState();
 }
 
 void RoomThread::flushOutermostDeferredWork(Room *room)
 {
-	if (!room || !event_stack.isEmpty() || isInterruptionRequested()) return;
-
-	flushPlayerUiState();
+    if (!room || !event_stack.isEmpty() || isInterruptionRequested()) return;
+    flushPlayerUiState();
 
 	refreshDistanceCacheIfDirty(room);
 

@@ -4688,7 +4688,12 @@ public:
 class ViewAsSkillV2CustomUsageTest : public ViewAsSkillV2
 {
 public:
-    ViewAsSkillV2CustomUsageTest() : ViewAsSkillV2("active_skill_v2_custom_usage_test") {}
+    ViewAsSkillV2CustomUsageTest() : ViewAsSkillV2("active_skill_v2_custom_usage_test")
+    {
+        setProperty("DescriptionUsageMark", "active_skill_v2_custom_committed");
+        setProperty("DescriptionUsageLimit", 1);
+        setProperty("DescriptionUsageScope", QT_TRANSLATE_NOOP("Player", "Custom reset period"));
+    }
 
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool canActivate(const ActiveSkillRequest &request) const override

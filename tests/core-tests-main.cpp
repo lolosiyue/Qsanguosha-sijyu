@@ -4,6 +4,7 @@
 
 int runEngineSmokeTests();
 int runLargeRoomModeTests();
+int runSkillDescriptionTests();
 int runLuaCompatibilityTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
@@ -56,6 +57,9 @@ int main(int argc, char **argv)
     const QString suite = parseSuite(argc, argv);
 
     const auto runAll = []() {
+        const int descriptions = runSkillDescriptionTests();
+        if (descriptions != 0)
+            return 190 + descriptions;
         const int hiddenCards = runHiddenPhysicalCardTests();
         if (hiddenCards != 0)
             return hiddenCards;
@@ -96,6 +100,8 @@ int main(int argc, char **argv)
         return runAll();
     if (suite == QLatin1String("large-room-mode"))
         return runLargeRoomModeTests();
+    if (suite == QLatin1String("skill-description"))
+        return runSkillDescriptionTests();
     if (suite == QLatin1String("hidden-physical-cards"))
         return runHiddenPhysicalCardTests();
     if (suite == QLatin1String("equips-nullified"))

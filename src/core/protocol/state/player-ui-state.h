@@ -3,6 +3,8 @@
 
 #include <QStringList>
 #include <QVariant>
+#include <QVariantMap>
+#include <QVariantList>
 
 struct PlayerUIState
 {
@@ -14,6 +16,13 @@ struct PlayerUIState
     QStringList offensiveSkills;
     QStringList defensiveSkills;
     QStringList viewAsEquipSkills;
+
+    // Presentation snapshots. Usage and undeclared effects are holder-only;
+    // validity contains only publicly visible instances, keyed by skill#ID.
+    QVariantMap skillUsage;
+    QVariantMap skillValidity;
+    QVariantList skillEffects;
+    PlayerUIState forObserver() const;
 
     QVariant toVariant() const;
     bool tryParse(const QVariant &value);

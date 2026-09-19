@@ -70,6 +70,18 @@ bool isCorrectSkillV2Definition(const Skill *skill)
         || dynamic_cast<const AttackRangeSkillV2 *>(skill);
 }
 
+void recordAmountDescription(ServerPlayer *owner, ServerPlayer *source,
+                             const SkillInstanceRef &ref, int value, const QString &reason)
+{
+    if (owner->hasSkillInstanceAmountOverride(ref.key.skillName, ref.key.instanceID)) {
+        owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "__description_amount",
+            QVariantMap{{"value", value}, {"source_player", source ? source->objectName() : QString()},
+                        {"reason", reason}});
+    } else {
+        owner->removeSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "__description_amount");
+    }
+}
+
 bool hasViewAsSkillEffect(const Player *player, const QString &skillName)
 {
     return player && player->getMark("ViewAsSkill_" + skillName + "Effect") > 0;
@@ -555,6 +567,7 @@ bool SkillRuntimeCoordinator::setSkillInstanceAmount(
                                                                   ref.key.instanceID);
         if (changed && instance)
             notifySkillInstanceAmount(owner, *instance);
+        if (changed) recordAmountDescription(owner, source, ref, updated.newAmount, reason);
         if (changed) {
             QVariant changedData = QVariant::fromValue(updated);
             m_room.thread->trigger(EventSkillAmountChanged, &m_room, owner, changedData);
@@ -636,6 +649,7 @@ bool SkillRuntimeCoordinator::resetSkillInstanceAmount(
                                                                   ref.key.instanceID);
         if (changed && instance)
             notifySkillInstanceAmount(owner, *instance);
+        if (changed) recordAmountDescription(owner, source, ref, updated.newAmount, reason);
         if (changed) {
             QVariant changedData = QVariant::fromValue(updated);
             m_room.thread->trigger(EventSkillAmountChanged, &m_room, owner, changedData);
@@ -648,7 +662,6 @@ bool SkillRuntimeCoordinator::setSkillInstanceCorrectState(
     ServerPlayer *source, const SkillInstanceRef &ref,
     const QString &key, const QVariant &value)
 {
-    Q_UNUSED(source);
     if (!ref.isValid() || key.isEmpty())
         return false;
     ServerPlayer *owner = m_room.findPlayerByObjectName(ref.ownerObjectName, true);
@@ -663,6 +676,12 @@ bool SkillRuntimeCoordinator::setSkillInstanceCorrectState(
                                                               ref.key.instanceID);
     if (instance)
         notifySkillInstanceCorrectState(owner, *instance, "set", key, value);
+    if (instance) {
+        QVariantMap sources = owner->getSkillInstanceStateValue(ref.key.skillName,
+            ref.key.instanceID, "__description_correct").toMap();
+        sources.insert(key, QVariantMap{{"value", value}, {"source_player", source ? source->objectName() : QString()}});
+        owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "__description_correct", sources);
+    }
     return instance != nullptr;
 }
 
@@ -680,6 +699,10 @@ bool SkillRuntimeCoordinator::removeSkillInstanceCorrectState(
                                                          key)) {
         return false;
     }
+    QVariantMap sources = owner->getSkillInstanceStateValue(ref.key.skillName,
+        ref.key.instanceID, "__description_correct").toMap();
+    sources.remove(key);
+    owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "__description_correct", sources);
     const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName,
                                                               ref.key.instanceID);
     if (instance)
@@ -700,6 +723,7 @@ bool SkillRuntimeCoordinator::clearSkillInstanceCorrectState(
                                                    ref.key.instanceID)) {
         return false;
     }
+    owner->removeSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "__description_correct");
     const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName,
                                                               ref.key.instanceID);
     if (instance)
@@ -895,6 +919,100 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
     return true;
 }
 
+QVariantMap SkillRuntimeCoordinator::describeSkillUsage(ServerPlayer *owner,
+                                                       const SkillInstance &instance) const
+{
+    const Skill *skill = Sanguosha->getSkill(instance.skillName);
+    if (!owner || !skill) return QVariantMap{{"scope", "unavailable"}};
+    const Skill::LimitScope scope = skill->getLimitScope();
+    if (scope == Skill::Limit_None || scope == Skill::Limit_Custom) {
+        // Explicit adapters for legacy/custom rules: never guess a mark from the
+        // skill name. These properties name the exact authoritative counter.
+        const QString mark = skill->property("DescriptionUsageMark").toString();
+        const QString stateKey = skill->property("DescriptionUsageState").toString();
+        const QString scopeLabel = skill->property("DescriptionUsageScope").toString();
+        if ((!mark.isEmpty() || !stateKey.isEmpty()) && !scopeLabel.isEmpty()
+            && skill->property("DescriptionUsageLimit").isValid()) {
+            const int used = !mark.isEmpty() ? owner->getMark(mark)
+                : owner->getSkillInstanceStateValue(instance.skillName, instance.instanceID, stateKey, 0).toInt();
+            const QString counter = owner->objectName() + QChar('\x1f')
+                + (!mark.isEmpty() ? "mark:" + mark : "state:" + SkillInstanceUtils::formatName(
+                    instance.skillName, instance.instanceID) + ":" + stateKey);
+            QVariantMap result{{"scope", "custom"}, {"scope_label", scopeLabel}, {"used", used},
+                {"limit", skill->property("DescriptionUsageLimit")}, {"counter", counter},
+                {"label", skill->property("DescriptionUsageLabel").toString()}};
+            const QString reservedMark = skill->property("DescriptionUsageReservedMark").toString();
+            if (!reservedMark.isEmpty()) result.insert("reserved", owner->getMark(reservedMark));
+            return result;
+        }
+    }
+    if (scope == Skill::Limit_None) return QVariantMap{{"scope", "none"}};
+    if (scope == Skill::Limit_Custom) {
+        // Custom counters have no common mark/holder contract. Authors publish an
+        // owner-only snapshot alongside the very state that drives their rule.
+        QVariantMap result{{"scope", "custom"}};
+        const QVariantMap supplied = owner->getSkillInstanceStateValue(instance.skillName,
+            instance.instanceID, "__description_usage").toMap();
+        for (const QString &key : {QStringLiteral("label"), QStringLiteral("scope_label"),
+                                  QStringLiteral("counter")}) {
+            if (supplied.value(key).userType() == QMetaType::QString)
+                result.insert(key, supplied.value(key));
+        }
+        for (const QString &key : {QStringLiteral("used"), QStringLiteral("limit"), QStringLiteral("reserved")}) {
+            const QVariant value = supplied.value(key);
+            const int type = value.userType();
+            const bool numeric = type == QMetaType::Int || type == QMetaType::UInt
+                || type == QMetaType::LongLong || type == QMetaType::ULongLong || type == QMetaType::Double;
+            bool ok = false;
+            const qlonglong number = value.toLongLong(&ok);
+            if (numeric && ok && number >= 0 && number <= std::numeric_limits<int>::max()
+                && value.toDouble() == static_cast<double>(number)) result.insert(key, static_cast<int>(number));
+        }
+        // An author counter is always scoped by holder, never a bare instance ID.
+        if (result.contains("counter"))
+            result["counter"] = owner->objectName() + QChar('\x1f') + result.value("counter").toString();
+        return result;
+    }
+    SkillContext context;
+    context.skill_name = instance.skillName;
+    context.owner = context.invoker = context.initiator = owner;
+    context.instanceID = instance.instanceID;
+    context.activationRef = SkillInstanceRef(owner->objectName(),
+        SkillInstanceKey(instance.skillName, instance.instanceID));
+    context.sourceRef = resolveSkillInstanceRootRef(context.activationRef);
+    if (const auto *amountSkill = dynamic_cast<const AmountSkillV2 *>(skill))
+        context.amount = instance.hasAmountOverride ? instance.amountOverride : amountSkill->getBaseAmount();
+
+    QString scopeName;
+    switch (scope) {
+    case Skill::Limit_Round: scopeName = "round"; break;
+    case Skill::Limit_Turn: scopeName = "turn"; break;
+    case Skill::Limit_Phase: scopeName = "phase"; break;
+    case Skill::Limit_Game: scopeName = "game"; break;
+    default: return QVariantMap{{"scope", "unavailable"}};
+    }
+    QVariantMap result{{"scope", scopeName}, {"phase", skill->getPhaseName()}};
+    // Use exactly the same resolution as reserve/commit, including fail-closed roots.
+    // This is a quota snapshot, not a phase/target/cost/activation query.
+    ServerPlayer *holder = skill->getUsageHolder(context);
+    const QString mark = skill->getUsageTagKey(context);
+    if (!holder || mark.isEmpty()) {
+        result.insert("unavailable", true);
+        return result;
+    }
+    const QString counter = SkillInstanceUtils::formatUsageReservationKey(holder->objectName(), mark);
+    result.insert("counter", counter);
+    result.insert("holder", holder->objectName());
+    result.insert("mark", mark);
+    result.insert("used", holder->getMark(mark));
+    result.insert("limit", skill->getMaxUsageLimit(context));
+    result.insert("reserved", m_activeSkillUsageReservations.count(counter));
+    // The authoritative reference catches shared counters even when the holder is the same player.
+    const SkillInstanceRef usageRef = skill->getUsageRef(context);
+    result.insert("shared", !(usageRef == context.activationRef));
+    return result;
+}
+
 bool SkillRuntimeCoordinator::reserveActiveSkillUsage(
     const ViewAsSkillV2 *skill, const SkillContext &context)
 {
@@ -908,8 +1026,10 @@ bool SkillRuntimeCoordinator::reserveActiveSkillUsage(
     const QString usageTagKey = skill->getUsageTagKey(context);
     const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
         holder->objectName(), usageTagKey);
-    return m_activeSkillUsageReservations.reserve(
+    const bool reserved = m_activeSkillUsageReservations.reserve(
         reservationKey, holder->getMark(usageTagKey), skill->getMaxUsageLimit(context));
+    if (reserved && m_room.getThread()) m_room.getThread()->markSkillDescriptionsDirty();
+    return reserved;
 }
 
 void SkillRuntimeCoordinator::releaseActiveSkillUsage(
@@ -924,7 +1044,8 @@ void SkillRuntimeCoordinator::releaseActiveSkillUsage(
         return;
     const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
         holder->objectName(), skill->getUsageTagKey(context));
-    m_activeSkillUsageReservations.release(reservationKey);
+    if (m_activeSkillUsageReservations.release(reservationKey))
+        if (m_room.getThread()) m_room.getThread()->markSkillDescriptionsDirty();
 }
 
 void SkillRuntimeCoordinator::commitActiveSkillUsage(
@@ -939,8 +1060,10 @@ void SkillRuntimeCoordinator::commitActiveSkillUsage(
         return;
     const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
         holder->objectName(), skill->getUsageTagKey(context));
-    if (m_activeSkillUsageReservations.release(reservationKey))
+    if (m_activeSkillUsageReservations.release(reservationKey)) {
+        if (m_room.getThread()) m_room.getThread()->markSkillDescriptionsDirty();
         skill->addUsage(context);
+    }
 }
 
 SkillExecutionRegistry::Guard SkillRuntimeCoordinator::beginSkillExecution(

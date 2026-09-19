@@ -193,10 +193,9 @@ void RoomNotifier::broadcastTagProperty(ServerPlayer *owner, const QString &tagK
 void RoomNotifier::notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state)
 {
     if (!owner) return;
-    PlayerUIStateMessage message;
-    message.playerName = owner->objectName();
-    message.state = state;
-    doBroadcastNotify(S_COMMAND_UPDATE_PLAYER_UI_STATE, message.toVariant());
+    // Select the payload before sending. Never broadcast an owner-only cache.
+    foreach (ServerPlayer *receiver, m_room.getAllPlayers(true))
+        notifyPlayerUIState(receiver, owner, state);
 }
 
 void RoomNotifier::notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner,
@@ -205,8 +204,14 @@ void RoomNotifier::notifyPlayerUIState(ServerPlayer *receiver, const ServerPlaye
     if (!receiver || !owner) return;
     PlayerUIStateMessage message;
     message.playerName = owner->objectName();
-    message.state = state;
-    doNotify(receiver, S_COMMAND_UPDATE_PLAYER_UI_STATE, message.toVariant());
+    // Match the existing private-state channel's authorized controller scope,
+    // while sending exactly once to each physical connection.
+    const bool controlsOwner = m_room.getActualController(const_cast<ServerPlayer *>(owner)) == receiver
+        && receiver->isOnline();
+    message.state = receiver == owner || controlsOwner ? state : state.forObserver();
+    // Do not re-expand controller recipients after choosing an owner-specific
+    // payload (or a later observer copy could overwrite/leak that private cache).
+    sendPacket(QList<ServerPlayer *>() << receiver, S_COMMAND_UPDATE_PLAYER_UI_STATE, message.toVariant());
 }
 
 void RoomNotifier::notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
