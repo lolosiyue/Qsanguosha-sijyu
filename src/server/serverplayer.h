@@ -290,6 +290,7 @@ public:
     void setAvatarIcon(const QString &avatar_name, bool isSmall = false);
     bool damageRevises(QVariant &data, int n);
     Q_INVOKABLE void refreshUIState();
+    void refreshSkillDescriptionState();
 
     QStringList getPendingAnytimeSkills() const;
     void addPendingAnytimeSkill(const QString &skill_name);

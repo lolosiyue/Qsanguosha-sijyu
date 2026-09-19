@@ -109,6 +109,7 @@ const PlayerUIState &ClientPlayer::uiState() const
 void ClientPlayer::setUIState(const PlayerUIState &state)
 {
     m_uiState = state;
+    setSkillDescriptionState(state.skillUsage, state.skillValidity, state.skillEffects);
 }
 
 bool ClientPlayer::isLastHandCard(const Card *card, bool contain) const

@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 
 int runEngineSmokeTests();
+int runSkillDescriptionTests();
 int runLuaCompatibilityTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
@@ -55,6 +56,9 @@ int main(int argc, char **argv)
     const QString suite = parseSuite(argc, argv);
 
     const auto runAll = []() {
+        const int descriptions = runSkillDescriptionTests();
+        if (descriptions != 0)
+            return 190 + descriptions;
         const int hiddenCards = runHiddenPhysicalCardTests();
         if (hiddenCards != 0)
             return hiddenCards;
@@ -90,6 +94,8 @@ int main(int argc, char **argv)
 
     if (suite.isEmpty() || suite == QLatin1String("engine-smoke"))
         return runAll();
+    if (suite == QLatin1String("skill-description"))
+        return runSkillDescriptionTests();
     if (suite == QLatin1String("hidden-physical-cards"))
         return runHiddenPhysicalCardTests();
     if (suite == QLatin1String("equips-nullified"))

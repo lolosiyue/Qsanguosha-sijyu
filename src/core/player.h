@@ -320,6 +320,11 @@ public:
     // 有效（未被 SkillInvalidityRecords 封禁）的同名技能實例 ID 清單；所有真實實例 ID 均為正整數。
     QList<int> getValidSkillInstanceIds(const QString &skill_name) const;
     QString getSkillDescription() const;
+    // Private state is included only when the caller explicitly supplies this holder.
+    QString getSkillDescription(const Player *viewer) const;
+    void setSkillDescriptionState(const QVariantMap &usage, const QVariantMap &validity,
+                                  const QVariantList &effects);
+    QVariantList getCardLimitationDetails() const;
 
     // === 技能後置數值覆寫 (Skill Amount Override) ===
     // 遊戲中可後置改動單一技能實例每實例貢獻的數值（modified_amount）。
@@ -465,6 +470,7 @@ public:
 
 
 protected:
+    bool event(QEvent *event) override;
     const QMultiHash<const Player *, int> &fixedDistances() const { return fixed_distance; }
     const QList<const Player *> &attackRangePairs() const { return attack_range_pair; }
 
@@ -497,6 +503,9 @@ protected:
     QList<int> broken_equips;
 
 private:
+    QVariantMap m_skillDescriptionUsage;
+    QVariantMap m_skillDescriptionValidity;
+    QVariantList m_skillDescriptionEffects;
     QString screen_name;
     bool owner;
     const General *general, *general2;

@@ -1,4 +1,5 @@
 #include "roomthread.h"
+#include <QScopedValueRollback>
 #include "card-lifetime-manager.h"
 #include "room.h"
 #include "engine.h"
@@ -1306,16 +1307,37 @@ void RoomThread::refreshDistanceCacheIfDirty(Room *room)
 	}
 }
 
+void RoomThread::markSkillDescriptionsDirty()
+{
+    // Signals may originate outside the room worker. Only mark here, never run Lua.
+    m_skillDescriptionsDirty.store(true);
+}
+
+void RoomThread::refreshSkillDescriptions()
+{
+    if (isRunning() && QThread::currentThread() != this) return;
+    if (!room || m_refreshingSkillDescriptions || !m_skillDescriptionsDirty.exchange(false)) return;
+    QScopedValueRollback<bool> guard(m_refreshingSkillDescriptions, true);
+    foreach (ServerPlayer *player, room->getAllPlayers(true))
+        player->refreshSkillDescriptionState();
+}
+
 void RoomThread::flushOutermostDeferredWork(Room *room)
 {
-	if (!room || !event_stack.isEmpty()) return;
+    if (!room || !event_stack.isEmpty()) return;
 
 	if (m_playerUiStateDirty) {
 		// PlayerUIState owns the existing server-to-client UI notification path.
 		m_playerUiStateDirty = false;
-		foreach (ServerPlayer *player, room->getAlivePlayers())
-			player->refreshUIState();
-	}
+        m_skillDescriptionsDirty.store(false);
+        QScopedValueRollback<bool> guard(m_refreshingSkillDescriptions, true);
+        foreach (ServerPlayer *player, room->getAllPlayers(true)) {
+            if (player->isAlive() && player->getGeneral()) player->refreshUIState();
+            else player->refreshSkillDescriptionState();
+        }
+	} else {
+        refreshSkillDescriptions();
+    }
 
 	refreshDistanceCacheIfDirty(room);
 

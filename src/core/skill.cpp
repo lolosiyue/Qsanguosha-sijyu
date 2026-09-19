@@ -86,12 +86,26 @@ QString Skill::getDescription(const Player *target, int instanceId) const
 		des_src = Sanguosha->translate(":"+objectName());
 
 	if (target){
-		QString propKey = instanceId > 0 ? QString("changeTranslation%1#%2").arg(objectName()).arg(instanceId) : QString("changeTranslation"+objectName());
-		QString data = target->property(propKey.toStdString().c_str()).toString();
+		// An instance override wins; an absent/empty override inherits the legacy text.
+		const QString propKey = "changeTranslation" + objectName();
+		QString data = target->property(propKey.toUtf8().constData()).toString();
+		if (instanceId > 0) {
+			const QString instanceKey = QString("%1#%2").arg(propKey).arg(instanceId);
+			const QString instanceData = target->property(instanceKey.toUtf8().constData()).toString();
+			if (!instanceData.isEmpty()) data = instanceData;
+		}
 		if(data.length()==1) des_src = Sanguosha->translate(":"+objectName()+data);
 		else if(data.length()>1) des_src = data;
-		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName(), instanceId);
-		foreach (QString key, swap.keys())
+		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName());
+		if (instanceId > 0) {
+			const auto instanceSwap = target->getSkillDescriptionSwap(objectName(), instanceId);
+			for (auto it = instanceSwap.constBegin(); it != instanceSwap.constEnd(); ++it)
+				swap.insert(it.key(), it.value());
+		}
+		// Merge before replacement so a global value cannot consume an instance token.
+		QStringList keys = swap.keys();
+		keys.sort();
+		foreach (const QString &key, keys)
 			des_src.replace(key, swap[key]);
 	}
 	/*else
