@@ -77,6 +77,11 @@ struct RoomTestAccess
         return room.applyAIResult(player, request, result, use);
     }
 
+    static bool areCardTargetsLegal(Room &room, const CardUseStruct &use)
+    {
+        return room.areCardTargetsLegal(use);
+    }
+
     static AI *cloneAI(Room &room, ServerPlayer *player)
     {
         return room.cloneAI(player);
@@ -1635,12 +1640,77 @@ static bool aiInstructionLimitRebuildsRuntime(Room &room)
         && room.roomRuntime()->ai().lua().generation() > generation;
 }
 
+static bool collateralTargetValidationContract()
+{
+    std::unique_ptr<Room> room(new Room(nullptr, QStringLiteral("02_1v1")));
+    EngineRuntimeContextScope contextScope(*Sanguosha, room.get());
+    room->roomRuntime()->state().reset();
+    ServerPlayer *viewer = RoomTestAccess::addRobotPlayer(*room);
+    viewer->setObjectName(QStringLiteral("collateral-viewer"));
+    viewer->setSeat(1);
+    viewer->setMaxHp(4);
+    viewer->setHp(4);
+    viewer->setPhase(Player::Play);
+    ServerPlayer *other = RoomTestAccess::addRobotPlayer(*room);
+    other->setObjectName(QStringLiteral("collateral-other"));
+    other->setSeat(2);
+    other->setMaxHp(4);
+    other->setHp(4);
+    room->setCurrent(viewer);
+    room->rebuildAlivePlayers();
+
+    const auto findCard = [](const QString &name) -> const Card * {
+        for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+            const Card *card = Sanguosha->getCard(id);
+            if (card && card->objectName() == name)
+                return card;
+        }
+        return nullptr;
+    };
+    // Collateral returns false from targetFilter even for a legal pair;
+    // maxVotes carries its selection contract, including the armed first target.
+    const Card *collateral = findCard(QStringLiteral("collateral"));
+    const Card *weapon = findCard(QStringLiteral("crossbow"));
+    if (!collateral || !weapon)
+        return false;
+    other->Player::addCard(weapon->getId(), Player::PlaceEquip);
+    CardUseStruct collateralUse;
+    collateralUse.card = collateral;
+    collateralUse.from = viewer;
+    collateralUse.to << other << viewer;
+    if (!RoomTestAccess::areCardTargetsLegal(*room, collateralUse)) {
+        qCritical() << "A legal Collateral pair was rejected";
+        return false;
+    }
+    collateralUse.to.removeLast();
+    if (RoomTestAccess::areCardTargetsLegal(*room, collateralUse)) {
+        qCritical() << "Collateral accepted a missing Slash victim";
+        return false;
+    }
+    collateralUse.to << viewer << other << viewer;
+    if (RoomTestAccess::areCardTargetsLegal(*room, collateralUse)) {
+        qCritical() << "Collateral exceeded its target capacity";
+        return false;
+    }
+    other->Player::removeCard(weapon->getId(), Player::PlaceEquip);
+    collateralUse.to = QList<ServerPlayer *>({other, viewer});
+    if (RoomTestAccess::areCardTargetsLegal(*room, collateralUse)) {
+        qCritical() << "Collateral accepted an unarmed first target";
+        return false;
+    }
+    return true;
+}
+
 int runRoomRuntimeIsolationTests()
 {
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "Engine bootstrap failed:" << error;
         return 1;
+    }
+    if (!collateralTargetValidationContract()) {
+        qCritical() << "Collateral target validation contract failed";
+        return 36;
     }
     const QString bootstrapLuaPackages = Config.value(QStringLiteral("LuaPackages")).toString();
     if (!isolatedInitializationIsBudgeted()) {

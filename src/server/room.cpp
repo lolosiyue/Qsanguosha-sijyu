@@ -2751,7 +2751,10 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 	foreach (ServerPlayer *target, use.to) {
 		if (!target) return false;
 		int maxVotes = 0;
-		if (!use.card->targetFilter(selected, target, use.from, maxVotes) || maxVotes < 1)
+		// Match client selection: Collateral reports capacity through maxVotes
+		// even when targetFilter returns false. Count repeated target votes too.
+		use.card->targetFilter(selected, target, use.from, maxVotes);
+		if (maxVotes <= selected.count(target))
 			return false;
 		selected << target;
 	}
