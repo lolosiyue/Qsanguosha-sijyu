@@ -77,6 +77,24 @@ Package image/audio directories are ignored; the pilot mappings include no
 media and no automatic media download source. A file hash checks integrity;
 it does not establish permission to redistribute that file.
 
+## Native image cache lifetime
+
+The skin image cache checks its source-reference key before resolving paths or
+probing normal/`@2x` files. The key includes the runtime root, skin load revision
+and `QSanPackages::catalogRevision()`. Installing or clearing the catalog advances
+that revision; a skin load advances the skin revision, including partial loads.
+Only cache misses resolve and validate package paths. The shared skin cache does
+not retain failed resolutions. Replacing assets in place requires a skin reload
+or catalog replacement;
+the paint path does not poll the filesystem for edits.
+
+Card items retain only their current face, suit and number pixmaps. They check
+live card identity and the same root/revision boundaries on repaint, while
+general cards continue to resolve per-general hero-skin selection. Footnote
+images are reused while text, image size and skin revision are unchanged.
+These are source contracts; runtime performance and visual equivalence still
+require validation of the rebuilt client.
+
 ## Safe migration CLI
 
 `tools/packages/package_tool.py` uses only Python's standard library. It reads

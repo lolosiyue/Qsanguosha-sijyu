@@ -14,6 +14,7 @@
 #include <QReadWriteLock>
 #include <QSet>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 namespace
@@ -23,6 +24,7 @@ Catalog g_activeCatalog;
 QString g_activeRoot;
 QHash<QString, Catalog> g_lazyCatalogs;
 QReadWriteLock g_catalogLock;
+std::atomic<quint64> g_catalogRevision{0};
 
 bool validId(const QString &id)
 {
@@ -658,6 +660,7 @@ void installCatalog(const Catalog &catalog)
     g_activeCatalog = catalog;
     g_activeRoot = packageRoot(catalog);
     g_lazyCatalogs.clear();
+    ++g_catalogRevision;
 }
 
 void clearCatalog()
@@ -666,6 +669,12 @@ void clearCatalog()
     g_activeCatalog = Catalog();
     g_activeRoot.clear();
     g_lazyCatalogs.clear();
+    ++g_catalogRevision;
+}
+
+quint64 catalogRevision()
+{
+    return g_catalogRevision.load();
 }
 
 Catalog activeCatalog()

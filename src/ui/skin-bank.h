@@ -89,6 +89,7 @@ public:
     QStringList getAudioFileNames(const QString &key) const;
     QString getRandomAudioFileName(const QString &key) const;
     bool isImageKeyDefined(const QString &key) const;
+    quint64 visualRevision() const { return m_visualRevision; }
     QStringList getAnimationFileNames() const;
 
     static QPixmap generateFallbackCardImage(const QString &cardName, const QSize &size = QSize(150, 210));
@@ -112,6 +113,7 @@ protected:
     JsonObject _m_imageConfig;
     JsonObject _m_audioConfig;
     JsonObject _m_animationConfig;
+    quint64 m_visualRevision = 0;
 };
 
 /*#include <QGraphicsProxyWidget>

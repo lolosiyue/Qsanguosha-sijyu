@@ -11,9 +11,12 @@
 #include <QGuiApplication>
 #include <QPixmapCache>
 #include "runtime-paths.h"
+#include "package-catalog.h"
 #include <QScreen>
 
 using namespace JsonUtils;
+
+static quint64 g_skinVisualRevision = 0;
 
 static bool packageAssetExists(const QString &path)
 {
@@ -784,7 +787,9 @@ bool IQSanComponentSkin::_loadImageConfig(const QVariant &config)
 bool IQSanComponentSkin::load(const QString &layoutConfigName, const QString &imageConfigName,
 	const QString &audioConfigName, const QString &animationConfigName)
 {
-	bool success = true;
+    // A reload can change fonts, image selection and layout even on partial failure.
+    m_visualRevision = ++g_skinVisualRevision;
+    bool success = true;
 
 	if (!layoutConfigName.isEmpty()) {
 		JsonDocument layoutDoc = JsonDocument::fromFilePath(layoutConfigName);
@@ -1049,8 +1054,20 @@ QPixmap IQSanComponentSkin::getPixmapFileName(const QString &key) const
 
 QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &sourceFileName, bool cache) const
 {
+    if (sourceFileName == "deprecated" || sourceFileName.isEmpty())
+        return QPixmap(1, 1);
+    // Consult the bounded Qt cache before touching the filesystem. Catalog and
+    // skin replacement fence old results; misses still use the validated resolver.
+    const QString assetRoot = QSanRuntimePaths::assetRoot();
+    const QString root = assetRoot.isEmpty() ? QDir::currentPath() : assetRoot;
+    const QString cacheKey = QStringLiteral("skin-file:%1:%2:%3:%4:%5")
+        .arg(QSanPackages::catalogRevision()).arg(m_visualRevision)
+        .arg(root.size()).arg(root).arg(sourceFileName);
+    QPixmap cachedPixmap;
+    if (cache && QPixmapCache::find(cacheKey, &cachedPixmap))
+        return cachedPixmap;
     const QString fileName = QSanRuntimePaths::assetPath(sourceFileName);
-    if (sourceFileName == "deprecated" || sourceFileName.isEmpty() || fileName.isEmpty())
+    if (fileName.isEmpty())
         return QPixmap(1, 1);
     else {
         QPixmap pixmap;
@@ -1066,18 +1083,8 @@ QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &sourceFileName,
             if (!name.isEmpty()) {
                 bool isCardPath = fileName.contains("image/card/") && !fileName.contains("image/generals/card");
                 bool isEquipPath = fileName.contains("image/equips/") || fileName.contains("image/fullskin/small-equips/");
-                QString fallbackKey;
-
-                if (isCardPath) {
-                    fallbackKey = "fallback_" + name;
-                } else if (isEquipPath) {
-                    fallbackKey = "fallback_equip_" + name;
-                } else {
+                if (!isCardPath && !isEquipPath) {
                     return QPixmap(1, 1);
-                }
-
-                if (cache && QPixmapCache::find(fallbackKey, &pixmap)) {
-                    return pixmap;
                 }
 
                 if (isCardPath) {
@@ -1093,25 +1100,18 @@ QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &sourceFileName,
                     pixmap = generateFallbackEquipImage(name, equipSize);
                 }
                 if (cache && !pixmap.isNull()) {
-                    QPixmapCache::insert(fallbackKey, pixmap);
+                    QPixmapCache::insert(cacheKey, pixmap);
                 }
                 if (!pixmap.isNull())
                     return pixmap;
             }
             return QPixmap(1, 1);
         }
-        if (cache) {
-            if (!QPixmapCache::find(fileName, &pixmap)) {
-                success = pixmap.load(hasHighDpiFile ? highDpiFileName : fileName);
-                if (success && hasHighDpiFile)
-                    pixmap.setDevicePixelRatio(2.0);
-                if (success) QPixmapCache::insert(fileName, pixmap);
-            }
-        } else {
-            success = pixmap.load(hasHighDpiFile ? highDpiFileName : fileName);
-            if (success && hasHighDpiFile)
-                pixmap.setDevicePixelRatio(2.0);
-        }
+        success = pixmap.load(hasHighDpiFile ? highDpiFileName : fileName);
+        if (success && hasHighDpiFile)
+            pixmap.setDevicePixelRatio(2.0);
+        if (cache && success)
+            QPixmapCache::insert(cacheKey, pixmap);
         if (success) return pixmap;
         else return QPixmap(1, 1); // make Qt happy
     }

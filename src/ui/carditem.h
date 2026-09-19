@@ -133,6 +133,22 @@ protected:
     virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
 
 private:
+    // Only the current face is retained per item; live card identity is checked
+    // in paint, so wrapped-card changes do not depend on setCard notifications.
+    QPixmap m_facePixmap;
+    QPixmap m_suitPixmap;
+    QPixmap m_numberPixmap;
+    int m_paintedSuit = -1;
+    int m_paintedNumber = -1;
+    bool m_paintedNumberBlack = false;
+    QString m_faceName;
+    QString m_faceAssetRoot;
+    quint64 m_faceSkinRevision = 0;
+    quint64 m_faceCatalogRevision = 0;
+    QString m_footnoteText;
+    QString m_yingbianText;
+    quint64 m_footnoteSkinRevision = 0;
+    quint64 m_yingbianSkinRevision = 0;
     int m_cardId;
     bool m_hasVirtualCardVisual;
     Card::Suit m_virtualCardSuit;
