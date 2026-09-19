@@ -423,6 +423,28 @@ function sgs.CreateCardLimitSkill(spec)
 	return skill
 end
 
+function sgs.CreateDetachEffectSkill(spec)
+	assert(type(spec.name) == "string")
+	if spec.pilename then assert(type(spec.pilename) == "string") end
+	local pilename = spec.pilename or ""
+	local name = spec.name
+	spec.name = "#"..spec.name.."-clear"
+	spec.events = sgs.EventLoseSkill
+
+	function spec.on_trigger(skill, event, player, data)
+		if data:toString() == name then
+			if string.len(pilename) > 0 then
+				player:removePileByName(pilename)
+			else
+				if type(spec.on_skill_detached) == "function" then spec.on_skill_detached(skill, player:getRoom(), player) end
+			end
+		end
+		return false
+	end
+
+	return sgs.CreateTriggerSkill(spec)
+end
+
 function sgs.CreateMasochismSkill(spec)
 	assert(type(spec.on_damaged)=="function")
 	spec.events = sgs.Damaged
