@@ -10,6 +10,7 @@ class PlayerUIStateBuilder
 {
 public:
     static PlayerUIState build(const ServerPlayer &player, const Room &room);
+    static void buildSkillDescriptions(PlayerUIState &state, const ServerPlayer &player, const Room &room);
 };
 
 #endif

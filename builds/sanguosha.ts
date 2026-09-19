@@ -4415,7 +4415,179 @@
     <name>Player</name>
     <message>
         <source>No skills</source>
-        <translation type="vanished">无技能</translation>
+        <translation>无技能</translation>
+    </message>
+    <message>
+        <source>Non-equipment skills are invalid</source>
+        <translation>非裝備技能失效</translation>
+    </message>
+    <message>
+        <source>%1%2 is invalid</source>
+        <translation>%1%2 失效</translation>
+    </message>
+    <message>
+        <source>Use</source>
+        <translation>使用</translation>
+    </message>
+    <message>
+        <source>Respond</source>
+        <translation>打出</translation>
+    </message>
+    <message>
+        <source>Discard</source>
+        <translation>棄置</translation>
+    </message>
+    <message>
+        <source>Action %1</source>
+        <translation>操作 %1</translation>
+    </message>
+    <message>
+        <source>Card %1 is restricted (pattern: %2)</source>
+        <translation>卡牌%1受限（規則：%2）</translation>
+    </message>
+    <message>
+        <source>Source: %1</source>
+        <translation>來源：%1</translation>
+    </message>
+    <message>
+        <source>Reason: %1</source>
+        <translation>原因：%1</translation>
+    </message>
+    <message>
+        <source>Target: %1</source>
+        <translation>作用對象：%1</translation>
+    </message>
+    <message>
+        <source>Until the end of this turn</source>
+        <translation>至本回合結束</translation>
+    </message>
+    <message>
+        <source>Ends: %1</source>
+        <translation>結束條件：%1</translation>
+    </message>
+    <message>
+        <source>Innate</source>
+        <translation>原生</translation>
+    </message>
+    <message>
+        <source>Acquired</source>
+        <translation>後天獲得</translation>
+    </message>
+    <message>
+        <source>Attached skill</source>
+        <translation>附加技能</translation>
+    </message>
+    <message>
+        <source>Related helper</source>
+        <translation>關聯附屬</translation>
+    </message>
+    <message>
+        <source> / Head general</source>
+        <translation>／主將</translation>
+    </message>
+    <message>
+        <source> / Deputy general</source>
+        <translation>／副將</translation>
+    </message>
+    <message>
+        <source>Counter unavailable</source>
+        <translation>計數來源不可用</translation>
+    </message>
+    <message>
+        <source>This round</source>
+        <translation>本輪</translation>
+    </message>
+    <message>
+        <source>This turn</source>
+        <translation>本回合</translation>
+    </message>
+    <message>
+        <source>This game</source>
+        <translation>本局</translation>
+    </message>
+    <message>
+        <source>This phase</source>
+        <translation>本階段</translation>
+    </message>
+    <message>
+        <source>%1 count</source>
+        <translation>%1計數</translation>
+    </message>
+    <message>
+        <source>Custom scope</source>
+        <translation>自訂範圍</translation>
+    </message>
+    <message>
+        <source>%1 shared count, see %2</source>
+        <translation>%1共用次數，見 %2</translation>
+    </message>
+    <message>
+        <source>%1: used %2 / %3 times</source>
+        <translation>%1已使用 %2 / %3 次</translation>
+    </message>
+    <message>
+        <source> (shared count)</source>
+        <translation>（共用次數）</translation>
+    </message>
+    <message>
+        <source> (no uses currently available)</source>
+        <translation>（目前無可用額度）</translation>
+    </message>
+    <message>
+        <source>; %1 reserved, not yet committed</source>
+        <translation>；另有 %1 次預留，尚未提交</translation>
+    </message>
+    <message>
+        <source>Usage: %1</source>
+        <translation>使用情況：%1</translation>
+    </message>
+    <message>
+        <source>Skill state: %1: %2</source>
+        <translation>技能狀態：%1：%2</translation>
+    </message>
+    <message>
+        <source>Modification: %1: %2</source>
+        <translation>受到的修改：%1：%2</translation>
+    </message>
+    <message>
+        <source>Skill state: %1 more entries (see technical details)</source>
+        <translation>技能狀態：另有 %1 項記錄（見技術資料）</translation>
+    </message>
+    <message>
+        <source>%1 modified by: %2</source>
+        <translation>%1 修改來源：%2</translation>
+    </message>
+    <message>
+        <source>Modified by: %1</source>
+        <translation>修改來源：%1</translation>
+    </message>
+    <message>
+        <source>Modification reason: %1</source>
+        <translation>修改原因：%1</translation>
+    </message>
+    <message>
+        <source>Absolute override amountOverride: %1</source>
+        <translation>數值覆寫（絕對值） amountOverride: %1</translation>
+    </message>
+    <message>
+        <source>Technical details</source>
+        <translation>技術資料</translation>
+    </message>
+    <message>
+        <source>Current effects</source>
+        <translation>目前受到的效果</translation>
+    </message>
+    <message>
+        <source>; %1</source>
+        <translation>；%1</translation>
+    </message>
+    <message>
+        <source>Limited effect</source>
+        <translation>限定效果</translation>
+    </message>
+    <message>
+        <source>Custom reset period</source>
+        <translation>自訂重設週期</translation>
     </message>
 </context>
 <context>

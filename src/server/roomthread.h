@@ -5,6 +5,7 @@
 
 #include <QHash>
 #include <QSet>
+#include <atomic>
 
 class GameRule;
 
@@ -54,6 +55,8 @@ public:
     // Invalidates only the client-facing distanceTo_* synchronization cache.
     // Server-side game rules continue to call Player::distanceTo() directly.
     void markDistanceCacheDirty();
+    void markSkillDescriptionsDirty();
+    void refreshSkillDescriptions();
 
     void addPlayerSkills(ServerPlayer *player, bool invoke_game_start = false);
 
@@ -102,6 +105,8 @@ private:
 
     Room *room;
     bool m_playerUiStateDirty = false;
+    std::atomic_bool m_skillDescriptionsDirty{true};
+    bool m_refreshingSkillDescriptions = false;
     bool m_distanceCacheDirty = false;
     bool m_perfTraceEnabled;
     int m_profileRoomId;

@@ -205,6 +205,10 @@ void ClientPlayer::applyVisibleZones(const QVariantMap &data)
 
 void ClientPlayer::applyRuleEffects(const QVariantMap &data)
 {
+    const QVariantMap uiState = data.value(QStringLiteral("ui_state")).toMap();
+    setSkillDescriptionState(uiState.value(QStringLiteral("skillUsage")).toMap(),
+                            uiState.value(QStringLiteral("skillValidity")).toMap(),
+                            uiState.value(QStringLiteral("skillEffects")).toList());
     // Missing skill_instances is an empty snapshot, not "keep the previous
     // instances". Reconnect and later syncs would otherwise retain stale effects.
     clearSkillInstances();
