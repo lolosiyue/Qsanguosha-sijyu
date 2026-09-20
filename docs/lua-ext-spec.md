@@ -1492,9 +1492,12 @@ definition remains owned by its native definition owner.
 `ObserveOnly` and `ManagedReclaim` are lifetime-policy modes, not game modes.
 They describe whether eligible transient Cards are observed only or reclaimed
 at managed safe points; callers must not rely on either policy being the
-current default. The product headless runner accepts only the registered real
-game modes `08p` and `20p`. The `30p` and `50p` values are synthetic
-actor-count stress rows only and are not product modes.
+current default. The product headless runner queries the registered real game
+modes, with a built-in fallback list when the server is unavailable. The
+`50p` mode is now registered as an experimental identity game with one lord,
+23 loyalists, 25 rebels and one renegade; its desktop UI and full-game acceptance
+remain separate gates. The unregistered `30p` value remains a synthetic
+actor-count stress row, not a product mode.
 
 Headless verification requires an explicit `--exe` and an explicit unsigned
 32-bit `--seed`; there is no hardcoded executable default and no implicit

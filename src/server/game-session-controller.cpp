@@ -1,5 +1,6 @@
 #include "game-session-controller.h"
 
+#include "ai.h"
 #include "banpair.h"
 #include "card-movement-service.h"
 #include "engine.h"
@@ -1004,6 +1005,18 @@ void GameSessionController::run()
 	prepareForStart();
 	if (m_room.isFinished())
 		return;
+	if (m_room.property("to_test").toString() == QLatin1String("headless")) {
+		// SmartAI needs the complete roster and assigned roles before its first query.
+		int smartAiCount = 0;
+		const QList<ServerPlayer *> players = m_room.getPlayers();
+		foreach (ServerPlayer *player, players) {
+			m_room.resetAI(player);
+			if (dynamic_cast<LuaAI *>(player->getSmartAI()))
+				++smartAiCount;
+		}
+		Server::writeHeadlessLog(QString("[AUTOTEST] pre-game AI: SmartAI=%1 fallback=%2")
+			.arg(smartAiCount).arg(players.size() - smartAiCount));
+	}
 
 	bool using_countdown = !m_room._virtual&&m_room.property("to_test").toString().isEmpty();
 
@@ -1306,6 +1319,10 @@ void GameSessionController::startGame()
 	// otherwise clients appear to be selecting generals one seat at a time.
 	foreach (ServerPlayer *player, players) {
 		// setup AI
+		// Headless SmartAI already owns pre-game decisions and is registered in ais.
+		if (m_room.property("to_test").toString() == QLatin1String("headless")
+			&& player->getSmartAI())
+			continue;
 		AI*ai = m_room.cloneAI(player);
 		m_room.ais << ai;
 		player->setAI(ai);
