@@ -12,6 +12,7 @@
 #include "banipdialog.h"
 #ifdef Q_OS_ANDROID
 #include "android-content-dialog.h"
+#include "floatingball.h"
 #endif
 #include "recorder.h"
 #include "lua.hpp"
@@ -336,7 +337,9 @@ MainWindow::MainWindow(QWidget *parent)
 	pageStack->addWidget(gameView);
 
 	setCentralWidget(pageStack);
-#if QSAN_ENABLE_QML
+#if QSAN_ENABLE_QML && !defined(Q_OS_ANDROID)
+	// Android's native QtWindow consumes touch on this full-page Tool window;
+	// desktop mouse-input transparency does not pass it to the room underneath.
 	m_pointerOverlay = new PointerEffectOverlay(this);
 #endif
 	restoreFromConfig();
@@ -922,37 +925,50 @@ void MainWindow::showGamePage(QGraphicsScene *newScene)
 #ifdef Q_OS_ANDROID
 void MainWindow::setupAndroidUi()
 {
-	m_androidMenuButton = new QToolButton(pageStack);
-	m_androidMenuButton->setObjectName(QStringLiteral("androidOverflowButton"));
-	m_androidMenuButton->setText(QStringLiteral("\u22EE"));
-	m_androidMenuButton->setToolTip(tr("More actions"));
-	m_androidMenuButton->setAccessibleName(tr("More actions"));
-	m_androidMenuButton->setMinimumSize(QSize(52, 52));
-	m_androidMenuButton->setAutoRaise(false);
-	m_androidMenu = new QMenu(m_androidMenuButton);
-	m_androidMenu->addAction(tr("Resources and extensions..."), this, [this]() {
+	m_androidMenuButton = new FloatingBall(pageStack);
+	m_androidMenuButton->setToolTip(tr("Floating menu"));
+	m_androidMenuButton->setAccessibleName(tr("Floating menu"));
+	auto *resources = new QAction(tr("Resources and extensions..."), m_androidMenuButton);
+	connect(resources, &QAction::triggered, this, [this]() {
 		AndroidContentDialog::openManager(this);
 	});
-	m_androidMenu->addSeparator();
-	// Reuse the same actions and RoomScene presentation draft as the desktop.
+	// L2 only: reuse live desktop actions; skills and player details stay on the table.
+	for (QAction *action : {ui->actionGeneral_Overview, ui->actionCard_Overview,
+		ui->actionScenario_Overview, ui->actionConfigure, resources,
+		ui->actionServerInformation, ui->actionSaveRecord, ui->actionPause_Resume,
+		ui->actionHide_Show_chat_box, ui->actionSurrender})
+		m_androidMenuButton->addPanelAction(action);
 	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameStateSnapshot")))
-		m_androidMenu->addAction(action);
+		m_androidMenuButton->addPanelAction(action);
 	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameControlPanel")))
-		m_androidMenu->addAction(action);
-    if (auto *action = findChild<QAction *>(QStringLiteral("actionRoomPlayerInspector")))
-        m_androidMenu->addAction(action);
-	m_androidMenu->addAction(ui->actionView_Discarded);
-	m_androidMenu->addAction(ui->actionView_distance);
-	m_androidMenu->addAction(ui->actionView_Maxcards);
-	m_androidMenu->addAction(ui->actionServerInformation);
-	m_androidMenu->addAction(ui->actionSaveRecord);
-	m_androidMenu->addAction(ui->actionPause_Resume);
-	m_androidMenu->addAction(ui->actionHide_Show_chat_box);
-	m_androidMenu->addAction(ui->actionSurrender);
-	m_androidMenuButton->setMenu(m_androidMenu);
-	m_androidMenuButton->setPopupMode(QToolButton::InstantPopup);
+		m_androidMenuButton->addPanelAction(action);
+	// Child actions alone do not inherit their parent menu's cheat permission.
+	for (QAction *action : ui->menuCheat->actions())
+		if (!action->isSeparator())
+			m_androidMenuButton->addPanelAction(action, ui->menuCheat->menuAction());
 	m_androidMenuButton->hide();
+	connect(qApp->inputMethod(), &QInputMethod::keyboardRectangleChanged,
+		this, &MainWindow::updateAndroidSafeArea);
+	connect(qApp->inputMethod(), &QInputMethod::visibleChanged,
+		this, &MainWindow::updateAndroidSafeArea);
+	connect(pageStack, &QStackedWidget::currentChanged, this, [this]() {
+		if (pageStack->currentWidget() != gameView)
+			m_androidMenuButton->hide();
+	});
+	pageStack->installEventFilter(this);
+	installEventFilter(this);
 	updateAndroidSafeArea();
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+	if ((watched == pageStack && (event->type() == QEvent::Resize
+			|| event->type() == QEvent::Move || event->type() == QEvent::Show))
+		|| (watched == this && event->type() == QEvent::SafeAreaMarginsChange)) {
+		// Wait for the page layout to settle before mapping safe-area coordinates.
+		QTimer::singleShot(0, this, &MainWindow::updateAndroidSafeArea);
+	}
+	return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::updateAndroidSafeArea()
@@ -967,12 +983,14 @@ void MainWindow::updateAndroidSafeArea()
 	QRect keyboardRect = qApp->inputMethod()->keyboardRectangle().toRect();
 	if (QWindow *focusWindow = QGuiApplication::focusWindow())
 		keyboardRect.translate(focusWindow->mapToGlobal(QPoint(0, 0)));
-	if (!keyboardRect.isEmpty() && windowRect.intersects(keyboardRect))
+	if (qApp->inputMethod()->isVisible() && !keyboardRect.isEmpty() && windowRect.intersects(keyboardRect))
 		margins.setBottom(qMax(margins.bottom(), qBound(0,
 			windowRect.bottom() - keyboardRect.top() + 1, windowRect.height())));
-	const int right = qMax(8, margins.right() + 8);
-	const int top = qMax(8, margins.top() + 8);
-	m_androidMenuButton->move(pageStack->width() - m_androidMenuButton->width() - right, top);
+	// Convert window-local insets to pageStack coordinates (the menu bar is outside it).
+	const QRect safeRect = rect().marginsRemoved(margins);
+	const QRect pageSafeRect(pageStack->mapFrom(this, safeRect.topLeft()), safeRect.size());
+	m_androidMenuButton->setAvailableGeometry(
+		pageSafeRect.intersected(pageStack->rect()).adjusted(8, 8, -8, -8));
     gameView->setStableSafeAreaMargins(systemMargins);
 	gameView->setSafeAreaMargins(margins);
 	if (scene) {

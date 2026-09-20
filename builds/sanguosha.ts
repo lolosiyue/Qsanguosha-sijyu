@@ -3303,6 +3303,14 @@
 <context>
     <name>MainWindow</name>
     <message>
+        <source>Floating menu</source>
+        <translation>懸浮選單</translation>
+    </message>
+    <message>
+        <source>Resources and extensions...</source>
+        <translation>資源與擴展……</translation>
+    </message>
+    <message>
         <source>Maiden at prayer</source>
         <translation>少女祈禱中</translation>
     </message>
