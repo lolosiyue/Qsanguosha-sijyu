@@ -6627,12 +6627,12 @@ void Room::saveSnapshot(const QString &type, const QString &playerName)
 	m_snapshotService->saveSnapshot(type, playerName);
 }
 
-GameSnapshot* Room::getSnapshot(int turnCount) const
+QSharedPointer<GameSnapshot> Room::getSnapshot(int turnCount) const
 {
 	return m_snapshotService->getSnapshot(turnCount);
 }
 
-GameSnapshot* Room::getSnapshotBySerial(quint64 turnSerial) const
+QSharedPointer<GameSnapshot> Room::getSnapshotBySerial(quint64 turnSerial) const
 {
 	return m_snapshotService->getSnapshotBySerial(turnSerial);
 }

@@ -1,4 +1,5 @@
 #include "game-snapshot.h"
+#include "snapshot-json-writer.h"
 
 #include "serverplayer.h"
 #include "room.h"
@@ -1308,7 +1309,7 @@ GameSnapshot::GameSnapshot(const QString &filepath, QObject *parent)
     load(filepath);
 }
 
-bool GameSnapshot::save(const QString &filepath)
+bool GameSnapshot::save(const QString &filepath, SaveMode mode)
 {
     m_error.clear();
     if (m_snapshotType != QStringLiteral("turn")) {
@@ -1325,6 +1326,90 @@ bool GameSnapshot::save(const QString &filepath)
     if (!validateState(m_state, &validationError)) {
         m_error = validationError;
         return false;
+    }
+    // Win32 avoids simultaneously materializing the journal, JSON tree and bytes.
+    if (mode == SaveMode::Streaming
+        || (mode == SaveMode::PlatformDefault && sizeof(void *) == 4)) {
+        const QFileInfo info(filepath);
+        if (!QDir().mkpath(info.absolutePath())) {
+            m_error = QStringLiteral("cannot create snapshot directory");
+            return false;
+        }
+        QSaveFile file(filepath);
+        if (!file.open(QIODevice::WriteOnly)) {
+            m_error = file.errorString();
+            return false;
+        }
+        SnapshotJsonWriter writer(file);
+        writer.beginObject();
+        writer.field(QStringLiteral("format"), takeoverFormat());
+        writer.field(QStringLiteral("schemaVersion"), TakeoverSchemaVersion);
+        writer.field(QStringLiteral("timestamp"), isoDateWithMilliseconds(m_timestamp));
+        writer.field(QStringLiteral("replayPath"), m_replayPath);
+        writer.field(QStringLiteral("snapshotType"), m_snapshotType);
+        writer.field(QStringLiteral("description"), m_description);
+        writer.key(QStringLiteral("state"));
+        writer.beginObject();
+        writer.field(QStringLiteral("stateVersion"), TakeoverSchemaVersion);
+        writer.field(QStringLiteral("turnCount"), m_state.turnCount);
+        writer.field(QStringLiteral("roundCount"), m_state.roundCount);
+        writer.field(QStringLiteral("turnSerial"), QString::number(m_state.turnSerial));
+        writer.field(QStringLiteral("currentPlayer"), m_state.currentPlayer);
+        writer.field(QStringLiteral("currentPhase"), m_state.currentPhase);
+        writer.field(QStringLiteral("gameMode"), m_state.gameMode);
+        writer.field(QStringLiteral("packages"), m_state.packages);
+        writer.key(QStringLiteral("drawPile"));
+        writer.beginArray();
+        for (int id : m_state.drawPile) writer.value(id);
+        writer.endArray();
+        writer.key(QStringLiteral("discardPile"));
+        writer.beginArray();
+        for (int id : m_state.discardPile) writer.value(id);
+        writer.endArray();
+        writer.key(QStringLiteral("players"));
+        writer.beginArray();
+        for (const PlayerSnapshot &player : m_state.players) writer.value(player.serialize());
+        writer.endArray();
+        writer.field(QStringLiteral("seatOrder"), m_state.seatOrder);
+        writer.key(QStringLiteral("cards"));
+        writer.beginArray();
+        for (const CardSnapshot &card : m_state.cards) writer.value(card.serialize());
+        writer.endArray();
+        writer.key(QStringLiteral("cardPlaces"));
+        writer.beginObject();
+        for (auto it = m_state.cardPlaces.cbegin(); it != m_state.cardPlaces.cend(); ++it)
+            writer.field(QString::number(it.key()), it.value());
+        writer.endObject();
+        writer.key(QStringLiteral("cardOwners"));
+        writer.beginObject();
+        for (auto it = m_state.cardOwners.cbegin(); it != m_state.cardOwners.cend(); ++it)
+            writer.field(QString::number(it.key()), it.value());
+        writer.endObject();
+        writer.field(QStringLiteral("roomTags"), m_state.roomTags);
+        writer.field(QStringLiteral("chatHistory"), m_state.chatHistory);
+        writer.field(QStringLiteral("catalogFingerprint"), m_state.catalogFingerprint);
+        writer.field(QStringLiteral("configFingerprint"), m_state.configFingerprint);
+        writer.field(QStringLiteral("gameplayRng"), m_state.gameplayRng.serialize());
+        writer.field(QStringLiteral("aiRng"), m_state.aiRng.serialize());
+        writer.field(QStringLiteral("pendingExtraTurns"), m_state.pendingExtraTurns);
+        writer.field(QStringLiteral("luaTakeoverState"), m_state.luaTakeoverState);
+        writer.key(QStringLiteral("resolutionHistory"));
+        m_state.resolutionHistory.writeJson(writer);
+        writer.field(QStringLiteral("unsupportedState"), m_state.unsupportedState);
+        writer.field(QStringLiteral("eligible"), m_state.eligible);
+        writer.field(QStringLiteral("ineligibleReason"), m_state.ineligibleReason);
+        writer.endObject();
+        writer.endObject();
+        if (!writer.finish()) {
+            m_error = writer.error();
+            file.cancelWriting();
+            return false;
+        }
+        if (!file.commit()) {
+            m_error = file.errorString();
+            return false;
+        }
+        return true;
     }
     QVariantMap root;
     root[QStringLiteral("format")] = takeoverFormat();
@@ -1363,7 +1448,7 @@ bool GameSnapshot::save(const QString &filepath)
     return true;
 }
 
-bool GameSnapshot::load(const QString &filepath)
+bool GameSnapshot::load(const QString &filepath, const QByteArray &expectedSha256)
 {
     m_error.clear();
     QFile file(filepath);
@@ -1371,8 +1456,17 @@ bool GameSnapshot::load(const QString &filepath)
         m_error = file.errorString();
         return false;
     }
+    QByteArray bytes = file.readAll();
+    if (file.error() != QFileDevice::NoError
+        || (!expectedSha256.isEmpty()
+            && QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()
+               != expectedSha256)) {
+        m_error = QStringLiteral("snapshot read or hash verification failed");
+        return false;
+    }
     QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    const QJsonDocument document = QJsonDocument::fromJson(bytes, &parseError);
+    bytes.clear();
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         m_error = QStringLiteral("invalid snapshot JSON: %1").arg(parseError.errorString());
         return false;

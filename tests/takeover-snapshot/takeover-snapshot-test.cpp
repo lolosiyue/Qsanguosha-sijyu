@@ -1,4 +1,6 @@
 #include "game-snapshot.h"
+#include "game-snapshot-service.h"
+#include "snapshot-json-writer.h"
 #include "game-rng.h"
 #include "engine-bootstrap.h"
 #include "engine.h"
@@ -17,6 +19,7 @@
 #include <algorithm>
 #include <functional>
 #include <QCoreApplication>
+#include <QBuffer>
 #include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -27,6 +30,7 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QTextStream>
+#include <limits>
 
 struct RoomTestAccess
 {
@@ -49,6 +53,23 @@ struct RoomTestAccess
     {
         room._virtual = true;
         room.startGame();
+    }
+};
+
+struct GameSnapshotServiceTestAccess
+{
+    static bool publish(GameSnapshotService &service,
+                        const QSharedPointer<GameSnapshot> &snapshot,
+                        const QString &path)
+    {
+        return service.publishSnapshot(snapshot, path, nullptr);
+    }
+    static int retainedPayloads(const GameSnapshotService &service)
+    {
+        int count = service.m_loadedSnapshot ? 1 : 0;
+        for (const auto &record : service.m_snapshots)
+            if (record.snapshot) ++count;
+        return count;
     }
 };
 
@@ -229,6 +250,168 @@ GlobalSnapshot validSnapshotState(quint64 turnSerial, int turnCount)
     state.cardOwners.insert(2, QStringLiteral("p1"));
     state.cardOwners.insert(3, QStringLiteral("p2"));
     return state;
+}
+
+bool streamingSnapshotMatchesBuffered()
+{
+    QTemporaryDir directory;
+    GlobalSnapshot state = validSnapshotState(9, 9);
+    QString longText(4095, QLatin1Char('x'));
+    longText += QChar(0xd83c);
+    longText += QChar(0xdfb4);
+    longText += QString(9000, QLatin1Char('y'));
+    state.roomTags.insert(QStringLiteral("long-text"), longText);
+    state.roomTags.insert(QStringLiteral("json"), QVariant::fromValue(QJsonObject{
+        {QStringLiteral("array"), QJsonArray{QJsonValue(), QJsonValue(QString()),
+                                         QJsonValue(longText)}}}));
+    ResolutionHistoryService history;
+    history.beginRound();
+    const QString escaped = QString::fromUtf8("牌\"\\\n\t") + QChar(1);
+    for (int i = 0; i < 600; ++i) {
+        const qint64 event = history.beginEvent(QStringLiteral("move_cards"),
+            {{QStringLiteral("text"), escaped},
+             {QStringLiteral("execution_id"), qint64(9007199254740993LL)}});
+        history.appendFact(event, QStringLiteral("move"),
+                           {{QStringLiteral("card_id"), i}});
+        history.finishEvent(event);
+    }
+    state.resolutionHistory = history.snapshot();
+    GameSnapshot snapshot;
+    snapshot.setState(state);
+    snapshot.setSnapshotType(QStringLiteral("turn"));
+    const QString buffered = directory.filePath(QStringLiteral("buffered.json"));
+    const QString streamed = directory.filePath(QStringLiteral("streamed.json"));
+    bool ok = expect(snapshot.save(buffered, GameSnapshot::SaveMode::Buffered),
+                     QStringLiteral("buffered fixture save"));
+    ok = expect(snapshot.save(streamed, GameSnapshot::SaveMode::Streaming),
+                QStringLiteral("streamed fixture save: %1").arg(snapshot.getError())) && ok;
+    const QJsonObject expected = readObject(buffered);
+    ok = expect(!expected.isEmpty() && expected == readObject(streamed),
+                QStringLiteral("streamed schema and values equal buffered output")) && ok;
+    GameSnapshot restored;
+    ok = expect(restored.load(streamed)
+                    && restored.getState().resolutionHistory.serialize()
+                       == state.resolutionHistory.serialize(),
+                QStringLiteral("streamed history restores exact ids and payload")) && ok;
+    // A late serialization failure must never replace an existing good snapshot.
+    state.roomTags.insert(QStringLiteral("unsafe"), std::numeric_limits<double>::infinity());
+    snapshot.setState(state);
+    ok = expect(!snapshot.save(streamed, GameSnapshot::SaveMode::Streaming)
+                    && !snapshot.getError().isEmpty() && readObject(streamed) == expected,
+                QStringLiteral("failed stream preserves committed snapshot")) && ok;
+    return ok;
+}
+
+class ShortWriteDevice : public QIODevice
+{
+public:
+    QByteArray bytes;
+    qint64 failAfter = -1;
+    qint64 largestRequest = 0;
+    ShortWriteDevice() { open(QIODevice::WriteOnly); }
+protected:
+    qint64 readData(char *, qint64) override { return -1; }
+    qint64 writeData(const char *data, qint64 size) override
+    {
+        largestRequest = qMax(largestRequest, size);
+        if (failAfter >= 0 && bytes.size() >= failAfter) return -1;
+        const qint64 written = qMin(qint64(37), size);
+        bytes.append(data, int(written));
+        return written;
+    }
+};
+
+bool streamingWriterHandlesIoFailures()
+{
+    ShortWriteDevice device;
+    SnapshotJsonWriter writer(device);
+    writer.beginArray();
+    for (int i = 0; i < 5000; ++i) writer.value(QStringLiteral("escaped \" value\\\n"));
+    writer.endArray();
+    bool ok = expect(writer.finish() && device.largestRequest <= 64 * 1024
+                     && QJsonDocument::fromJson(device.bytes).array().size() == 5000,
+                     QStringLiteral("bounded stream handles partial writes"));
+    ShortWriteDevice failed;
+    failed.failAfter = 50;
+    SnapshotJsonWriter badWriter(failed);
+    badWriter.value(QString(1000, QLatin1Char('x')));
+    ok = expect(!badWriter.finish() && !badWriter.error().isEmpty(),
+                QStringLiteral("stream reports device failure")) && ok;
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly);
+    SnapshotJsonWriter unsafeWriter(buffer);
+    ok = expect(!unsafeWriter.value(QVariant::fromValue(qint64(9007199254740993LL)))
+                    && !unsafeWriter.finish(),
+                QStringLiteral("unsafe JSON integer rejected")) && ok;
+    return ok;
+}
+
+bool diskBackedSnapshotsRetainOnlyMetadata()
+{
+    QTextStream(stderr) << "[takeover] disk phase bootstrap\n";
+    QString error;
+    if (!expect(EngineBootstrap::initialize(false, &error),
+                QStringLiteral("disk snapshot engine bootstrap: %1").arg(error))) return false;
+    QTextStream(stderr) << "[takeover] disk phase room\n";
+    QTemporaryDir directory;
+    // This storage-only fixture never starts a game or touches the Room runtime;
+    // deferred initialization keeps the service contract test independent of Lua/AI startup.
+    Room room(nullptr, QStringLiteral("02p"), GameSessionConfig(424242),
+             Room::RuntimeInitializationPolicy::Deferred);
+    QTextStream(stderr) << "[takeover] disk phase service\n";
+    GameSnapshotService service(room, GameSnapshotService::StoragePolicy::DiskBacked);
+    const QString replay = directory.filePath(QStringLiteral("source.txt"));
+    service.setReplayPath(replay);
+    bool ok = writeBytes(replay, QByteArray(150000, 'r'));
+    QString firstPath;
+    for (int i = 1; i <= 8; ++i) {
+        QTextStream(stderr) << "[takeover] disk phase publish " << i << '\n';
+        QSharedPointer<GameSnapshot> snapshot(new GameSnapshot);
+        snapshot->setState(validSnapshotState(i, i));
+        snapshot->setSnapshotType(QStringLiteral("turn"));
+        const QString path = service.getSnapshotDir() + QLatin1Char('/')
+            + GameSnapshot::generateSnapshotFilename(i, QStringLiteral("turn"));
+        if (i == 1) firstPath = path;
+        if (!expect(snapshot->save(path, GameSnapshot::SaveMode::Streaming)
+                        && GameSnapshotServiceTestAccess::publish(service, snapshot, path),
+                    QStringLiteral("publish disk snapshot"))) return false;
+        QWeakPointer<GameSnapshot> weak(snapshot);
+        snapshot.clear();
+        ok = expect(weak.isNull()
+                        && GameSnapshotServiceTestAccess::retainedPayloads(service) == 0,
+                    QStringLiteral("published payload is released")) && ok;
+    }
+    QTextStream(stderr) << "[takeover] disk phase lazy-load\n";
+    auto first = service.getSnapshotBySerial(1);
+    ok = expect(first && first->getTurnSerial() == 1,
+                QStringLiteral("lazy load first snapshot")) && ok;
+    QWeakPointer<GameSnapshot> weakFirst(first);
+    auto second = service.getSnapshot(2);
+    ok = expect(second && second->getTurnSerial() == 2
+                    && first && first->getTurnSerial() == 1
+                    && GameSnapshotServiceTestAccess::retainedPayloads(service) == 1,
+                QStringLiteral("cache bounded and caller retains valid snapshot")) && ok;
+    first.clear();
+    ok = expect(weakFirst.isNull(), QStringLiteral("evicted payload released after caller")) && ok;
+    QTextStream(stderr) << "[takeover] disk phase manifest\n";
+    ok = expect(service.finalizeManifest(replay, &error),
+                QStringLiteral("metadata manifest publication: %1").arg(error)) && ok;
+    const QString targetReplay = directory.filePath(QStringLiteral("copy.txt"));
+    writeBytes(targetReplay, QByteArray(150000, 'r'));
+    const QString manifestPath = service.getSnapshotDir() + QStringLiteral("/manifest.json");
+    ok = expect(GameSnapshotService::copyFinalizedManifest(manifestPath, targetReplay, &error)
+                    && readObject(GameSnapshot::getSnapshotDir(targetReplay)
+                                  + QStringLiteral("/manifest.json"))
+                       .value(QStringLiteral("snapshots")).toArray().size() == 8,
+                QStringLiteral("streaming finalized manifest copy: %1").arg(error)) && ok;
+    QTextStream(stderr) << "[takeover] disk phase tamper\n";
+    auto cached = service.getSnapshotBySerial(1);
+    QFile tamper(firstPath);
+    if (tamper.open(QIODevice::Append)) { tamper.write(" "); tamper.close(); }
+    ok = expect(!service.getSnapshotBySerial(1)
+                    && !service.finalizeManifest(replay, &error),
+                QStringLiteral("cached snapshot tampering is rejected")) && ok;
+    return ok;
 }
 
 bool snapshotRoundTripAndStrictSchema()
@@ -852,8 +1035,21 @@ bool takeoverRestoresRoomState()
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
+    if (application.arguments().contains(QStringLiteral("--disk-storage-only"))) {
+        const bool ok = diskBackedSnapshotsRetainOnlyMetadata();
+        QTextStream(stderr) << "[takeover] disk storage " << (ok ? "PASS" : "FAIL") << '\n';
+        return ok ? 0 : 1;
+    }
+    if (application.arguments().contains(QStringLiteral("--storage-only"))) {
+        bool ok = streamingSnapshotMatchesBuffered();
+        ok = streamingWriterHandlesIoFailures() && ok;
+        QTextStream(stderr) << "[takeover] streaming storage " << (ok ? "PASS" : "FAIL") << '\n';
+        return ok ? 0 : 1;
+    }
+    bool storageOk = streamingSnapshotMatchesBuffered();
+    storageOk = streamingWriterHandlesIoFailures() && storageOk;
     QTextStream(stderr) << "[takeover] snapshot schema\n";
-    bool ok = snapshotRoundTripAndStrictSchema();
+    bool ok = snapshotRoundTripAndStrictSchema() && storageOk;
     QTextStream(stderr) << "[takeover] manifest binding\n";
     ok = manifestBindsReplayAndRejectsTamper() && ok;
     QTextStream(stderr) << "[takeover] replay state capture barrier\n";
@@ -862,6 +1058,8 @@ int main(int argc, char **argv)
     ok = diagnosticExporterWritesCanonicalBundle() && ok;
     QTextStream(stderr) << "[takeover] room restore\n";
     ok = takeoverRestoresRoomState() && ok;
+    QTextStream(stderr) << "[takeover] disk storage\n";
+    ok = diskBackedSnapshotsRetainOnlyMetadata() && ok;
     QTextStream(stderr) << "[takeover] complete\n";
     return ok ? 0 : 1;
 }

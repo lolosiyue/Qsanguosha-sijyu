@@ -1,4 +1,5 @@
 #include "resolution-history.h"
+#include "snapshot-json-writer.h"
 
 #include <QHash>
 #include <QList>
@@ -533,6 +534,52 @@ QVariantMap ResolutionHistorySnapshot::serialize() const
     QVariantList active; for (qint64 id : d->journal->active) active.append(idString(id));
     result.insert(QStringLiteral("active"), active);
     return result;
+}
+
+bool ResolutionHistorySnapshot::writeJson(SnapshotJsonWriter &writer) const
+{
+    if (!d || !d->journal) {
+        return writer.beginObject()
+            && writer.field(QStringLiteral("complete"), false)
+            && writer.endObject();
+    }
+    if (!writer.beginObject()) return false;
+    if (!writer.field(QStringLiteral("version"), 1)
+        || !writer.field(QStringLiteral("complete"), isComplete())
+        || !writer.field(QStringLiteral("next_id"), idString(d->journal->nextId))
+        || !writer.field(QStringLiteral("next_sequence"), idString(d->journal->nextSequence))
+        || !writer.field(QStringLiteral("round_scope_id"), idString(d->journal->roundScopeId))) return false;
+    if (!writer.key(QStringLiteral("events")) || !writer.beginArray()) return false;
+    for (const EventRecord &event : d->journal->events) {
+        if (!writer.beginObject()
+            || !writer.field(QStringLiteral("id"), idString(event.id))
+            || !writer.field(QStringLiteral("parent_id"), idString(event.parentId))
+            || !writer.field(QStringLiteral("kind"), event.kind)
+            || !writer.field(QStringLiteral("round_id"), idString(event.roundId))
+            || !writer.field(QStringLiteral("turn_id"), idString(event.turnId))
+            || !writer.field(QStringLiteral("phase_id"), idString(event.phaseId))
+            || !writer.field(QStringLiteral("status"), event.status)
+            || !writer.field(QStringLiteral("outcome"), event.outcome)
+            || !writer.field(QStringLiteral("data"), persistentPayload(event.data))
+            || !writer.endObject()) return false;
+    }
+    if (!writer.endArray() || !writer.key(QStringLiteral("facts")) || !writer.beginArray()) return false;
+    for (const FactRecord &fact : d->journal->facts) {
+        if (!writer.beginObject()
+            || !writer.field(QStringLiteral("id"), idString(fact.id))
+            || !writer.field(QStringLiteral("sequence"), idString(fact.sequence))
+            || !writer.field(QStringLiteral("event_id"), idString(fact.eventId))
+            || !writer.field(QStringLiteral("kind"), fact.kind)
+            || !writer.field(QStringLiteral("round_id"), idString(fact.roundId))
+            || !writer.field(QStringLiteral("turn_id"), idString(fact.turnId))
+            || !writer.field(QStringLiteral("phase_id"), idString(fact.phaseId))
+            || !writer.field(QStringLiteral("data"), persistentPayload(fact.data))
+            || !writer.endObject()) return false;
+    }
+    if (!writer.endArray() || !writer.key(QStringLiteral("active")) || !writer.beginArray()) return false;
+    for (qint64 id : d->journal->active)
+        if (!writer.value(idString(id))) return false;
+    return writer.endArray() && writer.endObject();
 }
 
 bool ResolutionHistorySnapshot::deserialize(const QVariantMap &serialized, ResolutionHistorySnapshot *snapshot, QString *error)

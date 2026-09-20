@@ -32,6 +32,8 @@ same portable folder or ISO `PAYLOAD/` tree.
 - `v141_xp`, Win32
 - Windows SDK 7.1A system libraries plus the v141 Universal CRT
 - Official Qt 5.6.3 MSVC 2015 x86 development/runtime tree
+  (installed locally at `H:\Qt563\5.6.3\msvc2015`; the MSVC2015-built binaries
+  link cleanly under `v141_xp` because they share the VC++ 14.x ABI)
 - `/Zc:threadSafeInit-` for the XP target
 
 `legacy/xp/tools/build-xp.ps1` is the only supported XP build/deploy entry point.
@@ -42,7 +44,7 @@ Pass the Qt tree explicitly. It must contain `bin/qmake.exe`, the Qt CMake
 packages, Release and Debug DLLs, and the required plugins:
 
 ```powershell
-$qt56 = "C:\Qt\5.6.3\msvc2015"
+$qt56 = "H:\Qt563\5.6.3\msvc2015"
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File legacy/xp/tools/build-xp.ps1 `
   -Configuration Release -QtRoot $qt56
@@ -64,7 +66,7 @@ Debug and Release use the same feature set. FMOD runtime names must remain
 `fmodexL.dll` for Debug and `fmodex.dll` for Release:
 
 ```powershell
-$qt56 = "C:\Qt\5.6.3\msvc2015"
+$qt56 = "H:\Qt563\5.6.3\msvc2015"
 
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File legacy/xp/tools/build-xp.ps1 `
