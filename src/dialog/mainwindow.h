@@ -35,8 +35,7 @@ struct ScenarioWorkSessionState;
 namespace ScenarioWork { struct WorkLaunch; struct StageRunResult; }
 #endif
 #ifdef Q_OS_ANDROID
-class QMenu;
-class QToolButton;
+class FloatingBall;
 #endif
 #ifdef QSAN_XP_LEGACY
 class LocalServerController;
@@ -107,6 +106,9 @@ protected:
     virtual void closeEvent(QCloseEvent *);
     void resizeEvent(QResizeEvent *event) override;
     void moveEvent(QMoveEvent *event) override;
+#ifdef Q_OS_ANDROID
+    bool eventFilter(QObject *watched, QEvent *event) override;
+#endif
 
 private:
     enum class MainPage {
@@ -251,8 +253,7 @@ private:
     bool m_androidLocalServerListening = false;
     bool m_androidApplicationBackgrounded = false;
     bool m_androidAwaitingStateSync = false;
-    QToolButton *m_androidMenuButton = nullptr;
-    QMenu *m_androidMenu = nullptr;
+    FloatingBall *m_androidMenuButton = nullptr;
 
     void setupAndroidUi();
     void updateAndroidSafeArea();

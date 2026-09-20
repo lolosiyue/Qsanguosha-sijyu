@@ -183,6 +183,12 @@ set(QSAN_SOURCES
     src/util/replay-index.cpp
 )
 
+if(ANDROID)
+    list(APPEND QSAN_SOURCES
+        src/ui/floatingball.cpp
+        src/ui/floatingball.h)
+endif()
+
 if(NOT QSAN_BUILD_XP_LEGACY)
     list(APPEND QSAN_SOURCES
         src/ui/room-overlay-host.cpp

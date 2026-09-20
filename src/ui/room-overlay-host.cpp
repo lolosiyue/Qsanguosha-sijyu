@@ -9,10 +9,13 @@
 #include <QComboBox>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QPainter>
+#include <QPixmap>
 #include <QPushButton>
 #include <QRegion>
 #include <QScrollArea>
@@ -70,7 +73,21 @@ void RoomOverlayHost::createPersistentUi()
 {
     m_launcher = new QToolButton(this);
     m_launcher->setObjectName(QStringLiteral("roomOverlayLauncher"));
-    m_launcher->setText(QStringLiteral("☰"));
+    // Draw the menu icon: the bundled Android font may not contain U+2630.
+    const qreal iconDpr = m_launcher->devicePixelRatioF();
+    QPixmap menuIcon(qRound(24 * iconDpr), qRound(24 * iconDpr));
+    menuIcon.setDevicePixelRatio(iconDpr);
+    menuIcon.fill(Qt::transparent);
+    {
+        QPainter painter(&menuIcon);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QPen(m_launcher->palette().color(QPalette::ButtonText),
+                            2, Qt::SolidLine, Qt::RoundCap));
+        for (int y : {6, 12, 18})
+            painter.drawLine(QPointF(4, y), QPointF(20, y));
+    }
+    m_launcher->setIcon(QIcon(menuIcon));
+    m_launcher->setIconSize(QSize(24, 24));
     m_launcher->setToolTip(tr("Room layout and views"));
     m_launcher->setAccessibleName(tr("Room layout and views"));
     setTouchSize(m_launcher);
