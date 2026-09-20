@@ -2,7 +2,7 @@
 
 > 本文行號為 2026-09-06 實測，僅供輔助對照；程式碼重構後行號會漂移，請一律以符號／函式名搜尋定位。
 
-> **2026-08-09 校對**：本文件已同步現行實作（skill-instance-refactor-plan.md:332 的待更新標記已清除）。多實例模型以 [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md) §2 為權威；SkillContext 現行欄位見 §核心資料結構。
+> **2026-08-09 校對**：本文件已同步現行實作。**2026-09-20**：多實例模型權威規格自 `skill-instance-refactor-plan.md`（Ticket 1–9 全部完成，檔案刪除）併入本文件「Instance ID 機制」與「多實例行為規格」節；SkillContext 現行欄位見 §核心資料結構。
 
 ## 概述
 
@@ -85,15 +85,15 @@ struct SkillContext {
 
 **已停用**：`Skill::m_instanceId`／`m_globalInstanceCount`（舊 Skill 物件級 ID）自 2026-07-16 重構後已廢止，現僅為 `src/core/skill.h` 中該二成員的未使用宣告（現約 :228-229，死碼）；`Skill::getInstanceId()` 已刪除。
 
-現行模型（權威：`docs/skill-instance-refactor-plan.md` §2）：
+現行模型（原 `skill-instance-refactor-plan.md` §2／§3 權威規格，2026-09-20 併入本節與下方「多實例行為規格」）：
 
 | 項目 | 說明 |
 |------|------|
-| `Skill` 物件 | Engine 全域共享定義，**不持有** instanceID，不 clone |
+| `Skill` 物件 | Engine 全域共享定義，**不持有** instanceID，不 clone；禁止恢復 `Skill::m_instanceId`、全域計數器或按 instance clone Skill QObject |
 | 權威容器 | `Player::m_skillInstances` = `QMap<QString, QMap<int, SkillInstance>>`（src/core/player.h，現約 :483，Single Source of Truth） |
-| ID 分配 | `Player::m_nextSkillInstanceIds` 每技能名單調遞增，**永不重用** |
-| ID 範圍 | 同一 `(player, skillName)` 內唯一；`0` = wildcard／未指定 |
-| `#N` 字串 | 僅為相容派生格式（`acquired_skills` 等舊容器同步用），非權威資料 |
+| ID 分配 | `Player::m_nextSkillInstanceIds` 每技能名單調遞增，**永不重用**；初始順序：主將 → 副將 → 按後天獲得時間 |
+| ID 範圍 | 同一 `(player, skillName)` 內唯一，一律為正整數；`0` = wildcard／未指定，不代表原生技能 |
+| `#N` 字串 | 僅為相容派生格式（`acquired_skills` 等舊容器同步用），非權威資料；舊 getter 字串清單由 `m_skillInstances` 派生 |
 
 ```cpp
 // 兼容字串格式（SkillInstanceUtils::formatName / parseName 集中處理）
@@ -104,6 +104,135 @@ struct SkillContext {
 ```
 
 所有 `#` 解析一律使用集中 helper（`SkillInstanceUtils::parseName`／`formatName`，src/core/skill-instance-utils.cpp），禁止散落 `indexOf('#')`。
+
+禁止長期保存 `QMap` 元素指標；需要時按 key 重新查詢。
+
+```cpp
+struct SkillInstanceKey {
+    QString skillName;
+    int instanceID;
+};
+
+struct SkillInstance {
+    QString skillName;
+    int instanceID;
+    SkillInstanceSource source;
+    SkillInstanceKey parent;   // 只供 related helper 使用；一般實例為空
+    bool visible;
+    QVariantMap state;
+};
+```
+
+**狀態生命週期**：
+
+- 每個實例持有獨立 `QVariantMap state`，只允許可序列化值（整數、布林、字串、ID、`QVariantList`、`QVariantMap` 等）。
+- 禁止保存 `ServerPlayer *`、`Card *`、`QObject *` 等裸指標；改存 objectName 或 card ID。
+- 實例移除後立即銷毀 state，不保留 tombstone；只保留同名技能的 next-ID 計數器。
+- 延遲事件引用不存在的實例時驗證失敗並跳過，不得復活舊 state 或改用其他同名實例。
+
+### 多實例行為規格
+
+#### 獲得技能
+
+- 每次呼叫 `Room::acquireSkill()` 都建立新實例；不新增 `ensureSkill()`。
+- 需要冪等的舊呼叫點由人工加入 `hasSkill()`／`ownsSkill()` 防重，禁止批量加掛。
+- `Player::acquireSkill()` 與 `Room::acquireSkill()` 回傳新 instanceID。
+- 一般後天獲得技能立即公開；可保留顯式綁定主將／副將來源的能力，國戰完整可見性非阻塞項。
+
+#### 原生技能
+
+- 原生同名技能也必須是不同實例。
+- 隱藏、暗置、重新明置不重建實例，也不更換 instanceID。
+- 真正更換或移除武將時才銷毀該來源實例。
+
+#### 移除技能
+
+- 移除 API 回傳實際移除的 instanceID；不存在候選時回傳 0，選擇不可取消。
+- 持有者失去多個同名技能之一時由持有者選擇。
+- A 主動棄置 B 技能實例由 Room API 提供：A 選擇 B 的可見實例；A 看不到的實例不得出現在候選；若 A 無可見候選但 B 有隱藏實例，引擎移除 instanceID 最小者。
+- 暫時失效或被封禁的實例仍可被移除；持有與有效性分離。
+
+#### related helper
+
+- 每個父技能實例建立自己的 related helper 實例；helper 用自己的同名技能 next-ID 計數器，ID 單調遞增不重用。
+- 父子關係必須顯式保存，不得靠父子 ID 相同推算。
+- helper 不進入玩家移除／棄置候選，只能隨父實例級聯移除；移除父實例時只刪除父鍵匹配的 helper。
+
+#### 持有與有效查詢
+
+```text
+hasSkill(name)       → 至少存在一個有效實例
+hasSkill(name, true) → 至少持有一個實例，不考慮失效
+ownsSkill(name)      → 明確的持有查詢
+```
+
+- 技能效果判定使用 `hasSkill()`；移除、來源與實例管理使用 `ownsSkill()`。
+- `SkillInvalidityRecords` 中 ID 0 封禁全部同名實例；正 ID 只封禁精確實例。
+
+#### 舊 TriggerSkill 與數值被動
+
+- 舊 `TriggerSkill` 即使持有多個實例仍只執行一次；只有 `TriggerSkillV2` 逐實例建立 `SkillContext` 獨立執行。
+- 需要實例狀態的舊 TriggerSkill 逐步遷移至 V2。
+- Legacy Distance／MaxCards／TargetMod／AttackRange 每個技能定義只計算一次；四個 CorrectSkillV2 類才依 selector 逐有效實例計算，詳見 `engine-correct-skills.md`。
+
+#### TriggerSkillV2 展開
+
+```text
+can_trigger return "skill"   → 展開持有者全部有效實例
+can_trigger return "skill#N" → 只建立指定實例的 SkillContext
+```
+
+- 展開後再次驗證 owner、持有、有效性與 instance state；不存在或無效的精確 ID 直接忽略。
+- `on_record` 按每個現存實例逐一呼叫，context 帶 owner、skill_name、instanceID、original_data、current_event。
+- `triggerCounts`、`maxMultipliers`、`triggeredSkills`、`selected_ctx` 與選項驗證一律使用 `(owner, skillName, instanceID)`；禁止只用 `skillName#instanceID` 的 Room 全域 key，避免不同玩家碰撞。
+
+#### 事件資料
+
+不新增 `EventAcquireSkillInstance`／`EventLoseSkillInstance`；每次建立／移除實例觸發既有 `EventAcquireSkill`／`EventLoseSkill`，data 為 `SkillChangeStruct`：
+
+```cpp
+struct SkillChangeStruct {
+    QString skillName;
+    int instanceID;
+    SkillInstanceSource source;
+    QString parentSkillName;
+    int parentInstanceID;
+    bool visible;
+};
+```
+
+- C++ `data.toString()` 與 Lua `data:toString()` 永遠回傳基礎技能名；C++ 新碼用 `data.value<SkillChangeStruct>()`，Lua 新碼用 `data:toSkillChange()`。
+- 舊監聽者會在每次實例獲得／失去時執行，語意不正確者列入人工審核（見 `skill-instance-callsite-audit.md`）。
+
+#### 客戶端 UI
+
+- 每個實例顯示獨立技能按鈕，按鈕內部 canonical key 使用 `skill#N`。
+- 定義查詢前必須解析 baseName，不得向 Engine 查 `skill#N`；`#helper#2` 解析為 baseName=`#helper`、ID=2。
+- 同名只有一個實例時按鈕顯示翻譯技能名、不顯示 ID；多於一個時顯示「翻譯技能名 #N」；1→2 或 2→1 時刷新全部同名按鈕標籤；按 instanceID 升序排列。
+- 右方公開 log 永遠只顯示基礎技能名，不顯示 ID。
+
+#### Card／CardUseStruct
+
+- ViewAs／主動技能產生的卡牌有獨立 `skillInstanceID`；`skillName` 保持基礎名稱，不得改成 `skill#N`。
+- instanceID 必須穿過 Card、CardUseStruct、客戶端回覆、伺服器驗證、事件及重播；新 UI 按鈕傳送精確 ID。
+- 舊 Lua／AI 傳 0 時，伺服器解析為使用者最小的有效同名實例，沒有有效實例才拒絕；fallback 解析後立即寫回精確 ID，後續流程不得重新 fallback。
+- 卡牌合法開始使用後，即使技能實例中途消失 CardUse 仍繼續完成；後續依賴已移除 instance state 的技能回調驗證失敗後跳過，不保留 state 副本或改用另一實例。
+
+#### 同步與資訊邊界
+
+- 初始化與重連由伺服器發送完整、依接收者權限裁切的 SkillInstance metadata snapshot；遊戲中用 acquire／detach 增量通知；客戶端不得自行分配 instanceID。
+- 同步公開 metadata（含 `correct_state`／amount）。
+- **`QVariantMap state` 為 owner-only 同步**：僅發送給持有者本人（snapshot／upsert metadata.`state` 及增量 set/remove/clear/replace）；其他座位不得收到他人私有 state。寫入走 `ServerPlayer` 對 `setSkillInstanceState*` 的覆寫自動 `notifySkillInstanceState`。
+- 需要給所有人看的狀態仍用 mark、property 或專用通知（例如頭像 `&` display mark）。
+
+#### 明確延後範圍
+
+- EquipSkill 納入 Player SkillInstance；裝備繼續使用 card ID。
+- 舊 TriggerSkill 逐實例遷移。
+- 國戰所有技能類型與 related helper 的完整暗置有效性。
+- 任意 instance state 的客戶端同步。
+
+已確認的國戰最小規則：隱藏／暗置不重建實例；TriggerV2 cost/pay 成功後、`EventSkillInvoking` 前可明置來源。
 
 ## TriggerSkillV2 類定義
 

@@ -389,7 +389,7 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 |---|---|
 | Engine 規格摘要 | [`engine-correct-skills.md`](engine-correct-skills.md) |
 | 驗證矩陣 | 原 `correct-skill-v2-test-matrix.md` 已於 2026-09-12 併入 §16.1 後刪除（其「待重審」狀態欄一併棄置，未重審項見 §16.1 待補清單） |
-| 多實例總體設計 | [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md)（現行權威；舊「multi-skill-instance-design」設計未採納，原文檔 2026-09-12 已刪除，見 git 歷史） |
+| 多實例總體設計 | [`TriggerSkillV2系統說明.md`](TriggerSkillV2系統說明.md)「Instance ID 機制／多實例行為規格」（現行權威；原 `skill-instance-refactor-plan.md` 2026-09-20 併入後刪除，更早的「multi-skill-instance-design」未採納，見 git 歷史） |
 | C++ 類別與 context | `src/core/skill.h`、`src/core/skill.cpp` |
 | amount／correctState Room API | `src/server/room.h`、`src/server/room.cpp` |
 | Lua factory | `lua/sgs_ex.lua` |

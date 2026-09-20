@@ -10,9 +10,8 @@
 
 | 文檔 | 說明 |
 |------|------|
-| [skill-instance-refactor-plan.md](skill-instance-refactor-plan.md) | 技能多實例（SkillInstance）模型的權威設計與 ticket 狀態 |
-| [active-skill-v2-refactor-plan.md](active-skill-v2-refactor-plan.md) | ViewAsSkillV2 權威契約（usage ref、selection 邊界）；依賴上項 |
-| [TriggerSkillV2系統說明.md](TriggerSkillV2系統說明.md) | TriggerSkillV2 觸發技能系統（SkillContext、V2 分表、排序） |
+| [active-skill-v2-refactor-plan.md](active-skill-v2-refactor-plan.md) | ViewAsSkillV2 權威契約（usage ref、selection 邊界）；依賴多實例模型 |
+| [TriggerSkillV2系統說明.md](TriggerSkillV2系統說明.md) | TriggerSkillV2 觸發技能系統（SkillContext、V2 分表、排序）＋技能多實例權威模型（原 `skill-instance-refactor-plan.md`） |
 | [CorrectSkillV2功能與開發指南.md](CorrectSkillV2功能與開發指南.md) | 四類修正技能開發指南；§16.1 為 Room integration 驗證期望 |
 | [engine-correct-skills.md](engine-correct-skills.md) | CorrectSkillV2 引擎側快參（類別、selector、snapshot 欄位） |
 | [active-skill-v2-migration-guide.md](active-skill-v2-migration-guide.md) | 舊 ViewAsSkill 遷移至 V2 的規範 |
