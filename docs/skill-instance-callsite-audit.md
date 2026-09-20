@@ -1,6 +1,6 @@
 # 技能實例舊呼叫點人工審核清單
 
-> **存檔快照（2026-08-21 校對；2026-09-06 統計複測）**：本文為 2026-07-16 靜態審核快照，只記錄與分類。`acquireSkill()` 呼叫點現況已漂移（文檔 660 處 vs 現況約 705 處：src 的 cpp/h 約 200 處＋extensions/lua 約 505 處），**本文計數與清單不得當現況**。現行規格以 [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md) 為準。
+> **存檔快照（2026-08-21 校對；2026-09-06 統計複測）**：本文為 2026-07-16 靜態審核快照，只記錄與分類。`acquireSkill()` 呼叫點現況已漂移（文檔 660 處 vs 現況約 705 處：src 的 cpp/h 約 200 處＋extensions/lua 約 505 處），**本文計數與清單不得當現況**。現行規格以 [`TriggerSkillV2系統說明.md`](TriggerSkillV2系統說明.md)「Instance ID 機制／多實例行為規格」為準（原 `skill-instance-refactor-plan.md` 2026-09-20 併入後刪除）。
 
 盤點日期：2026-07-16。此文件只記錄與分類，不批量修改 `acquireSkill()` 呼叫點。
 
