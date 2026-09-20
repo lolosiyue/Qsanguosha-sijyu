@@ -440,13 +440,16 @@ ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &fr
 
 DashboardGeometry computeDashboard(const QSizeF &available, double handHeight,
     const QSizeF &equipment, const QSizeF &avatar,
-    Handedness handedness)
+    Handedness handedness, double skillHeight, double cardLift)
 {
     DashboardGeometry result;
     const double gap = 8.0;
     const double heroWidth = qMin(avatar.width(), qMin(210.0, available.width() * 0.32));
     result.footerScale = heroWidth / qMax(1.0, avatar.width());
-    result.height = qMax(handHeight, avatar.height() * result.footerScale);
+    // Reserve the full raised second row, not just the resting card rectangle.
+    const double skillBottom = 48.0 + gap + qMax(48.0, skillHeight);
+    result.height = qMax(skillBottom + gap + cardLift + handHeight + 4.0,
+        48.0 + gap + avatar.height() * result.footerScale);
     const double height = available.height() > 0.0 ? available.height() : result.height;
     const double heroHeight = avatar.height() * result.footerScale;
     result.avatarPosition = QPointF(available.width() - heroWidth, qMax(0.0, height - heroHeight));
@@ -456,6 +459,10 @@ DashboardGeometry computeDashboard(const QSizeF &available, double handHeight,
     result.equipmentPosition = QPointF(result.avatarPosition.x() + (heroWidth - equipment.width() * result.equipmentScale) / 2,
         height - equipment.height() * result.equipmentScale);
     result.handRect = QRectF(0, 0, qMax(1.0, available.width() - heroWidth - gap), height);
+    result.skillRect = QRectF(0, 48.0 + gap, result.handRect.width(),
+        skillBottom - 48.0 - gap);
+    result.handRowRect = QRectF(gap, height - handHeight - 4.0,
+        qMax(1.0, result.handRect.width() - 2.0 * gap), handHeight);
     const double primaryWidth = qMax(1.0, (result.handRect.width() - gap) / 2.0);
     const QRectF leftAction(0, 0, primaryWidth, 48);
     const QRectF rightAction(primaryWidth + gap, 0, primaryWidth, 48);

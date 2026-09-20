@@ -307,6 +307,7 @@ protected:
     void _createMiddle();
     void _updateFrames();
     void _updateResponsiveFrames();
+    void _layoutStatusItems() override;
     RoomLayoutEngine::DashboardGeometry _responsiveGeometry(const QSizeF &size) const;
     QSizeF m_responsiveSize;
     RoomLayoutEngine::Handedness m_handedness = RoomLayoutEngine::Handedness::None;

@@ -464,6 +464,32 @@ int runRoomLayoutEngineTests()
             }
         }
     }
+    // A selected card on the second row must clear skills and all four actions.
+    // Cover phone widths and both single/double-general native frames.
+    for (int width : {320, 360, 390, 430}) {
+        for (int avatarWidth : {171, 341}) {
+            const QSizeF equipment(164, 170), avatar(avatarWidth, 200);
+            const double cardHeight = 130.0;
+            const double rowLift = 37.5, selectionLift = 25.0;
+            for (double skillHeight : {48.0, 72.0, 96.0}) {
+                const auto measured = computeDashboard(QSizeF(width, 0), cardHeight,
+                    equipment, avatar, Handedness::None, skillHeight, rowLift + selectionLift);
+                const auto native = computeDashboard(QSizeF(width, measured.height), cardHeight,
+                    equipment, avatar, Handedness::None, skillHeight, rowLift + selectionLift);
+                const QRectF raised = native.handRowRect.translated(0, -rowLift - selectionLift);
+                const QRectF hero(native.avatarPosition, avatar * native.footerScale);
+                if (raised.top() < native.skillRect.bottom() + 8.0
+                    || raised.intersects(hero) || native.handRowRect.intersects(hero))
+                    return failed(56, "raised portrait hand clears skill dock and hero");
+                for (const QRectF &action : {native.confirmRect, native.cancelRect,
+                        native.finishRect, native.trustRect}) {
+                    if (action.intersects(raised) || action.intersects(native.skillRect)
+                        || action.intersects(hero))
+                        return failed(57, "portrait controls clear skills, raised cards and hero");
+                }
+            }
+        }
+    }
     headerInput.photoCount = 1;
     const auto duel = computeResponsive(headerInput);
     if (duel.photos.size() != 1 || !duel.photos.first().visible

@@ -1398,8 +1398,9 @@ void RoomScene::applyResponsiveLayout()
     input.promptHeight = prompt_box->boundingRect().height() + 16.0;
     const qreal scale = qBound<qreal>(1.0, Config.UIScale, 2.0);
     input.smallPhotoSize = legacy.smallPhotoSize * scale;
+    const bool portrait = input.stableRect.height() > input.stableRect.width();
     const bool nativeChrome = input.largeRoom
-        && input.stableRect.width() >= input.stableRect.height();
+        && !portrait;
     RoomLayoutEngine::Result nativeFrame;
     if (nativeChrome) {
         // Restore the original skin before measuring its avatar and right column.
@@ -1416,7 +1417,9 @@ void RoomScene::applyResponsiveLayout()
         // Measure the selected fold/split pane before reserving the skin's native footer.
         const auto measured = RoomLayoutEngine::computeResponsive(input);
         const qreal interactionWidth = measured.interactionRect.width();
-        input.minimumInteractionHeight = interactionWidth < 700.0
+        // A wide portrait viewport still needs the portrait dashboard, not a
+        // scaled landscape footer (Android logical widths vary with density).
+        input.minimumInteractionHeight = portrait || interactionWidth < 700.0
             ? dashboard->responsiveHeight(interactionWidth) : legacy.skin.dashboardNormalHeight;
         m_responsiveLayout = RoomLayoutEngine::computeResponsive(input);
         chat_box_widget->setOpacity(0.0);
@@ -1436,6 +1439,10 @@ void RoomScene::applyResponsiveLayout()
         return;
     }
     m_pixmapDeviceScale = qBound<qreal>(1.0, main_window->devicePixelRatioF(), 4.0);
+    // Legacy UI scaling pivots around the footer's bottom centre. Responsive
+    // positions are top-left coordinates; retaining that pivot shifts scaled
+    // dashboards right/down and can push the footer outside the viewport.
+    dashboard->setTransformOriginPoint(QPointF());
 
     // Reflow the canonical native items; rotation must not replace cards or clear a draft.
     if (nativeChrome) {
@@ -1446,7 +1453,7 @@ void RoomScene::applyResponsiveLayout()
             item->setOpacity(1.0);
         updateRoles(m_roleState);
         setChatBoxVisible(chat_box_widget->isVisible());
-    } else if (layout.interactionRect.width() < 700.0) {
+    } else if (portrait || layout.interactionRect.width() < 700.0) {
         dashboard->setScale(1.0);
         dashboard->setPos(layout.interactionRect.topLeft());
         dashboard->setResponsiveGeometry(layout.interactionRect.size(), input.handedness);
