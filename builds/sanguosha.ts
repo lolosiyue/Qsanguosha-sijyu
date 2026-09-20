@@ -5279,35 +5279,35 @@
     </message>
     <message>
         <source>Replay has finished; an event barrier cannot be created</source>
-        <translation>Replay 已播放完畢，無法建立事件 barrier</translation>
+        <translation>Replay 已播放完毕，无法建立事件 barrier</translation>
     </message>
     <message>
         <source>Export bug diagnostic bundle</source>
-        <translation>匯出 Bug 診斷包</translation>
+        <translation>导出 Bug 诊断包</translation>
     </message>
     <message>
         <source>QSanguosha bug diagnostic bundle (*.qsgbug.zip)</source>
-        <translation>QSanguosha Bug 診斷包 (*.qsgbug.zip)</translation>
+        <translation>QSanguosha Bug 诊断包 (*.qsgbug.zip)</translation>
     </message>
     <message>
         <source>Replay has ended or the event barrier cannot be created</source>
-        <translation>Replay 已結束或事件 barrier 無法建立</translation>
+        <translation>Replay 已结束或事件 barrier 无法建立</translation>
     </message>
     <message>
         <source>Timed out after 2 seconds waiting for an exact event barrier</source>
-        <translation>等待精確事件 barrier 逾時 2 秒</translation>
+        <translation>等待精确事件 barrier 超时 2 秒</translation>
     </message>
     <message>
         <source>Replay has been closed</source>
-        <translation>Replay 已關閉</translation>
+        <translation>Replay 已关闭</translation>
     </message>
     <message>
         <source>Export failed</source>
-        <translation>匯出失敗</translation>
+        <translation>导出失败</translation>
     </message>
     <message>
         <source>Unable to create diagnostic bundle</source>
-        <translation>無法建立診斷包</translation>
+        <translation>无法建立诊断包</translation>
     </message>
     <message>
         <source>Included</source>
@@ -5319,7 +5319,7 @@
     </message>
     <message>
         <source>Export complete</source>
-        <translation>匯出完成</translation>
+        <translation>导出完成</translation>
     </message>
     <message>
         <source>Diagnostic bundle: %1
@@ -5327,11 +5327,11 @@ state-now.json: %2
 diagnostics.json: %3
 
 Replay snapshots may contain local paths. Replay and state-now may also contain player names, chat, room or connection metadata.</source>
-        <translation>診斷包：%1
+        <translation>诊断包：%1
 state-now.json：%2
 diagnostics.json：%3
 
-注意：Replay snapshot 可能包含本機路徑；Replay 與 state-now 也可能包含玩家名稱、聊天、房間或連線中繼資料。</translation>
+注意：Replay snapshot 可能包含本地路径；Replay 与 state-now 也可能包含玩家名称、聊天、房间或连接中继资料。</translation>
     </message>
     <message>
         <source>The replay was saved, but its takeover snapshots could not be saved: %1</source>
@@ -7861,7 +7861,7 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Export</source>
-        <translation>匯出</translation>
+        <translation>导出</translation>
     </message>
     <message>
         <source>Export work</source>
@@ -8521,11 +8521,11 @@ Revision: %3
     </message>
     <message>
         <source>Export</source>
-        <translation>匯出</translation>
+        <translation>导出</translation>
     </message>
     <message>
         <source>Export bug diagnostic bundle</source>
-        <translation>匯出 Bug 診斷包</translation>
+        <translation>导出 Bug 诊断包</translation>
     </message>
     <message>
         <source>Take over a seat</source>
@@ -8533,11 +8533,11 @@ Revision: %3
     </message>
     <message>
         <source>Select a seat to take over:</source>
-        <translation>選擇要接管的座位：</translation>
+        <translation>选择要接管的座位：</translation>
     </message>
     <message>
         <source>Take over from turn %1 (%2's turn)?</source>
-        <translation>從第 %1 回合（%2 的回合）接管？</translation>
+        <translation>从第 %1 回合（%2 的回合）接管？</translation>
     </message>
 </context>
 <context>

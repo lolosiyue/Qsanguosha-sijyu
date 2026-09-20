@@ -17,7 +17,10 @@ checkpoint. Build and focused execution require checkpoint authorization.
 
 ## A: localization
 
-Qt fixed text uses English `tr()`/`qsTr()` keys in `builds/sanguosha.ts`.
+Game text generally uses Simplified Chinese. Fixed UI phrases retain stable
+English keys; display translations use Simplified Chinese across Qt, TUI, Web
+and Office. Qt fixed text uses English `tr()`/`qsTr()` keys in
+`builds/sanguosha.ts`.
 The chongxu QML source is included in `QSanguosha_lupdate`. Desktop log phrase
 translation retains the existing Qt context and indicator callback. Shared
 formatter defaults are English; engine-backed adapters keep their existing
