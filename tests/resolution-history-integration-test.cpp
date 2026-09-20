@@ -1,5 +1,6 @@
 #include "engine-bootstrap.h"
 #include "engine.h"
+#include "game-snapshot.h"
 #include "ai-runtime.h"
 #include "lua-runtime.h"
 #include "room.h"
@@ -126,6 +127,16 @@ bool snapshotNextIdAndUnknownAttribution()
     return next > event;
 }
 
+bool snapshotWithoutHistoryIsIneligible()
+{
+    // A legacy/current-state-only snapshot must not become a takeover source by
+    // silently treating the missing authoritative journal as an empty history.
+    const GlobalSnapshot decoded = GlobalSnapshot::deserialize({
+        {QStringLiteral("eligible"), true},
+        {QStringLiteral("ineligibleReason"), QString()}});
+    return !decoded.eligible && !decoded.ineligibleReason.isEmpty();
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -141,7 +152,8 @@ int main(int argc, char **argv)
     const int selector = args.indexOf(QStringLiteral("--case"));
     const QString selected = selector >= 0 ? args.value(selector + 1) : QString();
     const QStringList cases{QStringLiteral("rules-lua"), QStringLiteral("isolated-lua"),
-        QStringLiteral("room-wrappers"), QStringLiteral("snapshot")};
+        QStringLiteral("room-wrappers"), QStringLiteral("snapshot"),
+        QStringLiteral("snapshot-without-history")};
     if (selector >= 0 && !cases.contains(selected)) return 64;
     for (const QString &name : cases) {
         if (!selected.isEmpty() && selected != name) continue;
@@ -153,7 +165,8 @@ int main(int argc, char **argv)
             passed = rulesLuaRoomPointerContract(rulesRoom);
         } else if (name == QStringLiteral("isolated-lua")) passed = isolatedLuaContractRuns();
         else if (name == QStringLiteral("room-wrappers")) passed = roomWrappersExposeReadOnlyJournal();
-        else passed = snapshotNextIdAndUnknownAttribution();
+        else if (name == QStringLiteral("snapshot")) passed = snapshotNextIdAndUnknownAttribution();
+        else passed = snapshotWithoutHistoryIsIneligible();
         std::fprintf(stderr, "%s %s\n", passed ? "PASS" : "FAIL", qPrintable(name));
         std::fflush(stderr);
         if (!passed) return 2;

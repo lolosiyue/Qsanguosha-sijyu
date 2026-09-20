@@ -275,33 +275,57 @@ void ExtraTurnScheduler::execute(ServerPlayer *player, QList<Player::Phase> phas
         m_room.setCurrent(previousCurrent);
     };
 
+    // 額外回合本身是可查詢的結算範圍；source/cause 只記 primitive identity，
+    // 不把 ServerPlayer 或 SkillInstance 指標寫入可重播歷史。
+    QVariantMap historyData;
+    historyData.insert(QStringLiteral("player"), player->objectName());
+    historyData.insert(QStringLiteral("reason"), reason);
+    historyData.insert(QStringLiteral("phases"), phaseData);
+    historyData.insert(QStringLiteral("cause_event_id"), causeEventId);
+    if (sourceRef.isValid()) {
+        historyData.insert(QStringLiteral("source_owner"), sourceRef.ownerObjectName);
+        historyData.insert(QStringLiteral("source_skill"), sourceRef.key.skillName);
+        historyData.insert(QStringLiteral("source_instance_id"), sourceRef.key.instanceID);
+    }
+    ResolutionHistoryEventGuard extraTurnHistory(
+        m_room.resolutionHistory(), QStringLiteral("extra_turn"), historyData,
+        m_room.historyRecordingEnabled());
+
     try {
         m_room.getThread()->trigger(TurnStart, &m_room, player);
     } catch (TriggerEvent controlEvent) {
-        const qint64 cleanupEvent = m_room.getThread()->interruptedPhase() != 0
-            ? m_room.getThread()->interruptedPhase()
-            : m_room.getThread()->interruptedTurn();
-        ResolutionHistoryContextGuard context(
-            m_room.resolutionHistory(), cleanupEvent,
-            m_room.historyRecordingEnabled() && cleanupEvent != 0);
-        if (controlEvent == TurnBroken && player->getPhase() != Player::NotActive) {
-            try {
-                QString gameRule = m_room.getMode() == "04_1v3" ? "hulaopass_mode" : "game_rule";
-                const GameRule *rule = qobject_cast<const GameRule *>(Sanguosha->getSkill(gameRule));
-                if (rule) rule->trigger(EventPhaseEnd, &m_room, player);
-                player->changePhase(player->getPhase(), Player::NotActive);
-            } catch (TriggerEvent) {
-                // The original control event remains authoritative.
+        const QString outcome = controlEvent == TurnBroken ? QStringLiteral("broken")
+            : controlEvent == StageChange ? QStringLiteral("interrupted")
+                                          : QStringLiteral("aborted");
+        {
+            const qint64 cleanupEvent = m_room.getThread()->interruptedPhase() != 0
+                ? m_room.getThread()->interruptedPhase()
+                : m_room.getThread()->interruptedTurn();
+            ResolutionHistoryContextGuard context(
+                m_room.resolutionHistory(), cleanupEvent,
+                m_room.historyRecordingEnabled() && cleanupEvent != 0);
+            if (controlEvent == TurnBroken && player->getPhase() != Player::NotActive) {
+                try {
+                    QString gameRule = m_room.getMode() == "04_1v3" ? "hulaopass_mode" : "game_rule";
+                    const GameRule *rule = qobject_cast<const GameRule *>(Sanguosha->getSkill(gameRule));
+                    if (rule) rule->trigger(EventPhaseEnd, &m_room, player);
+                    player->changePhase(player->getPhase(), Player::NotActive);
+                } catch (TriggerEvent) {
+                    // The original control event remains authoritative.
+                }
             }
+            m_room.getThread()->clearInterruptedTurn();
+            m_room.getThread()->clearInterruptedPhase();
         }
-        m_room.getThread()->clearInterruptedTurn();
-        m_room.getThread()->clearInterruptedPhase();
+        extraTurnHistory.finish(outcome);
         restoreState();
         throw controlEvent;
     } catch (...) {
+        extraTurnHistory.finish(QStringLiteral("aborted"));
         restoreState();
         throw;
     }
 
+    extraTurnHistory.finish(QStringLiteral("completed"));
     restoreState();
 }

@@ -158,6 +158,19 @@ static bool scheduledTurnsPreserveBatchOrderingAndFacade()
         || probe.observations.first().sourceRef != sourceRef)
         return false;
 
+    const QVariantList historyEvents = room.queryHistoryEvents({
+        {QStringLiteral("kind"), QStringLiteral("extra_turn")},
+        {QStringLiteral("limit"), 10}}).value(QStringLiteral("events")).toList();
+    if (historyEvents.size() != expectedReasons.size()) return false;
+    for (int i = 0; i < historyEvents.size(); ++i) {
+        const QVariantMap event = historyEvents.at(i).toMap();
+        const QVariantMap data = event.value(QStringLiteral("data")).toMap();
+        if (event.value(QStringLiteral("outcome")).toString() != QStringLiteral("completed")
+            || data.value(QStringLiteral("reason")).toString() != expectedReasons.at(i)
+            || data.value(QStringLiteral("player")).toString() != expectedPlayers.at(i))
+            return false;
+    }
+
     return room.getCurrent() == second && !room.isCurrentExtraTurn()
         && room.getCurrentExtraTurnReason().isEmpty()
         && !room.getCurrentExtraTurnSourceRef().isValid()
@@ -211,6 +224,15 @@ static bool controlEventsRestoreProcessingAndPendingRequests()
             QStringList() << QStringLiteral("first") << QStringLiteral("second"),
             QStringList() << QStringLiteral("break") << QStringLiteral("after-break")))
         return false;
+    const QVariantList brokenHistory = room.queryHistoryEvents({
+        {QStringLiteral("kind"), QStringLiteral("extra_turn")},
+        {QStringLiteral("limit"), 10}}).value(QStringLiteral("events")).toList();
+    if (brokenHistory.size() != 2
+        || brokenHistory.first().toMap().value(QStringLiteral("outcome")).toString()
+            != QStringLiteral("broken")
+        || brokenHistory.last().toMap().value(QStringLiteral("outcome")).toString()
+            != QStringLiteral("completed"))
+        return false;
 
     probe.observations.clear();
     probe.schedulePlayer = third;
@@ -229,11 +251,17 @@ static bool controlEventsRestoreProcessingAndPendingRequests()
         return false;
 
     RoomTestAccess::process(room);
-    return observationsMatch(probe.observations,
+    const bool observationsOkay = observationsMatch(probe.observations,
         QStringList() << QStringLiteral("first") << QStringLiteral("second")
                       << QStringLiteral("third"),
         QStringList() << QStringLiteral("stage") << QStringLiteral("pending-tail")
                       << QStringLiteral("scheduled-during-stage"));
+    const QVariantList interruptedHistory = room.queryHistoryEvents({
+        {QStringLiteral("kind"), QStringLiteral("extra_turn")},
+        {QStringLiteral("limit"), 10}}).value(QStringLiteral("events")).toList();
+    return observationsOkay && interruptedHistory.size() == 3
+        && interruptedHistory.first().toMap().value(QStringLiteral("outcome")).toString()
+            == QStringLiteral("interrupted");
 }
 
 }
