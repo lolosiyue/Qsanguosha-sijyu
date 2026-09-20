@@ -33,8 +33,13 @@ class CustomAssignDialog : public QDialog
     Q_OBJECT
 
 public:
-    CustomAssignDialog(QWidget *parent);
+    explicit CustomAssignDialog(QWidget *parent, bool work_editor_mode = false);
     ~CustomAssignDialog() override;
+
+    // Work editor bridge: parse/serialize the legacy scene document without
+    // touching the global custom_scenario rule or opening a file picker.
+    bool loadDocument(const QString &document, QString *error = nullptr);
+    bool exportDocument(QString *document, QString *error = nullptr);
 
     QString setListText(QString name, QString role, int index = -1);
     void exchangePlayersInfo(QListWidgetItem *first, QListWidgetItem *second);
@@ -95,6 +100,9 @@ private:
     bool is_ended_by_pile, is_single_turn, is_before_next;
 
     QMap<QString, int> kingdom_index;
+    bool work_editor_mode;
+    QString document_to_load;
+    bool document_load_succeeded;
 
 private slots:
     void updateRole(int index);

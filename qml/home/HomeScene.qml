@@ -224,6 +224,7 @@ Item {
                 onQuickJoinClicked: homeController.quickJoin()
                 onJoinGameClicked: homeController.joinGame()
                 onStartServerClicked: homeController.startServer()
+                onScenarioWorksClicked: homeController.openScenarioWorks()
             }
 
             HomeSideBar {
@@ -664,7 +665,9 @@ Item {
 
         actionPanel.quickJoinBtn.KeyNavigation.down = actionPanel.joinGameBtn
         actionPanel.joinGameBtn.KeyNavigation.down = actionPanel.startServerBtn
-        actionPanel.startServerBtn.KeyNavigation.down = bottomBar.replaysBtn
+        actionPanel.startServerBtn.KeyNavigation.down = actionPanel.worksBtn.visible ? actionPanel.worksBtn : bottomBar.replaysBtn
+        actionPanel.worksBtn.KeyNavigation.up = actionPanel.startServerBtn
+        actionPanel.worksBtn.KeyNavigation.down = bottomBar.replaysBtn
         actionPanel.startServerBtn.KeyNavigation.up = actionPanel.joinGameBtn
         actionPanel.joinGameBtn.KeyNavigation.up = actionPanel.quickJoinBtn
         actionPanel.quickJoinBtn.KeyNavigation.up = bottomBar.homeBtn

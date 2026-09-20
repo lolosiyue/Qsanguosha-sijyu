@@ -38,6 +38,7 @@
 #include "server.h"
 #include "generalselector.h"
 #include "miniscenarios.h"
+#include "work-scenario.h"
 #include "lua.hpp"
 #include "lua-runtime.h"
 #include "lua-wrapper.h"
@@ -49,6 +50,7 @@
 #include <algorithm>
 #include <limits>
 #include <QDateTime>
+#include <QCoreApplication>
 #include <QDir>
 #include <QSet>
 
@@ -583,6 +585,19 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 		if (!m_takeoverError.isEmpty())
 			qCritical().noquote() << "Takeover room rejected:" << m_takeoverError;
 	}
+	if (m_sessionConfig.workLaunch && !m_sessionConfig.takeover) {
+		auto work = std::make_unique<QSanWorks::WorkScenario>(m_sessionConfig.workLaunch);
+		if (!work->isValid()) {
+			m_workError = work->error();
+			qCritical().noquote() << "Work room rejected:" << m_workError;
+		} else {
+			player_count = work->getPlayerCount();
+			scenario = work.get();
+		}
+		m_ownedScenario = std::move(work);
+	}
+	if (m_sessionConfig.workLaunch && m_sessionConfig.takeover)
+		m_workError = QCoreApplication::translate("ScenarioWorkRuntime", "Work launch cannot also restore a snapshot");
 
 	m_runtime->seedRandom(m_sessionConfig.seed);
 	if (runtimePolicy == RuntimeInitializationPolicy::Immediate) {
@@ -1217,6 +1232,27 @@ QStringList Room::aliveRoles(ServerPlayer*except) const
 void Room::gameOver(const QString&winner)
 {
 	m_gameSession->gameOver(winner);
+}
+
+bool Room::workOwnsVictory() const
+{
+    const auto *work = dynamic_cast<const QSanWorks::WorkScenario *>(scenario);
+    return work && work->goal() && work->goal()->mode == ScenarioWork::GoalMode::Objective;
+}
+
+void Room::evaluateWorkObjectives()
+{
+    if (!workOwnsVictory() || isFinished() || !getTag("WorkSetupComplete").toBool()
+        || getTag("WorkObjectiveTerminal").toBool()) return;
+    const auto *work = static_cast<const QSanWorks::WorkScenario *>(scenario);
+    const auto result = work->evaluate(this);
+    if (!result.failure && !result.success) return;
+    // Freeze failure-first outcome before GameOver handlers can mutate state.
+    setTag("WorkObjectiveTerminal", true);
+    setTag("WorkObjectiveSuccess", result.success && !result.failure);
+    const auto seats = work->players(this);
+    const auto *human = seats.value(work->playerSeat());
+    gameOver(result.failure || !human ? QStringLiteral(".") : human->objectName());
 }
 
 void Room::slashEffect(const SlashEffectStruct&effect)
@@ -2664,7 +2700,7 @@ void Room::swapSeat(ServerPlayer*a, ServerPlayer*b)
 
 void Room::adjustSeats()
 {
-	m_roster->adjustSeats(mode == "02_1v1");
+	m_roster->adjustSeats(mode == "02_1v1" || isWorkSession());
 	const QList<ServerPlayer *> players = getPlayers();
 
 	for (int i = 0; i < players.length(); i++)

@@ -1503,6 +1503,21 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 	// mode-specific phase cleanup remains responsible for control flow.
 	if (outerTurn)
 		reclaimCompletedTurn();
+	// Only completed effects may settle work objectives. This is outside
+	// dispatchTrigger's catch/pop cleanup; gameOver throws GameFinished.
+	if (room->isWorkSession()) {
+		bool enclosingEffect = false;
+		for (const auto &event : event_stack) {
+			// Turn/phase drivers enclose user actions; other nested effects must
+			// return to their caller before a goal is allowed to terminate play.
+			if (event.event() != TurnStart && event.event() != EventPhaseProceeding)
+				enclosingEffect = true;
+		}
+		if (!enclosingEffect && (triggerEvent == CardFinished || triggerEvent == DamageComplete
+			|| triggerEvent == GameReady || triggerEvent == EventPhaseStart
+			|| triggerEvent == EventPhaseEnd || triggerEvent == EventPhaseProceeding || outerTurn))
+			room->evaluateWorkObjectives();
+	}
 	return broken;
 }
 

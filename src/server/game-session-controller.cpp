@@ -8,6 +8,7 @@
 #include "lua-runtime.h"
 #include "lua-wrapper.h"
 #include "miniscenarios.h"
+#include "work-scenario.h"
 #include "qt-collection-utils.h"
 #include "room.h"
 #include "room-roster.h"
@@ -145,14 +146,49 @@ void GameSessionController::gameOver(const QString &winner, TerminationCause cau
 		target = m_room.getPlayers().first();
 	}
 
-	m_room.thread->trigger(GameOver, &m_room, target, data);
+	ScenarioWork::StageRunResult workResult;
+    bool emitWorkResult = false;
+    if (m_room.isWorkSession() && !m_workResultEmitted) {
+        m_workResultEmitted = true;
+        const auto &launch = *m_room.m_sessionConfig.workLaunch;
+        auto &result = workResult;
+        result.runId = launch.runId;
+        result.workId = launch.work.id;
+        result.revision = launch.work.revision;
+        result.entryId = launch.entryId;
+        result.trial = launch.trial;
+        const auto *work = dynamic_cast<const QSanWorks::WorkScenario *>(m_room.scenario);
+        const bool objectiveTerminal = m_room.getTag("WorkObjectiveTerminal").toBool();
+        result.aborted = cause != TerminationCause::GameOver
+            || (!objectiveTerminal && (winner == QStringLiteral(".") || winner.isEmpty()));
+        result.reason = result.aborted ? QStringLiteral("terminal-abort") : winner;
+        if (!result.aborted && work && work->goal()) {
+            if (work->goal()->mode == ScenarioWork::GoalMode::Objective) {
+                result.success = objectiveTerminal && m_room.getTag("WorkObjectiveSuccess").toBool();
+                result.reason = result.success ? QStringLiteral("objective-success") : QStringLiteral("objective-failure");
+            } else {
+                const auto evaluation = work->evaluate(&m_room);
+                const auto *human = work->players(&m_room).value(work->playerSeat());
+                const auto winners = winner.split('+', Qt::SkipEmptyParts);
+                result.success = human && (winners.contains(human->objectName()) || winners.contains(human->getRole()))
+                    && evaluation.success && !evaluation.failure;
+            }
+            const auto *human = work->players(&m_room).value(work->playerSeat());
+            if (launch.work.carry.enabled() && (!human || !human->isAlive()))
+                result.success = false;
+            if (result.success) result.carry = work->captureCarry(&m_room);
+        }
+        emitWorkResult = true;
+    }
+
+    m_room.thread->trigger(GameOver, &m_room, target, data);
 
 	if (transitionTo(State::Finished))
 		m_terminationCause = cause;
+	if (emitWorkResult) emit m_room.workFinished(workResult);
+    emit m_room.game_over(winner);
 
-	emit m_room.game_over(winner);
-
-	if (m_room.mode.contains("_mini_")){
+	if (!m_room.isWorkSession() && m_room.mode.contains("_mini_")){
 		QStringList winners = winner.split("+");
 		foreach(ServerPlayer*sp, m_room.getPlayers()){
 			if (!sp) continue;
@@ -175,7 +211,7 @@ void GameSessionController::gameOver(const QString &winner, TerminationCause cau
 	Config.AIDelay = Config.OriginAIDelay;
 
 	QString name = m_room.getTag("NextGameMode").toString();
-	if (!name.isEmpty()){
+	if (!m_room.isWorkSession() && !name.isEmpty()){
 		GameModeStruct nextMode = Sanguosha->getGameMode(name);
 		if (nextMode.isValid()) {
 			Config.GameMode = nextMode;
@@ -187,7 +223,7 @@ void GameSessionController::gameOver(const QString &winner, TerminationCause cau
 		m_room.removeTag("NextGameMode");
 	}
 	data = m_room.getTag("NextGameSecondGeneral");
-	if (data.canConvert<bool>()){
+	if (!m_room.isWorkSession() && data.canConvert<bool>()){
 		Config.Enable2ndGeneral = data.toBool();
 		Config.setValue("Enable2ndGeneral", data);
 		m_room.removeTag("NextGameSecondGeneral");
@@ -261,6 +297,27 @@ void GameSessionController::prepareForStart()
 		return;
 	}
 	if (m_room.scenario){
+		if (m_room.isWorkSession()) {
+			if (const auto *work = dynamic_cast<const QSanWorks::WorkScenario *>(m_room.scenario)) {
+				QList<ServerPlayer *> ordered = m_room.getPlayers();
+				ServerPlayer *human = nullptr;
+				for (ServerPlayer *candidate : ordered) {
+					if (candidate && candidate->getState() != QStringLiteral("robot")) {
+						human = candidate;
+						break;
+					}
+				}
+				if (human && work->playerSeat() >= 0 && work->playerSeat() < ordered.size()) {
+					ordered.removeOne(human);
+					ordered.insert(work->playerSeat(), human);
+					m_room.replacePlayerOrder(ordered);
+                    work->bindPlayers(&m_room);
+				} else {
+					abort(TerminationCause::InitializationFailure);
+					return;
+				}
+			}
+		}
 		bool already = false;
 		if (m_room.scenario->objectName() == "challengedeveloper"){
 			Config.EnableCheat = false;

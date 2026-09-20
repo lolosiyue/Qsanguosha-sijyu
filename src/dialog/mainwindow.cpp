@@ -33,6 +33,13 @@
 #include "runtime-paths.h"
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
 #include "package-manager-dialog.h"
+#include "scenario-work-dialog.h"
+#include "scenario-work-examples.h"
+#include "work-scenario.h"
+#include "scenario-work.h"
+#include <QDialogButtonBox>
+#include <QPointer>
+#include <QUuid>
 #include <QMenu>
 #endif
 #ifdef QSAN_XP_LEGACY
@@ -199,6 +206,48 @@ private:
 
 }
 
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+struct ScenarioWorkSessionState
+{
+    ScenarioWork::WorkLaunch launch;
+    ScenarioWork::StageRunResult result;
+    bool resultReady = false;
+    bool progressSaved = false;
+    bool stopping = false;
+    QString progressError;
+    QPointer<Client> client;
+    QList<std::function<void()>> restoreActions;
+
+    // The legacy engine reads Config throughout a game. Keep these overrides
+    // in memory for this private session and restore only after its worker exits.
+    template<typename T> void overrideValue(T &target, const T &value)
+    {
+        const T previous = target;
+        restoreActions.append([&target, previous]() { target = previous; });
+        target = value;
+    }
+    ~ScenarioWorkSessionState()
+    {
+        for (int i = restoreActions.size() - 1; i >= 0; --i) restoreActions.at(i)();
+    }
+};
+
+static QString scenarioWorkLibraryRoot()
+{
+    return QSanRuntimePaths::userDataPath(QStringLiteral("scenario-works"));
+}
+
+static const ScenarioWork::SceneDefinition *scenarioWorkScene(const ScenarioWork::WorkLaunch &launch)
+{
+    for (const auto &entry : launch.work.entries) {
+        if (entry.id != launch.entryId) continue;
+        for (const auto &candidate : launch.work.scenes)
+            if (candidate.id == entry.sceneId && candidate.revision == entry.sceneRevision) return &candidate;
+    }
+    return nullptr;
+}
+#endif
+
 MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), ui(new Ui::MainWindow), server(nullptr)
 {
@@ -306,6 +355,11 @@ MainWindow::MainWindow(QWidget *parent)
 	addAction(ui->actionShow_Hide_Menu);
 	addAction(ui->actionFullscreen);
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	QAction *worksAction = ui->menuGame->addAction(tr("Scenario Works"));
+	worksAction->setObjectName(QStringLiteral("actionScenarioWorks"));
+	worksAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+	addAction(worksAction);
+	connect(worksAction, &QAction::triggered, this, &MainWindow::openScenarioWorks);
 	QMenu *packageMenu = menuBar()->addMenu(tr("Packages"));
 	packageMenu->addAction(tr("Manage packages..."), this, [this]() {
 		PackageManagerDialog::openManager(QSanRuntimePaths::assetRoot(),
@@ -313,7 +367,16 @@ MainWindow::MainWindow(QWidget *parent)
 	});
 #endif
 
-	connect(ui->actionRestart_Game, SIGNAL(triggered()), this, SLOT(startConnection()));
+	connect(ui->actionRestart_Game, &QAction::triggered, this, [this]() {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+        if (m_scenarioWork) {
+            const auto launch = m_scenarioWork->launch;
+            leaveScenarioWork([this, launch]() { startScenarioWork(launch); });
+            return;
+        }
+#endif
+        startConnection();
+    });
 	connect(ui->actionReturn_to_Main_Menu, &QAction::triggered, this, [this]() {
 		showHomePage();
 	});
@@ -384,6 +447,10 @@ void MainWindow::setupHomePage()
 
 	connect(homeController, &HomeController::quickJoinRequested,
 		this, &MainWindow::startLocalConsoleGame);
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	connect(homeController, &HomeController::scenarioWorksRequested,
+		this, &MainWindow::openScenarioWorks);
+#endif
 	connect(homeController, &HomeController::joinGameRequested,
 		ui->actionStart_Game, &QAction::trigger);
 	connect(homeController, &HomeController::startServerRequested,
@@ -709,6 +776,12 @@ void MainWindow::updateHomeSceneLoadState(HomeSceneLoadState state)
 
 void MainWindow::showHomePage()
 {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	if (m_scenarioWork) {
+		leaveScenarioWork();
+		return;
+	}
+#endif
 #ifdef Q_OS_ANDROID
 	m_androidAwaitingStateSync = false;
 	gameView->setEnabled(!m_androidApplicationBackgrounded);
@@ -791,6 +864,10 @@ void MainWindow::showHomePage()
 	StartScene *startScene = new StartScene;
 	startScene->addButton(ui->actionStart_Game);
 	startScene->addButton(ui->actionStart_Server);
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+    if (auto *works = findChild<QAction *>(QStringLiteral("actionScenarioWorks")))
+        startScene->addButton(works);
+#endif
 	startScene->addButton(ui->actionReplay);
 	startScene->addButton(ui->actionConfigure);
 	startScene->addButton(ui->actionGeneral_Overview);
@@ -1027,6 +1104,13 @@ void MainWindow::restoreFromConfig()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	if (m_scenarioWork) {
+		event->ignore();
+		leaveScenarioWork([this]() { close(); });
+		return;
+	}
+#endif
 #ifdef Q_OS_ANDROID
 	// A completed close is a normal exit; leave the marker only for process death.
 	clearAndroidOfflineMarker();
@@ -1191,6 +1275,9 @@ void MainWindow::on_actionExit_triggered()
 
 void MainWindow::on_actionStart_Server_triggered()
 {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+    if (m_scenarioWork) return;
+#endif
 #ifdef Q_OS_ANDROID
 	startLocalConsoleGame();
 	return;
@@ -1284,6 +1371,9 @@ void MainWindow::setupLocalServerController()
 
 void MainWindow::startLocalConsoleGame()
 {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+    if (m_scenarioWork) return;
+#endif
 #ifdef Q_OS_ANDROID
 	// The first offline game is gated on the private media bundle being complete.
 	if (!AndroidContentDialog::prepareForGame())
@@ -1367,7 +1457,7 @@ void MainWindow::completeLocalRoomStart()
 	#endif
 
 	#ifndef Q_OS_ANDROID
-	server->checkUpnpAndListServer();
+	if (!m_scenarioWork) server->checkUpnpAndListServer();
 	#endif
 	Config.HostAddress = QStringLiteral("127.0.0.1");
 	showLocalLoadingPage(tr("Connecting to local room..."));
@@ -1386,6 +1476,12 @@ void MainWindow::completeLocalRoomStart()
 
 void MainWindow::failLocalRoomStart(const QString &error)
 {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	if (m_scenarioWork) {
+		leaveScenarioWork([this, error]() { QMessageBox::warning(this, tr("Cannot play work"), error); });
+		return;
+	}
+#endif
 #ifdef QSAN_XP_LEGACY
 	localServer->stop();
 #endif
@@ -1665,6 +1761,9 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 
 void MainWindow::startConnection()
 {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+    if (m_scenarioWork) return;
+#endif
 	startConnectionWithReconnect(Config.value("EnableReconnection", false).toBool());
 }
 
@@ -1685,6 +1784,9 @@ void MainWindow::startConnectionWithReconnect(bool reconnectRequested)
 #endif
 	Client *client = new Client(this, QString(), nullptr, m_takeoverInProgress,
 		reconnectRequested, fallbackToFreshSignup);
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	if (m_scenarioWork) m_scenarioWork->client = client;
+#endif
 #ifdef Q_OS_ANDROID
 	for (ClientLiveSession *session : client->findChildren<ClientLiveSession *>()) {
 		connect(session, &ClientLiveSession::frontendMessageReceived, client,
@@ -1711,6 +1813,9 @@ void MainWindow::startConnectionWithReconnect(bool reconnectRequested)
 
 void MainWindow::on_actionReplay_triggered()
 {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+    if (m_scenarioWork) return;
+#endif
 	QString location = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
 	QString last_dir = Config.value("LastReplayDir").toString();
 	if (!last_dir.isEmpty())
@@ -1743,6 +1848,17 @@ void MainWindow::on_actionReplay_triggered()
 
 void MainWindow::networkError(const QString &error_msg)
 {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	if (m_scenarioWork) {
+		if (m_scenarioWork->stopping || m_scenarioWork->resultReady) return;
+		QTimer::singleShot(0, this, [this, error_msg]() {
+			leaveScenarioWork([this, error_msg]() {
+				QMessageBox::warning(this, tr("Network error"), error_msg);
+			});
+		});
+		return;
+	}
+#endif
 #ifdef Q_OS_ANDROID
 	if (m_androidAwaitingStateSync) {
 		// The session may still be dispatching its fatal-error signal. Tear down
@@ -1819,6 +1935,13 @@ void MainWindow::enterRoom()
 	ui->actionReturn_to_Main_Menu->setEnabled(false);
 
 	RoomScene *room_scene = new RoomScene(this);
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	if (m_scenarioWork) {
+		room_scene->setProperty("scenarioWork", true);
+		connect(room_scene, &RoomScene::scenarioWorkResultDialogCreated,
+			this, &MainWindow::decorateScenarioWorkResult);
+	}
+#endif
 #ifdef Q_OS_ANDROID
 	room_scene->setTouchUiEnabled(true);
 	room_scene->setApplicationSuspended(m_androidApplicationBackgrounded,
@@ -1863,7 +1986,7 @@ void MainWindow::enterRoom()
 		ui->actionState_editor->disconnect();
 	}
 
-	connect(room_scene, SIGNAL(restart()), this, SLOT(startConnection()));
+	connect(room_scene, &RoomScene::restart, ui->actionRestart_Game, &QAction::trigger);
 	connect(room_scene, SIGNAL(return_to_start()), this, SLOT(showHomePage()));
 	connect(room_scene, SIGNAL(game_over_dialog_rejected()), this, SLOT(enableDialogButtons()));
 	connect(room_scene, &RoomScene::takeoverRequested,
@@ -1875,7 +1998,11 @@ void MainWindow::enterRoom()
 #endif
 
 	// 自動化測試: --auto-robots 由 owner 自動填滿 AI (填滿後伺服器端自動開局)
-	if (Config.AutoAddRobots || m_takeoverInProgress) {
+	if (Config.AutoAddRobots || m_takeoverInProgress
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+		|| m_scenarioWork
+#endif
+	) {
 		const bool takeoverRobotFill = m_takeoverInProgress;
 		QFile diag(QSanRuntimePaths::userDataPath("client_autotest_diag.log"));
 		if (Config.AutoAddRobots && diag.open(QIODevice::Append | QIODevice::Text)) {
@@ -2135,6 +2262,267 @@ void MainWindow::on_actionScenario_Overview_triggered()
 	static ScenarioOverview *dialog = new ScenarioOverview(this);
 	dialog->show();
 }
+
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+void MainWindow::openScenarioWorks()
+{
+    if (m_scenarioWork || server || qobject_cast<RoomScene *>(scene)) {
+        QMessageBox::information(this, tr("Scenario Works"),
+            tr("Return to the home page before opening the work library."));
+        return;
+    }
+    if (auto *existing = findChild<ScenarioWorkLibraryDialog *>(QStringLiteral("scenarioWorkLibrary"))) {
+        existing->show();
+        existing->raise();
+        existing->activateWindow();
+        QTimer::singleShot(0, existing, [existing]() { existing->resumeTrialDraft(); });
+        return;
+    }
+    const QString root = scenarioWorkLibraryRoot();
+    const QJsonObject compatibility = QSanWorks::currentCompatibility();
+    if (ScenarioWork::listWorks(root).isEmpty()) {
+        for (const auto &example : scenarioWorkExamples(compatibility)) {
+            QString error;
+            if (!ScenarioWork::writeWork(root, example, &error)) {
+                QMessageBox::warning(this, tr("Cannot save example work"), error);
+                break;
+            }
+        }
+    }
+    auto *library = new ScenarioWorkLibraryDialog(root, compatibility, this);
+    library->setObjectName(QStringLiteral("scenarioWorkLibrary"));
+    library->setAttribute(Qt::WA_DeleteOnClose);
+    QPointer<ScenarioWorkLibraryDialog> guardedLibrary(library);
+    connect(library, &ScenarioWorkLibraryDialog::playRequested, this,
+        [this, guardedLibrary](const ScenarioWork::WorkLaunch &launch) {
+            if (!guardedLibrary) return;
+            auto *library = guardedLibrary.data();
+            if (launch.trial) library->hide();
+            else library->close();
+            startScenarioWork(launch);
+        }, Qt::QueuedConnection);
+    library->show();
+}
+
+void MainWindow::startScenarioWork(const ScenarioWork::WorkLaunch &requested)
+{
+    if (m_scenarioWork || server) return;
+    ScenarioWork::WorkLaunch launch = requested;
+    launch.runId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QString error;
+    if (!QSanWorks::validateWorkForRuntime(launch.work, &error)) {
+        QMessageBox::warning(this, tr("Cannot play work"), error);
+        return;
+    }
+    const auto *definition = scenarioWorkScene(launch);
+    ScenarioWork::LegacySceneDocument document;
+    if (!definition || !ScenarioWork::parseLegacyScene(definition->setup, &document, &error)) {
+        QMessageBox::warning(this, tr("Cannot play work"),
+            definition ? error : tr("The selected stage entry is missing."));
+        return;
+    }
+    if (!launch.trial) {
+        ScenarioWork::WorkProgress progress;
+        if (!ScenarioWork::loadProgress(scenarioWorkLibraryRoot(), launch.work, &progress, &error)
+            || !ScenarioWork::canPlayEntry(launch.work, progress, launch.entryId)) {
+            QMessageBox::warning(this, tr("Cannot play work"),
+                error.isEmpty() ? tr("This stage entry is locked.") : error);
+            return;
+        }
+    }
+    QString entryTitle = definition->title;
+    QString opening = definition->opening;
+    for (const auto &entry : launch.work.entries) {
+        if (entry.id != launch.entryId) continue;
+        if (!entry.title.isEmpty()) entryTitle = entry.title;
+        if (!entry.intro.trimmed().isEmpty())
+            opening = entry.intro + (opening.isEmpty() ? QString() : QStringLiteral("\n\n") + opening);
+        break;
+    }
+    if (!opening.trimmed().isEmpty()) {
+        QMessageBox introduction(QMessageBox::Information, entryTitle,
+            opening, QMessageBox::Ok | QMessageBox::Cancel, this);
+        introduction.setTextFormat(Qt::PlainText);
+        if (introduction.exec() != QMessageBox::Ok) return;
+    }
+    auto state = std::make_unique<ScenarioWorkSessionState>();
+    state->launch = launch;
+    const QString identity = QStringLiteral("%1p").arg(document.players.size(), 2, 10, QLatin1Char('0'));
+    const auto mode = Sanguosha->getGameMode(identity);
+    if (!mode.isValid()) {
+        QMessageBox::warning(this, tr("Cannot play work"), tr("The required identity mode is unavailable."));
+        return;
+    }
+    state->overrideValue(Config.GameMode, mode);
+    state->overrideValue(Config.RandomSeat, false);
+    state->overrideValue(Config.EnableCheat, false);
+    state->overrideValue(Config.FreeChoose, false);
+    state->overrideValue(Config.FreeAssignSelf, false);
+    state->overrideValue(Config.EnableAI, true);
+    state->overrideValue(Config.EnableBasara, false);
+    state->overrideValue(Config.EnableHegemony, false);
+    state->overrideValue(Config.EnableMeleeMode, false);
+    state->overrideValue(Config.EnableSame, true);
+    state->overrideValue(Config.Enable2ndGeneral, launch.work.rules.value(QStringLiteral("secondGeneral")).toBool());
+    state->overrideValue(Config.EnableLuckCard, false);
+    state->overrideValue(Config.SurrenderAtDeath, false);
+    state->overrideValue(Config.CountDownSeconds, 0);
+    state->overrideValue(Config.BindAddress, QStringLiteral("127.0.0.1"));
+    state->overrideValue(Config.HostAddress, QStringLiteral("127.0.0.1"));
+    const QVariantMap previousOverrides = Config.valueOverrides();
+    state->restoreActions << [previousOverrides]() { Config.setValueOverrides(previousOverrides); };
+    QVariantMap overrides = previousOverrides;
+    overrides.insert(QStringLiteral("LuckCardTimes"), 0);
+    overrides.insert(QStringLiteral("EnableReconnection"), false);
+    Config.setValueOverrides(overrides);
+    m_scenarioWork = std::move(state);
+
+    // Protect the room owner before asynchronous initialization admits input.
+    ui->actionStart_Game->setEnabled(false);
+    ui->actionStart_Server->setEnabled(false);
+    ui->actionReplay->setEnabled(false);
+
+    GameSessionConfig session;
+    session.workLaunch = QSharedPointer<const ScenarioWork::WorkLaunch>(new ScenarioWork::WorkLaunch(launch));
+    showLocalLoadingPage(tr("Initializing local rules and AI..."));
+    Server *pendingServer = new Server(this, session, Server::InitialRoomPolicy::Deferred);
+    server = pendingServer;
+    connect(pendingServer, &Server::initialRoomReady, this, [this, pendingServer]() {
+        if (server == pendingServer && m_scenarioWork && !m_scenarioWork->stopping) completeLocalRoomStart();
+    });
+    connect(pendingServer, &Server::initialRoomFailed, this, [this, pendingServer](const QString &reason) {
+        if (server == pendingServer) failLocalRoomStart(reason);
+    });
+    connect(pendingServer, &Server::workFinished, this, &MainWindow::receiveScenarioWorkResult,
+        Qt::QueuedConnection);
+    if (!pendingServer->prepareInitialRoomAsync(&error)) failLocalRoomStart(error);
+}
+
+void MainWindow::receiveScenarioWorkResult(const ScenarioWork::StageRunResult &result)
+{
+    if (!m_scenarioWork || m_scenarioWork->stopping || m_scenarioWork->resultReady
+        || result.runId != m_scenarioWork->launch.runId
+        || result.workId != m_scenarioWork->launch.work.id
+        || result.revision != m_scenarioWork->launch.work.revision
+        || result.entryId != m_scenarioWork->launch.entryId) return;
+    m_scenarioWork->result = result;
+    m_scenarioWork->resultReady = true;
+    m_scenarioWork->progressSaved = m_scenarioWork->launch.trial
+        || ScenarioWork::recordResult(scenarioWorkLibraryRoot(), m_scenarioWork->launch.work,
+            result, nullptr, &m_scenarioWork->progressError);
+    emit scenarioWorkResultAvailable();
+}
+
+void MainWindow::decorateScenarioWorkResult(QDialog *dialog)
+{
+    if (!m_scenarioWork || !dialog) return;
+    auto *layout = qobject_cast<QVBoxLayout *>(dialog->layout());
+    if (!layout) return;
+    auto *summary = new QLabel(dialog);
+    summary->setWordWrap(true);
+    summary->setTextFormat(Qt::PlainText);
+    layout->addWidget(summary);
+    auto *buttons = new QDialogButtonBox(dialog);
+    auto *next = buttons->addButton(tr("Next Stage"), QDialogButtonBox::ActionRole);
+    auto *retry = buttons->addButton(tr("Retry this entry"), QDialogButtonBox::ActionRole);
+    auto *saveAgain = buttons->addButton(tr("Retry saving progress"), QDialogButtonBox::ActionRole);
+    auto *back = buttons->addButton(tr("Return to work library"), QDialogButtonBox::RejectRole);
+    layout->addWidget(buttons);
+    auto update = [this, summary, next, saveAgain]() {
+        if (!m_scenarioWork) return;
+        next->setEnabled(false);
+        saveAgain->setVisible(false);
+        if (!m_scenarioWork->resultReady) {
+            summary->setText(tr("Waiting for the scenario result..."));
+            return;
+        }
+        const auto &state = *m_scenarioWork;
+        QString message = state.result.success ? tr("Stage cleared.") : tr("Stage not cleared.");
+        if (state.launch.trial) message += QLatin1Char('\n') + tr("Trial play does not change your progress.");
+        if (!state.progressSaved) {
+            message += QLatin1Char('\n') + tr("Progress was not saved: %1").arg(state.progressError);
+            saveAgain->setVisible(true);
+        }
+        const auto *definition = scenarioWorkScene(state.launch);
+        if (state.result.success && definition && !definition->ending.isEmpty())
+            message += QStringLiteral("\n\n") + definition->ending;
+        summary->setText(message);
+        for (int i = 0; i + 1 < state.launch.work.entries.size(); ++i)
+            if (state.launch.work.entries[i].id == state.launch.entryId)
+                next->setEnabled(state.result.success && state.progressSaved && !state.result.aborted);
+    };
+    connect(this, &MainWindow::scenarioWorkResultAvailable, dialog, update);
+    connect(saveAgain, &QPushButton::clicked, dialog, [this]() {
+        if (!m_scenarioWork || !m_scenarioWork->resultReady) return;
+        m_scenarioWork->progressSaved = ScenarioWork::recordResult(scenarioWorkLibraryRoot(),
+            m_scenarioWork->launch.work, m_scenarioWork->result, nullptr, &m_scenarioWork->progressError);
+        emit scenarioWorkResultAvailable();
+    });
+    auto navigate = [this, dialog](bool advance) {
+        if (!m_scenarioWork) return;
+        auto launch = m_scenarioWork->launch;
+        if (advance) {
+            if (!m_scenarioWork->resultReady || !m_scenarioWork->result.success
+                || !m_scenarioWork->progressSaved) return;
+            for (int i = 0; i + 1 < launch.work.entries.size(); ++i) {
+                if (launch.work.entries[i].id != launch.entryId) continue;
+                launch.entryId = launch.work.entries[i + 1].id;
+                launch.carry = m_scenarioWork->result.carry;
+                break;
+            }
+        }
+        dialog->accept();
+        // Let the existing result dialog unwind before destroying its RoomScene.
+        QTimer::singleShot(0, this, [this, launch]() {
+            leaveScenarioWork([this, launch]() { startScenarioWork(launch); });
+        });
+    };
+    connect(next, &QPushButton::clicked, dialog, [navigate]() { navigate(true); });
+    connect(retry, &QPushButton::clicked, dialog, [navigate]() { navigate(false); });
+    connect(back, &QPushButton::clicked, dialog, [this, dialog]() {
+        dialog->accept();
+        QTimer::singleShot(0, this, [this]() { leaveScenarioWork([this]() { openScenarioWorks(); }); });
+    });
+    update();
+}
+
+void MainWindow::leaveScenarioWork(const std::function<void()> &after)
+{
+    if (!m_scenarioWork) { if (after) after(); return; }
+    if (m_scenarioWork->stopping) return;
+    m_scenarioWork->stopping = true;
+    QPointer<Server> stoppingServer = server;
+    if (m_scenarioWork->client) m_scenarioWork->client->disconnectFromHost();
+    if (stoppingServer) stoppingServer->beginShutdown();
+    showLocalLoadingPage(tr("Stopping local server..."));
+    auto *poll = new QTimer(this);
+    auto elapsed = QSharedPointer<QElapsedTimer>::create();
+    elapsed->start();
+    connect(poll, &QTimer::timeout, this, [this, poll, elapsed, stoppingServer, after]() {
+        if (stoppingServer && !stoppingServer->shutdownComplete()) {
+            if (elapsed->elapsed() < 30000) return;
+            poll->stop();
+            poll->deleteLater();
+            m_scenarioWork->stopping = false;
+            QMessageBox::warning(this, tr("Scenario Works"),
+                tr("The previous room has not finished stopping. No new stage was started."));
+            return;
+        }
+        poll->stop();
+        poll->deleteLater();
+        gameView->setScene(nullptr);
+        delete scene;
+        scene = nullptr;
+        if (m_scenarioWork->client) delete m_scenarioWork->client.data();
+        if (stoppingServer) delete stoppingServer.data();
+        server = nullptr;
+        m_scenarioWork.reset();
+        showHomePage();
+        if (after) QTimer::singleShot(0, this, after);
+    });
+    poll->start(25);
+}
+#endif
 
 BroadcastBox::BroadcastBox(Server *server, QWidget *parent)
 	: QDialog(parent), server(server)

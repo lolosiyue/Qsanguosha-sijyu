@@ -8,6 +8,7 @@
 #include "resolution-history.h"
 #include "room-runtime.h"
 #include "game-session-config.h"
+#include "scenario-work.h"
 #include "event-dispatcher.h"
 #include "protocol/protocol-message.h"
 
@@ -108,6 +109,10 @@ public:
     quint64 getGameSeed() const { return m_sessionConfig.seed; }
     bool isTakeoverSession() const { return m_sessionConfig.takeover; }
     bool isTakeoverReady() const;
+    bool isWorkSession() const { return !m_sessionConfig.workLaunch.isNull(); }
+    QString workError() const { return m_workError; }
+    bool workOwnsVictory() const;
+    void evaluateWorkObjectives();
     QString takeoverError() const;
     bool isRestoringTakeoverSnapshot() const { return m_takeoverRestoring; }
     // Rules-only history. Presentation and isolated AI never receive this store.
@@ -756,6 +761,7 @@ protected:
 
 private:
     bool completeRuntimeInitialization(bool runtimeReady, const QString &runtimeError);
+    friend struct ScenarioWorkRuntimeTestAccess;
     void addPlayerToRoster(ServerPlayer *player);
     void removePlayerFromRoster(ServerPlayer *player);
     void replacePlayerOrder(const QList<ServerPlayer *> &players);
@@ -928,6 +934,7 @@ private:
     bool _virtual;
     GameSessionConfig m_sessionConfig;
     QString m_takeoverError;
+    QString m_workError;
     bool m_takeoverRestoring = false;
     std::atomic_bool m_stopRequested{false};
 
@@ -990,6 +997,7 @@ signals:
     void game_over(const QString&winner);
     void takeover_ready();
     void takeover_failed(const QString &error);
+    void workFinished(const ScenarioWork::StageRunResult &result);
     void signalSetProperty(ServerPlayer*player, const char*property_name, const QVariant&value);
 };
 

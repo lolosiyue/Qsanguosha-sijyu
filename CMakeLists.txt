@@ -484,6 +484,8 @@ add_library(qsanguosha_engine STATIC
     src/server/extra-turn-scheduler.cpp
     src/server/extra-turn-scheduler.h
     src/server/game-session-controller.cpp
+    src/core/scenario-work.cpp
+    src/core/scenario-work.h
     src/server/game-session-controller.h
     src/server/game-snapshot-service.cpp
     src/server/game-snapshot-service.h
@@ -1734,6 +1736,8 @@ if(QSAN_BUILD_GUI)
                 # The shared snapshot formatter is linked through ClientCore.
                 src/client/core/game-view-state.cpp
                 src/core/engine.cpp
+                src/core/scenario-work.cpp
+                src/scenario/work-scenario.cpp
                 ${QSAN_FORMS}
                 qml/home/HomeScene.qml
                 qml/home/HomeMainButton.qml

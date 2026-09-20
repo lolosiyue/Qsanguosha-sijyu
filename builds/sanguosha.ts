@@ -2213,6 +2213,14 @@
         <source>%1&apos;s role cannot be unknown</source>
         <translation>%1 的身份不能为未知</translation>
     </message>
+    <message>
+        <source>The scene could not be saved.</source>
+        <translation>無法儲存場景。</translation>
+    </message>
+    <message>
+        <source>The scene document is invalid.</source>
+        <translation>場景文件無效。</translation>
+    </message>
 </context>
 <context>
     <name>DamageMakerDialog</name>
@@ -3161,6 +3169,10 @@
         <location filename="../qml/home/HomeSideBar.qml" line="97"/>
         <source>Check for updates</source>
         <translation>检查更新</translation>
+    </message>
+    <message>
+        <source>Scenario Works</source>
+        <translation>劇情作品</translation>
     </message>
 </context>
 <context>
@@ -4293,6 +4305,74 @@
         <source>Game Control Panel</source>
         <translation>游戏操作面板</translation>
     </message>
+    <message>
+        <source>Cannot play work</source>
+        <translation>無法遊玩作品</translation>
+    </message>
+    <message>
+        <source>Cannot save example work</source>
+        <translation>無法儲存範例作品</translation>
+    </message>
+    <message>
+        <source>Next Stage</source>
+        <translation>下一階段</translation>
+    </message>
+    <message>
+        <source>Progress was not saved: %1</source>
+        <translation>進度未儲存：%1</translation>
+    </message>
+    <message>
+        <source>Retry saving progress</source>
+        <translation>重試儲存進度</translation>
+    </message>
+    <message>
+        <source>Retry this entry</source>
+        <translation>重試此項目</translation>
+    </message>
+    <message>
+        <source>Return to the home page before opening the work library.</source>
+        <translation>開啟作品庫前請先返回首頁。</translation>
+    </message>
+    <message>
+        <source>Return to work library</source>
+        <translation>返回作品庫</translation>
+    </message>
+    <message>
+        <source>Scenario Works</source>
+        <translation>劇情作品</translation>
+    </message>
+    <message>
+        <source>Stage cleared.</source>
+        <translation>階段完成。</translation>
+    </message>
+    <message>
+        <source>Stage not cleared.</source>
+        <translation>階段未完成。</translation>
+    </message>
+    <message>
+        <source>The previous room has not finished stopping. No new stage was started.</source>
+        <translation>上一個房間尚未停止，未啟動新關卡。</translation>
+    </message>
+    <message>
+        <source>The required identity mode is unavailable.</source>
+        <translation>必要的身份模式不可用。</translation>
+    </message>
+    <message>
+        <source>The selected stage entry is missing.</source>
+        <translation>選取的階段項目不存在。</translation>
+    </message>
+    <message>
+        <source>This stage entry is locked.</source>
+        <translation>此階段項目尚未解鎖。</translation>
+    </message>
+    <message>
+        <source>Trial play does not change your progress.</source>
+        <translation>試玩不會變更進度。</translation>
+    </message>
+    <message>
+        <source>Waiting for the scenario result...</source>
+        <translation>正在等待劇情結果……</translation>
+    </message>
 </context>
 <context>
     <name>MainWindowServerList</name>
@@ -4739,6 +4819,54 @@
         <location filename="../src/ui/cardcontainer.cpp" line="10"/>
         <source>Pile</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&lt;</source>
+        <translation>&lt;</translation>
+    </message>
+    <message>
+        <source>=</source>
+        <translation>=</translation>
+    </message>
+    <message>
+        <source>&gt;</source>
+        <translation>&gt;</translation>
+    </message>
+    <message>
+        <source>Alive</source>
+        <translation>存活</translation>
+    </message>
+    <message>
+        <source>Completed player turns</source>
+        <translation>已完成的玩家回合</translation>
+    </message>
+    <message>
+        <source>Dead</source>
+        <translation>死亡</translation>
+    </message>
+    <message>
+        <source>HP</source>
+        <translation>體力</translation>
+    </message>
+    <message>
+        <source>Mark</source>
+        <translation>標記</translation>
+    </message>
+    <message>
+        <source>Scene</source>
+        <translation>場景</translation>
+    </message>
+    <message>
+        <source>Stage</source>
+        <translation>劇情階段</translation>
+    </message>
+    <message>
+        <source>≤</source>
+        <translation>≤</translation>
+    </message>
+    <message>
+        <source>≥</source>
+        <translation>≥</translation>
     </message>
 </context>
 <context>
@@ -7268,6 +7396,1045 @@ Waiting for %1 to respond</source>
     <message>
         <source> - </source>
         <translation> · </translation>
+    </message>
+</context>
+<context>
+    <name>ScenarioWorkEditorDialog</name>
+    <message>
+        <source>A mark predicate needs a mark name.</source>
+        <translation>標記條件需要標記名稱。</translation>
+    </message>
+    <message>
+        <source>Add predicate</source>
+        <translation>新增條件</translation>
+    </message>
+    <message>
+        <source>Add scene</source>
+        <translation>新增場景</translation>
+    </message>
+    <message>
+        <source>Add stage entry</source>
+        <translation>新增階段項目</translation>
+    </message>
+    <message>
+        <source>All predicates must match (unchecked: any)</source>
+        <translation>所有條件都必須符合（取消勾選代表任一）</translation>
+    </message>
+    <message>
+        <source>Allow second general</source>
+        <translation>允許第二武將</translation>
+    </message>
+    <message>
+        <source>An entry still references this revision. Repin or remove that entry first.</source>
+        <translation>仍有項目引用此版本，請先重新固定或移除該項目。</translation>
+    </message>
+    <message>
+        <source>An objective needs at least one success predicate.</source>
+        <translation>目標至少需要一項成功條件。</translation>
+    </message>
+    <message>
+        <source>Author</source>
+        <translation>作者</translation>
+    </message>
+    <message>
+        <source>Cannot add stage entry</source>
+        <translation>無法新增階段項目</translation>
+    </message>
+    <message>
+        <source>Cannot import scene</source>
+        <translation>無法匯入場景</translation>
+    </message>
+    <message>
+        <source>Cannot remove scene</source>
+        <translation>無法移除場景</translation>
+    </message>
+    <message>
+        <source>Carry state policy</source>
+        <translation>延續狀態策略</translation>
+    </message>
+    <message>
+        <source>Change compatibility</source>
+        <translation>變更相容性</translation>
+    </message>
+    <message>
+        <source>Comparison</source>
+        <translation>比較</translation>
+    </message>
+    <message>
+        <source>Configure success/failure goals</source>
+        <translation>設定成功／失敗目標</translation>
+    </message>
+    <message>
+        <source>Configure the initial scene first.</source>
+        <translation>請先設定初始場景。</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>編輯</translation>
+    </message>
+    <message>
+        <source>Edit entry / pinned revision</source>
+        <translation>編輯項目／固定版本</translation>
+    </message>
+    <message>
+        <source>Edit initial scene configuration</source>
+        <translation>編輯初始場景設定</translation>
+    </message>
+    <message>
+        <source>Edit scene</source>
+        <translation>編輯場景</translation>
+    </message>
+    <message>
+        <source>Edit stage entry</source>
+        <translation>編輯階段項目</translation>
+    </message>
+    <message>
+        <source>Ending</source>
+        <translation>結局</translation>
+    </message>
+    <message>
+        <source>Equipment</source>
+        <translation>裝備</translation>
+    </message>
+    <message>
+        <source>Existing entries keep their pinned revision. Use Edit entry / pinned revision to select the new revision.</source>
+        <translation>現有項目會保留固定版本。請使用「編輯項目／固定版本」選擇新版本。</translation>
+    </message>
+    <message>
+        <source>Failure predicates</source>
+        <translation>失敗條件</translation>
+    </message>
+    <message>
+        <source>Fixed seats and roles</source>
+        <translation>固定座位與身份</translation>
+    </message>
+    <message>
+        <source>Free choice</source>
+        <translation>自由選擇</translation>
+    </message>
+    <message>
+        <source>Generals</source>
+        <translation>武將</translation>
+    </message>
+    <message>
+        <source>Goal definition</source>
+        <translation>目標定義</translation>
+    </message>
+    <message>
+        <source>HP</source>
+        <translation>體力</translation>
+    </message>
+    <message>
+        <source>Hand</source>
+        <translation>手牌</translation>
+    </message>
+    <message>
+        <source>Hujia</source>
+        <translation>護甲</translation>
+    </message>
+    <message>
+        <source>Import existing scene</source>
+        <translation>匯入現有場景</translation>
+    </message>
+    <message>
+        <source>Import this work into the library and explicitly rebind its compatibility before copying scenes into this work.</source>
+        <translation>請先將此作品匯入作品庫並明確重新綁定相容性，再將場景複製到此作品。</translation>
+    </message>
+    <message>
+        <source>Imported</source>
+        <translation>已匯入</translation>
+    </message>
+    <message>
+        <source>Incompatible work</source>
+        <translation>不相容作品</translation>
+    </message>
+    <message>
+        <source>Introduction</source>
+        <translation>簡介</translation>
+    </message>
+    <message>
+        <source>Invalid goal</source>
+        <translation>目標無效</translation>
+    </message>
+    <message>
+        <source>Invalid scene</source>
+        <translation>場景無效</translation>
+    </message>
+    <message>
+        <source>Invalid work</source>
+        <translation>作品無效</translation>
+    </message>
+    <message>
+        <source>Mark</source>
+        <translation>標記</translation>
+    </message>
+    <message>
+        <source>Marks</source>
+        <translation>標記</translation>
+    </message>
+    <message>
+        <source>Max HP</source>
+        <translation>最大體力</translation>
+    </message>
+    <message>
+        <source>Move down</source>
+        <translation>下移</translation>
+    </message>
+    <message>
+        <source>Move up</source>
+        <translation>上移</translation>
+    </message>
+    <message>
+        <source>Objective</source>
+        <translation>目標</translation>
+    </message>
+    <message>
+        <source>Opening</source>
+        <translation>開場</translation>
+    </message>
+    <message>
+        <source>Ordered stage entries</source>
+        <translation>有序階段項目</translation>
+    </message>
+    <message>
+        <source>Override the pinned scene goals</source>
+        <translation>覆寫固定場景目標</translation>
+    </message>
+    <message>
+        <source>Pin a scene revision first.</source>
+        <translation>請先固定場景版本。</translation>
+    </message>
+    <message>
+        <source>Pinned scene</source>
+        <translation>固定場景</translation>
+    </message>
+    <message>
+        <source>Pinned scene revisions</source>
+        <translation>固定場景版本</translation>
+    </message>
+    <message>
+        <source>Player seat (zero based)</source>
+        <translation>玩家座位（從零開始）</translation>
+    </message>
+    <message>
+        <source>Rebinding changes the meaning of physical card IDs if the catalog changed. Review every initial scene and carried card before using this work. Scene symbols will be validated against the current runtime; existing progress remains tied to the old revision.</source>
+        <translation>若卡牌目錄已變更，重新綁定會改變實體卡牌 ID 的意義。使用前請檢查所有初始場景與延續卡牌。場景符號會依目前執行環境驗證；既有進度仍繫結於舊版本。</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>Remove predicate</source>
+        <translation>移除條件</translation>
+    </message>
+    <message>
+        <source>Required extensions</source>
+        <translation>必要擴充套件</translation>
+    </message>
+    <message>
+        <source>Rule</source>
+        <translation>規則</translation>
+    </message>
+    <message>
+        <source>Rule identity</source>
+        <translation>規則身份</translation>
+    </message>
+    <message>
+        <source>Scene or work files (*.txt *.qswork.json)</source>
+        <translation>場景或作品檔案（*.txt *.qswork.json）</translation>
+    </message>
+    <message>
+        <source>Scene revision saved</source>
+        <translation>場景版本已儲存</translation>
+    </message>
+    <message>
+        <source>Scene work</source>
+        <translation>場景作品</translation>
+    </message>
+    <message>
+        <source>Seat (zero based)</source>
+        <translation>座位（從零開始）</translation>
+    </message>
+    <message>
+        <source>Select a stage entry first.</source>
+        <translation>請先選擇階段項目。</translation>
+    </message>
+    <message>
+        <source>Sequential unlock</source>
+        <translation>依序解鎖</translation>
+    </message>
+    <message>
+        <source>Settlement</source>
+        <translation>結算</translation>
+    </message>
+    <message>
+        <source>Skills</source>
+        <translation>技能</translation>
+    </message>
+    <message>
+        <source>Stage selection</source>
+        <translation>階段選擇</translation>
+    </message>
+    <message>
+        <source>Stage work</source>
+        <translation>階段作品</translation>
+    </message>
+    <message>
+        <source>Success predicates</source>
+        <translation>成功條件</translation>
+    </message>
+    <message>
+        <source>The player seat must exist in the initial scene.</source>
+        <translation>玩家座位必須存在於初始場景中。</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <translation>標題</translation>
+    </message>
+    <message>
+        <source>Trial launch</source>
+        <translation>試玩</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation>類型</translation>
+    </message>
+    <message>
+        <source>Use current runtime manifest and card catalog</source>
+        <translation>使用目前執行環境清單與卡牌目錄</translation>
+    </message>
+    <message>
+        <source>Use custom goals</source>
+        <translation>使用自訂目標</translation>
+    </message>
+    <message>
+        <source>Value</source>
+        <translation>數值</translation>
+    </message>
+    <message>
+        <source>Work editor</source>
+        <translation>作品編輯器</translation>
+    </message>
+    <message>
+        <source>Work type</source>
+        <translation>作品類型</translation>
+    </message>
+    <message>
+        <source>comma-separated acquired skills</source>
+        <translation>以逗號分隔的獲得技能</translation>
+    </message>
+    <message>
+        <source>comma-separated marks</source>
+        <translation>以逗號分隔的標記</translation>
+    </message>
+</context>
+<context>
+    <name>ScenarioWorkLibraryDialog</name>
+    <message>
+        <source> (Copy)</source>
+        <translation>（複本）</translation>
+    </message>
+    <message>
+        <source> (Locked)</source>
+        <translation>（已鎖定）</translation>
+    </message>
+    <message>
+        <source>Cannot export work</source>
+        <translation>無法匯出作品</translation>
+    </message>
+    <message>
+        <source>Cannot read progress</source>
+        <translation>無法讀取進度</translation>
+    </message>
+    <message>
+        <source>Cannot save work</source>
+        <translation>無法儲存作品</translation>
+    </message>
+    <message>
+        <source>Choose entry</source>
+        <translation>選擇項目</translation>
+    </message>
+    <message>
+        <source>Choose the initial state for this entry</source>
+        <translation>選擇此項目的初始狀態</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>關閉</translation>
+    </message>
+    <message>
+        <source>Complete the preceding stage first.</source>
+        <translation>請先完成前一階段。</translation>
+    </message>
+    <message>
+        <source>Continue</source>
+        <translation>繼續</translation>
+    </message>
+    <message>
+        <source>Duplicate</source>
+        <translation>複製</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>編輯</translation>
+    </message>
+    <message>
+        <source>Entry locked</source>
+        <translation>項目尚未解鎖</translation>
+    </message>
+    <message>
+        <source>Export</source>
+        <translation>匯出</translation>
+    </message>
+    <message>
+        <source>Export work</source>
+        <translation>匯出作品</translation>
+    </message>
+    <message>
+        <source>History</source>
+        <translation>歷史</translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation>匯入</translation>
+    </message>
+    <message>
+        <source>Import work</source>
+        <translation>匯入作品</translation>
+    </message>
+    <message>
+        <source>Incompatible work</source>
+        <translation>不相容作品</translation>
+    </message>
+    <message>
+        <source>Invalid work</source>
+        <translation>作品無效</translation>
+    </message>
+    <message>
+        <source>Latest snapshot (%1)</source>
+        <translation>最新快照（%1）</translation>
+    </message>
+    <message>
+        <source>New scene work</source>
+        <translation>新增場景作品</translation>
+    </message>
+    <message>
+        <source>New stage work</source>
+        <translation>新增階段作品</translation>
+    </message>
+    <message>
+        <source>No continuation is available.</source>
+        <translation>沒有可繼續的進度。</translation>
+    </message>
+    <message>
+        <source>Original entry</source>
+        <translation>原始項目</translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation>遊玩</translation>
+    </message>
+    <message>
+        <source>Rule: %1
+Required extensions: %2</source>
+        <translation>規則：%1
+必要擴充套件：%2</translation>
+    </message>
+    <message>
+        <source>This work was created for a different runtime manifest or card catalog. Saved compatibility:
+%1
+Current compatibility:
+%2</source>
+        <translation>此作品建立於不同的執行環境清單或卡牌目錄。儲存的相容性：
+%1
+目前相容性：
+%2</translation>
+    </message>
+    <message>
+        <source>Title: %1
+Author: %2
+Revision: %3
+
+%4</source>
+        <translation>標題：%1
+作者：%2
+版本：%3
+
+%4</translation>
+    </message>
+    <message>
+        <source>Work files (*.qswork.json)</source>
+        <translation>作品檔案（*.qswork.json）</translation>
+    </message>
+    <message>
+        <source>Work library</source>
+        <translation>作品庫</translation>
+    </message>
+</context>
+<context>
+    <name>ScenarioWorkExamples</name>
+    <message>
+        <source>Chapter 1: Rest before departure</source>
+        <translation>第一章：出發前休息</translation>
+    </message>
+    <message>
+        <source>Chapter 2: The gatekeeper</source>
+        <translation>第二章：守門人</translation>
+    </message>
+    <message>
+        <source>Defeat the opponent with your Slash before your first turn ends.</source>
+        <translation>在你的第一個回合結束前用殺擊敗對手。</translation>
+    </message>
+    <message>
+        <source>Objective completed. You can replay this scene from its original setup.</source>
+        <translation>目標已完成。你可以從原始設定重新遊玩此場景。</translation>
+    </message>
+    <message>
+        <source>Puzzle: One turn</source>
+        <translation>謎題：一個回合</translation>
+    </message>
+    <message>
+        <source>Short story: A journey begins</source>
+        <translation>短篇故事：旅程開始</translation>
+    </message>
+    <message>
+        <source>Skill case: Kurou</source>
+        <translation>技能案例：苦肉</translation>
+    </message>
+    <message>
+        <source>Tutorial: Recover health</source>
+        <translation>教學：恢復體力</translation>
+    </message>
+    <message>
+        <source>Use Kurou. Check its health cost and draw effect; the objective checks health at effect completion.</source>
+        <translation>使用苦肉，檢查其體力代價與摸牌效果；目標會在效果結算時檢查體力。</translation>
+    </message>
+    <message>
+        <source>Use the Peach in your hand to reach 2 health. The scene ends after the effect resolves.</source>
+        <translation>使用手中的桃將體力提升至 2 點。效果結算後場景結束。</translation>
+    </message>
+    <message>
+        <source>Your health and general carry over from the previous chapter. Defeat the gatekeeper.</source>
+        <translation>你的體力與武將會從上一章延續。擊敗守門人。</translation>
+    </message>
+</context>
+<context>
+    <name>ScenarioWorkRuntime</name>
+    <message>
+        <source>Carried card conflicts with next scene ownership</source>
+        <translation>延續卡牌與下一場景的持有卡牌衝突</translation>
+    </message>
+    <message>
+        <source>Carried equipment exceeds next scene slots</source>
+        <translation>延續裝備超出下一場景的欄位</translation>
+    </message>
+    <message>
+        <source>Carry key is not allowed by policy: %1</source>
+        <translation>延續鍵不在策略允許範圍內：%1</translation>
+    </message>
+    <message>
+        <source>Invalid carried mark: %1</source>
+        <translation>無效的延續標記：%1</translation>
+    </message>
+    <message>
+        <source>Invalid carried skill: %1</source>
+        <translation>無效的延續技能：%1</translation>
+    </message>
+    <message>
+        <source>Invalid carry %1</source>
+        <translation>無效的延續資料 %1</translation>
+    </message>
+    <message>
+        <source>Invalid or repeated carried card</source>
+        <translation>無效或重複的延續卡牌</translation>
+    </message>
+    <message>
+        <source>Invalid or repeated scene card: %1</source>
+        <translation>無效或重複的場景卡牌：%1</translation>
+    </message>
+    <message>
+        <source>Invalid scene draw-pile card</source>
+        <translation>無效的場景牌堆卡牌</translation>
+    </message>
+    <message>
+        <source>Missing work launch</source>
+        <translation>缺少作品啟動資料</translation>
+    </message>
+    <message>
+        <source>Scene equipment exceeds available slots</source>
+        <translation>場景裝備超出可用欄位</translation>
+    </message>
+    <message>
+        <source>Scene health exceeds or cannot resolve maximum health</source>
+        <translation>場景體力超出上限或無法解析最大體力</translation>
+    </message>
+    <message>
+        <source>Scene second general requires secondGeneral rules</source>
+        <translation>場景第二武將需要 secondGeneral 規則</translation>
+    </message>
+    <message>
+        <source>Second-general carry requires secondGeneral rules</source>
+        <translation>延續第二武將需要 secondGeneral 規則</translation>
+    </message>
+    <message>
+        <source>Unable to open work scene setup</source>
+        <translation>無法讀取作品場景設定</translation>
+    </message>
+    <message>
+        <source>Unknown carried general: %1</source>
+        <translation>未知的延續武將：%1</translation>
+    </message>
+    <message>
+        <source>Unknown scene general: %1</source>
+        <translation>未知的場景武將：%1</translation>
+    </message>
+    <message>
+        <source>Unknown scene skill: %1</source>
+        <translation>未知的場景技能：%1</translation>
+    </message>
+    <message>
+        <source>Unsupported work rule: %1</source>
+        <translation>不支援的作品規則：%1</translation>
+    </message>
+    <message>
+        <source>Work compatibility fingerprint does not match this engine</source>
+        <translation>作品相容性指紋與此引擎不符</translation>
+    </message>
+    <message>
+        <source>Work entry does not resolve to its scene revision</source>
+        <translation>作品項目無法解析至其場景版本</translation>
+    </message>
+    <message>
+        <source>Work launch cannot also restore a snapshot</source>
+        <translation>作品開局不能同時還原對局快照</translation>
+    </message>
+    <message>
+        <source>Work player seat is outside scene seats</source>
+        <translation>作品玩家座位超出場景座位範圍</translation>
+    </message>
+    <message>
+        <source>Work revision does not match its contents</source>
+        <translation>作品版本與內容不一致</translation>
+    </message>
+    <message>
+        <source>Work scene must define at least two players</source>
+        <translation>作品場景必須設定至少兩名玩家</translation>
+    </message>
+    <message>
+        <source>Work scene rule is unavailable</source>
+        <translation>作品場景規則不可用</translation>
+    </message>
+    <message>
+        <source>Work seats cannot use randomRoles</source>
+        <translation>作品座位不能使用 randomRoles</translation>
+    </message>
+</context>
+<context>
+    <name>ScenarioWork</name>
+    <message>
+        <source>Cannot create library directory.</source>
+        <translation>無法建立作品庫目錄。</translation>
+    </message>
+    <message>
+        <source>Cannot read document or document too large.</source>
+        <translation>無法讀取文件，或文件過大。</translation>
+    </message>
+    <message>
+        <source>Cannot save library document.</source>
+        <translation>無法儲存作品庫文件。</translation>
+    </message>
+    <message>
+        <source>Carry cards must be an array.</source>
+        <translation>延續卡牌必須是陣列。</translation>
+    </message>
+    <message>
+        <source>Carry health exceeds maximum health.</source>
+        <translation>延續體力超過最大體力。</translation>
+    </message>
+    <message>
+        <source>Carry marks must be an array.</source>
+        <translation>延續標記必須是陣列。</translation>
+    </message>
+    <message>
+        <source>Carry switches must be boolean.</source>
+        <translation>延續開關必須是布林值。</translation>
+    </message>
+    <message>
+        <source>Conflicting legacy endings.</source>
+        <translation>舊式結局規則互相衝突。</translation>
+    </message>
+    <message>
+        <source>Document too large.</source>
+        <translation>文件過大。</translation>
+    </message>
+    <message>
+        <source>Duplicate fixed pile.</source>
+        <translation>固定牌堆有重複項目。</translation>
+    </message>
+    <message>
+        <source>Entry is not available.</source>
+        <translation>項目不可用。</translation>
+    </message>
+    <message>
+        <source>Entry must reference an exact scene revision.</source>
+        <translation>項目必須引用精確的場景版本。</translation>
+    </message>
+    <message>
+        <source>Extension manifest must be sorted.</source>
+        <translation>擴充套件清單必須排序。</translation>
+    </message>
+    <message>
+        <source>Fixed seats must be enabled.</source>
+        <translation>必須啟用固定座位。</translation>
+    </message>
+    <message>
+        <source>Invalid JSON document.</source>
+        <translation>JSON 文件無效。</translation>
+    </message>
+    <message>
+        <source>Invalid acquired skills.</source>
+        <translation>獲得技能無效。</translation>
+    </message>
+    <message>
+        <source>Invalid carry general.</source>
+        <translation>延續武將無效。</translation>
+    </message>
+    <message>
+        <source>Invalid carry health value.</source>
+        <translation>延續體力數值無效。</translation>
+    </message>
+    <message>
+        <source>Invalid carry mark.</source>
+        <translation>延續標記無效。</translation>
+    </message>
+    <message>
+        <source>Invalid carry policy names.</source>
+        <translation>延續策略名稱無效。</translation>
+    </message>
+    <message>
+        <source>Invalid compatibility fingerprint.</source>
+        <translation>相容性指紋無效。</translation>
+    </message>
+    <message>
+        <source>Invalid continuation identity.</source>
+        <translation>延續身份無效。</translation>
+    </message>
+    <message>
+        <source>Invalid draw count or health adjustment.</source>
+        <translation>摸牌數或體力調整無效。</translation>
+    </message>
+    <message>
+        <source>Invalid entry fields.</source>
+        <translation>項目欄位無效。</translation>
+    </message>
+    <message>
+        <source>Invalid equipment capacity.</source>
+        <translation>裝備容量無效。</translation>
+    </message>
+    <message>
+        <source>Invalid existing progress.</source>
+        <translation>既有進度無效。</translation>
+    </message>
+    <message>
+        <source>Invalid extension manifest.</source>
+        <translation>擴充套件清單無效。</translation>
+    </message>
+    <message>
+        <source>Invalid fixed pile card.</source>
+        <translation>固定牌堆卡牌無效。</translation>
+    </message>
+    <message>
+        <source>Invalid goal predicate.</source>
+        <translation>目標條件無效。</translation>
+    </message>
+    <message>
+        <source>Invalid legacy round count.</source>
+        <translation>舊式回合數無效。</translation>
+    </message>
+    <message>
+        <source>Invalid or duplicate carry card.</source>
+        <translation>延續卡牌無效或重複。</translation>
+    </message>
+    <message>
+        <source>Invalid or duplicate entry identity.</source>
+        <translation>項目身份無效或重複。</translation>
+    </message>
+    <message>
+        <source>Invalid or duplicate physical card.</source>
+        <translation>實體卡牌無效或重複。</translation>
+    </message>
+    <message>
+        <source>Invalid or repeated scene field.</source>
+        <translation>場景欄位無效或重複。</translation>
+    </message>
+    <message>
+        <source>Invalid predicate fields.</source>
+        <translation>條件欄位無效。</translation>
+    </message>
+    <message>
+        <source>Invalid progress document.</source>
+        <translation>進度文件無效。</translation>
+    </message>
+    <message>
+        <source>Invalid progress identifiers.</source>
+        <translation>進度識別碼無效。</translation>
+    </message>
+    <message>
+        <source>Invalid progress identity.</source>
+        <translation>進度身份無效。</translation>
+    </message>
+    <message>
+        <source>Invalid progress snapshot.</source>
+        <translation>進度快照無效。</translation>
+    </message>
+    <message>
+        <source>Invalid scene document.</source>
+        <translation>場景文件無效。</translation>
+    </message>
+    <message>
+        <source>Invalid scene field.</source>
+        <translation>場景欄位無效。</translation>
+    </message>
+    <message>
+        <source>Invalid scene fields.</source>
+        <translation>場景欄位無效。</translation>
+    </message>
+    <message>
+        <source>Invalid scene health value.</source>
+        <translation>場景體力數值無效。</translation>
+    </message>
+    <message>
+        <source>Invalid scene identity or revision.</source>
+        <translation>場景身份或版本無效。</translation>
+    </message>
+    <message>
+        <source>Invalid scene mark or equipment capacity.</source>
+        <translation>場景標記或裝備容量無效。</translation>
+    </message>
+    <message>
+        <source>Invalid scene or entry count.</source>
+        <translation>場景或項目數量無效。</translation>
+    </message>
+    <message>
+        <source>Invalid snapshot fields.</source>
+        <translation>快照欄位無效。</translation>
+    </message>
+    <message>
+        <source>Invalid work document fields.</source>
+        <translation>作品文件欄位無效。</translation>
+    </message>
+    <message>
+        <source>Invalid work identity or rule.</source>
+        <translation>作品身份或規則無效。</translation>
+    </message>
+    <message>
+        <source>Missing progress output.</source>
+        <translation>缺少進度輸出。</translation>
+    </message>
+    <message>
+        <source>Objective goals conflict with legacy endings.</source>
+        <translation>目標與舊式結局規則衝突。</translation>
+    </message>
+    <message>
+        <source>Objective requires success predicates.</source>
+        <translation>目標必須包含成功條件。</translation>
+    </message>
+    <message>
+        <source>Only one goal definition is allowed.</source>
+        <translation>每個項目只能有一個目標定義。</translation>
+    </message>
+    <message>
+        <source>Player general is required.</source>
+        <translation>必須指定玩家武將。</translation>
+    </message>
+    <message>
+        <source>Player seat is outside the scene.</source>
+        <translation>玩家座位超出場景範圍。</translation>
+    </message>
+    <message>
+        <source>Progress identity cannot change.</source>
+        <translation>進度身份不可變更。</translation>
+    </message>
+    <message>
+        <source>Repeated legacy option.</source>
+        <translation>舊式選項重複。</translation>
+    </message>
+    <message>
+        <source>Saved progress cannot be changed.</source>
+        <translation>已儲存進度不可變更。</translation>
+    </message>
+    <message>
+        <source>Saved progress cannot be removed.</source>
+        <translation>已儲存進度不可移除。</translation>
+    </message>
+    <message>
+        <source>Scene flags must be boolean.</source>
+        <translation>場景旗標必須是布林值。</translation>
+    </message>
+    <message>
+        <source>Scene health exceeds maximum health.</source>
+        <translation>場景體力超過最大體力。</translation>
+    </message>
+    <message>
+        <source>Scene needs 2 to 10 players.</source>
+        <translation>場景需要 2 至 10 名玩家。</translation>
+    </message>
+    <message>
+        <source>Scene needs exactly one starter.</source>
+        <translation>場景必須恰好有一名起始玩家。</translation>
+    </message>
+    <message>
+        <source>Scene requires opposing camps and at most one lord.</source>
+        <translation>場景需要敵對陣營，且最多一名主公。</translation>
+    </message>
+    <message>
+        <source>Scene work must contain one scene identity.</source>
+        <translation>場景作品必須包含一個場景身份。</translation>
+    </message>
+    <message>
+        <source>Second general must be boolean.</source>
+        <translation>第二武將設定必須是布林值。</translation>
+    </message>
+    <message>
+        <source>Snapshot target does not follow its source entry.</source>
+        <translation>快照目標不是來源項目的下一項。</translation>
+    </message>
+    <message>
+        <source>Starter must be boolean.</source>
+        <translation>起始玩家設定必須是布林值。</translation>
+    </message>
+    <message>
+        <source>Unknown carry policy field.</source>
+        <translation>未知的延續策略欄位。</translation>
+    </message>
+    <message>
+        <source>Unknown completed entry.</source>
+        <translation>未知的已完成項目。</translation>
+    </message>
+    <message>
+        <source>Unknown continuation entry.</source>
+        <translation>未知的延續項目。</translation>
+    </message>
+    <message>
+        <source>Unknown export data is not allowed.</source>
+        <translation>不允許未知的匯出資料。</translation>
+    </message>
+    <message>
+        <source>Unknown goal field.</source>
+        <translation>未知的目標欄位。</translation>
+    </message>
+    <message>
+        <source>Unknown goal group field.</source>
+        <translation>未知的目標群組欄位。</translation>
+    </message>
+    <message>
+        <source>Unknown goal mode.</source>
+        <translation>未知的目標模式。</translation>
+    </message>
+    <message>
+        <source>Unknown selection policy.</source>
+        <translation>未知的選擇策略。</translation>
+    </message>
+    <message>
+        <source>Unknown work kind.</source>
+        <translation>未知的作品類型。</translation>
+    </message>
+    <message>
+        <source>Unsafe library path.</source>
+        <translation>作品庫路徑不安全。</translation>
+    </message>
+    <message>
+        <source>Unsafe path or document too large.</source>
+        <translation>路徑不安全或文件過大。</translation>
+    </message>
+    <message>
+        <source>Unsafe progress path.</source>
+        <translation>進度路徑不安全。</translation>
+    </message>
+    <message>
+        <source>Unsupported carry field.</source>
+        <translation>不支援的延續欄位。</translation>
+    </message>
+    <message>
+        <source>Unsupported player role.</source>
+        <translation>不支援的玩家身份。</translation>
+    </message>
+    <message>
+        <source>Unsupported rule field.</source>
+        <translation>不支援的規則欄位。</translation>
+    </message>
+    <message>
+        <source>Untitled scene</source>
+        <translation>未命名場景</translation>
+    </message>
+    <message>
+        <source>Untitled work</source>
+        <translation>未命名作品</translation>
+    </message>
+    <message>
+        <source>Work revision does not match content.</source>
+        <translation>作品版本與內容不一致。</translation>
+    </message>
+    <message>
+        <source>entry must be object</source>
+        <translation>項目必須是物件</translation>
+    </message>
+    <message>
+        <source>goal group must be object</source>
+        <translation>目標群組必須是物件</translation>
+    </message>
+    <message>
+        <source>goal must be object</source>
+        <translation>目標必須是物件</translation>
+    </message>
+    <message>
+        <source>goals must be array</source>
+        <translation>目標必須是陣列</translation>
+    </message>
+    <message>
+        <source>invalid goal group</source>
+        <translation>無效的目標群組</translation>
+    </message>
+    <message>
+        <source>predicate must be an object</source>
+        <translation>條件必須是物件</translation>
+    </message>
+    <message>
+        <source>predicate seat must be integer</source>
+        <translation>條件座位必須是整數</translation>
+    </message>
+    <message>
+        <source>predicate threshold must be integer</source>
+        <translation>條件門檻必須是整數</translation>
+    </message>
+    <message>
+        <source>result entry does not exist</source>
+        <translation>結果項目不存在</translation>
+    </message>
+    <message>
+        <source>result identity mismatch</source>
+        <translation>結果身份不符</translation>
+    </message>
+    <message>
+        <source>scene id/setup missing</source>
+        <translation>缺少場景 id 或 setup</translation>
+    </message>
+    <message>
+        <source>scene must be object</source>
+        <translation>場景必須是物件</translation>
+    </message>
+    <message>
+        <source>unknown goal mode</source>
+        <translation>未知的目標模式</translation>
+    </message>
+    <message>
+        <source>unknown predicate operator</source>
+        <translation>未知的條件運算子</translation>
+    </message>
+    <message>
+        <source>unknown predicate type</source>
+        <translation>未知的條件類型</translation>
     </message>
 </context>
 </TS>

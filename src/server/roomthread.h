@@ -33,6 +33,7 @@ public:
     {
     }
     QString toString() const;
+    TriggerEvent event() const { return _m_event; }
 
 private:
     TriggerEvent _m_event;

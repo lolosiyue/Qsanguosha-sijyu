@@ -79,6 +79,7 @@ private:
     State m_state;
     PreparationPhase m_preparationPhase;
     TerminationCause m_terminationCause;
+    bool m_workResultEmitted = false;
 };
 
 #endif

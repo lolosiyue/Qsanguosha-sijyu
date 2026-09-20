@@ -716,6 +716,20 @@ void HomeController::startServer()
     emit startServerRequested();
 }
 
+bool HomeController::scenarioWorksAvailable() const
+{
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+    return true;
+#else
+    return false;
+#endif
+}
+
+void HomeController::openScenarioWorks()
+{
+    if (scenarioWorksAvailable()) emit scenarioWorksRequested();
+}
+
 void HomeController::switchQmlScene(const QUrl &source)
 {
     // QML onClicked remains on the stack here. Let MainWindow replace the

@@ -139,6 +139,9 @@ public:
     Q_INVOKABLE void quickJoin();
     Q_INVOKABLE void joinGame();
     Q_INVOKABLE void startServer();
+    Q_INVOKABLE void openScenarioWorks();
+    Q_PROPERTY(bool scenarioWorksAvailable READ scenarioWorksAvailable CONSTANT)
+    bool scenarioWorksAvailable() const;
 
     Q_INVOKABLE void openHome();
     Q_INVOKABLE void openGenerals();
@@ -195,6 +198,7 @@ signals:
     void quickJoinRequested();
     void joinGameRequested();
     void startServerRequested();
+    void scenarioWorksRequested();
 
     void generalsRequested();
     void cardsRequested();

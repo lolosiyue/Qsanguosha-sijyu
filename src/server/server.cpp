@@ -2036,7 +2036,7 @@ Room *Server::createNewRoom()
 	const GameSessionConfig sessionConfig = takeNextGameSessionConfig();
 	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
 	Room *room = new Room(this, Config.GameMode.mode_id, sessionConfig);
-	if (!room->hasLuaRuntime() || !room->isTakeoverReady()) {
+	if (!room->hasLuaRuntime() || !room->isTakeoverReady() || !room->workError().isEmpty()) {
 		if (!room->takeoverError().isEmpty())
 			qWarning().noquote() << "Cannot create takeover room:" << room->takeoverError();
 		delete room;
@@ -2084,6 +2084,8 @@ Room *Server::publishRoom(Room *room)
 		this, &Server::takeoverReady);
 	connect(createdRoom, &Room::takeover_failed,
 		this, &Server::takeoverFailed);
+	connect(createdRoom, &Room::workFinished, this,
+		&Server::workFinished, Qt::QueuedConnection);
 
 	return room;
 }
@@ -2111,8 +2113,8 @@ bool Server::prepareInitialRoomAsync(QString *error)
 	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
 	Room *room = new Room(this, Config.GameMode.mode_id, sessionConfig,
 		Room::RuntimeInitializationPolicy::Deferred);
-	if (!room->isTakeoverReady()) {
-		const QString detail = room->takeoverError().isEmpty()
+	if (!room->isTakeoverReady() || !room->workError().isEmpty()) {
+		const QString detail = !room->workError().isEmpty() ? room->workError() : room->takeoverError().isEmpty()
 			? tr("Initial room validation failed") : room->takeoverError();
 		delete room;
 		if (error)
