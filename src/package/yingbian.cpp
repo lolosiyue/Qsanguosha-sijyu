@@ -197,9 +197,9 @@ public:
         view_as_skill = new WuxinghelingshanVSSkill;
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance("wuxinghelingshan", true, false);
+        return SkillDialogInfo::guhuo("wuxinghelingshan", true, false);
     }
 
     bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const

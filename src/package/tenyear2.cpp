@@ -1,4 +1,5 @@
 #include "tenyear.h"
+#include "skill-declaration.h"
 //#include "settings.h"
 //#include "skill.h"
 //#include "standard.h"
@@ -11,6 +12,7 @@
 #include "wrapped-card.h"
 #include "room.h"
 #include "roomthread.h"
+#include "game-rng.h"
 #include "ol.h"
 #include "wind.h"
 #include "mobile.h"
@@ -2021,106 +2023,6 @@ public:
 	}
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-PingjianDialog*PingjianDialog::getInstance()
-{
-	static PingjianDialog*instance;
-	if(instance==nullptr)
-		instance = new PingjianDialog();
-	return instance;
-}
-
-PingjianDialog::PingjianDialog()
-{
-	setObjectName("pingjian");
-	setWindowTitle(Sanguosha->translate("pingjian"));
-	group = new QButtonGroup(this);
-	button_layout = new QVBoxLayout;
-	setLayout(button_layout);
-	connect(group,SIGNAL(buttonClicked(QAbstractButton*)),this,SLOT(selectSkill(QAbstractButton*)));
-}
-
-void PingjianDialog::popup()
-{
-	Self->removeTag(objectName());
-	foreach(QAbstractButton*button,group->buttons()){
-		button_layout->removeWidget(button);
-		group->removeButton(button);
-		delete button;
-	}
-	QStringList generals,ava_generals,pingjian_skills = Self->property("pingjian_has_used_skills").toString().split("+");
-	foreach(QString general_name,Sanguosha->getLimitedGeneralNames()){
-		if(ava_generals.contains(general_name))continue;
-		const General*general = Sanguosha->getGeneral(general_name);
-		if(!general)continue;
-		foreach(const Skill*skill,general->getVisibleSkillList()){
-			if(skill->objectName()== "pingjian")continue;
-			if(pingjian_skills.contains(skill->objectName()))continue;
-			QString translation = skill->getDescription();
-			if(translation.contains("出牌阶段限一次，")|| translation.contains("阶段技，")){
-				const ViewAsSkill*vs = Sanguosha->getViewAsSkill(skill->objectName());
-				if(vs&& vs->isEnabledAtPlay(Self)){
-					ava_generals << general_name;
-					break;
-				}
-			}
-		}
-	}
-	for(int i = 1; i <= 3; i++){
-		if(ava_generals.isEmpty())break;
-		QString general = ava_generals.at(qsanRandomBounded(ava_generals.length()));
-		ava_generals.removeOne(general);
-		generals << general;
-	}
-	if(generals.isEmpty())return;
-	foreach(QString general,generals){
-		bool has_general_button = false;
-		foreach(const Skill*skill,Sanguosha->getGeneral(general)->getVisibleSkillList()){
-			if(skill->objectName()== "pingjian" || pingjian_skills.contains(skill->objectName()))continue;
-			const ViewAsSkill*vs = Sanguosha->getViewAsSkill(skill->objectName());
-			if(!vs || !vs->isEnabledAtPlay(Self))continue;
-			QString translation = skill->getDescription();
-			if(translation.contains("出牌阶段限一次，")|| translation.contains("阶段技，")){
-				if(!has_general_button){
-					has_general_button = true;
-					QAbstractButton*button = createSkillButton(general);
-					button->setEnabled(false);
-					button_layout->addWidget(button);
-				}
-				QAbstractButton*button = createSkillButton(skill->objectName());
-				button->setEnabled(true);
-				button_layout->addWidget(button);
-			}
-		}
-	}
-	exec();
-}
-
-void PingjianDialog::selectSkill(QAbstractButton*button)
-{
-	Self->setTag(objectName(), button->objectName());
-	emit onButtonClick();
-	accept();
-}
-
-QAbstractButton*PingjianDialog::createSkillButton(const QString&skill_name)
-{
-	const Skill*skill = Sanguosha->getSkill(skill_name);
-	if(!skill){
-		if(!Sanguosha->getGeneral(skill_name))return nullptr;
-	}
-	QCommandLinkButton*button = new QCommandLinkButton(Sanguosha->translate(skill_name));
-	button->setObjectName(skill_name);
-	if(skill){
-		LuaLocker locker;
-		button->setToolTip(skill->getDescription());
-	}
-	group->addButton(button);
-	return button;
-}
-
-#endif
-
 PingjianCard::PingjianCard()
 {
 	will_throw = false;
@@ -2271,9 +2173,90 @@ public:
 		view_as_skill = new PingjianVS;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return PingjianDialog::getInstance();
+		SkillDialogInfo info = SkillDialogInfo::named("pingjian", objectName());
+		info.parameters.insert("customDeclaration", true);
+		return info;
+	}
+
+	QList<SkillDeclarationCandidate> declarationCandidates(
+		const Player *self, CardUseStruct::CardUseReason,
+		const QString &, const QStringList &, quint64 requestId) const override
+	{
+		QList<SkillDeclarationCandidate> result;
+		if (!self || !Sanguosha) return result;
+		const QStringList used = self->property("pingjian_has_used_skills").toString().split("+");
+		QStringList available;
+		foreach (const QString &generalName, Sanguosha->getLimitedGeneralNames()) {
+			const General *general = Sanguosha->getGeneral(generalName);
+			if (!general) continue;
+			foreach (const Skill *skill, general->getVisibleSkillList()) {
+				if (skill->objectName() == "pingjian" || used.contains(skill->objectName())) continue;
+				const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skill->objectName());
+				if (!viewAs || !viewAs->isEnabledAtPlay(self)) continue;
+				const QString description = skill->getDescription();
+				if (description.contains("出牌阶段限一次，") || description.contains("阶段技，")) {
+					available << generalName;
+					break;
+				}
+			}
+		}
+		GameRng previewRng;
+		// Catalog hash iteration and Qt's platform-sized hash must not change
+		// the candidates between native and WASM for the same request.
+		available.sort();
+		quint32 seed = 2166136261u;
+		const QByteArray identity = (objectName() + ":" + self->objectName() + ":"
+			+ QString::number(requestId)).toUtf8();
+		for (char byte : identity) {
+			seed ^= static_cast<unsigned char>(byte);
+			seed *= 16777619u;
+		}
+		previewRng.seed(seed);
+		GameRng::Binding previewBinding(previewRng);
+		QStringList selected;
+		for (int i = 0; i < 3 && !available.isEmpty(); ++i) {
+			const QString general = available.takeAt(previewRng.bounded(available.size()));
+			selected << general;
+		}
+		foreach (const QString &generalName, selected) {
+			SkillDeclarationCandidate group;
+			group.value = generalName;
+			group.label = Sanguosha->translate(generalName);
+			group.kind = "general";
+			group.group = generalName;
+			group.enabled = false;
+			result << group;
+			const General *general = Sanguosha->getGeneral(generalName);
+			if (!general) continue;
+			foreach (const Skill *skill, general->getVisibleSkillList()) {
+				if (skill->objectName() == "pingjian" || used.contains(skill->objectName())) continue;
+				const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skill->objectName());
+				if (!viewAs || !viewAs->isEnabledAtPlay(self)) continue;
+				const QString description = skill->getDescription();
+				if (!description.contains("出牌阶段限一次，") && !description.contains("阶段技，")) continue;
+				SkillDeclarationCandidate candidate;
+				candidate.value = skill->objectName();
+				candidate.label = Sanguosha->translate(candidate.value);
+				candidate.kind = "skill";
+				candidate.group = generalName;
+				candidate.enabled = true;
+				result << candidate;
+			}
+		}
+		return result;
+	}
+
+	SkillDeclarationReason declarationReason(const Player *self, const QString &value,
+		const Card *) const override
+	{
+		if (!self || !Sanguosha) return SkillDeclarationReason::CandidateUnavailable;
+		const QStringList used = self->property("pingjian_has_used_skills").toString().split("+");
+		if (used.contains(value)) return SkillDeclarationReason::CandidateUnavailable;
+		const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(value);
+		return viewAs && viewAs->isEnabledAtPlay(self)
+			? SkillDeclarationReason::None : SkillDeclarationReason::CandidateUnavailable;
 	}
 
 	void getpingjianskill(ServerPlayer*source,const QString&str,const QString&strr,TriggerEvent event,QVariant&data)const
@@ -3290,9 +3273,9 @@ public:
 	{
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance("tenyeargue",true,false);
+		return SkillDialogInfo::guhuo("tenyeargue",true,false);
 	}
 
 	bool isEnabledAtPlay(const Player*player)const
@@ -3662,9 +3645,9 @@ public:
 		return target != nullptr&& target->isAlive()&& target->getMark("&tenyearquanjian_debuff-Clear")> 0;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return TiansuanDialog::getInstance("tenyearquanjian","damage,card");
+		return SkillDialogInfo::tiansuan("tenyearquanjian","damage,card");
 	}
 
 	bool trigger(TriggerEvent,Room*room,ServerPlayer*player,QVariant&data)const
@@ -5883,9 +5866,9 @@ public:
 		return target != nullptr;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance("dunshi",true,false);
+		return SkillDialogInfo::guhuo("dunshi",true,false);
 	}
 
 	QStringList getSkills(ServerPlayer*player)const
@@ -8899,9 +8882,9 @@ public:
 		return target&& target->isAlive();
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(),true,true,true,true,true,true);
+		return SkillDialogInfo::guhuo(objectName(),true,true,true,true,true,true);
 	}
 
 	bool trigger(TriggerEvent event,Room*room,ServerPlayer*player,QVariant&data)const
@@ -13146,9 +13129,9 @@ public:
         response_or_use = true;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance("jiusi",true,false);
+		return SkillDialogInfo::guhuo("jiusi",true,false);
 	}
 
 	bool isEnabledAtResponse(const Player*player,const QString&pattern)const
@@ -14679,9 +14662,9 @@ public:
 		return new SpMouzhuCard;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return TiansuanDialog::getInstance("spmouzhu","distance,hp");
+		return SkillDialogInfo::tiansuan("spmouzhu","distance,hp");
 	}
 
 	bool isEnabledAtPlay(const Player*player)const
@@ -17734,10 +17717,10 @@ public:
 		view_as_skill = new HeqiaVS;
 	}
 
-	/*QDialog*getDialog()const
+	/*SkillDialogInfo getDialogInfo() const override
 	{
 		//if(Sanguosha->getCurrentCardUsePattern()== "@@heqia1")return nullptr;
-		return GuhuoDialog::getInstance("heqia",true,false,false);
+		return SkillDialogInfo::guhuo("heqia",true,false,false);
 	}*/
 
 	bool onPhaseChange(ServerPlayer*player,Room*room)const
@@ -17847,9 +17830,9 @@ public:
 		return TriggerSkill::getPriority(event);
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(name,false,true,true,false,true);
+		return SkillDialogInfo::guhuo(name,false,true,true,false,true);
 	}
 
 	bool triggerable(const ServerPlayer*target)const
@@ -20506,9 +20489,9 @@ public:
 		global = true;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance("tenyearhuace",false);
+		return SkillDialogInfo::guhuo("tenyearhuace",false);
 	}
 
 	bool trigger(TriggerEvent event,Room*room,ServerPlayer*player,QVariant&data)const
@@ -22590,9 +22573,9 @@ public:
 	{
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return TiansuanDialog::getInstance("fengyan","hp,hand");
+		return SkillDialogInfo::tiansuan("fengyan","hp,hand");
 	}
 
 	bool isEnabledAtPlay(const Player*player)const
@@ -23494,9 +23477,9 @@ public:
 		view_as_skill = new MiaoxianVS;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance("miaoxian",false);
+		return SkillDialogInfo::guhuo("miaoxian",false);
 	}
 
 	bool trigger(TriggerEvent event,Room*room,ServerPlayer*player,QVariant&data)const
@@ -26186,9 +26169,9 @@ public:
 		view_as_skill = new FengyingVS;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(),true,true,true,false,false,true);
+		return SkillDialogInfo::guhuo(objectName(),true,true,true,false,false,true);
 	}
 
 	bool triggerable(const ServerPlayer*target)const
@@ -29008,9 +28991,9 @@ public:
 		view_as_skill = new Fuhuivs;
 	}
 
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(),true,true);
+		return SkillDialogInfo::guhuo(objectName(),true,true);
 	}
 
 	bool trigger(TriggerEvent triggerEvent,Room*,ServerPlayer*player,QVariant&data)const

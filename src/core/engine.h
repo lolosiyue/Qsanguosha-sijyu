@@ -9,6 +9,7 @@
 #include "lua-runtime.h"
 #include "util.h"
 #include "json.h"
+#include "engine-translation-catalog.h"
 #include <QMutex>
 #include <QThread>
 #include <QVariantMap>
@@ -271,7 +272,7 @@ private:
     void godLottery(QStringList &) const;
 	void godLottery(QSet<QString> &) const;
     QList<const Skill *> getSafeSkills() const;
-    QHash<QString, QString> translations, engine_translations;
+    EngineTranslationCatalog m_translationCatalog;
     QHash<QString, const General *> generals, available_generals;
     QHash<QString, const QMetaObject *> metaobjects;
     //QHash<QString, QString> className2objectName;

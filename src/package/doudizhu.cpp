@@ -2037,9 +2037,9 @@ public:
 		view_as_skill = new Jiejiuvs;
         frequency = Compulsory;
     }
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance(objectName(), true, false);
+        return SkillDialogInfo::guhuo(objectName(), true, false);
     }
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const
     {

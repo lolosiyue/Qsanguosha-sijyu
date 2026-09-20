@@ -1,4 +1,5 @@
 #include "tui-board-view.h"
+#include "tui-text.h"
 
 #include "client-game-state.h"
 #include "player.h"
@@ -153,7 +154,7 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
     // spec §3.1's worked example shows a bare ▶ in front of 时语's own seat
     // bracket ("▶[1]时语(我)") with nothing added to her (blank) third line.
     const QString prefix = current ? QStringLiteral("▶") : QString();
-    const QString suffix = isSelf ? QStringLiteral("(我)") : QString();
+    const QString suffix = isSelf ? tuiText("tui_board_self_suffix") : QString();
     const QString seatTag = QStringLiteral("[%1]").arg(seat);
     const QString hp1 = hpText(hp, maxHp);
     QString kingdomHp = kingdom;
@@ -194,7 +195,7 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
     QString line2 = role;
     if (!line2.isEmpty())
         line2 += QLatin1Char(' ');
-    line2 += QStringLiteral("手%1").arg(handCount);
+    line2 += tuiText("tui_board_hand_count").arg(handCount);
     // Only the self cell spells out card names in brackets (spec's worked
     // example does this for 时语's own equipment). A 20-column opponent slot
     // does not have room for even one typical card name in brackets once the
@@ -203,20 +204,20 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
     // bracket ("判【乐…"), a worse result than just showing how many.
     if (!equip.isEmpty()) {
         if (isSelf) {
-            line2 += QStringLiteral(" 装");
+            line2 += QLatin1Char(' ') + tuiText("tui_board_equipment_label");
             for (const QString &label : equip)
                 line2 += QStringLiteral("【%1】").arg(label);
         } else {
-            line2 += QStringLiteral(" 装%1").arg(equip.size());
+            line2 += QLatin1Char(' ') + tuiText("tui_board_equipment_count").arg(equip.size());
         }
     }
     if (!judge.isEmpty()) {
         if (isSelf) {
-            line2 += QStringLiteral(" 判");
+            line2 += QLatin1Char(' ') + tuiText("tui_board_judgement_label");
             for (const QString &label : judge)
                 line2 += QStringLiteral("【%1】").arg(label);
         } else {
-            line2 += QStringLiteral(" 判%1").arg(judge.size());
+            line2 += QLatin1Char(' ') + tuiText("tui_board_judgement_count").arg(judge.size());
         }
     }
     line2 = tuiPadTo(line2, width);
@@ -225,17 +226,17 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
     if (!alive) {
         // A dead player's chain/facing state stops mattering the moment they
         // are dead, so this is the one marker line-3 shows alone.
-        markers << QStringLiteral("✖阵亡");
+        markers << tuiText("tui_board_dead_marker");
     } else {
         if (player.value(QStringLiteral("flags")).toStringList().contains(QStringLiteral("Global_Dying")))
-            markers << QStringLiteral("濒死");
+            markers << tuiText("tui_state_dying");
         // faceup is only ever broadcast when it changes (see
         // TuiRenderer::renderPlayers()'s identical default), so a player the
         // server never mentioned is still face up.
         if (!player.value(QStringLiteral("faceup"), true).toBool())
-            markers << QStringLiteral("翻面");
+            markers << tuiText("tui_state_face_down");
         if (player.value(QStringLiteral("chained")).toBool())
-            markers << QStringLiteral("连环");
+            markers << tuiText("tui_state_chained");
     }
     const QString line3 = tuiPadTo(markers.join(QLatin1Char(' ')), width);
 
@@ -331,8 +332,8 @@ void drawFrame(TuiScreen &screen, const TuiBoardGeometry &geom, const QString &r
     screen.putText(bottomRow, 0, borderRow(cols, QChar(0x2514), QChar(0x2518), QChar(0), -1));
 
     putTitle(screen, 0, 2, roomTitle, dividerCol - 2);
-    putTitle(screen, 0, dividerCol + 2, QStringLiteral("战报"), cols - 1 - (dividerCol + 2));
-    putTitle(screen, roomBottomRow, 2, QStringLiteral("手牌"), cols - 4);
+    putTitle(screen, 0, dividerCol + 2, tuiText("tui_board_log_title"), cols - 1 - (dividerCol + 2));
+    putTitle(screen, roomBottomRow, 2, tuiText("tui_section_hand"), cols - 4);
 
     const QChar vertical(0x2502); // │
     for (int row = geom.room.row; row < roomBottomRow; ++row) {
@@ -370,8 +371,8 @@ void drawWaitingRoom(TuiScreen &screen, const TuiResolvers &resolvers,
     };
 
     if (!serverName.isEmpty())
-        putLine(QStringLiteral("服务器 %1").arg(serverName));
-    putLine(QStringLiteral("模式 %1  人数 %2/%3").arg(mode).arg(joined).arg(total));
+        putLine(tuiText("tui_board_server").arg(serverName));
+    putLine(tuiText("tui_board_mode_players").arg(mode).arg(joined).arg(total));
     putLine(QString());
     // Readiness is not yet a wire field ClientGameState carries (grep found
     // no per-player "ready" key anywhere in the reducer): standing in for it
@@ -382,7 +383,8 @@ void drawWaitingRoom(TuiScreen &screen, const TuiResolvers &resolvers,
         const QVariantMap player = state.player(name);
         const bool ready = !player.value(QStringLiteral("general")).toString().isEmpty();
         const QString display = resolvers.player ? resolvers.player(name) : name;
-        putLine(QStringLiteral("%1 %2").arg(display, ready ? QStringLiteral("已就绪") : QStringLiteral("未就绪")));
+        putLine(tuiText("tui_board_player_ready").arg(display,
+            ready ? tuiText("tui_board_ready") : tuiText("tui_board_not_ready")));
     }
 }
 
@@ -456,7 +458,7 @@ void drawPile(TuiScreen &screen, const ClientGameState &state, const TuiBoardGeo
             const int row = geom.room.row + r * CellHeight + 1;
             const int col = geom.room.col + c * CellWidth;
             const int width = std::min(CellWidth, geom.room.col + geom.room.cols - col);
-            const QString text = QStringLiteral("牌堆 %1   弃牌 %2")
+            const QString text = tuiText("tui_board_piles")
                 .arg(state.gameValue(QStringLiteral("draw_pile_count")).toInt())
                 .arg(state.gameValue(QStringLiteral("discard_pile")).toList().size());
             const int pad = std::max(0, (width - tuiDisplayWidth(text)) / 2);
@@ -531,13 +533,13 @@ QString actionSummary(const GameActionModel &model)
             [](const GameActionEntry &entry) { return entry.enabled; }));
     };
     QStringList counts;
-    if (!model.actions.isEmpty()) counts << QStringLiteral("选项%1").arg(enabledCount(model.actions));
-    if (!model.cards.isEmpty()) counts << QStringLiteral("牌%1").arg(enabledCount(model.cards));
-    if (!model.players.isEmpty()) counts << QStringLiteral("目标%1").arg(enabledCount(model.players));
-    if (!model.skills.isEmpty()) counts << QStringLiteral("技能%1").arg(enabledCount(model.skills));
-    if (model.canCancel) counts << QStringLiteral("可取消");
-    if (model.canConfirm) counts << QStringLiteral("可确认");
-    return counts.isEmpty() ? QString() : QStringLiteral("可选：") + counts.join(QLatin1Char(' '));
+    if (!model.actions.isEmpty()) counts << tuiText("tui_board_action_count").arg(enabledCount(model.actions));
+    if (!model.cards.isEmpty()) counts << tuiText("tui_board_card_count").arg(enabledCount(model.cards));
+    if (!model.players.isEmpty()) counts << tuiText("tui_board_target_count").arg(enabledCount(model.players));
+    if (!model.skills.isEmpty()) counts << tuiText("tui_board_skill_count").arg(enabledCount(model.skills));
+    if (model.canCancel) counts << tuiText("tui_board_cancel");
+    if (model.canConfirm) counts << tuiText("tui_board_confirm");
+    return counts.isEmpty() ? QString() : tuiText("tui_label_choices_inline").arg(counts.join(QLatin1Char(' ')));
 }
 
 void drawInput(TuiScreen &screen, const TuiBoardGeometry &geom, const TuiBoardViewState &view,
@@ -638,12 +640,12 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     }
 
     const bool started = isGameStarted(state);
-    QString roomTitle = QStringLiteral("房间");
+    QString roomTitle = tuiText("tui_board_room_title");
     const QString mode = state.setup().value(QStringLiteral("game_mode")).toString();
     if (!mode.isEmpty())
         roomTitle += QLatin1Char(' ') + mode;
     if (started) {
-        roomTitle += QStringLiteral(" 轮次%1").arg(state.gameValue(QStringLiteral("round")).toInt());
+        roomTitle += QLatin1Char(' ') + tuiText("tui_board_round").arg(state.gameValue(QStringLiteral("round")).toInt());
         if (geom.pageCount > 1)
             roomTitle += QStringLiteral(" ‹%1/%2›").arg(view.page + 1).arg(geom.pageCount);
     }

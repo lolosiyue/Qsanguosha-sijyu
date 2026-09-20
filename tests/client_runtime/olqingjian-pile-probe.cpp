@@ -6,6 +6,7 @@
 #include "client-rules-session.h"
 #include "engine-bootstrap.h"
 #include "engine.h"
+#include "interaction-model.h"
 #include "player.h"
 #include "protocol.h"
 #include "runtime-paths.h"
@@ -188,8 +189,9 @@ int main(int argc, char **argv)
         const auto evaluate = [&](const char *label, const QJsonArray &cardIds,
                                   const QJsonArray &targets, bool expectConfirm,
                                   const char *expectReason) {
+            InteractionResponse canonical;
             const QJsonObject result = ClientRulesSession().evaluate(
-                olqingjianRequest(snapshotState(state), cardIds, targets));
+                olqingjianRequest(snapshotState(state), cardIds, targets), &canonical);
             const QString reason = result.value(QStringLiteral("reason")).toString();
             const bool confirm = result.value(QStringLiteral("can_confirm")).toBool();
             const bool known = result.value(QStringLiteral("known")).toBool();
@@ -198,6 +200,10 @@ int main(int argc, char **argv)
                 + " reason=" + reason.toUtf8();
             check(known, detail.constData());
             check(confirm == expectConfirm, detail.constData());
+            check((canonical.kind != InteractionResponseKind::None) == expectConfirm,
+                  "only a complete selection may return a canonical response");
+            check(result.value(QStringLiteral("wire")).isNull(),
+                  "a rules preview must not reserve or encode a transport reply");
             if (expectReason != nullptr)
                 check(reason == QString::fromUtf8(expectReason), detail.constData());
             cases.append(QJsonObject{{QStringLiteral("label"), label},
@@ -229,7 +235,7 @@ int main(int argc, char **argv)
 
         const QJsonObject ok = evaluate("get_card_sync_allows_distribute", QJsonArray{slash},
                                         QJsonArray{"sgs2"}, true, "");
-        check(ok.value(QStringLiteral("wire")).isObject(), "confirmed selection produced no wire reply");
+        check(ok.value(QStringLiteral("can_confirm")).toBool(), "legal distribution was rejected");
 
         applyMove(&state, QSanProtocol::S_COMMAND_LOSE_CARD, QStringLiteral("sgs1"), QString(),
                   static_cast<int>(Player::PlaceSpecial), static_cast<int>(Player::PlaceTable),

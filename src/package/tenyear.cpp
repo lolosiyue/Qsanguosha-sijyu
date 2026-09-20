@@ -5096,9 +5096,9 @@ public:
 		response_or_use = true;
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return JuguanDialog::getInstance("saying", "slash,peach,analeptic");
+		return SkillDialogInfo::juguan("saying", "slash,peach,analeptic");
 	}
 
 	bool viewFilter(const Card *to_select) const
@@ -8733,9 +8733,9 @@ public:
 		events << CardUsed;
 		view_as_skill = new Zhenyuvs;
 	}
-	QDialog*getDialog()const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(),true,false);
+		return SkillDialogInfo::guhuo(objectName(),true,false);
 	}
 	bool triggerable(const ServerPlayer *target) const
 	{

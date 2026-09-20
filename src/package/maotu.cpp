@@ -370,9 +370,9 @@ public:
         waked_skills = "#mtjieli";
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return TiansuanDialog::getInstance("mtjieli");
+        return SkillDialogInfo::tiansuan("mtjieli");
     }
 
     bool triggerable(const ServerPlayer *target) const
@@ -2370,9 +2370,9 @@ public:
         view_as_skill = new MTZhiheVS;
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance("mtzhihe", true, true, true);
+        return SkillDialogInfo::guhuo("mtzhihe", true, true, true);
     }
 
     int getPriority(TriggerEvent) const
@@ -2596,9 +2596,9 @@ public:
         return target != NULL && target->isAlive();
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return TiansuanDialog::getInstance("mtjishi", "hp,maxhp");
+        return SkillDialogInfo::tiansuan("mtjishi", "hp,maxhp");
     }
 
     bool trigger(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const
@@ -2736,9 +2736,9 @@ public:
         return target != NULL && target->isAlive();
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return TiansuanDialog::getInstance("mtyitao", "hp,maxhp");
+        return SkillDialogInfo::tiansuan("mtyitao", "hp,maxhp");
     }
 
     bool trigger(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const

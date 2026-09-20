@@ -2380,7 +2380,9 @@ public:
 
 	SkillDialogInfo getDialogInfo() const override
 	{
-		return SkillDialogInfo::named("huashen", objectName());
+		SkillDialogInfo info = SkillDialogInfo::named("huashen", objectName());
+		info.parameters.insert("viewOnly", true);
+		return info;
 	}
 
 	static void AcquireGenerals(ServerPlayer *zuoci, int n, QStringList remove_list)

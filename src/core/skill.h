@@ -3,11 +3,13 @@
 
 class Room;
 class SkillRuntimeCoordinator;
-class QDialog;
 
 #include "skill-dialog-info.h"
 #include "structs.h"
 #include "scenario.h"
+
+enum class SkillDeclarationReason;
+struct SkillDeclarationCandidate;
 
 struct SkillContext {
     QString skill_name;
@@ -179,8 +181,15 @@ public:
 
     virtual int getEffectIndex(const ServerPlayer *player, const Card *card) const;
     virtual SkillDialogInfo getDialogInfo() const;
-    virtual QDialog *getDialog() const;
-
+    // Shared declaration hooks keep specialised candidate and eligibility
+    // rules in the skill instead of recreating them in each presenter.
+    virtual SkillDeclarationReason declarationReason(const Player *self,
+                                                     const QString &value,
+                                                     const Card *card) const;
+    virtual QList<SkillDeclarationCandidate> declarationCandidates(
+        const Player *self, CardUseStruct::CardUseReason reason,
+        const QString &pattern, const QStringList &bannedPackages,
+        quint64 requestId = 0) const;
     void initMediaSource();
     void playAudioEffect(int index = -1, bool superpose = true) const;
     virtual Frequency getFrequency(const Player *target = nullptr) const;

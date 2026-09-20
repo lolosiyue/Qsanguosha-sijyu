@@ -2,14 +2,19 @@
 #define QSAN_PACKAGE_DIALOGS_H
 
 #include "generaloverview.h"
+#include "skill-declaration.h"
 
 #include <QDialog>
 #include <QHash>
+#include <QPointer>
 #include <QStringList>
+
+#include <memory>
 
 class QAbstractButton;
 class QButtonGroup;
 class QGroupBox;
+class QHBoxLayout;
 class QVBoxLayout;
 class Card;
 
@@ -44,10 +49,17 @@ protected:
 private:
     QGroupBox *createLeft();
     QGroupBox *createRight();
+    void clearButtons();
     QButtonGroup *group;
+    QHBoxLayout *content_layout = nullptr;
+    QGroupBox *left_box = nullptr;
+    QGroupBox *right_box = nullptr;
     bool play_only;
     bool slash_combined;
     bool delayed_tricks;
+    bool show_left;
+    bool show_right;
+    std::unique_ptr<SkillDeclarationSession> declaration;
 
 signals:
     void onButtonClick();
@@ -81,6 +93,7 @@ private:
     QButtonGroup *group;
     QVBoxLayout *button_layout;
     QString cards;
+    std::unique_ptr<SkillDeclarationSession> declaration;
 
 signals:
     void onButtonClick();
@@ -104,27 +117,13 @@ public slots:
 private:
     explicit TiansuanDialog(const QString &name, const QString &choices = QString());
     QAbstractButton *createChoiceButton(const QString &choice);
-    bool MarkJudge(const QString &choice) const;
     QButtonGroup *group;
     QVBoxLayout *button_layout;
     QString tiansuan_choices;
+    std::unique_ptr<SkillDeclarationSession> declaration;
 
 signals:
     void onButtonClick();
-};
-
-class HuashenDialog : public GeneralOverview
-{
-    Q_OBJECT
-
-public:
-    explicit HuashenDialog(const QString &propertyName = "Huashens");
-
-public slots:
-    void popup();
-
-private:
-    QString m_propertyName;
 };
 
 #endif

@@ -12,6 +12,7 @@ namespace ExcelView {
 
 QJsonObject catalog(const ClientCore &core, const QString &assetRoot, bool legacy);
 QJsonObject publicState(const ClientCore &core);
+QJsonObject uiPhrases();
 QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot,
                          const QStringList &logs = QStringList());
 QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,

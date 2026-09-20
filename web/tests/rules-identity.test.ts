@@ -15,7 +15,7 @@ async function seal(value: JsonObject): Promise<JsonObject> {
   return result;
 }
 async function bundle(): Promise<JsonObject> {
-  return seal({ schema_version: 1, protocol_version: 2, bridge_schema: 2, ruleset: "sijyu",
+  return seal({ schema_version: 1, protocol_version: 2, bridge_schema: 3, ruleset: "sijyu",
     content_profile: "declared-v2", cpp_hash: h, card_registry_hash: h, lua_hash: h, bindings_abi: h,
     packages: ["standard", "wind"], interaction_schemas: { "1": h, "2": h } });
 }
@@ -94,7 +94,7 @@ describe("rules identity", () => {
       "qsanguosha_client_wasm.assets.json": new Uint8Array([3]) };
     const record: Record<string, string> = {};
     for (const [name, bytes] of Object.entries(files)) record[name] = await sha256(bytes);
-    const manifest = { schema_version: 1, bridge_schema: 2, files: record };
+    const manifest = { schema_version: 1, bridge_schema: 3, files: record };
     await verifyDeployment(manifest, files);
     const original = new TextEncoder().encode(canonical(manifest));
     const pinned = await sha256(original);

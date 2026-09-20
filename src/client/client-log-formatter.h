@@ -35,10 +35,10 @@ struct ClientLogUseCardPhrases
     QString skillCost = QStringLiteral("%from %3 [%1] %4, and the cost is %2");
     QString asNoSub = QStringLiteral("%from %4 [%1] %5, %3 [%2]");
     QString asSub = QStringLiteral("%from %5 [%1] %6 %4 %2 as %3");
-    QString filterAs = QStringLiteral("%from 的 %2 因“%1”效果视为 %3 %4");
+    QString filterAs = QStringLiteral("%from's %2 is treated as %3 %4 by the effect of %1");
     QString plain = QStringLiteral("%from %2 %1");
     QString targetSuffix = QStringLiteral(", target is %to");
-    QString selfName = QStringLiteral("自己");
+    QString selfName = QStringLiteral("self");
 };
 
 struct ClientLogFormatStyle

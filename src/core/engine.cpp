@@ -30,6 +30,7 @@
 #include "room.h"
 #include "room-runtime.h"
 #include "miniscenarios.h"
+#include "engine-chat-catalog.h"
 
 #include "ai-probe.h"
 #include "skill-set-generation.h"
@@ -726,9 +727,7 @@ void Engine::addTranslationEntry(const QString &key, const QString &value)
         runtime->addTranslationEntry(key, value);
         return;
     }
-    if (!translations.contains(key))
-		engine_translations.insert(key, value);
-	translations.insert(key, value);
+    m_translationCatalog.add(key, value);
 }
 
 bool Engine::addModes(const QString &key, const QString &value, const QString &roles)
@@ -1178,19 +1177,16 @@ QString Engine::translate(const QString &to_translate, bool initial) const
 			if (runtime && runtime->hasTranslation(str))
 				res += runtime->translate(str, initial);
 			else
-				res += (initial?engine_translations:translations).value(str, str);
+				res += m_translationCatalog.translate(str, initial);
 		}
 		return res;
 	}
-	return (initial?engine_translations:translations).value(to_translate, to_translate);
+	return m_translationCatalog.translate(to_translate, initial);
 }
 
 QVariantMap Engine::translationTable() const
 {
-    QVariantMap table;
-    for (auto it = translations.constBegin(); it != translations.constEnd(); ++it)
-        table.insert(it.key(), it.value());
-    return table;
+    return m_translationCatalog.table();
 }
 
 int Engine::getRoleIndex() const
@@ -1674,181 +1670,12 @@ QMap<QString, QString> Engine::getSkillTypeColorMap() const
 
 QStringList Engine::getChattingEasyTexts() const
 {
-    LuaLocker locker;
-    static QStringList easy_texts = GetConfigFromLuaState(getLuaState(), "easy_text").toStringList();
-    return easy_texts;
+    return EngineChatCatalog::easyTexts(*this);
 }
 
 QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name) const
 {
-    QList<EasyTextItem> items;
-
-    lua_State *chat_lua = CreateLuaState();
-    if (DoLuaScript(chat_lua, "lua/chat_config.lua")) {
-        QVariant base_texts = GetValueFromLuaState(chat_lua, "chat_config", "easy_text");
-        if (base_texts.canConvert<QStringList>()) {
-            QStringList easy_texts = base_texts.toStringList();
-            foreach (const QString &text, easy_texts) {
-                if (!text.isEmpty()) {
-                    items << EasyTextItem(text, QString(), 0);
-                }
-            }
-        }
-    }
-    lua_close(chat_lua);
-
-    if (!general_name.isEmpty()) {
-        QStringList general_names = general_name.split(",");
-
-        foreach (const QString &gname, general_names) {
-            QString trimmed_name = gname.trimmed();
-            if (trimmed_name.isEmpty()) continue;
-
-            const General *general = getGeneral(trimmed_name);
-            if (!general) continue;
-
-            QString actualGn = getResourceAlias("heroskin", trimmed_name);
-
-            QList<const Skill *> skills = general->getVisibleSkillList();
-
-            foreach (const Skill *skill, skills) {
-                foreach (QString sk, skill->getWakedSkills().split(",")) {
-                    const Skill *ski = Sanguosha->getSkill(sk);
-                    if (ski && ski->isVisible() && !skills.contains(ski))
-                        skills << ski;
-                }
-            }
-
-            foreach (QString skill_name, general->getRelatedSkillNames()) {
-                const Skill *skill = Sanguosha->getSkill(skill_name);
-                if (skill && skill->isVisible() && !skills.contains(skill))
-                    skills << skill;
-            }
-
-            foreach (const Skill *skill, skills) {
-                QString skill_obj_name = skill->objectName();
-
-                int skin_index = Config.value("HeroSkin/" + trimmed_name, 0).toInt();
-                if (skin_index > 0) general->tryLoadingSkinTranslation(skin_index);
-
-                QStringList audio_sources = skill->getSources(actualGn, skin_index);
-                QStringList actual_files;
-
-                if (!audio_sources.isEmpty()) {
-                    actual_files = audio_sources;
-                }
-
-                if (actual_files.isEmpty()) {
-                    QString aliasSkill = getResourceAlias("audios", skill_obj_name);
-                    if (aliasSkill != skill_obj_name) {
-                        const Skill *aliasSk = getSkill(aliasSkill);
-                        if (aliasSk) {
-                            actual_files = aliasSk->getSources(actualGn, skin_index);
-                        }
-                    }
-                }
-
-                if (!actual_files.isEmpty()) {
-                    for (int i = 0; i < actual_files.size(); i++) {
-                        QString audio_file = actual_files[i];
-                        QString line_key;
-
-                        if (skin_index > 0) {
-                            QString basename = QFileInfo(audio_file).baseName();
-                            line_key = QString("$%1-%2_%3").arg(basename).arg(actualGn).arg(skin_index);
-                        } else {
-                            line_key = QString("$%1%2").arg(skill_obj_name).arg(i + 1);
-                        }
-
-                        QString skill_line = translate(line_key);
-                        if (skill_line.startsWith("$")) {
-                            line_key = QString("$%1%2").arg(skill_obj_name).arg(i + 1);
-                            skill_line = translate(line_key);
-                        }
-
-                        if (!skill_line.startsWith("$")) {
-                            items << EasyTextItem(skill_line, audio_file, 1);
-                        }
-                    }
-                } else {
-                    bool has_lines = false;
-                    for (int i = 1; i <= 10; i++) {
-                        QString line_key = QString("$%1%2").arg(skill_obj_name).arg(i);
-                        QString skill_line = translate(line_key);
-
-                        if (!skill_line.startsWith("$")) {
-                            items << EasyTextItem(skill_line, QString(), 1);
-                            has_lines = true;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    if (!has_lines) {
-                        QString line_key = QString("$%1").arg(skill_obj_name);
-                        QString skill_line = translate(line_key);
-
-                        if (!skill_line.startsWith("$")) {
-                            items << EasyTextItem(skill_line, QString(), 1);
-                        }
-                    }
-                }
-            }
-
-            int skin_index = Config.value("HeroSkin/" + trimmed_name, 0).toInt();
-            QString death_audio;
-            QString death_line;
-
-            if (skin_index > 0) {
-                QString hero_skin = translate(QString("~%1-%2_%3").arg(actualGn).arg(actualGn).arg(skin_index));
-                if (!hero_skin.startsWith("~")) {
-                    death_audio = QString("hero-skin/%1/%2/death.ogg")
-                        .arg(actualGn).arg(skin_index);
-                    death_line = hero_skin;
-                }
-            }
-
-            if (death_line.isEmpty()) {
-                death_line = translate("~" + actualGn);
-                if (!death_line.startsWith("~") && death_line != " ") {
-                    death_audio = QString("audio/death/%1.wav").arg(actualGn);
-                }
-            }
-
-            if (death_line.startsWith("~") && actualGn.contains("_")) {
-                QString new_name = actualGn.split("_").last();
-                death_line = translate("~" + new_name);
-
-                if (!death_line.startsWith("~") && death_line != " ") {
-                    int new_skin_index = Config.value("HeroSkin/" + new_name, 0).toInt();
-                    if (new_skin_index > 0) {
-                        QString hero_skin = translate(QString("~%1-%2_%3").arg(new_name).arg(new_name).arg(new_skin_index));
-                        if (!hero_skin.startsWith("~")) {
-                            death_audio = QString("hero-skin/%1/%2/death.ogg")
-                                .arg(new_name).arg(new_skin_index);
-                            death_line = hero_skin;
-                        }
-                    } else {
-                        death_audio = QString("audio/death/%1.wav").arg(new_name);
-                    }
-                }
-            }
-
-            if (!death_line.isEmpty() && !death_line.startsWith("~") && death_line != " ") {
-                items << EasyTextItem(death_line, death_audio, 2);
-            }
-
-            QString win_audio = QString("audio/win/%1.wav").arg(actualGn);
-            if (QFile::exists(win_audio)) {
-                QString win_line = translate("$" + actualGn);
-                if (!win_line.startsWith("$")) {
-                    items << EasyTextItem(win_line, win_audio, 3);
-                }
-            }
-        }
-    }
-
-    return items;
+    return EngineChatCatalog::easyTextItems(*this, general_name);
 }
 
 QString Engine::getSetupString() const
@@ -2270,7 +2097,7 @@ QStringList Engine::getLords(bool contain_banned) const
 	foreach (const General *general, getAllGenerals()) {
 		const QString generalName = general->objectName();
 		if (!(runtime && runtime->hasTranslation(generalName))
-			&& !translations.contains(generalName)) continue;
+			&& !m_translationCatalog.contains(generalName)) continue;
 		if (isGeneralHidden(generalName)) continue;
 		if (extra_default_lords.contains(generalName)
 			|| (!removed_default_lords.contains(generalName) && general->isLord()))
@@ -2359,7 +2186,7 @@ QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool availabl
     QHashIterator<QString, const General*> itor(available?available_generals:generals);
     while (itor.hasNext()) {
         itor.next();
-        if(ban.contains(itor.key())||ban.contains(itor.value()->getPackage())||!translations.contains(itor.key())||isGeneralHidden(itor.key())) continue;
+		if(ban.contains(itor.key())||ban.contains(itor.value()->getPackage())||!m_translationCatalog.contains(itor.key())||isGeneralHidden(itor.key())) continue;
 		if(!Config.AddGodGeneral&&itor.value()->getKingdoms().contains("god")) continue;
         if(kingdom.isEmpty()||itor.value()->getKingdoms().contains(kingdom))
             general_names << itor.key();
@@ -2372,7 +2199,7 @@ QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool availabl
         if(ban.contains(general->objectName())||ban.contains(general->getPackage())) continue;
 		const QString generalName = general->objectName();
 		if (!(runtime && runtime->hasTranslation(generalName))
-			&& !translations.contains(generalName)) continue;
+			&& !m_translationCatalog.contains(generalName)) continue;
 		if (isGeneralHidden(generalName)) continue;
 		if(!Config.AddGodGeneral&&general->getKingdoms().contains("god")) continue;
         if(kingdom.isEmpty()||general->getKingdoms().contains(kingdom))

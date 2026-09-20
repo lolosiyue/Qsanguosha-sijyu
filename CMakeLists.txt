@@ -381,6 +381,10 @@ add_library(qsanguosha_engine STATIC
     src/core/runtime-paths.h
     src/core/engine.cpp
     src/core/engine.h
+    src/core/engine-translation-catalog.cpp
+    src/core/engine-translation-catalog.h
+    src/core/engine-chat-catalog.cpp
+    src/core/engine-chat-catalog.h
     src/core/general-version.cpp
     src/core/general-version.h
     src/core/package-selection-policy.cpp
@@ -453,6 +457,8 @@ add_library(qsanguosha_engine STATIC
     src/core/server-info.cpp
     src/core/settings.cpp
     src/core/skill.cpp
+    src/core/skill-declaration.cpp
+    src/core/skill-declaration.h
     src/core/skill-registry.cpp
     src/core/skill-registry.h
     src/core/skill-instance-utils.cpp
@@ -1291,6 +1297,12 @@ if(QSAN_BUILD_GUI)
         src/core/replay/replay-container.h
         src/ui/package-dialogs.cpp
         src/ui/package-dialogs.h
+        src/ui/special-skill-dialogs.cpp
+        src/ui/special-skill-dialogs.h
+        src/ui/room-input-router.cpp
+        src/ui/room-input-router.h
+        src/ui/room-chat-controller.cpp
+        src/ui/room-chat-controller.h
     )
 
     if(QSAN_BUILD_XP_LEGACY)
@@ -1755,6 +1767,7 @@ if(QSAN_BUILD_GUI)
                 qml/home/CardVariantList.qml
                 qml/home/CardPagination.qml
                 qml/home/HomeTheme.qml
+                ui-script/game/chongxu/chongxu.qml
         )
     endif()
 

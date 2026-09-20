@@ -935,9 +935,9 @@ public:
 		view_as_skill = new CsTaoluanVs;
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(), true, true);
+		return SkillDialogInfo::guhuo(objectName(), true, true);
 	}
 
 	bool triggerable(const ServerPlayer *target) const
@@ -2857,9 +2857,9 @@ public:
 		<< EventForDiy << DrawNCards << ConfirmDamage << HpRecover;
 		view_as_skill = new Weizhuangvs;
 	}
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return JuguanDialog::getInstance(objectName(), "slash,jink,peach,analeptic");
+		return SkillDialogInfo::juguan(objectName(), "slash,jink,peach,analeptic");
 	}
 	int getEffectIndex(const ServerPlayer *, const Card *) const
 	{
@@ -8686,127 +8686,7 @@ public:
 	}
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-static QHash<QString,TiansuanDialog*>TiansuanDialogs;
 
-TiansuanDialog *TiansuanDialog::getInstance(const QString &name, const QString &choices)
-{
-	if (TiansuanDialogs[name] == nullptr)
-		TiansuanDialogs[name] = new TiansuanDialog(name, choices);
-
-	return TiansuanDialogs[name];
-}
-
-TiansuanDialog::TiansuanDialog(const QString &name, const QString &choices)
-	: tiansuan_choices(choices)
-{
-	setObjectName(name);
-	setWindowTitle(Sanguosha->translate(name));
-	group = new QButtonGroup(this);
-
-	button_layout = new QVBoxLayout;
-	setLayout(button_layout);
-	connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectChoice(QAbstractButton *)));
-}
-
-bool TiansuanDialog::MarkJudge(const QString &choice)
-{
-	QString mark = objectName() + "_tiansuan_remove_" + choice;
-	foreach (QString m, Self->getMarkNames()) {
-		if (m.startsWith(mark) && Self->getMark(m) > 0)
-			return false;
-	}
-	return true;
-}
-
-void TiansuanDialog::popup()
-{
-	Self->removeTag(objectName());
-	foreach (QAbstractButton *button, group->buttons()) {
-		button_layout->removeWidget(button);
-		group->removeButton(button);
-		delete button;
-	}
-	QStringList choices;
-
-	if (objectName() == "tiansuan") {
-		for (int i = 0; i < 6; i++)
-			choices << QString::number(i);
-	} else if (objectName() == "olsanyao") {
-		if (Self->getMark("olsanyao_hp-PlayClear") <= 0)
-			choices << "hp";
-		if (Self->getMark("olsanyao_hand-PlayClear") <= 0)
-			choices << "hand";
-	} else if (objectName() == "tenyearjiaozhao") {
-		int basic = Self->getMark("tenyearjiaozhao_basic-Clear") - 1;
-		int trick = Self->getMark("tenyearjiaozhao_trick-Clear") - 1;
-
-		if (Self->property("tenyearjiaozhao_level").toInt() < 2) {
-			if (!Self->hasUsed("TenyearJiaozhaoCard") && Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY)
-				choices << "show";
-			if (basic >= 0)
-				choices << "use=" + Self->property("tenyearjiaozhao_basic_name").toString();
-			else if (trick >= 0)
-				choices << "use=" + Self->property("tenyearjiaozhao_trick_name").toString();
-		} else {
-			if ((basic < 0 || trick < 0)&&Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY)
-				choices << "show";
-			if (basic >= 0)
-				choices << "basic=" + Self->property("tenyearjiaozhao_basic_name").toString();
-			if (trick >= 0)
-				choices << "trick=" + Self->property("tenyearjiaozhao_trick_name").toString();
-		}
-	} else if (objectName() == "mtjieli") {
-		foreach (const Card *c, Self->getHandcards()) {
-			if (c->isRed()){
-				if(choices.contains("red")) continue;
-				choices << "red";
-			}else if (c->isBlack()){
-				if(choices.contains("black")) continue;
-				choices << "black";
-			}
-			if (choices.length() >= 2)
-				break;
-		}
-	} else {
-		foreach (QString choice, tiansuan_choices.split(",")) {
-			if (MarkJudge(choice)) choices << choice;
-		}
-	}
-	if (choices.isEmpty()) return;
-	foreach (QString choice, choices) {
-		QAbstractButton *button = createChoiceButton(choice);
-		button_layout->addWidget(button);
-		button->setEnabled(true);
-	}
-	exec();
-}
-
-void TiansuanDialog::selectChoice(QAbstractButton *button)
-{
-	Self->setTag(objectName(), button->objectName());
-	emit onButtonClick();
-	accept();
-}
-
-QAbstractButton *TiansuanDialog::createChoiceButton(const QString &choice)
-{
-	QStringList choices = choice.split("=");
-	QString _choice = objectName() + ":" + choices.first();
-	QString translate = Sanguosha->translate(_choice);
-	translate.replace("%src", Sanguosha->translate(choices.last()));
-
-	QCommandLinkButton *button = new QCommandLinkButton(translate);
-	button->setObjectName(choice);
-
-	translate = Sanguosha->translate(_choice + ":effect");
-	if (!translate.endsWith(":effect")) button->setToolTip(translate);
-
-	group->addButton(button);
-	return button;
-}
-
-#endif
 
 TiansuanCard::TiansuanCard()
 {
@@ -8932,9 +8812,9 @@ public:
 			room->removePlayerCardLimitation(player, "use", "Peach,Analeptic");
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return TiansuanDialog::getInstance(objectName());
+		return SkillDialogInfo::tiansuan(objectName());
 	}
 
 	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
@@ -10783,9 +10663,9 @@ public:
 		view_as_skill = new YizanVS;
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(), true, false);
+		return SkillDialogInfo::guhuo(objectName(), true, false);
 	}
 
 	int getPriority(TriggerEvent) const
@@ -11987,9 +11867,9 @@ public:
 		return target != nullptr;
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance("secondzhanyi", true, false);
+		return SkillDialogInfo::guhuo("secondzhanyi", true, false);
 	}
 
 	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
@@ -13119,9 +12999,9 @@ public:
 	{
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return TiansuanDialog::getInstance("jiaohua", "basic,trick,equip");
+		return SkillDialogInfo::tiansuan("jiaohua", "basic,trick,equip");
 	}
 
 	bool isEnabledAtPlay(const Player *player) const
@@ -19913,9 +19793,9 @@ public:
 		events << PreCardUsed;
 		view_as_skill = new DaozhuanVs;
 	}
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(), true, false);
+		return SkillDialogInfo::guhuo(objectName(), true, false);
 	}
 
 	bool triggerable(const ServerPlayer *target) const

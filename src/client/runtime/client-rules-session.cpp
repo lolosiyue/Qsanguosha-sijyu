@@ -7,9 +7,9 @@
 #include "client-selection-runtime.h"
 #include "game-rng.h"
 #include "interaction-command-registry.h"
-#include "interaction-reply-encoder.h"
 #include "protocol/skill-instance-message.h"
 #include "server-info.h"
+#include "skill-declaration.h"
 #include "skill-dialog-info.h"
 #include "skill-instance-utils.h"
 
@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 
 namespace {
@@ -92,6 +93,7 @@ struct Scene
     ClientGameState state;
     ClientRoomContext room{&state};
     ClientPlayerModel players{&state};
+    std::unique_ptr<SkillDeclarationSession> declarationSession;
 
     ~Scene()
     {
@@ -289,6 +291,33 @@ Prompt makePrompt(const QJsonObject &input, const QJsonObject &interaction,
     prompt.request.skillName = interaction.value(QStringLiteral("skill")).toString();
     const int cardCount = Sanguosha->getCardCount();
     switch (prompt.request.command) {
+    case S_COMMAND_CHOOSE_CARD:
+    case S_COMMAND_AMAZING_GRACE:
+    case S_COMMAND_SHOW_CARD:
+    case S_COMMAND_PINDIAN: {
+        const auto *descriptor = InteractionCommandRegistry::find(
+            static_cast<CommandType>(prompt.request.command));
+        require(descriptor != nullptr, QStringLiteral("unsupported_command"));
+        prompt.request.type = descriptor->type;
+        prompt.enumerated = true;
+        prompt.cards.selection.enumerated = true;
+        prompt.cards.selection.minSelection = interaction.value(QStringLiteral("min")).toInt();
+        prompt.cards.selection.maxSelection = interaction.value(QStringLiteral("max")).toInt();
+        prompt.cards.selection.selectableCards = optionalCardIds(
+            typed.value(QStringLiteral("selectable_cards")), cardCount);
+        QList<int> disabled;
+        for (const QJsonValue &id : typed.value(QStringLiteral("disabled_cards")).toArray())
+            disabled.append(integer(id, -1, cardCount - 1));
+        for (int id : disabled)
+            prompt.cards.selection.selectableCards.removeAll(id);
+        // A hidden-hand choice is a count-only token, never a physical card.
+        if (prompt.request.command == S_COMMAND_CHOOSE_CARD
+            && typed.value(QStringLiteral("hidden_hand_count")).toInt() > 0
+            && !disabled.contains(-1))
+            prompt.cards.selection.selectableCards.append(-1);
+        prompt.request.payload = prompt.cards;
+        break;
+    }
     case S_COMMAND_EXCHANGE_CARD:
     case S_COMMAND_DISCARD_CARD: {
         prompt.request.type = prompt.request.command == S_COMMAND_EXCHANGE_CARD
@@ -514,73 +543,19 @@ bool nextSubcard(const ClientRules::SkillCardBuildRequest &draft,
 QString applyDeclaration(const ClientRules::SkillCardBuildRequest &draft,
                          const Prompt &prompt, Scene &scene)
 {
-    const Skill *skill = Sanguosha->getSkill(draft.skillName);
-    SkillDialogInfo info = skill->getDialogInfo();
-    if (!info.isValid())
-        info = Sanguosha->getViewAsSkill(draft.skillName)->getDialogInfo();
-    if (!info.isValid())
-        return {};
-    const QVariantMap params = info.parameters;
-    const bool play = prompt.reason == CardUseStruct::CARD_USE_REASON_PLAY;
-    const QString names = params.value(QStringLiteral("cardNames")).toString();
-    const bool active = info.type == QLatin1String("guhuo")
-        ? !params.value(QStringLiteral("playOnly"), true).toBool() || play
-        : info.type == QLatin1String("juguan")
-            ? !names.isEmpty() && (names.endsWith(QLatin1Char('!')) || play)
-            : true;
-    if (!active)
+    if (scene.declarationSession == nullptr
+        || scene.declarationSession->skillName() != draft.skillName) {
+        scene.declarationSession = std::make_unique<SkillDeclarationSession>(
+            draft.skillName, scene.players.self(), prompt.reason, prompt.cards.selection.pattern,
+            scene.state.setup().value(QStringLiteral("ban_packages")).toStringList(),
+            prompt.request.requestId);
+    }
+    if (!scene.declarationSession->active())
         return {};
     if (draft.userString.isEmpty())
         return QStringLiteral("declaration_required");
-    const QString key = info.objectName.isEmpty() ? draft.skillName : info.objectName;
-    if (info.type == QLatin1String("tiansuan")) {
-        if (!params.value(QStringLiteral("choices")).toString().split(QLatin1Char(','))
-                .contains(draft.userString))
-            return QStringLiteral("invalid_declaration");
-        const QString prefix = key + QStringLiteral("_tiansuan_remove_") + draft.userString;
-        for (const QString &mark : scene.players.self()->getMarkNames()) {
-            if (mark.startsWith(prefix) && scene.players.self()->getMark(mark) > 0)
-                return QStringLiteral("invalid_declaration");
-        }
-        scene.players.self()->setTag(key, draft.userString);
-        return {};
-    }
-    require(info.type == QLatin1String("guhuo") || info.type == QLatin1String("juguan"),
-            QStringLiteral("unsupported_skill_dialog:") + info.type);
-    Card *card = Sanguosha->cloneCard(draft.userString);
-    if (card == nullptr)
+    if (!scene.declarationSession->apply(draft.userString))
         return QStringLiteral("invalid_declaration");
-    card->QObject::deleteLater();
-    card->setSkillName(key);
-    card->setCanRecast(false);
-    bool allowed = !scene.players.self()->isLocked(card);
-    if (info.type == QLatin1String("juguan")) {
-        QString choices = names;
-        choices.remove(QLatin1Char('!'));
-        choices.remove(QLatin1Char('$'));
-        allowed = allowed && choices.split(QLatin1Char(',')).contains(draft.userString)
-            && (names.startsWith(QLatin1Char('$')) || !play || card->isAvailable(scene.players.self()));
-    } else {
-        bool registered = false;
-        const QStringList banned = scene.state.setup().value(QStringLiteral("ban_packages")).toStringList();
-        for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
-            const Card *printed = Sanguosha->getEngineCard(id);
-            if (printed->objectName() == card->objectName()
-                && !banned.contains(printed->getPackage()))
-                registered = true;
-        }
-        allowed = allowed && registered && !card->objectName().startsWith(QLatin1Char('_'))
-            && ((card->getTypeId() == Card::TypeBasic && params.value(QStringLiteral("left"), true).toBool())
-                || (card->getTypeId() == Card::TypeTrick && params.value(QStringLiteral("right"), true).toBool()
-                    && (card->isNDTrick() || params.value(QStringLiteral("delayedTricks"), false).toBool())))
-            && (!params.value(QStringLiteral("slashCombined"), false).toBool()
-                || !card->isKindOf("Slash") || card->objectName() == QLatin1String("slash"))
-            && (!(params.value(QStringLiteral("playOnly"), true).toBool() || play)
-                || card->isAvailable(scene.players.self()));
-    }
-    if (!allowed)
-        return QStringLiteral("invalid_declaration");
-    scene.players.self()->setTag(key, QVariant::fromValue(static_cast<const Card *>(card)));
     return {};
 }
 
@@ -715,13 +690,18 @@ bool sameCardSet(QList<int> left, QList<int> right)
     return left == right;
 }
 
-// Enumerated prompts: validate the draft against the shared ClientCore payload
-// and hand the canonical reply back through the registry's own encoder.
+// Preview produces a typed draft only. The persistent ingress owns submission
+// and wire encoding after ClientCore accepts the response.
 void evaluateEnumerated(const Prompt &prompt, const QJsonObject &selection,
-                        QJsonObject *output)
+                        QJsonObject *output, InteractionResponse *canonicalResponse)
 {
     const int count = Sanguosha->getCardCount();
-    const QList<int> chosen = optionalCardIds(selection.value(QStringLiteral("card_ids")), count);
+    const QJsonArray selectedIds = selection.value(QStringLiteral("card_ids")).toArray();
+    const bool hiddenChoice = prompt.request.type == InteractionType::ChooseCard
+        && selectedIds.size() == 1 && selectedIds.first().isDouble()
+        && selectedIds.first().toDouble() == -1;
+    const QList<int> chosen = hiddenChoice ? QList<int>{-1}
+        : optionalCardIds(selection.value(QStringLiteral("card_ids")), count);
     const QStringList targets = strings(selection.value(QStringLiteral("targets")));
     QList<int> selectable;
     QStringList candidates;
@@ -782,8 +762,13 @@ void evaluateEnumerated(const Prompt &prompt, const QJsonObject &selection,
         else if (!std::all_of(chosen.constBegin(), chosen.constEnd(),
                               [&selectable](int id) { return selectable.contains(id); }))
             reason = QStringLiteral("card_unavailable");
-        else
-            response = InteractionResponse::makeCards(prompt.request.requestId, chosen);
+        else {
+            QString cardText;
+            if ((prompt.request.type == InteractionType::ShowCard
+                    || prompt.request.type == InteractionType::Pindian) && chosen.size() == 1)
+                cardText = Sanguosha->getCard(chosen.first())->toString();
+            response = InteractionResponse::makeCards(prompt.request.requestId, chosen, cardText);
+        }
     } else {
         require(false, QStringLiteral("unsupported_command"));
     }
@@ -799,19 +784,9 @@ void evaluateEnumerated(const Prompt &prompt, const QJsonObject &selection,
         return;
     }
     response.command = prompt.request.command;
-    const auto *descriptor = InteractionCommandRegistry::find(
-        static_cast<QSanProtocol::CommandType>(prompt.request.command));
-    require(descriptor != nullptr && descriptor->replyEncoder != nullptr,
-            QStringLiteral("unsupported_command"));
-    const auto wire = descriptor->replyEncoder(prompt.request, response);
-    require(wire.command != QSanProtocol::S_COMMAND_UNKNOWN
-            && wire.replyTo == prompt.request.requestId,
-            QStringLiteral("reply_encoding_failed"));
     output->insert(QStringLiteral("can_confirm"), true);
-    output->insert(QStringLiteral("wire"), QJsonObject{
-        {QStringLiteral("command"), static_cast<int>(wire.command)},
-        {QStringLiteral("reply_to"), QString::number(wire.replyTo)},
-        {QStringLiteral("payload"), QJsonValue::fromVariant(wire.payload)}});
+    if (canonicalResponse)
+        *canonicalResponse = response;
 }
 
 // The dialog shape a skill declares, so a shell implements guhuo / juguan /
@@ -837,45 +812,17 @@ QJsonObject declarationDialog(const QString &skillName)
 QStringList declarations(const ClientRules::SkillCardBuildRequest &draft,
                          const Prompt &prompt, Scene &scene)
 {
-    const Skill *skill = Sanguosha->getSkill(draft.skillName);
-    SkillDialogInfo info = skill->getDialogInfo();
-    if (!info.isValid())
-        info = Sanguosha->getViewAsSkill(draft.skillName)->getDialogInfo();
-    if (!info.isValid())
+    scene.declarationSession = std::make_unique<SkillDeclarationSession>(
+        draft.skillName, scene.players.self(), prompt.reason, prompt.cards.selection.pattern,
+        scene.state.setup().value(QStringLiteral("ban_packages")).toStringList(),
+        prompt.request.requestId);
+    if (!scene.declarationSession->active())
         return {};
-    const bool play = prompt.reason == CardUseStruct::CARD_USE_REASON_PLAY;
-    const QString names = info.parameters.value(QStringLiteral("cardNames")).toString();
-    if ((info.type == QLatin1String("guhuo")
-            && info.parameters.value(QStringLiteral("playOnly"), true).toBool() && !play)
-        || (info.type == QLatin1String("juguan")
-            && (names.isEmpty() || (!names.endsWith(QLatin1Char('!')) && !play))))
-        return {};
-    QStringList candidates;
-    if (info.type == QLatin1String("tiansuan")) {
-        candidates = info.parameters.value(QStringLiteral("choices")).toString()
-            .split(QLatin1Char(','), Qt::SkipEmptyParts);
-    } else if (info.type == QLatin1String("juguan")) {
-        QString choices = names;
-        choices.remove(QLatin1Char('!'));
-        choices.remove(QLatin1Char('$'));
-        candidates = choices.split(QLatin1Char(','), Qt::SkipEmptyParts);
-    } else {
-        require(info.type == QLatin1String("guhuo"),
-                QStringLiteral("unsupported_skill_dialog:") + info.type);
-        for (int id = 0; id < Sanguosha->getCardCount(); ++id)
-            candidates.append(Sanguosha->getEngineCard(id)->objectName());
-    }
-    candidates.removeDuplicates();
     QStringList result;
-    for (const QString &candidate : candidates) {
-        ClientRules::SkillCardBuildRequest option = draft;
-        option.userString = candidate.trimmed();
-        if (applyDeclaration(option, prompt, scene).isEmpty())
-            result.append(option.userString);
+    for (const SkillDeclarationCandidate &candidate : scene.declarationSession->candidates()) {
+        if (candidate.enabled)
+            result.append(candidate.value);
     }
-    // Probes above install native declaration tags. Clear that preview before
-    // applying the actual user choice, including the unselected state.
-    scene.players.self()->removeTag(info.objectName.isEmpty() ? draft.skillName : info.objectName);
     return result;
 }
 } // namespace
@@ -896,8 +843,11 @@ QJsonObject ClientRulesSession::registry() const
     return result;
 }
 
-QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
+QJsonObject ClientRulesSession::evaluate(const QJsonObject &input,
+                                       InteractionResponse *canonicalResponse) const
 {
+    if (canonicalResponse)
+        *canonicalResponse = InteractionResponse();
     // A preview must not draw from any shared stream. Binding a throwaway
     // generator keeps an accidental random call inside this query instead of
     // advancing the process-wide fallback the next query would observe.
@@ -943,7 +893,7 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
                                                   QStringLiteral("selection"));
         if (prompt.enumerated) {
             output.insert(QStringLiteral("known"), true);
-            evaluateEnumerated(prompt, selectionDraft, &output);
+            evaluateEnumerated(prompt, selectionDraft, &output, canonicalResponse);
             return output;
         }
         // UNKNOWN is the native context for neutral/discard physical responses.
@@ -1005,6 +955,16 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
             }
             const QStringList options = declarations(draft.skill, prompt, scene);
             output.insert(QStringLiteral("declarations"), QJsonArray::fromStringList(options));
+            QJsonArray declarationCandidates;
+            for (const SkillDeclarationCandidate &candidate : scene.declarationSession->candidates()) {
+                declarationCandidates.append(QJsonObject{
+                    {QStringLiteral("value"), candidate.value},
+                    {QStringLiteral("kind"), candidate.kind},
+                    {QStringLiteral("group"), candidate.group},
+                    {QStringLiteral("enabled"), candidate.enabled},
+                    {QStringLiteral("reason"), skillDeclarationReasonName(candidate.reason)}});
+            }
+            output.insert(QStringLiteral("declaration_candidates"), declarationCandidates);
             output.insert(QStringLiteral("declaration_dialog"),
                           declarationDialog(draft.skill.skillName));
             const QString declaration = options.isEmpty() && draft.skill.userString.isEmpty()
@@ -1114,14 +1074,9 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
             return output;
         }
         const auto response = ClientRules::makeCardSelectionResponse(prompt.request, draft, evaluated);
-        const auto wire = InteractionReplyEncoder::cardResponse(prompt.request, response);
-        require(wire.command != QSanProtocol::S_COMMAND_UNKNOWN && wire.replyTo == id,
-                QStringLiteral("reply_encoding_failed"));
         output.insert(QStringLiteral("can_confirm"), true);
-        output.insert(QStringLiteral("wire"), QJsonObject{
-            {QStringLiteral("command"), static_cast<int>(wire.command)},
-            {QStringLiteral("reply_to"), QString::number(wire.replyTo)},
-            {QStringLiteral("payload"), QJsonValue::fromVariant(wire.payload)}});
+        if (canonicalResponse)
+            *canonicalResponse = response;
     } catch (const std::exception &error) {
         output.insert(QStringLiteral("known"), false);
         output.insert(QStringLiteral("reason"), QString::fromUtf8(error.what()));

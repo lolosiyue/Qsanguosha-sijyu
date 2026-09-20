@@ -360,6 +360,33 @@ QJsonObject publicState(const ClientCore &core)
     return {{QStringLiteral("game"), game}};
 }
 
+QJsonObject uiPhrases()
+{
+    // Stable keys keep Office presenters free of a second translation table.
+    static const QStringList keys = {
+        QStringLiteral("sheet_home"), QStringLiteral("sheet_settings"), QStringLiteral("sheet_table"),
+        QStringLiteral("sheet_details"), QStringLiteral("sheet_log"), QStringLiteral("server"), QStringLiteral("port"), QStringLiteral("name"),
+        QStringLiteral("avatar"), QStringLiteral("private"), QStringLiteral("robots"),
+        QStringLiteral("connect"), QStringLiteral("host"), QStringLiteral("local_ai"),
+        QStringLiteral("catalog"), QStringLiteral("settings"), QStringLiteral("reconnect"),
+        QStringLiteral("confirm"), QStringLiteral("cancel"), QStringLiteral("preview"),
+        QStringLiteral("clear"), QStringLiteral("undo_target"), QStringLiteral("top"),
+        QStringLiteral("bottom"), QStringLiteral("end_turn"), QStringLiteral("ready"),
+        QStringLiteral("unready"), QStringLiteral("trust"), QStringLiteral("untrust"),
+        QStringLiteral("surrender"), QStringLiteral("add_robot"), QStringLiteral("home"),
+        QStringLiteral("instruction"), QStringLiteral("chat"), QStringLiteral("send"),
+        QStringLiteral("hand"), QStringLiteral("players"), QStringLiteral("skills"),
+        QStringLiteral("public_cards"), QStringLiteral("log"), QStringLiteral("game_over"),
+        QStringLiteral("disabled"), QStringLiteral("previous"), QStringLiteral("next"),
+        QStringLiteral("hand_count")};
+    QJsonObject result;
+    for (const QString &key : keys) {
+        const QString translationKey = QStringLiteral("qsan_ui_") + key;
+        result.insert(key, Sanguosha ? Sanguosha->translate(translationKey) : translationKey);
+    }
+    return result;
+}
+
 QJsonObject snapshotView(const ClientCore &core, const QString &assetRoot, const QStringList &logs)
 {
     QJsonObject view;

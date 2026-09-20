@@ -1,4 +1,4 @@
-import { cardRecord, tr } from "./i18n";
+import { cardRecord, tr } from "../../src/i18n";
 import {
   Command,
   GameEvent,
@@ -17,8 +17,8 @@ import {
   asStringList,
   isObject,
   type JsonObject
-} from "./protocol";
-import type { ClientGameState, PresentationEvent } from "./state";
+} from "../../src/protocol";
+import type { ClientGameState, PresentationEvent } from "../../src/state";
 
 export type PlayerNameResolver = (objectName: string) => string;
 
@@ -43,9 +43,14 @@ const REASON_PUT_END = 0x6a;
 const REASON_TRANSFER = 0x09;
 const UNKNOWN_CARD_ID = -1;
 
-function phrase(key: string, fallback: string): string {
-  const translated = tr(key);
-  return !translated || translated === key ? fallback : translated;
+function phrase(key: string): string {
+  return tr(key);
+}
+
+function formatPhrase(key: string, values: Record<string, string | number>): string {
+  // Player-provided values are literal text, not another translation template.
+  return phrase(key).replace(/%([A-Za-z][A-Za-z0-9_]*)/g,
+    (token, name: string) => Object.hasOwn(values, name) ? String(values[name]) : token);
 }
 
 function cardIdsOf(move: JsonObject): number[] {
@@ -290,8 +295,8 @@ export function logPlayerName(state: ClientGameState, objectName: string): strin
 function cardDisplay(id: number): string {
   const card = cardRecord(id);
   if (!card)
-    return `牌 ${id}`;
-  const name = tr(asString(card.object_name)) || asString(card.object_name) || `牌 ${id}`;
+    return formatPhrase("web.card.unknown", { id });
+  const name = tr(asString(card.object_name)) || asString(card.object_name) || formatPhrase("web.card.unknown", { id });
   const suitKey = asString(card.suit);
   const suit = suitKey && suitKey !== "no_suit" ? (tr(suitKey) || suitKey) : "";
   const number = asNumber(card.number);
@@ -332,10 +337,10 @@ function useCardSentence(type: string, cardString: string, from: string, tos: st
   const parsed = virtualCardName(cardString);
   if (!parsed || parsed.drop)
     return "";
-  const usingText = phrase("#UseCardPhrase_using", "使用");
-  const playingText = phrase("#UseCardPhrase_playing", "打出");
-  const recastingText = phrase("#UseCardPhrase_recasting", "重铸");
-  const useSkillText = phrase("#UseCardPhrase_useSkill", "发动");
+  const usingText = phrase("#UseCardPhrase_using");
+  const playingText = phrase("#UseCardPhrase_playing");
+  const recastingText = phrase("#UseCardPhrase_recasting");
+  const useSkillText = phrase("#UseCardPhrase_useSkill");
   let reason = usingText;
   if (type.endsWith("_Resp"))
     reason = playingText;
@@ -351,24 +356,24 @@ function useCardSentence(type: string, cardString: string, from: string, tos: st
     const skill = tr(parsed.skill) || parsed.skill;
     const sub = parsed.subIds.map(cardDisplay).join("、");
     if (sub) {
-      log = phrase("#UseCardPhrase_skillCost", "%from %3了 [%1]%4，消耗为 %2")
+      log = phrase("#UseCardPhrase_skillCost")
         .replace("%1", skill)
         .replace("%2", sub)
         .replace("%3", useSkillText)
         .replace("%4", "");
     } else {
-      log = phrase("#UseCardPhrase_skill", "%from %2了 [%1]%3")
+      log = phrase("#UseCardPhrase_skill")
         .replace("%1", skill)
         .replace("%2", useSkillText)
         .replace("%3", "");
     }
   } else {
-    log = phrase("#UseCardPhrase_plain", "%from %2了 %1")
+    log = phrase("#UseCardPhrase_plain")
       .replace("%1", cardName)
       .replace("%2", reason);
   }
   if (tos.length > 0)
-    log += phrase("#UseCardPhrase_target", "，目标是 %to");
+    log += phrase("#UseCardPhrase_target");
   void from;
   return log;
 }
@@ -402,7 +407,7 @@ export function formatSkillLog(payload: JsonObject, playerName: PlayerNameResolv
     log = log.replaceAll("%from", playerName(from) || from);
   if (tos.length > 0) {
     const names = tos.map((to) => (to === from
-      ? phrase("#LogSelf", "自己")
+      ? phrase("#LogSelf")
       : playerName(to) || to));
     log = log.replaceAll("%to", names.join("、"));
   }

@@ -20,7 +20,7 @@ function context() {
       base64Encode: bytes => Buffer.from(bytes).toString('base64'), base64Decode: s => [...Buffer.from(s, 'base64')]},
     LockService: {getDocumentLock: () => ({tryLock: () => true, releaseLock() {}})}
   });
-  for (const file of ['Client.gs', 'Draft.gs', 'Table.gs']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../apps-script', file), 'utf8'), c);
+  for (const file of ['Locale.gs', 'Client.gs', 'Draft.gs', 'Table.gs']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../apps-script', file), 'utf8'), c);
   c.changeDocument = value => { doc = value; }; return c;
 }
 function sidebarContext() {

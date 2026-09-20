@@ -1,5 +1,6 @@
 #include "chatwidget.h"
 #include "engine.h"
+#include "engine-chat-catalog.h"
 
 MyPixmapItem::MyPixmapItem(const QPixmap &pixmap, QGraphicsItem *parentItem)
     : QGraphicsPixmapItem(pixmap, parentItem)
@@ -8,7 +9,7 @@ MyPixmapItem::MyPixmapItem(const QPixmap &pixmap, QGraphicsItem *parentItem)
     setAcceptedMouseButtons(Qt::LeftButton);
     initFaceBoardPos();
     initEasyTextPos();
-    easytext = Sanguosha->getChattingEasyTexts();
+    easytext = EngineChatCatalog::easyTexts(*Sanguosha);
 }
 
 MyPixmapItem::~MyPixmapItem()

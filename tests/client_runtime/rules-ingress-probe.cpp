@@ -82,6 +82,21 @@ struct Probe {
         call(label, {{"action", "frame"}, {"direction", outgoing ? "outgoing" : "incoming"},
                      {"frame", QString::fromUtf8(bytes)}}, expected, reason);
     }
+    void frameRaw(const QString &label, bool outgoing, ProtocolMessageType type,
+                  ProtocolEndpoint source, ProtocolEndpoint destination, int command,
+                  const QVariant &payload, quint64 id, quint64 replyTo = 0,
+                  bool expected = true, const QString &reason = {})
+    {
+        ProtocolMessage message;
+        message.type = type; message.source = source; message.destination = destination;
+        message.command = command; message.messageId = id; message.replyTo = replyTo;
+        message.hasPayload = payload.isValid() && !payload.isNull(); message.payload = payload;
+        QString error;
+        const auto bytes = codec.encode(message, &error);
+        require(!bytes.isEmpty(), qPrintable(label + ": cannot encode: " + error));
+        call(label, {{"action", "frame"}, {"direction", outgoing ? "outgoing" : "incoming"},
+                     {"frame", QString::fromUtf8(bytes)}}, expected, reason);
+    }
     void notify(const QString &label, int command, const QVariantMap &payload)
     {
         frame(label, false, ProtocolMessageType::Notification, ProtocolEndpoint::Room,
@@ -148,13 +163,30 @@ struct Probe {
               ProtocolEndpoint::Client, S_COMMAND_PLAY_CARD, typed({{"player", "sgs1"}}), ++incoming);
         return QString::number(incoming);
     }
+    QString requestCommand(const QString &label, int command, const QVariantMap &payload)
+    {
+        frame(label, false, ProtocolMessageType::Request, ProtocolEndpoint::Room,
+              ProtocolEndpoint::Client, command, typed(payload), ++incoming);
+        return QString::number(incoming);
+    }
     QJsonObject query(const QString &label, const QString &request, int slash,
                       bool success = true, const QString &reason = {}, int revision = -1)
     {
         return call(label, {{"action", "query"}, {"revision", revision < 0 ? status.value("revision").toInt() : revision},
             {"request_id", request}, {"selection", QJsonObject{
                 {"card_ids", QJsonArray{slash}}, {"targets", QJsonArray{"sgs2"}},
-                {"skill_name", ""}, {"skill_instance_id", 0}, {"user_string", ""}}}}, success, reason);
+            {"skill_name", ""}, {"skill_instance_id", 0}, {"user_string", ""}}}}, success, reason);
+    }
+    QJsonObject submit(const QString &label, const QString &request, int slash,
+                       bool success = true, const QString &reason = {}, int revision = -1)
+    {
+        return call(label, {{"action", "submit_selection"},
+            {"revision", revision < 0 ? status.value("revision").toInt() : revision},
+            {"request_id", request}, {"selection", QJsonObject{
+                {"kind", "cards"},
+                {"card_ids", QJsonArray{slash}}, {"targets", QJsonArray{"sgs2"}},
+                {"skill_name", ""}, {"skill_instance_id", 0}, {"user_string", ""}}}},
+            success, reason);
     }
 };
 }
@@ -221,13 +253,70 @@ int main(int argc, char **argv)
         probe.incoming = std::numeric_limits<quint64>::max() - 1;
         request = probe.request();
         const auto large = probe.query("uint64_request", request, slash).value("evaluation").toObject();
-        require(large.value("can_confirm").toBool() && large.value("wire").toObject().value("reply_to")
-                    == QJsonValue(QStringLiteral("18446744073709551615")), "uint64 request lost precision");
-        const auto wire = large.value("wire").toObject();
-        probe.frame("observe_reply", true, ProtocolMessageType::Reply, ProtocolEndpoint::Client,
-                    ProtocolEndpoint::Room, wire.value("command").toInt(), wire.value("payload").toObject().toVariantMap(),
-                    3, probe.incoming);
-        probe.query("reply_invalidates_request", request, slash, false, "stream_no_matching_request");
+        require(large.value("can_confirm").toBool() && large.value("wire").isNull(),
+                "preview exposed a wire reply");
+        const auto submitted = probe.submit("submit_selection", request, slash);
+        const auto wire = submitted.value("wire").toObject();
+        require(!wire.isEmpty() && wire.value("reply_to")
+                    == QJsonValue(QStringLiteral("18446744073709551615")),
+                "uint64 request lost precision");
+        probe.submit("duplicate_submit", request, slash, false, "stream_reply_reserved");
+        // Mutate a valid V2 object so decoding succeeds and reservation matching
+        // (rather than malformed-payload rejection) is the exercised boundary.
+        QJsonObject forgedPayload = wire.value("payload").toObject();
+        require(!forgedPayload.isEmpty(), "reserved reply lacks V2 payload");
+        forgedPayload.insert("card_text", QStringLiteral("not-the-reserved-card"));
+        probe.frameRaw("forged_reply", true, ProtocolMessageType::Reply, ProtocolEndpoint::Client,
+                    ProtocolEndpoint::Room, wire.value("command").toInt(), forgedPayload.toVariantMap(),
+                    3, probe.incoming, false, "stream_reserved_reply_mismatch");
+        probe.connect();
+        probe.scene(slash);
+        const QString unreservedRequest = probe.request();
+        probe.frameRaw("unreserved_reply", true, ProtocolMessageType::Reply, ProtocolEndpoint::Client,
+                    ProtocolEndpoint::Room, S_COMMAND_RESPONSE_CARD,
+                    wire.value("payload").toObject().toVariantMap(),
+                    3, unreservedRequest.toULongLong(), false,
+                    "stream_unreserved_reply");
+        probe.connect();
+        probe.scene(slash);
+        const QString cancelRequest = probe.requestCommand("cancel_request", S_COMMAND_PLAY_CARD,
+                                                            { {"player", "sgs1"} });
+        probe.call("typed_cancel", {{"action", "submit_selection"},
+            {"revision", probe.status.value("revision").toInt()}, {"request_id", cancelRequest},
+            {"selection", QJsonObject{{"kind", "cancel"}, {"payload", QJsonObject{}}}}});
+        probe.connect();
+        probe.scene(slash);
+        const QString optionRequest = probe.requestCommand("option_request", S_COMMAND_INVOKE_SKILL,
+                                                            { {"skill_name", "probe"}, {"data", ""} });
+        probe.call("typed_option", {{"action", "submit_selection"},
+            {"revision", probe.status.value("revision").toInt()}, {"request_id", optionRequest},
+            {"selection", QJsonObject{{"kind", "option"},
+                {"payload", QJsonObject{{"value", "yes"}}}}}});
+        probe.connect();
+        probe.scene(slash);
+        probe.notify("expired_focus", S_COMMAND_MOVE_FOCUS,
+                     typed({{"player_names", QVariantList{"sgs1"}},
+                            {"command", S_COMMAND_PLAY_CARD},
+                            {"countdown", QVariantMap{{"type", 1}, {"current", 100}, {"maximum", 100}}}}));
+        const QString expiredRequest = probe.request();
+        probe.submit("expired_submit", expiredRequest, slash, false, "request_expired");
+        probe.connect();
+        probe.scene(slash);
+        probe.incoming = std::numeric_limits<quint64>::max() - 1;
+        const QString echoRequest = probe.request();
+        const auto echoPreview = probe.query("uint64_echo_preview", echoRequest, slash)
+            .value("evaluation").toObject();
+        require(echoPreview.value("can_confirm").toBool() && echoPreview.value("wire").isNull(),
+                "uint64 preview exposed wire");
+        const auto echoSubmitted = probe.submit("reserved_submit", echoRequest, slash);
+        const auto echoWire = echoSubmitted.value("wire").toObject();
+        require(echoWire.value("reply_to") == QJsonValue(QStringLiteral("18446744073709551615")),
+                "uint64 reserved reply lost precision");
+        probe.frameRaw("reserved_echo", true, ProtocolMessageType::Reply, ProtocolEndpoint::Client,
+                    ProtocolEndpoint::Room, echoWire.value("command").toInt(),
+                    echoWire.value("payload").toObject().toVariantMap(), 3,
+                    std::numeric_limits<quint64>::max());
+        probe.query("old_request_after_echo", echoRequest, slash, false, "stream_no_matching_request");
         require(host.evaluate() == 2, "snapshot API remained enabled after stream opt-in");
         require(Sanguosha == engine && Sanguosha->currentRoomContext() == nullptr,
                 "stream changed Engine or leaked room context");
@@ -237,7 +326,9 @@ int main(int argc, char **argv)
         const QJsonObject report{{"schema_version", 1}, {"status", "PASS"}, {"registry", registry},
             {"records", probe.records}, {"checks", QJsonArray{
                 "native_handshake", "native_reducer_query", "stale_revision", "atomic_sync", "snapshot_rejected",
-                "failure_rollback", "generation_isolation", "uint64", "reply_invalidation", "terminal_shutdown"}}};
+                "failure_rollback", "generation_isolation", "typed_cancel", "typed_option",
+                "countdown_expired", "shared_card_state", "reserved_echo", "unreserved_reply",
+                "forged_reserved_echo", "uint64", "reply_invalidation", "terminal_shutdown"}}};
         write(output, QJsonDocument(report).toJson(QJsonDocument::Compact));
         return 0;
     } catch (const std::exception &error) {

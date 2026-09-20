@@ -62,6 +62,8 @@ class PlayerCardBox;
 class DesktopGamePresentation;
 class LargeRoomOverview;
 class QMovie;
+class RoomInputRouter;
+class RoomChatController;
 
 #if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
 #include <QQmlEngine>
@@ -329,6 +331,8 @@ private:
     QGraphicsProxyWidget *chat_edit_widget;
     QGraphicsTextItem *prompt_box_widget;
     ChatWidget *chat_widget;
+    RoomInputRouter *m_inputRouter = nullptr;
+    RoomChatController *m_chatController = nullptr;
     EmotionPanel *m_emotionPanel;
     QPixmap m_rolesBoxBackgroundOrig;
     QPixmap m_rolesBoxBackground;
@@ -524,6 +528,7 @@ void onGameStart();
     void appendChatEdit(QString txt);
     void showBubbleChatBox(const QString &who, const QString &line);
     void showGeneralPile(const QString &tag_name);
+    void showGeneralPileHotkey();
 
     void onGiftModeActivated(const QString &gift_type);
 

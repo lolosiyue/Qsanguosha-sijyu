@@ -5,6 +5,119 @@ Private Const PAGE_SIZE As Long = 8
 Private mBanks As Object, mPages As Object, mRows As Object, mBankHashes As Object
 Private mLastSnapshot As Object
 
+' Fixed Office labels use stable English keys; translated game text remains
+' supplied by the native bridge in the snapshot fields.
+Private Function QsanUi_Phrase(ByVal key As String) As String
+    Dim phrases As Object, bridgeKey As String
+    If Not mLastSnapshot Is Nothing Then
+        Set phrases = QsanObject(mLastSnapshot, "ui_phrases")
+        bridgeKey = QsanUi_BridgePhraseKey(key)
+        If Not phrases Is Nothing Then
+            If Len(QsanText(phrases, bridgeKey)) > 0 Then
+                If QsanText(phrases, bridgeKey) <> "qsan_ui_" & bridgeKey Then QsanUi_Phrase = QsanText(phrases, bridgeKey): Exit Function
+            End If
+        End If
+    End If
+    Select Case key
+        Case "sheet.home": QsanUi_Phrase = "Home"
+        Case "sheet.settings": QsanUi_Phrase = "Room Settings"
+        Case "sheet.table": QsanUi_Phrase = "Table"
+        Case "sheet.details": QsanUi_Phrase = "Details"
+        Case "sheet.log": QsanUi_Phrase = "Battle Log"
+        Case "label.server": QsanUi_Phrase = "Server"
+        Case "label.port": QsanUi_Phrase = "Port"
+        Case "label.name": QsanUi_Phrase = "Name"
+        Case "label.avatar": QsanUi_Phrase = "Avatar"
+        Case "label.private": QsanUi_Phrase = "Private Room"
+        Case "label.robots": QsanUi_Phrase = "Robots"
+        Case "button.connect": QsanUi_Phrase = "Connect"
+        Case "button.host": QsanUi_Phrase = "Host Game"
+        Case "button.localAi": QsanUi_Phrase = "Local AI"
+        Case "button.catalog": QsanUi_Phrase = "Load Catalog"
+        Case "button.settings": QsanUi_Phrase = "Room Settings"
+        Case "button.reconnect": QsanUi_Phrase = "Reconnect"
+        Case "button.confirm": QsanUi_Phrase = "Confirm"
+        Case "button.cancel": QsanUi_Phrase = "Cancel"
+        Case "button.preview": QsanUi_Phrase = "Preview"
+        Case "button.clear": QsanUi_Phrase = "Clear Selection"
+        Case "button.undoTarget": QsanUi_Phrase = "Undo Target"
+        Case "button.top": QsanUi_Phrase = "Place on Top"
+        Case "button.bottom": QsanUi_Phrase = "Place on Bottom"
+        Case "button.endTurn": QsanUi_Phrase = "End Turn"
+        Case "button.ready": QsanUi_Phrase = "Ready"
+        Case "button.unready": QsanUi_Phrase = "Unready"
+        Case "button.trust": QsanUi_Phrase = "Trustee"
+        Case "button.untrust": QsanUi_Phrase = "Cancel Trustee"
+        Case "button.surrender": QsanUi_Phrase = "Surrender"
+        Case "button.addRobot": QsanUi_Phrase = "Add Robot"
+        Case "button.home": QsanUi_Phrase = "Home"
+        Case "label.instruction": QsanUi_Phrase = "Select in order; choose top/bottom before cards; choose cards before players"
+        Case "label.chat": QsanUi_Phrase = "Chat"
+        Case "button.send": QsanUi_Phrase = "Send"
+        Case "bank.hand": QsanUi_Phrase = "Hand"
+        Case "bank.players": QsanUi_Phrase = "Players"
+        Case "bank.skills": QsanUi_Phrase = "Skills"
+        Case "bank.publicCards": QsanUi_Phrase = "Equipment / Public Cards"
+        Case "bank.log": QsanUi_Phrase = "Battle Log"
+        Case "status.gameOver": QsanUi_Phrase = "Game Over"
+        Case "status.disabled": QsanUi_Phrase = "Not Selectable"
+        Case "pager.previous": QsanUi_Phrase = "Previous"
+        Case "pager.next": QsanUi_Phrase = "Next"
+        Case "label.handCount": QsanUi_Phrase = "Hand"
+        Case Else: QsanUi_Phrase = key
+    End Select
+End Function
+Private Function QsanUi_BridgePhraseKey(ByVal key As String) As String
+    Select Case key
+        Case "sheet.home": QsanUi_BridgePhraseKey = "sheet_home"
+        Case "sheet.settings": QsanUi_BridgePhraseKey = "sheet_settings"
+        Case "sheet.table": QsanUi_BridgePhraseKey = "sheet_table"
+        Case "sheet.details": QsanUi_BridgePhraseKey = "sheet_details"
+        Case "sheet.log": QsanUi_BridgePhraseKey = "sheet_log"
+        Case "label.server": QsanUi_BridgePhraseKey = "server"
+        Case "label.port": QsanUi_BridgePhraseKey = "port"
+        Case "label.name": QsanUi_BridgePhraseKey = "name"
+        Case "label.avatar": QsanUi_BridgePhraseKey = "avatar"
+        Case "label.private": QsanUi_BridgePhraseKey = "private"
+        Case "label.robots": QsanUi_BridgePhraseKey = "robots"
+        Case "button.connect": QsanUi_BridgePhraseKey = "connect"
+        Case "button.host": QsanUi_BridgePhraseKey = "host"
+        Case "button.localAi": QsanUi_BridgePhraseKey = "local_ai"
+        Case "button.catalog": QsanUi_BridgePhraseKey = "catalog"
+        Case "button.settings": QsanUi_BridgePhraseKey = "settings"
+        Case "button.reconnect": QsanUi_BridgePhraseKey = "reconnect"
+        Case "button.confirm": QsanUi_BridgePhraseKey = "confirm"
+        Case "button.cancel": QsanUi_BridgePhraseKey = "cancel"
+        Case "button.preview": QsanUi_BridgePhraseKey = "preview"
+        Case "button.clear": QsanUi_BridgePhraseKey = "clear"
+        Case "button.undoTarget": QsanUi_BridgePhraseKey = "undo_target"
+        Case "button.top": QsanUi_BridgePhraseKey = "top"
+        Case "button.bottom": QsanUi_BridgePhraseKey = "bottom"
+        Case "button.endTurn": QsanUi_BridgePhraseKey = "end_turn"
+        Case "button.ready": QsanUi_BridgePhraseKey = "ready"
+        Case "button.unready": QsanUi_BridgePhraseKey = "unready"
+        Case "button.trust": QsanUi_BridgePhraseKey = "trust"
+        Case "button.untrust": QsanUi_BridgePhraseKey = "untrust"
+        Case "button.surrender": QsanUi_BridgePhraseKey = "surrender"
+        Case "button.addRobot": QsanUi_BridgePhraseKey = "add_robot"
+        Case "button.home": QsanUi_BridgePhraseKey = "home"
+        Case "label.instruction": QsanUi_BridgePhraseKey = "instruction"
+        Case "label.chat": QsanUi_BridgePhraseKey = "chat"
+        Case "button.send": QsanUi_BridgePhraseKey = "send"
+        Case "bank.hand": QsanUi_BridgePhraseKey = "hand"
+        Case "bank.players": QsanUi_BridgePhraseKey = "players"
+        Case "bank.skills": QsanUi_BridgePhraseKey = "skills"
+        Case "bank.publicCards": QsanUi_BridgePhraseKey = "public_cards"
+        Case "bank.log": QsanUi_BridgePhraseKey = "log"
+        Case "status.gameOver": QsanUi_BridgePhraseKey = "game_over"
+        Case "status.disabled": QsanUi_BridgePhraseKey = "disabled"
+        Case "pager.previous": QsanUi_BridgePhraseKey = "previous"
+        Case "pager.next": QsanUi_BridgePhraseKey = "next"
+        Case "label.handCount": QsanUi_BridgePhraseKey = "hand_count"
+        Case Else: QsanUi_BridgePhraseKey = key
+    End Select
+End Function
+
 Public Sub QsanUi_Bootstrap()
     Dim names, name As Variant, ws As Worksheet, existing As Shape
     Set mBanks = QsanDict(): Set mPages = QsanDict(): Set mRows = QsanDict(): Set mBankHashes = QsanDict()
@@ -19,41 +132,16 @@ Public Sub QsanUi_Bootstrap()
         ws.Columns("A:H").ColumnWidth = 13
         ws.Rows("1:36").RowHeight = 18
         ws.Range("A1:H36").NumberFormat = "@"
-        QsanUi_Text ws.Range("A1"), CStr(name)
+        QsanUi_Text ws.Range("A1"), QsanUi_Phrase(SheetPhraseKey(CStr(name)))
     Next name
     Set ws = GetSheet("首頁")
-    QsanUi_Text ws.Range("A3"), "伺服器": QsanUi_Text ws.Range("B3"), "127.0.0.1"
-    QsanUi_Text ws.Range("A4"), "連接埠": ws.Range("B4").Value2 = 9527
-    QsanUi_Text ws.Range("A5"), "名稱": QsanUi_Text ws.Range("B5"), "Excel"
-    QsanUi_Text ws.Range("A6"), "頭像": QsanUi_Text ws.Range("B6"), "caocao"
-    QsanUi_Text ws.Range("A7"), "私人房間": QsanUi_Text ws.Range("B7"), "true"
-    QsanUi_Text ws.Range("A8"), "電腦數": ws.Range("B8").Value2 = 0
-    QsanUi_Button "首頁", "連線", "QsanUi_Connect", "D3"
-    QsanUi_Button "首頁", "建立房間", "QsanUi_Host", "F3"
-    QsanUi_Button "首頁", "本機 AI", "QsanUi_LocalAI", "D5"
-    QsanUi_Button "首頁", "取得目錄", "QsanUi_Catalog", "F5"
-    QsanUi_Button "首頁", "房間設定", "QsanUi_SettingsPage", "D7"
-    QsanUi_Button "首頁", "重新連線", "QsanUi_Reconnect", "F7"
-    Set ws = GetSheet("牌桌")
-    QsanUi_Button "牌桌", "確認", "QsanUi_Confirm", "A4"
-    QsanUi_Button "牌桌", "取消", "QsanUi_Cancel", "B4"
-    QsanUi_Button "牌桌", "預檢", "QsanInteraction_Preview", "C4"
-    QsanUi_Button "牌桌", "清空選擇", "QsanInteraction_Clear", "D4"
-    QsanUi_Button "牌桌", "撤回目標", "QsanInteraction_UndoTarget", "E4"
-    QsanUi_Button "牌桌", "放牌頂", "QsanInteraction_Top", "F4"
-    QsanUi_Button "牌桌", "放牌底", "QsanInteraction_Bottom", "G4"
-    QsanUi_Button "牌桌", "結束出牌", "QsanUi_EndTurn", "H4"
-    QsanUi_Text ws.Range("A6"), "依序點選；觀星先選牌頂/牌底；分配先選牌再選玩家"
-    QsanUi_Button "牌桌", "準備", "QsanUi_Ready", "A36"
-    QsanUi_Button "牌桌", "取消準備", "QsanUi_Unready", "B36"
-    QsanUi_Button "牌桌", "託管", "QsanUi_Trust", "C36"
-    QsanUi_Button "牌桌", "取消託管", "QsanUi_Untrust", "D36"
-    QsanUi_Button "牌桌", "投降", "QsanUi_Surrender", "E36"
-    QsanUi_Button "牌桌", "加電腦", "QsanUi_AddRobot", "F36"
-    QsanUi_Button "牌桌", "回首頁", "QsanUi_Disconnect", "G36"
-    Set ws = GetSheet("戰報")
-    QsanUi_Text ws.Range("A3"), "聊天文字"
-    QsanUi_Button "戰報", "送出", "QsanUi_Chat", "G3"
+    QsanUi_Text ws.Range("A3"), QsanUi_Phrase("label.server"): QsanUi_Text ws.Range("B3"), "127.0.0.1"
+    QsanUi_Text ws.Range("A4"), QsanUi_Phrase("label.port"): ws.Range("B4").Value2 = 9527
+    QsanUi_Text ws.Range("A5"), QsanUi_Phrase("label.name"): QsanUi_Text ws.Range("B5"), "Excel"
+    QsanUi_Text ws.Range("A6"), QsanUi_Phrase("label.avatar"): QsanUi_Text ws.Range("B6"), "caocao"
+    QsanUi_Text ws.Range("A7"), QsanUi_Phrase("label.private"): QsanUi_Text ws.Range("B7"), "true"
+    QsanUi_Text ws.Range("A8"), QsanUi_Phrase("label.robots"): ws.Range("B8").Value2 = 0
+    QsanUi_RefreshFixedLabels
     QsanInteraction_Initialize
     QsanUi_Home
     ActiveWindow.Zoom = 80
@@ -106,6 +194,7 @@ Public Sub ApplySnapshot(ByVal snapshot As Object): QsanUi_ApplySnapshot snapsho
 Public Sub QsanUi_ApplySnapshot(ByVal snapshot As Object)
     If snapshot Is Nothing Then Exit Sub
     Set mLastSnapshot = snapshot
+    QsanUi_RefreshFixedLabels
     QsanUi_RenderView QsanObject(snapshot, "view")
     Dim request As Object: Set request = QsanObject(snapshot, "interaction")
     If request Is Nothing Then Set request = QsanDict()
@@ -113,6 +202,46 @@ Public Sub QsanUi_ApplySnapshot(ByVal snapshot As Object)
     request("generation") = QsanText(snapshot, "generation")
     request("revision") = QsanText(snapshot, "revision")
     QsanInteraction_Apply request, GetSheet("牌桌")
+End Sub
+Private Sub QsanUi_RefreshFixedLabels()
+    Dim ws As Worksheet, names, name As Variant
+    names = Array("首頁", "房間設定", "牌桌", "詳情", "戰報")
+    For Each name In names
+        QsanUi_Text GetSheet(CStr(name)).Range("A1"), QsanUi_Phrase(SheetPhraseKey(CStr(name)))
+    Next name
+    Set ws = GetSheet("首頁")
+    QsanUi_Text ws.Range("A3"), QsanUi_Phrase("label.server")
+    QsanUi_Text ws.Range("A4"), QsanUi_Phrase("label.port")
+    QsanUi_Text ws.Range("A5"), QsanUi_Phrase("label.name")
+    QsanUi_Text ws.Range("A6"), QsanUi_Phrase("label.avatar")
+    QsanUi_Text ws.Range("A7"), QsanUi_Phrase("label.private")
+    QsanUi_Text ws.Range("A8"), QsanUi_Phrase("label.robots")
+    QsanUi_Button "首頁", QsanUi_Phrase("button.connect"), "QsanUi_Connect", "D3"
+    QsanUi_Button "首頁", QsanUi_Phrase("button.host"), "QsanUi_Host", "F3"
+    QsanUi_Button "首頁", QsanUi_Phrase("button.localAi"), "QsanUi_LocalAI", "D5"
+    QsanUi_Button "首頁", QsanUi_Phrase("button.catalog"), "QsanUi_Catalog", "F5"
+    QsanUi_Button "首頁", QsanUi_Phrase("button.settings"), "QsanUi_SettingsPage", "D7"
+    QsanUi_Button "首頁", QsanUi_Phrase("button.reconnect"), "QsanUi_Reconnect", "F7"
+    Set ws = GetSheet("牌桌")
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.confirm"), "QsanUi_Confirm", "A4"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.cancel"), "QsanUi_Cancel", "B4"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.preview"), "QsanInteraction_Preview", "C4"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.clear"), "QsanInteraction_Clear", "D4"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.undoTarget"), "QsanInteraction_UndoTarget", "E4"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.top"), "QsanInteraction_Top", "F4"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.bottom"), "QsanInteraction_Bottom", "G4"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.endTurn"), "QsanUi_EndTurn", "H4"
+    QsanUi_Text ws.Range("A6"), QsanUi_Phrase("label.instruction")
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.ready"), "QsanUi_Ready", "A36"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.unready"), "QsanUi_Unready", "B36"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.trust"), "QsanUi_Trust", "C36"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.untrust"), "QsanUi_Untrust", "D36"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.surrender"), "QsanUi_Surrender", "E36"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.addRobot"), "QsanUi_AddRobot", "F36"
+    QsanUi_Button "牌桌", QsanUi_Phrase("button.home"), "QsanUi_Disconnect", "G36"
+    Set ws = GetSheet("戰報")
+    QsanUi_Text ws.Range("A3"), QsanUi_Phrase("label.chat")
+    QsanUi_Button "戰報", QsanUi_Phrase("button.send"), "QsanUi_Chat", "G3"
 End Sub
 Public Sub ShowStatus(ByVal result As Variant)
     If Not IsObject(result) Then Exit Sub
@@ -142,13 +271,13 @@ Public Sub QsanUi_Status(ByVal value As String)
 End Sub
 Public Sub QsanUi_RenderView(ByVal view As Object)
     If view Is Nothing Then Exit Sub
-    QsanUi_Bank "hand", QsanObject(view, "hand"), "手牌", "card", 1, 20
-    QsanUi_Bank "players", QsanObject(view, "players"), "玩家", "target", 3, 20
-    QsanUi_Bank "ownedskills", QsanObject(view, "skills"), "已有技能", "skill", 5, 20
-    QsanUi_Bank "publiccards", QsanObject(view, "cards"), "裝備 / 公開牌", "card", 7, 20, "詳情"
-    QsanUi_Bank "logs", QsanObject(view, "logs"), "戰報", "log", 1, 7, "戰報"
+    QsanUi_Bank "hand", QsanObject(view, "hand"), QsanUi_Phrase("bank.hand"), "card", 1, 20
+    QsanUi_Bank "players", QsanObject(view, "players"), QsanUi_Phrase("bank.players"), "target", 3, 20
+    QsanUi_Bank "ownedskills", QsanObject(view, "skills"), QsanUi_Phrase("bank.skills"), "skill", 5, 20
+    QsanUi_Bank "publiccards", QsanObject(view, "cards"), QsanUi_Phrase("bank.publicCards"), "card", 7, 20, "詳情"
+    QsanUi_Bank "logs", QsanObject(view, "logs"), QsanUi_Phrase("bank.log"), "log", 1, 7, "戰報"
     QsanUi_Text GetSheet("牌桌").Range("H2"), QsanText(view, "status")
-    If LCase$(QsanText(view, "game_over")) = "true" Then QsanUi_Status "對局已結束"
+    If LCase$(QsanText(view, "game_over")) = "true" Then QsanUi_Status QsanUi_Phrase("status.gameOver")
 End Sub
 
 ' Each independent bank owns eight stable row and image shapes, plus paging.
@@ -200,7 +329,7 @@ Private Sub RenderBank(ByVal bank As String)
                 If Len(label) = 0 Then label = key
                 enabled = (LCase$(QsanText(item, "enabled")) <> "false")
                 detail = QsanText(item, "detail")
-                If Len(QsanText(item, "hp")) > 0 Then label = label & " " & QsanText(item, "hp") & "/" & QsanText(item, "max_hp") & " 手牌" & QsanText(item, "hand_count")
+                If Len(QsanText(item, "hp")) > 0 Then label = label & " " & QsanText(item, "hp") & "/" & QsanText(item, "max_hp") & " " & QsanUi_Phrase("label.handCount") & QsanText(item, "hand_count")
             Else
                 Set item = Nothing: key = CStr(rows(page * PAGE_SIZE + i)): label = key: enabled = True: detail = key
             End If
@@ -244,7 +373,7 @@ End Sub
 Private Sub BankPager(ByVal ws As Worksheet, ByVal bank As String, ByVal col As Long, ByVal row As Long, ByVal delta As Long)
     Dim s As Shape: Set s = PoolShape(ws, "PAGE_" & bank & CStr(delta))
     s.Left = ws.Cells(row, col).Left: s.Top = ws.Cells(row, col).Top: s.Width = ws.Columns(col).Width - 2: s.Height = 17
-    s.TextFrame.Characters.Text = IIf(delta < 0, "上一頁", "下一頁")
+    s.TextFrame.Characters.Text = IIf(delta < 0, QsanUi_Phrase("pager.previous"), QsanUi_Phrase("pager.next"))
     s.AlternativeText = bank & "|" & CStr(delta): s.OnAction = MacroName("QsanUi_PageClick"): s.Visible = msoTrue
 End Sub
 Public Sub QsanUi_PageClick()
@@ -266,7 +395,7 @@ Public Sub QsanUi_RowClick()
     Set meta = mRows(token)
     QsanUi_Text GetSheet("詳情").Range("A3"), CStr(meta("detail"))
     If CStr(meta("action")) = "detail" Or CStr(meta("action")) = "log" Then Exit Sub
-    If Not CBool(meta("enabled")) Then QsanUi_Status "此項不可選": Exit Sub
+    If Not CBool(meta("enabled")) Then QsanUi_Status QsanUi_Phrase("status.disabled"): Exit Sub
     If CStr(meta("action")) = "mode" Or CStr(meta("action")) = "avatar" Or CStr(meta("action")) = "package" Then
         QsanCatalog_Select CStr(meta("action")), CStr(meta("key")): Exit Sub
     End If
@@ -280,7 +409,7 @@ End Sub
 Private Sub RenderDetails(ByVal details As Object)
     Dim rows As Collection: Set rows = New Collection
     DetailRows details, "", rows
-    QsanUi_Bank "details", rows, "詳情", "detail", 1, 8, "詳情"
+    QsanUi_Bank "details", rows, QsanUi_Phrase("sheet.details"), "detail", 1, 8, "詳情"
     Dim pic As Shape, path As String
     Set pic = PoolShape(GetSheet("詳情"), "DETAIL_IMAGE"): path = QsanText(details, "image")
     pic.Visible = msoFalse
@@ -339,6 +468,16 @@ End Function
 Private Function GetSheet(ByVal name As String) As Worksheet
     On Error Resume Next: Set GetSheet = ThisWorkbook.Worksheets(name): On Error GoTo 0
     If GetSheet Is Nothing Then Set GetSheet = ThisWorkbook.Worksheets.Add: GetSheet.Name = name
+End Function
+Private Function SheetPhraseKey(ByVal name As String) As String
+    Select Case name
+        Case "首頁": SheetPhraseKey = "sheet.home"
+        Case "房間設定": SheetPhraseKey = "sheet.settings"
+        Case "牌桌": SheetPhraseKey = "sheet.table"
+        Case "詳情": SheetPhraseKey = "sheet.details"
+        Case "戰報": SheetPhraseKey = "sheet.log"
+        Case Else: SheetPhraseKey = name
+    End Select
 End Function
 Private Function MacroName(ByVal action As String) As String
     MacroName = "'" & Replace$(ThisWorkbook.Name, "'", "''") & "'!" & action

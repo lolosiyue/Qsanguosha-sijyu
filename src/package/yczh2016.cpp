@@ -1,4 +1,5 @@
 #include "yczh2016.h"
+#include "skill-declaration.h"
 #include "settings.h"
 //#include "skill.h"
 //#include "standard.h"
@@ -962,29 +963,6 @@ public:
     }
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-TaoluanDialog *TaoluanDialog::getInstance(const QString &object)
-{
-    static TaoluanDialog *instance;
-    if (instance == nullptr || instance->objectName() != object)
-        instance = new TaoluanDialog(object);
-
-    return instance;
-}
-
-TaoluanDialog::TaoluanDialog(const QString &object)
-    : GuhuoDialog(object)
-{
-}
-
-bool TaoluanDialog::isButtonEnabled(const QString &button_name) const
-{
-    const Card *card = map[button_name];
-    return Self->getMark(objectName() + "_" + button_name) <= 0 && button_name != "normal_slash"
-            && !Self->isCardLimited(card, Card::MethodUse) && card->isAvailable(Self);
-}
-#endif
-
 TaoluanCard::TaoluanCard(QString this_skill_name) : this_skill_name(this_skill_name)
 {
     mute = true;
@@ -1202,9 +1180,19 @@ public:
         return target != nullptr && target->isAlive();
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return TaoluanDialog::getInstance("taoluan");
+        SkillDialogInfo info = SkillDialogInfo::named("taoluan", objectName());
+        info.parameters.insert("declarationType", "guhuo");
+        return info;
+    }
+
+    SkillDeclarationReason declarationReason(const Player *self, const QString &value,
+        const Card *) const override
+    {
+        return self && value != "normal_slash"
+            && self->getMark(objectName() + "_" + value) <= 0
+            ? SkillDeclarationReason::None : SkillDeclarationReason::CandidateUnavailable;
     }
 
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *zhangrang, QVariant &data) const
@@ -1319,9 +1307,11 @@ public:
         return target != nullptr && target->isAlive();
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return TaoluanDialog::getInstance("tenyeartaoluan");
+        SkillDialogInfo info = SkillDialogInfo::named("taoluan", objectName());
+        info.parameters.insert("declarationType", "guhuo");
+        return info;
     }
 
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *zhangrang, QVariant &data) const

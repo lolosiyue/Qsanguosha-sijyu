@@ -1,4 +1,5 @@
 #include "ol.h"
+#include "skill-declaration.h"
 //#include "client.h"
 //#include "general.h"
 //#include "skill.h"
@@ -1460,31 +1461,6 @@ public:
 	}
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-YoulongDialog*YoulongDialog::getInstance(const QString &object)
-{
-	static YoulongDialog*instance;
-	if (instance == nullptr || instance->objectName() != object)
-		instance = new YoulongDialog(object);
-
-	return instance;
-}
-
-YoulongDialog::YoulongDialog(const QString &object)
-	: GuhuoDialog(object)
-{
-}
-
-bool YoulongDialog::isButtonEnabled(const QString &button_name) const
-{
-	const Card*card = map[button_name];
-	if (Self->getChangeSkillState("youlong") == 1 && !card->isNDTrick()) return false;
-	if (Self->getChangeSkillState("youlong") == 2 && !card->isKindOf("BasicCard")) return false;
-	return Self->getMark(objectName() + "_" + button_name) <= 0 && button_name != "normal_slash"
-			&& !Self->isCardLimited(card, Card::MethodUse) && card->isAvailable(Self);
-}
-#endif
-
 YoulongCard::YoulongCard()
 {
 	mute = true;
@@ -1702,9 +1678,22 @@ public:
 		return nullptr;
 	}
 
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return YoulongDialog::getInstance("youlong");
+		SkillDialogInfo info = SkillDialogInfo::named("youlong", objectName());
+		info.parameters.insert("declarationType", "guhuo");
+		return info;
+	}
+
+	SkillDeclarationReason declarationReason(const Player *self, const QString &value,
+		const Card *card) const override
+	{
+		if (!self || !card || value == "normal_slash"
+			|| self->getMark(objectName() + "_" + value) > 0
+			|| (self->getChangeSkillState(objectName()) == 1 && !card->isNDTrick())
+			|| (self->getChangeSkillState(objectName()) == 2 && !card->isKindOf("BasicCard")))
+			return SkillDeclarationReason::CandidateUnavailable;
+		return SkillDeclarationReason::None;
 	}
 };
 
@@ -2031,9 +2020,9 @@ public:
 		return nullptr;
 	}
 
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(skill_name, true, false);
+		return SkillDialogInfo::guhuo(skill_name, true, false);
 	}
 
 private:
@@ -10925,26 +10914,6 @@ void ShefuCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &) cons
 	room->sendLog(log, source);
 }
 
-#if !defined(QSAN_ENGINE_BUILD)
-ShefuDialog*ShefuDialog::getInstance(const QString &object)
-{
-	static ShefuDialog*instance;
-	if (instance == nullptr || instance->objectName() != object)
-		instance = new ShefuDialog(object);
-	return instance;
-}
-
-ShefuDialog::ShefuDialog(const QString &object)
-	: GuhuoDialog(object, true, true, false, true, true)
-{
-}
-
-bool ShefuDialog::isButtonEnabled(const QString &button_name) const
-{
-	return Self->getMark("Shefu_" + button_name)<1;
-}
-#endif
-
 class ShefuViewAsSkill : public OneCardViewAsSkill
 {
 public:
@@ -11027,9 +10996,18 @@ public:
 		return false;
 	}
 
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return ShefuDialog::getInstance(objectName());
+		SkillDialogInfo info = SkillDialogInfo::named("shefu", objectName());
+		info.parameters.insert("declarationType", "guhuo");
+		return info;
+	}
+
+	SkillDeclarationReason declarationReason(const Player *self, const QString &value,
+		const Card *) const override
+	{
+		return self && self->getMark("Shefu_" + value) <= 0
+			? SkillDeclarationReason::None : SkillDeclarationReason::CandidateUnavailable;
 	}
 
 	int getEffectIndex(const ServerPlayer*, const Card*) const
@@ -11863,178 +11841,7 @@ public:
 	}
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-static QHash<QString,JuguanDialog*>JuguanDialogs;
 
-JuguanDialog*JuguanDialog::getInstance(const QString &object, const QString &card_names)
-{
-	if (JuguanDialogs[object] == nullptr)
-		JuguanDialogs[object] = new JuguanDialog(object, card_names);
-
-	return JuguanDialogs[object];
-}
-
-JuguanDialog::JuguanDialog(const QString &object, const QString &card_names)
-	: cards(card_names)
-{
-	setObjectName(object);
-	setWindowTitle(Sanguosha->translate(object));
-	group = new QButtonGroup(this);
-
-	button_layout = new QVBoxLayout;
-	setLayout(button_layout);
-	connect(group, SIGNAL(buttonClicked(QAbstractButton*)), this, SLOT(selectCard(QAbstractButton*)));
-}
-
-void JuguanDialog::prepareOptions()
-{
-	clearChoice();
-	clearButtons();
-	if (!shouldPopup())
-		return;
-
-	QString cards2 = cards;
-	cards2.remove("!");
-	cards2.remove("$");
-	foreach(QString name, cards2.split(",")){
-		if(name=="all_slashs"){
-			foreach(QString slash_name, Sanguosha->getSlashNames()){
-				Card *card = Sanguosha->cloneCard(slash_name);
-				if (card)
-					button_layout->addWidget(createButton(card));
-			}
-			continue;
-		}
-		if(name=="all_damage_cards"){
-			foreach(int id, Sanguosha->getRandomCards()){
-				const Card *engine_card = Sanguosha->getEngineCard(id);
-				if (engine_card == nullptr
-					|| (!engine_card->isKindOf("BasicCard") && !engine_card->isNDTrick())
-					|| !engine_card->isDamageCard()
-					|| map.contains(engine_card->objectName()))
-					continue;
-
-				Card *card = Sanguosha->cloneCard(engine_card->objectName());
-				if (card)
-					button_layout->addWidget(createButton(card));
-			}
-			continue;
-		}
-		Card *card = Sanguosha->cloneCard(name);
-		if (card && !map.contains(card->objectName()))
-			button_layout->addWidget(createButton(card));
-		else
-			card->deleteLater();
-	}
-}
-
-QStringList JuguanDialog::getOptionNames() const
-{
-	return option_names;
-}
-
-const Card *JuguanDialog::getOptionCard(const QString &option_name) const
-{
-	return map.value(option_name, nullptr);
-}
-
-bool JuguanDialog::applyOption(const QString &option_name)
-{
-	const Card *card = getOptionCard(option_name);
-	if (card == nullptr)
-		return false;
-
-	Self->setTag(objectName(), QVariant::fromValue(card));
-	return true;
-}
-
-void JuguanDialog::clearChoice() const
-{
-	Self->removeTag(objectName());
-}
-
-bool JuguanDialog::shouldPopup() const
-{
-	return !cards.isEmpty() && (cards.endsWith("!") || Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY);
-}
-
-bool JuguanDialog::hasEnabledOptions() const
-{
-	foreach (const QString &option_name, option_names) {
-		if (isButtonEnabled(option_name))
-			return true;
-	}
-	return false;
-}
-
-void JuguanDialog::clearButtons()
-{
-	foreach(QAbstractButton *button, group->buttons()){
-		button_layout->removeWidget(button);
-		group->removeButton(button);
-		delete button;
-	}
-	qDeleteAll(map);
-	map.clear();
-	option_names.clear();
-}
-
-bool JuguanDialog::isButtonEnabled(const QString &button_name) const
-{
-	QString mark = objectName() + "_juguan_remove_" + button_name;
-	foreach(QString m, Self->getMarkNames()){
-		if (m.startsWith(mark) && Self->getMark(m) > 0)
-			return false;
-	}
-	if(Self->isLocked(map[button_name])) return false;
-	return cards.startsWith("$")||Sanguosha->getCurrentCardUseReason()!=CardUseStruct::CARD_USE_REASON_PLAY||map[button_name]->isAvailable(Self);
-}
-
-void JuguanDialog::popup()
-{
-	prepareOptions();
-
-	if (!shouldPopup()){
-		emit onButtonClick();
-		return;
-	}
-
-	bool has_enabled_button = false;
-	foreach(QAbstractButton*button, group->buttons()){
-		bool enabled = isButtonEnabled(button->objectName());
-		if (enabled) has_enabled_button = true;
-		button->setEnabled(enabled);
-	}
-	if (!has_enabled_button){
-		emit onButtonClick();
-		return;
-	}
-	exec();
-}
-
-void JuguanDialog::selectCard(QAbstractButton*button)
-{
-	if (button == nullptr || !applyOption(button->objectName()))
-		return;
-	emit onButtonClick();
-	accept();
-}
-
-QAbstractButton*JuguanDialog::createButton(Card *card)
-{
-	card->setParent(this);
-	card->setSkillName(objectName());
-	card->setCanRecast(false);
-	QCommandLinkButton*button = new QCommandLinkButton(Sanguosha->translate(card->objectName()));
-	button->setObjectName(card->objectName());
-	button->setToolTip(card->getDescription());
-
-	map.insert(card->objectName(), card);
-	option_names << card->objectName();
-	group->addButton(button);
-	return button;
-}
-#endif
 
 JuguanCard::JuguanCard()
 {
@@ -12121,9 +11928,9 @@ public:
 		return target != nullptr;
 	}
 
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return JuguanDialog::getInstance(objectName(), "slash,duel");
+		return SkillDialogInfo::juguan(objectName(), "slash,duel");
 	}
 
 	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
@@ -21576,9 +21383,9 @@ public:
 		events << RoundEnd << PreCardUsed << CardsMoveOneTime;
 		view_as_skill = new LeiluanVs;
 	}
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(), true, false);
+		return SkillDialogInfo::guhuo(objectName(), true, false);
 	}
 	bool triggerable(const ServerPlayer*target) const
 	{
@@ -23925,9 +23732,9 @@ public:
 		events << PreCardUsed;
 		view_as_skill = new Jueyavs;
 	}
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(), true, false);
+		return SkillDialogInfo::guhuo(objectName(), true, false);
 	}
 	bool triggerable(const ServerPlayer*target) const
 	{
@@ -25312,9 +25119,9 @@ public:
 		events << EventPhaseChanging << CardFinished;
 		view_as_skill = new LucunVs;
 	}
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(), true, true);
+		return SkillDialogInfo::guhuo(objectName(), true, true);
 	}
 	bool triggerable(const ServerPlayer*target) const
 	{
@@ -27968,9 +27775,9 @@ public:
 		return false;
 	}
 
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(), true, false);
+		return SkillDialogInfo::guhuo(objectName(), true, false);
 	}
 };
 
@@ -28143,9 +27950,9 @@ public:
 	{
 		return qsanRandomBounded(3)+1;
 	}
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return JuguanDialog::getInstance(objectName(), "collateral,ex_nihilo");
+		return SkillDialogInfo::juguan(objectName(), "collateral,ex_nihilo");
 	}
 	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &) const
 	{
@@ -28648,9 +28455,9 @@ public:
 		events << CardsMoveOneTime << EventPhaseChanging << DamageDone;
 		view_as_skill = new OLJinjinvs;
 	}
-	QDialog*getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance(objectName(), false, true);
+		return SkillDialogInfo::guhuo(objectName(), false, true);
 	}
 	bool triggerable(const ServerPlayer*target) const
 	{

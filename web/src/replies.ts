@@ -1,147 +1,71 @@
 import { Command, type JsonObject } from "./protocol";
+import type { RulesSelection } from "./rules-client";
 
-export const INTERACTION_COMMANDS = [
-  Command.CHOOSE_CARD,
-  Command.PLAY_CARD,
-  Command.RESPONSE_CARD,
-  Command.SHOW_CARD,
-  Command.EXCHANGE_CARD,
-  Command.DISCARD_CARD,
-  Command.INVOKE_SKILL,
-  Command.CHOOSE_GENERAL,
-  Command.CHOOSE_KINGDOM,
-  Command.CHOOSE_SUIT,
-  Command.CHOOSE_ROLE,
-  Command.CHOOSE_ROLE_3V3,
-  Command.CHOOSE_DIRECTION,
-  Command.CHOOSE_PLAYER,
-  Command.CHOOSE_ORDER,
-  Command.ASK_PEACH,
-  Command.NULLIFICATION,
-  Command.MULTIPLE_CHOICE,
-  Command.PINDIAN,
-  Command.AMAZING_GRACE,
-  Command.SKILL_YIJI,
-  Command.SKILL_GUANXING,
-  Command.SKILL_GONGXIN,
-  Command.ASK_GENERAL,
-  Command.ARRANGE_GENERAL,
-  Command.LUCK_CARD,
-  Command.TRIGGER_ORDER,
-  Command.SURRENDER,
-  Command.QML_INTERACT
-] as const;
+export type ResponseIntent = JsonObject;
 
-export const REPLY_COMMAND: Record<number, number> = {
-  [Command.CHOOSE_CARD]: Command.CHOOSE_CARD,
-  [Command.PLAY_CARD]: Command.RESPONSE_CARD,
-  [Command.RESPONSE_CARD]: Command.RESPONSE_CARD,
-  [Command.SHOW_CARD]: Command.RESPONSE_CARD,
-  [Command.EXCHANGE_CARD]: Command.DISCARD_CARD,
-  [Command.DISCARD_CARD]: Command.DISCARD_CARD,
-  [Command.INVOKE_SKILL]: Command.INVOKE_SKILL,
-  [Command.CHOOSE_GENERAL]: Command.CHOOSE_GENERAL,
-  [Command.CHOOSE_KINGDOM]: Command.CHOOSE_KINGDOM,
-  [Command.CHOOSE_SUIT]: Command.CHOOSE_SUIT,
-  [Command.CHOOSE_ROLE]: Command.CHOOSE_ROLE,
-  [Command.CHOOSE_ROLE_3V3]: Command.CHOOSE_ROLE_3V3,
-  [Command.CHOOSE_DIRECTION]: Command.CHOOSE_DIRECTION,
-  [Command.CHOOSE_PLAYER]: Command.CHOOSE_PLAYER,
-  [Command.CHOOSE_ORDER]: Command.CHOOSE_ORDER,
-  [Command.ASK_PEACH]: Command.RESPONSE_CARD,
-  [Command.NULLIFICATION]: Command.RESPONSE_CARD,
-  [Command.MULTIPLE_CHOICE]: Command.MULTIPLE_CHOICE,
-  [Command.PINDIAN]: Command.RESPONSE_CARD,
-  [Command.AMAZING_GRACE]: Command.AMAZING_GRACE,
-  [Command.SKILL_YIJI]: Command.SKILL_YIJI,
-  [Command.SKILL_GUANXING]: Command.SKILL_GUANXING,
-  [Command.SKILL_GONGXIN]: Command.SKILL_GONGXIN,
-  [Command.SURRENDER]: Command.SURRENDER,
-  [Command.ASK_GENERAL]: Command.ASK_GENERAL,
-  [Command.ARRANGE_GENERAL]: Command.ARRANGE_GENERAL,
-  [Command.LUCK_CARD]: Command.LUCK_CARD,
-  [Command.TRIGGER_ORDER]: Command.TRIGGER_ORDER,
-  [Command.QML_INTERACT]: Command.QML_INTERACT
-};
-
-export function replyCommand(requestCommand: number): number {
-  return REPLY_COMMAND[requestCommand] ?? requestCommand;
-}
-
-export function optionReply(command: number, field: string, value: string | number | boolean): JsonObject {
-  return { schema_version: 1, [field]: value };
+export function optionReply(_command: number, _field: string, value: string): ResponseIntent {
+  return { kind: "option", payload: { value } };
 }
 
 export function cancelReply(): JsonObject {
-  return { schema_version: 1, cancelled: true };
+  return { kind: "cancel", payload: {} };
 }
 
 export function cardIdReply(cardId: number): JsonObject {
-  return { schema_version: 1, cancelled: false, card_id: cardId };
+  return cardIdsReply([cardId]);
 }
 
 export function cardIdsReply(cardIds: number[]): JsonObject {
-  return { schema_version: 1, cancelled: false, card_ids: cardIds };
+  return cardResponseReply(cardIds, []);
+}
+
+// This is the native evaluator's draft, not CardSelectionData or a wire reply.
+// Preserve order, repeated target votes and the selected declaration verbatim.
+export function cardsIntent(selection: RulesSelection): ResponseIntent {
+  return { kind: "cards", card_ids: [...selection.card_ids], targets: [...selection.targets],
+    skill_name: selection.skill_name, skill_instance_id: selection.skill_instance_id,
+    user_string: selection.user_string, top: [...selection.top], bottom: [...selection.bottom] };
 }
 
 export function cardResponseReply(
-  cardText: string,
+  cardIds: number[],
   targets: string[],
   skillName = "",
-  instanceId = 0
+  instanceId = 0,
+  userString = ""
 ): JsonObject {
-  return {
-    schema_version: 1,
-    cancelled: false,
-    card_text: cardText,
-    targets,
-    activation_skill_name: skillName,
-    activation_skill_instance_id: instanceId
-  };
+  return cardsIntent({ card_ids: cardIds, targets, skill_name: skillName,
+    skill_instance_id: instanceId, user_string: userString, top: [], bottom: [] });
 }
 
 export function assignmentReply(assignments: Record<string, string>): JsonObject {
   const players = Object.keys(assignments);
-  return {
-    schema_version: 1,
-    cancelled: false,
-    players,
-    roles: players.map((player) => assignments[player] ?? "")
-  };
+  return { kind: "assignment", payload: { names: players, values: players.map((player) => assignments[player] ?? "") } };
 }
 
 export function yijiReply(cardIds: number[], target: string): JsonObject {
-  return {
-    schema_version: 1,
-    cancelled: false,
-    card_ids: cardIds,
-    target_player: target
-  };
+  return { kind: "distribution", payload: { cards: cardIds, target } };
 }
 
 export function guanxingReply(top: number[], bottom: number[]): JsonObject {
-  return {
-    schema_version: 1,
-    top_card_ids: top,
-    bottom_card_ids: bottom
-  };
+  return { kind: "rearrangement", payload: { first: top, second: bottom } };
 }
 
 export function playersReply(players: string[]): JsonObject {
-  return { schema_version: 1, cancelled: false, players };
+  return { kind: "players", payload: { players } };
 }
 
 export function arrangeReply(generals: string[]): JsonObject {
-  return { schema_version: 1, cancelled: false, generals };
+  return { kind: "general_arrangement", payload: { generals } };
 }
 
 export function qmlReply(value: JsonObject | null): JsonObject {
   if (value === null)
-    return { schema_version: 1, has_value: false };
-  return { schema_version: 1, has_value: true, value };
+    return { kind: "custom", payload: { schema_version: 1, type: "qml", value: null } };
+  return { kind: "custom", payload: { schema_version: 1, type: "qml", value } };
 }
 
-export function replyForCommand(
+export function responseIntent(
   command: number,
   input: {
     cancelled?: boolean;
@@ -150,10 +74,12 @@ export function replyForCommand(
     int?: number;
     cardId?: number;
     cardIds?: number[];
+    // Legacy callers may supply this, but only native code constructs a card.
     cardText?: string;
     targets?: string[];
     skillName?: string;
     instanceId?: number;
+    userString?: string;
     assignments?: Record<string, string>;
     yijiTarget?: string;
     top?: number[];
@@ -163,17 +89,9 @@ export function replyForCommand(
     qml?: JsonObject | null;
   }
 ): JsonObject {
-  if (input.cancelled) {
-    if (command === Command.INVOKE_SKILL)
-      return optionReply(command, "invoke", false);
-    if (command === Command.SURRENDER)
-      return optionReply(command, "surrender", false);
-    if (command === Command.LUCK_CARD)
-      return optionReply(command, "use_luck_card", false);
-    if (command === Command.QML_INTERACT)
-      return qmlReply(null);
+  // Cancellation semantics belong to ClientCore and its reply encoder.
+  if (input.cancelled)
     return cancelReply();
-  }
   switch (command) {
     case Command.CHOOSE_GENERAL:
     case Command.ASK_GENERAL:
@@ -191,19 +109,19 @@ export function replyForCommand(
     case Command.CHOOSE_ROLE_3V3:
       return optionReply(command, "role", input.option ?? "");
     case Command.CHOOSE_ORDER:
-      return optionReply(command, "order", input.int ?? 0);
+      return optionReply(command, "order", input.option ?? String(input.int ?? 0));
     case Command.INVOKE_SKILL:
-      return optionReply(command, "invoke", input.bool ?? true);
+      return optionReply(command, "invoke", input.option ?? (input.bool === false ? "no" : "yes"));
     case Command.SURRENDER:
-      return optionReply(command, "surrender", input.bool ?? true);
+      return optionReply(command, "surrender", input.option ?? (input.bool === false ? "no" : "yes"));
     case Command.LUCK_CARD:
-      return optionReply(command, "use_luck_card", input.bool ?? true);
+      return optionReply(command, "use_luck_card", input.option ?? (input.bool === false ? "no" : "yes"));
     case Command.CHOOSE_ROLE:
       return assignmentReply(input.assignments ?? {});
     case Command.SKILL_GONGXIN:
     case Command.AMAZING_GRACE:
     case Command.CHOOSE_CARD:
-      return cardIdReply(input.cardId ?? 0);
+      return cardIdsReply(input.cardIds ?? (input.cardId === undefined ? [] : [input.cardId]));
     case Command.EXCHANGE_CARD:
     case Command.DISCARD_CARD:
       return cardIdsReply(input.cardIds ?? []);
@@ -214,10 +132,11 @@ export function replyForCommand(
     case Command.SHOW_CARD:
     case Command.PINDIAN:
       return cardResponseReply(
-        input.cardText ?? "",
+        input.cardIds ?? [],
         input.targets ?? [],
         input.skillName ?? "",
-        input.instanceId ?? 0
+        input.instanceId ?? 0,
+        input.userString ?? ""
       );
     case Command.SKILL_YIJI:
       return yijiReply(input.cardIds ?? [], input.yijiTarget ?? "");

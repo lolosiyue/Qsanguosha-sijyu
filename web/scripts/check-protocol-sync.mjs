@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Compare web Command IDs and REPLY_COMMAND against artifacts/protocol-v2-flow-matrix.json.
+// Compare web Command IDs and the native interaction registry against artifacts/protocol-v2-flow-matrix.json.
 // Field names listed on the matrix are existence-only; types are out of scope.
 
 import fs from "node:fs";
@@ -10,7 +10,7 @@ const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const repoRoot = path.resolve(webRoot, "..");
 const matrixPath = path.join(repoRoot, "artifacts", "protocol-v2-flow-matrix.json");
 const protocolPath = path.join(webRoot, "src", "protocol.ts");
-const repliesPath = path.join(webRoot, "src", "replies.ts");
+const nativeRegistryPath = path.join(repoRoot, "src", "client", "interaction-command-registry.cpp");
 const srcDir = path.join(webRoot, "src");
 
 const errors = [];
@@ -33,24 +33,20 @@ function parseCommandMap(source) {
   return map;
 }
 
-function parseReplyCommand(source, commandByName) {
-  const block = source.match(/export const REPLY_COMMAND[^=]*= \{([\s\S]*?)\};/);
-  if (!block)
-    throw new Error("replies.ts: REPLY_COMMAND not found");
-  const map = new Map();
-  for (const match of block[1].matchAll(/\[Command\.([A-Z][A-Z0-9_]*)\]\s*:\s*Command\.([A-Z][A-Z0-9_]*)/g)) {
-    const requestName = match[1];
-    const replyName = match[2];
-    const requestId = commandByName.get(requestName);
-    const replyId = commandByName.get(replyName);
-    if (requestId === undefined)
-      fail(`REPLY_COMMAND key Command.${requestName} is not in protocol.ts Command`);
-    if (replyId === undefined)
-      fail(`REPLY_COMMAND value Command.${replyName} is not in protocol.ts Command`);
-    if (requestId !== undefined && replyId !== undefined)
-      map.set(requestId, replyId);
+function parseNativeRegistry(source) {
+  const registry = new Set();
+  // Descriptors are currently one per line; keep the match bounded to one
+  // initializer so a missing encoder cannot borrow the following descriptor.
+  for (const match of source.matchAll(/\{S_COMMAND_([A-Z][A-Z0-9_]*)\s*,([^\r\n}]*)\}/g)) {
+    const descriptor = match[2];
+    const encoder = descriptor.match(/&Encoder::([A-Za-z0-9_]+)/);
+    if (!encoder)
+      throw new Error(`native registry ${match[1]} has no reply encoder`);
+    registry.add(match[1]);
   }
-  return map;
+  if (registry.size === 0)
+    throw new Error("native interaction-command-registry.cpp has no descriptors");
+  return registry;
 }
 
 function stripCommandName(raw) {
@@ -118,7 +114,7 @@ for (const [name, id] of webCommands) {
     fail(`protocol.ts Command.${name}=${id} collides with matrix ${matrixName}`);
 }
 
-const replyByRequest = parseReplyCommand(read(repliesPath), webCommands);
+const nativeRegistry = parseNativeRegistry(read(nativeRegistryPath));
 const seenReplyRequests = new Set();
 
 for (const flow of flows) {
@@ -129,19 +125,9 @@ for (const flow of flows) {
   if (!Number.isInteger(requestId) || !Number.isInteger(replyId) || replyId <= 0)
     continue;
   seenReplyRequests.add(requestId);
-  const webReply = replyByRequest.get(requestId);
   const requestName = matrixIdToName.get(requestId) ?? String(requestId);
-  if (webReply === undefined)
-    fail(`replies.ts REPLY_COMMAND missing ${requestName} (${requestId} → ${replyId})`);
-  else if (webReply !== replyId)
-    fail(`REPLY_COMMAND[${requestName}] is ${webReply}, matrix reply_command_id is ${replyId}`);
-}
-
-for (const [requestId, replyId] of replyByRequest) {
-  if (!seenReplyRequests.has(requestId)) {
-    const name = webIdToName.get(requestId) ?? String(requestId);
-    fail(`REPLY_COMMAND has ${name} → ${replyId} but no room→client request in flow-matrix`);
-  }
+  if (!nativeRegistry.has(requestName))
+    fail(`native interaction registry missing ${requestName} (${requestId} → ${replyId})`);
 }
 
 const srcText = walkTsFiles(srcDir).map(read).join("\n");
@@ -178,5 +164,5 @@ if (errors.length) {
 }
 
 console.log(
-  `protocol-sync: ok (${matrixByName.size} commands, ${seenReplyRequests.size} reply maps, ${seenFields.size} field names)`
+  `protocol-sync: ok (${matrixByName.size} commands, ${seenReplyRequests.size} native reply descriptors, ${seenFields.size} field names)`
 );

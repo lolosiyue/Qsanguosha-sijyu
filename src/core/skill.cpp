@@ -1,4 +1,5 @@
 #include "skill.h"
+#include "skill-declaration.h"
 #include "runtime-paths.h"
 #include "settings.h"
 #include "engine.h"
@@ -370,9 +371,15 @@ SkillDialogInfo Skill::getDialogInfo() const
     return SkillDialogInfo();
 }
 
-QDialog *Skill::getDialog() const
+SkillDeclarationReason Skill::declarationReason(const Player *, const QString &, const Card *) const
 {
-    return nullptr;
+    return SkillDeclarationReason::None;
+}
+
+QList<SkillDeclarationCandidate> Skill::declarationCandidates(
+    const Player *, CardUseStruct::CardUseReason, const QString &, const QStringList &, quint64) const
+{
+    return {};
 }
 
 ViewAsSkill::ViewAsSkill(const QString &name)

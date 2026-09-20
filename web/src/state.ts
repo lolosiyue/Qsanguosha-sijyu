@@ -1,4 +1,4 @@
-import { asBool, asNumber, asString, type JsonObject, type JsonValue } from "./protocol";
+import { asBool, asNumber, asString, isObject, type JsonObject, type JsonValue } from "./protocol";
 
 export interface CardState {
   id: number;
@@ -30,6 +30,44 @@ export class ClientGameState {
   flowCounts = new Map<number, number>();
   presentationEvents: PresentationEvent[] = [];
   cardIdSpace = 0;
+
+  /** Replace the complete receiver-scoped native snapshot atomically.
+   * Local selections and formatted event cursors are owned by the shell.
+   */
+  hydrateNativeView(view: JsonObject): void {
+    if (!isObject(view.connection) || !isObject(view.setup) || !isObject(view.game)
+        || !Array.isArray(view.players) || !Array.isArray(view.cards)
+        || !Array.isArray(view.player_names))
+      throw new Error("invalid_native_state_projection");
+    const players = new Map<string, PlayerState>();
+    for (const raw of view.players) {
+      if (!isObject(raw) || typeof raw.object_name !== "string" || !raw.object_name)
+        throw new Error("invalid_native_player_projection");
+      players.set(raw.object_name, structuredClone(raw) as unknown as PlayerState);
+    }
+    const cards = new Map<number, CardState>();
+    for (const raw of view.cards) {
+      if (!isObject(raw) || typeof raw.id !== "number" || !Number.isSafeInteger(raw.id) || raw.id < 0)
+        throw new Error("invalid_native_card_projection");
+      cards.set(raw.id, structuredClone(raw) as CardState);
+    }
+    const names = view.player_names;
+    if (!names.every((name): name is string => typeof name === "string" && players.has(name)))
+      throw new Error("invalid_native_roster_projection");
+    this.connection = structuredClone(view.connection);
+    this.setup = structuredClone(view.setup);
+    this.game = structuredClone(view.game);
+    this.selfName = asString(view.self_name);
+    this.cardIdSpace = asNumber(view.card_id_space);
+    this.playerNames = [...names];
+    this.players = players;
+    this.cards = cards;
+    this.latestPayloads.clear();
+    this.flowCounts = new Map(Object.entries(isObject(view.flow_counts) ? view.flow_counts : {})
+      .map(([command, count]) => [Number(command), asNumber(count)]));
+    // presentation_events in the diagnostic snapshot are deliberately ignored.
+    // The native formatted event stream supplies text and deduplication cursors.
+  }
 
   clone(): ClientGameState {
     const copy = new ClientGameState();

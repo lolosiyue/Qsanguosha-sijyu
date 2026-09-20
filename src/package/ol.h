@@ -1,6 +1,9 @@
 #ifndef OL_PACKAGE_H
 #define OL_PACKAGE_H
 
+#if !defined(QSAN_ENGINE_BUILD)
+#include "../ui/special-skill-dialogs.h"
+#endif
 #include "sp.h"
 #include "wind.h"
 
@@ -333,26 +336,6 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-class ShefuDialog : public GuhuoDialog
-{
-    Q_OBJECT
-
-public:
-    static ShefuDialog *getInstance(const QString &object);
-
-protected:
-    explicit ShefuDialog(const QString &object);
-    bool isButtonEnabled(const QString &button_name) const;
-};
-#else
-class ShefuDialog
-{
-public:
-    static QDialog *getInstance(const QString &) { return nullptr; }
-};
-#endif
-
 class BifaCard : public SkillCard
 {
     Q_OBJECT
@@ -384,16 +367,6 @@ public:
 };
 
 
-
-#if !defined(QSAN_ENGINE_BUILD)
-#include "package-dialogs.h"
-#else
-class JuguanDialog
-{
-public:
-    static QDialog *getInstance(const QString &, const QString &) { return nullptr; }
-};
-#endif
 
 class JuguanCard : public SkillCard
 {
@@ -704,26 +677,6 @@ public:
     const Card *validate(CardUseStruct &card_use) const;
     const Card *validateInResponse(ServerPlayer *source) const;
 };
-
-#if !defined(QSAN_ENGINE_BUILD)
-class YoulongDialog : public GuhuoDialog
-{
-    Q_OBJECT
-
-public:
-    static YoulongDialog *getInstance(const QString &object);
-
-protected:
-    explicit YoulongDialog(const QString &object);
-    bool isButtonEnabled(const QString &button_name) const;
-};
-#else
-class YoulongDialog
-{
-public:
-    static QDialog *getInstance(const QString &) { return nullptr; }
-};
-#endif
 
 class JinzhiCard : public SkillCard
 {

@@ -3,6 +3,9 @@
 
 //#include "package.h"
 //#include "card.h"
+#if !defined(QSAN_ENGINE_BUILD)
+#include "../ui/special-skill-dialogs.h"
+#endif
 #include "standard.h"
 #include "wind.h"
 
@@ -64,41 +67,6 @@ public:
 protected:
     virtual int getKingdoms(ServerPlayer *yuanshu) const;
 };
-
-#if !defined(QSAN_ENGINE_BUILD)
-class WeidiDialog : public QDialog
-{
-    Q_OBJECT
-
-public:
-    static WeidiDialog *getInstance();
-
-public slots:
-    void popup();
-    void selectSkill(QAbstractButton *button);
-
-private:
-    explicit WeidiDialog();
-
-    QAbstractButton *createSkillButton(const QString &skill_name);
-    QButtonGroup *group;
-    QVBoxLayout *button_layout;
-
-signals:
-    void onButtonClick();
-};
-#else
-class WeidiDialog
-{
-public:
-    static QDialog *getInstance() { return nullptr; }
-};
-#endif
-
-
-
-
-
 
 class XiemuCard : public SkillCard
 {

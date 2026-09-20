@@ -2,6 +2,9 @@
 #define YCZH2016_H
 
 //#include "package.h"
+#if !defined(QSAN_ENGINE_BUILD)
+#include "../ui/special-skill-dialogs.h"
+#endif
 #include "card.h"
 //#include "skill.h"
 #include "wind.h"
@@ -116,26 +119,6 @@ public:
 private:
     QString this_skill_name;
 };
-
-#if !defined(QSAN_ENGINE_BUILD)
-class TaoluanDialog : public GuhuoDialog
-{
-    Q_OBJECT
-
-public:
-    static TaoluanDialog *getInstance(const QString &object);
-
-protected:
-    explicit TaoluanDialog(const QString &object);
-    bool isButtonEnabled(const QString &button_name) const;
-};
-#else
-class TaoluanDialog
-{
-public:
-    static QDialog *getInstance(const QString &) { return nullptr; }
-};
-#endif
 
 class TenyearTaoluanCard : public TaoluanCard
 {

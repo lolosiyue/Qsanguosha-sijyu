@@ -3321,9 +3321,9 @@ public:
 		response_or_use = true;
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance("yhyuren", true, false);
+		return SkillDialogInfo::guhuo("yhyuren", true, false);
 	}
 
 	bool isEnabledAtPlay(const Player *) const

@@ -3929,7 +3929,7 @@ public:
 
     SkillDialogInfo getDialogInfo() const override
     {
-        return SkillDialogInfo::named("mobilejianying", objectName());
+        return SkillDialogInfo();
     }
 };
 

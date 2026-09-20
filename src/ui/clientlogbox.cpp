@@ -24,7 +24,7 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     if (Self->hasFlag("marshalling")) return;
 
     if (type == "$AppendSeparator") {
-        append(QString(tr("<font color='%1'>------------------------------</font>")).arg(UiConfig.TextEditColor.name()));
+        append(QStringLiteral("<font color='%1'>------------------------------</font>").arg(UiConfig.TextEditColor.name()));
         return;
     }
 
@@ -50,10 +50,10 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     style.phrases.skillCost = tr("%from %3 [%1] %4, and the cost is %2");
     style.phrases.asNoSub = tr("%from %4 [%1] %5, %3 [%2]");
     style.phrases.asSub = tr("%from %5 [%1] %6 %4 %2 as %3");
-    style.phrases.filterAs = QStringLiteral("%from 的 %2 因“%1”效果视为 %3 %4");
+    style.phrases.filterAs = tr("%from's %2 is treated as %3 %4 by the effect of %1");
     style.phrases.plain = tr("%from %2 %1");
     style.phrases.targetSuffix = tr(", target is %to");
-    style.phrases.selfName = QStringLiteral("自己");
+    style.phrases.selfName = tr("self");
     style.translate = [](const QString &key) { return Sanguosha->translate(key); };
     style.cardLogName = [](const Card *card) { return card->getLogName(); };
     style.playerName = [](const QString &name) { return ClientInstance->getPlayerName(name); };

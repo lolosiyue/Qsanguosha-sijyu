@@ -417,9 +417,9 @@ public:
 		return nullptr;
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance("dev_lvedong", true, false);
+        return SkillDialogInfo::guhuo("dev_lvedong", true, false);
     }
 };
 
@@ -2978,9 +2978,9 @@ public:
         return target && target->isAlive();
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance("dev_tumou", false, true);
+        return SkillDialogInfo::guhuo("dev_tumou", false, true);
     }
 
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const

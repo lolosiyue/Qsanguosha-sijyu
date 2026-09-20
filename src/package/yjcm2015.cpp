@@ -1,4 +1,5 @@
 #include "yjcm2015.h"
+#include "skill-declaration.h"
 //#include "general.h"
 //#include "player.h"
 //#include "structs.h"
@@ -848,9 +849,9 @@ public:
         events << CardAsked;
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance("zhenshan", true, false);
+        return SkillDialogInfo::guhuo("zhenshan", true, false);
     }
 
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
@@ -1247,35 +1248,6 @@ public:
     }
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-HuomoDialog::HuomoDialog() : GuhuoDialog("huomo", true, false)
-{
-}
-
-HuomoDialog *HuomoDialog::getInstance()
-{
-    static HuomoDialog *instance;
-    if (instance == nullptr || instance->objectName() != "huomo")
-        instance = new HuomoDialog;
-
-    return instance;
-}
-
-bool HuomoDialog::isButtonEnabled(const QString &button_name) const
-{
-    const Card *c = map[button_name];
-    QString classname = c->getClassName();
-    if (c->isKindOf("Slash"))
-        classname = "Slash";
-
-    bool r = Self->getMark("Huomo_" + classname) == 0;
-    if (!r)
-        return false;
-
-    return GuhuoDialog::isButtonEnabled(button_name);
-}
-#endif
-
 HuomoCard::HuomoCard()
 {
     will_throw = false;
@@ -1546,10 +1518,22 @@ public:
         events << EventPhaseChanging;
     }
 
-    QDialog *getDialog() const
-    {
-        return HuomoDialog::getInstance();
+	SkillDialogInfo getDialogInfo() const override
+	{
+		SkillDialogInfo info = SkillDialogInfo::named("huomo", objectName());
+		info.parameters.insert("declarationType", "guhuo");
+		return info;
     }
+
+	SkillDeclarationReason declarationReason(const Player *self, const QString &,
+		const Card *card) const override
+	{
+		if (!self || !card) return SkillDeclarationReason::CandidateUnavailable;
+		QString className = card->getClassName();
+		if (card->isKindOf("Slash")) className = "Slash";
+		return self->getMark("Huomo_" + className) <= 0
+			? SkillDeclarationReason::None : SkillDeclarationReason::CandidateUnavailable;
+	}
 
     bool triggerable(const ServerPlayer *target) const
     {

@@ -4,6 +4,8 @@
 #include "mountain.h"
 
 #include "card.h"
+#include "client.h"
+#include "client-core.h"
 #include "clientplayer.h"
 #include "engine.h"
 #include "generaloverview.h"
@@ -12,6 +14,7 @@
 #include <QButtonGroup>
 #include <QCommandLinkButton>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
@@ -25,15 +28,38 @@ QAbstractButton *makeDialogButton(const Card *card, QWidget *parent)
     return button;
 }
 
+SkillDialogInfo actualDialogInfo(const QString &skillName, const SkillDialogInfo &fallback)
+{
+    if (Sanguosha == nullptr)
+        return fallback;
+    if (const Skill *skill = Sanguosha->getSkill(skillName)) {
+        const SkillDialogInfo info = skill->getDialogInfo();
+        if (info.isValid())
+            return info;
+    }
+    if (const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skillName)) {
+        const SkillDialogInfo info = viewAs->getDialogInfo();
+        if (info.isValid())
+            return info;
+    }
+    return fallback;
 }
 
-QHash<QString, GuhuoDialog *> GuhuoDialogs;
+quint64 currentDeclarationRequestId()
+{
+    return ClientInstance != nullptr && ClientInstance->interactionCore() != nullptr
+        ? ClientInstance->interactionCore()->activeRequestId() : 0;
+}
+
+}
+
+QHash<QString, QPointer<GuhuoDialog>> GuhuoDialogs;
 
 GuhuoDialog *GuhuoDialog::getInstance(const QString &object, bool left, bool right, bool play_only,
     bool slash_combined, bool delayed_tricks, bool update)
 {
     if (update || GuhuoDialogs.value(object, nullptr) == nullptr) {
-        delete GuhuoDialogs.take(object);
+        delete GuhuoDialogs.take(object).data();
         GuhuoDialogs[object] = new GuhuoDialog(object, left, right, play_only, slash_combined, delayed_tricks);
     }
     return GuhuoDialogs.value(object);
@@ -41,32 +67,65 @@ GuhuoDialog *GuhuoDialog::getInstance(const QString &object, bool left, bool rig
 
 GuhuoDialog::GuhuoDialog(const QString &object, bool left, bool right, bool play_only,
     bool slash_combined, bool delayed_tricks)
-    : play_only(play_only), slash_combined(slash_combined), delayed_tricks(delayed_tricks)
+    : play_only(play_only), slash_combined(slash_combined), delayed_tricks(delayed_tricks),
+      show_left(left), show_right(right)
 {
     setObjectName(object);
     setWindowTitle(Sanguosha->translate(object));
     group = new QButtonGroup(this);
     group->setExclusive(false);
 
-    QHBoxLayout *content = new QHBoxLayout;
-    if (left)
-        content->addWidget(createLeft());
-    if (right)
-        content->addWidget(createRight());
+    content_layout = new QHBoxLayout;
     QVBoxLayout *layout = new QVBoxLayout;
-    layout->addLayout(content);
+    layout->addLayout(content_layout);
     setLayout(layout);
     connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectCard(QAbstractButton *)));
+    prepareOptions();
 }
 
 void GuhuoDialog::prepareOptions()
 {
+    clearButtons();
+    delete left_box;
+    left_box = nullptr;
+    delete right_box;
+    right_box = nullptr;
+    declaration = std::make_unique<SkillDeclarationSession>(
+        actualDialogInfo(objectName(), SkillDialogInfo::guhuo(
+            objectName(), show_left, show_right, play_only, slash_combined, delayed_tricks)),
+        Self, Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
+        ServerInfo.BanPackages, currentDeclarationRequestId());
+    if (declaration->active()) {
+        if (show_left) {
+            left_box = createLeft();
+            content_layout->addWidget(left_box);
+        }
+        if (show_right) {
+            right_box = createRight();
+            content_layout->addWidget(right_box);
+        }
+    }
     clearChoice();
+}
+
+void GuhuoDialog::clearButtons()
+{
+    if (group != nullptr) {
+        for (QAbstractButton *button : group->buttons()) {
+            group->removeButton(button);
+            delete button;
+        }
+    }
+    map.clear();
+    option_names.clear();
 }
 
 QStringList GuhuoDialog::getOptionNames() const
 {
-    return option_names;
+    QStringList names;
+    for (const SkillDeclarationCandidate &candidate : declaration->candidates())
+        names << candidate.value;
+    return names;
 }
 
 const Card *GuhuoDialog::getOptionCard(const QString &option_name) const
@@ -76,28 +135,24 @@ const Card *GuhuoDialog::getOptionCard(const QString &option_name) const
 
 bool GuhuoDialog::applyOption(const QString &option_name)
 {
-    const Card *card = getOptionCard(option_name);
-    if (card == nullptr || Self == nullptr || !isButtonEnabled(option_name))
-        return false;
-    Self->setTag(objectName(), QVariant::fromValue(card));
-    return true;
+    return declaration->apply(option_name);
 }
 
 void GuhuoDialog::clearChoice() const
 {
-    if (Self != nullptr)
-        Self->removeTag(objectName());
+    if (declaration)
+        declaration->clearChoice();
 }
 
 bool GuhuoDialog::shouldPopup() const
 {
-    return !play_only || Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY;
+    return declaration->active();
 }
 
 bool GuhuoDialog::hasEnabledOptions() const
 {
-    foreach (const QString &name, option_names) {
-        if (isButtonEnabled(name))
+    for (const SkillDeclarationCandidate &candidate : declaration->candidates()) {
+        if (declaration->validate(candidate.value).accepted)
             return true;
     }
     return false;
@@ -105,13 +160,7 @@ bool GuhuoDialog::hasEnabledOptions() const
 
 bool GuhuoDialog::isButtonEnabled(const QString &button_name) const
 {
-    const Card *card = map.value(button_name, nullptr);
-    if (card == nullptr || Self == nullptr)
-        return false;
-    if ((play_only || Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY)
-        && !card->isAvailable(Self))
-        return false;
-    return !Self->isLocked(card);
+    return declaration->validate(button_name).accepted;
 }
 
 void GuhuoDialog::popup()
@@ -138,14 +187,9 @@ QGroupBox *GuhuoDialog::createLeft()
 {
     QGroupBox *box = new QGroupBox(Sanguosha->translate("basic"));
     QVBoxLayout *layout = new QVBoxLayout(box);
-    foreach (const BasicCard *engine_card, Sanguosha->findChildren<const BasicCard *>()) {
-        if (engine_card->objectName().startsWith("_") || ServerInfo.BanPackages.contains(engine_card->getPackage())
-            || map.contains(engine_card->objectName()))
-            continue;
-        if (slash_combined && engine_card->isKindOf("Slash") && engine_card->objectName() != "slash")
-            continue;
-        Card *card = Sanguosha->cloneCard(engine_card->objectName());
-        if (card)
+    for (const SkillDeclarationCandidate &candidate : declaration->candidates()) {
+        Card *card = const_cast<Card *>(declaration->cloneCard(candidate.value));
+        if (card != nullptr && card->isKindOf("BasicCard"))
             layout->addWidget(createButton(card));
     }
     layout->addStretch();
@@ -156,12 +200,9 @@ QGroupBox *GuhuoDialog::createRight()
 {
     QGroupBox *box = new QGroupBox(Sanguosha->translate("trick"));
     QVBoxLayout *layout = new QVBoxLayout(box);
-    foreach (const TrickCard *engine_card, Sanguosha->findChildren<const TrickCard *>()) {
-        if (engine_card->objectName().startsWith("_") || ServerInfo.BanPackages.contains(engine_card->getPackage())
-            || map.contains(engine_card->objectName()) || (!delayed_tricks && !engine_card->isNDTrick()))
-            continue;
-        Card *card = Sanguosha->cloneCard(engine_card->objectName());
-        if (card)
+    for (const SkillDeclarationCandidate &candidate : declaration->candidates()) {
+        Card *card = const_cast<Card *>(declaration->cloneCard(candidate.value));
+        if (card != nullptr && card->isKindOf("TrickCard"))
             layout->addWidget(createButton(card));
     }
     layout->addStretch();
@@ -172,7 +213,6 @@ QAbstractButton *GuhuoDialog::createButton(Card *card)
 {
     card->setSkillName(objectName());
     card->setCanRecast(false);
-    card->setParent(this);
     map.insert(card->objectName(), card);
     option_names << card->objectName();
     QAbstractButton *button = makeDialogButton(card, this);
@@ -180,7 +220,7 @@ QAbstractButton *GuhuoDialog::createButton(Card *card)
     return button;
 }
 
-QHash<QString, JuguanDialog *> JuguanDialogs;
+QHash<QString, QPointer<JuguanDialog>> JuguanDialogs;
 
 JuguanDialog *JuguanDialog::getInstance(const QString &object, const QString &card_names)
 {
@@ -194,6 +234,10 @@ JuguanDialog::JuguanDialog(const QString &object, const QString &card_names)
 {
     setObjectName(object);
     setWindowTitle(Sanguosha->translate(object));
+    declaration = std::make_unique<SkillDeclarationSession>(
+        SkillDialogInfo::juguan(object, card_names), Self,
+        Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
+        ServerInfo.BanPackages, currentDeclarationRequestId());
     group = new QButtonGroup(this);
     button_layout = new QVBoxLayout;
     setLayout(button_layout);
@@ -202,50 +246,50 @@ JuguanDialog::JuguanDialog(const QString &object, const QString &card_names)
 
 void JuguanDialog::prepareOptions()
 {
+    declaration = std::make_unique<SkillDeclarationSession>(
+        SkillDialogInfo::juguan(objectName(), cards), Self,
+        Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
+        ServerInfo.BanPackages, currentDeclarationRequestId());
     clearChoice();
     clearButtons();
     if (!shouldPopup())
         return;
-    QString names = cards;
-    names.remove("!");
-    names.remove("$");
-    foreach (const QString &name, names.split(",", Qt::SkipEmptyParts)) {
-        Card *card = Sanguosha->cloneCard(name);
-        if (card && !map.contains(card->objectName()))
+    for (const SkillDeclarationCandidate &candidate : declaration->candidates()) {
+        Card *card = const_cast<Card *>(declaration->cloneCard(candidate.value));
+        if (card != nullptr && !map.contains(card->objectName()))
             button_layout->addWidget(createButton(card));
-        else
-            card->deleteLater();
     }
 }
 
-QStringList JuguanDialog::getOptionNames() const { return option_names; }
+QStringList JuguanDialog::getOptionNames() const
+{
+    QStringList names;
+    for (const SkillDeclarationCandidate &candidate : declaration->candidates())
+        names << candidate.value;
+    return names;
+}
 const Card *JuguanDialog::getOptionCard(const QString &name) const { return map.value(name, nullptr); }
 
 bool JuguanDialog::applyOption(const QString &name)
 {
-    const Card *card = getOptionCard(name);
-    if (card == nullptr || Self == nullptr)
-        return false;
-    Self->setTag(objectName(), QVariant::fromValue(card));
-    return true;
+    return declaration->apply(name);
 }
 
 void JuguanDialog::clearChoice() const
 {
-    if (Self != nullptr)
-        Self->removeTag(objectName());
+    if (declaration)
+        declaration->clearChoice();
 }
 
 bool JuguanDialog::shouldPopup() const
 {
-    return !cards.isEmpty() && (cards.endsWith("!")
-        || Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY);
+    return declaration->active();
 }
 
 bool JuguanDialog::hasEnabledOptions() const
 {
-    foreach (const QString &name, option_names) {
-        if (isButtonEnabled(name))
+    for (const SkillDeclarationCandidate &candidate : declaration->candidates()) {
+        if (declaration->validate(candidate.value).accepted)
             return true;
     }
     return false;
@@ -258,17 +302,13 @@ void JuguanDialog::clearButtons()
         group->removeButton(button);
         delete button;
     }
-    qDeleteAll(map);
     map.clear();
     option_names.clear();
 }
 
 bool JuguanDialog::isButtonEnabled(const QString &name) const
 {
-    const Card *card = map.value(name, nullptr);
-    return card != nullptr && Self != nullptr && !Self->isLocked(card)
-        && (cards.startsWith("$") || Sanguosha->getCurrentCardUseReason() != CardUseStruct::CARD_USE_REASON_PLAY
-            || card->isAvailable(Self));
+    return declaration->validate(name).accepted;
 }
 
 void JuguanDialog::popup()
@@ -293,7 +333,6 @@ void JuguanDialog::selectCard(QAbstractButton *button)
 
 QAbstractButton *JuguanDialog::createButton(Card *card)
 {
-    card->setParent(this);
     card->setSkillName(objectName());
     card->setCanRecast(false);
     QAbstractButton *button = makeDialogButton(card, this);
@@ -303,7 +342,7 @@ QAbstractButton *JuguanDialog::createButton(Card *card)
     return button;
 }
 
-QHash<QString, TiansuanDialog *> TiansuanDialogs;
+QHash<QString, QPointer<TiansuanDialog>> TiansuanDialogs;
 
 TiansuanDialog *TiansuanDialog::getInstance(const QString &name, const QString &choices)
 {
@@ -317,26 +356,23 @@ TiansuanDialog::TiansuanDialog(const QString &name, const QString &choices)
 {
     setObjectName(name);
     setWindowTitle(Sanguosha->translate(name));
+    declaration = std::make_unique<SkillDeclarationSession>(
+        SkillDialogInfo::tiansuan(name, choices), Self,
+        Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
+        ServerInfo.BanPackages, currentDeclarationRequestId());
     group = new QButtonGroup(this);
     button_layout = new QVBoxLayout;
     setLayout(button_layout);
     connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectChoice(QAbstractButton *)));
 }
 
-bool TiansuanDialog::MarkJudge(const QString &choice) const
-{
-    if (Self == nullptr) return false;
-    const QString mark = objectName() + "_tiansuan_remove_" + choice;
-    foreach (const QString &mark_name, Self->getMarkNames()) {
-        if (mark_name.startsWith(mark) && Self->getMark(mark_name) > 0)
-            return false;
-    }
-    return true;
-}
-
 void TiansuanDialog::prepareOptions()
 {
-    if (Self != nullptr) Self->removeTag(objectName());
+    declaration = std::make_unique<SkillDeclarationSession>(
+        SkillDialogInfo::tiansuan(objectName(), tiansuan_choices), Self,
+        Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
+        ServerInfo.BanPackages, currentDeclarationRequestId());
+    declaration->clearChoice();
     // This singleton is reused across requests. Rebuild its widgets from the
     // same stable choices the table and keyboard presenter consume.
     for (QAbstractButton *button : group->buttons()) {
@@ -353,21 +389,20 @@ void TiansuanDialog::prepareOptions()
 
 QStringList TiansuanDialog::getOptionNames() const
 {
-    QStringList choices = tiansuan_choices.split(",", Qt::SkipEmptyParts);
-    choices.removeDuplicates();
+    QStringList choices;
+    for (const SkillDeclarationCandidate &candidate : declaration->candidates())
+        choices << candidate.value;
     return choices;
 }
 
 bool TiansuanDialog::isButtonEnabled(const QString &choice) const
 {
-    return getOptionNames().contains(choice) && MarkJudge(choice);
+    return getOptionNames().contains(choice) && declaration->validate(choice).accepted;
 }
 
 bool TiansuanDialog::applyOption(const QString &choice)
 {
-    if (!isButtonEnabled(choice)) return false;
-    Self->setTag(objectName(), choice);
-    return true;
+    return declaration->apply(choice);
 }
 
 void TiansuanDialog::popup()
@@ -395,30 +430,4 @@ QAbstractButton *TiansuanDialog::createChoiceButton(const QString &choice)
     button->setObjectName(choice);
     group->addButton(button);
     return button;
-}
-
-HuashenDialog::HuashenDialog(const QString &propertyName)
-    : GeneralOverview(), m_propertyName(propertyName)
-{
-    setPreviewMode(true);
-}
-
-void HuashenDialog::popup()
-{
-    if (Self == nullptr || m_propertyName.isEmpty())
-        return;
-    QString skillName = m_propertyName;
-    if (skillName.endsWith("_general", Qt::CaseInsensitive))
-        skillName.chop(8);
-    const QVariant value = Self->property(m_propertyName.toLatin1().constData());
-    QStringList names = value.toString().split("+", Qt::SkipEmptyParts);
-    QList<const General *> generals;
-    foreach (const QString &name, names) {
-        const General *general = Sanguosha->getGeneral(name);
-        if (general != nullptr)
-            generals << general;
-    }
-    fillGenerals(generals);
-    setWindowTitle(Sanguosha->translate(skillName));
-    show();
 }
