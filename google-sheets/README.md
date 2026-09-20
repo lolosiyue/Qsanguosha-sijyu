@@ -56,7 +56,7 @@ Sheets 增量建置 exit 0、前端 30/30 通過；三個改動的 Apps Script �
 
 | 元件 | 職責 |
 |---|---|
-| `apps-script/Locale.gs` | 固定 Sheets 文案的穩定英文鍵與繁中表 |
+| `apps-script/Locale.gs` | 固定 Sheets 文案的穩定英文鍵與簡中表；遊戲文本一般使用簡中 |
 | `apps-script/Client.gs` | 玩家憑證、HTTPS 請求、指令恢復與操作入口 |
 | `apps-script/Table.gs`／`Draft.gs` | 工作表呈現、排序選擇與七種標準回覆結構 |
 | `apps-script/Sidebar.html` | 配對、更新與連線控制；卡牌與目標在工作表選取 |
