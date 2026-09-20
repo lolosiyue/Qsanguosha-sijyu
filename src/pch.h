@@ -32,7 +32,8 @@
 #define QSAN_ENABLE_QML 1
 #endif
 
-#if __cplusplus < 201402L
+// Older MSVC reports C++98 in __cplusplus even when make_unique is available.
+#if __cplusplus < 201402L && !defined(__cpp_lib_make_unique)
 namespace std {
 template <class T, class... Args>
 inline unique_ptr<T> make_unique(Args&&... args)

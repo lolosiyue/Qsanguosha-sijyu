@@ -130,9 +130,9 @@ static QString idString(qint64 id)
 static bool parseScopeId(const QVariant &value, qint64 *id)
 {
     if (!value.isValid() || value.isNull()) return false;
-    if (value.typeId() != QMetaType::QString && value.typeId() != QMetaType::LongLong
-        && value.typeId() != QMetaType::Int && value.typeId() != QMetaType::UInt
-        && value.typeId() != QMetaType::ULongLong) return false;
+    if (value.userType() != QMetaType::QString && value.userType() != QMetaType::LongLong
+        && value.userType() != QMetaType::Int && value.userType() != QMetaType::UInt
+        && value.userType() != QMetaType::ULongLong) return false;
     const QString text = value.toString();
     // Signed 64-bit IDs have at most 19 decimal digits; never round via double.
     if (text.isEmpty() || text.size() > 19) return false;
@@ -179,11 +179,16 @@ static bool terminalOutcome(const QString &outcome)
 static bool pureValue(const QVariant &value, QVariant *result, int depth = 0)
 {
     if (depth > 32) return false;
-    if (!value.isValid() || value.typeId() == QMetaType::Nullptr) {
+    // Qt 5.6 represents JSON null as an invalid QVariant, without a Nullptr metatype.
+    if (!value.isValid()
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        || value.userType() == QMetaType::Nullptr
+#endif
+    ) {
         *result = QVariant();
         return true;
     }
-    const int type = value.typeId();
+    const int type = value.userType();
     if (type == QMetaType::Bool || type == QMetaType::Int || type == QMetaType::UInt
         || type == QMetaType::LongLong || type == QMetaType::ULongLong
         || type == QMetaType::Double || type == QMetaType::QString) {
@@ -329,11 +334,11 @@ static bool validEventReferences(const QVariant &value, const QHash<qint64, cons
         return parseScopeId(value, &id) && (id == 0 || events.contains(id));
     }
     if (key == QLatin1String("execution_id")) return parseScopeId(value, nullptr);
-    if (value.typeId() == QMetaType::QVariantMap) {
+    if (value.userType() == QMetaType::QVariantMap) {
         const QVariantMap map = value.toMap();
         for (auto it = map.cbegin(); it != map.cend(); ++it)
             if (!validEventReferences(it.value(), events, it.key())) return false;
-    } else if (value.typeId() == QMetaType::QVariantList) {
+    } else if (value.userType() == QMetaType::QVariantList) {
         for (const QVariant &item : value.toList()) if (!validEventReferences(item, events)) return false;
     }
     return true;
@@ -441,13 +446,13 @@ static QVariant persistentPayload(const QVariant &value, const QString &key = QS
         // laundering a floating-point ID into a seemingly precise string.
         return parseScopeId(value, &id) ? QVariant(idString(id)) : value;
     }
-    if (value.typeId() == QMetaType::QVariantMap) {
+    if (value.userType() == QMetaType::QVariantMap) {
         QVariantMap map = value.toMap();
         for (auto it = map.begin(); it != map.end(); ++it)
             it.value() = persistentPayload(it.value(), it.key());
         return map;
     }
-    if (value.typeId() == QMetaType::QVariantList) {
+    if (value.userType() == QMetaType::QVariantList) {
         QVariantList list = value.toList();
         for (QVariant &item : list) item = persistentPayload(item);
         return list;
@@ -468,13 +473,13 @@ static QVariantList recordsToVariant(const Records<EventRecord> &events)
 
 static void remapPlayers(QVariant &value, const QMap<QString, QString> &mapping, const QString &key = QString())
 {
-    if (value.typeId() == QMetaType::QVariantMap) {
+    if (value.userType() == QMetaType::QVariantMap) {
         QVariantMap map = value.toMap();
         for (auto it = map.begin(); it != map.end(); ++it) remapPlayers(it.value(), mapping, it.key());
         value = map;
-    } else if (value.typeId() == QMetaType::QVariantList) {
+    } else if (value.userType() == QMetaType::QVariantList) {
         QVariantList list = value.toList(); for (QVariant &item : list) remapPlayers(item, mapping, key); value = list;
-    } else if (value.typeId() == QMetaType::QString && mapping.contains(value.toString())
+    } else if (value.userType() == QMetaType::QString && mapping.contains(value.toString())
                && (key == QLatin1String("from") || key == QLatin1String("to") || key == QLatin1String("player")
                    || key == QLatin1String("target") || key == QLatin1String("actor") || key == QLatin1String("owner")
                    || key == QLatin1String("skill_owner") || key == QLatin1String("player_id")
@@ -590,13 +595,13 @@ bool ResolutionHistorySnapshot::deserialize(const QVariantMap &serialized, Resol
     };
     qint64 version = 0;
     const QVariant versionValue = serialized.value(QStringLiteral("version"));
-    const bool supportedVersion = versionValue.typeId() == QMetaType::Double
+    const bool supportedVersion = versionValue.userType() == QMetaType::Double
         ? versionValue.toDouble() == 1.0 : parseId(versionValue, &version) && version == 1;
     if (!snapshot || !supportedVersion
-        || serialized.value(QStringLiteral("complete")).typeId() != QMetaType::Bool
+        || serialized.value(QStringLiteral("complete")).userType() != QMetaType::Bool
         || !serialized.value(QStringLiteral("complete")).toBool()) return fail("unsupported or incomplete snapshot");
     for (const QString &key : {QStringLiteral("events"), QStringLiteral("facts"), QStringLiteral("active")})
-        if (serialized.value(key).typeId() != QMetaType::QVariantList) return fail("invalid snapshot collection");
+        if (serialized.value(key).userType() != QMetaType::QVariantList) return fail("invalid snapshot collection");
     auto journal = QSharedPointer<Journal>::create();
     if (!parseId(serialized.value(QStringLiteral("next_id")), &journal->nextId)
         || !parseId(serialized.value(QStringLiteral("next_sequence")), &journal->nextSequence)
@@ -608,16 +613,16 @@ bool ResolutionHistorySnapshot::deserialize(const QVariantMap &serialized, Resol
             && parseScopeId(map.value(QStringLiteral("phase_id")), phase);
     };
     for (const QVariant &value : serialized.value(QStringLiteral("events")).toList()) {
-        if (value.typeId() != QMetaType::QVariantMap) return fail("invalid event object");
+        if (value.userType() != QMetaType::QVariantMap) return fail("invalid event object");
         const QVariantMap map = value.toMap();
         EventRecord record;
         if (!parseId(map.value(QStringLiteral("id")), &record.id)
             || !parseScopeId(map.value(QStringLiteral("parent_id")), &record.parentId)
             || !readScopes(map, &record.roundId, &record.turnId, &record.phaseId)
-            || map.value(QStringLiteral("kind")).typeId() != QMetaType::QString
-            || map.value(QStringLiteral("status")).typeId() != QMetaType::QString
-            || map.value(QStringLiteral("outcome")).typeId() != QMetaType::QString
-            || map.value(QStringLiteral("data")).typeId() != QMetaType::QVariantMap)
+            || map.value(QStringLiteral("kind")).userType() != QMetaType::QString
+            || map.value(QStringLiteral("status")).userType() != QMetaType::QString
+            || map.value(QStringLiteral("outcome")).userType() != QMetaType::QString
+            || map.value(QStringLiteral("data")).userType() != QMetaType::QVariantMap)
             return fail("invalid event fields");
         record.kind = map.value(QStringLiteral("kind")).toString();
         record.status = map.value(QStringLiteral("status")).toString();
@@ -628,15 +633,15 @@ bool ResolutionHistorySnapshot::deserialize(const QVariantMap &serialized, Resol
         journal->events.append(record);
     }
     for (const QVariant &value : serialized.value(QStringLiteral("facts")).toList()) {
-        if (value.typeId() != QMetaType::QVariantMap) return fail("invalid fact object");
+        if (value.userType() != QMetaType::QVariantMap) return fail("invalid fact object");
         const QVariantMap map = value.toMap();
         FactRecord record;
         if (!parseId(map.value(QStringLiteral("id")), &record.id)
             || !parseId(map.value(QStringLiteral("sequence")), &record.sequence)
             || !parseId(map.value(QStringLiteral("event_id")), &record.eventId)
             || !readScopes(map, &record.roundId, &record.turnId, &record.phaseId)
-            || map.value(QStringLiteral("kind")).typeId() != QMetaType::QString
-            || map.value(QStringLiteral("data")).typeId() != QMetaType::QVariantMap)
+            || map.value(QStringLiteral("kind")).userType() != QMetaType::QString
+            || map.value(QStringLiteral("data")).userType() != QMetaType::QVariantMap)
             return fail("invalid fact fields");
         record.kind = map.value(QStringLiteral("kind")).toString();
         bool valid = false;
@@ -850,7 +855,7 @@ static bool parseQuery(const QVariantMap &filter, qint64 maximum, bool facts, Qu
                 query->limit = int(value);
             }
         } else {
-            if (it.value().typeId() != QMetaType::QString) return false;
+            if (it.value().userType() != QMetaType::QString) return false;
             if (it.key() == QLatin1String("kind")
                 && !(facts ? factKind(it.value().toString()) : eventKind(it.value().toString()))) return false;
         }

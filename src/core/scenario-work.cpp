@@ -572,7 +572,7 @@ bool validateCarryState(const CarryState &state, QStringList *errors)
 WorkDefinition defaultWork()
 {
     WorkDefinition w;
-    w.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    w.id = QUuid::createUuid().toString().mid(1, 36);
     w.title = QCoreApplication::translate("ScenarioWork", "Untitled work");
     w.scenes.append(draftScene());
     w.scenes[0].revision = computeSceneRevision(w.scenes[0]);
@@ -583,7 +583,7 @@ WorkDefinition defaultWork()
 SceneDefinition draftScene()
 {
     SceneDefinition s;
-    s.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    s.id = QUuid::createUuid().toString().mid(1, 36);
     s.title = QCoreApplication::translate("ScenarioWork", "Untitled scene");
     s.setup = QStringLiteral("general:select role:lord starter:true\ngeneral:select role:rebel\n");
     s.playerSeat = 0;
@@ -1009,7 +1009,7 @@ bool recordResult(const QString &root, const WorkDefinition &work, const StageRu
         local.completedEntryIds << result.entryId;
     if (entryIndex + 1 < work.entries.size()) {
         local.continuationEntryId = work.entries.at(entryIndex + 1).id;
-        local.snapshots << ProgressSnapshot { QUuid::createUuid().toString(QUuid::WithoutBraces),
+        local.snapshots << ProgressSnapshot { QUuid::createUuid().toString().mid(1, 36),
             result.entryId, work.entries.at(entryIndex + 1).id, QDateTime::currentDateTimeUtc(),
             result.carry };
     } else {

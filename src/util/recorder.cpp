@@ -328,7 +328,7 @@ void Replayer::loadSnapshots()
         // Keep only the verified path here.  Resolution history is an
         // immutable journal and can be large; load it when takeover actually
         // requests this node instead of retaining every payload in memory.
-        snapshotsByNode.insert(matchedNode, nullptr);
+        snapshotsByNode.insert(matchedNode, QSharedPointer<GameSnapshot>());
     }
 
     // A manifest with no entries is valid but simply offers no takeover node.
