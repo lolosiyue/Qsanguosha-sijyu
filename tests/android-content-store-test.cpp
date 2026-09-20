@@ -612,12 +612,15 @@ bool bootstrapUpgradeCases(bool sameApkRevision)
     const QString oldRuntime = installed.runtimeRoot();
     const QString oldAudio = QFileInfo(oldRuntime + "/audio/base.ogg").canonicalFilePath();
     const QByteArray legacyLoader("-- old APK bootstrap\n");
-    if (!writeBytes(root.path() + "/content/baseline/runtime/lua/sanguosha.lua", legacyLoader)
-        || !writeBytes(oldRuntime + "/lua/sanguosha.lua", legacyLoader)) return false;
+    // Simulate an installed APK without the new extension helper API.
+    const QStringList corePaths{ "lua/sanguosha.lua", "lua/sgs_ex.lua", "lua/config.lua" };
+    for (const QString &path : corePaths)
+        if (!writeBytes(root.path() + "/content/baseline/runtime/" + path, legacyLoader)
+            || !writeBytes(oldRuntime + '/' + path, legacyLoader)) return false;
     QVariantMap baseline;
     const QString baselinePath = root.path() + "/content/baseline/metadata.json";
     if (!readMap(baselinePath, &baseline)) return false;
-    if (sameApkRevision) baseline.remove("bootstrap_version");
+    if (sameApkRevision) baseline.insert("bootstrap_version", 1);
     else baseline.insert("apk_revision", "previous-apk");
     if (!writeMap(baselinePath, baseline)) return false;
 
@@ -625,13 +628,16 @@ bool bootstrapUpgradeCases(bool sameApkRevision)
     const bool prepared = upgraded.prepareStartup(&error);
     if (!check(prepared && !upgraded.needsRecovery(), "bootstrap APK upgrade: " + error)) return false;
     QVariantMap migrated;
-    if (!check(readMap(baselinePath, &migrated) && migrated.value("bootstrap_version").toInt() == 1,
+    if (!check(readMap(baselinePath, &migrated) && migrated.value("bootstrap_version").toInt() == 2,
                "bootstrap repair publishes its metadata migration marker")) return false;
-    const QByteArray apkLoader = readBytes(":/assets/lua/sanguosha.lua");
-    if (!check(!apkLoader.isEmpty() && upgraded.runtimeRoot() != oldRuntime
-               && readBytes(upgraded.runtimeRoot() + "/lua/sanguosha.lua") == apkLoader
-               && readBytes(oldRuntime + "/lua/sanguosha.lua") == legacyLoader,
-               "APK bootstrap activates without changing the previous snapshot")) return false;
+    for (const QString &path : corePaths) {
+        const QByteArray apkBytes = readBytes(":/assets/" + path);
+        if (!check(!apkBytes.isEmpty() && upgraded.runtimeRoot() != oldRuntime
+                   && readBytes(upgraded.runtimeRoot() + '/' + path) == apkBytes
+                   && readBytes(root.path() + "/content/baseline/runtime/" + path) == apkBytes
+                   && readBytes(oldRuntime + '/' + path) == legacyLoader,
+                   "APK core Lua activates without changing the previous snapshot: " + path)) return false;
+    }
     if (!check(upgraded.mediaReady()
                && readBytes(upgraded.runtimeRoot() + "/extensions/addon.lua") == overrideBytes,
                "bootstrap refresh preserves media and captured user override")) return false;

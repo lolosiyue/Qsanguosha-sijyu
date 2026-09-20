@@ -57,6 +57,11 @@ endfunction()
 
 include("${QSAN_TEST_ROOT}/cmake/QSanguoshaAndroidContentTests.cmake")
 
+add_executable(qsanguosha_native_socket_lifetime_tests native-socket-lifetime-test.cpp)
+qsan_link_engine_test(qsanguosha_native_socket_lifetime_tests)
+qsan_add_ctest(qsanguosha_native_socket_lifetime qsanguosha_native_socket_lifetime_tests
+    LABELS "network;fast" TIMEOUT 15)
+
 add_executable(qsanguosha_package_loader_tests package-loader-test.cpp)
 qsan_link_engine_test(qsanguosha_package_loader_tests)
 target_compile_definitions(qsanguosha_package_loader_tests PRIVATE QSAN_PACKAGE_SOURCE_ROOT="${QSAN_TEST_ROOT}")
