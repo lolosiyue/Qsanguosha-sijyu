@@ -1266,6 +1266,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         break;
     }
     case GameOverJudge: {
+        if (room->workOwnsVictory()) break;
         if(room->getMode()=="04_boss"&&player->isLord()&&(Config.value("BossModeEndless").toBool()||room->getTag("BossModeLevel").toInt() < Config.BossLevel - 1))
             break;
         else if(room->getMode()=="02_1v1") {

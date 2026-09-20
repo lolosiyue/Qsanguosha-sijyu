@@ -4,6 +4,11 @@
 #include "room.h"
 #include "engine.h"
 #include "roomthread.h"
+#include "scenario-work.h"
+#include "work-scenario.h"
+
+#include <QBuffer>
+#include <QCoreApplication>
 
 const char *MiniScene::S_KEY_MINISCENE = "_mini_%1";
 const char *MiniSceneRule::S_EXTRA_OPTION_RANDOM_ROLES = "randomRoles";
@@ -34,31 +39,36 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
             if (player->getPhase() == Player::Start) {
                 room->setTag("Round", room->getTag("Round").toInt() + 1);
 
-                if (!ex_options["beforeStartRound"].isNull()) {
+                if (!room->workOwnsVictory() && !ex_options["beforeStartRound"].isNull()) {
                     if (ex_options["beforeStartRound"].toInt() == room->getTag("Round").toInt())
                         room->gameOver(ex_options["beforeStartRoundWinner"].toString());
                 }
             } else if (player->getPhase() == Player::NotActive) {
-                if (!ex_options["afterRound"].isNull()) {
+                if (!room->workOwnsVictory() && !ex_options["afterRound"].isNull()) {
                     if (ex_options["afterRound"].toInt() == room->getTag("Round").toInt())
                         room->gameOver(ex_options["afterRoundWinner"].toString());
                 }
             }
         }
 
-        if (player->getPhase() == Player::RoundStart && this->players.first()["beforeNext"] != "") {
+        if (!room->workOwnsVictory() && player->getPhase() == Player::RoundStart && this->players.first()["beforeNext"] != "") {
             if (player->getTag("playerHasPlayed").toBool())
                 room->gameOver(this->players.first()["beforeNext"]);
             else player->setTag("playerHasPlayed", true);
         }
 
         if (player->getPhase() != Player::NotActive) return false;
-        if (player->getState() == "robot" || this->players.first()["singleTurn"] == "")
+        if (const auto *work = dynamic_cast<const QSanWorks::WorkScenario *>(room->getScenario())) {
+            if (work->players(room).value(work->playerSeat()) == player)
+                room->setTag(QStringLiteral("WorkCompletedHumanTurns"),
+                             room->getTag(QStringLiteral("WorkCompletedHumanTurns")).toInt() + 1);
+        }
+        if (room->workOwnsVictory() || player->getState() == "robot" || this->players.first()["singleTurn"] == "")
             return false;
         room->gameOver(this->players.first()["singleTurn"]);
         return true;
     } else if (triggerEvent == FetchDrawPileCard) {
-        if (this->players.first()["endedByPile"] != "") {
+        if (!room->workOwnsVictory() && this->players.first()["endedByPile"] != "") {
             const QList<int> &drawPile = room->getDrawPile();
             foreach (int id, m_fixedDrawCards) {
                 if (drawPile.contains(id))
@@ -82,8 +92,14 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
         }
 
         QList<ServerPlayer *> players = room->getAllPlayers();
-        while (players.first()->getState() == "robot")
-            players.append(players.takeFirst());
+        if (const auto *work = dynamic_cast<const QSanWorks::WorkScenario *>(room->getScenario()))
+            players = work->players(room);
+        // Work sessions already bind the configured human seat; legacy mini
+        // scenes retain their historical robot-first rotation.
+        if (!room->isWorkSession()) {
+            while (!players.isEmpty() && players.first()->getState() == "robot")
+                players.append(players.takeFirst());
+        }
 
         QList<int> &drawPile = room->getDrawPile();
 
@@ -170,7 +186,9 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
             //room->setPlayerProperty(sp, "kingdom", sp->getGeneral()->getKingdom());
 
             QString str = this->players.at(i)["maxhp"];
-            if (str == "") str = QString::number(sp->getGeneralMaxHp());
+            if (str == "") str = QString::number(room->isWorkSession()
+                ? QSanWorks::sceneGeneralHealth(sp->getGeneral(), sp->getGeneral2(), room->hasWelfare(sp), true)
+                : sp->getGeneralMaxHp());
             sp->setMaxHp(str.toInt());
             room->broadcastProperty(sp, "maxhp");
 
@@ -186,7 +204,9 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
                 str = str2;
             else {
                 int max_hp = sp->getMaxHp();
-                int start_hp = sp->getGeneralStartHp();
+                int start_hp = room->isWorkSession()
+                    ? QSanWorks::sceneGeneralHealth(sp->getGeneral(), sp->getGeneral2(), room->hasWelfare(sp), false)
+                    : sp->getGeneralStartHp();
                 if (start_hp > max_hp) start_hp = max_hp;
                 str = QString::number(start_hp);
             }
@@ -303,6 +323,7 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 		}
 
         room->setTag("WaitForPlayer", QVariant(true));
+        if (room->isWorkSession()) room->setTag("WorkSetupComplete", true);
         room->updateStateItem();
         return true;
     }
@@ -381,6 +402,48 @@ void MiniSceneRule::loadSetting(QString path)
         }
         file.close();
     }
+}
+
+bool MiniSceneRule::loadSetting(const ScenarioWork::SceneDefinition &scene, QString *error)
+{
+    players.clear();
+    setup.clear();
+    m_fixedDrawCards.clear();
+    ex_options.clear();
+    setup = scene.setup;
+
+    // Keep work imports on the exact parser used by legacy mini-scenes.
+    QBuffer buffer;
+    buffer.setData(scene.setup.toUtf8());
+    if (!buffer.open(QIODevice::ReadOnly)) {
+        if (error) *error = QCoreApplication::translate("ScenarioWorkRuntime", "Unable to open work scene setup");
+        return false;
+    }
+    QTextStream stream(&buffer);
+    while (!stream.atEnd()) {
+        const QString line = stream.readLine().trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#')))
+            continue;
+        if (line.startsWith(QStringLiteral("setPile:"))) {
+            setPile(line.mid(8));
+        } else if (line.startsWith(QStringLiteral("extraOptions:"))) {
+            const QStringList options = line.mid(13).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            for (const QString &option : options) {
+                const int separator = option.indexOf(QLatin1Char(':'));
+                if (separator > 0)
+                    ex_options[option.left(separator)] = option.mid(separator + 1);
+                else if (!option.isEmpty())
+                    ex_options[option] = option;
+            }
+        } else {
+            addNPC(line);
+        }
+    }
+    if (players.size() < 2) {
+        if (error) *error = QCoreApplication::translate("ScenarioWorkRuntime", "Work scene must define at least two players");
+        return false;
+    }
+    return true;
 }
 
 MiniScene::MiniScene(const QString &name)

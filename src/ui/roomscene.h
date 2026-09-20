@@ -560,6 +560,8 @@ signals:
     void seatCountChanged();
     void restart();
     void return_to_start();
+    // Desktop works use the normal result table with work-specific navigation.
+    void scenarioWorkResultDialogCreated(QDialog *dialog);
     void game_over_dialog_rejected();
 };
 

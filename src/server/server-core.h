@@ -7,6 +7,7 @@
 #include "game-session-config.h"
 #include "protocol/protocol-runtime.h"
 #include "server-status.h"
+#include "scenario-work.h"
 
 class Room;
 class ServerSocket;
@@ -64,6 +65,9 @@ public:
     // Begin non-blocking room cleanup; callers must keep the Qt event loop alive.
     void beginShutdown();
     bool shutdownComplete() const;
+
+signals:
+    void workFinished(const ScenarioWork::StageRunResult &result);
 
 private:
     GameSessionConfig takeNextGameSessionConfig();

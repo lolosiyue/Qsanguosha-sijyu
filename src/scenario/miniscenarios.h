@@ -4,6 +4,8 @@
 //#include "scenario.h"
 #include "skill.h"
 
+namespace ScenarioWork { struct SceneDefinition; }
+
 class MiniSceneRule : public ScenarioRule
 {
     Q_OBJECT
@@ -22,6 +24,8 @@ public:
     void setOptions(QStringList option);
     void setPile(QString cardList);
     void loadSetting(QString path);
+    // Load an immutable work scene through the same legacy setup pipeline.
+    bool loadSetting(const ScenarioWork::SceneDefinition &scene, QString *error = nullptr);
 
 protected:
     QList< QMap<QString, QString> > players;

@@ -7,6 +7,7 @@
 #include "oracle_helper.h"
 #include "standard.h"
 #include <QSaveFile>
+#include <QTemporaryFile>
 #include <QSignalBlocker>
 #include <QRegularExpression>
 
@@ -48,8 +49,10 @@ static bool sceneEquipmentFits(const QList<int> &cards, const QMap<QString, QStr
     return true;
 }
 
-CustomAssignDialog::CustomAssignDialog(QWidget *parent)
+CustomAssignDialog::CustomAssignDialog(QWidget *parent, bool work_editor_mode)
     : QDialog(parent),
+    work_editor_mode(work_editor_mode),
+    document_load_succeeded(false),
     choose_general2(false),
     is_ended_by_pile(false), is_single_turn(false), is_before_next(false)
 {
@@ -1103,6 +1106,12 @@ void CustomAssignDialog::setMoveButtonAvaliable(bool toggled)
 
 void CustomAssignDialog::accept()
 {
+    if (work_editor_mode) {
+        // The work editor owns its immutable scene snapshot; accepting this
+        // dialog must never overwrite the global custom_scenario rule.
+        QDialog::accept();
+        return;
+    }
     // User-custom scenarios are always stored in a user-writable directory: the install
     // tree/AppImage is read-only, and writing back there would only fail silently.
     const QString customScenario =
@@ -1351,7 +1360,9 @@ void CustomAssignDialog::checkEndedByPileBox(bool toggled)
 
 void CustomAssignDialog::load()
 {
-    const QString filename = sender() && sender()->objectName() == "default_load"
+    document_load_succeeded = false;
+    const QString filename = !document_to_load.isEmpty() ? document_to_load
+        : sender() && sender()->objectName() == "default_load"
         ? QSanRuntimePaths::readablePath(QStringLiteral("etc/customScenes/custom_scenario.txt"))
         : QFileDialog::getOpenFileName(this, tr("Open mini scenario settings"),
             QSanRuntimePaths::customSceneDir(), tr("Mini scenario settings (*.txt)"));
@@ -1666,6 +1677,63 @@ void CustomAssignDialog::load()
     checkEndedByPileBox(is_ended_by_pile);
     checkBeforeNextBox(is_single_turn);
     checkSingleTurnBox(is_before_next);
+    document_load_succeeded = true;
+}
+
+bool CustomAssignDialog::loadDocument(const QString &document, QString *error)
+{
+    QTemporaryFile file;
+    file.setAutoRemove(true);
+    if (!file.open()) {
+        if (error)
+            *error = file.errorString();
+        return false;
+    }
+    const QByteArray bytes = document.toUtf8();
+    if (file.write(bytes) != bytes.size() || !file.flush()) {
+        if (error)
+            *error = file.errorString();
+        return false;
+    }
+    file.close();
+    document_to_load = file.fileName();
+    load();
+    document_to_load.clear();
+    // load() validates into temporary containers before committing them.
+    if (!document_load_succeeded) {
+        if (error)
+            *error = tr("The scene document is invalid.");
+        return false;
+    }
+    return true;
+}
+
+bool CustomAssignDialog::exportDocument(QString *document, QString *error)
+{
+    if (!document)
+        return false;
+    QTemporaryFile file;
+    file.setAutoRemove(true);
+    if (!file.open()) {
+        if (error)
+            *error = file.errorString();
+        return false;
+    }
+    const QString path = file.fileName();
+    file.close();
+    if (!save(path)) {
+        if (error)
+            *error = tr("The scene could not be saved.");
+        return false;
+    }
+    QFile saved(path);
+    if (!saved.open(QIODevice::ReadOnly)) {
+        if (error)
+            *error = saved.errorString();
+        return false;
+    }
+    *document = QString::fromUtf8(saved.readAll());
+    return true;
 }
 
 bool CustomAssignDialog::save(QString path)

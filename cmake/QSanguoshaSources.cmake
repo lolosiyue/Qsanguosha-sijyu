@@ -27,6 +27,8 @@ set(QSAN_SOURCES
     src/dialog/maxcardsviewdialog.cpp
     src/dialog/roleassigndialog.cpp
     src/dialog/scenario-overview.cpp
+    src/dialog/scenario-work-dialog.cpp
+    src/dialog/scenario-work-examples.cpp
     src/dialog/serverdialog.cpp
     src/package/assassins.cpp
     src/package/bgm.cpp
@@ -92,6 +94,7 @@ set(QSAN_SOURCES
     src/scenario/fancheng-scenario.cpp
     src/scenario/guandu-scenario.cpp
     src/scenario/miniscenarios.cpp
+    src/scenario/work-scenario.cpp
     src/scenario/scenario.cpp
     src/scenario/scenerule.cpp
     src/scenario/takeover-scenario.cpp
@@ -247,6 +250,7 @@ set(QSAN_MOC_HEADERS
     src/dialog/maxcardsviewdialog.h
     src/dialog/roleassigndialog.h
     src/dialog/scenario-overview.h
+    src/dialog/scenario-work-dialog.h
     src/package/assassins.h
     src/package/bgm.h
     src/package/boss.h

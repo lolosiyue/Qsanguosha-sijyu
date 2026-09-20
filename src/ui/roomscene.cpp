@@ -4653,6 +4653,10 @@ void RoomScene::onGameOver()
 
 void RoomScene::addRestartButton(QDialog*dialog)
 {
+	if (property("scenarioWork").toBool()) {
+		emit scenarioWorkResultDialogCreated(dialog);
+		return;
+	}
 	dialog->resize(main_window->width()/2,dialog->height());
 	bool goto_next = false;
 	if(ServerInfo.GameMode.contains("_mini_")&&Self->property("win").toBool())

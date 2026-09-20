@@ -76,6 +76,7 @@ Item {
         onQuickJoinClicked: homeController.quickJoin()
         onJoinGameClicked: homeController.joinGame()
         onStartServerClicked: homeController.startServer()
+        onScenarioWorksClicked: homeController.openScenarioWorks()
     }
     HomeSideBar {
         id: tools

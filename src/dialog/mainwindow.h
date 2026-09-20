@@ -4,6 +4,8 @@
 #include "src/pch.h"
 #include "build-features.h"
 #include "structs.h"
+#include <functional>
+#include <memory>
 
 namespace Ui {
     class MainWindow;
@@ -28,6 +30,10 @@ class QQmlEngine;
 class HomeController;
 class PointerEffectOverlay;
 class Replayer;
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+struct ScenarioWorkSessionState;
+namespace ScenarioWork { struct WorkLaunch; struct StageRunResult; }
+#endif
 #ifdef Q_OS_ANDROID
 class QMenu;
 class QToolButton;
@@ -88,6 +94,9 @@ public:
 signals:
     void homeSceneReady();
     void homeSceneFailed(const QString &error);
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+    void scenarioWorkResultAvailable();
+#endif
 
     // Observation point for the Linux GUI M2 network smoke. RoomScene is not on
     // the startup path - it is created by enterRoom() after the server setup arrives - so it needs its own seam. As with M1,
@@ -125,6 +134,14 @@ private:
     void showLocalLoadingPage(const QString &status);
     void completeLocalRoomStart();
     void failLocalRoomStart(const QString &error);
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+    void openScenarioWorks();
+    void startScenarioWork(const ScenarioWork::WorkLaunch &launch);
+    void receiveScenarioWorkResult(const ScenarioWork::StageRunResult &result);
+    void decorateScenarioWorkResult(QDialog *dialog);
+    void leaveScenarioWork(const std::function<void()> &after = std::function<void()>());
+    std::unique_ptr<ScenarioWorkSessionState> m_scenarioWork;
+#endif
 #if QSAN_ENABLE_QML
     QQmlContext *homeRootContext() const;
     QQmlEngine *homeQmlEngine() const;

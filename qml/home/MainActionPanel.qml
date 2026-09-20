@@ -6,6 +6,7 @@ Item {
     property alias quickJoinBtn: quickJoinBtn
     property alias joinGameBtn: joinGameBtn
     property alias startServerBtn: startServerBtn
+    property alias worksBtn: worksBtn
     property bool compact: false
     property bool primaryOnLeft: false
     readonly property real tileWidth: width * 0.44
@@ -15,9 +16,10 @@ Item {
     signal quickJoinClicked()
     signal joinGameClicked()
     signal startServerClicked()
+    signal scenarioWorksClicked()
 
     implicitWidth: 470
-    implicitHeight: compact ? 184 : 264
+    implicitHeight: compact ? 184 : (homeController.scenarioWorksAvailable ? 340 : 264)
 
     HomeMainButton {
         id: quickJoinBtn
@@ -37,7 +39,7 @@ Item {
         onClicked: panel.quickJoinClicked()
 
         KeyNavigation.tab: joinGameBtn
-        KeyNavigation.backtab: startServerBtn
+        KeyNavigation.backtab: worksBtn.visible ? worksBtn : startServerBtn
     }
 
     HomeMainButton {
@@ -74,7 +76,23 @@ Item {
 
         onClicked: panel.startServerClicked()
 
-        KeyNavigation.tab: quickJoinBtn
+        KeyNavigation.tab: worksBtn.visible ? worksBtn : quickJoinBtn
         KeyNavigation.backtab: joinGameBtn
+    }
+
+    HomeMainButton {
+        id: worksBtn
+        visible: homeController.scenarioWorksAvailable
+        x: panel.compact ? panel.primaryX : 54
+        y: panel.compact ? 0 : 278
+        width: panel.compact ? panel.tileWidth : 392
+        height: panel.compact ? 84 : 62
+        compact: panel.compact
+        tile: panel.compact
+        text: qsTranslate("HomeScene", "Scenario Works")
+        iconSource: "qrc:/QSanguosha/Home/icons/cards.svg"
+        onClicked: panel.scenarioWorksClicked()
+        KeyNavigation.tab: quickJoinBtn
+        KeyNavigation.backtab: startServerBtn
     }
 }

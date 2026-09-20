@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 
 int runEngineSmokeTests();
+int runScenarioWorkRuntimeTests();
 int runLargeRoomModeTests();
 int runSkillDescriptionTests();
 int runLuaCompatibilityTests();
@@ -55,6 +56,9 @@ int main(int argc, char **argv)
 
     QCoreApplication application(argc, argv);
     const QString suite = parseSuite(argc, argv);
+
+    if (suite == QLatin1String("scenario-work-runtime"))
+        return runScenarioWorkRuntimeTests();
 
     const auto runAll = []() {
         const int descriptions = runSkillDescriptionTests();
