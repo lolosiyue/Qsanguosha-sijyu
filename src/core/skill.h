@@ -289,6 +289,11 @@ public:
     virtual bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const;
     virtual bool cardSelectionFeasible(const ActiveSkillRequest &request) const;
     virtual const Card *createCard(const ActiveSkillRequest &request) const;
+    // Opt-in AI contract: exactly getN() distinct hand cards, independently accepted
+    // by canSelectCard(empty). Every selection produces the same card identity and
+    // target rules; no suit/number inheritance, equipment cost or selection side effect.
+    // Implementations must have contract tests before returning true.
+    virtual bool hasIndependentAIConversion() const { return false; }
     virtual bool willThrowSelectedCards() const;
     virtual bool cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const;
     virtual bool pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const;

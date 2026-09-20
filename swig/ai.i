@@ -307,6 +307,12 @@ AI *Room::cloneAI(ServerPlayer *player)
 		return new TrustAI(player);
 
 	lua_getglobal(L, "CloneAI");
+	// Isolated rooms deliberately do not load SmartAI. Keep the native AI handle
+	// for coordinator entry points and emergency defaults without invoking nil.
+	if (!lua_isfunction(L, -1)) {
+		lua_pop(L, 1);
+		return new TrustAI(player);
+	}
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 

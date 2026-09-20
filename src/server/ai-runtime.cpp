@@ -1,15 +1,20 @@
 #include "ai-runtime.h"
 
 #include "ai-data-store.h"
+#include "engine.h"
 #include "lua-runtime.h"
 #include "lua.hpp"
+#include "room.h"
+#include "room-runtime.h"
 #include "settings.h"
 #include "skill.h"
 
 #include <QDebug>
+#include <QDir>
 #include <QJsonArray>
 #include <QMetaEnum>
 #include <QRegularExpression>
+#include <QSet>
 
 #include <cmath>
 #include <limits>
@@ -23,6 +28,13 @@ const size_t AiHardMemoryLimit = 128u * 1024u * 1024u;
 const size_t AiMaxResultStringBytes = 64u * 1024u;
 const size_t AiMaxSelectedCards = 2048u;
 const size_t AiMaxSelectedTargets = 64u;
+const int AiMaxIntentionDeltas = 64;
+
+struct AiIntentionDelta {
+    QString from;
+    QString to;
+    lua_Number level;
+};
 
 bool aiResultInteger(lua_Number number, int &value)
 {
@@ -44,6 +56,86 @@ bool readBoundedString(lua_State *state, int index, QString &value)
     if (!data || size > AiMaxResultStringBytes)
         return false;
     value = QString::fromUtf8(data, qsizetype(size));
+    return true;
+}
+
+bool isPlainTable(lua_State *state, int index)
+{
+    if (!lua_istable(state, index))
+        return false;
+    if (!lua_getmetatable(state, index))
+        return true;
+    lua_pop(state, 1);
+    return false;
+}
+
+bool parseIntentionDeltas(lua_State *state, const AIWorldView &world,
+                         QList<AiIntentionDelta> &deltas)
+{
+    const int resultIndex = lua_gettop(state);
+    if (!isPlainTable(state, resultIndex))
+        return false;
+    const size_t count = lua_rawlen(state, resultIndex);
+    if (count > size_t(AiMaxIntentionDeltas))
+        return false;
+    QSet<QString> players;
+    players.insert(world.self.objectName);
+    for (const AIPlayerView &player : world.players)
+        players.insert(player.objectName);
+    players.remove(QString());
+    // Reject sparse arrays, named fields and all metatables before any commit.
+    int entries = 0;
+    lua_pushnil(state);
+    while (lua_next(state, resultIndex) != 0) {
+        int index = 0;
+        const bool valid = lua_type(state, -2) == LUA_TNUMBER
+            && aiResultInteger(lua_tonumber(state, -2), index)
+            && index >= 1 && size_t(index) <= count;
+        lua_pop(state, 1);
+        if (!valid || ++entries > AiMaxIntentionDeltas) {
+            lua_settop(state, resultIndex);
+            return false;
+        }
+    }
+    if (size_t(entries) != count)
+        return false;
+    for (size_t index = 1; index <= count; ++index) {
+        lua_rawgeti(state, resultIndex, int(index));
+        const int deltaIndex = lua_gettop(state);
+        if (!isPlainTable(state, deltaIndex)) {
+            lua_settop(state, resultIndex);
+            return false;
+        }
+        AiIntentionDelta delta;
+        int fields = 0;
+        bool valid = true;
+        lua_pushnil(state);
+        while (lua_next(state, deltaIndex) != 0) {
+            QString key;
+            valid = lua_type(state, -2) == LUA_TSTRING
+                && readBoundedString(state, -2, key);
+            if (valid && (key == QStringLiteral("from") || key == QStringLiteral("to"))) {
+                QString &name = key == QStringLiteral("from") ? delta.from : delta.to;
+                valid = lua_type(state, -1) == LUA_TSTRING
+                    && readBoundedString(state, -1, name) && players.contains(name);
+            } else if (valid && key == QStringLiteral("level")) {
+                delta.level = lua_tonumber(state, -1);
+                valid = lua_type(state, -1) == LUA_TNUMBER
+                    && std::isfinite(double(delta.level));
+            } else {
+                valid = false;
+            }
+            lua_pop(state, 1);
+            if (!valid || ++fields > 3)
+                break;
+        }
+        if (!valid || fields != 3 || delta.from == delta.to) {
+            lua_settop(state, resultIndex);
+            return false;
+        }
+        deltas.append(delta);
+        lua_pop(state, 1);
+    }
     return true;
 }
 
@@ -96,6 +188,12 @@ void pushAICardView(lua_State *state, const AICardView &card)
     setStringField(state, "skill_name", card.skillName);
     lua_pushinteger(state, card.typeId);
     lua_setfield(state, -2, "type_id");
+    lua_pushinteger(state, card.equipSlot);
+    lua_setfield(state, -2, "equip_slot");
+    if (card.weaponRange >= 0) {
+        lua_pushinteger(state, card.weaponRange);
+        lua_setfield(state, -2, "weapon_range");
+    }
     lua_pushinteger(state, card.handlingMethod);
     lua_setfield(state, -2, "handling_method");
     lua_pushboolean(state, card.virtualCard);
@@ -290,6 +388,22 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "known_cards");
     lua_pushboolean(state, player.handVisible);
     lua_setfield(state, -2, "hand_visible");
+    if (player.armorEffectKnown)
+        setStringField(state, "active_armor_name", player.activeArmorName);
+    if (player.privateFlagsVisible) {
+        lua_createtable(state, int(player.privateFlags.size()), 0);
+        for (int index = 0; index < player.privateFlags.size(); ++index) {
+            lua_pushstring(state, player.privateFlags.at(index).toUtf8().constData());
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "flags");
+        lua_createtable(state, 0, int(player.skippedPhases.size()));
+        for (auto phase = player.skippedPhases.constBegin(); phase != player.skippedPhases.constEnd(); ++phase) {
+            lua_pushboolean(state, phase.value());
+            lua_rawseti(state, -2, phase.key());
+        }
+        lua_setfield(state, -2, "skipped_phases");
+    }
     lua_createtable(state, int(player.piles.size()), 0);
     for (int index = 0; index < player.piles.size(); ++index) {
         const AICardPileView &pile = player.piles.at(index);
@@ -321,10 +435,60 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "display_cards");
 }
 
+void pushAIEvent(lua_State *state, const AIEventView &event)
+{
+    lua_createtable(state, 0, 22);
+    lua_pushinteger(state, lua_Integer(event.sequence));
+    lua_setfield(state, -2, "sequence");
+    setStringField(state, "revision", QString::number(event.revision));
+    lua_pushinteger(state, event.triggerEvent);
+    lua_setfield(state, -2, "trigger_event");
+    setStringField(state, "kind", event.kind);
+    setStringField(state, "from", event.from);
+    setStringField(state, "to", event.to);
+    setStringField(state, "card_name", event.cardName);
+    setStringField(state, "reason", event.reason);
+    lua_pushinteger(state, event.amount);
+    lua_setfield(state, -2, "amount");
+    lua_pushinteger(state, event.nature);
+    lua_setfield(state, -2, "nature");
+    lua_pushinteger(state, event.place);
+    lua_setfield(state, -2, "place");
+    lua_pushboolean(state, event.good);
+    lua_setfield(state, -2, "good");
+    lua_createtable(state, int(event.targets.size()), 0);
+    for (int targetIndex = 0; targetIndex < event.targets.size(); ++targetIndex) {
+        pushQString(state, event.targets.at(targetIndex));
+        lua_rawseti(state, -2, targetIndex + 1);
+    }
+    lua_setfield(state, -2, "targets");
+    QList<int> ids = event.cardIds;
+    ids << event.privateCardIds;
+    lua_createtable(state, int(ids.size()), 0);
+    for (int idIndex = 0; idIndex < ids.size(); ++idIndex) {
+        lua_pushinteger(state, ids.at(idIndex));
+        lua_rawseti(state, -2, idIndex + 1);
+    }
+    lua_setfield(state, -2, "card_ids");
+    setStringField(state, "card_class", event.cardClass);
+    setStringField(state, "card_skill", event.cardSkill);
+    lua_pushboolean(state, event.chain);
+    lua_setfield(state, -2, "chain");
+    lua_pushboolean(state, event.transfer);
+    lua_setfield(state, -2, "transfer");
+    lua_pushboolean(state, event.byUser);
+    lua_setfield(state, -2, "by_user");
+    lua_pushboolean(state, event.intentionSuppressed);
+    lua_setfield(state, -2, "intention_suppressed");
+    pushAIJsonValue(state, event.details);
+    lua_setfield(state, -2, "details");
+}
+
 void pushAIWorldView(lua_State *state, const AIWorldView &world)
 {
     lua_createtable(state, 0, 11);
     setStringField(state, "mode_id", world.modeId);
+    setStringField(state, "distance_scope", world.distanceScope);
     lua_pushboolean(state, world.customRoles);
     lua_setfield(state, -2, "custom_roles");
     pushAIJsonValue(state, world.modePolicy);
@@ -369,40 +533,7 @@ void pushAIWorldView(lua_State *state, const AIWorldView &world)
     lua_setfield(state, -2, "distances");
     lua_createtable(state, int(world.events.size()), 0);
     for (int index = 0; index < world.events.size(); ++index) {
-        const AIEventView &event = world.events.at(index);
-        lua_createtable(state, 0, 13);
-        lua_pushinteger(state, lua_Integer(event.sequence));
-        lua_setfield(state, -2, "sequence");
-        setStringField(state, "revision", QString::number(event.revision));
-        lua_pushinteger(state, event.triggerEvent);
-        lua_setfield(state, -2, "trigger_event");
-        setStringField(state, "kind", event.kind);
-        setStringField(state, "from", event.from);
-        setStringField(state, "to", event.to);
-        setStringField(state, "card_name", event.cardName);
-        setStringField(state, "reason", event.reason);
-        lua_pushinteger(state, event.amount);
-        lua_setfield(state, -2, "amount");
-        lua_pushinteger(state, event.nature);
-        lua_setfield(state, -2, "nature");
-        lua_pushinteger(state, event.place);
-        lua_setfield(state, -2, "place");
-        lua_pushboolean(state, event.good);
-        lua_setfield(state, -2, "good");
-        lua_createtable(state, int(event.targets.size()), 0);
-        for (int targetIndex = 0; targetIndex < event.targets.size(); ++targetIndex) {
-            pushQString(state, event.targets.at(targetIndex));
-            lua_rawseti(state, -2, targetIndex + 1);
-        }
-        lua_setfield(state, -2, "targets");
-        QList<int> ids = event.cardIds;
-        ids << event.privateCardIds;
-        lua_createtable(state, int(ids.size()), 0);
-        for (int idIndex = 0; idIndex < ids.size(); ++idIndex) {
-            lua_pushinteger(state, ids.at(idIndex));
-            lua_rawseti(state, -2, idIndex + 1);
-        }
-        lua_setfield(state, -2, "card_ids");
+        pushAIEvent(state, world.events.at(index));
         lua_rawseti(state, -2, index + 1);
     }
     lua_setfield(state, -2, "events");
@@ -418,7 +549,7 @@ void AiLuaRuntime::pushWorldView(lua_State *state, const AIWorldView &world)
     pushAIWorldView(state, world);
 }
 
-void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world)
+void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world, bool viewerOnly)
 {
     world.modePolicy = QJsonObject{{"managed", world.customRoles},
         {"relations", QJsonObject()}, {"objectives", QJsonObject()}};
@@ -427,7 +558,11 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world)
             QJsonObject{{world.self.objectName, "friend"}}}});
         world.modePolicy.insert("objectives", QJsonObject{{world.self.objectName, -3}});
     }
-    if (!runtime.rawState()) return;
+    world.modePolicy.insert("relation_scope", viewerOnly ? "viewer" : "full");
+    if (!runtime.rawState()) {
+        world.modePolicy.insert("error", "runtime_unavailable");
+        return;
+    }
     LuaRuntime::Binding binding(runtime);
     LuaRuntime::LuaInvocationScope invocation(runtime);
     lua_State *state = runtime.rawState();
@@ -438,24 +573,38 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world)
     lua_pop(state, 1);
     if (active) {
         world.modePolicy.insert("managed", true);
+        world.modePolicy.insert("error", "policy_reentrant");
         return;
     }
     lua_getglobal(state, "sgs");
-    if (!lua_istable(state, -1)) { lua_settop(state, top); return; }
+    if (!lua_istable(state, -1)) {
+        world.modePolicy.insert("error", "policy_unavailable");
+        lua_settop(state, top); return;
+    }
     lua_getfield(state, -1, "evaluateModeAI");
-    if (!lua_isfunction(state, -1)) { lua_settop(state, top); return; }
+    if (!lua_isfunction(state, -1)) {
+        world.modePolicy.insert("error", "policy_unavailable");
+        lua_settop(state, top); return;
+    }
     lua_pushboolean(state, true);
     lua_setfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
     pushAIWorldView(state, world);
-    const int status = LuaRuntime::protectedCall(state, 1, 1, 0);
+    lua_pushboolean(state, viewerOnly);
+    const int status = LuaRuntime::protectedCall(state, 2, 1, 0);
     lua_pushboolean(state, false);
     lua_setfield(state, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
     if (status != 0 || !lua_istable(state, -1)) {
         world.modePolicy.insert("managed", true);
+        world.modePolicy.insert("error", "policy_failed");
         lua_settop(state, top);
         return;
     }
     const int result = lua_gettop(state);
+    lua_getfield(state, result, "error");
+    QString policyError;
+    if (lua_type(state, -1) == LUA_TSTRING && readBoundedString(state, -1, policyError))
+        world.modePolicy.insert("error", policyError);
+    lua_pop(state, 1);
     lua_getfield(state, result, "managed");
     world.modePolicy.insert("managed", world.customRoles || bool(lua_toboolean(state, -1)));
     lua_pop(state, 1);
@@ -467,7 +616,8 @@ void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world)
     QJsonObject relations;
     lua_getfield(state, result, "relations");
     if (lua_istable(state, -1)) {
-        for (const QString &from : names) {
+        const QStringList sources = viewerOnly ? QStringList{world.self.objectName} : names;
+        for (const QString &from : sources) {
             lua_getfield(state, -1, from.toUtf8().constData());
             QJsonObject row;
             if (lua_istable(state, -1)) {
@@ -553,6 +703,19 @@ QString AiRouteRegistry::callbackKey(const QString &callbackName,
                                      const QString &skillName)
 {
     return callbackName + QChar(0x1f) + skillName;
+}
+
+bool AiRouteRegistry::hasLegacyRoutes() const
+{
+    for (AiRoute route : m_decisionRoutes) {
+        if (route != AiRouteIsolated)
+            return true;
+    }
+    for (AiRoute route : m_callbackRoutes) {
+        if (route != AiRouteIsolated)
+            return true;
+    }
+    return false;
 }
 
 AiLuaRuntime::AiLuaRuntime(Room *room)
@@ -658,7 +821,9 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request)
             rebuild = status == LUA_ERRMEM || m_instructionLimitExceeded;
         } else {
             if (!lua_isnil(state, -1)) {
-                if (!parseResult(state, result)) {
+                if (!parseResult(state, result)
+                    || (result.kind == AIResult::Answer && result.action.hasCardSpec
+                        && request.kind != AIRequest::RespondCard)) {
                     result.errorCode = QStringLiteral("AI_INVALID_RESULT");
                 } else if (request.hasSkillActionContext) {
                     result.action.hasSkillActionContext = true;
@@ -685,6 +850,136 @@ AIResult AiLuaRuntime::decideIsolated(const AIRequest &request)
             qWarning().noquote() << "Unable to rebuild AI Lua runtime:" << error;
     }
     return result;
+}
+
+bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &event,
+                                LuaRuntime &modeRuntime, QString *error)
+{
+    if (error)
+        error->clear();
+    const auto fail = [error](const QString &code) {
+        if (error)
+            *error = code;
+        return false;
+    };
+    // A mode hook may enter native gameplay code and synchronously emit another
+    // event. Reject that event before an ExecutionBinding or budget is replaced.
+    if (current() != nullptr)
+        return fail(QStringLiteral("AI_EVENT_REENTRANT"));
+    if (!m_lua.rawState() || !modeRuntime.rawState())
+        return fail(QStringLiteral("AI_EVENT_RUNTIME_UNAVAILABLE"));
+
+    QList<AiIntentionDelta> deltas;
+    QString failure;
+    bool rebuild = false;
+    {
+        LuaRuntime::Binding binding(m_lua);
+        ExecutionBinding executionBinding(*this);
+        lua_State *state = m_lua.state();
+        const int top = lua_gettop(state);
+        lua_getglobal(state, "ai_event");
+        if (!lua_isfunction(state, -1)) {
+            lua_settop(state, top);
+            return fail(QStringLiteral("AI_EVENT_UNHANDLED"));
+        }
+        pushAIWorldView(state, world);
+        pushAIEvent(state, event);
+        m_instructionsRemaining = m_instructionBudget;
+        m_instructionLimitExceeded = false;
+        lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
+        const int status = LuaRuntime::protectedCall(state, 2, 1, 0);
+        lua_sethook(state, nullptr, 0, 0);
+        if (status != 0 || m_instructionLimitExceeded) {
+            failure = m_instructionLimitExceeded ? QStringLiteral("AI_EVENT_INSTRUCTION_LIMIT")
+                : status == LUA_ERRMEM ? QStringLiteral("AI_EVENT_MEMORY_LIMIT")
+                                      : QStringLiteral("AI_EVENT_RUNTIME_ERROR");
+            rebuild = status == LUA_ERRMEM || m_instructionLimitExceeded;
+        } else if (!parseIntentionDeltas(state, world, deltas)) {
+            failure = QStringLiteral("AI_EVENT_INVALID_RESULT");
+        }
+        lua_settop(state, top);
+        if (m_lua.exceedsSoftMemoryLimit()) {
+            lua_gc(state, LUA_GCCOLLECT, 0);
+            if (m_lua.exceedsSoftMemoryLimit()) {
+                failure = QStringLiteral("AI_EVENT_MEMORY_LIMIT");
+                rebuild = true;
+            }
+        }
+    }
+    if (rebuild) {
+        // Rebuild once for future work, never replay this event or commit its deltas.
+        shutdown();
+        QString rebuildError;
+        if (!initialize(&rebuildError))
+            failure += QStringLiteral(":REBUILD_FAILED");
+    }
+    if (!failure.isEmpty())
+        return fail(failure);
+    if (deltas.isEmpty())
+        return true;
+
+    LuaRuntime::Binding binding(modeRuntime);
+    ExecutionBinding executionBinding(*this);
+    lua_State *state = modeRuntime.state();
+    const int top = lua_gettop(state);
+    lua_getglobal(state, "sgs");
+    if (!lua_istable(state, -1)) {
+        lua_settop(state, top);
+        return fail(QStringLiteral("AI_EVENT_MODE_UNAVAILABLE"));
+    }
+    // Keep the commit function below the preparation call. A policy callback
+    // cannot replace the function the host will invoke after its budget stops.
+    lua_getfield(state, -1, "commitModeAIIntentions");
+    if (!lua_isfunction(state, -1)) {
+        lua_settop(state, top);
+        return fail(QStringLiteral("AI_EVENT_MODE_UNAVAILABLE"));
+    }
+    lua_getfield(state, -2, "prepareModeAIIntentions");
+    lua_remove(state, top + 1); // sgs; leave commit, prepare on the stack.
+    if (!lua_isfunction(state, -1)) {
+        lua_settop(state, top);
+        return fail(QStringLiteral("AI_EVENT_MODE_UNAVAILABLE"));
+    }
+    pushAIWorldView(state, world);
+    lua_createtable(state, deltas.size(), 0);
+    for (int index = 0; index < deltas.size(); ++index) {
+        const AiIntentionDelta &delta = deltas.at(index);
+        lua_createtable(state, 0, 3);
+        setStringField(state, "from", delta.from);
+        setStringField(state, "to", delta.to);
+        lua_pushnumber(state, delta.level);
+        lua_setfield(state, -2, "level");
+        lua_rawseti(state, -2, index + 1);
+    }
+    // Only preparation shares the remaining event budget. It returns an opaque
+    // Room-VM token without changing the mind, even if interrupted at its return.
+    const lua_Hook previousHook = lua_gethook(state);
+    const int previousMask = lua_gethookmask(state);
+    const int previousCount = lua_gethookcount(state);
+    lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
+    const int status = LuaRuntime::protectedCall(state, 2, 1, 0);
+    lua_sethook(state, nullptr, 0, 0);
+    bool accepted = false;
+    if (status == 0 && lua_istable(state, -1) && !m_instructionLimitExceeded) {
+        if (m_room && m_room->roomRuntime()
+            && m_room->roomRuntime()->stateRevision() != world.revision) {
+            // A mode hook that entered native gameplay cannot commit an inference
+            // derived from the board that existed before its mutation.
+            failure = QStringLiteral("AI_EVENT_MODE_STALE");
+        } else {
+            // Stack is commit, prepared token. Commit contains no policy callbacks
+            // or loops, and cannot time out after replacing a successfully staged mind.
+            const int commitStatus = LuaRuntime::protectedCall(state, 1, 1, 0);
+            accepted = commitStatus == 0 && lua_isnil(state, -1);
+        }
+    }
+    lua_sethook(state, previousHook, previousMask, previousCount);
+    if (!accepted && failure.isEmpty()) {
+        failure = m_instructionLimitExceeded ? QStringLiteral("AI_EVENT_MODE_INSTRUCTION_LIMIT")
+                                            : QStringLiteral("AI_EVENT_MODE_ERROR");
+    }
+    lua_settop(state, top);
+    return accepted || fail(failure);
 }
 
 AiLuaRuntime::ExecutionBinding::ExecutionBinding(AiLuaRuntime &runtime)
@@ -842,6 +1137,19 @@ bool AiLuaRuntime::installSandbox(QString *error)
             *error = QStringLiteral("AI-safe meta enum is unavailable");
         return false;
     }
+    // DamageStruct is a value struct without Q_ENUM. Export its real constants
+    // explicitly so damage hooks never rely on duplicated Lua enum numbers.
+    setIntegerField(state, "DamageStruct_Normal", DamageStruct::Normal);
+    setIntegerField(state, "DamageStruct_Fire", DamageStruct::Fire);
+    setIntegerField(state, "DamageStruct_Thunder", DamageStruct::Thunder);
+    setIntegerField(state, "DamageStruct_Ice", DamageStruct::Ice);
+    setIntegerField(state, "DamageStruct_Poison", DamageStruct::Poison);
+    setIntegerField(state, "DamageStruct_God", DamageStruct::God);
+    setIntegerField(state, "TargetSpecified", TargetSpecified);
+    setIntegerField(state, "DamageInflicted", DamageInflicted);
+    setIntegerField(state, "HpRecover", HpRecover);
+    setIntegerField(state, "Death", Death);
+    setIntegerField(state, "ChoiceMade", ChoiceMade);
     lua_setglobal(state, "sgs");
     return true;
 }
@@ -863,15 +1171,15 @@ static const QStringList &aiRoutableCallbackNames()
     return names;
 }
 
-void AiLuaRuntime::loadConfiguredRoutes()
+static void loadConfiguredAiRoutes(AiRouteRegistry &routes)
 {
-    const auto addRoutes = [this](const QString &key, AiRoute route) {
+    const auto addRoutes = [&routes](const QString &key, AiRoute route) {
         foreach (const QString &entry, Config.value(key).toStringList()) {
             const QStringList parts = entry.split(QChar(':'));
             const QString callbackName = parts.value(0).trimmed();
             if (!aiRoutableCallbackNames().contains(callbackName))
                 continue;
-            m_routes.setCallbackRoute(callbackName, parts.value(1).trimmed(), route);
+            routes.setCallbackRoute(callbackName, parts.value(1).trimmed(), route);
         }
     };
     addRoutes(QStringLiteral("AiLegacyDirectCallbacks"), AiRouteLegacyDirect);
@@ -879,27 +1187,129 @@ void AiLuaRuntime::loadConfiguredRoutes()
     addRoutes(QStringLiteral("AiIsolatedCallbacks"), AiRouteIsolated);
 }
 
-bool AiLuaRuntime::loadConfiguredScripts(QString *error)
+void AiLuaRuntime::loadConfiguredRoutes()
+{
+    loadConfiguredAiRoutes(m_routes);
+}
+
+bool AiLuaRuntime::requiresLegacyRuntime()
+{
+    // Bootstrap admission uses the same parser and override order as decisions.
+    AiRouteRegistry routes;
+    loadConfiguredAiRoutes(routes);
+    return routes.hasLegacyRoutes();
+}
+
+bool AiLuaRuntime::loadIsolatedScript(const QString &fileName, QString *error)
 {
     static const QRegularExpression fileNamePattern(
         QStringLiteral("^[A-Za-z0-9_-]+\\.lua$"));
-    const QStringList defaultScripts({QStringLiteral("ask-for-use-card.lua"),
-                                      QStringLiteral("ask-for-choice.lua"),
-                                      QStringLiteral("decision-core.lua"),
-                                      QStringLiteral("standard-ai.lua")});
-    const QStringList configuredScripts = Config.value(
-        QStringLiteral("AiIsolatedScripts"), defaultScripts).toStringList();
-    foreach (const QString &configuredName, configuredScripts) {
-        const QString fileName = configuredName.trimmed();
-        if (!fileNamePattern.match(fileName).hasMatch()) {
+    if (!fileNamePattern.match(fileName).hasMatch()) {
+        if (error)
+            *error = QStringLiteral("Invalid isolated AI script name: %1").arg(fileName);
+        return false;
+    }
+    return loadScriptWithBudget(QStringLiteral("lua/ai/isolated/%1").arg(fileName),
+                                m_initializationInstructionBudget, error);
+}
+
+QStringList AiLuaRuntime::declaredCoreScripts(QString *error)
+{
+    // isolated-bootstrap.lua's ai_isolated_core, the dispatchers without which the
+    // runtime cannot answer a single request.  Declaring them in Lua rather than here
+    // is the point: the list travels with the AI scripts it names.
+    lua_State *state = m_lua.state();
+    if (!state) {
+        if (error)
+            *error = QStringLiteral("AI Lua runtime is not bound");
+        return QStringList();
+    }
+    const int top = lua_gettop(state);
+    lua_getglobal(state, "ai_isolated_core");
+    if (!lua_istable(state, -1)) {
+        lua_settop(state, top);
+        if (error)
+            *error = QStringLiteral("lua/ai/isolated-bootstrap.lua declares no "
+                                    "ai_isolated_core script list");
+        return QStringList();
+    }
+    QStringList names;
+    const int length = int(lua_rawlen(state, -1));
+    for (int index = 1; index <= length; ++index) {
+        lua_rawgeti(state, -1, index);
+        if (lua_type(state, -1) != LUA_TSTRING) {
+            lua_settop(state, top);
             if (error)
-                *error = QStringLiteral("Invalid isolated AI script name: %1").arg(fileName);
-            return false;
+                *error = QStringLiteral("ai_isolated_core entry %1 is not a file name")
+                    .arg(index);
+            return QStringList();
         }
-        if (!loadScriptWithBudget(QStringLiteral("lua/ai/isolated/%1").arg(fileName),
-                                  m_initializationInstructionBudget, error))
+        names << QString::fromUtf8(lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+    lua_settop(state, top);
+    if (names.isEmpty() && error)
+        *error = QStringLiteral("ai_isolated_core is empty");
+    return names;
+}
+
+void AiLuaRuntime::loadPackageScripts()
+{
+    // One handler file per enabled package, found by name the way smart-ai.lua finds
+    // <package>-ai.lua in lua/ai: compare case-insensitively, then load the real
+    // filename, because package object names and files disagree on case.  Nothing is
+    // enumerated in C++ beyond that rule, so a package ships its isolated AI simply by
+    // adding lua/ai/isolated/<package>-ai.lua upstream.
+    if (!Sanguosha)
+        return;
+    QHash<QString, QString> available;
+    // Qt 5 foreach inspects the expression with decltype; v141 rejects the
+    // QStringLiteral lambda there, so materialize the unchanged listing first.
+    const QStringList entries = QDir(QStringLiteral("lua/ai/isolated"))
+        .entryList(QStringList(QStringLiteral("*.lua")), QDir::Files);
+    foreach (const QString &entry, entries)
+        available.insert(entry.toLower(), entry);
+
+    foreach (const QString &package, Sanguosha->getExtensions()) {
+        const QString fileName =
+            available.value(package.toLower() + QStringLiteral("-ai.lua"));
+        if (fileName.isEmpty())
+            continue;
+        // A broken package handler costs that package its isolated AI and nothing
+        // else, matching smart-ai.lua's pcall around each package AI: one damaged file
+        // must not leave the whole runtime without a dispatcher.
+        QString packageError;
+        if (!loadIsolatedScript(fileName, &packageError)) {
+            qWarning() << "isolated AI script load failed:" << fileName << packageError;
+            m_instructionLimitExceeded = false;
+        }
+    }
+}
+
+bool AiLuaRuntime::loadConfiguredScripts(QString *error)
+{
+    // An explicit AiIsolatedScripts wins and is taken literally, empty list included:
+    // that is what the isolation tests use to stand a runtime up with one script, or
+    // none.  Without it the runtime is assembled from what the Lua tree declares and
+    // which packages are enabled, so no deployment depends on a local config.ini.
+    if (Config.contains(QStringLiteral("AiIsolatedScripts"))) {
+        const QStringList configuredScripts =
+            Config.value(QStringLiteral("AiIsolatedScripts")).toStringList();
+        foreach (const QString &configuredName, configuredScripts) {
+            if (!loadIsolatedScript(configuredName.trimmed(), error))
+                return false;
+        }
+        return true;
+    }
+
+    const QStringList coreScripts = declaredCoreScripts(error);
+    if (coreScripts.isEmpty())
+        return false;
+    foreach (const QString &fileName, coreScripts) {
+        if (!loadIsolatedScript(fileName, error))
             return false;
     }
+    loadPackageScripts();
     return true;
 }
 
@@ -1002,7 +1412,9 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
         lua_createtable(state, int(request.cardCandidates.size()), 0);
         for (int index = 0; index < request.cardCandidates.size(); ++index) {
             const AICardCandidateView &candidate = request.cardCandidates.at(index);
-            lua_createtable(state, 0, 7);
+            lua_createtable(state, 0, 8);
+            lua_pushinteger(state, candidate.candidateId);
+            lua_setfield(state, -2, "candidate_id");
             lua_pushinteger(state, candidate.cardId);
             lua_setfield(state, -2, "card_id");
             lua_pushboolean(state, candidate.available);
@@ -1013,8 +1425,40 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
             lua_setfield(state, -2, "jilei");
             lua_pushboolean(state, candidate.targetFixed);
             lua_setfield(state, -2, "target_fixed");
-            lua_pushinteger(state, candidate.maxTargets);
-            lua_setfield(state, -2, "max_targets");
+            lua_pushboolean(state, candidate.feasibleWithNoTarget);
+            lua_setfield(state, -2, "feasible_with_no_target");
+            lua_pushboolean(state, candidate.completeCoverage);
+            lua_setfield(state, -2, "complete_coverage");
+            if (candidate.affectedTargetsKnown) {
+                lua_createtable(state, int(candidate.affectedTargets.size()), 0);
+                for (int i = 0; i < candidate.affectedTargets.size(); ++i) {
+                    pushQString(state, candidate.affectedTargets.at(i));
+                    lua_rawseti(state, -2, i + 1);
+                }
+                lua_setfield(state, -2, "affected_targets");
+            }
+            lua_createtable(state, int(candidate.targetCombinations.size()), 0);
+            for (int i = 0; i < candidate.targetCombinations.size(); ++i) {
+                const QStringList &targets = candidate.targetCombinations.at(i);
+                lua_createtable(state, int(targets.size()), 0);
+                for (int j = 0; j < targets.size(); ++j) {
+                    pushQString(state, targets.at(j));
+                    lua_rawseti(state, -2, j + 1);
+                }
+                lua_rawseti(state, -2, i + 1);
+            }
+            lua_setfield(state, -2, "target_combinations");
+            // Only targets that may be picked more than once appear here, so an absent
+            // name means one vote rather than an unknown one.
+            if (!candidate.maxVotes.isEmpty()) {
+                lua_createtable(state, 0, int(candidate.maxVotes.size()));
+                for (auto it = candidate.maxVotes.constBegin();
+                     it != candidate.maxVotes.constEnd(); ++it) {
+                    lua_pushinteger(state, it.value());
+                    lua_setfield(state, -2, it.key().toUtf8().constData());
+                }
+                lua_setfield(state, -2, "max_votes");
+            }
             lua_createtable(state, int(candidate.legalTargets.size()), 0);
             for (int targetIndex = 0; targetIndex < candidate.legalTargets.size(); ++targetIndex) {
                 pushQString(state, candidate.legalTargets.at(targetIndex));
@@ -1024,10 +1468,106 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
             lua_rawseti(state, -2, index + 1);
         }
         lua_setfield(state, -2, "card_candidates");
+        // Authorized conversions. The produced card's name and classification come from
+        // the authority's own build, so an author reads them rather than asserting them.
+        lua_createtable(state, int(request.cardConversions.size()), 0);
+        for (int index = 0; index < request.cardConversions.size(); ++index) {
+            const AICardConversionView &conversion = request.cardConversions.at(index);
+            lua_createtable(state, 0, 18);
+            lua_pushinteger(state, conversion.conversionId);
+            lua_setfield(state, -2, "conversion_id");
+            lua_pushinteger(state, conversion.costCount);
+            lua_setfield(state, -2, "cost_count");
+            lua_createtable(state, int(conversion.eligibleSubcardIds.size()), 0);
+            for (int i = 0; i < conversion.eligibleSubcardIds.size(); ++i) {
+                lua_pushinteger(state, conversion.eligibleSubcardIds.at(i));
+                lua_rawseti(state, -2, i + 1);
+            }
+            lua_setfield(state, -2, "eligible_subcards");
+            setStringField(state, "name", conversion.name);
+            setStringField(state, "class_name", conversion.className);
+            lua_pushinteger(state, conversion.suit);
+            lua_setfield(state, -2, "suit");
+            lua_pushinteger(state, conversion.number);
+            lua_setfield(state, -2, "number");
+            setStringField(state, "activation_owner", conversion.activationRef.ownerObjectName);
+            setStringField(state, "activation_skill", conversion.activationRef.key.skillName);
+            lua_pushinteger(state, conversion.activationRef.key.instanceID);
+            lua_setfield(state, -2, "activation_instance");
+            setStringField(state, "source_owner", conversion.sourceRef.ownerObjectName);
+            setStringField(state, "source_skill", conversion.sourceRef.key.skillName);
+            lua_pushinteger(state, conversion.sourceRef.key.instanceID);
+            lua_setfield(state, -2, "source_instance");
+            lua_pushboolean(state, conversion.activationQuotaAvailable);
+            lua_setfield(state, -2, "activation_quota_available");
+            lua_pushboolean(state, conversion.sourceQuotaAvailable);
+            lua_setfield(state, -2, "source_quota_available");
+            lua_pushboolean(state, conversion.available);
+            lua_setfield(state, -2, "available");
+            lua_pushboolean(state, conversion.targetFixed);
+            lua_setfield(state, -2, "target_fixed");
+            lua_pushboolean(state, conversion.feasibleWithNoTarget);
+            lua_setfield(state, -2, "feasible_with_no_target");
+            lua_pushboolean(state, conversion.completeCoverage);
+            lua_setfield(state, -2, "complete_coverage");
+            if (conversion.affectedTargetsKnown) {
+                lua_createtable(state, int(conversion.affectedTargets.size()), 0);
+                for (int i = 0; i < conversion.affectedTargets.size(); ++i) {
+                    pushQString(state, conversion.affectedTargets.at(i));
+                    lua_rawseti(state, -2, i + 1);
+                }
+                lua_setfield(state, -2, "affected_targets");
+            }
+            lua_createtable(state, int(conversion.targetCombinations.size()), 0);
+            for (int i = 0; i < conversion.targetCombinations.size(); ++i) {
+                const QStringList &targets = conversion.targetCombinations.at(i);
+                lua_createtable(state, int(targets.size()), 0);
+                for (int j = 0; j < targets.size(); ++j) {
+                    pushQString(state, targets.at(j));
+                    lua_rawseti(state, -2, j + 1);
+                }
+                lua_rawseti(state, -2, i + 1);
+            }
+            lua_setfield(state, -2, "target_combinations");
+            lua_createtable(state, int(conversion.kindOfNames.size()), 0);
+            for (int nameIndex = 0; nameIndex < conversion.kindOfNames.size(); ++nameIndex) {
+                pushQString(state, conversion.kindOfNames.at(nameIndex));
+                lua_rawseti(state, -2, nameIndex + 1);
+            }
+            lua_setfield(state, -2, "kind_of_names");
+            lua_createtable(state, int(conversion.subcardIds.size()), 0);
+            for (int cardIndex = 0; cardIndex < conversion.subcardIds.size(); ++cardIndex) {
+                lua_pushinteger(state, conversion.subcardIds.at(cardIndex));
+                lua_rawseti(state, -2, cardIndex + 1);
+            }
+            lua_setfield(state, -2, "subcards");
+            if (!conversion.maxVotes.isEmpty()) {
+                lua_createtable(state, 0, int(conversion.maxVotes.size()));
+                for (auto it = conversion.maxVotes.constBegin();
+                     it != conversion.maxVotes.constEnd(); ++it) {
+                    lua_pushinteger(state, it.value());
+                    lua_setfield(state, -2, it.key().toUtf8().constData());
+                }
+                lua_setfield(state, -2, "max_votes");
+            }
+            lua_createtable(state, int(conversion.legalTargets.size()), 0);
+            for (int targetIndex = 0; targetIndex < conversion.legalTargets.size();
+                 ++targetIndex) {
+                pushQString(state, conversion.legalTargets.at(targetIndex));
+                lua_rawseti(state, -2, targetIndex + 1);
+            }
+            lua_setfield(state, -2, "legal_targets");
+            lua_rawseti(state, -2, index + 1);
+        }
+        lua_setfield(state, -2, "card_conversions");
+        // Whether that list is the whole story. An author must be able to tell
+        // "nothing is available" from "this side could not work out what is".
+        lua_pushboolean(state, request.conversionsEnumerated);
+        lua_setfield(state, -2, "conversions_enumerated");
     }
     pushAIWorldView(state, request.worldView);
     lua_setfield(state, -2, "world_view");
-    if (!request.choiceOptions.reason.isEmpty()) {
+    if (request.kind != AIRequest::Activate && request.kind != AIRequest::UseCard) {
         const AIChoiceOptions &choiceOptions = request.choiceOptions;
         lua_createtable(state, 0, 7);
         setStringField(state, "reason", choiceOptions.reason);
@@ -1045,6 +1585,12 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
             lua_rawseti(state, -2, index + 1);
         }
         lua_setfield(state, -2, "card_ids");
+        pushAICards(state, choiceOptions.cards);
+        lua_setfield(state, -2, "cards");
+        lua_pushboolean(state, choiceOptions.candidatesComplete);
+        lua_setfield(state, -2, "candidates_complete");
+        pushAIJsonValue(state, choiceOptions.context);
+        lua_setfield(state, -2, "context");
         lua_createtable(state, int(choiceOptions.playerNames.size()), 0);
         for (int index = 0; index < choiceOptions.playerNames.size(); ++index) {
             pushQString(state, choiceOptions.playerNames.at(index));
@@ -1238,6 +1784,18 @@ static bool readCardSpec(lua_State *state, AIResult &result)
         }
     }
     lua_pop(state, 1);
+    lua_getfield(state, -1, "conversion_id");
+    if (!lua_isnil(state, -1)) {
+        int conversionId = 0;
+        if (lua_type(state, -1) != LUA_TNUMBER
+            || !aiResultInteger(lua_tonumber(state, -1), conversionId)
+            || conversionId < 0) {
+            lua_pop(state, 2);
+            return false;
+        }
+        spec.conversionId = conversionId;
+    }
+    lua_pop(state, 1);
     lua_getfield(state, -1, "subcards");
     if (!lua_isnil(state, -1)) {
         if (!lua_istable(state, -1)) {
@@ -1339,7 +1897,20 @@ bool AiLuaRuntime::parseResult(lua_State *state, AIResult &result) const
         lua_pop(state, 1);
         if (!readSelectedCards(state, result) || !readSelectedTargets(state, result))
             return false;
-        return readBottomCards(state, result);
+        if (!readBottomCards(state, result) || !readCardSpec(state, result))
+            return false;
+        if (result.action.hasCardSpec) {
+            // A converted response has exactly one representation. Do not silently
+            // drop an accompanying physical selection or a legacy card string.
+            for (const char *field : {"cards", "targets", "bottom_cards", "answer",
+                                      "card_id", "card", "candidate_id", "skill_action"}) {
+                lua_getfield(state, -1, field);
+                const bool present = !lua_isnil(state, -1);
+                lua_pop(state, 1);
+                if (present) return false;
+            }
+        }
+        return true;
     }
     if (kind != QStringLiteral("use_card"))
         return false;
@@ -1354,6 +1925,20 @@ bool AiLuaRuntime::parseResult(lua_State *state, AIResult &result) const
             return false;
         }
         result.action.useCardId = useCardId;
+    }
+    lua_pop(state, 1);
+
+    // The candidate ticket. Optional on the wire, because an answer may name the card
+    // alone, but a malformed one is a refusal rather than a value quietly dropped.
+    lua_getfield(state, -1, "candidate_id");
+    if (!lua_isnil(state, -1)) {
+        int candidateId = 0;
+        if (lua_type(state, -1) != LUA_TNUMBER
+            || !aiResultInteger(lua_tonumber(state, -1), candidateId) || candidateId < 0) {
+            lua_pop(state, 1);
+            return false;
+        }
+        result.action.candidateId = candidateId;
     }
     lua_pop(state, 1);
 

@@ -619,6 +619,8 @@ void CardLifetimeManager::notifyDestroyed(Card *card)
             return;
         if (!found->destructorWon) {
             classifyPhysicalDestructionLocked(found.value());
+            // drainImpl already removes retired tokens from managed_live.
+            const bool wasLive = found->token->live;
             found->destructorWon = true;
             found->object = nullptr;
             found->token->live = false;
@@ -628,7 +630,7 @@ void CardLifetimeManager::notifyDestroyed(Card *card)
                 if (m_gauge.pending_delete > 0)
                     --m_gauge.pending_delete;
             }
-            if (m_gauge.managed_live > 0)
+            if (wasLive && m_gauge.managed_live > 0)
                 --m_gauge.managed_live;
             ++m_gauge.actually_destroyed;
         }
@@ -662,6 +664,7 @@ void CardLifetimeManager::reconcileDestroyedLocked()
         }
         const auto token = it->token;
         classifyPhysicalDestructionLocked(it.value());
+        const bool wasLive = it->token->live;
         it->destructorWon = true;
         it->token->live = false;
         it->token->state = CardLifetimeState::Dead;
@@ -670,7 +673,7 @@ void CardLifetimeManager::reconcileDestroyedLocked()
             if (m_gauge.pending_delete > 0)
                 --m_gauge.pending_delete;
         }
-        if (m_gauge.managed_live > 0)
+        if (wasLive && m_gauge.managed_live > 0)
             --m_gauge.managed_live;
         ++m_gauge.actually_destroyed;
         if (it->baselineDomain) {

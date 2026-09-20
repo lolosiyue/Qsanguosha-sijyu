@@ -60,14 +60,19 @@ if ($smartAiContent.Contains('"lua/ai/"..sl')) {
 if (-not ((Get-Content -LiteralPath $smartAiPath -Raw).Contains('"lua/ai/"..ai_file'))) {
     throw "lua/ai/smart-ai.lua patch failed: lowercase AI filename loop not fixed"
 }
-if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "isolated\ask-for-use-card.lua"))) {
-    throw "lua/ai/isolated is incomplete: ask-for-use-card.lua missing after fetch"
-}
-if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "isolated-bootstrap.lua"))) {
-    throw "lua/ai is incomplete: isolated-bootstrap.lua missing after fetch"
-}
-if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "isolated-facades.lua"))) {
-    throw "lua/ai is incomplete: isolated-facades.lua missing after fetch"
+# 隔離 AI runtime：bootstrap、facades，再加 lua/ai/isolated-bootstrap.lua 自己
+# 在 ai_isolated_core 宣告的那幾支 dispatcher。任一支核心載不進去就會讓
+# AiLuaRuntime::initialize() 失敗，而 routeFor() 預設走 AiRouteIsolated，
+# 等於每個 Room 都沒有 AI；因此在 fetch 就失敗，不要拖到開房才爆。
+# 各套件的 handler（isolated/<套件名>-ai.lua）刻意不檢查：某個套件還沒有
+# 隔離 AI 是正常狀態。完整清單見 docs/ai-runtime-manifest.json。
+foreach ($relative in @("mode-ai.lua", "isolated-bootstrap.lua", "isolated-facades.lua",
+        "isolated\ask-for-use-card.lua", "isolated\ask-for-choice.lua",
+        "isolated\decision-core.lua", "isolated\retrial.lua",
+        "isolated\strategy-hooks.lua", "isolated\event-intention.lua")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $aiTarget $relative))) {
+        throw "lua/ai is incomplete: $relative missing after fetch"
+    }
 }
 
 # <repo>/extensions/*.lua -> <root>/extensions/ (skip temp/ and non-lua files)

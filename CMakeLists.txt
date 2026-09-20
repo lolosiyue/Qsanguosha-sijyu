@@ -1157,6 +1157,24 @@ if(UNIX AND NOT ANDROID)
         lua/chat_config.lua
         lua/lib
         lua/ai/smart-ai.lua
+        # The isolated AI runtime: bootstrap, facades, and the dispatchers that
+        # lua/ai/isolated-bootstrap.lua declares in ai_isolated_core. AiRouteRegistry::
+        # routeFor() defaults to AiRouteIsolated, so a package without these builds and
+        # installs clean and then fails in AiLuaRuntime::initialize() at the first Room.
+        # mode-ai.lua is worse than that: it is missing-but-quiet, leaving the isolated
+        # world view with a degenerate mode policy. Per-package handlers
+        # (lua/ai/isolated/<package>-ai.lua) are deliberately absent: a package without
+        # one simply has no isolated AI yet. docs/ai-runtime-manifest.json records what
+        # each one does; tools/ai/check-ai-runtime-manifest.py keeps this list honest.
+        lua/ai/isolated-bootstrap.lua
+        lua/ai/isolated-facades.lua
+        lua/ai/isolated/ask-for-use-card.lua
+        lua/ai/isolated/ask-for-choice.lua
+        lua/ai/isolated/decision-core.lua
+        lua/ai/isolated/retrial.lua
+        lua/ai/isolated/strategy-hooks.lua
+        lua/ai/isolated/event-intention.lua
+        lua/ai/mode-ai.lua
         extensions
     )
     set(QSAN_ASSET_OPTIONAL

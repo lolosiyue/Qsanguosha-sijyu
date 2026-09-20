@@ -112,18 +112,23 @@ if (( missing > 0 )); then
     exit 1
 fi
 
-if [[ ! -f "$ai_target/isolated/ask-for-use-card.lua" ]]; then
-    echo 'lua/ai/isolated is incomplete: ask-for-use-card.lua is missing after fetch' >&2
-    exit 1
-fi
-if [[ ! -f "$ai_target/isolated-bootstrap.lua" ]]; then
-    echo 'lua/ai is incomplete: isolated-bootstrap.lua is missing after fetch' >&2
-    exit 1
-fi
-if [[ ! -f "$ai_target/isolated-facades.lua" ]]; then
-    echo 'lua/ai is incomplete: isolated-facades.lua is missing after fetch' >&2
-    exit 1
-fi
+# The isolated AI runtime: bootstrap, facades, then the dispatchers that
+# lua/ai/isolated-bootstrap.lua declares in ai_isolated_core. Loading aborts
+# AiLuaRuntime::initialize() on the first core script it cannot read, and
+# AiRouteRegistry::routeFor() defaults to AiRouteIsolated, so an upstream rename of
+# any one of these leaves every Room without an AI. Fail here rather than at Room
+# creation. Per-package handlers (isolated/<package>-ai.lua) are deliberately not
+# checked: a package without one simply has no isolated AI yet.
+# docs/ai-runtime-manifest.json holds the full list.
+for relative in mode-ai.lua isolated-bootstrap.lua isolated-facades.lua \
+        isolated/ask-for-use-card.lua isolated/ask-for-choice.lua \
+        isolated/decision-core.lua isolated/retrial.lua \
+        isolated/strategy-hooks.lua isolated/event-intention.lua; do
+    if [[ ! -f "$ai_target/$relative" ]]; then
+        echo "lua/ai is incomplete: $relative is missing after fetch" >&2
+        exit 1
+    fi
+done
 
 ai_count=$(find "$ai_target" -type f -name '*.lua' | wc -l)
 extensions_count=$(find "$extensions_target" -maxdepth 1 -type f -name '*.lua' | wc -l)

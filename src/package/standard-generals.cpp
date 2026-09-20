@@ -4727,6 +4727,50 @@ public:
     }
 };
 
+// A conversion that costs a card and produces a NAMED one, which is the shape the AI
+// conversion contract needs and which no other fixture here has: active_skill_v2_test
+// pays nothing, and active_skill_v2_proxy_ui_test produces a bare proxy rather than a
+// card with a name. Pays one red card, produces a Slash.
+class ViewAsSkillV2CostTest : public ViewAsSkillV2
+{
+public:
+    ViewAsSkillV2CostTest() : ViewAsSkillV2("active_skill_v2_cost_test", 1) {}
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator;
+    }
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
+    {
+        return candidate && candidate->isRed() && request.selectedCardIds.isEmpty();
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.length() != 1) return nullptr;
+        Card *card = Sanguosha->cloneCard("slash");
+        if (!card) return nullptr;
+        card->setSkillName(objectName());
+        card->addSubcards(request.selectedCardIds);
+        return card;
+    }
+
+    TargetMode targetMode() const override { return SelectTargets; }
+
+    bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                         const Player *candidate) const override
+    {
+        return request.initiator && candidate && candidate != request.initiator
+            && candidate->isAlive() && selected.isEmpty();
+    }
+
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
+    {
+        return selected.length() == 1;
+    }
+};
+
 class CorrectV2DistanceTest : public DistanceSkillV2
 {
 public:
@@ -4856,6 +4900,7 @@ TestPackage::TestPackage()
     active_skill_v2_tester->addSkill(new ViewAsSkillV2ProxyUiTest);
     active_skill_v2_tester->addSkill(new ViewAsSkillV2QuotaRoot);
     active_skill_v2_tester->addSkill(new ViewAsSkillV2CustomUsageTest);
+    active_skill_v2_tester->addSkill(new ViewAsSkillV2CostTest);
     active_skill_v2_tester->addSkill(new CorrectV2DistanceTest(
         "#correct_v2_distance_primary_test", CorrectSkill_Primary));
     active_skill_v2_tester->addSkill(new CorrectV2DistanceTest(

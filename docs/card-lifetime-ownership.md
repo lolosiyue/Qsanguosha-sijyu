@@ -13,6 +13,7 @@ before they are exposed to Lua or a managed Room domain.
 | `Card::change_cards` | generation sidecar edge | source Card | source destruction | containing Card | PR4 / PR5 |
 | `Card::Parse` temporary cards | native Card pointer | parser scope | scope exit | caller thread | PR1 / PR3 |
 | `DummyCard` decision paths | native Card pointer | decision boundary | safe point | Room thread | PR1 / PR6 |
+| `AiDecisionCoordinator::responseCard` conversion | reconstructed native Card pointer | Room transient domain | queue managed native reclamation without draining before raw-pointer handoff; `CardResponseStruct` then holds a lease; turn/scope-safe drain releases it (ObserveOnly uses QObject deferred deletion) | Room thread | isolated response conversion |
 | `CardMoveReason::m_extraData` | QVariant Card payload | move reason | dispatch/copy end | Room thread | PR1 / PR5 |
 | `CardUseStruct::m_ownedCard` | owned smart pointer `OwnedCardPtr` | use struct | use completion | Room thread | PR1 / PR5 |
 | `Player::ComboMovesCard` | tagged QVariant `CardTagOwner` payload | Player tag | overwrite/clear | Room thread | PR1 / PR5 |
