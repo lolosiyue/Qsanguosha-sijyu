@@ -67,6 +67,8 @@ private:
 
     QString origin_window_title;
     QList<const General *> all_generals;
+    QList<const General *> filtered_generals;
+    QString same_name_filter;
 
     void resetButtons();
     void addLines(const Skill *skill);

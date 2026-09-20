@@ -2708,6 +2708,14 @@
 <context>
     <name>GeneralOverview</name>
     <message>
+        <source>Same-name generals</source>
+        <translation>同名武将</translation>
+    </message>
+    <message>
+        <source>Clear same-name filter</source>
+        <translation>取消同名筛选</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/generaloverview.ui" line="29"/>
         <source>General Overview</source>
         <translation>武将一览</translation>

@@ -198,6 +198,7 @@ Item {
     property string searchText: ""
     property string kingdomFilter: "all"
     property string nicknameFilter: ""
+    property string sameNameFilter: ""
     property bool includeHidden: true
     property int hpMin: 0
     property int hpMax: 0
@@ -277,6 +278,7 @@ Item {
             kingdom: kingdomFilter,
             search: searchText,
             nickname: nicknameFilter,
+            sameName: sameNameFilter,
             includeHidden: includeHidden,
             hpMin: hpMin,
             hpMax: hpMax,
@@ -774,7 +776,7 @@ Item {
                 height: visible ? HomeTheme.compactTouch : 0
                 currentIndex: filterPanel.visible ? 2 : root.compactPane
                 itemCount: root.catalog ? root.catalog.count : 0
-                detailsEnabled: root.selectedName.length > 0
+                detailsEnabled: root.selectedName.length > 0 || root.sameNameFilter.length > 0
                 onActivated: function(index) {
                     if (index === 2) filterPanel.visible = true
                     else root.showCompactPane(index)
@@ -817,7 +819,7 @@ Item {
                     model: (root.tableMode || root.catalogPending) ? null : root.catalog
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: HomeScrollBar { }
-                    KeyNavigation.tab: root.compact ? compactBar.detailButton : (skinBtn.visible ? skinBtn : avatarBtn)
+                    KeyNavigation.tab: root.compact ? compactBar.detailButton : sameNameBtn
                     KeyNavigation.backtab: root.compact ? compactBar.listButton : colSlider
                     Keys.onPressed: function(event) { root.handleListKeys(event) }
                     onWidthChanged: {
@@ -1051,7 +1053,7 @@ Item {
                         model: root.catalogPending ? null : root.catalog
                         boundsBehavior: Flickable.StopAtBounds
                         ScrollBar.vertical: HomeScrollBar { }
-                        KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
+                        KeyNavigation.tab: sameNameBtn
                         KeyNavigation.backtab: colSlider
                         Keys.onPressed: function(event) { root.handleListKeys(event) }
 
@@ -1251,7 +1253,7 @@ Item {
                     boundsBehavior: Flickable.StopAtBounds
                     activeFocusOnTab: root.compact
                     ScrollBar.vertical: HomeScrollBar { }
-                    KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
+                    KeyNavigation.tab: sameNameBtn
                     KeyNavigation.backtab: compactBar.detailButton
                     Keys.onPressed: function(event) {
                         if (!root.compact) return
@@ -1738,6 +1740,26 @@ Item {
                             }
                         }
 
+                        BAToolButton {
+                            id: sameNameBtn
+                            Layout.fillWidth: true
+                            implicitHeight: 48
+                            enabled: root.selectedName.length > 0 || root.sameNameFilter.length > 0
+                            text: root.sameNameFilter.length > 0
+                                  ? qsTranslate("GeneralOverview", "Clear same-name filter")
+                                  : qsTranslate("GeneralOverview", "Same-name generals")
+                            onActiveFocusChanged: if (activeFocus) root.revealDetailControl(this)
+                            onClicked: {
+                                // Keep the clicked general as the anchor while browsing its variants.
+                                root.sameNameFilter = root.sameNameFilter.length > 0 ? "" : root.selectedName
+                                root.rebuild()
+                                if (root.compact && root.catalog && root.catalog.count > 0)
+                                    root.showCompactPane(0)
+                            }
+                            KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
+                            KeyNavigation.backtab: root.tableMode ? generalTable : generalGrid
+                        }
+
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 48
@@ -1754,7 +1776,7 @@ Item {
                                 text: root.ui("GeneralOverview", "changeHeroSkin")
                                 onClicked: skinPanel.open()
                                 KeyNavigation.tab: avatarBtn
-                                KeyNavigation.backtab: root.tableMode ? generalTable : generalGrid
+                                KeyNavigation.backtab: sameNameBtn
                             }
 
                             BAToolButton {
@@ -1772,7 +1794,7 @@ Item {
                                     root.reloadDetails()
                                 }
                                 KeyNavigation.tab: banBtn
-                                KeyNavigation.backtab: skinBtn.visible ? skinBtn : (root.tableMode ? generalTable : generalGrid)
+                                KeyNavigation.backtab: skinBtn.visible ? skinBtn : sameNameBtn
                             }
 
                             BAToolButton {
@@ -2154,6 +2176,7 @@ Item {
                                 root.includeHidden = true
                                 nicknameField.text = ""
                                 root.nicknameFilter = ""
+                                root.sameNameFilter = ""
                                 root.genderFilter = []
                                 hpMinBox.value = 0
                                 hpMaxBox.value = 0
