@@ -32,7 +32,7 @@
 namespace {
 constexpr qint64 kJsonLimit = 32 * 1024 * 1024;
 constexpr quint64 kReserve = 64 * 1024 * 1024;
-constexpr int kBootstrapVersion = 1;
+constexpr int kBootstrapVersion = 2;
 constexpr int kPresentationVersion = 1;
 bool cancelled(AndroidContentStore::Cancelled *cancel, QString *error);
 bool fail(QString *error, const QString &message)
@@ -74,12 +74,16 @@ bool optionalMediaPath(const QString &path)
     // Modular media follows the same optional-presentation policy as legacy media.
     return safePath(path) && path.startsWith("packages/") && mediaPath(path.section('/', 2));
 }
+bool coreLuaPath(const QString &path)
+{
+    static const QSet<QString> core{ "lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua", "lua/sgs_ex.lua", "lua/lib/json.lua" };
+    return core.contains(path);
+}
 bool extensionPath(const QString &path)
 {
     if (mediaPath(path)) return true;
     if (!safePath(path) || !path.endsWith(".lua")) return false;
-    static const QSet<QString> core{ "lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua", "lua/sgs_ex.lua", "lua/lib/json.lua" };
-    return !core.contains(path) && (path.startsWith("extensions/") || path.startsWith("lua/") || path.startsWith("lang/"));
+    return !coreLuaPath(path) && (path.startsWith("extensions/") || path.startsWith("lua/") || path.startsWith("lang/"));
 }
 bool directory(const QString &path, QString *error, QSet<QString> *checked = nullptr)
 {
@@ -702,7 +706,7 @@ bool AndroidContentStore::prepareStartup(QString *error)
         base.insert("revision", uuid());
         if (!jsonWrite(baseMetadata, base, error)) return false;
     }
-    // APK upgrades extend the original tree; only the APK-owned bootstrap
+    // APK upgrades extend the original tree; the APK-owned core Lua files
     // follows the APK revision. Snapshot copies and captured user edits remain
     // independent. Publish the revision after all replacements/copies finish.
     if (refreshBaseline) {
@@ -737,11 +741,11 @@ bool AndroidContentStore::prepareStartup(QString *error)
                 knownResourceSet.insert(path); knownResources << path; baselineChanged = true;
             }
             const QString target = m_baseRoot + '/' + path;
-            if (path == QStringLiteral("lua/sanguosha.lua")
+            if (coreLuaPath(path)
                 && (base.value("apk_revision").toString() != apkRevision
                     || base.value("bootstrap_version").toInt() != kBootstrapVersion)) {
-                // The bootstrap must understand the package layout shipped by
-                // this APK. QSaveFile replaces only the baseline file atomically;
+                // Core helpers must match the APIs and packages shipped by this
+                // APK. QSaveFile replaces only the baseline file atomically;
                 // advancing its revision composes a new immutable active snapshot.
                 if (QFileInfo::exists(target) && !regular(target))
                     return fail(error, "non-regular baseline bootstrap: " + path);

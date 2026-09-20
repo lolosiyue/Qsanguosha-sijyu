@@ -18,6 +18,37 @@ repositories {
 
 apply plugin: qtGradlePluginType
 
+// Keep update identity outside disposable SDK/build directories. Never silently
+// fall back to Gradle's automatically generated debug keystore.
+def signingProfile = file(System.getenv('QSAN_ANDROID_SIGNING_PROPERTIES') ?:
+        new File(System.getProperty('user.home'), '.qsanguosha/android-signing.properties').path)
+def persistentSigning = new Properties()
+if (signingProfile.isFile()) {
+    signingProfile.withInputStream { persistentSigning.load(it) }
+}
+def persistentKey = file(persistentSigning.getProperty('storeFile',
+        new File(System.getProperty('user.home'), '.qsanguosha/signing/android-debug.keystore').path))
+
+def verifyPersistentDebugSigning = tasks.register('verifyPersistentDebugSigning') {
+    doLast {
+        if (!signingProfile.isFile() || !persistentKey.isFile()) {
+            throw new GradleException('Persistent Android signing profile/key missing; restore the existing key. See docs/android-build.md.')
+        }
+        def expected = persistentSigning.getProperty('certificateSha256', '').toLowerCase(Locale.ROOT)
+        def keyStore = java.security.KeyStore.getInstance(persistentKey,
+                persistentSigning.getProperty('storePassword', 'android').toCharArray())
+        def certificate = keyStore.getCertificate(persistentSigning.getProperty('keyAlias', 'androiddebugkey'))
+        def actual = certificate == null ? '' : java.security.MessageDigest.getInstance('SHA-256')
+                .digest(certificate.encoded).encodeHex().toString()
+        if (!(expected ==~ /[0-9a-f]{64}/) || actual != expected) {
+            throw new GradleException('Android signing certificate mismatch; refusing an APK that cannot replace the installed app.')
+        }
+    }
+}
+tasks.matching { it.name == 'validateSigningDebug' }.configureEach {
+    dependsOn verifyPersistentDebugSigning
+}
+
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
     implementation 'androidx.core:core:1.17.0'
@@ -25,6 +56,14 @@ dependencies {
 }
 
 android {
+    signingConfigs {
+        debug {
+            storeFile persistentKey
+            storePassword persistentSigning.getProperty('storePassword', 'android')
+            keyAlias persistentSigning.getProperty('keyAlias', 'androiddebugkey')
+            keyPassword persistentSigning.getProperty('keyPassword', 'android')
+        }
+    }
     namespace = androidPackageName
     compileSdkVersion androidCompileSdkVersion
     buildToolsVersion androidBuildToolsVersion

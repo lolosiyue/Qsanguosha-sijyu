@@ -19,6 +19,7 @@ set_source_files_properties("${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/bundled-addon.
 set_source_files_properties("${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/addon-translation.fixture" PROPERTIES QT_RESOURCE_ALIAS "lang/zh_CN/Audio/AddedPackageLines.lua")
 set_source_files_properties("${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/core-config.fixture" PROPERTIES QT_RESOURCE_ALIAS "lua/config.lua")
 set_source_files_properties("${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/core-sanguosha.fixture" PROPERTIES QT_RESOURCE_ALIAS "lua/sanguosha.lua")
+set_source_files_properties("${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/core-sgs-ex.fixture" PROPERTIES QT_RESOURCE_ALIAS "lua/sgs_ex.lua")
 set_source_files_properties("${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/core-ai.fixture" PROPERTIES QT_RESOURCE_ALIAS "lua/ai/smart-ai.lua")
 set_source_files_properties("${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/media-image.fixture" PROPERTIES QT_RESOURCE_ALIAS "image/base.png")
 set_source_files_properties("${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/media-audio.fixture" PROPERTIES QT_RESOURCE_ALIAS "audio/base.ogg")
@@ -60,6 +61,7 @@ qt_add_resources(qsanguosha_android_content_store_tests android_content_fixture
         "${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/addon-translation.fixture"
         "${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/core-config.fixture"
         "${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/core-sanguosha.fixture"
+        "${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/core-sgs-ex.fixture"
         "${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/core-ai.fixture"
         "${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/media-image.fixture"
         "${QSAN_ANDROID_CONTENT_FIXTURE_ROOT}/media-audio.fixture"

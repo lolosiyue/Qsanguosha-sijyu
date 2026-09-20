@@ -1556,7 +1556,12 @@ void RoomScene::applyUiElementScale(qreal scale)
 	};
 
 	if (dashboard) {
+		// The dashboard already spans the table: reserve its scaled width
+		// before enlarging controls, otherwise both ends leave the viewport.
+		const auto frame = RoomLayoutEngine::compute(layoutInput(sceneRect(), false));
+		dashboard->setWidth(qMax(1, int(frame.dashboardRect.width() / scale)));
 		const QRectF r = dashboard->boundingRect();
+		dashboard->setX(frame.dashboardRect.center().x() - r.center().x());
 		scaleAt(dashboard, QPointF(r.center().x(), r.bottom()));
 	}
 	foreach (Photo *photo, photos)

@@ -1,5 +1,6 @@
 ﻿#include "nativesocket.h"
 #include "settings.h"
+#include <QPointer>
 #include <QtNetwork>
 
 NativeServerSocket::NativeServerSocket()
@@ -126,11 +127,15 @@ void NativeClientSocket::connectToHost(const QString &host, quint16 port)
 
 void NativeClientSocket::getMessage()
 {
+    // A direct receiver can open a modal dialog and destroy this transport
+    // before returning (for example, GAME_OVER -> return to the home page).
+    const QPointer<NativeClientSocket> guard(this);
     const QSanProtocol::ProtocolFrameAppendResult result =
         m_frameBuffer.append(socket->readAll());
     if (!result.success) {
         emit error_message(result.detail);
-        disconnectFromHost();
+        if (guard)
+            disconnectFromHost();
         return;
     }
 
@@ -141,6 +146,10 @@ void NativeClientSocket::getMessage()
                                << QString::fromUtf8(message);
 #endif
         emit message_got(message);
+        // Never deliver the rest of a buffered batch through a deleted or
+        // closed transport after a receiver has ended the session.
+        if (!guard || !guard->isConnected())
+            return;
     }
 }
 

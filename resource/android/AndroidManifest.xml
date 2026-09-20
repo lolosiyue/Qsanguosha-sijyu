@@ -29,8 +29,10 @@
         android:enableOnBackInvokedCallback="false"
         android:allowBackup="true"
         android:fullBackupOnly="false">
+        <!-- Qt provides the app UI; omit Android's duplicate title/action bar. -->
         <activity
             android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:label="-- %%INSERT_APP_NAME%% --"
             android:launchMode="singleTop"
