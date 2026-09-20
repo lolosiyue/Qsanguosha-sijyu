@@ -18,6 +18,7 @@
 #include <QResizeEvent>
 #include <QTimer>
 #include <QApplication>
+#include <QKeyEvent>
 
 FitView::FitView(QGraphicsScene *scene, QWidget *parent)
     : QGraphicsView(scene, parent)
@@ -51,6 +52,17 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
     });
     connect(m_posture, &RoomWindowPosture::postureChanged, this, [this]() { refit(); });
 #endif
+}
+
+bool FitView::event(QEvent *event)
+{
+    // QWidget consumes Tab before keyPressEvent. Route native gameplay keys
+    // here so the table stays operable without opening the widget action panel.
+    if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
+        if (auto *room = qobject_cast<RoomScene *>(scene()))
+            if (room->handleNativeKey(static_cast<QKeyEvent *>(event))) return true;
+    }
+    return QGraphicsView::event(event);
 }
 
 void FitView::setScene(QGraphicsScene *next)

@@ -399,7 +399,8 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         if (value.generalNames.isEmpty())
             value.generalNames = strings(state.gameValue(QStringLiteral("general_pool")));
         value.arrangement = object.value(QStringLiteral("arrangement")).toString();
-        value.slotCount = object.value(QStringLiteral("slot_count"), value.generalNames.size()).toInt();
+        // Match the three-general reply contract even for a larger draft pool.
+        value.slotCount = object.value(QStringLiteral("slot_count"), 3).toInt();
         payload = value;
         break;
     }

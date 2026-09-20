@@ -13,6 +13,8 @@ class RoomScene;
 class GameControlPanel;
 class GameTextSnapshotDialog;
 class QAbstractButton;
+class QKeyEvent;
+class QGraphicsObject;
 
 // The Qt desktop/Android adapter projects existing RoomScene/Dashboard selections. It owns
 // no second card draft, rule engine or interaction session.
@@ -30,6 +32,9 @@ public:
                       quint64 generation, quint64 revision, quint64 requestId);
     void showSnapshot();
     void showControls();
+    // Native table navigation uses the same draft/intents without opening a panel.
+    bool handleTableKey(QKeyEvent *event);
+    void clearKeyboardCursor();
 
 signals:
     void presentationChanged(const GameViewState &view, const GameActionModel &actions);
@@ -42,6 +47,7 @@ private:
     QAbstractButton *optionButton(const QString &id) const;
     QString playerLabel(const QString &name) const;
     QString cardLabel(int id) const;
+    void updateKeyboardCursor();
     void applyIntent(const QString &kind, const QString &id, bool selected,
                      quint64 generation, quint64 revision, quint64 requestId);
     RoomScene *m_scene;
@@ -63,6 +69,9 @@ private:
     QHash<QObject *, QMetaObject::Connection> m_liveConsumers;
     quint64 m_lastPublishedRevision = 0;
     bool m_forcePresentation = false;
+    QString m_keyboardKind;
+    QString m_keyboardId;
+    QPointer<QGraphicsObject> m_keyboardMarker;
 };
 
 #endif

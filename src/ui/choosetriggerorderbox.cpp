@@ -560,3 +560,32 @@ bool ChooseTriggerOrderBox::canCancelChoice() const
 {
     return m_active && isVisible() && optional;
 }
+
+bool ChooseTriggerOrderBox::handleChooseKey(int key)
+{
+    const bool forward = key == Qt::Key_Right || key == Qt::Key_Down || key == Qt::Key_Tab;
+    const bool backward = key == Qt::Key_Left || key == Qt::Key_Up || key == Qt::Key_Backtab;
+    const bool confirm = key == Qt::Key_Return || key == Qt::Key_Enter;
+    if (!m_active || !isVisible()
+        || (!forward && !backward && !confirm && key != Qt::Key_Space && key != Qt::Key_Escape)) return false;
+    if (key == Qt::Key_Escape) {
+        if (canCancelChoice()) submitChoice("cancel");
+        return true;
+    }
+    QList<TriggerOptionButton *> candidates;
+    int current = -1;
+    for (TriggerOptionButton *button : optionButtons) {
+        if (!button->isVisible() || !button->isEnabled()) continue;
+        if (button->objectName() == m_selectedChoice) current = candidates.size();
+        candidates << button;
+    }
+    if (candidates.isEmpty()) return true;
+    if (current < 0) current = backward ? candidates.size() - 1 : 0;
+    else if (forward || backward)
+        current = (current + (forward ? 1 : candidates.size() - 1)) % candidates.size();
+    const QString choice = candidates.at(current)->objectName();
+    // Reuse the native selected border and the shared request draft.
+    selectChoice(choice, true);
+    if (confirm) submitChoice(choice);
+    return true;
+}

@@ -6,6 +6,10 @@ Local response UI runner 會在本機程序內建立實際的 `Client`、`RoomSc
 
 此工具不會啟動 `Server`／`Room`、建立 TCP 連線或驗證伺服器端 `Room::askForXXX`。它驗證的是 client request handler 到 production UI、signal/slot、`Client::replyToServer()` 的路徑。
 
+`tests/skill_ui_runner/` 為本機忽略目錄，不隨倉庫提供或提交；案例、schema 與
+parser 單元測試保留在本機。乾淨 checkout 會略過該本機 parser suite，
+GUI runner 本身仍正常建置；執行案例前須自行提供 JSON（`--case` 或 `--cases`）。
+
 ## 一般建置流程
 
 Runner 是 Windows GUI `QSanguosha` target 的一般來源，不再由 cache option、CTest 或 `BUILD_TESTING` 控制。第一次建立 build tree 時只需一般 configure：
@@ -25,6 +29,49 @@ cmake --build --preset debug --target QSanguosha --parallel 8
 Runner 僅加入 Windows GUI target；Linux server-only target 不會因此引入 Qt Widgets、QML 或 runner sources。Parser regression test 仍由一般 `BUILD_TESTING` 控制，但與 GUI runner 是否可用無關。
 
 ## 三種執行模式
+
+### 原生鍵盤案例（2026-09-21，61 案例）
+
+`cases/native-keyboard/` 涵蓋全部 26 個非 QML `Client::askFor*` 入口的代表路徑，
+另含 1v1／3v3／XMode 排將、制衡雙牌與龍膽。邊界涵蓋可選／強制取消、禁選牌、
+他人暗牌、手牌加裝備、50 席目標、多目標、觀星空堆／單堆，以及 Enter 重複事件。
+操作只用 `key_press` 與 `assert`，不呼叫選牌或按鈕的 semantic helper。
+
+```json
+{ "type": "key_press", "key": "Right", "modifiers": ["Shift"] }
+```
+
+按鍵經 production `FitView` 或原生對話框焦點 widget 發送；操作面板可見便失敗。
+支援 Tab、Backtab、方向、Home、End、Space、Return、Enter、Escape、F2、+、-，
+以及 Shift／Alt／Ctrl；`auto_repeat` 可加入 0–8 次重複按下事件。
+`expect_reply.payload` 精確比對指定 typed 欄位（陣列含順序）。
+
+`bootstrap.settings` 僅設定本程序的布林選項，不寫使用者設定；預設案例關閉熱鍵、
+智慧選牌與自動目標，另有龍膽／遺計開啟自動選取的案例。
+`bootstrap.notifications` 可經原協定建立選將池；`hidden_hand_count` 只注入
+未知牌 ID 與數量，不建立他人真實牌身分。原生 modal dialog 亦可接收 queued 鍵盤操作。
+
+Debug GUI 建置紀錄：`builds/native-keyboard-arrangement-build-retry.log`。
+本批 **60/61 PASS**；50 席案例在 45 秒批次與 60 秒單獨執行均於初始化超時，
+尚未進入鍵盤操作，不列通過。彙整：`builds/native-keyboard-final-run/final-summary.json`。
+本批自動結果與首輪失敗證據：`builds/native-keyboard-final-run/`、
+`builds/native-keyboard-final-recheck/`。人工鍵盤、NVDA、完整對局及 CI 分開記錄；
+代表案例通過不等於所有技能與對局狀態均已驗收。
+
+完整原生入口與按鍵對照見
+[ClientCore 原生鍵盤檢查點](client-core-interaction-model.md#native-askfor-keyboard-checkpoint-2026-09-21)。
+
+選將人工驗收已通過：獨立對話框直接選取劉備，真實 reply PASS、程序 exit 0；
+加入 F6 後再次正確回覆並退出，使用者確認焦點離開後能返回。紀錄：
+`builds/native-keyboard-manual-focus/`、`builds/native-keyboard-manual-recover/`。
+AG 人工驗收亦已通過：禁選首張，方向鍵選桃並回覆，真實 reply PASS、程序 exit 0；
+紀錄：`builds/native-keyboard-manual-recover/ag_disabled_nonfirst/`。
+制衡人工驗收亦已通過：導航鍵紀錄顯示 Right 保留第一張選牌、Space 加選第二張，
+Enter 送出正確雙牌 SkillCard，reply PASS、使用者關閉、程序 exit 0。
+紀錄：`builds/zhiheng-manual-keyboard-trace/`。先前混合手動與 Inspector actions 的
+失敗紀錄保留，無法僅由該紀錄確定最初手動失敗原因；不列為另一次 production 修復。
+
+### 執行模式對照
 
 | 模式 | CLI | 顯示 | Actions | Reply 後 | 用途 |
 |---|---|---|---|---|---|
@@ -57,7 +104,9 @@ Bootstrap 的 `ADD_PLAYER` 與 `SET_PROPERTY`（含 flags）使用目前 Protoco
 `builds/inspector-repair-20260916/validation.md`。
 
 Inspect 模式的 operation timeout 為 0，避免閱讀／操作時自動代答；其餘模式維持
-原倒數。呈現完成後焦點位於「遊戲操作面板」，空白鍵開啟；Alt+G／Alt+I 可開啟
+原倒數。呈現完成後優先啟用並聚焦請求對話框（例如獨立選將視窗），沒有對話框
+則聚焦 production FitView；Inspector 不再搶焦點，無須先切換視窗或開操作面板。
+切回 Inspector 後，Alt+G／Alt+I 可開啟
 面板／文字快照，Alt+C 關閉 Inspector。面板內 Alt+U／D 調整前後順序、Alt+T／B
 移到牌堆頂／底、Alt+C 確認；Escape 關閉面板並恢復來源視窗焦點。
 

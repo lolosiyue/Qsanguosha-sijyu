@@ -14,6 +14,7 @@ public:
     explicit LargeRoomOverview(DesktopGamePresentation *presentation);
     ~LargeRoomOverview() override;
     void setLayout(const RoomLayoutEngine::ResponsiveResult &layout);
+    QGraphicsObject *keyboardTarget(const QString &playerId);
     QRectF boundingRect() const override;
     void paint(QPainter *, const QStyleOptionGraphicsItem *, QWidget *) override {}
 protected:

@@ -17,6 +17,7 @@ CMakeUserPresets.json
 record/
 g.json
 __pycache__/
+/tests/skill_ui_runner/
 
 # home QML 介面圖片資源
 qml/home/assets/*.png

@@ -716,6 +716,15 @@ QVariant LargeRoomOverview::itemChange(GraphicsItemChange change, const QVariant
     return result;
 }
 
+QGraphicsObject *LargeRoomOverview::keyboardTarget(const QString &playerId)
+{
+    if (!isVisible()) return nullptr;
+    MiniRow *row = d->candidates->order.contains(playerId) ? d->candidates : d->overview;
+    if (!row->order.contains(playerId)) return nullptr;
+    row->reveal(playerId);
+    return row->items.value(playerId);
+}
+
 bool LargeRoomOverview::eventFilter(QObject *watched, QEvent *event)
 {
     if (!isVisible() || watched != scene() || event->type() != QEvent::KeyPress) return false;

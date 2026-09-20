@@ -10,6 +10,7 @@
 //#include "clientplayer.h"
 #include "clientstruct.h"
 #include "timed-progressbar.h"
+#include <QKeyEvent>
 
 using namespace QSanProtocol;
 
@@ -21,6 +22,7 @@ OptionButton::OptionButton(QString icon_path, const QString &caption, QWidget *p
 
     setIcon(icon);
     setIconSize(pixmap.size());
+    setFocusPolicy(Qt::StrongFocus);
 
     if (!caption.isEmpty()) {
         setText(caption);
@@ -35,6 +37,25 @@ OptionButton::OptionButton(QString icon_path, const QString &caption, QWidget *p
 void OptionButton::mouseDoubleClickEvent(QMouseEvent *)
 {
     emit double_clicked();
+}
+
+void OptionButton::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter
+        || event->key() == Qt::Key_Space) {
+        // Keyboard activation follows the same single reply path as double-click.
+        event->accept();
+        if (!event->isAutoRepeat()) {
+            // General choices use double-click; direction/order use clicked.
+            // Dispatch only the connected activation path to avoid two replies.
+            if (receivers(SIGNAL(double_clicked())) > 0)
+                emit double_clicked();
+            else
+                click();
+        }
+        return;
+    }
+    QToolButton::keyPressEvent(event);
 }
 
 ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidget *parent, bool view_only, const QString &title)

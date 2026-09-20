@@ -95,6 +95,7 @@ public:
     QRectF boundingRect() const override;
     void chooseOption(const QVariantList &options, bool optional);
     void clear();
+    bool handleChooseKey(int key);
 
     QList<KeyboardOption> keyboardOptions() const;
     bool selectChoice(const QString &choice, bool selected);

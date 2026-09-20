@@ -50,6 +50,7 @@ bool RoomInputRouter::route(QKeyEvent *event, bool hotkeysEnabled) const
     case Qt::Key_N: card('N'); break; case Qt::Key_M: card('M'); break;
     case Qt::Key_Left: if (m_callbacks.moveCardSelection) m_callbacks.moveCardSelection(false, control); break;
     case Qt::Key_Right: if (m_callbacks.moveCardSelection) m_callbacks.moveCardSelection(true, control); break;
+    case Qt::Key_Enter:
     case Qt::Key_Return: if (m_callbacks.ok) m_callbacks.ok(); break;
     case Qt::Key_Escape:
         if (m_callbacks.clearSelection) m_callbacks.clearSelection();

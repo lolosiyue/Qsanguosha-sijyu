@@ -134,6 +134,74 @@ acceptance; evidence: `builds/game-panel-translation-validation.md`.
   interfaces retain their original entry points. This
   is not an arbitrary multi-recipient assignment editor or a claim that every
   skill's custom interface is fully playable from the keyboard.
+
+### Native askFor keyboard checkpoint (2026-09-21)
+
+Scope: the modern GUI client, action panel **closed**, excluding `askForQml`.
+The expanded checkpoint contains 61 native-keyboard fixtures covering representative
+and boundary paths for all 26 non-QML `Client::askFor*` handlers, plus general
+arrangement. The Debug GUI incremental build passed in
+`builds/native-keyboard-arrangement-build-retry.log`. Automatic run evidence is
+stored under `builds/native-keyboard-final-run/` and its targeted recheck directory.
+Latest results: **60/61 PASS**; the 50-seat target fixture exceeded both the
+45-second batch and 60-second isolated initialization limits before keyboard input.
+It remains unverified. Consolidated results: `builds/native-keyboard-final-run/final-summary.json`.
+Bootstrap explicitly controls hotkeys, intellectual selection and automatic targets;
+Longdan and Yiji have both automatic and manual-selection cases.
+
+This batch also repairs optional trigger-order cancellation's empty-string reply,
+defers the optional free-general chooser until opened, and keeps arrangement replies
+at the server-required three slots even when more generals are offered. Runner
+fixtures use the current typed protocol, valid mode seat counts, and exact typed
+reply payload comparisons. Original failed reports remain available.
+
+| Client request family | Native keyboard path, without the action panel |
+| --- | --- |
+| `askForCardOrUseCard`, `askForNullification`, `askForSinglePeach`, play-card requests | Tab / Shift+Tab cycles available card, target, skill and command groups; arrows browse; Space toggles the focused item; Enter confirms the existing draft. F2 focuses skills; Space activates one, then Tab starts its costs/options. |
+| `askForDiscard`, `askForExchange`, `askForCardShow`, `askForPindian` | Same table navigation, including equipment costs. Card count and eligibility stay with the existing pending skill. |
+| `askForPlayerChosen`, `askForYiji` | Same table navigation; Tab reaches targets independently of seat count. Space toggles a target, + / - adjusts votes when supported. Large rooms reveal and outline the existing native target projection. |
+| View-as skills / native skill declaration choices | Tab reaches the existing option tiles, hand/expanded-pile cards and equipment. Space toggles costs without clearing earlier choices. Enter confirms. No second selection draft is created. |
+| `askForAG` | Arrows / Tab browse enabled cards; Space selects; Enter submits the current card (first enabled if none). Escape cancels only when allowed. |
+| `askForCardChosen` | Arrows / Tab browse enabled cards across the disclosed zones; Space focuses a card; Enter uses the original reply handler. A concealed hand card keeps its unknown-ID sentinel. Escape only when optional. |
+| `askForGongxin` | Arrows / Tab browse enabled cards; Space toggles the selection; Enter submits the selection or acknowledges inspection without a card. Read-only/empty selections can also be acknowledged. Escape only when optional. |
+| `askForGuanxing` | Arrows / Tab browse; Shift+Left/Right reorders within a pile, Shift+Up/Down transfers to top/bottom, Space transfers between piles. Enter checks the request's pile counts/mode before replying. Mirrors cannot edit or reply. |
+| `askForTriggerOrder` | Arrows / Tab selects an existing native option; Enter submits it. Escape only when optional. |
+| `askForSkillInvoke`, `askForLuckCard`, `askForSurrender` | Enter invokes the enabled yes/OK action; Tab reaches yes/no commands and Space activates the focused command. Escape uses the existing allowed no/cancel path. |
+| `askForGeneral`, `askForChoice`, `askForSuit`, `askForKingdom`, `askForDirection`, `askForOrder`, `askForRole3v3` | Original QWidget dialog: Tab / Shift+Tab focuses buttons; Space / Enter activates. OptionButton preserves its separate general double-click and direction/order click handlers. |
+| `askForAssign` | Original role/seat dialog: arrows select a player, Tab reaches the role combo and move/confirm buttons. Browsing players does not overwrite their assigned roles. |
+| `askForGeneral3v3`, general arrangement requests (1v1 / 3v3 / XMode) | Arrows / Tab browse available generals; draft Enter/Space chooses. Arrangement Space adds/removes a general, Alt+Left/Right reorders chosen generals, Enter submits exactly three. |
+
+F6 returns keyboard focus to the current native request dialog (preserving its
+focused option), or to the table when no request dialog is open. It works across
+windows within the application and does not require `EnableHotKey`. It is not an
+OS-global shortcut: after switching to another application, return to the game first.
+
+Native Tab/arrow/Space/Enter paths do not require `EnableHotKey`. With table
+hotkeys enabled, existing letter/arrow hand selection remains available before
+entering Tab navigation. Ctrl+Tab leaves table traversal for normal widget focus;
+chat, embedded editors and modal dialogs keep their own keyboard handling.
+
+`FitView::event` catches Tab before QWidget focus traversal. `RoomScene` dispatches
+against the current request, rejecting replay/state-sync/expired inputs. A handled
+press consumes its release and repeat events, preventing a second legacy reply.
+The table adapter reuses `GameActionModel` and the existing guarded intents;
+specialized boxes reuse their original selection/reply routines. Native focus
+outlines are presentation only and are cleared when the request changes.
+
+This is not P7 controller/Android TV acceptance. P7 requires directions, confirm
+and back alone; the current keyboard path still distinguishes group navigation,
+toggle and submission and uses extra keys for rearrangement. Device input mapping,
+remote-only focus recovery and a complete game remain separate work.
+
+Static review and `git diff --check` cover this checkpoint. The runner's
+`cases/native-keyboard/` fixtures use actual key press/release events through
+production FitView or the focused request widget and fail if the action panel is
+open. The 61 cases include concealed opponent hand counts, equipment costs,
+50-seat target selection, optional/mandatory cancellation, held Enter and modifier
+handling. Coverage represents request families, not every skill or gameplay state.
+Manual GUI parity, NVDA, full games and CI remain separate gates; a 50-seat UI
+fixture does not establish full-game acceptance.
+
 - Standard-widget accessibility preserves Qt's effective names and explicit
   application names; unnamed actionable controls can use authored tooltip or
   placeholder text. Helper-owned fallback names track changes. No automatic

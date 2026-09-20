@@ -8,6 +8,7 @@
 #include "settings.h"
 //#include "clientplayer.h"
 #include "clientstruct.h"
+#include <QSignalBlocker>
 
 using namespace QSanProtocol;
 
@@ -83,6 +84,10 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
     connect(moveDownButton, SIGNAL(clicked()), this, SLOT(moveDown()));
     connect(okButton, SIGNAL(clicked()), this, SLOT(accept()));
     connect(cancelButton, SIGNAL(clicked()), this, SLOT(reject()));
+    // Establish a selection before Tab can reach the role editor or move buttons.
+    if (list->count() > 0)
+        list->setCurrentRow(0);
+    list->setFocus(Qt::TabFocusReason);
 }
 
 void RoleAssignDialog::accept()
@@ -133,6 +138,8 @@ void RoleAssignDialog::reject()
 
 void RoleAssignDialog::updateRole(int index)
 {
+    if (!list->currentItem() || index < 0)
+        return;
     QString name = list->currentItem()->data(Qt::UserRole).toString();
     QString role = role_ComboBox->itemData(index).toString();
     ClientPlayer *player = ClientInstance->getPlayer(name);
@@ -143,23 +150,21 @@ void RoleAssignDialog::updateRole(int index)
 
 void RoleAssignDialog::updateRole(QListWidgetItem *current)
 {
-    static QMap<QString, int> mapping;
-    if (mapping.isEmpty()) {
-        mapping["lord"] = 0;
-        mapping["loyalist"] = 1;
-        mapping["renegade"] = 2;
-        mapping["rebel"] = 3;
-    }
-
+    if (!current)
+        return;
     QString name = current->data(Qt::UserRole).toString();
     QString role = role_mapping.value(name);
-    int index = mapping.value(role);
+    int index = role_ComboBox->findData(role);
+    // Browsing players must not rewrite the selected player's role.
+    const QSignalBlocker blocker(role_ComboBox);
     role_ComboBox->setCurrentIndex(index);
 }
 
 void RoleAssignDialog::moveUp()
 {
     int index = list->currentRow();
+    if (index <= 0)
+        return;
     QListWidgetItem *item = list->takeItem(index);
     list->insertItem(index - 1, item);
     list->setCurrentItem(item);
@@ -168,6 +173,8 @@ void RoleAssignDialog::moveUp()
 void RoleAssignDialog::moveDown()
 {
     int index = list->currentRow();
+    if (index < 0 || index >= list->count() - 1)
+        return;
     QListWidgetItem *item = list->takeItem(index);
     list->insertItem(index + 1, item);
     list->setCurrentItem(item);

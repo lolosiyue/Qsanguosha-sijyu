@@ -135,7 +135,6 @@ add_executable(qsanguosha_core_tests
     package-ownership-test.cpp
     card-overview-classifier-test.cpp
     card-overview-model-test.cpp
-    skill_ui_runner/local-response-ui-case-test.cpp
     runtime-paths-test.cpp
     replay-game-state/replay-game-state-test.cpp
     takeover-snapshot/takeover-snapshot-test.cpp
@@ -192,8 +191,16 @@ set_source_files_properties(card-overview-classifier-test.cpp
     PROPERTIES COMPILE_DEFINITIONS main=runCardOverviewClassifierTests)
 set_source_files_properties(card-overview-model-test.cpp
     PROPERTIES COMPILE_DEFINITIONS main=runCardOverviewModelTests)
-set_source_files_properties(skill_ui_runner/local-response-ui-case-test.cpp
-    PROPERTIES COMPILE_DEFINITIONS main=runLocalResponseUiCaseTests)
+# Local UI fixtures are intentionally untracked; clean checkouts omit this suite.
+set(QSAN_LOCAL_UI_CASE_ARGS)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/skill_ui_runner/local-response-ui-case-test.cpp")
+    target_sources(qsanguosha_core_tests PRIVATE skill_ui_runner/local-response-ui-case-test.cpp)
+    target_compile_definitions(qsanguosha_core_tests PRIVATE QSAN_HAVE_LOCAL_UI_CASE_TESTS)
+    set_source_files_properties(skill_ui_runner/local-response-ui-case-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runLocalResponseUiCaseTests)
+    set(QSAN_LOCAL_UI_CASE_ARGS --case
+        "local-response-case-parser::$<TARGET_FILE:qsanguosha_core_tests>::--suite::local-response-case-parser")
+endif()
 set_source_files_properties(runtime-paths-test.cpp
     PROPERTIES COMPILE_DEFINITIONS main=runRuntimePathsTests)
 set_source_files_properties(replay-game-state/replay-game-state-test.cpp
@@ -696,7 +703,7 @@ add_test(NAME qsanguosha_ui_runner_contract
         --suite UI_RUNNER_CONTRACT_RESULT
         --timeout 300
         --working-directory ${QSAN_TEST_ROOT}
-        --case "local-response-case-parser::$<TARGET_FILE:qsanguosha_core_tests>::--suite::local-response-case-parser"
+        ${QSAN_LOCAL_UI_CASE_ARGS}
         --case "startup-smoke-cli::${Python3_EXECUTABLE}::${QSAN_TEST_ROOT}/tools/autotest/tests/test_ui_startup_smoke_contract.py"
         --case "network-smoke-cli::${Python3_EXECUTABLE}::${QSAN_TEST_ROOT}/tools/autotest/tests/test_gui_network_smoke_contract.py"
         --case "skill-ui-runner-cli::${Python3_EXECUTABLE}::${QSAN_TEST_ROOT}/tools/autotest/tests/test_skill_ui_runner_contract.py"
