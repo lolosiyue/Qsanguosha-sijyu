@@ -1,25 +1,27 @@
-# Android arm64 APK 建置、封裝與模擬器部署
+# Android APK 建置、更新與驗收
 
-本頁是目前 Android `arm64-v8a` 工作流程：建立 APK、產生外部聲畫 ZIP、以 Android 系統檔案選擇器（Storage Access Framework，SAF）匯入，以及靜態稽核。手機與實機不在本輪範圍；裝置驗證限 Android Emulator。
+本機日常使用原生 `x86_64` APK 與既有 API 33 模擬器；`arm64-v8a` 留作實機／發行建置參考。
+日常驗收入口見 [Android 簡化驗收](android-acceptance.md)：覆蓋安裝、日誌／截圖收集、完整局與正常退出分開判定。
+首次外部聲畫 ZIP／Storage Access Framework（SAF）匯入流程保留於本文後半，日常更新不需重做。
 
 **版本固定規則：Android 不再雜湊資源、不逐檔掃描聲畫，也不因圖片缺檔擋住開局。**
 已安裝媒體在 APK 更新後繼續沿用；新增圖片不觸發全包重匯。
 詳細契約見 [Android 版本固定規則](android-first-release.md#android-版本固定規則2026-09-16)。
 
-## 本機唯一日常環境（2026-09-16 起）
+## 本機唯一日常環境（2026-09-20 核對）
 
 **使用者要求：只用下面這一套，保留 App 資料、媒體與建置快取。**
 本頁是日常 Android 操作的唯一入口；後文的首次安裝教學不代表每次建置都要重做。
 
 | 用途 | 固定位置／值 |
 |---|---|
-| Android 建置來源 | `L:\finaldebug\qsan-responsive-acceptance`，持續重用此工作樹 |
-| Debug 建置目錄 | `L:\finaldebug\qsan-responsive-acceptance\builds\android-arm64-debug` |
-| 共用工具鏈 | `L:\finaldebug\QSanguosha-v2\builds\android-toolchain`；Gradle cache 為其 `gradle` 子目錄 |
+| Android 建置來源 | `L:\finaldebug\QSanguosha-v2`；既有 cache 的 CMAKE_HOME_DIRECTORY 指向此處 |
+| Debug 建置目錄 | `L:\finaldebug\QSanguosha-v2\builds\android-x86_64-debug`，junction 指向 `H:\qsan-android-x86_64\build-debug` |
+| 共用工具鏈 | `H:\qsan-android-x86_64`；Qt target=`qt/6.11.1/android_x86_64`，Gradle cache=`gradle` |
 | AVD home | `H:\qsan-validation\room-responsive-20260916\avd` |
 | 唯一 AVD／序號 | `Responsive_API_33`／`emulator-5586`，沿用既有 12 GiB userdata |
 | Emulator | `C:\Users\a3160\AppData\Local\Android\Sdk\emulator\emulator.exe` |
-| ADB | `L:\finaldebug\QSanguosha-v2\builds\android-toolchain\sdk\platform-tools\adb.exe` |
+| SDK／ADB | `%LOCALAPPDATA%\Android\Sdk`／其 `platform-tools\adb.exe` |
 | 媒體原包 | `H:\qsan-validation\room-responsive-20260916\qsan-media.zip` |
 | App | `org.qsanguosha.game`，保持相同簽章，以 `install -r` 更新 |
 
@@ -29,62 +31,53 @@
 
 ### 每次修改的固定順序
 
-1. 核對上述工作樹的來源版本；它不是主工作區的自動鏡像。先一次對齊本次授權的
-   C++／Java／Lua／翻譯／資源清單並記錄差異，保留不相關修改，不使用破壞性重設。
-2. 在同一建置目錄增量建置一次；不清除 CMake／Gradle cache，不用 `--fresh`、
-   `--clean-first`，不先安裝半套資源再補建第二個 APK。
-3. 重用已啟動的 `emulator-5586`；未啟動時只啟動上述既有 AVD。不存在或離線時先
-   報告具體原因，不能改用新 AVD、`-wipe-data` 或重新初始化來掩蓋問題。
-4. 正常關閉 App 後執行 `install -r`。不 uninstall、不 `pm clear`，不因 UI／C++
-   改動重新產生、傳輸或匯入聲畫 ZIP；安裝失敗時保留資料並記錄錯誤。
-5. 檢查首頁及媒體可用狀態，再執行已授權的驗收。建置、媒體啟用與完整對局分開記錄。
+1. 在 L 工作區核對本次來源與 dirty state；不再複製到舊 Android 工作樹。
+2. 完成授權檢查點後，在同一 cache 增量建置一次；不用 `--fresh`、`--clean-first`。
+3. 重用 `emulator-5586`；未啟動只啟動 `Responsive_API_33`，不用 `-wipe-data`、新 AVD 或新媒體副本。
+4. 正常關閉 App，再以驗收助手 `run --install` 執行 `install --no-streaming -r` 與 `sync`；簽章不符就停止，不能卸載或清除資料。
+5. 選擇 [首頁短驗收／05p 完整局](android-acceptance.md)，各自收集證據。助手不建置、不修改模式設定、不自動判定 GAME_OVER。
 
-固定增量建置與更新命令（建置／驗收仍遵守當輪授權）：
+固定建置命令（已有建置授權及完成檢查點時）：
 
 ```powershell
-$androidSource = 'L:\finaldebug\qsan-responsive-acceptance'
-$androidToolchain = 'L:\finaldebug\QSanguosha-v2\builds\android-toolchain'
-$adb = Join-Path $androidToolchain 'sdk\platform-tools\adb.exe'
-$serial = 'emulator-5586'
-$apk = Join-Path $androidSource 'builds\android-arm64-debug\cmake\android-app\android-build\build\outputs\apk\debug\android-build-debug.apk'
-
-powershell -NoProfile -ExecutionPolicy Bypass -File "$androidSource\tools\build-android.ps1" `
-  -Configuration Debug -ToolchainRoot $androidToolchain
-if ($LASTEXITCODE -ne 0) { throw 'Android build failed; do not install an older APK.' }
-& $adb -s $serial install -r $apk
-if ($LASTEXITCODE -ne 0) { throw 'APK update failed; retain app data and inspect the error.' }
-& $adb -s $serial shell am start -W -n org.qsanguosha.game/org.qtproject.qt.android.bindings.QtActivity
+Set-Location L:\finaldebug\QSanguosha-v2
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-android.ps1 `
+  -Configuration Debug -Abi x86_64 `
+  -ToolchainRoot H:\qsan-android-x86_64 `
+  -SdkRoot "$env:LOCALAPPDATA\Android\Sdk"
+if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 ```
 
-既有 AVD 未啟動時，使用下面的同一份定義；執行前以固定 ADB 的 `devices -l` 核對，
-已有 `emulator-5586` 就跳過，不啟動第二個實例：
+此通用腳本會 reconfigure 既有 preset，不另建 cache；Qt／NDK／FreeType 路徑沿用固定工具鏈。
+若 cache 設定未變、只需最快增量建置，可在 Android 環境已設定的 shell 執行
+`cmake --build builds/android-x86_64-debug --target apk --parallel 8`。
+不要拿桌面 Qt 或未設定 JAVA_HOME／GRADLE_USER_HOME 的 shell 直接套用。
+若 PowerShell 把原生命令的 stderr warning 升格為 `NativeCommandError`，保存紀錄並核對實際退出碼，
+不要清除建置樹；互動式使用上述腳本，避免另以 `$ErrorActionPreference='Stop'` 包住 `2>&1` 的外層管線。
+
+既有 AVD 未啟動時，人工驗收可開啟可見視窗；已有序號就沿用，不另開實例：
 
 ```powershell
+$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+& $adb devices -l
+# 確認沒有 emulator-5586 才執行以下區塊；offline 先診斷，不能開第二份。
 $savedAvdHome = $env:ANDROID_AVD_HOME
-$savedSdkRoot = $env:ANDROID_SDK_ROOT
-$savedAndroidHome = $env:ANDROID_HOME
 try {
-    $adb = 'L:\finaldebug\QSanguosha-v2\builds\android-toolchain\sdk\platform-tools\adb.exe'
-    $devices = & $adb devices
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing Android devices.' }
-    if ($devices -match '^emulator-5586\s') {
-        throw 'The fixed emulator already exists; reuse it or inspect its offline state.'
-    }
     $env:ANDROID_AVD_HOME = 'H:\qsan-validation\room-responsive-20260916\avd'
-    $env:ANDROID_SDK_ROOT = 'C:\Users\a3160\AppData\Local\Android\Sdk'
-    $env:ANDROID_HOME = $env:ANDROID_SDK_ROOT
-    if (!(Test-Path -LiteralPath "$env:ANDROID_AVD_HOME\Responsive_API_33.ini")) {
-        throw 'The fixed AVD is missing. Do not create a replacement automatically.'
+    if (!(Test-Path "$env:ANDROID_AVD_HOME\Responsive_API_33.ini")) {
+        throw 'Existing AVD missing; do not create a replacement.'
     }
-    Start-Process -FilePath 'C:\Users\a3160\AppData\Local\Android\Sdk\emulator\emulator.exe' `
-      -ArgumentList '-avd Responsive_API_33 -port 5586 -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect' `
-      -WindowStyle Hidden
-} finally {
-    $env:ANDROID_AVD_HOME = $savedAvdHome
-    $env:ANDROID_SDK_ROOT = $savedSdkRoot
-    $env:ANDROID_HOME = $savedAndroidHome
-}
+    if ((& $adb devices) -match '^emulator-5586\s') {
+        throw 'Reuse the existing emulator or inspect its offline state.'
+    }
+    Start-Process "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" `
+      -ArgumentList '-avd Responsive_API_33 -port 5586 -no-snapshot -no-boot-anim -gpu swiftshader_indirect' `
+      -WindowStyle Normal
+} finally { $env:ANDROID_AVD_HOME = $savedAvdHome }
 ```
+
+無畫面代理驗收才加 `-no-window` 並使用 `-WindowStyle Hidden`。本例不等待開機完成；
+`python tools/android/acceptance.py check` 可確認序號在線。新助手不會自動啟動或關閉模擬器。
 
 ### 何時才需要媒體操作
 
@@ -110,7 +103,8 @@ try {
 12 GiB 分割區曾接近滿載。日常不要重複保留傳輸副本；匯入完成後清理本輪傳輸檔，
 保留 H 碟原包與 App 私有資料。不要手動刪除 content store 的 baseline／blobs／versions。
 
-此環境是 API 33 x86_64 的 ARM translation／4 KiB pages；不等同實機或折疊機驗收。
+此 AVD 是 API 33 x86_64／4 KiB pages；2026-09-20 日常 APK 已改用原生 x86_64。
+本文 2026-09-16 的 arm64 APK／ARM translation 紀錄屬歷史證據，不能混作目前 ABI；兩者均不等同實機或折疊機驗收。
 
 ## 固定工具鏈與目錄
 
@@ -206,6 +200,29 @@ builds/android-arm64-debug/cmake/android-app/android-build/build/outputs/apk/deb
 ```
 
 Release 目錄是 `builds/android-arm64-release/cmake/android-app/android-build/build/outputs/apk/release/`；檔名以該次 Gradle 輸出為準。Debug 使用 debug keystore，適合開發安裝。Release 沒有倉庫內的發布 keystore、密碼或 signing configuration；Release 編譯成功不等於正式簽章或可上架，金鑰須由發布環境注入且不可入庫。
+
+### 固定開發簽名與覆蓋更新
+
+Debug APK 不再使用 Gradle 自動產生的金鑰。`resource/android/build.gradle` 固定讀取
+`%USERPROFILE%/.qsanguosha/android-signing.properties`，亦可用
+`QSAN_ANDROID_SIGNING_PROPERTIES` 指定其他本機設定檔。此規則涵蓋直接 CMake 建置與
+`tools/build-android.ps1`，不受 `ANDROID_USER_HOME`、ABI 或 build directory 改變影響。
+
+設定檔包含 `storeFile`（使用絕對路徑及 `/`）、`keyAlias`、`certificateSha256`；
+現有開發金鑰沿用 Android debug 密碼，其他金鑰可於本機設定檔提供 `storePassword`／`keyPassword`。
+`verifyPersistentDebugSigning` 在 Debug 簽名驗證前核對憑證 SHA-256；設定、金鑰缺失或指紋不符即失敗，
+不得刪除設定、另產生金鑰或解除安裝來規避。
+
+目前本機持久金鑰為 `%USERPROFILE%/.qsanguosha/signing/android-debug.keystore`，
+備份於 `H:/qsan-signing/qsanguosha/`，均在倉庫與建置目錄外；金鑰與本機設定不可提交。
+目前已安裝開發版憑證 SHA-256：
+`d21d970234d27fb6e0325ff21785bca759ea5c085654f37fedea5ba3f98bd3a6`。
+換機時搬移同一份金鑰與設定並修正 `storeFile`，不可重新生成。
+
+後續保持套件名稱 `org.qsanguosha.game`、相同簽名與不倒退的版本，以
+`adb -s emulator-5586 install -r <新 APK 路徑>` 更新，保留 App 資料。
+遇到 `INSTALL_FAILED_UPDATE_INCOMPATIBLE` 應核對新舊憑證；不要自動解除安裝。
+這是目前開發安裝的簽名延續，不是商店 Release 發布金鑰配置。
 
 ### Runtime descriptor 與內容身份
 
@@ -337,7 +354,7 @@ APK 重建與開局回歸尚待執行。這個空卡牌缺陷與前節的 AAudio
 
 目前只驗證 Android Emulator。x86_64 模擬器執行 arm64 APK 時包含 ARM translation layer，不能代替 arm64 實機、Android 9/16 或 16 KB page-size 環境。最新 API 33 模擬器的已知音訊閃退位於 AAudio CFI callback under translation；目前證據不能把它歸因於某一個 OGG 檔案。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。四個短 UI WAV 只降低 codec 依賴，不代表完整 OGG 已驗收。
 
-本頁不包含 CTest、完整 05P、跨版本矩陣或手機驗收。相關契約見 [Android 首版功能](android-first-release.md)，目錄與版本切換見 [Android 擴展實體目錄](android-extension-runtime.md)。
+本頁不執行 CTest、跨版本矩陣或手機驗收；05p 完整對局流程與最新結果見 [簡化驗收](android-acceptance.md)。相關契約見 [Android 首版功能](android-first-release.md)，目錄與版本切換見 [Android 擴展實體目錄](android-extension-runtime.md)。
 
 ## 歷史建置證據（不作目前驗收）
 
