@@ -49,6 +49,8 @@ public:
     ~RoomRuntime() override;
 
     bool initialize(QString *error = nullptr);
+    // Persist begin/end markers so slow initialization remains diagnosable in GUI runs.
+    void logInitializationPhase(const char *phase, const char *event, qint64 elapsedMs = 0) const;
     void shutdownForInitFailure();
     // Called by the game worker only after a completed outer turn unwinds.
     void reclaimTurnCards();

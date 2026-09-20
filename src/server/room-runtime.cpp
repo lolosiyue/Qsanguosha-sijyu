@@ -4,11 +4,16 @@
 #include "room.h"
 #include "card-lifetime-manager.h"
 #include "lua.hpp"
+#include "runtime-paths.h"
 #include "settings.h"
 #include "util.h"
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QDateTime>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QMutex>
 #include <QEvent>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -487,6 +492,26 @@ void RoomRuntime::emitFinalGauge(const CardLifetimeGauge &gauge)
     std::fflush(stdout);
 }
 
+void RoomRuntime::logInitializationPhase(const char *phase, const char *event, qint64 elapsedMs) const
+{
+    const QString line = QStringLiteral("%1 ROOM_INIT pid=%2 runtime=%3 phase=%4 event=%5 elapsed_ms=%6")
+        // This explicit UTC format is also available on Qt 5.6.
+        .arg(QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyy-MM-dd'T'HH:mm:ss.zzz'Z'")))
+        .arg(QCoreApplication::applicationPid())
+        .arg(quintptr(this), 0, 16)
+        .arg(QString::fromLatin1(phase), QString::fromLatin1(event))
+        .arg(elapsedMs);
+    qInfo().noquote() << line;
+    // Each marker is closed to disk immediately; a stalled phase still leaves its begin marker.
+    static QMutex logMutex;
+    QMutexLocker lock(&logMutex);
+    QFile log(QSanRuntimePaths::userDataPath(QStringLiteral("room-initialization.log")));
+    if (log.open(QIODevice::WriteOnly | QIODevice::Append))
+        log.write(line.toUtf8() + '\n');
+    else
+        qWarning().noquote() << "Cannot write room initialization log:" << log.errorString();
+}
+
 bool RoomRuntime::initialize(QString *error)
 {
     if (shutdownState() != ShutdownState::Running) {
@@ -494,24 +519,38 @@ bool RoomRuntime::initialize(QString *error)
             *error = QStringLiteral("Room runtime is closing");
         return false;
     }
-    if (!m_lua.initialize(error))
+    QElapsedTimer phaseTimer;
+    const char *phase = "rules";
+    const auto beginPhase = [&](const char *name) {
+        phase = name;
+        logInitializationPhase(phase, "begin");
+        phaseTimer.start();
+    };
+    const auto failPhase = [&]() {
+        logInitializationPhase(phase, "failed", phaseTimer.elapsed());
         return false;
+    };
+    beginPhase("rules");
+    if (!m_lua.initialize(error))
+        return failPhase();
     m_gameRuntimeIdentity = &m_lua;
     m_gameRuntimeGeneration = m_lua.generation();
     m_gameRuntimeState = m_lua.rawState();
     LuaRuntime::Binding luaBinding(m_lua);
     if (!m_lua.addPackagePath(QStringLiteral("./lua/?.lua"), error)
         || !m_lua.addPackagePath(QStringLiteral("./lua/?/init.lua"), error))
-        return false;
+        return failPhase();
     EngineRuntimeContextScope contextScope(*Sanguosha, this);
     m_loadingDefinitions = true;
     const bool loaded = m_lua.loadScript(QStringLiteral("lua/config.lua"), error)
         && m_lua.loadScript(QStringLiteral("lua/sanguosha.lua"), error);
     m_loadingDefinitions = false;
     if (!loaded)
-        return false;
+        return failPhase();
+    logInitializationPhase(phase, "end", phaseTimer.elapsed());
+    beginPhase("mode_ai");
     if (!m_lua.loadScript(QStringLiteral("lua/ai/mode-ai.lua"), error))
-        return false;
+        return failPhase();
     // Mode hooks belong to the Room VM even when no legacy SmartAI is loaded.
     // Custom definitions keep their author policy; native standard classification
     // admits only the built-in identity/team strategies understood by this module.
@@ -527,15 +566,17 @@ bool RoomRuntime::initialize(QString *error)
         if (LuaRuntime::protectedCall(state, 3, 0, 0) != LUA_OK) {
             if (error) *error = QString::fromUtf8(lua_tostring(state, -1));
             lua_pop(state, 1);
-            return false;
+            return failPhase();
         }
     }
+    logInitializationPhase(phase, "end", phaseTimer.elapsed());
 
     // The effective route registry is authoritative, including an isolated
     // override of a legacy callback. Standalone rooms never bootstrap SmartAI.
     if (Config.EnableAI && AiLuaRuntime::requiresLegacyRuntime()) {
+        beginPhase("smart_ai");
         if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
-            return false;
+            return failPhase();
         for (const QString &path : Sanguosha->rulesDeclaredList(QStringLiteral("package_ai"))) {
             lua_State *state = m_lua.state();
             lua_getglobal(state, "sgs");
@@ -545,10 +586,13 @@ bool RoomRuntime::initialize(QString *error)
             if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
                 if (error) *error = QString::fromUtf8(lua_tostring(state, -1));
                 lua_pop(state, 1);
-                return false;
+                return failPhase();
             }
         }
+        logInitializationPhase(phase, "end", phaseTimer.elapsed());
     }
+
+    beginPhase("card_tracking");
 
     const QSet<const void *> currentAddresses =
         globalCardLifetimeManager().entryAddressesForDomain(this);
@@ -559,9 +603,13 @@ bool RoomRuntime::initialize(QString *error)
                 && !m_runtimeObservedEntries.contains(address))
                 m_runtimeObservedEntries.insert(address, token);
 
+    logInitializationPhase(phase, "end", phaseTimer.elapsed());
+    beginPhase("isolated_ai");
+
     QString aiError;
     m_aiRuntimeIdentity = &m_ai.lua();
     if (!m_ai.initialize(&aiError)) {
+        logInitializationPhase(phase, "failed", phaseTimer.elapsed());
         qWarning().noquote() << "AI Lua runtime disabled:" << aiError;
     } else {
         m_aiRuntimeGeneration = m_ai.lua().generation();
@@ -573,6 +621,7 @@ bool RoomRuntime::initialize(QString *error)
         lua_pushboolean(state, true);
         lua_setfield(state, -2, "modeAIUsesIsolatedEvents");
         lua_pop(state, 1);
+        logInitializationPhase(phase, "end", phaseTimer.elapsed());
     }
     return true;
 }

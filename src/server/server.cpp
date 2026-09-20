@@ -108,17 +108,30 @@ public:
 protected:
 	void run() override
 	{
+		QElapsedTimer totalTimer;
+		totalTimer.start();
+		m_runtime->logInitializationPhase("worker_total", "begin");
 		GameRng::Binding rngBinding(m_runtime->rng());
 		m_runtimeReady = m_runtime->initialize(&m_error);
 
+		m_runtime->logInitializationPhase("handoff", "begin");
+		QElapsedTimer handoffTimer;
+		handoffTimer.start();
 		QString handoffError;
-		if (!m_runtime->definitions().moveOwnedObjectsToThread(m_returnThread, &handoffError))
+		if (!m_runtime->definitions().moveOwnedObjectsToThread(m_returnThread, &handoffError)) {
+			m_runtime->logInitializationPhase("handoff", "failed", handoffTimer.elapsed());
 			qFatal("Room definition QObject handoff failed: %s", qUtf8Printable(handoffError));
+		}
 		// Definitions have returned to the canonical owner; transfer remaining
 		// Lua-held Cards and refresh their lifetime-manager affinity snapshots.
 		if (!globalCardLifetimeManager().handoffInitializedDomain(
-			m_runtime, m_returnThread, &handoffError))
+			m_runtime, m_returnThread, &handoffError)) {
+			m_runtime->logInitializationPhase("handoff", "failed", handoffTimer.elapsed());
 			qFatal("Room initialization Card handoff failed: %s", qUtf8Printable(handoffError));
+		}
+		m_runtime->logInitializationPhase("handoff", "end", handoffTimer.elapsed());
+		m_runtime->logInitializationPhase("worker_total", m_runtimeReady ? "end" : "failed",
+			totalTimer.elapsed());
 	}
 
 private:
@@ -2768,6 +2781,9 @@ void Server::writeHeadlessLog(const QString &msg)
 void Server::startHeadlessGame()
 {
     isHeadlessMode = true;
+    // Headless games use SmartAI even when the saved server settings disable AI.
+    // The preparation path creates it after assigning roles, before general choices.
+    Config.EnableAI = true;
 
     static int gameCount = 0;
     const QString mode = Config.GameMode.mode_id;
@@ -2864,7 +2880,6 @@ void Server::startHeadlessGame()
 
     for (int i = 0; i < playerCount; i++) {
         ServerPlayer *player = room->addAIPlayer();
-        player->setAI(new TrustAI(player));
         if (i == 0)
             player->setOwner(true);
         room->signup(player, QString("AI_Bot_%1").arg(i), "", true);
