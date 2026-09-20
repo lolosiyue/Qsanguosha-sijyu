@@ -1,6 +1,7 @@
 #include "skill.h"
 #include "skill-declaration.h"
 #include "runtime-paths.h"
+#include "startup-timing.h"
 #include "settings.h"
 #include "engine.h"
 #include "room.h"
@@ -259,6 +260,7 @@ int Skill::getEffectIndex(const ServerPlayer *, const Card *) const
 
 void Skill::initMediaSource()
 {
+    QSanStartupTiming startupMedia("skill.media_sources", QString(), true);
     sources.clear();
 
     for (int i = 1;; i++) {

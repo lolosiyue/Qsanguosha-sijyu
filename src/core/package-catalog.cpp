@@ -23,8 +23,39 @@ using namespace QSanPackages;
 Catalog g_activeCatalog;
 QString g_activeRoot;
 QHash<QString, Catalog> g_lazyCatalogs;
+QHash<QString, QString> g_rootPaths;
 QReadWriteLock g_catalogLock;
 std::atomic<quint64> g_catalogRevision{0};
+
+QString canonicalRootPath(const QString &path)
+{
+    // Catalogs describe an immutable installation until install/clearCatalog.
+    // Reuse its root metadata too: thousands of skill audio probes otherwise
+    // canonicalize the same runtime and packages directories on every lookup.
+    // Asset paths still go through containedExistingFile on every resolution.
+    // Relative roots retain QFileInfo's current-directory/drive semantics.
+    // Production asset roots are absolute; preserve '..' until canonicalization
+    // so a symbolic link cannot select a different root through lexical cleanup.
+    if (!QDir::isAbsolutePath(path)) {
+        const QString root = QFileInfo(path).canonicalFilePath();
+        return root.isEmpty() ? QDir::cleanPath(QFileInfo(path).absoluteFilePath()) : root;
+    }
+    const QString key = path;
+    {
+        QReadLocker locker(&g_catalogLock);
+        const auto cached = g_rootPaths.constFind(key);
+        if (cached != g_rootPaths.cend()) return cached.value();
+    }
+    QWriteLocker locker(&g_catalogLock);
+    const auto cached = g_rootPaths.constFind(key);
+    if (cached != g_rootPaths.cend()) return cached.value();
+    // Compute under the write lock so catalog invalidation cannot race with
+    // insertion of root metadata from the previous installation.
+    QString root = QFileInfo(key).canonicalFilePath();
+    if (root.isEmpty()) root = QDir::cleanPath(QFileInfo(key).absoluteFilePath());
+    g_rootPaths.insert(key, root);
+    return root;
+}
 
 bool validId(const QString &id)
 {
@@ -371,9 +402,7 @@ QString packageRoot(const Catalog &catalog)
 Catalog catalogForRoot(const QString &root)
 {
     const QString packagesPath = QDir(root).filePath(QStringLiteral("packages"));
-    const QString key = QFileInfo(packagesPath).canonicalFilePath().isEmpty()
-        ? QDir::cleanPath(QFileInfo(packagesPath).absoluteFilePath())
-        : QFileInfo(packagesPath).canonicalFilePath();
+    const QString key = canonicalRootPath(packagesPath);
     {
         QReadLocker locker(&g_catalogLock);
         if (!g_activeCatalog.packages.isEmpty() && g_activeRoot == key)
@@ -660,6 +689,7 @@ void installCatalog(const Catalog &catalog)
     g_activeCatalog = catalog;
     g_activeRoot = packageRoot(catalog);
     g_lazyCatalogs.clear();
+    g_rootPaths.clear();
     ++g_catalogRevision;
 }
 
@@ -669,6 +699,7 @@ void clearCatalog()
     g_activeCatalog = Catalog();
     g_activeRoot.clear();
     g_lazyCatalogs.clear();
+    g_rootPaths.clear();
     ++g_catalogRevision;
 }
 
@@ -686,8 +717,7 @@ Catalog activeCatalog()
 QString resolve(const QString &runtimeRoot, const QString &reference, QString *error)
 {
     if (error) error->clear();
-    QString root = QFileInfo(runtimeRoot).canonicalFilePath();
-    if (root.isEmpty()) root = QDir::cleanPath(QFileInfo(runtimeRoot).absoluteFilePath());
+    const QString root = canonicalRootPath(runtimeRoot);
     if (reference.startsWith(QStringLiteral("package://"))) {
         const QString tail = reference.mid(10);
         const int slash = tail.indexOf(QLatin1Char('/'));
