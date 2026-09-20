@@ -297,13 +297,8 @@ public:
 
 #if !defined(QSAN_ENGINE_BUILD)
 #include "package-dialogs.h"
-#else
-class TiansuanDialog
-{
-public:
-    static QDialog *getInstance(const QString &, const QString &) { return nullptr; }
-    static QDialog *getInstance(const QString &) { return nullptr; }
-};
+#endif
+
 class MobileHuxiaoCard : public SkillCard
 {
     Q_OBJECT
@@ -333,9 +328,6 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *, const Player *Self) const;
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
-
-
-#endif
 
 class TiansuanCard : public SkillCard
 {

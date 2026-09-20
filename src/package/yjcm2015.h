@@ -3,6 +3,9 @@
 
 //#include "package.h"
 //#include "card.h"
+#if !defined(QSAN_ENGINE_BUILD)
+#include "../ui/special-skill-dialogs.h"
+#endif
 #include "wind.h"
 
 class HuaiyiCard : public SkillCard
@@ -87,26 +90,6 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void onEffect(CardEffectStruct &effect) const;
 };
-
-#if !defined(QSAN_ENGINE_BUILD)
-class HuomoDialog : public GuhuoDialog
-{
-    Q_OBJECT
-
-public:
-    static HuomoDialog *getInstance();
-
-protected:
-    explicit HuomoDialog();
-    virtual bool isButtonEnabled(const QString &button_name) const;
-};
-#else
-class HuomoDialog
-{
-public:
-    static QDialog *getInstance() { return nullptr; }
-};
-#endif
 
 class HuomoCard : public SkillCard
 {

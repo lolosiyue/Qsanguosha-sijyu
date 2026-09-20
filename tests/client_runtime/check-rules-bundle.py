@@ -596,7 +596,7 @@ class PackagingTests(unittest.TestCase):
             packaging.write_bundle(loader)
             expected = json.loads(loader.with_suffix(".bundle.json").read_bytes())
             self.assertEqual(expected, packaging.deployment_bundle(loader))
-            self.assertEqual(expected["bridge_schema"], 2)
+            self.assertEqual(expected["bridge_schema"], 3)
             for path in paths:
                 original = path.read_bytes(); path.write_bytes(original + b"stale")
                 self.assertNotEqual(expected, packaging.deployment_bundle(loader))

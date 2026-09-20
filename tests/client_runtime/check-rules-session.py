@@ -68,7 +68,7 @@ def verify_native(value: dict, with_extensions: bool | None = None) -> None:
         assert result['known'] is expected_known and result['can_confirm'] is expected_confirm
         assert result['request_id'] == item['request']['request_id'], 'request identity drift'
         if expected_confirm:
-            assert result['wire']['reply_to'] == '18446744073709551615', 'uint64 wire identity drift'
+            assert result['wire'] is None, 'preview wire leaked from rules session'
         else:
             assert result['wire'] is None, 'unusable selection published a reply'
     for label in ('A_after_B', 'A_after_invalid', 'A_after_ViewAs', 'A_after_bad_json'):
@@ -246,7 +246,7 @@ class VerifierTests(unittest.TestCase):
             confirm = known and label != 'B_incomplete'
             result = {'known': known, 'can_confirm': confirm,
                       'request_id': '18446744073709551615',
-                      'wire': {'reply_to': '18446744073709551615'} if confirm else None}
+                      'wire': None}
             calls.append({'label': label, 'request': {'request_id': '18446744073709551615'},
                           'response_utf8': json.dumps(result)})
         baseline = {'schema_version': 1, 'status': 'PASS', 'native_checks': checks_for(False),

@@ -1,7 +1,6 @@
 import { RULES_BRIDGE_SCHEMA, isRulesIdentity, rulesErrorMessage, verifyNativeIdentity, canonical } from "./rules-identity";
 import { installRulesCardCatalog, installRulesTranslations, resetRulesTranslations, validateRulesTranslations } from "./i18n";
 import { Command, asNumber, asString, isObject, type JsonObject } from "./protocol";
-import { INTERACTION_COMMANDS } from "./replies";
 import type { LiveSession } from "./session";
 import { gameActionModel, isSharedPresentation, type GameActionModel, type SharedPresentation } from "./game-presentation";
 import { installPackageAssets, resetPackageAssets } from "./package-assets";
@@ -92,6 +91,12 @@ interface Query {
   requestId: string;
 }
 
+interface Submission {
+  requestId: string;
+  resolve(wire: JsonObject): void;
+  reject(error: Error): void;
+}
+
 const UNBOUND: NativeStatus = { generation: -1, revision: -1, requestId: "",
   active: false, synchronizing: false, failed: false };
 // Frames are small and already validated by the native decoder one at a time.
@@ -115,7 +120,9 @@ export class RulesController {
   private desiredKey = "";
   private rejectedKey = "";
   private native: NativeStatus = UNBOUND;
-  private inFlight: { query: Query | null; id: number } | null = null;
+  private inFlight: { query: Query | null; submission: Submission | null; id: number } | null = null;
+  private receiving = false;
+  private completingSubmission: Submission | null = null;
   private resultKey = "";
   private eventCursor = "0";
   private actionModelKey = "";
@@ -135,6 +142,7 @@ export class RulesController {
 
   async initialize(session: LiveSession, hello?: JsonObject): Promise<JsonObject | null> {
     const generation = session.generation;
+    session.setNativeSubmitter((requestId, intent) => this.submitSelection(requestId, intent));
     if (!hello) {
       this.releaseWorker();
       this.session = session;
@@ -247,7 +255,7 @@ export class RulesController {
   }
 
   private idle(): boolean {
-    return this.frames.length === 0 && this.inFlight === null;
+    return this.frames.length === 0 && this.inFlight === null && this.completingSubmission === null;
   }
 
   current(session: LiveSession, selection: RulesSelection): boolean {
@@ -279,6 +287,23 @@ export class RulesController {
       && view.session_generation === String(this.native.generation)
       && view.presentation_revision === String(this.native.revision)
       && view.request_id === this.native.requestId ? view : null;
+  }
+
+  /** Submit a response intent; native ingress alone produces the transport wire. */
+  submitSelection(requestId: string, selection: JsonObject): Promise<JsonObject> {
+    if (this.disposed || !this.worker || !this.ready || !this.admitted
+        || !this.idle() || !this.native.active || this.native.failed
+        || this.native.synchronizing || this.native.requestId !== requestId
+        || this.session?.generation !== this.generation)
+      return Promise.reject(new Error("詢問已更新，請重新選擇"));
+    return new Promise((resolve, reject) => {
+      const key = `submit:${this.native.revision}:${requestId}:${JSON.stringify(selection)}`;
+      this.dispatch([{ schema_version: 1, action: "submit_selection", generation: this.generation,
+        revision: this.native.revision, request_id: requestId, selection: structuredClone(selection) }], null,
+        { requestId, resolve, reject });
+      this.status = "submitting";
+      this.resultKey = key;
+    });
   }
 
   // Exact bytes, in transport order, including every frame this client sent.
@@ -333,9 +358,14 @@ export class RulesController {
         if (this.worker !== worker || this.disposed)
           return;
         try {
+          this.receiving = true;
           this.receive(event.data);
         } catch (error) {
           this.fail(error instanceof Error ? error.message : String(error));
+        } finally {
+          this.receiving = false;
+          this.pump();
+          this.notifyDrained();
         }
       });
       worker.addEventListener("error", (event) => {
@@ -388,9 +418,6 @@ export class RulesController {
       if (!isRulesIdentity(message.info.rules_bundle)) throw new Error("rules_identity_invalid");
       this.identity = message.info.rules_bundle;
       const translations = validateRulesTranslations(message.info.translations);
-      const supported = new Set<number>(INTERACTION_COMMANDS);
-      if (Object.keys(this.identity.interaction_schemas as JsonObject).some(command => !supported.has(Number(command))))
-        throw new Error("rules_interaction_unsupported");
       installRulesCardCatalog(records);
       this.pendingTranslations = translations;
       this.registryCount = count;
@@ -414,13 +441,35 @@ export class RulesController {
         || typeof last.reason !== "string")
       throw new Error("WASM 規則串流回覆格式錯誤");
     const query = this.inFlight.query;
-    this.inFlight = null;
+    const submission = this.inFlight.submission;
     this.clearTimeout();
     // The runtime reports what it has committed; the browser never assumes it.
     this.native = nativeStatus(last.status);
     if (this.native.generation !== this.generation)
       throw new Error("WASM 規則串流連線不符");
-    if (!last.success) {
+    this.inFlight = null;
+    if (submission !== null) {
+      if (!last.success) {
+        submission.reject(new Error(rulesErrorMessage(last.reason)));
+      } else if (!isObject(last.wire) || last.wire.type !== "reply"
+          || !Number.isSafeInteger(last.wire.command) || last.wire.reply_to !== submission.requestId
+          || last.wire.has_payload !== true || !isObject(last.wire.payload)) {
+        submission.reject(new Error("native_reply_invalid"));
+        throw new Error("native_reply_invalid");
+      } else {
+        // Let the Promise consumer send/observe this reserved wire before any
+        // queued frame, render callback or preview can pump the native stream.
+        this.completingSubmission = submission;
+        submission.resolve(last.wire);
+        queueMicrotask(() => {
+          if (this.completingSubmission !== submission) return;
+          this.completingSubmission = null;
+          this.pump();
+          this.notifyDrained();
+        });
+      }
+      this.status = "ready";
+    } else if (!last.success) {
       // A refused frame leaves native state unusable until a new connection.
       // A refused query only means this exact selection has no committed answer.
       if (query === null) {
@@ -442,6 +491,7 @@ export class RulesController {
       this.status = parsed.known ? "ready" : "unsupported";
       this.error = parsed.known ? "" : parsed.reason;
     }
+    let hydrated = false;
     const presentation: unknown = last.presentation;
     if (query === null && isSharedPresentation(presentation)) {
       if (presentation.session_generation !== String(this.native.generation)
@@ -450,18 +500,28 @@ export class RulesController {
         throw new Error("WASM presentation snapshot correlation mismatch");
       const previousEvents = this.presentation?.session_generation === presentation.session_generation
         ? this.presentation.events : [];
-      this.presentation = { ...presentation,
-        events: [...previousEvents, ...presentation.events].slice(-200) };
+      const seen = new Set<string>();
+      const events = [...previousEvents, ...presentation.events]
+        .filter((event) => { const key = `${event.generation}:${event.sequence}`; if (seen.has(key)) return false; seen.add(key); return true; })
+        .slice(-200);
+      this.presentation = { ...presentation, events };
       this.eventCursor = presentation.event_cursor;
+      // Frames received while this batch ran still belong to a later snapshot.
+      // Publish only after the observed transport queue reaches its commit.
+      if (this.frames.length === 0 && this.session?.generation === this.generation) {
+        this.session.hydrateNativeView(presentation.state, this.native.requestId, events);
+        hydrated = true;
+      }
     }
     this.pump();
-    this.onChange();
+    if (!hydrated) this.onChange();
   }
 
   // Ingest every observed frame before answering anything: a query may only run
   // against fully committed state, and STATE_SYNC is native's own gate.
   private pump(): void {
-    if (this.disposed || !this.worker || !this.ready || !this.admitted || this.inFlight || this.status === "failed")
+    if (this.disposed || !this.worker || !this.ready || !this.admitted || this.inFlight
+        || this.receiving || this.completingSubmission || this.status === "failed")
       return;
     if (this.frames.length) {
       this.dispatch(this.frames.splice(0, FRAME_BATCH), null);
@@ -487,9 +547,16 @@ export class RulesController {
       { key, revision: this.native.revision, requestId: desired.requestId });
   }
 
-  private dispatch(ops: Record<string, unknown>[], query: Query | null): void {
+  private notifyDrained(): void {
+    if (this.ready && this.admitted && this.idle() && this.status !== "failed"
+        && this.session?.generation === this.generation)
+      this.session.nativeStreamDrained();
+  }
+
+  private dispatch(ops: Record<string, unknown>[], query: Query | null,
+                    submission: Submission | null = null): void {
     const id = ++this.sequence;
-    this.inFlight = { query, id };
+    this.inFlight = { query, submission, id };
     this.armTimeout(10000, "WASM 規則串流逾時；請重新連線");
     this.worker?.postMessage({ schema_version: 1, type: "stream",
       generation: this.generation, id, ops, event_cursor: this.eventCursor });
@@ -512,11 +579,16 @@ export class RulesController {
     this.releaseWorker();
     this.status = "failed";
     this.error = rulesErrorMessage(message);
+    if (this.session?.generation === this.generation)
+      this.session.nativeStreamFailed(message);
     if (notify)
       this.onChange();
   }
 
   private releaseWorker(): void {
+    this.inFlight?.submission?.reject(new Error("rules_reload_required"));
+    this.completingSubmission?.reject(new Error("rules_reload_required"));
+    this.completingSubmission = null;
     resetPackageAssets();
     this.prepareWait?.reject(new Error("rules_reload_required"));
     this.prepareWait = null;

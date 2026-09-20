@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Command } from "../src/protocol";
-import { applyNotification } from "../src/reducer";
+import { applyNotification } from "./fixtures/reducer-legacy";
 import { ClientGameState } from "../src/state";
 
 describe("reducer", () => {

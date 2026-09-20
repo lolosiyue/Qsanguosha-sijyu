@@ -1215,9 +1215,9 @@ public:
         view_as_skill = new MobileZhiMiewuVS;
     }
 
-    QDialog*getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance("mobilezhimiewu", true, true, true, false, true);
+        return SkillDialogInfo::guhuo("mobilezhimiewu", true, true, true, false, true);
     }
 
     int getPriority(TriggerEvent) const

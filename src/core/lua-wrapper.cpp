@@ -144,26 +144,6 @@ SkillDialogInfo LuaViewAsSkill::getDialogInfo() const
     return SkillDialogInfo();
 }
 
-QDialog *LuaTriggerSkill::getDialog() const
-{
-    return nullptr;
-}
-
-QDialog *LuaTriggerSkillV2::getDialog() const
-{
-    return nullptr;
-}
-
-QDialog *LuaViewAsSkillV2::getDialog() const
-{
-    return nullptr;
-}
-
-QDialog *LuaViewAsSkill::getDialog() const
-{
-    return nullptr;
-}
-
 LuaFilterSkill::LuaFilterSkill(const QString &name, Frequency frequency)
     : FilterSkill(name), view_filter(0), view_as(0)
 {

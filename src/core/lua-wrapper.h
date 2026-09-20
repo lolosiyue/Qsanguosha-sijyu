@@ -52,7 +52,6 @@ public:
     }
 
     SkillDialogInfo getDialogInfo() const override;
-    QDialog *getDialog() const override;
 
     Frequency getFrequency(const Player *target) const;
     int getPriority(TriggerEvent triggerEvent) const;
@@ -144,7 +143,6 @@ public:
     }
 
     SkillDialogInfo getDialogInfo() const override;
-    QDialog *getDialog() const override;
 
     virtual int getPriority() const;
     virtual int getPriority(TriggerEvent triggerEvent) const;
@@ -313,7 +311,6 @@ public:
     bool isEnabledAtResponse(const Player *player, const QString &pattern) const;
     bool isEnabledAtNullification(const ServerPlayer *player) const;
     SkillDialogInfo getDialogInfo() const override;
-    QDialog *getDialog() const override;
 private:
     QString guhuo_type;
     QString juguan_type;
@@ -341,7 +338,6 @@ public:
     TargetMode targetMode() const;
     TargetEffectMode targetEffectMode() const;
     SkillDialogInfo getDialogInfo() const override;
-    QDialog *getDialog() const override;
 
     void setTargetMode(TargetMode mode) { m_targetMode = mode; }
     void setTargetEffectMode(TargetEffectMode mode) { m_targetEffectMode = mode; }

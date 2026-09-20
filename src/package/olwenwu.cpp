@@ -1,4 +1,5 @@
 #include "olwenwu.h"
+#include "skill-declaration.h"
 //#include "skill.h"
 //#include "standard.h"
 #include "clientplayer.h"
@@ -835,28 +836,6 @@ public:
 	}
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-CaozhaoDialog *CaozhaoDialog::getInstance(const QString &object)
-{
-	static CaozhaoDialog *instance;
-	if (instance == nullptr || instance->objectName() != object)
-		instance = new CaozhaoDialog(object);
-
-	return instance;
-}
-
-CaozhaoDialog::CaozhaoDialog(const QString &object)
-	: GuhuoDialog(object)
-{
-}
-
-bool CaozhaoDialog::isButtonEnabled(const QString &button_name) const
-{
-	QStringList names = Self->property("CaozhaoNames").toString().split("+");
-	return !names.contains(button_name) && button_name != "normal_slash";
-}
-#endif
-
 CaozhaoCard::CaozhaoCard()
 {
 	target_fixed = true;
@@ -924,9 +903,20 @@ public:
 		return !player->hasUsed("CaozhaoCard");
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return CaozhaoDialog::getInstance("caozhao");
+		SkillDialogInfo info = SkillDialogInfo::named("caozhao", objectName());
+		info.parameters.insert("declarationType", "guhuo");
+		return info;
+	}
+
+	SkillDeclarationReason declarationReason(const Player *self, const QString &value,
+		const Card *) const override
+	{
+		const QStringList names = self ? self->property("CaozhaoNames").toString().split("+")
+			: QStringList();
+		return self && value != "normal_slash" && !names.contains(value)
+			? SkillDeclarationReason::None : SkillDeclarationReason::CandidateUnavailable;
 	}
 
 	const Card *viewAs(const Card *originalcard) const
@@ -3403,9 +3393,9 @@ public:
 	{
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return GuhuoDialog::getInstance("jinbingxin", true, false);
+		return SkillDialogInfo::guhuo("jinbingxin", true, false);
 	}
 
 	bool isEnabledAtPlay(const Player *player) const

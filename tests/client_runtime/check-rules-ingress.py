@@ -17,10 +17,15 @@ import unittest
 
 HERE = Path(__file__).resolve().parent
 CHECKS = ['native_handshake', 'native_reducer_query', 'stale_revision', 'atomic_sync', 'snapshot_rejected',
-          'failure_rollback', 'generation_isolation', 'uint64', 'reply_invalidation', 'terminal_shutdown']
+          'failure_rollback', 'generation_isolation', 'typed_cancel', 'typed_option',
+          'countdown_expired', 'shared_card_state', 'reserved_echo', 'unreserved_reply',
+          'forged_reserved_echo', 'uint64', 'reply_invalidation', 'terminal_shutdown']
 QUERIES = ['select_slash', 'query_after_mark', 'query_after_sync', 'uint64_request']
+SUBMISSIONS = ['submit_selection', 'typed_cancel', 'typed_option', 'reserved_submit']
+ECHOES = ['reserved_echo']
 NEGATIVE = ['stale_revision', 'query_during_sync', 'old_request_after_sync', 'reject_snapshot',
-            'reject_frame', 'failed_stream_blocks_query', 'old_generation_ignored', 'reply_invalidates_request']
+            'reject_frame', 'failed_stream_blocks_query', 'old_generation_ignored', 'duplicate_submit',
+            'forged_reply', 'unreserved_reply', 'expired_submit', 'old_request_after_echo']
 
 def require(condition, message):
     if not condition:
@@ -46,19 +51,46 @@ def verify_native(report):
         require(isinstance(record, dict) and isinstance(record.get('operation'), dict)
                 and isinstance(record.get('response_utf8'), str), 'invalid stream record')
         by_label.setdefault(record['label'], []).append(json.loads(record['response_utf8']))
-    for label in QUERIES + NEGATIVE:
+    required = QUERIES + ['uint64_echo_preview'] + SUBMISSIONS + ECHOES + NEGATIVE
+    for label in required:
         require(len(by_label.get(label, [])) == 1, 'required case missing/duplicated: ' + label)
     for label in QUERIES:
         result = by_label[label][0]
         require(result.get('success') is True and result.get('evaluation', {}).get('known') is True
                 and result['evaluation'].get('can_confirm') is True, 'native card query failed: ' + label)
-        require(isinstance(result['evaluation'].get('wire'), dict), 'canonical reply missing')
-    require(by_label['uint64_request'][0]['evaluation']['wire']['reply_to'] == '18446744073709551615',
-            'uint64 identity drift')
+        require(result['evaluation'].get('wire') is None, 'preview wire leaked: ' + label)
+    require(by_label['uint64_request'][0]['evaluation'].get('wire') is None,
+            'uint64 preview exposed wire')
+    require(by_label['uint64_echo_preview'][0]['evaluation'].get('wire') is None,
+            'uint64 echo preview exposed wire')
+    for label in SUBMISSIONS:
+        result = by_label[label][0]
+        require(result.get('success') is True and isinstance(result.get('wire'), dict),
+                'native submit did not publish reserved wire: ' + label)
+        if label in ('submit_selection', 'reserved_submit'):
+            require(result['wire'].get('reply_to') == '18446744073709551615',
+                    'uint64 reserved reply lost precision: ' + label)
+        else:
+            require(result['wire'].get('reply_to') == result.get('status', {}).get('request_id'),
+                    'typed submit request identity drift: ' + label)
+    require(by_label['reserved_echo'][0].get('success') is True,
+            'reserved echo was not accepted')
+    require(by_label['reserved_echo'][0].get('status', {}).get('request_id') == '',
+            'reserved echo left request active')
     for label in NEGATIVE:
         value = by_label[label][0]
         require(value.get('success') is False and value.get('can_confirm') is False
                 and 'wire' in value and value['wire'] is None, 'negative operation published a reply')
+    expected_reasons = {
+        'duplicate_submit': 'stream_reply_reserved',
+        'forged_reply': 'stream_reserved_reply_mismatch',
+        'unreserved_reply': 'stream_unreserved_reply',
+        'expired_submit': 'request_expired',
+        'old_request_after_echo': 'stream_no_matching_request',
+    }
+    for label, reason in expected_reasons.items():
+        require(by_label[label][0].get('reason', '').startswith(reason),
+                'negative rejection reason drift: ' + label)
     require(by_label['old_generation_ignored'][0]['status']['failed'] is False, 'obsolete generation poisoned state')
     for left, right in [('committed_view', 'view_during_sync'), ('view_after_sync', 'rollback_after_failure')]:
         require(len(by_label.get(left, [])) == len(by_label.get(right, [])) == 1, 'state barrier evidence missing')
@@ -161,11 +193,26 @@ def browser_run(args, baseline, assets):
 class VerifierTests(unittest.TestCase):
     def sample(self):
         records = [];
-        for label in QUERIES + NEGATIVE + ['committed_view', 'view_during_sync', 'view_after_sync', 'rollback_after_failure']:
+        for label in QUERIES + ['uint64_echo_preview'] + SUBMISSIONS + ECHOES + NEGATIVE + ['committed_view', 'view_during_sync', 'view_after_sync', 'rollback_after_failure']:
             value = {'success': label not in NEGATIVE, 'status': {'failed': False}, 'wire': None,
                      'can_confirm': False, 'state': {'committed': True}}
-            if label in QUERIES:
-                value['evaluation'] = {'known': True, 'can_confirm': True, 'wire': {'reply_to': '18446744073709551615'}}
+            if label in QUERIES + ['uint64_echo_preview']:
+                value['evaluation'] = {'known': True, 'can_confirm': True, 'wire': None}
+            if label in SUBMISSIONS:
+                request_id = '18446744073709551615' if label in ('submit_selection', 'reserved_submit') else '18'
+                value['wire'] = {'reply_to': request_id}
+                value['status']['request_id'] = request_id
+            if label in ECHOES:
+                value['status']['request_id'] = ''
+            value.update({
+                'reason': {
+                    'duplicate_submit': 'stream_reply_reserved',
+                    'forged_reply': 'stream_reserved_reply_mismatch',
+                    'unreserved_reply': 'stream_unreserved_reply',
+                    'expired_submit': 'request_expired',
+                    'old_request_after_echo': 'stream_no_matching_request',
+                }.get(label, ''),
+            })
             records.append({'label': label, 'operation': {'synthetic': True}, 'response_utf8': json.dumps(value)})
         baseline = {'schema_version': 1, 'status': 'PASS', 'checks': CHECKS, 'records': records, 'registry': {'count': 1}}
         run = {'registry': {'count': 1}, 'disposed': True, 'dedicatedWorker': True, 'documentAbsent': True,

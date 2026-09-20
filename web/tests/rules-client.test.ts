@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Command } from "../src/protocol";
-import { isEnumeratedCommand, isRulesEvaluation } from "../src/rules-client";
+import { RulesController, isEnumeratedCommand, isRulesEvaluation } from "../src/rules-client";
+import { isSharedPresentation } from "../src/game-presentation";
 
 function skill(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -39,7 +40,7 @@ function evaluation(overrides: Record<string, unknown> = {}): Record<string, unk
     declarations: ["slash"],
     declaration_dialog: { type: "guhuo", object_name: "guhuo", parameters: { left: true } },
     next_targets: { candidates: ["sgs2"], max_votes: { sgs2: 1 } },
-    wire: { command: Command.RESPONSE_CARD, reply_to: "7", payload: { schema_version: 1 } },
+    wire: null,
     ...overrides
   };
 }
@@ -50,9 +51,20 @@ describe("native command classification", () => {
       expect(isEnumeratedCommand(command)).toBe(true);
   });
 
+  it("keeps simple card prompts on direct native submission without requiring preview", () => {
+    // These DOM branches submit flat card intents to native validation. They
+    // do not use the preview-specific target/declaration selection controls.
+    const rules = new RulesController(() => {});
+    for (const command of [Command.CHOOSE_CARD, Command.AMAZING_GRACE,
+      Command.SHOW_CARD, Command.PINDIAN]) {
+      expect(isEnumeratedCommand(command)).toBe(false);
+      expect(rules.supports(command)).toBe(false);
+    }
+  });
+
   it("leaves card-use prompts to the ViewAs path", () => {
     for (const command of [Command.PLAY_CARD, Command.RESPONSE_CARD,
-      Command.ASK_PEACH, Command.NULLIFICATION, Command.AMAZING_GRACE])
+      Command.ASK_PEACH, Command.NULLIFICATION])
       expect(isEnumeratedCommand(command)).toBe(false);
   });
 });
@@ -67,7 +79,7 @@ describe("rules evaluation contract", () => {
       skills: [], declarations: [], declaration_dialog: {}, card_text: "", selectable_cards: [],
       card_zones: {}, selection_min: 0, selection_max: 5,
       interaction: { type: "SkillGuanxing", payload: { cards: [1, 2] } },
-      wire: { command: Command.SKILL_GUANXING, reply_to: "7", payload: {} }
+      wire: null
     }))).toBe(true);
   });
 
@@ -103,5 +115,17 @@ describe("rules evaluation contract", () => {
   it("keeps rejecting a malformed wire envelope", () => {
     expect(isRulesEvaluation(evaluation({ wire: { command: 1, reply_to: 7, payload: {} } }))).toBe(false);
     expect(isRulesEvaluation(evaluation({ wire: null }))).toBe(true);
+  });
+});
+
+describe("native presentation contract", () => {
+  it("requires raw state and cursor keyed formatted events", () => {
+    const event = { generation: "0", sequence: "4", command: Command.GAME_START, text: "開始" };
+    expect(isSharedPresentation({ schema_version: 1, session_generation: "0",
+      presentation_revision: "3", request_id: "7", state: { self_name: "sgs1" },
+      plain_text: "開始", events: [event], event_cursor: "4" })).toBe(true);
+    expect(isSharedPresentation({ schema_version: 1, session_generation: "0",
+      presentation_revision: "3", request_id: "7", view_state: {}, plain_text: "",
+      events: [event], event_cursor: "4" })).toBe(false);
   });
 });

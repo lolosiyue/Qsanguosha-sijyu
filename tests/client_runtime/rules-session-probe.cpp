@@ -351,9 +351,7 @@ int main(int argc, char **argv)
             check(result.value("known") == QJsonValue(known)
                 && result.value("can_confirm") == QJsonValue(confirm), label);
             check(result.value("request_id") == input.value("request_id"), "uint64 request identity changed");
-            if (confirm) check(result.value("wire").toObject().value("reply_to") == input.value("request_id"),
-                               "canonical wire identity changed");
-            else check(result.value("wire").isNull(), "failed/incomplete selection retained a reply");
+            check(result.value("wire").isNull(), "preview bypassed the persistent submission boundary");
             check(QSanEngine::Self == nullptr && engine->currentRoomContext() == nullptr,
                   "projected Self or RoomContext leaked out of a query");
             check(globals() == before, "ServerInfo leaked out of successful or rejected query");

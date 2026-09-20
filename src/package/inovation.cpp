@@ -3851,9 +3851,9 @@ public:
         events << EventPhaseChanging;
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance(objectName(), true, false);
+        return SkillDialogInfo::guhuo(objectName(), true, false);
     }
 
     bool triggerable(const ServerPlayer *target) const

@@ -5,6 +5,7 @@
 #include "interaction-model.h"
 #include "interaction-reply-encoder.h"
 #include "runtime/client-selection-runtime.h"
+#include "skill-declaration.h"
 #include "standard.h"
 #include "tui-client-player.h"
 #include "tui-play-skills.h"
@@ -267,6 +268,10 @@ int main(int argc, char **argv)
                         QStringLiteral("nosguhuo")});
         state.setCardValue(1, QStringLiteral("owner"), QStringLiteral("sgs1"));
         state.setCardValue(1, QStringLiteral("place"), static_cast<int>(Player::PlaceHand));
+        // Dismantlement is target-aware: its declaration is only available
+        // when an alive sibling has a card that can be dismantled.
+        state.setCardValue(2, QStringLiteral("owner"), QStringLiteral("sgs2"));
+        state.setCardValue(2, QStringLiteral("place"), static_cast<int>(Player::PlaceHand));
         players.sync();
         room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
         const QList<TuiSkillDeclaration> declarations
@@ -280,8 +285,30 @@ int main(int argc, char **argv)
               "a delayed trick stays out of a dialog that did not ask for one");
         check(findDeclaration(declarations, "peach") != nullptr && !findDeclaration(declarations, "peach")->enabled,
               "an unplayable declaration is listed and marked, never dropped");
+        check(QSanEngine::Self->getTag(QStringLiteral("nosguhuo")).isNull(),
+              "listing declaration candidates does not install a native declaration tag");
         check(tuiSkillNeedsDeclaration(QStringLiteral("nosguhuo"), {}),
               "a skill whose dialog is open has to be told what to declare");
+
+        // Validation must consult live player state instead of trusting the
+        // snapshot. Peach is unavailable at full HP, but becomes a valid
+        // declaration after the fixture is lowered to 3 HP.
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("hp"), 3);
+        players.sync();
+        SkillDeclarationSession liveState(
+            QStringLiteral("nosguhuo"), QSanEngine::Self,
+            CardUseStruct::CARD_USE_REASON_PLAY);
+        check(findDeclaration(tuiSkillDeclarations(QStringLiteral("nosguhuo"), {}), "peach") != nullptr,
+              "the live-state fixture still exposes peach");
+        check(liveState.validate(QStringLiteral("peach")).accepted,
+              "a declaration valid in the snapshot is accepted before state changes");
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("hp"), 4);
+        players.sync();
+        const SkillDeclarationValidation lateState
+            = liveState.validate(QStringLiteral("peach"));
+        check(!lateState.accepted
+                  && lateState.reason == SkillDeclarationReason::CardUnavailable,
+              "validation rejects a previously valid declaration after live state changes");
 
         // Banned packages are the server's, and the text client has to pass
         // them in: nothing ever fills the engine-wide ServerInfo here. The one
@@ -325,6 +352,13 @@ int main(int argc, char **argv)
         check(declared != nullptr
                   && declared->getSkillName() == QLatin1String("nosguhuo"),
               "the declared card carries the skill that named it");
+
+        error.clear();
+        check(!tuiApplySkillDeclaration(QStringLiteral("nosguhuo"),
+                  QStringLiteral("no_such_card"), {}, &error) && !error.isEmpty(),
+              "an invalid replacement is rejected after a valid declaration");
+        check(QSanEngine::Self->getTag(QStringLiteral("nosguhuo")).isNull(),
+              "an invalid replacement clears the previous declaration");
 
         // What the dialog is for: NosGuhuo::viewAs() hands back nothing at all
         // until the declaration is sitting in the tag, so the text client used

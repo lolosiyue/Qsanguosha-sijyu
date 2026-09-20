@@ -1261,74 +1261,17 @@ public:
         SelectSkill(zuoci);
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-#if !defined(QSAN_ENGINE_BUILD)
-        static HuashenDialog *dialog;
-
-        if (dialog == nullptr)
-            dialog = new HuashenDialog(objectName());
-
-        return dialog;
-#else
-        return nullptr;
-#endif
+        SkillDialogInfo info = SkillDialogInfo::named("huashen", objectName());
+        info.parameters.insert("viewOnly", true);
+        return info;
     }
 };
 
 
 // 1. 建構子實作：接收參數並賦值給 m_propertyName
-#if !defined(QSAN_ENGINE_BUILD)
-HuashenDialog::HuashenDialog(const QString &propertyName)
-    : GeneralOverview(), m_propertyName(propertyName)
-{
-    setPreviewMode(true);
-}
 
-// 2. 彈出視窗與載入資料實作
-void HuashenDialog::popup()
-{
-    if (Self == nullptr || m_propertyName.isEmpty())
-        return;
-
-    QString skill_name = m_propertyName;
-    if (skill_name.endsWith("_general", Qt::CaseInsensitive))
-        skill_name.chop(8);
-
-    QByteArray key = m_propertyName.toLatin1();
-    QVariant pile_value = Self->property(key.constData());
-
-    QStringList general_names;
-    if (pile_value.userType() == QMetaType::QString) {
-        QString pile_str = pile_value.toString();
-        if (!pile_str.isEmpty())
-            general_names = pile_str.split("+", Qt::SkipEmptyParts);
-    } else if (pile_value.userType() == QMetaType::QVariantList) {
-        foreach (const QVariant &v, pile_value.toList()) {
-            QString name = v.toString();
-            if (!name.isEmpty())
-                general_names << name;
-        }
-    } else if (pile_value.canConvert<QStringList>()) {
-        general_names = pile_value.toStringList();
-    } else {
-        QString pile_str = pile_value.toString();
-        if (!pile_str.isEmpty())
-            general_names = pile_str.split("+", Qt::SkipEmptyParts);
-    }
-
-    QList<const General *> generals;
-    foreach (const QString &general_name, general_names) {
-        const General *general = Sanguosha->getGeneral(general_name);
-        if (general != nullptr)
-            generals << general;
-    }
-
-    fillGenerals(generals);
-    setWindowTitle(Sanguosha->translate(skill_name));
-    show();
-}
-#endif
 
 class HuashenSelect : public PhaseChangeSkill
 {

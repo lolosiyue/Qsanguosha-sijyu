@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkUiLocalization } from "./check-ui-localization.mjs";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "..");
@@ -61,6 +62,7 @@ export function checkTranslations({ translationFile = translations, languageRoot
 
   if (newestMtime > dumpMtime)
     throw new Error(`${path.relative(repoRoot, translationFile)} is older than ${path.relative(repoRoot, newestLua)}`);
+  checkUiLocalization();
   return luaFiles.length;
 }
 

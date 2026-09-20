@@ -120,8 +120,8 @@ type 或 legacy `qml_path` 會 fail closed，不讀取 QML path。
 
 牌名、武將、勢力、模式及技能顯示使用 Engine translation；wire card text 另以
 精確 `Card::toString()` 保留，顯示翻譯不會改動 protocol response。所有固定文字
-經 `QCoreApplication::translate("QSanguoshaTui", ...)`，缺翻譯時安全退回簡體中文
-source text／object name。
+經 `tuiText()` → `Engine::translate()`，文字集中於 `lang/zh_CN/TUICommon.lua`；
+缺翻譯時會顯示穩定 key，靜態本地化閘門會檢查本批來源的 key 覆蓋。
 
 ## State、輸入與安全
 

@@ -73,7 +73,7 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 
 	// This is a normal widget instead of a skin button because takeover is a
 	// new action and old skin packs do not contain a replay/takeover sprite.
-	takeover_button = new QPushButton(tr("接管"));
+	takeover_button = new QPushButton(tr("Take over"));
 	takeover_button->setFixedSize(52, S_BUTTON_HEIGHT);
 	QGraphicsProxyWidget *takeoverWidget = new QGraphicsProxyWidget(this);
 	takeoverWidget->setWidget(takeover_button);
@@ -81,8 +81,8 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 	connect(takeover_button, &QPushButton::clicked,
 		this, &ReplayerControlBar::requestTakeover);
 
-	export_button = new QPushButton(QStringLiteral("匯出"));
-	export_button->setToolTip(QStringLiteral("匯出 Bug 診斷包"));
+	export_button = new QPushButton(tr("Export"));
+	export_button->setToolTip(tr("Export bug diagnostic bundle"));
 	export_button->setFixedSize(52, S_BUTTON_HEIGHT);
 	QGraphicsProxyWidget *exportWidget = new QGraphicsProxyWidget(this);
 	exportWidget->setWidget(export_button);
@@ -157,9 +157,9 @@ void ReplayerControlBar::requestTakeover()
 	const GlobalSnapshot state = snapshot->getState();
 	QList<int> aliveRows;
 	QDialog dialog(QApplication::activeWindow());
-	dialog.setWindowTitle(tr("接管座位"));
+	dialog.setWindowTitle(tr("Take over a seat"));
 	QVBoxLayout *layout = new QVBoxLayout(&dialog);
-	layout->addWidget(new QLabel(tr("選擇要接管的座位："), &dialog));
+	layout->addWidget(new QLabel(tr("Select a seat to take over:"), &dialog));
 	QComboBox *seatBox = new QComboBox(&dialog);
 
 	int preferredRow = -1;
@@ -214,9 +214,9 @@ void ReplayerControlBar::requestTakeover()
 			break;
 		}
 	}
-	const QString prompt = tr("從第 %1 回合（%2 的回合）接管？")
+	const QString prompt = tr("Take over from turn %1 (%2's turn)?")
 		.arg(QString::number(snapshot->getTurnSerial()), actor);
-	if (QMessageBox::question(QApplication::activeWindow(), tr("接管"), prompt,
+	if (QMessageBox::question(QApplication::activeWindow(), tr("Take over"), prompt,
 		QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
 		return;
 
@@ -298,7 +298,7 @@ void RoomReplayController::createReplayControlBar(Dashboard *dashboard)
 		if (!m_replayExportInProgress || m_pendingReplayCaptureId == 0)
 			return;
 		finishReplayDiagnosticExport(QJsonObject(), false,
-			QStringLiteral("Replay 已播放完畢，無法建立事件 barrier"));
+			tr("Replay has finished; an event barrier cannot be created"));
 	});
 }
 
@@ -330,9 +330,9 @@ void RoomReplayController::exportReplayDiagnosticBundle()
 	const QString defaultName = QStringLiteral("%1-bug-%2.qsgbug.zip")
 		.arg(replayInfo.completeBaseName(), timestamp);
 	QString outputPath = QFileDialog::getSaveFileName(m_mainWindow,
-		QStringLiteral("匯出 Bug 診斷包"),
+		tr("Export bug diagnostic bundle"),
 		QDir(replayInfo.absolutePath()).filePath(defaultName),
-		QStringLiteral("QSanguosha Bug 診斷包 (*.qsgbug.zip)"));
+		tr("QSanguosha bug diagnostic bundle (*.qsgbug.zip)"));
 	if (outputPath.isEmpty())
 		return;
 	if (outputPath.endsWith(QStringLiteral(".qsgbug.zip"), Qt::CaseInsensitive)) {
@@ -353,7 +353,7 @@ void RoomReplayController::exportReplayDiagnosticBundle()
 	const quint64 requestId = replayer->requestStateCaptureBoundary();
 	if (requestId == 0) {
 		finishReplayDiagnosticExport(QJsonObject(), false,
-			QStringLiteral("Replay 已結束或事件 barrier 無法建立"));
+			tr("Replay has ended or the event barrier cannot be created"));
 		return;
 	}
 	m_pendingReplayCaptureId = requestId;
@@ -363,7 +363,7 @@ void RoomReplayController::exportReplayDiagnosticBundle()
 			|| m_pendingReplayCaptureId != requestId)
 			return;
 		finishReplayDiagnosticExport(QJsonObject(), false,
-			QStringLiteral("等待精確事件 barrier 逾時 2 秒"));
+			tr("Timed out after 2 seconds waiting for an exact event barrier"));
 	});
 }
 
@@ -397,7 +397,7 @@ void RoomReplayController::finishReplayDiagnosticExport(const QJsonObject &state
 	Replayer *replayer = ClientInstance ? ClientInstance->getReplayer() : nullptr;
 	ReplayDiagnosticExportResult result;
 	if (!replayer) {
-		result.error = QStringLiteral("Replay 已關閉");
+		result.error = tr("Replay has been closed");
 	} else {
 		ReplayDiagnosticExportRequest request;
 		request.replayPath = replayer->getPath();
@@ -427,26 +427,24 @@ void RoomReplayController::finishReplayDiagnosticExport(const QJsonObject &state
 	const QString outputPath = m_pendingReplayBundlePath;
 	m_pendingReplayBundlePath.clear();
 	if (!result.success) {
-		QMessageBox::critical(m_mainWindow, QStringLiteral("匯出失敗"),
-			result.error.isEmpty() ? QStringLiteral("無法建立診斷包") : result.error);
+		QMessageBox::critical(m_mainWindow, tr("Export failed"),
+			result.error.isEmpty() ? tr("Unable to create diagnostic bundle") : result.error);
 		return;
 	}
 
-	QString stateStatus = QStringLiteral("已包含");
+	QString stateStatus = tr("Included");
 	if (result.omittedFiles.contains(QStringLiteral("state-now.json"))) {
-		stateStatus = QStringLiteral("已省略：%1").arg(
+		stateStatus = tr("Omitted: %1").arg(
 			result.omittedFiles.value(QStringLiteral("state-now.json")));
 	}
-	QString diagnosticsStatus = QStringLiteral("已包含");
+	QString diagnosticsStatus = tr("Included");
 	if (result.omittedFiles.contains(QStringLiteral("diagnostics.json"))) {
-		diagnosticsStatus = QStringLiteral("已省略：%1").arg(
+		diagnosticsStatus = tr("Omitted: %1").arg(
 			result.omittedFiles.value(QStringLiteral("diagnostics.json")));
 	}
 
-	QMessageBox::information(m_mainWindow, QStringLiteral("匯出完成"),
-		QStringLiteral("診斷包：%1\nstate-now.json：%2\ndiagnostics.json：%3\n\n"
-			"注意：Replay snapshot 可能包含本機路徑；Replay 與 state-now "
-			"也可能包含玩家名稱、聊天、房間或連線中繼資料。")
+	QMessageBox::information(m_mainWindow, tr("Export complete"),
+		tr("Diagnostic bundle: %1\nstate-now.json: %2\ndiagnostics.json: %3\n\nReplay snapshots may contain local paths. Replay and state-now may also contain player names, chat, room or connection metadata.")
 			.arg(QDir::toNativeSeparators(outputPath), stateStatus,
 				diagnosticsStatus));
 }

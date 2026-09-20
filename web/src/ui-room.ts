@@ -6,7 +6,6 @@ import {
   roleIconUrls
 } from "./assets";
 import { playerHandLabel, targetRangeLabel } from "./player-metrics";
-import { formatPresentationEvent, logPlayerName } from "./log-text";
 import { tr } from "./i18n";
 import {
   Command,
@@ -311,7 +310,7 @@ export function gameResultView(bind: UiBind): HTMLElement {
     const list = el("ul", { class: "game-result-winners" });
     for (const winner of result.winners) {
       const name = winner.objectName
-        ? (logPlayerName(session.state, winner.objectName) || winner.objectName)
+        ? (asString(session.state.player(winner.objectName)?.screen_name) || winner.objectName)
         : "";
       const role = winner.role ? `（${resultRoleLabel(winner.role)}）` : "";
       list.append(el("li", {}, [`${name || resultRoleLabel(winner.role)}${name ? role : ""}`]));
@@ -363,10 +362,8 @@ export function logView(bind: UiBind): HTMLElement {
     ...events.filter((event) => event.command === Command.SPEAK).slice(-80)
   ];
   for (const event of visibleEvents) {
-    const line = formatPresentationEvent(event, (name) =>
-      event.command === Command.SPEAK
-        ? (asString(session.state.player(name)?.screen_name) || name)
-        : logPlayerName(session.state, name));
+    // Native GameEventStream already supplies the authoritative formatted text.
+    const line = event.text;
     if (!line)
       continue;
     const target = event.command === Command.SPEAK ? chat : battle;

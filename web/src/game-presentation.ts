@@ -41,6 +41,7 @@ export interface GamePresentationEvent {
   sequence: string;
   command: number;
   text: string;
+  payload?: JsonObject;
 }
 
 export interface SharedPresentation {
@@ -48,7 +49,8 @@ export interface SharedPresentation {
   session_generation: string;
   presentation_revision: string;
   request_id: string;
-  view_state: JsonObject;
+  state: JsonObject;
+  view_state?: JsonObject;
   plain_text: string;
   events: GamePresentationEvent[];
   event_cursor: string;
@@ -150,9 +152,10 @@ export function isSharedPresentation(value: unknown): value is SharedPresentatio
     && typeof value.session_generation === "string"
     && typeof value.presentation_revision === "string"
     && typeof value.request_id === "string"
-    && isObject(value.view_state) && typeof value.plain_text === "string"
+    && isObject(value.state) && typeof value.plain_text === "string"
     && typeof value.event_cursor === "string" && Array.isArray(value.events)
     && value.events.every((event) => isObject(event)
       && typeof event.generation === "string" && typeof event.sequence === "string"
-      && Number.isSafeInteger(event.command) && typeof event.text === "string");
+      && Number.isSafeInteger(event.command) && typeof event.text === "string"
+      && (event.payload === undefined || isObject(event.payload)));
 }

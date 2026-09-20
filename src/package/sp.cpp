@@ -1,4 +1,5 @@
 #include "sp.h"
+#include "skill-declaration.h"
 //#include "client.h"
 //#include "general.h"
 //#include "skill.h"
@@ -257,83 +258,6 @@ public:
     }
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-WeidiDialog *WeidiDialog::getInstance()
-{
-    static WeidiDialog *instance;
-    if (instance == nullptr)
-        instance = new WeidiDialog();
-
-    return instance;
-}
-
-WeidiDialog::WeidiDialog()
-{
-    setObjectName("weidi");
-    setWindowTitle(Sanguosha->translate("weidi"));
-    group = new QButtonGroup(this);
-
-    button_layout = new QVBoxLayout;
-    setLayout(button_layout);
-    connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectSkill(QAbstractButton *)));
-}
-
-void WeidiDialog::popup()
-{
-    Self->removeTag(objectName());
-    foreach (QAbstractButton *button, group->buttons()) {
-        button_layout->removeWidget(button);
-        group->removeButton(button);
-        delete button;
-    }
-
-    QList<const ViewAsSkill *> vs_skills = WeidiViewAsSkill::getLordViewAsSkills(Self);
-    int count = 0;
-    QString name;
-    foreach (const ViewAsSkill *skill, vs_skills) {
-        QAbstractButton *button = createSkillButton(skill->objectName());
-        button->setEnabled(skill->isAvailable(Self, Sanguosha->currentRoomState()->getCurrentCardUseReason(),
-            Sanguosha->currentRoomState()->getCurrentCardUsePattern()));
-        if (button->isEnabled()) {
-            count++;
-            name = skill->objectName();
-        }
-        button_layout->addWidget(button);
-    }
-
-    if (count == 0) {
-        emit onButtonClick();
-        return;
-    } else if (count == 1) {
-        Self->setTag(objectName(), name);
-        emit onButtonClick();
-        return;
-    }
-
-    exec();
-}
-
-void WeidiDialog::selectSkill(QAbstractButton *button)
-{
-    Self->setTag(objectName(), button->objectName());
-    emit onButtonClick();
-    accept();
-}
-
-QAbstractButton *WeidiDialog::createSkillButton(const QString &skill_name)
-{
-    const Skill *skill = Sanguosha->getSkill(skill_name);
-    if (!skill) return nullptr;
-
-    QCommandLinkButton *button = new QCommandLinkButton(Sanguosha->translate(skill_name));
-    button->setObjectName(skill_name);
-    button->setToolTip(skill->getDescription(Self));
-
-    group->addButton(button);
-    return button;
-}
-#endif
-
 class Weidi : public GameStartSkill
 {
 public:
@@ -348,9 +272,47 @@ public:
         return;
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return WeidiDialog::getInstance();
+        SkillDialogInfo info = SkillDialogInfo::named("weidi", objectName());
+        info.parameters.insert("customDeclaration", true);
+        return info;
+    }
+
+    QList<SkillDeclarationCandidate> declarationCandidates(
+        const Player *self, CardUseStruct::CardUseReason reason,
+        const QString &pattern, const QStringList &bannedPackages,
+        quint64 requestId) const override
+    {
+        Q_UNUSED(bannedPackages)
+        Q_UNUSED(requestId)
+        QList<SkillDeclarationCandidate> result;
+        if (!self || !Sanguosha) return result;
+        foreach (const ViewAsSkill *skill, WeidiViewAsSkill::getLordViewAsSkills(self)) {
+            if (!skill) continue;
+            SkillDeclarationCandidate candidate;
+            candidate.value = skill->objectName();
+            candidate.label = Sanguosha->translate(candidate.value);
+            candidate.kind = "skill";
+            candidate.enabled = skill->isAvailable(self, reason, pattern);
+            candidate.reason = candidate.enabled ? SkillDeclarationReason::None
+                                                   : SkillDeclarationReason::CandidateUnavailable;
+            result << candidate;
+        }
+        return result;
+    }
+
+    SkillDeclarationReason declarationReason(const Player *self, const QString &value,
+        const Card *) const override
+    {
+        if (!self || !Sanguosha) return SkillDeclarationReason::CandidateUnavailable;
+        foreach (const ViewAsSkill *skill, WeidiViewAsSkill::getLordViewAsSkills(self)) {
+            if (skill && skill->objectName() == value
+                && skill->isAvailable(self, Sanguosha->getCurrentCardUseReason(),
+                    Sanguosha->getCurrentCardUsePattern()))
+                return SkillDeclarationReason::None;
+        }
+        return SkillDeclarationReason::CandidateUnavailable;
     }
 };
 
@@ -1908,9 +1870,9 @@ public:
         return !(pattern == "nullification");
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance("zhanyi", true, false);
+        return SkillDialogInfo::guhuo("zhanyi", true, false);
     }
 
     bool viewFilter(const Card *to_select) const

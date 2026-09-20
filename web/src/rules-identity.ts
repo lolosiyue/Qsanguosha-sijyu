@@ -1,6 +1,6 @@
 import { isObject, type JsonObject } from "./protocol";
 
-export const RULES_BRIDGE_SCHEMA = 2;
+export const RULES_BRIDGE_SCHEMA = 3;
 const hash = /^[0-9a-f]{64}$/;
 const hashKeys = ["bundle_id", "code_id", "cpp_hash", "card_registry_hash", "lua_hash", "bindings_abi"];
 

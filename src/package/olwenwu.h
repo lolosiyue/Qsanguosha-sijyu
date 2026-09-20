@@ -4,6 +4,9 @@
 //#include "package.h"
 //#include "card.h"
 //#include "skill.h"
+#if !defined(QSAN_ENGINE_BUILD)
+#include "../ui/special-skill-dialogs.h"
+#endif
 #include "wind.h"
 
 class LiPackage : public Package
@@ -49,26 +52,6 @@ public:
     Q_INVOKABLE ChexuanCard();
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
-
-#if !defined(QSAN_ENGINE_BUILD)
-class CaozhaoDialog : public GuhuoDialog
-{
-    Q_OBJECT
-
-public:
-    static CaozhaoDialog *getInstance(const QString &object);
-
-protected:
-    explicit CaozhaoDialog(const QString &object);
-    bool isButtonEnabled(const QString &button_name) const;
-};
-#else
-class CaozhaoDialog
-{
-public:
-    static QDialog *getInstance(const QString &) { return nullptr; }
-};
-#endif
 
 class CaozhaoCard : public SkillCard
 {

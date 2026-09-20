@@ -43,7 +43,7 @@ Item {
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: 20
-        text: "剩余时间: " + remainingTime
+        text: qsTr("Time remaining: %1").arg(remainingTime)
         font.pixelSize: 24
         color: "white"
         style: Text.Outline
@@ -55,7 +55,7 @@ Item {
         id: scoreText
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
-        text: "分数: " + score
+        text: qsTr("Score: %1").arg(score)
         font.pixelSize: 32
         color: "white"
         style: Text.Outline
@@ -66,7 +66,7 @@ Item {
     Text {
         id: gameOverText
         anchors.centerIn: parent
-        text: "游戏结束！得分: " + score
+        text: qsTr("Game over! Score: %1").arg(score)
         font.pixelSize: 48
         color: "red"
         visible: false

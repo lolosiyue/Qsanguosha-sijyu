@@ -2,6 +2,9 @@
 #define Tenyear_H
 
 //#include "standard.h"
+#if !defined(QSAN_ENGINE_BUILD)
+#include "../ui/special-skill-dialogs.h"
+#endif
 #include "ol.h"
 
 class ZhizheCard : public SkillCard
@@ -711,36 +714,6 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void onUse(Room *room, CardUseStruct &card_use) const;
 };
-
-#if !defined(QSAN_ENGINE_BUILD)
-class PingjianDialog : public QDialog
-{
-    Q_OBJECT
-
-public:
-    static PingjianDialog *getInstance();
-
-public slots:
-    void popup();
-    void selectSkill(QAbstractButton *button);
-
-private:
-    explicit PingjianDialog();
-
-    QAbstractButton *createSkillButton(const QString &skill_name);
-    QButtonGroup *group;
-    QVBoxLayout *button_layout;
-
-signals:
-    void onButtonClick();
-};
-#else
-class PingjianDialog
-{
-public:
-    static QDialog *getInstance() { return nullptr; }
-};
-#endif
 
 class PingjianCard : public SkillCard
 {

@@ -1,6 +1,5 @@
 import { UNKNOWN_CARD_URL, assetImg, cardFaceUrl, generalFaceUrls } from "./assets";
 import { formatInteractionPrompt, tr } from "./i18n";
-import { logPlayerName } from "./log-text";
 import {
   Command,
   PLACE_DELAYED_TRICK,
@@ -14,7 +13,7 @@ import {
   isObject,
   type JsonObject
 } from "./protocol";
-import { replyCommand, replyForCommand } from "./replies";
+import { cardsIntent, responseIntent } from "./replies";
 import type { RulesEvaluation } from "./rules-client";
 import { cardLabel, renderCard } from "./ui-cards";
 import { waitingRoom } from "./ui-connect";
@@ -22,45 +21,36 @@ import { el, hasCommand } from "./ui-dom";
 import type { UiBind } from "./ui-types";
 
 const INTERACTION_TITLES: Record<number, string> = {
-  [Command.CHOOSE_ROLE]: "分配身分",
-  [Command.CHOOSE_GENERAL]: "選擇武將",
-  [Command.ASK_GENERAL]: "選擇武將",
-  [Command.CHOOSE_DIRECTION]: "選擇座次方向",
-  [Command.PLAY_CARD]: "出牌",
-  [Command.RESPONSE_CARD]: "打出牌",
-  [Command.DISCARD_CARD]: "棄牌",
-  [Command.EXCHANGE_CARD]: "換牌",
-  [Command.ASK_PEACH]: "求桃",
-  [Command.NULLIFICATION]: "無懈可擊",
-  [Command.MULTIPLE_CHOICE]: "選擇",
-  [Command.INVOKE_SKILL]: "發動技能",
-  [Command.CHOOSE_PLAYER]: "選擇角色",
-  [Command.CHOOSE_CARD]: "選擇卡牌",
-  [Command.CHOOSE_SUIT]: "選擇花色",
-  [Command.CHOOSE_KINGDOM]: "選擇勢力",
-  [Command.AMAZING_GRACE]: "五穀豐登",
-  [Command.SKILL_GUANXING]: "觀星",
-  [Command.SKILL_GONGXIN]: "攻心",
-  [Command.SKILL_YIJI]: "遺計",
-  [Command.PINDIAN]: "拼點",
-  [Command.TRIGGER_ORDER]: "技能發動順序",
-  [Command.ARRANGE_GENERAL]: "排列武將",
-  [Command.LUCK_CARD]: "手氣卡",
-  [Command.SURRENDER]: "投降",
-  [Command.CHOOSE_ORDER]: "選擇順序",
-  [Command.CHOOSE_ROLE_3V3]: "選擇身分",
-  [Command.SHOW_CARD]: "展示牌",
-  [Command.QML_INTERACT]: "互動"
+  [Command.CHOOSE_ROLE]: "web.interaction.choose_role",
+  [Command.CHOOSE_GENERAL]: "web.interaction.choose_general",
+  [Command.ASK_GENERAL]: "web.interaction.choose_general",
+  [Command.CHOOSE_DIRECTION]: "web.interaction.choose_direction",
+  [Command.PLAY_CARD]: "web.interaction.play_card",
+  [Command.RESPONSE_CARD]: "web.interaction.response_card",
+  [Command.DISCARD_CARD]: "web.interaction.discard_card",
+  [Command.EXCHANGE_CARD]: "web.interaction.exchange_card",
+  [Command.ASK_PEACH]: "web.interaction.ask_peach",
+  [Command.NULLIFICATION]: "web.interaction.nullification",
+  [Command.MULTIPLE_CHOICE]: "web.interaction.choose",
+  [Command.INVOKE_SKILL]: "web.interaction.invoke_skill",
+  [Command.CHOOSE_PLAYER]: "web.interaction.choose_player",
+  [Command.CHOOSE_CARD]: "web.interaction.choose_card",
+  [Command.CHOOSE_SUIT]: "web.interaction.choose_suit",
+  [Command.CHOOSE_KINGDOM]: "web.interaction.choose_kingdom",
+  [Command.AMAZING_GRACE]: "web.interaction.amazing_grace",
+  [Command.SKILL_GUANXING]: "web.interaction.guanxing",
+  [Command.SKILL_GONGXIN]: "web.interaction.gongxin",
+  [Command.SKILL_YIJI]: "web.interaction.yiji",
+  [Command.PINDIAN]: "web.interaction.pindian",
+  [Command.TRIGGER_ORDER]: "web.interaction.trigger_order",
+  [Command.ARRANGE_GENERAL]: "web.interaction.arrange_general",
+  [Command.LUCK_CARD]: "web.interaction.luck_card",
+  [Command.SURRENDER]: "web.interaction.surrender",
+  [Command.CHOOSE_ORDER]: "web.interaction.choose_order",
+  [Command.CHOOSE_ROLE_3V3]: "web.interaction.choose_role",
+  [Command.SHOW_CARD]: "web.interaction.show_card",
+  [Command.QML_INTERACT]: "web.interaction.qml_interact"
 };
-
-function physicalCardText(bind: UiBind, cardIds: number[]): string {
-  const ids = cardIds.filter((id) => id >= 0);
-  if (ids.length === 1) {
-    const card = bind.session.state.card(ids[0]);
-    return asString(card?.card_string) || String(ids[0]);
-  }
-  return "";
-}
 
 function optionButtons(bind: UiBind, values: string[], onPick: (value: string) => void): HTMLElement {
   const row = el("div", { class: "cards" });
@@ -84,51 +74,67 @@ function generalPicker(bind: UiBind, values: string[], onPick: (value: string) =
 }
 
 const RULES_STATUS_TEXT: Record<string, string> = {
-  idle: "準備規則資料",
-  loading: "載入規則中",
-  evaluating: "判定選擇中",
-  failed: "規則預覽已停用；請重新連線",
-  unsupported: "目前內容不受此規則套件支援"
+  idle: "web.rules.status.idle",
+  loading: "web.rules.status.loading",
+  evaluating: "web.rules.status.evaluating",
+  failed: "web.rules.status.failed",
+  unsupported: "web.rules.status.unsupported"
+};
+
+const INTERACTION_ERROR_TEXT: Record<string, string> = {
+  native_submission_pending: "web.rules.error.native_submission_pending",
+  native_reply_invalid: "web.rules.error.native_reply_invalid",
+  native_submitter_unavailable: "web.rules.error.native_submitter_unavailable"
 };
 
 const RULES_REASON_TEXT: Record<string, string> = {
-  select_one_card: "請選擇一張牌",
-  incomplete_card_selection: "請繼續選擇子卡",
-  declaration_required: "請先選擇宣告",
-  invalid_declaration: "請重新選擇宣告",
-  incomplete_targets: "請選擇合適目標",
-  skill_unavailable: "目前無法發動此技能",
-  subcard_rejected: "請移除不符合技能條件的子卡",
-  card_unavailable: "目前無法使用此牌",
-  card_limited: "此牌受到使用限制",
-  pattern_mismatch: "此牌不符合目前詢問",
-  target_prohibited: "此牌無法指定該目標",
-  target_unavailable: "目標已不可指定",
-  rearrangement_incomplete: "每張牌都要放到上或下",
-  rearrangement_out_of_range: "上下兩區的張數不符合要求",
-  selection_count_out_of_range: "選擇的張數不符合要求",
-  incomplete_selection_state: "缺少規則資料"
+  select_one_card: "web.rules.reason.select_one_card",
+  incomplete_card_selection: "web.rules.reason.incomplete_card_selection",
+  declaration_required: "web.rules.reason.declaration_required",
+  invalid_declaration: "web.rules.reason.invalid_declaration",
+  incomplete_targets: "web.rules.reason.incomplete_targets",
+  skill_unavailable: "web.rules.reason.skill_unavailable",
+  subcard_rejected: "web.rules.reason.subcard_rejected",
+  card_unavailable: "web.rules.reason.card_unavailable",
+  card_limited: "web.rules.reason.card_limited",
+  pattern_mismatch: "web.rules.reason.pattern_mismatch",
+  target_prohibited: "web.rules.reason.target_prohibited",
+  target_unavailable: "web.rules.reason.target_unavailable",
+  rearrangement_incomplete: "web.rules.reason.rearrangement_incomplete",
+  rearrangement_out_of_range: "web.rules.reason.rearrangement_out_of_range",
+  selection_count_out_of_range: "web.rules.reason.selection_count_out_of_range",
+  incomplete_selection_state: "web.rules.reason.incomplete_selection_state"
 };
 
 const DECLARATION_LABELS: Record<string, string> = {
-  guhuo: "宣告牌名",
-  juguan: "宣告牌名",
-  tiansuan: "宣告"
+  guhuo: "web.declaration.card_name",
+  juguan: "web.declaration.card_name",
+  tiansuan: "web.declaration.title"
 };
 
 const DECLARATION_PROMPTS: Record<string, string> = {
-  guhuo: "請選擇宣告的牌名",
-  juguan: "請選擇宣告的牌名",
-  tiansuan: "請選擇宣告"
+  guhuo: "web.declaration.choose_card_name",
+  juguan: "web.declaration.choose_card_name",
+  tiansuan: "web.declaration.choose"
 };
 
 const ZONE_LABELS: Record<string, string> = {
-  hand: "手牌",
-  equip: "裝備",
-  hand_pile: "手牌區牌堆",
-  expand_pile: "技能牌堆",
-  sibling_pile: "他人牌堆"
+  hand: "web.zone.hand",
+  equip: "web.zone.equip",
+  hand_pile: "web.zone.hand_pile",
+  expand_pile: "web.zone.expand_pile",
+  sibling_pile: "web.zone.sibling_pile"
 };
+
+function uiText(key: string): string {
+  return tr(key);
+}
+
+function uiFormat(key: string, values: Record<string, string | number>): string {
+  // Substitute only the template, never placeholders inside a player value.
+  return uiText(key).replace(/%([A-Za-z][A-Za-z0-9_]*)/g,
+    (token, name: string) => Object.hasOwn(values, name) ? String(values[name]) : token);
+}
 
 // The native answer for the selection the shell is currently showing. Anything
 // else — a stale request, a newer state revision — reads as "not ready yet".
@@ -147,54 +153,56 @@ function nativePayload(evaluation: RulesEvaluation | null): JsonObject {
 function rulesStatus(bind: UiBind, evaluation: RulesEvaluation | null): HTMLElement[] {
   const { rules } = bind;
   const nodes: HTMLElement[] = [el("p", { class: "status", role: "status" }, [
-    evaluation?.known ? "規則已就緒" : (RULES_STATUS_TEXT[rules.status] || "等待規則判定")
+    evaluation?.known ? uiText("web.rules.status.ready") : uiText(RULES_STATUS_TEXT[rules.status] || "web.rules.status.waiting")
   ])];
   if (rules.error || (evaluation && !evaluation.known))
     nodes.push(el("p", { class: "error" }, [
-      rules.error || `目前無法判定：${evaluation?.reason || "缺少規則資料"}`
+      rules.error || uiFormat("web.rules.error.reason", { reason: evaluation?.reason || uiText("web.rules.reason.missing") })
     ]));
   else if (evaluation?.reason)
     nodes.push(el("p", { class: "status" }, [
-      RULES_REASON_TEXT[evaluation.reason] || "目前選擇無法確認"
+      uiText(RULES_REASON_TEXT[evaluation.reason] || "web.rules.reason.unknown")
     ]));
   return nodes;
 }
 
-// Positive confirmation always sends the C++ encoder's payload, and only while
-// that payload still belongs to the request and reply command on screen.
+// Submit the exact evaluated draft; native validation and encoding own the
+// eventual reply. Retained DOM controls must never confirm a newer draft.
 function nativeConfirm(
   bind: UiBind,
   command: number,
   messageId: string,
   submit: (builder: () => JsonObject) => void,
-  label = "送出"
+  label = "web.action.submit"
 ): HTMLButtonElement {
-  const evaluation = nativeEvaluation(bind);
   const actions = bind.rules.actionModel();
-  const ok = el("button", { class: "primary" }, [label]);
-  ok.disabled = !actions?.supported || !actions.can_confirm || !evaluation?.wire;
+  const selectionKey = JSON.stringify(bind.rulesSelection());
+  const ok = el("button", { class: "primary" }, [uiText(label)]);
+  ok.disabled = !nativeEvaluation(bind)?.known || !actions?.supported || !actions.can_confirm;
   ok.addEventListener("click", () => submit(() => {
     const current = nativeEvaluation(bind);
     const currentActions = bind.rules.actionModel();
-    if (!current?.known || !currentActions?.supported || !currentActions.can_confirm || !current.wire)
-      throw new Error("規則尚未完成目前選擇的判定");
+    if (!current?.known || !currentActions?.supported || !currentActions.can_confirm)
+      throw new Error(uiText("web.rules.error.incomplete"));
     // A retained/queued button must not confirm a newer selection or reconnect.
     if (!actions || actions.session_generation !== currentActions.session_generation
         || actions.presentation_revision !== currentActions.presentation_revision
-        || actions.request_id !== currentActions.request_id)
-      throw new Error("此操作畫面已過期，請使用更新後的確認按鈕");
-    if (current.wire.command !== replyCommand(command) || current.wire.reply_to !== messageId)
-      throw new Error("此規則結果已不屬於目前詢問");
-    // The native reply encoder owns the canonical payload for this request.
-    return current.wire.payload;
+        || actions.request_id !== currentActions.request_id
+        || bind.session.interaction?.messageId !== messageId
+        || bind.session.interaction.command !== command
+        || selectionKey !== JSON.stringify(bind.rulesSelection()))
+      throw new Error(uiText("web.rules.error.expired"));
+    return cardsIntent(bind.rulesSelection());
   }));
   return ok;
 }
 
 function countHint(minimum: number, maximum: number, total: number): string {
   if (minimum < 0 || maximum < 0)
-    return `最多 ${total} 張`;
-  return minimum === maximum ? `需 ${minimum} 張` : `需 ${minimum}–${maximum} 張`;
+    return uiFormat("web.count.maximum", { total });
+  return minimum === maximum
+    ? uiFormat("web.count.exact", { count: minimum })
+    : uiFormat("web.count.range", { minimum, maximum });
 }
 
 function payloadOptions(payload: JsonObject): string[] {
@@ -232,7 +240,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       cancelSlot.append(buttons[1]);
     } else if (buttons.length === 1) {
       const button = buttons[0];
-      (button.textContent?.trim() === "取消" ? cancelSlot : confirmSlot).append(button);
+      (button.textContent?.trim() === uiText("web.action.cancel") ? cancelSlot : confirmSlot).append(button);
     } else {
       // Auxiliary controls are normally nested in candidate/draft rows. Keep
       // any unexpected direct controls visible in content rather than treating
@@ -241,14 +249,14 @@ export function interactionView(bind: UiBind): HTMLElement {
         root.append(button);
     }
     if (!confirmSlot.querySelector("button")) {
-      const placeholder = el("button", { class: "interaction-action-placeholder" }, ["確定"]);
+      const placeholder = el("button", { class: "interaction-action-placeholder" }, [uiText("web.action.confirm")]);
       placeholder.type = "button";
       placeholder.disabled = true;
       placeholder.setAttribute("aria-hidden", "true");
       confirmSlot.append(placeholder);
     }
     if (!cancelSlot.querySelector("button")) {
-      const placeholder = el("button", { class: "interaction-action-placeholder" }, ["取消"]);
+      const placeholder = el("button", { class: "interaction-action-placeholder" }, [uiText("web.action.cancel")]);
       placeholder.type = "button";
       placeholder.disabled = true;
       placeholder.setAttribute("aria-hidden", "true");
@@ -258,46 +266,59 @@ export function interactionView(bind: UiBind): HTMLElement {
   };
   const interaction = session.interaction;
   if (asBool(session.state.gameValue("game_over"))) {
-    root.append(el("p", { class: "status" }, ["遊戲已結束"]));
+    root.append(el("p", { class: "status" }, [uiText("web.status.game_over")]));
     return finalize();
   }
   if (!interaction) {
     if (!asBool(session.state.gameValue("started")))
       return waitingRoom(bind);
-    root.append(el("p", { class: "status" }, ["等待詢問"]));
-    const trust = el("button", {}, ["託管"]);
+    root.append(el("p", { class: "status" }, [uiText("web.status.waiting_prompt")]));
+    const trust = el("button", {}, [uiText("web.action.trust")]);
     trust.addEventListener("click", () => session.trust(true));
-    const surrender = el("button", { class: "danger" }, ["投降"]);
+    const surrender = el("button", { class: "danger" }, [uiText("web.action.surrender")]);
     surrender.addEventListener("click", () => session.surrender());
     root.append(trust, surrender);
     return finalize();
   }
   const { command, payload, messageId } = interaction;
-  header.append(el("h2", {}, [INTERACTION_TITLES[command] ?? `詢問 ${command}`]));
+  header.append(el("h2", {}, [uiText(INTERACTION_TITLES[command] ?? "web.interaction.unknown")]));
   const prompt = asString(payload.prompt) || asString(payload.skill_name);
   if (prompt) {
     const text = asString(payload.prompt)
-      ? formatInteractionPrompt(prompt, (name) => logPlayerName(session.state, name))
+      ? formatInteractionPrompt(prompt, (name) => playerLabel(bind, name))
       : tr(prompt);
     header.append(el("p", { class: "interaction-prompt" }, [text]));
   }
   if (session.remainingInteractionMs() !== null)
     header.append(el("span", { class: "interaction-deadline", role: "timer", "aria-live": "off" }));
   if (session.interactionError)
-    root.append(el("p", { class: "error" }, [session.interactionError]));
+    root.append(el("p", { class: "error" }, [
+      uiText(INTERACTION_ERROR_TEXT[session.interactionError] ?? session.interactionError)
+    ]));
+
+  // Trust remains available while an active prompt is on screen, but it is an
+  // auxiliary control rather than a confirmation/cancellation action.
+  if (asBool(session.state.gameValue("started"))) {
+    const auxiliary = el("div", { class: "interaction-auxiliary-actions" });
+    const trust = el("button", {}, [uiText("web.action.trust")]);
+    trust.addEventListener("click", () => session.trust(true));
+    auxiliary.append(trust);
+    header.append(auxiliary);
+  }
 
   const submit = (builder: () => JsonObject) => {
     try {
       session.sendReply(command, messageId, builder());
-      bind.resetSelection();
+      // Native submission is asynchronous. Keep the draft if validation fails;
+      // the shared request-change path clears it when the reply is accepted.
     } catch (error) {
       session.interactionError = error instanceof Error ? error.message : String(error);
       bind.render();
     }
   };
 
-  const cancel = el("button", {}, ["取消"]);
-  cancel.addEventListener("click", () => submit(() => replyForCommand(command, { cancelled: true })));
+  const cancel = el("button", {}, [uiText("web.action.cancel")]);
+  cancel.addEventListener("click", () => submit(() => responseIntent(command, { cancelled: true })));
 
   if (hasCommand(command, [Command.CHOOSE_GENERAL, Command.ASK_GENERAL])) {
     const options = payloadOptions(payload);
@@ -305,12 +326,12 @@ export function interactionView(bind: UiBind): HTMLElement {
       ui.selectedOption = value;
       bind.render();
     }));
-    const ok = el("button", { class: "primary" }, ["確定"]);
+    const ok = el("button", { class: "primary" }, [uiText("web.action.confirm")]);
     ok.disabled = !ui.selectedOption || !options.includes(ui.selectedOption);
     ok.addEventListener("click", () => {
       if (!ui.selectedOption)
         return;
-      submit(() => replyForCommand(command, { option: ui.selectedOption }));
+      submit(() => responseIntent(command, { option: ui.selectedOption }));
     });
     root.append(ok);
     root.append(cancel);
@@ -327,12 +348,12 @@ export function interactionView(bind: UiBind): HTMLElement {
       ui.selectedOption = value;
       bind.render();
     }));
-    const ok = el("button", { class: "primary" }, ["確定"]);
+    const ok = el("button", { class: "primary" }, [uiText("web.action.confirm")]);
     ok.disabled = !ui.selectedOption || !options.includes(ui.selectedOption);
     ok.addEventListener("click", () => {
       if (!ui.selectedOption || !options.includes(ui.selectedOption))
         return;
-      submit(() => replyForCommand(command, { option: ui.selectedOption }));
+      submit(() => responseIntent(command, { option: ui.selectedOption }));
     });
     root.append(ok);
     root.append(cancel);
@@ -340,10 +361,10 @@ export function interactionView(bind: UiBind): HTMLElement {
   }
 
   if (command === Command.INVOKE_SKILL || command === Command.SURRENDER || command === Command.LUCK_CARD) {
-    const yes = el("button", { class: "primary" }, ["是"]);
-    const no = el("button", {}, ["否"]);
-    yes.addEventListener("click", () => submit(() => replyForCommand(command, { bool: true })));
-    no.addEventListener("click", () => submit(() => replyForCommand(command, { bool: false })));
+    const yes = el("button", { class: "primary" }, [uiText("web.action.yes")]);
+    const no = el("button", {}, [uiText("web.action.no")]);
+    yes.addEventListener("click", () => submit(() => responseIntent(command, { option: "yes" })));
+    no.addEventListener("click", () => submit(() => responseIntent(command, { option: "no" })));
     root.append(yes, no);
     return finalize();
   }
@@ -354,12 +375,12 @@ export function interactionView(bind: UiBind): HTMLElement {
       ui.selectedOption = value;
       bind.render();
     }));
-    const ok = el("button", { class: "primary" }, ["確定"]);
+    const ok = el("button", { class: "primary" }, [uiText("web.action.confirm")]);
     ok.disabled = !options.includes(ui.selectedOption);
     ok.addEventListener("click", () => {
       if (!options.includes(ui.selectedOption))
         return;
-      submit(() => replyForCommand(command, { int: Number(ui.selectedOption) }));
+      submit(() => responseIntent(command, { option: ui.selectedOption }));
     });
     root.append(ok, cancel);
     return finalize();
@@ -381,21 +402,21 @@ export function interactionView(bind: UiBind): HTMLElement {
       });
       root.append(el("label", {}, [`${player} `, select]));
     }
-    const ok = el("button", { class: "primary" }, ["送出"]);
+    const ok = el("button", { class: "primary" }, [uiText("web.action.submit")]);
     ok.addEventListener("click", () => submit(() => {
       const assignments: Record<string, string> = {};
       for (const player of players)
         assignments[player] = ui.assignments[player] || roles[0];
-      return replyForCommand(command, { assignments });
+      return responseIntent(command, { assignments });
     }));
     root.append(ok, cancel);
     return finalize();
   }
 
   if (command === Command.CHOOSE_PLAYER) {
-    root.append(el("p", {}, ["點 Photo 或自身頭像選玩家"]));
-    const ok = el("button", { class: "primary" }, ["送出"]);
-    ok.addEventListener("click", () => submit(() => replyForCommand(command, { players: ui.selectedPlayers })));
+    root.append(el("p", {}, [uiText("web.choose_player.instruction")]));
+    const ok = el("button", { class: "primary" }, [uiText("web.action.submit")]);
+    ok.addEventListener("click", () => submit(() => responseIntent(command, { players: ui.selectedPlayers })));
     root.append(ok, cancel);
     return finalize();
   }
@@ -429,13 +450,13 @@ export function interactionView(bind: UiBind): HTMLElement {
       return row;
     };
     const bounds = (minKey: string, maxKey: string, count: number): string =>
-      `${count} 張，${countHint(asNumber(native[minKey], -1), asNumber(native[maxKey], -1), total)}`;
+      uiFormat("web.guanxing.count", { count, bounds: countHint(asNumber(native[minKey], -1), asNumber(native[maxKey], -1), total) });
     root.append(
-      el("p", {}, [`上（點牌移到下）：${bounds("min_top", "max_top", ui.top.length)}`]),
+      el("p", {}, [uiFormat("web.guanxing.top", { bounds: bounds("min_top", "max_top", ui.top.length) })]),
       zone(ui.top, false, true),
-      el("p", {}, [`下（點牌移回上）：${bounds("min_bottom", "max_bottom", ui.bottom.length)}`]),
+      el("p", {}, [uiFormat("web.guanxing.bottom", { bounds: bounds("min_bottom", "max_bottom", ui.bottom.length) })]),
       zone(ui.bottom, true, false),
-      nativeConfirm(bind, command, messageId, submit, "確定")
+      nativeConfirm(bind, command, messageId, submit, "web.action.confirm")
     );
     return finalize();
   }
@@ -448,8 +469,8 @@ export function interactionView(bind: UiBind): HTMLElement {
     const selectable = new Set(actionModel?.cards.filter((item) => item.enabled).map((item) => Number(item.id)) ?? []);
     root.append(...rulesStatus(bind, evaluation));
     root.append(el("p", {}, [
-      `選牌再點座位：${countHint(asNumber(evaluation?.selection_min, -1),
-        asNumber(evaluation?.selection_max, -1), ids.length)}`
+      uiFormat("web.yiji.instruction", { bounds: countHint(asNumber(evaluation?.selection_min, -1),
+        asNumber(evaluation?.selection_max, -1), ids.length) })
     ]));
     const row = el("div", { class: "cards" });
     for (const id of ids) {
@@ -471,10 +492,10 @@ export function interactionView(bind: UiBind): HTMLElement {
     const candidates = actionModel?.players.filter((item) => item.enabled).map((item) => item.id) ?? [];
     root.append(row, el("p", { class: "status" }, [
       ui.selectedPlayers.length
-        ? `交給 ${logPlayerName(session.state, ui.selectedPlayers[0])}`
-        : `可交給：${candidates.map((name) => logPlayerName(session.state, name)).join("、") || "（無）"}`
+        ? uiFormat("web.yiji.selected_target", { name: playerLabel(bind, ui.selectedPlayers[0]) })
+        : uiFormat("web.yiji.available_targets", { names: candidates.map((name) => playerLabel(bind, name)).join("、") || uiText("web.none") })
     ]));
-    root.append(nativeConfirm(bind, command, messageId, submit, "交給所選玩家"), cancel);
+    root.append(nativeConfirm(bind, command, messageId, submit, "web.yiji.submit"), cancel);
     return finalize();
   }
 
@@ -484,8 +505,8 @@ export function interactionView(bind: UiBind): HTMLElement {
       ui.selectedOption = value;
       bind.render();
     }));
-    const ok = el("button", { class: "primary" }, ["送出順序（點選後按）"]);
-    ok.addEventListener("click", () => submit(() => replyForCommand(command, {
+    const ok = el("button", { class: "primary" }, [uiText("web.arrange.submit_order")]);
+    ok.addEventListener("click", () => submit(() => responseIntent(command, {
       generals: ui.selectedOption ? [ui.selectedOption, ...generals.filter((item) => item !== ui.selectedOption)] : generals
     })));
     root.append(ok, cancel);
@@ -496,12 +517,12 @@ export function interactionView(bind: UiBind): HTMLElement {
     const area = el("textarea");
     area.value = ui.qmlText;
     area.rows = 6;
-    const ok = el("button", { class: "primary" }, ["送出 JSON"]);
+    const ok = el("button", { class: "primary" }, [uiText("web.qml.submit_json")]);
     ok.addEventListener("click", () => {
       ui.qmlText = area.value;
-      submit(() => replyForCommand(command, { qml: JSON.parse(area.value) as JsonObject }));
+      submit(() => responseIntent(command, { qml: JSON.parse(area.value) as JsonObject }));
     });
-    root.append(el("p", {}, ["未知 QML type 請填 JSON 或取消"]), area, ok, cancel);
+    root.append(el("p", {}, [uiText("web.qml.instruction")]), area, ok, cancel);
     return finalize();
   }
 
@@ -531,8 +552,8 @@ export function interactionView(bind: UiBind): HTMLElement {
           row.append(renderCard(bind, -1, ui.hiddenIndex === index, true, index));
       }
     }
-    const ok = el("button", { class: "primary" }, ["選這張"]);
-    ok.addEventListener("click", () => submit(() => replyForCommand(command, { cardId: ui.selectedCards[0] ?? -1 })));
+    const ok = el("button", { class: "primary" }, [uiText("web.action.choose_card")]);
+    ok.addEventListener("click", () => submit(() => responseIntent(command, { cardId: ui.selectedCards[0] ?? -1 })));
     root.append(row, ok, cancel);
     return finalize();
   }
@@ -569,8 +590,8 @@ export function interactionView(bind: UiBind): HTMLElement {
     const row = el("div", { class: "cards" });
     for (const id of ids)
       row.append(renderCard(bind, id, ui.selectedCards.includes(id)));
-    const ok = el("button", { class: "primary" }, ["送出"]);
-    ok.addEventListener("click", () => submit(() => replyForCommand(command, { cardId: ui.selectedCards[0] ?? 0 })));
+    const ok = el("button", { class: "primary" }, [uiText("web.action.submit")]);
+    ok.addEventListener("click", () => submit(() => responseIntent(command, { cardIds: ui.selectedCards })));
     root.append(row, ok, cancel);
     return finalize();
   }
@@ -581,19 +602,19 @@ export function interactionView(bind: UiBind): HTMLElement {
     if (ui.selectedOption) {
       const active = evaluation?.skills.find((skill) => skill.name === ui.selectedOption
         && skill.instance_id === ui.skillInstance);
-      const notes: string[] = [`技能（再點一次取消）：${tr(ui.selectedOption)}`];
+      const notes: string[] = [uiFormat("web.skill.selected", { skill: tr(ui.selectedOption) })];
       if (active) {
         // Amount, committed usage and instance invalidation are reported by the
         // runtime; only canActivate/cardSelectionFeasible decide legality.
         notes.push(active.subcard_min < 0
-          ? "子卡張數由技能判定"
-          : `子卡 ${countHint(active.subcard_min, active.subcard_max, active.subcard_max)}`);
+          ? uiText("web.skill.subcard_runtime")
+          : uiFormat("web.skill.subcard_count", { bounds: countHint(active.subcard_min, active.subcard_max, active.subcard_max) }));
         if (active.usage_scope !== "none" && active.usage_used >= 0)
-          notes.push(`本${({ turn: "回合", round: "輪", phase: "階段", game: "局" } as Record<string, string>)[active.usage_scope] || "次"}已用 ${active.usage_used} 次`);
+          notes.push(uiFormat("web.skill.usage", { scope: uiText(`web.scope.${active.usage_scope}`), count: active.usage_used }));
         if (active.invalid)
-          notes.push("此技能實例已失效");
+          notes.push(uiText("web.skill.invalid_instance"));
         if (active.expand_pile)
-          notes.push(`可用牌堆：${active.expand_pile.split(",").map((name) => tr(name.trim())).join("、")}`);
+          notes.push(uiFormat("web.skill.available_pile", { names: active.expand_pile.split(",").map((name) => tr(name.trim())).join("、") }));
       }
       root.append(el("p", {}, [notes.join("｜")]));
     }
@@ -602,7 +623,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       // general. The offered values are the runtime's, not a browser guess.
       const dialog = asString(evaluation.declaration_dialog.type);
       const declaration = el("select");
-      const placeholder = el("option", { value: "" }, [DECLARATION_PROMPTS[dialog] ?? "請選擇宣告"]);
+      const placeholder = el("option", { value: "" }, [uiText(DECLARATION_PROMPTS[dialog] ?? "web.declaration.choose")]);
       placeholder.disabled = true;
       declaration.append(placeholder);
       for (const value of evaluation.declarations)
@@ -621,7 +642,7 @@ export function interactionView(bind: UiBind): HTMLElement {
         bind.render();
       });
       const field = el("label", { class: "field" }, [
-        DECLARATION_LABELS[dialog] ?? "宣告", " ", declaration
+        uiText(DECLARATION_LABELS[dialog] ?? "web.declaration.title"), " ", declaration
       ]);
       // Guhuo and juguan declare a card name, so show the face being claimed.
       if (dialog !== "tiansuan" && ui.ruleDeclaration)
@@ -635,7 +656,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       const cards = el("div", { class: "cards" });
       ui.selectedCards.forEach((id, index) => {
         const remove = el("button", {}, [`${index + 1}. ${cardLabel(bind, id)} ×`]);
-        remove.title = "移除此牌";
+        remove.title = uiText("web.action.remove_card");
         remove.addEventListener("click", () => {
           if (session.interaction !== interaction)
             return;
@@ -645,20 +666,20 @@ export function interactionView(bind: UiBind): HTMLElement {
         });
         cards.append(remove);
       });
-      root.append(el("p", {}, [ui.selectedOption ? "子卡順序" : "已選牌"]), cards);
+      root.append(el("p", {}, [uiText(ui.selectedOption ? "web.selection.subcard_order" : "web.selection.cards")]), cards);
     }
     if (ui.selectedPlayers.length) {
       const targets = el("div", { class: "cards" });
       ui.selectedPlayers.forEach((name, index) => {
-        const remove = el("button", {}, [`${index + 1}. ${logPlayerName(session.state, name)} ×`]);
-        remove.title = "撤回這一票";
+        const remove = el("button", {}, [`${index + 1}. ${playerLabel(bind, name)} ×`]);
+        remove.title = uiText("web.action.withdraw_target");
         remove.addEventListener("click", () => {
           if (session.interaction === interaction)
             bind.removeTarget(index);
         });
         targets.append(remove);
       });
-      root.append(el("p", {}, ["目標順序（點 × 撤回一票）"]), targets);
+      root.append(el("p", {}, [uiText("web.selection.target_order")]), targets);
     }
     // Hand and equips already have their own rows. Everything else the runtime
     // offers — hand pile, expand pile, a sibling's pile — is grouped by the
@@ -685,13 +706,13 @@ export function interactionView(bind: UiBind): HTMLElement {
       const row = el("div", { class: "cards" });
       for (const id of ids)
         row.append(renderCard(bind, id, ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
-      root.append(el("p", {}, [ZONE_LABELS[zone] ?? "額外可選牌"]), row);
+      root.append(el("p", {}, [uiText(ZONE_LABELS[zone] ?? "web.zone.extra")]), row);
     }
     const ok = nativeConfirm(bind, command, messageId, submit);
-    const pass = command === Command.PLAY_CARD ? el("button", {}, ["結束出牌"]) : cancel;
+    const pass = command === Command.PLAY_CARD ? el("button", {}, [uiText("web.action.finish_play")]) : cancel;
     if (command === Command.PLAY_CARD)
-      pass.addEventListener("click", () => submit(() => replyForCommand(command, { cancelled: true })));
-    root.append(el("p", {}, ["依序選牌，再點目標頭像加一票；已選項目可單獨移除"]), ok, pass);
+      pass.addEventListener("click", () => submit(() => responseIntent(command, { cancelled: true })));
+    root.append(el("p", {}, [uiText("web.selection.instruction")]), ok, pass);
     return finalize();
   }
 
@@ -703,20 +724,24 @@ export function interactionView(bind: UiBind): HTMLElement {
       const row = el("div", { class: "cards" });
       for (const id of extras)
         row.append(renderCard(bind, id, ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
-      root.append(el("p", {}, ["額外可選牌"]), row);
+      root.append(el("p", {}, [uiText("web.zone.extra")]), row);
     }
-    const ok = el("button", { class: "primary" }, ["送出"]);
+    const ok = el("button", { class: "primary" }, [uiText("web.action.submit")]);
     ok.addEventListener("click", () => {
       if (command === Command.EXCHANGE_CARD || command === Command.DISCARD_CARD) {
-        submit(() => replyForCommand(command, { cardIds: ui.selectedCards }));
+        submit(() => responseIntent(command, { cardIds: ui.selectedCards }));
         return;
       }
-      submit(() => replyForCommand(command, { cardText: physicalCardText(bind, ui.selectedCards) }));
+      submit(() => responseIntent(command, { cardIds: ui.selectedCards, targets: ui.selectedPlayers }));
     });
-    root.append(el("p", {}, ["選牌後送出"]), ok, cancel);
+    root.append(el("p", {}, [uiText("web.selection.submit_instruction")]), ok, cancel);
     return finalize();
   }
 
-  root.append(el("p", { class: "error" }, [`未覆蓋的互動 ${command}`]), cancel);
+  root.append(el("p", { class: "error" }, [uiFormat("web.interaction.unsupported", { command })]), cancel);
   return finalize();
+}
+function playerLabel(bind: UiBind, name: string): string {
+  const player = bind.session.state.player(name);
+  return asString(player?.screen_name) || asString(player?.label) || name;
 }

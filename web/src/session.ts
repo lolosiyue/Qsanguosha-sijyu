@@ -4,6 +4,7 @@ import {
   asString,
   asStringList,
   Command,
+  SELF_REFERENCE,
   decodeMessage,
   encodeMessage,
   isObject,
@@ -12,10 +13,8 @@ import {
   type ProtocolMessage
 } from "./protocol";
 import { isRulesIdentity, rulesCompatibilityError, rulesErrorMessage } from "./rules-identity";
-import { applyNotification } from "./reducer";
-import { appendSynthesizedLogs } from "./log-text";
-import { ClientGameState } from "./state";
-import { replyCommand } from "./replies";
+import { ClientGameState, type PresentationEvent } from "./state";
+import { autoTableBgUrl, imagePathToUrl, isLightbox, lightboxBackgroundUrl } from "./backdrop";
 
 export type SessionPhase =
   | "idle"
@@ -71,49 +70,32 @@ export class LiveSession {
   private signupId = "";
   private syncActive = false;
   private syncId = "";
-  private pending: ClientGameState | null = null;
   private listeners = new Set<Listener>();
-  private renPile: number[] = [];
+  private transportClosed = false;
+  private nativeCaughtUp = true;
+  private sending = false;
+  private drainingTransport = false;
+  private deferredTransport: (() => void)[] = [];
+  private submitting: ActiveInteraction | null = null;
+  private tableBackground: string | null = null;
   private rulesBundle: JsonObject | null = null;
   private rulesProvider: ((session: LiveSession, hello?: JsonObject) => Promise<JsonObject | null>) | null = null;
   private frameSink: FrameSink | null = null;
   private focusDeadline: number | null = null;
   private focusCommand = Command.MOVE_FOCUS as number;
   private interactionDeadline: number | null = null;
-  private interactionTimer: ReturnType<typeof setTimeout> | undefined;
+  private nativeSubmitter: ((requestId: string, intent: JsonObject) => Promise<JsonObject>) | null = null;
 
-  /** Presentation reads the same deadline used by sendReply and expiry. */
+  /** Display hint only; the native ClientCore owns request expiry. */
   remainingInteractionMs(): number | null {
     return this.interaction && this.interactionDeadline !== null
       ? Math.max(0, this.interactionDeadline - performance.now()) : null;
   }
 
   private clearInteraction(): void {
-    if (this.interactionTimer !== undefined)
-      clearTimeout(this.interactionTimer);
-    this.interactionTimer = undefined;
     this.interactionDeadline = null;
     this.interaction = null;
     this.interactionError = "";
-  }
-
-  private armInteractionExpiry(): void {
-    if (!this.interaction || this.interactionDeadline === null)
-      return;
-    const generation = this.generation;
-    const requestId = this.interaction.messageId;
-    const remaining = this.interactionDeadline - performance.now();
-    if (remaining <= 0) {
-      this.clearInteraction();
-      return;
-    }
-    this.interactionTimer = setTimeout(() => {
-      if (generation !== this.generation || this.interaction?.messageId !== requestId)
-        return;
-      this.interactionTimer = undefined;
-      this.armInteractionExpiry();
-      this.notify();
-    }, Math.min(remaining, 2147483647));
   }
 
   setFrameSink(sink: FrameSink | null): void {
@@ -122,6 +104,82 @@ export class LiveSession {
 
   setRulesProvider(provider: (session: LiveSession, hello?: JsonObject) => Promise<JsonObject | null>): void {
     this.rulesProvider = provider;
+  }
+
+  setNativeSubmitter(submitter: ((requestId: string, intent: JsonObject) => Promise<JsonObject>) | null): void {
+    this.nativeSubmitter = submitter;
+  }
+
+  hydrateNativeView(view: JsonObject, requestId?: string, events?: readonly PresentationEvent[]): void {
+    // The controller only publishes a snapshot after all observed frames have
+    // drained. A raw end marker never commits a second, browser-owned snapshot.
+    if (this.syncId) return;
+    const wsUrl = this.state.connectionValue("ws_url");
+    this.state.hydrateNativeView(view);
+    // Publish native text together with its committed view before notifying
+    // either the ordinary battle log or the accessible snapshot presenter.
+    if (events !== undefined) this.state.presentationEvents = structuredClone([...events]);
+    if (wsUrl !== undefined) this.state.setConnectionValue("ws_url", wsUrl);
+    this.state.setGameValue("table_bg", this.tableBackground ?? autoTableBgUrl(this.state));
+    this.state.setGameValue("table_bg_locked", this.tableBackground !== null);
+    this.syncActive = false;
+    if (requestId !== undefined && this.interaction?.messageId !== requestId)
+      this.clearInteraction();
+    if (asBool(this.state.gameValue("game_over"))) {
+      this.focusDeadline = null;
+      this.clearInteraction();
+      this.phase = "finished";
+      this.error = "";
+    }
+    this.notify();
+  }
+
+  nativeStreamDrained(): void {
+    this.nativeCaughtUp = true;
+    if (this.transportClosed && this.phase !== "finished" && this.phase !== "failed") {
+      this.phase = "failed";
+      this.error = this.error || "連線已關閉";
+      this.clearInteraction();
+      this.notify();
+    }
+  }
+
+  nativeStreamFailed(detail: string): void {
+    if (this.phase !== "finished") this.fail(detail);
+  }
+
+  private observeFrame(outgoing: boolean, frame: string): void {
+    this.nativeCaughtUp = this.frameSink === null;
+    this.frameSink?.(this.generation, outgoing, frame);
+  }
+
+  private deliverTransport(deliver: () => void): void {
+    // Local transports can synchronously answer send(). Observe the successful
+    // outgoing frame first, then let those replies enter the same native queue.
+    this.deferredTransport.push(deliver);
+    this.flushTransport();
+  }
+
+  private flushTransport(): void {
+    if (this.sending || this.drainingTransport) return;
+    this.drainingTransport = true;
+    try {
+      // A handler can send again. Append its synchronous replies behind all
+      // already-received events rather than recursively reordering the queue.
+      while (this.deferredTransport.length) this.deferredTransport.shift()!();
+    } finally {
+      this.drainingTransport = false;
+    }
+  }
+
+  private transportEnded(socket: SessionTransport, detail: string): void {
+    if (this.socket !== socket) return;
+    this.socket = null;
+    this.transportClosed = true;
+    if (this.phase !== "finished") this.error = this.error || detail;
+    // Do not advance generation: the last GAME_OVER may still be in the Worker.
+    if (this.nativeCaughtUp) this.nativeStreamDrained();
+    this.notify();
   }
 
   get synchronizing(): boolean { return this.syncActive; }
@@ -145,8 +203,9 @@ export class LiveSession {
     this.signupId = "";
     this.syncActive = false;
     this.syncId = "";
-    this.pending = null;
-    this.renPile = [];
+    this.transportClosed = false;
+    this.nativeCaughtUp = true;
+    this.tableBackground = null;
     this.phase = "connecting";
     this.error = "";
     this.interaction = null;
@@ -176,7 +235,7 @@ export class LiveSession {
   private openSocket(options: SessionOptions): void {
     const socket: SessionTransport = options.transportFactory?.() ?? new WebSocket(options.wsUrl);
     this.socket = socket;
-    socket.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event) => this.deliverTransport(() => {
       if (this.socket !== socket)
         return;
       if (typeof event.data !== "string") {
@@ -184,34 +243,20 @@ export class LiveSession {
         return;
       }
       // Deliver the exact bytes before this reducer forms any opinion of them.
-      this.frameSink?.(this.generation, false, event.data);
+      this.observeFrame(false, event.data);
       try {
         this.handle(decodeMessage(event.data), options);
       } catch (error) {
         this.fail(error instanceof Error ? error.message : String(error));
       }
-    });
-    socket.addEventListener("error", () => {
-      if (this.socket === socket && this.phase === "finished") {
-        this.disconnect();
-        this.notify();
-      } else if (this.socket === socket)
-        this.fail(this.local ? "單機對局執行失敗" : "WebSocket 連線失敗");
-    });
-    socket.addEventListener("close", () => {
-      if (this.socket !== socket || this.phase === "failed")
-        return;
-      // A completed game remains readable after the server closes its socket.
-      if (this.phase === "finished") {
-        this.disconnect();
-        this.notify();
-        return;
-      }
-      this.phase = "failed";
-      this.error = this.error || "連線已關閉";
-      this.disconnect();
-      this.notify();
-    });
+    }));
+    socket.addEventListener("error", () => this.deliverTransport(() => {
+      this.transportEnded(socket, this.local ? "單機對局執行失敗" : "WebSocket 連線失敗");
+      socket.close();
+    }));
+    socket.addEventListener("close", () => this.deliverTransport(() => {
+      this.transportEnded(socket, "連線已關閉");
+    }));
     this.notify();
   }
 
@@ -220,7 +265,11 @@ export class LiveSession {
     this.socket = null;
     socket?.close();
     this.syncActive = false;
-    this.pending = null;
+    this.syncId = "";
+    this.transportClosed = false;
+    this.nativeCaughtUp = true;
+    this.deferredTransport = [];
+    this.submitting = null;
     ++this.generation;
     this.focusDeadline = null;
     this.clearInteraction();
@@ -245,24 +294,35 @@ export class LiveSession {
     if (this.phase !== "active" || this.syncActive || !this.interaction
         || this.interaction.command !== command || this.interaction.messageId !== replyTo)
       throw new Error("詢問已更新，請重新選擇");
-    // Timers may be throttled in background tabs; never send after the deadline.
-    if (this.interactionDeadline !== null && performance.now() >= this.interactionDeadline) {
-      this.clearInteraction();
-      this.notify();
-      throw new Error("詢問已逾時");
+    if (this.submitting) throw new Error("native_submission_pending");
+    if (this.nativeSubmitter) {
+      const generation = this.generation;
+      const intent = payload;
+      const interaction = this.interaction;
+      this.submitting = interaction;
+      void this.nativeSubmitter(replyTo, intent).then(wire => {
+        if (generation !== this.generation || this.interaction !== interaction
+            || this.phase !== "active" || this.syncActive)
+          throw new Error("詢問已更新，請重新選擇");
+        if (!wire || wire.type !== "reply" || !Number.isSafeInteger(wire.command)
+            || wire.reply_to !== replyTo || wire.has_payload !== true
+            || !isObject(wire.payload)) throw new Error("native_reply_invalid");
+        this.send({ v: 2, type: "reply", source: "client", destination: "room",
+          message_id: nextId(this.outgoing), reply_to: wire.reply_to,
+          command: wire.command as number, payload: wire.payload });
+        if (this.interaction === interaction) this.clearInteraction();
+        this.notify();
+      }).catch(error => {
+        if (generation === this.generation && this.interaction === interaction) {
+          this.interactionError = error instanceof Error ? error.message : String(error);
+          this.notify();
+        }
+      }).finally(() => {
+        if (this.submitting === interaction) this.submitting = null;
+      });
+      return;
     }
-    this.send({
-      v: 2,
-      type: "reply",
-      source: "client",
-      destination: "room",
-      message_id: nextId(this.outgoing),
-      reply_to: replyTo,
-      command: replyCommand(command),
-      payload
-    });
-    this.clearInteraction();
-    this.notify();
+    throw new Error("native_submitter_unavailable");
   }
 
   setReady(ready: boolean): void {
@@ -293,8 +353,14 @@ export class LiveSession {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN)
       throw new Error("WebSocket is not open");
     const frame = encodeMessage(message);
-    this.socket.send(frame);
-    this.frameSink?.(this.generation, true, frame);
+    this.sending = true;
+    try {
+      this.socket.send(frame);
+      this.observeFrame(true, frame);
+    } finally {
+      this.sending = false;
+      this.flushTransport();
+    }
   }
 
   private fail(detail: string): void {
@@ -342,6 +408,7 @@ export class LiveSession {
         if (options.roomId !== undefined)
           signup.room_id = options.roomId;
         this.signupId = nextId(this.outgoing);
+        this.phase = "signup";
         this.send({
           v: 2,
           type: "request",
@@ -351,7 +418,6 @@ export class LiveSession {
           command: Command.SIGNUP,
           payload: signup
         });
-        this.phase = "signup";
         this.notify();
       }).catch(error => {
         if (generation === this.generation)
@@ -384,6 +450,7 @@ export class LiveSession {
         throw new Error("expected SETUP");
       this.lastIncoming = incoming;
       this.state.setup = message.payload;
+      this.phase = "active";
       this.send({
         v: 2,
         type: "notification",
@@ -393,7 +460,6 @@ export class LiveSession {
         command: Command.READY,
         payload: { schema_version: 1, ready: true }
       });
-      this.phase = "active";
       this.notify();
       return;
     }
@@ -437,49 +503,47 @@ export class LiveSession {
       this.interactionDeadline = this.focusCommand === Command.MOVE_FOCUS || this.focusCommand === message.command
         ? this.focusDeadline : null;
       this.focusDeadline = null;
-      this.armInteractionExpiry();
       this.notify();
       return;
     }
 
-    let target = this.state;
     if (message.command === Command.STATE_SYNC) {
       const phase = asString(message.payload.phase);
       const syncId = asString(message.payload.sync_id);
       if (phase === "begin") {
-        if (this.syncActive)
+        if (this.syncId)
           throw new Error("state snapshot already active");
-        this.pending = this.state.clone();
-        this.pending.resetGameplayState();
         this.syncActive = true;
         this.focusDeadline = null;
         this.clearInteraction();
         this.syncId = syncId;
-        this.renPile = [];
-        target = this.pending;
-      } else if (!this.syncActive || syncId !== this.syncId) {
+        this.tableBackground = null;
+      } else if (phase !== "end" || !this.syncId || syncId !== this.syncId) {
         throw new Error("STATE_SYNC end does not match begin");
       } else {
-        target = this.pending ?? this.state;
+        // Keep synchronizing=true until the native committed view arrives.
+        this.syncId = "";
       }
-    } else if (this.syncActive && this.pending) {
-      target = this.pending;
     }
 
     if (message.type === "notification") {
-      if (message.command === Command.GAME_OVER)
-        this.clearInteraction();
       if (message.command === Command.GAME_START)
-        this.renPile = [];
-      const reduction = applyNotification(target, message.command, message.payload);
-      if (!reduction.success)
-        throw new Error(reduction.detail);
+        this.tableBackground = null;
+      if (message.command === Command.CHANGE_TABLE_BG) {
+        const path = imagePathToUrl(asString(message.payload.path));
+        if (path) this.tableBackground = path;
+      }
+      if (message.command === Command.ANIMATE && isLightbox(asNumber(message.payload.animation))) {
+        const path = lightboxBackgroundUrl(asString(message.payload.first_argument));
+        if (path !== undefined) this.tableBackground = path;
+      }
+      // Native ingress is the sole gameplay reducer. The shell only keeps
+      // transport focus/deadline state until its native projection arrives.
       if (message.command === Command.MOVE_FOCUS && !this.syncActive) {
         this.focusDeadline = null;
         this.focusCommand = asNumber(message.payload.command, Command.MOVE_FOCUS);
-        if (!asStringList(target.gameValue("focus")).includes(this.state.selfName)) {
-          this.clearInteraction();
-        } else {
+        if (asStringList(message.payload.player_names)
+            .some(name => name === this.state.selfName || name === SELF_REFERENCE)) {
           const countdown = message.payload.countdown;
           // Countdown::USE_SPECIFIED carries milliseconds; zero maximum is unlimited.
           // NO_LIMIT and unresolved USE_DEFAULT must not invent a local timeout.
@@ -490,29 +554,12 @@ export class LiveSession {
               + Math.max(0, Number(countdown.maximum) - Number(countdown.current));
         }
       }
-      appendSynthesizedLogs(target, message.command, message.payload, this.renPile);
     }
 
-    if (message.command === Command.STATE_SYNC && asString(message.payload.phase) === "end") {
-      if (this.pending) {
-        const connection = this.state.connection;
-        this.state.reset();
-        Object.assign(this.state, this.pending);
-        this.state.connection = { ...connection, ...this.pending.connection };
-      }
-      this.syncActive = false;
-      this.syncId = "";
-      this.pending = null;
-    }
-    // Wait for an atomic snapshot commit before presenting a restored result.
-    if (!this.syncActive && asBool(this.state.gameValue("game_over"))) {
-      this.focusDeadline = null;
-      this.clearInteraction();
-      this.phase = "finished";
-    }
     this.notify();
   }
 }
+
 
 export function defaultWsUrl(search = window.location.search): string {
   const query = new URLSearchParams(search).get("ws");

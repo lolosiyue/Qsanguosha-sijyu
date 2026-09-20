@@ -139,9 +139,9 @@ public:
     {
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return GuhuoDialog::getInstance("qice", false);
+        return SkillDialogInfo::guhuo("qice", false);
     }
 
     bool viewFilter(const QList<const Card *> &, const Card *) const

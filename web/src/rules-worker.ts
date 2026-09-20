@@ -268,7 +268,7 @@ function runStream(operation: Record<string, unknown>): Record<string, unknown> 
   return result;
 }
 
-// Frames and queries only. A reset belongs to initialization, never to a
+// Frames, queries and submissions. A reset belongs to initialization, never to a
 // message: replaying it would silently discard committed native state.
 function stream(message: Record<string, unknown>): void {
   if (phase !== "ready" || !runtime || aborted) throw new Error("WASM runtime is unavailable");
@@ -276,11 +276,17 @@ function stream(message: Record<string, unknown>): void {
       || message.ops.length > 256) {
     throw new Error("WASM stream request must contain an id and 1 to 256 operations");
   }
+  // A query/submission has one correlated result. Never append a frame snapshot
+  // over its evaluation or reserved wire in the same controller response.
+  const frameBatch = message.ops.every(operation => record(operation) && operation.action === "frame");
+  if (!frameBatch && message.ops.length !== 1)
+    throw new Error("WASM queries and submissions must be standalone operations");
   const results: Record<string, unknown>[] = [];
   for (const operation of message.ops as unknown[]) {
     if (!record(operation) || operation.schema_version !== 1 || operation.generation !== generation
-      || (operation.action !== "frame" && operation.action !== "query")) {
-      throw new Error("WASM stream operations must be current-generation frames or queries");
+      || (operation.action !== "frame" && operation.action !== "query"
+        && operation.action !== "submit_selection")) {
+      throw new Error("WASM stream operations must be current-generation frames, queries, or submissions");
     }
     const result = runStream(operation);
     results.push(result);
@@ -291,7 +297,7 @@ function stream(message: Record<string, unknown>): void {
   // STATE_SYNC remains private until its end notification has been reduced.
   const last = results[results.length - 1];
   if (last?.success === true && record(last.status) && last.status.synchronizing === false
-      && (message.ops as unknown[]).some(operation => record(operation) && operation.action === "frame")) {
+      && frameBatch) {
     const status = last.status;
     if (!integer(status.revision, 0) || typeof status.request_id !== "string"
         || typeof message.event_cursor !== "string")

@@ -248,6 +248,7 @@ QJsonObject ExcelBridge::snapshot() const
         {QStringLiteral("request_id"), QString::number(m_core.activeRequestId())},
         {QStringLiteral("state"), state}, {QStringLiteral("interaction"), interaction},
         {QStringLiteral("view"), ExcelView::snapshotView(m_core, m_options.assetRoot, m_logs)},
+        {QStringLiteral("ui_phrases"), ExcelView::uiPhrases()},
         {QStringLiteral("selection"), m_selection}};
 }
 

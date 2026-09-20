@@ -1,14 +1,20 @@
 #include "client-rules-ingress.h"
 
 #include "client-game-state-reducer.h"
+#include "client-log-formatter.h"
+#include "interaction-command-registry.h"
+#include "interaction-reply-encoder.h"
 #include "engine.h"
 #include "protocol-interaction-request-builder.h"
 #include "protocol/protocol-payload-registry.h"
 #include "protocol/rules-bundle-identity.h"
 #include "protocol/session/session-payloads.h"
 #include "protocol.h"
+#include "server-info.h"
 
 #include <QJsonArray>
+#include <QJsonValue>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -28,6 +34,107 @@ QJsonObject snapshot(const ClientGameState &state)
     // The rules projection needs that order, not QMap key order or TS ordering.
     result.insert(QStringLiteral("player_names"), QJsonArray::fromStringList(state.playerNames()));
     return result;
+}
+
+bool parseIntList(const QJsonValue &value, QList<int> *out)
+{
+    if (out == nullptr || !value.isArray())
+        return false;
+    out->clear();
+    for (const QJsonValue &item : value.toArray()) {
+        const double number = item.toDouble();
+        if (!item.isDouble() || !std::isfinite(number)
+            || number != std::floor(number)
+            || number < std::numeric_limits<int>::min()
+            || number > std::numeric_limits<int>::max())
+            return false;
+        out->append(item.toInt());
+    }
+    return true;
+}
+
+bool parseStringList(const QJsonValue &value, QStringList *out)
+{
+    if (out == nullptr || !value.isArray())
+        return false;
+    out->clear();
+    for (const QJsonValue &item : value.toArray()) {
+        if (!item.isString())
+            return false;
+        out->append(item.toString());
+    }
+    return true;
+}
+
+bool parseResponse(const QJsonObject &object, const InteractionRequest &request,
+                   InteractionResponse *response, QString *error)
+{
+    if (response == nullptr || !object.value(QStringLiteral("kind")).isString())
+        return reject(QStringLiteral("stream_response_shape"), error);
+    const QString kind = object.value(QStringLiteral("kind")).toString();
+    const QJsonObject payload = object.value(QStringLiteral("payload")).toObject();
+    if (kind == QLatin1String("cancel")) {
+        *response = InteractionResponse::makeCancel(request.requestId);
+    } else if (kind == QLatin1String("option")) {
+        if (!payload.value(QStringLiteral("value")).isString())
+            return reject(QStringLiteral("stream_response_option"), error);
+        *response = InteractionResponse::makeOption(request.requestId,
+            payload.value(QStringLiteral("value")).toString());
+    } else if (kind == QLatin1String("players")) {
+        QStringList names;
+        if (!parseStringList(payload.value(QStringLiteral("players")), &names))
+            return reject(QStringLiteral("stream_response_players"), error);
+        *response = InteractionResponse::makePlayers(request.requestId, names);
+    } else if (kind == QLatin1String("assignment")) {
+        QStringList names, values;
+        if (!parseStringList(payload.value(QStringLiteral("names")), &names)
+            || !parseStringList(payload.value(QStringLiteral("values")), &values))
+            return reject(QStringLiteral("stream_response_assignment"), error);
+        *response = InteractionResponse::makeAssignment(request.requestId, names, values);
+    } else if (kind == QLatin1String("rearrangement")) {
+        QList<int> first, second;
+        if (!parseIntList(payload.value(QStringLiteral("first")), &first)
+            || !parseIntList(payload.value(QStringLiteral("second")), &second))
+            return reject(QStringLiteral("stream_response_rearrangement"), error);
+        *response = InteractionResponse::makeRearrangement(request.requestId, first, second);
+    } else if (kind == QLatin1String("distribution")) {
+        QList<int> cards;
+        if (!parseIntList(payload.value(QStringLiteral("cards")), &cards)
+            || !payload.value(QStringLiteral("target")).isString())
+            return reject(QStringLiteral("stream_response_distribution"), error);
+        *response = InteractionResponse::makeDistribution(request.requestId, cards,
+            payload.value(QStringLiteral("target")).toString());
+    } else if (kind == QLatin1String("general_arrangement")) {
+        QStringList names;
+        if (!parseStringList(payload.value(QStringLiteral("generals")), &names))
+            return reject(QStringLiteral("stream_response_general_arrangement"), error);
+        *response = InteractionResponse::makeGeneralArrangement(request.requestId, names);
+    } else if (kind == QLatin1String("custom")) {
+        const QJsonValue schema = payload.value(QStringLiteral("schema_version"));
+        if (!schema.isDouble() || schema.toDouble() < 1
+            || schema.toDouble() > std::numeric_limits<int>::max()
+            || schema.toDouble() != std::floor(schema.toDouble())
+            || !payload.value(QStringLiteral("type")).isString())
+            return reject(QStringLiteral("stream_response_custom"), error);
+        *response = InteractionResponse::makeCustom(request.requestId,
+            payload.value(QStringLiteral("schema_version")).toInt(),
+            payload.value(QStringLiteral("type")).toString(),
+            payload.value(QStringLiteral("value")).toVariant());
+    } else {
+        return reject(QStringLiteral("stream_response_kind"), error);
+    }
+    response->command = request.command;
+    return true;
+}
+
+bool sameWire(const QJsonObject &expected, const ProtocolMessage &actual)
+{
+    const bool expectedHasPayload = expected.value(QStringLiteral("has_payload")).toBool();
+    const QJsonValue actualPayload = QJsonValue::fromVariant(actual.payload);
+    return expected.value(QStringLiteral("command")).toInt() == actual.command
+        && expected.value(QStringLiteral("reply_to")).toString() == QString::number(actual.replyTo)
+        && expectedHasPayload == actual.hasPayload
+        && (!expectedHasPayload || expected.value(QStringLiteral("payload")) == actualPayload);
 }
 }
 
@@ -50,6 +157,12 @@ bool ClientRulesIngress::reset(int generation, const QJsonObject &identity, QStr
     m_syncActive = false;
     m_failed = false;
     m_outgoingRequests.clear();
+    m_core.cancelActiveRequest(InteractionCancelReason::Superseded);
+    m_reservedWire = QJsonObject();
+    m_pendingEvents.clear();
+    m_focusCommand = 0;
+    m_focusPlayers.clear();
+    m_focusReceivedAt = -1;
     clearRequest();
     m_events.reset(static_cast<quint64>(generation));
     return true;
@@ -57,9 +170,15 @@ bool ClientRulesIngress::reset(int generation, const QJsonObject &identity, QStr
 
 void ClientRulesIngress::clearRequest()
 {
+    if (m_core.hasActiveRequest())
+        m_core.cancelActiveRequest(InteractionCancelReason::Abandoned);
     m_hasRequest = false;
     m_request = ProtocolMessage();
     m_interaction = InteractionRequest();
+    m_reservedWire = QJsonObject();
+    m_focusCommand = 0;
+    m_focusPlayers.clear();
+    m_focusReceivedAt = -1;
 }
 
 void ClientRulesIngress::invalidate()
@@ -70,6 +189,12 @@ void ClientRulesIngress::invalidate()
     m_syncActive = false;
     m_syncId.clear();
     m_outgoingRequests.clear();
+    m_core.cancelActiveRequest(InteractionCancelReason::Superseded);
+    m_pendingEvents.clear();
+    m_reservedWire = QJsonObject();
+    m_focusCommand = 0;
+    m_focusPlayers.clear();
+    m_focusReceivedAt = -1;
     clearRequest();
 }
 
@@ -101,8 +226,6 @@ bool ClientRulesIngress::acceptFrame(int generation, bool sent, const QByteArray
     if (!(sent ? outgoing(message, &detail) : incoming(message, &detail)))
         return fail(detail, error);
     ++m_revision;
-    if (!m_syncActive)
-        m_events.synchronize(m_state, static_cast<quint64>(m_generation));
     return true;
 }
 
@@ -153,9 +276,46 @@ bool ClientRulesIngress::incoming(const ProtocolMessage &message, QString *error
         InteractionRequest request;
         if (!ProtocolInteractionRequestBuilder::build(message, m_state, &request, error))
             return false;
+        const QVariantMap countdown = m_state.gameValue(QStringLiteral("focus_countdown")).toMap();
+        const int type = countdown.value(QStringLiteral("type"), 0).toInt();
+        const qint64 maximum = countdown.value(QStringLiteral("maximum"), 0).toLongLong();
+        const qint64 current = countdown.value(QStringLiteral("current"), 0).toLongLong();
+        // Resolve deadlines from this ingress's SETUP, never the process-wide
+        // ServerInfo left by a different scene or a previous rules preview.
+        ServerInfoStruct timeouts;
+        timeouts.OperationTimeout = m_state.setup().value(QStringLiteral("operation_timeout")).toInt();
+        timeouts.NullificationCountDown = m_state.setup().value(QStringLiteral("nullification_countdown")).toInt();
+        const qint64 defaultTimeout = timeouts.getCommandTimeout(
+            static_cast<CommandType>(request.command), S_CLIENT_INSTANCE);
+        const bool focused = m_focusCommand == request.command
+            && m_focusPlayers.contains(m_state.selfName()) && m_focusReceivedAt >= 0;
+        bool countdownExpired = false;
+        request.timeoutMs = defaultTimeout;
+        if (focused) {
+            const qint64 elapsed = qMax<qint64>(0, m_core.now() - m_focusReceivedAt);
+            if (type == Countdown::S_COUNTDOWN_NO_LIMIT) {
+                request.timeoutMs = 0;
+            } else if (type == Countdown::S_COUNTDOWN_USE_SPECIFIED && maximum >= 0 && current >= 0) {
+                const qint64 remaining = maximum - current - elapsed;
+                request.timeoutMs = qMax<qint64>(1, remaining);
+                countdownExpired = remaining <= 0;
+            } else if (type == Countdown::S_COUNTDOWN_USE_DEFAULT && defaultTimeout > 0) {
+                const qint64 remaining = defaultTimeout - elapsed;
+                request.timeoutMs = qMax<qint64>(1, remaining);
+                countdownExpired = remaining <= 0;
+            }
+        } else if (message.payload.toMap().value(QStringLiteral("timeout_ms")).toLongLong() > 0) {
+            request.timeoutMs = message.payload.toMap().value(QStringLiteral("timeout_ms")).toLongLong();
+        }
+        // Superseding a request also releases its unsent reservation. The
+        // new deadline was resolved above before clearing focus metadata.
+        clearRequest();
         m_request = message;
         m_interaction = std::move(request);
         m_hasRequest = true;
+        m_core.beginRequest(m_interaction);
+        if (countdownExpired)
+            m_core.cancelActiveRequest(InteractionCancelReason::Expired);
         return true;
     }
     if (message.type == ProtocolMessageType::Reply) {
@@ -209,11 +369,14 @@ bool ClientRulesIngress::outgoing(const ProtocolMessage &message, QString *error
             || message.destination != ProtocolEndpoint::Room)
             return reject(QStringLiteral("stream_outgoing_before_active"), error);
         if (message.type == ProtocolMessageType::Reply) {
-            const auto *descriptor = m_hasRequest ? ProtocolPayloadRegistry::find(m_request) : nullptr;
-            if (m_syncActive || descriptor == nullptr || message.replyTo != m_request.messageId
-                || descriptor->replyCommand != message.command)
-                return reject(QStringLiteral("stream_stale_reply"), error);
-            clearRequest();
+            if (!m_reservedWire.isEmpty()) {
+                if (!sameWire(m_reservedWire, message))
+                    return reject(QStringLiteral("stream_reserved_reply_mismatch"), error);
+                clearRequest();
+                m_lastOutgoing = message.messageId;
+                return true;
+            }
+            return reject(QStringLiteral("stream_unreserved_reply"), error);
         } else if (message.type == ProtocolMessageType::Request) {
             const auto *descriptor = ProtocolPayloadRegistry::find(message);
             if (descriptor == nullptr || descriptor->replyCommand == 0 || m_outgoingRequests.size() >= 256)
@@ -238,6 +401,7 @@ bool ClientRulesIngress::reduce(const ProtocolMessage &message, QString *error)
             return reject(QStringLiteral("stream_sync_overlap"), error);
         m_pending = m_state;
         m_pending.resetGameplayState();
+        m_pendingEvents.clear();
         m_syncActive = true;
         m_syncId = sync.syncId;
         clearRequest();
@@ -250,6 +414,15 @@ bool ClientRulesIngress::reduce(const ProtocolMessage &message, QString *error)
     const auto result = ClientGameStateReducer::applyNotification(&candidate, message.command, message.payload);
     if (!result.success)
         return reject(QStringLiteral("stream_reduction:") + result.detail, error);
+    QString eventText = result.eventText;
+    if (!eventText.isEmpty()) {
+        const QVariantMap payload = message.payload.toMap();
+        eventText = formatClientPresentationText(message.command, eventText, payload,
+            [&candidate](const QString &name) {
+                return clientLogPlayerName(candidate.player(name), name);
+            });
+    }
+    const bool bufferedEvent = m_syncActive;
     if (m_syncActive) {
         m_pending = std::move(candidate);
         if (synchronization && sync.phase == QLatin1String("end")) {
@@ -260,6 +433,24 @@ bool ClientRulesIngress::reduce(const ProtocolMessage &message, QString *error)
         }
     } else {
         m_state = std::move(candidate);
+    }
+    if (message.command == S_COMMAND_MOVE_FOCUS) {
+        m_focusPlayers = m_state.gameValue(QStringLiteral("focus")).toStringList();
+        m_focusCommand = m_state.gameValue(QStringLiteral("focus_command")).toInt();
+        m_focusReceivedAt = m_core.now();
+    }
+    if (!eventText.isEmpty()) {
+        const GamePresentationEvent event{static_cast<quint64>(m_generation), 0,
+            message.command, eventText, message.payload};
+        if (bufferedEvent)
+            m_pendingEvents.append(event);
+        else
+            m_events.append(event.command, event.text, event.payload);
+    }
+    if (!m_syncActive && m_pendingEvents.size() > 0) {
+        for (const GamePresentationEvent &event : std::as_const(m_pendingEvents))
+            m_events.append(event.command, event.text, event.payload);
+        m_pendingEvents.clear();
     }
     if (message.command == S_COMMAND_GAME_START || message.command == S_COMMAND_GAME_OVER
         || message.command == S_COMMAND_SWITCH_CONTEXT
@@ -294,6 +485,72 @@ bool ClientRulesIngress::prepareQuery(int generation, int revision, const QStrin
         {QStringLiteral("interaction"), m_interaction.toJson()},
         {QStringLiteral("state"), snapshot(m_state)}, {QStringLiteral("selection"), selection}};
     return true;
+}
+
+bool ClientRulesIngress::submitSelection(int generation, int revision,
+                                         const QString &requestId,
+                                         const InteractionResponse &response,
+                                         QJsonObject *wire, QString *error)
+{
+    if (wire != nullptr)
+        *wire = QJsonObject();
+    if (error != nullptr)
+        error->clear();
+    if (wire == nullptr)
+        return reject(QStringLiteral("stream_response_output"), error);
+    if (generation != m_generation || revision != m_revision)
+        return reject(QStringLiteral("stream_stale_response"), error);
+    if (m_failed || m_syncActive || m_session.phase() != ClientSessionPhase::Active)
+        return reject(QStringLiteral("stream_not_submitable"), error);
+    if (!m_hasRequest || requestId != QString::number(m_request.messageId))
+        return reject(QStringLiteral("stream_no_matching_request"), error);
+    if (!m_reservedWire.isEmpty())
+        return reject(QStringLiteral("stream_reply_reserved"), error);
+
+    InteractionResponse answer = response;
+    if (answer.requestId == 0)
+        answer.requestId = m_interaction.requestId;
+    if (answer.command == 0)
+        answer.command = m_interaction.command;
+    if (answer.requestId != m_interaction.requestId || answer.command != m_interaction.command)
+        return reject(QStringLiteral("stream_response_correlation"), error);
+
+    const InteractionValidation validation = m_core.validate(answer);
+    if (!validation.accepted())
+        return reject(validation.reasonName(), error);
+    const auto *descriptor = InteractionCommandRegistry::find(
+        static_cast<QSanProtocol::CommandType>(m_interaction.command));
+    if (descriptor == nullptr || descriptor->replyEncoder == nullptr)
+        return reject(QStringLiteral("active interaction has no reply encoder"), error);
+    const InteractionWireReply encoded = descriptor->replyEncoder(m_interaction, answer);
+    if (encoded.command == QSanProtocol::S_COMMAND_UNKNOWN
+        || encoded.replyTo != m_interaction.requestId)
+        return reject(QStringLiteral("reply_encoding_failed"), error);
+    if (!m_core.submitResponse(answer).accepted())
+        return reject(QStringLiteral("stream_response_rejected"), error);
+
+    *wire = {{QStringLiteral("type"), QStringLiteral("reply")},
+        {QStringLiteral("source"), QStringLiteral("client")},
+        {QStringLiteral("destination"), QStringLiteral("room")},
+        {QStringLiteral("command"), static_cast<int>(encoded.command)},
+        {QStringLiteral("reply_to"), QString::number(encoded.replyTo)},
+        {QStringLiteral("has_payload"), encoded.payload.isValid() && !encoded.payload.isNull()},
+        {QStringLiteral("payload"), QJsonValue::fromVariant(encoded.payload)}};
+    m_reservedWire = *wire;
+    return true;
+}
+
+bool ClientRulesIngress::submitIntent(int generation, int revision,
+                                      const QString &requestId,
+                                      const QJsonObject &selection,
+                                      QJsonObject *wire, QString *error)
+{
+    if (selection.value(QStringLiteral("kind")).toString() == QLatin1String("cards"))
+        return reject(QStringLiteral("stream_card_intent_requires_native_evaluation"), error);
+    InteractionResponse response;
+    if (!parseResponse(selection, m_interaction, &response, error))
+        return false;
+    return submitSelection(generation, revision, requestId, response, wire, error);
 }
 
 QJsonObject ClientRulesIngress::status() const
@@ -367,6 +624,7 @@ QJsonObject ClientRulesIngress::presentation(int generation, int revision,
         {QStringLiteral("session_generation"), QString::number(m_generation)},
         {QStringLiteral("presentation_revision"), QString::number(m_revision)},
         {QStringLiteral("request_id"), currentRequest},
+        {QStringLiteral("state"), view()},
         {QStringLiteral("view_state"), viewState.toJson()},
         {QStringLiteral("plain_text"), viewState.toPlainText()},
         {QStringLiteral("events"), events},

@@ -1231,6 +1231,14 @@
 <context>
     <name>ClientLogBox</name>
     <message>
+        <source>%from's %2 is treated as %3 %4 by the effect of %1</source>
+        <translation>%from 的 %2 因“%1”效果视为 %3 %4</translation>
+    </message>
+    <message>
+        <source>self</source>
+        <translation>自己</translation>
+    </message>
+    <message>
         <location filename="../src/ui/clientlogbox.cpp" line="27"/>
         <source>&lt;font color=&apos;%1&apos;&gt;------------------------------&lt;/font&gt;</source>
         <translation>&lt;font color=&apos;%1&apos;&gt;─────────────────────&lt;/font&gt;</translation>
@@ -5262,6 +5270,74 @@
 <context>
     <name>RoomReplayController</name>
     <message>
+        <source>Pure text replay file (*.txt);;Image replay file (*.png)</source>
+        <translation>纯文本录像文件 (*.txt);;图像录像文件 (*.png)</translation>
+    </message>
+    <message>
+        <source>The local server is not ready to save takeover snapshots.</source>
+        <translation>本地服务器尚未准备好保存接管快照。</translation>
+    </message>
+    <message>
+        <source>Replay has finished; an event barrier cannot be created</source>
+        <translation>Replay 已播放完畢，無法建立事件 barrier</translation>
+    </message>
+    <message>
+        <source>Export bug diagnostic bundle</source>
+        <translation>匯出 Bug 診斷包</translation>
+    </message>
+    <message>
+        <source>QSanguosha bug diagnostic bundle (*.qsgbug.zip)</source>
+        <translation>QSanguosha Bug 診斷包 (*.qsgbug.zip)</translation>
+    </message>
+    <message>
+        <source>Replay has ended or the event barrier cannot be created</source>
+        <translation>Replay 已結束或事件 barrier 無法建立</translation>
+    </message>
+    <message>
+        <source>Timed out after 2 seconds waiting for an exact event barrier</source>
+        <translation>等待精確事件 barrier 逾時 2 秒</translation>
+    </message>
+    <message>
+        <source>Replay has been closed</source>
+        <translation>Replay 已關閉</translation>
+    </message>
+    <message>
+        <source>Export failed</source>
+        <translation>匯出失敗</translation>
+    </message>
+    <message>
+        <source>Unable to create diagnostic bundle</source>
+        <translation>無法建立診斷包</translation>
+    </message>
+    <message>
+        <source>Included</source>
+        <translation>已包含</translation>
+    </message>
+    <message>
+        <source>Omitted: %1</source>
+        <translation>已省略：%1</translation>
+    </message>
+    <message>
+        <source>Export complete</source>
+        <translation>匯出完成</translation>
+    </message>
+    <message>
+        <source>Diagnostic bundle: %1
+state-now.json: %2
+diagnostics.json: %3
+
+Replay snapshots may contain local paths. Replay and state-now may also contain player names, chat, room or connection metadata.</source>
+        <translation>診斷包：%1
+state-now.json：%2
+diagnostics.json：%3
+
+注意：Replay snapshot 可能包含本機路徑；Replay 與 state-now 也可能包含玩家名稱、聊天、房間或連線中繼資料。</translation>
+    </message>
+    <message>
+        <source>The replay was saved, but its takeover snapshots could not be saved: %1</source>
+        <translation>录像已保存，但无法保存接管快照：%1</translation>
+    </message>
+    <message>
         <source>Save replay record</source>
         <translation>保存录像</translation>
     </message>
@@ -8435,6 +8511,48 @@ Revision: %3
     <message>
         <source>unknown predicate type</source>
         <translation>未知的條件類型</translation>
+    </message>
+</context>
+<context>
+    <name>ReplayerControlBar</name>
+    <message>
+        <source>Take over</source>
+        <translation>接管</translation>
+    </message>
+    <message>
+        <source>Export</source>
+        <translation>匯出</translation>
+    </message>
+    <message>
+        <source>Export bug diagnostic bundle</source>
+        <translation>匯出 Bug 診斷包</translation>
+    </message>
+    <message>
+        <source>Take over a seat</source>
+        <translation>接管座位</translation>
+    </message>
+    <message>
+        <source>Select a seat to take over:</source>
+        <translation>選擇要接管的座位：</translation>
+    </message>
+    <message>
+        <source>Take over from turn %1 (%2's turn)?</source>
+        <translation>從第 %1 回合（%2 的回合）接管？</translation>
+    </message>
+</context>
+<context>
+    <name>chongxu</name>
+    <message>
+        <source>Time remaining: %1</source>
+        <translation>剩余时间: %1</translation>
+    </message>
+    <message>
+        <source>Score: %1</source>
+        <translation>分数: %1</translation>
+    </message>
+    <message>
+        <source>Game over! Score: %1</source>
+        <translation>游戏结束！得分: %1</translation>
     </message>
 </context>
 </TS>

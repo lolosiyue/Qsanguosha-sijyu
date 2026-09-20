@@ -6,7 +6,7 @@
 
 namespace QSanRules {
 constexpr int IdentitySchema = 1;
-constexpr int BridgeSchema = 2;
+constexpr int BridgeSchema = 3;
 QByteArray canonical(const QJsonValue &value);
 QString digest(const QString &domain, const QJsonValue &value);
 QJsonObject seal(QJsonObject identity);

@@ -1,47 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { Command } from "../src/protocol";
-import {
-  INTERACTION_COMMANDS,
-  REPLY_COMMAND,
-  cancelReply,
-  replyCommand,
-  replyForCommand
-} from "../src/replies";
+import { cardsIntent, cancelReply, responseIntent } from "../src/replies";
+import type { RulesSelection } from "../src/rules-client";
 
-describe("replies", () => {
-  it("maps every interaction command to a reply command", () => {
-    for (const command of INTERACTION_COMMANDS)
-      expect(REPLY_COMMAND[command], `missing REPLY_COMMAND for ${command}`).toBeTypeOf("number");
+describe("response intents", () => {
+  it("represents cancellation without a transport command", () => {
+    expect(responseIntent(Command.INVOKE_SKILL, { cancelled: true })).toEqual({ kind: "cancel", payload: {} });
   });
-
-  it("maps PLAY_CARD replies onto RESPONSE_CARD", () => {
-    expect(replyCommand(Command.PLAY_CARD)).toBe(Command.RESPONSE_CARD);
+  it("uses native card selection fields", () => {
+    expect(responseIntent(Command.PLAY_CARD, {
+      cardIds: [12], targets: ["sgs2"], skillName: "yj_zhengyu", instanceId: 3, userString: "slash"
+    })).toEqual({ kind: "cards", card_ids: [12], targets: ["sgs2"], skill_name: "yj_zhengyu",
+      skill_instance_id: 3, user_string: "slash", top: [], bottom: [] });
   });
-
-  it("sends invoke false when cancelling a skill ask", () => {
-    expect(replyForCommand(Command.INVOKE_SKILL, { cancelled: true })).toEqual({
-      schema_version: 1,
-      invoke: false
-    });
+  it("clones the canonical selection arrays", () => {
+    const selection: RulesSelection = { card_ids: [1], targets: ["sgs2"], skill_name: "",
+      skill_instance_id: 0, user_string: "", top: [], bottom: [] };
+    const intent = cardsIntent(selection);
+    selection.card_ids.push(2);
+    expect(intent.card_ids).toEqual([1]);
   });
-
-  it("builds a card response with schema_version 1", () => {
-    expect(replyForCommand(Command.PLAY_CARD, {
-      cardText: "@ZhengyuCard=4",
-      targets: ["sgs2"],
-      skillName: "yj_zhengyu",
-      instanceId: 3
-    })).toEqual({
-      schema_version: 1,
-      cancelled: false,
-      card_text: "@ZhengyuCard=4",
-      targets: ["sgs2"],
-      activation_skill_name: "yj_zhengyu",
-      activation_skill_instance_id: 3
-    });
-  });
-
-  it("uses cancelled true for a generic cancel", () => {
-    expect(cancelReply()).toEqual({ schema_version: 1, cancelled: true });
+  it("keeps cancellation factory transport-free", () => {
+    expect(cancelReply()).toEqual({ kind: "cancel", payload: {} });
   });
 });

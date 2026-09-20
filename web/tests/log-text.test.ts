@@ -4,7 +4,7 @@ import {
   formatGameEvent,
   formatPresentationEvent,
   formatSkillLog
-} from "../src/log-text";
+} from "./fixtures/log-text-legacy";
 import { Command, GameEvent } from "../src/protocol";
 
 function playerName(objectName: string): string {

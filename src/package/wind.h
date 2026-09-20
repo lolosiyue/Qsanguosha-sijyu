@@ -53,17 +53,6 @@ public:
     const Card *validateInResponse(ServerPlayer *user) const;
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-#include "package-dialogs.h"
-#else
-class GuhuoDialog
-{
-public:
-    static QDialog *getInstance(const QString &, bool = true, bool = true, bool = true,
-        bool = false, bool = false, bool = false) { return nullptr; }
-};
-#endif
-
 class Jushou : public PhaseChangeSkill
 {
 public:

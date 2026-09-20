@@ -2,6 +2,7 @@
 #include "game-view.h"
 #include "runtime-paths.h"
 #include "skill-dialog-registry.h"
+#include "special-skill-dialogs.h"
 #include "choosetriggerorderbox.h"
 #include "photo.h"
 #include "room-layout-engine.h"
@@ -47,6 +48,8 @@
 #include "aux-skills.h"
 #include "clientlogbox.h"
 #include "chatwidget.h"
+#include "room-input-router.h"
+#include "room-chat-controller.h"
 #include "emotionpanel.h"
 #include "gifchatbox.h"
 #include "giftitem.h"
@@ -78,6 +81,7 @@
 #include <QToolTip>
 #include <QCoreApplication>
 #include <QMovie>
+#include <algorithm>
 #include <QDateTime>
 #include <QFile>
 #include <QTextStream>
@@ -95,12 +99,9 @@ static QDialog *dialogForSkill(const Skill *skill, QWidget *parent = nullptr)
     if (skill == nullptr)
         return nullptr;
 
-    const SkillDialogInfo info = skill->getDialogInfo();
-    if (info.isValid()) {
-        if (QDialog *dialog = SkillDialogRegistry::create(info, parent))
-            return dialog;
-    }
-    return skill->getDialog();
+    // Skill metadata is the only engine/UI boundary; widget factories live in
+    // the GUI target, including specialized declaration and preview dialogs.
+    return SkillDialogRegistry::create(skill->getDialogInfo(), parent);
 }
 
 // 自動化測試模式: --auto-robots 或 --test-general 啟動時, 選將/選先手等互動自動回應
@@ -244,6 +245,61 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
 {
 	setParent(main_window);
+	m_inputRouter = new RoomInputRouter({
+		[this]() { return chat_edit != nullptr && chat_edit->hasFocus(); },
+		[this]() { trust(); }, [this]() { chooseSkillButton(); }, [this]() {
+			if (m_emotionPanel != nullptr) {
+				if (m_emotionPanel->isVisible()) m_emotionPanel->hidePanel();
+				else m_emotionPanel->showPanel();
+			}
+		}, [this]() { dashboard->beginSorting(); }, [this]() { dashboard->reverseSelection(); },
+		[this]() { adjustItems(); }, [this](bool control) {
+			if (control) { if (add_robot && add_robot->isVisible()) ClientInstance->addRobot(1); }
+			else if (start_game && start_game->isVisible())
+				ClientInstance->addRobot(Sanguosha->getPlayerCount(ServerInfo.GameMode)
+					- ClientInstance->getPlayers().length());
+		}, [this](const QString &key) { dashboard->selectCard(key); },
+		[this](bool right, bool control) { dashboard->selectCard(".", right, control); },
+		[this]() { doOkButton(); }, [this]() { doCancelButton(); }, [this]() { doDiscardButton(); },
+		[this]() {
+			dashboard->unselectAll();
+			if (ClientInstance->getStatus() == Client::Playing)
+				enableTargets(nullptr);
+		},
+		[this](int order, bool control) { selectTarget(order, control); },
+		[this](int position) { dashboard->selectEquip(position); },
+		[this]() { showGeneralPileHotkey(); },
+		[this]() { if (Self != nullptr) for (Photo *photo : photos)
+			if (photo->getPlayer() && photo->getPlayer()->isAlive()) photo->showDistance(); },
+		[this]() { if (dashboard != nullptr) {
+			m_skillButtonSank = !m_skillButtonSank;
+			dashboard->updateSkillButton();
+		} },
+		[this]() { return ClientInstance->getStatus() == Client::Playing; },
+		[this]() { return cancel_button != nullptr && cancel_button->isEnabled(); },
+		[this]() { return discard_button != nullptr && discard_button->isEnabled(); },
+		[this]() { return m_choiceDialog != nullptr && m_choiceDialog->isVisible()
+			&& m_choiceDialog->objectName() == QLatin1String("cancel"); },
+		[this]() { if (m_choiceDialog != nullptr) m_choiceDialog->reject(); }
+	});
+	m_chatController = new RoomChatController({
+		[this]() { return game_started && ServerInfo.DisableChat; },
+		[this]() { return chat_edit != nullptr ? chat_edit->text() : QString(); },
+		[this]() { if (chat_edit != nullptr) chat_edit->clear(); },
+		[this](const QString &text) { ClientInstance->speakToServer(text); },
+		[this](const QString &html) { if (chat_box != nullptr)
+			chat_box->append(QString("<p style=\"margin:3px 2px;\">%1</p>").arg(html)); },
+		[this]() {
+			if (Self == nullptr) return QString();
+			QString title = Sanguosha->translate(Self->getGeneralName());
+			title.append(QString("(%1)").arg(Self->screenName()));
+			return QString("<b>%1</b>").arg(title);
+		},
+		[this](bool enabled, const QString &path, bool updatePath) {
+			_m_bgEnabled = enabled;
+			if (updatePath) _m_bgMusicPath = path;
+		}
+	});
 	m_replay = new RoomReplayController(this, main_window);
 	connect(m_replay, &RoomReplayController::takeoverRequested,
 		this, &RoomScene::takeoverRequested);
@@ -810,6 +866,10 @@ void RoomScene::exitOnsoleContext()
 RoomScene::~RoomScene()
 {
     G_EFFECTS.setLargeRoom(false);
+    delete m_chatController;
+    m_chatController = nullptr;
+    delete m_inputRouter;
+    m_inputRouter = nullptr;
 #if !defined(QSAN_XP_LEGACY)
     // Detach the secondary document views before their scene-owned sources die.
     delete m_overlayHost;
@@ -2071,240 +2131,10 @@ void RoomScene::updateSelectedTargets()
 
 void RoomScene::keyReleaseEvent(QKeyEvent*event)
 {
-#if !defined(QSAN_XP_LEGACY)
-	// QAction consumes the key press; do not let its release select the I card.
-	if (event->key() == Qt::Key_I
-		&& event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier)) {
-		event->accept();
-		return;
-	}
-#endif
-	if(!Config.EnableHotKey) return;
-	if(chat_edit->hasFocus()) return;
-
-	bool control_is_down = event->modifiers()&Qt::ControlModifier;
-	bool alt_is_down = event->modifiers()&Qt::AltModifier;
-
-	switch (event->key()){
-	case Qt::Key_F1: trust();break;
-	case Qt::Key_F2: chooseSkillButton();break;
-	case Qt::Key_F12: {
-		if (m_emotionPanel) {
-			if (m_emotionPanel->isVisible())
-				m_emotionPanel->hidePanel();
-			else
-				m_emotionPanel->showPanel();
-		}
-		break;
-	}
-	case Qt::Key_F3: dashboard->beginSorting();break;
-	case Qt::Key_F4: dashboard->reverseSelection();break;
-	case Qt::Key_F5: {
-		adjustItems();
-		break;
-	}
-	case Qt::Key_F7: {
-		if(control_is_down){
-			if(add_robot&&add_robot->isVisible())
-				ClientInstance->addRobot(1);
-		} else if(start_game&&start_game->isVisible()){
-			int left = Sanguosha->getPlayerCount(ServerInfo.GameMode)-ClientInstance->getPlayers().length();
-			ClientInstance->addRobot(left);
-		}
-		break;
-	}
-	case Qt::Key_F11: {
-		if (!Self) break;
-
-		QStringList available_piles;
-		QStringList excluded_piles = { "yinni_general" }; // 排除
-
-		// 1. 獲取所有屬性名稱 (包含動態屬性與靜態 Q_PROPERTY)
-		QList<QByteArray> all_props = Self->dynamicPropertyNames();
-		const QMetaObject *meta = Self->metaObject();
-		for (int i = 0; meta && i < meta->propertyCount(); ++i) {
-			if (meta->property(i).name()) {
-				all_props << meta->property(i).name();
-			}
-		}
-
-		foreach (const QByteArray &prop_name, all_props) {
-			QString tag = QString::fromLatin1(prop_name);
-
-			// 檢查後綴、去重複、排除特定牌堆
-			if (tag.endsWith("_general", Qt::CaseInsensitive) && 
-				!available_piles.contains(tag) && 
-				!excluded_piles.contains(tag)) {
-
-				// 解析武將清單 (神殺屬性標準：以 '+' 分隔的字串)
-				QStringList generals = Self->property(prop_name).toString().split("+", Qt::SkipEmptyParts);
-				if (generals.isEmpty()) continue;
-
-				// 驗證是否所有名稱都是合法武將
-				bool all_valid = true;
-				foreach (const QString &gen_name, generals) {
-					if (!Sanguosha->getGeneral(gen_name)) {
-						all_valid = false;
-						break;
-					}
-				}
-
-				// 完全合法才加入選單
-				if (all_valid) {
-					available_piles << tag;
-				}
-			}
-		}
-
-		if (available_piles.isEmpty()) break;
-
-		// 3. UI 顯示邏輯
-		if (available_piles.length() == 1) {
-			showGeneralPile(available_piles.first());
-		} else {
-			QDialog *dialog = new QDialog(main_window);
-			dialog->setWindowTitle(tr("Select skill"));
-
-			QVBoxLayout *layout = new QVBoxLayout;
-			foreach (const QString &tag, available_piles) {
-				QString skill_name = tag.left(tag.length() - 8);
-				QCommandLinkButton *button = new QCommandLinkButton(Sanguosha->translate(skill_name));
-				connect(button, &QCommandLinkButton::clicked, this, [this, tag]() { showGeneralPile(tag); });
-				connect(button, SIGNAL(clicked()), dialog, SLOT(accept()));
-				layout->addWidget(button);
-			}
-
-			dialog->setLayout(layout);
-			dialog->exec();
-		}
-		break;
-	}
-
-	case Qt::Key_Q: dashboard->selectCard("Q");break;
-	case Qt::Key_W: dashboard->selectCard("W");break;
-	case Qt::Key_E: dashboard->selectCard("E");break;
-	case Qt::Key_R: dashboard->selectCard("R");break;
-	case Qt::Key_T: dashboard->selectCard("T");break;
-	case Qt::Key_Y: dashboard->selectCard("Y");break;
-	case Qt::Key_U: dashboard->selectCard("U");break;
-	case Qt::Key_I: dashboard->selectCard("I");break;
-	case Qt::Key_O: dashboard->selectCard("O");break;
-	case Qt::Key_P: dashboard->selectCard("P");break;
-	case Qt::Key_A: dashboard->selectCard("A");break;
-	case Qt::Key_S: dashboard->selectCard("S");break;
-	case Qt::Key_D: dashboard->selectCard("D");break;
-	case Qt::Key_F: dashboard->selectCard("F");break;
-	case Qt::Key_G: dashboard->selectCard("G");break;
-	case Qt::Key_H: dashboard->selectCard("H");break;
-	case Qt::Key_J: dashboard->selectCard("J");break;
-	case Qt::Key_K: dashboard->selectCard("K");break;
-	case Qt::Key_L: dashboard->selectCard("L");break;
-	case Qt::Key_Z: dashboard->selectCard("Z");break;
-	case Qt::Key_X: dashboard->selectCard("X");break;
-	case Qt::Key_C: dashboard->selectCard("C");break;
-	case Qt::Key_V: dashboard->selectCard("V");break;
-	case Qt::Key_B: dashboard->selectCard("B");break;
-	case Qt::Key_N: dashboard->selectCard("N");break;
-	case Qt::Key_M: dashboard->selectCard("M");break;
-	/*case Qt::Key_S: dashboard->selectCard("slash"); break;
-	case Qt::Key_J: dashboard->selectCard("jink");break;
-	case Qt::Key_P: dashboard->selectCard("peach");break;
-	case Qt::Key_O: dashboard->selectCard("analeptic");break;
-
-	case Qt::Key_E: dashboard->selectCard("equip");break;
-	case Qt::Key_W: dashboard->selectCard("weapon");break;
-	case Qt::Key_F: dashboard->selectCard("armor");break;
-	case Qt::Key_H: dashboard->selectCard("defensive_horse+offensive_horse");break;
-
-	case Qt::Key_T: dashboard->selectCard("trick");break;
-	case Qt::Key_A: dashboard->selectCard("aoe");break;
-	case Qt::Key_N: dashboard->selectCard("nullification");break;
-	case Qt::Key_Q: dashboard->selectCard("snatch");break;
-	case Qt::Key_C: dashboard->selectCard("dismantlement");break;
-	case Qt::Key_U: dashboard->selectCard("duel");break;
-	case Qt::Key_L: dashboard->selectCard("lightning");break;
-	case Qt::Key_I: dashboard->selectCard("indulgence");break;
-	case Qt::Key_B: dashboard->selectCard("supply_shortage");break;*/
-
-	case Qt::Key_Left: dashboard->selectCard(".",false,control_is_down);break;
-	case Qt::Key_Right: dashboard->selectCard(".",true,control_is_down);break;// iterate all cards
-
-	case Qt::Key_Return: {
-		doOkButton();
-		break;
-	}
-	case Qt::Key_Escape: {
-		if(ClientInstance->getStatus()==Client::Playing){
-			dashboard->unselectAll();
-			enableTargets(nullptr);
-		} else
-			dashboard->unselectAll();
-		if(cancel_button->isEnabled())
-			doCancelButton();
-		break;
-	}
-	case Qt::Key_Space: {
-		if (m_choiceDialog != nullptr && m_choiceDialog->isVisible() && m_choiceDialog->objectName() == "cancel") {
-			m_choiceDialog->reject();
-		} else if (cancel_button->isEnabled())
-			doCancelButton();
-		else if (discard_button->isEnabled())
-			doDiscardButton();
-		break;
-	}
-
-	case Qt::Key_0:
-	case Qt::Key_1:
-	case Qt::Key_2:
-	case Qt::Key_3:
-	case Qt::Key_4: {
-		int position = event->key()-Qt::Key_0;
-		if(position!=0&&alt_is_down){
-			dashboard->selectEquip(position);
-		}
-		break;
-	}
-	case Qt::Key_5:
-	case Qt::Key_6:
-	case Qt::Key_7:
-	case Qt::Key_8:
-	case Qt::Key_9: {
-		int order = event->key()-Qt::Key_0;
-		selectTarget(order,control_is_down);
-		break;
-	}
-
-	case Qt::Key_F9: {
-		if(Self==nullptr) return;
-		foreach (Photo*photo,photos){
-			if(photo->getPlayer()&&photo->getPlayer()->isAlive())
-				photo->showDistance();
-		}
-		break;
-	}
-	case Qt::Key_F10: {
-		if(dashboard){
-			m_skillButtonSank = !m_skillButtonSank;
-			dashboard->updateSkillButton();
-		}
-		break;
-	}
-	/*case Qt::Key_D: {
-		if(Self==nullptr) return;
-		foreach (Photo*photo,photos){
-			if(photo->getPlayer()&&photo->getPlayer()->isAlive())
-				photo->showDistance();
-		}
-		break;
-	}
-	case Qt::Key_Z: {
-		if(dashboard){
-			m_skillButtonSank = !m_skillButtonSank;
-			dashboard->updateSkillButton();
-		}
-		break;
-	}*/
-	}
+    if (m_inputRouter != nullptr) {
+        m_inputRouter->route(event, Config.EnableHotKey);
+        return;
+    }
 }
 
 void RoomScene::contextMenuEvent(QGraphicsSceneContextMenuEvent*event)
@@ -5170,63 +5000,10 @@ void RoomScene::viewMaxCards()
 
 void RoomScene::speak()
 {
-	if(game_started&&ServerInfo.DisableChat)
-		chat_box->append(tr("This room does not allow chatting!"));
-	else {
-		bool broadcast = true;
-		QString text = chat_edit->text();
-		if(text==".StartBgMusic"){
-			broadcast = false;
-			//Config.EnableBgMusic = true;
-			//Config.setValue("EnableBgMusic",true);
-			_m_bgEnabled = true;
-			_m_bgMusicPath = Config.value("BackgroundMusic","audio/system/background.ogg").toString();
-#ifdef AUDIO_SUPPORT
-			Audio::stopBGM();
-			if(Config.BGMVolume>0){
-				Audio::playBGM(_m_bgMusicPath);
-				Audio::setBGMVolume(Config.BGMVolume);
-			}
-		} else if(text.startsWith(".StartBgMusic=")){
-			broadcast = false;
-			//Config.EnableBgMusic = true;
-			//Config.setValue("EnableBgMusic",true);
-			_m_bgEnabled = true;
-			QString path = text.mid(14);
-			if(path.startsWith("|")){
-				path = path.mid(1);
-				Config.setValue("BackgroundMusic",path);
-				_m_bgMusicPath = path;
-			}
-			Audio::stopBGM();
-			if(Config.BGMVolume>0){
-				Audio::playBGM(path);
-				Audio::setBGMVolume(Config.BGMVolume);
-			}
-		} else if(text==".StopBgMusic"){
-			Audio::stopBGM();
-#endif
-			broadcast = false;
-			//Config.EnableBgMusic = false;
-			//Config.setValue("EnableBgMusic",false);
-			_m_bgEnabled = false;
-		}
-		if(broadcast)
-			ClientInstance->speakToServer(text);
-		else {
-			QString title;
-			if(Self){
-				title = Self->getGeneralName();
-				title = Sanguosha->translate(title);
-				title.append(QString("(%1)").arg(Self->screenName()));
-				title = QString("<b>%1</b>").arg(title);
-			}
-			QString line = tr("<font color='%1'>[%2] said: %3 </font>")
-				.arg(UiConfig.TextEditColor.name()).arg(title).arg(text);
-			chat_box->append(QString("<p style=\"margin:3px 2px;\">%1</p>").arg(line));
-		}
-	}
-	chat_edit->clear();
+    if (m_chatController != nullptr) {
+        m_chatController->submit();
+        return;
+    }
 }
 
 void RoomScene::onEmotionIconSelected(int emotionId)
@@ -6811,6 +6588,47 @@ void RoomScene::updateSpineSeatGeometry()
 	}
 }
 #endif
+
+void RoomScene::showGeneralPileHotkey()
+{
+    if (Self == nullptr)
+        return;
+    QStringList available;
+    QList<QByteArray> properties = Self->dynamicPropertyNames();
+    const QMetaObject *meta = Self->metaObject();
+    for (int i = 0; meta != nullptr && i < meta->propertyCount(); ++i)
+        properties.append(meta->property(i).name());
+    for (const QByteArray &property : properties) {
+        const QString tag = QString::fromLatin1(property);
+        if (!tag.endsWith(QStringLiteral("_general"), Qt::CaseInsensitive)
+            || tag == QLatin1String("yinni_general") || available.contains(tag))
+            continue;
+        const QStringList generals = Self->property(property).toString()
+            .split(QLatin1Char('+'), Qt::SkipEmptyParts);
+        if (!generals.isEmpty() && std::all_of(generals.cbegin(), generals.cend(),
+                [](const QString &name) { return Sanguosha->getGeneral(name) != nullptr; }))
+            available.append(tag);
+    }
+    if (available.isEmpty())
+        return;
+    if (available.size() == 1) {
+        showGeneralPile(available.first());
+        return;
+    }
+    auto *dialog = new QDialog(main_window);
+    dialog->setWindowTitle(tr("Select skill"));
+    auto *layout = new QVBoxLayout(dialog);
+    for (const QString &tag : available) {
+        const QString skill = tag.left(tag.length() - 8);
+        auto *button = new QCommandLinkButton(Sanguosha->translate(skill));
+        connect(button, &QCommandLinkButton::clicked, this, [this, tag]() {
+            showGeneralPile(tag);
+        });
+        connect(button, &QCommandLinkButton::clicked, dialog, &QDialog::accept);
+        layout->addWidget(button);
+    }
+    dialog->exec();
+}
 
 void RoomScene::showGeneralPile(const QString &tag_name) {
 	if (Self == nullptr || tag_name.isEmpty())

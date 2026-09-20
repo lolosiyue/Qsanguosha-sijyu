@@ -174,6 +174,9 @@ int ClientRulesHost::stream()
             fields.unite({QStringLiteral("direction"), QStringLiteral("frame")});
         else if (action == QLatin1String("query"))
             fields.unite({QStringLiteral("revision"), QStringLiteral("request_id"), QStringLiteral("selection")});
+        else if (action == QLatin1String("submit_selection"))
+            fields.unite({QStringLiteral("revision"), QStringLiteral("request_id"),
+                          QStringLiteral("selection")});
         else if (action == QLatin1String("presentation"))
             fields.unite({QStringLiteral("revision"), QStringLiteral("request_id"), QStringLiteral("event_cursor")});
         QString reason;
@@ -217,6 +220,46 @@ int ClientRulesHost::stream()
                 ServerInfoScope scope;
                 response.insert(QStringLiteral("evaluation"), m_session.evaluate(query));
                 success = true;
+            }
+        } else if (action == QLatin1String("submit_selection")) {
+            QJsonObject query;
+            InteractionResponse canonical;
+            const QJsonValue selection = operation.value(QStringLiteral("selection"));
+            if (!index(operation.value(QStringLiteral("revision")))
+                || !operation.value(QStringLiteral("request_id")).isString()
+                || !selection.isObject()) {
+                reason = QStringLiteral("invalid_stream_selection");
+            } else if (m_ingress.prepareQuery(generation,
+                    operation.value(QStringLiteral("revision")).toInt(),
+                    operation.value(QStringLiteral("request_id")).toString(),
+                    selection.toObject(), &query, &reason)) {
+                const QString kind = selection.toObject().value(QStringLiteral("kind")).toString();
+                if (!kind.isEmpty() && kind != QLatin1String("cards")) {
+                    QJsonObject wire;
+                    success = m_ingress.submitIntent(generation,
+                        operation.value(QStringLiteral("revision")).toInt(),
+                        operation.value(QStringLiteral("request_id")).toString(),
+                        selection.toObject(), &wire, &reason);
+                    if (success)
+                        response.insert(QStringLiteral("wire"), wire);
+                } else {
+                    ServerInfoScope scope;
+                    const QJsonObject evaluation = m_session.evaluate(query, &canonical);
+                    if (!evaluation.value(QStringLiteral("known")).toBool()
+                        || !evaluation.value(QStringLiteral("can_confirm")).toBool()) {
+                        reason = evaluation.value(QStringLiteral("reason")).toString();
+                        if (reason.isEmpty())
+                            reason = QStringLiteral("selection_not_confirmable");
+                    } else {
+                        QJsonObject wire;
+                        success = m_ingress.submitSelection(generation,
+                            operation.value(QStringLiteral("revision")).toInt(),
+                            operation.value(QStringLiteral("request_id")).toString(),
+                            canonical, &wire, &reason);
+                        if (success)
+                            response.insert(QStringLiteral("wire"), wire);
+                    }
+                }
             }
         } else if (action == QLatin1String("view")) {
             if (generation != m_ingress.status().value(QStringLiteral("generation")).toInt())

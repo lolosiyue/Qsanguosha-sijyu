@@ -9,14 +9,14 @@ import {
   isObject,
   type JsonObject,
   type JsonValue
-} from "./protocol";
-import { ClientGameState, isRecord } from "./state";
+} from "../../src/protocol";
+import { ClientGameState, isRecord } from "../../src/state";
 import {
   autoTableBgUrl,
   imagePathToUrl,
   isLightbox,
   lightboxBackgroundUrl
-} from "./backdrop";
+} from "../../src/backdrop";
 
 export type FlowDisposition =
   | "state"

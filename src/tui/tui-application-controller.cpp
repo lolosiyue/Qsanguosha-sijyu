@@ -400,7 +400,7 @@ GameActionModel TuiApplicationController::sharedActionModel(
     model.sessionGeneration = m_session.generation();
     model.presentationRevision = m_presentationRevision;
     if (request == nullptr || !request->isValid()) {
-        model.unsupportedReason = QStringLiteral("目前沒有待處理的互動。");
+        model.unsupportedReason = tuiText("tui_action_no_request");
         return model;
     }
 
@@ -408,11 +408,11 @@ GameActionModel TuiApplicationController::sharedActionModel(
     model.requestId = request->requestId;
     model.prompt = m_renderer.interactionTitle(*request);
     if (!m_session.isActive() || m_session.isStateSyncActive()) {
-        model.unsupportedReason = QStringLiteral("連線尚未完成狀態同步。");
+        model.unsupportedReason = tuiText("tui_action_sync_pending");
         return model;
     }
     if (request->isExpired(m_core.now())) {
-        model.unsupportedReason = QStringLiteral("此請求已逾時。");
+        model.unsupportedReason = tuiText("tui_reject_timeout");
         return model;
     }
     model.canCancel = request->cancelable;
@@ -426,7 +426,7 @@ GameActionModel TuiApplicationController::sharedActionModel(
         for (const InteractionOption &option : options) {
             model.actions.append({option.value,
                 option.label.isEmpty() ? option.value : option.label,
-                option.enabled, false, option.enabled ? QString() : QStringLiteral("目前不可選")});
+                option.enabled, false, option.enabled ? QString() : tuiText("tui_reject_option_disabled")});
         }
     };
     if (const auto *options = request->payloadAs<OptionInteractionPayload>()) {
@@ -468,7 +468,7 @@ GameActionModel TuiApplicationController::sharedActionModel(
                 // the TUI's existing rule resolver has a live card/player and
                 // confirms the active prompt's method/pattern constraints.
                 if (!ruleContextKnown) {
-                    reason = QStringLiteral("合法性尚未確認");
+                    reason = tuiText("tui_action_legality_unknown");
                 } else {
                     reason = resolveCardHint(id);
                     enabled = reason.isEmpty();
@@ -476,20 +476,20 @@ GameActionModel TuiApplicationController::sharedActionModel(
                         const TuiRenderer::CardTargets targets = resolveCardTargets(id);
                         if (!targets.known || (!targets.targetFixed && targets.targets.isEmpty())) {
                             enabled = false;
-                            reason = QStringLiteral("目標合法性尚未確認");
+                            reason = tuiText("tui_action_target_legality_unknown");
                         }
                     }
                     if (!enabled && reason.isEmpty())
-                        reason = QStringLiteral("合法性尚未確認");
+                        reason = tuiText("tui_action_legality_unknown");
                 }
             }
             const QString label = identitiesAllowed && ruleContextKnown
-                ? resolveCardDisplayText(id) : QStringLiteral("未公開牌");
+                ? resolveCardDisplayText(id) : tuiText("tui_card_unrevealed");
             const QString stableId = identitiesAllowed ? QString::number(id) : QString();
             if (!identitiesAllowed)
-                reason = QStringLiteral("牌面未授權展示");
+                reason = tuiText("tui_card_display_unauthorized");
             else if (!ruleContextKnown && reason.isEmpty())
-                reason = QStringLiteral("卡牌合法性尚未確認");
+                reason = tuiText("tui_card_legality_unknown");
             model.cards.append({stableId, label, enabled, false,
                 enabled ? QString() : reason});
         }
@@ -497,8 +497,8 @@ GameActionModel TuiApplicationController::sharedActionModel(
             for (int id : cards->selection.disabledCards) {
                 const bool visible = cards->cardTextAllowed || cards->handCardsVisible;
                 model.cards.append({visible ? QString::number(id) : QString(),
-                    visible ? resolveCardDisplayText(id) : QStringLiteral("未公開牌"),
-                    false, false, QStringLiteral("目前不可選")});
+                    visible ? resolveCardDisplayText(id) : tuiText("tui_card_unrevealed"),
+                    false, false, tuiText("tui_reject_option_disabled")});
             }
         }
         for (const SkillActivationCandidate &skill : cards->skillCandidates) {
@@ -507,7 +507,7 @@ GameActionModel TuiApplicationController::sharedActionModel(
             const bool available = tuiSkillActivationAvailable(skill.skillName,
                 skill.instanceId, m_skillReason, m_hintPattern, &availabilityKnown);
             const QString reason = !availabilityKnown
-                ? QStringLiteral("合法性尚未確認")
+                ? tuiText("tui_action_legality_unknown")
                 : (available ? QString() : resolveSkillHint(skill.skillName, skill.instanceId));
             model.skills.append({id, resolveNameText(skill.skillName),
                 availabilityKnown && available, false, reason});
@@ -529,14 +529,14 @@ GameActionModel TuiApplicationController::sharedActionModel(
             }
             if (!found)
                 model.players.append({name, resolvePlayerName(name), false, true,
-                    QStringLiteral("已選目標；其他目標尚待規則確認")});
+                    tuiText("tui_action_selected_target_pending")});
         }
         model.canConfirm = false; // Target-stage confirmation stays in the existing checked parser path.
         model.canCancel = true;   // pass/cancel abandons this local draft only.
     }
     model.supported = recognized;
     if (!recognized)
-        model.unsupportedReason = QStringLiteral("TUI 尚未為此互動類型提供操作目錄。");
+        model.unsupportedReason = tuiText("tui_action_unsupported");
     return model;
 }
 
@@ -897,7 +897,7 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
             lines << m_gameViewState.toPlainText();
             const QVariantMap connection = m_core.state()->connection();
             const QVariantMap setup = m_core.state()->setup();
-            lines << QStringLiteral("連線：%1:%2　模式：%3")
+            lines << tuiText("tui_status_connection_mode")
                 .arg(connection.value(QStringLiteral("host")).toString(),
                      connection.value(QStringLiteral("port")).toString(),
                      m_renderer.nameText(setup.value(QStringLiteral("game_mode")).toString()));
@@ -912,31 +912,31 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
                 const QString identity = entry.id.isEmpty() ? QString() : QStringLiteral("#%1 ").arg(entry.id);
                 values << identity + entry.label;
             }
-            if (!values.isEmpty()) lines << heading + values.join(QStringLiteral("、"));
+            if (!values.isEmpty()) lines << heading + values.join(tuiText("tui_list_separator"));
         };
         QStringList selectedTargets;
         for (const GameActionEntry &entry : m_gameActionModel.players)
             if (entry.selected) selectedTargets << entry.label;
         if (m_gameActionModel.requestId != 0) {
-            lines << QStringLiteral("操作狀態 rev=%1 request=%2：%3")
+            lines << tuiText("tui_action_status")
                 .arg(QString::number(m_gameActionModel.presentationRevision),
                      QString::number(m_gameActionModel.requestId), m_gameActionModel.prompt);
             if (m_gameActionModel.supported) {
-                appendEligible(QStringLiteral("可用選項："), m_gameActionModel.actions);
-                appendEligible(QStringLiteral("可用卡牌："), m_gameActionModel.cards);
-                appendEligible(QStringLiteral("可用目標："), m_gameActionModel.players);
-                appendEligible(QStringLiteral("可用技能："), m_gameActionModel.skills);
+                appendEligible(tuiText("tui_action_options"), m_gameActionModel.actions);
+                appendEligible(tuiText("tui_action_cards"), m_gameActionModel.cards);
+                appendEligible(tuiText("tui_action_targets"), m_gameActionModel.players);
+                appendEligible(tuiText("tui_action_skills"), m_gameActionModel.skills);
             } else {
-                lines << QStringLiteral("操作目錄未支援：") + m_gameActionModel.unsupportedReason;
+                lines << tuiText("tui_action_catalog_unsupported") + m_gameActionModel.unsupportedReason;
             }
             if (!selectedTargets.isEmpty())
-                lines << QStringLiteral("已選目標草稿：") + selectedTargets.join(QStringLiteral("、"));
+                lines << tuiText("tui_action_selected_targets") + selectedTargets.join(tuiText("tui_list_separator"));
         }
         const QList<GamePresentationEvent> events = m_eventStream.events();
         const int first = qMax(0, events.size() - 5);
         for (int i = first; i < events.size(); ++i) {
             const GamePresentationEvent &event = events.at(i);
-            lines << QStringLiteral("事件 g%1/#%2 cmd=%3：%4")
+            lines << tuiText("tui_event_trace")
                 .arg(QString::number(event.generation), QString::number(event.sequence))
                 .arg(event.command)
                 .arg(TuiRenderer::sanitize(event.text, 512));
@@ -1037,13 +1037,15 @@ QString TuiApplicationController::resolveSkillHint(const QString &skillName, int
         return hint;
     // A skill whose dialog is open needs one more word from the player than
     // the menu number, so the listing has to say so before they type it.
-    return tuiSkillNeedsDeclaration(skillName, bannedPackages()) ? tuiText("tui_hint_declaration_required") : QString();
+    return tuiSkillNeedsDeclaration(skillName, bannedPackages(), m_core.activeRequestId())
+        ? tuiText("tui_hint_declaration_required") : QString();
 }
 
 bool TuiApplicationController::applySkillDeclaration(const QString &skillName,
     const QString &declaration, QString *error) const
 {
-    return tuiApplySkillDeclaration(skillName, declaration, bannedPackages(), error);
+    return tuiApplySkillDeclaration(skillName, declaration, bannedPackages(), error,
+                                    m_core.activeRequestId());
 }
 
 QString TuiApplicationController::resolveSkillCardWireText(const QString &skillName,
