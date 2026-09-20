@@ -7,6 +7,7 @@
 #include "wrapped-card.h"
 #include "crashhandler.h"
 #include "card-lifetime-manager.h"
+#include "resolution-history.h"
 
 static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
                                           SkillContext &context, ServerPlayer *acceptedInvoker)
@@ -329,6 +330,12 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 				room->doBroadcastNotify(QSanProtocol::S_COMMAND_ADD_ROUND,rsdata);
 				// 登記已進行輪數,供崩潰摘要用
 				CrashHandler::setGameStats(room->getPlayers().length(), rsdata.toInt());
+				if (room->historyRecordingEnabled()) {
+					room->resolutionHistory().beginRound({
+						{QStringLiteral("round"), rsdata.toInt()},
+						{QStringLiteral("first_player"), player->objectName()}
+					});
+				}
 				foreach (ServerPlayer *p,room->getAllPlayers()){
 					p->setMark("TurnLengthCount",rsdata.toInt());
 					room->getThread()->trigger(RoundStart,room,p,rsdata);
@@ -365,6 +372,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			if(player->getMark("TurnLengthCount")==rsdata.toInt()){
 				foreach (ServerPlayer *p,room->getAllPlayers())
 					room->getThread()->trigger(RoundEnd,room,p,rsdata);
+				if (room->historyRecordingEnabled())
+					room->resolutionHistory().endRound(QStringLiteral("completed"));
 				//room->getThread()->trigger(RoundEnd,room,room->getCurrent(),rsdata);
 				foreach (ServerPlayer *p,room->getAlivePlayers()) {
 					foreach (QString mark,p->getMarkNames()) {
@@ -1066,18 +1075,33 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         }
 
         int hujia = damage.ignore_hujia?0:damage.to->getHujia();
+		int actualAbsorbed = 0;
 		if(hujia>0){
 			hujia = qMin(hujia,damage.damage);
-			damage.to->loseHujia(hujia);
+			// Keep the nominal hujia for the existing HP arithmetic, while
+			// recording only the amount that survived LoseHujia rules and was
+			// actually removed before LostHujia observers run.
+			damage.to->loseHujia(hujia, [room, &damage, &actualAbsorbed](int applied){
+				actualAbsorbed = applied;
+				if (applied > 0)
+					room->recordDamageComponent(damage, QStringLiteral("armor"), applied);
+			});
 		}
+		const int hpLoss = damage.damage - hujia;
+		// Full armor absorption has no hp setter callback; only a real armor
+		// mutation may produce the completed actual_damage fact.
+		if (hpLoss == 0 && actualAbsorbed > 0)
+			room->recordAppliedDamage(damage, actualAbsorbed, 0);
 
         JsonArray arg;
         arg << damage.to->objectName() << -damage.damage << damage.nature << hujia;
         room->doBroadcastNotify(QSanProtocol::S_COMMAND_CHANGE_HP,arg);
 
-        if(damage.damage>hujia){
-            room->setTag("HpChangedData",data);
-            room->setPlayerProperty(damage.to,"hp",damage.to->getHp()+hujia-damage.damage);
+		if(hpLoss>0){
+		    room->setTag("HpChangedData",data);
+            // Commit the authoritative damage fact inside the hp mutation,
+            // before PlayerStateService dispatches HpChanged observers.
+			room->applyDamageHp(damage.to, damage, actualAbsorbed, hpLoss);
 		}
         room->getThread()->delay(Config.AIDelay/3);
         break;

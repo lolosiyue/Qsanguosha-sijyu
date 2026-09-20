@@ -4,6 +4,7 @@
 #include "room.h"
 #include "room-runtime.h"
 #include "roomthread.h"
+#include "resolution-history.h"
 #include "settings.h"
 #include "standard.h"
 
@@ -13,6 +14,51 @@
 using namespace QSanProtocol;
 
 namespace {
+
+QVariantMap moveHistoryData(Room &room, const CardsMoveStruct &move, int cardId)
+{
+    QVariantMap data;
+    data.insert(QStringLiteral("card_id"), cardId);
+    data.insert(QStringLiteral("from"), move.from_player_name.isEmpty()
+                && move.from ? move.from->objectName() : move.from_player_name);
+    data.insert(QStringLiteral("to"), move.to_player_name.isEmpty()
+                && move.to ? move.to->objectName() : move.to_player_name);
+    data.insert(QStringLiteral("from_place"), static_cast<int>(move.from_place));
+    data.insert(QStringLiteral("to_place"), static_cast<int>(move.to_place));
+    data.insert(QStringLiteral("from_pile"), move.from_pile_name);
+    data.insert(QStringLiteral("to_pile"), move.to_pile_name);
+    data.insert(QStringLiteral("reason"), static_cast<int>(move.reason.m_reason));
+    const QVariantMap cause = room.historyCause(move.reason);
+    for (auto it = cause.constBegin(); it != cause.constEnd(); ++it)
+        data.insert(it.key(), it.value());
+    if (const Card *card = Sanguosha->getCard(cardId))
+        data.insert(QStringLiteral("card"), room.historyCardSnapshot(card));
+    return data;
+}
+
+QVariantMap moveHistoryEventData(Room &room, const QList<CardsMoveStruct> &moves)
+{
+    QVariantMap data;
+    data.insert(QStringLiteral("move_count"), moves.length());
+    if (!moves.isEmpty()) {
+        const QVariantMap cause = room.historyCause(moves.first().reason);
+        for (auto it = cause.constBegin(); it != cause.constEnd(); ++it)
+            data.insert(it.key(), it.value());
+    }
+    return data;
+}
+
+void appendMoveHistoryFacts(Room &room, ResolutionHistoryEventGuard &guard,
+                            const QList<CardsMoveStruct> &moves)
+{
+    if (!room.historyRecordingEnabled()) return;
+    foreach (const CardsMoveStruct &move, moves) {
+        foreach (int cardId, move.card_ids)
+            room.resolutionHistory().appendFact(
+                guard.id(), QStringLiteral("move"),
+                moveHistoryData(room, move, cardId));
+    }
+}
 
 bool compareByActionOrderOneTime(CardsMoveOneTimeStruct move1,
                                  CardsMoveOneTimeStruct move2)
@@ -143,6 +189,19 @@ void CardMovementService::swapPile()
     if (m_discardPile->isEmpty())
         m_room.gameOver(".");
 
+    QList<CardsMoveStruct> historyMoves;
+    foreach (int id, *m_discardPile) {
+        CardsMoveStruct move(id, nullptr, nullptr, Player::DiscardPile,
+                             Player::DrawPile, CardMoveReason());
+        move.from_pile_name = QStringLiteral("discard_pile");
+        move.to_pile_name = QStringLiteral("draw_pile");
+        historyMoves << move;
+    }
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, historyMoves),
+        m_room.historyRecordingEnabled());
+
     const int times = m_room.getTag("SwapPile").toInt() + 1;
     m_room.setTag("SwapPile", times);
 
@@ -168,6 +227,7 @@ void CardMovementService::swapPile()
         setCardMapping(cardId, nullptr, Player::DrawPile);
         m_room.clearCardFlag(cardId);
     }
+    appendMoveHistoryFacts(m_room, historyGuard, historyMoves);
 
     foreach (ServerPlayer *player, m_room.getAllPlayers())
         m_room.getThread()->trigger(SwappedPile, &m_room, player, data);
@@ -199,23 +259,63 @@ int CardMovementService::getCardFromPile(const QString &cardPattern)
 
 void CardMovementService::returnToTopDrawPile(QList<int> cards)
 {
+    if (cards.isEmpty()) return;
+    QList<CardsMoveStruct> historyMoves;
+    foreach (int id, cards) {
+        ServerPlayer *owner = getCardOwner(id);
+        const Player::Place fromPlace = getCardPlace(id);
+        CardsMoveStruct move(id, owner, nullptr, fromPlace,
+                             Player::DrawPile, CardMoveReason());
+        if (owner && (fromPlace == Player::PlaceSpecial
+                      || fromPlace == Player::PlaceTable))
+            move.from_pile_name = owner->getPileName(id);
+        else if (fromPlace == Player::DrawPile)
+            move.from_pile_name = QStringLiteral("draw_pile");
+        move.to_pile_name = QStringLiteral("top");
+        historyMoves << move;
+    }
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, historyMoves),
+        m_room.historyRecordingEnabled());
     while (!cards.isEmpty()) {
         const int id = cards.takeLast();
         m_drawPile->removeAll(id);
         setCardMapping(id, nullptr, Player::DrawPile);
         m_drawPile->prepend(id);
     }
+    appendMoveHistoryFacts(m_room, historyGuard, historyMoves);
     m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
 }
 
 void CardMovementService::returnToEndDrawPile(QList<int> cards)
 {
+    if (cards.isEmpty()) return;
+    QList<CardsMoveStruct> historyMoves;
+    foreach (int id, cards) {
+        ServerPlayer *owner = getCardOwner(id);
+        const Player::Place fromPlace = getCardPlace(id);
+        CardsMoveStruct move(id, owner, nullptr, fromPlace,
+                             Player::DrawPile, CardMoveReason());
+        if (owner && (fromPlace == Player::PlaceSpecial
+                      || fromPlace == Player::PlaceTable))
+            move.from_pile_name = owner->getPileName(id);
+        else if (fromPlace == Player::DrawPile)
+            move.from_pile_name = QStringLiteral("draw_pile");
+        move.to_pile_name = QStringLiteral("end");
+        historyMoves << move;
+    }
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, historyMoves),
+        m_room.historyRecordingEnabled());
     while (!cards.isEmpty()) {
         const int id = cards.takeLast();
         m_drawPile->removeAll(id);
         setCardMapping(id, nullptr, Player::DrawPile);
         m_drawPile->append(id);
     }
+    appendMoveHistoryFacts(m_room, historyGuard, historyMoves);
     m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
 }
 
@@ -834,6 +934,10 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
     cardsMoves = filteredMoves;
     if (cardsMoves.isEmpty()) return;
 
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, cardsMoves),
+        m_room.historyRecordingEnabled());
     QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(cardsMoves);
     for (int i = 0; i < moveOneTimes.length(); ++i) {
         QVariant data = QVariant::fromValue(moveOneTimes[i]);
@@ -842,7 +946,10 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
         moveOneTimes[i] = data.value<CardsMoveOneTimeStruct>();
     }
     cardsMoves = splitMoves(moveOneTimes);
-    if (cardsMoves.isEmpty()) return;
+    if (cardsMoves.isEmpty()) {
+        historyGuard.finish(QStringLiteral("cancelled"));
+        return;
+    }
 
     m_room.notifyMoveCards(true, cardsMoves, visible);
     foreach (CardsMoveStruct move, cardsMoves) {
@@ -874,7 +981,16 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                 m_room.setCardFlag(id, "visible");
             else if (move.from_place != Player::DrawPile)
                 m_room.setCardFlag(id, "-visible");
-            if (move.to) move.to->addCard(id, move.to_place);
+            if (move.to) {
+                CardsMoveStruct factMove = move;
+                factMove.card_ids = QList<int>() << id;
+                // addCard invokes this after Player::addCard has installed the
+                // authoritative owner mapping and before EquipCard::onInstall.
+                static_cast<ServerPlayer *>(move.to)->addCard(id, move.to_place, [this, &historyGuard, factMove]() {
+                    appendMoveHistoryFacts(m_room, historyGuard,
+                                           QList<CardsMoveStruct>() << factMove);
+                });
+            }
             switch (move.to_place) {
             case Player::DiscardPile:
                 m_discardPile->prepend(id);
@@ -889,6 +1005,12 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                 break;
             }
         }
+        // Pile and table mutations have no owner callback; record them after
+        // the physical destination mutation. Owner moves were recorded by
+        // addCard's afterMutation callback above.
+        if (!move.to)
+            appendMoveHistoryFacts(m_room, historyGuard,
+                                   QList<CardsMoveStruct>() << move);
         if (move.from_place == Player::DrawPile
             || move.to_place == Player::DrawPile) {
             m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
@@ -933,6 +1055,9 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                         CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
                                        target->objectName(), QString(),
                                        "change equip"));
+                    appendMoveHistoryFacts(m_room, historyGuard,
+                                           QList<CardsMoveStruct>()
+                                           << invalidEquipMoves.last());
                     processedIds.append(id);
                     break;
                 }
@@ -962,6 +1087,9 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                         CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
                                        target->objectName(), QString(),
                                        "change equip"));
+                    appendMoveHistoryFacts(m_room, historyGuard,
+                                           QList<CardsMoveStruct>()
+                                           << invalidEquipMoves.last());
                     processedIds.append(id);
                 } else if (equipIds.length() == 1) {
                     const int cardId = equipIds.first();
@@ -974,6 +1102,9 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                         CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
                                        target->objectName(), QString(),
                                        "change equip"));
+                    appendMoveHistoryFacts(m_room, historyGuard,
+                                           QList<CardsMoveStruct>()
+                                           << invalidEquipMoves.last());
                 } else {
                     const int cardId = m_room.askForCardChosen(
                         target, target, "e",
@@ -989,6 +1120,9 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                             CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
                                            target->objectName(), QString(),
                                            "change equip"));
+                        appendMoveHistoryFacts(m_room, historyGuard,
+                                               QList<CardsMoveStruct>()
+                                               << invalidEquipMoves.last());
                     }
                 }
             }
@@ -1034,6 +1168,10 @@ void CardMovementService::moveCardsToEndOfDrawpile(ServerPlayer *player,
     moves = normalizeMoves(moves);
     if (moves.isEmpty()) return;
 
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, moves),
+        m_room.historyRecordingEnabled());
     QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(moves);
     for (int i = 0; i < moveOneTimes.length(); ++i) {
         QVariant data = QVariant::fromValue(moveOneTimes[i]);
@@ -1043,7 +1181,10 @@ void CardMovementService::moveCardsToEndOfDrawpile(ServerPlayer *player,
         moveOneTimes[i] = data.value<CardsMoveOneTimeStruct>();
     }
     moves = splitMoves(moveOneTimes);
-    if (moves.isEmpty()) return;
+    if (moves.isEmpty()) {
+        historyGuard.finish(QStringLiteral("cancelled"));
+        return;
+    }
 
     m_room.notifyMoveCards(true, moves, visible);
     foreach (CardsMoveStruct move, moves) {
@@ -1075,7 +1216,14 @@ void CardMovementService::moveCardsToEndOfDrawpile(ServerPlayer *player,
                 m_room.setCardFlag(id, "visible");
             else if (move.from_place != Player::DrawPile)
                 m_room.setCardFlag(id, "-visible");
-            if (move.to) move.to->addCard(id, move.to_place);
+            if (move.to) {
+                CardsMoveStruct factMove = move;
+                factMove.card_ids = QList<int>() << id;
+                static_cast<ServerPlayer *>(move.to)->addCard(id, move.to_place, [this, &historyGuard, factMove]() {
+                    appendMoveHistoryFacts(m_room, historyGuard,
+                                           QList<CardsMoveStruct>() << factMove);
+                });
+            }
             switch (move.to_place) {
             case Player::DiscardPile:
                 m_discardPile->prepend(id);
@@ -1090,6 +1238,9 @@ void CardMovementService::moveCardsToEndOfDrawpile(ServerPlayer *player,
                 break;
             }
         }
+        if (!move.to)
+            appendMoveHistoryFacts(m_room, historyGuard,
+                                   QList<CardsMoveStruct>() << move);
         if (move.from_place == Player::DrawPile
             || move.to_place == Player::DrawPile)
             m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
@@ -1158,6 +1309,10 @@ void CardMovementService::moveCardsInToDrawpile(ServerPlayer *player,
     moves = normalizeMoves(moves);
     if (moves.isEmpty()) return;
 
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, moves),
+        m_room.historyRecordingEnabled());
     QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(moves);
     for (int i = 0; i < moveOneTimes.length(); ++i) {
         QVariant data = QVariant::fromValue(moveOneTimes[i]);
@@ -1167,7 +1322,10 @@ void CardMovementService::moveCardsInToDrawpile(ServerPlayer *player,
         moveOneTimes[i] = data.value<CardsMoveOneTimeStruct>();
     }
     moves = splitMoves(moveOneTimes);
-    if (moves.isEmpty()) return;
+    if (moves.isEmpty()) {
+        historyGuard.finish(QStringLiteral("cancelled"));
+        return;
+    }
 
     m_room.notifyMoveCards(true, moves, visible);
     foreach (CardsMoveStruct move, moves) {
@@ -1212,6 +1370,12 @@ void CardMovementService::moveCardsInToDrawpile(ServerPlayer *player,
             default:
                 break;
             }
+            // This lane mutates the mapping/pile directly. Record only this
+            // card, not the whole batch again for every card in the loop.
+            CardsMoveStruct factMove = move;
+            factMove.card_ids = QList<int>() << id;
+            appendMoveHistoryFacts(m_room, historyGuard,
+                                   QList<CardsMoveStruct>() << factMove);
         }
     }
     m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
@@ -1238,6 +1402,10 @@ void CardMovementService::shuffleIntoDrawPile(ServerPlayer *player,
     moves = normalizeMoves(moves);
     if (moves.isEmpty()) return;
 
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, moves),
+        m_room.historyRecordingEnabled());
     QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(moves);
     for (int i = 0; i < moveOneTimes.length(); ++i) {
         QVariant data = QVariant::fromValue(moveOneTimes[i]);
@@ -1247,7 +1415,10 @@ void CardMovementService::shuffleIntoDrawPile(ServerPlayer *player,
         moveOneTimes[i] = data.value<CardsMoveOneTimeStruct>();
     }
     moves = splitMoves(moveOneTimes);
-    if (moves.isEmpty()) return;
+    if (moves.isEmpty()) {
+        historyGuard.finish(QStringLiteral("cancelled"));
+        return;
+    }
 
     m_room.notifyMoveCards(true, moves, visible);
     foreach (CardsMoveStruct move, moves) {
@@ -1279,7 +1450,14 @@ void CardMovementService::shuffleIntoDrawPile(ServerPlayer *player,
                 m_room.setCardFlag(id, "visible");
             else if (move.from_place != Player::DrawPile)
                 m_room.setCardFlag(id, "-visible");
-            if (move.to) move.to->addCard(id, move.to_place);
+            if (move.to) {
+                CardsMoveStruct factMove = move;
+                factMove.card_ids = QList<int>() << id;
+                static_cast<ServerPlayer *>(move.to)->addCard(id, move.to_place, [this, &historyGuard, factMove]() {
+                    appendMoveHistoryFacts(m_room, historyGuard,
+                                           QList<CardsMoveStruct>() << factMove);
+                });
+            }
             switch (move.to_place) {
             case Player::DiscardPile:
                 m_discardPile->prepend(id);
@@ -1292,6 +1470,12 @@ void CardMovementService::shuffleIntoDrawPile(ServerPlayer *player,
                 break;
             default:
                 break;
+            }
+            if (!move.to) {
+                CardsMoveStruct factMove = move;
+                factMove.card_ids = QList<int>() << id;
+                appendMoveHistoryFacts(m_room, historyGuard,
+                                       QList<CardsMoveStruct>() << factMove);
             }
         }
     }
@@ -1309,6 +1493,30 @@ void CardMovementService::shuffleIntoDrawPile(ServerPlayer *player,
 
 void CardMovementService::removeDerivativeCards()
 {
+    QList<int> derivativeIds;
+    foreach (int id, *m_drawPile) {
+        const Card *card = Sanguosha->getEngineCard(id);
+        if (card->objectName().startsWith("_")
+            || card->property("DerivativeCard").toBool())
+            derivativeIds << id;
+    }
+    if (derivativeIds.isEmpty()) {
+        m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
+        return;
+    }
+
+    QList<CardsMoveStruct> historyMoves;
+    foreach (int id, derivativeIds) {
+        CardsMoveStruct move(id, nullptr, nullptr, Player::DrawPile,
+                             Player::PlaceTable, CardMoveReason());
+        move.from_pile_name = QStringLiteral("draw_pile");
+        historyMoves << move;
+    }
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, historyMoves),
+        m_room.historyRecordingEnabled());
+
     bool removed = false;
     foreach (int id, *m_drawPile) {
         const Card *card = Sanguosha->getEngineCard(id);
@@ -1319,7 +1527,9 @@ void CardMovementService::removeDerivativeCards()
             removed = true;
         }
     }
-    if (removed)
+    if (removed) {
+        appendMoveHistoryFacts(m_room, historyGuard, historyMoves);
         m_room.m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
+    }
     m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
 }

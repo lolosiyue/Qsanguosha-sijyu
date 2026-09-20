@@ -28,15 +28,20 @@ QString cardLabel(int id, const QVariantMap &card, const GameViewFormatOptions &
 
 QString safeText(QString value)
 {
+    // The same expressions are used for every visible field and retained log
+    // entry. Compile them once instead of once per field in each projection.
+    static const QRegularExpression markup(QStringLiteral("<[^>]*>"));
+    static const QRegularExpression controls(QStringLiteral("[\\x00-\\x1f\\x7f]+"));
+    static const QRegularExpression bidi(QStringLiteral("[\\x{200b}-\\x{200f}\\x{202a}-\\x{202e}\\x{2066}-\\x{2069}]"));
     // Remove markup before decoding escaped literals, so "&lt;牌&gt;" stays text.
-    value.remove(QRegularExpression(QStringLiteral("<[^>]*>")));
+    value.remove(markup);
     value.replace(QStringLiteral("&lt;"), QStringLiteral("<"));
     value.replace(QStringLiteral("&gt;"), QStringLiteral(">"));
     value.replace(QStringLiteral("&quot;"), QStringLiteral("\""));
     value.replace(QStringLiteral("&#39;"), QStringLiteral("'"));
     value.replace(QStringLiteral("&amp;"), QStringLiteral("&"));
-    value.replace(QRegularExpression(QStringLiteral("[\\x00-\\x1f\\x7f]+")), QStringLiteral(" "));
-    value.remove(QRegularExpression(QStringLiteral("[\\x{200b}-\\x{200f}\\x{202a}-\\x{202e}\\x{2066}-\\x{2069}]")));
+    value.replace(controls, QStringLiteral(" "));
+    value.remove(bidi);
     return value.simplified();
 }
 

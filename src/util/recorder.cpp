@@ -145,8 +145,6 @@ Replayer::Replayer(QObject *parent, const QString &filename)
 Replayer::~Replayer()
 {
     stopAndWait();
-    foreach (GameSnapshot *snapshot, m_snapshots)
-        delete snapshot;
     if (m_index)
         delete m_index;
 }
@@ -164,9 +162,9 @@ void Replayer::buildIndex()
 
 void Replayer::loadSnapshots()
 {
-    qDeleteAll(m_snapshots);
-    m_snapshots.clear();
     m_takeoverSnapshotPaths.clear();
+    m_takeoverSnapshotHashes.clear();
+    m_takeoverSnapshotSerials.clear();
     m_takeoverSnapshotsByNode.clear();
     m_takeoverSnapshotsValid = false;
 
@@ -218,23 +216,18 @@ void Replayer::loadSnapshots()
 
     struct VerifiedSnapshot {
         QString path;
-        GameSnapshot *snapshot = nullptr;
+        QString sha256;
+        quint64 turnSerial = 0;
         QString playerName;
         int playerTurnCount = 0;
     };
     QList<VerifiedSnapshot> verifiedSnapshots;
-    const auto discardVerified = [&verifiedSnapshots]() {
-        for (const VerifiedSnapshot &verified : verifiedSnapshots)
-            delete verified.snapshot;
-        verifiedSnapshots.clear();
-    };
     QSet<QString> seenFiles;
     QSet<quint64> seenSerials;
     QSet<QString> seenTurnIdentities;
     const QJsonArray entries = entriesValue.toArray();
     for (const QJsonValue &entryValue : entries) {
         if (!entryValue.isObject()) {
-            discardVerified();
             return;
         }
         const QJsonObject entry = entryValue.toObject();
@@ -261,7 +254,6 @@ void Replayer::loadSnapshots()
             || !file.endsWith(QStringLiteral(".json"), Qt::CaseInsensitive)
             || seenFiles.contains(file) || seenSerials.contains(turnSerial)
             || seenTurnIdentities.contains(turnIdentity)) {
-            discardVerified();
             return;
         }
         seenFiles.insert(file);
@@ -270,14 +262,12 @@ void Replayer::loadSnapshots()
 
         QFile snapshotFile(dir.filePath(file));
         if (!snapshotFile.open(QIODevice::ReadOnly)) {
-            discardVerified();
             return;
         }
         const QByteArray bytes = snapshotFile.readAll();
         snapshotFile.close();
         if (QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()
                 != expectedHash.toLatin1()) {
-            discardVerified();
             return;
         }
 
@@ -285,7 +275,6 @@ void Replayer::loadSnapshots()
         if (!snapshot->load(dir.filePath(file)) || !snapshot->isEligible()
             || snapshot->getTurnSerial() != turnSerial) {
             delete snapshot;
-            discardVerified();
             return;
         }
         const GlobalSnapshot state = snapshot->getState();
@@ -302,21 +291,22 @@ void Replayer::loadSnapshots()
         if (!currentPlayerFound || state.currentPlayer != playerName
             || expectedPlayerTurnCount != playerTurnCount) {
             delete snapshot;
-            discardVerified();
             return;
         }
         VerifiedSnapshot verified;
         verified.path = dir.filePath(file);
-        verified.snapshot = snapshot;
+        verified.sha256 = expectedHash;
+        verified.turnSerial = turnSerial;
         verified.playerName = playerName;
         verified.playerTurnCount = playerTurnCount;
         verifiedSnapshots.append(verified);
+        delete snapshot;
     }
 
     // Every manifest entry must identify exactly one replay node.  Silently
     // accepting a missing or ambiguous identity could resume the wrong turn.
     QMap<int, QString> snapshotPaths;
-    QMap<int, GameSnapshot *> snapshotsByNode;
+    QMap<int, QSharedPointer<GameSnapshot> > snapshotsByNode;
     for (const VerifiedSnapshot &verified : verifiedSnapshots) {
         int matchedNode = -1;
         int matchCount = 0;
@@ -330,27 +320,65 @@ void Replayer::loadSnapshots()
             }
         }
         if (matchCount != 1) {
-            discardVerified();
             return;
         }
         snapshotPaths.insert(matchedNode, verified.path);
-        snapshotsByNode.insert(matchedNode, verified.snapshot);
+        m_takeoverSnapshotHashes.insert(matchedNode, verified.sha256);
+        m_takeoverSnapshotSerials.insert(matchedNode, verified.turnSerial);
+        // Keep only the verified path here.  Resolution history is an
+        // immutable journal and can be large; load it when takeover actually
+        // requests this node instead of retaining every payload in memory.
+        snapshotsByNode.insert(matchedNode, nullptr);
     }
 
     // A manifest with no entries is valid but simply offers no takeover node.
-    for (const VerifiedSnapshot &verified : verifiedSnapshots)
-        m_snapshots.append(verified.snapshot);
     m_takeoverSnapshotPaths = snapshotPaths;
     m_takeoverSnapshotsByNode = snapshotsByNode;
     m_takeoverSnapshotsValid = !m_takeoverSnapshotPaths.isEmpty();
 }
 
-GameSnapshot* Replayer::getSnapshot(int nodeIndex) const
+QSharedPointer<GameSnapshot> Replayer::getSnapshot(int nodeIndex) const
 {
     if (!m_index || !m_takeoverSnapshotPaths.contains(nodeIndex))
-        return nullptr;
+        return {};
 
-    return m_takeoverSnapshotsByNode.value(nodeIndex, nullptr);
+    const QSharedPointer<GameSnapshot> cached =
+        m_takeoverSnapshotsByNode.value(nodeIndex);
+    if (cached)
+        return cached;
+
+    const QString path = m_takeoverSnapshotPaths.value(nodeIndex);
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray bytes = file.readAll();
+    if (QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()
+            != m_takeoverSnapshotHashes.value(nodeIndex).toLatin1())
+        return {};
+    QSharedPointer<GameSnapshot> snapshot(new GameSnapshot());
+    if (!snapshot->load(path) || !snapshot->isEligible()
+        || snapshot->getTurnSerial() != m_takeoverSnapshotSerials.value(nodeIndex)) {
+        return {};
+    }
+    const ReplayNode node = m_index->getNode(nodeIndex);
+    const GlobalSnapshot state = snapshot->getState();
+    int playerTurnCount = 0;
+    for (const PlayerSnapshot &player : state.players) {
+        if (player.objectName == state.currentPlayer) {
+            playerTurnCount = player.marks.value(
+                QStringLiteral("Global_TurnCount"), 0) + 1;
+            break;
+        }
+    }
+    if (state.currentPlayer != node.playerName
+        || playerTurnCount != node.playerTurnCount) {
+        return {};
+    }
+    // QSharedPointer keeps a caller's in-use snapshot alive while the
+    // one-entry cache advances to another replay node.
+    m_takeoverSnapshotsByNode.clear();
+    m_takeoverSnapshotsByNode.insert(nodeIndex, snapshot);
+    return snapshot;
 }
 
 int Replayer::getNearestTakeoverNodeAtOrBefore(int pairIndex) const

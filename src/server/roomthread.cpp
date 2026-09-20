@@ -11,6 +11,7 @@
 #include "skill-instance-utils.h"
 #include "skill-set-generation.h"
 #include "crashhandler.h"
+#include "../core/resolution-history.h"
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -655,15 +656,22 @@ void RoomThread::_handleTurnBroken3v3(QList<ServerPlayer*> &first, QList<ServerP
 {
 	try {
 		ServerPlayer*player = room->getCurrent();
-		trigger(TurnBroken, room, player);
-		if (player->getPhase() != Player::NotActive) {
-			game_rule->trigger(EventPhaseEnd, room, player);
-			player->changePhase(player->getPhase(), Player::NotActive);
-		}
-		if (!player->hasFlag("actioned"))
-			room->setPlayerFlag(player, "actioned");
+		{
+			const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
+			ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
+				room->historyRecordingEnabled() && cleanupEvent != 0);
+			trigger(TurnBroken, room, player);
+			if (player->getPhase() != Player::NotActive) {
+				game_rule->trigger(EventPhaseEnd, room, player);
+				player->changePhase(player->getPhase(), Player::NotActive);
+			}
+			if (!player->hasFlag("actioned"))
+				room->setPlayerFlag(player, "actioned");
 
-		reclaimCompletedTurn();
+			reclaimCompletedTurn();
+		}
+		clearInterruptedTurn();
+		clearInterruptedPhase();
 		ServerPlayer*next = find3v3Next(first, second);
 		run3v3(first, second, game_rule, next);
 	}catch (TriggerEvent triggerEvent) {
@@ -779,15 +787,23 @@ void RoomThread::_handleTurnBrokenHulaoPass(ServerPlayer*shenlvbu, QList<ServerP
 {
 	try {
 		ServerPlayer*player = room->getCurrent();
-		trigger(TurnBroken, room, player);
-		ServerPlayer*next = findHulaoPassNext(shenlvbu, league, stage);
-		if (player->getPhase() != Player::NotActive) {
-			game_rule->trigger(EventPhaseEnd, room, player);
-			player->changePhase(player->getPhase(), Player::NotActive);
-			if (player != shenlvbu && stage == 1)
-				room->setPlayerFlag(player, "actioned");
+		ServerPlayer *next = nullptr;
+		{
+			const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
+			ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
+				room->historyRecordingEnabled() && cleanupEvent != 0);
+			trigger(TurnBroken, room, player);
+			next = findHulaoPassNext(shenlvbu, league, stage);
+			if (player->getPhase() != Player::NotActive) {
+				game_rule->trigger(EventPhaseEnd, room, player);
+				player->changePhase(player->getPhase(), Player::NotActive);
+				if (player != shenlvbu && stage == 1)
+					room->setPlayerFlag(player, "actioned");
+			}
+			reclaimCompletedTurn();
 		}
-		reclaimCompletedTurn();
+		clearInterruptedTurn();
+		clearInterruptedPhase();
 		room->setCurrent(next);
 		actionHulaoPass(shenlvbu, league, game_rule, stage);
 	}catch (TriggerEvent triggerEvent) {
@@ -823,13 +839,21 @@ void RoomThread::_handleTurnBrokenNormal(GameRule*game_rule)
 {
 	try {
 		ServerPlayer*player = room->getCurrent();
-		trigger(TurnBroken, room, player);
-		ServerPlayer*next = player->getNextGamePlayer();
-		if (player->getPhase() != Player::NotActive) {
-			game_rule->trigger(EventPhaseEnd, room, player);
-			player->changePhase(player->getPhase(), Player::NotActive);
+		ServerPlayer *next = nullptr;
+		{
+			const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
+			ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
+				room->historyRecordingEnabled() && cleanupEvent != 0);
+			trigger(TurnBroken, room, player);
+			next = player->getNextGamePlayer();
+			if (player->getPhase() != Player::NotActive) {
+				game_rule->trigger(EventPhaseEnd, room, player);
+				player->changePhase(player->getPhase(), Player::NotActive);
+			}
+			reclaimCompletedTurn();
 		}
-		reclaimCompletedTurn();
+		clearInterruptedTurn();
+		clearInterruptedPhase();
 		room->setCurrent(next);
 		actionNormal(game_rule);
 	}catch (TriggerEvent triggerEvent) {
@@ -1253,27 +1277,38 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 		// 格式二支援：cost 使用 selected_ctx->owner（技能擁有者）作為 player
 		Room::ResolutionScope resolution(*room, skillName);
+		ResolutionHistoryEventGuard skillHistory(
+			room->resolutionHistory(), QStringLiteral("skill"),
+			room->historySkillContext(*selected_ctx), room->historyRecordingEnabled());
 		bool do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx);
-		if (!do_cost)
+		if (!do_cost) {
+			skillHistory.finish(QStringLiteral("cancelled"));
 			continue;
+		}
 
 		selected_ctx->current_event = EventSkillWillInvoke;
 		QVariant ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillWillInvoke, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
+		skillHistory.update(room->historySkillContext(*selected_ctx));
 		maxMultipliers[key] = qMax(maxMultipliers.value(key, 0), selected_ctx->multiplier);
-		if (selected_ctx->is_canceled)
+		if (selected_ctx->is_canceled) {
+			skillHistory.finish(QStringLiteral("cancelled"));
 			continue;
+		}
 
 		if (!selected_ctx->bypass_cost) {
 			selected_ctx->current_event = EventSkillPay;
 			ctx_data = QVariant::fromValue(*selected_ctx);
 			trigger(EventSkillPay, room, skill_owner, ctx_data);
 			*selected_ctx = ctx_data.value<SkillContext>();
+			skillHistory.update(room->historySkillContext(*selected_ctx));
 
 			bool do_pay = v2->pay(triggerEvent, room, skill_owner, *selected_ctx);
-			if (!do_pay)
+			if (!do_pay) {
+				skillHistory.finish(QStringLiteral("pay_failed"));
 				continue;
+			}
 		}
 
 		selected_ctx->current_event = EventSkillTargetConfirming;
@@ -1281,12 +1316,14 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillTargetConfirming, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
+		skillHistory.update(room->historySkillContext(*selected_ctx));
 		selected_ctx->targets = selected_ctx->updated_targets;
 
 		selected_ctx->current_event = EventSkillInvoking;
 		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillInvoking, room, skill_owner, ctx_data);
-		*selected_ctx = ctx_data.value<SkillContext>();
+			*selected_ctx = ctx_data.value<SkillContext>();
+			skillHistory.update(room->historySkillContext(*selected_ctx));
 
 		selected_ctx->current_event = EventSkillEffect;
 		ctx_data = QVariant::fromValue(*selected_ctx);
@@ -1304,10 +1341,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				}
 			}
 		}
-
 		selected_ctx->current_event = EventSkillEffectFinished;
 		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillEffectFinished, room, skill_owner, ctx_data);
+		skillHistory.update(room->historySkillContext(*selected_ctx));
+		skillHistory.finish(skip_effect ? QStringLiteral("skipped")
+			: (broken ? QStringLiteral("broken") : QStringLiteral("completed")));
 	}
 
 	return broken;
@@ -1431,12 +1470,37 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 	// without replaying historical gameplay triggers during reconstruction.
 	if (room && room->isRestoringTakeoverSnapshot())
 		return false;
+	if (!room)
+		return dispatchTrigger(triggerEvent, room, target, data);
 
 	const bool outerTurn = triggerEvent == TurnStart && event_stack.isEmpty();
-	const bool broken = dispatchTrigger(triggerEvent, room, target, data);
+	QVariantMap turnData;
+	if (triggerEvent == TurnStart && room) {
+		turnData.insert(QStringLiteral("player"), target ? target->objectName() : QString());
+		turnData.insert(QStringLiteral("extra_turn"), room->isCurrentExtraTurn());
+		if (room->isCurrentExtraTurn()) {
+			turnData.insert(QStringLiteral("reason"), room->getCurrentExtraTurnReason());
+			const SkillInstanceRef source = room->getCurrentExtraTurnSourceRef();
+			turnData.insert(QStringLiteral("cause_event_id"), room->getCurrentExtraTurnCauseEventId());
+			turnData.insert(QStringLiteral("skill_name"), source.key.skillName);
+			turnData.insert(QStringLiteral("skill_owner"), source.ownerObjectName);
+			turnData.insert(QStringLiteral("instance_id"), source.key.instanceID);
+		}
+	}
+	ResolutionHistoryEventGuard turnHistory(room->resolutionHistory(), QStringLiteral("turn"),
+		turnData, room->historyRecordingEnabled() && triggerEvent == TurnStart);
+	bool broken = false;
+	try {
+		broken = dispatchTrigger(triggerEvent, room, target, data);
+	} catch (TriggerEvent) {
+		if (triggerEvent == TurnStart && turnHistory.id() != 0)
+			rememberInterruptedTurn(turnHistory.id());
+		throw;
+	}
+	turnHistory.finish(broken ? QStringLiteral("broken") : QStringLiteral("completed"));
 	// dispatchTrigger's CardLifetimeScope and deferred work must finish first.
-	// Exceptions skip this point: their mode-specific phase cleanup owns the
-	// boundary. Nested extra turns wait until the outer invocation returns.
+	// Exceptions skip this point: the guard records an aborted turn while the
+	// mode-specific phase cleanup remains responsible for control flow.
 	if (outerTurn)
 		reclaimCompletedTurn();
 	return broken;
@@ -1446,6 +1510,50 @@ void RoomThread::reclaimCompletedTurn()
 {
 	if (room && event_stack.isEmpty() && room->roomRuntime())
 		room->roomRuntime()->reclaimTurnCards();
+}
+
+void RoomThread::rememberInterruptedTurn(qint64 eventId)
+{
+	m_interruptedTurnEventId = eventId;
+}
+
+qint64 RoomThread::takeInterruptedTurn()
+{
+	const qint64 eventId = m_interruptedTurnEventId;
+	m_interruptedTurnEventId = 0;
+	return eventId;
+}
+
+qint64 RoomThread::interruptedTurn() const
+{
+	return m_interruptedTurnEventId;
+}
+
+void RoomThread::clearInterruptedTurn()
+{
+	m_interruptedTurnEventId = 0;
+}
+
+void RoomThread::rememberInterruptedPhase(qint64 eventId)
+{
+	m_interruptedPhaseEventId = eventId;
+}
+
+qint64 RoomThread::takeInterruptedPhase()
+{
+	const qint64 eventId = m_interruptedPhaseEventId;
+	m_interruptedPhaseEventId = 0;
+	return eventId;
+}
+
+qint64 RoomThread::interruptedPhase() const
+{
+	return m_interruptedPhaseEventId;
+}
+
+void RoomThread::clearInterruptedPhase()
+{
+	m_interruptedPhaseEventId = 0;
 }
 
 bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
@@ -1536,7 +1644,21 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 				if(ts->getFrequency(target)==Skill::Wake&&!ts->canWake(triggerEvent,target,data,room)) continue;
 				room->tryPause();
 				Room::ResolutionScope resolution(*room, ts->objectName());
+				const bool isRule = ts->inherits("GameRule")
+					|| ts->objectName() == QLatin1String("game_rule")
+					|| ts->objectName() == QLatin1String("hulaopass_mode");
+				const QVariantMap legacySkillData{
+					{QStringLiteral("skill_name"), ts->objectName()},
+					{QStringLiteral("skill_owner"), QString()},
+					{QStringLiteral("invoker"), QString()},
+					{QStringLiteral("instance_id"), 0},
+					{QStringLiteral("execution_id"), 0},
+					{QStringLiteral("attribution_complete"), false}};
+				ResolutionHistoryEventGuard skillHistory(
+					room->resolutionHistory(), QStringLiteral("skill"), legacySkillData,
+					room->historyRecordingEnabled() && !isRule);
 				broken = ts->trigger(triggerEvent,room,target,data);
+				skillHistory.finish(broken ? QStringLiteral("broken") : QStringLiteral("completed"));
 				if(triggerEvent!=SkillTriggered&&room->getTag("notifyInvoked:"+ts->objectName()).toBool()){
 					room->removeTag("notifyInvoked:"+ts->objectName());
 					QVariant skillName = ts->objectName();
@@ -1607,4 +1729,3 @@ void RoomThread::delay(long secs)
 	// 單機投降高頻消費點：AI 每步都會路過。非單機／無訊號時只是一次 bool 判斷。
 	room->trySinglePlayerSurrender();
 }
-

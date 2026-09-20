@@ -6,6 +6,7 @@
 #include <QImage>
 #include <QThread>
 #include <QMap>
+#include <QSharedPointer>
 
 #include <atomic>
 
@@ -58,7 +59,7 @@ public:
     const QList<QSanReplay::ReplayEvent> &events() const;
 
     ReplayIndex* getIndex() const;
-    GameSnapshot* getSnapshot(int nodeIndex) const;
+    QSharedPointer<GameSnapshot> getSnapshot(int nodeIndex) const;
 
     // Returns the exact eligible node at the current position, or the latest
     // eligible node before it.  Future snapshots are never offered.
@@ -130,9 +131,10 @@ private:
     QSanProtocol::ProtocolVersion m_messageProtocolVersion;
 
     ReplayIndex *m_index;
-    QList<GameSnapshot*> m_snapshots;
     QMap<int, QString> m_takeoverSnapshotPaths;
-    QMap<int, GameSnapshot*> m_takeoverSnapshotsByNode;
+    QMap<int, QString> m_takeoverSnapshotHashes;
+    QMap<int, quint64> m_takeoverSnapshotSerials;
+    mutable QMap<int, QSharedPointer<GameSnapshot> > m_takeoverSnapshotsByNode;
     bool m_takeoverSnapshotsValid;
     bool m_stopRequested;
 

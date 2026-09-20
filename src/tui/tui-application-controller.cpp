@@ -345,10 +345,17 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
 // header (see the declaration's own comment).
 TuiApplicationController::~TuiApplicationController() = default;
 
-void TuiApplicationController::refreshSharedPresentation(bool advanceRevision)
+void TuiApplicationController::refreshSharedPresentation(bool advanceRevision, bool requested)
 {
     if (advanceRevision)
         ++m_presentationRevision;
+
+    // Classic/script output consumes individual events immediately; only /status
+    // reads these complete projections. Rebuilding them for every mark/property
+    // notification repeats all player/log formatting before the next packet.
+    // Board mode still needs its live projection, and explicit reads stay fresh.
+    if (m_boardPresenter == nullptr && !requested)
+        return;
 
     const quint64 generation = m_session.generation();
     m_eventStream.synchronize(*m_core.state(), generation);
@@ -371,8 +378,8 @@ void TuiApplicationController::refreshSharedPresentation(bool advanceRevision)
             m_presentationRevision, options);
         m_gameActionModel = sharedActionModel(request);
     };
-    const QJsonObject previousView = m_gameViewState.toJson();
-    const QJsonObject previousActions = m_gameActionModel.toJson();
+    const QJsonObject previousView = advanceRevision ? QJsonObject() : m_gameViewState.toJson();
+    const QJsonObject previousActions = advanceRevision ? QJsonObject() : m_gameActionModel.toJson();
     build();
     if (!advanceRevision && (m_gameViewState.toJson() != previousView
                              || m_gameActionModel.toJson() != previousActions)) {
@@ -884,7 +891,7 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
     if (intent.type == TuiCommandType::Help) {
         writeDump(tuiText("tui_help"));
     } else if (intent.type == TuiCommandType::Status) {
-        refreshSharedPresentation(false);
+        refreshSharedPresentation(false, true);
         QStringList lines;
         if (m_gameViewState.ready) {
             lines << m_gameViewState.toPlainText();

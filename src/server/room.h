@@ -5,6 +5,7 @@
 #include "skill-instance-utils.h"
 #include "skill-instance-attachment-registry.h"
 #include "skill-execution-registry.h"
+#include "resolution-history.h"
 #include "room-runtime.h"
 #include "game-session-config.h"
 #include "event-dispatcher.h"
@@ -109,6 +110,24 @@ public:
     bool isTakeoverReady() const;
     QString takeoverError() const;
     bool isRestoringTakeoverSnapshot() const { return m_takeoverRestoring; }
+    // Rules-only history. Presentation and isolated AI never receive this store.
+    ResolutionHistoryService &resolutionHistory() { return m_resolutionHistory; }
+    const ResolutionHistoryService &resolutionHistory() const { return m_resolutionHistory; }
+    bool historyRecordingEnabled() const { return !m_takeoverRestoring; }
+    qint64 currentHistoryEventId() const;
+    QVariantMap historyEvent(qint64 id) const;
+    QVariantMap historyParent(qint64 id, const QString &kind, bool includeSelf = false) const;
+    QVariantMap historyScopes() const;
+    QVariantMap queryHistoryEvents(const QVariantMap &filter) const;
+    QVariantMap queryHistoryFacts(const QVariantMap &filter) const;
+    QVariantMap queryHistoryMoves(const QVariantMap &filter) const;
+    QVariantMap queryActualDamage(const QVariantMap &filter) const;
+    QVariantMap historyCardSnapshot(const Card *card) const;
+    QVariantMap historySkillContext(const SkillContext &context) const;
+    QVariantMap historyCause(const CardMoveReason &reason) const;
+    void recordAppliedDamage(const DamageStruct &damage, int absorbed, int hpLoss);
+    void recordDamageComponent(const DamageStruct &damage, const QString &component, int amount);
+    void applyDamageHp(ServerPlayer *player, const DamageStruct &damage, int absorbed, int hpLoss);
     void setRestoringTakeoverSnapshot(bool restoring) { m_takeoverRestoring = restoring; }
     TakeoverScenario *takeoverScenario() const;
     bool isFull() const;
@@ -147,6 +166,7 @@ public:
     bool isCurrentExtraTurn() const;
     QString getCurrentExtraTurnReason() const;
     SkillInstanceRef getCurrentExtraTurnSourceRef() const;
+    qint64 getCurrentExtraTurnCauseEventId() const;
     QVariantList snapshotPendingExtraTurns() const;
     bool restorePendingExtraTurns(const QVariantList &requests,
                                   const QMap<QString, ServerPlayer *> &runtimeBySnapshotSeat,
@@ -826,6 +846,7 @@ private:
     void releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
+    ResolutionHistoryService m_resolutionHistory;
     std::unique_ptr<RoomRuntime> m_runtime;
     std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
     std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;

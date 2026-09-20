@@ -58,6 +58,15 @@ public:
     // Coalesce presentation work inside triggers; requests flush before input.
     bool deferPlayerUiState(ServerPlayer *player);
     void flushPlayerUiState();
+    // Preserve interrupted lifecycle IDs while TurnBroken cleanup unwinds.
+    void rememberInterruptedTurn(qint64 eventId);
+    qint64 interruptedTurn() const;
+    void clearInterruptedTurn();
+    qint64 takeInterruptedTurn();
+    void rememberInterruptedPhase(qint64 eventId);
+    qint64 interruptedPhase() const;
+    void clearInterruptedPhase();
+    qint64 takeInterruptedPhase();
     void markSkillDescriptionsDirty();
     void refreshSkillDescriptions();
 
@@ -119,6 +128,8 @@ private:
     TriggerDispatchProfile m_triggerDispatchProfile;
     QHash<const ServerPlayer *, QByteArray> m_distancePropertyNames;
     QHash<const ServerPlayer *, QHash<const ServerPlayer *, int>> m_lastBroadcastDistances;
+    qint64 m_interruptedTurnEventId = 0;
+    qint64 m_interruptedPhaseEventId = 0;
     QString order;
 
     QList<TriggerSkill *> skill_table[NumOfEvents];

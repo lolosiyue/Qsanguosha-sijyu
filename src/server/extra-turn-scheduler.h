@@ -21,6 +21,9 @@ public:
         QList<int> phases;
         QString reason;
         SkillInstanceRef sourceRef;
+        // Causal event is captured when the request is scheduled; the turn
+        // event itself is allocated only when the request starts executing.
+        qint64 causeEventId = 0;
     };
 
     using PlayerResolver = std::function<ServerPlayer *(const QString &objectName)>;
@@ -34,6 +37,7 @@ public:
     bool isCurrentExtraTurn() const;
     QString currentReason() const;
     SkillInstanceRef currentSourceRef() const;
+    qint64 currentCauseEventId() const;
 
     QList<SnapshotRequest> pendingRequestsSnapshot() const;
     bool restorePendingRequests(const QList<SnapshotRequest> &requests,
@@ -42,7 +46,8 @@ public:
 
     void process();
     void execute(ServerPlayer *player, QList<Player::Phase> phases,
-                 const QString &reason, const SkillInstanceRef &sourceRef);
+                 const QString &reason, const SkillInstanceRef &sourceRef,
+                 qint64 causeEventId = 0);
 
 private:
     struct Request {
@@ -50,18 +55,20 @@ private:
         QList<Player::Phase> phases;
         QString reason;
         SkillInstanceRef sourceRef;
+        qint64 causeEventId;
 
         Request()
-            : player(nullptr) {}
+            : player(nullptr), causeEventId(0) {}
     };
 
     struct Context {
         ServerPlayer *player;
         QString reason;
         SkillInstanceRef sourceRef;
+        qint64 causeEventId;
 
         Context()
-            : player(nullptr) {}
+            : player(nullptr), causeEventId(0) {}
     };
 
     void restoreRequests(const QList<Request> &requests);

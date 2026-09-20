@@ -560,6 +560,8 @@ if(QSAN_BUILD_TUI)
         tui/tui-line-editor-test.cpp
         tui/tui-ui-mode-test.cpp
         tui/tui-ui-parity-test.cpp
+        tui/tui-presentation-refresh-test.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-application-controller.cpp
         ${QSAN_TEST_ROOT}/src/client/client-live-session.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-command-registry.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-reply-coordinator.cpp
@@ -616,6 +618,8 @@ if(QSAN_BUILD_TUI)
         PROPERTIES COMPILE_DEFINITIONS main=runTuiUiModeTests)
     set_source_files_properties(tui/tui-ui-parity-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiUiParityTests)
+    set_source_files_properties(tui/tui-presentation-refresh-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runTuiPresentationRefreshTests)
     target_include_directories(qsanguosha_tui_tests PRIVATE
         ${QSAN_TEST_ROOT}/src/client
         ${QSAN_TEST_ROOT}/src/client/core
@@ -945,3 +949,31 @@ if(TARGET qsanguosha_rules_fixture_runner)
                 --artifacts "${CMAKE_CURRENT_BINARY_DIR}/rules-manifest-native")
     set_tests_properties(qsanguosha_rules_manifest_native PROPERTIES LABELS "client;protocol" TIMEOUT 180)
 endif()
+
+# Resolution history fixtures use the real engine Room/RoomThread path. The
+# first executable also keeps the large pagination and snapshot checks in a
+# bounded rules-only case; the second loads the isolated Lua contract through
+# the production AI runtime.
+add_executable(qsanguosha_resolution_history_tests
+    resolution-history-test.cpp)
+qsan_link_engine_test(qsanguosha_resolution_history_tests)
+foreach(history_case late-acquisition damage pile-moves nested-turn pagination cleanup)
+    add_test(NAME qsanguosha_resolution_history_${history_case}
+        COMMAND qsanguosha_resolution_history_tests --case ${history_case})
+    set_tests_properties(qsanguosha_resolution_history_${history_case} PROPERTIES
+        WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+        LABELS "server;rules;fast"
+        TIMEOUT 60)
+endforeach()
+
+add_executable(qsanguosha_resolution_history_integration_tests
+    resolution-history-integration-test.cpp)
+qsan_link_engine_test(qsanguosha_resolution_history_integration_tests)
+foreach(history_case rules-lua isolated-lua room-wrappers snapshot)
+    add_test(NAME qsanguosha_resolution_history_integration_${history_case}
+        COMMAND qsanguosha_resolution_history_integration_tests --case ${history_case})
+    set_tests_properties(qsanguosha_resolution_history_integration_${history_case} PROPERTIES
+        WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+        LABELS "server;lua;fast"
+        TIMEOUT 60)
+endforeach()
