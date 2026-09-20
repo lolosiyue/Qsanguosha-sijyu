@@ -220,7 +220,9 @@ inline bool SnapshotJsonWriter::writeVariant(const QVariant &value)
     if (!value.isValid()) return writeToken(QByteArrayLiteral("null"));
     const int type = value.userType();
     switch (type) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     case QMetaType::Nullptr: return writeToken(QByteArrayLiteral("null"));
+#endif
     case QMetaType::Bool: return writeToken(value.toBool() ? QByteArrayLiteral("true") : QByteArrayLiteral("false"));
     case QMetaType::Int: return writeToken(QByteArray::number(value.toInt()));
     case QMetaType::UInt: return writeToken(QByteArray::number(value.toUInt()));

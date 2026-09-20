@@ -367,7 +367,7 @@ bool ScenarioWorkEditorDialog::editSceneDefinition(ScenarioWork::SceneDefinition
     if (useGoal->isChecked())
         scene->goals << goal;
     if (scene->id.isEmpty())
-        scene->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        scene->id = QUuid::createUuid().toString().mid(1, 36);
     scene->revision = ScenarioWork::computeSceneRevision(*scene);
     return true;
 }
@@ -419,7 +419,7 @@ bool ScenarioWorkEditorDialog::editEntryDefinition(ScenarioWork::StageEntry *ent
     if (overrideGoal->isChecked())
         entry->goals << goal;
     if (entry->id.isEmpty())
-        entry->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        entry->id = QUuid::createUuid().toString().mid(1, 36);
     return true;
 }
 
@@ -475,7 +475,8 @@ bool ScenarioWorkEditorDialog::editGoal(ScenarioWork::GoalDefinition *goal)
                 value->setEnabled(numeric);
                 mark->setEnabled(kind == ScenarioWork::PredicateType::Mark);
             };
-            connect(type, &QComboBox::currentIndexChanged, table, update);
+            connect(type, static_cast<void (QComboBox::*)(int)>(
+                &QComboBox::currentIndexChanged), table, update);
             update();
         };
         for (const auto &p : group.predicates)
@@ -651,7 +652,7 @@ void ScenarioWorkEditorDialog::importScene()
             QMessageBox::warning(this, tr("Invalid scene"), error);
             return;
         }
-        scene.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        scene.id = QUuid::createUuid().toString().mid(1, 36);
         scene.title = QFileInfo(path).completeBaseName();
         scene.author = tr("Imported");
         scene.revision = ScenarioWork::computeSceneRevision(scene);
@@ -886,7 +887,7 @@ void ScenarioWorkLibraryDialog::duplicateWork()
     auto work = currentWork(&ok);
     if (!ok)
         return;
-    work.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    work.id = QUuid::createUuid().toString().mid(1, 36);
     work.revision.clear();
     work.title += tr(" (Copy)");
     writeWork(work);

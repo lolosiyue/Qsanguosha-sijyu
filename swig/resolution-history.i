@@ -100,24 +100,24 @@ bool validateHistoryVariant(const QVariant &value, int depth)
         return false;
     if (!value.isValid() || value.isNull())
         return true;
-    if (value.typeId() == QMetaType::Bool) {
+    if (value.userType() == QMetaType::Bool) {
         return true;
-    } else if (value.canConvert<qint64>() && (value.typeId() == QMetaType::LongLong
-                                               || value.typeId() == QMetaType::ULongLong
-                                               || value.typeId() == QMetaType::Int
-                                               || value.typeId() == QMetaType::UInt)) {
+    } else if (value.canConvert<qint64>() && (value.userType() == QMetaType::LongLong
+                                               || value.userType() == QMetaType::ULongLong
+                                               || value.userType() == QMetaType::Int
+                                               || value.userType() == QMetaType::UInt)) {
         return true;
-    } else if (value.typeId() == QMetaType::Double || value.typeId() == QMetaType::Float) {
+    } else if (value.userType() == QMetaType::Double || value.userType() == QMetaType::Float) {
         return std::isfinite(value.toDouble());
-    } else if (value.typeId() == QMetaType::QString || value.typeId() == QMetaType::QByteArray) {
+    } else if (value.userType() == QMetaType::QString || value.userType() == QMetaType::QByteArray) {
         return true;
-    } else if (value.typeId() == QMetaType::QVariantList) {
+    } else if (value.userType() == QMetaType::QVariantList) {
         const QVariantList list = value.toList();
         for (const QVariant &item : list)
             if (!validateHistoryVariant(item, depth + 1))
                 return false;
         return true;
-    } else if (value.typeId() == QMetaType::QVariantMap) {
+    } else if (value.userType() == QMetaType::QVariantMap) {
         const QVariantMap map = value.toMap();
         for (auto it = map.cbegin(); it != map.cend(); ++it)
             if (!validateHistoryVariant(it.value(), depth + 1))
@@ -131,26 +131,26 @@ void pushHistoryVariant(lua_State *state, const QVariant &value, int depth)
 {
     if (!value.isValid() || value.isNull()) {
         lua_pushnil(state);
-    } else if (value.typeId() == QMetaType::Bool) {
+    } else if (value.userType() == QMetaType::Bool) {
         lua_pushboolean(state, value.toBool());
-    } else if (value.canConvert<qint64>() && (value.typeId() == QMetaType::LongLong
-                                               || value.typeId() == QMetaType::ULongLong
-                                               || value.typeId() == QMetaType::Int
-                                               || value.typeId() == QMetaType::UInt)) {
+    } else if (value.canConvert<qint64>() && (value.userType() == QMetaType::LongLong
+                                               || value.userType() == QMetaType::ULongLong
+                                               || value.userType() == QMetaType::Int
+                                               || value.userType() == QMetaType::UInt)) {
         lua_pushinteger(state, static_cast<lua_Integer>(value.toLongLong()));
-    } else if (value.typeId() == QMetaType::Double || value.typeId() == QMetaType::Float) {
+    } else if (value.userType() == QMetaType::Double || value.userType() == QMetaType::Float) {
         lua_pushnumber(state, value.toDouble());
-    } else if (value.typeId() == QMetaType::QString || value.typeId() == QMetaType::QByteArray) {
+    } else if (value.userType() == QMetaType::QString || value.userType() == QMetaType::QByteArray) {
         const QByteArray utf8 = value.toString().toUtf8();
         lua_pushlstring(state, utf8.constData(), size_t(utf8.size()));
-    } else if (value.typeId() == QMetaType::QVariantList) {
+    } else if (value.userType() == QMetaType::QVariantList) {
         const QVariantList list = value.toList();
         lua_createtable(state, 0, 0);
         for (qsizetype i = 0; i < list.size(); ++i) {
             pushHistoryVariant(state, list.at(i), depth + 1);
             lua_rawseti(state, -2, lua_Integer(i + 1));
         }
-    } else if (value.typeId() == QMetaType::QVariantMap) {
+    } else if (value.userType() == QMetaType::QVariantMap) {
         const QVariantMap map = value.toMap();
         lua_createtable(state, 0, 0);
         for (auto it = map.cbegin(); it != map.cend(); ++it) {

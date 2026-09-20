@@ -107,12 +107,13 @@ one selected snapshot still uses the existing whole-document JSON parser.
 The 2026-09-20 checkpoint passed x64 Debug server/core-test builds and forced
 streaming/disk-backed focused tests (format equivalence, bounded writes,
 retention, caller lifetime, atomic failures, manifest copy and tamper rejection).
-The XP build was pending at this checkpoint because the Qt 5.6.3 development
-tree had not been located; the documented/default SDK paths were absent then.
-The tree has since been installed at `H:\Qt563\5.6.3\msvc2015` (official
+The Qt development tree is installed at `H:\Qt563\5.6.3\msvc2015` (official
 `qt-opensource-windows-x86-msvc2015-5.6.3.exe`, verified with `qmake -v`).
-XP build, guest execution and memory A/B remain unrun. The H-drive XP
-deployment contains Qt 5.6.3 runtime DLLs. Evidence:
+The subsequent XP Release build passed for both GUI and server with v141_xp:
+both EXEs passed x86 / PE 5.01 and import checks, including the server module
+boundary. Qt 5.6 compatibility fixes also cover history and regenerated SWIG
+bindings. This proves compilation/linking, not XP guest behavior; guest
+execution and memory A/B for this change remain unrun. Evidence:
 `builds/win32-snapshot-memory-20260920/summary.md`.
 
 The branch is recorded with `Recorder(..., true)` and a Replay V2 header with
