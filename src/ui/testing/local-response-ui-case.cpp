@@ -318,6 +318,8 @@ bool LocalResponseUiCase::commandFromName(const QString &name, CommandType *comm
         { QStringLiteral("S_COMMAND_SURRENDER"), S_COMMAND_SURRENDER },
         { QStringLiteral("S_COMMAND_LUCK_CARD"), S_COMMAND_LUCK_CARD },
         { QStringLiteral("S_COMMAND_ASK_GENERAL"), S_COMMAND_ASK_GENERAL },
+        { QStringLiteral("S_COMMAND_FILL_GENERAL"), S_COMMAND_FILL_GENERAL },
+        { QStringLiteral("S_COMMAND_TAKE_GENERAL"), S_COMMAND_TAKE_GENERAL },
         { QStringLiteral("S_COMMAND_ARRANGE_GENERAL"), S_COMMAND_ARRANGE_GENERAL },
         { QStringLiteral("S_COMMAND_QML_INTERACT"), S_COMMAND_QML_INTERACT }
     };
@@ -357,6 +359,8 @@ QString LocalResponseUiCase::commandName(CommandType command)
         { S_COMMAND_SURRENDER, QStringLiteral("S_COMMAND_SURRENDER") },
         { S_COMMAND_LUCK_CARD, QStringLiteral("S_COMMAND_LUCK_CARD") },
         { S_COMMAND_ASK_GENERAL, QStringLiteral("S_COMMAND_ASK_GENERAL") },
+        { S_COMMAND_FILL_GENERAL, QStringLiteral("S_COMMAND_FILL_GENERAL") },
+        { S_COMMAND_TAKE_GENERAL, QStringLiteral("S_COMMAND_TAKE_GENERAL") },
         { S_COMMAND_ARRANGE_GENERAL, QStringLiteral("S_COMMAND_ARRANGE_GENERAL") },
         { S_COMMAND_QML_INTERACT, QStringLiteral("S_COMMAND_QML_INTERACT") },
         { S_COMMAND_MIRROR_GUANXING_STEP, QStringLiteral("S_COMMAND_MIRROR_GUANXING_STEP") }

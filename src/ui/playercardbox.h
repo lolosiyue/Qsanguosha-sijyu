@@ -23,6 +23,7 @@ public:
                const QList<int> &disabledIds = QList<int>(),
                bool canCancel = false);
     void clear();
+    bool handleChooseKey(int key);
 
 protected:
     QRectF boundingRect() const;
@@ -41,6 +42,8 @@ private:
     Card::HandlingMethod method;
     QList<int> disabledIds;
     QList<CardItem *> items;
+    bool m_active = false;
+    int m_keyboardIndex = -1;
 
     QGraphicsProxyWidget *progressBarItem;
     QSanCommandProgressBar *progressBar;

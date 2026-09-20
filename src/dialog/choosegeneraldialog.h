@@ -18,6 +18,7 @@ public:
 
 protected:
     virtual void mouseDoubleClickEvent(QMouseEvent *);
+    void keyPressEvent(QKeyEvent *event) override;
 
 signals:
     void double_clicked();

@@ -23,7 +23,9 @@ int runUserNameResolutionTests();
 // stay identical to the originals.
 int runCardOverviewClassifierTests(int argc, char **argv);
 int runCardOverviewModelTests(int argc, char **argv);
+#ifdef QSAN_HAVE_LOCAL_UI_CASE_TESTS
 int runLocalResponseUiCaseTests(int argc, char **argv);
+#endif
 int runRuntimePathsTests(int argc, char **argv);
 int runReplayGameStateTests(int argc, char *argv[]);
 int runTakeoverSnapshotTests(int argc, char **argv);
@@ -40,8 +42,10 @@ int main(int argc, char **argv)
             return runCardOverviewClassifierTests(argc, argv);
         if (merged == QLatin1String("card-overview-model"))
             return runCardOverviewModelTests(argc, argv);
+#ifdef QSAN_HAVE_LOCAL_UI_CASE_TESTS
         if (merged == QLatin1String("local-response-case-parser"))
             return runLocalResponseUiCaseTests(argc, argv);
+#endif
         if (merged == QLatin1String("runtime-paths"))
             return runRuntimePathsTests(argc, argv);
         if (merged == QLatin1String("replay-game-state"))

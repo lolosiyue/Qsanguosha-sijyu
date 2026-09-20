@@ -5,6 +5,7 @@
 #include "clientplayer.h"
 #include "engine.h"
 #include "game-view.h"
+#include "game-control-panel.h"
 #include "local-response-ui-probe.h"
 #include "local-response-ui-inspector.h"
 #include "protocol/protocol-runtime.h"
@@ -12,6 +13,7 @@
 #include "roomscene.h"
 #include "server-info.h"
 #include "settings.h"
+#include <cstdio>
 #include "structs.h"
 #include "test-client-socket.h"
 
@@ -25,6 +27,10 @@
 #include <QFrame>
 #include <QImage>
 #include <QJsonDocument>
+#include <QKeyEvent>
+#include <QKeySequence>
+#include <QDialog>
+#include <QPointer>
 #include <QMainWindow>
 #include <QMetaEnum>
 #include <QMutex>
@@ -231,6 +237,21 @@ bool LocalResponseUiController::bootstrap(QString *error)
     }
 
     const QJsonObject bootstrapObject = m_case.bootstrap();
+    // Fixture settings are process-local: never persist them to the user's config.
+    const QJsonObject settings = bootstrapObject.value(QStringLiteral("settings")).toObject();
+    const QMap<QString, bool *> settingFields {
+        { QStringLiteral("EnableHotKey"), &Config.EnableHotKey },
+        { QStringLiteral("EnableIntellectualSelection"), &Config.EnableIntellectualSelection },
+        { QStringLiteral("EnableAutoTarget"), &Config.EnableAutoTarget },
+        { QStringLiteral("FreeAssignSelf"), &Config.FreeAssignSelf }
+    };
+    for (auto it = settings.begin(); it != settings.end(); ++it) {
+        if (!settingFields.contains(it.key()) || !it.value().isBool()) {
+            *error = QStringLiteral("unsupported boolean fixture setting '%1'").arg(it.key());
+            return false;
+        }
+        *settingFields.value(it.key()) = it.value().toBool();
+    }
     const QString modeId = bootstrapObject.value(QStringLiteral("mode")).toString(QStringLiteral("02p"));
     const GameModeStruct mode = Sanguosha->getGameMode(modeId);
     if (!mode.isValid()) {
@@ -327,7 +348,12 @@ bool LocalResponseUiController::bootstrap(QString *error)
     m_mainWindow = new QMainWindow;
     if (m_mode == RunnerMode::Auto)
         m_mainWindow->setAttribute(Qt::WA_DontShowOnScreen);
+    // Flush phase boundaries so a parent-process timeout retains useful evidence.
+    std::fprintf(stderr, "LOCAL_UI bootstrap: create RoomScene\n");
+    std::fflush(stderr);
     m_scene = new RoomScene(m_mainWindow);
+    std::fprintf(stderr, "LOCAL_UI bootstrap: RoomScene ready\n");
+    std::fflush(stderr);
     m_view = new FitView(nullptr, m_mainWindow);
     m_view->setFrameStyle(QFrame::NoFrame);
     m_mainWindow->setCentralWidget(m_view);
@@ -382,6 +408,7 @@ bool LocalResponseUiController::bootstrap(QString *error)
             { QStringLiteral("max_hp"), QStringLiteral("maxhp") },
             { QStringLiteral("maxhp"), QStringLiteral("maxhp") },
             { QStringLiteral("phase"), QStringLiteral("phase") },
+            { QStringLiteral("role"), QStringLiteral("role") },
             { QStringLiteral("alive"), QStringLiteral("alive") },
             { QStringLiteral("state"), QStringLiteral("state") }
         };
@@ -444,6 +471,23 @@ bool LocalResponseUiController::bootstrap(QString *error)
 
     if (!resolveCards(error))
         return false;
+    // Count-only opponent hands reproduce the recipient-redacted wire path.
+    for (const QJsonValue &value : players) {
+        const QJsonObject player = value.toObject();
+        const int count = player.value(QStringLiteral("hidden_hand_count")).toInt();
+        if (count <= 0)
+            continue;
+        CardsMoveStruct move;
+        for (int i = 0; i < count; ++i) move.card_ids << -1;
+        move.from_place = Player::PlaceTable;
+        move.to_place = Player::PlaceHand;
+        move.to_player_name = player.value(QStringLiteral("object_name")).toString();
+        move.open = false;
+        const JsonArray body = JsonArray() << 2 << move.toVariant();
+        if (!injectNotification(S_COMMAND_LOSE_CARD, body, error)
+            || !injectNotification(S_COMMAND_GET_CARD, body, error))
+            return false;
+    }
     m_probe = new LocalResponseUiProbe(m_client, m_scene, m_aliasToId);
     connect(m_socket, &TestClientSocket::packetSent, this, [this]() {
         if (m_mode == RunnerMode::Inspect)
@@ -560,6 +604,17 @@ bool LocalResponseUiController::injectNotification(CommandType command, const QV
 
 bool LocalResponseUiController::prepareRequest(QString *error)
 {
+    for (const QJsonValue &value : m_case.bootstrap().value(QStringLiteral("notifications")).toArray()) {
+        const QJsonObject notification = value.toObject();
+        CommandType command;
+        if (!LocalResponseUiCase::commandFromName(notification.value(QStringLiteral("command")).toString(), &command)) {
+            *error = QStringLiteral("unsupported bootstrap notification command");
+            return false;
+        }
+        if (!injectNotification(command, notification.value(QStringLiteral("body")).toVariant(), error))
+            return false;
+    }
+    flushEvents();
     const QJsonObject request = m_case.request();
     if (request.value(QStringLiteral("api")).toString() != QStringLiteral("askForAG"))
         return true;
@@ -662,8 +717,14 @@ void LocalResponseUiController::injectRequest()
 
     m_snapshots.insert(QStringLiteral("before_request"), m_probe->snapshot());
     m_socket->clearSentPackets();
+    // A request may enter QDialog::exec() synchronously. Queue the observer first
+    // so its keyboard actions can run inside that nested event loop as well.
+    QTimer::singleShot(0, this, &LocalResponseUiController::presentRequest);
     m_socket->injectServerPacket(m_requestPacketJson);
+}
 
+void LocalResponseUiController::presentRequest()
+{
     const QJsonObject expectedPresented = m_case.presentedExpectation();
     QString expectedStatus;
     if (expectedPresented.value(QStringLiteral("client")).isObject())
@@ -724,9 +785,27 @@ void LocalResponseUiController::injectRequest()
         if (m_inspector) {
             m_inspector->setPresentationResult(QStringLiteral("PASS"));
             m_inspector->setFinalResult(QStringLiteral("Awaiting manual input"));
-            m_inspector->raise();
-            m_inspector->activateWindow();
-            m_inspector->gameControlsButton()->setFocus();
+        }
+        // Inspect the actual request surface, not the inspector's action panel.
+        // Native choices such as ChooseGeneralDialog own their keyboard focus.
+        QWidget *requestWindow = QApplication::activeModalWidget();
+        if (!requestWindow || requestWindow == m_inspector) {
+            requestWindow = m_mainWindow;
+            for (QWidget *widget : QApplication::topLevelWidgets()) {
+                if (qobject_cast<QDialog *>(widget) && widget->isVisible()
+                    && widget != m_inspector) {
+                    requestWindow = widget;
+                    break;
+                }
+            }
+        }
+        if (requestWindow) {
+            requestWindow->raise();
+            requestWindow->activateWindow();
+            QWidget *focus = requestWindow == m_mainWindow ? m_view
+                : requestWindow->focusWidget();
+            if (focus)
+                focus->setFocus(Qt::OtherFocusReason);
         }
         captureScreenshot(QStringLiteral("presented"));
         if (!persistReport(QStringLiteral("INSPECTING")))
@@ -772,6 +851,75 @@ bool LocalResponseUiController::runActions(QString *error)
     return true;
 }
 
+bool LocalResponseUiController::pressKey(const QJsonObject &action, QString *error)
+{
+    static const QMap<QString, int> keys {
+        { QStringLiteral("Tab"), Qt::Key_Tab }, { QStringLiteral("Backtab"), Qt::Key_Backtab },
+        { QStringLiteral("Left"), Qt::Key_Left }, { QStringLiteral("Right"), Qt::Key_Right },
+        { QStringLiteral("Up"), Qt::Key_Up }, { QStringLiteral("Down"), Qt::Key_Down },
+        { QStringLiteral("Space"), Qt::Key_Space }, { QStringLiteral("Return"), Qt::Key_Return },
+        { QStringLiteral("Enter"), Qt::Key_Enter }, { QStringLiteral("Escape"), Qt::Key_Escape },
+        { QStringLiteral("F2"), Qt::Key_F2 }, { QStringLiteral("+"), Qt::Key_Plus },
+        { QStringLiteral("-"), Qt::Key_Minus },
+        { QStringLiteral("Home"), Qt::Key_Home }, { QStringLiteral("End"), Qt::Key_End }
+    };
+    const QString name = action.value(QStringLiteral("key")).toString();
+    if (!keys.contains(name)) {
+        *error = QStringLiteral("unsupported key '%1'").arg(name);
+        return false;
+    }
+    Qt::KeyboardModifiers modifiers = Qt::NoModifier;
+    for (const QJsonValue &value : action.value(QStringLiteral("modifiers")).toArray()) {
+        if (value.toString() == QStringLiteral("Shift")) modifiers |= Qt::ShiftModifier;
+        else if (value.toString() == QStringLiteral("Alt")) modifiers |= Qt::AltModifier;
+        else if (value.toString() == QStringLiteral("Ctrl")) modifiers |= Qt::ControlModifier;
+        else {
+            *error = QStringLiteral("unsupported key modifier '%1'").arg(value.toString());
+            return false;
+        }
+    }
+    if (name == QStringLiteral("Backtab"))
+        modifiers |= Qt::ShiftModifier;
+    for (QWidget *widget : QApplication::topLevelWidgets()) {
+        if (qobject_cast<GameControlPanel *>(widget) && widget->isVisible()) {
+            *error = QStringLiteral("native keyboard fixture requires the game control panel closed");
+            return false;
+        }
+    }
+
+    // Deliver real events through FitView or the request dialog's current focus.
+    // Never call scene keyboard handlers or selection/confirmation helpers here.
+    QPointer<QWidget> receiver = m_view;
+    for (QWidget *widget : QApplication::topLevelWidgets()) {
+        if (qobject_cast<QDialog *>(widget) && widget->isVisible()
+            && widget != m_inspector) {
+            receiver = widget->focusWidget() ? widget->focusWidget() : widget;
+            break;
+        }
+    }
+    if (!receiver) {
+        *error = QStringLiteral("native keyboard receiver is unavailable");
+        return false;
+    }
+    QKeyEvent press(QEvent::KeyPress, keys.value(name), modifiers);
+    QApplication::sendEvent(receiver, &press);
+    // Repeated physical key-down events must not create a second response.
+    const int repeats = action.value(QStringLiteral("auto_repeat")).toInt();
+    if (repeats < 0 || repeats > 8) {
+        *error = QStringLiteral("auto_repeat must be between 0 and 8");
+        return false;
+    }
+    for (int i = 0; i < repeats && receiver; ++i) {
+        QKeyEvent repeat(QEvent::KeyPress, keys.value(name), modifiers, QString(), true);
+        QApplication::sendEvent(receiver, &repeat);
+    }
+    if (receiver) {
+        QKeyEvent release(QEvent::KeyRelease, keys.value(name), modifiers);
+        QApplication::sendEvent(receiver, &release);
+    }
+    return true;
+}
+
 bool LocalResponseUiController::runAction(int index, QString *error)
 {
     const QJsonObject action = m_case.actions().at(index).toObject();
@@ -779,7 +927,9 @@ bool LocalResponseUiController::runAction(int index, QString *error)
     QString actionError;
     bool ok = false;
 
-    if (type == QStringLiteral("select_card"))
+    if (type == QStringLiteral("key_press"))
+        ok = pressKey(action, &actionError);
+    else if (type == QStringLiteral("select_card"))
         ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), true, &actionError);
     else if (type == QStringLiteral("unselect_card"))
         ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), false, &actionError);
@@ -843,6 +993,35 @@ bool LocalResponseUiController::runAction(int index, QString *error)
 
 bool LocalResponseUiController::eventFilter(QObject *watched, QEvent *event)
 {
+    if (m_mode == RunnerMode::Inspect && !m_closing && m_probe
+        && event->type() == QEvent::KeyRelease) {
+        const int key = static_cast<QKeyEvent *>(event)->key();
+        // Only trace navigation keys in this inspector process, never typed text.
+        if (key == Qt::Key_F2 || key == Qt::Key_F6 || key == Qt::Key_Tab
+            || key == Qt::Key_Backtab || key == Qt::Key_Space
+            || key == Qt::Key_Left || key == Qt::Key_Right
+            || key == Qt::Key_Up || key == Qt::Key_Down
+            || key == Qt::Key_Return || key == Qt::Key_Enter) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("key"), QKeySequence(key).toString());
+            entry.insert(QStringLiteral("receiver"), QString::fromLatin1(watched->metaObject()->className()));
+            if (auto *focus = QApplication::focusWidget()) {
+                entry.insert(QStringLiteral("focus_class"), QString::fromLatin1(focus->metaObject()->className()));
+                entry.insert(QStringLiteral("focus_name"), focus->objectName());
+            }
+            QTimer::singleShot(0, this, [this, entry]() mutable {
+                if (m_closing) return;
+                const auto snapshot = m_probe->snapshot();
+                entry.insert(QStringLiteral("cards"), snapshot.value(QStringLiteral("cards")));
+                entry.insert(QStringLiteral("skills"), snapshot.value(QStringLiteral("skills")));
+                QJsonArray trace = m_report.value(QStringLiteral("keyboard_trace")).toArray();
+                if (trace.size() >= 64) trace.removeFirst();
+                trace.append(entry);
+                m_report.insert(QStringLiteral("keyboard_trace"), trace);
+                persistReport(m_replyProcessed ? QStringLiteral("PASS") : QStringLiteral("INSPECTING"));
+            });
+        }
+    }
     if (m_mode == RunnerMode::Inspect && !m_closing
         && event->type() == QEvent::Close
         && (watched == m_mainWindow || watched == m_inspector)) {
@@ -859,8 +1038,7 @@ void LocalResponseUiController::createInspector(const QString &command, int seri
     m_inspector->setCaseName(m_case.name());
     m_inspector->setMode(QStringLiteral("Inspect"));
     m_inspector->setRequest(command, serial);
-    m_mainWindow->installEventFilter(this);
-    m_inspector->installEventFilter(this);
+    qApp->installEventFilter(this);
     connect(m_inspector->nextActionButton(), &QPushButton::clicked,
         this, &LocalResponseUiController::runNextInspectAction);
     connect(m_inspector->remainingActionsButton(), &QPushButton::clicked,
@@ -906,6 +1084,8 @@ void LocalResponseUiController::setStage(RunnerStage stage)
     case RunnerStage::Closing: name = QStringLiteral("Closing"); break;
     }
     m_report.insert(QStringLiteral("runner_stage"), name);
+    std::fprintf(stderr, "LOCAL_UI stage: %s\n", name.toUtf8().constData());
+    std::fflush(stderr);
 }
 
 void LocalResponseUiController::setInspectFailure(ExitCode code, const QString &stage,
@@ -1259,6 +1439,7 @@ bool LocalResponseUiController::validateReply(QString *error)
             const Card *card = Card::Parse(cardText);
             if (card) {
                 decodedCard.insert(QStringLiteral("card_name"), card->objectName());
+                decodedCard.insert(QStringLiteral("card_class"), card->getClassName());
                 decodedCard.insert(QStringLiteral("skill_name"), card->getSkillName());
                 decodedCard.insert(QStringLiteral("activation_skill_name"),
                     replyBody.value(QStringLiteral("activation_skill_name")).toString());
@@ -1284,6 +1465,20 @@ bool LocalResponseUiController::validateReply(QString *error)
     m_capturedPackets.append(captured);
 
     const QJsonObject expected = m_case.replyExpectation();
+    // Check exact typed fields for arrangements, roles and concealed-card replies.
+    if (expected.contains(QStringLiteral("payload"))) {
+        const QJsonObject fields = expected.value(QStringLiteral("payload")).toObject();
+        const QJsonObject actual = QJsonObject::fromVariantMap(replyBody);
+        for (auto it = fields.begin(); it != fields.end(); ++it) {
+            const bool matches = actual.value(it.key()) == it.value();
+            recordAssertion(QStringLiteral("expect_reply.payload.") + it.key(),
+                it.value(), actual.value(it.key()), matches);
+            if (!matches) {
+                *error = QStringLiteral("reply payload assertion failed");
+                return false;
+            }
+        }
+    }
     bool passed = true;
     const QString expectedCommand = expected.value(QStringLiteral("command")).toString();
     if (!expectedCommand.isEmpty()) {
@@ -1308,8 +1503,12 @@ bool LocalResponseUiController::validateReply(QString *error)
 
     if (expected.contains(QStringLiteral("invoke"))) {
         const bool expectedInvoke = expected.value(QStringLiteral("invoke")).toBool();
-        const bool actualInvoke = replyBody.value(QStringLiteral("invoke")).toBool();
-        const bool itemPassed = expectedInvoke == actualInvoke;
+        const QString field = packet.command == S_COMMAND_SURRENDER ? QStringLiteral("surrender")
+            : packet.command == S_COMMAND_LUCK_CARD ? QStringLiteral("use_luck_card")
+            : QStringLiteral("invoke");
+        const bool actualInvoke = replyBody.value(field).toBool();
+        // Missing fields must never accidentally pass a false/no expectation.
+        const bool itemPassed = replyBody.contains(field) && expectedInvoke == actualInvoke;
         recordAssertion(QStringLiteral("expect_reply.invoke"), expectedInvoke, actualInvoke, itemPassed);
         passed = itemPassed && passed;
     }
@@ -1398,7 +1597,7 @@ bool LocalResponseUiController::validateReply(QString *error)
     }
 
     static const QStringList decodedKeys {
-        QStringLiteral("card_name"),
+        QStringLiteral("card_name"), QStringLiteral("card_class"),
         QStringLiteral("skill_name"), QStringLiteral("activation_skill_name"),
         QStringLiteral("activation_instance_id"), QStringLiteral("subcards"),
         QStringLiteral("targets")

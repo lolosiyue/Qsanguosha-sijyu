@@ -38,6 +38,8 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
                           Card::HandlingMethod method, const QList<int> &disabledIds,
                           bool canCancel)
 {
+    m_active = true;
+    m_keyboardIndex = -1;
     nameRects.clear();
     rowCount = 0;
     intervalsBetweenAreas = -1;
@@ -280,6 +282,8 @@ void PlayerCardBox::paintLayout(QPainter *painter)
 
 void PlayerCardBox::clear()
 {
+    m_active = false;
+    m_keyboardIndex = -1;
     if (progressBar != NULL) {
         progressBar->hide();
         progressBar->deleteLater();
@@ -382,7 +386,10 @@ void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint 
 
 void PlayerCardBox::reply()
 {
+    if (!m_active) return;
     CardItem *item = qobject_cast<CardItem *>(sender());
+    if (item && (!items.contains(item) || !item->isEnabled())) return;
+    if (!item && sender() && sender() != progressBar) return;
     int id = -2;
 
     if (item)
@@ -394,7 +401,38 @@ void PlayerCardBox::reply()
 
 void PlayerCardBox::cancel()
 {
+    if (!m_active || !canCancel) return;
     clear();
     // -1 selects a concealed hand card; -2 is the client's cancel sentinel.
     ClientInstance->onPlayerChooseCard(-2);
+}
+
+bool PlayerCardBox::handleChooseKey(int key)
+{
+    const bool forward = key == Qt::Key_Right || key == Qt::Key_Down || key == Qt::Key_Tab;
+    const bool backward = key == Qt::Key_Left || key == Qt::Key_Up || key == Qt::Key_Backtab;
+    const bool confirm = key == Qt::Key_Return || key == Qt::Key_Enter;
+    if (!m_active || !isVisible()
+        || (!forward && !backward && !confirm && key != Qt::Key_Space && key != Qt::Key_Escape)) return false;
+    if (key == Qt::Key_Escape) {
+        if (canCancel) cancel();
+        return true;
+    }
+    QList<int> candidates;
+    for (int i = 0; i < items.size(); ++i)
+        if (items.at(i)->isVisible() && items.at(i)->isEnabled()) candidates << i;
+    if (candidates.isEmpty()) return true;
+    int current = candidates.indexOf(m_keyboardIndex);
+    if (current < 0) current = backward ? candidates.size() - 1 : 0;
+    else if (forward || backward)
+        current = (current + (forward ? 1 : candidates.size() - 1)) % candidates.size();
+    m_keyboardIndex = candidates.at(current);
+    CardItem *candidate = items.at(m_keyboardIndex);
+    for (CardItem *item : items) {
+        item->setScale(item == candidate ? 1.06 : 1.0);
+        item->setZValue(item == candidate ? 1 : 0);
+    }
+    // Keep concealed cards as the existing -1 sentinel; never consult hand IDs.
+    if (confirm) candidate->clickItem();
+    return true;
 }

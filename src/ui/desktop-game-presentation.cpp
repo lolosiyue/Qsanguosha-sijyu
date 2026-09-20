@@ -14,6 +14,7 @@
 #include "qsanbutton.h"
 #include "roomscene.h"
 #include "skill.h"
+#include "large-room-overview.h"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -22,6 +23,8 @@
 #include <QTextDocumentFragment>
 #include <QTextDocument>
 #include <QTimer>
+#include <QKeyEvent>
+#include <QPainter>
 #include <algorithm>
 
 void RoomScene::showGameStateSnapshot()
@@ -41,6 +44,28 @@ void RoomScene::showGameControlPanel()
 }
 
 namespace {
+// A focus outline only: gameplay selection continues to live in native items.
+class TableKeyboardMarker final : public QGraphicsObject
+{
+public:
+    QRectF boundingRect() const override { return m_rect; }
+    void locate(const QRectF &rect) {
+        if (m_rect == rect) return;
+        prepareGeometryChange();
+        m_rect = rect;
+        update();
+    }
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) override {
+        QPen pen(QApplication::palette().color(QPalette::Highlight), 3, Qt::DashLine);
+        pen.setCosmetic(true);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(m_rect.adjusted(2, 2, -2, -2));
+    }
+private:
+    QRectF m_rect;
+};
+
 QString plain(const QString &text)
 {
     return QTextDocumentFragment::fromHtml(text).toPlainText().simplified();
@@ -94,11 +119,15 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     connect(m_client->getPromptDoc(), &QTextDocument::contentsChanged, this, [this]() { scheduleRefresh(); });
     connect(m_client, &Client::gamePresentationStateChanged, this,
         [this]() { m_stateDirty = true; scheduleRefresh(); });
-    connect(m_client, &Client::status_changed, this, [this]() { m_stateDirty = true; scheduleRefresh(); });
+    connect(m_client, &Client::status_changed, this, [this]() {
+        clearKeyboardCursor();
+        m_stateDirty = true;
+        scheduleRefresh();
+    });
     ClientCore *core = m_client->interactionCore();
-    connect(core, &ClientCore::requestStarted, this, [this]() { scheduleRefresh(); });
-    connect(core, &ClientCore::requestCancelled, this, [this]() { scheduleRefresh(); });
-    connect(core, &ClientCore::responseAccepted, this, [this]() { scheduleRefresh(); });
+    connect(core, &ClientCore::requestStarted, this, [this]() { clearKeyboardCursor(); scheduleRefresh(); });
+    connect(core, &ClientCore::requestCancelled, this, [this]() { clearKeyboardCursor(); scheduleRefresh(); });
+    connect(core, &ClientCore::responseAccepted, this, [this]() { clearKeyboardCursor(); scheduleRefresh(); });
     connect(core, &ClientCore::responseRejected, this, [this]() { scheduleRefresh(); });
     if (auto *session = m_client->liveSession()) {
         connect(session, &ClientLiveSession::stateChanged, this,
@@ -115,6 +144,167 @@ DesktopGamePresentation::~DesktopGamePresentation()
     // These are parented to the main window, whose lifetime exceeds RoomScene.
     delete m_panel;
     delete m_snapshot;
+    delete m_keyboardMarker;
+}
+
+void DesktopGamePresentation::clearKeyboardCursor()
+{
+    m_keyboardKind.clear();
+    m_keyboardId.clear();
+    if (m_keyboardMarker) m_keyboardMarker->hide();
+}
+
+void DesktopGamePresentation::updateKeyboardCursor()
+{
+    QGraphicsObject *item = nullptr;
+    Dashboard *dashboard = m_scene->dashboard;
+    if (m_keyboardKind == QLatin1String("card")) {
+        if (m_keyboardId.startsWith(QLatin1String("equip:"))) {
+            const int id = m_keyboardId.mid(6).toInt();
+            for (auto *equip : dashboard->_m_equipCards)
+                if (equip && equip->getId() == id) item = equip;
+        } else {
+            for (CardItem *card : dashboard->getHandCards())
+                if (QString::number(card->getId()) == m_keyboardId) item = card;
+        }
+    } else if (m_keyboardKind == QLatin1String("player")) {
+        for (auto it = m_scene->item2player.cbegin(); it != m_scene->item2player.cend(); ++it)
+            if (it.value() && it.value()->objectName() == m_keyboardId) item = it.key();
+        // Large rooms retain invisible canonical Photos. Outline their native
+        // visible projection, while intents still update the canonical draft.
+        if (m_scene->m_largeRoomOverview && m_scene->m_largeRoomOverview->isVisible())
+            item = m_scene->m_largeRoomOverview->keyboardTarget(m_keyboardId);
+    } else if (m_keyboardKind == QLatin1String("skill")) {
+        for (auto *button : m_scene->m_skillButtons)
+            if (button->objectName() == m_keyboardId) item = button;
+    } else if (m_keyboardKind == QLatin1String("option")) {
+        item = dashboard->m_dialogOptionItemMap.value(m_keyboardId);
+    } else if (m_keyboardKind == QLatin1String("command")) {
+        if (m_keyboardId == QLatin1String("confirm")) item = m_scene->ok_button;
+        else if (m_keyboardId == QLatin1String("cancel")) item = m_scene->cancel_button;
+        else if (m_keyboardId == QLatin1String("finish")) item = m_scene->discard_button;
+    }
+    if (!item || !item->isVisible()) {
+        if (m_keyboardMarker) m_keyboardMarker->hide();
+        return;
+    }
+    if (!m_keyboardMarker) {
+        auto *marker = new TableKeyboardMarker;
+        marker->setAcceptedMouseButtons(Qt::NoButton);
+        marker->setZValue(10000);
+        m_scene->addItem(marker);
+        m_keyboardMarker = marker;
+    }
+    // Follow the item's movement/scale (hand selection, target rows and reflow).
+    // QPointer clears if that item's destruction also destroys the outline.
+    m_keyboardMarker->setParentItem(item);
+    static_cast<TableKeyboardMarker *>(m_keyboardMarker.data())->locate(item->boundingRect());
+    m_keyboardMarker->show();
+}
+
+bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
+{
+    const int key = event->key();
+    const bool tab = key == Qt::Key_Tab || key == Qt::Key_Backtab;
+    if (event->modifiers() & (Qt::AltModifier | Qt::MetaModifier | Qt::ControlModifier)) {
+        if (tab) clearKeyboardCursor(); // Leave native table traversal for normal widget focus.
+        return false;
+    }
+    const bool arrow = key == Qt::Key_Left || key == Qt::Key_Right
+        || key == Qt::Key_Up || key == Qt::Key_Down;
+    const bool enter = key == Qt::Key_Return || key == Qt::Key_Enter;
+    if (!tab && !arrow && !enter && key != Qt::Key_Space && key != Qt::Key_Escape
+        && key != Qt::Key_F2 && key != Qt::Key_Plus && key != Qt::Key_Minus) return false;
+    refresh();
+    if (!m_model.supported || (!cardInteraction(m_model.request.type)
+        && m_model.request.type != InteractionType::SkillInvoke
+        && m_model.request.type != InteractionType::LuckCard
+        && m_model.request.type != InteractionType::Surrender)) return false;
+
+    struct Group { QString kind; QList<GameActionEntry> entries; };
+    QList<Group> groups;
+    const auto append = [&groups](const QString &kind, const QList<GameActionEntry> &entries) {
+        QList<GameActionEntry> enabled;
+        for (const auto &entry : entries) if (entry.enabled) enabled << entry;
+        if (!enabled.isEmpty()) groups.append({kind, enabled});
+    };
+    if (m_model.actionContext == QLatin1String("skill-dialog"))
+        append(QStringLiteral("option"), m_model.actions);
+    append(QStringLiteral("card"), m_model.cards);
+    append(QStringLiteral("player"), m_model.players);
+    append(QStringLiteral("skill"), m_model.skills);
+    QList<GameActionEntry> commands;
+    // Boolean prompts use the existing yes/no room buttons, not an unseen option draft.
+    const bool booleanPrompt = (m_client->getStatus() & Client::ClientStatusBasicMask) == Client::AskForSkillInvoke;
+    if (m_model.canConfirm || (booleanPrompt && m_scene->ok_button->isEnabled()))
+        commands.append({QStringLiteral("confirm"), {}, true, false, {}});
+    if (m_model.canCancel) commands.append({QStringLiteral("cancel"), {}, true, false, {}});
+    if (m_model.canFinish) commands.append({QStringLiteral("finish"), {}, true, false, {}});
+    append(QStringLiteral("command"), commands);
+    if (groups.isEmpty()) { clearKeyboardCursor(); return tab || enter; }
+
+    int groupIndex = -1, entryIndex = -1;
+    for (int g = 0; g < groups.size(); ++g) {
+        if (groups.at(g).kind != m_keyboardKind) continue;
+        groupIndex = g;
+        for (int i = 0; i < groups.at(g).entries.size(); ++i)
+            if (groups.at(g).entries.at(i).id == m_keyboardId) entryIndex = i;
+    }
+    if (tab || key == Qt::Key_F2 || (arrow && !m_keyboardKind.isEmpty())) {
+        const bool backward = key == Qt::Key_Backtab || key == Qt::Key_Left || key == Qt::Key_Up
+            || (tab && event->modifiers().testFlag(Qt::ShiftModifier));
+        const int direction = backward ? -1 : 1;
+        if (key == Qt::Key_F2) {
+            for (int i = 0; i < groups.size(); ++i)
+                if (groups.at(i).kind == QLatin1String("skill")) { groupIndex = i; entryIndex = -1; break; }
+        } else if (tab) {
+            groupIndex = groupIndex < 0 ? (backward ? groups.size() - 1 : 0)
+                : (groupIndex + direction + groups.size()) % groups.size();
+            entryIndex = -1;
+        }
+        if (groupIndex < 0) groupIndex = 0;
+        const auto &entries = groups.at(groupIndex).entries;
+        entryIndex = entryIndex < 0 ? (backward ? entries.size() - 1 : 0)
+            : (entryIndex + direction + entries.size()) % entries.size();
+        m_keyboardKind = groups.at(groupIndex).kind;
+        m_keyboardId = entries.at(entryIndex).id;
+        updateKeyboardCursor();
+        return true;
+    }
+    const auto submit = [this](const QString &kind, const QString &id, bool selected) {
+        applyIntent(kind, id, selected, m_model.sessionGeneration, m_model.presentationRevision, m_model.requestId);
+    };
+    if (key == Qt::Key_Escape) {
+        if (m_model.canCancel) submit(QStringLiteral("cancel"), {}, false);
+        clearKeyboardCursor();
+        return true;
+    }
+    if (enter) {
+        if (booleanPrompt) m_scene->doOkButton();
+        else if (m_model.canConfirm) submit(QStringLiteral("confirm"), {}, true);
+        return true;
+    }
+    if (groupIndex < 0 || entryIndex < 0)
+        return !m_keyboardKind.isEmpty(); // A disabled/removed cursor must not become a legacy cancel.
+    const auto entry = groups.at(groupIndex).entries.at(entryIndex);
+    if (key == Qt::Key_Space) {
+        if (m_keyboardKind == QLatin1String("command")) {
+            if (booleanPrompt && entry.id == QLatin1String("confirm")) m_scene->doOkButton();
+            else submit(entry.id, {}, true);
+        } else {
+            const bool skill = m_keyboardKind == QLatin1String("skill");
+            submit(m_keyboardKind, entry.id, !entry.selected);
+            if (skill) clearKeyboardCursor(); // Tab now starts with the skill's cost/options.
+        }
+        updateKeyboardCursor();
+        return true;
+    }
+    if ((key == Qt::Key_Plus || key == Qt::Key_Minus) && m_keyboardKind == QLatin1String("player")) {
+        submit(key == Qt::Key_Plus ? QStringLiteral("player-add-vote") : QStringLiteral("player-remove-vote"), entry.id, true);
+        updateKeyboardCursor();
+        return true;
+    }
+    return false;
 }
 
 void DesktopGamePresentation::setLiveConsumer(QObject *consumer, bool live)
@@ -463,6 +653,7 @@ void DesktopGamePresentation::refresh()
     const quint64 generation = session ? session->generation() : 0;
     const quint64 request = m_client->interactionCore()->activeRequestId();
     if (request != m_draftRequest || generation != m_draftGeneration) {
+        clearKeyboardCursor();
         m_option.clear();
         m_draftRequest = request;
         m_draftGeneration = generation;

@@ -3398,7 +3398,9 @@ void Client::startArrange(const QVariant &to_arrange)
 	ArrangeGeneralsInteractionPayload payload;
 	payload.generalNames = arrangeList.isEmpty() ? m_filledGenerals : arrangeList;
 	payload.arrangement = arrangeList.join("+");
-	payload.slotCount = payload.generalNames.size();
+	// 1v1, 3v3 and XMode servers all require three arranged generals; the
+	// candidate pool can be larger than the number of output slots.
+	payload.slotCount = 3;
 	InteractionRequest request = makeInteractionRequest(
 		InteractionType::ArrangeGeneral, payload, false);
 	beginInteraction(request);

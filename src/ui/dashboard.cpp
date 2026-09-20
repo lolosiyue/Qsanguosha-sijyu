@@ -967,6 +967,9 @@ void Dashboard::_addHandCard(CardItem *card_item, bool prepend, const QString &f
 
 void Dashboard::selectCard(const QString &pattern, bool forward, bool multiple)
 {
+    // Pending skills own their selection limits through the normal click filter.
+    // Keep earlier costs selected when navigating, just as repeated mouse clicks do.
+    multiple = multiple || view_as_skill != nullptr;
     if (!multiple && selected && selected->isSelected())
         selected->clickItem();
 
@@ -979,14 +982,14 @@ void Dashboard::selectCard(const QString &pattern, bool forward, bool multiple)
     }
 
     if (matches.isEmpty()) {
-        if (!multiple || !selected) {
+        if (!multiple || !selected)
             unselectAll();
-            return;
-        }
+        return;
     }
 
     int index = matches.indexOf(selected), n = matches.length();
-    index = (index + (forward ? 1 : n - 1)) % n;
+    index = index < 0 ? (forward ? 0 : n - 1)
+        : (index + (forward ? 1 : n - 1)) % n;
 
     CardItem *to_select = matches[index];
     if (!to_select->isSelected())

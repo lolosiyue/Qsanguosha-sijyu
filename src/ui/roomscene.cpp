@@ -77,6 +77,7 @@
 #endif
 #include <QMutexLocker>
 #include <QSet>
+#include <QShortcut>
 #include <QMenu>
 #include <QToolTip>
 #include <QCoreApplication>
@@ -93,6 +94,8 @@
 #include <QComboBox>
 #include <QMessageBox>
 #include <QVBoxLayout>
+#include <QGraphicsProxyWidget>
+#include "client-live-session.h"
 
 static QDialog *dialogForSkill(const Skill *skill, QWidget *parent = nullptr)
 {
@@ -253,6 +256,30 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
 {
 	setParent(main_window);
+#if !defined(QSAN_XP_LEGACY)
+    auto *requestFocusShortcut = new QShortcut(QKeySequence(Qt::Key_F6), main_window);
+    requestFocusShortcut->setContext(Qt::ApplicationShortcut);
+    requestFocusShortcut->setAutoRepeat(false);
+    connect(this, &QObject::destroyed, requestFocusShortcut, &QObject::deleteLater);
+    connect(requestFocusShortcut, &QShortcut::activated, this, [this]() {
+        // Recover request focus without changing the option or selection draft.
+        QWidget *window = QApplication::activeModalWidget();
+        if (!window && m_presentedDialog && m_presentedDialog->isVisible())
+            window = m_presentedDialog;
+        if (!window && m_choiceDialog && m_choiceDialog->isVisible())
+            window = m_choiceDialog;
+        if (window) {
+            QWidget *focus = window->focusWidget();
+            window->raise();
+            window->activateWindow();
+            if (focus) focus->setFocus(Qt::ShortcutFocusReason);
+        } else if (!views().isEmpty()) {
+            this->main_window->raise();
+            this->main_window->activateWindow();
+            views().first()->setFocus(Qt::ShortcutFocusReason);
+        }
+    });
+#endif
 	m_inputRouter = new RoomInputRouter({
 		[this]() { return chat_edit != nullptr && chat_edit->hasFocus(); },
 		[this]() { trust(); }, [this]() { chooseSkillButton(); }, [this]() {
@@ -546,9 +573,17 @@ RoomScene::RoomScene(QMainWindow*main_window)
 		connect(ClientInstance,SIGNAL(arrange_started(QString)),m_kofArrange,SLOT(startArrange(QString)));
 
 		QAction*action = change_general_menu->addAction(tr("Change general ..."));
-		static FreeChooseDialog*general_changer = new FreeChooseDialog("",main_window);
-		connect(action,SIGNAL(triggered()),general_changer,SLOT(exec()));
-		connect(general_changer,SIGNAL(general_chosen(QString)),m_kofArrange,SLOT(changeGeneral(QString)));
+		// Building the full general catalogue must not block draft/arrangement
+		// requests. Keep this optional editor lazy and owned by the current window.
+		connect(action, &QAction::triggered, this,
+			[this, generalChanger = QPointer<FreeChooseDialog>()]() mutable {
+				if (!generalChanger) {
+					generalChanger = new FreeChooseDialog("", this->main_window);
+					connect(generalChanger, &FreeChooseDialog::general_chosen,
+						m_kofArrange, &KofArrangeController::changeGeneral);
+				}
+				generalChanger->exec();
+			});
 
 		if(ServerInfo.GameMode=="02_1v1"){
 			enemy_box = new KOFOrderBox(false,this);
@@ -2153,8 +2188,102 @@ void RoomScene::updateSelectedTargets()
 	updateTargetsEnablity(card);
 }
 
+bool RoomScene::handleNativeKey(QKeyEvent *event)
+{
+    const int key = event->key();
+    if (event->type() == QEvent::KeyRelease) {
+        if (!m_nativeKeysDown.contains(key)) return false;
+        if (!event->isAutoRepeat()) m_nativeKeysDown.remove(key);
+        event->accept();
+        return true;
+    }
+    if (event->type() != QEvent::KeyPress) return false;
+    if (m_nativeKeysDown.contains(key) && event->isAutoRepeat()) {
+        event->accept(); // One activation per physical key press, even across requests.
+        return true;
+    }
+    if (!ClientInstance || QApplication::activeModalWidget()
+        || (chat_edit && chat_edit->hasFocus())) return false;
+    for (QGraphicsItem *item = focusItem(); item; item = item->parentItem()) {
+        if (dynamic_cast<QGraphicsProxyWidget *>(item)) return false;
+        if (auto *text = dynamic_cast<QGraphicsTextItem *>(item))
+            if (text->textInteractionFlags() != Qt::NoTextInteraction) return false;
+    }
+    ClientCore *core = ClientInstance->interactionCore();
+    const auto *session = ClientInstance->liveSession();
+    if (!core || !core->hasActiveRequest() || ClientInstance->getReplayer()
+        || ClientInstance->isPresentationStateSyncActive() || !session || !session->isActive()
+        || session->isStateSyncActive() || core->activeRequest().isExpired(core->now())
+        || core->activeRequest().type == InteractionType::QmlInteract) return false;
+
+    // Reserve the key before callbacks: opening a skill dialog may run a nested
+    // event loop before this handler returns.
+    m_nativeKeysDown.insert(key);
+    bool handled = false;
+    const int status = ClientInstance->getStatus() & Client::ClientStatusBasicMask;
+    if (m_kofArrange && (core->activeRequest().type == InteractionType::AskGeneral
+        || core->activeRequest().type == InteractionType::ArrangeGeneral)
+        && m_kofArrange->handleKeyPress(event)) handled = true;
+    else if (!(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
+        const int choiceKey = key == Qt::Key_Tab && event->modifiers().testFlag(Qt::ShiftModifier)
+            ? Qt::Key_Backtab : key;
+        if (status == Client::AskForAG) {
+            if (key == Qt::Key_Escape) {
+                if (core->activeRequest().cancelable) doCancelButton();
+                handled = true;
+            } else handled = card_container->handleChooseKey(choiceKey);
+        } else if (status == Client::AskForGongxin) {
+            // Mandatory inspection may be acknowledged with Enter, never cancelled.
+            handled = key == Qt::Key_Escape && !core->activeRequest().cancelable
+                ? true : card_container->handleGongxinKey(choiceKey);
+        } else if (status == Client::AskForGuanxing) {
+            const auto *order = core->activeRequest().payloadAs<RearrangeCardsInteractionPayload>();
+            QList<int> actual = m_guanxingBox->topCards() + m_guanxingBox->bottomCards();
+            QList<int> expected = order ? order->cardIds : QList<int>();
+            std::sort(actual.begin(), actual.end());
+            std::sort(expected.begin(), expected.end());
+            const bool confirm = key == Qt::Key_Return || key == Qt::Key_Enter;
+            if (key == Qt::Key_Escape || !order || order->mirrored || actual != expected) handled = true;
+            else if (confirm) {
+                const auto top = m_guanxingBox->topCards(), bottom = m_guanxingBox->bottomCards();
+                // Preserve the draft until the server-declared pile counts are valid.
+                if (top.size() >= order->minTop && top.size() <= order->maxTop
+                    && bottom.size() >= order->minBottom && bottom.size() <= order->maxBottom
+                    && (order->mode != RearrangementMode::UpOnly || bottom.isEmpty())
+                    && (order->mode != RearrangementMode::DownOnly || top.isEmpty())) {
+                    if (actual.isEmpty()) {
+                        m_guanxingBox->clear();
+                        ClientInstance->onPlayerReplyGuanxing(top, bottom);
+                    } else m_guanxingBox->handleArrangeKey(choiceKey, event->modifiers());
+                }
+                handled = true;
+            } else handled = m_guanxingBox->handleArrangeKey(choiceKey, event->modifiers());
+        } else if (status == Client::AskForTriggerOrder) {
+            handled = m_chooseTriggerOrderBox->handleChooseKey(choiceKey);
+        } else if (status == Client::ExecDialog && m_playerCardBox) {
+            handled = m_playerCardBox->handleChooseKey(choiceKey);
+        }
+    }
+#if !defined(QSAN_XP_LEGACY)
+    if (!handled) handled = gamePresentation()->handleTableKey(event);
+#endif
+    if (handled) {
+        event->accept();
+    } else m_nativeKeysDown.remove(key);
+    return handled;
+}
+
 void RoomScene::keyReleaseEvent(QKeyEvent*event)
 {
+    if (handleNativeKey(event)) return;
+#if !defined(QSAN_XP_LEGACY)
+    // Native confirmation happens on press. A QWidget chooser may close on
+    // that press, leaving its release targeted at the next table request.
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        event->accept();
+        return;
+    }
+#endif
     if (m_inputRouter != nullptr) {
         m_inputRouter->route(event, Config.EnableHotKey);
         return;

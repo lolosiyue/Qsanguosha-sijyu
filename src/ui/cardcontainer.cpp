@@ -43,6 +43,8 @@ QRectF CardContainer::boundingRect() const
 
 void CardContainer::fillCards(const QList<int> &card_ids, const QList<int> &disabled_ids)
 {
+    m_chooseActive = false;
+    m_keyboardCardId = -1;
     m_gongxinActive = false;
     m_gongxinSelection = -1;
     m_gongxinEnabled.clear();
@@ -98,6 +100,7 @@ void CardContainer::fillCards(const QList<int> &card_ids, const QList<int> &disa
             }
         }
         items[i]->setPos(pos);
+        items[i]->setScale(1.0);
         items[i]->setHomePos(pos);
         items[i]->setOpacity(1.0);
         items[i]->setHomeOpacity(1.0);
@@ -119,6 +122,8 @@ bool CardContainer::retained()
 
 void CardContainer::clear()
 {
+    m_chooseActive = false;
+    m_keyboardCardId = -1;
     m_gongxinActive = false;
     m_gongxinSelection = -1;
     m_gongxinEnabled.clear();
@@ -198,25 +203,109 @@ int CardContainer::getFirstEnabled() const
 
 void CardContainer::startChoose()
 {
+    m_chooseActive = true;
+    m_gongxinActive = false;
+    m_keyboardCardId = -1;
     close_button->hide();
     foreach (CardItem *item, items) {
-        connect(item, SIGNAL(leave_hover()), this, SLOT(grabItem()));
-        connect(item, SIGNAL(double_clicked()), this, SLOT(chooseItem()));
+        item->setSelected(false);
+        item->setScale(1.0);
+        item->setPos(item->homePos());
+        connect(item, SIGNAL(leave_hover()), this, SLOT(grabItem()), Qt::UniqueConnection);
+        connect(item, SIGNAL(double_clicked()), this, SLOT(chooseItem()), Qt::UniqueConnection);
     }
+}
+
+bool CardContainer::handleChooseKey(int key)
+{
+    const bool forward = key == Qt::Key_Right || key == Qt::Key_Down || key == Qt::Key_Tab;
+    const bool backward = key == Qt::Key_Left || key == Qt::Key_Up || key == Qt::Key_Backtab;
+    const bool confirm = key == Qt::Key_Return || key == Qt::Key_Enter;
+    const bool select = key == Qt::Key_Space;
+    if (!m_chooseActive || !isVisible() || (!forward && !backward && !confirm && !select)) return false;
+
+    QList<CardItem *> candidates;
+    int current = -1;
+    for (CardItem *item : items) {
+        if (!item->isVisible() || !item->isEnabled()) continue;
+        if (item->isSelected()) current = candidates.size();
+        candidates << item;
+    }
+    if (candidates.isEmpty()) return true;
+
+    int next = current;
+    if (current < 0)
+        next = backward ? candidates.size() - 1 : 0;
+    else if (forward || backward)
+        next = (current + (forward ? 1 : candidates.size() - 1)) % candidates.size();
+
+    CardItem *candidate = candidates.at(next);
+    if (confirm) {
+        // Reuse the mouse handler; it disconnects this choice before replying.
+        emit candidate->double_clicked();
+        return true;
+    }
+    for (CardItem *item : items) {
+        item->setSelected(item == candidate);
+        item->setPos(item->homePos() + QPointF(0, item == candidate ? -15 : 0));
+    }
+    return true;
 }
 
 void CardContainer::startGongxin(const QList<int> &enabled_ids)
 {
+    m_chooseActive = false;
+    m_keyboardCardId = -1;
     m_gongxinActive = true;
     m_gongxinSelection = -1;
     m_gongxinEnabled = enabled_ids;
     foreach (CardItem *item, items) {
         item->setSelected(false);
+        item->setScale(1.0);
         item->setEnabled(item->getId() >= 0 && enabled_ids.contains(item->getId()));
         connect(item, &CardItem::clicked, this, &CardContainer::selectGongxinItem, Qt::UniqueConnection);
         connect(item, &CardItem::double_clicked, this, &CardContainer::gongxinItem, Qt::UniqueConnection);
     }
     emit gongxinDraftChanged();
+}
+
+bool CardContainer::handleGongxinKey(int key)
+{
+    const bool forward = key == Qt::Key_Right || key == Qt::Key_Down || key == Qt::Key_Tab;
+    const bool backward = key == Qt::Key_Left || key == Qt::Key_Up || key == Qt::Key_Backtab;
+    const bool confirm = key == Qt::Key_Return || key == Qt::Key_Enter;
+    if (!m_gongxinActive || !isVisible()
+        || (!forward && !backward && !confirm && key != Qt::Key_Space && key != Qt::Key_Escape))
+        return false;
+    if (key == Qt::Key_Escape) {
+        // The caller checks request cancellation policy before forwarding Escape.
+        submitGongxin();
+        return true;
+    }
+    QList<CardItem *> candidates;
+    int current = -1;
+    for (CardItem *item : items) {
+        if (!item->isVisible() || !item->isEnabled()) continue;
+        if (item->getId() == m_keyboardCardId) current = candidates.size();
+        candidates << item;
+    }
+    if (candidates.isEmpty()) {
+        // Read-only inspection still needs an acknowledgement, including no cards.
+        if (confirm) submitGongxin();
+        return true;
+    }
+    int next = current;
+    if (next < 0) next = backward ? candidates.size() - 1 : 0;
+    else if (forward || backward)
+        next = (next + (forward ? 1 : candidates.size() - 1)) % candidates.size();
+    CardItem *candidate = candidates.at(next);
+    m_keyboardCardId = candidate->getId();
+    for (CardItem *item : items) item->setScale(item == candidate ? 1.06 : 1.0);
+    if (key == Qt::Key_Space)
+        selectGongxinCard(m_keyboardCardId, m_gongxinSelection != m_keyboardCardId);
+    else if (confirm)
+        submitGongxin(m_gongxinSelection);
+    return true;
 }
 
 bool CardContainer::selectGongxinCard(int cardId, bool selected)
@@ -267,7 +356,8 @@ void CardContainer::addCloseButton()
 void CardContainer::grabItem()
 {
     CardItem *card_item = qobject_cast<CardItem *>(sender());
-    if (card_item && !collidesWithItem(card_item)) {
+    if (m_chooseActive && card_item && card_item->isEnabled() && !collidesWithItem(card_item)) {
+        m_chooseActive = false;
         card_item->disconnect(this);
         emit item_chosen(card_item->getId());
     }
@@ -276,7 +366,8 @@ void CardContainer::grabItem()
 void CardContainer::chooseItem()
 {
     CardItem *card_item = qobject_cast<CardItem *>(sender());
-    if (card_item) {
+    if (m_chooseActive && card_item && card_item->isEnabled()) {
+        m_chooseActive = false;
         card_item->disconnect(this);
         emit item_chosen(card_item->getId());
     }
@@ -321,6 +412,7 @@ GuanxingBox::GuanxingBox()
 
 void GuanxingBox::doGuanxing(const QList<int> &cardIds, int type)
 {
+    m_keyboardCardId = -1;
     if (cardIds.isEmpty()) {
         clear();
         return;
@@ -461,6 +553,50 @@ bool GuanxingBox::moveCard(int cardId, bool toBottom, int index)
     const int fromPos = fromBottom ? -fromIndex - 1 : fromIndex + 1;
     fromItems->removeAt(fromIndex);
     applyMove(item, toBottom, index, fromPos);
+    return true;
+}
+
+bool GuanxingBox::handleArrangeKey(int key, Qt::KeyboardModifiers modifiers)
+{
+    const bool forward = key == Qt::Key_Right || key == Qt::Key_Down || key == Qt::Key_Tab;
+    const bool backward = key == Qt::Key_Left || key == Qt::Key_Up || key == Qt::Key_Backtab;
+    const bool confirm = key == Qt::Key_Return || key == Qt::Key_Enter;
+    if (!editable() || (!forward && !backward && !confirm && key != Qt::Key_Space)) return false;
+    if (confirm) {
+        reply();
+        return true;
+    }
+    const QList<CardItem *> candidates = upItems + downItems;
+    int current = -1;
+    for (int i = 0; i < candidates.size(); ++i)
+        if (candidates.at(i)->getId() == m_keyboardCardId) current = i;
+    if (current < 0) current = backward ? candidates.size() - 1 : 0;
+    CardItem *candidate = candidates.at(current);
+    if ((modifiers & Qt::ShiftModifier) && key != Qt::Key_Tab && key != Qt::Key_Backtab) {
+        const bool bottom = downItems.contains(candidate);
+        const QList<CardItem *> &pile = bottom ? downItems : upItems;
+        const int index = pile.indexOf(candidate);
+        // Use the same draft mutation and step notification as drag-and-drop.
+        if (key == Qt::Key_Left || key == Qt::Key_Right)
+            moveCard(candidate->getId(), bottom, qBound(0, index + (forward ? 1 : -1), int(pile.size()) - 1));
+        else if (key == Qt::Key_Up || key == Qt::Key_Down) {
+            const bool toBottom = key == Qt::Key_Down;
+            if (toBottom != bottom)
+                moveCard(candidate->getId(), toBottom, (toBottom ? downItems : upItems).size());
+        }
+    } else if (key == Qt::Key_Space) {
+        // Space transfers the current card between piles when both are allowed.
+        const bool toBottom = upItems.contains(candidate);
+        moveCard(candidate->getId(), toBottom, (toBottom ? downItems : upItems).size());
+    } else if (m_keyboardCardId >= 0) {
+        current = (current + (forward ? 1 : candidates.size() - 1)) % candidates.size();
+        candidate = candidates.at(current);
+    }
+    m_keyboardCardId = candidate->getId();
+    for (CardItem *item : candidates) {
+        item->setScale(item == candidate ? 1.06 : 1.0);
+        item->setZValue(item == candidate ? 1 : 0);
+    }
     return true;
 }
 
@@ -651,6 +787,7 @@ bool GuanxingBox::isOneRow() const
 
 void GuanxingBox::clear()
 {
+    m_keyboardCardId = -1;
     foreach (CardItem *card_item, upItems)
         card_item->deleteLater();
     foreach (CardItem *card_item, downItems)
@@ -667,6 +804,7 @@ void GuanxingBox::clear()
 
 void GuanxingBox::reply()
 {
+    if (!editable()) return;
     QList<int> up_cards, down_cards;
     foreach (CardItem *card_item, upItems)
         up_cards << card_item->getCard()->getId();
@@ -674,8 +812,9 @@ void GuanxingBox::reply()
     foreach (CardItem *card_item, downItems)
         down_cards << card_item->getCard()->getId();
 
-    ClientInstance->onPlayerReplyGuanxing(up_cards, down_cards);
+    // Consume the visible draft before a synchronous reply can replace it.
     clear();
+    ClientInstance->onPlayerReplyGuanxing(up_cards, down_cards);
 }
 
 QRectF GuanxingBox::boundingRect() const

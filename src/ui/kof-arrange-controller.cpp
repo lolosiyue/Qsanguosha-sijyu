@@ -11,6 +11,31 @@
 
 #include <QGraphicsRectItem>
 #include <QGraphicsScene>
+#include <QKeyEvent>
+#include <QPen>
+#include <QPainter>
+
+// QObject lifetime tracking clears the controller's outline pointer if its card
+// or the entire scene is destroyed before the next request arrives.
+class KofKeyboardFocus : public QGraphicsObject
+{
+public:
+    void follow(CardItem *item)
+    {
+        prepareGeometryChange();
+        setParentItem(item);
+        m_rect = item->boundingRect();
+    }
+    QRectF boundingRect() const override { return m_rect.adjusted(-2, -2, 2, 2); }
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) override
+    {
+        painter->setPen(QPen(QColor(255, 215, 0), 3));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(m_rect);
+    }
+private:
+    QRectF m_rect;
+};
 
 KofArrangeController::KofArrangeController(QGraphicsScene *scene, QObject *parent)
     : QObject(parent)
@@ -48,6 +73,93 @@ void KofArrangeController::autoCompleteArrangement()
 {
     arrange_items << down_generals.mid(0, 3 - arrange_items.length());
     finishArrange();
+}
+
+void KofArrangeController::focusGeneral(CardItem *item)
+{
+    if (!item || !item->isVisible() || !item->isEnabled())
+        return;
+    item->setFocus(Qt::TabFocusReason);
+    if (!m_keyboardFocus) {
+        m_keyboardFocus = new KofKeyboardFocus;
+        m_keyboardFocus->setAcceptedMouseButtons(Qt::NoButton);
+    }
+    // Parent the focus outline to the card so it follows reorder animations.
+    m_keyboardFocus->follow(item);
+    m_keyboardFocus->setZValue(100);
+    m_keyboardFocus->show();
+}
+
+bool KofArrangeController::handleKeyPress(QKeyEvent *event)
+{
+    if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) return false;
+    if (event->modifiers().testFlag(Qt::AltModifier)
+        && event->key() != Qt::Key_Left && event->key() != Qt::Key_Right) return false;
+    if (!ClientInstance || (!m_selectingGeneral && !isArranging()))
+        return false;
+    const Client::Status status = ClientInstance->getStatus();
+    if ((m_selectingGeneral && status != Client::AskForGeneralTaken)
+        || (isArranging() && status != Client::AskForArrangement))
+        return false;
+    const int key = event->key();
+    const bool backward = key == Qt::Key_Left || key == Qt::Key_Up
+        || key == Qt::Key_Backtab
+        || (key == Qt::Key_Tab && event->modifiers().testFlag(Qt::ShiftModifier));
+    const bool navigate = backward || key == Qt::Key_Right || key == Qt::Key_Down
+        || key == Qt::Key_Tab || key == Qt::Key_Home || key == Qt::Key_End;
+    const bool activate = key == Qt::Key_Space || key == Qt::Key_Return || key == Qt::Key_Enter;
+    if (!navigate && !activate)
+        return false;
+    event->accept();
+    const QList<CardItem *> candidates = m_selectingGeneral ? general_items : arrange_items + down_generals;
+    QList<CardItem *> items;
+    for (CardItem *item : candidates) {
+        if (item && item->isVisible() && item->isEnabled()
+            && item->flags().testFlag(QGraphicsItem::ItemIsFocusable))
+            items.append(item);
+    }
+    if (items.isEmpty())
+        return true;
+    CardItem *current = dynamic_cast<CardItem *>(m_scene->focusItem());
+    int index = items.indexOf(current);
+    if (index < 0)
+        index = 0;
+    current = items.at(index);
+    if (navigate) {
+        if (isArranging() && event->modifiers().testFlag(Qt::AltModifier)
+            && (key == Qt::Key_Left || key == Qt::Key_Right)) {
+            const int from = arrange_items.indexOf(current);
+            const int to = from + (backward ? -1 : 1);
+            if (from >= 0 && to >= 0 && to < arrange_items.size()) {
+                arrange_items.move(from, to);
+                layoutArrangement();
+            }
+        } else {
+            index = key == Qt::Key_Home ? 0 : key == Qt::Key_End ? items.size() - 1
+                : (index + (backward ? -1 : 1) + items.size()) % items.size();
+            current = items.at(index);
+        }
+        focusGeneral(current);
+        return true;
+    }
+    if (event->isAutoRepeat())
+        return true;
+    if (m_selectingGeneral) {
+        // Keep mouse and keyboard on the same draft validation/reply path.
+        current->double_clicked();
+    } else if (key == Qt::Key_Return || key == Qt::Key_Enter) {
+        finishArrange();
+    } else {
+        if (arrange_items.removeOne(current))
+            down_generals.append(current);
+        else if (arrange_items.size() < 3) {
+            down_generals.removeOne(current);
+            arrange_items.append(current);
+        }
+        layoutArrangement();
+        focusGeneral(current);
+    }
+    return true;
 }
 
 void KofArrangeController::fillGenerals1v1(const QStringList&names)
@@ -185,6 +297,8 @@ void KofArrangeController::takeGeneral(const QString&who,const QString&name,cons
 		&&general_items.isEmpty()){
 		if(selector_box){
 			selector_box->hide();
+			m_keyboardFocus = nullptr;
+			m_selectingGeneral = false;
 			delete selector_box;
 			selector_box = nullptr;
 		}
@@ -204,17 +318,24 @@ void KofArrangeController::recoverGeneral(int index,const QString&name)
 
 void KofArrangeController::startGeneralSelection()
 {
+	m_selectingGeneral = true;
 	foreach (CardItem*item,general_items){
 		item->setFlag(QGraphicsItem::ItemIsFocusable);
 		connect(item,SIGNAL(double_clicked()),this,SLOT(selectGeneral()));
 		connect(item,SIGNAL(touchPreviewRequested(CardItem *)),this,SIGNAL(touchPreviewRequested(CardItem *)));
 	}
+	if (!general_items.isEmpty())
+		focusGeneral(general_items.first());
 }
 
 void KofArrangeController::selectGeneral()
 {
 	CardItem*item = qobject_cast<CardItem*>(sender());
-	if(item){
+	if(item && m_selectingGeneral && general_items.contains(item)
+		&& item->isVisible() && item->isEnabled()){
+		m_selectingGeneral = false;
+		if (m_keyboardFocus)
+			m_keyboardFocus->hide();
 		ClientInstance->onPlayerChooseDraftGeneral(item->objectName());
 		foreach (CardItem*item,general_items){
 			item->setFlag(QGraphicsItem::ItemIsFocusable,false);
@@ -231,6 +352,7 @@ void KofArrangeController::changeGeneral(const QString&general)
 
 void KofArrangeController::startArrange(const QString&to_arrange)
 {
+	m_selectingGeneral = false;
 	arrange_items.clear();
 	QString mode;
 	QList<QPointF> positions;
@@ -300,6 +422,8 @@ void KofArrangeController::startArrange(const QString&to_arrange)
 	arrange_button->setParentItem(selector_box);
 	arrange_button->setPos(600,330);
 	connect(arrange_button,SIGNAL(clicked()),this,SLOT(finishArrange()));
+	if (!down_generals.isEmpty())
+		focusGeneral(down_generals.first());
 }
 
 void KofArrangeController::toggleArrange()
@@ -328,6 +452,11 @@ void KofArrangeController::toggleArrange()
 		arrange_items.insert(index,item);
 	}
 
+	layoutArrangement();
+}
+
+void KofArrangeController::layoutArrangement()
+{
 	int n = qMin(arrange_items.length(),3);
 	for (int i = 0;i < n;i++){
 		QPointF pos = arrange_rects.at(i)->pos();
@@ -357,9 +486,10 @@ void KofArrangeController::toggleArrange()
 
 void KofArrangeController::finishArrange()
 {
-	if(arrange_items.length()!=3) return;
+	if(!arrange_button || arrange_items.length()!=3) return;
 
 	arrange_button->deleteLater();
+	arrange_button = nullptr;
 
 	QStringList names;
 	foreach(CardItem*item,arrange_items)
@@ -367,6 +497,12 @@ void KofArrangeController::finishArrange()
 
 	if(selector_box)
 		selector_box->deleteLater();
+	selector_box = nullptr;
+	m_keyboardFocus = nullptr;
+	down_generals.clear();
+	up_generals.clear();
+	general_items.clear();
+	arrange_items.clear();
 
 	arrange_rects.clear();
 

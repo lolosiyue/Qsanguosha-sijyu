@@ -62,6 +62,7 @@ public:
 private slots:
     void execute();
     void injectRequest();
+    void presentRequest();
     void processInspectReply();
     void runNextInspectAction();
     void runRemainingInspectActions();
@@ -77,6 +78,7 @@ private:
     bool prepareRequest(QString *error);
     bool runActions(QString *error);
     bool runAction(int index, QString *error);
+    bool pressKey(const QJsonObject &action, QString *error);
     bool validateReply(QString *error);
     bool validateSnapshot(const QJsonObject &expected, const QJsonObject &actual,
         const QString &path);

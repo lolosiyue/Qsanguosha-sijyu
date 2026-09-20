@@ -25,6 +25,7 @@ public:
     void setBackgroundBrush(bool centerAsOrigin);
 
 protected:
+    bool event(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private:

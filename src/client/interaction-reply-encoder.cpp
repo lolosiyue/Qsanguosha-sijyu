@@ -57,6 +57,10 @@ InteractionWireReply InteractionReplyEncoder::optionString(
 {
     const InteractionResponse::OptionData *answer
         = response.payloadAs<InteractionResponse::OptionData>();
+    // Trigger-order cancellation is an empty string on the wire, not an absent
+    // payload. The typed protocol requires its trigger field even when declined.
+    if (answer == nullptr && request.type == InteractionType::TriggerOrder)
+        return replyFor(request, QStringLiteral(""));
     return replyFor(request, answer != nullptr ? QVariant(answer->value) : QVariant());
 }
 

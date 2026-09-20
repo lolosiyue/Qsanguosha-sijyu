@@ -33,6 +33,8 @@ public:
     int getFirstEnabled() const;
     QList<CardItem *> getItems() const { return items; }
     void startChoose();
+    bool handleChooseKey(int key);
+    bool handleGongxinKey(int key);
     void startGongxin(const QList<int> &enabled_ids);
     bool gongxinActive() const { return m_gongxinActive; }
     int selectedGongxinCard() const { return m_gongxinSelection; }
@@ -74,6 +76,8 @@ private slots:
     void selectGongxinItem();
 
 private:
+    bool m_chooseActive = false;
+    int m_keyboardCardId = -1;
     bool m_gongxinActive = false;
     int m_gongxinSelection = -1;
     QList<int> m_gongxinEnabled;
@@ -99,6 +103,7 @@ public:
     QList<int> bottomCards() const;
     bool editable() const;
     bool moveCard(int cardId, bool toBottom, int index);
+    bool handleArrangeKey(int key, Qt::KeyboardModifiers modifiers);
 
 protected:
     virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
@@ -123,6 +128,7 @@ private:
     int itemNumberOfFirstRow() const;
     bool isOneRow() const;
     QString zhuge;
+    int m_keyboardCardId = -1;
 
 signals:
     void draftChanged();

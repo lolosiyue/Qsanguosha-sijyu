@@ -16,6 +16,7 @@
 #include "room-layout-engine.h"
 #include <QMargins>
 #include <QPointer>
+#include <QSet>
 
 namespace RoomLayoutEngine {
 struct Input;
@@ -113,6 +114,7 @@ public:
     ~RoomScene();
     void showGameStateSnapshot();
     void showGameControlPanel();
+    bool handleNativeKey(QKeyEvent *event);
     void changeTextEditBackground();
     void adjustItems();
     void adjustItems(const QSizeF &viewportSize);
@@ -241,6 +243,7 @@ private:
     RoomLayoutEngine::Input layoutInput(const QRectF &viewport, bool clampScene) const;
     void applyLayout(const RoomLayoutEngine::Result &layout);
     void applyTableLayout(const RoomLayoutEngine::Result &layout);
+    QSet<int> m_nativeKeysDown;
 #if !defined(QSAN_XP_LEGACY)
     DesktopGamePresentation *m_gamePresentation = nullptr;
     QPointer<RoomOverlayHost> m_overlayHost;

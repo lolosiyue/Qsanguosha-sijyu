@@ -4,6 +4,7 @@
 #include <QList>
 #include <QObject>
 #include <QPointF>
+#include <QPointer>
 #include <QStringList>
 
 class Button;
@@ -11,6 +12,8 @@ class CardItem;
 class QGraphicsRectItem;
 class QGraphicsScene;
 class QSanSelectableItem;
+class QKeyEvent;
+class KofKeyboardFocus;
 
 // Owns the general draft and the arrangement UI of the 3v3, 1v1 and XMode game
 // modes.  A standard eight-player game never builds any of it, so RoomScene
@@ -35,6 +38,7 @@ public:
 
     // Arrangement ran out of time: take whatever is left and submit it.
     void autoCompleteArrangement();
+    bool handleKeyPress(QKeyEvent *event);
 
 public slots:
     void fillGenerals(const QStringList &names);
@@ -56,6 +60,8 @@ private slots:
 private:
     void fillGenerals1v1(const QStringList &names);
     void fillGenerals3v3(const QStringList &names);
+    void layoutArrangement();
+    void focusGeneral(CardItem *item);
 
     QGraphicsScene *m_scene;
     QPointF m_tableCenter;
@@ -66,6 +72,8 @@ private:
     QList<QGraphicsRectItem *> arrange_rects;
     QList<CardItem *> arrange_items;
     Button *arrange_button;
+    bool m_selectingGeneral = false;
+    QPointer<KofKeyboardFocus> m_keyboardFocus;
 };
 
 #endif // KOF_ARRANGE_CONTROLLER_H
