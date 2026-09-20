@@ -275,7 +275,7 @@ void eventStreamContracts()
           "event stream retains at most 200 sequenced events");
 }
 
-// docs/focus-relation-protocol-decision.md 1.3: the battle log already carries
+// docs/large-room-ui-protocol-audit.md D2: the battle log already carries
 // the settlement relation as structured fields, and two projection layers used
 // to drop it. Damage and somebody else's nullification are the two cases
 // docs/ui-roadmap.md 2.7 names, so both have to reach the shared model.

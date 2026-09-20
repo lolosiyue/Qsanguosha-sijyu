@@ -158,7 +158,7 @@ M1 是唯一容許 L0 分層的場合：縮略位只保留 **體力／死亡／�
 > 本批工作樹已見 `recentRelations` 實作。**完整活動結算仍缺開始／父子關係／結束與重連快照**，
 > 不能以最近一條戰報取代。回合方向另以 `ARRANGE_SEATS` schema 2 的 `play_order_reversed` 傳送。
 > 最新審計與驗收邊界見 [`large-room-ui-protocol-audit.md`](large-room-ui-protocol-audit.md)；
-> [`focus-relation-protocol-decision.md`](focus-relation-protocol-decision.md) 保留第一輪調查背景。
+> 第一輪調查文件 `focus-relation-protocol-decision.md` 已於 2026-09-20 刪除，見 git 歷史。
 
 ### 2.8 輸入等價性
 

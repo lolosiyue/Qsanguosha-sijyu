@@ -707,7 +707,7 @@ static bool akarinVisibilityFollowsRecipients(Room &room, MessageRecorder &recor
 
 }
 
-// docs/focus-relation-protocol-decision.md 2.3 / 4.1: the play direction is
+// docs/large-room-ui-protocol-audit.md D4: the play direction is
 // state, so every seat ring carries it -- the opening arrange included, because
 // a replay seek can only rewind a value that is re-asserted from index 0.  The
 // battle log under the flip is narration a reconnecting client never sees.
