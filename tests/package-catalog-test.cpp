@@ -142,6 +142,67 @@ bool rejectsDependencyAndAssetCollisions()
         || !makePackage(collision.path(), QStringLiteral("two"), {})) return false;
     return QSanPackages::loadCatalog(collision.path()).error.contains(QStringLiteral("collision"));
 }
+
+bool rootCachePreservesAssetValidation()
+{
+    QTemporaryDir first, second;
+    if (!first.isValid() || !second.isValid()
+        || !makePackage(first.path(), QStringLiteral("base"), {})
+        || !makePackage(second.path(), QStringLiteral("base"), {})) return false;
+    QSanPackages::clearCatalog();
+    const QString reference = QStringLiteral("image/general/hero.png");
+    QString error;
+    const QString firstAsset = QSanPackages::resolve(first.path(), reference, &error);
+    if (!error.isEmpty() || firstAsset.isEmpty()) return false;
+    const QString secondAsset = QSanPackages::resolve(second.path(), reference, &error);
+    if (!error.isEmpty() || secondAsset.isEmpty() || firstAsset == secondAsset) return false;
+    if (QSanPackages::resolve(first.path() + QStringLiteral("/."), reference, &error) != firstAsset
+        || !error.isEmpty()) return false;
+
+    // The same relative spelling must not reuse metadata from another CWD.
+    const QString previousDirectory = QDir::currentPath();
+    if (!QDir::setCurrent(first.path())) return false;
+    const QString relativeFirst = QSanPackages::resolve(QStringLiteral("."), reference, &error);
+    const bool firstOk = error.isEmpty();
+#ifdef Q_OS_WIN
+    const QString driveRelative = QDir::currentPath().left(2) + QStringLiteral(".");
+    const QString driveAsset = QSanPackages::resolve(driveRelative, reference, &error);
+    const bool driveOk = error.isEmpty() && driveAsset == firstAsset;
+#endif
+    const bool changedDirectory = QDir::setCurrent(second.path());
+    const QString relativeSecond = QSanPackages::resolve(QStringLiteral("."), reference, &error);
+    const bool secondOk = error.isEmpty();
+    const bool restoredDirectory = QDir::setCurrent(previousDirectory);
+    if (!changedDirectory || !restoredDirectory || !firstOk || !secondOk
+        || relativeFirst != firstAsset || relativeSecond != secondAsset) return false;
+#ifdef Q_OS_WIN
+    if (!driveOk) return false;
+#endif
+
+    // Warm root metadata must never cache file existence or silently fall back
+    // to a loose asset when a declared package mapping goes missing.
+    if (!writeFile(first.path(), reference, QByteArray("loose fallback"))
+        || !QFile::remove(firstAsset)) return false;
+    if (!QSanPackages::resolve(first.path(), reference, &error).isEmpty()
+        || error.isEmpty()) return false;
+    if (!writeFile(first.path(), QStringLiteral("packages/base/") + reference, QByteArray("png"))) return false;
+    if (QSanPackages::resolve(first.path(), reference, &error) != firstAsset || !error.isEmpty()) return false;
+    if (!QSanPackages::resolve(first.path(), QStringLiteral("package://base/../escape"), &error).isEmpty()
+        || error.isEmpty()) return false;
+
+    const quint64 revision = QSanPackages::catalogRevision();
+    const QString addonAsset = QStringLiteral("image/general/addon.png");
+    if (!makePackage(first.path(), QStringLiteral("addon"), {},
+                     QStringLiteral("lua/main.lua"), addonAsset)) return false;
+    const auto replacement = QSanPackages::loadCatalog(first.path());
+    if (!replacement.isValid()) return false;
+    QSanPackages::installCatalog(replacement);
+    if (QSanPackages::catalogRevision() == revision) return false;
+    const QString installed = QSanPackages::resolve(first.path(), addonAsset, &error);
+    if (!error.isEmpty() || !installed.contains(QStringLiteral("/packages/addon/"))) return false;
+    QSanPackages::clearCatalog();
+    return QSanPackages::resolve(first.path(), addonAsset, &error) == installed && error.isEmpty();
+}
 }
 
 int main(int argc, char **argv)
@@ -151,6 +212,7 @@ int main(int argc, char **argv)
     if (!rejectsBrokenInventoryAndExplicitUri()) { std::fprintf(stderr, "catalog path/inventory validation failed\n"); return 2; }
     if (!rejectsDependencyAndAssetCollisions()) { std::fprintf(stderr, "catalog dependency/collision validation failed\n"); return 3; }
     if (!metadataOnlyRetainsLuaBoundary()) { std::fprintf(stderr, "metadata-only Lua boundary failed\n"); return 5; }
+    if (!rootCachePreservesAssetValidation()) { std::fprintf(stderr, "root cache asset validation failed\n"); return 6; }
     // Optional integration gate: consume the manifest emitted by the migration CLI.
     if (argc == 2) {
         const auto migrated = QSanPackages::loadCatalog(QString::fromLocal8Bit(argv[1]));

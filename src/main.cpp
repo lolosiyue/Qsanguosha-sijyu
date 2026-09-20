@@ -29,6 +29,7 @@
 
 #include "asset-manifest.h"
 #include "runtime-paths.h"
+#include "startup-timing.h"
 #include "interaction-descriptor-registry.h"
 
 #include "crashhandler.h"
@@ -48,6 +49,8 @@
 #endif
 
 int main(int argc, char *argv[]) {
+    QSanStartupTiming startupTotal("main.before_window");
+    QSanStartupTiming startupPhase("main.application");
     CrashHandler::install();
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--local-response-ui-capabilities") == 0) {
@@ -213,6 +216,7 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
+    startupPhase.next("main.runtime_paths");
     // Runtime layout: must be resolved before any smoke controller, engine or asset read.
     // The legacy per-platform #ifdef checking "does CWD have lua/config.lua" has been
     // replaced by this resolver, which picks the real asset root (install tree/portable
@@ -239,6 +243,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    startupPhase.next("main.arguments_plugins_translations");
     // --asset-report: prints the resolution result and manifest state, then exits. It is
     // the first step for "why is there no picture / why won't it start" after an enthusiast
     // installs the game, and the package smoke test uses it too.
@@ -359,6 +364,7 @@ int main(int argc, char *argv[]) {
         }
     }
 #endif
+    startupPhase.next("main.engine");
     if (!EngineBootstrap::initialize()) {
         Server::writeHeadlessLog("ERROR: EngineBootstrap::initialize failed");
         if (uiStartupSmoke)
@@ -372,6 +378,7 @@ int main(int argc, char *argv[]) {
                 QStringLiteral("EngineBootstrap::initialize failed"), 1);
         return 1;
     }
+    startupPhase.next("main.engine_connections");
     // The legacy aboutToQuit->deleteLater hook frees Engine inside execCleanup's
     // deferred-delete drain while the global Sanguosha pointer still refers to
     // it. Teardown code (deferred deletes queued after Engine's, atexit
@@ -385,21 +392,27 @@ int main(int argc, char *argv[]) {
     QObject::connect(Sanguosha, &Engine::audioEffectRequested,
                      [](const QString &filename, bool superpose) { Audio::play(filename, superpose); });
 #endif
+    startupPhase.next("main.settings");
     Config.init();
     // The effects profile must be settled before any UI object exists: RoomScene/Dashboard/
     // Spine controllers already ask the policy "is this effect allowed" while being
     // constructed. The normal user setting and the test-only --effects-profile go through
     // the same resolve().
+    startupPhase.next("main.effects_settings");
     G_EFFECTS.initialize(qApp->arguments());
     // UiConfig 載入 QFontDatabase/QFont,必須在有 QGuiApplication 的環境才安全;
     // headless(QCoreApplication)直接跳過,字型與 palette 只有 GUI 需要。
+    startupPhase.next("main.ui_fonts");
     if (qobject_cast<QApplication *>(qApp))
         UiConfig.init();
+    startupPhase.next("main.theme_font_apply");
     applyColorScheme(Config.ColorScheme);
     applyVisualMode(Config.VisualMode);
     if (qobject_cast<QApplication *>(qApp))
         qApp->setFont(UiConfig.AppFont);
+    startupPhase.next("main.banpairs");
     BanPair::loadBanPairs();
+    startupPhase.next("main.mode_dispatch");
 #if QSAN_ENABLE_WEBSOCKETS
     qsanLinkWebSocketGateway();
 #endif
@@ -549,12 +562,16 @@ int main(int argc, char *argv[]) {
         return rc;
     }
 
+    startupPhase.next("main.stylesheet");
     QFile file("qss/sanguosha.qss");
     if (file.open(QIODevice::ReadOnly)) {
         QTextStream stream(&file);
         qApp->setStyleSheet(stream.readAll());
     }
 
+    startupPhase.finish();
+    startupTotal.finish();
+    QSanStartupTiming::flushAggregates();
     bool hasLocalResponseUiCase = false;
     for (const QString &argument : arguments) {
         if (argument == QStringLiteral("--local-response-ui-case")

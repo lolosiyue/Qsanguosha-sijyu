@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "startup-timing.h"
 #include "rules-bundle-exporter.h"
 #include "qt-collection-utils.h"
 #include "runtime-paths.h"
@@ -253,6 +254,7 @@ void Engine::_loadModScenarios()
 
 void Engine::addPackage(const QString &name)
 {
+    QSanStartupTiming startupPhase("package.lookup", QString(), true);
     // 防止重複實例化
     if (findChild<const Package*>(name)) {
         return; 
@@ -261,8 +263,10 @@ void Engine::addPackage(const QString &name)
     // 從 Hash Map 取得工廠函數
     PackageFactory factory = PackageAdder::packages().value(name, nullptr);
     if (factory) {
+        startupPhase.next("package.factory");
         Package *pack = factory(); // 真正執行 new 的地方
         m_packageFactories.insert(pack->objectName(), factory);
+        startupPhase.finish();
         addPackage(pack);
     }
     else {
@@ -413,6 +417,7 @@ QStringList Engine::rulesDeclaredList(const QString &key) const
 
 Engine::Engine(bool isManualMode)
 {
+    QSanStartupTiming startupPhase("engine.package_prepare");
 #ifdef LOGNETWORK
 	logFile.setFileName(QSanRuntimePaths::userDataPath("netmsg.log"));
 	logFile.open(QIODevice::WriteOnly|QIODevice::Text);
@@ -427,8 +432,10 @@ Engine::Engine(bool isManualMode)
         exit(1);
     }
 
+    startupPhase.next("engine.core_snapshot");
     m_rulesLuaSnapshot = QSanRules::coreLuaSnapshot();
 
+    startupPhase.next("engine.lua_vm");
     m_bootstrapLua = std::make_unique<LuaRuntime>(LuaRuntime::Bootstrap);
     QString bootstrapError;
     if (!m_bootstrapLua->initialize(&bootstrapError)) {
@@ -437,6 +444,7 @@ Engine::Engine(bool isManualMode)
     }
     LuaRuntime::setCurrentForThread(m_bootstrapLua.get());
     lua_State *bootstrapLua = m_bootstrapLua->state();
+    startupPhase.next("engine.lua_config");
     if (!DoLuaScript(bootstrapLua, "lua/config.lua")) {
         exit(1);
     }
@@ -447,6 +455,7 @@ Engine::Engine(bool isManualMode)
             sp_convert_pairs.insert(pairs[0], to);
     }*/
 
+    startupPhase.next("engine.content_manifest");
     extra_hidden_generals = GetConfigFromLuaState(bootstrapLua, "extra_hidden_generals").toStringList();
     removed_hidden_generals = GetConfigFromLuaState(bootstrapLua, "removed_hidden_generals").toStringList();
     extra_default_lords = GetConfigFromLuaState(bootstrapLua, "extra_default_lords").toStringList();
@@ -483,6 +492,7 @@ Engine::Engine(bool isManualMode)
     }
     // config.lua was captured before execution. Its declaration selects phase
     // two, which still precedes all extension code; never relabel a loaded VM.
+    startupPhase.next("engine.declared_snapshot");
     const QJsonObject declared = QSanRules::declaredLuaSnapshot(m_rulesContentManifest);
     if (m_rulesLuaSnapshot.isEmpty() || !QSanRules::contentScanIsDeclared(m_rulesContentManifest)
         || declared.size() != QSanRules::manifestHashedFiles(m_rulesContentManifest).size()) {
@@ -492,6 +502,7 @@ Engine::Engine(bool isManualMode)
             m_rulesLuaSnapshot.insert(it.key(), it.value());
     }
 
+    startupPhase.next("engine.native_packages");
     const QVariantMap configuredPackages =
         GetConfigFromLuaState(bootstrapLua, "package_names").toMap();
     for (auto it = configuredPackages.cbegin(); it != configuredPackages.cend(); ++it) {
@@ -507,6 +518,7 @@ Engine::Engine(bool isManualMode)
             addPackage(name);
     }
 
+    startupPhase.next("engine.scenarios_modes");
     _loadMiniScenarios();
     _loadModScenarios();
     m_customScene = new CustomScenario;
@@ -568,17 +580,20 @@ Engine::Engine(bool isManualMode)
 
     connect(qApp, SIGNAL(aboutToQuit()), this, SLOT(deleteLater()));
 
+    startupPhase.next("engine.lua_extensions");
     m_loadingLuaDefinitions = true;
     const bool loadedLuaDefinitions = DoLuaScript(bootstrapLua, "lua/sanguosha.lua");
     m_loadingLuaDefinitions = false;
     if (!loadedLuaDefinitions) {
         exit(1);
     }
+    startupPhase.next("engine.package_complete");
     if (!QSanPackages::completeBoot(&packageError)) {
         qCritical().noquote() << "Unable to complete package boot:" << packageError;
         exit(1);
     }
 
+    startupPhase.next("engine.resource_aliases");
     // Load resource aliases from JSON
     {
         QString aliasPath = "skins/resource_aliases.json";
@@ -605,6 +620,7 @@ Engine::Engine(bool isManualMode)
 	}
 #endif // Q_OS_ANDROID
 
+    startupPhase.next("engine.finalize");
     if (isManualMode) {
         ManualSkillList allSkills;
         foreach (const General*general, getAllGenerals()) {
@@ -813,6 +829,7 @@ void Engine::addSkills(QList<const Skill*> all_skills)
         runtime->addSkills(all_skills);
         return;
     }
+    QSanStartupTiming startupSkills("skills.register", QString(), true);
     foreach (const Skill* skill, all_skills) {
         if (skill) {
             if (m_loadingLuaDefinitions)
@@ -909,9 +926,11 @@ void Engine::addPackage(Package*package)
         runtime->addPackage(package);
         return;
     }
+    QSanStartupTiming startupPhase("package.registration_lookup", QString(), true);
     if (findChild<const Package*>(package->objectName()))
         return;
 
+    startupPhase.next("package.cards_patterns");
     m_rulesPackageOrder.append(package->objectName());
     package->setParent(this);
     //sp_convert_pairs.unite(package->getConvertPairs());
@@ -968,6 +987,7 @@ void Engine::addPackage(Package*package)
         }*/
     }
 
+    startupPhase.next("package.skill_collect");
 	QList<const Skill*> sks = package->getSkills();
 	sks << package->findChildren<const Skill*>();
     foreach (const Skill*skill, sks) {
@@ -981,8 +1001,10 @@ void Engine::addPackage(Package*package)
 				related_skills.insert(skill->objectName(), sk_name);
         }
     }
+    startupPhase.next("package.skills");
 	addSkills(sks);
 
+    startupPhase.next("package.generals_metaobjects");
     foreach (General*general, package->findChildren<General*>()) {
 		if (m_loadingLuaDefinitions)
 			m_luaGeneralNames.insert(general->objectName());
