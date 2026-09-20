@@ -11,6 +11,8 @@
 #include "qsanbutton.h"
 #include "room-layout-engine.h"
 #include "skin-bank.h"
+#include "package-catalog.h"
+#include "runtime-paths.h"
 #include "settings.h"
 #include "engine.h"
 
@@ -23,7 +25,9 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QTextDocument>
+#include <QSet>
 #include <algorithm>
+#include <climits>
 #include <functional>
 
 namespace {
@@ -200,8 +204,11 @@ public:
         const QSignalBlocker blocker(bar);
         bar->setRange(0, maximum); bar->setPageStep(qMax(1, int(rect.width())));
         bar->setSingleStep(MiniStep); bar->setValue(qRound(offset));
+        QHash<QString, int> positions;
+        positions.reserve(order.size());
+        for (int i = 0; i < order.size(); ++i) positions.insert(order.at(i), i);
         for (auto it = items.cbegin(); it != items.cend(); ++it) {
-            const int i = order.indexOf(it.key()); it.value()->setVisible(i >= 0);
+            const int i = positions.value(it.key(), -1); it.value()->setVisible(i >= 0);
             if (i >= 0) it.value()->setPos(i * MiniStep - offset, 0);
         }
     }
@@ -339,10 +346,29 @@ struct LargeRoomOverview::Data
     OverviewButton *jumpFocus, *jumpSelf, *lock, *filter, *sort, *close, *toggleFocus;
     QString primary, secondary, preview, cursor, lockedPlayer, inspected;
     QStringList related, legal;
+    QHash<QString, int> seatIndex;
+    QHash<QString, QJsonObject> playerSnapshots;
+    quint64 visualRevision = 0, catalogRevision = 0;
+    QString assetRoot;
     bool onlyLegal = true;
     bool focusExpanded = false;
     int sortMode = 0;
     quint64 generation = 0, request = 0;
+
+    static bool actionsChanged(const GameActionModel &a, const GameActionModel &b) {
+        if (a.sessionGeneration != b.sessionGeneration || a.requestId != b.requestId
+            || a.supported != b.supported
+            || a.actionContext != b.actionContext || a.prompt != b.prompt
+            || a.unsupportedReason != b.unsupportedReason
+            || a.players.size() != b.players.size()) return true;
+        for (int i = 0; i < a.players.size(); ++i) {
+            const auto &x = a.players.at(i); const auto &y = b.players.at(i);
+            if (x.id != y.id || x.enabled != y.enabled || x.selected != y.selected
+                || x.reason != y.reason || x.selectedVotes != y.selectedVotes
+                || x.maxVotes != y.maxVotes) return true;
+        }
+        return false;
+    }
 
     OverviewButton *button(const QString &label, std::function<void()> fn) {
         auto *b = new OverviewButton(owner);
@@ -429,7 +455,8 @@ struct LargeRoomOverview::Data
         const QString tip = p->label + (entry.reason.isEmpty() ? QString() : QLatin1Char('\n') + entry.reason);
         if (mini->toolTip() != tip) mini->setToolTip(tip);
     }
-    void refreshRows() {
+    void refreshRows(bool forceAll = true, const QSet<QString> &changed = {}) {
+        const bool bindAll = forceAll || (sortMode != 0 && !changed.isEmpty());
         QStringList selected, candidateIds;
         legal.clear(); targets.clear();
         for (const auto &entry : actions.players) targets.insert(entry.id, entry);
@@ -438,7 +465,7 @@ struct LargeRoomOverview::Data
             const bool enabled = actions.supported && targets.contains(id) && entry.enabled;
             if (entry.selected) selected << id;
             if (!onlyLegal || enabled) candidateIds << id;
-            bind(overview, id, false, false);
+            if (bindAll || changed.contains(id)) bind(overview, id, false, false);
         }
         auto less = [this](const QString &a, const QString &b) {
             if (sortMode == 1) {
@@ -449,19 +476,21 @@ struct LargeRoomOverview::Data
                 if (okA && da != db) return da < db;
             } else if (sortMode == 2) {
                 const int n = overview->order.size();
-                const int ia = overview->order.indexOf(a), ib = overview->order.indexOf(b);
+                const int ia = seatIndex.value(a, n), ib = seatIndex.value(b, n);
                 if (qMin(ia, n - ia) != qMin(ib, n - ib)) return qMin(ia, n - ia) < qMin(ib, n - ib);
             } else if (sortMode == 3 && targets.value(a).enabled != targets.value(b).enabled)
                 return targets.value(a).enabled;
-            return overview->order.indexOf(a) < overview->order.indexOf(b);
+            return seatIndex.value(a, INT_MAX) < seatIndex.value(b, INT_MAX);
         };
         // Seat order is already stable; keyboard navigation follows the displayed candidates.
         if (sortMode != 0) std::stable_sort(candidateIds.begin(), candidateIds.end(), less);
         for (const QString &id : candidateIds)
             if (actions.supported && targets.contains(id) && targets.value(id).enabled) legal << id;
         candidates->order = candidateIds; draft->order = selected;
-        for (const QString &id : candidateIds) bind(candidates, id, true, false);
-        for (const QString &id : selected) bind(draft, id, false, true);
+        for (const QString &id : candidateIds)
+            if (bindAll || changed.contains(id)) bind(candidates, id, true, false);
+        for (const QString &id : selected)
+            if (bindAll || changed.contains(id)) bind(draft, id, false, true);
         QString reason;
         if (legal.isEmpty()) {
             if (!actions.supported) reason = actions.unsupportedReason;
@@ -477,18 +506,57 @@ struct LargeRoomOverview::Data
         refreshFocus();
     }
     void project(const GameViewState &next, const GameActionModel &model) {
+        const bool visualsChanged = visualRevision != G_ROOM_SKIN.visualRevision()
+            || catalogRevision != QSanPackages::catalogRevision()
+            || assetRoot != QSanRuntimePaths::assetRoot();
+        visualRevision = G_ROOM_SKIN.visualRevision();
+        catalogRevision = QSanPackages::catalogRevision();
+        assetRoot = QSanRuntimePaths::assetRoot();
+        const GameActionModel previousActions = actions;
+        const GameViewState previousView = view;
+        const QStringList previousOverviewOrder = overview->order;
         const bool newSession = generation != next.sessionGeneration;
-        if (newSession || request != model.requestId) { preview.clear(); cursor.clear(); }
+        const bool requestChanged = request != model.requestId;
+        const bool playersShared = !newSession && next.players.constData() == view.players.constData();
+        if (newSession || requestChanged) { preview.clear(); cursor.clear(); }
         if (newSession) { lockedPlayer.clear(); inspected.clear(); detail->hide(); close->hide(); detailText->hide(); }
         generation = next.sessionGeneration; request = model.requestId; view = next; actions = model;
-        players.clear(); for (const auto &p : view.players) players.insert(p.name, p);
-        QList<GameViewPlayer> ordered = view.players;
-        std::stable_sort(ordered.begin(), ordered.end(), [](const GameViewPlayer &a, const GameViewPlayer &b) { return a.seat < b.seat; });
-        QStringList ring; for (const auto &p : ordered) ring << p.name;
-        const int self = ring.indexOf(view.selfName);
-        if (self > 0) std::rotate(ring.begin(), ring.begin() + self, ring.end());
-        overview->order = ring;
-        primary.clear(); secondary.clear(); related.clear();
+        bool playerValuesChanged = newSession || players.size() != view.players.size();
+        QSet<QString> changedPlayers;
+        bool seatChanged = newSession;
+        if (!playersShared) {
+            for (const auto &p : view.players) {
+                const auto old = playerSnapshots.constFind(p.name);
+                const QJsonObject snapshot = p.toJson();
+                const bool changed = old == playerSnapshots.cend() || old.value() != snapshot;
+                playerValuesChanged = playerValuesChanged || changed;
+                if (changed) changedPlayers.insert(p.name);
+                const auto oldPlayer = players.constFind(p.name);
+                seatChanged = seatChanged || oldPlayer == players.cend() || oldPlayer.value().seat != p.seat;
+                players.insert(p.name, p);
+                playerSnapshots.insert(p.name, snapshot);
+            }
+        }
+        const bool rosterChanged = newSession || overview->order.size() != view.players.size()
+            || previousView.selfName != view.selfName || seatChanged;
+        if (rosterChanged) {
+            players.clear();
+            playerSnapshots.clear();
+            for (const auto &p : view.players) players.insert(p.name, p);
+            for (const auto &p : view.players) playerSnapshots.insert(p.name, p.toJson());
+            QList<GameViewPlayer> ordered = view.players;
+            std::stable_sort(ordered.begin(), ordered.end(), [](const GameViewPlayer &a, const GameViewPlayer &b) { return a.seat < b.seat; });
+            QStringList ring;
+            for (const auto &player : ordered) ring << player.name;
+            const int self = ring.indexOf(view.selfName);
+            if (self > 0) std::rotate(ring.begin(), ring.begin() + self, ring.end());
+            seatIndex.clear();
+            for (int i = 0; i < ring.size(); ++i) seatIndex.insert(ring.at(i), i);
+            if (ring != overview->order) overview->order = ring;
+        }
+        const bool resolutionChanged = newSession || previousView.activeResolutions != view.activeResolutions
+            || previousView.responseFocus != view.responseFocus || previousView.resolutionAvailable != view.resolutionAvailable;
+        if (resolutionChanged) { primary.clear(); secondary.clear(); related.clear(); }
         QString description = view.resolutionAvailable ? QCoreApplication::translate("LargeRoomOverview", "No active resolution") : QCoreApplication::translate("LargeRoomOverview", "Resolution information is not synchronized");
         if (!view.activeResolutions.isEmpty()) {
             const auto frame = view.activeResolutions.last().toMap();
@@ -526,11 +594,20 @@ struct LargeRoomOverview::Data
         }
         related.erase(std::remove_if(related.begin(), related.end(), [this](const QString &id) { return !players.contains(id); }), related.end());
         if (!players.contains(lockedPlayer)) lockedPlayer.clear();
-        setText(relation, QCoreApplication::translate("LargeRoomOverview", "Current resolution: ") + description);
-        refreshRows(); refreshDetails();
-        // setLayout arranges each row once, after both data and geometry are current.
-        if (!layout.mainRect.isEmpty()) owner->setLayout(layout);
-        else { overview->arrange(); candidates->arrange(); draft->arrange(); }
+        const bool actionChanged = actionsChanged(previousActions, actions);
+        const bool currentPlayerChanged = previousView.currentPlayer != view.currentPlayer;
+        const bool fullRefresh = visualsChanged || requestChanged || resolutionChanged || rosterChanged || actionChanged || currentPlayerChanged;
+        const QStringList oldCandidateOrder = candidates->order;
+        const QStringList oldDraftOrder = draft->order;
+        if (fullRefresh || playerValuesChanged) {
+            setText(relation, QCoreApplication::translate("LargeRoomOverview", "Current resolution: ") + description);
+            refreshRows(fullRefresh, changedPlayers);
+            if (overview->order != previousOverviewOrder) overview->arrange();
+            if (candidates->order != oldCandidateOrder) candidates->arrange();
+            if (draft->order != oldDraftOrder) draft->arrange();
+        }
+        if ((newSession || changedPlayers.contains(inspected) || !players.contains(inspected))
+            && !inspected.isEmpty() && detail->isVisible()) refreshDetails();
     }
 };
 

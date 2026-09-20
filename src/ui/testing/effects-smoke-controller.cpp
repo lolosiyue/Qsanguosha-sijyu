@@ -23,6 +23,7 @@
 #include <QMutexLocker>
 #include <QPropertyAnimation>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QTimer>
 #include <QVariantAnimation>
 
@@ -127,8 +128,12 @@ EffectsSmokeController::EffectsSmokeController(QObject *parent)
 EffectsSmokeController::~EffectsSmokeController()
 {
     QMutexLocker locker(&effectsSmokeMessageMutex);
-    if (s_active == this)
+    if (s_active == this) {
         s_active = nullptr;
+        // Qt can still log during DLL/thread-local teardown, after the static
+        // asset-warning regular expressions have died. Stop intercepting first.
+        qInstallMessageHandler(effectsSmokePreviousHandler);
+    }
 }
 
 bool EffectsSmokeController::isRequested(const QStringList &arguments)
@@ -203,7 +208,9 @@ int EffectsSmokeController::run()
             EffectsSmokeReport::InternalError));
         return EffectsSmokeReport::InternalError;
     }
-    return controller->execute();
+    const int exitCode = controller->execute();
+    delete controller;
+    return exitCode;
 }
 
 QJsonObject EffectsSmokeController::environmentDetails() const
@@ -228,6 +235,7 @@ QJsonObject EffectsSmokeController::environmentDetails() const
 
 int EffectsSmokeController::execute()
 {
+    qInfo("Effects smoke pre-window initialization: %lld ms", m_elapsed.elapsed());
     m_pendingStage = QStringLiteral("engine");
     if (failIfDeadlineExceeded(QStringLiteral("engine")))
         return m_exitCode;
@@ -241,7 +249,15 @@ int EffectsSmokeController::execute()
     MainWindow *window = new MainWindow;
     m_mainWindow = window;
     Sanguosha->setParent(window);
+    const auto releaseWindow = qScopeGuard([this]() {
+        // Match normal GUI ownership: Engine must outlive scene/UI cleanup.
+        // This also covers failures before exec(), not only the success path.
+        Sanguosha->setParent(nullptr);
+        delete m_mainWindow.data();
+        qInfo("Effects smoke window released: %lld ms", m_elapsed.elapsed());
+    });
     window->show();
+    qInfo("Effects smoke main window shown: %lld ms", m_elapsed.elapsed());
 
     if (failIfDeadlineExceeded(QStringLiteral("main_window")))
         return m_exitCode;
@@ -267,17 +283,13 @@ int EffectsSmokeController::execute()
     QTimer::singleShot(0, this, &EffectsSmokeController::onEventLoopEntered);
 
     const int rc = qApp->exec();
+    qInfo("Effects smoke event loop exited: %lld ms", m_elapsed.elapsed());
     if (!m_finished) {
         finish(false, m_pendingStage,
             QStringLiteral("event loop exited before the effects smoke completed"),
             EffectsSmokeReport::SetupFailed);
     }
-    // Destroy the window - and with it the QQuickWidget's QML engine - while QApplication is
-    // still alive.  The QML type loader thread resolves its disk cache path through
-    // QStandardPaths::writableLocation(), which dereferences the application object, so an
-    // engine that outlives main() segfaults whenever a load is still in flight (reproducible
-    // with a cold QML cache: a fresh HOME crashed every run, a warm one almost never).
-    delete m_mainWindow.data();
+    // releaseWindow destroys the QML host while QApplication is still alive.
     return m_exitCode != EffectsSmokeReport::Passed ? m_exitCode : rc;
 }
 

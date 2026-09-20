@@ -46,6 +46,8 @@ namespace spine {
     class SkeletonClipping;
 }
 
+struct SpineSharedAsset;
+
 /// Qt-based texture loader for Spine atlas pages.
 class QtSpineTextureLoader : public spine::TextureLoader {
 public:
@@ -58,11 +60,22 @@ public:
     /// Get QOpenGLTexture from opaque handle.
     static QOpenGLTexture *getTexture(void *handle);
     void releaseTextures();
+    void releaseTextures(QOpenGLContext *context);
     void reloadTextures();
+    quint64 estimatedTextureBytes() const;
+    bool sourcePagesUnchanged() const;
+    bool hasValidPages() const;
 
 private:
     struct TexturePage;
+    struct ContextCleanup {
+        QPointer<QOpenGLContext> owner;
+        QMetaObject::Connection connection;
+    };
+    QOpenGLTexture *ensureTexture(TexturePage *page);
     QList<TexturePage *> _textures;
+    QHash<QOpenGLContext *, ContextCleanup> _contextCleanup;
+    bool _loadFailed = false;
 };
 
 /// A fullscreen (or sized) QGraphicsItem that renders a Spine animation
@@ -194,8 +207,9 @@ private:
     void buildAnimationCache();
 
     // ─── Spine data ─────────────────────────────────────────────
-    std::unique_ptr<QtSpineTextureLoader> _textureLoader;
-    std::unique_ptr<spine::Atlas>             _atlas;
+    std::shared_ptr<SpineSharedAsset>         _sharedAsset;
+    QtSpineTextureLoader                    *_textureLoader;
+    spine::Atlas                            *_atlas;
     spine::SkeletonData                      *_skeletonData;
     std::unique_ptr<spine::Skeleton>          _skeleton;
     std::unique_ptr<spine::AnimationStateData> _animStateData;
@@ -262,6 +276,7 @@ private:
     QPointer<QOpenGLContext> _glContext;
     QPointer<QOpenGLWidget> _glViewport;
     bool _pausedForBackground = false;
+    bool _destroyingItem = false;
 };
 
 #endif // SPINE_GL_ITEM_H

@@ -4,6 +4,8 @@
 //#include "settings.h"
 #include "carditem.h"
 #include "engine.h"
+#include "package-catalog.h"
+#include "runtime-paths.h"
 #include "graphicspixmaphoveritem.h"
 //#include "standard.h"
 //#include "client.h"
@@ -60,35 +62,75 @@ Photo::Photo() : PlayerCardContainer(), m_giftHighlighted(false), m_giftHighligh
 bool Photo::projectOverview(const QString &general, const QString &kingdom, int hp, int maxHp,
     int handCount, int handMax, bool hideHandCount, bool alive)
 {
-    const QString projection = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
-        .arg(general, kingdom).arg(hp).arg(maxHp).arg(handCount).arg(handMax).arg(hideHandCount).arg(alive);
-    if (m_overviewProjection == projection) return false;
-    m_overviewProjection = projection;
-    const QString name = general.isEmpty() ? QStringLiteral("anjiang") : general;
-    _m_avatarIcon->setGeneralImage(G_ROOM_SKIN.getGeneralPixmapForPhoto(name,
-        QSanRoomSkin::GeneralIconSize(_m_layout->m_avatarSize), false), _m_layout->m_avatarArea.size());
-    _paintPixmap(_m_handCardBg, _m_layout->m_handCardArea,
-        _getPixmap(QSanRoomSkin::S_SKIN_KEY_HANDCARDNUM, kingdom.isEmpty() ? QStringLiteral("qun") : kingdom), _getAvatarParent());
-    paintHp(hp, maxHp);
-    paintHandcardNum(handCount, hp, handMax, hideHandCount);
-    // Keep only the native portrait/frame/HP/hand controls; details belong to L1.
-    const QList<QGraphicsItem *> kept = {_m_avatarIcon, _m_mainFrame, _m_handCardBg, _m_handCardNumText, _m_hpBox};
-    QList<QGraphicsItem *> pending = childItems();
-    while (!pending.isEmpty()) {
-        QGraphicsItem *item = pending.takeLast();
-        bool keep = kept.contains(item);
-        for (auto *leaf : kept) keep = keep || item->isAncestorOf(leaf) || leaf->isAncestorOf(item);
-        bool insideControl = false;
-        for (auto *leaf : kept) insideControl = insideControl || leaf->isAncestorOf(item);
-        if (!insideControl) item->setVisible(keep);
-        item->setAcceptedMouseButtons(Qt::NoButton);
-        item->setAcceptHoverEvents(false);
-        pending.append(item->childItems());
+    bool changed = false;
+    const quint64 skinRevision = G_ROOM_SKIN.visualRevision();
+    const quint64 catalogRevision = QSanPackages::catalogRevision();
+    const QString assetRoot = QSanRuntimePaths::assetRoot();
+    if (m_overviewSkinRevision != skinRevision || m_overviewCatalogRevision != catalogRevision
+        || m_overviewAssetRoot != assetRoot) {
+        m_overviewSkinRevision = skinRevision;
+        m_overviewCatalogRevision = catalogRevision;
+        m_overviewAssetRoot = assetRoot;
+        m_overviewGeneral.clear();
+        m_overviewKingdom.clear();
+        m_overviewPortraitReady = false;
+        m_overviewValuesReady = false;
+        m_overviewControlsPrepared = false;
+        const auto *layout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
+        _paintPixmap(_m_mainFrame, layout->m_mainFrameArea, QSanRoomSkin::S_SKIN_KEY_MAINFRAME);
+        changed = true;
     }
+    if (!m_overviewPortraitReady || m_overviewGeneral != general || m_overviewKingdom != kingdom) {
+        m_overviewGeneral = general;
+        m_overviewKingdom = kingdom;
+        m_overviewPortraitReady = true;
+        const QString name = general.isEmpty() ? QStringLiteral("anjiang") : general;
+        _m_avatarIcon->setGeneralImage(G_ROOM_SKIN.getGeneralPixmapForPhoto(name,
+            QSanRoomSkin::GeneralIconSize(_m_layout->m_avatarSize), false), _m_layout->m_avatarArea.size());
+        _paintPixmap(_m_handCardBg, _m_layout->m_handCardArea,
+            _getPixmap(QSanRoomSkin::S_SKIN_KEY_HANDCARDNUM, kingdom.isEmpty() ? QStringLiteral("qun") : kingdom), _getAvatarParent());
+        changed = true;
+    }
+    if (!m_overviewValuesReady || m_overviewHp != hp || m_overviewMaxHp != maxHp
+        || m_overviewHandCount != handCount || m_overviewHandMax != handMax
+        || m_overviewHideHandCount != hideHandCount) {
+        m_overviewHp = hp;
+        m_overviewMaxHp = maxHp;
+        m_overviewHandCount = handCount;
+        m_overviewHandMax = handMax;
+        m_overviewHideHandCount = hideHandCount;
+        m_overviewValuesReady = true;
+        paintHp(hp, maxHp);
+        paintHandcardNum(handCount, hp, handMax, hideHandCount);
+        changed = true;
+    }
+    if (!m_overviewControlsPrepared) {
+        m_overviewControlsPrepared = true;
+        // Keep only the native portrait/frame/HP/hand controls; details belong to L1.
+        const QList<QGraphicsItem *> kept = {_m_avatarIcon, _m_mainFrame, _m_handCardBg, _m_handCardNumText, _m_hpBox};
+        QList<QGraphicsItem *> pending = childItems();
+        while (!pending.isEmpty()) {
+            QGraphicsItem *item = pending.takeLast();
+            bool keep = kept.contains(item);
+            for (auto *leaf : kept) keep = keep || item->isAncestorOf(leaf) || leaf->isAncestorOf(item);
+            bool insideControl = false;
+            for (auto *leaf : kept) insideControl = insideControl || leaf->isAncestorOf(item);
+            if (!insideControl) item->setVisible(keep);
+            item->setAcceptedMouseButtons(Qt::NoButton);
+            item->setAcceptHoverEvents(false);
+            pending.append(item->childItems());
+        }
+        changed = true;
+    }
+    // Preparing the retained subtree makes kept leaves visible; apply privacy
+    // after that pass so the count stays hidden on the very first projection.
     _m_handCardNumText->setVisible(!hideHandCount);
-    _m_groupMain->setOpacity(alive ? 1.0 : 0.35);
-    // Callers only need to restore transient frames when this projection changed.
-    return true;
+    const qreal opacity = alive ? 1.0 : 0.35;
+    if (!qFuzzyCompare(_m_groupMain->opacity(), opacity)) {
+        _m_groupMain->setOpacity(opacity);
+        changed = true;
+    }
+    return changed;
 }
 
 Photo::~Photo()
@@ -172,6 +214,11 @@ void Photo::_applyLayoutTransform(const QSanRoomSkin::PhotoLayout *layout)
 
 void Photo::repaintAll(bool all)
 {
+	// A live skin reload may repaint native children; make the next overview
+	// projection restore its reduced control visibility once.
+    m_overviewControlsPrepared = false;
+    m_overviewPortraitReady = false;
+    m_overviewValuesReady = false;
 	const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
 
 	_applyLayoutTransform(photoLayout);

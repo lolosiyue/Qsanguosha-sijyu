@@ -104,7 +104,7 @@
 | 焦點 | 結算層由伺服器更新；檢視可預覽或鎖定；自動更新不呼叫鍵盤 `setFocus`。Tab／Shift+Tab 巡覽事件相關角色，Escape 回到候選控制項。 |
 | 回應 | `MOVE_FOCUS` 名單、倒數與所屬結算 ID 獨立保存；空名單按既有語義表示存活者。結算層結束清掉該層等待狀態。單人 overload 保留真正的詢問 command。 |
 | 方向 | schema 2 必須攜帶 bool `play_order_reversed`；schema 1 可讀，但方向標示未同步，不能當成權威正序。 |
-| 特效 | 大局以 session override 關閉裝飾特效；不覆寫設定，離房恢復所選 profile。必要狀態以文字、票數與框線呈現。 |
+| 特效 | 遵從使用者選擇的 Full／Reduced／None，不因大局強制關閉。隱藏 Photo 暫停 GIF；必要狀態仍以文字、票數與框線呈現。成本控制與驗證邊界見 [GUI 效能檢查點](gui-client-performance.md)。 |
 
 ## 活動結算契約
 

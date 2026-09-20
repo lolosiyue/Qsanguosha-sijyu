@@ -26,7 +26,7 @@ void PixmapAnimation::advance(int phase)
     }
     // Keep time/completion semantics while avoiding a scene repaint for an
     // unchanged frame (including one-frame loops) or an invisible item.
-    if (current != previous && isVisible())
+    if (current != previous && isVisible() && effectiveOpacity() > 0.0)
         update();
 }
 

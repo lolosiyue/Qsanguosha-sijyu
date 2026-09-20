@@ -560,6 +560,8 @@ void onGameStart();
 
 
 signals:
+    // Semantic draft/eligibility changes, independent of animation repainting.
+    void presentationDraftChanged();
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
     void responsiveGeometryChanged();
     void seatCountChanged();

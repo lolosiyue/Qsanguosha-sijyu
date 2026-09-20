@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QStringList>
+#include <QScopeGuard>
 
 #include "mainwindow.h"
 #if !defined(QSAN_XP_LEGACY)
@@ -186,6 +187,18 @@ int main(int argc, char *argv[]) {
 
 #ifdef Q_OS_ANDROID
     AndroidContentStore androidContent;
+#endif
+    const auto releaseEffectsApplication = qScopeGuard([effectsSmoke]() {
+        if (effectsSmoke) {
+            // The smoke releases its window/controller first. QApplication
+            // must then release shared GL/thread resources before Qt statics,
+            // including on argument, initialization and timeout failures.
+            CrashHandler::beginShutdown();
+            delete QCoreApplication::instance();
+        }
+    });
+
+#ifdef Q_OS_ANDROID
     if (!headlessApp) {
         installAndroidDialogFit(qobject_cast<QApplication *>(QCoreApplication::instance()));
         QString contentError;

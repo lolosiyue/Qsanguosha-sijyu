@@ -20,7 +20,8 @@ GraphicsPixmapHoverItem::GraphicsPixmapHoverItem(PlayerCardContainer *playerCard
     : QGraphicsPixmapItem(parent), m_playerCardContainer(playerCardContainer), m_timer(0), m_val(0),
     m_currentSkinChangingFrameIndex(-1),
     m_movie(nullptr), m_movieLabel(nullptr), m_proxyWidget(nullptr), m_isAnimated(false),
-    m_targetImagePath(), m_targetGeneralName()
+    m_targetImagePath(), m_targetGeneralName(), m_presentationVisible(true),
+    m_gifPlaybackRequested(true), m_gifPausedForPresentation(false)
 {
     setAcceptHoverEvents(true);
 
@@ -275,6 +276,7 @@ bool GraphicsPixmapHoverItem::isSecondaryAvartarItem() const
 
 void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QSize &targetSize)
 {
+    m_moviePausedByPresentation = false;
     m_currentImagePath = imagePath;
 
     QString gifPath = imagePath;
@@ -385,12 +387,30 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
                 return;
             }
 
-            if (G_EFFECTS.gifPlaybackAllowed())
-                m_movie->start();
-            else
-                m_movie->jumpToFrame(0);   // REDUCED: show first frame only, no decode loop
-            m_proxyWidget->show();
-            setPixmap(QPixmap());
+            if (!m_gifPlaybackRequested) {
+                m_movie->stop();
+                m_gifPausedForPresentation = false;
+                m_proxyWidget->hide();
+                QGraphicsPixmapItem::show();
+                return;
+            }
+
+            if (m_presentationVisible) {
+                if (G_EFFECTS.gifPlaybackAllowed())
+                    m_movie->start();
+                else
+                    m_movie->jumpToFrame(0);   // REDUCED: show first frame only, no decode loop
+                m_gifPausedForPresentation = false;
+                m_proxyWidget->show();
+                setPixmap(QPixmap());
+            } else {
+                // The portrait may be reloaded while its parent Photo is transparent.
+                // Keep the requested playback pending without decoding hidden frames.
+                m_movie->stop();
+                m_gifPausedForPresentation = true;
+                m_proxyWidget->hide();
+                QGraphicsPixmapItem::show();
+            }
             return;
         }
     }
@@ -399,6 +419,7 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
     if (m_movie) {
         m_movie->stop();
     }
+    m_gifPausedForPresentation = false;
     if (m_proxyWidget) {
         m_proxyWidget->hide();
     }
@@ -407,6 +428,9 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
 
 void GraphicsPixmapHoverItem::stopGifAnimation()
 {
+    m_moviePausedByPresentation = false;
+    m_gifPlaybackRequested = false;
+    m_gifPausedForPresentation = false;
     if (m_movie) {
         m_movie->stop();
     }
@@ -421,6 +445,7 @@ void GraphicsPixmapHoverItem::stopGifAnimation()
 
 void GraphicsPixmapHoverItem::setGeneralImage(const QPixmap &pixmap, const QSize &targetSize)
 {
+    m_moviePausedByPresentation = false;
     QPixmap scaledPixmap = pixmap;
     if (targetSize.width() > 0 && targetSize.height() > 0
         && pixmap.size() != targetSize) {
@@ -431,6 +456,7 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QPixmap &pixmap, const QSize
     setPixmap(scaledPixmap);
     m_staticPixmap = scaledPixmap;
     m_isAnimated = false;
+    m_gifPausedForPresentation = false;
 
     if (m_movie) {
         m_movie->stop();
@@ -443,13 +469,77 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QPixmap &pixmap, const QSize
 
 void GraphicsPixmapHoverItem::startGifAnimation()
 {
+    m_moviePausedByPresentation = false;
+    m_gifPlaybackRequested = true;
     if (m_isAnimated && m_movie && m_movie->isValid() && m_proxyWidget) {
+        if (!m_presentationVisible) {
+            m_movie->stop();
+            m_gifPausedForPresentation = true;
+            m_proxyWidget->hide();
+            return;
+        }
         m_proxyWidget->show();
         if (G_EFFECTS.gifPlaybackAllowed())
             m_movie->start();
         else
             m_movie->jumpToFrame(0);
+        m_gifPausedForPresentation = false;
         setPixmap(QPixmap());
     }
+}
+
+void GraphicsPixmapHoverItem::setPresentationVisible(bool visible)
+{
+    m_presentationVisible = visible;
+
+    // Skin changes intentionally stop and hide the old portrait. Do not let a
+    // presentation visibility update resurrect it before the replacement is loaded.
+    if (m_timer != 0) {
+        if (!visible && m_proxyWidget)
+            m_proxyWidget->hide();
+        return;
+    }
+
+    if (!visible) {
+        const bool canPauseGif = m_gifPlaybackRequested && m_isAnimated && m_movie
+            && m_movie->isValid() && m_proxyWidget
+            && (m_gifPausedForPresentation || m_proxyWidget->isVisible());
+        if (canPauseGif) {
+            // REDUCED has a valid first frame but no running decoder. Keep a
+            // pending request for it; FULL pauses the decoder in place.
+            m_gifPausedForPresentation = true;
+            if (m_movie->state() == QMovie::Running) {
+                m_movie->setPaused(true);
+                m_moviePausedByPresentation = true;
+            }
+        } else if (!m_gifPlaybackRequested) {
+            m_gifPausedForPresentation = false;
+        }
+        if (m_proxyWidget)
+            m_proxyWidget->hide();
+        return;
+    }
+
+    if (!m_gifPausedForPresentation || !m_gifPlaybackRequested
+        || !m_isAnimated || !m_movie || !m_movie->isValid() || !m_proxyWidget) {
+        m_gifPausedForPresentation = false;
+        return;
+    }
+
+    m_proxyWidget->show();
+    if (m_movie->state() == QMovie::Paused && m_moviePausedByPresentation) {
+        if (G_EFFECTS.gifPlaybackAllowed())
+            m_movie->setPaused(false);
+        else
+            m_movie->jumpToFrame(0);   // REDUCED: resume as a static first frame
+    } else if (m_movie->state() == QMovie::NotRunning) {
+        if (G_EFFECTS.gifPlaybackAllowed())
+            m_movie->start();
+        else
+            m_movie->jumpToFrame(0);   // REDUCED: pending first frame only
+    }
+    m_gifPausedForPresentation = false;
+    m_moviePausedByPresentation = false;
+    setPixmap(QPixmap());
 }
 
