@@ -858,6 +858,16 @@ add_test(NAME qsanguosha_card_lifetime_source_check
             --allowlist tools/card-lifetime-allowlist.json)
 set_tests_properties(qsanguosha_card_lifetime_source_check PROPERTIES
     WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS runtime)
+# lua/ai/ is fetched, not version-controlled, so nothing in this repository's history
+# says which AI scripts must be present. docs/ai-runtime-manifest.json says it; this
+# check makes it binding and fails loudly on a tree where the fetch never ran.
+add_test(NAME qsanguosha_ai_runtime_manifest_check
+    COMMAND "${Python3_EXECUTABLE}"
+            "${QSAN_TEST_ROOT}/tools/ai/check-ai-runtime-manifest.py"
+            --root "${QSAN_TEST_ROOT}"
+            --manifest docs/ai-runtime-manifest.json)
+set_tests_properties(qsanguosha_ai_runtime_manifest_check PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS runtime)
 add_test(NAME qsanguosha_card_lifetime_stress
     COMMAND qsanguosha_runtime_tests --suite card-lifetime-synthetic-50 --seed 2026082201)
 set_tests_properties(qsanguosha_card_lifetime_stress PROPERTIES

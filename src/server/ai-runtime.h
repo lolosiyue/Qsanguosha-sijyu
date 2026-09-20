@@ -27,6 +27,7 @@ public:
                      const QString &skillName = QString()) const;
     void freeze() { m_frozen = true; }
     bool isFrozen() const { return m_frozen; }
+    bool hasLegacyRoutes() const;
 
 private:
     static QString callbackKey(const QString &callbackName, const QString &skillName);
@@ -43,8 +44,10 @@ public:
     ~AiLuaRuntime();
 
     bool initialize(QString *error = nullptr);
+    static bool requiresLegacyRuntime();
     static void pushWorldView(lua_State *state, const AIWorldView &world);
-    static void evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world);
+    static void evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world,
+                                   bool viewerOnly = false);
     void shutdown();
     void seed(quint64 seed);
 
@@ -65,6 +68,8 @@ public:
     AiRouteRegistry &routes() { return m_routes; }
     const AiRouteRegistry &routes() const { return m_routes; }
     AIResult decideIsolated(const AIRequest &request);
+    bool processEvent(const AIWorldView &world, const AIEventView &event,
+                      LuaRuntime &modeRuntime, QString *error = nullptr);
 
 private:
     class ExecutionBinding
@@ -88,6 +93,9 @@ private:
 
     bool installSandbox(QString *error);
     bool loadScriptWithBudget(const QString &path, qint64 instructionBudget, QString *error);
+    bool loadIsolatedScript(const QString &fileName, QString *error);
+    QStringList declaredCoreScripts(QString *error);
+    void loadPackageScripts();
     bool loadConfiguredScripts(QString *error);
     void loadConfiguredRoutes();
     void pushRequest(lua_State *state, const AIRequest &request) const;

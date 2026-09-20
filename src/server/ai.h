@@ -21,6 +21,8 @@ struct AICardView {
     QString skillName;
     // Card classification and structure. subcardIds is empty for a concrete card.
     int typeId;
+    int equipSlot;
+    int weaponRange = -1;
     int handlingMethod;
     bool virtualCard;
     bool targetFixed;
@@ -32,7 +34,7 @@ struct AICardView {
 
     AICardView()
         : cardId(-1), effectiveId(-1), suit(int(Card::NoSuit)), number(0),
-          typeId(int(Card::TypeSkill)), handlingMethod(int(Card::MethodNone)),
+          typeId(int(Card::TypeSkill)), equipSlot(-1), handlingMethod(int(Card::MethodNone)),
           virtualCard(false), targetFixed(false), damageCard(false),
           red(false), black(false) {}
 };
@@ -54,19 +56,90 @@ struct AICardPileView {
 // computed once by the authority: the isolated side never queries the Engine live.
 // legalTargets holds the targets that pass targetFilter and the prohibition skills
 // with nothing else selected yet; picking one may narrow the rest, which is why
-// maxTargets and targetFixed travel with it.
+// targetCombinations carries the ordered action space when completeCoverage is true.
 struct AICardCandidateView {
+    // Request-local authorization token. It is valid only for the decisionId and the
+    // state revision that issued it, and an answer must name one this request actually
+    // offered - holding a card is not by itself permission to play it in answer to
+    // *this* question.
+    int candidateId;
     int cardId;
+    // Whether this card answers *this* question. In Play that is Card::isAvailable;
+    // in a response it is the request pattern. The two are not interchangeable - a
+    // Jink is never "available" in Play and is still the only legal answer to a Slash.
     bool available;
     bool limited;
     bool jilei;
     bool targetFixed;
-    int maxTargets;
+    // How many times one target may be picked, exactly as Card::targetFilter reports it
+    // per target. This is a vote count, not a target count: Fire Attack style cards
+    // return 3 for the same player. Absent means one.
+    QMap<QString, int> maxVotes;
     QStringList legalTargets;
+    // Auto-target roster for standard AOE/global cards; independent of the explicit
+    // selection sequence, which is {{}} for a target-fixed action.
+    bool affectedTargetsKnown = false;
+    QStringList affectedTargets;
+    // Ordered feasible sequences; incomplete projections are never a truncated answer.
+    QList<QStringList> targetCombinations;
+    // targetsFeasible({}) - an action that is complete with no target at all, which is
+    // a different answer from "no legal target was found".
+    bool feasibleWithNoTarget;
+    // True only after every ordered selection has been explored within the projection
+    // budget (or for target-fixed cards). Missing combinations are unsupported.
+    bool completeCoverage;
 
     AICardCandidateView()
-        : cardId(-1), available(false), limited(false), jilei(false),
-          targetFixed(false), maxTargets(0) {}
+        : candidateId(-1), cardId(-1), available(false), limited(false), jilei(false),
+          targetFixed(false), feasibleWithNoTarget(false), completeCoverage(false) {}
+};
+
+// One conversion this request authorizes: a card the authority itself built by asking
+// a view-as skill the player actually holds, together with the exact cost it was built
+// from. The AI never turns a name into a card - it names a conversionId from this list
+// and the authority rebuilds the same card from its own record. A card name, a
+// class_name or a skill name supplied by an author is a request, never a permission.
+struct AICardConversionView {
+    int conversionId;
+    // The produced card, taken from the skill's own createCard() and that card's
+    // meta-object chain - the controlled catalogue, not anything the AI supplied.
+    QString name;
+    QString className;
+    QStringList kindOfNames;
+    int suit;
+    int number;
+    // The whole instance identity. A bare skill name cannot address a skill that is
+    // held more than once, and it says nothing about whose quota pays for the use.
+    SkillInstanceRef activationRef;
+    SkillInstanceRef sourceRef;
+    bool activationQuotaAvailable;
+    bool sourceQuotaAvailable;
+    // One ticket can describe choose(costCount) independent hand costs without subsets.
+    // Zero costCount retains the exact-subcards contract.
+    int costCount = 0;
+    QList<int> eligibleSubcardIds;
+    // The exact cost cards this conversion was enumerated with, in order.
+    QList<int> subcardIds;
+    // The same target description a physical candidate carries, so that one planning
+    // algorithm serves both instead of a second one growing for converted cards.
+    bool available;
+    bool targetFixed;
+    bool feasibleWithNoTarget;
+    bool completeCoverage;
+    QStringList legalTargets;
+    bool affectedTargetsKnown = false;
+    QStringList affectedTargets;
+    // Ordered feasible sequences; incomplete projections are never a truncated answer.
+    QList<QStringList> targetCombinations;
+    QMap<QString, int> maxVotes;
+
+    AICardConversionView()
+        : conversionId(-1), suit(int(Card::SuitToBeDecided)), number(0),
+          activationQuotaAvailable(false), sourceQuotaAvailable(false),
+          available(false), targetFixed(false), feasibleWithNoTarget(false),
+          completeCoverage(false) {}
+
+    bool isValid() const { return conversionId >= 0 && !name.isEmpty(); }
 };
 
 struct AISkillView {
@@ -124,6 +197,12 @@ struct AIPlayerView {
     // knownCards is known absent rather than unknown.
     QList<AICardView> knownCards;
     bool handVisible;
+    // Only the viewer receives private flags and future phase-skip decisions.
+    QStringList privateFlags;
+    bool privateFlagsVisible = false;
+    QMap<int, bool> skippedPhases;
+    QString activeArmorName;
+    bool armorEffectKnown = false;
     QList<AICardPileView> piles;
     QList<int> displayCards;
     // Derived player values the shared entries ask for.
@@ -154,10 +233,20 @@ struct AIEventView {
     QString to;
     QStringList targets;
     QString cardName;
+    QString cardClass;
+    QString cardSkill;
+    bool chain = false;
+    bool transfer = false;
+    bool byUser = true;
+    bool intentionSuppressed = false;
+    QJsonObject details;
     QString reason;
     QList<int> cardIds;
     QList<int> privateCardIds;
     QString privateViewer;
+    // ChoiceMade can contain a private answer; unlike public events with a hidden
+    // card list, the whole event is then visible only to privateViewer.
+    bool privateEvent = false;
     int amount;
     int nature;
     int place;
@@ -186,6 +275,7 @@ struct AIWorldView {
     // Board distances among the living, source player first. Computed by the authority
     // because distance depends on the source's own skills and equipment.
     QMap<QString, QMap<QString, int>> distances;
+    QString distanceScope = QStringLiteral("full");
     // Recent events this viewer may know about, oldest first.
     QList<AIEventView> events;
 
@@ -222,6 +312,11 @@ struct AIChoiceOptions {
     QStringList choices;
     // Candidate cards and players of a selection. Only ids and object names cross.
     QList<int> cardIds;
+    // Only cards this question explicitly reveals. Never fill this from an opponent's
+    // hidden hand merely because its count is known.
+    QList<AICardView> cards;
+    bool candidatesComplete = false;
+    QJsonObject context;
     QStringList playerNames;
     QString defaultChoice;
     bool hasDefaultChoice;
@@ -257,11 +352,19 @@ struct AIRequest {
     AIChoiceOptions choiceOptions;
     // Only the card decisions carry candidates; the other kinds leave this empty.
     QList<AICardCandidateView> cardCandidates;
+    // Conversions this request authorizes, built by the authority from the skills the
+    // player actually holds.
+    QList<AICardConversionView> cardConversions;
+    // Whether that list is the whole story. False means the authority could not
+    // enumerate every conversion available here, which is a different statement from
+    // "no conversion is available" - the planner must answer unsupported rather than
+    // read an empty or partial list as an absence.
+    bool conversionsEnumerated;
 
     AIRequest()
         : kind(UseCard), decisionId(0), stateRevision(0),
           reason(CardUseStruct::CARD_USE_REASON_UNKNOWN), handlingMethod(Card::MethodUse),
-          hasSkillActionContext(false) {}
+          hasSkillActionContext(false), conversionsEnumerated(false) {}
 
     bool isValid() const { return !viewerObjectName.isEmpty(); }
     QString getDecisionId() const { return QString::number(decisionId); }
@@ -322,13 +425,20 @@ struct AICardSpec {
     int number;
     QString skillName;
     QList<int> subcardIds;
+    // The ticket. Everything above describes what the AI believes it is asking for;
+    // this is the only field that decides whether it may have it, and the authority
+    // compares the rest against its own record of that conversion.
+    int conversionId;
 
-    AICardSpec() : suit(int(Card::SuitToBeDecided)), number(0) {}
+    AICardSpec() : suit(int(Card::SuitToBeDecided)), number(0), conversionId(-1) {}
     bool isValid() const { return !name.isEmpty(); }
 };
 
 struct CardActionSpec {
     QString legacyCardString;
+    // The candidate ticket this answer claims, or -1 when it claims none. An answer
+    // that does name one must name a candidate this request actually offered.
+    int candidateId;
     // One concrete card of the player, named by id. -1 when the answer names the card
     // some other way (a legacy string, a card spec or a skill action).
     int useCardId;
@@ -342,7 +452,9 @@ struct CardActionSpec {
     bool hasSkillActionContext;
     AiSkillActionContext skillActionContext;
 
-    CardActionSpec() : useCardId(-1), hasCardSpec(false), hasSkillActionContext(false) {}
+    CardActionSpec()
+        : candidateId(-1), useCardId(-1), hasCardSpec(false),
+          hasSkillActionContext(false) {}
 };
 
 struct AIResult {

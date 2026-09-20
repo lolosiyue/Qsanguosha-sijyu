@@ -4,6 +4,8 @@
 #include "room.h"
 #include "card-lifetime-manager.h"
 #include "lua.hpp"
+#include "settings.h"
+#include "util.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -508,19 +510,43 @@ bool RoomRuntime::initialize(QString *error)
     m_loadingDefinitions = false;
     if (!loaded)
         return false;
-    if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
+    if (!m_lua.loadScript(QStringLiteral("lua/ai/mode-ai.lua"), error))
         return false;
-    // Package AI is initialized after SmartAI in the same room-owned VM.
-    for (const QString &path : Sanguosha->rulesDeclaredList(QStringLiteral("package_ai"))) {
+    // Mode hooks belong to the Room VM even when no legacy SmartAI is loaded.
+    // Custom definitions keep their author policy; native standard classification
+    // admits only the built-in identity/team strategies understood by this module.
+    if (!Sanguosha->isCustomGameMode(m_room->getMode())) {
         lua_State *state = m_lua.state();
+        LuaRuntime::LuaInvocationScope invocation(m_lua);
         lua_getglobal(state, "sgs");
-        lua_getfield(state, -1, "LoadPackageScript");
+        lua_getfield(state, -1, "registerStandardModeAI");
         lua_remove(state, -2);
-        lua_pushstring(state, path.toUtf8().constData());
-        if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
+        lua_pushstring(state, m_room->getMode().toUtf8().constData());
+        lua_pushboolean(state, isNormalGameMode(m_room->getMode()));
+        lua_pushboolean(state, Config.EnableHegemony);
+        if (LuaRuntime::protectedCall(state, 3, 0, 0) != LUA_OK) {
             if (error) *error = QString::fromUtf8(lua_tostring(state, -1));
             lua_pop(state, 1);
             return false;
+        }
+    }
+
+    // The effective route registry is authoritative, including an isolated
+    // override of a legacy callback. Standalone rooms never bootstrap SmartAI.
+    if (Config.EnableAI && AiLuaRuntime::requiresLegacyRuntime()) {
+        if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
+            return false;
+        for (const QString &path : Sanguosha->rulesDeclaredList(QStringLiteral("package_ai"))) {
+            lua_State *state = m_lua.state();
+            lua_getglobal(state, "sgs");
+            lua_getfield(state, -1, "LoadPackageScript");
+            lua_remove(state, -2);
+            lua_pushstring(state, path.toUtf8().constData());
+            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
+                if (error) *error = QString::fromUtf8(lua_tostring(state, -1));
+                lua_pop(state, 1);
+                return false;
+            }
         }
     }
 
@@ -535,11 +561,18 @@ bool RoomRuntime::initialize(QString *error)
 
     QString aiError;
     m_aiRuntimeIdentity = &m_ai.lua();
-    if (!m_ai.initialize(&aiError))
+    if (!m_ai.initialize(&aiError)) {
         qWarning().noquote() << "AI Lua runtime disabled:" << aiError;
-    else {
+    } else {
         m_aiRuntimeGeneration = m_ai.lua().generation();
         m_aiRuntimeState = m_ai.lua().rawState();
+        // Mixed routes may still run SmartAI's own filters, but mode minds have
+        // one event source: the native value-event pipeline, never both bridges.
+        lua_State *state = m_lua.state();
+        lua_getglobal(state, "sgs");
+        lua_pushboolean(state, true);
+        lua_setfield(state, -2, "modeAIUsesIsolatedEvents");
+        lua_pop(state, 1);
     }
     return true;
 }

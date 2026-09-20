@@ -2,6 +2,9 @@
 
 本文件記錄 `lua/ai/` 下 AI 腳本的撰寫慣例、全域註冊表 API 與最佳實踐。
 
+Isolated AI 的純值 API、共用策略、身份／模式 hook 與未覆蓋邊界，另見
+[Isolated AI 共用層對照](isolated-ai-common-layer.md)。下文的 legacy userdata API 不可直接搬進 isolated VM。
+
 ---
 
 ## 1. 檔案結構
@@ -697,13 +700,16 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 
 ### 15.2 AI VM 分離與遷移模式
 
+- Isolated 是獨立的新架構。SmartAI 的函式與 hook 契約只作行為參考，不能作為
+  isolated 決策的依賴；C++ 既有 legacy fallback 僅為故障保底，觸發即代表新版驗收失敗。
+  本節較早的逐批遷移紀錄保留作歷史背景，不能以「舊 AI 接手」宣稱新版能力已完成。
 - 每個 Room 的 `AiLuaRuntime` 與 Gameplay Lua VM 分離；Isolated handler 只取得
   value-only request、viewer-scoped `AIWorldView`、decision-scoped `AiRng` 與 `AiData`。
 - `LegacyDirect` 僅供過渡；`LegacyAdapted` 將既有 `activate`／`askForUseCard` 結果複製成
   `AIResult`，再走通用 Room 驗證 gate。
-- 決策預設走 `Isolated`：isolated handler 未覆蓋、拒答或出錯時一律回退該玩家的
-  legacy AI（2026-09-18 移除 Shadow 雙跑比對階段）。遷移期間同一 Room 可按 callback
-  混用 `LegacyAdapted`／`LegacyDirect` 與 `Isolated`，共享 C++ `AiDataStore`。
+- 決策預設走 `Isolated`：handler 必須透過純值 request 自主作答。未覆蓋、無法作答、
+  過期或出錯均為待補缺口，不能依靠保底形成策略流程。既有路由仍可按 callback 選擇
+  `LegacyAdapted`／`LegacyDirect`，但這些路由的結果不計入 isolated 驗收。
 - `AiData` 持久化由 C++ `AiDataStore` 管理固定路徑、JSON/大小驗證、process lock 與
   原子寫入；Isolated VM 不取得 raw `io`、`os`、`coroutine` 或 native `sgs` binding，
   只可呼叫 `ai_data.read()`／`ai_data.write(json)`。C++ 會重建只含 primitive enum 的安全
@@ -711,8 +717,7 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   反射注入，不另維護手寫 key/value 清單。
 - `AiLegacyDirectCallbacks`、`AiLegacyAdaptedCallbacks`、`AiIsolatedCallbacks`
   可用 `activate`、`askForUseCard` 或 `askForUseCard:skill_name` 設定 callback 級路由；
-  Room 初始化後路由表凍結。未設定的 callback 預設 `Isolated`，由 isolated 端拒答回退
-  legacy。
+  Room 初始化後路由表凍結。未設定的 callback 預設 `Isolated`。
 - `isolated-bootstrap.lua` 只管理 generic handler registry、dispatch 與統一的結果轉換（§15.2.3）；C++ 在 sandbox 安裝後、
   configured scripts 之前 mandatory 載入 `isolated-facades.lua`。後者是整個 Isolated Runtime
   共用的 value facade 層，不屬於 `AiIsolatedScripts` allowlist，也不依賴任何 decision-specific
@@ -724,7 +729,7 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   instruction budget 保護，超限時只停用該 Room 的 Isolated VM，不阻塞 Room 建立。
 - `AiIsolatedScripts` 只接受 `lua/ai/isolated/` 下的單一 `.lua` 檔名；腳本在 mandatory
   runtime 層就緒後由 C++ loader 載入。
-- 所有 decision kind 預設 `Isolated` 路由，isolated 端回 unhandled 時回退 legacy。
+- 所有 decision kind 預設 `Isolated` 路由，unhandled 表示新版尚未完成該題。
   `ask-for-use-card.lua` 只提供 use-card pattern／skill registry 與
   decision-specific dispatch；pattern handler 使用
   `ai_skill_use[pattern] = function(self, prompt, request)` 註冊，legacy 形狀的
@@ -739,8 +744,8 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   `AIWorldView` 完整重現的確定分支：自身 phase 不晚於 `Play` 且 `lianying` mark 為 1；
   handler 透過 `self.player` 與 C++ 注入的 `sgs.Player_Play` 判斷，不含 phase magic number；
   需要 move/effect userdata 或友方排序的其餘分支維持 `NotCovered`。
-- 覆蓋狀態以 `ai_coverage` 申報觀察：isolated 端拒答、結果過期或出錯時回退 legacy，
-  不另留計數器。
+- 覆蓋狀態以 `ai_coverage` 申報與決策結果共同觀察；登記 registry 不等於實際作答。
+  任一未覆蓋、結果過期、執行錯誤或權威驗證失敗，均不能被保底答案抵銷。
 - `AIResult` boundary 限制單字串 64 KiB、選牌 2048 張、目標 64 名，避免 payload 從 Lua
   allocator 放大到 C++ heap。
 - AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI fallback；
@@ -754,6 +759,18 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 
 `request.world_view` 是 request 建立當下的 immutable value snapshot，不含 `Room *`、
 `ServerPlayer *`、`Card *`、`QVariant` userdata 或 Lua userdata。
+
+`distances` 的權威計算可在同一 Room 的相同 stateRevision、技能 generation、
+存活名單及距離技能登錄下重用；各 viewer 仍分別投影手牌、技能私有狀態、身份與
+mode_policy。回傳值的修改不回寫共用距離表。玩家屬性、標記、旗標、tag、牌區、
+固定距離與 Room tag 的變更須立即推進 revision；工作執行緒的通知不等主執行緒
+處理 Qt 事件後才失效。`distanceTo_*` 是派生顯示屬性，不反過來使計算結果失效。
+大局的正常效能驗證以 SmartAI 開啟為準；TrustAI 僅作 fallback 與隔離診斷基線。
+
+Legacy SmartAI 的模式策略啟用判斷只查已註冊策略與自訂身份，與
+`evaluateModeAI` 的 `managed` 條件一致；自訂身份判斷依 Room revision 快取，
+包含死亡玩家。沒有策略的一般身份場直接執行原有 SmartAI，不為這個布林判斷
+建立距離、牌區或技能快照；新策略註冊立即生效。有策略時仍建立 viewer 專屬快照。
 
 | 欄位 | 內容與可見性 |
 |---|---|
@@ -1296,9 +1313,9 @@ VM，這一層不變。
 `decision-core.lua` 另註冊了通用 `activate` handler，並提供逐技能 registry
 `ai_skill_activate[skill_name] = function(self, request)`：一般 activate 依
 `request.skill_actions` 順序逐一問有註冊的技能，先回非 nil 者勝；帶 `skill_action` 的
-逐實例探測只派給 `ai_skill_activate[probe.activation_skill]`，沒註冊或拒答就回
-unhandled 交給 legacy 的實例感知路徑。都沒人接才走 `planTurnUse()`：沒有候選投影時回
-unhandled（交回舊 AI），有候選但沒有可行方案時回 pass。`activate` 預設路由為
+逐實例探測只派給 `ai_skill_activate[probe.activation_skill]`，沒註冊或拒答就記為新版
+尚未覆蓋。一般詢問都沒人接才走 `planTurnUse()`：可提交完整權威候選上的合法方案；
+沒有答案且還有未知選項時維持 unhandled，只有選項已完整處理才能回 pass。`activate` 預設路由為
 `Isolated`（2026-09-18 起），此 handler 直接參與決策。
 
 2026-09-17：程式與原生案例完成（`decisionCorePlansATurnFromCandidates`），尚未建置或執行。
@@ -1319,30 +1336,30 @@ unhandled（交回舊 AI），有候選但沒有可行方案時回 pass。`activ
 
 覆蓋率不用猜：每個 registry 自己向 `ai_coverage.declare(kind, list_keys)` 申報鍵，
 `ai_coverage.covers(kind[, key])`、`describe()` 與 `summary()` 回報目前這個 VM 接得住什麼。
-沒有申報就是沒覆蓋——切換路由與驗收要看這份報告，而不是「跑跑看有沒有錯」。
+申報清單只描述接線；實際作答、缺口紀錄與權威端驗證也必須通過才能算覆蓋。
 
-回退邊界同樣明確：隔離 handler 回 unhandled、結果過期或執行出錯時，一律由舊 AI 作答，
-不會靜默吞掉。
+隔離 handler 回 unhandled、結果過期或執行出錯均為新版失敗。權威端雖保留故障保底，
+但不能以其答案作為策略出口、覆蓋率或完成證據。
 
 2026-09-17：程式與原生案例完成（`coverageReportListsWhatIsWired`），尚未建置或執行。
 
 #### 15.2.17 切換與驗收程序
 
-2026-09-18：Shadow 雙跑比對機制移除。路由改為 isolated-first——所有未設定的
-kind／callback 預設 `Isolated`，isolated 端拒答、結果過期或出錯時回退 legacy。遷移靠
-`ai_coverage` 申報清單觀察：某 key 有 isolated handler 就由新版作答，否則自然落在
-legacy，不再需要事前路由設定。要釘回舊版仍可用
-`AiLegacyDirectCallbacks`／`AiLegacyAdaptedCallbacks`。
+2026-09-18 移除 Shadow 雙跑比對。2026-09-21 明確採獨立新版的完成標準：所有未設定的
+kind／callback 預設 `Isolated`，每題由新版完成。`AiLegacyDirectCallbacks`／
+`AiLegacyAdaptedCallbacks` 仍是明示的相容選項，其執行結果不屬於新版驗收。
 
 建議的驗收門檻（需另獲建置與執行授權）：
 
-1. 完整對局中已覆蓋的 key 不應持續回退——以 `ai_coverage` 申報對照實際行為判斷。
+1. 驗收範圍內的決策全部由 isolated 產生且通過權威端驗證；任何 SmartAI 保底觸發均失敗。
+   `ai-common` 直接呼叫 `AiLuaRuntime::decideIsolated`，不經協調器保底；fixture 在 production
+   decision binding 與指令預算內執行，並確認 VM 沒有 `SmartAI`／`global_room`／原生 Engine。
 2. 隔離性：`tests/room-runtime-isolation-test.cpp` 全綠（含 VM 分離、沙箱封鎖、可見性、
    代理契約、值型詢問、候選授權、決策核心與覆蓋率報告）。
 3. 重建：指令／記憶體上限觸發後 VM 重建，`ai_memory` 歸零而決策仍能繼續（既有案例
    `aiInstructionLimitRebuildsRuntime`）。
-4. 效能：以 `QSAN_AI_PROBE=1` 比較切換前後單次決策耗時；isolated-first 讓每個決策都付一次
-   快照投影與 Lua 呼叫，未覆蓋 key 的固定成本要可接受。
+4. 效能：以 `QSAN_AI_PROBE=1` 比較相同設定的單次決策耗時；計入快照、hook 與權威端驗證，
+   不混入 SmartAI 保底耗時作為新版策略效能。O(n) 掃描與 O(n log n) 排序分別列明。
 
 這一節描述的是程序與門檻。實際跑完整對局與量效能需要建置與執行授權，在此之前不宣稱
 任何入口已完成驗收。
@@ -1373,3 +1390,37 @@ response resolver；isolated 結果未通過驗證時直接回退 legacy，不�
 8. **方法優先**：能用 `sgs.ai_skill_*` 回呼解決的，不新增 SmartAI 方法
 9. **尾綴一致性**：套件前綴務必統一（如 `mobile*`、`tenyear*`、`ol*`）
 10. **檢查目標有效性**：使用 `target:isAlive()`、`self.player:isProhibited(target, card)` 等
+
+
+### Isolated PR 07：有序目標、規劃分支與多牌成本
+
+本節描述 PR 07 的契約；執行驗證狀態見 `ai-migration-status.md`。
+
+| API／欄位 | 契約 |
+|---|---|
+| `target_combinations` | 權威端以原生 `targetFilter` 票數與 `targetsFeasible` 產生的完整有序序列，實體牌／轉化共用。`complete_coverage=false` 時清空，不可把部分清單當全部。 |
+| `candidate:getTargetCombinations(offset, limit)` | offset 從 0 起，limit 1–32；回 `(page, next_offset)`，每頁及每列是副本。未完整描述回 nil，完整且無組合回空頁。這是本次投影的本地分頁，沒有同步 host callback。 |
+| `candidate:getTargetSelection(prefix)` | 回 `(next_names, can_finish)`；只從完整權威序列查詢，不重算距離／禁止規則。 |
+| `ai_card_use`／`rankTargets` | 共用策略／排序入口不變。Slash 可選整組敵方目標；Duel、拆牌族遇多目標仍 unsupported，尚無多目標效果估值。Collateral 的候選可完整投影，但未新增其正式策略。 |
+| `tryUseCard(card, use)` | 每次複製父分支的純值 scratch；預留成本、使用計數、選擇目標只存在該分支。回傳 `use.scratch`；正常、unsupported、error 都恢復父 scratch。子分支不自動合併。 |
+| `use.context`／策略第 4 參數 | 原始 request 的 `kind / reason / pattern / handling_method`。巢狀呼叫沿用，不能因呼叫 aiUseCard 就套用 Play。現有五張正式策略只支援 Activate/Play；Response／ResponseUse 保守 unsupported，專用 registry handler 可明確支援。 |
+| `ViewAsSkillV2::hasIndependentAIConversion()` | 預設 false。只有經契約測試的固定 n（2–8）張手牌、各成本獨立可選、成本順序不影響、產物名稱／花色／點數／分類／目標規則均不隨選牌改變，才可 opt in。禁止裝備成本、任意子集枚舉、花色繼承或假設改變距離。 |
+| `cost_count / eligible_subcards` | 同一 instance/source 的參數化票；不是具體子集列表。prototype 只用於投影不變的產物。`withSubcards(ids)` 回新的已綁定 proposal，`newCard` 可用 subcards 指名。共用回合規劃按 keep value 選 n 張，送原票及選擇。 |
+| 權威重驗 | 提交時查票、distinct/數量/範圍/持有、逐前綴 canSelectCard、cardSelectionFeasible、instance/source/quota、重建產物；既有完整目標 gate 繼續生效。 |
+
+| 預算 | 超限結果 |
+|---|---|
+| 每牌最多 2048 次投影探測（`AiTargetProjectionBudget` 可向下調整至 1）、128 組、8 層目標；整個 request 共用 16384 次目標／成本探測 | `complete_coverage=false` 或 `conversions_enumerated=false`，部分組合不發票為完整能力。沒有跨 request 分頁續取；需更大投影的情境 unsupported。 |
+| 每 request 128 次候選規劃、8 層巢狀；scratch 複製 4096 值／16 層 | 帶 `planning` 原因的 unsupported，最外層記錄未覆蓋；不改成 declined/pass。 |
+| Lua instructions | 沿用 host 的 `AiLuaInstructionBudget` 與 `AI_INSTRUCTION_LIMIT`，涵蓋巢狀策略；預算不在子分支重置。 |
+
+scratch 不是模擬器；預留牌／使用次數不等於正式 history、quota、距離或裝備狀態已改變。
+重複投票目標、任意多牌轉化、跨 request 意圖、Shadow、覆蓋率與效能量測均不由本節宣稱完成。
+目前多牌參數契約由測試專用技能驗證，尚未開啟任何正式武將的 opt-in。
+
+2026-09-21 靜態收尾修正（**未建置、未執行**）：候選預算只在 `ai_decide`
+開始新決策時重置，更換 public scratch 或 facade 不重置；完整投影中的 `{}` 表示
+沒有可行序列，`{{}}` 才表示可不選目標完成。未知組合／合法目標／所需敵友關係
+維持 unsupported；策略拒絕前也先確認候選完整性。`newCard` 的第一張參數化票
+無法綁定指定成本時，繼續查後續符合條件的 instance/source，不改寫票的來源。
+新增契約案例與兩個固定目標 fixture 僅完成來源修改，沒有執行或破壞驗證證據。

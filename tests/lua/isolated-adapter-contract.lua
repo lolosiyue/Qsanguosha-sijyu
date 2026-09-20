@@ -181,7 +181,7 @@ assert(SmartAIView.new(sparse) == nil)
 -- Only value queries are exposed; native gameplay and VM globals stay absent.
 assert(room.setPlayerMark == nil and room.useCard == nil and room.getTag == nil)
 assert(owner.getRoom == nil and owner.setFlags == nil and owner.getTag == nil)
-assert(owner.getPile == nil and cards[1].getRealCard == nil)
+assert(cards[1].getRealCard == nil)
 assert(sgs.Sanguosha == nil and global_room == nil and current_self == nil)
 
 -- Card zones: unknown, partially visible and known-empty stay three different answers.
@@ -240,7 +240,7 @@ derived.world_view.self.hujia = 2
 derived.world_view.self.attack_range = 3
 derived.world_view.self.gender = 1
 derived.world_view.self.lord = true
-derived.world_view.self.equip_slots = {[1] = 8, [3] = 9}
+derived.world_view.self.equip_slots = {[2] = 8, [4] = 9}
 derived.world_view.self.equips = {{id = 8, effective_id = 8, name = "weapon",
     type_id = 3, handling_method = 1, virtual_card = false, target_fixed = true,
     damage_card = false, subcards = {}}}
@@ -290,25 +290,41 @@ ruled.world_view.distances = {viewer = {other = 1, dead = 2}, other = {viewer = 
 ruled.world_view.self.attack_range = 1
 ruled.card_candidates = {
     {card_id = 7, available = true, limited = false, jilei = false,
-     target_fixed = false, max_targets = 1, legal_targets = {"other"}},
+     target_fixed = false, feasible_with_no_target = false, complete_coverage = true,
+     legal_targets = {"other"}},
     {card_id = 8, available = false, limited = true, jilei = true,
-     target_fixed = true, max_targets = 0, legal_targets = {}}
+     target_fixed = true, feasible_with_no_target = true, complete_coverage = true,
+     legal_targets = {}},
+    -- 一個人可以被選不只一次的牌：票數與「可選幾個人」不是同一件事，所以這張牌
+    -- 的目標組合沒有被這次 request 完整描述。
+    {card_id = 11, available = true, limited = false, jilei = false,
+     target_fixed = false, feasible_with_no_target = false, complete_coverage = false,
+     legal_targets = {"other", "viewer"}, max_votes = {other = 3}}
 }
 local ruled_ai = assert(SmartAIView.new(ruled))
 local ruled_room, ruled_me = ruled_ai.room, ruled_ai.player
 local ruled_other = ruled_room:findPlayerByObjectName("other")
 local candidates = ruled_ai:getCardCandidates()
-assert(#candidates == 2 and AIValue.isCandidate(candidates[1]))
+assert(#candidates == 3 and AIValue.isCandidate(candidates[1]))
 assert(not AIValue.isList(candidates[1]) and not AIValue.isCard(candidates[1]))
 local playable = ruled_ai:getCardCandidate(7)
 assert(playable:getCardId() == 7 and playable:isAvailable() == true)
 assert(playable:isLimited() == false and playable:isJilei() == false)
-assert(playable:targetFixed() == false and playable:getMaxTargets() == 1)
+assert(playable:targetFixed() == false and playable:hasCompleteCoverage() == true)
 assert(playable:getLegalTargets()[1] == "other" and playable:canTarget("other"))
 assert(playable:canTarget("dead") == false)
+-- 沒送票數的人就是一票，不是未知；不能指定的人是零票，不是一票。
+assert(playable:getMaxVotes("other") == 1 and playable:getMaxVotes("dead") == 0)
+-- 需不需要指定目標，與「這次找不到目標」是兩件事。
+assert(playable:needsATarget() == true)
 local blocked = ruled_ai:getCardCandidate(8)
 assert(blocked:isAvailable() == false and blocked:isLimited() == true)
 assert(#blocked:getLegalTargets() == 0 and blocked:canTarget("other") == false)
+-- 固定目標的牌不需要選人，即使它的合法目標清單是空的。
+assert(blocked:needsATarget() == false and blocked:isFeasibleWithNoTarget() == true)
+local votes = ruled_ai:getCardCandidate(11)
+assert(votes:getMaxVotes("other") == 3 and votes:getMaxVotes("viewer") == 1)
+assert(votes:hasCompleteCoverage() == false)
 assert(ruled_ai:getCardCandidate(99) == nil)
 
 assert(ruled_room:distanceTo(ruled_me, ruled_other) == 1)
@@ -635,4 +651,63 @@ assert(not pcall(AIResultValue.normalize, {[2] = 1}, "discard"))
 assert(not pcall(AIResultValue.normalize, {kind = "answer"}, "discard"))
 assert(not pcall(AIResultValue.normalize, {kind = "answer", cards = {"a"}}, "discard"))
 assert(not pcall(AIResultValue.normalize, true, "discard"))
+
+-- 未覆蓋是第四種狀態，和 unhandled／declined／pass 都不一樣：問題聽懂了、答不出來。
+local signal = AIUnsupported.new("no strategy", "Slash")
+assert(AIUnsupported.is(signal) and signal.reason == "no strategy" and signal.key == "Slash")
+assert(tostring(signal) == "AI not covered (Slash): no strategy")
+assert(tostring(AIUnsupported.new("plain")) == "AI not covered: plain")
+assert(not AIUnsupported.is(nil) and not AIUnsupported.is("no strategy"))
+assert(not AIUnsupported.is({reason = "no strategy"}))
+assert(not pcall(AIUnsupported.new) and not pcall(AIUnsupported.new, ""))
+assert(not pcall(AIUnsupported.new, "reason", 7))
+
+-- 回傳訊號與丟出訊號同一個出口，兩種寫法都不會被讀成 pass 或 unhandled。
+converted, status = AIResultValue.normalize(signal)
+assert(converted == nil and status == "unsupported")
+converted, status = AIResultValue.normalize(signal, "choice")
+assert(converted == nil and status == "unsupported")
+converted, status = AIResultValue.normalize(signal, "discard")
+assert(converted == nil and status == "unsupported")
+
+-- capture 只接未覆蓋訊號；真正的錯誤照樣往上丟，不會靜默變成「沒有覆蓋」。
+local ok, captured = AIUnsupported.capture(function() ai_unsupported("nope", "Peach") end)
+assert(ok == false and AIUnsupported.is(captured) and captured.key == "Peach")
+-- 訊號原樣傳出，Lua 沒有在前面貼上檔名行號把它變成字串。
+ok, captured = AIUnsupported.capture(function() return signal end)
+assert(ok == false and captured == signal)
+ok, captured = AIUnsupported.capture(function() return {kind = "pass"} end)
+assert(ok == true and captured.kind == "pass")
+ok, captured = AIUnsupported.capture(function(value) return value end, 7)
+assert(ok == true and captured == 7)
+assert(not pcall(AIUnsupported.capture, function() error("a real bug") end))
+assert(not pcall(AIUnsupported.capture, function() local _ = nil + 1 end))
+-- 巢狀時內層吞不掉：中間那層沒有 capture，訊號就一路到最外層。
+ok, captured = AIUnsupported.capture(function()
+    local function inner() ai_unsupported("inner", "k") end
+    local function middle() return inner() end
+    return middle()
+end)
+assert(ok == false and captured.reason == "inner" and captured.key == "k")
+
+-- 未覆蓋紀錄有界、有原因，讀出來是副本。
+ai_coverage.clearUncovered()
+local entries, dropped = ai_coverage.uncovered()
+assert(#entries == 0 and dropped == 0)
+ai_coverage.notCovered("use_card", "no strategy", "Slash")
+ai_coverage.notCovered("activate", "no candidates")
+ai_coverage.notCovered(nil, "ignored")
+ai_coverage.notCovered("use_card", nil)
+entries, dropped = ai_coverage.uncovered()
+assert(#entries == 2 and dropped == 0)
+assert(entries[1].kind == "use_card" and entries[1].reason == "no strategy"
+    and entries[1].key == "Slash")
+assert(entries[2].kind == "activate" and entries[2].key == nil)
+entries[1].reason = "tampered"
+assert(ai_coverage.uncovered()[1].reason == "no strategy")
+for _ = 1, 100 do ai_coverage.notCovered("use_card", "flood") end
+entries, dropped = ai_coverage.uncovered()
+assert(#entries == 64 and dropped == 38)
+ai_coverage.clearUncovered()
+assert(#ai_coverage.uncovered() == 0 and select(2, ai_coverage.uncovered()) == 0)
 return true

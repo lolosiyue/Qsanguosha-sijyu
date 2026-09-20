@@ -66,6 +66,8 @@ static bool parseSyntheticSeed(int argc, char **argv, quint64 &seed)
 
 int runLuaRuntimeIsolationTests();
 int runRoomRuntimeIsolationTests();
+int runIsolatedPlanningTests();
+int runIsolatedCommonTests();
 int runRoomRuntimeLuaTeardownTests();
 int runCardLifetimeTests();
 int runCardLifetimeSyntheticTests(int actorCount, quint64 seed);
@@ -111,7 +113,11 @@ int main(int argc, char **argv)
             return 64;
         return runIsolatedTestCases("RUNTIME_CONTRACT_RESULT", {
             {QStringLiteral("lua-runtime"), {QStringLiteral("--suite"), QStringLiteral("lua-runtime")}},
-            {QStringLiteral("room-runtime"), {QStringLiteral("--suite"), QStringLiteral("room-runtime")}},
+            // Every isolation case builds its own Room on purpose - that is what makes
+            // it an isolation test - and one Room costs roughly half a minute in a
+            // Debug build. The suite passed the 300s default until the P1-P3 cases
+            // landed; it now runs ~370s, so the budget is stated rather than implied.
+            {QStringLiteral("room-runtime"), {QStringLiteral("--suite"), QStringLiteral("room-runtime")}, 600000},
             {QStringLiteral("room-lua-teardown"), {QStringLiteral("--suite"), QStringLiteral("room-lua-teardown")}},
             {QStringLiteral("lua-exception-unwind"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-shutdown"), QStringLiteral("lua-exception-unwind")}, 60000},
             {QStringLiteral("initial-room-close"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-initial-room-close")}, 60000},
@@ -127,6 +133,10 @@ int main(int argc, char **argv)
     }
     if (suite == QLatin1String("lua-runtime"))
         return runLuaRuntimeIsolationTests();
+    if (suite == QLatin1String("ai-planning"))
+        return runIsolatedPlanningTests();
+    if (suite == QLatin1String("ai-common"))
+        return runIsolatedCommonTests();
     if (suite == QLatin1String("room-runtime"))
         return runRoomRuntimeIsolationTests();
     if (suite == QLatin1String("room-lua-teardown"))

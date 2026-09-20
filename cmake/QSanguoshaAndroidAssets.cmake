@@ -77,15 +77,32 @@ function(qsan_add_android_runtime_assets target)
             "${qsan_android_root}/lua/config.lua" "${qsan_android_lua_manifest}"
         VERBATIM)
 
-    list(FIND qsan_android_valid_lua_relative "lua/config.lua" qsan_android_config_index)
-    list(FIND qsan_android_valid_lua_relative "lua/sanguosha.lua" qsan_android_sanguosha_index)
-    list(FIND qsan_android_valid_lua_relative "lua/ai/smart-ai.lua" qsan_android_smart_ai_index)
-    if(qsan_android_config_index EQUAL -1 OR qsan_android_sanguosha_index EQUAL -1
-        OR qsan_android_smart_ai_index EQUAL -1)
-        message(FATAL_ERROR
-            "Android runtime package requires lua/config.lua, lua/sanguosha.lua, and "
-            "lua/ai/smart-ai.lua")
-    endif()
+    # The isolated AI runtime is as load-bearing as smart-ai.lua: AiRouteRegistry::
+    # routeFor() defaults to AiRouteIsolated, so an APK missing any script that
+    # lua/ai/isolated-bootstrap.lua declares as core installs fine and then fails at
+    # the first Room. Per-package handlers stay out of this list: a package with no
+    # lua/ai/isolated/<package>-ai.lua simply has no isolated AI yet.
+    # docs/ai-runtime-manifest.json records the load order.
+    foreach(qsan_android_required_lua
+            lua/config.lua
+            lua/sanguosha.lua
+            lua/ai/smart-ai.lua
+            lua/ai/mode-ai.lua
+            lua/ai/isolated-bootstrap.lua
+            lua/ai/isolated-facades.lua
+            lua/ai/isolated/ask-for-use-card.lua
+            lua/ai/isolated/ask-for-choice.lua
+            lua/ai/isolated/decision-core.lua
+            lua/ai/isolated/retrial.lua
+            lua/ai/isolated/strategy-hooks.lua
+            lua/ai/isolated/event-intention.lua)
+        list(FIND qsan_android_valid_lua_relative "${qsan_android_required_lua}"
+            qsan_android_required_index)
+        if(qsan_android_required_index EQUAL -1)
+            message(FATAL_ERROR
+                "Android runtime package requires ${qsan_android_required_lua}")
+        endif()
+    endforeach()
     if(NOT qsan_android_valid_extensions OR NOT qsan_android_valid_ai)
         message(FATAL_ERROR
             "Android runtime package requires non-empty extensions/ and lua/ai/ Lua sets")

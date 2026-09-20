@@ -1,0 +1,400 @@
+{
+  "schema_version": 1,
+  "purpose": "The real source, load order and failure mode of every Lua file the isolated AI runtime depends on. Authored by hand, enforced by tools/ai/check-ai-runtime-manifest.py so drift fails a test instead of surfacing as a dead AI in a fresh deployment.",
+  "why_no_hashes": "lua/ai/ is not version-controlled in this repository (.gitignore:11) and the fetcher default ref is a moving branch, so a content hash here would be stale on the next upstream push. The one pinned hash that does exist stays in docs/lua-ai-spec.md, next to the patch that produces it. This manifest pins presence, order and gates, not bytes.",
+  "upstream": {
+    "repository": "https://github.com/lolosiyue/extensions.git",
+    "repository_env_override": "QSAN_EXTENSIONS_REPO",
+    "ref_default": "main",
+    "ref_env_override": "QSAN_EXTENSIONS_REF",
+    "ref_pinned": null,
+    "ref_pinned_note": "Not pinned: QSAN_EXTENSIONS_REF defaults to main. The local synchronized checkpoint is recorded below; publishing or choosing a fixed CI ref is a separate operation.",
+    "fetchers": [
+      "tools/ci/fetch-extensions.sh",
+      "tools/ci/fetch-extensions.ps1"
+    ],
+    "fetch_contract_test": "tools/autotest/tests/test_fetch_extensions_contract.py",
+    "path_mapping": {
+      "ai/**/*.lua": "lua/ai/ (whole tree; ai/isolated/ becomes lua/ai/isolated/)",
+      "extensions/*.lua": "extensions/ (top level only)",
+      "lua/*.lua": "lua/ (top level only)"
+    },
+    "local_modification": {
+      "file": "lua/ai/smart-ai.lua",
+      "change": "Both fetchers sed the AI load loop from \"lua/ai/\"..sl to \"lua/ai/\"..ai_file, working around an upstream bug that breaks mixed-case package AI on case-sensitive filesystems.",
+      "consequence": "The deployed file never matches upstream bytes. Its post-patch SHA-256 is recorded in docs/lua-ai-spec.md.",
+      "fetcher_verifies_patch_applied": true
+    },
+    "synced_commit": "6fcdfdd",
+    "synced_note": "Local external main checkpoint 6fcdfdd contains the six declared isolated core scripts, facades and mode policy. All nine affected Lua files match the L worktree by SHA-256. This checkpoint is committed locally, not pushed; the remote default main does not yet deliver this checkpoint.",
+    "line_endings": "ai/ is CRLF throughout; the fetcher copies bytes through unchanged."
+  },
+  "version_control": {
+    "tracked_in_this_repository": false,
+    "gitignore_rules": [
+      "lua/ai/",
+      "extensions/"
+    ],
+    "tracked_file_count": {
+      "lua/ai": 0,
+      "extensions": 0
+    },
+    "consequence": "A clean git clone of this repository contains no lua/ai/ at all. Because AiRouteRegistry::routeFor() defaults to AiRouteIsolated, AiLuaRuntime::initialize() then fails and no Room gets an AI runtime. Running a fetcher is a mandatory setup step, not an optimisation. The converse trap is just as real and cost this project a working upstream: because the tree is ignored, local edits to lua/ai/ are invisible to git status and can sit unpushed indefinitely, and the fetchers only copy - they never delete - so the machine that made them keeps working while every other environment is broken.",
+    "local_config_is_not_a_source": "config.ini is gitignored. Anything that loads only because the local config.ini names it is absent from every other deployment, see files[].loaded_by_default."
+  },
+  "load_chain": [
+    {
+      "stage": 1,
+      "kind": "script",
+      "file": "lua/ai/isolated-bootstrap.lua",
+      "site": "src/server/ai-runtime.cpp:587",
+      "budget": "AiLuaInitializationInstructionBudget"
+    },
+    {
+      "stage": 2,
+      "kind": "native",
+      "file": null,
+      "site": "src/server/ai-runtime.cpp:589 installSandbox()",
+      "note": "Removes dofile/require and the gameplay globals. Every later script must therefore be self-contained; none of them may pull a dependency in on its own."
+    },
+    {
+      "stage": 3,
+      "kind": "script",
+      "file": "lua/ai/isolated-facades.lua",
+      "site": "src/server/ai-runtime.cpp:590",
+      "budget": "AiLuaInitializationInstructionBudget"
+    },
+    {
+      "stage": 4,
+      "kind": "declared_core_then_enabled_packages",
+      "file": "lua/ai/isolated/<name>",
+      "site": "src/server/ai-runtime.cpp:592 loadConfiguredScripts()",
+      "config_key": "AiIsolatedScripts",
+      "note": "Without an AiIsolatedScripts override the host loads ai_isolated_core as declared by isolated-bootstrap.lua (fatal on failure), then one <package>-ai.lua per enabled package (skipped on failure). An explicit AiIsolatedScripts is taken literally, empty list included; the isolation tests use it to stand up a runtime with one script or none.",
+      "config_override": "AiIsolatedScripts"
+    }
+  ],
+  "isolated_core_scripts": [
+    "ask-for-use-card.lua",
+    "ask-for-choice.lua",
+    "decision-core.lua",
+    "retrial.lua",
+    "strategy-hooks.lua",
+    "event-intention.lua"
+  ],
+  "isolated_core_scripts_source": "lua/ai/isolated-bootstrap.lua ai_isolated_core",
+  "isolated_core_scripts_note": "Declared in the Lua tree, not in C++, so the list travels with the scripts it names. The host only carries it out, because the sandbox removes dofile. Order matters: ask-for-use-card.lua installs the handler registries the package handlers write into.",
+  "package_handler_rule": "A package's isolated handlers load because that package is enabled and lua/ai/isolated/<package>-ai.lua exists, matched case-insensitively against Engine::getExtensions() - the same rule smart-ai.lua uses to find <package>-ai.lua in lua/ai. No host-side list names them, and a package without a handler file is the normal case. A handler that fails to load costs that package its isolated AI and nothing else.",
+  "files": [
+    {
+      "path": "lua/ai/isolated-bootstrap.lua",
+      "vm": "isolated",
+      "role": "Isolated VM bootstrap: handler registration, coverage declaration, the bounded not-covered log, ai_memory, and the ai_isolated_core declaration that says which dispatchers the host must load next. ai_decide is the one place an unsupported signal becomes a legacy fallback with a recorded reason.",
+      "load_order": 1,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "if_missing_detail": "AiLuaRuntime::initialize() returns false; the Room has no AI runtime.",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "runtime"
+    },
+    {
+      "path": "lua/ai/isolated-facades.lua",
+      "vm": "isolated",
+      "role": "Value-type facades: SmartAIView / PlayerView / CardView / CandidateView / AIList over the snapshot, the AIResultValue boundary, and AIUnsupported - the tagged signal that keeps 'not covered' apart from 'declined' and from a real error.",
+      "load_order": 2,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "if_missing_detail": "AiLuaRuntime::initialize() returns false; the Room has no AI runtime.",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "runtime"
+    },
+    {
+      "path": "lua/ai/isolated/ask-for-use-card.lua",
+      "vm": "isolated",
+      "role": "askForUseCard dispatcher; owns the pattern/skill handler registries for both callback ABIs.",
+      "load_order": 3,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "core"
+    },
+    {
+      "path": "lua/ai/isolated/ask-for-choice.lua",
+      "vm": "isolated",
+      "role": "Value-decision dispatcher: one registry per decision kind, keyed by request reason.",
+      "load_order": 4,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "core"
+    },
+    {
+      "path": "lua/ai/isolated/decision-core.lua",
+      "vm": "isolated",
+      "role": "Shared decision flow: keep/use value, priority, sorting, threat assessment, turn candidates, the one target-ranking function every path uses, the aiUseCard / ai_card_use author API, and the first physical-card strategies (Slash, Peach).",
+      "load_order": 5,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "core"
+    },
+    {
+      "path": "lua/ai/isolated/standard-ai.lua",
+      "vm": "isolated",
+      "role": "Migrated standard-package handlers (currently @@lianying only).",
+      "load_order": null,
+      "loaded_by_default": null,
+      "required": false,
+      "if_missing": "package_loses_its_isolated_ai",
+      "gated_by": [
+        "check-ai-runtime-manifest.py"
+      ],
+      "kind": "package_handler",
+      "package": "standard",
+      "if_missing_detail": "The standard package falls back to legacy for these skills. Not fatal and not gated: an absent handler file is how a package says it has no isolated AI yet."
+    },
+    {
+      "path": "lua/ai/isolated/scarlet-ai.lua",
+      "vm": "isolated",
+      "role": "s4_sunjian isolated handlers.",
+      "load_order": null,
+      "loaded_by_default": null,
+      "required": false,
+      "if_missing": "package_loses_its_isolated_ai",
+      "status": "loaded_with_its_package",
+      "status_detail": "Previously dead in every deployment but the development machine, because it was absent from the old host-side default list and loaded only where config.ini named it. Under the package rule it loads wherever the scarlet package is enabled, with no host list and no config.ini involved.",
+      "gated_by": [
+        "check-ai-runtime-manifest.py"
+      ],
+      "kind": "package_handler",
+      "package": "scarlet"
+    },
+    {
+      "path": "lua/ai/isolated/pass-ai.lua",
+      "vm": "isolated",
+      "role": "Test fixture: answers every activate/use_card with pass.",
+      "load_order": null,
+      "loaded_by_default": false,
+      "required": false,
+      "if_missing": "test_only",
+      "loaded_by": "tests/room-runtime-isolation-test.cpp via a scoped AiIsolatedScripts override",
+      "gated_by": [
+        "check-ai-runtime-manifest.py"
+      ],
+      "kind": "test_fixture"
+    },
+    {
+      "path": "lua/ai/isolated/instruction-limit-test.lua",
+      "vm": "isolated",
+      "role": "Test fixture: a loop that deliberately exceeds the initialization instruction budget.",
+      "load_order": null,
+      "loaded_by_default": false,
+      "required": false,
+      "if_missing": "test_only",
+      "loaded_by": "tests/room-runtime-isolation-test.cpp via a scoped AiIsolatedScripts override",
+      "gated_by": [
+        "check-ai-runtime-manifest.py"
+      ],
+      "kind": "test_fixture"
+    },
+    {
+      "path": "lua/ai/smart-ai.lua",
+      "vm": "gameplay",
+      "role": "Legacy SmartAI. Not part of the isolated VM, but it is the only thing that dofiles mode-ai.lua and value-boundary.lua into the gameplay VM.",
+      "load_order": null,
+      "loaded_by_default": true,
+      "loaded_by": "src/server/room-runtime.cpp:511",
+      "required": true,
+      "if_missing": "hard_fail",
+      "if_missing_detail": "RoomRuntime script load fails, and with it the mode-policy source the isolated world view reads.",
+      "locally_patched": true,
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "QSAN_ASSET_REQUIRED",
+        "android_runtime_package"
+      ]
+    },
+    {
+      "path": "lua/ai/mode-ai.lua",
+      "vm": "gameplay",
+      "role": "Provides sgs.evaluateModeAI, which AiLuaRuntime::evaluateModePolicy calls to fill AIWorldView.modePolicy.",
+      "load_order": null,
+      "loaded_by_default": true,
+      "loaded_by": "lua/ai/smart-ai.lua:6 (dofile); also extensions/addFunction.lua:2230",
+      "required": true,
+      "if_missing": "silent_degradation",
+      "if_missing_detail": "evaluateModePolicy (src/server/ai-runtime.cpp:421) finds no sgs.evaluateModeAI, returns early and leaves a degenerate policy in which the viewer is its own only friend. The isolated AI then reasons from a wrong world view with no error anywhere. This is the one cross-VM dependency of the isolated runtime.",
+      "gated_by": [
+        "check-ai-runtime-manifest.py"
+      ]
+    },
+    {
+      "path": "lua/ai/value-boundary.lua",
+      "vm": "gameplay",
+      "role": "Pure-Lua boundary helpers for legacy SmartAI.",
+      "load_order": null,
+      "loaded_by_default": true,
+      "loaded_by": "lua/ai/smart-ai.lua:7 (dofile); tests/lua/value-boundary-contract.lua",
+      "required": false,
+      "if_missing": "legacy_only",
+      "if_missing_detail": "Not loaded into the isolated VM at all, contrary to the migration plan assumption that it belongs to the isolated core. Only legacy SmartAI and its contract fixture use it.",
+      "gated_by": [
+        "fetch-extensions.sh (via smart-ai.lua dofile)"
+      ],
+      "upstream_status": "synced 2026-09-19; smart-ai.lua dofiles it upstream too"
+    },
+    {
+      "path": "lua/ai/mode-policies/villager.lua",
+      "vm": "gameplay",
+      "role": "Example/fixture mode policy. Registers itself through sgs.registerModeAI when dofiled.",
+      "load_order": null,
+      "loaded_by_default": false,
+      "required": false,
+      "if_missing": "test_only",
+      "loaded_by": "tests/lua/mode-ai-contract.lua only; nothing in production discovers it",
+      "gated_by": []
+    },
+    {
+      "path": "lua/ai/role-policies/villager.lua",
+      "vm": "gameplay",
+      "role": "Role table dofiled by mode-policies/villager.lua.",
+      "load_order": null,
+      "loaded_by_default": false,
+      "required": false,
+      "if_missing": "test_only",
+      "loaded_by": "lua/ai/mode-policies/villager.lua:3",
+      "gated_by": []
+    },
+    {
+      "path": "lua/ai/isolated/retrial.lua",
+      "vm": "isolated",
+      "role": "Pure-value judge outcome and retrial candidate selection.",
+      "load_order": 6,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "core"
+    },
+    {
+      "path": "lua/ai/isolated/strategy-hooks.lua",
+      "vm": "isolated",
+      "role": "Viewer-scoped skill hooks consumed by shared value and target strategies.",
+      "load_order": 7,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "core"
+    },
+    {
+      "path": "lua/ai/isolated/event-intention.lua",
+      "vm": "isolated",
+      "role": "Atomic viewer-scoped event intention and memory proposals.",
+      "load_order": 8,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "core"
+    }
+  ],
+  "deployment_paths": [
+    {
+      "target": "install / CPack (qsan_data component)",
+      "site": "CMakeLists.txt install(DIRECTORY ${QSAN_DATA_DIRECTORIES})",
+      "carries_lua_ai": true,
+      "carries_detail": "Installs the whole lua/ tree, so lua/ai/isolated/ rides along.",
+      "verified_by": "QSAN_ASSET_REQUIRED in the generated assets-manifest.json"
+    },
+    {
+      "target": "TUI package",
+      "site": "cmake/DeployTui.cmake:39",
+      "carries_lua_ai": true,
+      "carries_detail": "file(COPY lua) excluding only lua/qss.",
+      "verified_by": "the forbidden-path loop, which checks what must be absent rather than what must be present"
+    },
+    {
+      "target": "Android APK",
+      "site": "cmake/QSanguoshaAndroidAssets.cmake",
+      "carries_lua_ai": true,
+      "carries_detail": "GLOB_RECURSE lua/*.lua; lua/ai/temp/ is dropped by the excluded-directory pattern.",
+      "verified_by": "the required-file FATAL_ERROR list in the same file"
+    },
+    {
+      "target": "Docker server image",
+      "site": ".dockerignore",
+      "carries_lua_ai": true,
+      "carries_detail": "Neither lua/ai/ nor extensions/ is excluded; the image expects a fetcher to have populated them before the build context is made."
+    },
+    {
+      "target": "local development tree",
+      "site": "tools/ci/fetch-extensions.ps1",
+      "carries_lua_ai": true,
+      "carries_detail": "Windows counterpart of the bash fetcher; it copies ai/isolated/*.lua one level deep rather than recursively, so a future nested ai/isolated/<subdir>/ would be silently dropped on Windows but kept on Linux."
+    }
+  ],
+  "known_stale_copies": [
+    {
+      "path": "tools/autotest/autotest-logs/web-rules-repair-20260912-034733/assets/lua/ai/",
+      "holds": [
+        "isolated-bootstrap.lua",
+        "isolated-facades.lua",
+        "isolated/ask-for-use-card.lua",
+        "isolated/standard-ai.lua",
+        "isolated/pass-ai.lua",
+        "isolated/instruction-limit-test.lua"
+      ],
+      "content_matches_canonical": false,
+      "tracked": false,
+      "ignored_by": ".gitignore:61 autotest-logs/",
+      "verdict": "A captured test artifact, not a competing canonical source: it is untracked, ignored, and on no deployment path. Recorded so a future grep for isolated-facades.lua does not mistake it for a second copy to reconcile."
+    }
+  ]
+}

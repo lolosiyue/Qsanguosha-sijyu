@@ -18,7 +18,8 @@ class AiDecisionCoordinator
 public:
     AiDecisionCoordinator(Room &room, SkillRuntimeCoordinator &skillRuntime);
 
-    AIWorldView buildWorldView(ServerPlayer *viewer) const;
+    AIWorldView buildWorldView(ServerPlayer *viewer, bool compactPolicy = false,
+                               bool eventOnly = false) const;
     // Called once per trigger, while the structs are still alive, to keep a bounded
     // value log. Nothing from the QVariant survives the call.
     void recordEvent(int triggerEvent, ServerPlayer *target, const QVariant &data);
@@ -30,6 +31,7 @@ public:
     AIRequest makeRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
                           CardUseStruct::CardUseReason reason, const QString &pattern,
                           const QString &prompt, Card::HandlingMethod method) const;
+    bool buildCardConversions(ServerPlayer *player, AIRequest &request, int &projectionBudget) const;
     bool buildSkillActionContext(ServerPlayer *player, const SkillInstance &instance,
                                  CardUseStruct::CardUseReason reason, const QString &pattern,
                                  AiSkillActionContext &actionContext) const;
@@ -83,8 +85,8 @@ public:
                            QMap<ServerPlayer *, QStringList> &skills, bool optional,
                            const QVariant &data, QString &answer) const;
 
-    // Card responses keep the legacy Card * on the legacy routes: a virtual card
-    // cannot survive a round trip through the value model yet.
+    // Responses carry physical IDs or issued conversion specs across the isolated
+    // boundary. Only the authoritative builder creates native response cards.
     const Card *decideResponseCard(ServerPlayer *player, const QString &pattern,
                                    const QString &prompt, const QVariant &data,
                                    Card::HandlingMethod method) const;
@@ -103,6 +105,7 @@ public:
                                            Card::HandlingMethod method) const;
 
 private:
+    friend struct RoomTestAccess;
     // The legacy answer runs live on this Room, so it is produced on demand and only
     // for the routes that need it.
     typedef std::function<AIResult(const AIRequest &)> LegacyAnswer;
@@ -113,7 +116,10 @@ private:
                    const LegacyAnswer &legacy, AIResult &result,
                    bool *fromIsolated = nullptr) const;
     static AIResult legacyAnswerResult(const AIRequest &request, const QString &answer);
-    Card *buildSpecCard(ServerPlayer *player, const AICardSpec &spec) const;
+    void projectDecisionContext(ServerPlayer *viewer, const QVariant &data,
+                                AIRequest &request) const;
+    Card *buildSpecCard(ServerPlayer *player, const AIRequest &request,
+                        const AICardSpec &spec) const;
     typedef std::function<const Card *()> LegacyCard;
     AIRequest makeResponseRequest(ServerPlayer *player, const QString &question,
                                   const QString &reason, const QString &pattern,

@@ -44,14 +44,24 @@ old.custom_roles = false
 assert(not sgs.evaluateModeAI(old).managed)
 assert(not pcall(sgs.registerModeAI, "bad", {teams={one={"x"}, two={"x"}}}))
 
--- Beliefs are viewer-local. This fixture uses a mutation solely to expose aliasing.
-sgs.registerModeAI("mind", {gameProcess=function(ctx, state)
-    state.count = (state.count or 0) + 1
-    return state.count, "neutral"
-end})
-assert(sgs.evaluateModeAI(world("mind", "first")).game_process == 1)
-assert(sgs.evaluateModeAI(world("mind", "second")).game_process == 1)
-assert(sgs.evaluateModeAI(world("mind", "first")).game_process == 2)
+-- Beliefs are viewer-local. Query hooks receive a read-only state snapshot;
+-- intention events are the explicit state mutation boundary.
+sgs.registerModeAI("mind", {
+    gameProcess=function(ctx, state)
+        state.query_write = 1 -- ignored by the read-only query snapshot
+        return state.count or 0, "neutral"
+    end,
+    onIntention=function(ctx, from, to, level, state)
+        state.count = (state.count or 0) + level
+    end,
+})
+local first_mind, second_mind = world("mind", "first"), world("mind", "second")
+assert(sgs.evaluateModeAI(first_mind).game_process == 0)
+assert(sgs.evaluateModeAI(second_mind).game_process == 0)
+sgs.updateModeAIIntention(first_mind, "b", "first", 1)
+assert(sgs.evaluateModeAI(first_mind).game_process == 1)
+assert(sgs.evaluateModeAI(second_mind).game_process == 0)
+assert(sgs.evaluateModeAI(first_mind).game_process == 1)
 
 -- Same mode, different observer identities; missing hooks inherit mode defaults.
 sgs.registerModeAI("roles", {
