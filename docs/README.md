@@ -141,7 +141,7 @@
 
 | 文檔 | 說明 |
 |------|------|
-| [superpowers/specs/2026-09-09-extension-compatibility-scope-design.md](superpowers/specs/2026-09-09-extension-compatibility-scope-design.md) | Extension compatibility scope 設計權威（declared manifest P1–P3 已落地；兩項開放：完整舊載入／新 manifest 的 registry 對照、manifest 追加排序守衛） |
+目前沒有保留中的 superpowers 設計 spec。
 
 ---
 
