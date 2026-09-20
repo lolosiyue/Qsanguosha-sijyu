@@ -23,6 +23,13 @@ using namespace QSanProtocol;
 
 namespace {
 
+static void printRoomThreadStage(const char *suite, const char *stage)
+{
+    // Flush directly to stderr so a timeout retains the last fixture boundary.
+    std::fprintf(stderr, "[%s stage] %s\n", suite, stage);
+    std::fflush(stderr);
+}
+
 class SettingsOverrideGuard
 {
 public:
@@ -245,7 +252,9 @@ static bool v2BrokenStillFlushesDeferredClientState()
     BreakAfterDirtyV2Skill skill;
     Sanguosha->addSkills(QList<const Skill *>() << &skill);
 
-    Room room(nullptr, QStringLiteral("02_1v1"));
+    // Native probes supply the trigger table; no Lua rules or SmartAI are used.
+    Room room(nullptr, QStringLiteral("02_1v1"), GameSessionConfig(),
+              Room::RuntimeInitializationPolicy::Deferred);
     RoomTestAccess::attachThread(room);
     ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(
         room, QStringLiteral("dirty-owner"));
@@ -296,7 +305,8 @@ static bool v2BrokenStillFlushesDeferredClientState()
 
 static bool fixedDistanceChangesInvalidateDistanceSync()
 {
-    Room room(nullptr, QStringLiteral("02_1v1"));
+    Room room(nullptr, QStringLiteral("02_1v1"), GameSessionConfig(),
+              Room::RuntimeInitializationPolicy::Deferred);
     RoomTestAccess::attachThread(room);
     ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(
         room, QStringLiteral("fixed-owner"));
@@ -358,7 +368,8 @@ static bool v2PartitionPreservesOrderAndPrivatePriorityState()
     OrderedV2Probe highSecond(QStringLiteral("test-roomthread-v2-high-second"),
                               DrawNCards, 3, &v2Order);
     LegacyPriorityProbe legacy(QStringLiteral("test-roomthread-legacy"), ChoiceMade, 2);
-    Room room(nullptr, QStringLiteral("02_1v1"));
+    Room room(nullptr, QStringLiteral("02_1v1"), GameSessionConfig(),
+              Room::RuntimeInitializationPolicy::Deferred);
     RoomTestAccess::attachThread(room);
     room.getThread()->addTriggerSkill(&low);
     room.getThread()->addTriggerSkill(&highFirst);
@@ -435,7 +446,9 @@ static bool cardLifetimeMutexProfileCountsLocks()
 static bool outerTurnReclaimsAfterNestedDispatch()
 {
     const auto runCase = [](bool throwTurnBroken, const QString &playerName) {
-        Room room(nullptr, QStringLiteral("03_1v2"));
+        // Binding still selects this Room's lifetime domain without loading scripts.
+        Room room(nullptr, QStringLiteral("03_1v2"), GameSessionConfig(),
+                  Room::RuntimeInitializationPolicy::Deferred);
         RoomTestAccess::attachThread(room);
         ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, playerName);
         RoomTestAccess::resetAlive(room);
@@ -480,18 +493,22 @@ static bool outerTurnReclaimsAfterNestedDispatch()
 int runRoomThreadDeferredStateTests()
 {
     QString error;
+    printRoomThreadStage("roomthread-deferred-state", "engine-bootstrap.begin");
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;
         return 1;
     }
+    printRoomThreadStage("roomthread-deferred-state", "fixed-distance.begin");
     if (!fixedDistanceChangesInvalidateDistanceSync()) {
         qCritical() << "RoomThread fixed-distance invalidation regression failed";
         return 2;
     }
+    printRoomThreadStage("roomthread-deferred-state", "deferred-flush.begin");
     if (!v2BrokenStillFlushesDeferredClientState()) {
         qCritical() << "RoomThread deferred state regression failed";
         return 3;
     }
+    printRoomThreadStage("roomthread-deferred-state", "turn-reclaim.begin");
     if (!outerTurnReclaimsAfterNestedDispatch()) {
         qCritical() << "RoomThread outer-turn card reclamation regression failed";
         return 4;
@@ -503,14 +520,17 @@ int runRoomThreadDeferredStateTests()
 int runRoomThreadPerfTests()
 {
     QString error;
+    printRoomThreadStage("roomthread-perf", "engine-bootstrap.begin");
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;
         return 1;
     }
+    printRoomThreadStage("roomthread-perf", "v2-partition.begin");
     if (!v2PartitionPreservesOrderAndPrivatePriorityState()) {
         qCritical() << "RoomThread V2 partition/private priority regression failed";
         return 2;
     }
+    printRoomThreadStage("roomthread-perf", "mutex-profile.begin");
     if (!cardLifetimeMutexProfileCountsLocks()) {
         qCritical() << "CardLifetime mutex profile regression failed";
         return 3;

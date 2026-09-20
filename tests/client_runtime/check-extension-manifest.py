@@ -66,8 +66,10 @@ def check(root: Path) -> None:
         raise AssertionError("extensions on disk are not declared: " + ", ".join(missing))
     if extra:
         raise AssertionError("declared extensions are missing from disk: " + ", ".join(extra))
-    if scripts != disk:
-        raise AssertionError("declared order does not match the migrated filename order")
+    # config.lua is the authority for extension load/ID order.  It may be
+    # intentionally different from a filesystem sort (for example when a
+    # migrated extension must retain its historical position), so enforce the
+    # exact declared set above without imposing a second ordering policy.
     if len(lang) != len(set(lang)):
         raise AssertionError("extension_names contains duplicate lang paths")
     expected_lang = presentation_files(root)
@@ -209,7 +211,7 @@ class SelfTest(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, "declared lang files"):
                 check(root)
 
-    def test_missing_extra_duplicate_and_order_are_errors(self):
+    def test_missing_extra_and_duplicate_are_errors(self):
         import tempfile
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
@@ -226,9 +228,10 @@ class SelfTest(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError, "duplicate scripts"):
                 (root / "lua/config.lua").write_text(self.config(["extensions/a.lua", "extensions/a.lua"]))
                 check(root)
-            with self.assertRaisesRegex(AssertionError, "order"):
-                (root / "lua/config.lua").write_text(self.config(["extensions/b.lua", "extensions/a.lua"]))
-                check(root)
+            # Declaration order is authoritative and need not follow the
+            # directory's lexical order.
+            (root / "lua/config.lua").write_text(self.config(["extensions/b.lua", "extensions/a.lua"]))
+            check(root)
 
 
 def main() -> int:

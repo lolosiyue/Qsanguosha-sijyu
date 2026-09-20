@@ -223,7 +223,7 @@ void testBoard05pPlay()
     addPlayer(&state, QStringLiteral("sgs2"), 2, QStringLiteral("caocao"), 9, 12,
               QStringLiteral("rebel"));
     state.setPlayerValue(QStringLiteral("sgs2"), QStringLiteral("faceup"), false);
-    // sgs3 is also chained, to exercise the "连环" status marker alongside
+    // sgs3 is also chained, to exercise the shared "铁索" status marker alongside
     // its existing count-only equipment/judge format.
     addPlayer(&state, QStringLiteral("sgs3"), 3, QStringLiteral("zhangfei"), 4, 4,
               QStringLiteral("loyalist"));
@@ -303,7 +303,7 @@ void testBoard05pPlay()
     check(text.contains(QStringLiteral("♥ 9/12")),
           "a max hp above 8 falls back to the numeric hp display");
     check(text.contains(QString::fromUtf8("翻面")), "a face-down player is marked");
-    check(text.contains(QString::fromUtf8("连环")), "a chained player is marked");
+    check(text.contains(QString::fromUtf8("铁索")), "a chained player is marked");
     check(text.contains(QString::fromUtf8("濒死")), "a dying player is marked");
     check(text.contains(QString::fromUtf8("装【")),
           "self spells out equipment names in brackets instead of just a count");

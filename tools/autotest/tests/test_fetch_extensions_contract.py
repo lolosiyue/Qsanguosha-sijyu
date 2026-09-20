@@ -79,14 +79,32 @@ def build_fixture_repository(path: pathlib.Path) -> None:
     git("commit", "--quiet", "-m", "fixture", cwd=path)
 
 
+def find_native_bash() -> str | None:
+    bash = shutil.which("bash")
+    if os.name != "nt":
+        return bash
+    # System32/bash.exe is a WSL launcher, not a shell for Windows fixture paths.
+    windows = pathlib.Path(os.environ.get("SystemRoot", "C:/Windows")).resolve()
+    candidates = [pathlib.Path(bash)] if bash else []
+    git_exe = shutil.which("git")
+    if git_exe:
+        git_root = pathlib.Path(git_exe).resolve().parent.parent
+        candidates.extend((git_root / "bin/bash.exe", git_root / "usr/bin/bash.exe"))
+    for candidate in candidates:
+        if candidate.is_file() and not candidate.resolve().is_relative_to(windows):
+            return str(candidate)
+    return None
+
+
 def main() -> int:
     if not SCRIPT.is_file():
         print("missing %s" % SCRIPT, file=sys.stderr)
         return 2
-    # Resolve PATH first: Windows process lookup can otherwise select the
-    # System32 WSL launcher before a Git Bash placed earlier on PATH.
-    bash = shutil.which("bash")
+    bash = find_native_bash()
     if bash is None:
+        if os.name == "nt":
+            print("FETCH_EXTENSIONS_RESULT SKIP (native Bash unavailable; WSL is not required)")
+            return 77
         print("FETCH_EXTENSIONS_RESULT FAIL (bash not found on PATH)", file=sys.stderr)
         return 2
     with tempfile.TemporaryDirectory() as directory:
@@ -97,10 +115,18 @@ def main() -> int:
         build_fixture_repository(repository)
 
         environment = dict(os.environ)
+        if os.name == "nt":
+            # A direct Git Bash launch does not run the login profile that adds
+            # its POSIX utilities (mktemp, sed, cp) to PATH.
+            shell_bin = pathlib.Path(bash).parent
+            utility_bin = shell_bin.parent / "usr/bin"
+            environment["PATH"] = os.pathsep.join(
+                [str(shell_bin), str(utility_bin), environment.get("PATH", "")]
+            )
         environment["QSAN_EXTENSIONS_REPO"] = repository.as_uri()
         environment["QSAN_EXTENSIONS_REF"] = "main"
         environment.pop("GITHUB_ENV", None)
-        result = subprocess.run([bash, str(SCRIPT), str(checkout)], env=environment,
+        result = subprocess.run([bash, SCRIPT.as_posix(), checkout.as_posix()], env=environment,
                                 capture_output=True, text=True)
         if result.returncode != 0:
             print(result.stdout + result.stderr, file=sys.stderr)

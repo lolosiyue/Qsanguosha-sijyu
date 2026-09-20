@@ -15,7 +15,8 @@ bool expect(bool condition, const char *message)
 {
     if (condition)
         return true;
-    qCritical().noquote() << message;
+    // Keep failures visible to CTest even when Qt routes diagnostics elsewhere.
+    QTextStream(stderr) << "[runtime-paths] " << message << '\n';
     return false;
 }
 
@@ -72,11 +73,33 @@ QStringList argv(const QStringList &extra = QStringList())
 class CurrentDirectoryGuard
 {
 public:
-    CurrentDirectoryGuard() : m_original(QDir::currentPath()) {}
-    ~CurrentDirectoryGuard() { QDir::setCurrent(m_original); }
+    CurrentDirectoryGuard()
+        : m_original(QDir::currentPath()),
+          m_assetRoot(qgetenv("QSAN_ASSET_ROOT")),
+          m_userDataRoot(qgetenv("QSAN_USER_DATA_ROOT")),
+          m_hadAssetRoot(qEnvironmentVariableIsSet("QSAN_ASSET_ROOT")),
+          m_hadUserDataRoot(qEnvironmentVariableIsSet("QSAN_USER_DATA_ROOT"))
+    {
+        // CTest inherits the launcher environment. Runtime resolution tests must
+        // exercise their explicit candidates instead of a stale process override.
+        qunsetenv("QSAN_ASSET_ROOT");
+        qunsetenv("QSAN_USER_DATA_ROOT");
+    }
+    ~CurrentDirectoryGuard()
+    {
+        QDir::setCurrent(m_original);
+        if (m_hadAssetRoot) qputenv("QSAN_ASSET_ROOT", m_assetRoot);
+        else qunsetenv("QSAN_ASSET_ROOT");
+        if (m_hadUserDataRoot) qputenv("QSAN_USER_DATA_ROOT", m_userDataRoot);
+        else qunsetenv("QSAN_USER_DATA_ROOT");
+    }
 
 private:
     QString m_original;
+    QByteArray m_assetRoot;
+    QByteArray m_userDataRoot;
+    bool m_hadAssetRoot;
+    bool m_hadUserDataRoot;
 };
 
 bool commandLineOverrideWins()

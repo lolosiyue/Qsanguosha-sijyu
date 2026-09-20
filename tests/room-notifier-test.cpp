@@ -548,7 +548,9 @@ static bool presentationPayloadsStayStable(Room &room, MessageRecorder &recorder
     PlayerUIState state;
     state.handMax = 5;
     state.offensiveDistance = -1;
-    room.notifyPlayerUIState(owner, owner, state);
+    // Exercise the owner-scoped broadcast overload so the controller receives
+    // the same private state through the normal recipient resolution path.
+    room.notifyPlayerUIState(owner, state);
     const PacketRecord *uiRecord = recorder.first(controller, S_COMMAND_UPDATE_PLAYER_UI_STATE);
     PlayerUIStateMessage uiMessage;
     if (recorder.parseFailed

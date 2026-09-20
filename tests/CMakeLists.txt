@@ -225,8 +225,12 @@ qsan_add_ctest(qsanguosha_replay_game_state_protocol qsanguosha_core_tests
     SUITE replay-game-state
     LABELS "protocol;fast"
 )
-qsan_add_ctest(qsanguosha_takeover_snapshot_contract qsanguosha_core_tests
-    SUITE takeover-snapshot
+# Exercise real native rules and SmartAI with isolated builtin content; unrelated
+# external extensions must not consume these transport/restore contract budgets.
+qsan_add_ctest(qsanguosha_takeover_snapshot_contract "${Python3_EXECUTABLE}"
+    ARGS "${CMAKE_CURRENT_SOURCE_DIR}/client_runtime/run-builtin-server-contract.py"
+        --runner $<TARGET_FILE:qsanguosha_core_tests> --asset-root "${QSAN_TEST_ROOT}"
+        -- --suite takeover-snapshot
     LABELS "replay;server;fast"
     TIMEOUT 60
 )
@@ -683,6 +687,7 @@ add_test(NAME qsanguosha_fetch_extensions_contract
 set_tests_properties(qsanguosha_fetch_extensions_contract PROPERTIES
     WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
     LABELS "packaging;fast"
+    SKIP_RETURN_CODE 77
     TIMEOUT 120
 )
 
@@ -761,9 +766,11 @@ if(QSAN_ENABLE_WEBSOCKETS)
         qsanguosha_protocol_v2_contract_support
         Qt6::WebSockets
     )
-    qsan_add_ctest(qsanguosha_websocket_gateway_contract qsanguosha_websocket_gateway_tests
+    qsan_add_ctest(qsanguosha_websocket_gateway_contract "${Python3_EXECUTABLE}"
         LABELS "server;fast"
-        ARGS --server $<TARGET_FILE:qsanguosha_server>
+        ARGS "${CMAKE_CURRENT_SOURCE_DIR}/client_runtime/run-builtin-server-contract.py"
+            --runner $<TARGET_FILE:qsanguosha_websocket_gateway_tests> --asset-root "${QSAN_TEST_ROOT}"
+            -- --server $<TARGET_FILE:qsanguosha_server>
         TIMEOUT 60
     )
 endif()

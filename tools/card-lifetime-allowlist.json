@@ -36,9 +36,38 @@
     "`gamerule.cpp:1345 judge card`",
     "`gamerule.cpp:556 ComboMovesCard`",
     "`generic-cardcontainer-ui.cpp:990-1231 simulated equips`",
-    "ordinary RoomThread"
+    "ordinary RoomThread",
+    "`SkillDeclarationSession::releaseCards` (`src/core/skill-declaration.cpp:77`)",
+    "`AiDecisionCoordinator::buildCardConversions` (`src/server/ai-decision-coordinator.cpp:719,740`)",
+    "`AiDecisionCoordinator::buildSpecCard` (`src/server/ai-decision-coordinator.cpp:877`)",
+    "`AiDecisionCoordinator::applyResult` (`src/server/ai-decision-coordinator.cpp:966`)"
   ],
   "legacy_sites": [
+    {
+      "site": "src/core/skill-declaration.cpp:77",
+      "category": "raw_delete",
+      "reason": "SkillDeclarationSession owns the temporary Cards in m_cards and releases them after clearing its owned Player tag"
+    },
+    {
+      "site": "src/server/ai-decision-coordinator.cpp:719",
+      "category": "raw_delete",
+      "reason": "buildCardConversions rejects the bare proxy and discards the skill-produced temporary before it can escape the request"
+    },
+    {
+      "site": "src/server/ai-decision-coordinator.cpp:740",
+      "category": "raw_delete",
+      "reason": "buildCardConversions copies the produced Card into a value projection, then discards the temporary before returning the request"
+    },
+    {
+      "site": "src/server/ai-decision-coordinator.cpp:877",
+      "category": "raw_delete",
+      "reason": "buildSpecCard rejects a skill-produced Card that disagrees with the authorized conversion ticket and discards it synchronously"
+    },
+    {
+      "site": "src/server/ai-decision-coordinator.cpp:966",
+      "category": "raw_delete",
+      "reason": "applyResult discards the built Card when no matching authorization ticket exists, before CardUseStruct can take ownership"
+    },
     {
       "site": "src/core/room-state.cpp:16",
       "category": "raw_delete",
