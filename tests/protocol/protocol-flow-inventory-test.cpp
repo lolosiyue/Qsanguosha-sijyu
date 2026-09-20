@@ -208,7 +208,7 @@ bool strictPayloadContracts(QString *error)
     if (!ProtocolPayloadRegistry::validateObjectPayload(encoded, error))
         return false;
 
-    // docs/focus-relation-protocol-decision.md 2.3 / 4.2: the seat ring carries
+    // docs/large-room-ui-protocol-audit.md D4: the seat ring carries
     // the play direction on schema 2, and schema 1 stays acceptable because
     // every replay recorded before the flag existed still carries it.
     ProtocolMessage seats = roomNotification(S_COMMAND_ARRANGE_SEATS, {});

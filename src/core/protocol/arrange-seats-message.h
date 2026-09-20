@@ -4,7 +4,7 @@
 #include <QStringList>
 #include <QVariant>
 
-// docs/focus-relation-protocol-decision.md 2.3: the seat ring carries its own
+// docs/large-room-ui-protocol-audit.md D4: the seat ring carries its own
 // play direction, so a reconnecting, spectating or late-joining client never
 // has to infer it from the battle log.  Every S_COMMAND_ARRANGE_SEATS carries
 // the flag, including the one at game start -- a replay seek replays from the
