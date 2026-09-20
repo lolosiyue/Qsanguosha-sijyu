@@ -157,7 +157,7 @@ static bool eventKind(const QString &kind)
     static const QSet<QString> kinds = {QStringLiteral("game"), QStringLiteral("round"),
         QStringLiteral("turn"), QStringLiteral("phase"), QStringLiteral("skill"),
         QStringLiteral("use_card"), QStringLiteral("respond_card"), QStringLiteral("damage"),
-        QStringLiteral("move_cards")};
+        QStringLiteral("move_cards"), QStringLiteral("extra_turn")};
     return kinds.contains(kind);
 }
 

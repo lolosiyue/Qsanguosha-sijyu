@@ -14,7 +14,7 @@ Room 持有一份 server authoritative 的 `ResolutionHistoryService`。它只�
 
 | 類型 | 意義 | 典型 kind | 是否可更新 |
 | --- | --- | --- | --- |
-| event | 一段有生命週期的結算範圍，具有 parent、scope、status、outcome | `round`、`turn`、`phase`、`skill`、`use_card`、`respond_card`、`damage`、`move_cards` | 可用 `updateEvent` 補充 data，最後由 `finishEvent` 結束 |
+| event | 一段有生命週期的結算範圍，具有 parent、scope、status、outcome | `round`、`turn`、`phase`、`skill`、`use_card`、`respond_card`、`damage`、`move_cards`、`extra_turn` | 可用 `updateEvent` 補充 data，最後由 `finishEvent` 結束 |
 | fact | 已發生且不可變的觀察，掛在一個 event 下，以全域 `sequence` 排序 | `move`、`use_card`、`actual_damage`、`damage_component` | 不可修改或刪除 |
 | active stack | 目前尚未 finish 的 event id 堆疊；新 event 的 parent 是 stack 頂端 | 例如 round → turn → phase → skill | 由 begin/finish 自動維護 |
 
