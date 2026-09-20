@@ -129,7 +129,19 @@ protected:
     QGraphicsRectItem *_m_duanchangMask;
 
 private:
-    QString m_overviewProjection;
+    QString m_overviewGeneral;
+    QString m_overviewKingdom;
+    QString m_overviewAssetRoot;
+    int m_overviewHp = 0;
+    int m_overviewMaxHp = 0;
+    int m_overviewHandCount = 0;
+    int m_overviewHandMax = 0;
+    bool m_overviewHideHandCount = false;
+    bool m_overviewPortraitReady = false;
+    bool m_overviewValuesReady = false;
+    bool m_overviewControlsPrepared = false;
+    quint64 m_overviewSkinRevision = 0;
+    quint64 m_overviewCatalogRevision = 0;
     void _applyLayoutTransform(const QSanRoomSkin::PhotoLayout *layout);
 };
 

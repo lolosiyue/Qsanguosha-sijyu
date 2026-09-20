@@ -307,6 +307,7 @@ public:
     // docs/client-core-interaction-model.md.
     ClientCore *interactionCore() const { return m_interactionCore; }
     ClientLiveSession *liveSession() const { return m_liveSession; }
+    bool isPresentationStateSyncActive() const;
     QJsonArray interactionInventory() const;
 
     // Presentation ports used by DesktopInteractionView. Each one is the last line or two

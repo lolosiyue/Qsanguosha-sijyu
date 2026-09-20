@@ -110,6 +110,14 @@ static bool isAutoTestClient()
     return Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty();
 }
 
+static void setPortraitAnimationVisible(PlayerCardContainer *container, bool visible)
+{
+    // Canonical Photos retain selection state at opacity zero; their decorative
+    // decoders must follow presentation visibility independently of that state.
+    if (auto *avatar = container->getAvartarItem()) avatar->setPresentationVisible(visible);
+    if (auto *avatar = container->getSmallAvartarItem()) avatar->setPresentationVisible(visible);
+}
+
 static ClientPlayer *getControlRootPlayer(const ClientPlayer *player)
 {
 	ClientPlayer *current = const_cast<ClientPlayer *>(player);
@@ -325,9 +333,6 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	current_gift_type = QString();
 
 	// create photos
-#if !defined(QSAN_XP_LEGACY) && !defined(Q_OS_ANDROID)
-    G_EFFECTS.setLargeRoom(Sanguosha->getPlayerCount(ServerInfo.GameMode) > 20);
-#endif
 	for (int i = 1;i < Sanguosha->getPlayerCount(ServerInfo.GameMode);i++){
 		Photo*photo = new Photo;
 		photo->setZValue(1);
@@ -865,7 +870,6 @@ void RoomScene::exitOnsoleContext()
 
 RoomScene::~RoomScene()
 {
-    G_EFFECTS.setLargeRoom(false);
     delete m_chatController;
     m_chatController = nullptr;
     delete m_inputRouter;
@@ -1346,7 +1350,6 @@ void RoomScene::attachOverlay(RoomOverlayHost *overlay)
 
 void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled)
 {
-    G_EFFECTS.setLargeRoom(enabled && input.largeRoom);
     m_responsiveInput = input;
     if (enabled && input.largeRoom && !m_largeRoomOverview) {
         m_largeRoomOverview = new LargeRoomOverview(gamePresentation());
@@ -1377,8 +1380,10 @@ void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &inp
         dashboard->setResponsiveGeometry(QSizeF(), RoomLayoutEngine::Handedness::None);
         prompt_box->setScale(1.0);
         prompt_box->shift();
-        for (Photo *photo : photos)
+        for (Photo *photo : photos) {
             photo->setOpacity(1.0);
+            setPortraitAnimationVisible(photo, true);
+        }
         m_responsiveLayout = RoomLayoutEngine::ResponsiveResult();
     }
     gamePresentation()->requestRefresh();
@@ -1423,7 +1428,10 @@ void RoomScene::applyResponsiveLayout()
     if (!layout.valid) {
         // A transient zero-sized viewport must not leave native input invisible.
         dashboard->setOpacity(1.0);
-        for (Photo *photo : photos) photo->setOpacity(1.0);
+        for (Photo *photo : photos) {
+            photo->setOpacity(1.0);
+            setPortraitAnimationVisible(photo, true);
+        }
         emit responsiveGeometryChanged();
         return;
     }
@@ -1473,6 +1481,7 @@ void RoomScene::applyResponsiveLayout()
         if (input.largeRoom) visible = false;
         table.photos.append(place);
         photos[i]->setOpacity(visible ? 1.0 : 0.0);
+        setPortraitAnimationVisible(photos[i], visible);
     }
     applyTableLayout(table);
     if (m_largeRoomOverview && input.largeRoom) m_largeRoomOverview->setLayout(layout);
@@ -1726,6 +1735,10 @@ void RoomScene::setApplicationSuspended(bool suspended, bool offline)
         m_appPausedAnimations.clear();
         m_appPausedMovies.clear();
     }
+    // Application resume may have restarted a decoder whose Photo became
+    // transparent in the meantime. Reapply the presentation gate afterwards.
+    for (Photo *photo : photos)
+        if (photo) setPortraitAnimationVisible(photo, photo->isVisible() && photo->effectiveOpacity() > 0.0);
 }
 
 void RoomScene::refreshTouchTargets(qreal viewportScale)
@@ -1985,6 +1998,8 @@ void RoomScene::mouseMoveEvent(QGraphicsSceneMouseEvent*event)
 
 void RoomScene::enableTargets(const Card*card)
 {
+    // Receivers queue projection until this draft mutation has completed.
+    emit presentationDraftChanged();
 	Client::Status status = ClientInstance->getStatus();
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
 	if(card!=nullptr){
@@ -2058,6 +2073,7 @@ void RoomScene::enableTargets(const Card*card)
 
 void RoomScene::updateTargetsEnablity(const Card*card)
 {
+    emit presentationDraftChanged();
 	/*QMapIterator<PlayerCardContainer*,const ClientPlayer*> itor(item2player);
 	while (itor.hasNext()){
 		itor.next();
@@ -2096,6 +2112,7 @@ void RoomScene::updateTargetsEnablity(const Card*card)
 
 void RoomScene::updateSelectedTargets()
 {
+    emit presentationDraftChanged();
 	PlayerCardContainer*item = qobject_cast<PlayerCardContainer*>(sender());
 	if(item==nullptr) return;
 	const Card*card = dashboard->getSelected();
@@ -3182,6 +3199,7 @@ void RoomScene::presentSkillDialog(QSanSkillButton *button, QDialog *dialog)
 
 void RoomScene::clearPresentedDialogSkill(bool resetButtonState)
 {
+    emit presentationDraftChanged();
 	if (dashboard->isShowingDialogOptions())
 		dashboard->hideDialogOptions();
 
@@ -3195,6 +3213,7 @@ void RoomScene::clearPresentedDialogSkill(bool resetButtonState)
 
 void RoomScene::activateSkill(const ViewAsSkill *skill)
 {
+    emit presentationDraftChanged();
 	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	if (!skill)
 		return;
@@ -3269,6 +3288,7 @@ void RoomScene::acquireSkill(const ClientPlayer *player, const QString &skill_na
 
 void RoomScene::updateSkillButtons(bool isPrepare)
 {
+    emit presentationDraftChanged();
 	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	QStringList desired_skill_names;
 	QStringList equip_view_as_skills;
@@ -3431,6 +3451,7 @@ void RoomScene::useSelectedCard()
 
 void RoomScene::onEnabledChange()
 {
+    emit presentationDraftChanged();
 	QGraphicsItem*photo = qobject_cast<QGraphicsItem*>(sender());
 	if(!photo) return;
 	if(photo->isEnabled())

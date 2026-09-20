@@ -610,6 +610,10 @@ bool Client::dispatchProtocolMessage(const ProtocolMessage &message, bool replay
 		Callback callback = m_callbacks.value(static_cast<CommandType>(message.command), nullptr);
 		if (callback)
 			(this->*callback)(message.payload);
+		// Replay has no live-session stateChanged signal. Publish only committed
+		// state after its GUI callbacks, never intermediate snapshot chunks.
+		if (replayInput && !m_stateSyncActive)
+			emit gamePresentationStateChanged();
 		return true;
 	}
 	if (message.type == ProtocolMessageType::Request && !replayInput) {
@@ -623,6 +627,11 @@ void Client::stateSync(const QVariant &)
 {
     // Shared reducer commits the snapshot atomically before GUI presentation callbacks run.
     if (!m_stateSyncActive) emit gamePresentationStateChanged();
+}
+
+bool Client::isPresentationStateSyncActive() const
+{
+    return m_stateSyncActive || (m_liveSession && m_liveSession->isStateSyncActive());
 }
 
 void Client::failProtocol(const QString &detail)

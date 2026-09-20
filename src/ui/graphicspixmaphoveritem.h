@@ -30,6 +30,7 @@ public:
     void setGeneralImage(const QPixmap &pixmap, const QSize &targetSize);
     void stopGifAnimation();
     void startGifAnimation();
+    void setPresentationVisible(bool visible);
     bool isAnimated() const { return m_isAnimated; }
 
 public slots:
@@ -69,6 +70,10 @@ private:
     QPixmap m_staticPixmap;
     QString m_targetImagePath;
     QString m_targetGeneralName;
+    bool m_presentationVisible;
+    bool m_gifPlaybackRequested;
+    bool m_gifPausedForPresentation;
+    bool m_moviePausedByPresentation = false;
 
 signals:
     void hover_enter();

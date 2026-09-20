@@ -50,15 +50,18 @@ private:
     QPointer<GameTextSnapshotDialog> m_snapshot;
     GameActionModel m_model;
     GameEventStream m_events;
-    QJsonObject m_lastState;
+    QJsonObject m_lastActions;
+    QString m_lastPrompt;
     bool m_stateDirty = true;
+    bool m_viewDirty = true;
+    GameViewState m_cachedView;
     quint64 m_revision = 0;
     quint64 m_draftRequest = 0;
     quint64 m_draftGeneration = 0;
     QString m_option;
     bool m_refreshPending = false;
     QHash<QObject *, QMetaObject::Connection> m_liveConsumers;
-    QJsonObject m_lastPublishedView;
+    quint64 m_lastPublishedRevision = 0;
     bool m_forcePresentation = false;
 };
 

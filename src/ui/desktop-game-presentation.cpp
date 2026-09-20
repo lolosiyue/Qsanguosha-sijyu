@@ -72,7 +72,13 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     qRegisterMetaType<GameActionModel>();
     // Queue publication until the existing signal chain has finished updating
     // card eligibility, targets and buttons (including an atomic STATE_SYNC).
-    connect(scene, &QGraphicsScene::changed, this, [this]() { scheduleRefresh(); });
+    // Scene::changed also fires for every animation frame. Only semantic draft
+    // changes may rebuild actions; painting must never re-project all players.
+    connect(scene, &RoomScene::presentationDraftChanged, this, [this]() { scheduleRefresh(); });
+    connect(scene, &QGraphicsScene::selectionChanged, this, [this]() { scheduleRefresh(); });
+    connect(scene->dashboard, &Dashboard::card_selected, this, [this]() { scheduleRefresh(); });
+    for (QSanButton *button : {scene->ok_button, scene->cancel_button, scene->discard_button})
+        connect(button, &QSanButton::enable_changed, this, [this]() { scheduleRefresh(); });
     connect(scene->m_guanxingBox, &GuanxingBox::draftChanged, this, [this]() { scheduleRefresh(); });
     connect(scene->card_container, &CardContainer::gongxinDraftChanged, this, [this]() { scheduleRefresh(); });
     connect(scene->m_chooseTriggerOrderBox, &ChooseTriggerOrderBox::draftChanged, this, [this]() { scheduleRefresh(); });
@@ -85,6 +91,7 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     });
 #endif
     if (!m_client) return;
+    connect(m_client->getPromptDoc(), &QTextDocument::contentsChanged, this, [this]() { scheduleRefresh(); });
     connect(m_client, &Client::gamePresentationStateChanged, this,
         [this]() { m_stateDirty = true; scheduleRefresh(); });
     connect(m_client, &Client::status_changed, this, [this]() { m_stateDirty = true; scheduleRefresh(); });
@@ -94,12 +101,12 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     connect(core, &ClientCore::responseAccepted, this, [this]() { scheduleRefresh(); });
     connect(core, &ClientCore::responseRejected, this, [this]() { scheduleRefresh(); });
     if (auto *session = m_client->liveSession()) {
-        connect(session, &ClientLiveSession::protocolMessageReceived, this,
+        connect(session, &ClientLiveSession::stateChanged, this,
                 [this]() { m_stateDirty = true; scheduleRefresh(); });
         connect(session, &ClientLiveSession::connectionChanged, this,
-                [this]() { scheduleRefresh(); });
+                [this]() { m_stateDirty = true; scheduleRefresh(); });
         connect(session, &ClientLiveSession::disconnected, this,
-                [this]() { scheduleRefresh(); });
+                [this]() { m_stateDirty = true; scheduleRefresh(); });
     }
 }
 
@@ -133,6 +140,7 @@ void DesktopGamePresentation::setLiveConsumer(QObject *consumer, bool live)
 
 void DesktopGamePresentation::requestRefresh()
 {
+    m_viewDirty = true;
     if (!m_liveConsumers.isEmpty()) m_forcePresentation = true;
     scheduleRefresh();
 }
@@ -427,8 +435,10 @@ GameActionModel DesktopGamePresentation::actionModel() const
     }
     // Stable seat order, independent of the QMap's graphics-object addresses.
     const QStringList seats = core->state()->playerNames();
-    std::stable_sort(model.players.begin(), model.players.end(), [&seats](const GameActionEntry &a, const GameActionEntry &b) {
-        return seats.indexOf(a.id) < seats.indexOf(b.id);
+    QHash<QString, int> seatIndex;
+    for (int i = 0; i < seats.size(); ++i) seatIndex.insert(seats.at(i), i);
+    std::stable_sort(model.players.begin(), model.players.end(), [&seatIndex](const GameActionEntry &a, const GameActionEntry &b) {
+        return seatIndex.value(a.id, -1) < seatIndex.value(b.id, -1);
     });
     for (QSanSkillButton *button : m_scene->m_skillButtons) {
         if (!button->getViewAsSkill() || !button->isVisibleTo(m_scene->dashboard)) continue;
@@ -446,6 +456,9 @@ GameActionModel DesktopGamePresentation::actionModel() const
 void DesktopGamePresentation::refresh()
 {
     if (!m_client) return;
+    // STATE_SYNC publishes only after the entire snapshot (including the legacy
+    // view callbacks) has arrived. Keep dirty work pending until its end signal.
+    if (m_client->isPresentationStateSyncActive()) return;
     const auto *session = m_client->liveSession();
     const quint64 generation = session ? session->generation() : 0;
     const quint64 request = m_client->interactionCore()->activeRequestId();
@@ -453,28 +466,37 @@ void DesktopGamePresentation::refresh()
         m_option.clear();
         m_draftRequest = request;
         m_draftGeneration = generation;
+        m_viewDirty = true;
     }
     GameActionModel next = actionModel();
-    GameActionModel previous = m_model;
-    previous.presentationRevision = 0;
-    bool stateChanged = false;
-    if (m_stateDirty && (!session || !session->isStateSyncActive())) {
-        const QJsonObject state = m_client->interactionCore()->state()->toJson();
-        stateChanged = state != m_lastState;
-        m_lastState = state;
-        m_stateDirty = false;
-    }
-    if (next.toJson() != previous.toJson() || stateChanged || m_revision == 0) ++m_revision;
+    const QJsonObject actions = next.toJson();
+    const QString prompt = next.prompt.isEmpty() ? plain(m_client->getPromptDoc()->toPlainText()) : next.prompt;
+    const bool changed = actions != m_lastActions || prompt != m_lastPrompt || m_stateDirty || m_revision == 0;
+    m_viewDirty = m_viewDirty || m_stateDirty;
+    m_stateDirty = false;
+    m_lastActions = actions;
+    m_lastPrompt = prompt;
+    if (changed) ++m_revision;
     next.presentationRevision = m_revision;
     m_model = next;
-    if (m_panel) m_panel->setModel(m_model);
+    if (m_panel && (changed || m_panel->isVisible())) m_panel->setModel(m_model);
     if (!m_liveConsumers.isEmpty()) {
-        const GameViewState state = viewState();
-        const QJsonObject projected = state.toJson();
-        if (m_forcePresentation || projected != m_lastPublishedView) {
-            m_lastPublishedView = projected;
+        const auto *operating = m_scene->getDashboardPlayer();
+        const QString operatingName = operating ? operating->objectName() : m_client->interactionCore()->state()->selfName();
+        const bool rebuild = m_viewDirty || m_cachedView.operatingPlayer != operatingName;
+        if (rebuild) {
+            m_cachedView = viewState();
+            m_viewDirty = false;
+        }
+        // Draft-only changes carry a fresh request fence and prompt, while the
+        // recipient-scoped player/event projection remains reusable.
+        m_cachedView.presentationRevision = m_revision;
+        m_cachedView.requestId = request;
+        m_cachedView.prompt = prompt;
+        if (m_forcePresentation || rebuild || m_revision != m_lastPublishedRevision) {
+            m_lastPublishedRevision = m_revision;
             m_forcePresentation = false;
-            emit presentationChanged(state, m_model);
+            emit presentationChanged(m_cachedView, m_model);
         }
     }
 }
@@ -510,7 +532,7 @@ GameViewState DesktopGamePresentation::viewState() const
             ? QString::number(source->distanceTo(target)) : QString();
     };
     const auto *session = m_client->liveSession();
-    options.stateReady = (!session || (!session->isStateSyncActive() && session->isActive()));
+    options.stateReady = !m_client->isPresentationStateSyncActive() && (!session || session->isActive());
     auto result = GameViewState::fromState(*core->state(), core->hasActiveRequest() ? &core->activeRequest() : nullptr,
         session ? session->generation() : 0, m_revision, options);
     // The desktop already expands translated prompts with skill-specific context.
@@ -556,12 +578,14 @@ void DesktopGamePresentation::showControls()
                 Qt::QueuedConnection);
     }
     refresh();
+    m_panel->setModel(m_model);
     m_panel->openPanel();
 }
 
 void DesktopGamePresentation::applyIntent(const QString &kind, const QString &id, bool selected,
                                          quint64 generation, quint64 revision, quint64 requestId)
 {
+    if (!m_client || m_client->isPresentationStateSyncActive()) return;
     // Re-project immediately before dispatch. An input from an old UI frame may
     // never reach the legacy click handlers, which do not carry request identity.
     refresh();

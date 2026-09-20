@@ -4,6 +4,9 @@
  *****************************************************************************/
 
 #include "SpineGlItem.h"
+#include "runtime-paths.h"
+#include "package-catalog.h"
+#include "skin-bank.h"
 
 #include <QPainter>
 #include <QOpenGLWidget>
@@ -16,6 +19,7 @@
 #include <QFile>
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QFileInfo>
 #include <QtMath>
 #include <cstring>
 #include <cstddef>
@@ -28,98 +32,257 @@
 //  QtSpineTextureLoader
 // ═══════════════════════════════════════════════════════════════════════════
 
+namespace {
+// Texture destruction must never run against an unrelated current context.
+class SpineTextureContextScope {
+public:
+    explicit SpineTextureContextScope(QOpenGLContext *owner)
+        : previous(QOpenGLContext::currentContext()),
+          previousSurface(previous ? previous->surface() : nullptr) {
+        if (owner && owner == previous) return;
+        if (owner && owner->isValid()) {
+            surface = std::make_unique<QOffscreenSurface>();
+            surface->setFormat(owner->format());
+            surface->create();
+            if (surface->isValid() && owner->makeCurrent(surface.get())) return;
+        }
+        // With a lost owner, Qt 6.11's texture destructor drops its CPU wrapper
+        // without issuing GL calls when no context is current. The GL allocation
+        // then survives until its context/share group dies; never delete a foreign ID.
+        if (auto *current = QOpenGLContext::currentContext()) current->doneCurrent();
+    }
+    ~SpineTextureContextScope() {
+        if (previous && previousSurface) previous->makeCurrent(previousSurface);
+        else if (auto *current = QOpenGLContext::currentContext()) current->doneCurrent();
+    }
+private:
+    QPointer<QOpenGLContext> previous;
+    QSurface *previousSurface;
+    std::unique_ptr<QOffscreenSurface> surface;
+};
+
+QString spineFileIdentity(const QString &path) {
+    const QFileInfo info(path);
+    return QString("%1|%2|%3").arg(info.canonicalFilePath(),
+        QString::number(info.size()), QString::number(info.lastModified().toMSecsSinceEpoch()));
+}
+}
+
 struct QtSpineTextureLoader::TexturePage {
+    QtSpineTextureLoader *owner = nullptr;
     QString path;
-    QOpenGLTexture *texture = nullptr;
+    QString identity;
+    QHash<QOpenGLContext *, QOpenGLTexture *> textures;
+    quint64 estimatedBytes = 0;
 };
 
 QtSpineTextureLoader::QtSpineTextureLoader() {}
 
 QtSpineTextureLoader::~QtSpineTextureLoader() {
+    for (const auto &cleanup : _contextCleanup) QObject::disconnect(cleanup.connection);
     releaseTextures();
     qDeleteAll(_textures);
 }
 
+void QtSpineTextureLoader::releaseTextures(QOpenGLContext *context) {
+    SpineTextureContextScope scope(_contextCleanup.value(context).owner.data());
+    for (TexturePage *page : _textures) delete page->textures.take(context);
+}
+
 void QtSpineTextureLoader::releaseTextures() {
-    for (TexturePage *page : _textures) {
-        delete page->texture;
-        page->texture = nullptr;
+    for (QOpenGLContext *context : _contextCleanup.keys()) releaseTextures(context);
+}
+
+QOpenGLTexture *QtSpineTextureLoader::ensureTexture(TexturePage *page) {
+    auto *context = QOpenGLContext::currentContext();
+    if (!context || !context->isValid()) return nullptr;
+    if (auto *texture = page->textures.value(context)) {
+        if (_contextCleanup.value(context).owner == context) return texture;
+        // A recycled QObject address cannot make an old texture current again.
+        releaseTextures(context);
+        QObject::disconnect(_contextCleanup.take(context).connection);
     }
+    const QImage image(page->path);
+    if (image.isNull()) return nullptr;
+    auto *texture = new QOpenGLTexture(image, QOpenGLTexture::DontGenerateMipMaps);
+    if (!texture->isCreated()) { delete texture; return nullptr; }
+    texture->setMinificationFilter(QOpenGLTexture::Linear);
+    texture->setMagnificationFilter(QOpenGLTexture::Linear);
+    texture->setWrapMode(QOpenGLTexture::ClampToEdge);
+    page->estimatedBytes = quint64(image.width()) * quint64(image.height()) * 4;
+    page->textures.insert(context, texture);
+    if (!_contextCleanup.contains(context)) {
+        // One fence per loader/context, including assets evicted but still playing.
+        _contextCleanup.insert(context, {context, QObject::connect(context,
+            &QOpenGLContext::aboutToBeDestroyed, context, [this, context]() {
+                releaseTextures(context);
+                QObject::disconnect(_contextCleanup.take(context).connection);
+            }, Qt::DirectConnection)});
+    }
+    return texture;
 }
 
 void QtSpineTextureLoader::reloadTextures() {
-    for (TexturePage *page : _textures) {
-        if (page->texture)
-            continue;
-        const QImage image(page->path);
-        if (image.isNull())
-            continue;
-        page->texture = new QOpenGLTexture(image, QOpenGLTexture::DontGenerateMipMaps);
-        page->texture->setMinificationFilter(QOpenGLTexture::Linear);
-        page->texture->setMagnificationFilter(QOpenGLTexture::Linear);
-        page->texture->setWrapMode(QOpenGLTexture::ClampToEdge);
-    }
+    for (TexturePage *page : _textures) ensureTexture(page);
 }
 
 void QtSpineTextureLoader::load(void *&textureHandle, const spine::String &path) {
     QString qpath = QString::fromUtf8(path.buffer());
-
-    // Try application-relative path first
-    if (!QFile::exists(qpath)) {
-        QString appDir = QCoreApplication::applicationDirPath() + "/" + qpath;
-        if (QFile::exists(appDir))
-            qpath = appDir;
-    }
-
-    if (!QFile::exists(qpath)) {
-        qWarning("[TexLoader] FATAL: texture file not found: '%s'", qPrintable(qpath));
-        textureHandle = nullptr;
-        return;
-    }
-
-    QImage image(qpath);
-    if (image.isNull()) {
-        qWarning("[TexLoader] Failed to load image: '%s'", qPrintable(qpath));
-        textureHandle = nullptr;
-        return;
-    }
-
-    QOpenGLContext *ctx = QOpenGLContext::currentContext();
-    if (!ctx)
-        qWarning("[TexLoader] No current OpenGL context — texture creation may fail");
-
-    // Must be called within a valid OpenGL context
-    QOpenGLTexture *tex = new QOpenGLTexture(image, QOpenGLTexture::DontGenerateMipMaps);
-    tex->setMinificationFilter(QOpenGLTexture::Linear);
-    tex->setMagnificationFilter(QOpenGLTexture::Linear);
-    tex->setWrapMode(QOpenGLTexture::ClampToEdge);
-
+    if (!QFile::exists(qpath)) qpath = QCoreApplication::applicationDirPath() + "/" + qpath;
     auto *page = new TexturePage;
-    page->path = qpath;
-    page->texture = tex;
+    page->owner = this;
+    page->path = QFileInfo(qpath).absoluteFilePath();
+    page->identity = spineFileIdentity(page->path);
+    if (!ensureTexture(page)) {
+        qWarning("[TexLoader] Failed to load texture: '%s'", qPrintable(qpath));
+        _loadFailed = true;
+        delete page;
+        textureHandle = nullptr;
+        return;
+    }
     _textures.append(page);
     textureHandle = page;
 }
 
 void QtSpineTextureLoader::unload(void *textureHandle) {
     auto *page = static_cast<TexturePage *>(textureHandle);
-    if (page) {
-        _textures.removeAll(page);
-        delete page->texture;
-        delete page;
+    if (!page) return;
+    _textures.removeAll(page);
+    for (auto it = page->textures.cbegin(); it != page->textures.cend(); ++it) {
+        SpineTextureContextScope scope(_contextCleanup.value(it.key()).owner.data());
+        delete it.value();
     }
+    delete page;
 }
 
 QOpenGLTexture *QtSpineTextureLoader::getTexture(void *handle) {
-    return handle ? static_cast<TexturePage *>(handle)->texture : nullptr;
+    auto *page = static_cast<TexturePage *>(handle);
+    return page ? page->owner->ensureTexture(page) : nullptr;
+}
+
+quint64 QtSpineTextureLoader::estimatedTextureBytes() const {
+    quint64 total = 0;
+    for (const TexturePage *page : _textures) total += page->estimatedBytes;
+    return total;
+}
+
+bool QtSpineTextureLoader::sourcePagesUnchanged() const {
+    for (const TexturePage *page : _textures)
+        if (page->identity != spineFileIdentity(page->path)) return false;
+    return true;
+}
+
+bool QtSpineTextureLoader::hasValidPages() const {
+    return !_loadFailed && !_textures.isEmpty();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  SpineGlItem
 // ═══════════════════════════════════════════════════════════════════════════
 
+// SkeletonData and its Atlas are immutable after parsing.  They can therefore
+// be shared by independent Skeleton/AnimationState instances, while the cache
+// keeps texture handles separate for each exact OpenGL context.
+struct SpineSharedAsset {
+    std::unique_ptr<QtSpineTextureLoader> textureLoader;
+    std::unique_ptr<spine::Atlas> atlas;
+    spine::SkeletonData *skeletonData = nullptr;
+    QString selectedRuntime;
+    QStringList animationNames;
+    QHash<QString, float> animationDurations;
+    quint64 estimatedTextureBytes = 0;
+    ~SpineSharedAsset() {
+        delete skeletonData;
+        skeletonData = nullptr;
+        atlas.reset();
+        textureLoader.reset();
+    }
+};
+
+namespace {
+struct SpineAssetCacheEntry {
+    QString key;
+    std::shared_ptr<SpineSharedAsset> asset;
+};
+
+struct SpineParseMetadata {
+    QString key;
+    QString selectedRuntime;
+};
+
+QList<SpineAssetCacheEntry> &spineAssetCache() {
+    static QList<SpineAssetCacheEntry> cache;
+    return cache;
+}
+
+QList<SpineParseMetadata> &spineParseMetadataCache() {
+    static QList<SpineParseMetadata> cache;
+    return cache;
+}
+
+constexpr int kSpineAssetCacheLimit = 8;
+constexpr int kSpineParseMetadataCacheLimit = 128;
+constexpr quint64 kSpineAssetCacheByteBudget = 64ull * 1024ull * 1024ull;
+
+QString spineParseCacheKey(const QString &atlasPath, const QString &skelPath,
+                           const QString &runtimeHint, float scale) {
+    return QString("atlas=%1;skel=%2;hint=%3;scale=%4;root=%5;skin-rev=%6;catalog-rev=%7")
+        .arg(spineFileIdentity(atlasPath), spineFileIdentity(skelPath), runtimeHint,
+             QString::number(scale, 'g', 9), QSanRuntimePaths::assetRoot(),
+             QString::number(G_ROOM_SKIN.visualRevision()),
+             QString::number(QSanPackages::catalogRevision()));
+}
+
+QString cachedParserRuntime(const QString &key) {
+    for (const SpineParseMetadata &entry : spineParseMetadataCache())
+        if (entry.key == key)
+            return entry.selectedRuntime;
+    return {};
+}
+
+void storeParserRuntime(const QString &key, const QString &runtime) {
+    if (runtime.isEmpty())
+        return;
+    auto &cache = spineParseMetadataCache();
+    for (int i = cache.size() - 1; i >= 0; --i)
+        if (cache[i].key == key)
+            cache.removeAt(i);
+    cache.prepend({key, runtime});
+    while (cache.size() > kSpineParseMetadataCacheLimit)
+        cache.removeLast();
+}
+
+std::shared_ptr<SpineSharedAsset> findCachedSpineAsset(const QString &key) {
+    auto &cache = spineAssetCache();
+    for (int i = 0; i < cache.size(); ++i) {
+        if (cache[i].key != key) continue;
+        SpineAssetCacheEntry hit = cache.takeAt(i);
+        // Check only pages actually referenced by the atlas, including subdirectories.
+        if (!hit.asset->textureLoader->sourcePagesUnchanged()) return {};
+        cache.prepend(hit);
+        return hit.asset;
+    }
+    return {};
+}
+
+void storeCachedSpineAsset(const QString &key, const std::shared_ptr<SpineSharedAsset> &asset) {
+    if (!asset || !asset->textureLoader->hasValidPages()
+        || asset->estimatedTextureBytes > kSpineAssetCacheByteBudget) return;
+    auto &cache = spineAssetCache();
+    cache.prepend({key, asset});
+    quint64 bytes = 0;
+    for (const auto &entry : cache) bytes += entry.asset->estimatedTextureBytes;
+    while (cache.size() > kSpineAssetCacheLimit || bytes > kSpineAssetCacheByteBudget) {
+        bytes -= cache.last().asset->estimatedTextureBytes;
+        cache.removeLast();
+    }
+}
+}
+
 SpineGlItem::SpineGlItem(QGraphicsItem *parent)
     : QGraphicsItem(parent)
+    , _textureLoader(nullptr)
+    , _atlas(nullptr)
     , _skeletonData(nullptr)
     , _shader(nullptr)
     , _vbo(QOpenGLBuffer::VertexBuffer)
@@ -151,11 +314,12 @@ SpineGlItem::SpineGlItem(QGraphicsItem *parent)
 
 SpineGlItem::~SpineGlItem() {
     stop();
+    _destroyingItem = true;
     onContextAboutToBeDestroyed();
     _animState.reset();
     _animStateData.reset();
     _skeleton.reset();
-    delete _skeletonData;
+    _sharedAsset.reset();
     _skeletonData = nullptr;
 }
 
@@ -190,18 +354,15 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
             this, &SpineGlItem::onContextAboutToBeDestroyed,
             Qt::ConnectionType(Qt::DirectConnection | Qt::UniqueConnection));
 
-    // Clean up previous
+    // Clean up previous instance state; the immutable parsed asset is shared.
     _animState.reset();
     _animStateData.reset();
     _skeleton.reset();
-    delete _skeletonData;
+    _sharedAsset.reset();
     _skeletonData = nullptr;
-    _atlas.reset();
-    _textureLoader.reset();
+    _textureLoader = nullptr;
+    _atlas = nullptr;
     _clipper.reset();
-
-    // Create texture loader (needs GL context – will be created on first paint)
-    _textureLoader = std::make_unique<QtSpineTextureLoader>();
 
     // Find absolute paths
     QString resolvedAtlas = atlasPath;
@@ -222,109 +383,168 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
         return false;
     }
 
-    // Load atlas
-    _atlas = std::make_unique<spine::Atlas>(
-        spine::String(resolvedAtlas.toUtf8().constData()),
-        _textureLoader.get(),
-        true // createTexture – requires GL context!
-    );
+    const QString parseKey = spineParseCacheKey(resolvedAtlas, resolvedSkel,
+                                                _runtimeVersionHint, _spineScale);
+    const QString cachedRuntime = cachedParserRuntime(parseKey);
+    _sharedAsset = findCachedSpineAsset(parseKey);
 
-    if (_atlas->getPages().isEmpty()) {
-        emit loadError(QString("Failed to parse atlas: %1").arg(atlasPath));
-        _atlas.reset();
-        return false;
-    }
+    if (_sharedAsset) {
+        _textureLoader = _sharedAsset->textureLoader.get();
+        _atlas = _sharedAsset->atlas.get();
+        _skeletonData = _sharedAsset->skeletonData;
+        qDebug("[SpineGlItem] Reused parsed asset runtime=%s", qPrintable(_sharedAsset->selectedRuntime));
+    } else {
+        auto asset = std::make_shared<SpineSharedAsset>();
+        asset->textureLoader = std::make_unique<QtSpineTextureLoader>();
+        asset->atlas = std::make_unique<spine::Atlas>(
+            spine::String(resolvedAtlas.toUtf8().constData()),
+            asset->textureLoader.get(), true);
 
-    qDebug("[SpineGlItem] Atlas: pages=%d, parsing skeleton '%s'...",
-            (int)_atlas->getPages().size(), qPrintable(resolvedSkel));
-
-    // Load skeleton binary with multi-version routing (reference: multi-runtime manager idea).
-    // If explicit runtime hint exists, try only that hint. Otherwise, auto-probe all supported
-    // runtime variants and pick the best parse result by quality score.
-    struct ParseCandidate {
-        spine::SkeletonData *data;
-        QString hintName;
-        int score;
-        int animCount;
-        bool hasDefaultSkin;
-    };
-
-    auto scoreData = [](spine::SkeletonData *data) -> int {
-        if (!data) return -1000000;
-        int score = 0;
-        if (data->getDefaultSkin()) score += 1000;
-        score += static_cast<int>(data->getAnimations().size()) * 10;
-        if (data->getAnimations().size() == 0) score -= 100;
-        return score;
-    };
-
-    QList<QPair<spine::SkeletonBinary::RuntimeVersion, QString>> candidates;
-    // Always try all runtime versions. If a hint is provided, try it first for speed,
-    // then fall back to all others. This makes runtimeVersion an optional optimization
-    // hint rather than a hard requirement — auto-detection always works.
-    if (!_runtimeVersionHint.isEmpty()) {
-        QString v = _runtimeVersionHint.trimmed();
-        candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, v));
-    }
-    // Add all versions as fallback (duplicates with hint are harmless — same version
-    // won't produce a better score, so the first successful parse wins)
-    candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, QString("auto")));
-    candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_5_35, QString("3.5.35")));
-    candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_7, QString("3.7")));
-    candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_8, QString("3.8")));
-    candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_0, QString("4.0")));
-    candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_1, QString("4.1")));
-
-    QVector<ParseCandidate> parsed;
-    QStringList errors;
-    for (int ci = 0; ci < candidates.size(); ++ci) {
-        spine::SkeletonBinary binary(_atlas.get());
-        binary.setScale(_spineScale);
-
-        const QString hintName = candidates[ci].second;
-        if (!hintName.isEmpty() && QString::compare(hintName, "auto", Qt::CaseInsensitive) != 0) {
-            binary.setRuntimeVersionHint(spine::String(hintName.toUtf8().constData()));
+        if (asset->atlas->getPages().isEmpty()) {
+            emit loadError(QString("Failed to parse atlas: %1").arg(atlasPath));
+            return false;
         }
 
-        spine::SkeletonData *sd = nullptr;
-        sd = binary.readSkeletonDataFile(
-            spine::String(resolvedSkel.toUtf8().constData()));
+        _sharedAsset = asset;
+        _textureLoader = asset->textureLoader.get();
+        _atlas = asset->atlas.get();
 
-        if (!sd) {
-            errors << QString("[%1] %2")
-                         .arg(hintName, QString::fromUtf8(binary.getError().buffer()));
-            continue;
+        qDebug("[SpineGlItem] Atlas: pages=%d, parsing skeleton '%s'...",
+               (int)_atlas->getPages().size(), qPrintable(resolvedSkel));
+
+        // A cold load scores all supported candidates. A cached winning runtime
+        // can bypass repeated probes without changing first-load selection.
+        struct ParseCandidate {
+            spine::SkeletonData *data;
+            QString hintName;
+            int score;
+            int animCount;
+            bool hasDefaultSkin;
+        };
+
+        auto scoreData = [](spine::SkeletonData *data) -> int {
+            if (!data) return -1000000;
+            int score = 0;
+            if (data->getDefaultSkin()) score += 1000;
+            score += static_cast<int>(data->getAnimations().size()) * 10;
+            if (data->getAnimations().size() == 0) score -= 100;
+            return score;
+        };
+
+        QList<QPair<spine::SkeletonBinary::RuntimeVersion, QString>> candidates;
+        // The caller's hint orders cold candidates; it is not a hard requirement.
+        if (!cachedRuntime.isEmpty()) {
+            candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, cachedRuntime));
+        } else if (!_runtimeVersionHint.isEmpty()) {
+            QString v = _runtimeVersionHint.trimmed();
+            candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, v));
+        }
+        if (cachedRuntime.isEmpty()) {
+            // First parse keeps the existing complete candidate/score behaviour.
+            candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, QString("auto")));
+            candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_5_35, QString("3.5.35")));
+            candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_7, QString("3.7")));
+            candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_8, QString("3.8")));
+            candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_0, QString("4.0")));
+            candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_1, QString("4.1")));
         }
 
-        ParseCandidate cand;
-        cand.data = sd;
-        cand.hintName = hintName;
-        cand.animCount = static_cast<int>(sd->getAnimations().size());
-        cand.hasDefaultSkin = (sd->getDefaultSkin() != nullptr);
-        cand.score = scoreData(sd);
-        parsed.append(cand);
-    }
+        QVector<ParseCandidate> parsed;
+        QStringList errors;
+        for (int ci = 0; ci < candidates.size(); ++ci) {
+            spine::SkeletonBinary binary(_atlas);
+            binary.setScale(_spineScale);
 
-    if (parsed.isEmpty()) {
-        emit loadError(QString("Failed to load skeleton: %1 — %2")
-                       .arg(skelPath, errors.join(" | ")));
-        _atlas.reset();
-        return false;
-    }
+            const QString hintName = candidates[ci].second;
+            if (!hintName.isEmpty() && QString::compare(hintName, "auto", Qt::CaseInsensitive) != 0) {
+                binary.setRuntimeVersionHint(spine::String(hintName.toUtf8().constData()));
+            }
 
-    int bestIdx = 0;
-    for (int i = 1; i < parsed.size(); ++i) {
-        if (parsed[i].score > parsed[bestIdx].score)
-            bestIdx = i;
-    }
+            spine::SkeletonData *sd = nullptr;
+            sd = binary.readSkeletonDataFile(
+                spine::String(resolvedSkel.toUtf8().constData()));
 
-    _skeletonData = parsed[bestIdx].data;
-    qDebug("[SpineGlItem] Selected runtime=%s anims=%d",
-           qPrintable(parsed[bestIdx].hintName), parsed[bestIdx].animCount);
+            if (!sd) {
+                errors << QString("[%1] %2")
+                             .arg(hintName, QString::fromUtf8(binary.getError().buffer()));
+                continue;
+            }
 
-    for (int i = 0; i < parsed.size(); ++i) {
-        if (i != bestIdx && parsed[i].data)
-            delete parsed[i].data;
+            ParseCandidate cand;
+            cand.data = sd;
+            cand.hintName = hintName;
+            cand.animCount = static_cast<int>(sd->getAnimations().size());
+            cand.hasDefaultSkin = (sd->getDefaultSkin() != nullptr);
+            cand.score = scoreData(sd);
+            parsed.append(cand);
+        }
+
+        if (parsed.isEmpty()) {
+            if (!cachedRuntime.isEmpty()) {
+                // A changed runtime/library can invalidate the hint despite the
+                // file identity; retry the complete candidate set once.
+                candidates.clear();
+                if (!_runtimeVersionHint.isEmpty())
+                    candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, _runtimeVersionHint.trimmed()));
+                candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, QString("auto")));
+                candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_5_35, QString("3.5.35")));
+                candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_7, QString("3.7")));
+                candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_8, QString("3.8")));
+                candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_0, QString("4.0")));
+                candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_1, QString("4.1")));
+                for (const auto &candidate : candidates) {
+                    spine::SkeletonBinary binary(_atlas);
+                    binary.setScale(_spineScale);
+                    if (candidate.second != "auto")
+                        binary.setRuntimeVersionHint(spine::String(candidate.second.toUtf8().constData()));
+                    spine::SkeletonData *sd = binary.readSkeletonDataFile(
+                        spine::String(resolvedSkel.toUtf8().constData()));
+                    if (!sd) continue;
+                    ParseCandidate fallback;
+                    fallback.data = sd;
+                    fallback.hintName = candidate.second;
+                    fallback.score = scoreData(sd);
+                    fallback.animCount = static_cast<int>(sd->getAnimations().size());
+                    fallback.hasDefaultSkin = sd->getDefaultSkin() != nullptr;
+                    parsed.append(fallback);
+                }
+            }
+        }
+        if (parsed.isEmpty()) {
+            emit loadError(QString("Failed to load skeleton: %1 — %2")
+                           .arg(skelPath, errors.join(" | ")));
+            _sharedAsset.reset();
+            _textureLoader = nullptr;
+            _atlas = nullptr;
+            return false;
+        }
+
+        int bestIdx = 0;
+        for (int i = 1; i < parsed.size(); ++i) {
+            if (parsed[i].score > parsed[bestIdx].score)
+                bestIdx = i;
+        }
+
+        _skeletonData = parsed[bestIdx].data;
+        _sharedAsset->skeletonData = _skeletonData;
+        _sharedAsset->selectedRuntime = parsed[bestIdx].hintName;
+        storeParserRuntime(parseKey, parsed[bestIdx].hintName);
+        _sharedAsset->estimatedTextureBytes = _sharedAsset->textureLoader->estimatedTextureBytes();
+        const auto &animations = _skeletonData->getAnimations();
+        for (size_t i = 0; i < animations.size(); ++i) {
+            const auto *animation = animations[i];
+            _sharedAsset->animationDurations.insert(
+                QString::fromUtf8(animation->getName().buffer()), animation->getDuration());
+            _sharedAsset->animationNames.append(QString::fromUtf8(animation->getName().buffer()));
+        }
+        qDebug("[SpineGlItem] Selected runtime=%s anims=%d",
+               qPrintable(parsed[bestIdx].hintName), parsed[bestIdx].animCount);
+
+        for (int i = 0; i < parsed.size(); ++i) {
+            if (i != bestIdx && parsed[i].data)
+                delete parsed[i].data;
+        }
+        storeCachedSpineAsset(parseKey, _sharedAsset);
     }
 
     // Create skeleton instance
@@ -562,8 +782,13 @@ void SpineGlItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
 // ─── Private ────────────────────────────────────────────────────────────────
 
 void SpineGlItem::onTimer() {
-    if (!_playing || !_skeleton || !_animState || !_glInitialized) return;
+    if (!_playing && !isTweening()) {
+        _timer.stop();
+        return;
+    }
 
+    if (!_elapsed.isValid())
+        _elapsed.start();
     float currentTime = _elapsed.elapsed() / 1000.0f;
     float delta = currentTime - _lastTime;
     _lastTime = currentTime;
@@ -572,8 +797,12 @@ void SpineGlItem::onTimer() {
     if (delta > 0.1f) delta = 0.1f;
 
     updateTweens(delta);
-    updateSkeleton(delta);
-    update(); // Trigger repaint
+    if (_playing && _skeleton && _animState)
+        updateSkeleton(delta);
+    if (isVisible() && effectiveOpacity() > 0.0 && _opacity > 0.0)
+        update(); // Hidden/faded items still advance completion state.
+    if (!_playing && !isTweening())
+        _timer.stop();
 }
 
 void SpineGlItem::updateSkeleton(float deltaSeconds) {
@@ -721,8 +950,8 @@ void SpineGlItem::onContextAboutToBeDestroyed() {
         if (QOpenGLContext *current = QOpenGLContext::currentContext())
             current->doneCurrent();
     }
-    if (_textureLoader)
-        _textureLoader->releaseTextures();
+    if (_textureLoader && !_destroyingItem)
+        _textureLoader->releaseTextures(_glContext);
     cleanupGL();
     if (_glContext)
         disconnect(_glContext, nullptr, this, nullptr);
@@ -1260,6 +1489,15 @@ void SpineGlItem::buildAnimationCache() {
     _cachedAnimations.clear();
     _animDurationMap.clear();
     if (!_skeletonData) return;
+
+    if (_sharedAsset && !_sharedAsset->animationNames.isEmpty()) {
+        for (const QString &name : _sharedAsset->animationNames) {
+            const float duration = _sharedAsset->animationDurations.value(name, -1.0f);
+            _cachedAnimations.append({name, duration});
+            _animDurationMap.insert(name, duration);
+        }
+        return;
+    }
 
     auto &anims = _skeletonData->getAnimations();
     for (size_t i = 0; i < anims.size(); ++i) {
