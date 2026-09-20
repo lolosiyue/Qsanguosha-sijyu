@@ -2236,6 +2236,9 @@ public:
 	void delay(unsigned long msecs = 1000);
 };
 
+// Declare history result helpers before SWIG emits Room's extension bodies.
+%include "resolution-history.i"
+
 class Room: public QThread {
 public:
 	enum GuanxingType { GuanxingUpOnly = 1, GuanxingBothSides = 0, GuanxingDownOnly = -1 };

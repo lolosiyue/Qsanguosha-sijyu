@@ -97,6 +97,7 @@ public:
 
     void gainHujia(int n = 1, int max_num = 5);
     void loseHujia(int n = 1);
+    void loseHujia(int n, const std::function<void(int)> &afterMutation);
     void loseAllHujias();
 
     virtual void addSkill(const QString &skill_name);
@@ -120,6 +121,7 @@ public:
     //virtual int getHandcardNum() const;
     virtual void removeCard(int id, Place place);
     virtual void addCard(int id, Place place);
+    void addCard(int id, Place place, const std::function<void()> &afterMutation);
     //virtual bool isLastHandCard(const Card *card, bool contain = false) const;
 
     void addVictim(ServerPlayer *victim);

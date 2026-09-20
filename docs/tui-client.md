@@ -130,6 +130,11 @@ owner/place/pile、技能 instance、marks、距離、牌堆、回合階段、te
 log 與 game-over。Renderer 只列出自己已知手牌、公開區域與 server 已授權資料；
 不顯示其他玩家未知手牌、未公開身分／武將或 private pile。
 
+classic／script 逐筆套用通知並輸出戰報，完整 `GameViewState`／操作目錄只在
+`/status` 讀取時建立；不為每一筆 mark／property 通知重算全部玩家及近期事件。
+board 模式仍即時更新共用投影。此延後只影響完整摘要的產生，game-over、互動、
+script 等待條件及個別戰報仍直接跟隨權威 `ClientGameState`。
+
 stdin 由 Windows waitable console handle 或 Unix `QSocketNotifier` 非同步讀取，不在
 Qt event loop 執行 blocking `getline()`，也不由 worker thread 修改 state。EOF、
 Ctrl+C 及 `/quit` 都會取消 active interaction、graceful disconnect，並恢復 Windows

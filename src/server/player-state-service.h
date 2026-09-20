@@ -5,6 +5,8 @@
 #include <QString>
 #include <QVariant>
 
+#include <functional>
+
 class AiDecisionCoordinator;
 class CardMovementService;
 class EventDispatcher;
@@ -59,6 +61,13 @@ public:
 		const QString &value);
 
 private:
+	// Room::applyDamageHp uses this hook to commit damage history at the
+	// property mutation point, before HpChanged observers can run.
+	void setPlayerProperty(ServerPlayer *player, const char *propertyName,
+		const QVariant &value, const std::function<void()> &beforeEventDispatch);
+
+	friend class Room;
+
 	Room &m_room;
 	RoomRuntime &m_runtime;
 	RoomNotifier &m_notifier;

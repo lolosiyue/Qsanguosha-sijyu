@@ -5,6 +5,7 @@
 #include "room.h"
 #include "roomthread.h"
 #include "serverplayer.h"
+#include "../core/resolution-history.h"
 
 #include <algorithm>
 #include <functional>
@@ -54,6 +55,8 @@ int ExtraTurnScheduler::schedule(ServerPlayer *player, const QString &reason,
     request.player = player;
     request.phases = phases;
     request.reason = reason;
+    if (m_room.historyRecordingEnabled())
+        request.causeEventId = m_room.resolutionHistory().currentEventId();
     for (int i = 0; i < times; ++i)
         m_requests << request;
     return times;
@@ -71,6 +74,8 @@ int ExtraTurnScheduler::schedule(ServerPlayer *player, const SkillInstanceRef &s
     request.phases = phases;
     request.reason = sourceRef.key.skillName;
     request.sourceRef = sourceRef;
+    if (m_room.historyRecordingEnabled())
+        request.causeEventId = m_room.resolutionHistory().currentEventId();
     for (int i = 0; i < times; ++i)
         m_requests << request;
     return times;
@@ -91,6 +96,11 @@ SkillInstanceRef ExtraTurnScheduler::currentSourceRef() const
     return m_contexts.isEmpty() ? SkillInstanceRef() : m_contexts.last().sourceRef;
 }
 
+qint64 ExtraTurnScheduler::currentCauseEventId() const
+{
+    return m_contexts.isEmpty() ? 0 : m_contexts.last().causeEventId;
+}
+
 QList<ExtraTurnScheduler::SnapshotRequest> ExtraTurnScheduler::pendingRequestsSnapshot() const
 {
     QList<SnapshotRequest> snapshot;
@@ -104,6 +114,7 @@ QList<ExtraTurnScheduler::SnapshotRequest> ExtraTurnScheduler::pendingRequestsSn
             item.phases << static_cast<int>(phase);
         item.reason = request.reason;
         item.sourceRef = request.sourceRef;
+        item.causeEventId = request.causeEventId;
         snapshot << item;
     }
     return snapshot;
@@ -155,6 +166,7 @@ bool ExtraTurnScheduler::restorePendingRequests(const QList<SnapshotRequest> &re
         request.phases = phases;
         request.reason = item.reason;
         request.sourceRef = sourceRef;
+        request.causeEventId = item.causeEventId;
         restored << request;
     }
 
@@ -201,7 +213,8 @@ void ExtraTurnScheduler::process()
                 continue;
 
             try {
-                execute(request.player, request.phases, request.reason, request.sourceRef);
+                execute(request.player, request.phases, request.reason, request.sourceRef,
+                        request.causeEventId);
             } catch (TriggerEvent controlEvent) {
                 if (controlEvent == TurnBroken)
                     continue;
@@ -214,7 +227,8 @@ void ExtraTurnScheduler::process()
 }
 
 void ExtraTurnScheduler::execute(ServerPlayer *player, QList<Player::Phase> phases,
-                                 const QString &reason, const SkillInstanceRef &sourceRef)
+                                 const QString &reason, const SkillInstanceRef &sourceRef,
+                                 qint64 causeEventId)
 {
     if (!player || player->getRoom() != &m_room) return;
 
@@ -236,6 +250,7 @@ void ExtraTurnScheduler::execute(ServerPlayer *player, QList<Player::Phase> phas
     context.player = player;
     context.reason = reason;
     context.sourceRef = sourceRef;
+    context.causeEventId = causeEventId;
     m_contexts << context;
 
     m_room.setCurrent(player);
@@ -263,6 +278,12 @@ void ExtraTurnScheduler::execute(ServerPlayer *player, QList<Player::Phase> phas
     try {
         m_room.getThread()->trigger(TurnStart, &m_room, player);
     } catch (TriggerEvent controlEvent) {
+        const qint64 cleanupEvent = m_room.getThread()->interruptedPhase() != 0
+            ? m_room.getThread()->interruptedPhase()
+            : m_room.getThread()->interruptedTurn();
+        ResolutionHistoryContextGuard context(
+            m_room.resolutionHistory(), cleanupEvent,
+            m_room.historyRecordingEnabled() && cleanupEvent != 0);
         if (controlEvent == TurnBroken && player->getPhase() != Player::NotActive) {
             try {
                 QString gameRule = m_room.getMode() == "04_1v3" ? "hulaopass_mode" : "game_rule";
@@ -273,6 +294,8 @@ void ExtraTurnScheduler::execute(ServerPlayer *player, QList<Player::Phase> phas
                 // The original control event remains authoritative.
             }
         }
+        m_room.getThread()->clearInterruptedTurn();
+        m_room.getThread()->clearInterruptedPhase();
         restoreState();
         throw controlEvent;
     } catch (...) {

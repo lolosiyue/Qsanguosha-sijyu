@@ -178,6 +178,13 @@ void PlayerStateService::syncRole(ServerPlayer *viewer, const ServerPlayer *targ
 void PlayerStateService::setPlayerProperty(ServerPlayer *player,
 	const char *propertyName, const QVariant &value)
 {
+	setPlayerProperty(player, propertyName, value, std::function<void()>());
+}
+
+void PlayerStateService::setPlayerProperty(ServerPlayer *player,
+	const char *propertyName, const QVariant &value,
+	const std::function<void()> &beforeEventDispatch)
+{
 	if (!player) return; // 防禦空檢查
 
 	const quint64 revisionBefore = m_runtime.stateRevision();
@@ -211,6 +218,10 @@ void PlayerStateService::setPlayerProperty(ServerPlayer *player,
 	if (same) return;
 	if (m_runtime.stateRevision() == revisionBefore)
 		m_runtime.advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+	// The property is authoritative now.  Commit any source-specific fact
+	// before dispatching HpChanged or other observers that may re-enter Room.
+	if (beforeEventDispatch)
+		beforeEventDispatch();
 
 	QString property = QString(propertyName);
 	if (property == QStringLiteral("hp")) {

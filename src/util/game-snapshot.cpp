@@ -447,7 +447,8 @@ bool validateSnapshotStateJson(const QJsonObject &state, QString *error)
         QStringLiteral("cardPlaces"), QStringLiteral("cardOwners"),
         QStringLiteral("roomTags"), QStringLiteral("catalogFingerprint"),
         QStringLiteral("configFingerprint"), QStringLiteral("gameplayRng"),
-        QStringLiteral("aiRng"), QStringLiteral("luaTakeoverState")
+        QStringLiteral("aiRng"), QStringLiteral("luaTakeoverState"),
+        QStringLiteral("resolutionHistory")
     };
     const QString path = QStringLiteral("state");
     for (const QString &key : strings)
@@ -460,6 +461,48 @@ bool validateSnapshotStateJson(const QJsonObject &state, QString *error)
         if (!requireJsonType(state, key, QJsonValue::Object, path, error)) return false;
     if (!requireJsonType(state, QStringLiteral("eligible"), QJsonValue::Bool, path, error))
         return false;
+
+    if (state.value(QStringLiteral("resolutionHistory")).toObject().isEmpty()) {
+        if (error)
+            *error = path + QStringLiteral(".resolutionHistory is empty");
+        return false;
+    }
+
+    const QJsonArray pendingExtraTurns = state.value(
+        QStringLiteral("pendingExtraTurns")).toArray();
+    const QJsonArray historyEvents = state.value(QStringLiteral("resolutionHistory"))
+        .toObject().value(QStringLiteral("events")).toArray();
+    for (qsizetype i = 0; i < pendingExtraTurns.size(); ++i) {
+        const QString itemPath = path + QStringLiteral(".pendingExtraTurns[%1]").arg(i);
+        const QJsonValue itemValue = pendingExtraTurns.at(i);
+        if (!itemValue.isObject()
+            || !requireJsonType(itemValue.toObject(), QStringLiteral("causeEventId"),
+                                QJsonValue::String, itemPath, error))
+            return false;
+        bool causeOk = false;
+        const qint64 causeEventId = itemValue.toObject()
+            .value(QStringLiteral("causeEventId")).toString().toLongLong(&causeOk);
+        if (!causeOk || causeEventId < 0) {
+            if (error)
+                *error = itemPath + QStringLiteral(".causeEventId is not a decimal id");
+            return false;
+        }
+        if (causeEventId == 0)
+            continue;
+        bool found = false;
+        for (const QJsonValue &eventValue : historyEvents) {
+            if (eventValue.toObject().value(QStringLiteral("id")).toString()
+                    == QString::number(causeEventId)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            if (error)
+                *error = itemPath + QStringLiteral(".causeEventId does not reference resolution history");
+            return false;
+        }
+    }
 
     for (const QString &key : {QStringLiteral("packages"), QStringLiteral("seatOrder"),
                                QStringLiteral("chatHistory"), QStringLiteral("unsupportedState")}) {
@@ -583,6 +626,8 @@ bool validateState(const GlobalSnapshot &state, QString *error)
             ? QStringLiteral("snapshot is marked ineligible") : state.ineligibleReason, false) : false;
     if (state.turnSerial == 0)
         return error ? (*error = QStringLiteral("turnSerial is zero"), false) : false;
+    if (!state.resolutionHistory.isComplete())
+        return error ? (*error = QStringLiteral("resolution history is missing or incomplete"), false) : false;
     if (state.gameMode.isEmpty() || state.currentPhase.isEmpty())
         return error ? (*error = QStringLiteral("turn identity is incomplete"), false) : false;
     bool phaseOk = false;
@@ -1070,6 +1115,7 @@ QVariantMap GlobalSnapshot::serialize() const
     result[QStringLiteral("aiRng")] = aiRng.serialize();
     result[QStringLiteral("pendingExtraTurns")] = pendingExtraTurns;
     result[QStringLiteral("luaTakeoverState")] = luaTakeoverState;
+    result[QStringLiteral("resolutionHistory")] = resolutionHistory.serialize();
     result[QStringLiteral("unsupportedState")] = unsupportedState;
     result[QStringLiteral("eligible")] = eligible;
     result[QStringLiteral("ineligibleReason")] = ineligibleReason;
@@ -1106,6 +1152,16 @@ GlobalSnapshot GlobalSnapshot::deserialize(const QVariantMap &map)
     result.unsupportedState = map.value(QStringLiteral("unsupportedState")).toStringList();
     result.eligible = map.value(QStringLiteral("eligible")).toBool();
     result.ineligibleReason = map.value(QStringLiteral("ineligibleReason")).toString();
+    QString historyError;
+    if (!ResolutionHistorySnapshot::deserialize(
+            map.value(QStringLiteral("resolutionHistory")).toMap(),
+            &result.resolutionHistory, &historyError)) {
+        result.eligible = false;
+        result.unsupportedState << (historyError.isEmpty()
+            ? QStringLiteral("resolution history is invalid") : historyError);
+        if (result.ineligibleReason.isEmpty())
+            result.ineligibleReason = result.unsupportedState.constLast();
+    }
     return result;
 }
 
@@ -1197,6 +1253,10 @@ GameSnapshot::GameSnapshot(Room *room, QObject *parent)
     QString luaError;
     if (!room->luaRuntime()->exportTakeoverState(m_state.luaTakeoverState, &luaError))
         markInvalid(m_state, luaError);
+
+    m_state.resolutionHistory = room->resolutionHistory().snapshot();
+    if (!m_state.resolutionHistory.isComplete())
+        markInvalid(m_state, QStringLiteral("resolution history is missing or incomplete"));
 
     stateError.clear();
     m_state.roomTags = normalizeTagMap(room->getAllTags());
@@ -1348,6 +1408,7 @@ bool GameSnapshot::load(const QString &filepath)
         QStringLiteral("catalogFingerprint"), QStringLiteral("configFingerprint"),
         QStringLiteral("gameplayRng"), QStringLiteral("aiRng"),
         QStringLiteral("pendingExtraTurns"), QStringLiteral("luaTakeoverState"),
+        QStringLiteral("resolutionHistory"),
         QStringLiteral("unsupportedState"), QStringLiteral("eligible"),
         QStringLiteral("ineligibleReason")
     };

@@ -21,6 +21,7 @@
 #include "room.h"
 #include "roomthread.h"
 #include "socket.h"
+#include "../core/resolution-history.h"
 
 #include <QMutexLocker>
 #include <QMetaMethod>
@@ -726,7 +727,14 @@ void ServerPlayer::removeCard(int id, Place place)
 
 void ServerPlayer::addCard(int id, Place place)
 {
+	addCard(id, place, std::function<void()>());
+}
+
+void ServerPlayer::addCard(int id, Place place, const std::function<void()> &afterMutation)
+{
 	Player::addCard(id, place);
+	if (afterMutation)
+		afterMutation();
 	if(place==PlaceEquip)
 		qobject_cast<const EquipCard *>(Sanguosha->getCard(id)->getRealCard())->onInstall(this);
 	/*switch (place) {
@@ -983,20 +991,31 @@ bool ServerPlayer::changePhase(Phase from, Phase to)
 	phase_change.from = from;
 	phase_change.to = to;
 	QVariant data = QVariant::fromValue(phase_change);
+	ResolutionHistoryEventGuard phaseHistory(
+		room->resolutionHistory(), QStringLiteral("phase"),
+		QVariantMap{{QStringLiteral("player"), objectName()},
+			{QStringLiteral("from_phase"), static_cast<int>(from)},
+			{QStringLiteral("phase"), static_cast<int>(to)}},
+		room->historyRecordingEnabled());
 
+	try {
 	bool skip = room->getThread()->trigger(EventPhaseChanging, room, this, data);
 	phase_change = data.value<PhaseChangeStruct>();
+	phaseHistory.update(QVariantMap{{QStringLiteral("from_phase"), static_cast<int>(phase_change.from)},
+		{QStringLiteral("phase"), static_cast<int>(phase_change.to)}});
 
 	setPhase(phase_change.to);
 	if(phase_change.to == NotActive){
 		room->broadcastProperty(this, "phase");
 		room->getThread()->trigger(EventPhaseStart, room, this);
 		room->processScheduledExtraTurns();
+		phaseHistory.finish(QStringLiteral("completed"));
 		return false;
 	}
 	//if (!phases.isEmpty()) phases.removeFirst();
 	if (skip) {
 		setPhase(from);
+		phaseHistory.finish(QStringLiteral("skipped"));
 		return true;
 	}
 	room->broadcastProperty(this, "phase");
@@ -1004,7 +1023,13 @@ bool ServerPlayer::changePhase(Phase from, Phase to)
 	if (!room->getThread()->trigger(EventPhaseStart, room, this, data))
 		room->getThread()->trigger(EventPhaseProceeding, room, this, data);
 	room->getThread()->trigger(EventPhaseEnd, room, this, data);
+	phaseHistory.finish(QStringLiteral("completed"));
 	return false;
+	} catch (TriggerEvent) {
+		if (phaseHistory.id() != 0)
+			room->getThread()->rememberInterruptedPhase(phaseHistory.id());
+		throw;
+	}
 }
 
 void ServerPlayer::play(QList<Phase> set_phases)
@@ -1050,18 +1075,29 @@ void ServerPlayer::play(QList<Phase> set_phases)
 		_m_phases_index = i;
 		setPhase(PhaseNone);
 		QVariant data = QVariant::fromValue(phase_change);
+		ResolutionHistoryEventGuard phaseHistory(
+			room->resolutionHistory(), QStringLiteral("phase"),
+			QVariantMap{{QStringLiteral("player"), objectName()},
+				{QStringLiteral("from_phase"), static_cast<int>(phase_change.from)},
+				{QStringLiteral("phase"), static_cast<int>(phase_change.to)}},
+			room->historyRecordingEnabled());
+		try {
 		bool skip = room->getThread()->trigger(EventPhaseChanging, room, this, data);
 		_m_phases_state[i].phase = phases[i] = data.value<PhaseChangeStruct>().to;
+		phaseHistory.update(QVariantMap{{QStringLiteral("from_phase"), static_cast<int>(phase_change.from)},
+			{QStringLiteral("phase"), static_cast<int>(phases[i])}});
 		setPhase(phases[i]);
 		room->broadcastProperty(this, "phase");
 		if(phases[i] == NotActive){
 			room->getThread()->trigger(EventPhaseStart, room, this, data);
+			phaseHistory.finish(QStringLiteral("completed"));
 			break;
 		}
 		if (skip || _m_phases_state[i].skipped != 0) {
 			data = _m_phases_state[i].skipped < 0;
 			if (!room->getThread()->trigger(EventPhaseSkipping, room, this, data)) {
 				room->getThread()->trigger(EventPhaseSkipped, room, this, data);
+				phaseHistory.finish(QStringLiteral("skipped"));
 				//Sanguosha->playSystemAudioEffect("skip");
 				continue;
 			}
@@ -1069,7 +1105,8 @@ void ServerPlayer::play(QList<Phase> set_phases)
 		}
 		if (!room->getThread()->trigger(EventPhaseStart, room, this, data))
 			room->getThread()->trigger(EventPhaseProceeding, room, this, data);
-		room->getThread()->trigger(EventPhaseEnd, room, this, data);/*
+		room->getThread()->trigger(EventPhaseEnd, room, this, data);
+		phaseHistory.finish(QStringLiteral("completed"));/*
 		if (phases[i] != NotActive && (skip || _m_phases_state[i].skipped != 0)) {
 			data = QVariant::fromValue(_m_phases_state[i].skipped < 0);
 			if (!room->getThread()->trigger(EventPhaseSkipping, room, this, data)) {
@@ -1081,6 +1118,11 @@ void ServerPlayer::play(QList<Phase> set_phases)
 		if (getPhase() == NotActive) break;
 		if (!skip) room->getThread()->trigger(EventPhaseProceeding, room, this);
 		room->getThread()->trigger(EventPhaseEnd, room, this);*/
+		} catch (TriggerEvent) {
+			if (phaseHistory.id() != 0)
+				room->getThread()->rememberInterruptedPhase(phaseHistory.id());
+			throw;
+		}
 	}
 }
 
@@ -1227,6 +1269,11 @@ void ServerPlayer::gainHujia(int n, int max_num)
 
 void ServerPlayer::loseHujia(int n)
 {
+	loseHujia(n, std::function<void(int)>());
+}
+
+void ServerPlayer::loseHujia(int n, const std::function<void(int)> &afterMutation)
+{
 	if (n<1||getHujia()<1) return;
 
 	QVariant data = n;
@@ -1244,6 +1291,8 @@ void ServerPlayer::loseHujia(int n)
 
 	room->sendLog(log);
 	room->setPlayerMark(this, "@HuJia", getHujia()-n);
+	if (afterMutation)
+		afterMutation(n);
 
 	room->getThread()->trigger(LostHujia, room, this, data);
 }

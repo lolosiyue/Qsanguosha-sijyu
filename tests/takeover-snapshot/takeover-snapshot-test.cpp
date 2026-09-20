@@ -185,6 +185,9 @@ GlobalSnapshot validSnapshotState(quint64 turnSerial, int turnCount)
     state.gameplayRng.seed = QStringLiteral("123");
     state.gameplayRng.drawCount = QStringLiteral("0");
     state.aiRng = state.gameplayRng;
+    ResolutionHistoryService history;
+    history.beginRound(QVariantMap{{QStringLiteral("fixture"), true}});
+    state.resolutionHistory = history.snapshot();
 
     PlayerSnapshot first{};
     first.objectName = QStringLiteral("p1");
@@ -267,6 +270,21 @@ bool snapshotRoundTripAndStrictSchema()
                            .value(QStringLiteral("test-property")).toString()
                         == QStringLiteral("value"),
                 QStringLiteral("snapshot fields round-trip")) && ok;
+    ok = expect(restoredState.resolutionHistory.serialize()
+                    == state.resolutionHistory.serialize(),
+                QStringLiteral("resolution history round-trip")) && ok;
+
+    QJsonObject missingHistoryRoot = root;
+    QJsonObject missingHistoryState = root.value(QStringLiteral("state")).toObject();
+    missingHistoryState.remove(QStringLiteral("resolutionHistory"));
+    missingHistoryRoot.insert(QStringLiteral("state"), missingHistoryState);
+    const QString missingHistoryPath = directory.filePath(QStringLiteral("missing-history.json"));
+    ok = expect(writeBytes(missingHistoryPath,
+                           QJsonDocument(missingHistoryRoot).toJson(QJsonDocument::Compact)),
+                QStringLiteral("write missing history fixture")) && ok;
+    GameSnapshot missingHistory;
+    ok = expect(!missingHistory.load(missingHistoryPath),
+                QStringLiteral("snapshot without resolution history rejected")) && ok;
 
     // The old partial snapshot contract is intentionally not loadable.
     const QString legacyPath = directory.filePath(QStringLiteral("legacy.json"));

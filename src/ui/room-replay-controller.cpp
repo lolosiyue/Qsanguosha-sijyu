@@ -150,7 +150,7 @@ void ReplayerControlBar::requestTakeover()
 		return;
 
 	const int nodeIndex = replayer->getNearestTakeoverNodeAtOrBeforeCurrent();
-	GameSnapshot *snapshot = replayer->getSnapshot(nodeIndex);
+	auto snapshot = replayer->getSnapshot(nodeIndex);
 	if (nodeIndex < 0 || !snapshot)
 		return;
 

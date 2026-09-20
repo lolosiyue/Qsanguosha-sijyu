@@ -8,6 +8,8 @@
 #include <QMap>
 #include <QString>
 
+#include "resolution-history.h"
+
 class Room;
 class ServerPlayer;
 
@@ -146,6 +148,7 @@ struct GlobalSnapshot
     RngSnapshot aiRng;
     QVariantList pendingExtraTurns;
     QVariantMap luaTakeoverState;
+    ResolutionHistorySnapshot resolutionHistory;
     QStringList unsupportedState;
     bool eligible = true;
     QString ineligibleReason;
@@ -159,7 +162,7 @@ class GameSnapshot : public QObject
     Q_OBJECT
 
 public:
-    static constexpr int TakeoverSchemaVersion = 2;
+    static constexpr int TakeoverSchemaVersion = 3;
     static QString takeoverFormat();
 
     explicit GameSnapshot(QObject *parent = nullptr);

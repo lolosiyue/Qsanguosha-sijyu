@@ -58,6 +58,205 @@
 
 using namespace QSanProtocol;
 
+namespace {
+void recordDirectHistoryMove(Room &room, qint64 eventId, int cardId,
+    const QString &from, Player::Place fromPlace, const QString &to,
+    Player::Place toPlace, const CardMoveReason &reason)
+{
+    if (!eventId || !room.historyRecordingEnabled()) return;
+    QVariantMap data = room.historyCause(reason);
+    data.insert(QStringLiteral("card_id"), cardId);
+    data.insert(QStringLiteral("from"), from);
+    data.insert(QStringLiteral("to"), to);
+    data.insert(QStringLiteral("from_place"), int(fromPlace));
+    data.insert(QStringLiteral("to_place"), int(toPlace));
+    data.insert(QStringLiteral("card"), room.historyCardSnapshot(Sanguosha->getCard(cardId)));
+    room.resolutionHistory().appendFact(eventId, QStringLiteral("move"), data);
+}
+}
+
+qint64 Room::currentHistoryEventId() const { return m_resolutionHistory.currentEventId(); }
+QVariantMap Room::historyEvent(qint64 id) const { return m_resolutionHistory.event(id); }
+QVariantMap Room::historyParent(qint64 id, const QString &kind, bool includeSelf) const
+{
+    return m_resolutionHistory.findParent(id, kind, includeSelf);
+}
+QVariantMap Room::historyScopes() const { return m_resolutionHistory.currentScopes(); }
+QVariantMap Room::queryHistoryEvents(const QVariantMap &filter) const
+{
+    return m_resolutionHistory.queryEvents(filter);
+}
+QVariantMap Room::queryHistoryFacts(const QVariantMap &filter) const
+{
+    return m_resolutionHistory.queryFacts(filter);
+}
+QVariantMap Room::queryHistoryMoves(const QVariantMap &filter) const
+{
+    QVariantMap query = filter;
+    query.insert(QStringLiteral("kind"), QStringLiteral("move"));
+    return queryHistoryFacts(query);
+}
+QVariantMap Room::queryActualDamage(const QVariantMap &filter) const
+{
+    QVariantMap query = filter;
+    query.insert(QStringLiteral("kind"), QStringLiteral("actual_damage"));
+    QVariantMap result = queryHistoryFacts(query);
+    QVariantList facts = result.value(QStringLiteral("items")).toList();
+    for (QVariant &value : facts) {
+        QVariantMap fact = value.toMap();
+        QVariantMap data = fact.value(QStringLiteral("data")).toMap();
+        int absorbed = 0;
+        int hpLoss = 0;
+        QVariantMap components{{QStringLiteral("kind"), QStringLiteral("damage_component")},
+            {QStringLiteral("event_id"), fact.value(QStringLiteral("event_id"))},
+            {QStringLiteral("watermark"), result.value(QStringLiteral("watermark"))}};
+        for (;;) {
+            const QVariantMap page = m_resolutionHistory.queryFacts(components);
+            for (const QVariant &entry : page.value(QStringLiteral("items")).toList()) {
+                const QVariantMap part = entry.toMap().value(QStringLiteral("data")).toMap();
+                if (part.value(QStringLiteral("component")) == QStringLiteral("armor"))
+                    absorbed += part.value(QStringLiteral("amount")).toInt();
+                else if (part.value(QStringLiteral("component")) == QStringLiteral("hp"))
+                    hpLoss += part.value(QStringLiteral("amount")).toInt();
+            }
+            if (!page.value(QStringLiteral("has_more")).toBool()) break;
+            components.insert(QStringLiteral("after"), page.value(QStringLiteral("next_after")));
+        }
+        // Components are immutable. This read-only projection never claims
+        // pending HP loss has happened when an armor callback interrupts it.
+        data.insert(QStringLiteral("absorbed"), absorbed);
+        data.insert(QStringLiteral("hp_loss"), hpLoss);
+        data.insert(QStringLiteral("amount"), absorbed + hpLoss);
+        fact.insert(QStringLiteral("data"), data);
+        value = fact;
+    }
+    result.insert(QStringLiteral("items"), facts);
+    result.insert(QStringLiteral("facts"), facts);
+    return result;
+}
+
+QVariantMap Room::historyCardSnapshot(const Card *card) const
+{
+    if (!card) return {};
+    QVariantList subcards;
+    for (int id : card->getSubcards()) subcards.append(id);
+    return {{QStringLiteral("id"), card->getEffectiveId()},
+            {QStringLiteral("name"), card->objectName()},
+            {QStringLiteral("class_name"), card->getClassName()},
+            {QStringLiteral("suit"), int(card->getSuit())},
+            {QStringLiteral("number"), card->getNumber()},
+            {QStringLiteral("virtual"), card->isVirtualCard()},
+            {QStringLiteral("subcards"), subcards},
+            {QStringLiteral("skill_name"), card->getSkillName()}};
+}
+
+QVariantMap Room::historySkillContext(const SkillContext &context) const
+{
+    // Execution may fall back to the invoker as owner for legacy cards. That
+    // operational fallback is not evidence of historical skill ownership.
+    const SkillCard *skillCard = context.use_card
+        ? qobject_cast<const SkillCard *>(context.use_card->getRealCard()) : nullptr;
+    const ServerPlayer *explicitOwner = skillCard ? skillCard->getSkillOwner() : nullptr;
+    const QString owner = context.sourceRef.isValid() ? context.sourceRef.ownerObjectName
+        : (explicitOwner ? explicitOwner->objectName() : QString());
+    return {{QStringLiteral("skill_name"), context.sourceRef.isValid()
+                ? context.sourceRef.key.skillName : context.skill_name},
+            {QStringLiteral("skill_owner"), owner},
+            {QStringLiteral("invoker"), context.invoker ? context.invoker->objectName() : QString()},
+            {QStringLiteral("instance_id"), context.sourceRef.isValid()
+                ? context.sourceRef.key.instanceID : context.instanceID},
+            {QStringLiteral("execution_id"), context.executionID},
+            {QStringLiteral("attribution_complete"), !owner.isEmpty()},
+            {QStringLiteral("activation_owner"), context.activationRef.ownerObjectName},
+            {QStringLiteral("activation_skill"), context.activationRef.key.skillName},
+            {QStringLiteral("activation_instance_id"), context.activationRef.key.instanceID}};
+}
+
+QVariantMap Room::historyCause(const CardMoveReason &reason) const
+{
+    QVariantMap result{{QStringLiteral("reason"), reason.m_reason},
+                       {QStringLiteral("reason_player"), reason.m_playerId},
+                       {QStringLiteral("reason_skill"), reason.m_skillName},
+                       {QStringLiteral("reason_event"), reason.m_eventName}};
+    QVariantMap skill = m_resolutionHistory.findParent(
+        currentHistoryEventId(), QStringLiteral("skill"), true);
+    if (!skill.isEmpty() && skill.value(QStringLiteral("turn_id"))
+        != historyScopes().value(QStringLiteral("turn_id"))) {
+        // Structural ancestry can cross an inserted turn. Its scheduling
+        // skill is not the direct cause of every action in that new turn.
+        skill.clear();
+    }
+    const QVariantMap identity = skill.value(QStringLiteral("data")).toMap();
+    const QString executingSkill = identity.value(QStringLiteral("skill_name")).toString();
+    // A nested skill is the direct cause; the complete parent chain remains
+    // available separately. Never promote a legacy callback target to owner.
+    if (!skill.isEmpty() && (reason.m_skillName.isEmpty() || reason.m_skillName == executingSkill)) {
+        for (auto it = identity.cbegin(); it != identity.cend(); ++it)
+            result.insert(it.key(), it.value());
+        result.insert(QStringLiteral("cause_event_id"), skill.value(QStringLiteral("id")));
+    } else if (reason.m_useStruct.sourceRef.isValid()
+               && reason.m_useStruct.sourceRef.key.skillName == reason.m_skillName) {
+        result.insert(QStringLiteral("skill_name"), reason.m_skillName);
+        result.insert(QStringLiteral("skill_owner"), reason.m_useStruct.sourceRef.ownerObjectName);
+        result.insert(QStringLiteral("instance_id"), reason.m_useStruct.sourceRef.key.instanceID);
+        result.insert(QStringLiteral("execution_id"), reason.m_useStruct.skillExecutionID);
+        result.insert(QStringLiteral("attribution_complete"), true);
+    } else {
+        result.insert(QStringLiteral("skill_name"), reason.m_skillName);
+        result.insert(QStringLiteral("skill_owner"), QString());
+        result.insert(QStringLiteral("attribution_complete"), reason.m_skillName.isEmpty() && skill.isEmpty());
+    }
+    return result;
+}
+
+void Room::recordAppliedDamage(const DamageStruct &damage, int absorbed, int hpLoss)
+{
+    if (!historyRecordingEnabled()) return;
+    const QVariantMap event = m_resolutionHistory.findParent(
+        currentHistoryEventId(), QStringLiteral("damage"), true);
+    const qint64 id = event.value(QStringLiteral("id")).toLongLong();
+    if (!id || event.value(QStringLiteral("data")).toMap().value(QStringLiteral("applied")).toBool()) return;
+    QVariantMap fact = historyCause(CardMoveReason(CardMoveReason::S_REASON_UNKNOWN,
+        damage.from ? damage.from->objectName() : QString(), damage.reason, QString()));
+    fact.insert(QStringLiteral("from"), damage.from ? damage.from->objectName() : QString());
+    fact.insert(QStringLiteral("to"), damage.to ? damage.to->objectName() : QString());
+    fact.insert(QStringLiteral("requested_amount"), damage.damage);
+    fact.insert(QStringLiteral("amount"), absorbed + hpLoss);
+    fact.insert(QStringLiteral("absorbed"), absorbed);
+    fact.insert(QStringLiteral("hp_loss"), hpLoss);
+    fact.insert(QStringLiteral("nature"), int(damage.nature));
+    fact.insert(QStringLiteral("chain"), damage.chain);
+    fact.insert(QStringLiteral("transfer"), damage.transfer);
+    fact.insert(QStringLiteral("card"), historyCardSnapshot(damage.card));
+    // Commit once before any post-mutation rule callback can query or abort.
+    m_resolutionHistory.appendFact(id, QStringLiteral("actual_damage"), fact);
+    m_resolutionHistory.updateEvent(id, {{QStringLiteral("applied"), true}});
+}
+
+void Room::applyDamageHp(ServerPlayer *player, const DamageStruct &damage, int absorbed, int hpLoss)
+{
+    m_playerState->setPlayerProperty(player, "hp", player->getHp() - hpLoss,
+        [this, damage, absorbed, hpLoss]() {
+            recordDamageComponent(damage, QStringLiteral("hp"), hpLoss);
+            recordAppliedDamage(damage, absorbed, hpLoss);
+        });
+}
+
+void Room::recordDamageComponent(const DamageStruct &damage, const QString &component, int amount)
+{
+    if (!historyRecordingEnabled() || amount <= 0) return;
+    const QVariantMap event = m_resolutionHistory.findParent(
+        currentHistoryEventId(), QStringLiteral("damage"), true);
+    const qint64 id = event.value(QStringLiteral("id")).toLongLong();
+    if (!id) return;
+    m_resolutionHistory.appendFact(id, QStringLiteral("damage_component"),
+        {{QStringLiteral("component"), component}, {QStringLiteral("amount"), amount}});
+    // The first irreversible component makes this actual damage visible;
+    // later components extend the projection without rewriting old facts.
+    recordAppliedDamage(damage, component == QLatin1String("armor") ? amount : 0,
+                        component == QLatin1String("hp") ? amount : 0);
+}
+
 // Presentation scopes contain public execution only, never candidate scans or
 // private request bodies. Unwinding restores the parent without touching rules.
 Room::ResolutionScope::ResolutionScope(Room &room, const QString &kind, const ServerPlayer *actor,
@@ -622,6 +821,11 @@ SkillInstanceRef Room::getCurrentExtraTurnSourceRef() const
 	return m_extraTurns->currentSourceRef();
 }
 
+qint64 Room::getCurrentExtraTurnCauseEventId() const
+{
+	return m_extraTurns->currentCauseEventId();
+}
+
 bool Room::isTakeoverReady() const
 {
 	return !m_sessionConfig.takeover || (takeoverScenario() && m_takeoverError.isEmpty());
@@ -653,6 +857,7 @@ QVariantList Room::snapshotPendingExtraTurns() const
 		result << QVariantMap{{QStringLiteral("playerObjectName"), request.playerObjectName},
 		                      {QStringLiteral("phases"), phases},
 		                      {QStringLiteral("reason"), request.reason},
+		                      {QStringLiteral("causeEventId"), QString::number(request.causeEventId)},
 		                      {QStringLiteral("sourceRef"), sourceRef}};
 	}
 	return result;
@@ -678,6 +883,13 @@ bool Room::restorePendingExtraTurns(
 		for (const QVariant &phase : map.value(QStringLiteral("phases")).toList())
 			request.phases << phase.toInt();
 		request.reason = map.value(QStringLiteral("reason")).toString();
+		bool causeOk = false;
+		request.causeEventId = map.value(QStringLiteral("causeEventId")).toString().toLongLong(&causeOk);
+		if (!causeOk || request.causeEventId < 0
+			|| (request.causeEventId && m_resolutionHistory.event(request.causeEventId).isEmpty())) {
+			if (error) *error = QStringLiteral("pending extra turn has an invalid history cause");
+			return false;
+		}
 
 		const QVariantMap source = map.value(QStringLiteral("sourceRef")).toMap();
 		const QString snapshotOwner = source.value(QStringLiteral("ownerObjectName")).toString();
@@ -3141,6 +3353,10 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	notifyCardProvenance("use", use.from, card, use.sourceRef, use.activationRef);
 	// Provenance already publishes the card; private target drafts stay private.
 	ResolutionScope resolution(*this, QStringLiteral("card"), use.from, use.from, nullptr, card->objectName());
+	ResolutionHistoryEventGuard useHistory(m_resolutionHistory, QStringLiteral("use_card"),
+		{{QStringLiteral("from"), use.from->objectName()},
+		 {QStringLiteral("card"), historyCardSnapshot(card)}}, historyRecordingEnabled());
+	std::unique_ptr<ResolutionHistoryEventGuard> skillHistory;
 
 	bool isSkillCard = card->isKindOf("SkillCard");
 	bool isViewAsCard = !isSkillCard && card->isVirtualCard() && !card->getSkillName().isEmpty();
@@ -3208,6 +3424,15 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		} else {
 			removeTag(tagKey);
 		}
+		if (skillHistory) {
+			skillHistory->update(historySkillContext(skillCardCtx));
+			skillHistory->finish(result == SkillExecutionCompleted ? QStringLiteral("completed")
+				: result == SkillExecutionNoResult ? QStringLiteral("aborted")
+				: result == SkillExecutionEffectSkipped ? QStringLiteral("skipped")
+				: QStringLiteral("cancelled"));
+		}
+		if (result == SkillExecutionPayFailed || result == SkillExecutionInvalidTargetUpdate)
+			useHistory.finish(QStringLiteral("cancelled"));
 	};
 
 	try {
@@ -3237,6 +3462,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardIdentity = skillCardCtx;
 		skillExecution = beginSkillExecution(skillCardCtx, QVariant::fromValue(use));
 		use.skillExecutionID = skillExecution.executionID();
+		skillHistory = std::make_unique<ResolutionHistoryEventGuard>(m_resolutionHistory,
+			QStringLiteral("skill"), historySkillContext(skillCardCtx), historyRecordingEnabled());
 
 		QString prefix = isViewAsCard ? "ViewAsContext_" : "SkillCardContext_";
 		tagKey = prefix + skillCardCtx.skill_name + "_"
@@ -3407,6 +3634,18 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		saveSkillContext(skillCardCtx);
 	}
 
+		if (!skipOnUse && historyRecordingEnabled()) {
+			QVariantMap fact = historyCause(CardMoveReason(CardMoveReason::S_REASON_USE,
+				use.from->objectName(), card->getSkillName(), QString()));
+			QVariantList targets;
+			for (const ServerPlayer *target : use.to) targets.append(target->objectName());
+			fact.insert(QStringLiteral("from"), use.from->objectName());
+			fact.insert(QStringLiteral("targets"), targets);
+			fact.insert(QStringLiteral("card"), historyCardSnapshot(card));
+			fact.insert(QStringLiteral("execution_id"), use.skillExecutionID);
+			useHistory.update(fact);
+			m_resolutionHistory.appendFact(useHistory.id(), QStringLiteral("use_card"), fact);
+		}
 		if (use.card->getRealCard() == card){
 			if (!use.card->isVirtualCard()){
 				WrappedCard*wrapped = Sanguosha->getWrappedCard(ids.first());
@@ -3707,6 +3946,12 @@ void Room::damage(DamageStruct damage)
 {
 	if (damage.damage<1 || !damage.to->isAlive()) return;
 	ResolutionScope resolution(*this, QStringLiteral("damage"), damage.to, damage.from, damage.to);
+	ResolutionHistoryEventGuard damageHistory(m_resolutionHistory, QStringLiteral("damage"),
+		{{QStringLiteral("from"), damage.from ? damage.from->objectName() : QString()},
+		 {QStringLiteral("to"), damage.to->objectName()},
+		 {QStringLiteral("amount"), damage.damage},
+		 {QStringLiteral("card"), historyCardSnapshot(damage.card)},
+		 {QStringLiteral("reason_skill"), damage.reason}}, historyRecordingEnabled());
 
 	try {
 		bool prevented = true;
@@ -3774,6 +4019,7 @@ void Room::damage(DamageStruct damage)
 		data.setValue(damage);
 
 		thread->trigger(DamageComplete, this, damage.to, data);
+		damageHistory.update({{QStringLiteral("prevented"), prevented}});
 
 		if (!prevented){
 			m_damageStack.pop();
@@ -4793,6 +5039,8 @@ void Room::askForLuckCard(QList<CardsMoveStruct>&cards_moves)
 			move.to_place = Player::DrawPile;
 			move.card_ids = player->handCards();
 			move.reason = CardMoveReason(CardMoveReason::S_REASON_PUT, player->objectName(), "luck_card", "");
+			ResolutionHistoryEventGuard luckHistory(m_resolutionHistory, QStringLiteral("move_cards"),
+				historyCause(move.reason), historyRecordingEnabled());
 			QList<CardsMoveStruct> moves;
 			moves << move;
 			moves = _breakDownCardMoves(moves);
@@ -4809,8 +5057,11 @@ void Room::askForLuckCard(QList<CardsMoveStruct>&cards_moves)
 			//updateCardsChange(move);
 
 			notifyMoveCards(false, moves, false, tmp_list);
-			foreach(int id, move.card_ids)
+			foreach(int id, move.card_ids) {
 				m_cardMovement->drawPile().insert(qsanRandomBounded(m_cardMovement->drawPile().length()),id);
+				recordDirectHistoryMove(*this, luckHistory.id(), id, player->objectName(),
+					Player::PlaceHand, QString(), Player::DrawPile, move.reason);
+			}
 		}
 		foreach(ServerPlayer*player, players){
 			CardsMoveStruct move;
@@ -4818,6 +5069,9 @@ void Room::askForLuckCard(QList<CardsMoveStruct>&cards_moves)
 			move.to = player;
 			move.to_place = Player::PlaceHand;
 			move.card_ids = getNCards(draw_list.takeFirst(), false);
+			const CardMoveReason historyReason(CardMoveReason::S_REASON_DRAW, player->objectName(), "luck_card", "");
+			ResolutionHistoryEventGuard luckHistory(m_resolutionHistory, QStringLiteral("move_cards"),
+				historyCause(historyReason), historyRecordingEnabled());
 			QList<CardsMoveStruct> moves;
 			moves << move;
 			moves = _breakDownCardMoves(moves);
@@ -4832,8 +5086,11 @@ void Room::askForLuckCard(QList<CardsMoveStruct>&cards_moves)
 			updateCardsChange(move);
 
 			notifyMoveCards(false, moves, false, tmp_list);
-			foreach(int id, move.card_ids)
+			foreach(int id, move.card_ids) {
 				player->addCard(id, Player::PlaceHand);
+				recordDirectHistoryMove(*this, luckHistory.id(), id, QString(), Player::DrawPile,
+					player->objectName(), Player::PlaceHand, historyReason);
+			}
 		}
 		doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_cardMovement->drawPile().length());
 	}
@@ -5329,6 +5586,8 @@ void Room::fillAG(const QList<int>&card_ids, ServerPlayer*who, const QList<int>&
 void Room::takeAG(ServerPlayer*player, int card_id, bool move_cards, QList<ServerPlayer*> to_notify)
 {
 	if (to_notify.isEmpty()) to_notify = getPlayers();
+	ResolutionHistoryEventGuard moveHistory(m_resolutionHistory, QStringLiteral("move_cards"),
+		{}, move_cards && historyRecordingEnabled());
 
 	JsonArray arg;
 	arg << (player ? QVariant(player->objectName()) : QVariant());
@@ -5349,11 +5608,16 @@ void Room::takeAG(ServerPlayer*player, int card_id, bool move_cards, QList<Serve
 			move = data.value<CardsMoveOneTimeStruct>();
 			arg[0] = move.to ? QVariant(move.to->objectName()) : QVariant();
 			foreach(int id, move.card_ids){
+				const ServerPlayer *previousOwner = getCardOwner(id);
+				const QString previousName = previousOwner ? previousOwner->objectName() : QString();
+				const Player::Place previousPlace = getCardPlace(id);
 				clearCardTip(id);
 				if(move.to){
 					setCardFlag(id, "visible");
 					move.to->addCard(id, Player::PlaceHand);
 					setCardMapping(id, (ServerPlayer*)move.to, Player::PlaceHand);
+					recordDirectHistoryMove(*this, moveHistory.id(), id, previousName, previousPlace,
+						move.to->objectName(), Player::PlaceHand, move.reason);
 					filterCards((ServerPlayer*)move.to, QList<const Card*>()<<Sanguosha->getCard(id), false);
 				}
 				arg[1] = id;
@@ -5375,8 +5639,13 @@ void Room::takeAG(ServerPlayer*player, int card_id, bool move_cards, QList<Serve
 		log.card_str = QString::number(card_id);
 		sendLog(log);
 
+		const ServerPlayer *previousOwner = getCardOwner(card_id);
+		const QString previousName = previousOwner ? previousOwner->objectName() : QString();
+		const Player::Place previousPlace = getCardPlace(card_id);
 		m_cardMovement->discardPile().prepend(card_id);
 		setCardMapping(card_id, nullptr, Player::DiscardPile);
+		recordDirectHistoryMove(*this, moveHistory.id(), card_id, previousName, previousPlace,
+			QString(), Player::DiscardPile, CardMoveReason());
 	}
 	m_takeAGargs << arg;
 }

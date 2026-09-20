@@ -18,6 +18,7 @@
 #include "skill.h"
 #include "util.h"
 #include "card-lifetime-manager.h"
+#include "resolution-history.h"
 
 #include <QElapsedTimer>
 #include <QMutexLocker>
@@ -1245,6 +1246,38 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
     bool responseFinishStarted = false;
     QVariant responseCtxData;
     SkillExecutionRegistry::Guard responseExecution;
+    QVariantMap responseHistoryData;
+    responseHistoryData.insert(QStringLiteral("from"), player->objectName());
+    responseHistoryData.insert(QStringLiteral("player"), player->objectName());
+    responseHistoryData.insert(QStringLiteral("card"),
+                               m_room.historyCardSnapshot(resp.m_card));
+    responseHistoryData.insert(QStringLiteral("is_use"), method == Card::MethodUse);
+    responseHistoryData.insert(QStringLiteral("is_provision"), isProvision);
+    QVariantMap responseProvenance;
+    responseProvenance.insert(QStringLiteral("kind"),
+                              method == Card::MethodUse ? QStringLiteral("response_use")
+                                                        : QStringLiteral("response"));
+    if (resp.sourceRef.isValid()) {
+        responseProvenance.insert(QStringLiteral("source_owner"), resp.sourceRef.ownerObjectName);
+        responseProvenance.insert(QStringLiteral("source_skill"), resp.sourceRef.key.skillName);
+        responseProvenance.insert(QStringLiteral("source_instance_id"), resp.sourceRef.key.instanceID);
+    }
+    if (resp.activationRef.isValid()) {
+        responseProvenance.insert(QStringLiteral("activation_owner"),
+                                  resp.activationRef.ownerObjectName);
+        responseProvenance.insert(QStringLiteral("activation_skill"),
+                                  resp.activationRef.key.skillName);
+        responseProvenance.insert(QStringLiteral("activation_instance_id"),
+                                  resp.activationRef.key.instanceID);
+    }
+    responseHistoryData.insert(QStringLiteral("provenance"), responseProvenance);
+    ResolutionHistoryEventGuard responseHistory(
+        m_room.resolutionHistory(), QStringLiteral("respond_card"), responseHistoryData,
+        m_room.historyRecordingEnabled());
+    std::unique_ptr<ResolutionHistoryEventGuard> skillHistory;
+    auto finishResponseHistory = [&](const QString &outcome) {
+        responseHistory.finish(outcome);
+    };
     auto restoreSkillContextIdentity = [](SkillContext &context, const SkillContext &identity) {
         context.skill_name = identity.skill_name;
         context.sourceRef = identity.sourceRef;
@@ -1275,6 +1308,15 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
         m_room.setSkillExecutionContext(responseExecution.executionID(), responseCtx);
 		m_room.recordSkillExecutionAudit(responseCtx, result);
 		responseExecution.finish(result);
+		if (skillHistory) {
+			const QString outcome = result == SkillExecutionCompleted
+				? QStringLiteral("completed")
+				: result == SkillExecutionEffectSkipped ? QStringLiteral("skipped")
+				: result == SkillExecutionNoResult ? QStringLiteral("interrupted")
+				: QStringLiteral("cancelled");
+			skillHistory->update(m_room.historySkillContext(responseCtx));
+			skillHistory->finish(outcome);
+		}
 	};
 	try {
 	if (isPureResponse && (isSkillCardResponse || isViewAsResponse)) {
@@ -1301,7 +1343,15 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 		}
         responseIdentity = responseCtx;
         responseExecution = m_room.beginSkillExecution(responseCtx, QVariant::fromValue(resp));
-		resp.skillExecutionID = responseExecution.executionID();
+        resp.skillExecutionID = responseExecution.executionID();
+        skillHistory = std::make_unique<ResolutionHistoryEventGuard>(
+            m_room.resolutionHistory(), QStringLiteral("skill"),
+            m_room.historySkillContext(responseCtx), m_room.historyRecordingEnabled());
+        if (responseHistory.id() != 0) {
+            responseHistory.update(m_room.historySkillContext(responseCtx));
+            responseHistory.update(QVariantMap{
+                {QStringLiteral("execution_id"), responseExecution.executionID()}});
+        }
 		if (responseActiveSkill && !responseCtx.bypass_cost) {
 			ActiveSkillRequest request;
 			request.reason = m_room.m_runtime->state().getCurrentCardUseReason();
@@ -1314,6 +1364,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
             responseCtx.invoker = responseIdentity.invoker;
             if (!paidCost) {
                 finishResponseExecution(SkillExecutionPayFailed);
+                finishResponseHistory(QStringLiteral("cancelled"));
                 return nullptr;
 			}
 		}
@@ -1323,8 +1374,11 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
         m_eventDispatcher.dispatch(EventSkillWillInvoke, player, responseCtxData);
         responseCtx = responseCtxData.value<SkillContext>();
         restoreSkillContextIdentity(responseCtx, responseIdentity);
+        if (skillHistory)
+            skillHistory->update(m_room.historySkillContext(responseCtx));
         if (responseCtx.is_canceled) {
 			finishResponseExecution(SkillExecutionInvalidTargetUpdate);
+            finishResponseHistory(QStringLiteral("cancelled"));
             return nullptr;
         }
         responseInvoker = responseCtx.invoker ? responseCtx.invoker : responseIdentity.invoker;
@@ -1333,6 +1387,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 			if (!responseCtx.invoker->isAlive()
 				|| responseCtx.invoker->isCardLimited(resp.m_card, Card::MethodResponse)) {
 				finishResponseExecution(SkillExecutionInvalidTargetUpdate);
+				finishResponseHistory(QStringLiteral("cancelled"));
 				return nullptr;
 			}
 			player = responseCtx.invoker;
@@ -1340,12 +1395,14 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 		if (responseCtx.updated_card) {
 			if (player->isCardLimited(responseCtx.updated_card, Card::MethodResponse)) {
 				finishResponseExecution(SkillExecutionInvalidTargetUpdate);
+				finishResponseHistory(QStringLiteral("cancelled"));
 				return nullptr;
 			}
 			resp.changeCard(const_cast<Card *>(responseCtx.updated_card));
 		}
 		if (responseActiveSkill && !m_room.reserveActiveSkillUsage(responseActiveSkill, responseCtx)) {
 			finishResponseExecution(SkillExecutionPayFailed);
+			finishResponseHistory(QStringLiteral("cancelled"));
 			return nullptr;
 		}
 		responseUsageReserved = hasGenericActiveSkillUsage(responseActiveSkill);
@@ -1356,11 +1413,14 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
             responseCtx = responseCtxData.value<SkillContext>();
             restoreSkillContextIdentity(responseCtx, responseIdentity);
             responseCtx.invoker = responseInvoker;
+			if (skillHistory)
+				skillHistory->update(m_room.historySkillContext(responseCtx));
 			if (responseCtx.is_canceled) {
 				if (responseUsageReserved)
 					m_room.releaseActiveSkillUsage(responseActiveSkill, responseCtx);
 				responseUsageReserved = false;
 				finishResponseExecution(SkillExecutionPayFailed);
+				finishResponseHistory(QStringLiteral("cancelled"));
 				return nullptr;
 			}
 		}
@@ -1379,6 +1439,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 					m_room.releaseActiveSkillUsage(responseActiveSkill, responseCtx);
 				responseUsageReserved = false;
 				finishResponseExecution(SkillExecutionPayFailed);
+				finishResponseHistory(QStringLiteral("cancelled"));
 				return nullptr;
 			}
 		}
@@ -1393,12 +1454,16 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
         responseCtx = responseCtxData.value<SkillContext>();
         restoreSkillContextIdentity(responseCtx, responseIdentity);
         responseCtx.invoker = responseInvoker;
+		if (skillHistory)
+			skillHistory->update(m_room.historySkillContext(responseCtx));
 		responseCtx.current_event = EventSkillEffect;
 		responseCtxData = QVariant::fromValue(responseCtx);
         const bool skipResponse = m_eventDispatcher.dispatch(EventSkillEffect, player, responseCtxData);
         responseCtx = responseCtxData.value<SkillContext>();
         restoreSkillContextIdentity(responseCtx, responseIdentity);
         responseCtx.invoker = responseInvoker;
+		if (skillHistory)
+			skillHistory->update(m_room.historySkillContext(responseCtx));
         m_room.setSkillExecutionContext(responseExecution.executionID(), responseCtx);
 		resp.nullified = responseCtx.is_canceled || skipResponse;
 	}
@@ -1445,6 +1510,34 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 		resp.m_toCard = m_toCard;
 		askedData.setValue(resp);
 		m_eventDispatcher.dispatch(PreCardResponded, player, askedData);
+		// respond_card means the final response was accepted and formal play has
+		// started.  Physical consumption is recorded separately by move facts.
+		if (responseHistory.id() != 0) {
+			responseHistory.update(QVariantMap{
+				{QStringLiteral("card"), m_room.historyCardSnapshot(resp.m_card)},
+				{QStringLiteral("player"), player->objectName()},
+				{QStringLiteral("provenance"), responseProvenance}});
+			if (responseExecution.executionID() > 0)
+				responseHistory.update(m_room.historySkillContext(responseCtx));
+			CardMoveReason historyReason = reason;
+			historyReason.m_reason = method == Card::MethodResponse
+				? CardMoveReason::S_REASON_RESPONSE : CardMoveReason::S_REASON_LETUSE;
+			historyReason.m_useStruct.sourceRef = resp.sourceRef;
+			historyReason.m_useStruct.skillExecutionID = resp.skillExecutionID;
+			QVariantMap responseFact = m_room.historyCause(historyReason);
+			responseFact.insert(QStringLiteral("from"), responseHistoryData.value(QStringLiteral("from")));
+			responseFact.insert(QStringLiteral("player"), player->objectName());
+			responseFact.insert(QStringLiteral("card"),
+			                   m_room.historyCardSnapshot(resp.m_card));
+			responseFact.insert(QStringLiteral("is_use"), method == Card::MethodUse);
+			responseFact.insert(QStringLiteral("is_provision"), isProvision);
+			responseFact.insert(QStringLiteral("provenance"), responseProvenance);
+			if (resp.skillExecutionID > 0)
+				responseFact.insert(QStringLiteral("execution_id"), resp.skillExecutionID);
+			responseHistory.update(responseFact);
+			m_room.resolutionHistory().appendFact(responseHistory.id(),
+			                                     QStringLiteral("respond_card"), responseFact);
+		}
 		log.type = "#UseCard";
 		log.card_str = resp.m_card->toString();
 		if(method == Card::MethodResponse){
@@ -1471,6 +1564,8 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 		if (resp.nullified) resp.m_card = nullptr;
 	}
 	finishResponseExecution(resp.nullified ? SkillExecutionEffectSkipped : SkillExecutionCompleted);
+	responseHistory.finish(resp.nullified ? QStringLiteral("nullified")
+	                                      : QStringLiteral("completed"));
 	} catch (TriggerEvent controlEvent) {
 		if (responseUsageReserved && !responseUsageCommitted)
 			m_room.releaseActiveSkillUsage(responseActiveSkill, responseCtx);

@@ -457,6 +457,8 @@ add_library(qsanguosha_engine STATIC
     src/core/skill-registry.h
     src/core/skill-instance-utils.cpp
     src/core/skill-instance-utils.h
+    src/core/resolution-history.cpp
+    src/core/resolution-history.h
     src/core/skill.h
     src/core/structs.cpp
     src/core/structs.h

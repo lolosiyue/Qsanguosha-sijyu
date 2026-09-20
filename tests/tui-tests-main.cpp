@@ -23,6 +23,7 @@ int runTuiTerminalTests(int argc, char **argv);
 int runTuiLineEditorTests(int argc, char **argv);
 int runTuiUiModeTests(int argc, char **argv);
 int runTuiUiParityTests(int argc, char **argv);
+int runTuiPresentationRefreshTests(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
@@ -62,6 +63,8 @@ int main(int argc, char **argv)
         return runTuiUiModeTests(argc, argv);
     if (suite == QLatin1String("ui-parity"))
         return runTuiUiParityTests(argc, argv);
+    if (suite == QLatin1String("presentation-refresh"))
+        return runTuiPresentationRefreshTests(argc, argv);
     if (!suite.isEmpty())
         return 64;
 
@@ -90,6 +93,8 @@ int main(int argc, char **argv)
         {QStringLiteral("line-editor"),
             {QStringLiteral("--suite"), QStringLiteral("line-editor")}},
         {QStringLiteral("ui-mode"), {QStringLiteral("--suite"), QStringLiteral("ui-mode")}},
-        {QStringLiteral("ui-parity"), {QStringLiteral("--suite"), QStringLiteral("ui-parity")}}
+        {QStringLiteral("ui-parity"), {QStringLiteral("--suite"), QStringLiteral("ui-parity")}},
+        {QStringLiteral("presentation-refresh"),
+            {QStringLiteral("--suite"), QStringLiteral("presentation-refresh")}}
     });
 }

@@ -60,6 +60,7 @@ public slots:
     void handleInputLine(const QString &line);
 
 private:
+    friend struct TuiPresentationTestAccess;
     void handleCommand(const TuiCommandIntent &intent);
     // Board mode only: feeds decoded keys to m_boardPresenter one at a time
     // and, for any that complete a line, calls handleInputLine() directly --
@@ -147,7 +148,7 @@ private:
     QString presentationText(int command, const QString &fallbackText,
                              const QVariant &payload) const;
     QStringList completionExtraTokens() const;
-    void refreshSharedPresentation(bool advanceRevision);
+    void refreshSharedPresentation(bool advanceRevision, bool requested = false);
     GameActionModel sharedActionModel(const InteractionRequest *request) const;
 
     TuiApplicationOptions m_options;

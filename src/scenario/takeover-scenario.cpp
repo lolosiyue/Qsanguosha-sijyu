@@ -582,6 +582,21 @@ bool TakeoverRule::restore(Room *room) const
         qWarning() << "Takeover snapshot has an invalid gameplay Lua state";
         return false;
     }
+    QMap<QString, QString> historyPlayerMapping;
+    for (const PlayerSnapshot &savedPlayer : state.players) {
+        ServerPlayer *runtimePlayer = scenario->runtimePlayer(savedPlayer.objectName);
+        if (!runtimePlayer)
+            return false;
+        historyPlayerMapping.insert(savedPlayer.objectName,
+                                    runtimePlayer->objectName());
+    }
+    ResolutionHistorySnapshot remappedHistory = state.resolutionHistory;
+    QString historyError;
+    if (!remappedHistory.remapPlayerIds(historyPlayerMapping, &historyError)
+        || !room->resolutionHistory().restore(remappedHistory, &historyError)) {
+        qWarning() << "Takeover snapshot has invalid resolution history:" << historyError;
+        return false;
+    }
     if (!restoreExtraTurns(room, scenario, state.pendingExtraTurns)) {
         qWarning() << "Takeover snapshot has invalid pending extra turns";
         return false;
