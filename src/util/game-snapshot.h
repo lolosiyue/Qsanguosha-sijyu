@@ -169,8 +169,9 @@ public:
     explicit GameSnapshot(Room *room, QObject *parent = nullptr);
     explicit GameSnapshot(const QString &filepath, QObject *parent = nullptr);
 
-    bool save(const QString &filepath);
-    bool load(const QString &filepath);
+    enum class SaveMode { PlatformDefault, Buffered, Streaming };
+    bool save(const QString &filepath, SaveMode mode = SaveMode::PlatformDefault);
+    bool load(const QString &filepath, const QByteArray &expectedSha256 = QByteArray());
 
     GlobalSnapshot getState() const;
     void setState(const GlobalSnapshot &state);

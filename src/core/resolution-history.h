@@ -7,6 +7,8 @@
 #include <QVariantMap>
 #include <memory>
 
+class SnapshotJsonWriter;
+
 // Immutable, pure-value checkpoint of a ResolutionHistoryService journal.
 class ResolutionHistorySnapshot
 {
@@ -17,6 +19,7 @@ public:
     ~ResolutionHistorySnapshot();
 
     QVariantMap serialize() const;
+    bool writeJson(SnapshotJsonWriter &writer) const;
     static bool deserialize(const QVariantMap &serialized,
                             ResolutionHistorySnapshot *snapshot,
                             QString *error = nullptr);

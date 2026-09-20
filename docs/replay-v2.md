@@ -88,6 +88,33 @@ Each replay session has a manifest binding the session identity, source replay
 SHA-256, and every snapshot SHA-256. The manifest and all referenced snapshots
 must verify before a takeover game is created.
 
+On 32-bit builds, the server releases each successfully persisted snapshot
+payload and retains only its file path, SHA-256 and turn/player metadata.
+Retrieval loads a snapshot on demand, verifies the actual parsed bytes and
+metadata, and caches at most one payload. Returned shared pointers keep a
+snapshot alive for its caller even after cache replacement. The 64-bit default
+continues to retain snapshots in memory.
+
+32-bit saves stream schema-3 JSON through a bounded output buffer, emitting
+individual history records, players and cards instead of materializing a full
+history QVariant list plus JSON document. Manifest file hashing and snapshot
+copying use 64 KiB chunks; copies verify the bytes before atomic publication.
+Snapshots still contain the complete history, and failed writes do not replace
+the previous committed file. This reduces retained/temporary snapshot memory;
+it does not cap the live history, total process memory or disk usage. Loading
+one selected snapshot still uses the existing whole-document JSON parser.
+
+The 2026-09-20 checkpoint passed x64 Debug server/core-test builds and forced
+streaming/disk-backed focused tests (format equivalence, bounded writes,
+retention, caller lifetime, atomic failures, manifest copy and tamper rejection).
+The XP build was pending at this checkpoint because the Qt 5.6.3 development
+tree had not been located; the documented/default SDK paths were absent then.
+The tree has since been installed at `H:\Qt563\5.6.3\msvc2015` (official
+`qt-opensource-windows-x86-msvc2015-5.6.3.exe`, verified with `qmake -v`).
+XP build, guest execution and memory A/B remain unrun. The H-drive XP
+deployment contains Qt 5.6.3 runtime DLLs. Evidence:
+`builds/win32-snapshot-memory-20260920/summary.md`.
+
 The branch is recorded with `Recorder(..., true)` and a Replay V2 header with
 `takeover:true`. It is always written to a new file; the source replay is never
 overwritten.

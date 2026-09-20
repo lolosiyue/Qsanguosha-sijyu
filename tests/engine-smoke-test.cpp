@@ -700,7 +700,7 @@ static bool roomSnapshotFacadePersistsAndRetrievesSnapshot()
     EngineRuntimeContextScope contextScope(*Sanguosha, &room);
     room.saveSnapshot(QStringLiteral("turn"));
 
-    GameSnapshot *snapshot = room.getSnapshotBySerial(1);
+    const auto snapshot = room.getSnapshotBySerial(1);
     const QString snapshotDir = GameSnapshot::getSnapshotDir(replayPath);
     const QString snapshotPath = snapshotDir + QStringLiteral("/")
         + GameSnapshot::generateSnapshotFilename(1, QStringLiteral("turn"));

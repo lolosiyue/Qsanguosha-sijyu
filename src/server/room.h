@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <QPointer>
+#include <QSharedPointer>
 
 class ProhibitSkill;
 class ProhibitPindianSkill;
@@ -509,8 +510,8 @@ public:
     void marshal(ServerPlayer*player);
 
     void saveSnapshot(const QString &type = "turn", const QString &playerName = QString());
-    GameSnapshot* getSnapshot(int turnCount) const;
-    GameSnapshot* getSnapshotBySerial(quint64 turnSerial) const;
+    QSharedPointer<GameSnapshot> getSnapshot(int turnCount) const;
+    QSharedPointer<GameSnapshot> getSnapshotBySerial(quint64 turnSerial) const;
     QString getSnapshotSessionId() const;
     QString getSnapshotDir() const;
     void setReplayPath(const QString &path);

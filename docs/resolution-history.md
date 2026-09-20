@@ -180,9 +180,9 @@ card movement service 對每張實體牌 append 一筆 `move` fact。常用 `dat
 
 ## Snapshot、Replay 與 takeover
 
-Room snapshot 將 `resolutionHistory.serialize()` 放入 `state.resolutionHistory`。該 journal 目前自身的序列化版本為 `version = 1`，必須含 `complete`、`next_id`、`next_sequence`、`events`、`facts`、`active` 等欄位，且 active scope 只能保留可恢復的 round。snapshot builder 會把不完整歷史標成 ineligible；deserialize/restore 會做 parent、id、sequence、scope、payload 與 counter validation。
+Room snapshot 將歷史保存於 `state.resolutionHistory`；32 位元版逐筆串流寫出，64 位元版維持 `resolutionHistory.serialize()` 路徑。該 journal 目前自身的序列化版本為 `version = 1`，必須含 `complete`、`next_id`、`next_sequence`、`events`、`facts`、`active` 等欄位，且 active scope 只能保留可恢復的 round。snapshot builder 會把不完整歷史標成 ineligible；deserialize/restore 會做 parent、id、sequence、scope、payload 與 counter validation。
 
-Replay takeover 的外層 schema 目前為 3；可接管 snapshot 必須是完整 `fromstart` replay 的 full-memory、no-eviction shared snapshot。缺少開局前資料、只保留部分歷史、歷史 incomplete、Lua takeover state 不可恢復、或 replay 起點不完整時，必須拒絕 takeover；不能用一個目前場面 snapshot 假裝完整歷史，也不能以空歷史當作「沒有發生過」。對局內的歷史快照共享不可變分頁；後續寫入只複製受影響的頁與索引樹路徑。錄影播放器按需從磁碟載入，快取最多保留一個 `QSharedPointer<GameSnapshot>`；正在使用它的 caller 可安全持有額外引用。
+Replay takeover 的外層 schema 目前為 3；可接管 snapshot 必須是完整 `fromstart` replay 的完整歷史 snapshot（不得淘汰歷史記錄）。缺少開局前資料、只保留部分歷史、歷史 incomplete、Lua takeover state 不可恢復、或 replay 起點不完整時，必須拒絕 takeover；不能用一個目前場面 snapshot 假裝完整歷史，也不能以空歷史當作「沒有發生過」。對局內的歷史快照共享不可變分頁；後續寫入只複製受影響的頁與索引樹路徑。錄影播放器按需從磁碟載入，快取最多保留一個 `QSharedPointer<GameSnapshot>`；正在使用它的 caller 可安全持有額外引用。
 
 restore 時先驗證並 remap snapshot player ids，再 restore history；pending extra turn 的 `causeEventId` 也必須指向存在的歷史 event。不能用 eviction 破壞已發布的 replay／shared snapshot。
 
@@ -190,7 +190,7 @@ restore 時先驗證並 remap snapshot player ids，再 restore history；pendin
 
 歷史會增加伺服器 RAM：每段結算保存 event，每張實體牌的移動保存 fact，另有傷害 component、值快照與查詢索引。資料保留至 Room 結束，沒有「只留最近幾百筆」的截斷；查詢 `limit` 只限制回傳頁大小，不限制儲存量。因此長局、大量移牌或技能連鎖的成本會隨記錄數持續增長。
 
-目前以 256 筆分頁及共享快照降低複製量，後續記錄修改只複製受影響的頁與儲存樹路徑；不長期持有 Card／Player 指標或完整 execution。Replay 播放器最多快取一個載入的 snapshot。序列化仍須建立完整的值結構，還原也須重建查詢索引，因此可能產生額外的歷史大小級別記憶體峰值。這些措施降低重複保存，不能讓歷史免費，也不構成 RAM 上限。
+目前以 256 筆分頁及共享快照降低複製量，後續記錄修改只複製受影響的頁與儲存樹路徑；不長期持有 Card／Player 指標或完整 execution。Replay 播放器最多快取一個載入的 snapshot。32 位元伺服器的已落盤快照只留路徑、雜湊與回合索引，按需載入時也只快取一筆；64 位元伺服器維持記憶體保存。32 位元存檔逐筆輸出事件、玩家及牌，以 64 KiB 輸出緩衝避免同時建立整份 QVariant 歷史、JSON 文件及輸出位元組；單筆 payload 的正規化仍有暫存成本。64 位元預設序列化仍建立完整值結構，載入／還原仍須解析整份文件及重建索引，因此仍可能產生歷史大小級別的記憶體峰值。這些措施降低重複保存，不能讓歷史免費，也不構成 RAM 上限。
 
 2026-09-20 的 05P 重測僅量到整個程序 working set：採樣中伺服器最低約 343 MB、最高約 1,419 MB，TUI 約 183–188 MB（十進位 MB）。伺服器數字同時包含規則、Lua、AI、replay 等配置，沒有關閉歷史的同條件基準，不能將這段增幅全歸因於歷史，亦不能宣稱歷史只增加少量 RAM。隔離量測 journal 與 snapshot 保留量仍是未完成的效能驗證。
 
