@@ -1,4 +1,5 @@
 #include "dashboard.h"
+#include <QTextDocument>
 #include "engine.h"
 #include "standard.h"
 #include "roomscene.h"
@@ -455,12 +456,12 @@ void Dashboard::_updateSkillDockGeometry()
         _m_skillDock->setParentItem(this);
         _m_skillDock->setScale(dockScale);
         _m_skillDock->setWidth(qRound(splitWidth / dockScale));
-        _m_skillDock->setPos(dockLeft, 108);
+        _m_skillDock->setPos(dockLeft, geometry.skillRect.bottom());
         if (m_secondarySkillDock) {
             m_secondarySkillDock->setParentItem(this);
             m_secondarySkillDock->setScale(dockScale);
             m_secondarySkillDock->setWidth(qRound(splitWidth / dockScale));
-            m_secondarySkillDock->setPos(dockLeft + splitWidth, 108);
+            m_secondarySkillDock->setPos(dockLeft + splitWidth, geometry.skillRect.bottom());
         }
         return;
     }
@@ -684,9 +685,17 @@ RoomLayoutEngine::DashboardGeometry Dashboard::_responsiveGeometry(const QSizeF 
 {
     const ClientPlayer *player = getPlayer();
     const int rightWidth = player && player->getGeneral2() ? _dlayoutDouble->m_rightWidth : _dlayout->m_rightWidth;
-    return RoomLayoutEngine::computeDashboard(size, G_COMMON_LAYOUT.m_cardNormalHeight + 150.0,
+    const auto *layout = (player && player->getGeneral2()) || m_secondarySkillDock ? _dlayoutDouble : _dlayout;
+    const qreal handWidth = size.width() - qMin(qreal(rightWidth), qMin(210.0, size.width() * 0.32)) - 8.0;
+    const qreal splitWidth = handWidth / (m_secondarySkillDock ? 2.0 : 1.0);
+    const qreal dockScale = qMin(1.0, splitWidth / qMax(1, layout->m_skillButtonsSize[0].width()));
+    const qreal skillHeight = qMax(_m_skillDock ? _m_skillDock->height() : 0,
+        m_secondarySkillDock ? m_secondarySkillDock->height() : 0) * dockScale;
+    // Both rows may contain selected cards: reserve their combined upward travel.
+    return RoomLayoutEngine::computeDashboard(size, G_COMMON_LAYOUT.m_cardNormalHeight,
         QSizeF(_dlayout->m_leftWidth, _dlayout->m_normalHeight),
-        QSizeF(rightWidth, _m_rightFrame->boundingRect().height()), m_handedness);
+        QSizeF(rightWidth, _m_rightFrame->boundingRect().height()), m_handedness,
+        skillHeight, -2.5 * S_PENDING_OFFSET_Y);
 }
 
 qreal Dashboard::responsiveHeight(qreal width) const
@@ -767,6 +776,41 @@ void Dashboard::_updateResponsiveFrames()
         geometry.handRect.center().y());
     if (_m_handCardNumText) updateHandcardNum();
     if (isShowingDialogOptions()) _layoutDialogOptions();
+}
+
+void Dashboard::_layoutStatusItems()
+{
+    if (m_responsiveSize.isEmpty())
+        return;
+    // Skin anchors extend below the floating area's bottom in landscape.
+    // Portrait reserves a separate row above the utility buttons/countdown;
+    // reapply on every mark/phase update, not only when the viewport changes.
+    const qreal gap = 8.0;
+    qreal clearance = 24.0;
+    for (QSanButton *button : {m_btnReverseSelection, m_btnFilterCard, m_btnSortHandcard,
+            m_btnNoNullification, m_btnShefu, m_btnRenPile}) {
+        if (button && button->isVisible())
+            clearance = qMax(clearance, -button->y());
+    }
+    const QRectF area = _m_floatingArea->boundingRect();
+    const qreal bottom = area.bottom() - clearance - gap;
+    qreal phaseRight = area.right() - gap;
+    qreal phaseBottom = bottom;
+    if (_m_markItem && !_m_markItem->document()->isEmpty()) {
+        const QRectF mark = _m_markItem->boundingRect();
+        const qreal left = qMax(area.left(), area.right() - gap - mark.width());
+        _m_markItem->setPos(QPointF(left, bottom - mark.height()) - mark.topLeft());
+        phaseRight = left - gap;
+        if (_m_phaseIcon && phaseRight - _m_phaseIcon->boundingRect().width() < area.left()) {
+            phaseRight = area.right() - gap;
+            phaseBottom = bottom - mark.height() - gap;
+        }
+    }
+    if (_m_phaseIcon) {
+        const QRectF phase = _m_phaseIcon->boundingRect();
+        _m_phaseIcon->setPos(QPointF(qMax(area.left(), phaseRight - phase.width()),
+            phaseBottom - phase.height()) - phase.topLeft());
+    }
 }
 
 void Dashboard::_paintLeftFrame()
@@ -1568,8 +1612,7 @@ void Dashboard::_adjustCards()
     QRect rowRect = QRect(layout->m_leftWidth, layout->m_normalHeight - cardHeight - 3, middleWidth, cardHeight);
     if (!m_responsiveSize.isEmpty()) {
         const auto geometry = _responsiveGeometry(m_responsiveSize);
-        rowRect = QRect(8, qRound(geometry.handRect.bottom()) - cardHeight - 4,
-            qMax(G_COMMON_LAYOUT.m_cardNormalWidth, qRound(geometry.handRect.width()) - 16), cardHeight);
+        rowRect = geometry.handRowRect.toRect();
     }
     auto disperseRow = [this, &rowRect](QList<CardItem *> &cards) {
         qreal compactNameWidth = 0.0;

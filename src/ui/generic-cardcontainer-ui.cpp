@@ -477,6 +477,7 @@ void PlayerCardContainer::updatePhase()
 		}
 	}else
         _clearPixmap(_m_phaseIcon);
+    _layoutStatusItems();
 }
 
 void PlayerCardContainer::paintHp(int hp, int maxHp)
@@ -940,6 +941,7 @@ void PlayerCardContainer::updateMarks()
         _m_markItem->setPos(newRect.topLeft());
     else
         _m_markItem->setPos(newRect.left(), newRect.top() + newRect.height() / 2);
+    _layoutStatusItems();
     _updateEquips();
 }
 

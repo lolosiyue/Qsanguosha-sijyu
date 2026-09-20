@@ -130,6 +130,8 @@ struct ResponsiveResult
 struct DashboardGeometry
 {
     QRectF handRect;
+    QRectF handRowRect;
+    QRectF skillRect;
     QPointF equipmentPosition;
     QPointF avatarPosition;
     QRectF confirmRect;
@@ -143,7 +145,7 @@ struct DashboardGeometry
 
 DashboardGeometry computeDashboard(const QSizeF &available, double handHeight,
     const QSizeF &equipment, const QSizeF &avatar,
-    Handedness handedness);
+    Handedness handedness, double skillHeight = 48.0, double cardLift = 0.0);
 
 struct SkinMetrics
 {

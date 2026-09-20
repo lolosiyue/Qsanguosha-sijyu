@@ -163,6 +163,7 @@ protected:
     virtual QGraphicsItem *_getProgressBarParent() = 0;
     virtual QGraphicsItem *_getDeathIconParent() = 0;
     virtual QString getResourceKeyName() = 0;
+    virtual void _layoutStatusItems() {}
 
     // Shared skin rendering for live Photos and recipient-scoped overview Photos.
     void paintHp(int hp, int maxHp);
