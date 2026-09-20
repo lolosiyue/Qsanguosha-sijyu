@@ -1994,6 +1994,7 @@ struct SkillContext {
 	QList<ServerPlayer*> targets;
 	QList<ServerPlayer*> updated_targets;
 	const Card* use_card;
+	const Card* updated_card;
 	QVariant* original_data;
 	int instanceID;
 
