@@ -30,6 +30,10 @@ before they are exposed to Lua or a managed Room domain.
 | XMode RoomThread | transient Card domain | Room | turn-end / worker-final / shutdown | game worker for its transients; canonical owner for the remainder | PR1 / PR6 / turn-end |
 | `SkillContext` QVariant payload | extracted `use_card`/`updated_card` plus nested `extra_data`/`interceptor_data` | tag or payload container | tag overwrite/remove or payload release | `Room::thread()` | PR8 |
 | `CorrectSkillContext` QVariant payload | extracted `card` | tag or payload container | tag overwrite/remove or payload release | `Room::thread()` | PR8 |
+| `SkillDeclarationSession::releaseCards` (`src/core/skill-declaration.cpp:77`) | declaration-session temporary Cards | declaration session | session destruction after its owned tag is cleared | session caller | legacy boundary |
+| `AiDecisionCoordinator::buildCardConversions` (`src/server/ai-decision-coordinator.cpp:719,740`) | conversion probe Card | coordinator | immediate discard after rejection or value projection | Room thread | legacy boundary |
+| `AiDecisionCoordinator::buildSpecCard` (`src/server/ai-decision-coordinator.cpp:877`) | reconstructed conversion Card | coordinator | immediate discard when it disagrees with the authorization ticket | Room thread | legacy boundary |
+| `AiDecisionCoordinator::applyResult` (`src/server/ai-decision-coordinator.cpp:966`) | built conversion Card | coordinator | immediate discard before `CardUseStruct` ownership when no ticket is found | Room thread | legacy boundary |
 
 Card-bearing `QVariant` metatypes are classified in three ways. *Lease-bearing by
 extraction*: `CardEffectStruct`, `CardTagOwner`, bare `Card *` / `const Card *`,

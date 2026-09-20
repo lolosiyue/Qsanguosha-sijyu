@@ -898,6 +898,7 @@ bool manifestBindsReplayAndRejectsTamper()
 
 bool takeoverRestoresRoomState()
 {
+    QTextStream(stderr) << "[takeover] room phase bootstrap\n";
     QString bootstrapError;
     if (!expect(EngineBootstrap::initialize(false, &bootstrapError),
                 QStringLiteral("engine bootstrap for takeover fixture")))
@@ -916,12 +917,14 @@ bool takeoverRestoresRoomState()
     }
     const QString snapshotPath = directory.filePath(QStringLiteral("turn_007_turn.json"));
 
+    QTextStream(stderr) << "[takeover] room phase source\n";
     Room source(nullptr, QStringLiteral("02p"), GameSessionConfig(424242));
     ServerPlayer *sourceP1 = RoomTestAccess::addPlayer(
         source, QStringLiteral("p1"), QStringLiteral("caocao"), QStringLiteral("lord"));
     ServerPlayer *sourceP2 = RoomTestAccess::addPlayer(
         source, QStringLiteral("p2"), QStringLiteral("guanyu"), QStringLiteral("rebel"));
     RoomTestAccess::startVirtualGame(source);
+    QTextStream(stderr) << "[takeover] room phase source-started\n";
     if (!expect(source.getPlayers().size() == 2 && source.getDrawPile().size() > 3,
                 QStringLiteral("started source takeover fixture"))) {
         Config.EnableAI = oldEnableAI;
@@ -976,6 +979,7 @@ bool takeoverRestoresRoomState()
     takeoverConfig.takeover = true;
     takeoverConfig.takeoverSnapshotPath = snapshotPath;
     takeoverConfig.takeoverSeatName = QStringLiteral("p1");
+    QTextStream(stderr) << "[takeover] room phase target\n";
     Room target(nullptr, QStringLiteral("02p"), takeoverConfig);
     ServerPlayer *targetP1 = RoomTestAccess::addPlayer(
         target, QStringLiteral("runtime-human"), QStringLiteral("caocao"),
@@ -986,6 +990,7 @@ bool takeoverRestoresRoomState()
     // The fixture has no Server parent, so initialize with robot connections;
     // the real local-server path supplies the online socket registration.
     RoomTestAccess::startVirtualGame(target);
+    QTextStream(stderr) << "[takeover] room phase target-started\n";
     targetP1->setState(QStringLiteral("online"));
     targetP2->setState(QStringLiteral("robot"));
 
@@ -1025,6 +1030,7 @@ bool takeoverRestoresRoomState()
 
     Config.EnableAI = oldEnableAI;
     Config.DisableLua = oldDisableLua;
+    QTextStream(stderr) << "[takeover] room phase assertions-complete\n";
     Q_UNUSED(sourceP2);
     Q_UNUSED(targetP2);
     return ok;

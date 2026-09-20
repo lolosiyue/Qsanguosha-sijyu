@@ -193,7 +193,11 @@ def test_packaged_installs_never_write_into_themselves() -> None:
     for path, needle in (
         (ROOT / "src" / "server" / "room.cpp", "QSanRuntimePaths::recordDir()"),
         (ROOT / "src" / "client" / "client.cpp", "QSanRuntimePaths::recordDir()"),
-        (ROOT / "src" / "ui" / "roomscene.cpp", "QSanRuntimePaths::recordDir()"),
+        (ROOT / "src" / "ui" / "room-replay-controller.cpp", "QSanRuntimePaths::recordDir()"),
+        # RoomScene's diagnostic append is user data, rather than a replay
+        # writer.  The old assertion required the removed recordDir helper
+        # and made this contract fail after the runtime-path migration.
+        (ROOT / "src" / "ui" / "roomscene.cpp", "QSanRuntimePaths::userDataPath("),
         (ROOT / "src" / "core" / "ai-data-store.cpp", "aiDataWritePath()"),
     ):
         assert needle in read(path), f"{path.name} still writes replays/AI data by hand"

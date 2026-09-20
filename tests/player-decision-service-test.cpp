@@ -693,7 +693,11 @@ struct DecisionFixture
     ServerPlayer *other;
 
     explicit DecisionFixture(const QString &state = QStringLiteral("robot"))
-        : room(nullptr, QStringLiteral("02_1v1"))
+        // These cases supply ScriptedAI and DecisionProbe, not Lua gameplay.
+        // Keep an independent native runtime/RNG per fixture without reloading
+        // the full rule and SmartAI trees. CardTable resets room state as needed.
+        : room(nullptr, QStringLiteral("02_1v1"), GameSessionConfig(),
+               Room::RuntimeInitializationPolicy::Deferred)
     {
         player = PlayerDecisionServiceTestAccess::addPlayer(
             room, QStringLiteral("decision-player"), state);
@@ -2041,11 +2045,18 @@ static bool trickEffectTagPreservesNullificationTarget()
 
 int runPlayerDecisionServiceTests()
 {
+    QElapsedTimer bootstrapTime;
+    bootstrapTime.start();
+    std::fprintf(stderr, "[player-decision] bootstrap.begin\n");
+    std::fflush(stderr);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;
         return 1;
     }
+    std::fprintf(stderr, "[player-decision] bootstrap.end elapsed_ms=%lld\n",
+                 static_cast<long long>(bootstrapTime.elapsed()));
+    std::fflush(stderr);
 
     const int savedAIDelay = Config.AIDelay;
     const int savedOriginAIDelay = Config.OriginAIDelay;
@@ -2061,8 +2072,18 @@ int runPlayerDecisionServiceTests()
     auto run = [&](bool (*fn)(), const char *name, int code) {
         if (status != 0)
             return;
-        qWarning() << "running" << name;
-        if (!fn()) {
+        // Flush case boundaries so captured timeout output identifies both the
+        // pending case and elapsed time of every completed case.
+        std::fprintf(stderr, "[player-decision] begin %s\n", name);
+        std::fflush(stderr);
+        QElapsedTimer elapsed;
+        elapsed.start();
+        const bool passed = fn();
+        std::fprintf(stderr, "[player-decision] end %s status=%s elapsed_ms=%lld\n",
+                     name, passed ? "PASS" : "FAIL",
+                     static_cast<long long>(elapsed.elapsed()));
+        std::fflush(stderr);
+        if (!passed) {
             qCritical() << "failed" << name;
             status = code;
         }

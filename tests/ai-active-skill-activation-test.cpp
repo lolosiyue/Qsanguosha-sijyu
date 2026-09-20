@@ -1,15 +1,21 @@
 #include "engine-bootstrap.h"
 #include "ai.h"
+#include "ai-runtime.h"
 #include "card.h"
 #include "engine.h"
 #include "room-test-access.h"
 #include "room.h"
+#include "room-runtime.h"
 #include "serverplayer.h"
 #include "skill.h"
+#include "settings.h"
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QScopedValueRollback>
+#include <QScopeGuard>
 
+#include <cstdio>
 #include <memory>
 
 // Regression: a Lua AI that picks a ViewAsSkillV2 active skill in the play phase
@@ -25,8 +31,11 @@ const char *const kSkillName = "test-ai-active-activation";
 
 bool expect(bool condition, const char *context)
 {
-    if (!condition)
-        qCritical() << "ai-active-skill-activation:" << context;
+    if (!condition) {
+        // Qt's Windows message handler may target the debugger, not CTest stderr.
+        std::fprintf(stderr, "ai-active-skill-activation: %s\n", context);
+        std::fflush(stderr);
+    }
     return condition;
 }
 
@@ -48,8 +57,9 @@ public:
 class ActiveSkillCardAI : public TrustAI
 {
 public:
-    ActiveSkillCardAI(ServerPlayer *player, int instanceId)
-        : TrustAI(player), m_instanceId(instanceId)
+    ActiveSkillCardAI(ServerPlayer *player, int instanceId,
+                      std::unique_ptr<ActiveSkillCard> &card)
+        : TrustAI(player), m_instanceId(instanceId), m_card(card)
     {
     }
 
@@ -64,23 +74,40 @@ public:
 
 private:
     int m_instanceId;
-    std::unique_ptr<ActiveSkillCard> m_card;
+    std::unique_ptr<ActiveSkillCard> &m_card;
 };
 
-void installAI(ServerPlayer *player, int instanceId)
+void installAI(ServerPlayer *player, int instanceId,
+               std::unique_ptr<ActiveSkillCard> &card)
 {
     player->setState(QStringLiteral("robot"));
-    ActiveSkillCardAI *ai = new ActiveSkillCardAI(player, instanceId);
+    ActiveSkillCardAI *ai = new ActiveSkillCardAI(player, instanceId, card);
     ai->setParent(player);
     player->setAI(ai);
 }
 
 bool playPhaseActivationKeepsTheSkill()
 {
+    // This regression targets the adapter, regardless of the user's AI toggle
+    // or callback routing preferences. Restore settings after the Room closes.
+    QScopedValueRollback<bool> enableAI(Config.EnableAI, true);
+    const QVariantMap previousOverrides = Config.valueOverrides();
+    auto restoreSettings = qScopeGuard([&]() { Config.setValueOverrides(previousOverrides); });
+    QVariantMap overrides = previousOverrides;
+    overrides.insert(QStringLiteral("AiLegacyDirectCallbacks"), QStringList());
+    overrides.insert(QStringLiteral("AiLegacyAdaptedCallbacks"),
+                     QStringList{QStringLiteral("activate")});
+    overrides.insert(QStringLiteral("AiIsolatedCallbacks"), QStringList());
+    Config.setValueOverrides(overrides);
+
     TestActiveSkill skill;
     Sanguosha->addSkills(QList<const Skill *>() << &skill);
 
     Room room(nullptr, QStringLiteral("02_1v1"));
+    if (!expect(room.roomRuntime()->ai().routes().routeFor(
+                    AIRequest::Activate, QStringLiteral("activate")) == AiRouteLegacyAdapted,
+                "fixture: activate uses the legacy adapter"))
+        return false;
     EngineRuntimeContextScope scope(*Sanguosha, &room);
     RoomTestAccess::attachThread(room);
     ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("owner"));
@@ -92,7 +119,11 @@ bool playPhaseActivationKeepsTheSkill()
     if (!expect(instanceId > 0, "fixture: the owner acquires the V2 skill"))
         return false;
 
-    installAI(owner, instanceId);
+    // Player-owned AIs outlive Room's runtime shutdown. Keep their synthetic
+    // output cards here so they die after uses, but before the Room.
+    std::unique_ptr<ActiveSkillCard> ownerCard;
+    std::unique_ptr<ActiveSkillCard> otherCard;
+    installAI(owner, instanceId, ownerCard);
     const AIRequest request = RoomTestAccess::makePlayActivateRequest(room, owner);
     CardUseStruct use;
     bool ok = expect(RoomTestAccess::decideAiAction(room, owner, request, use),
@@ -112,7 +143,7 @@ bool playPhaseActivationKeepsTheSkill()
                  "the use points at the owner's instance");
 
     // An instance the player does not own must not be activated.
-    installAI(other, instanceId);
+    installAI(other, instanceId, otherCard);
     const AIRequest foreign = RoomTestAccess::makePlayActivateRequest(room, other);
     CardUseStruct foreignUse;
     const bool foreignAccepted = RoomTestAccess::decideAiAction(room, other, foreign, foreignUse);

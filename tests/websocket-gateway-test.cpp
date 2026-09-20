@@ -145,6 +145,19 @@ public:
     quint16 tcpPort() const { return m_tcpPort; }
     quint16 wsPort() const { return m_wsPort; }
 
+    QString diagnostics()
+    {
+        // Read only bytes already available; this must not extend a test
+        // deadline or retry the failed protocol exchange.
+        m_output += m_process.readAll();
+        return QStringLiteral("state=%1 error=%2 exitStatus=%3 exitCode=%4\n%5")
+            .arg(static_cast<int>(m_process.state()))
+            .arg(m_process.errorString())
+            .arg(static_cast<int>(m_process.exitStatus()))
+            .arg(m_process.exitCode())
+            .arg(QString::fromUtf8(m_output.right(8000)));
+    }
+
 private:
     void drain(int timeoutMs)
     {
@@ -574,6 +587,14 @@ public:
             socket.waitForDisconnected(5000);
     }
 
+    QString socketDiagnostics() const
+    {
+        return QStringLiteral("socketState=%1 socketError=%2 bytesAvailable=%3")
+            .arg(static_cast<int>(socket.state()))
+            .arg(socket.errorString())
+            .arg(socket.bytesAvailable());
+    }
+
 private:
     bool waitFor(int command, ProtocolMessageType type, ProtocolMessage *result, QString *error)
     {
@@ -635,15 +656,26 @@ bool runWebSocketSignupRequiresRulesBundle(quint16 wsPort)
     return rejected;
 }
 
-bool runTcpSignupRoomId(quint16 tcpPort)
+bool reportTcpFailure(LiveServer &server, const TcpSignupClient &client,
+                      const char *stage, const QString &error)
 {
+    std::fprintf(stderr, "[DIAG] TCP %s failed: %s\n%s\nserver: %s\n",
+                 stage, error.toUtf8().constData(),
+                 client.socketDiagnostics().toUtf8().constData(),
+                 server.diagnostics().toUtf8().constData());
+    return false;
+}
+
+bool runTcpSignupRoomId(LiveServer &server)
+{
+    const quint16 tcpPort = server.tcpPort();
     QString error;
     TcpSignupClient first;
     SignupReplyPayload firstReply;
     if (!first.open(tcpPort, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, first, "first.open", error);
     if (!first.signup(QStringLiteral("room-host"), false, 0, &firstReply, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, first, "first.signup", error);
     if (!firstReply.accepted)
         std::fprintf(stderr, "[INFO] first signup rejected: code=%s message=%s\n",
                      firstReply.errorCode.toUtf8().constData(),
@@ -660,18 +692,18 @@ bool runTcpSignupRoomId(quint16 tcpPort)
     TcpSignupClient second;
     SignupReplyPayload secondReply;
     if (!second.open(tcpPort, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, second, "second.open", error);
     if (!second.signup(QStringLiteral("room-guest"), true, 0, &secondReply, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, second, "second.signup", error);
     if (!expect(secondReply.accepted, "signup with room_id 0 was rejected"))
         return false;
 
     TcpSignupClient missing;
     SignupReplyPayload missingReply;
     if (!missing.open(tcpPort, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, missing, "missing.open", error);
     if (!missing.signup(QStringLiteral("missing-room"), true, 99, &missingReply, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, missing, "missing.signup", error);
     if (!expect(!missingReply.accepted
                 && missingReply.errorCode == QLatin1String("room_not_found"),
                 "unknown room_id was not rejected as room_not_found"))
@@ -681,9 +713,9 @@ bool runTcpSignupRoomId(quint16 tcpPort)
     TcpSignupClient full;
     SignupReplyPayload fullReply;
     if (!full.open(tcpPort, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, full, "full.open", error);
     if (!full.signup(QStringLiteral("full-room"), true, 0, &fullReply, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, full, "full.signup", error);
     if (!expect(!fullReply.accepted
                 && fullReply.errorCode == QLatin1String("room_full"),
                 "full room_id was not rejected as room_full"))
@@ -693,18 +725,18 @@ bool runTcpSignupRoomId(quint16 tcpPort)
     TcpSignupClient nextCurrent;
     SignupReplyPayload nextReply;
     if (!nextCurrent.open(tcpPort, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, nextCurrent, "next-host.open", error);
     if (!nextCurrent.signup(QStringLiteral("next-host"), false, 0, &nextReply, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, nextCurrent, "next-host.signup", error);
     if (!expect(nextReply.accepted, "signup without room_id after a full current failed"))
         return false;
 
     TcpSignupClient joinNext;
     SignupReplyPayload joinReply;
     if (!joinNext.open(tcpPort, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, joinNext, "next-guest.open", error);
     if (!joinNext.signup(QStringLiteral("next-guest"), true, 1, &joinReply, &error))
-        return expect(false, qPrintable(error));
+        return reportTcpFailure(server, joinNext, "next-guest.signup", error);
     if (!expect(joinReply.accepted, "signup with room_id 1 was rejected")
         || !expect(joinReply.roomId == 1, "signup reply for room_id 1 did not echo 1"))
         return false;
@@ -790,7 +822,7 @@ int main(int argc, char **argv)
         // Keep the room_id matrix before any admissible WebSocket signup can
         // bind a player to the current room.
         {QStringLiteral("tcp-signup-room-id"),
-         [&]() { return runTcpSignupRoomId(server.tcpPort()); }},
+         [&]() { return runTcpSignupRoomId(server); }},
         {QStringLiteral("unsealed-rules-bundle-by-transport"),
          [&]() { return runUnsealedRulesBundleByTransport(server.tcpPort(), server.wsPort()); }},
         {QStringLiteral("ws-hello-signup"),
