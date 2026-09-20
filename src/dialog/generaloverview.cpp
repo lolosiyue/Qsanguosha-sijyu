@@ -303,6 +303,18 @@ GeneralOverview::GeneralOverview(QWidget *parent)
     connect(ui->searchButton, SIGNAL(clicked()), general_search, SLOT(show()));
     ui->returnButton->hide();
     connect(ui->returnButton, SIGNAL(clicked()), this, SLOT(fillAllGenerals()));
+    connect(ui->sameNameButton, &QPushButton::clicked, this, [this]() {
+        if (same_name_filter.isEmpty()) {
+            const auto *item = ui->tableWidget->item(ui->tableWidget->currentRow(), 0);
+            if (!item)
+                return;
+            same_name_filter = item->data(Qt::UserRole).toString();
+        } else {
+            same_name_filter.clear();
+        }
+        // Preserve the search result so toggling off restores the other filters.
+        fillGenerals(filtered_generals, false);
+    });
 }
 
 void GeneralOverview::setPreviewMode(bool preview)
@@ -315,6 +327,7 @@ void GeneralOverview::setPreviewMode(bool preview)
         ui->banGeneral->hide();
         ui->untieGeneral->hide();
         ui->searchButton->hide(); // 把搜尋按鈕也隱藏起來，保持介面乾淨
+        ui->sameNameButton->hide();
     }
 }
 
@@ -329,7 +342,20 @@ void GeneralOverview::fillGenerals(const QList<const General *> &generals, bool 
         ui->returnButton->hide();
         setWindowTitle(origin_window_title);
         all_generals = copy_generals;
+        same_name_filter.clear();
     }
+
+    filtered_generals = copy_generals;
+    const auto *selected = ui->tableWidget->item(ui->tableWidget->currentRow(), 0);
+    const QString selected_name = selected ? selected->data(Qt::UserRole).toString() : QString();
+    if (!same_name_filter.isEmpty()) {
+        copy_generals.removeIf([this](const General *general) {
+            return !Sanguosha->sameNameWith(general->objectName(), same_name_filter);
+        });
+    }
+    ui->sameNameButton->setText(same_name_filter.isEmpty()
+        ? tr("Same-name generals") : tr("Clear same-name filter"));
+    ui->sameNameButton->setEnabled(!copy_generals.isEmpty() || !same_name_filter.isEmpty());
 
     ui->tableWidget->clearContents();
     ui->tableWidget->setRowCount(copy_generals.length());
@@ -420,9 +446,16 @@ void GeneralOverview::fillGenerals(const QList<const General *> &generals, bool 
     ui->tableWidget->setColumnWidth(4, 40);
     ui->tableWidget->setColumnWidth(5, 111);
 
-    if (!copy_generals.isEmpty())
-        ui->tableWidget->setCurrentItem(ui->tableWidget->item(0, 0));
-    else {
+    if (!copy_generals.isEmpty()) {
+        int selected_row = 0;
+        for (int i = 0; i < copy_generals.size(); ++i) {
+            if (copy_generals.at(i)->objectName() == selected_name) {
+                selected_row = i;
+                break;
+            }
+        }
+        ui->tableWidget->setCurrentItem(ui->tableWidget->item(selected_row, 0));
+    } else {
         ui->generalPhoto->setPixmap(QPixmap());
         ui->skillTextEdit->clear();
         resetButtons();
@@ -973,6 +1006,7 @@ void GeneralOverview::startSearch(bool include_hidden, const QString &nickname, 
 
 void GeneralOverview::fillAllGenerals()
 {
+    same_name_filter.clear();
     ui->returnButton->hide();
     setWindowTitle(origin_window_title);
     fillGenerals(all_generals, false);

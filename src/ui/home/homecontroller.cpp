@@ -456,6 +456,7 @@ void HomeGeneralModel::applyFilter(const QVariantMap &filters)
     const QString kingdom = filters.value(QStringLiteral("kingdom")).toString();
     const QString search = filters.value(QStringLiteral("search")).toString().trimmed().toLower();
     const QString nickname = filters.value(QStringLiteral("nickname")).toString().trimmed();
+    const QString sameName = filters.value(QStringLiteral("sameName")).toString();
     const bool includeHidden = filters.value(QStringLiteral("includeHidden"), true).toBool();
     const int hpMin = filters.value(QStringLiteral("hpMin"), 0).toInt();
     const int hpMax = filters.value(QStringLiteral("hpMax"), 0).toInt();
@@ -483,6 +484,9 @@ void HomeGeneralModel::applyFilter(const QVariantMap &filters)
     next.reserve(m_all.size());
     for (int i = 0; i < m_all.size(); ++i) {
         const Row &row = m_all.at(i);
+        // Share the engine's general identity rule with the widget overview.
+        if (!sameName.isEmpty() && !Sanguosha->sameNameWith(row.name, sameName))
+            continue;
         if (!includeHidden && row.hidden)
             continue;
         if (!allKingdom && !row.kingdoms.split(QLatin1Char('+')).contains(kingdom))
