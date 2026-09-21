@@ -12,14 +12,14 @@
 | 保留每次 attempt 與 PID 變化／裝置斷線錯誤 | 根據勝敗表確認 GAME_OVER 與勝方；依本次 PID／時間核對正常退出 |
 
 目前沒有可靠的 Android GUI 自動開局／GAME_OVER／正常退出測試入口；`--auto-robots` 是既有產品的機器人選項，
-不等於完整無人驗收。助手不使用固定點擊座標，不自動投降、不強制結束 App，也不把程式碼 0 當成遊戲 PASS。
+不包含完整無人驗收。驗收不使用固定點擊座標、不自動投降、不強制結束 App，也不把程式碼 0 當成遊戲 PASS。
 這個版本先減少 ADB 與收證操作；若要全自動，下一個獨立檢查點應加入產品內的 opt-in 驗收入口，
 從現有首頁控制器開局、記錄權威結局、沿用返回首頁／退出流程，避免另造遊戲規則或跳過 UI。
 
 ## 最少操作
 
 前置：Python 3、SDK platform-tools；用既有 AVD 視窗操作 App。
-以下從 `L:\finaldebug\QSanguosha-v2` 執行。啟動模擬器命令見建置文件；助手不自動建立／開關模擬器。
+從專案工作樹執行。啟動模擬器命令見建置文件；驗收工具不建立或關閉模擬器。
 
 ```powershell
 python tools/android/acceptance.py check
@@ -39,7 +39,7 @@ python tools/android/acceptance.py run --install --seconds 60
 這會保留 App 資料覆蓋安裝、啟動首頁，收集最多 60 秒的觀察證據。
 安裝及 `am start -W` 的時間另計；這不是保證總 wall time 小於 60 秒的 focused executable。
 首頁就緒後確認：無「QSanguosha」原生標題列、素材可見，切到背景再返回，最後在首頁按 Android 返回鍵正常退出。
-若仍在載入或觀察時間不夠，助手到時只停止收集，不關閉 App，不算 PASS；保留原因。
+若仍在載入或觀察時間不夠，工具只停止收集，不關閉 App；結果記為未完成並保留原因。
 
 不需更新 APK 時省略 `--install`。觀察正在運行的 App 用 `--attach`，不改變既有局：
 
@@ -50,7 +50,7 @@ python tools/android/acceptance.py run --attach --seconds 60
 ### 完整 05p 與退出驗收
 
 先在 App 中將模式設為五人局並正常退出，記錄原模式，驗收完再還原。
-助手不直接覆寫 `config.ini`；不能把預設二人局當成五人局。
+工具不直接覆寫 `config.ini`；預設二人局不能當成五人局。
 完整對局需有當輪長測授權；預設不重建 APK：
 
 ```powershell
@@ -90,16 +90,16 @@ python tools/android/acceptance.py capture --output $run --label returned-home
 | `exit-before.txt`／`exit-after.txt` | Android 退出歷史；必須用本次 PID／時間配對，不能取任一舊 status 0。 |
 | `screen-*.png`／人工 capture | 定期畫面、開局／結算／回首頁證據。 |
 | `listeners-after.txt`／`pid-after.txt` | 收集結束時的狀態；崩潰也會釋放埠，所以不可獨立證明正常退出。 |
-| `ended_reason=process exited`、助手 exit 0 | 只表示觀察到程序離開；崩潰同樣可能得到這個收集結果，還要人工核對退出資訊。 |
-| `timeout`、中斷或錯誤、助手非零 | 保留現場，App 不會被 force-stop；完整局／正常退出不能列 PASS。 |
+| `ended_reason=process exited`、程序 exit 0 | 只表示觀察到程序離開；崩潰同樣可能得到這個收集結果，還要人工核對退出資訊。 |
+| `timeout`、中斷或錯誤、程序非零 | 保留現場，App 不會被 force-stop；完整局／正常退出不能列 PASS。 |
 
-助手把 `game_over`／`clean_exit` 保持 `MANUAL_REVIEW_REQUIRED`；在同目錄另寫 `summary.md`，
+工具把 `game_over`／`clean_exit` 保持 `MANUAL_REVIEW_REQUIRED`；在同目錄另寫 `summary.md`，
 分列建置、安裝、UI、實際模式／人數、結局／勝方、前後景、正常退出與尚未驗證項目。
 如果收集時間到期但 App 仍運行，不能重新按快速加入或重裝；先判斷是否只是尚未結束。
 需要繼續收尾觀察時用新目錄 `run --attach`，把兩個目錄串在報告中，不能抹掉原 timeout。
 觀察到真實崩潰時停止重試，先保存堆疊；新增原生除錯範圍仍按 AGENTS.md 確認。
 
-還原手動改過的模式／偏好。只關閉本輪擁有的模擬器，先正常退出 App，再執行：
+還原手動改過的模式／偏好。只關閉驗收程序擁有的模擬器，先正常退出 App，再執行：
 
 ```powershell
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"

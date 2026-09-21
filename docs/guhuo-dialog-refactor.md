@@ -1,10 +1,12 @@
 # GuhuoDialog / JuguanDialog 重構說明
 
+本文 `lua/ai/` 路徑指部署檔案；版本與取得方式見[外部 Lua 來源](lua-ai-spec.md#外部-lua-來源)。
+
 ## 概述
 
 目前定案是只將 `JuguanDialog` 改為 Dashboard 手牌區 presenter；`GuhuoDialog` 因候選牌數量過大、擴展包會繼續膨脹，回退為原本的彈出式對話框流程。
 
-> **SmartAI 影響**：本輪僅改客戶端展示層與互動流程（`Dashboard`／`RoomScene` presenter），`SmartAI` 決策仍沿用原本的 tag／mark／card name 協議，**不影響 AI 行為**。原獨立說明 `guhuo-juguan-presenter-impact.md` 已合併至本文末節「附錄：對 SmartAI 的影響邊界」，該獨立文件已移除。
+> SmartAI 的協議依賴見[附錄](#附錄對-smartai-的影響邊界)。
 
 ## 安全分階段方案
 
@@ -121,8 +123,8 @@ tiansuan_type = "hp,hand"
 
 ## OL Guhuo 中央聲明/翻牌提示（GuhuoBox）
 
-- `src/ui/guhuo-box.h` 新增 `GuhuoBox`（`QSanSelectableItem` 衍生）：蠱惑聲明牌的中央提示，聲明時顯示牌背、結算時翻開實際牌
-- 事件鏈：`src/package/ol-strengthen.cpp` 的 `showGuhuoBox()` 以 `S_COMMAND_LOG_EVENT` 廣播 `"guhuo_box"`（分 `declare` / `reveal` / `clear` 三階段）→ `src/client/client.cpp` 解析後 `emit guhuoBox(...)` → `src/ui/roomscene.cpp` `connect(ClientInstance, &Client::guhuoBox, m_guhuoBox, &GuhuoBox::doGuhuoBox)` 顯示
+- [`src/ui/guhuo-box.h`](../src/ui/guhuo-box.h) 新增 `GuhuoBox`（`QSanSelectableItem` 衍生）：蠱惑聲明牌的中央提示，聲明時顯示牌背、結算時翻開實際牌
+- 事件鏈：[`src/package/ol-strengthen.cpp`](../src/package/ol-strengthen.cpp) 的 `showGuhuoBox()` 以 `S_COMMAND_LOG_EVENT` 廣播 `"guhuo_box"`（分 `declare` / `reveal` / `clear` 三階段）→ [`src/client/client.cpp`](../src/client/client.cpp) 解析後 `emit guhuoBox(...)` → [`src/ui/roomscene.cpp`](../src/ui/roomscene.cpp) `connect(ClientInstance, &Client::guhuoBox, m_guhuoBox, &GuhuoBox::doGuhuoBox)` 顯示
 
 ## 修改檔案清單
 
@@ -130,28 +132,28 @@ tiansuan_type = "hp,hand"
 
 | 檔案 | 變更 |
 |------|------|
-| `src/ui/dashboard.h` | 新增 `showDialogOptions()` / `hideDialogOptions()` / `selectedDialogOption()` 與 option item 狀態 |
-| `src/ui/dashboard.cpp` | 實作專用 `DashboardDialogOptionItem`，負責顯示、選中與灰化不可用選項 |
+| [`src/ui/dashboard.h`](../src/ui/dashboard.h) | 新增 `showDialogOptions()` / `hideDialogOptions()` / `selectedDialogOption()` 與 option item 狀態 |
+| [`src/ui/dashboard.cpp`](../src/ui/dashboard.cpp) | 實作專用 `DashboardDialogOptionItem`，負責顯示、選中與灰化不可用選項 |
 
 ### GuhuoDialog
 
 | 檔案 | 變更 |
 |------|------|
-| `src/ui/package-dialogs.h` | `GuhuoDialog` 類別宣告新增 `prepareOptions()`、`getOptionNames()`、`getOptionCard()`、`applyOption()`、`shouldPopup()`、`hasEnabledOptions()` |
-| `src/package/wind.cpp` | 實作上述 API |
+| [`src/ui/package-dialogs.h`](../src/ui/package-dialogs.h) | `GuhuoDialog` 類別宣告新增 `prepareOptions()`、`getOptionNames()`、`getOptionCard()`、`applyOption()`、`shouldPopup()`、`hasEnabledOptions()` |
+| [`src/package/wind.cpp`](../src/package/wind.cpp) | 實作上述 API |
 
 ### JuguanDialog
 
 | 檔案 | 變更 |
 |------|------|
 | `src/ui/package-dialogs.h` | `JuguanDialog` 類別宣告新增同一組選項 API |
-| `src/package/ol.cpp` | 實作上述 API |
+| [`src/package/ol.cpp`](../src/package/ol.cpp) | 實作上述 API |
 
 ### RoomScene
 
 | 檔案 | 變更 |
 |------|------|
-| `src/ui/roomscene.h` | 新增 presenter helper：`wireSkillDialog()`、`presentSkillDialog()`、`activateSkill()` |
+| [`src/ui/roomscene.h`](../src/ui/roomscene.h) | 新增 presenter helper：`wireSkillDialog()`、`presentSkillDialog()`、`activateSkill()` |
 | `src/ui/roomscene.cpp` | `GuhuoDialog` / `JuguanDialog` 改走 presenter；確認後仍回到既有 pending 流程 |
 
 ## 技術細節
@@ -208,14 +210,14 @@ if (dashboard->isShowingDialogOptions()) {
 - 原有 `Self->setTag(skillName, card)` 邏輯保持不變
 - `ViewAsSkill::getDialog()` 返回值類型不變
 
-## 附錄：對 SmartAI 的影響邊界（原 `guhuo-juguan-presenter-impact.md` 合併）
+## 附錄：對 SmartAI 的影響邊界
 
 ### 結論
 
 - `JuguanDialog` 保留 Dashboard presenter，`GuhuoDialog` 回退 modal dialog；影響範圍僅在客戶端展示層與互動流程（UX）。
 - `SmartAI` 的出牌決策、質疑判斷、禁用項判斷仍沿用原本 tag／mark／card name 協議，**不應改變 AI 行為**。
 
-| 層級 | 本輪是否改動 | 說明 |
+| 層級 | 改動範圍 | 說明 |
 |------|--------------|------|
 | `Dashboard`／`RoomScene` presenter | 是 | `JuguanDialog` 候選項改為手牌區單列疊放 option item |
 | `GuhuoDialog`／`JuguanDialog` 選項 API | 是 | 新增 `prepareOptions()`／`getOptionNames()`／`getOptionCard()`／`applyOption()` |
@@ -241,7 +243,7 @@ if (dashboard->isShowingDialogOptions()) {
 | 人類玩家 UX／事件時序 | 已改（僅 Juguan presenter） |
 | AI 決策模型／伺服器結算 | 未改 |
 
-只有改動 `GuhuoType`／`NosGuhuoType`／`Self->setTag("juguan", ...)`、`*_guhuo_remove_*`／`*_juguan_remove_*` mark 命名、`@GuhuoCard`／`#skill:.::pattern` 字串格式、或 `slash`／`normal_slash` 正規化協議時，才會波及 SmartAI——本輪均未做。
+只有改動 `GuhuoType`／`NosGuhuoType`／`Self->setTag("juguan", ...)`、`*_guhuo_remove_*`／`*_juguan_remove_*` mark 命名、`@GuhuoCard`／`#skill:.::pattern` 字串格式、或 `slash`／`normal_slash` 正規化協議時，才會波及 SmartAI；這些協議保持原樣。
 
 ### 建議驗證
 

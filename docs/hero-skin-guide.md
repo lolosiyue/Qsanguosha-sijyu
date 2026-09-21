@@ -84,7 +84,7 @@ hero-skin/
   2. 配置 `EnableAnimatedGenerals = true`（預設啟用；設定介面為 `ConfigDialog` 的 **Environment** 分頁「Enable animated generals (GIF)」勾選項，低配機器可關閉以節省記憶體）
 - **必要**：否
 
-#### GIF 查找規則（`src/ui/graphicspixmaphoveritem.cpp` 的 `setGeneralImage`，現約 :276-313）
+#### GIF 查找規則（[`src/ui/graphicspixmaphoveritem.cpp`](../src/ui/graphicspixmaphoveritem.cpp) 的 `setGeneralImage`，現約 :276-313）
 
 | 場景 | 靜態圖路徑 | GIF 路徑 |
 |------|-----------|---------|
@@ -115,7 +115,7 @@ sgs.Sanguosha:addResourceAlias("animatedgeneral", "關羽", "image/special/關�
 
 - 以 `QMovie` 載入播放，經 `QGraphicsProxyWidget` 把承載 `QMovie` 的 `QLabel` 嵌入 `QGraphicsScene`；`zValue = -1` 使 GIF 置於靜態層下方，不遮擋皮膚切換特效。
 - 切換皮膚時：暫停並隱藏當前 GIF → 顯示靜態圖播放切換特效 → 切換完成後重新載入並顯示 GIF。
-- 僅支援 `.gif` 格式；頭像更新的呼叫點在 `src/ui/generic-cardcontainer-ui.cpp`，設定介面在 `src/dialog/configdialog.ui/cpp`。
+- 僅支援 `.gif` 格式；頭像更新的呼叫點在 [`src/ui/generic-cardcontainer-ui.cpp`](../src/ui/generic-cardcontainer-ui.cpp)，設定介面在 `src/dialog/configdialog.ui/cpp`。
 
 ### card.jpg（卡片圖）
 
@@ -551,13 +551,13 @@ sgs.LoadSkinTransltionTable(t)
 
 | 功能 | 檔案位置 |
 |------|---------|
-| 皮膚容器 UI | `src/ui/heroskincontainer.cpp` |
-| 皮膚項 UI | `src/ui/skinitem.cpp` |
+| 皮膚容器 UI | [`src/ui/heroskincontainer.cpp`](../src/ui/heroskincontainer.cpp) |
+| 皮膚項 UI | [`src/ui/skinitem.cpp`](../src/ui/skinitem.cpp) |
 | GIF 動畫載入 | `src/ui/graphicspixmaphoveritem.cpp:267-379` |
 | 技能語音搜尋 | `src/core/skill.cpp:328-343` |
 | 卡牌語音搜尋 | `src/ui/skin-bank.cpp:615-647` |
 | 死亡語音搜尋 | `src/core/general.cpp:317-360` |
-| Spine 動態皮膚 | `src/ui/CharacterSpineActionController.cpp` |
+| Spine 動態皮膚 | [`src/ui/CharacterSpineActionController.cpp`](../src/ui/CharacterSpineActionController.cpp) |
 | 皮膚翻譯載入 | `src/core/general.cpp:434-449` |
 | 翻譯函數定義 | `lua/sgs_ex.lua:1058-1072` |
 

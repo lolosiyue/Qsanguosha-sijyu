@@ -1,12 +1,12 @@
 # 結算歷史（Resolution History）
 
-本文是 QSanguosha server 規則腳本可使用的結算歷史規格。內容以目前 `src/core/resolution-history.h/.cpp`、`src/server/room.h/.cpp`、`src/server/card-movement-service.cpp` 與 `swig/resolution-history.i` 的已落地介面為準；若 core 的 storage 或 query validation 後續調整，應先同步更新本文的 API 表與例子。
+結算歷史供伺服器規則腳本查詢。資料與查詢契約由 [ResolutionHistoryService](../src/core/resolution-history.h) 定義，Lua 入口為 [Room::queryHistoryFacts](../src/server/room.cpp) 等封裝及 [SWIG 綁定](../swig/resolution-history.i)。
 
 ## 用途與邊界
 
 Room 持有一份 server authoritative 的 `ResolutionHistoryService`。它只供 rules Lua 讀取，保存可重播、可查詢的 primitive value tree；presentation、isolated AI 與 private request body 不會經由這個介面取得。
 
-歷史不是目前場面（current state）的替代品。`room:getCardPlace(card_id)` 只回答現在的位置；要知道某張牌曾由哪裡移到哪裡，必須查 `move` fact。反過來，歷史也不保證取代當前狀態：技能在查到候選牌後，仍要在真正 `obtainCard`／移牌前重新檢查 `room:getCardPlace` 與 owner。這是避免查詢與實際取牌之間牌已被其他結算移走的必要競態防護。
+`room:getCardPlace(card_id)` 查詢現在的位置，`move` fact 記錄過去的移動。查得候選牌後，在 `obtainCard`／移牌前重新檢查 `room:getCardPlace` 與 owner，避免其他結算已將牌移走。
 
 歷史未知（`complete == false` 或 `attribution_complete == false`）不等於沒有符合項目。未知只能表示資料不完整或歸因不足；規則不能把空結果解讀為「沒有發生」。
 
@@ -174,7 +174,7 @@ card movement service 對每張實體牌 append 一筆 `move` fact。常用 `dat
 
 ## Lua 合約：只用 plain tables
 
-`swig/resolution-history.i` 只允許 Lua plain table／scalar crossing：bool、integer、finite number、string、plain list/map，深度上限 8。filter 必須是無 array part 的 flat scalar map；結果 map 若含 unsupported metatype 或過深巢狀值，wrapper 會拒絕。不可把 C++ pointer、QObject、Card、ServerPlayer、userdata、function 或 coroutine state 寫進 event/fact payload。
+[`swig/resolution-history.i`](../swig/resolution-history.i) 只允許 Lua plain table／scalar crossing：bool、integer、finite number、string、plain list/map，深度上限 8。filter 必須是無 array part 的 flat scalar map；結果 map 若含 unsupported metatype 或過深巢狀值，wrapper 會拒絕。不可把 C++ pointer、QObject、Card、ServerPlayer、userdata、function 或 coroutine state 寫進 event/fact payload。
 
 這個規則也限制 Lua 技能設計：把查詢結果轉成自己的 plain table 後再處理，保留 `complete`／`attribution_complete` 狀態；不要把歷史物件當成可變 runtime object。既有 RoomThread／技能回呼流程維持原樣，歷史只是 Room-owned journal 與 query facade。
 
@@ -190,7 +190,7 @@ restore 時先驗證並 remap snapshot player ids，再 restore history；pendin
 
 歷史會增加伺服器 RAM：每段結算保存 event，每張實體牌的移動保存 fact，另有傷害 component、值快照與查詢索引。資料保留至 Room 結束，沒有「只留最近幾百筆」的截斷；查詢 `limit` 只限制回傳頁大小，不限制儲存量。因此長局、大量移牌或技能連鎖的成本會隨記錄數持續增長。
 
-目前以 256 筆分頁及共享快照降低複製量，後續記錄修改只複製受影響的頁與儲存樹路徑；不長期持有 Card／Player 指標或完整 execution。Replay 播放器最多快取一個載入的 snapshot。32 位元伺服器的已落盤快照只留路徑、雜湊與回合索引，按需載入時也只快取一筆；64 位元伺服器維持記憶體保存。32 位元存檔逐筆輸出事件、玩家及牌，以 64 KiB 輸出緩衝避免同時建立整份 QVariant 歷史、JSON 文件及輸出位元組；單筆 payload 的正規化仍有暫存成本。64 位元預設序列化仍建立完整值結構，載入／還原仍須解析整份文件及重建索引，因此仍可能產生歷史大小級別的記憶體峰值。這些措施降低重複保存，不能讓歷史免費，也不構成 RAM 上限。
+目前以 256 筆分頁及共享快照降低複製量，後續記錄修改只複製受影響的頁與儲存樹路徑；不長期持有 Card／Player 指標或完整 execution。Replay 播放器最多快取一個載入的 snapshot。32 位元伺服器的已落盤快照只留路徑、雜湊與回合索引，按需載入時也只快取一筆；64 位元伺服器維持記憶體保存。32 位元存檔逐筆輸出事件、玩家及牌，以 64 KiB 輸出緩衝避免同時建立整份 QVariant 歷史、JSON 文件及輸出位元組；單筆 payload 的正規化仍有暫存成本。64 位元預設序列化仍建立完整值結構，載入／還原仍須解析整份文件及重建索引，因此仍可能產生歷史大小級別的記憶體峰值。記憶體需求仍隨歷史資料量增加。
 
 2026-09-20 的 05P 重測僅量到整個程序 working set：採樣中伺服器最低約 343 MB、最高約 1,419 MB，TUI 約 183–188 MB（十進位 MB）。伺服器數字同時包含規則、Lua、AI、replay 等配置，沒有關閉歷史的同條件基準，不能將這段增幅全歸因於歷史，亦不能宣稱歷史只增加少量 RAM。隔離量測 journal 與 snapshot 保留量仍是未完成的效能驗證。
 
@@ -209,22 +209,6 @@ FreeKill 的事件模型可作概念參考，但不是本專案的 API 來源：
 
 FreeKill 的 `getEventsOfScope`／`findParent` 是設計參考；本專案的 `historyParent` 明確只查 ancestor，`queryHistory*` 的 filter key、結果 key、watermark 與 completeness semantics 以本文上方的 C++/SWIG 介面為準。
 
-## 作者與驗證狀態
+## 驗證紀錄
 
-**Authored**：凜依目前 source code、Room wrappers、SWIG typemap、snapshot restore 路徑與 FreeKill 定向參考撰寫本規格。
-
-2026-09-20 經使用者授權後完成下列驗證，證據保存在 `builds/resolution-history-validation-20260920-154324/`：
-
-| Gate | 狀態 | 範圍 |
-| --- | --- | --- |
-| Debug build | PASS | GUI、server、TUI、兩個 history test targets；SWIG 重新生成並編譯 |
-| Native history | PASS | 6 個獨立 case：late-acquisition、damage、pile-moves、nested-turn、pagination、cleanup |
-| Lua / Room integration | PASS | rules-lua、isolated-lua、room-wrappers、snapshot |
-| Replay takeover focused | PASS | `qsanguosha_core_tests --suite takeover-snapshot`；含 Room 實際還原 |
-| 05P SmartAI real TCP 初次 | FAIL（TUI） | 伺服器自然結局 `lord+loyalist`；TUI 訊息落後、600 秒等待超時，退出碼 7 |
-| 05P SmartAI real TCP 修正後 | PASS | 相同種子與伺服器 binary；TUI 收到 GAME_OVER、script 完成、client/server exit 0、無 orphan、TCP/WS port 釋放；證據在 `builds/tui-delay-fix-20260920/` |
-| CTest / GUI 人工 / CI / 跨平台矩陣 | NOT RUN | 本輪未宣稱這些 gate 已通過 |
-
-新 fixture 的初次執行暴露了缺少 Room context/card-state reset，以及監聽 `ChoiceMade` 時被 trigger-order 選擇遞迴觸發的問題；均已在 fixture 修正。isolated AI fixture 改為將 self 與 other-player list 分開，符合既有 facade 合約。原始失敗日誌與可取得的 dump 均保留，最終 10 個 history case 正常退出。
-
-初次完整對局失敗證據保留。使用者另行授權定位並修復 TUI 延遲後，移除 classic 模式逐通知建立未使用摘要的運算，重用文字清理的固定正規表示式，並通過四項 focused 測試及一次同種子重測。兩次的 246 筆 `[LOG]`／`[AUTOTEST]` 去除時間後順序一致；新版 TUI 的完整結局日誌在 server GAME_OVER 後約 0.70 秒寫完。這是 classic/script TCP 驗收，不代表可見 board／GUI 或 history RAM 增幅已驗收。
+[2026-09-20 驗證報告](reports/resolution-history-20260920.md)保存建置、focused cases、首次 TUI 逾時及修正後同種子重測結果。

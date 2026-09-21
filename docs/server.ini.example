@@ -1,6 +1,10 @@
 ; Linux dedicated server overlay. Copy this file and pass it with:
 ;   qsanguosha_server --config server.ini
 ; Values here override the normal QSettings file but are never written back.
+; This is an example overlay, not an exhaustive list of current defaults.
+; Keys/defaults/limits: src/server/server-config.cpp, settingSpecs().
+; Inspect effective values: qsanguosha_server --config server.ini --print-config --json
+; Validate this overlay: qsanguosha_server --config server.ini --check-config
 
 [General]
 ServerName=QSanguosha Linux Server

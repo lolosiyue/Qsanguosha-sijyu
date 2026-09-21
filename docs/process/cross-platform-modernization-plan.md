@@ -29,7 +29,7 @@
 | Windows x64 | 完整 GUI、內嵌／獨立伺服器、崩潰報告、開發者符號包 | FMOD |
 | Ubuntu 24.04 x64 | 無頭伺服器、安裝目錄、啟動腳本、systemd unit 範例 | Null |
 | Android | 後期正式客戶端、單機內嵌房間、Google Play AAB＋Play Asset Delivery | Qt Multimedia |
-| Windows XP legacy（opt-in） | 獨立 legacy target（`QSAN_BUILD_XP_LEGACY`，非主線交付）；見 [`windows-xp-legacy-build.md`](windows-xp-legacy-build.md) | FMOD |
+| Windows XP legacy（opt-in） | 獨立 legacy target（`QSAN_BUILD_XP_LEGACY`，非主線交付）；見 [`windows-xp-legacy-build.md`](../windows-xp-legacy-build.md) | FMOD |
 
 | 項目 | 固定基線 |
 |---|---|
@@ -41,7 +41,7 @@
 | Android | min API 28、target/compile API 36、NDK r27c、JDK 21 |
 | Android ABI | Google Play 正式版僅 `arm64-v8a`；`x86_64` 僅供 CI／模擬器 |
 
-> **範圍豁免（2026-09-06）**：`QSAN_BUILD_XP_LEGACY` 為 opt-in 的 Windows XP legacy 獨立 target（正式入口為 `legacy/xp/tools/build-xp.ps1`；其內部使用 `xp-vs2017-x86` preset 與 `find_package(Qt5 5.6.3 EXACT REQUIRED)`，見 [`windows-xp-legacy-build.md`](windows-xp-legacy-build.md)），不受上表「Qt 6.11.1、不維護 Qt 5 相容層」基線約束；上表交付平台已補列該 opt-in 產品。
+> **範圍豁免（2026-09-06）**：`QSAN_BUILD_XP_LEGACY` 為 opt-in 的 Windows XP legacy 獨立 target（正式入口為 `legacy/xp/tools/build-xp.ps1`；其內部使用 `xp-vs2017-x86` preset 與 `find_package(Qt5 5.6.3 EXACT REQUIRED)`，見 [`windows-xp-legacy-build.md`](../windows-xp-legacy-build.md)），不受上表「Qt 6.11.1、不維護 Qt 5 相容層」基線約束；上表交付平台已補列該 opt-in 產品。
 
 官方基線資料：
 
@@ -62,7 +62,7 @@
 | `qsanguosha_tui` | Windows／Linux live TCP Protocol V2 客戶端；`QCoreApplication` + Qt Core／Network；Replay 永久不支援，GUI dependency 禁止 |
 | Web compact (`web/`) | 瀏覽器 TypeScript SPA；WebSocket 9528；不進 `qsanguosha_engine` |
 | Android app target | Qt GUI／Quick／Widgets／Multimedia 客戶端；不提供公開專用伺服器，但單機可建立內嵌房間 |
-| `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具（2026-09-06 複核：未落地——CMake 無此 target，實際以 `src/util/crashhandler.cpp` 內嵌於產品） |
+| `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具（2026-09-06 複核：未落地——CMake 無此 target，實際以 [`src/util/crashhandler.cpp`](../../src/util/crashhandler.cpp) 內嵌於產品） |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
 
 CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝規則與平台條件來源。2026-07-30 已先完成 Windows x64 過渡建置：CMake 3.28+、Qt 6.5.3、MSVC 2019、單一 `QSanguosha` target，並移除 qmake、舊 `.sln`／`.vcxproj` 及舊 Makefile 入口。此過渡建置已通過 Debug／Release，保留既有 FMOD、Breakpad、SWIG、翻譯與輸出路徑；尚未完成 `qsanguosha_engine` 邊界，也不取代最終 Qt 6.11.1／MSVC 2022→2026／Lua 5.4.8 基線。（該邊界已於 2026-08-09 完成見 §10 M1；Windows 工具鏈已於 2026-08-18 升級至 VS 2026 v145 + Qt 6.11.1 `msvc2022_64`。）
@@ -96,7 +96,7 @@ Spine 的 GLSL 120 shader 與 `beginNativePainting()` 不屬於本批 API 相容
 - wrapper 不存在或任一 `swig/*.i` 較新時會自動重新生成；來源樹的 wrapper 不參與建置，也不在工作區之間同步。
 - 自動生成檔留在 CMake build tree，正常建置不會改動來源樹。
 
-2026-08-31 實作狀態：Lua 5.4.8 核心、最小相容層、seeded state API、SWIG API 調整及 focused `lua-compat` 測試已落地。檢查 `extensions/main@4dd30101310f9c2cb7cca2de3bd4d40ac77e8736` 時發現的 4 個低頻問題亦已由使用者確認修正：
+2026-08-31 實作狀態：Lua 5.4.8 核心、最小相容層、seeded state API、SWIG API 調整及 focused `lua-compat` 測試已落地。檢查 `extensions/main@4dd30101310f9c2cb7cca2de3bd4d40ac77e8736` 時發現的 4 個低頻問題亦已修正：
 
 | 檔案 | 位置 | 修正內容 |
 |---|---:|---|
@@ -123,7 +123,7 @@ Audio
 > `src/ui/audio/`，`Audio` facade 維持不變。Linux GUI 使用 `QtMediaAudioBackend`，
 > Windows GUI Release 維持 `FmodAudioBackend`（行為未變），dedicated server 與
 > Windows Debug 使用 `NullAudioBackend`。Android 尚未接上，屬 M7。
-> 契約與驗證方式見 [`linux-development-environment.md`](linux-development-environment.md) §4.7。
+> 契約與驗證方式見 [`linux-development-environment.md`](../linux-development-environment.md) §4.7。
 
 | 行為 | Windows FMOD | Linux／Android Qt Multimedia | Null |
 |---|---|---|---|
@@ -136,7 +136,7 @@ Audio
 
 Android 固定只為 `button-down`、`button-hover`、`choose-item`、`pop-up` 等觸控回饋提供 WAV 衍生資產，以 `QSoundEffect` 預載。約 15,357 個原有 OGG 語音與 BGM 不整批轉 WAV；語音使用可重用播放器池，BGM 使用獨立播放器。App 進入背景時暫停音訊，返回前景後按原狀態恢復。Android 不打包任何 FMOD `.so`、Java 元件或標頭。
 
-CMake 提供 `QSAN_AUDIO_BACKEND=FMOD|QT|NULL` 並按平台設定固定預設（Windows→`FMOD`、Linux GUI→`QT`、server-only→`NULL`）。後端選擇只發生在 CMake 與 `src/ui/audio/audio-backend-factory.cpp`，呼叫端沒有平台 `#ifdef`。`Audio::backendName()` 回報實際生效的後端，`Audio::getVersion()` 回報該後端的版本，不再假設一定是 FMOD；About 對話框顯示兩者。
+CMake 提供 `QSAN_AUDIO_BACKEND=FMOD|QT|NULL` 並按平台設定固定預設（Windows→`FMOD`、Linux GUI→`QT`、server-only→`NULL`）。後端選擇只發生在 CMake 與 [`src/ui/audio/audio-backend-factory.cpp`](../../src/ui/audio/audio-backend-factory.cpp)，呼叫端沒有平台 `#ifdef`。`Audio::backendName()` 回報實際生效的後端，`Audio::getVersion()` 回報該後端的版本，不再假設一定是 FMOD；About 對話框顯示兩者。
 
 M1 引擎解耦先以 `Engine::audioEffectRequested` signal 建立不含 FMOD 的純 Core port；完整 `IAudioBackend` 三後端已於 M6 的實作批次落地，但其跨平台及 Windows 行為驗收仍依 §10／§11 追蹤。
 
@@ -148,7 +148,7 @@ Windows 先驗證現有 FMOD Ex 4.44 與 MSVC 2022 x64 的連結、啟動及壓�
 
 > 2026-09-12 首版決策更新：採 APK 直接安裝與手動聲畫 ZIP 匯入，Google Play／AAB／PAD
 > 延後。擴展部署依 `TODO/human` 的逐檔釋出方式，接線與未完成範圍見
-> [Android 擴展實體目錄](android-extension-runtime.md)。以下 PAD 設計保留為後續渠道參考。
+> [Android 擴展實體目錄](../android-extension-runtime.md)。以下 PAD 設計保留為後續渠道參考。
 
 | 類型 | 檔案數 | 未壓縮體積 |
 |---|---:|---:|
@@ -190,7 +190,7 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 
 `standard`、`wind`、`fire`、`thicket`、`mountain`、`YJCM`、`YJCM2012`、`standard_cards`、`standard_ex_cards`、`maneuvering`。
 
-2026-08-31 實作狀態：已持久化 `EnabledPackages`、完成舊 `BanPackages` 一次性補集遷移、保留執行期 `BanPackages` 相容值，並同步 Gitee 由 `lua/config.lua::package_names` 驅動的通用卡牌、基礎將包、移動版、OL、十周年、國戰、特殊玩法、其他分類。特殊玩法／劇本包維持隱藏及執行期禁用；既有 CamelCase `objectName` 不改名，白名單讀取時相容 Gitee 小寫蛇形名稱。依使用者明確要求，§1 的「不移植擴充包內容」不適用於本次 Gitee 對齊：先將 54 名既有武將移至 17 個版本家族包，再以 Gitee `4f5f17f2e395599a8ed9fd689faf2b4a84a1c945` 為基準加入 Dream 12 名與其他 56 名新武將，完整同步 `mobile-strengthen`、`ol-strengthen`、`tenyear-strengthen`，並套用 OLDuorui、Yingbian、OLSanyao、NosGuhuo／NosBuqu、TenyearDuanliang 等 6 組實質技能差異。Gitee LuaAI 與未出現於來源清單的武將圖片／語音不移植；蠱惑中央聲明／翻牌提示沿用既有 `S_COMMAND_LOG_EVENT`，不改 V1/V2 命令編號。package policy／ownership focused executable 已通過；每名武將實戰、選包頁人工操作、Guhuo 動畫及遠端 CI 仍待完成。
+2026-08-31 實作狀態：已持久化 `EnabledPackages`、完成舊 `BanPackages` 一次性補集遷移、保留執行期 `BanPackages` 相容值，並同步 Gitee 由 `lua/config.lua::package_names` 驅動的通用卡牌、基礎將包、移動版、OL、十周年、國戰、特殊玩法、其他分類。特殊玩法／劇本包維持隱藏及執行期禁用；既有 CamelCase `objectName` 不改名，白名單讀取時相容 Gitee 小寫蛇形名稱。此項 Gitee 對齊包含 §1 原先排除的擴充包內容：先將 54 名既有武將移至 17 個版本家族包，再以 Gitee `4f5f17f2e395599a8ed9fd689faf2b4a84a1c945` 為基準加入 Dream 12 名與其他 56 名新武將，完整同步 `mobile-strengthen`、`ol-strengthen`、`tenyear-strengthen`，並套用 OLDuorui、Yingbian、OLSanyao、NosGuhuo／NosBuqu、TenyearDuanliang 等 6 組實質技能差異。Gitee LuaAI 與未出現於來源清單的武將圖片／語音不移植；蠱惑中央聲明／翻牌提示沿用既有 `S_COMMAND_LOG_EVENT`，不改 V1/V2 命令編號。package policy／ownership focused executable 已通過；每名武將實戰、選包頁人工操作、Guhuo 動畫及遠端 CI 仍待完成。
 
 ### 6.2 武將版本去重
 
@@ -211,8 +211,8 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 - PNG Replay container 提供 magic/version/size/SHA-256 完整性保護；普通或損壞
   PNG 明確拒絕。
 - 新格式保留時間軸、快照、視角切換與觀看途中玩家接管；TUI 永久不實作 Replay。
-- 伺服器能力宣告、無效詢問跳過、AI 除錯狀態及控制命令仍是後續交付項；本次 V2 cutover 的 typed payload／欄位驗證不代表上述 UX／除錯功能已完成。
-- Web compact client 位於 [`web-client.md`](web-client.md)：Vite 靜態 SPA、`/room/<roomId>` 上座、複製連結／QR、29 項互動；PWA 與桌面級 Browser UI 仍是後續。
+- 伺服器能力宣告、無效詢問跳過、AI 除錯狀態及控制命令仍是後續交付項；V2 cutover 已完成 typed payload／欄位驗證，上述 UX／除錯功能尚待實作。
+- Web compact client 位於 [`web-client.md`](../web-client.md)：Vite 靜態 SPA、`/room/<roomId>` 上座、複製連結／QR、29 項互動；PWA 與桌面級 Browser UI 仍是後續。
 
 ### 6.4 通用體驗
 
@@ -294,7 +294,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 
 ### 10.1 2026-08-31 驗收缺口
 
-下表只列目前仍未達到里程碑完成標準的項目。`source landed` 代表程式／測試資產已在目前 `debug` 可見，不代表跨平台、live、人工或遠端驗收已通過。
+下表只列目前仍未達到里程碑完成標準的項目。`source landed` 代表程式／測試資產已在目前 `debug` 可見，跨平台、live、人工或遠端驗收分別列示。
 
 | 範圍 | 已確認證據 | 尚未完成 |
 |---|---|---|

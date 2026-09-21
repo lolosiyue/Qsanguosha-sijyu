@@ -86,7 +86,7 @@ def _base_manifest(root: Path) -> dict[str, object]:
         "status": "runtime-only-trial",
         "runtime_tier": "modern",
         "binary_targets": list(BINARY_FILES),
-        "workbook": {"status": "missing", "reason": "Office activation required; no xlsm staged"},
+        "workbook": {"status": "missing", "reason": "No xlsm staged; assemble the workbook from the included VBA sources"},
         "vba": {"source_original_utf8": "vba-source/original-utf8", "import_copy_cp950_crlf": "vba-source/import-cp950-crlf", "modules": list(VBA_FILES)},
         "content": {"declared_lua": True, "ai_collector": "tools/package-web-solo.py:_collect_ai", "excluded_interactions": ["qml_interact", "qsanguosha.qml"], "excluded_content": ["undeclared Lua", "extensions/temp", "etc custom scenarios", "lua/ai/.git", "lua/ai/logs", "lua/ai/data", "lua/ai/temp", "lua/ai/runtime", "lua/ai/backup", "lua/ai/backups"]},
         "trust_access": "unchanged",

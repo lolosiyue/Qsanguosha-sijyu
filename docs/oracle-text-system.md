@@ -102,11 +102,11 @@ sgs.LoadTranslationTable{
 | `src/core/oracle_helper.h/cpp` | 核心辅助函数 |
 | `src/core/skill.h/cpp` | 添加 `getOracleText()` |
 | `src/core/general.h/cpp` | 添加 `getOracleText()` |
-| `src/ui/carditem.cpp` | 卡牌/武将头像 tooltip |
-| `src/ui/roomscene.cpp` | 技能按钮 tooltip |
-| `src/ui/generic-cardcontainer-ui.cpp` | 玩家容器 tooltip |
-| `src/dialog/choosegeneraldialog.cpp` | 选择武将对话框 tooltip |
-| `src/dialog/customassigndialog.cpp` | 自定义分配对话框 tooltip |
+| [`src/ui/carditem.cpp`](../src/ui/carditem.cpp) | 卡牌/武将头像 tooltip |
+| [`src/ui/roomscene.cpp`](../src/ui/roomscene.cpp) | 技能按钮 tooltip |
+| [`src/ui/generic-cardcontainer-ui.cpp`](../src/ui/generic-cardcontainer-ui.cpp) | 玩家容器 tooltip |
+| [`src/dialog/choosegeneraldialog.cpp`](../src/dialog/choosegeneraldialog.cpp) | 选择武将对话框 tooltip |
+| [`src/dialog/customassigndialog.cpp`](../src/dialog/customassigndialog.cpp) | 自定义分配对话框 tooltip |
 
 ## 规则说明
 

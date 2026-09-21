@@ -100,7 +100,7 @@ Never double, never never. `deliveredCount()` / `cancelledCount()` make it
 observable, and both the unit test and the `completion` smoke stage assert on
 them.
 
-## Missing-asset handling this milestone repaired
+## Missing-asset handling
 
 ### `PixmapAnimation::valid()` could never be false
 

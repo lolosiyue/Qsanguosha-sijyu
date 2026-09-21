@@ -17,14 +17,14 @@
 |------|------|----------|------|
 | Core | `src/core/skill.h/.cpp` | `AnytimeSkill` | 定義基底類別與預設行為 |
 | Lua Bridge | `src/core/lua-wrapper.h/.cpp` | `LuaAnytimeSkill` | 讓 Lua 覆寫 `canTrigger` / `onTrigger` |
-| Lua Factory | `lua/sgs_ex.lua` | `sgs.CreateAnytimeSkill` | 提供 Lua 端建構語法 |
-| Protocol | `src/core/protocol.h` | `S_COMMAND_ANYTIME_SKILL` / `S_COMMAND_ANYTIME_SKILL_DONE` | 傳遞按下技能與完成通知 |
+| Lua Factory | [`lua/sgs_ex.lua`](../lua/sgs_ex.lua) | `sgs.CreateAnytimeSkill` | 提供 Lua 端建構語法 |
+| Protocol | [`src/core/protocol.h`](../src/core/protocol.h) | `S_COMMAND_ANYTIME_SKILL` / `S_COMMAND_ANYTIME_SKILL_DONE` | 傳遞按下技能與完成通知 |
 | Client | `src/client/client.h/.cpp` | `m_anytimeSkillPending` | 記錄本地 pending 技能，避免重複送出 |
-| Scene | `src/ui/roomscene.cpp` | `onAnytimeSkillActivated()` / `onAnytimeSkillDone()` | 接技能按鈕、更新 enabled 狀態 |
+| Scene | [`src/ui/roomscene.cpp`](../src/ui/roomscene.cpp) | `onAnytimeSkillActivated()` / `onAnytimeSkillDone()` | 接技能按鈕、更新 enabled 狀態 |
 | UI Button | `src/ui/qsanbutton.h/.cpp` | `S_SKILL_ANYTIME` | 決定按鈕樣式、互動型態與啟用/停用策略 |
-| Server | `src/server/room.cpp` | `handleAnytimeSkillRequest()` / `processPendingAnytimeSkills()` | 驗證請求並在適當時機執行技能 |
+| Server | [`src/server/room.cpp`](../src/server/room.cpp) | `handleAnytimeSkillRequest()` / `processPendingAnytimeSkills()` | 驗證請求並在適當時機執行技能 |
 | Player State | `src/server/serverplayer.h/.cpp` | `m_pendingAnytimeSkills` | 記錄每位玩家待處理的 AnytimeSkill |
-| Scheduler | `src/server/roomthread.cpp` | `RoomThread::trigger()` | 在 event stack 清空後呼叫 `processPendingAnytimeSkills()` |
+| Scheduler | [`src/server/roomthread.cpp`](../src/server/roomthread.cpp) | `RoomThread::trigger()` | 在 event stack 清空後呼叫 `processPendingAnytimeSkills()` |
 
 ## 3. C++ 介面
 

@@ -97,7 +97,7 @@ require validation of the rebuilt client.
 
 ## Safe migration CLI
 
-`tools/packages/package_tool.py` uses only Python's standard library. It reads
+[`tools/packages/package_tool.py`](../tools/packages/package_tool.py) uses only Python's standard library. It reads
 Lua declarations as literal text, reads optional `runtime-content.json` with a
 JSON parser, and never evaluates or imports Lua. Commands are:
 
@@ -189,7 +189,7 @@ python tools/packages/package_tool.py migrate <legacy-root> tools/packages/migra
 ## Web and Browser Solo publication
 
 When `--asset-root` contains `packages/<id>/manifest.json`,
-`tools/package-web-solo.py` validates each listed file's size and hash, then
+[`tools/package-web-solo.py`](../tools/package-web-solo.py) validates each listed file's size and hash, then
 copies the manifest and listed files into the offline output while preserving
 the package-relative tree. The emitted Solo manifest uses:
 
@@ -321,7 +321,7 @@ verification and network rule identity remain strict. ZIP path, size, and CRC
 validation are retained. Integration evidence is under
 `artifacts/package-debug-integration-20260916/`; earlier device results are historical.
 
-The first upgrade attempt exposed a stale APK-owned `lua/sanguosha.lua`: the
+The first upgrade attempt exposed a stale APK-owned [`lua/sanguosha.lua`](../lua/sanguosha.lua): the
 old loader rejected newly installed modular paths. Baseline upgrades now refresh
 that bootstrap atomically and mark `bootstrap_version=1` only after publication.
 The constant metadata marker also repairs an already migrated baseline carrying

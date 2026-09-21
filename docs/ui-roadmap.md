@@ -1,21 +1,13 @@
 # UI 路線圖計劃（UI Roadmap）
 
-- 狀態：概念提案（Concept，未進入實作排程）
-- 日期：2026-09-09
-- 適用範圍：本倉庫**所有現有與計劃中的前端殼（shell）與遊玩模式**，不只 Web WASM client
-- 規範層級：本文件只定義 **UI 概念、資訊架構與呈現契約**；不定義代碼結構、不含實作代碼、不取代
-  [`cross-platform-modernization-plan.md`](cross-platform-modernization-plan.md) 的交付基線
+本文件定義跨客戶端的 UI 資訊架構與呈現契約，並列出各產品線的設計方向。
+概念基線為 2026-09-09；後續日期段落記錄各階段決策與驗證狀態。
+交付基線見[跨平台現代化計劃](process/cross-platform-modernization-plan.md)。
 
-## 0. 本文件是什麼／不是什麼
+## 0. 文件範圍
 
-**是**：在各版本真正動工之前，先把「畫面上有什麼、誰在哪、玩家怎麼知道現在該做什麼」講清楚的一份共用概念稿。
-各版本殼可以長得完全不同，但必須回答同一組問題。
-
-**不是**：
-
-- 不含實作代碼、CSS、QML、控件命名或檔案規劃。
-- 不排期、不估工時；階段編號只表示**依賴順序**（前一階沒做，後一階會做白工）。
-- 不改變任何協議、規則判定或伺服器行為。UI 永遠是 Room 權威狀態的投影。
+各客戶端共用資訊層級、座次語意與操作提示；外觀和輸入方式依平台調整。
+UI 投影 Room 的權威狀態。階段編號表示依賴順序，實作及驗證進度分別記錄。
 
 **特效層的歸屬（全域規則）**：**Spine、emotion（表情動畫）、QML 特效層只存在於 P2 桌面 Qt GUI**，
 那裡是它們唯一的顯示地。其他任何殼（Web、TUI、Android、大屏、精簡）在概念與驗收上都**視為不存在**，
@@ -30,7 +22,7 @@
 | # | 產品線 | 現況 | 主要輸入 | 主要尺寸／方向 | UI 定位 |
 |---|---|---|---|---|---|
 | P1 | **Web compact（WASM 規則）** `web/` | 進行中，未完成 | 滑鼠／觸控 | 桌面橫版為主，手機直版為次 | 免安裝、隨開隨玩的完整對局殼 |
-| P2 | **桌面 Qt GUI** `QSanguosha` | 主線可用（`roomscene.cpp` 7,848 行熔合體） | 滑鼠＋鍵盤 | 橫版，窗口／全螢幕、高 DPI | 功能完整度基準（**其他殼的參照原版**）；**特效層唯一顯示地** |
+| P2 | **桌面 Qt GUI** `QSanguosha` | 主線可用 | 滑鼠＋鍵盤 | 橫版，窗口／全螢幕、高 DPI | 功能完整度基準（**其他殼的參照原版**）；**特效層唯一顯示地** |
 | P3 | **TUI** `qsanguosha_tui` | classic 行模式、board 模式已交付 | 鍵盤 | 終端字元格（下限 60×18） | 無圖形環境、自動化、除錯與觀察 |
 | P4 | **Android 客戶端** | 已開工：原生執行期已落地（`a3d2e30`，見 `android-build.md`）；觸控殼 UI 依 §7 規劃；`TODO/human` 有前人探索 | 觸控（直版時支援單手模式） | **橫版為主**，直版為次 | 觸控原生體驗，非 Web 殼的移植 |
 | P6 | **Windows XP legacy** | opt-in，凍結 | 滑鼠 | 800×600 起 | **不接受任何新 UI 概念**，只維持可用 |
@@ -63,7 +55,7 @@
 
 C++ 原版把這件事實作成 8 個矩形區的 U 形分配表。**這張表就是全專案的座次環規範**，
 其他殼應複用它的語義，而不是各自發明排列。1v3、3v3 有專用表，任何殼要支援這些模式時同樣沿用。
-三張表都在 `src/client/core/seat-ring-table.h`（`regularSeatRegions` /
+三張表都在 [`src/client/core/seat-ring-table.h`](../src/client/core/seat-ring-table.h)（`regularSeatRegions` /
 `hulaoSeatRegions` / `threeVThreeSeatRegions`）；Qt 桌面直接讀，web 殼在
 `web/src/ui-seat-layout.ts` 保有一份 TypeScript 副本，由
 `web/scripts/check-seat-ring-sync.mjs` 釘住不得漂移。
@@ -294,7 +286,7 @@ W1、W2 是骨架，**必須先做**；W3 之後可並行。W1–W4 完成後，
 
 **定位**：功能完整度的基準線，也是**特效層的唯一顯示地**（§0）。其他殼可以少做，但不能與它語義相左。
 
-Qt／Android 自適應版面已拆成[七階段實作計畫](room-layout-engine-plan.md)。
+Qt／Android 自適應版面已拆成[七階段實作計畫](process/room-layout-engine-plan.md)。
 先建立 LegacyLandscape 純幾何基線，再接既有共用呈現模型、Inspector、直向與單手等版面；
 後續直向採「空間足夠保留座次環、不足轉席位帶」，不以方向單獨決定骨架。
 PR3–7 已加入手動 Responsive preview、玩家詳情、互動區、席位帶及摺疊姿態橋接。
@@ -320,7 +312,7 @@ UI 概念上要做的四件事（與 `roomscene.cpp` 的拆分互為表裡，但
 
 ## 5. M1：超大局（50 人）模式 — 限 P2
 
-> 2026-09-19 實作進度與驗證邊界見 [M1 實作檢查點](large-room-ui-implementation.md)。首批 UI／協議建置與 focused 契約檢查通過；後續已補建 1 主／23 忠／25 反／1 內的 `50p`，GUI／server／core 建置、模式登錄與身份分配 focused 檢查通過。真實 GUI／重連／錄影／完整對局未驗收。
+> 2026-09-19 實作進度與驗證邊界見 [M1 實作檢查點](process/large-room-ui-implementation.md)。首批 UI／協議建置與 focused 契約檢查通過；後續已補建 1 主／23 忠／25 反／1 內的 `50p`，GUI／server／core 建置、模式登錄與身份分配 focused 檢查通過。真實 GUI／重連／錄影／完整對局未驗收。
 
 ### 5.1 問題陳述
 
@@ -448,7 +440,7 @@ TUI 的價值不只是「沒有圖形環境時能玩」，而是**它是 UI 契�
 的三橫線改為繪製，不依賴字型符號。此修正已通過 x86_64 Debug APK 建置與覆蓋安裝，
 並已啟動供人工驗收；拖動、旋轉與面板各操作仍需分別確認。
 
-**Android 輸入修正檢查點（2026-09-20）**：雷電 14 人工回報進房後牌桌、懸浮球與版面選單皆無法點擊；Android 輸入通道仍有回應。排查發現進房會啟用覆蓋整頁的桌面 `PointerEffectOverlay` Tool 視窗，Android 原生 `QtWindow` 的觸控路徑不沿用桌面滑鼠穿透。Android 現不建立此桌面視窗；x86_64 Debug APK 已建置、覆蓋安裝並啟動，裝置 APK 雜湊與產物一致，已匯入聲畫保留。使用者於新版驗收後回覆「很好」並授權提交；記錄為本次點擊問題的人工確認，不擴張為完整對局或全部觸控情境通過。
+**Android 輸入修正檢查點（2026-09-20）**：雷電 14 人工回報進房後牌桌、懸浮球與版面選單皆無法點擊；Android 輸入通道仍有回應。排查發現進房會啟用覆蓋整頁的桌面 `PointerEffectOverlay` Tool 視窗，Android 原生 `QtWindow` 的觸控路徑不沿用桌面滑鼠穿透。Android 現不建立此桌面視窗；x86_64 Debug APK 已建置、覆蓋安裝並啟動，裝置 APK 雜湊與產物一致，已匯入聲畫保留。新版已通過該點擊問題的人工確認；完整對局及其他觸控情境尚待驗收。
 
 ---
 

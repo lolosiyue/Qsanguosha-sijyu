@@ -1,82 +1,33 @@
-# 太陽神三國殺-v2 (QSanguosha-v2)
+# 太陽神三國殺-v2（QSanguosha-v2）
 
-[English](./README.md) | 中文版
+[English](README.md) | 繁體中文
 
-本项目是一個基於 C++ 和 Qt 框架的開源三國殺克隆版。定位類似於 **Minecraft 的整合包 (Modpack)**，重心在於海量 AI 擴展的大雜燴亂鬥。
+QSanguosha-v2 是以 C++ 與 Qt 開發的開源三國殺遊戲，透過 Lua 擴充卡牌、武將、技能與 AI。專案包含桌面客戶端、獨立伺服器，以及終端、瀏覽器與試算表客戶端。
 
-## 🛠️ 建置環境
+## 快速上手
 
-- **語言標準**：C++17
-- **Qt**：6.11.1 (`msvc2022_64`)
-- **編譯器**：MSVC 2026 x64（VS 2026 v145 toolchain）
-- **建置系統**：CMake 4.2+
+使用發行包時，依照對應平台與版本的指南操作。從原始碼建置 Windows 版本，先安裝 [Windows 建置指南](docs/windows-build.md) 所列工具，在倉庫根目錄執行：
 
 ```powershell
-$env:QTDIR = 'H:\Qt6111\6.11.1\msvc2022_64'
+$env:QTDIR = 'C:/Qt/6.11.1/msvc2022_64' # 改成已安裝的 Qt kit 路徑。
 cmake --preset vs2026-x64
 cmake --build --preset release
 ```
 
-或使用統一腳本：
+執行檔位於 `release/QSanguosha.exe`。啟動前完成[執行期部署與內容設定](docs/windows-build.md#runtime-deployment)。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 -Configuration Release
-```
+## 操作指南
 
-### 🐧 Linux
+| 需求 | 文件 |
+| --- | --- |
+| Windows 建置與執行 | [Windows](docs/windows-build.md) |
+| Linux 發行包與原始碼建置 | [封裝](docs/linux-packaging.md)、[開發環境](docs/linux-development-environment.md) |
+| Docker 伺服器 | [Docker 部署](docs/docker-server.md) |
+| Android 建置與安裝 | [Android](docs/android-build.md) |
+| 終端與瀏覽器遊戲 | [TUI](docs/tui-client.md)、[Web](docs/web-client.md)、[Browser Solo](docs/browser-solo.md) |
+| 試算表客戶端 | [Excel](docs/excel-client.md)、[Google Sheets](docs/google-sheets-client.md) |
+| 擴展開發與引擎參考 | [文件索引](docs/README.md) |
 
-Linux 預設建置 **無頭伺服器**（`qsanguosha_server`），無 GUI、無 FMOD、無 X11 依賴，連結 `Qt6::Core`、`Qt6::Network` 與 `Qt6::WebSockets`；**Protocol V2 終端客戶端**（`qsanguosha_tui`）亦會一併建置安裝（見 [`docs/tui-client.md`](docs/tui-client.md)）。需要 GUI client 時加 `-DQSAN_BUILD_GUI=ON`，並指向 Qt 6.11 或更新版本（可用 `CMakePresets.json` 的 `linux-gui-gcc-debug` preset；目前發行版套件尚未提供 Qt 6.11，詳見 Linux 開發指南）。
+## 授權與歸屬
 
-```bash
-sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-websockets-dev swig
-
-# GCC
-cmake -S . -B build-linux-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_COMPILER=/usr/bin/c++
-cmake --build build-linux-gcc
-cmake --build build-linux-gcc --target deploy-server
-
-# 或者用 Clang
-cmake -S . -B build-linux-clang -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_COMPILER=/usr/bin/clang++
-cmake --build build-linux-clang
-```
-
-執行伺服器，可選 `--game-mode`、`--seed`、`--autotest-log`：
-
-```bash
-./qsanguosha_server [--game-mode 10p] [--seed 12345] [--autotest-log /tmp/autotest.log]
-```
-
-CTest：
-
-```bash
-ctest --test-dir build-linux-gcc --output-on-failure
-```
-
-完整指南見：[`docs/linux-development-environment.md`](docs/linux-development-environment.md)。
-Docker 無頭伺服器用法見：[`docs/docker-server.md`](docs/docker-server.md)。
-
-## 🚀 核心特性
-
-### 🖥️ 技術演進
-
-- **64位架構**: 全面轉向 64 位，提升內存處理上限。
-- **UI 與引擎解耦**: 徹底重構 Mutex 邏輯，解決內存地址閃退頑疾。
-- **GPU 渲染**: 轉向 `QOpenGLWidget` 利用硬體加速提升動畫流暢度。
-
-### ⚔️ 玩法與機制
-
-- **國戰概念移植**: 移植部分國戰武將至身份模式，並平衡勢力限制。
-- **軍令系統**: 完整實現發令、摸牌及軍令效果結算邏輯。
-- **高級戰場機制**: 引入 **圍攻/隊列** 空間位置博弈及 **調虎離山** 邏輯重構。
-
-### 🧠 智能 AI
-
-- **加權目標選擇**: 根據動態威脅分數（Threat Score）選擇最佳目標。
-- **情境感知策略**: 包含合縱判斷及根據主公選將動態調整身份策略。
-
-## 📜 致謝與聲明
-
-- **版權尊重**: 若您是原作者且不希望作品被包含，請告知，將立即刪除。
-- **穩定性提示**: 作為“大雜燴”版本，閃退頻率可能較高，建議高配置硬體游玩。
+倉庫保留 [LICENSE](LICENSE) 與 [GNU GPL v3](gpl-3.0.txt) 原文；個別原始碼及第三方元件的適用條款見各自聲明。圖片、音效及外部擴展保留其作者的歸屬與授權。

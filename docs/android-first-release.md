@@ -47,7 +47,7 @@
 
 ## 產生配套聲畫包
 
-日常建置只使用 [Android 建置文件的固定單一環境](android-build.md#本機唯一日常環境2026-09-16-起)。
+日常建置只使用 [Android 建置文件的固定單一環境](android-build.md#android-daily-environment)。
 下面是首次部署／媒體確實變更時的封裝步驟；修改 C++／UI 後更新 APK 不重匯聲畫。
 
 ```powershell
@@ -76,10 +76,10 @@ CP2–CP4 首版功能來源已完成整合，包含資源／整包管理、decl
 音畫與房間生命週期。最後審查修正了 ZIP64 欄位越界、APK 多重升級衝突回復、Web
 實際宣告校驗、Android 重連玩家模型重建，以及背景競速回覆的 semaphore 交接。
 
-2026-09-12 驗證輪已取得使用者明確授權：建置、CTest 與完整對局，並取消本輪 60 秒
+2026-09-12 驗證輪執行建置、CTest 與完整對局，並取消當次 60 秒
 限制。Android Debug APK、桌面 native targets、Web production build 已完成；Web 79
 項測試與 VS2026 內容管理 fixture 通過。完整聲畫 ZIP 已產生並完成 CRC／逐檔雜湊核對。
-本輪證據集中在 `builds/android-v1-validation/`，不使用舊 CP1 APK 代替。
+證據集中在 `builds/android-v1-validation/`，不使用舊 CP1 APK 代替。
 
 Android 13 隔離模擬器實際操作發現並修復了資源頁系統列裁切、拖曳誤點，以及預設
 ZIP 暫存位置不可寫入。匯入現在使用 app 私有 staging 目錄，啟動時清除已知命名的
@@ -90,15 +90,15 @@ ZIP 暫存位置不可寫入。匯入現在使用 app 私有 staging 目錄，�
 背景時允許檢查安全完成、回前景才銜接 Engine。
 連線實測另發現 Android 沒有桌面 `USER` 環境值，且原讀取鍵與連線介面寫入的
 `UserName` 不同；現在沿用儲存名稱並為空白名稱提供預設值。
-完整對局與 CTest 批次最終結果以本輪驗證總表分別記錄。
+完整對局與 CTest 批次最終結果以驗證總表分別記錄。
 
 後續已補齊 APK 支援 Lua 的有效宣告，正常 Qt build10 建置與靜態稽核通過。
 API 33 ARM translation 模擬器另以 NULL 音訊診斷 APK 完成 Android→Windows 05p：
 反賊勝，54 個請求均回覆，無託管 fallback，客戶端及伺服器正常退出，伺服器 lifetime 全零。
 同程序單機在初始化期間背景往返後、建立牌桌時發生主執行緒 SIGSEGV，尚未定位根因，
 未取得完整單機結局。布局裁切、缺少結局截圖與快照序列化警告亦保留；這不是首版全綠。
-詳見 `builds/android-v1-validation/android-gameplay-summary.md`。使用者確認本輪無手機，
-實機驗收列為不可用，不再以接上手機作本輪前置條件。
+詳見 `builds/android-v1-validation/android-gameplay-summary.md`。當次環境沒有手機，
+實機驗收列為不可用。
 
 ## 尚待執行的驗收
 

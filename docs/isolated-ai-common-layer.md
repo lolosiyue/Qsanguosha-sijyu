@@ -1,5 +1,7 @@
 # Isolated AI 共用層對照
 
+本文 `lua/ai/` 路徑指部署檔案；版本與取得方式見[外部 Lua 來源](lua-ai-spec.md#外部-lua-來源)。
+
 本文件是目前 standalone `lua/ai/isolated/` 純值 AI 架構的維護錨點。原版 SmartAI 只作行為參考；共用層接收 viewer-scoped 純值 (pure values)，提出值型答案，再由 C++ 權威端重驗。安全 fallback 只是故障保護，觸發即代表 isolated acceptance 失敗，不是完成證據。
 
 ## 原版入口與目前共用 API
@@ -59,8 +61,6 @@
 
 ## 驗證狀態
 
-2026-09-21 授權檢查點已完成正常 CMake SWIG 重新生成與 Debug engine／server／runtime runner 編譯。完整 `--suite ai-common` exit 0（112.0 秒），包含 policy、admission、standalone、native events、physical response、V2 conversion 與九份隔離 Lua 契約；另以 `--suite card-lifetime` exit 0（407.3 秒）驗證生命週期計數修正。命令與日誌見 `builds/ai-common-completion-report.md`。
-
-未執行 CTest、GUI 或完整 gameplay；上述是契約執行證據，不代表完整對局或任意武將 parity。逐表 consumer／缺口見 [盤點表](isolated-ai-common-inventory.md)。
+[2026-09-21 驗證報告](reports/ai-common-20260921.md)記錄建置、契約與生命週期測量。
 
 相關設計邊界：[`docs/ai-identity-mode-decoupling-plan.md`](ai-identity-mode-decoupling-plan.md)、[`docs/smart-ai-adapter-dependency-audit.md`](smart-ai-adapter-dependency-audit.md)、[`docs/lua-ai-spec.md`](lua-ai-spec.md)。

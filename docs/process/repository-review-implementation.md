@@ -12,8 +12,7 @@ uncommitted work and the current transport, player visibility and Lua contracts.
 | E | Engine remains a compatible facade with explicit narrower owners | Source checkpoint complete |
 
 Each checkpoint records source/static, build, focused tests, GUI/runtime and CI
-separately. No local CTest or full-game run is implied by a completed source
-checkpoint. Build and focused execution require checkpoint authorization.
+results separately.
 
 ## A: localization
 
@@ -92,7 +91,7 @@ never a sendable wire reply. Only a correlated `submit_selection` may reserve a
 reply after the persistent ClientCore accepts it. The subsequent outgoing echo
 must match the reservation before the ingress completes transport observation.
 Bridge schema is now 3: older WASM deployments must be rebuilt/exported together
-with the Web shell. The subsequently authorized validation checkpoint rebuilt
+with the Web shell. The subsequent validation checkpoint rebuilt
 the WASM bundle and Web shell, exported translations and regenerated the Qt QM.
 
 The production TypeScript reducer and log formatter are removed; historical
@@ -125,9 +124,8 @@ ChatWidget still includes Engine for its other existing needs. This is a
 narrower chat API and explicit ownership change, not complete UI/Engine
 decoupling or a claim that every Engine responsibility was split.
 
-## Source delivery and authorized validation (2026-09-20)
+## Source delivery and validation (2026-09-20)
 
-The user authorized builds, tests and GUI checks after the A–E source delivery.
 Executable checks were bounded to 60 seconds each; no CTest or complete game
 was run. Detailed reports, logs and GUI screenshots are retained under
 `builds/repository-review-validation/` (ignored runtime artifacts).
@@ -180,8 +178,7 @@ the discarded recast workaround is not part of the final implementation.
 
 ## Extended validation and Web trust correction (2026-09-20)
 
-The user subsequently authorized local CTest and full-game checks, overriding
-its earlier exclusion. This checkpoint uses Debug native binaries, mode
+The extended checkpoint uses Debug native binaries, mode
 `03_1v2`, seed `20260920`. Full logs and identities are retained in
 `builds/repository-review-full-validation-20260920/`.
 
@@ -200,7 +197,7 @@ The first isolated Web HTTP deployment omitted the documented `/assets/`
 image mapping. Reusing the existing Vite preview middleware restored portraits,
 cards and background images; an actual card request returned HTTP 200 image/jpeg.
 Source artwork was not changed. The final rules deployment preserves all 227
-declared content files and the exact source `lua/config.lua` bytes. Server-only
+declared content files and the exact source [`lua/config.lua`](../../lua/config.lua) bytes. Server-only
 AI bootstrap was staged separately from the browser rules closure.
 
 `interactionView()` now keeps the existing trust control visible during active

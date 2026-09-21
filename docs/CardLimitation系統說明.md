@@ -10,7 +10,7 @@ CardLimitation 系統用於限制玩家對特定牌的操作，包括使用、�
 
 ### HandlingMethod（操作類型）
 
-定義於 `src/core/card.h`：
+定義於 [`src/core/card.h`](../src/core/card.h)：
 
 | 類型 | 說明 | 字串表示 |
 |------|------|----------|
@@ -214,7 +214,7 @@ local skill = sgs.CreateCardLimitSkill{
 
 ### moveCardsAtomic
 
-`Room::moveCardsAtomic()`（src/server/room.cpp:3665-3673，兩個 overload）已委派 `CardMovementService::moveCardsAtomic()`；移動限制的過濾邏輯位於 `src/server/card-movement-service.cpp`（:815-829），在移動牌之前依目的地分流檢查：
+`Room::moveCardsAtomic()`（src/server/room.cpp:3665-3673，兩個 overload）已委派 `CardMovementService::moveCardsAtomic()`；移動限制的過濾邏輯位於 [`src/server/card-movement-service.cpp`](../src/server/card-movement-service.cpp)（:815-829），在移動牌之前依目的地分流檢查：
 
 ```cpp
 // card-movement-service.cpp — 逐張檢查（move.from 為空時直接放行）
@@ -431,4 +431,4 @@ room:removePlayerEquipsNullified(owner, "Armor|.|.|.|target:" .. source:objectNa
 ## 相關文件
 
 - [TriggerSkillV2 系統說明](TriggerSkillV2系統說明.md)
-- [技能數值系統](TriggerSkillV2系統說明.md#技能數值系統)
+- [技能數值系統](TriggerSkillV2系統說明.md#技能數值系統-amount)

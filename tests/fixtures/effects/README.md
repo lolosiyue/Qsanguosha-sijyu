@@ -1,7 +1,7 @@
 # Effects smoke fixtures
 
 These files are **generated**, not copied from the game's asset tree. They are
-written by `tools/ci/make-effects-fixtures.py` using only the Python standard
+written by [`make-effects-fixtures.py`](../../../tools/ci/make-effects-fixtures.py) using only the Python standard
 library (a hand-rolled GIF LZW encoder and `zlib` for PNG), so a clean checkout
 on any runner can regenerate them:
 
@@ -30,14 +30,7 @@ Constraints that are easy to break:
 
 ## Why there is no valid Spine fixture
 
-Producing a *valid* Spine skeleton means either shipping Spine's binary `.skel`
-format (which needs the Spine editor, and whose sample assets are licensed) or
-hand-writing a JSON skeleton plus a matching atlas *and* an atlas page image —
-none of which can be generated honestly from the standard library, and none of
-which would be a fixture whose provenance we could state.
-
-So the `spine` stage verifies **lifecycle and degradation** instead, which is
-what the profiles actually change:
+The `spine` stage covers lifecycle and load-failure handling:
 
 * under REDUCED and NONE, no `SpineGlItem` is constructed at all — asserted via
   the policy's object counters and the per-profile budget, not by loading
@@ -47,5 +40,4 @@ what the profiles actually change:
   report a failed load and destruct cleanly.
 
 If a licensed, redistributable minimal Spine fixture ever becomes available,
-drop it in `spine/valid/` and add a positive case to the `spine` stage; nothing
-else needs to change.
+drop it in `spine/valid/` and add a positive case to the `spine` stage; verify its load and cleanup paths.

@@ -498,7 +498,7 @@ def main():
                         help="每個模式要跑的局數 (預設 5)")
     parser.add_argument("--repeat", dest="repeat", type=int, default=None)
     parser.add_argument("--parallel", type=int, default=1,
-                        help="同時執行的 process 數 (預設 2)")
+                        help="同時執行的 process 數 (預設 1)")
     parser.add_argument("--general", default="",
                         help="指定主公武將, 反覆測試同武將找 bug (空 = 隨機)")
     parser.add_argument("--general2", default="",

@@ -1,5 +1,7 @@
 # Shiming skill instances (SI)
 
+本文 `lua/ai/` 路徑指部署檔案；版本與取得方式見[外部 Lua 來源](lua-ai-spec.md#外部-lua-來源)。
+
 ## Contract
 
 Mission status belongs to a live `SkillInstanceRef(ownerObjectName, key)`.
@@ -66,11 +68,11 @@ All nine C++ mission implementations explicitly dispatch valid instance IDs:
 
 | File | Skills / changes |
 | --- | --- |
-| `src/package/maotu.cpp` | `mtnianchou`: exact completion and exact self-detach |
-| `src/package/dream.cpp` | `iflitian2`: per-instance completion; card recovery modifier runs once |
-| `src/package/yinhu.cpp` | `yhjifeng`, `yhtanyou`: exact outcomes; Tanyou's limited-use flag and chosen players are instance state |
-| `src/package/mobileshiji.cpp` | `secondmobilexinqingyu`, `secondmobilexinmibei`, `xinpowei`: exact outcomes; Powei's target lists are instance state |
-| `src/package/mobile.cpp` | `weiming`, `zhongao`: exact outcomes; Weiming targets are instance state; death logs identify the mission owner |
+| [`src/package/maotu.cpp`](../src/package/maotu.cpp) | `mtnianchou`: exact completion and exact self-detach |
+| [`src/package/dream.cpp`](../src/package/dream.cpp) | `iflitian2`: per-instance completion; card recovery modifier runs once |
+| [`src/package/yinhu.cpp`](../src/package/yinhu.cpp) | `yhjifeng`, `yhtanyou`: exact outcomes; Tanyou's limited-use flag and chosen players are instance state |
+| [`src/package/mobileshiji.cpp`](../src/package/mobileshiji.cpp) | `secondmobilexinqingyu`, `secondmobilexinmibei`, `xinpowei`: exact outcomes; Powei's target lists are instance state |
+| [`src/package/mobile.cpp`](../src/package/mobile.cpp) | `weiming`, `zhongao`: exact outcomes; Weiming targets are instance state; death logs identify the mission owner |
 
 Deliberate shared effects, **not mission status storage**:
 
@@ -96,7 +98,7 @@ Deliberate shared effects, **not mission status storage**:
 
 `extensions/` and `lua/ai/` are ignored runtime inputs maintained in
 `lolosiyue/extensions`. Mission migration is maintained directly in that
-external repository. `tools/ci/fetch-extensions.sh` fetches its Lua content
+external repository. [`tools/ci/fetch-extensions.sh`](../tools/ci/fetch-extensions.sh) fetches its Lua content
 without applying a mission migration patch from this repository.
 Use an external revision compatible with the exact-reference mission API.
 The inventory below describes the required integration contract; it is not

@@ -82,7 +82,7 @@ FitView 才轉換為 viewport 座標並裁去系統安全區；DPR 只在 Androi
 | Android 媒體與裝置 | 取消資源雜湊與聲畫掃描後，沿用媒體的內容準備實測 6,924 ms，缺 8 張圖片不擋連線；03_1v2 仍在 GAME_STARTED 前 AudioTrack SIGSEGV，完整對局未通過。首次匯入新耗時未重測，見 android-extension-runtime.md |
 | 姿態注入、XP、遠端 CI、真機 | NOT RUN |
 
-本檢查點經使用者授權，已完成增量 configure／建置 `QSanguosha`、`qsanguosha_core_tests`、
+此檢查點已完成增量 configure／建置 `QSanguosha`、`qsanguosha_core_tests`、
 `qsanguosha_game_presentation_tests`；直接執行 `room-layout-engine`（0.344 秒）、
 `photo-layout-fit`（0.046 秒）及 `qsanguosha_game_presentation_tests`（0.157 秒），皆 exit 0。
 建置發現並移除 Overlay 整數寬度的多餘 `qRound()`；修正後來源在重建至 focused 完成期間
@@ -113,7 +113,7 @@ PR3–7 授權的來源／建置／focused 檢查點已完成；Responsive previ
 | Android | 回首頁不再撤銷旋轉；首頁可用區與版面彈出面板避開系統安全邊界。既有單一建置／AVD／媒體政策不變 |
 | XP | 不編入新的對話框適配器，保留舊連線布局及橫向行為 |
 
-來源與靜態檢查完成；使用者另行授權後，Windows GUI 增量 configure／Debug `QSanguosha`
+來源與靜態檢查完成後，Windows GUI 增量 configure／Debug `QSanguosha`
 建置 PASS（exit 0，2026-09-16 22:54）。已用獨立 session 設定啟動 480×820、
 自適應開啟／右手偏好的可見 GUI，交由使用者人工驗證，全程不用 Computer Use。
 建置紀錄：`builds/portrait-preview-20260916/{configure.log,build.log,build-exit.txt}`。
@@ -134,7 +134,7 @@ PR3–7 授權的來源／建置／focused 檢查點已完成；Responsive previ
 - **牌桌尚未符合此視覺要求**：`RoomScene::setResponsiveLayout` 仍令原生 Dashboard 透明，
   `RoomOverlayHost` 用文字手牌與席位替代。後續應重排原生 Dashboard／CardItem／Photo，
   保留皮膚與可見資訊；不能只替文字按鈕加 icon 就宣告完成。
-- 本輪首頁來源檢查點：9 個相關 QML 的 qmllint PASS；Debug `QSanguosha` 增量建置 PASS（exit 0），
+- 首頁來源檢查點：9 個相關 QML 的 qmllint PASS；Debug `QSanguosha` 增量建置 PASS（exit 0），
   紀錄於 `builds/portrait-preview-20260916/native-style-build.log`。已開啟新版供人工視覺驗收，未使用 Computer Use。
   不把首頁修正推算為牌桌、Android 或完整對局通過。
 
@@ -160,11 +160,11 @@ PR3–7 授權的來源／建置／focused 檢查點已完成；Responsive previ
 - 本批來源檢查點：QML 靜態檢查及 diff whitespace 檢查通過；既有 GeneralScene ComboBox delegate
   `parent.highlighted` 型別提示仍在。Windows Debug GUI 增量建置 PASS（exit 0），
   證據為 `builds/portrait-preview-20260916/catalog-build.log`。已啟動新版交由人工確認直向互動；
-  未使用 Computer Use、未執行 CTest，不代表 Android 或完整對局驗收。
+  CTest、Android 與完整對局未驗收。
 
 ### 房間原生直向排版（2026-09-16）
 
-- 本輪取代 PR4／PR5 的文字手牌、目標及動作面板；使用原有 Dashboard、CardItem、Photo、技能及確認／取消元件。
+- 取代 PR4／PR5 的文字手牌、目標及動作面板；使用原有 Dashboard、CardItem、Photo、技能及確認／取消元件。
 - 窄版將手牌與自身裝備／武將／操作鈕分成兩列；左手模式將原生操作鈕移到左側。寬版沿用原生橫向 Dashboard。
 - Layout Engine 根據皮膚尺寸計算兩列位置與縮放，保留原有選牌、技能、目標及選項物件；旋轉不重建選取草稿。
 - 席位放不下時顯示原生武將框，頁面頂部捲動條切換可見席位；離頁目標僅透明，不隱藏／停用，以免清除選取。
@@ -186,7 +186,7 @@ PR3–7 授權的來源／建置／focused 檢查點已完成；Responsive previ
 - 載入標題改為「少女祈禱中」，保留真實進度與取消操作；一覽頁載入提示使用相同文案。
   素材僅放於本機 `image/system/portrait/`，不納入 Git 或 Qt resources。
   圖片可選；未提供時仍顯示載入文字，直向桌布使用純色底，不回退橫向桌布。
-- 本輪驗證紀錄另存 `builds/portrait-preview-20260916/portrait-refinement-*`，不沿用前版 GUI 驗收。
+- 驗證紀錄另存 `builds/portrait-preview-20260916/portrait-refinement-*`，不沿用前版 GUI 驗收。
   Debug GUI 增量建置 PASS；QML 靜態檢查 exit 0（保留 context property 的 unqualified 提示）；
   `--suite room-layout-engine` PASS。原席位列下置斷言已隨需求改為上置，僅重建 focused target 後重跑。
   新版 GUI 已啟動供人工確認；未執行 Computer Use、CTest、完整對局或 Android 建置。
@@ -200,7 +200,7 @@ PR3–7 授權的來源／建置／focused 檢查點已完成；Responsive previ
 - 結束／托管列在武將上方，技能在主操作列下方；右手模式將確定鈕放至主操作列右側。
   關閉直向版時，恢復原皮膚按鈕與命中區域。
 - 幾何檢查補上主操作鈕至少 48 邏輯像素、各按鈕不重疊及不越界。
-  本輪紀錄：`builds/portrait-preview-20260916/portrait-actions-*`；裝備實際顯示仍需人工進房確認。
+  紀錄：`builds/portrait-preview-20260916/portrait-actions-*`；裝備實際顯示仍需人工進房確認。
   Debug GUI 建置、版面 focused executable 與 diff whitespace 檢查 PASS；首次連結遇到
   LNK1104（暫時無法開啟既存 obj），一次增量重試通過，未清除建置目錄。
   已開啟新版供人工驗證；未執行 CTest、Computer Use、完整對局或 Android 建置。

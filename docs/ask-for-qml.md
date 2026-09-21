@@ -180,7 +180,7 @@ Item {
 
 - 協議命令使用 `S_COMMAND_QML_INTERACT`；wire payload 是**結構化物件**（欄位見「完整流程」），
   不是 Protocol V2 之前的 `[qmlPath, params]` 位置式陣列。client 端對非物件 payload 直接
-  `failProtocol` 拒收（`src/client/client.cpp` 的 `Client::askForQml`）。
+  `failProtocol` 拒收（[`src/client/client.cpp`](../src/client/client.cpp) 的 `Client::askForQml`）。
 - `type`（`qsanguosha.qml`）與 `schema_version` 必須通過 client 端
   `m_customInteractionRegistry.supports()` 檢查；未註冊的型別／schema 會被
   "rejecting unsupported structured custom interaction" 拒收。
@@ -192,7 +192,7 @@ Item {
 
 ## Lua / SWIG 暴露
 
-`swig/sanguosha.i` 已匯出同名介面：
+[`swig/sanguosha.i`](../swig/sanguosha.i) 已匯出同名介面：
 
 ```cpp
 QVariant askForQml(ServerPlayer *player, const char *qmlPath, const QVariantMap &params, int timeout = 30000);

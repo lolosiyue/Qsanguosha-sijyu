@@ -110,7 +110,7 @@ proxy->deleteLater();                                     // ← 不在訊號堆
 
 ## 4. 未還的債：六個嫌疑點（已排優先次序）
 
-全部在 `src/ui/generic-cardcontainer-ui.cpp`，全部是**同步 `delete` 一個
+全部在 [`src/ui/generic-cardcontainer-ui.cpp`](../../src/ui/generic-cardcontainer-ui.cpp)，全部是**同步 `delete` 一個
 `QGraphicsItem` 而沒有 `removeItem()`**，與已證實根因同一個 class 的錯誤。
 
 | 優先 | 行 | 函數 | 刪除對象 | 為何可疑 |
@@ -232,7 +232,7 @@ Linux 側就曾經把兩個不同的 bug 歸做同一個「base defect」，繞�
 
 ## 11. 順帶一提：已知但未修的周邊問題
 
-- `src/ui/heroskincontainer.cpp` 是死 code（不在任何 CMake source list，
+- [`src/ui/heroskincontainer.cpp`](../../src/ui/heroskincontainer.cpp) 是死 code（不在任何 CMake source list，
   而且已經與自己的 header 對不上）。
 - `./extensions/RAFTOM.lua` 的 `assert(io.open(GER, "r"))` 每局 throw 8 次，
   因為 `GER.lua` 只在 Windows deploy tree 出貨，不在 repo 裡面。

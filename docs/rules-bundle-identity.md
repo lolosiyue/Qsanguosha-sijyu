@@ -26,7 +26,7 @@ Room/Lua/SWIG facade, or reply correlation contracts are changed.
 
 ## Identity source and comparison
 
-`src/core/rules-bundle-exporter.cpp` is the shared native exporter. Engine records
+[`src/core/rules-bundle-exporter.cpp`](../src/core/rules-bundle-exporter.cpp) is the shared native exporter. Engine records
 actual successful package registration order and captures the builtin Lua file
 snapshot before bootstrap. The native fixture runner's `--export-rules-bundle`
 and production WASM initialization both use this exporter.
@@ -59,8 +59,8 @@ including a C++ skill change that leaves all card/skill names intact.
 ## Controlled content profile
 
 `builtin-v1` uses the existing five-file fixture closure:
-`lua/config.lua`, `lua/sanguosha.lua`, `lua/utilities.lua`, `lua/sgs_ex.lua`,
-`lua/lib/json.lua`. All configured C++ packages still register normally.
+[`lua/config.lua`](../lua/config.lua), [`lua/sanguosha.lua`](../lua/sanguosha.lua), [`lua/utilities.lua`](../lua/utilities.lua), [`lua/sgs_ex.lua`](../lua/sgs_ex.lua),
+[`lua/lib/json.lua`](../lua/lib/json.lua). All configured C++ packages still register normally.
 `.gitattributes` pins these assets to LF so checkouts do not introduce platform
 line-ending differences into byte hashes.
 
@@ -72,7 +72,7 @@ while rejecting Web with `rules_content_unsupported`. W2 does not enable extensi
 support or dynamically download server-provided modules.
 
 AI is server-owned policy. Files under `lua/ai/` and the exact AI dependency
-`lua/lib/middleclass.lua` are permitted in the server deployment, but excluded
+[`lua/lib/middleclass.lua`](../lua/lib/middleclass.lua) are permitted in the server deployment, but excluded
 from `lua_hash` and the WASM asset manifest. A server AI revision therefore does
 not require a new Web download. The five shared rules files remain byte-matched;
 the exception does not cover sibling paths such as `lua/ai-extra.lua`, other

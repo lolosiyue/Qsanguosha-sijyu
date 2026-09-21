@@ -1,11 +1,11 @@
 # Linux packaging（Linux GUI M3）
 
-本文件說明如何由一個 build tree 製作出愛好者可以直接下載執行的 Linux 版本，
-以及每一步為何這樣做。目標很簡單：**不需要開發工具、不需要 source tree，
-下載、解壓、雙擊即可遊玩。**
+本文件說明如何由 build tree 製作 Linux 可攜包與 AppImage，並列出封裝檢查項目。
+可攜包包含執行檔、Qt runtime、Lua／擴展與宣告的資產；使用者不需安裝專案的
+開發工具或保留 source tree。首次啟動仍需依發行環境提供的桌面與圖形庫處理。
 
 前置里程碑：M0 compile/link、M1 real startup、M2 playable network flow、
-M2B-A multimedia、M2B-B effects profiles，全部已經在 `debug`。
+M2B-A multimedia、M2B-B effects profiles。各里程碑的實測狀態與證據以對應報告為準。
 
 ---
 
@@ -29,8 +29,8 @@ python3 tools/packaging/build-linux-packages.py \
     --output-dir dist --forbid "$HOME"
 ```
 
-兩個交付物用**同一份** staging tree 打包出來。一個 bug 在其中一邊出現，就一定
-在另一邊都出現 —— 沒有第二份「包內應該有什麼」的定義。
+兩個交付物使用同一份 staging tree；封裝器以該 staging tree 的清單與稽核結果
+作為共同來源。tar.zst 與 AppImage 仍須分別檢查啟動與相依庫。
 
 ---
 

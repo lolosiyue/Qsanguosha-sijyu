@@ -121,7 +121,7 @@ The right-hand log is a fixed pane with internal scroll so it cannot
 stretch the table. Portrait stacks table / log / dashboard so the room
 stays on one screen.
 
-Battle log lines are composed in [`web/src/log-text.ts`](../web/src/log-text.ts),
+Battle log lines are composed in the test fixture [`web/tests/fixtures/log-text-legacy.ts`](../web/tests/fixtures/log-text-legacy.ts),
 matching the desktop `ClientLogBox` templates rather than `split` + `tr()`.
 Interaction `prompt` strings from `askForCard` / `askForDiscard` /
 `askForPlayerChosen` use the same colon list as GUI `Client::formatPromptList`

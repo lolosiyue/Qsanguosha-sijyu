@@ -40,7 +40,7 @@ typedef QMap<ServerPlayer*, QStringList> TriggerList;
 
 ### SkillContext 結構
 
-**位置**: `src/core/skill.h` 的 `struct SkillContext`（2026-09-06 對照現行實作，現約 :12-59）
+**位置**: [`src/core/skill.h`](../src/core/skill.h) 的 `struct SkillContext`（2026-09-06 對照現行實作，現約 :12-59）
 
 ```cpp
 struct SkillContext {
@@ -238,7 +238,7 @@ struct SkillChangeStruct {
 
 ### 位置
 - Header: `src/core/skill.h` 的 `class TriggerSkillV2`（現約 :453）
-- Implementation: `src/core/skill.cpp` 的 `TriggerSkillV2` 建構式與各虛方法（現約 :823-932）
+- Implementation: [`src/core/skill.cpp`](../src/core/skill.cpp) 的 `TriggerSkillV2` 建構式與各虛方法（現約 :823-932）
 
 ### 虛方法
 
@@ -359,7 +359,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ## TriggerEvent 時機枚舉
 
-**位置**: `src/core/structs.h` 的 `enum TriggerEvent`：`EventSkillWillInvoke`／`EventSkillPay`／`EventSkillTargetConfirming`／`EventSkillInvoking`／`EventSkillEffect`／`EventSkillEffectTarget`／`EventSkillEffectFinished`（現約 :898-904）
+**位置**: [`src/core/structs.h`](../src/core/structs.h) 的 `enum TriggerEvent`：`EventSkillWillInvoke`／`EventSkillPay`／`EventSkillTargetConfirming`／`EventSkillInvoking`／`EventSkillEffect`／`EventSkillEffectTarget`／`EventSkillEffectFinished`（現約 :898-904）
 
 | 枚舉值 | 觸發時機 | 典型應用 | data 類型 |
 |--------|----------|----------|-----------|
@@ -375,7 +375,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ### LuaTriggerSkillV2
 
-**位置**: `src/core/lua-wrapper.h` 的 `class LuaTriggerSkillV2`（現約 :78）
+**位置**: [`src/core/lua-wrapper.h`](../src/core/lua-wrapper.h) 的 `class LuaTriggerSkillV2`（現約 :78）
 
 ### 回调函数
 
@@ -395,7 +395,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ### Lua 工廠函數
 
-**位置**: `lua/sgs_ex.lua` 的 `sgs.CreateTriggerSkillV2` 工廠函數（現約 :80）
+**位置**: [`lua/sgs_ex.lua`](../lua/sgs_ex.lua) 的 `sgs.CreateTriggerSkillV2` 工廠函數（現約 :80）
 
 ```lua
 sgs.CreateTriggerSkillV2 {
@@ -755,7 +755,6 @@ return false
 ```lua
 -- 格式："skill_name->target1+target2"
 return self:objectName().."->"..table.concat(targets, "+")
-```
 ```
 
 ### 返回值處理流程

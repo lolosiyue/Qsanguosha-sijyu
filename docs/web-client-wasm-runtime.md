@@ -1,17 +1,14 @@
 # Web client native-rules/WASM runtime
 
-This document records the migration boundary for replacing the Web client's
-hand-written gameplay eligibility rules with the same C++/Lua rule
-implementation used by native clients.
+This document defines the Web client's native rules runtime. Gameplay eligibility
+uses the same C++/Lua implementation as native clients. The browser Worker uses
+the `ClientRulesIngress` streaming API; the legacy per-query file evaluator is
+rejected with `stream_snapshot_api_disabled` when stream mode is enabled.
 
-The persistent runtime builds on PR #31. W2 adds a shared native rules identity
-and mandatory WebSocket admission gate; see [rules-bundle-identity.md](rules-bundle-identity.md)
-for the current contract and verification boundaries. The W3b cutover moved the
-Web Worker onto the `ClientRulesIngress` streaming API (see
-[native-rules-ingress.md](native-rules-ingress.md)); the PR31-era per-query
-file-based evaluate is retained in C++ but rejected with
-`stream_snapshot_api_disabled` once stream mode is enabled. Earlier Node/Worker
-fixture results do not establish production runtime acceptance.
+The shared rules identity and WebSocket admission gate are defined in
+[rules-bundle-identity.md](rules-bundle-identity.md). The streaming contract is
+defined in [native-rules-ingress.md](native-rules-ingress.md). Fixture tests and
+production runtime results are recorded separately in the linked validation reports.
 
 ## Target architecture
 

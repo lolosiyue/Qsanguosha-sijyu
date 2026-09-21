@@ -8,7 +8,7 @@
 
 ## Phase 1：核心結構體
 
-### GameModeStruct (`src/core/structs.h` & `structs.cpp`)
+### GameModeStruct ([`src/core/structs.h`](../src/core/structs.h) & `structs.cpp`)
 
 | 成員 | 類型 | 說明 |
 |------|------|------|

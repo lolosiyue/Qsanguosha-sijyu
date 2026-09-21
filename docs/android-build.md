@@ -8,9 +8,10 @@
 已安裝媒體在 APK 更新後繼續沿用；新增圖片不觸發全包重匯。
 詳細契約見 [Android 版本固定規則](android-first-release.md#android-版本固定規則2026-09-16)。
 
-## 本機唯一日常環境（2026-09-20 核對）
+<a id="android-daily-environment"></a>
+## 本機唯一日常環境
 
-**使用者要求：只用下面這一套，保留 App 資料、媒體與建置快取。**
+日常操作固定使用下面這套環境，保留 App 資料、媒體與建置快取。
 本頁是日常 Android 操作的唯一入口；後文的首次安裝教學不代表每次建置都要重做。
 
 | 用途 | 固定位置／值 |
@@ -35,7 +36,7 @@
 2. 完成授權檢查點後，在同一 cache 增量建置一次；不用 `--fresh`、`--clean-first`。
 3. 重用 `emulator-5586`；未啟動只啟動 `Responsive_API_33`，不用 `-wipe-data`、新 AVD 或新媒體副本。
 4. 正常關閉 App，再以驗收助手 `run --install` 執行 `install --no-streaming -r` 與 `sync`；簽章不符就停止，不能卸載或清除資料。
-5. 選擇 [首頁短驗收／05p 完整局](android-acceptance.md)，各自收集證據。助手不建置、不修改模式設定、不自動判定 GAME_OVER。
+5. 選擇 [首頁短驗收／05p 完整局](android-acceptance.md)，各自收集證據。驗收工具不建置、不修改模式設定、不自動判定 GAME_OVER。
 
 固定建置命令（已有建置授權及完成檢查點時）：
 
@@ -234,7 +235,7 @@ Android APK 的 `runtime-content-base.json` 必須由 CMake 產生的 filtered `
 python tools/android/test-runtime-descriptor.py
 ```
 
-本輪結果：5 tests passed。這只證明宣告覆蓋、缺檔拒絕、未宣告 extension 拒絕、路徑穿越拒絕及重複套用穩定；APK 建置、ServerHello 實際連線與完整對局仍須另行驗收。
+此項結果：5 tests passed。這只證明宣告覆蓋、缺檔拒絕、未宣告 extension 拒絕、路徑穿越拒絕及重複套用穩定；APK 建置、ServerHello 實際連線與完整對局仍須另行驗收。
 
 既有安裝遵守 missing-only，原有同名包宣告不會被新版 APK 靜默覆寫。因此舊測試版的無效宣告不能只靠 `install -r` 修好；需透過整包管理匯入有效宣告，或在隔離測試副本使用明確 `--asset-root`。後者只算診斷部署，不能當作正常升級驗收。
 
@@ -329,7 +330,7 @@ CFI 型別失敗處理。這已確認該映像／ARM 橋接路徑的 CFI 整合�
 詳細映射、指令、擷取限制及後續驗證方向見
 `builds/android-audio-investigation-20260916/cfi-boundary-confirmed.md`。
 二進位擷取仍有每筆 256 KiB 限制，但上述必要映射完整可見。
-本輪未建置、安裝或重新啟用音訊；保留 NULL 隔離。
+該次未建置、安裝或重新啟用音訊；保留 NULL 隔離。
 WAV、音量零、Qt push mode 或單設 QT_MEDIA_BACKEND 都不能保證避開此回呼。
 
 ## 開局後主執行緒 0x58：隱藏手牌修正（2026-09-16）
@@ -345,7 +346,7 @@ software／raster APK。完整 SYSTEM_TOMBSTONE 的記憶體指令，與 APK 同
 `src/client/client.cpp`、`src/client/clientplayer.cpp/.h` 一起對齊到固定 Android
 工作樹，不能只同步 UI／音訊檔案。保留其他工作樹差異，不作整樹覆蓋。
 
-本輪已補入這組修正並通過 `git apply --check`／`git diff --check`；
+該次已補入這組修正並通過 `git apply --check`／`git diff --check`；
 APK 重建與開局回歸尚待執行。這個空卡牌缺陷與前節的 AAudio CFI callback
 崩潰不同，修復它不代表恢復有聲。完整證據與驗證狀態見
 `builds/android-mainthread-investigation-20260916/`。
@@ -367,4 +368,4 @@ APK 重建與開局回歸尚待執行。這個空卡牌缺陷與前節的 AAudio
 
 歷史「建置通過」與「靜態對齊通過」只適用於各自 source hash、工具鏈及 APK；來源修改後必須重新建立與稽核。
 
-本輪完整對局與清理結果見 `builds/android-v1-validation/android-gameplay-summary.md`；模擬器、診斷部署與正常 APK 的證據分列。以上 APK、log 與 audit 均位於 `builds/android-v1-validation/`，不是需要加入 Git 的來源檔。
+完整對局與清理結果見 `builds/android-v1-validation/android-gameplay-summary.md`；模擬器、診斷部署與正常 APK 的證據分列。以上 APK、log 與 audit 均位於 `builds/android-v1-validation/`，不是需要加入 Git 的來源檔。

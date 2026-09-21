@@ -170,9 +170,9 @@ void Room::installEquip(ServerPlayer* player, const QString& equip_name)
 
 ## SWIG 接口更新
 
-以下接口已添加到 `swig/sanguosha.i`：
+以下接口已添加到 [`swig/sanguosha.i`](../swig/sanguosha.i)：
 
-- `swig/card.i`: `EquipCard::getOccupyLocations()`, `EquipCard::setOccupyLocations()`
+- [`swig/card.i`](../swig/card.i): `EquipCard::getOccupyLocations()`, `EquipCard::setOccupyLocations()`
 - `swig/sanguosha.i`: `Player::getWeapons()`, `Player::getArmors()`, `Player::getTreasures()` 等
 
 ## 注意事项
@@ -185,10 +185,10 @@ void Room::installEquip(ServerPlayer* player, const QString& equip_name)
 
 ## 相关文件
 
-- `src/package/standard.cpp` - `EquipCard::getOccupyLocations()` 默认实现
-- `src/package/standard.h` - `EquipCard` 类定义
-- `src/core/player.cpp` - `getWeapons()`, `getEquipRealSlots()` 等实现
-- `src/core/player.h` - `Player` 类多装备栏函数声明
-- `src/server/room.cpp` - `installEquip()`, `moveField()` 多栏支持
+- [`src/package/standard.cpp`](../src/package/standard.cpp) - `EquipCard::getOccupyLocations()` 默认实现
+- [`src/package/standard.h`](../src/package/standard.h) - `EquipCard` 类定义
+- [`src/core/player.cpp`](../src/core/player.cpp) - `getWeapons()`, `getEquipRealSlots()` 等实现
+- [`src/core/player.h`](../src/core/player.h) - `Player` 类多装备栏函数声明
+- [`src/server/room.cpp`](../src/server/room.cpp) - `installEquip()`, `moveField()` 多栏支持
 - `swig/card.i` - SWIG `EquipCard` 接口
 - `swig/sanguosha.i` - SWIG `Player` 接口

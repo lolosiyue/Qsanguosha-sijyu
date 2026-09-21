@@ -52,7 +52,8 @@ the probe exits successfully: analysis must inspect these fields. Exit code 2
 means invalid arguments; code 1 means an opening/enumeration/wait failure.
 No matching process is a successful `observe` with zero matches.
 
-Defaults are one sample and a 1000 ms interval. Limits are 3600 samples,
+Argument defaults and bounds are defined by `wmain()` and `number()` in
+[`xp-process-probe.cpp`](xp-process-probe.cpp). Defaults are one sample and a 1000 ms interval. Limits are 3600 samples,
 10–60000 ms between iterations, and a scheduled wait span of at most one hour.
 The interval is a delay after the previous sample, so scan work adds elapsed
 time. The retained-handle wait ends early when the process exits.
@@ -66,27 +67,13 @@ Windows SDK 7.1A Win32 headers/libraries and the repository's installed
 The source defines `PSAPI_VERSION=1`, `WINVER=0x0501`, and `_WIN32_WINNT=0x0501`.
 Do not compile against the default modern toolset and only rewrite the PE header.
 
-An isolated local build project is generated at
-`builds/xp-process-probe/xp-process-probe.vcxproj`; its executable is
-`builds/xp-process-probe/bin/xp-process-probe.exe`. Rebuild that project using:
-
-```powershell
-& 'C:/Program Files (x86)/Microsoft Visual Studio/2017/BuildTools/MSBuild/15.0/Bin/MSBuild.exe' `
-    builds/xp-process-probe/xp-process-probe.vcxproj `
-    /p:Configuration=Release /p:Platform=Win32 /v:minimal /nologo
-```
-
-The generated project/build directory is a local artifact, not a tracked
-project dependency. On a new checkout, create a standalone console project
-using the configuration above and include only `xp-process-probe.cpp`.
+Create a standalone console project using the configuration above and include
+only [`xp-process-probe.cpp`](xp-process-probe.cpp). Build that project with the
+v141_xp toolset for Win32.
 The UCRT include/library search paths may need explicit configuration because
 the v141_xp SDK selection does not always populate them automatically.
 
-Initial verification: v141_xp `/W4` build succeeded; `dumpbin` reports x86,
-OS/subsystem 5.01, and only PSAPI.DLL/KERNEL32.dll imports. PSAPI functions use
-their XP names, without `K32*` imports. `--help` and an out-of-range sample count
-were checked. No target memory sampling or guest execution was performed during
-tool preparation. PE/import checks do not establish guest runtime acceptance.
+[Initial preparation checks](process/xp-process-probe-preparation.md) record the build and import inspection.
 
 Establish the required unchanged baseline first, then collect measurements under
 the agreed test scenario. Do not label host measurements as XP guest results.
