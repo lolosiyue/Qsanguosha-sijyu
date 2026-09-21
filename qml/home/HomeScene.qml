@@ -651,6 +651,7 @@ Item {
     HomePointerFx {
         anchors.fill: parent
         z: 200
+        enabled: false
     }
 
     // 鍵盤方向鍵導航圖：各面板按鈕之間的上下左右連線

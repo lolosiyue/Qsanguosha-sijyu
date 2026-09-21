@@ -57,6 +57,7 @@
 #if QSAN_ENABLE_QML
 #include "homecontroller.h"
 #include "pointer-effect-overlay.h"
+#include "pointer-hover-delivery.h"
 #endif
 #include "game-view.h"
 #include "crashhandler.h"
@@ -317,9 +318,12 @@ MainWindow::MainWindow(QWidget *parent)
 		homePageWidget = QWidget::createWindowContainer(homeWindow, pageStack);
 		homePageWidget->setObjectName(QStringLiteral("homeQuickViewContainer"));
 		homePageWidget->setFocusPolicy(Qt::StrongFocus);
+		qsanEnableWidgetPointerHover(homePageWidget);
 	} else {
 		homeWidget = new QQuickWidget(pageStack);
 		homeWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
+		qsanEnableWidgetPointerHover(homeWidget);
+		homeWidget->installEventFilter(new PointerHoverForwardFilter(homeWidget));
 		homePageWidget = homeWidget;
 	}
 	qInfo().noquote() << "Home render host:" << m_homeRenderHost;

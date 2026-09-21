@@ -944,6 +944,13 @@ void HomePointerFxItem::paint(QPainter *painter)
     m_fx.paint(*painter);
 }
 
+bool HomePointerFxItem::contains(const QPointF &) const
+{
+    // Visual-only overlay: never become the Qt Quick pick target, or home
+    // buttons underneath lose hover / clicks.
+    return false;
+}
+
 void HomePointerFxItem::itemChange(ItemChange change, const ItemChangeData &value)
 {
     if (change == ItemVisibleHasChanged && !value.boolValue) {
