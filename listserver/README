@@ -1,5 +1,8 @@
-﻿列表服务器分成两种实现方式
+# 列表伺服器
 
-一种是使用SINA APP ENGINE作服务器，源码在sae文件夹中。
+本目錄提供伺服器列表服務的兩種實作：
 
-一种是使用nodejs作服务器，方便在非SAE的环境下架设列表服务器。源码在nodejs文件夹中。
+- [Node.js](nodejs/index.js)：`httpRequest` 處理 HTTP 請求，服務設定見同檔。
+- [SAE](sae/settings.php)：PHP 實作使用 SAE storage／KVDB；原部署步驟保留於[架設教程](sae/列表服务器架设教程.txt)。教程對應該實作使用的 SAE 介面。
+
+遊戲對局伺服器的建置與部署見 [Linux 指南](../docs/linux-development-environment.md)與 [Docker 指南](../docs/docker-server.md)。

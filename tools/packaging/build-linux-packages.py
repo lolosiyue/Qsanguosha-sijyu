@@ -176,15 +176,14 @@ def build_portable(arguments: argparse.Namespace, staging: pathlib.Path,
         "QSanguosha portable bundle\n"
         "==========================\n\n"
         "Run ./QSanguosha (GUI) or ./qsanguosha-server (dedicated server).\n"
-        "Nothing has to be installed and no environment variable has to be set:\n"
-        "the private Qt runtime under lib/qsanguosha/qt is found through the\n"
+        "The private Qt runtime under lib/qsanguosha/qt is found through the\n"
         "executables' $ORIGIN-relative RUNPATH and bin/qt.conf.\n\n"
         "Game data lives in share/qsanguosha.  Large artwork and voice packs are\n"
         "not part of this download; point the game at an external copy with\n"
         "  ./QSanguosha --asset-root /path/to/assets\n"
         "or by setting QSAN_ASSET_ROOT.\n\n"
-        "Settings, replays and logs are written to ~/.local/share/QSanguosha and\n"
-        "~/.config/QSanguosha.org - never into this directory.\n\n"
+        "Settings, replays and logs use the platform user directories.\n"
+        "\n"
         "  ./QSanguosha --asset-report    what the game found, and what is missing\n",
         encoding="utf-8")
 

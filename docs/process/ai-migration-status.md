@@ -1,14 +1,16 @@
 # Isolated AI 遷移狀態表
 
-> 2026-09-21 本輪共用層實作已補裝備／牌族策略、選擇與回應分派、索引與規劃快取、
+本文 `lua/ai/` 路徑指部署檔案；版本與取得方式見[外部 Lua 來源](../lua-ai-spec.md#外部-lua-來源)。
+
+> 2026-09-21 共用層實作已補裝備／牌族策略、選擇與回應分派、索引與規劃快取、
 > 身份／模式 hook 的唯讀查詢與原子更新；後續同批補入空城／血量／贈牌／拆牌／改判、
 > 舊 table hook ABI 與 askFor 預設。isolated 是獨立新架構，原版 SmartAI 只作行為參考；
 > 安全 fallback 只是故障保底，觸發即代表 isolated 驗收失敗。細節與尚未完成的語意見
-> [共用層對照](isolated-ai-common-layer.md)。新增 `--suite ai-common` 契約來源；
-> **2026-09-21 後續授權檢查點：SWIG 重新生成與 Debug engine／server／runtime runner 編譯通過；
+> [共用層對照](../isolated-ai-common-layer.md)。新增 `--suite ai-common` 契約來源；
+> **2026-09-21 後續檢查點：SWIG 重新生成與 Debug engine／server／runtime runner 編譯通過；
 > 完整 `--suite ai-common` exit 0（112.0 秒），`--suite card-lifetime` exit 0（407.3 秒）。**
 > 命令、修正與日誌見 `builds/ai-common-completion-report.md`。未執行 CTest、GUI 或完整對局；
-> 契約通過不代表任意武將 parity。以下各 PR 保留各自歷史驗證，不由本檢查點追認全部階段。
+> 任意武將 parity 尚未驗證。各 PR 的結果與適用版本分列於下文。
 
 > 下文「整題交回 legacy」「不是缺陷」等是舊階段的歷史決策，已被上述自主決策目標取代。
 > 新的候選選擇可提交已知且完整授權的合法方案；其他未知選項仍記錄缺口。
@@ -16,7 +18,7 @@
 
 依 `isolated-ai-migration-plan.md` 的階段劃分記錄實況。**本表只記已驗證的事實**：欄位寫「已建置／已跑測試」時，同一列必須指得出命令與結果；沒跑就寫沒跑。
 
-- 主倉庫：本輪開始為 `debug` @ `4e6b36a`，結尾核對已由其他 session 移至 `9ac9ed6`；下列 PR 02–06 記錄保留各自當時基準。
+- 主倉庫：記錄起點為 `debug` @ `4e6b36a`，結束時為 `9ac9ed6`；下列 PR 02–06 記錄保留各自當時基準。
 - 記錄日期：2026-09-19（PR 02–04）、2026-09-20（PR 05–06）、2026-09-21（PR 07 停止驗證與靜態收尾）。
 - 建置／測試環境：Windows x64、MSVC v145、Qt 6.11.1 `msvc2022_64`、`builds/cmake-vs2026`
 
@@ -59,9 +61,9 @@
 | 編號 | 問題 | 修法 |
 |---|---|---|
 | 1 | `routeFor()` 預設 `AiRouteIsolated`，但 `QSAN_ASSET_REQUIRED` 只驗 `lua/ai/smart-ai.lua`；缺 isolated 檔案的套件裝得乾淨，開房才死在 `AiLuaRuntime::initialize()` | `CMakeLists.txt` required 清單補進 bootstrap／facades／`ai_isolated_core` 三支／`mode-ai.lua` |
-| 2 | Android 打包同一個洞 | `cmake/QSanguoshaAndroidAssets.cmake` 的 FATAL_ERROR 清單改為迴圈，涵蓋同一組檔案 |
+| 2 | Android 打包同一個洞 | [`cmake/QSanguoshaAndroidAssets.cmake`](../../cmake/QSanguoshaAndroidAssets.cmake) 的 FATAL_ERROR 清單改為迴圈，涵蓋同一組檔案 |
 | 3 | 兩支 fetcher 與其 contract test 只守 `isolated-bootstrap`／`isolated-facades`／`isolated/ask-for-use-card`，漏掉 `ask-for-choice`／`decision-core`。上游改名其中任一支，fetch 會通過，然後每個 Room 都沒有 AI | 兩支 fetcher 改成迴圈守 `ai_isolated_core` 全部；套件 handler 不守 |
-| 4 | 沒有任何東西讓上述清單保持同步 | 新增 `tools/ai/check-ai-runtime-manifest.py` 與 CTest `qsanguosha_ai_runtime_manifest_check`，比對 manifest／`ai_isolated_core`／磁碟內容／兩支 fetcher／CMake required 清單，並拒絕 C++ 再度出現腳本清單與「套件 handler 被標成 required」 |
+| 4 | 沒有任何東西讓上述清單保持同步 | 新增 [`tools/ai/check-ai-runtime-manifest.py`](../../tools/ai/check-ai-runtime-manifest.py) 與 CTest `qsanguosha_ai_runtime_manifest_check`，比對 manifest／`ai_isolated_core`／磁碟內容／兩支 fetcher／CMake required 清單，並拒絕 C++ 再度出現腳本清單與「套件 handler 被標成 required」 |
 
 ### 未修、已記錄的缺口
 
@@ -136,7 +138,7 @@ exit 0 —— 這支 fetcher 帶著本次新增的核心守門，對真實上游
 1. **沒有第二個 `extensions` 工作樹。** `extensions/` 與 `lua/ai/` 都在主倉庫路徑下，且都被 `.gitignore:11-12` 排除，`git ls-files` 各為 0 檔。計畫假設的 `extensions` 倉庫 `ai/isolated/` 目錄（[S6][S7]）不是本地的一份 checkout，而是 fetcher 的遠端來源。因此 P0-B／P0-C 沒有兩份權威可以協調。
 2. **`lua/ai/isolated/` 的內容比計畫描述的多。** 除計畫列出的 ask-for-use-card／standard-ai／pass-ai／instruction-limit-test 之外，還有 `ask-for-choice.lua`、`decision-core.lua`、`scarlet-ai.lua`。
 
-另外修正計畫 §3-A 的一項歸屬：**`value-boundary.lua` 不在 isolated VM 裡**。它只由 legacy `smart-ai.lua` 的 `dofile` 與 `tests/lua/value-boundary-contract.lua` 載入。
+另外修正計畫 §3-A 的一項歸屬：**`value-boundary.lua` 不在 isolated VM 裡**。它只由 legacy `smart-ai.lua` 的 `dofile` 與 [`tests/lua/value-boundary-contract.lua`](../../tests/lua/value-boundary-contract.lua) 載入。
 
 ---
 
@@ -168,7 +170,7 @@ PASS turn-reclaim         PASS wrapped-adoption       PASS card-lifetime
 PASS card-lifetime-lua    PASS synthetic-30
 ```
 
-`room-runtime` 即 `tests/room-runtime-isolation-test.cpp`，涵蓋 isolated runtime 的載入、路由、額度與 Lua 契約。
+`room-runtime` 即 [`tests/room-runtime-isolation-test.cpp`](../../tests/room-runtime-isolation-test.cpp)，涵蓋 isolated runtime 的載入、路由、額度與 Lua 契約。
 
 ### 新增的來源檢查
 
@@ -192,7 +194,7 @@ python tools/autotest/tests/test_fetch_extensions_contract.py
 FETCH_EXTENSIONS_RESULT PASS
 ```
 
-exit 0。這支會建一個 fixture git 倉庫並**實跑** `tools/ci/fetch-extensions.sh`。改守門前它先紅（`lua/ai is incomplete: isolated/ask-for-choice.lua is missing after fetch`），因為舊 fixture 只有一支 isolated 腳本、不足以讓引擎開機；補齊 fixture 後轉綠。
+exit 0。這支會建一個 fixture git 倉庫並**實跑** [`tools/ci/fetch-extensions.sh`](../../tools/ci/fetch-extensions.sh)。改守門前它先紅（`lua/ai is incomplete: isolated/ask-for-choice.lua is missing after fetch`），因為舊 fixture 只有一支 isolated 腳本、不足以讓引擎開機；補齊 fixture 後轉綠。
 
 ### 載入政策的測試（實跑）
 
@@ -212,7 +214,7 @@ room runtime isolation passed
 
 - 未跑完整 CTest（只跑 `runtime-contract` 一個 suite）。
 - 未在 Linux／Docker／Android 上驗證本次的 CMake 改動；只在 Windows 重新 configure 成功。
-- `tools/ci/fetch-extensions.ps1` 的改動只有靜態檢查，沒有實跑（實跑會改寫工作樹的 `lua/ai/`）。`.sh` 那支由下面的 contract test 對 fixture 倉庫實跑過。
+- [`tools/ci/fetch-extensions.ps1`](../../tools/ci/fetch-extensions.ps1) 的改動只有靜態檢查，沒有實跑（實跑會改寫工作樹的 `lua/ai/`）。`.sh` 那支由下面的 contract test 對 fixture 倉庫實跑過。
 - 未做效能量測。
 
 ---
@@ -237,7 +239,7 @@ room runtime isolation passed
 
 `self:sort` 與舊版有兩點刻意不同，都寫在程式註解裡：同分用 object name 決勝而不是 `os.time` 快取（牆鐘會讓同一局面排出不同順序）；快照答不出來的鍵（例如 `chaofeng`）回 nil 而不是靜默改排防禦。
 
-測試：新增 `tests/lua/isolated-use-plan-contract.lua`（純 Lua，只需 bootstrap／facades／decision-core），由 `tests/room-runtime-isolation-test.cpp` 的 `useCardPlanContract()` 載入，失敗碼 **30**；`tests/lua/isolated-adapter-contract.lua` 補上訊號、normalize 與未覆蓋紀錄的案例。
+測試：新增 [`tests/lua/isolated-use-plan-contract.lua`](../../tests/lua/isolated-use-plan-contract.lua)（純 Lua，只需 bootstrap／facades／decision-core），由 `tests/room-runtime-isolation-test.cpp` 的 `useCardPlanContract()` 載入，失敗碼 **30**；[`tests/lua/isolated-adapter-contract.lua`](../../tests/lua/isolated-adapter-contract.lua) 補上訊號、normalize 與未覆蓋紀錄的案例。
 
 破壞驗證：把 `SmartAIView:tryUseCard` 改名（不必重新編譯）後重跑 `--suite room-runtime` → **exit 30**，還原後 exit 0。
 
@@ -290,7 +292,7 @@ Lua 端新增 `CandidateView:getMaxVotes(name)`、`needsATarget()`、`hasComplet
 | `getUnknownCardsNum(player)` | 這名觀察者看不見的張數；手牌全開時是 0 | 快照沒有張數回 nil |
 | `estimateCardsNum(class, player)` | 已知 ＋ 看不見的張數 × 密度 | **沒有登記密度的牌族回 nil**，不回一個看起來像已知的 0 |
 
-密度取自本倉庫 standard 牌堆的實際張數（`src/package/standard-cards.cpp` 的牌表：108 張裡殺 30、閃 15、桃 8），只登記這三種。換牌包會讓比例偏掉——這是估計不是規則，寫在程式註解與下面的能力清單裡。
+密度取自本倉庫 standard 牌堆的實際張數（[`src/package/standard-cards.cpp`](../../src/package/standard-cards.cpp) 的牌表：108 張裡殺 30、閃 15、桃 8），只登記這三種。換牌包會讓比例偏掉——這是估計不是規則，寫在程式註解與下面的能力清單裡。
 
 #### 能力清單：決鬥（Duel）
 
@@ -366,10 +368,10 @@ PR 04 那條「全覆蓋才作答」的規則沒有放寬。實際效果是：�
 
 | 檔案 | 內容 |
 |---|---|
-| `tests/lua/isolated-trick-families-contract.lua`（新增） | 純 Lua。已知／估計的分離（含手牌全開時估計退回已知、沒登記密度的牌族回 nil）、決鬥的 planned／declined／餘裕規則／兩條 unsupported、拆牌族挑 rich 而非共用排序第一名的 poor、只剩判定區的敵人不指、空候選是 declined、兩條 unsupported、優先序排出 `Dismantlement,Snatch,Duel,Slash`、以及 `card_chosen` 沒有被覆蓋 |
+| [`tests/lua/isolated-trick-families-contract.lua`](../../tests/lua/isolated-trick-families-contract.lua)（新增） | 純 Lua。已知／估計的分離（含手牌全開時估計退回已知、沒登記密度的牌族回 nil）、決鬥的 planned／declined／餘裕規則／兩條 unsupported、拆牌族挑 rich 而非共用排序第一名的 poor、只剩判定區的敵人不指、空候選是 declined、兩條 unsupported、優先序排出 `Dismantlement,Snatch,Duel,Slash`、以及 `card_chosen` 沒有被覆蓋 |
 | `tests/room-runtime-isolation-test.cpp` 的 `trickFamiliesPlanWithTheirOwnValuations()`（新增，失敗碼 **34**） | 同一個 Room 先載入上面那支純 Lua 契約，再走 `decideIsolated` 的端到端：順手牽羊指 `strip-rich`（不是共用排序第一名 `strip-poor`）、決鬥指 `strip-poor`（共用排序第一名，證明拆牌族的估值沒有取代那份排序）、手上沒有殺的決鬥回 Pass、mode policy 清空後整題回退且原因記成 `activate|Snatch|the mode policy does not describe relations` |
 
-只多建一個 Room（純 Lua 契約與端到端共用同一個），所以 `room-runtime` 只多約 35 秒；`tests/runtime-tests-main.cpp` 的 600000 ms 預算沒有動。
+只多建一個 Room（純 Lua 契約與端到端共用同一個），所以 `room-runtime` 只多約 35 秒；[`tests/runtime-tests-main.cpp`](../../tests/runtime-tests-main.cpp) 的 600000 ms 預算沒有動。
 
 破壞驗證（兩次都只改 Lua，不必重新編譯）：
 
@@ -481,7 +483,7 @@ P4 之後技能不只能被啟動，也能被轉化成一張牌，所以覆蓋�
 
 | 檔案 | 內容 |
 |---|---|
-| `tests/lua/isolated-conversion-contract.lua`（新增） | 純 Lua。轉化的身分來自權威端、合成負數 id 查得回同一筆、轉化答得出候選那幾個問題、借用的 source 關係、走同一套 `ai_card_use.Slash` 並送出票、成本原樣回送、沒有策略的轉化是未覆蓋、`newCard` 四種找不到的情況都回 nil、「列不完」與「沒有」分開、技能覆蓋的第二條路（含反例）、以及規劃 A 不污染 B |
+| [`tests/lua/isolated-conversion-contract.lua`](../../tests/lua/isolated-conversion-contract.lua)（新增） | 純 Lua。轉化的身分來自權威端、合成負數 id 查得回同一筆、轉化答得出候選那幾個問題、借用的 source 關係、走同一套 `ai_card_use.Slash` 並送出票、成本原樣回送、沒有策略的轉化是未覆蓋、`newCard` 四種找不到的情況都回 nil、「列不完」與「沒有」分開、技能覆蓋的第二條路（含反例）、以及規劃 A 不污染 B |
 | `tests/room-runtime-isolation-test.cpp` 的 `conversionsAreAuthorizedNotClaimed()`（新增，失敗碼 **35**） | 真的 Room、真的技能實例。兩個 fixture 的轉化都被列出且身分正確、成本技能不列舉它拒絕的那張牌、目標描述與實體候選同一套、帶票的答案被接受且 instance identity 傳得下去、**五種偽造全部被拒**（偽造牌名／偽造成本／完全沒有票／不存在的票／指一個不擁有這個轉化的技能名）、同名兩實例各自成票、配額用盡後同一張票失效、以及實體牌的候選票 |
 
 這個案例與純 Lua 契約共用同一支函式但各自建 Room（契約一個、端到端一個），所以
@@ -725,7 +727,7 @@ legacy-adapted 路徑本來就會被 live Lua 推動 revision，而且 `decide()
 
 兩次破壞都各自重新建置並重跑（分別 175 秒與 147 秒——都在案例 17 就中斷，所以比整支快），
 之後都已還原；`grep -c "TASKA-BREAK"` 在 `player.cpp` 與 `ai-decision-coordinator.cpp`
-都是 0，`src/core/player.cpp` 已 `git checkout` 回 `5020eba` 的內容。
+都是 0，[`src/core/player.cpp`](../../src/core/player.cpp) 已 `git checkout` 回 `5020eba` 的內容。
 
 #### 保留的診斷訊息
 
@@ -790,14 +792,14 @@ legacy-adapted 路徑本來就會被 live Lua 推動 revision，而且 `decide()
 6. 釘 `QSAN_EXTENSIONS_REF`，並填進 `docs/ai-runtime-manifest.json` 的 `ref_pinned`。要釘的對象是第 5 項推完之後的 commit，不是 `724980c`。
 7. 在真正乾淨的環境（非本機）建置一次並跑 `room-runtime`——目前只驗到 fetch 層，沒有在乾淨環境建置。
 8. ~~計畫的 PR 06（P4）：`card_spec` 轉化候選與技能實例~~ **已完成**，見上面的 PR 06 明細；`candidate_id` 授權券（§5.4）也一併做了。
-8a. **計畫的 PR 07（P2/P4）：實作與本輪靜態收尾已落地，最終驗收未完成。** 四個目標、停止原因、靜態修正、同步及未完成 gate 見文末。下一輪先靜態複核，不啟動驗收或 PR 08。
+8a. **計畫的 PR 07（P2/P4）：實作與靜態修正已落地，最終驗收未完成。** 四個目標、停止原因、靜態修正、同步及未完成 gate 見文末。PR 08 尚未啟動。
 9. 計畫的 PR 08（P5）、PR 09（P6）。**PR 09 需要固定機器與資料集的實際量測**（§9.3／§9.4 的 P50／P95／最大值、payload、5／10／20 人與 60／80 張壓力場景），至今一個數字都沒有量，只量了測試 suite 的牆鐘時間。
 
 
 ## PR 07（P2/P4）：有序多目標、巢狀規劃與分支 scratch
 
 記錄日期：2026-09-21。開始 HEAD `8471f53`；工作期間另一 session 提交
-`4e6b36a`，本輪靜態收尾時再移至 `9ac9ed6`。凜未執行 commit／push；保留 PR 02–06 與其他 session 的變更。
+`4e6b36a`，靜態修正結束時為 `9ac9ed6`。
 本節更新 PR 06 當時「明確沒有做」的其中幾項，歷史驗證結果不改寫。
 
 ### 能力與邊界
@@ -815,7 +817,7 @@ legacy-adapted 路徑本來就會被 live Lua 推動 revision，而且 `decide()
 | 多牌提交 | `cost_count / eligible_subcards`，Lua `withSubcards` 與 `newCard` 綁定副本；權威端重驗數量、重複、範圍、持有、每一步選牌、可結束、instance/source/quota 與重建產物。 |
 | 測試入口 | 失敗碼 36 已由既有 Collateral 案例使用，本批接 37（投影）、38（Lua 分支／上下文／預算）、39（參數化成本）。同一組案例接入 room-runtime；ai-planning 是只跑這組的 focused 入口，沒有新增 CTest。 |
 
-### 既有實跑記錄（已停止；本輪只讀證據）
+### 既有實跑記錄（已停止）
 
 命令皆在主工作樹執行；Qt PATH 前置 `H:\Qt6111\6.11.1\msvc2022_64\bin`。
 測試 stdout/stderr 先導至 `builds/pr07/*.log`，旁邊 JSON 保存 child exit、耗時與當時 HEAD。
@@ -829,7 +831,7 @@ legacy-adapted 路徑本來就會被 live Lua 推動 revision，而且 `decide()
 
 前期失敗亦保留：planning-1/2 回 38（fixture 漏 player_order，目標查不到）；planning-3
 回 38（漏 hujia）；planning-4 回 38（conversion fixture 漏 suit/number）。這些是修補
-測試資料的失敗，不算破壞驗證。planning-5 在 135.703 秒由凜停止，child exit
+測試資料的失敗，不算破壞驗證。planning-5 在 135.703 秒手動停止，child exit
 4294967295：原預算 fixture 建 50 人完整快照，已改為三人＋降低探測額度的 bounded case；
 該次不是 PASS，也沒有藉此展開引擎效能修復。新 fixture 使用 gameplay Lua binding，
 避免原生規則探測打到錯誤 VM；planning-6 未出現前期的 rejected callback 訊息。
@@ -837,42 +839,40 @@ legacy-adapted 路徑本來就會被 live Lua 推動 revision，而且 `decide()
 ### 停止原因與最終狀態（2026-09-21）
 
 **PR 07 未完整通過，也不符合「每個新增案例皆有破壞證據」。** 原生 targets
-破壞驗證執行途中，使用者下令「禁止測試」，程序已停止；本輪再次明確禁止所有
-建置、CTest、focused executable、smoke、完整對局及破壞驗證，後續要求
-「下一步 prompt，先不驗收」。本輪只有來源／文件靜態審查與 Lua 檔案同步。
+破壞驗證在執行途中手動停止。後續僅完成來源／文件靜態審查與 Lua 檔案同步，
+未重建或執行測試。
 
 | 證據／gate | 狀態與限制 |
 |---|---|
-| `planning-6.json`／`.log` | 舊來源 exit 0、42.109 秒。之後的 rankTargets 缺玩家資料修正、追加案例及本輪靜態修正均沒有完成執行驗證。 |
+| `planning-6.json`／`.log` | 舊來源 exit 0、42.109 秒。之後的 rankTargets 缺玩家資料修正、追加案例及後續靜態修正均沒有完成執行驗證。 |
 | `break-scratch.json`／`.log` | 已完成 Lua 破壞案例：exit 38、32.219 秒，命中 root polluted。來源已還原。 |
 | `break-context.json`／`.log` | 已完成 Lua 破壞案例：exit 38、31.078 秒，命中巢狀 context assertion。來源已還原。 |
 | `break-candidates.json`／`.log` | 已完成 Lua 破壞案例：exit 38、33.188 秒，命中 candidate budget lost。來源已還原。 |
 | `break-recursion.json`／`.log` | 已完成 Lua 破壞案例：exit 38、34.766 秒，命中 recursion limit lost。來源已還原。 |
-| 原生 targets 破壞驗證 | **中止，未完成**。`break-targets.log` 只有初始化開始，無完成結果／JSON；不得算預期失敗。依上一輪交接，coordinator 暫時反轉目標改動已還原且當時 SHA 相符；本輪只核對目前有序投影來源，未重跑。 |
+| 原生 targets 破壞驗證 | **中止，未完成**。`break-targets.log` 只有初始化開始，無完成結果／JSON；不得算預期失敗。停止記錄顯示，coordinator 暫時反轉目標改動已還原且當時 SHA 相符；還原後僅靜態核對有序投影，未重跑。 |
 | 原生成本破壞驗證 | **未完成**，沒有完成證據。 |
-| 最終 ai-planning／room-runtime／runtime-contract | **NOT RUN**；現有 JSON 不代表最終來源通過。 |
-| 測試 executable／相關建置產物 | **仍是破壞版本，不可作正式 binary 或驗收證據**。最後成功建置是 `build-break-targets.log` 的目標反轉版本，包含 `builds/cmake-vs2026/tests/Debug/qsanguosha_runtime_tests.exe` 與相關 engine library／object。來源還原不會修復 binary；本輪沒有且不得為此重建。 |
+| 最終 ai-planning／room-runtime／runtime-contract | **NOT RUN**；現有 JSON 對應先前來源。 |
+| 測試 executable／相關建置產物 | **仍是破壞版本，不可作正式 binary 或驗收證據**。最後成功建置是 `build-break-targets.log` 的目標反轉版本，包含 `builds/cmake-vs2026/tests/Debug/qsanguosha_runtime_tests.exe` 與相關 engine library／object。來源還原不會修復 binary；該次停止後未重建。 |
 
-上述證據均位於 `builds/pr07/`；本輪未改寫既有 log／JSON，也未啟動任何測試程式。
+上述原始 log／JSON 保存在 `builds/pr07/`。
 
 ### 四個目標的靜態收尾（不是執行驗收）
 
-| 目標 | 靜態結論／本輪最小修正 |
+| 目標 | 靜態結論／修正 |
 |---|---|
 | §5.2 完整有序目標 | 實體牌與轉化共用有界投影，超額清空組合；prefix API 只查權威序列。通用規劃改以完整可行序列是否存在決定候選；`{}` 與 `{{}}` 分別是沒有可行動作及合法空目標動作。兩個 fixed-target 原生 fixture 補上空序列。 |
 | §7.3 分支／三態／預算 | 找到更換根 scratch 可重置 private 候選計數的缺口，改由新 `ai_decide` 顯式重置；同 request 的新 facade 仍共用預算。完整性先於策略 declined 檢查；缺失組合／合法目標／所需敵友關係不得降成空集合，`pickTargets` 保留未知回 nil。 |
 | §7.2 參數化成本／instance | n=2–8 opt-in、distinct 手牌成本、不列舉子集；原生提交沿用票、逐前綴選牌、可結束、來源根與 quota 重驗。修正 `newCard` 在第一張參數票綁定失敗就提前回 nil：繼續查後續符合條件的 instance/source，返回原票來源。 |
 | §7.2 巢狀上下文 | kind/reason/pattern/handling_method 沿同 request 私有 context 傳遞；正常／unsupported／error 均還原父 scratch。五種正式 Play 策略的 Response／ResponseUse 仍 unsupported。 |
 
-本輪只修改三支 Lua、`isolated-planning-contract.lua`、兩個原生 fixture 與兩份文件；
-保留 PR 02–06、其他 session 變更及生產 Lua 錯誤日誌。新增案例涵蓋 unknown／known-empty、
+新增案例涵蓋 unknown／known-empty、
 scratch/facade 替換不重置預算、新 dispatch 重置，以及後續 instance 成本票選取；
 **全數未執行、沒有新增破壞證據**。未替正式武將啟用 opt-in，沒有啟動 PR 08。
 指定受追蹤檔案的 `git diff --check` 通過；這只是空白／差異檢查，不是編譯、Lua 語法或執行證據。
 
 ### 外部權威倉庫反向同步（僅本地，未發布）
 
-本輪重新核對 `H:\Program file\Game\sgs\Qsgs\working\extensions`：分支 `main`，
+2026-09-21 核對 `H:\Program file\Game\sgs\Qsgs\working\extensions`：分支 `main`，
 origin 為 `https://github.com/lolosiyue/extensions.git`，HEAD 與 upstream 比較為 `0/0`；
 `git ls-remote origin refs/heads/main` 與本地 HEAD 均為 `de2d4eb`。
 同步前只有 `ai/scarlet-ai.lua`、`extensions/scarlet.lua` dirty，三支目標的
@@ -895,7 +895,7 @@ index／working tree 均乾淨。只同步以下檔案，逐支 SHA-256 相同�
 | 任意 n ≥ 2 技能／花色點數繼承／裝備或私有牌堆成本 | 沒做；未宣告 independent 契約即 unsupported。沒有替任何正式武將啟用 opt-in，原生正例是測試專用技能。 |
 | 重複投票、超過本次投影上限的完整組合 | 沒做；unsupported。分頁只讀本次完整投影，沒有跨 request 續取／同步 gameplay Lua callback。 |
 | Collateral 正式策略、Duel／拆牌多目標估值、其他牌族 | 沒做；候選投影完整不等於該牌策略完成。Duel／拆牌遇多目標仍 unsupported。 |
-| Response／ResponseUse 的五張牌正式策略 | 沒做；上下文能傳遞且守門，不代表救援／回應策略完成。 |
+| Response／ResponseUse 的五張牌正式策略 | 沒做；上下文傳遞與守門已實作；救援／回應策略尚未完成。 |
 | 假設裝備後重算距離、真實 history／flags／quota 模擬 | 沒做；scratch 只有純值預留與分支紀錄。 |
 | 跨 request 意圖、VM 重建後的持久記憶恢復、Shadow／覆蓋率／性能基線 | 沒做；不宣稱真實 activate 覆蓋率。 |
 | 生產 Lua 錯誤日誌、引擎／UI 其他批次 | 未改；`ai-runtime.cpp` 本批只增加 DTO 序列化。 |

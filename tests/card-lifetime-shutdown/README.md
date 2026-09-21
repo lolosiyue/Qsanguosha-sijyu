@@ -1,11 +1,19 @@
 # Card lifetime shutdown fixture
 
-This directory is intentionally isolated from the shared test target. Build
-`shutdown_protocol_test.cpp` against the normal QSanguosha engine test link
-line, then run the executable with no argument, `worker`, `lease`,
-`reservation`, and `lua-pin`.
+[`shutdown_protocol_test.cpp`](shutdown_protocol_test.cpp) is compiled into
+`qsanguosha_runtime_tests` by [CMakeLists.txt](../CMakeLists.txt).
+[`main()` in runtime-tests-main.cpp](../runtime-tests-main.cpp) dispatches it as:
 
-The no-argument run requires one `CARD_LIFETIME_ZERO` record and four ordered
-`CARD_LIFETIME_SHUTDOWN_STAGE` records, and verifies that a second shutdown is
-harmless. The `worker`, `lease`, `reservation`, and `lua-pin` fixtures are
-adversarial: they must exit nonzero and must not emit `CARD_LIFETIME_ZERO`.
+```text
+qsanguosha_runtime_tests --suite card-lifetime-shutdown [case]
+```
+
+The default case exercises worker finalization, owner-thread deletion and
+idempotent shutdown. `overlap` checks isolation between rooms;
+`lua-exception-unwind` checks that Lua invocation frames and pins are released
+before shutdown. The `worker`, `lease`, `reservation`, and `lua-pin` cases
+leave an outstanding resource deliberately: each must exit nonzero without a
+`CARD_LIFETIME_ZERO` record.
+
+See the [ownership contract](../../docs/card-lifetime-ownership.md) for the
+shutdown stages and lifetime rules.

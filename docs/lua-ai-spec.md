@@ -7,6 +7,22 @@ Isolated AI 的純值 API、共用策略、身份／模式 hook 與未覆蓋邊�
 
 ---
 
+## 外部 Lua 來源
+
+`lua/ai/` 是部署目錄，由外部 [lolosiyue/extensions](https://github.com/lolosiyue/extensions) 倉庫的 `ai/` 提供，未納入主倉庫版本控制。本文及相關文件中的 `lua/ai/<file>` 表示本機部署相對路徑；函式與註冊表名稱指向該檔案內的符號。
+
+取得程式見 [fetch-extensions.ps1](../tools/ci/fetch-extensions.ps1) 與 [fetch-extensions.sh](../tools/ci/fetch-extensions.sh)。既有工作目錄更新前須保留本地修改；乾淨環境的配置與版本選擇依上述腳本參數。
+
+核對外部來源版本時，在外部倉庫執行：
+
+```powershell
+git remote get-url origin
+git rev-parse HEAD
+git status --short
+```
+
+再比較外部 `ai/<file>` 與部署 `lua/ai/<file>` 的內容。報告中的日期、提交與雜湊識別當次來源；未提交修改記錄為本地狀態。只有確認檔案已發布且內容相符時，才以對應提交的檔案網址引用，避免把可變的 `main` 當作歷史版本。
+
 ## 1. 檔案結構
 
 ### 1.1 層級關係
@@ -559,9 +575,9 @@ end
 
 ## 8. 工具函數與全域輔助
 
-### 8.1 定義於 `lua/utilities.lua`
+### 8.1 定義於 [`lua/utilities.lua`](../lua/utilities.lua)
 
-由 `lua/sanguosha.lua` 以 `dofile` 載入（sanguosha.lua:16）。
+由 [`lua/sanguosha.lua`](../lua/sanguosha.lua) 以 `dofile` 載入（sanguosha.lua:16）。
 
 | 函數 | 說明 |
 |------|------|
@@ -582,7 +598,7 @@ end
 | `getKnownCards(player, from)` | 獲取所有已知牌 |
 | `hasManjuanEffect(player)` | 是否有滿寵技能影響（定義於 `lua/ai/bgm-ai.lua`） |
 | `hasJueqingEffect(from, to, nature)` | 是否有絕情效果 |
-| `dummyCard(name)` | 建立虛擬卡用於判斷（SWIG 導出的 C++ 全域函數，`src/core/util.h`） |
+| `dummyCard(name)` | 建立虛擬卡用於判斷（SWIG 導出的 C++ 全域函數，[`src/core/util.h`](../src/core/util.h)） |
 | `dumpGameState(room, card)` | 除錯用狀態傾印 |
 
 ---
@@ -663,8 +679,8 @@ end
 
 ## 14. 檔案載入順序
 
-1. `lua/config.lua` — 設定載入（`src/server/room-runtime.cpp:469`）
-2. `lua/sanguosha.lua` — 主載入入口：內部依序 `dofile` `lua/utilities.lua`（工具函數，sgs.QList2Table 等）與 `lua/sgs_ex.lua`（基礎 API，CreateTriggerSkill 等）（sanguosha.lua:16-17）
+1. [`lua/config.lua`](../lua/config.lua) — 設定載入（`src/server/room-runtime.cpp:469`）
+2. `lua/sanguosha.lua` — 主載入入口：內部依序 `dofile` `lua/utilities.lua`（工具函數，sgs.QList2Table 等）與 [`lua/sgs_ex.lua`](../lua/sgs_ex.lua)（基礎 API，CreateTriggerSkill 等）（sanguosha.lua:16-17）
 3. `lua/ai/smart-ai.lua` — SmartAI 類別與全域表（`src/server/room-runtime.cpp:474`）
 4. `lua/ai/{套件}-ai.lua` — 各套件 AI（依賴關係自行處理）
 
@@ -795,7 +811,7 @@ array 與 string-key table 讀取 snapshot。
 #### 15.2.2 共用轉接層：request 內物件映射
 
 後續共用入口的全域／原生依賴、快照缺口及分批順序見
-[SmartAI 共用轉接層依賴盤點](smart-ai-adapter-dependency-audit.md)；該盤點不代表新增介面已實作或通過執行驗證。
+[SmartAI 共用轉接層依賴盤點](smart-ai-adapter-dependency-audit.md)；各介面的實作與驗證狀態列於該盤點。
 
 `isolated-facades.lua` 在每次 `SmartAIView.new(request)` 建立獨立 `RoomView` 與玩家映射。
 同一 request 的 `self.player`、房間查詢、friends／enemies 共用同一個 `PlayerView`，可用
@@ -832,7 +848,7 @@ isCard／aiUseCard 等 userdata guard 與 native 查詢仍待後續分批處理�
 不能直接把 PlayerView 傳入這些舊入口。未暴露 `sgs.SPlayerList/CardList` 原生建構器。
 
 此檢查點只擴充共用轉接層，不新增技能 handler、不切換 Isolated／Shadow 路由，
-也不宣稱整份 SmartAI 可直接在 sandbox 執行。`tests/lua/isolated-adapter-contract.lua`
+也不宣稱整份 SmartAI 可直接在 sandbox 執行。[`tests/lua/isolated-adapter-contract.lua`](../tests/lua/isolated-adapter-contract.lua)
 由既有 room-runtime-isolation suite 在真實 sandbox 載入；原生測試另覆蓋 C++ 順序投影、
 序列化及 activate／use_card 共用入口。2026-09-17：程式與契約原始碼完成，尚未建置或執行。
 
@@ -903,7 +919,7 @@ legacy callback 的第五參數是 `AILegacyRequest`，只在 request 帶 `skill
 
 此檢查點只定義回呼 ABI、分派與結果轉換，不新增技能 handler、不改路由、不擴大
 DecisionKind。契約案例在 `tests/lua/isolated-adapter-contract.lua`（request view 與
-normalize），分派與轉換的端到端案例在 `tests/room-runtime-isolation-test.cpp`。
+normalize），分派與轉換的端到端案例在 [`tests/room-runtime-isolation-test.cpp`](../tests/room-runtime-isolation-test.cpp)。
 2026-09-17：程式與契約原始碼完成，尚未建置或執行。
 
 #### 15.2.4 共用入口的型別邊界（legacy 側）
@@ -937,7 +953,7 @@ normalize），分派與轉換的端到端案例在 `tests/room-runtime-isolatio
 仍以舊 guard 判斷的 `evaluateWeapon`（`type(card)~="userdata"` 回 -1）與 `needToThrowArmor`
 （回 false）屬傷害／防禦族，依盤點要整族一起做值型投影，不在本批。
 
-契約案例在 `tests/lua/value-boundary-contract.lua`，由 room-runtime-isolation suite 以獨立
+契約案例在 [`tests/lua/value-boundary-contract.lua`](../tests/lua/value-boundary-contract.lua)，由 room-runtime-isolation suite 以獨立
 Lua state 載入（不啟動 Room，也不載 Engine），涵蓋沒有 facade 時的原生分支、代理辨識、
 卡牌／技能身份與未支援訊息。2026-09-17：程式與契約原始碼完成，只做 Lua 語法檢查，
 未建置、未執行。`lua/ai/smart-ai.lua`（SHA-256 `7BFB480DE8354354D00D628AE6E0CFC88E691333B56BC16BF0A0C19F1C549ED4`）與 `lua/ai/value-boundary.lua`

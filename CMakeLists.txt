@@ -2,11 +2,8 @@ cmake_minimum_required(VERSION 3.28)
 
 project(QSanguosha LANGUAGES C CXX)
 
-# CTest is only used to run local and CI tests; CDash is never used. Besides the
-# BUILD_TESTING option and enable_testing(), include(CTest) also spawns 28 extra
-# Continuous*/Nightly*/Experimental* dashboard targets - Visual Studio turns each into
-# a solution project that occupies over half the solution, so only the two needed
-# pieces are used.
+# Register tests without the CDash dashboard targets added by include(CTest).
+# Keep BUILD_TESTING and enable_testing() available to local and CI builds.
 option(BUILD_TESTING "Build the testing tree." ON)
 if(BUILD_TESTING)
     enable_testing()

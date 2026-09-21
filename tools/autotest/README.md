@@ -1,7 +1,8 @@
 # 自動化測試工具 (tools/autotest)
 
-GUI 解耦後的現代化測試 runner, 取代舊的 `L:\QsgsFinal\autotest.py`
-(螢幕截圖 + batch 檔流程, 已 obsolete, 不再維護)。
+使用獨立 runner 執行 headless、網路對局與 GUI 契約檢查。
+參數與預設值由各 runner 的 `main()` 及
+[`runner_common.py`](runner_common.py) 的 `common_args()` 定義；以 `--help` 查詢。
 
 ## 前置
 
@@ -18,15 +19,15 @@ GUI 解耦後的現代化測試 runner, 取代舊的 `L:\QsgsFinal\autotest.py`
 
 ```powershell
 python tools\autotest\headless_runner.py `
-    --exe L:\finaldebug\QSanguosha-v2\release\QSanguosha.exe `
+    --exe .\release\QSanguosha.exe `
     --seed 20260828 `
-    --exe-root L:\finaldebug\QSanguosha-v2 `
+    --exe-root . `
     --modes 08p `
     --games 5 --parallel 2
 ```
 
 `--exe`／`--seed` 為必填 (runner 契約無隱式執行檔發現／隱式種子, 見
-`docs/lua-ext-spec.md`); seed 須為 unsigned 32-bit, 慣例用當日日期
+[Lua 擴展規格](../../docs/lua-ext-spec.md)); seed 須為 unsigned 32-bit, 慣例用當日日期
 `yyyyMMdd` (如 20260828, 建議用 `run_headless.bat` 自動生成並隨日期前進)。
 `--modes` 預設 `20p`。模式 ID 以 server registry 為準: runner 會用
 `--exe-root` 下的 `qsanguosha_server.exe` 跑 `--list-game-modes` 查詢
@@ -43,11 +44,11 @@ python tools\autotest\headless_runner.py `
 ## network_runner.py — 真實網路測試 (串行)
 
 `qsanguosha_server` 常駐 + 每局重啟 GUI client; client 自動選將、
-自動填 AI 開局、自動托管, **零截圖、零座標**:
+自動填 AI 開局、自動托管, 由 client 參數驅動:
 
 ```powershell
 python tools\autotest\network_runner.py `
-    --exe-root L:\finaldebug\QSanguosha-v2 `
+    --exe-root . `
     --modes 10p,20p,05p `
     --runs 2 --general heg_zhanglu
 
@@ -62,7 +63,7 @@ python tools\autotest\network_runner.py `
 
 輸出: `tools\autotest\autotest-logs\network\<時間戳>\<mode>\server.log` / `runN.log`
 + `summary-network-<時間>.csv` (彙總表在 `autotest-logs\` 根目錄)。
-`--modes` 預設 `10p,20p,02_1v1,05p,06_3v3,04_1v3`、`--runs` 預設 2、`--general` 預設 `zhenji`。
+模式、局數與選將預設值見 [`network_runner.py` 的 `main()`](network_runner.py) 及 `common_args()`。
 
 `--port` 可指定 server 監聽 port (預設 9527); 平行跑多份時各自指定。
 
@@ -73,7 +74,7 @@ python tools\autotest\network_runner.py `
 
 一個獨立的 `qsanguosha_server` process + 一個獨立的 GUI client process, 中間走
 真正的 TCP。client 以 `--network-ui-smoke` 啟動, 由真正的 RoomScene/Dashboard
-回答 askFor (按下真正的 CardItem / Photo / 按鈕), 打完一局後自己乾淨退出:
+回答 askFor (按下真正的 CardItem / Photo / 按鈕), 驗收要求完成一局並乾淨退出:
 
 ```bash
 # Linux 本機 (WSLg, 用現有 DISPLAY)
@@ -96,7 +97,7 @@ python3 tools/autotest/gui_network_smoke.py --exe-root . \
 marker log; 失敗時另存最後 UI state 與截圖。
 
 模式 ID 以 registry 為準 (`qsanguosha_server --list-game-modes`): 2 人局是
-`02p`, 5 人局是 `05p`。詳細契約見 `docs/linux-development-environment.md`。
+`02p`, 5 人局是 `05p`。詳細契約見 [Linux 開發指南](../../docs/linux-development-environment.md)。
 
 ## crash_report.py — 集中閃退資訊 (可持續執行)
 
@@ -106,7 +107,7 @@ marker log; 失敗時另存最後 UI state 與截圖。
 
 ```powershell
 python tools\autotest\crash_report.py `
-    --exe-root \\DESKTOP-VON1J9F\game\sgs\QSanguoshaFinal
+    --exe-root .
 ```
 
 輸出: `tools\autotest\autotest-logs\crash-report\<時間戳>\inventory.csv`
@@ -126,11 +127,10 @@ bash tools/ci/linux-gui-multimedia-smoke.sh ./relwithdebinfo/QSanguosha artifact
 
 驗 `MULTIMEDIA_STAGE` / `VIDEO_BACKEND_RESULT` / `MULTIMEDIA_RESULT` 三種
 marker: audio backend 選擇、短 UI 音效、語音 player pool、BGM、缺資產降級、
-QML media component、乾淨關閉。**不要求真的聽到聲音** — CI runner 沒有音訊
-裝置, `output_device: false` 是被記錄的正常狀態。
+QML media component、乾淨關閉。CI 可在沒有音訊裝置時執行，並記錄 `output_device: false`；實際聽感由有音訊裝置的環境驗收。
 
 契約細節與 exit code 對照見
-`docs/linux-development-environment.md` §4.7。
+[Linux 開發指南](../../docs/linux-development-environment.md) §4.7。
 
 ## tools/ci/linux-gui-effects-smoke.sh — 效果 profile 合約 (Linux GUI M2B-B)
 
@@ -147,15 +147,13 @@ done
 驗 `EFFECTS_STAGE` / `EFFECTS_PROFILE_RESULT` / `EFFECTS_RESULT` 三種 marker:
 profile 解析（要求的 profile 必須真正執行得到, 而且 resolution source 必須是
 `cli`）、exactly-once completion、frame animation／GIF／Spine 的缺資產降級、
-每個 profile 的物件預算、乾淨關閉。**不比較 pixel** — screenshot 只作
-failure artifact。
+每個 profile 的物件預算、乾淨關閉。截圖保存為失敗附件；此檢查涵蓋物件與事件契約。
 
-`gui_network_smoke.py --effects-profile <p>` 則用真 TCP 打完一整局來證明
-「跳過動畫也不會卡死」; `none` 那次會額外驗證整局打完之後 Spine／QMovie／
+`gui_network_smoke.py --effects-profile <p>` 則檢查指定 profile 下的完整 TCP 對局； `none` 那次會額外驗證整局打完之後 Spine／QMovie／
 QML 疊層／video object 全部為 0。
 
 契約細節與 exit code 對照見
-`docs/linux-development-environment.md` §4.8。
+[Linux 開發指南](../../docs/linux-development-environment.md) §4.8。
 
 ## 一鍵 batch (選擇寫在 bat 頂部)
 
@@ -180,7 +178,6 @@ QML 疊層／video object 全部為 0。
 
 ## 注意
 
-- 舊 `startserver.bat` 指向已不存在的 `H:\...\0705\`; 一律以 runner spawn。
 - `taskkill /IM QSanguosha.exe` 會誤殺 server; runner 一律按 PID 精準結束。
 - 02_1v1 的 KOF 選將以 `x0` 佔位 (伺服器映射到隨機未知將), 無法指定特定武將。
 - runner 已跨平台: 執行檔名、process group spawn、process-tree 清理、exit code

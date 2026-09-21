@@ -1,5 +1,7 @@
 # SmartAI 共用轉接層依賴盤點
 
+本文 `lua/ai/` 路徑指部署檔案；版本與取得方式見[外部 Lua 來源](lua-ai-spec.md#外部-lua-來源)。
+
 日期：2026-09-17。範圍：通用轉接層（Adapter），不是逐技能策略移植。
 
 後續實作註記：B0「代理型別與集合」已加入 AIValue／AIList、sandbox 集合 helpers 及
@@ -45,7 +47,7 @@ Lua 端改動（`smart-ai.lua`、`value-boundary.lua`、`isolated-bootstrap.lua`
 下一批應先統一「代理型別／集合／回呼契約」，再補可見資料投影。只增加同名 getter，
 仍會被舊程式的 userdata 判斷、QList 操作及回呼參數差異阻擋。
 
-| 項目 | 本輪基準／限制 |
+| 項目 | 基準／限制 |
 |---|---|
 | 主倉庫 | L 工作樹 `debug`，HEAD `c7b758bff159f4b9fe738bb2b032fa917c067fdb`，包含前批尚未提交的 Adapter 修改；不是純 HEAD 快照 |
 | SmartAI | `lua/ai/smart-ai.lua` SHA-256 `86366CA7581406F2D841AFC30F7E0195B56B2A9C75E71E2B7F64ED4F90B7DF89` |
@@ -54,7 +56,7 @@ Lua 端改動（`smart-ai.lua`、`value-boundary.lua`、`isolated-bootstrap.lua`
 | 盤點方式 | C++ 用圖查詢定位 `AiDecisionCoordinator`／`AiLuaRuntime`，再核對工作樹；Lua AI 為索引排除區，定向讀取共用函式及 API 引用 |
 | 圖的限制 | 部分 snippet 行號受前批修改影響而偏移，部分 call edge 是同名誤配；不以圖輸出單獨證明呼叫語意 |
 | 完整度 | 覆蓋下表共用入口族與直接邊界；動態 registry、`self["useCard"..name]` 和外部擴展 callback 未做全量傳遞閉包，也不宣稱所有技能可遷移 |
-| 驗證 | 本輪唯讀來源分析、文件與靜態差異檢查；未建置、未跑 Lua 契約／focused executable／CTest／對局／CI |
+| 驗證 | 來源分析與靜態差異檢查；未建置、未跑 Lua 契約／focused executable／CTest／對局／CI |
 
 來源連結以檔案與符號為準；以下行號是此份盤點當下的定位，後續修改須重新核對。
 
@@ -80,7 +82,7 @@ B 與 C 可以出現在同一函式：例如 `CardFilter` 的「過濾後卡牌�
 但它現在暫改 Room card mapping 的實作是 C。禁止的是直接帶入原操作，不是永久禁止該能力。
 
 Room gameplay Lua VM 本來已按房間分離；`sgs.*` 在這裡是 VM 內全域，不應稱作所有房間
-共用的一份進程全域。此次遷移要消除的是對 gameplay VM 的隱式上下文與 native 物件依賴。
+共用的一份進程全域。遷移要消除的是對 gameplay VM 的隱式上下文與 native 物件依賴。
 
 ## 共用入口族
 
@@ -144,7 +146,7 @@ Room gameplay Lua VM 本來已按房間分離；`sgs.*` 在這裡是 VM 內全�
 
 `mode-ai.lua` 已有 Room VM 的 registry／viewer mind 與 revision＋generation 快取；
 此部分優先沿用。它在 gameplay VM 評估後將純值 mode_policy 複製到隔離 VM，
-不代表它的 closure 或 SmartAI 全域表已遷移。
+closure 與 SmartAI 全域表仍須分別遷移。
 
 ## C：不可直接開放的通道
 
@@ -189,8 +191,8 @@ Room gameplay Lua VM 本來已按房間分離；`sgs.*` 在這裡是 VM 內全�
 | 新輸出 | parseResult 接受 pass/use_card 表，驗型別、大小及選牌／選目標去重；不接受舊字串直接返回 |
 | 過期檢查 | applyResult 檢查 decision ID、request/result/current revision；不得在隔離路由事後改 stamp 來接受過期結果 |
 | legacy 例外 | 目前 LegacyAdapted 會把 liveRequest/result revision 更新為 legacy 執行後的值（coordinator:530 附近）；這是既存相容路徑，不應照搬為隔離 AI 的做法 |
-| 合法性 | applyResult 的 legacyCardString 分支有 parse 與技能來源核對，但不能據此宣稱全部 target/card 規則已在此完成；仍須沿原 gameplay 執行流程檢查。此次不展開原生缺陷除錯 |
-| fallback 的範圍 | 尚未將 askForChoice、askForDiscard、filterEvent 等全部建立 isolated request/result；本輪不擴大 DecisionKind 或改路由 |
+| 合法性 | applyResult 的 legacyCardString 分支有 parse 與技能來源核對，但不能據此宣稱全部 target/card 規則已在此完成；仍須沿原 gameplay 執行流程檢查 |
+| fallback 的範圍 | 尚未將 askForChoice、askForDiscard、filterEvent 等全部建立 isolated request/result；DecisionKind 與路由保持原樣 |
 
 ## 下一批可獨立交付的工作
 
@@ -199,7 +201,7 @@ Room gameplay Lua VM 本來已按房間分離；`sgs.*` 在這裡是 VM 內全�
 | 1 | B0：代理型別辨識與 array 操作契約，選少量共用 helper 接入；列出仍未支援入口 | facade 與 list 不混淆、排序不改快照、空／未知分離、跨 request 不重用代理；不需要具體武將 |
 | 2 | B0：明確的 legacy-style callback adapter 與結果 normalization；保留新版 registry ABI | 第三參數 method/request 不互換、prompt/skill/pattern 優先序、compulsory 語意、nil/pass/error 不混淆 |
 | 3 | B1：viewer-scoped card lookup／location／pile 投影及必要 scalar metadata | 部分可見不洩漏、未知 ID 不補讀 Engine、牌移動後舊 request 失效；不以完整對局代替邊界契約 |
-| 4 | B2／B3：依實際共用入口需要，再分批設計合法候選、值型推演、事件與觀察者狀態 | 另定檢查點與範圍；不在本輪建立通用規則引擎或搬全部技能策略 |
+| 4 | B2／B3：依實際共用入口需要，再分批設計合法候選、值型推演、事件與觀察者狀態 | 按資料契約分批實作 |
 
 2026-09-17 第二批：回呼 ABI、分派與結果轉換已實作，對應架構順序第 2、3 項。
 `ask-for-use-card.lua` 分成新舊兩張 registry（`ai_skill_use`／`ai_skill_use_legacy`，
@@ -223,7 +225,7 @@ legacy callback 的第五參數改用純值 `AILegacyRequest`（見
 [契約規格 §15.2.4](lua-ai-spec.md#1524-共用入口的型別邊界legacy-側)）。
 原生輸入行為不變——新分支只在 `AIValue` 存在時成立，gameplay VM 不載入 facade。
 邊界函式獨立成 `lua/ai/value-boundary.lua`（`smart-ai.lua` 以 `dofile` 載入），只用純 Lua，
-契約案例 `tests/lua/value-boundary-contract.lua` 由 room-runtime-isolation suite 以獨立
+契約案例 [`tests/lua/value-boundary-contract.lua`](../tests/lua/value-boundary-contract.lua) 由 room-runtime-isolation suite 以獨立
 Lua state 載同一份定義驗證。
 
 修改後 `lua/ai/smart-ai.lua` SHA-256
@@ -359,11 +361,11 @@ mandatory facade／允許清單腳本四段並寫進文件；新增 `ai_coverage
 
 | 檔案 | 關鍵符號／定位 |
 |---|---|
-| [smart-ai.lua](../lua/ai/smart-ai.lua) | 上述共用入口；非主倉庫 tracked 來源，版本以外部 extensions 倉庫與本表雜湊為準 |
-| [isolated-facades.lua](../lua/ai/isolated-facades.lua) | PlayerView:139、手牌／牌區:181、RoomView:269、SmartAIView:359 |
-| [mode-ai.lua](../lua/ai/mode-ai.lua) | modeAIWorld:275、current_ai:284、installModeAI:297 |
-| [isolated-bootstrap.lua](../lua/ai/isolated-bootstrap.lua) | ai_register_handler、ai_decide |
-| [ask-for-use-card.lua](../lua/ai/isolated/ask-for-use-card.lua) | exact skill／pattern registry，handler 第三參數是 request |
+| `lua/ai/smart-ai.lua` | 上述共用入口；非主倉庫 tracked 來源，版本以外部 extensions 倉庫與本表雜湊為準 |
+| `lua/ai/isolated-facades.lua` | PlayerView:139、手牌／牌區:181、RoomView:269、SmartAIView:359 |
+| `lua/ai/mode-ai.lua` | modeAIWorld:275、current_ai:284、installModeAI:297 |
+| `lua/ai/isolated-bootstrap.lua` | ai_register_handler、ai_decide |
+| `lua/ai/isolated/ask-for-use-card.lua` | exact skill／pattern registry，handler 第三參數是 request |
 | [ai.h](../src/server/ai.h) | AICardView、AIPlayerView、AIWorldView、AIRequest、AiLegacyRequestView、CardActionSpec |
 | [ai-decision-coordinator.cpp](../src/server/ai-decision-coordinator.cpp) | buildWorldView:198、makeRequest:302、applyResult:363、decide:464 |
 | [ai-runtime.cpp](../src/server/ai-runtime.cpp) | pushAIWorldView:307、decideShadow:561、installSandbox:762、pushRequest:895、parseResult:938 |

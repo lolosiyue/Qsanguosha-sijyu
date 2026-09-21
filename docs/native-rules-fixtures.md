@@ -44,8 +44,8 @@ is converted into a skip. Outputs and separate stdout/stderr logs are retained
 under `<build>/client-rules-fixtures/`.
 
 CTest and the Linux/Windows PR gates pass `--builtin-assets`: the harness copies
-the five required repository files (`lua/config.lua`, `lua/sanguosha.lua`,
-`lua/utilities.lua`, `lua/sgs_ex.lua`, `lua/lib/json.lua`) to a fresh asset root.
+the five required repository files ([`lua/config.lua`](../lua/config.lua), [`lua/sanguosha.lua`](../lua/sanguosha.lua),
+[`lua/utilities.lua`](../lua/utilities.lua), [`lua/sgs_ex.lua`](../lua/sgs_ex.lua), [`lua/lib/json.lua`](../lua/lib/json.lua)) to a fresh asset root.
 All configured native packages are still registered by the real engine. No
 external extensions, AI, artwork or personal settings are loaded. This makes the
 checked-in native scenes reproducible independently of ignored local content.

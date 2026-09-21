@@ -1,7 +1,7 @@
 # Multimedia smoke fixtures
 
 These files are **generated**, not copied from the game's asset tree. They are
-synthetic sine tones written by `tools/ci/make-media-fixtures.py`:
+synthetic sine tones written by [`make-media-fixtures.py`](../../../tools/ci/make-media-fixtures.py):
 
 | File              | Content                     | Used by                                   |
 | ----------------- | --------------------------- | ----------------------------------------- |
@@ -25,9 +25,6 @@ Two constraints that are easy to break:
   this fixture silently moves the `ui_effect` stage off the `QSoundEffect` path
   it is supposed to exercise.
 
-There is deliberately **no video fixture**. Producing a valid MP4/WebM requires
-an encoder that is not guaranteed on a runner, and a real background video is
-far too large to commit. The `video` stage therefore verifies the QML media
-component's *initialisation and fallback* contract instead: with no video
-backdrop present, the home page must report a classified reason and fall back
-to a static background rather than failing to load.
+The `video` stage covers the QML media component's initialization and fallback
+contract with no video backdrop present. The home page must report a classified
+reason and display a static background. Video decoding is outside this fixture set.

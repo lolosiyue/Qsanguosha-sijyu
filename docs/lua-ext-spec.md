@@ -30,7 +30,7 @@
 module("extensions.meizl", package.seeall)
 ```
 
-此寫法依賴 `CreateLuaState` 安裝的相容層（`src/core/util.cpp` 提供 legacy `module()` 與 `package.seeall`），於 Lua 5.4 執行期仍可運作。
+此寫法依賴 `CreateLuaState` 安裝的相容層（[`src/core/util.cpp`](../src/core/util.cpp) 提供 legacy `module()` 與 `package.seeall`），於 Lua 5.4 執行期仍可運作。
 
 ### 風格 B：無 `module()`（新檔案皆此風格）
 
@@ -1461,7 +1461,7 @@ room:scheduleExtraTurn(target, self:objectName())
 ## 20. 相容性注意事項
 
 - **避免 C++20 語法**：編譯器可能不支援
-- **Lua 5.4 執行期**：引擎內嵌 Lua 5.4.8（`src/lua/lua.h`）；`CreateLuaState` 已安裝相容層（`src/core/util.cpp`），提供 `bit32.band` 與 legacy `module()`／`package.seeall`，5.2 慣例代碼仍可執行
+- **Lua 5.4 執行期**：引擎內嵌 Lua 5.4.8（[`src/lua/lua.h`](../src/lua/lua.h)）；`CreateLuaState` 已安裝相容層（`src/core/util.cpp`），提供 `bit32.band` 與 legacy `module()`／`package.seeall`，5.2 慣例代碼仍可執行
 - **module() 已棄用**：新檔案不應使用 `module()`，直接以 `sgs.Package` 開頭
 - **SWIG 綁定**：修改 `src/core/` `src/server/` 的公開 API 後須更新 `swig/*.i`
 - **Q_SKILL 巨集**：Lua 技能無需此巨集，僅供 C++ 技能使用

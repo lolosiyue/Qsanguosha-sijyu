@@ -1,6 +1,6 @@
 # Isolated AI layer 現況
 
-這份文件描述 room-scoped、viewer-scoped 的 isolated AI 分層，並以目前 source 實作為準。它不是 SmartAI 相容完成宣告，也不代表任意武將 AI parity。
+Isolated AI 按 Room 與觀察者隔離狀態；本文件說明各層責任與純值邊界。共用策略契約見[共用層對照](isolated-ai-common-layer.md)，逐項接線與缺口見[入口盤點](isolated-ai-common-inventory.md)。
 
 ## 分層
 
@@ -23,10 +23,10 @@
 
 ## bounded policy
 
-state 掃描是每 viewer `O(n + visible state)`，排序是 `O(n log n)`，全 observer event 約 `O(v(n + visible state))`；包作者 hook 的成本另計。target/candidate projection 共用 request budget 16384、conversion probes 512、單 request conversions 64、event log 64、單事件 delta 64。超出上限會保留 incomplete/unknown，不能當作沒有候選或合法性已知。
+state 掃描是每 viewer `O(n + visible state)`，排序是 `O(n log n)`，全 observer event 約 `O(v(n + visible state))`；包作者 hook 的成本另計。目標／成本投影預算由 [AiDecisionCoordinator::makeRequest](../src/server/ai-decision-coordinator.cpp) 設定；轉化探測與數量限制見同檔 `buildCardConversions`，事件紀錄上限見 `AiEventLogLimit`，單事件 delta 上限見 [AiMaxIntentionDeltas](../src/server/ai-runtime.cpp)。超出上限會保留 incomplete/unknown，不能當作沒有候選或合法性已知。
 
 ## 明確未完成項
 
-完整 legacy V1 view-as/轉化 callback、個別 skill hook 的 native API、完整 cardEffect/prohibition/distance/range/usage legality、秘密資訊與所有逐武將策略，仍是 native/coverage debt。相容名稱、registry、facade 或 fallback 不足以宣稱完成；本層目前不能稱完整任意武將 AI parity。
+完整 legacy V1 view-as/轉化 callback、個別 skill hook 的 native API、完整 cardEffect/prohibition/distance/range/usage legality、秘密資訊與所有逐武將策略，仍是 native/coverage debt。逐武將策略與完整對局驗收尚未完成。
 
-2026-09-21 授權檢查點已通過 SWIG 重新生成、Debug engine／server／runtime runner 編譯、完整 `ai-common`（exit 0，112 秒）及 `card-lifetime`（exit 0，407 秒）。未執行 CTest 或完整對局。詳見 [共用入口盤點](isolated-ai-common-inventory.md)；新技能作者見 [撰寫指南](isolated-ai-authoring-guide.md)。
+驗證結果見[共用層驗證紀錄](isolated-ai-common-layer.md#驗證狀態)；新增技能見[撰寫指南](isolated-ai-authoring-guide.md)。

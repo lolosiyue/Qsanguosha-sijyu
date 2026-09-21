@@ -2,7 +2,7 @@
 
 2026-09-12；首版功能來源基線 `debug@9b7920c4469d42f40f8e4bcb66d15d8bcb6e727a`。
 
-使用者指定沿用 `TODO/human` 的隨包部署方式：APK 附送 Lua／AI／擴展，缺檔才釋出，
+沿用 `TODO/human` 的隨包部署方式：APK 附送 Lua／AI／擴展，缺檔才釋出，
 保留已有擴展腳本。核心 Lua 基線隨 APK 升級，規則見下表。首次聲畫另用 ZIP 匯入，後續沿用已安裝媒體；個別圖片缺檔不擋局。
 
 ## 實體目錄與版本
@@ -46,7 +46,7 @@ server 正常退出、連接埠釋放。未套用音訊替代方案或重試；�
 
 ## 2026-09-16 匯入／更新效能修正（來源檢查點）
 
-固定單一環境以 [Android 建置文件](android-build.md#本機唯一日常環境2026-09-16-起) 為準。
+固定單一環境以 [Android 建置文件](android-build.md#android-daily-environment) 為準。
 舊 APK 的完整媒體匯入約 17 分鐘，資源更新的 `prepareStartup` 實測 879,382 ms；
 此數據只作修正前基線。新 APK 已建置，取得快照建立的局部實測；完整啟動仍逾時，
 首次完整匯入未重測，詳見下方驗證紀錄，不能將局部時間當作總耗時。
@@ -55,7 +55,7 @@ server 正常退出、連接埠釋放。未套用音訊替代方案或重試；�
 |---|---|
 | 每解一檔，線性比對全部 ZIP entries | 讀中央目錄時建立 offset 索引；查找不再隨檔數平方增長，重複 offset／遭修改的 entry 拒收 |
 | 可 seek 的來源仍先複製整份 ZIP | 直接使用來源 descriptor；只有不可 seek 的 provider 使用受限私有 spool |
-| 每檔寫完再開檔讀取 SHA-256 | 使用者後續要求移除：不計算／比對媒體 SHA-256 |
+| 每檔寫完再開檔讀取 SHA-256 | 現行政策移除：不計算／比對媒體 SHA-256 |
 | 每檔遍歷相同父目錄、每檔同步磁碟 | 同一受鎖定操作內快取已核對的真實父目錄；Android 的全新 staging 檔整批 `syncfs` 後才發布 |
 | 更新 Lua／APK 基線重複複製聲畫 | 新 snapshot 只建立媒體引用；完整媒體通常只需 image／audio／font 三個目錄連結，payload 寫入一次 |
 
@@ -68,7 +68,7 @@ server 正常退出、連接埠釋放。未套用音訊替代方案或重試；�
 舊實體快照可讀；Android 首次升級用現有 blob 重建引用，不清 App 資料、不要求重匯 ZIP。
 active／pending／previous 及其引用 blob 沿用既有 GC 與回復規則；舊版實體副本按正常
 版本保留週期淘汰，不手動清除。Windows fixture 保留實體複製；共享連結的完整契約
-需要 POSIX fixture 驗證，本輪尚未執行；AVD 只確認實際目錄引用與快照建立。
+需要 POSIX fixture 驗證，尚未執行；AVD 只確認實際目錄引用與快照建立。
 
 最終回歸來源涵蓋：seek／串流 provider、索引、reader 重用、取消、忽略舊雜湊欄位、
 移除舊收據、APK 更新後缺少個別圖片仍可沿用媒體、

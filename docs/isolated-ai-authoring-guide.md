@@ -83,6 +83,6 @@ end
 
 ## 驗證
 
-至少補「有答案、明確拒絕、必要資料未知、非法候選、借用／多實例身份」適用案例，放到 `tests/lua/` 並接入 native runner。經檢查點授權後執行適用 focused 契約；V2 conversion 另驗 native 重建與拒絕。registry 已登記不代表技能完成，`ai-common` 通過也不代表新技能已完成完整對局驗收。
+至少補「有答案、明確拒絕、必要資料未知、非法候選、借用／多實例身份」適用案例，放到 `tests/lua/` 並接入 native runner。執行適用 focused 契約；V2 conversion 另驗 native 重建與拒絕。分開記錄 registry 登記、契約結果與新技能的完整對局結果。
 
-更多純值 API 與既有契約見 [Lua AI 規範](lua-ai-spec.md)、[共用層](isolated-ai-common-layer.md)、`tests/lua/isolated-response-use-contract.lua` 與 `tests/lua/isolated-strategic-helpers-contract.lua`。本文範例未註冊為實際技能，僅供作者對照。
+更多純值 API 與既有契約見 [Lua AI 規範](lua-ai-spec.md)、[共用層](isolated-ai-common-layer.md)、[`tests/lua/isolated-response-use-contract.lua`](../tests/lua/isolated-response-use-contract.lua) 與 [`tests/lua/isolated-strategic-helpers-contract.lua`](../tests/lua/isolated-strategic-helpers-contract.lua)。本文範例未註冊為實際技能，僅供作者對照。

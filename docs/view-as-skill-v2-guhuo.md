@@ -1,5 +1,7 @@
 # ViewAsSkillV2：guhuo 選牌視為技（以 s4_ganglu 為例）
 
+本文 `lua/ai/` 路徑指部署檔案；版本與取得方式見[外部 Lua 來源](lua-ai-spec.md#外部-lua-來源)。
+
 本文件示範作者 API，**不是已部署的 s4_ganglu 遷移**。正式 `extensions/scarlet.lua`、
 `lua/ai/scarlet-ai.lua` 保持原樣。以下程式尚未經建置或對局驗證。
 
@@ -182,7 +184,7 @@ end,
 | 自動化 | 合法 Slash、禁止／錯誤目標、Jink 純回應、response-use 空草稿、cost 二次選擇 |
 | 人工驗收 | guhuo 框、屬性殺、桃酒、取消、回合次數、乒戮重設、實例隔離 |
 
-本次新增普通卡重建與原生目標規則的回歸案例，尚未執行。沒有宣稱 Qt／Web／TUI／完整對局已通過。
+普通卡重建與原生目標規則的回歸案例尚未執行；Qt／Web／TUI／完整對局未驗收。
 
 相關契約：[V2 遷移規範](active-skill-v2-migration-guide.md)、[Lua 作者 API](lua-ext-spec.md#521-viewasskillv2主動技-v2)、
 [AI §4.12](lua-ai-spec.md#412-viewasskillv2-主動技決策)。

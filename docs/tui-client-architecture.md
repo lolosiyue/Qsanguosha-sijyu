@@ -1,7 +1,7 @@
-# 純文字 Client 架構研究
+# 純文字 Client 架構
 
-- 狀態：已實作——設計提案（2026-08-30）的 classic 行模式與 board 模式均已交付；使用現況見 [`tui-client.md`](tui-client.md)
-- 日期：2026-08-30（2026-09-12 修訂現況標記與 §2.2 缺口狀態）
+- 實作：classic 行模式與 board 模式；使用現況見 [`tui-client.md`](tui-client.md)
+- 更新：2026-09-12
 - 前置依賴：Protocol V2、Client core／UI 完整解耦（由其他 PR 處理）
 
 ## 1. 定義與結論
@@ -90,7 +90,7 @@ classic 模式是 Qt Core／Network 上的 line-oriented text client。
 - 仍成立：`Client`／GUI 主程式仍建立 `ClientPlayer`、`QTextDocument`、`DesktopInteractionView`
   等 GUI 型別；`RoomScene` 仍直接讀 `ClientInstance`／`Self`；C++ package 仍有約 34 處
   `QDialog *getDialog()` override（見
-  [`engine-gui-decoupling-implementation-plan.md`](engine-gui-decoupling-implementation-plan.md)）。
+  [`engine-gui-decoupling-implementation-plan.md`](process/engine-gui-decoupling-implementation-plan.md)）。
   TUI／Web 產品本身不連結這些 GUI 路徑。
 
 「只把 prompt 逐行印出不能完成一局」的前置工作，已由 Client core 解耦

@@ -358,7 +358,7 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 
 ### 16.1 Room integration 期望（自 correct-skill-v2-test-matrix 併入，2026-09-12）
 
-現行驗證載體為 C++ `~test` fixture（`src/package/standard-generals.cpp`，技能以 `#correct_v2_*_test` 命名；System fixture 預設不貢獻，僅 primary 的 `correct_v2_system_enabled` mark 大於零才啟用）。原 Lua factory smoke 與 Room integration fixture 已隨 `lua/test/` 刪除（commit `a904221`），由 CTest＋`tools/autotest/` 取代。多實例 Room integration 驗證應滿足：
+現行驗證載體為 C++ `~test` fixture（[`src/package/standard-generals.cpp`](../src/package/standard-generals.cpp)，技能以 `#correct_v2_*_test` 命名；System fixture 預設不貢獻，僅 primary 的 `correct_v2_system_enabled` mark 大於零才啟用）。原 Lua factory smoke 與 Room integration fixture 已隨 `lua/test/` 刪除（commit `a904221`），由 CTest＋`tools/autotest/` 取代。多實例 Room integration 驗證應滿足：
 
 | 案例 | 期望 |
 |---|---|
@@ -390,10 +390,10 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 | Engine 規格摘要 | [`engine-correct-skills.md`](engine-correct-skills.md) |
 | 驗證矩陣 | 原 `correct-skill-v2-test-matrix.md` 已於 2026-09-12 併入 §16.1 後刪除（其「待重審」狀態欄一併棄置，未重審項見 §16.1 待補清單） |
 | 多實例總體設計 | [`TriggerSkillV2系統說明.md`](TriggerSkillV2系統說明.md)「Instance ID 機制／多實例行為規格」（現行權威；原 `skill-instance-refactor-plan.md` 2026-09-20 併入後刪除，更早的「multi-skill-instance-design」未採納，見 git 歷史） |
-| C++ 類別與 context | `src/core/skill.h`、`src/core/skill.cpp` |
-| amount／correctState Room API | `src/server/room.h`、`src/server/room.cpp` |
-| Lua factory | `lua/sgs_ex.lua` |
-| SWIG Lua callback | `swig/luaskills.i` |
+| C++ 類別與 context | [`src/core/skill.h`](../src/core/skill.h)、[`src/core/skill.cpp`](../src/core/skill.cpp) |
+| amount／correctState Room API | [`src/server/room.h`](../src/server/room.h)、[`src/server/room.cpp`](../src/server/room.cpp) |
+| Lua factory | [`lua/sgs_ex.lua`](../lua/sgs_ex.lua) |
+| SWIG Lua callback | [`swig/luaskills.i`](../swig/luaskills.i) |
 | C++ 測試 fixture | `src/package/standard-generals.cpp` 的 `~test` package |
 | Lua factory smoke | 已移除：`lua/test/examples/test_correct_skill_v2.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，由 CTest／`tools/autotest` 取代 |
 | Room integration fixture | 已移除：`lua/test/examples/test_correct_skill_v2_room.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，由 CTest／`tools/autotest` 取代 |

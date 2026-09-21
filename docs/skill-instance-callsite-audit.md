@@ -50,17 +50,17 @@
 | 40 | `extensions/newgenerals.lua` |
 | 36 | `extensions/yuri.lua` |
 | 27 | `extensions/lol2015.lua` |
-| 25 | `src/package/ol.cpp` |
+| 25 | [`src/package/ol.cpp`](../src/package/ol.cpp) |
 | 22 | `extensions/touhouproject.lua` |
 | 22 | `extensions/OverseasVersion.lua` |
 | 22 | `extensions/sgs10th.lua` |
-| 22 | `src/package/tenyear2.cpp` |
+| 22 | [`src/package/tenyear2.cpp`](../src/package/tenyear2.cpp) |
 | 19 | `extensions/yongjian.lua` |
 | 19 | `extensions/genius.lua` |
 | 17 | `extensions/gaoda.lua` |
 | 16 | `extensions/htms.lua` |
 | 14 | `extensions/sijyuoffline.lua` |
-| 14 | `src/package/mobile.cpp` |
+| 14 | [`src/package/mobile.cpp`](../src/package/mobile.cpp) |
 
 ## 已確認為 ensure 語義的同行 guard
 

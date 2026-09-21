@@ -1,33 +1,19 @@
-# Google Sheets 完整對局前端
+# Google Sheets 架構與資料契約
 
-> 2026-09-16 房間布局來源檢查點：`QSAN Actions` 整合環型座位、本人手牌／裝備、
-> 中央處理區與回應提示、右側戰報，選擇清單位於下方；戰報與 TUI 共用文字格式化及
-> 移牌／體力補充紀錄。指定目標增量建置、前端 27/27、TUI 文字兩個 suite 已通過；
-> 此版已完成線上部署與一局 05P 託管完整對局。
-> 區域與更新方式見 [README](../google-sheets/README.md#2026-09-16-房間布局與共用戰報來源檢查點)。
->
-> 後續來源修改：完整說明讀原生 description／武將技能描述、清單不顯示圖片識別碼、
-> 房間座位可直接查詳情並在側欄顯示；標記名稱維持原樣。此批增量建置與前端 30/30 已通過，
-> 線上腳本更新及讀回一致，對局內查詢仍待驗收。
+操作與部署見[安裝指南](google-sheets-setup.md)。[開發記錄](process/google-sheets-development.md)保存方案與修訂，[驗證報告](reports/google-sheets-20260913-16.md)保存對局、失敗與未驗項目。
 
-本文件記錄 2026-09-12 已確認需求。儲存格前端、配對 gateway 與獨立原生入口
-已完成原生與完整 Debug 建置、55/55 CTest、12 個 gateway 及 13 個前端 focused 測試。
-五個 Apps Script 檔案已安裝並經使用者完成 Google 授權；真實 Sheets 已完成配對、
-開房、準備及選將候選呈現，完整對局與儲存格 UI 修正仍在驗收。
-來源與安裝流程見 [Google Sheets README](../google-sheets/README.md)。
-
-## 已確認需求
+## 功能範圍
 
 | 決策 | 已確認範圍 |
 |---|---|
 | 遊戲核心 | 沿用本專案 C++／Lua 引擎，在外部服務執行 |
 | 首版主機 | 現有 Windows 電腦，透過 HTTPS 安全通道供 Sheets 連線；遊玩期間保持開機 |
-| 介面 | 本輪確認改以儲存格呈現及選牌、選目標、技能與排序；側邊欄提供連線、更新與提交控制 |
+| 介面 | 使用儲存格呈現及選牌、選目標、技能與排序；側邊欄提供連線、更新與提交控制 |
 | 玩家隔離 | 每位玩家各自一份 Sheets，只接收該玩家可見的資料 |
 | 登入方式 | 貼上服務網址與一次性配對碼；配對後綁定玩家會話，不新增遊戲帳號系統 |
 | 互動範圍 | 沿用 Excel 的 28 類互動；排除 `qml_interact`／`qsanguosha.qml` |
 | 擴展範圍 | 載入全部擴展，沿用現有引擎載入與房間設定；不新增 Sheets 專用的武將／牌包白名單 |
-| 不支援內容 | 使用者已取消開局前的相容性攔截；遇到未實作互動時明確回報，不偽造玩家回覆 |
+| 不支援內容 | 開局前不做相容性攔截；遇到未實作互動時明確回報，不偽造玩家回覆 |
 | 首個對局驗收 | `05p` 五人身分局，一名真人操作、四名 AI；多人 Sheets 另列驗收 |
 | 真人倒數 | 首個驗收局不設選將、出牌及技能回應倒數；連線故障仍須獨立處理 |
 | 結局與清理 | 真人操作至 `GAME_OVER`、顯示勝方、正常關閉會話／所擁有的 helper；無孤兒程序、釋放本次埠 |
@@ -37,14 +23,14 @@
 | 來源 | 可重用契約／需要處理的差異 |
 |---|---|
 | [Excel IPC v1](excel-ipc.md) | 原生快照、增量事件、指令去重、互動版本檢查與結構化草稿；HTTP 僅監聽 loopback |
-| [Excel 實作狀態](excel-implementation-status.md) | 既有橋接完成過一次託管對局；實際 Excel 操作與修正版完整對局仍未驗收，不能作為 Sheets 驗收證據 |
+| [Excel 實作狀態](reports/excel-20260912.md) | 既有橋接完成過一次託管對局；實際 Excel 操作與修正版完整對局仍未驗收，不能作為 Sheets 驗收證據 |
 | `src/excel/excel-bridge.{h,cpp}` | `ClientCore`、`ClientLiveSession`、`ExcelInteractionAdapter` 與 `LocalServerController` 的串行會話 |
 | `src/excel/excel-view.{h,cpp}` | 已過濾的玩家可見狀態與呈現列；圖片是本機絕對路徑，Sheets 必須另行映射 |
 | `src/excel/excel-process-guard.{h,cpp}` | Excel 父程序身分與生命週期，不能直接作為 Sheets 服務的監護方式 |
 | `excel/frontend-coverage.json` | 28 類呈現映射基線；不是逐技能內容相容性的證明 |
 | [Web client](web-client.md) | 既有 WebSocket／Protocol V2 客戶端可參考互動呈現；其 WASM 規則部署不直接搬進 Apps Script |
 
-## 擬採設計
+## 架構
 
 ```text
 每位玩家的 Sheets 儲存格 + HTML 連線／更新側邊欄
@@ -56,9 +42,8 @@
 ```
 
 Apps Script 與側邊欄不重寫武將規則、不解碼第二套遊戲協議，也不自行猜測合法出牌。
-HTTPS 通道後方的配對與會話路由來源為 `google-sheets/gateway.py`，僅監聽 loopback；
-本次已經使用者授權部署臨時 Cloudflare HTTPS 通道及綁定式 Apps Script；
-臨時通道測後關閉。既有 Excel loopback 入口不能直接對外公開。
+HTTPS 通道後方的配對與會話路由來源為 [`google-sheets/gateway.py`](../google-sheets/gateway.py)，僅監聽 loopback；
+Cloudflare HTTPS 通道只用於受控測試，測試後關閉。既有 Excel loopback 入口不能直接對外公開。
 
 唯讀盤點確認：首版可讓每個玩家對應一個原生 bridge／`ClientCore`，保留現有串行
 語意；另加非 Excel 的啟動／監護入口。不得為 Sheets 放寬既有 Excel 入口對
@@ -86,7 +71,7 @@ HTTPS 通道後方的配對與會話路由來源為 `google-sheets/gateway.py`�
 
 ## 全擴展與不支援互動
 
-使用者明確要求「全擴展，不做攔截不支援內容」，取代先前的開局前相容性攔截決策。
+決定載入全部擴展，不做開局前相容性攔截。
 首版與首個 05P 均載入全部擴展，遵循既有引擎與房間設定，不新增 Sheets 專用的
 內容核准清單、不因未完成前端相容性審核而禁止武將／牌包／模式。
 
@@ -94,76 +79,17 @@ HTTPS 通道後方的配對與會話路由來源為 `google-sheets/gateway.py`�
 若實際收到未支援互動，保留明確錯誤與失敗證據，不默默跳過或偽造回覆。
 `excel/frontend-coverage.json` 的 28 類映射仍是互動基線，不是全部擴展可玩的證明。
 記錄實際載入來源版本與 hash 是驗收溯源，不得把這份清單變成相容性准入限制。
-完整對局結果僅證明本次實際走過的路徑，不推定每個擴展技能均已驗收。
+逐項互動與擴展覆蓋見[驗證報告](reports/google-sheets-20260913-16.md)。
 
-## 檢查點與驗收
+## 原始碼入口
 
-| 檢查點 | 交付內容 | 驗證邊界 |
-|---|---|---|
-| CP0 設計與來源盤點 | 本文件、已確認需求、共用邊界與全擴展範圍 | 文件與來源靜態讀取；實際載入版本尚待記錄 |
-| CP1 配對與原生會話 | HTTPS 路由、一次性配對、原生監護、玩家隔離及 Apps Script 傳輸 | 完成來源後另取得該檢查點建置／focused 驗證許可 |
-| CP2 Sheets 可操作牌桌 | 活頁表模板、Apps Script、側邊欄、28 類互動、圖片與詳情、重連／結局 | 真實 Google Sheets 授權、配對及逐類操作；不能以本機 JSON 驗證代替 |
-| CP3 真人 05P | 載入全擴展並記錄版本，一名真人完整操作到勝負並正常清理 | 獨立完整對局授權；不以託管或純橋接局代替真人 Sheets 操作 |
-| CP4 多人與交付 | 每人一份文件、多會話隔離、多人對局與可部署套件 | 多人、長時間／CI 驗證另列，不由首個 05P 推定通過 |
-
-專案預設禁止本地 CTest 與超過 60 秒的大型測試。選定 05P 作驗收案例不等於授權
-立即啟動完整對局；依 `AGENTS.md`，每個來源檢查點先完成並宣告，再取得相應驗證許可。
-後續本輪使用者明確授權「建置、完整測試、解除 60 秒限制」，因此已執行建置、
-完整 CTest、focused 測試及實際 Google 部署／對局驗收；未 commit 或 push。
-28 類分成七種原生 response shape 實作；映射數量不代表 28 類真實 Sheets 操作通過。
-
-| 本輪來源 | 邊界 |
+| 來源 | 邊界 |
 |---|---|
-| `src/sheets/sheets-main.cpp` | 私有 stdin 監護、不同於 Excel 的啟動入口、先釋放 bridge 再銷毀 Engine |
-| `cmake/QSanguoshaSheets.cmake` | opt-in Windows Qt6 target，依賴 Excel 共用 helper，輸出至 excel-debug／excel-release |
-| `google-sheets/gateway.py` | 單次配對、nonce 恢復、每玩家隔離、目的地允許清單、素材識別碼與有界關閉 |
+| [`src/sheets/sheets-main.cpp`](../src/sheets/sheets-main.cpp) | 私有 stdin 監護、不同於 Excel 的啟動入口、先釋放 bridge 再銷毀 Engine |
+| [`cmake/QSanguoshaSheets.cmake`](../cmake/QSanguoshaSheets.cmake) | opt-in Windows Qt6 target，依賴 Excel 共用 helper，輸出至 excel-debug／excel-release |
+| [`google-sheets/gateway.py`](../google-sheets/gateway.py) | 單次配對、nonce 恢復、每玩家隔離、目的地允許清單、素材識別碼與有界關閉 |
 | `google-sheets/apps-script/` | 文件／使用者憑證、持久 pending 指令、儲存格草稿、目錄、結局與詳情 |
 | `google-sheets/tests/` | gateway 與純草稿／指令恢復 focused 已執行；native probe 與 Sheets UI 的證據分開 |
-
-2026-09-12 驗收發現並處理兩個部署前提：Windows bridge 需部署同版 Qt／FMOD DLL，
-不能用缺少 `Qt6Cored.dll` 的啟動失敗判定遊戲回歸；開發根目錄中未宣告 Lua 暫存檔
-會觸發既有 `rules_content_unsupported`，須以既有 packager 整理宣告內容。
-`google-sheets/prepare-runtime.py` 保留全部配置擴展及 config bytes，另補 AI／圖片，
-不修改外部 Lua 或放寬身分驗證。本次完整內容為 102 個配置擴展、117 個翻譯、
-165 個 AI Lua、18,233 張圖片；原生規則匯出為 312 個 package、1,195 張卡。
-
-實際儲存格驗收另外修正 D 欄文字格式導致勾選不是布林值、長素材識別碼撐高列、
-開局前體力顯示 undefined，以及內部標記過多等問題。候選採真正布林勾選，保留
-原生識別碼供詳情查詢，牌桌只摘要標記。已結束但退出失敗的會話可釋放憑證，
-保留錯誤提示；未知／仍執行中的關閉結果不清除憑證，也不偽造正常退出。
-
-原生 `UPDATE_PLAYER_UI_STATE` 的 maxCards／距離／虛擬裝備欄位是效果提示，
-可能含其他玩家或帶參數的技能文字，不能加入玩家實際擁有技能清單。修正 reducer
-後仍保留提示與數值，技能擁有權沿用既有權威訊息；新增回歸案例已通過。
-
-首版 gateway 可預開 1–8 個獨立 Sheets 玩家 slot；不是房間人數限制。
-多真人使用主機允許的既有遊戲伺服器；Sheets 私有開房維持 loopback。
-重連窗口預設 30 分鐘，配對碼期限 5 分鐘，slot 關閉後不重用。主機意外死亡、
-強制終止或清理證據寫入失敗不算正常退出。退出碼也不能取代 GAME_OVER／helper／
-無孤兒／埠釋放的完整驗收證據。
-
-## 驗收現況與已知缺口
-
-原生缺陷（E1 效果提示誤授技能、E2 命名牌堆同步遺漏、E3 關閉例外解構、
-E4 移牌 ID 遮蔽、E5 提示代號）均已修復並提交。2026-09-15 真人 05P 完成
-第五輪 GAME_OVER、主公＋忠臣勝、原生 exit 0 與程序／埠清理；2026-09-16
-線上部署後再完成一局 05P 託管完整對局。逐輪驗證報告已依文檔清理政策移除，
-原始證據仍保留於 `builds/google-sheets-qa/`。
-
-下列缺口仍需另行驗收或修復，未被任何單局 PASS 覆蓋：
-
-| 缺口 | 說明 |
-|---|---|
-| `ask_peach` 提示 | 未含救援對象與需求，仍只有通用提示 |
-| 內部名稱顯示 | 部分技能／參數化選項與標記仍顯示 `sfofl_young_eight_diagram`、`shisuan`、`damaged`/`dismark`、`not_active` 等；未提供翻譯的擴展沿用 TUI fallback |
-| 取消呈現不一致 | 附體類選人（玄武暗魂）呈現可取消但原生不允許，根因未定位 |
-| 勝方顯示 | `winner_tokens` 結構欄位未轉為易讀中文 |
-| 房間版面 | 陣亡後座位號重複、多席行動箭頭誤標；託管後中央可能殘留已回應的選將提示；窄視窗需縮放才能完整顯示 A:P |
-| Apps Script 更新速度 | 分區寫入偏慢，更新中可見前後快照混合 |
-| 原生快照警告 | `player.tags.NullifyingEffect (CardEffectStruct)` 無法無損 JSON 儲存；未擴大原生除錯 |
-| 對局內詳情查詢 | 新版座位／圖片詳情在真實對局內尚未驗收 |
-| Web 關閉路徑 | E3 共用引擎修復僅 Sheets 實測；Web 入口未重測 |
-| 完整 gate | 28 類逐項真人互動、多人文件隔離、遠端 CI 與交付包均未驗 |
 
 ## Google 官方限制參考
 

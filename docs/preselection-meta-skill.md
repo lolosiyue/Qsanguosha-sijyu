@@ -13,12 +13,12 @@
 
 | 層級 | 位置 | 職責 |
 |------|------|------|
-| 基底類型 | `src/core/skill.h` / `skill.cpp` | 定義 `PreSelectionMetaSkill`、兩個回調、`active_skills` 字串 |
-| 武將掛載 | `src/core/general.h` / `general.cpp` | 以 `preselection_skills` 保存武將上的 PreSelection 技能名 |
-| 註冊入口 | `src/core/engine.cpp` | `Engine::addPackage()` 掃描武將額外技能；若技能繼承 `PreSelectionMetaSkill`，就呼叫 `General::addPreSelectionSkill()` |
-| 選將觸發 | `src/server/game-session-controller.cpp` | `GameSessionController::triggerPreSelectionSkills()` 與 `GameSessionController::triggerGeneralNotChosen()` 負責真正回調 |
-| 開局回放 | `src/server/gamerule.cpp` | `GameStart` 時讀取 `preselection_active_skills`，再把對應 `TriggerSkill` 加進 `RoomThread` |
-| Lua 工廠 | `lua/sgs_ex.lua` | `sgs.CreatePreSelectionMetaSkill(spec)` 建立 Lua 版技能物件 |
+| 基底類型 | [`src/core/skill.h`](../src/core/skill.h) / `skill.cpp` | 定義 `PreSelectionMetaSkill`、兩個回調、`active_skills` 字串 |
+| 武將掛載 | [`src/core/general.h`](../src/core/general.h) / `general.cpp` | 以 `preselection_skills` 保存武將上的 PreSelection 技能名 |
+| 註冊入口 | [`src/core/engine.cpp`](../src/core/engine.cpp) | `Engine::addPackage()` 掃描武將額外技能；若技能繼承 `PreSelectionMetaSkill`，就呼叫 `General::addPreSelectionSkill()` |
+| 選將觸發 | [`src/server/game-session-controller.cpp`](../src/server/game-session-controller.cpp) | `GameSessionController::triggerPreSelectionSkills()` 與 `GameSessionController::triggerGeneralNotChosen()` 負責真正回調 |
+| 開局回放 | [`src/server/gamerule.cpp`](../src/server/gamerule.cpp) | `GameStart` 時讀取 `preselection_active_skills`，再把對應 `TriggerSkill` 加進 `RoomThread` |
+| Lua 工廠 | [`lua/sgs_ex.lua`](../lua/sgs_ex.lua) | `sgs.CreatePreSelectionMetaSkill(spec)` 建立 Lua 版技能物件 |
 
 ## 實際流程
 

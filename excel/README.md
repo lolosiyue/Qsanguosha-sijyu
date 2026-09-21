@@ -1,6 +1,6 @@
 # Excel client CP0 tools
 
-這些工具只產生可審核的靜態資料或候選封裝，不代表 Excel／VBA／遊戲已驗收。
+這些工具產生可審核的靜態資料或候選封裝；Excel／VBA 與遊戲驗收依 [Excel 實作狀態](../docs/reports/excel-20260912.md) 的實測項目判定。
 
 ## CP0 inventory
 
@@ -37,11 +37,13 @@ python tools/excel/check.py --tier modern --vba-source excel/vba --manifest stag
 
 這只檢查 VBA/API marker 與 manifest coverage，不啟動 Excel 或 runtime。
 
+詳細封裝與 runtime-only 組裝流程見 [Excel 封裝指南](../docs/excel-packaging.md)。
+
 ## Office 尚未可用時的 runtime-only trial
 
 Office 啟用前只能建立 `runtime-only-trial`：包內沒有 `.xlsm`，manifest 會明確標記
 `workbook.status=missing`／`no-vba-binary`，因此不可直接宣稱可玩。完成後由 Office
-可用環境建立模板、匯入 `vba-source/import-cp950-crlf` 的八個模組、編譯儲存 `.xlsm`，
+可用環境建立模板、匯入 `excel/vba` 清單中的七個 `.bas` 與 `ThisWorkbook.cls`、編譯儲存 `.xlsm`，
 再重新匯出全部模組與 hash，才可進入正式 `package.py` gate；不修改 Trust Center 或
 全域 AccessVBOM。
 

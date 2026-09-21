@@ -1,7 +1,7 @@
 # M1：50 人 UI／焦點實作檢查點
 
-日期：2026-09-19。依據 [UI 路線圖 §5](ui-roadmap.md#5-m1超大局50-人模式--限-p2) 與 [協議審計](large-room-ui-protocol-audit.md)。
-本頁記錄來源實作與待驗收事項；不是完整 50 人玩法或對局驗收報告。首批僅完成 UI／協議支援；使用者指出尚缺模式後，已確認並補建 **`50p` 身份局模式**。第二檢查點 GUI／server／core 建置及模式 focused 驗證已通過，模式已編入新版執行檔；實際 GUI 操作與完整對局仍未驗收。
+日期：2026-09-19。依據 [UI 路線圖 §5](../ui-roadmap.md#5-m1超大局50-人模式--限-p2) 與 [協議審計](../large-room-ui-protocol-audit.md)。
+本頁記錄來源實作與驗收歷程。首批完成 UI／協議支援，後續補建 **`50p` 身份局模式**。第二檢查點 GUI／server／core 建置及模式 focused 驗證已通過，模式已編入新版執行檔；實際 GUI 操作與完整對局仍未驗收。
 
 ## 原生外觀修正（進行中）
 
@@ -26,11 +26,11 @@
 - 原先大局路徑未初始化 `m_logSizeWithChat`／`m_logSizeWithoutChat`，但 F8 及全機器人房的自動隱藏聊天仍使用它們。現在沿用原生 `applyLayout()` 初始化，F8 與選單聊天入口共用原有切換方法。
 - 焦點由既有 GameViewState 的單人回應名單、最內層結算及當前回合角色投影，保留原生 Photo 的框線、倒數和選取；巡覽席位不強制跳頁。自己沿用 Dashboard，多人廣播等待不任選一人當作唯一回應者。
 - 本批僅完成來源及靜態檢查，未建置、未啟動 GUI、未執行 focused executable／CTest／完整對局；實際外觀、進房立即顯示、F8 往返及角色焦點仍待驗收。
-- 後續使用者授權「做一次，看看」：Debug `QSanguosha` 目標增量建置成功，已開啟新版供人工查看；尚未取得 50 人進房、F8 往返及角色焦點的人工驗收結果，未執行自動對局或 CTest。
+- 後續驗證：Debug `QSanguosha` 目標增量建置成功，已開啟新版供人工查看；尚未取得 50 人進房、F8 往返及角色焦點的人工驗收結果，未執行自動對局或 CTest。
 
 ## 2026-09-20：M1 原版風格修訂（來源檢查點，尚未建置）
 
-使用者要求嚴格依照 UI 路線圖 §5.3–5.4，並貼近原版 UI。**禁止把當前回合玩家或主公抽離座位當作結算面板**；回合標記、回應焦點與活動結算需分開。
+呈現採用 UI 路線圖 §5.3–5.4 與原版 UI 元件。**禁止把當前回合玩家或主公抽離座位當作結算面板**；回合標記、回應焦點與活動結算需分開。
 
 | 區域 | 本批來源行為 |
 | --- | --- |
@@ -44,20 +44,20 @@
 
 來源：`src/ui/large-room-overview.*`、`RoomScene::applyResponsiveLayout`、`RoomLayoutEngine::computeLargeRoom`。
 
-使用者其後授權「建置和開啟」：本次 configure 與 Debug `QSanguosha` 目標增量建置成功，已開啟新版供人工查看。未執行 focused executable／CTest／自動完整對局；外觀與互動仍待使用者確認。
+後續 configure 與 Debug `QSanguosha` 目標增量建置成功，已開啟新版供人工查看。未執行 focused executable／CTest／自動完整對局；外觀與互動仍待使用者確認。
 
 首次人工進房失敗：`QSanButton::setSize()` 的背景 pixmap 斷言被觸發。大局按鈕工廠對無圖片建構子先呼叫非零 `setSize()`，再呼叫 `setActionText()`，順序錯誤。已改為先設定文字按鈕模式再設定尺寸，保留原斷言；GUI 增量建置成功並重開，實際進房仍待確認。
 
 ## 選將順序修正（已建置，GUI 未通過）
 
-使用者要求主公先選，其他玩家在主公完成後一起選剩餘武將。現有 `chooseGenerals()` 已先詢問主公，再分配剩餘候選並以 `doBroadcastRequest()` 批次發送；不同控制者的請求先送出、再收集回覆。同一控制者兼控多席仍沿用既有逐請求語義，不能以平行發送覆蓋該控制者的待答請求。
+選將順序為主公先選，其他玩家在主公完成後一起選剩餘武將。現有 `chooseGenerals()` 已先詢問主公，再分配剩餘候選並以 `doBroadcastRequest()` 批次發送；不同控制者的請求先送出、再收集回覆。同一控制者兼控多席仍沿用既有逐請求語義，不能以平行發送覆蓋該控制者的待答請求。
 
 發現 `startGame()` 原本把「公開一席武將／體力」與「初始化該席 AI」交錯執行，耗時初始化會讓畫面呈現逐席亮出武將。現已拆成先公開完整名冊、再初始化 AI；沒有更改候選分配、主公優先、預選技能或選將答覆處理。`git diff --check` 與增量建置通過；不能宣稱已在 GUI 驗證。開局長時間沒有 `GAME_STARTED` 的效能原因仍未定位。
 
 ## 原生介面重測與戰報修正
 
 - `builds/large-room-native-checkpoint-20260919/`：GUI／server／core 增量建置成功；直接執行 `qsanguosha_core_tests --suite room-layout-engine`，exit 0，未執行 CTest。
-- 使用者要求停止舊局並重新 GUI 測試。舊 SmartAI 局沒有 GAME_OVER，停止後 client／server exit 3；無殘留程序，連接埠釋放。記錄在 `builds/large-room-live-20260919-bounded/`，不得視為完整對局通過。
+- 舊 SmartAI 局經手動停止後重測。該局沒有 GAME_OVER，停止後 client／server exit 3；無殘留程序，連接埠釋放。記錄在 `builds/large-room-live-20260919-bounded/`，不得視為完整對局通過。
 - `builds/large-room-gui-retest-20260919/`：以 `--ai off`（TrustAI）隔離 GUI，並非 SmartAI 完整驗收。已回報 50 席、49 個 Photo 與 Dashboard；client 在選將階段後以 `STATUS_ACCESS_VIOLATION` 退出，沒有 client GAME_STARTED／GAME_OVER。Server 有 game start 記錄，關閉 exit 0，無殘留程序、TCP 釋放。
 - 戰報修正檢查點：`builds/large-room-log-checkpoint-20260919/`。GUI／core 增量建置成功，版面 focused executable exit 0；涵蓋橫向常駐戰報與角色框／桌面／手牌區不重疊、直向開啟戰報不移動座位。尚未重啟 GUI 或完整對局。選將後崩潰需另外界定原生除錯範圍。
 
@@ -70,9 +70,9 @@
 | 舊崩潰轉儲 | 確認 QString 經位址 0x20 存取違規。舊應用程式 PDB 已被後續建置取代；強制載入新 PDB 的 RoomState／updateStatus 路徑只作線索，不能當成匹配符號的確診堆疊。 |
 | 最小修正 | `RoomScene::updateStatus` 在刷新技能按鈕時改讀 Client 自有 RoomState，避免 GAME_START 註冊前解參考空的 Engine 房間狀態。GUI 增量建置成功；原先偶發崩潰尚不能宣稱完全排除。 |
 | 診斷重現 | 修正前已能抵達 GAME_STARTED，未重現原先崩潰；附加除錯器影響收尾，該次只保留診斷證據，不作驗收。 |
-| 唯一修復後重測 | 50 席／49 Photo／Dashboard、GUI GAME_STARTED（69.8 秒）有紀錄；180 秒逾時，沒有 play_phase、GAME_OVER 或勝方。TrustAI 隔離配置，不代表 SmartAI 完整對局。 |
+| 唯一修復後重測 | 50 席／49 Photo／Dashboard、GUI GAME_STARTED（69.8 秒）有紀錄；180 秒逾時，沒有 play_phase、GAME_OVER 或勝方。使用 TrustAI 隔離配置；SmartAI 完整對局未驗收。 |
 | 遲遲未出牌 | responder 連續接受 114 次換手牌。測試設定只有 EnableLuckCard=false，實際流程使用 LuckCardTimes（預設 -1 不限次）；已補 LuckCardTimes=0，Python AST／diff 檢查通過，未另開第二次重測。 |
-| 畫面／退出 | 失敗截圖僅有暗色背景與選單／捲軸，不能證明原生角色框或戰報的實際可見性。逾時退出有 Qt 斷言；server 被終止，client 一度殘留後消失，TCP／WebSocket 最終釋放，乾淨退出仍 FAIL。 |
+| 畫面／退出 | 失敗截圖僅有暗色背景與選單／捲軸，未記錄原生角色框或戰報。逾時退出有 Qt 斷言；server 被終止，client 一度殘留後消失，TCP／WebSocket 最終釋放，乾淨退出仍 FAIL。 |
 | 未完成 | 原生雙焦點、OS 滑鼠／鍵盤操作、實際右側戰報可見性、重連／seek、完整對局／勝方／正常退出。 |
 
 ## noluck 開局／退出修正檢查點（2026-09-20 更新）
@@ -92,7 +92,7 @@
 
 ## 首版來源（UI 已被否決，僅保留歷史）
 
-> 後續真實重測 `builds/large-room-gui-noluck-20260919/`：使用者已授權本次對話 GUI 重測不再逐次確認，並要求停止 Computer Use。此局 LuckCardTimes=0，沒有重複換牌；GUI GAME_STARTED 為 84.376 秒，但 300 秒內僅收到指派／選將兩種請求，未覆蓋 play_phase，也沒有 GAME_OVER。使用者現場確認角色框、手牌、右側戰報均可見；Windows 擷取工具失敗，不冒充畫面驗證。先前 OS Tab 操作能聚焦版面按鈕、會跳過座位捲軸，因此補上捲軸 StrongFocus；第一次連結遇 EXE 鎖定，程序退出後重新連結成功，新版鍵盤行為尚待驗證。逾時退出再次出現 Qt OpenGL／QString 斷言，使用者提供的截圖已存為 user-shutdown-assert.png；測試 client／server 最終均消失、TCP 7939 與 WebSocket 8058 釋放。退出仍 FAIL；完整對局、重連／seek 未完成。
+> 後續真實重測 `builds/large-room-gui-noluck-20260919/`：此局 LuckCardTimes=0，沒有重複換牌；GUI GAME_STARTED 為 84.376 秒，但 300 秒內僅收到指派／選將兩種請求，未覆蓋 play_phase，也沒有 GAME_OVER。使用者現場確認角色框、手牌、右側戰報均可見；Windows 擷取工具失敗，無自動截圖。先前 OS Tab 操作能聚焦版面按鈕、會跳過座位捲軸，因此補上捲軸 StrongFocus；第一次連結遇 EXE 鎖定，程序退出後重新連結成功，新版鍵盤行為尚待驗證。逾時退出再次出現 Qt OpenGL／QString 斷言，使用者提供的截圖已存為 user-shutdown-assert.png；測試 client／server 最終均消失、TCP 7939 與 WebSocket 8058 釋放。退出仍 FAIL；完整對局、重連／seek 未完成。
 
 | 區域 | 已接入的來源行為 |
 | --- | --- |
@@ -104,7 +104,7 @@
 | 焦點 | 結算層由伺服器更新；檢視可預覽或鎖定；自動更新不呼叫鍵盤 `setFocus`。Tab／Shift+Tab 巡覽事件相關角色，Escape 回到候選控制項。 |
 | 回應 | `MOVE_FOCUS` 名單、倒數與所屬結算 ID 獨立保存；空名單按既有語義表示存活者。結算層結束清掉該層等待狀態。單人 overload 保留真正的詢問 command。 |
 | 方向 | schema 2 必須攜帶 bool `play_order_reversed`；schema 1 可讀，但方向標示未同步，不能當成權威正序。 |
-| 特效 | 遵從使用者選擇的 Full／Reduced／None，不因大局強制關閉。隱藏 Photo 暫停 GIF；必要狀態仍以文字、票數與框線呈現。成本控制與驗證邊界見 [GUI 效能檢查點](gui-client-performance.md)。 |
+| 特效 | 遵從使用者選擇的 Full／Reduced／None，不因大局強制關閉。隱藏 Photo 暫停 GIF；必要狀態仍以文字、票數與框線呈現。成本控制與驗證邊界見 [GUI 效能檢查點](../gui-client-performance.md)。 |
 
 ## 活動結算契約
 
@@ -140,7 +140,7 @@
 | 50 人實際操作、重連／seek 播放、完整對局／GAME_OVER／乾淨退出 | **NOT RUN**：須先驗證新模式能開局，再製作真實對局與錄影驗收資料。 |
 | 遠端 CI | **NOT RUN**。 |
 
-本輪已授權增量建置 GUI 與受影響的 core／protocol／presentation targets，直接執行既有 suite 的 `room-layout-engine`、`flow-inventory` 及呈現契約，加 Web reducer 單檔檢查；使用者允許超過 60 秒。不使用本地 CTest；不得以這些結果代替 GUI 或完整對局。證據保存在 `builds/large-room-ui-checkpoint-20260919/`。
+增量建置 GUI 與 core／protocol／presentation targets，直接執行 `room-layout-engine`、`flow-inventory`、呈現契約及 Web reducer 單檔檢查。本地 CTest、GUI 操作與完整對局未執行。證據保存在 `builds/large-room-ui-checkpoint-20260919/`。
 
 首次建置在 MSBuild FileTracker 初始化時遇到沙箱存取拒絕；相同目標取得必要權限後建置成功，沒有修改來源來繞過環境問題。建置保留既有武將 bool 比較及第三方 FreeType PDB 缺失警告。
 
@@ -155,7 +155,7 @@
 | 真實 server 登錄 | **PASS**：新版 `debug/qsanguosha_server.exe --list-game-modes` exit 0；唯一 `50p` 列的人數為 50，顯示已確認的身份配比與實驗性標示。 |
 | 靜態檢查 | **PASS**：本批 `git diff --check`、Python AST 語法解析。 |
 
-使用者已授權第二檢查點，沿用可超過 60 秒的設定；未執行本地 CTest。證據保存在 `builds/large-room-mode-checkpoint-20260919/`：`build.log`、`build-core-retry.log`、`mode-contract.log`、`runner-direct-retry.log`、`server-modes.log`。
+第二檢查點未執行本地 CTest。證據保存在 `builds/large-room-mode-checkpoint-20260919/`：`build.log`、`build-core-retry.log`、`mode-contract.log`、`runner-direct-retry.log`、`server-modes.log`。
 
 本次發現並修正：測試改經既有 `RoomTestAccess` 呼叫私有身份分配入口；runner 查詢模式清單時明確使用 UTF-8，避免 Windows CP950 解碼中文模式名稱失敗。修正後受影響檢查皆已重跑通過。
 
@@ -163,7 +163,7 @@
 
 尚待動態驗收：多層無懈、傷害轉移與瀕死求桃、技能取消／回合中斷、深層重連、重複及向後 seek、20→21 動態加入、多票草稿中自動焦點切換、高 DPI／窄窗／關特效的資訊完整性。外部擴展若跳過標準 Room／技能公開入口，其自訂結算不能假稱已被完整覆蓋。
 
-2026-09-20：依使用者要求移除本輪新增的效能測試案例、診斷插樁與測試產物；正式 SmartAI、引擎與退出修正保留。測試已停止，沒有重開對局。
+2026-09-20：移除診斷用的效能測試案例、診斷插樁與測試產物；正式 SmartAI、引擎與退出修正保留。測試已停止，沒有重開對局。
 
 2026-09-20：依人工截圖回饋，縮略列與結算焦點改用原生 Photo fullskin，共用體力／手牌數繪製；補上水平捲軸、字寬排版與 builds/sanguosha.ts 翻譯。靜態檢查通過；本批建置進行中，GUI 外觀仍待人工驗收。
 2026-09-20 本批檢查點：Debug QSanguosha 增量建置與 lrelease 通過；已開啟 GUI 供人工查看，未執行 CTest 或完整對局，50 人房內外觀尚未驗收。

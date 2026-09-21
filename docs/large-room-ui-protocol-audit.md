@@ -1,9 +1,9 @@
 # 50 人 Attention UI：協議決策拆分與靜態審計
 
-> 2026-09-19：新增 [M1 實作檢查點](large-room-ui-implementation.md)。以下保留 09-16 審計基線；首批生命週期協議、桌面大局布局與焦點操作已通過建置及 focused 契約檢查。後續使用者確認 1 主／23 忠／25 反／1 內，已補建 `50p`，第二檢查點建置、模式登錄與身份分配檢查通過；下列「不新增開房模式」是首批歷史範圍，不再代表後續工作範圍。
+> 2026-09-19：新增 [M1 實作檢查點](process/large-room-ui-implementation.md)。以下保留 09-16 審計基線；首批生命週期協議、桌面大局布局與焦點操作已通過建置及 focused 契約檢查。後續模式定義為 1 主／23 忠／25 反／1 內，已補建 `50p`，第二檢查點建置、模式登錄與身份分配檢查通過；下列「不新增開房模式」是首批歷史範圍，不再代表後續工作範圍。
 
 審計基線：`debug@1ac792c` 加 2026-09-16 審閱時的未提交變更。
-審計者：凜。本文件依目前原始碼查證；不代表建置、GUI 或完整對局驗收通過。
+審計範圍為原始碼；建置、GUI 與完整對局結果見末節驗收表。
 工作樹在審閱期間仍有更新，因此以下以函式與欄位為證據錨點，行號僅供定位。
 
 ## 1. 結論：四項資料契約，不能用一個「焦點」代替
@@ -34,7 +34,7 @@
 | --- | --- | --- |
 | 回應焦點 | `Room::notifyMoveFocus` 廣播玩家名單、命令、倒數；reducer 保存 `focus/focus_countdown` | 已有，但不是結算鏈 |
 | 近期關係投影 | `GameEventStream::synchronize` 已保留 payload；`GameViewState::fromState` 對 `LOG_SKILL` 建立 `recentRelations`；`toJson` 輸出 `recent_relations` | 上輪「投影丟失兩次」已是修正前狀態，不應再當最新缺陷 |
-| 回合方向 | `ArrangeSeatsMessage` schema 2；開局／換座、反轉、中途加入、marshal、控制上下文座次通知均有相關發送接點；reducer 與 `GameViewState` 已保存／輸出方向 | 已見來源實作，尚未在本輪執行驗證 |
+| 回合方向 | `ArrangeSeatsMessage` schema 2；開局／換座、反轉、中途加入、marshal、控制上下文座次通知均有相關發送接點；reducer 與 `GameViewState` 已保存／輸出方向 | 已見來源實作，尚未執行驗證 |
 | 活動結算 | 共用呈現模型尚無活動堆疊；近期關係沒有父結算 ID 或結束標記 | 未完成 |
 | 布局安全 | `RoomLayoutEngine` 經典與自適應入口都限制其他玩家數不超過 19 | 已防止座位表越界；仍沒有 21–50 人有效布局 |
 | 詳細檢視與選取 | 已有 `RoomOverlayHost`、Inspector、多票 intent；Photo 以透明度保留原選取草稿 | 可以沿用，不必把全面重寫選取模型當作前置條件 |
@@ -123,7 +123,7 @@
 - Replay 記錄生命週期；seek 必須先重置活動上下文再重放。現有 `Replayer::seekToPosition` 從 0 重放，不能據此假設新增的 push/pop 狀態可在未清空時重複套用。
 - 舊 Replay 缺少生命週期時仍可提供舊有回合／回應／歷史資訊，但標示完整結算資訊不可用。
 - ID 使用現有協議的十進位字串慣例；不輸出原始 C++ 指標，不改 Room／Lua／SWIG 既有公開呼叫語義。
-- 新通知必須同步更新 registry、reducer、各協議消費端及覆蓋矩陣；只有桌面啟用大局 UI，不代表其他客戶端可以拒絕新通知。
+- 新通知必須同步更新 registry、reducer、各協議消費端及覆蓋矩陣；各客戶端均須處理新通知。
 
 ### D4：回合方向沿用 ARRANGE_SEATS 擴充
 
@@ -131,7 +131,7 @@
 - 開局、換座、反轉、中途加入、重連與控制上下文切換，方向都應以絕對值重申，不能只在反轉時送一次。
 - 座次環順序與回合行進方向分開：反轉不應重新按勢力／存活或焦點排列總覽。
 - schema 1 沒有權威方向欄位，目前 reducer 使用 `false`。這是相容預設，不能宣稱可精確還原所有含反轉的舊錄影；UI 的方向可信度需明確處理。
-- schema 2 應有方向欄位的缺失／錯型別驗收。本輪 registry 將它列為 optional，不能只憑正常 producer 總會填就聲稱接收契約已完全封閉。
+- schema 2 應有方向欄位的缺失／錯型別驗收。registry 將它列為 optional，接收端尚須驗證缺失欄位的行為。
 
 ## 5. 與 50 人介面的接合及審計發現
 
@@ -143,7 +143,7 @@
 | P2 | `RoomScene::moveFocus` 仍只改 Photo 倒數與回應框 | Photo 透明時，縮略位／焦點面板也要顯示相同回應狀態 |
 | P2 | 現有 Ribbon 以長文字按鈕巡覽，沒有完整大局總覽與結算雙角色面板 | 沿用 Overlay 的 intent／Inspector，新增固定環序 Mini 與結算面板 |
 
-本輪不再把「Photo 只要不畫出來就無法選取」當成當前必然阻塞：目前使用 `setOpacity(0)`，不是 `hide()`，原物件與草稿保留。
+Photo 使用 `setOpacity(0)` 保留原物件與草稿；實際可選取性須由互動案例確認。
 多票已經透過 `selectedVotes/maxVotes` 與加減票 intent 接到原容器。新 Mini 可以先沿用這條橋接；若之後改成真正隱藏或刪除 Photo，才需先解決選取權威對圖元的依賴。
 
 UI 三種狀態不得相互覆蓋：**結算焦點**跟隨 D3、**檢視焦點**允許使用者鎖定玩家、**輸入焦點**保持正在操作的控制項。
@@ -151,7 +151,7 @@ UI 三種狀態不得相互覆蓋：**結算焦點**跟隨 D3、**檢視焦點**
 
 來源：[布局引擎](../src/ui/room-layout-engine.cpp)、[RoomScene](../src/ui/roomscene.cpp)、[RoomOverlayHost](../src/ui/room-overlay-host.cpp)、[桌面意圖轉接](../src/ui/desktop-game-presentation.cpp)。
 
-## 6. 驗收清單與本輪證據邊界
+## 6. 驗收清單與證據
 
 | 區域 | 必要案例 |
 | --- | --- |
@@ -164,17 +164,16 @@ UI 三種狀態不得相互覆蓋：**結算焦點**跟隨 D3、**檢視焦點**
 | 大局 | 20／21 邊界及 30／50 人；死亡不縮短環序；離屏合法目標、多票、取消、選取中焦點改變；無效布局仍有可見操作入口 |
 
 目前已有新增測試來源：[game-presentation-test.cpp](../tests/client_core/game-presentation-test.cpp)、[protocol-flow-inventory-test.cpp](../tests/protocol/protocol-flow-inventory-test.cpp)、[room-notifier-test.cpp](../tests/room-notifier-test.cpp)，涉及事件投影及方向。
-這表示有測試案例，**不表示本輪已執行或通過**。
+上述案例的執行狀態列於下表。
 [room-layout-engine-test.cpp](../tests/room-layout-engine-test.cpp) 目前對 20 個其他玩家仍斷言無效，是安全拒絕測試，不是 50 人布局驗收。
 
-| Gate | 本輪狀態 |
+| Gate | 狀態 |
 | --- | --- |
 | 原始碼與文件靜態審計 | 完成；區分既有來源、未提交實作與待設計契約 |
-| 本輪改動 | 審計文件及舊決策／路線圖的指引修正；未改產品程式碼 |
 | 建置／focused executable／本地 CTest | NOT RUN |
 | GUI／50 人資料場景／完整對局／遠端 CI | NOT RUN |
 
-後續依檢查點授權安排 targeted build 與短 focused 驗證；本地 CTest 與長時間 gate 仍遵守專案限制。
+後續驗證項目為受影響目標建置、focused 契約及表列 GUI／完整對局案例。
 50 人資料場景通過只證明 UI 與資料契約，不能宣告完整 50 人玩法或對局已驗收。
 
 ## 7. 對原協議決策文件的修訂結論
@@ -187,4 +186,4 @@ UI 三種狀態不得相互覆蓋：**結算焦點**跟隨 D3、**檢視焦點**
 | 兩層投影丟資料、方向只在伺服器 | 是本批修正前狀態；最新工作樹已有投影與方向傳送來源 |
 | 既有 seek 重複走安排座次，證明 GUI 安全 | 只能證明有既有呼叫路徑；不能替代反轉、重連、選取及新生命週期的執行驗收 |
 
-第一輪調查文件 `focus-relation-protocol-decision.md` 已於 2026-09-20 刪除（原文見 git 歷史）；與本輪完整結算需求及最新實作現況衝突時，以本文件為準。
+第一輪調查文件 `focus-relation-protocol-decision.md` 已於 2026-09-20 刪除（原文見 git 歷史）；後續結算需求與實作分析見本文。
