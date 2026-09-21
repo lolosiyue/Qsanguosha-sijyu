@@ -493,6 +493,18 @@ if(TARGET Qt6::Widgets AND TARGET Qt6::Test AND TARGET QSanguosha)
     endif()
     qsan_add_ctest(qsanguosha_game_control_panel_contract qsanguosha_game_control_panel_tests
         LABELS "ui;presentation" TIMEOUT 30)
+
+    add_executable(qsanguosha_pointer_hover_delivery_tests
+        ui/pointer-hover-delivery-test.cpp)
+    target_include_directories(qsanguosha_pointer_hover_delivery_tests PRIVATE
+        ${QSAN_TEST_ROOT}/src/ui)
+    target_link_libraries(qsanguosha_pointer_hover_delivery_tests PRIVATE Qt6::Widgets Qt6::Test Qt6::Gui)
+    set_target_properties(qsanguosha_pointer_hover_delivery_tests PROPERTIES AUTOMOC ON)
+    if(MSVC)
+        target_compile_options(qsanguosha_pointer_hover_delivery_tests PRIVATE /utf-8)
+    endif()
+    qsan_add_ctest(qsanguosha_pointer_hover_delivery_contract qsanguosha_pointer_hover_delivery_tests
+        LABELS "ui;fast" TIMEOUT 30)
 endif()
 target_link_libraries(qsanguosha_client_core_tests PRIVATE
     qsanguosha_client_core

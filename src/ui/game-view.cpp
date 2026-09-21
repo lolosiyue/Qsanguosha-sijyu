@@ -1,6 +1,7 @@
 #include "game-view.h"
 
 #include "build-features.h"
+#include "pointer-hover-delivery.h"
 #include "roomscene.h"
 #include "settings.h"
 #include "skin-bank.h"
@@ -15,6 +16,8 @@
 #endif
 #include <QPainter>
 #include <QPixmapCache>
+#include <QHoverEvent>
+#include <QMouseEvent>
 #include <QResizeEvent>
 #include <QTimer>
 #include <QApplication>
@@ -35,6 +38,8 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
     glWidget->setUpdateBehavior(QOpenGLWidget::PartialUpdate);
     setViewport(glWidget);
 #endif
+    qsanEnableWidgetPointerHover(this);
+    qsanEnableWidgetPointerHover(viewport());
     setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
 #if !defined(QSAN_XP_LEGACY)
     // Main window and diagnostic FitViews share one Android listener. Destroying
@@ -65,9 +70,17 @@ bool FitView::event(QEvent *event)
     return QGraphicsView::event(event);
 }
 
+bool FitView::viewportEvent(QEvent *event)
+{
+    if (qsanForwardPointerHoverAsMouseMove(viewport(), event))
+        return true;
+    return QGraphicsView::viewportEvent(event);
+}
+
 void FitView::setScene(QGraphicsScene *next)
 {
     QGraphicsView::setScene(next);
+    qsanEnableWidgetPointerHover(viewport());
 #if !defined(QSAN_XP_LEGACY)
     if (!qobject_cast<RoomScene *>(next)) {
         // Rotation is an application preference; returning home keeps it enabled.

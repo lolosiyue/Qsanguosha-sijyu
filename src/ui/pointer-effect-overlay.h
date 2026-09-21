@@ -143,6 +143,7 @@ public:
     ~HomePointerFxItem() override;
 
     void paint(QPainter *painter) override;
+    bool contains(const QPointF &point) const override;
 
 protected:
     void itemChange(ItemChange change, const ItemChangeData &value) override;
