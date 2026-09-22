@@ -104,12 +104,13 @@ public:
 
     bool isEnabledAtPlay(const Player *player) const
     {
-        return Slash::IsAvailable(player);
+        return player->hasWeapon("fan") && Slash::IsAvailable(player);
     }
 
-    bool isEnabledAtResponse(const Player *, const QString &pattern) const
+    bool isEnabledAtResponse(const Player *player, const QString &pattern) const
     {
-        return Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
+        return player->hasWeapon("fan")
+            && Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
             && (pattern.contains("slash") || pattern.contains("Slash"));
     }
 

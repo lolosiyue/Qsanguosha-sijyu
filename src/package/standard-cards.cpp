@@ -369,11 +369,15 @@ public:
         frequency = Compulsory;
     }
 
-    int getResidueNum(const Player *from, const Card *, const Player *) const
+    int getResidueNum(const Player *from, const Card *card, const Player *) const
     {
-        if (from->hasWeapon("crossbow"))
-            return 999;
-        return 0;
+        if (!from || !from->hasWeapon("crossbow"))
+            return 0;
+        const Card *weapon = from->getWeapon();
+        if (Config.EnableHegemony && weapon && card && (card->getEffectiveId() == weapon->getEffectiveId()
+            || card->getSubcards().contains(weapon->getEffectiveId())))
+            return 0;
+        return 999;
     }
 };
 
@@ -1327,6 +1331,18 @@ public:
 
     int getCorrect(const Player *from, const Player *to) const
     {
+        if (Config.EnableHegemony) {
+            int correct = 0;
+            if (from && from->getOffensiveHorse() && !from->isEquipsNullified(from->getOffensiveHorse(), to)) {
+                const Horse *horse = qobject_cast<const Horse *>(from->getOffensiveHorse()->getRealCard());
+                if (horse) correct += horse->getCorrect();
+            }
+            if (to && to->getDefensiveHorse() && !to->isEquipsNullified(to->getDefensiveHorse(), from)) {
+                const Horse *horse = qobject_cast<const Horse *>(to->getDefensiveHorse()->getRealCard());
+                if (horse) correct += horse->getCorrect();
+            }
+            return correct;
+        }
         int oh_correct = 0, dh_correct = 0;
 		static QList<const OffensiveHorse *> from_ohs = Sanguosha->findChildren<const OffensiveHorse *>();
 		foreach (const OffensiveHorse *oh, from_ohs) {
