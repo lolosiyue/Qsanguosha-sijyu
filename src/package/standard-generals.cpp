@@ -2880,18 +2880,14 @@ public:
     }
 };
 
-class Mashu : public DistanceSkill
+class Mashu : public DistanceSkillV2
 {
 public:
-    Mashu() : DistanceSkill("mashu")
+    Mashu() : DistanceSkillV2("mashu")
     {
-    }
-
-    int getCorrect(const Player *from, const Player *) const
-    {
-        if (from->hasSkill(objectName()))
-            return -1;
-        return 0;
+        // The engine gates each source's reveal/validity and applies its amount.
+        setBaseAmount(-1);
+        setHolderSelector(CorrectSkill_Primary);
     }
 };
 
