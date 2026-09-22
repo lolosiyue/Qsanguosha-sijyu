@@ -1,7 +1,6 @@
 -- translation for MobileStrengthen Package
 
 return {
-	["MobileJXTP"] = "手杀界限突破",
 	["MobileStStandard"] = "手杀界·标准",
 	["MobileStWind"] = "手杀界·风",
 	["MobileStThicket"] = "手杀界·林",

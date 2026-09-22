@@ -1,4 +1,4 @@
--- translation for JXTP Package
+-- translation for TenyearStrengthen Package
 
 return {
 	["TenyearStStandard"] = "十周年界·标准",
