@@ -757,6 +757,51 @@ void Card::doPreAction(Room*, const CardUseStruct &) const
 {
 }
 
+static bool showRequiredTargetModSkills(Room *room, const CardUseStruct &use)
+{
+    if (!Config.EnableHegemony || !use.from)
+        return true;
+
+    // Freeze concrete instances before prompting: reveal callbacks must not
+    // silently redirect a paid use to a newly acquired same-named skill.
+    const QList<SkillInstance> instances = use.from->getSkillInstances();
+    QList<SkillInstanceRef> shown;
+    for (;;) {
+        const QStringList needed = use.card->checkTargetModSkillShow(use);
+        if (needed.isEmpty())
+            return room->showRequiredTargetModSkillsV2(use);
+        QMap<QString, SkillInstanceRef> choices;
+        foreach (const SkillInstance &instance, instances) {
+            if (!needed.contains(instance.skillName) || choices.contains(instance.skillName))
+                continue;
+            const SkillInstanceRef ref(use.from->objectName(), instance.key());
+            if (shown.contains(ref) || !room->canShowGeneralForSkill(ref))
+                continue;
+            const SkillInstanceRef root = room->resolveSkillInstanceRootRef(ref);
+            ServerPlayer *owner = root.isValid()
+                ? room->findPlayerByObjectName(root.ownerObjectName, true) : nullptr;
+            const SkillInstance *source = owner
+                ? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
+            if (!source || source->source != SourceInnate
+                || (source->bindHead != 1 && source->bindHead != 2)
+                || (source->bindHead == 1 ? owner->hasShownGeneral() : owner->hasShownGeneral2()))
+                continue;
+            choices.insert(instance.skillName, ref);
+        }
+        if (choices.isEmpty())
+            return false;
+        const QStringList names = choices.keys();
+        const QString choice = names.size() == 1 ? names.first()
+            : room->askForChoice(use.from, "tarmod_show", names.join("+"), QVariant::fromValue(use));
+        if (!choices.contains(choice))
+            return false;
+        const SkillInstanceRef ref = choices.value(choice);
+        shown << ref;
+        if (!room->showGeneralForSkill(ref) || !use.from->isAlive())
+            return false;
+    }
+}
+
 void Card::onUse(Room*room, CardUseStruct &card_use) const
 {
 	room->sortByActionOrder(card_use.to);

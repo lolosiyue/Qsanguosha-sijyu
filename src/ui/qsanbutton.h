@@ -117,17 +117,14 @@ public:
         return arg1;
     }
     virtual void setSkill(const Skill *skill);
+    void setPreshowEnabled(const QString &skillName, bool enabled, bool preshowed);
+    void setPreshowState(bool preshowed);
     void setDisplayName(const QString &name);
     inline virtual const Skill *getSkill() const
     {
         return _m_skill;
     }
-    inline virtual void setEnabled(bool enabled)
-    {
-        if (!_m_canEnable && enabled) return;
-        if (!_m_canDisable && !enabled) return;
-        QSanButton::setEnabled(enabled);
-    }
+    virtual void setEnabled(bool enabled);
     QSanSkillButton(QGraphicsItem *parent = nullptr);
     inline const ViewAsSkill *getViewAsSkill() const
     {
@@ -146,6 +143,14 @@ protected:
     const Skill *_m_skill;
     const ViewAsSkill *_m_viewAsSkill;
     QString _m_displayName;
+    bool _m_preshowEnabled;
+    QString _m_preshowSkillName;
+    ButtonStyle _m_savedStyle;
+    ButtonState _m_savedState;
+    bool _m_savedEmitActivateSignal;
+    bool _m_savedEmitDeactivateSignal;
+    bool _m_savedCanEnable;
+    bool _m_savedCanDisable;
 
 protected slots:
     void onMouseClick();
@@ -155,6 +160,7 @@ signals:
     void skill_activated();
     void skill_deactivated(const Skill *);
     void skill_deactivated();
+    void skill_preshow_toggled(const QString &, bool);
 };
 
 class QSanInvokeSkillButton : public QSanSkillButton

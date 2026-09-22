@@ -11,9 +11,13 @@
 #include "lua.hpp"
 #include "protocol/protocol-runtime.h"
 #include "protocol/skill-instance-message.h"
+#include "settings.h"
+#include "server-info.h"
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QScopeGuard>
+#include <memory>
 
 namespace {
 
@@ -475,6 +479,168 @@ static bool shimingExternalLuaMigration()
 
 #undef SHIMING_CHECK
 
+template <typename Base>
+class ConcealedCorrectionProbe : public Base
+{
+public:
+    explicit ConcealedCorrectionProbe(const QString &name) : Base(name) {}
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+    {
+        ++calls;
+        return CorrectSkillResult::useAmount(ctx.currentAmount);
+    }
+    CorrectSkillResult getFixedValue(const CorrectSkillContext &ctx) const override
+    {
+        ++fixedCalls;
+        return CorrectSkillResult::useAmount(ctx.currentAmount);
+    }
+    mutable int calls = 0;
+    mutable int fixedCalls = 0;
+};
+
+static bool concealedCorrectionEffects()
+{
+#define PASSIVE_CHECK(condition) do { if (!(condition)) { \
+    qCritical() << "Concealed correction contract failed" << __LINE__ << #condition; return false; \
+} } while (false)
+    const bool previousHegemony = Config.EnableHegemony;
+    const bool previousServerHegemony = ServerInfo.EnableHegemony;
+    auto restore = qScopeGuard([=]() {
+        Config.EnableHegemony = previousHegemony;
+        ServerInfo.EnableHegemony = previousServerHegemony;
+    });
+    Config.EnableHegemony = true;
+    ServerInfo.EnableHegemony = true;
+    Room room(nullptr, QStringLiteral("04p"));
+    EngineRuntimeContextScope engineScope(*Sanguosha, &room);
+    LuaRuntime::Binding binding(*room.luaRuntime());
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, "passive-owner");
+    ServerPlayer *other = RoomTestAccess::addOrdinaryPlayer(room, "passive-other");
+    owner->setNext(other);
+    other->setNext(owner);
+    RoomTestAccess::resetAlive(room);
+    room.setCurrent(owner);
+
+    auto *distance = new ConcealedCorrectionProbe<DistanceSkillV2>("test-concealed-distance");
+    auto *maxcards = new ConcealedCorrectionProbe<MaxCardsSkillV2>("test-concealed-maxcards");
+    auto *target = new ConcealedCorrectionProbe<TargetModSkillV2>("test-concealed-target");
+    auto *range = new ConcealedCorrectionProbe<AttackRangeSkillV2>("test-concealed-range");
+    Sanguosha->addSkills({distance, maxcards, target, range});
+    auto add = [](ServerPlayer *holder, const Skill *skill, SkillInstanceSource source, int slot) {
+        const int id = holder->createSkillInstance(skill->objectName(), source);
+        SkillInstance instance = *holder->findSkillInstance(skill->objectName(), id);
+        instance.bindHead = slot;
+        holder->upsertSkillInstance(instance);
+        return id;
+    };
+    const int head = add(owner, distance, SourceInnate, 1);
+    const int deputy = add(owner, distance, SourceInnate, 2);
+    const int maxId = add(owner, maxcards, SourceInnate, 1);
+    add(owner, target, SourceInnate, 1);
+    add(owner, range, SourceInnate, 1);
+    std::unique_ptr<Card> slash(Sanguosha->cloneCard("slash"));
+    PASSIVE_CHECK(slash);
+
+    // Only TargetMod previews the user's own hidden root. Continuous effects
+    // and the unlimited-history exemption still require a public source.
+    const auto query = [&]() {
+        Sanguosha->correctDistance(owner, other);
+        Sanguosha->correctMaxCards(owner);
+        Sanguosha->correctCardTarget(TargetModSkill::Residue, owner, slash.get(), other);
+        Sanguosha->correctAttackRange(owner);
+    };
+    query();
+    PASSIVE_CHECK(distance->calls == 0 && maxcards->calls == 0 && target->calls == 1 && range->calls == 0);
+    target->calls = 0;
+    target->setBaseAmount(-1);
+    owner->addHistory("Slash", 2);
+    {
+        TargetModSkillQueryScope countedUse(owner, {}, "Slash");
+        PASSIVE_CHECK(owner->usedTimes("Slash", true) == 1);
+        {
+            TargetModSkillQueryScope separateQuery(other, {});
+            PASSIVE_CHECK(owner->usedTimes("Slash", true) == 2);
+        }
+        PASSIVE_CHECK(owner->usedTimes("Slash", true) == 1);
+    }
+    PASSIVE_CHECK(owner->usedTimes("Slash", true) == 2);
+    owner->clearHistory("Slash");
+    PASSIVE_CHECK(!Sanguosha->hasResidueUnlimited(owner, slash.get(), other));
+    PASSIVE_CHECK(target->calls == 0);
+    {
+        TargetModSkillQueryScope publicOnly(owner, {});
+        PASSIVE_CHECK(Sanguosha->correctCardTarget(TargetModSkill::Residue, owner, slash.get(), other) == 0);
+        PASSIVE_CHECK(target->calls == 0);
+    }
+    PASSIVE_CHECK(Sanguosha->correctCardTarget(TargetModSkill::Residue, owner, slash.get(), other) == 1000);
+    target->setBaseAmount(1);
+    target->calls = 0;
+    PASSIVE_CHECK(Sanguosha->listMaxCardsSkillContributions(maxcards, owner).isEmpty());
+    PASSIVE_CHECK(maxcards->fixedCalls == 0);
+    PASSIVE_CHECK(owner->getValidSkillInstanceIds(distance->objectName()).size() == 2);
+    owner->setGeneral2Showed(true);
+    PASSIVE_CHECK(Sanguosha->contributionOfDistanceSkill(distance, owner, other) == 1);
+    PASSIVE_CHECK(!owner->isSkillInstanceEffectAvailable(distance->objectName(), head));
+    PASSIVE_CHECK(owner->isSkillInstanceEffectAvailable(distance->objectName(), deputy));
+    owner->setGeneralShowed(true);
+    distance->calls = 0;
+    query();
+    PASSIVE_CHECK(distance->calls == 2 && maxcards->calls == 1 && target->calls == 1 && range->calls == 1);
+    PASSIVE_CHECK(Sanguosha->listMaxCardsSkillContributions(maxcards, owner).size() == 1);
+    PASSIVE_CHECK(maxcards->fixedCalls == 1);
+
+    const SkillInstanceRef root(owner->objectName(), SkillInstanceKey(distance->objectName(), head));
+    const int helper = owner->createSkillInstance(maxcards->objectName(), SourceHelper,
+                                                  distance->objectName(), head, false);
+    const int attached = other->createSkillInstance(distance->objectName(), SourceAttached, root);
+    owner->setGeneralShowed(false);
+    PASSIVE_CHECK(!owner->isSkillInstanceEffectAvailable(maxcards->objectName(), helper));
+    PASSIVE_CHECK(Sanguosha->contributionOfDistanceSkill(distance, other, owner) == 0);
+    owner->setGeneralShowed(true);
+    PASSIVE_CHECK(owner->isSkillInstanceEffectAvailable(maxcards->objectName(), helper));
+    PASSIVE_CHECK(Sanguosha->contributionOfDistanceSkill(distance, other, owner) == 1);
+    owner->setTag("SkillInvalidityRecords", QStringList{
+        SkillInstanceUtils::formatName(distance->objectName(), head) + "|probe|test"});
+    PASSIVE_CHECK(!other->isSkillInstanceEffectAvailable(distance->objectName(), attached));
+    PASSIVE_CHECK(!owner->isSkillInstanceEffectAvailable(maxcards->objectName(), helper));
+    PASSIVE_CHECK(owner->isSkillInstanceEffectAvailable(distance->objectName(), deputy));
+    owner->removeTag("SkillInvalidityRecords");
+
+    // A foreign hidden root cannot change another player's target preview.
+    owner->setGeneralShowed(false);
+    const int remoteTarget = other->createSkillInstance(target->objectName(), SourceAttached, root);
+    PASSIVE_CHECK(Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, other, slash.get(), owner) == 0);
+    PASSIVE_CHECK(!other->isSkillInstanceEffectAvailable(target->objectName(), remoteTarget, other));
+    owner->setGeneralShowed(true);
+    PASSIVE_CHECK(Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, other, slash.get(), owner) == 1);
+
+    // An independent acquired copy remains active even with both generals hidden.
+    owner->setGeneralShowed(false);
+    owner->setGeneral2Showed(false);
+    const int acquired = add(owner, distance, SourceAcquired, 0);
+    PASSIVE_CHECK(Sanguosha->contributionOfDistanceSkill(distance, owner, other) == 1);
+    PASSIVE_CHECK(!owner->isSkillInstanceEffectAvailable(distance->objectName(), head));
+    PASSIVE_CHECK(owner->isSkillInstanceEffectAvailable(distance->objectName(), acquired));
+    const int orphan = add(other, maxcards, SourceAttached, 0);
+    PASSIVE_CHECK(!other->isSkillInstanceEffectAvailable(maxcards->objectName(), orphan));
+    SkillInstance cycle = *other->findSkillInstance(distance->objectName(), attached);
+    cycle.parentRef = SkillInstanceRef(other->objectName(), cycle.key());
+    other->upsertSkillInstance(cycle);
+    PASSIVE_CHECK(!other->isSkillInstanceEffectAvailable(distance->objectName(), attached));
+
+    // System corrections have no general source; identity keeps legacy behavior.
+    range->setHolderSelector(CorrectSkill_System);
+    range->calls = 0;
+    Sanguosha->correctAttackRange(owner);
+    PASSIVE_CHECK(range->calls == 1);
+    Config.EnableHegemony = false;
+    ServerInfo.EnableHegemony = false;
+    PASSIVE_CHECK(owner->isSkillInstanceEffectAvailable(maxcards->objectName(), maxId));
+    PASSIVE_CHECK(Sanguosha->contributionOfDistanceSkill(distance, owner, other) == 3);
+#undef PASSIVE_CHECK
+    return true;
+}
+
 static bool lifecycleAndRuntimeFacade()
 {
     DistanceSkillV2 rootSkill(QStringLiteral("test-skill-runtime-root"));
@@ -549,6 +715,7 @@ int runSkillRuntimeCoordinatorTests()
     }
     if (!shimingInstancePipeline() || !shimingPackageTriggers() || !shimingLuaCallbacks()
         || !shimingExternalLuaMigration()) return 3;
+    if (!concealedCorrectionEffects()) return 4;
     qInfo() << "SkillRuntimeCoordinator regression passed";
     return 0;
 }

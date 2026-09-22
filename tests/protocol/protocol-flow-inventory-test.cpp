@@ -30,6 +30,20 @@ ProtocolMessage roomNotification(int command, const QVariantMap &payload)
     return message;
 }
 
+ProtocolMessage clientRequest(int command, const QVariantMap &payload)
+{
+    ProtocolMessage message;
+    message.version = ProtocolVersion::V2;
+    message.type = ProtocolMessageType::Request;
+    message.source = ProtocolEndpoint::Client;
+    message.destination = ProtocolEndpoint::Room;
+    message.messageId = 1;
+    message.command = command;
+    message.hasPayload = true;
+    message.payload = payload;
+    return message;
+}
+
 bool strictPayloadContracts(QString *error)
 {
     const QVariantMap reason {
@@ -267,6 +281,22 @@ bool strictPayloadContracts(QString *error)
         return false;
     }
     error->clear();
+
+    QVariantMap preshowRequest {
+        {QStringLiteral("schema_version"), 1},
+        {QStringLiteral("skill_name"), QStringLiteral("skill#id")},
+        {QStringLiteral("preshowed"), true}
+    };
+    ProtocolMessage preshow = clientRequest(S_COMMAND_PRESHOW, preshowRequest);
+    if (!ProtocolPayloadRegistry::validateObjectPayload(preshow, error))
+        return false;
+    preshowRequest.insert(QStringLiteral("preshowed"), QStringLiteral("true"));
+    preshow.payload = preshowRequest;
+    if (ProtocolPayloadRegistry::validateObjectPayload(preshow, error)) {
+        *error = QStringLiteral("non-boolean preshow request was accepted");
+        return false;
+    }
+    error->clear();
     return true;
 }
 }
@@ -308,12 +338,12 @@ int main(int argc, char **argv)
 
     const QJsonObject summary = ProtocolPayloadRegistry::inventoryJson()
         .value(QStringLiteral("summary")).toObject();
-    if (summary.value(QStringLiteral("production_flow_count")).toInt() != 146
-        || summary.value(QStringLiteral("typed_registry_flow_count")).toInt() != 146
-        || summary.value(QStringLiteral("typed_complete")).toInt() != 146
+    if (summary.value(QStringLiteral("production_flow_count")).toInt() != 148
+        || summary.value(QStringLiteral("typed_registry_flow_count")).toInt() != 148
+        || summary.value(QStringLiteral("typed_complete")).toInt() != 148
         || summary.value(QStringLiteral("implicit_passthrough")).toInt() != 0
         || summary.value(QStringLiteral("unclassified_production_flow")).toInt() != 0) {
-        return fail(QStringLiteral("inventory summary is not 146/146 typed-complete"));
+        return fail(QStringLiteral("inventory summary is not 148/148 typed-complete"));
     }
     QTextStream(stdout) << "PROTOCOL_FLOW_MATRIX_OK flows="
                         << summary.value(QStringLiteral("production_flow_count")).toInt()

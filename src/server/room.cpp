@@ -2981,6 +2981,116 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 	return m_skillRuntime->resolveCardSkillInstance(use);
 }
 
+void Room::prepareTargetModSkillReveal(CardUseStruct &use) const
+{
+    use.targetModReveal = TargetModRevealState();
+    // Authoritative/forced uses deliberately bypass the selection contract.
+    if (!Config.EnableHegemony || !use.from || !use.m_validateTargets) return;
+    use.targetModReveal.owner = use.from->objectName();
+    // Include attached leaves on other holders, but admit only this user's
+    // own concealed roots. Selector/pattern checks still run in the engine.
+    for (const ServerPlayer *holder : getPlayers()) {
+        for (const SkillInstance &instance : holder->getSkillInstances()) {
+            if (!dynamic_cast<const TargetModSkillV2 *>(Sanguosha->getSkill(instance.skillName))
+                || holder->isSkillInstanceEffectAvailable(instance.skillName, instance.instanceID)
+                || !holder->isSkillInstanceEffectAvailable(instance.skillName, instance.instanceID, use.from))
+                continue;
+            const SkillInstanceRef ref(holder->objectName(), instance.key());
+            const SkillInstanceRef root = resolveSkillInstanceRootRef(ref);
+            if (!root.isValid() || root.ownerObjectName != use.from->objectName()) continue;
+            use.targetModReveal.sources << ref;
+            use.targetModReveal.roots << root;
+        }
+    }
+}
+
+void Room::planTargetModSkillReveal(CardUseStruct &use) const
+{
+    TargetModRevealState &snapshot = use.targetModReveal;
+    snapshot.options.clear();
+    if (!use.from || !use.card || snapshot.sources.isEmpty()
+        || snapshot.owner != use.from->objectName()) return;
+    for (int mask = 0; mask < 4; ++mask) {
+        QList<SkillInstanceRef> allowed;
+        for (int i = 0; i < snapshot.sources.size(); ++i) {
+            const SkillInstanceRef &ref = snapshot.sources.at(i);
+            const SkillInstanceRef &root = snapshot.roots.at(i);
+            if (resolveSkillInstanceRootRef(ref) != root || !canShowGeneralForSkill(ref)) continue;
+            const SkillInstance *source = use.from->findSkillInstance(root.key.skillName, root.key.instanceID);
+            if (source && source->source == SourceInnate && (source->bindHead & mask)) allowed << ref;
+        }
+        // Preserve the original selection order and pre-use history. onUse may
+        // sort targets, turn Collateral pairs into killers, or clear Slash flags.
+        TargetModSkillQueryScope scope(use.from, allowed, snapshot.historyKey);
+        if (areCardTargetsLegal(use)
+            && (m_runtime->state().getCurrentCardUseReason() != CardUseStruct::CARD_USE_REASON_PLAY
+                || use.card->isAvailable(use.from))) {
+            snapshot.options << scope.contributors();
+            if (mask == 0) break;
+        }
+    }
+}
+
+bool Room::showRequiredTargetModSkillsV2(const CardUseStruct &use)
+{
+    if (!Config.EnableHegemony || !use.from || !use.card || use.skipSkillEffect
+        || use.targetModReveal.sources.isEmpty()) return true;
+    const TargetModRevealState &snapshot = use.targetModReveal;
+    if (snapshot.owner != use.from->objectName()
+        || snapshot.sources.size() != snapshot.roots.size()) return false;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        if (!use.from->isAlive()) return false;
+        QList<QList<SkillInstanceRef>> best;
+        int minimum = 3;
+        for (const QList<SkillInstanceRef> &option : snapshot.options) {
+            QList<SkillInstanceRef> toShow;
+            QSet<int> slots;
+            bool valid = true;
+            for (const SkillInstanceRef &ref : option) {
+                const int index = snapshot.sources.indexOf(ref);
+                const ServerPlayer *holder = findPlayerByObjectName(ref.ownerObjectName, true);
+                if (index < 0 || resolveSkillInstanceRootRef(ref) != snapshot.roots.at(index)
+                    || !holder || !holder->isAlive()
+                    || !holder->isSkillInstanceEffectAvailable(ref.key.skillName, ref.key.instanceID, use.from)
+                    || !canShowGeneralForSkill(ref)) { valid = false; break; }
+                const SkillInstanceRef &root = snapshot.roots.at(index);
+                const SkillInstance *source = use.from->findSkillInstance(root.key.skillName, root.key.instanceID);
+                if (!source || source->source != SourceInnate) { valid = false; break; }
+                const bool shown = source->bindHead == 1 ? use.from->hasShownGeneral()
+                    : source->bindHead == 2 && use.from->hasShownGeneral2();
+                if (!shown && !slots.contains(source->bindHead)) {
+                    slots << source->bindHead;
+                    toShow << root;
+                }
+            }
+            if (!valid) continue;
+            if (toShow.isEmpty()) return true;
+            if (toShow.size() < minimum) { minimum = toShow.size(); best.clear(); }
+            if (toShow.size() == minimum) best << toShow;
+        }
+        if (best.isEmpty()) return false;
+        SkillInstanceRef chosen = best.first().first();
+        if (minimum == 1 && best.size() > 1) {
+            QMap<QString, SkillInstanceRef> choices;
+            for (const QList<SkillInstanceRef> &option : best) {
+                const SkillInstanceRef &root = option.first();
+                const SkillInstance *source = use.from->findSkillInstance(root.key.skillName, root.key.instanceID);
+                choices.insert(source->bindHead == 1 ? "head" : "deputy", root);
+            }
+            if (choices.size() > 1) {
+                const QString choice = askForChoice(use.from, "HegemonyReveal", choices.keys().join("+"),
+                                                     QVariant::fromValue(use));
+                if (!choices.contains(choice)) return false;
+                chosen = choices.value(choice);
+            }
+        }
+        // Recheck all exact contributors after each reveal; a newly acquired
+        // same-name source cannot rescue a paid use whose original source died.
+        if (!showGeneralForSkill(chosen)) return false;
+    }
+    return false;
+}
+
 bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 {
 	if (!use.card || !use.from) return false;
@@ -3386,6 +3496,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		use.m_addHistory = false;
 	const Card*card = use.card->validate(use);
 	if(card==nullptr) return false;
+	prepareTargetModSkillReveal(use);
 	notifyCardProvenance("use", use.from, card, use.sourceRef, use.activationRef);
 	// Provenance already publishes the card; private target drafts stay private.
 	ResolutionScope resolution(*this, QStringLiteral("card"), use.from, use.from, nullptr, card->objectName());
@@ -3610,6 +3721,13 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		saveSkillContext(skillCardCtx);
 	}
 
+	{
+		CardUseStruct selection = use;
+		// validate() may replace a virtual card without changing use.card yet.
+		if (use.card->getRealCard() != card) selection.card = card;
+		planTargetModSkillReveal(selection);
+		use.targetModReveal = selection.targetModReveal;
+	}
 	if (use.card->isVirtualCard()) ids = use.card->getSubcards();
 	else ids << use.card->getId();
 	foreach(int id, ids){
@@ -3637,6 +3755,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	if (use.m_addHistory){
 		add_history = true;
 		addPlayerHistory(use.from, key);
+		use.targetModReveal.historyKey = key;
 	}
 
 	if (isSkillCard || isViewAsCard) {
@@ -4733,6 +4852,78 @@ void Room::showGeneral(ServerPlayer *player, const QString &position)
 	args << player->objectName();
 	args << position;
 	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+}
+
+bool Room::isGeneralHiddenForSkill(const SkillInstanceRef &ref) const
+{
+	if (!Config.EnableHegemony || !ref.isValid()) return false;
+	const SkillInstanceRef root = resolveSkillInstanceRootRef(ref);
+	ServerPlayer *owner = root.isValid()
+		? findPlayerByObjectName(root.ownerObjectName, true) : nullptr;
+	const SkillInstance *instance = owner
+		? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
+	// Helpers and attachments follow their exact root, never a same-name copy.
+	return instance && instance->source == SourceInnate
+		&& ((instance->bindHead == 1 && !owner->hasShownGeneral())
+			|| (instance->bindHead == 2 && !owner->hasShownGeneral2()));
+}
+
+bool Room::canShowGeneralForSkill(const SkillInstanceRef &ref) const
+{
+	// Rule-created cards and equipment can have no general skill source.
+	if (!Config.EnableHegemony || !ref.isValid()) return true;
+	const SkillInstanceRef root = resolveSkillInstanceRootRef(ref);
+	if (!root.isValid()) {
+		// Preserve the existing authorized ViewAsSkillV2 continuation after
+		// its source instance expires. A missing ordinary source still fails.
+		ServerPlayer *holder = findPlayerByObjectName(ref.ownerObjectName, true);
+		return holder && !holder->hasSkillInstance(ref.key.skillName, ref.key.instanceID)
+			&& dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(ref.key.skillName))
+			&& holder->getMark("ViewAsSkill_" + ref.key.skillName + "Effect") > 0;
+	}
+	ServerPlayer *owner = root.isValid()
+		? findPlayerByObjectName(root.ownerObjectName, true) : nullptr;
+	const SkillInstance *instance = owner
+		? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
+	if (!instance || owner->isSkillInvalid(root.key.skillName, root.key.instanceID)) return false;
+	if (instance->source != SourceInnate) return true;
+	const int slot = instance->bindHead;
+	if (slot != 1 && slot != 2) return false;
+	const bool head = slot == 1;
+	if (head ? owner->hasShownGeneral() : owner->hasShownGeneral2()) return true;
+	return owner->isAlive() && owner->canShowGeneral(head ? "h" : "d");
+}
+
+bool Room::isSkillPreshownForTrigger(const SkillInstanceRef &ref) const
+{
+    if (!Config.EnableHegemony || !ref.isValid()) return true;
+    const SkillInstanceRef root = resolveSkillInstanceRootRef(ref);
+    ServerPlayer *owner = root.isValid() ? findPlayerByObjectName(root.ownerObjectName, true) : nullptr;
+    const SkillInstance *instance = owner ? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
+    if (!instance) return false;
+    if (instance->source != SourceInnate || !isGeneralHiddenForSkill(ref)) return true;
+    const Skill *skill = Sanguosha->getSkill(root.key.skillName);
+    // Donor AI automatically preshows; this also covers trust/disconnect
+    // without replacing the human owner's saved opt-in preferences.
+    return skill && (!skill->canPreshow() || owner->getAI()
+        || owner->hasPreshowedSkill(SkillInstanceUtils::formatName(root.key.skillName, root.key.instanceID)));
+}
+
+bool Room::showGeneralForSkill(const SkillInstanceRef &ref)
+{
+	if (!canShowGeneralForSkill(ref)) return false;
+	if (!Config.EnableHegemony || !ref.isValid()) return true;
+	const SkillInstanceRef root = resolveSkillInstanceRootRef(ref);
+	if (!root.isValid()) return true; // Continuation was checked above; no general remains to reveal.
+	ServerPlayer *owner = findPlayerByObjectName(root.ownerObjectName, true);
+	const SkillInstance *instance = owner->findSkillInstance(root.key.skillName, root.key.instanceID);
+	if (instance->source != SourceInnate) return true;
+	const bool head = instance->bindHead == 1;
+	if (head ? owner->hasShownGeneral() : owner->hasShownGeneral2()) return true;
+	// Reveal the paid instance's source, never another same-named instance.
+	owner->showGeneral(head);
+	return owner->isAlive() && canShowGeneralForSkill(ref)
+		&& (head ? owner->hasShownGeneral() : owner->hasShownGeneral2());
 }
 
 void Room::preparePlayers()
@@ -6587,6 +6778,43 @@ int Room::getBossModeExpMult(int level) const
 		const_cast<Room *>(this)->output("bossModeExpMult error: " + error_msg);
 	}
 	return res;
+}
+
+void Room::processRequestPreshow(ServerPlayer *player, const QVariant &arg)
+{
+    if (!player) return;
+    const QVariantMap payload = arg.toMap();
+    const QVariant name = payload.value(QStringLiteral("skill_name"));
+    const QVariant enabled = payload.value(QStringLiteral("preshowed"));
+    if (name.metaType().id() != QMetaType::QString || enabled.metaType().id() != QMetaType::Bool
+        || name.toString().size() > 256) return;
+    // Socket callbacks never inspect the worker-owned instance containers.
+    // Coalesce repeat clicks and bound malformed identities until the next drain.
+    QMutexLocker locker(&m_preshowRequestMutex);
+    QVariantMap &pending = m_pendingPreshowRequests[player];
+    if (pending.contains(name.toString()) || pending.size() < 256)
+        pending.insert(name.toString(), enabled);
+}
+
+void Room::processPendingPreshows()
+{
+    QHash<ServerPlayer *, QVariantMap> pending;
+    {
+        QMutexLocker locker(&m_preshowRequestMutex);
+        pending.swap(m_pendingPreshowRequests);
+    }
+    if (!Config.EnableHegemony || isFinished()) return;
+    const QList<ServerPlayer *> players = getPlayers();
+    for (auto playerIt = pending.constBegin(); playerIt != pending.constEnd(); ++playerIt) {
+        ServerPlayer *player = playerIt.key();
+        if (!players.contains(player)) continue;
+        for (auto it = playerIt->constBegin(); it != playerIt->constEnd(); ++it) {
+            // Validate at application time: reveal/removal may have won the race.
+            if (SkillInstanceUtils::hasInstanceId(it.key()) && player->canPreshowSkill(it.key()))
+                player->setSkillPreshowed(it.key(), it.value().toBool());
+        }
+        player->notifyPreshow();
+    }
 }
 
 void Room::handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg)

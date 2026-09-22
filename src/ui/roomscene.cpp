@@ -499,6 +499,29 @@ RoomScene::RoomScene(QMainWindow*main_window)
 			enableTargets(dashboard->getSelected());
 			updateSelectedTargets();
 		});
+	connect(ClientInstance, &Client::skill_preshow_changed, this,
+		[this](const ClientPlayer *player, const QString &skillName, bool preshowed) {
+			if (player != Self)
+				return;
+			for (QSanSkillButton *button : m_skillButtons) {
+				if (button != nullptr && button->objectName() == skillName) {
+					const bool canPreshow = ServerInfo.EnableHegemony && player == Self
+						&& player->canPreshowSkill(skillName);
+					button->setPreshowEnabled(skillName, canPreshow, preshowed);
+					const Skill *skill = button->getSkill();
+					QString baseName;
+					const int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
+					if (skill != nullptr && canPreshow)
+						button->setToolTip(buildOracleTooltip(
+							skill->getOracleText(Self), skill->getDescription(Self, instanceId)) + QLatin1String("\n")
+							+ (preshowed ? tr("Pre-shown. Click to cancel.")
+							             : tr("Click to pre-show this skill.")));
+					else if (skill != nullptr)
+						button->setToolTip(buildOracleTooltip(
+							skill->getOracleText(Self), skill->getDescription(Self, instanceId)));
+				}
+			}
+		});
 	connect(ClientInstance,&Client::card_description_updated,this,&RoomScene::updateCardDescription);
 
 	m_guanxingBox = new GuanxingBox;
@@ -3170,6 +3193,25 @@ void RoomScene::addSkillButton(const QString &skillInstanceName)
 	foreach(QSanSkillButton*button,m_skillButtons) {
 		if(button->objectName() == skillInstanceName) {
 			const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+			const bool canPreshow = ServerInfo.EnableHegemony && activePlayer != nullptr
+				&& activePlayer == Self
+				&& activePlayer->canPreshowSkill(skillInstanceName);
+			button->setPreshowEnabled(skillInstanceName, canPreshow,
+				activePlayer != nullptr && activePlayer->hasPreshowedSkill(skillInstanceName));
+			if (canPreshow) {
+				const QString status = activePlayer->hasPreshowedSkill(skillInstanceName)
+					? tr("Pre-shown. Click to cancel.")
+					: tr("Click to pre-show this skill.");
+				QString ignoredBaseName;
+				const int instanceId = SkillInstanceUtils::parseName(skillInstanceName, ignoredBaseName);
+				button->setToolTip(buildOracleTooltip(skill->getOracleText(activePlayer),
+					skill->getDescription(activePlayer, instanceId)) + QLatin1String("\n") + status);
+			} else if (skill != nullptr) {
+				QString ignoredBaseName;
+				const int instanceId = SkillInstanceUtils::parseName(skillName, ignoredBaseName);
+				button->setToolTip(buildOracleTooltip(skill->getOracleText(activePlayer),
+					skill->getDescription(activePlayer, instanceId)));
+			}
 			if (activePlayer != nullptr) {
 				foreach (const Card *equip, activePlayer->getEquips()) {
 					if (equip != nullptr && equip->objectName() == baseName) {
@@ -3223,6 +3265,19 @@ void RoomScene::addSkillButton(const QString &skillInstanceName)
 	}
 	btn->setToolTip(buildOracleTooltip(skill->getOracleText(activePlayer),
 									 skill->getDescription(activePlayer, instanceId)));
+	const bool canPreshow = ServerInfo.EnableHegemony && activePlayer != nullptr
+		&& activePlayer == Self
+		&& activePlayer->canPreshowSkill(skillInstanceName);
+	btn->setPreshowEnabled(skillInstanceName, canPreshow,
+		activePlayer != nullptr && activePlayer->hasPreshowedSkill(skillInstanceName));
+	if (canPreshow) {
+		btn->setToolTip(btn->toolTip() + QLatin1String("\n")
+			+ (activePlayer->hasPreshowedSkill(skillInstanceName)
+				? tr("Pre-shown. Click to cancel.")
+				: tr("Click to pre-show this skill.")));
+	}
+	connect(btn, &QSanSkillButton::skill_preshow_toggled, ClientInstance,
+		&Client::requestSkillPreshow);
 	m_skillButtons << btn;
 	refreshSkillInstanceButtonLabels(baseName);
 }

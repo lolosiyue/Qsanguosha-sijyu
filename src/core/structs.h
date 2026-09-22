@@ -147,6 +147,18 @@ struct SlashEffectStruct {
     bool no_offset;
 };
 
+struct TargetModRevealState {
+    // Exact leaf/root pairs admitted before payment. Later hooks may remove a
+    // source, but cannot substitute a newly acquired same-named instance.
+    QList<SkillInstanceRef> sources;
+    QList<SkillInstanceRef> roots;
+    QString owner;
+    // Each entry is a legal original selection with only these concealed
+    // contributors. An empty entry means no general needs to be revealed.
+    QList<QList<SkillInstanceRef>> options;
+    QString historyKey;
+};
+
 struct CardUseStruct {
     enum CardUseReason
     {
@@ -188,6 +200,7 @@ struct CardUseStruct {
     int extra_use;
     bool bypass_cost;
     bool skipSkillEffect;
+    TargetModRevealState targetModReveal;
     bool hasSkillActivationRequest;
     SkillInstanceRef sourceRef;
     SkillInstanceRef activationRef;

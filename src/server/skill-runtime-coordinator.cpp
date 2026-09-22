@@ -7,6 +7,7 @@
 #include "room-runtime.h"
 #include "roomthread.h"
 #include "serverplayer.h"
+#include "settings.h"
 
 #include <limits>
 #include <QDebug>
@@ -434,6 +435,7 @@ void SkillRuntimeCoordinator::notifySkillInstanceSnapshot(ServerPlayer *receiver
     }
     const SkillInstanceMessage message = SkillInstanceMessage::makeSnapshot(entries);
     m_room.doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
+    if (Config.EnableHegemony) receiver->notifyPreshow();
 }
 
 void SkillRuntimeCoordinator::notifySkillInstanceUpsert(ServerPlayer *owner,
@@ -446,6 +448,7 @@ void SkillRuntimeCoordinator::notifySkillInstanceUpsert(ServerPlayer *owner,
             skillInstanceMessage(owner, instance, receiver == owner));
         m_room.doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
     }
+    if (Config.EnableHegemony && instance.source == SourceInnate) owner->notifyPreshow();
 }
 
 void SkillRuntimeCoordinator::notifySkillInstanceRemove(ServerPlayer *owner,
@@ -458,6 +461,7 @@ void SkillRuntimeCoordinator::notifySkillInstanceRemove(ServerPlayer *owner,
             owner->objectName(), instance.skillName, instance.instanceID);
         m_room.doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
     }
+    if (Config.EnableHegemony && instance.source == SourceInnate) owner->notifyPreshow();
 }
 
 void SkillRuntimeCoordinator::notifySkillInstanceAmount(ServerPlayer *owner,
@@ -823,22 +827,10 @@ void SkillRuntimeCoordinator::clearSkillInvalidityBySource(ServerPlayer *source)
 SkillInstanceRef SkillRuntimeCoordinator::resolveSkillInstanceRootRef(
     const SkillInstanceRef &ref) const
 {
-    SkillInstanceRef current = ref;
-    QList<SkillInstanceRef> visited;
-    while (current.isValid() && !visited.contains(current)) {
-        visited << current;
-        ServerPlayer *owner = m_room.findPlayerByObjectName(current.ownerObjectName, true);
-        if (!owner)
-            return SkillInstanceRef();
-        const SkillInstance *instance = owner->findSkillInstance(current.key.skillName,
-                                                                  current.key.instanceID);
-        if (!instance)
-            return SkillInstanceRef();
-        if (!instance->parentRef.isValid())
-            return current;
-        current = instance->parentRef;
-    }
-    return SkillInstanceRef();
+    return SkillInstanceUtils::resolveRootRef(ref, [this](const SkillInstanceRef &current) {
+        const ServerPlayer *owner = m_room.findPlayerByObjectName(current.ownerObjectName, true);
+        return owner ? owner->findSkillInstance(current.key.skillName, current.key.instanceID) : nullptr;
+    });
 }
 
 bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)

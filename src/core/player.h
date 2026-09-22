@@ -178,6 +178,10 @@ public:
     bool removeSkillInstance(const QString &skillName, int instanceID);
     bool hasSkillInstance(const QString &skillName, int instanceID) const;
     const SkillInstance *findSkillInstance(const QString &skillName, int instanceID) const;
+    // Continuous V2 effects only: validity plus the exact root's reveal state.
+    // Trigger candidates continue using getValidSkillInstanceIds().
+    bool isSkillInstanceEffectAvailable(const QString &skillName, int instanceID,
+                                        const Player *targetModPreviewOwner = nullptr) const;
     QList<SkillInstanceKey> getChildSkillInstanceKeys(const SkillInstanceKey &parent) const;
     QList<SkillInstance> getSkillInstances() const;
     void clearSkillInstances();
@@ -458,6 +462,7 @@ public:
     bool canShowGeneral(const QString &position) const;
     bool inHeadSkills(const QString &skill_name) const;
     bool inDeputySkills(const QString &skill_name) const;
+    bool canPreshowSkill(const QString &name) const;
     void setSkillPreshowed(const QString &skill, bool preshowed = true);
     void setSkillsPreshowed(const QString &flag = "hd", bool preshowed = true);
     bool hasPreshowedSkill(const QString &name) const;
@@ -481,6 +486,9 @@ protected:
     QStringList skills, acquired_skills;
     QMap<QString, bool> head_skills;
     QMap<QString, bool> deputy_skills;
+    // Owner-private opt-in, keyed by exact innate instance (not display name).
+    QSet<QString> m_preshowedSkillInstances;
+    mutable QMutex m_preshowMutex;
     QSet<QString> head_acquired_skills, deputy_acquired_skills;
     bool general_showed;
     bool general2_showed;

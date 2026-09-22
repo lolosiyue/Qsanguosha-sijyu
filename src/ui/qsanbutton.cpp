@@ -276,6 +276,13 @@ QSanSkillButton::QSanSkillButton(QGraphicsItem *parent)
     _m_canDisable = true;
     _m_skill = nullptr;
     _m_viewAsSkill = nullptr;
+    _m_preshowEnabled = false;
+    _m_savedStyle = _m_style;
+    _m_savedState = _m_state;
+    _m_savedEmitActivateSignal = false;
+    _m_savedEmitDeactivateSignal = false;
+    _m_savedCanEnable = true;
+    _m_savedCanDisable = true;
     connect(this, SIGNAL(clicked()), this, SLOT(onMouseClick()));
     _m_skill = nullptr;
 }
@@ -287,7 +294,14 @@ void QSanSkillButton::_setSkillType(SkillType type)
 
 void QSanSkillButton::onMouseClick()
 {
-    if (_m_skill == nullptr) return;
+	if (_m_skill == nullptr) return;
+	if (_m_preshowEnabled) {
+		const bool requestedState = isDown();
+		// Wait for the owner-only server notification before changing the display.
+		setState(requestedState ? S_STATE_UP : S_STATE_DOWN);
+		emit skill_preshow_toggled(_m_preshowSkillName, requestedState);
+		return;
+	}
     if ((_m_style == S_STYLE_TOGGLE && isDown() && _m_emitActivateSignal) || _m_style == S_STYLE_PUSH) {
         emit skill_activated();
         emit skill_activated(_m_skill);
@@ -295,6 +309,63 @@ void QSanSkillButton::onMouseClick()
         emit skill_deactivated();
         emit skill_deactivated(_m_skill);
     }
+}
+
+void QSanSkillButton::setPreshowEnabled(const QString &skillName, bool enabled, bool preshowed)
+{
+	if (enabled && !_m_preshowEnabled) {
+		_m_savedStyle = _m_style;
+		_m_savedState = _m_state;
+		_m_savedEmitActivateSignal = _m_emitActivateSignal;
+		_m_savedEmitDeactivateSignal = _m_emitDeactivateSignal;
+		_m_savedCanEnable = _m_canEnable;
+		_m_savedCanDisable = _m_canDisable;
+	}
+	if (!enabled && _m_preshowEnabled) {
+		_m_preshowEnabled = false;
+		_m_preshowSkillName.clear();
+		_m_style = _m_savedStyle;
+		_m_emitActivateSignal = _m_savedEmitActivateSignal;
+		_m_emitDeactivateSignal = _m_savedEmitDeactivateSignal;
+		_m_canEnable = _m_savedCanEnable;
+		_m_canDisable = _m_savedCanDisable;
+		setState(_m_savedState);
+		QSanButton::setEnabled(_m_savedState != S_STATE_DISABLED);
+		return;
+	}
+	_m_preshowEnabled = enabled;
+	_m_preshowSkillName = enabled ? skillName : QString();
+	if (enabled) {
+		// Keep the normal toggle button usable even when the skill itself is inactive.
+		_m_style = S_STYLE_TOGGLE;
+		_m_emitActivateSignal = false;
+		_m_emitDeactivateSignal = false;
+		QSanButton::setEnabled(true);
+		setPreshowState(preshowed);
+	} else {
+		// Ordinary skill buttons retain the configuration established by setSkill().
+	}
+}
+
+void QSanSkillButton::setEnabled(bool enabled)
+{
+	if (_m_preshowEnabled) {
+		// Skill refreshes disable ordinary activation buttons; pre-show remains a
+		// separate owner-authorized action while the skill is hidden.
+		Q_UNUSED(enabled);
+		QSanButton::setEnabled(true);
+		return;
+	}
+	if (!_m_canEnable && enabled) return;
+	if (!_m_canDisable && !enabled) return;
+	QSanButton::setEnabled(enabled);
+}
+
+void QSanSkillButton::setPreshowState(bool preshowed)
+{
+	if (!_m_preshowEnabled)
+		return;
+	setState(preshowed ? S_STATE_DOWN : S_STATE_UP);
 }
 
 void QSanSkillButton::setSkill(const Skill *skill)

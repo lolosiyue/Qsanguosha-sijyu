@@ -2678,11 +2678,10 @@ void ServerPlayer::showGeneral(bool head_general, bool trigger_event, bool sendL
 void ServerPlayer::notifyPreshow()
 {
     QVariantMap preshowMap;
-    foreach (const QString &skill, head_skills.keys()) {
-        preshowMap[skill] = head_skills.value(skill);
-    }
-    foreach (const QString &skill, deputy_skills.keys()) {
-        preshowMap[skill] = deputy_skills.value(skill);
+    for (const SkillInstance &instance : getSkillInstances()) {
+        if (instance.source != SourceInnate) continue;
+        const QString name = SkillInstanceUtils::formatName(instance.skillName, instance.instanceID);
+        preshowMap[name] = hasPreshowedSkill(name);
     }
     QVariantMap args{{QStringLiteral("schema_version"), 1},
                      {QStringLiteral("player_name"), objectName()},
