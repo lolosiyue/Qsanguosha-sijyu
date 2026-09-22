@@ -1,0 +1,34 @@
+# 國戰陣包：既有技能引用與 V2 遷移
+
+2026-09-22 原始碼檢查點。共用技能直接引用目前註冊的身份局實作，不複製類別或建立同名國戰版本。
+
+| 武將 | 共用技能 | 國戰 V2 |
+| --- | --- | --- |
+| 鄧艾 | `tuntian`、`jixi` | `heg_ziliang` |
+| 曹洪 | — | `heg_huyuan`、`heg_heyi`；附屬 `heg_feiying` |
+| 姜維 | `tiaoxin` | 沿用 `HGuanxing("heg_yizhi")`；`heg_tianfu` |
+| 蔣琬費禕 | — | `heg_shengxi`、`heg_shoucheng` |
+| 蔣欽 | — | `heg_shangyi`、`heg_niaoxiang` |
+| 徐盛 | — | `heg_yicheng` |
+| 于吉 | — | `heg_qianhuan` |
+| 何太后 | `zhendu`、`qiluan` | — |
+| 君劉備 | — | `heg_zhangwu`、`heg_shouyue`、`heg_jizhao` |
+
+| 契約 | 處理 |
+| --- | --- |
+| 共用版本 | 五項技能沿用各自既有的 V1／V2 類型、AI、翻譯及 related helpers；不宣稱共用技能也已遷移 V2。身份局說明的 `_p` 是翻譯鍵後綴，引用以實際技能 ID 為準。 |
+| 共用差異 | 急襲採共用 `jixi`，不再有舊 `heg_jixi` 的主將限定；鄧艾主將體力調整仍保留。戚亂沿用共用版每擊殺一人可摸三張，不保留舊國戰固定三張的差異。屯田沿用共用版判定與收田流程。 |
+| 主副將 | 資糧保留副將技；遺志保留副將技及體力調整；天覆保留主將技。 |
+| 選擇／付款 | 資糧、護援、千幻使用只回傳選擇的 V2 proxy；選擇保存在外層 SkillContext。護援裝備移動、千幻移除幻牌在 pay；資糧贈牌與護援後續棄牌在效果階段。AI 暫存資料使用 scoped restore，不作權威選擇儲存。 |
+| 尚義 | ViewAsSkillV2，每 activation instance 每階段一次；展示手牌在 pay，觀看對方手牌／暗將及棄牌在目標效果。維持私密通知對象。 |
+| 陣法 | 召喚使用 V2 proxy，與舊陣法共用既有合法性查詢；實際召喚仍由 ServerPlayer::summonFriends 執行。鹤翼／天覆由 record 投影暫授技能，透過既有 parentRef 附屬實例登錄回收，不以技能名稱刪除其他來源。 |
+| 生息 | 依技能實例記錄本出牌階段是否造成傷害；候選查詢不再修改旗標。摸牌數走 V2 amount。 |
+| 章武 | 同一 V2 實作處理收回、置底與置底後摸牌；移除 move 中的卡牌使用 removeCardIds 維持平行欄位。移除舊共用旗標及 draw helper。 |
+| 激詔 | 詢問在 cost、限定標記在 pay；保留補牌、回至兩血、失去授鉞並獲得國戰仁德。 |
+| 舊卡牌 | 移除八個舊 SkillCard／召喚類別及 meta-object 註冊；舊卡字串不再支援。AI 同批改為 ActiveSkillCard。 |
+| 裝備 | `heg_formation_equip` 的飛龍奪鳳現有 WeaponSkillV2 實作不修改。 |
+| 驗證 | 僅靜態檢查；既有 content contract 增補註冊、V2 proxy、非法選擇與舊卡移除案例。建置、focused executable、GUI、完整局及 CI 均 NOT RUN；未執行本地 CTest。 |
+
+## 提交邊界
+
+本批提交陣包武將技能、HFormationPackage 翻譯、共用召喚查詢及本文件。飛龍奪鳳裝備移植、共用技能搬遷到身份包、其他國戰核心變更、綜合 content test 與外部 AI 倉庫均保留在各自工作範圍；外部 AI 已回寫，但不納入本次主倉庫 commit。提交快照保留原有 `Zhendu`／`Qiluan` 定義及翻譯供名稱引用，工作區的另項搬遷差異保留。

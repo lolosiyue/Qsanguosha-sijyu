@@ -12,6 +12,9 @@ inline bool isHegemonyCardClassName(const QString &name)
 }
 
 
+// Shared summon eligibility for the legacy and V2 entry points.
+bool canSummonOriginalHegemonyArray(const Player *player, const QString &skillName, const QString &arrayType);
+
 // The 2014 selector returns the decision maker, not necessarily the skill owner.
 // Keep that contract separate from TriggerSkillV2's owner-indexed selectors.
 class HegemonyTriggerSkill : public TriggerSkill

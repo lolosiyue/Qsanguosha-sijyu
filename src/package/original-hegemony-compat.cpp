@@ -234,7 +234,7 @@ public:
 
     const Card *viewAs() const override
     {
-        QString name = objectName().mid(QStringLiteral("heg_").size()); // heg_niaoxiang -> HNiaoxiangSummon
+        QString name = objectName().mid(QStringLiteral("heg_").size()); // Remaining legacy arrays keep their registered summon cards.
         if (name.isEmpty()) return nullptr;
         name[0] = name.at(0).toUpper();
         Card *card = Sanguosha->cloneSkillCard("H" + name + "Summon");
@@ -244,52 +244,59 @@ public:
 
     bool isEnabledAtPlay(const Player *player) const override
     {
-        if (player->getAliveSiblings().size() < 3
-            || player->hasFlag("Global_SummonFailed")) return false;
-        bool canReveal = false;
-        for (const SkillInstance &instance : player->getSkillInstances()) {
-            if (instance.skillName != objectName()
-                || player->isSkillInvalid(instance.skillName, instance.instanceID)) continue;
-            if (instance.visible || instance.bindHead == 0
-                || player->canShowGeneral(instance.bindHead == 1 ? "h" : "d")) {
-                canReveal = true;
-                break;
-            }
-        }
-        if (!canReveal) return false;
-        if (m_type == QLatin1String("Siege")) {
-            if (player->willBeFriendWith(player->getNextAlive())
-                && player->willBeFriendWith(player->getLastAlive())) return false;
-            if (!player->willBeFriendWith(player->getNextAlive())
-                && !player->getNextAlive(2)->hasShownOneGeneral()
-                && player->getNextAlive()->hasShownOneGeneral()) return true;
-            if (!player->willBeFriendWith(player->getLastAlive()))
-                return !player->getLastAlive(2)->hasShownOneGeneral()
-                    && player->getLastAlive()->hasShownOneGeneral();
-        } else if (m_type == QLatin1String("Formation")) {
-            int count = player->aliveCount(false);
-            int asked = count;
-            for (int i = 1; i < count; ++i) {
-                const Player *target = player->getNextAlive(i);
-                if (player->isFriendWith(target)) continue;
-                if (!target->hasShownOneGeneral()) return true;
-                asked = i;
-                break;
-            }
-            count -= asked;
-            for (int i = 1; i < count; ++i) {
-                const Player *target = player->getLastAlive(i);
-                if (player->isFriendWith(target)) continue;
-                return !target->hasShownOneGeneral();
-            }
-        }
-        return false;
+        return canSummonOriginalHegemonyArray(player, objectName(), m_type);
     }
+
 private:
     QString m_type;
 };
 
 } // namespace
+
+bool canSummonOriginalHegemonyArray(const Player *player, const QString &skillName, const QString &arrayType)
+{
+    if (!player) return false;
+    if (player->getAliveSiblings().size() < 3
+        || player->hasFlag("Global_SummonFailed")) return false;
+    bool canReveal = false;
+    for (const SkillInstance &instance : player->getSkillInstances()) {
+        if (instance.skillName != skillName
+            || player->isSkillInvalid(instance.skillName, instance.instanceID)) continue;
+        if (instance.visible || instance.bindHead == 0
+            || player->canShowGeneral(instance.bindHead == 1 ? "h" : "d")) {
+            canReveal = true;
+            break;
+        }
+    }
+    if (!canReveal) return false;
+    if (arrayType == QLatin1String("Siege")) {
+        if (player->willBeFriendWith(player->getNextAlive())
+            && player->willBeFriendWith(player->getLastAlive())) return false;
+        if (!player->willBeFriendWith(player->getNextAlive())
+            && !player->getNextAlive(2)->hasShownOneGeneral()
+            && player->getNextAlive()->hasShownOneGeneral()) return true;
+        if (!player->willBeFriendWith(player->getLastAlive()))
+            return !player->getLastAlive(2)->hasShownOneGeneral()
+                && player->getLastAlive()->hasShownOneGeneral();
+    } else if (arrayType == QLatin1String("Formation")) {
+        int count = player->aliveCount(false);
+        int asked = count;
+        for (int i = 1; i < count; ++i) {
+            const Player *target = player->getNextAlive(i);
+            if (player->isFriendWith(target)) continue;
+            if (!target->hasShownOneGeneral()) return true;
+            asked = i;
+            break;
+        }
+        count -= asked;
+        for (int i = 1; i < count; ++i) {
+            const Player *target = player->getLastAlive(i);
+            if (player->isFriendWith(target)) continue;
+            return !target->hasShownOneGeneral();
+        }
+    }
+    return false;
+}
 
 HegemonyTriggerSkill::HegemonyTriggerSkill(const QString &name)
     : TriggerSkill(name)
