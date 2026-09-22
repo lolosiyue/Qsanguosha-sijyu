@@ -4907,7 +4907,8 @@ MobileStYJ2012Package::MobileStYJ2012Package()
     mobile_gongsunzan->addSkill("qiaomeng");
 
     General *mobile_liubiao = new General(this, "mobile_liubiao", "qun", 3);
-    mobile_liubiao->addSkill("olzishou");
+    mobile_liubiao->addSkill("zishou");
+    mobile_liubiao->addSkill("#zishou");
     mobile_liubiao->addSkill(new MobileZongshi);
     mobile_liubiao->addSkill(new MobileZongshiKeep);
     related_skills.insert("mobilezongshi", "#mobilezongshi-keep");

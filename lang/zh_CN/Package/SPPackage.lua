@@ -83,14 +83,6 @@ return {
 	["xintan"] = "心惔",
 	[":xintan"] = "出牌阶段限一次，你可以将两张“焚”置入弃牌堆并选择一名角色，该角色失去1点体力。",
 
-	["#ol_liubiao"] = "跨蹈汉南",
-	["ol_liubiao"] = "刘表[OL]",
-	["&ol_liubiao"] = "刘表" ,
-	["designer:ol_liubiao"] = "管乐",
-	["illustrator:ol_liubiao"] = "关东煮",
-	["olzishou"] = "自守",
-	[":olzishou"] = "摸牌阶段摸牌时，你可以额外摸X张牌（X为现存势力数）。若如此做，你于本回合出牌阶段内使用的牌不能指定其他角色为目标。",
-
 	["ol_xingcai"] = "星彩[OL]" ,
 	["&ol_xingcai"] = "星彩" ,
 	["olshenxian"] = "甚贤" ,

@@ -109,8 +109,10 @@ return {
 	["zishou"] = "自守",
 	[":zishou"] = "摸牌阶段摸牌时，你可以额外摸X张牌（X为现存势力数）。若如此做，你于本回合出牌阶段内使用的牌不能指定其他角色为目标。",
 
+	["#ol_liubiao"] = "跨蹈汉南",
 	["ol_liubiao"] = "刘表[OL]",
 	["&ol_liubiao"] = "刘表",
+	["designer:ol_liubiao"] = "管乐",
 	["illustrator:ol_liubiao"] = "关东煮",
 	["olzishou"] = "自守",
 	[":olzishou"] = "摸牌阶段，你可以多摸X张牌（X为全场势力数），然后本回合内，当你对其他角色造成伤害时，防止此伤害。",
