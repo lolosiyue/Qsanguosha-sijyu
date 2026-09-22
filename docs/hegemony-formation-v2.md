@@ -27,7 +27,7 @@
 | 激詔 | 詢問在 cost、限定標記在 pay；保留補牌、回至兩血、失去授鉞並獲得國戰仁德。 |
 | 舊卡牌 | 移除八個舊 SkillCard／召喚類別及 meta-object 註冊；舊卡字串不再支援。AI 同批改為 ActiveSkillCard。 |
 | 裝備 | `heg_formation_equip` 的飛龍奪鳳現有 WeaponSkillV2 實作不修改。 |
-| 驗證 | 僅靜態檢查；既有 content contract 增補註冊、V2 proxy、非法選擇與舊卡移除案例。建置、focused executable、GUI、完整局及 CI 均 NOT RUN；未執行本地 CTest。 |
+| 驗證 | 僅靜態檢查；獨立 formation contract 包含註冊、V2 proxy、非法選擇與舊卡移除案例。建置、focused executable、GUI、完整局及 CI 均 NOT RUN；未執行本地 CTest。 |
 
 ## 同一 V2 技能的身份局分流
 
@@ -46,7 +46,7 @@
 
 天覆／鶴翼的存續資料綁定技能實例，投影為帶有 `parentRef` 的附屬授技；回收保留其他來源的原生或獲得技能。身份局關閉三項陣法召喚入口。資糧、疑城與千幻從 `ctx.invoker` 取得事件角色，避免把 V2 cost 的擁有者參數誤當成受益者。
 
-外部 formation AI 在身份局註冊對應回應，國戰仍經 bundle gate 載入；不載入整套國戰共用策略。契約案例新增鶴翼連續／跨首尾／全場與非法選擇、空手尚義、鳥翔頻率及召喚模式門檻；本批僅靜態檢查，未執行案例。
+外部 formation AI 在身份局註冊對應回應，國戰仍經 bundle gate 載入；不載入整套國戰共用策略。`tests/hegemony-formation-test.cpp`（`--suite hegemony-formation`）涵蓋鶴翼連續／跨首尾／全場與非法選擇、空手尚義、鳥翔頻率及召喚模式門檻；本批僅靜態檢查，未執行案例。
 
 ## 提交邊界
 
