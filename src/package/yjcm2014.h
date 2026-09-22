@@ -81,12 +81,12 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
-class NewDingpinCard : public SkillCard
+class PindiCard : public SkillCard
 {
     Q_OBJECT
 
 public:
-    Q_INVOKABLE NewDingpinCard();
+    Q_INVOKABLE PindiCard();
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void onEffect(CardEffectStruct &effect) const;
 };

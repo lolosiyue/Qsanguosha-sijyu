@@ -499,7 +499,8 @@ return {
 	["tenyearjiefan"] = "解烦",
 	[":tenyearjiefan"] = "限定技，出牌阶段，你可以选择一名角色，令攻击范围内包含该角色的角色各选择一项：1.弃置一张武器牌；2.令该角色摸一张牌。若此时是第一轮游戏，则回合结束时此限定技视为未发动过。",
 
-	["tenyear_zhoucang"] = "界周仓",
+	["tenyear_zhoucang"] = "界周仓[十周年]",
+	["&tenyear_zhoucang"] = "界周仓",
 	["illustrator:tenyear_zhoucang"] = "君桓文化",
 	["tenyearzhongyong"] = "忠勇",
 	[":tenyearzhongyong"] = "当你使用的【杀】结算完后，你可以将此【杀】及目标角色使用的【闪】交给一名其他角色。若其中有红色牌，其可对你攻击范围内的角色使用一张【杀】；若其中有黑色牌，其摸一张牌。",
