@@ -173,6 +173,8 @@ public:
     bool isHideSkill() const;
     bool isShiMingSkill() const;
     virtual bool canPreshow() const;
+    virtual bool relateToPlace(bool head = true) const;
+    void setRelateToPlace(const QString &place);
     virtual bool shouldBeVisible(const Player *Self) const;
     QString getDescription(const Player *target = nullptr, int instanceId = 0) const;
     QString getOracleText(const Player *target = nullptr) const;
@@ -219,6 +221,7 @@ public:
 protected:
     Frequency frequency;
     QString limit_mark;
+    QString relate_to_place;
     QString club_name;
     QString m_phaseName;
     bool attached_lord_skill;
@@ -289,6 +292,10 @@ public:
     virtual bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const;
     virtual bool cardSelectionFeasible(const ActiveSkillRequest &request) const;
     virtual const Card *createCard(const ActiveSkillRequest &request) const;
+    // Equipment activations reuse their registered EquipSkillV2 source contract;
+    // they do not manufacture a Player SkillInstance for the equipment.
+    bool prepareEquipSource(Room *room, SkillContext &context) const;
+    bool isEquipSourceAvailable(Room *room, const SkillContext &context) const;
     // Opt-in AI contract: exactly getN() distinct hand cards, independently accepted
     // by canSelectCard(empty). Every selection produces the same card identity and
     // target rules; no suit/number inheritance, equipment cost or selection side effect.
@@ -600,6 +607,7 @@ public:
     MaxCardsSkill(const QString &name);
 
     virtual int getExtra(const Player *target) const;
+    virtual int getExtra(const Player *target, MaxCardsType::MaxCardsCount type) const;
     virtual int getFixed(const Player *target) const;
 };
 
@@ -639,6 +647,8 @@ public:
     virtual int getResidueNum(const Player *from, const Card *card, const Player *to) const;
     virtual int getDistanceLimit(const Player *from, const Card *card, const Player *to) const;
     virtual int getExtraTargetNum(const Player *from, const Card *card) const;
+    // A skill, rather than a card subclass, declares when its hidden source is required.
+    virtual bool requiresShowForUse(const CardUseStruct &use) const;
 
 protected:
     QString pattern;

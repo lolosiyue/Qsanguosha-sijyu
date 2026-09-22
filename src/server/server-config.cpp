@@ -94,6 +94,7 @@ const QList<SettingSpec> &settingSpecs()
         booleanSetting("DisableChat", false),
         booleanSetting("Enable2ndGeneral", false),
         booleanSetting("EnableHegemony", false),
+        booleanSetting("RewardTheFirstShowingPlayer", true),
         booleanSetting("EnableMeleeMode", false),
         integerSetting("MaxHpScheme", 0, 0, 3),
         integerSetting("Scheme0Subtraction", 3, -5, 12),
@@ -105,8 +106,8 @@ const QList<SettingSpec> &settingSpecs()
         integerSetting("LordMaxChoice", -1, -1, 15),
         integerSetting("NonLordMaxChoice", 2, 0, 15),
         integerSetting("HegemonyMaxChoice", 7, 5, 21),
-        integerSetting("HegemonyMaxShown", 2, 1, 11),
-        enumSetting("HegemonyCompanionReward", "Postponed", {"Instant", "Postponed"}),
+        // Deprecated HEG settings remain readable from persisted configs but are
+        // no longer exposed or used by the Hegemony rule.
 
         booleanSetting("EnableAI", true),
         booleanSetting("AIChat", true),

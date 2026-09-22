@@ -30,6 +30,31 @@ int General::getMaxHp() const
     return max_hp;
 }
 
+int General::getDoubleMaxHp() const
+{
+    return max_hp;
+}
+
+int General::getMaxHpHead() const
+{
+    return max_hp + head_max_hp_adjusted_value;
+}
+
+int General::getMaxHpDeputy() const
+{
+    return max_hp + deputy_max_hp_adjusted_value;
+}
+
+void General::setHeadMaxHpAdjustedValue(int adjusted_value)
+{
+    head_max_hp_adjusted_value = adjusted_value;
+}
+
+void General::setDeputyMaxHpAdjustedValue(int adjusted_value)
+{
+    deputy_max_hp_adjusted_value = adjusted_value;
+}
+
 QString General::getKingdom() const
 {
 	if(kingdom.contains("+")){

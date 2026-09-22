@@ -236,16 +236,6 @@
         <translation>双将 </translation>
     </message>
     <message>
-        <location filename="../src/dialog/mainwindowserverlist.cpp" line="543"/>
-        <source>同将 </source>
-        <translation>同将 </translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/mainwindowserverlist.cpp" line="545"/>
-        <source>暗将 </source>
-        <translation>暗将 </translation>
-    </message>
-    <message>
         <location filename="../src/dialog/mainwindowserverlist.cpp" line="547"/>
         <source>国战 </source>
         <translation>国战 </translation>
@@ -6130,11 +6120,6 @@ P = 你自己, R = 你所在的房间</translation>
         <translation>-1表示所有默认主公均会出现在选将列表中</translation>
     </message>
     <message>
-        <location filename="../src/server/server.cpp" line="362"/>
-        <source>Enable Same</source>
-        <translation>同将模式</translation>
-    </message>
-    <message>
         <location filename="../src/server/server.cpp" line="367"/>
         <source>Sum - X</source>
         <translation>和减X</translation>
@@ -6166,23 +6151,8 @@ P = 你自己, R = 你所在的房间</translation>
     </message>
     <message>
         <location filename="../src/server/server.cpp" line="405"/>
-        <source>Max shown num for hegemony</source>
-        <translation>同势力最大亮将数</translation>
-    </message>
-    <message>
-        <location filename="../src/server/server.cpp" line="488"/>
-        <source>Companion Reward</source>
-        <translation>珠联璧合奖励</translation>
-    </message>
-    <message>
-        <location filename="../src/server/server.cpp" line="485"/>
-        <source>Instant</source>
-        <translation>即时</translation>
-    </message>
-    <message>
-        <location filename="../src/server/server.cpp" line="486"/>
-        <source>Postponed</source>
-        <translation>延后</translation>
+        <source>Reward the first showing player</source>
+        <translation>首位亮將玩家獎勵</translation>
     </message>
     <message>
         <source>启用UPNP端口映射</source>

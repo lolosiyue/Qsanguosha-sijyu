@@ -151,6 +151,14 @@ public:
 		return result;
 	}
 
+    void setValue(PlayerNumStruct *playerNum) {
+        $self->setValue(QVariant::fromValue(*playerNum));
+    }
+
+    PlayerNumStruct toPlayerNum() const {
+        return $self->value<PlayerNumStruct>();
+    }
+
 	void setValue(MarkStruct *mark) {
 		$self->setValue(QVariant::fromValue(*mark));
 	}

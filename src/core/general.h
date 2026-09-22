@@ -23,6 +23,12 @@ public:
 
     // property getters/setters
     int getMaxHp() const;
+    // Donor hegemony counts each general's contribution in half-HP units.
+    int getDoubleMaxHp() const;
+    int getMaxHpHead() const;
+    int getMaxHpDeputy() const;
+    void setHeadMaxHpAdjustedValue(int adjusted_value = -1);
+    void setDeputyMaxHpAdjustedValue(int adjusted_value = -1);
     QString getKingdom() const;
     QString getKingdoms() const;
     bool isMale() const;
@@ -90,6 +96,8 @@ public slots:
 private:
     QString kingdom;
     int max_hp;
+    int head_max_hp_adjusted_value = 0;
+    int deputy_max_hp_adjusted_value = 0;
     Gender gender;
     bool lord;
     QSet<QString> extra_set;

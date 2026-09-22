@@ -113,8 +113,7 @@ private:
     QCheckBox *melee_mode_checkbox;
     QLabel *hegemony_maxchoice_label;
     QSpinBox *hegemony_maxchoice_spinbox;
-    QLabel *hegemony_maxshown_label;
-    QSpinBox *hegemony_maxshown_spinbox;
+    QCheckBox *reward_first_showing_checkbox;
     QLabel *max_hp_label;
     QComboBox *max_hp_scheme_ComboBox;
     QLabel *scheme0_subtraction_label;
@@ -153,8 +152,6 @@ private:
     QCheckBox *general_version_dedup;
     QCheckBox *checkBoxUpnp;
     QCheckBox *checkBoxAddToListServer;
-    QComboBox *hegemony_companion;
-    QLabel *hegemony_companion_label;
     QButtonGroup *extension_group;
     QButtonGroup *mode_group;
 

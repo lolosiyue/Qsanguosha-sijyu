@@ -379,6 +379,8 @@ QHash<int, QByteArray> HomeGeneralModel::roleNames() const
     return {
         { NameRole, "name" },
         { DisplayNameRole, "displayName" },
+        { CompanionsRole, "companions" },
+        { CompanionLabelRole, "companionLabel" },
         { NicknameRole, "nickname" },
         { KingdomRole, "kingdom" },
         { KingdomsRole, "kingdoms" },
@@ -402,6 +404,8 @@ QVariant HomeGeneralModel::data(const QModelIndex &index, int role) const
     switch (role) {
     case NameRole: return row.name;
     case DisplayNameRole: return row.displayName;
+    case CompanionsRole: return row.companions;
+    case CompanionLabelRole: return row.companionLabel;
     case NicknameRole: return row.nickname;
     case KingdomRole: return row.kingdom;
     case KingdomsRole: return row.kingdoms;
@@ -424,6 +428,7 @@ void HomeGeneralModel::ensureLoaded()
         return;
 
     const QList<const General *> list = Sanguosha->getAllGenerals();
+    const QString companionLabel = Sanguosha->translate(QStringLiteral("CompanionEffect"));
     m_all.clear();
     m_all.reserve(list.size());
     for (const General *general : list) {
@@ -432,6 +437,8 @@ void HomeGeneralModel::ensureLoaded()
         Row row;
         row.name = general->objectName();
         row.displayName = Sanguosha->translate(row.name);
+        row.companions = general->getCompanions();
+        row.companionLabel = companionLabel;
         row.nickname = nicknameOf(row.name);
         row.kingdom = general->getKingdom();
         row.kingdoms = general->getKingdoms();
@@ -1130,6 +1137,8 @@ QVariantMap HomeController::generalDetails(const QString &generalName) const
     result.insert(QStringLiteral("startHujia"), general->getStartHujia());
     result.insert(QStringLiteral("package"), Sanguosha->translate(general->getPackage()));
     result.insert(QStringLiteral("companions"), general->getCompanions());
+    result.insert(QStringLiteral("companionLabel"),
+                  Sanguosha->translate(QStringLiteral("CompanionEffect")));
 
     QString mapping;
     if (!general->getImage().isEmpty() && general->getImage() != generalName)

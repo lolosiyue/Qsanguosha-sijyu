@@ -20,6 +20,8 @@ public:
     enum Role {
         NameRole = Qt::UserRole + 1,
         DisplayNameRole,
+        CompanionsRole,
+        CompanionLabelRole,
         NicknameRole,
         KingdomRole,
         KingdomsRole,
@@ -37,6 +39,8 @@ public:
     struct Row {
         QString name;
         QString displayName;
+        QString companions;
+        QString companionLabel;
         QString nickname;
         QString kingdom;
         QString kingdoms;

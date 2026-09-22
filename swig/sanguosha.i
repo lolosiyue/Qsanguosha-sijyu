@@ -161,6 +161,11 @@ public:
 
 	// property getters/setters
 	int getMaxHp() const;
+    int getDoubleMaxHp() const;
+    int getMaxHpHead() const;
+    int getMaxHpDeputy() const;
+    void setHeadMaxHpAdjustedValue(int adjusted_value = -1);
+    void setDeputyMaxHpAdjustedValue(int adjusted_value = -1);
 	QString getKingdom() const;
 	QString getKingdoms() const;
 	bool isMale() const;
@@ -216,10 +221,14 @@ public:
 	}
 };
 
+namespace MaxCardsType {
+    enum MaxCardsCount { Max = 1, Normal = 0, Min = -1 };
+}
+
 class Player: public QObject {
 public:
 	enum Phase { RoundStart, Start, Judge, Draw, Play, Discard, Finish, NotActive, PhaseNone };
-	enum Place { PlaceHand, PlaceEquip, PlaceDelayedTrick, PlaceJudge, PlaceSpecial, DiscardPile, DrawPile, PlaceTable, PlaceUnknown, PlaceWuGu };
+	enum Place { PlaceHand, PlaceEquip, PlaceDelayedTrick, PlaceJudge, PlaceSpecial, DiscardPile, DrawPile, PlaceTable, PlaceUnknown, PlaceWuGu, DrawPileBottom };
 	enum Role { UnknownRole = -1, Lord, Loyalist, Rebel, Renegade };
 
 	explicit Player(QObject*parent);
@@ -246,6 +255,7 @@ public:
 	void setShownRole(bool shown);
 
 	int getMaxCards() const;
+	int getMaxCards(MaxCardsType::MaxCardsCount type) const;
 
 	QString getKingdom() const;
 	void setKingdom(const char*kingdom);
@@ -261,6 +271,10 @@ public:
 	void setGeneral2Name(const char*general_name);
 	QString getGeneral2Name() const;
 	const General*getGeneral2() const;
+    const General *getActualGeneral1() const;
+    const General *getActualGeneral2() const;
+    QString getActualGeneral1Name() const;
+    QString getActualGeneral2Name() const;
 
 	void setState(const char*state);
 	QString getState() const;
@@ -304,6 +318,9 @@ public:
 	const General*getGeneral() const;
 
 	bool isLord() const;
+    const Player *getLord(bool include_death = false) const;
+    bool ownSkill(const QString &skill_name) const;
+    bool ownSkill(const Skill *skill) const;
 	int acquireSkill(const char*skill_name, bool head = true, int instanceId = -1);
 	void detachSkill(const char*skill_name);
 	void detachAllSkills();
@@ -390,6 +407,7 @@ public:
 
 	void setChained(bool chained);
 	bool isChained() const;
+    bool canBeChainedBy(const Player *source = nullptr) const;
 
 	bool canSlash(const Player*other, const Card*slash, bool distance_limit = true,
 				int rangefix = 0, const QList<const Player*>&others = QList<const Player*>()) const;
@@ -521,10 +539,19 @@ static bool isNostalGeneral(const Player*p, const char*general_name);
     QList<const Player *> getFormation() const;
     bool hasShownOneGeneral() const;
     bool hasShownGeneral() const;
+    bool hasShownGeneral1() const;
+    bool hasShownAllGenerals() const;
+    bool isHegemonyLord() const;
+    virtual int getPlayerNumWithSameKingdom(const QString &reason,
+        const QString &kingdom = QString(), MaxCardsType::MaxCardsCount type = MaxCardsType::Max) const;
+    virtual QStringList getBigKingdoms(const QString &reason,
+        MaxCardsType::MaxCardsCount type = MaxCardsType::Min) const;
     bool hasShownGeneral2() const;
     void setGeneralShowed(bool showed);
     void setGeneral2Showed(bool showed);
     bool canShowGeneral(const QString &position) const;
+    QStringList disableShow(bool head = true) const;
+    QStringList getDisableShow() const;
     bool inHeadSkills(const QString &skill_name) const;
     bool inDeputySkills(const QString &skill_name) const;
     void setSkillPreshowed(const QString &skill, bool preshowed = true);
@@ -713,6 +740,9 @@ bool damageRevises(QVariant&data, int n);
     bool inFormationRalation(ServerPlayer *teammate) const;
     void askForGeneralShow();
     void showHiddenSkill(const QString &skill_name);
+    void showGeneral(bool head_general = true, bool trigger_event = true, bool sendLog = true);
+    void hideGeneral(bool head_general);
+    void removeGeneral(bool head_general);
 
     ServerPlayer *getLastAlive(int n = 1) const;
 
@@ -1052,6 +1082,15 @@ struct CardResponseStruct {
 	bool nullified;//响应无效
 };
 
+struct PlayerNumStruct {
+    PlayerNumStruct(int num = 0, const QString &toCalculate = QString(),
+        MaxCardsType::MaxCardsCount type = MaxCardsType::Max, const QString &reason = QString());
+    MaxCardsType::MaxCardsCount m_type;
+    int m_num;
+    QString m_toCalculate;
+    QString m_reason;
+};
+
 struct MarkStruct {
 	MarkStruct();
 	ServerPlayer*who;
@@ -1293,6 +1332,14 @@ enum TriggerEvent {
 	ShownCardChanged,
 	BrokenEquipChanged,
 
+    // Keep appended events in the same order as structs.h.
+    GeneralShown,
+    GeneralHidden,
+    GeneralRemoved,
+    ConfirmPlayerNum,
+    RemoveStateChanged,
+    DFDebut,
+
 	NumOfEvents
 };
 
@@ -1394,6 +1441,7 @@ public:
 	virtual bool targetFilter(const QList<const Player*>&targets, const Player*to_select, const Player*self) const;
 	virtual bool targetFilter(const QList<const Player*>&targets, const Player*to_select, const Player*self, int&maxVotes) const;
 	virtual bool isAvailable(const Player*player) const;
+    virtual bool isTransferable() const;
 	virtual const Card*validate(CardUseStruct&card_use) const;
 	virtual const Card*validateInResponse(ServerPlayer*user) const;
 
@@ -2123,6 +2171,8 @@ public:
 bool isHideSkill() const;
     bool isShiMingSkill() const;
     virtual bool canPreshow() const;
+    virtual bool relateToPlace(bool head = true) const;
+    void setRelateToPlace(const QString &place);
     virtual bool shouldBeVisible(const Player*Self) const;
 	QString getDescription(const Player*target = nullptr) const;
 	QString getNotice(int index) const;
@@ -2330,6 +2380,9 @@ public:
 	void sendJudgeResult(const JudgeStruct*judge);
 	QList<int> getNCards(int n, bool update_pile_number = true, bool isTop = true);
 	ServerPlayer*getLord() const;
+    ServerPlayer *getLord(const QString &kingdom, bool includeDeath = false) const;
+    void setPlayerDisableShow(ServerPlayer *player, const QString &flags, const QString &reason);
+    void removePlayerDisableShow(ServerPlayer *player, const QString &reason);
 	QList<int> askForGuanxing(ServerPlayer*zhuge, const QList<int>&cards, GuanxingType guanxing_type = GuanxingBothSides, bool sendLod = true);
 	void returnToTopDrawPile(QList<int> cards);
 	void returnToEndDrawPile(QList<int> cards);
