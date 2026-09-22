@@ -865,6 +865,21 @@ void TriggerSkillV2::record(TriggerEvent, Room *, ServerPlayer *, SkillContext &
 {
 }
 
+bool TriggerSkillV2::prepareSource(Room *room, SkillContext &ctx) const
+{
+    return isSourceAvailable(room, ctx);
+}
+
+bool TriggerSkillV2::isSourceAvailable(Room *room, const SkillContext &ctx) const
+{
+    const SkillInstanceRef &source = ctx.activationRef;
+    return ctx.owner && source.isValid()
+        && ctx.owner->hasSkillInstance(source.key.skillName, source.key.instanceID)
+        && !ctx.owner->isSkillInvalid(source.key.skillName, source.key.instanceID)
+        && room->canShowGeneralForSkill(source)
+        && room->isSkillPreshownForTrigger(source);
+}
+
 bool TriggerSkillV2::cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
 {
     return true;
@@ -1362,10 +1377,47 @@ bool TreasureSkill::isEquipSkill() const
     return true;
 }
 
-WeaponSkillV2::WeaponSkillV2(const QString &name, const QString &equipmentName)
+EquipSkillV2::EquipSkillV2(const QString &name, const QString &equipmentName)
     : TriggerSkillV2(name), m_equipmentName(equipmentName.isEmpty() ? name : equipmentName)
 {
     attached_lord_skill = true;
+}
+
+bool EquipSkillV2::prepareSource(Room *room, SkillContext &ctx) const
+{
+    ctx.activationRef = SkillInstanceRef();
+    ctx.sourceRef = SkillInstanceRef();
+    if (!ctx.owner) return false;
+    // Event-owned effects are explicitly admitted by their event selector,
+    // even when the card has left play or its former holder has died.
+    if (usesEventSource(ctx)) return true;
+    if (!static_cast<const TriggerSkill *>(this)->triggerable(ctx.owner)) return false;
+    for (const Card *equip : ctx.owner->getEquips())
+        if (equip->objectName() == m_equipmentName) return true;
+    for (const SkillInstanceRef &source : ctx.owner->viewAsEquipSources(m_equipmentName)) {
+        if (!source.isValid() || (room->canShowGeneralForSkill(source)
+            && room->isSkillPreshownForTrigger(source))) {
+            ctx.activationRef = source;
+            ctx.sourceRef = source;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool EquipSkillV2::isSourceAvailable(Room *room, const SkillContext &ctx) const
+{
+    // Physical/event/property effects survive payment that consumes the equip.
+    // A virtual skill grant must retain the exact admitted instance throughout.
+    if (!ctx.activationRef.isValid()) return true;
+    return TriggerSkillV2::isSourceAvailable(room, ctx)
+        && ctx.owner->viewAsEquipSources(m_equipmentName).contains(ctx.activationRef)
+        && static_cast<const TriggerSkill *>(this)->triggerable(ctx.owner);
+}
+
+WeaponSkillV2::WeaponSkillV2(const QString &name, const QString &equipmentName)
+    : EquipSkillV2(name, equipmentName)
+{
 }
 
 bool WeaponSkillV2::triggerable(const ServerPlayer *target) const
@@ -1381,9 +1433,8 @@ TriggerList WeaponSkillV2::triggerable(TriggerEvent, Room *, ServerPlayer *targe
 }
 
 ArmorSkillV2::ArmorSkillV2(const QString &name, const QString &equipmentName)
-    : TriggerSkillV2(name), m_equipmentName(equipmentName.isEmpty() ? name : equipmentName)
+    : EquipSkillV2(name, equipmentName)
 {
-    attached_lord_skill = true;
 }
 
 bool ArmorSkillV2::triggerable(const ServerPlayer *target) const
@@ -1399,9 +1450,8 @@ TriggerList ArmorSkillV2::triggerable(TriggerEvent, Room *, ServerPlayer *target
 }
 
 TreasureSkillV2::TreasureSkillV2(const QString &name, const QString &equipmentName)
-    : TriggerSkillV2(name), m_equipmentName(equipmentName.isEmpty() ? name : equipmentName)
+    : EquipSkillV2(name, equipmentName)
 {
-    attached_lord_skill = true;
 }
 
 bool TreasureSkillV2::triggerable(const ServerPlayer *target) const

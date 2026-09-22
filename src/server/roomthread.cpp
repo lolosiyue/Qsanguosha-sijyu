@@ -1213,7 +1213,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 									ctx.current_event = triggerEvent;
 									ctx.amount = v2->getBaseAmount();
 									ctx.trigger_count = triggerCounts.value(key);
-									skillContexts << ctx;
+									if (v2->prepareSource(room, ctx)) skillContexts << ctx;
 									// Selecting a later target declines the preceding targets.
 									equipmentTargetPrefixes.insert(p->objectName() + '|' + ctx.skill_name,
 										targets.mid(0, i + 1));
@@ -1232,8 +1232,6 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 						foreach (int resolvedId, instanceIds) {
 							const SkillInstanceRef ref(p->objectName(), SkillInstanceKey(skillName, resolvedId));
-							if (!v2->isEquipSkill()
-								&& (!room->canShowGeneralForSkill(ref) || !room->isSkillPreshownForTrigger(ref))) continue;
 							QString key = skillInstanceRuntimeKey(p, skillName, resolvedId);
 							int currentTriggerCount = triggerCounts.value(key, 0);
 							int effectiveMultiplier = qMax(multiplier, maxMultipliers.value(key, 0));
@@ -1255,7 +1253,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.multiplier = effectiveMultiplier;
 								ctx.original_data = &data;
 								ctx.current_event = triggerEvent;
-								skillContexts << ctx;
+								if (v2->prepareSource(room, ctx)) skillContexts << ctx;
 							}
 						}
 					}
@@ -1263,33 +1261,6 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			}
 		}
 
-        // Resolve virtual equipment through the same grant instances used by
-        // Player::viewAsEquip; physical and source-less grants need no reveal.
-        for (auto it = skillContexts.begin(); it != skillContexts.end();) {
-            const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
-                Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(it->skill_name)));
-            const QString equipName = definition ? definition->equipmentName() : QString();
-            bool physical = false;
-            if (!equipName.isEmpty()) {
-                for (const Card *equip : it->owner->getEquips())
-                    if (equip->objectName() == equipName) physical = true;
-            }
-            if (equipName.isEmpty() || physical) { ++it; continue; }
-            const auto sources = it->owner->viewAsEquipSources(equipName);
-            // Empty sources also allow event-owned post-uninstall effects.
-            bool admitted = sources.isEmpty();
-            for (const SkillInstanceRef &source : sources) {
-                if (!source.isValid() || (room->canShowGeneralForSkill(source)
-                    && room->isSkillPreshownForTrigger(source))) {
-                    it->activationRef = source;
-                    it->sourceRef = source;
-                    admitted = true;
-                    break;
-                }
-            }
-            if (admitted) ++it;
-            else it = skillContexts.erase(it);
-        }
 
 		if (skillContexts.isEmpty())
 			break;
@@ -1409,17 +1380,11 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		if (!skill_owner) continue;
 		const bool equipment = v2->isEquipSkill();
 		const SkillInstanceRef selectedSource = selected_ctx->activationRef;
-		const auto sourceAvailable = [&]() {
-			// Paying may consume the equipment itself. An admitted card effect
-			// survives that payment; general skills still require their exact source.
-            if (equipment && !selectedSource.isValid()) return true;
-            if (equipment && (!skill_owner->viewAsEquipSources(v2->equipmentName()).contains(selectedSource)
-                || !static_cast<const TriggerSkill *>(v2)->triggerable(skill_owner))) return false;
-            return skill_owner->hasSkillInstance(selectedSource.key.skillName, selectedSource.key.instanceID)
-                && !skill_owner->isSkillInvalid(selectedSource.key.skillName, selectedSource.key.instanceID)
-				&& room->canShowGeneralForSkill(selectedSource)
-                && room->isSkillPreshownForTrigger(selectedSource);
-		};
+        // Keep the admitted source immutable across cost/interceptor callbacks.
+        const SkillContext sourceContext = *selected_ctx;
+        const auto sourceAvailable = [&]() {
+            return v2->isSourceAvailable(room, sourceContext);
+        };
 		if (!sourceAvailable()) continue;
 
 		QString key = skillInstanceRuntimeKey(skill_owner, skillName, instanceId);
@@ -1504,7 +1469,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		*selected_ctx = ctx_data.value<SkillContext>();
 
         // Interceptors may remove the exact grant after revelation as well.
-        if (equipment && selectedSource.isValid() && !sourceAvailable()) {
+        if (!sourceAvailable()) {
             skillHistory.finish(QStringLiteral("source_unavailable"));
             continue;
         }

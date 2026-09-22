@@ -474,7 +474,8 @@ class TriggerSkillV2 : public TriggerSkill, public AmountSkillV2
 public:
     TriggerSkillV2(const QString &name);
 
-    virtual QString equipmentName() const { return QString(); }
+    virtual bool prepareSource(Room *room, SkillContext &ctx) const;
+    virtual bool isSourceAvailable(Room *room, const SkillContext &ctx) const;
 
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
                                      ServerPlayer *player, QVariant &data) const;
@@ -785,47 +786,46 @@ public:
     virtual bool isEquipSkill() const override;
 };
 
-// Equipment keeps card-based eligibility; V2 supplies the common effect pipeline.
-class WeaponSkillV2 : public TriggerSkillV2
+// Equipment owns source admission; the dispatcher only runs the V2 lifecycle.
+class EquipSkillV2 : public TriggerSkillV2
+{
+public:
+    EquipSkillV2(const QString &name, const QString &equipmentName);
+    bool isEquipSkill() const override { return true; }
+    bool prepareSource(Room *room, SkillContext &ctx) const override;
+    bool isSourceAvailable(Room *room, const SkillContext &ctx) const override;
+
+protected:
+    // Opt in only when the selector validates a movement or card continuation.
+    virtual bool usesEventSource(const SkillContext &) const { return false; }
+    QString m_equipmentName;
+};
+
+class WeaponSkillV2 : public EquipSkillV2
 {
 public:
     explicit WeaponSkillV2(const QString &name, const QString &equipmentName = QString());
     bool triggerable(const ServerPlayer *target) const override;
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
                             QVariant &data) const override;
-    bool isEquipSkill() const override { return true; }
-    QString equipmentName() const override { return m_equipmentName; }
-
-private:
-    QString m_equipmentName;
 };
 
-class ArmorSkillV2 : public TriggerSkillV2
+class ArmorSkillV2 : public EquipSkillV2
 {
 public:
     explicit ArmorSkillV2(const QString &name, const QString &equipmentName = QString());
     bool triggerable(const ServerPlayer *target) const override;
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
                             QVariant &data) const override;
-    bool isEquipSkill() const override { return true; }
-    QString equipmentName() const override { return m_equipmentName; }
-
-private:
-    QString m_equipmentName;
 };
 
-class TreasureSkillV2 : public TriggerSkillV2
+class TreasureSkillV2 : public EquipSkillV2
 {
 public:
     explicit TreasureSkillV2(const QString &name, const QString &equipmentName = QString());
     bool triggerable(const ServerPlayer *target) const override;
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
                             QVariant &data) const override;
-    bool isEquipSkill() const override { return true; }
-    QString equipmentName() const override { return m_equipmentName; }
-
-private:
-    QString m_equipmentName;
 };
 
 class MarkAssignSkill : public GameStartSkill
