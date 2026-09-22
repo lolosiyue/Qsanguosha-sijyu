@@ -52,7 +52,7 @@ const ExpectedMigration expectedMigrations[] = {
     { "nos_liru", "NostalgiaYJCM2013", "nostal_yjcm2013", "YJCM2013" },
     { "nos_zhuran", "NostalgiaYJCM2013", "nostal_yjcm2013", "YJCM2013" },
     { "ol_guohuai", "OLStYJ2013", "ol_st_yj2013", "YJCM2013" },
-    { "new_zhuhuan", "NewYJCM2014", "NewYJCM2014", "YJCM2014" },
+    { "nos_zhuhuan", "NostalgiaYJCM2014", "nostal_yjcm2014", "YJCM2014" },
     { "ol_wuyi", "OLStYJ2014", "ol_st_yj2014", "YJCM2014" },
     { "ol_liuchen", "OLStYJ2015", "OLStYJ2015", "YJCM2015" },
     { "ol_sunxiu", "OLStYJ2015", "OLStYJ2015", "YJCM2015" },

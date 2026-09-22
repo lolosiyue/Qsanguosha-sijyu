@@ -1767,7 +1767,8 @@ YJCM2014Package::YJCM2014Package()
     ol_zhoucang->addSkill(new OLZhongyong);
 
     General *zhuhuan = new General(this, "zhuhuan", "wu"); // YJ 311
-    zhuhuan->addSkill(new Youdi);
+    zhuhuan->addSkill(new Fenli);
+    zhuhuan->addSkill(new Pingkou);
 
     addMetaObject<DingpinCard>();
     addMetaObject<PindiCard>();
@@ -1776,20 +1777,18 @@ YJCM2014Package::YJCM2014Package()
     addMetaObject<XianzhouCard>();
     addMetaObject<XianzhouDamageCard>();
     addMetaObject<SidiCard>();
+    addMetaObject<PingkouCard>();
 }
 
 ADD_PACKAGE(YJCM2014)
 
-NewYJCM2014Package::NewYJCM2014Package()
-    : Package("NewYJCM2014")
+NostalgiaYJCM2014Package::NostalgiaYJCM2014Package()
+    : Package("nostal_yjcm2014")
 {
-    General *new_zhuhuan = new General(this, "new_zhuhuan", "wu");
-    new_zhuhuan->addSkill(new Fenli);
-    new_zhuhuan->addSkill(new Pingkou);
-
-    addMetaObject<PingkouCard>();
+    General *nos_zhuhuan = new General(this, "nos_zhuhuan", "wu"); // YJ 311
+    nos_zhuhuan->addSkill(new Youdi);
 }
-ADD_PACKAGE(NewYJCM2014)
+ADD_PACKAGE(NostalgiaYJCM2014)
 
 void MigrateToOLStYJ2014(Package *pkg)
 {
