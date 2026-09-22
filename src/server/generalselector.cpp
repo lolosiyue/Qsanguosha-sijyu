@@ -280,13 +280,15 @@ void GeneralSelector::load1v1Table()
 			if (!match.hasMatch())
 				continue;
 
-			QStringList texts = match.capturedTexts();
-            QString name = texts.at(1);
-            int priority = texts.at(2).toInt();
+            // capturedTexts() stops at the last group that took part in the match, so
+            // a line without the trailing '*' yields only three entries. captured(3)
+            // answers an empty string for that optional group instead of going past the end.
+            const QString name = match.captured(1);
+            const int priority = match.captured(2).toInt();
 
             priority_1v1_table.insert(name, priority);
 
-            if (!texts.at(3).isEmpty())
+            if (!match.captured(3).isEmpty())
                 sacrifice << name;
         }
 
