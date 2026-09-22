@@ -1,5 +1,26 @@
 #include "general-version.h"
 
+#include <QSet>
+
+QStringList filterGeneralVersionsForMode(const QStringList &names, bool hegemony)
+{
+    QSet<QString> preferredCharacters;
+    foreach (const QString &name, names) {
+        if (name.startsWith(QLatin1String("heg_")) == hegemony)
+            preferredCharacters.insert(name.section('_', -1));
+    }
+
+    QStringList kept;
+    foreach (const QString &name, names) {
+        // Compare the complete character suffix, not substrings: a two-character
+        // general such as liushanliubei must not suppress liubei (or vice versa).
+        if (name.startsWith(QLatin1String("heg_")) == hegemony
+            || !preferredCharacters.contains(name.section('_', -1)))
+            kept << name;
+    }
+    return kept;
+}
+
 int generalVersionPriority(const QString &objectName)
 {
     const int separator = objectName.indexOf('_');
