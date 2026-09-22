@@ -4975,7 +4975,7 @@ public:
 						tos << p;
 				}
 				if (!tos.isEmpty())
-					room->askForUseSlashTo(target, tos, "@newzhongyong-slash");
+					room->askForUseSlashTo(target, tos, "@ol_zhongyong-slash");
 			}
 
 			if (black && target->isAlive())

@@ -1288,43 +1288,43 @@ public:
     }
 };
 
-NewDingpinCard::NewDingpinCard()
+PindiCard::PindiCard()
 {
 }
 
-bool NewDingpinCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
+bool PindiCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
-    return targets.isEmpty() && to_select->getMark("newdingpin_to-PlayClear") <=0 && to_select != Self;
+    return targets.isEmpty() && to_select->getMark("pindi_to-PlayClear") <=0 && to_select != Self;
 }
 
-void NewDingpinCard::onEffect(CardEffectStruct &effect) const
+void PindiCard::onEffect(CardEffectStruct &effect) const
 {
     Room *room = effect.from->getRoom();
-    room->addPlayerMark(effect.to, "newdingpin_to-PlayClear");
-    room->addPlayerMark(effect.from, "&newdingpin-PlayClear");
+    room->addPlayerMark(effect.to, "pindi_to-PlayClear");
+    room->addPlayerMark(effect.from, "&pindi-PlayClear");
 
     int type = Sanguosha->getCard(getSubcards().first())->getTypeId();
-    room->addPlayerMark(effect.from, "newdingpin_card" + QString::number(type) + "-PlayClear");
+    room->addPlayerMark(effect.from, "pindi_card" + QString::number(type) + "-PlayClear");
 
     if (effect.from->isDead() || effect.to->isDead()) return;
     QStringList choices;
     choices << "draw";
     if (!effect.to->isNude())
         choices << "discard";
-    QString choice = room->askForChoice(effect.from, "newdingpin", choices.join("+"));
-    int n = effect.from->getMark("&newdingpin-PlayClear");
+    QString choice = room->askForChoice(effect.from, "pindi", choices.join("+"));
+    int n = effect.from->getMark("&pindi-PlayClear");
     if (choice == "draw")
-        effect.to->drawCards(n, "newdingpin");
+        effect.to->drawCards(n, "pindi");
     else
-        room->askForDiscard(effect.to, "newdingpin", n, n, false, true);
+        room->askForDiscard(effect.to, "pindi", n, n, false, true);
     if (effect.from->isDead() || effect.to->isDead() || !effect.to->isWounded() || effect.from->isChained()) return;
     room->setPlayerChained(effect.from);
 }
 
-class NewDingpin : public OneCardViewAsSkill
+class Pindi : public OneCardViewAsSkill
 {
 public:
-    NewDingpin() : OneCardViewAsSkill("newdingpin")
+    Pindi() : OneCardViewAsSkill("pindi")
     {
     }
 
@@ -1335,22 +1335,22 @@ public:
 
     bool viewFilter(const Card *to_select) const
     {
-        int n = Self->getMark("newdingpin_card" + QString::number(to_select->getTypeId()) + "-PlayClear");
+        int n = Self->getMark("pindi_card" + QString::number(to_select->getTypeId()) + "-PlayClear");
         return n <= 0;
     }
 
     const Card *viewAs(const Card *originalCard) const
     {
-        NewDingpinCard *card = new NewDingpinCard;
+        PindiCard *card = new PindiCard;
         card->addSubcard(originalCard);
         return card;
     }
 };
 
-class NewFaen : public TriggerSkill
+class OLFaen : public TriggerSkill
 {
 public:
-    NewFaen() : TriggerSkill("newfaen")
+    OLFaen() : TriggerSkill("ol_faen")
     {
         events << TurnedOver << ChainStateChanged;
     }
@@ -1376,10 +1376,10 @@ public:
     }
 };
 
-class NewZhongyong : public TriggerSkill
+class OLZhongyong : public TriggerSkill
 {
 public:
-    NewZhongyong() : TriggerSkill("newzhongyong")
+    OLZhongyong() : TriggerSkill("ol_zhongyong")
     {
         events << CardOffset << CardFinished;
     }
@@ -1390,7 +1390,7 @@ public:
             CardEffectStruct effect = data.value<CardEffectStruct>();
             if (!effect.card->isKindOf("Slash")) return false;
             if (!effect.offset_card||!effect.offset_card->isKindOf("Jink")) return false;
-            QVariantList jink = effect.from->getTag("newzhongyong_jink" + effect.card->toString()).toList();
+            QVariantList jink = effect.from->getTag("ol_zhongyong_jink" + effect.card->toString()).toList();
             if (effect.offset_card->isVirtualCard() && effect.offset_card->subcardsLength() > 0) {
                 foreach (int id, effect.offset_card->getSubcards()) {
                     if (jink.contains(QVariant(id))) continue;
@@ -1400,7 +1400,7 @@ public:
                 if (!jink.contains(QVariant(effect.offset_card->getEffectiveId())))
                     jink << effect.offset_card->getEffectiveId();
             }
-            effect.from->setTag("newzhongyong_jink" + effect.card->toString(), jink);
+            effect.from->setTag("ol_zhongyong_jink" + effect.card->toString(), jink);
         } else {
             CardUseStruct use = data.value<CardUseStruct>();
             if (!use.card->isKindOf("Slash")) return false;
@@ -1412,7 +1412,7 @@ public:
             }
             if (targets.isEmpty()) return false;
 
-            QVariantList jink = player->getTag("newzhongyong_jink" + use.card->toString()).toList();
+            QVariantList jink = player->getTag("ol_zhongyong_jink" + use.card->toString()).toList();
             QList<int> slash_ids,jink_ids = ListV2I(jink);
 
             foreach (int id, use.card->getSubcards()) {
@@ -1429,7 +1429,7 @@ public:
             if (!jink_ids.isEmpty()) choices << "jink";
             if (choices.isEmpty()) return false;
 
-            ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "@newzhongyong-invoke", true, true);
+            ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "@ol_zhongyong-invoke", true, true);
             if (!target) return false;
             room->broadcastSkillInvoke(objectName());
 
@@ -1454,7 +1454,7 @@ public:
                     tos << p;
             }
             if (tos.isEmpty()) return false;
-            room->askForUseSlashTo(target, tos, "@newzhongyong-slash");
+            room->askForUseSlashTo(target, tos, "@ol_zhongyong-slash");
         }
         return false;
     }
@@ -1723,6 +1723,10 @@ YJCM2014Package::YJCM2014Package()
     chenqun->addSkill(new DingpinBf);
     related_skills.insert("dingpin", "#dingpinbf");
 
+    General *ol_chenqun = new General(this, "ol_chenqun", "wei", 3);
+    ol_chenqun->addSkill(new Pindi);
+    ol_chenqun->addSkill(new OLFaen);
+
     General *guyong = new General(this, "guyong", "wu", 3); // YJ 304
     guyong->addSkill(new Shenxing);
     guyong->addSkill(new Bingyi);
@@ -1759,10 +1763,14 @@ YJCM2014Package::YJCM2014Package()
     General *zhoucang = new General(this, "zhoucang", "shu"); // YJ 310
     zhoucang->addSkill(new Zhongyong);
 
+    General *ol_zhoucang = new General(this, "ol_zhoucang", "shu");
+    ol_zhoucang->addSkill(new OLZhongyong);
+
     General *zhuhuan = new General(this, "zhuhuan", "wu"); // YJ 311
     zhuhuan->addSkill(new Youdi);
 
     addMetaObject<DingpinCard>();
+    addMetaObject<PindiCard>();
     addMetaObject<ShenxingCard>();
     addMetaObject<BingyiCard>();
     addMetaObject<XianzhouCard>();
@@ -1775,18 +1783,10 @@ ADD_PACKAGE(YJCM2014)
 NewYJCM2014Package::NewYJCM2014Package()
     : Package("NewYJCM2014")
 {
-    General *new_chenqun = new General(this, "new_chenqun", "wei", 3);
-    new_chenqun->addSkill(new NewDingpin);
-    new_chenqun->addSkill(new NewFaen);
-
-    General *new_zhoucang = new General(this, "new_zhoucang", "shu");
-    new_zhoucang->addSkill(new NewZhongyong);
-
     General *new_zhuhuan = new General(this, "new_zhuhuan", "wu");
     new_zhuhuan->addSkill(new Fenli);
     new_zhuhuan->addSkill(new Pingkou);
 
-    addMetaObject<NewDingpinCard>();
     addMetaObject<PingkouCard>();
 }
 ADD_PACKAGE(NewYJCM2014)
