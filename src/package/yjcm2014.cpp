@@ -1206,10 +1206,10 @@ public:
     }
 };
 
-class NewSidi : public TriggerSkill
+class OLSidi : public TriggerSkill
 {
 public:
-    NewSidi() : TriggerSkill("newsidi")
+    OLSidi() : TriggerSkill("ol_sidi")
     {
         events << EventPhaseEnd << EventPhaseStart << PreCardUsed << EventPhaseChanging << Death;
     }
@@ -1234,7 +1234,7 @@ public:
                     if (pattern.contains("red") && pattern.contains("black")) break;
                 }
                 if (pattern.isEmpty()) continue;
-                const Card *card = room->askForCard(p, "^BasicCard|" + pattern.join(","), "@newsidi-discard:" + player->objectName(), data, objectName());
+                const Card *card = room->askForCard(p, "^BasicCard|" + pattern.join(","), "@ol_sidi-discard:" + player->objectName(), data, objectName());
                 if (!card) continue;
                 room->broadcastSkillInvoke(objectName());
                 QString colour = "";
@@ -1243,30 +1243,30 @@ public:
                 else if (card->isRed())
                     colour = "red";
                 if (colour == "") continue;
-                QStringList colours = player->property("newsidi_colour").toStringList();
+                QStringList colours = player->property("ol_sidi_colour").toStringList();
                 if (!colours.contains(colour)) {
                     colours << colour;
-                    room->setPlayerProperty(player, "newsidi_colour", colours);
+                    room->setPlayerProperty(player, "ol_sidi_colour", colours);
                     room->setPlayerCardLimitation(player, "use,response", QString(".|%1").arg(colour), true);
-                    room->addPlayerMark(player, "&newsidi+" + colour + "-Clear");
+                    room->addPlayerMark(player, "&ol_sidi+" + colour + "-Clear");
                 }
-                QStringList sidis = player->property("newsidi_from").toStringList();
+                QStringList sidis = player->property("ol_sidi_from").toStringList();
                 if (sidis.contains(p->objectName())) continue;
                 sidis << p->objectName();
-                room->setPlayerProperty(player, "newsidi_from", sidis);
+                room->setPlayerProperty(player, "ol_sidi_from", sidis);
             }
         } else if (event == EventPhaseEnd) {
             if (player->isDead() || player->getPhase() != Player::Play) return false;
-            if (player->getMark("newsidi_slash-PlayClear") > 0) return false;
+            if (player->getMark("ol_sidi_slash-PlayClear") > 0) return false;
             foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
                 if (player->isDead()) return false;
                 if (p->isDead() || !p->hasSkill(objectName())) continue;
-                QStringList sidis = player->property("newsidi_from").toStringList();
+                QStringList sidis = player->property("ol_sidi_from").toStringList();
                 if (!sidis.contains(p->objectName())) continue;
                 sidis.removeOne(p->objectName());
-                room->setPlayerProperty(player, "newsidi_from", sidis);
+                room->setPlayerProperty(player, "ol_sidi_from", sidis);
                 Slash *slash = new Slash(Card::NoSuit, 0);
-                slash->setSkillName("_newsidi");
+                slash->setSkillName("_ol_sidi");
                 slash->deleteLater();
                 if (!p->canSlash(player, slash, false)) continue;
                 room->sendCompulsoryTriggerLog(p, objectName(), true);
@@ -1276,13 +1276,13 @@ public:
             if (player->isDead() || player->getPhase() != Player::Play) return false;
             const Card *card = data.value<CardUseStruct>().card;
             if (!card->isKindOf("Slash")) return false;
-            room->addPlayerMark(player, "newsidi_slash-PlayClear");
+            room->addPlayerMark(player, "ol_sidi_slash-PlayClear");
         } else {
             if (event == EventPhaseChanging) {
                 if (data.value<PhaseChangeStruct>().to != Player::NotActive) return false;
             }
-            room->setPlayerProperty(player, "newsidi_colour", QStringList());
-            room->setPlayerProperty(player, "newsidi_from", QStringList());
+            room->setPlayerProperty(player, "ol_sidi_colour", QStringList());
+            room->setPlayerProperty(player, "ol_sidi_from", QStringList());
         }
         return false;
     }
@@ -1714,6 +1714,9 @@ YJCM2014Package::YJCM2014Package()
     caozhen->addSkill(new SidiTargetMod);
     related_skills.insert("sidi", "#sidi-target");
 
+    General *ol_caozhen = new General(this, "ol_caozhen", "wei");
+    ol_caozhen->addSkill(new OLSidi);
+
     General *chenqun = new General(this, "chenqun", "wei", 3); // YJ 303
     chenqun->addSkill(new Dingpin);
     chenqun->addSkill(new Faen);
@@ -1772,9 +1775,6 @@ ADD_PACKAGE(YJCM2014)
 NewYJCM2014Package::NewYJCM2014Package()
     : Package("NewYJCM2014")
 {
-    General *new_caozhen = new General(this, "new_caozhen", "wei");
-    new_caozhen->addSkill(new NewSidi);
-
     General *new_chenqun = new General(this, "new_chenqun", "wei", 3);
     new_chenqun->addSkill(new NewDingpin);
     new_chenqun->addSkill(new NewFaen);

@@ -470,7 +470,8 @@ return {
 	["@tenyearqiuyuan-invoke"] = "你可以发动“求援”",
 	["@tenyearqiuyuan-give"] = "请交给 %src 一张除【杀】以外的基本牌，否则你也成为此【杀】的目标",
 	
-	["tenyear_caozhen"] = "界曹真",
+	["tenyear_caozhen"] = "界曹真[十周年]",
+	["&tenyear_caozhen"] = "界曹真",
 	["illustrator:tenyear_caozhen"] = "凝聚永恒",
 	["tenyearsidi"] = "司敌",
 	[":tenyearsidi"] = "结束阶段，你可以将一张非基本牌置于武将牌上，称为“司敌”。其他角色的出牌阶段开始时，你可以移去一张“司敌”牌，然后该角色于此阶段内不能使用或打出与此“司敌”牌颜色相同的牌。此阶段结束时，若其没有使用【杀】，视为对其使用一张【杀】；若其没有使用锦囊牌，你摸两张牌。",
