@@ -1,6 +1,15 @@
 -- translation for SP Package
 
 return {
+    -- Shared skills formerly supplied by the retired hegemony package.
+	["shushen"] = "淑慎",
+	[":shushen"] = "当你回复1点体力后，你可以令一名其他角色回复1点体力或摸两张牌。",
+	["shushen-invoke"] = "你可以发动“淑慎”<br/> <b>操作提示</b>: 选择一名其他角色→点击确定<br/>",
+	["shushen:recover"] = "令该角色回复1点体力",
+	["shushen:draw"] = "令该角色摸两张牌",
+	["shenzhi"] = "神智",
+	[":shenzhi"] = "准备阶段，你可以弃置所有手牌：若你以此法弃置的牌不少于X张，你回复1点体力。（X为你的体力值）",
+
 	["ol_qifu"] = "OL·祈福",
 	["ol_sp"] = "OL·SP",
 	["ol_ccxh"] = "OL·璀璨星河",

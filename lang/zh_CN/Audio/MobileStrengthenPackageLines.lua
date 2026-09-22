@@ -1,6 +1,13 @@
 -- lines for MobileJXTP Package
 
 return {
+	["cv:dingfeng"] = "小鱼儿",
+	["~dingfeng"] = "贴身肉搏竟能赢我，呃……",
+    -- Shared identity skills from the retired hegemony package.
+	["$duanbing1"] = "一寸短一寸险。",
+	["$fenxun1"] = "杀你个措手不及！",
+	["$fenxun2"] = "来一个杀一个，来一对杀一双！",
+
 	--界张飞-手杀
 	["$mobileliyong1"] = "贼众百万，吾已不放在眼里！",
 	["$mobileliyong2"] = "吾以一敌千，放马过来吧！",

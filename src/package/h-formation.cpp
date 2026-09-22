@@ -676,97 +676,6 @@ public:
     }
 };
 
-class Zhendu : public TriggerSkill
-{
-public:
-    Zhendu() : TriggerSkill("zhendu")
-    {
-        events << EventPhaseStart;
-    }
-
-    bool triggerable(const ServerPlayer *target) const
-    {
-        return target != nullptr;
-    }
-
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
-    {
-        if (player->getPhase() != Player::Play)
-            return false;
-
-        foreach (ServerPlayer *hetaihou, room->getOtherPlayers(player)) {
-            if (!TriggerSkill::triggerable(hetaihou))
-                continue;
-
-            if (!hetaihou->canDiscard(hetaihou, "h") || hetaihou->getPhase() == Player::Play)
-                continue;
-            if (room->askForCard(hetaihou, ".", "@zhendu-discard", QVariant(), objectName())) {
-                Analeptic *analeptic = new Analeptic(Card::NoSuit, 0);
-                analeptic->setSkillName("_zhendu");
-	    	   	analeptic->deleteLater();
-				hetaihou->peiyin(this);
-                room->useCard(CardUseStruct(analeptic, player, QList<ServerPlayer *>()), true);
-                if (player->isAlive())
-                    room->damage(DamageStruct(objectName(), hetaihou, player));
-            }
-        }
-        return false;
-    }
-};
-
-class Qiluan : public TriggerSkill
-{
-public:
-    Qiluan() : TriggerSkill("qiluan")
-    {
-        events << Death << EventPhaseChanging;
-        frequency = Frequent;
-    }
-
-    bool triggerable(const ServerPlayer *target) const
-    {
-        return target != nullptr;
-    }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        if (triggerEvent == Death) {
-            DeathStruct death = data.value<DeathStruct>();
-            if (death.who != player)
-                return false;
-            ServerPlayer *killer = death.damage ? death.damage->from : nullptr;
-            ServerPlayer *current = room->getCurrent();
-
-            if (killer && current && (current->isAlive() || death.who == current)
-                && current->getPhase() != Player::NotActive)
-                killer->addMark(objectName());
-        } else {
-            PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-            if (change.to == Player::NotActive) {
-                QList<ServerPlayer *> hetaihous;
-                QList<int> mark_count;
-                foreach (ServerPlayer *p, room->getAllPlayers()) {
-                    if (p->getMark(objectName()) > 0 && TriggerSkill::triggerable(p)) {
-                        hetaihous << p;
-                        mark_count << p->getMark(objectName());
-                    }
-                    p->setMark(objectName(), 0);
-                }
-
-                for (int i = 0; i < hetaihous.length(); i++) {
-                    ServerPlayer *p = hetaihous.at(i);
-                    for (int j = 0; j < mark_count.at(i); j++) {
-                        if (p->isDead() || !room->askForSkillInvoke(p, objectName())) break;
-                        room->broadcastSkillInvoke(objectName());
-                        p->drawCards(3, objectName());
-                    }
-                }
-            }
-        }
-        return false;
-    }
-};
-
 HFormationPackage::HFormationPackage()
     : Package("heg_formation")
 {
@@ -813,8 +722,8 @@ HFormationPackage::HFormationPackage()
     liubei->addSkill(new HShouyue);
     liubei->addSkill(new HJizhao);
 
-    // Existing identity skills remain registered once; generals reference their names.
-    skills << new Zhendu << new Qiluan << new HFeiying;
+    // Shared identity skills are registered by their owning packages.
+    skills << new HFeiying;
 }
 
 ADD_PACKAGE(HFormation)

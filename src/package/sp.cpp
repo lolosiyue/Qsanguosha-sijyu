@@ -16,6 +16,68 @@
 #include "yjcm2013.h"
 #include "wind.h"
 
+class Shushen : public TriggerSkillV2 {
+public:
+    Shushen() : TriggerSkillV2("shushen") { events << HpRecover; m_baseAmount = 2; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override {
+        const int count = data.value<RecoverStruct>().recover;
+        if (player && player->isAlive() && player->hasSkill(objectName()) && count > 0
+            && !room->getOtherPlayers(player).isEmpty())
+            return TriggerList{{player, {objectName() + "*" + QString::number(count)}}};
+        return {};
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner) return false;
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner),
+            objectName(), "shushen-invoke", true, true);
+        if (!target) return false;
+        ctx.targets = {target};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        room->broadcastSkillInvoke(objectName(), target->getGeneralName().contains("liubei") ? 2 : 1, ctx.owner);
+        if (target->isWounded() && room->askForChoice(ctx.owner, objectName(), "recover+draw", QVariant::fromValue(target)) == "recover")
+            room->recover(target, RecoverStruct(objectName(), ctx.owner));
+        else
+            target->drawCards(getEffectiveAmount(ctx), objectName());
+        return false;
+    }
+};
+
+class Shenzhi : public TriggerSkillV2 {
+public:
+    Shenzhi() : TriggerSkillV2("shenzhi") { events << EventPhaseStart; }
+    static bool canPay(ServerPlayer *owner) {
+        if (!owner || !owner->isAlive() || owner->isKongcheng()) return false;
+        for (const Card *card : owner->getHandcards())
+            if (!owner->canDiscard(owner, card->getEffectiveId())) return false;
+        return true;
+    }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override {
+        return player && player->hasSkill(objectName()) && player->getPhase() == Player::Start && canPay(player)
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!canPay(ctx.owner) || !room->askForSkillInvoke(ctx.owner, objectName())) return false;
+        ctx.extra_data = ctx.owner->getHandcardNum();
+        return true;
+    }
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!canPay(ctx.owner)) return false;
+        // Freeze the whole payment before nested discard events alter the hand or HP.
+        DummyCard payment(ctx.owner->handCards());
+        ctx.extra_data = payment.subcardsLength();
+        room->throwCard(&payment, ctx.owner);
+        return true;
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        room->broadcastSkillInvoke(objectName(), ctx.owner);
+        if (ctx.owner && ctx.owner->isAlive() && ctx.extra_data.toInt() >= ctx.owner->getHp())
+            room->recover(ctx.owner, RecoverStruct(ctx.owner, nullptr, getEffectiveAmount(ctx), objectName()));
+        return false;
+    }
+};
+
 class SPMoonSpearSkill : public WeaponSkill
 {
 public:
@@ -2212,8 +2274,8 @@ SPPackage::SPPackage()
     maliang->addSkill(new Naman);
 
     General *sp_ganfuren = new General(this, "sp_ganfuren", "shu", 3, false); // SP 037
-    sp_ganfuren->addSkill("shushen");
-    sp_ganfuren->addSkill("shenzhi");
+    sp_ganfuren->addSkill(new Shushen);
+    sp_ganfuren->addSkill(new Shenzhi);
 
     General *huangjinleishi = new General(this, "huangjinleishi", "qun", 3, false); // SP 038
     huangjinleishi->addSkill(new Fulu);

@@ -1,6 +1,18 @@
 -- translation for MobileZhi Package
 
 return {
+    ["zhendu"] = "鸩毒",
+    [":zhendu"] = "其他角色的出牌阶段开始时，你可以弃置一张手牌，令其视为使用一张【酒】（计入次数限制），然后你对其造成1点伤害。",
+    ["@zhendu-discard"] = "你可以弃置一张手牌发动“鸩毒”",
+    ["qiluan"] = "戚乱",
+    [":qiluan"] = "一名角色的回合结束时，你每于此回合内杀死一名角色，可以摸三张牌。",
+
+    -- Shared skills formerly supplied by the retired hegemony package.
+	["duanbing"] = "短兵",
+    [":duanbing"] = "你使用【杀】可以额外选择一名距离为1的目标。",
+	["fenxun"] = "奋迅",
+    [":fenxun"] = "出牌阶段限一次，你可以弃置一张牌并选择一名其他角色：若如此做，本回合你无视与该角色的距离。",
+
 	["mobilezhi"] = "始计篇·智",
 	["mobileyong"] = "始计篇·勇",
 	["mobileyan"] = "始计篇·严",
