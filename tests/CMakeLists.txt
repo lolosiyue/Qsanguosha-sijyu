@@ -889,6 +889,7 @@ add_executable(qsanguosha_server_tests
     server-tests-main.cpp
     room-notifier-test.cpp
     skill-runtime-coordinator-test.cpp
+    hegemony-formation-test.cpp
     request-coordinator-test.cpp
     pre-game-lock-test.cpp
     outbound-ordering-test.cpp
