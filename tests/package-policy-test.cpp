@@ -65,6 +65,38 @@ bool generalVersionDedupPreservesSlots()
     return actual == expected;
 }
 
+bool generalModePreferencePreservesUnpairedVersions()
+{
+    struct Case {
+        QStringList input;
+        QStringList identity;
+        QStringList hegemony;
+    };
+    const QList<Case> cases = {
+        {{}, {}, {}},
+        {{"caocao", "heg_caocao"}, {"caocao"}, {"heg_caocao"}},
+        {{"heg_caocao", "caocao"}, {"caocao"}, {"heg_caocao"}},
+        // A disabled/banned counterpart is absent from the admitted input.
+        {{"heg_caocao", "sunquan"}, {"heg_caocao", "sunquan"}, {"heg_caocao", "sunquan"}},
+        {{"nos_caocao", "heg_caocao", "ol_caocao"},
+         {"nos_caocao", "ol_caocao"}, {"heg_caocao"}},
+        // Mode filtering must not perform the optional identity-version dedup.
+        {{"caocao", "third_caocao"}, {"caocao", "third_caocao"}, {"caocao", "third_caocao"}},
+        {{"heg_liubei", "liushanliubei"}, {"heg_liubei", "liushanliubei"}, {"heg_liubei", "liushanliubei"}},
+        {{"heg_yanliangwenchou", "yanliang"}, {"heg_yanliangwenchou", "yanliang"}, {"heg_yanliangwenchou", "yanliang"}},
+        {{"sunquan", "heg_caocao", "caocao", "heg_zhangfei"},
+         {"sunquan", "caocao", "heg_zhangfei"}, {"sunquan", "heg_caocao", "heg_zhangfei"}}
+    };
+    for (const Case &test : cases) {
+        if (filterGeneralVersionsForMode(test.input, false) != test.identity
+            || filterGeneralVersionsForMode(test.input, true) != test.hegemony) {
+            qCritical() << "general mode preference changed counterparts or order" << test.input;
+            return false;
+        }
+    }
+    return true;
+}
+
 bool packageWhitelistPolicyIsStable()
 {
     const QStringList expectedDefaults = {
@@ -121,6 +153,8 @@ int runPackagePolicyTests()
         return 2;
     if (!packageWhitelistPolicyIsStable())
         return 3;
+    if (!generalModePreferencePreservesUnpairedVersions())
+        return 5;
 
     qInfo() << "package whitelist and general version policy tests passed";
     return 0;

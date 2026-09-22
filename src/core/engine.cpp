@@ -2218,6 +2218,10 @@ QStringList Engine::getRandomLords() const
 
 QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool available) const
 {
+	RoomRuntime *runtime = currentRoomRuntime();
+	const bool hegemony = runtime ? Config.EnableHegemony : ServerInfo.EnableHegemony;
+	const QString mode = runtime ? Config.GameMode.mode_id : ServerInfo.GameMode;
+	QStringList admittedNames;
 	QStringList general_names, ban = ServerInfo.BanPackages;
 	if (ServerInfo.GameMode == "03_1v2")
 		ban << Config.value("Banlist/Doudizhu").toStringList();
@@ -2244,28 +2248,39 @@ QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool availabl
         if(kingdom.isEmpty()||itor.value()->getKingdoms().contains(kingdom))
             general_names << itor.key();
     }*/
-	const QList<const General *> candidateGenerals = currentRoomRuntime()
+	const QList<const General *> candidateGenerals = runtime
 		? getAllGenerals()
 		: (available ? available_generals.values() : generals.values());
-	RoomRuntime *runtime = currentRoomRuntime();
 	foreach (const General*general, candidateGenerals) {
+		// Package selections and ban lists, rather than origin, define the shared roster.
         if(ban.contains(general->objectName())||ban.contains(general->getPackage())) continue;
 		const QString generalName = general->objectName();
 		if (!(runtime && runtime->hasTranslation(generalName))
 			&& !m_translationCatalog.contains(generalName)) continue;
 		if (isGeneralHidden(generalName)) continue;
 		if(!Config.AddGodGeneral&&general->getKingdoms().contains("god")) continue;
+		admittedNames << generalName;
         if(kingdom.isEmpty()||general->getKingdoms().contains(kingdom))
             general_names << general->objectName();
 	}
     // special case for neo standard package
-    if (ban.contains("standard") && general_names.length()<5) {
+    if (!hegemony && ban.contains("standard") && general_names.length()<5) {
         if (kingdom.isEmpty() || kingdom == "wei")
             general_names << "zhenji";
         if (kingdom.isEmpty() || kingdom == "shu")
             general_names << "zhugeliang";
         if (kingdom.isEmpty() || kingdom == "wu")
             general_names << "sunquan" << "sunshangxiang";
+    }
+    if (hegemony || isNormalGameMode(mode)) {
+        // Resolve counterparts across kingdoms using admitted names, before the
+        // optional version ranking. Include the legacy standard fallback so it
+        // obeys the same mode preference as the normal pool.
+        const QSet<QString> modeNames = qsanToSet(
+            filterGeneralVersionsForMode(admittedNames + general_names, hegemony));
+        general_names.removeIf([&modeNames](const QString &name) {
+            return !modeNames.contains(name);
+        });
     }
     if (Config.GeneralVersionDedup) {
         general_names = dedupByVersion(
