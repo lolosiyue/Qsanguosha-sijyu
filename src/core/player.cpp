@@ -1274,7 +1274,7 @@ bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, b
 
 bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlayer, bool need_area) const
 {
-	if (!alive||(need_area&&getMark("IgnoreArea1")<1&&!hasEquipArea(1))||getMark("Armor_Nullified")>0)
+	if (!alive||(need_area&&getMark("IgnoreArea1")<1&&!hasEquipArea(1)))
         return false;
 	static QStringList a_equips;
 	if(a_equips.isEmpty()){
