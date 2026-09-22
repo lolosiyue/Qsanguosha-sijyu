@@ -483,6 +483,8 @@ public:
 
     virtual bool prepareSource(Room *room, SkillContext &ctx) const;
     virtual bool isSourceAvailable(Room *room, const SkillContext &ctx) const;
+    // Opt in to a verified removal event, without reviving a retired instance.
+    virtual bool acceptsRemovalEvent(TriggerEvent, const QVariant &) const { return false; }
 
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
                                      ServerPlayer *player, QVariant &data) const;
