@@ -91,14 +91,13 @@ public:
     Q_INVOKABLE RenwangShield(Card::Suit suit, int number);
 };
 
-class WoodenOxCard : public SkillCard
+// Compatibility name for old AI/replay card strings; effects live in ViewAsSkillV2.
+class WoodenOxCard : public ActiveSkillCard
 {
     Q_OBJECT
 
 public:
     Q_INVOKABLE WoodenOxCard();
-
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 class WoodenOx : public Treasure
