@@ -92,6 +92,20 @@ guhuo 選牌、宣告牌名重建與回應時的二次選擇，見
 `can_activate(skill, request)` 檢查 `request:getReason()`／`request:getPattern()`；client 在指名回應時會先解析
 實際 activation instance，再呼叫同一 callback，不經 legacy `isAvailable()`。
 
+### 5.1 裝備視為技入口
+
+- 裝備視為技使用 `ViewAsSkillV2` 並保留 `isEquipSkill()`；`canActivate()` 仍須驗證
+  `hasWeapon()`／`hasArmorEffect()`／`hasTreasure()` 等實際效果資格，不能只看分類。
+- 無玩家技能實例的裝備入口使用名稱及 ID 0，該 `activationRef` 不是有效的技能實例。
+  UI 沿用裝備牌上的點擊入口，不新增武將技能按鈕或虛構技能實例。
+- 伺服器對 ID 0 的裝備提交（包含舊 AI 字串）重新驗證來源、材料持有及選牌規則，再以
+  `createCard()` 重建卡牌。同名 `EquipSkillV2` 必須實際持有該視為技；來源檢查沿用其
+  `prepareSource()`／`isSourceAvailable()`，不以卡名猜測其他技能。
+- 實體裝備不產生武將技能來源；虛擬裝備保留授予技能的精確 `sourceRef`，沿用預亮、揭將
+  及失效檢查。已存在的有效技能實例入口仍走原有實例驗證。
+- 朱雀羽扇只接受一張未使用中的普通殺，產生保留花色、點數與材料的火殺；支援出牌與
+  回應使用，不支援純打出。`historyKey()` 保留 `FireSlash`，不另計羽扇使用次數。
+
 ## 6. validate 人工分類
 
 `validate()/validateInResponse()` 必須逐行分成以下類別：

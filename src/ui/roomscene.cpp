@@ -190,7 +190,8 @@ static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPl
             || (hasActivationInstance
                 && activePlayer->isSkillInvalid(activeSkill->objectName(), instanceID)))
             return false;
-    } else if (!activePlayer->hasSkill(activeSkill->objectName()) && !continuesViewAsEffect) {
+    } else if (!activeSkill->isEquipSkill()
+               && !activePlayer->hasSkill(activeSkill->objectName()) && !continuesViewAsEffect) {
         return false;
     }
 

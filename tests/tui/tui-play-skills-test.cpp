@@ -641,6 +641,43 @@ int main(int argc, char **argv)
               "UPDATE_CARD reset restores the printed equipped card");
     }
 
+    // The equipment entry is selectable without a general-skill instance.
+    int fanId = -1;
+    int normalSlashId = -1;
+    for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+        const QString name = Sanguosha->getEngineCard(id)->objectName();
+        if (name == QLatin1String("fan")) fanId = id;
+        if (name == QLatin1String("slash")) normalSlashId = id;
+    }
+    check(fanId >= 0 && normalSlashId >= 0, "the catalog supplies fan and normal Slash");
+    if (fanId >= 0 && normalSlashId >= 0) {
+        if (weaponId >= 0)
+            state.setCardValue(weaponId, QStringLiteral("place"), static_cast<int>(Player::DiscardPile));
+        state.setCardValue(fanId, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(fanId, QStringLiteral("place"), static_cast<int>(Player::PlaceEquip));
+        state.setCardValue(normalSlashId, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(normalSlashId, QStringLiteral("place"), static_cast<int>(Player::PlaceHand));
+        players.sync();
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
+        check(players.self()->getSkillInstanceIds(QStringLiteral("fan")).isEmpty(),
+              "wearing fan does not create a general-skill instance");
+        ClientRules::SkillCardBuildRequest fan;
+        fan.selfName = QStringLiteral("sgs1");
+        fan.skillName = QStringLiteral("fan");
+        fan.subcardIds = {normalSlashId};
+        const auto built = ClientRules::buildSkillCard(fan);
+        check(built.built() && built.nativeCard->objectName() == QLatin1String("fire_slash"),
+              "an equipment entry builds a V2 FireSlash without a skill instance");
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_RESPONSE_USE, QStringLiteral("slash"));
+        check(ClientRules::buildSkillCard(fan).built(), "fan supports response-use");
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_RESPONSE, QStringLiteral("slash"));
+        check(!ClientRules::buildSkillCard(fan).built(), "fan does not support pure responses");
+        state.setCardValue(fanId, QStringLiteral("place"), static_cast<int>(Player::DiscardPile));
+        players.sync();
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
+        check(!ClientRules::buildSkillCard(fan).built(), "removing fan disables its equipment entry");
+    }
+
     state.resetGameplayState();
     players.sync();
     check(players.player(QStringLiteral("sgs1")) == nullptr

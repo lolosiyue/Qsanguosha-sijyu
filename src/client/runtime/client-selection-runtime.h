@@ -192,7 +192,8 @@ inline SkillActivationResult evaluateSkillActivation(
             result.status = SkillActivationStatus::InvalidInstance;
             return result;
         }
-    } else if (!self->hasSkill(skill->objectName()) && !continuesEffect) {
+    } else if (!activeSkill->isEquipSkill()
+               && !self->hasSkill(skill->objectName()) && !continuesEffect) {
         result.status = SkillActivationStatus::InvalidInstance;
         return result;
     }

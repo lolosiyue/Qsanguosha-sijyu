@@ -93,36 +93,50 @@ void Analeptic::onEffect(CardEffectStruct &effect) const
         room->addPlayerMark(effect.to, "drank");
 }
 
-class FanVSSkill : public OneCardViewAsSkill
+class FanVSSkill : public ViewAsSkillV2
 {
 public:
     bool isEquipSkill() const override { return true; }
 
-    FanVSSkill() : OneCardViewAsSkill("fan")
+    FanVSSkill() : ViewAsSkillV2("fan", 1)
     {
-        filter_pattern = "%slash";
         response_or_use = true;
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return player->hasWeapon("fan") && Slash::IsAvailable(player);
+        const Player *player = request.initiator;
+        if (!player || !player->hasWeapon(objectName()))
+            return false;
+        if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY)
+            return Slash::IsAvailable(player);
+        return request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
+            && (request.pattern.contains("slash") || request.pattern.contains("Slash"));
     }
 
-    bool isEnabledAtResponse(const Player *player, const QString &pattern) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
-        return player->hasWeapon("fan")
-            && Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
-            && (pattern.contains("slash") || pattern.contains("Slash"));
+        // Keep the old %slash filter: elemental Slashes and cards in use are excluded.
+        return request.initiator && ViewAsSkillV2::canSelectCard(request, candidate)
+            && !candidate->hasFlag("using")
+            && Sanguosha->matchExpPattern("%slash", request.initiator, candidate);
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    const Card *createCard(const ActiveSkillRequest &request) const override
     {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *originalCard = Sanguosha->getCard(request.selectedCardIds.first());
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        if (!canSelectCard(selection, originalCard)) return nullptr;
         Card *acard = new FireSlash(originalCard->getSuit(), originalCard->getNumber());
         acard->addSubcard(originalCard->getId());
         acard->setSkillName(objectName());
         return acard;
     }
+
+    // Conversion still consumes the normal Slash quota/history, not a separate fan use.
+    QString historyKey(const ActiveSkillRequest &) const override { return "FireSlash"; }
 };
 
 class FanSkill : public WeaponSkillV2
@@ -227,18 +241,35 @@ Fan::Fan(Suit suit, int number)
     setObjectName("fan");
 }
 
-class GudingBladeSkill : public WeaponSkill
+class GudingBladeSkill : public WeaponSkillV2
 {
 public:
-    GudingBladeSkill() : WeaponSkill("guding_blade")
+    GudingBladeSkill() : WeaponSkillV2("guding_blade", "guding_blade")
     {
         events << DamageCaused;
+        frequency = Compulsory;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player,
+                            QVariant &data) const override
     {
+        TriggerList result;
+        if (!WeaponSkillV2::triggerable(player))
+            return result;
+        const DamageStruct damage = data.value<DamageStruct>();
+        if (damage.card && damage.card->isKindOf("Slash") && damage.to
+            && damage.to->isKongcheng() && damage.by_user && !damage.chain && !damage.transfer)
+            result.insert(player, QStringList(objectName()));
+        return result;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player,
+                SkillContext &ctx) const override
+    {
+        // Mutate the authoritative event only after the V2 invocation gates.
+        QVariant &data = *ctx.original_data;
         DamageStruct damage = data.value<DamageStruct>();
-        if (damage.card && damage.card->isKindOf("Slash")
+        if (damage.card && damage.card->isKindOf("Slash") && damage.to
             && damage.to->isKongcheng() && damage.by_user && !damage.chain && !damage.transfer) {
             room->setEmotion(player, "weapon/guding_blade");
 

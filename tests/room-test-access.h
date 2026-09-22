@@ -17,6 +17,11 @@
 
 struct RoomTestAccess
 {
+    static bool resolveCardInstance(Room &room, CardUseStruct &use)
+    {
+        return room.resolveCardSkillInstance(use);
+    }
+
     static const Card *resolveActiveRequest(Room &room, ServerPlayer *player,
                                             const ViewAsSkillV2 *skill, const ActiveSkillRequest &request)
     {

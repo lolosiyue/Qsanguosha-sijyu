@@ -1209,7 +1209,8 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 				resp.m_card = nullptr;
 				continue;
 			}
-			resp.m_card = resp.m_card->validateInResponse(player);
+			// Resolve may rebuild an equipment conversion; validate that authoritative card.
+			resp.m_card = responseUse.card->validateInResponse(player);
 			if(resp.m_card==nullptr) continue;
 			if (responseUse.activationRef.isValid())
 				const_cast<Card *>(resp.m_card)->setActivationSkill(responseUse.activationRef.key.skillName,
@@ -1228,8 +1229,23 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 	responseUse.from = player;
 	if (!m_room.resolveCardSkillInstance(responseUse))
 		return nullptr;
+	resp.m_card = responseUse.card;
 	if (responseUse.sourceRef.isValid()) resp.sourceRef = responseUse.sourceRef;
 	if (responseUse.activationRef.isValid()) resp.activationRef = responseUse.activationRef;
+	const auto *equipmentViewAs = dynamic_cast<const ViewAsSkillV2 *>(
+		Sanguosha->getViewAsSkill(resp.m_card->getActivationSkillName()));
+	if (equipmentViewAs && equipmentViewAs->isEquipSkill()
+		&& !responseUse.activationRef.isValid()) {
+		resp.activationRef = responseUse.activationRef;
+		resp.sourceRef = responseUse.sourceRef;
+		SkillContext source;
+		source.owner = player;
+		source.sourceRef = resp.sourceRef;
+		// Response-use can finish here without entering Room::useCard().
+		if (method != Card::MethodResponse
+			&& (!m_room.showGeneralForSkill(source.sourceRef)
+				|| !equipmentViewAs->isEquipSourceAvailable(&m_room, source))) return nullptr;
+	}
 	// Pure responses do not enter Room::useCard().  Give SkillCard/ViewAs
 	// responses the same execution-local context as the Play bridge before
 	// CardResponded exposes the response to the rest of the engine.
@@ -1442,6 +1458,16 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 				finishResponseHistory(QStringLiteral("cancelled"));
 				return nullptr;
 			}
+		}
+		if (responseActiveSkill && responseActiveSkill->isEquipSkill()
+			&& !responseCtx.activationRef.isValid()
+			&& (!m_room.showGeneralForSkill(responseCtx.sourceRef)
+				|| !responseActiveSkill->isEquipSourceAvailable(&m_room, responseCtx))) {
+			if (responseUsageReserved) m_room.releaseActiveSkillUsage(responseActiveSkill, responseCtx);
+			responseUsageReserved = false;
+			finishResponseExecution(SkillExecutionPayFailed);
+			finishResponseHistory(QStringLiteral("cancelled"));
+			return nullptr;
 		}
 		if (responseActiveSkill) {
 			m_room.commitActiveSkillUsage(responseActiveSkill, responseCtx);
