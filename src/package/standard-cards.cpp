@@ -284,9 +284,10 @@ bool Slash::targetFilter(const QList<const Player *> &targets, const Player *to_
     int slash_targets = 1+Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, Self, this);
 
     if (targets.length() >= slash_targets) {
-        if (slash_targets>0&&targets.length()==slash_targets&&Self->hasSkill("duanbing"))
-            return Self->distanceTo(to_select, rangefix)==1&&!Self->isProhibited(to_select, this);
-		return false;
+        // Candidate-specific V2 bonuses (Duanbing) own their eligibility and exact skill source.
+        const int candidateTargets = 1 + Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, Self, this, to_select);
+        return slash_targets > 0 && targets.length() < candidateTargets
+            && to_select != Self && !Self->isProhibited(to_select, this, targets);
     }
 	card = Self->getWeapon();
 	if (card&&subcards.contains(card->getId())&&Self->hasWeapon(card->objectName()))

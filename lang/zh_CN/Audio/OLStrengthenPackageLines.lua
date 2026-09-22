@@ -1,6 +1,17 @@
 -- lines for OLJXTP Package
 
 return {
+	["cv:yuejin"] = "裤衩",
+	["~yuejin"] = "戎马一生，何惧死乎！",
+	["~panfeng"] = "潘凤又被华雄斩了！",
+    ["cv:panfeng"] = "官方",
+    -- Shared identity skills from the retired hegemony package.
+	["$xiaoguo1"] = "骁勇果敢，每战必先！", -- 发动弃牌
+	["$xiaoguo2"] = "奋强突固，无坚不陷！", -- 弃置装备
+	["$xiaoguo3"] = "贼有防备，只伤皮毛，来日再战！", -- 受到伤害
+	["$kuangfu1"] = "我乃上将潘凤，可斩华雄！",
+	["$kuangfu2"] = "这家伙还是给我用吧！",
+
 	--OL界曹操
 	
 	--OL界刘备

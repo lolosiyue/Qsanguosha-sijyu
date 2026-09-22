@@ -42,7 +42,6 @@ set(QSAN_SOURCES
     src/package/happy2v2.cpp
     src/package/hayate.cpp
     src/package/inovation.cpp
-    src/package/hegemony.cpp
     src/package/original-hegemony-compat.cpp
     src/package/h-standard-package.cpp
     src/package/h-standard-wei-generals.cpp
@@ -274,7 +273,6 @@ set(QSAN_MOC_HEADERS
     src/package/happy2v2.h
     src/package/hayate.h
     src/package/inovation.h
-    src/package/hegemony.h
     src/package/original-hegemony-compat.h
     src/package/h-standard-package.h
     src/package/h-standard-wei-generals.h

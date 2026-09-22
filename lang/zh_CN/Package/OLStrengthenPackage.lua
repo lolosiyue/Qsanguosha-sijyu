@@ -1,6 +1,22 @@
 -- translation for OLJXTP Package
 
 return {
+    -- Shared skills formerly supplied by the retired hegemony package.
+	["xiaoguo"] = "骁果",
+	[":xiaoguo"] = "其他角色的结束阶段，你可以弃置一张基本牌：若如此做，该角色选择一项：1.弃置一张装备牌，然后令你摸一张牌；2.受到1点伤害。",
+	["@xiaoguo"] = "你可以弃置一张基本牌发动“骁果”",
+	["@xiaoguo-discard"] = "请弃置一张装备牌，否则受到 1 点伤害",
+	["kuangfu"] = "狂斧",
+	[":kuangfu"] = "当你使用的【杀】对目标角色造成伤害后，你可以将其装备区里的一张牌弃置或置入你的装备区。",
+	["kuangfu:throw"] = "弃置此装备",
+	["kuangfu:move"] = "将此装备移动到自己的装备区",
+	["kuangfu_equip"] = "狂斧",
+	["kuangfu_equip:0"] = "武器牌",
+	["kuangfu_equip:1"] = "防具牌",
+	["kuangfu_equip:2"] = "+1坐骑",
+	["kuangfu_equip:3"] = "-1坐骑",
+	["kuangfu_equip:4"] = "宝物牌",
+
 	["OLStStandard"] = "OL界·标准",
 	["OLStWind"] = "OL界·风",
 	["OLStThicket"] = "OL界·林",

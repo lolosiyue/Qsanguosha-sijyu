@@ -17,6 +17,124 @@
 #include "clientstruct.h"
 #endif
 
+class Xiaoguo : public TriggerSkillV2 {
+public:
+    Xiaoguo() : TriggerSkillV2("xiaoguo") {
+        events << EventPhaseStart;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override {
+        TriggerList result;
+        if (!player || !player->isAlive() || player->getPhase() != Player::Finish) return result;
+        for (ServerPlayer *owner : room->findPlayersBySkillName(objectName())) {
+            if (owner != player && owner->isAlive() && owner->canDiscard(owner, "h"))
+                result[owner] << objectName();
+        }
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner || !ctx.invoker || !ctx.invoker->isAlive()) return false;
+        // Selection is cancellable; only pay() may discard the chosen basic card.
+        const Card *card = room->askForCard(ctx.owner, ".Basic", "@xiaoguo",
+            QVariant::fromValue(ctx.invoker), Card::MethodNone, nullptr, false, objectName());
+        if (!card || card->isVirtualCard() || !canPay(room, ctx.owner, card->getEffectiveId()))
+            return false;
+        ctx.extra_data = card->getEffectiveId();
+        ctx.targets = QList<ServerPlayer *>{ctx.invoker};
+        return true;
+    }
+
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        bool ok = false;
+        const int id = ctx.extra_data.toInt(&ok);
+        if (!ok || !canPay(room, ctx.owner, id)) return false;
+        room->throwCard(id, objectName(), ctx.owner);
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        room->broadcastSkillInvoke(objectName(), 1, ctx.owner);
+        return false;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
+                      ServerPlayer *target) const override {
+        if (!target || !target->isAlive() || !ctx.owner) return false;
+        room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, ctx.owner->objectName(), target->objectName());
+        if (!room->askForCard(target, ".Equip", "@xiaoguo-discard", QVariant::fromValue(ctx.owner))) {
+            room->broadcastSkillInvoke(objectName(), 2, ctx.owner);
+            room->damage(DamageStruct(objectName(), ctx.owner, target, getEffectiveAmount(ctx)));
+        } else {
+            // The identity version rewards the owner when the target discards equipment.
+            room->broadcastSkillInvoke(objectName(), 3, ctx.owner);
+            if (ctx.owner->isAlive()) ctx.owner->drawCards(1, objectName());
+        }
+        return false;
+    }
+
+private:
+    static bool canPay(Room *room, ServerPlayer *owner, int id) {
+        if (!owner || !owner->isAlive() || id < 0 || room->getCardOwner(id) != owner
+            || room->getCardPlace(id) != Player::PlaceHand || !owner->canDiscard(owner, id))
+            return false;
+        const Card *card = room->getCard(id);
+        return card && card->isKindOf("BasicCard");
+    }
+};
+
+class Kuangfu : public TriggerSkillV2 {
+public:
+    Kuangfu() : TriggerSkillV2("kuangfu") { events << Damage; }
+    QStringList equipment(ServerPlayer *owner, ServerPlayer *target) const {
+        QStringList result;
+        if (!owner || !target || !target->isAlive()) return result;
+        for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+            const Card *card = target->getEquip(i);
+            if (card && (owner->canDiscard(target, card->getEffectiveId()) || !owner->getEquip(i)))
+                result << QString::number(i);
+        }
+        return result;
+    }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override {
+        const DamageStruct damage = data.value<DamageStruct>();
+        if (player && player->isAlive() && player->hasSkill(objectName()) && damage.card
+            && damage.card->isKindOf("Slash") && damage.to && !damage.to->hasFlag("Global_DebutFlag")
+            && !damage.chain && !damage.transfer && !equipment(player, damage.to).isEmpty())
+            return TriggerList{{player, {objectName()}}};
+        return {};
+    }
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner || !ctx.original_data || !ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
+        ctx.targets = {ctx.original_data->value<DamageStruct>().to};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        const QStringList available = equipment(ctx.owner, target);
+        if (available.isEmpty()) return false;
+        const QString selected = room->askForChoice(ctx.owner, "kuangfu_equip", available.join("+"), QVariant::fromValue(target));
+        if (!available.contains(selected)) return false;
+        const int index = selected.toInt();
+        const Card *card = target->getEquip(index);
+        if (!card) return false;
+        QStringList choices;
+        if (ctx.owner->canDiscard(target, card->getEffectiveId())) choices << "throw";
+        if (!ctx.owner->getEquip(index)) choices << "move";
+        if (choices.isEmpty()) return false;
+        const QString choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
+        // Interceptors and nested decisions may change equipment; recheck before moving it.
+        if (target->getEquip(index) != card || !ctx.owner->isAlive()) return false;
+        if (choice == "move" && !ctx.owner->getEquip(index)) {
+            room->broadcastSkillInvoke(objectName(), 1, ctx.owner);
+            room->moveCardTo(card, ctx.owner, Player::PlaceEquip);
+        } else if (choice == "throw" && ctx.owner->canDiscard(target, card->getEffectiveId())) {
+            room->broadcastSkillInvoke(objectName(), 2, ctx.owner);
+            room->throwCard(card, target, ctx.owner);
+        }
+        return false;
+    }
+};
+
 TunanCard::TunanCard()
 {
 }
@@ -30138,7 +30256,7 @@ OLCcxhPackage::OLCcxhPackage()
 	addMetaObject<JinJianheCard>();
 
 	General*sp_panfeng = new General(this, "sp_panfeng*xh_tianzhu", "qun", 4, true); // SP 029
-	sp_panfeng->addSkill("kuangfu");
+	sp_panfeng->addSkill(new Kuangfu);
 
 	General*ol_zhugedan = new General(this, "ol_zhugedan*xh_tianzhu", "wei", 4);
 	ol_zhugedan->addSkill("gongao");
@@ -30314,7 +30432,7 @@ OLCcxhPackage::OLCcxhPackage()
 	xiahouba->addRelateSkill("shensu");
 
 	General*sp_yuejin = new General(this, "sp_yuejin*xh_huben", "wei", 4, true); // SP 024
-	sp_yuejin->addSkill("xiaoguo");
+	sp_yuejin->addSkill(new Xiaoguo);
 
 	General*lingcao = new General(this, "lingcao*xh_huben", "wu", 4);
 	lingcao->addSkill(new Dujin);

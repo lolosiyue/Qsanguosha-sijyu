@@ -1,6 +1,13 @@
 -- lines for SP Package
 
 return {
+	["cv:ganfuren"] = "神马芯",
+	["~ganfuren"] = "生同室，死同穴……",
+    -- Shared identity skills from the retired hegemony package.
+	["$shushen1"] = "履行脩仁，淑慎其身。",
+	["$shushen2"] = "夫君，大志不可忘呀。", --刘备
+	["$shenzhi"] = "玩物易丧志，弃之可修身。",
+
 	--李遗
 	["$jiaohua1"] = "教民崇化，以定南疆。",
 	["$jiaohua2"] = "知礼数，崇王化，则民不复叛矣。",
