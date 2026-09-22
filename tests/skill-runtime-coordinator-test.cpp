@@ -775,6 +775,142 @@ static bool standardEquipmentV2Contracts()
         && dynamic_cast<const WeaponSkillV2 *>(Sanguosha->getSkill("blade"));
 }
 
+class FanEquipSourceProbe : public ViewAsEquipSkill
+{
+public:
+    FanEquipSourceProbe() : ViewAsEquipSkill("test_fan_equip_source") {}
+    QString viewAsEquip(const Player *) const override { return "fan"; }
+};
+
+static bool maneuveringEquipmentV2Contracts()
+{
+    const bool oldHegemony = Config.EnableHegemony;
+    const auto restoreMode = qScopeGuard([oldHegemony] { Config.EnableHegemony = oldHegemony; });
+    Config.EnableHegemony = false;
+    auto *grant = new FanEquipSourceProbe;
+    grant->setParent(Sanguosha);
+    Sanguosha->addSkills({grant});
+    Room room(nullptr, "02_1v1");
+    EngineRuntimeContextScope runtimeScope(*Sanguosha, &room);
+    room.roomRuntime()->state().reset();
+    room.roomRuntime()->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, "fan_owner");
+    ServerPlayer *other = RoomTestAccess::addOrdinaryPlayer(room, "fan_other");
+    owner->setMaxHp(4);
+    owner->setHp(4);
+    other->setMaxHp(4);
+    other->setHp(4);
+    room.setCurrent(owner);
+
+#define FAN_CHECK(condition) do { if (!(condition)) { \
+    qCritical() << "Maneuvering V2 check failed at line" << __LINE__ << #condition; return false; \
+} } while (false)
+    const auto *fan = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill("fan"));
+    const auto *guding = dynamic_cast<const WeaponSkillV2 *>(Sanguosha->getSkill("guding_blade"));
+    FAN_CHECK(fan && guding);
+    FAN_CHECK(dynamic_cast<const ArmorSkillV2 *>(Sanguosha->getSkill("vine")));
+    FAN_CHECK(dynamic_cast<const ArmorSkillV2 *>(Sanguosha->getSkill("silver_lion")));
+    QMap<QString, int> ids;
+    for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+        const Card *card = Sanguosha->getEngineCard(id);
+        if (!ids.contains(card->objectName())) ids.insert(card->objectName(), id);
+    }
+    for (const QString &name : {QString("fan"), QString("slash"), QString("fire_slash"),
+                               QString("jink"), QString("guding_blade")})
+        FAN_CHECK(ids.contains(name));
+    for (const QString &name : {QString("slash"), QString("fire_slash"), QString("jink")}) {
+        owner->addCard(ids.value(name), Player::PlaceHand);
+        room.setCardMapping(ids.value(name), owner, Player::PlaceHand);
+    }
+    ActiveSkillRequest request;
+    request.initiator = owner;
+    request.reason = CardUseStruct::CARD_USE_REASON_PLAY;
+    request.activationRef = SkillInstanceRef(owner->objectName(), SkillInstanceKey("fan", 0));
+    request.selectedCardIds << ids.value("slash");
+    FAN_CHECK(!fan->canActivate(request));
+    FAN_CHECK(!RoomTestAccess::resolveActiveRequest(room, owner, fan, request));
+    owner->setEquip(Sanguosha->getCard(ids.value("fan")));
+    room.setCardMapping(ids.value("fan"), owner, Player::PlaceEquip);
+    FAN_CHECK(owner->getSkillInstanceIds("fan").isEmpty());
+    FAN_CHECK(fan->canActivate(request));
+    {
+        std::unique_ptr<const Card> card(RoomTestAccess::resolveActiveRequest(room, owner, fan, request));
+        const Card *material = Sanguosha->getCard(ids.value("slash"));
+        FAN_CHECK(card && card->objectName() == "fire_slash"
+            && card->getSubcards() == request.selectedCardIds
+            && card->getSuit() == material->getSuit() && card->getNumber() == material->getNumber()
+            && card->getActivationSkillInstanceId() == 0 && fan->historyKey(request) == "FireSlash");
+    }
+    // A legacy AI/client string cannot choose the output type or bypass material checks.
+    CardUseStruct submitted;
+    submitted.from = owner;
+    submitted.setOwnedCard(Sanguosha->cloneCard("jink"));
+    Card *claimed = const_cast<Card *>(submitted.card);
+    claimed->setSkillName("fan");
+    claimed->addSubcard(ids.value("slash"));
+    FAN_CHECK(RoomTestAccess::resolveCardInstance(room, submitted));
+    FAN_CHECK(submitted.card->objectName() == "fire_slash"
+        && !submitted.activationRef.isValid() && !submitted.sourceRef.isValid());
+    ActiveSkillRequest invalid = request;
+    for (const QString &name : {QString("fire_slash"), QString("jink")}) {
+        invalid.selectedCardIds = {ids.value(name)};
+        FAN_CHECK(!RoomTestAccess::resolveActiveRequest(room, owner, fan, invalid));
+    }
+    invalid.selectedCardIds = {ids.value("slash"), ids.value("slash")};
+    FAN_CHECK(!RoomTestAccess::resolveActiveRequest(room, owner, fan, invalid));
+    owner->removeCard(ids.value("slash"), Player::PlaceHand);
+    other->addCard(ids.value("slash"), Player::PlaceHand);
+    room.setCardMapping(ids.value("slash"), other, Player::PlaceHand);
+    FAN_CHECK(!RoomTestAccess::resolveActiveRequest(room, owner, fan, request));
+    other->removeCard(ids.value("slash"), Player::PlaceHand);
+    owner->addCard(ids.value("slash"), Player::PlaceHand);
+    room.setCardMapping(ids.value("slash"), owner, Player::PlaceHand);
+    owner->addEquipsNullified("fan", "fan-test", false);
+    FAN_CHECK(!fan->canActivate(request)
+        && !RoomTestAccess::resolveActiveRequest(room, owner, fan, request));
+    owner->removeEquipsNullified("fan", "fan-test", false);
+    request.reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+    request.pattern = "slash";
+    {
+        std::unique_ptr<const Card> card(RoomTestAccess::resolveActiveRequest(room, owner, fan, request));
+        FAN_CHECK(card && card->objectName() == "fire_slash");
+    }
+    request.reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
+    FAN_CHECK(!RoomTestAccess::resolveActiveRequest(room, owner, fan, request));
+    request.reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+    request.pattern = "jink";
+    FAN_CHECK(!RoomTestAccess::resolveActiveRequest(room, owner, fan, request));
+
+    owner->removeEquip(owner->getWeapon());
+    // A virtual fan records the actual grant, and another copy cannot rescue
+    // an invocation whose admitted source has disappeared.
+    const int firstGrant = owner->acquireSkill(grant->objectName());
+    SkillContext source;
+    source.owner = owner;
+    FAN_CHECK(firstGrant > 0 && fan->prepareEquipSource(&room, source));
+    FAN_CHECK(source.sourceRef == SkillInstanceRef(owner->objectName(),
+        SkillInstanceKey(grant->objectName(), firstGrant)));
+    FAN_CHECK(!source.activationRef.isValid() && fan->isEquipSourceAvailable(&room, source));
+    const int secondGrant = owner->acquireSkill(grant->objectName());
+    FAN_CHECK(secondGrant > firstGrant);
+    FAN_CHECK(owner->removeSkillInstance(grant->objectName(), firstGrant));
+    FAN_CHECK(!fan->isEquipSourceAvailable(&room, source));
+    FAN_CHECK(owner->removeSkillInstance(grant->objectName(), secondGrant));
+    owner->setEquip(Sanguosha->getCard(ids.value("guding_blade")));
+    DamageStruct damage(Sanguosha->getCard(ids.value("slash")), owner, other);
+    QVariant data = QVariant::fromValue(damage);
+    FAN_CHECK(guding->triggerable(DamageCaused, &room, owner, data).contains(owner));
+    SkillContext context;
+    context.original_data = &data;
+    FAN_CHECK(!guding->effect(DamageCaused, &room, owner, context));
+    FAN_CHECK(data.value<DamageStruct>().damage == damage.damage + 1);
+    damage.chain = true;
+    data = QVariant::fromValue(damage);
+    FAN_CHECK(guding->triggerable(DamageCaused, &room, owner, data).isEmpty());
+#undef FAN_CHECK
+    return true;
+}
+
 static bool lifecycleAndRuntimeFacade()
 {
     DistanceSkillV2 rootSkill(QStringLiteral("test-skill-runtime-root"));
@@ -854,6 +990,7 @@ int runSkillRuntimeCoordinatorTests()
         qCritical() << "Standard equipment V2 contracts failed";
         return 5;
     }
+    if (!maneuveringEquipmentV2Contracts()) return 6;
     qInfo() << "SkillRuntimeCoordinator regression passed";
     return 0;
 }

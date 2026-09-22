@@ -839,6 +839,34 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         return false;
     QString activationName = use.card->getActivationSkillName();
     int activationId = use.card->getActivationSkillInstanceId();
+    const auto *equipmentViewAs = dynamic_cast<const ViewAsSkillV2 *>(
+        Sanguosha->getViewAsSkill(activationName));
+    if (equipmentViewAs && equipmentViewAs->isEquipSkill() && activationId == 0) {
+        // Also rebuild legacy AI/card-string submissions with instance zero.
+        // Equipment ownership is authoritative; a supplied instance cannot grant it.
+        if (!use.card->isVirtualCard())
+            return false;
+        SkillContext source;
+        source.owner = use.from;
+        source.invoker = use.from;
+        source.initiator = use.from;
+        if (!equipmentViewAs->prepareEquipSource(&m_room, source)) return false;
+        ActiveSkillRequest request;
+        request.reason = m_room.roomRuntime()->state().getCurrentCardUseReason();
+        request.pattern = m_room.roomRuntime()->state().getCurrentCardUsePattern();
+        request.initiator = use.from;
+        request.activationRef = source.activationRef;
+        request.setCardSelection(use.card);
+        for (ServerPlayer *target : use.to)
+            request.selectedTargetNames << target->objectName();
+        const Card *rebuilt = m_room.resolveActiveSkillRequest(use.from, equipmentViewAs, request);
+        if (!rebuilt) return false;
+        use.activationRef = source.activationRef;
+        use.sourceRef = source.sourceRef;
+        use.changeCard(const_cast<Card *>(rebuilt));
+        const_cast<Card *>(use.card)->change_cards.clear();
+        return true;
+    }
     if (!use.hasSkillActivationRequest && activationId == 0)
         return true;
     if (activationId == 0) {

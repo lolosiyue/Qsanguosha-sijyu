@@ -3094,7 +3094,7 @@ bool Room::showRequiredTargetModSkillsV2(const CardUseStruct &use)
 bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 {
 	if (!use.card || !use.from) return false;
-	if (use.activationRef.isValid()) {
+	if (!use.activationRef.key.skillName.isEmpty()) {
 		const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(
 			Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
 		// resolveActiveSkillRequest() has already checked V2's independent target
@@ -3122,14 +3122,25 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                              const ActiveSkillRequest &request) const
 {
-	if (!player || !skill || request.initiator != player || !request.activationRef.isValid())
+	if (!player || !skill || request.initiator != player)
 		return nullptr;
+	const bool equipmentActivation = skill->isEquipSkill()
+		&& request.activationRef.key.instanceID == 0;
+	SkillContext equipmentSource;
+	if (equipmentActivation) {
+		equipmentSource.owner = player;
+		equipmentSource.invoker = player;
+		equipmentSource.initiator = player;
+		if (!skill->prepareEquipSource(const_cast<Room *>(this), equipmentSource)) return nullptr;
+	} else if (!request.activationRef.isValid()) {
+		return nullptr;
+	}
 	const bool hasActivationInstance = player->hasSkillInstance(
 		request.activationRef.key.skillName, request.activationRef.key.instanceID);
 	const bool continuesViewAsEffect = hasViewAsSkillEffect(player, skill->objectName());
 	if (request.activationRef.ownerObjectName != player->objectName()
 		|| request.activationRef.key.skillName != skill->objectName()
-		|| (!hasActivationInstance && !continuesViewAsEffect))
+		|| (!equipmentActivation && !hasActivationInstance && !continuesViewAsEffect))
 		return nullptr;
 	if (!skill->canActivate(request) || !skill->cardSelectionFeasible(request))
 		return nullptr;
@@ -3168,10 +3179,11 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	Card *mutableCard = const_cast<Card *>(card);
 	mutableCard->setActivationSkill(checked.activationRef.key.skillName,
 		checked.activationRef.key.instanceID);
-	SkillInstanceRef sourceRef = resolveSkillInstanceRootRef(checked.activationRef);
+	SkillInstanceRef sourceRef = equipmentActivation ? equipmentSource.sourceRef
+		: resolveSkillInstanceRootRef(checked.activationRef);
 	if (!sourceRef.isValid() && continuesViewAsEffect)
 		sourceRef = checked.activationRef;
-	if (!sourceRef.isValid()) return nullptr;
+	if (!sourceRef.isValid() && !equipmentActivation) return nullptr;
 	mutableCard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 
 	// Ordinary cards use areCardTargetsLegal() at the client/AI submission gate.
@@ -3475,6 +3487,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 {
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	if (!resolveCardSkillInstance(use)) return false;
+	if (!use.activationRef.isValid() && !canShowGeneralForSkill(use.sourceRef)) return false;
 	// Revalidate only client/AI-selected targets. Server-created uses may carry
 	// authoritative targets for target-fixed cards, such as Peach in dying rescue.
 	if (use.m_validateTargets && !areCardTargetsLegal(use)) return false;
@@ -3699,6 +3712,16 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				finishSkillExecution(SkillExecutionPayFailed);
 				return false;
 			}
+		}
+		// Equipment entries have no activation instance; reveal their admitted grant.
+		if (activeSkill && activeSkill->isEquipSkill() && !skillCardCtx.activationRef.isValid()
+			&& (!showGeneralForSkill(skillCardCtx.sourceRef)
+				|| !activeSkill->isEquipSourceAvailable(this, skillCardCtx))) {
+			if (skillUsageReserved) releaseActiveSkillUsage(activeSkill, skillCardCtx);
+			skillUsageReserved = false;
+			saveSkillContext(skillCardCtx);
+			finishSkillExecution(SkillExecutionPayFailed);
+			return false;
 		}
 		if (activeSkill) {
 			commitActiveSkillUsage(activeSkill, skillCardCtx);
