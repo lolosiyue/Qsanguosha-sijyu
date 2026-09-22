@@ -1,5 +1,5 @@
--- HStandardCardPackage only owns H-specific objects; ordinary cards reuse
--- the canonical translations from Standard/Maneuvering packages.
+-- HStandardPackage owns the Hegemony generals; HStandardCardPackage owns
+-- H-specific objects. Ordinary cards reuse the canonical translations.
 return {
     ["original_hegemony"] = "国战",
     ["heg_standard"] = "国战标准",

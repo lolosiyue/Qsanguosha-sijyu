@@ -43,6 +43,12 @@ set(QSAN_SOURCES
     src/package/hayate.cpp
     src/package/inovation.cpp
     src/package/hegemony.cpp
+    src/package/original-hegemony-compat.cpp
+    src/package/h-standard-package.cpp
+    src/package/h-standard-wei-generals.cpp
+    src/package/h-standard-shu-generals.cpp
+    src/package/h-standard-wu-generals.cpp
+    src/package/h-standard-qun-generals.cpp
     src/package/h-formation.cpp
     src/package/h-momentum.cpp
     src/package/jiange-defense.cpp
@@ -269,6 +275,12 @@ set(QSAN_MOC_HEADERS
     src/package/hayate.h
     src/package/inovation.h
     src/package/hegemony.h
+    src/package/original-hegemony-compat.h
+    src/package/h-standard-package.h
+    src/package/h-standard-wei-generals.h
+    src/package/h-standard-shu-generals.h
+    src/package/h-standard-wu-generals.h
+    src/package/h-standard-qun-generals.h
     src/package/h-formation.h
     src/package/h-momentum.h
     src/package/jiange-defense.h
