@@ -441,21 +441,21 @@ public:
     }
 };
 
-class Zishou : public DrawCardsSkill
+class NosZishou : public DrawCardsSkill
 {
 public:
-    Zishou() : DrawCardsSkill("zishou")
+    NosZishou() : DrawCardsSkill("noszishou")
     {
     }
 
-    int getDrawNum(ServerPlayer *liubiao, int n) const
+    int getDrawNum(ServerPlayer *player, int n) const
     {
-        Room *room = liubiao->getRoom();
-        if (liubiao->isWounded() && room->askForSkillInvoke(liubiao, objectName())) {
-            int losthp = liubiao->getLostHp();
+        Room *room = player->getRoom();
+        if (player->isWounded() && room->askForSkillInvoke(player, objectName())) {
+            int losthp = player->getLostHp();
             room->broadcastSkillInvoke(objectName(), qMin(3, losthp));
-            liubiao->clearHistory();
-            liubiao->skip(Player::Play);
+            player->clearHistory();
+            player->skip(Player::Play);
             return n + losthp;
         } else
             return n;
@@ -482,10 +482,10 @@ public:
     }
 };
 
-class NewZishou : public DrawCardsSkill
+class Zishou : public DrawCardsSkill
 {
 public:
-    NewZishou() : DrawCardsSkill("newzishou")
+    Zishou() : DrawCardsSkill("zishou")
     {
 
     }
@@ -496,7 +496,7 @@ public:
             Room *room = player->getRoom();
             room->broadcastSkillInvoke(objectName());
 
-            room->setPlayerFlag(player, "newzishou");
+            room->setPlayerFlag(player, "zishou");
 
             QSet<QString> kingdomSet;
             foreach(ServerPlayer *p, room->getAlivePlayers())
@@ -509,10 +509,10 @@ public:
     }
 };
 
-class NewZishouProhibit : public ProhibitSkill
+class ZishouProhibit : public ProhibitSkill
 {
 public:
-    NewZishouProhibit() : ProhibitSkill("#newzishou")
+    ZishouProhibit() : ProhibitSkill("#zishou")
     {
 
     }
@@ -521,7 +521,7 @@ public:
     {
         if (card->isKindOf("SkillCard"))
             return false;
-        return from != to && from->hasFlag("newzishou");
+        return from != to && from->hasFlag("zishou");
     }
 };
 
@@ -1682,9 +1682,15 @@ YJCM2012Package::YJCM2012Package()
     liaohua->addSkill(new Dangxian);
     liaohua->addSkill(new Fuli);
 
-    General *liubiao = new General(this, "liubiao", "qun", 4); // YJ 108
+    General *liubiao = new General(this, "liubiao", "qun", 3); // YJ 108
     liubiao->addSkill(new Zishou);
-    liubiao->addSkill(new Zongshi);
+    liubiao->addSkill(new ZishouProhibit);
+    liubiao->addSkill("zongshi");
+    related_skills.insert("zishou", "#zishou");
+
+    General *ol_liubiao = new General(this, "ol_liubiao", "qun", 3);
+    ol_liubiao->addSkill(new OLZishou);
+    ol_liubiao->addSkill("zongshi");
 
     General *madai = new General(this, "madai", "shu"); // YJ 109
     madai->addSkill("mashu");
@@ -1727,6 +1733,10 @@ NostalgiaYJCM2012Package::NostalgiaYJCM2012Package()
     related_skills.insert("nosgongqi", "#nosgongqi-target");
     addMetaObject<NosJiefanCard>();
 
+    General *nos_liubiao = new General(this, "nos_liubiao", "qun", 4);
+    nos_liubiao->addSkill(new NosZishou);
+    nos_liubiao->addSkill(new Zongshi);
+
     General *nos_madai = new General(this, "nos_madai", "shu");
     nos_madai->addSkill("mashu");
     nos_madai->addSkill(new NosQianxi);
@@ -1737,17 +1747,6 @@ NostalgiaYJCM2012Package::NostalgiaYJCM2012Package()
 }
 ADD_PACKAGE(NostalgiaYJCM2012)
 
-NewYJCM2012Package::NewYJCM2012Package()
-    : Package("NewYJCM2012")
-{
-    General *new_liubiao = new General(this, "new_liubiao", "qun", 3);
-    new_liubiao->addSkill(new NewZishou);
-    new_liubiao->addSkill(new NewZishouProhibit);
-    new_liubiao->addSkill("zongshi");
-    related_skills.insert("newzishou", "#newzishou");
-}
-ADD_PACKAGE(NewYJCM2012)
-
 void MigrateToOLStYJ2012(Package *pkg)
 {
     General *ol_bulianshi = new General(pkg, "ol_bulianshi", "wu", 3, false);
@@ -1757,10 +1756,6 @@ void MigrateToOLStYJ2012(Package *pkg)
 
     /*General *ol_guanxingzhangbao = new General(pkg, "ol_guanxingzhangbao", "shu", 4, true);
     ol_guanxingzhangbao->addSkill("fuhun");*/
-
-    General *ol_liubiao = new General(pkg, "ol_liubiao", "qun", 3);
-    ol_liubiao->addSkill(new OLZishou);
-    ol_liubiao->addSkill("zongshi");
 
     General *ol_madai = new General(pkg, "ol_madai", "shu");
     ol_madai->addSkill("mashu");

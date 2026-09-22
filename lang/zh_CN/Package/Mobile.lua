@@ -562,7 +562,8 @@ return {
 	["mobilemouxingshangZhuisi"] = "行殇追思",
 	["ZhuisiPlayer"] = "追思%src",
 
-	["mobilemou_liubiao"] = "谋刘表",
+	["mobilemou_liubiao"] = "谋刘表[手杀]",
+	["&mobilemou_liubiao"] = "谋刘表",
 	["#mobilemou_liubiao"] = "跨蹈汉南",
 	["illustrator:mobilemou_liubiao"] = "",
 	["mobilemouzishou"] = "自守",

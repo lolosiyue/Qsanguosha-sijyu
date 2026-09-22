@@ -310,7 +310,7 @@ STANDARD_SKILLS = {
     "kongrong": ["heg_mingshi"],
     "jiling": ["zhaxiang"],
     "gongsunzan": ["yicong"],
-    "liubiao": ["zishou"],
+    "nos_liubiao": ["noszishou"],
     # Jin (晉)
     "simashi": ["quanli"],
     "simazhao": ["quanmou"],
@@ -358,7 +358,7 @@ _STANDARD_GENERALS = {
     "zhangjiao": ("qun", 3), "pangde": ("qun", 4), "jiaxu": ("qun", 3),
     "yanliangwenchou": ("qun", 4), "tianfeng": ("qun", 3), "jikangren": ("qun", 3),
     "mateng": ("qun", 4), "kongrong": ("qun", 3), "jiling": ("qun", 4),
-    "zoushi": ("qun", 3), "gongsunzan": ("qun", 4), "liubiao": ("qun", 3),
+    "zoushi": ("qun", 3), "gongsunzan": ("qun", 4), "nos_liubiao": ("qun", 4),
     "caijifu": ("qun", 3), "huangjinleishi": ("qun", 4),
     "simashi": ("jin", 3), "simazhao": ("jin", 3),
     "wangyuanji": ("jin", 3), "duyu": ("jin", 4),

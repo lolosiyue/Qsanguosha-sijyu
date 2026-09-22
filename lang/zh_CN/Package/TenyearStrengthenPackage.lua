@@ -428,7 +428,8 @@ return {
 	["tenyearlixia:self"] = "摸一张牌",
 	["tenyearlixia:other"] = "令其摸两张牌",
 	
-	["tenyear_liubiao"] = "界刘表",
+	["tenyear_liubiao"] = "界刘表[十周年]",
+	["&tenyear_liubiao"] = "界刘表",
 	["illustrator:tenyear_liubiao"] = "聚一",
 	["tenyearzishou"] = "自守",
 	[":tenyearzishou"] = "摸牌阶段，你可以多摸X张牌（X为现存势力数），然后本回合你对其他角色造成伤害时，防止此伤害。结束阶段，若你本回合没有使用牌指定其他角色为目标，你可以弃置任意张花色不同的手牌，然后摸等量的牌。",
