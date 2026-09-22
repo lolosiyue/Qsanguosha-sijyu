@@ -1188,8 +1188,25 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 						if (v2->isEquipSkill())
 							skillName = TriggerSkillV2::parseSkillName(skill, nullptr, &orderedTargets,
 								&multiplier, &instanceId);
-						QList<int> instanceIds;
-						if (v2->isEquipSkill()) {
+                        // Removal callbacks belong to the public event definition, never a
+                        // surviving same-named instance on the other general.
+                        bool removalSource = false;
+                        if (!v2->isEquipSkill() && instanceId == 0 && p == target
+                            && skillName == v2->objectName() && v2->acceptsRemovalEvent(triggerEvent, data)) {
+                            if (triggerEvent == GeneralRemoved) {
+                                const General *removed = Sanguosha->getGeneral(data.toString());
+                                removalSource = removed && removed->hasSkill(skillName, true);
+                            } else if (triggerEvent == EventLoseSkill) {
+                                SkillChangeStruct change;
+                                removalSource = change.tryParse(data) && change.skillName == skillName
+                                    && change.instanceID > 0 && !p->hasSkillInstance(skillName, change.instanceID);
+                            }
+                        }
+                        if (v2->acceptsRemovalEvent(triggerEvent, data) && !removalSource) continue;
+                        QList<int> instanceIds;
+                        if (removalSource) {
+                            instanceIds << 0;
+                        } else if (v2->isEquipSkill()) {
 							// Equipment eligibility is authoritative in its selector, including
 							// virtual armor and effects pending after the card has left play.
 							if (instanceId != 0 || skillName != v2->objectName()) continue;
@@ -1243,7 +1260,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.owner = p;
 								ctx.invoker = target;
 								ctx.instanceID = resolvedId;
-								if (!v2->isEquipSkill()) ctx.activationRef = ref;
+								if (!v2->isEquipSkill() && !removalSource) ctx.activationRef = ref;
 								ctx.sourceRef = ctx.activationRef;
 								bool amountOk = false;
 								if (!v2->isEquipSkill())
