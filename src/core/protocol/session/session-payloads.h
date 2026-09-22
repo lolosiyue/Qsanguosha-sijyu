@@ -79,8 +79,6 @@ struct SetupPayload
     bool enableCheat = false;
     bool freeChoose = false;
     bool enableSecondGeneral = false;
-    bool enableSame = false;
-    bool enableBasara = false;
     bool enableHegemony = false;
     bool enableMeleeMode = false;
     bool enableAi = false;

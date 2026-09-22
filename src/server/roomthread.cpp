@@ -904,17 +904,19 @@ void RoomThread::run()
 		addTriggerSkill(triggerSkill);
 
 	static QList<const EquipCard*> equips = Sanguosha->findChildren<const EquipCard*>();
-	foreach (const EquipCard*e, equips)
-		addTriggerSkill(Sanguosha->getTriggerSkill(e->objectName()));
-
-	if (Config.EnableBasara)
-		addTriggerSkill(new BasaraMode(this));
-
-	if (Config.EnableHegemony && Config.Enable2ndGeneral) {
-		extern TriggerSkill *CompanionEffectSkill;
-		if (CompanionEffectSkill)
-			addTriggerSkill(CompanionEffectSkill);
-	}
+	foreach (const EquipCard*e, equips) {
+        // The card keeps its canonical name; imported equipment owns an heg_
+        // definition. Register records before installation/removal can occur.
+        const Skill *equipmentSkill = Sanguosha->getSkill(e);
+        addTriggerSkill(qobject_cast<const TriggerSkill *>(equipmentSkill));
+        if (equipmentSkill && Config.EnableHegemony
+            && equipmentSkill->objectName().startsWith(QLatin1String("heg_"))) {
+            // A ViewAsSkill root (for example WoodenOx) may have trigger-only
+            // companions even though the root itself is not a TriggerSkill.
+            for (const Skill *related : Sanguosha->getRelatedSkills(equipmentSkill->objectName()))
+                addTriggerSkill(qobject_cast<const TriggerSkill *>(related));
+        }
+    }
 
 	GameRule*game_rule = room->getMode() == "04_1v3" ? new HulaoPassMode(this) : new GameRule(this);
 	addTriggerSkill(game_rule);

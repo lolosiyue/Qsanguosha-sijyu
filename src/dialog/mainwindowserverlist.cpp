@@ -549,10 +549,6 @@ aa:
 			s.append(tr("作弊 "));
         if (setup.enableSecondGeneral)
 			s.append(tr("双将 "));
-        if (setup.enableSame)
-			s.append(tr("同将 "));
-        if (setup.enableBasara)
-			s.append(tr("暗将 "));
         if (setup.enableHegemony)
 			s.append(tr("国战 "));
         if (setup.enableMeleeMode)

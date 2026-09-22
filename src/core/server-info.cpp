@@ -49,8 +49,6 @@ bool ServerInfoStruct::parse(const QString &str)
     EnableCheat = flags.contains("C");
     FreeChoose = EnableCheat && flags.contains("F");
     Enable2ndGeneral = flags.contains("S");
-    EnableSame = flags.contains("T");
-    EnableBasara = flags.contains("B");
     EnableHegemony = flags.contains("H");
     EnableMeleeMode = flags.contains("E");
     EnableAI = flags.contains("A");

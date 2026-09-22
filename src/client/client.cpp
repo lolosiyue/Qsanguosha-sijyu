@@ -485,8 +485,6 @@ void Client::setup(const QVariant &setup_json)
 	ServerInfo.EnableCheat = payload.enableCheat;
 	ServerInfo.FreeChoose = payload.freeChoose;
 	ServerInfo.Enable2ndGeneral = payload.enableSecondGeneral;
-	ServerInfo.EnableSame = payload.enableSame;
-	ServerInfo.EnableBasara = payload.enableBasara;
 	ServerInfo.EnableHegemony = payload.enableHegemony;
 	ServerInfo.EnableMeleeMode = payload.enableMeleeMode;
 	ServerInfo.EnableAI = payload.enableAi;
@@ -3223,7 +3221,7 @@ void Client::log(const QVariant &log_str)
 			object.value(QStringLiteral("card_string")).toString()
 		};
 		log.append(arguments);
-		if (log.first().contains("#BasaraReveal"))
+		if (log.first().contains("#HegemonyReveal"))
 			Sanguosha->playSystemAudioEffect("choose-item");
 		else if (log.first() == "#Zombify") {
 			ClientPlayer *from = getPlayer(log.at(1));

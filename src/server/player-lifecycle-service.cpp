@@ -340,15 +340,8 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
         }
 
         if (exposeRoles) {
-            foreach (ServerPlayer *player, m_roster.alivePlayers()) {
-                if (Config.EnableHegemony) {
-                    QString role = player->getKingdom();
-                    if (role == "god")
-                        role = Sanguosha->getGeneral(player->property("basara_generals").toString().split("+").first())->getKingdom();
-                    role = BasaraMode::getMappedRole(role);
-                    m_room.broadcastProperty(player, "role", role);
-                }
-            }
+            // Spectating an AI-only Hegemony table does not grant knowledge of
+            // concealed generals. Roles are published by showGeneral instead.
 
             static QStringList continueList;
             if (continueList.isEmpty())

@@ -602,8 +602,6 @@ QVariantMap buildConfigFingerprint(const QString &gameMode)
     result[QStringLiteral("freeChoose")] = Config.FreeChoose;
     result[QStringLiteral("freeAssignSelf")] = Config.FreeAssignSelf;
     result[QStringLiteral("enableSecondGeneral")] = Config.Enable2ndGeneral;
-    result[QStringLiteral("enableSame")] = Config.EnableSame;
-    result[QStringLiteral("enableBasara")] = Config.EnableBasara;
     result[QStringLiteral("enableHegemony")] = Config.EnableHegemony;
     result[QStringLiteral("enableMeleeMode")] = Config.EnableMeleeMode;
     result[QStringLiteral("maxHpScheme")] = Config.MaxHpScheme;
@@ -1634,8 +1632,6 @@ bool GameSnapshot::validateRuntimeCompatibility(const GlobalSnapshot &state,
         return fail(QStringLiteral("snapshot game mode fingerprint is inconsistent"));
     if (state.configFingerprint.value(QStringLiteral("enableHegemony")).toBool())
         return fail(QStringLiteral("hegemony takeover is not supported"));
-    if (state.configFingerprint.value(QStringLiteral("enableBasara")).toBool())
-        return fail(QStringLiteral("basara takeover is not supported"));
 
     auto instanceToken = [](const QString &skillName, int instanceID) {
         return skillName + QLatin1Char('#') + QString::number(instanceID);

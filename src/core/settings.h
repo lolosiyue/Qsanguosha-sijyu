@@ -73,8 +73,6 @@ public:
     bool DisableChat;
     bool FreeAssignSelf;
     bool Enable2ndGeneral;
-    bool EnableSame;
-    bool EnableBasara;
     bool EnableHegemony;
     bool EnableMeleeMode;
     int MaxHpScheme;

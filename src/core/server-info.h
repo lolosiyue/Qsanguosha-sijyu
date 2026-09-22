@@ -19,8 +19,6 @@ struct ServerInfoStruct
     bool EnableCheat = false;
     bool FreeChoose = false;
     bool Enable2ndGeneral = false;
-    bool EnableSame = false;
-    bool EnableBasara = false;
     bool EnableHegemony = false;
     bool EnableMeleeMode = false;
     bool EnableAI = false;

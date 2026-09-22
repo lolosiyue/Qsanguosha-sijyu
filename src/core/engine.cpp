@@ -1340,9 +1340,7 @@ int Engine::getGeneralCount(bool include_banned, const QString &kingdom) const
 		banPackages << Config.value("Banlist/Happy2v2").toStringList();
 	else if (ServerInfo.GameMode.contains("_mini_")||ServerInfo.GameMode=="custom_scenario"||isNormalGameMode(ServerInfo.GameMode))
 		banPackages << Config.value("Banlist/Roles").toStringList();
-	else if (ServerInfo.EnableBasara)
-		banPackages << Config.value("Banlist/Basara").toStringList();
-	else if (ServerInfo.EnableHegemony)
+	if (hegemony)
 		banPackages << Config.value("Banlist/Hegemony").toStringList();
 	if(include_banned)
 		banPackages.clear();
@@ -1711,10 +1709,6 @@ QString Engine::getSetupString() const
         flags.append("F");
     if (Config.Enable2ndGeneral)
         flags.append("S");
-    if (Config.EnableSame)
-        flags.append("T");
-    if (Config.EnableBasara)
-        flags.append("B");
     if (Config.EnableHegemony)
         flags.append("H");
     if (Config.EnableMeleeMode)
@@ -2200,9 +2194,7 @@ QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool availabl
 		ban << Config.value("Banlist/06_ol").toStringList();
 	else if (ServerInfo.GameMode=="custom_scenario"||ServerInfo.GameMode.contains("_mini_")||isNormalGameMode(ServerInfo.GameMode))
 		ban << Config.value("Banlist/Roles").toStringList();
-	if (ServerInfo.EnableBasara)
-		ban << Config.value("Banlist/Basara").toStringList();
-	if (ServerInfo.EnableHegemony)
+	if (hegemony)
 		ban << Config.value("Banlist/Hegemony").toStringList();/*
 	
     QHashIterator<QString, const General*> itor(available?available_generals:generals);

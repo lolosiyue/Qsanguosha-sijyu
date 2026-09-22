@@ -2491,15 +2491,15 @@ QString Player::getSkillDescription(const Player *viewer) const
 	general = getGeneral2();
 	if (general&&general->objectName()!="anjiang")
 		relateds << general->getRelatedSkillNames();
-    QList<const Skill *> basara_list;
+    QList<const Skill *> concealed_list;
     if (getGeneralName() == "anjiang" || getGeneral2Name() == "anjiang"){
-        foreach(QString basara_gen, property("basara_generals").toString().split("+")){
-			general = Sanguosha->getGeneral(basara_gen);
-			if (general) basara_list.append(general->getVisibleSkillList());
+        foreach(QString concealed_general, property("hegemony_generals").toString().split("+")){
+			general = Sanguosha->getGeneral(concealed_general);
+			if (general) concealed_list.append(general->getVisibleSkillList());
         }
     }
     foreach(const Skill *skill, visibleSkills){
-        if (skill->isAttachedLordSkill() || basara_list.contains(skill))
+        if (skill->isAttachedLordSkill() || concealed_list.contains(skill))
             continue;
         const QString skillName = skill->objectName();
         bool skillValid = true;
@@ -3296,7 +3296,7 @@ QString Player::getLogName() const
 {
 	QString general_name = Sanguosha->translate(getGeneralName());
 	if (getGeneral2()) general_name += "/"+Sanguosha->translate(getGeneral2Name());
-	if (ServerInfo.EnableSame || getGeneralName() == "anjiang")
+	if (getGeneralName() == "anjiang")
 		general_name += QString("[%1]").arg(getSeat());
 	return general_name;
 }

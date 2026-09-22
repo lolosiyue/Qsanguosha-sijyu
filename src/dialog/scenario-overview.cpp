@@ -23,7 +23,7 @@ ScenarioOverview::ScenarioOverview(QWidget *parent)
     setLayout(layout);
 
     QStringList names = Sanguosha->getModScenarioNames();
-    names << "BossMode" << "Hulaopass" << "Basara" << "Hegemony" << "MiniScene" << "05_ol" << "06_ol";
+    names << "BossMode" << "Hulaopass" << "Hegemony" << "MiniScene" << "05_ol" << "06_ol";
     foreach (QString name, names) {
         QListWidgetItem *item = new QListWidgetItem(Sanguosha->translate(name), list);
         item->setData(Qt::UserRole, name);

@@ -2377,10 +2377,8 @@ void MainWindow::startScenarioWork(const ScenarioWork::WorkLaunch &requested)
     state->overrideValue(Config.FreeChoose, false);
     state->overrideValue(Config.FreeAssignSelf, false);
     state->overrideValue(Config.EnableAI, true);
-    state->overrideValue(Config.EnableBasara, false);
     state->overrideValue(Config.EnableHegemony, false);
     state->overrideValue(Config.EnableMeleeMode, false);
-    state->overrideValue(Config.EnableSame, true);
     state->overrideValue(Config.Enable2ndGeneral, launch.work.rules.value(QStringLiteral("secondGeneral")).toBool());
     state->overrideValue(Config.EnableLuckCard, false);
     state->overrideValue(Config.SurrenderAtDeath, false);

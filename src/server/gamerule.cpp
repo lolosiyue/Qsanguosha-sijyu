@@ -1947,45 +1947,7 @@ QString GameRule::getWinner(ServerPlayer *victim,Room *room) const
         qWarning("Unknown win_policy '%s' for mode '%s'; falling back to identity.",
                  qPrintable(policy), qPrintable(room->getMode()));
     if(Config.EnableHegemony) {
-        QString init_kingdom;
-        foreach (ServerPlayer *p,room->getAlivePlayers()) {
-            if(!p->property("basara_generals").toString().isEmpty())
-                return winner;
-            if(init_kingdom.isEmpty())
-                init_kingdom = p->getKingdom();
-            else if(init_kingdom != p->getKingdom())
-                return winner;
-        }
-
-		QStringList winners;
-		foreach (ServerPlayer *p,room->getPlayers()) {
-			if(p->isAlive()) winners << p->objectName();
-			else if(p->getKingdom()==init_kingdom) {
-				QStringList generals = p->property("basara_generals").toString().split("+");
-				if(generals.size()==1&&!Config.Enable2ndGeneral) continue;
-				if(generals.size() >= 2) continue;
-
-				//if someone showed his kingdom before death,
-				//he should be considered victorious as well if his kingdom survives
-				winners << p->objectName();
-			}
-		}
-        if(!winners.isEmpty()) {
-            foreach (ServerPlayer *player,room->getAllPlayers()) {
-				QStringList generals = player->property("basara_generals").toString().split("+");
-				if(generals.isEmpty()) continue;
-                if(player->getGeneralName()=="anjiang") {
-                    room->changePlayerGeneral(player,generals.takeFirst());
-                    //room->setPlayerProperty(player,"kingdom",player->getGeneral()->getKingdom());
-                    room->setPlayerProperty(player,"role",BasaraMode::getMappedRole(player->getKingdom()));
-                }
-                if(Config.Enable2ndGeneral&&player->getGeneral2Name()=="anjiang")
-                    room->changePlayerGeneral2(player,generals.takeLast());
-				room->safeSetPlayerProperty(player,"basara_generals",generals.join("+"));
-				room->notifyProperty(player,player,"basara_generals");
-            }
-			winner = winners.join("+");
-        }
+        return HegemonyRule::winner(room);
     } else {
         QStringList alive_roles = room->aliveRoles(victim);
         switch (victim->getRoleEnum()) {
@@ -2160,14 +2122,13 @@ bool HulaoPassMode::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *p
     return GameRule::trigger(triggerEvent,room,player,data);
 }
 
-BasaraMode::BasaraMode(QObject *parent)
+HegemonyRule::HegemonyRule(QObject *parent)
     : GameRule(parent)
 {
-    setObjectName("basara_mode");
-    events << DamageInflicted << BeforeGameOverJudge;
+    events << BeforeGameOverJudge << GeneralShown;
 }
 
-QString BasaraMode::getMappedRole(const QString &role)
+QString HegemonyRule::getMappedRole(const QString &role)
 {
     static QMap<QString,QString> roles;
     if(roles.isEmpty()) {
@@ -2179,16 +2140,19 @@ QString BasaraMode::getMappedRole(const QString &role)
     return roles[role];
 }
 
-int BasaraMode::getPriority(TriggerEvent) const
+namespace {
+
+bool isHegemonyLord(const ServerPlayer *player)
 {
     return 15;
 }
 
-void BasaraMode::playerShowed(ServerPlayer *player) const
+void revealHegemonyGenerals(ServerPlayer *player)
 {
-    QString name = player->property("basara_generals").toString();
-    if(name.isEmpty()) return;
-    QStringList names = name.split("+");
+    // Final/death reveals must not grant first-show or companion rewards.
+    player->showGeneral(true, false, false);
+    player->showGeneral(false, false, false);
+}
 
     Room *room = player->getRoom();
     if(Config.EnableHegemony) {
@@ -2210,58 +2174,50 @@ void BasaraMode::playerShowed(ServerPlayer *player) const
     }
 }
 
-void BasaraMode::generalShowed(ServerPlayer *player,QString general_name) const
+void HegemonyRule::rewardAndPunish(ServerPlayer *killer, ServerPlayer *victim) const
 {
-    QString name = player->property("basara_generals").toString();
-    if(name.isEmpty()) return;
-    Room *room = player->getRoom();
-    QStringList names = name.split("+");
-    names.removeOne(general_name);
-    room->safeSetPlayerProperty(player,"basara_generals",names.join("+"));
-    room->notifyProperty(player,player,"basara_generals");
-    if(player->getGeneralName()=="anjiang") {
-        room->changeHero(player,general_name,false,false,false,false);
-        if(Config.EnableHegemony)
-            room->setPlayerProperty(player,"role",getMappedRole(player->getKingdom()));
-    } else
-        room->changeHero(player,general_name,false,false,true,false);
-    LogMessage log;
-    log.type = "#BasaraReveal";
-    log.from = player;
-    log.arg = player->getGeneralName();
-    if(player->getGeneral2()) {
-        log.type = "#BasaraRevealDual";
-        log.arg2 = player->getGeneral2Name();
+    if (!killer || killer->isDead() || !killer->hasShownOneGeneral()
+        || victim->getMark("wujieNoRewardAndPunish-Keep") > 0)
+        return;
+    if (killer->isFriendWith(victim)) {
+        killer->throwAllHandCardsAndEquips(QStringLiteral("kill"));
+        return;
     }
-    room->sendLog(log);
+    int reward = 1;
+    foreach (ServerPlayer *p, victim->getRoom()->getOtherPlayers(victim)) {
+        if (victim->isFriendWith(p)) ++reward;
+    }
+    killer->drawCards(reward, QStringLiteral("kill"));
 }
 
-bool BasaraMode::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player,QVariant &data) const
+void HegemonyRule::rewardReveal(Room *room, ServerPlayer *player) const
 {
-    // Handle global events
-	if(player){
-		player->setTag("triggerEvent", triggerEvent);
-		player->setTag("triggerEventData", data); // For AI
-	}
-    switch (triggerEvent) {
-    case GameReady: {
-		if(player) break;
-		if(Config.EnableHegemony)
-			room->setTag("SkipNormalDeathProcess",true);
-		foreach (ServerPlayer *sp,room->getAlivePlayers()) {
-			room->setPlayerProperty(sp,"general","anjiang");
-			sp->setGender(General::Sexless);
-			room->setPlayerProperty(sp,"kingdom","god");
-
-			LogMessage log;
-			log.type = "#BasaraGeneralChosen";
-			log.arg = sp->property("basara_generals").toString().split("+").first();
-
-			if(Config.Enable2ndGeneral) {
-				room->setPlayerProperty(sp,"general2","anjiang");
-				log.type = "#BasaraGeneralChosenDual";
-				log.arg2 = sp->property("basara_generals").toString().split("+").last();
-			}
+    if (!player->isAlive()) return;
+    if (Config.value("RewardTheFirstShowingPlayer", true).toBool()
+        && !room->getTag("TheFirstToShowRewarded").toBool()) {
+        // Claim before prompting: nested reveal triggers cannot award twice.
+        room->setTag("TheFirstToShowRewarded", true);
+        if (room->askForSkillInvoke(player, "HegemonyFirstShow"))
+            player->drawCards(2, QStringLiteral("HegemonyFirstShow"));
+    }
+    if (!player->hasShownAllGenerals()) return;
+    if (player->getMark("CompanionEffect") > 0) {
+        room->removePlayerMark(player, "CompanionEffect");
+        QStringList choices;
+        if (player->isWounded()) choices << QStringLiteral("recover");
+        choices << QStringLiteral("draw") << QStringLiteral("cancel");
+        const QString choice = room->askForChoice(player, "CompanionEffect", choices.join('+'));
+        if (choice == QLatin1String("recover"))
+            room->recover(player, RecoverStruct(QStringLiteral("CompanionEffect"), player));
+        else if (choice == QLatin1String("draw"))
+            player->drawCards(2, QStringLiteral("CompanionEffect"));
+    }
+    if (player->getMark("HalfMaxHpLeft") > 0) {
+        room->removePlayerMark(player, "HalfMaxHpLeft");
+        if (room->askForSkillInvoke(player, "HegemonyHalfHp"))
+            player->drawCards(1, QStringLiteral("HegemonyHalfHp"));
+    }
+}
 
 			room->sendLog(log,sp);
 		}
@@ -2309,23 +2265,38 @@ bool BasaraMode::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *play
     }case DamageInflicted: {
         playerShowed(player);
         break;
-    }case BeforeGameOverJudge: {
-        if(player->getGeneralName()=="anjiang") {
-            QStringList generals = player->property("basara_generals").toString().split("+");
-            room->changePlayerGeneral(player,generals.takeFirst());
-
-            room->setPlayerProperty(player,"kingdom",player->getGeneral()->getKingdom());
-            if(Config.EnableHegemony)
-                room->setPlayerProperty(player,"role",getMappedRole(player->getKingdom()));
-
-            room->safeSetPlayerProperty(player,"basara_generals",generals.join("+"));
-            room->notifyProperty(player,player,"basara_generals");
+    }
+    case EventPhaseChanging: {
+        if (data.value<PhaseChangeStruct>().to != Player::NotActive) break;
+        const bool result = GameRule::trigger(event, room, player, data);
+        if (!room->getTag("ImperialOrderInvoke").toBool()) return result;
+        // Consume first: an effect can itself discard another Imperial Order.
+        room->setTag("ImperialOrderInvoke", false);
+        const Card *order = room->getTag("ImperialOrderCard").value<const Card *>();
+        room->removeTag("ImperialOrderCard");
+        if (!order) return result;
+        LogMessage log;
+        log.type = "#ImperialOrderEffect";
+        log.from = player;
+        log.arg = "imperial_order";
+        room->sendLog(log);
+        const QString key = order->toString();
+        auto clearNullification = qScopeGuard([&]() {
+            room->removeTag(key + QStringLiteral("HegNullificationTargets"));
+            room->removeTag(key + QStringLiteral("HegNullificationCard"));
+        });
+        for (ServerPlayer *target : room->getAllPlayers()) {
+            if (target->isAlive() && !target->hasShownOneGeneral()
+                && !room->isProhibited(nullptr, target, order))
+                room->cardEffect(order, nullptr, target);
         }
-        if(Config.Enable2ndGeneral&&player->getGeneral2Name()=="anjiang") {
-            QStringList generals = player->property("basara_generals").toString().split("+");
-            room->changePlayerGeneral2(player,generals.last());
-            room->safeSetPlayerProperty(player,"basara_generals",QString(""));
-            room->notifyProperty(player,player,"basara_generals");
+        return result;
+    }
+    case CardFinished: {
+        const CardUseStruct use = data.value<CardUseStruct>();
+        if (use.card && use.card->isNDTrick()) {
+            room->removeTag(use.card->toString() + QStringLiteral("HegNullificationTargets"));
+            room->removeTag(use.card->toString() + QStringLiteral("HegNullificationCard"));
         }
         break;
     }case BuryVictim: {
