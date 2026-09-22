@@ -24,6 +24,7 @@
 #include "room.h"
 #include "serverplayer.h"
 #include "engine.h"
+#include "general.h"
 #include "standard.h"
 #include "util.h"
 #include <QScopeGuard>
