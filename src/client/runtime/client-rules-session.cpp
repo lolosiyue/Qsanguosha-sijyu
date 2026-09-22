@@ -124,8 +124,6 @@ void loadScene(const QJsonObject &data, Scene &scene)
     ServerInfo.GameRuleMode = setup.value(QStringLiteral("game_rule_mode")).toString();
     ServerInfo.BanPackages = strings(setup.value(QStringLiteral("ban_packages")));
     ServerInfo.Enable2ndGeneral = setup.value(QStringLiteral("enable_second_general")).toBool();
-    ServerInfo.EnableSame = setup.value(QStringLiteral("enable_same")).toBool();
-    ServerInfo.EnableBasara = setup.value(QStringLiteral("enable_basara")).toBool();
     ServerInfo.EnableHegemony = setup.value(QStringLiteral("enable_hegemony")).toBool();
     ServerInfo.EnableMeleeMode = setup.value(QStringLiteral("enable_melee_mode")).toBool();
     ServerInfo.MaxHpScheme = setup.value(QStringLiteral("max_hp_scheme")).toInt();

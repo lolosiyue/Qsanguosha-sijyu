@@ -373,8 +373,6 @@ void Settings::init()
     DisableChat = value("DisableChat", false).toBool();
     FreeAssignSelf = EnableCheat && value("FreeAssignSelf", false).toBool();
     Enable2ndGeneral = value("Enable2ndGeneral", false).toBool();
-    EnableSame = value("EnableSame", false).toBool();
-    EnableBasara = value("EnableBasara", false).toBool();
     EnableHegemony = value("EnableHegemony", false).toBool();
     EnableMeleeMode = value("EnableMeleeMode", false).toBool();
     MaxHpScheme = value("MaxHpScheme", 0).toInt();
@@ -499,33 +497,20 @@ void Settings::init()
         setValue("Banlist/06_ol", GetConfigFromLuaState(lua, "god_ban").toStringList());
     }
 
-    QStringList basara_ban = value("Banlist/Basara").toStringList();
-    if (basara_ban.isEmpty()
-        && !hasValueOverride(QStringLiteral("Banlist/Basara"))) {
-		basara_ban = GetConfigFromLuaState(lua, "basara_ban").toStringList();
-        setValue("Banlist/Basara", basara_ban);
-    }
-
     if (value("Banlist/Hegemony").toStringList().isEmpty()
         && !hasValueOverride(QStringLiteral("Banlist/Hegemony"))) {
-		basara_ban << GetConfigFromLuaState(lua, "hegemony_ban").toStringList();
+		QStringList hegemony_ban = GetConfigFromLuaState(lua, "hegemony_ban").toStringList();
 		foreach (QString general, Sanguosha->getLimitedGeneralNames()) {
-			if (!basara_ban.contains(general)&&Sanguosha->getGeneral(general)->getKingdom() == "god")
-				basara_ban << general;
+			if (!hegemony_ban.contains(general)&&Sanguosha->getGeneral(general)->getKingdom() == "god")
+				hegemony_ban << general;
 		}
-		setValue("Banlist/Hegemony", basara_ban);
+		setValue("Banlist/Hegemony", hegemony_ban);
     }
 
     if (value("Banlist/Pairs").toStringList().isEmpty()
         && !hasValueOverride(QStringLiteral("Banlist/Pairs"))) {
         setValue("Banlist/Pairs", GetConfigFromLuaState(lua, "pairs_ban").toStringList());
     }
-
-    /*basara_ban = value("ForbidPackages").toStringList();
-    if (basara_ban.isEmpty()) {
-        basara_ban << "New3v3Card" << "New3v3_2013Card" << "New1v1Card" << "BossMode" << "JianGeDefense" << "test";
-        setValue("ForbidPackages", basara_ban);
-    }*/
 
     BossGenerals = GetConfigFromLuaState(lua, "bossmode_default_boss").toStringList();
     BossLevel = BossGenerals.length();
@@ -543,8 +528,8 @@ void Settings::init()
 
     QMap<QString, int> exp_skill_map;
     foreach (QString skill, GetConfigFromLuaState(lua, "bossmode_exp_skills").toStringList()) {
-        basara_ban = skill.split(":");
-		exp_skill_map.insert(basara_ban.first(), basara_ban.last().toInt());
+        const QStringList skill_parts = skill.split(":");
+		exp_skill_map.insert(skill_parts.first(), skill_parts.last().toInt());
     }
     BossExpSkills = exp_skill_map;
 
@@ -569,9 +554,7 @@ QByteArray buildGameConfigSummary()
         .arg(Config.NullificationCountDown);
     lines << QString("雙將: %1  軍爭: %2  國戰: %3  同將: %4")
         .arg(onOff(Config.Enable2ndGeneral),
-             onOff(Config.EnableBasara),
-             onOff(Config.EnableHegemony),
-             onOff(Config.EnableSame));
+             onOff(Config.EnableHegemony));
     lines << QString("座次/操作: 隨機座次=%1  自由選將=%2  自由分配=%3  作弊=%4")
         .arg(onOff(Config.RandomSeat),
              onOff(Config.FreeChoose),

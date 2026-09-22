@@ -374,8 +374,6 @@ QVariantMap SetupPayload::toVariant() const
             {QStringLiteral("enable_cheat"), enableCheat},
             {QStringLiteral("free_choose"), freeChoose},
             {QStringLiteral("enable_second_general"), enableSecondGeneral},
-            {QStringLiteral("enable_same"), enableSame},
-            {QStringLiteral("enable_basara"), enableBasara},
             {QStringLiteral("enable_hegemony"), enableHegemony},
             {QStringLiteral("enable_melee_mode"), enableMeleeMode},
             {QStringLiteral("enable_ai"), enableAi},
@@ -404,8 +402,6 @@ bool SetupPayload::parse(const QVariant &value, SetupPayload *payload, QString *
         || !requiredBool(o, QStringLiteral("enable_cheat"), &p.enableCheat, n, error)
         || !requiredBool(o, QStringLiteral("free_choose"), &p.freeChoose, n, error)
         || !requiredBool(o, QStringLiteral("enable_second_general"), &p.enableSecondGeneral, n, error)
-        || !requiredBool(o, QStringLiteral("enable_same"), &p.enableSame, n, error)
-        || !requiredBool(o, QStringLiteral("enable_basara"), &p.enableBasara, n, error)
         || !requiredBool(o, QStringLiteral("enable_hegemony"), &p.enableHegemony, n, error)
         || !requiredBool(o, QStringLiteral("enable_melee_mode"), &p.enableMeleeMode, n, error)
         || !requiredBool(o, QStringLiteral("enable_ai"), &p.enableAi, n, error)

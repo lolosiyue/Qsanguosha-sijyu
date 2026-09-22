@@ -540,8 +540,6 @@ QStringList ServerPlayer::getSelected() const
 QString ServerPlayer::findReasonable(const QStringList &generals, bool no_unreasonable)
 {
 	QStringList ban_list;
-	if (Config.EnableBasara)
-		ban_list << Config.value("Banlist/Basara").toStringList();
 	if (Config.GameMode.mode_id == "zombie_mode")
 		ban_list << Config.value("Banlist/Zombie").toStringList();
 	if (Config.GameMode.mode_id.endsWith("p")

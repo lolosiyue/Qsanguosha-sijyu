@@ -158,8 +158,6 @@ SetupPayload currentSetupPayload()
 	payload.enableCheat = Config.EnableCheat;
 	payload.freeChoose = Config.EnableCheat && Config.FreeChoose;
 	payload.enableSecondGeneral = Config.Enable2ndGeneral;
-	payload.enableSame = Config.EnableSame;
-	payload.enableBasara = Config.EnableBasara;
 	payload.enableHegemony = Config.EnableHegemony;
 	payload.enableMeleeMode = Config.EnableMeleeMode;
 	payload.enableAi = Config.EnableAI;
@@ -510,9 +508,6 @@ QWidget *ServerDialog::createAdvancedTab()
 	second_general_checkbox = new QCheckBox(tr("Enable second general"));
 	second_general_checkbox->setChecked(Config.Enable2ndGeneral);
 
-	same_checkbox = new QCheckBox(tr("Enable Same"));
-	same_checkbox->setChecked(Config.EnableSame);
-
 	max_hp_label = new QLabel(tr("Max HP scheme"));
 	max_hp_scheme_ComboBox = new QComboBox;
 	max_hp_scheme_ComboBox->addItem(tr("Sum - X"));
@@ -534,16 +529,10 @@ QWidget *ServerDialog::createAdvancedTab()
 
 	connect(max_hp_scheme_ComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(setMaxHpSchemeBox()));
 
-	basara_checkbox = new QCheckBox(tr("Enable Basara"));
-	basara_checkbox->setChecked(Config.EnableBasara);
+	hegemony_checkbox = new QCheckBox(tr("Enable Hegemony"));
+	hegemony_checkbox->setChecked(Config.EnableHegemony);
 	updateButtonEnablility(mode_group->checkedButton());
 	connect(mode_group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(updateButtonEnablility(QAbstractButton *)));
-
-	hegemony_checkbox = new QCheckBox(tr("Enable Hegemony"));
-	hegemony_checkbox->setChecked(Config.EnableBasara && Config.EnableHegemony);
-	hegemony_checkbox->setEnabled(basara_checkbox->isChecked());
-	connect(basara_checkbox, SIGNAL(toggled(bool)), hegemony_checkbox, SLOT(setChecked(bool)));
-	connect(basara_checkbox, SIGNAL(toggled(bool)), hegemony_checkbox, SLOT(setEnabled(bool)));
 
 	melee_mode_checkbox = new QCheckBox(tr("Enable Melee Mode (Peach as Slash/Jink in late game)"));
 	melee_mode_checkbox->setChecked(Config.EnableMeleeMode);
@@ -591,11 +580,10 @@ QWidget *ServerDialog::createAdvancedTab()
 	layout->addLayout(HLay(max_hp_label, max_hp_scheme_ComboBox));
 	layout->addLayout(HLay(scheme0_subtraction_label, scheme0_subtraction_spinbox));
 	layout->addWidget(prevent_awaken_below3_checkbox);
-	layout->addLayout(HLay(basara_checkbox, hegemony_checkbox));
+	layout->addWidget(hegemony_checkbox);
 	layout->addWidget(melee_mode_checkbox);
 	layout->addLayout(HLay(hegemony_maxchoice_label, hegemony_maxchoice_spinbox));
-	layout->addLayout(HLay(hegemony_maxshown_label, hegemony_maxshown_spinbox));
-	layout->addWidget(same_checkbox);
+	layout->addWidget(reward_first_showing_checkbox);
 	layout->addLayout(HLay(new QLabel(tr("Address")), address_edit));
 	layout->addWidget(detect_button);
 	layout->addLayout(HLay(new QLabel(tr("Port")), port_edit));
@@ -743,10 +731,10 @@ void ServerDialog::updateButtonEnablility(QAbstractButton *button)
 		|| button->objectName().contains("mini")
 		|| button->objectName().contains("1v1")
 		|| button->objectName().contains("1v3")) {
-		basara_checkbox->setChecked(false);
-		basara_checkbox->setEnabled(false);
+		hegemony_checkbox->setChecked(false);
+		hegemony_checkbox->setEnabled(false);
 	} else
-		basara_checkbox->setEnabled(true);
+		hegemony_checkbox->setEnabled(true);
 
 	if (button->objectName().contains("mini")
 		||button->objectName()=="02_1v1"
@@ -795,7 +783,7 @@ BanlistDialog::BanlistDialog(QWidget *parent, bool view)
 
 	if (ban_list.isEmpty())
 		ban_list << "Roles" << "1v1" << "Doudizhu" << "Happy2v2" << "BossMode"
-		<< "Basara" << "Hegemony" << "Pairs" << "Cards" << "05_ol" << "06_ol";
+		<< "Hegemony" << "Pairs" << "Cards" << "05_ol" << "06_ol";
 	QVBoxLayout *layout = new QVBoxLayout;
 
 	QTabWidget *tab = new QTabWidget;
@@ -1613,8 +1601,6 @@ int ServerDialog::config()
 	Config.ForbidSIMC = forbid_same_ip_checkbox->isChecked();
 	Config.DisableChat = disable_chat_checkbox->isChecked();
 	Config.Enable2ndGeneral = second_general_checkbox->isChecked();
-	Config.EnableSame = same_checkbox->isChecked();
-	Config.EnableBasara = basara_checkbox->isChecked() && basara_checkbox->isEnabled();
 	Config.EnableHegemony = hegemony_checkbox->isChecked() && hegemony_checkbox->isEnabled();
 	Config.EnableMeleeMode = melee_mode_checkbox->isChecked();
 	Config.MaxHpScheme = max_hp_scheme_ComboBox->currentIndex();
@@ -1672,8 +1658,6 @@ int ServerDialog::config()
 	Config.setValue("ForbidSIMC", Config.ForbidSIMC);
 	Config.setValue("DisableChat", Config.DisableChat);
 	Config.setValue("Enable2ndGeneral", Config.Enable2ndGeneral);
-	Config.setValue("EnableSame", Config.EnableSame);
-	Config.setValue("EnableBasara", Config.EnableBasara);
 	Config.setValue("EnableHegemony", Config.EnableHegemony);
 	Config.setValue("EnableMeleeMode", Config.EnableMeleeMode);
 	Config.setValue("HegemonyMaxChoice", hegemony_maxchoice_spinbox->value());
@@ -2023,9 +2007,7 @@ QStringList Server::startupMessages() const
         items << tr("Seconardary general is disabled");
     }
 
-    items << (Config.EnableSame ? tr("Same Mode is enabled") : tr("Same Mode is disabled"));
-    items << (Config.EnableBasara ? tr("Basara Mode is enabled") : tr("Basara Mode is disabled"));
-    items << (Config.EnableHegemony ? tr("Hegemony Mode is enabled") : tr("Hegemony Mode is disabled"));
+	items << (Config.EnableHegemony ? tr("Hegemony Mode is enabled") : tr("Hegemony Mode is disabled"));
     if (Config.EnableAI)
         items << tr("This server is AI enabled, AI delay is %1 milliseconds").arg(Config.AIDelay);
     else

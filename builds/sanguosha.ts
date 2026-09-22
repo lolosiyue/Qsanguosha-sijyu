@@ -4937,18 +4937,8 @@
         <translation>开启双将</translation>
     </message>
     <message>
-        <location filename="../src/core/record-analysis.cpp" line="72"/>
-        <source>EnableSame</source>
-        <translation>同将模式</translation>
-    </message>
-    <message>
         <source>EnableScene</source>
         <translation type="obsolete">场景模式</translation>
-    </message>
-    <message>
-        <location filename="../src/core/record-analysis.cpp" line="73"/>
-        <source>EnableBasara</source>
-        <translation>暗将模式</translation>
     </message>
     <message>
         <location filename="../src/core/record-analysis.cpp" line="74"/>
@@ -5948,26 +5938,6 @@ P = 你自己, R = 你所在的房间</translation>
         <translation type="unfinished">双将模式未启用</translation>
     </message>
     <message>
-        <location filename="../src/server/server.cpp" line="1803"/>
-        <source>Same Mode is enabled</source>
-        <translation type="unfinished">同将模式已启用</translation>
-    </message>
-    <message>
-        <location filename="../src/server/server.cpp" line="1803"/>
-        <source>Same Mode is disabled</source>
-        <translation type="unfinished">同将模式未启用</translation>
-    </message>
-    <message>
-        <location filename="../src/server/server.cpp" line="1804"/>
-        <source>Basara Mode is enabled</source>
-        <translation type="unfinished">暗将模式已启用</translation>
-    </message>
-    <message>
-        <location filename="../src/server/server.cpp" line="1804"/>
-        <source>Basara Mode is disabled</source>
-        <translation type="unfinished">暗将模式未启用</translation>
-    </message>
-    <message>
         <location filename="../src/server/server.cpp" line="1805"/>
         <source>Hegemony Mode is enabled</source>
         <translation type="unfinished">国战模式已启用</translation>
@@ -6161,11 +6131,6 @@ P = 你自己, R = 你所在的房间</translation>
         <location filename="../src/server/server.cpp" line="377"/>
         <source>Subtraction for scheme 0</source>
         <translation>体力上限求和后减去</translation>
-    </message>
-    <message>
-        <location filename="../src/server/server.cpp" line="386"/>
-        <source>Enable Basara</source>
-        <translation>启用暗将模式</translation>
     </message>
     <message>
         <location filename="../src/server/server.cpp" line="391"/>
@@ -6539,16 +6504,6 @@ P = 你自己, R = 你所在的房间</translation>
         <translation>双将模式</translation>
     </message>
     <message>
-        <location filename="../src/client/clientstruct.cpp" line="35"/>
-        <source>Same Mode</source>
-        <translation>同将模式</translation>
-    </message>
-    <message>
-        <location filename="../src/client/clientstruct.cpp" line="36"/>
-        <source>Basara Mode</source>
-        <translation>暗将模式</translation>
-    </message>
-    <message>
         <location filename="../src/client/clientstruct.cpp" line="37"/>
         <source>Hegemony Mode</source>
         <translation>国战模式</translation>
@@ -6823,22 +6778,6 @@ P = 你自己, R = 你所在的房间</translation>
     <message>
         <source>Seconardary general is disabled</source>
         <translation type="vanished">双将模式未启用</translation>
-    </message>
-    <message>
-        <source>Same Mode is enabled</source>
-        <translation type="vanished">同将模式已启用</translation>
-    </message>
-    <message>
-        <source>Same Mode is disabled</source>
-        <translation type="vanished">同将模式未启用</translation>
-    </message>
-    <message>
-        <source>Basara Mode is enabled</source>
-        <translation type="vanished">暗将模式已启用</translation>
-    </message>
-    <message>
-        <source>Basara Mode is disabled</source>
-        <translation type="vanished">暗将模式未启用</translation>
     </message>
     <message>
         <source>Hegemony Mode is enabled</source>

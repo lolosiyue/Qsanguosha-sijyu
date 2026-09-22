@@ -64,8 +64,6 @@ void RecAnalysis::initialize(QString dir)
             if (setup.enableCheat) m_recordServerOptions << tr("EnableCheat");
             if (setup.freeChoose) m_recordServerOptions << tr("FreeChoose");
             if (setup.enableSecondGeneral) m_recordServerOptions << tr("Enable2ndGeneral");
-            if (setup.enableSame) m_recordServerOptions << tr("EnableSame");
-            if (setup.enableBasara) m_recordServerOptions << tr("EnableBasara");
             if (setup.enableHegemony) m_recordServerOptions << tr("EnableHegemony");
             if (setup.enableMeleeMode) m_recordServerOptions << tr("EnableMeleeMode");
             if (setup.enableAi) m_recordServerOptions << tr("EnableAI");

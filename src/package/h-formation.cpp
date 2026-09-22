@@ -417,27 +417,9 @@ void ShangyiCard::onEffect(CardEffectStruct &effect) const
         room->showAllCards(effect.from, player);
     QStringList choicelist;
     if (!effect.to->isKongcheng())
-        choicelist.append("handcards");
-    if (room->getMode() == "04_1v3" || room->getMode() == "04_boss"
-        || room->getMode() == "06_3v3" || room->getMode() == "08_defense") {
-        ;
-    } else if (room->getMode() == "06_XMode") {
-        QStringList backup = player->getTag("XModeBackup").toStringList();
-        if (backup.length() > 0)
-            choicelist.append("remainedgenerals");
-    } else if (room->getMode() == "02_1v1") {
-        QStringList list = player->getTag("1v1Arrange").toStringList();
-        if (list.length() > 0)
-            choicelist.append("remainedgenerals");
-    } else if (Config.EnableBasara) {
-        QString hidden_generals = player->property("basara_generals").toString();
-        if (!hidden_generals.isEmpty())
-            choicelist.append("generals");
-    } else if (!player->isLord()) {
-        choicelist.append("role");
-    }
-    if (choicelist.isEmpty()) return;
-    QString choice = room->askForChoice(effect.from, "shangyi", choicelist.join("+"), QVariant::fromValue(player));
+        choices << "handcards";
+    if (!effect.to->hasShownAllGenerals())
+        choices << "hidden_general";
 
     LogMessage log;
     log.type = "$ShangyiView";
@@ -473,12 +455,16 @@ void ShangyiCard::onEffect(CardEffectStruct &effect) const
             room->sendLog(log, effect.from);
         }
 
-        JsonArray arr;
-        arr << "shangyi" << JsonUtils::toJsonArray(list);
-        room->doNotify(effect.from, QSanProtocol::S_COMMAND_VIEW_GENERALS, arr);
-    } else if (choice == "generals") {
-        QStringList list = player->property("basara_generals").toString().split("+");
-        foreach (QString name, list) {
+        effect.from->removeTag("heg_shangyi");
+        room->throwCard(to_discard, effect.to, effect.from);
+    } else {
+        room->broadcastSkillInvoke("heg_shangyi", 2, effect.from);
+        QStringList list;
+        if (!effect.to->hasShownGeneral1())
+            list << effect.to->getActualGeneral1Name();
+        if (!effect.to->hasShownGeneral2())
+            list << effect.to->getActualGeneral2Name();
+        foreach (const QString &name, list) {
             LogMessage log;
             log.type = "$ShangyiViewUnknown";
             log.from = effect.from;

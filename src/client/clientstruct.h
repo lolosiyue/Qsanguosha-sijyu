@@ -24,8 +24,6 @@ private:
     QLabel *game_mode_label;
     QLabel *player_count_label;
     QLabel *two_general_label;
-    QLabel *same_label;
-    QLabel *basara_label;
     QLabel *hegemony_label;
     QLabel *max_hp_label;
     QLabel *random_seat_label;

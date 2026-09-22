@@ -668,7 +668,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		if (forced){
 			general = forcedName;
 		}else{
-			if (Config.EnableSame || m_room.mode == "03_1v2"){
+			if (m_room.mode == "03_1v2"){
 				lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt());
 				if(m_room.mode == "03_1v2"){
 					QStringList all_generals = Sanguosha->getLimitedGeneralNames();
@@ -686,25 +686,13 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		}
 		the_lord->setGeneralName(general);
 		m_room.notifyProperty(the_lord, the_lord, "general");
-		if (!Config.EnableBasara){
-			if (the_lord->hasHideSkill()){
-				m_room.setPlayerProperty(the_lord, "yinni_general", general);
-				general = "yinni_hide";
-				the_lord->setGeneralName(general);
-			}
-			if (m_room.mode != "03_1v2")
-				m_room.broadcastProperty(the_lord, "general", general);
+		if (the_lord->hasHideSkill()){
+			m_room.setPlayerProperty(the_lord, "yinni_general", general);
+			general = "yinni_hide";
+			the_lord->setGeneralName(general);
 		}
 		players.removeOne(the_lord);
-		if (Config.EnableSame){
-			foreach(ServerPlayer*p, players){
-				p->setGeneralName(general);
-				if(general=="yinni_hide")
-					m_room.setPlayerProperty(p, "yinni_general", the_lord->property("yinni_general"));
-			}
-			Config.Enable2ndGeneral = false;
-			return;
-		}else if(Config.Enable2ndGeneral){
+		if(Config.Enable2ndGeneral){
 			if(general=="yinni_hide") general = the_lord->property("yinni_general").toString();
 			lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt(),QSet<QString>()<<general);
 			// 自動化測試: headless 指定主公副將 (--test-general2), 否則隨機
@@ -718,14 +706,10 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 			}
 			the_lord->setGeneral2Name(general);
 			m_room.notifyProperty(the_lord, the_lord, "general2");
-			if (!Config.EnableBasara){
-				if (the_lord->hasHideSkill()){
-					m_room.setPlayerProperty(the_lord, "yinni_general2", general);
-					general = "yinni_hide";
-					the_lord->setGeneral2Name(general);
-				}
-				if (m_room.mode != "03_1v2")
-					m_room.broadcastProperty(the_lord, "general2", general);
+			if (the_lord->hasHideSkill()){
+				m_room.setPlayerProperty(the_lord, "yinni_general2", general);
+				general = "yinni_hide";
+				the_lord->setGeneral2Name(general);
 			}
 		}
 	}
@@ -785,91 +769,11 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		}
 	}
 
-	if (Config.EnableBasara){
-		foreach(ServerPlayer*player, m_room.getPlayers()){
-			QStringList names;
-			if (player->getGeneral()){
-				names.append(player->getGeneralName());
-				if(names.last()=="yinni_hide"){
-					names.takeLast();
-					names.append(player->property("yinni_general").toString());
-				}
-				player->setGeneralName("anjiang");
-				m_room.notifyProperty(player, player, "general");
-			}
-			if (player->getGeneral2()){
-				names.append(player->getGeneral2Name());
-				if(names.last()=="yinni_hide"){
-					names.takeLast();
-					names.append(player->property("yinni_genera2").toString());
-				}
-				player->setGeneral2Name("anjiang");
-				m_room.notifyProperty(player, player, "general2");
-			}
-			m_room.safeSetPlayerProperty(player, "basara_generals", names.join("+"));
-			m_room.notifyProperty(player, player, "basara_generals");
-		}
-	}else{
-		if (m_room.mode == "03_1v2"&&the_lord){
-			m_room.broadcastProperty(the_lord, "general");
-			if(Config.Enable2ndGeneral)
-				m_room.broadcastProperty(the_lord, "general2");
-		}
+	if (m_room.mode == "03_1v2"&&the_lord){
+		m_room.broadcastProperty(the_lord, "general");
+		if(Config.Enable2ndGeneral)
+			m_room.broadcastProperty(the_lord, "general2");
 	}
-	/*if (Config.value("EnableSUPERConvert", true).toBool()&&mode != "05_ol"){
-		foreach(ServerPlayer*p, getPlayers()){
-			QStringList choicelist;
-			foreach(QString gen, Sanguosha->getLimitedGeneralNames()){
-				if (p->getGeneralName().endsWith(gen.split("_").last()))
-					choicelist << gen;
-			}
-			QString to_cv;
-			if (choicelist.length() > 1){
-				AI*ai = p->getAI();
-				if (ai) to_cv = askForChoice(p, "gamerule", choicelist.join("+"));
-				else to_cv = askForGeneral(p, choicelist);
-				p->setGeneralName(to_cv);
-				if (Config.EnableBasara)
-					notifyProperty(p, p, "general", to_cv);
-				else
-					broadcastProperty(p, "general", to_cv);
-				if (Config.EnableSame){
-					foreach(ServerPlayer*p, players){
-						if (!p->isLord())
-						p->setGeneralName(to_cv);
-					}
-					Config.Enable2ndGeneral = false;
-					return;
-				}
-				to_cv = Sanguosha->getGeneral(to_cv)->getKingdom();
-				if (to_cv != p->getKingdom())
-					setPlayerProperty(p, "kingdom", to_cv);
-			}
-			if (p->getGeneral2()){
-				QStringList choicelis;
-				foreach(QString gen, Sanguosha->getLimitedGeneralNames()){
-					if (p->getGeneral2Name().endsWith(gen.split("_").last()))
-						choicelis << gen;
-				}
-				if (choicelis.length() > 1){
-					AI*ai = p->getAI();
-					if (ai) to_cv = askForChoice(p, "gamerule", choicelis.join("+"));
-					else to_cv = askForGeneral(p, choicelis);
-					p->setGeneral2Name(to_cv);
-					if (Config.EnableBasara)
-						notifyProperty(p, p, "general2", to_cv);
-					else
-						broadcastProperty(p, "general2", to_cv);
-					if (Config.EnableSame){
-						foreach(ServerPlayer*p, players){
-							if (!p->isLord())
-							p->setGeneralName(to_cv);
-						}
-					}
-				}
-			}
-		}
-	}*/
 }
 
 void GameSessionController::chooseGeneralsOfJianGeDefenseMode()
@@ -966,8 +870,7 @@ void GameSessionController::setupChooseGeneralRequestArgs(ServerPlayer *player)
 	QStringList selected = player->getSelected();
 
 	JsonArray options = JsonUtils::toJsonArray(selected).value<JsonArray>();
-	if (Config.EnableBasara) options.append("anjiang(lord)");
-	else if(m_room.getLord()&&m_room.mode!="03_1v2") options.append(m_room.getLord()->getGeneralName()+"(lord)");
+	if(m_room.getLord()&&m_room.mode!="03_1v2") options.append(m_room.getLord()->getGeneralName()+"(lord)");
 	player->m_commandArgs = options;
 }
 void GameSessionController::run()
@@ -1296,7 +1199,7 @@ void GameSessionController::startGame()
 			player->setMaxHp(max_hp);
 			player->setHp(qMin(player->getGeneralStartHp(),max_hp));
 
-			if (!Config.EnableBasara){
+			if (!Config.EnableHegemony){
 				m_room.broadcastProperty(player, "general");
 				if(player->getGeneral2())
 					m_room.broadcastProperty(player, "general2");

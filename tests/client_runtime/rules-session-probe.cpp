@@ -214,7 +214,6 @@ QJsonObject globals()
     return {{"mode", ServerInfo.GameMode}, {"rule", ServerInfo.GameRuleMode},
         {"bans", QJsonArray::fromStringList(ServerInfo.BanPackages)},
         {"during", ServerInfo.DuringGame}, {"second", ServerInfo.Enable2ndGeneral},
-        {"same", ServerInfo.EnableSame}, {"basara", ServerInfo.EnableBasara},
         {"hegemony", ServerInfo.EnableHegemony}, {"melee", ServerInfo.EnableMeleeMode},
         {"hp", ServerInfo.MaxHpScheme}, {"subtraction", ServerInfo.Scheme0Subtraction}};
 }
@@ -339,7 +338,6 @@ int main(int argc, char **argv)
         ServerInfo.GameRuleMode = "sentinel-rule";
         ServerInfo.BanPackages = QStringList{"sentinel-package"};
         ServerInfo.DuringGame = false;
-        ServerInfo.EnableBasara = true;
         ServerInfo.MaxHpScheme = 17;
         const auto before = globals();
         QJsonArray calls;

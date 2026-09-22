@@ -171,8 +171,6 @@ QVariantMap effectiveServerConfiguration()
     values.insert(QStringLiteral("ForbidSIMC"), Config.ForbidSIMC);
     values.insert(QStringLiteral("DisableChat"), Config.DisableChat);
     values.insert(QStringLiteral("Enable2ndGeneral"), Config.Enable2ndGeneral);
-    values.insert(QStringLiteral("EnableSame"), Config.EnableSame);
-    values.insert(QStringLiteral("EnableBasara"), Config.EnableBasara);
     values.insert(QStringLiteral("EnableHegemony"), Config.EnableHegemony);
     values.insert(QStringLiteral("EnableMeleeMode"), Config.EnableMeleeMode);
     values.insert(QStringLiteral("MaxHpScheme"), Config.MaxHpScheme);

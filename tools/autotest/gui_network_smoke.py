@@ -159,9 +159,7 @@ def write_server_config(path, args):
         "Enable2ndGeneral=false",
         "EnableCheat=false",
         "FreeChoose=false",
-        "EnableBasara=false",
         "EnableHegemony=false",
-        "EnableSame=false",
         "EnableLuckCard=false",
         # Room::askForLuckCard reads this count; the legacy boolean alone
         # leaves the server default (-1, unlimited) and can loop forever.

@@ -249,7 +249,7 @@ int SoloServerHost::start()
     }
     // User bans augment each mode's native policy instead of erasing defaults.
     for (const char *key : {"Roles", "Doudizhu", "Happy2v2", "1v1", "BossMode",
-                           "05_ol", "06_ol", "Basara", "Hegemony"}) {
+                           "05_ol", "06_ol", "Hegemony"}) {
         const QString setting = QStringLiteral("Banlist/") + QString::fromLatin1(key);
         QStringList values = Config.value(setting).toStringList();
         values.append(banned);
