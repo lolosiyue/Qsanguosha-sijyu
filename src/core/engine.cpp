@@ -189,16 +189,6 @@ QList<const T *> mergedRuntimeSkills(RoomRuntime *runtime, const QList<const T *
 
 }
 
-bool Engine::isSkillAdmittedForMode(const Skill *skill, bool hegemony)
-{
-    if (!skill) return false;
-    // A shared card has one skill definition, even when its physical copies
-    // belong to different mode decks. Distinct card rules keep the package gate.
-    if (skill->property("sharedAcrossCardModes").toBool()) return true;
-    const QString cardPackage = skill->property("modeCardPackage").toString();
-    return cardPackage.isEmpty() || isOriginalHegemonyCardPackage(cardPackage) == hegemony;
-}
-
 // --- SafeLuaMutex implementation ---
 void SafeLuaMutex::lock() {
     LuaRuntime *runtime = LuaRuntime::current();

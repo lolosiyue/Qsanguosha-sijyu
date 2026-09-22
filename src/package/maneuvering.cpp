@@ -96,9 +96,10 @@ void Analeptic::onEffect(CardEffectStruct &effect) const
 class FanVSSkill : public OneCardViewAsSkill
 {
 public:
+    bool isEquipSkill() const override { return true; }
+
     FanVSSkill() : OneCardViewAsSkill("fan")
     {
-        setProperty("sharedAcrossCardModes", true);
         filter_pattern = "%slash";
         response_or_use = true;
     }
@@ -129,7 +130,6 @@ class FanSkill : public WeaponSkillV2
 public:
     FanSkill() : WeaponSkillV2("fan", "fan")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << ChangeSlash;
         view_as_skill = new FanVSSkill;
     }
@@ -268,7 +268,6 @@ class VineSkill : public ArmorSkillV2
 public:
     VineSkill() : ArmorSkillV2("vine", "vine")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << DamageInflicted << CardEffected;
         frequency = Compulsory;
     }
@@ -337,7 +336,6 @@ class SilverLionSkill : public ArmorSkillV2
 public:
     SilverLionSkill() : ArmorSkillV2("silver_lion", "silver_lion")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << DamageInflicted << CardsMoveOneTime;
         frequency = Compulsory;
     }

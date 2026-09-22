@@ -1144,35 +1144,30 @@ const EquipCard *Player::getEquip(int index) const
 
 bool Player::viewAsEquip(const QString &equip_name) const
 {
-    QString view = property("View_As_Equips_List").toString();
-    if (view!=""&&view.split("+").contains(equip_name)) return true;
+    return !viewAsEquipSources(equip_name).isEmpty();
+}
+
+QList<SkillInstanceRef> Player::viewAsEquipSources(const QString &equip_name) const
+{
+    // A property-granted equip has no general-skill source to reveal.
+    if (property("View_As_Equips_List").toString().split("+").contains(equip_name))
+        return {SkillInstanceRef()};
 
     bool locked = Sanguosha->getLuaMutex().tryLock();
     if (!locked) {
-        if (inherits("ClientPlayer")) return false;
+        if (inherits("ClientPlayer")) return {};
         Sanguosha->getLuaMutex().lock();
-        locked = true;
     }
-
-    bool ret = false;
-	for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
-		const QString &skill_name = outerIt.key();
-		const ViewAsEquipSkill *vaes = Sanguosha->getViewAsEquipSkill(skill_name);
-		if(vaes==nullptr) continue;
-		view = vaes->viewAsEquip(this);
-        if(view!=""&&view.split(",").contains(equip_name)&&hasSkill(skill_name)){
-            ret = true;
-            break;
-        }
-    }/*
-	static QList<const EquipCard *> Equips = Sanguosha->findChildren<const EquipCard *>();
-	foreach(const EquipCard *equip, Equips){
-		if (equip->objectName()==equip_name||equip->getClassName()==equip_name)
-			return view_as_equips.contains(equip->getClassName())||view_as_equips.contains(equip->objectName());
-	}*/
-
-    if (locked) Sanguosha->getLuaMutex().unlock();
-    return ret;
+    QList<SkillInstanceRef> sources;
+    for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
+        const ViewAsEquipSkill *skill = Sanguosha->getViewAsEquipSkill(it.key());
+        if (!skill || !hasSkill(it.key())
+            || !skill->viewAsEquip(this).split(",").contains(equip_name)) continue;
+        for (int id : getValidSkillInstanceIds(it.key()))
+            sources << SkillInstanceRef(objectName(), SkillInstanceKey(it.key(), id));
+    }
+    Sanguosha->getLuaMutex().unlock();
+    return sources;
 }
 
 bool Player::isLocked(const Card *card, bool isHandcard) const
@@ -1276,18 +1271,7 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
 {
 	if (!alive||(need_area&&getMark("IgnoreArea1")<1&&!hasEquipArea(1)))
         return false;
-    if (armor_name == QLatin1String("heg_bazhen")) {
-        if (getArmor() || !hasSkill(QStringLiteral("heg_bazhen"))
-            || !getTag(QStringLiteral("Qinggang")).toStringList().isEmpty())
-            return false;
-        // Bazhen grants Eight Diagram's effect without creating an equipped
-        // card; still apply the native source-scoped equipment restrictions.
-        for (const Armor *armor : Sanguosha->findChildren<const Armor *>()) {
-            if (armor->objectName() == QLatin1String("eight_diagram"))
-                return !isEquipsNullified(armor, sourcePlayer);
-        }
-        return false;
-    }
+
 	static QStringList a_equips;
 	if(a_equips.isEmpty()){
 		foreach(const Armor*a,Sanguosha->findChildren<const Armor*>())

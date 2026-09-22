@@ -197,7 +197,7 @@ can_trigger return "skill#N" → 只建立指定實例的 SkillContext
 | 契約 | 裝備 V2 |
 |------|---------|
 | 候選 | 四參數 `triggerable()` 回傳以決策者／裝備效果持有者為 key 的 `TriggerList`；由 selector 驗證裝備、失效及事件條件 |
-| 來源 | 使用裝備／事件資料作權威；`instanceID = 0`，不建立 Player 技能實例，`sourceRef`／`activationRef` 保持無效 |
+| 來源 | 使用裝備／事件資料作權威；`instanceID = 0`，不建立 Player 技能實例，實體裝備的 `sourceRef`／`activationRef` 保持無效；`ViewAsEquipSkill` 授予的虛擬裝備保留授予技能的精確來源，沿用預亮、揭將及失效檢查 |
 | 卸裝 | 卸裝後的移牌效果仍可成為候選；不得以仍持有 Player 技能實例為必要條件 |
 | 回調 | `cost/pay/effect` 的 `player` 為候選 owner；原事件角色為 `ctx.invoker`，可寫事件資料為 `*ctx.original_data` |
 | 記錄 | 每個裝備技能定義、每個事件呼叫一次 `record`；不依持有者實例重複，卸裝後亦能清理已建立的狀態 |
@@ -207,7 +207,7 @@ can_trigger return "skill#N" → 只建立指定實例的 SkillContext
 上述零實例候選僅適用於 `isEquipSkill()` 的 V2 定義，普通武將 V2 仍必須持有有效的精確實例。
 已進入結算的裝備效果可以支付自身裝備；支付後不因卸裝而取消該次效果。
 本批只遷移觸發技能；裝備的 ViewAs／Distance／AttackRange／TargetMod 等能力沿用原介面。
-同效果卡不再建立 H 子類別。共用技能以 `sharedAcrossCardModes` 明確宣告跨牌堆准入，
+同效果卡不再建立 H 子類別。裝備技能沿用 `isEquipSkill()` 分類，不按來源牌包封鎖模式，
 國戰實體牌仍由國戰套件提供，牌堆花色、點數、數量及 transferable 不由技能定義決定。
 
 #### 事件資料

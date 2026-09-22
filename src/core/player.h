@@ -257,6 +257,8 @@ public:
     const EquipCard *getEquip(int index) const;
 
     bool viewAsEquip(const QString &equip_name) const;
+    // An invalid ref denotes a property grant; an empty list means no grant.
+    QList<SkillInstanceRef> viewAsEquipSources(const QString &equip_name) const;
     bool hasWeapon(const QString &weapon_name, const Player *sourcePlayer = nullptr, bool need_area = true) const;
     bool hasArmorEffect(const QString &armor_name, const Player *sourcePlayer = nullptr, bool need_area = true) const;
     bool hasDefensiveHorse(const QString &horse_name, bool need_area = true) const;

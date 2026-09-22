@@ -474,6 +474,8 @@ class TriggerSkillV2 : public TriggerSkill, public AmountSkillV2
 public:
     TriggerSkillV2(const QString &name);
 
+    virtual QString equipmentName() const { return QString(); }
+
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
                                      ServerPlayer *player, QVariant &data) const;
     virtual void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
@@ -792,6 +794,7 @@ public:
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
                             QVariant &data) const override;
     bool isEquipSkill() const override { return true; }
+    QString equipmentName() const override { return m_equipmentName; }
 
 private:
     QString m_equipmentName;
@@ -805,6 +808,7 @@ public:
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
                             QVariant &data) const override;
     bool isEquipSkill() const override { return true; }
+    QString equipmentName() const override { return m_equipmentName; }
 
 private:
     QString m_equipmentName;
@@ -818,6 +822,7 @@ public:
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
                             QVariant &data) const override;
     bool isEquipSkill() const override { return true; }
+    QString equipmentName() const override { return m_equipmentName; }
 
 private:
     QString m_equipmentName;

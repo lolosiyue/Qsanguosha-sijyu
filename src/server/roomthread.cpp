@@ -1263,6 +1263,34 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			}
 		}
 
+        // Resolve virtual equipment through the same grant instances used by
+        // Player::viewAsEquip; physical and source-less grants need no reveal.
+        for (auto it = skillContexts.begin(); it != skillContexts.end();) {
+            const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
+                Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(it->skill_name)));
+            const QString equipName = definition ? definition->equipmentName() : QString();
+            bool physical = false;
+            if (!equipName.isEmpty()) {
+                for (const Card *equip : it->owner->getEquips())
+                    if (equip->objectName() == equipName) physical = true;
+            }
+            if (equipName.isEmpty() || physical) { ++it; continue; }
+            const auto sources = it->owner->viewAsEquipSources(equipName);
+            // Empty sources also allow event-owned post-uninstall effects.
+            bool admitted = sources.isEmpty();
+            for (const SkillInstanceRef &source : sources) {
+                if (!source.isValid() || (room->canShowGeneralForSkill(source)
+                    && room->isSkillPreshownForTrigger(source))) {
+                    it->activationRef = source;
+                    it->sourceRef = source;
+                    admitted = true;
+                    break;
+                }
+            }
+            if (admitted) ++it;
+            else it = skillContexts.erase(it);
+        }
+
 		if (skillContexts.isEmpty())
 			break;
 
@@ -1384,9 +1412,11 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		const auto sourceAvailable = [&]() {
 			// Paying may consume the equipment itself. An admitted card effect
 			// survives that payment; general skills still require their exact source.
-			if (equipment) return true;
-			return skill_owner->hasSkillInstance(skillName, instanceId)
-				&& !skill_owner->isSkillInvalid(skillName, instanceId)
+            if (equipment && !selectedSource.isValid()) return true;
+            if (equipment && (!skill_owner->viewAsEquipSources(v2->equipmentName()).contains(selectedSource)
+                || !static_cast<const TriggerSkill *>(v2)->triggerable(skill_owner))) return false;
+            return skill_owner->hasSkillInstance(selectedSource.key.skillName, selectedSource.key.instanceID)
+                && !skill_owner->isSkillInvalid(selectedSource.key.skillName, selectedSource.key.instanceID)
 				&& room->canShowGeneralForSkill(selectedSource)
                 && room->isSkillPreshownForTrigger(selectedSource);
 		};
@@ -1457,10 +1487,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		selected_ctx->targets = selected_ctx->updated_targets;
 
 		const bool sourceWasAlive = skill_owner->isAlive();
-		if (!equipment && (!sourceAvailable() || !room->showGeneralForSkill(selectedSource)
-			|| (sourceWasAlive && !skill_owner->isAlive())
-			|| !skill_owner->hasSkillInstance(skillName, instanceId)
-			|| skill_owner->isSkillInvalid(skillName, instanceId))) {
+        if (selectedSource.isValid() && (!sourceAvailable() || !room->showGeneralForSkill(selectedSource)
+            || (sourceWasAlive && !skill_owner->isAlive()) || !sourceAvailable())) {
 			skillHistory.finish(QStringLiteral("source_unavailable"));
 			continue;
 		}
@@ -1475,6 +1503,11 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		bool skip_effect = trigger(EventSkillEffect, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
 
+        // Interceptors may remove the exact grant after revelation as well.
+        if (equipment && selectedSource.isValid() && !sourceAvailable()) {
+            skillHistory.finish(QStringLiteral("source_unavailable"));
+            continue;
+        }
 		if (!skip_effect) {
 			broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx);
 
@@ -1875,10 +1908,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 {
 	if (!skill || skillSet.contains(skill)) return;
-    // Apply the same mode boundary to globals, equipment and acquired helpers.
-    // GameRule objects are engine controllers rather than catalog skills.
-    if (!skill->inherits("GameRule")
-        && !Engine::isSkillAdmittedForMode(skill, Config.EnableHegemony)) return;
+
 	skillSet << skill;
 	TriggerSkillTraits traits;
 	traits.v2 = skill->inherits("TriggerSkillV2");
