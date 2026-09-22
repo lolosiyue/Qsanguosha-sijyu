@@ -10,6 +10,12 @@
 > 命令、修正與日誌見 `builds/ai-common-completion-report.md`。未執行 CTest、GUI 或完整對局；
 > 契約通過不代表任意武將 parity。以下各 PR 保留各自歷史驗證，不由本檢查點追認全部階段。
 
+> **2026-09-22 fallback 政策變更：isolated 優先，答不出就落回 SmartAI。** `RoomRuntime::initialize()`
+> 原本只在 `requiresLegacyRuntime()`（有明確 legacy 路由設定）時才載 `smart-ai.lua`，預設設定下
+> 從不成立，isolated 拒答一律落到 `TrustAI`。現改為 `Config.EnableAI` 即載入，每個 Room 初始化約
+> +250～570ms；路由不變，`routeFor()` 仍預設 `AiRouteIsolated`。對應測試改為
+> `defaultRoomLoadsSmartAiFallbackAndStillRoutesIsolated`（ai-common case 46）。
+
 > 下文「整題交回 legacy」「不是缺陷」等是舊階段的歷史決策，已被上述自主決策目標取代。
 > 新的候選選擇可提交已知且完整授權的合法方案；其他未知選項仍記錄缺口。
 > 只有全部相關選項已處理且沒有可行方案，才可回 pass，不能以保底補足新版覆蓋率。
