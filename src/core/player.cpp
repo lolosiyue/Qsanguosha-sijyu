@@ -1836,7 +1836,7 @@ int Player::getSlashCount() const
 	}
     int count = 0;
     foreach(QString classname, classnames)
-        count += history.value(classname, 0);
+        count += TargetModSkillQueryScope::historyValue(this, classname, history.value(classname, 0));
     return count;
 }
 
@@ -1857,7 +1857,7 @@ int Player::usedTimes(const QString &card_class, bool actual) const
         if (property("AllSkillNoLimitingTimes").toBool()) return 0;
         if (property("SkillNoLimitingTimes").toString().split("+").contains(card_class)) return 0;
     }
-    return history.value(card_class, 0);
+    return TargetModSkillQueryScope::historyValue(this, card_class, history.value(card_class, 0));
 }
 
 bool Player::hasEquipSkill(const QString &skill_name) const
@@ -2005,6 +2005,47 @@ QList<int> Player::getValidSkillInstanceIds(const QString &skill_name) const
     return result;
 }
 
+bool Player::isSkillInstanceEffectAvailable(const QString &skillName, int instanceID,
+                                           const Player *targetModPreviewOwner) const
+{
+    if (!hasSkillInstance(skillName, instanceID)) return false;
+    const bool hegemony = isClientPlayer() ? ServerInfo.EnableHegemony : Config.EnableHegemony;
+    if (!hegemony) return !isSkillInvalid(skillName, instanceID);
+
+    const Player *sourceOwner = this;
+    const SkillInstanceRef ref(objectName(), SkillInstanceKey(skillName, instanceID));
+    const SkillInstanceRef root = SkillInstanceUtils::resolveRootRef(ref,
+        [this, &sourceOwner](const SkillInstanceRef &current) -> const SkillInstance * {
+            if (!sourceOwner || sourceOwner->objectName() != current.ownerObjectName) {
+                sourceOwner = nullptr;
+                for (const Player *sibling : getSiblings(true)) {
+                    if (sibling->objectName() == current.ownerObjectName) {
+                        sourceOwner = sibling;
+                        break;
+                    }
+                }
+            }
+            if (!sourceOwner || sourceOwner->isSkillInvalid(current.key.skillName, current.key.instanceID))
+                return nullptr;
+            return sourceOwner->findSkillInstance(current.key.skillName, current.key.instanceID);
+        });
+    if (!root.isValid()) return false;
+    const SkillInstance *instance = sourceOwner->findSkillInstance(root.key.skillName, root.key.instanceID);
+    // Read the exact root binding, never a shown/acquired same-name sibling.
+    // This gate is for continuous effects, not concealed trigger candidates.
+    if (instance->source == SourceAcquired) return true;
+    // Only TargetMod selection may preview the user's own revealable root.
+    // A concealed source belonging to another player must never be an oracle.
+    if (targetModPreviewOwner == sourceOwner && sourceOwner->isAlive()
+        && instance->source == SourceInnate
+        && sourceOwner->canShowGeneral(instance->bindHead == 1 ? "h"
+                                      : instance->bindHead == 2 ? "d" : ""))
+        return true;
+    return instance->source == SourceInnate
+        && ((instance->bindHead == 1 && sourceOwner->hasShownGeneral())
+            || (instance->bindHead == 2 && sourceOwner->hasShownGeneral2()));
+}
+
 // ========================================
 // 技能多實例權威容器 (SSOT) API
 // ========================================
@@ -2050,6 +2091,10 @@ bool Player::removeSkillInstance(const QString &skillName, int instanceID)
 
     SkillInstance removed = innerIt.value();
     QString formatted = SkillInstanceUtils::formatName(skillName, instanceID);
+    {
+        QMutexLocker locker(&m_preshowMutex);
+        m_preshowedSkillInstances.remove(formatted);
+    }
     outerIt->erase(innerIt);
     bool noInstancesRemain = outerIt->isEmpty();
     if (noInstancesRemain)
@@ -2127,6 +2172,10 @@ QList<SkillInstance> Player::getSkillInstances() const
 
 void Player::clearSkillInstances()
 {
+    {
+        QMutexLocker locker(&m_preshowMutex);
+        m_preshowedSkillInstances.clear();
+    }
     const bool changed = !m_skillInstances.isEmpty() || !skills.isEmpty()
         || !acquired_skills.isEmpty() || !head_skills.isEmpty() || !deputy_skills.isEmpty()
         || !head_acquired_skills.isEmpty() || !deputy_acquired_skills.isEmpty();
@@ -2154,10 +2203,11 @@ void Player::upsertSkillInstance(const SkillInstance &instance)
     if (instance.source == SourceInnate) {
         if (!skills.contains(instance.skillName))
             skills << instance.skillName;
-        if (instance.bindHead == 1)
-            head_skills[instance.skillName] = instance.visible;
-        else if (instance.bindHead == 2)
-            deputy_skills[instance.skillName] = instance.visible;
+        // Visibility is public metadata, never the owner's private preshow.
+        if (instance.bindHead == 1 && !head_skills.contains(instance.skillName))
+            head_skills[instance.skillName] = false;
+        else if (instance.bindHead == 2 && !deputy_skills.contains(instance.skillName))
+            deputy_skills[instance.skillName] = false;
     } else if (instance.source == SourceAcquired) {
         if (!acquired_skills.contains(formatted))
             acquired_skills << formatted;
@@ -3688,8 +3738,6 @@ bool Player::inHeadSkills(const QString &skill_name) const
             return inHeadSkills(main_skill->objectName());
     }
     
-    QString baseName = SkillInstanceUtils::baseName(skill_name);
-
     auto outerIt = m_skillInstances.find(baseName);
     if (outerIt == m_skillInstances.end()) return false;
     for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it) {
@@ -3701,6 +3749,12 @@ bool Player::inHeadSkills(const QString &skill_name) const
 
 bool Player::inDeputySkills(const QString &skill_name) const
 {
+    QString baseName;
+    const int instanceId = SkillInstanceUtils::parseName(skill_name, baseName);
+    if (instanceId != 0) {
+        const SkillInstance *instance = findSkillInstance(baseName, instanceId);
+        return instance && instance->bindHead == 2;
+    }
     if (general2 == nullptr) return false;
     
     const Skill *skill = Sanguosha->getSkill(skill_name);
@@ -3713,7 +3767,6 @@ bool Player::inDeputySkills(const QString &skill_name) const
             return inDeputySkills(main_skill->objectName());
     }
     
-    QString baseName = SkillInstanceUtils::baseName(skill_name);
     auto outerIt = m_skillInstances.find(baseName);
     if (outerIt == m_skillInstances.end()) return false;
     for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it) {
@@ -3723,45 +3776,85 @@ bool Player::inDeputySkills(const QString &skill_name) const
     return false;
 }
 
-void Player::setSkillPreshowed(const QString &skill, bool preshowed)
+bool Player::canPreshowSkill(const QString &name) const
 {
-    if (head_skills.contains(skill))
-        head_skills[skill] = preshowed;
-    else if (deputy_skills.contains(skill))
-        deputy_skills[skill] = preshowed;
+    QString baseName;
+    int id = SkillInstanceUtils::parseName(name, baseName);
+    if (id <= 0) {
+        const QList<int> ids = getSkillInstanceIds(baseName);
+        if (ids.size() != 1) return false;
+        id = ids.first();
+    }
+    const SkillInstance *instance = findSkillInstance(baseName, id);
+    const Skill *skill = Sanguosha->getSkill(baseName);
+    if (!isAlive() || !instance || instance->source != SourceInnate
+        || !skill || !skill->isVisible() || !skill->canPreshow()) return false;
+    return (instance->bindHead == 1 && !hasShownGeneral() && canShowGeneral("h"))
+        || (instance->bindHead == 2 && !hasShownGeneral2() && canShowGeneral("d"));
+}
+
+void Player::setSkillPreshowed(const QString &name, bool preshowed)
+{
+    QString baseName;
+    int id = SkillInstanceUtils::parseName(name, baseName);
+    if (id <= 0) {
+        const QList<int> ids = getSkillInstanceIds(baseName);
+        // Bare names are safe only when they identify one source.
+        if (ids.size() != 1) return;
+        id = ids.first();
+    }
+    const SkillInstance *instance = findSkillInstance(baseName, id);
+    if (!instance || instance->source != SourceInnate) return;
+    const QString key = SkillInstanceUtils::formatName(baseName, id);
+    {
+        QMutexLocker locker(&m_preshowMutex);
+        if (m_preshowedSkillInstances.contains(key) == preshowed) return;
+        if (preshowed) m_preshowedSkillInstances.insert(key);
+        else m_preshowedSkillInstances.remove(key);
+    }
+    emit skill_state_changed();
 }
 
 void Player::setSkillsPreshowed(const QString &flag, bool preshowed)
 {
-    if (flag.contains("h")) {
-        foreach (const QString &skill, head_skills.keys()) {
-            if (!Sanguosha->getSkill(skill)->canPreshow())
-                continue;
-            head_skills[skill] = preshowed;
-        }
-    }
-
-    if (flag.contains("d")) {
-        foreach (const QString &skill, deputy_skills.keys()) {
-            if (!Sanguosha->getSkill(skill)->canPreshow())
-                continue;
-            deputy_skills[skill] = preshowed;
-        }
+    for (const SkillInstance &instance : getSkillInstances()) {
+        const Skill *skill = Sanguosha->getSkill(instance.skillName);
+        if (instance.source != SourceInnate || !skill || !skill->canPreshow()) continue;
+        if ((instance.bindHead == 1 && flag.contains('h'))
+            || (instance.bindHead == 2 && flag.contains('d')))
+            setSkillPreshowed(SkillInstanceUtils::formatName(instance.skillName, instance.instanceID), preshowed);
     }
 }
 
 bool Player::hasPreshowedSkill(const QString &name) const
 {
-    return head_skills.value(name, false) || deputy_skills.value(name, false);
+    QString baseName;
+    const int id = SkillInstanceUtils::parseName(name, baseName);
+    const Skill *skill = Sanguosha->getSkill(baseName);
+    if (!skill) return false;
+    QMutexLocker locker(&m_preshowMutex);
+    for (int candidateId : getSkillInstanceIds(baseName)) {
+        if (id > 0 && candidateId != id) continue;
+        const SkillInstance *instance = findSkillInstance(baseName, candidateId);
+        if (!instance || instance->source != SourceInnate) continue;
+        if ((instance->bindHead == 1 && hasShownGeneral())
+            || (instance->bindHead == 2 && hasShownGeneral2())
+            || !skill->canPreshow()
+            || m_preshowedSkillInstances.contains(SkillInstanceUtils::formatName(baseName, candidateId)))
+            return true;
+    }
+    return false;
 }
 
 bool Player::hasPreshowedSkill(const Skill *skill) const
 {
-    return hasPreshowedSkill(skill->objectName());
+    return skill && hasPreshowedSkill(skill->objectName());
 }
 
 bool Player::hasShownSkill(const QString &skill_name) const
 {
+    if (!Config.EnableHegemony)
+        return hasSkill(skill_name);
     if (general_showed && inHeadSkills(skill_name))
         return true;
     if (general2_showed && inDeputySkills(skill_name))
@@ -3779,16 +3872,15 @@ bool Player::isHidden(bool head_general) const
     if (head_general ? general_showed : general2_showed)
         return false;
     
-    const QMap<QString, bool> &skillMap = head_general ? head_skills : deputy_skills;
-    int count = 0;
-    foreach (const QString &skillName, skillMap.keys()) {
-        const Skill *skill = Sanguosha->getSkill(skillName);
-        if (skill && skill->canPreshow() && hasPreshowedSkill(skillName))
-            return false;
-        else if (skill && !skill->canPreshow())
-            ++count;
+    bool hasToggle = false;
+    for (const SkillInstance &instance : getSkillInstances()) {
+        if (instance.source != SourceInnate || instance.bindHead != (head_general ? 1 : 2)) continue;
+        const Skill *skill = Sanguosha->getSkill(instance.skillName);
+        if (!skill || !skill->canPreshow()) continue;
+        hasToggle = true;
+        if (hasPreshowedSkill(SkillInstanceUtils::formatName(instance.skillName, instance.instanceID))) return false;
     }
-    return count != skillMap.size();
+    return hasToggle;
 }
 
 QList<int> Player::getShownHandcards() const

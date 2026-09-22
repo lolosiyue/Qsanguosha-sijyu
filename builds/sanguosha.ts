@@ -5351,6 +5351,16 @@ diagnostics.json：%3
 <context>
     <name>RoomScene</name>
     <message>
+        <location filename="../src/ui/roomscene.cpp" line="3249"/>
+        <source>Pre-shown. Click to cancel.</source>
+        <translation>已预亮。点击取消预亮。</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/roomscene.cpp" line="3250"/>
+        <source>Click to pre-show this skill.</source>
+        <translation>点击预亮此技能。</translation>
+    </message>
+    <message>
         <location filename="../src/ui/roomscene.cpp" line="475"/>
         <source>Please enter text to chat ... </source>
         <translation>聊天请在此输入 ...</translation>

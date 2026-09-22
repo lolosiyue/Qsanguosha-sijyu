@@ -381,6 +381,10 @@ bool validateConditionalSchema(const QString &schema, const QVariantMap &object,
                 return fail(error, QStringLiteral("PreshowPayload state must be boolean"));
         }
     }
+    if (schema == QLatin1String("PreshowRequestPayload")) {
+        return require(QStringLiteral("skill_name"), FieldShape::String)
+            && require(QStringLiteral("preshowed"), FieldShape::Boolean);
+    }
     if (schema == QLatin1String("SetMarkPayload")
         || schema == QLatin1String("CardMarkPayload")) {
         return require(QStringLiteral("value"), FieldShape::Integer);
@@ -1333,6 +1337,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     CLIENT_REQUEST(S_COMMAND_NETWORK_DELAY_TEST, "Room::networkDelayTest", "NetworkDelayPayload");
     CLIENT_REQUEST(S_COMMAND_CHEAT, "Room::processRequestCheat", "CheatRequestPayload");
     CLIENT_REQUEST(S_COMMAND_SURRENDER, "Room::processRequestSurrender", "SurrenderRequestPayload");
+    CLIENT_REQUEST(S_COMMAND_PRESHOW, "Room::processRequestPreshow", "PreshowRequestPayload");
 #undef CLIENT_REQUEST
 
     std::sort(result.begin(), result.end(), [](const ProtocolFlowDescriptor &left,
@@ -1429,7 +1434,8 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
         {QStringLiteral("CardDescriptionPayload"), {QStringLiteral("player_name"), QStringLiteral("card_name"), QStringLiteral("key"), QStringLiteral("value")}},
         {QStringLiteral("ShownHandCardsPayload"), {QStringLiteral("player_name"), QStringLiteral("card_ids")}},
         {QStringLiteral("BrokenEquipPayload"), {QStringLiteral("player_name"), QStringLiteral("card_ids")}},
-        {QStringLiteral("PreshowPayload"), {QStringLiteral("player_name"), QStringLiteral("states")}}
+        {QStringLiteral("PreshowPayload"), {QStringLiteral("player_name"), QStringLiteral("states")}},
+        {QStringLiteral("PreshowRequestPayload"), {QStringLiteral("skill_name"), QStringLiteral("preshowed")}}
     };
     for (ProtocolFlowDescriptor &descriptor : result) {
         descriptor.requiredFields = QStringList() << QStringLiteral("schema_version");
@@ -1650,7 +1656,7 @@ bool ProtocolPayloadRegistry::validateInventory(QString *error)
 {
     if (error != nullptr)
         error->clear();
-    constexpr int ExpectedProductionFlowCount = 146;
+    constexpr int ExpectedProductionFlowCount = 148;
     if (descriptors().size() != ExpectedProductionFlowCount) {
         return fail(error, QStringLiteral("Protocol V2 registry must contain exactly %1 production flows")
             .arg(ExpectedProductionFlowCount));

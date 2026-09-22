@@ -270,6 +270,7 @@ CardUseStruct &CardUseStruct::operator=(const CardUseStruct &other)
 	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=other.m_ownedCard;
+	targetModReveal=other.targetModReveal;
 	globalCardLifetimeManager().retainEventPayload(this, {card, whocard, m_ownedCard.data()});
 	return *this;
 }
@@ -283,6 +284,7 @@ CardUseStruct &CardUseStruct::operator=(CardUseStruct &&other) noexcept
 	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=std::move(other.m_ownedCard);
+	targetModReveal=std::move(other.targetModReveal);
 	globalCardLifetimeManager().retainEventPayload(this, {card, whocard, m_ownedCard.data()});
 	globalCardLifetimeManager().releaseEventPayload(&other);
 	other.card = nullptr;
@@ -1101,6 +1103,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	QMap<QString, int> triggerCounts;
 	QMap<QString, int> maxMultipliers;
 	QSet<QString> triggeredSkills;
+	QSet<ServerPlayer *> declinedOwners;
 
 	// record 每個事件只執行一次，並逐現存玩家實例提供完整 context。
 	foreach (const TriggerSkill *ts, v2_skills) {
@@ -1140,7 +1143,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		QMap<ServerPlayer *, QStringList>::iterator it;
 			for (it = list.begin(); it != list.end(); ++it) {
 				ServerPlayer *p = it.key();
-				if (!p) continue;
+				if (!p || declinedOwners.contains(p)) continue;
 				QStringList &skills = it.value();
 				if (!skills.isEmpty()) {
 					foreach (const QString &skill, skills) {
@@ -1164,6 +1167,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 						}
 
 						foreach (int resolvedId, instanceIds) {
+							const SkillInstanceRef ref(p->objectName(), SkillInstanceKey(skillName, resolvedId));
+							if (!v2->isEquipSkill()
+								&& (!room->canShowGeneralForSkill(ref) || !room->isSkillPreshownForTrigger(ref))) continue;
 							QString key = skillInstanceRuntimeKey(p, skillName, resolvedId);
 							int currentTriggerCount = triggerCounts.value(key, 0);
 							int effectiveMultiplier = qMax(multiplier, maxMultipliers.value(key, 0));
@@ -1196,15 +1202,35 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		if (skillContexts.isEmpty())
 			break;
 
+		ServerPlayer *chooser = target;
+		if (Config.EnableHegemony) {
+			// Only the owner may receive concealed candidates, even when
+			// another player's event triggers them.
+			chooser = nullptr;
+			for (ServerPlayer *owner : room->getAllPlayers(true)) {
+				for (const SkillContext &ctx : skillContexts) {
+					if (ctx.owner == owner) { chooser = owner; break; }
+				}
+				if (chooser) break;
+			}
+			if (!chooser) break;
+			for (int i = skillContexts.size() - 1; i >= 0; --i)
+				if (skillContexts.at(i).owner != chooser) skillContexts.removeAt(i);
+		}
+
 		foreach (const SkillContext &ctx, skillContexts) {
-			const TriggerSkill *ts = Sanguosha->getTriggerSkill(ctx.skill_name, ctx.instanceID);
+			// A concealed compulsory copy remains optional. A revealed sibling
+			// must not force this source to reveal as well.
+			if (room->isGeneralHiddenForSkill(ctx.activationRef)) continue;
+			const QString definitionName = ctx.skill_name;
+			const TriggerSkill *ts = Sanguosha->getTriggerSkill(definitionName, ctx.instanceID);
 			if (ts && ts->getFrequency(ctx.owner) == Skill::Compulsory) {
 				has_compulsory = true;
 				break;
 			}
 			if (ctx.owner) {
 				foreach (const QString &mark, ctx.owner->getMarkNames()) {
-					if (mark.contains(ctx.skill_name) && mark.contains("_force")) {
+					if (mark.contains(definitionName) && mark.contains("_force")) {
 						has_compulsory = true;
 						break;
 					}
@@ -1213,12 +1239,19 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			}
 		}
 
-		// 格式二支援：askForTriggerOrder 由 target（事件觸發者）做選擇
+		// Identity keeps the event chooser; concealed-mode menus use their owner.
 		// 返回值格式："skillName" 或 "skillName:ownerObjectName"
 		QString reason = "GameRule:TriggerOrder";
-		QString name = room->askForTriggerOrder(target, reason, skillContexts, !has_compulsory, data);
+		QString name;
+
+		if (name.isEmpty())
+			name = room->askForTriggerOrder(chooser, reason, skillContexts, !has_compulsory, data);
 
 		if (name == "cancel" || name.isEmpty()) {
+			if (Config.EnableHegemony) {
+				declinedOwners.insert(chooser);
+				continue;
+			}
 			break;
 		}
 
@@ -1237,6 +1270,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		QString baseName;
 		int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
 		skillName = baseName;
+		const QString selectedName = skillName;
 
 		const TriggerSkill *result_skill = Sanguosha->getTriggerSkill(skillName, instanceId);
 		if (!result_skill) continue;
@@ -1247,12 +1281,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		// 格式二支援：查找 selected_ctx 時用 ownerObjectName 匹配
 		SkillContext *selected_ctx = nullptr;
 		for (int i = 0; i < skillContexts.size(); ++i) {
-			if (skillContexts[i].skill_name == skillName &&
+			if (skillContexts[i].skill_name == selectedName &&
 				skillContexts[i].instanceID == instanceId) {
-				// 格式一：ownerObjectName 空時，匹配 owner == target
+				// 格式一：ownerObjectName 空時，匹配 owner == chooser
 				// 格式二：ownerObjectName 非空時，匹配 owner->objectName() == ownerObjectName
 				if (ownerObjectName.isEmpty()) {
-					if (skillContexts[i].owner == target) {
+					if (skillContexts[i].owner == chooser) {
 						selected_ctx = &skillContexts[i];
 						break;
 					}
@@ -1269,11 +1303,22 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		}
 
 		ServerPlayer *skill_owner = selected_ctx->owner;
-		if (!skill_owner || !skill_owner->hasSkillInstance(skillName, instanceId)
-			|| skill_owner->isSkillInvalid(skillName, instanceId))
-			continue;
+		if (!skill_owner) continue;
+		const bool equipment = v2->isEquipSkill();
+		const SkillInstanceRef selectedSource = selected_ctx->activationRef;
+		const auto sourceAvailable = [&]() {
+			// Paying may consume the equipment itself. An admitted card effect
+			// survives that payment; general skills still require their exact source.
+			if (equipment) return true;
+			return skill_owner->hasSkillInstance(skillName, instanceId)
+				&& !skill_owner->isSkillInvalid(skillName, instanceId)
+				&& room->canShowGeneralForSkill(selectedSource)
+                && room->isSkillPreshownForTrigger(selectedSource);
+		};
+		if (!sourceAvailable()) continue;
 
 		QString key = skillInstanceRuntimeKey(skill_owner, skillName, instanceId);
+
 		triggerCounts[key] = triggerCounts.value(key, 0) + 1;
 		triggeredSkills.insert(key);
 
@@ -1306,6 +1351,16 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			*selected_ctx = ctx_data.value<SkillContext>();
 			skillHistory.update(room->historySkillContext(*selected_ctx));
 
+			// Cost/interceptor callbacks may retire or block the selected source.
+			// Do not pay for a replacement instance or reveal a different sibling.
+			if (selected_ctx->is_canceled) {
+				skillHistory.finish(QStringLiteral("cancelled"));
+				continue;
+			}
+			if (!sourceAvailable()) {
+				skillHistory.finish(QStringLiteral("source_unavailable"));
+				continue;
+			}
 			bool do_pay = v2->pay(triggerEvent, room, skill_owner, *selected_ctx);
 			if (!do_pay) {
 				skillHistory.finish(QStringLiteral("pay_failed"));
@@ -1321,6 +1376,14 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		skillHistory.update(room->historySkillContext(*selected_ctx));
 		selected_ctx->targets = selected_ctx->updated_targets;
 
+		const bool sourceWasAlive = skill_owner->isAlive();
+		if (!equipment && (!sourceAvailable() || !room->showGeneralForSkill(selectedSource)
+			|| (sourceWasAlive && !skill_owner->isAlive())
+			|| !skill_owner->hasSkillInstance(skillName, instanceId)
+			|| skill_owner->isSkillInvalid(skillName, instanceId))) {
+			skillHistory.finish(QStringLiteral("source_unavailable"));
+			continue;
+		}
 		selected_ctx->current_event = EventSkillInvoking;
 		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillInvoking, room, skill_owner, ctx_data);
@@ -1435,6 +1498,7 @@ void RoomThread::refreshSkillDescriptions()
 void RoomThread::flushOutermostDeferredWork(Room *room)
 {
     if (!room || !event_stack.isEmpty() || isInterruptionRequested()) return;
+    room->processPendingPreshows();
     flushPlayerUiState();
 
 	refreshDistanceCacheIfDirty(room);
@@ -1474,6 +1538,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		return false;
 	if (!room)
 		return dispatchTrigger(triggerEvent, room, target, data);
+	room->processPendingPreshows();
 
 	const bool outerTurn = triggerEvent == TurnStart && event_stack.isEmpty();
 	QVariantMap turnData;

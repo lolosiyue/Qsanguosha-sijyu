@@ -44,6 +44,27 @@ class EngineRuntimeContextScope;
 class Package;
 using EnginePackageFactory = Package *(*)();
 
+// Read-only replay of target selection. Restrict hidden V2 instances and record
+// contributions; no scope may outlive a query or enclose a prompt/reveal.
+class TargetModSkillQueryScope final {
+public:
+    TargetModSkillQueryScope(const Player *owner, const QList<SkillInstanceRef> &allowedHidden,
+                             const QString &historyKey = QString());
+    ~TargetModSkillQueryScope();
+    static bool allows(const Player *owner, const SkillInstanceRef &ref);
+    static void record(const Player *owner, const SkillInstanceRef &ref, const CorrectSkillResult &result);
+    static int historyValue(const Player *owner, const QString &key, int value);
+    QList<SkillInstanceRef> contributors() const { return m_contributors; }
+private:
+    Q_DISABLE_COPY(TargetModSkillQueryScope)
+    const Player *m_owner;
+    QList<SkillInstanceRef> m_allowedHidden;
+    QList<SkillInstanceRef> m_contributors;
+    QString m_historyKey;
+    TargetModSkillQueryScope *m_previous;
+    static thread_local TargetModSkillQueryScope *s_current;
+};
+
 struct EasyTextItem {
     QString text;
     QString audioPath;

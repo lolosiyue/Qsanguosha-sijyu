@@ -41,13 +41,15 @@
 |---|---|
 | 1 | 根據修正類型建立 primary、secondary、card、modType 等查詢資料 |
 | 2 | 按 Holder Selector 選出玩家；`System` 不選玩家 |
-| 3 | 對每位玩家取得該技能所有有效 instanceID |
-| 4 | 精確失效 (Instance-scoped Invalidity) 的實例不進入 callback |
+| 3 | 對每位玩家取得該技能所有 instanceID |
+| 4 | 引擎以 `isSkillInstanceEffectAvailable()` 排除精確失效 (Instance-scoped Invalidity) 與國戰未明置來源；helper／attached 沿精確根來源判斷 |
 | 5 | 讀取該實例 current amount 與 `correctState`，建立 `CorrectSkillContext` |
 | 6 | 每個實例分別呼叫 callback |
 | 7 | 普通修正保留有號整數後相加；fixed 結果取所有適用值的最大值 |
 
 不同玩家即使使用相同技能名及相同 instanceID，仍因 owner 不同而視為不同 `SkillInstanceRef`，不會互相污染。
+
+國戰的明置判斷由引擎統一處理，技能 callback 不必另寫 `hasShownSkill()`。主／副將同名實例分開判斷；獨立後天技能只受有效性限制，依賴技能跟隨原來源，來源缺失或循環不進 callback。持續效果與 UI 貢獻共用此規則。`TargetModSkillV2` 的選目標預覽例外：自己的可明置暗根來源可先提供 Residue／DistanceLimit／ExtraTarget，確認使用確實依賴該來源才在付款後亮將；不需要預亮 toggle，也不預覽他人的暗將。引擎在記次前按原選取順序保存最少亮將方案，避免借刀目標轉換及本次 history 影響判斷；暗置不限次數仍不能免記 history。這個閘門不影響 TriggerSkillV2 暗置時提出發動選擇；`System` selector 僅用於無武將來源的系統規則。完整邊界見 [引擎側快參](engine-correct-skills.md#國戰被動效果閘門)。
 
 ## 4. Holder Selector
 

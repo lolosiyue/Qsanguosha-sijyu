@@ -88,6 +88,9 @@ void Slash::onUse(Room *room, CardUseStruct &use) const
                 if (!use.to.contains(p) && use.from->canSlash(p, use.card, !use.from->hasFlag("slashNoDistanceLimit")))
                     targets << p;
             use.to << room->askForPlayersChosen(use.from, targets, "slash_extra_targets", 0, n, "@slash_extra_targets", false, false);
+            // This is a new selection, before onUse clears Slash draft flags.
+            // Include newly chosen targets in the delayed V2 reveal obligation.
+            room->planTargetModSkillReveal(use);
         }
 	}
     room->setPlayerFlag(use.from, "-slashNoDistanceLimit");

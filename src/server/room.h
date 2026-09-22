@@ -443,6 +443,14 @@ public:
     void showEgg(const QString &from, const QString &to, QList<ServerPlayer *> players = QList<ServerPlayer *>());
     void doBattleArrayAnimate(ServerPlayer *player, ServerPlayer *target = nullptr);
     void showGeneral(ServerPlayer *player, const QString &position);
+    bool showGeneralForSkill(const SkillInstanceRef &ref);
+    SkillInstanceRef resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const;
+    bool canShowGeneralForSkill(const SkillInstanceRef &ref) const;
+    void prepareTargetModSkillReveal(CardUseStruct &use) const;
+    void planTargetModSkillReveal(CardUseStruct &use) const;
+    bool showRequiredTargetModSkillsV2(const CardUseStruct &use);
+    bool isSkillPreshownForTrigger(const SkillInstanceRef &ref) const;
+    bool isGeneralHiddenForSkill(const SkillInstanceRef &ref) const;
 
     void preparePlayers();
     void changePlayerGeneral(ServerPlayer*player, const QString&new_general);
@@ -784,7 +792,6 @@ private:
                                   const QVariant &value = QVariant());
     void notifyCardProvenance(const QString &kind, ServerPlayer *initiator, const Card *card,
                               const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef);
-    SkillInstanceRef resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const;
     bool resolveCardSkillInstance(CardUseStruct &use);
     bool areCardTargetsLegal(const CardUseStruct &use) const;
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
@@ -944,6 +951,8 @@ private:
 
     QWaitCondition m_waitCond;
     mutable QMutex m_mutex;
+    QMutex m_preshowRequestMutex;
+    QHash<ServerPlayer *, QVariantMap> m_pendingPreshowRequests;
     volatile bool playerPropertySet;
     //QMutex mutexPlayerProperty;
     //QWaitCondition wcPlayerProperty;
@@ -962,6 +971,7 @@ private:
     //process client requests
     void processRequestCheat(ServerPlayer*player, const QVariant&arg);
     void processRequestSurrender(ServerPlayer*player, const QVariant&arg);
+    void processRequestPreshow(ServerPlayer *player, const QVariant &arg);
 
     bool makeSurrender(ServerPlayer*player);
     bool makeCheat(ServerPlayer*player);
@@ -980,6 +990,7 @@ private:
     };
     void handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg);
     void processPendingAnytimeSkills();
+    void processPendingPreshows();
     void notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name);
 
     ServerPlayer* insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after, const QString &general_name);

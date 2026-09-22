@@ -84,6 +84,7 @@ public:
     void disconnectFromHost();
     void replyToServer(QSanProtocol::CommandType command, const QVariant &arg = QVariant());
     void requestServer(QSanProtocol::CommandType command, const QVariant &arg = QVariant());
+    void requestSkillPreshow(const QString &skillName, bool preshowed);
     void notifyServer(QSanProtocol::CommandType command, const QVariant &arg = QVariant());
     void onPlayerResponseCard(const Card *card, const QList<const Player *> &targets = QList<const Player *>());
     void setStatus(Status status);
@@ -525,6 +526,7 @@ signals:
 
     void skill_attached(const ClientPlayer *player, const QString &skill_name);
     void skill_detached(const ClientPlayer *player, const QString &skill_name);
+    void skill_preshow_changed(const ClientPlayer *player, const QString &skill_name, bool preshowed);
     void skill_instances_reset();
     void skill_instance_amount_changed(const ClientPlayer *player, const QString &skill_name,
                                        int instance_id);

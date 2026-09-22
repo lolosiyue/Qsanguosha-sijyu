@@ -132,7 +132,7 @@
 | 新增測試來源 | 21／30／50 人及 20 人邊界、超界與非桌面 opt-in；生命週期取代／重複送達／父層返回／reset；非法 parent、非字串 ID、額外私人欄位拒收；方向 schema 相容。 |
 | C++ 增量建置 | **PASS**：Debug `QSanguosha`、`qsanguosha_core_tests`、`qsanguosha_protocol_tests`、`qsanguosha_game_presentation_tests`，同一次序列建置成功。 |
 | 版面 focused executable | **PASS**：直接執行 `qsanguosha_core_tests --suite room-layout-engine`，exit 0。涵蓋 21／30／50 人與 20 人邊界、三種桌面尺寸、區域不重疊及超界拒絕。 |
-| 協定 focused executable | **PASS**：`--suite flow-inventory --check artifacts/protocol-v2-flow-matrix.json`；146 flows、0 implicit passthrough、0 unclassified，產物與登錄逐位元組一致。 |
+| 協定 focused executable | **PASS**：`--suite flow-inventory --check artifacts/protocol-v2-flow-matrix.json`；148 flows、0 implicit passthrough、0 unclassified，產物與登錄逐位元組一致。 |
 | 呈現 focused executable | **PASS**：直接執行 `qsanguosha_game_presentation_tests`，43 項 PASS、exit 0；涵蓋巢狀生命週期、重複通知、父層返回、回應焦點清除、非法欄位／ID／父子關係拒收及重連 reset 投影。 |
 | Web 型別檢查／reducer 測試 | **PASS**：`tsc --noEmit`；`vitest run tests/reducer.test.ts`，16／16。 |
 | 50 人模式／開房入口 | 第二檢查點建置與模式 focused 驗證 **PASS**；實際開房選單操作尚未驗收。 |

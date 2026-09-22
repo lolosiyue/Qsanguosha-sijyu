@@ -46,6 +46,39 @@
 
 Engine*Sanguosha = nullptr;
 
+thread_local TargetModSkillQueryScope *TargetModSkillQueryScope::s_current = nullptr;
+
+TargetModSkillQueryScope::TargetModSkillQueryScope(const Player *owner,
+    const QList<SkillInstanceRef> &allowedHidden, const QString &historyKey)
+    : m_owner(owner), m_allowedHidden(allowedHidden), m_historyKey(historyKey), m_previous(s_current)
+{
+    s_current = this;
+}
+
+TargetModSkillQueryScope::~TargetModSkillQueryScope() { s_current = m_previous; }
+
+int TargetModSkillQueryScope::historyValue(const Player *owner, const QString &key, int value)
+{
+    // A later explicit target selection may be planned after this use was
+    // counted. Discount only that increment in queries, never in real history.
+    return s_current && s_current->m_owner == owner && !s_current->m_historyKey.isEmpty()
+        && s_current->m_historyKey == key ? qMax(0, value - 1) : value;
+}
+
+bool TargetModSkillQueryScope::allows(const Player *owner, const SkillInstanceRef &ref)
+{
+    return !s_current || (s_current->m_owner == owner && s_current->m_allowedHidden.contains(ref));
+}
+
+void TargetModSkillQueryScope::record(const Player *owner, const SkillInstanceRef &ref,
+                                     const CorrectSkillResult &result)
+{
+    if (s_current && s_current->m_owner == owner && s_current->m_allowedHidden.contains(ref)
+        && result.applies && (result.value != 0 || result.unlimited)
+        && !s_current->m_contributors.contains(ref))
+        s_current->m_contributors << ref;
+}
+
 namespace {
 
 QSanRules::ContentManifest readContentManifest(lua_State *lua)
@@ -2685,7 +2718,8 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
                                                const Card *card,
                                                int modType,
                                                bool includeWeapon,
-                                               bool fixed)
+                                               bool fixed,
+                                               bool targetModPreview = false)
 {
     QList<CorrectSkillResult> results;
     if (!skill) return results;
@@ -2703,10 +2737,15 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
     }
 
     foreach (const Player *holder, correctSkillHolders(primary, secondary, selector)) {
-        const QList<int> instanceIds = holder->getValidSkillInstanceIds(skill->objectName());
+        const QList<int> instanceIds = holder->getSkillInstanceIds(skill->objectName());
         foreach (int instanceId, instanceIds) {
             const SkillInstance *instance = holder->findSkillInstance(skill->objectName(), instanceId);
             if (!instance) continue;
+            const SkillInstanceRef ref(holder->objectName(), instance->key());
+            if (!holder->isSkillInstanceEffectAvailable(skill->objectName(), instanceId)
+                && !(targetModPreview && TargetModSkillQueryScope::allows(primary, ref)
+                     && holder->isSkillInstanceEffectAvailable(skill->objectName(), instanceId, primary)))
+                continue;
 
             CorrectSkillContext context;
             context.instanceRef = SkillInstanceRef(
@@ -2719,7 +2758,9 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
             context.includeWeapon = includeWeapon;
             context.currentAmount = instance->hasAmountOverride
                 ? instance->amountOverride : skill->getBaseAmount();
-            results << (fixed ? skill->getFixedValue(context) : skill->getCorrection(context));
+            const CorrectSkillResult result = fixed ? skill->getFixedValue(context) : skill->getCorrection(context);
+            results << result;
+            if (targetModPreview) TargetModSkillQueryScope::record(primary, ref, result);
         }
     }
     return results;
@@ -2778,10 +2819,10 @@ QList<CorrectSkillEvalItem> evaluateCorrectSkillDetailed(const T *skill,
     }
 
     foreach (const Player *holder, correctSkillHolders(primary, secondary, selector)) {
-        const QList<int> instanceIds = holder->getValidSkillInstanceIds(skill->objectName());
+        const QList<int> instanceIds = holder->getSkillInstanceIds(skill->objectName());
         foreach (int instanceId, instanceIds) {
             const SkillInstance *instance = holder->findSkillInstance(skill->objectName(), instanceId);
-            if (!instance) continue;
+            if (!instance || !holder->isSkillInstanceEffectAvailable(skill->objectName(), instanceId)) continue;
 
             CorrectSkillContext context;
             context.instanceRef = SkillInstanceRef(
@@ -2994,7 +3035,7 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
                 const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
                 if (v2) {
                     const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-                        v2, v2->getHolderSelector(), from, to, card, type, true, false);
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true);
                     x += sumApplicableResults(results, true);
                 } else {
                     int value = skill->getResidueNum(from, card, to);
@@ -3010,7 +3051,7 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
                 const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
                 if (v2) {
                     const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-                        v2, v2->getHolderSelector(), from, to, card, type, true, false);
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true);
                     x += sumApplicableResults(results, false);
                 } else {
                     x += skill->getDistanceLimit(from, card, to);
@@ -3025,7 +3066,7 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
                 const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
                 if (v2) {
                     const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-                        v2, v2->getHolderSelector(), from, to, card, type, true, false);
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false, true);
                     x += sumApplicableResults(results, false);
                 } else {
                     x += skill->getExtraTargetNum(from, card);

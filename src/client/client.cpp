@@ -1941,6 +1941,16 @@ void Client::requestSurrender()
 	setStatus(NotActive);
 }
 
+void Client::requestSkillPreshow(const QString &skillName, bool preshowed)
+{
+	if (!ServerInfo.EnableHegemony || !Self || !Self->canPreshowSkill(skillName))
+		return;
+	QVariantMap payload{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("skill_name"), skillName},
+		{QStringLiteral("preshowed"), preshowed}};
+	requestServer(S_COMMAND_PRESHOW, payload);
+}
+
 void Client::speakToServer(const QString &text)
 {
 	if (text.isEmpty())
@@ -3199,8 +3209,13 @@ void Client::preshow(const QVariant &arg)
 	if (player == nullptr)
 		return;
 	const QVariantMap states = object.value(QStringLiteral("states")).toMap();
+	// The owner-only state map is authoritative; clear stale private flags first.
+	player->setSkillsPreshowed(QStringLiteral("hd"), false);
 	for (auto it = states.constBegin(); it != states.constEnd(); ++it)
+	{
 		player->setSkillPreshowed(it.key(), it.value().toBool());
+		emit skill_preshow_changed(player, it.key(), it.value().toBool());
+	}
 }
 
 void Client::log(const QVariant &log_str)

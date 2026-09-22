@@ -143,6 +143,11 @@ struct RoomTestAccess
         room.m_requests->processClientPacket(player, message, rawMessage);
     }
 
+    static void processPendingPreshows(Room &room)
+    {
+        room.processPendingPreshows();
+    }
+
     // Delivers the same signal the socket layer emits when a client drops.
     static void simulateDisconnect(Room &room, ServerPlayer *player)
     {

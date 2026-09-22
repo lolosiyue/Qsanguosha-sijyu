@@ -34,7 +34,36 @@
 | `CorrectSkill_AllHolders` | 全場所有存活玩家的有效實例 |
 | `CorrectSkill_System` | 無持有者與 instance ref，只計算一次共享 base |
 
-非 System 模式只遍歷存活玩家，並使用 `getValidSkillInstanceIds()` 排除精確失效的實例。不同玩家即使技能名與 instanceID 相同，仍以 owner objectName 隔離。
+非 System 模式只遍歷存活玩家，並由 `Player::isSkillInstanceEffectAvailable()` 排除精確失效及國戰暗置來源；不同玩家即使技能名與 instanceID 相同，仍以 owner objectName 隔離。
+
+### 國戰被動效果閘門
+
+CorrectSkillV2 的持續效果、fixed 修正與 UI 貢獻查詢在 callback 前套用下列閘門；`TargetModSkillV2` 選目標有下述暗置預覽例外。技能只需回傳修正值，不必逐個呼叫 `hasShownSkill()`。
+
+| 精確來源 | 效果可用條件 |
+|---|---|
+| 原生主／副將 | 該實例的 `bindHead` 對應將牌已明置；同名另一實例的明置或後天獲得不代為放行 |
+| helper／attached | 以共用 `SkillInstanceUtils::resolveRootRef` 追溯 local parent／跨玩家 parentRef；根來源已明置或為獨立後天來源，且鏈上的實例有效 |
+| 獨立後天來源 | 不依賴將牌明置；仍檢查技能失效 |
+| 缺失來源、依賴循環、未綁定原生來源 | 不提供效果 |
+| System selector | 無武將來源，維持系統修正；不可拿來宣告武將技能以繞過明置 |
+
+暗置不寫入 SkillInvalidity、不刪除 instance，也不修改 `hasSkill()`／TriggerSkillV2 的候選判斷。重新暗置後，下次查詢即停止該來源的持續修正；獨立建立、有自身期限的後天效果不因暗置而撤銷。普通身份局保留既有有效性語意。
+
+### TargetMod V2：先選目標，用到才亮將
+
+| 階段 | 契約 |
+|---|---|
+| 選目標預覽 | `correctCardTarget()` 的 Residue／DistanceLimit／ExtraTarget 可計入使用者自己可明置的暗根來源；不需要預亮 toggle。跨玩家 attached 必須追到使用者自己的根，不能預覽他人的暗將。 |
+| 凍結候選 | `Room::prepareTargetModSkillReveal()` 在付款前保存 exact leaf/root；付款移除來源後不以新取得的同名實例替代。 |
+| 必要性 | 付款及目標確認完成、history 記次前，`planTargetModSkillReveal()` 以原選取順序評估 public／head／deputy／both，保存合法方案及實際參與的暗置實例。callback 必須是無副作用的查詢，最多重放四組。 |
+| 公開 | 共用 `Card::onUse` 的 `showRequiredTargetModSkills` 在 extraCost 後套用 V2 方案。公開來源已足夠便不亮；任一將牌足夠便只選一邊；確需兩邊才各亮。每次公開前後重查 exact leaf/root 與失效／禁止明置。 |
+| 出牌次數 | `hasResidueUnlimited()` 仍只計公開來源。暗置不限次數不能免費免記 history；第一張不需要修正便不亮，之後真正需要才亮。 |
+| 目標轉換 | 已接受的選擇與執行對象分開：借刀原本的兩人 draft 不以後來的單一持刀者重驗。殺後續額外選目標會重新規劃，查詢時只扣回本次 history，不改真實 history。 |
+| 擴展卡契約 | 新的選目標交易需在原 draft／旗標仍有效時呼叫 `planTargetModSkillReveal()`；自行覆寫且不呼叫共用 `Card::onUse` 的卡，須在付款後、效果前呼叫 `showRequiredTargetModSkillsV2()`。不能把舊方案當新增目標的合法性證明。 |
+| 範圍 | 只規劃 `m_validateTargets=true` 的 client／AI 選擇；保留 server 強制出牌的權威契約。Distance／MaxCards／AttackRange 維持原明置門檻。 |
+
+本批國戰相容範圍僅包含 V2；Legacy callback 不自動改寫。`concealedCorrectionEffects` 與 `targetModSelectionAndRevealContract` 已補原始碼案例，尚未建置或執行。
 
 ## `CorrectSkillContext`
 

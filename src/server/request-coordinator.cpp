@@ -116,6 +116,7 @@ void RequestCoordinator::initializeCallbacks()
     m_callbacks[S_COMMAND_PAUSE] = &Room::pauseCommand;
     m_callbacks[S_COMMAND_NETWORK_DELAY_TEST] = &Room::networkDelayTestCommand;
     m_callbacks[S_COMMAND_ANYTIME_SKILL] = &Room::handleAnytimeSkillRequest;
+    m_callbacks[S_COMMAND_PRESHOW] = &Room::processRequestPreshow;
 }
 
 ServerPlayer *RequestCoordinator::requestTarget(ServerPlayer *player) const
@@ -494,6 +495,7 @@ bool RequestCoordinator::acquireInteractive(ServerPlayer *player, time_t timeOut
         const time_t remaining = timeOut - (m_room.applicationActiveElapsed() - clockStart);
         const time_t slice = qBound<time_t>(time_t(0), remaining, time_t(100));
         const bool acquired = player->tryAcquireLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE, slice);
+        m_room.processPendingPreshows();
         // Interactive signals do not carry the room semaphore. Preserve the
         // pending reply through backgrounding before returning to game logic.
         if (acquired || remaining <= 0) {
@@ -508,6 +510,7 @@ bool RequestCoordinator::acquireRaceSignal(time_t timeOut)
 {
     const qint64 clockStart = m_room.applicationActiveElapsed();
     while (!waitsAborted()) {
+        m_room.processPendingPreshows();
         // A race signal carries m_roomSemaphore ownership. Drain handoffs even
         // in the background so another socket callback cannot block the GUI
         // that must deliver the foreground event. getRaceResult pauses only

@@ -2,6 +2,7 @@
 #define SKILL_INSTANCE_UTILS_H
 
 #include <QHash>
+#include <QList>
 #include <QString>
 #include "json.h"
 #include "skill-instance-types.h"
@@ -18,6 +19,30 @@
 //   否則第一個 # 即為實例分隔符。
 
 namespace SkillInstanceUtils {
+
+    // Shared by server activation and client/server passive evaluation. The
+    // lookup supplies the appropriate room/view without exposing hidden data.
+    template <typename Lookup>
+    SkillInstanceRef resolveRootRef(const SkillInstanceRef &ref, Lookup lookup)
+    {
+        SkillInstanceRef current = ref;
+        QList<SkillInstanceRef> visited;
+        while (current.isValid() && !visited.contains(current)) {
+            visited << current;
+            const SkillInstance *instance = lookup(current);
+            if (!instance) return SkillInstanceRef();
+            if (instance->parentRef.isValid()) {
+                current = instance->parentRef;
+            } else if (instance->source == SourceHelper && instance->parent.isValid()) {
+                current = SkillInstanceRef(current.ownerObjectName, instance->parent);
+            } else {
+                // Callers decide whether an unlinked source type is usable.
+                // Preserve activation's existing terminal-reference semantics.
+                return current;
+            }
+        }
+        return SkillInstanceRef();
+    }
 
     struct SkillActivationRequest {
         bool supplied;
