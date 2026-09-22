@@ -515,7 +515,7 @@ config = {
 		"bazhen:60",
 		"yizhong:65",
 		"jieyuan:70",
-		"mingshi:70",
+		"heg_mingshi:70",
 		"tuxi:70",
 		"guanxing:70",
 		"juejing:75",

@@ -283,6 +283,8 @@ CommonTranslationTable = {
 	["GeneralA"] = "主将",
 	["GeneralB"] = "副将",
 	["surrender:yes"] = "你可以立即认输结束游戏<br/><br/>操作：点击确定或取消",
+	-- Generic selection prompts must not depend on a retired package skill.
+	["@choose-players"] = "请选择角色",
 	["@dummy-slash"] = "请选择你使用【杀】的目标角色",
 	["@dummy-slash2"] = "请选择 %src 使用【杀】的目标角色",
 	["bury"] = "阵亡",

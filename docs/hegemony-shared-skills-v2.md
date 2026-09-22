@@ -23,7 +23,22 @@
 
 `heg_xiaoguo`、`heg_shushen`、`heg_shenzhi` 有不同國戰規則，本次保留其已有 V2 實作。沒有啟用 `extensions/temp/extraheg.lua`，只調整 Slash 的既有 ExtraTarget 查詢接線，未新增引擎介面。
 
-共用技能正文／提示／語音字幕移入 SP、Mobile、OL 翻譯檔；HFormation 不再提供身份版鸩毒／戚亂翻譯。刪除 `HegemonyPackage.lua`、`HegemonyPackageLines.lua` 及 manifest 載入入口；身份版樂進、甘夫人、丁奉、潘鳳的配音別名移到對應包，珠聯璧合沿用 `HegemonyMode.lua`，其餘退役包專用翻譯刪除。現有 Lua loader 仍載入 `hegemony-ai.lua`，其中奮迅改用 `ai_fill_skill.fenxun` 與 `ai_skill_use_func.fenxun`，不再解析已刪除的 FenxunCard。
+共用技能正文／提示／語音字幕移入 SP、Mobile、OL 翻譯檔；HFormation 不再提供身份版鸩毒／戚亂翻譯。刪除 `HegemonyPackage.lua`、`HegemonyPackageLines.lua` 及 manifest 載入入口；身份版樂進、甘夫人、丁奉、潘鳳的配音別名移到對應包，珠聯璧合沿用 `HegemonyMode.lua`。仍被引用的國戰技能語音字幕改用 `heg_*` 鍵，歸入 HStandardWu／Qun；其他退役包專用翻譯刪除。現有 Lua loader 仍載入 `hegemony-ai.lua`，其中奮迅改用 `ai_fill_skill.fenxun` 與 `ai_skill_use_func.fenxun`，不再解析已刪除的 FenxunCard。
+
+## 全倉庫引用遷移
+
+| 原引用 | 現行來源／處理 |
+| --- | --- |
+| duoshi | HStandard 的 heg_duoshi；轉化為 AwaitExhausted，移除 DuoshiCard 建立與回呼 |
+| xiongyi、mingshi、lirang、shuangren、sijian、suishi、huoshui、qingcheng | HStandard 對應 heg_* V2 技能；擴展的 addSkill、acquireSkill、覺醒技能清單、AI 判斷／回呼、設定及評估工具一併改名 |
+| heg_fenxun、heg_duanbing、原版 bundle 的 heg_kuangfu | 共用 fenxun、duanbing、kuangfu；移除 HFenxunCard 建立及重複 AI 註冊 |
+| ~shuangren 通用選人提示 | Common.lua 的 @choose-players；不再依賴已刪除包的翻譯 |
+
+九個 HStandard 技能的 AI 集中於每種模式均載入的 `hegemony-ai.lua`；多勢所需的 AwaitExhausted AI 同步移入，國戰模式的全域 AI 仍由原 loader 控制。雄異／禍水／傾城使用 ActiveSkillCard，雙刃使用 V2 選人回呼，傾城使用選將回呼；明士減傷改按來源是否明置全部武將判斷，死諫從共用排序清單回傳一名合法目標。
+
+覆核包括主倉庫現行來源、外部 `lua/ai` 與 `extensions`。保留 donor、歷史文件／測試快照、建置輸出，以及 `extensions/sk.lua` 自有的 `@sijian-target` 提示鍵與 `yuri.lua` 的 `skill/xiongyi` 表情素材路徑。`extraheg.lua` 的自訂同名前綴技能未啟用或整包移植；其舊原生技能引用與提示已修正，`extra-ai.lua` 不再覆寫現行傾城 V2 AI。
+
+外部來源本批 30 檔按相對路徑回寫權威倉庫，逐檔 SHA-256 核對；保留既有 `extra-ai.lua`／`mode-ai.lua` 及工作期間並行產生的來源移植。後續並行新增的 `heg-lord_ex-ai.lua`、`heg-transformation-ai.lua` 亦修正舊技能引用並回寫，但維持未追蹤，不混入其整包新增功能。語法靜態解析中，共用 AI 檔無錯誤；其他本批檔案與修改前比較未新增解析錯誤（通用解析器不完整支援本專案 Lua 方言，不能據此宣稱全部腳本可執行）。
 
 ## 驗證
 
