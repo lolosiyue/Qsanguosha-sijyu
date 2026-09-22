@@ -10,6 +10,8 @@
 | 發動 | 預亮後仍可拒絕暗將鎖定技；接受後沿用 cost／pay／精確亮將。取消預亮會在下一個遊戲執行緒處理點生效，付款前仍可擋下該來源。 |
 | AI／託管 | 與 donor 自動預亮相同，`getAI()` 接管的來源可提出詢問；保留人的預亮偏好，交還控制後恢復使用該偏好。 |
 | Native 操作 | 沿用本人技能按鈕，暗置可預亮技能可切換預亮／取消；按下狀態及 tooltip 等待伺服器通知，不樂觀改動。明置／暗置後恢復對應的普通技能或預亮操作。 |
+| 武將牌鎖頭 | Native Dashboard／Photo 按主副將各自的公開 `disable_show` 狀態顯示禁止明置鎖頭；解除最後一項禁止原因、已明置、死亡或無該側武將時隱藏。沿用 skin 資源鍵，位置隨目前武將牌區域縮放。 |
+| 本人「潛伏」字樣 | 補回 donor `hidden-mark` 的語意：該側暗置且有可預亮技能、卻未預亮任何一項時顯示；預亮任一項後消失，取消最後一項後恢復。僅本人可見，不能據此判斷所有技能均已預亮；禁止明置鎖頭與此字樣可同時存在。使用 Qt 翻譯文字取代 donor 固定中文點陣圖。 |
 | 私有通知 | `S_COMMAND_PRESHOW` notification 的 `states` 使用精確實例鍵，只送本人；共用 ClientGameState reducer 繼續存放於本人 `preshow` 狀態。 |
 | 網路請求 | typed request 為 `{schema_version:1, skill_name:"skill#id", preshowed:bool}`。拒絕非 bool；伺服器按連線持有者驗證，拒絕模糊名稱、已移除、已明置及禁止明置來源。 |
 | 執行緒 | 網路回呼僅加入有上限且合併同鍵的佇列，不讀技能容器。事件入口與互動／競速等待點由遊戲執行緒套用，再回送權威狀態；命令回覆僅代表已收件。 |
@@ -18,6 +20,7 @@
 | 驗證 | 狀態 |
 | --- | --- |
 | 靜態核對 | 對照 donor、檢查 owner-only 邊界及實例／佇列生命週期；本批受追蹤檔案 `git diff --check`、翻譯 XML 與協定 JSON 靜態解析通過。全倉庫檢查仍有本批未修改的國戰 Lua 翻譯空白問題。 |
+| 鎖頭／潛伏 UI 靜態核對 | 共用容器接 `gameplay_property_changed`、`skill_set_changed`、`skill_state_changed` 的 queued 通知，涵蓋禁亮、明暗置與預亮快照；核對 Photo 主將只占可見左半部、Dashboard 雙將獨立區域。鎖頭沿用 original 的 `image/system/lock.png` 路徑與原圖；翻譯鍵、skin JSON、資源路徑及本批 `git diff --check` 通過；實際畫面尚未驗收。 |
 | 契約案例 | `tests/hegemony-rules-test.cpp`：主副同名、非法請求、候選門檻、helper、暗置／移除／重建、owner-only 通知及 snapshot 順序；protocol inventory 補非 bool 拒絕。尚未執行。 |
 | 建置／focused／GUI／完整局／CI | NOT RUN。依 AGENTS.md 檢查點規則，另獲授權後才執行約定建置及短測；不執行本地 CTest。 |
 | 客戶端界線 | 本批新增操作入口為 native；Web／TUI／Sheets 等可接共用協定，但其操作介面未在本批新增或驗收。 |

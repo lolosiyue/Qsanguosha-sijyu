@@ -404,6 +404,7 @@ void PlayerCardContainer::updateAvatar()
         _m_avatarArea->setToolTip("");
     }
     _m_avatarIcon->show();
+    updateGeneralIndicators();
     _adjustComponentZValues();
 }
 
@@ -455,6 +456,7 @@ void PlayerCardContainer::updateSmallAvatar()
         _m_smallAvatarIcon->setToolTip(tooltip);
         _m_smallAvatarIcon->show();
     }
+    _paintGeneralIndicators();
     _allZAdjusted = false;
     _adjustComponentZValues();
 }
@@ -1250,6 +1252,78 @@ void PlayerCardContainer::_updateEquips()
     foreach (Card *ec, simulated_equips.values()) ec->deleteLater();
 }
 
+void PlayerCardContainer::_paintGeneralIndicators()
+{
+    if (!ServerInfo.EnableHegemony && !_m_headShowLock && !_m_deputyShowLock)
+        return;
+    // Derive both overlays from the active skin's avatar rectangles so double
+    // generals and responsive Dashboard/Photo layouts keep the correct slot.
+    const QPixmap lock = _getPixmap(QSanRoomSkin::S_SKIN_KEY_DISABLE_SHOW_LOCK);
+    for (int slot = 0; slot < 2; ++slot) {
+        QRect area = slot == 0 ? _m_layout->m_avatarArea : _m_layout->m_smallAvatarArea;
+        const QRect deputyArea = _m_layout->m_smallAvatarArea;
+        // Photo paints the deputy over the right half of the primary image.
+        // Keep the head indicator inside the remaining visible half.
+        if (slot == 0 && m_player && m_player->getGeneral2()
+            && deputyArea.left() > area.left() && area.intersects(deputyArea)
+            && deputyArea.top() <= area.top() && deputyArea.bottom() >= area.bottom())
+            area.setRight(deputyArea.left() - 1);
+        QGraphicsPixmapItem *&lockItem = slot == 0 ? _m_headShowLock : _m_deputyShowLock;
+        QGraphicsPixmapItem *&markItem = slot == 0 ? _m_headHiddenMark : _m_deputyHiddenMark;
+        if (area.isEmpty()) {
+            if (lockItem) lockItem->hide();
+            if (markItem) markItem->hide();
+            continue;
+        }
+        const int side = qMax(1, qMin(area.width(), area.height()) / 2);
+        const QRect lockArea(area.center().x() - side / 2,
+                             area.top() + area.height() / 5, side, side);
+        _paintPixmap(lockItem, lockArea, lock, _getAvatarParent());
+        lockItem->setAcceptedMouseButtons(Qt::NoButton);
+        lockItem->setToolTip(tr("This general cannot be revealed."));
+
+        const int height = qMax(1, qMin(26, area.height() / 5));
+        const QRect markArea(area.left(), area.bottom() - height, area.width(), height);
+        QPixmap mark(markArea.size());
+        mark.fill(Qt::transparent);
+        QPainter painter(&mark);
+        painter.fillRect(mark.rect(), QColor(0, 0, 0, 170));
+        QFont font = UiConfig.SmallFont;
+        font.setPixelSize(qMax(1, height - 6));
+        font.setBold(true);
+        painter.setFont(font);
+        painter.setPen(QColor(200, 220, 255));
+        painter.drawText(mark.rect(), Qt::AlignCenter, tr("Hidden"));
+        painter.end();
+        _paintPixmap(markItem, markArea, mark, _getAvatarParent());
+        markItem->setAcceptedMouseButtons(Qt::NoButton);
+        markItem->setToolTip(tr("No skill on this general is preshown."));
+    }
+    updateGeneralIndicators();
+}
+
+void PlayerCardContainer::updateGeneralIndicators()
+{
+    if (!_m_layout)
+        return;
+    const bool active = ServerInfo.EnableHegemony && m_player
+        && m_player->getGeneral() && m_player->isAlive();
+    for (int slot = 0; slot < 2; ++slot) {
+        const bool head = slot == 0;
+        const QRect area = head ? _m_layout->m_avatarArea : _m_layout->m_smallAvatarArea;
+        const bool present = active && !area.isEmpty() && (head || m_player->getGeneral2());
+        QGraphicsPixmapItem *lock = head ? _m_headShowLock : _m_deputyShowLock;
+        QGraphicsPixmapItem *mark = head ? _m_headHiddenMark : _m_deputyHiddenMark;
+        if (lock)
+            lock->setVisible(present && !(head ? m_player->hasShownGeneral() : m_player->hasShownGeneral2())
+                && !m_player->disableShow(head).isEmpty());
+        // Preshow is private: never infer another player's opt-in from their
+        // recipient-filtered skill list. Queued signals observe the full snapshot.
+        if (mark)
+            mark->setVisible(present && m_player == Self && m_player->isHidden(head));
+    }
+}
+
 void PlayerCardContainer::refresh(bool killed)
 {
 	if(m_player){
@@ -1265,6 +1339,7 @@ void PlayerCardContainer::refresh(bool killed)
         _m_actionIcon->setVisible(false);
         _m_saveMeIcon->setVisible(false);
 	}
+    updateGeneralIndicators();
     _updateEquips();
     updateHandcardNum();
     _adjustComponentZValues(killed);
@@ -1392,6 +1467,12 @@ void PlayerCardContainer::setPlayer(ClientPlayer *player)
                 &PlayerCardContainer::updateAvatarTooltip, tooltipConnection);
         connect(player, &Player::skill_state_changed, this,
                 &PlayerCardContainer::updateAvatarTooltip, tooltipConnection);
+        connect(player, &Player::gameplay_property_changed, this,
+                &PlayerCardContainer::updateGeneralIndicators, tooltipConnection);
+        connect(player, &Player::skill_set_changed, this,
+                &PlayerCardContainer::updateGeneralIndicators, tooltipConnection);
+        connect(player, &Player::skill_state_changed, this,
+                &PlayerCardContainer::updateGeneralIndicators, tooltipConnection);
 
         QTextDocument *textDoc = m_player->getMarkDoc();
         Q_ASSERT(_m_markItem);
@@ -1927,6 +2008,10 @@ void PlayerCardContainer::_adjustComponentZValues(bool killed)
     _layUnder(_m_markItem);
     _layUnder(_m_progressBarItem);
     _layUnder(_m_roleComboBox);
+    _layUnder(_m_headShowLock);
+    _layUnder(_m_deputyShowLock);
+    _layUnder(_m_headHiddenMark);
+    _layUnder(_m_deputyHiddenMark);
     _layUnder(_m_chainIcon);
     _layUnder(_m_hpBox);
     //_layUnder(_m_handCardNumText);
