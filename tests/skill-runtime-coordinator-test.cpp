@@ -13,6 +13,8 @@
 #include "protocol/skill-instance-message.h"
 #include "settings.h"
 #include "server-info.h"
+#include "standard-cards.h"
+#include "room-runtime.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -641,6 +643,138 @@ static bool concealedCorrectionEffects()
     return true;
 }
 
+static bool standardEquipmentV2Contracts()
+{
+    const bool oldHegemony = Config.EnableHegemony;
+    const auto restoreMode = qScopeGuard([oldHegemony] { Config.EnableHegemony = oldHegemony; });
+    Config.EnableHegemony = false;
+    Room room(nullptr, "02_1v1");
+    EngineRuntimeContextScope runtimeScope(*Sanguosha, &room);
+    room.roomRuntime()->state().reset();
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, "equipment_owner");
+    ServerPlayer *other = RoomTestAccess::addOrdinaryPlayer(room, "equipment_other");
+    owner->setSeat(1);
+    other->setSeat(2);
+    owner->setMaxHp(4);
+    owner->setHp(4);
+    other->setMaxHp(4);
+    other->setHp(4);
+    room.setCurrent(owner);
+
+    QMap<QString, int> equipment;
+    QList<int> hand;
+    for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+        const Card *card = Sanguosha->getEngineCard(id);
+        if (card->isKindOf("EquipCard") && !equipment.contains(card->objectName()))
+            equipment.insert(card->objectName(), id);
+        if (card->isKindOf("Slash") && hand.size() < 2) hand << id;
+    }
+    if (hand.size() != 2) return false;
+    for (int id : hand) {
+        owner->addCard(id, Player::PlaceHand);
+        room.setCardMapping(id, owner, Player::PlaceHand);
+    }
+    const auto equip = [&](const QString &name) {
+        if (!equipment.contains(name)) return false;
+        for (const Card *old : owner->getEquips()) owner->removeEquip(old);
+        const int id = equipment.value(name);
+        owner->setEquip(Sanguosha->getCard(id));
+        room.setCardMapping(id, owner, Player::PlaceEquip);
+        return true;
+    };
+
+    for (const QString &name : {QString("spear"), QString("axe"), QString("wooden_ox")}) {
+        const auto *skill = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(name));
+        if (!skill || !equip(name)) return false;
+        const int instance = owner->acquireSkill(name);
+        ActiveSkillRequest request;
+        request.initiator = owner;
+        request.activationRef = SkillInstanceRef(owner->objectName(), SkillInstanceKey(name, instance));
+        request.reason = name == "axe" ? CardUseStruct::CARD_USE_REASON_UNKNOWN
+                                      : CardUseStruct::CARD_USE_REASON_PLAY;
+        request.pattern = name == "axe" ? "@axe" : QString();
+        if (!skill->canActivate(request) || skill->cardSelectionFeasible(request)) return false;
+        request.selectedCardIds = name == "wooden_ox" ? QList<int>{hand.first()} : hand;
+        const Card *card = RoomTestAccess::resolveActiveRequest(room, owner, skill, request);
+        if (!card || card->getSubcards() != request.selectedCardIds) return false;
+        const_cast<Card *>(card)->deleteLater();
+        if (name == "spear") {
+            if (!card->isKindOf("Slash") || skill->historyKey(request) != "Slash") return false;
+            ActiveSkillRequest selecting = request;
+            selecting.selectedCardIds.clear();
+            if (skill->canSelectCard(selecting, owner->getWeapon())) return false;
+            request.reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
+            request.pattern = "slash";
+            if (!skill->canActivate(request)) return false;
+            request.pattern = "jink";
+            if (skill->canActivate(request)) return false;
+            request.pattern = "slash";
+        } else if (name == "axe") {
+            if (!card->isKindOf("DummyCard")) return false;
+            ActiveSkillRequest selecting = request;
+            selecting.selectedCardIds.clear();
+            if (skill->canSelectCard(selecting, owner->getWeapon())) return false;
+            request.reason = CardUseStruct::CARD_USE_REASON_PLAY;
+            if (skill->canActivate(request)) return false;
+            request.reason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+        } else {
+            if (!qobject_cast<const ActiveSkillCard *>(card) || !card->targetFixed()
+                || card->getHandlingMethod() != Card::MethodNone || skill->willThrowSelectedCards()
+                || skill->historyKey(request) != "WoodenOxCard") return false;
+            const Card *legacy = Card::Parse("@WoodenOxCard=" + QString::number(hand.first()));
+            if (!legacy || !qobject_cast<const ActiveSkillCard *>(legacy) || !legacy->targetFixed()) return false;
+            const_cast<Card *>(legacy)->deleteLater();
+            owner->addHistory("WoodenOxCard");
+            if (skill->canActivate(request)) return false;
+            owner->clearHistory("WoodenOxCard");
+        }
+        // Server reconstruction must reject duplicate IDs and another player's card.
+        request.selectedCardIds = QList<int>{hand.first(), hand.first()};
+        if (RoomTestAccess::resolveActiveRequest(room, owner, skill, request)) return false;
+        request.selectedCardIds = name == "wooden_ox" ? QList<int>{hand.first()} : hand;
+        owner->removeCard(hand.first(), Player::PlaceHand);
+        other->addCard(hand.first(), Player::PlaceHand);
+        room.setCardMapping(hand.first(), other, Player::PlaceHand);
+        if (RoomTestAccess::resolveActiveRequest(room, owner, skill, request)) return false;
+        other->removeCard(hand.first(), Player::PlaceHand);
+        owner->addCard(hand.first(), Player::PlaceHand);
+        room.setCardMapping(hand.first(), owner, Player::PlaceHand);
+    }
+
+    const auto *crossbow = dynamic_cast<const TargetModSkillV2 *>(Sanguosha->getSkill("crossbow"));
+    const auto *halberd = dynamic_cast<const TargetModSkillV2 *>(Sanguosha->getSkill("halberd"));
+    const auto *horse = dynamic_cast<const DistanceSkillV2 *>(Sanguosha->getSkill("horse"));
+    if (!crossbow || !halberd || !horse || !equip("crossbow")) return false;
+    Slash slash(Card::NoSuit, 0);
+    CorrectSkillContext context;
+    context.primary = owner;
+    context.secondary = other;
+    context.card = &slash;
+    context.modType = TargetModSkill::Residue;
+    context.currentAmount = crossbow->getBaseAmount();
+    if (crossbow->getCorrection(context).value != 999) return false;
+    context.modType = TargetModSkill::ExtraTarget;
+    if (crossbow->getCorrection(context).applies) return false;
+    Config.EnableHegemony = true;
+    slash.addSubcard(owner->getWeapon());
+    context.modType = TargetModSkill::Residue;
+    if (crossbow->getCorrection(context).applies) return false;
+    Config.EnableHegemony = false;
+    if (!equip("halberd")) return false;
+    Slash lastHand(Card::NoSuit, 0);
+    lastHand.addSubcards(hand);
+    context.card = &lastHand;
+    context.modType = TargetModSkill::ExtraTarget;
+    context.currentAmount = halberd->getBaseAmount();
+    if (halberd->getCorrection(context).value != 2) return false;
+    context.card = Sanguosha->getCard(hand.first());
+    if (halberd->getCorrection(context).applies) return false;
+    Config.EnableHegemony = true;
+    if (!equip("chitu") || horse->getCorrection(context).value != -1) return false;
+    return horse->getHolderSelector() == CorrectSkill_System
+        && dynamic_cast<const WeaponSkillV2 *>(Sanguosha->getSkill("blade"));
+}
+
 static bool lifecycleAndRuntimeFacade()
 {
     DistanceSkillV2 rootSkill(QStringLiteral("test-skill-runtime-root"));
@@ -716,6 +850,10 @@ int runSkillRuntimeCoordinatorTests()
     if (!shimingInstancePipeline() || !shimingPackageTriggers() || !shimingLuaCallbacks()
         || !shimingExternalLuaMigration()) return 3;
     if (!concealedCorrectionEffects()) return 4;
+    if (!standardEquipmentV2Contracts()) {
+        qCritical() << "Standard equipment V2 contracts failed";
+        return 5;
+    }
     qInfo() << "SkillRuntimeCoordinator regression passed";
     return 0;
 }
