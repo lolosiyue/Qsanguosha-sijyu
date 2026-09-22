@@ -109,7 +109,8 @@ private:
     void _handleTurnBrokenNormal(GameRule *game_rule);
     bool dispatchTrigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data);
     void reclaimCompletedTurn();
-    bool triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data);
+    bool triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data,
+                         const QList<TriggerSkill *> *equipmentGroup = nullptr);
     void sortTriggerSkills(TriggerEvent triggerEvent, Room *room, bool includeLose);
     void refreshDistanceCacheIfDirty(Room *room);
     void flushOutermostDeferredWork(Room *room);

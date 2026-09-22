@@ -783,6 +783,46 @@ public:
     virtual bool isEquipSkill() const override;
 };
 
+// Equipment keeps card-based eligibility; V2 supplies the common effect pipeline.
+class WeaponSkillV2 : public TriggerSkillV2
+{
+public:
+    explicit WeaponSkillV2(const QString &name, const QString &equipmentName = QString());
+    bool triggerable(const ServerPlayer *target) const override;
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
+                            QVariant &data) const override;
+    bool isEquipSkill() const override { return true; }
+
+private:
+    QString m_equipmentName;
+};
+
+class ArmorSkillV2 : public TriggerSkillV2
+{
+public:
+    explicit ArmorSkillV2(const QString &name, const QString &equipmentName = QString());
+    bool triggerable(const ServerPlayer *target) const override;
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
+                            QVariant &data) const override;
+    bool isEquipSkill() const override { return true; }
+
+private:
+    QString m_equipmentName;
+};
+
+class TreasureSkillV2 : public TriggerSkillV2
+{
+public:
+    explicit TreasureSkillV2(const QString &name, const QString &equipmentName = QString());
+    bool triggerable(const ServerPlayer *target) const override;
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *target,
+                            QVariant &data) const override;
+    bool isEquipSkill() const override { return true; }
+
+private:
+    QString m_equipmentName;
+};
+
 class MarkAssignSkill : public GameStartSkill
 {
     Q_OBJECT

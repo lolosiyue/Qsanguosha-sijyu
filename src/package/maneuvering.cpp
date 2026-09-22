@@ -98,6 +98,7 @@ class FanVSSkill : public OneCardViewAsSkill
 public:
     FanVSSkill() : OneCardViewAsSkill("fan")
     {
+        setProperty("sharedAcrossCardModes", true);
         filter_pattern = "%slash";
         response_or_use = true;
     }
@@ -123,45 +124,99 @@ public:
     }
 };
 
-class FanSkill : public WeaponSkill
+class FanSkill : public WeaponSkillV2
 {
 public:
-    FanSkill() : WeaponSkill("fan")
+    FanSkill() : WeaponSkillV2("fan", "fan")
     {
+        setProperty("sharedAcrossCardModes", true);
         events << ChangeSlash;
         view_as_skill = new FanVSSkill;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    void record(TriggerEvent, Room *room, ServerPlayer *player,
+                SkillContext &ctx) const override
     {
+        if (player && ctx.original_data) {
+            CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+            if (use.card && use.card->getSkillName() == objectName())
+                room->setEmotion(player, "weapon/fan");
+        }
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player,
+                            QVariant &data) const override
+    {
+        TriggerList result;
+        if (!WeaponSkillV2::triggerable(player))
+            return result;
         CardUseStruct use = data.value<CardUseStruct>();
+        if (!use.card || use.card->objectName() != "slash")
+            return result;
+        // Fan's own FireSlash conversion is handled by record() only; the
+        // legacy path never opened a second invoke dialog for it.
+        if (use.card->getSkillName() == objectName())
+            return result;
+        if (Config.EnableHegemony) {
+            const ViewAsSkill *conversion = Sanguosha->getViewAsSkill(use.card->getSkillName());
+            if (conversion && !conversion->inherits("FilterSkill")
+                && use.card->subcardsLength() > 0)
+                return result;
+        }
+        FireSlash *fire_slash = new FireSlash(use.card->getSuit(), use.card->getNumber());
+        if (use.card->isVirtualCard())
+            fire_slash->addSubcards(use.card->getSubcards());
+        else
+            fire_slash->addSubcard(use.card);
+        fire_slash->setSkillName(objectName());
+        for (ServerPlayer *target : use.to) {
+            if (!player->canSlash(target, fire_slash, false)) {
+                delete fire_slash;
+                return result;
+            }
+        }
+        delete fire_slash;
+        result.insert(player, QStringList(objectName()));
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player,
+              SkillContext &ctx) const override
+    {
+        if (!ctx.original_data || !player->askForSkillInvoke(this, *ctx.original_data, false))
+            return false;
+        room->setEmotion(player, "weapon/fan");
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (!use.card)
+            return false;
         QString skill_name = use.card->getSkillName();
-		if (skill_name=="fan"){
-			room->setEmotion(player, "weapon/fan");
+
+        if (use.card->objectName() != "slash")
 			return false;
-		} else if (use.card->objectName() != "slash")
-			return false;/*
-        if (!skill_name.isEmpty()) {//防止二次转化
-            const Skill *skill = Sanguosha->getSkill(skill_name);
-            if(skill && !skill->inherits("FilterSkill") && !skill->objectName().contains("guhuo"))
-				return false;
-        }*/
+
+        if (Config.EnableHegemony) {
+            const ViewAsSkill *conversion = Sanguosha->getViewAsSkill(skill_name);
+            if (conversion && !conversion->inherits("FilterSkill")
+                && use.card->subcardsLength() > 0)
+                return false;
+        }
 		FireSlash *fire_slash = new FireSlash(use.card->getSuit(), use.card->getNumber());
 		if (use.card->isVirtualCard()) fire_slash->addSubcards(use.card->getSubcards());
 		else fire_slash->addSubcard(use.card);
 		fire_slash->setSkillName("fan");
-		fire_slash->deleteLater();
 		foreach (ServerPlayer *p, use.to) {
-			if (!player->canSlash(p, fire_slash, false))
+			if (!player->canSlash(p, fire_slash, false)) {
+				delete fire_slash;
 				return false;
+			}
 		}
-		if (player->askForSkillInvoke(this, data ,false)) {
-			room->setEmotion(player, "weapon/fan");
-			//room->notifySkillInvoked(player, "fan");
-			//use.card = fire_slash;
-			use.changeCard(fire_slash);
-			data = QVariant::fromValue(use);
-		}
+		use.changeCard(fire_slash);
+		*ctx.original_data = QVariant::fromValue(use);
         return false;
     }
 };
@@ -208,48 +263,65 @@ GudingBlade::GudingBlade(Suit suit, int number)
     setObjectName("guding_blade");
 }
 
-class VineSkill : public ArmorSkill
+class VineSkill : public ArmorSkillV2
 {
 public:
-    VineSkill() : ArmorSkill("vine")
+    VineSkill() : ArmorSkillV2("vine", "vine")
     {
+        setProperty("sharedAcrossCardModes", true);
         events << DamageInflicted << CardEffected;
+        frequency = Compulsory;
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    TriggerList triggerable(TriggerEvent triggerEvent, Room *, ServerPlayer *player,
+                            QVariant &data) const override
     {
+        TriggerList result;
+        if (!ArmorSkillV2::triggerable(player))
+            return result;
         if (triggerEvent == CardEffected) {
             CardEffectStruct effect = data.value<CardEffectStruct>();
+            if (!player->hasArmorEffect(objectName(), effect.from)) return result;
             if ((effect.card->isKindOf("Slash") && effect.card->objectName() == "slash")
 				|| effect.card->isKindOf("SavageAssault") || effect.card->isKindOf("ArcheryAttack")
-				|| effect.card->isKindOf("Chuqibuyi")) {
-                room->setEmotion(player, "armor/vine");
-                LogMessage log;
-                log.from = player;
-                log.type = "#ArmorNullify";
-                log.arg = objectName();
-                log.arg2 = effect.card->objectName();
-                room->sendLog(log);
-                room->notifySkillInvoked(player, objectName());
-
-                effect.to->setFlags("Global_NonSkillNullify");
-                return true;
-            }
+				|| (!Config.EnableHegemony && effect.card->isKindOf("Chuqibuyi")))
+                result.insert(player, QStringList(objectName()));
         } else if (triggerEvent == DamageInflicted) {
             DamageStruct damage = data.value<DamageStruct>();
-            if (damage.nature == DamageStruct::Fire) {
-                room->setEmotion(player, "armor/vineburn");
-                LogMessage log;
-                log.type = "#VineDamage";
-                log.from = player;
-                log.arg = QString::number(damage.damage);
-                log.arg2 = QString::number(++damage.damage);
-                room->sendLog(log);
-                room->notifySkillInvoked(player, objectName());
-
-                data = QVariant::fromValue(damage);
-            }
+            if (damage.nature == DamageStruct::Fire && player->hasArmorEffect(objectName(), damage.from))
+                result.insert(player, QStringList(objectName()));
         }
+        return result;
+    }
+
+    bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                SkillContext &ctx) const override
+    {
+        QVariant &data = *ctx.original_data;
+        if (triggerEvent == CardEffected) {
+            CardEffectStruct cardEffect = data.value<CardEffectStruct>();
+            room->setEmotion(player, "armor/vine");
+            LogMessage log;
+            log.from = player;
+            log.type = "#ArmorNullify";
+            log.arg = objectName();
+            log.arg2 = cardEffect.card->objectName();
+            room->sendLog(log);
+            room->notifySkillInvoked(player, objectName());
+            cardEffect.to->setFlags("Global_NonSkillNullify");
+            return true;
+        }
+
+        DamageStruct damage = data.value<DamageStruct>();
+        room->setEmotion(player, "armor/vineburn");
+        LogMessage log;
+        log.type = "#VineDamage";
+        log.from = player;
+        log.arg = QString::number(damage.damage);
+        log.arg2 = QString::number(++damage.damage);
+        room->sendLog(log);
+        room->notifySkillInvoked(player, objectName());
+        data = QVariant::fromValue(damage);
         return false;
     }
 };
@@ -260,31 +332,75 @@ Vine::Vine(Suit suit, int number)
     setObjectName("vine");
 }
 
-class SilverLionSkill : public ArmorSkill
+class SilverLionSkill : public ArmorSkillV2
 {
 public:
-    SilverLionSkill() : ArmorSkill("silver_lion")
+    SilverLionSkill() : ArmorSkillV2("silver_lion", "silver_lion")
     {
-        events << DamageInflicted;
+        setProperty("sharedAcrossCardModes", true);
+        events << DamageInflicted << CardsMoveOneTime;
+        frequency = Compulsory;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    TriggerList triggerable(TriggerEvent triggerEvent, Room *, ServerPlayer *player,
+                            QVariant &data) const override
     {
-        if (player->isAlive()) {
+        TriggerList result;
+        if (triggerEvent == DamageInflicted) {
             DamageStruct damage = data.value<DamageStruct>();
-            if (damage.damage > 1) {
-                room->setEmotion(player, "armor/silver_lion");
-                LogMessage log;
-                log.type = "#SilverLion";
-                log.from = player;
-                log.arg = QString::number(damage.damage);
-                log.arg2 = objectName();
-                room->sendLog(log);
-                room->notifySkillInvoked(player, objectName());
-
-                damage.damage = 1;
-                data = QVariant::fromValue(damage);
+            if (player && player->isAlive() && ArmorSkillV2::triggerable(player)
+                && player->hasArmorEffect(objectName(), damage.from) && damage.damage > 1)
+                result.insert(player, QStringList(objectName()));
+        } else if (Config.EnableHegemony && player
+                   && player->hasFlag("SilverLionRecover")) {
+            CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+            if (move.from != player || !move.from_places.contains(Player::PlaceEquip))
+                return result;
+            for (int i = 0; i < move.card_ids.size(); ++i) {
+                if (move.from_places[i] != Player::PlaceEquip) continue;
+                const Card *card = Sanguosha->getEngineCard(move.card_ids[i]);
+                if (card->objectName() == objectName()) {
+                    if (!player->isWounded())
+                        player->setFlags("-SilverLionRecover");
+                    else
+                        result.insert(player, QStringList(objectName()));
+                    break;
+                }
             }
+        }
+        return result;
+    }
+
+    bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                SkillContext &ctx) const override
+    {
+        QVariant &data = *ctx.original_data;
+        if (triggerEvent == DamageInflicted) {
+            DamageStruct damage = data.value<DamageStruct>();
+            room->setEmotion(player, "armor/silver_lion");
+            LogMessage log;
+            log.type = "#SilverLion";
+            log.from = player;
+            log.arg = QString::number(damage.damage);
+            log.arg2 = objectName();
+            room->sendLog(log);
+            room->notifySkillInvoked(player, objectName());
+            damage.damage = 1;
+            data = QVariant::fromValue(damage);
+            return false;
+        }
+
+        CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        for (int i = 0; i < move.card_ids.size(); ++i) {
+            if (move.from_places[i] != Player::PlaceEquip) continue;
+            const Card *card = Sanguosha->getEngineCard(move.card_ids[i]);
+            if (card->objectName() != objectName()) continue;
+            player->setFlags("-SilverLionRecover");
+            room->setEmotion(player, "armor/silver_lion");
+            RecoverStruct recover;
+            recover.card = card;
+            room->recover(player, recover);
+            break;
         }
         return false;
     }
@@ -298,8 +414,16 @@ SilverLion::SilverLion(Suit suit, int number)
 
 void SilverLion::onUninstall(ServerPlayer *player) const
 {
+    if (Config.EnableHegemony) {
+        if (player->isAlive() && player->hasArmorEffect(objectName()))
+            player->setFlags("SilverLionRecover");
+        EquipCard::onUninstall(player);
+        return;
+    }
+
     EquipCard::onUninstall(player);
-	if (player->isAlive()&&player->hasArmorEffect(objectName(), nullptr, false)&&player->isWounded()){
+	if (player->isAlive() && player->hasArmorEffect(objectName(), nullptr, false)
+        && player->isWounded()) {
 		Room *room = player->getRoom();
 		room->setEmotion(player, "armor/silver_lion");
 		room->notifySkillInvoked(player, objectName());

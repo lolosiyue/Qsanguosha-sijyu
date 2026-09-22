@@ -1362,6 +1362,63 @@ bool TreasureSkill::isEquipSkill() const
     return true;
 }
 
+WeaponSkillV2::WeaponSkillV2(const QString &name, const QString &equipmentName)
+    : TriggerSkillV2(name), m_equipmentName(equipmentName.isEmpty() ? name : equipmentName)
+{
+    attached_lord_skill = true;
+}
+
+bool WeaponSkillV2::triggerable(const ServerPlayer *target) const
+{
+    return target && Engine::isSkillAdmittedForMode(this, Config.EnableHegemony)
+        && target->hasWeapon(m_equipmentName);
+}
+
+TriggerList WeaponSkillV2::triggerable(TriggerEvent, Room *, ServerPlayer *target, QVariant &) const
+{
+    TriggerList result;
+    if (triggerable(target)) result.insert(target, QStringList(objectName()));
+    return result;
+}
+
+ArmorSkillV2::ArmorSkillV2(const QString &name, const QString &equipmentName)
+    : TriggerSkillV2(name), m_equipmentName(equipmentName.isEmpty() ? name : equipmentName)
+{
+    attached_lord_skill = true;
+}
+
+bool ArmorSkillV2::triggerable(const ServerPlayer *target) const
+{
+    return target && Engine::isSkillAdmittedForMode(this, Config.EnableHegemony)
+        && target->hasArmorEffect(m_equipmentName);
+}
+
+TriggerList ArmorSkillV2::triggerable(TriggerEvent, Room *, ServerPlayer *target, QVariant &) const
+{
+    TriggerList result;
+    if (triggerable(target)) result.insert(target, QStringList(objectName()));
+    return result;
+}
+
+TreasureSkillV2::TreasureSkillV2(const QString &name, const QString &equipmentName)
+    : TriggerSkillV2(name), m_equipmentName(equipmentName.isEmpty() ? name : equipmentName)
+{
+    attached_lord_skill = true;
+}
+
+bool TreasureSkillV2::triggerable(const ServerPlayer *target) const
+{
+    return target && Engine::isSkillAdmittedForMode(this, Config.EnableHegemony)
+        && target->hasTreasure(m_equipmentName);
+}
+
+TriggerList TreasureSkillV2::triggerable(TriggerEvent, Room *, ServerPlayer *target, QVariant &) const
+{
+    TriggerList result;
+    if (triggerable(target)) result.insert(target, QStringList(objectName()));
+    return result;
+}
+
 MarkAssignSkill::MarkAssignSkill(const QString &mark, int n)
     : GameStartSkill(QString("#%1-%2").arg(mark).arg(n)), mark_name(mark), n(n)
 {

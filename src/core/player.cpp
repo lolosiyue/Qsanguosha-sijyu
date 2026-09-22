@@ -1276,6 +1276,18 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
 {
 	if (!alive||(need_area&&getMark("IgnoreArea1")<1&&!hasEquipArea(1)))
         return false;
+    if (armor_name == QLatin1String("heg_bazhen")) {
+        if (getArmor() || !hasSkill(QStringLiteral("heg_bazhen"))
+            || !getTag(QStringLiteral("Qinggang")).toStringList().isEmpty())
+            return false;
+        // Bazhen grants Eight Diagram's effect without creating an equipped
+        // card; still apply the native source-scoped equipment restrictions.
+        for (const Armor *armor : Sanguosha->findChildren<const Armor *>()) {
+            if (armor->objectName() == QLatin1String("eight_diagram"))
+                return !isEquipsNullified(armor, sourcePlayer);
+        }
+        return false;
+    }
 	static QStringList a_equips;
 	if(a_equips.isEmpty()){
 		foreach(const Armor*a,Sanguosha->findChildren<const Armor*>())

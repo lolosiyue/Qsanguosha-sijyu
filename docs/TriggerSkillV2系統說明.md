@@ -186,6 +186,30 @@ can_trigger return "skill#N" → 只建立指定實例的 SkillContext
 - `on_record` 按每個現存實例逐一呼叫，context 帶 owner、skill_name、instanceID、original_data、current_event。
 - `triggerCounts`、`maxMultipliers`、`triggeredSkills`、`selected_ctx` 與選項驗證一律使用 `(owner, skillName, instanceID)`；禁止只用 `skillName#instanceID` 的 Room 全域 key，避免不同玩家碰撞。
 
+#### 裝備觸發技能 V2
+
+`WeaponSkillV2`、`ArmorSkillV2`、`TreasureSkillV2` 直接繼承 `TriggerSkillV2`，
+取代原國戰的 `OriginalHegemonyWeaponSkill`、`OriginalHegemonyArmorSkill`、`OriginalHegemonyTreasureSkill` 相容類別。
+同效果裝備的 V2 實作放回原生技能；尚未遷移的 legacy 派生類別仍可並存。
+建構式使用 `(skillName, equipmentName)`；例如 `WeaponSkillV2("double_sword", "double_sword")`，
+技能註冊名稱與實體裝備名稱分開，不再裁切 `heg_` 或猜測 helper 的卡牌名稱。
+
+| 契約 | 裝備 V2 |
+|------|---------|
+| 候選 | 四參數 `triggerable()` 回傳以決策者／裝備效果持有者為 key 的 `TriggerList`；由 selector 驗證裝備、失效及事件條件 |
+| 來源 | 使用裝備／事件資料作權威；`instanceID = 0`，不建立 Player 技能實例，`sourceRef`／`activationRef` 保持無效 |
+| 卸裝 | 卸裝後的移牌效果仍可成為候選；不得以仍持有 Player 技能實例為必要條件 |
+| 回調 | `cost/pay/effect` 的 `player` 為候選 owner；原事件角色為 `ctx.invoker`，可寫事件資料為 `*ctx.original_data` |
+| 記錄 | 每個裝備技能定義、每個事件呼叫一次 `record`；不依持有者實例重複，卸裝後亦能清理已建立的狀態 |
+| 排序 | 在主事件表的原優先級位置進入 V2 管線，保留龍鳳復活等低於 GameRule 的結算位置 |
+| 多目標 | 裝備 selector 可回傳 `skill->a+b`，由 V2 名稱解析器建立逐目標 context；依目標身分追蹤已處理／略過者，`cost` 前還原基礎技能名並填入 `ctx.targets`／`preferredTarget` |
+
+上述零實例候選僅適用於 `isEquipSkill()` 的 V2 定義，普通武將 V2 仍必須持有有效的精確實例。
+已進入結算的裝備效果可以支付自身裝備；支付後不因卸裝而取消該次效果。
+本批只遷移觸發技能；裝備的 ViewAs／Distance／AttackRange／TargetMod 等能力沿用原介面。
+同效果卡不再建立 H 子類別。共用技能以 `sharedAcrossCardModes` 明確宣告跨牌堆准入，
+國戰實體牌仍由國戰套件提供，牌堆花色、點數、數量及 transferable 不由技能定義決定。
+
 #### 事件資料
 
 不新增 `EventAcquireSkillInstance`／`EventLoseSkillInstance`；每次建立／移除實例觸發既有 `EventAcquireSkill`／`EventLoseSkill`，data 為 `SkillChangeStruct`：

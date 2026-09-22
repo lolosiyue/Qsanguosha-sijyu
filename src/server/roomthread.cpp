@@ -1087,9 +1087,17 @@ static QString skillInstanceRuntimeKey(const ServerPlayer *owner, const QString 
 		.arg(instanceId);
 }
 
-bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data)
+bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data,
+                                const QList<TriggerSkill *> *equipmentGroup)
 {
-	const QList<TriggerSkill *> v2_skills = v2_skill_table[triggerEvent];
+	QList<TriggerSkill *> v2_skills;
+	if (equipmentGroup) {
+		v2_skills = *equipmentGroup;
+	} else {
+		// Equipment keeps its position relative to legacy rules (notably BuryVictim).
+		for (TriggerSkill *skill : v2_skill_table[triggerEvent])
+			if (!skill->isEquipSkill()) v2_skills << skill;
+	}
 	if (m_perfTraceEnabled) {
 		++m_triggerDispatchProfile.v2DispatchCount;
 		m_triggerDispatchProfile.v2CandidateCount += v2_skills.length();
@@ -1104,11 +1112,24 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	QMap<QString, int> maxMultipliers;
 	QSet<QString> triggeredSkills;
 	QSet<ServerPlayer *> declinedOwners;
+	QMap<QString, QStringList> consumedEquipmentTargets;
 
 	// record 每個事件只執行一次，並逐現存玩家實例提供完整 context。
 	foreach (const TriggerSkill *ts, v2_skills) {
 		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 		if (!v2) continue;
+		if (v2->isEquipSkill()) {
+			// Card cleanup must run even after onUninstall has detached the skill.
+			// This is one event record, not a synthetic Player skill instance.
+			SkillContext recordCtx;
+			recordCtx.skill_name = v2->objectName();
+			recordCtx.owner = target;
+			recordCtx.invoker = target;
+			recordCtx.original_data = &data;
+			recordCtx.current_event = triggerEvent;
+			v2->record(triggerEvent, room, target, recordCtx);
+			continue;
+		}
 		foreach (ServerPlayer *owner, room->getAllPlayers(true)) {
 			foreach (int instanceId, owner->getSkillInstanceIds(v2->objectName())) {
 				SkillContext recordCtx;
@@ -1132,7 +1153,13 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	bool broken = false;
 
 	while (!broken) {
+		if (equipmentGroup && (triggerEvent == EnterDying || triggerEvent == Dying
+			|| triggerEvent == AskForPeaches)) {
+			const ServerPlayer *dying = data.value<DyingStruct>().who;
+			if (!dying || !dying->hasFlag("Global_Dying")) break;
+		}
 		QList<SkillContext> skillContexts;
+		QMap<QString, QStringList> equipmentTargetPrefixes;
 		bool has_compulsory = false;
 
 		foreach (const TriggerSkill *ts, v2_skills) {
@@ -1157,8 +1184,45 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 						QString baseName;
 						int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
 						skillName = baseName;
+						QString orderedTargets;
+						if (v2->isEquipSkill())
+							skillName = TriggerSkillV2::parseSkillName(skill, nullptr, &orderedTargets,
+								&multiplier, &instanceId);
 						QList<int> instanceIds;
-						if (instanceId > 0) {
+						if (v2->isEquipSkill()) {
+							// Equipment eligibility is authoritative in its selector, including
+							// virtual armor and effects pending after the card has left play.
+							if (instanceId != 0 || skillName != v2->objectName()) continue;
+							if (!orderedTargets.isEmpty()) {
+								// Retain target identity across refreshes: discarding a target's
+								// last card must not shift the next target out of the queue.
+								const QString key = skillInstanceRuntimeKey(p, skillName, 0);
+								const QStringList targets = orderedTargets.split('+', Qt::SkipEmptyParts);
+								for (int i = 0; i < targets.size(); ++i) {
+									if (consumedEquipmentTargets.value(key).contains(targets.at(i))) continue;
+									ServerPlayer *effectTarget = room->findPlayerByObjectName(targets.at(i), true);
+									if (!effectTarget) continue;
+									SkillContext ctx;
+									ctx.skill_name = skillName + "->" + targets.at(i) + '&' + QString::number(i + 1);
+									ctx.owner = p;
+									ctx.invoker = target;
+									ctx.targets << effectTarget;
+									ctx.preferredTarget = effectTarget;
+									ctx.preferredTargetSeat = effectTarget->getSeat();
+									ctx.original_data = &data;
+									ctx.current_event = triggerEvent;
+									ctx.amount = v2->getBaseAmount();
+									ctx.trigger_count = triggerCounts.value(key);
+									skillContexts << ctx;
+									// Selecting a later target declines the preceding targets.
+									equipmentTargetPrefixes.insert(p->objectName() + '|' + ctx.skill_name,
+										targets.mid(0, i + 1));
+									if (v2->getFrequency(p) == Skill::Compulsory && p->hasShownSkill(v2)) break;
+								}
+								continue;
+							}
+							instanceIds << 0;
+						} else if (instanceId > 0) {
 							if (p->hasSkillInstance(skillName, instanceId)
 								&& !p->isSkillInvalid(skillName, instanceId))
 								instanceIds << instanceId;
@@ -1181,11 +1245,11 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.owner = p;
 								ctx.invoker = target;
 								ctx.instanceID = resolvedId;
-								ctx.activationRef = SkillInstanceRef(
-									p->objectName(), SkillInstanceKey(skillName, resolvedId));
+								if (!v2->isEquipSkill()) ctx.activationRef = ref;
 								ctx.sourceRef = ctx.activationRef;
 								bool amountOk = false;
-								ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
+								if (!v2->isEquipSkill())
+									ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
 								if (!amountOk) ctx.amount = v2->getBaseAmount();
 								ctx.trigger_count = currentTriggerCount + i;
 								ctx.multiplier = effectiveMultiplier;
@@ -1203,7 +1267,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			break;
 
 		ServerPlayer *chooser = target;
-		if (Config.EnableHegemony) {
+		if (Config.EnableHegemony || equipmentGroup) {
 			// Only the owner may receive concealed candidates, even when
 			// another player's event triggers them.
 			chooser = nullptr;
@@ -1222,7 +1286,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			// A concealed compulsory copy remains optional. A revealed sibling
 			// must not force this source to reveal as well.
 			if (room->isGeneralHiddenForSkill(ctx.activationRef)) continue;
-			const QString definitionName = ctx.skill_name;
+			const QString definitionName = equipmentGroup
+				? TriggerSkillV2::parseSkillName(ctx.skill_name) : ctx.skill_name;
 			const TriggerSkill *ts = Sanguosha->getTriggerSkill(definitionName, ctx.instanceID);
 			if (ts && ts->getFrequency(ctx.owner) == Skill::Compulsory) {
 				has_compulsory = true;
@@ -1243,12 +1308,21 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		// 返回值格式："skillName" 或 "skillName:ownerObjectName"
 		QString reason = "GameRule:TriggerOrder";
 		QString name;
-
+		if (equipmentGroup) {
+			// Global compulsory helpers (e.g. Wooden Ox cleanup) never ask permission.
+			for (const SkillContext &ctx : skillContexts) {
+				const TriggerSkill *skill = Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name));
+				if (skill && skill->isGlobal() && skill->getFrequency(ctx.owner) == Skill::Compulsory) {
+					name = ctx.skill_name;
+					break;
+				}
+			}
+		}
 		if (name.isEmpty())
 			name = room->askForTriggerOrder(chooser, reason, skillContexts, !has_compulsory, data);
 
 		if (name == "cancel" || name.isEmpty()) {
-			if (Config.EnableHegemony) {
+			if (Config.EnableHegemony || equipmentGroup) {
 				declinedOwners.insert(chooser);
 				continue;
 			}
@@ -1271,6 +1345,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
 		skillName = baseName;
 		const QString selectedName = skillName;
+		if (equipmentGroup) skillName = TriggerSkillV2::parseSkillName(selectedName);
 
 		const TriggerSkill *result_skill = Sanguosha->getTriggerSkill(skillName, instanceId);
 		if (!result_skill) continue;
@@ -1318,7 +1393,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		if (!sourceAvailable()) continue;
 
 		QString key = skillInstanceRuntimeKey(skill_owner, skillName, instanceId);
-
+		if (equipment) {
+			consumedEquipmentTargets[key] << equipmentTargetPrefixes.value(
+				skill_owner->objectName() + '|' + selected_ctx->skill_name);
+			// UI choices include an ordered target; callbacks use the definition ID.
+			selected_ctx->skill_name = skillName;
+		}
 		triggerCounts[key] = triggerCounts.value(key, 0) + 1;
 		triggeredSkills.insert(key);
 
@@ -1715,13 +1795,30 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 			TriggerSkill*ts = skill_table[triggerEvent][i];
 			if (m_perfTraceEnabled)
 				++m_triggerDispatchProfile.mainTableCandidateVisitCount;
-			if (m_triggerSkillTraits.value(ts).v2) continue;
+			if (m_triggerSkillTraits.value(ts).v2 && !ts->isEquipSkill()) continue;
 			if (triggered.contains(ts)) continue;
 			triggered << ts;
-			const quint64 tableRevision = m_triggerTableRevision[triggerEvent];
-			if(triggerEvent==EnterDying||triggerEvent==Dying||triggerEvent==AskForPeaches){
-				if(!data.value<DyingStruct>().who->hasFlag("Global_Dying")) break;
-			}
+            const quint64 tableRevision = m_triggerTableRevision[triggerEvent];
+            if (triggerEvent == EnterDying || triggerEvent == Dying || triggerEvent == AskForPeaches) {
+                if (!data.value<DyingStruct>().who->hasFlag("Global_Dying")) break;
+            }
+            if (m_triggerSkillTraits.value(ts).v2 && ts->isEquipSkill()) {
+                QList<TriggerSkill *> group;
+                for (TriggerSkill *candidate : skill_table[triggerEvent]) {
+                    if (m_triggerSkillTraits.value(candidate).v2 && candidate->isEquipSkill()
+                        && candidate->getPriority(triggerEvent) == ts->getPriority(triggerEvent)
+                        && (candidate == ts || !triggered.contains(candidate))) {
+                        group << candidate;
+                        triggered << candidate;
+                    }
+                }
+                broken = triggerV2Skills(triggerEvent, room, target, data, &group);
+                if (broken) break;
+                if (tableRevision != m_triggerTableRevision[triggerEvent]) i = -1;
+                continue;
+            }
+
+
 			if (ts->triggerable(target,room,triggerEvent,target,data)) {
 				if(ts->getFrequency(target)==Skill::Wake&&!ts->canWake(triggerEvent,target,data,room)) continue;
 				room->tryPause();
@@ -1778,12 +1875,17 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 {
 	if (!skill || skillSet.contains(skill)) return;
+    // Apply the same mode boundary to globals, equipment and acquired helpers.
+    // GameRule objects are engine controllers rather than catalog skills.
+    if (!skill->inherits("GameRule")
+        && !Engine::isSkillAdmittedForMode(skill, Config.EnableHegemony)) return;
 	skillSet << skill;
 	TriggerSkillTraits traits;
 	traits.v2 = skill->inherits("TriggerSkillV2");
 	traits.gameRule = skill->inherits("GameRule");
 	traits.equipOrRule = traits.gameRule || skill->inherits("WeaponSkill")
-		|| skill->inherits("ArmorSkill") || skill->inherits("TreasureSkill");
+		|| skill->inherits("ArmorSkill") || skill->inherits("TreasureSkill")
+		|| (traits.v2 && skill->isEquipSkill());
 	m_triggerSkillTraits.insert(skill, traits);
 	foreach (TriggerEvent event, skill->getTriggerEvents()) {
 		TriggerSkill *registeredSkill = const_cast<TriggerSkill *>(skill);
