@@ -307,7 +307,7 @@ STANDARD_SKILLS = {
     "pangde": ["juesha"],
     "jiaxu": ["wansha"],
     "mateng": ["mashu"],
-    "kongrong": ["mingshi"],
+    "kongrong": ["heg_mingshi"],
     "jiling": ["zhaxiang"],
     "gongsunzan": ["yicong"],
     "liubiao": ["zishou"],
