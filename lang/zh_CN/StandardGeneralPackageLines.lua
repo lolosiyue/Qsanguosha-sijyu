@@ -2055,34 +2055,34 @@ return {
 	["~liaohua-liaohua_3"] = "今后~就靠你们了...",
 	
 --[[
-	刘表（一将成名2012）
+	刘表[旧]（一将成名2012）
 ]]--
-    ["$zishou1-liubiao_1"] = "不求开疆，但求无恙。",
-	["$zishou2-liubiao_1"] = "荆州不可有战事。",
-	["$zongshi1-liubiao_1"] = "汉室尚存，礼乐未崩。",
-	["$zongshi2-liubiao_1"] = "汉室宗亲，仁义恩泽天下~",
-	["~liubiao-liubiao_1"] = "奸雄当道，宗室焉存哪！",
+    ["$noszishou1-nos_liubiao_1"] = "不求开疆，但求无恙。",
+	["$noszishou2-nos_liubiao_1"] = "荆州不可有战事。",
+	["$zongshi1-nos_liubiao_1"] = "汉室尚存，礼乐未崩。",
+	["$zongshi2-nos_liubiao_1"] = "汉室宗亲，仁义恩泽天下~",
+	["~nos_liubiao-nos_liubiao_1"] = "奸雄当道，宗室焉存哪！",
 	
-	["$zishou1-liubiao_2"] = "荆襄九郡，繁华盛世！",
-	["$zishou2-liubiao_2"] = "老夫坐拥荆襄七郡，衣丰食饱。",
-	["$zongshi1-liubiao_2"] = "万里肃清，百姓归附。",
-	["$zongshi2-liubiao_2"] = "大汉天威还可传承万世！",
-	["~liubiao-liubiao_2"] = "荆州前途未卜矣...",
+	["$noszishou1-nos_liubiao_2"] = "荆襄九郡，繁华盛世！",
+	["$noszishou2-nos_liubiao_2"] = "老夫坐拥荆襄七郡，衣丰食饱。",
+	["$zongshi1-nos_liubiao_2"] = "万里肃清，百姓归附。",
+	["$zongshi2-nos_liubiao_2"] = "大汉天威还可传承万世！",
+	["~nos_liubiao-nos_liubiao_2"] = "荆州前途未卜矣...",
 	
-	["$zongshi1-liubiao_3"] = "汉室百年，坚如磐石！",
-	["$zongshi2-liubiao_3"] = "宗室子弟，尽收民心。",
+	["$zongshi1-nos_liubiao_3"] = "汉室百年，坚如磐石！",
+	["$zongshi2-nos_liubiao_3"] = "宗室子弟，尽收民心。",
 	
-	["$zongshi1-liubiao_4"] = "汉室百年，坚如磐石！",
-	["$zongshi2-liubiao_4"] = "宗室子弟，尽收民心。",
+	["$zongshi1-nos_liubiao_4"] = "汉室百年，坚如磐石！",
+	["$zongshi2-nos_liubiao_4"] = "宗室子弟，尽收民心。",
 	
-	["$zongshi1-liubiao_5"] = "汉室百年，坚如磐石！",
-	["$zongshi2-liubiao_5"] = "宗室子弟，尽收民心。",
+	["$zongshi1-nos_liubiao_5"] = "汉室百年，坚如磐石！",
+	["$zongshi2-nos_liubiao_5"] = "宗室子弟，尽收民心。",
 	
-	["$zishou1-liubiao_6"] = "愿行仁义之道，何愁人心不归。",
-	["$zishou2-liubiao_6"] = "稳踞江汉，坐观时变。",
-	["$zongshi1-liubiao_6"] = "普天之下，莫非汉土。",
-	["$zongshi2-liubiao_6"] = "汉室宗亲同出一门，何须多礼。",
-	["~liubiao-liubiao_6"] = "人心移献，如何固守...",
+	["$noszishou1-nos_liubiao_6"] = "愿行仁义之道，何愁人心不归。",
+	["$noszishou2-nos_liubiao_6"] = "稳踞江汉，坐观时变。",
+	["$zongshi1-nos_liubiao_6"] = "普天之下，莫非汉土。",
+	["$zongshi2-nos_liubiao_6"] = "汉室宗亲同出一门，何须多礼。",
+	["~nos_liubiao-nos_liubiao_6"] = "人心移献，如何固守...",
 	
 --[[
 	马岱（一将成名2012）

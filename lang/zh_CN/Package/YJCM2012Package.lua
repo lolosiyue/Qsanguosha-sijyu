@@ -2,7 +2,6 @@
 
 return {
 	["YJCM2012"] = "一将成名2012",
-	["NewYJCM2012"] = "新版·一将成名2012",
 
 	["#xunyou"] = "曹魏的谋主",
 	["xunyou"] = "荀攸",
@@ -100,21 +99,15 @@ return {
 	["@jiefan-discard"] = "请弃置一张武器牌，否则 %dest 摸一张牌",
 	["$JiefanAnimate"] = "image=image/animate/jiefan.png",
 
+	["zongshi"] = "宗室",
+    [":zongshi"] = "锁定技，你的手牌上限+X。（X为现存势力数）",
+
 	["#liubiao"] = "跨蹈汉南",
 	["liubiao"] = "刘表",
 	["designer:liubiao"] = "管乐",
 	["illustrator:liubiao"] = "关东煮",
 	["zishou"] = "自守",
-	[":zishou"] = "摸牌阶段，若你已受伤，你可以额外摸X张牌，然后跳过出牌阶段。（X为你已损失的体力值）",
-	["zongshi"] = "宗室",
-    [":zongshi"] = "锁定技，你的手牌上限+X。（X为现存势力数）",
-	
-	["new_liubiao"] = "新刘表",
-	["&new_liubiao"] = "刘表" ,
-	["designer:liubiao"] = "管乐",
-	["illustrator:liubiao"] = "关东煮",
-	["newzishou"] = "自守",
-	[":newzishou"] = "摸牌阶段摸牌时，你可以额外摸X张牌（X为现存势力数）。若如此做，你于本回合出牌阶段内使用的牌不能指定其他角色为目标。",
+	[":zishou"] = "摸牌阶段摸牌时，你可以额外摸X张牌（X为现存势力数）。若如此做，你于本回合出牌阶段内使用的牌不能指定其他角色为目标。",
 
 	["ol_liubiao"] = "刘表[OL]",
 	["&ol_liubiao"] = "刘表",

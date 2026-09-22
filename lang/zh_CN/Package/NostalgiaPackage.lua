@@ -224,6 +224,14 @@ return {
 	["#NosJiefanNull2"] = "%from 已经死亡，“<font color=\"yellow\"><b>解烦</b></font>”第二项效果无法执行",
 	["#NosJiefanNull3"] = "因为当前回合角色 %from 拥有“<font color=\"yellow\"><b>完杀</b></font>”技能， %to 不处于濒死状态，“<font color=\"yellow\"><b>解烦</b></font>”第二项效果无法执行",
 
+	["#nos_liubiao"] = "跨蹈汉南",
+	["nos_liubiao"] = "刘表[旧]",
+	["&nos_liubiao"] = "刘表",
+	["designer:nos_liubiao"] = "管乐",
+	["illustrator:nos_liubiao"] = "关东煮",
+	["noszishou"] = "自守",
+	[":noszishou"] = "摸牌阶段，若你已受伤，你可以额外摸X张牌，然后跳过出牌阶段。（X为你已损失的体力值）",
+
 	["nos_wangyi"] = "王异[旧]",
 	["&nos_wangyi"] = "王异",
 	["designer:nos_wangyi"] = "Virgopal",
