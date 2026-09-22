@@ -364,9 +364,10 @@ bool Peach::isAvailable(const Player *player) const
 class CrossbowSkill : public TargetModSkill
 {
 public:
+    bool isEquipSkill() const override { return true; }
+
     CrossbowSkill() : TargetModSkill("crossbow")
     {
-        setProperty("sharedAcrossCardModes", true);
         frequency = Compulsory;
     }
 
@@ -393,7 +394,6 @@ class DoubleSwordSkill : public WeaponSkillV2
 public:
     DoubleSwordSkill() : WeaponSkillV2("double_sword", "double_sword")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << TargetSpecified;
     }
 
@@ -444,7 +444,6 @@ class QinggangSwordSkill : public WeaponSkillV2
 public:
     QinggangSwordSkill() : WeaponSkillV2("qinggang_sword", "qinggang_sword")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << TargetSpecified;
         frequency = Compulsory;
     }
@@ -533,9 +532,10 @@ Blade::Blade(Suit suit, int number)
 class SpearViewAsSkill : public ViewAsSkill
 {
 public:
+    bool isEquipSkill() const override { return true; }
+
     SpearViewAsSkill() : ViewAsSkill("spear")
     {
-        setProperty("sharedAcrossCardModes", true);
         response_or_use = true;
     }
 
@@ -569,7 +569,6 @@ class SpearSkill : public WeaponSkillV2
 public:
     SpearSkill() : WeaponSkillV2("spear", "spear")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << PreCardUsed << PreCardResponded;
         view_as_skill = new SpearViewAsSkill;
     }
@@ -628,7 +627,6 @@ class AxeSkill : public WeaponSkillV2
 public:
     AxeSkill() : WeaponSkillV2("axe&", "axe")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << CardOffset;
         view_as_skill = new AxeViewAsSkill;
     }
@@ -705,7 +703,6 @@ class KylinBowSkill : public WeaponSkillV2
 public:
     KylinBowSkill() : WeaponSkillV2("kylin_bow", "kylin_bow")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << DamageCaused;
     }
 
@@ -763,21 +760,9 @@ KylinBow::KylinBow(Suit suit, int number)
 
 class EightDiagramSkill : public ArmorSkillV2
 {
-    SkillInstanceRef bazhenSource(Room *room, ServerPlayer *player) const
-    {
-        if (!player->hasArmorEffect("heg_bazhen")) return SkillInstanceRef();
-        for (int id : player->getValidSkillInstanceIds("heg_bazhen")) {
-            const SkillInstanceRef ref(player->objectName(), SkillInstanceKey("heg_bazhen", id));
-            if (room->canShowGeneralForSkill(ref) && room->isSkillPreshownForTrigger(ref))
-                return ref;
-        }
-        return SkillInstanceRef();
-    }
-
 public:
     EightDiagramSkill() : ArmorSkillV2("eight_diagram", "eight_diagram")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << CardAsked;
     }
 
@@ -785,7 +770,7 @@ public:
     {
         TriggerList result;
         QStringList asked = data.toStringList();
-		if (!player || (!ArmorSkillV2::triggerable(player) && !bazhenSource(room, player).isValid()) || asked.isEmpty()
+		if (!player || !ArmorSkillV2::triggerable(player) || asked.isEmpty()
 			|| (!asked.first().contains("jink") && !asked.first().contains("Jink"))) return result;
 		result.insert(player, QStringList(objectName()));
 		return result;
@@ -794,13 +779,6 @@ public:
 	bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
 		if (!ctx.original_data) return false;
-        // Keep the exact virtual-armor source until payment/interceptors finish;
-        // declining or a limited Jink must never reveal a concealed general.
-        if (!ArmorSkillV2::triggerable(player)) {
-            const SkillInstanceRef source = bazhenSource(room, player);
-            if (!source.isValid()) return false;
-            ctx.extra_data = QVariant::fromValue(source);
-        }
 		QStringList asked = ctx.original_data->toStringList();
 		Jink *jink = new Jink(Card::NoSuit, 0);
 		jink->setSkillName("_" + objectName());
@@ -811,19 +789,6 @@ public:
 
 	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
 	{
-        if (ctx.extra_data.canConvert<SkillInstanceRef>()) {
-            const SkillInstanceRef source = ctx.extra_data.value<SkillInstanceRef>();
-            if (!player->hasArmorEffect("heg_bazhen")
-                || !player->hasSkillInstance(source.key.skillName, source.key.instanceID)
-                || player->isSkillInvalid(source.key.skillName, source.key.instanceID)
-                || !room->isSkillPreshownForTrigger(source)
-                || !room->showGeneralForSkill(source)) return false;
-            // GeneralShown callbacks can retire the paid source or equip armor.
-            if (!player->isAlive() || !player->hasArmorEffect("heg_bazhen")
-                || !player->hasSkillInstance(source.key.skillName, source.key.instanceID)
-                || player->isSkillInvalid(source.key.skillName, source.key.instanceID)) return false;
-            room->sendCompulsoryTriggerLog(player, "heg_bazhen");
-        }
 		room->setEmotion(player, "armor/eight_diagram");
 		Jink *jink = new Jink(Card::NoSuit, 0);
 		jink->setSkillName("_" + objectName());
@@ -1380,7 +1345,6 @@ class IceSwordSkill : public WeaponSkillV2
 public:
     IceSwordSkill() : WeaponSkillV2("ice_sword", "ice_sword")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << DamageCaused;
     }
 
@@ -1434,7 +1398,6 @@ class RenwangShieldSkill : public ArmorSkillV2
 public:
     RenwangShieldSkill() : ArmorSkillV2("renwang_shield", "renwang_shield")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << CardEffected;
         frequency = Compulsory;
     }
@@ -1480,9 +1443,10 @@ RenwangShield::RenwangShield(Suit suit, int number)
 class HorseSkill : public DistanceSkill
 {
 public:
+    bool isEquipSkill() const override { return true; }
+
     HorseSkill() : DistanceSkill("horse")
     {
-        setProperty("sharedAcrossCardModes", true);
     }
 
     int getCorrect(const Player *from, const Player *to) const
@@ -1545,9 +1509,10 @@ void WoodenOxCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 class WoodenOxViewAsSkill : public OneCardViewAsSkill
 {
 public:
+    bool isEquipSkill() const override { return true; }
+
     WoodenOxViewAsSkill() : OneCardViewAsSkill("wooden_ox")
     {
-        setProperty("sharedAcrossCardModes", true);
         filter_pattern = ".|.|.|hand";
     }
 
@@ -1569,7 +1534,6 @@ class WoodenOxSkill : public TreasureSkillV2
 public:
     WoodenOxSkill() : TreasureSkillV2("wooden_ox", "wooden_ox")
     {
-        setProperty("sharedAcrossCardModes", true);
         events << CardsMoveOneTime << BeforeCardsMove;
         global = true;
         frequency = Compulsory;

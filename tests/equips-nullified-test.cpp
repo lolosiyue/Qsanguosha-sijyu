@@ -71,6 +71,32 @@ int runEquipsNullifiedTests()
     Sanguosha->addSkills(QList<const Skill *>() << &viewAsArmor);
     owner.Player::addSkill(viewAsArmor.objectName());
 
+    // Virtual equipment keeps the exact grant; property grants are source-less.
+    const auto armorSources = owner.viewAsEquipSources(QStringLiteral("eight_diagram"));
+    if (armorSources.size() != 1 || !armorSources.first().isValid()
+        || armorSources.first().ownerObjectName != owner.objectName()
+        || armorSources.first().key.skillName != viewAsArmor.objectName()) {
+        qCritical() << "virtual armor lost its exact grant source";
+        return 20;
+    }
+    owner.setProperty("View_As_Equips_List", QStringLiteral("eight_diagram"));
+    const auto propertySources = owner.viewAsEquipSources(QStringLiteral("eight_diagram"));
+    if (propertySources.size() != 1 || propertySources.first().isValid()) {
+        qCritical() << "property-granted armor unexpectedly requires a general source";
+        return 21;
+    }
+    owner.setProperty("View_As_Equips_List", QString());
+    owner.removeSkillInstance(viewAsArmor.objectName(), armorSources.first().key.instanceID);
+    if (owner.viewAsEquip(QStringLiteral("eight_diagram"))) {
+        qCritical() << "removed grant still provides virtual armor";
+        return 22;
+    }
+    owner.Player::addSkill(viewAsArmor.objectName());
+    if (owner.viewAsEquipSources(QStringLiteral("eight_diagram")).contains(armorSources.first())) {
+        qCritical() << "replacement grant reused a retired source";
+        return 23;
+    }
+
     if (owner.isEquipsNullified(armor, &target)) {
         qCritical() << "fresh player already reports nullified equipment";
         return 3;

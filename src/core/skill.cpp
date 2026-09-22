@@ -1370,8 +1370,7 @@ WeaponSkillV2::WeaponSkillV2(const QString &name, const QString &equipmentName)
 
 bool WeaponSkillV2::triggerable(const ServerPlayer *target) const
 {
-    return target && Engine::isSkillAdmittedForMode(this, Config.EnableHegemony)
-        && target->hasWeapon(m_equipmentName);
+    return target && target->hasWeapon(m_equipmentName);
 }
 
 TriggerList WeaponSkillV2::triggerable(TriggerEvent, Room *, ServerPlayer *target, QVariant &) const
@@ -1389,8 +1388,7 @@ ArmorSkillV2::ArmorSkillV2(const QString &name, const QString &equipmentName)
 
 bool ArmorSkillV2::triggerable(const ServerPlayer *target) const
 {
-    return target && Engine::isSkillAdmittedForMode(this, Config.EnableHegemony)
-        && target->hasArmorEffect(m_equipmentName);
+    return target && target->hasArmorEffect(m_equipmentName);
 }
 
 TriggerList ArmorSkillV2::triggerable(TriggerEvent, Room *, ServerPlayer *target, QVariant &) const
@@ -1408,8 +1406,7 @@ TreasureSkillV2::TreasureSkillV2(const QString &name, const QString &equipmentNa
 
 bool TreasureSkillV2::triggerable(const ServerPlayer *target) const
 {
-    return target && Engine::isSkillAdmittedForMode(this, Config.EnableHegemony)
-        && target->hasTreasure(m_equipmentName);
+    return target && target->hasTreasure(m_equipmentName);
 }
 
 TriggerList TreasureSkillV2::triggerable(TriggerEvent, Room *, ServerPlayer *target, QVariant &) const
