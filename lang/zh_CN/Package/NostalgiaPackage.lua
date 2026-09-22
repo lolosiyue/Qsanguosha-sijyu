@@ -13,6 +13,7 @@ return {
 	["nostal_yjcm"] = "怀旧·一将",
 	["nostal_yjcm2012"] = "怀旧·一将2",
 	["nostal_yjcm2013"] = "怀旧·一将3",
+	["nostal_yjcm2014"] = "怀旧·一将4",
 
 	["nos_caocao"] = "曹操",
 	["illustrator:nos_caocao"] = "KayaK",
@@ -294,6 +295,16 @@ return {
 	["nosfencheng"] = "焚城",
         [":nosfencheng"] = "限定技，出牌阶段，你可以令所有其他角色弃置X张牌，否则你对该角色造成1点火焰伤害。（X为该角色装备区牌的数量且至少为1）",
 	["$NosFenchengAnimate"] = "image=image/animate/nosfencheng.png",
+
+	["#nos_zhuhuan"] = "中洲拒天人",
+	["nos_zhuhuan"] = "朱桓[旧]",
+	["&nos_zhuhuan"] = "朱桓",
+	["illustrator:nos_zhuhuan"] = "XXX",
+	["designer:nos_zhuhuan"] = "半缘修道",
+	["youdi"] = "诱敌",
+	[":youdi"] = "结束阶段，你可以令一名其他角色弃置你一张牌：若此牌不为【杀】，你获得其一张牌。",
+	["youdi-invoke"] = "你可以发动“诱敌”<br> <b>操作提示</b>：选择一名其他角色→点击确定<br/>",
+	["youdi_obtain"] = "诱敌获得牌",
 
 	["nos_zhonghui"] = "钟会[旧]",
 	["&nos_zhonghui"] = "钟会",

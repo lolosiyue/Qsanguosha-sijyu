@@ -58,8 +58,8 @@ config = {
 			"SPCard,Yingbian,ExclusiveCards,Disaster,YitianCard,JoyEquip",
 		b_foundation_package = "Standard,Wind,Fire,Thicket,Mountain,Yin,Lei,"..
 			"YJCM,YJCM2012,YJCM2013,YJCM2014,YJCM2015,YCZH2016,YCZH2017,"..
-			"Strengthen,NostalgiaWind,NostalgiaYJCM,NostalgiaYJCM2012,NostalgiaYJCM2013,"..
-			"NewShen,NewYJCM2014,NewYJCM2015,SP",
+			"Strengthen,NostalgiaWind,NostalgiaYJCM,NostalgiaYJCM2012,NostalgiaYJCM2013,NostalgiaYJCM2014,"..
+			"NewShen,NewYJCM2015,SP",
 		c_mobile = "mobile,mobileStar,mobileSp,mobileXh,"..
 			"MobileStStandard,MobileStWind,MobileStThicket,MobileStFire,MobileStMountain,MobileStLei,"..
 			"MobileStYJ2011,MobileStYJ2012,MobileStYJ2013,MobileStYJ2014,MobileStYJ2015,MobileStYC2017,"..

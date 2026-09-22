@@ -109,12 +109,12 @@ public:
     YJCM2014Package();
 };
 
-class NewYJCM2014Package : public Package
+class NostalgiaYJCM2014Package : public Package
 {
     Q_OBJECT
 
 public:
-    NewYJCM2014Package();
+    NostalgiaYJCM2014Package();
 };
 
 void MigrateToOLStYJ2014(Package *pkg);

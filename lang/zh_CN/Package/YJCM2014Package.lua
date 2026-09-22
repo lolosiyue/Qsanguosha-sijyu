@@ -2,7 +2,6 @@
 
 return {
 	["YJCM2014"] = "一将成名2014",
-	["NewYJCM2014"] = "新版·一将成名2014",
 
 	["#caifuren"] = "襄江的蒲苇",
 	["caifuren"] = "蔡夫人",
@@ -158,15 +157,6 @@ return {
 	["#zhuhuan"] = "中洲拒天人",
 	["zhuhuan"] = "朱桓",
 	["illustrator:zhuhuan"] = "XXX",
-	["designer:zhuhuan"] = "半缘修道",
-	["youdi"] = "诱敌",
-	[":youdi"] = "结束阶段，你可以令一名其他角色弃置你一张牌：若此牌不为【杀】，你获得其一张牌。",
-	["youdi-invoke"] = "你可以发动“诱敌”<br> <b>操作提示</b>：选择一名其他角色→点击确定<br/>",
-	["youdi_obtain"] = "诱敌获得牌",
-	
-	["new_zhuhuan"] = "新朱桓",
-	["&new_zhuhuan"] = "朱桓",
-	["illustrator:new_zhuhuan"] = "XXX",
 	["fenli"] = "奋励",
 	[":fenli"] = "若你的手牌数为全场最多，你可以跳过摸牌阶段；若你的体力值为全场最多，你可以跳过出牌阶段；若你的装备区里有牌且数量为全场最多，你可以跳过弃牌阶段。",
 	["fenli:draw"] = "你是否发动“奋励”跳过摸牌阶段？",

@@ -636,7 +636,8 @@ return {
 	["@tenyearxiansi-invoke"] = "你可以将至多两名角色的各一张牌置于武将牌上，称为“逆”",
 	["tenyearxiansi_slash"] = "陷嗣(杀)",
 	
-	["tenyear_zhuhuan"] = "界朱桓",
+	["tenyear_zhuhuan"] = "界朱桓[十周年]",
+	["&tenyear_zhuhuan"] = "界朱桓",
 	["illustrator:tenyear_zhuhuan"] = "荧光笔工作室",
 	["tenyearfenli"] = "奋励",
 	[":tenyearfenli"] = "若你的手牌数全场最多，你可以跳过判定和摸牌阶段；若你的体力值全场最多，你可以跳过出牌阶段；若你的装备区里有牌且数量全场最多，你可以跳过弃牌阶段。",
