@@ -3,7 +3,6 @@
 return {
 	["YJCM2012"] = "一将成名2012",
 	["NewYJCM2012"] = "新版·一将成名2012",
-	["SecondYJCM2012"] = "二版·一将成名2012",
 
 	["#xunyou"] = "曹魏的谋主",
 	["xunyou"] = "荀攸",
@@ -34,11 +33,11 @@ return {
 	[":miji"] = "结束阶段，若你已受伤，你可以摸至多X张牌，然后将等量的手牌任意分配给其他角色。（X为你已损失的体力值）",
 	["miji_draw"] = "秘计摸牌数",
 	
-	["second_wangyi"] = "王异[二版]",
-	["&second_wangyi"] = "王异",
-	["illustrator:second_wangyi"] = "团扇子大人",
-	["secondmiji"] = "秘计",
-	[":secondmiji"] = "结束阶段，你可以摸X张牌（X为你已损失的体力值），然后你可以将等量的手牌交给其他角色。",
+	["ol_wangyi"] = "王异[OL]",
+	["&ol_wangyi"] = "王异",
+	["illustrator:ol_wangyi"] = "团扇子大人",
+	["olmiji"] = "秘计",
+	[":olmiji"] = "结束阶段，你可以摸X张牌（X为你已损失的体力值），然后你可以将等量的手牌交给其他角色。",
 	
 	["#madai"] = "临危受命",
 	["madai"] = "马岱",

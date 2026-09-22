@@ -1,6 +1,7 @@
--- translation for MobileJXTP Package
+-- translation for MobileStrengthen Package
 
 return {
+	["MobileJXTP"] = "手杀界限突破",
 	["MobileStStandard"] = "手杀界·标准",
 	["MobileStWind"] = "手杀界·风",
 	["MobileStThicket"] = "手杀界·林",
@@ -249,7 +250,14 @@ return {
 	["illustrator:mobile_chengpu"] = "monkey",
 	["mobilelihuo"] = "疠火",
 	[":mobilelihuo"] = "当你使用普通【杀】时，你可以将此【杀】改为【火杀】，若此【杀】的目标处于“连环状态”，此【杀】造成的伤害+1；当你使用的【火杀】结算完后，此【杀】每造成2点伤害，你失去1点体力。",
-	
+
+	["mobile_wangyi"] = "界王异[手杀]",
+	["&mobile_wangyi"] = "界王异",
+	["illustrator:mobile_wangyi"] = "团扇子大人",
+	["mobilemiji"] = "秘计",
+	[":mobilemiji"] = "结束阶段，若你已受伤，你可以摸至多X张牌（X为你已损失的体力值）。若如此做，你可以将等量的手牌交给其他角色。",
+	["mobilemiji_draw"] = "秘计摸牌数",
+
 	["mobile_yufan"] = "界虞翻[手杀]",
 	["&mobile_yufan"] = "界虞翻",
 	["illustrator:mobile_yufan"] = "",

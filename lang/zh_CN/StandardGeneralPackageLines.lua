@@ -3544,37 +3544,37 @@ return {
 	["~ol_xingcai-ol_xingcai_6"] = "枪落马独立，人亡马不知...",
 	
 --[[
-	王异（ol专属）
+	王异（手杀界）
 ]]--
-    ["$zhenlie1-ol_wangyi_1"] = "持节有度，守节不辱！",
-	["$zhenlie2-ol_wangyi_1"] = "宁为玉碎，不能瓦全！",
-	["$olmiji1-ol_wangyi_1"] = "此等九计,可驱马贼！",
-	["$olmiji2-ol_wangyi_1"] = "放手一搏,不惧凉州贼寇！",
-	["~ol_wangyi-ol_wangyi_1"] = "城池即破,我当以死殉之！",
+    ["$zhenlie1-mobile_wangyi_1"] = "持节有度，守节不辱！",
+	["$zhenlie2-mobile_wangyi_1"] = "宁为玉碎，不能瓦全！",
+	["$mobilemiji1-mobile_wangyi_1"] = "此等九计,可驱马贼！",
+	["$mobilemiji2-mobile_wangyi_1"] = "放手一搏,不惧凉州贼寇！",
+	["~mobile_wangyi-mobile_wangyi_1"] = "城池即破,我当以死殉之！",
 	
-	["$zhenlie1-ol_wangyi_2"] = "持节有度，守节不辱！",
-	["$zhenlie2-ol_wangyi_2"] = "宁为玉碎，不能瓦全！",
-	["$olmiji1-ol_wangyi_2"] = "此等九计,可驱马贼！",
-	["$olmiji2-ol_wangyi_2"] = "放手一搏,不惧凉州贼寇！",
-	["~ol_wangyi-ol_wangyi_2"] = "城池即破,我当以死殉之！",
+	["$zhenlie1-mobile_wangyi_2"] = "持节有度，守节不辱！",
+	["$zhenlie2-mobile_wangyi_2"] = "宁为玉碎，不能瓦全！",
+	["$mobilemiji1-mobile_wangyi_2"] = "此等九计,可驱马贼！",
+	["$mobilemiji2-mobile_wangyi_2"] = "放手一搏,不惧凉州贼寇！",
+	["~mobile_wangyi-mobile_wangyi_2"] = "城池即破,我当以死殉之！",
 	
-	["$zhenlie1-ol_wangyi_3"] = "秉忠持义，纵死犹归。",
-	["$zhenlie2-ol_wangyi_3"] = "守义死节，不为苟生。",
-	["$olmiji1-ol_wangyi_3"] = "密谋筹策，奇计制敌。",
-	["$olmiji2-ol_wangyi_3"] = "奇谋九策，共御强敌。",
-	["~ol_wangyi-ol_wangyi_3"] = "为雪君父之耻，死而不惜！",
+	["$zhenlie1-mobile_wangyi_3"] = "秉忠持义，纵死犹归。",
+	["$zhenlie2-mobile_wangyi_3"] = "守义死节，不为苟生。",
+	["$mobilemiji1-mobile_wangyi_3"] = "密谋筹策，奇计制敌。",
+	["$mobilemiji2-mobile_wangyi_3"] = "奇谋九策，共御强敌。",
+	["~mobile_wangyi-mobile_wangyi_3"] = "为雪君父之耻，死而不惜！",
 	
-	["$zhenlie1-ol_wangyi_4"] = "忠贞于国，节烈于身。",
-	["$zhenlie2-ol_wangyi_4"] = "我辈虽女流，烈胆胜须眉。",
-	["$olmiji1-ol_wangyi_4"] = "孤城临险，需出奇计。",
-	["$olmiji2-ol_wangyi_4"] = "秘计九出，做军平贼。",
-	["~ol_wangyi-ol_wangyi_4"] = "我死不足怜惜，无奈家仇未报...",
+	["$zhenlie1-mobile_wangyi_4"] = "忠贞于国，节烈于身。",
+	["$zhenlie2-mobile_wangyi_4"] = "我辈虽女流，烈胆胜须眉。",
+	["$mobilemiji1-mobile_wangyi_4"] = "孤城临险，需出奇计。",
+	["$mobilemiji2-mobile_wangyi_4"] = "秘计九出，做军平贼。",
+	["~mobile_wangyi-mobile_wangyi_4"] = "我死不足怜惜，无奈家仇未报...",
 	
-	["$zhenlie1-ol_wangyi_6"] = "嫁与山河，死生何惧！",
-	["$zhenlie2-ol_wangyi_6"] = "贼人，休想碰我一根汗毛！",
-	["$olmiji1-ol_wangyi_6"] = "铤而走险，方解冀城之围。",
-	["$olmiji2-ol_wangyi_6"] = "有勇无谋之辈，可用巧计破之。",
-	["~ol_wangyi-ol_wangyi_6"] = "巾帼之血流尽，终未能平贼...",
+	["$zhenlie1-mobile_wangyi_6"] = "嫁与山河，死生何惧！",
+	["$zhenlie2-mobile_wangyi_6"] = "贼人，休想碰我一根汗毛！",
+	["$mobilemiji1-mobile_wangyi_6"] = "铤而走险，方解冀城之围。",
+	["$mobilemiji2-mobile_wangyi_6"] = "有勇无谋之辈，可用巧计破之。",
+	["~mobile_wangyi-mobile_wangyi_6"] = "巾帼之血流尽，终未能平贼...",
 	
 --[[
 	于禁（ol专属）

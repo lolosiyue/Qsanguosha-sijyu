@@ -7661,7 +7661,7 @@ TenyearStYJ2012Package::TenyearStYJ2012Package()
 
 	General *tenyear_wangyi = new General(this, "tenyear_wangyi", "wei", 4, false);
 	tenyear_wangyi->addSkill("zhenlie");
-	tenyear_wangyi->addSkill("secondmiji");
+	tenyear_wangyi->addSkill("olmiji");
 
 	General *tenyear_caozhang = new General(this, "tenyear_caozhang", "wei", 4);
 	tenyear_caozhang->addSkill(new TenyearJiangchi);

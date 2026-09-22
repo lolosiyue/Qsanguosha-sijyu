@@ -11,6 +11,7 @@
 #include "room.h"
 #include "roomthread.h"
 #include "yjcm.h"
+#include "yjcm2012.h"
 #include "yjcm2013.h"
 #include "yjcm2014.h"
 #include "mountain.h"
@@ -4911,7 +4912,7 @@ MobileStYJ2012Package::MobileStYJ2012Package()
     mobile_liubiao->addSkill(new MobileZongshiKeep);
     related_skills.insert("mobilezongshi", "#mobilezongshi-keep");
 
-
+    MigrateToMobileStYJ2012(this);
 }
 ADD_PACKAGE(MobileStYJ2012)
 
