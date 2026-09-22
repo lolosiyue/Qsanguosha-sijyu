@@ -542,10 +542,8 @@ QWidget *ServerDialog::createAdvancedTab()
 	hegemony_maxchoice_spinbox->setRange(5, 21);
 	hegemony_maxchoice_spinbox->setValue(Config.value("HegemonyMaxChoice", 7).toInt());
 
-	hegemony_maxshown_label = new QLabel(tr("Max shown num for hegemony"));
-	hegemony_maxshown_spinbox = new QSpinBox;
-	hegemony_maxshown_spinbox->setRange(1, 11);
-	hegemony_maxshown_spinbox->setValue(Config.value("HegemonyMaxShown", 2).toInt());
+	reward_first_showing_checkbox = new QCheckBox(tr("Reward the first showing player"));
+	reward_first_showing_checkbox->setChecked(Config.value("RewardTheFirstShowingPlayer", true).toBool());
 
 	address_edit = new QLineEdit;
 	address_edit->setText(Config.Address);
@@ -615,21 +613,8 @@ QWidget *ServerDialog::createAdvancedTab()
 	hegemony_maxchoice_spinbox->setVisible(Config.EnableHegemony);
 	connect(hegemony_checkbox, SIGNAL(toggled(bool)), hegemony_maxchoice_spinbox, SLOT(setVisible(bool)));
 
-	hegemony_maxshown_label->setVisible(Config.EnableHegemony);
-	connect(hegemony_checkbox, SIGNAL(toggled(bool)), hegemony_maxshown_label, SLOT(setVisible(bool)));
-	hegemony_maxshown_spinbox->setVisible(Config.EnableHegemony);
-	connect(hegemony_checkbox, SIGNAL(toggled(bool)), hegemony_maxshown_spinbox, SLOT(setVisible(bool)));
-
-	hegemony_companion = new QComboBox;
-	hegemony_companion->addItem(tr("Instant"), "Instant");
-	hegemony_companion->addItem(tr("Postponed"), "Postponed");
-	hegemony_companion->setCurrentIndex(Config.value("HegemonyCompanionReward", "Postponed").toString() == "Postponed" ? 1 : 0);
-	hegemony_companion_label = new QLabel(tr("Companion Reward"));
-	layout->addLayout(HLay(hegemony_companion_label, hegemony_companion));
-	hegemony_companion_label->setVisible(Config.EnableHegemony);
-	connect(hegemony_checkbox, SIGNAL(toggled(bool)), hegemony_companion_label, SLOT(setVisible(bool)));
-	hegemony_companion->setVisible(Config.EnableHegemony);
-	connect(hegemony_checkbox, SIGNAL(toggled(bool)), hegemony_companion, SLOT(setVisible(bool)));
+	reward_first_showing_checkbox->setVisible(Config.EnableHegemony);
+	connect(hegemony_checkbox, SIGNAL(toggled(bool)), reward_first_showing_checkbox, SLOT(setVisible(bool)));
 
 	return widget;
 }
@@ -1602,6 +1587,10 @@ int ServerDialog::config()
 	Config.DisableChat = disable_chat_checkbox->isChecked();
 	Config.Enable2ndGeneral = second_general_checkbox->isChecked();
 	Config.EnableHegemony = hegemony_checkbox->isChecked() && hegemony_checkbox->isEnabled();
+	if (Config.EnableHegemony) {
+		// Hegemony always owns the dual-general concealed setup.
+		Config.Enable2ndGeneral = true;
+	}
 	Config.EnableMeleeMode = melee_mode_checkbox->isChecked();
 	Config.MaxHpScheme = max_hp_scheme_ComboBox->currentIndex();
 	if (Config.MaxHpScheme == 0) {
@@ -1661,8 +1650,7 @@ int ServerDialog::config()
 	Config.setValue("EnableHegemony", Config.EnableHegemony);
 	Config.setValue("EnableMeleeMode", Config.EnableMeleeMode);
 	Config.setValue("HegemonyMaxChoice", hegemony_maxchoice_spinbox->value());
-	Config.setValue("HegemonyMaxShown", hegemony_maxshown_spinbox->value());
-	Config.setValue("HegemonyCompanionReward", hegemony_companion->itemData(hegemony_companion->currentIndex()).toString());
+	Config.setValue("RewardTheFirstShowingPlayer", reward_first_showing_checkbox->isChecked());
 	Config.setValue("MaxHpScheme", Config.MaxHpScheme);
 	Config.setValue("Scheme0Subtraction", Config.Scheme0Subtraction);
 	Config.setValue("PreventAwakenBelow3", Config.PreventAwakenBelow3);

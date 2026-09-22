@@ -60,6 +60,17 @@ bool Skill::isShiMingSkill() const
     return shiming_skill;
 }
 
+bool Skill::relateToPlace(bool head) const
+{
+    // False for an empty value means no place-specific restriction, as in donor.
+    return relate_to_place == (head ? QStringLiteral("head") : QStringLiteral("deputy"));
+}
+
+void Skill::setRelateToPlace(const QString &place)
+{
+    relate_to_place = place;
+}
+
 bool Skill::canPreshow() const
 {
     if (inherits("TriggerSkill")) {
@@ -82,7 +93,7 @@ bool Skill::isEquipSkill() const
 QString Skill::getDescription(const Player *target, int instanceId) const
 {
 	QString des_src;
-	if(ServerInfo.DuringGame && isNormalGameMode(ServerInfo.GameMode))
+	if(ServerInfo.DuringGame && isNormalGameMode(ServerInfo.GameMode, ServerInfo.EnableHegemony))
 		des_src = Sanguosha->translate(":"+objectName()+"_p");
 	if (des_src.isEmpty() || des_src.startsWith(":"))
 		des_src = Sanguosha->translate(":"+objectName());
@@ -497,6 +508,34 @@ ViewAsSkillV2::ViewAsSkillV2(const QString &name, int n)
 bool ViewAsSkillV2::canActivate(const ActiveSkillRequest &) const
 {
     return false;
+}
+
+bool ViewAsSkillV2::prepareEquipSource(Room *room, SkillContext &context) const
+{
+    const auto *equip = isEquipSkill()
+        ? dynamic_cast<const EquipSkillV2 *>(Sanguosha->getSkill(objectName())) : nullptr;
+    if (!room || !context.owner || !equip || equip->getViewAsSkill() != this)
+        return false;
+    SkillContext source = context;
+    if (!equip->prepareSource(room, source)) return false;
+    context.sourceRef = source.sourceRef;
+    // Name the activation entry without claiming that instance zero is a real instance.
+    context.activationRef = SkillInstanceRef(context.owner->objectName(),
+        SkillInstanceKey(objectName(), 0));
+    context.instanceID = 0;
+    return true;
+}
+
+bool ViewAsSkillV2::isEquipSourceAvailable(Room *room, const SkillContext &context) const
+{
+    const auto *equip = isEquipSkill()
+        ? dynamic_cast<const EquipSkillV2 *>(Sanguosha->getSkill(objectName())) : nullptr;
+    if (!room || !context.owner || !equip || equip->getViewAsSkill() != this)
+        return false;
+    SkillContext source = context;
+    // Virtual equipment must retain the exact granting instance after payment.
+    source.activationRef = context.sourceRef;
+    return equip->isSourceAvailable(room, source);
 }
 
 bool ViewAsSkillV2::canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const
@@ -1149,6 +1188,13 @@ int MaxCardsSkill::getExtra(const Player *) const
     return 0;
 }
 
+int MaxCardsSkill::getExtra(const Player *target, MaxCardsType::MaxCardsCount) const
+{
+    // Preserve every existing legacy/Lua override; donor corrections opt in
+    // to the count mode only when they must distinguish prediction and choice.
+    return getExtra(target);
+}
+
 int MaxCardsSkill::getFixed(const Player *) const
 {
     return -1;
@@ -1193,6 +1239,11 @@ int TargetModSkill::getDistanceLimit(const Player *, const Card *, const Player 
 int TargetModSkill::getExtraTargetNum(const Player *, const Card *) const
 {
     return 0;
+}
+
+bool TargetModSkill::requiresShowForUse(const CardUseStruct &) const
+{
+    return false;
 }
 
 TargetModSkillV2::TargetModSkillV2(const QString &name, const QString &matchPattern)

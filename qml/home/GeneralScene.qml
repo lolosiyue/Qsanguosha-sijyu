@@ -321,6 +321,14 @@ Item {
         return String(maxHp)
     }
 
+    function generalNameWithCompanions(name, companions, companionLabel) {
+        var companionText = String(companions || "")
+        var label = String(companionLabel || "")
+        return companionText.length > 0
+                ? String(name || "") + "  " + label + ": " + companionText
+                : String(name || "")
+    }
+
     function takeKeyboard() {
         if (skinPanel.visible)
             skinPanel.forceActiveFocus()
@@ -838,6 +846,8 @@ Item {
                         required property int index
                         required property string name
                         required property string displayName
+                        required property string companions
+                        required property string companionLabel
                         required property string kingdoms
                         required property int maxHp
                         required property int startHp
@@ -974,12 +984,24 @@ Item {
                                     }
 
                                     Text {
-                                        width: parent.width - (delegateRoot.lord ? 18 : 0)
+                                        width: Math.max(0, parent.width - (delegateRoot.lord ? 18 : 0)
+                                                         - (companionText.visible ? companionText.width + parent.spacing : 0))
                                         text: delegateRoot.displayName
                                         elide: Text.ElideRight
                                         color: HomeTheme.onArtText
                                         font.pixelSize: Math.max(10, Math.round(delegateRoot.width / 10))
                                         font.bold: true
+                                    }
+
+                                    Text {
+                                        id: companionText
+                                        visible: delegateRoot.companions.length > 0
+                                        width: Math.min(implicitWidth, parent.width * 0.45)
+                                        text: delegateRoot.companionLabel + ": " + delegateRoot.companions
+                                        elide: Text.ElideRight
+                                        color: HomeTheme.onArtText
+                                        opacity: 0.9
+                                        font.pixelSize: Math.max(9, Math.round(delegateRoot.width / 12))
                                     }
                                 }
                             }
@@ -1062,6 +1084,8 @@ Item {
                             required property int index
                             required property string name
                             required property string displayName
+                            required property string companions
+                            required property string companionLabel
                             required property string nickname
                             required property string kingdoms
                             required property string gender
@@ -1108,7 +1132,9 @@ Item {
                                     Text {
                                         width: parent.width * 0.22
                                         height: parent.height
-                                        text: tableRow.displayName
+                                        text: root.generalNameWithCompanions(tableRow.displayName,
+                                                                             tableRow.companions,
+                                                                             tableRow.companionLabel)
                                         elide: Text.ElideRight
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
@@ -1372,12 +1398,22 @@ Item {
                             }
 
                             CopyableText {
-                                width: parent.width - (details.lord === true ? 36 : 0)
-                                       - (details.hidden === true ? 36 : 0)
+                                id: generalNameText
+                                width: Math.max(0, parent.width
+                                    - (details.lord === true ? 36 : 0)
+                                    - (details.hidden === true ? 36 : 0)
+                                    - (companionBadge.visible ? companionBadge.width + parent.spacing : 0))
                                 text: details.displayName || root.ui("ChooseGeneralDialog", "Choose general")
                                 color: HomeTheme.btnSecondaryText
                                 font.pixelSize: 32
                                 font.bold: true
+                            }
+
+                            MetaBadge {
+                                id: companionBadge
+                                visible: root.detailsReady && String(details.companions || "").length > 0
+                                width: Math.min(implicitWidth, Math.max(80, parent.width * 0.42))
+                                label: details.companionLabel + ": " + (details.companions || "")
                             }
                         }
 
@@ -1467,7 +1503,7 @@ Item {
 
                             MetaBadge {
                                 visible: String(details.companions || "").length > 0
-                                label: details.companions || ""
+                                label: details.companionLabel + ": " + (details.companions || "")
                             }
                         }
 

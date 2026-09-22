@@ -119,6 +119,10 @@ CardsMoveOneTimeStruct &CardsMoveOneTimeStruct::operator=(const CardsMoveOneTime
     globalCardLifetimeManager().releaseEventPayload(this);
     card_ids = other.card_ids;
     from_places = other.from_places;
+    origin_from = other.origin_from;
+    origin_to = other.origin_to;
+    origin_from_places = other.origin_from_places;
+    origin_to_place = other.origin_to_place;
     to_place = other.to_place;
     reason = other.reason;
     from = other.from;

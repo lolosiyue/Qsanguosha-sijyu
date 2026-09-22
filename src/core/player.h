@@ -13,6 +13,10 @@ class Horse;
 class DelayedTrick;
 class WrappedCard;
 
+namespace MaxCardsType {
+    enum MaxCardsCount { Max = 1, Normal = 0, Min = -1 };
+}
+
 class Player : public QObject
 {
     Q_OBJECT
@@ -38,6 +42,9 @@ class Player : public QObject
     Q_PROPERTY(General::Gender gender READ getGender WRITE setGender)
     Q_PROPERTY(bool general_showed READ hasShownGeneral WRITE setGeneralShowed)
     Q_PROPERTY(bool general2_showed READ hasShownGeneral2 WRITE setGeneral2Showed)
+    Q_PROPERTY(QStringList disable_show READ getDisableShow WRITE setDisableShowReasons)
+    Q_PROPERTY(QString actual_general1 READ getActualGeneral1Name WRITE setActualGeneral1Name)
+    Q_PROPERTY(QString actual_general2 READ getActualGeneral2Name WRITE setActualGeneral2Name)
     //Q_PROPERTY(QList<int> equip_area READ getEquipAreas WRITE setEquipAreas)
     Q_PROPERTY(bool weapon_area READ hasWeaponArea WRITE setWeaponArea)
     Q_PROPERTY(bool armor_area READ hasArmorArea WRITE setArmorArea)
@@ -56,7 +63,9 @@ public:
     {
         PlaceHand, PlaceEquip, PlaceDelayedTrick, PlaceJudge,
         PlaceSpecial, DiscardPile, DrawPile, PlaceTable, PlaceUnknown,
-        PlaceWuGu
+        PlaceWuGu,
+        // Append the donor destination without renumbering existing wire values.
+        DrawPileBottom
     };
     Q_ENUM(Place)
     enum Role
@@ -91,6 +100,7 @@ public:
     void setShownRole(bool shown);
 
     virtual int getMaxCards() const;
+    int getMaxCards(MaxCardsType::MaxCardsCount type) const;
 
     QString getKingdom() const;
     void setKingdom(const QString &kingdom);
@@ -106,6 +116,14 @@ public:
     void setGeneral2Name(const QString &general_name);
     QString getGeneral2Name() const;
     const General *getGeneral2() const;
+    const General *getActualGeneral1() const;
+    const General *getActualGeneral2() const;
+    QString getActualGeneral1Name() const;
+    QString getActualGeneral2Name() const;
+    void setActualGeneral1(const General *general);
+    void setActualGeneral2(const General *general);
+    void setActualGeneral1Name(const QString &name);
+    void setActualGeneral2Name(const QString &name);
 
     void setState(const QString &state);
     QString getState() const;
@@ -151,6 +169,7 @@ public:
     const General *getGeneral() const;
 
     bool isLord() const;
+    const Player *getLord(bool include_death = false) const;
 
     int acquireSkill(const QString &skill_name, bool head = true, int instanceId = -1);
     void detachSkill(const QString &skill_name);
@@ -166,6 +185,8 @@ public:
     bool ownsSkill(const QString &skill_name) const;
     bool hasInnateSkill(const QString &skill_name) const;
     bool hasInnateSkill(const Skill *skill) const;
+    bool ownSkill(const QString &skill_name) const;
+    bool ownSkill(const Skill *skill) const;
     bool hasLordSkill(const QString &skill_name, bool include_lose = false) const;
     bool hasLordSkill(const Skill *skill, bool include_lose = false) const;
     bool isSkillInvalid(const Skill *skill, int instanceId = 0) const;
@@ -287,6 +308,7 @@ public:
 
     void setChained(bool chained);
     bool isChained() const;
+    bool canBeChainedBy(const Player *source = nullptr) const;
 
     bool canSlash(const Player *other, const Card *slash, bool distance_limit = true, int rangefix = 0, const QList<const Player *> &others = QList<const Player *>()) const;
     bool canSlash(const Player *other, bool distance_limit = true, int rangefix = 0, const QList<const Player *> &others = QList<const Player *>()) const;
@@ -458,10 +480,22 @@ public:
     QList<const Player *> getFormation() const;
     bool hasShownOneGeneral() const;
     bool hasShownGeneral() const;
+    bool hasShownGeneral1() const { return hasShownGeneral(); }
     bool hasShownGeneral2() const;
+    bool hasShownAllGenerals() const;
+    bool isHegemonyLord() const;
+    virtual int getPlayerNumWithSameKingdom(const QString &reason,
+        const QString &kingdom = QString(), MaxCardsType::MaxCardsCount type = MaxCardsType::Max) const;
+    virtual QStringList getBigKingdoms(const QString &reason,
+        MaxCardsType::MaxCardsCount type = MaxCardsType::Min) const;
     void setGeneralShowed(bool showed);
     void setGeneral2Showed(bool showed);
     bool canShowGeneral(const QString &position) const;
+    QStringList disableShow(bool head = true) const;
+    QStringList getDisableShow() const { return disable_show; }
+    void setDisableShowReasons(const QStringList &reasons);
+    void setDisableShow(const QString &flags, const QString &reason);
+    void removeDisableShow(const QString &reason);
     bool inHeadSkills(const QString &skill_name) const;
     bool inDeputySkills(const QString &skill_name) const;
     bool canPreshowSkill(const QString &name) const;
@@ -491,6 +525,7 @@ protected:
     // Owner-private opt-in, keyed by exact innate instance (not display name).
     QSet<QString> m_preshowedSkillInstances;
     mutable QMutex m_preshowMutex;
+    QStringList disable_show;
     QSet<QString> head_acquired_skills, deputy_acquired_skills;
     bool general_showed;
     bool general2_showed;
@@ -519,6 +554,9 @@ private:
     QString screen_name;
     bool owner;
     const General *general, *general2;
+    // Authoritative hidden identities are supplied by the room/session and
+    // synchronized only to the owning client; visible general pointers stay public UI state.
+    const General *actual_general1, *actual_general2;
     General::Gender m_gender;
     int hp, max_hp;
     QString kingdom, role, state;

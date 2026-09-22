@@ -200,6 +200,8 @@ struct CardUseStruct {
     int extra_use;
     bool bypass_cost;
     bool skipSkillEffect;
+    // Set before dispatch, so a throwing CardFinished hook is never repeated.
+    bool cardFinished = false;
     TargetModRevealState targetModReveal;
     bool hasSkillActivationRequest;
     SkillInstanceRef sourceRef;
@@ -379,6 +381,12 @@ struct CardsMoveOneTimeStruct {
     QStringList from_pile_names;
     QString to_pile_name;
 
+    // Two-stage exchanges retain their original endpoints while cards are on the table.
+    Player *origin_from = nullptr;
+    Player *origin_to = nullptr;
+    QList<Player::Place> origin_from_places;
+    Player::Place origin_to_place = Player::PlaceUnknown;
+
     QList<bool> open; // helper to prevent sending card_id to unrelevant clients
     bool is_last_handcard;
     QStringList last_hand_suits;
@@ -396,6 +404,8 @@ struct CardsMoveOneTimeStruct {
             card_ids.removeAt(index);
             if (index < from_places.size())
                 from_places.removeAt(index);
+            if (index < origin_from_places.size())
+                origin_from_places.removeAt(index);
             if (index < from_pile_names.size())
                 from_pile_names.removeAt(index);
             if (index < open.size())
@@ -742,6 +752,17 @@ struct ChoiceData {
     bool canceled;
 };
 
+struct PlayerNumStruct {
+    PlayerNumStruct(int num = 0, const QString &toCalculate = QString(),
+        MaxCardsType::MaxCardsCount type = MaxCardsType::Max, const QString &reason = QString())
+        : m_type(type), m_num(num), m_toCalculate(toCalculate), m_reason(reason) {}
+
+    MaxCardsType::MaxCardsCount m_type;
+    int m_num;
+    QString m_toCalculate;
+    QString m_reason;
+};
+
 enum TriggerEvent {
     NonTrigger,
 
@@ -922,10 +943,19 @@ enum TriggerEvent {
     ShownCardChanged,
     BrokenEquipChanged,
 
+    // Append donor events so existing Lua/event numbers remain stable.
+    GeneralShown,
+    GeneralHidden,
+    GeneralRemoved,
+    ConfirmPlayerNum,
+    RemoveStateChanged,
+    DFDebut,
+
     NumOfEvents
 };
 
 Q_DECLARE_METATYPE(DamageStruct)
+Q_DECLARE_METATYPE(PlayerNumStruct)
 Q_DECLARE_METATYPE(CardEffectStruct)
 Q_DECLARE_METATYPE(SlashEffectStruct)
 Q_DECLARE_METATYPE(CardUseStruct)
