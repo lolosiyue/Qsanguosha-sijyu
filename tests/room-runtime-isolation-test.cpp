@@ -3515,7 +3515,10 @@ static bool configuredLegacyAdmissionMatchesEffectiveRoutes()
     return true;
 }
 
-static bool defaultRoomKeepsGameLuaIndependentOfSmartAI()
+// SmartAI is the fallback every isolated refusal lands on, so a default Room bootstraps
+// it on the game VM.  What must stay independent is the routing: the isolated dispatcher
+// still answers first, and the legacy AI is reached only when it declines.
+static bool defaultRoomLoadsSmartAiFallbackAndStillRoutesIsolated()
 {
     ScopedAiEnabled enabled(true);
     ScopedConfigValue direct(QStringLiteral("AiLegacyDirectCallbacks"), QStringList());
@@ -3529,25 +3532,25 @@ static bool defaultRoomKeepsGameLuaIndependentOfSmartAI()
         lua_State *state = room.roomRuntime()->lua().state();
         const int top = lua_gettop(state);
         lua_getglobal(state, "SmartAI");
-        const bool noSmartAI = lua_isnil(state, -1);
+        const bool hasSmartAI = !lua_isnil(state, -1);
         lua_pop(state, 1);
         lua_getglobal(state, "CloneAI");
-        const bool noCloneAI = lua_isnil(state, -1);
+        const bool hasCloneAI = lua_isfunction(state, -1);
         lua_pop(state, 1);
         lua_getglobal(state, "sgs");
         const bool hasSgs = lua_istable(state, -1);
         if (hasSgs) lua_getfield(state, -1, "registerModeAI");
         const bool hasModePolicy = hasSgs && lua_isfunction(state, -1);
         lua_settop(state, top);
-        if (!noSmartAI || !noCloneAI || !hasModePolicy) return false;
+        if (!hasSmartAI || !hasCloneAI || !hasModePolicy) return false;
     }
     ServerPlayer *viewer = RoomTestAccess::addRobotPlayer(room);
     viewer->setObjectName(QStringLiteral("standalone-viewer"));
     viewer->setSeat(1); viewer->setRole(QStringLiteral("lord"));
     viewer->setMaxHp(4); viewer->setHp(4);
     room.setCurrent(viewer); room.rebuildAlivePlayers();
-    // A mandatory one-option choice exercises the production dispatcher and
-    // native application without invoking a game-VM CloneAI fallback.
+    // A mandatory one-option choice exercises the production dispatcher and native
+    // application; the isolated route answers it even though the legacy fallback exists.
     QString answer;
     return RoomTestAccess::decideAiChoice(room, viewer, QStringLiteral("standalone-fixture"),
                                          QStringLiteral("only"), QVariant(), answer)
@@ -3767,7 +3770,7 @@ int runIsolatedCommonTests()
             QStringLiteral("decision-core.lua"), QStringLiteral("retrial.lua"),
             QStringLiteral("strategy-hooks.lua"), QStringLiteral("event-intention.lua")});
         if (runs("admission") && !configuredLegacyAdmissionMatchesEffectiveRoutes()) result = 45;
-        if (result == 0 && runs("standalone") && !defaultRoomKeepsGameLuaIndependentOfSmartAI()) result = 46;
+        if (result == 0 && runs("standalone") && !defaultRoomLoadsSmartAiFallbackAndStillRoutesIsolated()) result = 46;
         if (result == 0 && runs("events") && !nativeEventIntentionAndPrivacyContracts()) result = 47;
         if (result == 0 && runs("conversion") && !v2ResponseConversionCardSpecContracts()) result = 44;
         // Only physical response and pure-value contracts need this shared Room.

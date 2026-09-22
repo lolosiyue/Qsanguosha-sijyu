@@ -571,9 +571,12 @@ bool RoomRuntime::initialize(QString *error)
     }
     logInitializationPhase(phase, "end", phaseTimer.elapsed());
 
-    // The effective route registry is authoritative, including an isolated
-    // override of a legacy callback. Standalone rooms never bootstrap SmartAI.
-    if (Config.EnableAI && AiLuaRuntime::requiresLegacyRuntime()) {
+    // Isolated routes answer first, but every isolated refusal or stale answer falls
+    // back to the legacy AI on this VM (AiDecisionCoordinator::runAnswer,
+    // decideResponse, decide). Without SmartAI here that fallback degrades to TrustAI,
+    // so the legacy runtime is bootstrapped whenever AI is enabled -- not only when
+    // the route registry names an explicit legacy callback.
+    if (Config.EnableAI) {
         beginPhase("smart_ai");
         if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
             return failPhase();
