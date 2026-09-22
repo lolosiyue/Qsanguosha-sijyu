@@ -125,9 +125,6 @@ void HAwaitExhausted::onUse(Room *room, CardUseStruct &card_use) const{
         }
     }
 
-    if (getSkillName() == "heg_duoshi")
-        room->addPlayerHistory(new_use.from, "DuoshiAE", 1);
-
     TrickCard::onUse(room, new_use);
 }
 
