@@ -4760,6 +4760,18 @@
 <context>
     <name>PlayerCardContainer</name>
     <message>
+        <source>Hidden</source>
+        <translation>潜伏</translation>
+    </message>
+    <message>
+        <source>This general cannot be revealed.</source>
+        <translation>此武将目前禁止明置。</translation>
+    </message>
+    <message>
+        <source>No skill on this general is preshown.</source>
+        <translation>此武将尚未预亮任何技能。</translation>
+    </message>
+    <message>
         <location filename="../src/ui/generic-cardcontainer-ui.cpp" line="1365"/>
         <location filename="../src/ui/generic-cardcontainer-ui.cpp" line="2208"/>
         <location filename="../src/ui/generic-cardcontainer-ui.cpp" line="2248"/>

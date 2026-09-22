@@ -141,6 +141,7 @@ public slots:
     void showDistance();
     void updateScreenName(const QString &screenName);
     virtual void refresh(bool killed = false);
+    void updateGeneralIndicators();
     void _updateEquips();
     virtual void updateDelayedTricks();
 
@@ -171,6 +172,7 @@ protected:
     void _createRoleComboBox();
     void _updateProgressBar(); // a dirty function used by the class itself only.
     void _updateDeathIcon();
+    void _paintGeneralIndicators();
     void _paintPixmap(QGraphicsPixmapItem *&item, const QRect &rect, const QString &key);
     void _paintPixmap(QGraphicsPixmapItem *&item, const QRect &rect, const QString &key, QGraphicsItem *parent);
     void _paintPixmap(QGraphicsPixmapItem *&item, const QRect &rect, const QPixmap &pixmap);
@@ -206,6 +208,8 @@ protected:
     GraphicsPixmapHoverItem *_m_avatarIcon, *_m_smallAvatarIcon;
     QGraphicsPixmapItem *_m_screenNameItem, *_m_circleItem;
     QGraphicsPixmapItem *_m_chainIcon, *_m_faceTurnedIcon;
+    QGraphicsPixmapItem *_m_headShowLock = nullptr, *_m_deputyShowLock = nullptr;
+    QGraphicsPixmapItem *_m_headHiddenMark = nullptr, *_m_deputyHiddenMark = nullptr;
     QGraphicsPixmapItem *_m_handCardBg, *_m_handCardNumText;
     QGraphicsPixmapItem *_m_kingdomColorMaskIcon;
     QGraphicsPixmapItem *_m_deathIcon;
