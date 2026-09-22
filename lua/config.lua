@@ -72,7 +72,8 @@ config = {
 		e_tenyear = "TenyearStStandard,TenyearStWind,TenyearStFire,TenyearStThicket,"..
 			"TenyearStYJ2011,TenyearStYJ2012,TenyearStYJ2013,TenyearStYJ2014,TenyearStYJ2015,"..
 			"YJCM2022,YJCM2023,TenyearXd,TenyearXh,TenyearMou,TenyearWei,TenyearHc",
-		f_hegemony = "Hegemony,HFormation,HMomentum,HegemonySP",
+		f_hegemony = "HStandard,HFormation,HMomentum,HStandardCard,"..
+			"HStrategicAdvantage,HFormationEquip,HMomentumEquip",
 		g_special_play = "New3v3Card,New3v3_2013Card,New1v1Card,MeleeMode,"..
 			"Special1v1,Special1v1Ext,Special3v3,Special3v3Ext,"..
 			"Happy2v2,JianGeDefense,BossMode",
