@@ -476,7 +476,8 @@ public:
         if (!move.from || !move.from->isAlive() || move.from->getPhase() != Player::NotActive
             || !move.from_places.contains(Player::PlaceHand) || !move.is_last_handcard) return result;
         for (ServerPlayer *owner : room->findPlayersBySkillName(objectName()))
-            if (owner->isFriendWith(move.from) || owner->willBeFriendWith(move.from)) result.insert(owner, {objectName()});
+            if (!Config.EnableHegemony || owner->isFriendWith(move.from) || owner->willBeFriendWith(move.from))
+                result.insert(owner, {objectName()});
         return result;
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -487,8 +488,12 @@ public:
         ctx.targets = {target};
         return true;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
+        if (!target->isAlive()) return false;
+        // The owner invokes Shoucheng; in identity mode the recipient may refuse the draw.
+        if (!Config.EnableHegemony && room->askForChoice(target, objectName(), "accept+reject",
+            QVariant::fromValue(ctx.owner)) != "accept") return false;
         if (target->isAlive()) target->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
     }
