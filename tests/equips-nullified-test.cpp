@@ -4,6 +4,9 @@
 #include "player.h"
 #include "skill.h"
 #include "standard.h"
+#include "room-test-access.h"
+#include "settings.h"
+#include <QScopedValueRollback>
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -42,6 +45,57 @@ public:
     }
 };
 
+class EventOwnedArmorSkill : public ArmorSkillV2
+{
+public:
+    EventOwnedArmorSkill() : ArmorSkillV2("test-event-armor", "eight_diagram") {}
+protected:
+    bool usesEventSource(const SkillContext &ctx) const override { return ctx.current_event == CardsMoveOneTime; }
+};
+
+static bool equipmentSourceLifecycle(const QString &grantName)
+{
+    QScopedValueRollback<bool> mode(Config.EnableHegemony, false);
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    ServerPlayer *player = RoomTestAccess::addPlayer(room, QStringLiteral("source-owner"));
+    player->setAlive(true);
+    ArmorSkillV2 armor("test-source-armor", "eight_diagram");
+    EventOwnedArmorSkill movingArmor;
+    SkillContext ctx;
+    ctx.owner = player;
+    ctx.current_event = CardAsked;
+    if (armor.prepareSource(&room, ctx) || movingArmor.prepareSource(&room, ctx)) {
+        qCritical() << "missing equipment source was admitted as an uninstall effect";
+        return false;
+    }
+    ctx.current_event = CardsMoveOneTime;
+    if (!movingArmor.prepareSource(&room, ctx) || !movingArmor.isSourceAvailable(&room, ctx)) {
+        qCritical() << "explicit event source was rejected after uninstall";
+        return false;
+    }
+    ctx.current_event = CardAsked;
+    player->Player::addSkill(grantName);
+    if (!armor.prepareSource(&room, ctx) || !ctx.activationRef.isValid()) {
+        qCritical() << "virtual armor did not retain its grant";
+        return false;
+    }
+    const SkillContext admitted = ctx;
+    player->removeSkillInstance(grantName, ctx.activationRef.key.instanceID);
+    player->Player::addSkill(grantName);
+    if (armor.isSourceAvailable(&room, admitted)) {
+        qCritical() << "replacement grant revived an expired equipment source";
+        return false;
+    }
+    player->setProperty("View_As_Equips_List", QStringLiteral("eight_diagram"));
+    if (!armor.prepareSource(&room, ctx) || ctx.activationRef.isValid()) return false;
+    player->setProperty("View_As_Equips_List", QString());
+    if (!armor.isSourceAvailable(&room, ctx)) {
+        qCritical() << "source-less equipment effect did not survive payment";
+        return false;
+    }
+    return true;
+}
+
 int runEquipsNullifiedTests()
 {
     QString error;
@@ -69,6 +123,7 @@ int runEquipsNullifiedTests()
 
     EquipsNullifiedViewAsArmorSkill viewAsArmor;
     Sanguosha->addSkills(QList<const Skill *>() << &viewAsArmor);
+    if (!equipmentSourceLifecycle(viewAsArmor.objectName())) return 24;
     owner.Player::addSkill(viewAsArmor.objectName());
 
     // Virtual equipment keeps the exact grant; property grants are source-less.

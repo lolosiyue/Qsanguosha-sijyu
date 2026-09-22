@@ -333,6 +333,13 @@ Vine::Vine(Suit suit, int number)
 
 class SilverLionSkill : public ArmorSkillV2
 {
+protected:
+    bool usesEventSource(const SkillContext &ctx) const override
+    {
+        // The selector validates the moving card, independently of current equipment.
+        return ctx.current_event == CardsMoveOneTime;
+    }
+
 public:
     SilverLionSkill() : ArmorSkillV2("silver_lion", "silver_lion")
     {

@@ -188,7 +188,7 @@ can_trigger return "skill#N" → 只建立指定實例的 SkillContext
 
 #### 裝備觸發技能 V2
 
-`WeaponSkillV2`、`ArmorSkillV2`、`TreasureSkillV2` 直接繼承 `TriggerSkillV2`，
+`WeaponSkillV2`、`ArmorSkillV2`、`TreasureSkillV2` 經共用 `EquipSkillV2` 繼承 `TriggerSkillV2`，
 取代原國戰的 `OriginalHegemonyWeaponSkill`、`OriginalHegemonyArmorSkill`、`OriginalHegemonyTreasureSkill` 相容類別。
 同效果裝備的 V2 實作放回原生技能；尚未遷移的 legacy 派生類別仍可並存。
 建構式使用 `(skillName, equipmentName)`；例如 `WeaponSkillV2("double_sword", "double_sword")`，
@@ -198,11 +198,13 @@ can_trigger return "skill#N" → 只建立指定實例的 SkillContext
 |------|---------|
 | 候選 | 四參數 `triggerable()` 回傳以決策者／裝備效果持有者為 key 的 `TriggerList`；由 selector 驗證裝備、失效及事件條件 |
 | 來源 | 使用裝備／事件資料作權威；`instanceID = 0`，不建立 Player 技能實例，實體裝備的 `sourceRef`／`activationRef` 保持無效；`ViewAsEquipSkill` 授予的虛擬裝備保留授予技能的精確來源，沿用預亮、揭將及失效檢查 |
-| 卸裝 | 卸裝後的移牌效果仍可成為候選；不得以仍持有 Player 技能實例為必要條件 |
+| 卸裝 | 移牌 selector 驗證事件中的卡牌；透過 `usesEventSource(ctx)` 明確宣告事件來源。方天畫戟已選定／標記之殺的後續事件亦明確宣告事件來源。一般效果找不到實體／虛擬來源時拒絕，不再隱含當作卸裝效果 |
 | 回調 | `cost/pay/effect` 的 `player` 為候選 owner；原事件角色為 `ctx.invoker`，可寫事件資料為 `*ctx.original_data` |
 | 記錄 | 每個裝備技能定義、每個事件呼叫一次 `record`；不依持有者實例重複，卸裝後亦能清理已建立的狀態 |
 | 排序 | 在主事件表的原優先級位置進入 V2 管線，保留龍鳳復活等低於 GameRule 的結算位置 |
 | 多目標 | 裝備 selector 可回傳 `skill->a+b`，由 V2 名稱解析器建立逐目標 context；依目標身分追蹤已處理／略過者，`cost` 前還原基礎技能名並填入 `ctx.targets`／`preferredTarget` |
+
+`prepareSource` 與 `isSourceAvailable` 由技能層管理來源；派送器只呼叫共用接口及揭將，不掃描裝備或解析虛擬來源。
 
 上述零實例候選僅適用於 `isEquipSkill()` 的 V2 定義，普通武將 V2 仍必須持有有效的精確實例。
 已進入結算的裝備效果可以支付自身裝備；支付後不因卸裝而取消該次效果。
