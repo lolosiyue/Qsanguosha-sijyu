@@ -81,6 +81,12 @@ void TargetModSkillQueryScope::record(const Player *owner, const SkillInstanceRe
 
 namespace {
 
+bool isOriginalHegemonyCardPackage(const QString &name)
+{
+    return name == QLatin1String("heg_standard_cards") || name == QLatin1String("heg_strategic_advantage")
+        || name == QLatin1String("heg_formation_equip") || name == QLatin1String("heg_momentum_equip");
+}
+
 QSanRules::ContentManifest readContentManifest(lua_State *lua)
 {
     const int top = lua_gettop(lua);
@@ -181,6 +187,16 @@ QList<const T *> mergedRuntimeSkills(RoomRuntime *runtime, const QList<const T *
     return result;
 }
 
+}
+
+bool Engine::isSkillAdmittedForMode(const Skill *skill, bool hegemony)
+{
+    if (!skill) return false;
+    // A shared card has one skill definition, even when its physical copies
+    // belong to different mode decks. Distinct card rules keep the package gate.
+    if (skill->property("sharedAcrossCardModes").toBool()) return true;
+    const QString cardPackage = skill->property("modeCardPackage").toString();
+    return cardPackage.isEmpty() || isOriginalHegemonyCardPackage(cardPackage) == hegemony;
 }
 
 // --- SafeLuaMutex implementation ---

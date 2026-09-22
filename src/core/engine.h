@@ -205,6 +205,7 @@ public:
     QList<const TargetModSkill *> getTargetModSkills() const;
     QList<const InvaliditySkill *> getInvaliditySkills() const;
     QList<const TriggerSkill *> getGlobalTriggerSkills() const;
+    static bool isSkillAdmittedForMode(const Skill *skill, bool hegemony);
     QList<const AttackRangeSkill *> getAttackRangeSkills() const;
     QList<const ViewAsEquipSkill *> getViewAsEquipSkills() const;
     QList<const CardLimitSkill *> getCardLimitSkills() const;
