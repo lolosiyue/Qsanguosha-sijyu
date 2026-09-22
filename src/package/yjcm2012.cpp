@@ -26,7 +26,7 @@ public:
 					int index = qsanRandomBounded(2) + 1;
 					if (player->isJieGeneral())
 						index += 4;
-					else if (player->getGeneralName() == "second_wangyi" || player->getGeneral2Name() == "second_wangyi")
+					else if (player->getGeneralName() == "ol_wangyi" || player->getGeneral2Name() == "ol_wangyi")
 						index += 2;
 
 					room->broadcastSkillInvoke(objectName(), index);
@@ -1122,10 +1122,10 @@ public:
     }
 };
 
-class SecondMiji : public PhaseChangeSkill
+class OlMiji : public PhaseChangeSkill
 {
 public:
-    SecondMiji() : PhaseChangeSkill("secondmiji")
+    OlMiji() : PhaseChangeSkill("olmiji")
     {
         frequency = Frequent;
     }
@@ -1521,10 +1521,10 @@ public:
     }
 };
 
-class OlMiji : public TriggerSkill
+class MobileMiji : public TriggerSkill
 {
 public:
-    OlMiji() : TriggerSkill("olmiji")
+    MobileMiji() : TriggerSkill("mobilemiji")
     {
         events << EventPhaseStart << ChoiceMade;
     }
@@ -1541,7 +1541,7 @@ public:
             room->broadcastSkillInvoke(objectName());
             QStringList draw_num;
             for (int i = 1; i <= target->getLostHp(); draw_num << QString::number(i++)){}
-            int num = room->askForChoice(target, "olmiji_draw", draw_num.join("+")).toInt();
+            int num = room->askForChoice(target, "mobilemiji_draw", draw_num.join("+")).toInt();
             target->drawCards(num, objectName());
 			QList<int> ids = target->handCards();
 			target->assignmentCards(ids,objectName(),room->getOtherPlayers(target),num,-1);
@@ -1696,6 +1696,10 @@ YJCM2012Package::YJCM2012Package()
     wangyi->addSkill(new Zhenlie);
     wangyi->addSkill(new Miji);
 
+    General *ol_wangyi = new General(this, "ol_wangyi", "wei", 3, false);
+    ol_wangyi->addSkill("zhenlie");
+    ol_wangyi->addSkill(new OlMiji);
+
     General *xunyou = new General(this, "xunyou", "wei", 3); // YJ 111
     xunyou->addSkill(new Qice);
     xunyou->addSkill(new Zhiyu);
@@ -1744,15 +1748,6 @@ NewYJCM2012Package::NewYJCM2012Package()
 }
 ADD_PACKAGE(NewYJCM2012)
 
-SecondYJCM2012Package::SecondYJCM2012Package()
-    : Package("SecondYJCM2012")
-{
-    General *second_wangyi = new General(this, "second_wangyi", "wei", 3, false);
-    second_wangyi->addSkill("zhenlie");
-    second_wangyi->addSkill(new SecondMiji);
-}
-ADD_PACKAGE(SecondYJCM2012)
-
 void MigrateToOLStYJ2012(Package *pkg)
 {
     General *ol_bulianshi = new General(pkg, "ol_bulianshi", "wu", 3, false);
@@ -1772,8 +1767,11 @@ void MigrateToOLStYJ2012(Package *pkg)
     ol_madai->addSkill(new OlQianxi);
     ol_madai->addSkill(new OlQianxiClear);
     pkg->insertRelatedSkills("olqianxi", "#olqianxi-clear");
+}
 
-    General *ol_wangyi = new General(pkg, "ol_wangyi", "wei", 3, false);
-    ol_wangyi->addSkill("zhenlie");
-    ol_wangyi->addSkill(new OlMiji);
+void MigrateToMobileStYJ2012(Package *pkg)
+{
+    General *mobile_wangyi = new General(pkg, "mobile_wangyi", "wei", 3, false);
+    mobile_wangyi->addSkill("zhenlie");
+    mobile_wangyi->addSkill(new MobileMiji);
 }

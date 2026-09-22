@@ -540,7 +540,7 @@ return {
 	["@tenyearbingyi"] = "你可以展示所有手牌发动“秉壹”",
 	["~tenyearbingyi"] = "若手牌均为同一颜色，选择至多X名角色→点击“确定”；否则直接点击“确定”",
 	
-	["tenyear_wangyi"] = "界王异",
+	["tenyear_wangyi"] = "界王异[十周年]",
 	["illustrator:tenyear_wangyi"] = "夏季与杨杨",
 	
 	["tenyear_yufan"] = "界虞翻",

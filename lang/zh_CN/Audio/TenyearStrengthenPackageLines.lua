@@ -407,8 +407,8 @@ return {
 	["cv:tenyear_wangyi"] = "官方",
 	["$zhenlie5"] = "女子，亦可有坚贞气节",
 	["$zhenlie6"] = "品德端正，心中不移",
-	["$secondmiji3"] = "秘计在此，将军必凯旋而归",
-	["$secondmiji4"] = "秘计已成，定助夫君得胜",
+	["$olmiji3"] = "秘计在此，将军必凯旋而归",
+	["$olmiji4"] = "秘计已成，定助夫君得胜",
 	["~tenyear_wangyi"] = "秘计不成，此城难守",
 	
 	--界虞翻
