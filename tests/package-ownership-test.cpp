@@ -58,8 +58,6 @@ const ExpectedMigration expectedMigrations[] = {
     { "ol_wuyi", "OLStYJ2014", "ol_st_yj2014", "YJCM2014" },
     { "ol_liuchen", "OLStYJ2015", "OLStYJ2015", "YJCM2015" },
     { "ol_sunxiu", "OLStYJ2015", "OLStYJ2015", "YJCM2015" },
-    { "new_quancong", "NewYJCM2015", "NewYJCM2015", "YJCM2015" },
-    { "new_zhuzhi", "NewYJCM2015", "NewYJCM2015", "YJCM2015" },
     { "ol_sunliang", "OLStYin", "OLStYin", "Yin" },
     { "ol_luzhi", "OLStYin", "OLStYin", "Yin" },
     { "ol_guanqiujian", "OLStLei", "OLStLei", "Lei" },
@@ -142,6 +140,8 @@ const ExpectedGiteeGeneral expectedGiteeGenerals[] = {
     { "yue_daqiao", "TenyearHc", "tenyear_hc" },
     { "zhangyu", "TenyearHc", "tenyear_hc" },
     { "oljie_xiahoushi", "OLStYJ2015", "OLStYJ2015" },
+    { "ol_quancong", "YJCM2015", "YJCM2015" },
+    { "ol_zhuzhi", "YJCM2015", "YJCM2015" },
     { "xukun", "YJCM2023", "yjcm2023" }
 };
 

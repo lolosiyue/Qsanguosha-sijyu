@@ -262,7 +262,7 @@ return {
 	["secondtenyearshizhi"] = "矢志",
 	[":secondtenyearshizhi"] = "锁定技，若你的体力值为1，你的【闪】视为【杀】；你使用此【杀】造成伤害后，回复1点体力。",
 	
-	["tenyear_quancong"] = "界全琮",
+	["tenyear_quancong"] = "界全琮[十周年]",
 	["illustrator:tenyear_quancong"] = "YanBai",
 	["tenyearyaoming"] = "邀名",
 	[":tenyearyaoming"] = "<font color=\"green\"><b>每回合每个选项限一次，</b></font>当你造成或受到伤害后，你可以选择一项：1.弃置手牌数大于你的一名角色的一张手牌；"..

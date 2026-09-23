@@ -3,7 +3,6 @@
 return {
 	["YJCM2015"] = "一将成名2015",
 	["OLStYJ2015"] = "OL强化·一将成名2015",
-	["NewYJCM2015"] = "新版·一将成名2015",
 
 	["#caorui"] = "天姿的明君",
 	["caorui"] = "曹叡",
@@ -76,9 +75,9 @@ return {
 	["zhenshan_slash"] = "振赡出杀",
 	["zhenshan_saveself"] = "振赡自救",
 	
-	["new_quancong"] = "新全琮",
-	["&new_quancong"] = "全琮",
-	["illustrator:new_quancong"] = "小小鸡仔",
+	["ol_quancong"] = "全琮[OL]",
+	["&ol_quancong"] = "全琮",
+	["illustrator:ol_quancong"] = "小小鸡仔",
 	["yaoming"] = "邀名",
 	[":yaoming"] = "<font color=\"green\"><b>每回合限一次，</b></font>当你造成或受到伤害后，你可以选择一项：1.弃置手牌数大于你的一名角色一张手牌；2.令手牌数小于你的一名角色摸一张牌。",
 	["@yaoming-invoke"] = "你可以发动“邀名”",
@@ -145,9 +144,9 @@ return {
 	["anguo"] = "安国",
 	[":anguo"] = "出牌阶段限一次，你可以选择一名其他角色装备区里的一张牌，令其将此牌收回手牌。然后若该角色攻击范围内的角色数因此减少，你摸一张牌。",
 	
-	["new_zhuzhi"] = "新朱治",
-	["&new_zhuzhi"] = "朱治",
-	["illustrator:new_zhuzhi"] = "心中一凛",
+	["ol_zhuzhi"] = "朱治[OL]",
+	["&ol_zhuzhi"] = "朱治",
+	["illustrator:ol_zhuzhi"] = "心中一凛",
 	["newanguo"] = "安国",
 	[":newanguo"] = "出牌阶段限一次，你可以选择一名其他角色，若其手牌数为全场最少，其摸一张牌；体力值为全场最低，其回复1点体力；装备区内牌数为全场最少，其随机使用牌堆内的一张装备牌。然后若该角色有未执行的效果且你满足条件，你执行之。",
 }
