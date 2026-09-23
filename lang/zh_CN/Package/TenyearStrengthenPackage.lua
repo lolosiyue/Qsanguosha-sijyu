@@ -349,7 +349,7 @@ return {
 	["~tenyearxingxue"] = "选择若干名目标角色→点“确定”",
 	["@tenyearxingxue-put"] = "请将一张牌置于牌堆顶",
 	
-	["tenyear_caoxiu"] = "界曹休",
+	["tenyear_caoxiu"] = "界曹休[十周年]",
 	["illustrator:tenyear_caoxiu"] = "写之火工作室",
 	["tenyearqingxi"] = "倾袭",
 	[":tenyearqingxi"] = "当你使用【杀】或【决斗】指定目标后，你可令其选择一项：1.弃置等同于你攻击范围内的人数张手牌（最多为二，若你武器区有武器牌，则改为最多为四），然后弃置你的武器牌；2.令此牌对其伤害+1且进行一次判定，若结果为红色，此牌不能被该角色响应。",

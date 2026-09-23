@@ -2580,15 +2580,15 @@ return {
 	["~nos_caorui-nos_caorui_3"] = "愧为人主，何言见父...",
 	
 --[[
-	曹休（一将成名2015）
+	曹休[旧]（一将成名2015）
 ]]--
-    ["$taoxi1-caoxiu_1"] = "你本领再高，也斗不过我的！",
-	["$taoxi2-caoxiu_1"] = "倾兵所有，袭敌不意。",
-	["~caoxiu-caoxiu_1"] = "孤军深入，犯了兵家大忌。",
-	
-	["$taoxi1-caoxiu_3"] = "讨贼须运筹帷幄，袭敌当雷厉风行。",
-	["$taoxi2-caoxiu_3"] = "只有勇气，没有谋略是不够的。",
-	["~caoxiu-caoxiu_3"] = "石亭之败，心有不甘呐。",
+    ["$taoxi1-nos_caoxiu_1"] = "你本领再高，也斗不过我的！",
+	["$taoxi2-nos_caoxiu_1"] = "倾兵所有，袭敌不意。",
+	["~nos_caoxiu-nos_caoxiu_1"] = "孤军深入，犯了兵家大忌。",
+
+	["$taoxi1-nos_caoxiu_3"] = "讨贼须运筹帷幄，袭敌当雷厉风行。",
+	["$taoxi2-nos_caoxiu_3"] = "只有勇气，没有谋略是不够的。",
+	["~nos_caoxiu-nos_caoxiu_3"] = "石亭之败，心有不甘呐。",
 	
 --[[
 	公孙渊（一将成名2015）

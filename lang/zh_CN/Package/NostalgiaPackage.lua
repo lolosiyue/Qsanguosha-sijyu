@@ -312,6 +312,15 @@ return {
 	[":nosmingjian"] = "你可以跳过出牌阶段并将所有手牌交给一名其他角色。若如此做，你结束此回合，然后该角色进行一个额外的出牌阶段。",
 	["@nosmingjian-give"] = "你可以发动“明鉴”。",
 
+	["#nos_caoxiu"] = "千里骐骥",
+	["nos_caoxiu"] = "曹休[旧]",
+	["&nos_caoxiu"] = "曹休",
+	["designer:nos_caoxiu"] = "蹩脚狐小三",
+	["illustrator:nos_caoxiu"] = "eshao111",
+	["taoxi"] = "讨袭",
+	[":taoxi"] = "出牌阶段限一次，你使用牌指定一名其他角色为唯一目标后，你可以亮出其一张手牌直到回合结束，并且你可以于此回合内将此牌如手牌般使用。回合结束时，若该角色未失去此手牌，则你失去1点体力。",
+	["&taoxi"] = "讨袭",
+
 	["nos_zhonghui"] = "钟会[旧]",
 	["&nos_zhonghui"] = "钟会",
 	["illustrator:nos_zhonghui"] = "雪君S",
