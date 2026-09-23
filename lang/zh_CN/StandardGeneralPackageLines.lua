@@ -2553,31 +2553,31 @@ return {
 	["~zhuhuan-zhuhuan_2"] = "我已诱敌至此，为何伏兵不出！",
 
 --[[
-	曹叡（一将成名2015）
+	曹叡[旧]（一将成名2015）
 ]]--
-    ["$huituo1-caorui_1"] = "谁有权利，谁就拥有天下！",
-	["$huituo2-caorui_1"] = "严法度，以拓疆土。",
-	["$mingjian1-caorui_1"] = "以卿之才学，何愁此战不胜。",
-	["$mingjian2-caorui_1"] = "用人自当不疑，请大可放心。",
-	["$xingshuai1-caorui_1"] = "有皇权在身，竟半点不自由。",
-	["$xingshuai2-caorui_1"] = "只要魏国还在，我定保你等周全。",
-	["~caorui-caorui_1"] = "愧为人主，何言见父...",
-	
-	["$huituo1-caorui_2"] = "看我如何恢疆拓土，振兴大魏！",
-	["$huituo2-caorui_2"] = "弘法明理，不负众民之望~",
-	["$mingjian1-caorui_2"] = "以将军之才，定可一招制敌。",
-	["$mingjian2-caorui_2"] = "讨伐大任，就交予你了。",
-	["$xingshuai1-caorui_2"] = "兴衰皆由人定，岂能独赖天命。",
-	["$xingshuai2-caorui_2"] = "吾国之兴衰还望诸位一力护持。",
-	["~caorui-caorui_2"] = "将相协力，魏室..可兴...",
-	
-	["$huituo1-caorui_3"] = "谁有权利，谁就拥有天下！",
-	["$huituo2-caorui_3"] = "严法度，以拓疆土。",
-	["$mingjian1-caorui_3"] = "以卿之才学，何愁此战不胜。",
-	["$mingjian2-caorui_3"] = "用人自当不疑，请大可放心。",
-	["$xingshuai1-caorui_3"] = "有皇权在身，竟半点不自由。",
-	["$xingshuai2-caorui_3"] = "只要魏国还在，我定保你等周全。",
-	["~caorui-caorui_3"] = "愧为人主，何言见父...",
+    ["$huituo1-nos_caorui_1"] = "谁有权利，谁就拥有天下！",
+	["$huituo2-nos_caorui_1"] = "严法度，以拓疆土。",
+	["$nosmingjian1-nos_caorui_1"] = "以卿之才学，何愁此战不胜。",
+	["$nosmingjian2-nos_caorui_1"] = "用人自当不疑，请大可放心。",
+	["$xingshuai1-nos_caorui_1"] = "有皇权在身，竟半点不自由。",
+	["$xingshuai2-nos_caorui_1"] = "只要魏国还在，我定保你等周全。",
+	["~nos_caorui-nos_caorui_1"] = "愧为人主，何言见父...",
+
+	["$huituo1-nos_caorui_2"] = "看我如何恢疆拓土，振兴大魏！",
+	["$huituo2-nos_caorui_2"] = "弘法明理，不负众民之望~",
+	["$nosmingjian1-nos_caorui_2"] = "以将军之才，定可一招制敌。",
+	["$nosmingjian2-nos_caorui_2"] = "讨伐大任，就交予你了。",
+	["$xingshuai1-nos_caorui_2"] = "兴衰皆由人定，岂能独赖天命。",
+	["$xingshuai2-nos_caorui_2"] = "吾国之兴衰还望诸位一力护持。",
+	["~nos_caorui-nos_caorui_2"] = "将相协力，魏室..可兴...",
+
+	["$huituo1-nos_caorui_3"] = "谁有权利，谁就拥有天下！",
+	["$huituo2-nos_caorui_3"] = "严法度，以拓疆土。",
+	["$nosmingjian1-nos_caorui_3"] = "以卿之才学，何愁此战不胜。",
+	["$nosmingjian2-nos_caorui_3"] = "用人自当不疑，请大可放心。",
+	["$xingshuai1-nos_caorui_3"] = "有皇权在身，竟半点不自由。",
+	["$xingshuai2-nos_caorui_3"] = "只要魏国还在，我定保你等周全。",
+	["~nos_caorui-nos_caorui_3"] = "愧为人主，何言见父...",
 	
 --[[
 	曹休（一将成名2015）

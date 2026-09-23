@@ -13,14 +13,6 @@ public:
     YJCM2012Package();
 };
 
-class NostalgiaYJCM2012Package : public Package
-{
-    Q_OBJECT
-
-public:
-    NostalgiaYJCM2012Package();
-};
-
 class QiceCard : public SkillCard
 {
     Q_OBJECT
@@ -109,6 +101,7 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
+void MigrateToNostalgiaYJCM2012(Package *pkg);
 void MigrateToOLStYJ2012(Package *pkg);
 void MigrateToMobileStYJ2012(Package *pkg);
 

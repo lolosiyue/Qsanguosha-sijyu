@@ -109,13 +109,7 @@ public:
     YJCM2014Package();
 };
 
-class NostalgiaYJCM2014Package : public Package
-{
-    Q_OBJECT
-
-public:
-    NostalgiaYJCM2014Package();
-};
+void MigrateToNostalgiaYJCM2014(Package *pkg);
 
 void MigrateToOLStYJ2014(Package *pkg);
 

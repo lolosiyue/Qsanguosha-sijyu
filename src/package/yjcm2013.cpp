@@ -1829,34 +1829,32 @@ YJCM2013Package::YJCM2013Package()
 
 ADD_PACKAGE(YJCM2013)
 
-NostalgiaYJCM2013Package::NostalgiaYJCM2013Package()
-    : Package("nostal_yjcm2013")
+void MigrateToNostalgiaYJCM2013(Package *pkg)
 {
-    General *nos_caochong = new General(this, "nos_caochong", "wei", 3);
+    General *nos_caochong = new General(pkg, "nos_caochong", "wei", 3);
     nos_caochong->addSkill(new NosChengxiang);
     nos_caochong->addSkill(new NosRenxin);
-    addMetaObject<NosRenxinCard>();
+    pkg->addMetaObject<NosRenxinCard>();
 
-    General *nos_fuhuanghou = new General(this, "nos_fuhuanghou", "qun", 3, false);
+    General *nos_fuhuanghou = new General(pkg, "nos_fuhuanghou", "qun", 3, false);
     nos_fuhuanghou->addSkill(new NosZhuikong);
     nos_fuhuanghou->addSkill(new NosZhuikongClear);
     nos_fuhuanghou->addSkill(new NosQiuyuan);
-    related_skills.insert("noszhuikong", "#noszhuikong-clear");
+    pkg->insertRelatedSkills("noszhuikong", "#noszhuikong-clear");
 
-    General *nos_liru = new General(this, "nos_liru", "qun", 3);
+    General *nos_liru = new General(pkg, "nos_liru", "qun", 3);
     nos_liru->addSkill(new NosJuece);
     nos_liru->addSkill(new NosMieji);
     nos_liru->addSkill(new NosMiejiForExNihiloAndCollateral);
     nos_liru->addSkill(new NosMiejiEffect);
     nos_liru->addSkill(new NosFencheng);
-    related_skills.insert("nosmieji", "#nosmieji");
-    related_skills.insert("nosmieji", "#nosmieji-effect");
-    addMetaObject<NosFenchengCard>();
+    pkg->insertRelatedSkills("nosmieji", "#nosmieji");
+    pkg->insertRelatedSkills("nosmieji", "#nosmieji-effect");
+    pkg->addMetaObject<NosFenchengCard>();
 
-    General *nos_zhuran = new General(this, "nos_zhuran", "wu");
+    General *nos_zhuran = new General(pkg, "nos_zhuran", "wu");
     nos_zhuran->addSkill(new NosDanshou);
 }
-ADD_PACKAGE(NostalgiaYJCM2013)
 
 void MigrateToOLStYJ2013(Package *pkg)
 {

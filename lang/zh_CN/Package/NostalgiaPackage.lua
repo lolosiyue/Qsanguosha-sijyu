@@ -10,10 +10,7 @@ return {
 	["nostal_general"] = "怀旧·测试",
 	["nostal_standard"] = "怀旧·标准",
 	["nostal_wind"] = "怀旧·风",
-	["nostal_yjcm"] = "怀旧·一将",
-	["nostal_yjcm2012"] = "怀旧·一将2",
-	["nostal_yjcm2013"] = "怀旧·一将3",
-	["nostal_yjcm2014"] = "怀旧·一将4",
+	["nostal_yjcm"] = "怀旧·一将成名",
 
 	["nos_caocao"] = "曹操",
 	["illustrator:nos_caocao"] = "KayaK",
@@ -305,6 +302,15 @@ return {
 	[":youdi"] = "结束阶段，你可以令一名其他角色弃置你一张牌：若此牌不为【杀】，你获得其一张牌。",
 	["youdi-invoke"] = "你可以发动“诱敌”<br> <b>操作提示</b>：选择一名其他角色→点击确定<br/>",
 	["youdi_obtain"] = "诱敌获得牌",
+
+	["#nos_caorui"] = "天姿的明君",
+	["nos_caorui"] = "曹叡[旧]",
+	["&nos_caorui"] = "曹叡",
+	["designer:nos_caorui"] = "Ptolemy_M7",
+	["illustrator:nos_caorui"] = "Thinking",
+	["nosmingjian"] = "明鉴",
+	[":nosmingjian"] = "你可以跳过出牌阶段并将所有手牌交给一名其他角色。若如此做，你结束此回合，然后该角色进行一个额外的出牌阶段。",
+	["@nosmingjian-give"] = "你可以发动“明鉴”。",
 
 	["nos_zhonghui"] = "钟会[旧]",
 	["&nos_zhonghui"] = "钟会",
