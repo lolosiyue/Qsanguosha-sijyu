@@ -2194,7 +2194,8 @@ YJCM2015Package::YJCM2015Package()
     caorui->addSkill(new Xingshuai);
 
     General *caoxiu = new General(this, "caoxiu", "wei");
-    caoxiu->addSkill(new Taoxi);
+    caoxiu->addSkill(new Qianju);
+    caoxiu->addSkill(new Qingxi);
 
     General *gongsun = new General(this, "gongsunyuan", "qun");
     gongsun->addSkill(new Huaiyi);
@@ -2276,10 +2277,6 @@ ADD_PACKAGE(OLStYJ2015)
 NewYJCM2015Package::NewYJCM2015Package()
     : Package("NewYJCM2015")
 {
-    General *new_caoxiu = new General(this, "new_caoxiu", "wei");
-    new_caoxiu->addSkill(new Qianju);
-    new_caoxiu->addSkill(new Qingxi);
-
     General *new_quancong = new General(this, "new_quancong", "wu");
     new_quancong->addSkill(new Yaoming);
 
@@ -2298,4 +2295,7 @@ void MigrateToNostalgiaYJCM2015(Package *pkg)
     nos_caorui->addSkill(new NosMingjianGive);
     nos_caorui->addSkill("xingshuai");
     pkg->insertRelatedSkills("nosmingjian", "#nosmingjian-give");
+
+    General *nos_caoxiu = new General(pkg, "nos_caoxiu", "wei");
+    nos_caoxiu->addSkill(new Taoxi);
 }

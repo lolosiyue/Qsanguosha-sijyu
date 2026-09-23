@@ -22,13 +22,6 @@ return {
 	["caoxiu"] = "曹休",
 	["designer:caoxiu"] = "蹩脚狐小三",
 	["illustrator:caoxiu"] = "eshao111",
-	["taoxi"] = "讨袭",
-	[":taoxi"] = "出牌阶段限一次，你使用牌指定一名其他角色为唯一目标后，你可以亮出其一张手牌直到回合结束，并且你可以于此回合内将此牌如手牌般使用。回合结束时，若该角色未失去此手牌，则你失去1点体力。",
-	["&taoxi"] = "讨袭",
-	
-	["new_caoxiu"] = "新曹休",
-	["&new_caoxiu"] = "曹休",
-	["illustrator:new_caoxiu"] = "eshao111",
 	["qianju"] = "千驹",
 	[":qianju"] = "锁定技，你与其他角色的距离-X（X为你已损失的体力值）。",
 	["qingxi"] = "倾袭",
