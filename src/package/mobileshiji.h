@@ -29,24 +29,6 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class SecondMobileZhiZuiciCard : public SkillCard
-{
-    Q_OBJECT
-public:
-    Q_INVOKABLE SecondMobileZhiZuiciCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
-};
-
-class SecondMobileZhiZuiciMarkCard : public SkillCard
-{
-    Q_OBJECT
-public:
-    Q_INVOKABLE SecondMobileZhiZuiciMarkCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const;
-    bool targetsFeasible(const QList<const Player *> &targets, const Player *) const;
-    void onUse(Room *, CardUseStruct &card_use) const;
-};
-
 class MobileZhiDuojiCard : public SkillCard
 {
     Q_OBJECT

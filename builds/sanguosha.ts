@@ -951,6 +951,36 @@
     </message>
 </context>
 <context>
+    <name>ChooseGeneralBox</name>
+    <message>
+        <source>Choose head and deputy generals</source>
+        <translation>选择主将与副将</translation>
+    </message>
+    <message>
+        <source>Confirm pair</source>
+        <translation>确定主副将</translation>
+    </message>
+    <message>
+        <source>Head general</source>
+        <translation>主将</translation>
+    </message>
+    <message>
+        <source>Deputy general</source>
+        <translation>副将</translation>
+    </message>
+    <message>
+        <source>Arrows/Tab: focus; Space: select; X: swap; Enter: confirm</source>
+        <translation>方向键/Tab：切换；空格：选取；X：交换；回车：确定</translation>
+    </message>
+</context>
+<context>
+    <name>GeneralCardItem</name>
+    <message>
+        <source>Companion</source>
+        <translation>珠联璧合</translation>
+    </message>
+</context>
+<context>
     <name>ChooseGeneralDialog</name>
     <message>
         <location filename="../src/dialog/choosegeneraldialog.cpp" line="44"/>

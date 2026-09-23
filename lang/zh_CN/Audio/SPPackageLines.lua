@@ -1371,11 +1371,11 @@ return {
 	["$yongdi2"] = "嫡庶有别，尊卑有序。",
 	["~new_sp_jiaxu"] = "立嫡之事，真是取祸之道！",
 	
-	--新sp贾诩-二版
-	["cv:second_new_sp_jiaxu"] = "官方",
-	["$newyongdi1"] = "臣，愿为世子，肝脑涂地。",
-	["$newyongdi2"] = "嫡庶有别，尊卑有序。",
-	["~second_new_sp_jiaxu"] = "立嫡之事，真是取祸之道！",
+	--sp贾诩-手杀
+	["cv:mobilesp_jiaxu"] = "官方",
+	["$mobileyongdi1"] = "臣，愿为世子，肝脑涂地。",
+	["$mobileyongdi2"] = "嫡庶有别，尊卑有序。",
+	["~mobilesp_jiaxu"] = "立嫡之事，真是取祸之道！",
 	
 	--关银屏
 	["cv:new_guanyinping"] = "官方",
@@ -1814,14 +1814,6 @@ return {
 	["$mobilemoucheng2"] = "叫天不应，叫地不灵，今天就是你的死期",
 	["$jingong1"] = "董贼旧部，可尽诛之",
 	["$jingong2"] = "若无老夫之谋，尔等皆化为腐土也",
-	
-	--新刘协
-	["cv:new_liuxie"] = "官方",
-	["$newtianming1"] = "朕乃大汉皇帝，天命之子",
-	["$newtianming2"] = "皇汉国祚，千年不息",
-	["$mizhao3"] = "爱卿世受皇恩，堪此重任",
-	["$mizhao4"] = "此诏事关重大，切记小心行事",
-	["~new_liuxie"] = "为什么不把复兴汉室的权力交给我？",
 	
 	--黄承彦
 	["$guanxu1"] = "不识此阵者，必为所迷",

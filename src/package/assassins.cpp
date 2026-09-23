@@ -244,8 +244,6 @@ void MizhaoCard::onEffect(CardEffectStruct &effect) const
     if (effect.to->isKongcheng()) return;
 
     int index = (effect.to->getGeneralName().contains("liubei") || effect.to->getGeneral2Name().contains("liubei")) ? 2 : 1;
-    if (effect.from->getGeneralName().startsWith("new_") || effect.from->getGeneral2Name().startsWith("new_"))
-        index = qsanRandomBounded(2) + 3;
     room->broadcastSkillInvoke("mizhao", index);
 
     QList<ServerPlayer *> targets;

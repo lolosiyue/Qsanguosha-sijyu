@@ -162,5 +162,17 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
+
+class LihunCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE LihunCard();
+
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void onEffect(CardEffectStruct &effect) const;
+};
+
 #endif
 
