@@ -2075,13 +2075,13 @@ return {
 	[":yongdi"] = "限定技，回合开始时，你可令一名其他男性角色增加1点体力上限并回复1点体力，然后若其武将牌上有主公技，其获得此主公技。",
 	["@yongdi-invoke"] = "你可以发动“拥嫡”",
 	
-	["second_new_sp_jiaxu"] = "新sp贾诩[二版]",
-	["#second_new_sp_jiaxu"] = "算无遗策",
-	["&second_new_sp_jiaxu"] = "贾诩",
-	["illustrator:second_new_sp_jiaxu"] = "雪君S",
-	["newyongdi"] = "拥嫡",
-	[":newyongdi"] = "限定技，当你受到伤害后，你可令一名其他男性角色增加1点体力上限，然后若该角色的武将牌上有主公技且其身份不为主公，其获得此主公技。",
-	["@newyongdi-invoke"] = "你可以发动“拥嫡”",
+	["mobilesp_jiaxu"] = "sp贾诩[手杀]",
+	["#mobilesp_jiaxu"] = "算无遗策",
+	["&mobilesp_jiaxu"] = "贾诩",
+	["illustrator:mobilesp_jiaxu"] = "雪君S",
+	["mobileyongdi"] = "拥嫡",
+	[":mobileyongdi"] = "限定技，当你受到伤害后，你可令一名其他男性角色增加1点体力上限，然后若该角色的武将牌上有主公技且其身份不为主公，其获得此主公技。",
+	["@mobileyongdi-invoke"] = "你可以发动“拥嫡”",
 	
 	["new_guanyinping"] = "关银屏",
 	["&new_guanyinping"] = "关银屏",
@@ -2846,12 +2846,6 @@ return {
 	["newshuliang"] = "输粮",
 	[":newshuliang"] = "一名角色的结束阶段，若其手牌数小于其体力值，你可以将一张“粮”置入弃牌堆，其摸两张牌。",
 	["@newshuliang"] = "你可以对 %src 发动“输粮”。",
-	
-	["new_liuxie"] = "新刘协",
-	["&new_liuxie"] = "刘协",
-	["illustrator:new_liuxie"] = "LiuHeng",
-	["newtianming"] = "天命",
-	[":newtianming"] = "当你成为【杀】的目标后，你可以弃置两张牌，然后摸两张牌。若全场唯一的体力值最多的角色不是你，该角色也可以弃置两张牌，然后摸两张牌。",
 	
 	["huangchengyan"] = "黄承彦",
 	["#huangchengyan"] = "沔阳雅士",

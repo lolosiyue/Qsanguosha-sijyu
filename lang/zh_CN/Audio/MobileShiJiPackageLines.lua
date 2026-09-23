@@ -143,23 +143,6 @@ return {
 	["$mobilezhishameng2"] = "戮力一心，同讨魏贼！",
 	["~mobilezhi_chenzhen"] = "震不负丞相所托。",
 	
-	--手杀智孙邵
-	["$mobilezhifubi1"] = "辅君弼主，士之所致也。",
-	["$mobilezhifubi2"] = "献策思计，佐定江山。",
-	["$mobilezhizuici1"] = "既为朝堂宁定，吾请辞便是。",
-	["$mobilezhizuici2"] = "国事为先，何惧清名有损。",
-	["~mobilezhi_sunshao"] = "江东将相各有所能，奈何心想不一……",
-
-	["$secondmobilezhifubi1"] = "辅君弼主，士之所致也。",
-	["$secondmobilezhifubi2"] = "献策思计，佐定江山。",
-	["$secondmobilezhizuici1"] = "既为朝堂宁定，吾请辞便是。",
-	["$secondmobilezhizuici2"] = "国事为先，何惧清名有损。",
-	["~second_mobilezhi_sunshao"] = "江东将相各有所能，奈何心想不一……",
-
-	["$thirdmobilezhifubi1"] = "辅君弼主，士之所致也。",
-	["$thirdmobilezhifubi2"] = "献策思计，佐定江山。",
-	["~third_mobilezhi_sunshao"] = "江东将相各有所能，奈何心想不一……",
-	
 	--手杀智荀谌
 	["$mobilezhiduoji1"] = "将军若献冀州，必安如泰山也。",
 	["$mobilezhiduoji2"] = "袁氏得冀州，必厚德将军。",

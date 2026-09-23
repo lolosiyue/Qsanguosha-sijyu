@@ -1891,9 +1891,171 @@ public:
     }
 };
 
+LihunCard::LihunCard()
+{
+	mute = true;
+}
+
+bool LihunCard::targetFilter(const QList<const Player*> &targets, const Player*to_select, const Player*Self) const
+{
+	return targets.isEmpty() && to_select->isMale() && to_select != Self;
+}
+
+void LihunCard::onEffect(CardEffectStruct &effect) const
+{
+	Room*room = effect.from->getRoom();
+	effect.to->setFlags("LihunTarget");
+	effect.from->setFlags("LihunSource");// for ai
+	effect.from->turnOver();
+	room->broadcastSkillInvoke("lihun", 1);
+	DummyCard dummy_card(effect.to->handCards());
+	dummy_card.deleteLater();
+
+	try {
+		if (!effect.to->isKongcheng()){
+			CardMoveReason reason(CardMoveReason::S_REASON_TRANSFER, effect.from->objectName(),
+				effect.to->objectName(), "lihun", "");
+			room->moveCardTo(&dummy_card, effect.to, effect.from, Player::PlaceHand, reason, false);
+		}
+		effect.from->setFlags("-LihunSource");
+	}catch (TriggerEvent triggerEvent){
+		if (triggerEvent == TurnBroken || triggerEvent == StageChange){
+			effect.from->setFlags("-LihunSource");
+			effect.to->setFlags("-LihunTarget");
+		}
+		throw triggerEvent;
+	}
+}
+
+class LihunSelect : public OneCardViewAsSkill
+{
+public:
+	LihunSelect() : OneCardViewAsSkill("lihun")
+	{
+		filter_pattern = ".!";
+	}
+
+	bool isEnabledAtPlay(const Player*player) const
+	{
+		return player->canDiscard(player, "he") && !player->hasUsed("LihunCard");
+	}
+
+	const Card*viewAs(const Card*originalCard) const
+	{
+		LihunCard*card = new LihunCard;
+		card->addSubcard(originalCard);
+		return card;
+	}
+};
+
+class Lihun : public TriggerSkill
+{
+public:
+	Lihun() : TriggerSkill("lihun")
+	{
+		events << EventPhaseStart << EventPhaseEnd;
+		view_as_skill = new LihunSelect;
+	}
+
+	bool triggerable(const ServerPlayer*target) const
+	{
+		return target != nullptr && target->hasUsed("LihunCard");
+	}
+
+	bool trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*diaochan, QVariant &) const
+	{
+		if (triggerEvent == EventPhaseEnd && diaochan->getPhase() == Player::Play){
+			ServerPlayer*target = nullptr;
+			foreach(ServerPlayer*other, room->getOtherPlayers(diaochan)){
+				if (other->hasFlag("LihunTarget")){
+					other->setFlags("-LihunTarget");
+					target = other;
+					break;
+				}
+			}
+
+			if (!target || target->getHp() < 1 || diaochan->isNude())
+				return false;
+
+			room->broadcastSkillInvoke(objectName(), 2);
+			const Card*to_goback = room->askForExchange(diaochan, objectName(), target->getHp(), target->getHp(), true, "LihunGoBack");
+
+			CardMoveReason reason(CardMoveReason::S_REASON_GIVE, diaochan->objectName(),
+				target->objectName(), objectName(), "");
+			room->moveCardTo(to_goback, diaochan, target, Player::PlaceHand, reason);
+		} else if (triggerEvent == EventPhaseStart && diaochan->getPhase() == Player::NotActive){
+			foreach(ServerPlayer*p, room->getAlivePlayers()){
+				if (p->hasFlag("LihunTarget"))
+					p->setFlags("-LihunTarget");
+			}
+		}
+
+		return false;
+	}
+};
+
+class Chongzhen : public TriggerSkill
+{
+public:
+	Chongzhen() : TriggerSkill("chongzhen")
+	{
+		events << CardResponded << CardUsed;
+	}
+
+	bool trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*player, QVariant &data) const
+	{
+		if (triggerEvent == CardResponded){
+			CardResponseStruct resp = data.value<CardResponseStruct>();
+			if (resp.m_card->getSkillNames().contains("longdan")
+				&& resp.m_who && !resp.m_who->isKongcheng()){
+				if (player->askForSkillInvoke(this, resp.m_who)){
+					room->doAnimate(1,player->objectName(),resp.m_who->objectName());
+					room->broadcastSkillInvoke("chongzhen", 1);
+					int card_id = room->askForCardChosen(player, resp.m_who, "h", objectName());
+					CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
+					room->obtainCard(player, Sanguosha->getCard(card_id), reason, false);
+				}
+			}
+		} else {
+			CardUseStruct use = data.value<CardUseStruct>();
+			if (use.card->getSkillNames().contains("longdan")){
+				foreach(ServerPlayer*p, use.to){
+					if (p->isKongcheng()) continue;
+					if (player->askForSkillInvoke(this, p)){
+						room->doAnimate(1,player->objectName(),p->objectName());
+						room->broadcastSkillInvoke("chongzhen", 2);
+						int card_id = room->askForCardChosen(player, p, "h", objectName());
+						CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
+						room->obtainCard(player, Sanguosha->getCard(card_id), reason, false);
+					}
+				}
+				if(use.to.isEmpty()&&use.who&&use.who!=player&&!use.who->isKongcheng()){
+					if (player->askForSkillInvoke(this, use.who)){
+						room->doAnimate(1,player->objectName(),use.who->objectName());
+						room->broadcastSkillInvoke("chongzhen", 2);
+						int card_id = room->askForCardChosen(player, use.who, "h", objectName());
+						CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
+						room->obtainCard(player, Sanguosha->getCard(card_id), reason, false);
+					}
+				}
+			}
+		}
+		return false;
+	}
+};
+
 BGMPackage::BGMPackage()
  : Package("BGM")
 {
+    General *bgm_zhaoyun = new General(this, "bgm_zhaoyun", "qun", 3); // *SP 001
+    bgm_zhaoyun->addSkill("longdan");
+    bgm_zhaoyun->addSkill(new Chongzhen);
+
+    General *bgm_diaochan = new General(this, "bgm_diaochan", "qun", 3, false); // *SP 002
+    bgm_diaochan->addSkill(new Lihun);
+    bgm_diaochan->addSkill("biyue");
+    addMetaObject<LihunCard>();
+
     General *bgm_caoren = new General(this, "bgm_caoren", "wei"); // *SP 003
     bgm_caoren->addSkill(new Kuiwei);
     bgm_caoren->addSkill(new Yanzheng);

@@ -117,16 +117,6 @@ public:
     mobileSpPackage();
 };
 
-class ZhoufuCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE ZhoufuCard();
-
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
-};
 
 class MobileShanxiCard : public SkillCard
 {
@@ -146,15 +136,6 @@ public:
     void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
-class QiangwuCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE QiangwuCard();
-
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
-};
 
 class FumanCard : public SkillCard
 {

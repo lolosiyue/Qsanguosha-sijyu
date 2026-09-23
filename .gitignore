@@ -76,6 +76,7 @@ self_fix_result.txt
 opencode.json
 tools/opencode-tasks.py
 tools/autotest/fix_dl_after_blocking.py
+tools/warrior_eval_system.html
 lua/luaoldenemy_lib.lua
 lua/test/
 lua/examples/
