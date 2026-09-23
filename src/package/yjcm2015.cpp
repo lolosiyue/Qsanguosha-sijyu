@@ -2213,6 +2213,9 @@ YJCM2015Package::YJCM2015Package()
     General *quancong = new General(this, "quancong", "wu");
     quancong->addSkill(new Zhenshan);
 
+    General *ol_quancong = new General(this, "ol_quancong", "wu");
+    ol_quancong->addSkill(new Yaoming);
+
     General *sunxiu = new General(this, "sunxiu$", "wu", 3);
     sunxiu->addSkill(new Yanzhu);
     sunxiu->addSkill(new Xingxue);
@@ -2237,6 +2240,9 @@ YJCM2015Package::YJCM2015Package()
     General *zhuzhi = new General(this, "zhuzhi", "wu");
     zhuzhi->addSkill(new Anguo);
 
+    General *ol_zhuzhi = new General(this, "ol_zhuzhi", "wu", 4);
+    ol_zhuzhi->addSkill(new NewAnguo);
+
     addMetaObject<HuaiyiCard>();
     addMetaObject<HuaiyiSnatchCard>();
     addMetaObject<QinwangCard>();
@@ -2247,6 +2253,7 @@ YJCM2015Package::YJCM2015Package()
     addMetaObject<WurongCard>();
     addMetaObject<HuomoCard>();
     addMetaObject<AnguoCard>();
+    addMetaObject<NewAnguoCard>();
     addMetaObject<MingjianCard>();
 
     skills << new QinwangDraw;
@@ -2273,19 +2280,6 @@ OLStYJ2015Package::OLStYJ2015Package()
     addMetaObject<OLzhaofuCard>();
 }
 ADD_PACKAGE(OLStYJ2015)
-
-NewYJCM2015Package::NewYJCM2015Package()
-    : Package("NewYJCM2015")
-{
-    General *new_quancong = new General(this, "new_quancong", "wu");
-    new_quancong->addSkill(new Yaoming);
-
-    General *new_zhuzhi = new General(this, "new_zhuzhi", "wu", 4);
-    new_zhuzhi->addSkill(new NewAnguo);
-
-    addMetaObject<NewAnguoCard>();
-}
-ADD_PACKAGE(NewYJCM2015)
 
 void MigrateToNostalgiaYJCM2015(Package *pkg)
 {

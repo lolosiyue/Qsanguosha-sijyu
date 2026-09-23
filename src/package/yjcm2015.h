@@ -149,14 +149,6 @@ public:
     OLStYJ2015Package();
 };
 
-class NewYJCM2015Package : public Package
-{
-    Q_OBJECT
-
-public:
-    NewYJCM2015Package();
-};
-
 class OLzhaofuCard : public SkillCard
 {
     Q_OBJECT
