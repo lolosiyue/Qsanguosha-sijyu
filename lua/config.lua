@@ -395,7 +395,7 @@ config = {
 		"zhongyao+zhangchangpu",
 		"zhangjiao+huangjinleishi",
 		"guanping+zhaoxiang",
-		"liyi+guanyinping",
+		"liyi+new_guanyinping|nos_guanyinping",
 		"zhaoyun+mayunlu",
 		"guanyu+hujinding",
 		"machao+yangwan",

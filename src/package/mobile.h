@@ -128,17 +128,6 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
-class XuejiCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE XuejiCard();
-
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
-};
-
 class MobileShanxiCard : public SkillCard
 {
     Q_OBJECT
@@ -480,16 +469,6 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *) const;
     void onUse(Room *room, CardUseStruct &card_use) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
-};
-
-class NewxuehenCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE NewxuehenCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *, const Player *Self) const;
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 

@@ -2201,6 +2201,271 @@ public:
 };
 
 
+XuejiCard::XuejiCard()
+{
+}
+
+bool XuejiCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
+{
+	return Self->inMyAttackRange(to_select, subcards) && targets.length() < Self->getLostHp() && to_select != Self;
+}
+
+void XuejiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
+{
+	DamageStruct damage;
+	damage.from = source;
+	damage.reason = "xueji";
+
+	foreach (ServerPlayer *p, targets) {
+		damage.to = p;
+		room->damage(damage);
+	}
+	foreach (ServerPlayer *p, targets) {
+		if (p->isAlive())
+			p->drawCards(1, "xueji");
+	}
+}
+
+class Xueji : public OneCardViewAsSkill
+{
+public:
+	Xueji() : OneCardViewAsSkill("xueji")
+	{
+		filter_pattern = ".|red!";
+	}
+
+	bool isEnabledAtPlay(const Player *player) const
+	{
+		return player->getLostHp() > 0 && player->canDiscard(player, "he") && !player->hasUsed("XuejiCard");
+	}
+
+	const Card *viewAs(const Card *originalcard) const
+	{
+		XuejiCard *first = new XuejiCard;
+		first->addSubcard(originalcard->getId());
+		first->setSkillName(objectName());
+		return first;
+	}
+};
+
+class Huxiao : public TargetModSkill
+{
+public:
+	Huxiao() : TargetModSkill("huxiao")
+	{
+	}
+
+	int getResidueNum(const Player *from, const Card *, const Player *) const
+	{
+		if (from->hasSkill(objectName()))
+			return from->getMark("huxiao-PlayClear");
+		return 0;
+	}
+};
+
+class HuxiaoCount : public TriggerSkill
+{
+public:
+	HuxiaoCount() : TriggerSkill("#huxiao-count")
+	{
+		events << CardOffset;
+	}
+
+	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+	{
+		if (triggerEvent == CardOffset) {
+			CardEffectStruct effect = data.value<CardEffectStruct>();
+			if (player->getPhase() == Player::Play&&effect.card->isKindOf("Slash"))
+				room->addPlayerMark(player, "huxiao-PlayClear");
+		}
+		return false;
+	}
+};
+
+class Wuji : public PhaseChangeSkill
+{
+public:
+	Wuji() : PhaseChangeSkill("wuji")
+	{
+		frequency = Wake;
+	}
+
+	bool triggerable(const ServerPlayer *player) const
+	{
+		return player && player->isAlive()&&player->getPhase() == Player::Finish
+		&& player->getMark(objectName())<1 && player->hasSkill(objectName());
+	}
+
+	bool onPhaseChange(ServerPlayer *player, Room *room) const
+	{
+		if (player->getMark("damage_point_round") >= 3) {
+			LogMessage log;
+			log.type = "#WujiWake";
+			log.from = player;
+			log.arg = QString::number(player->getMark("damage_point_round"));
+			log.arg2 = objectName();
+			room->sendLog(log);
+		}else if(!player->canWake(objectName()))
+			return false;
+		room->broadcastSkillInvoke(objectName());
+		room->notifySkillInvoked(player, objectName());
+		room->doSuperLightbox(player, "wuji");
+
+		room->setPlayerMark(player, "wuji", 1);
+		if (room->changeMaxHpForAwakenSkill(player, 1, objectName())) {
+			room->recover(player, RecoverStruct("wuji", player));
+			if (player->getMark("wuji") == 1)
+				room->detachSkillFromPlayer(player, "huxiao");
+		}
+
+		return false;
+	}
+};
+
+NewxuehenCard::NewxuehenCard()
+{
+}
+
+bool NewxuehenCard::targetFilter(const QList<const Player *> &targets, const Player *, const Player *Self) const
+{
+	return targets.length() < Self->getLostHp();
+}
+
+void NewxuehenCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
+{
+	foreach (ServerPlayer *p, targets) {
+		if (p->isAlive() && !p->isChained()) {
+			room->setPlayerChained(p);
+		}
+	}
+	if (source->isDead()) return;
+
+	ServerPlayer *to = room->askForPlayerChosen(source, targets, "newxuehen", "@newxuehen-invoke");
+	room->doAnimate(1, source->objectName(), to->objectName());
+	room->damage(DamageStruct("newxuehen", source, to, 1, DamageStruct::Fire));
+}
+
+class Newxuehen : public OneCardViewAsSkill
+{
+public:
+	Newxuehen() : OneCardViewAsSkill("newxuehen")
+	{
+		filter_pattern = ".|red";
+	}
+
+	bool isEnabledAtPlay(const Player *player) const
+	{
+		return !player->hasUsed("NewxuehenCard") && player->getLostHp() > 0;
+	}
+
+	const Card *viewAs(const Card *originalCard) const
+	{
+		NewxuehenCard *card = new NewxuehenCard;
+		card->addSubcard(originalCard);
+		return card;
+	}
+};
+
+class NewHuxiao : public TriggerSkill
+{
+public:
+	NewHuxiao() : TriggerSkill("newhuxiao")
+	{
+		events << Damage;
+		frequency = Compulsory;
+	}
+
+	bool trigger(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const
+	{
+		DamageStruct damage = data.value<DamageStruct>();
+		if (damage.nature != DamageStruct::Fire || !damage.from || damage.from->isDead() || !damage.from->hasSkill(objectName()) ||
+			damage.to->isDead()) return false;
+		room->sendCompulsoryTriggerLog(damage.from, objectName(), true, true);
+		damage.to->drawCards(1, objectName());
+		room->addPlayerMark(damage.from, "newhuxiao_from-Clear");
+		room->addPlayerMark(damage.to, "newhuxiao_to-Clear");
+		return false;
+	}
+};
+
+class NewHuxiaoTargetMod : public TargetModSkill
+{
+public:
+	NewHuxiaoTargetMod() : TargetModSkill("#newhuxiao-target")
+	{
+		pattern = ".";
+	}
+
+	int getResidueNum(const Player *from, const Card *card, const Player *to) const
+	{
+		if(from->getMark("newhuxiao_from-Clear") > 0 && to && to->getMark("newhuxiao_to-Clear") > 0)
+			return 999;
+		if(from->hasFlag("CurrentPlayer")&&from->hasSkill("bsxianshuai")&&from->getMark(card->getSuitString()+"bsxianshuai-Clear")<1)
+			return 999;
+		if(from->getMark("&jiejie+"+card->getSuitString()+"_char-Clear")>0)
+			return 999;
+		return 0;
+	}
+};
+
+class NewWuji : public PhaseChangeSkill
+{
+public:
+	NewWuji() : PhaseChangeSkill("newwuji")
+	{
+		frequency = Wake;
+	}
+
+	bool triggerable(const ServerPlayer *player) const
+	{
+		return player&&player->isAlive()&&player->getMark(objectName())<1
+		&&player->getPhase() == Player::Finish&&player->hasSkill(objectName());
+	}
+
+	bool onPhaseChange(ServerPlayer *player, Room *room) const
+	{
+		if (player->getMark("damage_point_round") >= 3) {
+			LogMessage log;
+			log.type = "#WujiWake";
+			log.from = player;
+			log.arg = QString::number(player->getMark("damage_point_round"));
+			log.arg2 = objectName();
+			room->sendLog(log);
+		}else if(!player->canWake(objectName()))
+			return false;
+		room->broadcastSkillInvoke(objectName());
+		room->notifySkillInvoked(player, objectName());
+
+		room->doSuperLightbox(player, "newwuji");
+
+		room->setPlayerMark(player, "newwuji", 1);
+		if (room->changeMaxHpForAwakenSkill(player, 1, objectName())) {
+			room->recover(player, RecoverStruct("newwuji", player));
+
+			if (player->isAlive())
+				room->handleAcquireDetachSkills(player, "-newhuxiao");
+
+			if (player->isDead()) return false;
+			foreach (ServerPlayer *p, room->getAlivePlayers()) {
+				foreach (const Card *c, p->getCards("ej")) {
+					if (Sanguosha->getEngineCard(c->getEffectiveId())->objectName() == "blade") {
+						room->obtainCard(player, c, true);
+						return false;
+					}
+				}
+			}
+
+			foreach (int id, room->getDrawPile() + room->getDiscardPile()) {
+				if (Sanguosha->getEngineCard(id)->objectName() == "blade") {
+					room->obtainCard(player, id, true);
+					return false;
+				}
+			}
+		}
+		return false;
+	}
+};
+
 SPPackage::SPPackage()
 : Package("sp")
 {
@@ -2241,6 +2506,22 @@ SPPackage::SPPackage()
     sp_jiaxu->addSkill("wansha");
     sp_jiaxu->addSkill("luanwu");
     sp_jiaxu->addSkill("weimu");
+
+    General *nos_guanyinping = new General(this, "nos_guanyinping", "shu", 3, false); // SP 014
+    nos_guanyinping->addSkill(new Xueji);
+    nos_guanyinping->addSkill(new Huxiao);
+    nos_guanyinping->addSkill(new HuxiaoCount);
+    nos_guanyinping->addSkill(new Wuji);
+    related_skills.insert("huxiao", "#huxiao-count");
+    addMetaObject<XuejiCard>();
+
+    General *new_guanyinping = new General(this, "new_guanyinping", "shu", 3, false);
+    new_guanyinping->addSkill(new Newxuehen);
+    new_guanyinping->addSkill(new NewHuxiao);
+    new_guanyinping->addSkill(new NewHuxiaoTargetMod);
+    new_guanyinping->addSkill(new NewWuji);
+    related_skills.insert("newhuxiao", "#newhuxiao-target");
+    addMetaObject<NewxuehenCard>();
 
     General *sp_zhenji = new General(this, "sp_zhenji", "wei", 3, false); // SP 015
     sp_zhenji->addSkill("qingguo");
