@@ -101,6 +101,8 @@ const ExpectedGiteeGeneral expectedGiteeGenerals[] = {
     { "oljie_guanping", "OLStYJ2013", "ol_st_yj2013" },
     { "oljie_zhangsong", "OLStYJ2014", "ol_st_yj2014" },
     { "lingju", "SP", "sp" },
+    { "nos_guanyinping", "SP", "sp" },
+    { "new_guanyinping", "SP", "sp" },
     { "th_shencaopi", "TenyearXd", "tenyear_xd" },
     { "thxing_zhanghe", "TenyearXh", "tenyear_xh" },
     { "thxing_zhangsong", "TenyearXh", "tenyear_xh" },

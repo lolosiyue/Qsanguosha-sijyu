@@ -455,9 +455,9 @@ return {
 	["@yuanhu-discard"] = "请选择 %src 距离1的一名角色",
 	["~yuanhu"] = "选择一张装备牌→选择一名角色→点击确定",
 
-	["#guanyinping"] = "武姬",
-	["guanyinping"] = "关银屏",
-	["illustrator:guanyinping"] = "木美人",
+	["#nos_guanyinping"] = "武姬",
+	["nos_guanyinping"] = "关银屏[旧]",
+	["illustrator:nos_guanyinping"] = "木美人",
 	["xueji"] = "血祭",
     [":xueji"] = "出牌阶段限一次，你可以弃置一张红色牌并选择你攻击范围内的至多X名角色：若如此做，你对这些角色各造成1点伤害，然后这些角色各摸一张牌。（X为你已损失的体力值）",
 	["huxiao"] = "虎啸",
@@ -1951,13 +1951,6 @@ return {
 	[":xingsheque"] = "一名其他角色的准备阶段，若其装备区内有牌，你可以对其使用一张【杀】，此【杀】无视防具。",
 	["@xingsheque"] = "你可以对 %src 使用一张【杀】",
 	
-	["secondxing_ganning"] = "星甘宁[二版]",
-	["&secondxing_ganning"] = "星甘宁",
-	["illustrator:secondxing_ganning"] = "",
-	["secondxingjinfan"] = "锦帆",
-	[":secondxingjinfan"] = "弃牌阶段开始时，你可以将任意张手牌置于武将牌上，称为“铃”（每种花色的“铃”至多各一张）。当你需要使用或打出手牌时，你可以将“铃”视为你的牌使用或打出；"..
-					"当你的“铃”于回合外离开你的武将牌后，你从牌堆中获得一张同花色的牌。回合开始时，你获得武将牌上的“铃”。",
-	
 	["furong"] = "傅肜",
 	["#furong"] = "危汉烈义",
 	["illustrator:furong"] = "",
@@ -2090,7 +2083,7 @@ return {
 	[":newyongdi"] = "限定技，当你受到伤害后，你可令一名其他男性角色增加1点体力上限，然后若该角色的武将牌上有主公技且其身份不为主公，其获得此主公技。",
 	["@newyongdi-invoke"] = "你可以发动“拥嫡”",
 	
-	["new_guanyinping"] = "新关银屏",
+	["new_guanyinping"] = "关银屏",
 	["&new_guanyinping"] = "关银屏",
 	["illustrator:new_guanyinping"] = "木美人",
 	["newxuehen"] = "雪恨",
@@ -2101,7 +2094,7 @@ return {
 	["newwuji"] = "武继",
 	[":newwuji"] = "觉醒技，结束阶段，若你于此回合内造成过3点或更多伤害，你加1点体力上限并回复1点体力，失去“虎啸”，然后从场上、牌堆或弃牌堆中获得【青龙偃月刀】。",
 	
-	["new_maliang"] = "新马良",
+	["new_maliang"] = "马良[OL]",
 	["&new_maliang"] = "马良",
 	["illustrator:new_maliang"] = "LiuHeng",
 	["zishu"] = "自书",
@@ -2110,7 +2103,7 @@ return {
 	[":yingyuan"] = "当你于回合内使用一张牌时，你可以令一名其他角色从牌堆获得一张与此牌类型相同的牌（每种类型的牌每回合限一次）。",
 	["@yingyuan"] = "你可以令一名其他角色从牌堆获得一张 %src",
 	
-	["new_mobile_maliang"] = "新马良[手杀]",
+	["new_mobile_maliang"] = "马良[手杀]",
 	["&new_mobile_maliang"] = "马良",
 	["#new_mobile_maliang"] = "白眉智士",
 	["illustrator:new_mobile_maliang"] = "LiuHeng",

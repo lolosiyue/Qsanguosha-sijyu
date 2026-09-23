@@ -192,6 +192,27 @@ public:
 
 };
 
+class XuejiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE XuejiCard();
+
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class NewxuehenCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE NewxuehenCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
 
 
 
