@@ -17,6 +17,9 @@ QString canonicalName(const QString &name)
     }
 
     static const QHash<QString, QString> aliases = {
+        { QStringLiteral("nostalyjcm2012"), QStringLiteral("nostalyjcm") },
+        { QStringLiteral("nostalyjcm2013"), QStringLiteral("nostalyjcm") },
+        { QStringLiteral("nostalyjcm2014"), QStringLiteral("nostalyjcm") },
         { QStringLiteral("olli"), QStringLiteral("li") },
         { QStringLiteral("olbei"), QStringLiteral("bei") },
         { QStringLiteral("olguo"), QStringLiteral("guo") },

@@ -114,12 +114,12 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class NewMingjianCard : public SkillCard
+class MingjianCard : public SkillCard
 {
     Q_OBJECT
 
 public:
-    Q_INVOKABLE NewMingjianCard();
+    Q_INVOKABLE MingjianCard();
     void onEffect(CardEffectStruct &effect) const;
 };
 
@@ -177,5 +177,7 @@ public:
     Q_INVOKABLE OLJieYanyuCard();
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
+
+void MigrateToNostalgiaYJCM2015(Package *pkg);
 
 #endif

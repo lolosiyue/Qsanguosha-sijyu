@@ -42,10 +42,10 @@ public:
     }
 };
 
-class Mingjian : public TriggerSkill
+class NosMingjian : public TriggerSkill
 {
 public:
-    Mingjian() : TriggerSkill("mingjian")
+    NosMingjian() : TriggerSkill("nosmingjian")
     {
         events << EventPhaseChanging;
     }
@@ -56,7 +56,7 @@ public:
         if (change.to != Player::Play || player->isSkipped(Player::Play))
             return false;
 
-        ServerPlayer *target = room->askForPlayerChosen(player, room->getOtherPlayers(player), objectName(), "@mingjian-give", true, true);
+        ServerPlayer *target = room->askForPlayerChosen(player, room->getOtherPlayers(player), objectName(), "@nosmingjian-give", true, true);
         if (target == nullptr)
             return false;
         room->broadcastSkillInvoke(objectName());
@@ -64,29 +64,29 @@ public:
         DummyCard d(player->handCards());
         room->obtainCard(target, &d, r, false);
 
-        player->setTag("mingjian", QVariant::fromValue(target));
+        player->setTag("nosmingjian", QVariant::fromValue(target));
         throw TurnBroken;
 
         return false;
     }
 };
 
-class MingjianGive : public PhaseChangeSkill
+class NosMingjianGive : public PhaseChangeSkill
 {
 public:
-    MingjianGive() : PhaseChangeSkill("#mingjian-give")
+    NosMingjianGive() : PhaseChangeSkill("#nosmingjian-give")
     {
     }
 
     bool triggerable(const ServerPlayer *target) const
     {
-        return target && target->getPhase() == Player::NotActive && target->getTag("mingjian").isValid();
+        return target && target->getPhase() == Player::NotActive && target->getTag("nosmingjian").isValid();
     }
 
     bool onPhaseChange(ServerPlayer *target, Room *) const
     {
-        ServerPlayer *p = target->getTag("mingjian").value<ServerPlayer *>();
-        target->removeTag("mingjian");
+        ServerPlayer *p = target->getTag("nosmingjian").value<ServerPlayer *>();
+        target->removeTag("nosmingjian");
         if (p){
 			p->changePhase(p->getPhase(), Player::Play);
 			p->changePhase(p->getPhase(), Player::NotActive);
@@ -1732,47 +1732,47 @@ public:
     }
 };
 
-NewMingjianCard::NewMingjianCard()
+MingjianCard::MingjianCard()
 {
     will_throw = false;
     handling_method = Card::MethodNone;
 }
 
-void NewMingjianCard::onEffect(CardEffectStruct &effect) const
+void MingjianCard::onEffect(CardEffectStruct &effect) const
 {
     if (effect.to->isDead() || effect.from->isDead() || effect.from->isKongcheng()) return;
     CardMoveReason r(CardMoveReason::S_REASON_GIVE, effect.from->objectName());
     Room *room = effect.from->getRoom();
     DummyCard *handcards = effect.from->wholeHandCards();
     room->obtainCard(effect.to, handcards, r, false);
-    room->addPlayerMark(effect.to, "&newmingjian");
+    room->addPlayerMark(effect.to, "&mingjian");
 }
 
-class NewMingjianVS : public ZeroCardViewAsSkill
+class MingjianVS : public ZeroCardViewAsSkill
 {
 public:
-    NewMingjianVS() : ZeroCardViewAsSkill("newmingjian")
+    MingjianVS() : ZeroCardViewAsSkill("mingjian")
     {
     }
 
     const Card *viewAs() const
     {
-        return new NewMingjianCard;
+        return new MingjianCard;
     }
 
     bool isEnabledAtPlay(const Player *player) const
     {
-        return !player->hasUsed("NewMingjianCard") && !player->isKongcheng();
+        return !player->hasUsed("MingjianCard") && !player->isKongcheng();
     }
 };
 
-class NewMingjian : public TriggerSkill
+class Mingjian : public TriggerSkill
 {
 public:
-    NewMingjian() : TriggerSkill("newmingjian")
+    Mingjian() : TriggerSkill("mingjian")
     {
         events << EventPhaseChanging;
-        view_as_skill = new NewMingjianVS;
+        view_as_skill = new MingjianVS;
     }
 
     bool triggerable(const ServerPlayer *target) const
@@ -1783,39 +1783,39 @@ public:
     bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
     {
         if (data.value<PhaseChangeStruct>().to != Player::NotActive) return false;
-        room->setPlayerMark(player, "&newmingjian", 0);
+        room->setPlayerMark(player, "&mingjian", 0);
         return false;
     }
 };
 
-class NewMingjianTargetMod : public TargetModSkill
+class MingjianTargetMod : public TargetModSkill
 {
 public:
-    NewMingjianTargetMod() : TargetModSkill("#newmingjian-target")
+    MingjianTargetMod() : TargetModSkill("#mingjian-target")
     {
         frequency = NotFrequent;
     }
 
     int getResidueNum(const Player *from, const Card *, const Player *) const
     {
-        if (from->getMark("&newmingjian") > 0)
-            return from->getMark("&newmingjian");
+        if (from->getMark("&mingjian") > 0)
+            return from->getMark("&mingjian");
         return 0;
     }
 };
 
-class NewMingjianKeep : public MaxCardsSkill
+class MingjianKeep : public MaxCardsSkill
 {
 public:
-    NewMingjianKeep() : MaxCardsSkill("#newmingjian-keep")
+    MingjianKeep() : MaxCardsSkill("#mingjian-keep")
     {
         frequency = NotFrequent;
     }
 
     int getExtra(const Player *target) const
     {
-        if (target->getMark("&newmingjian") > 0)
-            return target->getMark("&newmingjian");
+        if (target->getMark("&mingjian") > 0)
+            return target->getMark("&mingjian");
         return 0;
     }
 };
@@ -2187,8 +2187,10 @@ YJCM2015Package::YJCM2015Package()
     General *caorui = new General(this, "caorui$", "wei", 3);
     caorui->addSkill(new Huituo);
     caorui->addSkill(new Mingjian);
-    caorui->addSkill(new MingjianGive);
-    related_skills.insert("mingjian", "#mingjian-give");
+    caorui->addSkill(new MingjianTargetMod);
+    caorui->addSkill(new MingjianKeep);
+    related_skills.insert("mingjian", "#mingjian-target");
+    related_skills.insert("mingjian", "#mingjian-keep");
     caorui->addSkill(new Xingshuai);
 
     General *caoxiu = new General(this, "caoxiu", "wei");
@@ -2244,6 +2246,7 @@ YJCM2015Package::YJCM2015Package()
     addMetaObject<WurongCard>();
     addMetaObject<HuomoCard>();
     addMetaObject<AnguoCard>();
+    addMetaObject<MingjianCard>();
 
     skills << new QinwangDraw;
 }
@@ -2273,15 +2276,6 @@ ADD_PACKAGE(OLStYJ2015)
 NewYJCM2015Package::NewYJCM2015Package()
     : Package("NewYJCM2015")
 {
-    General *new_caorui = new General(this, "new_caorui$", "wei", 3);
-    new_caorui->addSkill("huituo");
-    new_caorui->addSkill(new NewMingjian);
-    new_caorui->addSkill(new NewMingjianTargetMod);
-    new_caorui->addSkill(new NewMingjianKeep);
-    new_caorui->addSkill("xingshuai");
-    related_skills.insert("newmingjian", "#newmingjian-target");
-    related_skills.insert("newmingjian", "#newmingjian-keep");
-
     General *new_caoxiu = new General(this, "new_caoxiu", "wei");
     new_caoxiu->addSkill(new Qianju);
     new_caoxiu->addSkill(new Qingxi);
@@ -2292,7 +2286,16 @@ NewYJCM2015Package::NewYJCM2015Package()
     General *new_zhuzhi = new General(this, "new_zhuzhi", "wu", 4);
     new_zhuzhi->addSkill(new NewAnguo);
 
-    addMetaObject<NewMingjianCard>();
     addMetaObject<NewAnguoCard>();
 }
 ADD_PACKAGE(NewYJCM2015)
+
+void MigrateToNostalgiaYJCM2015(Package *pkg)
+{
+    General *nos_caorui = new General(pkg, "nos_caorui$", "wei", 3);
+    nos_caorui->addSkill("huituo");
+    nos_caorui->addSkill(new NosMingjian);
+    nos_caorui->addSkill(new NosMingjianGive);
+    nos_caorui->addSkill("xingshuai");
+    pkg->insertRelatedSkills("nosmingjian", "#nosmingjian-give");
+}

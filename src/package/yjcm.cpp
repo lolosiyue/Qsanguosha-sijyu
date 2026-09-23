@@ -1,4 +1,8 @@
 #include "yjcm.h"
+#include "yjcm2012.h"
+#include "yjcm2013.h"
+#include "yjcm2014.h"
+#include "yjcm2015.h"
 //#include "skill.h"
 //#include "standard.h"
 #include "maneuvering.h"
@@ -2317,6 +2321,11 @@ NostalgiaYJCMPackage::NostalgiaYJCMPackage()
     addMetaObject<NosJujianCard>();
     addMetaObject<NosYexinCard>();
     addMetaObject<NosPaiyiCard>();
+
+    MigrateToNostalgiaYJCM2012(this);
+    MigrateToNostalgiaYJCM2013(this);
+    MigrateToNostalgiaYJCM2014(this);
+    MigrateToNostalgiaYJCM2015(this);
 }
 ADD_PACKAGE(NostalgiaYJCM)
 

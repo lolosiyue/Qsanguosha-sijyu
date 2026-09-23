@@ -1720,32 +1720,30 @@ YJCM2012Package::YJCM2012Package()
 
 ADD_PACKAGE(YJCM2012)
 
-NostalgiaYJCM2012Package::NostalgiaYJCM2012Package()
-    : Package("nostal_yjcm2012")
+void MigrateToNostalgiaYJCM2012(Package *pkg)
 {
-    General *nos_guanxingzhangbao = new General(this, "nos_guanxingzhangbao", "shu");
+    General *nos_guanxingzhangbao = new General(pkg, "nos_guanxingzhangbao", "shu");
     nos_guanxingzhangbao->addSkill(new NosFuhun);
 
-    General *nos_handang = new General(this, "nos_handang", "wu");
+    General *nos_handang = new General(pkg, "nos_handang", "wu");
     nos_handang->addSkill(new NosGongqi);
     nos_handang->addSkill(new NosGongqiTargetMod);
     nos_handang->addSkill(new NosJiefan);
-    related_skills.insert("nosgongqi", "#nosgongqi-target");
-    addMetaObject<NosJiefanCard>();
+    pkg->insertRelatedSkills("nosgongqi", "#nosgongqi-target");
+    pkg->addMetaObject<NosJiefanCard>();
 
-    General *nos_liubiao = new General(this, "nos_liubiao", "qun", 4);
+    General *nos_liubiao = new General(pkg, "nos_liubiao", "qun", 4);
     nos_liubiao->addSkill(new NosZishou);
     nos_liubiao->addSkill(new Zongshi);
 
-    General *nos_madai = new General(this, "nos_madai", "shu");
+    General *nos_madai = new General(pkg, "nos_madai", "shu");
     nos_madai->addSkill("mashu");
     nos_madai->addSkill(new NosQianxi);
 
-    General *nos_wangyi = new General(this, "nos_wangyi", "wei", 3, false);
+    General *nos_wangyi = new General(pkg, "nos_wangyi", "wei", 3, false);
     nos_wangyi->addSkill(new NosZhenlie);
     nos_wangyi->addSkill(new NosMiji);
 }
-ADD_PACKAGE(NostalgiaYJCM2012)
 
 void MigrateToOLStYJ2012(Package *pkg)
 {

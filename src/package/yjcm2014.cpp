@@ -1782,13 +1782,11 @@ YJCM2014Package::YJCM2014Package()
 
 ADD_PACKAGE(YJCM2014)
 
-NostalgiaYJCM2014Package::NostalgiaYJCM2014Package()
-    : Package("nostal_yjcm2014")
+void MigrateToNostalgiaYJCM2014(Package *pkg)
 {
-    General *nos_zhuhuan = new General(this, "nos_zhuhuan", "wu"); // YJ 311
+    General *nos_zhuhuan = new General(pkg, "nos_zhuhuan", "wu"); // YJ 311
     nos_zhuhuan->addSkill(new Youdi);
 }
-ADD_PACKAGE(NostalgiaYJCM2014)
 
 void MigrateToOLStYJ2014(Package *pkg)
 {
