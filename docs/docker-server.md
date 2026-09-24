@@ -55,8 +55,9 @@ with `-p 9527:9527 -p 9528:9528`; host networking and privileged mode are not re
 - `/opt/qsanguosha/bin/qsanguosha_server` is the immutable server binary.
 - `/opt/qsanguosha/lua`, `/opt/qsanguosha/extensions` and `/opt/qsanguosha/lang`
   are bundled immutable runtime resources. Extensions are fetched during the
-  image build from the commit pinned by `QSAN_EXTENSIONS_REF`, which must match
-  the `extension_names` list in `lua/config.lua`.
+  image build from `QSAN_EXTENSIONS_REF` (default: latest `main`). A fixed ref
+  can be supplied when needed; its extension set must match `extension_names`
+  in `lua/config.lua`. Rebuild without cache to refresh a cached fetch layer.
 - `/config/server.ini` is the server configuration. The Compose bind mount is
   read-only.
 - `/data` is the asset root (`QSAN_ASSET_ROOT`), the working directory and the

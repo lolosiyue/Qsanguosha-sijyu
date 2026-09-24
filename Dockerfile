@@ -3,10 +3,8 @@ FROM ubuntu:24.04 AS builder
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CMAKE_BUILD_PARALLEL_LEVEL=2
 ARG QSAN_EXTENSIONS_REPO=https://github.com/lolosiyue/extensions.git
-# Pinned to the extension set that lua/config.lua declares in extension_names.
-# Web signup is refused when an extension file is undeclared or missing, so
-# bump this commit together with that list.
-ARG QSAN_EXTENSIONS_REF=f2071da7350a2bb97131197ed73c74aa3ec6a2f4
+# Follow the current external runtime; callers can override this with a fixed ref.
+ARG QSAN_EXTENSIONS_REF=main
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
