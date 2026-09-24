@@ -78,7 +78,8 @@ public:
 
     Q_INVOKABLE void ensureLoaded();
     Q_INVOKABLE void reload();
-    Q_INVOKABLE void applyFilter(const QVariantMap &filters);
+    // Returns false when the visible result did not change, so the view can keep its selection.
+    Q_INVOKABLE bool applyFilter(const QVariantMap &filters);
     Q_INVOKABLE void setPageIndex(int pageIndex);
     Q_INVOKABLE bool containsCardId(int cardId) const;
     Q_INVOKABLE int cardIdAt(int row) const;
@@ -134,6 +135,7 @@ private:
     const Row *rowForId(int cardId) const;
     QVariantMap rowMap(const Row &row) const;
     void rebuildOptions();
+    QVector<int> filteredRows() const;
     void resetFilter();
 
     QVector<Row> m_all;

@@ -18,6 +18,7 @@ Item {
             leftPadding: box.indicator.width + 8
             verticalAlignment: Text.AlignVCenter
             font.pixelSize: 15
+            font.bold: box.font.bold
         }
         indicator: Rectangle {
             implicitWidth: 20
@@ -193,6 +194,7 @@ Item {
 
     property var kingdomOptions: []
     property var packageEntries: []
+    property var packageGroups: []
     property var details: ({})
     property string selectedName: ""
     property string searchText: ""
@@ -261,8 +263,9 @@ Item {
 
     readonly property var catalog: homeController.generalModel
     readonly property bool catalogPending: !catalog || !catalog.loaded
-    readonly property bool detailsReady: selectedName.length > 0
-                                         && String(details.name || "") === selectedName
+    // 切換選中時先保留上一位武將的詳情，新資料到了才替換，避免整塊面板閃回骨架。
+    readonly property string shownName: String(details.name || "")
+    readonly property bool detailsReady: shownName.length > 0
     readonly property bool detailsPending: selectedName.length > 0 && !detailsReady
     readonly property var kingdomKeys: {
         var raw = String((details && (details.kingdoms || details.kingdom)) || "")
@@ -334,6 +337,46 @@ Item {
             skinPanel.forceActiveFocus()
         else
             searchField.forceActiveFocus()
+    }
+
+    // 依 generalPackages() 的 group 欄位把武將包切成與伺服器設定相同的分類。
+    function groupPackages(entries) {
+        var groups = []
+        var byKey = {}
+        for (var i = 0; i < entries.length; ++i) {
+            var entry = entries[i]
+            var key = String(entry.group || "")
+            if (byKey[key] === undefined) {
+                byKey[key] = groups.length
+                groups.push({ key: key, label: String(entry.groupLabel || key), entries: [], keys: [] })
+            }
+            var group = groups[byKey[key]]
+            group.entries.push(entry)
+            group.keys.push(String(entry.key))
+        }
+        return groups
+    }
+
+    function containsAll(list, keys) {
+        if (!keys || keys.length === 0)
+            return false
+        for (var i = 0; i < keys.length; ++i) {
+            if ((list || []).indexOf(keys[i]) < 0)
+                return false
+        }
+        return true
+    }
+
+    function setKeys(list, keys, on) {
+        var copy = (list || []).slice()
+        for (var i = 0; i < keys.length; ++i) {
+            var idx = copy.indexOf(keys[i])
+            if (on && idx < 0)
+                copy.push(keys[i])
+            else if (!on && idx >= 0)
+                copy.splice(idx, 1)
+        }
+        return copy
     }
 
     function toggleIn(list, key) {
@@ -415,6 +458,7 @@ Item {
             icon: ""
         }].concat(homeController.kingdoms())
         packageEntries = homeController.generalPackages()
+        packageGroups = groupPackages(packageEntries)
         var saved = homeController.generalGridColumns()
         root.gridColumns = saved > 0
                 ? Math.max(HomeTheme.generalGridMinColumns,
@@ -425,6 +469,15 @@ Item {
         root.keyboardReady = true
         if (root.visible)
             searchField.forceActiveFocus()
+    }
+
+    Timer {
+        id: searchDebounce
+        interval: 160
+        onTriggered: {
+            root.searchText = searchField.text
+            root.rebuild()
+        }
     }
 
     Timer {
@@ -517,10 +570,8 @@ Item {
                         leftPadding: 0
                         rightPadding: 0
                         background: Item {}
-                        onTextChanged: {
-                            root.searchText = text
-                            root.rebuild()
-                        }
+                        // 連續輸入只在停頓後重篩一次，避免每個字都重排整張網格。
+                        onTextChanged: searchDebounce.restart()
                         KeyNavigation.tab: kingdomCombo
                         KeyNavigation.backtab: banBtn
                     }
@@ -550,6 +601,7 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 searchField.clear()
+                                searchDebounce.stop()
                                 root.searchText = ""
                                 root.rebuild()
                             }
@@ -1315,23 +1367,32 @@ Item {
                             height: Math.min(parent.height, parent.width * 1.45)
                             radius: 10
                             visible: root.catalogPending
-                                     || (selectedName.length > 0 && cardImg.status !== Image.Ready)
+                                     || (selectedName.length > 0 && !cardImg.hasFrame)
                         }
 
                         Image {
                             id: cardImg
+                            // 換圖時保留舊圖到新圖解碼完成；只有從無到有才顯示骨架。
+                            property bool hasFrame: false
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: parent.top
                             width: parent.width
                             height: Math.min(parent.height, parent.width * 1.45)
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
+                            retainWhileLoading: true
                             cache: true
                             smooth: true
                             mipmap: false
-                            opacity: status === Image.Ready ? 1 : 0
-                            source: (root.detailsReady && selectedName && homeController.artRevision >= 0)
-                                    ? homeController.generalCardImage(selectedName) : ""
+                            opacity: hasFrame ? 1 : 0
+                            source: (root.detailsReady && homeController.artRevision >= 0)
+                                    ? homeController.generalCardImage(root.shownName) : ""
+                            onStatusChanged: {
+                                if (status === Image.Ready)
+                                    hasFrame = true
+                                else if (status !== Image.Loading)
+                                    hasFrame = false
+                            }
                         }
                     }
 
@@ -1826,7 +1887,7 @@ Item {
                                       ? qsTranslate("GeneralOverview", "Current avatar")
                                       : qsTranslate("GeneralOverview", "Set as avatar")
                                 onClicked: {
-                                    homeController.setUserAvatar(root.selectedName)
+                                    homeController.setUserAvatar(root.shownName)
                                     root.reloadDetails()
                                 }
                                 KeyNavigation.tab: banBtn
@@ -1844,7 +1905,7 @@ Item {
                                       : root.ui("GeneralOverview", "banGeneral")
                                 onClicked: {
                                     homeController.setGeneralBanned(
-                                                root.selectedName, details.banned !== true)
+                                                root.shownName, details.banned !== true)
                                     root.reloadDetails()
                                 }
                                 KeyNavigation.tab: searchField
@@ -1868,7 +1929,7 @@ Item {
         focus: visible
 
         function open() {
-            skins = homeController.heroSkinList(root.selectedName)
+            skins = homeController.heroSkinList(root.shownName)
             currentIndex = 0
             for (var i = 0; i < skins.length; ++i) {
                 if (skins[i].current === true)
@@ -1889,7 +1950,7 @@ Item {
                 event.accepted = true
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (currentIndex >= 0 && currentIndex < skins.length) {
-                    homeController.setHeroSkin(root.selectedName, Number(skins[currentIndex].index))
+                    homeController.setHeroSkin(root.shownName, Number(skins[currentIndex].index))
                     root.reloadDetails()
                     visible = false
                 }
@@ -2005,7 +2066,7 @@ Item {
                                         onClicked: {
                                             skinPanel.currentIndex = index
                                             homeController.setHeroSkin(
-                                                        root.selectedName, Number(modelData.index))
+                                                        root.shownName, Number(modelData.index))
                                             root.reloadDetails()
                                             skinPanel.visible = false
                                         }
@@ -2189,16 +2250,48 @@ Item {
                         }
                     }
 
-                    Flow {
-                        width: filterColumn.width
-                        spacing: 8
-                        Repeater {
-                            model: root.packageEntries
+                    Repeater {
+                        model: root.packageGroups
+                        delegate: Column {
+                            id: packageGroup
+                            required property var modelData
+                            width: filterColumn.width
+                            spacing: 4
+
+                            // 分類標題本身就是整組全選／全不選。
                             ThemeCheckBox {
-                                required property var modelData
-                                text: modelData.label
-                                checked: root.packageFilter.indexOf(String(modelData.key)) >= 0
-                                onToggled: root.packageFilter = root.toggleIn(root.packageFilter, String(modelData.key))
+                                text: packageGroup.modelData.label
+                                font.bold: true
+                                checked: root.containsAll(root.packageFilter, packageGroup.modelData.keys)
+                                onToggled: {
+                                    root.packageFilter = root.setKeys(root.packageFilter,
+                                                                      packageGroup.modelData.keys, checked)
+                                    // 使用者點擊會打斷 checked 綁定，接回去才會跟著全選／清除同步。
+                                    checked = Qt.binding(function() {
+                                        return root.containsAll(root.packageFilter, packageGroup.modelData.keys)
+                                    })
+                                }
+                            }
+
+                            Flow {
+                                width: parent.width
+                                leftPadding: 28
+                                spacing: 8
+                                Repeater {
+                                    model: packageGroup.modelData.entries
+                                    ThemeCheckBox {
+                                        id: packageBox
+                                        required property var modelData
+                                        text: modelData.label
+                                        checked: root.packageFilter.indexOf(String(modelData.key)) >= 0
+                                        onToggled: {
+                                            root.packageFilter = root.toggleIn(root.packageFilter, String(modelData.key))
+                                            checked = Qt.binding(function() {
+                                                return root.packageFilter.indexOf(String(packageBox.modelData.key)) >= 0
+                                            })
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

@@ -233,5 +233,6 @@ private:
     HomeCardModel m_cardModel;
     mutable QHash<QString, QUrl> m_cardImageCache;
     mutable QHash<QString, QUrl> m_fullImageCache;
+    mutable QHash<QString, QUrl> m_kingdomIconCache;
     QVariantMap m_videoStatus;
 };

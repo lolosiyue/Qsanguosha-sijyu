@@ -438,15 +438,21 @@ void HomeCardModel::reload()
     emit pageChanged();
 }
 
-void HomeCardModel::applyFilter(const QVariantMap &filters)
+bool HomeCardModel::applyFilter(const QVariantMap &filters)
 {
     ensureLoaded();
     m_filters = filters;
+    QVector<int> next = filteredRows();
+    // Same rows on the first page: skip the reset so tiles and their images stay put.
+    if (next == m_filtered && m_pageIndex == 0)
+        return false;
     beginResetModel();
-    resetFilter();
+    m_filtered = std::move(next);
+    m_pageIndex = 0;
     endResetModel();
     emit filterChanged();
     emit pageChanged();
+    return true;
 }
 
 void HomeCardModel::setPageIndex(int pageIndex)
@@ -620,7 +626,13 @@ void HomeCardModel::rebuildOptions()
 
 void HomeCardModel::resetFilter()
 {
-    m_filtered.clear();
+    m_filtered = filteredRows();
+    m_pageIndex = 0;
+}
+
+QVector<int> HomeCardModel::filteredRows() const
+{
+    QVector<int> filtered;
     const QString query = m_filters.value(QStringLiteral("query")).toString().trimmed().toCaseFolded();
     const QString type = m_filters.value(QStringLiteral("type"), QStringLiteral("all")).toString();
     const QString kind = m_filters.value(QStringLiteral("kind"), QStringLiteral("all")).toString();
@@ -642,17 +654,17 @@ void HomeCardModel::resetFilter()
             continue;
         if (!CardOverviewData::matchesAnyTag(row.tagKeys, tags))
             continue;
-        m_filtered.append(i);
+        filtered.append(i);
     }
     if (sort == QLatin1String("name")) {
-        std::stable_sort(m_filtered.begin(), m_filtered.end(), [this](int left, int right) {
+        std::stable_sort(filtered.begin(), filtered.end(), [this](int left, int right) {
             return QString::localeAwareCompare(m_all.at(left).baseName,
                                                m_all.at(right).baseName) < 0;
         });
     } else if (sort == QLatin1String("number")) {
-        std::stable_sort(m_filtered.begin(), m_filtered.end(), [this](int left, int right) {
+        std::stable_sort(filtered.begin(), filtered.end(), [this](int left, int right) {
             return m_all.at(left).sortNumber < m_all.at(right).sortNumber;
         });
     }
-    m_pageIndex = 0;
+    return filtered;
 }
