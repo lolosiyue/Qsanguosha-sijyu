@@ -128,71 +128,6 @@ public:
     }
 };
 
-class HXiaoguo : public TriggerSkillV2 {
-public:
-    HXiaoguo() : TriggerSkillV2("heg_xiaoguo") {
-        events << EventPhaseStart;
-    }
-
-    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override {
-        TriggerList result;
-        if (!player || !player->isAlive() || player->getPhase() != Player::Finish) return result;
-        for (ServerPlayer *owner : room->findPlayersBySkillName(objectName())) {
-            if (owner != player && owner->isAlive() && owner->canDiscard(owner, "h"))
-                result[owner] << objectName();
-        }
-        return result;
-    }
-
-    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
-        if (!ctx.owner || !ctx.invoker || !ctx.invoker->isAlive()) return false;
-        // Selection is cancellable; only pay() may discard the chosen basic card.
-        const Card *card = room->askForCard(ctx.owner, ".Basic", "@heg_xiaoguo",
-            QVariant::fromValue(ctx.invoker), Card::MethodNone, nullptr, false, objectName());
-        if (!card || card->isVirtualCard() || !canPay(room, ctx.owner, card->getEffectiveId()))
-            return false;
-        ctx.extra_data = card->getEffectiveId();
-        ctx.targets = QList<ServerPlayer *>{ctx.invoker};
-        return true;
-    }
-
-    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
-        bool ok = false;
-        const int id = ctx.extra_data.toInt(&ok);
-        if (!ok || !canPay(room, ctx.owner, id)) return false;
-        room->throwCard(id, objectName(), ctx.owner);
-        return true;
-    }
-
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
-        room->broadcastSkillInvoke(objectName(), 1, ctx.owner);
-        return false;
-    }
-
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
-                      ServerPlayer *target) const override {
-        if (!target || !target->isAlive() || !ctx.owner) return false;
-        room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, ctx.owner->objectName(), target->objectName());
-        if (!room->askForCard(target, ".Equip", "@heg_xiaoguo-discard", QVariant::fromValue(ctx.owner))) {
-            room->broadcastSkillInvoke(objectName(), 2, ctx.owner);
-            room->damage(DamageStruct(objectName(), ctx.owner, target, getEffectiveAmount(ctx)));
-        } else {
-            // Unlike the identity version, discarding equipment grants no draw.
-            room->broadcastSkillInvoke(objectName(), 3, ctx.owner);
-        }
-        return false;
-    }
-
-private:
-    static bool canPay(Room *room, ServerPlayer *owner, int id) {
-        if (!owner || !owner->isAlive() || id < 0 || room->getCardOwner(id) != owner
-            || room->getCardPlace(id) != Player::PlaceHand || !owner->canDiscard(owner, id))
-            return false;
-        const Card *card = room->getCard(id);
-        return card && card->isKindOf("BasicCard");
-    }
-};
-
 void HStandardPackage::addWeiGenerals()
 {
     // Reuse canonical definitions, including their related skills, AI and history keys.
@@ -210,7 +145,7 @@ void HStandardPackage::addWeiGenerals()
     xiahoudun->addSkill("nosganglie");
 
     General *zhangliao = new General(this, "heg_zhangliao", "wei"); // WEI 004
-    zhangliao->addSkill("nostuxi");
+    zhangliao->addSkill("tenyeartuxi");
 
     General *xuchu = new General(this, "heg_xuchu", "wei"); // WEI 005
     xuchu->addSkill("nosluoyi");
@@ -247,8 +182,8 @@ void HStandardPackage::addWeiGenerals()
     General *caopi = new General(this, "heg_caopi", "wei", 3); // WEI 014
     caopi->addCompanion("heg_zhenji");
     caopi->addSkill("xingshang");
-    caopi->addSkill("fangzhu");
+    caopi->addSkill("mobilefangzhu");
 
     General *yuejin = new General(this, "heg_yuejin", "wei", 4); // WEI 016
-    yuejin->addSkill(new HXiaoguo);
+    yuejin->addSkill("xiaoguo");
 }

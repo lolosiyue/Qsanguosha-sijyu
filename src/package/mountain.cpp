@@ -98,61 +98,91 @@ void QiaobianCard::onEffect(CardEffectStruct &effect) const
     }
 }
 
-class QiaobianViewAsSkill : public ZeroCardViewAsSkill
+class QiaobianViewAsSkill : public ViewAsSkillV2
 {
 public:
-    QiaobianViewAsSkill() : ZeroCardViewAsSkill("qiaobian")
+    QiaobianViewAsSkill() : ViewAsSkillV2("qiaobian")
     {
-        response_pattern = "@@qiaobian";
     }
 
-    const Card *viewAs() const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
+        return request.initiator && request.pattern == "@@qiaobian"
+            && request.reason != CardUseStruct::CARD_USE_REASON_PLAY;
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        // Reuse the existing response card and its canonical field-movement rules.
+        if (!cardSelectionFeasible(request)) return nullptr;
         return new QiaobianCard;
     }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "QiaobianCard"; }
 };
 
-class Qiaobian : public TriggerSkill
+class Qiaobian : public TriggerSkillV2
 {
 public:
-    Qiaobian() : TriggerSkill("qiaobian")
+    Qiaobian() : TriggerSkillV2("qiaobian")
     {
         events << EventPhaseChanging;
         view_as_skill = new QiaobianViewAsSkill;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    static int phaseIndex(Player::Phase phase)
     {
-        return TriggerSkill::triggerable(target) && target->canDiscard(target, "h");
+        switch (phase) {
+        case Player::Judge: return 1;
+        case Player::Draw: return 2;
+        case Player::Play: return 3;
+        case Player::Discard: return 4;
+        default: return 0;
+        }
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *zhanghe, QVariant &data) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-        room->setPlayerMark(zhanghe, "qiaobianPhase", (int)change.to);
-        int index = 0;
-        switch (change.to) {
-        case Player::RoundStart:
-        case Player::Start:
-        case Player::Finish:
-        case Player::NotActive: return false;
+        return player && player->isAlive() && player->hasSkill(objectName()) && player->canDiscard(player, "h")
+            && phaseIndex(data.value<PhaseChangeStruct>().to) > 0
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
 
-        case Player::Judge: index = 1; break;
-        case Player::Draw: index = 2; break;
-        case Player::Play: index = 3; break;
-        case Player::Discard: index = 4; break;
-        case Player::PhaseNone: Q_ASSERT(false);
-        }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const Player::Phase phase = ctx.original_data->value<PhaseChangeStruct>().to;
+        room->setPlayerMark(ctx.owner, "qiaobianPhase", int(phase));
+        // Exchange selects without discarding; keep the canonical discard AI callback.
+        const Card *selection = room->askForExchange(ctx.owner, objectName(), 1, 1, false,
+            QString("#qiaobian-%1:::1").arg(phaseIndex(phase)), true);
+        if (!selection || selection->getSubcards().size() != 1) return false;
+        const int id = selection->getSubcards().first();
+        if (!ctx.owner->handCards().contains(id) || !ctx.owner->canDiscard(ctx.owner, id)) return false;
+        ctx.extra_data = id;
+        return true;
+    }
 
-        QString discard_prompt = QString("#qiaobian-%1").arg(index);
-        QString use_prompt = QString("@qiaobian-%1").arg(index);
-        if (index > 0 && room->askForDiscard(zhanghe, objectName(), 1, 1, true, false, discard_prompt)) {
-            room->broadcastSkillInvoke("qiaobian", index);
-            if (!zhanghe->isAlive()) return false;
-            if (!zhanghe->isSkipped(change.to) && (index == 2 || index == 3))
-                room->askForUseCard(zhanghe, "@@qiaobian", use_prompt, index);
-            zhanghe->skip(change.to, true);
-        }
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        bool ok = false;
+        const int id = ctx.extra_data.toInt(&ok);
+        if (!ok || !ctx.owner->handCards().contains(id) || !ctx.owner->canDiscard(ctx.owner, id)) return false;
+        room->throwCard(id, objectName(), ctx.owner);
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *owner = ctx.owner;
+        const Player::Phase phase = ctx.original_data->value<PhaseChangeStruct>().to;
+        const int index = phaseIndex(phase);
+        room->broadcastSkillInvoke(objectName(), index);
+        if (!owner->isAlive()) return false;
+        // Reestablish the response context after nested payment triggers.
+        room->setPlayerMark(owner, "qiaobianPhase", int(phase));
+        if (!owner->isSkipped(phase) && (index == 2 || index == 3))
+            room->askForUseCard(owner, "@@qiaobian", QString("@qiaobian-%1").arg(index), index);
+        owner->skip(phase, true);
         return false;
     }
 };

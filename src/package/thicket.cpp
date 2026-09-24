@@ -9,36 +9,37 @@
 //#include "json.h"
 #include "roomthread.h"
 
-class Xingshang : public TriggerSkill
+class Xingshang : public TriggerSkillV2
 {
 public:
-    Xingshang() : TriggerSkill("xingshang")
+    Xingshang() : TriggerSkillV2("xingshang") { events << Death; }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        events << Death;
+        const ServerPlayer *dead = data.value<DeathStruct>().who;
+        return player && player->isAlive() && player->hasSkill(objectName()) && dead && dead != player && !dead->isNude()
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *caopi, QVariant &data) const
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        DeathStruct death = data.value<DeathStruct>();
-        ServerPlayer *player = death.who;
-        if (player->isNude() || caopi == player)
-            return false;
-        if (caopi->isAlive() && room->askForSkillInvoke(caopi, objectName(), data)) {
-            bool isCaoCao = player->getGeneralName().contains("caocao");
-            room->broadcastSkillInvoke(objectName(), (isCaoCao ? 3 : (player->isMale() ? 1 : 2)));
+        const ServerPlayer *dead = ctx.original_data->value<DeathStruct>().who;
+        return dead && !dead->isNude() && room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data);
+    }
 
-            DummyCard *dummy = new DummyCard(player->handCards());
-            QList <const Card *> equips = player->getEquips();
-            foreach(const Card *card, equips)
-                dummy->addSubcard(card);
-
-            if (dummy->subcardsLength() > 0) {
-                CardMoveReason reason(CardMoveReason::S_REASON_RECYCLE, caopi->objectName());
-                room->obtainCard(caopi, dummy, reason, false);
-            }
-            dummy->deleteLater();
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *dead = ctx.original_data->value<DeathStruct>().who;
+        if (!dead || dead->isNude()) return false;
+        const bool isCaoCao = dead->getGeneralName().contains("caocao");
+        room->broadcastSkillInvoke(objectName(), isCaoCao ? 3 : (dead->isMale() ? 1 : 2));
+        // Dead players are not V2 effect targets; read their remaining cards here.
+        DummyCard cards(dead->handCards());
+        for (const Card *card : dead->getEquips()) cards.addSubcard(card);
+        if (cards.subcardsLength() > 0) {
+            CardMoveReason reason(CardMoveReason::S_REASON_RECYCLE, ctx.owner->objectName());
+            room->obtainCard(ctx.owner, &cards, reason, false);
         }
-
         return false;
     }
 };

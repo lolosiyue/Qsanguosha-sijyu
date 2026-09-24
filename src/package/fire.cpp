@@ -86,20 +86,25 @@ public:
     }
 };
 
-class Quhu : public ZeroCardViewAsSkill
+class Quhu : public ViewAsSkillV2
 {
 public:
-    Quhu() : ZeroCardViewAsSkill("quhu")
+    Quhu() : ViewAsSkillV2("quhu")
     {
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return !player->hasUsed("QuhuCard") && player->canPindian();
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && !request.initiator->hasUsed("QuhuCard") && request.initiator->canPindian();
     }
 
-    const Card *viewAs() const
+    QString historyKey(const ActiveSkillRequest &) const override { return "QuhuCard"; }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
     {
+        // Keep the existing card protocol, AI and single canonical Pindian effect.
+        if (!cardSelectionFeasible(request)) return nullptr;
         return new QuhuCard;
     }
 };
