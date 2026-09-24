@@ -804,51 +804,67 @@ public:
     }
 };
 
-class MobileFangzhu : public MasochismSkill
+class MobileFangzhu : public TriggerSkillV2
 {
 public:
-    MobileFangzhu() : MasochismSkill("mobilefangzhu")
+    MobileFangzhu() : TriggerSkillV2("mobilefangzhu") { events << Damaged; }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
+        return player && player->isAlive() && player->hasSkill(objectName())
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
-    void onDamaged(ServerPlayer *caopi, const DamageStruct &) const
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        Room *room = caopi->getRoom();
-        ServerPlayer *to = room->askForPlayerChosen(caopi, room->getOtherPlayers(caopi), objectName(),
-            "@mobilefangzhu-invoke", caopi->getMark("JilveEvent") != int(Damaged), true);
-        if (to) {
-            if (caopi->hasInnateSkill("fangzhu") || !caopi->hasSkill("jilve")) {
-                room->broadcastSkillInvoke("mobilefangzhu");
-            } else
-                room->broadcastSkillInvoke("jilve", 2);
+        ServerPlayer *to = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(),
+            "@mobilefangzhu-invoke", ctx.owner->getMark("JilveEvent") != int(Damaged), true);
+        if (!to) return false;
+        ctx.targets = {to};
+        return true;
+    }
 
-            int losthp = caopi->getLostHp();
-            if (losthp <= 0) {
-                QString choice = room->askForChoice(to, objectName(), "turnover+losehp");
-                if (choice == "turnover")
-                    to->turnOver();
-                else
-                    room->loseHp(HpLostStruct(to, 1, objectName(), caopi));
-                return;
-            }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (ctx.owner->hasInnateSkill("fangzhu") || !ctx.owner->hasSkill("jilve"))
+            room->broadcastSkillInvoke(objectName());
+        else
+            room->broadcastSkillInvoke("jilve", 2);
+        return false;
+    }
 
-            int candis = 0;
-            foreach (const Card *c, to->getCards("he")) {
-                if (to->canDiscard(to, c->getEffectiveId()))
-                    candis++;
-            }
-            if (candis < losthp) {
-                to->drawCards(losthp, objectName());
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *to) const override
+    {
+        if (!to || !to->isAlive()) return false;
+        ServerPlayer *caopi = ctx.owner;
+        // Keep the variant's zero-lost-HP choice and exact discard alternative.
+        int losthp = caopi->getLostHp();
+        if (losthp <= 0) {
+            QString choice = room->askForChoice(to, objectName(), "turnover+losehp");
+            if (choice == "turnover")
                 to->turnOver();
-            } else {
-                if (room->askForDiscard(to, objectName(), losthp, losthp, true, true, "mobilefangzhu-discard:" + QString::number(losthp))) {
-                    room->loseHp(HpLostStruct(to, 1, objectName(), caopi));
-                    return;
-                }
-                to->drawCards(losthp, objectName());
-                to->turnOver();
-            }
+            else
+                room->loseHp(HpLostStruct(to, 1, objectName(), caopi));
+            return false;
         }
+
+        int candis = 0;
+        foreach (const Card *c, to->getCards("he")) {
+            if (to->canDiscard(to, c->getEffectiveId()))
+                candis++;
+        }
+        if (candis < losthp) {
+            to->drawCards(losthp, objectName());
+            to->turnOver();
+        } else {
+            if (room->askForDiscard(to, objectName(), losthp, losthp, true, true, "mobilefangzhu-discard:" + QString::number(losthp))) {
+                room->loseHp(HpLostStruct(to, 1, objectName(), caopi));
+                return false;
+            }
+            to->drawCards(losthp, objectName());
+            to->turnOver();
+        }
+        return false;
     }
 };
 

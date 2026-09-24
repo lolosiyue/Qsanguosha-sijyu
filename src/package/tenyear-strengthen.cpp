@@ -1031,47 +1031,48 @@ void TenyearTuxiCard::onEffect(CardEffectStruct &effect) const
     room->obtainCard(effect.from, Sanguosha->getCard(card_id), reason, false);
 }
 
-class TenyearTuxiViewAsSkill : public ZeroCardViewAsSkill
-{
+class TenyearTuxi : public TriggerSkillV2 {
 public:
-	TenyearTuxiViewAsSkill() : ZeroCardViewAsSkill("tenyeartuxi")
-	{
-		response_pattern = "@@tenyeartuxi";
-	}
-
-	const Card *viewAs() const
-	{
-		return new TenyearTuxiCard;
-	}
-};
-
-class TenyearTuxi : public DrawCardsSkill
-{
-public:
-	TenyearTuxi() : DrawCardsSkill("tenyeartuxi")
-	{
-		view_as_skill = new TenyearTuxiViewAsSkill;
-	}
-
-	int getPriority(TriggerEvent) const
-	{
-		return 1;
-	}
-
-	int getDrawNum(ServerPlayer *zhangliao, int n) const
-	{
-		Room *room = zhangliao->getRoom();
-		int num = qMin(room->getOtherPlayers(zhangliao).length(), n);
-
-		if (num > 0) {
-			zhangliao->setMark("tenyeartuxiNum", 0);
-			room->setPlayerMark(zhangliao, "tenyeartuxi", num);
-			if (room->askForUseCard(zhangliao, "@@tenyeartuxi", "@tuxi-card:::" + QString::number(num))) {
-				n -= zhangliao->getMark("tenyeartuxiNum");
-			}
-		}
-		return n;
-	}
+    TenyearTuxi() : TriggerSkillV2("tenyeartuxi") { events << DrawNCards; }
+    int getPriority(TriggerEvent) const override { return 1; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override {
+        const DrawStruct draw = data.value<DrawStruct>();
+        if (!player || !player->isAlive() || !player->hasSkill(objectName())
+            || player->getPhase() != Player::Draw || draw.reason != "draw_phase" || draw.num < 1) return {};
+        for (ServerPlayer *target : room->getOtherPlayers(player))
+            if (player->canGet(target, "h")) return {{player, {objectName()}}};
+        return {};
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        QList<ServerPlayer *> candidates;
+        for (ServerPlayer *p : room->getOtherPlayers(ctx.owner))
+            if (ctx.owner->canGet(p, "h")) candidates << p;
+        int n = ctx.original_data->value<DrawStruct>().num;
+        room->setPlayerMark(ctx.owner, "tenyeartuxi", n);
+        ctx.targets = room->askForPlayersChosen(ctx.owner, candidates, objectName(), 0, n,
+                                               "@tuxi-card:::" + QString::number(n), true);
+        return !ctx.targets.isEmpty();
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        room->broadcastSkillInvoke(objectName(), ctx.owner);
+        room->setPlayerMark(ctx.owner, "tenyeartuxiNum", 0);
+        DrawStruct draw = ctx.original_data->value<DrawStruct>();
+        // Each chosen target replaces a draw even if a nested effect removes its hand.
+        draw.num = qMax(0, draw.num - int(ctx.targets.size()));
+        *ctx.original_data = QVariant::fromValue(draw);
+        return false;
+    }
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (ctx.owner->isAlive() && target && ctx.owner->canGet(target, "h")) {
+            // Preserve the sole canonical extraction effect and its move reason.
+            CardEffectStruct effect;
+            effect.from = ctx.owner;
+            effect.to = target;
+            TenyearTuxiCard card;
+            card.onEffect(effect);
+        }
+        return false;
+    }
 };
 
 TenyearQingnangCard::TenyearQingnangCard()
