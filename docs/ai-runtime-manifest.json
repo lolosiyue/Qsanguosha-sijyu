@@ -186,7 +186,7 @@
     {
       "path": "lua/ai/isolated/scarlet-ai.lua",
       "vm": "isolated",
-      "role": "s4_sunjian isolated handlers.",
+      "role": "Scarlet isolated handlers: s4_sunjian plus s4_cangzhuo and s4_zhiji reference decisions.",
       "load_order": null,
       "loaded_by_default": null,
       "required": false,

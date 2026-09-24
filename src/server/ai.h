@@ -49,6 +49,9 @@ struct AICardPileView {
     bool handPile;
     QList<int> cardIds;
 
+    // Metadata follows the same viewer visibility as cardIds; never native cards.
+    QList<AICardView> cards;
+
     AICardPileView() : count(0), open(false), handPile(false) {}
 };
 
@@ -150,6 +153,7 @@ struct AISkillView {
     bool hasAmountOverride;
     int amount;
     bool hasPrivateState;
+    bool hasViewAsSkill = false;
     // Skill classification: the native class chain from the leaf up, so a legacy
     // inherits("FilterSkill") check becomes a value comparison.
     QStringList skillClasses;

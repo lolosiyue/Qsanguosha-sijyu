@@ -295,6 +295,8 @@ void pushAISkillView(lua_State *state, const AISkillView &skill)
     lua_setfield(state, -2, "skill_classes");
     lua_pushinteger(state, skill.frequency);
     lua_setfield(state, -2, "frequency");
+    lua_pushboolean(state, skill.hasViewAsSkill);
+    lua_setfield(state, -2, "has_view_as_skill");
     lua_pushboolean(state, skill.lordSkill);
     lua_setfield(state, -2, "lord_skill");
     lua_pushboolean(state, skill.attachedLordSkill);
@@ -423,6 +425,8 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
                 lua_rawseti(state, -2, cardIndex + 1);
             }
             lua_setfield(state, -2, "card_ids");
+            pushAICards(state, pile.cards);
+            lua_setfield(state, -2, "cards");
         }
         lua_rawseti(state, -2, index + 1);
     }

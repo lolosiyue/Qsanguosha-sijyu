@@ -670,8 +670,13 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
                 || pileName.startsWith(QChar('&'));
             pileView.open = player == viewer
                 || player->pileOpen(pileName, viewer->objectName());
-            if (pileView.open)
+            if (pileView.open) {
                 pileView.cardIds = pileCards;
+                foreach (const int cardId, pileCards) {
+                    if (const Card *card = Sanguosha->getCard(cardId))
+                        pileView.cards << makeAICardView(card);
+                }
+            }
             playerView.piles << pileView;
         }
         // Display cards are shown to the table, so their ids are public.
@@ -701,6 +706,7 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
             skillView.hasAmountOverride = instance.hasAmountOverride;
             skillView.amount = instance.hasAmountOverride ? instance.amountOverride : 0;
             skillView.hasPrivateState = player == viewer;
+            skillView.hasViewAsSkill = ViewAsSkill::parseViewAsSkill(skill) != nullptr;
             if (skillView.hasPrivateState) {
                 skillView.state = makeAIStateObject(player->getSkillInstanceState(
                     instance.skillName, instance.instanceID));
