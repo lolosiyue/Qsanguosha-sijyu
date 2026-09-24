@@ -25,7 +25,7 @@ function marksSummary_(value) {
   }
   const result = parts.join('；');
   if (ordered.length <= parts.length) return result;
-  const suffix = '…共' + ordered.length + '項，詳情可查';
+  const suffix = '…共' + ordered.length + '项，详情可查';
   const room = Math.max(0, 180 - suffix.length - (result ? 1 : 0));
   return result.slice(0, room) + (result ? '；' : '') + suffix;
 }
@@ -37,7 +37,7 @@ function safe_(value) {
 function sheet_(name) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(name);
   if (!sheet || !sheet.getDeveloperMetadata().some(x => x.getKey() === 'QSAN_OWNER' && x.getValue() === QSAN.VERSION))
-    throw new Error('請先建立專用工作表；同名既有工作表不會被覆寫。');
+    throw new Error('请先建立专用工作表；同名既有工作表不会被覆写。');
   return sheet;
 }
 function ensureRange_(sheet, row, col, height, width) {
@@ -54,7 +54,7 @@ function writeBlock_(name, key, row, col, rows, width) {
   if (values.length) ensureRange_(sheet, row, col, values.length, width).setNumberFormat('@').setValues(values);
   put_(storage, signature); put_(storage + '_rows', values.length);
 }
-function setupWorkbook() { return locked_(function() { setup_(); return outcome_('專用工作表已準備。'); }); }
+function setupWorkbook() { return locked_(function() { setup_(); return outcome_('专用工作表已准备。'); }); }
 function setup_() {
   const ss = SpreadsheetApp.getActive();
   QSAN.SHEETS.forEach(name => {
@@ -82,16 +82,16 @@ function setup_() {
   const room = sheet_('QSAN Room');
   if (!room.getRange(1, 1).getValue()) {
     writeBlock_('QSAN Room', 'room_initial', 1, 1, [
-      ['連線與房間', '可編輯值', '說明'], ['玩家名稱', 'Sheets', ''], ['頭像武將 ID', 'caocao', '目錄列出可用 ID'],
-      ['遊戲伺服器', '127.0.0.1', '加入既有伺服器；須主機 allow-game 允許'], ['遊戲埠', 9527, ''],
-      ['AI 人數', 4, '開房加入人數；0 表示補滿'], ['操作說明', '先開啟側邊欄', '配對網址與憑證不放儲存格'],
-      ['聊天內容', '', '輸入後按側邊欄送出聊天'], ['房間設定', '', '清單每行一個 ID；設定由原生驗證'],
-      ['目錄', 'QSanGuosha 選單 → 載入房間目錄', '提供模式、武將、牌包與其他設定'],
-      ['設定名稱', '型別', '值'], ['ServerName', '文字', 'Sheets'], ['GameMode', '文字', '05p'],
-      ['OperationNoLimit', '布林', true], ['CountDownSeconds', '整數', 0]
+      ['连线与房间', '可编辑值', '说明'], ['玩家名称', 'Sheets', ''], ['头像武将 ID', 'caocao', '目录列出可用 ID'],
+      ['游戏伺服器', '127.0.0.1', '加入既有伺服器；须主机 allow-game 允许'], ['游戏埠', 9527, ''],
+      ['AI 人数', 4, '开房加入人数；0 表示补满'], ['操作说明', '先开启侧边栏', '配对网址与凭证不放储存格'],
+      ['聊天内容', '', '输入后按侧边栏送出聊天'], ['房间设定', '', '清单每行一个 ID；设定由原生验证'],
+      ['目录', 'QSanGuosha 选单 → 载入房间目录', '提供模式、武将、牌包与其他设定'],
+      ['设定名称', '型别', '值'], ['ServerName', '文字', 'Sheets'], ['GameMode', '文字', '05p'],
+      ['OperationNoLimit', '布林', true], ['CountDownSeconds', '整数', 0]
     ], 3);
   }
-  writeBlock_('QSAN Details', 'detail_header', 1, 1, [['詳情', '選取房間座位或清單項目，再按「查詢詳情」；結果亦顯示於側欄']], 2);
+  writeBlock_('QSAN Details', 'detail_header', 1, 1, [['详情', '选取房间座位或清单项目，再按「查询详情」；结果亦显示于侧栏']], 2);
 }
 function description_(item) {
   // Accept both native description fields; never show an untranslated lookup key.
@@ -126,19 +126,26 @@ function roomCardText_(card) {
   return (card.label || card.name || '未知牌') + (suit || number ? '[' + suit + number + ']' : '');
 }
 function roomPhase_(player) {
-  return player.phase_label || ({round_start: '回合開始', start: '準備階段', judge: '判定階段', draw: '摸牌階段',
-    play: '出牌階段', discard: '棄牌階段', finish: '結束階段', not_active: '', none: ''}[player.phase] || player.phase || '');
+  return player.phase_label || ({round_start: '回合开始', start: '准备阶段', judge: '判定阶段', draw: '摸牌阶段',
+    play: '出牌阶段', discard: '弃牌阶段', finish: '结束阶段', not_active: '', none: ''}[player.phase] || player.phase || '');
+}
+function factionText_(value) {
+  const roles = {lord: '主公', loyalist: '忠臣', rebel: '反贼', renegade: '内奸'};
+  const kingdoms = {wei: '魏', shu: '蜀', wu: '吴', qun: '群', jin: '晋', god: '神', careerist: '野心家'};
+  const text = String(value || '');
+  return roles[text] || kingdoms[text] || text;
 }
 function roomSeatText_(seat, view) {
-  const p = seat.player, roles = {lord: '主公', loyalist: '忠臣', rebel: '反賊', renegade: '內奸'};
-  const hp = p.hp == null || p.max_hp == null ? '體力待定' : '體力 ' + p.hp + '/' + p.max_hp;
+  const p = seat.player;
+  const role = factionText_(p.role), kingdom = factionText_(p.kingdom);
+  const hp = p.hp == null || p.max_hp == null ? '体力待定' : '体力 ' + p.hp + '/' + p.max_hp;
   const judgments = (view.cards || []).filter(c => c.owner === p.id && Number(c.place) === 2);
   return [
-    [p.general_label, p.deputy_general_label].filter(Boolean).join('／') || '等待選將',
+    [p.general_label, p.deputy_general_label].filter(Boolean).join('／') || '等待选将',
     hp + '　手牌 ' + (p.hand_count == null ? '?' : p.hand_count),
-    [p.alive === false ? '陣亡' : '', roles[p.role] || p.role || '', roomPhase_(p), p.chained ? '連環' : '', p.face_up === false ? '翻面' : ''].filter(Boolean).join(' · '),
-    '裝備：' + (equipLabels_(p.equip) || '無'),
-    '判定：' + (judgments.map(roomCardText_).join('、') || '無'),
+    [p.alive === false ? '阵亡' : '', role && role !== kingdom ? role : '', kingdom ? '势力 ' + kingdom : '', roomPhase_(p), p.chained ? '连环' : '', p.face_up === false ? '翻面' : ''].filter(Boolean).join(' · '),
+    '装备：' + (equipLabels_(p.equip) || '无'),
+    '判定：' + (judgments.map(roomCardText_).join('、') || '无'),
     marksSummary_(p.marks)
   ].filter(Boolean).join('\n');
 }
@@ -193,33 +200,33 @@ function renderRoom_(snapshot, meta) {
     const zone = zones.find(z => z.key === key);
     writeBlock_('QSAN Actions', 'room_' + key, zone.row, zone.col, [[value]], 1);
   };
-  put('title', '三國殺 · 遊戲房間（選取座位 → 側欄「查詢詳情」）');
-  put('status', [game.game_over ? '對局結束 · ' + text_(game.result || '') : '第 ' + (game.round || 0) + ' 回合',
-    game.draw_pile_count == null ? '' : '牌堆剩餘 ' + game.draw_pile_count, snapshot.connection || ''].filter(Boolean).join('　｜　'));
+  put('title', '三国杀 · 游戏房间（选取座位 → 侧栏「查询详情」）');
+  put('status', [game.game_over ? '对局结束 · ' + text_(game.result || '') : '第 ' + (game.round || 0) + ' 回合',
+    game.draw_pile_count == null ? '' : '牌堆剩余 ' + game.draw_pile_count, snapshot.connection || ''].filter(Boolean).join('　｜　'));
   plan.seats.forEach((seat, i) => {
     const p = seat.player;
-    put('seat_title_' + i, (roomPhase_(p) ? '▶ ' : '') + (seat.self ? '本人 · ' : '') + (p.seat ? p.seat + ' 號位 · ' : '') + (p.label || p.id));
+    put('seat_title_' + i, (roomPhase_(p) ? '▶ ' : '') + (seat.self ? '本人 · ' : '') + (p.seat ? p.seat + ' 号位 · ' : '') + (p.label || p.id));
     put('seat_' + i, roomSeatText_(seat, view));
   });
   // Map the displayed rectangles to player IDs, never to mutable seat numbers.
   saveJson_('room_seats', plan.seats.map(s => ({row: s.row, col: s.col, id: s.player.id})));
   // PlaceTable is 7; equipment, delayed tricks and discard pile are separate zones.
-  put('pile_title', '處理區 · Table pile');
-  put('pile', (view.cards || []).filter(c => Number(c.place) === 7).map(roomCardText_).join('、') || '目前沒有處理中的牌');
-  put('prompt_title', '目前行動 · ' + (view.interaction_label || meta.type));
-  put('prompt', game.game_over ? '對局結束：' + text_(game.result || '') : interactionPrompt_(snapshot));
-  put('preflight', get_('preflight_message', '預檢：待重新預檢'));
-  put('hand_title', '本人手牌 · ' + (view.hand || []).length + ' 張');
-  put('hand', (view.hand || []).map(roomCardText_).join('　｜　') || '沒有手牌');
-  put('skills', '技能：' + ((view.skills || []).map(s => s.label || s.name || s.id).join('、') || '無'));
-  put('help', '下方 D 欄勾選卡牌／目標／選項；E 欄指定順序。技能先預檢取得宣告；觀星在 F 欄填 top/bottom。\n' +
-    (meta.shape === 'unsupported' ? '此互動不支援，未送出回覆。' : '選擇範圍：' + (meta.min == null ? '' : meta.min) + ' ～ ' + (meta.max == null ? '' : meta.max)) +
-    (meta.cancelable ? '　可由選單或側欄取消／結束出牌。' : ''));
-  put('log_title', '戰報 · 最新在上（完整記錄見 QSAN Log）');
+  put('pile_title', '处理区 · Table pile');
+  put('pile', (view.cards || []).filter(c => Number(c.place) === 7).map(roomCardText_).join('、') || '目前没有处理中的牌');
+  put('prompt_title', '目前行动 · ' + (view.interaction_label || meta.type));
+  put('prompt', game.game_over ? '对局结束：' + text_(game.result || '') : interactionPrompt_(snapshot));
+  put('preflight', get_('preflight_message', '预检：待重新预检'));
+  put('hand_title', '本人手牌 · ' + (view.hand || []).length + ' 张');
+  put('hand', (view.hand || []).map(roomCardText_).join('　｜　') || '没有手牌');
+  put('skills', '技能：' + ((view.skills || []).map(s => s.label || s.name || s.id).join('、') || '无'));
+  put('help', '下方 D 栏勾选卡牌／目标／选项；E 栏指定顺序。技能先预检取得宣告；观星在 F 栏填 top/bottom。\n' +
+    (meta.shape === 'unsupported' ? '此互动不支援，未送出回复。' : '选择范围：' + (meta.min == null ? '' : meta.min) + ' ～ ' + (meta.max == null ? '' : meta.max)) +
+    (meta.cancelable ? '　可由选单或侧栏取消／结束出牌。' : ''));
+  put('log_title', '战报 · 最新在上（完整记录见 QSAN Log）');
   const logCount = Math.floor((plan.first - 6) / 2), logs = (view.logs || []).slice(-logCount).reverse();
   for (let i = 0; i < logCount; ++i) put('log_' + i, logs[i] || '');
   writeBlock_('QSAN Actions', 'action_header', plan.first - 1, 1,
-    [['項目類型', '識別碼', '名稱', '選取', '順序（可填 1,3）', 'top／bottom／角色', '可用', '說明', '技能名稱', '技能實例', '']], 11);
+    [['项目类型', '识别码', '名称', '选取', '顺序（可填 1,3）', 'top／bottom／角色', '可用', '说明', '技能名称', '技能实例', '']], 11);
 }
 function renderPreflight_(message) {
   // The central preflight panel has a fixed relation to the seat ring, independent of hand size.
@@ -229,7 +236,7 @@ function renderPreflight_(message) {
 }
 function meta_(snapshot) {
   const req = snapshot.interaction || {}, payload = req.payload || {};
-  ['generation', 'revision', 'request_id'].forEach(k => { if (!decimal_(snapshot[k])) throw new Error('原生互動序號格式錯誤。'); });
+  ['generation', 'revision', 'request_id'].forEach(k => { if (!decimal_(snapshot[k])) throw new Error('原生互动序号格式错误。'); });
   return {generation: snapshot.generation, revision: snapshot.revision, request_id: snapshot.request_id,
     type: req.type || 'none', shape: shape_(req), cancelable: req.cancelable === true,
     roles: payload.roles || [], generals: payload.generals || [], enumerated: payload.enumerated !== false,
@@ -245,10 +252,10 @@ function interactionPrompt_(snapshot) {
   const prompt = view.prompt_text || view.prompt || req.prompt || (req.ui && req.ui.prompt) || (req.payload && req.payload.prompt) || '';
   if (prompt) return prompt;
   const skill = String(req.skill || '').trim();
-  if (!skill) return req.type === 'none' || !req.type ? '等待互動' : '目前輪到你處理此互動。';
+  if (!skill) return req.type === 'none' || !req.type ? '等待互动' : '目前轮到你处理此互动。';
   const match = (view.skills || []).find(s => s && (s.name === skill || s.id === skill));
   const label = match && (match.label || match.name || match.id) || skill;
-  return req.type === 'skill_invoke' ? '是否發動技能「' + label + '」？' : '技能「' + label + '」：請處理目前互動。';
+  return req.type === 'skill_invoke' ? '是否发动技能「' + label + '」？' : '技能「' + label + '」：请处理目前互动。';
 }
 function render_(snapshot) {
   const meta = meta_(snapshot), previous = json_('meta', null), req = snapshot.interaction || {}, view = snapshot.view || {};
@@ -256,29 +263,30 @@ function render_(snapshot) {
   const sameRequest = previous && previous.generation === meta.generation && previous.request_id === meta.request_id;
   renderRoom_(snapshot, meta);
   if (!previous || previous.revision !== meta.revision || !sameRequest) {
-    drop_('preflight'); renderPreflight_('預檢：待重新預檢');
+    drop_('preflight'); renderPreflight_('预检：待重新预检');
   }
   const ui = Object.assign({}, req.ui || {});
   if ((!ui.skills || !ui.skills.length) && meta.shape === 'cards') ui.skills = view.skills || [];
   renderActions_(meta, ui, !!sameRequest);
-  const board = [['牌桌', '識別碼', '名稱', '體力', '手牌數', '武將／裝備／標記', '狀態', '說明', '技能名稱', '實例', ''],
-    ['狀態', '', snapshot.connection || '', '', '', '', game.game_over ? 'GAME_OVER' : (view.status || game.status || ''), '', '', '', ''],
-    ['回合／牌堆', game.round === undefined ? '' : game.round, game.draw_pile_count === undefined ? '' : '牌堆剩餘：' + game.draw_pile_count, '', '', '', '', '', '', '', ''],
-    ['勝方', '', text_(game.result || ''), '', '', '', '', '', '', '', '']];
+  const board = [['牌桌', '识别码', '名称', '体力', '手牌数', '武将／装备／标记', '状态', '说明', '技能名称', '实例', ''],
+    ['状态', '', snapshot.connection || '', '', '', '', game.game_over ? 'GAME_OVER' : (view.status || game.status || ''), '', '', '', ''],
+    ['回合／牌堆', game.round === undefined ? '' : game.round, game.draw_pile_count === undefined ? '' : '牌堆剩余：' + game.draw_pile_count, '', '', '', '', '', '', '', ''],
+    ['胜方', '', text_(game.result || ''), '', '', '', '', '', '', '', '']];
   (view.players || []).forEach(p => {
     const hp = p.hp === undefined || p.hp === null ? '' : p.hp;
     const maxHp = p.max_hp === undefined || p.max_hp === null ? '' : p.max_hp;
     const handCount = p.hand_count === undefined || p.hand_count === null ? '' : p.hand_count;
     const label = p.label || p.id;
+    const role = factionText_(p.role), kingdom = factionText_(p.kingdom);
     board.push(['player', p.id, label, (hp === '' && maxHp === '') ? '' : String(hp) + '/' + String(maxHp), handCount,
       [p.general_label, p.deputy_general_label, equipLabels_(p.equip), marksSummary_(p.marks)].filter(Boolean).join('；'),
-      (p.alive === false ? '陣亡' : '存活') + (p.role ? '；身分：' + ({lord:'主公', loyalist:'忠臣', rebel:'反賊', renegade:'內奸'}[p.role] || p.role) : '') + (p.phase && p.phase !== 'not_active' ? '；階段：' + p.phase : ''), description_(p), '', '', '']);
+      (p.alive === false ? '阵亡' : '存活') + (role && role !== kingdom ? '；身份：' + role : '') + (kingdom ? '；势力：' + kingdom : '') + (p.phase && p.phase !== 'not_active' ? '；阶段：' + p.phase : ''), description_(p), '', '', '']);
   });
   (view.hand || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', '本人手牌', '', description_(c), '', '', '']));
-  (view.cards || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', '公開牌區', '', description_(c), '', '', '']));
+  (view.cards || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', '公开牌区', '', description_(c), '', '', '']));
   (view.skills || []).forEach(s => board.push(['skill', s.name || s.id, s.label, '', '', '本人技能', '', description_(s), s.name || s.id, s.instance_id || s.skill_instance_id || 0, '']));
   writeBlock_('QSAN Board', 'board', 1, 1, board, 11);
-  writeBlock_('QSAN Log', 'log', 1, 1, [['戰報']].concat((view.logs || []).map(x => [x])), 1);
+  writeBlock_('QSAN Log', 'log', 1, 1, [['战报']].concat((view.logs || []).map(x => [x])), 1);
   // Commit the new identity only once its candidate rows were written.
   saveJson_('meta', meta);
 }
@@ -295,7 +303,7 @@ function renderActions_(meta, ui, preserve) {
       bank === 'rearrange' || bank === 'assignment', bank === 'rearrange' ? String(index + 1) : '', bank === 'rearrange' ? 'top' : '',
       x.enabled !== false, description_(x), skillName, instance, '']);
   });
-  if (meta.shape === 'option') { add('option', ui.options); if (!meta.enumerated) add('option', [{id: '', label: '自行輸入選項識別碼（第二欄）'}]); }
+  if (meta.shape === 'option') { add('option', ui.options); if (!meta.enumerated) add('option', [{id: '', label: '自行输入选项识别码（第二栏）'}]); }
   if (['cards', 'distribution'].indexOf(meta.shape) >= 0) add('card', ui.cards);
   if (['cards', 'distribution', 'players'].indexOf(meta.shape) >= 0) add('player', ui.players);
   if (meta.shape === 'cards') { add('skill', ui.skills); add('declaration', ui.declarations); }
@@ -327,7 +335,7 @@ function renderActions_(meta, ui, preserve) {
 }
 function catalogFromSheet() {
   return locked_(function() {
-    const catalog = command_('catalog', {}), rows = [['類型', '識別碼', '名稱', '資訊']];
+    const catalog = command_('catalog', {}), rows = [['类型', '识别码', '名称', '资讯']];
     [['mode', catalog.modes], ['general', catalog.generals], ['package', catalog.packages]].forEach(bank => {
       (bank[1] || []).forEach(item => rows.push([bank[0], item.id, item.label, text_(item.metadata || {player_count: item.player_count || ''})]));
     });
@@ -338,13 +346,13 @@ function catalogFromSheet() {
       if (existing.has(key)) return;
       const v = catalog.settings[key]; let type = '文字', value = v;
       if (typeof v === 'boolean') type = '布林';
-      else if (typeof v === 'number' && Number.isInteger(v)) type = '整數';
-      else if (Array.isArray(v) && v.every(x => typeof x === 'string')) { type = '清單'; value = v.join('\n'); }
-      else if (typeof v === 'object' || typeof v === 'number') { type = '保留'; value = '沿用原生預設；此複合設定不可在儲存格編輯'; }
+      else if (typeof v === 'number' && Number.isInteger(v)) type = '整数';
+      else if (Array.isArray(v) && v.every(x => typeof x === 'string')) { type = '清单'; value = v.join('\n'); }
+      else if (typeof v === 'object' || typeof v === 'number') { type = '保留'; value = '沿用原生预设；此复合设定不可在储存格编辑'; }
       more.push([key, type, value]);
     });
     if (more.length) ensureRange_(room, last + 1, 1, more.length, 3).setNumberFormat('@').setValues(more.map(r => r.map(safe_)));
-    return outcome_('目錄已寫入 QSAN Catalog；額外設定加入 QSAN Room。');
+    return outcome_('目录已写入 QSAN Catalog；额外设定加入 QSAN Room。');
   });
 }
 function roomSeatAt_(range) {
@@ -362,13 +370,13 @@ function detailValues_(value) {
 }
 function detailsFromSheet() {
   return locked_(function() {
-    const range = SpreadsheetApp.getActiveRange(); if (!range) throw new Error('請先選取一個項目列。');
+    const range = SpreadsheetApp.getActiveRange(); if (!range) throw new Error('请先选取一个项目列。');
     const sheet = range.getSheet(), name = sheet.getName();
-    if (['QSAN Board', 'QSAN Actions', 'QSAN Catalog'].indexOf(name) < 0) throw new Error('請在牌桌、互動或目錄選取項目。');
+    if (['QSAN Board', 'QSAN Actions', 'QSAN Catalog'].indexOf(name) < 0) throw new Error('请在牌桌、互动或目录选取项目。');
     sheet_(name);
     const inRoom = name === 'QSAN Actions' && range.getRow() < actionFirst_();
     const seat = inRoom ? roomSeatAt_(range) : null;
-    if (inRoom && !seat) throw new Error('請選取一個座位的標題或內容，再按「查詢詳情」；卡牌／技能可在下方清單選取。');
+    if (inRoom && !seat) throw new Error('请选取一个座位的标题或内容，再按「查询详情」；卡牌／技能可在下方清单选取。');
     const row = seat ? ['player', seat.id, '', '', '', '', '', '', '', '', ''] : sheet.getRange(range.getRow(), 1, 1, 11).getValues()[0];
     let kind = String(row[0]), key = String(row[1]);
     if (kind === 'rearrange') kind = 'card';
@@ -380,8 +388,8 @@ function detailsFromSheet() {
     let result;
     if (supported.indexOf(kind) >= 0) result = command_('details', {kind: kind, key: key});
     else result = {label: row[2], description: row[7] || ''};
-    const rows = [['項目', result.label || row[2]], ['識別碼', key]];
-    const visible = detailValues_(result), labels = {description: '說明', detail: '說明', marks: '完整標記', equip: '裝備', hp: '體力', max_hp: '體力上限', hand_count: '手牌數'};
+    const rows = [['项目', result.label || row[2]], ['识别码', key]];
+    const visible = detailValues_(result), labels = {description: '说明', detail: '说明', marks: '完整标记', equip: '装备', hp: '体力', max_hp: '体力上限', hand_count: '手牌数'};
     Object.keys(visible).filter(k => k !== 'id' && k !== 'label').forEach(k => rows.push([labels[k] || k, text_(visible[k])]));
     writeBlock_('QSAN Details', 'details', 2, 1, rows, 2);
     const asset = result.image || result.general_image; let image = '';
@@ -391,7 +399,7 @@ function detailsFromSheet() {
       const headers = response.getAllHeaders(), mimeKey = Object.keys(headers).find(k => k.toLowerCase() === 'content-type'), mime = String(headers[mimeKey] || '');
       if (response.getResponseCode() === 200 && /^image\/(png|jpeg|gif)$/.test(mime)) image = 'data:' + mime + ';base64,' + Utilities.base64Encode(response.getContent());
     }
-    return outcome_('詳情已顯示於側欄，並寫入 QSAN Details。', {detailImage: image,
+    return outcome_('详情已显示于侧栏，并写入 QSAN Details。', {detailImage: image,
       detailText: rows.map(r => r[0] + '：' + r[1]).join('\n')});
   });
 }

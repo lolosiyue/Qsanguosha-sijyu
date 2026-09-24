@@ -170,21 +170,21 @@ CommonTranslationTable = {
     ["web.card.unknown"] = "牌 %id",
 
     -- Skill-description metadata is explicit; unknown state remains technical data.
-    ["@skill-state.shiming_status"] = "使命狀態",
-    ["@skill-state.shiming_status.value.0"] = "進行中",
+    ["@skill-state.shiming_status"] = "使命状态",
+    ["@skill-state.shiming_status.value.0"] = "进行中",
     ["@skill-state.shiming_status.value.1"] = "成功",
-    ["@skill-state.shiming_status.value.2"] = "失敗",
-    ["@xinpowei.state.powei_targets"] = "尚未完成的目標",
+    ["@skill-state.shiming_status.value.2"] = "失败",
+    ["@xinpowei.state.powei_targets"] = "尚未完成的目标",
     ["@xinpowei.state.powei_targets.type"] = "players",
-    ["@weiming.state.weiming_targets"] = "已記錄目標",
+    ["@weiming.state.weiming_targets"] = "已记录目标",
     ["@weiming.state.weiming_targets.type"] = "players",
-    ["@yhtanyou.state.tanyou_players"] = "已選擇的角色",
+    ["@yhtanyou.state.tanyou_players"] = "已选择的角色",
     ["@yhtanyou.state.tanyou_players.type"] = "players",
     ["@yhtanyou.state.tanyou_used"] = "限定效果",
     ["@yhtanyou.state.tanyou_used.value.true"] = "已使用",
     ["@yhtanyou.state.tanyou_used.value.false"] = "尚未使用",
-    ["@yhtanyou.effect"] = "每個回合開始時，插入一個額外的出牌階段",
-    ["@yhtanyou.effect.expiry"] = "探幽效果標記清除時",
+    ["@yhtanyou.effect"] = "每个回合开始时，插入一个额外的出牌阶段",
+    ["@yhtanyou.effect.expiry"] = "探幽效果标记清除时",
 	["a_common_card"] = "通用卡牌",
 	["b_foundation_package"] = "基础将包",
 	["c_mobile"] = "移动版",
@@ -399,6 +399,7 @@ CommonTranslationTable = {
 	["wu"] = "吴",
 	["qun"] = "群",
 	["jin"] = "晋",
+	["careerist"] = "野心家",
 
 	["1_num"] = "①",
 	["2_num"] = "②",
@@ -625,8 +626,8 @@ CommonTranslationTable = {
 	["#skill_add_damage_byother2"] = "%from 对%to造成的伤害增加至%arg点。", --add
 	["#skill_cant_jink"] = "%from的技能【<font color=\"yellow\"><b> %arg </b></font>】被触发，%to 不能使用【闪】响应 %from 对 %to 使用的【杀】。", --add
 	["#BecomeTargetBySkill"] = "%from的技能【<font color=\"yellow\"><b> %arg </b></font>】被触发，%to 成为了 %card 的目标", --add
-	["#ArmorNullifyDamage"] = "%from 的防具【%arg】效果被触发，抵消 %arg2 點傷害", --add
-	["#SkillNullifyDamage"] = "%from 的技能【%arg】效果被触发，抵消 %arg2 點傷害", --add
+	["#ArmorNullifyDamage"] = "%from 的防具【%arg】效果被触发，抵消 %arg2 点伤害", --add
+	["#SkillNullifyDamage"] = "%from 的技能【%arg】效果被触发，抵消 %arg2 点伤害", --add
 	["$NoRespond"] = "%from 的“%arg”被触发， %to 不能响应 %from 使用的【%card】",--add
 	["#skill_add_damage"] = "%from的技能【<font color=\"yellow\"><b> %arg </b></font>】被触发，%from对%to造成的伤害增加至%arg2点。", --add
 	["#choice"] = "%from 选择了 %arg", --add

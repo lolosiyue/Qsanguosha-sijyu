@@ -35,10 +35,10 @@ function playerGeneralName(player: PlayerState | undefined): string {
 }
 
 const SKILL_STATUS_TEXT: Record<string, string> = {
-  missing_skill: "此規則套件沒有這個技能",
-  invalid_instance: "此技能實例已失效或不屬於你",
-  unavailable: "目前條件不允許發動",
-  unknown: "規則尚未判定"
+  missing_skill: "此规则套件没有这个技能",
+  invalid_instance: "此技能实例已失效或不属于你",
+  unavailable: "目前条件不允许发动",
+  unknown: "规则尚未判定"
 };
 
 // Why a candidate is greyed out, in the runtime's own words. Presentation only:
@@ -48,14 +48,14 @@ function skillHint(skill: RulesSkill | undefined, description: string): string {
     return description;
   const notes: string[] = [];
   if (!skill.available)
-    notes.push(SKILL_STATUS_TEXT[skill.status] ?? "目前無法發動");
+    notes.push(SKILL_STATUS_TEXT[skill.status] ?? "目前无法发动");
   if (skill.subcard_min >= 0)
     notes.push(skill.subcard_min === skill.subcard_max
-      ? `子卡 ${skill.subcard_min} 張` : `子卡 ${skill.subcard_min}–${skill.subcard_max} 張`);
+      ? `子卡 ${skill.subcard_min} 张` : `子卡 ${skill.subcard_min}–${skill.subcard_max} 张`);
   if (skill.usage_scope !== "none" && skill.usage_used >= 0)
     notes.push(`已用 ${skill.usage_used} 次`);
   if (skill.invalid)
-    notes.push("實例失效");
+    notes.push("实例失效");
   return [description, ...notes].filter((line) => line).join("\n");
 }
 
@@ -131,24 +131,24 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
   const focusPlayers = asStringList(session.state.gameValue("focus"));
   const phase = asString(player?.phase);
   const phaseLabel: Record<string, string> = {
-    round_start: "回合開始", start: "開始", judge: "判定", draw: "摸牌",
-    play: "出牌", discard: "棄牌", finish: "回合結束", not_active: "非行動"
+    round_start: "回合开始", start: "开始", judge: "判定", draw: "摸牌",
+    play: "出牌", discard: "弃牌", finish: "回合结束", not_active: "非行动"
   };
   const stateText = [
     asNumber(player?.seat, -1) > 0 ? `第 ${asNumber(player?.seat)} 席` : "座次未提供",
     player?.alive === false ? "已死亡" : "",
-    selected ? "✓ 已選目標" : "",
-    kingdom ? `勢力 ${tr(kingdom)}` : "",
-    role ? `身分 ${tr(role)}` : "",
-    player?.chained === true ? "連環" : "",
+    selected ? "✓ 已选目标" : "",
+    kingdom ? `势力 ${tr(kingdom)}` : "",
+    role ? `身份 ${tr(role)}` : "",
+    player?.chained === true ? "连环" : "",
     player?.faceup === false ? "背面" : "",
-    marks ? `標記 ${marks}` : "",
-    equipNames ? `裝備 ${equipNames}` : `裝備 ${equipCount}`,
+    marks ? `标记 ${marks}` : "",
+    equipNames ? `装备 ${equipNames}` : `装备 ${equipCount}`,
     `判定 ${judgeCount}`,
     pileText ? `牌堆 ${pileText}` : "",
-    phase ? `階段 ${phaseLabel[phase] ?? phase}` : "",
+    phase ? `阶段 ${phaseLabel[phase] ?? phase}` : "",
     asString(session.state.gameValue("current_player")) === name ? "目前回合" : "",
-    focusPlayers.includes(name) ? "目前焦點" : ""
+    focusPlayers.includes(name) ? "目前焦点" : ""
   ].filter(Boolean).join(" · ");
   button.append(art);
   if (stateText)
@@ -186,7 +186,7 @@ function tablePileView(bind: UiBind): HTMLElement {
     for (const id of ids)
       pile.append(renderCard(bind, id, false, false, -1, false));
   };
-  appendGroup("處理區", tableIds);
+  appendGroup("处理区", tableIds);
   appendGroup(tr("ren_pile") === "ren_pile" ? "仁" : tr("ren_pile"), renIds);
   appendGroup("判定", judgeIds);
   if (!pile.childElementCount)
@@ -203,7 +203,7 @@ export function tableView(bind: UiBind): HTMLElement {
     table.tabIndex = 0;
     table.append(gameResultView(bind));
   }
-  const seats = el("div", { class: "photos seat-ring", role: "list", "aria-label": "座位環" });
+  const seats = el("div", { class: "photos seat-ring", role: "list", "aria-label": "座位环" });
   const ring = seatRing(bind);
   const seatFilter = bind.session.interaction ? (ui.presentation?.seatFilter ?? "all") : "all";
   const legalCount = ring.filter((name) => name !== bind.session.state.selfName
@@ -223,10 +223,10 @@ export function tableView(bind: UiBind): HTMLElement {
   seats.dataset.filter = seatFilter;
   if (!ring.some((name) => name !== bind.session.state.selfName))
     seats.append(el("p", { class: "status" }, ["等待其他角色"]));
-  const seatToolbar = el("nav", { class: "seat-toolbar", "aria-label": "座位巡覽" });
+  const seatToolbar = el("nav", { class: "seat-toolbar", "aria-label": "座位巡览" });
   const focus = uiFocusPlayer(bind);
   const filterButton = el("button", { type: "button", class: seatFilter === "legal" ? "active" : "" },
-    [seatFilter === "legal" ? `可選目標 ${legalCount} / ${ring.length}` : `全部座位（可選 ${legalCount}）`]);
+    [seatFilter === "legal" ? `可选目标 ${legalCount} / ${ring.length}` : `全部座位（可选 ${legalCount}）`]);
   filterButton.disabled = !bind.session.interaction;
   filterButton.setAttribute("aria-pressed", seatFilter === "legal" ? "true" : "false");
   filterButton.addEventListener("click", () => {
@@ -267,13 +267,13 @@ export function tableView(bind: UiBind): HTMLElement {
     if (node) seats.scrollLeft = node.offsetLeft - (seats.clientWidth - node.clientWidth) / 2;
   };
   for (const [label, action] of [["上一位", () => move(-1)], ["下一位", () => move(1)],
-    ["目前焦點", () => { if (focus) jump(focus); }], ["回到自己", () => {
+    ["目前焦点", () => { if (focus) jump(focus); }], ["回到自己", () => {
       ui.presentation ??= {};
       ui.presentation.browsedSeatIndex = -1;
       document.querySelector<HTMLElement>(".dashboard .dash")?.focus({ preventScroll: true });
     }] ] as const) {
     const button = el("button", { type: "button" }, [label]);
-    button.disabled = label === "目前焦點" && !focus;
+    button.disabled = label === "目前焦点" && !focus;
     button.addEventListener("click", action);
     seatToolbar.append(button);
   }
@@ -298,15 +298,15 @@ export function gameResultView(bind: UiBind): HTMLElement {
     ? summarizeGameResult(payload, session.state.playerNames, session.state.selfName)
     : { draw: false, winners: [], selfOutcome: "unknown" as const };
   const panel = el("section", { class: "game-result", "aria-labelledby": "game-result-heading" });
-  panel.append(el("h2", { id: "game-result-heading" }, [result.draw ? "平局" : "遊戲結束"]));
+  panel.append(el("h2", { id: "game-result-heading" }, [result.draw ? "平局" : "游戏结束"]));
   if (result.selfOutcome === "victory")
-    panel.append(el("p", { class: "game-result-outcome victory" }, ["你方勝利"]));
+    panel.append(el("p", { class: "game-result-outcome victory" }, ["你方胜利"]));
   else if (result.selfOutcome === "defeat")
-    panel.append(el("p", { class: "game-result-outcome defeat" }, ["你方敗北"]));
+    panel.append(el("p", { class: "game-result-outcome defeat" }, ["你方败北"]));
   if (result.draw)
-    panel.append(el("p", { class: "status" }, ["本局沒有勝方"]));
+    panel.append(el("p", { class: "status" }, ["本局没有胜方"]));
   else if (result.winners.length) {
-    panel.append(el("p", { class: "status" }, ["勝方"]));
+    panel.append(el("p", { class: "status" }, ["胜方"]));
     const list = el("ul", { class: "game-result-winners" });
     for (const winner of result.winners) {
       const name = winner.objectName
@@ -317,20 +317,20 @@ export function gameResultView(bind: UiBind): HTMLElement {
     }
     panel.append(list);
   } else
-    panel.append(el("p", { class: "status" }, ["勝方資料未提供"]));
+    panel.append(el("p", { class: "status" }, ["胜方资料未提供"]));
   return panel;
 }
 
 export function logView(bind: UiBind): HTMLElement {
   const { session, ui } = bind;
-  const panel = el("section", { class: "log-panel", "aria-label": "戰報與房內聊天" });
-  const battle = el("div", { class: "log battle-log", role: "log", "aria-label": "戰報" });
-  const chat = el("div", { class: "log chat-log", role: "log", "aria-label": "房內聊天" });
+  const panel = el("section", { class: "log-panel", "aria-label": "战报与房内聊天" });
+  const battle = el("div", { class: "log battle-log", role: "log", "aria-label": "战报" });
+  const chat = el("div", { class: "log chat-log", role: "log", "aria-label": "房内聊天" });
   ui.presentation ??= {};
   ui.presentation.mobileLogCollapsed ??= window.matchMedia("(max-width: 719px), (orientation: portrait)").matches;
   const filter = ui.presentation.battleFilter ?? "all";
-  const filterBar = el("div", { class: "battle-filters", role: "toolbar", "aria-label": "戰報篩選" });
-  const filterNames: Array<[typeof filter, string]> = [["all", "全部"], ["mine", "我的"], ["damage", "傷害"], ["skill", "技能"]];
+  const filterBar = el("div", { class: "battle-filters", role: "toolbar", "aria-label": "战报筛选" });
+  const filterNames: Array<[typeof filter, string]> = [["all", "全部"], ["mine", "我的"], ["damage", "伤害"], ["skill", "技能"]];
   const categoriesOf = (event: PresentationEvent): string[] => {
     const payload = event.payload ?? {};
     const type = asString(payload.log_type);
@@ -393,7 +393,7 @@ export function logView(bind: UiBind): HTMLElement {
       chat.scrollTop = ui.presentation?.chatScrollTop ?? 0;
   });
   const chatForm = el("form", { class: "chat-form" });
-  const draft = el("input", { id: "room-chat", class: "chat-draft", "data-focus-key": "room-chat", placeholder: "房內聊天", "aria-label": "房內聊天" });
+  const draft = el("input", { id: "room-chat", class: "chat-draft", "data-focus-key": "room-chat", placeholder: "房内聊天", "aria-label": "房内聊天" });
   draft.value = ui.presentation?.chatDraft ?? "";
   draft.addEventListener("input", () => {
     ui.presentation ??= {};
@@ -412,7 +412,7 @@ export function logView(bind: UiBind): HTMLElement {
     session.chat(text);
   });
   const collapsed = ui.presentation.mobileLogCollapsed === true;
-  const collapse = el("button", { type: "button", class: "log-collapse", "aria-expanded": String(!collapsed), "aria-label": collapsed ? "展開戰報與聊天" : "收起戰報與聊天" }, [collapsed ? "展開訊息" : "收起訊息"]);
+  const collapse = el("button", { type: "button", class: "log-collapse", "aria-expanded": String(!collapsed), "aria-label": collapsed ? "展开战报与聊天" : "收起战报与聊天" }, [collapsed ? "展开讯息" : "收起讯息"]);
   collapse.addEventListener("click", () => {
     ui.presentation ??= {};
     ui.presentation.mobileLogCollapsed = !ui.presentation.mobileLogCollapsed;
@@ -420,8 +420,8 @@ export function logView(bind: UiBind): HTMLElement {
   });
   if (collapsed)
     panel.classList.add("is-collapsed");
-  panel.append(el("h2", { class: "sr-only" }, ["訊息流"]), collapse, filterBar,
-    el("h2", { class: "log-header" }, ["戰報"]), battle,
+  panel.append(el("h2", { class: "sr-only" }, ["讯息流"]), collapse, filterBar,
+    el("h2", { class: "log-header" }, ["战报"]), battle,
     el("h2", { class: "log-header" }, ["聊天"]), chat, chatForm);
   return panel;
 }
@@ -496,7 +496,7 @@ function skillBar(bind: UiBind): HTMLElement {
   const selectedDesc = skillDescription(ui.selectedOption);
   if (ui.selectedOption)
     row.append(el("p", { class: "skill-desc" }, [
-      selectedDesc || `${tr(ui.selectedOption)}（無技能描述）`
+      selectedDesc || `${tr(ui.selectedOption)}（无技能描述）`
     ]));
   return row;
 }
@@ -524,7 +524,7 @@ export function dashboardView(bind: UiBind): HTMLElement {
   const equips = el("div", { class: "dash-equips" });
   const equipIds = bind.session.state.cardsForPlayer(self, PLACE_EQUIP);
   if (equipIds.length === 0)
-    equips.append(el("span", { class: "status" }, ["裝備空"]));
+    equips.append(el("span", { class: "status" }, ["装备空"]));
   for (const id of equipIds)
     equips.append(renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
   body.append(equips, pileRow(bind, self), skillBar(bind), handView(bind));

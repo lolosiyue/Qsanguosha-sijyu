@@ -194,7 +194,7 @@ function finishRender(shell: HTMLElement, focus: FocusSnapshot | null): void {
     const update = () => {
       const remaining = session.remainingInteractionMs();
       timer.hidden = remaining === null;
-      if (remaining !== null) timer.textContent = `剩餘 ${Math.ceil(remaining / 1000)} 秒`;
+      if (remaining !== null) timer.textContent = `剩余 ${Math.ceil(remaining / 1000)} 秒`;
     };
     update();
     countdownInterval = setInterval(update, 250);
@@ -203,16 +203,16 @@ function finishRender(shell: HTMLElement, focus: FocusSnapshot | null): void {
 }
 
 function readablePhase(): string {
-  if (asBool(session.state.gameValue("game_over"))) return "對局已結束";
+  if (asBool(session.state.gameValue("game_over"))) return "对局已结束";
   switch (session.phase) {
-    case "connecting": return "正在連線";
-    case "hello": return "正在核對規則";
-    case "signup": return "正在加入房間";
-    case "setup": return "房間準備中";
-    case "active": return "對局進行中";
-    case "finished": return "對局已完成";
-    case "failed": return "連線中斷";
-    default: return "尚未連線";
+    case "connecting": return "正在连线";
+    case "hello": return "正在核对规则";
+    case "signup": return "正在加入房间";
+    case "setup": return "房间准备中";
+    case "active": return "对局进行中";
+    case "finished": return "对局已完成";
+    case "failed": return "连线中断";
+    default: return "尚未连线";
   }
 }
 
@@ -225,9 +225,9 @@ function accessibleSnapshot(bind: UiBind): HTMLElement {
   const panel = el("details", { class: "accessible-snapshot" });
   panel.open = presentation.snapshotOpen === true;
   panel.addEventListener("toggle", () => { presentation.snapshotOpen = panel.open; });
-  panel.append(el("summary", {}, ["遊戲狀態文字快照"]));
-  const notice = el("p", { role: "status" }, [presentation.snapshotNotice || "按更新快照讀取共享狀態。"]);
-  const snapshotText = el("textarea", { readonly: "", tabindex: "0", "aria-label": "凍結的遊戲狀態文字快照" });
+  panel.append(el("summary", {}, ["游戏状态文字快照"]));
+  const notice = el("p", { role: "status" }, [presentation.snapshotNotice || "按更新快照读取共享状态。"]);
+  const snapshotText = el("textarea", { readonly: "", tabindex: "0", "aria-label": "冻结的游戏状态文字快照" });
   snapshotText.dataset.focusKey = "accessible-snapshot-text";
   snapshotText.rows = 12;
   snapshotText.value = presentation.accessibleSnapshot || "尚未建立快照。";
@@ -236,7 +236,7 @@ function accessibleSnapshot(bind: UiBind): HTMLElement {
   refresh.addEventListener("click", () => {
     const view = rules.currentPresentation();
     if (!view) {
-      presentation.snapshotNotice = "共享狀態尚未更新完成，請稍後重試。";
+      presentation.snapshotNotice = "共享状态尚未更新完成，请稍后重试。";
       notice.textContent = presentation.snapshotNotice;
       return;
     }
@@ -244,31 +244,31 @@ function accessibleSnapshot(bind: UiBind): HTMLElement {
     const actionLines = model ? [
       ...model.cards.filter((item) => item.enabled).map((item) => {
         const id = Number(item.id);
-        return `可選卡牌：${Number.isSafeInteger(id) ? cardLabel(bind, id) : item.label}（${item.id}）`;
+        return `可选卡牌：${Number.isSafeInteger(id) ? cardLabel(bind, id) : item.label}（${item.id}）`;
       }),
       ...model.players.filter((item) => item.enabled).map((item) => {
         const player = session.state.player(item.id);
         const general = asString(player?.general) || asString(player?.avatar);
         const screen = asString(player?.screen_name, item.id);
-        return `可選目標：${general ? `${tr(general)}（${screen}）` : screen}`;
+        return `可选目标：${general ? `${tr(general)}（${screen}）` : screen}`;
       }),
       ...model.skills.filter((item) => item.enabled).map((item) => `可用技能：${tr(item.label)}`),
-      ...model.actions.filter((item) => item.enabled).map((item) => `可用選項：${tr(item.label)}`),
-      model.can_confirm ? "可確認目前選擇" : "目前不能確認",
+      ...model.actions.filter((item) => item.enabled).map((item) => `可用选项：${tr(item.label)}`),
+      model.can_confirm ? "可确认目前选择" : "目前不能确认",
       model.can_cancel ? "可取消" : "不能取消",
-      model.can_finish ? "可結束出牌階段" : ""
-    ].filter(Boolean) : ["目前沒有可用的共享操作模型；規則尚未判定。"];
+      model.can_finish ? "可结束出牌阶段" : ""
+    ].filter(Boolean) : ["目前没有可用的共享操作模型；规则尚未判定。"];
     const events = view.events.slice(-10).map((event) => event.text).filter(Boolean);
     presentation.accessibleSnapshot = [view.plain_text, "可用操作：", ...actionLines,
       ...(events.length ? ["近期事件：", ...events] : [])].join("\n");
-    presentation.snapshotNotice = "快照已凍結；按更新快照以讀取較新的狀態。";
+    presentation.snapshotNotice = "快照已冻结；按更新快照以读取较新的状态。";
     snapshotText.value = presentation.accessibleSnapshot;
     notice.textContent = presentation.snapshotNotice;
     copy.disabled = false;
     snapshotText.focus({ preventScroll: true });
     snapshotText.setSelectionRange(0, 0);
   });
-  const copy = el("button", { type: "button" }, ["複製快照"]);
+  const copy = el("button", { type: "button" }, ["复制快照"]);
   copy.dataset.focusKey = "accessible-snapshot-copy";
   copy.disabled = !presentation.accessibleSnapshot;
   copy.addEventListener("click", () => {
@@ -276,15 +276,15 @@ function accessibleSnapshot(bind: UiBind): HTMLElement {
     if (!text) return;
     const clipboard = navigator.clipboard;
     if (!clipboard || typeof clipboard.writeText !== "function") {
-      presentation.snapshotNotice = "此連線環境無法存取剪貼簿；可直接選取快照文字。";
-      notice.textContent = "此連線環境無法存取剪貼簿；可直接選取快照文字。";
+      presentation.snapshotNotice = "此连线环境无法存取剪贴簿；可直接选取快照文字。";
+      notice.textContent = "此连线环境无法存取剪贴簿；可直接选取快照文字。";
       return;
     }
     void clipboard.writeText(text).then(() => {
-      presentation.snapshotNotice = "快照已複製。";
+      presentation.snapshotNotice = "快照已复制。";
       notice.textContent = presentation.snapshotNotice;
     }).catch(() => {
-      presentation.snapshotNotice = "無法使用剪貼簿；可直接選取快照文字。";
+      presentation.snapshotNotice = "无法使用剪贴簿；可直接选取快照文字。";
       notice.textContent = presentation.snapshotNotice;
     });
   });
@@ -358,11 +358,11 @@ export function render(): void {
       logo,
       assetImg(fullskinUrls("caocao"), "", "hero-portrait"),
       el("p", { class: "eyebrow" }, ["QSANGUOSHA · ONLINE / SOLO"]),
-      el("h1", { id: "home-title" }, ["太陽神三國殺", el("span", {}, ["時語版"])]),
-      el("p", { class: "hero-copy" }, ["在熟悉的牌局裡，與朋友相逢；也可以隨時開一局單機，讓策略從第一張牌開始。"]),
-      el("div", { class: "hero-art-note" }, ["選好座位，讓每一手牌說話。"])
+      el("h1", { id: "home-title" }, ["太阳神三国杀", el("span", {}, ["时语版"])]),
+      el("p", { class: "hero-copy" }, ["在熟悉的牌局里，与朋友相逢；也可以随时开一局单机，让策略从第一张牌开始。"]),
+      el("div", { class: "hero-art-note" }, ["选好座位，让每一手牌说话。"])
     ]);
-    const entries = el("section", { class: "home-entries", "aria-label": "開始遊戲" }, [connectForm(bind)]);
+    const entries = el("section", { class: "home-entries", "aria-label": "开始游戏" }, [connectForm(bind)]);
     if (soloAvailable)
       entries.append(soloSetup({ controller: solo, session, name: ui.name, avatar: ui.avatar,
         render, start: startSolo, home: () => render() }));
@@ -379,7 +379,7 @@ export function render(): void {
       render, start: startSolo, home: returnHome }));
   toolbar.append(el("strong", {}, ["QSanguosha"]));
   toolbar.append(el("span", { class: "status" }, [
-    `${readablePhase()}${asString(session.state.connectionValue("room_id")) ? ` · 房號 ${asString(session.state.connectionValue("room_id"))}` : ""}`
+    `${readablePhase()}${asString(session.state.connectionValue("room_id")) ? ` · 房号 ${asString(session.state.connectionValue("room_id"))}` : ""}`
   ]));
   const tableBg = asString(session.state.gameValue("table_bg")) || defaultTableBgUrl();
   applySceneBackground(tableBg);

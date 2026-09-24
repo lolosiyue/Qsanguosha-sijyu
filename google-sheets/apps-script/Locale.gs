@@ -68,8 +68,8 @@ const QSAN_TEXT = Object.freeze({
   sessionEndUnknown: '尚未确认会话已结束，凭证仍保留，请检查主机诊断。'
 });
 function qsanText_(key) { return Object.prototype.hasOwnProperty.call(QSAN_TEXT, key) ? QSAN_TEXT[key] : String(key); }
-// Table.gs currently writes the Traditional Chinese tokens; accept those
-// legacy values and stable English IDs without changing stored worksheets.
+// Older worksheets may still store Traditional Chinese setting types.
+// Accept those legacy values and stable English IDs without rewriting stored cells.
 const QSAN_SETTING_TYPES = Object.freeze({
   keep: ['保留', 'Keep'], bool: ['布尔', '布林', 'Boolean'], integer: ['整数', '整數', 'Integer'], list: ['列表', '清單', 'List']
 });

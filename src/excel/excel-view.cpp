@@ -254,7 +254,7 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
     }
     for (int id : offered) {
         QJsonObject item;
-        if (id == -1) item = row(QStringLiteral("-1"), QStringLiteral("隨機選取一張暗置手牌"));
+        if (id == -1) item = row(QStringLiteral("-1"), QStringLiteral("随机选取一张暗置手牌"));
         else {
             item = cardDetails(core, QString::number(id), assetRoot);
             // Explicitly offered faces (AG, Gongxin, Guanxing) are authorized

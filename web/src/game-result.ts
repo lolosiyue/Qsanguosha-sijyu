@@ -45,8 +45,15 @@ export function resultRoleLabel(role: string): string {
   const labels: Record<string, string> = {
     lord: "主公",
     loyalist: "忠臣",
-    renegade: "內奸",
-    rebel: "反賊"
+    renegade: "内奸",
+    rebel: "反贼",
+    careerist: "野心家",
+    wei: "魏",
+    shu: "蜀",
+    wu: "吴",
+    qun: "群",
+    jin: "晋",
+    god: "神"
   };
   return labels[role] || role;
 }

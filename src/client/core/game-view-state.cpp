@@ -61,12 +61,12 @@ QString pileText(const QVariantMap &piles)
             cards.append(entry.toMap().value(QStringLiteral("label")).toString());
         const int unknownCount = qMax(0, pile.value(QStringLiteral("count")).toInt() - cards.size());
         if (unknownCount > 0)
-            cards.append(QCoreApplication::translate("GameViewState", "未知 %1 張").arg(unknownCount));
+            cards.append(QCoreApplication::translate("GameViewState", "未知 %1 张").arg(unknownCount));
         values.append(QStringLiteral("%1：%2").arg(safeText(it.key()), cards.isEmpty()
-            ? QCoreApplication::translate("GameViewState", "%1 張").arg(pile.value(QStringLiteral("count")).toInt())
+            ? QCoreApplication::translate("GameViewState", "%1 张").arg(pile.value(QStringLiteral("count")).toInt())
             : cards.join(QStringLiteral("、"))));
     }
-    return values.isEmpty() ? QCoreApplication::translate("GameViewState", "無")
+    return values.isEmpty() ? QCoreApplication::translate("GameViewState", "无")
                             : values.join(QStringLiteral("、"));
 }
 
@@ -98,7 +98,7 @@ QString cardNames(const QList<GameViewCard> &cards)
     QStringList names;
     for (const GameViewCard &card : cards)
         names.append(card.label);
-    return names.isEmpty() ? QCoreApplication::translate("GameViewState", "無")
+    return names.isEmpty() ? QCoreApplication::translate("GameViewState", "无")
                            : names.join(QStringLiteral("、"));
 }
 }
@@ -324,12 +324,12 @@ QString GameViewState::toPlainText() const
     for (const GameViewPlayer &player : players) {
         if (player.self) { selfHp = player.hp; selfMaxHp = player.maxHp; break; }
     }
-    lines << QCoreApplication::translate("GameViewState", "本人：%1　體力 %2/%3")
+    lines << QCoreApplication::translate("GameViewState", "本人：%1　体力 %2/%3")
         .arg(selfLabel).arg(selfHp).arg(selfMaxHp);
-    lines << QCoreApplication::translate("GameViewState", "階段：%1").arg(phaseLabel);
+    lines << QCoreApplication::translate("GameViewState", "阶段：%1").arg(phaseLabel);
     lines << QCoreApplication::translate("GameViewState", "目前玩家：%1").arg(currentPlayerLabel);
     lines << QCoreApplication::translate("GameViewState", "操作角色：%1").arg(operatingPlayerLabel);
-    lines << QCoreApplication::translate("GameViewState", "牌堆：%1　棄牌堆：%2")
+    lines << QCoreApplication::translate("GameViewState", "牌堆：%1　弃牌堆：%2")
         .arg(drawPileCount < 0 ? QCoreApplication::translate("GameViewState", "未知") : QString::number(drawPileCount))
         .arg(discardPileCount);
     for (const GameViewPlayer &player : players) {
@@ -338,10 +338,15 @@ QString GameViewState::toPlainText() const
                 .arg(player.label, cardNames(player.hand));
         const QString distance = player.distanceFromOperatingPlayer.isEmpty()
             ? QCoreApplication::translate("GameViewState", "未知") : player.distanceFromOperatingPlayer;
-        lines << QCoreApplication::translate("GameViewState", "%1｜座位 %2｜體力 %3/%4｜手牌 %5｜距離 %6｜裝備：%7｜判定：%8｜私有牌堆：%9")
+        QString summary = QCoreApplication::translate("GameViewState", "%1｜座位 %2｜体力 %3/%4｜手牌 %5｜距离 %6｜装备：%7｜判定：%8｜私有牌堆：%9")
             .arg(player.label).arg(player.seat).arg(player.hp).arg(player.maxHp).arg(player.handCount)
             .arg(distance).arg(cardNames(player.equipment)).arg(cardNames(player.judging))
             .arg(pileText(player.piles));
+        if (!player.kingdom.isEmpty())
+            summary += QCoreApplication::translate("GameViewState", "｜势力：%1").arg(player.kingdom);
+        if (!player.role.isEmpty() && player.role != player.kingdom)
+            summary += QCoreApplication::translate("GameViewState", "｜身份：%1").arg(player.role);
+        lines << summary;
     }
     lines << QCoreApplication::translate("GameViewState", "目前提示：%1").arg(prompt);
     return lines.join(QLatin1Char('\n'));

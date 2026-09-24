@@ -93,7 +93,7 @@ ExcelBridge::ExcelBridge(const ExcelBridgeOptions &options, QObject *parent)
         [this](const ProtocolMessage &message) {
             QString error;
             if (!m_interactions.beginRequest(message, &error)) {
-                log(QStringLiteral("互動無法呈現：") + error);
+                log(QStringLiteral("互动无法呈现：") + error);
                 event(QStringLiteral("error"), {{QStringLiteral("code"), error}});
                 // Leaving an unknown question pending is not a supported UI.
                 m_session.disconnectGracefully();

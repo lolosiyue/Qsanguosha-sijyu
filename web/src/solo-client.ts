@@ -24,7 +24,7 @@ class SoloTransport implements SessionTransport {
     this.events.addEventListener(type, listener as EventListener);
   }
   send(frame: string): void {
-    if (this.readyState !== 1) throw new Error("單機對局已關閉");
+    if (this.readyState !== 1) throw new Error("单机对局已关闭");
     this.owner.send(frame);
   }
   receive(frame: string): void {
@@ -63,7 +63,7 @@ export class SoloController {
   async prepare(): Promise<void> {
     await this.close();
     if (!globalThis.crossOriginIsolated || typeof SharedArrayBuffer === "undefined") {
-      this.error = "請解壓完整遊戲包，並使用 StartGame.exe 啟動 Chrome 或 Edge。";
+      this.error = "请解压完整游戏包，并使用 StartGame.exe 启动 Chrome 或 Edge。";
       this.status = "failed";
       this.onChange();
       throw new Error(this.error);
@@ -95,34 +95,34 @@ export class SoloController {
       } else if (message.type === "closed") {
         this.finishClose();
       } else if (message.type === "error") {
-        this.fail(String(message.error || "單機對局執行失敗"));
+        this.fail(String(message.error || "单机对局执行失败"));
       }
       this.onChange();
     };
     worker.onerror = event => {
       event.preventDefault();
-      if (this.worker === worker) this.fail(event.message || "單機執行環境無法啟動");
+      if (this.worker === worker) this.fail(event.message || "单机执行环境无法启动");
     };
-    this.timer = setTimeout(() => this.fail("單機內容載入逾時，請重新啟動遊戲。"), 120000);
+    this.timer = setTimeout(() => this.fail("单机内容载入逾时，请重新启动游戏。"), 120000);
     worker.postMessage({ type: "prepare" });
     this.onChange();
     return result;
   }
 
   createTransport(options: SoloOptions): SessionTransport {
-    if (this.status !== "ready" || !this.worker) throw new Error("請先載入單機內容");
+    if (this.status !== "ready" || !this.worker) throw new Error("请先载入单机内容");
     const transport = new SoloTransport(this);
     this.transport = transport;
     this.status = "starting";
     // LiveSession installs its listeners before native Hello can arrive.
     this.worker.postMessage({ type: "start", options });
-    this.timer = setTimeout(() => this.fail("建立對局逾時，請返回首頁重試。"), 120000);
+    this.timer = setTimeout(() => this.fail("建立对局逾时，请返回首页重试。"), 120000);
     this.onChange();
     return transport;
   }
   send(frame: string): void {
     if (!this.worker || this.status === "stopping" || this.status === "failed")
-      throw new Error("單機對局已關閉");
+      throw new Error("单机对局已关闭");
     this.worker.postMessage({ type: "frame", frame });
   }
   private clearTimer(): void { clearTimeout(this.timer); this.timer = undefined; }
@@ -139,7 +139,7 @@ export class SoloController {
     if (this.closing) return this.closing;
     if (!this.worker) return Promise.resolve();
     this.clearTimer();
-    this.prepared?.reject(new Error("單機載入已取消"));
+    this.prepared?.reject(new Error("单机载入已取消"));
     this.prepared = null;
     this.status = "stopping";
     this.closing = new Promise(resolve => { this.closed = resolve; });
@@ -168,7 +168,7 @@ export class SoloController {
     resolve?.();
   }
   terminate(): void {
-    this.prepared?.reject(new Error("單機對局已關閉"));
+    this.prepared?.reject(new Error("单机对局已关闭"));
     this.prepared = null;
     this.finishClose();
   }

@@ -93,7 +93,7 @@ export function renderCard(
   button.setAttribute("aria-label", label);
   button.setAttribute("aria-pressed", selected ? "true" : "false");
   button.setAttribute("aria-disabled", (!selectable).toString());
-  button.setAttribute("aria-description", "長按查看牌面");
+  button.setAttribute("aria-description", "长按查看牌面");
   button.title = label;
   const face = hidden
     ? assetImg([CARD_BACK_URL], CARD_BACK_URL)
@@ -101,7 +101,7 @@ export function renderCard(
   const caption = el("span", { class: "card-caption" }, [label]);
   button.append(face, caption);
   if (selected)
-    button.append(el("span", { class: "card-selected-badge", "aria-hidden": "true" }, ["✓ 已選"]));
+    button.append(el("span", { class: "card-selected-badge", "aria-hidden": "true" }, ["✓ 已选"]));
 
   let longPressTimer: ReturnType<typeof setTimeout> | undefined;
   let longPressHandled = false;
