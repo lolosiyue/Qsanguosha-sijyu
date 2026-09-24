@@ -1,5 +1,6 @@
 #include "tenyear-strengthen.h"
 #include "settings.h"
+#include <QScopeGuard>
 #include "skill-instance-utils.h"
 //#include "skill.h"
 //#include "standard.h"
@@ -203,84 +204,135 @@ public:
 	}
 };
 
-TenyearRendeCard::TenyearRendeCard()
-{
-	will_throw = false;
-	handling_method = Card::MethodNone;
-}
-
-bool TenyearRendeCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
-{
-	return targets.isEmpty() && to_select != Self && to_select->getMark("tenyearrendetarget-PlayClear") <= 0;
-}
-
-void TenyearRendeCard::onEffect(CardEffectStruct &effect) const
-{
-	Room *room = effect.from->getRoom();
-	CardMoveReason reason(CardMoveReason::S_REASON_GIVE, effect.from->objectName(), effect.to->objectName(), "tenyearrende", "");
-	room->obtainCard(effect.to, this, reason, false);
-	room->addPlayerMark(effect.to, "tenyearrendetarget-PlayClear");
-
-	int old_value = effect.from->getMark("tenyearrende-PlayClear");
-	int new_value = old_value + subcards.length();
-	room->setPlayerMark(effect.from, "tenyearrende-PlayClear", new_value);
-
-	if (old_value < 2 && new_value >= 2) {
-		QList<int> list = room->getAvailableCardList(effect.from, "basic", "tenyearrende");
-		if (list.isEmpty()) return;
-		room->fillAG(list, effect.from);
-		int id = room->askForAG(effect.from, list, true, "tenyearrende", "@tenyearrende-basic");
-		room->clearAG(effect.from);
-		if (id < 0) return;
-		QString name = Sanguosha->getEngineCard(id)->objectName();
-		room->setPlayerMark(effect.from, "tenyearrende_id-PlayClear", id + 1);
-		room->askForUseCard(effect.from, "@@tenyearrende", "@tenyearrende:" + name);
-	}
-}
-
-class TenyearRende : public ViewAsSkill
+class TenyearRendeVS : public ViewAsSkillV2
 {
 public:
-	TenyearRende() : ViewAsSkill("tenyearrende")
-	{
-	}
+    TenyearRendeVS() : ViewAsSkillV2("tenyearrende") { response_or_use = true; }
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        if (!request.initiator) return false;
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            ? !request.initiator->isKongcheng()
+            : request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
+                && request.pattern == "@@tenyearrende"
+                && request.initiator->getMark("tenyearrende_id-PlayClear") > 0;
+    }
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator && card
+            && request.initiator->handCards().contains(card->getEffectiveId())
+            && !request.selectedCardIds.contains(card->getEffectiveId());
+    }
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.reason != CardUseStruct::CARD_USE_REASON_PLAY)
+            return canActivate(request) && request.selectedCardIds.isEmpty();
+        if (request.selectedCardIds.isEmpty()) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        for (int id : request.selectedCardIds) {
+            if (id < 0 || !canSelectCard(selection, Sanguosha->getCard(id))) return false;
+            selection.selectedCardIds << id;
+        }
+        return true;
+    }
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!canActivate(request) || !cardSelectionFeasible(request)) return nullptr;
+        if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY)
+            return ViewAsSkillV2::createCard(request);
+        const Card *chosen = Sanguosha->getEngineCard(request.initiator->getMark("tenyearrende_id-PlayClear") - 1);
+        if (!chosen || !chosen->isKindOf("BasicCard")) return nullptr;
+        Card *card = Sanguosha->cloneCard(chosen->objectName());
+        if (!card) return nullptr;
+        card->setSkillName("_tenyearrende");
+        if (request.initiator->isCardLimited(card, Card::MethodUse) || !card->isAvailable(request.initiator)) {
+            card->deleteLater();
+            return nullptr;
+        }
+        return card;
+    }
+    bool willThrowSelectedCards() const override { return false; }
+    TargetMode targetMode() const override { return SelectTargets; }
+    QString historyKey(const ActiveSkillRequest &) const override { return "TenyearRendeCard"; }
+    bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                         const Player *target) const override
+    {
+        return request.initiator && selected.isEmpty() && target && target->isAlive() && target != request.initiator
+            && !request.initiator->getSkillInstanceStateValue(objectName(), request.activationRef.key.instanceID,
+                "recipients").toStringList().contains(target->objectName());
+    }
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override
+    {
+        return targets.size() == 1;
+    }
+    bool cost(Room *, SkillContext &ctx, const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return false;
+        ctx.extra_data = request.selectedCardIds.size();
+        return true;
+    }
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
+    {
+        if (!ctx.owner || !ctx.invoker || ctx.targets.size() != 1 || !cardSelectionFeasible(request)) return false;
+        ServerPlayer *target = ctx.targets.first();
+        if (!target || !target->isAlive() || target == ctx.invoker
+            || ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients")
+                .toStringList().contains(target->objectName())) return false;
+        // Gift payment belongs to the V2 source, never the generic proxy discard.
+        DummyCard gift(request.selectedCardIds);
+        room->obtainCard(target, &gift, CardMoveReason(CardMoveReason::S_REASON_GIVE,
+            ctx.invoker->objectName(), target->objectName(), objectName(), QString()), false);
+        return true;
+    }
+    EffectFlow effect(SkillContext &ctx) const override
+    {
+        ServerPlayer *owner = ctx.owner;
+        if (!owner || ctx.targets.isEmpty()) return FinishSkill;
+        Room *room = owner->getRoom();
+        const int oldCount = owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "given", 0).toInt();
+        const int newCount = oldCount + ctx.extra_data.toInt();
+        owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "given", newCount);
+        QStringList recipients = owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients").toStringList();
+        recipients << ctx.targets.first()->objectName();
+        owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients", recipients);
+        // Retain the existing AI hints; per-source state decides legality and reward.
+        room->setPlayerMark(owner, "tenyearrende-PlayClear", newCount);
+        room->addPlayerMark(ctx.targets.first(), "tenyearrendetarget-PlayClear");
+        if (oldCount < 2 && newCount >= 2 && owner->isAlive()) {
+            const QList<int> choices = room->getAvailableCardList(owner, "basic", objectName());
+            if (choices.isEmpty()) return ContinueEffects;
+            room->fillAG(choices, owner);
+            const int id = room->askForAG(owner, choices, true, objectName(), "@tenyearrende-basic");
+            room->clearAG(owner);
+            if (id < 0 || !choices.contains(id)) return ContinueEffects;
+            // Scope the declaration to this prompt, including nested activations.
+            const int previous = owner->getMark("tenyearrende_id-PlayClear");
+            const auto restore = qScopeGuard([&] { room->setPlayerMark(owner, "tenyearrende_id-PlayClear", previous); });
+            room->setPlayerMark(owner, "tenyearrende_id-PlayClear", id + 1);
+            room->askForUseCard(owner, "@@tenyearrende", "@tenyearrende:" + Sanguosha->getEngineCard(id)->objectName());
+        }
+        return ContinueEffects;
+    }
+};
 
-	bool viewFilter(const QList<const Card *> &, const Card *to_select) const
-	{
-		if (Sanguosha->currentRoomState()->getCurrentCardUsePattern() == "@@tenyearrende")
-			return false;
-		return !to_select->isEquipped();
-	}
-
-	bool isEnabledAtPlay(const Player *) const
-	{
-		return true;
-	}
-
-	bool isEnabledAtResponse(const Player *, const QString &pattern) const
-	{
-		return pattern == "@@tenyearrende";
-	}
-
-	const Card *viewAs(const QList<const Card *> &cards) const
-	{
-		if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY) {
-			if (cards.isEmpty())
-				return nullptr;
-
-			TenyearRendeCard *rende_card = new TenyearRendeCard;
-			rende_card->addSubcards(cards);
-			return rende_card;
-		} else {
-			if (!cards.isEmpty()) return nullptr;
-			int id = Self->getMark("tenyearrende_id-PlayClear") - 1;
-			if (id < 0) return nullptr;
-			QString name = Sanguosha->getEngineCard(id)->objectName();
-			Card *card = Sanguosha->cloneCard(name);
-			card->setSkillName("_tenyearrende");
-			return card;
-		}
-	}
+class TenyearRende : public TriggerSkillV2
+{
+public:
+    TenyearRende() : TriggerSkillV2("tenyearrende")
+    {
+        events << EventPhaseChanging;
+        view_as_skill = new TenyearRendeVS;
+    }
+    void record(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        if (!player || ctx.owner != player || !ctx.original_data
+            || ctx.original_data->value<PhaseChangeStruct>().from != Player::Play) return;
+        player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "given");
+        player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients");
+        room->setPlayerMark(player, "tenyearrende-PlayClear", 0);
+        room->setPlayerMark(player, "tenyearrende_id-PlayClear", 0);
+    }
 };
 
 namespace {
@@ -1628,6 +1680,7 @@ public:
     }
 };
 
+// Only an accepted response enters V2; the dispatcher must not activate twice.
 class TenyearTianxiang : public TriggerSkill
 {
 public:
@@ -7551,7 +7604,6 @@ TenyearStStandardPackage::TenyearStStandardPackage()
 
 	addMetaObject<TenyearZhihengCard>();
 	addMetaObject<TenyearJieyinCard>();
-	addMetaObject<TenyearRendeCard>();
 	addMetaObject<TenyearYijueCard>();
 	addMetaObject<TenyearQingjianCard>();
 	addMetaObject<TenyearTuxiCard>();

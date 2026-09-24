@@ -84,16 +84,6 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class TenyearRendeCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE TenyearRendeCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
-};
-
 class TenyearYijueCard : public SkillCard
 {
     Q_OBJECT

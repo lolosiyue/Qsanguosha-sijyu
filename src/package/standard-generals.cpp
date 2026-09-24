@@ -1142,15 +1142,15 @@ public:
     {
         return request.initiator && !request.initiator->isKongcheng()
             && ((request.reason == CardUseStruct::CARD_USE_REASON_PLAY
-                    && (Config.EnableHegemony || (!request.initiator->hasUsed("RendeCard")
-                        && (ServerInfo.GameMode != "04_1v3" || request.initiator->getMark("rende") < 2))))
-                || (!Config.EnableHegemony && request.pattern == "@@rende"
+                    && !request.initiator->hasUsed("RendeCard")
+                    && (ServerInfo.GameMode != "04_1v3" || request.initiator->getMark("rende") < 2))
+                || (request.pattern == "@@rende"
                     && request.reason != CardUseStruct::CARD_USE_REASON_PLAY));
     }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         return card && request.initiator && !card->isEquipped()
-            && (Config.EnableHegemony || ServerInfo.GameMode != "04_1v3"
+            && (ServerInfo.GameMode != "04_1v3"
                 || request.selectedCardIds.size() + request.initiator->getMark("rende-PlayClear") < 2)
             && request.initiator->handCards().contains(card->getEffectiveId())
             && !request.selectedCardIds.contains(card->getEffectiveId());
@@ -1175,9 +1175,7 @@ public:
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
                          const Player *target) const override
     {
-        return request.initiator && selected.isEmpty() && target && target->isAlive() && target != request.initiator
-            && (!Config.EnableHegemony || !request.initiator->getSkillInstanceStateValue(objectName(),
-                request.activationRef.key.instanceID, "recipients").toStringList().contains(target->objectName()));
+        return request.initiator && selected.isEmpty() && target && target->isAlive() && target != request.initiator;
     }
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
     {
@@ -1197,9 +1195,7 @@ public:
     {
         if (!ctx.owner || !ctx.invoker || ctx.targets.size() != 1 || !cardSelectionFeasible(request)) return false;
         ServerPlayer *target = ctx.targets.first();
-        if (!target || !target->isAlive() || target == ctx.invoker
-            || (Config.EnableHegemony && ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients")
-                .toStringList().contains(target->objectName()))) return false;
+        if (!target || !target->isAlive() || target == ctx.invoker) return false;
         for (int id : request.selectedCardIds)
             if (!ctx.invoker->handCards().contains(id)) return false;
         // Giving is the cost; do not let the generic proxy discard these cards.
@@ -1217,22 +1213,15 @@ public:
         const int oldCount = owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "given", 0).toInt();
         const int newCount = oldCount + ctx.extra_data.toInt();
         owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "given", newCount);
-        QStringList recipients = owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients").toStringList();
-        if (!ctx.targets.isEmpty()) recipients << ctx.targets.first()->objectName();
-        owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients", recipients);
-        owner->getRoom()->setPlayerProperty(owner, "rende", recipients.join("+"));
         // Keep the legacy AI's aggregate hint; authority is the selected instance.
         Room *room = owner->getRoom();
         room->setPlayerMark(owner, "rende-PlayClear", newCount);
         room->addPlayerMark(owner, objectName(), ctx.extra_data.toInt());
         if (oldCount < 2 && newCount >= 2 && owner->isAlive()) {
-            // Only the mode-specific reward differs; payment and state have one owner.
-            if (Config.EnableHegemony)
-                room->askForUseCard(owner, "@@rende_basic", "@rende-basic");
-            else
-                room->recover(owner, RecoverStruct("rende", owner));
+            // Standard Rende always heals; the basic-card reward belongs to tenyearrende.
+            room->recover(owner, RecoverStruct("rende", owner));
         }
-        if (!Config.EnableHegemony && owner->isAlive() && !owner->isKongcheng()
+        if (owner->isAlive() && !owner->isKongcheng()
             && (room->getMode() != "04_1v3" || owner->getMark("rende") < 2))
             room->askForUseCard(owner, "@@rende", "@rende-give", -1, Card::MethodNone, false);
         return ContinueEffects;
@@ -1251,39 +1240,8 @@ public:
         if (!player || ctx.owner != player || !ctx.original_data
             || ctx.original_data->value<PhaseChangeStruct>().from != Player::Play) return;
         player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "given");
-        player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients");
         room->setPlayerMark(player, objectName(), 0);
         room->setPlayerMark(player, "rende-PlayClear", 0);
-        room->setPlayerProperty(player, "rende", QVariant());
-    }
-};
-
-class RendeBasic : public ViewAsSkillV2 {
-public:
-    RendeBasic() : ViewAsSkillV2("rende_basic") { response_or_use = true; }
-    SkillDialogInfo getDialogInfo() const override
-    {
-        // The donor basic-card declaration is also required for this response prompt.
-        return SkillDialogInfo::guhuo(objectName(), true, false, false);
-    }
-    bool canActivate(const ActiveSkillRequest &request) const override
-    {
-        return Config.EnableHegemony && request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
-            && request.pattern == "@@rende_basic";
-    }
-    const Card *createCard(const ActiveSkillRequest &request) const override
-    {
-        if (!canActivate(request) || !request.selectedCardIds.isEmpty() || request.userString.isEmpty()) return nullptr;
-        Card *card = Sanguosha->cloneCard(request.userString, Card::NoSuit, 0);
-        if (!card) return nullptr;
-        card->setSkillName(objectName());
-        card->setShowSkill("rende");
-        if (!card->isKindOf("BasicCard") || request.initiator->isCardLimited(card, Card::MethodUse)
-            || !card->isAvailable(request.initiator)) {
-            card->deleteLater();
-            return nullptr;
-        }
-        return card;
     }
 };
 
@@ -2666,6 +2624,7 @@ public:
     QString historyKey(const ActiveSkillRequest &) const override { return "GuoseCard"; }
 };
 
+// CardFinished observes one completed card, even if its skill was lost during use.
 class Guose : public TriggerSkill
 {
 public:
@@ -2735,6 +2694,7 @@ public:
     QString historyKey(const ActiveSkillRequest &) const override { return "LiuliCard"; }
 };
 
+// The outer dispatcher only prompts; the accepted V2 response owns activation and payment.
 class Liuli : public TriggerSkill
 {
 public:
@@ -4624,8 +4584,6 @@ StrengthenPackage::StrengthenPackage()
     st_gongsunzan->addSkill(new Qiaomeng);
     st_gongsunzan->addSkill("yicong");
 
-    skills << new RendeBasic;
-    related_skills.insertMulti("rende", "rende_basic");
     addMetaObject<YijueCard>();
     addMetaObject<TuxiCard>();
     addMetaObject<KurouCard>();

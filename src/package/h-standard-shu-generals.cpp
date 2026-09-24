@@ -681,7 +681,7 @@ void HStandardPackage::addShuGenerals()
     liubei->addCompanion("heg_guanyu");
     liubei->addCompanion("heg_zhangfei");
     liubei->addCompanion("heg_ganfuren");
-    liubei->addSkill("rende");
+    liubei->addSkill("tenyearrende");
 
     General *guanyu = new General(this, "heg_guanyu", "shu", 5); // SHU 002
     guanyu->addSkill("tenyearwusheng");
