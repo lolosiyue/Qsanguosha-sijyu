@@ -916,6 +916,7 @@ if(QSAN_BUILD_TUI)
     endif()
 
     add_executable(qsanguosha_tui src/tui/tui-main.cpp)
+    set_target_properties(qsanguosha_tui PROPERTIES FOLDER "Clients")
     target_include_directories(qsanguosha_tui PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/client
@@ -988,6 +989,7 @@ if(QSAN_BUILD_TUI)
             DEPENDS qsanguosha_tui
             VERBATIM
         )
+        set_target_properties(deploy-tui PROPERTIES FOLDER "Packaging")
     endif()
 endif()
 
@@ -1014,6 +1016,7 @@ if(QSAN_BUILD_SHEETS)
 endif()
 if(QSAN_BUILD_SERVER)
     add_executable(qsanguosha_server ${QSAN_DEDICATED_ENTRY_SOURCES})
+    set_target_properties(qsanguosha_server PROPERTIES FOLDER "Servers")
     target_include_directories(qsanguosha_server PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src/core
@@ -1063,6 +1066,7 @@ if(QSAN_BUILD_SERVER)
         DEPENDS qsanguosha_server
         VERBATIM
     )
+    set_target_properties(deploy-server PROPERTIES FOLDER "Packaging")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -1317,6 +1321,7 @@ if(QSAN_BUILD_GUI)
             ${QSAN_GUI_SOURCES}
         )
     endif()
+    set_target_properties(${QSAN_GUI_TARGET} PROPERTIES FOLDER "Clients")
 
     if(NOT QSAN_BUILD_XP_LEGACY)
         target_sources(${QSAN_GUI_TARGET} PRIVATE
@@ -1696,6 +1701,7 @@ if(QSAN_BUILD_GUI)
             DEPENDS ${QSAN_GUI_TARGET} QSanguoshaXPServer
             VERBATIM
         )
+        set_target_properties(deploy-xp PROPERTIES FOLDER "Packaging")
     endif()
 
     if(NOT QSAN_BUILD_XP_LEGACY)
@@ -1711,6 +1717,7 @@ if(QSAN_BUILD_GUI)
         qt_add_lrelease(${QSAN_GUI_TARGET}
             TS_FILES "${translation_source}"
             QM_FILES_OUTPUT_VARIABLE qsan_qm_files
+            NO_GLOBAL_TARGET
         )
 
         if(ANDROID)
@@ -1730,6 +1737,7 @@ if(QSAN_BUILD_GUI)
 
         qt_add_lupdate(${QSAN_GUI_TARGET}
             TS_FILES "${translation_source}"
+            NO_GLOBAL_TARGET
             SOURCES
                 ${QSAN_SOURCES}
                 # The shared snapshot formatter is linked through ClientCore.
@@ -1756,6 +1764,8 @@ if(QSAN_BUILD_GUI)
                 qml/home/HomeTheme.qml
                 ui-script/game/chongxu/chongxu.qml
         )
+        set_target_properties(${QSAN_GUI_TARGET}_lrelease ${QSAN_GUI_TARGET}_lupdate
+            PROPERTIES FOLDER "Translations")
     endif()
 
     if(WIN32 AND NOT QSAN_BUILD_XP_LEGACY)
@@ -1777,6 +1787,7 @@ if(QSAN_BUILD_GUI)
             DEPENDS ${QSAN_GUI_TARGET}
             VERBATIM
         )
+        set_target_properties(deploy PROPERTIES FOLDER "Packaging")
     endif()
 
     if(ANDROID)
