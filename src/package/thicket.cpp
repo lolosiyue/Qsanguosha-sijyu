@@ -8,6 +8,7 @@
 //#include "general.h"
 //#include "json.h"
 #include "roomthread.h"
+#include "settings.h"
 #include <QScopeGuard>
 
 class Xingshang : public TriggerSkillV2
@@ -706,38 +707,44 @@ public:
     QString historyKey(const ActiveSkillRequest &) const override { return "DimengCard"; }
 };
 
-class Wansha : public TriggerSkill
+class Wansha : public TriggerSkillV2
 {
 public:
-    Wansha() : TriggerSkill("wansha")
+    Wansha() : TriggerSkillV2("wansha")
     {
         events << Dying;
         frequency = Compulsory;
     }
 
-    bool trigger(TriggerEvent event , Room *room, ServerPlayer *player, QVariant &data) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (event == Dying) {
-			if (!player->hasFlag("CurrentPlayer")) return false;
+        return player && player->isAlive() && player->hasSkill(objectName())
+            && player->hasFlag("CurrentPlayer")
+            && (!Config.EnableHegemony || player->getPhase() != Player::NotActive)
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
 
-			if (player->hasInnateSkill("wansha") || !player->hasSkill("jilve"))
-				room->broadcastSkillInvoke(objectName());
-			else
-				room->broadcastSkillInvoke("jilve", 3);
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.owner;
+        if (!player || !ctx.original_data) return false;
+        // The V2 pipeline handles concealed invocation; retain Jilve's borrowed-skill audio.
+        if (player->hasInnateSkill(objectName()) || !player->hasSkill("jilve"))
+            room->broadcastSkillInvoke(objectName());
+        else
+            room->broadcastSkillInvoke("jilve", 3);
 
-			DyingStruct dying = data.value<DyingStruct>();
-
-			LogMessage log;
-			log.from = player;
-			log.arg = objectName();
-			log.type = "#WanshaOne";
-			if (player != dying.who) {
-				log.type = "#WanshaTwo";
-				log.to << dying.who;
-			}
-			room->sendLog(log);
-			room->notifySkillInvoked(player, objectName());
+        const DyingStruct dying = ctx.original_data->value<DyingStruct>();
+        LogMessage log;
+        log.from = player;
+        log.arg = objectName();
+        log.type = "#WanshaOne";
+        if (player != dying.who) {
+            log.type = "#WanshaTwo";
+            log.to << dying.who;
         }
+        room->sendLog(log);
+        room->notifySkillInvoked(player, objectName());
         return false;
     }
 };
@@ -745,44 +752,50 @@ public:
 class WanshaLimit : public CardLimitSkill
 {
 public:
-    WanshaLimit() : CardLimitSkill("#wansha-limit")
-    {
-    }
+    WanshaLimit() : CardLimitSkill("#wansha-limit") {}
 
-    QString limitList(const Player *) const
-    {
-        return "use";
-    }
+    QString limitList(const Player *) const override { return "use"; }
 
-    QString limitPattern(const Player *target) const
+    QString limitPattern(const Player *target) const override
     {
-        if (target->hasFlag("Global_Dying")) return "";
-		foreach (const Player *p, target->getAliveSiblings()) {
-			if (p->hasFlag("CurrentPlayer") && p->hasSkills("wansha|mobilemouwansha"))
-				return "Peach";
-		}
-		return "";
+        if (!target || target->hasFlag("Global_Dying")) return QString();
+        for (const Player *player : target->getAliveSiblings()) {
+            if (!player->hasFlag("CurrentPlayer")) continue;
+            // Passive limits require both validity and revelation of an innate hegemony skill.
+            const bool wanshaActive = player->hasSkill("wansha")
+                && (!Config.EnableHegemony || (player->getPhase() != Player::NotActive
+                    && (player->hasShownSkill("wansha") || player->hasAcquiredSkill("wansha"))));
+            if (wanshaActive || player->hasSkill("mobilemouwansha")) return "Peach";
+        }
+        return QString();
     }
 };
 
-class Luanwu : public ZeroCardViewAsSkill
+class Luanwu : public ViewAsSkillV2
 {
 public:
-    Luanwu() : ZeroCardViewAsSkill("luanwu")
+    Luanwu() : ViewAsSkillV2("luanwu") { frequency = Limited; limit_mark = "@chaos"; }
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        frequency = Limited;
-        limit_mark = "@chaos";
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && request.initiator->getMark(limit_mark) > 0;
     }
-
-    const Card *viewAs() const
+    const Card *createCard(const ActiveSkillRequest &request) const override
     {
-        return new LuanwuCard;
+        if (!cardSelectionFeasible(request)) return nullptr;
+        auto *card = new LuanwuCard;
+        card->setSkillName(objectName());
+        // Only reconstructed V2 cards delegate payment to the activation pipeline.
+        card->setTag("luanwu_v2", true);
+        return card;
     }
-
-    bool isEnabledAtPlay(const Player *player) const
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override
     {
-        return player->getMark("@chaos") >= 1;
+        if (!ctx.initiator || ctx.initiator->getMark(limit_mark) <= 0) return false;
+        room->removePlayerMark(ctx.initiator, limit_mark);
+        return true;
     }
+    QString historyKey(const ActiveSkillRequest &) const override { return "LuanwuCard"; }
 };
 
 LuanwuCard::LuanwuCard()
@@ -792,7 +805,8 @@ LuanwuCard::LuanwuCard()
 
 void LuanwuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
 {
-    room->removePlayerMark(source, "@chaos");
+    // Legacy subclasses (MobileMouLuanwuCard) still pay through their old card path.
+    if (!getTag("luanwu_v2").toBool()) room->removePlayerMark(source, "@chaos");
     QList<ServerPlayer *> players = room->getOtherPlayers(source);
     foreach (ServerPlayer *player, players)
 		room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, source->objectName(), player->objectName());
