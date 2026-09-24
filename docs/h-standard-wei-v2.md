@@ -36,6 +36,8 @@
 | `heg_qiangxi` | 沒有身份強襲的攻擊範圍限制。 |
 | `heg_jieming` | 每次傷害一次；身份節命按傷害點數發動。 |
 
+據守選牌 `HJushouSelect` 與斷糧 `HDuanliangVS` 直接繼承 `ViewAsSkillV2`，以原生選牌／建卡 API 實作；魏將來源不再依賴 `xxy-hegemony-viewas`。據守保留 MethodNone 選牌，斷糧保留黑色基本／裝備牌轉兵糧寸斷與階段停用規則。
+
 ## 指定變體接線（2026-09-24）
 
 使用者明確指定保留 `heg_ganglie`、`heg_shensu`、`heg_qiangxi`、`heg_yiji`；本批只將 `heg_tuxi` → `tenyeartuxi`、`heg_fangzhu` → `mobilefangzhu`，刪除 HTuxi／HFangzhu 及其翻譯副本。原生共用技能在原來源升級 V2，不改動四個保留技能。
