@@ -1,6 +1,6 @@
 # Google Sheets 安裝與操作
 
-架構與資料契約見[設計文件](google-sheets-client.md)；版本測量見[驗證記錄](reports/google-sheets-20260913-16.md)。
+架構與資料契約見[設計文件](google-sheets-client.md)。
 
 ## 房間布局與共用戰報
 
@@ -33,7 +33,7 @@
 多個區域時會提示重新選取。查詢仍需要有效會話；已關閉對局只能查看先前保存的詳情。
 側欄保留最近一次主動查詢的內容，自動輪詢不會切換正在閱讀的詳情。
 缺少原生描述時保持空白，不捏造規則文字。已關閉會話的舊牌桌資料會在下次連線刷新
-時套用新版；對局內查詢的實测狀態見[驗證記錄](reports/google-sheets-20260913-16.md)。
+時套用新版。
 
 布局使用既有 Apps Script Spreadsheet 服務的
 [Range 合併／寫入](https://developers.google.com/apps-script/reference/spreadsheet/range)與

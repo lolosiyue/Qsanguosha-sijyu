@@ -34,7 +34,6 @@ Registration and labels are defined by [`qsan_add_ctest()` in CMakeLists.txt](CM
 | `qsanguosha_roomthread_perf` | V2 分表、優先序保序、Room 私有排序鍵、mutex profile 契約 | 直接執行 `qsanguosha_roomthread_perf_tests` |
 | `qsanguosha_card_overview_contract` | classifier、model | 直接執行原 classifier/model executable |
 
-The historical mapping and recorded counts are in the [consolidation record](process/ctest-consolidation.md).
 
 ## Protocol V2 rule
 

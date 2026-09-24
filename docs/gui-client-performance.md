@@ -1,7 +1,7 @@
 # GUI 呈現與特效效能
 
 本文件說明 GUI 呈現與特效的成本控制及生命週期。
-沿用 [大局原生 UI](process/large-room-ui-implementation.md)、[特效政策](linux-gui-effects-profiles.md)
+沿用 [大房間協議審計](large-room-ui-protocol-audit.md)、[特效政策](linux-gui-effects-profiles.md)
 及 [圖片快取失效契約](package-modularity.md#native-image-cache-lifetime)。
 
 ## 資訊更新
@@ -51,7 +51,7 @@ Spine 的解析資源重用與播放狀態分離；各演出保留獨立骨架�
 
 ## 驗收方法
 
-[2026-09-20 驗證報告](reports/gui-client-performance-20260920.md)保存 focused 契約、建置失敗與修正、GUI 特效及退出測試的結果。
+2026-09-20 驗證涵蓋 focused 契約、建置失敗與修正、GUI 特效及退出測試。
 
 | 驗收項目 | 測量條件 |
 | --- | --- |

@@ -103,4 +103,4 @@ room->removeSkillEffectDescription(target, "author-scoped-id");
 
 ## 驗證紀錄
 
-[2026-09-20 驗證報告](reports/skill-description-instances-20260920.md)保存兩批建置與 focused 結果、缺少 SVG 的建置失敗、fixture 空指標失敗與修正，以及 GUI 回饋修訂的複驗。
+2026-09-20 驗證涵蓋兩批建置與 focused 結果、缺少 SVG 的建置失敗、fixture 空指標失敗與修正，以及 GUI 回饋修訂的複驗。

@@ -61,6 +61,6 @@
 
 ## 驗證狀態
 
-[2026-09-21 驗證報告](reports/ai-common-20260921.md)記錄建置、契約與生命週期測量。
+2026-09-21 已完成建置、契約與生命週期測量驗證。
 
 相關設計邊界：[`docs/ai-identity-mode-decoupling-plan.md`](ai-identity-mode-decoupling-plan.md)、[`docs/smart-ai-adapter-dependency-audit.md`](smart-ai-adapter-dependency-audit.md)、[`docs/lua-ai-spec.md`](lua-ai-spec.md)。

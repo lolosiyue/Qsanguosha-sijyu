@@ -1,6 +1,6 @@
 # Google Sheets 架構與資料契約
 
-操作與部署見[安裝指南](google-sheets-setup.md)。[開發記錄](process/google-sheets-development.md)保存方案與修訂，[驗證報告](reports/google-sheets-20260913-16.md)保存對局、失敗與未驗項目。
+操作與部署見[安裝指南](google-sheets-setup.md)。
 
 ## 功能範圍
 
@@ -23,7 +23,7 @@
 | 來源 | 可重用契約／需要處理的差異 |
 |---|---|
 | [Excel IPC v1](excel-ipc.md) | 原生快照、增量事件、指令去重、互動版本檢查與結構化草稿；HTTP 僅監聽 loopback |
-| [Excel 實作狀態](reports/excel-20260912.md) | 既有橋接完成過一次託管對局；實際 Excel 操作與修正版完整對局仍未驗收，不能作為 Sheets 驗收證據 |
+| Excel 實作狀態 | 既有橋接完成過一次託管對局；實際 Excel 操作與修正版完整對局仍未驗收，不能作為 Sheets 驗收證據 |
 | `src/excel/excel-bridge.{h,cpp}` | `ClientCore`、`ClientLiveSession`、`ExcelInteractionAdapter` 與 `LocalServerController` 的串行會話 |
 | `src/excel/excel-view.{h,cpp}` | 已過濾的玩家可見狀態與呈現列；圖片是本機絕對路徑，Sheets 必須另行映射 |
 | `src/excel/excel-process-guard.{h,cpp}` | Excel 父程序身分與生命週期，不能直接作為 Sheets 服務的監護方式 |
@@ -79,7 +79,6 @@ Cloudflare HTTPS 通道只用於受控測試，測試後關閉。既有 Excel lo
 若實際收到未支援互動，保留明確錯誤與失敗證據，不默默跳過或偽造回覆。
 `excel/frontend-coverage.json` 的 28 類映射仍是互動基線，不是全部擴展可玩的證明。
 記錄實際載入來源版本與 hash 是驗收溯源，不得把這份清單變成相容性准入限制。
-逐項互動與擴展覆蓋見[驗證報告](reports/google-sheets-20260913-16.md)。
 
 ## 原始碼入口
 

@@ -36,4 +36,3 @@
 
 `findPlayerTo*` wrappers 的輸入是目前 projected candidates；它們不等同 native `canUse`、distance、range、prohibited 或完整 damage/effect search。未知實際 legality 時保持 unknown。
 
-驗證結果見 [2026-09-21 共用層報告](reports/ai-common-20260921.md)。

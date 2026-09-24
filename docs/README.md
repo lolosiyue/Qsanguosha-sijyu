@@ -1,6 +1,6 @@
 # 文件索引
 
-依操作與開發主題查找文件。使用入口見 [README](../README_zh.md)；歷史方案與進度見 [過程記錄](process/README.md)，版本實測見 [驗證報告](reports/README.md)。
+依操作與開發主題查找文件。使用入口見 [README](../README_zh.md)。
 
 操作指南描述用法，API 文件描述契約；欄位、預設值與限制以連結的原始碼符號為準。
 
@@ -14,7 +14,6 @@
 | [engine-correct-skills.md](engine-correct-skills.md) | CorrectSkillV2 引擎側快參（類別、selector、snapshot 欄位） |
 | [active-skill-v2-migration-guide.md](active-skill-v2-migration-guide.md) | 舊 ViewAsSkill 遷移至 V2 的規範 |
 | [active-skill-v2-test-matrix.md](active-skill-v2-test-matrix.md) | ViewAsSkillV2 驗證矩陣與證據 |
-| [skill-instance-callsite-audit.md](skill-instance-callsite-audit.md) | 存檔快照；SkillInstance 呼叫點人工審核清單（仍有未勾選待辦） |
 | [safe-view-as-equip.md](safe-view-as-equip.md) | 手牌安全視為裝備的 C++ 範式與 Lua 端正確做法 |
 | [preselection-meta-skill.md](preselection-meta-skill.md) | PreSelectionMetaSkill 六層接線說明 |
 | [anytime-skill.md](anytime-skill.md) | AnytimeSkill 全鏈路（C++／Lua／protocol／client） |
@@ -48,10 +47,7 @@
 | [room-askfor-ui-matrix.md](room-askfor-ui-matrix.md) | Room askFor* 與 GUI widget 對照矩陣 |
 | [ask-for-qml.md](ask-for-qml.md) | `askForQml` 通用 QML 互動鏈（結構化 payload、overlay 契約） |
 | [guhuo-dialog-refactor.md](guhuo-dialog-refactor.md) | 蠱惑對話框薄 presenter 重構範式（第三階段未做） |
-| [engine-gui-decoupling-implementation-plan.md](process/engine-gui-decoupling-implementation-plan.md) | Engine/GUI 解耦計畫與階段記錄 |
 | [ui-roadmap.md](ui-roadmap.md) | 八項共通 UI 契約與 P1–P8 產品線路線圖 |
-| [room-layout-engine-plan.md](process/room-layout-engine-plan.md) | 房間自適應版面計畫與驗證記錄 |
-| [windows-gui-crash-handoff.md](process/windows-gui-crash-handoff.md) | Windows GUI 崩潰證據與調查假設 |
 | [hero-skin-guide.md](hero-skin-guide.md) | 皮膚系統完整文檔（資源查找、翻譯、Spine、GIF 動圖） |
 | [dynamic-skin-guide.md](dynamic-skin-guide.md) | Spine 動態皮膚與 `skin=` lightbox 用法 |
 | [Aura光環系統說明.md](Aura光環系統說明.md) | Aura（`lani`）光環系統與 `changeBGM`／`changeBackground` |
@@ -97,7 +93,6 @@
 | 文檔 | 說明 |
 |------|------|
 | [windows-build.md](windows-build.md) | Windows x64 建置、Qt 部署與啟動 |
-| [cross-platform-modernization-plan.md](process/cross-platform-modernization-plan.md) | 跨平台現代化計畫與里程碑 |
 | [linux-development-environment.md](linux-development-environment.md) | Linux 開發環境與 M0–M2B 里程碑 |
 | [linux-packaging.md](linux-packaging.md) | Linux 打包（`.deb` deferred） |
 | [linux-gui-effects-profiles.md](linux-gui-effects-profiles.md) | Linux GUI 特效 profiles 契約與 smoke |
@@ -116,7 +111,6 @@
 | [excel-packaging.md](excel-packaging.md) | Excel 封裝輸入、VBA 匯出與 runtime-only 組裝 |
 | [google-sheets-setup.md](google-sheets-setup.md) | Google Sheets 主機準備、安裝與工作表操作 |
 | [excel-ipc.md](excel-ipc.md) | Excel 橋 wire contract |
-| [excel-implementation-status.md](reports/excel-20260912.md) | Excel 進度檢查點 |
 | [excel-trial-readme.txt](excel-trial-readme.txt) | Excel portable 試用包終端使用者說明（附檔） |
 | [google-sheets-client.md](google-sheets-client.md) | Google Sheets 客戶端、房間布局及驗收邊界（`QSAN_BUILD_SHEETS`）；含已知缺口清單 |
 

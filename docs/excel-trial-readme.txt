@@ -54,5 +54,4 @@ Excel 版本與位元數（檔案 → 帳戶 → 關於 Excel）：
 五、證據與報告
 Runtime-only 的建置、依賴、載入與 hash 摘要由 `diagnostics/` 及
 `release-manifest.json` 保存。實際 Excel／VBA 操作、失敗記錄與完整對局結果
-寫入對應版本的報告，不在本組裝指南重複；狀態入口見
-`docs/reports/excel-20260912.md`。
+寫入對應版本的報告，不在本組裝指南重複。

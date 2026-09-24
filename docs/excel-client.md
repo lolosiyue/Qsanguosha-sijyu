@@ -19,6 +19,4 @@ modern／legacy 的封裝輸入、執行檔與 VBA 匯出流程見[封裝指南]
 
 正式交付需提供已編譯 VBA 的 `.xlsm`，並保存 VBE 匯出比對與實際 Excel 操作證據。
 
-2026-09-12 的來源進度與未驗收項目見 [Excel 驗證記錄](reports/excel-20260912.md)。
-
 圖片路徑必須落在封裝 image root；VBA 不組裝 wire card text 或 Protocol V2 packet。完整 gameplay、Excel UI、WinHTTP、VBE 與跨 Windows/Office acceptance 都是後續 checkpoint。

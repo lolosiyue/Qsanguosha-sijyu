@@ -159,4 +159,4 @@ missing Lua/AI trees, media collisions and a nonempty destination. It writes
 
 ## Verification
 
-The [2026-09-12 report](reports/browser-solo-20260912.md) records build, packaging, browser startup, full-game and cleanup results, including the failed log rendering and unmeasured lifetime gates.
+The 2026-09-12 verification covered build, packaging, browser startup, full-game and cleanup; the failed log rendering and unmeasured lifetime gates remain known gaps.
