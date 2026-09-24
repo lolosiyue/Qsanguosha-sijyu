@@ -24,8 +24,58 @@
 #include "general.h"
 #include "player.h"
 #include "serverplayer.h"
+#include "room.h"
 #include "skill.h"
+#include "skill-instance-utils.h"
 #include "h-standard-tricks.h"
+
+#include <QSet>
+
+class HMouduan : public TriggerSkillV2
+{
+public:
+    HMouduan() : TriggerSkillV2("heg_mouduan")
+    {
+        events << EventPhaseStart;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        if (event != EventPhaseStart || !room || !player || !player->isAlive()
+            || player->getPhase() != Player::Finish) return {};
+
+        // The shared recorder freezes used-card values across this turn's Play
+        // phases and clears them at NotActive; pure responses and SkillCards are excluded.
+        QSet<int> suits, types;
+        for (const QVariant &entry : player->getTag("PhaseUsedCards").toList()) {
+            const QVariantMap record = entry.toMap();
+            bool typeOk = false, suitOk = false;
+            const int type = record.value("type").toInt(&typeOk);
+            const int suit = record.value("suit").toInt(&suitOk);
+            if (!typeOk || type < Card::TypeBasic || type > Card::TypeEquip) continue;
+            types.insert(type);
+            if (suitOk && suit >= Card::Spade && suit <= Card::Diamond) suits.insert(suit);
+        }
+        if (suits.size() != 4 && types.size() != 3) return {};
+        if (!room->canMoveField("ej")) return {};
+        QStringList names;
+        for (int id : player->getValidSkillInstanceIds(objectName()))
+            names << SkillInstanceUtils::formatName(objectName(), id);
+        return names.isEmpty() ? TriggerList() : TriggerList{{player, names}};
+    }
+
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        return ctx.owner && ctx.owner->isAlive() && ctx.owner->askForSkillInvoke(this);
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (ctx.owner && ctx.owner->isAlive())
+            room->moveField(ctx.owner, objectName(), true, "ej");
+        return false;
+    }
+};
 
 class HZhiheng : public ViewAsSkillV2
 {
@@ -148,7 +198,7 @@ public:
 
 void HStandardPackage::addWuGenerals()
 {
-    // Keep the maximum-HP Zhiheng variant and Duoshi in V2; reuse other registered skills.
+    // Shared skills are upgraded in their original packages; only distinct rules live here.
     General *sunquan = new General(this, "heg_sunquan", "wu"); // WU 001
     sunquan->addCompanion("heg_zhoutai");
     sunquan->addSkill(new HZhiheng);
@@ -158,6 +208,7 @@ void HStandardPackage::addWuGenerals()
 
     General *lvmeng = new General(this, "heg_lvmeng", "wu"); // WU 003
     lvmeng->addSkill("keji");
+    lvmeng->addSkill(new HMouduan);
 
     General *huanggai = new General(this, "heg_huanggai", "wu"); // WU 004
     huanggai->addSkill("kurou");
