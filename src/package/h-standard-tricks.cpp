@@ -103,12 +103,13 @@ bool HAwaitExhausted::isAvailable(const Player *player) const{
     return canUse && TrickCard::isAvailable(player);
 }
 
-void HAwaitExhausted::onUse(Room *room, CardUseStruct &card_use) const{
-    CardUseStruct &new_use = card_use;
+void HAwaitExhausted::prepareUseTargets(Room *room, CardUseStruct &card_use) const{
+    // Skill-generated uses can already carry the resolved target set.
+    if (!card_use.to.isEmpty()) return;
     if (!card_use.from->isProhibited(card_use.from, this))
-        new_use.to << new_use.from;
-    foreach (ServerPlayer *p, room->getOtherPlayers(new_use.from)) {
-        if (p->isFriendWith(new_use.from)) {
+        card_use.to << card_use.from;
+    for (ServerPlayer *p : room->getOtherPlayers(card_use.from)) {
+        if (p->isFriendWith(card_use.from)) {
             const ProhibitSkill *skill = room->isProhibited(card_use.from, p, this);
             if (skill) {
                 LogMessage log;
@@ -120,12 +121,10 @@ void HAwaitExhausted::onUse(Room *room, CardUseStruct &card_use) const{
 
                 room->broadcastSkillInvoke(skill->objectName(), p);
             } else {
-                new_use.to << p;
+                card_use.to << p;
             }
         }
     }
-
-    TrickCard::onUse(room, new_use);
 }
 
 void HAwaitExhausted::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const{
@@ -264,10 +263,12 @@ void HKnownBoth::onEffect(CardEffectStruct &effect) const {
 
     Room *room = effect.from->getRoom();
 
+    if (choices.isEmpty()) return;
     effect.to->setFlags("KnownBothTarget");// For AI
     QString choice = room->askForChoice(effect.from, objectName(),
         choices.join("+"), QVariant::fromValue(effect.to));
     effect.to->setFlags("-KnownBothTarget");
+    if (!choices.contains(choice)) return;
     LogMessage log;
     log.type = "#KnownBothView";
     log.from = effect.from;
@@ -278,8 +279,16 @@ void HKnownBoth::onEffect(CardEffectStruct &effect) const {
     if (choice == "handcards")
         room->showAllCards(effect.to, effect.from);
     else {
-        QStringList list = room->getTag(effect.to->objectName()).toStringList();
-        list.removeAt(choice == "head_general" ? 1 : 0);
+        const bool head = choice == "head_general";
+        const QString name = head ? effect.to->getActualGeneral1Name() : effect.to->getActualGeneral2Name();
+        if (name.isEmpty()) return;
+        const QStringList list{name};
+        // Grant only the viewed slot to this observer, never the other identity.
+        const QString knowledgeKey = "KnownBoth_" + effect.to->objectName();
+        QStringList known = effect.from->getTag(knowledgeKey).toString().split('+');
+        while (known.size() < 2) known << QString();
+        known[head ? 0 : 1] = name;
+        effect.from->setTag(knowledgeKey, known.join('+'));
         foreach (const QString &name, list) {
             LogMessage log;
             log.type = "$KnownBothViewGeneral";

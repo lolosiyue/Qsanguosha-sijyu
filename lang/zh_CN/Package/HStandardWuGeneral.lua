@@ -1,6 +1,3 @@
--- Ported original hegemony package translations.
--- source: TODO/original/lang/zh_CN/Package/StandardWuGeneral.lua
--- Shared skills use their existing translation keys; only distinct V2 skills are defined here.
 return {
 ["#heg_sunquan"] = "年轻的贤君",
 ["heg_sunquan"] = "孙权[国]",
@@ -10,6 +7,10 @@ return {
 ["heg_ganning"] = "甘宁[国]",
 ["#heg_lvmeng"] = "白衣渡江",
 ["heg_lvmeng"] = "吕蒙[国]",
+["heg_mouduan"] = "谋断",
+[":heg_mouduan"] = "结束阶段开始时，若你于本回合出牌阶段内使用过四种花色或三种类别的牌，你可以将一名角色装备区或判定区里的一张牌移动至另一名角色的对应区域。",
+["@heg_mouduan-move"] = "谋断：选择一名角色，移动其区域内的一张牌",
+["@heg_mouduan-to"] = "谋断：选择移动【%arg】的目标角色",
 ["#heg_huanggai"] = "轻身为国",
 ["heg_huanggai"] = "黄盖[国]",
 ["#heg_zhouyu"] = "大都督",
