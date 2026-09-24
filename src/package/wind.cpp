@@ -806,21 +806,27 @@ public:
     }
 };
 
-class Buqu : public TriggerSkill
+class Buqu : public TriggerSkillV2
 {
 public:
-    Buqu() : TriggerSkill("buqu")
+    Buqu() : TriggerSkillV2("buqu")
     {
         events << AskForPeaches;
         frequency = Compulsory;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *zhoutai, QVariant &data) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *zhoutai, QVariant &data) const override
     {
-        DyingStruct dying = data.value<DyingStruct>();
-        if (dying.who != zhoutai || zhoutai->getHp() > 0)
-            return false;
+        TriggerList result;
+        const DyingStruct dying = data.value<DyingStruct>();
+        if (TriggerSkill::triggerable(zhoutai) && dying.who == zhoutai && zhoutai->getHp() <= 0)
+            result[zhoutai] << objectName();
+        return result;
+    }
 
+    bool effect(TriggerEvent, Room *room, ServerPlayer *zhoutai, SkillContext &) const override
+    {
+        // Keep the original wound-pile rule; only the activation uses the V2 pipeline.
         room->sendCompulsoryTriggerLog(zhoutai, this);
         int id = room->drawCard();
         zhoutai->addToPile("buqu", id);
@@ -928,19 +934,42 @@ void TianxiangCard::onEffect(CardEffectStruct &effect) const
     effect.from->setTag("TransferDamage", QVariant::fromValue(damage));
 }
 
-class TianxiangViewAsSkill : public OneCardViewAsSkill
+class TianxiangViewAsSkill : public ViewAsSkillV2
 {
 public:
-    TianxiangViewAsSkill() : OneCardViewAsSkill("tianxiang")
+    TianxiangViewAsSkill() : ViewAsSkillV2("tianxiang", 1)
     {
-        filter_pattern = ".|heart|.|hand!";
-        response_pattern = "@@tianxiang";
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
+        return request.initiator && request.pattern == "@@tianxiang"
+            && request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+    }
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        return request.initiator && ViewAsSkillV2::canSelectCard(request, card)
+            && !card->hasFlag("using") && !request.initiator->isJilei(card)
+            && Sanguosha->matchExpPattern(".|heart|.|hand", request.initiator, card);
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "TianxiangCard"; }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        // Preserve the AI card protocol and the single damage-transfer continuation.
         TianxiangCard *tianxiangCard = new TianxiangCard;
-        tianxiangCard->addSubcard(originalCard);
+        tianxiangCard->addSubcards(request.selectedCardIds);
         return tianxiangCard;
     }
 };

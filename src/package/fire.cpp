@@ -507,20 +507,25 @@ void TianyiCard::use(Room *room, ServerPlayer *taishici, QList<ServerPlayer *> &
         room->setPlayerCardLimitation(taishici, "use", "Slash", true);
 }
 
-class Tianyi : public ZeroCardViewAsSkill
+class Tianyi : public ViewAsSkillV2
 {
 public:
-    Tianyi() : ZeroCardViewAsSkill("tianyi")
+    Tianyi() : ViewAsSkillV2("tianyi")
     {
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return !player->hasUsed("TianyiCard") && player->canPindian();
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && !request.initiator->hasUsed("TianyiCard") && request.initiator->canPindian();
     }
 
-    const Card *viewAs() const
+    QString historyKey(const ActiveSkillRequest &) const override { return "TianyiCard"; }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
     {
+        // Preserve the serialized card name, turn history and canonical Pindian effect.
+        if (!cardSelectionFeasible(request)) return nullptr;
         return new TianyiCard;
     }
 

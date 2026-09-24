@@ -180,7 +180,7 @@ void HStandardPackage::addWuGenerals()
     sunjian->addSkill("yinghun");
 
     General *xiaoqiao = new General(this, "heg_xiaoqiao", "wu", 3, false); // WU 011
-    xiaoqiao->addSkill("tianxiang");
+    xiaoqiao->addSkill("tenyeartianxiang");
     xiaoqiao->addSkill("hongyan");
 
     General *taishici = new General(this, "heg_taishici", "wu"); // WU 012
@@ -188,6 +188,7 @@ void HStandardPackage::addWuGenerals()
 
     General *zhoutai = new General(this, "heg_zhoutai", "wu");
     zhoutai->addSkill("buqu");
+    zhoutai->addSkill("mobilefenji");
 
     General *lusu = new General(this, "heg_lusu", "wu", 3); // WU 014
     lusu->addSkill("haoshi");
