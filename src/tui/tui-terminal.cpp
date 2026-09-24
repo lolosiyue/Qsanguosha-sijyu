@@ -237,14 +237,10 @@ extern "C" void tuiSigintSignalHandler(int /* number */)
 } // namespace
 
 #if defined(Q_OS_UNIX)
-// Deliberately not `static` and not inside the anonymous namespace above:
-// this is the one sigaction(SIGINT, ...) call that both TuiTerminal::enter()
-// and tuiInstallInterruptHandler() make (see tuiSigintSignalHandler for why
-// sharing it matters), and giving it external linkage lets
-// tests/tui/tui-terminal-test.cpp forward-declare and call it directly --
-// the only way to exercise TuiTerminal's half of the ordering invariant
-// without a real terminal to carry enter() past its isatty() gate.
-void tuiInstallSharedSigintHandler()
+// The one sigaction(SIGINT, ...) call that both TuiTerminal::enter() and
+// tuiInstallInterruptHandler() make (see tuiSigintSignalHandler for why
+// sharing it matters).
+static void tuiInstallSharedSigintHandler()
 {
     struct sigaction action;
     std::memset(&action, 0, sizeof(action));

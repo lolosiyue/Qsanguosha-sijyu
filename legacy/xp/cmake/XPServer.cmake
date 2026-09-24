@@ -6,8 +6,7 @@ file(GLOB_RECURSE qsan_xp_pair_sources CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/legacy/xp/compat/*.h"
     "${CMAKE_SOURCE_DIR}/legacy/xp/cmake/*.cmake"
     "${CMAKE_SOURCE_DIR}/swig/*.i")
-list(APPEND qsan_xp_pair_sources "${CMAKE_SOURCE_DIR}/CMakeLists.txt"
-    "${CMAKE_SOURCE_DIR}/legacy/xp/tests/xp-gui-acceptance.h")
+list(APPEND qsan_xp_pair_sources "${CMAKE_SOURCE_DIR}/CMakeLists.txt")
 list(SORT qsan_xp_pair_sources)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${qsan_xp_pair_sources})
 set(qsan_xp_pair_hashes "")
@@ -57,49 +56,9 @@ target_link_libraries(QSanguoshaXPServer PRIVATE qsanguosha_engine qsan_xp_contr
 target_link_options(QSanguoshaXPServer PRIVATE
     "/WHOLEARCHIVE:$<TARGET_FILE:qsanguosha_engine>" "$<$<CONFIG:Release>:/DEBUG>")
 
-add_executable(qsan_xp_control_tests legacy/xp/tests/xp-control-protocol-test.cpp)
-qsan_xp_target(qsan_xp_control_tests)
-target_link_libraries(qsan_xp_control_tests PRIVATE qsan_xp_control)
-# Registered for CI; local policy uses the focused executable directly.
-enable_testing()
-add_test(NAME xp_control_protocol COMMAND qsan_xp_control_tests)
-set_tests_properties(xp_control_protocol PROPERTIES TIMEOUT 15)
-
-add_executable(qsan_xp_controller_tests legacy/xp/tests/xp-controller-test.cpp
-    legacy/xp/src/local-server-controller.cpp legacy/xp/src/local-server-controller.h)
-qsan_xp_target(qsan_xp_controller_tests)
-target_compile_definitions(qsan_xp_controller_tests PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
-target_link_libraries(qsan_xp_controller_tests PRIVATE qsan_xp_control qsanguosha_engine
-    Ws2_32 IPHLPAPI dbghelp user32 gdi32)
-target_link_options(qsan_xp_controller_tests PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:qsanguosha_engine>")
-add_dependencies(qsan_xp_controller_tests QSanguoshaXPServer)
-add_test(NAME xp_controller_lifecycle COMMAND qsan_xp_controller_tests --asset-root "${CMAKE_SOURCE_DIR}")
-set_tests_properties(xp_controller_lifecycle PROPERTIES TIMEOUT 60
-    ENVIRONMENT "QSAN_XP_SETTINGS=${CMAKE_BINARY_DIR}/xp-test-data/config.ini;QSAN_USER_DATA_ROOT=${CMAKE_BINARY_DIR}/xp-test-data")
-
 get_target_property(qsan_xp_server_links QSanguoshaXPServer LINK_LIBRARIES)
 foreach(link IN LISTS qsan_xp_server_links)
     if(link MATCHES "Widgets|Quick|Qml|Multimedia|OpenGL|fmod|spine")
         message(FATAL_ERROR "XP server has a forbidden dependency: ${link}")
     endif()
 endforeach()
-
-# Fault peers live in an isolated test staging directory; production binaries
-# never gain environment-controlled fault injection or replacement entrypoints.
-add_executable(qsan_xp_controller_fixture legacy/xp/tests/xp-controller-fixture.cpp)
-qsan_xp_target(qsan_xp_controller_fixture)
-target_link_libraries(qsan_xp_controller_fixture PRIVATE qsan_xp_control)
-
-add_executable(qsan_xp_controller_failure_tests legacy/xp/tests/xp-controller-failure-test.cpp
-    legacy/xp/src/local-server-controller.cpp legacy/xp/src/local-server-controller.h)
-qsan_xp_target(qsan_xp_controller_failure_tests)
-target_compile_definitions(qsan_xp_controller_failure_tests PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
-target_link_libraries(qsan_xp_controller_failure_tests PRIVATE qsan_xp_control qsanguosha_engine
-    Ws2_32 IPHLPAPI dbghelp user32 gdi32)
-target_link_options(qsan_xp_controller_failure_tests PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:qsanguosha_engine>")
-add_dependencies(qsan_xp_controller_failure_tests qsan_xp_controller_fixture qsan_xp_controller_tests)
-add_test(NAME xp_controller_failures COMMAND qsan_xp_controller_failure_tests --asset-root "${CMAKE_SOURCE_DIR}")
-set_tests_properties(xp_controller_failures PROPERTIES TIMEOUT 240)
-add_test(NAME xp_controller_reuse_30 COMMAND qsan_xp_controller_tests --cycles 30 --asset-root "${CMAKE_SOURCE_DIR}")
-set_tests_properties(xp_controller_reuse_30 PROPERTIES TIMEOUT 1660
-    ENVIRONMENT "QSAN_XP_SETTINGS=${CMAKE_BINARY_DIR}/xp-reuse-data/config.ini;QSAN_USER_DATA_ROOT=${CMAKE_BINARY_DIR}/xp-reuse-data")

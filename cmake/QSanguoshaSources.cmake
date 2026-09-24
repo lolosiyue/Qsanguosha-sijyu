@@ -473,8 +473,8 @@ if(MSVC)
     endif()
 endif()
 
-# ClientCore and the TUI targets are declared later by the root CMakeLists and
-# tests/CMakeLists. Defer the target-to-target edges until the directory is
+# ClientCore and the TUI targets are declared later by the root CMakeLists.
+# Defer the target-to-target edges until the directory is
 # complete so the runtime target stays in the shared source inventory without
 # duplicating root build logic.
 function(qsan_finalize_client_runtime_links)
@@ -484,8 +484,7 @@ function(qsan_finalize_client_runtime_links)
 endfunction()
 cmake_language(DEFER CALL qsan_finalize_client_runtime_links)
 
-# Opt-in native verification consumer; no frontend dependency.
-include(cmake/QSanguoshaRulesFixtures.cmake)
+include(cmake/QSanguoshaRulesSession.cmake)
 
 if(QSAN_BUILD_WASM_WEB_CLIENT)
     include(cmake/QSanguoshaRulesWasm.cmake)

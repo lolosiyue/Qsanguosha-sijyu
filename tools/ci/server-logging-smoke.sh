@@ -60,5 +60,5 @@ if (( status != 0 )); then
     exit 1
 fi
 
-python3 tests/validate-server-log.py --path "$structured_log"
+python3 tools/ci/validate-server-log.py --path "$structured_log"
 echo '[server-logging-smoke] JSON lifecycle log passed'

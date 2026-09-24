@@ -10,7 +10,7 @@
  * Done at link time on purpose: a forced -include carrying __asm__(".symver") is a C
  * token and makes GCC silently ignore the project's precompiled headers.
  *
- * tools/packaging/check-glibc-floor.py (ctest qsanguosha_glibc_floor) names any new
+ * tools/packaging/check-glibc-floor.py names any new
  * symbol that needs pinning: add a declaration, a .symver line, a wrapper here and a
  * --wrap entry in CMakeLists.txt.
  */

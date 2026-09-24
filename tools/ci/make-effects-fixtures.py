@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the tiny visual fixtures used by the M2B-B effects smoke.
 
-Nothing under tests/fixtures/effects/ may be a real game asset: the production
+Nothing under tools/ci/fixtures/effects/ may be a real game asset: the production
 art set is large and copyrighted. Everything this script writes is synthetic and
 a few hundred bytes, produced with the standard library only (no Pillow, no
 external encoder), so a clean checkout can regenerate it on any runner.
@@ -20,7 +20,7 @@ What is produced, and what each file is for:
                     without the real emotion art.
   spine/broken/     a Spine asset directory whose .atlas/.json are deliberately
                     malformed. There is no synthetic *valid* Spine fixture on
-                    purpose - see tests/fixtures/effects/README.md.
+                    purpose.
 
 Usage: python3 tools/ci/make-effects-fixtures.py [output-dir]
 """
@@ -132,7 +132,7 @@ def make_png(width, height, rgb):
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("tests/fixtures/effects")
+    root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("tools/ci/fixtures/effects")
     root.mkdir(parents=True, exist_ok=True)
 
     checker = [0, 1, 1, 0,

@@ -2,7 +2,7 @@
 """Generate the tiny audio fixtures used by the multimedia smoke.
 
 The fixtures are produced here rather than downloaded or copied out of the
-game's asset tree: nothing in tests/fixtures/media/ may be a real (large,
+game's asset tree: nothing in tools/ci/fixtures/media/ may be a real (large,
 copyrighted) game asset. Everything this script writes is a synthetic sine
 tone of a few kilobytes.
 
@@ -47,7 +47,7 @@ FIXTURES = {
 
 
 def main() -> int:
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else "tests/fixtures/media")
+    out = Path(sys.argv[1] if len(sys.argv) > 1 else "tools/ci/fixtures/media")
     out.mkdir(parents=True, exist_ok=True)
     for name, (seconds, frequency) in FIXTURES.items():
         path = out / name

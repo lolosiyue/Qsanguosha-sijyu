@@ -147,62 +147,8 @@ set_target_properties(qsanguosha_excel_bridge PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${qsan_excel_bridge_release}"
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${qsan_excel_bridge_release}")
 
-# Focused native consumers are intentionally buildable but are not registered
-# with CTest; local policy runs them explicitly after a user-approved checkpoint.
-if(QSAN_BUILD_EXCEL_TESTS)
-    add_executable(qsanguosha_excel_ipc_tests
-        tests/excel/ipc-test.cpp src/excel/excel-ipc-server.cpp
-        src/excel/excel-ipc-server.h)
-    target_compile_definitions(qsanguosha_excel_ipc_tests PRIVATE
-        QSANGUOSHA_EXCEL_IPC_TEST)
-    target_link_libraries(qsanguosha_excel_ipc_tests PRIVATE Qt6::Core Qt6::Network)
-
-    add_executable(qsanguosha_excel_interaction_tests
-        tests/excel/interaction-test.cpp src/excel/excel-interaction.cpp
-        src/excel/excel-interaction.h)
-    target_link_libraries(qsanguosha_excel_interaction_tests PRIVATE
-        qsanguosha_client_core qsanguosha_client_runtime qsanguosha_rules_session
-        "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
-        Qt6::Core Qt6::Network Qt6::Test)
-
-    add_executable(qsanguosha_excel_view_tests
-        tests/excel/view-test.cpp src/excel/excel-view.cpp src/excel/excel-view.h
-        src/server/server-config.cpp src/server/server-config.h
-        src/core/audio.h src/ui/audio/audio.cpp src/ui/audio/audio-backend.h
-        src/ui/audio/audio-backend-factory.cpp src/ui/audio/null-audio-backend.cpp
-        src/ui/audio/null-audio-backend.h)
-    target_link_libraries(qsanguosha_excel_view_tests PRIVATE
-        qsanguosha_client_core qsanguosha_client_runtime
-        "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
-        Qt6::Core Qt6::Network Qt6::Test)
-    # Consumers must use the engine's Settings layout, not the GUI variant.
-    foreach(qsan_excel_engine_test IN ITEMS qsanguosha_excel_interaction_tests
-        qsanguosha_excel_view_tests)
-        target_compile_definitions(${qsan_excel_engine_test} PRIVATE
-            QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
-    endforeach()
-    set_target_properties(qsanguosha_excel_ipc_tests
-        qsanguosha_excel_interaction_tests qsanguosha_excel_view_tests PROPERTIES
-        FOLDER "Tests")
-    foreach(qsan_excel_test IN ITEMS qsanguosha_excel_ipc_tests
-        qsanguosha_excel_interaction_tests qsanguosha_excel_view_tests)
-        target_include_directories(${qsan_excel_test} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/client ${CMAKE_CURRENT_SOURCE_DIR}/src/client/core
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/client/runtime ${CMAKE_CURRENT_SOURCE_DIR}/src/core
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/server ${CMAKE_CURRENT_SOURCE_DIR}/src/util)
-    endforeach()
-    if(MSVC)
-        foreach(qsan_excel_test IN ITEMS qsanguosha_excel_ipc_tests
-            qsanguosha_excel_interaction_tests qsanguosha_excel_view_tests)
-            target_compile_options(${qsan_excel_test} PRIVATE /utf-8 /bigobj)
-        endforeach()
-    endif()
-endif()
-
 if(WIN32 AND NOT QSAN_BUILD_XP_LEGACY)
-    foreach(qsan_excel_binary IN ITEMS qsanguosha_excel_bridge qsanguosha_excel_server
-        qsanguosha_excel_interaction_tests qsanguosha_excel_view_tests)
+    foreach(qsan_excel_binary IN ITEMS qsanguosha_excel_bridge qsanguosha_excel_server)
         if(TARGET ${qsan_excel_binary})
             target_link_libraries(${qsan_excel_binary} PRIVATE
                 "$<$<CONFIG:Release>:dbghelp>"

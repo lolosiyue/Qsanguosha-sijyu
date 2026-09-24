@@ -172,7 +172,7 @@ if [ "$SKIP_MULTIMEDIA" -eq 0 ]; then
     echo "-- M2B-A video fallback --"
     bash "$SCRIPT_DIR/linux-gui-multimedia-smoke.sh" "$CLIENT" "$ARTIFACT_DIR" \
         --platform "$PLATFORM" --label "pkg-$LABEL-video-missing" $XVFB_ARG \
-        --expect-backend qt --video-source tests/fixtures/media/no-such-clip.mp4 \
+        --expect-backend qt --video-source tools/ci/fixtures/media/no-such-clip.mp4 \
         --expect-video-reason asset_missing \
         --timeout-ms 90000 --process-timeout "$PROCESS_TIMEOUT" \
         || note_failure "video fallback from the package"

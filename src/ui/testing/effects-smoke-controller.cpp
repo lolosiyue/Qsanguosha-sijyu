@@ -710,7 +710,7 @@ void EffectsSmokeController::stageGif()
 }
 
 // ── stage: spine ─────────────────────────────────────────────────────────────
-// There is no valid synthetic Spine fixture (see tests/fixtures/effects/README.md),
+// There is no valid synthetic Spine fixture (see tools/ci/make-effects-fixtures.py),
 // so this stage verifies lifecycle and degradation: when Spine is disallowed,
 // not a single SpineGlItem may be created; when Spine is allowed but the asset
 // is missing, broken, or mismatched in letter case, loading must fail and the

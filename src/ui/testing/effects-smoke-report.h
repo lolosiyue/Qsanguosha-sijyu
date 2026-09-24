@@ -56,7 +56,7 @@ public:
     static const char *const FlagEffectsSmoke;    // "--effects-smoke"
     static const char *const FlagReportPath;      // "--effects-report"
     static const char *const FlagTimeoutMs;       // "--effects-timeout-ms"
-    // Fixture root directory. Defaults to tests/fixtures/effects/; when it is
+    // Fixture root directory. Defaults to tools/ci/fixtures/effects/; when it is
     // missing the stage does not fail, it only sets fixtures_available=false —
     // a missing fixture must be distinguishable from a genuinely broken one.
     static const char *const FlagFixtureRoot;     // "--effects-fixtures"

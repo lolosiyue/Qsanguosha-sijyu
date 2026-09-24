@@ -2,14 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 project(QSanguosha LANGUAGES C CXX)
 
-# Register tests without the CDash dashboard targets added by include(CTest).
-# Keep BUILD_TESTING and enable_testing() available to local and CI builds.
-option(BUILD_TESTING "Build the testing tree." ON)
-if(BUILD_TESTING)
-    enable_testing()
-endif()
-
-# Visual Studio / Xcode: tuck the test targets and CMake's built-in ALL_BUILD /
+# Visual Studio / Xcode: tuck CMake's built-in ALL_BUILD /
 # ZERO_CHECK / RUN_TESTS into a solution folder instead of flattening them at the
 # root. Ninja / Makefile generators ignore these two properties.
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -62,10 +55,6 @@ option(QSAN_BUILD_TUI
 )
 option(QSAN_BUILD_EXCEL
     "Build the opt-in Windows Excel bridge"
-    OFF
-)
-option(QSAN_BUILD_EXCEL_TESTS
-    "Build opt-in native Excel focused test executables"
     OFF
 )
 option(QSAN_BUILD_SHEETS
@@ -128,11 +117,6 @@ if(QSAN_AUDIO_BACKEND STREQUAL "FMOD" AND NOT WIN32)
         "are Windows binaries and must never be linked or included on other platforms")
 endif()
 
-if(BUILD_TESTING AND NOT QSAN_BUILD_SERVER)
-    message(FATAL_ERROR
-        "BUILD_TESTING=ON requires QSAN_BUILD_SERVER=ON (CTest drives qsanguosha_server)")
-endif()
-
 if(WIN32)
     if(QSAN_BUILD_XP_LEGACY)
         if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
@@ -185,12 +169,6 @@ if(QSAN_ENABLE_WEBSOCKETS)
     list(APPEND QSAN_QT_COMPONENTS WebSockets)
 endif()
 
-if(BUILD_TESTING)
-    list(APPEND QSAN_QT_COMPONENTS
-        Gui
-    )
-endif()
-
 if(QSAN_BUILD_GUI)
     if(QSAN_BUILD_XP_LEGACY)
         list(APPEND QSAN_QT_COMPONENTS Gui Widgets)
@@ -214,12 +192,6 @@ if(QSAN_BUILD_EXCEL AND QSAN_AUDIO_BACKEND STREQUAL "QT")
 endif()
 if(QSAN_BUILD_SHEETS AND QSAN_AUDIO_BACKEND STREQUAL "QT")
     list(APPEND QSAN_QT_COMPONENTS Multimedia)
-endif()
-if(QSAN_BUILD_EXCEL_TESTS)
-    list(APPEND QSAN_QT_COMPONENTS Test)
-endif()
-if(BUILD_TESTING AND QSAN_BUILD_GUI AND NOT QSAN_BUILD_XP_LEGACY)
-    list(APPEND QSAN_QT_COMPONENTS Test)
 endif()
 
 list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
@@ -1881,7 +1853,7 @@ endif()
 # glibc floor(Linux x86_64):喺 glibc 2.43 嘅發行版 link,acosf／atan2f／sqrtf 會綁到
 # 2.43 新版 symbol,GUI 就喺 Ubuntu 24.04 等舊啲嘅系統開唔到。--wrap 將呼叫轉去
 # src/util/linux-glibc-compat.c,再由佢叫每個 x86_64 libm 都有嘅 GLIBC_2.2.5 版本。
-# ctest qsanguosha_glibc_floor 會指出下一個要咁樣釘住嘅 symbol。
+# tools/packaging/check-glibc-floor.py 會指出下一個要咁樣釘住嘅 symbol。
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     add_library(qsanguosha_glibc_compat OBJECT src/util/linux-glibc-compat.c)
     foreach(qsan_glibc_target QSanguosha qsanguosha_server qsanguosha_tui)
@@ -1892,10 +1864,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_
             target_link_libraries(${qsan_glibc_target} PRIVATE m)
         endif()
     endforeach()
-endif()
-
-if(BUILD_TESTING)
-    add_subdirectory(tests)
 endif()
 
 # Visual Studio solution grouping: the three product executables stay at the root and

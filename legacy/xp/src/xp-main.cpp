@@ -27,7 +27,7 @@
 #include "server.h"
 #include "settings.h"
 #include "xp-control-protocol.h"
-#include "legacy/xp/tests/xp-gui-acceptance.h"
+#include "legacy/xp/src/xp-gui-acceptance.h"
 
 namespace
 {

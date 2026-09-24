@@ -13,7 +13,6 @@
 | [CorrectSkillV2功能與開發指南.md](CorrectSkillV2功能與開發指南.md) | 四類修正技能開發指南；§16.1 為 Room integration 驗證期望 |
 | [engine-correct-skills.md](engine-correct-skills.md) | CorrectSkillV2 引擎側快參（類別、selector、snapshot 欄位） |
 | [active-skill-v2-migration-guide.md](active-skill-v2-migration-guide.md) | 舊 ViewAsSkill 遷移至 V2 的規範 |
-| [active-skill-v2-test-matrix.md](active-skill-v2-test-matrix.md) | ViewAsSkillV2 驗證矩陣與證據 |
 | [safe-view-as-equip.md](safe-view-as-equip.md) | 手牌安全視為裝備的 C++ 範式與 Lua 端正確做法 |
 | [preselection-meta-skill.md](preselection-meta-skill.md) | PreSelectionMetaSkill 六層接線說明 |
 | [anytime-skill.md](anytime-skill.md) | AnytimeSkill 全鏈路（C++／Lua／protocol／client） |
@@ -72,9 +71,6 @@
 | [rules-bundle-identity.md](rules-bundle-identity.md) | rules bundle identity 與 WebSocket admission gate |
 | [production-rules-session.md](production-rules-session.md) | W1 production rules session 契約 |
 | [native-rules-ingress.md](native-rules-ingress.md) | W3b `ClientRulesIngress` streaming API（串流介面契約） |
-| [native-rules-fixtures.md](native-rules-fixtures.md) | fixtures 驗收 slice ①：native runner |
-| [wasm-rules-fixtures.md](wasm-rules-fixtures.md) | fixtures 驗收 slice ②：Node WASM parity |
-| [browser-rules-fixtures.md](browser-rules-fixtures.md) | fixtures 驗收 slice ③：browser Worker probe |
 | [web-client.md](web-client.md) | Web compact client 使用說明（Run、行為、範圍） |
 | [web-client-wasm-runtime.md](web-client-wasm-runtime.md) | WASM runtime 建置、產物與 W3b cutover 邊界 |
 | [browser-solo.md](browser-solo.md) | 離線單人瀏覽器包（`QSAN_BUILD_WASM_SOLO`） |
@@ -140,5 +136,4 @@
 ## 設定與參考
 
 - [伺服器 INI 範例](server.ini.example)
-- [測試組織](../tests/README.md)
 - [套件內容與清單](../packages/README.md)

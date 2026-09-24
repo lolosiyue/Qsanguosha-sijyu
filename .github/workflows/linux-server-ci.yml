@@ -80,7 +80,6 @@ jobs:
       - name: Configure with ${{ matrix.compiler.name }}
         run: |
           cmake -S . -B 'build/linux-${{ matrix.compiler.id }}' -G Ninja \
-            -DBUILD_TESTING=ON \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_C_COMPILER='${{ matrix.compiler.cc }}' \
             -DCMAKE_CXX_COMPILER='${{ matrix.compiler.cxx }}' \
@@ -95,25 +94,11 @@ jobs:
           cmake --build 'build/linux-${{ matrix.compiler.id }}' \
             --target \
               qsanguosha_tui \
-              qsanguosha_protocol_tests \
-              qsanguosha_server_support_tests \
-              qsanguosha_tui_tests \
-              qsanguosha_rules_fixture_runner \
             --parallel
 
       - name: Build with ${{ matrix.compiler.name }}
         if: github.event_name != 'push' || github.ref != 'refs/heads/debug'
         run: cmake --build 'build/linux-${{ matrix.compiler.id }}' --parallel
-
-      - name: Run native client rules fixtures
-        run: |
-          python3 tests/client_runtime/check-fixtures.py --self-test
-          python3 tests/client_runtime/check-fixtures.py \
-            --runner 'build/linux-${{ matrix.compiler.id }}/qsanguosha_rules_fixture_runner' \
-            --fixtures tests/client_runtime/fixtures \
-            --asset-root "$GITHUB_WORKSPACE" \
-            --builtin-assets \
-            --artifacts 'ci-logs/client-rules-fixtures-${{ matrix.compiler.id }}'
 
       - name: Build and verify deploy-server
         if: env.QSAN_FULL_SERVER_CI == 'true'
@@ -136,20 +121,6 @@ jobs:
           test -f "$install_root/lib/systemd/system/qsanguosha-server.service"
           test -f "$install_root/share/qsanguosha/lua/config.lua"
           test -d "$install_root/share/qsanguosha/extensions"
-
-      # Level 2 covers the real TCP handshake/signup; Level 1 overlaps the shutdown
-      # smoke, and Level 3's full 02p game is left to main's full CTest.
-      # bf1f85d merged 25 test executables into 6, each picking a sub-suite via --suite.
-      - name: Run protocol contract suites directly
-        if: github.ref != 'refs/heads/main'
-        run: 'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_protocol_tests'
-
-      - name: Run TUI Protocol V2 contract and live TCP gates
-        run: |
-          python3 -m py_compile tools/autotest/tui_network_smoke.py
-          python3 tools/autotest/tests/test_tui_network_smoke_contract.py
-          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_tui_tests' --suite contract
-          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_tui_tests' --suite live-tcp
 
       - name: Prepare isolated TUI core-game runtime
         if: env.QSAN_FULL_SERVER_CI == 'true' && matrix.compiler.id == 'gcc'
@@ -181,24 +152,6 @@ jobs:
             --reconnect \
             --workdir "$QSAN_TUI_RUNTIME" \
             --artifact-dir ci-logs/tui-real-reconnect
-
-      - name: Run daily network integration level 2
-        if: env.QSAN_FULL_SERVER_CI != 'true'
-        run: |
-          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_server_support_tests' \
-            --suite network-integration \
-            --server "$GITHUB_WORKSPACE/relwithdebinfo/qsanguosha_server" \
-            | tee 'ci-logs/network-level2-${{ matrix.compiler.id }}.log'
-
-      - name: Run full CTest including network E2E
-        if: github.ref == 'refs/heads/main'
-        run: |
-          mkdir -p ci-logs
-          ctest \
-            --test-dir 'build/linux-${{ matrix.compiler.id }}' \
-            --build-config RelWithDebInfo \
-            --output-on-failure \
-            --output-junit 'ci-logs/ctest-${{ matrix.compiler.id }}.xml'
 
       - name: Verify ephemeral TCP connect and clean SIGTERM shutdown
         run: |

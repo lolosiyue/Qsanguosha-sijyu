@@ -310,8 +310,7 @@ A query is a preview, never a move:
 
 Production compile/link, repeated-query and lifecycle execution, native/WASM
 parity for live snapshots, actual browser interaction/reconnect acceptance and
-deployment checks remain unperformed. Fixture probes continue to document their
-own scope in [wasm-rules-fixtures.md](wasm-rules-fixtures.md).
+deployment checks remain unperformed.
 
 Arbitrary extension loading and complete server/runtime ruleset negotiation
 remain outside the `declared-v2` manifest profile; no claim of
