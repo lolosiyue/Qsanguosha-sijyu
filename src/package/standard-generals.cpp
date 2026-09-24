@@ -231,6 +231,17 @@ ChuliCard::ChuliCard()
 
 bool ChuliCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
+    if (Config.EnableHegemony) {
+        if (to_select == Self || targets.size() >= 3 || !Self->canDiscard(to_select, "he"))
+            return false;
+        if (!to_select->hasShownOneGeneral())
+            return true;
+        for (const Player *other : targets)
+            if (to_select->isFriendWith(other))
+                return false;
+        return true;
+    }
+
     if (to_select == Self) return false;
     QSet<QString> kingdoms;
     foreach(const Player *p, targets)
@@ -3079,102 +3090,151 @@ public:
     }
 };
 
-class Lijian : public OneCardViewAsSkill
+class Lijian : public ViewAsSkillV2
 {
 public:
-    Lijian() : OneCardViewAsSkill("lijian")
+    Lijian() : ViewAsSkillV2("lijian", 1) {}
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        filter_pattern = ".!";
-    }
-
-    bool isEnabledAtPlay(const Player *player) const
-    {
-        return player->getAliveSiblings().length() > 1
+        const Player *player = request.initiator;
+        return player && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && player->getAliveSiblings().length() > 1
             && player->canDiscard(player, "he") && !player->hasUsed("LijianCard");
     }
-
-    const Card *viewAs(const Card *originalCard) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
-        LijianCard *lijian_card = new LijianCard;
-        lijian_card->addSubcard(originalCard);
-        return lijian_card;
+        const Player *player = request.initiator;
+        return player && card && !card->hasFlag("using") && request.selectedCardIds.isEmpty()
+            && (player->handCards().contains(card->getEffectiveId()) || player->hasEquip(card))
+            && player->canDiscard(player, card->getEffectiveId());
     }
-
-    /*int getEffectIndex(const ServerPlayer *, const Card *card) const
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
-        return card->isKindOf("Duel") ? 0 : -1;
-    }*/
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        // Preserve the shared card's wire identity, ordered targets and AI entry.
+        auto *card = new LijianCard;
+        card->addSubcards(request.selectedCardIds);
+        card->setSkillName(objectName());
+        return card;
+    }
+    QString historyKey(const ActiveSkillRequest &) const override { return "LijianCard"; }
 };
 
-class Biyue : public PhaseChangeSkill
+class Biyue : public TriggerSkillV2
 {
 public:
-    Biyue() : PhaseChangeSkill("biyue")
+    Biyue() : TriggerSkillV2("biyue") { events << EventPhaseStart; frequency = Frequent; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        frequency = Frequent;
+        if (player && player->isAlive() && player->hasSkill(objectName()) && player->getPhase() == Player::Finish)
+            return {{player, {objectName()}}};
+        return {};
     }
-
-    bool onPhaseChange(ServerPlayer *diaochan, Room *room) const
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (diaochan->getPhase() == Player::Finish) {
-            if (room->askForSkillInvoke(diaochan, objectName())) {
-                room->broadcastSkillInvoke(objectName());
-                diaochan->drawCards(1, objectName());
-            }
-        }
-
+        return room->askForSkillInvoke(ctx.owner, objectName());
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        // The dispatcher binds this activation to one exact owning instance.
+        room->broadcastSkillInvoke(objectName());
+        ctx.owner->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
     }
 };
 
-class Chuli : public OneCardViewAsSkill
+class Chuli : public ViewAsSkillV2
 {
 public:
-    Chuli() : OneCardViewAsSkill("chuli")
+    Chuli() : ViewAsSkillV2("chuli", 1) {}
+
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        filter_pattern = ".!";
+        const Player *player = request.initiator;
+        return player && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && player->canDiscard(player, "he") && !player->hasUsed("ChuliCard");
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
-        return player->canDiscard(player, "he") && !player->hasUsed("ChuliCard");
+        const Player *player = request.initiator;
+        const int id = card ? card->getEffectiveId() : -1;
+        // Keep the V2 selection bound to the same hand/equipment cards as the legacy skill.
+        return player && card && id >= 0 && !card->hasFlag("using") && request.selectedCardIds.isEmpty()
+            && (player->handCards().contains(id) || player->hasEquip(card))
+            && player->canDiscard(player, id);
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
-        ChuliCard *chuli_card = new ChuliCard;
-        chuli_card->addSubcard(originalCard->getId());
-        return chuli_card;
+        if (request.selectedCardIds.size() != 1 || request.selectedCardIds.first() < 0) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
     }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        auto *card = new ChuliCard;
+        card->addSubcards(request.selectedCardIds);
+        card->setSkillName(objectName());
+        return card;
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "ChuliCard"; }
 };
 
-class Jijiu : public OneCardViewAsSkill
+class Jijiu : public ViewAsSkillV2
 {
 public:
-    Jijiu() : OneCardViewAsSkill("jijiu")
+    Jijiu() : ViewAsSkillV2("jijiu", 1)
     {
-        filter_pattern = ".|red";
         response_or_use = true;
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return !player->hasFlag("CurrentPlayer");
+        const Player *player = request.initiator;
+        if (!player || player->hasFlag("CurrentPlayer")) return false;
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            || ((request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+                 || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE)
+                && request.pattern.contains("peach") && player->getMark("Global_PreventPeach") < 1);
     }
-
-    bool isEnabledAtResponse(const Player *player, const QString &pattern) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
-        return pattern.contains("peach") && player->getMark("Global_PreventPeach")<1
-            && !player->hasFlag("CurrentPlayer");
+        if (!request.initiator || !card || card->hasFlag("using") || !request.selectedCardIds.isEmpty()) return false;
+        // Retain response-accessible hand piles as well as hand/equipment cards.
+        QStringList places{"hand", "equipped"};
+        for (const QString &pile : request.initiator->getPileNames())
+            if (pile.startsWith("&") || pile == "wooden_ox") places << pile;
+        return Sanguosha->matchExpPattern(".|red|.|" + places.join(","), request.initiator, card);
     }
-
-    const Card *viewAs(const Card *originalCard) const
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *originalCard = Sanguosha->getCard(request.selectedCardIds.first());
         Peach *peach = new Peach(originalCard->getSuit(), originalCard->getNumber());
         peach->setSkillName(objectName());
         peach->addSubcard(originalCard);
         return peach;
     }
+    QString historyKey(const ActiveSkillRequest &) const override { return "Peach"; }
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {

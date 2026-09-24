@@ -1,4 +1,7 @@
 #include "sp.h"
+#include "util.h"
+#include <QScopeGuard>
+#include "skill-instance-utils.h"
 #include "skill-declaration.h"
 //#include "client.h"
 //#include "general.h"
@@ -15,6 +18,289 @@
 #include "roomthread.h"
 #include "yjcm2013.h"
 #include "wind.h"
+
+class Lirang : public TriggerSkillV2 {
+public:
+    Lirang() : TriggerSkillV2("lirang") {
+        events << CardsMoveOneTime;
+        frequency = Frequent;
+    }
+
+    // The retired identity skill resolved discards at priority 3.
+    bool usesEventPriority() const override { return !Config.EnableHegemony; }
+    int getPriority(TriggerEvent) const override { return 3; }
+
+    void record(TriggerEvent, Room *, ServerPlayer *player, SkillContext &ctx) const override {
+        // CardsMoveOneTime is delivered once to each seat; update each owner only at its seat.
+        if (!ctx.owner || ctx.owner != player || !ctx.original_data) return;
+        const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
+        QList<int> pending = ListV2I(ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "discarded").toList());
+        const bool discard = (move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) == CardMoveReason::S_REASON_DISCARD;
+        // Track only card IDs per instance, including direct-to-discard V2 payments.
+        for (int i = 0; i < move.card_ids.size(); ++i) {
+            const int id = move.card_ids.at(i);
+            const bool owned = move.from == ctx.owner && i < move.from_places.size()
+                && (move.from_places.at(i) == Player::PlaceHand || move.from_places.at(i) == Player::PlaceEquip);
+            if (discard && (owned || pending.contains(id))
+                && (move.to_place == Player::PlaceTable || move.to_place == Player::DiscardPile)) {
+                if (!pending.contains(id)) pending << id;
+            } else {
+                pending.removeAll(id);
+            }
+        }
+        const QVariantList state = ListI2V(pending);
+        if (ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "discarded").toList() != state)
+            ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "discarded", state);
+    }
+
+    QList<int> available(Room *room, ServerPlayer *owner, int instanceID,
+                         const CardsMoveOneTimeStruct &move) const {
+        QList<int> cards;
+        if (move.to_place != Player::DiscardPile
+            || (move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) != CardMoveReason::S_REASON_DISCARD) return cards;
+        const QList<int> pending = ListV2I(owner->getSkillInstanceStateValue(objectName(), instanceID, "discarded").toList());
+        for (int id : move.card_ids) {
+            if (pending.contains(id) && room->getCardPlace(id) == Player::DiscardPile) cards << id;
+        }
+        return cards;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override {
+        TriggerList result;
+        if (!player || !player->isAlive() || !player->hasSkill(objectName())) return result;
+        const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        for (int id : player->getValidSkillInstanceIds(objectName())) {
+            if (!available(room, player, id, move).isEmpty())
+                result[player] << SkillInstanceUtils::formatName(objectName(), id);
+        }
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner || !ctx.original_data) return false;
+        const QList<int> cards = available(room, ctx.owner, ctx.instanceID,
+            ctx.original_data->value<CardsMoveOneTimeStruct>());
+        if (cards.isEmpty() || room->getOtherPlayers(ctx.owner).isEmpty()) return false;
+        if (!Config.EnableHegemony
+            && !ctx.owner->askForSkillInvoke(objectName() + "$-1", *ctx.original_data)) return false;
+        // An accepted concealed activation must distribute at least once after reveal.
+        ctx.extra_data = QVariantMap{{"cards", ListI2V(cards)},
+            {"optional", Config.EnableHegemony && ctx.owner->isSkillInstanceEffectAvailable(objectName(), ctx.instanceID)}};
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        ServerPlayer *kongrong = ctx.owner;
+        if (!kongrong || !kongrong->isAlive()) return false;
+        QList<int> cards = ListV2I(ctx.extra_data.toMap().value("cards").toList());
+        for (int id : QList<int>(cards)) {
+            if (room->getCardPlace(id) != Player::DiscardPile) cards.removeAll(id);
+        }
+        if (cards.isEmpty()) return false;
+        room->broadcastSkillInvoke(objectName(), kongrong);
+        const CardMoveReason previewReason(CardMoveReason::S_REASON_PREVIEW, kongrong->objectName(), objectName(), QString());
+        const QList<ServerPlayer *> viewers{kongrong};
+        QList<CardsMoveStruct> preview{CardsMoveStruct(cards, nullptr, kongrong,
+            Player::DiscardPile, Player::PlaceHand, previewReason)};
+        room->notifyMoveCards(true, preview, false, viewers);
+        room->notifyMoveCards(false, preview, false, viewers);
+        // Always retract the private preview, including interrupted distribution.
+        const auto clearPreview = qScopeGuard([&] {
+            if (cards.isEmpty()) return;
+            QList<CardsMoveStruct> cleanup{CardsMoveStruct(cards, kongrong, nullptr,
+                Player::PlaceHand, Player::DiscardPile, previewReason)};
+            room->notifyMoveCards(true, cleanup, true, viewers);
+            room->notifyMoveCards(false, cleanup, false, viewers);
+        });
+        bool optional = ctx.extra_data.toMap().value("optional").toBool();
+        const CardMoveReason reason(CardMoveReason::S_REASON_PREVIEWGIVE, kongrong->objectName());
+        while (kongrong->isAlive() && !cards.isEmpty()) {
+            const QList<int> before = cards;
+            if (!room->askForYiji(kongrong, cards, objectName(), true, true, optional, -1,
+                    room->getOtherPlayers(kongrong), reason, "@lirang-distribute", optional)) break;
+            optional = true;
+            QList<int> moved;
+            for (int id : before) {
+                if (room->getCardPlace(id) != Player::DiscardPile) {
+                    moved << id;
+                    cards.removeAll(id);
+                }
+            }
+            if (moved.isEmpty()) break;
+            QList<CardsMoveStruct> given{CardsMoveStruct(moved, kongrong, nullptr,
+                Player::PlaceHand, Player::PlaceTable, previewReason)};
+            room->notifyMoveCards(true, given, true, viewers);
+            room->notifyMoveCards(false, given, true, viewers);
+        }
+        return false;
+    }
+};
+
+class Xiongyi : public ViewAsSkillV2 {
+public:
+    Xiongyi() : ViewAsSkillV2("xiongyi") {
+        frequency = Limited;
+        limit_mark = "@arise";
+        m_baseAmount = 3;
+    }
+
+    bool canActivate(const ActiveSkillRequest &request) const override {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && request.initiator->getMark(limit_mark) > 0;
+    }
+    TargetMode targetMode() const override { return Config.EnableHegemony ? NoTarget : SelectTargets; }
+    bool canSelectTarget(const ActiveSkillRequest &, const QList<const Player *> &selected,
+                         const Player *target) const override {
+        return !Config.EnableHegemony && target && target->isAlive() && !selected.contains(target);
+    }
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override {
+        return !Config.EnableHegemony || targets.isEmpty();
+    }
+    QString historyKey(const ActiveSkillRequest &) const override { return "XiongyiCard"; }
+
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override {
+        // The activation owner pays even if an interceptor delegates the effect.
+        if (!ctx.initiator || ctx.initiator->getMark(limit_mark) <= 0) return false;
+        room->removePlayerMark(ctx.initiator, limit_mark);
+        return true;
+    }
+
+    EffectFlow effect(SkillContext &ctx) const override {
+        ServerPlayer *source = ctx.invoker;
+        if (!source || !source->isAlive()) return FinishSkill;
+        Room *room = source->getRoom();
+        room->broadcastSkillInvoke(objectName(), source);
+        room->doSuperLightbox(source, objectName());
+        QList<ServerPlayer *> friends;
+        if (Config.EnableHegemony) {
+            for (ServerPlayer *p : room->getAlivePlayers()) {
+                if (p->isFriendWith(source)) friends << p;
+            }
+        } else {
+            friends = ctx.targets;
+            if (!friends.contains(source)) friends << source;
+        }
+        room->sortByActionOrder(friends);
+        // Preserve the dynamically determined friends while using V2 target interception.
+        for (ServerPlayer *p : friends) skillEffect(ctx, p);
+
+        if (!source->isAlive() || !source->isWounded()) return FinishSkill;
+        if (!Config.EnableHegemony) {
+            if (friends.size() <= room->getAlivePlayers().size() / 2)
+                room->recover(source, RecoverStruct(objectName(), source));
+            // Targets were processed above; do not let the dispatcher draw a second time.
+            return FinishSkill;
+        }
+        const int count = source->getPlayerNumWithSameKingdom(objectName(), QString(), MaxCardsType::Normal);
+        for (const QString &kingdom : Sanguosha->getKingdoms()) {
+            if (kingdom == "god" || (source->getRole() == "careerist"
+                    ? kingdom == "careerist" : kingdom == source->getKingdom())) continue;
+            const int other = source->getPlayerNumWithSameKingdom(objectName(), kingdom, MaxCardsType::Normal);
+            if (other > 0 && other < count) return FinishSkill;
+        }
+        room->recover(source, RecoverStruct(objectName(), source));
+        return FinishSkill;
+    }
+
+    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override {
+        target->drawCards(getEffectiveAmount(ctx), objectName());
+        return ContinueEffects;
+    }
+};
+
+class Sijian : public TriggerSkillV2 {
+public:
+    Sijian() : TriggerSkillV2("sijian") { events << CardsMoveOneTime; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override {
+        if (!player || !player->isAlive() || !player->hasSkill(objectName())) return TriggerList();
+        // CardsMoveOneTime is dispatched per seat; only the losing owner may trigger.
+        const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        if (move.from == player && move.from_places.contains(Player::PlaceHand) && move.is_last_handcard) {
+            for (ServerPlayer *p : room->getOtherPlayers(player)) {
+                if (player->canDiscard(p, "he")) return TriggerList{{player, QStringList{objectName()}}};
+            }
+        }
+        return TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner) return false;
+        QList<ServerPlayer *> targets;
+        for (ServerPlayer *p : room->getOtherPlayers(ctx.owner)) {
+            if (ctx.owner->canDiscard(p, "he")) targets << p;
+        }
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, targets, objectName(), "sijian-invoke", true);
+        if (!target) return false;
+        ctx.targets = QList<ServerPlayer *>{target};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        if (ctx.owner && ctx.owner->isAlive() && target && target->isAlive()
+            && ctx.owner->canDiscard(target, "he")) {
+            room->broadcastSkillInvoke(objectName(), target->isLord() ? 2 : 1, ctx.owner);
+            const int id = room->askForCardChosen(ctx.owner, target, "he", objectName(), false, Card::MethodDiscard);
+            if (id >= 0) room->throwCard(id, target, ctx.owner);
+        }
+        return false;
+    }
+};
+
+class Shuangren : public TriggerSkillV2 {
+public:
+    Shuangren() : TriggerSkillV2("shuangren") { events << EventPhaseStart; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override {
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->getPhase() != Player::Play)
+            return TriggerList();
+        for (ServerPlayer *p : room->getOtherPlayers(player)) {
+            if (player->canPindian(p)) return TriggerList{{player, QStringList{objectName()}}};
+        }
+        return TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner) return false;
+        QList<ServerPlayer *> targets;
+        for (ServerPlayer *p : room->getOtherPlayers(ctx.owner)) {
+            if (ctx.owner->canPindian(p)) targets << p;
+        }
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, targets, objectName(), "@shuangren", true);
+        if (!target) return false;
+        ctx.targets = QList<ServerPlayer *>{target};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
+        ServerPlayer *owner = ctx.owner;
+        if (!owner || !target || !owner->canPindian(target)) return false;
+        room->broadcastSkillInvoke(objectName(), 1, owner);
+        // Pindian is the effect; never pay/move its cards inside the cancellable cost.
+        if (!owner->pindian(target, objectName())) {
+            room->broadcastSkillInvoke(objectName(), 3, owner);
+            return true;
+        }
+        if (!owner->isAlive()) return false;
+        QList<ServerPlayer *> targets;
+        for (ServerPlayer *p : room->getAlivePlayers()) {
+            if (owner->canSlash(p, nullptr, false) && (!Config.EnableHegemony || p == target || p->isFriendWith(target))) targets << p;
+        }
+        if (targets.isEmpty()) return false;
+        ServerPlayer *to = room->askForPlayerChosen(owner, targets, "shuangren-slash", "@dummy-slash");
+        if (!to) return false;
+        Slash *slash = new Slash(Card::NoSuit, 0);
+        slash->setSkillName("_shuangren");
+        // Identity keeps its Slash history; Hegemony grants a use outside the count.
+        room->useCard(CardUseStruct(slash, owner, to), !Config.EnableHegemony);
+        return false;
+    }
+    int getEffectIndex(const ServerPlayer *, const Card *) const override { return 2; }
+};
+
+class ShuangrenTargetMod : public TargetModSkillV2 {
+public:
+    ShuangrenTargetMod() : TargetModSkillV2("#shuangren-slash-ndl") { setBaseAmount(999); }
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override {
+        if (ctx.modType == TargetModSkill::DistanceLimit && ctx.card
+            && ctx.card->getSkillName() == "shuangren") return CorrectSkillResult::useAmount(ctx.currentAmount);
+        return CorrectSkillResult::noEffect();
+    }
+};
 
 class Shushen : public TriggerSkillV2 {
 public:
@@ -4525,6 +4811,14 @@ private:
 SPPackage::SPPackage()
 : Package("sp")
 {
+    // Shared skill restored from the retired identity hegemony package.
+    addSkills(new Lirang);
+    addSkills(new Xiongyi);
+    addSkills(new Sijian);
+    addSkills(new Shuangren);
+    addSkills(new ShuangrenTargetMod);
+    insertRelatedSkills("shuangren", "#shuangren-slash-ndl");
+
     General *yangxiu = new General(this, "yangxiu*xh_sibi", "wei", 3); // SP 001
     yangxiu->addSkill(new Jilei);
     yangxiu->addSkill(new JileiClear);

@@ -1,6 +1,13 @@
 -- lines for SP Package
 
 return {
+	["$lirang1"] = "你吃大的，我吃小的。",
+	["$lirang2"] = "退一步，海阔天空。",
+	["$xiongyi"] = "西凉铁骑，锐不可当！",
+	["$sijian1"] = "忠言逆耳利于行。",
+	["$sijian2"] = "主公万万不可。",
+	["$shuangren1"] = "你可识得我手中兵器？",
+	["$shuangren2"] = "今日这兵器颇不顺手啊。",
 	["cv:ganfuren"] = "神马芯",
 	["~ganfuren"] = "生同室，死同穴……",
     -- Shared identity skills from the retired hegemony package.

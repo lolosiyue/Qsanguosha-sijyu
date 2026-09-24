@@ -1,3 +1,4 @@
+#include "settings.h"
 //#include "settings.h"
 //#include "standard.h"
 //#include "skill.h"
@@ -365,43 +366,51 @@ private:
 }
 #endif
 
-class Guidao : public RetrialSkill
+class Guidao : public TriggerSkillV2
 {
 public:
-    Guidao() : RetrialSkill("guidao", true)
+    Guidao() : TriggerSkillV2("guidao") { events << AskForRetrial; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || !data.value<JudgeStruct *>()) return {};
+        if (!player->isKongcheng()) return {{player, {objectName()}}};
+        for (const Card *card : player->getEquips())
+            if (card->isBlack()) return {{player, {objectName()}}};
+        return {};
     }
-
-    bool triggerable(const ServerPlayer *target) const
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!TriggerSkill::triggerable(target))
-            return false;
-
-		foreach (const Card *e, target->getEquips()) {
-			if (e->isBlack())
-				return true;
-		}
-		return !target->isKongcheng();
+        JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
+        if (!judge || !judge->card || !judge->who) return false;
+        const QString prompt = QStringList{"@guidao-card", judge->who->objectName(), objectName(),
+            judge->reason, QString::number(judge->card->getEffectiveId())}.join(":");
+        // Selection is cancellable; Room::retrial performs the atomic exchange later.
+        const Card *card = room->askForCard(ctx.owner, ".|black", prompt, *ctx.original_data,
+            Card::MethodNone, judge->who, true);
+        if (!card || card->isVirtualCard() || !canRetrial(room, ctx.owner, card->getEffectiveId())) return false;
+        ctx.extra_data = card->getEffectiveId();
+        return true;
     }
-
-    const Card *onRetrial(ServerPlayer *player, JudgeStruct *judge) const
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        QStringList prompt_list;
-        prompt_list << "@guidao-card" << judge->who->objectName() << objectName()
-			<< judge->reason << QString::number(judge->card->getEffectiveId());
-        QString prompt = prompt_list.join(":");
-
-        Room *room = player->getRoom();
-
-        const Card *card = room->askForCard(player, ".|black", prompt, QVariant::fromValue(judge), Card::MethodResponse, judge->who, true);
-
-        if (card != nullptr) {
-            int index = qsanRandomBounded(2) + 1;
-            if (Player::isNostalGeneral(player, "zhangjiao"))
-                index += 2;
-            room->broadcastSkillInvoke(objectName(), index);
-        }
-        return card;
+        bool ok = false;
+        const int id = ctx.extra_data.toInt(&ok);
+        JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
+        if (!ok || !judge || !canRetrial(room, ctx.owner, id)) return false;
+        int index = qsanRandomBounded(2) + 1;
+        if (Player::isNostalGeneral(ctx.owner, "zhangjiao")) index += 2;
+        room->broadcastSkillInvoke(objectName(), index);
+        room->retrial(Sanguosha->getCard(id), ctx.owner, judge, objectName(), true);
+        return false;
+    }
+private:
+    static bool canRetrial(Room *room, ServerPlayer *owner, int id)
+    {
+        if (!owner || !owner->isAlive() || id < 0 || room->getCardOwner(id) != owner) return false;
+        const Card *card = Sanguosha->getCard(id);
+        return card && card->isBlack() && !owner->isCardLimited(card, Card::MethodResponse)
+            && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip
+                || owner->getHandPile().contains(id));
     }
 };
 
@@ -1509,39 +1518,39 @@ public:
     }
 };
 
-class NosLeiji : public TriggerSkill
+class NosLeiji : public TriggerSkillV2
 {
 public:
-    NosLeiji() : TriggerSkill("nosleiji")
+    NosLeiji() : TriggerSkillV2("nosleiji") { events << CardUsed << CardResponded; m_baseAmount = 2; }
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        events << CardResponded << CardUsed;
+        if (!player || !player->isAlive() || !player->hasSkill(objectName())) return {};
+        const Card *card = event == CardUsed ? data.value<CardUseStruct>().card : data.value<CardResponseStruct>().m_card;
+        return card && card->isKindOf("Jink") ? TriggerList{{player, QStringList(objectName())}} : TriggerList();
     }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *zhangjiao, QVariant &data) const
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        const Card *jink = nullptr;
-        if (triggerEvent == CardUsed)
-            jink = data.value<CardUseStruct>().card;
-        else
-            jink = data.value<CardResponseStruct>().m_card;
-        if (jink && jink->isKindOf("Jink")) {
-            ServerPlayer *target = room->askForPlayerChosen(zhangjiao, room->getAlivePlayers(), objectName(), "leiji-invoke", true, true);
-            if (target) {
-                room->broadcastSkillInvoke("nosleiji");
-
-                JudgeStruct judge;
-                judge.pattern = ".|spade";
-                judge.good = false;
-                judge.negative = true;
-                judge.reason = objectName();
-                judge.who = target;
-
-                room->judge(judge);
-
-                if (judge.isBad())
-                    room->damage(DamageStruct(objectName(), zhangjiao, target, 2, DamageStruct::Thunder));
-            }
-        }
+        if (!ctx.owner) return false;
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, Config.EnableHegemony ? room->getOtherPlayers(ctx.owner) : room->getAlivePlayers(), objectName(),
+                                                       "leiji-invoke", true);
+        if (!target) return false;
+        // Chosen targets belong to this execution; nested Jink responses cannot overwrite them.
+        ctx.targets = {target};
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        ServerPlayer *source = ctx.invoker;
+        if (!source || !target || !target->isAlive()) return false;
+        room->broadcastSkillInvoke(objectName(), source);
+        JudgeStruct judge;
+        judge.pattern = ".|spade";
+        judge.good = false;
+        judge.negative = true;
+        judge.reason = objectName();
+        judge.who = target;
+        room->judge(judge);
+        if (judge.isBad()) room->damage(DamageStruct(objectName(), source, target, getEffectiveAmount(ctx), DamageStruct::Thunder));
         return false;
     }
 };

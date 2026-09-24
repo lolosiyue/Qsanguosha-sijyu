@@ -188,75 +188,84 @@ public:
     }
 };
 
-class Beige : public TriggerSkill
+class Beige : public TriggerSkillV2
 {
 public:
-    Beige() : TriggerSkill("beige")
+    Beige() : TriggerSkillV2("beige") { events << Damaged << FinishJudge; }
+    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
     {
-        events << Damaged << FinishJudge;
-    }
-
-    bool triggerable(const ServerPlayer *target) const
-    {
-        return target != nullptr;
-    }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        if (triggerEvent == Damaged) {
-            DamageStruct damage = data.value<DamageStruct>();
-            if (!damage.card || !damage.card->isKindOf("Slash") || damage.to->isDead())
-                return false;
-
-            foreach (ServerPlayer *caiwenji, room->getAllPlayers()) {
-                if (!TriggerSkill::triggerable(caiwenji)) continue;
-                if (caiwenji->canDiscard(caiwenji, "he") && room->askForCard(caiwenji, "..", "@beige", data, objectName())) {
-                    JudgeStruct judge;
-                    judge.good = true;
-                    judge.play_animation = false;
-                    judge.who = player;
-                    judge.reason = objectName();
-
-                    room->judge(judge);
-
-                    Card::Suit suit = (Card::Suit)(judge.pattern.toInt());
-                    switch (suit) {
-                    case Card::Heart: {
-                        room->broadcastSkillInvoke(objectName(), 4);
-                        room->recover(player, RecoverStruct("beige", caiwenji));
-
-                        break;
-                    }
-                    case Card::Diamond: {
-                        room->broadcastSkillInvoke(objectName(), 3);
-                        player->drawCards(2, objectName());
-                        break;
-                    }
-                    case Card::Club: {
-                        room->broadcastSkillInvoke(objectName(), 1);
-                        if (damage.from && damage.from->isAlive())
-                            room->askForDiscard(damage.from, "beige", 2, 2, false, true);
-
-                        break;
-                    }
-                    case Card::Spade: {
-                        room->broadcastSkillInvoke(objectName(), 2);
-                        if (damage.from && damage.from->isAlive())
-                            damage.from->turnOver();
-
-                        break;
-                    }
-                    default:
-                        break;
-                    }
-                }
-            }
-        } else {
+        if (event == FinishJudge) {
             JudgeStruct *judge = data.value<JudgeStruct *>();
-            if (judge->reason != objectName()) return false;
-            judge->pattern = QString::number(int(judge->card->getSuit()));
+            if (judge && judge->reason == objectName())
+                judge->pattern = QString::number(int(judge->card->getSuit()));
+        }
+        return true;
+    }
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        TriggerList result;
+        if (event != Damaged || !player || !player->isAlive()) return result;
+        const DamageStruct damage = data.value<DamageStruct>();
+        if (!damage.card || !damage.card->isKindOf("Slash") || damage.to != player) return result;
+        for (ServerPlayer *owner : room->findPlayersBySkillName(objectName()))
+            if (owner->isAlive() && owner->canDiscard(owner, "he")) result[owner] << objectName();
+        return result;
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        const Card *card = room->askForCard(ctx.owner, "..", "@beige", *ctx.original_data,
+            Card::MethodNone, nullptr, false, objectName());
+        if (!card || card->isVirtualCard() || !canPay(room, ctx.owner, card->getEffectiveId())) return false;
+        ctx.extra_data = card->getEffectiveId();
+        ctx.targets = {player};
+        return true;
+    }
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        bool ok = false;
+        const int id = ctx.extra_data.toInt(&ok);
+        if (!ok || !canPay(room, ctx.owner, id)) return false;
+        // Freeze selection in the activation; discard only after activation acceptance.
+        room->throwCard(id, objectName(), ctx.owner);
+        return true;
+    }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!target || !target->isAlive()) return false;
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        JudgeStruct judge;
+        judge.good = true;
+        judge.play_animation = false;
+        judge.who = target;
+        judge.reason = objectName();
+        room->judge(judge);
+        switch (Card::Suit(judge.pattern.toInt())) {
+        case Card::Heart:
+            room->broadcastSkillInvoke(objectName(), 4);
+            room->recover(target, RecoverStruct(objectName(), ctx.owner));
+            break;
+        case Card::Diamond:
+            room->broadcastSkillInvoke(objectName(), 3);
+            target->drawCards(2, objectName());
+            break;
+        case Card::Club:
+            room->broadcastSkillInvoke(objectName(), 1);
+            if (damage.from && damage.from->isAlive()) room->askForDiscard(damage.from, objectName(), 2, 2, false, true);
+            break;
+        case Card::Spade:
+            room->broadcastSkillInvoke(objectName(), 2);
+            if (damage.from && damage.from->isAlive()) damage.from->turnOver();
+            break;
+        default: break;
         }
         return false;
+    }
+private:
+    static bool canPay(Room *room, ServerPlayer *owner, int id)
+    {
+        return owner && owner->isAlive() && id >= 0 && room->getCardOwner(id) == owner
+            && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip)
+            && owner->canDiscard(owner, id);
     }
 };
 
