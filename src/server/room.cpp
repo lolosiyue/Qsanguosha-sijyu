@@ -32,10 +32,12 @@
 #include "scenario.h"
 #include "takeover-scenario.h"
 #include "gamerule.h"
+#include "hegemony-mode.h"
 #include "banpair.h"
 #include "roomthread3v3.h"
 #include "roomthreadxmode.h"
 #include "roomthread1v1.h"
+#include "roomthread-hegemony.h"
 #include "server.h"
 #include "generalselector.h"
 #include "miniscenarios.h"
@@ -513,7 +515,7 @@ static void traceRoomWorkers(const char *event, const Room *room,
 {
 	if (!shutdownTraceEnabled() || room == nullptr)
 		return;
-	const char *names[] = {"3v3", "xmode", "1v1", "roomthread", "room"};
+	const char *names[] = {"3v3", "xmode", "1v1", "hegemony", "roomthread", "room"};
 	QStringList states;
 	for (int i = 0; i < workers.size(); ++i) {
 		if (workers[i] == nullptr)
@@ -685,7 +687,7 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
 	game_paused(false), application_backgrounded(false), application_active_elapsed(0),
 	thread(nullptr),//game_started(false), game_finished(false),
-	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr),
+	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr), thread_hegemony(nullptr),
 	scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false),
 	m_sessionConfig(sessionConfig)
 {
@@ -764,7 +766,7 @@ bool Room::completeRuntimeInitialization(bool runtimeReady, const QString &runti
 Room::~Room()
 {
     traceRoomWorkers("dtor_enter", this, {thread_3v3.data(), thread_xmode.data(),
-		thread_1v1.data(), thread, this});
+		thread_1v1.data(), thread_hegemony.data(), thread, this});
     globalCardLifetimeManager().releaseVariantTags(this);
 	const bool stopped = stopGameThreads(10000);
 	if (shutdownTraceEnabled())
@@ -782,9 +784,11 @@ Room::~Room()
 	delete thread_3v3.data();
 	delete thread_xmode.data();
 	delete thread_1v1.data();
+	delete thread_hegemony.data();
 	thread_3v3 = nullptr;
 	thread_xmode = nullptr;
 	thread_1v1 = nullptr;
+	thread_hegemony = nullptr;
 	foreach(ServerPlayer*player, getPlayers())
 		delete player;
 	if (thread != nullptr)
@@ -820,7 +824,7 @@ bool Room::stopGameThreads(int timeoutMs)
 	requestStopGameThreads();
 	QList<QThread *> workers;
 	workers << thread_3v3.data() << thread_xmode.data() << thread_1v1.data()
-		<< thread << this;
+		<< thread_hegemony.data() << thread << this;
 
 	QElapsedTimer timer;
 	timer.start();
@@ -838,13 +842,13 @@ void Room::requestStopGameThreads()
 {
 	QList<QThread *> workers;
 	workers << thread_3v3.data() << thread_xmode.data() << thread_1v1.data()
-		<< thread << this;
+		<< thread_hegemony.data() << thread << this;
 	foreach (QThread *worker, workers) {
 		if (worker && worker != this)
 			disconnect(worker, nullptr, this, nullptr);
 	}
 	traceRoomWorkers("request_stop", this, {thread_3v3.data(), thread_xmode.data(),
-		thread_1v1.data(), thread, this});
+		thread_1v1.data(), thread_hegemony.data(), thread, this});
 
 	m_stopRequested.store(true);
 
@@ -870,7 +874,7 @@ void Room::requestStopGameThreads()
 bool Room::allGameThreadsStopped() const
 {
 	const QList<const QThread *> workers = {
-		thread_3v3.data(), thread_xmode.data(), thread_1v1.data(), thread, this};
+		thread_3v3.data(), thread_xmode.data(), thread_1v1.data(), thread_hegemony.data(), thread, this};
 	for (const QThread *worker : workers) {
 		if (worker && worker != QThread::currentThread() && worker->isRunning())
 			return false;
@@ -5139,8 +5143,7 @@ bool Room::isGeneralHiddenForSkill(const SkillInstanceRef &ref) const
 		? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
 	// Helpers and attachments follow their exact root, never a same-name copy.
 	return instance && instance->source == SourceInnate
-		&& ((instance->bindHead == 1 && !owner->hasShownGeneral())
-			|| (instance->bindHead == 2 && !owner->hasShownGeneral2()));
+		&& HegemonyMode::innateGeneralConcealed(owner, instance->bindHead);
 }
 
 bool Room::canShowGeneralForSkill(const SkillInstanceRef &ref) const
@@ -5164,9 +5167,8 @@ bool Room::canShowGeneralForSkill(const SkillInstanceRef &ref) const
 	if (instance->source != SourceInnate) return true;
 	const int slot = instance->bindHead;
 	if (slot != 1 && slot != 2) return false;
-	const bool head = slot == 1;
-	if (head ? owner->hasShownGeneral() : owner->hasShownGeneral2()) return true;
-	return owner->isAlive() && owner->canShowGeneral(head ? "h" : "d");
+	if (HegemonyMode::innateGeneralShown(owner, slot)) return true;
+	return owner->isAlive() && owner->canShowGeneral(slot == 1 ? "h" : "d");
 }
 
 bool Room::isSkillPreshownForTrigger(const SkillInstanceRef &ref) const

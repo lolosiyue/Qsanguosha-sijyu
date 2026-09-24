@@ -377,6 +377,7 @@ add_library(qsanguosha_engine STATIC
     src/core/filehandler.h
     src/core/json.cpp
     src/core/player.cpp
+    src/core/hegemony-mode.cpp
     src/core/player-self.cpp
     src/core/player.h
     src/core/protocol.cpp
@@ -486,6 +487,7 @@ add_library(qsanguosha_engine STATIC
     src/server/room.cpp
     src/server/roomthread.cpp
     src/server/roomthread1v1.cpp
+    src/server/roomthread-hegemony.cpp
     src/server/roomthread3v3.cpp
     src/server/roomthreadxmode.cpp
     src/server/player-ui-state-builder.cpp
