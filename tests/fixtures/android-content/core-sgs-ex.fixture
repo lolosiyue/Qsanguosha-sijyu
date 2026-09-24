@@ -1,2 +1,0 @@
--- Core helper shipped with the newer APK.
-function sgs.CreateDetachEffectSkill(spec) return spec end

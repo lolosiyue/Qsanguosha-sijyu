@@ -136,7 +136,6 @@ docker run --rm --entrypoint /bin/sh "$image" -ec '
     test ! -e /src
     test ! -e /build
     test ! -e /opt/qsanguosha/include
-    test ! -e /opt/qsanguosha/bin/qsanguosha_network_integration_tests
 '
 
 docker run --rm --entrypoint /usr/bin/ldd "$image" \

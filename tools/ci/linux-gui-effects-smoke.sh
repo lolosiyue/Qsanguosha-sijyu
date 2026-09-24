@@ -28,7 +28,7 @@
 #   --expect <pass|fail>           expected outcome (default: pass)
 #   --expect-stage <stage>         with --expect fail: the stage to blame
 #   --expect-reason <reason>       with --expect fail: stage_failed | timeout
-#   --fixtures <dir>               fixture root (default: tests/fixtures/effects)
+#   --fixtures <dir>               fixture root (default: tools/ci/fixtures/effects)
 #   --label <name>                 artifact filename prefix (default: profile)
 
 set -uo pipefail
@@ -89,7 +89,7 @@ REPORT="$ARTIFACT_DIR/effects-smoke-$LABEL.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-[ -n "$FIXTURES" ] || FIXTURES="tests/fixtures/effects"
+[ -n "$FIXTURES" ] || FIXTURES="tools/ci/fixtures/effects"
 # Relative fixture paths are relative to the repository, not to the data
 # directory the game chdir()s into.  Resolve them here so the same command line
 # works against a build tree and against an installed/portable/AppImage bundle.

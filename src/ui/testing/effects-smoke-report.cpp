@@ -94,7 +94,7 @@ int EffectsSmokeReport::maximumTimeoutMs()
 
 QString EffectsSmokeReport::defaultFixtureRoot()
 {
-    return QStringLiteral("tests/fixtures/effects");
+    return QStringLiteral("tools/ci/fixtures/effects");
 }
 
 QStringList EffectsSmokeReport::stageOrder()

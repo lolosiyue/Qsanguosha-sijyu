@@ -20,7 +20,7 @@ set_target_properties(qsanguosha_solo_wasm PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/web-solo/$<CONFIG>"
 )
 qsan_configure_wasm_rules_module(qsanguosha_solo_wasm createQSanguoshaSolo worker
-    "['_qsan_solo_initialize','_qsan_solo_start','_qsan_solo_frame','_qsan_solo_pump','_qsan_solo_stop']" CONTENT_FREE)
+    "['_qsan_solo_initialize','_qsan_solo_start','_qsan_solo_frame','_qsan_solo_pump','_qsan_solo_stop']")
 # Room initialization, Room and RoomThread need already-started workers before
 # any synchronous Qt wait. Never run this runtime on the browser's UI thread.
 target_link_options(qsanguosha_solo_wasm PRIVATE

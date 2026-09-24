@@ -116,12 +116,12 @@ bool MultimediaSmokeController::isRequested(const QStringList &arguments)
 
 QString MultimediaSmokeController::fixturePath(const QString &name)
 {
-    // Keep the legacy default (tests/fixtures/media relative to the CWD);
+    // Keep the legacy default (tools/ci/fixtures/media relative to the CWD);
     // --multimedia-fixtures exists for the package smoke, where the CWD is the
     // asset root inside the bundle.
     const QString root = s_active != nullptr && !s_active->m_fixtureRoot.isEmpty()
         ? s_active->m_fixtureRoot
-        : QDir::current().absoluteFilePath(QStringLiteral("tests/fixtures/media"));
+        : QDir::current().absoluteFilePath(QStringLiteral("tools/ci/fixtures/media"));
     return QDir(root).absoluteFilePath(name);
 }
 

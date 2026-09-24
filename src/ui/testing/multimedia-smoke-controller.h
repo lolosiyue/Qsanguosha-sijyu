@@ -65,7 +65,7 @@ private:
     void writeReportFile();
     QJsonObject environmentDetails() const;
     QJsonObject audioDiagnostics() const;
-    // Fixture directory: tests/fixtures/media/. When it is missing the stage
+    // Fixture directory: tools/ci/fixtures/media/. When it is missing the stage
     // does not fail, it only sets fixture_available=false — a missing fixture
     // must be distinguishable from a broken backend.
     static QString fixturePath(const QString &name);

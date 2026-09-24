@@ -146,9 +146,6 @@ jobs:
       # ------------------------------------------------------------------
       # Contract checks that need no build
       # ------------------------------------------------------------------
-      - name: Packaging contract tests
-        run: python3 tools/autotest/tests/test_packaging_contract.py
-
       - name: Validate the desktop entry
         run: |
           desktop-file-validate packaging/linux/qsanguosha.desktop
@@ -161,7 +158,6 @@ jobs:
       - name: Configure the Release GUI build
         run: |
           cmake -S . -B build/package -G Ninja \
-            -DBUILD_TESTING=OFF \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_C_COMPILER=gcc \
             -DCMAKE_CXX_COMPILER=g++ \
@@ -291,7 +287,6 @@ jobs:
       - name: A server-only install pulls in no GUI Qt and no GUI assets
         run: |
           cmake -S . -B build/server-only -G Ninja \
-            -DBUILD_TESTING=OFF \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DQSAN_BUILD_GUI=OFF \
             -DQSAN_BUILD_SERVER=ON

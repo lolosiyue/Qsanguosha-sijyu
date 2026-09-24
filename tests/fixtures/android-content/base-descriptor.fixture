@@ -1,1 +1,0 @@
-{"schema_version":2,"profile":"declared-v2","extensions":[{"name":"base","script":"extensions/base.lua","dependencies":[],"libs":[],"lang":[],"ai":[]},{"name":"addon","script":"extensions/addon.lua","dependencies":[],"libs":[],"lang":["lang/zh_CN/Audio/AddedPackageLines.lua"],"ai":[]}]}

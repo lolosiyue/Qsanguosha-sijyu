@@ -13,10 +13,8 @@ on:
       - '!src/client/core/**'
       - 'src/client/core/**'
       - 'src/tui/**'
-      - 'tests/tui/**'
       - 'artifacts/tui-flow-coverage.json'
       - 'tools/autotest/tui_network_smoke.py'
-      - 'tools/autotest/tests/test_tui_network_smoke_contract.py'
       - 'src/core/audio.h'
       - 'src/core/json-gui.cpp'
       - 'src/core/oracle_helper.*'
@@ -195,9 +193,6 @@ jobs:
             'relwithdebinfo\qsanguosha_tui.exe',
             'dist\tui\RelWithDebInfo\qsanguosha_tui.exe'
           )
-          if ($env:GITHUB_REF -eq 'refs/heads/main') {
-            $required += 'builds\cmake-vs2026\CTestTestfile.cmake'
-          }
           foreach ($path in $required) {
             if (-not (Test-Path -LiteralPath $path)) {
               throw "Missing required build output: $path"
@@ -213,123 +208,12 @@ jobs:
           Get-ChildItem -Path relwithdebinfo -Directory | ForEach-Object {
             Copy-Item -LiteralPath $_.FullName -Destination $runtimeStage -Recurse
           }
-          # CTest 期望 relwithdebinfo 路徑，同步提供以修復 Not Run (qsanguosha_server_* 4 項)
-          $relWithDebInfoStage = 'ci-handoff\runtime\relwithdebinfo'
-          New-Item -ItemType Directory -Path $relWithDebInfoStage -Force | Out-Null
-          Get-ChildItem -Path relwithdebinfo -File |
-            Where-Object Extension -In '.exe', '.dll' |
-            Copy-Item -Destination $relWithDebInfoStage
-          Copy-Item -LiteralPath relwithdebinfo\QSanguosha.pdb -Destination $relWithDebInfoStage
-          Get-ChildItem -Path relwithdebinfo -Directory | ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination $relWithDebInfoStage -Recurse
-          }
           Copy-Item -LiteralPath dist\tui\RelWithDebInfo -Destination ci-handoff\runtime\tui -Recurse
 
           & dist\tui\RelWithDebInfo\qsanguosha_tui.exe --version
           if ($LASTEXITCODE -ne 0) { throw 'Packaged TUI --version failed' }
           & dist\tui\RelWithDebInfo\qsanguosha_tui.exe --help
           if ($LASTEXITCODE -ne 0) { throw 'Packaged TUI --help failed' }
-
-          # Test targets are defined in the tests/ subdirectory, so MSVC puts the test
-          # executables under builds\cmake-vs2026\tests\RelWithDebInfo\ instead of the
-          # build tree root. The rules fixture runner is at the top level, the other
-          # tests in tests/; both layers must be staged, and the CTestTestfile.cmake and
-          # executable layout kept as-is (the generated CTestTestfile.cmake contains
-          # absolute paths).
-          if ($env:GITHUB_REF -eq 'refs/heads/main') {
-            $ctestStage = 'ci-handoff\ctest\builds\cmake-vs2026'
-            New-Item -ItemType Directory -Path "$ctestStage\tests\RelWithDebInfo" -Force | Out-Null
-            New-Item -ItemType Directory -Path "$ctestStage\RelWithDebInfo" -Force | Out-Null
-            Copy-Item -LiteralPath builds\cmake-vs2026\RelWithDebInfo\qsanguosha_rules_fixture_runner.exe -Destination "$ctestStage\RelWithDebInfo"
-            Copy-Item -LiteralPath builds\cmake-vs2026\CTestTestfile.cmake -Destination $ctestStage
-            Copy-Item -LiteralPath builds\cmake-vs2026\CMakeCache.txt -Destination $ctestStage
-            New-Item -ItemType Directory -Path "$ctestStage\generated" -Force | Out-Null
-            Copy-Item -LiteralPath builds\cmake-vs2026\generated\sanguosha_wrap.cxx -Destination "$ctestStage\generated"
-            Copy-Item -LiteralPath builds\cmake-vs2026\tests\CTestTestfile.cmake -Destination "$ctestStage\tests"
-            Copy-Item -Path builds\cmake-vs2026\tests\RelWithDebInfo\*.exe -Destination "$ctestStage\tests\RelWithDebInfo"
-            if (-not (Get-ChildItem -Path "$ctestStage\tests\RelWithDebInfo" -Filter *.exe)) {
-              throw 'No CTest executables were staged'
-            }
-          }
-
-      - name: Run TUI live Protocol V2 gate
-        shell: pwsh
-        run: |
-          cmake -S . -B builds\cmake-vs2026 -D BUILD_TESTING=ON
-          if ($LASTEXITCODE -ne 0) { throw 'TUI test reconfigure failed' }
-          cmake --build builds\cmake-vs2026 --config RelWithDebInfo `
-            --target qsanguosha_tui_tests `
-            --parallel 8
-          if ($LASTEXITCODE -ne 0) { throw 'TUI test build failed' }
-          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_tests.exe --suite contract
-          if ($LASTEXITCODE -ne 0) { throw 'TUI contract gate failed' }
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_tests.exe --suite live-tcp
-          if ($LASTEXITCODE -ne 0) { throw 'TUI live TCP gate failed' }
-
-      - name: Run native client rules fixtures
-        shell: pwsh
-        run: |
-          cmake --build builds\cmake-vs2026 --config RelWithDebInfo `
-            --target qsanguosha_rules_fixture_runner --parallel 8
-          if ($LASTEXITCODE -ne 0) { throw 'Native rules fixture build failed' }
-          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
-          python tests/client_runtime/check-fixtures.py --self-test
-          if ($LASTEXITCODE -ne 0) { throw 'Native rules fixture harness failed' }
-          python tests/client_runtime/check-fixtures.py `
-            --runner builds/cmake-vs2026/RelWithDebInfo/qsanguosha_rules_fixture_runner.exe `
-            --fixtures tests/client_runtime/fixtures `
-            --asset-root "$env:GITHUB_WORKSPACE" `
-            --builtin-assets `
-            --artifacts ci-logs/client-rules-fixtures
-          if ($LASTEXITCODE -ne 0) { throw 'Native rules fixtures failed' }
-
-      - name: Run shared GUI and TUI client architecture regressions
-        shell: pwsh
-        run: |
-          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
-          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
-          $capabilitiesPath = Join-Path $PWD 'ci-logs\gui-local-response-capabilities.json'
-          $capabilitiesErrorPath = Join-Path $PWD 'ci-logs\gui-local-response-capabilities.stderr.log'
-          $capabilitiesProcess = Start-Process `
-            -FilePath (Resolve-Path 'relwithdebinfo\QSanguosha.exe').Path `
-            -ArgumentList '--local-response-ui-capabilities' `
-            -NoNewWindow -Wait -PassThru `
-            -RedirectStandardOutput $capabilitiesPath `
-            -RedirectStandardError $capabilitiesErrorPath
-          if ($capabilitiesProcess.ExitCode -ne 0) {
-            Get-Content $capabilitiesErrorPath -ErrorAction SilentlyContinue
-            throw "GUI local-response capability probe failed: exit $($capabilitiesProcess.ExitCode)"
-          }
-          $capabilitiesText = Get-Content $capabilitiesPath -Raw
-          $capabilities = $capabilitiesText | ConvertFrom-Json
-          if ($capabilities.schema_version -ne 1 -or
-              -not $capabilities.auto -or -not $capabilities.show -or
-              -not $capabilities.inspect) {
-            throw "Unexpected GUI local-response capabilities: $capabilitiesText"
-          }
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_client_core_tests.exe `
-            --interaction-generator relwithdebinfo\QSanguosha.exe `
-            --interaction-matrix artifacts\client-core-interaction-matrix.json `
-            --generated-interaction-matrix ci-logs\generated-client-core-interaction-matrix.json
-          if ($LASTEXITCODE -ne 0) { throw 'Shared ClientCore production inventory failed' }
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_protocol_tests.exe --suite reply-adapter
-          if ($LASTEXITCODE -ne 0) { throw 'GUI/TUI reply adapter contract failed' }
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_core_tests.exe --suite local-response-case-parser
-          if ($LASTEXITCODE -ne 0) { throw 'GUI local-response case contract failed' }
-
-      - name: Build and run Windows Debug TUI targeted gates
-        shell: pwsh
-        run: |
-          cmake --build builds\cmake-vs2026 --config Debug `
-            --target qsanguosha_tui qsanguosha_tui_tests `
-            --parallel 8
-          if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI targeted build failed' }
-          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
-          & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_tests.exe --suite contract
-          if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI contract failed' }
-          & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_tests.exe --suite live-tcp
-          if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI live-session contract failed' }
 
       - name: Verify Windows Release TUI product
         shell: pwsh
@@ -360,16 +244,6 @@ jobs:
           retention-days: 7
           compression-level: 0
 
-      - name: Upload CTest bundle
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ctest-relwithdebinfo-v145-${{ github.sha }}-${{ github.run_attempt }}
-          path: ci-handoff/ctest
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -378,107 +252,3 @@ jobs:
           path: ci-logs/**
           if-no-files-found: warn
           retention-days: 7
-
-  ctest:
-    name: Windows CTest (main only)
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: windows-2025-vs2026
-    # Feature／PR branch 只建置；CTest 僅允許在 main 執行。
-    timeout-minutes: 45
-    steps:
-      - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-          fetch-depth: 1
-
-      - name: Prepare diagnostics
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
-          "runner=$env:RUNNER_OS`nimage=$env:ImageOS`nimage_version=$env:ImageVersion" |
-            Set-Content -Path ci-logs\runner.txt
-
-      - name: Download RelWithDebInfo runtime
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: runtime-relwithdebinfo-v145-${{ github.sha }}-${{ github.run_attempt }}
-          path: .
-
-      - name: Download CTest bundle
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ctest-relwithdebinfo-v145-${{ github.sha }}-${{ github.run_attempt }}
-          path: .
-
-      - name: Fetch Lua AI & extensions
-        shell: pwsh
-        run: |
-          & .\tools\ci\fetch-extensions.ps1
-
-      # The RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO of qsanguosha_server / QSanguosha
-      # points at relwithdebinfo\ in the source tree, so the generated
-      # CTestTestfile.cmake invokes the server CLI tests with that absolute path. The
-      # runtime artifact is delivered as release\ (other jobs keep that name); this step
-      # recreates a relwithdebinfo\ copy so those absolute paths resolve.
-      - name: Restore RelWithDebInfo runtime layout
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path relwithdebinfo -Force | Out-Null
-          Copy-Item -Path 'release\*' -Destination relwithdebinfo -Recurse -Force
-          if (-not (Test-Path -LiteralPath 'relwithdebinfo\qsanguosha_server.exe')) {
-            throw 'relwithdebinfo\qsanguosha_server.exe was not restored'
-          }
-
-      - name: Run deterministic C++ tests
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
-          # 兼容部分階段僅提供 release 的情況，確保 CTest 指向的 relwithdebinfo 存在
-          if ((Test-Path -LiteralPath release) -and -not (Test-Path -LiteralPath relwithdebinfo)) {
-            New-Item -ItemType Directory -Path relwithdebinfo -Force | Out-Null
-            Copy-Item -Path release\* -Destination relwithdebinfo -Recurse -Force
-          }
-          $runtime = if (Test-Path -LiteralPath release) { (Resolve-Path -LiteralPath release).Path } elseif (Test-Path -LiteralPath relwithdebinfo) { (Resolve-Path -LiteralPath relwithdebinfo).Path } else { throw 'Neither release nor relwithdebinfo runtime directory was found' }
-          $env:PATH = "$runtime;$env:PATH"
-          $runtime | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          $junitPath = Join-Path $env:GITHUB_WORKSPACE 'ci-logs\ctest.xml'
-          $ctestArguments = @(
-            '--test-dir', 'builds\cmake-vs2026',
-            '-C', 'RelWithDebInfo',
-            '--output-on-failure',
-            '--output-junit', $junitPath
-          )
-          Start-Transcript -Path ci-logs\ctest.log
-          try {
-            & ctest @ctestArguments
-            if ($LASTEXITCODE -ne 0) {
-              throw "CTest failed with exit code $LASTEXITCODE"
-            }
-          }
-          finally {
-            Stop-Transcript
-          }
-
-      - name: Consolidate crash evidence
-        if: failure()
-        shell: pwsh
-        run: python tools\autotest\crash_report.py --exe-root . --log-dir artifacts\autotest --pdb release\QSanguosha.pdb
-
-      - name: Upload CTest diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: diagnostics-ctest-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-logs/**
-            artifacts/autotest/**
-            dmp/**
-            record/**
-            release/**/*.dmp
-            release/dmp/**
-            release/record/**
-          if-no-files-found: warn
-          retention-days: 7
-

@@ -39,7 +39,6 @@ RUN QSAN_EXTENSIONS_REPO="${QSAN_EXTENSIONS_REPO}" \
     tools/ci/fetch-extensions.sh /src
 
 RUN cmake -S /src -B /build -G Ninja \
-        -DBUILD_TESTING=OFF \
         -DQSAN_BUILD_TUI=OFF \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DCMAKE_C_COMPILER=gcc \

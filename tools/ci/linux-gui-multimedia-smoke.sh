@@ -95,8 +95,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # The audio stages are only meaningful with their fixtures present; regenerate
 # them if this is a bundle-only checkout.
-if [ ! -f "$REPO_ROOT/tests/fixtures/media/button-down.wav" ]; then
-    python3 "$SCRIPT_DIR/make-media-fixtures.py" "$REPO_ROOT/tests/fixtures/media"
+if [ ! -f "$REPO_ROOT/tools/ci/fixtures/media/button-down.wav" ]; then
+    python3 "$SCRIPT_DIR/make-media-fixtures.py" "$REPO_ROOT/tools/ci/fixtures/media"
 fi
 
 # Same reason as the artifact directory: a relative --video-source would be
@@ -146,7 +146,7 @@ APP_ARGS=(
     --multimedia-timeout-ms "$TIMEOUT_MS"
     --multimedia-report "$REPORT"
 )
-APP_ARGS+=(--multimedia-fixtures "$REPO_ROOT/tests/fixtures/media")
+APP_ARGS+=(--multimedia-fixtures "$REPO_ROOT/tools/ci/fixtures/media")
 [ -n "$VIDEO_SOURCE" ] && APP_ARGS+=(--multimedia-video-source "$VIDEO_SOURCE")
 
 echo "== Linux GUI multimedia smoke ($LABEL) =="
