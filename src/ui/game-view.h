@@ -1,6 +1,7 @@
 #ifndef GAME_VIEW_H
 #define GAME_VIEW_H
 
+#include <QEvent>
 #include <QGraphicsView>
 #include <QMargins>
 #include <QPointer>
@@ -27,6 +28,7 @@ public:
 protected:
     bool event(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    bool viewportEvent(QEvent *event) override;
 
 private:
     void fitCurrentScene(const QSize &viewportSize);
