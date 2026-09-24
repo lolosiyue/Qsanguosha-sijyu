@@ -343,50 +343,84 @@ public:
     }
 };
 
-class Lianhuan : public OneCardViewAsSkill
+class Lianhuan : public ViewAsSkillV2
 {
 public:
-    Lianhuan() : OneCardViewAsSkill("lianhuan")
+    Lianhuan() : ViewAsSkillV2("lianhuan", 1) { response_or_use = true; }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        filter_pattern = ".|club|.|hand";
-        response_or_use = true;
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
-        IronChain *chain = new IronChain(originalCard->getSuit(), originalCard->getNumber());
-        chain->setSkillName(objectName());
-        chain->addSubcard(originalCard);
-        return chain;
+        if (!request.initiator || !ViewAsSkillV2::canSelectCard(request, card)
+            || card->hasFlag("using")) return false;
+        // Preserve the original response-accessible hand piles without global Self.
+        QStringList places{"hand"};
+        for (const QString &pile : request.initiator->getPileNames())
+            if (pile.startsWith("&") || pile == "wooden_ox") places << pile;
+        return Sanguosha->matchExpPattern(".|club|.|" + places.join(","), request.initiator, card);
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "IronChain"; }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *material = Sanguosha->getCard(request.selectedCardIds.first());
+        auto *card = new IronChain(material->getSuit(), material->getNumber());
+        card->addSubcard(material);
+        card->setSkillName(objectName());
+        return card;
     }
 };
 
-class Niepan : public TriggerSkill
+class Niepan : public TriggerSkillV2
 {
 public:
-    Niepan() : TriggerSkill("niepan")
+    Niepan() : TriggerSkillV2("niepan")
     {
         events << AskForPeaches;
         frequency = Limited;
         limit_mark = "@nirvana";
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *target, QVariant &data) const override
     {
-        return TriggerSkill::triggerable(target) && target->getMark("@nirvana") > 0;
+        return target && target->isAlive() && target->hasSkill(objectName())
+            && target->getMark(limit_mark) > 0 && data.value<DyingStruct>().who == target
+            ? TriggerList{{target, {objectName()}}} : TriggerList();
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *pangtong, QVariant &data) const
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        DyingStruct dying_data = data.value<DyingStruct>();
-        if (dying_data.who != pangtong)
-            return false;
+        return ctx.owner && ctx.owner->getMark(limit_mark) > 0
+            && ctx.owner->askForSkillInvoke(this, ctx.original_data ? *ctx.original_data : QVariant());
+    }
 
-        if (pangtong->askForSkillInvoke(objectName()+"$-1", data)) {
-            //room->doLightbox("$NiepanAnimate");
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        // Spend the limited token only after the selected V2 source pays.
+        if (!ctx.owner || ctx.owner->getMark(limit_mark) <= 0) return false;
+        room->removePlayerMark(ctx.owner, limit_mark);
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *pangtong = ctx.invoker;
+        if (pangtong && pangtong->isAlive()) {
             room->doSuperLightbox(pangtong, "niepan");
-
-            room->removePlayerMark(pangtong, "@nirvana");
 
             pangtong->throwAllCards(objectName());
 
@@ -407,22 +441,45 @@ public:
     }
 };
 
-class Huoji : public OneCardViewAsSkill
+class Huoji : public ViewAsSkillV2
 {
 public:
-    Huoji() : OneCardViewAsSkill("huoji")
+    Huoji() : ViewAsSkillV2("huoji", 1) { response_or_use = true; }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        filter_pattern = ".|red|.|hand";
-        //response_pattern = "fire_attack";
-        response_or_use = true;
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
-        FireAttack *fire_attack = new FireAttack(originalCard->getSuit(), originalCard->getNumber());
-        fire_attack->addSubcard(originalCard->getId());
-        fire_attack->setSkillName(objectName());
-        return fire_attack;
+        if (!request.initiator || !ViewAsSkillV2::canSelectCard(request, card)
+            || card->hasFlag("using")) return false;
+        // Preserve the original response-accessible hand piles without global Self.
+        QStringList places{"hand"};
+        for (const QString &pile : request.initiator->getPileNames())
+            if (pile.startsWith("&") || pile == "wooden_ox") places << pile;
+        return Sanguosha->matchExpPattern(".|red|.|" + places.join(","), request.initiator, card);
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "FireAttack"; }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *material = Sanguosha->getCard(request.selectedCardIds.first());
+        auto *card = new FireAttack(material->getSuit(), material->getNumber());
+        card->addSubcard(material);
+        card->setSkillName(objectName());
+        return card;
     }
 };
 
@@ -441,20 +498,27 @@ public:
     }
 };
 
-class BazhenTrigger : public TriggerSkill
+class BazhenTrigger : public TriggerSkillV2
 {
 public:
-    BazhenTrigger() : TriggerSkill("#bazhen")
+    BazhenTrigger() : TriggerSkillV2("#bazhen")
     {
         events << InvokeSkill;
         frequency = Compulsory;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (!player->hasSkill("bazhen")) return false;
-        QString skill = data.toString();
-        if (skill != "eight_diagram") return false;
+        // The virtual armor pipeline has already selected and revealed its exact source.
+        return player && player->isAlive() && player->hasSkill("bazhen")
+            && data.toString() == "eight_diagram"
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.owner;
+        if (!player) return false;
         int index = qsanRandomBounded(2)+1;
         if (player->isJieGeneral("wolong") || player->isJieGeneral("zhugeliang"))
             index += 2;
@@ -465,27 +529,52 @@ public:
     }
 };
 
-class Kanpo : public OneCardViewAsSkill
+class Kanpo : public ViewAsSkillV2
 {
 public:
-    Kanpo() : OneCardViewAsSkill("kanpo")
+    Kanpo() : ViewAsSkillV2("kanpo", 1)
     {
-        filter_pattern = ".|black|.|hand";
-        response_pattern = "nullification";
         response_or_use = true;
+        // ServerPlayer::hasNullification still queries the legacy response probe.
+        response_pattern = "nullification";
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        Card *ncard = new Nullification(originalCard->getSuit(), originalCard->getNumber());
-        ncard->addSubcard(originalCard);
-        ncard->setSkillName(objectName());
-        return ncard;
+        return request.initiator && request.pattern == "nullification"
+            && (request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+                || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
     }
 
-    bool isEnabledAtNullification(const ServerPlayer *player) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
-        return !player->isKongcheng() || !player->getHandPile().isEmpty();
+        if (!request.initiator || !ViewAsSkillV2::canSelectCard(request, card)
+            || card->hasFlag("using")) return false;
+        // Preserve the original response-accessible hand piles without global Self.
+        QStringList places{"hand"};
+        for (const QString &pile : request.initiator->getPileNames())
+            if (pile.startsWith("&") || pile == "wooden_ox") places << pile;
+        return Sanguosha->matchExpPattern(".|black|.|" + places.join(","), request.initiator, card);
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "Nullification"; }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *material = Sanguosha->getCard(request.selectedCardIds.first());
+        auto *card = new Nullification(material->getSuit(), material->getNumber());
+        card->addSubcard(material);
+        card->setSkillName(objectName());
+        return card;
     }
 };
 

@@ -16,8 +16,5 @@ return {
 	["~heg_zhurong"] = "大王，我，先走一步了。",
 	["~heg_liushan"] = "别打脸，我投降还不行吗？",
 	["cv:heg_ganfuren"] = "神马芯",
-	["$heg_shenzhi"] = "玩物易丧志，弃之可修身。",
-	["$heg_bazhen1"] = "你可识得此阵？",
-	["$heg_bazhen2"] = "太极生两仪，两仪生四象，四象生八卦。",
 	["~heg_ganfuren"] = "生同室，死同穴……",
 }

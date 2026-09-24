@@ -3,7 +3,8 @@
 return {
     -- Shared skills formerly supplied by the retired hegemony package.
 	["shushen"] = "淑慎",
-	[":shushen"] = "当你回复1点体力后，你可以令一名其他角色回复1点体力或摸两张牌。",
+	[":shushen"] = "当你回复1点体力后，你可以令一名其他角色摸一张牌。",
+	[":shushen_p"] = "当你回复1点体力后，你可以令一名其他角色回复1点体力或摸两张牌。",
 	["shushen-invoke"] = "你可以发动“淑慎”<br/> <b>操作提示</b>: 选择一名其他角色→点击确定<br/>",
 	["shushen:recover"] = "令该角色回复1点体力",
 	["shushen:draw"] = "令该角色摸两张牌",

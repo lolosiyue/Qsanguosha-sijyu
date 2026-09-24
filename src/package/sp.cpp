@@ -7,7 +7,7 @@
 #include "engine.h"
 #include "maneuvering.h"
 //#include "json.h"
-//#include "settings.h"
+#include "settings.h"
 #include "clientplayer.h"
 //#include "util.h"
 #include "wrapped-card.h"
@@ -19,6 +19,7 @@
 class Shushen : public TriggerSkillV2 {
 public:
     Shushen() : TriggerSkillV2("shushen") { events << HpRecover; m_baseAmount = 2; }
+    int getBaseAmount() const override { return Config.EnableHegemony ? 1 : 2; }
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override {
         const int count = data.value<RecoverStruct>().recover;
         if (player && player->isAlive() && player->hasSkill(objectName()) && count > 0
@@ -36,7 +37,8 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override {
         room->broadcastSkillInvoke(objectName(), target->getGeneralName().contains("liubei") ? 2 : 1, ctx.owner);
-        if (target->isWounded() && room->askForChoice(ctx.owner, objectName(), "recover+draw", QVariant::fromValue(target)) == "recover")
+        if (!Config.EnableHegemony && target->isWounded()
+            && room->askForChoice(ctx.owner, objectName(), "recover+draw", QVariant::fromValue(target)) == "recover")
             room->recover(target, RecoverStruct(objectName(), ctx.owner));
         else
             target->drawCards(getEffectiveAmount(ctx), objectName());
@@ -47,8 +49,13 @@ public:
 class Shenzhi : public TriggerSkillV2 {
 public:
     Shenzhi() : TriggerSkillV2("shenzhi") { events << EventPhaseStart; }
+    bool canPreshow() const override { return !Config.EnableHegemony; }
+    Frequency getFrequency(const Player *target = nullptr) const override {
+        return Config.EnableHegemony ? Frequent : TriggerSkillV2::getFrequency(target);
+    }
     static bool canPay(ServerPlayer *owner) {
         if (!owner || !owner->isAlive() || owner->isKongcheng()) return false;
+        if (Config.EnableHegemony) return true;
         for (const Card *card : owner->getHandcards())
             if (!owner->canDiscard(owner, card->getEffectiveId())) return false;
         return true;
@@ -60,10 +67,26 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
         if (!canPay(ctx.owner) || !room->askForSkillInvoke(ctx.owner, objectName())) return false;
         ctx.extra_data = ctx.owner->getHandcardNum();
+        if (Config.EnableHegemony) {
+            // A waived payment must retain the same prospective discard count.
+            int count = 0;
+            for (const Card *card : ctx.owner->getHandcards())
+                if (!ctx.owner->isJilei(card)) ++count;
+            ctx.extra_data = count;
+        }
         return true;
     }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
         if (!canPay(ctx.owner)) return false;
+        if (Config.EnableHegemony) {
+            // Hegemony pays all discardable cards; identity requires the whole hand.
+            int count = 0;
+            for (const Card *card : ctx.owner->getHandcards())
+                if (!ctx.owner->isJilei(card)) ++count;
+            ctx.extra_data = count;
+            ctx.owner->throwAllHandCards();
+            return true;
+        }
         // Freeze the whole payment before nested discard events alter the hand or HP.
         DummyCard payment(ctx.owner->handCards());
         ctx.extra_data = payment.subcardsLength();

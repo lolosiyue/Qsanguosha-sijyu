@@ -13,6 +13,7 @@
 #include "roomthread.h"
 #include "maneuvering.h"
 #include "thicket.h"
+#include "skill-instance-utils.h"
 
 QiaobianCard::QiaobianCard()
 {
@@ -890,34 +891,40 @@ public:
     }
 };
 
-class Xiangle : public TriggerSkill
+class Xiangle : public TriggerSkillV2
 {
 public:
-    Xiangle() : TriggerSkill("xiangle")
+    Xiangle() : TriggerSkillV2("xiangle")
     {
         events << TargetConfirming;
         frequency = Compulsory;
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *liushan, QVariant &data) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (triggerEvent == TargetConfirming) {
-            CardUseStruct use = data.value<CardUseStruct>();
-            if (use.card->isKindOf("Slash")) {
-                int index = qsanRandomBounded(2) + 1;
-                if (liushan->isJieGeneral())
-                    index += 2;
-                room->broadcastSkillInvoke(objectName(), index);
-                room->sendCompulsoryTriggerLog(liushan, objectName());
+        const CardUseStruct use = data.value<CardUseStruct>();
+        return player && player->isAlive() && player->hasSkill(objectName())
+            && use.card && use.card->isKindOf("Slash") && use.from && use.to.contains(player)
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
 
-                QVariant dataforai = QVariant::fromValue(liushan);
-                if (!room->askForCard(use.from, ".Basic", "@xiangle-discard", dataforai)) {
-                    use.nullified_list << liushan->objectName();
-                    data = QVariant::fromValue(use);
-                }
-            }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.original_data) return false;
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (!use.from || !use.to.contains(ctx.owner)) return false;
+        int index = qsanRandomBounded(2) + 1;
+        if (ctx.owner->isJieGeneral()) index += 2;
+        room->broadcastSkillInvoke(objectName(), index);
+        room->sendCompulsoryTriggerLog(ctx.owner, objectName());
+        if (!room->askForCard(use.from, ".Basic", "@xiangle-discard:" + ctx.owner->objectName(),
+                             QVariant::fromValue(ctx.owner))) {
+            // The payment prompt can nest triggers; preserve their changes to this Slash.
+            CardUseStruct current = ctx.original_data->value<CardUseStruct>();
+            if (!current.nullified_list.contains(ctx.owner->objectName()))
+                current.nullified_list << ctx.owner->objectName();
+            *ctx.original_data = QVariant::fromValue(current);
         }
-
         return false;
     }
 };
@@ -943,80 +950,126 @@ void FangquanCard::onEffect(CardEffectStruct &effect) const
     log.to << player;
     room->sendLog(log);
 
-    room->setTag("FangquanTarget", QVariant::fromValue(player));
+    // Pending turns belong to this turn's giver; nested uses cannot overwrite them.
+    QStringList pending = liushan->getTag("FangquanTargets").toStringList();
+    pending << player->objectName();
+    liushan->setTag("FangquanTargets", pending);
 }
 
-class FangquanViewAsSkill : public OneCardViewAsSkill
+class FangquanViewAsSkill : public ViewAsSkillV2
 {
 public:
-    FangquanViewAsSkill() : OneCardViewAsSkill("fangquan")
+    FangquanViewAsSkill() : ViewAsSkillV2("fangquan", 1) { response_pattern = "@@fangquan"; }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        filter_pattern = ".|.|.|hand!";
-        response_pattern = "@@fangquan";
+        return request.initiator && request.pattern == "@@fangquan"
+            && request.reason != CardUseStruct::CARD_USE_REASON_PLAY;
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
-        FangquanCard *fangquan = new FangquanCard;
-        fangquan->addSubcard(originalCard);
-        return fangquan;
+        return request.initiator && ViewAsSkillV2::canSelectCard(request, card)
+            && !card->hasFlag("using") && !request.initiator->isJilei(card)
+            && request.initiator->handCards().contains(card->getEffectiveId());
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "FangquanCard"; }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        // Keep the existing AI/card protocol; the card pipeline discards exactly once.
+        auto *card = new FangquanCard;
+        card->addSubcards(request.selectedCardIds);
+        card->setSkillName(objectName());
+        return card;
     }
 };
 
-class Fangquan : public TriggerSkill
+class Fangquan : public TriggerSkillV2
 {
 public:
-    Fangquan() : TriggerSkill("fangquan")
+    Fangquan() : TriggerSkillV2("fangquan")
     {
-        events << EventPhaseChanging << EventPhaseStart;
+        events << EventPhaseChanging;
         view_as_skill = new FangquanViewAsSkill;
     }
 
-    int getPriority(TriggerEvent triggerEvent) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (triggerEvent == EventPhaseStart) return 1;
-        return TriggerSkill::getPriority(triggerEvent);
+        if (!player || !player->isAlive() || !player->hasSkill(objectName())) return {};
+        const Player::Phase phase = data.value<PhaseChangeStruct>().to;
+        if (phase == Player::Play && !player->isSkipped(Player::Play))
+            return {{player, {objectName()}}};
+        if (phase != Player::NotActive || !player->canDiscard(player, "h")) return {};
+        QStringList sources;
+        for (int id : player->getValidSkillInstanceIds(objectName()))
+            if (player->getSkillInstanceStateValue(objectName(), id, "skipped_play").toBool())
+                sources << SkillInstanceUtils::formatName(objectName(), id);
+        return sources.isEmpty() ? TriggerList() : TriggerList{{player, sources}};
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        return target != nullptr;
+        if (!ctx.owner || !ctx.original_data) return false;
+        if (ctx.original_data->value<PhaseChangeStruct>().to == Player::Play)
+            return !ctx.owner->isSkipped(Player::Play) && ctx.owner->askForSkillInvoke(this);
+        return ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "skipped_play").toBool()
+            && ctx.owner->canDiscard(ctx.owner, "h");
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *liushan, QVariant &data) const
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (triggerEvent == EventPhaseChanging) {
-            PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-            switch (change.to) {
-            case Player::Play: {
-                if (!TriggerSkill::triggerable(liushan) || liushan->isSkipped(Player::Play))
-                    return false;
-                if (liushan->askForSkillInvoke(this)) {
-                    liushan->setFlags(objectName());
-                    liushan->peiyin(this);
-                    liushan->skip(Player::Play, true);
-                }
-                break;
-            }
-            case Player::NotActive: {
-                if (liushan->hasFlag(objectName())) {
-                    if (!liushan->canDiscard(liushan, "h"))
-                        return false;
-                    room->askForUseCard(liushan, "@@fangquan", "@fangquan-give", -1, Card::MethodDiscard);
-                }
-                break;
-            }
-            default:
-                break;
-            }
-        } else if (triggerEvent == EventPhaseStart && liushan->getPhase() == Player::NotActive) {
-            Room *room = liushan->getRoom();
-            if (!room->getTag("FangquanTarget").isNull()) {
-                ServerPlayer *target = room->getTag("FangquanTarget").value<ServerPlayer *>();
-                room->removeTag("FangquanTarget");
-                if (target->isAlive())
-                    target->gainAnExtraTurn();
-            }
+        if (!ctx.owner || !ctx.original_data) return false;
+        if (ctx.original_data->value<PhaseChangeStruct>().to == Player::Play) {
+            ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "skipped_play", true);
+            ctx.owner->setFlags(objectName()); // Existing AI observes this turn flag.
+            ctx.owner->peiyin(this);
+            ctx.owner->skip(Player::Play, true);
+        } else {
+            // Consume the exact source before a nested card response can re-enter.
+            ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "skipped_play", false);
+            room->askForUseCard(ctx.owner, "@@fangquan", "@fangquan-give", -1, Card::MethodDiscard);
+        }
+        return false;
+    }
+};
+
+class FangquanRecord : public TriggerSkillV2
+{
+public:
+    FangquanRecord() : TriggerSkillV2("#fangquan-record")
+    {
+        events << EventPhaseStart;
+        global = true;
+    }
+
+    int getPriority(TriggerEvent) const override { return 1; }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
+
+    bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        if (!player || (player->getPhase() != Player::NotActive && player->getPhase() != Player::RoundStart))
+            return false;
+        // Cleanup survives skill loss; completed payments still grant their extra turn.
+        for (const SkillInstance &instance : player->getSkillInstances())
+            if (instance.skillName == "fangquan")
+                player->setSkillInstanceStateValue("fangquan", instance.instanceID, "skipped_play", false);
+        if (player->getPhase() != Player::NotActive) return false;
+        const QStringList pending = player->getTag("FangquanTargets").toStringList();
+        player->removeTag("FangquanTargets");
+        for (const QString &name : pending) {
+            ServerPlayer *target = room->findPlayerByObjectName(name);
+            if (target && target->isAlive()) target->gainAnExtraTurn();
         }
         return false;
     }
@@ -2281,6 +2334,7 @@ MountainPackage::MountainPackage()
     General *liushan = new General(this, "liushan$", "shu", 3); // SHU 013
     liushan->addSkill(new Xiangle);
     liushan->addSkill(new Fangquan);
+    skills << new FangquanRecord;
     liushan->addSkill(new Ruoyu);
 
     General *sunce = new General(this, "sunce$", "wu"); // WU 010

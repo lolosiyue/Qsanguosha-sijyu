@@ -21,7 +21,7 @@
 // Original HEG content: see docs/hegemony-original-names.json for the import namespace.
 #include "original-hegemony-compat.h"
 #include "h-formation.h"
-#include "h-standard-shu-generals.h"
+#include "standard-generals.h"
 #include "standard.h"
 #include "maneuvering.h"
 #include "h-standard-tricks.h"
@@ -854,7 +854,7 @@ HFormationPackage::HFormationPackage()
 
     General *jiangwei = new General(this, "heg_jiangwei", "shu"); // SHU 012 G
     jiangwei->addSkill("tiaoxin");
-    jiangwei->addSkill(new HGuanxing("heg_yizhi"));
+    jiangwei->addSkill(new Guanxing("heg_yizhi"));
     jiangwei->setDeputyMaxHpAdjustedValue(-1);
     jiangwei->addSkill(new HTianfu);
 
