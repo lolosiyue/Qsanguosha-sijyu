@@ -6,7 +6,7 @@
 
 | 武將 | 直接引用的技能 | 判定 |
 | --- | --- | --- |
-| 劉備／關羽／諸葛亮／甘夫人 | `rende`、`tenyearwusheng`、`guanxing`、`shushen`、`shenzhi` | 原定義直接原生 V2，模式差異在同一實作中處理，移除 H 副本。 |
+| 劉備／關羽／諸葛亮／甘夫人 | `tenyearrende`、`tenyearwusheng`、`guanxing`、`shushen`、`shenzhi` | 原定義直接原生 V2，模式差異在同一實作中處理，移除 H 副本。 |
 | 馬超／馬岱 | `mashu` | 直接引用原版馬術，移除 `HMashu`。原版已改為 `DistanceSkillV2`，每個有效實例預設距離 −1，由引擎統一處理國戰明暗置及精確失效，不另做國戰距離技能。 |
 | 龐統 | `lianhuan`、`niepan` | 梅花手牌轉鐵索；限定棄牌、回復至三體力、摸三張、復原狀態。 |
 | 黃月英 | `nosqicai` | 錦囊無距離限制，原版改為 TargetModSkillV2；不採額外保護裝備的 `qicai`。 |
@@ -31,7 +31,7 @@
 
 | 技能 | V2 類型與保留行為 |
 | --- | --- |
-| 仁德 | 原版 `rende` 的 ViewAsSkillV2 統一給牌／實例記錄；國戰每名角色限收一次，兩張門檻獎勵使用基本牌；身份局保留回血及續給牌。`Config.EnableHegemony` 分支，history key `RendeCard`，卡類退役。 |
+| 仁德 | 蜀劉備直接引用原生 V2 `tenyearrende`：每名角色限收一次，交出第二張牌時以既有 AG 選牌流程視為使用基本牌；身份局十周年劉備共用同一定義。普通 `rende` 保留回血及續給牌，不以模式分支改成變體。`TenyearRendeCard` 卡類退役，history key 保留。 |
 | 武聖 | 共用十周年變體 `tenyearwusheng`，直接 ViewAsSkillV2；既有方塊殺距離 helper 改 TargetModSkillV2，國戰授鉞允許非紅色牌。普通 wusheng 不增加距離或授鉞分支。 |
 | 咆哮 | `TargetModSkillV2` 提供無限殺次數；授鉞無視防具由 related `TriggerSkillV2` 對各目標結算。 |
 | 觀星／遺志 | 共用 `Guanxing` 的 `TriggerSkillV2` 實作，各自保留真正來源。發動選單選擇要明置的技能來源，選擇雙亮時於 `pay` 明置另一來源；雙亮看五張，否則按存活人數。對應實例共享一次觀星，額外取得的實例仍獨立。 |
@@ -54,7 +54,7 @@
 | 範圍 | 本批內容 |
 | --- | --- |
 | Formation | 遺志直接建立共用 `Guanxing("heg_yizhi")`；天覆取得／移除原有 `kanpo`。 |
-| AI | 仁德統一 `ai_fill_skill.rende` 與 ActiveSkillCard；國戰 AI 共用原 ID，保留各模式策略。龍膽傷害／回復選人鍵對齊，來源檔回寫外部倉庫前後核對雜湊。 |
+| AI | 變體使用 `ai_fill_skill.tenyearrende` 與 ActiveSkillCard，沿用既有 AG／基本牌目標策略；普通仁德保留 `ai_fill_skill.rende`。本次只回寫外部倉庫仁德區塊並核對雜湊，保留無關差異。 |
 | 既有測例 | 仁德經正式 V2 proxy 提交，驗證交牌、兩張門檻的基本牌詢問僅一次、重複收牌者拒絕、精確明置及階段清理；保留重複材料拒絕。內容檢查驗證共用 ID、V2 類型及舊卡類已移除。 |
 | 翻譯 | `HStandardShuGeneral.lua` 移除已共用技能的重複鍵與舊提示；保留國戰技能並對齊現行規則，補齊 related helper 名稱。 |
 | 靜態檢查 | 核對 callback 簽名、來源與 related 接線、共用技能註冊、舊類別引用及本批 whitespace。 |
