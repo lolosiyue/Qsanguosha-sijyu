@@ -22,6 +22,7 @@
 #include <QImage>
 #include <QImageReader>
 #include <QtGlobal>
+#include <algorithm>
 #include <utility>
 
 namespace {
@@ -458,6 +459,7 @@ void HomeGeneralModel::ensureLoaded()
 
 void HomeGeneralModel::applyFilter(const QVariantMap &filters)
 {
+    const bool wasLoaded = m_loaded;
     ensureLoaded();
 
     const QString kingdom = filters.value(QStringLiteral("kingdom")).toString();
@@ -523,9 +525,62 @@ void HomeGeneralModel::applyFilter(const QVariantMap &filters)
         next.append(i);
     }
 
-    beginResetModel();
-    m_shown = std::move(next);
-    endResetModel();
+    if (wasLoaded && next == m_shown)
+        return;
+
+    // Both lists hold ascending indices into m_all, so a merge walk yields the
+    // removed and inserted runs. Emitting those instead of a reset keeps the
+    // delegates of surviving rows alive, so their art does not reload.
+    struct Change {
+        int row;
+        int from;
+        int count;
+        bool insert;
+    };
+    QVector<Change> changes;
+    if (wasLoaded) {
+        int row = 0, i = 0, j = 0;
+        while (i < m_shown.size() || j < next.size()) {
+            if (j >= next.size() || (i < m_shown.size() && m_shown.at(i) < next.at(j))) {
+                const int start = i;
+                while (i < m_shown.size() && (j >= next.size() || m_shown.at(i) < next.at(j)))
+                    ++i;
+                changes.append({ row, 0, i - start, false });
+            } else if (i >= m_shown.size() || next.at(j) < m_shown.at(i)) {
+                const int start = j;
+                while (j < next.size() && (i >= m_shown.size() || next.at(j) < m_shown.at(i)))
+                    ++j;
+                changes.append({ row, start, j - start, true });
+                row += j - start;
+            } else {
+                ++i;
+                ++j;
+                ++row;
+            }
+        }
+    }
+
+    // Heavily fragmented changes cost more as row signals than one reset.
+    constexpr int kMaxIncrementalChanges = 64;
+    if (!wasLoaded || changes.size() > kMaxIncrementalChanges) {
+        beginResetModel();
+        m_shown = std::move(next);
+        endResetModel();
+    } else {
+        for (const Change &change : std::as_const(changes)) {
+            if (change.insert) {
+                beginInsertRows(QModelIndex(), change.row, change.row + change.count - 1);
+                m_shown.insert(change.row, change.count, 0);
+                std::copy_n(next.constBegin() + change.from, change.count,
+                            m_shown.begin() + change.row);
+                endInsertRows();
+            } else {
+                beginRemoveRows(QModelIndex(), change.row, change.row + change.count - 1);
+                m_shown.remove(change.row, change.count);
+                endRemoveRows();
+            }
+        }
+    }
     emit filterChanged();
 }
 
@@ -878,9 +933,15 @@ QUrl HomeController::kingdomIcon(const QString &kingdom) const
 {
     if (kingdom.isEmpty())
         return {};
-    return firstExistingImage({
+    // Every catalog tile asks for its kingdom icons; avoid repeating the disk probes.
+    auto it = m_kingdomIconCache.constFind(kingdom);
+    if (it != m_kingdomIconCache.constEnd())
+        return it.value();
+    const QUrl url = firstExistingImage({
         QStringLiteral("image/kingdom/icon/%1").arg(kingdom)
     });
+    m_kingdomIconCache.insert(kingdom, url);
+    return url;
 }
 
 static QUrl taggedArtUrl(const QUrl &url, const QString &cacheKey, int revision)
@@ -1064,16 +1125,40 @@ QVariantList HomeController::generalPackages() const
     if (!Sanguosha)
         return result;
 
-    const QStringList extensions = Sanguosha->getExtensions();
-    for (const QString &extension : extensions) {
-        const Package *package = Sanguosha->getPackage(extension);
-        if (!package || package->getType() != Package::GeneralPack)
-            continue;
+    // Group packages the same way as the server dialog's package tab.
+    QSet<QString> added;
+    auto append = [&](const Package *package, const QString &group) {
+        if (!package || package->getType() != Package::GeneralPack
+                || package->inherits("Scenario") || added.contains(package->objectName()))
+            return;
+        added.insert(package->objectName());
         QVariantMap item;
         item.insert(QStringLiteral("key"), package->objectName());
         item.insert(QStringLiteral("label"), Sanguosha->translate(package->objectName()));
+        item.insert(QStringLiteral("group"), group);
+        item.insert(QStringLiteral("groupLabel"), Sanguosha->translate(group));
         result.append(item);
+    };
+
+    QHash<QString, const Package *> packagesByAdder;
+    for (const Package *package : Sanguosha->getPackages()) {
+        if (!package->adderName().isEmpty())
+            packagesByAdder.insert(package->adderName(), package);
     }
+    const QMap<QString, QStringList> packageMap = Sanguosha->getPackageMap();
+    for (auto it = packageMap.cbegin(); it != packageMap.cend(); ++it) {
+        for (const QString &adderName : it.value())
+            append(packagesByAdder.value(adderName, nullptr), it.key());
+    }
+
+    const QStringList luaPackages = Config.value("LuaPackages").toString()
+        .split(QLatin1Char('+'), Qt::SkipEmptyParts);
+    for (const QString &packageName : luaPackages)
+        append(Sanguosha->findChild<const Package *>(packageName), QStringLiteral("lua_package"));
+
+    // Anything the grouping missed stays filterable under "other".
+    for (const QString &extension : Sanguosha->getExtensions())
+        append(Sanguosha->getPackage(extension), QStringLiteral("h_other"));
     return result;
 }
 

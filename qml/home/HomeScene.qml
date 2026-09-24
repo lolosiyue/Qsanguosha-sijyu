@@ -390,16 +390,35 @@ Item {
                                 id: skGrid
                                 anchors.fill: parent
                                 anchors.margins: HomeTheme.generalGridMargin
-                                property int cellW: HomeTheme.generalCellWidth(width)
-                                property int cellH: HomeTheme.generalCellHeight(width)
-                                property int cols: HomeTheme.generalCellColumns(width)
+                                // 跟 GeneralScene 一樣讀已存的欄數，揭頁時格子才不會跳動。
+                                readonly property int savedCols: homeController.generalGridColumns()
+                                readonly property bool tableMode: HomeTheme.resolvedGridColumns(width, savedCols)
+                                                                  >= HomeTheme.generalGridMaxColumns
+                                property int cellW: HomeTheme.generalCellWidth(width, savedCols)
+                                property int cellH: HomeTheme.generalCellHeight(width, savedCols)
+                                property int cols: HomeTheme.generalCellColumns(width, savedCols)
+
+                                Column {
+                                    visible: skGrid.tableMode
+                                    anchors.fill: parent
+                                    spacing: 4
+                                    Repeater {
+                                        model: skGrid.tableMode ? 12 : 0
+                                        SkeletonBlock {
+                                            width: skGrid.width
+                                            height: HomeTheme.generalTableRowHeight
+                                            radius: 4
+                                        }
+                                    }
+                                }
 
                                 Grid {
+                                    visible: !skGrid.tableMode
                                     anchors.fill: parent
                                     columns: skGrid.cols
 
                                     Repeater {
-                                        model: skGrid.cols * 3
+                                        model: skGrid.tableMode ? 0 : skGrid.cols * 3
                                         Item {
                                             width: skGrid.cellW
                                             height: skGrid.cellH
