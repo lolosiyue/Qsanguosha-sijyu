@@ -1,48 +1,62 @@
 # 標準國戰魏勢力技能共用與 V2
 
-2026-09-22 原始碼檢查點。依使用者決定，優先引用效果相符的 `nos*`／既有技能；只有真正有差異的技能保留 `heg_*` 並改為 V2。武將 ID、體力、性別、珠聯璧合不變。
+2026-09-24 原始碼檢查點。以目前 xxyheaven 規則與身份局原版實作比對：相同效果在原版位置升級 V2，國戰只引用同一技能 ID；規則不同者保留 `heg_*`。不新增同效果別名技能。
 
-## 共用映射
+## 共用技能
 
-| 國戰武將 | 直接引用的技能 ID |
+| 國戰武將 | 技能 ID | 原版來源與本次處理 |
+| --- | --- | --- |
+| 曹操 | `nosjianxiong` | `standard-generals.cpp`，改為 TriggerSkillV2；重查傷害牌仍全部在處理區，避免不同實例重複取得。 |
+| 司馬懿 | `nosfankui` | `standard-generals.cpp`，改為 TriggerSkillV2；傷害來源放入 targets，抽牌經 effectTarget。 |
+| 張遼 | `tenyeartuxi` | `tenyear-strengthen.cpp`，改為 TriggerSkillV2；cost 選人、effect 減摸牌、effectTarget 沿用唯一 TenyearTuxiCard 抽牌效果及移牌原因。保留優先度 1。 |
+| 郭嘉 | `tiandu` | `standard-generals.cpp`，改為 TriggerSkillV2；保留語音選擇，選擇與效果階段均核對判定牌位置。 |
+| 甄姬 | `qingguo` | `standard-generals.cpp`，改為 ViewAsSkillV2；保留黑色手牌、可回應手牌堆、Jink 花色點數與語音。 |
+| 張郃 | `qiaobian` | `mountain.cpp`，原觸發技能及回應視為技改為 V2，刪除 HQiaobian；選牌在 cost，棄牌在 pay。 |
+| 荀彧 | `quhu` | `fire.cpp`，原視為技改為 ViewAsSkillV2。 |
+| 曹丕 | `xingshang` | `thicket.cpp`，改為 TriggerSkillV2；死亡角色的牌在整體 effect 處理，避免活目標過濾。 |
+| 曹丕 | `mobilefangzhu` | `mobile-strengthen.cpp`，改為 TriggerSkillV2；採該變體完整規則，包含零失血時仍可選失去體力，保留極略提示及語音分支。 |
+| 樂進 | `xiaoguo` | 直接引用 `sp.cpp` 已有 TriggerSkillV2，刪除重複 HXiaoguo。 |
+
+十個技能均由 `General::addSkill(QString)` 引用原版註冊。驅虎保留唯一的 `QuhuCard` 拼點／伤害效果，巧變保留唯一的 `QiaobianCard` 取牌／移牌效果；兩者經現有原生 SkillCard 橋接，保留 class、response pattern、history 與 AI 協定，未複製效果或改成另一組國戰技能卡。這不是把兩個 SkillCard 的效果回呼全部改寫成 V2 proxy。
+
+巧變沿用原版階段跳過語意：跳過判定階段不額外跳過摸牌階段；取牌、移牌由原版回應卡處理。移除舊 `heg_qiaobian` 翻譯中「同時跳過摸牌階段」的錯誤敘述，直接使用原版翻譯。
+
+## 保留的規則差異
+
+| 國戰技能 | 不直接共用的原因 |
 | --- | --- |
-| 曹操 | `nosjianxiong` |
-| 司馬懿 | `nosfankui`、`nosguicai` |
-| 夏侯惇 | `nosganglie` |
-| 張遼 | `nostuxi` |
-| 許褚 | `nosluoyi` |
-| 郭嘉 | `tiandu`、`nosyiji` |
-| 甄姬 | `qingguo` |
-| 夏侯淵 | `shensu` |
-| 張郃 | `qiaobian` |
-| 徐晃 | `duanliang` |
-| 曹仁 | `nosjushou` |
-| 典韋 | `qiangxi` |
-| 荀彧 | `quhu`、`jieming` |
-| 曹丕 | `xingshang`、`fangzhu` |
+| `heg_guicai` | 單獨只有手牌堆也可改判；原版 guicai 的 nude 檢查及極略強制改判路徑不同。 |
+| `heg_ganglie` | 每次傷害判定一次；身份 ganglie 按傷害點数迴圈。 |
+| `heg_luoyi` | 摸牌階段結束棄一張牌；身份 luoyi／nosluoyi 的發動與付款不同。 |
+| `heg_yiji` | 每次傷害分配兩張；nosyiji 按傷害點數分次發動。 |
+| `heg_luoshen` | 黑色判定牌整次循環結束才取得，保留 V2 move helper。 |
+| `heg_shensu` | 包含失去體力並跳過棄牌階段的第三選項。 |
+| `heg_duanliang` | 無距離限制，對距離大於 2 的目標使用後本階段停用。 |
+| `heg_jushou` | 摸勢力數、棄非裝備或使用裝備，摸超過兩張才翻面。 |
+| `heg_qiangxi` | 沒有身份強襲的攻擊範圍限制。 |
+| `heg_jieming` | 每次傷害一次；身份節命按傷害點數發動。 |
 
-18 個共用技能使用 `General::addSkill(QString)` 引用原註冊；不建立別名殼、不複製效果、不改寫共用技能。技能卡、history、回應 pattern、翻譯、AI callback 與 related helper 使用原技能定義。已移除 `HTuxiCard`、`HShensuCard`、`HQiaobianCard`、`HQiangxiCard`、`HQuhuCard` 及其 meta-object 註冊。
+## 指定變體接線（2026-09-24）
 
-`HStandardWeiGeneral.lua` 只保留 15 名武將的名稱／稱號，以及洛神、洛神輔助與驍果的名稱、正文和提示。18 個共用技能的舊 `heg_*` 翻譯與提示已移除；沿用原 ID 的翻譯，不重新定義 `nos*`／既有鍵。
+使用者明確指定保留 `heg_ganglie`、`heg_shensu`、`heg_qiangxi`、`heg_yiji`；本批只將 `heg_tuxi` → `tenyeartuxi`、`heg_fangzhu` → `mobilefangzhu`，刪除 HTuxi／HFangzhu 及其翻譯副本。原生共用技能在原來源升級 V2，不改動四個保留技能。
 
-這裡以技能規則為共用邊界。移牌、距離檢查、拼點及代價時序採既有實作，不保留 donor 的舊流程複本；例如強襲採現有 `QiangxiCard` 結算流程。共用技能原本是 V1 的仍為 V1，本輪沒有擴大修改其多實例或國戰暗將相容性。
+突襲 AI 使用既有十週年策略選目標，將舊回應文字轉成候選角色清單，不再執行舊回應卡。國戰 callback 改接同一技能 ID 的 playerschosen；建安仍授予獨立 `heg_tuxi_egf`。放逐的國戰棄牌 callback 改接 `mobilefangzhu` 的原版 reason。
 
-## 保留的差異技能
+外部 AI 本批八個引用檔 L/H 完整 SHA-256 一致；十週年 AI 原有 `zishou`／`noszishou` 差異保留，僅在兩端追加完全相同的 V2 adapter，未覆寫整檔。相關 metadata 測試來源同步，未執行。
 
-| 技能 | 差異與 V2 接線 |
-| --- | --- |
-| `heg_luoshen` | 黑色判定牌先留處理區，整次判定循環結束才取得；不同於既有洛神通常逐張取得。主技能與 `#heg_luoshen-move` 均使用 `TriggerSkillV2`。每次發動的牌清單保存在區域變數，不使用跨發動的 Player Tag；收牌前重新核對位置，回合中斷時清理仍在處理區的牌。 |
-| `heg_xiaoguo` | 對方棄裝備時不讓技能持有者額外摸牌。候選列出所有合資格持有者；`cost` 只選基本手牌，`pay` 重檢歸屬、區域及可棄置性後付款；目標放入 `SkillContext.targets`，以 `effectTarget` 處理棄裝備或傷害，傷害使用 V2 amount。 |
+## 引用與相容性
 
-暗將同意、精確來源揭將、失效檢查及多實例展開沿用 V2 管線；實作不自行揭將，也不建立共用技能的 V2 包裝層。
+- 移除 HStandardWeiGeneral 的巧變／驍果重複翻譯與提示，使用原技能翻譯。
+- 建安選項改為共用 `qiaobian`／`xiaoguo`，授予時仍正確對應規則不同的 `heg_qiaobian_egf`／`heg_xiaoguo_egf`。
+- 外部 AI 的八個受影響檔案移除舊別名映射並更新精確技能 ID；保留 `_egf` 獨立技能。L/H 修改前雜湊一致，回寫前再次核對未被其他工作改動，回寫後逐檔 SHA-256 一致。外部倉庫既有 dirty 與分歧保留；共用技能與 AI 適配已分別提交為 `6d8617f7`、`3035659`，未 push。
+- 既有 content 契約同步共用技能 ID、V2 類型、原技能指標及已刪除重複 ID；驍果付款案例改測共用實作。
 
-## 檢查與限制
+## 驗證邊界
 
 | 項目 | 狀態 |
 | --- | --- |
-| 靜態檢查 | 核對 15 名武將、18 個引用、3 個 V2 類別、舊技能卡引用移除及 patch 空白。 |
-| 工作區測試來源 | content 契約更新為共用技能指標與清單檢查；draw-events 改用 `nosluoyi`；新增 `wei-xiaoguo` 案例覆蓋多持有者、選牌不付款、重複／失效付款、棄裝不摸牌及拒棄傷害。這些跨勢力測試檔尚未追蹤，未納入本次翻譯提交，亦尚未執行。 |
-| 外部 Lua AI | 共用技能改走原 ID 的 callback。`lua/ai/original-hegemony/` 仍有舊 `heg_*` 查詢及未使用的 donor callback；跨技能評估尚待另批整理，本輪未修改外部 AI 倉庫。 |
-| 執行驗證 | 建置、focused executable、CTest、GUI、完整對局及 CI 均 NOT RUN；不以舊搬運結果代替本次驗證。 |
+| 定向原始碼／引用／翻譯、git diff --check | 靜態檢查完成。 |
+| content／驍果測試來源 | 已更新，未執行。 |
+| 建置、focused executable、CTest、GUI、完整對局、CI | NOT RUN；未取得本檢查點的建置／執行授權。 |
 
-V2 契約參考 [TriggerSkillV2 系統說明](TriggerSkillV2系統說明.md)。
+參考 [TriggerSkillV2 系統說明](TriggerSkillV2系統說明.md)、[ViewAsSkillV2 遷移規範](active-skill-v2-migration-guide.md)。

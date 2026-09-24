@@ -22,6 +22,6 @@
 #define _H_STANDARD_WEI_H
 
 #include "h-standard-package.h"
-// Canonical skills own their card classes; the remaining Wei skills are TriggerSkillV2.
+// Shared cards retain their classes; changed Wei rules use V2 in the source file.
 
 #endif
