@@ -2530,7 +2530,8 @@ public:
 		if(from->getPhase() == Player::Play){
 			if(from->getMark("mobilemouyangwei-PlayClear")>0)
 				return 1000;
-			if(from->getMark(to->objectName()+"mobilemouxianzhenTo-PlayClear")>0)
+			// Targetless queries only include bonuses that do not depend on a target.
+			if(to && from->getMark(to->objectName()+"mobilemouxianzhenTo-PlayClear")>0)
 				return 1000;
 		}
 		return 0;
