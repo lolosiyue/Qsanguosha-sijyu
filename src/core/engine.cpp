@@ -1,4 +1,6 @@
 #include "engine.h"
+#include "h-rule-cards.h"
+#include "card.h"
 #include "startup-timing.h"
 #include "rules-bundle-exporter.h"
 #include "qt-collection-utils.h"
@@ -84,8 +86,51 @@ namespace {
 bool isOriginalHegemonyCardPackage(const QString &name)
 {
     return name == QLatin1String("heg_standard_cards") || name == QLatin1String("heg_strategic_advantage")
-        || name == QLatin1String("heg_formation_equip") || name == QLatin1String("heg_momentum_equip");
+        || name == QLatin1String("heg_formation_equip") || name == QLatin1String("heg_momentum_equip")
+        || name == QLatin1String("heg_transformation_equip") || name == QLatin1String("heg_power_equip")
+        || name == QLatin1String("heg_lord_ex_card");
 }
+
+void markPackageSkillContracts(Package *package)
+{
+    if (!package) return;
+    const bool donor = isOriginalHegemonyCardPackage(package->objectName())
+        || package->objectName() == QLatin1String("heg_standard")
+        || package->objectName() == QLatin1String("heg_formation")
+        || package->objectName() == QLatin1String("heg_momentum");
+    // Preserve callback contracts independently of package mode.
+    for (const Skill *skill : package->getSkills() + package->findChildren<const Skill *>()) {
+        if (!skill) continue;
+        Skill *definition = const_cast<Skill *>(skill);
+        // Donor prohibitions support source-less Imperial Order. Legacy
+        // identity callbacks have a non-null source contract unless opted in.
+        if (donor && skill->inherits("ProhibitSkill"))
+            definition->setProperty("supportsSourceLessProhibition", true);
+    }
+}
+
+bool registerOriginalHegemonyCardTemplate(QHash<QString, const Card *> &templates, const Card *card)
+{
+    if (!isOriginalHegemonyCardPackage(card->getPackage())) return false;
+    const QString className = QString::fromLatin1(card->metaObject()->className());
+    // Shared cards use the canonical registry; their package selects the physical deck.
+    if (!isHegemonyCardClassName(className)) return false;
+    QStringList aliases{card->objectName(), className, card->getClassName()};
+    const QString nativeClass = className.mid(1);
+    aliases << nativeClass;
+    // Native equipment uses snake_case while donor equipment retains PascalCase.
+    if (const Card *nativeTemplate = templates.value(nativeClass, nullptr))
+        aliases << nativeTemplate->objectName();
+    if (card->objectName() == QLatin1String("slash")) aliases << QStringLiteral("normal_slash");
+    // Preserve ordinary-mode canonical templates; HEG aliases share the existing registry.
+    foreach (const QString &alias, aliases) {
+        const QString key = QStringLiteral("heg:") + alias;
+        if (!templates.contains(key)) templates.insert(key, card);
+    }
+    if (!templates.contains(className)) templates.insert(className, card);
+    return true;
+}
+
 
 QSanRules::ContentManifest readContentManifest(lua_State *lua)
 {
@@ -176,13 +221,13 @@ QList<const T *> mergedRuntimeSkills(RoomRuntime *runtime, const QList<const T *
                                      const QSet<QString> &runtimeDefinitionNames,
                                      const QList<const T *> &roomSkills)
 {
-    if (!runtime)
-        return bootstrap;
-    QList<const T *> result = roomSkills;
-    foreach (const T *skill, bootstrap) {
-        if (skill && !runtimeDefinitionNames.contains(skill->objectName())
-            && !runtime->skill(skill->objectName()))
-            result << skill;
+    QList<const T *> result = runtime ? roomSkills : bootstrap;
+    if (runtime) {
+        foreach (const T *skill, bootstrap) {
+            if (skill && !runtimeDefinitionNames.contains(skill->objectName())
+                && !runtime->skill(skill->objectName()))
+                result << skill;
+        }
     }
     return result;
 }
@@ -446,8 +491,12 @@ QStringList Engine::rulesDeclaredList(const QString &key) const
             for (const auto &path : entry.lang)
                 if (path.startsWith(QLatin1String("packages/"))) paths << path;
         } else if (key == QLatin1String("package_ai")) {
+            // Legacy SmartAI scans only the top-level ai directory. Declared
+            // subdirectory bundles must be loaded after that legacy scan.
             for (const auto &path : entry.ai)
-                if (path.startsWith(QLatin1String("packages/"))) paths << path;
+                if (path.startsWith(QLatin1String("packages/"))
+                    || (path.startsWith(QLatin1String("lua/ai/")) && path.count('/') > 2))
+                    paths << path;
         }
     }
     paths.removeDuplicates();
@@ -464,6 +513,10 @@ Engine::Engine(bool isManualMode)
 #endif // LOGNETWORK
 
     Sanguosha = this;
+
+    // V2 actions travel as this core proxy, independently of content packages.
+    // Without its factory, Card::Parse rejects Mark Card replies as empty plays.
+    metaobjects.insert(QStringLiteral("ActiveSkillCard"), &ActiveSkillCard::staticMetaObject);
 
     QString packageError;
     if (!QSanPackages::prepareRuntime(&packageError)) {
@@ -540,6 +593,9 @@ Engine::Engine(bool isManualMode)
         for (auto it = declared.begin(); it != declared.end(); ++it)
             m_rulesLuaSnapshot.insert(it.key(), it.value());
     }
+
+    // Clients need rule definitions even when no HEG general package is loaded.
+    addSkills(createHegemonyRuleSkills(this));
 
     startupPhase.next("engine.native_packages");
     const QVariantMap configuredPackages =
@@ -960,6 +1016,7 @@ QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
 
 void Engine::addPackage(Package*package)
 {
+    markPackageSkillContracts(package);
     RoomRuntime *runtime = currentRoomRuntime();
     if (runtime) {
         runtime->addPackage(package);
@@ -985,6 +1042,7 @@ void Engine::addPackage(Package*package)
 		if (m_loadingLuaDefinitions) {
 			m_luaCardIds.insert(card->getId());
 		}
+		if (registerOriginalHegemonyCardTemplate(name2cards, card)) continue;
 		if(name2cards.contains(card->objectName())) continue;
 		name2cards.insert(card->objectName(), card);
 		if(card->objectName()=="slash") name2cards.insert("normal_slash", card);
@@ -1118,6 +1176,7 @@ Package *Engine::clonePackageDefinition(const QString &objectName) const
 
 void Engine::setPackage(Package*package)
 {
+    markPackageSkillContracts(package);
     RoomRuntime *runtime = currentRoomRuntime();
     if (runtime) {
         runtime->setPackage(package);
@@ -1136,6 +1195,7 @@ void Engine::setPackage(Package*package)
 		if (m_loadingLuaDefinitions) {
 			m_luaCardIds.insert(card->getId());
 		}
+		if (registerOriginalHegemonyCardTemplate(name2cards, card)) continue;
 		if(name2cards.contains(card->objectName())) continue;
 		name2cards.insert(card->objectName(), card);
 		if(name2cards.contains(card->getClassName())) continue;
@@ -1372,6 +1432,7 @@ QList<const General *> Engine::getAllGenerals() const
 int Engine::getGeneralCount(bool include_banned, const QString &kingdom) const
 {
     int total = 0;
+	const bool hegemony = currentRoomRuntime() ? Config.EnableHegemony : ServerInfo.EnableHegemony;
 	QStringList banPackages = ServerInfo.BanPackages;
 	if (ServerInfo.GameMode == "03_1v2")
 		banPackages << Config.value("Banlist/Doudizhu").toStringList();
@@ -1559,9 +1620,19 @@ const Card*Engine::getEngineCard(int cardId) const
 
 Card*Engine::cloneCard(const Card*card) const
 {
-    Card*result = cloneCard(card->objectName(), card->getSuit(), card->getNumber(), card->getFlags());
+	// A physical HEG copy retains its actual factory. A same-name Lua template
+	// must not replace a native card, including when the input is wrapped.
+	const bool physicalHegemony = isOriginalHegemonyCardPackage(card->getPackage());
+    Card*result = physicalHegemony ? Card::Clone(card->getRealCard())
+        : cloneCard(card->objectName(), card->getSuit(), card->getNumber(), card->getFlags());
     if (result){
+		if (physicalHegemony) {
+			result->setObjectName(card->objectName());
+			result->clearFlags();
+			for (const QString &flag : card->getFlags()) result->setFlags(flag);
+		}
 		result->setId(card->getEffectiveId());
+		result->setTransferable(card->isTransferable());
 		result->setSkillName(card->getSkillName(false));
 		result->setSkillInstanceId(card->getSkillInstanceId());
 		result->setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
@@ -1574,9 +1645,21 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 {
     Card*card = nullptr;
 	RoomRuntime *runtime = currentRoomRuntime();
-	const Card *runtimeTemplate = runtime ? runtime->cardTemplate(name) : nullptr;
-	if(runtimeTemplate || name2cards.contains(name)){
-		const Card*lcard = runtimeTemplate ? runtimeTemplate : name2cards.value(name);
+	const bool hegemony = runtime ? Config.EnableHegemony : ServerInfo.EnableHegemony;
+	const Card *modeTemplate = hegemony ? name2cards.value(QStringLiteral("heg:") + name, nullptr) : nullptr;
+	if (modeTemplate && runtime) {
+		// Resolve the physical template, not just its class: multiple horses share a class.
+		const Card *overlay = runtime->engineCard(modeTemplate->getId());
+		if (overlay && overlay->metaObject() == modeTemplate->metaObject()
+			&& overlay->objectName() == modeTemplate->objectName()) modeTemplate = overlay;
+	}
+	const Card *cardTemplate = modeTemplate ? modeTemplate : (runtime ? runtime->cardTemplate(name) : nullptr);
+	if (!hegemony && cardTemplate && isOriginalHegemonyCardPackage(cardTemplate->getPackage())
+		&& name != QString::fromLatin1(cardTemplate->metaObject()->className()))
+		cardTemplate = nullptr;
+	if (!cardTemplate) cardTemplate = name2cards.value(name, nullptr);
+	if(cardTemplate){
+		const Card*lcard = cardTemplate;
 		if(lcard->inherits("LuaBasicCard"))
 			card = qobject_cast<const LuaBasicCard*>(lcard)->clone(suit,number);
 		else if(lcard->inherits("LuaTrickCard"))
@@ -1625,7 +1708,9 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 		card->clearFlags();
 		foreach(QString flag, flags)
 			card->setFlags(flag);
-		if(name!=card->getClassName())
+		if (cardTemplate && isOriginalHegemonyCardPackage(cardTemplate->getPackage()))
+			card->setObjectName(cardTemplate->objectName());
+		else if(name!=card->getClassName())
 			card->setObjectName(name);
 	}
     return card;
@@ -2285,8 +2370,10 @@ QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool availabl
     if (Config.GeneralVersionDedup) {
         general_names = dedupByVersion(
             general_names,
-            [this](const QString &first, const QString &second) {
-                return sameNameWith(first, second);
+            [](const QString &first, const QString &second) {
+                // Keep the same complete identity used by the mode preference:
+                // shencaocao and a paired general must not suppress caocao.
+                return first.section('_', -1) == second.section('_', -1);
             });
     }
     return general_names;
@@ -2383,9 +2470,10 @@ QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, c
 
 QList<int> Engine::getRandomCards(bool derivative) const
 {
-    bool exclude_disaster = Config.GameMode.mode_id == "04_1v3", using_2012_3v3 = false,
-		using_2013_3v3 = false, challengedeveloper = Config.GameMode.mode_id == "challengedeveloper";
-    if (Config.GameMode.mode_id == "06_3v3") {
+	const bool hegemony = currentRoomRuntime() ? Config.EnableHegemony : ServerInfo.EnableHegemony;
+    bool exclude_disaster = !hegemony && Config.GameMode.mode_id == "04_1v3", using_2012_3v3 = false,
+		using_2013_3v3 = false, challengedeveloper = !hegemony && Config.GameMode.mode_id == "challengedeveloper";
+    if (!hegemony && Config.GameMode.mode_id == "06_3v3") {
         using_2012_3v3 = Config.value("3v3/OfficialRule").toString() == "2012";
         using_2013_3v3 = Config.value("3v3/OfficialRule", "2013").toString() == "2013";
         exclude_disaster = !Config.value("3v3/UsingExtension").toBool() || Config.value("3v3/ExcludeDisasters", true).toBool();
@@ -2396,6 +2484,9 @@ QList<int> Engine::getRandomCards(bool derivative) const
 	for (int cardId = 0; cardId < cardCount; ++cardId) {
 		const Card *card = getEngineCard(cardId);
 		if (!card) continue;
+		const QString pn = card->getPackage();
+		// Shared skill definitions do not merge the two physical mode decks.
+		if (isOriginalHegemonyCardPackage(pn) != hegemony) continue;
 		if(card->objectName().startsWith("_")){
 			if(!derivative||card->objectName().startsWith("__")) continue;
 		}else if (challengedeveloper && card->objectName() == "god_salvation") continue;
@@ -2407,7 +2498,6 @@ QList<int> Engine::getRandomCards(bool derivative) const
         }
         if (removed) continue;
         //card->clearFlags();
-		QString pn = card->getPackage();
 		if(pn == "New3v3Card"){
 			if(using_2012_3v3 || using_2013_3v3)
 				list << card->getId();
@@ -2489,7 +2579,12 @@ const Skill*Engine::getSkill(const QString &skill_name) const
 
 const Skill*Engine::getSkill(const EquipCard*equip) const
 {
-    if (equip) return getSkill(equip->objectName());
+    if (equip) {
+        // Imported equipment keeps the donor card name but owns a prefixed skill.
+        if (isHegemonyCardClassName(QString::fromLatin1(equip->metaObject()->className())))
+            return getSkill(QStringLiteral("heg_") + equip->objectName());
+        return getSkill(equip->objectName());
+    }
     return nullptr;
 }
 
@@ -2561,6 +2656,7 @@ const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, con
 
     const ProhibitSkill *ret = nullptr;
     foreach (const ProhibitSkill*skill, getProhibitSkills()) {
+        if (!from && !skill->property("supportsSourceLessProhibition").toBool()) continue;
         if (skill->isProhibited(from, to, card, others)) {
             ret = skill;
             break;
@@ -2913,7 +3009,7 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 	return correct;
 }
 
-int Engine::correctMaxCards(const Player*target, bool fixed) const
+int Engine::correctMaxCards(const Player*target, bool fixed, MaxCardsType::MaxCardsCount type) const
 {
     bool locked = lua_mutex.tryLock();
     if (!locked) {
@@ -2930,7 +3026,7 @@ int Engine::correctMaxCards(const Player*target, bool fixed) const
                 const int value = skill->getFixed(target);
                 if (value > ex) ex = value;
             } else {
-                ex += skill->getExtra(target);
+                ex += skill->getExtra(target, type);
             }
             continue;
         }
@@ -3245,6 +3341,8 @@ QStringList Engine::getResourceAliasList(const QString &category, const QString 
 
 TransferSkill *Engine::getTransfer()
 {
+    if (const auto *registered = dynamic_cast<const TransferSkill *>(getViewAsSkill("heg_transfer")))
+        return const_cast<TransferSkill *>(registered);
     if (!m_transfer) {
         m_transfer = new TransferSkill;
         m_transfer->setParent(this);

@@ -19,7 +19,6 @@
     *********************************************************************/
 
 // Original HEG content: see docs/hegemony-original-names.json for the import namespace.
-#include "original-hegemony-compat.h"
 #include "h-standard-package.h"
 #include "exppattern.h"
 #include "card.h"

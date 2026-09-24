@@ -90,6 +90,8 @@ QJsonObject requestPayloadToJson(const InteractionPayload &payload)
             object.insert(QStringLiteral("tip"), value->tip);
         if (!value->scheme.isEmpty())
             object.insert(QStringLiteral("scheme"), value->scheme);
+        if (!value->generalCandidates.isEmpty())
+            object.insert(QStringLiteral("general_candidates"), QJsonArray::fromStringList(value->generalCandidates));
     } else if (const PlayerInteractionPayload *value = std::get_if<PlayerInteractionPayload>(&payload)) {
         object = value->selection.toJson();
         object.insert(QStringLiteral("min"), value->selection.minSelection);

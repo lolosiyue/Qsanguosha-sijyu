@@ -431,6 +431,18 @@ GameActionModel TuiApplicationController::sharedActionModel(
     };
     if (const auto *options = request->payloadAs<OptionInteractionPayload>()) {
         appendOptions(options->options);
+        if (!options->generalCandidates.isEmpty()) {
+            const QStringList draft = m_view.selectedGenerals(request->requestId);
+            model.actionContext = QStringLiteral("hegemony-generals");
+            model.prompt += QLatin1Char('\n') + tuiText("tui_hegemony_help") + QLatin1Char('\n')
+                + tuiText("tui_hegemony_draft").arg(draft.isEmpty() ? tuiText("tui_hegemony_empty") : resolveNameText(draft.first()),
+                    draft.size() < 2 ? tuiText("tui_hegemony_empty") : resolveNameText(draft.last()));
+            for (GameActionEntry &entry : model.actions) {
+                entry.label = resolveNameText(entry.id.section('+', 0, 0)) + QStringLiteral(" / ")
+                    + resolveNameText(entry.id.section('+', 1, 1));
+                entry.selected = draft.size() == 2 && entry.id == draft.join('+');
+            }
+        }
         recognized = true;
     } else if (const auto *orderChoices = request->payloadAs<ChooseOrderInteractionPayload>()) {
         appendOptions(orderChoices->options);
@@ -812,6 +824,10 @@ void TuiApplicationController::handleInputLine(const QString &line)
 
     InteractionResponse response;
     QString error;
+    if (m_view.stageGeneralAnswer(m_core.activeRequest(), &answer)) {
+        refreshSharedPresentation(true);
+        return;
+    }
     if (!m_view.parseAnswer(m_core.activeRequest(), answer, &response, &error)) {
         writeError(error);
         m_pending.active = wasPending;
@@ -862,6 +878,9 @@ bool TuiApplicationController::trySkipRoleAssignment()
 {
     if (!m_core.hasActiveRequest(InteractionType::ChooseRole))
         return false;
+    const auto *assignment = m_core.activeRequest().payloadAs<RoleAssignmentInteractionPayload>();
+    if (assignment && assignment->scheme == QLatin1String("hegemony_seats"))
+        return false; // Seat assignment is an actionable opening prompt, not an identity-mode fallback.
 
     InteractionResponse response = InteractionResponse::makeCancel(m_core.activeRequestId());
     response.command = m_core.activeRequest().command;
@@ -1291,6 +1310,14 @@ QStringList TuiApplicationController::completionExtraTokens() const
     if (request.cancelable || request.type == InteractionType::PlayCard)
         add(QStringLiteral("cancel"));
     if (const auto *value = request.payloadAs<OptionInteractionPayload>()) {
+        if (!value->generalCandidates.isEmpty()) {
+            for (const QString &command : {QStringLiteral("undo"), QStringLiteral("clear"),
+                     QStringLiteral("swap"), QStringLiteral("confirm")}) add(command);
+            for (int i = 0; i < value->generalCandidates.size(); ++i) {
+                add(QStringLiteral("head %1").arg(i + 1));
+                add(QStringLiteral("deputy %1").arg(i + 1));
+            }
+        }
         for (const InteractionOption &option : value->options)
             add(option.value);
     }

@@ -12,6 +12,7 @@ public:
     static GeneralSelector *getInstance();
     QString selectFirst(ServerPlayer *player, const QStringList &candidates);
     QString selectSecond(ServerPlayer *player, const QStringList &candidates);
+    QString selectHegemonyPair(const QStringList &legalPairs);
     QString select3v3(ServerPlayer *player, const QStringList &candidates);
     QString select1v1(const QStringList &candidates);
     QStringList arrange3v3(ServerPlayer *player);
@@ -32,6 +33,7 @@ private:
     QHash<QString, int> priority_3v3_table;
     QHash<QString, int> priority_1v1_table;
     QSet<QString> sacrifice;
+    QHash<QString, int> hegemony_general_table;
 };
 
 #endif

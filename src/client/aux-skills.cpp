@@ -1,6 +1,7 @@
 #include "aux-skills.h"
 #include "engine.h"
 #include "room.h"
+#include "serverplayer.h"
 
 DiscardSkill::DiscardSkill()
     : ViewAsSkill("discard"), card(new DummyCard),
@@ -234,65 +235,89 @@ TransferCard::TransferCard()
 {
     setObjectName("transfer");
     target_fixed = false;
+    will_throw = false;
+    mute = true;
+    handling_method = Card::MethodNone;
 }
 
 bool TransferCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
-    if (!Self || Self == to_select)
+    if (!Self || !to_select || !to_select->isAlive() || Self == to_select)
         return false;
 
     if (!targets.isEmpty())
         return false;
 
-    return Self->canDiscard(to_select, "he");
+    return !Self->isProhibited(to_select, this)
+        && (!to_select->hasShownOneGeneral()
+            || (Self->hasShownOneGeneral() && !Self->isFriendWith(to_select)));
 }
 
-void TransferCard::onUse(Room *room, const CardUseStruct &card_use) const
+const Card *TransferCard::validate(CardUseStruct &use) const
 {
-    CardUseStruct new_use = card_use;
-    new_use.card = this;
-    room->useCard(new_use);
+    if (!use.from || use.from->isRemoved() || use.from->getPhase() != Player::Play || subcardsLength() != 1
+        || use.to.size() != 1 || !targetFilter({}, use.to.first(), use.from)) return nullptr;
+    TransferCard action;
+    if (use.from->isCardLimited(&action, Card::MethodUse)) return nullptr;
+    Room *room = use.from->getRoom();
+    const int id = getSubcards().first();
+    const Card *card = room->getCard(id);
+    if (!card || !card->isTransferable() || room->getCardOwner(id) != use.from) return nullptr;
+    // Transfer is a give action, not a discard or a use of the material card.
+    if (room->getCardPlace(id) == Player::PlaceHand) return this;
+    if (room->getCardPlace(id) != Player::PlaceEquip || use.from->isEquipsNullified(card)) return nullptr;
+    return card->objectName() == "Breastplate" || card->objectName() == "jingfan" ? this : nullptr;
 }
 
-TransferSkill::TransferSkill()
-    : OneCardViewAsSkill("transfer"), m_toSelect(-1)
+void TransferCard::onEffect(CardEffectStruct &effect) const
 {
+    if (!effect.from || !effect.to) return;
+    const bool draw = effect.to->hasShownOneGeneral();
+    CardMoveReason reason(CardMoveReason::S_REASON_GIVE, effect.from->objectName(),
+                         effect.to->objectName(), "transfer", QString());
+    effect.to->getRoom()->obtainCard(effect.to, this, reason, true);
+    if (draw && effect.from->isAlive()) effect.from->drawCards(1, "transfer");
 }
 
-void TransferSkill::setToSelect(int cardId)
+TransferSkill::TransferSkill() : ViewAsSkillV2("heg_transfer", 1)
 {
-    m_toSelect = cardId;
+    // This action comes from a card's transfer property, not a general skill.
+    // CardActionButton is the UI entry; keep the V2 skill only for validation.
+    attached_lord_skill = true;
+    hide_skill = true;
+    setProperty("IgnoreInvalidity", true);
 }
 
-bool TransferSkill::viewFilter(const Card *to_select) const
+bool TransferSkill::canActivate(const ActiveSkillRequest &request) const
 {
-    if (m_toSelect < 0)
+    if (request.reason != CardUseStruct::CARD_USE_REASON_PLAY || !isAvailable(request.initiator, nullptr))
         return false;
-
-    return to_select->getId() == m_toSelect;
+    for (int id : request.initiator->handCards())
+        if (isAvailable(request.initiator, Sanguosha->getCard(id))) return true;
+    return false;
 }
 
-const Card *TransferSkill::viewAs(const Card *originalCard) const
+bool TransferSkill::canSelectCard(const ActiveSkillRequest &request, const Card *card) const
 {
-    if (!originalCard || originalCard->getId() != m_toSelect)
-        return nullptr;
+    return request.selectedCardIds.isEmpty() && card && !card->hasFlag("using")
+        && isAvailable(request.initiator, card);
+}
 
+const Card *TransferSkill::createCard(const ActiveSkillRequest &request) const
+{
+    if (!cardSelectionFeasible(request)) return nullptr;
+    // Preserve MethodNone: giving a card must not become a discard cost.
     TransferCard *card = new TransferCard;
-    card->addSubcard(originalCard);
+    card->addSubcards(request.selectedCardIds);
+    card->setSkillName(objectName());
     return card;
 }
 
 bool TransferSkill::isAvailable(const Player *player, const Card *card) const
 {
-    if (!player)
-        return false;
-
-    if (player->getPhase() != Player::Play)
-        return false;
-
-    if (card && player->isCardLimited(card, Card::MethodUse))
-        return false;
-
-    return true;
+    TransferCard action;
+    return player && player->isAlive() && !player->isRemoved() && player->getPhase() == Player::Play
+        && !player->isCardLimited(&action, Card::MethodUse)
+        && player->hasSkill(objectName())
+        && (!card || (card->isTransferable() && player->handCards().contains(card->getEffectiveId())));
 }
-

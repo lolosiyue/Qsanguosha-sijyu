@@ -123,6 +123,8 @@ struct OptionInteractionPayload
     bool enumerated = true;
     QString tip;
     QString scheme;
+    // Full hegemony candidate pool, including cards with no legal partner.
+    QStringList generalCandidates;
 };
 
 struct PlayerInteractionPayload

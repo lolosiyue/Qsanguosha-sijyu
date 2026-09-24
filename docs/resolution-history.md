@@ -47,6 +47,23 @@ Room 持有一份 server authoritative 的 `ResolutionHistoryService`。它只�
 
 ## 範圍、分頁與一致性
 
+### 原生 C++ 技能查詢
+
+`Room::queryCardHistory(player, scope, className, responses, playOnly)` 是同一 journal 的唯讀投影。
+`scope` 可為 `turn`（預設）、`phase`、`round` 或 `game`；沒有當前 scope 時回傳空集合，
+不把 scope 0 當作整場。`items` 是按 fact sequence 排序的牌值快照，排除 SkillCard；
+一般使用與 `is_use` 回應合計為使用，`responses=true` 則只列純回應，使用實際 responder。
+`playOnly=true` 可取本回合所有出牌階段，並非只有最後一個出牌階段。
+`countHistoryCards` 使用相同條件，資料不完整時回傳 `-1`，不得當成零次。
+
+`Room::queryCardUseDamage(useEventId=0)` 依指定用牌事件（預設為當前最近的 use_card 祖先）
+查詢已提交傷害，排除獨立巢狀用牌及無關技能傷害。實體牌重複使用時，由事件 ID 區分，
+不依賴 Card 指標或牌上的累積 tag。這兩個投影的 `attribution_complete` 指實際用牌者／
+用牌事件的歸因；不要求造成效果的舊技能具有 skill owner。原始查詢的技能歸因契約不變。
+
+牌快照另含 `classes`（primitive list）、`type`、`red`、`black`、`ndtrick`，
+避免查詢時以已變化的實體牌重建歷史。缺少這些欄位的舊記錄不會被誤判為零次。
+
 ### 技能中的最短用法：本回合是否造成過傷害
 
 在既有技能回呼取得 `room` 和 `player` 後即可查詢，不必由此技能預先監聽或設置 mark：

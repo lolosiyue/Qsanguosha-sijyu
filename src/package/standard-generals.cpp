@@ -3216,78 +3216,107 @@ public:
     }
 };
 
-class Xunxun : public PhaseChangeSkill
+class Xunxun : public TriggerSkillV2
 {
 public:
-    Xunxun() : PhaseChangeSkill("xunxun")
+    Xunxun() : TriggerSkillV2("xunxun")
     {
+        events << EventPhaseStart;
         frequency = Frequent;
     }
 
-    bool onPhaseChange(ServerPlayer *lidian, Room *room) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (lidian->getPhase() == Player::Draw) {
-            if (room->askForSkillInvoke(lidian, objectName())) {
-                int index = qsanRandomBounded(2) + 1;
-                if (lidian->getGeneralName().contains("tangzi") || (!lidian->getGeneralName().contains("lidian") && lidian->getGeneral2Name().contains("tangzi")))
-                    index += 2;
-                room->broadcastSkillInvoke(objectName(), index);
-                QList<ServerPlayer *> p_list;
-                p_list << lidian;
-                QList<int> obtained,card_ids = room->getNCards(4);
-                room->fillAG(card_ids, lidian);
-                int id = room->askForAG(lidian, card_ids, false, objectName());
-                card_ids.removeOne(id);
-                obtained << id;
-                room->takeAG(lidian, id, false, p_list);
-                id = room->askForAG(lidian, card_ids, false, objectName());
-                card_ids.removeOne(id);
-                obtained << id;
-                room->clearAG(lidian);
+        return player && player->isAlive() && player->hasSkill(objectName()) && player->getPhase() == Player::Draw
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
 
-                room->askForGuanxing(lidian, card_ids, Room::GuanxingDownOnly);
-                DummyCard *dummy = new DummyCard(obtained);
-                lidian->obtainCard(dummy, false);
-                dummy->deleteLater();
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        return ctx.owner && room->askForSkillInvoke(ctx.owner, objectName(), QVariant(), false);
+    }
 
-                return true;
-            }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *lidian = ctx.invoker;
+        if (!lidian || !lidian->isAlive()) return false;
+        room->notifySkillInvoked(lidian, objectName());
+        int index = qsanRandomBounded(2) + 1;
+        if (lidian->getGeneralName().contains("tangzi") || (!lidian->getGeneralName().contains("lidian") && lidian->getGeneral2Name().contains("tangzi")))
+            index += 2;
+        room->broadcastSkillInvoke(objectName(), index);
+        const QList<ServerPlayer *> viewers{lidian};
+        QList<int> obtained, card_ids = room->getNCards(4);
+        room->fillAG(card_ids, lidian);
+        for (int i = 0; i < 2 && !card_ids.isEmpty(); ++i) {
+            const int id = room->askForAG(lidian, card_ids, false, objectName());
+            card_ids.removeOne(id);
+            obtained << id;
+            if (i == 0) room->takeAG(lidian, id, false, viewers);
         }
-        return false;
+        room->clearAG(lidian);
+        room->askForGuanxing(lidian, card_ids, Room::GuanxingDownOnly);
+        DummyCard *dummy = new DummyCard(obtained);
+        dummy->deleteLater();
+        lidian->obtainCard(dummy, false);
+        // Resolving Xunxun replaces the normal draw phase; declining cost does not.
+        return true;
     }
 };
 
-class Wangxi : public TriggerSkill
+class Wangxi : public TriggerSkillV2
 {
 public:
-    Wangxi() : TriggerSkill("wangxi")
+    Wangxi() : TriggerSkillV2("wangxi")
     {
         events << Damage << Damaged;
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        DamageStruct damage = data.value<DamageStruct>();
-        ServerPlayer *target = nullptr;
-        if (triggerEvent == Damage && !damage.to->hasFlag("Global_DebutFlag"))
-            target = damage.to;
-        else if (triggerEvent == Damaged)
-            target = damage.from;
-        if (!target || target == player) return false;
-        QList<ServerPlayer *> players;
-        players << player << target;
-        room->sortByActionOrder(players);
+        const DamageStruct damage = data.value<DamageStruct>();
+        const ServerPlayer *target = otherPlayer(event, damage);
+        return player && player->isAlive() && player->hasSkill(objectName()) && target
+            && target->isAlive() && target != player && damage.damage > 0
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
 
-        for (int i = 1; i <= damage.damage; i++) {
-            if (!target->isAlive() || !player->isAlive())
-                return false;
-            if (room->askForSkillInvoke(player, objectName(), QVariant::fromValue(target))) {
-                room->broadcastSkillInvoke(objectName(), (triggerEvent == Damaged) ? 1 : 2);
-                room->drawCards(players, 1, objectName());
-            } else
-                break;
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.original_data) return false;
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        ServerPlayer *target = otherPlayer(event, damage);
+        if (!target || !target->isAlive() || target == ctx.owner || damage.damage <= 0
+            || !room->askForSkillInvoke(ctx.owner, objectName(), QVariant::fromValue(target), false)) return false;
+        ctx.targets = {target};
+        ctx.extra_data = damage.damage;
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx,
+                      ServerPlayer *target) const override
+    {
+        ServerPlayer *player = ctx.invoker;
+        if (!player || !target || target == player) return false;
+        QList<ServerPlayer *> players{player, target};
+        room->sortByActionOrder(players);
+        // One damage event owns the continuation choices. A declined point ends
+        // this execution instead of creating more independently prompted tickets.
+        for (int i = 0; i < ctx.extra_data.toInt(); ++i) {
+            if (!player->isAlive() || !target->isAlive() || !isSourceAvailable(room, ctx)) break;
+            if (i > 0 && !room->askForSkillInvoke(player, objectName(), QVariant::fromValue(target), false)) break;
+            room->notifySkillInvoked(player, objectName());
+            room->broadcastSkillInvoke(objectName(), event == Damaged ? 1 : 2);
+            room->drawCards(players, getEffectiveAmount(ctx), objectName());
         }
         return false;
+    }
+
+private:
+    static ServerPlayer *otherPlayer(TriggerEvent event, const DamageStruct &damage)
+    {
+        if (event == Damage && damage.to && !damage.to->hasFlag("Global_DebutFlag")) return damage.to;
+        return event == Damaged ? damage.from : nullptr;
     }
 };
 
@@ -3562,6 +3591,8 @@ public:
         QVariant data = QVariant::fromValue(damage);
 
         if (room->askForSkillInvoke(xiahou, "nosganglie", data)) {
+            LegacySkillActivation activation(room, xiahou, objectName());
+            if (!activation) return;
             room->broadcastSkillInvoke("nosganglie");
 
             JudgeStruct judge;
@@ -3684,6 +3715,8 @@ public:
     {
         Room *room = xuchu->getRoom();
         if (room->askForSkillInvoke(xuchu, objectName())) {
+            LegacySkillActivation activation(room, xuchu, objectName());
+            if (!activation) return n;
             room->broadcastSkillInvoke(objectName());
             xuchu->setFlags(objectName());
             return n - 1;
@@ -3703,8 +3736,12 @@ void NosYiji::onDamaged(ServerPlayer *guojia, const DamageStruct &damage) const
     Room *room = guojia->getRoom();
     int x = damage.damage;
     for (int i = 0; i < x; i++) {
+        if (!LegacySkillActivation::isAvailable(room, guojia, objectName())) break;
         if (!guojia->isAlive() || !room->askForSkillInvoke(guojia, objectName()))
             return;
+        // Each accepted damage iteration consumes its own projected source.
+        LegacySkillActivation activation(room, guojia, objectName());
+        if (!activation) break;
         room->broadcastSkillInvoke("nosyiji");
 
         QList<int> yiji_cards = room->getNCards(n);

@@ -1173,6 +1173,12 @@ static const QStringList &aiRoutableCallbackNames()
 
 static void loadConfiguredAiRoutes(AiRouteRegistry &routes)
 {
+    // The imported HEG callbacks run through the room-local legacy adapter.
+    // Apply explicit user routes afterward, including per-skill isolated overrides.
+    if (Config.EnableHegemony) {
+        for (const QString &callback : aiRoutableCallbackNames())
+            routes.setCallbackRoute(callback, QString(), AiRouteLegacyAdapted);
+    }
     const auto addRoutes = [&routes](const QString &key, AiRoute route) {
         foreach (const QString &entry, Config.value(key).toStringList()) {
             const QStringList parts = entry.split(QChar(':'));

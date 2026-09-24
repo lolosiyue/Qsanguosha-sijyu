@@ -890,6 +890,10 @@ add_executable(qsanguosha_server_tests
     room-notifier-test.cpp
     skill-runtime-coordinator-test.cpp
     hegemony-formation-test.cpp
+    hegemony-rules-test.cpp
+    original-hegemony-content-test.cpp
+    original-hegemony-gameplay-test.cpp
+    card-movement-service-test.cpp
     request-coordinator-test.cpp
     pre-game-lock-test.cpp
     outbound-ordering-test.cpp

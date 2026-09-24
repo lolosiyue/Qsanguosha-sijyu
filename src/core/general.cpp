@@ -1,4 +1,5 @@
 #include "general.h"
+#include "banpair.h"
 #include "engine.h"
 #include "qt-collection-utils.h"
 #include "util.h"
@@ -68,7 +69,55 @@ QString General::getKingdom() const
 
 QString General::getKingdoms() const
 {
-    return kingdom;
+    QStringList kingdoms = kingdom.split('+', Qt::SkipEmptyParts);
+    if (!subordinate_kingdom.isEmpty() && !kingdoms.contains(subordinate_kingdom))
+        kingdoms << subordinate_kingdom;
+    return kingdoms.join('+');
+}
+
+QString General::getSubordinateKingdom() const
+{
+    return subordinate_kingdom;
+}
+
+void General::setSubordinateKingdom(const QString &value)
+{
+    subordinate_kingdom = value;
+}
+
+bool General::isDoubleKingdoms() const
+{
+    return getKingdoms().split('+', Qt::SkipEmptyParts).size() > 1;
+}
+
+QStringList General::compareKingdomsWith(const General *other) const
+{
+    // A born careerist is a head general only, with any non-careerist deputy.
+    if (!other || other->getKingdom() == "careerist" || other->getKingdom() == "ye")
+        return QStringList();
+    const QStringList otherKingdoms = other->getKingdoms().split('+', Qt::SkipEmptyParts);
+    if (getKingdom() == "careerist" || getKingdom() == "ye") return otherKingdoms;
+    QStringList common;
+    for (const QString &value : getKingdoms().split('+', Qt::SkipEmptyParts))
+        if (otherKingdoms.contains(value)) common << value;
+    return common;
+}
+
+bool General::isHegemonySelectable() const
+{
+    // FreeChoose bypasses the dealt pool, not hidden placeholders or lord conversion.
+    const QString name = objectName();
+    const QString faction = getKingdom();
+    return !isTotallyHidden() && !name.startsWith("heg_lord_") && !name.startsWith("lord_")
+        && !faction.isEmpty() && faction != "god" && faction != "ye" && !BanPair::isBanned(name);
+}
+
+bool General::canPairForHegemony(const General *deputy) const
+{
+    return deputy && objectName() != deputy->objectName()
+        && isHegemonySelectable() && deputy->isHegemonySelectable()
+        && !deputy->isLord() && !compareKingdomsWith(deputy).isEmpty()
+        && !BanPair::isBanned(objectName(), deputy->objectName());
 }
 
 bool General::isMale() const
@@ -442,7 +491,16 @@ bool General::isCompanionWith(const QString &name) const
 {
     const General *other = Sanguosha->getGeneral(name);
     if (!other) return false;
-    return companions.contains(name) || other->companions.contains(objectName());
+    const bool sovereign = lord && objectName().startsWith("heg_lord_")
+        && other->getKingdoms().split('+').contains(getKingdom());
+    const bool otherSovereign = other->lord && name.startsWith("heg_lord_")
+        && getKingdoms().split('+').contains(other->getKingdom());
+    return sovereign || otherSovereign || companions.contains(name) || other->companions.contains(objectName());
+}
+
+QStringList General::getCompanionNames() const
+{
+    return companions;
 }
 
 QString General::getCompanions() const

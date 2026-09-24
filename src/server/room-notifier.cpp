@@ -9,6 +9,8 @@
 #include "server.h"
 #include "serverplayer.h"
 #include "skill-instance-types.h"
+#include "skill-runtime-coordinator.h"
+#include "settings.h"
 
 #include <QSet>
 
@@ -209,6 +211,57 @@ void RoomNotifier::notifyPlayerUIState(ServerPlayer *receiver, const ServerPlaye
     const bool controlsOwner = m_room.getActualController(const_cast<ServerPlayer *>(owner)) == receiver
         && receiver->isOnline();
     message.state = receiver == owner || controlsOwner ? state : state.forObserver();
+    if (Config.EnableHegemony) {
+        // A controller inherits the owner's view, including private usage, but
+        // neither can learn a hidden external provider through an attachment.
+        const ServerPlayer *viewer = controlsOwner ? owner : receiver;
+        const auto filterInstances = [&](QVariantMap &values) {
+            for (auto it = values.begin(); it != values.end();) {
+                QString skillName;
+                const int id = SkillInstanceUtils::parseName(it.key(), skillName);
+                const SkillInstance *instance = owner->findSkillInstance(skillName, id);
+                if (!instance || !SkillRuntimeCoordinator::canReceiveSkillInstance(m_room, viewer, owner, *instance))
+                    it = values.erase(it);
+                else
+                    ++it;
+            }
+        };
+        filterInstances(message.state.skillValidity);
+        filterInstances(message.state.skillUsage);
+    }
+    if (Config.EnableHegemony && receiver != owner && !controlsOwner) {
+        // Contribution strings aggregate sources without instance IDs. Publish a
+        // source label only when all its matching instances are visible to this viewer.
+        const auto sourceVisible = [&](const ServerPlayer *source, const QString &name) {
+            if (!source) return false;
+            bool found = false;
+            for (const SkillInstance &instance : source->getSkillInstances()) {
+                if (instance.skillName != name) continue;
+                found = true;
+                if (!SkillRuntimeCoordinator::canReceiveSkillInstance(m_room, receiver, source, instance))
+                    return false;
+            }
+            return found;
+        };
+        const auto filterNames = [&](QStringList &names, bool equipment) {
+            for (auto it = names.begin(); it != names.end();) {
+                const QString name = equipment ? it->section('^', 1, 1) : *it;
+                if (!sourceVisible(owner, name)) it = names.erase(it);
+                else ++it;
+            }
+        };
+        filterNames(message.state.offensiveSkills, false);
+        filterNames(message.state.defensiveSkills, false);
+        filterNames(message.state.viewAsEquipSkills, true);
+        for (auto it = message.state.maxCardsSkills.begin(); it != message.state.maxCardsSkills.end();) {
+            const ServerPlayer *source = m_room.findPlayerByObjectName(it->section('^', 2, 2), true);
+            if (!sourceVisible(source, it->section('^', 0, 0))) it = message.state.maxCardsSkills.erase(it);
+            else ++it;
+        }
+        // Declared public effects have no instance provenance with which to prove
+        // a concealed source is public. Keep them owner-only in hegemony.
+        message.state.skillEffects.clear();
+    }
     // Do not re-expand controller recipients after choosing an owner-specific
     // payload (or a later observer copy could overwrite/leak that private cache).
     sendPacket(QList<ServerPlayer *>() << receiver, S_COMMAND_UPDATE_PLAYER_UI_STATE, message.toVariant());

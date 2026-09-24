@@ -373,6 +373,12 @@ void PlayerLifecycleService::changeHero(ServerPlayer *player, const QString &new
     if (m_eventDispatcher.dispatch(GeneralChange, player, changingData))
         return;
 
+    const bool dragonPhoenixRevival = Config.EnableHegemony
+        && player->isDead() && !isSecondaryHero
+        && player->hasFlag("OriginalHegemonyDragonPhoenixReviving");
+    if (dragonPhoenixRevival && !replaceDragonPhoenixGeneral(player, newGeneral))
+        return;
+
     JsonArray arg;
     arg << static_cast<int>(S_GAME_EVENT_CHANGE_HERO) << player->objectName();
     arg << newGeneral << isSecondaryHero << sendLog;
@@ -384,13 +390,13 @@ void PlayerLifecycleService::changeHero(ServerPlayer *player, const QString &new
         changePlayerGeneral2(player, newGeneral);
         if (!hadSecondaryHero)
             m_room.broadcastProperty(player, "general2");
-    } else {
+    } else if (!dragonPhoenixRevival) {
         changePlayerGeneral(player, newGeneral);
     }
 
     int maxHp = player->getGeneralMaxHp();
     const int changedMaxHp = player->property("ChangeHeroMaxHp").toInt();
-    if (changedMaxHp > 0) {
+    if (changedMaxHp > 0 && !dragonPhoenixRevival) {
         m_room.setPlayerProperty(player, "ChangeHeroMaxHp", 0);
         maxHp = changedMaxHp - 1;
     }
@@ -424,6 +430,8 @@ void PlayerLifecycleService::changeHero(ServerPlayer *player, const QString &new
 
     if (general) {
         foreach (const Skill *skill, general->getSkillList()) {
+            if (dragonPhoenixRevival && player->getSkillInstanceIds(skill->objectName()).isEmpty())
+                continue;
             kingdom = skill->getLimitMark();
             if (!kingdom.isEmpty()
                 && !player->getTag("DontGiveLimitMark_" + skill->objectName()).toBool()) {
@@ -454,6 +462,59 @@ void PlayerLifecycleService::changeHero(ServerPlayer *player, const QString &new
     m_room.resetAI(player);
     QVariant changedData = newGeneral;
     m_eventDispatcher.dispatch(GeneralChanged, player, changedData);
+    if (dragonPhoenixRevival)
+        player->setTag("OriginalHegemonyDragonPhoenixResult", true);
+}
+
+bool PlayerLifecycleService::replaceDragonPhoenixGeneral(ServerPlayer *player,
+                                                         const QString &newGeneral)
+{
+    const General *replacement = Sanguosha->getGeneral(newGeneral);
+    QStringList names = m_room.getTag(player->objectName()).toStringList();
+    if (!replacement || names.size() != 2)
+        return false;
+
+    player->removeGeneral(false);
+    if (!player->getActualGeneral2Name().startsWith(QStringLiteral("sujiang")))
+        return false;
+
+    // Retire exact roots through the existing coordinator. Its normal teardown
+    // removes helpers and cross-player attachments without reusing instance IDs.
+    // Clearing the container or losing skills by name would bypass that lifecycle.
+    const QList<SkillInstance> oldInstances = player->getSkillInstances();
+    foreach (const SkillInstance &instance, oldInstances) {
+        if (instance.source != SourceHelper)
+            m_skillRuntime.detachSkillFromPlayer(player,
+                SkillInstanceUtils::formatName(instance.skillName, instance.instanceID),
+                false, false, true);
+    }
+
+    names[0] = newGeneral;
+    names[1] = player->getActualGeneral2Name();
+    m_room.setTag(player->objectName(), names);
+    // Actual identities stay owner-only. Publish only the explicitly revealed
+    // replacement, and update actual slots before changeHero recalculates HP.
+    m_room.safeSetPlayerProperty(player, "actual_general1", newGeneral);
+    m_room.notifyProperty(player, player, "actual_general1");
+    m_room.setPlayerProperty(player, "general_showed", true);
+    m_room.setPlayerProperty(player, "general", newGeneral);
+    m_room.setPlayerProperty(player, "gender", replacement->getGender());
+    m_room.setPlayerProperty(player, "ChangeHeroMaxHp", 0);
+
+    QSet<QString> relatedNames;
+    foreach (const Skill *skill, replacement->getSkillList()) {
+        foreach (const Skill *related, Sanguosha->getRelatedSkills(skill->objectName()))
+            relatedNames.insert(related->objectName());
+    }
+    foreach (const Skill *skill, replacement->getSkillList()) {
+        if (!skill->relateToPlace(false) && !relatedNames.contains(skill->objectName()))
+            player->addSkill(skill->objectName(), true);
+    }
+    player->setSkillsPreshowed("h");
+    m_room.filterCards(player, player->getCards("he"), true);
+    player->syncHegemonyRevealState();
+    player->refreshUIState();
+    return true;
 }
 
 void PlayerLifecycleService::changePlayerGeneral(ServerPlayer *player,
@@ -726,6 +787,19 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
     foreach (ServerPlayer *existing, m_roster.players()) {
         const QMap<QString, QHash<QString, QString> > swaps = existing->getAllSkillDescriptionSwaps();
         foreach (const QString &skillName, swaps.keys()) {
+            if (Config.EnableHegemony && player != existing) {
+                QString baseName;
+                const int id = SkillInstanceUtils::parseName(skillName, baseName);
+                bool visible = false;
+                for (const SkillInstance &instance : existing->getSkillInstances()) {
+                    if (instance.skillName == baseName && (id <= 0 || instance.instanceID == id)
+                        && SkillRuntimeCoordinator::canReceiveSkillInstance(m_room, player, existing, instance)) {
+                        visible = true;
+                        break;
+                    }
+                }
+                if (!visible) continue;
+            }
             const QHash<QString, QString> swap = swaps[skillName];
             foreach (const QString &key, swap.keys()) {
                 JsonArray arg;

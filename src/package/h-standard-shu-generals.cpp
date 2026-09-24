@@ -31,24 +31,24 @@
 #include <QScopeGuard>
 
 namespace {
+bool ownsHegemonySkill(const ServerPlayer *player, const QString &skillName)
+{
+    return player && player->isAlive() && player->hasSkill(skillName);
+}
+
+bool invokeHegemonySkill(const TriggerSkill *skill, Room *room, ServerPlayer *owner,
+                         const QVariant &data = QVariant())
+{
+    if (!owner || !owner->askForSkillInvoke(skill, data)) return false;
+    room->broadcastSkillInvoke(skill->objectName(), owner);
+    return true;
+}
+
 bool hasShouyue(const Player *player)
 {
     const Player *lord = player ? player->getLord() : nullptr;
     return player && player->getSeemingKingdom() == "shu"
         && lord && lord->hasLordSkill("heg_shouyue") && lord->hasShownGeneral1();
-}
-
-bool ownsTrigger(const ServerPlayer *player, const QString &skill)
-{
-    return player && player->isAlive() && player->hasSkill(skill);
-}
-
-bool invokeShuSkill(const TriggerSkill *skill, Room *room, ServerPlayer *owner,
-                    const QVariant &data = QVariant())
-{
-    if (!owner->askForSkillInvoke(skill, data)) return false;
-    room->broadcastSkillInvoke(skill->objectName(), owner);
-    return true;
 }
 
 void preventJink(Room *room, ServerPlayer *owner, ServerPlayer *target, const CardUseStruct &use)
@@ -89,8 +89,8 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const Card *card = data.value<CardUseStruct>().card;
-        return ownsTrigger(player, "heg_paoxiao") && card && card->isKindOf("Slash")
-            && XxyHegemony::countUsedCards(player, "Slash") == 2
+        return ownsHegemonySkill(player, "heg_paoxiao") && card && card->isKindOf("Slash")
+            && player->getRoom()->countHistoryCards(player, "turn", "Slash") == 2
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -110,7 +110,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const CardUseStruct use = data.value<CardUseStruct>();
-        if (!ownsTrigger(player, "heg_paoxiao") || !hasShouyue(player)
+        if (!ownsHegemonySkill(player, "heg_paoxiao") || !hasShouyue(player)
             || !use.card || !use.card->isKindOf("Slash")) return {};
         return {{player, {objectName()}}};
     }
@@ -142,7 +142,7 @@ public:
     }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        if (!ownsTrigger(player, objectName())) return {};
+        if (!ownsHegemonySkill(player, objectName())) return {};
         if (event == BeforeCardsMove) {
             const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
             return player->getPhase() == Player::NotActive && player->isKongcheng()
@@ -237,13 +237,13 @@ public:
             if (!effect.card || !effect.card->isKindOf("Slash") || !effect.offset_card
                 || !effect.offset_card->isKindOf("Jink")) return {};
             TriggerList result;
-            if (effect.card->getSkillName() == objectName() && ownsTrigger(effect.from, objectName()))
+            if (effect.card->getSkillName() == objectName() && ownsHegemonySkill(effect.from, objectName()))
                 result[effect.from] << objectName();
-            if (effect.offset_card->getSkillName() == objectName() && ownsTrigger(effect.to, objectName()))
+            if (effect.offset_card->getSkillName() == objectName() && ownsHegemonySkill(effect.to, objectName()))
                 result[effect.to] << objectName();
             return result;
         }
-        if (!ownsTrigger(player, objectName()) || !hasShouyue(player)) return {};
+        if (!ownsHegemonySkill(player, objectName()) || !hasShouyue(player)) return {};
         const Card *card = event == CardUsed ? data.value<CardUseStruct>().card : data.value<CardResponseStruct>().m_card;
         return card && card->getSkillName() == objectName() ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
@@ -314,7 +314,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const CardUseStruct use = data.value<CardUseStruct>();
-        if (!ownsTrigger(player, objectName()) || !use.card || !use.card->isKindOf("Slash")) return {};
+        if (!ownsHegemonySkill(player, objectName()) || !use.card || !use.card->isKindOf("Slash")) return {};
         const int count = use.card->getTag(objectName() + "_targets").toStringList().size();
         return count > 0 ? TriggerList{{player, {objectName() + "*" + QString::number(count)}}} : TriggerList();
     }
@@ -328,7 +328,7 @@ public:
         ServerPlayer *target = room->findPlayerByObjectName(targets.at(ctx.trigger_count));
         if (!target || !target->isAlive() || !use.to.contains(target)) return false;
         ctx.targets = {target};
-        return invokeShuSkill(this, room, ctx.owner, QVariant::fromValue(target));
+        return invokeHegemonySkill(this, room, ctx.owner, QVariant::fromValue(target));
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *target) const override
@@ -397,14 +397,14 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const Card *card = data.value<CardUseStruct>().card;
-        if (!ownsTrigger(player, objectName()) || !card || !card->isNDTrick()) return {};
+        if (!ownsHegemonySkill(player, objectName()) || !card || !card->isNDTrick()) return {};
         // The new donor accepts real tricks and material-free virtual tricks only.
         if (card->isVirtualCard() && !card->getSubcards().isEmpty()) return {};
         return {{player, {objectName()}}};
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        return ctx.owner && ctx.original_data && invokeShuSkill(this, room, ctx.owner, *ctx.original_data);
+        return ctx.owner && ctx.original_data && invokeHegemonySkill(this, room, ctx.owner, *ctx.original_data);
     }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
@@ -429,7 +429,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const CardUseStruct use = data.value<CardUseStruct>();
-        if (!ownsTrigger(player, objectName()) || !use.card || !use.card->isKindOf("Slash")) return {};
+        if (!ownsHegemonySkill(player, objectName()) || !use.card || !use.card->isKindOf("Slash")) return {};
         const int count = use.card->getTag(objectName() + "_targets").toStringList().size();
         return count > 0 ? TriggerList{{player, {objectName() + "*" + QString::number(count)}}} : TriggerList();
     }
@@ -444,7 +444,7 @@ public:
         if (!target || !target->isAlive() || !use.to.contains(target)) return false;
         if (target->getHp() < ctx.owner->getHp()) return false;
         ctx.targets = {target};
-        return invokeShuSkill(this, room, ctx.owner, QVariant::fromValue(target));
+        return invokeHegemonySkill(this, room, ctx.owner, QVariant::fromValue(target));
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
                       ServerPlayer *target) const override
@@ -517,7 +517,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const CardEffectStruct effect = data.value<CardEffectStruct>();
-        if (!ownsTrigger(player, parentSkill) || !effect.card || !effect.card->isKindOf("SavageAssault")) return {};
+        if (!ownsHegemonySkill(player, parentSkill) || !effect.card || !effect.card->isKindOf("SavageAssault")) return {};
         return {{player, {objectName()}}};
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -568,7 +568,7 @@ public:
         if (!card || !card->isKindOf("SavageAssault")) return {};
         TriggerList choices;
         for (ServerPlayer *owner : room->findPlayersBySkillName(objectName()))
-            if (ownsTrigger(owner, objectName())) choices[owner] << objectName();
+            if (ownsHegemonySkill(owner, objectName())) choices[owner] << objectName();
         return choices;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -613,7 +613,7 @@ public:
             if (!Sanguosha->getCard(id)->hasFlag("heg_juxiang_real_sa")) return {};
         TriggerList choices;
         for (ServerPlayer *owner : room->findPlayersBySkillName(objectName()))
-            if (owner != move.from && ownsTrigger(owner, objectName())) choices[owner] << objectName();
+            if (owner != move.from && ownsHegemonySkill(owner, objectName())) choices[owner] << objectName();
         return choices;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -646,7 +646,7 @@ public:
     }
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        return ownsTrigger(player, objectName()) && player->getPhase() == Player::Discard && redDiscardCount(room) > 0
+        return ownsHegemonySkill(player, objectName()) && player->getPhase() == Player::Discard && redDiscardCount(room) > 0
             ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -689,8 +689,8 @@ void HStandardPackage::addShuGenerals()
 
     General *zhangfei = new General(this, "heg_zhangfei", "shu"); // SHU 003
     zhangfei->addSkill(new HPaoxiao);
-    skills << new HPaoxiaoDraw;
-    skills << new HPaoxiaoArmorNullification;
+    zhangfei->addSkill(new HPaoxiaoDraw);
+    zhangfei->addSkill(new HPaoxiaoArmorNullification);
     insertRelatedSkills("heg_paoxiao", "#heg_paoxiao-draw");
     insertRelatedSkills("heg_paoxiao", "#heg_paoxiao-null");
 
@@ -706,7 +706,7 @@ void HStandardPackage::addShuGenerals()
     General *machao = new General(this, "heg_machao", "shu"); // SHU 006
     machao->addSkill(new HTieqi);
     machao->addSkill("mashu");
-    skills << new HTieqiClear;
+    machao->addSkill(new HTieqiClear);
     insertRelatedSkills("heg_tieqi", "#heg_tieqi-clear");
 
     General *huangyueying = new General(this, "heg_huangyueying", "shu", 3, false); // SHU 007
@@ -716,9 +716,9 @@ void HStandardPackage::addShuGenerals()
     General *huangzhong = new General(this, "heg_huangzhong", "shu"); // SHU 008
     huangzhong->addCompanion("heg_weiyan");
     huangzhong->addSkill(new HLiegong);
-    skills << new HLiegongRange;
-    skills << new HLiegongTarget;
-    skills << new HLiegongDamage;
+    huangzhong->addSkill(new HLiegongRange);
+    huangzhong->addSkill(new HLiegongTarget);
+    huangzhong->addSkill(new HLiegongDamage);
     insertRelatedSkills("heg_liegong", "#heg_liegong-for-lord");
     insertRelatedSkills("heg_liegong", "#heg_liegong-target");
     insertRelatedSkills("heg_liegong", "#heg_liegong-damage");

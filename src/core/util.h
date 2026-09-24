@@ -34,6 +34,7 @@ QVariantList ListI2V(const QList<int> &intlist);
 QList<int> ListV2I(const QVariantList &variantlist);
 
 bool isNormalGameMode(const QString &mode);
+bool isNormalGameMode(const QString &mode, bool hegemony);
 bool isHegemonyGameMode(const QString &mode);
 
 DummyCard* dummyCard(const QList<int> &ids = QList<int>());

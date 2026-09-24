@@ -107,23 +107,19 @@ class TransferCard : public SkillCard
 
 public:
     Q_INVOKABLE TransferCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onUse(Room *room, const CardUseStruct &card_use) const;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
+    const Card *validate(CardUseStruct &use) const override;
+    void onEffect(CardEffectStruct &effect) const override;
 };
 
-class TransferSkill : public OneCardViewAsSkill
+class TransferSkill : public ViewAsSkillV2
 {
-    Q_OBJECT
-
 public:
-    Q_INVOKABLE TransferSkill();
-    void setToSelect(int cardId);
-    bool viewFilter(const Card *to_select) const;
-    const Card *viewAs(const Card *originalCard) const;
+    TransferSkill();
+    bool canActivate(const ActiveSkillRequest &request) const override;
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override;
+    const Card *createCard(const ActiveSkillRequest &request) const override;
     bool isAvailable(const Player *player, const Card *card) const;
-
-private:
-    int m_toSelect;
 };
 
 #endif

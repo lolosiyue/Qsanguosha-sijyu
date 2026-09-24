@@ -45,19 +45,32 @@ AI::Relation AI::GetRelation3v3(const ServerPlayer *a, const ServerPlayer *b)
 
 AI::Relation AI::GetRelationHegemony(const ServerPlayer *a, const ServerPlayer *b)
 {
-    const bool aShown = a->getRoom()->getTag(a->objectName()).toStringList().isEmpty();
-    const bool bShown = b->getRoom()->getTag(b->objectName()).toStringList().isEmpty();
+    if (!a || !b || a->getRoom() != b->getRoom())
+        return Neutrality;
+    if (a == b)
+        return Friend;
 
-    const QString aName = aShown ? a->getGeneralName() :
-        a->getRoom()->getTag(a->objectName()).toStringList().first();
-    const QString bName = bShown ? b->getGeneralName() :
-        b->getRoom()->getTag(b->objectName()).toStringList().first();
+    // Hegemony relations consume only the existing public-faction query.  The
+    // room tag and another player's actual generals stay outside this boundary.
+    const QString aKingdom = a->getSeemingKingdom();
+    const QString bKingdom = b->getSeemingKingdom();
+    const auto knownFaction = [](const QString &kingdom) {
+        return !kingdom.isEmpty() && kingdom != QLatin1String("unknown")
+            && kingdom != QLatin1String("god");
+    };
 
-    const QString aKingdom = Sanguosha->getGeneral(aName)->getKingdom();
-    const QString bKingdom = Sanguosha->getGeneral(bName)->getKingdom();
+    // This is a public pairwise query, so an unknown faction on either side
+    // remains neutral.  Viewer-owned prospective prediction stays in the
+    // existing willBeFriendWith() call sites.
+    if (!knownFaction(aKingdom) || !knownFaction(bKingdom))
+        return Neutrality;
 
-    qDebug() << aKingdom << bKingdom << aShown << bShown;
-
+    // Keep public recruitment/alliance semantics in Player::isFriendWith().
+    if (a->isFriendWith(b))
+        return Friend;
+    if (aKingdom == QLatin1String("careerist")
+        || bKingdom == QLatin1String("careerist"))
+        return Enemy;
     return aKingdom == bKingdom ? Friend : Enemy;
 }
 

@@ -180,6 +180,8 @@ public:
     QString getOracleText(const Player *target = nullptr) const;
     QString getNotice(int index) const;
     bool isVisible() const;
+    // Presentation only: rule actions keep their ownership and response legality.
+    bool isVisibleForPlayer(const Player *player) const;
 
     virtual int getEffectIndex(const ServerPlayer *player, const Card *card) const;
     virtual SkillDialogInfo getDialogInfo() const;
@@ -486,6 +488,14 @@ public:
     // Opt in to a verified removal event, without reviving a retired instance.
     virtual bool acceptsRemovalEvent(TriggerEvent, const QVariant &) const { return false; }
 
+    // Opt-in selectors can supply exact sources and decision makers without a
+    // second dispatcher. False keeps the ordinary owner-indexed collection.
+    virtual bool collectTriggerContexts(TriggerEvent, Room *, ServerPlayer *, QVariant &,
+                                        QList<SkillContext> &) const { return false; }
+    virtual bool recordEvent(TriggerEvent, Room *, ServerPlayer *, QVariant &) const { return false; }
+    virtual bool usesEventPriority() const { return false; }
+    virtual ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const { return ctx.owner; }
+
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
                                      ServerPlayer *player, QVariant &data) const;
     virtual void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
@@ -500,6 +510,8 @@ public:
                               SkillContext &ctx, ServerPlayer *target) const;
     virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                          QVariant &data, ServerPlayer *owner) const override;
+    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                 QVariant &data) const override;
 
     bool skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                      SkillContext &ctx, ServerPlayer *target) const;

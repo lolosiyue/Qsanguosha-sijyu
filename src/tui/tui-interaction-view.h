@@ -40,8 +40,14 @@ public:
 
     bool parseAnswer(const InteractionRequest &request, const QString &line,
                      InteractionResponse *response, QString *error) const;
+    // True means a local draft command was handled without a wire response.
+    bool stageGeneralAnswer(const InteractionRequest &request, QString *line);
+    QStringList selectedGenerals(quint64 requestId) const
+    { return requestId == m_generalRequestId ? m_generalDraft : QStringList(); }
 
 private:
+    quint64 m_generalRequestId = 0;
+    QStringList m_generalDraft;
     QString requestTitle(const InteractionRequest &request) const;
     QList<int> parseIndexes(const QString &text, int size, QString *error) const;
     // allowRepeats is for card targets: a card whose targetFilter() hands back

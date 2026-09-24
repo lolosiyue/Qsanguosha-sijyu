@@ -5,6 +5,9 @@
 #include "lua-runtime.h"
 #include "room.h"
 #include "room-runtime.h"
+#include "serverplayer.h"
+#include "standard.h"
+#include "maneuvering.h"
 
 #include "lua.hpp"
 
@@ -83,6 +86,85 @@ bool rulesLuaRoomPointerContract(Room &room)
     return passed;
 }
 
+bool cardHistoryProjectsNativeFacts(Room &room)
+{
+    ServerPlayer actor(&room), responder(&room);
+    actor.setObjectName("history_actor");
+    responder.setObjectName("history_responder");
+    Slash slash(Card::Spade, 7);
+    Jink jink(Card::Heart, 2);
+    DummyCard skillCard;
+    const QVariantMap card = room.historyCardSnapshot(&slash);
+    auto &history = room.resolutionHistory();
+    const qint64 turn = history.beginEvent("turn");
+    const qint64 phase = history.beginEvent("phase", {{"phase", int(Player::Play)}});
+    const auto use = [&](const QVariantMap &snapshot) {
+        const QVariantMap data{{"from", actor.objectName()}, {"card", snapshot}};
+        const qint64 id = history.beginEvent("use_card", data);
+        history.appendFact(id, "use_card", data);
+        return id;
+    };
+    // More than a query page; the same physical identity is reused each time.
+    for (int i = 0; i < 101; ++i) history.finishEvent(use(card));
+    history.finishEvent(use(room.historyCardSnapshot(&skillCard)));
+    const auto respond = [&](bool isUse) {
+        const QVariantMap data{{"from", responder.objectName()}, {"player", actor.objectName()},
+            {"card", room.historyCardSnapshot(&jink)}, {"is_use", isUse}};
+        const qint64 id = history.beginEvent("respond_card", data);
+        history.appendFact(id, "respond_card", data);
+        history.finishEvent(id);
+    };
+    respond(true);
+    respond(false);
+    if (room.countHistoryCards(&actor) != 102
+        || room.countHistoryCards(&actor, "turn", "Slash") != 101
+        || room.countHistoryCards(&actor, "turn", QString(), true) != 1
+        || room.countHistoryCards(&responder) != 0) return false;
+
+    history.finishEvent(phase);
+    const qint64 nextPlay = history.beginEvent("phase", {{"phase", int(Player::Play)}});
+    const qint64 outerUse = use(card);
+    const auto damage = [&](const QVariantMap &damageCard, int amount) {
+        const qint64 id = history.beginEvent("damage");
+        history.appendFact(id, "damage_component", {{"component", "hp"}, {"amount", amount}});
+        history.appendFact(id, "actual_damage", {{"from", actor.objectName()},
+            {"to", responder.objectName()}, {"card", damageCard}});
+        history.finishEvent(id);
+    };
+    damage(card, 2);
+    damage({}, 1); // Reactive skill damage is not damage dealt by this card.
+    const qint64 nestedUse = use(card);
+    // Fan-style conversion changes the resolved event, not its accepted fact.
+    FireSlash fire(Card::Spade, 7);
+    CardUseStruct converted(&slash, &actor);
+    converted.changeCard(&fire);
+    damage(room.historyCardSnapshot(&fire), 3);
+    history.finishEvent(nestedUse);
+    const QVariantList damages = room.queryCardUseDamage().value("items").toList();
+    if (damages.size() != 1 || damages.first().toMap().value("data").toMap().value("amount").toInt() != 2
+        || room.queryCardUseDamage(nestedUse).value("items").toList().size() != 1
+        || room.countHistoryCards(&actor, "turn", "FireSlash") != 0
+        || room.countHistoryCards(&actor, "phase") != 2
+        || room.countHistoryCards(&actor, "turn", QString(), false, true) != 104) return false;
+    history.finishEvent(outerUse);
+    // Extra turns get their own scope without leaking the suspended outer turn.
+    const qint64 extraTurn = history.beginEvent("turn");
+    if (room.countHistoryCards(&actor) != 0) return false;
+    history.finishEvent(extraTurn);
+    history.finishEvent(nextPlay);
+    history.finishEvent(turn);
+    if (room.countHistoryCards(&actor) != 0
+        || room.countHistoryCards(&actor, "game") != 104) return false;
+    // Older snapshots missing classification must remain unknown, not zero.
+    const qint64 oldTurn = history.beginEvent("turn");
+    QVariantMap oldCard = card;
+    oldCard.remove("classes");
+    history.finishEvent(use(oldCard));
+    const bool unknown = room.countHistoryCards(&actor) == -1;
+    history.finishEvent(oldTurn);
+    return unknown;
+}
+
 bool roomWrappersExposeReadOnlyJournal()
 {
     Room room(nullptr, QStringLiteral("02_1v1"));
@@ -104,7 +186,9 @@ bool roomWrappersExposeReadOnlyJournal()
     changed.insert(QStringLiteral("data"), data);
     const QVariantMap reread = room.queryHistoryMoves({{QStringLiteral("from"), QStringLiteral("alice")},
         {QStringLiteral("limit"), 10}});
-    return reread.value(QStringLiteral("facts")).toList().size() == 1;
+    if (reread.value(QStringLiteral("facts")).toList().size() != 1) return false;
+    room.resolutionHistory().finishEvent(event);
+    return cardHistoryProjectsNativeFacts(room);
 }
 
 bool snapshotNextIdAndUnknownAttribution()

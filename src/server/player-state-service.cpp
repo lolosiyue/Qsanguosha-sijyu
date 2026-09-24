@@ -3,6 +3,7 @@
 #include "ai-decision-coordinator.h"
 #include "card-movement-service.h"
 #include "event-dispatcher.h"
+#include "engine.h"
 #include "json.h"
 #include "protocol.h"
 #include "room.h"
@@ -10,6 +11,8 @@
 #include "room-runtime.h"
 #include "roomthread.h"
 #include "serverplayer.h"
+#include "settings.h"
+#include "skill-runtime-coordinator.h"
 #include "standard.h"
 
 #include <QJsonDocument>
@@ -20,6 +23,22 @@
 using namespace QSanProtocol;
 
 namespace {
+
+bool isPrivateHegemonyProperty(const char *name)
+{
+	// Soul identities and marked hand-card IDs remain owner-only in every mode.
+	if (std::strcmp(name, "hegemony_kingdom") == 0
+		|| std::strcmp(name, "Huashens") == 0
+		|| std::strcmp(name, "heg_jiansu_money") == 0
+		|| std::strcmp(name, "heg_@liangfan-turn") == 0
+		|| std::strcmp(name, "heg_@wenji-turn") == 0
+		|| std::strcmp(name, "heg_consolidate_country_cards") == 0)
+		return true;
+	return Config.EnableHegemony
+		&& (std::strcmp(name, "actual_general1") == 0
+			|| std::strcmp(name, "actual_general2") == 0
+			|| std::strcmp(name, "hegemony_generals") == 0);
+}
 
 QString akarinStatusKey(const ServerPlayer *player)
 {
@@ -237,6 +256,10 @@ void PlayerStateService::setPlayerProperty(ServerPlayer *player,
 		QVariant data;
 		m_eventDispatcher.dispatch(ChainStateChanged, player, data);
 	}
+    else if (property == QStringLiteral("removed")) {
+        QVariant data = value;
+        m_eventDispatcher.dispatch(RemoveStateChanged, player, data);
+    }
 	else if (property == QStringLiteral("kingdom")) {
 		QVariant data = value;
 		m_eventDispatcher.dispatch(KingdomChanged, player, data);
@@ -369,6 +392,27 @@ void PlayerStateService::setPlayerMark(ServerPlayer *player, const QString &mark
 		markStruct = data.value<MarkStruct>();
 		if (markStruct.count == player->getMark(mark)) return;
 	}
+	if (Config.EnableHegemony && onlyViewers.isEmpty()) {
+		QList<SkillInstance> sources;
+		for (const SkillInstance &instance : player->getSkillInstances()) {
+			const Skill *skill = Sanguosha->getSkill(instance.skillName);
+			if (skill && skill->getLimitMark() == markStruct.name) sources << instance;
+		}
+		if (!sources.isEmpty()) {
+			// Limited marks follow the same per-instance visibility as the skill,
+			// even when a legacy cost updates them before the reveal callback.
+			onlyViewers << player;
+			foreach (ServerPlayer *receiver, m_room.getPlayers()) {
+				if (receiver == player) continue;
+				for (const SkillInstance &instance : sources) {
+					if (SkillRuntimeCoordinator::canReceiveSkillInstance(m_room, receiver, player, instance)) {
+						onlyViewers << receiver;
+						break;
+					}
+				}
+			}
+		}
+	}
 	m_aiDecisions.setMarkVisibility(player, markStruct.name, markStruct.count, onlyViewers);
 	player->setMark(markStruct.name, markStruct.count);
 
@@ -482,20 +526,38 @@ void PlayerStateService::removePlayerEquipsNullified(ServerPlayer *player,
 bool PlayerStateService::notifyProperty(ServerPlayer *player,
 	const ServerPlayer *owner, const char *propertyName, const QString &value)
 {
+	// Apply the same boundary to initial state, live updates and reconnect.
+	if (player != owner && isPrivateHegemonyProperty(propertyName)) return false;
+	QString propertyValue = value.isEmpty() ? owner->property(propertyName).toString() : value;
+	if (Config.EnableHegemony && player == owner) {
+		if (std::strcmp(propertyName, "general") == 0 && owner->getActualGeneral1())
+			propertyValue = owner->getActualGeneral1Name();
+		else if (std::strcmp(propertyName, "general2") == 0 && owner->getActualGeneral2())
+			propertyValue = owner->getActualGeneral2Name();
+	}
 	QVariantMap arg{{QStringLiteral("schema_version"), 1},
 		{QStringLiteral("action"), QStringLiteral("property")},
 		{QStringLiteral("player_name"), owner == player
 			? QSanProtocol::S_PLAYER_SELF_REFERENCE_ID : owner->objectName()},
 		{QStringLiteral("property_name"), QString::fromLatin1(propertyName)},
-		{QStringLiteral("string_value"), value.isEmpty()
-			? owner->property(propertyName).toString() : value}};
+		{QStringLiteral("string_value"), propertyValue}};
 	return m_notifier.doNotify(player, S_COMMAND_SET_PROPERTY, arg);
 }
 
 bool PlayerStateService::broadcastProperty(ServerPlayer *owner,
 	const char *propertyName, const QString &value)
 {
+	// Private properties still belong in the reconnect snapshot. notifyProperty
+	// enforces the audience again when marshal replays these registered names.
 	owner->addProperty(propertyName);
+	if (isPrivateHegemonyProperty(propertyName))
+		return notifyProperty(owner, owner, propertyName, value);
+	if (Config.EnableHegemony
+		&& (std::strcmp(propertyName, "general") == 0 || std::strcmp(propertyName, "general2") == 0)) {
+		foreach (ServerPlayer *receiver, m_room.getPlayers())
+			notifyProperty(receiver, owner, propertyName, value);
+		return true;
+	}
 
 	const QString property = QString::fromLatin1(propertyName);
 	const QString propertyValue = value.isEmpty()
@@ -507,12 +569,24 @@ bool PlayerStateService::broadcastProperty(ServerPlayer *owner,
 		{QStringLiteral("string_value"), propertyValue}};
 	if (property == QLatin1String("general_pile_changed")) {
 		const QVariantMap pile = QJsonDocument::fromJson(propertyValue.toUtf8()).toVariant().toMap();
+		const QStringList names = pile.value(QStringLiteral("general_names")).toStringList();
+		const QStringList viewers = pile.value(QStringLiteral("open_players")).toStringList();
 		arg = QVariantMap{{QStringLiteral("schema_version"), 1},
 			{QStringLiteral("action"), QStringLiteral("general_pile")},
 			{QStringLiteral("player_name"), owner->objectName()},
 			{QStringLiteral("pile_name"), pile.value(QStringLiteral("pile_name"))},
 			{QStringLiteral("general_names"), pile.value(QStringLiteral("general_names"))},
 			{QStringLiteral("add"), pile.value(QStringLiteral("add"))}};
+		// The old packet's open_players is a server-side audience boundary. Do
+		// not discard it when normalizing the event into the shared protocol.
+		for (ServerPlayer *receiver : m_room.getPlayers()) {
+			QStringList projected = names;
+			if (receiver != owner && !viewers.contains(receiver->objectName()))
+				for (QString &name : projected) name = QStringLiteral("unknown");
+			arg[QStringLiteral("general_names")] = projected;
+			m_notifier.doNotify(receiver, S_COMMAND_SET_PROPERTY, arg);
+		}
+		return true;
 	}
 	m_notifier.doBroadcastNotify(S_COMMAND_SET_PROPERTY, arg);
 

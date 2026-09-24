@@ -20,7 +20,7 @@
 
 // Original HEG content: see docs/hegemony-original-names.json for the import namespace.
 #include "h-momentum.h"
-#include "original-hegemony-compat.h"
+#include "h-formation.h"
 #include "general.h"
 #include "serverplayer.h"
 #include "standard.h"
@@ -368,6 +368,7 @@ public:
         return result;
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
         ctx.choice = room->askForChoice(ctx.owner, objectName(), "jia3+jian3+cancel", *ctx.original_data);
         return ctx.choice != "cancel";
     }
@@ -380,6 +381,119 @@ public:
         *ctx.original_data = QVariant::fromValue(pindian);
         return false;
     }
+};
+
+class HJiang : public TriggerSkillV2
+{
+public:
+    HJiang() : TriggerSkillV2("heg_jiang") { events << TargetConfirmed << TargetSpecified; }
+
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        const CardUseStruct use = data.value<CardUseStruct>();
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || !use.card
+            || !(use.card->isKindOf("Duel") || (use.card->isKindOf("Slash") && use.card->isRed()))) return {};
+        if (event == TargetConfirmed && !use.to.contains(player)) return {};
+        // TargetSpecified is one event for the whole use; the donor's
+        // TargetChosen index==0 means that the source has at least one target.
+        if (event == TargetSpecified && (use.from != player || use.to.isEmpty())) return {};
+        return TriggerList{{player, QStringList{objectName()}}};
+    }
+
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        return ctx.owner->askForSkillInvoke(this, *ctx.original_data);
+    }
+
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ctx.owner->drawCards(1, objectName());
+        return false;
+    }
+};
+
+// Sunce's temporary earned skills keep their own names and instance grants so
+// Hunshang can revoke exactly the copies it created.
+class HYingziSunce : public TriggerSkillV2 {
+public:
+    HYingziSunce() : TriggerSkillV2("heg_yingzi_sunce") { events << DrawNCards; frequency = Compulsory; }
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override {
+        if (event != DrawNCards || !player || !player->isAlive()) return {};
+        const DrawStruct draw = data.value<DrawStruct>();
+        if (draw.reason != "draw_phase") return {};
+        QStringList names;
+        for (int id : player->getValidSkillInstanceIds(objectName()))
+            names << SkillInstanceUtils::formatName(objectName(), id);
+        return names.isEmpty() ? TriggerList() : TriggerList{{player, names}};
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner || !ctx.original_data) return false;
+        DrawStruct draw = ctx.original_data->value<DrawStruct>();
+        ++draw.num;
+        *ctx.original_data = QVariant::fromValue(draw);
+        room->sendCompulsoryTriggerLog(ctx.owner, objectName());
+        return false;
+    }
+};
+
+class HYingziSunceMaxCards : public MaxCardsSkillV2 {
+public:
+    HYingziSunceMaxCards() : MaxCardsSkillV2("#heg_yingzi-sunce-maxcards") { setBaseAmount(0); }
+    CorrectSkillResult getCorrection(const CorrectSkillContext &) const override {
+        return CorrectSkillResult::noEffect();
+    }
+    CorrectSkillResult getFixedValue(const CorrectSkillContext &ctx) const override {
+        // The engine validates this helper's exact parent grant and reveal state.
+        return ctx.holder ? CorrectSkillResult::useAmount(ctx.holder->getMaxHp())
+                          : CorrectSkillResult::noEffect();
+    }
+};
+
+class HYinghunSunce : public TriggerSkillV2 {
+public:
+    HYinghunSunce(const QString &name = "heg_yinghun_sunce", bool preshow = false)
+        : TriggerSkillV2(name), m_preshow(preshow) { events << EventPhaseStart; }
+    bool canPreshow() const override { return m_preshow; }
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override {
+        if (event != EventPhaseStart || !player || !player->isAlive() || player->getPhase() != Player::Start)
+            return {};
+        QStringList names;
+        for (int id : player->getValidSkillInstanceIds(objectName()))
+            names << SkillInstanceUtils::formatName(objectName(), id);
+        return names.isEmpty() ? TriggerList() : TriggerList{{player, names}};
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner) return false;
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner),
+            objectName(), "yinghun-invoke", true, true);
+        if (!target) return false;
+        ctx.targets = {target};
+        return true;
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (!ctx.owner || ctx.targets.isEmpty() || !ctx.targets.first()->isAlive()) return false;
+        ServerPlayer *target = ctx.targets.first();
+        const int lostHp = ctx.owner->getLostHp();
+        if (lostHp == 1) {
+            target->drawCards(1, objectName());
+            room->askForDiscard(target, objectName(), 1, 1, false, true);
+            return false;
+        }
+        target->setFlags("YinghunTarget");
+        const QString choice = room->askForChoice(ctx.owner, objectName(), "d1tx+dxt1");
+        target->setFlags("-YinghunTarget");
+        if (choice == "d1tx") {
+            target->drawCards(1, objectName());
+            if (lostHp > 0) room->askForDiscard(target, objectName(), lostHp, lostHp, false, true);
+        } else {
+            if (lostHp > 0) target->drawCards(lostHp, objectName());
+            room->askForDiscard(target, objectName(), 1, 1, false, true);
+        }
+        return false;
+    }
+private:
+    bool m_preshow;
+
 };
 
 class HHunshang : public TriggerSkillV2 {
@@ -404,7 +518,7 @@ public:
         for (const SkillInstanceKey &key : ctx.owner->getChildSkillInstanceKeys(SkillInstanceKey(objectName(), ctx.instanceID)))
             if (key.skillName == "#heg_hunshang") helper = key;
         if (!helper.isValid()) return false;
-        for (const QString &name : {QStringLiteral("yinghun"), QStringLiteral("yingzi")}) {
+        for (const QString &name : {QStringLiteral("heg_yinghun_sunce"), QStringLiteral("heg_yingzi_sunce")}) {
             if (ctx.owner->ownsSkill(name)) continue;
             const int id = room->acquireSkill(ctx.owner, name);
             if (id <= 0) continue;
@@ -460,11 +574,12 @@ public:
     QString historyKey(const ActiveSkillRequest &) const override { return "HDuanxieCard"; }
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
                          const Player *target) const override {
-        return selected.isEmpty() && target && target->isAlive() && target != request.initiator
+        return selected.size() < qMax(1, request.initiator->getLostHp())
+            && target && target->isAlive() && target != request.initiator
             && !target->isChained() && target->canBeChainedBy(request.initiator);
     }
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override {
-        return selected.size() == 1;
+        return !selected.isEmpty();
     }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override {
         if (!target->canBeChainedBy(ctx.invoker)) return ContinueEffects;
@@ -624,26 +739,11 @@ public:
     }
 };
 
-class HFengshiSummonVS : public ViewAsSkillV2 {
-public:
-    HFengshiSummonVS() : ViewAsSkillV2("heg_fengshi") {}
-    bool canActivate(const ActiveSkillRequest &request) const override {
-        return Config.EnableHegemony && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
-            && canSummonOriginalHegemonyArray(request.initiator, objectName(), "Siege");
-    }
-    TargetMode targetMode() const override { return NoTarget; }
-    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override { return targets.isEmpty(); }
-    EffectFlow effect(SkillContext &ctx) const override {
-        if (ctx.invoker && ctx.invoker->isAlive()) ctx.invoker->summonFriends("Siege");
-        return ContinueEffects;
-    }
-};
-
 class HFengshi : public TriggerSkillV2 {
 public:
     HFengshi() : TriggerSkillV2("heg_fengshi") {
         events << TargetSpecified << TargetConfirmed;
-        view_as_skill = new HFengshiSummonVS;
+        view_as_skill = new HArraySummon(objectName(), "Siege");
     }
     bool canPreshow() const override { return false; }
     Frequency getFrequency(const Player *) const override { return Config.EnableHegemony ? Compulsory : NotFrequent; }
@@ -707,7 +807,7 @@ public:
 
 class HHongfaSlash : public ViewAsSkillV2 {
 public:
-    HHongfaSlash() : ViewAsSkillV2("heg_hongfa_slash", 1) {
+    explicit HHongfaSlash(const QString &skillName = "heg_hongfa_slash") : ViewAsSkillV2(skillName, 1) {
         attached_lord_skill = true;
         expand_pile = "heavenly_army,%heavenly_army";
         response_or_use = true;
@@ -761,23 +861,24 @@ public:
             && !ctx.owner->isSkillInvalid(objectName(), ctx.instanceID)
             && (!Config.EnableHegemony || !room->isGeneralHiddenForSkill(root));
         for (ServerPlayer *p : room->getAllPlayers(true)) {
-            const bool friendly = Config.EnableHegemony ? p->willBeFriendWith(ctx.owner)
+            const bool friendly = Config.EnableHegemony ? p->isFriendWith(ctx.owner)
                 : p->getKingdom() == ctx.owner->getKingdom();
-            if (enabled && p->isAlive() && friendly) room->attachSkillToPlayer(p, "heg_hongfa_slash", root);
+            const QString grantName = Config.EnableHegemony ? "heg_huangjinsymbol" : "heg_hongfa_slash";
+            if (enabled && p->isAlive() && friendly) room->attachSkillToPlayer(p, grantName, root);
             else {
                 for (const SkillInstance &entry : p->getSkillInstances())
-                    if (entry.skillName == "heg_hongfa_slash" && entry.parentRef == root)
+                    if ((entry.skillName == "heg_hongfa_slash" || entry.skillName == "heg_huangjinsymbol") && entry.parentRef == root)
                         room->detachAttachedSkill(SkillInstanceRef(p->objectName(), entry.key()));
             }
         }
     }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override {
         if (!player || !player->isAlive() || !player->hasLordSkill(objectName())) return {};
-        if (event == EventPhaseStart && player->getPhase() == Player::Start && player->getPile("heavenly_army").isEmpty())
+        if (!Config.EnableHegemony && event == EventPhaseStart && player->getPhase() == Player::Start && player->getPile("heavenly_army").isEmpty())
             return TriggerList{{player, QStringList{objectName()}}};
-        if (event == PreHpLost && !player->getPile("heavenly_army").isEmpty())
+        if (!Config.EnableHegemony && event == PreHpLost && !player->getPile("heavenly_army").isEmpty())
             return TriggerList{{player, QStringList{objectName()}}};
-        if (event == ConfirmPlayerNum && !player->getPile("heavenly_army").isEmpty()
+        if (!Config.EnableHegemony && event == ConfirmPlayerNum && !player->getPile("heavenly_army").isEmpty()
             && data.value<PlayerNumStruct>().m_toCalculate == "qun"
             && (data.value<PlayerNumStruct>().m_type == MaxCardsType::Max || data.value<PlayerNumStruct>().m_type == MaxCardsType::Normal))
             return TriggerList{{player, QStringList{objectName()}}};
@@ -820,6 +921,70 @@ public:
             const int count = ctx.owner->getPlayerNumWithSameKingdom(objectName(), QString(), MaxCardsType::Normal);
             if (count > 0) ctx.owner->addToPile("heavenly_army", room->getNCards(count));
         }
+        return false;
+    }
+};
+
+// Donor semantics: TODO/QSanguosha-For-Hegemony-xxyheaven/src/package/momentum.cpp.
+class HHuangjinSymbol : public TriggerSkillV2 {
+public:
+    HHuangjinSymbol() : TriggerSkillV2("heg_huangjinsymbol") {
+        events << PreHpLost;
+        view_as_skill = new HHongfaSlash("heg_huangjinsymbol");
+        attached_lord_skill = true;
+    }
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override {
+        if (!Config.EnableHegemony || event != PreHpLost || !player || !player->isAlive()
+            || !player->hasSkill(objectName()) || !player->hasLordSkill("heg_hongfa")
+            || player->getPile("heavenly_army").isEmpty()) return {};
+        return TriggerList{{player, QStringList{objectName()}}};
+    }
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        if (event != PreHpLost || !ctx.owner->askForSkillInvoke(objectName(), "prevent")) return false;
+        room->broadcastSkillInvoke(objectName(), 3, ctx.owner);
+        const QList<int> pile = ctx.owner->getPile("heavenly_army");
+        if (pile.isEmpty()) return false;
+        // AG requests carry the decision only; populate and clear the owner's selection surface separately.
+        room->fillAG(pile, ctx.owner);
+        const auto clear = qScopeGuard([&]() { room->clearAG(ctx.owner); });
+        int id = room->askForAG(ctx.owner, pile, false, objectName(), "@heg_huangjinsymbol-discard");
+        const QList<int> remaining = ctx.owner->getPile("heavenly_army");
+        if (!remaining.contains(id)) id = remaining.value(0, -1);
+        if (id < 0) return false;
+        ctx.extra_data = id;
+        return true;
+    }
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        const int id = ctx.extra_data.toInt();
+        if (!ctx.owner->getPile("heavenly_army").contains(id)) return false;
+        CardMoveReason reason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, ctx.owner->objectName(), objectName(), QString());
+        room->throwCard(Sanguosha->getCard(id), reason, nullptr);
+        return true;
+    }
+    bool effect(TriggerEvent event, Room *, ServerPlayer *, SkillContext &) const override {
+        return event == PreHpLost;
+    }
+};
+
+class HHuangjinSymbolCompulsory : public TriggerSkillV2 {
+public:
+    HHuangjinSymbolCompulsory() : TriggerSkillV2("#heg_huangjinsymbol-compulsory") {
+        events << EventPhaseStart;
+        frequency = Compulsory;
+    }
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override {
+        if (!Config.EnableHegemony || event != EventPhaseStart || !player || !player->isAlive()
+            || !player->hasSkill("heg_huangjinsymbol") || !player->hasLordSkill("heg_hongfa")
+            || player->getPhase() != Player::Start
+            || !player->getPile("heavenly_army").isEmpty()) return {};
+        return TriggerList{{player, QStringList{objectName()}}};
+    }
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override {
+        room->sendCompulsoryTriggerLog(ctx.owner, "heg_huangjinsymbol");
+        room->broadcastSkillInvoke("heg_huangjinsymbol", 1, ctx.owner);
+        const int count = ctx.owner->getPlayerNumWithSameKingdom("heg_huangjinsymbol", QString(), MaxCardsType::Normal);
+        if (count > 0) ctx.owner->addToPile("heavenly_army", room->getNCards(count));
         return false;
     }
 };
@@ -887,14 +1052,14 @@ HMomentumPackage::HMomentumPackage()
     sunce->addCompanion("heg_zhouyu");
     sunce->addCompanion("heg_taishici");
     sunce->addCompanion("heg_daqiao");
-    sunce->addSkill("jiang");
+    sunce->addSkill(new HJiang);
     sunce->addSkill(new HYingyang);
     sunce->addSkill(new HHunshang);
     sunce->addSkill(new HHunshangRemove);
     insertRelatedSkills("heg_hunshang", "#heg_hunshang");
     sunce->setDeputyMaxHpAdjustedValue(-1);
-    sunce->addRelateSkill("yinghun");
-    sunce->addRelateSkill("yingzi");
+    sunce->addRelateSkill("heg_yinghun_sunce");
+    sunce->addRelateSkill("heg_yingzi_sunce");
 
     General *chenwudongxi = new General(this, "heg_chenwudongxi", "wu", 4); // WU 023
     chenwudongxi->addSkill(new HDuanxie);
@@ -913,8 +1078,13 @@ HMomentumPackage::HMomentumPackage()
     lord_zhangjiao->addSkill(new HWuxin);
     lord_zhangjiao->addSkill(new HHongfa);
     lord_zhangjiao->addSkill(new HWendao);
+    lord_zhangjiao->addRelateSkill("heg_huangjinsymbol");
 
-    skills << new HYongjue << new HHongfaSlash;
+    insertRelatedSkills("heg_yingzi_sunce", "#heg_yingzi-sunce-maxcards");
+    insertRelatedSkills("heg_huangjinsymbol", "#heg_huangjinsymbol-compulsory");
+    skills << new HYongjue << new HHongfaSlash << new HHuangjinSymbol << new HHuangjinSymbolCompulsory
+           << new HYingziSunce << new HYingziSunceMaxCards << new HYinghunSunce
+           << new HYinghunSunce("heg_yinghun_sunjian", true);
 
 }
 
@@ -927,7 +1097,7 @@ HPeaceSpell::HPeaceSpell(Suit suit, int number)
 }
 
 void HPeaceSpell::onUninstall(ServerPlayer *player) const{
-    if (player->isAlive() && player->hasArmorEffect(objectName()))
+    if (!Config.EnableHegemony && player->isAlive() && player->hasArmorEffect(objectName()))
         player->setFlags("peacespell_throwing");
 
     Armor::onUninstall(player);
@@ -947,23 +1117,37 @@ public:
         frequency = Compulsory;
     }
 
-    TriggerList triggerable(TriggerEvent triggerEvent, Room *, ServerPlayer *player, QVariant &data) const override {
+    int getPriority(TriggerEvent event) const override {
+        // The newer armor prevents elemental damage after ordinary damage modifiers.
+        return Config.EnableHegemony && event == DamageInflicted ? -3 : ArmorSkillV2::getPriority(event);
+    }
+
+    TriggerList triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override {
         TriggerList result;
         if (triggerEvent == DamageInflicted) {
             DamageStruct damage = data.value<DamageStruct>();
-            if (ArmorSkillV2::triggerable(player) && player->hasArmorEffect("PeaceSpell", damage.from)
+            const bool hegemonyArmorSuppressed = Config.EnableHegemony && player
+                && (!player->getTag("Qinggang").toStringList().isEmpty()
+                    || player->getMark("Armor_Nullified") > 0
+                    || player->getMark("Equips_Nullified_to_Yourself") > 0);
+            if (!hegemonyArmorSuppressed && ArmorSkillV2::triggerable(player) && player->hasArmorEffect("PeaceSpell", damage.from)
                 && damage.nature != DamageStruct::Normal)
                 result.insert(player, QStringList(objectName()));
         }
-        else if (player && player->hasFlag("peacespell_throwing")) {
+        else if (player && player->isAlive() && (Config.EnableHegemony || player->hasFlag("peacespell_throwing"))) {
             CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+            if (Config.EnableHegemony && (!player->getTag("Qinggang").toStringList().isEmpty()
+                || player->getMark("Armor_Nullified") > 0 || player->getMark("Equips_Nullified_to_Yourself") > 0))
+                return result;
+            const ServerPlayer *source = room->findPlayerByObjectName(move.reason.m_playerId, true);
             if (move.from == player && move.from_places.contains(Player::PlaceEquip)) {
-                for (int i = 0; i < move.card_ids.size(); i++) {
+                for (int i = 0; i < move.card_ids.size() && i < move.from_places.size(); i++) {
                     if (move.from_places[i] != Player::PlaceEquip) continue;
                     const Card *card = Sanguosha->getEngineCard(move.card_ids[i]);
                     if (card->objectName() == "PeaceSpell") {
-                        // onUninstall marks the former holder; card authority
-                        // deliberately survives the armor's detachment.
+                        if (Config.EnableHegemony && player->isEquipsNullified(card, source)) continue;
+                        // The move supplies the former holder and card authority
+                        // after detachment; identity mode also requires its uninstall marker.
                         result.insert(player, QStringList(objectName()));
                         break;
                     }
@@ -980,7 +1164,7 @@ public:
             DamageStruct damage = ctx.original_data->value<DamageStruct>();
 
             LogMessage l;
-            l.type = "#PeaceSpellNatureDamage";
+            l.type = "#heg_PeaceSpellNatureDamage";
             l.from = damage.from;
             l.to << damage.to;
             l.arg = QString::number(damage.damage);
@@ -997,15 +1181,19 @@ public:
         }
         else {
             LogMessage l;
-            l.type = "#PeaceSpellLost";
+            l.type = Config.EnableHegemony ? "#heg_PeaceSpellLost" : "#heg_PeaceSpellLost_p";
             l.from = player;
 
             room->sendLog(l);
 
             player->setFlags("-peacespell_throwing");
-            room->loseHp(player);
-            if (player->isAlive())
-                player->drawCards(2);
+            if (Config.EnableHegemony) {
+                player->drawCards(2, objectName());
+                if (player->isAlive() && player->getHp() > 1) room->loseHp(player);
+            } else {
+                room->loseHp(player);
+                if (player->isAlive()) player->drawCards(2);
+            }
         }
         return false;
     }
@@ -1021,6 +1209,16 @@ public:
     }
 
     int getExtra(const Player *target, MaxCardsType::MaxCardsCount type) const override {
+        if (Config.EnableHegemony) {
+            // Only the armor's wearer receives the faction-sized hand limit.
+            if (!target->hasArmorEffect("PeaceSpell")) return 0;
+            int count = 0;
+            for (const Player *player : target->getAliveSiblings(true))
+                if (target->isFriendWith(player)) ++count;
+            if (target->hasLordSkill("heg_hongfa") && target->hasShownGeneral1())
+                count += target->getPile("heavenly_army").size();
+            return count;
+        }
         if (!target->hasShownOneGeneral())
             return 0;
 

@@ -44,10 +44,12 @@ public:
         if (event != EventPhaseStart || !room || !player || !player->isAlive()
             || player->getPhase() != Player::Finish) return {};
 
-        // The shared recorder freezes used-card values across this turn's Play
-        // phases and clears them at NotActive; pure responses and SkillCards are excluded.
+        // Query all Play phases in this turn, including response-use cards;
+        // immutable snapshots preserve the card's type/suit at acceptance.
+        const QVariantMap history = room->queryCardHistory(player, "turn", QString(), false, true);
+        if (!history.value("complete").toBool()) return {};
         QSet<int> suits, types;
-        for (const QVariant &entry : player->getTag("PhaseUsedCards").toList()) {
+        for (const QVariant &entry : history.value("items").toList()) {
             const QVariantMap record = entry.toMap();
             bool typeOk = false, suitOk = false;
             const int type = record.value("type").toInt(&typeOk);
@@ -196,6 +198,131 @@ public:
     QString historyKey(const ActiveSkillRequest &) const override { return "DuoshiAE"; }
 };
 
+class HKurou : public ViewAsSkillV2
+{
+public:
+    HKurou() : ViewAsSkillV2("heg_kurou", 1) {}
+
+    LimitScope getLimitScope() const override { return Limit_Phase; }
+    int getMaxUsageLimit(const SkillContext &) const override { return 1; }
+    TargetMode targetMode() const override { return NoTarget; }
+    QString historyKey(const ActiveSkillRequest &) const override { return "HKurouCard"; }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && request.initiator->canDiscard(request.initiator, "he");
+    }
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
+    {
+        const Player *player = request.initiator;
+        if (!player || !candidate || candidate->hasFlag("using")) return false;
+        const int id = candidate->getEffectiveId();
+        return id >= 0 && (player->handCards().contains(id) || player->getEquipsId().contains(id))
+            && player->canDiscard(player, id);
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        return cardSelectionFeasible(request) ? ViewAsSkillV2::createCard(request) : nullptr;
+    }
+
+    EffectFlow effect(SkillContext &context) const override
+    {
+        ServerPlayer *invoker = context.invoker;
+        Room *room = invoker ? invoker->getRoom() : nullptr;
+        if (!invoker || !room) return ContinueEffects;
+        room->loseHp(invoker, 1, true, invoker, objectName());
+        if (!invoker->isAlive()) return ContinueEffects;
+        invoker->drawCards(3, objectName());
+        // Slash quota lives only for this turn; the flag clears at turn end.
+        room->setPlayerFlag(invoker, "heg_kurouInvoked");
+        return ContinueEffects;
+    }
+};
+
+class HKurouTarget : public TargetModSkillV2
+{
+public:
+    HKurouTarget() : TargetModSkillV2("#heg_kurou-target") {}
+
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+    {
+        return ctx.modType == TargetModSkill::Residue && ctx.holder
+            && ctx.holder->hasFlag("heg_kurouInvoked")
+            && ctx.card && ctx.card->isKindOf("Slash")
+            ? CorrectSkillResult::useAmount(1) : CorrectSkillResult::noEffect();
+    }
+};
+
+// Donor rule: cancel the Snatch target; discard Indulgence's real card before it
+// enters the judging area. Same dual mechanism as HWeimu, different card checks.
+class HQianxun : public TriggerSkillV2
+{
+public:
+    HQianxun() : TriggerSkillV2("heg_qianxun")
+    {
+        events << TargetConfirming << BeforeCardsMoveBatch;
+        frequency = Compulsory;
+    }
+
+    TriggerList triggerable(TriggerEvent triggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        if (!player || !player->isAlive() || !player->hasSkill(objectName())) return {};
+        if (triggerEvent == TargetConfirming) {
+            CardUseStruct use = data.value<CardUseStruct>();
+            if (use.card && use.card->isKindOf("Snatch") && use.to.contains(player))
+                return TriggerList{{player, {objectName()}}};
+        } else if (triggerEvent == BeforeCardsMoveBatch) {
+            QVariantList move_datas = data.toList();
+            if (move_datas.size() != 1) return {};
+            CardsMoveOneTimeStruct move = move_datas.first().value<CardsMoveOneTimeStruct>();
+            if (move.to == player && move.to_place == Player::PlaceDelayedTrick
+                && move.card_ids.size() == 1
+                && Sanguosha->getCard(move.card_ids.first())->isKindOf("Indulgence"))
+                return TriggerList{{player, {objectName()}}};
+        }
+        return {};
+    }
+
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        return ctx.owner && ctx.original_data
+            && (ctx.owner->hasShownSkill(this) || ctx.owner->askForSkillInvoke(this, *ctx.original_data));
+    }
+
+    bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.original_data) return false;
+        QVariant &data = *ctx.original_data;
+        room->broadcastSkillInvoke(objectName(), ctx.owner);
+        room->sendCompulsoryTriggerLog(ctx.owner, objectName());
+        if (triggerEvent == TargetConfirming) {
+            CardUseStruct use = data.value<CardUseStruct>();
+            room->cancelTarget(use, ctx.owner);
+            data = QVariant::fromValue(use);
+        } else if (triggerEvent == BeforeCardsMoveBatch) {
+            QVariantList move_datas = data.toList();
+            if (move_datas.size() != 1) return false;
+            CardsMoveOneTimeStruct move = move_datas.first().value<CardsMoveOneTimeStruct>();
+            move.to = nullptr;
+            move.to_place = Player::DiscardPile;
+            move.reason = CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER, QString());
+            data = QVariant::fromValue(QVariantList{QVariant::fromValue(move)});
+        }
+        return false;
+    }
+};
+
 void HStandardPackage::addWuGenerals()
 {
     // Shared skills are upgraded in their original packages; only distinct rules live here.
@@ -211,7 +338,9 @@ void HStandardPackage::addWuGenerals()
     lvmeng->addSkill(new HMouduan);
 
     General *huanggai = new General(this, "heg_huanggai", "wu"); // WU 004
-    huanggai->addSkill("kurou");
+    huanggai->addSkill(new HKurou);
+    huanggai->addSkill(new HKurouTarget);
+    insertRelatedSkills("heg_kurou", "#heg_kurou-target");
 
     General *zhouyu = new General(this, "heg_zhouyu", "wu", 3); // WU 005
     zhouyu->addCompanion("heg_huanggai");
@@ -225,7 +354,7 @@ void HStandardPackage::addWuGenerals()
     daqiao->addSkill("liuli");
 
     General *luxun = new General(this, "heg_luxun", "wu", 3); // WU 007
-    luxun->addSkill("qianxun");
+    luxun->addSkill(new HQianxun);
     luxun->addSkill(new HDuoshi);
 
     General *sunshangxiang = new General(this, "heg_sunshangxiang", "wu", 3, false); // WU 008

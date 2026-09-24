@@ -6,6 +6,8 @@
 #include "engine.h"
 #include "engine-runtime-context.h"
 #include "gamerule.h"
+#include "generalselector.h"
+#include "protocol/gameplay/simple-choice-payloads.h"
 #include "lua-runtime.h"
 #include "lua-wrapper.h"
 #include "miniscenarios.h"
@@ -251,6 +253,48 @@ void GameSessionController::prepareForStart()
 {
 	m_preparationPhase = PreparationPhase::AssigningRoles;
 	auto phaseReset = qScopeGuard([this]() { m_preparationPhase = PreparationPhase::None; });
+	if (Config.EnableHegemony) {
+		Config.Enable2ndGeneral = true;
+		QList<ServerPlayer *> players = m_room.getPlayers();
+		if (Config.RandomSeat) qsanShuffle(players);
+		ServerPlayer *owner = m_room.getOwner();
+		if (Config.value("FreeAssign").toBool() && owner && owner->isOnline()) {
+			m_room.notifyMoveFocus(owner, S_COMMAND_CHOOSE_ROLE);
+			if (m_room.doRequest(owner, S_COMMAND_CHOOSE_ROLE, QVariant(), true)) {
+				const QVariantList reply = owner->getClientReply().toList();
+				const QVariantList names = reply.value(0).toList();
+				const QVariantList seats = reply.value(1).toList();
+				QList<ServerPlayer *> ordered(players.size(), nullptr);
+				QSet<QString> seen;
+				bool valid = reply.size() == 2 && names.size() == players.size() && seats.size() == players.size();
+				for (int i = 0; valid && i < names.size(); ++i) {
+					const QString name = names.at(i).toString();
+					ServerPlayer *player = nullptr;
+					for (ServerPlayer *candidate : players)
+						if (candidate->objectName() == name) { player = candidate; break; }
+					bool numeric = false;
+					const int seat = seats.at(i).toString().toInt(&numeric);
+					valid = player && !seen.contains(name) && numeric && seat >= 1 && seat <= players.size();
+					if (!valid || ordered.at(seat - 1)) { valid = false; break; }
+					seen.insert(name);
+					ordered[seat - 1] = player;
+				}
+				// Apply only a complete permutation. Cancel/timeout/invalid replies keep
+				// the initial (possibly shuffled) order, without assigning any faction.
+				if (valid) players = ordered;
+			}
+			if (isTerminal()) return;
+		}
+		m_room.replacePlayerOrder(players);
+		// National-war seats have no identity lord or public faction before selection.
+		foreach (ServerPlayer *player, players) {
+			player->setRole("renegade");
+			player->setShownRole(false);
+			m_room.notifyProperty(player, player, "role");
+		}
+		m_room.adjustSeats();
+		return;
+	}
 	if (TakeoverScenario *takeover = m_room.takeoverScenario()) {
 		takeover->bindRuntimePlayers(&m_room);
 		const GlobalSnapshot state = takeover->snapshot()->getState();
@@ -537,39 +581,11 @@ void GameSessionController::assignGeneralsForPlayers(const QList<ServerPlayer *>
 		}
 	}
 
-	const int max_choice = (Config.EnableHegemony&&Config.Enable2ndGeneral) ?
-		Config.value("HegemonyMaxChoice", 7).toInt() : Config.value("MaxChoice", 5).toInt();
+	const int max_choice = Config.value("MaxChoice", 5).toInt();
 	const int total = Sanguosha->getGeneralCount();
 	const int max_available = (total - existed.size()) / toAssign.length();
 	const int choice_count = qMin(max_choice, max_available);
 	QStringList choices = Sanguosha->getRandomGenerals(total - existed.size(), existed);
-
-	if (Config.EnableHegemony){
-		if (toAssign.first()->getGeneral()){
-			foreach(ServerPlayer*sp, m_room.getPlayers()){
-				QStringList old_list = sp->getSelected();
-				sp->clearSelected();
-
-				//keep legal generals
-				foreach(QString name, old_list){
-					if (Sanguosha->getGeneral(name)->getKingdom() != sp->getGeneral()->getKingdom()
-						|| sp->findReasonable(old_list, true) == name){
-						sp->addToSelected(name);
-						old_list.removeOne(name);
-					}
-				}
-
-				//drop the rest and add new generals
-				while (old_list.length()){
-					QString choice = sp->findReasonable(choices);
-					sp->addToSelected(choice);
-					old_list.pop_front();
-					choices.removeOne(choice);
-				}
-			}
-			return;
-		}
-	}
 
 	foreach(ServerPlayer*player, toAssign){
 		player->clearSelected();
@@ -649,10 +665,206 @@ void GameSessionController::assignGeneralsForPlayersOfJianGeDefenseMode(const QL
 	}
 }
 
+void GameSessionController::chooseHegemonyGenerals()
+{
+	Config.Enable2ndGeneral = true;
+	const QList<ServerPlayer *> players = m_room.getPlayers();
+	if (players.isEmpty()) {
+		abort(TerminationCause::InitializationFailure);
+		return;
+	}
+
+	QStringList banned = ServerInfo.BanPackages;
+	banned << Config.value("Banlist/Hegemony").toStringList();
+	if (isNormalGameMode(m_room.mode))
+		banned << Config.value("Banlist/Roles").toStringList();
+	QStringList available;
+	QSet<QString> admitted;
+	foreach (const QString &name, Sanguosha->getLimitedGeneralNames()) {
+		const General *general = Sanguosha->getGeneral(name);
+		// Recheck packages: getLimitedGeneralNames has a legacy standard-package fallback.
+		if (!general || admitted.contains(name) || banned.contains(name)
+			|| banned.contains(general->getPackage()) || BanPair::isBanned(name)
+			|| name.startsWith("heg_lord_") || name.startsWith("lord_")
+			|| general->isTotallyHidden() || general->getKingdom().isEmpty()
+			|| general->getKingdom() == "god" || general->getKingdom() == "ye")
+			continue;
+		admitted.insert(name);
+		available << name;
+	}
+	qsanShuffle(available);
+	const auto legalPair = [&admitted](const QString &head, const QString &deputy) {
+		if (head == deputy || !admitted.contains(head) || !admitted.contains(deputy))
+			return false;
+		const General *first = Sanguosha->getGeneral(head);
+		return first && first->canPairForHegemony(Sanguosha->getGeneral(deputy));
+	};
+
+	const QString forcedHead = Server::isHeadlessMode ? Server::forcedHeadlessGeneral : QString();
+	const QString forcedDeputy = Server::isHeadlessMode ? Server::forcedHeadlessGeneral2 : QString();
+	QList<QStringList> pools;
+	const int choiceCount = qMin(qBound(2, Config.value("HegemonyMaxChoice", 7).toInt(), 21),
+	                            int(available.size() / players.size()));
+	// Reserve a legal pair for EVERY seat before distributing optional choices.
+	// Disjoint pools keep restricted replies and their fallbacks unique across the room.
+	for (int seat = 0; seat < players.size(); ++seat) {
+		QStringList pair;
+		foreach (const QString &head, available) {
+			if (seat == 0 && !forcedHead.isEmpty() && head != forcedHead) continue;
+			foreach (const QString &deputy, available) {
+				if (seat == 0 && !forcedDeputy.isEmpty() && deputy != forcedDeputy) continue;
+				if (legalPair(head, deputy)) {
+					pair << head << deputy;
+					break;
+				}
+			}
+			if (!pair.isEmpty()) break;
+		}
+		if (pair.isEmpty()) {
+			qWarning("HEG preparation cannot reserve a legal distinct pair for every seat.");
+			abort(TerminationCause::InitializationFailure);
+			return;
+		}
+		available.removeOne(pair.first());
+		available.removeOne(pair.last());
+		pools << pair;
+	}
+	for (int choice = 2; choice < choiceCount && !available.isEmpty(); ++choice) {
+		for (QStringList &pool : pools) {
+			if (available.isEmpty()) break;
+			pool << available.takeFirst();
+		}
+	}
+
+	QList<QStringList> legalPairs;
+	for (int seat = 0; seat < players.size(); ++seat) {
+		ServerPlayer *player = players.at(seat);
+		player->clearSelected();
+		ChooseGeneralRequestPayload request;
+		request.candidates = pools.at(seat);
+		foreach (const QString &name, request.candidates)
+			player->addToSelected(name);
+		foreach (const QString &head, pools.at(seat)) {
+			if (seat == 0 && !forcedHead.isEmpty() && head != forcedHead) continue;
+			foreach (const QString &deputy, pools.at(seat)) {
+				if (seat == 0 && !forcedDeputy.isEmpty() && deputy != forcedDeputy) continue;
+				if (legalPair(head, deputy)) {
+					request.hegemonyPairs << head + "+" + deputy;
+				}
+			}
+		}
+		// One request commits both slots. The server owns pair legality for every UI.
+		if (request.hegemonyPairs.isEmpty()) {
+			abort(TerminationCause::InitializationFailure);
+			return;
+		}
+		const QString defaultPair = GeneralSelector::getInstance()->selectHegemonyPair(request.hegemonyPairs);
+		request.hegemonyPairs.removeOne(defaultPair);
+		request.hegemonyPairs.prepend(defaultPair);
+		legalPairs << request.hegemonyPairs;
+		player->m_commandArgs = request.toDomainVariant();
+	}
+	m_room.doBroadcastRequest(players, S_COMMAND_CHOOSE_GENERAL);
+	if (isTerminal()) return;
+	QStringList heads;
+	QStringList deputies;
+	QSet<QString> chosen;
+	for (int seat = 0; seat < players.size(); ++seat) {
+		ServerPlayer *player = players.at(seat);
+		QString reply = player->m_isClientResponseReady ? player->getClientReply().toString() : QString();
+		const QStringList proposed = reply.split('+');
+		const General *freeHead = proposed.size() == 2 ? Sanguosha->getGeneral(proposed.first()) : nullptr;
+		// FreeChoose admits registered generals outside this seat's dealt pool.
+		// Keep the ordered-pair rules and explicit headless fixture constraints.
+		const bool freePair = Config.FreeChoose && freeHead
+			&& freeHead->canPairForHegemony(Sanguosha->getGeneral(proposed.last()))
+			&& (seat != 0 || forcedHead.isEmpty() || proposed.first() == forcedHead)
+			&& (seat != 0 || forcedDeputy.isEmpty() || proposed.last() == forcedDeputy);
+		if (!legalPairs.at(seat).contains(reply) && !freePair)
+			reply = legalPairs.at(seat).first();
+		const QStringList names = reply.split('+');
+		if (names.size() != 2) {
+			abort(TerminationCause::InitializationFailure);
+			return;
+		}
+		const QString head = names.first(), deputy = names.last();
+		// Validate the complete roster before publishing any authoritative identities.
+		// Like ordinary FreeChoose, different seats may deliberately use the same
+		// general. Within one pair the two names must still be distinct.
+		if ((!freePair && !legalPair(head, deputy))
+			|| (!Config.FreeChoose && (chosen.contains(head) || chosen.contains(deputy)))) {
+			abort(TerminationCause::InitializationFailure);
+			return;
+		}
+		chosen << head << deputy;
+		heads << head;
+		deputies << deputy;
+	}
+
+	QList<ServerPlayer *> kingdomPlayers;
+	QList<QStringList> kingdomChoices;
+	for (int seat = 0; seat < players.size(); ++seat) {
+		ServerPlayer *player = players.at(seat);
+		const General *head = Sanguosha->getGeneral(heads.at(seat));
+		const QStringList names{heads.at(seat), deputies.at(seat)};
+		player->setActualGeneral1Name(names.first());
+		player->setActualGeneral2Name(names.last());
+		player->setGeneralName("anjiang");
+		player->setGeneral2Name("anjiang");
+		player->setGeneralShowed(false);
+		player->setGeneral2Showed(false);
+		player->setShownRole(false);
+		m_room.setTag(player->objectName(), names);
+		m_room.safeSetPlayerProperty(player, "hegemony_generals", names.join("+"));
+		m_room.setPlayerProperty(player, "kingdom", "god");
+		m_room.broadcastProperty(player, "general");
+		m_room.broadcastProperty(player, "general2");
+		m_room.broadcastProperty(player, "role_shown");
+		// Owners see their accepted/fallback pair before choosing a private faction.
+		m_room.notifyProperty(player, player, "actual_general1");
+		m_room.notifyProperty(player, player, "actual_general2");
+		m_room.notifyProperty(player, player, "general", names.first());
+		m_room.notifyProperty(player, player, "general2", names.last());
+		m_room.notifyProperty(player, player, "hegemony_generals");
+		const QStringList kingdoms = head->compareKingdomsWith(Sanguosha->getGeneral(deputies.at(seat)));
+		kingdomChoices << kingdoms;
+		if (kingdoms.size() > 1) {
+			ChooseKingdomRequestPayload request;
+			request.kingdoms = kingdoms;
+			player->m_commandArgs = request.toDomainVariant();
+			kingdomPlayers << player;
+		}
+	}
+	// Batch private initial-faction choices; never publish a ChooseKingdom log.
+	if (!kingdomPlayers.isEmpty())
+		m_room.doBroadcastRequest(kingdomPlayers, S_COMMAND_CHOOSE_KINGDOM);
+	if (isTerminal()) return;
+
+	for (int seat = 0; seat < players.size(); ++seat) {
+		ServerPlayer *player = players.at(seat);
+        const QStringList kingdoms = kingdomChoices.at(seat);
+        const QString reply = kingdomPlayers.contains(player) && player->m_isClientResponseReady
+            ? player->getClientReply().toString() : QString();
+        const QString kingdom = kingdoms.contains(reply) ? reply : kingdoms.first();
+        player->setHegemonyKingdom(kingdom);
+		QString role = HegemonyRule::getMappedRole(kingdom);
+		if (role.isEmpty()) role = player->getActualGeneral1()->getKingdom();
+		player->setRole(role);
+		m_room.notifyProperty(player, player, "role");
+        m_room.notifyProperty(player, player, "hegemony_kingdom");
+		player->clearSelected();
+	}
+    m_room.setTag("HegemonyUsedGenerals", QStringList(chosen.begin(), chosen.end()));
+}
+
 void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 {
 	m_preparationPhase = PreparationPhase::ChoosingGenerals;
 	auto phaseReset = qScopeGuard([this]() { m_preparationPhase = PreparationPhase::None; });
+	if (Config.EnableHegemony) {
+		chooseHegemonyGenerals();
+		return;
+	}
 	if (Config.Enable2ndGeneral)
 		Config.Enable2ndGeneral = m_room.mode!="02_1v1"&&m_room.mode!="06_3v3"&&m_room.mode!="06_XMode"&&m_room.mode!="04_1v3";
 	if (players.isEmpty()) players = m_room.getPlayers();
@@ -691,6 +903,8 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 			general = "yinni_hide";
 			the_lord->setGeneralName(general);
 		}
+		if (m_room.mode != "03_1v2")
+			m_room.broadcastProperty(the_lord, "general", general);
 		players.removeOne(the_lord);
 		if(Config.Enable2ndGeneral){
 			if(general=="yinni_hide") general = the_lord->property("yinni_general").toString();
@@ -711,6 +925,8 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 				general = "yinni_hide";
 				the_lord->setGeneral2Name(general);
 			}
+			if (m_room.mode != "03_1v2")
+				m_room.broadcastProperty(the_lord, "general2", general);
 		}
 	}
 
@@ -939,7 +1155,9 @@ void GameSessionController::run()
 		return;
 
 	m_preparationPhase = PreparationPhase::ChoosingGenerals;
-	if (m_room.scenario&&!m_room.scenario->generalSelection()){
+	if (Config.EnableHegemony) {
+		chooseGenerals();
+	} else if (m_room.scenario&&!m_room.scenario->generalSelection()){
 	} else if (m_room.mode == "06_3v3"){
 		m_preparationPhase = PreparationPhase::ModeDrafting;
 		m_room.thread_3v3 = new RoomThread3v3(&m_room);
@@ -1239,6 +1457,22 @@ void GameSessionController::startGame()
 	foreach (ServerPlayer *receiver, players)
 		m_room.notifySkillInstanceSnapshot(receiver);
 
+    if (Config.EnableHegemony) {
+        // Keep initial and recycled edict tricks in the same off-deck WuGu reservoir.
+        QVariantList edictTricks;
+        QList<int> &pile = m_room.m_cardMovement->drawPile();
+        const QList<int> original = pile;
+        for (int id : original) {
+            const Card *card = m_room.getCard(id);
+            if (card && (card->isKindOf("HRuleTheWorld") || card->isKindOf("HConquering")
+                || card->isKindOf("HConsolidateCountry") || card->isKindOf("HChaos"))) {
+                pile.removeAll(id);
+                edictTricks << id;
+                m_room.setCardMapping(id, nullptr, Player::PlaceWuGu);
+            }
+        }
+        m_room.setTag("ImperialEdictTrick", edictTricks);
+    }
 	m_room.doBroadcastNotify(S_COMMAND_GAME_START, JsonUtils::toJsonArray(m_room.m_cardMovement->drawPile()));
 	m_room.notifyResolutionState(QStringLiteral("reset"));
 

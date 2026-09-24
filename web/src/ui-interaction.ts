@@ -66,7 +66,9 @@ function generalPicker(bind: UiBind, values: string[], onPick: (value: string) =
   const row = el("div", { class: "general-pick" });
   for (const value of values) {
     const button = el("button", { class: bind.ui.selectedOption === value ? "primary" : "" });
-    button.append(assetImg(generalFaceUrls(value), "", "portrait"), el("span", {}, [tr(value)]));
+    // Hegemony options contain an ordered head+deputy pair; ordinary IDs stay single.
+    for (const name of value.split("+"))
+      button.append(assetImg(generalFaceUrls(name), "", "portrait"), el("span", {}, [tr(name)]));
     button.addEventListener("click", () => onPick(value));
     row.append(button);
   }
@@ -321,6 +323,66 @@ export function interactionView(bind: UiBind): HTMLElement {
   cancel.addEventListener("click", () => submit(() => responseIntent(command, { cancelled: true })));
 
   if (hasCommand(command, [Command.CHOOSE_GENERAL, Command.ASK_GENERAL])) {
+    const pairs = command === Command.CHOOSE_GENERAL && asBool(session.state.setup.enable_hegemony)
+      ? asStringList(payload.hegemony_pairs) : [];
+    if (pairs.length) {
+      const candidates = asStringList(payload.candidates);
+      const draftText = ui.selectedOption;
+      const draft = draftText ? draftText.split("+") : [];
+      const canHead = (name: string) => pairs.some((pair) => pair.split("+")[0] === name);
+      const current = () => session.interaction === interaction && ui.selectedOption === draftText;
+      const change = (names: string[]) => {
+        if (!current()) return;
+        ui.selectedOption = names.join("+");
+        bind.render();
+      };
+      const remove = (name: string) => {
+        const rest = draft.filter((item) => item !== name);
+        change(rest.length === 1 && !canHead(rest[0]) ? [] : rest);
+      };
+      const portrait = (name: string, enabled: boolean, selected: boolean, action: () => void) => {
+        const button = el("button", { class: selected ? "primary" : "" });
+        button.type = "button";
+        button.dataset.focusKey = `hegemony-${name}`;
+        button.disabled = !enabled;
+        button.setAttribute("aria-pressed", String(selected));
+        button.append(assetImg(generalFaceUrls(name), "", "portrait"), el("span", {}, [tr(name)]));
+        button.addEventListener("click", action);
+        return button;
+      };
+      root.append(el("p", {}, [uiText("web.hegemony.help")]));
+      const pool = el("div", { class: "general-pick" });
+      for (const name of candidates.filter((item) => !draft.includes(item))) {
+        const enabled = draft.length === 0 ? canHead(name)
+          : draft.length === 1 && pairs.includes(`${draft[0]}+${name}`);
+        pool.append(portrait(name, enabled, false, () => { if (enabled) change([...draft, name]); }));
+      }
+      root.append(pool);
+      const seats = el("div", { class: "general-pick" });
+      for (let seat = 0; seat < 2; ++seat) {
+        const slot = el("div");
+        slot.append(el("strong", {}, [uiText(seat === 0 ? "web.hegemony.head" : "web.hegemony.deputy")]));
+        const name = draft[seat];
+        slot.append(name ? portrait(name, true, true, () => remove(name)) : el("p", {}, [uiText("web.hegemony.empty")]));
+        seats.append(slot);
+      }
+      const swap = el("button", {}, [uiText("web.hegemony.swap")]);
+      swap.type = "button";
+      swap.disabled = draft.length !== 2 || !pairs.includes(`${draft[1]}+${draft[0]}`);
+      swap.addEventListener("click", () => { if (!swap.disabled) change([...draft].reverse()); });
+      seats.append(swap);
+      root.append(seats);
+      const ok = el("button", { class: "primary" }, [uiText("web.action.confirm")]);
+      ok.disabled = !pairs.includes(draftText);
+      ok.addEventListener("click", () => {
+        if (current() && pairs.includes(draftText)) submit(() => responseIntent(command, { option: draftText }));
+      });
+      const clear = el("button", {}, [uiText("web.action.cancel")]);
+      clear.disabled = draft.length === 0;
+      clear.addEventListener("click", () => change([])); // Clear only; this request is mandatory.
+      root.append(ok, clear);
+      return finalize();
+    }
     const options = payloadOptions(payload);
     root.append(generalPicker(bind, options, (value) => {
       ui.selectedOption = value;
@@ -388,12 +450,16 @@ export function interactionView(bind: UiBind): HTMLElement {
 
   if (command === Command.CHOOSE_ROLE) {
     const players = session.state.playerNames;
-    const roles = ["lord", "loyalist", "rebel", "renegade"];
+    const seatsOnly = asBool(session.state.setup.enable_hegemony);
+    const roles = seatsOnly ? players.map((_, index) => String(index + 1))
+      : ["lord", "loyalist", "rebel", "renegade"];
+    if (seatsOnly) root.append(el("p", {}, [uiText("web.assign_seats.help")]));
     for (const player of players) {
       const select = el("select");
+      const chosen = ui.assignments[player] || (seatsOnly ? roles[players.indexOf(player)] : roles[0]);
       for (const role of roles) {
-        const option = el("option", { value: role }, [tr(role)]);
-        if (ui.assignments[player] === role)
+        const option = el("option", { value: role }, [seatsOnly ? role : tr(role)]);
+        if (chosen === role)
           option.selected = true;
         select.append(option);
       }
@@ -406,7 +472,7 @@ export function interactionView(bind: UiBind): HTMLElement {
     ok.addEventListener("click", () => submit(() => {
       const assignments: Record<string, string> = {};
       for (const player of players)
-        assignments[player] = ui.assignments[player] || roles[0];
+        assignments[player] = ui.assignments[player] || (seatsOnly ? roles[players.indexOf(player)] : roles[0]);
       return responseIntent(command, { assignments });
     }));
     root.append(ok, cancel);

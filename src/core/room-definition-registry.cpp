@@ -4,6 +4,7 @@
 #include "card-lifetime-manager.h"
 #include "engine.h"
 #include "general.h"
+#include "h-rule-cards.h"
 #include "lua-wrapper.h"
 #include "package.h"
 
@@ -13,6 +14,8 @@
 RoomDefinitionRegistry::RoomDefinitionRegistry(Engine &engine)
     : m_engine(engine), m_nextCardId(int(engine.cards.size()))
 {
+    // Rule operations are room-owned definitions, independent of package selection.
+    addSkills(createHegemonyRuleSkills(&m_definitionRoot));
 }
 
 bool RoomDefinitionRegistry::moveOwnedObjectsToThread(QThread *targetThread, QString *error)

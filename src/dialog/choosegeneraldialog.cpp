@@ -11,6 +11,7 @@
 #include "clientstruct.h"
 #include "timed-progressbar.h"
 #include <QKeyEvent>
+#include <QSet>
 
 using namespace QSanProtocol;
 
@@ -263,7 +264,8 @@ void ChooseGeneralDialog::freeChoose()
 	QMessageBox::warning(this, tr("Warning"), tr("No generals are found"));
 }
 
-FreeChooseDialog::FreeChooseDialog(const QString &name, QWidget *parent, ButtonGroupType type)
+FreeChooseDialog::FreeChooseDialog(const QString &name, QWidget *parent, ButtonGroupType type,
+                                 const QStringList &allowedGenerals)
     : QDialog(parent), type(type)
 {
     setWindowTitle(tr("Free choose generals"));
@@ -274,9 +276,10 @@ FreeChooseDialog::FreeChooseDialog(const QString &name, QWidget *parent, ButtonG
     group->setExclusive(type == Exclusive);
 
     QMap<QString, QList<const General *> > map;
+    const QSet<QString> allowed(allowedGenerals.cbegin(), allowedGenerals.cend());
     static QList<const General *> all_generals = Sanguosha->findChildren<const General *>();
     foreach (const General *general, all_generals) {
-        if (general->isTotallyHidden())
+        if (general->isTotallyHidden() || (!allowed.isEmpty() && !allowed.contains(general->objectName())))
             continue;
 
         if (name.isEmpty() || (general->objectName().contains(name) || Sanguosha->translate(general->objectName()).contains(name))) {
@@ -319,7 +322,7 @@ FreeChooseDialog::FreeChooseDialog(const QString &name, QWidget *parent, ButtonG
 
     setLayout(layout);
 
-    if (type == Exclusive)
+    if (type == Exclusive && !group->buttons().isEmpty())
         group->buttons().first()->click();
 }
 void FreeChooseDialog::chooseGeneral()

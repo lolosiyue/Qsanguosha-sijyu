@@ -561,7 +561,7 @@ bool RoomRuntime::initialize(QString *error)
         lua_getfield(state, -1, "registerStandardModeAI");
         lua_remove(state, -2);
         lua_pushstring(state, m_room->getMode().toUtf8().constData());
-        lua_pushboolean(state, isNormalGameMode(m_room->getMode()));
+        lua_pushboolean(state, isNormalGameMode(m_room->getMode(), Config.EnableHegemony));
         lua_pushboolean(state, Config.EnableHegemony);
         if (LuaRuntime::protectedCall(state, 3, 0, 0) != LUA_OK) {
             if (error) *error = QString::fromUtf8(lua_tostring(state, -1));

@@ -625,16 +625,19 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
         const bool seesIdentity = player == viewer || !hegemony
             || player->hasShownOneGeneral() || player->isDead();
         if (seesIdentity)
-            playerView.kingdom = player->getKingdom();
+            playerView.kingdom = hegemony && player == viewer && !player->hasShownOneGeneral()
+                && player->getActualGeneral1() ? player->getHegemonyKingdom() : player->getKingdom();
         world.customRoles = world.customRoles || player->getRoleEnum() == Player::UnknownRole;
         playerView.roleRevealed = m_room.isRoleRevealed(player);
         playerView.roleVisible = m_room.canSeeRole(viewer, player);
         if (playerView.roleVisible)
             playerView.role = player->getRole();
         if (player == viewer || !hegemony || player->hasShownGeneral() || player->isDead())
-            playerView.generalName = player->getGeneralName();
+            playerView.generalName = hegemony && player == viewer
+                ? player->getActualGeneral1Name() : player->getGeneralName();
         if (player == viewer || !hegemony || player->hasShownGeneral2() || player->isDead())
-            playerView.general2Name = player->getGeneral2Name();
+            playerView.general2Name = hegemony && player == viewer
+                ? player->getActualGeneral2Name() : player->getGeneral2Name();
 
         foreach (const Card *card, player->getEquips())
             playerView.equips << makeAICardView(card);
@@ -686,9 +689,8 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
             const Skill *skill = Sanguosha->getSkill(instance.skillName);
             if (!instance.visible || !skill || !skill->isVisible())
                 continue;
-            const bool visibleToViewer = player == viewer || !hegemony
-                || instance.source == SourceAcquired || instance.source == SourceAttached
-                || player->hasShownSkill(instance.skillName);
+            const bool visibleToViewer = !hegemony
+                || SkillRuntimeCoordinator::canReceiveSkillInstance(m_room, viewer, player, instance);
             if (!visibleToViewer)
                 continue;
             AISkillView skillView;

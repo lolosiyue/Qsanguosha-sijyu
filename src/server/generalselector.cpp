@@ -3,6 +3,7 @@
 //#include "serverplayer.h"
 //#include "util.h"
 #include "room.h"
+#include "settings.h"
 #include <QRegularExpression>
 
 static GeneralSelector *Selector;
@@ -111,6 +112,83 @@ QString GeneralSelector::selectSecond(ServerPlayer *player, const QStringList &c
     Q_ASSERT(!max_general.isEmpty());
 
     return max_general;
+}
+
+QString GeneralSelector::selectHegemonyPair(const QStringList &legalPairs)
+{
+    if (legalPairs.isEmpty()) return QString();
+    // XXY selection values are separate from the identity-mode selector tables.
+    if (hegemony_general_table.isEmpty()) {
+        QFile file("etc/hegemony-general-value.txt");
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream stream(&file);
+            const QRegularExpression row(QStringLiteral("^(\\w+)\\s+(\\d+)\\s*$"));
+            while (!stream.atEnd()) {
+                const auto match = row.match(stream.readLine());
+                if (match.hasMatch())
+                    hegemony_general_table.insert(match.captured(1), match.captured(2).toInt());
+            }
+        }
+    }
+    auto valueOf = [this](QString name) {
+        if (name.startsWith("heg_")) name.remove(0, 4);
+        return hegemony_general_table.value(name, 5);
+    };
+    auto hasSkill = [](const General *general, const QString &name) {
+        return general->hasSkill(name) || general->hasSkill("heg_" + name)
+            || general->hasSkill("nos" + name);
+    };
+    QStringList kingdoms = Sanguosha->getKingdoms();
+    kingdoms.removeAll("god");
+    kingdoms.removeAll("careerist");
+    kingdoms.removeAll("ye");
+    qsanShuffle(kingdoms);
+    QString best = legalPairs.first();
+    double bestScore = -1e9;
+    // Only rank server-admitted ordered pairs; scoring never grants legality.
+    for (const QString &pair : legalPairs) {
+        const QStringList names = pair.split('+');
+        if (names.size() != 2) continue;
+        const General *head = Sanguosha->getGeneral(names.first());
+        const General *deputy = Sanguosha->getGeneral(names.last());
+        if (!head || !deputy) continue;
+        const QStringList common = head->compareKingdomsWith(deputy);
+        double score = valueOf(names.first()) + valueOf(names.last());
+        int preference = -1;
+        for (const QString &kingdom : common)
+            preference = qMax(preference, kingdoms.indexOf(kingdom));
+        score += preference - 1;
+        const int hp = head->getMaxHpHead() + deputy->getMaxHpDeputy();
+        if (hp % 2) score -= 1;
+        if (head->isCompanionWith(names.last())) score += 3;
+        if (head->isFemale()) {
+            if (head->getKingdom() == "wu") score -= 0.5;
+            else if (head->getKingdom() != "qun") score += 0.5;
+        } else if (head->getKingdom() == "qun") score += 0.5;
+        if (hasSkill(head, "baoling") && valueOf(names.last()) > 6) score -= 5;
+        for (const QString &skill : {QString("cunsi"), QString("jianglve")})
+            if (hasSkill(head, skill)) score -= 2;
+        if (hasSkill(head, "qingyin")) score -= 1;
+        for (const QString &skill : {QString("enyuan"), QString("tianxiang"), QString("diancai"),
+                                     QString("qice"), QString("xishe")})
+            if (hasSkill(head, skill)) score += 0.5;
+        if (hasSkill(head, "xiaoji")) score += 1;
+        if (hp < 8) {
+            for (const General *general : {head, deputy})
+                for (const QString &skill : {QString("zhiheng"), QString("zaiqi"), QString("kurou")})
+                    if (hasSkill(general, skill)) score -= 5;
+        }
+        // A conversion bonus requires a registered sovereign, not just a skill name.
+        const QString base = names.first().startsWith("heg_") ? names.first().mid(4) : names.first();
+        if (Config.value("EnableLordConvertion", true).toBool()
+            && Sanguosha->getGeneral("heg_lord_" + base) && qsanRandomBounded(3) > 0)
+            score += 10;
+        if (score > bestScore) {
+            bestScore = score;
+            best = pair;
+        }
+    }
+    return best;
 }
 
 QString GeneralSelector::select3v3(ServerPlayer *, const QStringList &candidates)

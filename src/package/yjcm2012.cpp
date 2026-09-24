@@ -271,99 +271,120 @@ public:
     }
 };
 
-class Qianxi : public TriggerSkill
+class Qianxi : public TriggerSkillV2
 {
 public:
-    Qianxi() : TriggerSkill("qianxi")
+    Qianxi() : TriggerSkillV2("qianxi")
     {
         events << EventPhaseStart << FinishJudge;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
     {
-        return target != nullptr;
+        if (event != FinishJudge) return false;
+        JudgeStruct *judge = data.value<JudgeStruct *>();
+        if (judge && judge->reason == objectName() && judge->who && judge->card) {
+            // FinishJudge completes the existing invocation; it is not a second skill use.
+            judge->pattern = judge->card->isRed() ? "red" : "black";
+            judge->who->setTag(objectName(), judge->pattern); // Existing AI player-choice input.
+        }
+        return true;
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data) const
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (triggerEvent == EventPhaseStart && TriggerSkill::triggerable(target)
-            && target->getPhase() == Player::Start) {
-            if (room->askForSkillInvoke(target, objectName())) {
-                room->broadcastSkillInvoke(objectName());
-                JudgeStruct judge;
-                judge.reason = objectName();
-                judge.play_animation = false;
-                judge.who = target;
+        return event == EventPhaseStart && player && player->isAlive()
+            && player->hasSkill(objectName()) && player->getPhase() == Player::Start
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
 
-                room->judge(judge);
-                if (!target->isAlive()) return false;
-                QString color = judge.pattern;
-                QList<ServerPlayer *> to_choose;
-                foreach (ServerPlayer *p, room->getOtherPlayers(target)) {
-                    if (target->distanceTo(p) == 1)
-                        to_choose << p;
-                }
-                if (to_choose.isEmpty())
-                    return false;
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        // Invocation notification and judgement belong after V2's will-invoke gate.
+        return ctx.owner && room->askForSkillInvoke(ctx.owner, objectName(), QVariant(), false);
+    }
 
-                ServerPlayer *victim = room->askForPlayerChosen(target, to_choose, objectName());
-                QString pattern = QString(".|%1|.|hand$0").arg(color);
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *owner = ctx.owner;
+        if (!owner || !owner->isAlive()) return false;
+        room->notifySkillInvoked(owner, objectName());
+        room->broadcastSkillInvoke(objectName());
+        JudgeStruct judge;
+        judge.reason = objectName();
+        judge.play_animation = false;
+        judge.who = owner;
+        room->judge(judge);
+        if (!owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
+        const QString color = judge.pattern;
+        if (color != "red" && color != "black") return false;
+        QList<ServerPlayer *> candidates;
+        for (ServerPlayer *p : room->getOtherPlayers(owner))
+            if (owner->distanceTo(p) == 1) candidates << p;
+        if (candidates.isEmpty()) return false;
+        ServerPlayer *victim = room->askForPlayerChosen(owner, candidates, objectName());
+        if (!victim || !victim->isAlive() || !owner->isAlive() || !isSourceAvailable(room, ctx)) return false;
 
-                room->setPlayerFlag(victim, "QianxiTarget");
-                room->addPlayerMark(victim, QString("@qianxi_%1").arg(color));
-                room->setPlayerCardLimitation(victim, "use,response", pattern, false);
-
-                LogMessage log;
-                log.type = "#Qianxi";
-                log.from = victim;
-                log.arg = QString("no_suit_%1").arg(color);
-                room->sendLog(log);
-            }
-        } else if (triggerEvent == FinishJudge) {
-            JudgeStruct *judge = data.value<JudgeStruct *>();
-            if (judge->reason != objectName() || !target->isAlive()) return false;
-
-            QString color = judge->card->isRed() ? "red" : "black";
-            target->setTag(objectName(), QVariant::fromValue(color));
-            judge->pattern = color;
-        }
+        // An applied restriction outlives its skill source until this owner's turn ends.
+        // Keep an exact-source ledger outside removable instance state for that lifetime.
+        QVariantMap entry;
+        entry["target"] = victim->objectName();
+        entry["color"] = color;
+        entry["instance"] = ctx.instanceID;
+        QVariantList pending = owner->getTag("QianxiPendingEffects").toList();
+        pending << entry;
+        owner->setTag("QianxiPendingEffects", pending);
+        // Player stores limitation reasons by pattern, not by source. Keep one
+        // restriction per color until the last source's counted effect expires.
+        const QString mark = QString("@qianxi_%1").arg(color);
+        if (victim->getMark(mark) == 0)
+            room->setPlayerCardLimitation(victim, "use,response", QString(".|%1|.|hand$0").arg(color), false, objectName());
+        room->setPlayerFlag(victim, "QianxiTarget");
+        room->addPlayerMark(victim, mark);
+        LogMessage log;
+        log.type = "#Qianxi";
+        log.from = victim;
+        log.arg = QString("no_suit_%1").arg(color);
+        room->sendLog(log);
         return false;
     }
 };
 
-class QianxiClear : public TriggerSkill
+class QianxiClear : public TriggerSkillV2
 {
 public:
-    QianxiClear() : TriggerSkill("#qianxi-clear")
+    QianxiClear() : TriggerSkillV2("#qianxi-clear")
     {
         events << EventPhaseChanging << Death;
+        global = true;
     }
 
-    bool triggerable(const ServerPlayer *target) const
-    {
-        return !target->getTag("qianxi").toString().isEmpty();
-    }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (triggerEvent == EventPhaseChanging) {
-            PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-            if (change.to != Player::NotActive)
-                return false;
-        } else if (triggerEvent == Death) {
-            DeathStruct death = data.value<DeathStruct>();
-            if (death.who != player)
-                return false;
-        }
-
-        QString color = player->getTag("qianxi").toString();
-        foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
-            if (p->hasFlag("QianxiTarget")) {
-                room->removePlayerCardLimitation(p, "use,response", QString(".|%1|.|hand$0").arg(color));
-                room->setPlayerMark(p, QString("@qianxi_%1").arg(color), 0);
+        if (!player) return true;
+        if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
+        if (event == Death && data.value<DeathStruct>().who != player) return true;
+        // Global event bookkeeping runs after death, invalidation or loss of the source.
+        const QVariantList pending = player->getTag("QianxiPendingEffects").toList();
+        player->removeTag("QianxiPendingEffects");
+        player->removeTag("qianxi");
+        for (const QVariant &value : pending) {
+            const QVariantMap entry = value.toMap();
+            ServerPlayer *target = room->findPlayerByObjectName(entry.value("target").toString(), true);
+            const QString color = entry.value("color").toString();
+            if (!target || (color != "red" && color != "black")) continue;
+            const QString mark = QString("@qianxi_%1").arg(color);
+            if (target->getMark(mark) > 0) {
+                room->removePlayerMark(target, mark);
+                if (target->getMark(mark) == 0)
+                    room->removePlayerCardLimitation(target, "use,response", QString(".|%1|.|hand$0").arg(color), "qianxi");
             }
+            if (target->getMark("@qianxi_red") == 0 && target->getMark("@qianxi_black") == 0)
+                room->setPlayerFlag(target, "-QianxiTarget");
         }
-        return false;
+        return true;
     }
 };
 

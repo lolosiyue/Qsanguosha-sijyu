@@ -33,6 +33,7 @@ class PileContainer;
 class GuanxingBox;
 class GuanxingXBox;
 class GuhuoBox;
+class ChooseGeneralBox;
 class QSanButton;
 class QGroupBox;
 class BubbleChatBox;
@@ -176,6 +177,7 @@ public slots:
     void keepGetCardLog(const CardsMoveStruct &move);
     // choice dialog
     void chooseGeneral(const QStringList &generals);
+    void chooseHegemonyGenerals(const QStringList &candidates, const QStringList &pairs);
     void chooseSuit(const QStringList &suits);
     void chooseCard(const ClientPlayer *playerName, const QString &flags, const QString &reason,
         bool handcard_visible, Card::HandlingMethod method, QList<int> disabled_ids, bool can_cancel);
@@ -323,6 +325,7 @@ private:
 
 	GuanxingBox *m_guanxingBox;
 	GuhuoBox *m_guhuoBox;
+	ChooseGeneralBox *m_chooseGeneralBox = nullptr;
 
 	QList<CardItem *> gongxin_items;
 
@@ -468,7 +471,7 @@ private:
     void wireSkillDialog(QSanSkillButton *button, QDialog *dialog);
     void presentSkillDialog(QSanSkillButton *button, QDialog *dialog);
     void clearPresentedDialogSkill(bool resetButtonState = false);
-    void activateSkill(const ViewAsSkill *skill);
+    void activateSkill(const ViewAsSkill *skill, int instanceId = 0);
     bool applyPresentedDialogOption(const QString &optionName);
     bool isPresentedDialogOptionEnabled(const QString &optionName) const;
 

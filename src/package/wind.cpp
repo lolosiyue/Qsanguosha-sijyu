@@ -438,6 +438,8 @@ public:
 		if (jink && jink->isKindOf("Jink")) {
 			ServerPlayer *target = room->askForPlayerChosen(zhangjiao, room->getAlivePlayers(), objectName(), "leiji-invoke", true, true);
 			if (target) {
+				LegacySkillActivation activation(room, zhangjiao, objectName());
+				if (!activation) return false;
 				room->broadcastSkillInvoke(objectName());
 
 				JudgeStruct judge;
@@ -665,6 +667,8 @@ bool Jushou::onPhaseChange(ServerPlayer *target, Room *room) const
 {
     if (target->getPhase() == Player::Finish) {
         if (room->askForSkillInvoke(target, objectName())) {
+            LegacySkillActivation activation(room, target, objectName());
+            if (!activation) return false;
             room->broadcastSkillInvoke(objectName());
             target->drawCards(getJushouDrawNum(target), objectName());
             target->turnOver();

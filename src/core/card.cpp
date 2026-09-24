@@ -147,15 +147,40 @@ int Card::getEffectiveId() const
 	return m_id;
 }
 
+QString Card::getClassName() const
+{
+    const QString className = QString::fromLatin1(metaObject()->className());
+    // Imported physical cards retain canonical history/AI names; skill-card
+    // factories keep their isolated H names to avoid identity-mode collisions.
+    return getTypeId() != TypeSkill && isHegemonyCardClassName(className)
+        ? className.mid(1) : className;
+}
+
+bool Card::isKindOf(const char *cardType) const
+{
+    if (!cardType)
+        return false;
+    if (inherits(cardType))
+        return true;
+    if (getTypeId() == TypeSkill || !isHegemonyCardClassName(QString::fromLatin1(metaObject()->className())))
+        return false;
+    return inherits((QByteArray("H") + cardType).constData());
+}
+
 QStringList Card::getKindOfNames() const
 {
     QStringList names;
+    const bool originalHegemonyCard = getTypeId() != TypeSkill
+        && isHegemonyCardClassName(QString::fromLatin1(metaObject()->className()));
     const QMetaObject *meta = metaObject();
     while (meta) {
         const QString name = QString::fromLatin1(meta->className());
         if (name == QStringLiteral("QObject"))
             break;
         names << name;
+        // Value-only AI snapshots must agree with the native isKindOf aliases.
+        if (originalHegemonyCard && isHegemonyCardClassName(name))
+            names << name.mid(1);
         if (name == QStringLiteral("Card"))
             break;
         meta = meta->superClass();
@@ -437,9 +462,19 @@ int Card::nameLength() const
 
 QString Card::getSkillName(bool removePrefix) const
 {
-	if (removePrefix && m_skillName.startsWith("_"))
-		return m_skillName.mid(1);
-	return m_skillName;
+	QString skillName = m_skillName;
+	if (skillName.isEmpty() && getTypeId() == TypeSkill) {
+		const QString className = QString::fromLatin1(metaObject()->className());
+		if (isHegemonyCardClassName(className) && className.endsWith("Card")) {
+			// Donor view-as cards often only declare show_skill. Native creation
+			// and @H...Card parsing must resolve the same _p general skill.
+			skillName = show_skill.isEmpty()
+				? className.mid(1, className.size() - 5).toLower() + "_p" : show_skill;
+		}
+	}
+	if (removePrefix && skillName.startsWith("_"))
+		return skillName.mid(1);
+	return skillName;
 }
 
 void Card::setSkillName(const QString &name)
@@ -527,6 +562,21 @@ void Card::addCharTag(QString tag)
 QString Card::getDescription(const Player *owner) const
 {
 	QString desc = Sanguosha->translate(":" + objectName());
+	const Card *realCard = getRealCard();
+	if (getTypeId() != TypeSkill && realCard
+		&& isHegemonyCardClassName(QString::fromLatin1(realCard->metaObject()->className()))) {
+		// The shared physical name stays canonical while its donor rules text
+		// uses an isolated translation key, including when accessed via a wrapper.
+		QString key = ":heg_" + objectName();
+		if (!Config.EnableHegemony) {
+			const QString identityKey = key + "_p";
+			const QString identityDescription = Sanguosha->translate(identityKey);
+			if (!identityDescription.isEmpty() && identityDescription != identityKey) key = identityKey;
+		}
+		const QString originalDescription = Sanguosha->translate(key);
+		if (!originalDescription.isEmpty() && originalDescription != key)
+			desc = originalDescription;
+	}
 	QString schar = property("YingBianEffects").toString();
 	if(!schar.isEmpty())
 		desc.append(QString("<br/><font color=red><b>%1</b></font>").arg(Sanguosha->translate(":" + schar)));
@@ -724,6 +774,8 @@ Card*Card::Clone(const Card*card)
 	if (card_obj) {
 		card_obj->setObjectName(card->objectName());
 		card_obj->setId(card->getId());
+        // Transfer is physical card metadata and must survive RoomState cloning.
+        card_obj->setTransferable(card->isTransferable());
 		card_obj->setSkillName(card->getSkillName(false));
 		card_obj->setSkillInstanceId(card->getSkillInstanceId());
 	}
@@ -755,6 +807,61 @@ bool Card::targetFilter(const QList<const Player*> &targets, const Player*to_sel
 
 void Card::doPreAction(Room*, const CardUseStruct &) const
 {
+}
+
+void Card::extraCost(Room *room, const CardUseStruct &use) const
+{
+    // Donor skill costs leave the owner before revealing the selected general.
+    // Only imported throwing cards use this staging; identity cards keep their
+    // existing atomic discard and Rende/Zhijian own their transfer costs.
+    if (!Config.EnableHegemony || getTypeId() != TypeSkill || !willThrow()
+        || subcardsLength() == 0
+        || !isHegemonyCardClassName(QString::fromLatin1(getRealCard()->metaObject()->className())))
+        return;
+    CardMoveReason reason(CardMoveReason::S_REASON_THROW, use.from->objectName(),
+                          QString(), getSkillName(), QString());
+    room->moveCardTo(this, use.from, nullptr, Player::PlaceTable, reason, true);
+}
+
+void Card::prepareUseTargets(Room *, CardUseStruct &) const
+{
+}
+
+QStringList Card::checkTargetModSkillShow(const CardUseStruct &use) const
+{
+    QStringList needed;
+    if (!use.from || !use.card)
+        return needed;
+    // Reuse the existing precise-source reveal gate for shared card classes.
+    for (const TargetModSkill *skill : Sanguosha->getTargetModSkills()) {
+        if (!skill->requiresShowForUse(use))
+            continue;
+        const Skill *main = Sanguosha->getMainSkill(skill->objectName());
+        const QString name = main ? main->objectName() : skill->objectName();
+        if (!needed.contains(name))
+            needed << name;
+    }
+    return needed;
+}
+
+void Card::finishCardUse(Room *room, CardUseStruct &use)
+{
+    if (use.cardFinished)
+        return;
+    const bool effectSkipped = use.skipSkillEffect;
+    use.cardFinished = true;
+    QVariant data = QVariant::fromValue(use);
+    try {
+        room->getThread()->trigger(CardFinished, room, use.from, data);
+    } catch (...) {
+        use = data.value<CardUseStruct>();
+        use.cardFinished = true;
+        use.skipSkillEffect = use.skipSkillEffect || effectSkipped;
+        throw;
+    }
+    use = data.value<CardUseStruct>();
+    use.cardFinished = true;
+    use.skipSkillEffect = use.skipSkillEffect || effectSkipped;
 }
 
 static bool showRequiredTargetModSkills(Room *room, const CardUseStruct &use)
@@ -804,6 +911,13 @@ static bool showRequiredTargetModSkills(Room *room, const CardUseStruct &use)
 
 void Card::onUse(Room*room, CardUseStruct &card_use) const
 {
+	const bool deferredHegemonyCost = Config.EnableHegemony
+		&& card_use.activationRef.isValid() && card_use.card->isVirtualCard()
+		&& card_use.card->needsDeferredHegemonyReveal();
+	// Ordinary cards retain target construction before PreCardUsed. A paid
+	// conversion may need its revealed allegiance before constructing targets.
+	if (!deferredHegemonyCost)
+		prepareUseTargets(room, card_use);
 	room->sortByActionOrder(card_use.to);
 
 	if (room->getMode() == "06_3v3" && (card_use.card->isKindOf("AOE") || card_use.card->isKindOf("GlobalEffect")))
@@ -813,20 +927,63 @@ void Card::onUse(Room*room, CardUseStruct &card_use) const
 	room->getThread()->trigger(PreCardUsed, room, card_use.from, data);
 	card_use = data.value<CardUseStruct>();
 
-	LogMessage log;
-	log.from = card_use.from;
-	if (!card_use.card->targetFixed()||card_use.to.length()>1||!card_use.to.contains(card_use.from))
-		log.to = card_use.to;
-	log.type = "#UseCard";
-	foreach (const Card*c, card_use.card->change_cards) {
-		if(c->isVirtualCard(true)){
-			log.card_str = c->toString(c->getTypeId()<1&&!c->willThrow());
-			room->sendLog(log);
+	const auto sendUseLog = [&]() {
+		LogMessage log;
+		log.from = card_use.from;
+		if (!card_use.card->targetFixed()||card_use.to.length()>1||!card_use.to.contains(card_use.from))
+			log.to = card_use.to;
+		log.type = "#UseCard";
+		foreach (const Card*c, card_use.card->change_cards) {
+			if(c->isVirtualCard(true)){
+				log.card_str = c->toString(c->getTypeId()<1&&!c->willThrow());
+				room->sendLog(log);
+			}
+		}
+		log.card_str = card_use.card->toString(card_use.card->getTypeId()<1&&!card_use.card->willThrow());
+		// The generic V2 proxy's wire class cannot identify its owning skill.
+		// Carry the authoritative name separately for every log presentation.
+		if (qobject_cast<const ActiveSkillCard *>(card_use.card->getRealCard()))
+			log.arg = card_use.card->getSkillName();
+		room->sendLog(log);
+	};
+	if (!deferredHegemonyCost) sendUseLog();
+
+	const bool originalThrowCost = Config.EnableHegemony
+		&& card_use.card->getTypeId() == TypeSkill && card_use.card->willThrow()
+		&& !card_use.bypass_cost
+		&& isHegemonyCardClassName(QString::fromLatin1(card_use.card->getRealCard()->metaObject()->className()));
+	const auto discardPaidCost = [&]() {
+		if (!originalThrowCost && !deferredHegemonyCost) return;
+		const QList<int> ids = room->getCardIdsOnTable(card_use.card);
+		if (ids.isEmpty()) return;
+		CardMoveReason reason(CardMoveReason::S_REASON_THROW, card_use.from->objectName(),
+		                      QString(), card_use.card->getSkillName(), QString());
+		room->moveCardsAtomic(CardsMoveStruct(ids, card_use.from, nullptr,
+		    Player::PlaceTable, Player::DiscardPile, reason), true);
+	};
+	if (card_use.card->getTypeId() == TypeSkill && !card_use.bypass_cost)
+		card_use.card->extraCost(room, card_use);
+	if (Config.EnableHegemony && card_use.card->getTypeId() == TypeSkill
+		&& isHegemonyCardClassName(QString::fromLatin1(card_use.card->getRealCard()->metaObject()->className()))) {
+		const SkillInstanceRef ref = card_use.activationRef;
+		ServerPlayer *owner = ref.isValid()
+			? room->findPlayerByObjectName(ref.ownerObjectName, true) : nullptr;
+		// Cunsi deliberately removes its own source as cost. Keep its remaining
+		// effect, but never replace that vanished source with another instance.
+		if (owner && owner->hasSkillInstance(ref.key.skillName, ref.key.instanceID)
+			&& !room->showGeneralForSkill(ref)) {
+			card_use.skipSkillEffect = true;
+			discardPaidCost();
+			finishCardUse(room, card_use);
+			return;
 		}
 	}
-	log.card_str = card_use.card->toString(card_use.card->getTypeId()<1&&!card_use.card->willThrow());
-	room->sendLog(log);
-
+	if (!showRequiredTargetModSkills(room, card_use)) {
+		card_use.skipSkillEffect = true;
+		discardPaidCost();
+		finishCardUse(room, card_use);
+		return;
+	}
 	CardMoveReason reason(CardMoveReason::S_REASON_USE, card_use.from->objectName(), card_use.card->getSkillName(), "");
 	if (card_use.to.size()==1&&card_use.to.first()!=card_use.from) reason.m_targetId = card_use.to.first()->objectName();
 	if (card_use.card->subcardsLength()>0){
@@ -836,10 +993,32 @@ void Card::onUse(Room*room, CardUseStruct &card_use) const
 			room->moveCardsAtomic(CardsMoveStruct(card_use.card->getSubcards(), nullptr, Player::PlaceTable, reason), true);
 		} else if (card_use.card->willThrow() && !card_use.bypass_cost){
 			reason.m_reason = CardMoveReason::S_REASON_THROW;
-			room->moveCardsAtomic(CardsMoveStruct(card_use.card->getSubcards(), nullptr, Player::DiscardPile, reason), true);
+			if (originalThrowCost)
+				discardPaidCost();
+			else
+				room->moveCardsAtomic(CardsMoveStruct(card_use.card->getSubcards(), nullptr, Player::DiscardPile, reason), true);
 		}
 	}
 
+	if (deferredHegemonyCost) {
+		const bool revealed = card_use.from && card_use.from->isAlive()
+			&& room->canShowGeneralForSkill(card_use.activationRef)
+			&& room->showGeneralForSkill(card_use.activationRef);
+		ServerPlayer *owner = room->findPlayerByObjectName(card_use.activationRef.ownerObjectName, true);
+		// GeneralShown callbacks can invalidate the admitted source after payment.
+		if (!revealed || !card_use.from->isAlive() || !owner || !owner->hasSkillInstance(
+			card_use.activationRef.key.skillName, card_use.activationRef.key.instanceID)) {
+			card_use.skipSkillEffect = true;
+			discardPaidCost();
+			finishCardUse(room, card_use);
+			return;
+		}
+		prepareUseTargets(room, card_use);
+		room->sortByActionOrder(card_use.to);
+		sendUseLog();
+	}
+
+	data = QVariant::fromValue(card_use);
 	room->getThread()->trigger(CardUsed, room, card_use.from, data);
 	card_use = data.value<CardUseStruct>();
 
@@ -853,8 +1032,7 @@ void Card::onUse(Room*room, CardUseStruct &card_use) const
 		reason.m_extraData = QVariant::fromValue(card_use.card);
 		room->moveCardsAtomic(CardsMoveStruct(used_cards, card_use.from, nullptr, Player::PlaceTable, Player::DiscardPile, reason), true);
 	}
-	room->getThread()->trigger(CardFinished, room, card_use.from, data);
-	card_use = data.value<CardUseStruct>();
+	finishCardUse(room, card_use);
 }
 
 void Card::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targets) const
@@ -1321,11 +1499,13 @@ ArraySummonCard::ArraySummonCard(const QString &name)
 
 const Card *ArraySummonCard::validate(CardUseStruct &card_use) const
 {
-    const BattleArraySkill *skill = qobject_cast<const BattleArraySkill *>(Sanguosha->getTriggerSkill(objectName()));
+    if (!card_use.from)
+        return nullptr;
+    const TriggerSkill *triggerSkill = Sanguosha->getTriggerSkill(objectName());
+    const BattleArraySkill *skill = qobject_cast<const BattleArraySkill *>(triggerSkill);
     if (skill != nullptr) {
         card_use.from->showHiddenSkill(skill->objectName());
         skill->summonFriends(card_use.from);
     }
     return nullptr;
 }
-

@@ -44,6 +44,42 @@ old.custom_roles = false
 assert(not sgs.evaluateModeAI(old).managed)
 assert(not pcall(sgs.registerModeAI, "bad", {teams={one={"x"}, two={"x"}}}))
 
+-- A public recruitment role carries allegiance without revealing the general
+-- or changing its kingdom. Missing authorization or faction stays neutral.
+local function hegemony_world(self_kingdom, b_kingdom, c_kingdom,
+                              self_role, b_role, c_role)
+    local result = world("heg-contract")
+    result.self.kingdom = self_kingdom
+    result.players[1].kingdom = b_kingdom
+    result.players[2].kingdom = c_kingdom
+    result.self.role = self_role or "role_a"
+    result.players[1].role = b_role or "role_b"
+    result.players[2].role = c_role or "role_c"
+    return result
+end
+sgs.registerStandardModeAI("heg-contract", false, true)
+local heg = hegemony_world("wei", "wei", "shu")
+assert(sgs.evaluateModeAI(heg).relations.a.b == "friend")
+assert(sgs.evaluateModeAI(heg).relations.a.c == "enemy")
+heg.players[1].kingdom = ""
+assert(sgs.evaluateModeAI(heg).relations.a.b == "neutral")
+heg.self.kingdom = ""
+assert(sgs.evaluateModeAI(heg).relations.a.b == "neutral")
+heg.self.kingdom, heg.players[1].kingdom = "", ""
+heg.self.role, heg.players[1].role = "careerist_wei", "careerist_wei"
+assert(sgs.evaluateModeAI(heg).relations.a.b == "friend")
+heg.players[1].role = "careerist_shu"
+assert(sgs.evaluateModeAI(heg).relations.a.b == "enemy")
+heg.players[1].role = "role_b"
+assert(sgs.evaluateModeAI(heg).relations.a.b == "neutral") -- Public coalition versus unknown faction.
+heg.self.kingdom, heg.players[1].kingdom = "god", "wei"
+heg.self.role, heg.players[1].role = "careerist", "role_b"
+assert(sgs.evaluateModeAI(heg).relations.a.b == "enemy")
+assert(sgs.evaluateModeAI(heg).relations.a.a == "friend")
+heg.players[1].role_visible = false
+heg.players[1].role = "careerist_wei"
+assert(sgs.evaluateModeAI(heg).relations.a.b == "neutral")
+
 -- Beliefs are viewer-local. Query hooks receive a read-only state snapshot;
 -- intention events are the explicit state mutation boundary.
 sgs.registerModeAI("mind", {

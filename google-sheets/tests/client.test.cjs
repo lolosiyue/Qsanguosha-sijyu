@@ -363,6 +363,19 @@ test('actions keep checkboxes while displaying full descriptions without image i
   assert.equal(storedRows[0][7], '完整武將技能');
 });
 
+test('hegemony seats stay editable and submit only an allowed ordered pair', () => {
+  const c = context();
+  const meta = {shape: 'general_pair', general_pairs: ['a+b']};
+  assert.equal(c.shape_({type: 'choose_general', payload: {general_candidates: ['a', 'b']}}), 'general_pair');
+  assert.equal(c.shape_({type: 'choose_general', payload: {}}), 'option');
+  const head = row('general', 'a', {order: '1'}), deputy = row('general', 'b', {order: '2'});
+  assert.deepEqual(plain(c.draftFromRows_(meta, [deputy, head])), {option: 'a+b'});
+  assert.throws(() => c.draftFromRows_(meta, [head]));
+  assert.throws(() => c.draftFromRows_(meta, [row('general', 'a', {order: '2'}), row('general', 'b', {order: '1'})]));
+  assert.throws(() => c.draftFromRows_(meta, [row('general', 'a'), row('general', 'b')]));
+  assert.throws(() => c.draftFromRows_({...meta, general_pairs: []}, [head, deputy]));
+});
+
 test('room seat details resolve merged title/body by displayed player ID and keep images out of text', () => {
   const c = context(), calls = [], blocks = [];
   c.prepareRoom_ = () => {}; c.writeBlock_ = (...args) => blocks.push(args);

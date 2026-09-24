@@ -166,7 +166,18 @@ function submitSheetDraft() {
     drop_('preflight'); return outcome_(qsanText_('submitted'));
   });
 }
-function cancelDraft() { return locked_(function() { const meta = json_('meta', {}); if (!meta.cancelable) throw new Error(qsanText_('cannotCancel')); command_('cancel', {request_id: meta.request_id}, meta); drop_('preflight'); return outcome_(qsanText_('cancelSent')); }); }
+function cancelDraft() { return locked_(function() { const meta = json_('meta', {});
+  if (meta.shape === 'general_pair') {
+    const count = Number(get_('action_rows', '0'));
+    if (count) {
+      const sheet = sheet_('QSAN Actions'), first = actionFirst_();
+      sheet.getRange(first, 4, count, 1).setValues(Array.from({length: count}, () => [false]));
+      sheet.getRange(first, 5, count, 1).clearContent();
+    }
+    drop_('preflight'); renderPreflight_(qsanText_('generalPairCleared'));
+    return outcome_(qsanText_('generalPairCleared'));
+  }
+  if (!meta.cancelable) throw new Error(qsanText_('cannotCancel')); command_('cancel', {request_id: meta.request_id}, meta); drop_('preflight'); return outcome_(qsanText_('cancelSent')); }); }
 function control_(name, args) { return locked_(function() { command_(name, args); return outcome_(qsanText_('operationSent')); }); }
 function readyFromSheet() { return control_('ready', {ready: true}); }
 function unreadyFromSheet() { return control_('ready', {ready: false}); }

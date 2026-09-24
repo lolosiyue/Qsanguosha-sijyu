@@ -54,6 +54,8 @@ public:
 private:
     friend struct PlayerLifecycleServiceTestAccess;
 
+    bool replaceDragonPhoenixGeneral(ServerPlayer *player, const QString &newGeneral);
+
     struct SummonRequest
     {
         ServerPlayer *before;

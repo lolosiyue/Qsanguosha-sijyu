@@ -6,6 +6,12 @@
 -- 两种写法的输入词表，不是显示出来的文字。
 
 TUICommonTranslationTable = {
+    ["tui_hegemony_help"] = "国战候选：head 编号选主将，deputy 编号选副将；undo 撤回末张，clear/cancel 清空，swap 交换，confirm 提交。提交前可随时重选。",
+    ["tui_hegemony_candidate"] = "  候选 %1：%2",
+    ["tui_hegemony_pairs"] = "也可直接输入以下组合编号提交（顺序为主将 / 副将）：",
+    ["tui_hegemony_invalid"] = "选将命令或主副将组合不合法；请按候选编号重新选择。",
+    ["tui_hegemony_empty"] = "未选",
+    ["tui_hegemony_draft"] = "主将：%1；副将：%2。confirm 提交，undo/clear 撤回重选。",
     -- Shared action model and compact board labels.
     ["tui_action_no_request"] = "目前没有待处理的互动。",
     ["tui_action_sync_pending"] = "连接尚未完成状态同步。",
@@ -194,6 +200,9 @@ TUICommonTranslationTable = {
 	["tui_prompt_selection_range"] = "须选 %1 至 %2 项",
 	["tui_prompt_timeout"] = "限时 %1 秒",
 	["tui_prompt_role_assignment"] = "为每位玩家指定一个身份。",
+	["tui_prompt_seat_assignment"] = "为每位玩家分配座位，每个座位只能使用一次。势力在选将后决定。",
+	["tui_answer_seat_assignment"] = "作答：每位玩家写 <玩家编号>=<座位号>，同一行以空白隔开\n示例：%1",
+	["tui_label_seats"] = "座位：",
 	["tui_role_requirement"] = "本局需要：%1",
 	["tui_label_players"] = "玩家：",
 	["tui_label_roles"] = "身份：",

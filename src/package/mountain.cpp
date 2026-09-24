@@ -316,58 +316,80 @@ public:
     }
 };
 
-class Tuntian : public TriggerSkill
+class Tuntian : public TriggerSkillV2
 {
 public:
-    Tuntian() : TriggerSkill("tuntian")
+    Tuntian() : TriggerSkillV2("tuntian")
     {
         events << CardsMoveOneTime << FinishJudge;
         frequency = Frequent;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    TriggerList triggerable(TriggerEvent triggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        return TriggerSkill::triggerable(target) && !target->hasFlag("CurrentPlayer");
+        if (!player || !player->isAlive() || !player->hasSkill(objectName())) return {};
+        if (triggerEvent == CardsMoveOneTime) {
+            const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+            if (move.from == player && (move.from_places.contains(Player::PlaceHand)
+                || move.from_places.contains(Player::PlaceEquip))
+                && !(move.to == player && (move.to_place == Player::PlaceHand
+                    || move.to_place == Player::PlaceEquip))
+                && !player->hasFlag("CurrentPlayer"))
+                return TriggerList{{player, {objectName()}}};
+        }
+        return {};
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                SkillContext &ctx) const override
+    {
+        if (triggerEvent != FinishJudge || !player || ctx.owner != player || !player->isAlive()
+            || !player->hasSkill(objectName()) || player->isSkillInvalid(objectName(), ctx.instanceID)
+            || player->hasFlag("CurrentPlayer") || !ctx.original_data)
+            return;
+        // FinishJudge is bookkeeping for the admitted judgment, not a second activation.
+        const JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
+        if (judge && judge->who == ctx.owner && judge->card && judge->reason == objectName()
+            && judge->isGood() && room->getCardPlace(judge->card->getEffectiveId()) == Player::PlaceJudge)
+            player->addToPile("field", judge->card->getEffectiveId());
+    }
+
+    bool cost(TriggerEvent triggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (triggerEvent != CardsMoveOneTime) return true;
+        if (!ctx.owner || !ctx.original_data) return false;
+        return ctx.owner->askForSkillInvoke(this, *ctx.original_data, false);
+    }
+
+    bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (triggerEvent == CardsMoveOneTime) {
-            CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-            if (move.from == player && (move.from_places.contains(Player::PlaceHand) || move.from_places.contains(Player::PlaceEquip))
-                && !(move.to == player && (move.to_place == Player::PlaceHand || move.to_place == Player::PlaceEquip))
-                && player->askForSkillInvoke("tuntian", data)) {
-                room->broadcastSkillInvoke("tuntian");
-                JudgeStruct judge;
-                judge.pattern = ".|heart";
-                judge.good = false;
-                judge.reason = "tuntian";
-                judge.who = player;
-                room->judge(judge);
-            }
-        } else if (triggerEvent == FinishJudge) {
-            JudgeStruct *judge = data.value<JudgeStruct *>();
-            if (judge->reason == "tuntian" && judge->isGood() && room->getCardPlace(judge->card->getEffectiveId()) == Player::PlaceJudge)
-                player->addToPile("field", judge->card->getEffectiveId());
+            room->notifySkillInvoked(ctx.owner, objectName());
+            room->broadcastSkillInvoke(objectName());
+            JudgeStruct judge;
+            judge.pattern = ".|heart";
+            judge.good = false;
+            judge.reason = objectName();
+            judge.who = ctx.owner;
+            room->judge(judge);
         }
-
         return false;
     }
 };
 
-class TuntianDistance : public DistanceSkill
+class TuntianDistance : public DistanceSkillV2
 {
 public:
-    TuntianDistance() : DistanceSkill("#tuntian-dist")
+    TuntianDistance() : DistanceSkillV2("#tuntian-dist")
     {
+        setBaseAmount(-1);
+        setHolderSelector(CorrectSkill_Primary);
     }
 
-    int getCorrect(const Player *from, const Player *) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        int n = from->getPile("field").length();
-		if (n>0&&from->hasSkill("tuntian"))
-            return -n;
-        return 0;
+        if (!ctx.holder || !ctx.holder->hasSkill("tuntian")) return CorrectSkillResult::noEffect();
+        return CorrectSkillResult::useAmount(ctx.currentAmount * ctx.holder->getPile("field").size());
     }
 };
 
@@ -413,27 +435,48 @@ public:
     }
 };
 
-class Jixi : public OneCardViewAsSkill
+class Jixi : public ViewAsSkillV2
 {
 public:
-    Jixi() : OneCardViewAsSkill("jixi")
+    Jixi() : ViewAsSkillV2("jixi", 1)
     {
-        filter_pattern = ".|.|.|field";
         expand_pile = "field";
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return !player->getPile("field").isEmpty();
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator
+            && !request.initiator->getPile("field").isEmpty();
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
-        Snatch *snatch = new Snatch(originalCard->getSuit(), originalCard->getNumber());
+        return request.initiator && candidate && !candidate->isVirtualCard() && request.selectedCardIds.isEmpty()
+            && candidate->getEffectiveId() >= 0 && !candidate->hasFlag("using")
+            && request.initiator->getPile("field").contains(candidate->getEffectiveId());
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (!request.initiator || request.selectedCardIds.size() != 1) return false;
+        const int id = request.selectedCardIds.first();
+        const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
+        return card && !card->hasFlag("using")
+            && request.initiator->getPile("field").contains(id);
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *original = Sanguosha->getCard(request.selectedCardIds.first());
+        if (!original) return nullptr;
+        Snatch *snatch = new Snatch(original->getSuit(), original->getNumber());
         snatch->setSkillName(objectName());
-        snatch->addSubcard(originalCard);
+        snatch->addSubcard(original);
         return snatch;
     }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "Snatch"; }
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
@@ -665,21 +708,49 @@ void TiaoxinCard::onEffect(CardEffectStruct &effect) const
         room->throwCard(room->askForCardChosen(effect.from, effect.to, "he", "tiaoxin", false, Card::MethodDiscard), effect.to, effect.from);
 }
 
-class Tiaoxin : public ZeroCardViewAsSkill
+class Tiaoxin : public ViewAsSkillV2
 {
 public:
-    Tiaoxin() : ZeroCardViewAsSkill("tiaoxin")
+    Tiaoxin() : ViewAsSkillV2("tiaoxin")
     {
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return !player->hasUsed("TiaoxinCard");
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator
+            && !request.initiator->hasUsed("TiaoxinCard");
     }
 
-    const Card *viewAs() const
+    TargetMode targetMode() const override { return SelectTargets; }
+
+    bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                         const Player *candidate) const override
     {
-        return new TiaoxinCard;
+        return request.initiator && selected.isEmpty() && candidate
+            && candidate->inMyAttackRange(request.initiator);
+    }
+
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
+    {
+        return selected.length() == 1;
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "TiaoxinCard"; }
+
+    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+    {
+        // The native proxy follows the final invoker after V2 interception.
+        ServerPlayer *source = ctx.invoker;
+        if (!source || !target) return ContinueEffects;
+        Room *room = source->getRoom();
+        bool use_slash = false;
+        if (target->canSlash(source, nullptr, false))
+            use_slash = room->askForUseSlashTo(target, source,
+                "@tiaoxin-slash:" + source->objectName());
+        if (!use_slash && source->canDiscard(target, "he"))
+            room->throwCard(room->askForCardChosen(source, target, "he", "tiaoxin", false,
+                Card::MethodDiscard), target, source);
+        return ContinueEffects;
     }
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const

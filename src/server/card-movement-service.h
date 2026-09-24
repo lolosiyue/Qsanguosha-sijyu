@@ -5,10 +5,12 @@
 
 #include <QList>
 #include <QMap>
+#include <functional>
 
 class Card;
 class Room;
 class ServerPlayer;
+class ResolutionHistoryEventGuard;
 
 class CardLocationIndex
 {
@@ -101,6 +103,12 @@ public:
                     bool visible, bool guanxin);
     void moveCardsAtomic(CardsMoveStruct cardsMove, bool visible, bool guanxing);
     void moveCardsAtomic(QList<CardsMoveStruct> cardsMoves, bool visible, bool guanxing);
+    // Batch callbacks use QVariantList<CardsMoveOneTimeStruct>; replacements
+    // remain in this operation, and the returned batch describes its events.
+    QVariant moveCardsSub(QList<CardsMoveStruct> cardsMoves, bool visible, bool guanxing = false);
+    QVariant changeMoveData(const QVariant &data, const QList<CardsMoveStruct> &replacements);
+    static QVariant changeMoveData(const QVariant &data, const QList<int> &removedIds);
+    void moveCards(QList<CardsMoveStruct> cardsMoves, bool visible, bool enforceOrigin);
 
     QList<CardsMoveStruct> normalizeMoves(QList<CardsMoveStruct> cardsMoves);
 
@@ -164,6 +172,19 @@ private:
     };
 
     void fillMoveInfo(CardsMoveStruct &move, int id) const;
+    QVariant commitMoves(QList<CardsMoveStruct> cardsMoves, bool visible, bool guanxing,
+                     ResolutionHistoryEventGuard &historyGuard, bool notify = true,
+                     const QMap<int, CardsMoveStruct> *origins = nullptr,
+                     const std::function<void()> &notifyGain = {},
+                     const std::function<void(int)> &insertIntoDrawPile = {});
+    QList<CardsMoveOneTimeStruct> triggerMoveBatch(TriggerEvent event,
+        const QList<CardsMoveOneTimeStruct> &moves);
+    QList<CardsMoveOneTimeStruct> triggerSingleMoves(TriggerEvent event,
+        const QList<CardsMoveOneTimeStruct> &moves);
+    QList<CardsMoveOneTimeStruct> beforeMoves(const QList<CardsMoveOneTimeStruct> &moves);
+    QVariant afterMoves(QList<CardsMoveOneTimeStruct> moves);
+    void reconcilePendingPiles(const QList<CardsMoveOneTimeStruct> &before,
+        const QList<CardsMoveOneTimeStruct> &after);
     QList<CardsMoveOneTimeStruct> mergeMoves(QList<CardsMoveStruct> cardsMoves);
     QList<CardsMoveStruct> splitMoves(QList<CardsMoveOneTimeStruct> moveOneTimes);
     QList<int> &primaryPile();

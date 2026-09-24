@@ -3,6 +3,7 @@
 #include "carditem.h"
 #include "cardcontainer.h"
 #include "choosetriggerorderbox.h"
+#include "choosegeneralbox.h"
 #include "client.h"
 #include "client-core.h"
 #include "client-live-session.h"
@@ -107,6 +108,7 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     connect(scene->m_guanxingBox, &GuanxingBox::draftChanged, this, [this]() { scheduleRefresh(); });
     connect(scene->card_container, &CardContainer::gongxinDraftChanged, this, [this]() { scheduleRefresh(); });
     connect(scene->m_chooseTriggerOrderBox, &ChooseTriggerOrderBox::draftChanged, this, [this]() { scheduleRefresh(); });
+    connect(scene->m_chooseGeneralBox, &ChooseGeneralBox::draftChanged, this, [this]() { scheduleRefresh(); });
     connect(scene->dashboard, &Dashboard::dialogOptionSelectionChanged, this, [this]() { scheduleRefresh(); });
 #ifdef Q_OS_ANDROID
     connect(qApp, &QGuiApplication::applicationStateChanged, this, [this]() {
@@ -548,6 +550,29 @@ GameActionModel DesktopGamePresentation::actionModel() const
         return model;
     }
     if (const auto *options = request.payloadAs<OptionInteractionPayload>()) {
+        if (request.type == InteractionType::ChooseGeneral && !options->generalCandidates.isEmpty()) {
+            ChooseGeneralBox *box = m_scene->m_chooseGeneralBox;
+            model.supported = status == Client::ExecDialog && box && box->isVisible();
+            model.actionContext = QStringLiteral("hegemony-generals");
+            if (!model.supported) return model;
+            const QStringList selected = box->selectedGenerals();
+            for (const QString &name : box->candidateNames()) {
+                const int seat = selected.indexOf(name);
+                const QString nameLabel = plain(Sanguosha->translate(name));
+                const QString label = seat == 0 ? tr("Head: %1").arg(nameLabel)
+                    : seat == 1 ? tr("Deputy: %1").arg(nameLabel) : nameLabel;
+                model.actions.append({name, label, box->choiceEnabled(name), seat >= 0, {}});
+            }
+            if (box->freeChooseEnabled()) {
+                model.actions.append({QStringLiteral("hegemony-free-head"), tr("Free choose head..."), true, false, {}});
+                model.actions.append({QStringLiteral("hegemony-free-deputy"), tr("Free choose deputy..."),
+                                      !selected.isEmpty(), false, {}});
+            }
+            model.canConfirm = box->canConfirm();
+            model.canCancel = !selected.isEmpty(); // Clears the local draft, never declines this mandatory request.
+            model.prompt = tr("Choose a head, then a deputy. Uncheck a general to reselect; Cancel clears the selection.");
+            return model;
+        }
         const bool booleanPrompt = status == Client::AskForSkillInvoke;
         const bool choiceVisible = status == Client::ExecDialog && m_scene->m_choiceDialog
             && m_scene->m_choiceDialog->isVisible();
@@ -800,7 +825,11 @@ void DesktopGamePresentation::applyIntent(const QString &kind, const QString &id
         else if (kind == QLatin1String("order-bottom") && !inBottom && m_model.canMoveToBottom)
             box->moveCard(cardId, true, bottom.size());
     } else if (kind == QLatin1String("option") && enabledEntry(m_model.actions)) {
-        if (m_model.actionContext == QLatin1String("skill-dialog")) {
+        if (m_model.actionContext == QLatin1String("hegemony-generals")) {
+            if (id == QLatin1String("hegemony-free-head")) m_scene->m_chooseGeneralBox->freeChoose(0);
+            else if (id == QLatin1String("hegemony-free-deputy")) m_scene->m_chooseGeneralBox->freeChoose(1);
+            else m_scene->m_chooseGeneralBox->selectGeneral(id, selected);
+        } else if (m_model.actionContext == QLatin1String("skill-dialog")) {
             if ((dashboard->selectedDialogOption() == id) != selected) dashboard->_onDialogOptionClicked(id);
         } else if (m_model.actionContext == QLatin1String("trigger-order")) {
             m_scene->m_chooseTriggerOrderBox->selectChoice(id, selected);
@@ -844,7 +873,8 @@ void DesktopGamePresentation::applyIntent(const QString &kind, const QString &id
         for (QSanSkillButton *button : m_scene->m_skillButtons)
             if (button->objectName() == id && button->isDown() != selected) { button->click(); break; }
     } else if (kind == QLatin1String("confirm") && m_model.canConfirm) {
-        if (m_model.actionContext == QLatin1String("skill-dialog")) m_scene->doOkButton();
+        if (m_model.actionContext == QLatin1String("hegemony-generals")) m_scene->m_chooseGeneralBox->reply();
+        else if (m_model.actionContext == QLatin1String("skill-dialog")) m_scene->doOkButton();
         else if (m_model.actionContext == QLatin1String("trigger-order"))
             m_scene->m_chooseTriggerOrderBox->submitChoice(m_scene->m_chooseTriggerOrderBox->selectedChoice());
         else if (m_model.actionContext == QLatin1String("gongxin"))
@@ -856,7 +886,8 @@ void DesktopGamePresentation::applyIntent(const QString &kind, const QString &id
             } else if (QAbstractButton *button = optionButton(m_option)) button->click();
         } else m_scene->doOkButton();
     } else if (kind == QLatin1String("cancel") && m_model.canCancel) {
-        if (m_model.actionContext == QLatin1String("trigger-order"))
+        if (m_model.actionContext == QLatin1String("hegemony-generals")) m_scene->m_chooseGeneralBox->resetSelection();
+        else if (m_model.actionContext == QLatin1String("trigger-order"))
             m_scene->m_chooseTriggerOrderBox->submitChoice(QStringLiteral("cancel"));
         else if (m_model.actionContext == QLatin1String("gongxin")) m_scene->card_container->submitGongxin();
         else m_scene->doCancelButton();

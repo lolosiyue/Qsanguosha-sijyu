@@ -661,6 +661,7 @@ void CardItem::addActionButton(CardActionButton *button)
         return;
     button->setParentItem(this);
     m_actionButtons.append(button);
+    updateActionButtonsLayout();
 }
 
 void CardItem::removeActionButton(const QString &buttonId)
@@ -670,6 +671,7 @@ void CardItem::removeActionButton(const QString &buttonId)
             m_actionButtons.removeOne(btn);
             btn->hide();
             btn->deleteLater();
+            updateActionButtonsLayout();
             break;
         }
     }
@@ -685,17 +687,23 @@ void CardItem::updateActionButtonsLayout()
     if (m_actionButtons.isEmpty())
         return;
 
-    int n = m_actionButtons.size();
-    int buttonWidth = 24;
-    int buttonHeight = 24;
-    int gap = 4;
-    int totalWidth = n * buttonWidth + (n - 1) * gap;
-    int startX = -totalWidth / 2;
-    int y = -G_COMMON_LAYOUT.m_cardNormalHeight / 2 - buttonHeight - 4;
-
-    for (int i = 0; i < n; ++i) {
-        CardActionButton *btn = m_actionButtons[i];
-        btn->setPos(startX + i * (buttonWidth + gap), y);
+    // Card coordinates start at the face's top-left, not its centre. Keep
+    // actions inside the face so they follow the parent card during selection.
+    const QRectF face = G_COMMON_LAYOUT.m_cardMainArea;
+    const qreal inset = 4;
+    qreal right = face.right() - inset;
+    qreal top = face.top() + inset;
+    qreal rowHeight = 0;
+    for (CardActionButton *btn : m_actionButtons) {
+        const QSizeF size = btn->boundingRect().size();
+        if (right - size.width() < face.left() + inset && rowHeight > 0) {
+            right = face.right() - inset;
+            top += rowHeight + inset;
+            rowHeight = 0;
+        }
+        btn->setPos(right - size.width(), top);
+        right -= size.width() + inset;
+        rowHeight = qMax(rowHeight, size.height());
     }
 }
 
@@ -714,8 +722,10 @@ CardActionButton::CardActionButton(CardItem *parent)
     : QSanButton(parent), m_cardItem(parent), m_actionMode(S_MODE_DIRECT), m_luaCallback(0)
 {
     setObjectName("CardActionButton");
-    _m_width = 24;
-    _m_height = 24;
+    connect(this, &QSanButton::clicked, this, [this]() {
+        if (m_cardItem)
+            emit m_cardItem->actionButtonClicked(m_buttonId, m_cardItem->getId());
+    });
 }
 
 CardActionButton::~CardActionButton()
@@ -735,6 +745,10 @@ QString CardActionButton::getButtonId() const
 void CardActionButton::setIconName(const QString &iconName)
 {
     m_iconName = iconName;
+    _m_groupName = QStringLiteral("carditem");
+    setButtonName(iconName);
+    redraw(); // Load all four native states and their matching hit mask.
+    if (m_cardItem) m_cardItem->updateActionButtonsLayout();
 }
 
 QString CardActionButton::getIconName() const
@@ -781,38 +795,4 @@ void CardActionButton::setCallbackKey(const QString &key)
 QString CardActionButton::getCallbackKey() const
 {
     return m_callbackKey;
-}
-
-QRectF CardActionButton::boundingRect() const
-{
-    return QRectF(0, 0, _m_width, _m_height);
-}
-
-void CardActionButton::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
-{
-    painter->setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
-
-    QString stateStr = isEnabled() ? "normal" : "disabled";
-    QString path = QString("button-carditem/%1/%2").arg(m_iconName).arg(stateStr);
-    QPixmap pixmap = G_ROOM_SKIN.getPixmap(path);
-    if (!pixmap.isNull()) {
-        QPixmap scaled = pixmap.scaled(_m_width, _m_height, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        painter->drawPixmap(0, 0, scaled);
-    } else {
-        painter->setBrush(isEnabled() ? QColor(100, 150, 200) : QColor(100, 100, 100));
-        painter->setPen(Qt::NoPen);
-        painter->drawRoundedRect(0, 0, _m_width, _m_height, 4, 4);
-    }
-}
-
-void CardActionButton::mousePressEvent(QGraphicsSceneMouseEvent *event)
-{
-    if (!isEnabled())
-        return;
-
-    if (m_cardItem) {
-        emit m_cardItem->actionButtonClicked(m_buttonId, m_cardItem->getId());
-    }
-
-    QSanButton::mousePressEvent(event);
 }

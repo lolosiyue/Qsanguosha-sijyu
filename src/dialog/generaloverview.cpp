@@ -9,6 +9,7 @@
 #include "client.h"
 #include "heroskincontainer.h"
 #include <QRegularExpression>
+#include <QHash>
 //#include "clientplayer.h"
 //#include "package.h"
 
@@ -364,11 +365,38 @@ void GeneralOverview::fillGenerals(const QList<const General *> &generals, bool 
 
 	static QStringList LuaPackages = Config.value("LuaPackages").toString().split("+");
 
+    // Include hidden/filtered-out generals when indexing reverse declarations.
+    // Each source contributes once per target, matching getCompanions().
+    QHash<QString, QStringList> reverseCompanions;
+    for (const General *source : Sanguosha->getAllGenerals()) {
+        if (!source) continue;
+        QSet<QString> seenTargets;
+        for (const QString &target : source->getCompanionNames()) {
+            if (seenTargets.contains(target)) continue;
+            seenTargets.insert(target);
+            reverseCompanions[target] << Sanguosha->translate(source->objectName());
+        }
+    }
+    QHash<const General *, QString> companionTexts;
+    for (const General *general : copy_generals) {
+        QStringList names;
+        // Preserve forward declaration order/duplicates, then reverse scan order.
+        for (const QString &target : general->getCompanionNames())
+            names << Sanguosha->translate(target);
+        names << reverseCompanions.value(general->objectName());
+        if (!names.isEmpty()) companionTexts.insert(general, names.join(" "));
+    }
+
     for (int i = 0; i < copy_generals.length(); i++) {
         const General *general = copy_generals[i];
         QString name, kingdom, gender, max_hp, package;
 
         name = Sanguosha->translate(general->objectName());
+        const QString companions = companionTexts.value(general);
+        if (!companions.isEmpty())
+            name += QStringLiteral("  ")
+                    + Sanguosha->translate(QStringLiteral("CompanionEffect"))
+                    + QStringLiteral(": ") + companions;
         foreach (QString kin, general->getKingdoms().split("+"))
             kingdom.append(Sanguosha->translate(kin)).append("/");
         if (kingdom.endsWith("/"))

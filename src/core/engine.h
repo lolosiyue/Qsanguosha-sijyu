@@ -239,7 +239,8 @@ public:
     const ProhibitPindianSkill *isPindianProhibited(const Player *from, const Player *to) const;
     const CardLimitSkill *isCardLimited(const Player *player, const Card *card, Card::HandlingMethod method, bool isHandcard = false) const;
     int correctDistance(const Player *from, const Player *to, bool fixed = false) const;
-    int correctMaxCards(const Player *target, bool fixed = false) const;
+    int correctMaxCards(const Player *target, bool fixed = false,
+        MaxCardsType::MaxCardsCount type = MaxCardsType::Max) const;
     // 單一距離技能貢獻（V1 getCorrect／V2 evaluateCorrectSkill）；供 refreshUIState
     int contributionOfDistanceSkill(const DistanceSkill *skill, const Player *from, const Player *to, bool fixed = false) const;
     // 單一手牌上限技能貢獻列表（依實際 holder 拆條；fixed 優先於 extra）

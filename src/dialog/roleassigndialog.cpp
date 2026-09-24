@@ -12,10 +12,10 @@
 
 using namespace QSanProtocol;
 
-RoleAssignDialog::RoleAssignDialog(QWidget *parent)
-    : QDialog(parent)
+RoleAssignDialog::RoleAssignDialog(QWidget *parent, bool seatsOnly)
+    : QDialog(parent), m_seatsOnly(seatsOnly)
 {
-    setWindowTitle(tr("Assign roles and seats"));
+    setWindowTitle(m_seatsOnly ? tr("Assign seats") : tr("Assign roles and seats"));
 
     list = new QListWidget;
     list->setFlow(QListView::TopToBottom);
@@ -23,7 +23,7 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
 
     QStringList role_list = Sanguosha->getRoleList(ServerInfo.GameMode);
 
-    if (Config.FreeAssignSelf) {
+    if (Config.FreeAssignSelf && !m_seatsOnly) {
         QString text = QString("%1[%2]").arg(Self->screenName()).arg(Sanguosha->translate(role_list.first()));
 
         QListWidgetItem *item = new QListWidgetItem(text, list);
@@ -33,12 +33,13 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
     } else {
         QList<const ClientPlayer *> players = ClientInstance->getPlayers();
         for (int i = 0; i < players.length(); i++) {
-            QString text = QString("%1[%2]").arg(players[i]->screenName()).arg(Sanguosha->translate(role_list[i]));
+            QString text = m_seatsOnly ? tr("Seat %1: %2").arg(i + 1).arg(players[i]->screenName())
+                : QString("%1[%2]").arg(players[i]->screenName()).arg(Sanguosha->translate(role_list[i]));
 
             QListWidgetItem *item = new QListWidgetItem(text, list);
             item->setData(Qt::UserRole, players[i]->objectName());
 
-            role_mapping.insert(players[i]->objectName(), role_list[i]);
+            if (!m_seatsOnly) role_mapping.insert(players[i]->objectName(), role_list[i]);
         }
     }
 
@@ -58,12 +59,13 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
     QPushButton *okButton = new QPushButton(tr("OK"));
     QPushButton *cancelButton = new QPushButton(tr("Cancel"));
 
-    if (Config.FreeAssignSelf) {
+    if (Config.FreeAssignSelf && !m_seatsOnly) {
         moveUpButton->setEnabled(false);
         moveDownButton->setEnabled(false);
     }
 
     vlayout->addWidget(role_ComboBox);
+    role_ComboBox->setVisible(!m_seatsOnly);
     vlayout->addWidget(moveUpButton);
     vlayout->addWidget(moveDownButton);
     vlayout->addStretch();
@@ -92,6 +94,16 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
 
 void RoleAssignDialog::accept()
 {
+    if (m_seatsOnly) {
+        QStringList names, seats;
+        for (int i = 0; i < list->count(); ++i) {
+            names << list->item(i)->data(Qt::UserRole).toString();
+            seats << QString::number(i + 1);
+        }
+        ClientInstance->onPlayerAssignRole(names, seats);
+        QDialog::accept();
+        return;
+    }
     QStringList role_list = Sanguosha->getRoleList(ServerInfo.GameMode);
     QStringList real_list;
 
@@ -138,7 +150,7 @@ void RoleAssignDialog::reject()
 
 void RoleAssignDialog::updateRole(int index)
 {
-    if (!list->currentItem() || index < 0)
+    if (m_seatsOnly || !list->currentItem() || index < 0)
         return;
     QString name = list->currentItem()->data(Qt::UserRole).toString();
     QString role = role_ComboBox->itemData(index).toString();
@@ -150,7 +162,7 @@ void RoleAssignDialog::updateRole(int index)
 
 void RoleAssignDialog::updateRole(QListWidgetItem *current)
 {
-    if (!current)
+    if (m_seatsOnly || !current)
         return;
     QString name = current->data(Qt::UserRole).toString();
     QString role = role_mapping.value(name);
@@ -168,6 +180,7 @@ void RoleAssignDialog::moveUp()
     QListWidgetItem *item = list->takeItem(index);
     list->insertItem(index - 1, item);
     list->setCurrentItem(item);
+    updateSeatLabels();
 }
 
 void RoleAssignDialog::moveDown()
@@ -178,6 +191,17 @@ void RoleAssignDialog::moveDown()
     QListWidgetItem *item = list->takeItem(index);
     list->insertItem(index + 1, item);
     list->setCurrentItem(item);
+    updateSeatLabels();
+}
+
+void RoleAssignDialog::updateSeatLabels()
+{
+    if (!m_seatsOnly) return;
+    for (int i = 0; i < list->count(); ++i) {
+        QListWidgetItem *item = list->item(i);
+        const ClientPlayer *player = ClientInstance->getPlayer(item->data(Qt::UserRole).toString());
+        item->setText(tr("Seat %1: %2").arg(i + 1).arg(player->screenName()));
+    }
 }
 
 void RoomScene::startAssign()
@@ -187,7 +211,7 @@ void RoomScene::startAssign()
         ClientInstance->onPlayerCancelAssignRole();
         return;
     }
-    RoleAssignDialog *dialog = new RoleAssignDialog(main_window);
+    RoleAssignDialog *dialog = new RoleAssignDialog(main_window, ServerInfo.EnableHegemony);
     dialog->exec();
 }
 

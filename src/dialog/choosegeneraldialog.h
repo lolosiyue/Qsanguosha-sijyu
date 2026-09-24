@@ -55,7 +55,8 @@ public:
     };
     Q_ENUM(ButtonGroupType)
 
-    explicit FreeChooseDialog(const QString &name, QWidget *parent, ButtonGroupType type = Exclusive);
+    explicit FreeChooseDialog(const QString &name, QWidget *parent, ButtonGroupType type = Exclusive,
+                              const QStringList &allowedGenerals = QStringList());
 
 protected slots:
     virtual void onAvatarHoverEnter();

@@ -1,4 +1,4 @@
-﻿#ifndef _ROOM_THREAD_H
+#ifndef _ROOM_THREAD_H
 #define _ROOM_THREAD_H
 
 #include "structs.h"
@@ -8,6 +8,26 @@
 #include <atomic>
 
 class GameRule;
+struct SkillContext;
+
+// Opt-in attached legacy skills use this only around an accepted effect. The
+// enclosing dispatcher pins source identity before prompts or nested events.
+class LegacySkillActivation
+{
+public:
+    LegacySkillActivation(Room *room, ServerPlayer *owner, const QString &skillName);
+    ~LegacySkillActivation() noexcept(false);
+    explicit operator bool() const { return m_allowed; }
+    static bool isAvailable(Room *room, ServerPlayer *owner, const QString &skillName);
+    LegacySkillActivation(const LegacySkillActivation &) = delete;
+    LegacySkillActivation &operator=(const LegacySkillActivation &) = delete;
+
+private:
+    Room *m_room;
+    SkillContext *m_context = nullptr;
+    bool m_allowed = true;
+    int m_uncaughtExceptions;
+};
 
 struct LogMessage
 {
@@ -50,6 +70,9 @@ public:
     void constructTriggerTable();
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data);
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target);
+    // Initialize only newly granted sources through the ordinary V2 lifecycle.
+    bool triggerSkillSources(TriggerEvent event, Room *room, ServerPlayer *target, QVariant &data,
+                             const QList<SkillInstanceRef> &sources);
     // Diagnostic snapshot; call from the RoomThread or after it has stopped.
     QVariantMap triggerDispatchProfile() const;
 
@@ -71,6 +94,10 @@ public:
     void markSkillDescriptionsDirty();
     void refreshSkillDescriptions();
 
+    // A nested card can continue an accepted legacy effect without consuming
+    // the same attached source a second time.
+    bool isLegacySkillActivationActive(const SkillInstanceRef &source) const;
+
     void addPlayerSkills(ServerPlayer *player, bool invoke_game_start = false);
 
     void addTriggerSkill(const TriggerSkill *skill);
@@ -87,6 +114,17 @@ protected:
     virtual void run();
 
 private:
+    friend class LegacySkillActivation;
+    struct LegacyExecutionFrame {
+        QString skillName;
+        TriggerEvent event;
+        ServerPlayer *target = nullptr;
+        QVariant *data = nullptr;
+        QHash<QString, QList<SkillInstanceRef>> sources;
+    };
+    QList<LegacyExecutionFrame> m_legacyExecutionFrames;
+    QList<SkillInstanceRef> m_activeLegacySources;
+
     struct TriggerDispatchProfile {
         quint64 triggerCount = 0;
         quint64 priorityRebuildCount = 0;
@@ -110,7 +148,8 @@ private:
     bool dispatchTrigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data);
     void reclaimCompletedTurn();
     bool triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data,
-                         const QList<TriggerSkill *> *equipmentGroup = nullptr);
+                         const QList<TriggerSkill *> *equipmentGroup = nullptr,
+                         const QList<SkillInstanceRef> *allowedSources = nullptr);
     void sortTriggerSkills(TriggerEvent triggerEvent, Room *room, bool includeLose);
     void refreshDistanceCacheIfDirty(Room *room);
     void flushOutermostDeferredWork(Room *room);

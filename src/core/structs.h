@@ -9,6 +9,12 @@ class Card;
 #include <functional>
 #include <QSharedPointer>
 
+// Selection result; the caller decides how to move the selected and remaining cards.
+struct AskForMoveCardsStruct {
+    QList<int> top;
+    QList<int> bottom;
+};
+
 struct GameModeStruct {
     GameModeStruct();
     GameModeStruct(const QString &mode_id, const QString &display_name = QString(),
@@ -519,7 +525,7 @@ struct CardsMoveStruct {
     Player*from;
     Player*to;
     CardMoveReason reason;
-    bool open; // helper to prevent sending card_id to unrelevant clients
+    bool open = false; // helper to prevent sending card_id to unrelevant clients
     bool is_last_handcard;
     bool tryParse(const QVariant&arg);
     QVariant toVariant() const;
@@ -950,6 +956,14 @@ enum TriggerEvent {
     ConfirmPlayerNum,
     RemoveStateChanged,
     DFDebut,
+    GeneralShowed, // Completed reveal; payload is the list of revealed slots.
+    GeneralTransforming,
+    GeneralTransformed,
+    CommandVerifying,
+
+    BeforeCardsMoveBatch,
+    PreCardsMoveBatch,
+    CardsMoveBatch,
 
     NumOfEvents
 };

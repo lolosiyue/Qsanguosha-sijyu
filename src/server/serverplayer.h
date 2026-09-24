@@ -64,6 +64,7 @@ public:
     void throwAllMarks(bool visible_only = true);
     void clearOnePrivatePile(const QString &pile_name);
     void clearPrivatePiles();
+    void fillHandCards(int n, const QString &reason = QString());
     void drawCards(int n, const QString &reason = "", bool isTop = true, bool visible = false);
     QList<int> drawCardsList(int n, const QString &reason = "", bool isTop = true, bool visible = false);
     bool askForSkillInvoke(const QString &skill_name, const QVariant &data = QVariant(), bool notify = true);
@@ -143,6 +144,10 @@ public:
     QString findReasonable(const QStringList &generals, bool no_unreasonable = false);
     void clearSelected();
 
+    int getPlayerNumWithSameKingdom(const QString &reason, const QString &kingdom = QString(),
+                                    MaxCardsType::MaxCardsCount type = MaxCardsType::Max) const override;
+    PindianStruct *pindianSelect(ServerPlayer *target, const QString &reason, const Card *card = nullptr);
+    bool pindian(PindianStruct *selection);
     int getGeneralMaxHp() const;
     int getGeneralStartHp() const;
     int getGeneralStartHujia() const;
@@ -193,9 +198,15 @@ public:
     void summonFriends(const QString &type);
     bool inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const;
     bool inFormationRalation(ServerPlayer *teammate) const;
+    bool askCommandto(const QString &reason, ServerPlayer *target);
+    int startCommand(const QString &reason, ServerPlayer *target = nullptr);
+    bool doCommand(const QString &reason, int index, ServerPlayer *source);
+    void changeToLord();
     void askForGeneralShow();
     void showHiddenSkill(const QString &skill_name);
     void showGeneral(bool head_general = true, bool trigger_event = true, bool sendLog = true);
+    void hideGeneral(bool head_general);
+    void removeGeneral(bool head_general);
     void notifyPreshow();
 
     void addToShownHandCards(const QList<int> &card_ids);
@@ -291,7 +302,7 @@ public:
     void setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value);
     void setAvatarIcon(const QString &avatar_name, bool isSmall = false);
     bool damageRevises(QVariant &data, int n);
-    Q_INVOKABLE void refreshUIState();
+    Q_INVOKABLE void refreshUIState(bool force = false);
     void refreshSkillDescriptionState();
 
     QStringList getPendingAnytimeSkills() const;
@@ -305,9 +316,13 @@ protected:
     static const int S_NUM_SEMAPHORES;
 
 private:
+    friend class Room;
+    friend class PlayerLifecycleService;
     // Tears the connection down on the socket's own thread. Room-thread callers
     // must never touch QAbstractSocket directly.
     void disconnectSocketFromOwnerThread();
+    void syncHegemonyRevealState();
+    PindianStruct *finishPindian(PindianStruct *selection);
 
     ClientSocket *socket;
     QSanProtocol::ProtocolCodecRouter m_protocolRouter;

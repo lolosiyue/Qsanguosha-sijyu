@@ -59,6 +59,8 @@ public:
         ServerPlayer *to = room->askForPlayerChosen(caopi, room->getOtherPlayers(caopi), objectName(),
             "fangzhu-invoke", caopi->getMark("JilveEvent") != int(Damaged), true);
         if (to) {
+            LegacySkillActivation activation(room, caopi, objectName());
+            if (!activation) return;
             if (caopi->hasInnateSkill("fangzhu") || !caopi->hasSkill("jilve")) {
                 int index = to->faceUp() ? 1 : 2;
                 if (to->getGeneralName().contains("caozhi") || (to->getGeneral2() && to->getGeneral2Name().contains("caozhi")))
@@ -941,52 +943,48 @@ public:
     }
 };
 
-class Benghuai : public PhaseChangeSkill
+class Benghuai : public TriggerSkillV2
 {
 public:
-    Benghuai() : PhaseChangeSkill("benghuai")
+    Benghuai() : TriggerSkillV2("benghuai")
     {
+        events << EventPhaseStart;
         frequency = Compulsory;
     }
 
-    bool onPhaseChange(ServerPlayer *dongzhuo, Room *room) const
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        if (dongzhuo->getMark("benghuai_nullification-Clear") > 0) return false;
-        bool trigger_this = false;
-
-        if (dongzhuo->getPhase() == Player::Finish) {
-            QList<ServerPlayer *> players = room->getOtherPlayers(dongzhuo);
-            foreach (ServerPlayer *player, players) {
-                if (dongzhuo->getHp() > player->getHp()) {
-                    trigger_this = true;
-                    break;
-                }
-            }
+        if (!player || !player->isAlive() || !player->hasSkill(objectName())
+            || player->getPhase() != Player::Finish || player->getMark("benghuai_nullification-Clear") > 0)
+            return {};
+        for (ServerPlayer *other : room->getOtherPlayers(player)) {
+            if (player->getHp() > other->getHp()) return TriggerList{{player, {objectName()}}};
         }
+        return {};
+    }
 
-        if (trigger_this) {
-            room->sendCompulsoryTriggerLog(dongzhuo, objectName());
-
-            QString result = room->askForChoice(dongzhuo, "benghuai", "hp+maxhp");
-            int index = (dongzhuo->isFemale()) ? 2 : 1;
-            if (dongzhuo->isJieGeneral("dongzhuo"))
-                index = qsanRandomBounded(2) + 6;
-            else {
-                if (!dongzhuo->hasInnateSkill(this) && (dongzhuo->getMark("juyi") > 0 || dongzhuo->getMark("oljuyi") > 0))
-                    index = 3;
-
-                if (!dongzhuo->hasInnateSkill(this) && dongzhuo->getMark("baoling") > 0)
-                    index = result == "hp" ? 4 : 5;
-
-            }
-
-            room->broadcastSkillInvoke(objectName(), index);
-            if (result == "hp")
-                room->loseHp(HpLostStruct(dongzhuo, 1, objectName(), dongzhuo));
-            else
-                room->loseMaxHp(dongzhuo, 1, objectName());
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *dongzhuo = ctx.invoker;
+        if (!dongzhuo || !dongzhuo->isAlive()) return false;
+        room->sendCompulsoryTriggerLog(dongzhuo, objectName());
+        // Losing HP is the compulsory result, not a payment that bypass_cost waives.
+        const QString result = room->askForChoice(dongzhuo, objectName(), "hp+maxhp");
+        int index = dongzhuo->isFemale() ? 2 : 1;
+        if (dongzhuo->isJieGeneral("dongzhuo"))
+            index = qsanRandomBounded(2) + 6;
+        else {
+            if (!dongzhuo->hasInnateSkill(this) && (dongzhuo->getMark("juyi") > 0 || dongzhuo->getMark("oljuyi") > 0))
+                index = 3;
+            if (!dongzhuo->hasInnateSkill(this) && dongzhuo->getMark("baoling") > 0)
+                index = result == "hp" ? 4 : 5;
         }
-
+        room->broadcastSkillInvoke(objectName(), index);
+        const int amount = getEffectiveAmount(ctx);
+        if (result == "hp")
+            room->loseHp(HpLostStruct(dongzhuo, amount, objectName(), dongzhuo));
+        else
+            room->loseMaxHp(dongzhuo, amount, objectName());
         return false;
     }
 };

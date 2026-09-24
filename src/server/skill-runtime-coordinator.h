@@ -13,10 +13,14 @@ class SkillRuntimeCoordinator
 {
 public:
     explicit SkillRuntimeCoordinator(Room &room);
+    static bool canReceiveSkillInstance(const Room &room, const ServerPlayer *receiver,
+                                        const ServerPlayer *owner, const SkillInstance &instance);
 
     void attachSkillToPlayer(ServerPlayer *player, const QString &skillName);
     SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const QString &skillName,
                                          const SkillInstanceRef &parentRef);
+    SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const QString &skillName,
+                                         const SkillInstanceRef &parentRef, bool visible);
     bool detachAttachedSkill(const SkillInstanceRef &ref);
     int detachSkillFromPlayer(ServerPlayer *player, const QString &skillName,
                               bool isEquip, bool acquireOnly, bool eventAndLog);
@@ -28,6 +32,12 @@ public:
                      bool getmark, bool eventAndLog);
     int acquireSkill(ServerPlayer *player, const QString &skillName, bool open,
                      bool getmark, bool eventAndLog);
+    // Donor-compatible slot-aware acquisition.  The legacy overload above
+    // remains head-bound; this path binds the root and related helpers before
+    // publishing their instance upserts.
+    int acquireSkillForSlot(ServerPlayer *player, const QString &skillName,
+                            bool head, bool open, bool getmark,
+                            bool eventAndLog);
 
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);

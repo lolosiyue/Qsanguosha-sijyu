@@ -12,6 +12,8 @@ struct ChooseGeneralRequestPayload
     static constexpr int SchemaVersion = 1;
 
     QStringList candidates;
+    // Ordered head+deputy replies, supplied only by hegemony preparation.
+    QStringList hegemonyPairs;
 
     QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;

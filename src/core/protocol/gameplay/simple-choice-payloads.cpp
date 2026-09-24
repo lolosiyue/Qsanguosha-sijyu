@@ -233,15 +233,20 @@ bool parseCamp(const QString &name, int *camp, QString *error)
 
 QVariant ChooseGeneralRequestPayload::toDomainVariant() const
 {
+    if (!hegemonyPairs.isEmpty())
+        return toV2Variant();
     return stringListVariant(candidates);
 }
 
 QVariantMap ChooseGeneralRequestPayload::toV2Variant() const
 {
-    return QVariantMap{
+    QVariantMap result{
         {QStringLiteral("schema_version"), SchemaVersion},
         {QStringLiteral("candidates"), stringListVariant(candidates)}
     };
+    if (!hegemonyPairs.isEmpty())
+        result.insert(QStringLiteral("hegemony_pairs"), stringListVariant(hegemonyPairs));
+    return result;
 }
 
 bool ChooseGeneralRequestPayload::parseDomain(
@@ -251,6 +256,8 @@ bool ChooseGeneralRequestPayload::parseDomain(
         error->clear();
     if (payload == nullptr)
         return fail(error, QStringLiteral("Choose general request output is null"));
+    if (value.userType() == QMetaType::QVariantMap)
+        return parseV2(value, payload, error);
     ChooseGeneralRequestPayload parsed;
     if (!parseDomainStringArray(value, QStringLiteral("choose general request"),
                                 &parsed.candidates, error)) {
@@ -274,6 +281,21 @@ bool ChooseGeneralRequestPayload::parseV2(
                               QStringLiteral("Choose general request"),
                               &parsed.candidates, error)) {
         return false;
+    }
+    if (object.contains(QStringLiteral("hegemony_pairs"))) {
+        if (!requireStringList(object, QStringLiteral("hegemony_pairs"),
+                               QStringLiteral("Choose general request"),
+                               &parsed.hegemonyPairs, error)
+            || parsed.hegemonyPairs.isEmpty())
+            return fail(error, QStringLiteral("Hegemony pairs must be a nonempty string array"));
+        for (const QString &pair : parsed.hegemonyPairs) {
+            const QStringList names = pair.split('+');
+            if (names.size() != 2 || names.first().isEmpty() || names.last().isEmpty()
+                || names.first() == names.last()
+                || !parsed.candidates.contains(names.first())
+                || !parsed.candidates.contains(names.last()))
+                return fail(error, QStringLiteral("Hegemony pair must contain two distinct candidates"));
+        }
     }
     *payload = parsed;
     return true;

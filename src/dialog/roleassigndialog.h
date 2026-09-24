@@ -6,7 +6,7 @@ class RoleAssignDialog : public QDialog
     Q_OBJECT
 
 public:
-    RoleAssignDialog(QWidget *parent);
+    RoleAssignDialog(QWidget *parent, bool seatsOnly = false);
 
 protected:
     virtual void accept();
@@ -16,6 +16,8 @@ private:
     QListWidget *list;
     QComboBox *role_ComboBox;
     QMap<QString, QString> role_mapping;
+    bool m_seatsOnly;
+    void updateSeatLabels();
 
 private slots:
     void updateRole(int index);

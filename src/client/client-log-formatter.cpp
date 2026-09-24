@@ -99,6 +99,10 @@ QString useCardSentence(const ClientLogFormatRequest &request, const ClientLogFo
         reason = phrase.recastingText;
     const QString cardName = cardNameOf(style, card);
     QString skillName = card->getSkillName();
+    // Parsing @ActiveSkillCard alone derives "activeskill". Use the server's
+    // explicit log identity; ordinary card logs retain their existing names.
+    if (qobject_cast<const ActiveSkillCard *>(card) && !request.arg.isEmpty())
+        skillName = request.arg;
     QString log;
     if (card->isVirtualCard()) {
         const bool eff = card->getTypeId() > 0 && card->getSkillName(false) != skillName;

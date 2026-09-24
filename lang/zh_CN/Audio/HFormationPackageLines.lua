@@ -1,31 +1,26 @@
--- lines for Hegemony Formation Package
-
+-- Ported original hegemony audio translations.
+-- source: TODO/original/lang/zh_CN/Audio/FormationLines.lua; TODO/QSanguosha-For-Hegemony-xxyheaven@cf61c15/lang/zh_CN/Audio/FormationLines.lua
 return {
-	-- 曹洪
-	["cv:heg_caohong"] = "极光星逝",
-	["$huyuan1"] = "明公先行，洪自断后。", --武器
-	["$huyuan2"] = "天下可无洪，不可无公。", --防具
-	["$heyi1"] = "如鹤振翅，翼护四方。",
-	["$heyi2"] = "变阵换形，护主突围。",
-	["~heg_caohong"] = "福祸本相依，觉时已晚矣。",
-
-
-	-- 徐盛
-	["cv:heg_xusheng"] = "极光星逝",
-	["$yicheng1"] = "临江为城以疑之，方可退敌。",
-	["$yicheng2"] = "虚实相掩，此疑城之计也。",
-	["~heg_xusheng"] = "大军压境，我亦无能为力……",
-
-	-- 于吉
-	["cv:heg_yuji"] = "七哥",
-	["$qianhuan1"] = "万事皆空，幻象新生。",
-	["$qianhuan2"] = "魂绕左右，噩极此生。",
-	["~heg_yuji"] = "魂飞魄散，回天无术。",
-
-	-- 蒋钦
-	["cv:jiangqin"] = "极光星逝",
-	["$shangyi2"] = "臣当助国求才， 岂敢挟私恨以蔽贤乎。",
-	["$shangyi1"] = "坦诚相待，以消不虞之隙。",
-	["$niaoxiang"] = "一夫突击，三军莫当！",
-	["~jiangqin"] = "壮志未酬身先死……",
+	["$heg_tuntian1"] = "留得良田在，何愁不破敌？",
+	["$heg_tuntian2"] = "击鼓于此，以致四方。",
+	["$heg_huyuan1"] = "拼上性命，也要保将军周全！",
+	["$heg_huyuan2"] = "舍命献马，护我曹公！",
+	["$heg_yicheng1"] = "不怕死就尽管放马过来！",
+	["$heg_yicheng2"] = "待末将布下疑城，以退曹贼！",
+	["$heg_qianhuan1"] = "幻化于阴阳，藏匿于乾坤。",
+	["$heg_qianhuan2"] = "幻变迷踪，虽飞鸟亦难觅踪迹。",
+	["~heg_dengai"] = "吾破蜀克敌，竟葬于奸贼之手！",
+	["cv:heg_caohong"] = "喵小林",
+	["~heg_caohong"] = "主公已安，洪纵死亦何惜……",
+	["~heg_jiangwei"] = "我计不成，乃天命也。",
+	["cv:heg_jiangwanfeiyi"] = "曹操&德邦总管老张",
+	["~heg_xusheng"] = "盛不能奋身出命，不亦辱乎。",
+	["cv:heg_jiangqin"] = "极光星逝" ,
+	["$heg_niaoxiang"] = "一夫突击，三军莫当！" ,
+	["~heg_jiangqin"] = "壮志未酬身先死……" ,
+	["~heg_yuji"] = "竟然…被猜到了……",
+	["cv:heg_hetaihou"] = "郁望梦始",
+	["cv:heg_lord_liubei"] = "喵小林",
+	["$heg_jizhao"] = "尔等叛贼，害我兄弟，饶不得汝！",
+	["~heg_lord_liubei"] = "一时不仁，毁己功业，吾悔矣！",
 }

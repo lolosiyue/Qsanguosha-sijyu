@@ -14,16 +14,57 @@
 
 using namespace QSanProtocol;
 
-namespace {
-
-bool canReceiveSkillInstance(const ServerPlayer *receiver, const ServerPlayer *owner,
-                             const SkillInstance &instance)
+bool SkillRuntimeCoordinator::canReceiveSkillInstance(const Room &room, const ServerPlayer *receiver,
+                             const ServerPlayer *owner, const SkillInstance &instance)
 {
-    if (receiver == owner)
-        return true;
-    const Skill *skill = Sanguosha->getSkill(instance.skillName);
-    return instance.source != SourceHelper && instance.visible && skill && skill->isVisible();
+    if (!receiver || !owner)
+        return false;
+    if (!Config.EnableHegemony) {
+        if (receiver == owner)
+            return true;
+        const Skill *skill = Sanguosha->getSkill(instance.skillName);
+        return instance.source != SourceHelper && instance.visible && skill && skill->isVisible();
+    }
+
+    const ServerPlayer *sourceOwner = owner;
+    const SkillInstance *source = &instance;
+    QSet<QString> visited;
+    while (source) {
+        // A public attachment must not disclose a concealed provider via parentRef.
+        const QString identity = sourceOwner->objectName() + QChar('\x1f')
+            + SkillInstanceUtils::formatName(source->skillName, source->instanceID);
+        if (visited.contains(identity) || source->source == SourceHelper)
+            return false;
+        visited.insert(identity);
+        if (receiver != sourceOwner) {
+            const Skill *skill = Sanguosha->getSkill(source->skillName);
+            if (!source->visible || !skill || !skill->isVisible())
+                return false;
+        }
+        if (source->source == SourceAttached) {
+            if (!source->parentRef.isValid())
+                return false;
+            sourceOwner = room.findPlayerByObjectName(source->parentRef.ownerObjectName, true);
+            if (!sourceOwner)
+                return false;
+            source = sourceOwner->findSkillInstance(source->parentRef.key.skillName,
+                                                    source->parentRef.key.instanceID);
+            continue;
+        }
+        if (receiver == sourceOwner || source->source == SourceAcquired)
+            return true;
+        // Use this instance's binding, including a removed instance's snapshot.
+        // A same-name skill on the other general must not reveal this instance.
+        if (source->source == SourceInnate) {
+            return (source->bindHead == 1 && sourceOwner->hasShownGeneral())
+                || (source->bindHead == 2 && sourceOwner->hasShownGeneral2());
+        }
+        return false;
+    }
+    return false;
 }
+
+namespace {
 
 SkillInstanceEntryMessage skillInstanceMessage(const ServerPlayer *owner,
                                                const SkillInstance &instance,
@@ -115,6 +156,12 @@ void SkillRuntimeCoordinator::attachSkillToPlayer(ServerPlayer *player,
 SkillInstanceRef SkillRuntimeCoordinator::attachSkillToPlayer(
     ServerPlayer *player, const QString &skillName, const SkillInstanceRef &parentRef)
 {
+    return attachSkillToPlayer(player, skillName, parentRef, true);
+}
+
+SkillInstanceRef SkillRuntimeCoordinator::attachSkillToPlayer(
+    ServerPlayer *player, const QString &skillName, const SkillInstanceRef &parentRef, bool visible)
+{
     if (!player || !parentRef.isValid())
         return SkillInstanceRef();
     ServerPlayer *parentOwner = m_room.findPlayerByObjectName(parentRef.ownerObjectName, true);
@@ -132,8 +179,10 @@ SkillInstanceRef SkillRuntimeCoordinator::attachSkillToPlayer(
     const Skill *skill = Sanguosha->getSkill(skillName);
     if (!skill)
         return SkillInstanceRef();
+    // Visibility is fixed before the first projection notification. Private
+    // grants must never send a public upsert and hide themselves afterward.
     const int instanceId = player->createSkillInstance(skillName, SourceAttached,
-                                                       parentRef, skill->isVisible());
+                                                       parentRef, visible && skill->isVisible());
     const SkillInstanceRef child(player->objectName(),
                                  SkillInstanceKey(skillName, instanceId));
     if (!m_room.roomRuntime()->attachedSkills().attach(parentRef, child)) {
@@ -190,6 +239,9 @@ int SkillRuntimeCoordinator::chooseSkillInstance(ServerPlayer *chooser, ServerPl
         const Skill *skill = Sanguosha->getSkill(skillName);
         if (visibleOnly && (!instance->visible || !skill || !skill->isVisible()))
             continue;
+        if (visibleOnly && Config.EnableHegemony
+            && !canReceiveSkillInstance(m_room, chooser, owner, *instance))
+            continue;
         candidateIds << instanceId;
         choices << SkillInstanceUtils::formatName(skillName, instanceId);
     }
@@ -217,6 +269,14 @@ bool SkillRuntimeCoordinator::removeSkillInstanceFromPlayer(
         return false;
 
     const SkillInstance removed = *instance;
+    QList<ServerPlayer *> lossLogReceivers;
+    if (Config.EnableHegemony) {
+        lossLogReceivers << owner;
+        foreach (ServerPlayer *receiver, m_room.getAllPlayers(true)) {
+            if (receiver != owner && canReceiveSkillInstance(m_room, receiver, owner, removed))
+                lossLogReceivers << receiver;
+        }
+    }
     const SkillInstanceRef instanceRef(owner->objectName(), instance->key());
     if (instance->source == SourceAttached)
         return detachAttachedSkill(instanceRef);
@@ -233,7 +293,11 @@ bool SkillRuntimeCoordinator::removeSkillInstanceFromPlayer(
         log.type = "#LoseSkill";
         log.from = owner;
         log.arg = skillName;
-        m_room.sendLog(log);
+        // Capture visibility before removal; an empty recipient list means broadcast.
+        if (Config.EnableHegemony)
+            m_room.sendLog(log, lossLogReceivers);
+        else
+            m_room.sendLog(log);
     }
 
     if (eventAndLog) {
@@ -308,7 +372,9 @@ int SkillRuntimeCoordinator::discardSkillInstance(ServerPlayer *chooser,
         const SkillInstance *instance = owner->findSkillInstance(baseName, requestedId);
         const Skill *skill = Sanguosha->getSkill(baseName);
         if (instance && instance->source != SourceHelper && instance->visible
-            && skill && skill->isVisible()) {
+            && skill && skill->isVisible()
+            && (!Config.EnableHegemony
+                || canReceiveSkillInstance(m_room, chooser, owner, *instance))) {
             instanceId = requestedId;
         }
     } else {
@@ -349,17 +415,24 @@ int SkillRuntimeCoordinator::acquireSkill(ServerPlayer *player, const Skill *ski
 {
     if (!skill)
         return 0;
-    return acquireSkill(player, skill->objectName(), open, getmark, eventAndLog);
+    return acquireSkillForSlot(player, skill->objectName(), true, open, getmark, eventAndLog);
 }
 
 int SkillRuntimeCoordinator::acquireSkill(ServerPlayer *player, const QString &skillName,
                                           bool open, bool getmark, bool eventAndLog)
 {
+    return acquireSkillForSlot(player, skillName, true, open, getmark, eventAndLog);
+}
+
+int SkillRuntimeCoordinator::acquireSkillForSlot(ServerPlayer *player, const QString &skillName,
+                                                 bool head, bool open, bool getmark,
+                                                 bool eventAndLog)
+{
     const Skill *skill = Sanguosha->getSkill(skillName);
     if (!skill)
         return 0;
 
-    const int instanceId = player->acquireSkill(skillName);
+    const int instanceId = player->acquireSkill(skillName, head);
     const SkillInstance *created = player->findSkillInstance(skillName, instanceId);
     if (created)
         notifySkillInstanceUpsert(player, *created);
@@ -402,8 +475,12 @@ int SkillRuntimeCoordinator::acquireSkill(ServerPlayer *player, const QString &s
                                                          skillName, instanceId,
                                                          related->isVisible());
         const SkillInstance *helper = player->findSkillInstance(related->objectName(), helperId);
-        if (helper)
+        if (helper) {
+            // createSkillInstance defaults to an unbound helper.  Bind it to
+            // the same general slot before the first client upsert/event.
+            const_cast<SkillInstance *>(helper)->bindHead = head ? 1 : 2;
             notifySkillInstanceUpsert(player, *helper);
+        }
         if (related->inherits("TriggerSkill"))
             m_room.thread->addTriggerSkill(qobject_cast<const TriggerSkill *>(related));
 
@@ -429,12 +506,14 @@ void SkillRuntimeCoordinator::notifySkillInstanceSnapshot(ServerPlayer *receiver
     QList<SkillInstanceEntryMessage> entries;
     foreach (ServerPlayer *owner, m_room.getAllPlayers(true)) {
         foreach (const SkillInstance &instance, owner->getSkillInstances()) {
-            if (canReceiveSkillInstance(receiver, owner, instance))
+            if (canReceiveSkillInstance(m_room, receiver, owner, instance))
                 entries << skillInstanceMessage(owner, instance, receiver == owner);
         }
     }
     const SkillInstanceMessage message = SkillInstanceMessage::makeSnapshot(entries);
     m_room.doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
+    // Snapshot replacement clears client instances first; private preshow must
+    // follow it, including reconnect and reveal snapshots sent to other owners.
     if (Config.EnableHegemony) receiver->notifyPreshow();
 }
 
@@ -442,7 +521,7 @@ void SkillRuntimeCoordinator::notifySkillInstanceUpsert(ServerPlayer *owner,
                                                         const SkillInstance &instance)
 {
     foreach (ServerPlayer *receiver, m_room.getPlayers()) {
-        if (!canReceiveSkillInstance(receiver, owner, instance))
+        if (!canReceiveSkillInstance(m_room, receiver, owner, instance))
             continue;
         const SkillInstanceMessage message = SkillInstanceMessage::makeUpsert(
             skillInstanceMessage(owner, instance, receiver == owner));
@@ -454,8 +533,15 @@ void SkillRuntimeCoordinator::notifySkillInstanceUpsert(ServerPlayer *owner,
 void SkillRuntimeCoordinator::notifySkillInstanceRemove(ServerPlayer *owner,
                                                         const SkillInstance &instance)
 {
+    // The removed attachment's provider may already be gone. A filtered snapshot
+    // clears stale client entries without revealing a now-private source identity.
+    if (Config.EnableHegemony && instance.source == SourceAttached) {
+        foreach (ServerPlayer *receiver, m_room.getPlayers())
+            notifySkillInstanceSnapshot(receiver);
+        return;
+    }
     foreach (ServerPlayer *receiver, m_room.getPlayers()) {
-        if (!canReceiveSkillInstance(receiver, owner, instance))
+        if (!canReceiveSkillInstance(m_room, receiver, owner, instance))
             continue;
         const SkillInstanceMessage message = SkillInstanceMessage::makeRemove(
             owner->objectName(), instance.skillName, instance.instanceID);
@@ -470,7 +556,7 @@ void SkillRuntimeCoordinator::notifySkillInstanceAmount(ServerPlayer *owner,
     if (!owner)
         return;
     foreach (ServerPlayer *receiver, m_room.getPlayers()) {
-        if (!canReceiveSkillInstance(receiver, owner, instance))
+        if (!canReceiveSkillInstance(m_room, receiver, owner, instance))
             continue;
         const SkillInstanceMessage message = SkillInstanceMessage::makeAmount(
             owner->objectName(), instance.skillName, instance.instanceID,
@@ -486,7 +572,7 @@ void SkillRuntimeCoordinator::notifySkillInstanceCorrectState(
     if (!owner)
         return;
     foreach (ServerPlayer *receiver, m_room.getPlayers()) {
-        if (!canReceiveSkillInstance(receiver, owner, instance))
+        if (!canReceiveSkillInstance(m_room, receiver, owner, instance))
             continue;
         const SkillInstanceMessage message = SkillInstanceMessage::makeCorrectState(
             owner->objectName(), instance.skillName, instance.instanceID,
@@ -499,6 +585,8 @@ void SkillRuntimeCoordinator::notifySkillInstanceState(
     ServerPlayer *owner, const SkillInstance &instance, const QString &operation,
     const QString &key, const QVariant &value)
 {
+    if (Config.EnableHegemony && !canReceiveSkillInstance(m_room, owner, owner, instance))
+        return;
     m_room.m_notifier->notifySkillInstanceState(owner, instance, operation, key, value);
 }
 
@@ -839,6 +927,22 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         return false;
     QString activationName = use.card->getActivationSkillName();
     int activationId = use.card->getActivationSkillInstanceId();
+    if (activationName.isEmpty() && use.card->getTypeId() == Card::TypeSkill) {
+        // Native C++ viewAs() may return an unnamed SkillCard; Card::Parse
+        // derives the same name for its serialized counterpart.
+        QString className = QString::fromLatin1(use.card->metaObject()->className());
+        if (className.endsWith(QStringLiteral("Card"))) {
+            className.chop(4);
+            const QString candidate = className.toLower();
+            for (int id : use.from->getSkillInstanceIds(candidate)) {
+                if (use.from->getSkillInstanceStateValue(candidate, id,
+                        QStringLiteral("legacy_activation_lifecycle")).toBool()) {
+                    activationName = candidate;
+                    break;
+                }
+            }
+        }
+    }
     const auto *equipmentViewAs = dynamic_cast<const ViewAsSkillV2 *>(
         Sanguosha->getViewAsSkill(activationName));
     if (equipmentViewAs && equipmentViewAs->isEquipSkill() && activationId == 0) {
@@ -865,10 +969,40 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         use.sourceRef = source.sourceRef;
         use.changeCard(const_cast<Card *>(rebuilt));
         const_cast<Card *>(use.card)->change_cards.clear();
+        // The server-created equipment conversion has no other owner. Keep it
+        // alive across use copies, then retire it through CardUseStruct's deleter.
+        use.setOwnedCard(const_cast<Card *>(rebuilt));
         return true;
     }
-    if (!use.hasSkillActivationRequest && activationId == 0)
-        return true;
+    if (!use.hasSkillActivationRequest && activationId == 0) {
+        // Old card strings carry only a skill name. Attribute an opt-in private
+        // attachment before entering the existing use/response lifecycle.
+        QList<int> projected;
+        bool hasOrdinarySource = false;
+        for (const SkillInstance &instance : use.from->getSkillInstances()) {
+            if (instance.skillName != activationName) continue;
+            if (instance.source == SourceAttached
+                && use.from->getSkillInstanceStateValue(instance.skillName, instance.instanceID,
+                    QStringLiteral("legacy_activation_lifecycle")).toBool()) {
+                if (use.from->getValidSkillInstanceIds(activationName).contains(instance.instanceID))
+                    projected << instance.instanceID;
+            } else {
+                hasOrdinarySource = true;
+            }
+        }
+        if (projected.isEmpty() || hasOrdinarySource) return true;
+        activationId = projected.first();
+        if (projected.size() > 1) {
+            // Multiple providers remain distinct even for an old AI/card string.
+            QStringList choices;
+            for (int id : projected)
+                choices << SkillInstanceUtils::formatName(activationName, id);
+            const QString choice = m_room.askForChoice(use.from, activationName, choices.join("+"));
+            const int index = choices.indexOf(choice);
+            if (index < 0) return false;
+            activationId = projected.at(index);
+        }
+    }
     if (activationId == 0) {
         if (activationName.isEmpty())
             return true;
@@ -893,7 +1027,7 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
     const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(activationSkill);
     const bool hasActivationInstance = use.from->hasSkillInstance(activationName,
                                                                   activationId);
-    const bool continuesViewAsEffect = activeSkill
+    const bool continuesViewAsEffect = activationSkill
         && hasViewAsSkillEffect(use.from, activationName);
     if (!hasActivationInstance && !continuesViewAsEffect)
         return false;
@@ -931,6 +1065,8 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
             return false;
         use.changeCard(const_cast<Card *>(serverCard));
         const_cast<Card *>(use.card)->change_cards.clear();
+        // The server-created card must retire with the submitted use.
+        use.setOwnedCard(const_cast<Card *>(serverCard));
     }
     return true;
 }
