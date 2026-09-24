@@ -556,7 +556,7 @@ QByteArray buildGameConfigSummary()
         .arg(Config.ServerPort)
         .arg(Config.CountDownSeconds)
         .arg(Config.NullificationCountDown);
-    lines << QString("雙將: %1  軍爭: %2  國戰: %3  同將: %4")
+    lines << QString("雙將: %1  國戰: %2")
         .arg(onOff(Config.Enable2ndGeneral),
              onOff(Config.EnableHegemony));
     lines << QString("座次/操作: 隨機座次=%1  自由選將=%2  自由分配=%3  作弊=%4")

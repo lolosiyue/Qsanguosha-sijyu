@@ -1029,7 +1029,7 @@ cp docs/server.ini.example server.ini
 `--config` 支援完整 server-side 設定，包括：
 
 - 基本設定：`ServerName`、`GameMode`、`BindAddress`、`ServerPort`、`WebSocketPort`、操作／開局倒數。
-- 遊戲規則：`BanPackages`、`RandomSeat`、作弊／自由選將、雙將、同將、暗將、國戰、混戰及體力方案。
+- 遊戲規則：`BanPackages`、`RandomSeat`、作弊／自由選將、雙將、國戰、混戰及體力方案。
 - AI／服務：AI delay、禁聊、同 IP 限制、投降、手氣卡、Lua、神將、UPnP／列表伺服器。
 - 模式設定：`1v1/*`、`3v3/*`、`XMode/*`、`Banlist/*`。
 - Boss mode：難度 bitmask、十殿閻羅、經驗、可選 Boss、無盡及回合限制。

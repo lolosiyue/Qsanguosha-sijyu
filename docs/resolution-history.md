@@ -228,4 +228,4 @@ FreeKill 的 `getEventsOfScope`／`findParent` 是設計參考；本專案的 `h
 
 ## 驗證紀錄
 
-[2026-09-20 驗證報告](reports/resolution-history-20260920.md)保存建置、focused cases、首次 TUI 逾時及修正後同種子重測結果。
+2026-09-20 驗證涵蓋建置、focused cases、首次 TUI 逾時及修正後同種子重測。
