@@ -7,6 +7,7 @@
 #include "room-runtime.h"
 #include "roomthread.h"
 #include "serverplayer.h"
+#include "hegemony-mode.h"
 #include "settings.h"
 
 #include <limits>
@@ -55,10 +56,8 @@ bool SkillRuntimeCoordinator::canReceiveSkillInstance(const Room &room, const Se
             return true;
         // Use this instance's binding, including a removed instance's snapshot.
         // A same-name skill on the other general must not reveal this instance.
-        if (source->source == SourceInnate) {
-            return (source->bindHead == 1 && sourceOwner->hasShownGeneral())
-                || (source->bindHead == 2 && sourceOwner->hasShownGeneral2());
-        }
+        if (source->source == SourceInnate)
+            return HegemonyMode::innateGeneralShown(sourceOwner, source->bindHead);
         return false;
     }
     return false;
