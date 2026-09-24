@@ -359,10 +359,10 @@ public:
             if (effect.card->getTag("heg_wushuang_source_targets").toStringList().isEmpty()
                 && effect.card->getTag("heg_wushuang_receivers").toStringList().isEmpty()) return true;
             QStringList doubled;
-            if (effect.from->hasShownSkill("wushuang")
+            if (effect.from->hasShownSkill("heg_wushuang")
                 || effect.card->getTag("heg_wushuang_source_targets").toStringList().contains(effect.to->objectName()))
                 doubled << effect.to->objectName();
-            if (effect.to->hasShownSkill("wushuang")
+            if (effect.to->hasShownSkill("heg_wushuang")
                 || effect.card->getTag("heg_wushuang_receivers").toStringList().contains(effect.to->objectName()))
                 doubled << effect.from->objectName();
             // Native Duel's response consumer operates on the current pair.

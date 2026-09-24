@@ -107,6 +107,12 @@ public:
         return m_card->canRecast();
     }
 
+    inline void setTransferable(bool flag) override
+    {
+        Card::setTransferable(flag);
+        m_card->setTransferable(flag);
+    }
+
     inline Card::HandlingMethod getHandlingMethod() const
     {
         //Q_ASSERT(m_card != nullptr);
@@ -242,6 +248,16 @@ public:
     {
         //Q_ASSERT(m_card != nullptr);
         m_card->onUse(room, cardUse);
+    }
+
+    inline void extraCost(Room *room, const CardUseStruct &cardUse) const override
+    {
+        m_card->extraCost(room, cardUse);
+    }
+
+    inline QStringList checkTargetModSkillShow(const CardUseStruct &cardUse) const override
+    {
+        return m_card->checkTargetModSkillShow(cardUse);
     }
 
     inline void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const

@@ -156,11 +156,32 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         if (value.playerNames.isEmpty())
             value.playerNames = state.playerNames();
         value.roles = strings(object.value(QStringLiteral("roles")));
+        if (state.setup().value(QStringLiteral("enable_hegemony")).toBool()) {
+            // CHOOSE_ROLE is the existing opening assignment request; Hegemony
+            // assigns seat numbers here and determines factions after generals.
+            value.scheme = QStringLiteral("hegemony_seats");
+            value.roles.clear();
+            for (int seat = 1; seat <= value.playerNames.size(); ++seat)
+                value.roles << QString::number(seat);
+        }
         payload = value;
-        cancelable = false;
+        cancelable = value.scheme == QLatin1String("hegemony_seats");
         break;
     }
     case S_COMMAND_CHOOSE_GENERAL: {
+        if (state.setup().value(QStringLiteral("enable_hegemony")).toBool()
+            && object.contains(QStringLiteral("hegemony_pairs"))) {
+            ChooseGeneralRequestPayload generalRequest;
+            if (!ChooseGeneralRequestPayload::parseV2(message.payload, &generalRequest, error))
+                return false;
+            // Pair replies remain a single option, shared by TUI, Web and Sheets.
+            OptionInteractionPayload value = optionPayload(generalRequest.hegemonyPairs);
+            value.generalCandidates = generalRequest.candidates;
+            value.enumerated = !state.setup().value(QStringLiteral("free_choose")).toBool();
+            payload = value;
+            cancelable = false;
+            break;
+        }
         QStringList values = strings(object.value(QStringLiteral("candidates")));
         if (values.isEmpty())
             values = strings(message.payload);

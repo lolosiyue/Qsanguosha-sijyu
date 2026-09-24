@@ -18,6 +18,8 @@
 #include <QScopeGuard>
 
 #include <cstdio>
+#include <exception>
+#include <memory>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -267,7 +269,7 @@ CardUseStruct &CardUseStruct::operator=(const CardUseStruct &other)
 	card=other.card; from=other.from; to=other.to; m_isOwnerUse=other.m_isOwnerUse; m_addHistory=other.m_addHistory;
 	m_isHandcard=other.m_isHandcard; m_validateTargets=other.m_validateTargets; nullified_list=other.nullified_list;
 	whocard=other.whocard; who=other.who; no_respond_list=other.no_respond_list; no_offset_list=other.no_offset_list;
-	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect;
+	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=other.m_ownedCard;
 	targetModReveal=other.targetModReveal;
@@ -281,7 +283,7 @@ CardUseStruct &CardUseStruct::operator=(CardUseStruct &&other) noexcept
 	card=other.card; from=other.from; to=std::move(other.to); m_isOwnerUse=other.m_isOwnerUse; m_addHistory=other.m_addHistory;
 	m_isHandcard=other.m_isHandcard; m_validateTargets=other.m_validateTargets; nullified_list=std::move(other.nullified_list);
 	whocard=other.whocard; who=other.who; no_respond_list=std::move(other.no_respond_list); no_offset_list=std::move(other.no_offset_list);
-	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect;
+	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=std::move(other.m_ownedCard);
 	targetModReveal=std::move(other.targetModReveal);
@@ -427,6 +429,16 @@ void CardUseStruct::changeCard(Card*newcard)
 	if (!replacingOwnedCard)
 		newcard->change_cards << card;
 	replaceCard(newcard);
+	if (from) {
+		Room *room = from->getRoom();
+		const QVariantMap use = room->historyParent(room->currentHistoryEventId(), "use_card", true);
+		if (room->historyRecordingEnabled() && use.value("data").toMap().value("from").toString() == from->objectName()) {
+			// Conversions such as Fan keep the same use event. Its resolved card
+			// changes, while the accepted-use fact remains an immutable snapshot.
+			room->resolutionHistory().updateEvent(use.value("id").toLongLong(),
+				{{"card", room->historyCardSnapshot(newcard)}});
+		}
+	}
 }
 
 void CardUseStruct::setOwnedCard(Card *ownedCard)
@@ -920,7 +932,8 @@ void RoomThread::run()
         }
     }
 
-	GameRule*game_rule = room->getMode() == "04_1v3" ? new HulaoPassMode(this) : new GameRule(this);
+	GameRule *game_rule = Config.EnableHegemony ? new HegemonyRule(this)
+		: (room->getMode() == "04_1v3" ? new HulaoPassMode(this) : new GameRule(this));
 	addTriggerSkill(game_rule);
 
 	// start game
@@ -1081,14 +1094,49 @@ static QStringList mergeSkillNames(const QStringList &names)
 	return result;
 }
 
+static bool usesV2EventPriority(const TriggerSkill *skill)
+{
+    const auto *v2 = dynamic_cast<const TriggerSkillV2 *>(skill);
+    return v2 && (v2->isEquipSkill() || v2->usesEventPriority());
+}
+
 static QString skillInstanceRuntimeKey(const ServerPlayer *owner, const QString &skillName, int instanceId)
 {
 	return QString("%1|%2#%3").arg(owner ? owner->objectName() : QString(), skillName)
 		.arg(instanceId);
 }
 
+bool RoomThread::triggerSkillSources(TriggerEvent event, Room *room, ServerPlayer *target,
+    QVariant &data, const QList<SkillInstanceRef> &sources)
+{
+    if (!room || sources.isEmpty()) return false;
+    QList<TriggerSkill *> selected;
+    for (TriggerSkill *skill : v2_skill_table[event]) {
+        for (const SkillInstanceRef &ref : sources) {
+            if (skill->objectName() == ref.key.skillName
+                || Sanguosha->getMainSkill(skill->objectName()) == Sanguosha->getSkill(ref.key.skillName)) {
+                if (!selected.contains(skill)) selected << skill;
+                break;
+            }
+        }
+    }
+    // Keep nested callbacks inside this initialization event until it unwinds.
+    event_stack << EventTriplet(event, room, target);
+    bool broken = false;
+    try {
+        broken = triggerV2Skills(event, room, target, data, &selected, &sources);
+    } catch (...) {
+        event_stack.removeLast();
+        throw;
+    }
+    event_stack.removeLast();
+    flushOutermostDeferredWork(room);
+    return broken;
+}
+
 bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data,
-                                const QList<TriggerSkill *> *equipmentGroup)
+                                const QList<TriggerSkill *> *equipmentGroup,
+                                const QList<SkillInstanceRef> *allowedSources)
 {
 	QList<TriggerSkill *> v2_skills;
 	if (equipmentGroup) {
@@ -1096,7 +1144,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	} else {
 		// Equipment keeps its position relative to legacy rules (notably BuryVictim).
 		for (TriggerSkill *skill : v2_skill_table[triggerEvent])
-			if (!skill->isEquipSkill()) v2_skills << skill;
+			if (!usesV2EventPriority(skill)) v2_skills << skill;
 	}
 	if (m_perfTraceEnabled) {
 		++m_triggerDispatchProfile.v2DispatchCount;
@@ -1113,11 +1161,13 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	QSet<QString> triggeredSkills;
 	QSet<ServerPlayer *> declinedOwners;
 	QMap<QString, QStringList> consumedEquipmentTargets;
+	QMap<QString, QStringList> consumedContextTargets;
 
 	// record 每個事件只執行一次，並逐現存玩家實例提供完整 context。
 	foreach (const TriggerSkill *ts, v2_skills) {
 		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 		if (!v2) continue;
+		if (v2->recordEvent(triggerEvent, room, target, data)) continue;
 		if (v2->isEquipSkill()) {
 			// Card cleanup must run even after onUninstall has detached the skill.
 			// This is one event record, not a synthetic Player skill instance.
@@ -1139,7 +1189,15 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				recordCtx.instanceID = instanceId;
 				recordCtx.activationRef = SkillInstanceRef(
 					owner->objectName(), SkillInstanceKey(v2->objectName(), instanceId));
-				recordCtx.sourceRef = recordCtx.activationRef;
+                recordCtx.sourceRef = recordCtx.activationRef;
+                if (allowedSources) {
+                    const SkillInstanceRef root = SkillInstanceUtils::resolveRootRef(recordCtx.activationRef,
+                        [room](const SkillInstanceRef &source) -> const SkillInstance * {
+                            const ServerPlayer *sourceOwner = room->findPlayerByObjectName(source.ownerObjectName, true);
+                            return sourceOwner ? sourceOwner->findSkillInstance(source.key.skillName, source.key.instanceID) : nullptr;
+                        });
+                    if (!allowedSources->contains(recordCtx.activationRef) && !allowedSources->contains(root)) continue;
+                }
 				bool amountOk = false;
 				recordCtx.amount = room->getSkillInstanceAmount(recordCtx.activationRef, &amountOk);
 				if (!amountOk) recordCtx.amount = v2->getBaseAmount();
@@ -1160,11 +1218,47 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		}
 		QList<SkillContext> skillContexts;
 		QMap<QString, QStringList> equipmentTargetPrefixes;
+		QMap<QString, QStringList> contextTargetPrefixes;
+		QSet<const TriggerSkillV2 *> contextSelectors;
 		bool has_compulsory = false;
 
 		foreach (const TriggerSkill *ts, v2_skills) {
 			TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 			if (!v2) continue;
+        QList<SkillContext> supplied;
+        if (v2->collectTriggerContexts(triggerEvent, room, target, data, supplied)) {
+            QMap<QString, QStringList> precedingTargets;
+            QSet<QString> compulsoryOrderedKeys;
+            for (SkillContext ctx : supplied) {
+                const QString definitionName = TriggerSkillV2::parseSkillName(ctx.skill_name);
+                const auto *definition = dynamic_cast<const TriggerSkillV2 *>(Sanguosha->getTriggerSkill(definitionName));
+                if (!definition || !ctx.owner) continue;
+                ServerPlayer *decisionMaker = definition->triggerOrderPlayer(room, ctx);
+                if (!decisionMaker || declinedOwners.contains(decisionMaker)) continue;
+                const QString key = skillInstanceRuntimeKey(ctx.owner, definitionName, ctx.instanceID)
+                    + '|' + (ctx.invoker ? ctx.invoker->objectName() : QString());
+                const QString orderedKey = key + '|' + QString::number(ctx.trigger_count);
+                if (ctx.preferredTarget) {
+                    const QString targetName = ctx.preferredTarget->objectName();
+                    precedingTargets[orderedKey] << targetName;
+                    if (consumedContextTargets.value(orderedKey).contains(targetName)) continue;
+                    contextTargetPrefixes.insert(orderedKey + '|' + ctx.skill_name, precedingTargets.value(orderedKey));
+                } else if (ctx.trigger_count < triggerCounts.value(key)) {
+                    continue;
+                }
+                const Skill::Frequency frequency = definition->getFrequency(ctx.owner);
+                const bool orderedCompulsory = ctx.preferredTarget
+                    && !room->isGeneralHiddenForSkill(ctx.activationRef)
+                    && (frequency == Skill::Compulsory || frequency == Skill::Wake);
+                if (orderedCompulsory && compulsoryOrderedKeys.contains(orderedKey)) continue;
+                if (definition->prepareSource(room, ctx)) {
+                    if (orderedCompulsory) compulsoryOrderedKeys.insert(orderedKey);
+                    contextSelectors.insert(definition);
+                    skillContexts << ctx;
+                }
+            }
+            continue;
+        }
 		TriggerList list = v2->triggerable(triggerEvent, room, target, data);
 		
 		QMap<ServerPlayer *, QStringList>::iterator it;
@@ -1279,31 +1373,52 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		}
 
 
+        if (allowedSources) {
+            // A helper belongs to its exact root grant; a sibling with the same
+            // name is never initialized merely because the definition matches.
+            for (int i = skillContexts.size() - 1; i >= 0; --i) {
+                const SkillInstanceRef ref = skillContexts.at(i).activationRef;
+                const SkillInstanceRef root = SkillInstanceUtils::resolveRootRef(ref,
+                    [room](const SkillInstanceRef &source) -> const SkillInstance * {
+                        const ServerPlayer *owner = room->findPlayerByObjectName(source.ownerObjectName, true);
+                        return owner ? owner->findSkillInstance(source.key.skillName, source.key.instanceID) : nullptr;
+                    });
+                if (!allowedSources->contains(ref) && !allowedSources->contains(root))
+                    skillContexts.removeAt(i);
+            }
+        }
 		if (skillContexts.isEmpty())
 			break;
 
 		ServerPlayer *chooser = target;
-		if (Config.EnableHegemony || equipmentGroup) {
+		if (Config.EnableHegemony || equipmentGroup || !contextSelectors.isEmpty()) {
 			// Only the owner may receive concealed candidates, even when
 			// another player's event triggers them.
 			chooser = nullptr;
 			for (ServerPlayer *owner : room->getAllPlayers(true)) {
 				for (const SkillContext &ctx : skillContexts) {
-					if (ctx.owner == owner) { chooser = owner; break; }
+					const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
+                        Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name)));
+                    if (definition && definition->triggerOrderPlayer(room, ctx) == owner) { chooser = owner; break; }
 				}
 				if (chooser) break;
 			}
 			if (!chooser) break;
 			for (int i = skillContexts.size() - 1; i >= 0; --i)
-				if (skillContexts.at(i).owner != chooser) skillContexts.removeAt(i);
+				{
+                    const SkillContext &ctx = skillContexts.at(i);
+                    const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
+                        Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name)));
+                    if (!definition || definition->triggerOrderPlayer(room, ctx) != chooser)
+                        skillContexts.removeAt(i);
+                }
 		}
 
 		foreach (const SkillContext &ctx, skillContexts) {
 			// A concealed compulsory copy remains optional. A revealed sibling
 			// must not force this source to reveal as well.
 			if (room->isGeneralHiddenForSkill(ctx.activationRef)) continue;
-			const QString definitionName = equipmentGroup
-				? TriggerSkillV2::parseSkillName(ctx.skill_name) : ctx.skill_name;
+			const QString definitionName = TriggerSkillV2::parseSkillName(ctx.skill_name);
 			const TriggerSkill *ts = Sanguosha->getTriggerSkill(definitionName, ctx.instanceID);
 			if (ts && ts->getFrequency(ctx.owner) == Skill::Compulsory) {
 				has_compulsory = true;
@@ -1328,8 +1443,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			// Global compulsory helpers (e.g. Wooden Ox cleanup) never ask permission.
 			for (const SkillContext &ctx : skillContexts) {
 				const TriggerSkill *skill = Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name));
-				if (skill && skill->isGlobal() && skill->getFrequency(ctx.owner) == Skill::Compulsory) {
-					name = ctx.skill_name;
+				if (skill && skill->isGlobal() && skill->getFrequency(ctx.owner) == Skill::Compulsory
+                    && !room->isGeneralHiddenForSkill(ctx.activationRef)) {
+					name = SkillInstanceUtils::formatName(ctx.skill_name, ctx.instanceID);
+                    if (ctx.owner != chooser) name += ':' + ctx.owner->objectName();
 					break;
 				}
 			}
@@ -1338,7 +1455,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			name = room->askForTriggerOrder(chooser, reason, skillContexts, !has_compulsory, data);
 
 		if (name == "cancel" || name.isEmpty()) {
-			if (Config.EnableHegemony || equipmentGroup) {
+			if (Config.EnableHegemony || equipmentGroup || !contextSelectors.isEmpty()) {
 				declinedOwners.insert(chooser);
 				continue;
 			}
@@ -1361,7 +1478,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
 		skillName = baseName;
 		const QString selectedName = skillName;
-		if (equipmentGroup) skillName = TriggerSkillV2::parseSkillName(selectedName);
+		skillName = TriggerSkillV2::parseSkillName(selectedName);
 
 		const TriggerSkill *result_skill = Sanguosha->getTriggerSkill(skillName, instanceId);
 		if (!result_skill) continue;
@@ -1377,7 +1494,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				// 格式一：ownerObjectName 空時，匹配 owner == chooser
 				// 格式二：ownerObjectName 非空時，匹配 owner->objectName() == ownerObjectName
 				if (ownerObjectName.isEmpty()) {
-					if (skillContexts[i].owner == chooser) {
+					if (v2->triggerOrderPlayer(room, skillContexts[i]) == chooser) {
 						selected_ctx = &skillContexts[i];
 						break;
 					}
@@ -1405,6 +1522,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		if (!sourceAvailable()) continue;
 
 		QString key = skillInstanceRuntimeKey(skill_owner, skillName, instanceId);
+        if (contextSelectors.contains(v2)) {
+            key += '|' + (selected_ctx->invoker ? selected_ctx->invoker->objectName() : QString());
+            const QString orderedKey = key + '|' + QString::number(selected_ctx->trigger_count);
+            consumedContextTargets[orderedKey] << contextTargetPrefixes.value(orderedKey + '|' + selected_ctx->skill_name);
+            selected_ctx->skill_name = skillName;
+        }
 		if (equipment) {
 			consumedEquipmentTargets[key] << equipmentTargetPrefixes.value(
 				skill_owner->objectName() + '|' + selected_ctx->skill_name);
@@ -1474,37 +1597,67 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			skillHistory.finish(QStringLiteral("source_unavailable"));
 			continue;
 		}
-		selected_ctx->current_event = EventSkillInvoking;
-		ctx_data = QVariant::fromValue(*selected_ctx);
-		trigger(EventSkillInvoking, room, skill_owner, ctx_data);
-			*selected_ctx = ctx_data.value<SkillContext>();
-			skillHistory.update(room->historySkillContext(*selected_ctx));
+        bool invocationStarted = false;
+        bool completionStarted = false;
+        bool contextEventInFlight = false;
+        const auto finishInvocation = [&]() {
+            if (!invocationStarted || completionStarted) return;
+            // Set before notifying: a completion handler may itself throw or
+            // invoke another skill. This invocation must never finish twice.
+            completionStarted = true;
+            if (contextEventInFlight) *selected_ctx = ctx_data.value<SkillContext>();
+            selected_ctx->sourceRef = sourceContext.sourceRef;
+            selected_ctx->activationRef = sourceContext.activationRef;
+            selected_ctx->owner = sourceContext.owner;
+            selected_ctx->instanceID = sourceContext.instanceID;
+            selected_ctx->current_event = EventSkillEffectFinished;
+            QVariant finishedData = QVariant::fromValue(*selected_ctx);
+            trigger(EventSkillEffectFinished, room, skill_owner, finishedData);
+            *selected_ctx = finishedData.value<SkillContext>();
+            skillHistory.update(room->historySkillContext(*selected_ctx));
+        };
+        const auto completionGuard = qScopeGuard([&]() {
+            // Normal exits finish explicitly below. On unwinding, preserve the
+            // original control/exception even if a cleanup observer also throws.
+            try {
+                finishInvocation();
+            } catch (...) {
+            }
+        });
+        selected_ctx->current_event = EventSkillInvoking;
+        ctx_data = QVariant::fromValue(*selected_ctx);
+        invocationStarted = true;
+        contextEventInFlight = true;
+        trigger(EventSkillInvoking, room, skill_owner, ctx_data);
+        *selected_ctx = ctx_data.value<SkillContext>();
+        contextEventInFlight = false;
+        skillHistory.update(room->historySkillContext(*selected_ctx));
 
-		selected_ctx->current_event = EventSkillEffect;
-		ctx_data = QVariant::fromValue(*selected_ctx);
-		bool skip_effect = trigger(EventSkillEffect, room, skill_owner, ctx_data);
-		*selected_ctx = ctx_data.value<SkillContext>();
+        selected_ctx->current_event = EventSkillEffect;
+        ctx_data = QVariant::fromValue(*selected_ctx);
+        contextEventInFlight = true;
+        bool skip_effect = trigger(EventSkillEffect, room, skill_owner, ctx_data);
+        *selected_ctx = ctx_data.value<SkillContext>();
+        contextEventInFlight = false;
 
         // Interceptors may remove the exact grant after revelation as well.
         if (!sourceAvailable()) {
+            finishInvocation();
             skillHistory.finish(QStringLiteral("source_unavailable"));
             continue;
         }
-		if (!skip_effect) {
-			broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx);
+        if (!skip_effect) {
+            broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx);
 
-			if (!broken && !selected_ctx->manual_effect && !selected_ctx->targets.isEmpty()) {
-				foreach (ServerPlayer *t, selected_ctx->targets) {
-					bool target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t);
-					if (target_broken)
-						broken = true;
-				}
-			}
-		}
-		selected_ctx->current_event = EventSkillEffectFinished;
-		ctx_data = QVariant::fromValue(*selected_ctx);
-		trigger(EventSkillEffectFinished, room, skill_owner, ctx_data);
-		skillHistory.update(room->historySkillContext(*selected_ctx));
+            if (!broken && !selected_ctx->manual_effect && !selected_ctx->targets.isEmpty()) {
+                foreach (ServerPlayer *t, selected_ctx->targets) {
+                    bool target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t);
+                    if (target_broken)
+                        broken = true;
+                }
+            }
+        }
+        finishInvocation();
 		skillHistory.finish(skip_effect ? QStringLiteral("skipped")
 			: (broken ? QStringLiteral("broken") : QStringLiteral("completed")));
 	}
@@ -1594,6 +1747,7 @@ void RoomThread::flushOutermostDeferredWork(Room *room)
 {
     if (!room || !event_stack.isEmpty() || isInterruptionRequested()) return;
     room->processPendingPreshows();
+    room->flushHegemonyReveals();
     flushPlayerUiState();
 
 	refreshDistanceCacheIfDirty(room);
@@ -1612,6 +1766,9 @@ static bool invalidatesDistanceCache(TriggerEvent triggerEvent)
 	case CardsMoveOneTime:
 	case EventAcquireSkill:
 	case EventLoseSkill:
+	case GeneralShown:
+	case GeneralHidden:
+	case GeneralRemoved:
 	case EventSkillAmountChanged:
 	case MarkChanged:
 	case KingdomChanged:
@@ -1810,17 +1967,17 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 			TriggerSkill*ts = skill_table[triggerEvent][i];
 			if (m_perfTraceEnabled)
 				++m_triggerDispatchProfile.mainTableCandidateVisitCount;
-			if (m_triggerSkillTraits.value(ts).v2 && !ts->isEquipSkill()) continue;
+			if (m_triggerSkillTraits.value(ts).v2 && !usesV2EventPriority(ts)) continue;
 			if (triggered.contains(ts)) continue;
 			triggered << ts;
             const quint64 tableRevision = m_triggerTableRevision[triggerEvent];
             if (triggerEvent == EnterDying || triggerEvent == Dying || triggerEvent == AskForPeaches) {
                 if (!data.value<DyingStruct>().who->hasFlag("Global_Dying")) break;
             }
-            if (m_triggerSkillTraits.value(ts).v2 && ts->isEquipSkill()) {
+            if (m_triggerSkillTraits.value(ts).v2 && usesV2EventPriority(ts)) {
                 QList<TriggerSkill *> group;
                 for (TriggerSkill *candidate : skill_table[triggerEvent]) {
-                    if (m_triggerSkillTraits.value(candidate).v2 && candidate->isEquipSkill()
+                    if (m_triggerSkillTraits.value(candidate).v2 && usesV2EventPriority(candidate)
                         && candidate->getPriority(triggerEvent) == ts->getPriority(triggerEvent)
                         && (candidate == ts || !triggered.contains(candidate))) {
                         group << candidate;
@@ -1832,8 +1989,6 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
                 if (tableRevision != m_triggerTableRevision[triggerEvent]) i = -1;
                 continue;
             }
-
-
 			if (ts->triggerable(target,room,triggerEvent,target,data)) {
 				if(ts->getFrequency(target)==Skill::Wake&&!ts->canWake(triggerEvent,target,data,room)) continue;
 				room->tryPause();
@@ -1851,7 +2006,25 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 				ResolutionHistoryEventGuard skillHistory(
 					room->resolutionHistory(), QStringLiteral("skill"), legacySkillData,
 					room->historyRecordingEnabled() && !isRule);
-				broken = ts->trigger(triggerEvent,room,target,data);
+                LegacyExecutionFrame legacyFrame;
+                legacyFrame.skillName = ts->objectName();
+                legacyFrame.event = triggerEvent;
+                legacyFrame.target = target;
+                legacyFrame.data = &data;
+                for (ServerPlayer *owner : room->getAllPlayers(true)) {
+                    for (int instanceId : owner->getSkillInstanceIds(legacyFrame.skillName)) {
+                        const SkillInstance *instance = owner->findSkillInstance(legacyFrame.skillName, instanceId);
+                        if (instance && instance->source == SourceAttached
+                            && owner->getSkillInstanceStateValue(legacyFrame.skillName, instanceId,
+                                QStringLiteral("legacy_activation_lifecycle")).toBool()) {
+                            legacyFrame.sources[owner->objectName()] << SkillInstanceRef(
+                                owner->objectName(), instance->key());
+                        }
+                    }
+                }
+                m_legacyExecutionFrames << legacyFrame;
+                const auto legacyFrameGuard = qScopeGuard([&]() { m_legacyExecutionFrames.removeLast(); });
+                broken = ts->trigger(triggerEvent,room,target,data);
 				skillHistory.finish(broken ? QStringLiteral("broken") : QStringLiteral("completed"));
 				if(triggerEvent!=SkillTriggered&&room->getTag("notifyInvoked:"+ts->objectName()).toBool()){
 					room->removeTag("notifyInvoked:"+ts->objectName());
@@ -1880,6 +2053,112 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 	return broken;
 }
 
+bool RoomThread::isLegacySkillActivationActive(const SkillInstanceRef &source) const
+{
+    return source.isValid() && m_activeLegacySources.contains(source);
+}
+
+bool LegacySkillActivation::isAvailable(Room *room, ServerPlayer *owner, const QString &skillName)
+{
+    if (!room || !owner || !room->getThread()) return true;
+    const RoomThread *thread = room->getThread();
+    if (thread->m_legacyExecutionFrames.isEmpty()) return true;
+    const RoomThread::LegacyExecutionFrame &frame = thread->m_legacyExecutionFrames.last();
+    if (frame.skillName != skillName || !frame.sources.contains(owner->objectName())) return true;
+    for (const SkillInstanceRef &ref : frame.sources.value(owner->objectName())) {
+        if (owner->getValidSkillInstanceIds(ref.key.skillName).contains(ref.key.instanceID)) return true;
+    }
+    return false;
+}
+
+LegacySkillActivation::LegacySkillActivation(Room *room, ServerPlayer *owner,
+                                           const QString &skillName)
+    : m_room(room), m_uncaughtExceptions(std::uncaught_exceptions())
+{
+    if (!room || !owner || !room->getThread()) return;
+    RoomThread *thread = room->getThread();
+    if (thread->m_legacyExecutionFrames.isEmpty()) return;
+    // A helper called by another skill must not claim that skill's borrowed grant.
+    const RoomThread::LegacyExecutionFrame frame = thread->m_legacyExecutionFrames.last();
+    if (frame.skillName != skillName || !frame.sources.contains(owner->objectName())) return;
+    const QList<SkillInstanceRef> pinned = frame.sources.value(owner->objectName());
+    QList<SkillInstanceRef> available;
+    for (const SkillInstanceRef &ref : pinned) {
+        if (owner->getValidSkillInstanceIds(ref.key.skillName).contains(ref.key.instanceID))
+            available << ref;
+    }
+    // The previous iteration may have consumed this projection. Never silently
+    // fall back to a newly attached same-name source during the old callback.
+    if (available.isEmpty()) { m_allowed = false; return; }
+    SkillInstanceRef activation = available.first();
+    if (available.size() > 1) {
+        QStringList choices;
+        for (const SkillInstanceRef &ref : available)
+            choices << SkillInstanceUtils::formatName(ref.key.skillName, ref.key.instanceID);
+        const QString choice = room->askForChoice(owner, skillName, choices.join("+"));
+        const int index = choices.indexOf(choice);
+        if (index < 0) { m_allowed = false; return; }
+        activation = available.at(index);
+    }
+    const SkillInstanceRef source = room->resolveSkillInstanceRootRef(activation);
+    if (!source.isValid() || !owner->getValidSkillInstanceIds(skillName).contains(activation.key.instanceID)
+        || !room->showGeneralForSkill(source)
+        || !owner->getValidSkillInstanceIds(skillName).contains(activation.key.instanceID)) {
+        m_allowed = false;
+        return;
+    }
+    std::unique_ptr<SkillContext> context(new SkillContext);
+    context->skill_name = skillName;
+    context->owner = owner;
+    context->invoker = owner;
+    context->initiator = frame.target;
+    context->instanceID = activation.key.instanceID;
+    context->activationRef = activation;
+    context->sourceRef = source;
+    context->original_data = frame.data;
+    context->extra_data = QVariantMap{{QStringLiteral("trigger_event"), int(frame.event)},
+                                    {QStringLiteral("legacy_activation"), true}};
+    context->current_event = EventSkillInvoking;
+    QVariant payload = QVariant::fromValue(*context);
+    try {
+        thread->trigger(EventSkillInvoking, room, owner, payload);
+    } catch (...) {
+        // An interrupted accepted activation still completes exactly once.
+        *context = payload.value<SkillContext>();
+        context->activationRef = activation;
+        context->sourceRef = source;
+        context->current_event = EventSkillEffectFinished;
+        QVariant finished = QVariant::fromValue(*context);
+        try { thread->trigger(EventSkillEffectFinished, room, owner, finished); } catch (...) {}
+        throw;
+    }
+    *context = payload.value<SkillContext>();
+    context->activationRef = activation;
+    context->sourceRef = source;
+    context->owner = owner;
+    context->instanceID = activation.key.instanceID;
+    m_context = context.release();
+    thread->m_activeLegacySources << activation;
+    m_allowed = owner->getValidSkillInstanceIds(skillName).contains(activation.key.instanceID);
+}
+
+LegacySkillActivation::~LegacySkillActivation() noexcept(false)
+{
+    if (!m_context) return;
+    std::unique_ptr<SkillContext> context(m_context);
+    RoomThread *thread = m_room->getThread();
+    const int activeIndex = thread->m_activeLegacySources.lastIndexOf(context->activationRef);
+    if (activeIndex >= 0) thread->m_activeLegacySources.removeAt(activeIndex);
+    context->current_event = EventSkillEffectFinished;
+    QVariant finished = QVariant::fromValue(*context);
+    if (std::uncaught_exceptions() > m_uncaughtExceptions) {
+        // Completion must never replace the original interruption exception.
+        try { thread->trigger(EventSkillEffectFinished, m_room, context->owner, finished); } catch (...) {}
+    } else {
+        thread->trigger(EventSkillEffectFinished, m_room, context->owner, finished);
+    }
+}
+
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target)
 {
 	QVariant data;
@@ -1890,7 +2169,6 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 {
 	if (!skill || skillSet.contains(skill)) return;
-
 	skillSet << skill;
 	TriggerSkillTraits traits;
 	traits.v2 = skill->inherits("TriggerSkillV2");

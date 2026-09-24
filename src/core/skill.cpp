@@ -264,6 +264,13 @@ bool Skill::isVisible() const
     return !(objectName().startsWith("#")||inherits("SPConvertSkill"));
 }
 
+bool Skill::isVisibleForPlayer(const Player *player) const
+{
+    const QVariant mark = property("VisibilityMark");
+    return isVisible() && (!mark.isValid()
+        || (player && !mark.toString().isEmpty() && player->getMark(mark.toString()) > 0));
+}
+
 int Skill::getEffectIndex(const ServerPlayer *, const Card *) const
 {
     return -1;
@@ -982,6 +989,13 @@ bool TriggerSkillV2::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPl
 }
 
 bool TriggerSkillV2::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                             QVariant &data) const
+{
+    // Match the Lua V2 bridge: the legacy entry has no explicit skill owner.
+    return trigger(triggerEvent, room, player, data, nullptr);
+}
+
+bool TriggerSkillV2::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                              QVariant &data, ServerPlayer *owner) const
 {
     SkillContext ctx;
@@ -1081,8 +1095,12 @@ bool RetrialSkill::trigger(TriggerEvent, Room *room, ServerPlayer *player, QVari
 {
     JudgeStruct *judge = data.value<JudgeStruct *>();
     const Card *retrial_card = onRetrial(player, judge);
-    if (retrial_card)
+    if (retrial_card) {
+        // The prompt may be declined; project a lifecycle only after acceptance.
+        LegacySkillActivation activation(room, player, objectName());
+        if (!activation) return false;
 		room->retrial(retrial_card, player, judge, objectName(), exchange);
+    }
     return false;
 }
 

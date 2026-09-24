@@ -13,6 +13,8 @@ function boolean_(value) {
 }
 function chosen_(value) { return value === true || /^(true|是)$/i.test(String(value)); }
 function shape_(request) {
+  if (request.type === 'choose_general' && (request.payload || {}).general_candidates
+      && request.payload.general_candidates.length) return 'general_pair';
   const groups = {
     option: ['choose_general', 'choose_direction', 'choice', 'choose_suit', 'choose_kingdom', 'skill_invoke', 'trigger_order', 'choose_order', 'choose_role_3v3', 'surrender', 'luck_card', 'ask_general'],
     cards: ['exchange_card', 'ask_peach', 'skill_gongxin', 'play_card', 'response_card', 'discard_card', 'nullification', 'show_card', 'amazing_grace', 'pindian', 'choose_card'],
@@ -42,6 +44,15 @@ function draftFromRows_(meta, rows) {
   const cardIds = () => selected('card').map(r => integer_(r[1], -1));
   const targets = () => selected('player').map(r => String(r[1]));
   switch (meta.shape) {
+    case 'general_pair': {
+      const generals = selected('general');
+      // Seat order is explicit and remains editable until native preflight/submit.
+      if (generals.length !== 2 || String(generals[0][4]) !== '1' || String(generals[1][4]) !== '2')
+        throw new Error(qsanText_('generalPairOrder'));
+      const pair = String(generals[0][1]) + '+' + String(generals[1][1]);
+      if ((meta.general_pairs || []).indexOf(pair) < 0) throw new Error(qsanText_('generalPairInvalid'));
+      return {option: pair};
+    }
     case 'option': {
       const row = only('option'); if (!row) throw new Error('請選擇一個選項。');
       // Option schemas explicitly reject unrelated cards/targets/skill fields.

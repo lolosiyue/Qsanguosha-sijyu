@@ -333,6 +333,16 @@ int runCardParseTests()
 
     qInfo() << "Card::Parse(@KurouCard=.) regression passed";
 
+    // Mark Card actions must survive the client wire format before Room checks
+    // the separately supplied skill instance and recreates the authoritative card.
+    ActiveSkillCard markAction;
+    const Card *parsedAction = Card::Parse(markAction.toString());
+    if (!qobject_cast<const ActiveSkillCard *>(parsedAction)
+        || parsedAction->subcardsLength() != 0) {
+        qCritical() << "V2 Mark Card proxy round trip failed" << markAction.toString();
+        return 20;
+    }
+
     // 無效 LuaSkillCard 字串不得對 nullptr 呼叫 deleteLater（宿敵自動用牌 client 閃退）
     if (Card::Parse(QStringLiteral("##notARealLuaSkillCard[no_suit:0]:.:")) != nullptr) {
         qCritical() << "Card::Parse(unknown ##LuaSkillCard) should return nullptr";

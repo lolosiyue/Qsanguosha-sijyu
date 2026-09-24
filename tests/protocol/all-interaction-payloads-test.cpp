@@ -1,6 +1,7 @@
 #include "json.h"
 #include "protocol.h"
 #include "protocol/gameplay/protocol-gameplay-payload-registry.h"
+#include "protocol/gameplay/simple-choice-payloads.h"
 #include "protocol/protocol-runtime.h"
 
 #include <QTextStream>
@@ -471,6 +472,47 @@ bool allRequestAndReplyFlows()
     return true;
 }
 
+bool hegemonyPairContracts()
+{
+    ChooseGeneralRequestPayload selection;
+    selection.candidates = {QStringLiteral("heg_caocao"), QStringLiteral("heg_guojia")};
+    selection.hegemonyPairs = {QStringLiteral("heg_caocao+heg_guojia"),
+                               QStringLiteral("heg_guojia+heg_caocao")};
+    QString error;
+    ProtocolMessage wire;
+    const ProtocolMessage logical = request(S_COMMAND_CHOOSE_GENERAL, 501, selection.toDomainVariant());
+    if (!expect(ProtocolGameplayPayloadRegistry::encodeForWire(logical, &wire, &error)
+                    && wire.payload.toMap() == selection.toV2Variant(),
+                QStringLiteral("hegemony request preserves ordered pairs")))
+        return false;
+    ProtocolMessage decoded;
+    if (!expect(ProtocolGameplayPayloadRegistry::decodeFromWire(wire, &decoded, &error)
+                    && decoded.payload == wire.payload,
+                QStringLiteral("hegemony pairs survive decoding")))
+        return false;
+    ChooseGeneralRequestPayload parsed;
+    for (const QVariant &invalid : QVariantList{true, QVariantList{},
+             QVariantList{QStringLiteral("heg_caocao")},
+             QVariantList{QStringLiteral("heg_caocao+heg_caocao")},
+             QVariantList{QStringLiteral("heg_caocao+other_seat")},
+             QVariantList{QStringLiteral("heg_caocao+heg_guojia+extra")}}) {
+        QVariantMap malformed = selection.toV2Variant();
+        malformed.insert(QStringLiteral("hegemony_pairs"), invalid);
+        if (!expect(!ChooseGeneralRequestPayload::parseV2(malformed, &parsed, &error),
+                    QStringLiteral("malformed hegemony pairs rejected"))) return false;
+    }
+    ChooseGeneralReplyPayload answer;
+    answer.general = selection.hegemonyPairs.last();
+    ChooseGeneralReplyPayload received;
+    if (!expect(ChooseGeneralReplyPayload::parseV2(answer.toV2Variant(), &received, &error)
+                    && received.toDomainVariant() == answer.general,
+                QStringLiteral("pair reply preserves head/deputy order"))) return false;
+    selection.hegemonyPairs.clear();
+    return expect(!selection.toV2Variant().contains(QStringLiteral("hegemony_pairs"))
+                      && selection.toDomainVariant().userType() == QMetaType::QVariantList,
+                  QStringLiteral("ordinary selection keeps its original wire and domain shape"));
+}
+
 bool cancellationAndOptionalShapes()
 {
     const QList<FlowCase> cancellations{
@@ -564,6 +606,7 @@ bool nonInteractionFlowsFailClosed()
 int main()
 {
     const bool success = allRequestAndReplyFlows()
+        && hegemonyPairContracts()
         && cancellationAndOptionalShapes()
         && nonInteractionFlowsFailClosed();
     QTextStream(stdout) << "[AUTOTEST] PROTOCOL_ALL_INTERACTION_PAYLOAD_RESULT status="

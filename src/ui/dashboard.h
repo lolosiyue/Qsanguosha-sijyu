@@ -105,9 +105,11 @@ public:
     void setCardTransferable(CardItem *card, bool transferable);
     void updateTransferButtons();
     void updateCustomActionButtons(CardItem *card);
+    void updateMarkCards();
+    bool canActivateMarkCard(const QString &skillName, int instanceId) const;
 
     // pending operations
-    void startPending(const ViewAsSkill *skill);
+    void startPending(const ViewAsSkill *skill, int instanceId = 0);
     void stopPending();
     void updatePending();
     void clearPendings();
@@ -319,6 +321,8 @@ protected:
     void _paintRightFrame();
     // for pendings
     QList<CardItem *> pendings;
+    // Visual reward tokens never enter the real hand/material selection list.
+    QMap<QString, CardItem *> m_markCards;
     const Card *pending_card;
     const ViewAsSkill *view_as_skill;
     int m_viewAsSkillInstanceID;
@@ -386,6 +390,7 @@ signals:
     void dialogOptionSelectionChanged(bool hasSelection);
     void progressBarTimedOut();
     void cardActionButtonClicked(const QString &buttonId, int cardId);
+    void markCardActivated(const QString &skillName, int instanceId);
     void cardPreviewRequested(CardItem *card);
 };
 

@@ -500,7 +500,8 @@ QString TuiRenderer::answerHint(const InteractionRequest &request) const
                 ? nameText(value->roles.at(i)) : QStringLiteral("?");
             parts << QStringLiteral("%1=%2").arg(i + 1).arg(role);
         }
-        return tuiText("tui_answer_role_assignment")
+        return tuiText(value->scheme == QLatin1String("hegemony_seats")
+                           ? "tui_answer_seat_assignment" : "tui_answer_role_assignment")
             .arg(parts.join(QLatin1Char(' ')));
     }
     case InteractionResponseShape::Option:
@@ -733,11 +734,12 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
         lines << tuiText("tui_prompt_timeout").arg((request.timeoutMs + 999) / 1000);
 
     if (const auto *value = request.payloadAs<RoleAssignmentInteractionPayload>()) {
-        lines << tuiText("tui_prompt_role_assignment");
+        const bool seatsOnly = value->scheme == QLatin1String("hegemony_seats");
+        lines << tuiText(seatsOnly ? "tui_prompt_seat_assignment" : "tui_prompt_role_assignment");
         QMap<QString, int> roleCounts;
         for (const QString &role : value->roles)
             roleCounts[role] += 1;
-        if (!roleCounts.isEmpty()) {
+        if (!seatsOnly && !roleCounts.isEmpty()) {
             QStringList needed;
             for (auto it = roleCounts.constBegin(); it != roleCounts.constEnd(); ++it)
                 needed << tuiText("tui_role_count").arg(nameText(it.key())).arg(it.value());
@@ -752,16 +754,25 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 uniqueRoles.append(role);
         }
         if (!uniqueRoles.isEmpty()) {
-            lines << tuiText("tui_label_roles");
+            lines << tuiText(seatsOnly ? "tui_label_seats" : "tui_label_roles");
             for (const QString &role : uniqueRoles)
                 lines << QStringLiteral("  %1 = %2").arg(role, nameText(role));
         }
         if (value->playerNames.isEmpty())
             lines << tuiText("tui_players_unknown");
     } else if (const auto *value = request.payloadAs<OptionInteractionPayload>()) {
+        if (!value->generalCandidates.isEmpty()) {
+            lines << tuiText("tui_hegemony_help");
+            for (int i = 0; i < value->generalCandidates.size(); ++i)
+                lines << tuiText("tui_hegemony_candidate").arg(i + 1).arg(nameText(value->generalCandidates.at(i)));
+            lines << tuiText("tui_hegemony_pairs");
+        }
         QList<InteractionOption> localized = value->options;
         for (InteractionOption &option : localized) {
-            if (option.label.isEmpty() || option.label == option.value)
+            if (!value->generalCandidates.isEmpty())
+                option.label = nameText(option.value.section('+', 0, 0)) + QStringLiteral(" / ")
+                    + nameText(option.value.section('+', 1, 1));
+            else if (option.label.isEmpty() || option.label == option.value)
                 option.label = nameText(option.value);
         }
         appendOptions(&lines, localized);

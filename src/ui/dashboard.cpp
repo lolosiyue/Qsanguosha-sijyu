@@ -19,8 +19,29 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsTextItem>
 #include <QPropertyAnimation>
+#include <QKeyEvent>
+#include <QSet>
 
 namespace {
+
+class DashboardMarkCardItem : public CardItem
+{
+public:
+    explicit DashboardMarkCardItem(const Card *card) : CardItem(card)
+    {
+        setFlag(ItemIsMovable, false);
+        setFlag(ItemIsFocusable);
+    }
+protected:
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        if (isEnabled() && (event->key() == Qt::Key_Return
+            || event->key() == Qt::Key_Enter || event->key() == Qt::Key_Space)) {
+            event->accept();
+            emit clicked();
+        } else CardItem::keyPressEvent(event);
+    }
+};
 
 class DashboardDialogOptionItem : public QGraphicsObject
 {
@@ -213,6 +234,10 @@ Dashboard::Dashboard(QGraphicsPixmapItem *widget)
 
     _m_sort_menu = new QMenu(RoomSceneInstance->mainWindow());
     _m_shefu_menu = new QMenu(RoomSceneInstance->mainWindow());
+    if (m_currentPlayer) {
+        connect(m_currentPlayer, &Player::skill_state_changed, this, &Dashboard::updateMarkCards, Qt::QueuedConnection);
+        connect(m_currentPlayer, &Player::gameplay_property_changed, this, &Dashboard::updateMarkCards, Qt::QueuedConnection);
+    }
 }
 
 Dashboard::~Dashboard()
@@ -251,6 +276,8 @@ void Dashboard::bindPlayer(ClientPlayer *player)
     m_currentPlayer = player;
     m_player = m_currentPlayer;
     PlayerCardContainer::setPlayer(m_currentPlayer);
+    connect(m_currentPlayer, &Player::skill_state_changed, this, &Dashboard::updateMarkCards, Qt::QueuedConnection);
+    connect(m_currentPlayer, &Player::gameplay_property_changed, this, &Dashboard::updateMarkCards, Qt::QueuedConnection);
 
     connect(m_currentPlayer, SIGNAL(Mark_changed(QString, int)), this, SLOT(updateMark(QString, int)));
 
@@ -267,6 +294,7 @@ void Dashboard::bindPlayer(ClientPlayer *player)
     _updateEquips();
     updateDelayedTricks();
     refreshHandCardTooltips();
+    updateMarkCards();
     refresh();
 }
 
@@ -1304,6 +1332,8 @@ void Dashboard::showDialogOptions(const QString &skillName, const QStringList &o
 
     foreach (CardItem *item, m_handCards)
         item->hide();
+    for (CardItem *item : m_markCards)
+        item->hide();
 
     if (m_btnFilterCard)
         m_btnFilterCard->setEnabled(false);
@@ -1348,6 +1378,8 @@ void Dashboard::hideDialogOptions()
     m_selectedDialogOption.clear();
 
     foreach (CardItem *item, m_handCards)
+        item->show();
+    for (CardItem *item : m_markCards)
         item->show();
     if (m_btnFilterCard)
         m_btnFilterCard->setEnabled(true);
@@ -1590,6 +1622,8 @@ void Dashboard::adjustCards(bool playAnimation)
     _adjustCards();
     foreach(CardItem *card, m_handCards)
         card->goBack(playAnimation);
+    for (CardItem *card : m_markCards)
+        card->goBack(playAnimation);
 }
 
 void Dashboard::refreshHandCardTooltips()
@@ -1601,7 +1635,9 @@ void Dashboard::refreshHandCardTooltips()
 
 void Dashboard::_adjustCards()
 {
-    int n = m_handCards.length();
+    // Share the existing one/two-row layout without exposing tokens to hand logic.
+    const QList<CardItem *> displayedCards = m_markCards.values() + m_handCards;
+    int n = displayedCards.length();
     if (n<1) return;
     int maxCards = Config.MaxCards;
     if (maxCards >= n)
@@ -1633,7 +1669,7 @@ void Dashboard::_adjustCards()
         _disperseCards(cards, rowRect, Qt::AlignLeft, true, true);
     };
     for (int i = 0; i < maxCards; i++)
-        row.push_back(m_handCards[i]);
+        row.push_back(displayedCards[i]);
 
     _m_highestZ = n;
     disperseRow(row);
@@ -1642,17 +1678,17 @@ void Dashboard::_adjustCards()
 		row.clear();
 		rowRect.translate(0, 1.5 * S_PENDING_OFFSET_Y);
 		for (int i = maxCards; i < n; i++)
-			row.push_back(m_handCards[i]);
+			row.push_back(displayedCards[i]);
 
 		_m_highestZ = 0;
 		disperseRow(row);
 	}
 
     for (int i = 0; i < n; i++) {
-        if (m_handCards[i]->isSelected()) {
-            QPointF newPos = m_handCards[i]->homePos();
+        if (displayedCards[i]->isSelected()) {
+            QPointF newPos = displayedCards[i]->homePos();
             newPos.setY(newPos.y() + S_PENDING_OFFSET_Y);
-            m_handCards[i]->setHomePos(newPos);
+            displayedCards[i]->setHomePos(newPos);
         }
     }
 }
@@ -1677,6 +1713,75 @@ QList<CardItem *> Dashboard::cloneCardItems(QList<int> card_ids)
         result.append(new_card);
     }
     return result;
+}
+
+bool Dashboard::canActivateMarkCard(const QString &skillName, int instanceId) const
+{
+    if (!m_player || !m_player->isAlive() || !ClientInstance || isShowingDialogOptions()) return false;
+    const auto *skill = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getSkill(skillName));
+    const SkillInstance *instance = m_player->findSkillInstance(skillName, instanceId);
+    if (!skill || !instance || !instance->visible || skill->property("MarkCard").toString().isEmpty()
+        || !skill->isVisibleForPlayer(m_player) || m_player->isSkillInvalid(skillName, instanceId))
+        return false;
+    const Client::Status status = ClientInstance->getStatus();
+    if (status != Client::Playing && (status & Client::ClientStatusBasicMask) != Client::Responding)
+        return false;
+    ActiveSkillRequest request;
+    request.initiator = m_player;
+    request.reason = ClientInstance->getRoomState()->getCurrentCardUseReason();
+    request.pattern = ClientInstance->getRoomState()->getCurrentCardUsePattern();
+    request.activationRef = SkillInstanceRef(m_player->objectName(), SkillInstanceKey(skillName, instanceId));
+    return skill->canActivate(request);
+}
+
+void Dashboard::updateMarkCards()
+{
+    QSet<QString> wanted;
+    bool layoutChanged = false;
+    if (m_player && m_player->isAlive()) {
+        for (const SkillInstance &instance : m_player->getSkillInstances()) {
+            const Skill *skill = Sanguosha->getSkill(instance.skillName);
+            if (!skill || !instance.visible || !skill->isVisibleForPlayer(m_player)) continue;
+            const QString face = skill->property("MarkCard").toString();
+            if (face.isEmpty()) continue;
+            // Reward tokens belong to the player; duplicate skill instances do not
+            // create duplicate cards for the same shared token balance.
+            const QString name = instance.skillName;
+            if (wanted.contains(name)) continue;
+            wanted.insert(name);
+            CardItem *item = m_markCards.value(name, nullptr);
+            if (!item) {
+                auto *visual = new DummyCard;
+                visual->setObjectName(face);
+                item = new DashboardMarkCardItem(visual);
+                visual->deleteLater(); // CardItem snapshots the visual, never retains the Card.
+                item->setParentItem(this);
+                item->setHomeOpacity(1.0);
+                m_markCards.insert(name, item);
+                layoutChanged = true;
+                connect(item, &CardItem::clicked, this, [this, name, item]() {
+                    const int id = item->property("MarkCardInstance").toInt();
+                    if (canActivateMarkCard(name, id)) emit markCardActivated(name, id);
+                });
+            }
+            item->setProperty("MarkCardInstance", instance.instanceID);
+            item->setVisible(!isShowingDialogOptions());
+            item->setToolTip(skill->getDescription(m_player, instance.instanceID));
+            item->setFootnote(Sanguosha->translate(name));
+            item->showFootnote();
+            item->setEnabled(canActivateMarkCard(name, instance.instanceID));
+        }
+    }
+    for (const QString &name : m_markCards.keys()) {
+        if (wanted.contains(name)) continue;
+        CardItem *item = m_markCards.take(name);
+        layoutChanged = true;
+        item->hide();
+        item->disconnect(this);
+        item->deleteLater();
+        if (view_as_skill && view_as_skill->objectName() == name) stopPending();
+    }
+    if (layoutChanged) adjustCards(false);
 }
 
 void Dashboard::setCardTransferable(CardItem *card, bool transferable)
@@ -1712,19 +1817,17 @@ void Dashboard::setCardTransferable(CardItem *card, bool transferable)
 
 void Dashboard::updateTransferButtons()
 {
+    updateMarkCards();
     bool enabled = false;
-    if (Self && Self->getPhase() == Player::Play) {
-        enabled = Sanguosha->getTransfer()->isAvailable(Self, nullptr);
+    if (m_player && ClientInstance->getStatus() == Client::Playing) {
+        enabled = Sanguosha->getTransfer()->isAvailable(m_player, nullptr);
     }
 
     foreach (CardItem *card, m_handCards) {
         bool cardEnabled = enabled;
         if (cardEnabled) {
             const Card *c = card->getCard();
-            if (c && Self->isCardLimited(c, Card::MethodUse))
-                cardEnabled = false;
-            if (c && !c->isTransferable())
-                cardEnabled = false;
+            cardEnabled = c && Sanguosha->getTransfer()->isAvailable(m_player, c);
         }
 
         setCardTransferable(card, cardEnabled);
@@ -2082,9 +2185,12 @@ void Dashboard::enableAllCards()
     m_mutexEnableCards.unlock();
 }
 
-void Dashboard::startPending(const ViewAsSkill *skill)
+void Dashboard::startPending(const ViewAsSkill *skill, int instanceId)
 {
     m_mutexEnableCards.lock();
+    // Card-local actions have no skill-dock button to supply their instance.
+    if (instanceId > 0)
+        m_viewAsSkillInstanceID = instanceId;
     if (skill == nullptr || m_player == nullptr
         || !m_player->hasSkillInstance(skill->objectName(), m_viewAsSkillInstanceID))
         m_viewAsSkillInstanceID = 0;

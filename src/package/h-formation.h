@@ -26,11 +26,42 @@
 #include "skill.h"
 #include "standard.h"
 
+// One V2 no-target summon proxy is shared by Formation, Momentum, and XXY.
+// The activation context retains the exact skill instance that is revealed.
+class HArraySummon : public ViewAsSkillV2
+{
+public:
+    HArraySummon(const QString &name, const QString &type);
+
+    bool canActivate(const ActiveSkillRequest &request) const override;
+    TargetMode targetMode() const override;
+    bool targetsFeasible(const ActiveSkillRequest &request,
+                         const QList<const Player *> &targets) const override;
+    EffectFlow effect(SkillContext &ctx) const override;
+
+private:
+    QString m_type;
+};
+
 class HFormationPackage : public Package {
     Q_OBJECT
 
 public:
     HFormationPackage();
+};
+
+class HDragonPhoenix : public Weapon{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE HDragonPhoenix(Card::Suit suit = Spade, int number = 2);
+};
+
+class HFormationEquipPackage : public Package{
+    Q_OBJECT
+
+public:
+    HFormationEquipPackage();
 };
 
 #endif

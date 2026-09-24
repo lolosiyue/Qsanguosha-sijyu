@@ -853,7 +853,10 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
         return optional ? "cancel" : QString();
 
     QString answer;
-    if (contexts.length() == 1) {
+    // A single concealed compulsory skill still needs the owner's consent.
+    const bool hiddenChoice = optional && contexts.length() == 1
+        && m_room.isGeneralHiddenForSkill(contexts.first().activationRef);
+    if (contexts.length() == 1 && !hiddenChoice) {
         const SkillContext &ctx = contexts.first();
         answer = ctx.skill_name;
         if (ctx.instanceID > 0) {
@@ -906,10 +909,18 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
     if (optional && (answer.isEmpty() || answer == "cancel"))
         return "cancel";
 
+    // A mandatory shown skill can share the menu with optional hidden copies.
+    // Missing/invalid input must never choose a hidden copy on the owner's behalf.
+    QList<int> fallbackIndices;
+    for (int i = 0; i < contexts.size(); ++i)
+        if (!m_room.isGeneralHiddenForSkill(contexts.at(i).activationRef))
+            fallbackIndices << i;
+
     // 格式二支援：返回值格式為 "skillName:ownerObjectName" 或 "skillName"
     QString result;
     if (answer.isEmpty() && !contexts.isEmpty()) {
-        const SkillContext &ctx = contexts.at(qsanRandomBounded(contexts.size()));
+        if (fallbackIndices.isEmpty()) return "cancel";
+        const SkillContext &ctx = contexts.at(fallbackIndices.at(qsanRandomBounded(fallbackIndices.size())));
         QString skillFullName = ctx.skill_name;
         if (ctx.instanceID > 0) {
             skillFullName += "#" + QString::number(ctx.instanceID);
@@ -961,7 +972,8 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
         }
 
         if (!found && !contexts.isEmpty()) {
-            const SkillContext &ctx = contexts.at(qsanRandomBounded(contexts.size()));
+            if ((optional && Config.EnableHegemony) || fallbackIndices.isEmpty()) return "cancel";
+            const SkillContext &ctx = contexts.at(fallbackIndices.at(qsanRandomBounded(fallbackIndices.size())));
             QString skillFullName = ctx.skill_name;
             if (ctx.instanceID > 0) {
                 skillFullName += "#" + QString::number(ctx.instanceID);
@@ -1109,7 +1121,9 @@ const Card* PlayerDecisionService::_askForNullification(const Card*trick, Server
 	data = "Nullification:"+trick->getClassName()+":"+tn+":"+(positive?"true":"false");
 	m_eventDispatcher.dispatch(ChoiceMade, use.from, data);*/
 	card_use = m_room.getTag("UseHistory"+use.card->toString()).value<CardUseStruct>();
-	if(card_use.no_offset_list.contains("_HAS_EFFECT")) return use.card;
+	if(card_use.no_offset_list.contains("_HAS_EFFECT")) {
+		return use.card;
+	}
 	return nullptr;/*
 	if (useNullified(use.card))
 		return _askForNullification(trick, from, to, positive);

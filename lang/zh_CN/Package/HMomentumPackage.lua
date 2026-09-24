@@ -1,5 +1,5 @@
 -- Ported original hegemony package translations.
--- source: TODO/original/lang/zh_CN/Package/MomentumPackage.lua
+-- source: TODO/original/lang/zh_CN/Package/MomentumPackage.lua; TODO/QSanguosha-For-Hegemony-xxyheaven@cf61c15/lang/zh_CN/Package/MomentumPackage.lua
 -- Shared skills use their existing keys; distinct V2 skills keep identity rules under _p.
 return {
     ["heg_momentum"] = "君临天下·势",
@@ -41,6 +41,16 @@ return {
     ["#heg_sunce"] = "江东的小霸王",
     ["heg_sunce"] = "孙策[国]",
     ["illustrator:heg_sunce"] = "木美人",
+    ["heg_jiang"] = "激昂",
+    [":heg_jiang"] = "每当你使用【决斗】/红色【杀】指定目标后，或成为一张【决斗】/红色【杀】的目标后，你可以摸一张牌。",
+    ["heg_yingzi_sunce"] = "英姿",
+    [":heg_yingzi_sunce"] = "锁定技，摸牌阶段，你额定摸牌数+1。",
+    ["#heg_yingzi-sunce-maxcards"] = "英姿（手牌上限）",
+    ["heg_yinghun_sunce"] = "英魂",
+    [":heg_yinghun_sunce"] = "准备阶段开始时，你可以选择一名其他角色：若你已损失的体力值为1，其摸一张牌，然后弃置一张牌；否则其选择一项：1.摸一张牌，然后弃置X张牌；2.摸X张牌，然后弃置一张牌（X为你已损失的体力值）。",
+    ["yinghun-invoke"] = "英魂：选择一名其他角色",
+    ["heg_yinghun_sunce:d1tx"] = "摸一张牌，然后弃置X张牌",
+    ["heg_yinghun_sunce:dxt1"] = "摸X张牌，然后弃置一张牌",
     ["heg_yingyang"] = "鹰扬",
     [":heg_yingyang"] = "你的拼点牌亮出后，你可以令此牌的点数于此次拼点中+3或-3（最小为A，最大为K）。",
     [":heg_yingyang_p"] = "你的拼点牌亮出后，你可以令此牌的点数于此次拼点中+3或-3（最小为A，最大为K）。",
@@ -96,13 +106,17 @@ return {
     [":heg_wuxin"] = "摸牌阶段开始时，你可以观看牌堆顶的X张牌（X为群势力角色数），然后你可以改变这些牌的顺序。",
     [":heg_wuxin_p"] = "摸牌阶段开始时，你可以观看牌堆顶的X张牌并调整其顺序（X为群势力角色数）。",
     ["heg_hongfa"] = "弘法",
-    [":heg_hongfa"] = "君主技，当此武将牌明置时，你获得\"黄巾天兵符\"；" ..
+    [":heg_hongfa"] = "君主技，锁定技，当此武将牌明置时，你令与你势力相同的角色拥有“黄巾天兵符”。",
+    [":heg_hongfa_p"] = "君主技，当此武将牌明置时，你获得\"黄巾天兵符\"；" ..
         "君主技，准备阶段开始时，若没有\"天兵\"，你将牌堆顶的X张牌置于\"黄巾天兵符\"上，称为\"天兵\"（X为群势力角色数）。\n\n" ..
         "#\"黄巾天兵符\"\n" ..
         "你执行的效果中的\"群势力角色数\"+X（X为不大于\"天兵\"数的自然数）；" ..
         "每当你失去体力时，你可以将一张\"天兵\"置入弃牌堆，防止此失去体力；" ..
         "与你势力相同的角色可以将一张\"天兵\"当【杀】使用或打出。",
-    [":heg_hongfa_p"] = "主公技，准备阶段开始时，若没有“天兵”，你将牌堆顶的X张牌置为“天兵”（X为群势力角色数）。你计算的群势力角色数可以增加至多“天兵”数；你失去体力时，可以移去一张“天兵”防止之；与你势力相同的角色可以将一张“天兵”当【杀】使用或打出。",
+    ["heg_huangjinsymbol"] = "黄巾天兵符",
+    [":heg_huangjinsymbol"] = "锁定技，准备阶段开始时，若“天兵”为空，你将牌堆顶的X张牌置于武将牌上，称为“天兵”（X为群势力角色数）；锁定技，当你失去体力前，若有“天兵”，你可以弃置一张“天兵”，防止此次失去体力；与你势力相同的角色可以将一张“天兵”当【杀】使用或打出。",
+    ["heg_huangjinsymbol:prevent"] = "你可以发动“黄巾天兵符”，弃置一张“天兵”，防止此次失去体力",
+    ["@heg_huangjinsymbol-discard"] = "请弃置一张“天兵”",
     ["@heg_hongfa-prevent"] = "你可以发动“弘法”，防止此次失去体力",
     ["heg_hongfa_num"] = "弘法：选择增加的群势力角色数",
     ["heg_hongfa_slash"] = "弘法",
@@ -115,7 +129,9 @@ return {
 
     ["PeaceSpell"] = "太平要术",
     ["heg_PeaceSpell"] = "太平要术",
-    [":heg_PeaceSpell"] = "装备牌·防具\n\n技能：锁定技，每当你受到属性伤害时，你防止此伤害；锁定技，与你势力相同的角色的手牌上限+X（X为与你势力相同的角色数）；锁定技，每当你失去装备区里的【太平要术】后，你失去1点体力，然后摸两张牌。",
+    [":heg_PeaceSpell"] = "装备牌·防具\n\n技能：锁定技，每当你受到属性伤害时，你防止此伤害；锁定技，你的手牌上限+X（X为与你势力相同的存活角色数；若你的主将拥有并已明置“弘法”，X再加“天兵”的数量）；锁定技，每当你失去装备区里的【太平要术】后，你摸两张牌，然后若你仍存活且体力值大于1，你失去1点体力。",
+    [":heg_PeaceSpell_p"] = "装备牌·防具\n\n技能：锁定技，每当你受到属性伤害时，你防止此伤害；锁定技，与你势力相同的角色的手牌上限+X（X为与你势力相同的角色数）；锁定技，每当你失去装备区里的【太平要术】后，你失去1点体力，然后摸两张牌。",
     ["#heg_PeaceSpellNatureDamage"] = "【<font color=\"yellow\"><b>太平要术</b></font>】的效果被触发，防止了 %from 对 %to 造成的 %arg 点 %arg2 伤害",
-    ["#heg_PeaceSpellLost"] = "%from 失去了装备区中的【<font color=\"yellow\"><b>太平要术</b></font>】，须失去1点体力并摸两张牌",
+    ["#heg_PeaceSpellLost"] = "%from 失去了装备区中的【<font color=\"yellow\"><b>太平要术</b></font>】，摸两张牌；若仍存活且体力值大于1，再失去1点体力",
+    ["#heg_PeaceSpellLost_p"] = "%from 失去了装备区中的【<font color=\"yellow\"><b>太平要术</b></font>】，失去1点体力，然后若仍存活，摸两张牌",
 }

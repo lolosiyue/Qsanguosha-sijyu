@@ -93,6 +93,15 @@ int main(int argc, char **argv)
     check(!trigger.startsWith(QStringLiteral("#TriggerSkill")),
           "skill log renders the template, not the raw log key");
 
+    const QString companion = tuiSkillLogText(
+        skillLog(QStringLiteral("#UseCard"), QStringLiteral("sgs1"), {},
+                 QStringLiteral("@ActiveSkillCard[no_suit:0]=."),
+                 {QStringLiteral("heg_companion"), QString(), QString(), QString(), QString()}),
+        playerName);
+    check(companion.contains(Sanguosha->translate(QStringLiteral("heg_companion")))
+              && !companion.contains(QStringLiteral("activeskill"), Qt::CaseInsensitive),
+          "V2 reward log preserves the real skill name across card parsing");
+
     const auto engineTranslate = [](const QString &key) {
         return Sanguosha->translate(key);
     };

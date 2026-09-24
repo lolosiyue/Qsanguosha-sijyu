@@ -271,10 +271,10 @@ public:
 
 class HJushouSelect : public ViewAsSkillV2 {
 public:
-    HJushouSelect() : ViewAsSkillV2("heg_jushou_select", 1) {}
+    HJushouSelect() : ViewAsSkillV2("heg_jushou", 1) {}
     bool canActivate(const ActiveSkillRequest &request) const override {
         // MethodNone selection uses UNKNOWN and must not become a play action.
-        return request.initiator && request.pattern == "@@heg_jushou_select!"
+        return request.initiator && request.pattern == "@@heg_jushou!"
             && (request.reason == CardUseStruct::CARD_USE_REASON_UNKNOWN
                 || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
                 || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
@@ -302,7 +302,7 @@ public:
 
 class HJushou : public TriggerSkillV2 {
 public:
-    HJushou() : TriggerSkillV2("heg_jushou") { events << EventPhaseStart; frequency = Frequent; }
+    HJushou() : TriggerSkillV2("heg_jushou") { events << EventPhaseStart; frequency = Frequent; view_as_skill = new HJushouSelect; }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *p, QVariant &) const override {
         return p && p->isAlive() && p->hasSkill(objectName()) && p->getPhase() == Player::Finish
             ? TriggerList{{p, {objectName()}}} : TriggerList();
@@ -325,7 +325,7 @@ public:
         for (const Card *card : owner->getHandcards())
             if (card->isKindOf("EquipCard") ? card->isAvailable(owner) : !owner->isJilei(card)) { fallback = card; break; }
         if (!fallback) return false;
-        const Card *selection = room->askForCard(owner, "@@heg_jushou_select!", "@heg_jushou", QVariant(), Card::MethodNone);
+        const Card *selection = room->askForCard(owner, "@@heg_jushou!", "@heg_jushou", QVariant(), Card::MethodNone);
         const Card *card = selection ? Sanguosha->getCard(selection->getEffectiveId()) : fallback;
         if (card->isKindOf("EquipCard")) room->useCard(CardUseStruct(card, owner, owner));
         else room->throwCard(card, objectName(), owner);
@@ -603,8 +603,6 @@ void HStandardPackage::addWeiGenerals()
 
     General *caoren = new General(this, "heg_caoren", "wei"); // WEI 011
     caoren->addSkill(new HJushou);
-    skills << new HJushouSelect;
-    insertRelatedSkills("heg_jushou", "heg_jushou_select");
 
     General *dianwei = new General(this, "heg_dianwei", "wei"); // WEI 012
     dianwei->addSkill(new HQiangxi);

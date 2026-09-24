@@ -40,8 +40,6 @@ MaxChoice=5
 LordMaxChoice=-1
 NonLordMaxChoice=2
 HegemonyMaxChoice=7
-HegemonyMaxShown=2
-HegemonyCompanionReward=Postponed
 
 EnableAI=true
 AIChat=true

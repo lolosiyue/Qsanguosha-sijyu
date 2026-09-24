@@ -1,6 +1,11 @@
 // Stable English keys with Simplified Chinese display text for Sheets UI. Dynamic game text comes from
 // the native bridge and must not be translated or reconstructed here.
 const QSAN_TEXT = Object.freeze({
+  assignSeatsHelp: '在 QSAN Actions 的 F 栏为每位玩家填写座位号，每个座位只能使用一次；全部玩家保持勾选。势力在选将后决定。',
+  generalPairHelp: '勾选两名武将，顺序栏填 1（主将）、2（副将）。取消勾选可重选，交换顺序可交换主副；预检通过后再提交。取消按钮只清除本次选择。',
+  generalPairOrder: '请选择两名武将，并明确填写顺序 1（主将）和 2（副将）。',
+  generalPairInvalid: '此主副将组合或顺序不合法，请重新选择。',
+  generalPairCleared: '已清除主副将选择，可以重新选择。',
   menuRoot: 'QSanGuosha',
   menuSetup: '建立专用工作表',
   menuConnect: '连接与操作控制',

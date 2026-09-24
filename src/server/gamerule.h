@@ -54,14 +54,16 @@ public:
 // The original Hegemony rules use the current Room/SkillInstance runtime.
 class HegemonyRule : public GameRule
 {
-    Q_OBJECT
-
 public:
     explicit HegemonyRule(QObject *parent);
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *player,
                  QVariant &data = _dummy_variant) const override;
     static QString winner(Room *room);
     static QString getMappedRole(const QString &role);
+
+private:
+    void rewardAndPunish(ServerPlayer *killer, ServerPlayer *victim) const;
+    void rewardReveal(Room *room, ServerPlayer *player) const;
 };
 
 #endif

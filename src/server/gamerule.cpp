@@ -1,4 +1,5 @@
 #include "gamerule.h"
+#include <QScopeGuard>
 #include "room.h"
 #include "engine.h"
 #include "structs.h"
@@ -8,6 +9,7 @@
 #include "crashhandler.h"
 #include "card-lifetime-manager.h"
 #include "resolution-history.h"
+#include "h-strategic-advantage.h"
 
 static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
                                           SkillContext &context, ServerPlayer *acceptedInvoker)
@@ -39,7 +41,7 @@ GameRule::GameRule(QObject *)
         << TrickCardCanceling
         << HpChanged
         << EventLoseSkill << EventAcquireSkill
-        << AskForPeaches << AskForPeachesDone << BuryVictim << GameOverJudge
+        << AskForPeaches << AskForPeachesDone << Death << BuryVictim << GameOverJudge
         << SlashHit << SlashEffected << SlashProceed
         << ConfirmDamage << DamageCaused << DamageDone << DamageComplete
         << StartJudge << FinishRetrial << FinishJudge
@@ -79,8 +81,10 @@ void GameRule::onPhaseProceed(ServerPlayer *player,Room *room) const
 			reason.m_extraData = QVariant::fromValue(trick);
             room->moveCardTo(trick,nullptr,Player::PlaceTable,reason,true);
             room->getThread()->delay(Config.S_JUDGE_LONG_DELAY);
-            if(room->cardEffect(trick,nullptr,player)) continue;
-			trick->onNullified(player);
+            if (!room->cardEffect(trick, nullptr, player))
+                trick->onNullified(player);
+            // XXY freeChain boundary: finish the whole delayed trick first.
+            room->flushHegemonyReveals();
         }
         break;
     }
@@ -93,6 +97,7 @@ void GameRule::onPhaseProceed(ServerPlayer *player,Room *room) const
 			}
         }
 		player->drawCards(num,"draw_phase");
+		room->flushHegemonyReveals();
 		/*QVariant data = num;
         room->getThread()->trigger(DrawNCards,room,player,data);
         if(data.toInt()>0) player->drawCards(data.toInt(),"draw_phase");
@@ -118,12 +123,28 @@ void GameRule::onPhaseProceed(ServerPlayer *player,Room *room) const
 				if (!card_use.card->isVirtualCard())
 					room->setCardFlag(card_use.card, "AI_FailedUse");
 			}
+			// Grant reveal rewards before the next play request, after useCard returns.
+			room->flushHegemonyReveals();
 		}
 		player->removeTag("AI_FailedUse");
         break;
     }
     case Player::Discard: {
-        int num = player->getHandcardNum()-player->getMaxCards();
+        // Resolve the authoritative hand limit once for this discard phase.
+        const int maximum = Config.EnableHegemony ? player->getMaxCards(MaxCardsType::Normal) : player->getMaxCards();
+        int num = player->getHandcardNum() - maximum;
+        if (Config.EnableHegemony) {
+            const QList<QPair<QString, QString>> markers{{"@halfmaxhp", "heg_halfmaxhp"}, {"@careerist", "heg_careerman"}};
+            for (const auto &marker : markers) {
+                if (num <= 0 || player->getMark(marker.first) <= 0) continue;
+                if (room->askForChoice(player, marker.second, "yes+no", QVariant(), QString(),
+                                       marker.second == "heg_careerman" ? "@careerman-use" : "@halfmaxhp-use") == "yes") {
+                    room->removePlayerMark(player, marker.first);
+                    room->addMaxCards(player, 2, true, marker.second, player);
+                    num -= 2;
+                }
+            }
+        }
 		foreach (const Card *c,player->getHandcards()) {
 			if(num>0&&player->isCardLimited(c,Card::MethodIgnore))
 				num--;
@@ -146,6 +167,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         room->removeTag("SkipGameRule");
         return false;
     }
+    HStrategicAdvantagePackage::recordCardRules(triggerEvent, room, player, data);
     switch (triggerEvent) {
     case GameReady: {// Handle global events
 		if(player) break;
@@ -179,8 +201,19 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 					room->setPlayerProperty(p,"kingdom",room->askForKingdom(p,"gamerule_god"));
 			}
 			foreach (const Skill *skill,p->getVisibleSkillList()) {
-				if(skill->isLimitedSkill()&&(!skill->isLordSkill()||p->hasLordSkill(skill,true)))
-					room->setPlayerMark(p,skill->getLimitMark(),1);
+				// Hegemony reward marks are granted by rewardReveal(), not at
+				// GameReady.  Initialising them here creates a spendable token
+				// before the corresponding reveal milestone has happened.
+				const bool deferredHegemonyReward = Config.EnableHegemony
+					&& (skill->objectName() == QLatin1String("heg_firstshow")
+						|| skill->objectName() == QLatin1String("heg_halfmaxhp")
+						|| skill->objectName() == QLatin1String("heg_companion")
+						|| skill->objectName() == QLatin1String("heg_careerman"));
+				if(!deferredHegemonyReward && skill->isLimitedSkill()&&(!skill->isLordSkill()||p->hasLordSkill(skill,true))) {
+					QList<ServerPlayer *> viewers;
+					if (Config.EnableHegemony && !p->hasShownSkill(skill)) viewers << p;
+					room->setPlayerMark(p,skill->getLimitMark(),1,viewers);
+				}
                 if(skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty()
                     && (!skill->isLordSkill() || p->hasLordSkill(skill->objectName())))
                     p->addClub(skill->getClubName());
@@ -417,6 +450,18 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			player->removeTag("NextTurnSkill");
             room->handleAcquireDetachSkills(player,lose);
 		}else if(change.to==Player::NotActive) {
+        for (ServerPlayer *target : room->getPlayers()) {
+            if (target->getMark("command4_effect") > 0) {
+                room->setPlayerMark(target, "command4_effect", 0);
+                room->removeSkillInvalidity(target, "all", target->objectName(), "heg_command4");
+                room->removePlayerCardLimitationByReason(target, "heg_command4");
+                for (ServerPlayer *other : room->getAlivePlayers()) {
+                    room->filterCards(other, other->getCards("he"), true);
+                    other->refreshUIState(true);
+                }
+            }
+            if (target->getMark("command5_effect") > 0) room->setPlayerMark(target, "command5_effect", 0);
+        }
             room->setPlayerFlag(player,".");
             room->clearPlayerCardLimitation(player,true);
 			LogMessage log;
@@ -498,6 +543,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         break;
     }
     case ChangeSlash: {
+        if (Config.EnableHegemony) break; // Hidden faction is god; it must not produce identity-mode god cards.
 		CardUseStruct card_use = data.value<CardUseStruct>();
 		if(card_use.from->getKingdom()=="god"&&card_use.card->objectName()=="slash"&&!Sanguosha->getBanPackages().contains("Godlailailai")){
 			Card *gs = Sanguosha->cloneCard("_god_slash");
@@ -554,13 +600,25 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     }
     case CardUsed: {
 		CardUseStruct card_use = data.value<CardUseStruct>();
+        const bool donorSlash = Config.EnableHegemony && card_use.from && card_use.card->isKindOf("Slash");
+        const QString jinkKey = QStringLiteral("Jink_") + card_use.card->toString();
+        const QVariant jinkBackup = donorSlash ? card_use.from->getTag(jinkKey) : QVariant();
+        auto restoreDonorJink = qScopeGuard([&]() {
+            if (!donorSlash) return;
+            if (jinkBackup.isValid()) card_use.from->setTag(jinkKey, jinkBackup);
+            else card_use.from->removeTag(jinkKey);
+        });
+        if (donorSlash) card_use.from->removeTag(jinkKey);
+
 		if(card_use.m_isOwnerUse&&card_use.from->hasSkill(card_use.card->getSkillName(false),true))
 			room->notifySkillInvoked(card_use.from,card_use.card->getSkillName(false));
 
 		if(card_use.card->hasPreAction())
 			card_use.card->doPreAction(room,card_use);
 
-		if(card_use.card->getTypeId()>0){
+		// ComboMoves belongs to identity content, not the imported HEG rules.
+		// Do not retain identity-only card copies in a hegemony room.
+		if(!Config.EnableHegemony && card_use.card->getTypeId()>0){
 			if(player->getTag("ComboMovesCard").isValid()){
 				const CardTagOwner owner = player->getTag("ComboMovesCard").value<CardTagOwner>();
 				if (owner.card)
@@ -799,6 +857,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     }
     case CardFinished: {
         CardUseStruct use = data.value<CardUseStruct>();
+        // Pending offsets belong to this card use, regardless of the content package.
+        room->removeTag(use.card->toString() + QStringLiteral("PendingNullification"));
         room->clearCardFlag(use.card);
 		
         if(use.card->isKindOf("TrickCard")&&use.to.length()>1) {
@@ -1138,6 +1198,13 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
                     if(room->getMode()=="02_1v1")
                         room->getThread()->trigger(Debut,room,p);
                 }
+            }
+        }
+        if (Config.EnableHegemony) {
+            for (ServerPlayer *revived : room->getAllPlayers()) {
+                if (!revived->hasFlag("Global_DFDebut")) continue;
+                revived->setFlags("-Global_DFDebut");
+                room->getThread()->trigger(DFDebut, room, revived);
             }
         }
         break;
@@ -2125,26 +2192,36 @@ bool HulaoPassMode::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *p
 HegemonyRule::HegemonyRule(QObject *parent)
     : GameRule(parent)
 {
-    events << BeforeGameOverJudge << GeneralShown;
+    events << BeforeGameOverJudge << GeneralShown << GeneralShowed << BeforeCardsMoveBatch << CardsMoveBatch;
 }
 
 QString HegemonyRule::getMappedRole(const QString &role)
 {
-    static QMap<QString,QString> roles;
-    if(roles.isEmpty()) {
-        roles["wei"] = "lord";
-        roles["shu"] = "loyalist";
-        roles["wu"] = "rebel";
-        roles["qun"] = "renegade";
-    }
-    return roles[role];
+    static const QMap<QString, QString> roles{
+        {QStringLiteral("wei"), QStringLiteral("lord")},
+        {QStringLiteral("shu"), QStringLiteral("loyalist")},
+        {QStringLiteral("wu"), QStringLiteral("rebel")},
+        {QStringLiteral("qun"), QStringLiteral("renegade")}};
+    return roles.value(role, role == QLatin1String("god")
+        ? QStringLiteral("careerist") : role);
 }
 
 namespace {
 
+bool isImperialEdictTrick(const Card *card)
+{
+    return card && (card->isKindOf("HRuleTheWorld") || card->isKindOf("HConquering")
+        || card->isKindOf("HConsolidateCountry") || card->isKindOf("HChaos"));
+}
+
 bool isHegemonyLord(const ServerPlayer *player)
 {
-    return 15;
+    const General *general = player->getActualGeneral1();
+    // Identity generals also have lord flags; only donor sovereigns override
+    // the half-room careerist limit.
+    return general && general->isLord()
+        && (general->objectName().startsWith(QLatin1String("lord_"))
+            || general->objectName().startsWith(QLatin1String("heg_lord_")));
 }
 
 void revealHegemonyGenerals(ServerPlayer *player)
@@ -2154,24 +2231,70 @@ void revealHegemonyGenerals(ServerPlayer *player)
     player->showGeneral(false, false, false);
 }
 
-    Room *room = player->getRoom();
-    if(Config.EnableHegemony) {
-        QMap<QString,int> kingdom_roles;
-        foreach(ServerPlayer *p,room->getOtherPlayers(player))
-            kingdom_roles[p->getKingdom()]++;
+}
 
-        if(kingdom_roles[Sanguosha->getGeneral(names.first())->getKingdom()] >= Config.value("HegemonyMaxShown",2).toInt()
-           &&player->getGeneralName()=="anjiang")
-            return;
+QString HegemonyRule::winner(Room *room)
+{
+    const QList<ServerPlayer *> alive = room->getAlivePlayers();
+    if (alive.isEmpty())
+        return QStringLiteral(".");
+    ServerPlayer *survivor = alive.first();
+    if (alive.size() > 1) {
+        // Compare only authority-side actual generals. This prediction never
+        // leaves Room and does not reveal anyone unless the game really ends.
+        foreach (ServerPlayer *a, alive) {
+            foreach (ServerPlayer *b, alive) {
+                if (a == b || a->isFriendWith(b)) continue;
+                if (a->hasShownOneGeneral() && b->hasShownOneGeneral()) {
+                    if (!a->isFriendWith(b)) return QString();
+                } else if (a->hasShownOneGeneral()) {
+                    if (!b->willBeFriendWith(a)) return QString();
+                } else if (b->hasShownOneGeneral()) {
+                    if (!a->willBeFriendWith(b)) return QString();
+                } else {
+                    const General *ag = a->getActualGeneral1();
+                    const General *bg = b->getActualGeneral1();
+                    if (!ag || !bg || a->getHegemonyKingdom() != b->getHegemonyKingdom())
+                        return QString();
+                }
+            }
+        }
+
+        QSet<QString> livingLords;
+        QSet<QString> deadLords;
+        foreach (ServerPlayer *p, room->getPlayers()) {
+            if (!isHegemonyLord(p)) continue;
+            const QString kingdom = p->getActualGeneral1()->getKingdom();
+            if (p->isAlive()) livingLords.insert(kingdom);
+            else deadLords.insert(kingdom);
+        }
+        QMap<QString, int> kingdomCounts;
+        foreach (ServerPlayer *p, room->getPlayers()) {
+            const General *general = p->getActualGeneral1();
+            if (!general) return QString();
+            if (p->getRole().startsWith("careerist_") && p->hasShownRole()) continue;
+            if (!p->hasShownOneGeneral() && !livingLords.isEmpty())
+                return QString(); // An unrevealed player can still kill a lord.
+            const QString kingdom = p->hasShownOneGeneral()
+                ? p->getKingdom() : p->getHegemonyKingdom();
+            if (livingLords.contains(kingdom)) continue;
+            ++kingdomCounts[kingdom];
+            if (p->isAlive() && !p->hasShownOneGeneral()
+                && (deadLords.contains(kingdom)
+                    || kingdomCounts.value(kingdom) > room->getPlayers().size() / 2))
+                return QString();
+        }
     }
 
-    if(room->askForChoice(player,"RevealGeneral","yes+no")=="yes") {
-        QString general_name = room->askForGeneral(player,names);
-
-        generalShowed(player,general_name);
-        if(Config.EnableHegemony) room->getThread()->trigger(GameOverJudge,room,player);
-        playerShowed(player);
+    if (alive.size() > 1 && room->doCareeristRule()) return QString();
+    foreach (ServerPlayer *p, alive)
+        revealHegemonyGenerals(p);
+    QStringList winners;
+    foreach (ServerPlayer *p, room->getPlayers()) {
+        if (survivor->isFriendWith(p))
+            winners << p->objectName();
     }
+    return winners.join(QLatin1Char('+'));
 }
 
 void HegemonyRule::rewardAndPunish(ServerPlayer *killer, ServerPlayer *victim) const
@@ -2181,6 +2304,10 @@ void HegemonyRule::rewardAndPunish(ServerPlayer *killer, ServerPlayer *victim) c
         return;
     if (killer->isFriendWith(victim)) {
         killer->throwAllHandCardsAndEquips(QStringLiteral("kill"));
+        return;
+    }
+    if (killer->getRole() == "careerist") {
+        killer->drawCards(3, QStringLiteral("kill"));
         return;
     }
     int reward = 1;
@@ -2193,128 +2320,232 @@ void HegemonyRule::rewardAndPunish(ServerPlayer *killer, ServerPlayer *victim) c
 void HegemonyRule::rewardReveal(Room *room, ServerPlayer *player) const
 {
     if (!player->isAlive()) return;
-    if (Config.value("RewardTheFirstShowingPlayer", true).toBool()
-        && !room->getTag("TheFirstToShowRewarded").toBool()) {
-        // Claim before prompting: nested reveal triggers cannot award twice.
-        room->setTag("TheFirstToShowRewarded", true);
-        if (room->askForSkillInvoke(player, "HegemonyFirstShow"))
-            player->drawCards(2, QStringLiteral("HegemonyFirstShow"));
+    if (player->getMark("Global_TheFirstToShowRewarded") > 0) {
+        room->setPlayerMark(player, "Global_TheFirstToShowRewarded", 0);
+        room->addPlayerMark(player, "@firstshow");
     }
-    if (!player->hasShownAllGenerals()) return;
+    if (player->hasShownGeneral() && player->getActualGeneral1()
+        && player->getActualGeneral1()->getKingdom() == "careerist"
+        && player->getMark("HegemonyCareeristRewarded") == 0) {
+        room->setPlayerMark(player, "HegemonyCareeristRewarded", 1);
+        room->addPlayerMark(player, "@careerist");
+    }
+    if (!player->hasShownAllGenerals() || player->getMark("Global_hasShownAllGenerals") > 0) return;
+    room->setPlayerMark(player, "Global_hasShownAllGenerals", 1);
+    // Convert private pair data into spendable public markers exactly once.
     if (player->getMark("CompanionEffect") > 0) {
-        room->removePlayerMark(player, "CompanionEffect");
-        QStringList choices;
-        if (player->isWounded()) choices << QStringLiteral("recover");
-        choices << QStringLiteral("draw") << QStringLiteral("cancel");
-        const QString choice = room->askForChoice(player, "CompanionEffect", choices.join('+'));
-        if (choice == QLatin1String("recover"))
-            room->recover(player, RecoverStruct(QStringLiteral("CompanionEffect"), player));
-        else if (choice == QLatin1String("draw"))
-            player->drawCards(2, QStringLiteral("CompanionEffect"));
+        room->setPlayerMark(player, "CompanionEffect", 0, QList<ServerPlayer *>{player});
+        room->addPlayerMark(player, "@companion");
     }
     if (player->getMark("HalfMaxHpLeft") > 0) {
-        room->removePlayerMark(player, "HalfMaxHpLeft");
-        if (room->askForSkillInvoke(player, "HegemonyHalfHp"))
-            player->drawCards(1, QStringLiteral("HegemonyHalfHp"));
+        room->setPlayerMark(player, "HalfMaxHpLeft", 0, QList<ServerPlayer *>{player});
+        room->addPlayerMark(player, "@halfmaxhp");
     }
 }
 
-			room->sendLog(log,sp);
-		}
-        break;
-    }case CardEffected: {
-        if(player->getPhase()==Player::NotActive) {
-            CardEffectStruct ces = data.value<CardEffectStruct>();
-			if(ces.card&&(ces.card->isKindOf("TrickCard")||ces.card->isKindOf("Slash")))
-				playerShowed(player);
-
-            const ProhibitSkill *prohibit = room->isProhibited(ces.from,ces.to,ces.card);
-            if(prohibit) {
-                if(prohibit->isVisible()&&ces.to->hasSkill(prohibit)) {
-                    LogMessage log;
-                    log.type = "#SkillAvoid";
-                    log.from = ces.to;
-                    log.arg = prohibit->objectName();
-					if(ces.card)
-						log.arg2 = ces.card->objectName();
-                    room->sendLog(log);
-                    room->broadcastSkillInvoke(prohibit->objectName());
-                    room->notifySkillInvoked(ces.to,prohibit->objectName());
-                } else {
-                    const Skill *skill = Sanguosha->getMainSkill(prohibit->objectName());
-                    if(skill&&skill->isVisible()&&ces.to->hasSkill(skill)) {
-                        LogMessage log;
-                        log.type = "#SkillAvoid";
-                        log.from = ces.to;
-                        log.arg = skill->objectName();
-						if(ces.card)
-							log.arg2 = ces.card->objectName();
-                        room->sendLog(log);
-                        room->broadcastSkillInvoke(skill->objectName());
-                        room->notifySkillInvoked(ces.to,skill->objectName());
-                    }
-                }
-                return true;
+bool HegemonyRule::trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+{
+    if (room->getTag("SkipGameRule").toInt() == int(event)) {
+        room->removeTag("SkipGameRule");
+        return false;
+    }
+    switch (event) {
+    case GameReady:
+        if (!player) {
+            foreach (ServerPlayer *p, room->getPlayers()) {
+                const QString base = p->getActualGeneral1Name();
+                const QString lordName = base.startsWith("heg_") ? "heg_lord_" + base.mid(4) : "heg_lord_" + base;
+                const General *lord = Sanguosha->getGeneral(lordName);
+                if (lord && !Sanguosha->getBanPackages().contains(lord->getPackage())
+                    && room->askForSkillInvoke(p, "changetolord")) p->changeToLord();
+                for (const QString &skill : QStringList{"heg_firstshow", "heg_halfmaxhp", "heg_companion",
+                                                       "heg_careerman", "heg_commandefect"})
+                    if (Sanguosha->getSkill(skill)) room->attachSkillToPlayer(p, skill);
+                const General *head = p->getActualGeneral1();
+                const General *deputy = p->getActualGeneral2();
+                if (!head || !deputy) continue;
+                // These marks encode unrevealed pair information and are private.
+                p->setMark("HalfMaxHpLeft", (head->getMaxHpHead() + deputy->getMaxHpDeputy()) % 2);
+                const bool sovereignPair = p->isHegemonyLord() && head->getKingdom() == deputy->getKingdom();
+                p->setMark("CompanionEffect", sovereignPair || head->isCompanionWith(deputy->objectName()) ? 1 : 0);
             }
         }
         break;
-    }case EventPhaseStart: {
-        if(player->getPhase()==Player::RoundStart)
-            playerShowed(player);
+    case EventPhaseProceeding:
+        if (player && player->isAlive() && player->getPhase() == Player::RoundStart) {
+            QStringList choices;
+            if (!player->hasShownGeneral() && player->canShowGeneral("h")) choices << "head";
+            if (player->getActualGeneral2() && !player->hasShownGeneral2()
+                && player->canShowGeneral("d")) choices << "deputy";
+            if (choices.size() == 2) choices << "both";
+            if (!choices.isEmpty()) {
+                choices << "cancel";
+                const QString choice = room->askForChoice(player, "HegemonyReveal", choices.join('+'));
+                if (choice == "head" || choice == "both") player->showGeneral(true);
+                if (player->isAlive() && (choice == "deputy" || choice == "both"))
+                    player->showGeneral(false);
+            }
+        }
         break;
-    }case DamageInflicted: {
-        playerShowed(player);
+    case BeforeGameOverJudge:
+        if (player) revealHegemonyGenerals(player);
+        return false;
+    case BeforeCardsMoveBatch: {
+        QVariantList revised;
+        for (const QVariant &item : data.toList()) {
+            CardsMoveOneTimeStruct move = item.value<CardsMoveOneTimeStruct>();
+            QList<int> special;
+            if (move.to_place == Player::DiscardPile)
+                for (int id : move.card_ids)
+                    if (isImperialEdictTrick(room->getCard(id))) special << id;
+            if (special.isEmpty()) { revised << item; continue; }
+            CardsMoveOneTimeStruct returned = move;
+            QList<int> ordinary = move.card_ids;
+            for (int id : special) ordinary.removeAll(id);
+            returned.removeCardIds(ordinary);
+            returned.to = nullptr;
+            // XXY uses WuGu for the off-deck reservoir and its table animation.
+            returned.to_place = Player::PlaceWuGu;
+            returned.to_pile_name.clear();
+            move.removeCardIds(special);
+            if (!move.card_ids.isEmpty()) revised << QVariant::fromValue(move);
+            revised << QVariant::fromValue(returned);
+        }
+        data = revised;
+        return false;
+    }
+    case CardsMoveBatch: {
+        // Publish reservoir availability only after the authoritative move committed.
+        QVariantList available = room->getTag("ImperialEdictTrick").toList();
+        for (const QVariant &item : data.toList()) {
+            const CardsMoveOneTimeStruct move = item.value<CardsMoveOneTimeStruct>();
+            if (move.to_place != Player::PlaceWuGu) continue;
+            for (int id : move.card_ids)
+                if (isImperialEdictTrick(room->getCard(id))
+                    && room->getCardPlace(id) == Player::PlaceWuGu && !available.contains(QVariant(id)))
+                    available << id;
+        }
+        room->setTag("ImperialEdictTrick", available);
+        return false;
+    }
+    case BeforeCardsMove: {
+        CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        if (move.to_place != Player::DiscardPile || room->getPlayers().isEmpty()) break;
+        QList<int> removed;
+        for (int id : move.card_ids) {
+            const Card *card = room->getCard(id);
+            if (!card || !card->isKindOf("ImperialOrder")) continue;
+            if (move.reason.m_reason == CardMoveReason::S_REASON_USE
+                && move.card_ids.size() == 1 && card->hasFlag("imperial_order_normal_use"))
+                continue;
+            removed << id;
+        }
+        if (removed.isEmpty()) break;
+        // Remove the redirected cards before nested move triggers run.
+        move.removeCardIds(removed);
+        data = QVariant::fromValue(move);
+        for (int id : removed) {
+            const Card *card = room->getCard(id);
+            room->moveCardTo(card, nullptr, Player::PlaceTable, true);
+            room->getPlayers().first()->addToPile("#imperial_order", card, false);
+            LogMessage log;
+            log.type = "#RemoveImperialOrder";
+            log.arg = "imperial_order";
+            room->sendLog(log);
+            room->setTag("ImperialOrderInvoke", true);
+            QVariantList pending = room->getTag("ImperialOrderCards").toList();
+            pending << id;
+            room->setTag("ImperialOrderCards", pending);
+        }
         break;
     }
     case EventPhaseChanging: {
-        if (data.value<PhaseChangeStruct>().to != Player::NotActive) break;
+        const PhaseChangeStruct change = data.value<PhaseChangeStruct>();
+        // Sovereigns must reveal their head on entering Start, as in the donor rule.
+        // Keep the normal reveal events and leave the deputy's reveal optional.
+        if (change.to == Player::Start && player && player->isAlive()
+            && player->isHegemonyLord() && !player->hasShownGeneral())
+            player->showGeneral(true);
+        if (change.to != Player::NotActive) break;
         const bool result = GameRule::trigger(event, room, player, data);
         if (!room->getTag("ImperialOrderInvoke").toBool()) return result;
-        // Consume first: an effect can itself discard another Imperial Order.
+        // Consume the batch first: nested discards belong to the next batch.
         room->setTag("ImperialOrderInvoke", false);
-        const Card *order = room->getTag("ImperialOrderCard").value<const Card *>();
-        room->removeTag("ImperialOrderCard");
-        if (!order) return result;
-        LogMessage log;
-        log.type = "#ImperialOrderEffect";
-        log.from = player;
-        log.arg = "imperial_order";
-        room->sendLog(log);
-        const QString key = order->toString();
-        auto clearNullification = qScopeGuard([&]() {
-            room->removeTag(key + QStringLiteral("HegNullificationTargets"));
-            room->removeTag(key + QStringLiteral("HegNullificationCard"));
-        });
-        for (ServerPlayer *target : room->getAllPlayers()) {
-            if (target->isAlive() && !target->hasShownOneGeneral()
-                && !room->isProhibited(nullptr, target, order))
-                room->cardEffect(order, nullptr, target);
+        const QVariantList pending = room->getTag("ImperialOrderCards").toList();
+        room->removeTag("ImperialOrderCards");
+        for (const QVariant &id : pending) {
+            const Card *order = room->getCard(id.toInt());
+            if (!order) continue;
+            LogMessage log;
+            log.type = "#ImperialOrderEffect";
+            log.from = player;
+            log.arg = "imperial_order";
+            room->sendLog(log);
+            const QString key = order->toString();
+            const QString historyKey = QStringLiteral("UseHistory") + key;
+            const QVariant previousHistory = room->getTag(historyKey);
+            // Removed physical cards may retain an earlier use's no-response list.
+            // Give this source-less effect its own target snapshot and response scope.
+            CardUseStruct deferred(order, nullptr);
+            for (ServerPlayer *target : room->getAlivePlayers())
+                if (!target->hasShownOneGeneral() && !room->isProhibited(nullptr, target, order))
+                    deferred.to << target;
+            room->setTag(historyKey, QVariant::fromValue(deferred));
+            room->removeTag(key + QStringLiteral("PendingNullification"));
+            auto clearNullification = qScopeGuard([&]() {
+                room->removeTag(key + QStringLiteral("PendingNullification"));
+                if (previousHistory.isValid()) room->setTag(historyKey, previousHistory);
+                else room->removeTag(historyKey);
+            });
+            for (ServerPlayer *target : deferred.to) {
+                if (target->isAlive() && !target->hasShownOneGeneral()
+                    && !room->isProhibited(nullptr, target, order))
+                    room->cardEffect(order, nullptr, target, deferred.to.size() > 1);
+            }
         }
         return result;
     }
-    case CardFinished: {
-        const CardUseStruct use = data.value<CardUseStruct>();
-        if (use.card && use.card->isNDTrick()) {
-            room->removeTag(use.card->toString() + QStringLiteral("HegNullificationTargets"));
-            room->removeTag(use.card->toString() + QStringLiteral("HegNullificationCard"));
-        }
-        break;
-    }case BuryVictim: {
-        DeathStruct death = data.value<DeathStruct>();
-        player->bury();
-        if(Config.EnableHegemony) {
-            ServerPlayer *killer = death.damage ? death.damage->from : nullptr;
-            if(killer&&killer->getKingdom() != "god") {
-                if(killer->getKingdom()==player->getKingdom())
-                    killer->throwAllHandCardsAndEquips();
-                else if(killer->isAlive())
-                    killer->drawCards(3,"kill");
+    case GeneralShown:
+    case GameOverJudge: {
+        if (!room->workOwnsVictory() && !room->getTag("GlobalCareeristShow").toBool()) {
+            const QString result = winner(room);
+            if (!result.isEmpty()) {
+                room->gameOver(result);
+                return true;
             }
-            return true;
         }
-        break;
-    }default:
+        if (event == GeneralShown && player
+            && Config.value("RewardTheFirstShowingPlayer", true).toBool()
+            && !room->getTag("TheFirstToShowRewarded").toBool()) {
+            room->setTag("TheFirstToShowRewarded", true);
+            player->setMark("Global_TheFirstToShowRewarded", 1);
+        }
+        return false;
+    }
+    case GeneralShowed:
+        if (player) rewardReveal(room, player);
+        return false;
+    case BuryVictim: {
+        if (!player) return false;
+        const DeathStruct death = data.value<DeathStruct>();
+        player->bury();
+        if (room->getTag("SkipNormalDeathProcess").toBool()) return false;
+        room->clearSkillInvalidityBySource(player);
+        rewardAndPunish(death.damage ? death.damage->from : nullptr, player);
+        if (isHegemonyLord(player)) {
+            const QString kingdom = player->getActualGeneral1()->getKingdom();
+            foreach (ServerPlayer *p, room->getOtherPlayers(player, true)) {
+                const General *head = p->getActualGeneral1();
+                if (!head || p->getHegemonyKingdom() != kingdom || p->getRole().startsWith("careerist_")) continue;
+                room->safeSetPlayerProperty(p, "role", QStringLiteral("careerist"));
+                if (p->hasShownOneGeneral()) room->revealRole(p);
+                else room->notifyProperty(p, p, "role");
+            }
+        }
+        return false;
+    }
+    default:
         break;
     }
-    return false;
+    return GameRule::trigger(event, room, player, data);
 }

@@ -1283,7 +1283,9 @@ void PlayerCardContainer::_paintGeneralIndicators()
         lockItem->setToolTip(tr("This general cannot be revealed."));
 
         const int height = qMax(1, qMin(26, area.height() / 5));
-        const QRect markArea(area.left(), area.bottom() - height, area.width(), height);
+        // Dashboard docks grow upward from the avatar bottom and cover a
+        // bottom-aligned mark. Keep the private indicator above that skill row.
+        const QRect markArea(area.left(), area.top() + 2, area.width(), height);
         QPixmap mark(markArea.size());
         mark.fill(Qt::transparent);
         QPainter painter(&mark);

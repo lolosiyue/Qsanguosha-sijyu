@@ -210,8 +210,13 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
         const QString id = source.value(QStringLiteral("response_value")).toString(
             source.value(QStringLiteral("value")).toString());
         const QString name = source.value(QStringLiteral("skill")).toString(id);
+        const bool generalPair = request.type == InteractionType::ChooseGeneral
+            && !payload.value(QStringLiteral("general_candidates")).toArray().isEmpty();
+        const QStringList pair = generalPair ? id.split('+') : QStringList();
         QJsonObject item = row(id, label(source.value(QStringLiteral("label")).toString(name)),
             source.value(QStringLiteral("enabled")).toBool(true));
+        if (pair.size() == 2)
+            item.insert(QStringLiteral("label"), label(pair.first()) + QStringLiteral(" / ") + label(pair.last()));
         if (Sanguosha) {
             const General *general = Sanguosha->getGeneral(id);
             if (general) item.insert(QStringLiteral("image"), generalImage(assetRoot, general));
@@ -220,10 +225,14 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
         item.insert(QStringLiteral("detail"), ruleDescription(choosingGeneral ? id : name, choosingGeneral));
         options.append(item);
     }
-    for (const QJsonValue &entry : payload.value(QStringLiteral("generals")).toArray()) {
+    const QJsonArray generalCandidates = payload.value(QStringLiteral("general_candidates")).toArray();
+    for (const QJsonValue &entry : generalCandidates.isEmpty()
+             ? payload.value(QStringLiteral("generals")).toArray() : generalCandidates) {
         const QString name = entry.toString();
         QJsonObject item = row(name, label(name));
         item.insert(QStringLiteral("description"), ruleDescription(name, true));
+        if (Sanguosha && Sanguosha->getGeneral(name))
+            item.insert(QStringLiteral("image"), generalImage(assetRoot, Sanguosha->getGeneral(name)));
         generals.append(item);
     }
     QList<int> offered, disabled;

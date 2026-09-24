@@ -31,6 +31,12 @@ public:
     void setDeputyMaxHpAdjustedValue(int adjusted_value = -1);
     QString getKingdom() const;
     QString getKingdoms() const;
+    QString getSubordinateKingdom() const;
+    void setSubordinateKingdom(const QString &kingdom);
+    bool isDoubleKingdoms() const;
+    QStringList compareKingdomsWith(const General *other) const;
+    bool isHegemonySelectable() const;
+    bool canPairForHegemony(const General *deputy) const;
     bool isMale() const;
     bool isFemale() const;
     bool isNeuter() const;
@@ -88,6 +94,7 @@ public:
 
     void addCompanion(const QString &name);
     bool isCompanionWith(const QString &name) const;
+    QStringList getCompanionNames() const;
     QString getCompanions() const;
 
 public slots:
@@ -95,6 +102,7 @@ public slots:
 
 private:
     QString kingdom;
+    QString subordinate_kingdom;
     int max_hp;
     int head_max_hp_adjusted_value = 0;
     int deputy_max_hp_adjusted_value = 0;

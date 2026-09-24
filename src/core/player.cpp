@@ -1842,6 +1842,21 @@ QList<int> Player::getPile(const QString &pile_name) const
     return piles[pile_name];
 }
 
+void Player::setPileCardPresent(const QString &pileName, int cardId, bool present)
+{
+    if (pileName.isEmpty() || cardId < 0) return;
+    // Reconcile one named destination reservation without touching other piles
+    // or emitting a second physical move; CardMovementService owns that commit.
+    auto it = piles.find(pileName);
+    if (present) {
+        if (it != piles.end() && it->contains(cardId)) return;
+        piles[pileName].append(cardId);
+    } else {
+        if (it == piles.end() || it->removeAll(cardId) == 0) return;
+    }
+    emit gameplay_property_changed();
+}
+
 QStringList Player::getPileNames() const
 {
     /*QStringList names;
@@ -2662,7 +2677,8 @@ QString Player::getSkillDescription(const Player *viewer) const
         }
     }
     foreach(const Skill *skill, visibleSkills){
-        if (skill->isAttachedLordSkill() || concealed_list.contains(skill))
+        if (skill->isAttachedLordSkill() || concealed_list.contains(skill)
+            || !skill->isVisibleForPlayer(this))
             continue;
         const QString skillName = skill->objectName();
         bool skillValid = true;
@@ -3718,6 +3734,56 @@ bool Player::hasLordSkillKingdom(const QString& targetKingdom, const Player *pla
     return kingdoms.contains(targetKingdom) || kingdoms.contains("all");
 }
 
+bool Player::canRecover() const
+{
+    return isAlive() && isWounded() && !isRemoved() && getMark("command5_effect") == 0
+        && !tag.value("CannotRecover").toBool();
+}
+
+bool Player::canTransform() const
+{
+    return Config.EnableHegemony && isAlive() && getActualGeneral2();
+}
+
+bool Player::cheakSkillLocation(const QString &skillName, bool head) const
+{
+    return head ? inHeadSkills(skillName) : inDeputySkills(skillName);
+}
+
+bool Player::cheakSkillLocation(const QString &skillName, const QVariant &shown) const
+{
+    if (!hasShownSkill(skillName)) return false;
+    const QStringList skillSlots = shown.toStringList();
+    return (skillSlots.contains("head") && hasShownGeneral() && inHeadSkills(skillName))
+        || (skillSlots.contains("deputy") && hasShownGeneral2() && inDeputySkills(skillName));
+}
+
+QString Player::getHegemonyKingdom() const
+{
+    const QString chosen = tag.value("HegemonyKingdom").toString();
+    if (!chosen.isEmpty()) return chosen;
+    if (!actual_general1) return QString();
+    if (actual_general2) {
+        const QStringList kingdoms = actual_general1->compareKingdomsWith(actual_general2);
+        if (!kingdoms.isEmpty()) return kingdoms.first();
+    }
+    return actual_general1->getKingdom();
+}
+
+void Player::setHegemonyKingdom(const QString &kingdom)
+{
+    tag["HegemonyKingdom"] = kingdom;
+}
+
+QString Player::getSeemingKingdom() const
+{
+    // Public faction identity must never inspect another player's hidden generals.
+    if (!Config.EnableHegemony) return getKingdom();
+    if (getRole().startsWith("careerist_") && hasShownRole()) return getRole();
+    if (!hasShownOneGeneral()) return QString();
+    return getRole() == "careerist" ? QStringLiteral("careerist") : getKingdom();
+}
+
 bool Player::isFriendWith(const Player *player, bool considerAnjiang) const
 {
     Q_ASSERT(player);
@@ -3731,6 +3797,9 @@ bool Player::isFriendWith(const Player *player, bool considerAnjiang) const
     if (!Config.EnableHegemony)
         return isYourFriend(player);
 
+    // Recruitment publicly establishes allegiance without exposing either general.
+    if ((role.startsWith("careerist_") || player->role.startsWith("careerist_"))
+        && hasShownRole() && player->hasShownRole()) return role == player->role;
     if (considerAnjiang) {
         if (!player->hasShownOneGeneral() && this != player)
             return false;
@@ -3741,6 +3810,8 @@ bool Player::isFriendWith(const Player *player, bool considerAnjiang) const
     if (role == "careerist" || player->role == "careerist")
         return false;
 
+    if (role.startsWith("careerist_") || player->role.startsWith("careerist_"))
+        return role == player->role;
     return getKingdom() == player->getKingdom();
 }
 
@@ -3754,9 +3825,9 @@ bool Player::willBeFriendWith(const Player *player) const
         return true;
     if (Config.EnableHegemony) {
         if (hasShownOneGeneral() || !player->hasShownOneGeneral()
-            || player->getRole() == QLatin1String("careerist") || !actual_general1)
+            || player->getRole().startsWith(QLatin1String("careerist")) || !actual_general1)
             return false;
-        const QString kingdom = actual_general1->getKingdom();
+        const QString kingdom = getHegemonyKingdom();
         if (kingdom != player->getKingdom()) return false;
         int allies = 1;
         // Only our own identity and publicly shown sovereigns may influence
@@ -3770,7 +3841,7 @@ bool Player::willBeFriendWith(const Player *player) const
                 livingLord = livingLord || other->isAlive();
                 deadLord = deadLord || other->isDead();
             }
-            if (other->hasShownOneGeneral() && other->getRole() != QLatin1String("careerist")) ++allies;
+            if (other->hasShownOneGeneral() && !other->getRole().startsWith(QLatin1String("careerist"))) ++allies;
         }
         return !deadLord && (livingLord || allies <= (siblings.size() + 1) / 2);
     }
@@ -3851,23 +3922,22 @@ bool Player::isHegemonyLord() const
 int Player::getPlayerNumWithSameKingdom(const QString &reason, const QString &kingdom,
     MaxCardsType::MaxCardsCount type) const
 {
-    const QString target = kingdom.isEmpty()
-        ? (getRole() == QLatin1String("careerist") ? QStringLiteral("careerist") : getKingdom())
-        : kingdom;
+    const QString target = kingdom.isEmpty() ? getSeemingKingdom() : kingdom;
     QList<const Player *> players = getAliveSiblings();
     if (isAlive()) players.prepend(this);
     int count = 0;
     for (const Player *player : players) {
-        if (!player->hasShownOneGeneral()) continue;
-        if (player->getRole() == QLatin1String("careerist")) {
+        const QString faction = player->getSeemingKingdom();
+        if (faction.isEmpty()) continue;
+        if (faction == QLatin1String("careerist")) {
             if (target == QLatin1String("careerist")) count = 1;
-        } else if (player->getKingdom() == target) {
+        } else if (faction == target) {
             ++count;
         }
     }
-    // Client prediction uses only the caller's publicly shown lord skill.
-    // ServerPlayer overrides this method to dispatch ConfirmPlayerNum instead.
-    if (reason != QLatin1String("AI") && type == MaxCardsType::Max
+    // Preserve legacy identity-room Hongfa prediction. New Hegemony counts
+    // actual seats; PeaceSpell accounts for heavenly_army in its own hand limit.
+    if (!Config.EnableHegemony && reason != QLatin1String("AI") && type == MaxCardsType::Max
         && target == QLatin1String("qun") && isAlive() && hasShownGeneral()
         && hasLordSkill(QStringLiteral("heg_hongfa")))
         count += getPile(QStringLiteral("heavenly_army")).size();
@@ -3888,7 +3958,12 @@ QStringList Player::getBigKingdoms(const QString &reason, MaxCardsType::MaxCards
     if (jadeSealOwner) type = MaxCardsType::Max;
     QStringList biggest;
     int maximum = 1;
-    for (const QString &kingdom : Sanguosha->getKingdoms()) {
+    QStringList factions = Sanguosha->getKingdoms();
+    for (const Player *player : players) {
+        const QString faction = player->getSeemingKingdom();
+        if (faction.startsWith("careerist_") && !factions.contains(faction)) factions << faction;
+    }
+    for (const QString &kingdom : factions) {
         if (kingdom == QLatin1String("god")) continue;
         const int count = getPlayerNumWithSameKingdom(reason, kingdom, type);
         if (count <= 1 || count < maximum) continue;
@@ -3901,19 +3976,19 @@ QStringList Player::getBigKingdoms(const QString &reason, MaxCardsType::MaxCards
     if (jadeSealOwner) {
         biggest.clear();
         biggest << (jadeSealOwner->getRole() == QLatin1String("careerist")
-            ? jadeSealOwner->objectName() : jadeSealOwner->getKingdom());
+            ? jadeSealOwner->objectName() : jadeSealOwner->getSeemingKingdom());
     }
     return biggest;
 }
 
 bool Player::canBeChainedBy(const Player *source) const
 {
-    if (isChained() || !hasArmorEffect(QStringLiteral("IronArmor"))) return true;
+    if (isChained() || !hasArmorEffect(QStringLiteral("IronArmor"), source)) return true;
     const QStringList biggest = (source ? source : this)->getBigKingdoms(
         QStringLiteral("IronArmor"), MaxCardsType::Normal);
     if (biggest.isEmpty()) return true;
     if (!hasShownOneGeneral()) return false;
-    return biggest.contains(getRole() == QLatin1String("careerist") ? objectName() : getKingdom());
+    return biggest.contains(getRole() == QLatin1String("careerist") ? objectName() : getSeemingKingdom());
 }
 
 void Player::setGeneralShowed(bool showed)
@@ -4090,6 +4165,37 @@ void Player::setSkillsPreshowed(const QString &flag, bool preshowed)
             || (instance.bindHead == 2 && flag.contains('d')))
             setSkillPreshowed(SkillInstanceUtils::formatName(instance.skillName, instance.instanceID), preshowed);
     }
+}
+
+QSet<QString> Player::getPreshowedSkillInstances() const
+{
+    QMutexLocker locker(&m_preshowMutex);
+    return m_preshowedSkillInstances;
+}
+
+bool Player::replacePreshowedSkillInstances(const QSet<QString> &instances)
+{
+    QSet<QString> normalized;
+    for (const QString &key : instances) {
+        QString baseName;
+        const int instanceId = SkillInstanceUtils::parseName(key, baseName);
+        if (instanceId <= 0
+            || SkillInstanceUtils::formatName(baseName, instanceId) != key)
+            continue;
+        const SkillInstance *instance = findSkillInstance(baseName, instanceId);
+        if (instance == nullptr || instance->source != SourceInnate)
+            continue;
+        normalized.insert(key);
+    }
+
+    QMutexLocker locker(&m_preshowMutex);
+    if (m_preshowedSkillInstances == normalized)
+        return false;
+    m_preshowedSkillInstances = normalized;
+    locker.unlock();
+    // A snapshot is one state mutation even when several instance keys change.
+    emit skill_state_changed();
+    return true;
 }
 
 bool Player::hasPreshowedSkill(const QString &name) const

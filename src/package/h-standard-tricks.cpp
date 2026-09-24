@@ -23,7 +23,6 @@
 #include "room.h"
 #include "util.h"
 #include "engine.h"
-#include "original-hegemony-compat.h"
 #include "serverplayer.h"
 #include "clientplayer.h"
 #include "skill.h"

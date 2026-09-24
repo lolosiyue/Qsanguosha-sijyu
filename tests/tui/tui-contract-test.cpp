@@ -270,6 +270,7 @@ void builderContract()
             chooseGeneral, generalState, &generalRequest, &generalError);
         const auto *generalPayload = generalRequest.payloadAs<OptionInteractionPayload>();
         return built && generalPayload != nullptr && generalPayload->options.size() == 2
+            && generalPayload->generalCandidates.isEmpty()
             ? (generalPayload->enumerated ? 1 : 0) : -1;
     };
 
@@ -287,6 +288,84 @@ void builderContract()
               {QStringLiteral("game_mode"), QStringLiteral("_mini_01")},
               {QStringLiteral("free_choose"), false}}) == 0,
           "mini scenarios leave choose-general unenumerated");
+
+    // An ordinary askForGeneral during Hegemony must retain single-general UI.
+    check(buildChooseGeneral({{QStringLiteral("enable_hegemony"), true},
+                              {QStringLiteral("free_choose"), false}}) == 1,
+          "ordinary askForGeneral in hegemony keeps single candidates without a pair-selection payload");
+    check(buildChooseGeneral({{QStringLiteral("enable_hegemony"), true},
+                              {QStringLiteral("free_choose"), true}}) == 0,
+          "ordinary askForGeneral in hegemony preserves FreeChoose semantics");
+
+    const QVariant originalGeneralPayload = chooseGeneral.payload;
+    QVariantMap pairWire = originalGeneralPayload.toMap();
+    pairWire.insert(QStringLiteral("candidates"), QVariantList{QStringLiteral("heg_caocao"), QStringLiteral("heg_guojia"),
+        QStringLiteral("heg_liubei")});
+    pairWire.insert(QStringLiteral("hegemony_pairs"), QVariantList{QStringLiteral("heg_guojia+heg_caocao")});
+    chooseGeneral.payload = pairWire;
+    ClientGameState pairState;
+    pairState.setSelfName(QStringLiteral("p1"));
+    pairState.setSetup({{QStringLiteral("enable_hegemony"), true}, {QStringLiteral("free_choose"), true}});
+    InteractionRequest pairRequest;
+    QString pairError;
+    const bool pairBuilt = ProtocolInteractionRequestBuilder::build(chooseGeneral, pairState, &pairRequest, &pairError);
+    const auto *pairPayload = pairRequest.payloadAs<OptionInteractionPayload>();
+    check(pairBuilt && pairPayload && !pairPayload->enumerated && pairPayload->options.size() == 1
+              && pairPayload->options.first().value == QLatin1String("heg_guojia+heg_caocao")
+              && !pairRequest.hasOption(QStringLiteral("heg_guojia"))
+              && !pairRequest.hasOption(QStringLiteral("heg_caocao+heg_guojia")),
+          "FreeChoose keeps suggested ordered pairs but permits replies outside the dealt pool");
+    check(pairBuilt && pairPayload && pairPayload->generalCandidates == QStringList{
+              QStringLiteral("heg_caocao"), QStringLiteral("heg_guojia"), QStringLiteral("heg_liubei")},
+          "hegemony preserves unmatched candidates for the native selection pool");
+    pairState.setSetup({{QStringLiteral("enable_hegemony"), true}, {QStringLiteral("free_choose"), false}});
+    const bool restrictedBuilt = ProtocolInteractionRequestBuilder::build(chooseGeneral, pairState, &pairRequest, &pairError);
+    const auto *restrictedPayload = pairRequest.payloadAs<OptionInteractionPayload>();
+    check(restrictedBuilt && restrictedPayload && restrictedPayload->enumerated,
+          "hegemony without FreeChoose still restricts replies to the dealt pairs");
+    pairState.setSetup({{QStringLiteral("enable_hegemony"), false}, {QStringLiteral("free_choose"), true}});
+    const bool identityBuilt = ProtocolInteractionRequestBuilder::build(chooseGeneral, pairState, &pairRequest, &pairError);
+    const auto *identityPayload = pairRequest.payloadAs<OptionInteractionPayload>();
+    check(identityBuilt && identityPayload && !identityPayload->enumerated && identityPayload->generalCandidates.isEmpty()
+              && pairRequest.hasOption(QStringLiteral("heg_caocao"))
+              && !pairRequest.hasOption(QStringLiteral("heg_guojia+heg_caocao")),
+          "identity mode never opens the hegemony candidate-pool presentation");
+    chooseGeneral.payload = originalGeneralPayload;
+
+    ProtocolMessage seats = chooseGeneral;
+    seats.command = S_COMMAND_CHOOSE_ROLE;
+    seats.messageId = ++messageId;
+    seats.payload = samplePayload(S_COMMAND_CHOOSE_ROLE);
+    ClientGameState seatState;
+    seatState.setSelfName(QStringLiteral("p1"));
+    seatState.addPlayer(QStringLiteral("p2"));
+    seatState.setSetup({{QStringLiteral("enable_hegemony"), true}});
+    InteractionRequest seatRequest;
+    check(ProtocolInteractionRequestBuilder::build(seats, seatState, &seatRequest, &pairError),
+          "hegemony opening seat request builds");
+    const auto *seatPayload = seatRequest.payloadAs<RoleAssignmentInteractionPayload>();
+    check(seatPayload && seatPayload->scheme == QLatin1String("hegemony_seats")
+              && seatPayload->roles == QStringList{"1", "2"} && seatRequest.cancelable,
+          "hegemony assignment exposes seat numbers and permits cancellation");
+    const auto acceptsSeats = [&](const QStringList &names, const QStringList &values) {
+        ClientCore core;
+        *core.state() = seatState;
+        core.beginRequest(seatRequest);
+        return core.submitResponse(InteractionResponse::makeAssignment(seatRequest.requestId, names, values)).accepted();
+    };
+    check(acceptsSeats({"p1", "p2"}, {"2", "1"}), "seat permutation accepted");
+    check(!acceptsSeats({"p1", "p2"}, {"1", "1"}), "duplicate seat rejected");
+    check(!acceptsSeats({"p1"}, {"1"}), "missing player rejected");
+    check(!acceptsSeats({"p1", "p2"}, {"lord", "rebel"}), "identity roles rejected by seat-only request");
+    ClientCore cancelledSeats;
+    cancelledSeats.beginRequest(seatRequest);
+    check(cancelledSeats.submitResponse(InteractionResponse::makeCancel(seatRequest.requestId)).accepted(),
+          "seat assignment can be cancelled without supplying identity roles");
+    seatState.setSetup({{QStringLiteral("enable_hegemony"), false}});
+    check(ProtocolInteractionRequestBuilder::build(seats, seatState, &seatRequest, &pairError)
+              && seatRequest.payloadAs<RoleAssignmentInteractionPayload>()->scheme == QLatin1String("test")
+              && seatRequest.payloadAs<RoleAssignmentInteractionPayload>()->roles.contains(QStringLiteral("lord")),
+          "identity assignment retains its role choices");
 
     ProtocolMessage trigger;
     trigger.type = ProtocolMessageType::Request;
@@ -421,6 +500,38 @@ QString validAnswerFor(const InteractionRequest &request)
         return QString();
     }
     return QString();
+}
+
+void hegemonyDraftContract()
+{
+    TuiRenderer renderer(false);
+    TuiInteractionView view(&renderer, [](const QString &) {});
+    InteractionRequest request;
+    request.requestId = 101;
+    request.type = InteractionType::ChooseGeneral;
+    request.responseSchema = InteractionResponseShape::Option;
+    OptionInteractionPayload payload;
+    payload.generalCandidates = QStringList{QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c")};
+    payload.options = {InteractionOption(QStringLiteral("a+b")), InteractionOption(QStringLiteral("b+a"))};
+    request.payload = payload;
+    view.presentRequest(request);
+    const auto stage = [&](const QString &command) { QString line = command; return view.stageGeneralAnswer(request, &line); };
+    check(stage(QStringLiteral("head 1")) && stage(QStringLiteral("deputy 2")), "head and deputy commands stage locally");
+    check(stage(QStringLiteral("deputy 3")) && view.selectedGenerals(101) == QStringList{QStringLiteral("a"), QStringLiteral("b")},
+          "illegal deputy preserves the accepted draft");
+    check(stage(QStringLiteral("undo")) && view.selectedGenerals(101).size() == 1, "undo leaves the head selected");
+    check(stage(QStringLiteral("deputy 2")) && stage(QStringLiteral("swap")), "legal reversed pair can be staged");
+    QString confirm = QStringLiteral("confirm");
+    check(!view.stageGeneralAnswer(request, &confirm) && confirm == QLatin1String("b+a"),
+          "confirmation alone passes the ordered pair into normal reply validation");
+    check(stage(QStringLiteral("cancel")) && view.selectedGenerals(101).isEmpty(), "cancel clears the draft without declining the request");
+    stage(QStringLiteral("head 1"));
+    request.requestId = 102;
+    view.presentRequest(request);
+    check(view.selectedGenerals(102).isEmpty() && stage(QStringLiteral("confirm")), "a replacement request cannot submit the old draft");
+    payload.generalCandidates.clear();
+    request.payload = payload;
+    check(!stage(QStringLiteral("cancel")), "identity requests retain ordinary cancellation parsing");
 }
 
 void interactionRoundTripContract()
@@ -1563,6 +1674,7 @@ int main(int argc, char *argv[])
     }
     registryContract();
     builderContract();
+    hegemonyDraftContract();
     chooseCardHiddenHandContract();
     interactionRoundTripContract();
     reducerContract();

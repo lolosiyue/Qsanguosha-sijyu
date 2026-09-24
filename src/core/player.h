@@ -25,6 +25,7 @@ class Player : public QObject
     Q_PROPERTY(int hp READ getHp WRITE setHp)
     Q_PROPERTY(int maxhp READ getMaxHp WRITE setMaxHp)
     Q_PROPERTY(QString kingdom READ getKingdom WRITE setKingdom)
+    Q_PROPERTY(QString hegemony_kingdom READ getHegemonyKingdom WRITE setHegemonyKingdom)
     Q_PROPERTY(QString role READ getRole WRITE setRole)
     Q_PROPERTY(QString general READ getGeneralName WRITE setGeneralName)
     Q_PROPERTY(QString general2 READ getGeneral2Name WRITE setGeneral2Name)
@@ -35,6 +36,8 @@ class Player : public QObject
     Q_PROPERTY(QString phase READ getPhaseString WRITE setPhaseString)
     Q_PROPERTY(bool faceup READ faceUp WRITE setFaceUp)
     Q_PROPERTY(bool alive READ isAlive WRITE setAlive)
+    // Property updates must reach the same state used by targeting and distance.
+    Q_PROPERTY(bool removed READ isRemoved WRITE setRemoved)
     Q_PROPERTY(QString flags READ getFlags WRITE setFlags)
     Q_PROPERTY(bool chained READ isChained WRITE setChained)
     Q_PROPERTY(bool owner READ isOwner WRITE setOwner)
@@ -87,6 +90,8 @@ public:
     void setMaxHp(int max_hp);
     int getLostHp() const;
     bool isWounded() const;
+    bool canRecover() const;
+    bool canTransform() const;
     General::Gender getGender() const;
     virtual void setGender(General::Gender gender);
     bool isMale() const;
@@ -103,6 +108,9 @@ public:
     int getMaxCards(MaxCardsType::MaxCardsCount type) const;
 
     QString getKingdom() const;
+    QString getSeemingKingdom() const;
+    QString getHegemonyKingdom() const;
+    void setHegemonyKingdom(const QString &kingdom);
     void setKingdom(const QString &kingdom);
 
     void setRole(const QString &role);
@@ -162,6 +170,9 @@ public:
     virtual int aliveCount(bool includeRemoved = false) const = 0;
     void setFixedDistance(const Player *player, int distance);
     void removeFixedDistance(const Player *player, int distance);
+    // Inspect one contribution count without exposing the mutable distance map.
+    int fixedDistanceCount(const Player *player, int distance) const
+    { return fixed_distance.count(player, distance); }
     void insertAttackRangePair(const Player *player);
     void removeAttackRangePair(const Player *player);
     int distanceTo(const Player *other, int distance_fix = 0) const;
@@ -315,6 +326,7 @@ public:
     int getCardCount(bool include_equip = true, bool include_judging = false) const;
 
     QList<int> getPile(const QString &pile_name) const;
+    void setPileCardPresent(const QString &pileName, int cardId, bool present);
     QStringList getPileNames() const;
     QString getPileName(int card_id) const;
     bool pileOpen(const QString &pile_name, const QString &player) const;
@@ -496,11 +508,15 @@ public:
     void setDisableShowReasons(const QStringList &reasons);
     void setDisableShow(const QString &flags, const QString &reason);
     void removeDisableShow(const QString &reason);
+    bool cheakSkillLocation(const QString &skill_name, bool head) const;
+    bool cheakSkillLocation(const QString &skill_name, const QVariant &shown) const;
     bool inHeadSkills(const QString &skill_name) const;
     bool inDeputySkills(const QString &skill_name) const;
     bool canPreshowSkill(const QString &name) const;
     void setSkillPreshowed(const QString &skill, bool preshowed = true);
     void setSkillsPreshowed(const QString &flag = "hd", bool preshowed = true);
+    QSet<QString> getPreshowedSkillInstances() const;
+    bool replacePreshowedSkillInstances(const QSet<QString> &instances);
     bool hasPreshowedSkill(const QString &name) const;
     bool hasPreshowedSkill(const Skill *skill) const;
     bool hasShownSkill(const QString &skill_name) const;

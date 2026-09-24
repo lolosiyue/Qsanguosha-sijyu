@@ -161,8 +161,14 @@
 "kingdomIcon-default": "image/kingdom/icon/%1.png",
 
 // cards
+"button-carditem": "image/system/button/carditem/%1/%2.png",
 "handCardMainPhoto-default": "image/card/%1.jpg",
 "handCardMainPhoto-default2": "image/generals/card/%1.jpg",
+// XXY reward mark cards retain their original PNG artwork.
+"handCardMainPhoto-FirstShowCard": "image/card/FirstShowCard.png",
+"handCardMainPhoto-HalfMaxHpCard": "image/card/HalfMaxHpCard.png",
+"handCardMainPhoto-CompanionCard": "image/card/CompanionCard.png",
+"handCardMainPhoto-CareermanCard": "image/card/CareermanCard.png",
 "handCardMainPhoto-unknown": "image/system/card-back.png",
 
 "handCardNumber-black-default": "image/system/black/%1.png",

@@ -313,6 +313,7 @@ void QSanSkillButton::onMouseClick()
 
 void QSanSkillButton::setPreshowEnabled(const QString &skillName, bool enabled, bool preshowed)
 {
+	const bool appearanceChanged = enabled != _m_preshowEnabled;
 	if (enabled && !_m_preshowEnabled) {
 		_m_savedStyle = _m_style;
 		_m_savedState = _m_state;
@@ -331,6 +332,8 @@ void QSanSkillButton::setPreshowEnabled(const QString &skillName, bool enabled, 
 		_m_canDisable = _m_savedCanDisable;
 		setState(_m_savedState);
 		QSanButton::setEnabled(_m_savedState != S_STATE_DISABLED);
+		_repaint();
+		update();
 		return;
 	}
 	_m_preshowEnabled = enabled;
@@ -342,6 +345,10 @@ void QSanSkillButton::setPreshowEnabled(const QString &skillName, bool enabled, 
 		_m_emitDeactivateSignal = false;
 		QSanButton::setEnabled(true);
 		setPreshowState(preshowed);
+		if (appearanceChanged) {
+			_repaint();
+			update();
+		}
 	} else {
 		// Ordinary skill buttons retain the configuration established by setSkill().
 	}
@@ -489,10 +496,13 @@ void QSanSkillButton::setDisplayName(const QString &name)
 
 void QSanInvokeSkillButton::_repaint()
 {
+    // Compulsory skins have identical up/down images. Preshow is an owner
+    // toggle, so use the existing toggle skin until ordinary activation returns.
+    const SkillType displayType = _m_preshowEnabled ? S_SKILL_FREQUENT : _m_skillType;
     for (int i = 0; i < (int)S_NUM_BUTTON_STATES; i++) {
-        _m_bgPixmap[i] = G_ROOM_SKIN.getSkillButtonPixmap((ButtonState)i, _m_skillType, _m_enumWidth);
+        _m_bgPixmap[i] = G_ROOM_SKIN.getSkillButtonPixmap((ButtonState)i, displayType, _m_enumWidth);
         Q_ASSERT(!_m_bgPixmap[i].isNull());
-        const IQSanComponentSkin::QSanShadowTextFont &font = G_DASHBOARD_LAYOUT.getSkillTextFont((ButtonState)i, _m_skillType, _m_enumWidth);
+        const IQSanComponentSkin::QSanShadowTextFont &font = G_DASHBOARD_LAYOUT.getSkillTextFont((ButtonState)i, displayType, _m_enumWidth);
         QPainter painter(&_m_bgPixmap[i]);
         QString skillName = _m_displayName.isEmpty()
             ? Sanguosha->translate(_m_skill->objectName()) : _m_displayName;

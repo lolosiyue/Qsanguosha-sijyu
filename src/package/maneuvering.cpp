@@ -5,6 +5,7 @@
 #include "room.h"
 #include "wrapped-card.h"
 #include "roomthread.h"
+#include "settings.h"
 
 NatureSlash::NatureSlash(Suit suit, int number, DamageStruct::Nature nature)
     : Slash(suit, number)
@@ -578,7 +579,7 @@ void IronChain::onUse(Room *room, CardUseStruct &card_use) const
 void IronChain::onEffect(CardEffectStruct &effect) const
 {
     Room *room = effect.to->getRoom();
-    room->setPlayerChained(effect.to);
+    room->setPlayerChained(effect.to, !effect.to->isChained(), effect.from);
 }
 
 SupplyShortage::SupplyShortage(Card::Suit suit, int number)

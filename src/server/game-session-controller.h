@@ -65,6 +65,7 @@ private:
     friend struct PlayerDecisionServiceTestAccess;
 
     bool transitionTo(State next);
+    void chooseHegemonyGenerals();
     void assignGeneralsForPlayers(const QList<ServerPlayer *> &toAssign);
     void assignGeneralsForPlayersOfJianGeDefenseMode(
         const QList<ServerPlayer *> &toAssign);

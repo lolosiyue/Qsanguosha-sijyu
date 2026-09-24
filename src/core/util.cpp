@@ -1,6 +1,7 @@
 #include "util.h"
 #include "lua.hpp"
 #include "card.h"
+#include "engine.h"
 #include "game-rng.h"
 #include "package-catalog.h"
 #include "runtime-paths.h"
@@ -428,8 +429,16 @@ QList<int> ListV2I(const QVariantList &variantlist)
 
 bool isNormalGameMode(const QString &mode)
 {
-    static const QRegularExpression modeRegex("^(0[2-9]|10)p[dz]*$");
-    return modeRegex.match(mode).hasMatch();
+    // Identity games are the modes registered under the "身份模式" group;
+    // this also covers Lua-added modes and large rooms beyond the old regex.
+    return Sanguosha && Sanguosha->getModeGroup(mode) == QStringLiteral("身份模式");
+}
+
+bool isNormalGameMode(const QString &mode, bool hegemony)
+{
+    // Hegemony can share an identity mode ID (for example 04p). Skill rules
+    // and descriptions must use the room flag as well as the mode family.
+    return !hegemony && isNormalGameMode(mode);
 }
 
 bool isHegemonyGameMode(const QString &mode)

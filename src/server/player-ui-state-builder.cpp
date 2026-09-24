@@ -3,6 +3,7 @@
 #include "engine.h"
 #include "room.h"
 #include "serverplayer.h"
+#include "settings.h"
 #include "skill-instance-utils.h"
 
 PlayerUIState PlayerUIStateBuilder::build(const ServerPlayer &player, const Room &room)
@@ -69,6 +70,7 @@ void PlayerUIStateBuilder::buildSkillDescriptions(PlayerUIState &state,
 
     QMap<QString, QStringList> counters;
     for (const SkillInstance &instance : player.getSkillInstances()) {
+        if (Config.EnableHegemony && instance.source == SourceHelper) continue;
         const Skill *skill = Sanguosha->getSkill(instance.skillName);
         if (!skill || !instance.visible || !skill->isVisible()) continue;
         const QString key = SkillInstanceUtils::formatName(instance.skillName, instance.instanceID);

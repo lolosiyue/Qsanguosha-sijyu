@@ -781,6 +781,14 @@ void Client::presentGeneralChoice(const InteractionRequest &request)
 	if (const OptionInteractionPayload *payload = request.payloadAs<OptionInteractionPayload>()) {
 		for (const InteractionOption &option : payload->options)
 			generals << option.value;
+		if (ServerInfo.EnableHegemony && !payload->generalCandidates.isEmpty()) {
+			emit hegemony_generals_got(payload->generalCandidates, generals);
+			// Auto-pick can answer synchronously while the UI signal is delivered.
+			if (interactionCore()->hasActiveRequest()
+				&& interactionCore()->activeRequest().requestId == request.requestId)
+				setStatus(ExecDialog);
+			return;
+		}
 	}
 	emit generals_got(generals);
 	setStatus(ExecDialog);
@@ -2314,6 +2322,21 @@ void Client::warn(const QVariant &reason_var)
 
 void Client::askForGeneral(const QVariant &arg)
 {
+	if (ServerInfo.EnableHegemony && arg.toMap().contains(QStringLiteral("hegemony_pairs"))) {
+		ChooseGeneralRequestPayload generalRequest;
+		if (!ChooseGeneralRequestPayload::parseV2(arg, &generalRequest)) return;
+		OptionInteractionPayload payload;
+		payload.generalCandidates = generalRequest.candidates;
+		for (const QString &pair : generalRequest.hegemonyPairs) {
+			const QStringList names = pair.split('+');
+			payload.options << InteractionOption(pair,
+				Sanguosha->translate(names.first()) + " / " + Sanguosha->translate(names.last()));
+		}
+		// FreeChoose can submit a legal pair outside the dealt suggestions.
+		payload.enumerated = !ServerInfo.FreeChoose;
+		beginInteraction(makeInteractionRequest(InteractionType::ChooseGeneral, payload, false));
+		return;
+	}
 	QStringList generals;
 	if (!JsonUtils::tryParse(arg.toMap().value(QStringLiteral("candidates")), generals)) return;
 
@@ -2532,6 +2555,15 @@ void Client::setMark(const QVariant &mark_var)
 
 	ClientPlayer *player = getPlayer(who);
 	player->setMark(mark, value);
+
+	// Refresh only actions whose presentation depends on this token, including
+	// its removal. Ownership stays intact for response and server validation.
+	for (const Skill *skill : player->getVisibleSkillList()) {
+		if (skill->property("VisibilityMark").toString() == mark) {
+			emit skill_updated(skill->objectName());
+			emit player->skill_state_changed();
+		}
+	}
 
 	// for all the skills has a ViewAsSkill Effect { RoomScene::detachSkill(const QString &) }
 	// this is a DIRTY HACK!!! for we should prevent the ViewAsSkill button been removed temporily by duanchang
@@ -2951,6 +2983,11 @@ void Client::askForAssign(const QVariant &)
 		if (player != nullptr)
 			payload.playerNames << player->objectName();
 	}
+	if (ServerInfo.EnableHegemony) {
+		payload.scheme = QStringLiteral("hegemony_seats");
+		for (int seat = 1; seat <= payload.playerNames.size(); ++seat)
+			payload.roles << QString::number(seat);
+	}
 	InteractionRequest request = makeInteractionRequest(
 		InteractionType::ChooseRole, payload, true);
 	beginInteraction(request);
@@ -3209,13 +3246,28 @@ void Client::preshow(const QVariant &arg)
 	if (player == nullptr)
 		return;
 	const QVariantMap states = object.value(QStringLiteral("states")).toMap();
-	// The owner-only state map is authoritative; clear stale private flags first.
-	player->setSkillsPreshowed(QStringLiteral("hd"), false);
-	for (auto it = states.constBegin(); it != states.constEnd(); ++it)
-	{
-		player->setSkillPreshowed(it.key(), it.value().toBool());
-		emit skill_preshow_changed(player, it.key(), it.value().toBool());
+	// The owner-only state map is authoritative. Store exactly the true
+	// skill#instanceID keys so stale or removed entries disappear atomically.
+	const QSet<QString> previous = player->getPreshowedSkillInstances();
+	QSet<QString> current;
+	for (auto it = states.constBegin(); it != states.constEnd(); ++it) {
+		if (it.value().userType() == QMetaType::Bool && it.value().toBool())
+			current.insert(it.key());
 	}
+	if (!player->replacePreshowedSkillInstances(current))
+		return;
+
+	const QSet<QString> effective = player->getPreshowedSkillInstances();
+	QSet<QString> changed = previous;
+	changed.unite(effective);
+	QVariantMap changedStates;
+	for (const QString &key : changed) {
+		const bool preshowed = effective.contains(key);
+		if (previous.contains(key) != preshowed)
+			changedStates.insert(key, preshowed);
+	}
+	if (!changedStates.isEmpty())
+		emit skill_preshow_changed(player, changedStates);
 }
 
 void Client::log(const QVariant &log_str)

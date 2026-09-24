@@ -23,6 +23,10 @@ static void configureNonInteractiveErrors()
 int runRoomNotifierTests();
 int runSkillRuntimeCoordinatorTests();
 int runHegemonyFormationTests();
+int runHegemonyRulesTests();
+int runOriginalHegemonyContentTests();
+int runOriginalHegemonyGameplayTests();
+int runOriginalHegemonyMovementTests();
 int runRequestCoordinatorTests();
 int runPreGameLockTests();
 int runOutboundOrderingTests();
@@ -43,6 +47,12 @@ static int runSelectedSuite(const QString &suite, int argc, char **argv)
 {
     if (suite == QLatin1String("room-notifier"))
         return runRoomNotifierTests();
+    if (suite == QLatin1String("hegemony-gameplay"))
+        return runOriginalHegemonyGameplayTests();
+    if (suite == QLatin1String("hegemony-content"))
+        return runOriginalHegemonyContentTests();
+    if (suite == QLatin1String("hegemony"))
+        return runHegemonyRulesTests() | runOriginalHegemonyMovementTests();
     if (suite == QLatin1String("hegemony-formation"))
         return runHegemonyFormationTests();
     if (suite == QLatin1String("skill-runtime"))
@@ -90,6 +100,11 @@ int main(int argc, char **argv)
 
     return runIsolatedTestCases("SERVER_UNIT_RESULT", {
         {QStringLiteral("room-notifier"), {QStringLiteral("--suite"), QStringLiteral("room-notifier")}},
+        // Rules and movement share this child; Debug initializes over twenty Rooms.
+        {QStringLiteral("hegemony"), {QStringLiteral("--suite"), QStringLiteral("hegemony")}, 600000},
+        {QStringLiteral("hegemony-content"), {QStringLiteral("--suite"), QStringLiteral("hegemony-content")}},
+        // Nineteen gameplay contracts create separate Rooms, including interruption variants.
+        {QStringLiteral("hegemony-gameplay"), {QStringLiteral("--suite"), QStringLiteral("hegemony-gameplay")}, 600000},
         {QStringLiteral("hegemony-formation"), {QStringLiteral("--suite"), QStringLiteral("hegemony-formation")}},
         {QStringLiteral("skill-runtime"), {QStringLiteral("--suite"), QStringLiteral("skill-runtime")}},
         {QStringLiteral("request"), {QStringLiteral("--suite"), QStringLiteral("request")}},

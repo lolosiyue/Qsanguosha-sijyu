@@ -556,7 +556,12 @@ InteractionValidation ClientCore::validateAssignment(const InteractionRequest &r
             QStringLiteral("assignment response does not match its request schema"));
     }
 
+    const bool seatsOnly = payload->scheme == QLatin1String("hegemony_seats");
+    if (seatsOnly && answer->names.size() != payload->playerNames.size())
+        return InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange,
+            QStringLiteral("seat assignment must include every player"));
     QSet<QString> seen;
+    QSet<QString> assignedSeats;
     for (int i = 0; i < answer->names.size(); ++i) {
         const QString &name = answer->names.at(i);
         const QString &value = answer->values.at(i);
@@ -567,6 +572,10 @@ InteractionValidation ClientCore::validateAssignment(const InteractionRequest &r
             return InteractionValidation::fail(InteractionRejection::UnknownPlayer, name);
         if (!payload->roles.isEmpty() && !payload->roles.contains(value))
             return InteractionValidation::fail(InteractionRejection::UnknownOption, value);
+        if (seatsOnly && assignedSeats.contains(value))
+            return InteractionValidation::fail(InteractionRejection::MalformedResponse,
+                QStringLiteral("each seat must be assigned exactly once"));
+        assignedSeats.insert(value);
     }
     return InteractionValidation::ok();
 }

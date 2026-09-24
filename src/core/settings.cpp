@@ -318,7 +318,6 @@ void Settings::init()
             setValue("GameMode", GameMode.mode_id);
     }
 
-    const int enabledPackagesMigrationVersion = 2;
     QStringList selectablePackages;
     QStringList specialPackages;
     const QStringList specialPackageAdders =
@@ -343,8 +342,9 @@ void Settings::init()
     } else {
         const bool hasEnabledPackages = contains(QStringLiteral("EnabledPackages"));
         if (hasEnabledPackages) {
-            EnabledPackages = PackageSelectionPolicy::normalize(
-                selectablePackages, value("EnabledPackages").toStringList());
+            EnabledPackages = PackageSelectionPolicy::migrateEnabledPackages(
+                selectablePackages, value("EnabledPackages").toStringList(),
+                value("EnabledPackagesMigrationVersion", 0).toInt());
         } else if (contains(QStringLiteral("BanPackages"))) {
             const QStringList legacyBanPackages = value("BanPackages").toStringList();
             EnabledPackages = PackageSelectionPolicy::complement(
@@ -355,7 +355,7 @@ void Settings::init()
         }
 
         setValue("EnabledPackages", EnabledPackages);
-        setValue("EnabledPackagesMigrationVersion", enabledPackagesMigrationVersion);
+        setValue("EnabledPackagesMigrationVersion", PackageSelectionPolicy::CurrentMigrationVersion);
         remove("BanPackages");
         BanPackages = PackageSelectionPolicy::complement(
             selectablePackages, EnabledPackages);
@@ -374,6 +374,10 @@ void Settings::init()
     FreeAssignSelf = EnableCheat && value("FreeAssignSelf", false).toBool();
     Enable2ndGeneral = value("Enable2ndGeneral", false).toBool();
     EnableHegemony = value("EnableHegemony", false).toBool();
+    if (EnableHegemony) {
+        // Hegemony always uses its own concealed two-general rules.
+        Enable2ndGeneral = true;
+    }
     EnableMeleeMode = value("EnableMeleeMode", false).toBool();
     MaxHpScheme = value("MaxHpScheme", 0).toInt();
     Scheme0Subtraction = value("Scheme0Subtraction", 3).toInt();

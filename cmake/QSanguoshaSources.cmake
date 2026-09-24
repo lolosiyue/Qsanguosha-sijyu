@@ -42,8 +42,12 @@ set(QSAN_SOURCES
     src/package/happy2v2.cpp
     src/package/hayate.cpp
     src/package/inovation.cpp
-    src/package/original-hegemony-compat.cpp
-    src/package/xxy-hegemony-viewas.cpp
+    src/package/h-rule-cards.cpp
+    src/package/h-transformation.cpp
+    src/package/h-power.cpp
+    src/package/h-newsgs.cpp
+    src/package/h-mol.cpp
+    src/package/h-lord-ex.cpp
     src/package/h-standard-package.cpp
     src/package/h-standard-wei-generals.cpp
     src/package/h-standard-shu-generals.cpp
@@ -51,6 +55,10 @@ set(QSAN_SOURCES
     src/package/h-standard-qun-generals.cpp
     src/package/h-formation.cpp
     src/package/h-momentum.cpp
+    src/package/h-standard-basics.cpp
+    src/package/h-standard-tricks.cpp
+    src/package/h-standard-equips.cpp
+    src/package/h-strategic-advantage.cpp
     src/package/jiange-defense.cpp
     src/package/joy.cpp
     src/package/lei.cpp
@@ -126,6 +134,7 @@ set(QSAN_SOURCES
     src/ui/collapsible-section.h
     src/ui/cardcontainer.cpp
     src/ui/carditem.cpp
+    src/ui/choosegeneralbox.cpp
     src/ui/guhuo-box.cpp
     src/ui/CharacterSpineActionController.cpp
     src/ui/chatwidget.cpp
@@ -274,8 +283,12 @@ set(QSAN_MOC_HEADERS
     src/package/happy2v2.h
     src/package/hayate.h
     src/package/inovation.h
-    src/package/original-hegemony-compat.h
-    src/package/xxy-hegemony-viewas.h
+    src/package/h-rule-cards.h
+    src/package/h-transformation.h
+    src/package/h-power.h
+    src/package/h-newsgs.h
+    src/package/h-mol.h
+    src/package/h-lord-ex.h
     src/package/h-standard-package.h
     src/package/h-standard-wei-generals.h
     src/package/h-standard-shu-generals.h
@@ -283,6 +296,9 @@ set(QSAN_MOC_HEADERS
     src/package/h-standard-qun-generals.h
     src/package/h-formation.h
     src/package/h-momentum.h
+    src/package/h-standard-tricks.h
+    src/package/h-standard-equips.h
+    src/package/h-strategic-advantage.h
     src/package/jiange-defense.h
     src/package/joy.h
     src/package/lei.h
@@ -339,6 +355,7 @@ set(QSAN_MOC_HEADERS
     src/ui/button.h
     src/ui/cardcontainer.h
     src/ui/carditem.h
+    src/ui/choosegeneralbox.h
     src/ui/guhuo-box.h
     src/ui/CharacterSpineActionController.h
     src/ui/chatwidget.h

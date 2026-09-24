@@ -1,8 +1,9 @@
 -- Ported original hegemony package translations.
--- source: TODO/original/lang/zh_CN/Package/FormationPackage.lua
+-- source: TODO/original/lang/zh_CN/Package/FormationPackage.lua; TODO/QSanguosha-For-Hegemony-xxyheaven@cf61c15/lang/zh_CN/Package/FormationPackage.lua
 -- Shared skills use their existing translation keys; distinct formation skills use V2.
 return {
     ["heg_formation"] = "君临天下·阵",
+    ["heg_formation_equip"] = "国战阵装备",
 	["#heg_dengai"] = "矫然的壮士",
 	["heg_dengai"] = "邓艾[国]",
 	["illustrator:heg_dengai"] = "Amo",
@@ -15,10 +16,10 @@ return {
 	["heg_caohong"] = "曹洪[国]",
 	["illustrator:heg_caohong"] = "YellowKiss",
 	["heg_huyuan"] = "护援",
-	[":heg_huyuan"] = "结束阶段开始时，你可以将一张装备牌置入一名角色装备区内的空栏，然后你可以弃置其距离为1的一名角色的一张手牌或装备牌。",
-	["@heg_huyuan-equip"] = "你可以发动“护援”",
-	["@heg_huyuan-discard"] = "请选择 %src 距离1的一名角色",
-	["~heg_huyuan"] = "选择一张装备牌→选择一名角色→点击确定",
+	[":heg_huyuan"] = "结束阶段开始时，你可以选择一项：1.将一张非装备牌交给一名其他角色；2.将一张装备牌置入一名角色装备区内的空栏，然后你可以弃置与其距离为1的一名角色装备区或判定区里的一张牌。",
+	["@heg_huyuan-equip"] = "你可以发动“护援”，将一张非装备牌交给一名其他角色，或将一张装备牌置入一名角色装备区内的空栏",
+	["@heg_huyuan-discard"] = "你可以发动“护援”，弃置与%src距离为1的一名角色装备区或判定区里的一张牌",
+	["~heg_huyuan"] = "选择一张手牌或装备牌→选择一名其他角色，或装备牌选择装备栏→点击确定",
 	["heg_heyi"] = "鹤翼",
 	[":heg_heyi"] = "阵法技，与你处于同一队列的其他角色视为拥有\"飞影\"。",
 	[":heg_heyi_p"] = "回合结束时，你可以选择包括你在内的至少两名连续的角色，这些角色（除你外）拥有“飞影”，直到你的下个回合结束时。",
@@ -58,15 +59,21 @@ return {
 	["heg_xusheng"] = "徐盛[国]",
 	["illustrator:heg_xusheng"] = "天信",
 	["heg_yicheng"] = "疑城",
-	[":heg_yicheng"] = "每当与你势力相同的一名角色成为【杀】的目标后，你可以令其摸一张牌，然后其弃置一张牌。",
+	[":heg_yicheng"] = "①当【杀】指定第一个目标后，若使用者为你或与你处于同一队列，你可以令其选择是否摸一张牌，然后弃置一张牌。②当一名角色成为【杀】的目标后，若其为你或与你处于同一队列，你可以令其选择是否摸一张牌，然后弃置一张牌；与你处于同一队列且已明置此技能的角色也可以令该使用者或目标角色选择是否摸一张牌并弃置一张牌。",
 	[":heg_yicheng_p"] = "当一名角色成为【杀】的目标后，你可以令该角色摸一张牌，然后弃置一张牌。",
+	["@heg_yicheng-ally"] = "%src发动“疑城”，你是否摸一张牌并弃置一张牌？",
+	["heg_tuntian"] = "屯田",
+	[":heg_tuntian"] = "当你于回合外失去手牌或装备区里的牌后，你可以判定。若结果不为红桃且判定牌仍在判定区，你可以选择是否将此判定牌置于武将牌上，称为“田”。你至其他角色的距离-X（X为“田”的数量）。",
+	["@heg_tuntian-field"] = "你是否将判定牌【%arg】置为“田”？",
+	["#heg_tuntian-dist"] = "屯田",
+	["#heg_tuntian-clear"] = "屯田（清除“田”）",
 	["#heg_yuji"] = "魂绕左右",
 	["heg_yuji"] = "于吉[国]",
 	["illustrator:heg_yuji"] = "G.G.G.",
 	["heg_qianhuan"] = "千幻",
-	[":heg_qianhuan"] = "每当与你势力相同的一名角色受到伤害后，若其存活，你可以将牌堆顶的一张牌置于武将牌上，称为\"幻\"，若此\"幻\"与另一张\"幻\"花色相同，你将此\"幻\"置入弃牌堆；" ..
-					"每当与你势力相同的一名角色成为基本牌或锦囊牌的唯一目标时，你可以将一张\"幻\"置入弃牌堆，取消此目标。",
+	[":heg_qianhuan"] = "①当一名角色受到伤害后，若其与你势力相同且存活，你可以将一张与所有“幻”花色均不同的牌置于武将牌上，称为“幻”。②当一名角色成为基本牌或普通锦囊牌的目标时，若其与你势力相同且目标角色数为1，你可以将一张“幻”置入弃牌堆，取消此目标。③当延时锦囊牌将要置入一名角色的判定区时，若其与你势力相同，你可以将一张“幻”置入弃牌堆，取消此次移动。",
 	["heg_qianhuan:gethuan"] = "是否发动技能“千幻”将牌堆顶一张牌移出游戏成为“幻”？" ,
+	["@heg_qianhuan-put"] = "你可以发动“千幻”，将一张手牌或装备区里与所有“幻”花色均不同的牌置为“幻”",
 	[":heg_qianhuan_p"] = "每当一名角色受到伤害后，若其存活，其可以将牌堆顶的一张牌置于你武将牌上，称为\"幻\"，若此\"幻\"与另一张\"幻\"花色相同，你将此\"幻\"置入弃牌堆；" ..
 					"每当一名角色成为基本牌或锦囊牌的唯一目标时，你可以将一张\"幻\"置入弃牌堆，取消此目标。",
 	["@heg_qianhuan-cancel"] = "你可以发动“千幻”，取消【%arg】的目标 %dest",
@@ -93,4 +100,9 @@ return {
 	["heg_jizhao"] = "激诏",
 	[":heg_jizhao"] = "限定技，当你处于濒死状态时，你可以将手牌补至X张（X为你的体力上限），然后将体力值回复至2点，失去\"授钺\"并获得\"仁德\"。",
 	["@heg_jizhao"] = "激诏",
+["DragonPhoenix"] = "飞龙夺凤",
+["heg_DragonPhoenix"] = "飞龙夺凤",
+[":heg_DragonPhoenix"] = "装备牌·武器\n\n攻击范围：2\n技能：当【杀】指定目标后，若使用者为你，你可以令该目标对应的角色弃置一张牌。",
+["@heg_dragonphoenix-discard"] = "受到【飞龙夺凤】效果影响，请弃置一张牌",
+["heg_DragonPhoenix:revive"] = "你可以点击下方确定按钮重新复活加入战斗",
 }

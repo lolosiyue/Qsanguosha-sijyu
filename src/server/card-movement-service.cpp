@@ -8,12 +8,81 @@
 #include "settings.h"
 #include "standard.h"
 
+#include <QScopeGuard>
+#include <QSet>
+
 #include <algorithm>
 #include <functional>
 
 using namespace QSanProtocol;
 
 namespace {
+
+Player::Place canonicalPlace(Player::Place place)
+{
+    return place == Player::DrawPileBottom ? Player::DrawPile : place;
+}
+
+CardsMoveStruct canonicalMove(CardsMoveStruct move)
+{
+    move.from_place = canonicalPlace(move.from_place);
+    move.to_place = canonicalPlace(move.to_place);
+    return move;
+}
+
+QList<CardsMoveStruct> canonicalMoves(QList<CardsMoveStruct> moves)
+{
+    for (CardsMoveStruct &move : moves) move = canonicalMove(move);
+    return moves;
+}
+
+void notifyCanonicalMoves(Room &room, bool lost, const QList<CardsMoveStruct> &moves, bool visible)
+{
+    QList<CardsMoveStruct> notification = canonicalMoves(moves);
+    room.notifyMoveCards(lost, notification, visible);
+}
+
+bool ignoresMoveAnimation(const CardsMoveStruct &move)
+{
+    // RoomScene::_shouldIgnoreDisplayMove uses these fields before consuming
+    // its movement stash. A redirected exchange must keep both sides aligned.
+    return move.to_pile_name.startsWith('#') || move.from_pile_name.startsWith('#')
+        || (move.to_place == Player::DiscardPile
+            && (move.from_place == Player::PlaceTable || move.from_place == Player::PlaceJudge));
+}
+
+void retainMoveOrigin(CardsMoveOneTimeStruct &move, const QMap<int, CardsMoveStruct> &origins)
+{
+    if (move.card_ids.isEmpty()) return;
+    const CardsMoveStruct origin = origins.value(move.card_ids.first());
+    move.origin_from = origin.from;
+    move.origin_to = origin.to;
+    move.origin_to_place = origin.to_place;
+    move.origin_from_places.clear();
+    for (int id : move.card_ids) move.origin_from_places << origins.value(id).from_place;
+}
+
+QList<CardsMoveOneTimeStruct> moveDataItems(const QVariant &data)
+{
+    QList<CardsMoveOneTimeStruct> result;
+    // Accept both native events and batch callbacks, including an empty batch.
+    const QVariantList values = data.canConvert<CardsMoveOneTimeStruct>()
+        ? QVariantList{data} : data.toList();
+    for (const QVariant &value : values) {
+        if (!value.canConvert<CardsMoveOneTimeStruct>()) continue;
+        const CardsMoveOneTimeStruct move = value.value<CardsMoveOneTimeStruct>();
+        if (!move.card_ids.isEmpty()) result << move;
+    }
+    return result;
+}
+
+QVariant moveDataValue(const QList<CardsMoveOneTimeStruct> &moves)
+{
+    QVariantList result;
+    for (const CardsMoveOneTimeStruct &move : moves)
+        if (!move.card_ids.isEmpty()) result << QVariant::fromValue(move);
+    return result;
+}
 
 QVariantMap moveHistoryData(Room &room, const CardsMoveStruct &move, int cardId)
 {
@@ -23,8 +92,8 @@ QVariantMap moveHistoryData(Room &room, const CardsMoveStruct &move, int cardId)
                 && move.from ? move.from->objectName() : move.from_player_name);
     data.insert(QStringLiteral("to"), move.to_player_name.isEmpty()
                 && move.to ? move.to->objectName() : move.to_player_name);
-    data.insert(QStringLiteral("from_place"), static_cast<int>(move.from_place));
-    data.insert(QStringLiteral("to_place"), static_cast<int>(move.to_place));
+    data.insert(QStringLiteral("from_place"), static_cast<int>(canonicalPlace(move.from_place)));
+    data.insert(QStringLiteral("to_place"), static_cast<int>(canonicalPlace(move.to_place)));
     data.insert(QStringLiteral("from_pile"), move.from_pile_name);
     data.insert(QStringLiteral("to_pile"), move.to_pile_name);
     data.insert(QStringLiteral("reason"), static_cast<int>(move.reason.m_reason));
@@ -149,7 +218,8 @@ QList<int> &CardMovementService::primaryPile()
 void CardMovementService::setCardMapping(int cardId, ServerPlayer *owner,
                                          Player::Place place)
 {
-    m_locations.set(cardId, owner, place);
+    // Bottom is an insertion instruction, never a separate physical zone.
+    m_locations.set(cardId, owner, canonicalPlace(place));
 }
 
 ServerPlayer *CardMovementService::getCardOwner(int cardId) const
@@ -712,7 +782,7 @@ bool CardMovementService::_MoveMergeClassifier::operator==(
 {
     return m_from == other.m_from && m_to == other.m_to
         && m_to_place == other.m_to_place
-        && m_to_pile_name == other.m_to_pile_name;
+        && m_to_pile_name == other.m_to_pile_name && m_reason == other.m_reason;
 }
 
 bool CardMovementService::_MoveMergeClassifier::operator<(
@@ -725,17 +795,19 @@ bool CardMovementService::_MoveMergeClassifier::operator<(
         return playerLess(m_to, other.m_to);
     if (m_to_place != other.m_to_place)
         return m_to_place < other.m_to_place;
-    return m_to_pile_name < other.m_to_pile_name;
+    if (m_to_pile_name != other.m_to_pile_name)
+        return m_to_pile_name < other.m_to_pile_name;
+    return m_reason < other.m_reason;
 }
 
 CardMovementService::_MoveSeparateClassifier::_MoveSeparateClassifier(
     const CardsMoveOneTimeStruct &moveOneTime, int index)
     : m_from(moveOneTime.from), m_to(moveOneTime.to),
-      m_from_place(moveOneTime.from_places[index]),
+      m_from_place(moveOneTime.from_places.value(index, Player::PlaceUnknown)),
       m_to_place(moveOneTime.to_place),
-      m_from_pile_name(moveOneTime.from_pile_names[index]),
+      m_from_pile_name(moveOneTime.from_pile_names.value(index)),
       m_to_pile_name(moveOneTime.to_pile_name),
-      m_open(moveOneTime.open[index]), m_reason(moveOneTime.reason)
+      m_open(moveOneTime.open.value(index, false)), m_reason(moveOneTime.reason)
 {
 }
 
@@ -747,7 +819,7 @@ bool CardMovementService::_MoveSeparateClassifier::operator==(
         && m_to_place == other.m_to_place
         && m_from_pile_name == other.m_from_pile_name
         && m_to_pile_name == other.m_to_pile_name
-        && m_reason == other.m_reason;
+        && m_open == other.m_open && m_reason == other.m_reason;
 }
 
 bool CardMovementService::_MoveSeparateClassifier::operator<(
@@ -766,6 +838,7 @@ bool CardMovementService::_MoveSeparateClassifier::operator<(
         return m_from_pile_name < other.m_from_pile_name;
     if (m_to_pile_name != other.m_to_pile_name)
         return m_to_pile_name < other.m_to_pile_name;
+    if (m_open != other.m_open) return m_open < other.m_open;
     return m_reason < other.m_reason;
 }
 
@@ -777,13 +850,24 @@ void CardMovementService::fillMoveInfo(CardsMoveStruct &move, int id) const
     if (move.from) {
         move.from_player_name = move.from->objectName();
         if (move.from_place == Player::PlaceSpecial
-            || move.from_place == Player::PlaceTable)
+            || move.from_place == Player::PlaceTable) {
             move.from_pile_name = move.from->getPileName(id);
+            // addToPile reserves the destination before entering this service.
+            // When moving between one owner's piles, retain the physical source.
+            if (move.from == move.to && move.from_pile_name == move.to_pile_name) {
+                for (const QString &pile : move.from->getPileNames()) {
+                    if (pile != move.to_pile_name && move.from->getPile(pile).contains(id)) {
+                        move.from_pile_name = pile;
+                        break;
+                    }
+                }
+            }
+        }
     }
     if (move.to) {
         move.to_player_name = move.to->objectName();
-        if (move.to_place == Player::PlaceSpecial
-            || move.to_place == Player::PlaceTable)
+        if (move.to_pile_name.isEmpty() && (move.to_place == Player::PlaceSpecial
+            || move.to_place == Player::PlaceTable))
             move.to_pile_name = move.to->getPileName(id);
     }
 }
@@ -900,8 +984,118 @@ void CardMovementService::moveCardsAtomic(CardsMoveStruct cardsMove,
 void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                                           bool visible, bool guanxing)
 {
+    moveCardsSub(cardsMoves, visible, guanxing);
+}
+
+QVariant CardMovementService::changeMoveData(const QVariant &data,
+                                             const QList<int> &removedIds)
+{
+    QList<CardsMoveOneTimeStruct> remaining = moveDataItems(data);
+    for (CardsMoveOneTimeStruct &move : remaining) move.removeCardIds(removedIds);
+    return moveDataValue(remaining);
+}
+
+QVariant CardMovementService::changeMoveData(const QVariant &data,
+                                             const QList<CardsMoveStruct> &replacements)
+{
+    const QList<CardsMoveOneTimeStruct> inserted = mergeMoves(normalizeMoves(replacements));
+    QList<int> ids;
+    for (const CardsMoveOneTimeStruct &move : inserted) ids << move.card_ids;
+    QList<CardsMoveOneTimeStruct> result = inserted;
+    result << moveDataItems(changeMoveData(data, ids));
+    // This rewrites the pending operation only; physical zones change at commit.
+    return moveDataValue(result);
+}
+
+QList<CardsMoveOneTimeStruct> CardMovementService::triggerMoveBatch(
+    TriggerEvent event, const QList<CardsMoveOneTimeStruct> &moves)
+{
+    if (moves.isEmpty()) return {};
+    QVariant data = moveDataValue(moves);
+    for (ServerPlayer *player : m_room.getAllPlayers()) {
+        const bool stopped = m_room.getThread()->trigger(event, &m_room, player, data);
+        if (event == BeforeCardsMoveBatch && stopped) return {};
+    }
+    return moveDataItems(data);
+}
+
+QList<CardsMoveOneTimeStruct> CardMovementService::triggerSingleMoves(
+    TriggerEvent event, const QList<CardsMoveOneTimeStruct> &moves)
+{
+    QList<CardsMoveOneTimeStruct> result;
+    for (const CardsMoveOneTimeStruct &move : moves) {
+        QList<CardsMoveOneTimeStruct> parts{move};
+        for (ServerPlayer *player : m_room.getAllPlayers()) {
+            QList<CardsMoveOneTimeStruct> updated;
+            for (const CardsMoveOneTimeStruct &part : parts) {
+                QVariant data = QVariant::fromValue(part);
+                m_room.getThread()->trigger(event, &m_room, player, data);
+                // A replacement can split or cancel a move. Subsequent player
+                // dispatches receive typed moves, never a list or empty shell.
+                updated << moveDataItems(data);
+            }
+            parts = updated;
+        }
+        result << parts;
+    }
+    return result;
+}
+
+QList<CardsMoveOneTimeStruct> CardMovementService::beforeMoves(
+    const QList<CardsMoveOneTimeStruct> &moves)
+{
+    QList<CardsMoveOneTimeStruct> result;
+    auto cleanup = qScopeGuard([&]() { reconcilePendingPiles(moves, {}); });
+    result = triggerSingleMoves(BeforeCardsMove, triggerMoveBatch(BeforeCardsMoveBatch, moves));
+    reconcilePendingPiles(moves, result);
+    cleanup.dismiss();
+    return result;
+}
+
+void CardMovementService::reconcilePendingPiles(
+    const QList<CardsMoveOneTimeStruct> &before,
+    const QList<CardsMoveOneTimeStruct> &after)
+{
+    for (const CardsMoveOneTimeStruct &move : before) {
+        if (!move.to || move.to_place != Player::PlaceSpecial || move.to_pile_name.isEmpty()) continue;
+        for (int i = 0; i < move.card_ids.size(); ++i) {
+            const int id = move.card_ids[i];
+            bool retained = false;
+            for (const CardsMoveOneTimeStruct &replacement : after) {
+                if (replacement.to == move.to && replacement.to_place == Player::PlaceSpecial
+                    && replacement.to_pile_name == move.to_pile_name && replacement.card_ids.contains(id)) {
+                    retained = true;
+                    break;
+                }
+            }
+            if (retained) continue;
+            // Never erase a real private-pile card moved by a nested callback.
+            // A pre-reserved second pile is distinguished from its source pile.
+            if (getCardOwner(id) == move.to && getCardPlace(id) == Player::PlaceSpecial) {
+                const QString sourcePile = move.from_pile_names.value(i);
+                const bool stillAtOtherSource = move.from == move.to
+                    && move.from_places.value(i) == Player::PlaceSpecial
+                    && sourcePile != move.to_pile_name && move.to->getPile(sourcePile).contains(id);
+                if (!stillAtOtherSource) continue;
+            }
+            move.to->setPileCardPresent(move.to_pile_name, id, false);
+        }
+    }
+}
+
+QVariant CardMovementService::afterMoves(QList<CardsMoveOneTimeStruct> moves)
+{
+    moves = triggerMoveBatch(PreCardsMoveBatch, moves);
+    moves = triggerSingleMoves(CardsMoveOneTime, moves);
+    return moveDataValue(triggerMoveBatch(CardsMoveBatch, moves));
+}
+
+QVariant CardMovementService::moveCardsSub(QList<CardsMoveStruct> cardsMoves,
+                                           bool visible, bool guanxing)
+{
     cardsMoves = normalizeMoves(cardsMoves);
-    if (cardsMoves.isEmpty()) return;
+    if (cardsMoves.isEmpty()) return QVariantList();
+    const QList<CardsMoveOneTimeStruct> requestedMoves = mergeMoves(cardsMoves);
 
     QList<CardsMoveStruct> filteredMoves;
     foreach (CardsMoveStruct move, cardsMoves) {
@@ -932,26 +1126,32 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
             filteredMoves << filteredMove;
     }
     cardsMoves = filteredMoves;
-    if (cardsMoves.isEmpty()) return;
+    reconcilePendingPiles(requestedMoves, mergeMoves(cardsMoves));
+    if (cardsMoves.isEmpty()) return QVariantList();
 
     ResolutionHistoryEventGuard historyGuard(
         m_room.resolutionHistory(), QStringLiteral("move_cards"),
         moveHistoryEventData(m_room, cardsMoves),
         m_room.historyRecordingEnabled());
-    QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(cardsMoves);
-    for (int i = 0; i < moveOneTimes.length(); ++i) {
-        QVariant data = QVariant::fromValue(moveOneTimes[i]);
-        foreach (ServerPlayer *player, m_room.getAllPlayers())
-            m_room.getThread()->trigger(BeforeCardsMove, &m_room, player, data);
-        moveOneTimes[i] = data.value<CardsMoveOneTimeStruct>();
-    }
+    const QList<CardsMoveOneTimeStruct> moveOneTimes = beforeMoves(mergeMoves(cardsMoves));
     cardsMoves = splitMoves(moveOneTimes);
     if (cardsMoves.isEmpty()) {
         historyGuard.finish(QStringLiteral("cancelled"));
-        return;
+        return QVariantList();
     }
 
-    m_room.notifyMoveCards(true, cardsMoves, visible);
+    return commitMoves(cardsMoves, visible, guanxing, historyGuard);
+}
+
+QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
+                                      bool visible, bool guanxing,
+                                      ResolutionHistoryEventGuard &historyGuard,
+                                      bool notify,
+                                      const QMap<int, CardsMoveStruct> *origins,
+                                      const std::function<void()> &notifyGain,
+                                      const std::function<void(int)> &insertIntoDrawPile)
+{
+    if (notify) notifyCanonicalMoves(m_room, true, cardsMoves, visible);
     foreach (CardsMoveStruct move, cardsMoves) {
         foreach (int id, move.card_ids) {
             if (move.from) move.from->removeCard(id, move.from_place);
@@ -960,6 +1160,7 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                 m_discardPile->removeAll(id);
                 break;
             case Player::DrawPile:
+            case Player::DrawPileBottom:
                 m_drawPile->removeAll(id);
                 break;
             case Player::PlaceSpecial:
@@ -970,10 +1171,11 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
             }
             setCardMapping(id, static_cast<ServerPlayer *>(move.to), move.to_place);
         }
-        m_room.updateCardsChange(move);
+        m_room.updateCardsChange(canonicalMove(move));
     }
 
-    m_room.notifyMoveCards(false, cardsMoves, visible);
+    if (notify) notifyCanonicalMoves(m_room, false, cardsMoves, visible);
+    else if (notifyGain) notifyGain();
     foreach (CardsMoveStruct move, cardsMoves) {
         foreach (int id, move.card_ids) {
             m_room.clearCardTip(id);
@@ -982,6 +1184,8 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
             else if (move.from_place != Player::DrawPile)
                 m_room.setCardFlag(id, "-visible");
             if (move.to) {
+                if (move.to_place == Player::PlaceSpecial && !move.to_pile_name.isEmpty())
+                    move.to->setPileCardPresent(move.to_pile_name, id, true);
                 CardsMoveStruct factMove = move;
                 factMove.card_ids = QList<int>() << id;
                 // addCard invokes this after Player::addCard has installed the
@@ -996,7 +1200,11 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                 m_discardPile->prepend(id);
                 break;
             case Player::DrawPile:
-                m_drawPile->prepend(id);
+                if (insertIntoDrawPile) insertIntoDrawPile(id);
+                else m_drawPile->prepend(id);
+                break;
+            case Player::DrawPileBottom:
+                m_drawPile->append(id);
                 break;
             case Player::PlaceSpecial:
                 m_tableCards.append(id);
@@ -1012,16 +1220,17 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
             appendMoveHistoryFacts(m_room, historyGuard,
                                    QList<CardsMoveStruct>() << move);
         if (move.from_place == Player::DrawPile
-            || move.to_place == Player::DrawPile) {
+            || canonicalPlace(move.to_place) == Player::DrawPile) {
             m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
-            if (guanxing && move.to_place == Player::DrawPile) {
+            if (guanxing && canonicalPlace(move.to_place) == Player::DrawPile) {
                 ServerPlayer *from = m_room.findChild<ServerPlayer *>(
                     move.reason.m_playerId);
                 if (!from) from = static_cast<ServerPlayer *>(move.from);
                 if (from && from->isAlive()) {
                     m_room.askForGuanxing(from,
-                        getNCards(move.card_ids.length(), false, true),
-                        Room::GuanxingUpOnly, false);
+                        getNCards(move.card_ids.length(), false, move.to_place != Player::DrawPileBottom),
+                        move.to_place == Player::DrawPileBottom ? Room::GuanxingDownOnly : Room::GuanxingUpOnly,
+                        false);
                 }
             }
         }
@@ -1147,12 +1356,218 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
     }
 
     m_room.m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
-    moveOneTimes = mergeMoves(cardsMoves);
-    foreach (CardsMoveOneTimeStruct moveOneTime, moveOneTimes) {
-        QVariant data = QVariant::fromValue(moveOneTime);
-        foreach (ServerPlayer *player, m_room.getAllPlayers())
-            m_room.getThread()->trigger(CardsMoveOneTime, &m_room, player, data);
+    QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(cardsMoves);
+    for (CardsMoveOneTimeStruct &moveOneTime : moveOneTimes) {
+        if (origins) retainMoveOrigin(moveOneTime, *origins);
     }
+    return afterMoves(moveOneTimes);
+}
+
+void CardMovementService::moveCards(QList<CardsMoveStruct> cardsMoves,
+                                    bool visible, bool enforceOrigin)
+{
+    cardsMoves = normalizeMoves(cardsMoves);
+    if (cardsMoves.isEmpty()) return;
+    QMap<int, CardsMoveStruct> origins;
+    for (const CardsMoveStruct &move : cardsMoves)
+        for (int id : move.card_ids) origins.insert(id, move);
+    ResolutionHistoryEventGuard historyGuard(
+        m_room.resolutionHistory(), QStringLiteral("move_cards"),
+        moveHistoryEventData(m_room, cardsMoves), m_room.historyRecordingEnabled());
+
+    // Exchange losses resolve before either side gains cards. Keep the eventual
+    // destination private in the wire pair, while skills see the table phase.
+    const QList<CardsMoveOneTimeStruct> requestedMoves = mergeMoves(cardsMoves);
+    const QList<CardsMoveStruct> originalGroups = splitMoves(requestedMoves);
+    QList<CardsMoveOneTimeStruct> oneTimes;
+    QList<CardsMoveOneTimeStruct> prepared;
+    {
+        const auto cleanup = qScopeGuard([&]() { reconcilePendingPiles(requestedMoves, prepared); });
+        oneTimes = triggerMoveBatch(BeforeCardsMoveBatch, requestedMoves);
+        for (CardsMoveOneTimeStruct move : oneTimes) {
+            retainMoveOrigin(move, origins);
+            Player *destination = move.to;
+            const Player::Place destinationPlace = move.to_place;
+            move.to = nullptr;
+            move.to_place = Player::PlaceTable;
+            QList<CardsMoveOneTimeStruct> parts = triggerSingleMoves(BeforeCardsMove, {move});
+            for (CardsMoveOneTimeStruct &part : parts) {
+                part.to = destination;
+                part.to_place = destinationPlace;
+            }
+            prepared << parts;
+        }
+    }
+    cardsMoves = splitMoves(prepared);
+    if (cardsMoves.isEmpty()) {
+        historyGuard.finish(QStringLiteral("cancelled"));
+        return;
+    }
+    // A batch hook may introduce additional cards (for example equipment
+    // replacement); those cards need their own origin during the table phase.
+    for (const CardsMoveStruct &move : cardsMoves)
+        for (int id : move.card_ids)
+            if (!origins.contains(id)) origins.insert(id, move);
+    const auto cleanupPiles = qScopeGuard([&]() { reconcilePendingPiles(prepared, {}); });
+    QList<CardsMoveStruct> losses = cardsMoves;
+    for (CardsMoveStruct &move : losses) {
+        move.to = nullptr;
+        move.to_player_name.clear();
+        move.to_place = Player::PlaceTable;
+        move.to_pile_name.clear();
+    }
+    QList<QList<CardsMoveStruct>> pendingNotifications;
+    QSet<int> announcedIds;
+    QSet<int> initialIds;
+    bool lossesMapped = false;
+    QMap<int, CardsMoveStruct> plannedGains;
+    const auto closePendingNotifications = [&]() {
+        // Room's move IDs form a stack. Preserve every original group's slot
+        // and order; RoomScene consumes one whole stash entry for each GET.
+        while (!pendingNotifications.isEmpty()) {
+            const QList<CardsMoveStruct> originsForBatch = pendingNotifications.takeLast();
+            QList<CardsMoveStruct> completions;
+            QList<CardsMoveStruct> restarted;
+            for (const CardsMoveStruct &origin : originsForBatch) {
+                QList<CardsMoveStruct> parts;
+                for (int id : origin.card_ids) {
+                    CardsMoveStruct completion = origin;
+                    completion.card_ids = {id};
+                    completion.to = getCardOwner(id);
+                    completion.to_player_name = completion.to ? completion.to->objectName() : QString();
+                    completion.to_place = getCardPlace(id);
+                    completion.to_pile_name = completion.to && completion.to_place == Player::PlaceSpecial
+                        ? completion.to->getPileName(id) : QString();
+                    const CardsMoveStruct expected = plannedGains.value(id);
+                    const bool atPlannedDestination = plannedGains.contains(id)
+                        && completion.to == expected.to && completion.to_place == canonicalPlace(expected.to_place);
+                    // The callback runs after ownership mapping but before
+                    // private-pile membership/addCard installs the destination.
+                    if (atPlannedDestination) {
+                        completion.to_pile_name = expected.to_pile_name;
+                        completion.reason = expected.reason;
+                    }
+                    const bool atOriginalSource = completion.to == origin.from
+                        && completion.to_place == canonicalPlace(origin.from_place)
+                        && completion.to_pile_name == origin.from_pile_name
+                        && (!lossesMapped || !initialIds.contains(id));
+                    const bool awaitingGain = !completion.to && completion.to_place == Player::PlaceTable;
+                    // Nested moves already notified their destination. Retire
+                    // those original animations without adding cards twice.
+                    if (atPlannedDestination || atOriginalSource || awaitingGain) parts << completion;
+                }
+                bool sameGroup = !parts.isEmpty() && parts.size() == origin.card_ids.size();
+                for (const CardsMoveStruct &part : parts) {
+                    if (part.to != parts.first().to || part.to_place != parts.first().to_place
+                        || part.to_pile_name != parts.first().to_pile_name
+                        || !(part.reason == parts.first().reason)
+                        || ignoresMoveAnimation(part) != ignoresMoveAnimation(origin)) {
+                        sameGroup = false;
+                        break;
+                    }
+                }
+                if (sameGroup) {
+                    CardsMoveStruct completion = parts.first();
+                    completion.card_ids = origin.card_ids;
+                    completions << completion;
+                } else {
+                    CardsMoveStruct retired = origin;
+                    retired.card_ids.clear();
+                    completions << retired;
+                    // A partial group cannot reuse anonymous (-1) card items:
+                    // the renderer cannot distinguish which unknown IDs left.
+                    // Close its original shape, then create fully paired moves
+                    // from the exchange's intermediate table to final zones.
+                    for (CardsMoveStruct part : parts) {
+                        part.from = nullptr;
+                        part.from_player_name.clear();
+                        part.from_place = Player::PlaceTable;
+                        part.from_pile_name.clear();
+                        restarted << part;
+                    }
+                }
+            }
+            notifyCanonicalMoves(m_room, false, completions, visible);
+            if (!restarted.isEmpty()) {
+                notifyCanonicalMoves(m_room, true, restarted, visible);
+                notifyCanonicalMoves(m_room, false, restarted, visible);
+            }
+        }
+    };
+    const auto closeInterruptedPairs = qScopeGuard(closePendingNotifications);
+    const auto announceMoves = [&](const QList<CardsMoveStruct> &moves) {
+        QList<CardsMoveStruct> batch;
+        for (CardsMoveStruct move : moves) {
+            const QList<int> ids = move.card_ids;
+            move.card_ids.clear();
+            for (int id : ids) {
+                if (announcedIds.contains(id)) continue;
+                move.card_ids << id;
+                announcedIds.insert(id);
+            }
+            if (!move.card_ids.isEmpty()) batch << move;
+        }
+        if (batch.isEmpty()) return;
+        pendingNotifications << batch;
+        notifyCanonicalMoves(m_room, true, batch, visible);
+    };
+    // Keep each original source group intact even when hooks split its gains.
+    // The client recognizes whole-hand exchanges from the initial loss group;
+    // cancelled cards must not count toward that exchange. Hook-added cards are
+    // announced afterwards from their actual source and deduplicated normally.
+    QSet<int> survivingIds;
+    for (const CardsMoveStruct &move : cardsMoves)
+        for (int id : move.card_ids) survivingIds.insert(id);
+    QList<CardsMoveStruct> initialGroups;
+    for (CardsMoveStruct move : originalGroups) {
+        const QList<int> ids = move.card_ids;
+        move.card_ids.clear();
+        for (int id : ids)
+            if (survivingIds.contains(id)) move.card_ids << id;
+        if (!move.card_ids.isEmpty()) initialGroups << move;
+    }
+    announceMoves(initialGroups);
+    announceMoves(cardsMoves);
+    initialIds = announcedIds;
+    commitMoves(losses, visible, false, historyGuard, false, &origins,
+                [&]() { lossesMapped = true; });
+
+    QList<CardsMoveStruct> gains;
+    for (CardsMoveStruct move : cardsMoves) {
+        // Loss triggers may already have obtained a card. Do not steal it back.
+        const QList<int> ids = move.card_ids;
+        move.card_ids.clear();
+        for (int id : ids)
+            if (!getCardOwner(id) && getCardPlace(id) == Player::PlaceTable)
+                move.card_ids << id;
+        if (move.card_ids.isEmpty()) continue;
+        move.from_place = Player::PlaceTable;
+        move.from_pile_name.clear();
+        if (enforceOrigin && move.to && !move.to->isAlive()) {
+            move.to = nullptr;
+            move.to_player_name.clear();
+            move.to_place = Player::DiscardPile;
+            move.to_pile_name.clear();
+        }
+        gains << move;
+    }
+    reconcilePendingPiles(prepared, mergeMoves(gains));
+    oneTimes = mergeMoves(gains);
+    for (CardsMoveOneTimeStruct &move : oneTimes) {
+        retainMoveOrigin(move, origins);
+    }
+    gains = splitMoves(beforeMoves(oneTimes));
+    for (const CardsMoveStruct &gain : gains) {
+        for (int id : gain.card_ids) {
+            plannedGains.insert(id, gain);
+            if (!origins.contains(id)) origins.insert(id, gain);
+        }
+    }
+    // Newly introduced gain cards were never in the original loss batch. Open
+    // their own pairs before removing them from their actual source zones.
+    announceMoves(gains);
+    if (gains.isEmpty()) closePendingNotifications();
+    else commitMoves(gains, visible, false, historyGuard, false, &origins, closePendingNotifications);
 }
 
 void CardMovementService::moveCardsToEndOfDrawpile(ServerPlayer *player,
@@ -1162,7 +1577,7 @@ void CardMovementService::moveCardsToEndOfDrawpile(ServerPlayer *player,
 {
     if (cardIds.isEmpty()) return;
     QList<CardsMoveStruct> moves;
-    moves << CardsMoveStruct(cardIds, nullptr, Player::DrawPile,
+    moves << CardsMoveStruct(cardIds, nullptr, Player::DrawPileBottom,
         CardMoveReason(CardMoveReason::S_REASON_PUT_END,
                        player->objectName(), skillName, ""));
     moves = normalizeMoves(moves);
@@ -1172,102 +1587,14 @@ void CardMovementService::moveCardsToEndOfDrawpile(ServerPlayer *player,
         m_room.resolutionHistory(), QStringLiteral("move_cards"),
         moveHistoryEventData(m_room, moves),
         m_room.historyRecordingEnabled());
-    QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(moves);
-    for (int i = 0; i < moveOneTimes.length(); ++i) {
-        QVariant data = QVariant::fromValue(moveOneTimes[i]);
-        foreach (ServerPlayer *triggerPlayer, m_room.getAllPlayers())
-            m_room.getThread()->trigger(BeforeCardsMove, &m_room,
-                                        triggerPlayer, data);
-        moveOneTimes[i] = data.value<CardsMoveOneTimeStruct>();
-    }
+    QList<CardsMoveOneTimeStruct> moveOneTimes = beforeMoves(mergeMoves(moves));
     moves = splitMoves(moveOneTimes);
     if (moves.isEmpty()) {
         historyGuard.finish(QStringLiteral("cancelled"));
         return;
     }
 
-    m_room.notifyMoveCards(true, moves, visible);
-    foreach (CardsMoveStruct move, moves) {
-        foreach (int id, move.card_ids) {
-            if (move.from) move.from->removeCard(id, move.from_place);
-            switch (move.from_place) {
-            case Player::DiscardPile:
-                m_discardPile->removeAll(id);
-                break;
-            case Player::DrawPile:
-                m_drawPile->removeAll(id);
-                break;
-            case Player::PlaceSpecial:
-                m_tableCards.removeAll(id);
-                break;
-            default:
-                break;
-            }
-            setCardMapping(id, static_cast<ServerPlayer *>(move.to), move.to_place);
-        }
-        m_room.updateCardsChange(move);
-    }
-
-    m_room.notifyMoveCards(false, moves, visible);
-    foreach (CardsMoveStruct move, moves) {
-        foreach (int id, move.card_ids) {
-            m_room.clearCardTip(id);
-            if (visible)
-                m_room.setCardFlag(id, "visible");
-            else if (move.from_place != Player::DrawPile)
-                m_room.setCardFlag(id, "-visible");
-            if (move.to) {
-                CardsMoveStruct factMove = move;
-                factMove.card_ids = QList<int>() << id;
-                static_cast<ServerPlayer *>(move.to)->addCard(id, move.to_place, [this, &historyGuard, factMove]() {
-                    appendMoveHistoryFacts(m_room, historyGuard,
-                                           QList<CardsMoveStruct>() << factMove);
-                });
-            }
-            switch (move.to_place) {
-            case Player::DiscardPile:
-                m_discardPile->prepend(id);
-                break;
-            case Player::DrawPile:
-                m_drawPile->append(id);
-                break;
-            case Player::PlaceSpecial:
-                m_tableCards.append(id);
-                break;
-            default:
-                break;
-            }
-        }
-        if (!move.to)
-            appendMoveHistoryFacts(m_room, historyGuard,
-                                   QList<CardsMoveStruct>() << move);
-        if (move.from_place == Player::DrawPile
-            || move.to_place == Player::DrawPile)
-            m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
-    }
-
-    m_room.m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
-    if (guanxing) {
-        foreach (const CardsMoveStruct &move, moves) {
-            if (move.to_place != Player::DrawPile) continue;
-            ServerPlayer *from = m_room.findChild<ServerPlayer *>(
-                move.reason.m_playerId);
-            if (!from) from = static_cast<ServerPlayer *>(move.from);
-            if (from && from->isAlive()) {
-                m_room.askForGuanxing(from,
-                    getNCards(move.card_ids.length(), false, false),
-                    Room::GuanxingDownOnly, false);
-            }
-        }
-    }
-
-    moveOneTimes = mergeMoves(moves);
-    foreach (CardsMoveOneTimeStruct moveOneTime, moveOneTimes) {
-        QVariant data = QVariant::fromValue(moveOneTime);
-        foreach (ServerPlayer *triggerPlayer, m_room.getAllPlayers())
-            m_room.getThread()->trigger(CardsMoveOneTime, &m_room,
-                                        triggerPlayer, data);
-    }
+    commitMoves(moves, visible, guanxing, historyGuard);
 }
 
 void CardMovementService::moveCardsInToDrawpile(ServerPlayer *player,
@@ -1313,81 +1640,16 @@ void CardMovementService::moveCardsInToDrawpile(ServerPlayer *player,
         m_room.resolutionHistory(), QStringLiteral("move_cards"),
         moveHistoryEventData(m_room, moves),
         m_room.historyRecordingEnabled());
-    QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(moves);
-    for (int i = 0; i < moveOneTimes.length(); ++i) {
-        QVariant data = QVariant::fromValue(moveOneTimes[i]);
-        foreach (ServerPlayer *triggerPlayer, m_room.getAllPlayers())
-            m_room.getThread()->trigger(BeforeCardsMove, &m_room,
-                                        triggerPlayer, data);
-        moveOneTimes[i] = data.value<CardsMoveOneTimeStruct>();
-    }
+    QList<CardsMoveOneTimeStruct> moveOneTimes = beforeMoves(mergeMoves(moves));
     moves = splitMoves(moveOneTimes);
     if (moves.isEmpty()) {
         historyGuard.finish(QStringLiteral("cancelled"));
         return;
     }
 
-    m_room.notifyMoveCards(true, moves, visible);
-    foreach (CardsMoveStruct move, moves) {
-        foreach (int id, move.card_ids) {
-            if (move.from) move.from->removeCard(id, move.from_place);
-            switch (move.from_place) {
-            case Player::DiscardPile:
-                m_discardPile->removeAll(id);
-                break;
-            case Player::DrawPile:
-                m_drawPile->removeAll(id);
-                break;
-            case Player::PlaceSpecial:
-                m_tableCards.removeAll(id);
-                break;
-            default:
-                break;
-            }
-            setCardMapping(id, static_cast<ServerPlayer *>(move.to), move.to_place);
-        }
-        m_room.updateCardsChange(move);
-    }
-
-    m_room.notifyMoveCards(false, moves, visible);
-    foreach (CardsMoveStruct move, moves) {
-        foreach (int id, move.card_ids) {
-            m_room.clearCardTip(id);
-            if (visible)
-                m_room.setCardFlag(id, "visible");
-            else if (move.from_place != Player::DrawPile)
-                m_room.setCardFlag(id, "-visible");
-            switch (move.to_place) {
-            case Player::DiscardPile:
-                m_discardPile->prepend(id);
-                break;
-            case Player::DrawPile:
-                m_drawPile->insert(n - 1, id);
-                break;
-            case Player::PlaceSpecial:
-                m_tableCards.append(id);
-                break;
-            default:
-                break;
-            }
-            // This lane mutates the mapping/pile directly. Record only this
-            // card, not the whole batch again for every card in the loop.
-            CardsMoveStruct factMove = move;
-            factMove.card_ids = QList<int>() << id;
-            appendMoveHistoryFacts(m_room, historyGuard,
-                                   QList<CardsMoveStruct>() << factMove);
-        }
-    }
-    m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
-    m_room.m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
-
-    moveOneTimes = mergeMoves(moves);
-    foreach (CardsMoveOneTimeStruct moveOneTime, moveOneTimes) {
-        QVariant data = QVariant::fromValue(moveOneTime);
-        foreach (ServerPlayer *triggerPlayer, m_room.getAllPlayers())
-            m_room.getThread()->trigger(CardsMoveOneTime, &m_room,
-                                        triggerPlayer, data);
-    }
+    // Reuse the same commit path when a hook redirects some inserted cards.
+    commitMoves(moves, visible, false, historyGuard, true, nullptr, {},
+        [this, n](int id) { m_drawPile->insert(qBound(0, n - 1, int(m_drawPile->length())), id); });
 }
 
 void CardMovementService::shuffleIntoDrawPile(ServerPlayer *player,
@@ -1406,89 +1668,15 @@ void CardMovementService::shuffleIntoDrawPile(ServerPlayer *player,
         m_room.resolutionHistory(), QStringLiteral("move_cards"),
         moveHistoryEventData(m_room, moves),
         m_room.historyRecordingEnabled());
-    QList<CardsMoveOneTimeStruct> moveOneTimes = mergeMoves(moves);
-    for (int i = 0; i < moveOneTimes.length(); ++i) {
-        QVariant data = QVariant::fromValue(moveOneTimes[i]);
-        foreach (ServerPlayer *triggerPlayer, m_room.getAllPlayers())
-            m_room.getThread()->trigger(BeforeCardsMove, &m_room,
-                                        triggerPlayer, data);
-        moveOneTimes[i] = data.value<CardsMoveOneTimeStruct>();
-    }
+    QList<CardsMoveOneTimeStruct> moveOneTimes = beforeMoves(mergeMoves(moves));
     moves = splitMoves(moveOneTimes);
     if (moves.isEmpty()) {
         historyGuard.finish(QStringLiteral("cancelled"));
         return;
     }
 
-    m_room.notifyMoveCards(true, moves, visible);
-    foreach (CardsMoveStruct move, moves) {
-        foreach (int id, move.card_ids) {
-            if (move.from) move.from->removeCard(id, move.from_place);
-            switch (move.from_place) {
-            case Player::DiscardPile:
-                m_discardPile->removeAll(id);
-                break;
-            case Player::DrawPile:
-                m_drawPile->removeAll(id);
-                break;
-            case Player::PlaceSpecial:
-                m_tableCards.removeAll(id);
-                break;
-            default:
-                break;
-            }
-            setCardMapping(id, static_cast<ServerPlayer *>(move.to), move.to_place);
-        }
-        m_room.updateCardsChange(move);
-    }
-
-    m_room.notifyMoveCards(false, moves, visible);
-    foreach (CardsMoveStruct move, moves) {
-        foreach (int id, move.card_ids) {
-            m_room.clearCardTip(id);
-            if (visible)
-                m_room.setCardFlag(id, "visible");
-            else if (move.from_place != Player::DrawPile)
-                m_room.setCardFlag(id, "-visible");
-            if (move.to) {
-                CardsMoveStruct factMove = move;
-                factMove.card_ids = QList<int>() << id;
-                static_cast<ServerPlayer *>(move.to)->addCard(id, move.to_place, [this, &historyGuard, factMove]() {
-                    appendMoveHistoryFacts(m_room, historyGuard,
-                                           QList<CardsMoveStruct>() << factMove);
-                });
-            }
-            switch (move.to_place) {
-            case Player::DiscardPile:
-                m_discardPile->prepend(id);
-                break;
-            case Player::DrawPile:
-                m_drawPile->insert(qsanRandomBounded(m_drawPile->length()), id);
-                break;
-            case Player::PlaceSpecial:
-                m_tableCards.append(id);
-                break;
-            default:
-                break;
-            }
-            if (!move.to) {
-                CardsMoveStruct factMove = move;
-                factMove.card_ids = QList<int>() << id;
-                appendMoveHistoryFacts(m_room, historyGuard,
-                                       QList<CardsMoveStruct>() << factMove);
-            }
-        }
-    }
-    m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
-    m_room.m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
-
-    moveOneTimes = mergeMoves(moves);
-    foreach (CardsMoveOneTimeStruct moveOneTime, moveOneTimes) {
-        QVariant data = QVariant::fromValue(moveOneTime);
-        foreach (ServerPlayer *triggerPlayer, m_room.getAllPlayers())
-            m_room.getThread()->trigger(CardsMoveOneTime, &m_room,
-                                        triggerPlayer, data);
-    }
+    commitMoves(moves, visible, false, historyGuard, true, nullptr, {},
+        [this](int id) { m_drawPile->insert(qsanRandomBounded(qMax(1, int(m_drawPile->length()))), id); });
 }
 
 void CardMovementService::removeDerivativeCards()

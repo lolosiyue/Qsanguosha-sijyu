@@ -19,6 +19,7 @@
 #include "settings.h"
 #include "cardcontainer.h"
 #include "guhuo-box.h"
+#include "choosegeneralbox.h"
 #include "standard.h"
 #include "clientplayer.h"
 #include "generic-cardcontainer-ui.h"
@@ -165,6 +166,18 @@ static const ClientPlayer *getCurrentOperationPlayer(const Dashboard *dashboard)
 static ClientPlayer *getCurrentOperationPlayer(Dashboard *dashboard)
 {
 	return const_cast<ClientPlayer *>(getCurrentOperationPlayer(static_cast<const Dashboard *>(dashboard)));
+}
+
+static bool isSkillButtonVisible(const Skill *skill, const Player *player)
+{
+    if (!skill) return false;
+    if (skill->isVisibleForPlayer(player)) return true;
+    const QString response = skill->property("VisibilityResponsePattern").toString();
+    if (response.isEmpty()
+        || (ClientInstance->getStatus() & Client::ClientStatusBasicMask) != Client::Responding)
+        return false;
+    const QString pattern = ClientInstance->getRoomState()->getCurrentCardUsePattern();
+    return pattern == response || pattern == response + QLatin1Char('!');
 }
 
 static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPlayer *activePlayer,
@@ -388,6 +401,14 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(dashboard,SIGNAL(card_to_use()),this,SLOT(doOkButton()));
 	connect(dashboard,SIGNAL(dialogOptionSelectionChanged(bool)),this,SLOT(onDialogOptionSelectionChanged(bool)));
 	connect(dashboard,SIGNAL(cardActionButtonClicked(QString,int)),this,SLOT(onCardActionButtonClicked(QString,int)));
+	connect(dashboard, &Dashboard::markCardActivated, this, [this](const QString &name, int instanceId) {
+		if (!dashboard->canActivateMarkCard(name, instanceId)) return;
+		clearPresentedDialogSkill(true);
+		dashboard->stopPending();
+		activateSkill(Sanguosha->getViewAsSkill(name), instanceId);
+	});
+	connect(ClientInstance, &Client::move_cards_got, dashboard, &Dashboard::updateMarkCards, Qt::QueuedConnection);
+	connect(ClientInstance, &Client::move_cards_lost, dashboard, &Dashboard::updateMarkCards, Qt::QueuedConnection);
 	connect(dashboard,SIGNAL(cardPreviewRequested(CardItem *)),this,SLOT(showTouchCardPreview(CardItem *)));
 	//connect(dashboard,SIGNAL(add_equip_skill(const Skill*,bool)),this,SLOT(addSkillButton(const Skill*,bool)));
 	//connect(dashboard,SIGNAL(remove_equip_skill(QString)),this,SLOT(detachSkill(QString)));
@@ -428,6 +449,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(player_added(ClientPlayer*)),SLOT(addPlayer(ClientPlayer*)));
 	connect(ClientInstance,SIGNAL(player_removed(QString)),SLOT(removePlayer(QString)));
 	connect(ClientInstance,SIGNAL(generals_got(QStringList)),this,SLOT(chooseGeneral(QStringList)));
+	connect(ClientInstance, &Client::hegemony_generals_got, this, &RoomScene::chooseHegemonyGenerals);
 	connect(ClientInstance,SIGNAL(generals_viewed(QString,QStringList)),this,SLOT(viewGenerals(QString,QStringList)));
 	connect(ClientInstance,SIGNAL(suits_got(QStringList)),this,SLOT(chooseSuit(QStringList)));
 	connect(ClientInstance,SIGNAL(options_got(QString,QStringList,QString,QString)),this,
@@ -501,26 +523,31 @@ RoomScene::RoomScene(QMainWindow*main_window)
 			updateSelectedTargets();
 		});
 	connect(ClientInstance, &Client::skill_preshow_changed, this,
-		[this](const ClientPlayer *player, const QString &skillName, bool preshowed) {
+		[this](const ClientPlayer *player, const QVariantMap &changedStates) {
 			if (player != Self)
 				return;
 			for (QSanSkillButton *button : m_skillButtons) {
-				if (button != nullptr && button->objectName() == skillName) {
-					const bool canPreshow = ServerInfo.EnableHegemony && player == Self
-						&& player->canPreshowSkill(skillName);
-					button->setPreshowEnabled(skillName, canPreshow, preshowed);
-					const Skill *skill = button->getSkill();
-					QString baseName;
-					const int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
-					if (skill != nullptr && canPreshow)
-						button->setToolTip(buildOracleTooltip(
-							skill->getOracleText(Self), skill->getDescription(Self, instanceId)) + QLatin1String("\n")
-							+ (preshowed ? tr("Pre-shown. Click to cancel.")
-							             : tr("Click to pre-show this skill.")));
-					else if (skill != nullptr)
-						button->setToolTip(buildOracleTooltip(
-							skill->getOracleText(Self), skill->getDescription(Self, instanceId)));
-				}
+				if (button == nullptr)
+					continue;
+				const auto it = changedStates.constFind(button->objectName());
+				if (it == changedStates.constEnd())
+					continue;
+				const QString &skillName = it.key();
+				const bool preshowed = it.value().toBool();
+				const bool canPreshow = ServerInfo.EnableHegemony && player == Self
+					&& player->canPreshowSkill(skillName);
+				button->setPreshowEnabled(skillName, canPreshow, preshowed);
+				const Skill *skill = button->getSkill();
+				QString baseName;
+				const int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
+				if (skill != nullptr && canPreshow)
+					button->setToolTip(buildOracleTooltip(
+						skill->getOracleText(Self), skill->getDescription(Self, instanceId)) + QLatin1String("\n")
+						+ (preshowed ? tr("Pre-shown. Click to cancel.")
+						             : tr("Click to pre-show this skill.")));
+				else if (skill != nullptr)
+					button->setToolTip(buildOracleTooltip(
+						skill->getOracleText(Self), skill->getDescription(Self, instanceId)));
 			}
 		});
 	connect(ClientInstance,&Client::card_description_updated,this,&RoomScene::updateCardDescription);
@@ -537,6 +564,16 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	m_guanxingBox->moveBy(-120, 0);
 
 	m_guhuoBox = new GuhuoBox;
+	m_chooseGeneralBox = new ChooseGeneralBox;
+	addItem(m_chooseGeneralBox);
+	m_chooseGeneralBox->setZValue(20002.0);
+	if (ClientCore *core = ClientInstance->interactionCore()) {
+		// Replacement, cancellation and accepted replies must retire the old draft
+		// and countdown before a subsequent request can be presented.
+		connect(core, &ClientCore::requestStarted, m_chooseGeneralBox, &ChooseGeneralBox::clear);
+		connect(core, &ClientCore::requestCancelled, m_chooseGeneralBox, &ChooseGeneralBox::clear);
+		connect(core, &ClientCore::responseAccepted, m_chooseGeneralBox, &ChooseGeneralBox::clear);
+	}
 	m_guhuoBox->hide();
 	m_guhuoBox->setZValue(20001.0);
 	addItem(m_guhuoBox);
@@ -1872,6 +1909,8 @@ void RoomScene::applyTableLayout(const RoomLayoutEngine::Result &layout)
     m_guanxingBox->setPos(m_tableCenterPos - QPointF(m_guanxingBox->boundingRect().width() / 2,
         m_guanxingBox->boundingRect().height() / 2));
     m_guhuoBox->setPos(m_tableCenterPos);
+    if (m_chooseGeneralBox && m_chooseGeneralBox->isVisible())
+        m_chooseGeneralBox->fitToTable(m_tableCenterPos, sceneRect());
     m_timerLabel->setPos(layout.timerPosition);
 
 	QRectF progressBarRect = dashboard->getProgressBarSceneBoundingRect();
@@ -2284,6 +2323,8 @@ bool RoomScene::handleNativeKey(QKeyEvent *event)
             } else handled = m_guanxingBox->handleArrangeKey(choiceKey, event->modifiers());
         } else if (status == Client::AskForTriggerOrder) {
             handled = m_chooseTriggerOrderBox->handleChooseKey(choiceKey);
+        } else if (status == Client::ExecDialog && m_chooseGeneralBox && m_chooseGeneralBox->isVisible()) {
+            handled = m_chooseGeneralBox->handleChooseKey(choiceKey);
         } else if (status == Client::ExecDialog && m_playerCardBox) {
             handled = m_playerCardBox->handleChooseKey(choiceKey);
         }
@@ -2391,6 +2432,38 @@ void RoomScene::contextMenuEvent(QGraphicsSceneContextMenuEvent*event)
 			change_general_menu->popup(event->screenPos());
 		}
 	}
+}
+
+void RoomScene::chooseHegemonyGenerals(const QStringList &candidates, const QStringList &pairs)
+{
+    if (!ServerInfo.EnableHegemony || pairs.isEmpty()) return;
+    if (NetworkUiSmokeResponder::isActive() && Config.AutoPickGeneral.isEmpty()) {
+        ++m_autoPickGeneralAskCount;
+        if (NetworkUiSmokeResponder::instance()->answerChooseGeneral(pairs)) return;
+    }
+    if (!Config.AutoPickGeneral.isEmpty()) {
+        QString pick = pairs.first();
+        for (const QString &pair : pairs) {
+            const QStringList names = pair.split('+');
+            if (names.size() == 2 && names.first() == Config.AutoPickGeneral
+                && (Config.AutoPickGeneral2.isEmpty() || names.last() == Config.AutoPickGeneral2)) {
+                pick = pair;
+                break;
+            }
+        }
+        ++m_autoPickGeneralAskCount;
+        ClientInstance->onPlayerChooseGeneral(pick);
+        return;
+    }
+    if (m_choiceDialog) {
+        delete m_choiceDialog;
+        m_choiceDialog = nullptr;
+    }
+    QApplication::alert(main_window);
+    if (!main_window->isActiveWindow()) Sanguosha->playSystemAudioEffect("prelude");
+    m_chooseGeneralBox->chooseGeneral(candidates, pairs);
+    m_chooseGeneralBox->fitToTable(m_tableCenterPos, sceneRect());
+    if (!views().isEmpty()) views().first()->setFocus(Qt::OtherFocusReason);
 }
 
 void RoomScene::chooseGeneral(const QStringList&generals)
@@ -2874,7 +2947,9 @@ void RoomScene::toggleDiscards()
 
 GenericCardContainer*RoomScene::_getGenericCardContainer(Player::Place place,const Player*player)
 {
-	if(place==Player::DiscardPile||place==Player::PlaceJudge||place==Player::DrawPile||place==Player::PlaceTable)
+	// WuGu also presents faction tricks returning to or leaving the edict reservoir.
+	if(place==Player::DiscardPile||place==Player::PlaceJudge||place==Player::DrawPile||place==Player::PlaceTable
+		||place==Player::PlaceWuGu)
 		return m_tablePile;// @todo: AG must be a pile with name rather than simply using the name special...
 	if(player==Self) return dashboard;
 	if(player){
@@ -3191,6 +3266,7 @@ void RoomScene::addSkillButton(const QString &skillInstanceName)
 	QString baseName = SkillInstanceUtils::baseName(skillInstanceName);
 	const Skill *skill = Sanguosha->getSkill(baseName);
 	if(!skill || skill->isHideSkill()) return;
+	if (!isSkillButtonVisible(skill, getCurrentOperationPlayer(dashboard))) return;
 	foreach(QSanSkillButton*button,m_skillButtons) {
 		if(button->objectName() == skillInstanceName) {
 			const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
@@ -3209,7 +3285,7 @@ void RoomScene::addSkillButton(const QString &skillInstanceName)
 					skill->getDescription(activePlayer, instanceId)) + QLatin1String("\n") + status);
 			} else if (skill != nullptr) {
 				QString ignoredBaseName;
-				const int instanceId = SkillInstanceUtils::parseName(skillName, ignoredBaseName);
+				const int instanceId = SkillInstanceUtils::parseName(skillInstanceName, ignoredBaseName);
 				button->setToolTip(buildOracleTooltip(skill->getOracleText(activePlayer),
 					skill->getDescription(activePlayer, instanceId)));
 			}
@@ -3403,14 +3479,14 @@ void RoomScene::clearPresentedDialogSkill(bool resetButtonState)
 	m_presentedDialogRequest = 0;
 }
 
-void RoomScene::activateSkill(const ViewAsSkill *skill)
+void RoomScene::activateSkill(const ViewAsSkill *skill, int instanceId)
 {
     emit presentationDraftChanged();
 	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	if (!skill)
 		return;
 
-	dashboard->startPending(skill);
+	dashboard->startPending(skill, instanceId);
 	cancel_button->setEnabled(true);
 
 	QString prompt = skill->objectName() + "-click";
@@ -3480,6 +3556,7 @@ void RoomScene::acquireSkill(const ClientPlayer *player, const QString &skill_na
 
 void RoomScene::updateSkillButtons(bool isPrepare)
 {
+    dashboard->updateMarkCards();
     emit presentationDraftChanged();
 	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	QStringList desired_skill_names;
@@ -3500,7 +3577,7 @@ void RoomScene::updateSkillButtons(bool isPrepare)
 			int instanceId = SkillInstanceUtils::parseName(instanceName, baseName);
 			const Skill *skill = Sanguosha->getSkill(baseName);
 			const SkillInstance *instance = activePlayer->findSkillInstance(baseName, instanceId);
-			if (!skill || !instance || !instance->visible || !skill->isVisible() || skill->isHideSkill()) continue;
+			if (!skill || !instance || !instance->visible || !isSkillButtonVisible(skill, activePlayer) || skill->isHideSkill()) continue;
 			if (skill->isLordSkill() && !activePlayer->hasLordSkill(skill, true)) continue;
 			desired_skill_names << instanceName;
 		}
@@ -3940,6 +4017,19 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 	dashboard->updateTransferButtons();
 
+	// Named V2 responses resolve an activation instance through a button. Keep
+	// request-only selectors available during that request, then remove them.
+	if (activePlayer) {
+		for (const SkillInstance &instance : activePlayer->getSkillInstances()) {
+			const Skill *skill = Sanguosha->getSkill(instance.skillName);
+			if (!skill || !instance.visible
+				|| !skill->property("VisibilityResponsePattern").isValid()) continue;
+			const QString name = SkillInstanceUtils::formatName(instance.skillName, instance.instanceID);
+			if (isSkillButtonVisible(skill, activePlayer)) addSkillButton(name);
+			else detachSkill(name);
+		}
+	}
+
 	// General selection can refresh skill buttons before GAME_START registers
 	// a thread-local Engine room. The Client already owns the request state.
 	const QString skillPattern = ClientInstance->getRoomState()->getCurrentCardUsePattern();
@@ -3975,6 +4065,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 	switch (newStatus&Client::ClientStatusBasicMask){
 	case Client::NotActive: {
+		if (m_chooseGeneralBox) m_chooseGeneralBox->clear();
 		if (oldStatus == Client::AskForTriggerOrder) m_chooseTriggerOrderBox->clear();
 		if(oldStatus==Client::ExecDialog){
 			if(m_playerCardBox){
@@ -4149,7 +4240,11 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		break;
 	}
 	case Client::ExecDialog: {
-		if (m_playerCardBox) {
+		if (m_chooseGeneralBox && m_chooseGeneralBox->isVisible()) {
+			ok_button->setEnabled(false);
+			cancel_button->setEnabled(false);
+			discard_button->setEnabled(false);
+		} else if (m_playerCardBox) {
 			// PlayerCardBox exists, don't show m_choiceDialog
 		} else if(m_choiceDialog!=nullptr){
 			m_choiceDialog->setParent(main_window,Qt::Dialog);
@@ -5173,9 +5268,30 @@ void RoomScene::detachSkill(const ClientPlayer *player, const QString &skill_nam
 
 void RoomScene::updateSkill(const QString&skill_name)
 {
+	dashboard->updateMarkCards();
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
     QString baseName;
     int instanceId = SkillInstanceUtils::parseName(skill_name, baseName);
+    const Skill *updatedSkill = Sanguosha->getSkill(baseName);
+    if (activePlayer && updatedSkill && updatedSkill->property("VisibilityMark").isValid()) {
+        // Reconcile just this rule action; preserve unrelated selections and buttons.
+        for (const SkillInstance &instance : activePlayer->getSkillInstances()) {
+            if (instance.skillName != baseName || !instance.visible) continue;
+            const QString name = SkillInstanceUtils::formatName(baseName, instance.instanceID);
+            if (updatedSkill->isVisibleForPlayer(activePlayer)) addSkillButton(name);
+            else detachSkill(name);
+        }
+        const Client::Status status = ClientInstance->getStatus();
+        const bool interactive = status == Client::Playing
+            || (status & Client::ClientStatusBasicMask) == Client::Responding;
+        for (QSanSkillButton *button : m_skillButtons) {
+            if (SkillInstanceUtils::baseName(button->objectName()) == baseName)
+                button->setEnabled(interactive && isSkillButtonAvailable(button,
+                    getCurrentOperationPlayer(dashboard),
+                    ClientInstance->getRoomState()->getCurrentCardUseReason(),
+                    ClientInstance->getRoomState()->getCurrentCardUsePattern()));
+        }
+    }
     foreach(QSanSkillButton*button,m_skillButtons){
 		QString buttonBase;
 		int buttonInstanceId = SkillInstanceUtils::parseName(button->objectName(), buttonBase);
@@ -5184,6 +5300,14 @@ void RoomScene::updateSkill(const QString&skill_name)
 			LuaLocker locker;
 			const Skill *s = button->getSkill();
 			button->setToolTip(buildOracleTooltip(s->getOracleText(activePlayer), s->getDescription(activePlayer, buttonInstanceId)));
+			// Description refreshes must retain the hidden skill's action hint.
+			if (ServerInfo.EnableHegemony && activePlayer == Self && Self
+				&& Self->canPreshowSkill(button->objectName())) {
+				button->setToolTip(button->toolTip() + QLatin1String("\n")
+					+ (Self->hasPreshowedSkill(button->objectName())
+						? tr("Pre-shown. Click to cancel.")
+						: tr("Click to pre-show this skill.")));
+			}
 		}
 	}/*
 	bool effectMark = false;
@@ -6876,8 +7000,19 @@ void RoomScene::onCardActionButtonClicked(const QString &buttonId, int cardId)
 		return;
 
 	if (buttonId == "transfer") {
-		Sanguosha->getTransfer()->setToSelect(cardId);
-
+		// Recheck the card action when clicked; a response may have started
+		// since the button was rendered during the play phase.
+		const Player *player = getCurrentOperationPlayer(dashboard);
+		if (ClientInstance->getStatus() != Client::Playing
+			|| !Sanguosha->getTransfer()->isAvailable(player, cardItem->getCard())) return;
+		int instanceId = 0;
+		for (const SkillInstance &instance : player->getSkillInstances()) {
+			if (instance.skillName == Sanguosha->getTransfer()->objectName()) {
+				instanceId = instance.instanceID;
+				break;
+			}
+		}
+		if (instanceId <= 0) return;
 		foreach (CardItem *item, dashboard->getHandCards()) {
 			foreach (CardActionButton *btn, item->getActionButtons()) {
 				if (btn->getButtonId() == "transfer" && btn != button && btn->isDown())
@@ -6885,7 +7020,7 @@ void RoomScene::onCardActionButtonClicked(const QString &buttonId, int cardId)
 			}
 		}
 
-		dashboard->startPending(Sanguosha->getTransfer());
+		dashboard->startPending(Sanguosha->getTransfer(), instanceId);
 		dashboard->unselectAll();
 		dashboard->addPending(cardItem);
 		dashboard->selectCard(cardItem, true);

@@ -233,11 +233,15 @@ function meta_(snapshot) {
   return {generation: snapshot.generation, revision: snapshot.revision, request_id: snapshot.request_id,
     type: req.type || 'none', shape: shape_(req), cancelable: req.cancelable === true,
     roles: payload.roles || [], generals: payload.generals || [], enumerated: payload.enumerated !== false,
+    general_pairs: shape_(req) === 'general_pair'
+      ? (payload.options || []).filter(x => x.enabled !== false).map(x => x.value) : [],
     min: req.min, max: req.max};
 }
 function interactionPrompt_(snapshot) {
   // Keep native prompt text; skill identity fills only an otherwise empty prompt.
   const req = snapshot.interaction || {}, view = snapshot.view || {};
+  if (shape_(req) === 'general_pair') return qsanText_('generalPairHelp');
+  if ((req.payload || {}).scheme === 'hegemony_seats') return qsanText_('assignSeatsHelp');
   const prompt = view.prompt_text || view.prompt || req.prompt || (req.ui && req.ui.prompt) || (req.payload && req.payload.prompt) || '';
   if (prompt) return prompt;
   const skill = String(req.skill || '').trim();
@@ -298,6 +302,7 @@ function renderActions_(meta, ui, preserve) {
   if (meta.shape === 'assignment') add('assignment', ui.players);
   if (meta.shape === 'rearrangement') add('rearrange', ui.cards);
   if (meta.shape === 'general_arrangement') add('general', ui.generals && ui.generals.length ? ui.generals : meta.generals);
+  if (meta.shape === 'general_pair') add('general', ui.generals);
   const signature = digest_(JSON.stringify({schema: 'actions-checkbox-v2', generation: meta.generation, request: meta.request_id, rows: rows}));
   if (preserve && get_('actions_signature', '') === signature) return;
   const sheet = sheet_('QSAN Actions'), count = Number(get_('action_rows', '0')), old = {};

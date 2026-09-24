@@ -1,4 +1,5 @@
 #include "room.h"
+#include "game-rng.h"
 #include "protocol/resolution-state-message.h"
 #include "qt-collection-utils.h"
 #include "runtime-paths.h"
@@ -53,6 +54,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QSet>
+#include <QScopeGuard>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -137,14 +139,144 @@ QVariantMap Room::queryActualDamage(const QVariantMap &filter) const
     return result;
 }
 
+QVariantMap Room::queryCardHistory(const Player *player, const QString &scope,
+    const QString &className, bool responses, bool playOnly) const
+{
+    QVariantMap filter;
+    if (scope != "game") {
+        if (scope != "turn" && scope != "phase" && scope != "round")
+            return {{"complete", false}, {"attribution_complete", false}};
+        filter.insert(scope + "_id", historyScopes().value(scope + "_id"));
+    }
+    if (!player) return {{"complete", false}, {"attribution_complete", false}};
+
+    // Use a single watermark for both fact kinds. Response-use belongs to use
+    // history exactly once; pure responses have their actual responder as actor.
+    QVariantMap result = queryHistoryFacts({{"limit", 1}});
+    if (scope != "game" && filter.value(scope + "_id").toLongLong() == 0) {
+        result.insert("items", QVariantList());
+        result.remove("facts");
+        result.insert("has_more", false);
+        return result;
+    }
+    const QVariant watermark = result.value("watermark");
+    filter.insert("watermark", watermark);
+    QList<QPair<qint64, QVariantMap>> cards;
+    bool complete = result.value("complete").toBool();
+    const QStringList kinds = responses ? QStringList{"respond_card"}
+        : QStringList{"use_card", "respond_card"};
+    for (const QString &kind : kinds) {
+        QVariantMap query = filter;
+        query.insert("kind", kind);
+        query.insert(kind == "respond_card" ? "player" : "from", player->objectName());
+        for (;;) {
+            const QVariantMap page = queryHistoryFacts(query);
+            complete = complete && page.value("complete").toBool();
+            for (const QVariant &entry : page.value("items").toList()) {
+                const QVariantMap fact = entry.toMap();
+                const QVariantMap data = fact.value("data").toMap();
+                if (kind == "respond_card" && data.value("is_use").toBool() == responses) continue;
+                if (playOnly) {
+                    const QVariantMap phase = historyEvent(fact.value("phase_id").toLongLong());
+                    if (phase.value("data").toMap().value("phase").toInt() != Player::Play) continue;
+                }
+                const QVariantMap card = data.value("card").toMap();
+                if (!card.contains("type") || !card.contains("classes")) {
+                    // Old/incomplete snapshots cannot establish a negative count.
+                    complete = false;
+                    continue;
+                }
+                if (card.value("type").toInt() == Card::TypeSkill) continue;
+                if (!className.isEmpty() && className != "."
+                    && !card.value("classes").toStringList().contains(className)) continue;
+                cards.append({fact.value("sequence").toLongLong(), card});
+            }
+            if (!page.value("has_more").toBool()) break;
+            query.insert("after", page.value("next_after"));
+        }
+    }
+    std::sort(cards.begin(), cards.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+    QVariantList items;
+    for (const auto &card : cards) items.append(card.second);
+    result.insert("items", items);
+    result.remove("facts");
+    result.insert("has_more", false);
+    result.insert("complete", complete);
+    // This projection attributes cards to their explicit actor, never to a
+    // skill owner. Missing legacy skill provenance does not hide accepted uses.
+    result.insert("attribution_complete", complete);
+    return result;
+}
+
+int Room::countHistoryCards(const Player *player, const QString &scope,
+    const QString &className, bool responses, bool playOnly) const
+{
+    const QVariantMap result = queryCardHistory(player, scope, className, responses, playOnly);
+    return result.value("complete").toBool() && result.value("attribution_complete").toBool()
+        ? result.value("items").toList().size() : -1;
+}
+
+QVariantMap Room::queryCardUseDamage(qint64 useEventId) const
+{
+    const QVariantMap use = useEventId ? historyEvent(useEventId)
+        : historyParent(currentHistoryEventId(), "use_card", true);
+    if (use.value("kind").toString() != "use_card")
+        return {{"complete", false}, {"attribution_complete", false}};
+    useEventId = use.value("id").toLongLong();
+    const QVariantMap usedCard = use.value("data").toMap().value("card").toMap();
+    QVariantMap query{{"turn_id", use.value("turn_id")}};
+    QVariantMap result;
+    QVariantList items;
+    bool complete = true;
+    for (;;) {
+        const QVariantMap page = queryActualDamage(query);
+        if (result.isEmpty()) {
+            result = page;
+            query.insert("watermark", page.value("watermark"));
+        }
+        complete = complete && page.value("complete").toBool();
+        for (const QVariant &entry : page.value("items").toList()) {
+            const QVariantMap fact = entry.toMap();
+            const QVariantMap damageCard = fact.value("data").toMap().value("card").toMap();
+            if (damageCard.isEmpty()) continue;
+            bool sameCard = true;
+            for (const QString &key : {QStringLiteral("id"), QStringLiteral("name"),
+                     QStringLiteral("class_name"), QStringLiteral("virtual"), QStringLiteral("subcards")})
+                sameCard = sameCard && damageCard.value(key) == usedCard.value(key);
+            if (!sameCard) continue;
+            // Physical card IDs are reusable and virtual cards ephemeral. Anchor
+            // damage to this use event, excluding independently nested card uses.
+            if (historyParent(fact.value("event_id").toLongLong(), "use_card", true)
+                    .value("id").toLongLong() == useEventId)
+                items.append(entry);
+        }
+        if (!page.value("has_more").toBool()) break;
+        query.insert("after", page.value("next_after"));
+    }
+    result.insert("items", items);
+    result.insert("facts", items);
+    result.insert("has_more", false);
+    result.insert("complete", complete);
+    // Attribution here is the enclosing use event, not the causing skill owner.
+    result.insert("attribution_complete", complete);
+    return result;
+}
+
 QVariantMap Room::historyCardSnapshot(const Card *card) const
 {
     if (!card) return {};
     QVariantList subcards;
     for (int id : card->getSubcards()) subcards.append(id);
+    QVariantList classes;
+    for (const QString &name : card->getKindOfNames()) classes.append(name);
     return {{QStringLiteral("id"), card->getEffectiveId()},
             {QStringLiteral("name"), card->objectName()},
             {QStringLiteral("class_name"), card->getClassName()},
+            {QStringLiteral("classes"), classes},
+            {QStringLiteral("type"), int(card->getTypeId())},
+            {QStringLiteral("red"), card->isRed()},
+            {QStringLiteral("black"), card->isBlack()},
+            {QStringLiteral("ndtrick"), card->isNDTrick()},
             {QStringLiteral("suit"), int(card->getSuit())},
             {QStringLiteral("number"), card->getNumber()},
             {QStringLiteral("virtual"), card->isVirtualCard()},
@@ -1300,6 +1432,12 @@ SkillInstanceRef Room::attachSkillToPlayer(ServerPlayer *player, const QString &
 	return m_skillRuntime->attachSkillToPlayer(player, skillName, parentRef);
 }
 
+SkillInstanceRef Room::attachSkillToPlayer(ServerPlayer *player, const QString &skillName,
+                                          const SkillInstanceRef &parentRef, bool visible)
+{
+    return m_skillRuntime->attachSkillToPlayer(player, skillName, parentRef, visible);
+}
+
 bool Room::detachAttachedSkill(const SkillInstanceRef &ref)
 {
 	return m_skillRuntime->detachAttachedSkill(ref);
@@ -1325,6 +1463,31 @@ int Room::detachSkillFromPlayer(ServerPlayer *player, const QString &skill_name,
 {
 	return m_skillRuntime->detachSkillFromPlayer(player, skill_name, is_equip,
 		acquire_only, event_and_log);
+}
+
+int Room::detachSkillForSlot(ServerPlayer *player, const QString &skillName, bool head,
+                             bool isEquip, bool acquireOnly, bool eventAndLog)
+{
+    if (!player) return 0;
+    // Resolve exact root instances first so removing one slot preserves the other.
+    QString baseName;
+    const int requestedId = SkillInstanceUtils::parseName(skillName, baseName);
+    QList<int> ids;
+    for (int id : player->getSkillInstanceIds(baseName)) {
+        if (requestedId > 0 && id != requestedId) continue;
+        const SkillInstance *instance = player->findSkillInstance(baseName, id);
+        if (!instance || instance->source == SourceHelper || instance->bindHead != (head ? 1 : 2)) continue;
+        if (acquireOnly && instance->source != SourceAcquired) continue;
+        ids << id;
+    }
+
+    int removed = 0;
+    for (int id : ids) {
+        const QString instanceName = SkillInstanceUtils::formatName(baseName, id);
+        removed += detachSkillFromPlayer(player, instanceName, isEquip,
+                                                acquireOnly, eventAndLog) > 0;
+    }
+    return removed;
 }
 
 int Room::discardSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skill_name,
@@ -1689,9 +1852,24 @@ const Card*Room::isCanceled(const CardEffectStruct&effect)
 {
 	if (effect.offset_num<1||effect.no_offset||effect.no_respond) return nullptr;
 	if (effect.card->isKindOf("TrickCard")&&effect.card->isCancelable(effect)){
+        // Card effects define pending offsets; the room does not decide their target scope.
+        if (effect.to) {
+            const QVariantMap pending = getTag(effect.card->toString() + "PendingNullification").toMap();
+            const Card *offset = pending.value("card").value<const Card *>();
+            if (offset && pending.value("targets").toStringList().contains(effect.to->objectName())) {
+                LogMessage log;
+                log.type = pending.value("log_type").toString();
+                log.from = effect.from;
+                log.to << effect.to;
+                log.arg = effect.card->objectName();
+                if (!log.type.isEmpty()) sendLog(log);
+                return offset;
+            }
+        }
 		effect.to->setTag("TrickEffectData", QVariant::fromValue(effect));
 		return askForNullification(effect.card, effect.from, effect.to, true);
-	}else if (effect.card->isKindOf("Slash")){
+    } else if (effect.card->isKindOf("Slash")) {
+		// Every standard Slash, including HEG deck instances, uses this Jink path.
 		setTag("SlashData", QVariant::fromValue(effect));
 		if (effect.offset_num==1){
 			const Card*jink = askForUseCard(effect.to,"jink","slash-jink:"+effect.from->objectName(),-1,Card::MethodUse,true,effect.from,effect.card);
@@ -1868,6 +2046,23 @@ void Room::safeSetPlayerProperty(ServerPlayer*player, const char*property_name, 
 void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QList<ServerPlayer*> only_viewers)
 {
 	m_playerState->setPlayerMark(player, mark, value, only_viewers);
+}
+
+void Room::refreshPlayerMarkVisibility(ServerPlayer *owner, const QString &mark,
+                                      const QList<ServerPlayer *> &viewers)
+{
+	if (!owner) return;
+	const int value = owner->getMark(mark);
+	foreach (ServerPlayer *receiver, getPlayers()) {
+		const bool visible = viewers.isEmpty() || viewers.contains(receiver);
+		// Do not reveal the name of a hidden mark by sending a zero to a
+		// receiver who never knew it. Previously public values must be erased.
+		if (!visible && !isAIMarkVisibleTo(owner, mark, receiver)) continue;
+		JsonArray args;
+		args << owner->objectName() << mark << (visible ? value : 0);
+		doNotify(receiver, S_COMMAND_SET_MARK, args);
+	}
+	m_aiDecisions->setMarkVisibility(owner, mark, value, viewers);
 }
 
 void Room::clearClub(const QString &club_name){
@@ -3044,7 +3239,7 @@ bool Room::showRequiredTargetModSkillsV2(const CardUseStruct &use)
         int minimum = 3;
         for (const QList<SkillInstanceRef> &option : snapshot.options) {
             QList<SkillInstanceRef> toShow;
-            QSet<int> slots;
+            QSet<int> requiredSlots;
             bool valid = true;
             for (const SkillInstanceRef &ref : option) {
                 const int index = snapshot.sources.indexOf(ref);
@@ -3058,8 +3253,8 @@ bool Room::showRequiredTargetModSkillsV2(const CardUseStruct &use)
                 if (!source || source->source != SourceInnate) { valid = false; break; }
                 const bool shown = source->bindHead == 1 ? use.from->hasShownGeneral()
                     : source->bindHead == 2 && use.from->hasShownGeneral2();
-                if (!shown && !slots.contains(source->bindHead)) {
-                    slots << source->bindHead;
+                if (!shown && !requiredSlots.contains(source->bindHead)) {
+                    requiredSlots << source->bindHead;
                     toShow << root;
                 }
             }
@@ -3486,7 +3681,9 @@ bool Room::useCard(const CardUseStruct&use, bool add_history)
 bool Room::useCard(CardUseStruct&use, bool add_history)
 {
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
+	use.cardFinished = false;
 	if (!resolveCardSkillInstance(use)) return false;
+	if (!canShowGeneralForSkill(use.activationRef)) return false;
 	if (!use.activationRef.isValid() && !canShowGeneralForSkill(use.sourceRef)) return false;
 	// Revalidate only client/AI-selected targets. Server-created uses may carry
 	// authoritative targets for target-fixed cards, such as Peach in dying rescue.
@@ -3723,6 +3920,23 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			finishSkillExecution(SkillExecutionPayFailed);
 			return false;
 		}
+		// A paid skill reveals its exact source before consuming its use count.
+		// Reveal callbacks may remove that source or kill the acting player.
+		// Original skill cards pay extraCost during onUse, after PreCardUsed.
+        // Their exact source is revealed there, before CardUsed, as in the donor.
+        const bool deferredHegemonyReveal = Config.EnableHegemony
+            && ((use.card->getTypeId() == Card::TypeSkill
+                    && QByteArray(use.card->metaObject()->className()).startsWith("H"))
+                || (use.activationRef.isValid() && use.card->isVirtualCard()
+                    && use.card->needsDeferredHegemonyReveal()));
+        if ((!deferredHegemonyReveal && !showGeneralForSkill(skillCardCtx.activationRef))
+            || (Config.EnableHegemony && !use.from->isAlive())) {
+			if (skillUsageReserved) releaseActiveSkillUsage(activeSkill, skillCardCtx);
+			skillUsageReserved = false;
+			saveSkillContext(skillCardCtx);
+			finishSkillExecution(SkillExecutionPayFailed);
+			return false;
+		}
 		if (activeSkill) {
 			commitActiveSkillUsage(activeSkill, skillCardCtx);
 			skillUsageCommitted = skillUsageReserved;
@@ -3852,8 +4066,14 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		}
 	cardProcessingCompleted = cardProcessingStarted;
 
-	finishSkillExecution(skipOnUse ? SkillExecutionEffectSkipped : SkillExecutionCompleted);
+	// A paid use can stop at the reveal gate. Keep its paid cost/history count,
+	// but record the skipped effect rather than reporting successful resolution.
+	const bool effectSkipped = skipOnUse || use.skipSkillEffect;
+	finishSkillExecution(effectSkipped ? SkillExecutionEffectSkipped : SkillExecutionCompleted);
+	if (effectSkipped) useHistory.finish(QStringLiteral("skipped"));
 	} catch (TriggerEvent triggerEvent){
+		if (use.card)
+			removeTag(use.card->toString() + "PendingNullification");
 		if (skillUsageReserved && !skillUsageCommitted)
 			releaseActiveSkillUsage(activeSkill, skillCardCtx);
 		skillUsageReserved = false;
@@ -3868,13 +4088,16 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 							ids.removeOne(id);
 					}
 					moveCardsAtomic(CardsMoveStruct(ids, use.from, nullptr, Player::PlaceTable, Player::DiscardPile, reason), true);
-					QVariant data = QVariant::fromValue(use);
 					use.from->setFlags("Global_ProcessBroken");
 					processBrokenFlagSet = true;
-					try {
-						thread->trigger(CardFinished, this, use.from, data);
-					} catch (TriggerEvent) {
-						// Cleanup must not replace the original control event.
+					if (!use.cardFinished) {
+						use.cardFinished = true;
+						QVariant data = QVariant::fromValue(use);
+						try {
+							thread->trigger(CardFinished, this, use.from, data);
+						} catch (TriggerEvent) {
+							// Cleanup must not replace the original control event.
+						}
 					}
 					use.from->setFlags("-Global_ProcessBroken");
 					processBrokenFlagSet = false;
@@ -4005,7 +4228,7 @@ bool Room::changeMaxHpForAwakenSkill(ServerPlayer*player, int magnitude, const Q
 
 void Room::recover(ServerPlayer*player, const RecoverStruct&recover, bool set_emotion)
 {
-	if (player->isDead() || recover.recover <= 0) return;
+	if (player->isDead() || recover.recover <= 0 || player->getMark("command5_effect") > 0) return;
 	ResolutionScope resolution(*this, QStringLiteral("recover"), player, recover.who, player);
 
 	QVariant data = QVariant::fromValue(recover);
@@ -4178,10 +4401,12 @@ void Room::damage(DamageStruct damage)
 			thread->trigger(DamageDone, this, damage.to, data);
 			damage = data.value<DamageStruct>();
 
-			if (damage.from&&!damage.from->hasFlag("Global_DebutFlag"))
+			if (damage.from && !damage.from->hasFlag("Global_DebutFlag")
+                && !(Config.EnableHegemony && damage.from->hasFlag("Global_DFDebut")))
 				thread->trigger(Damage, this, damage.from, data);
 
-			if (!damage.to->hasFlag("Global_DebutFlag"))
+			if (!damage.to->hasFlag("Global_DebutFlag")
+                && !(Config.EnableHegemony && damage.to->hasFlag("Global_DFDebut")))
 				thread->trigger(Damaged, this, damage.to, data);
 		} while (false);
 
@@ -4518,6 +4743,26 @@ QList<CardsMoveStruct> Room::_breakDownCardMoves(QList<CardsMoveStruct> cards_mo
 	return m_cardMovement->normalizeMoves(cards_moves);
 }
 
+QVariant Room::moveCardsSub(QList<CardsMoveStruct> moves, bool visible, bool guanxing)
+{
+    return m_cardMovement->moveCardsSub(moves, visible, guanxing);
+}
+
+QVariant Room::moveCardsSub(CardsMoveStruct move, bool visible, bool guanxing)
+{
+    return m_cardMovement->moveCardsSub(QList<CardsMoveStruct>{move}, visible, guanxing);
+}
+
+QVariant Room::changeMoveData(const QVariant &data, const QList<CardsMoveStruct> &moves)
+{
+    return m_cardMovement->changeMoveData(data, moves);
+}
+
+QVariant Room::changeMoveData(const QVariant &data, const QList<int> &ids)
+{
+    return CardMovementService::changeMoveData(data, ids);
+}
+
 void Room::moveCardsAtomic(CardsMoveStruct cards_move, bool visible, bool guanxing)
 {
 	m_cardMovement->moveCardsAtomic(cards_move, visible, guanxing);
@@ -4698,10 +4943,18 @@ void Room::swapCards(ServerPlayer*first, ServerPlayer*second, QList<int> first_i
 
 void Room::setPlayerChained(ServerPlayer*player)
 {
-	if (thread->trigger(ChainStateChange, this, player))
+	setPlayerChained(player, !player->isChained());
+}
+
+void Room::setPlayerChained(ServerPlayer*player, bool is_chained, ServerPlayer *source)
+{
+	if (is_chained == player->isChained()) return;
+    // Equipment effect limits can be scoped to the player causing the chain.
+    QVariant data = QVariant::fromValue(source);
+	if (thread->trigger(ChainStateChange, this, player, data))
 		return;
 	setEmotion(player, "chain");
-	player->setChained(!player->isChained());
+	player->setChained(is_chained);
 	LogMessage log;
 	log.from = player;
 	log.type = player->isChained() ? "#PlayerChained" : "#PlayerNotChained";
@@ -4709,12 +4962,6 @@ void Room::setPlayerChained(ServerPlayer*player)
 	broadcastProperty(player, "chained");
 	thread->delay(Config.AIDelay / 3);
 	thread->trigger(ChainStateChanged, this, player);
-}
-
-void Room::setPlayerChained(ServerPlayer*player, bool is_chained)
-{
-	if (is_chained == player->isChained()) return;
-	setPlayerChained(player);
 }
 
 void Room::notifySkillInvoked(ServerPlayer*player, const QString&skill_name)
@@ -4865,6 +5112,11 @@ void Room::doBattleArrayAnimate(ServerPlayer *player, ServerPlayer *target)
 
 void Room::showGeneral(ServerPlayer *player, const QString &position)
 {
+	if (Config.EnableHegemony) {
+		if (position == "h" || position == "d")
+			player->showGeneral(position == "h");
+		return;
+	}
 	if (position == "h") {
 		setPlayerProperty(player, "general_showed", true);
 	} else if (position == "d") {
@@ -4949,12 +5201,202 @@ bool Room::showGeneralForSkill(const SkillInstanceRef &ref)
 		&& (head ? owner->hasShownGeneral() : owner->hasShownGeneral2());
 }
 
+bool Room::replaceHegemonyGeneral(ServerPlayer *player, const QString &name, bool head, bool show, bool invokeStart)
+{
+    if (!Config.EnableHegemony || !player || player->isDead()) return false;
+    const General *replacement = Sanguosha->getGeneral(name);
+    QStringList names = getTag(player->objectName()).toStringList();
+    if (!replacement || names.size() != 2) return false;
+    const int slot = head ? 0 : 1;
+    if (names[slot] == name) return false;
+    // General replacement retires only the selected slot's exact roots.
+    // Acquired skills and the other general's same-named instances survive.
+    const QList<SkillInstance> instances = player->getSkillInstances();
+    QSet<QString> limitedMarks;
+    for (const SkillInstance &instance : instances) {
+        if (instance.source != SourceInnate || instance.bindHead != slot + 1) continue;
+        const Skill *skill = Sanguosha->getSkill(instance.skillName);
+        if (skill && !skill->getLimitMark().isEmpty()) limitedMarks.insert(skill->getLimitMark());
+        detachSkillFromPlayer(player, SkillInstanceUtils::formatName(instance.skillName, instance.instanceID),
+                              false, false, true);
+    }
+    for (const QString &mark : limitedMarks) {
+        bool stillOwned = false;
+        for (const SkillInstance &instance : player->getSkillInstances()) {
+            const Skill *skill = Sanguosha->getSkill(instance.skillName);
+            if (skill && skill->getLimitMark() == mark) { stillOwned = true; break; }
+        }
+        if (!stillOwned) setPlayerMark(player, mark, 0, QList<ServerPlayer *>{player});
+    }
+    names[slot] = name;
+    // Previously viewed identities are knowledge of the retired general only.
+    const QString knowledgeKey = "KnownBoth_" + player->objectName();
+    for (ServerPlayer *observer : getPlayers()) {
+        if (!observer->getTag(knowledgeKey).isValid()) continue;
+        QStringList known = observer->getTag(knowledgeKey).toString().split('+');
+        while (known.size() < 2) known << QString();
+        known[slot].clear();
+        observer->setTag(knowledgeKey, known.join('+'));
+    }
+    setTag(player->objectName(), names);
+    safeSetPlayerProperty(player, head ? "actual_general1" : "actual_general2", name);
+    notifyProperty(player, player, head ? "actual_general1" : "actual_general2");
+    setPlayerProperty(player, head ? "general_showed" : "general2_showed", false);
+    setPlayerProperty(player, head ? "general" : "general2", "anjiang");
+    notifyProperty(player, player, head ? "general" : "general2", name);
+
+    QSet<QString> relatedNames;
+    for (const Skill *skill : replacement->getSkillList())
+        for (const Skill *related : Sanguosha->getRelatedSkills(skill->objectName()))
+            relatedNames.insert(related->objectName());
+    for (const Skill *skill : replacement->getSkillList()) {
+        if (skill->relateToPlace(!head) || relatedNames.contains(skill->objectName())) continue;
+        // Do not broadcast concealed identities via the legacy ADD_SKILL message.
+        player->Player::addSkill(skill->objectName(), head);
+        if (const TriggerSkill *trigger = dynamic_cast<const TriggerSkill *>(skill)) registerTriggerSkill(trigger);
+        for (const Skill *related : Sanguosha->getRelatedSkills(skill->objectName()))
+            if (const TriggerSkill *trigger = dynamic_cast<const TriggerSkill *>(related)) registerTriggerSkill(trigger);
+        if (skill->getFrequency() == Skill::Limited && !skill->getLimitMark().isEmpty()
+            && player->getMark(skill->getLimitMark()) == 0)
+            setPlayerMark(player, skill->getLimitMark(), 1, QList<ServerPlayer *>{player});
+    }
+    player->setSkillsPreshowed(head ? "h" : "d", false);
+    if (invokeStart) {
+        QList<SkillInstanceRef> sources;
+        for (const SkillInstance &instance : player->getSkillInstances()) {
+            if (instance.source == SourceInnate && instance.bindHead == slot + 1)
+                sources << SkillInstanceRef(player->objectName(), SkillInstanceKey(instance.skillName, instance.instanceID));
+        }
+        QVariant data;
+        thread->triggerSkillSources(GameStart, this, player, data, sources);
+    }
+    if (show && player->isAlive()) player->showGeneral(head, true, true);
+    player->syncHegemonyRevealState();
+    filterCards(player, player->getCards("he"), true);
+    player->refreshUIState(true);
+    return true;
+}
+
+void Room::transformDeputyGeneral(ServerPlayer *player, const QString &requested, bool show)
+{
+    if (!Config.EnableHegemony || !player || player->isDead() || !player->getActualGeneral2()) return;
+    QStringList used = getTag("HegemonyUsedGenerals").toStringList();
+    for (ServerPlayer *other : getPlayers()) {
+        used << other->getActualGeneral1Name() << other->getActualGeneral2Name();
+    }
+    const QString kingdom = player->hasShownOneGeneral() ? player->getKingdom() : player->getHegemonyKingdom();
+    QStringList available;
+    for (const QString &name : Sanguosha->getLimitedGeneralNames()) {
+        const General *general = Sanguosha->getGeneral(name);
+        if (!general || used.contains(name) || general->isTotallyHidden()
+            || name.startsWith("heg_lord_") || Sanguosha->getBanPackages().contains(general->getPackage())
+            || BanPair::isBanned(name) || BanPair::isBanned(player->getActualGeneral1Name(), name)
+            || general->getKingdom() == "careerist" || general->getKingdom() == "ye") continue;
+        if (kingdom == "careerist" || general->getKingdoms().split('+').contains(kingdom)) available << name;
+    }
+    QString chosen = requested;
+    if (chosen.isEmpty()) {
+        QVariant count = 3;
+        thread->trigger(GeneralTransforming, this, player, count);
+        if (count.toInt() < 1 || available.isEmpty() || player->isDead()) return;
+        qsanShuffle(available);
+        available = available.mid(0, count.toInt());
+        chosen = askForGeneral(player, available, available.first(), "transform");
+    }
+    if (!available.contains(chosen) || player->isDead()) return;
+    if (!player->hasShownGeneral2()) player->showGeneral(false, false, false);
+    player->removeGeneral(false);
+    if (!player->getActualGeneral2Name().startsWith("sujiang")) return;
+    QStringList severed = player->property("Duanchang").toString().split(',', Qt::SkipEmptyParts);
+    severed.removeAll("deputy");
+    setPlayerProperty(player, "Duanchang", severed.join(','));
+    if (!replaceHegemonyGeneral(player, chosen, false, show, true)) return;
+    used << chosen;
+    used.removeDuplicates();
+    setTag("HegemonyUsedGenerals", used);
+    QVariant transformed = chosen;
+    thread->trigger(GeneralTransformed, this, player, transformed);
+}
+
+void Room::flushHegemonyReveals()
+{
+    if (!Config.EnableHegemony || getTag("HegemonyFlushingReveals").toBool() || isFinished()) return;
+    setTag("HegemonyFlushingReveals", true);
+    auto restore = qScopeGuard([&]() { removeTag("HegemonyFlushingReveals"); });
+    // Consume each batch before dispatch; nested reveals enqueue the next batch.
+    bool pending = true;
+    while (pending && !isFinished()) {
+        pending = false;
+        QList<ServerPlayer *> players = getPlayers();
+        sortByActionOrder(players);
+        for (ServerPlayer *player : players) {
+            const QString key = "HegemonyPendingReveals:" + player->objectName();
+            const QStringList revealSlots = getTag(key).toStringList();
+            if (revealSlots.isEmpty()) continue;
+            removeTag(key);
+            pending = true;
+            if (player->isDead()) continue;
+            QVariant data = revealSlots;
+            thread->trigger(GeneralShowed, this, player, data);
+        }
+    }
+}
+
+bool Room::doCareeristRule()
+{
+    if (!Config.EnableHegemony || getTag("GlobalCareeristShow").toBool()) return false;
+    QList<ServerPlayer *> players = getAlivePlayers();
+    sortByActionOrder(players);
+    bool revealed = false;
+    for (ServerPlayer *careerist : players) {
+        const General *head = careerist->getActualGeneral1();
+        if (!head || careerist->hasShownGeneral() || careerist->getSeemingKingdom() == "careerist"
+            || careerist->getRole().startsWith("careerist_") || careerist->getMark("HegemonyCareeristRewarded") > 0
+            || head->getKingdom() != "careerist") continue;
+        revealed = true;
+        LogMessage log;
+        log.type = "#GameRule_CareeristShow";
+        log.from = careerist;
+        sendLog(log);
+        {
+            setTag("GlobalCareeristShow", true);
+            auto restore = qScopeGuard([&]() { removeTag("GlobalCareeristShow"); });
+            careerist->showGeneral(true, false, true);
+        }
+        if (careerist->getMark("HegemonyCareeristRewarded") == 0) {
+            setPlayerMark(careerist, "HegemonyCareeristRewarded", 1);
+            addPlayerMark(careerist, "@careerist");
+        }
+        const QString coalition = "careerist_" + head->objectName();
+        setPlayerProperty(careerist, "role", coalition);
+        if (players.size() <= 2) continue;
+        for (ServerPlayer *candidate : players) {
+            if (candidate->isDead() || candidate->getRole().startsWith("careerist") || candidate->isHegemonyLord()) continue;
+            const General *candidateHead = candidate->getActualGeneral1();
+            const QString choices = candidateHead && candidateHead->getKingdom() != "careerist" ? "no+yes" : "no";
+            if (askForChoice(candidate, "GameRule:CareeristAdd", choices, QVariant::fromValue(careerist), QString(),
+                             "@careerist-add:" + careerist->objectName()) == "yes") {
+                log.type = "#GameRule_CareeristAdd";
+                log.from = candidate;
+                log.to << careerist;
+                sendLog(log);
+                setPlayerProperty(candidate, "role", coalition);
+                revealRole(candidate);
+                break;
+            }
+            if (candidate->getHandcardNum() < 4) candidate->drawCards(4 - candidate->getHandcardNum(), "heg_careerman");
+            recover(candidate, RecoverStruct("heg_careerman", careerist));
+        }
+    }
+    return revealed;
+}
+
 void Room::preparePlayers()
 {
     foreach(ServerPlayer*player, getPlayers()){
-        const General*gen = player->getGeneral();
+        const General*gen = Config.EnableHegemony ? player->getActualGeneral1() : player->getGeneral();
         if(!gen) continue;
-        player->setGender(gen->getGender());
+        player->setGender(Config.EnableHegemony ? General::Sexless : gen->getGender());
 		QSet<QString> relatedNames;
 		foreach (const Skill *parent, gen->getSkillList()) {
 			foreach (const Skill *related, Sanguosha->getRelatedSkills(parent->objectName()))
@@ -4962,6 +5404,7 @@ void Room::preparePlayers()
 		}
         foreach(const Skill*skill, gen->getSkillList()){
 			if (relatedNames.contains(skill->objectName())) continue;
+            if (Config.EnableHegemony && skill->relateToPlace(false)) continue;
             player->addSkill(skill->objectName(), true);
             if (skill->inherits("ViewAsEquipSkill")){
                 const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
@@ -4974,7 +5417,7 @@ void Room::preparePlayers()
                 }
             }
         }
-        gen = player->getGeneral2();
+        gen = Config.EnableHegemony ? player->getActualGeneral2() : player->getGeneral2();
         if (gen){
 			relatedNames.clear();
 			foreach (const Skill *parent, gen->getSkillList()) {
@@ -4983,6 +5426,7 @@ void Room::preparePlayers()
 			}
             foreach(const Skill*skill, gen->getSkillList()){
 				if (relatedNames.contains(skill->objectName())) continue;
+                if (Config.EnableHegemony && skill->relateToPlace(true)) continue;
                 player->addSkill(skill->objectName(), false);
                 if (skill->inherits("ViewAsEquipSkill")){
                     const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
@@ -5048,6 +5492,13 @@ int Room::acquireSkill(ServerPlayer*player, const Skill*skill, bool open, bool g
 int Room::acquireSkill(ServerPlayer*player, const QString&skill_name, bool open, bool getmark, bool event_and_log)
 {
 	return m_skillRuntime->acquireSkill(player, skill_name, open, getmark, event_and_log);
+}
+
+int Room::acquireSkillForSlot(ServerPlayer *player, const QString &skill_name, bool head,
+                              bool open, bool getmark, bool event_and_log)
+{
+	return m_skillRuntime->acquireSkillForSlot(player, skill_name, head, open, getmark,
+		event_and_log);
 }
 
 void Room::addSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId)
@@ -5382,6 +5833,362 @@ Card*Room::askForExchange(ServerPlayer*player, const QString&reason, int exchang
 	return m_playerDecisions->askForExchange(player, reason, exchange_num, min_num, include_equip,
 		prompt, optional, pattern);
 }
+
+namespace {
+
+class AGVisibilityGuard final {
+public:
+    AGVisibilityGuard(Room *room, ServerPlayer *player) : m_room(room), m_player(player) {}
+    ~AGVisibilityGuard()
+    {
+        if (m_room && m_player) m_room->clearAG(m_player);
+    }
+
+    void show(const QList<int> &ids) const
+    {
+        if (m_room && m_player) m_room->fillAG(ids, m_player);
+    }
+
+    void show(const QList<int> &ids, const QList<int> &disabled) const
+    {
+        if (m_room && m_player) m_room->fillAG(ids, m_player, disabled);
+    }
+
+private:
+    Room *m_room;
+    ServerPlayer *m_player;
+};
+
+QList<int> selectFromPiles(Room *room, ServerPlayer *player, const QString &reason,
+                           int maximum, int minimum, const QString &prompt,
+                           const QString &expandPile, const QString &pattern)
+{
+    if (!room || !player || maximum <= 0 || expandPile.isEmpty()) return {};
+
+    QList<int> available;
+    for (const QString &pileName : expandPile.split(',', Qt::SkipEmptyParts))
+        available.append(player->getPile(pileName));
+
+    // The donor pattern is applied before presenting the private pile.  AG is
+    // intentionally repeated so every selected id is removed from the next menu.
+    if (!pattern.isEmpty() && pattern != ".") {
+        QList<int> filtered;
+        for (int id : available) {
+            const Card *card = Sanguosha->getCard(id);
+            if (card && Sanguosha->matchExpPattern(pattern, player, card)) filtered << id;
+        }
+        available = filtered;
+    }
+
+    QList<int> result;
+    AGVisibilityGuard ag(room, player);
+    const int limit = qMin(maximum, available.size());
+    while (result.size() < limit && !available.isEmpty()) {
+        ag.show(available);
+        // A required donor selection must not be refusable until minimum is
+        // met; after that point the optional tail may cancel.
+        const int id = room->askForAG(player, available, result.size() >= minimum,
+                                      reason, prompt);
+        if (id < 0 || !available.contains(id)) break;
+        result << id;
+        available.removeOne(id);
+    }
+    return result.size() >= minimum ? result : QList<int>();
+}
+
+void appendPhysicalIds(QList<int> &result, const Card *card)
+{
+    if (!card) return;
+    const QList<int> subcards = card->getSubcards();
+    if (card->isVirtualCard() && !subcards.isEmpty()) {
+        for (int id : subcards) {
+            const Card *subcard = Sanguosha->getCard(id);
+            if (subcard && subcard != card && subcard->isVirtualCard()
+                && !subcard->getSubcards().isEmpty())
+                appendPhysicalIds(result, subcard);
+            else {
+                const int effectiveId = subcard ? subcard->getEffectiveId() : id;
+                if (effectiveId >= 0) result << effectiveId;
+            }
+        }
+        return;
+    }
+    const int id = card->getEffectiveId();
+    if (id >= 0) result << id;
+}
+
+QList<int> flattenPhysicalIds(const Card *selection)
+{
+    QList<int> result;
+    appendPhysicalIds(result, selection);
+    return result;
+}
+
+QList<const Player *> selectedPlayers(const CardUseStruct &use)
+{
+    QList<const Player *> result;
+    for (ServerPlayer *target : use.to)
+        if (target) result << target;
+    return result;
+}
+
+}
+
+QList<int> Room::askForExchangeCards(ServerPlayer *player, const QString &reason,
+                                   int maximum, int minimum, const QString &prompt,
+                                   const QString &expandPile, const QString &pattern)
+{
+    if (!player || maximum <= 0 || minimum < 0 || minimum > maximum) return {};
+    if (!expandPile.isEmpty())
+        return selectFromPiles(this, player, reason, maximum, minimum, prompt, expandPile, pattern);
+
+    const QString effectivePattern = pattern.isEmpty() ? QStringLiteral(".") : pattern;
+    const Card *selection = askForExchange(player, reason, maximum, minimum,
+                                                  true, prompt, minimum == 0,
+                                                  effectivePattern);
+    return selection ? flattenPhysicalIds(selection) : QList<int>();
+}
+
+QList<int> Room::askForCardsChosen(ServerPlayer *player, ServerPlayer *target,
+                             const QString &flags, const QString &reason,
+                             int minimum, int maximum, bool handcardVisible,
+                             Card::HandlingMethod method, const QList<int> &disabledIds,
+                             bool optional)
+{
+    if (!player || !target || minimum < 0 || maximum < minimum || maximum <= 0)
+        return {};
+
+    QList<int> selected = disabledIds;
+    QList<int> available;
+    for (const Card *card : target->getCards(flags)) {
+        const int id = card->getEffectiveId();
+        if (selected.contains(id)) continue;
+        if ((method == Card::MethodDiscard && !player->canDiscard(target, id))
+            || (method == Card::MethodGet && !player->canGet(target, id)))
+            selected << id;
+        else
+            available << id;
+    }
+    // Donor clamps both limits to the legal cards. In particular, Shejian may
+    // request more discards than remain, and Weimeng must not reopen an empty
+    // hidden-hand chooser after its last available card has been selected.
+    maximum = qMin(maximum, available.size());
+    minimum = qMin(minimum, maximum);
+    QList<int> result;
+    while (result.size() < maximum) {
+        // Required selections cannot be cancelled.  Optional selections may
+        // stop at any prompt after satisfying the minimum.
+        const bool canCancel = optional && result.size() >= minimum;
+        const int id = askForCardChosen(player, target, flags, reason,
+                                              handcardVisible, method, selected,
+                                              canCancel);
+        if (id < 0) {
+            if (result.size() >= minimum) return result;
+            return {};
+        }
+        if (selected.contains(id) || !available.contains(id)) {
+            // A malformed/legacy decision must never create a duplicate card
+            // in the returned cost list.
+            if (result.size() >= minimum) return result;
+            return {};
+        }
+        selected << id;
+        result << id;
+    }
+    return result.size() >= minimum ? result : QList<int>();
+}
+
+int Room::getRandomCardInPile(const QString &pattern, bool drawPile)
+{
+    const QList<int> pile = drawPile ? getDrawPile() : getDiscardPile();
+    QList<int> candidates;
+    for (int id : pile) {
+        const Card *card = Sanguosha->getCard(id);
+        if (!card) continue;
+        if (pattern.isEmpty() || pattern == "."
+            || Sanguosha->matchExpPattern(pattern, nullptr, card))
+            candidates << id;
+    }
+    return candidates.isEmpty() ? -1 : candidates.at(qsanRandomBounded(candidates.size()));
+}
+
+QList<ServerPlayer *> Room::getUseExtraTargets(const CardUseStruct &use,
+                                          bool distanceLimit)
+{
+    QList<ServerPlayer *> result;
+    if (!use.from || !use.card) return result;
+
+    const QList<const Player *> others = selectedPlayers(use);
+    for (ServerPlayer *candidate : getAlivePlayers()) {
+        if (!candidate || use.to.contains(candidate)) continue;
+
+        if (use.card->isKindOf("Slash")) {
+            if (use.from->canSlash(candidate, use.card, distanceLimit, 0, others))
+                result << candidate;
+            continue;
+        }
+
+        if (use.card->isKindOf("Duel")) {
+            if (candidate != use.from
+                && !use.from->isProhibited(candidate, use.card, others))
+                result << candidate;
+            continue;
+        }
+
+        // Keep the helper useful for future cards, while ordinary cards still
+        // retain their own target-count rules through targetFilter().
+        if (use.card->targetFilter(others, candidate, use.from)
+            && !use.from->isProhibited(candidate, use.card, others))
+            result << candidate;
+    }
+    return result;
+}
+
+bool Room::askForQiaobian(ServerPlayer *player,
+                    const QList<ServerPlayer *> &targets,
+                    const QString &reason, const QString &prompt,
+                    bool equipArea, bool judgingArea)
+{
+    if (!player || !player->isAlive() || (!equipArea && !judgingArea)) return false;
+    const QString flags = (equipArea ? QStringLiteral("e") : QString())
+        + (judgingArea ? QStringLiteral("j") : QString());
+
+    // Donor booleans select field zones, not draw/play phases. Both ends must
+    // belong to the supplied seats; never substitute hand-card extraction.
+    const auto destinations = [&](ServerPlayer *from, const Card *card) {
+        QList<ServerPlayer *> result;
+        if (!from || !card || !from->canMove(from, card->getEffectiveId())) return result;
+        const Player::Place place = getCardPlace(card->getEffectiveId());
+        if (getCardOwner(card->getEffectiveId()) != from) return result;
+        for (ServerPlayer *to : targets) {
+            if (!to || to == from || !to->isAlive() || player->isProhibited(to, card)) continue;
+            if (place == Player::PlaceEquip && equipArea) {
+                const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+                if (!equip) continue;
+                bool available = true;
+                for (int slot : equip->getOccupyLocations()) {
+                    if (!to->hasEquipArea(slot)
+                        || to->getEquips(slot).size() >= to->getEquipArea(slot)) {
+                        available = false;
+                        break;
+                    }
+                }
+                if (available) result << to;
+            } else if (place == Player::PlaceDelayedTrick && judgingArea
+                       && to->hasJudgeArea() && !to->containsTrick(card->objectName())) {
+                result << to;
+            }
+        }
+        return result;
+    };
+
+    QList<ServerPlayer *> sources;
+    for (ServerPlayer *from : targets) {
+        if (!from || !from->isAlive()) continue;
+        for (const Card *card : from->getCards(flags)) {
+            if (!destinations(from, card).isEmpty()) {
+                sources << from;
+                break;
+            }
+        }
+    }
+    if (sources.isEmpty()) return false;
+    ServerPlayer *from = askForPlayerChosen(player, sources, reason, prompt, true);
+    if (!from || !from->isAlive() || !player->isAlive()) return false;
+    QList<int> disabled;
+    for (const Card *card : from->getCards(flags))
+        if (destinations(from, card).isEmpty()) disabled << card->getEffectiveId();
+    const int id = askForCardChosen(player, from, flags, reason,
+                                         false, Card::MethodNone, disabled);
+    const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
+    const QList<ServerPlayer *> receivers = destinations(from, card);
+    if (receivers.isEmpty()) return false;
+    ServerPlayer *to = askForPlayerChosen(player, receivers, reason,
+                                               QStringLiteral("@movefield-to:") + card->objectName());
+    if (!to || !destinations(from, card).contains(to)) return false;
+    moveCardTo(card, from, to, getCardPlace(id),
+                    CardMoveReason(CardMoveReason::S_REASON_TRANSFER,
+                                   player->objectName(), reason, QString()), true);
+    return true;
+}
+
+AskForMoveCardsStruct Room::askForMoveCards(ServerPlayer *player,
+                                      const QList<int> &upCards,
+                                      const QList<int> &downCards,
+                                      bool upOnly, const QString &reason,
+                                      const QString &prompt,
+                                      const QString &, int minimum, int maximum,
+                                      bool optional, bool)
+{
+    AskForMoveCardsStruct result;
+    if (!player) {
+        result.top = upCards;
+        result.top.append(downCards);
+        return result;
+    }
+
+    QList<int> candidates = upCards;
+    if (!upOnly) candidates.append(downCards);
+    result.top = candidates;
+    const int limit = maximum > 0 ? qMin(maximum, candidates.size())
+                                  : qMin(minimum, candidates.size());
+    const bool differentSuit = prompt == QStringLiteral("differentsuit");
+    QList<int> selected;
+    QSet<Card::Suit> selectedSuits;
+    AGVisibilityGuard ag(this, player);
+    while (selected.size() < limit && !candidates.isEmpty()) {
+        QList<int> disabled = selected;
+        if (differentSuit) {
+            for (int id : candidates) {
+                const Card *card = Sanguosha->getCard(id);
+                if (card && selectedSuits.contains(card->getSuit())) disabled << id;
+            }
+        }
+        ag.show(candidates, disabled);
+        const int id = askForAG(player, candidates,
+                                      optional && selected.size() >= minimum,
+                                      reason, prompt);
+        if (id < 0 || disabled.contains(id)) break;
+        selected << id;
+        const Card *card = Sanguosha->getCard(id);
+        if (card) selectedSuits.insert(card->getSuit());
+        candidates.removeOne(id);
+    }
+    if (selected.size() < minimum) return AskForMoveCardsStruct{upCards, downCards};
+    result.bottom = selected;
+    result.top = candidates;
+    return result;
+}
+
+QStringList Room::getUsedGeneral()
+{
+    return getTag(QStringLiteral("HegemonyUsedGenerals")).toStringList();
+}
+
+void Room::handleUsedGeneral(const QString &name)
+{
+    if (name.isEmpty()) return;
+    QStringList used = getUsedGeneral();
+    if (name.startsWith(QLatin1Char('-'))) {
+        used.removeAll(name.mid(1));
+    } else {
+        used << name;
+        used.removeDuplicates();
+    }
+    setTag(QStringLiteral("HegemonyUsedGenerals"), used);
+}
+
+bool Room::isAllOnPlace(const Card *card, Player::Place place)
+{
+    if (!card) return false;
+    const QList<int> ids = card->isVirtualCard() ? card->getSubcards()
+                                                  : QList<int>() << card->getEffectiveId();
+    if (ids.isEmpty()) return false;
+    for (int id : ids)
+        if (getCardPlace(id) != place) return false;
+    return true;
+}
+
 
 YishiStruct Room::askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const QString &reason)
 {
@@ -6955,4 +7762,99 @@ void Room::initializeLuaTestEnvironment()
 QVariant Room::findTestOverride(ServerPlayer *player, const QString &queryType, const QString &key) const
 {
 	return m_playerDecisions->findTestOverride(player, queryType, key);
+}
+
+ServerPlayer *Room::getLord(const QString &kingdom, bool includeDeath) const
+{
+    for (ServerPlayer *player : getAllPlayers(true)) {
+        // A faction sovereign is public only after its head general is shown.
+        if ((includeDeath || player->isAlive()) && player->hasShownGeneral()
+            && player->isHegemonyLord() && player->getKingdom() == kingdom)
+            return player;
+    }
+    return nullptr;
+}
+
+QStringList Room::getLimitedGeneralNames() const
+{
+    return Sanguosha->getLimitedGeneralNames();
+}
+
+QList<int> Room::getCardIdsOnTable(const QList<int> &ids) const
+{
+    QList<int> result;
+    for (int id : ids) if (getCardPlace(id) == Player::PlaceTable) result << id;
+    return result;
+}
+
+void Room::setPlayerDisableShow(ServerPlayer *player, const QString &flags, const QString &reason)
+{
+    player->setDisableShow(flags, reason);
+    broadcastProperty(player, "disable_show");
+}
+
+void Room::removePlayerDisableShow(ServerPlayer *player, const QString &reason)
+{
+    player->removeDisableShow(reason);
+    broadcastProperty(player, "disable_show");
+}
+
+void Room::cancelTarget(CardUseStruct &use, ServerPlayer *player)
+{
+    if (!player || !use.card) return;
+    LogMessage log;
+    log.type = use.from ? "$CancelTarget" : "$CancelTargetNoUser";
+    log.from = use.from;
+    log.to << player;
+    log.arg = use.card->objectName();
+    sendLog(log);
+    setEmotion(player, "cancel");
+    use.to.removeOne(player);
+    if (use.card->isKindOf("Slash")) {
+        player->removeQinggangTag(use.card);
+        QStringList bladeUses = player->property("blade_use").toStringList();
+        if (bladeUses.removeOne(use.card->toString())) {
+            setPlayerProperty(player, "blade_use", bladeUses);
+            if (bladeUses.isEmpty()) removePlayerDisableShow(player, "Blade");
+        }
+    }
+}
+
+void Room::moveCards(QList<CardsMoveStruct> moves, bool visible, bool enforceOrigin)
+{
+    m_cardMovement->moveCards(moves, visible, enforceOrigin);
+}
+
+QString Room::askForGeneral(ServerPlayer *player, const QStringList &generals,
+    const QString &defaultChoice, bool singleResult, const QString &reason, const QVariant &data)
+{
+    if (generals.isEmpty()) return QString();
+    // Donor content supplies skill choice data; preserve it on the established AI route.
+    QStringList remaining = generals;
+    const int count = singleResult ? 1 : qMin(2, int(remaining.size()));
+    QStringList answer;
+    for (int i = 0; i < count; ++i) {
+        QString choice;
+        if (player->getAI() && !reason.isEmpty())
+            choice = askForChoice(player, reason, remaining.join('+'), data);
+        else
+            choice = askForGeneral(player, remaining, defaultChoice, reason);
+        if (!remaining.contains(choice))
+            choice = remaining.contains(defaultChoice) ? defaultChoice : remaining.first();
+        answer << choice;
+        remaining.removeOne(choice);
+    }
+    return answer.join('+');
+}
+
+QString Room::askForGeneral(ServerPlayer *player, const QString &generals,
+    const QString &defaultChoice, bool singleResult, const QString &reason, const QVariant &data)
+{
+    return askForGeneral(player, generals.split('+'), defaultChoice, singleResult, reason, data);
+}
+
+QList<int> Room::getCardIdsOnTable(const Card *card) const
+{
+    if (!card) return QList<int>();
+    return getCardIdsOnTable(card->isVirtualCard() ? card->getSubcards() : QList<int>{card->getId()});
 }

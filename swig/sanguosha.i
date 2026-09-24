@@ -168,6 +168,10 @@ public:
     void setDeputyMaxHpAdjustedValue(int adjusted_value = -1);
 	QString getKingdom() const;
 	QString getKingdoms() const;
+    QString getSubordinateKingdom() const;
+    void setSubordinateKingdom(const QString &kingdom);
+    bool isDoubleKingdoms() const;
+    QStringList compareKingdomsWith(const General *other) const;
 	bool isMale() const;
 	bool isFemale() const;
 	bool isNeuter() const;
@@ -243,6 +247,8 @@ public:
 	void setMaxHp(int max_hp);
 	int getLostHp() const;
 	bool isWounded() const;
+    bool canRecover() const;
+    bool canTransform() const;
 	General::Gender getGender() const;
 	virtual void setGender(General::Gender gender);
 	bool isMale() const;
@@ -259,6 +265,8 @@ public:
 
 	QString getKingdom() const;
 	void setKingdom(const char*kingdom);
+    // Public faction only; hidden pairing authority stays outside the Lua binding.
+    QString getSeemingKingdom() const;
 
 	void setRole(const char*role);
 	QString getRole() const;
@@ -420,6 +428,11 @@ public:
 	QString getPileName(int card_id) const;
 	bool pileOpen(const char*pile_name, const char*player) const;
 	void setPileOpen(const char*pile_name, const char*player);
+	// Read-only general-pile queries used by the HEG viewer-scoped AI facade.
+	QStringList getGeneralPile(const QString &pile_name) const;
+	QStringList getGeneralPileNames() const;
+	QString getGeneralPileName(const QString &general_name) const;
+	bool generalPileOpen(const QString &pile_name, const QString &player) const;
 
 	QList<int> getHandPile() const;
 
@@ -552,6 +565,8 @@ static bool isNostalGeneral(const Player*p, const char*general_name);
     bool canShowGeneral(const QString &position) const;
     QStringList disableShow(bool head = true) const;
     QStringList getDisableShow() const;
+    bool cheakSkillLocation(const QString &skill_name, bool head) const;
+    bool cheakSkillLocation(const QString &skill_name, const QVariant &shown) const;
     bool inHeadSkills(const QString &skill_name) const;
     bool inDeputySkills(const QString &skill_name) const;
     void setSkillPreshowed(const QString &skill, bool preshowed = true);
@@ -632,6 +647,8 @@ public:
 	DummyCard*wholeHandCards() const;
 	bool hasNullification() const;
 	bool pindian(ServerPlayer*target, const char*reason, const Card*card1 = nullptr);
+    PindianStruct *pindianSelect(ServerPlayer *target, const QString &reason, const Card *card = nullptr);
+    bool pindian(PindianStruct *selection);
 	int pindianInt(ServerPlayer*target, const char*reason, const Card*card1 = nullptr);
 	PindianStruct*PinDian(ServerPlayer*target, const char*reason, const Card*card1 = nullptr);
 	void turnOver();
@@ -738,6 +755,11 @@ bool damageRevises(QVariant&data, int n);
     void summonFriends(const QString &type);
     bool inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const;
     bool inFormationRalation(ServerPlayer *teammate) const;
+    int startCommand(const QString &reason, ServerPlayer *target = nullptr);
+    bool askCommandto(const QString &reason, ServerPlayer *target);
+    void fillHandCards(int n, const QString &reason = QString());
+    bool doCommand(const QString &reason, int index, ServerPlayer *source);
+    void changeToLord();
     void askForGeneralShow();
     void showHiddenSkill(const QString &skill_name);
     void showGeneral(bool head_general = true, bool trigger_event = true, bool sendLog = true);
@@ -1339,6 +1361,14 @@ enum TriggerEvent {
     ConfirmPlayerNum,
     RemoveStateChanged,
     DFDebut,
+    GeneralShowed,
+    GeneralTransforming,
+    GeneralTransformed,
+    CommandVerifying,
+
+    BeforeCardsMoveBatch,
+    PreCardsMoveBatch,
+    CardsMoveBatch,
 
 	NumOfEvents
 };
@@ -2381,6 +2411,10 @@ public:
 	QList<int> getNCards(int n, bool update_pile_number = true, bool isTop = true);
 	ServerPlayer*getLord() const;
     ServerPlayer *getLord(const QString &kingdom, bool includeDeath = false) const;
+    QStringList getLimitedGeneralNames() const;
+    QList<int> getCardIdsOnTable(const QList<int> &ids) const;
+    QList<int> getCardIdsOnTable(const Card *card) const;
+    void cancelTarget(CardUseStruct &use, ServerPlayer *player);
     void setPlayerDisableShow(ServerPlayer *player, const QString &flags, const QString &reason);
     void removePlayerDisableShow(ServerPlayer *player, const QString &reason);
 	QList<int> askForGuanxing(ServerPlayer*zhuge, const QList<int>&cards, GuanxingType guanxing_type = GuanxingBothSides, bool sendLod = true);
@@ -2417,6 +2451,7 @@ public:
 	void doAnimate(int type, const char*arg1 = nullptr, const char*arg2 = nullptr, QList<ServerPlayer*> players = QList<ServerPlayer*>());
 	void setPlayerChained(ServerPlayer*player);
 	void setPlayerChained(ServerPlayer*player, bool is_chained);
+    void setPlayerChained(ServerPlayer *player, bool is_chained, ServerPlayer *source);
 	void moveCardsToEndOfDrawpile(ServerPlayer*player, QList<int> card_ids, const char*skill_name, bool visible = false, bool guanxing = false);
 	void moveCardsInToDrawpile(ServerPlayer*player, const Card*card, const char*skill_name, int n = 0, bool visible = false);
 	void moveCardsInToDrawpile(ServerPlayer*player, int card_id, const char*skill_name, int n = 0, bool visible = false);
@@ -2478,6 +2513,7 @@ public:
 	QList<ServerPlayer*> findPlayersBySkillName(const char*skill_name) const;
 	void installEquip(ServerPlayer*player, const char*equip_name);
 	void resetAI(ServerPlayer*player);
+    void transformDeputyGeneral(ServerPlayer *player, const QString &name = QString(), bool show = true);
 	void changeHero(ServerPlayer*player, const char*new_general, bool full_state, bool invokeStart = true, bool isSecondaryHero = false, bool sendLog = true, int start_hp = 0);
 	void swapSeat(ServerPlayer*a, ServerPlayer*b);
 	lua_State*getLuaState() const;
@@ -2548,6 +2584,12 @@ public:
 					const CardMoveReason&reason, bool visible = false, bool guanxin = false);
 	void moveCardsAtomic(QList<CardsMoveStruct> cards_move, bool visible, bool guanxin = false);
 	void moveCardsAtomic(CardsMoveStruct cards_move, bool visible, bool guanxin = false);
+    // Keep donor batch edits on the authoritative movement pipeline.
+    QVariant moveCardsSub(QList<CardsMoveStruct> moves, bool visible, bool guanxing = false);
+    QVariant moveCardsSub(CardsMoveStruct move, bool visible, bool guanxing = false);
+    QVariant changeMoveData(const QVariant &data, const QList<CardsMoveStruct> &moves);
+    QVariant changeMoveData(const QVariant &data, const QList<int> &ids);
+    void moveCards(QList<CardsMoveStruct> moves, bool visible = false, bool enforceOrigin = true);
 
 	// interactive methods
 	void activate(ServerPlayer*player, CardUseStruct&card_use);
@@ -2605,6 +2647,12 @@ public:
 		const char*reason, int min_num = 0, int max_num = 2, const char*prompt = "",
 		bool notify_skill = false, bool sort_ActionOrder = true);
 	QString askForGeneral(ServerPlayer*player, const char*generals, const char*default_choice = "", const char*reason = "");
+    QString askForGeneral(ServerPlayer *player, const QStringList &generals,
+                          const QString &default_choice = "", const QString &reason = QString());
+    QString askForGeneral(ServerPlayer *player, const QStringList &generals, const QString &defaultChoice,
+                          bool singleResult, const QString &reason, const QVariant &data = QVariant());
+    QString askForGeneral(ServerPlayer *player, const QString &generals, const QString &defaultChoice,
+                          bool singleResult, const QString &reason, const QVariant &data = QVariant());
 	const Card*askForSinglePeach(ServerPlayer*player, ServerPlayer*dying);
 	void addPlayerHistory(ServerPlayer*player, const char*key, int times = 1);
 	bool changeBGM(const char*bgm_name, bool reset = false, QList<ServerPlayer*> to_assign = QList<ServerPlayer*>());
@@ -2853,3 +2901,13 @@ namespace QSanEngine {
 		return $self->inherits(class_name);
 	}
 }
+
+// Read the room's frozen value histories without exposing retained Card pointers.
+%inline %{
+int getHegemonyCardUsedTimes(const ServerPlayer *player, const QString &pattern) {
+    return player->getRoom()->countHistoryCards(player, QStringLiteral("turn"), pattern);
+}
+int getHegemonyCardRespondedTimes(const ServerPlayer *player, const QString &pattern) {
+    return player->getRoom()->countHistoryCards(player, QStringLiteral("turn"), pattern, true);
+}
+%}

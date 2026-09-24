@@ -107,6 +107,41 @@
       "site": "src/tui/tui-skill-dialog.cpp:82",
       "category": "raw_delete",
       "reason": "TUI dialog builder owns the duplicate clone before insertion into the option cache or any player tag"
+    },
+    {
+      "site": "src/package/h-mol.cpp:220",
+      "category": "raw_delete",
+      "reason": "MOL view-as conversion rejects a cloned card before adding subcards or returning it; the conversion scope owns the rejected clone"
+    },
+    {
+      "site": "src/package/h-transformation.cpp:990",
+      "category": "raw_delete",
+      "reason": "Yigui target conversion rejects a clone when the soul is absent; the temporary remains inside the request conversion"
+    },
+    {
+      "site": "src/package/h-transformation.cpp:993",
+      "category": "raw_delete",
+      "reason": "Yigui target conversion rejects an ineligible cloned card before publication; the conversion scope owns it"
+    },
+    {
+      "site": "src/package/h-transformation.cpp:1035",
+      "category": "raw_delete",
+      "reason": "Yigui response conversion rejects a clone when the soul is absent; no card pointer escapes the request"
+    },
+    {
+      "site": "src/package/h-transformation.cpp:1038",
+      "category": "raw_delete",
+      "reason": "Yigui response conversion rejects an ineligible clone before returning a response card"
+    },
+    {
+      "site": "src/package/h-transformation.cpp:1083",
+      "category": "raw_delete",
+      "reason": "Yigui declaration feasibility probe owns the clone when its general lookup fails; it is never returned or stored"
+    },
+    {
+      "site": "src/package/h-transformation.cpp:1116",
+      "category": "raw_delete",
+      "reason": "Yigui declaration enumeration discards each synchronous clone after reading its package; no pointer enters the candidate model"
     }
   ],
   "legacy_patterns": [],

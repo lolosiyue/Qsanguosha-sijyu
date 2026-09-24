@@ -19,6 +19,14 @@ struct CardUseStruct;
 #include "src/pch.h"
 #endif
 
+inline bool isHegemonyCardClassName(const QString &name)
+{
+    // H is a namespace prefix only before an uppercase class name. Native
+    // Horse/Halberd and skill cards such as HuashenCard are not HEG cards.
+    return name.size() > 1 && name.at(0) == QLatin1Char('H')
+        && name.at(1) >= QLatin1Char('A') && name.at(1) <= QLatin1Char('Z');
+}
+
 class Card : public QObject
 {
     Q_OBJECT
@@ -154,10 +162,7 @@ public:
     virtual void removeTag(const QString &key) const;
 
     virtual QString getPackage() const;
-    inline virtual QString getClassName() const
-    {
-        return metaObject()->className();
-    }
+    virtual QString getClassName() const;
     virtual QStringList getKindOfNames() const;
     virtual bool isVirtualCard(bool include_filter = false) const;
     virtual bool isEquipped() const;
@@ -199,15 +204,18 @@ public:
     virtual const Card *validateInResponse(ServerPlayer *user) const;
 
     virtual void doPreAction(Room *room, const CardUseStruct &card_use) const;
+    virtual void extraCost(Room *room, const CardUseStruct &card_use) const;
+    // Hegemony view-as tricks may need their source revealed after payment,
+    // but before their custom target construction.
+    virtual bool needsDeferredHegemonyReveal() const { return false; }
+    virtual void prepareUseTargets(Room *room, CardUseStruct &card_use) const;
+    virtual QStringList checkTargetModSkillShow(const CardUseStruct &card_use) const;
     virtual void onUse(Room *room, CardUseStruct &card_use) const;
     virtual void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
     virtual void onEffect(CardEffectStruct &effect) const;
     virtual bool isCancelable(const CardEffectStruct &effect) const;
 
-    inline virtual bool isKindOf(const char *cardType) const
-    {
-        return inherits(cardType);
-    }
+    virtual bool isKindOf(const char *cardType) const;
     inline virtual QStringList getFlags() const
     {
         return flags;
@@ -241,6 +249,8 @@ public:
     mutable QList<const Card *> change_cards;
 
 protected:
+    // Shared completion keeps custom onUse paths safe when a hook interrupts.
+    static void finishCardUse(Room *room, CardUseStruct &use);
     bool event(QEvent *event) override;
 
     QList<int> subcards;

@@ -219,12 +219,6 @@ public:
     void setCallbackKey(const QString &key);
     QString getCallbackKey() const;
 
-    virtual QRectF boundingRect() const;
-
-protected:
-    virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
-    virtual void mousePressEvent(QGraphicsSceneMouseEvent *event);
-
 private:
     QString m_buttonId;
     QString m_iconName;
@@ -233,8 +227,6 @@ private:
     ActionMode m_actionMode;
     int m_luaCallback;
     CardItem *m_cardItem;
-    int _m_width;
-    int _m_height;
 };
 
 #endif

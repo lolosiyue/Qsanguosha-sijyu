@@ -474,6 +474,7 @@ signals:
     void card_description_updated(const QString &player_name, const QString &card_name);
     // choice signal
     void generals_got(const QStringList &generals);
+    void hegemony_generals_got(const QStringList &candidates, const QStringList &pairs);
     void kingdoms_got(const QStringList &kingdoms);
     void suits_got(const QStringList &suits);
     void options_got(const QString &skillName, const QStringList &options, const QString &except_options, const QString &tip);
@@ -526,7 +527,7 @@ signals:
 
     void skill_attached(const ClientPlayer *player, const QString &skill_name);
     void skill_detached(const ClientPlayer *player, const QString &skill_name);
-    void skill_preshow_changed(const ClientPlayer *player, const QString &skill_name, bool preshowed);
+    void skill_preshow_changed(const ClientPlayer *player, const QVariantMap &changed_states);
     void skill_instances_reset();
     void skill_instance_amount_changed(const ClientPlayer *player, const QString &skill_name,
                                        int instance_id);

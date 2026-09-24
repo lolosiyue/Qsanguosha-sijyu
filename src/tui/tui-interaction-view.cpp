@@ -171,6 +171,10 @@ TuiInteractionView::TuiInteractionView(TuiRenderer *renderer, Writer writer,
 
 void TuiInteractionView::presentRequest(const InteractionRequest &request)
 {
+    if (m_generalRequestId != request.requestId) {
+        m_generalRequestId = request.requestId;
+        m_generalDraft.clear();
+    }
     if (request.type == InteractionType::ChooseRole)
         return;
     if (m_renderer != nullptr && m_writer)
@@ -189,6 +193,8 @@ QString TuiInteractionView::requestTitle(const InteractionRequest &request) cons
 void TuiInteractionView::finishRequest(const InteractionRequest &request,
                                        const InteractionResponse &)
 {
+    m_generalRequestId = 0;
+    m_generalDraft.clear();
     if (request.type == InteractionType::ChooseRole)
         return;
     if (m_writer)
@@ -213,6 +219,8 @@ QString TuiInteractionView::cancelReasonText(InteractionCancelReason reason)
 void TuiInteractionView::cancelRequest(const InteractionRequest &request,
                                        InteractionCancelReason reason)
 {
+    m_generalRequestId = 0;
+    m_generalDraft.clear();
     if (m_writer) {
         m_writer(tuiText("tui_cancel_notice")
             .arg(requestTitle(request), cancelReasonText(reason)));
@@ -329,6 +337,67 @@ QStringList TuiInteractionView::parseNames(const QString &text,
     if (result.isEmpty() && error != nullptr)
         *error = tuiText("tui_error_player_empty");
     return result;
+}
+
+bool TuiInteractionView::stageGeneralAnswer(const InteractionRequest &request, QString *line)
+{
+    const auto *payload = request.payloadAs<OptionInteractionPayload>();
+    if (!line || request.type != InteractionType::ChooseGeneral || !payload || payload->generalCandidates.isEmpty())
+        return false;
+    if (m_generalRequestId != request.requestId) {
+        m_generalRequestId = request.requestId;
+        m_generalDraft.clear();
+    }
+    const QStringList tokens = splitTokens(line->trimmed());
+    if (tokens.isEmpty()) return false;
+    const QString command = tokens.first().toLower();
+    const auto legal = [payload](const QString &pair) {
+        for (const InteractionOption &option : payload->options)
+            if (option.enabled && option.value == pair) return true;
+        return false;
+    };
+    bool valid = tokens.size() == 1;
+    if (command == QLatin1String("confirm")) {
+        if (valid && m_generalDraft.size() == 2 && legal(m_generalDraft.join('+'))) {
+            *line = m_generalDraft.join('+');
+            return false; // The normal parser, ClientCore and encoder still submit.
+        }
+        valid = false;
+    } else if (command == QLatin1String("undo")) {
+        if (valid && !m_generalDraft.isEmpty()) m_generalDraft.removeLast();
+    } else if (command == QLatin1String("clear") || command == QLatin1String("cancel") || command == QLatin1String("c")) {
+        if (valid) m_generalDraft.clear();
+    } else if (command == QLatin1String("swap")) {
+        valid = valid && m_generalDraft.size() == 2 && legal(m_generalDraft.last() + '+' + m_generalDraft.first());
+        if (valid) m_generalDraft.swapItemsAt(0, 1);
+    } else if (command == QLatin1String("head") || command == QLatin1String("deputy")) {
+        valid = false;
+        if (tokens.size() == 2) {
+            bool numeric = false;
+            const int number = tokens.last().toInt(&numeric);
+            const QString name = !numeric ? tokens.last()
+                : number > 0 && number <= payload->generalCandidates.size()
+                    ? payload->generalCandidates.at(number - 1) : QString();
+            if (!name.isEmpty() && payload->generalCandidates.contains(name)) {
+                if (command == QLatin1String("head")) {
+                    for (const InteractionOption &option : payload->options)
+                        if (option.enabled && option.value.section('+', 0, 0) == name) { valid = true; break; }
+                    if (valid) m_generalDraft = QStringList{name};
+                } else if (!m_generalDraft.isEmpty()) {
+                    valid = legal(m_generalDraft.first() + '+' + name);
+                    if (valid) m_generalDraft = QStringList{m_generalDraft.first(), name};
+                }
+            }
+        }
+    } else return false; // Keep the existing full-pair menu and script answers.
+    if (m_writer) {
+        if (!valid) m_writer(tuiText("tui_hegemony_invalid"));
+        const auto label = [this](const QString &name) {
+            return name.isEmpty() ? tuiText("tui_hegemony_empty") : m_renderer ? m_renderer->nameText(name) : name;
+        };
+        m_writer(tuiText("tui_hegemony_draft").arg(label(m_generalDraft.value(0)), label(m_generalDraft.value(1))));
+    }
+    return true;
 }
 
 bool TuiInteractionView::parseAnswer(const InteractionRequest &request,

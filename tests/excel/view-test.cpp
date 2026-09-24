@@ -11,6 +11,23 @@ class ExcelViewTest final : public QObject
     Q_OBJECT
 
 private slots:
+    void hegemonyUiKeepsCandidatesSeparateFromReplyPairs()
+    {
+        ClientCore core;
+        InteractionRequest request;
+        request.type = InteractionType::ChooseGeneral;
+        request.responseSchema = InteractionResponseShape::Option;
+        OptionInteractionPayload payload;
+        payload.generalCandidates = QStringList{QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c")};
+        payload.options = {InteractionOption(QStringLiteral("a+b"))};
+        request.payload = payload;
+        core.beginRequest(request);
+        const QJsonObject ui = ExcelView::interactionUi(core, QString());
+        QCOMPARE(ui.value(QStringLiteral("generals")).toArray().size(), 3);
+        QCOMPARE(ui.value(QStringLiteral("options")).toArray().size(), 1);
+        QCOMPARE(ui.value(QStringLiteral("options")).toArray().first().toObject().value(QStringLiteral("id")).toString(), QStringLiteral("a+b"));
+    }
+
     void publicStateDoesNotExposeProtocolSecrets()
     {
         ClientCore core;
