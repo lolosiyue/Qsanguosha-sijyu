@@ -49,17 +49,22 @@ public:
         const Player *player = request.initiator;
         if (!player || !candidate || candidate->hasFlag("using")) return false;
         const int id = candidate->getEffectiveId();
-        // The bound is maximum HP, not current HP; only owned, discardable he cards count.
-        return id >= 0 && request.selectedCardIds.size() < player->getMaxHp()
-            && !request.selectedCardIds.contains(id)
+        const Card *pearl = player->getTreasure();
+        const bool overMaxHp = request.selectedCardIds.size() >= player->getMaxHp();
+        // Donor rule: once at max HP, LuminousPearl permits unlimited further
+        // non-pearl costs while the pearl remains outside the selected set.
+        if (overMaxHp && (!pearl || !pearl->isKindOf("LuminousPearl")
+            || request.selectedCardIds.contains(pearl->getEffectiveId())
+            || id == pearl->getEffectiveId())) return false;
+        return id >= 0 && !request.selectedCardIds.contains(id)
+            && !player->isJilei(candidate)
             && (player->handCards().contains(id) || player->hasEquip(candidate))
             && player->canDiscard(player, id);
     }
 
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
-        if (!request.initiator || request.selectedCardIds.isEmpty()
-            || request.selectedCardIds.size() > request.initiator->getMaxHp()) return false;
+        if (!request.initiator || request.selectedCardIds.isEmpty()) return false;
         ActiveSkillRequest selection = request;
         selection.selectedCardIds.clear();
         for (int id : request.selectedCardIds) {
@@ -176,7 +181,7 @@ void HStandardPackage::addWuGenerals()
     sunshangxiang->addSkill("jieyin");
     sunshangxiang->addSkill("xiaoji");
 
-    General *sunjian = new General(this, "heg_sunjian", "wu"); // WU 009
+    General *sunjian = new General(this, "heg_sunjian", "wu", 5); // WU 009
     sunjian->addSkill("yinghun");
 
     General *xiaoqiao = new General(this, "heg_xiaoqiao", "wu", 3, false); // WU 011
