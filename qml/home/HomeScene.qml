@@ -375,6 +375,34 @@ Item {
                         spacing: HomeTheme.generalPanelGap
 
                         BASlantedPanel {
+                            width: HomeTheme.generalPackageNavWidth
+                            height: parent.height
+                            slant: 0
+                            cornerRadius: 10
+                            shadowBlur: 0
+                            shadowOffset: 0
+                            topColor: HomeTheme.baDockTop
+                            bottomColor: HomeTheme.baDockBottom
+                            borderColor: HomeTheme.baDockBorder
+                            shadowColor: HomeTheme.baDockShadow
+
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 4
+                                Repeater {
+                                    model: 8
+                                    SkeletonBlock {
+                                        width: Math.round((HomeTheme.generalPackageNavWidth - 30) * 0.45)
+                                        height: 44
+                                        radius: 8
+                                    }
+                                }
+                            }
+                        }
+
+                        BASlantedPanel {
+                            id: skListPanel
                             width: Math.round((parent.width - HomeTheme.generalPanelGap) * HomeTheme.generalListShare)
                             height: parent.height
                             slant: 0
@@ -434,7 +462,8 @@ Item {
                         }
 
                         BASlantedPanel {
-                            width: Math.round((parent.width - HomeTheme.generalPanelGap) * (1.0 - HomeTheme.generalListShare))
+                            width: parent.width - HomeTheme.generalPackageNavWidth - skListPanel.width
+                                   - HomeTheme.generalPanelGap * 2
                             height: parent.height
                             slant: 0
                             cornerRadius: 10
