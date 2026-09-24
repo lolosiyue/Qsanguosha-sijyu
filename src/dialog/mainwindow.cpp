@@ -341,9 +341,9 @@ MainWindow::MainWindow(QWidget *parent)
 	pageStack->addWidget(gameView);
 
 	setCentralWidget(pageStack);
-#if QSAN_ENABLE_QML && !defined(Q_OS_ANDROID)
-	// Android's native QtWindow consumes touch on this full-page Tool window;
-	// desktop mouse-input transparency does not pass it to the room underneath.
+#if QSAN_ENABLE_QML && !defined(Q_OS_LINUX)
+	// Linux/WSLg: this tool window covers the room and eats clicks. The table
+	// must receive the pointer directly. Windows keeps the click-through effect.
 	m_pointerOverlay = new PointerEffectOverlay(this);
 #endif
 	restoreFromConfig();

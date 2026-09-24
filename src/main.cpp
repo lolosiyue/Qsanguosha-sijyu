@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <cstring>
 #include <QTimer>
 #include <QDir>
@@ -49,6 +50,11 @@
 #endif
 
 int main(int argc, char *argv[]) {
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+    // WSLg/XWayland 的 XI2 只把點擊送到外框，QQuickWidget／QOpenGLWidget 客戶區收不到。
+    // 必須走 libc setenv：qputenv 進 Qt 之後平台插件才讀得到。
+    setenv("QT_XCB_NO_XI2", "1", 1);
+#endif
     QSanStartupTiming startupTotal("main.before_window");
     QSanStartupTiming startupPhase("main.application");
     CrashHandler::install();
