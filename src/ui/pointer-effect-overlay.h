@@ -115,6 +115,7 @@ public:
     void setPageEnabled(bool enabled);
 
 protected:
+    bool event(QEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
 
@@ -122,6 +123,9 @@ private:
     void onFrame();
     void setActive(bool active);
     void applyCursor(bool inside);
+    // XWayland still delivers pointer events to this tool window. Retarget
+    // them onto the room instead of dropping them.
+    bool forwardPointerToContent(QEvent *event);
 
     QWidget *m_host = nullptr;
     QTimer m_timer;
@@ -132,6 +136,7 @@ private:
     bool m_pageEnabled = false;
     bool m_cursorOverridden = false;
     bool m_lastHadContent = true;
+    bool m_forwardingPointer = false;
 };
 
 class HomePointerFxItem : public QQuickPaintedItem

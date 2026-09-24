@@ -8,8 +8,11 @@
 #include <QCursor>
 #include <QEvent>
 #include <QFile>
+#include <QGraphicsView>
 #include <QGuiApplication>
+#include <QHoverEvent>
 #include <QMainWindow>
+#include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -17,6 +20,7 @@
 #include <QPixmap>
 #include <QPolygon>
 #include <QQuickWindow>
+#include <QWheelEvent>
 #include <QtMath>
 
 namespace {
@@ -299,18 +303,18 @@ void PointerFxEngine::paint(QPainter &painter)
 }
 
 PointerEffectOverlay::PointerEffectOverlay(QWidget *host)
-    : QWidget(host, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus
-              | Qt::WindowTransparentForInput)
+    : QWidget(host, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus)
     , m_host(host)
 {
     setAttribute(Qt::WA_TranslucentBackground, true);
     setAttribute(Qt::WA_ShowWithoutActivating, true);
     setAttribute(Qt::WA_NoSystemBackground, true);
-    setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    setAttribute(Qt::WA_TransparentForMouseEvents, false);
     setAutoFillBackground(false);
     setFocusPolicy(Qt::NoFocus);
-    // 使用獨立 Tool 視窗：FitView 的 QOpenGLWidget viewport 不能再疊 GL widget，
-    // 且一般 QWidget 子控件會被 native GL 視窗蓋住。
+    // 獨立 Tool 視窗才能畫在 QOpenGLWidget 上面。
+    // WindowTransparentForInput 在 WSLg 會把客戶區的點擊直接丟掉，標題列卻仍可按。
+    // 所以這層收下指標事件，再交回中央畫面。
 
     m_timer.setInterval(16);
     connect(&m_timer, &QTimer::timeout, this, &PointerEffectOverlay::onFrame);
@@ -365,6 +369,78 @@ void PointerEffectOverlay::setPageEnabled(bool enabled)
             hide();
     }
     onFrame();
+}
+
+bool PointerEffectOverlay::forwardPointerToContent(QEvent *event)
+{
+    if (!m_host || m_forwardingPointer || !event)
+        return false;
+
+    QPointF global;
+    if (const auto *mouse = dynamic_cast<const QMouseEvent *>(event))
+        global = mouse->globalPosition();
+    else if (const auto *wheel = dynamic_cast<const QWheelEvent *>(event))
+        global = wheel->globalPosition();
+    else if (const auto *hover = dynamic_cast<const QHoverEvent *>(event))
+        global = mapToGlobal(hover->position());
+    else
+        return false;
+
+    QWidget *area = m_host;
+    if (const auto *mainWindow = qobject_cast<const QMainWindow *>(m_host)) {
+        if (mainWindow->centralWidget())
+            area = mainWindow->centralWidget();
+    }
+    const QPoint areaLocal = area->mapFromGlobal(global.toPoint());
+    QWidget *target = area->childAt(areaLocal);
+    if (!target)
+        target = area;
+    if (const auto *view = qobject_cast<const QGraphicsView *>(target))
+        target = view->viewport();
+    if (!target || target == this)
+        return false;
+
+    const QPointF local = target->mapFromGlobal(global.toPoint());
+    m_forwardingPointer = true;
+    bool delivered = false;
+    if (const auto *mouse = dynamic_cast<const QMouseEvent *>(event)) {
+        QMouseEvent relay(mouse->type(), local, local, mouse->globalPosition(),
+            mouse->button(), mouse->buttons(), mouse->modifiers());
+        relay.setTimestamp(mouse->timestamp());
+        delivered = QCoreApplication::sendEvent(target, &relay);
+    } else if (const auto *wheel = dynamic_cast<const QWheelEvent *>(event)) {
+        QWheelEvent relay(local, wheel->globalPosition(), wheel->pixelDelta(),
+            wheel->angleDelta(), wheel->buttons(), wheel->modifiers(),
+            wheel->phase(), wheel->inverted(), wheel->source());
+        relay.setTimestamp(wheel->timestamp());
+        delivered = QCoreApplication::sendEvent(target, &relay);
+    } else {
+        QMouseEvent relay(QEvent::MouseMove, local, local, global,
+            Qt::NoButton, QGuiApplication::mouseButtons(),
+            QGuiApplication::keyboardModifiers());
+        delivered = QCoreApplication::sendEvent(target, &relay);
+    }
+    m_forwardingPointer = false;
+    return delivered;
+}
+
+bool PointerEffectOverlay::event(QEvent *event)
+{
+    switch (event->type()) {
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonRelease:
+    case QEvent::MouseButtonDblClick:
+    case QEvent::MouseMove:
+    case QEvent::Wheel:
+    case QEvent::HoverEnter:
+    case QEvent::HoverMove:
+        if (forwardPointerToContent(event))
+            return true;
+        break;
+    default:
+        break;
+    }
+    return QWidget::event(event);
 }
 
 bool PointerEffectOverlay::eventFilter(QObject *watched, QEvent *event)
