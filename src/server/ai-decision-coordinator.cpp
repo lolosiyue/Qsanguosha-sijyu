@@ -511,12 +511,27 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
         || triggerEvent == HpRecover || triggerEvent == Death
         || (triggerEvent == ChoiceMade && event.kind == QStringLiteral("choice"));
     if (!canonical || !Config.EnableAI || !m_room.roomRuntime()->ai().lua().rawState()) return;
+    // Public facts (max cards, attack range, equips, skill metadata) do not
+    // depend on the observer. Build them once per unchanged revision; a mode
+    // hook that mutates the board bumps the revision and the next seat rebuilds.
+    PublicBoard board;
+    quint64 boardRevision = 0;
+    quint64 boardSkillGeneration = 0;
+    bool boardValid = false;
     for (ServerPlayer *observer : m_room.getAlivePlayers()) {
         if (event.privateEvent && event.privateViewer != observer->objectName()) continue;
-        // Keep each observer's mind ready for takeover, including human seats.
-        // Each snapshot scans players and visible state once; no all-pairs
-        // geometry or historical-event replay belongs in this path.
-        AIWorldView world = buildWorldView(observer, true, true);
+        const quint64 revision = m_room.roomRuntime()->stateRevision();
+        const quint64 skillGeneration = SkillSet::generation();
+        if (!boardValid || boardRevision != revision || boardSkillGeneration != skillGeneration) {
+            board = buildPublicBoard();
+            boardValid = revision == m_room.roomRuntime()->stateRevision()
+                && skillGeneration == SkillSet::generation();
+            if (boardValid) {
+                boardRevision = revision;
+                boardSkillGeneration = skillGeneration;
+            }
+        }
+        AIWorldView world = projectWorldView(board, observer, true, true);
         AIEventView visible = event;
         if (visible.privateViewer != observer->objectName()) visible.privateCardIds.clear();
         visible.privateViewer.clear();
@@ -528,23 +543,21 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
     }
 }
 
-AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool compactPolicy,
-                                                 bool eventOnly) const
+AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() const
 {
     EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
     // Native skill queries must use the same Room's gameplay callbacks.
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
-    AIWorldView world;
-    world.modeId = m_room.getMode();
-    world.revision = m_room.roomRuntime()->stateRevision();
-    if (!viewer || viewer->getRoom() != &m_room) return world;
+    PublicBoard board;
+    board.modeId = m_room.getMode();
+    board.revision = m_room.roomRuntime()->stateRevision();
     ServerPlayer *current = m_room.getCurrent();
-    world.currentPlayer = current ? current->objectName() : QString();
-    world.currentPhase = current ? int(current->getPhase()) : int(Player::NotActive);
+    board.currentPlayer = current ? current->objectName() : QString();
+    board.currentPhase = current ? int(current->getPhase()) : int(Player::NotActive);
     foreach (ServerPlayer *player, m_room.getPlayers())
-        world.playerOrder << player->objectName();
+        board.playerOrder << player->objectName();
     foreach (ServerPlayer *player, m_room.getAlivePlayers())
-        world.alivePlayerOrder << player->objectName();
+        board.alivePlayerOrder << player->objectName();
 
     const auto allPlayers = m_room.getAllPlayers(true);
     QHash<QString, ServerPlayer *> byName;
@@ -573,9 +586,10 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
         for (int index = 0; index < path.size(); ++index)
             controllerRoots.insert(path.at(index), index >= cycleStart ? path.at(index) : root);
     }
-    const bool hegemony = ServerInfo.EnableHegemony;
     foreach (ServerPlayer *player, allPlayers) {
-        AIPlayerView playerView;
+        PublicPlayer row;
+        row.player = player;
+        AIPlayerView &playerView = row.view;
         playerView.objectName = player->objectName();
         // Resolve control links without getActualController's repair/mutation path.
         playerView.controller = controllerRoots.value(player->objectName());
@@ -596,18 +610,19 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
         playerView.attackRange = player->getAttackRange();
         playerView.gender = int(player->getGender());
         playerView.lord = player->isLord();
-        // Query the equipped armor only. A virtual armor skill needs its own
-        // visible projection; do not clone hypothetical equipment for the AI.
-        playerView.armorEffectKnown = (player == viewer || !hegemony)
-            && player->property("View_As_Equips_List").toString().isEmpty();
+        // Armor visibility still depends on the viewer in hegemony. The blocking
+        // scan and the physical armor do not, so they are resolved once.
+        bool armorBlocked = false;
         for (const SkillInstance &instance : player->getSkillInstances()) {
             if (Sanguosha->getViewAsEquipSkill(instance.skillName)
                 && !player->isSkillInvalid(instance.skillName, instance.instanceID)) {
-                playerView.armorEffectKnown = false;
+                armorBlocked = true;
                 break;
             }
         }
-        if (playerView.armorEffectKnown) {
+        row.armorBasis = !armorBlocked
+            && player->property("View_As_Equips_List").toString().isEmpty();
+        if (row.armorBasis) {
             const EquipCard *armor = player->getArmor();
             // Mirror the physical branch of hasArmorEffect only. Its fallback
             // invokes viewAsEquip callbacks (even before checking skill validity)
@@ -615,69 +630,45 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
             if (armor && player->isAlive() && player->getMark("Armor_Nullified") <= 0
                 && (player->getMark("IgnoreArea1") > 0 || player->hasEquipArea(1))
                 && !player->isEquipsNullified(armor))
-                playerView.activeArmorName = armor->objectName();
+                row.activeArmorName = armor->objectName();
         }
         for (int slot = 0; slot < 5; ++slot) {
             if (const EquipCard *equip = player->getEquip(slot))
                 playerView.equipSlots.insert(slot, equip->getEffectiveId());
         }
 
-        const bool seesIdentity = player == viewer || !hegemony
-            || player->hasShownOneGeneral() || player->isDead();
-        if (seesIdentity)
-            playerView.kingdom = hegemony && player == viewer && !player->hasShownOneGeneral()
-                && player->getActualGeneral1() ? player->getHegemonyKingdom() : player->getKingdom();
-        world.customRoles = world.customRoles || player->getRoleEnum() == Player::UnknownRole;
-        playerView.roleRevealed = m_room.isRoleRevealed(player);
-        playerView.roleVisible = m_room.canSeeRole(viewer, player);
-        if (playerView.roleVisible)
-            playerView.role = player->getRole();
-        if (player == viewer || !hegemony || player->hasShownGeneral() || player->isDead())
-            playerView.generalName = hegemony && player == viewer
-                ? player->getActualGeneral1Name() : player->getGeneralName();
-        if (player == viewer || !hegemony || player->hasShownGeneral2() || player->isDead())
-            playerView.general2Name = hegemony && player == viewer
-                ? player->getActualGeneral2Name() : player->getGeneral2Name();
+        row.kingdom = player->getKingdom();
+        row.hegemonyKingdom = player->getHegemonyKingdom();
+        row.hasActualGeneral1 = player->getActualGeneral1() != nullptr;
+        row.shownOneGeneral = player->hasShownOneGeneral();
+        row.shownGeneral = player->hasShownGeneral();
+        row.shownGeneral2 = player->hasShownGeneral2();
+        row.generalName = player->getGeneralName();
+        row.general2Name = player->getGeneral2Name();
+        row.actualGeneral1Name = player->getActualGeneral1Name();
+        row.actualGeneral2Name = player->getActualGeneral2Name();
+        row.role = player->getRole();
+        row.roleRevealed = m_room.isRoleRevealed(player);
+        board.customRoles = board.customRoles || player->getRoleEnum() == Player::UnknownRole;
 
         foreach (const Card *card, player->getEquips())
             playerView.equips << makeAICardView(card);
         foreach (const Card *card, player->getJudgingArea())
             playerView.judgingArea << makeAICardView(card);
-        foreach (const QString &mark, player->getMarkNames()) {
-            if (isMarkVisibleTo(player, mark, viewer))
-                playerView.publicMarks.insert(mark, player->getMark(mark));
-        }
+        foreach (const QString &mark, player->getMarkNames())
+            row.marks.insert(mark, player->getMark(mark));
 
-        // Card zones. Only what this viewer may see crosses, and an open-but-empty zone
-        // stays distinguishable from one that is simply not visible.
-        playerView.handVisible = player == viewer || viewer->canSeeHandcard(player);
-        if (player != viewer) {
-            const QString visibleFlag = QStringLiteral("visible_%1_%2")
-                .arg(viewer->objectName(), player->objectName());
-            foreach (const Card *card, player->getHandcards()) {
-                if (!card) continue;
-                if (playerView.handVisible || card->hasFlag(QStringLiteral("visible"))
-                    || card->hasFlag(visibleFlag))
-                    playerView.knownCards << makeAICardView(card);
-            }
-        }
         foreach (const QString &pileName, player->getPileNames()) {
-            AICardPileView pileView;
-            pileView.name = pileName;
-            const QList<int> pileCards = player->getPile(pileName);
-            pileView.count = pileCards.size();
-            pileView.handPile = pileName == QStringLiteral("wooden_ox")
+            PublicPile pile;
+            pile.name = pileName;
+            pile.cardIds = player->getPile(pileName);
+            pile.handPile = pileName == QStringLiteral("wooden_ox")
                 || pileName.startsWith(QChar('&'));
-            pileView.open = player == viewer
-                || player->pileOpen(pileName, viewer->objectName());
-            if (pileView.open) {
-                pileView.cardIds = pileCards;
-                foreach (const int cardId, pileCards) {
-                    if (const Card *card = Sanguosha->getCard(cardId))
-                        pileView.cards << makeAICardView(card);
-                }
+            foreach (const int cardId, pile.cardIds) {
+                if (const Card *card = Sanguosha->getCard(cardId))
+                    pile.cards << makeAICardView(card);
             }
-            playerView.piles << pileView;
+            row.piles << pile;
         }
         // Display cards are shown to the table, so their ids are public.
         const QString displayProperty = player->property("display_cards").toString();
@@ -694,23 +685,16 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
             const Skill *skill = Sanguosha->getSkill(instance.skillName);
             if (!instance.visible || !skill || !skill->isVisible())
                 continue;
-            const bool visibleToViewer = !hegemony
-                || SkillRuntimeCoordinator::canReceiveSkillInstance(m_room, viewer, player, instance);
-            if (!visibleToViewer)
-                continue;
-            AISkillView skillView;
+            PublicSkill cached;
+            cached.instance = instance;
+            AISkillView &skillView = cached.view;
             skillView.skillName = instance.skillName;
             skillView.instanceId = instance.instanceID;
             skillView.source = int(instance.source);
             skillView.invalid = player->isSkillInvalid(instance.skillName, instance.instanceID);
             skillView.hasAmountOverride = instance.hasAmountOverride;
             skillView.amount = instance.hasAmountOverride ? instance.amountOverride : 0;
-            skillView.hasPrivateState = player == viewer;
             skillView.hasViewAsSkill = ViewAsSkill::parseViewAsSkill(skill) != nullptr;
-            if (skillView.hasPrivateState) {
-                skillView.state = makeAIStateObject(player->getSkillInstanceState(
-                    instance.skillName, instance.instanceID));
-            }
             for (const QMetaObject *meta = skill->metaObject(); meta; meta = meta->superClass())
                 skillView.skillClasses << QString::fromLatin1(meta->className());
             skillView.frequency = int(skill->getFrequency(player));
@@ -720,6 +704,98 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
             skillView.lordSkillEffective = skill->isLordSkill()
                 && player->hasLordSkill(skill->objectName());
             skillView.correctState = makeAIStateObject(instance.correctState);
+            row.skills << cached;
+        }
+        board.players << row;
+    }
+    return board;
+}
+
+AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, ServerPlayer *viewer,
+                                                   bool compactPolicy, bool eventOnly) const
+{
+    EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
+    LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
+    AIWorldView world;
+    world.modeId = board.modeId;
+    world.revision = board.revision;
+    world.currentPlayer = board.currentPlayer;
+    world.currentPhase = board.currentPhase;
+    world.playerOrder = board.playerOrder;
+    world.alivePlayerOrder = board.alivePlayerOrder;
+    world.customRoles = board.customRoles;
+    if (!viewer || viewer->getRoom() != &m_room) return world;
+
+    const bool hegemony = ServerInfo.EnableHegemony;
+    for (const PublicPlayer &row : board.players) {
+        ServerPlayer *player = row.player;
+        if (!player) continue;
+        AIPlayerView playerView = row.view;
+        // Query the equipped armor only. A virtual armor skill needs its own
+        // visible projection; do not clone hypothetical equipment for the AI.
+        playerView.armorEffectKnown = row.armorBasis && (player == viewer || !hegemony);
+        if (playerView.armorEffectKnown)
+            playerView.activeArmorName = row.activeArmorName;
+
+        const bool seesIdentity = player == viewer || !hegemony
+            || row.shownOneGeneral || playerView.dead;
+        if (seesIdentity)
+            playerView.kingdom = hegemony && player == viewer && !row.shownOneGeneral
+                && row.hasActualGeneral1 ? row.hegemonyKingdom : row.kingdom;
+        playerView.roleRevealed = row.roleRevealed;
+        playerView.roleVisible = m_room.canSeeRole(viewer, player);
+        if (playerView.roleVisible)
+            playerView.role = row.role;
+        if (player == viewer || !hegemony || row.shownGeneral || playerView.dead)
+            playerView.generalName = hegemony && player == viewer
+                ? row.actualGeneral1Name : row.generalName;
+        if (player == viewer || !hegemony || row.shownGeneral2 || playerView.dead)
+            playerView.general2Name = hegemony && player == viewer
+                ? row.actualGeneral2Name : row.general2Name;
+
+        for (auto mark = row.marks.cbegin(); mark != row.marks.cend(); ++mark) {
+            if (isMarkVisibleTo(player, mark.key(), viewer))
+                playerView.publicMarks.insert(mark.key(), mark.value());
+        }
+
+        // Card zones. Only what this viewer may see crosses, and an open-but-empty zone
+        // stays distinguishable from one that is simply not visible. Hand flags are
+        // read live: card flags do not bump the room revision.
+        playerView.handVisible = player == viewer || viewer->canSeeHandcard(player);
+        if (player != viewer) {
+            const QString visibleFlag = QStringLiteral("visible_%1_%2")
+                .arg(viewer->objectName(), player->objectName());
+            foreach (const Card *card, player->getHandcards()) {
+                if (!card) continue;
+                if (playerView.handVisible || card->hasFlag(QStringLiteral("visible"))
+                    || card->hasFlag(visibleFlag))
+                    playerView.knownCards << makeAICardView(card);
+            }
+        }
+        for (const PublicPile &pile : row.piles) {
+            AICardPileView pileView;
+            pileView.name = pile.name;
+            pileView.count = pile.cardIds.size();
+            pileView.handPile = pile.handPile;
+            pileView.open = player == viewer
+                || player->pileOpen(pile.name, viewer->objectName());
+            if (pileView.open) {
+                pileView.cardIds = pile.cardIds;
+                pileView.cards = pile.cards;
+            }
+            playerView.piles << pileView;
+        }
+
+        for (const PublicSkill &cached : row.skills) {
+            if (hegemony && !SkillRuntimeCoordinator::canReceiveSkillInstance(
+                    m_room, viewer, player, cached.instance))
+                continue;
+            AISkillView skillView = cached.view;
+            skillView.hasPrivateState = player == viewer;
+            if (skillView.hasPrivateState) {
+                skillView.state = makeAIStateObject(player->getSkillInstanceState(
+                    cached.instance.skillName, cached.instance.instanceID));
+            }
             playerView.skills << skillView;
         }
 
@@ -791,6 +867,16 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
     }
     AiLuaRuntime::evaluateModePolicy(m_room.roomRuntime()->lua(), world, compactPolicy);
     return world;
+}
+
+AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool compactPolicy,
+                                                 bool eventOnly) const
+{
+    AIWorldView world;
+    world.modeId = m_room.getMode();
+    world.revision = m_room.roomRuntime()->stateRevision();
+    if (!viewer || viewer->getRoom() != &m_room) return world;
+    return projectWorldView(buildPublicBoard(), viewer, compactPolicy, eventOnly);
 }
 
 AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
