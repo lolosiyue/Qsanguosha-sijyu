@@ -14,6 +14,8 @@
 //#include "util.h"
 #include "wrapped-card.h"
 #include "roomthread.h"
+#include "card-lifetime-manager.h"
+#include <QScopeGuard>
 
 Slash::Slash(Suit suit, int number) : BasicCard(suit, number)
 {
@@ -25,11 +27,14 @@ Slash::Slash(Suit suit, int number) : BasicCard(suit, number)
 
 bool Slash::IsAvailable(const Player *player, const Card *slash, bool)
 {
-	if (!slash){
-		Card *c = new Slash(Card::NoSuit, 0);
-		c->deleteLater();
-		slash = c;
-	}
+    Card *temporary = slash ? nullptr : new Slash(Card::NoSuit, 0);
+    if (temporary) slash = temporary;
+    // Lua target queries may drain managed cards; retain the probe until return.
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    CardLifetimeLease lease(manager, manager.observeCard(const_cast<Card *>(slash)));
+    const auto retire = qScopeGuard([temporary] {
+        if (temporary) temporary->deleteLater();
+    });
 	foreach (const Player *p, player->getAliveSiblings()) {
 		if(slash->targetFilter(QList<const Player *>(),p,player))
 			return true;

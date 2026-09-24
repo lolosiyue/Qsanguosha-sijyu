@@ -926,7 +926,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             // conversion: it is already carried by the skill action path and its
             // selected cards. Skipping it is classification, not a coverage gap.
             if (produced->objectName().isEmpty()) {
-                delete produced;
+                const_cast<Card *>(produced)->deleteLater();
                 continue;
             }
             AICardConversionView view;
@@ -946,7 +946,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             const AICardCandidateView candidate = makeAICardCandidate(m_room, player,
                 produced, request.handlingMethod, request.kind, request.pattern, projectionBudget);
             view.available = candidate.available && !candidate.limited;
-            if (!view.available) { delete produced; continue; }
+            if (!view.available) { const_cast<Card *>(produced)->deleteLater(); continue; }
             view.targetFixed = candidate.targetFixed;
             view.feasibleWithNoTarget = candidate.feasibleWithNoTarget;
             view.completeCoverage = candidate.completeCoverage;
@@ -957,7 +957,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             view.affectedTargets = candidate.affectedTargets;
             // The projection is a value. Nothing native survives this function, so a
             // conversion can never be a handle the AI holds onto.
-            delete produced;
+            const_cast<Card *>(produced)->deleteLater();
             request.cardConversions << view;
         }
     }
@@ -1112,7 +1112,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     if (produced->objectName() != authorized->name
         || int(produced->getSuit()) != authorized->suit
         || produced->getNumber() != authorized->number) {
-        delete produced;
+        const_cast<Card *>(produced)->deleteLater();
         return nullptr;
     }
     Card *card = const_cast<Card *>(produced);
@@ -1208,7 +1208,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
             }
         }
         if (!authorized) {
-            delete built;
+            built->deleteLater();
             return false;
         }
         candidate.hasSkillActivationRequest = true;
@@ -2085,7 +2085,7 @@ const Card *AiDecisionCoordinator::responseCard(ServerPlayer *player, const AIRe
         if (!card) return nullptr;
         if (player->isCardLimited(card, request.handlingMethod)
             || (!pattern.isEmpty() && !Sanguosha->matchPattern(pattern, player, card))) {
-            delete card;
+            card->deleteLater();
             return nullptr;
         }
         // The response API returns a raw pointer. Queue reclamation without a drain
