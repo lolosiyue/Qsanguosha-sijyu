@@ -653,12 +653,12 @@ instruction budget 保護，超限即停用該 Room 的 Isolated VM、保留 leg
 
 ## 17. Ticket 路線圖
 
-[分批實作方案](process/active-skill-v2-tickets.md#17-ticket-路線圖)保存 ticket 範圍、依賴及交付規劃。
+分批 ticket 範圍、依賴及交付規劃屬實作期記錄，已隨過程文檔移除。
 
 ## 18. 每票通用驗收
 
-原計畫的[驗收步驟](process/active-skill-v2-tickets.md#18-每票通用驗收)與目前的[驗證矩陣](active-skill-v2-test-matrix.md)分別記錄計畫和結果。
+原計畫的驗收步驟屬實作期記錄；目前的[驗證矩陣](active-skill-v2-test-matrix.md)記錄驗收結果。
 
 ## 19. 計劃狀態
 
-各 Ticket 的歷史進度與當時建置結果見[實作歷程](process/active-skill-v2-history.md)。驗收情境見[測試矩陣](active-skill-v2-test-matrix.md)。
+驗收情境見[測試矩陣](active-skill-v2-test-matrix.md)。

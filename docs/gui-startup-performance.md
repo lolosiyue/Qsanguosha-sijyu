@@ -49,4 +49,4 @@ ordering remain eager and unchanged.
 
 ## Measurement records
 
-The [2026-09-20 Debug comparison](reports/gui-startup-performance-20260920.md) preserves the before/after phases, instrument-only runs, compatibility regression and final unprofiled startup check.
+The 2026-09-20 Debug comparison recorded the before/after phases, instrument-only runs, compatibility regression and final unprofiled startup check.

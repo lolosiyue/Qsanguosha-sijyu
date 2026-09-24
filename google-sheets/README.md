@@ -8,4 +8,4 @@ Apps Script 將玩家可見狀態與操作候選呈現在工作表，Windows gat
 2. 依[Sheets 安裝](../docs/google-sheets-setup.md#sheets-安裝)加入 Apps Script，配對自己的文件。
 3. 在工作表選牌與目標，透過側欄更新、預檢及提交操作。
 
-[完整操作指南](../docs/google-sheets-setup.md) · [架構與資料契約](../docs/google-sheets-client.md) · [版本驗證](../docs/reports/google-sheets-20260913-16.md)
+[完整操作指南](../docs/google-sheets-setup.md) · [架構與資料契約](../docs/google-sheets-client.md)

@@ -1,8 +1,8 @@
 # Excel 封裝指南
 
 本頁定義 Excel modern／legacy bundle 的輸入、封裝與靜態檢查。CP0 inventory、VBA
-來源、runtime-only staging 和正式封裝使用同一套工具；實際 Excel 操作與完整對局另列
-在 [Excel 實作狀態](reports/excel-20260912.md)。
+來源、runtime-only staging 和正式封裝使用同一套工具；實際 Excel 操作與完整對局屬另行驗收，
+不在本頁記錄。
 
 ## 輸入
 

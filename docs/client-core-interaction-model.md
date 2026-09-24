@@ -255,7 +255,7 @@ the MainWindow shortcut/menu, live TCP reconnection or full-game acceptance.
 
 ### Presentation gates
 
-The [2026-09-16 presentation report](reports/client-core-presentation-20260916.md) records the focused checks, full CTest run, failed fixture and retry, and subsequent keyboard checkpoint. Live-room keyboard parity and screen-reader acceptance remain separate checks.
+The 2026-09-16 presentation checks covered the focused checks, full CTest run, failed fixture and retry, and subsequent keyboard checkpoint. Live-room keyboard parity and screen-reader acceptance remain separate checks.
 
 ## QML interaction
 

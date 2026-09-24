@@ -1,6 +1,6 @@
 # Excel client CP0 tools
 
-這些工具產生可審核的靜態資料或候選封裝；Excel／VBA 與遊戲驗收依 [Excel 實作狀態](../docs/reports/excel-20260912.md) 的實測項目判定。
+這些工具產生可審核的靜態資料或候選封裝；Excel／VBA 與遊戲驗收依各版本實測判定。
 
 ## CP0 inventory
 
