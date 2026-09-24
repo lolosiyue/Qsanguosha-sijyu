@@ -1,5 +1,5 @@
 -- Ported original hegemony audio translations.
--- source: TODO/original/lang/zh_CN/Audio/StandardWuLines.lua
+-- source: TODO/original/lang/zh_CN/Audio/StandardWuLines.lua; TODO/QSanguosha-For-Hegemony-xxyheaven@cf61c15/lang/zh_CN/Audio/StandardWuLines.lua
 return {
 	["~heg_sunquan"] = "父亲，大哥，仲谋愧矣……",
 	["~heg_ganning"] = "二十年后，又是一条好汉！",
@@ -19,4 +19,9 @@ return {
 	["~heg_dingfeng"] = "这风，太冷了……",
 	["$heg_duoshi1"] = "审时度势，方能出奇制胜！", -- 仅自己
 	["$heg_duoshi2"] = "诸公稍安勿躁，度势再战。",
+	["$heg_mouduan1"] = "士别三日，当刮目相待！",
+	["$heg_kurou1"] = "我这把老骨头不算什么！",
+	["$heg_kurou2"] = "为成大义，死不足惜！",
+	["$heg_liuli1"] = "交给你了。",
+	["$heg_liuli2"] = "你来嘛~",
 }

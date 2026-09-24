@@ -1,5 +1,5 @@
 -- Ported original hegemony audio translations.
--- source: TODO/original/lang/zh_CN/Audio/StandardQunLines.lua
+-- source: TODO/original/lang/zh_CN/Audio/StandardQunLines.lua; TODO/QSanguosha-For-Hegemony-xxyheaven@cf61c15/lang/zh_CN/Audio/StandardQunLines.lua
 return {
 	["~heg_huatuo"] = "医者…不能自医啊……",
 	["~heg_lvbu"] = "不可能！",
@@ -31,4 +31,12 @@ return {
 	["$heg_suishi2"] = "我军大败，吾必死矣。",
 	["$heg_qingcheng1"] = "奴家给大人唱首曲子如何？",
 	["$heg_qingcheng2"] = "大人也请宽衣。",
+	["$heg_chuli1"] = "病入膏肓，需下猛药。",
+	["$heg_chuli2"] = "病去，如抽丝。",
+	["$heg_jianchu1"] = "你这身躯，怎么能快过我？",
+	["$heg_jianchu2"] = "这些怎么能挡住我的威力！",
+	["$heg_kuangfu1"] = "我乃上将潘凤，可斩华雄！",
+	["$heg_kuangfu2"] = "这家伙还是给我用吧！",
+	["$heg_wansha1"] = "神仙难救，神仙难救啊。",
+	["$heg_wansha2"] = "我要你三更死，谁敢留你到五更！",
 }

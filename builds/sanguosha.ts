@@ -953,6 +953,14 @@
 <context>
     <name>ChooseGeneralBox</name>
     <message>
+        <source>Free choose head...</source>
+        <translation>自由选择主将…</translation>
+    </message>
+    <message>
+        <source>Free choose deputy...</source>
+        <translation>自由选择副将…</translation>
+    </message>
+    <message>
         <source>Choose head and deputy generals</source>
         <translation>选择主将与副将</translation>
     </message>
@@ -969,8 +977,8 @@
         <translation>副将</translation>
     </message>
     <message>
-        <source>Arrows/Tab: focus; Space: select; X: swap; Enter: confirm</source>
-        <translation>方向键/Tab：切换；空格：选取；X：交换；回车：确定</translation>
+        <source>Arrows/Tab: focus; Enter/Space: activate; Esc/Backspace: undo; X: swap</source>
+        <translation>方向键/Tab：切换；回车/空格：选取、取消或确认；Esc/退格：撤回；X：交换</translation>
     </message>
 </context>
 <context>
@@ -5167,6 +5175,14 @@
 <context>
     <name>RoleAssignDialog</name>
     <message>
+        <source>Assign seats</source>
+        <translation>分配座位</translation>
+    </message>
+    <message>
+        <source>Seat %1: %2</source>
+        <translation>座位 %1：%2</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/roleassigndialog.cpp" line="17"/>
         <source>Assign roles and seats</source>
         <translation>自由分配身份和座位</translation>
@@ -6964,6 +6980,26 @@ P = 你自己, R = 你所在的房间</translation>
 </context>
 <context>
     <name>DesktopGamePresentation</name>
+    <message>
+        <source>Free choose head...</source>
+        <translation>自由选择主将…</translation>
+    </message>
+    <message>
+        <source>Free choose deputy...</source>
+        <translation>自由选择副将…</translation>
+    </message>
+    <message>
+        <source>Head: %1</source>
+        <translation>主将：%1</translation>
+    </message>
+    <message>
+        <source>Deputy: %1</source>
+        <translation>副将：%1</translation>
+    </message>
+    <message>
+        <source>Choose a head, then a deputy. Uncheck a general to reselect; Cancel clears the selection.</source>
+        <translation>先选择主将，再选择副将。取消勾选武将可重选；取消按钮清空选择。</translation>
+    </message>
     <message>
         <source>Cancel selection or response</source>
         <translation>取消选择或响应</translation>

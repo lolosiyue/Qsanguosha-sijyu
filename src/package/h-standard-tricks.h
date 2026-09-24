@@ -42,7 +42,8 @@ public:
     virtual QString getSubtype() const;
     virtual bool isAvailable(const Player *player) const;
 
-    virtual void onUse(Room *room, CardUseStruct &card_use) const;
+    bool needsDeferredHegemonyReveal() const override { return true; }
+    void prepareUseTargets(Room *room, CardUseStruct &card_use) const override;
     virtual void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
     virtual void onEffect(CardEffectStruct &effect) const;
 };
