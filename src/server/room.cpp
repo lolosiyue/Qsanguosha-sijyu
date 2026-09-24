@@ -6377,17 +6377,19 @@ bool Room::canMoveField(const QString&flags, QList<ServerPlayer*> froms, QList<S
 {
 	if (froms.isEmpty()) froms = getAlivePlayers();
 	foreach(ServerPlayer*p, froms){
+		if (!p || !p->isAlive()) continue;
 		QList<ServerPlayer*> new_tos = tos;
 		if (new_tos.isEmpty()) new_tos = getOtherPlayers(p);
 		foreach(const Card*c, p->getCards(flags)){
 			if (!p->canMove(p, c->getEffectiveId())) continue;
 			foreach(ServerPlayer*d, new_tos){
+				if (!d || !d->isAlive() || d == p) continue;
 				if (c->isKindOf("EquipCard")){
 					const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
 					QList<int> occupy_slots = equip->getOccupyLocations();
 					bool all_slots_empty = true;
 					foreach(int slot, occupy_slots){
-						if(d->getEquip(slot)){
+						if(!d->hasEquipArea(slot) || d->getEquip(slot)){
 							all_slots_empty = false;
 							break;
 						}
@@ -6395,7 +6397,7 @@ bool Room::canMoveField(const QString&flags, QList<ServerPlayer*> froms, QList<S
 					if (all_slots_empty && !p->isProhibited(d, c))
 						return true;
 				} else if (c->isKindOf("DelayedTrick")){
-					if (!p->isProhibited(d, c))
+					if (d->hasJudgeArea() && !d->containsTrick(c->objectName()) && !p->isProhibited(d, c))
 						return true;
 				}
 			}
@@ -6405,88 +6407,78 @@ bool Room::canMoveField(const QString&flags, QList<ServerPlayer*> froms, QList<S
 }
 
 bool Room::moveField(ServerPlayer*player, const QString&reason, bool optional, const QString&flags, QList<ServerPlayer*> froms,
-					QList<ServerPlayer*> tos)
+                    QList<ServerPlayer*> tos)
 {
+    if (!player || !player->isAlive()) return false;
+    // Apply the same live legality rules to source, card and destination choices.
+    const auto canTransfer = [&](ServerPlayer *from, ServerPlayer *to, const Card *card) {
+        if (!player->isAlive() || !from || !to || !card || from == to
+            || !from->isAlive() || !to->isAlive()) return false;
+        const int id = card->getEffectiveId();
+        if (id < 0 || getCardOwner(id) != from || !from->canMove(from, id)
+            || !player->canMove(from, id) || player->isProhibited(to, card)) return false;
+        const Player::Place place = getCardPlace(id);
+        if (place == Player::PlaceEquip && flags.contains("e")) {
+            const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+            if (!equip) return false;
+            for (int slot : equip->getOccupyLocations())
+                if (!to->hasEquipArea(slot) || to->getEquip(slot)) return false;
+            return true;
+        }
+        return place == Player::PlaceDelayedTrick && flags.contains("j")
+            && to->hasJudgeArea() && !to->containsTrick(card->objectName());
+    };
 
-	QList<ServerPlayer*> from_players;
-	if (froms.isEmpty()) froms = getAlivePlayers();
+    if (froms.isEmpty()) froms = getAlivePlayers();
+    if (tos.isEmpty()) tos = getAlivePlayers();
+    QList<ServerPlayer *> from_players;
+    for (ServerPlayer *from : froms) {
+        if (!from || !from->isAlive()) continue;
+        bool movable = false;
+        for (const Card *card : from->getCards(flags)) {
+            for (ServerPlayer *to : tos) {
+                if (canTransfer(from, to, card)) { movable = true; break; }
+            }
+            if (movable) break;
+        }
+        if (movable) from_players << from;
+    }
+    if (from_players.isEmpty()) return false;
 
-	foreach(ServerPlayer*p, froms){
-		QList<ServerPlayer*> newFroms;
-		newFroms << p;
-		if (canMoveField(flags, newFroms, tos))
-			from_players << p;
-	}
+    QString prompt = "@movefield-from";
+    if (flags.contains("e") && !flags.contains("j")) prompt = "@movefield-equip-from";
+    else if (flags.contains("j") && !flags.contains("e")) prompt = "@movefield-judge-from";
+    if (optional) prompt += "-optional";
+    ServerPlayer *from = askForPlayerChosen(player, from_players, reason + "_from", prompt, optional);
+    if (!from || !from->isAlive() || !player->isAlive()) return false;
 
-	QString prompt = "@movefield-from";
-	if (flags.contains("e")&&!flags.contains("j"))
-		prompt = "@movefield-equip-from";
-	else if (flags.contains("j")&&!flags.contains("e"))
-		prompt = "@movefield-judge-from";
+    QList<int> disabled_ids;
+    const QList<const Card *> cards = from->getCards(flags);
+    for (const Card *card : cards) {
+        bool movable = false;
+        for (ServerPlayer *to : tos) {
+            if (canTransfer(from, to, card)) { movable = true; break; }
+        }
+        if (!movable) disabled_ids << card->getEffectiveId();
+    }
+    if (disabled_ids.size() == cards.size()) return false;
+    doAnimate(S_ANIMATE_INDICATE, player->objectName(), from->objectName());
+    const int id = askForCardChosen(player, from, flags, reason, false, Card::MethodNone, disabled_ids);
+    if (id < 0 || disabled_ids.contains(id)) return false;
+    const Card *card = Sanguosha->getCard(id);
+    const Player::Place place = getCardPlace(id);
+    QList<ServerPlayer *> to_players;
+    for (ServerPlayer *to : tos)
+        if (canTransfer(from, to, card)) to_players << to;
+    if (to_players.isEmpty()) return false;
 
-	if (optional) prompt = prompt + "-optional";
-	ServerPlayer*from = askForPlayerChosen(player, from_players, reason + "_from", prompt, optional);
-	if(!from) return false;
-
-	QList<int> disabled_ids;
-	if (tos.isEmpty()) tos = getOtherPlayers(from);
-	foreach(const Card*c, from->getCards(flags)){
-		if (!from->canMove(from, c->getEffectiveId())){
-			disabled_ids << c->getId();
-			continue;
-		}
-		bool has = true;
-		foreach(ServerPlayer*d, tos){
-			if (player->isProhibited(d, c)) continue;
-			if (c->isKindOf("EquipCard")){
-				const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
-				QList<int> occupy_slots = equip->getOccupyLocations();
-				bool all_slots_empty = true;
-				foreach(int slot, occupy_slots){
-					if(d->getEquip(slot)){
-						all_slots_empty = false;
-						break;
-					}
-				}
-				if (all_slots_empty)
-					continue;
-			}
-			has = false;
-			break;
-		}
-		if (has)
-			disabled_ids << c->getId();
-	}
-	doAnimate(S_ANIMATE_INDICATE, player->objectName(), from->objectName());
-	int id = askForCardChosen(player, from, flags, reason, false, Card::MethodNone, disabled_ids);
-	if (id < 0) return false;	// 無卡可選（from 的卡全在 disabled_ids，或 AI 回 -1）→ 直接失敗，避免 getCard(-1) nullptr deref
-	Player::Place place = getCardPlace(id);
-	const Card*c = Sanguosha->getCard(id);
-
-	QList<ServerPlayer*> to_players;
-	foreach(ServerPlayer*p, tos){
-		if (player->isProhibited(p, c)) continue;
-		if (place == Player::PlaceEquip){
-			const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
-			QList<int> occupy_slots = equip->getOccupyLocations();
-			bool all_slots_empty = true;
-			foreach(int slot, occupy_slots){
-				if(p->getEquip(slot)){
-					all_slots_empty = false;
-					break;
-				}
-			}
-			if (all_slots_empty)
-				continue;
-		}
-		to_players << p;
-	}
-	if (to_players.isEmpty()) return false;
-
-	ServerPlayer*to = askForPlayerChosen(player, to_players, reason + "_to", "@movefield-to:" + c->objectName());
-	doAnimate(S_ANIMATE_INDICATE, player->objectName(), to->objectName());
-	moveCardTo(c, from, to, place, CardMoveReason(CardMoveReason::S_REASON_TRANSFER, player->objectName(), reason, ""), true);
-	return true;
+    ServerPlayer *to = askForPlayerChosen(player, to_players, reason + "_to", "@movefield-to:" + card->objectName());
+    // A nested prompt may have moved the card or changed an occupied/abolished area.
+    if (!to || getCardPlace(id) != place || !canTransfer(from, to, card)) return false;
+    doAnimate(S_ANIMATE_INDICATE, player->objectName(), to->objectName());
+    moveCardTo(card, from, to, place,
+        CardMoveReason(CardMoveReason::S_REASON_TRANSFER, player->objectName(), reason, ""), true);
+    return true;
 }
 
 void Room::swapEquips(ServerPlayer*first, ServerPlayer*second, const QString&skill_name)

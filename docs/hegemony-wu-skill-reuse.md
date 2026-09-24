@@ -6,7 +6,7 @@
 | --- | --- |
 | 孫權 | 獨立 V2 `heg_zhiheng` |
 | 甘寧 | `qixi` |
-| 呂蒙 | `keji` |
+| 呂蒙 | `keji`；另保留差異技能 `heg_mouduan` |
 | 黃蓋 | `kurou` |
 | 周瑜 | `yingzi`、`fanjian` |
 | 大喬 | `guose`、`liuli` |
@@ -28,8 +28,10 @@
 | 制衡相容 | 沿用 `heg_zhiheng` 翻譯及 `HZhihengCard` history key；實際卡牌為 `ActiveSkillCard`，不恢復舊 HZhihengCard 類別。一般及國戰 AI 改建通用 proxy，保留原選牌策略與 activation identity；次數由 V2 實例配額管線判斷。 |
 | 度勢 | 一張紅色手牌轉為 `HAwaitExhausted`；僅出牌使用。`createCard()` 無副作用，材料付款、目標與效果沿用普通錦囊管線。 |
 | 次數 | 使用 `Limit_Phase`、上限 4，按 activation instance 計算；沿用 `DuoshiAE` history key。刪除錦囊內額外增加同一 history 的邏輯，避免一次計兩次。 |
-| 舊定義 | 工作區未提交的 H 副本與 h-standard-wu-variants 已清理；本提交保留既有共用 ID，只將小喬改接 tenyeartianxiang、周泰增加 mobilefenji。尚待確認的 HMouduan 不納入本提交。 |
+| 舊定義 | 工作區未提交的 H 副本與 h-standard-wu-variants 已清理；本提交保留既有共用 ID，只將小喬改接 tenyeartianxiang、周泰增加 mobilefenji。HMouduan 後續補齊為直接 V2，使用共用用牌紀錄與 moveField。 |
 | 奮激變體 | 共用 MobileFenji 原定義並升級 TriggerSkillV2，保留 mobilefenji 翻譯與 AI；按手殺版於回合結束（切換至 NotActive）詢問，空手牌角色先摸兩張，持有者後失去 1 點體力。取代 H 版結束階段開始的時機。 |
+| 謀斷 V2 | 直接讀取共用 HXxyRecord 的 PhaseUsedCards 值快照，於結束階段開始檢查本回合出牌階段使用過四種花色或基本／錦囊／裝備三種類別；無花色不算花色，技能牌及純打出不計。共用紀錄於 NotActive 清除，多個出牌階段累積。按有效技能實例觸發，不另建計數器。BGM 文／武切換版與此效果不同，不引用。 |
+| 謀斷移牌 | 直接以 canMoveField("ej") 檢查可移牌，並呼叫 moveField(owner, objectName(), true, "ej")；不保留技能內的 destinations 或選牌副本。共用 moveField 修正空裝備欄位判斷，統一來源／牌／目標合法性與回覆後核對，使用既有 movefield 提示與技能 _from／_to 選擇介面。 |
 | 翻譯 | 共用技能沿原版翻譯，不另建立國戰同效果鍵。工作區翻譯清理未產生本提交所需的新鍵。 |
 | 四技能共用決定 | 反間沿原版 fanjian V2：只有不同花色裝備、沒有手牌時仍可選展示／棄牌。短兵與奮迅沿原版 duanbing／fenxun V2。刪除 h-standard-wu-variants.cpp/.h 及其 CMake、套件註冊接線。 |
 | 天香身份局變體 | 小喬改引用十週年 tenyeartianxiang，其 ViewAsSkillV2 選牌入口共用原 TenyearTianxiangCard；紅桃手牌防止傷害，再選無來源 1 點傷害並摸至多 5 張，或失去 1 體力並取得棄牌。不保留舊 heg_tianxiang 各選項每回合一次及原傷害來源限制。外層仍為回應派送器，接受回應才發動 V2，取消不記一次發動。 |
