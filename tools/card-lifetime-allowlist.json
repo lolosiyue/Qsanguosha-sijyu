@@ -17,6 +17,7 @@
     "3v3 RoomThread",
     "SWIG Card exposure",
     "XMode RoomThread",
+    "`AiDecisionCoordinator::responseCard` conversion",
     "`Card::Clone`",
     "`Card::Parse` temporary cards",
     "`Card::change_cards`",
@@ -99,7 +100,7 @@
       "reason": "Query-local declaration clone; synchronous Scene delivers deferred deletion after JSON evaluation while projected Players exist, without globally draining unrelated Cards"
     },
     {
-      "site": "src/client/runtime/client-selection-runtime.h:358",
+      "site": "src/client/runtime/client-selection-runtime.h:359",
       "category": "upcast_delete",
       "reason": "Native client runtime temporary view-as card; QObject::deleteLater bypasses Card::deleteLater, which drains the global lifetime manager"
     },
