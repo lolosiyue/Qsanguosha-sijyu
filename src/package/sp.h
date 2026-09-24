@@ -58,11 +58,12 @@ public:
     Q_INVOKABLE MoonSpear(Card::Suit suit = Diamond, int number = 12);
 };
 
-class Yongsi : public TriggerSkill
+class Yongsi : public TriggerSkillV2
 {
 public:
     Yongsi();
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *yuanshu, QVariant &data) const;
+    TriggerList triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override;
+    bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *yuanshu, SkillContext &ctx) const override;
 
 protected:
     virtual int getKingdoms(ServerPlayer *yuanshu) const;
