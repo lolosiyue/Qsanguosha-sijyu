@@ -117,7 +117,7 @@ export function targetRangeLabel(state: ClientGameState, self: string, target: s
   if (range.known || inside.known)
     parts.push(`攻${formatMetric(range)}`);
   if (inside.known)
-    parts.push(inside.value ? "範圍內" : "範圍外");
+    parts.push(inside.value ? "范围内" : "范围外");
   return parts.join(" ");
 }
 

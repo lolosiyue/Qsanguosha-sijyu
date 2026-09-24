@@ -70,10 +70,10 @@ export function rulesCompatibilityError(server: unknown, client: unknown): strin
 
 export function rulesErrorMessage(code: string): string {
   if (code.includes("rules_content_unsupported") || code.includes("rules_interaction_unsupported"))
-    return "此內容包不受支援；請使用伺服器支援的規則套件。";
-  if (code.includes("rules_version_mismatch")) return "規則版本不相符；請更新至與伺服器相同的版本。";
+    return "此内容包不受支援；请使用伺服器支援的规则套件。";
+  if (code.includes("rules_version_mismatch")) return "规则版本不相符；请更新至与伺服器相同的版本。";
   if (/rules_(reload_required|identity_required|identity_invalid)/.test(code))
-    return "需要重新載入；請重新整理頁面以載入配對的規則套件。";
+    return "需要重新载入；请重新整理页面以载入配对的规则套件。";
   return code;
 }
 

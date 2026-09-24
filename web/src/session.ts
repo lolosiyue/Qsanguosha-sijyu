@@ -138,7 +138,7 @@ export class LiveSession {
     this.nativeCaughtUp = true;
     if (this.transportClosed && this.phase !== "finished" && this.phase !== "failed") {
       this.phase = "failed";
-      this.error = this.error || "連線已關閉";
+      this.error = this.error || "连线已关闭";
       this.clearInteraction();
       this.notify();
     }
@@ -251,11 +251,11 @@ export class LiveSession {
       }
     }));
     socket.addEventListener("error", () => this.deliverTransport(() => {
-      this.transportEnded(socket, this.local ? "單機對局執行失敗" : "WebSocket 連線失敗");
+      this.transportEnded(socket, this.local ? "单机对局执行失败" : "WebSocket 连线失败");
       socket.close();
     }));
     socket.addEventListener("close", () => this.deliverTransport(() => {
-      this.transportEnded(socket, "連線已關閉");
+      this.transportEnded(socket, "连线已关闭");
     }));
     this.notify();
   }
@@ -277,7 +277,7 @@ export class LiveSession {
 
   sendControl(command: number, payload: JsonObject): void {
     if (this.phase === "finished")
-      throw new Error("對局已結束");
+      throw new Error("对局已结束");
     this.send({
       v: 2,
       type: "notification",
@@ -293,7 +293,7 @@ export class LiveSession {
     // DOM handlers and Worker previews can outlive a request or STATE_SYNC.
     if (this.phase !== "active" || this.syncActive || !this.interaction
         || this.interaction.command !== command || this.interaction.messageId !== replyTo)
-      throw new Error("詢問已更新，請重新選擇");
+      throw new Error("询问已更新，请重新选择");
     if (this.submitting) throw new Error("native_submission_pending");
     if (this.nativeSubmitter) {
       const generation = this.generation;
@@ -303,7 +303,7 @@ export class LiveSession {
       void this.nativeSubmitter(replyTo, intent).then(wire => {
         if (generation !== this.generation || this.interaction !== interaction
             || this.phase !== "active" || this.syncActive)
-          throw new Error("詢問已更新，請重新選擇");
+          throw new Error("询问已更新，请重新选择");
         if (!wire || wire.type !== "reply" || !Number.isSafeInteger(wire.command)
             || wire.reply_to !== replyTo || wire.has_payload !== true
             || !isObject(wire.payload)) throw new Error("native_reply_invalid");
