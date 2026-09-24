@@ -265,6 +265,8 @@ Item {
     readonly property int generalPageBottomMargin: 8
     readonly property int generalPanelGap: 16
     readonly property real generalListShare: 0.40
+    // 左側「分類｜武將包」兩欄導覽；寬度從詳情面板扣，格子尺寸不變
+    readonly property int generalPackageNavWidth: 280
     readonly property int generalGridMargin: 16
     readonly property int generalCellMinWidth: 122
     readonly property int generalGridMinColumns: 5

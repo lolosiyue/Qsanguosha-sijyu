@@ -64,3 +64,7 @@
 2026-09-21 已完成建置、契約與生命週期測量驗證。
 
 相關設計邊界：[`docs/ai-identity-mode-decoupling-plan.md`](ai-identity-mode-decoupling-plan.md)、[`docs/smart-ai-adapter-dependency-audit.md`](smart-ai-adapter-dependency-audit.md)、[`docs/lua-ai-spec.md`](lua-ai-spec.md)。
+
+## Scarlet 參考技能所需共用接口（2026-09-25）
+
+新增 addHandPile／getAllPeachNum、draw 目標推薦與無牌普通傷害接口。具體覆蓋與未覆蓋分支、原版保留行為及靜態檢查點見 [Scarlet isolated AI](scarlet-isolated-ai-examples.md)。此批不是全套 SmartAI 傷害／推薦策略完成證據。

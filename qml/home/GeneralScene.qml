@@ -149,6 +149,77 @@ Item {
         }
     }
 
+    // 武將包導覽欄：直式放在列表左側，窄版改成橫條。
+    component PackageNavList: ListView {
+        id: navList
+        property var entries: []
+        property string currentKey: ""
+        property bool horizontal: false
+        signal picked(string key)
+        orientation: horizontal ? ListView.Horizontal : ListView.Vertical
+        clip: true
+        spacing: 4
+        boundsBehavior: Flickable.StopAtBounds
+        keyNavigationEnabled: false
+        activeFocusOnTab: true
+        model: visible ? entries : []
+        ScrollBar.vertical: HomeScrollBar { }
+
+        Keys.onPressed: function(event) {
+            var back = horizontal ? Qt.Key_Left : Qt.Key_Up
+            var fwd = horizontal ? Qt.Key_Right : Qt.Key_Down
+            var delta = event.key === back ? -1 : (event.key === fwd ? 1 : 0)
+            if (delta === 0 || entries.length === 0)
+                return
+            var idx = 0
+            for (var i = 0; i < entries.length; ++i) {
+                if (String(entries[i].key) === currentKey)
+                    idx = i
+            }
+            var next = Math.max(0, Math.min(entries.length - 1, idx + delta))
+            if (next !== idx) {
+                picked(String(entries[next].key))
+                positionViewAtIndex(next, ListView.Contain)
+            }
+            event.accepted = true
+        }
+
+        delegate: Rectangle {
+            id: navItem
+            required property var modelData
+            readonly property bool current: String(modelData.key) === navList.currentKey
+            width: navList.horizontal ? navLabel.implicitWidth + 28 : navList.width
+            height: navList.horizontal ? navList.height : 44
+            radius: 8
+            color: current ? HomeTheme.navBgActive
+                           : (navMouse.containsMouse ? HomeTheme.navBgHover : "transparent")
+            border.width: current ? (navList.activeFocus ? 2 : 1) : 0
+            border.color: HomeTheme.focusBorderHigh
+
+            Text {
+                id: navLabel
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                text: String(navItem.modelData.label || "")
+                elide: navList.horizontal ? Text.ElideNone : Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                color: HomeTheme.btnSecondaryText
+                font.pixelSize: 15
+                font.bold: navItem.current
+            }
+
+            MouseArea {
+                id: navMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: navList.picked(String(navItem.modelData.key))
+            }
+        }
+    }
+
     component ListMetaOverlay: Column {
         id: overlay
         property string kingdoms: ""
@@ -173,11 +244,15 @@ Item {
             }
         }
 
+        // 一排放不下全部勾玉時，改成單一圖示加數字，避免體力多的武將蓋滿立繪。
+        readonly property bool hpCompact: overlay.maxHp > Math.floor((overlay.width + 1) / 12)
+
         Flow {
+            visible: !overlay.hpCompact
             width: overlay.width
             spacing: 1
             Repeater {
-                model: overlay.maxHp
+                model: overlay.hpCompact ? 0 : overlay.maxHp
                 delegate: Image {
                     required property int modelData
                     width: 11
@@ -190,10 +265,32 @@ Item {
                 }
             }
         }
+
+        Row {
+            visible: overlay.hpCompact
+            spacing: 2
+            Image {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 14
+                height: 14
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                cache: true
+                source: overlay.hpCompact ? homeController.magatamaImage(5) : ""
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "×" + root.hpText(overlay.startHp, overlay.maxHp)
+                color: HomeTheme.onArtText
+                style: Text.Outline
+                styleColor: HomeTheme.onArtScrim
+                font.pixelSize: 13
+                font.bold: true
+            }
+        }
     }
 
     property var kingdomOptions: []
-    property var packageEntries: []
     property var packageGroups: []
     property var details: ({})
     property string selectedName: ""
@@ -205,7 +302,18 @@ Item {
     property int hpMin: 0
     property int hpMax: 0
     property var genderFilter: []
-    property var packageFilter: []
+    property string navGroup: ""
+    property string navPackage: ""
+    readonly property var navPackageEntries: {
+        for (var i = 0; i < packageGroups.length; ++i) {
+            if (packageGroups[i].key === navGroup)
+                return packageGroups[i].entries
+        }
+        return []
+    }
+    // 搜尋與同名篩選跨全部武將包；其餘時候只列導覽選中的那一包，網格才不會一次塞進上千張。
+    readonly property bool navScoped: navPackage.length > 0
+                                      && searchText.length === 0 && sameNameFilter.length === 0
     property int detailTab: 0
     property real uiScale: 1.0
     property bool compact: Config.responsiveUiEnabled && (width < 900 || height > width)
@@ -286,9 +394,25 @@ Item {
             hpMin: hpMin,
             hpMax: hpMax,
             genders: genderFilter,
-            packages: packageFilter
+            packages: navScoped ? [navPackage] : []
         })
         syncSelection()
+    }
+
+    function pickNavGroup(key) {
+        navGroup = key
+        var entries = navPackageEntries
+        pickNavPackage(entries.length > 0 ? String(entries[0].key) : "")
+    }
+
+    function pickNavPackage(key) {
+        navPackage = key
+        // 點武將包代表回到分包瀏覽，清掉會跨包的搜尋與同名篩選。
+        searchField.clear()
+        searchDebounce.stop()
+        searchText = ""
+        sameNameFilter = ""
+        rebuild()
     }
 
     function syncSelection() {
@@ -355,28 +479,6 @@ Item {
             group.keys.push(String(entry.key))
         }
         return groups
-    }
-
-    function containsAll(list, keys) {
-        if (!keys || keys.length === 0)
-            return false
-        for (var i = 0; i < keys.length; ++i) {
-            if ((list || []).indexOf(keys[i]) < 0)
-                return false
-        }
-        return true
-    }
-
-    function setKeys(list, keys, on) {
-        var copy = (list || []).slice()
-        for (var i = 0; i < keys.length; ++i) {
-            var idx = copy.indexOf(keys[i])
-            if (on && idx < 0)
-                copy.push(keys[i])
-            else if (!on && idx >= 0)
-                copy.splice(idx, 1)
-        }
-        return copy
     }
 
     function toggleIn(list, key) {
@@ -457,8 +559,12 @@ Item {
             color: HomeTheme.btnPrimary,
             icon: ""
         }].concat(homeController.kingdoms())
-        packageEntries = homeController.generalPackages()
+        var packageEntries = homeController.generalPackages()
         packageGroups = groupPackages(packageEntries)
+        if (packageGroups.length > 0) {
+            navGroup = packageGroups[0].key
+            navPackage = String(packageGroups[0].keys[0])
+        }
         var saved = homeController.generalGridColumns()
         root.gridColumns = saved > 0
                 ? Math.max(HomeTheme.generalGridMinColumns,
@@ -780,7 +886,7 @@ Item {
                         implicitWidth: 148
                         implicitHeight: 36
                         onMoved: root.applyGridColumns(value)
-                        KeyNavigation.tab: root.tableMode ? generalTable : generalGrid
+                        KeyNavigation.tab: groupNav
                         KeyNavigation.backtab: filterBtn
                         Keys.onShortcutOverride: function(event) {
                             if (event.key === Qt.Key_Space)
@@ -843,13 +949,97 @@ Item {
                 }
             }
 
+            Column {
+                id: compactNav
+                visible: root.compact && root.compactPane === 0
+                width: parent.width
+                height: visible ? HomeTheme.compactTouch * 2 + HomeTheme.compactGap : 0
+                spacing: HomeTheme.compactGap
+                opacity: root.navScoped ? 1 : 0.55
+
+                PackageNavList {
+                    horizontal: true
+                    width: parent.width
+                    height: HomeTheme.compactTouch
+                    entries: root.packageGroups
+                    currentKey: root.navGroup
+                    onPicked: function(key) { root.pickNavGroup(key) }
+                }
+
+                PackageNavList {
+                    horizontal: true
+                    width: parent.width
+                    height: HomeTheme.compactTouch
+                    entries: root.navPackageEntries
+                    currentKey: root.navPackage
+                    onPicked: function(key) { root.pickNavPackage(key) }
+                }
+            }
+
             Row {
                 width: parent.width
                 height: Math.max(0, parent.height - header.height - HomeTheme.generalPanelGap
-                                 - (root.compact ? compactBar.height + HomeTheme.generalPanelGap : 0))
+                                 - (root.compact ? compactBar.height + HomeTheme.generalPanelGap : 0)
+                                 - (compactNav.visible ? compactNav.height + HomeTheme.generalPanelGap : 0))
                 spacing: HomeTheme.generalPanelGap
 
             BASlantedPanel {
+                id: navPanel
+                visible: !root.compact
+                width: HomeTheme.generalPackageNavWidth
+                height: parent.height
+                slant: 0
+                cornerRadius: 10
+                shadowBlur: 0
+                shadowOffset: 0
+                topColor: HomeTheme.baDockTop
+                bottomColor: HomeTheme.baDockBottom
+                borderColor: HomeTheme.baDockBorder
+                shadowColor: HomeTheme.baDockShadow
+                opacity: root.navScoped ? 1 : 0.55
+
+                PackageNavList {
+                    id: groupNav
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 10
+                    width: Math.round((parent.width - 30) * 0.45)
+                    entries: root.packageGroups
+                    currentKey: root.navGroup
+                    onPicked: function(key) { root.pickNavGroup(key) }
+                    KeyNavigation.tab: packageNav
+                    KeyNavigation.backtab: colSlider
+                }
+
+                Rectangle {
+                    anchors.left: groupNav.right
+                    anchors.leftMargin: 4
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.topMargin: 14
+                    anchors.bottomMargin: 14
+                    width: 1
+                    color: HomeTheme.baDockBorder
+                }
+
+                PackageNavList {
+                    id: packageNav
+                    anchors.left: groupNav.right
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 10
+                    entries: root.navPackageEntries
+                    currentKey: root.navPackage
+                    onPicked: function(key) { root.pickNavPackage(key) }
+                    KeyNavigation.tab: root.tableMode ? generalTable : generalGrid
+                    KeyNavigation.backtab: groupNav
+                }
+            }
+
+            BASlantedPanel {
+                id: listPanel
                 visible: !root.compact || root.compactPane === 0
                 width: root.compact ? parent.width : Math.round((parent.width - HomeTheme.generalPanelGap) * HomeTheme.generalListShare)
                 height: parent.height
@@ -880,7 +1070,7 @@ Item {
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: HomeScrollBar { }
                     KeyNavigation.tab: root.compact ? compactBar.detailButton : sameNameBtn
-                    KeyNavigation.backtab: root.compact ? compactBar.listButton : colSlider
+                    KeyNavigation.backtab: root.compact ? compactBar.listButton : packageNav
                     Keys.onPressed: function(event) { root.handleListKeys(event) }
                     onWidthChanged: {
                         if (root.gridColsReady || width <= 1)
@@ -1128,7 +1318,7 @@ Item {
                         boundsBehavior: Flickable.StopAtBounds
                         ScrollBar.vertical: HomeScrollBar { }
                         KeyNavigation.tab: sameNameBtn
-                        KeyNavigation.backtab: colSlider
+                        KeyNavigation.backtab: packageNav
                         Keys.onPressed: function(event) { root.handleListKeys(event) }
 
                         delegate: Item {
@@ -1310,7 +1500,8 @@ Item {
             BASlantedPanel {
                 id: detailPanel
                 visible: !root.compact || root.compactPane === 1
-                width: root.compact ? parent.width : Math.round((parent.width - HomeTheme.generalPanelGap) * (1.0 - HomeTheme.generalListShare))
+                width: root.compact ? parent.width
+                                    : parent.width - navPanel.width - listPanel.width - HomeTheme.generalPanelGap * 2
                 height: parent.height
                 slant: 0
                 cornerRadius: 10
@@ -2227,75 +2418,6 @@ Item {
                         }
                     }
 
-                    Text {
-                        text: root.ui("GeneralSearch", "Packages")
-                        color: HomeTheme.btnSecondaryText
-                        font.bold: true
-                    }
-
-                    Row {
-                        spacing: 12
-                        BAToolButton {
-                            text: root.ui("GeneralSearch", "Select All")
-                            onClicked: {
-                                var keys = []
-                                for (var i = 0; i < root.packageEntries.length; ++i)
-                                    keys.push(String(root.packageEntries[i].key))
-                                root.packageFilter = keys
-                            }
-                        }
-                        BAToolButton {
-                            text: root.ui("GeneralSearch", "Unselect All")
-                            onClicked: root.packageFilter = []
-                        }
-                    }
-
-                    Repeater {
-                        model: root.packageGroups
-                        delegate: Column {
-                            id: packageGroup
-                            required property var modelData
-                            width: filterColumn.width
-                            spacing: 4
-
-                            // 分類標題本身就是整組全選／全不選。
-                            ThemeCheckBox {
-                                text: packageGroup.modelData.label
-                                font.bold: true
-                                checked: root.containsAll(root.packageFilter, packageGroup.modelData.keys)
-                                onToggled: {
-                                    root.packageFilter = root.setKeys(root.packageFilter,
-                                                                      packageGroup.modelData.keys, checked)
-                                    // 使用者點擊會打斷 checked 綁定，接回去才會跟著全選／清除同步。
-                                    checked = Qt.binding(function() {
-                                        return root.containsAll(root.packageFilter, packageGroup.modelData.keys)
-                                    })
-                                }
-                            }
-
-                            Flow {
-                                width: parent.width
-                                leftPadding: 28
-                                spacing: 8
-                                Repeater {
-                                    model: packageGroup.modelData.entries
-                                    ThemeCheckBox {
-                                        id: packageBox
-                                        required property var modelData
-                                        text: modelData.label
-                                        checked: root.packageFilter.indexOf(String(modelData.key)) >= 0
-                                        onToggled: {
-                                            root.packageFilter = root.toggleIn(root.packageFilter, String(modelData.key))
-                                            checked = Qt.binding(function() {
-                                                return root.packageFilter.indexOf(String(packageBox.modelData.key)) >= 0
-                                            })
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     Row {
                         spacing: 16
                         BAToolButton {
@@ -2311,7 +2433,6 @@ Item {
                                 hpMaxBox.value = 0
                                 root.hpMin = 0
                                 root.hpMax = 0
-                                root.packageFilter = []
                             }
                         }
                         BAToolButton {
