@@ -43,6 +43,7 @@ set(QSAN_SOURCES
     src/package/hayate.cpp
     src/package/inovation.cpp
     src/package/original-hegemony-compat.cpp
+    src/package/xxy-hegemony-viewas.cpp
     src/package/h-standard-package.cpp
     src/package/h-standard-wei-generals.cpp
     src/package/h-standard-shu-generals.cpp
@@ -274,6 +275,7 @@ set(QSAN_MOC_HEADERS
     src/package/hayate.h
     src/package/inovation.h
     src/package/original-hegemony-compat.h
+    src/package/xxy-hegemony-viewas.h
     src/package/h-standard-package.h
     src/package/h-standard-wei-generals.h
     src/package/h-standard-shu-generals.h

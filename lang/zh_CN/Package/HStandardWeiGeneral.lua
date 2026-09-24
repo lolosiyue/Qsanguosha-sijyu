@@ -1,6 +1,4 @@
--- Ported original hegemony package translations.
--- source: TODO/original/lang/zh_CN/Package/StandardWeiGeneral.lua
--- Shared skills use their canonical nos*/existing translation entries.
+-- Source: TODO/QSanguosha-For-Hegemony-xxyheaven/lang/zh_CN/Package/StandardWeiGeneral.lua (cf61c15).
 return {
 ["#heg_caocao"] = "魏武帝",
 ["heg_caocao"] = "曹操[国]",
@@ -35,4 +33,34 @@ return {
 ["heg_caopi"] = "曹丕[国]",
 ["#heg_yuejin"] = "奋强突固",
 ["heg_yuejin"] = "乐进[国]",
+["heg_ganglie"] = "刚烈",
+[":heg_ganglie"] = "当你受到伤害后，你可以判定▶若结果为：红色，你对来源造成1点伤害；黑色，你弃置来源的一张牌。",
+["heg_guicai"] = "鬼才",
+[":heg_guicai"] = "一名角色的判定牌生效前，你可以打出一张牌代替之；你可以使用“手牌堆”里的牌。",
+["heg_shensu"] = "神速",
+[":heg_shensu"] = "你可以选择：1.跳过判定阶段和摸牌阶段；2.弃置一张装备牌并跳过出牌阶段；3.失去1点体力并跳过弃牌阶段。每选择一项，你视为使用一张无距离限制的【杀】。",
+["#heg_shensu-distance"] = "神速（无距离限制）",
+["heg_luoyi"] = "裸衣",
+[":heg_luoyi"] = "摸牌阶段结束时，你可弃置一张牌▶当你于此回合内因执行【杀】或【决斗】的效果而对一名角色造成伤害时，你令伤害值+1。",
+["@heg_luoyi"] = "你可以弃置一张牌发动“裸衣”，令本回合内【杀】或【决斗】造成的伤害+1",
+["#heg_luoyi-buff"] = "%from 的“<font color=\"yellow\"><b>裸衣</b></font>”效果被触发，伤害从 %arg 点增加至 %arg2 点",
+["heg_duanliang"] = "断粮",
+[":heg_duanliang"] = "你可将一张不为锦囊牌的黑色牌当【兵粮寸断】使用（无距离关系的限制），若你至目标对应的角色的距离大于2，此技能于此阶段内无效。",
+["#heg_duanliang-distance"] = "断粮（无距离限制）",
+["heg_jushou"] = "据守",
+[":heg_jushou"] = "结束阶段开始时，你可摸X张牌（X为势力数），选择：1.弃置一张不为装备牌的手牌；2.使用一张对应的所有实体牌均为手牌的装备牌。若你以此法摸牌的数量大于2，叠置。",
+["@heg_jushou"] = "据守：请弃置一张非装备牌；或使用一张装备牌",
+["heg_jushou_select"] = "据守：选择一张手牌",
+["@heg_shensu1"] = "你可以跳过判定阶段和摸牌阶段发动“神速”",
+["@heg_shensu2"] = "你可以跳过出牌阶段并弃置一张装备牌发动“神速”",
+["@heg_shensu3"] = "你可以失去1点体力并跳过弃牌阶段发动“神速”",
+["heg_qiangxi"] = "强袭",
+[":heg_qiangxi"] = "出牌阶段限一次，你可选择一名其他角色并选择：{1.失去1点体力；2.弃置一张武器牌}▶你对其造成1点普通伤害。",
+["heg_yiji"] = "遗计",
+[":heg_yiji"] = "当你受到伤害后，你可将牌堆顶的两张牌扣置入处理区（对你可见）▶你将这些牌交给任意角色。",
+["#heg_yiji"] = "遗计",
+["@heg_yiji-give"] = "遗计：请将“遗计”牌任意分配给其他角色，或点取消留给自己",
+["heg_jieming"] = "节命",
+[":heg_jieming"] = "当你受到伤害后，你可令一名角色将其手牌补至X张（X为其体力上限且至多为5）。",
+["heg_jieming-invoke"] = "你可以发动“节命”，令一名角色将手牌补至体力上限（至多五张）",
 }
