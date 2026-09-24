@@ -1555,21 +1555,45 @@ void TenyearTianxiangCard::onEffect(CardEffectStruct &effect) const
 	}
 }
 
-class TenyearTianxiangViewAsSkill : public OneCardViewAsSkill
+class TenyearTianxiangViewAsSkill : public ViewAsSkillV2
 {
 public:
-	TenyearTianxiangViewAsSkill() : OneCardViewAsSkill("tenyeartianxiang")
-	{
-		filter_pattern = ".|heart|.|hand";
-		response_pattern = "@@tenyeartianxiang";
-	}
+    TenyearTianxiangViewAsSkill() : ViewAsSkillV2("tenyeartianxiang", 1) {}
 
-	const Card *viewAs(const Card *originalCard) const
-	{
-		TenyearTianxiangCard *tianxiangCard = new TenyearTianxiangCard;
-		tianxiangCard->addSubcard(originalCard);
-		return tianxiangCard;
-	}
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.pattern == "@@tenyeartianxiang"
+            && request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+    }
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        return request.initiator && ViewAsSkillV2::canSelectCard(request, card)
+            && !card->hasFlag("using") && !request.initiator->isJilei(card)
+            && Sanguosha->matchExpPattern(".|heart|.|hand", request.initiator, card)
+            && request.initiator->handCards().contains(card->getEffectiveId())
+            && request.initiator->canDiscard(request.initiator, card->getEffectiveId());
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1 || request.selectedCardIds.first() < 0) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "TenyearTianxiangCard"; }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        // Share the identity variant's card, AI protocol and both canonical effects.
+        auto *card = new TenyearTianxiangCard;
+        card->addSubcards(request.selectedCardIds);
+        card->setSkillName(objectName());
+        return card;
+    }
 };
 
 class TenyearTianxiang : public TriggerSkill

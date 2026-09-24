@@ -227,31 +227,39 @@ public:
     }
 };
 
-class MobileFenji : public TriggerSkill
+class MobileFenji : public TriggerSkillV2
 {
 public:
-    MobileFenji() : TriggerSkill("mobilefenji")
+    MobileFenji() : TriggerSkillV2("mobilefenji")
     {
         events << EventPhaseChanging;
+        m_baseAmount = 2;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        return target != nullptr && target->isAlive();
+        TriggerList result;
+        if (!player || !player->isAlive() || !player->isKongcheng()
+            || data.value<PhaseChangeStruct>().to != Player::NotActive) return result;
+        for (ServerPlayer *owner : room->getAllPlayers())
+            if (owner->isAlive() && owner->hasSkill(objectName())) result[owner] << objectName();
+        return result;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-        if (change.to != Player::NotActive) return false;
-        foreach (ServerPlayer *p, room->getAllPlayers()) {
-            if (player->isDead()) return false;
-            if (p->isDead() || !p->hasSkill(objectName()) || !player->isKongcheng()) continue;
-            if (!p->askForSkillInvoke(this, player)) continue;
-            p->peiyin(this);
-            player->drawCards(2, objectName());
-            room->loseHp(HpLostStruct(p, 1, objectName(), p));
-        }
+        // The turn-ending player is the event subject, not the skill owner.
+        return ctx.owner && ctx.invoker && ctx.invoker->isAlive() && ctx.invoker->isKongcheng()
+            && ctx.owner->askForSkillInvoke(this, ctx.invoker);
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.invoker || !ctx.invoker->isAlive()) return false;
+        ctx.owner->peiyin(this);
+        // Preserve the mobile variant's order: draw first, then lose HP.
+        ctx.invoker->drawCards(getEffectiveAmount(ctx), objectName());
+        room->loseHp(HpLostStruct(ctx.owner, 1, objectName(), ctx.owner));
         return false;
     }
 };

@@ -763,20 +763,43 @@ void ZhijianCard::onEffect(CardEffectStruct &effect) const
     erzhang->drawCards(1, "zhijian");
 }
 
-class Zhijian : public OneCardViewAsSkill
+class Zhijian : public ViewAsSkillV2
 {
 public:
-    Zhijian() :OneCardViewAsSkill("zhijian")
+    Zhijian() : ViewAsSkillV2("zhijian", 1) {}
+
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        filter_pattern = "EquipCard|.|.|hand";
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
-        ZhijianCard *zhijian_card = new ZhijianCard();
-        zhijian_card->addSubcard(originalCard);
-        return zhijian_card;
+        return request.initiator && ViewAsSkillV2::canSelectCard(request, candidate)
+            && candidate->isKindOf("EquipCard") && !candidate->hasFlag("using")
+            && request.initiator->handCards().contains(candidate->getEffectiveId())
+            && !request.selectedCardIds.contains(candidate->getEffectiveId());
     }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1 || request.selectedCardIds.first() < 0) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        // Preserve equipment placement and AI class identity in the canonical card.
+        ZhijianCard *card = new ZhijianCard;
+        card->addSubcards(request.selectedCardIds);
+        return card;
+    }
+
+    bool willThrowSelectedCards() const override { return false; }
+    QString historyKey(const ActiveSkillRequest &) const override { return "ZhijianCard"; }
 };
 
 GuzhengCard::GuzhengCard()
@@ -791,145 +814,78 @@ void GuzhengCard::use(Room *, ServerPlayer *source, QList<ServerPlayer *> &) con
     source->setTag("guzheng_card", subcards.first());
 }
 
-class GuzhengVS : public OneCardViewAsSkill
+class Guzheng : public TriggerSkillV2
 {
 public:
-    GuzhengVS() : OneCardViewAsSkill("guzheng")
-    {
-        response_pattern = "@@guzheng";
-    }
-
-    bool viewFilter(const Card *to_select) const
-    {
-        QStringList l = Self->property("guzheng_toget").toString().split("+");
-        QList<int> li = ListS2I(l);
-        return li.contains(to_select->getId());
-    }
-
-    const Card *viewAs(const Card *originalCard) const
-    {
-        GuzhengCard *gz = new GuzhengCard;
-        gz->addSubcard(originalCard);
-        return gz;
-    }
-};
-
-class Guzheng : public TriggerSkill
-{
-public:
-    Guzheng() : TriggerSkill("guzheng")
+    Guzheng() : TriggerSkillV2("guzheng")
     {
         events << CardsMoveOneTime << EventPhaseEnd;
-        view_as_skill = new GuzhengVS;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        return target != nullptr;
-    }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        if (triggerEvent == CardsMoveOneTime&&player->getPhase()==Player::Discard) {
-            CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-            if ((move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) == CardMoveReason::S_REASON_DISCARD) {
-				QVariantList guzhengToGet = room->getTag("GuzhengToGet").toList();
-                int i = 0;
-                foreach (int card_id, move.card_ids) {
-                    if (move.from_places[i] == Player::PlaceHand)
-                        guzhengToGet << card_id;
-                    i++;
-                }
-				room->setTag("GuzhengToGet",guzhengToGet);
-            }
-        } else if (triggerEvent == EventPhaseEnd && player->getPhase() == Player::Discard) {
-            QVariantList lids = room->getTag("GuzhengToGet").toList();
-			if(lids.isEmpty()) return false;
-			room->removeTag("GuzhengToGet");
-			QList<int>ids,ids2 = ListV2I(lids);
-            foreach (int id, room->getDiscardPile()) {
-				if(ids2.contains(id)) ids << id;
-			}
-			if(ids.isEmpty()||player->isDead()) return false;
-			lids = ListI2V(ids);
-			foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
-				p->setTag("GuzhengToGet", lids);
-				if(p->isAlive()&&p->hasSkill(objectName())&&p->askForSkillInvoke(objectName()+"$-1",player)){
-					room->fillAG(ids,p);
-					int id = room->askForAG(p,ids,false,objectName(),"@guzheng:" + player->objectName());
-					room->clearAG(p);
-					ids.removeOne(id);
-					room->obtainCard(player,id);
-					p->obtainCard(dummyCard(ids));
-					break;
-				}
-			}
-			/*ServerPlayer *erzhang = room->findPlayerBySkillName(objectName());
-            if (erzhang == nullptr)
-                return false;
-
-            QVariantList guzheng_cardsToGet = erzhang->getTag("GuzhengToGet").toList();
-            QVariantList guzheng_cardsOther = erzhang->getTag("GuzhengOther").toList();
-            erzhang->removeTag("GuzhengToGet");
-            erzhang->removeTag("GuzhengOther");
-
-            if (player->isDead())
-                return false;
-
-            QList<int> cardsToGet;
-            foreach (QVariant card_data, guzheng_cardsToGet) {
-                int card_id = card_data.toInt();
-                if (room->getCardPlace(card_id) == Player::DiscardPile)
-                    cardsToGet << card_id;
-            }
-            QList<int> cardsOther;
-            foreach (QVariant card_data, guzheng_cardsOther) {
-                int card_id = card_data.toInt();
-                if (room->getCardPlace(card_id) == Player::DiscardPile)
-                    cardsOther << card_id;
-            }
-
-
-            if (cardsToGet.isEmpty())
-                return false;
-
-            QList<int> cards = cardsToGet + cardsOther;
-
-            QString cardsList = ListI2S(cards).join("+");
-            room->setPlayerProperty(erzhang, "guzheng_allCards", cardsList);
-            QString toGetList = ListI2S(cardsToGet).join("+");
-            room->setPlayerProperty(erzhang, "guzheng_toget", toGetList);
-
-            erzhang->removeTag("guzheng_card");
-            room->setPlayerFlag(erzhang, "guzheng_InTempMoving");
-            CardMoveReason r(CardMoveReason::S_REASON_UNKNOWN, erzhang->objectName());
-            CardsMoveStruct fake_move(cards, nullptr, erzhang, Player::DiscardPile, Player::PlaceHand, r);
-            QList<CardsMoveStruct> moves;
-            moves << fake_move;
-            QList<ServerPlayer *> _erzhang;
-            _erzhang << erzhang;
-            room->notifyMoveCards(true, moves, true, _erzhang);
-            room->notifyMoveCards(false, moves, true, _erzhang);
-            bool invoke = room->askForUseCard(erzhang, "@@guzheng", "@guzheng:" + player->objectName(), -1, Card::MethodNone);
-            CardsMoveStruct fake_move2(cards, erzhang, nullptr, Player::PlaceHand, Player::DiscardPile, r);
-            QList<CardsMoveStruct> moves2;
-            moves2 << fake_move2;
-            room->notifyMoveCards(true, moves2, true, _erzhang);
-            room->notifyMoveCards(false, moves2, true, _erzhang);
-            room->setPlayerFlag(erzhang, "-guzheng_InTempMoving");
-
-            if (invoke && erzhang->getTag("guzheng_card").isValid()) {
-                bool ok = false;
-                int to_back = erzhang->getTag("guzheng_card").toInt(&ok);
-                if (ok) {
-                    player->obtainCard(Sanguosha->getCard(to_back));
-                    cards.removeOne(to_back);
-                    DummyCard *dummy = new DummyCard(cards);
-                    room->obtainCard(erzhang, dummy);
-                    delete dummy;
-                }
-            }*/
+        if (!player || player->getPhase() != Player::Discard) return true;
+        if (event == CardsMoveOneTime) {
+            const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+            if ((move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) != CardMoveReason::S_REASON_DISCARD)
+                return true;
+            QVariantList cards = room->getTag("GuzhengToGet").toList();
+            // Identity Guzheng records hand discards only, unlike heg_guzheng.
+            for (int i = 0; i < move.card_ids.size(); ++i)
+                if (move.from_places.at(i) == Player::PlaceHand) cards << move.card_ids.at(i);
+            room->setTag("GuzhengToGet", cards);
+        } else {
+            player->setTag("GuzhengPending", room->getTag("GuzhengToGet"));
+            room->removeTag("GuzhengToGet");
         }
+        return true;
+    }
+
+    static QList<int> availableCards(Room *room, ServerPlayer *player)
+    {
+        const QList<int> recorded = ListV2I(player->getTag("GuzhengPending").toList());
+        QList<int> cards;
+        for (int id : room->getDiscardPile())
+            if (recorded.contains(id)) cards << id;
+        return cards;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        TriggerList result;
+        if (event != EventPhaseEnd || !player || !player->isAlive()
+            || player->getPhase() != Player::Discard || availableCards(room, player).isEmpty()) return result;
+        for (ServerPlayer *owner : room->getOtherPlayers(player))
+            if (owner->isAlive() && owner->hasSkill(objectName())) result[owner] << objectName();
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.invoker;
+        if (!player || !player->isAlive()) return false;
+        const QList<int> cards = availableCards(room, player);
+        if (cards.isEmpty()) return false;
+        // Retain the identity AI's candidate tag and invocation data.
+        ctx.owner->setTag("GuzhengToGet", ListI2V(cards));
+        return ctx.owner->askForSkillInvoke(objectName() + "$-1", player);
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.invoker;
+        if (!player || !player->isAlive()) return false;
+        QList<int> cards = availableCards(room, player);
+        if (cards.isEmpty()) return false;
+        // Only the first successful owner resolves this discard-phase batch.
+        player->removeTag("GuzhengPending");
+        room->fillAG(cards, ctx.owner);
+        const int id = room->askForAG(ctx.owner, cards, false, objectName(), "@guzheng:" + player->objectName());
+        room->clearAG(ctx.owner);
+        if (!cards.removeOne(id)) return false;
+        room->obtainCard(player, id);
+        // Identity rules require obtaining the rest; there is no second optional choice.
+        ctx.owner->obtainCard(dummyCard(cards));
         return false;
     }
 };
