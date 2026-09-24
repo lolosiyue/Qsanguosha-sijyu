@@ -27,7 +27,6 @@
 #include "skill.h"
 #include "engine.h"
 #include "standard.h"
-#include "xxy-hegemony-viewas.h"
 #include "skill-instance-utils.h"
 #include "roomthread.h"
 
@@ -212,15 +211,33 @@ public:
     }
 };
 
-class HDuanliangVS : public XxyHegemonyOneCardViewAsSkill {
+class HDuanliangVS : public ViewAsSkillV2 {
 public:
-    HDuanliangVS() : XxyHegemonyOneCardViewAsSkill("heg_duanliang") {
-        filter_pattern = "BasicCard,EquipCard|black";
+    HDuanliangVS() : ViewAsSkillV2("heg_duanliang", 1) {
         setResponseOrUse(true);
     }
-    bool isEnabledAtPlay(const Player *player) const override { return player && !player->hasFlag("heg_DuanliangCannot"); }
-    const Card *donorViewAs(const ActiveSkillRequest &, const Card *original) const override {
+    bool canActivate(const ActiveSkillRequest &request) const override {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && !request.initiator->hasFlag("heg_DuanliangCannot");
+    }
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override {
+        return request.initiator && ViewAsSkillV2::canSelectCard(request, card)
+            && card->getEffectiveId() >= 0 && !card->hasFlag("using")
+            && Sanguosha->matchExpPattern("BasicCard,EquipCard|black", request.initiator, card);
+    }
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override {
+        if (request.selectedCardIds.size() != 1 || request.selectedCardIds.first() < 0) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+    QString historyKey(const ActiveSkillRequest &) const override { return "SupplyShortage"; }
+    const Card *createCard(const ActiveSkillRequest &request) const override {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *original = Sanguosha->getCard(request.selectedCardIds.first());
+        // The ordinary delayed trick owns target checks, material movement and effects.
         Card *card = Sanguosha->cloneCard("supply_shortage", original->getSuit(), original->getNumber());
+        if (!card) return nullptr;
         card->addSubcard(original);
         card->setSkillName(objectName());
         card->setShowSkill(objectName());
@@ -252,17 +269,33 @@ public:
     }
 };
 
-class HJushouSelect : public XxyHegemonyOneCardViewAsSkill {
+class HJushouSelect : public ViewAsSkillV2 {
 public:
-    HJushouSelect() : XxyHegemonyOneCardViewAsSkill("heg_jushou_select") { response_pattern = "@@heg_jushou_select!"; }
-    bool isEnabledAtPlay(const Player *) const override { return false; }
-    bool donorViewFilter(const ActiveSkillRequest &request, const Card *card) const override {
-        return request.initiator && request.initiator->handCards().contains(card->getEffectiveId())
+    HJushouSelect() : ViewAsSkillV2("heg_jushou_select", 1) {}
+    bool canActivate(const ActiveSkillRequest &request) const override {
+        // MethodNone selection uses UNKNOWN and must not become a play action.
+        return request.initiator && request.pattern == "@@heg_jushou_select!"
+            && (request.reason == CardUseStruct::CARD_USE_REASON_UNKNOWN
+                || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+                || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
+    }
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override {
+        return request.initiator && card && request.selectedCardIds.isEmpty() && !card->hasFlag("using")
+            && request.initiator->handCards().contains(card->getEffectiveId())
             && (card->isKindOf("EquipCard") ? card->isAvailable(request.initiator) : !request.initiator->isJilei(card));
     }
-    const Card *donorViewAs(const ActiveSkillRequest &, const Card *card) const override {
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override {
+        if (request.selectedCardIds.size() != 1 || request.selectedCardIds.first() < 0) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+    QString historyKey(const ActiveSkillRequest &) const override { return "DummyCard"; }
+    const Card *createCard(const ActiveSkillRequest &request) const override {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        // Return only the selection; HJushou still owns equipment use/discard.
         DummyCard *selected = new DummyCard;
-        selected->addSubcard(card);
+        selected->addSubcard(request.selectedCardIds.first());
         return selected;
     }
 };
