@@ -212,41 +212,44 @@ public:
     }
 };
 
-class Lieren : public TriggerSkill
+class Lieren : public TriggerSkillV2
 {
 public:
-    Lieren() : TriggerSkill("lieren")
+    Lieren() : TriggerSkillV2("lieren") { events << Damage; }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        events << Damage;
+        const DamageStruct damage = data.value<DamageStruct>();
+        return player && player->isAlive() && player->hasSkill(objectName())
+            && damage.to && damage.to->isAlive() && damage.card && damage.card->isKindOf("Slash")
+            && player->canPindian(damage.to) && !damage.to->hasFlag("Global_DebutFlag")
+            && !damage.chain && !damage.transfer
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *zhurong, QVariant &data) const
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        DamageStruct damage = data.value<DamageStruct>();
-        ServerPlayer *target = damage.to;
-        if (target->isDead()) return false;
-        if (damage.card && damage.card->isKindOf("Slash") && zhurong->canPindian(target) && !target->hasFlag("Global_DebutFlag") && !damage.chain && !damage.transfer
-            && room->askForSkillInvoke(zhurong, objectName(), data)) {
+        if (!ctx.owner || !ctx.original_data) return false;
+        ServerPlayer *target = ctx.original_data->value<DamageStruct>().to;
+        if (!target || !ctx.owner->canPindian(target)
+            || !ctx.owner->askForSkillInvoke(this, *ctx.original_data)) return false;
+        // Keep the selected victim in this invocation, including target interception.
+        ctx.targets = {target};
+        return true;
+    }
 
-            int index = qsanRandomBounded(2)+1;
-            if (zhurong->isJieGeneral()) index += 2;
-            room->broadcastSkillInvoke(objectName(), index);
-
-            if (!zhurong->pindian(target, "lieren")) {/*
-                if (!zhurong->isJieGeneral())
-                    room->broadcastSkillInvoke(objectName(), 3);*/
-                return false;
-            }/*
-
-            if (!zhurong->isJieGeneral())
-                room->broadcastSkillInvoke(objectName(), 2);*/
-
-            if (!target->isNude()) {
-                int card_id = room->askForCardChosen(zhurong, target, "he", objectName());
-                CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, zhurong->objectName());
-                room->obtainCard(zhurong, Sanguosha->getCard(card_id), reason, room->getCardPlace(card_id) != Player::PlaceHand);
-            }
-        }
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx,
+                      ServerPlayer *target) const override
+    {
+        ServerPlayer *player = ctx.invoker;
+        if (!player || !target || !target->isAlive() || !player->canPindian(target)) return false;
+        int index = qsanRandomBounded(2) + 1;
+        if (player->isJieGeneral()) index += 2;
+        room->broadcastSkillInvoke(objectName(), index);
+        if (!player->pindian(target, objectName()) || !player->isAlive() || target->isNude()) return false;
+        const int id = room->askForCardChosen(player, target, "he", objectName());
+        CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
+        room->obtainCard(player, Sanguosha->getCard(id), reason, room->getCardPlace(id) != Player::PlaceHand);
         return false;
     }
 };

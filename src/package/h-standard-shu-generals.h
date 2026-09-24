@@ -24,16 +24,4 @@
 #include "h-standard-package.h"
 #include "skill.h"
 
-// Guanxing and Yizhi share observation rules while retaining their own sources.
-class HGuanxing : public TriggerSkillV2 {
-public:
-    explicit HGuanxing(const QString &name = "heg_guanxing");
-    bool canPreshow() const override;
-    void record(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
-    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override;
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
-    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
-    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
-};
-
 #endif

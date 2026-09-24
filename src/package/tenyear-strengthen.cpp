@@ -1,5 +1,6 @@
 #include "tenyear-strengthen.h"
 #include "settings.h"
+#include "skill-instance-utils.h"
 //#include "skill.h"
 //#include "standard.h"
 //#include "client.h"
@@ -282,69 +283,69 @@ public:
 	}
 };
 
-class TenyearWusheng : public OneCardViewAsSkill
+namespace {
+bool hasShouyue(const Player *player)
 {
+    const Player *lord = player ? player->getLord() : nullptr;
+    return player && player->getSeemingKingdom() == "shu"
+        && lord && lord->hasLordSkill("heg_shouyue") && lord->hasShownGeneral1();
+}
+}
+
+class TenyearWusheng : public ViewAsSkillV2 {
 public:
-	TenyearWusheng() : OneCardViewAsSkill("tenyearwusheng")
-	{
-		response_or_use = true;
-	}
-
-	bool isEnabledAtPlay(const Player *player) const
-	{
-		return Slash::IsAvailable(player);
-	}
-
-	bool isEnabledAtResponse(const Player *, const QString &pattern) const
-	{
-		return pattern.contains("slash") || pattern.contains("Slash");
-	}
-
-	bool viewFilter(const Card *card) const
-	{
-		if (!card->isRed())
-			return false;
-
-		if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY) {
-			Slash *slash = new Slash(Card::SuitToBeDecided, -1);
-			slash->addSubcard(card->getEffectiveId());
-			slash->deleteLater();
-			return slash->isAvailable(Self);
-		}
-		return true;
-	}
-
-	const Card *viewAs(const Card *originalCard) const
-	{
-		Card *slash = new Slash(originalCard->getSuit(), originalCard->getNumber());
-		slash->addSubcard(originalCard->getId());
-		slash->setSkillName(objectName());
-		return slash;
-	}
-
-	int getEffectIndex(const ServerPlayer *player, const Card *) const
-	{
-		int index = qsanRandomBounded(2) + 1;
-		if (player->getKingdom() == "wei")
-			index += 2;
-		return index;
-	}
+    TenyearWusheng() : ViewAsSkillV2("tenyearwusheng", 1) { setResponseOrUse(true); }
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        if (!request.initiator) return false;
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            ? Slash::IsAvailable(request.initiator)
+            : (request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+                || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE) && (request.pattern.contains("slash") || request.pattern.contains("Slash"));
+    }
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        if (!ViewAsSkillV2::canSelectCard(request, card) || !request.initiator
+            || (!card->isRed() && !(Config.EnableHegemony && hasShouyue(request.initiator)))) return false;
+        if (request.reason != CardUseStruct::CARD_USE_REASON_PLAY) return true;
+        Slash slash(Card::SuitToBeDecided, -1);
+        slash.addSubcard(card);
+        return slash.isAvailable(request.initiator);
+    }
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1 || request.selectedCardIds.first() < 0) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *original = Sanguosha->getCard(request.selectedCardIds.first());
+        Slash *slash = new Slash(original->getSuit(), original->getNumber());
+        slash->addSubcard(original);
+        slash->setSkillName(objectName());
+        slash->setShowSkill(objectName());
+        return slash;
+    }
+    int getEffectIndex(const ServerPlayer *player, const Card *) const override
+    {
+        int index = qsanRandomBounded(2) + 1;
+        if (player->getKingdom() == "wei") index += 2;
+        return index;
+    }
 };
 
-class TenyearWushengMod : public TargetModSkill
-{
+class TenyearWushengMod : public TargetModSkillV2 {
 public:
-	TenyearWushengMod() : TargetModSkill("#tenyearwushengmod")
-	{
-		frequency = NotFrequent;
-	}
-
-	int getDistanceLimit(const Player *from, const Card *card, const Player *) const
-	{
-		if (card->getSuit()==Card::Diamond&&card->isKindOf("Slash")&&from->hasSkill("tenyearwusheng"))
-			return 1000;
-		return 0;
-	}
+    TenyearWushengMod() : TargetModSkillV2("#tenyearwushengmod") { frequency = NotFrequent; }
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+    {
+        // The native collector validates the exact parent source and its revelation.
+        return ctx.modType == TargetModSkill::DistanceLimit && ctx.card && ctx.card->isKindOf("Slash") && ctx.card->getSuit() == Card::Diamond
+            ? CorrectSkillResult::useAmount(1000) : CorrectSkillResult::noEffect();
+    }
 };
 
 TenyearYijueCard::TenyearYijueCard()
@@ -1268,42 +1269,73 @@ public:
 	}
 };
 
-class TenyearKuanggu : public TriggerSkill
-{
+class TenyearKuanggu : public TriggerSkillV2 {
 public:
-	TenyearKuanggu() : TriggerSkill("tenyearkuanggu")
-	{
-		events << Damage;
-		frequency = Frequent;
-	}
-
-	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-	{
-		DamageStruct damage = data.value<DamageStruct>();
-		if (player->getTag("InvokeKuanggu").toBool()) {
-			for (int i = 0; i < damage.damage; i++) {
-				if (!player->isAlive()||!player->askForSkillInvoke(this)) break;
-				int index = qsanRandomBounded(2) + 1;
-				if (player->getGeneralName().startsWith("ol_") || player->getGeneral2Name().startsWith("ol_"))
-					index += 2;
-				room->broadcastSkillInvoke(objectName(), index);
-				QStringList choices;
-				if(player->getLostHp()>0)
-					choices << "recover";
-				choices << "draw";
-				if(choices.length()>1&&player->getMark("zhongaoUptenyearkuanggu")>0&&player->canDiscard(player,"he"))
-					choices << "beishui";
-				QString choice = room->askForChoice(player,objectName(),choices.join("+"),data);
-				if (choice=="beishui"){
-					room->askForDiscard(player,objectName(),1,1,false,true);
-					room->addSlashCishu(player,1);
-				}
-				if (choice!="draw") room->recover(player, RecoverStruct(objectName(), player));
-				if (choice!="recover") player->drawCards(1, objectName());
-			}
-		}
-		return false;
-	}
+    TenyearKuanggu() : TriggerSkillV2("tenyearkuanggu")
+    {
+        events << DamageDone << Damage << DamageComplete;
+        frequency = Frequent;
+    }
+    void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if ((event != DamageDone && event != DamageComplete) || !ctx.original_data) return;
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        if (!damage.from || !damage.to || ctx.owner != damage.from) return;
+        QVariantList ranges = ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "damage_ranges").toList();
+        // Each damage frame and skill instance keeps its own distance snapshot;
+        // nested damage must not overwrite the outer frame's recovery eligibility.
+        if (event == DamageDone) {
+            const int distance = damage.from->distanceTo(damage.to);
+            ranges << QVariant(distance >= 0 && distance <= 1);
+        } else if (!ranges.isEmpty()) {
+            ranges.removeLast();
+        }
+        if (ranges.isEmpty()) ctx.owner->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "damage_ranges");
+        else ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "damage_ranges", ranges);
+    }
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event != Damage || !player || !player->isAlive() || !player->hasSkill(objectName())) return {};
+        const int count = data.value<DamageStruct>().damage;
+        if (count <= 0) return {};
+        QStringList choices;
+        for (int id : player->getValidSkillInstanceIds(objectName())) {
+            const QVariantList ranges = player->getSkillInstanceStateValue(objectName(), id, "damage_ranges").toList();
+            if (!ranges.isEmpty() && ranges.last().toBool())
+                choices << SkillInstanceUtils::formatName(objectName(), id) + "*" + QString::number(count);
+        }
+        return choices.isEmpty() ? TriggerList() : TriggerList{{player, choices}};
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner) return false;
+        if (!ctx.owner->askForSkillInvoke(this)) return false;
+        int index = qsanRandomBounded(2) + 1;
+        if (ctx.owner->getGeneralName().startsWith("ol_") || ctx.owner->getGeneral2Name().startsWith("ol_")) index += 2;
+        room->broadcastSkillInvoke(objectName(), index);
+        return true;
+    }
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        Q_UNUSED(event);
+        if (!ctx.owner || !ctx.owner->isAlive()) return false;
+        // Keep the existing upgraded-variant option in the original definition.
+        QStringList choices;
+        if (ctx.owner->isWounded()) choices << "recover";
+        choices << "draw";
+        if (choices.size() > 1 && ctx.owner->getMark("zhongaoUptenyearkuanggu") > 0
+            && ctx.owner->canDiscard(ctx.owner, "he")) choices << "beishui";
+        const QString choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"),
+            ctx.original_data ? *ctx.original_data : QVariant());
+        if (choice == "beishui") {
+            room->askForDiscard(ctx.owner, objectName(), 1, 1, false, true);
+            room->addSlashCishu(ctx.owner, 1);
+        }
+        if (choice != "draw")
+            room->recover(ctx.owner, RecoverStruct(ctx.owner, nullptr, getEffectiveAmount(ctx), objectName()));
+        if (choice != "recover") ctx.owner->drawCards(getEffectiveAmount(ctx), objectName());
+        return false;
+    }
 };
 
 TenyearQimouCard::TenyearQimouCard()

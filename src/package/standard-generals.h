@@ -4,6 +4,19 @@
 #include "skill.h"
 #include "card.h"
 
+// Guanxing and Yizhi share observation rules while retaining their own sources.
+class Guanxing : public TriggerSkillV2 {
+public:
+    explicit Guanxing(const QString &name = "guanxing");
+    bool canPreshow() const override;
+    int getPriority(TriggerEvent) const override;
+    void record(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override;
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
+    bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
+};
+
 class StrengthenPackage : public Package
 {
     Q_OBJECT
@@ -98,15 +111,6 @@ class ZhihengCard : public SkillCard
 
 public:
     Q_INVOKABLE ZhihengCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
-};
-
-class RendeCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE RendeCard();
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
