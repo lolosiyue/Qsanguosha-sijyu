@@ -2608,15 +2608,9 @@ public:
             return !player->hasUsed("ZhanyiCard") || basicMode(player);
         if (request.reason != CardUseStruct::CARD_USE_REASON_RESPONSE
             && request.reason != CardUseStruct::CARD_USE_REASON_RESPONSE_USE) return false;
-        const QString &pattern = request.pattern;
         if (!basicMode(player)) return false;
-        if (pattern.startsWith(".") || pattern.startsWith("@")) return false;
-        if (pattern == "peach" && player->getMark("Global_PreventPeach") > 0) return false;
-        for (int i = 0; i < pattern.length(); i++) {
-            QChar ch = pattern[i];
-            if (ch.isUpper() || ch.isDigit()) return false; // This is an extremely dirty hack!! For we need to prevent patterns like 'BasicCard'
-        }
-        return !(pattern == "nullification");
+        if (request.pattern == "peach" && player->getMark("Global_PreventPeach") > 0) return false;
+        return !usableNames(request).isEmpty();
     }
 
     SkillDialogInfo getDialogInfo() const override
@@ -2639,80 +2633,26 @@ public:
 
     const Card *createCard(const ActiveSkillRequest &request) const override
     {
+        if (request.initiator && basicMode(request.initiator))
+            return ViewAsSkillV2::createCard(request);
         if (!cardSelectionFeasible(request)) return nullptr;
-        if (!basicMode(request.initiator)) {
-            ZhanyiCard *zy = new ZhanyiCard;
-            zy->addSubcards(request.selectedCardIds);
-            zy->setSkillName(objectName());
-            return zy;
-        }
-        // A response preview has no dialog declaration; the pattern head is declared.
-        QString name = request.userString;
-        if (name.isEmpty() && request.reason != CardUseStruct::CARD_USE_REASON_PLAY)
-            name = request.pattern;
-        Card *card = basicCard(request, name);
-        if (!card) return nullptr;
-        const bool usable = request.reason == CardUseStruct::CARD_USE_REASON_PLAY
-            ? card->isAvailable(request.initiator)
-            : Sanguosha->matchPattern(request.pattern, request.initiator, card);
-        if (!usable) {
-            delete card;
-            return nullptr;
-        }
-        return card;
+        ZhanyiCard *zy = new ZhanyiCard;
+        zy->addSubcards(request.selectedCardIds);
+        zy->setSkillName(objectName());
+        return zy;
     }
 
     QString historyKey(const ActiveSkillRequest &request) const override
     {
-        return cardHistoryKey(request.userString, "ZhanyiCard");
+        // ZhanyiCard is a proxy without a declared name.
+        return request.userString.isEmpty() ? "ZhanyiCard" : ViewAsSkillV2::historyKey(request);
     }
 
-    // The legacy validate choices for ambiguous responses now replace the previewed card.
-    bool cost(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
+protected:
+    Card *buildCard(const ActiveSkillRequest &request, const QString &name) const override
     {
-        if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY || !basicMode(request.initiator)) return true;
-        const bool maneuvering = !Sanguosha->getBanPackages().contains("maneuvering");
-        QStringList choices;
-        QString key;
-        if (request.pattern == "slash") {
-            key = "zhanyi_slash";
-            choices << "slash";
-            if (maneuvering) choices << "normal_slash" << "thunder_slash" << "fire_slash";
-        } else if (request.pattern == "peach+analeptic") {
-            key = "zhanyi_saveself";
-            choices << "peach";
-            if (maneuvering) choices << "analeptic";
-        } else {
-            return true;
-        }
-        Card *card = basicCard(request, room->askForChoice(ctx.invoker, key, choices.join("+")));
-        if (!card) return false;
-        card->deleteLater();
-        card->setActivationSkill(objectName(), request.getActivationInstanceId());
-        if (ctx.use_card)
-            card->setSourceSkill(ctx.use_card->getSourceSkillName(), ctx.use_card->getSourceSkillInstanceId());
-        ctx.updated_card = card;
-        return true;
-    }
-
-private:
-    static Card *basicCard(const ActiveSkillRequest &request, QString name)
-    {
-        const Card *material = Sanguosha->getCard(request.selectedCardIds.first());
-        name = name.split("+").first();
-        // "slash" keeps a Slash material's nature; "normal_slash" forces a plain Slash.
-        if (name == "slash" && material->isKindOf("Slash"))
-            name = material->objectName();
-        else if (name == "normal_slash")
-            name = "slash";
-        Card *card = Sanguosha->cloneCard(name, material->getSuit(), material->getNumber());
-        if (!card) return nullptr;
-        if (!card->isKindOf("BasicCard") || Sanguosha->getBanPackages().contains(card->getPackage())) {
-            delete card;
-            return nullptr;
-        }
-        card->addSubcard(material);
-        card->setSkillName("_zhanyi");
+        Card *card = ViewAsSkillV2::buildCard(request, name);
+        if (card) card->setSkillName("_zhanyi");
         return card;
     }
 };

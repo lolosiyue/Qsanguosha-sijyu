@@ -11,6 +11,7 @@
 #endif
 #include "server-info.h"
 #include "exppattern.h"
+#include "standard.h"
 #include "skill-instance-utils.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <algorithm>
@@ -557,6 +558,11 @@ bool ViewAsSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) con
 
 const Card *ViewAsSkillV2::createCard(const ActiveSkillRequest &request) const
 {
+    if (declaresCardName()) {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const QString name = declaredName(request);
+        return canDeclare(request, name) ? buildCard(request, name) : nullptr;
+    }
 	ActiveSkillCard *card = new ActiveSkillCard;
 	card->setActiveSkill(this);
 	card->setSkillName(objectName());
@@ -570,8 +576,23 @@ bool ViewAsSkillV2::willThrowSelectedCards() const
     return true;
 }
 
-bool ViewAsSkillV2::cost(Room *, SkillContext &, const ActiveSkillRequest &) const
+// A pattern-derived declaration matching several cards ("slash",
+// "peach+analeptic") asks for the exact card and replaces the preview.
+bool ViewAsSkillV2::cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
 {
+    if (!declaresCardName() || declaresByDialog(request.reason)) return true;
+    const QStringList names = usableNames(request);
+    if (names.length() < 2) return true;
+    const QString choice = room->askForChoice(context.invoker, objectName(), names.join("+"));
+    if (!names.contains(choice)) return false;
+    Card *card = buildCard(request, choice);
+    if (!card) return false;
+    card->deleteLater();
+    card->setActivationSkill(objectName(), request.getActivationInstanceId());
+    if (context.use_card)
+        card->setSourceSkill(context.use_card->getSourceSkillName(),
+                             context.use_card->getSourceSkillInstanceId());
+    context.updated_card = card;
     return true;
 }
 
@@ -614,9 +635,16 @@ bool ViewAsSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequ
     return true;
 }
 
-QString ViewAsSkillV2::historyKey(const ActiveSkillRequest &) const
+QString ViewAsSkillV2::historyKey(const ActiveSkillRequest &request) const
 {
-    return objectName();
+    if (!declaresCardName()) return objectName();
+    // Declarations keep the used card's own key; re-validating it could fail after use.
+    Card *card = Sanguosha->cloneCard(request.userString.isEmpty()
+        ? declaredName(request) : request.userString);
+    if (!card) return objectName();
+    const QString key = card->getClassName();
+    delete card;
+    return key;
 }
 
 ViewAsSkillV2::TargetMode ViewAsSkillV2::targetMode() const { return SelectTargets; }
@@ -690,6 +718,130 @@ bool ViewAsSkillV2::viewFilter(const QList<const Card *> &, const Card *) const
 const Card *ViewAsSkillV2::viewAs(const QList<const Card *> &) const
 {
     return nullptr;
+}
+
+// Like SkillDeclarationSession, a trigger-owned conversion reads its owner's dialog.
+SkillDialogInfo ViewAsSkillV2::declarationDialog() const
+{
+    SkillDialogInfo info = getDialogInfo();
+    if (!info.isValid()) {
+        if (const Skill *owner = Sanguosha->getSkill(objectName()))
+            info = owner->getDialogInfo();
+    }
+    return info;
+}
+
+bool ViewAsSkillV2::declaresCardName() const
+{
+    return declarationDialog().type == QLatin1String("guhuo");
+}
+
+bool ViewAsSkillV2::declaresByDialog(CardUseStruct::CardUseReason reason) const
+{
+    return reason == CardUseStruct::CARD_USE_REASON_PLAY
+        || !declarationDialog().parameters.value("playOnly", true).toBool();
+}
+
+// Mirrors SkillDeclarationSession's guhuo candidates. Clones carry no package,
+// so bans are read from the engine prototypes.
+QStringList ViewAsSkillV2::listedNames() const
+{
+    const QVariantMap params = declarationDialog().parameters;
+    const bool left = params.value("left", true).toBool();
+    const bool right = params.value("right", true).toBool();
+    const bool slashCombined = params.value("slashCombined", false).toBool();
+    const bool delayed = params.value("delayedTricks", false).toBool();
+    const QStringList banned = Sanguosha->getBanPackages();
+    QList<const Card *> prototypes;
+    for (const BasicCard *card : Sanguosha->findChildren<const BasicCard *>())
+        prototypes << card;
+    for (const TrickCard *card : Sanguosha->findChildren<const TrickCard *>())
+        prototypes << card;
+    QStringList names;
+    for (const Card *card : prototypes) {
+        const QString name = card->objectName();
+        if (name.startsWith('_') || names.contains(name) || banned.contains(card->getPackage()))
+            continue;
+        const bool basic = card->isKindOf("BasicCard");
+        const bool trick = card->isKindOf("TrickCard");
+        if ((!left && basic) || (!right && trick) || (!basic && !trick)
+            || (slashCombined && card->isKindOf("Slash") && name != "slash")
+            || (trick && !delayed && !card->isNDTrick()))
+            continue;
+        names << name;
+    }
+    return names;
+}
+
+bool ViewAsSkillV2::canDeclare(const ActiveSkillRequest &request, const QString &name) const
+{
+    return listedNames().contains(name) && canDeclareListed(request, name);
+}
+
+bool ViewAsSkillV2::canDeclareListed(const ActiveSkillRequest &request, const QString &name) const
+{
+    const Player *player = request.initiator;
+    if (!player || name.isEmpty() || !allowDeclaration(player, name))
+        return false;
+    const bool play = request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
+    // Only named card demands are declarable; "." and "@" requests ask for real cards.
+    if (!play && (request.pattern.startsWith('.') || request.pattern.startsWith('@')))
+        return false;
+    Card *probe = Sanguosha->cloneCard(name, Card::SuitToBeDecided, -1);
+    if (!probe) return false;
+    probe->addSubcards(request.selectedCardIds);
+    probe->setSkillName(objectName());
+    probe->setCanRecast(false);
+    bool usable = !declarationDialog().parameters.value("checkLocked", true).toBool()
+        || !player->isLocked(probe);
+    if (usable && play)
+        usable = probe->isAvailable(player)
+            && (request.pattern.isEmpty() || Sanguosha->matchPattern(request.pattern, player, probe));
+    else if (usable)
+        usable = Sanguosha->matchPattern(request.pattern, player, probe);
+    delete probe;
+    return usable;
+}
+
+QStringList ViewAsSkillV2::usableNames(const ActiveSkillRequest &request) const
+{
+    QStringList names;
+    for (const QString &name : listedNames()) {
+        if (canDeclareListed(request, name))
+            names << name;
+    }
+    return names;
+}
+
+QString ViewAsSkillV2::declaredName(const ActiveSkillRequest &request) const
+{
+    if (declaresByDialog(request.reason) || canDeclare(request, request.userString))
+        return request.userString;
+    // A pattern-derived response previews its first match; cost() settles the choice.
+    return usableNames(request).value(0);
+}
+
+bool ViewAsSkillV2::allowDeclaration(const Player *, const QString &) const
+{
+    return true;
+}
+
+Card *ViewAsSkillV2::buildCard(const ActiveSkillRequest &request, const QString &name) const
+{
+    Card *card = Sanguosha->cloneCard(name, Card::SuitToBeDecided, -1);
+    if (!card) return nullptr;
+    card->addSubcards(request.selectedCardIds);
+    card->setSkillName(objectName());
+    card->setCanRecast(false);
+    return card;
+}
+
+SkillDeclarationReason ViewAsSkillV2::declarationReason(
+    const Player *self, const QString &value, const Card *card) const
+{
+    if (!declaresCardName()) return ViewAsSkill::declarationReason(self, value, card);
+    return self && allowDeclaration(self, value)
+        ? SkillDeclarationReason::None : SkillDeclarationReason::CardUnavailable;
 }
 
 ZeroCardViewAsSkill::ZeroCardViewAsSkill(const QString &name)

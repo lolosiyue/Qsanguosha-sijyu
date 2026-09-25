@@ -330,9 +330,36 @@ public:
     bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const override;
     const Card *viewAs(const QList<const Card *> &cards) const override;
 
+    // Guhuo-style declaration: with a "guhuo" dialog (on this skill or its owner)
+    // the player declares a basic/trick card name. One rule set then feeds the
+    // client dialog, the default createCard(), ambiguous response choices in the
+    // default cost() and the default historyKey(), so a declaration outside the
+    // dialog or the requested pattern never becomes a card.
+    // This skill's dialog, or its owner's for a trigger-owned conversion.
+    SkillDialogInfo declarationDialog() const;
+    bool declaresCardName() const;
+    // False when a response takes its name from the requested pattern instead.
+    bool declaresByDialog(CardUseStruct::CardUseReason reason) const;
+    // Dialog filters and bans, allowDeclaration(), locks, then play availability
+    // or the requested pattern, all checked on the selected material.
+    bool canDeclare(const ActiveSkillRequest &request, const QString &name) const;
+    QStringList usableNames(const ActiveSkillRequest &request) const;
+    SkillDeclarationReason declarationReason(const Player *self, const QString &value,
+                                             const Card *card) const override;
+
 protected:
+    virtual bool allowDeclaration(const Player *player, const QString &name) const;
+    // Builds the card for an accepted name: by default a clone over the selected
+    // material under this skill's name. Proxy cards override it.
+    virtual Card *buildCard(const ActiveSkillRequest &request, const QString &name) const;
+
     int m_n;
     int m_baseAmount;
+
+private:
+    QStringList listedNames() const;
+    bool canDeclareListed(const ActiveSkillRequest &request, const QString &name) const;
+    QString declaredName(const ActiveSkillRequest &request) const;
 };
 
 class ZeroCardViewAsSkill : public ViewAsSkill

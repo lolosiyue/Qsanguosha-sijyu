@@ -218,7 +218,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &, const Card *) const override { return false; }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
-        return request.initiator && request.selectedCardIds.isEmpty() && declarationAllowed(request.initiator, request.userString);
+        return request.initiator && request.selectedCardIds.isEmpty();
     }
 
     HQice() : ViewAsSkillV2("heg_qice")
@@ -226,21 +226,19 @@ public:
 
     }
 
-    const Card *createCard(const ActiveSkillRequest &request) const override
+    SkillDialogInfo getDialogInfo() const override { return SkillDialogInfo::guhuo(objectName(), false); }
+    QString historyKey(const ActiveSkillRequest &) const override { return "HQiceCard"; }
+
+protected:
+    Card *buildCard(const ActiveSkillRequest &request, const QString &name) const override
     {
-        if (!cardSelectionFeasible(request)) return nullptr;
-        QString c = request.userString;
-        if (c != "") {
-            HQiceCard *card = new HQiceCard;
-            card->addSubcards(request.initiator->getHandcards());
-            card->setUserString(c);
-            return card;
-        } else
-            return NULL;
+        HQiceCard *card = new HQiceCard;
+        card->addSubcards(request.initiator->getHandcards());
+        card->setUserString(name);
+        return card;
     }
 
-
-    bool declarationAllowed(const Player *Self, const QString &button_name) const
+    bool allowDeclaration(const Player *Self, const QString &button_name) const override
     {
         if (!Self || button_name.isEmpty()) return false;
 
@@ -292,13 +290,6 @@ public:
 
         return !Self->isCardLimited(card, Card::MethodUse) && card->isAvailable(Self);
     }
-    SkillDialogInfo getDialogInfo() const override { return SkillDialogInfo::guhuo(objectName(), false); }
-    SkillDeclarationReason declarationReason(const Player *self, const QString &value, const Card *) const override
-    {
-        return declarationAllowed(self, value) ? SkillDeclarationReason::None : SkillDeclarationReason::CardUnavailable;
-    }
-    QString historyKey(const ActiveSkillRequest &) const override { return "HQiceCard"; }
-
 };
 
 //bianhuanhou

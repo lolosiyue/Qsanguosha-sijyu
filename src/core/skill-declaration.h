@@ -69,6 +69,12 @@ public:
     SkillDeclarationSession(const SkillDeclarationSession &) = delete;
     SkillDeclarationSession &operator=(const SkillDeclarationSession &) = delete;
 
+    // Whether a guhuo/juguan/tiansuan dialog declares anything for this reason,
+    // without building candidates.
+    static bool activeFor(const SkillDialogInfo &info, CardUseStruct::CardUseReason reason);
+    // The Self tag holding the committed choice: a Card clone, or a plain string.
+    static QString tagKeyFor(const SkillDialogInfo &info, const QString &skillName);
+
     SkillDialogInfo info() const { return m_info; }
     QString skillName() const { return m_skillName; }
     bool supported() const { return m_supported; }

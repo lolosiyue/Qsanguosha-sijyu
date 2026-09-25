@@ -469,6 +469,10 @@ public:
 	virtual bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const;
 	virtual const Card *viewAs(const QList<const Card *> &cards) const;
 	EffectFlow skillEffect(SkillContext &context, ServerPlayer *target) const;
+	bool declaresCardName() const;
+	bool declaresByDialog(CardUseStruct::CardUseReason reason) const;
+	bool canDeclare(const ActiveSkillRequest &request, const QString &name) const;
+	QStringList usableNames(const ActiveSkillRequest &request) const;
 };
 
 class LuaViewAsSkillV2: public ViewAsSkillV2 {
@@ -503,6 +507,8 @@ public:
 	LuaFunction on_effect_target_group;
 	LuaFunction get_usage_ref;
 	LuaFunction get_amount_ref;
+	LuaFunction allow_declaration;
+	LuaFunction build_card;
 };
 
 class LuaViewAsSkill: public ViewAsSkill {
@@ -3854,6 +3860,35 @@ const Card *LuaViewAsSkillV2::createCard(const ActiveSkillRequest &request) cons
 	const int converted = SWIG_ConvertPtr(L, -1, &card, SWIGTYPE_p_Card, 0);
 	lua_pop(L, 1);
 	return SWIG_IsOK(converted) ? static_cast<const Card *>(card) : nullptr;
+}
+
+bool LuaViewAsSkillV2::allowDeclaration(const Player *player, const QString &name) const
+{
+	if (!allow_declaration) return ViewAsSkillV2::allowDeclaration(player, name);
+	lua_State *L = LuaRuntime::currentState();
+	allow_declaration.push(L);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<Player *>(player), SWIGTYPE_p_Player, 0);
+	lua_pushstring(L, name.toUtf8().constData());
+	if (!luaActivePCall(L, 3, 1, "allow_declaration")) return false;
+	const bool result = lua_toboolean(L, -1);
+	lua_pop(L, 1);
+	return result;
+}
+
+Card *LuaViewAsSkillV2::buildCard(const ActiveSkillRequest &request, const QString &name) const
+{
+	if (!build_card) return ViewAsSkillV2::buildCard(request, name);
+	lua_State *L = LuaRuntime::currentState();
+	build_card.push(L);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
+	lua_pushstring(L, name.toUtf8().constData());
+	if (!luaActivePCall(L, 3, 1, "build_card")) return nullptr;
+	void *card = nullptr;
+	const int converted = SWIG_ConvertPtr(L, -1, &card, SWIGTYPE_p_Card, 0);
+	lua_pop(L, 1);
+	return SWIG_IsOK(converted) ? static_cast<Card *>(card) : nullptr;
 }
 
 bool LuaViewAsSkillV2::cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
