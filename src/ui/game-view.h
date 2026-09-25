@@ -5,11 +5,15 @@
 #include <QGraphicsView>
 #include <QMargins>
 #include <QPointer>
+#include "build-features.h"
 #include "room-layout-engine.h"
 
 class RoomScene;
 class RoomOverlayHost;
 class RoomWindowPosture;
+#if !QSAN_USE_RASTER_VIEWPORT
+class GameViewGlFilter;
+#endif
 
 class FitView final : public QGraphicsView
 {
@@ -24,14 +28,20 @@ public:
     void setUiScale(qreal scale);
     void refit();
     void setBackgroundBrush(bool centerAsOrigin);
+    // 灰階/高對比:牌桌是 QGraphicsView,吃不到 palette,要對畫面後製。
+    void applyVisualMode();
 
 protected:
     bool event(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     bool viewportEvent(QEvent *event) override;
+    void drawForeground(QPainter *painter, const QRectF &rect) override;
 
 private:
     void fitCurrentScene(const QSize &viewportSize);
+#if !QSAN_USE_RASTER_VIEWPORT
+    GameViewGlFilter *m_glFilter = nullptr;
+#endif
 #if !defined(QSAN_XP_LEGACY)
     void ensureRoomOverlay(RoomScene *room);
     QPointer<RoomOverlayHost> m_overlay;

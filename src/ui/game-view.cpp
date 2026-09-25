@@ -12,8 +12,13 @@
 #endif
 
 #if !QSAN_USE_RASTER_VIEWPORT
+#include <QDebug>
+#include <QOpenGLContext>
+#include <QOpenGLFunctions>
+#include <QOpenGLShaderProgram>
 #include <QOpenGLWidget>
 #endif
+#include <QGraphicsEffect>
 #include <QPainter>
 #include <QPixmapCache>
 #include <QHoverEvent>
@@ -22,6 +27,186 @@
 #include <QTimer>
 #include <QApplication>
 #include <QKeyEvent>
+
+namespace {
+
+bool isGrayscaleMode()
+{
+    return Config.VisualMode == QLatin1String("grayscale");
+}
+
+bool isVisualModeActive()
+{
+    return isGrayscaleMode() || Config.VisualMode == QLatin1String("highcontrast");
+}
+
+// 與 HomeScene 的 MultiEffect 同參數:灰階全去色,高對比 contrast +0.35。
+constexpr int kHighContrastPercent = 135;
+
+// CPU 後製:光柵 viewport 整張畫面,以及 GL 版浮在 viewport 上的 QWidget overlay。
+class VisualModeEffect final : public QGraphicsEffect
+{
+public:
+    explicit VisualModeEffect(bool grayscale)
+        : m_grayscale(grayscale)
+    {
+    }
+
+protected:
+    void draw(QPainter *painter) override
+    {
+        QPoint offset;
+        const QPixmap pixmap = sourcePixmap(Qt::DeviceCoordinates, &offset, QGraphicsEffect::NoPad);
+        if (pixmap.isNull())
+            return;
+        // premultiplied:對比以 a/2 為中心拉伸並夾在 [0, a],半透明邊緣才不會溢色。
+        QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        for (int y = 0; y < image.height(); ++y) {
+            QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+            for (int x = 0; x < image.width(); ++x) {
+                const QRgb pixel = line[x];
+                const int a = qAlpha(pixel);
+                if (m_grayscale) {
+                    const int luma = (qRed(pixel) * 77 + qGreen(pixel) * 150 + qBlue(pixel) * 29) >> 8;
+                    line[x] = qRgba(luma, luma, luma, a);
+                } else {
+                    const auto stretch = [a](int c) {
+                        return qBound(0, (c * 2 - a) * kHighContrastPercent / 200 + a / 2, a);
+                    };
+                    line[x] = qRgba(stretch(qRed(pixel)), stretch(qGreen(pixel)), stretch(qBlue(pixel)), a);
+                }
+            }
+        }
+        painter->save();
+        painter->setWorldTransform(QTransform());
+        painter->drawImage(offset, image);
+        painter->restore();
+    }
+
+private:
+    bool m_grayscale;
+};
+
+} // namespace
+
+#if !QSAN_USE_RASTER_VIEWPORT
+// GPU 後製:把 QOpenGLWidget 已畫好的 FBO 複製成貼圖,再用 shader 蓋回去。
+class GameViewGlFilter final : public QObject
+{
+public:
+    explicit GameViewGlFilter(QOpenGLWidget *widget)
+        : QObject(widget), m_widget(widget)
+    {
+    }
+
+    // 需在 beginNativePainting/endNativePainting 之間呼叫。
+    void apply(bool grayscale)
+    {
+        QOpenGLContext *context = QOpenGLContext::currentContext();
+        if (!context || m_failed)
+            return;
+        if (m_context != context) {
+            // widget 換 top-level 時 context 會重建;刪 GL 物件前要先 makeCurrent。
+            m_context = context;
+            connect(context, &QOpenGLContext::aboutToBeDestroyed, this, [this]() {
+                m_widget->makeCurrent();
+                release();
+                m_widget->doneCurrent();
+            });
+        }
+        if (!ensureProgram())
+            return;
+        QOpenGLFunctions *f = context->functions();
+        const QSize size = m_widget->size() * m_widget->devicePixelRatioF();
+        if (size.isEmpty())
+            return;
+
+        f->glActiveTexture(GL_TEXTURE0);
+        if (!m_texture)
+            f->glGenTextures(1, &m_texture);
+        f->glBindTexture(GL_TEXTURE_2D, m_texture);
+        if (m_textureSize != size) {
+            f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            f->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            f->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size.width(), size.height(), 0,
+                GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            m_textureSize = size;
+        }
+        f->glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, size.width(), size.height());
+
+        static const GLfloat quad[] = { -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f };
+        f->glBindBuffer(GL_ARRAY_BUFFER, 0);
+        f->glViewport(0, 0, size.width(), size.height());
+        m_program->bind();
+        m_program->setUniformValue("source", 0);
+        m_program->setUniformValue("grayscale", grayscale ? 1.0f : 0.0f);
+        m_program->setUniformValue("contrast", grayscale ? 1.0f : kHighContrastPercent / 100.0f);
+        m_program->enableAttributeArray(0);
+        m_program->setAttributeArray(0, GL_FLOAT, quad, 2);
+        f->glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        m_program->disableAttributeArray(0);
+        m_program->release();
+        f->glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+private:
+    bool ensureProgram()
+    {
+        if (m_program)
+            return true;
+        m_program = new QOpenGLShaderProgram;
+        m_program->addShaderFromSourceCode(QOpenGLShader::Vertex,
+            "attribute highp vec2 vertex;\n"
+            "varying highp vec2 texCoord;\n"
+            "void main()\n"
+            "{\n"
+            "    texCoord = vertex * 0.5 + 0.5;\n"
+            "    gl_Position = vec4(vertex, 0.0, 1.0);\n"
+            "}\n");
+        m_program->addShaderFromSourceCode(QOpenGLShader::Fragment,
+            "uniform sampler2D source;\n"
+            "uniform mediump float grayscale;\n"
+            "uniform mediump float contrast;\n"
+            "varying highp vec2 texCoord;\n"
+            "void main()\n"
+            "{\n"
+            "    mediump vec4 color = texture2D(source, texCoord);\n"
+            "    mediump float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));\n"
+            "    mediump vec3 rgb = mix(color.rgb, vec3(luma), grayscale);\n"
+            "    rgb = (rgb - 0.5 * color.a) * contrast + 0.5 * color.a;\n"
+            "    gl_FragColor = vec4(clamp(rgb, 0.0, color.a), color.a);\n"
+            "}\n");
+        m_program->bindAttributeLocation("vertex", 0);
+        if (m_program->link())
+            return true;
+        qWarning().noquote() << "Visual mode shader failed:" << m_program->log();
+        m_failed = true;
+        release();
+        return false;
+    }
+
+    void release()
+    {
+        delete m_program;
+        m_program = nullptr;
+        if (m_texture) {
+            if (QOpenGLContext *context = QOpenGLContext::currentContext())
+                context->functions()->glDeleteTextures(1, &m_texture);
+            m_texture = 0;
+        }
+        m_textureSize = QSize();
+    }
+
+    QOpenGLWidget *m_widget;
+    QPointer<QOpenGLContext> m_context;
+    QOpenGLShaderProgram *m_program = nullptr;
+    GLuint m_texture = 0;
+    QSize m_textureSize;
+    bool m_failed = false;
+};
+#endif
 
 FitView::FitView(QGraphicsScene *scene, QWidget *parent)
     : QGraphicsView(scene, parent)
@@ -37,6 +222,7 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
     QOpenGLWidget *glWidget = new QOpenGLWidget(this);
     glWidget->setUpdateBehavior(QOpenGLWidget::PartialUpdate);
     setViewport(glWidget);
+    m_glFilter = new GameViewGlFilter(glWidget);
 #endif
     qsanEnableWidgetPointerHover(this);
     qsanEnableWidgetPointerHover(viewport());
@@ -56,6 +242,33 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
         setResponsiveRoomEnabled(Config.responsiveUiEnabled());
     });
     connect(m_posture, &RoomWindowPosture::postureChanged, this, [this]() { refit(); });
+#endif
+    applyVisualMode();
+}
+
+void FitView::applyVisualMode()
+{
+    const bool active = isVisualModeActive();
+#if QSAN_USE_RASTER_VIEWPORT
+    // overlay 是 viewport 的子 widget,一併被這層效果處理。
+    viewport()->setGraphicsEffect(active ? new VisualModeEffect(isGrayscaleMode()) : nullptr);
+#elif !defined(QSAN_XP_LEGACY)
+    // GL viewport 由 drawForeground 後製;overlay 是另外合成的 QWidget,要自己套。
+    if (m_overlay)
+        m_overlay->setGraphicsEffect(active ? new VisualModeEffect(isGrayscaleMode()) : nullptr);
+#endif
+    viewport()->update();
+}
+
+void FitView::drawForeground(QPainter *painter, const QRectF &rect)
+{
+    QGraphicsView::drawForeground(painter, rect);
+#if !QSAN_USE_RASTER_VIEWPORT
+    if (!isVisualModeActive())
+        return;
+    painter->beginNativePainting();
+    m_glFilter->apply(isGrayscaleMode());
+    painter->endNativePainting();
 #endif
 }
 
@@ -148,6 +361,7 @@ void FitView::ensureRoomOverlay(RoomScene *room)
             m_overlay->setLayoutResult(room->responsiveLayout());
     });
     connect(room, &QObject::destroyed, m_overlay, &QObject::deleteLater);
+    applyVisualMode();
     m_overlay->show();
 }
 #endif
