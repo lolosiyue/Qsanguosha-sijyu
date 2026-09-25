@@ -430,6 +430,18 @@ void HomeGeneralModel::ensureLoaded()
 
     const QList<const General *> list = Sanguosha->getAllGenerals();
     const QString companionLabel = Sanguosha->translate(QStringLiteral("CompanionEffect"));
+    // General::getCompanions() rescans every general per call; index the
+    // reverse declarations once. Each source contributes once per target.
+    QHash<QString, QStringList> reverseCompanions;
+    for (const General *source : list) {
+        if (!source) continue;
+        QSet<QString> seenTargets;
+        for (const QString &target : source->getCompanionNames()) {
+            if (seenTargets.contains(target)) continue;
+            seenTargets.insert(target);
+            reverseCompanions[target] << Sanguosha->translate(source->objectName());
+        }
+    }
     m_all.clear();
     m_all.reserve(list.size());
     for (const General *general : list) {
@@ -438,7 +450,11 @@ void HomeGeneralModel::ensureLoaded()
         Row row;
         row.name = general->objectName();
         row.displayName = Sanguosha->translate(row.name);
-        row.companions = general->getCompanions();
+        QStringList companions;
+        for (const QString &target : general->getCompanionNames())
+            companions << Sanguosha->translate(target);
+        companions << reverseCompanions.value(row.name);
+        row.companions = companions.join(QLatin1Char(' '));
         row.companionLabel = companionLabel;
         row.nickname = nicknameOf(row.name);
         row.kingdom = general->getKingdom();
