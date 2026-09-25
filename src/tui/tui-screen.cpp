@@ -2,19 +2,16 @@
 
 #include <QStringList>
 
-namespace {
-
 // The SGR code for each attribute, applied on its own (never stacked -- see
 // the reset-before-apply comment in TuiScreen::flush()). Normal needs none:
 // a run that never leaves Normal never emits an SGR at all, which is most of
-// the board's own text. The actual colours are a placeholder palette, but
-// TuiAttr is no longer just a "does it round-trip" placeholder itself --
-// tui-board-view.cpp now applies Bold/Danger/Current/Dead for real (the
-// self cell, notices, the input cursor, dying/dead players), so the
-// distinctions below are load-bearing: kingdom banners in gold, the current
-// player's turn in reverse video, lethal HP and dead generals both reading
-// as "faded" in different ways.
-QString attrToSgr(TuiAttr attr)
+// the board's own text. tui-board-view.cpp applies these for real (the self
+// cell, notices, the input cursor, dying/dead players, hit points, kingdom
+// names), so the distinctions below are load-bearing: the current player's
+// turn in reverse video, lethal HP and dead generals both reading as "faded"
+// in different ways, kingdoms in the desktop's banner colours (bright
+// variants, which stay legible on a dark console).
+QString tuiAttrSgr(TuiAttr attr)
 {
     switch (attr) {
     case TuiAttr::Normal:
@@ -31,11 +28,51 @@ QString attrToSgr(TuiAttr attr)
         return QStringLiteral("\x1b[31m");
     case TuiAttr::Dead:
         return QStringLiteral("\x1b[90m");
+    case TuiAttr::Self:
+        return QStringLiteral("\x1b[1;36m");
+    case TuiAttr::HpHealthy:
+        return QStringLiteral("\x1b[32m");
+    case TuiAttr::HpWounded:
+        return QStringLiteral("\x1b[33m");
+    case TuiAttr::KingdomWei:
+        return QStringLiteral("\x1b[94m");
+    case TuiAttr::KingdomShu:
+        return QStringLiteral("\x1b[91m");
+    case TuiAttr::KingdomWu:
+        return QStringLiteral("\x1b[92m");
+    case TuiAttr::KingdomQun:
+        return QStringLiteral("\x1b[37m");
+    case TuiAttr::KingdomGod:
+        return QStringLiteral("\x1b[93m");
+    case TuiAttr::KingdomJin:
+        return QStringLiteral("\x1b[95m");
     }
     return QString();
 }
 
-} // namespace
+TuiAttr tuiHpAttr(int hp, int maxHp)
+{
+    if (hp >= 3 || (hp > 0 && hp >= maxHp))
+        return TuiAttr::HpHealthy;
+    return hp == 2 ? TuiAttr::HpWounded : TuiAttr::Danger;
+}
+
+TuiAttr tuiKingdomAttr(const QString &kingdom)
+{
+    if (kingdom == QLatin1String("wei"))
+        return TuiAttr::KingdomWei;
+    if (kingdom == QLatin1String("shu"))
+        return TuiAttr::KingdomShu;
+    if (kingdom == QLatin1String("wu"))
+        return TuiAttr::KingdomWu;
+    if (kingdom == QLatin1String("qun"))
+        return TuiAttr::KingdomQun;
+    if (kingdom == QLatin1String("god"))
+        return TuiAttr::KingdomGod;
+    if (kingdom == QLatin1String("jin"))
+        return TuiAttr::KingdomJin;
+    return TuiAttr::Kingdom;
+}
 
 bool TuiScreen::Cell::operator==(const Cell &other) const
 {
@@ -217,7 +254,7 @@ QString TuiScreen::flush()
                 // Bold into Danger would come out bold *and* red instead of
                 // just red.
                 out += QStringLiteral("\x1b[0m");
-                out += attrToSgr(cell.attr);
+                out += tuiAttrSgr(cell.attr);
                 current = cell.attr;
             }
             out += cell.glyph;

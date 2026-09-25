@@ -18,4 +18,11 @@
 // EngineBootstrap::initialize() -- are the one place still holding literals.
 QString tuiText(const char *key);
 
+// The terminal client shows Simplified Chinese only. Converts character by
+// character; text containing kana is Japanese and comes back untouched.
+QString tuiToSimplified(const QString &text);
+// Rewrites every Traditional entry of the loaded engine translation table in
+// place. Call once, after EngineBootstrap::initialize().
+void tuiSimplifyTranslations();
+
 #endif

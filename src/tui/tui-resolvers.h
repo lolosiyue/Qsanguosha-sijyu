@@ -50,6 +50,8 @@ struct TuiResolvers
     std::function<QString(int)> handHint;
     // Same advisory, for an offered skill: name and activation instance in.
     std::function<QString(const QString &, int)> skillHint;
+    // Game mode code ("05p") -> the name the desktop shows for it.
+    std::function<QString(const QString &)> mode;
 };
 
 #endif

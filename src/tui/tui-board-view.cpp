@@ -2,8 +2,10 @@
 #include "tui-text.h"
 
 #include "client-game-state.h"
+#include "interaction-model.h"
 #include "player.h"
 #include "tui-board-layout.h"
+#include "tui-renderer.h"
 #include "tui-screen.h"
 #include "tui-text-width.h"
 
@@ -34,6 +36,11 @@ constexpr int CellHeight = 3;
 QString cardName(const TuiResolvers &resolvers, int cardId)
 {
     return resolvers.card ? resolvers.card(cardId) : QString::number(cardId);
+}
+
+QString modeName(const TuiResolvers &resolvers, const QString &mode)
+{
+    return resolvers.mode && !mode.isEmpty() ? resolvers.mode(mode) : mode;
 }
 
 // "wei" -> "魏", "wei+shu" (kingdom not yet declared) -> "魏/蜀", matching
@@ -114,6 +121,22 @@ QStringList seatOrderFromSelf(const ClientGameState &state)
     return order;
 }
 
+// A run of line 1 drawn again in its own colour over the cell's base
+// attribute: the kingdom name and the hearts (spec §3.7). Columns are display
+// columns from the cell's left edge.
+struct CellSpan
+{
+    int col = 0;
+    QString text;
+    TuiAttr attr = TuiAttr::Normal;
+};
+
+struct PlayerCell
+{
+    QStringList lines;
+    QList<CellSpan> spans;
+};
+
 // The three fixed lines of one player's cell (spec §3.1):
 //   line 1: [seat]name kingdom hp        -- prefixed with ▶ if it is this
 //                                            player's turn, suffixed (我) for
@@ -127,9 +150,9 @@ QStringList seatOrderFromSelf(const ClientGameState &state)
 // equipment names (spec's worked example does this for 时语 but shows only a
 // count for 曹操): a narrow opponent cell has room for a role, a hand count
 // and an equipment count, but not "装【青釭剑】【八卦阵】" as well.
-QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState &state,
-                            const QString &name, bool isSelf, int width,
-                            const GameViewPlayer *projected, bool projectedCurrent)
+PlayerCell playerCellLines(const TuiResolvers &resolvers, const ClientGameState &state,
+                           const QString &name, bool isSelf, int width,
+                           const GameViewPlayer *projected, bool projectedCurrent)
 {
     const QVariantMap player = state.player(name);
     const int seat = player.value(QStringLiteral("seat")).toInt();
@@ -171,8 +194,21 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
         + tuiDisplayWidth(suffix) + (kingdomHp.isEmpty() ? 0 : 1 + tuiDisplayWidth(kingdomHp));
     const int nameWidth = std::max(1, width - fixed);
     QString line1 = prefix + seatTag + tuiElide(displayName, nameWidth) + suffix;
+    QList<CellSpan> spans;
+    int spanCol = tuiDisplayWidth(line1) + 1;
+    if (!kingdom.isEmpty()) {
+        const QString code = resolvers.kingdom ? resolvers.kingdom(generalName) : QString();
+        spans.append({spanCol, kingdom, tuiKingdomAttr(code)});
+        spanCol += tuiDisplayWidth(kingdom) + 1;
+    }
+    if (!hp1.isEmpty())
+        spans.append({spanCol, hp1, tuiHpAttr(hp, maxHp)});
     if (!kingdomHp.isEmpty())
         line1 += QLatin1Char(' ') + kingdomHp;
+    // Overlaying colour on a line the width budget had to cut would paint
+    // over the ellipsis, so an elided line keeps its base colour only.
+    if (tuiDisplayWidth(line1) > width)
+        spans.clear();
     line1 = tuiPadTo(line1, width);
 
     const QString roleCode = player.value(QStringLiteral("role")).toString();
@@ -240,7 +276,13 @@ QStringList playerCellLines(const TuiResolvers &resolvers, const ClientGameState
     }
     const QString line3 = tuiPadTo(markers.join(QLatin1Char(' ')), width);
 
-    return {line1, line2, line3};
+    return {{line1, line2, line3}, spans};
+}
+
+void drawCellSpans(TuiScreen &screen, int row, int col, const QList<CellSpan> &spans)
+{
+    for (const CellSpan &span : spans)
+        screen.putText(row, col + span.col, span.text, span.attr);
 }
 
 // Greedy word-wrap of hand entries into at most 5 lines of `width` columns.
@@ -372,7 +414,7 @@ void drawWaitingRoom(TuiScreen &screen, const TuiResolvers &resolvers,
 
     if (!serverName.isEmpty())
         putLine(tuiText("tui_board_server").arg(serverName));
-    putLine(tuiText("tui_board_mode_players").arg(mode).arg(joined).arg(total));
+    putLine(tuiText("tui_board_mode_players").arg(modeName(resolvers, mode)).arg(joined).arg(total));
     putLine(QString());
     // Readiness is not yet a wire field ClientGameState carries (grep found
     // no per-player "ready" key anywhere in the reducer): standing in for it
@@ -405,15 +447,18 @@ void drawSelf(TuiScreen &screen, const TuiResolvers &resolvers, const ClientGame
     const GameViewPlayer *projected = projectedPlayer(presentation, self);
     if (presentation != nullptr && projected == nullptr)
         return;
-    const QStringList lines = playerCellLines(resolvers, state, self, true, geom.self.cols,
+    const PlayerCell cell = playerCellLines(resolvers, state, self, true, geom.self.cols,
         projected, presentation != nullptr && presentation->currentPlayer == self);
-    // Bold rather than a drawn box: an actual border would have to steal one
-    // of the cell's three content rows, and spec §3.1's worked example shows
-    // no border glyph around 时语's cell either -- just the ▶ prefix and the
-    // (我) suffix, both already plain text so the stripped golden keeps the
-    // distinction without the attribute.
-    for (int i = 0; i < lines.size() && i < geom.self.rows; ++i)
-        screen.putText(geom.self.row + i, geom.self.col, lines.at(i), TuiAttr::Bold, geom.self.cols);
+    // Bold cyan rather than a drawn box: an actual border would have to steal
+    // one of the cell's three content rows, and spec §3.1's worked example
+    // shows no border glyph around 时语's cell either -- just the ▶ prefix and
+    // the (我) suffix, both already plain text so the stripped golden keeps
+    // the distinction without the attribute.
+    for (int i = 0; i < cell.lines.size() && i < geom.self.rows; ++i)
+        screen.putText(geom.self.row + i, geom.self.col, cell.lines.at(i), TuiAttr::Self, geom.self.cols);
+    const bool alive = projected != nullptr ? projected->alive : state.isPlayerAlive(self);
+    if (alive && geom.self.rows > 0)
+        drawCellSpans(screen, geom.self.row, geom.self.col, cell.spans);
 }
 
 TuiAttr cellAttr(const ClientGameState &state, const QString &name,
@@ -481,11 +526,16 @@ void drawSeatRing(TuiScreen &screen, const TuiResolvers &resolvers, const Client
         const GameViewPlayer *projected = projectedPlayer(presentation, name);
         if (presentation != nullptr && projected == nullptr)
             continue;
-        const QStringList lines = playerCellLines(resolvers, state, name, false, slot.rect.cols,
+        const PlayerCell cell = playerCellLines(resolvers, state, name, false, slot.rect.cols,
             projected, presentation != nullptr && presentation->currentPlayer == name);
         const TuiAttr attr = cellAttr(state, name, projected);
-        for (int i = 0; i < lines.size() && i < slot.rect.rows; ++i)
-            screen.putText(slot.rect.row + i, slot.rect.col, lines.at(i), attr, slot.rect.cols);
+        for (int i = 0; i < cell.lines.size() && i < slot.rect.rows; ++i)
+            screen.putText(slot.rect.row + i, slot.rect.col, cell.lines.at(i), attr, slot.rect.cols);
+        // Dead, dying and current cells keep one colour for the whole cell:
+        // that state is the thing to see, and a coloured run would break the
+        // current player's reverse video.
+        if (attr == TuiAttr::Normal && slot.rect.rows > 0)
+            drawCellSpans(screen, slot.rect.row, slot.rect.col, cell.spans);
     }
     drawPile(screen, state, geom, page);
 }
@@ -643,7 +693,7 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     QString roomTitle = tuiText("tui_board_room_title");
     const QString mode = state.setup().value(QStringLiteral("game_mode")).toString();
     if (!mode.isEmpty())
-        roomTitle += QLatin1Char(' ') + mode;
+        roomTitle += QLatin1Char(' ') + modeName(m_resolvers, mode);
     if (started) {
         roomTitle += QLatin1Char(' ') + tuiText("tui_board_round").arg(state.gameValue(QStringLiteral("round")).toInt());
         if (geom.pageCount > 1)
@@ -662,6 +712,25 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     drawLog(*screen, geom, view.logLines);
     drawHand(*screen, geom, handLines);
     drawInput(*screen, geom, view, 1, screen->cols() - 2);
+}
+
+QString TuiBoardView::promptText(const InteractionRequest &request) const
+{
+    // The request carries a lang key ("slash-jink:sgs1::"), not a sentence.
+    // Format it the way classic's renderInteraction() does, behind the
+    // interaction's own title so an empty prompt still says what is asked.
+    const TuiRenderer renderer(false, m_resolvers);
+    const QString title = renderer.interactionTitle(request);
+    if (request.prompt.isEmpty())
+        return title;
+    const QString formatted = TuiRenderer::formatPrompt(request.prompt,
+        [&renderer](const QString &key) { return renderer.nameText(key); },
+        [this](const QString &name) {
+            const QString shown = m_resolvers.player ? m_resolvers.player(name) : QString();
+            return shown.isEmpty() ? name : shown;
+        });
+    return tuiText("tui_board_prompt")
+        .arg(title, TuiRenderer::sanitize(TuiRenderer::plainText(formatted), 1024));
 }
 
 TuiBoardGeometry TuiBoardView::computeGeometry(const ClientGameState &state, int rows, int cols,

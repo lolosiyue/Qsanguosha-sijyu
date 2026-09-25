@@ -216,6 +216,15 @@ board 只在 ANSI 可用時才啟動（`--plain`／`NO_COLOR` 強制 classic，�
 勢力著色、當前玩家高亮、瀕死與陣亡標色、自己那格加框。任一格在去色後仍須
 可讀，golden test 比對的是去色後的純文字（`toPlainText()`）。
 
+2026-09-25 落地：自己那格改粗體青色（`TuiAttr::Self`）；一般格的勢力名依桌面版
+旗色（魏藍、蜀紅、吳綠、群灰、神黃、晉紫，其餘金色）、體力紅心依桌面勾玉規則
+（滿血或 ≥3 綠、2 黃、≤1 紅）另行疊色。陣亡、瀕死與當前回合格維持整格單色，
+避免破壞反白。classic 在 ANSI 開啟時以同一組 SGR（`tuiAttrSgr()`）替 `/players`
+的勢力、體力著色，作答說明行改為暗色；`/players` 省略空的裝備／判定等欄位，只標出
+陣亡、離線等例外狀態。此批為使用者要求的 classic 排版調整，屬不變式 3 之外的
+刻意例外；`--plain` 與 log file 只有文字排版變化，不含色碼。提示行改顯示
+「互動標題：已翻譯的 prompt」，不再顯示原始 prompt key；房間標題與等待室顯示模式譯名。
+
 ### 3.8 Resize
 
 Unix `SIGWINCH` 經 self-pipe 轉為 Qt signal（不在 signal handler 內做事）；

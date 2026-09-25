@@ -123,6 +123,11 @@ type 或 legacy `qml_path` 會 fail closed，不讀取 QML path。
 經 `tuiText()` → `Engine::translate()`，文字集中於 `lang/zh_CN/TUICommon.lua`；
 缺翻譯時會顯示穩定 key，靜態本地化閘門會檢查本批來源的 key 覆蓋。
 
+TUI 只顯示簡體中文。擴充包翻譯表混有繁體，`tuiSimplifyTranslations()` 在 Engine
+載入後（`--dump-translations` 之後）以與 Web `web/src/zh-hans.ts` 相同的逐字對照表把
+整張翻譯表轉成簡體；含假名的日文條目與聊天內容不轉。模式名是 Engine 建構時的
+`tr()` 字串，TUI 因此比照桌面版載入 `sanguosha.qm`，再經 `resolveModeName()` 轉簡體。
+
 ## State、輸入與安全
 
 `ClientGameState` 保存 connection/setup、玩家 public/private presentation、卡牌

@@ -70,7 +70,8 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
               [this](int cardId) { return resolveHandCardHint(cardId); },
               [this](const QString &skillName, int instanceId) {
                   return resolveSkillHint(skillName, instanceId);
-              }}),
+              },
+              [](const QString &mode) { return resolveModeName(mode); }}),
       m_view(&m_renderer, [this](const QString &text) { writeOutput(text); },
              [this](int cardId) { return resolveCardWireText(cardId); },
              [this](const QString &skillName, int instanceId, const QList<int> &subcards,
@@ -103,7 +104,8 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                 [this](int cardId) { return resolveHandCardHint(cardId); },
                 [this](const QString &skillName, int instanceId) {
                     return resolveSkillHint(skillName, instanceId);
-                }},
+                },
+                [](const QString &mode) { return resolveModeName(mode); }},
             m_terminal.get());
         m_boardPresenter = boardPresenter.get();
         m_presenter = std::move(boardPresenter);
@@ -919,7 +921,7 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
             lines << tuiText("tui_status_connection_mode")
                 .arg(connection.value(QStringLiteral("host")).toString(),
                      connection.value(QStringLiteral("port")).toString(),
-                     m_renderer.nameText(setup.value(QStringLiteral("game_mode")).toString()));
+                     m_renderer.modeText(setup.value(QStringLiteral("game_mode")).toString()));
         } else {
             lines << m_renderer.renderState(*m_core.state());
         }
@@ -1089,6 +1091,15 @@ QString TuiApplicationController::resolveGeneralKingdom(const QString &generalNa
         return QString();
     const General *general = Sanguosha->getGeneral(generalName);
     return general == nullptr ? QString() : general->getKingdom();
+}
+
+QString TuiApplicationController::resolveModeName(const QString &mode)
+{
+    if (Sanguosha == nullptr || mode.isEmpty())
+        return mode;
+    // Mode names are tr() strings fixed when the engine was built, so they
+    // missed tuiSimplifyTranslations() and are converted here instead.
+    return tuiToSimplified(Sanguosha->getModeName(mode));
 }
 
 QString TuiApplicationController::resolveCardHint(int cardId) const
@@ -1366,8 +1377,11 @@ void TuiApplicationController::writeDump(const QString &text)
 
 void TuiApplicationController::writeError(const QString &text)
 {
-    m_presenter->writeError(TuiRenderer::sanitizePresentable(text, 4096));
-    appendLogLine(QStringLiteral("TUI_ERROR %1").arg(TuiRenderer::sanitize(text, 4096)));
+    // Errors raised by engine/session code arrive through sanguosha.qm, whose
+    // catalogue still holds some Traditional lines; an error is never chat.
+    const QString shown = tuiToSimplified(text);
+    m_presenter->writeError(TuiRenderer::sanitizePresentable(shown, 4096));
+    appendLogLine(QStringLiteral("TUI_ERROR %1").arg(TuiRenderer::sanitize(shown, 4096)));
 }
 
 void TuiApplicationController::writeAutomationMarker(const QString &marker)
