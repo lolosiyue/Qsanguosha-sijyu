@@ -42,11 +42,13 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void onEffect(CardEffectStruct &effect) const;
 };
-class NosYiji : public MasochismSkill
+class NosYiji : public TriggerSkillV2
 {
 public:
     NosYiji();
-    void onDamaged(ServerPlayer *target, const DamageStruct &damage) const;
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override;
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
 
 protected:
     int n;
@@ -94,12 +96,13 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class Hujia : public TriggerSkill
+class Hujia : public TriggerSkillV2
 {
 public:
     Hujia(const QString &hujia = "hujia");
-    bool triggerable(const ServerPlayer *target) const;
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const;
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override;
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
 
 protected:
     QString hujia;
