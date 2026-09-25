@@ -78,6 +78,25 @@ Item {
         }
     }
 
+    // Popup / ToolTip 畫在視窗 Overlay 層，不在 contentHost 底下，要另外套同一個濾鏡。
+    // Overlay 沒有 popup 時自己隱藏，layer 不會多一次合成。
+    readonly property Item popupOverlay: Overlay.overlay
+    onPopupOverlayChanged: attachPopupOverlayEffect()
+    function attachPopupOverlayEffect() {
+        if (!popupOverlay)
+            return
+        popupOverlay.layer.effect = overlayVisualEffect
+        popupOverlay.layer.enabled = Qt.binding(function() { return root.visualMode !== "normal" })
+    }
+    Component {
+        id: overlayVisualEffect
+        MultiEffect {
+            autoPaddingEnabled: false
+            saturation: root.visualMode === "grayscale" ? -1.0 : 0.0
+            contrast: root.visualMode === "highcontrast" ? 0.35 : 0.0
+        }
+    }
+
     Item {
         id: contentHost
         anchors.fill: parent
@@ -981,6 +1000,7 @@ Item {
             settingsSession.begin()
         }
         applyHomeNavGraph()
+        attachPopupOverlayEffect()
         actionPanel.quickJoinBtn.forceActiveFocus()
         enterAnim.start()
         generalPrefetchStart.start()

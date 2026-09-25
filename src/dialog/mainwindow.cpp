@@ -336,6 +336,7 @@ MainWindow::MainWindow(QWidget *parent)
 	qInfo().noquote() << "Home render host:" << m_homeRenderHost;
 #endif
 	gameView = new FitView(nullptr, this);
+	connect(settingsSession, &SettingsSession::visualModeChanged, gameView, &FitView::applyVisualMode);
 
 #if QSAN_ENABLE_QML
 	setHomeSceneClearColor(QColor(QStringLiteral("#0B1A2E")));
