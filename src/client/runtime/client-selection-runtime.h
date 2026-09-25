@@ -185,14 +185,18 @@ inline SkillActivationResult evaluateSkillActivation(
     const bool continuesEffect
         = self->getMark(QStringLiteral("ViewAsSkill_") + skill->objectName()
                         + QStringLiteral("Effect")) > 0;
-    if (instanceId > 0) {
+    // A server-named @@ response is borrowed by the asked player. Ownership is
+    // not required; canActivate still has to accept this exact pattern.
+    const bool namedResponse = patternSkillName(pattern) == activeSkill->objectName()
+        && reason != CardUseStruct::CARD_USE_REASON_PLAY;
+    if (!namedResponse && instanceId > 0) {
         const bool hasInstance = self->hasSkillInstance(skill->objectName(), instanceId);
         if ((!hasInstance && !continuesEffect)
             || (hasInstance && self->isSkillInvalid(skill->objectName(), instanceId))) {
             result.status = SkillActivationStatus::InvalidInstance;
             return result;
         }
-    } else if (!activeSkill->isEquipSkill()
+    } else if (!namedResponse && !activeSkill->isEquipSkill()
                && !self->hasSkill(skill->objectName()) && !continuesEffect) {
         result.status = SkillActivationStatus::InvalidInstance;
         return result;

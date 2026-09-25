@@ -129,6 +129,54 @@ private:
     const Card *responseCard(ServerPlayer *player, const AIRequest &request,
                              const AIResult &result) const;
 
+    // Observer-independent facts for one board revision. Hidden cards, roles and
+    // policy stay out of this snapshot and are filled per viewer.
+    struct PublicPile {
+        QString name;
+        bool handPile = false;
+        QList<int> cardIds;
+        QList<AICardView> cards;
+    };
+    struct PublicSkill {
+        AISkillView view;
+        SkillInstance instance;
+    };
+    struct PublicPlayer {
+        ServerPlayer *player = nullptr;
+        AIPlayerView view;
+        QMap<QString, int> marks;
+        QList<PublicPile> piles;
+        QList<PublicSkill> skills;
+        QString kingdom;
+        QString hegemonyKingdom;
+        bool hasActualGeneral1 = false;
+        bool shownOneGeneral = false;
+        bool shownGeneral = false;
+        bool shownGeneral2 = false;
+        QString generalName;
+        QString general2Name;
+        QString actualGeneral1Name;
+        QString actualGeneral2Name;
+        QString role;
+        bool roleRevealed = false;
+        bool armorBasis = false;
+        QString activeArmorName;
+    };
+    struct PublicBoard {
+        quint64 revision = 0;
+        QString modeId;
+        QString currentPlayer;
+        int currentPhase = int(Player::NotActive);
+        QStringList playerOrder;
+        QStringList alivePlayerOrder;
+        bool customRoles = false;
+        QList<PublicPlayer> players;
+    };
+
+    PublicBoard buildPublicBoard() const;
+    AIWorldView projectWorldView(const PublicBoard &board, ServerPlayer *viewer,
+                                 bool compactPolicy, bool eventOnly) const;
+
     Room &m_room;    SkillRuntimeCoordinator &m_skillRuntime;
     QHash<QString, QSet<QString>> m_markViewers;
     QList<AIEventView> m_events;

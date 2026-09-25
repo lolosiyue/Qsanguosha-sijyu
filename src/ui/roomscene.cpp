@@ -4139,6 +4139,16 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 							break;
 						}
 					}
+					// The asked player may not own the skill. Borrow it for this prompt.
+					if (!available) {
+						ActiveSkillRequest request;
+						request.reason = reason;
+						request.pattern = pattern;
+						request.initiator = activePlayer;
+						request.activationRef = SkillInstanceRef(activePlayer->objectName(),
+							SkillInstanceKey(activeSkill->objectName(), 0));
+						available = activeSkill->canActivate(request);
+					}
 				} else {
 					activePlayer->addMark("ViewAsSkill_"+skill_name+"Effect");
 					available = skill->isAvailable(activePlayer,reason,pattern);

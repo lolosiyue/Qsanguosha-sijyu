@@ -1,4 +1,5 @@
 #include "gamerule.h"
+#include "hegemony-mode.h"
 #include <QScopeGuard>
 #include "room.h"
 #include "engine.h"
@@ -2197,13 +2198,7 @@ HegemonyRule::HegemonyRule(QObject *parent)
 
 QString HegemonyRule::getMappedRole(const QString &role)
 {
-    static const QMap<QString, QString> roles{
-        {QStringLiteral("wei"), QStringLiteral("lord")},
-        {QStringLiteral("shu"), QStringLiteral("loyalist")},
-        {QStringLiteral("wu"), QStringLiteral("rebel")},
-        {QStringLiteral("qun"), QStringLiteral("renegade")}};
-    return roles.value(role, role == QLatin1String("god")
-        ? QStringLiteral("careerist") : role);
+    return HegemonyMode::mappedRole(role);
 }
 
 namespace {

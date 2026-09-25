@@ -50,6 +50,7 @@ class RoomThread;
 class RoomThread3v3;
 class RoomThreadXMode;
 class RoomThread1v1;
+class RoomThreadHegemony;
 class Server;
 
 //#include "serverplayer.h"
@@ -73,6 +74,7 @@ public:
     friend class RoomThread3v3;
     friend class RoomThreadXMode;
     friend class RoomThread1v1;
+    friend class RoomThreadHegemony;
     friend class ServerPlayer;
     friend class GameRule;
     friend class AiDecisionCoordinator;
@@ -980,6 +982,7 @@ private:
     QPointer<RoomThread3v3> thread_3v3;
     QPointer<RoomThreadXMode> thread_xmode;
     QPointer<RoomThread1v1> thread_1v1;
+    QPointer<RoomThreadHegemony> thread_hegemony;
     QVariantList m_chatHistory;
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently

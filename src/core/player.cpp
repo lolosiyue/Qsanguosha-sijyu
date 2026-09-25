@@ -1,4 +1,5 @@
 #include "player.h"
+#include "hegemony-mode.h"
 #include "engine.h"
 #include "qt-collection-utils.h"
 #include "room.h"
@@ -2137,8 +2138,7 @@ bool Player::isSkillInstanceEffectAvailable(const QString &skillName, int instan
                                            const Player *targetModPreviewOwner) const
 {
     if (!hasSkillInstance(skillName, instanceID)) return false;
-    const bool hegemony = isClientPlayer() ? ServerInfo.EnableHegemony : Config.EnableHegemony;
-    if (!hegemony) return !isSkillInvalid(skillName, instanceID);
+    if (!HegemonyMode::enabledFor(this)) return !isSkillInvalid(skillName, instanceID);
 
     const Player *sourceOwner = this;
     const SkillInstanceRef ref(objectName(), SkillInstanceKey(skillName, instanceID));
@@ -2170,8 +2170,7 @@ bool Player::isSkillInstanceEffectAvailable(const QString &skillName, int instan
                                       : instance->bindHead == 2 ? "d" : ""))
         return true;
     return instance->source == SourceInnate
-        && ((instance->bindHead == 1 && sourceOwner->hasShownGeneral())
-            || (instance->bindHead == 2 && sourceOwner->hasShownGeneral2()));
+        && HegemonyMode::innateGeneralShown(sourceOwner, instance->bindHead);
 }
 
 // ========================================
@@ -3777,11 +3776,8 @@ void Player::setHegemonyKingdom(const QString &kingdom)
 
 QString Player::getSeemingKingdom() const
 {
-    // Public faction identity must never inspect another player's hidden generals.
-    if (!Config.EnableHegemony) return getKingdom();
-    if (getRole().startsWith("careerist_") && hasShownRole()) return getRole();
-    if (!hasShownOneGeneral()) return QString();
-    return getRole() == "careerist" ? QStringLiteral("careerist") : getKingdom();
+    if (!HegemonyMode::enabled()) return getKingdom();
+    return HegemonyMode::seemingKingdom(this);
 }
 
 bool Player::isFriendWith(const Player *player, bool considerAnjiang) const
@@ -3794,25 +3790,9 @@ bool Player::isFriendWith(const Player *player, bool considerAnjiang) const
         return false;
 
     // Identity relationships do not depend on national-war reveal flags.
-    if (!Config.EnableHegemony)
+    if (!HegemonyMode::enabled())
         return isYourFriend(player);
-
-    // Recruitment publicly establishes allegiance without exposing either general.
-    if ((role.startsWith("careerist_") || player->role.startsWith("careerist_"))
-        && hasShownRole() && player->hasShownRole()) return role == player->role;
-    if (considerAnjiang) {
-        if (!player->hasShownOneGeneral() && this != player)
-            return false;
-    } else {
-        if (!hasShownOneGeneral() || !player->hasShownOneGeneral())
-            return false;
-    }
-    if (role == "careerist" || player->role == "careerist")
-        return false;
-
-    if (role.startsWith("careerist_") || player->role.startsWith("careerist_"))
-        return role == player->role;
-    return getKingdom() == player->getKingdom();
+    return HegemonyMode::isFriendWith(this, player, considerAnjiang);
 }
 
 bool Player::willBeFriendWith(const Player *player) const
@@ -3823,28 +3803,8 @@ bool Player::willBeFriendWith(const Player *player) const
         return false;
     if (isFriendWith(player))
         return true;
-    if (Config.EnableHegemony) {
-        if (hasShownOneGeneral() || !player->hasShownOneGeneral()
-            || player->getRole().startsWith(QLatin1String("careerist")) || !actual_general1)
-            return false;
-        const QString kingdom = getHegemonyKingdom();
-        if (kingdom != player->getKingdom()) return false;
-        int allies = 1;
-        // Only our own identity and publicly shown sovereigns may influence
-        // this prospective relationship; another concealed lord is private.
-        bool livingLord = isAlive() && isHegemonyLord();
-        bool deadLord = false;
-        const QList<const Player *> siblings = getSiblings();
-        foreach (const Player *other, siblings) {
-            if (other->getKingdom() != kingdom) continue;
-            if (other->hasShownGeneral() && other->isHegemonyLord()) {
-                livingLord = livingLord || other->isAlive();
-                deadLord = deadLord || other->isDead();
-            }
-            if (other->hasShownOneGeneral() && !other->getRole().startsWith(QLatin1String("careerist"))) ++allies;
-        }
-        return !deadLord && (livingLord || allies <= (siblings.size() + 1) / 2);
-    }
+    if (HegemonyMode::enabled())
+        return HegemonyMode::willBeFriendWith(this, player);
     if (!player->hasShownOneGeneral())
         return false;
     if (!hasShownGeneral()) {
@@ -4130,8 +4090,8 @@ bool Player::canPreshowSkill(const QString &name) const
     const Skill *skill = Sanguosha->getSkill(baseName);
     if (!isAlive() || !instance || instance->source != SourceInnate
         || !skill || !skill->isVisible() || !skill->canPreshow()) return false;
-    return (instance->bindHead == 1 && !hasShownGeneral() && canShowGeneral("h"))
-        || (instance->bindHead == 2 && !hasShownGeneral2() && canShowGeneral("d"));
+    if (!HegemonyMode::innateGeneralConcealed(this, instance->bindHead)) return false;
+    return canShowGeneral(instance->bindHead == 1 ? "h" : "d");
 }
 
 void Player::setSkillPreshowed(const QString &name, bool preshowed)
@@ -4209,8 +4169,7 @@ bool Player::hasPreshowedSkill(const QString &name) const
         if (id > 0 && candidateId != id) continue;
         const SkillInstance *instance = findSkillInstance(baseName, candidateId);
         if (!instance || instance->source != SourceInnate) continue;
-        if ((instance->bindHead == 1 && hasShownGeneral())
-            || (instance->bindHead == 2 && hasShownGeneral2())
+        if (HegemonyMode::innateGeneralShown(this, instance->bindHead)
             || !skill->canPreshow()
             || m_preshowedSkillInstances.contains(SkillInstanceUtils::formatName(baseName, candidateId)))
             return true;
@@ -4225,13 +4184,9 @@ bool Player::hasPreshowedSkill(const Skill *skill) const
 
 bool Player::hasShownSkill(const QString &skill_name) const
 {
-    if (!Config.EnableHegemony)
+    if (!HegemonyMode::enabled())
         return hasSkill(skill_name);
-    if (general_showed && inHeadSkills(skill_name))
-        return true;
-    if (general2_showed && inDeputySkills(skill_name))
-        return true;
-    return false;
+    return HegemonyMode::hasShownSkill(this, skill_name);
 }
 
 bool Player::hasShownSkill(const Skill *skill) const
