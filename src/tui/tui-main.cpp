@@ -125,7 +125,7 @@ int main(int argc, char *argv[])
         tr("显示版本信息"));
 
     const QCommandLineOption hostOption(QStringLiteral("host"),
-        tr("服务器主机名称或地址"), QStringLiteral("host"),
+        tr("服务器主机名或地址"), QStringLiteral("host"),
         QStringLiteral("127.0.0.1"));
     const QCommandLineOption portOption(QStringLiteral("port"),
         tr("服务器 TCP 端口"), QStringLiteral("port"), QStringLiteral("9527"));
@@ -139,7 +139,7 @@ int main(int argc, char *argv[])
     const QCommandLineOption plainOption(QStringLiteral("plain"),
         tr("使用确定性的纯文本输出"));
     const QCommandLineOption noColorOption(QStringLiteral("no-color"),
-        tr("即使在终端也禁用 ANSI 色彩"));
+        tr("即使在终端中也禁用 ANSI 颜色"));
     const QCommandLineOption languageOption(QStringLiteral("language"),
         tr("设置程序语言"), QStringLiteral("locale"));
     const QCommandLineOption logFileOption(QStringLiteral("log-file"),
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
     const QCommandLineOption scriptOption(QStringLiteral("script"),
         tr("从脚本执行命令与断言"), QStringLiteral("path"));
     const QCommandLineOption assetRootOption(QStringLiteral("asset-root"),
-        tr("使用明确的运行时数据根目录"), QStringLiteral("directory"));
+        tr("指定运行时数据根目录"), QStringLiteral("directory"));
     const QCommandLineOption dumpTranslationsOption(
         QStringLiteral("dump-translations"),
         tr("把 Engine 翻译表写成 JSON 后结束"), QStringLiteral("path"));
@@ -191,11 +191,11 @@ int main(int argc, char *argv[])
         if (!portOk || port < 1 || port > 65535)
             return usageError(tr("--port 必须是 1 至 65535 的整数"));
         if (host.isEmpty())
-            return usageError(tr("--host 不可为空"));
+            return usageError(tr("--host 不能为空"));
         if (screenName.isEmpty())
-            return usageError(tr("--name 不可为空"));
+            return usageError(tr("--name 不能为空"));
         if (avatar.isEmpty())
-            return usageError(tr("--avatar 不可为空"));
+            return usageError(tr("--avatar 不能为空"));
     }
 
     // The mode decision itself (docs/tui-board-ui.md §6.1) is a pure
@@ -264,6 +264,12 @@ int main(int argc, char *argv[])
             break;
         }
     }
+    // The engine names its game modes with tr() ("5 players") at construction;
+    // the desktop's catalogue, installed the same way src/main.cpp does, is
+    // what turns them into the Chinese names the board and /status show.
+    QTranslator engineTranslator;
+    if (engineTranslator.load(QSanRuntimePaths::assetPath(QStringLiteral("sanguosha.qm"))))
+        app.installTranslator(&engineTranslator);
     if (!EngineBootstrap::initialize(false, &error)) {
         QTextStream(stderr) << "TUI_ERROR engine: " << error << '\n';
         return RuntimeExitCode;
@@ -319,6 +325,8 @@ int main(int argc, char *argv[])
         EngineBootstrap::shutdown();
         return 0;
     }
+    // After the dump above, so --dump-translations still exports the raw table.
+    tuiSimplifyTranslations();
     QObject::disconnect(&app, SIGNAL(aboutToQuit()), Sanguosha, SLOT(deleteLater()));
 
     // The one-time startup question (§6.1's last row): only reached when

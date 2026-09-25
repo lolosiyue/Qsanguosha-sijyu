@@ -333,8 +333,24 @@ QString TuiRenderer::commandResultText(int command, bool success, const QString 
 QString TuiRenderer::heading(const QString &text) const
 {
     const QString safe = sanitize(text, 256);
-    return m_ansiEnabled ? QStringLiteral("\x1b[1;36m%1\x1b[0m").arg(safe)
+    return m_ansiEnabled ? QStringLiteral("\x1b[1;36m── %1 ──\x1b[0m").arg(safe)
                          : QStringLiteral("== %1 ==").arg(safe);
+}
+
+// Colour only ever repeats what the text already says (docs/tui-board-ui.md
+// §3.7), so --plain output and the log file lose nothing when it is dropped.
+QString TuiRenderer::colored(const QString &text, TuiAttr attr) const
+{
+    const QString sgr = tuiAttrSgr(attr);
+    if (!m_ansiEnabled || sgr.isEmpty() || text.isEmpty())
+        return text;
+    return sgr + text + QStringLiteral("\x1b[0m");
+}
+
+QString TuiRenderer::modeText(const QString &mode) const
+{
+    return m_resolvers.mode && !mode.isEmpty() ? sanitize(m_resolvers.mode(mode), 256)
+                                               : nameText(mode);
 }
 
 QString TuiRenderer::cardText(const ClientGameState &state, int cardId) const
@@ -560,7 +576,7 @@ QString TuiRenderer::renderState(const ClientGameState &state) const
              sanitize(connection.value(QStringLiteral("game_version")).toString(), 128),
              sanitize(connection.value(QStringLiteral("mod_name")).toString(), 128));
     lines << tuiText("tui_status_room")
-        .arg(nameText(setup.value(QStringLiteral("game_mode")).toString()))
+        .arg(modeText(setup.value(QStringLiteral("game_mode")).toString()))
         .arg(setup.value(QStringLiteral("player_count")).toInt())
         .arg(connection.value(QStringLiteral("ready")).toBool()
                  ? tuiText("tui_yes") : tuiText("tui_no"),
@@ -617,12 +633,13 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
             && playerFlags.contains(QStringLiteral("Global_Dying"))) {
             states << tuiText("tui_state_dying");
         }
+        const QString separator = tuiText("tui_list_separator");
         const QList<int> equipment = state.cardsForPlayer(name, 1);
         const QList<int> judging = state.cardsForPlayer(name, 2);
         const QVariantMap piles = player.value(QStringLiteral("piles")).toMap();
         QStringList pileSummary;
         for (auto it = piles.constBegin(); it != piles.constEnd(); ++it)
-            pileSummary << QStringLiteral("%1:%2").arg(sanitize(it.key(), 64))
+            pileSummary << tuiText("tui_count_entry").arg(nameText(it.key()))
                 .arg(it.value().toList().size());
         // Only "@" marks are meant for players; the rest are engine bookkeeping
         // (turn counters, phase-clear helpers) that the desktop client also hides.
@@ -631,12 +648,11 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
         for (auto it = markValues.constBegin(); it != markValues.constEnd(); ++it) {
             if (!it.key().startsWith(QLatin1Char('@')))
                 continue;
-            marks << QStringLiteral("%1=%2")
+            marks << tuiText("tui_count_entry")
                 .arg(nameText(it.key()), sanitize(it.value().toString(), 64));
         }
-        const QString activity = name == current ? tuiText("tui_mark_turn")
+        const QString activity = name == current ? colored(tuiText("tui_mark_turn"), TuiAttr::Bold)
             : focus.contains(name) ? tuiText("tui_mark_focus") : QString();
-        const QString stateName = player.value(QStringLiteral("state")).toString();
         lines << tuiText("tui_player_line")
             .arg(i + 1).arg(player.value(QStringLiteral("seat")).toInt())
             .arg(sanitize(player.value(QStringLiteral("screen_name"), name).toString(), 128),
@@ -647,34 +663,56 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
             ? nameText(player.value(QStringLiteral("general")).toString())
             : tuiText("tui_hp_pair").arg(
                 nameText(player.value(QStringLiteral("general")).toString()), deputy);
-        lines << tuiText("tui_player_detail")
-            .arg(generals, kingdomText(player))
-            .arg(player.value(QStringLiteral("hp")).toInt())
-            .arg(player.value(QStringLiteral("max_hp")).toInt())
-            .arg(player.value(QStringLiteral("alive"), true).toBool()
-                     ? tuiText("tui_alive") : tuiText("tui_dead"),
-                 stateName.isEmpty() ? tuiText("tui_state_unknown") : nameText(stateName),
-                 sanitize(player.value(QStringLiteral("role")).toString().isEmpty()
-                         ? tuiText("tui_role_hidden")
-                         : nameText(player.value(QStringLiteral("role")).toString()), 64))
+        const int hp = player.value(QStringLiteral("hp")).toInt();
+        const int maxHp = player.value(QStringLiteral("max_hp")).toInt();
+        const bool alive = player.value(QStringLiteral("alive"), true).toBool();
+        QString kingdomCode = player.value(QStringLiteral("kingdom")).toString();
+        if (kingdomCode.isEmpty() && m_resolvers.kingdom)
+            kingdomCode = m_resolvers.kingdom(player.value(QStringLiteral("general")).toString());
+        // Being alive and online is the normal case; only the exceptions are
+        // worth a word on the line.
+        QString extras;
+        if (!alive)
+            extras += QStringLiteral("  ") + colored(tuiText("tui_dead"), TuiAttr::Dead);
+        const QString stateName = player.value(QStringLiteral("state")).toString();
+        if (!stateName.isEmpty() && stateName.compare(QLatin1String("online"), Qt::CaseInsensitive) != 0)
+            extras += QStringLiteral("  ") + nameText(stateName);
+        if (generals.isEmpty() && maxHp == 0) {
+            lines << tuiText("tui_player_detail_waiting").arg(extras);
+        } else {
+            lines << tuiText("tui_player_detail")
+            .arg(generals.isEmpty() ? tuiText("tui_empty") : generals,
+                 colored(kingdomText(player), tuiKingdomAttr(kingdomCode)),
+                 colored(tuiText("tui_hp_pair").arg(hp).arg(maxHp),
+                         alive ? tuiHpAttr(hp, maxHp) : TuiAttr::Dead))
             .arg(player.value(QStringLiteral("hand_count"),
-                    state.cardsForPlayer(name, 0).size()).toInt());
+                    state.cardsForPlayer(name, 0).size()).toInt())
+            .arg(sanitize(player.value(QStringLiteral("role")).toString().isEmpty()
+                         ? tuiText("tui_role_hidden")
+                         : nameText(player.value(QStringLiteral("role")).toString()), 64),
+                 extras);
+        }
+        // Empty zones are the common case; listing "装备=[] 判定=[]" for every
+        // player buried the few that actually hold something.
+        QStringList zones;
+        const auto addZone = [&zones, &separator](const char *key, const QStringList &entries,
+                                                  qsizetype limit) {
+            if (!entries.isEmpty())
+                zones << tuiText(key).arg(sanitize(entries.join(separator), limit));
+        };
         QStringList equipText;
         for (int cardId : equipment)
-            equipText << QStringLiteral("%1:%2").arg(cardId)
-                .arg(cardText(state, cardId));
+            equipText << cardText(state, cardId);
         QStringList judgeText;
         for (int cardId : judging)
-            judgeText << QStringLiteral("%1:%2").arg(cardId)
-                .arg(cardText(state, cardId));
-        lines << tuiText("tui_player_zones")
-            .arg(sanitize(equipText.join(QStringLiteral(", ")), 1024),
-                 sanitize(judgeText.join(QStringLiteral(", ")), 1024),
-                 sanitize(pileSummary.join(QStringLiteral(", ")), 512),
-                 sanitize(marks.join(QStringLiteral(", ")), 512),
-                 states.isEmpty() ? QString()
-                     : tuiText("tui_player_states").arg(
-                           states.join(tuiText("tui_list_separator"))));
+            judgeText << cardText(state, cardId);
+        addZone("tui_player_zone_equip", equipText, 1024);
+        addZone("tui_player_zone_judge", judgeText, 1024);
+        addZone("tui_player_zone_piles", pileSummary, 512);
+        addZone("tui_player_zone_marks", marks, 512);
+        addZone("tui_player_zone_states", states, 512);
+        if (!zones.isEmpty())
+            lines << tuiText("tui_player_zones").arg(zones.join(QStringLiteral("  ")));
     }
     if (names.isEmpty())
         lines << tuiText("tui_waiting_players");
@@ -773,7 +811,10 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 option.label = nameText(option.value.section('+', 0, 0)) + QStringLiteral(" / ")
                     + nameText(option.value.section('+', 1, 1));
             else if (option.label.isEmpty() || option.label == option.value)
-                option.label = nameText(option.value);
+                option.label = option.value.endsWith(QStringLiteral("(lord)"))
+                    ? tuiText("tui_option_lord_general")
+                        .arg(nameText(option.value.chopped(6)))
+                    : nameText(option.value);
         }
         appendOptions(&lines, localized);
     } else if (const auto *value = request.payloadAs<ChooseOrderInteractionPayload>()) {
@@ -895,11 +936,16 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
     } else if (const auto *value = request.payloadAs<CustomInteractionPayload>()) {
         lines << tuiText("tui_label_custom_type").arg(sanitize(value->typeName, 128));
     }
+    // The how-to-answer lines are the same on every prompt of a kind; dimmed,
+    // the candidates above them are what the eye lands on.
+    QStringList hints;
     const QString hint = answerHint(request);
     if (!hint.isEmpty())
-        lines << hint;
+        hints << hint.split(QLatin1Char('\n'));
     if (request.cancelable && request.type != InteractionType::PlayCard)
-        lines << tuiText("tui_cancel_hint");
+        hints << tuiText("tui_cancel_hint");
+    for (const QString &line : std::as_const(hints))
+        lines << colored(line, TuiAttr::Dim);
     lines << QStringLiteral("> ");
     return lines.join(QLatin1Char('\n'));
 }

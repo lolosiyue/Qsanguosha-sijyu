@@ -11,6 +11,7 @@
 
 class ClientGameState;
 class TuiScreen;
+struct InteractionRequest;
 
 // The local view state a presenter owns on top of ClientGameState: which page
 // of the seat ring is on screen, the chat/log scrollback tail, and the two
@@ -72,6 +73,10 @@ public:
     // nothing to page to in any of those cases.
     int pageForPlayer(const ClientGameState &state, const TuiBoardGeometry &geometry,
                        const QString &name) const;
+
+    // The prompt row's text for a request: its title and its translated,
+    // player-named prompt, e.g. "打出牌：张飞 对你使用【杀】，请打出一张【闪】".
+    QString promptText(const InteractionRequest &request) const;
 
 private:
     TuiResolvers m_resolvers;

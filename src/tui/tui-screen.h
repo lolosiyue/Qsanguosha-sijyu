@@ -25,7 +25,26 @@ enum class TuiAttr
     Current,
     Danger,
     Dead,
+    Self,
+    HpHealthy,
+    HpWounded,
+    KingdomWei,
+    KingdomShu,
+    KingdomWu,
+    KingdomQun,
+    KingdomGod,
+    KingdomJin,
 };
+
+// The SGR sequence for one attribute, empty for Normal. Classic mode colours
+// its lines with the same sequences so both UIs paint a fact the same way.
+QString tuiAttrSgr(TuiAttr attr);
+// Hit points coloured like the desktop's magatama: green at full health or
+// three and up, yellow at two, red at one or below (Danger).
+TuiAttr tuiHpAttr(int hp, int maxHp);
+// A kingdom code's banner colour; Kingdom for one without a colour of its own
+// and for an undeclared "wei+shu".
+TuiAttr tuiKingdomAttr(const QString &kingdom);
 
 // A character grid the board draws into. Nothing reaches stdout until flush(),
 // which emits only the cells that changed since the previous frame.

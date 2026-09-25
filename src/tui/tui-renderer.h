@@ -2,6 +2,7 @@
 #define TUI_RENDERER_H
 
 #include "tui-resolvers.h"
+#include "tui-screen.h"
 
 #include <QVariantMap>
 
@@ -56,9 +57,11 @@ public:
     // should read it: a fixed label when the protocol owns the vocabulary,
     // otherwise whatever the engine translation table says.
     QString nameText(const QString &name) const;
+    QString modeText(const QString &mode) const;
 
 private:
     QString heading(const QString &text) const;
+    QString colored(const QString &text, TuiAttr attr) const;
     QString cardText(const ClientGameState &state, int cardId) const;
     QString playerText(const QString &objectName) const;
     // "時語（sgs1）" -- a script and /players still speak object names.

@@ -126,6 +126,7 @@ private:
     void clearPendingActivation();
     QString resolveNameText(const QString &name) const;
     static QString resolveGeneralKingdom(const QString &generalName);
+    static QString resolveModeName(const QString &mode);
     QString resolveSkillCardWireText(const QString &skillName, int instanceId,
                                      const QList<int> &subcardIds, QString *error) const;
     void fillSkillCandidates(InteractionType type, CardInteractionPayload *payload) const;

@@ -4,6 +4,7 @@
 #include "interaction-model.h"
 #include "tui-renderer.h"
 #include "tui-terminal.h"
+#include "tui-text.h"
 
 #include <QTimer>
 
@@ -143,7 +144,7 @@ void TuiBoardPresenter::stateChanged(const ClientGameState &state)
 
 void TuiBoardPresenter::interactionChanged(const InteractionRequest *request)
 {
-    m_viewState.promptLine = request != nullptr ? request->prompt : QString();
+    m_viewState.promptLine = request != nullptr ? m_boardView.promptText(*request) : QString();
     if (request != nullptr) {
         // A new request is the other moment auto-follow overrides a manual
         // flip (see stateChanged()'s comment). A cleared request
@@ -303,7 +304,7 @@ void TuiBoardPresenter::repaint()
             m_screen.putText(i, 0, tuiPadTo(lines.at(m_overlayScroll + i), cols));
         if (rows > 0) {
             m_screen.putText(rows - 1, 0,
-                tuiPadTo(QStringLiteral("↑↓/PgUp/PgDn 滚动   Esc/q/空格 关闭"), cols),
+                tuiPadTo(tuiText("tui_board_overlay_hint"), cols),
                 TuiAttr::Dim);
         }
     } else if (m_state != nullptr) {
