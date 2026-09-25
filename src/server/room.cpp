@@ -4009,7 +4009,9 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	if (use.card->inherits("LuaSkillCard")) key = "#"+use.card->objectName();
 	const ViewAsSkillV2 *historySkill = dynamic_cast<const ViewAsSkillV2 *>(
 		Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
-	if (historySkill) {
+	// Ordinary conversions keep their card class so native limits (e.g. Slash residue)
+	// count them; only skill/proxy cards are recorded under the skill's history key.
+	if (historySkill && use.card->getTypeId() == Card::TypeSkill) {
 		ActiveSkillRequest request;
 		request.reason = m_runtime->state().getCurrentCardUseReason();
 		request.pattern = m_runtime->state().getCurrentCardUsePattern();
