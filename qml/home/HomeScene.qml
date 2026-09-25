@@ -255,6 +255,9 @@ Item {
                 parent: root.compact ? compactShell.pageHost : uiCanvas
 
                 anchors.fill: parent
+                // Sheared panel edges overhang their box; the compact host clips at its edges.
+                anchors.leftMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.rightMargin: root.compact ? HomeTheme.compactGap : 0
                 anchors.bottomMargin: root.compact ? 0 : 148
                 z: 40
                 asynchronous: true
@@ -525,6 +528,9 @@ Item {
                 parent: root.compact ? compactShell.pageHost : uiCanvas
 
                 anchors.fill: parent
+                // Sheared panel edges overhang their box; the compact host clips at its edges.
+                anchors.leftMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.rightMargin: root.compact ? HomeTheme.compactGap : 0
                 anchors.bottomMargin: root.compact ? 0 : 148
                 z: 40
                 asynchronous: true

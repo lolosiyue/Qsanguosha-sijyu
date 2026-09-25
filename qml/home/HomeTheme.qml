@@ -48,6 +48,8 @@ Item {
     // 疊在立繪／卡圖上的標籤（不隨亮暗主題反轉，保證對比）
     readonly property color onArtScrim: "#D10B1A2E"
     readonly property color onArtText: "#F4F8FC"
+    // 模態面板背後的遮罩：壓暗並隔開底下的頁面內容
+    readonly property color modalScrim: isDark ? "#B3050D18" : "#8C0B1A2E"
 
     readonly property color baDockTop: isDark ? "#CC243A58" : "#F0F3F8FD"
     readonly property color baDockBottom: isDark ? "#E0142844" : "#E6DCEAF6"
