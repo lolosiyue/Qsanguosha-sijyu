@@ -37,9 +37,11 @@ Item {
     onCompactChanged: Qt.callLater(restoreHomeKeyboard)
     readonly property bool generalsOpen: homeController.currentPage === "generals"
     readonly property bool cardsOpen: homeController.currentPage === "cards"
-    readonly property bool subPageOpen: generalsOpen || cardsOpen
+    readonly property bool settingsOpen: homeController.currentPage === "settings"
+    readonly property bool subPageOpen: generalsOpen || cardsOpen || settingsOpen
     property bool generalsMounted: false
     property bool cardsMounted: false
+    property bool settingsMounted: false
     readonly property bool generalPageBusy: {
         if (!generalsOpen)
             return false
@@ -64,6 +66,16 @@ Item {
     onCardsOpenChanged: {
         if (cardsOpen)
             cardsMounted = true
+    }
+
+    // 設定頁與舊版 dialog 共用 settingsSession:進頁開始編輯,未儲存就離開即復原。
+    onSettingsOpenChanged: {
+        if (settingsOpen) {
+            settingsMounted = true
+            settingsSession.begin()
+        } else {
+            settingsSession.revert()
+        }
     }
 
     Item {
@@ -571,6 +583,50 @@ Item {
                 }
             }
 
+            Loader {
+                id: settingsPage
+                parent: root.compact ? compactShell.pageHost : uiCanvas
+
+                anchors.fill: parent
+                // Sheared panel edges overhang their box; the compact host clips at its edges.
+                anchors.leftMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.rightMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.bottomMargin: root.compact ? 0 : 148
+                z: 40
+                active: root.settingsMounted
+                source: "SettingsScene.qml"
+                visible: root.settingsOpen
+                onLoaded: {
+                    if (root.settingsOpen) {
+                        root.applySettingsNavGraph()
+                        settingsPage.item.takeKeyboard()
+                    }
+                }
+            }
+
+            Binding {
+                target: settingsPage.item
+                property: "compact"
+                value: root.compact
+                when: settingsPage.item !== null
+            }
+
+            Binding {
+                target: settingsPage.item
+                property: "uiScale"
+                value: root.compact ? 1.0 : root.uiScale
+                when: settingsPage.item !== null
+            }
+
+            Connections {
+                target: settingsPage.item
+                ignoreUnknownSignals: true
+                function onNavigationEndpointChanged() {
+                    if (root.settingsOpen)
+                        Qt.callLater(root.applySettingsNavGraph)
+                }
+            }
+
             Item {
                 anchors.fill: cardPage
                 z: 41
@@ -691,7 +747,7 @@ Item {
     HomeLayoutControls {
         id: layoutControls
         parent: contentHost
-        // Portrait uses the existing Settings dialog, leaving the dock at the bottom.
+        // Portrait reaches these options from the Settings page, leaving the dock at the bottom.
         visible: !root.compact
         safeInsets: root.SafeArea.margins
         anchors.bottom: parent.bottom
@@ -810,10 +866,17 @@ Item {
         root.navBar.cardsBtn.KeyNavigation.backtab = c.lastControl
     }
 
+    function applySettingsNavGraph() {
+        var s = settingsPage.item
+        if (s)
+            applyCompactCatalogNav(s.navigationEntry, s.lastControl)
+    }
+
     function restoreHomeKeyboard() {
         if (root.compact) {
             if (root.generalsOpen) applyGeneralsNavGraph()
             else if (root.cardsOpen) applyCardsNavGraph()
+            else if (root.settingsOpen) applySettingsNavGraph()
             root.navBar.homeBtn.forceActiveFocus()
             return
         }
@@ -912,6 +975,11 @@ Item {
     }
 
     Component.onCompleted: {
+        // A reload can land while the settings page is current; resume its edit.
+        if (settingsOpen) {
+            settingsMounted = true
+            settingsSession.begin()
+        }
         applyHomeNavGraph()
         actionPanel.quickJoinBtn.forceActiveFocus()
         enterAnim.start()
@@ -921,7 +989,8 @@ Item {
     Connections {
         target: homeController
         function onCurrentPageChanged() {
-            bottomBar.currentIndex = root.generalsOpen ? 1 : (root.cardsOpen ? 2 : 0)
+            bottomBar.currentIndex = root.generalsOpen ? 1 : root.cardsOpen ? 2
+                                     : root.settingsOpen ? 4 : 0
             if (root.generalsOpen) {
                 if (generalPage.item) {
                     root.applyGeneralsNavGraph()
@@ -931,6 +1000,11 @@ Item {
                 if (cardPage.item) {
                     root.applyCardsNavGraph()
                     cardPage.item.takeKeyboard()
+                }
+            } else if (root.settingsOpen) {
+                if (settingsPage.item) {
+                    root.applySettingsNavGraph()
+                    settingsPage.item.takeKeyboard()
                 }
             } else {
                 Qt.callLater(root.restoreHomeKeyboard)

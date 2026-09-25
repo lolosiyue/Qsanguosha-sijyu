@@ -87,8 +87,8 @@ class HomeController final : public QObject
     Q_PROPERTY(bool updateAvailable
                READ updateAvailable
                NOTIFY updateAvailableChanged)
-    Q_PROPERTY(QUrl backgroundImage READ backgroundImage CONSTANT)
-    Q_PROPERTY(QUrl portraitBackgroundImage READ portraitBackgroundImage CONSTANT)
+    Q_PROPERTY(QUrl backgroundImage READ backgroundImage NOTIFY backgroundChanged)
+    Q_PROPERTY(QUrl portraitBackgroundImage READ portraitBackgroundImage NOTIFY backgroundChanged)
     Q_PROPERTY(QUrl characterImage READ characterImage NOTIFY characterImageChanged)
     Q_PROPERTY(QUrl logoImage READ logoImage CONSTANT)
     Q_PROPERTY(bool hasVideoSupport READ hasVideoSupport CONSTANT)
@@ -207,7 +207,6 @@ signals:
     void generalsRequested();
     void cardsRequested();
     void replaysRequested();
-    void settingsRequested();
     void aboutRequested();
     void updateCheckRequested();
 
@@ -215,6 +214,7 @@ signals:
     void updateAvailableChanged();
     void characterImageChanged();
     void themeChanged();
+    void backgroundChanged();
     void playerInfoChanged();
     void gameModeChanged();
     void currentPageChanged();

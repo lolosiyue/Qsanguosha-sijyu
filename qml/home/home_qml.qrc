@@ -7,6 +7,7 @@
 
     <file alias="GeneralScene.qml">GeneralScene.qml</file>
     <file alias="CardScene.qml">CardScene.qml</file>
+    <file alias="SettingsScene.qml">SettingsScene.qml</file>
     <file alias="CardBrowserTile.qml">CardBrowserTile.qml</file>
     <file alias="CardComboBox.qml">CardComboBox.qml</file>
     <file alias="CardFilterPanel.qml">CardFilterPanel.qml</file>

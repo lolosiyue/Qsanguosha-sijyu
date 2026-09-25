@@ -19,6 +19,7 @@
 #include "engine.h"
 #include "connectiondialog.h"
 #include "configdialog.h"
+#include "settingssession.h"
 #include "clientstruct.h"
 #include "client.h"
 #ifdef Q_OS_ANDROID
@@ -291,12 +292,16 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(ui->actionStart_Game, SIGNAL(triggered()), connection_dialog, SLOT(exec()));
 	connect(connection_dialog, SIGNAL(accepted()), this, SLOT(startConnection()));
 
-	config_dialog = new ConfigDialog(this);
+	// 設定 dialog 與首頁設定頁共用同一個 session:預覽、儲存、復原只在這裡接線一次
+	settingsSession = new SettingsSession(this);
+	config_dialog = new ConfigDialog(settingsSession, this);
 	connect(ui->actionConfigure, SIGNAL(triggered()), config_dialog, SLOT(show()));
-	connect(config_dialog, SIGNAL(bg_changed()), this, SLOT(changeBackground()));
-	// 預覽視覺模式/背景時,重新載入主頁 QML 讓 MultiEffect 即時套用
-	connect(config_dialog, &ConfigDialog::previewChanged, this, &MainWindow::reloadHomePage);
-	connect(config_dialog, &ConfigDialog::uiScalePreviewChanged, this, &MainWindow::setUiScale);
+	connect(settingsSession, &SettingsSession::backgroundChanged, this, &MainWindow::changeBackground);
+	connect(settingsSession, &SettingsSession::uiScaleChanged, this, &MainWindow::setUiScale);
+#if !QSAN_ENABLE_QML
+	// Without the QML home, "reloading" the home page refits the start scene.
+	connect(settingsSession, &SettingsSession::backgroundChanged, this, &MainWindow::reloadHomePage);
+#endif
 
 	connect(ui->actionAbout_Qt, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
 	connect(ui->actionAcknowledgement_2, SIGNAL(triggered()), this, SLOT(on_actionAcknowledgement_triggered()));
@@ -305,7 +310,9 @@ MainWindow::MainWindow(QWidget *parent)
 
 #if QSAN_ENABLE_QML
 	homeController = new HomeController(this);
-	connect(config_dialog, &ConfigDialog::liveVisualChanged, homeController, &HomeController::notifyVisualSettings);
+	connect(settingsSession, &SettingsSession::visualModeChanged, homeController, &HomeController::notifyVisualSettings);
+	connect(settingsSession, &SettingsSession::themeChanged, homeController, &HomeController::themeChanged);
+	connect(settingsSession, &SettingsSession::backgroundChanged, homeController, &HomeController::backgroundChanged);
 	m_homeRenderHost = requestedHomeRenderHost();
 	if (m_homeRenderHost == QLatin1String("view")) {
 		homeWindow = new QQuickView;
@@ -431,6 +438,8 @@ void MainWindow::setupHomePage()
 		QStringLiteral("homeController"), homeController);
 	homeRootContext()->setContextProperty(
 		QStringLiteral("Config"), &Config);
+	homeRootContext()->setContextProperty(
+		QStringLiteral("settingsSession"), settingsSession);
 
 	// QT_QML_IMPORT_PATH is the build machine's Qt qml/ directory.  A packaged layout
 	// ships its own QML modules behind bin/qt.conf; adding the build path there makes the
@@ -468,13 +477,13 @@ void MainWindow::setupHomePage()
 		ui->actionCard_Overview, &QAction::trigger);
 	connect(homeController, &HomeController::replaysRequested,
 		ui->actionReplay, &QAction::trigger);
-	connect(homeController, &HomeController::settingsRequested,
-		ui->actionConfigure, &QAction::trigger);
 	connect(homeController, &HomeController::aboutRequested,
 		ui->actionAbout, &QAction::trigger);
 
-	connect(config_dialog, &ConfigDialog::accepted,
-		this, &MainWindow::reloadHomePage);
+	// Queued: the home settings page commits from inside its own QML click handler,
+	// and the reload replaces that scene.
+	connect(settingsSession, &SettingsSession::committed,
+		this, &MainWindow::reloadHomePage, Qt::QueuedConnection);
 
 #else
 	m_homeSceneReady = true;

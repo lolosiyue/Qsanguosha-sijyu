@@ -1516,12 +1516,12 @@
     <message>
         <location filename="../src/dialog/configdialog.ui" line="729"/>
         <source>用于记录闪退的录像，会在相同文件夹下生成debug.txt；因为是即时记录，会占用部分性能，可能导致游戏卡顿或缓慢。</source>
-        <translation type="unfinished"></translation>
+        <translation>用于记录闪退的录像，会在相同文件夹下生成debug.txt；因为是即时记录，会占用部分性能，可能导致游戏卡顿或缓慢。</translation>
     </message>
     <message>
         <location filename="../src/dialog/configdialog.ui" line="732"/>
         <source>即时保存</source>
-        <translation type="unfinished"></translation>
+        <translation>即时保存</translation>
     </message>
     <message>
         <source>Enable Melee Mode (Peach as Slash/Jink in late game)</source>
@@ -1574,7 +1574,7 @@
     <message>
         <location filename="../src/dialog/configdialog.cpp" line="217"/>
         <source>Images and videos (*.png *.bmp *.jpg *.jpeg *.gif *.webp *.mp4 *.webm *.mkv)</source>
-        <translation type="unfinished"></translation>
+        <translation>图片和视频 (*.png *.bmp *.jpg *.jpeg *.gif *.webp *.mp4 *.webm *.mkv)</translation>
     </message>
     <message>
         <source>Images (*.png *.bmp *.jpg)</source>
@@ -1628,7 +1628,7 @@
     <message>
         <location filename="../src/dialog/configdialog.ui" line="215"/>
         <source>Pointer effect</source>
-        <translation type="unfinished"></translation>
+        <translation>指针特效</translation>
     </message>
     <message>
         <location filename="../src/dialog/configdialog.ui" line="240"/>
@@ -1642,8 +1642,8 @@
     </message>
     <message>
         <location filename="../src/dialog/configdialog.ui" line="310"/>
-        <source>Color blindness / screen reader</source>
-        <translation>色盲模式 / 屏幕阅读器</translation>
+        <source>Color blindness</source>
+        <translation>色盲模式</translation>
     </message>
     <message>
         <location filename="../src/dialog/configdialog.ui" line="331"/>
@@ -1664,6 +1664,86 @@
         <location filename="../src/dialog/configdialog.cpp" line="111"/>
         <source>音频文件地址：audio/system/BGM/front-bgm.ogg 可替换为自己喜欢的音频</source>
         <translation>音频文件地址：audio/system/BGM/front-bgm.ogg 可替换为自己喜欢的音频</translation>
+    </message>
+    <message>
+        <source>Images (*.png *.bmp *.jpg *.jpeg *.gif *.webp)</source>
+        <translation>图片 (*.png *.bmp *.jpg *.jpeg *.gif *.webp)</translation>
+    </message>
+    <message>
+        <source>Images (*.png *.bmp *.jpg *.jpeg *.webp *.svg)</source>
+        <translation>图片 (*.png *.bmp *.jpg *.jpeg *.webp *.svg)</translation>
+    </message>
+    <message>
+        <source>Visual effects</source>
+        <translation>视觉特效</translation>
+    </message>
+    <message>
+        <source>Full effects</source>
+        <translation>完整特效</translation>
+    </message>
+    <message>
+        <source>Reduced effects</source>
+        <translation>精简特效</translation>
+    </message>
+    <message>
+        <source>No decorative effects</source>
+        <translation>关闭装饰特效</translation>
+    </message>
+    <message>
+        <source>Full: every animation, Spine, GIF and video. Reduced: shorter animations, no Spine/video. None: no decorative animation at all.</source>
+        <translation>完整：播放所有动画、Spine、GIF 与视频。精简：缩短动画，不播放 Spine／视频。关闭：不播放任何装饰动画。</translation>
+    </message>
+    <message>
+        <source>Enable video background on the home page</source>
+        <translation>主页启用视频背景</translation>
+    </message>
+    <message>
+        <source>Mute all audio</source>
+        <translation>全部静音</translation>
+    </message>
+    <message>
+        <source>Master Volume</source>
+        <translation>主音量</translation>
+    </message>
+    <message>
+        <source>Voice  Volume</source>
+        <translation>语音音量</translation>
+    </message>
+    <message>
+        <source>直向與單手操作</source>
+        <translation>竖屏与单手操作</translation>
+    </message>
+    <message>
+        <source>自適應版面（首頁、對話框與牌桌）</source>
+        <translation>自适应布局（主页、对话框与牌桌）</translation>
+    </message>
+    <message>
+        <source>單手操作</source>
+        <translation>单手操作</translation>
+    </message>
+    <message>
+        <source>雙手／無偏好</source>
+        <translation>双手／无偏好</translation>
+    </message>
+    <message>
+        <source>左手操作</source>
+        <translation>左手操作</translation>
+    </message>
+    <message>
+        <source>右手操作</source>
+        <translation>右手操作</translation>
+    </message>
+    <message>
+        <source>直向背景（獨立保存）</source>
+        <translation>竖屏背景（单独保存）</translation>
+    </message>
+    <message>
+        <source>選擇直向背景</source>
+        <translation>选择竖屏背景</translation>
+    </message>
+    <message>
+        <source>恢復直向預設</source>
+        <translation>恢复竖屏默认</translation>
     </message>
 </context>
 <context>
@@ -6670,6 +6750,21 @@ P = 你自己, R = 你所在的房间</translation>
     <message>
         <source>%1&apos;s server</source>
         <translation type="vanished">%1的服务器</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsScene</name>
+    <message>
+        <source>更改会即时预览；点击“保存”后生效，取消或离开此页则还原。</source>
+        <translation>更改会即时预览；点击“保存”后生效，取消或离开此页则还原。</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>保存</source>
+        <translation>保存</translation>
     </message>
 </context>
 <context>

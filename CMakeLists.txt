@@ -1763,6 +1763,7 @@ if(QSAN_BUILD_GUI)
                 qml/home/CardDetailPanel.qml
                 qml/home/CardVariantList.qml
                 qml/home/CardPagination.qml
+                qml/home/SettingsScene.qml
                 qml/home/HomeTheme.qml
                 ui-script/game/chongxu/chongxu.qml
         )
