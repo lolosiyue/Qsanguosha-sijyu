@@ -897,7 +897,7 @@ void HomeController::openReplays()
 
 void HomeController::openSettings()
 {
-    emit settingsRequested();
+    setCurrentPage(QStringLiteral("settings"));
 }
 
 void HomeController::openAbout()

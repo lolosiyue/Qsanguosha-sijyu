@@ -19,6 +19,7 @@ class Server;
 class QTextEdit;
 class ConnectionDialog;
 class ConfigDialog;
+class SettingsSession;
 class QStackedWidget;
 class QLabel;
 class QProgressBar;
@@ -167,6 +168,7 @@ private:
     Ui::MainWindow *ui = nullptr;
     ConnectionDialog *connection_dialog = nullptr;
     ConfigDialog *config_dialog = nullptr;
+    SettingsSession *settingsSession = nullptr;
     QSystemTrayIcon *systray = nullptr;
     Server *server = nullptr;
 #ifdef QSAN_XP_LEGACY

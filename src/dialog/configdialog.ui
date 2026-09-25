@@ -348,7 +348,7 @@
           <item>
            <widget class="QLabel" name="visualModeLabel">
             <property name="text">
-             <string>Color blindness / screen reader</string>
+             <string>Color blindness</string>
             </property>
            </widget>
           </item>

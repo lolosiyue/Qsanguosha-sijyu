@@ -260,6 +260,20 @@ Item {
     readonly property int cardSkeletonTitleHeight: 26
     readonly property int cardSkeletonSubtitleHeight: 13
 
+    // 設定頁布局
+    readonly property int settingsNavWidth: 220
+    readonly property int settingsLabelWidth: 300
+    readonly property int settingsChoiceWidth: 280
+    readonly property int settingsValueWidth: 72
+    readonly property int settingsRowGap: 12
+    readonly property int settingsFontSize: 17
+    readonly property int settingsGroupFontSize: 21
+    readonly property int settingsCheckSize: 22
+    readonly property int settingsSliderTrack: 6
+    readonly property int settingsSliderHandle: 24
+    readonly property int settingsFooterButtonWidth: 200
+    readonly property int settingsFooterButtonHeight: 56
+
     // 武將頁布局：骨架與載入後畫面共用，避免尺寸對不齊
     readonly property int generalHeaderHeight: 88
     readonly property int generalPageHMargin: 28

@@ -1,20 +1,10 @@
 #include "configdialog.h"
 #include "ui_configdialog.h"
-#include "build-features.h"
+#include "settingssession.h"
 #include "settings.h"
-#include "roomscene.h"
-#include "mainwindow.h"
-#include "engine.h"
-#include "clientstruct.h"
-#include "effects/effects-policy.h"
-#include "effects/effects-profile.h"
-#include <QSignalBlocker>
-#ifdef AUDIO_SUPPORT
-#include "audio.h"
-#endif
 
-ConfigDialog::ConfigDialog(QWidget *parent)
-    : QDialog(parent), ui(new Ui::ConfigDialog)
+ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
+    : QDialog(parent), ui(new Ui::ConfigDialog), m_session(session)
 {
     ui->setupUi(this);
 #if !defined(QSAN_XP_LEGACY)
@@ -29,7 +19,6 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     layoutOptions->addWidget(new QLabel(tr("直向背景（獨立保存）"), layoutGroup));
     m_portraitBackground = new QLineEdit(layoutGroup);
     m_portraitBackground->setReadOnly(true);
-    m_portraitBackground->setText(Config.value("UI/PortraitBackgroundImage").toString());
     layoutOptions->addWidget(m_portraitBackground);
     auto *portraitButtons = new QHBoxLayout;
     auto *browsePortrait = new QPushButton(tr("選擇直向背景"), layoutGroup);
@@ -37,157 +26,147 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     portraitButtons->addWidget(browsePortrait);
     portraitButtons->addWidget(resetPortrait);
     layoutOptions->addLayout(portraitButtons);
-    const auto previewPortrait = [this](const QString &path) {
-        m_portraitBackground->setText(path);
-        Config.setValue("UI/PortraitBackgroundImage", path);
-        emit bg_changed();
-        emit previewChanged();
-    };
-    connect(browsePortrait, &QPushButton::clicked, this, [this, previewPortrait] {
-        const QString path = QFileDialog::getOpenFileName(this, tr("選擇直向背景"),
-            QString(), tr("Images (*.png *.bmp *.jpg *.jpeg *.webp *.svg)"));
-        if (!path.isEmpty()) previewPortrait(path);
-    });
-    connect(resetPortrait, &QPushButton::clicked, this, [previewPortrait] {
-        previewPortrait(QStringLiteral("image/system/portrait/portrait-background.svg"));
-    });
+    connect(browsePortrait, &QPushButton::clicked, this, [this] { m_session->choosePortraitBackground(this); });
+    connect(resetPortrait, &QPushButton::clicked, m_session, &SettingsSession::resetPortraitBackground);
     ui->envLayout->insertWidget(0, layoutGroup);
     connect(m_responsiveLayout, &QCheckBox::toggled, this, [this](bool enabled) {
-        if (!m_loading) Config.setResponsiveUiEnabled(enabled);
+        bindValue("UI/ResponsiveLayout", enabled);
     });
     connect(m_oneHandedness, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int hand) {
-        if (m_loading) return;
-        Config.setOneHandedness(hand);
-        if (hand != 0) Config.setResponsiveUiEnabled(true);
-    });
-    connect(&Config, &Settings::uiLayoutChanged, this, [this] {
-        const QSignalBlocker layoutBlock(m_responsiveLayout), handBlock(m_oneHandedness);
-        m_responsiveLayout->setChecked(Config.responsiveUiEnabled());
-        m_oneHandedness->setCurrentIndex(Config.oneHandedness());
+        bindValue("UI/RoomHandedness", hand);
     });
 #endif
-    loadConfig();
-
-    connect(ui->enableEffectCheckBox, SIGNAL(toggled(bool)), ui->enableLastWordCheckBox, SLOT(setEnabled(bool)));
-    connect(ui->checkBoxRecorderAutoSave, SIGNAL(toggled(bool)), ui->checkBoxRecorderNetworkOnly, SLOT(setEnabled(bool)));
-
-    // 「顯示」分頁視角元素:變動即時預覽,按確定才寫入設定檔,取消復原
-    connect(ui->themeSystemRadio, &QRadioButton::toggled, this, [this](bool on) { if (on && !m_loading) previewTheme(0); });
-    connect(ui->themeLightRadio, &QRadioButton::toggled, this, [this](bool on) { if (on && !m_loading) previewTheme(1); });
-    connect(ui->themeDarkRadio, &QRadioButton::toggled, this, [this](bool on) { if (on && !m_loading) previewTheme(2); });
-    connect(ui->uiScaleSlider, &QSlider::valueChanged, this, [this](int value) {
-        const qreal scale = value / 20.0;
-        ui->uiScaleValueLabel->setText(QString::number(scale, 'f', 2) + "x");
-        if (!m_loading) {
-            Config.UIScale = scale;
-            emit uiScalePreviewChanged(scale);
-        }
-    });
-    connect(ui->visualModeCombo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
-        this, [this](int) { if (!m_loading) previewVisualMode(); });
-
-    // 這四個勾選遊戲內以 Config.value() 即時讀取,預覽需立即寫入 QSettings,取消時再復原
-    connect(ui->noIndicatorCheckBox, &QCheckBox::toggled, this, [this](bool v) { if (!m_loading) Config.setValue("NoIndicator", v); });
-    connect(ui->noEquipAnimCheckBox, &QCheckBox::toggled, this, [this](bool v) { if (!m_loading) Config.setValue("NoEquipAnim", v); });
-    connect(ui->noCardMoveAnimCheckBox, &QCheckBox::toggled, this, [this](bool v) { if (!m_loading) Config.setValue("NoCardMoveAnim", v); });
-    connect(ui->enableAnimatedGeneralsCheckBox, &QCheckBox::toggled, this, [this](bool v) { if (!m_loading) Config.setValue("EnableAnimatedGenerals", v); });
-    connect(ui->enablePointerEffectCheckBox, &QCheckBox::toggled, this, [this](bool v) {
-        if (!m_loading) {
-            Config.EnablePointerEffect = v;
-            Config.setValue("EnablePointerEffect", v);
-        }
-    });
-    // The effect profile and --effects-profile share one VisualEffectsPolicy: what
-    // changes here is the same object, not a second set of settings. It takes effect
-    // immediately and writes to QSettings; on cancel, restoreVisualSettings() reverts it.
+    ui->fullSkinCheckBox->setEnabled(false);
+    ui->fullSkinCheckBox->setChecked(true);
+    ui->bubbleChatBoxKeepSpinBox->setSuffix(tr(" millisecond"));
+    ui->frontVolumeSlider->setToolTip(tr("音频文件地址：audio/system/BGM/front-bgm.ogg 可替换为自己喜欢的音频"));
 #if defined(QSAN_XP_LEGACY)
     // XP is a fixed raster profile; do not expose an option that cannot take effect.
     ui->effectsProfileLabel->hide();
     ui->effectsProfileComboBox->hide();
 #else
+    ui->effectsProfileComboBox->addItem(tr("Full effects"), QStringLiteral("full"));
+    ui->effectsProfileComboBox->addItem(tr("Reduced effects"), QStringLiteral("reduced"));
+    ui->effectsProfileComboBox->addItem(tr("No decorative effects"), QStringLiteral("none"));
     connect(ui->effectsProfileComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
         this, [this](int index) {
-            if (m_loading)
-                return;
-            EffectsProfile profile = EffectsProfileContract::defaultProfile();
-            if (EffectsProfileContract::parseProfileName(
-                    ui->effectsProfileComboBox->itemData(index).toString(), &profile))
-                G_EFFECTS.setProfile(profile, true);
+            bindValue("EffectsProfile", ui->effectsProfileComboBox->itemData(index));
         });
 #endif
 
-    // Pointer-based connect: restoreVisualSettings() is not in the slots: section,
-    // so the old SLOT() string only fails at runtime ("No such slot") and silently
-    // never connects - Cancel would leave already-applied, QSettings-persisted preview settings unrestored. Pointer-based connect catches this at compile time.
-    connect(this, &QDialog::accepted, this, &ConfigDialog::saveConfig);
-    connect(this, &QDialog::rejected, this, &ConfigDialog::restoreVisualSettings);
+    connect(ui->enableEffectCheckBox, SIGNAL(toggled(bool)), ui->enableLastWordCheckBox, SLOT(setEnabled(bool)));
+    connect(ui->checkBoxRecorderAutoSave, SIGNAL(toggled(bool)), ui->checkBoxRecorderNetworkOnly, SLOT(setEnabled(bool)));
 
-    QFont font = UiConfig.AppFont;
-    showFont(ui->appFontLineEdit, font);
+    // 「顯示」分頁視角元素由 session 即時預覽,按確定才寫入設定檔,取消復原
+    connect(ui->themeSystemRadio, &QRadioButton::toggled, this, [this](bool on) { if (on) bindValue("ColorScheme", 0); });
+    connect(ui->themeLightRadio, &QRadioButton::toggled, this, [this](bool on) { if (on) bindValue("ColorScheme", 1); });
+    connect(ui->themeDarkRadio, &QRadioButton::toggled, this, [this](bool on) { if (on) bindValue("ColorScheme", 2); });
+    connect(ui->uiScaleSlider, &QSlider::valueChanged, this, [this](int value) {
+        ui->uiScaleValueLabel->setText(QString::number(value / 20.0, 'f', 2) + "x");
+        bindValue("UIScale", value / 20.0);
+    });
+    connect(ui->visualModeCombo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+        this, [this](int index) {
+            bindValue("VisualMode", index == 1 ? "grayscale" : index == 2 ? "highcontrast" : "normal");
+        });
 
-    font = UiConfig.UIFont;
-    showFont(ui->textEditFontLineEdit, font);
+    const struct { QAbstractButton *button; const char *key; } checks[] = {
+        { ui->noIndicatorCheckBox, "NoIndicator" },
+        { ui->noEquipAnimCheckBox, "NoEquipAnim" },
+        { ui->noCardMoveAnimCheckBox, "NoCardMoveAnim" },
+        { ui->enableAnimatedGeneralsCheckBox, "EnableAnimatedGenerals" },
+        { ui->enablePointerEffectCheckBox, "EnablePointerEffect" },
+        { ui->backgroundChangeCheckBox, "EnableAutoBackgroundChange" },
+        { ui->backgroundVideoCheckBox, "EnableBackgroundVideo" },
+        { ui->enableEffectCheckBox, "EnableEffects" },
+        { ui->enableLastWordCheckBox, "EnableLastWord" },
+        { ui->muteCheckBox, "AudioMuted" },
+        { ui->neverNullifyMyTrickCheckBox, "NeverNullifyMyTrick" },
+        { ui->autoTargetCheckBox, "EnableAutoTarget" },
+        { ui->intellectualSelectionCheckBox, "EnableIntellectualSelection" },
+        { ui->doubleClickCheckBox, "EnableDoubleClick" },
+        { ui->superDragCheckBox, "EnableSuperDrag" },
+        { ui->backgroundCardDescription, "EnableCardDescription" },
+        { ui->enableOracleConceptsCheckBox, "EnableOracleConcepts" },
+        { ui->checkBoxRecorderAutoSave, "recorder/autosave" },
+        { ui->checkBoxRecorderNetworkOnly, "recorder/networkonly" },
+        { ui->checkBoxRecorderEventSave, "recorder/eventsave" },
+    };
+    for (const auto &check : checks) {
+        const QString key = QString::fromLatin1(check.key);
+        connect(check.button, &QAbstractButton::toggled, this, [this, key](bool on) { bindValue(key, on); });
+    }
 
-    QPalette palette;
-    palette.setColor(QPalette::Text, UiConfig.TextEditColor);
-    QColor color = UiConfig.TextEditColor;
-    int aver = (color.red() + color.green() + color.blue()) / 3;
-    palette.setColor(QPalette::Base, aver >= 208 ? Qt::black : Qt::white);
-    ui->textEditFontLineEdit->setPalette(palette);
+    const struct { QSlider *slider; const char *key; } volumes[] = {
+        { ui->bgmVolumeSlider, "BGMVolume" },
+        { ui->effectVolumeSlider, "EffectVolume" },
+        { ui->frontVolumeSlider, "FrontBGMVolume" },
+        { ui->masterVolumeSlider, "MasterVolume" },
+        { ui->voiceVolumeSlider, "VoiceVolume" },
+    };
+    for (const auto &volume : volumes) {
+        const QString key = QString::fromLatin1(volume.key);
+        connect(volume.slider, &QSlider::valueChanged, this, [this, key](int value) { bindValue(key, value / 100.0); });
+    }
+    connect(ui->bubbleChatBoxKeepSpinBox, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
+        this, [this](int value) { bindValue("BubbleChatBoxKeepTime", value); });
+
+    // Pointer-based connect: a SLOT() string to a non-slot only fails at runtime ("No such slot")
+    // and would silently leave Cancel unable to restore the already-applied preview settings.
+    connect(this, &QDialog::accepted, m_session, &SettingsSession::commit);
+    connect(this, &QDialog::rejected, m_session, &SettingsSession::revert);
+    // 首頁設定頁或版面浮窗改動同一份 session 時,widget 跟著更新。
+    connect(m_session, &SettingsSession::valuesChanged, this, &ConfigDialog::loadConfig);
+
+    loadConfig();
+}
+
+void ConfigDialog::bindValue(const QString &key, const QVariant &value)
+{
+    if (!m_loading)
+        m_session->setValue(key, value);
 }
 
 void ConfigDialog::loadConfig()
 {
-    // 程式設定 widget 值時不觸發預覽(避免每次開啟 dialog 就重套 palette / 重載主頁)
+    // 程式設定 widget 值時不回寫 session(避免每次開啟 dialog 就重套 palette / 重載主頁)
     m_loading = true;
-    if (m_responsiveLayout) m_responsiveLayout->setChecked(Config.responsiveUiEnabled());
-    if (m_oneHandedness) m_oneHandedness->setCurrentIndex(Config.oneHandedness());
+    const QVariantMap v = m_session->values();
+    if (m_responsiveLayout) m_responsiveLayout->setChecked(v.value("UI/ResponsiveLayout").toBool());
+    if (m_oneHandedness) m_oneHandedness->setCurrentIndex(v.value("UI/RoomHandedness").toInt());
+    if (m_portraitBackground) m_portraitBackground->setText(v.value("UI/PortraitBackgroundImage").toString());
     // 主题:0/1/2 直对 Qt::ColorScheme {Unknown(跟随系统), Light, Dark}
-    switch (qBound(0, Config.ColorScheme, 2)) {
+    switch (v.value("ColorScheme").toInt()) {
     case 1: ui->themeLightRadio->setChecked(true); break;
     case 2: ui->themeDarkRadio->setChecked(true); break;
     default: ui->themeSystemRadio->setChecked(true); break;
     }
 
-    QString bg_path = Config.value("BackgroundImage").toString();
-    if (bg_path.startsWith(":"))
-        ui->bgPathLineEdit->clear();
-    else
-        ui->bgPathLineEdit->setText(bg_path);
+    const QString bg_path = v.value("BackgroundImage").toString();
+    ui->bgPathLineEdit->setText(bg_path.startsWith(":") ? QString() : bg_path);
+    ui->bgMusicPathLineEdit->setText(v.value("BackgroundMusic").toString());
 
-    ui->bgMusicPathLineEdit->setText(Config.value("BackgroundMusic", "audio/system/background.ogg").toString());
+    ui->enableEffectCheckBox->setChecked(v.value("EnableEffects").toBool());
+    ui->enableLastWordCheckBox->setEnabled(v.value("EnableEffects").toBool());
+    ui->enableLastWordCheckBox->setChecked(v.value("EnableLastWord").toBool());
 
-    ui->enableEffectCheckBox->setChecked(Config.EnableEffects);
-    ui->enableLastWordCheckBox->setEnabled(Config.EnableEffects);
-    ui->enableLastWordCheckBox->setChecked(Config.EnableLastWord);
+    ui->noIndicatorCheckBox->setChecked(v.value("NoIndicator").toBool());
+    ui->noEquipAnimCheckBox->setChecked(v.value("NoEquipAnim").toBool());
+    ui->noCardMoveAnimCheckBox->setChecked(v.value("NoCardMoveAnim").toBool());
+    ui->enableAnimatedGeneralsCheckBox->setChecked(v.value("EnableAnimatedGenerals").toBool());
+    ui->enablePointerEffectCheckBox->setChecked(v.value("EnablePointerEffect").toBool());
 
-    //ui->enableBgMusicCheckBox->setChecked(Config.EnableBgMusic);
-
-    ui->fullSkinCheckBox->setEnabled(false);
-    ui->fullSkinCheckBox->setChecked(true);
-    ui->noIndicatorCheckBox->setChecked(Config.value("NoIndicator").toBool());
-    ui->noEquipAnimCheckBox->setChecked(Config.value("NoEquipAnim").toBool());
-    ui->noCardMoveAnimCheckBox->setChecked(Config.value("NoCardMoveAnim", false).toBool());
-    ui->enableAnimatedGeneralsCheckBox->setChecked(Config.value("EnableAnimatedGenerals", true).toBool());
-    ui->enablePointerEffectCheckBox->setChecked(Config.EnablePointerEffect);
-
-#if defined(QSAN_XP_LEGACY)
-    G_EFFECTS.setProfile(EffectsProfile::None, false);
-#else
-    ui->effectsProfileComboBox->clear();
-    ui->effectsProfileComboBox->addItem(tr("Full effects"), QStringLiteral("full"));
-    ui->effectsProfileComboBox->addItem(tr("Reduced effects"), QStringLiteral("reduced"));
-    ui->effectsProfileComboBox->addItem(tr("No decorative effects"), QStringLiteral("none"));
+#if !defined(QSAN_XP_LEGACY)
     {
-        const int index = ui->effectsProfileComboBox->findData(G_EFFECTS.profileName());
+        const int index = ui->effectsProfileComboBox->findData(v.value("EffectsProfile"));
         ui->effectsProfileComboBox->setCurrentIndex(index >= 0 ? index : 0);
     }
 #endif
 
-    ui->uiScaleSlider->setValue(qRound(Config.UIScale * 20.0));
+    ui->uiScaleSlider->setValue(qRound(v.value("UIScale").toDouble() * 20.0));
     ui->uiScaleValueLabel->setText(QString::number(ui->uiScaleSlider->value() / 20.0, 'f', 2) + "x");
 
-    const QString visualMode = Config.VisualMode;
+    const QString visualMode = v.value("VisualMode").toString();
     if (visualMode == "grayscale")
         ui->visualModeCombo->setCurrentIndex(1);
     else if (visualMode == "highcontrast")
@@ -195,126 +174,56 @@ void ConfigDialog::loadConfig()
     else
         ui->visualModeCombo->setCurrentIndex(0);
 
-    ui->bgmVolumeSlider->setValue(Config.BGMVolume * 100);
-    ui->effectVolumeSlider->setValue(Config.EffectVolume * 100);
-    ui->frontVolumeSlider->setValue(Config.FrontBGMVolume * 100);
-    ui->masterVolumeSlider->setValue(Config.MasterVolume * 100);
-    ui->voiceVolumeSlider->setValue(Config.VoiceVolume * 100);
-    ui->muteCheckBox->setChecked(Config.AudioMuted);
-    ui->backgroundVideoCheckBox->setChecked(Config.EnableBackgroundVideo);
-    ui->frontVolumeSlider->setToolTip(tr("音频文件地址：audio/system/BGM/front-bgm.ogg 可替换为自己喜欢的音频"));
+    ui->bgmVolumeSlider->setValue(qRound(v.value("BGMVolume").toDouble() * 100));
+    ui->effectVolumeSlider->setValue(qRound(v.value("EffectVolume").toDouble() * 100));
+    ui->frontVolumeSlider->setValue(qRound(v.value("FrontBGMVolume").toDouble() * 100));
+    ui->masterVolumeSlider->setValue(qRound(v.value("MasterVolume").toDouble() * 100));
+    ui->voiceVolumeSlider->setValue(qRound(v.value("VoiceVolume").toDouble() * 100));
+    ui->muteCheckBox->setChecked(v.value("AudioMuted").toBool());
+    ui->backgroundVideoCheckBox->setChecked(v.value("EnableBackgroundVideo").toBool());
 
     // tab 2
-    ui->neverNullifyMyTrickCheckBox->setChecked(Config.NeverNullifyMyTrick);
-    ui->autoTargetCheckBox->setChecked(Config.EnableAutoTarget);
-    ui->intellectualSelectionCheckBox->setChecked(Config.EnableIntellectualSelection);
-    ui->doubleClickCheckBox->setChecked(Config.EnableDoubleClick);
-    ui->superDragCheckBox->setChecked(Config.EnableSuperDrag);
-    ui->bubbleChatBoxKeepSpinBox->setSuffix(tr(" millisecond"));
-    ui->bubbleChatBoxKeepSpinBox->setValue(Config.BubbleChatBoxKeepTime);
-    ui->backgroundChangeCheckBox->setChecked(Config.EnableAutoBackgroundChange);
-    ui->backgroundCardDescription->setChecked(Config.EnableCardDescription);
-    ui->enableOracleConceptsCheckBox->setChecked(Config.value("EnableOracleConcepts", true).toBool());
+    ui->neverNullifyMyTrickCheckBox->setChecked(v.value("NeverNullifyMyTrick").toBool());
+    ui->autoTargetCheckBox->setChecked(v.value("EnableAutoTarget").toBool());
+    ui->intellectualSelectionCheckBox->setChecked(v.value("EnableIntellectualSelection").toBool());
+    ui->doubleClickCheckBox->setChecked(v.value("EnableDoubleClick").toBool());
+    ui->superDragCheckBox->setChecked(v.value("EnableSuperDrag").toBool());
+    ui->bubbleChatBoxKeepSpinBox->setValue(v.value("BubbleChatBoxKeepTime").toInt());
+    ui->backgroundChangeCheckBox->setChecked(v.value("EnableAutoBackgroundChange").toBool());
+    ui->backgroundCardDescription->setChecked(v.value("EnableCardDescription").toBool());
+    ui->enableOracleConceptsCheckBox->setChecked(v.value("EnableOracleConcepts").toBool());
 
-    ui->checkBoxRecorderAutoSave->setChecked(Config.value("recorder/autosave", true).toBool());
-    ui->checkBoxRecorderNetworkOnly->setChecked(Config.value("recorder/networkonly", true).toBool());
-    ui->checkBoxRecorderEventSave->setChecked(Config.value("recorder/eventsave", false).toBool());
+    ui->checkBoxRecorderAutoSave->setChecked(v.value("recorder/autosave").toBool());
+    ui->checkBoxRecorderNetworkOnly->setChecked(v.value("recorder/networkonly").toBool());
+    ui->checkBoxRecorderEventSave->setChecked(v.value("recorder/eventsave").toBool());
+
+    showFont(ui->appFontLineEdit, v.value("AppFont").value<QFont>());
+    showFont(ui->textEditFontLineEdit, v.value("UIFont").value<QFont>());
+    showTextEditColor(v.value("TextEditColor").value<QColor>());
     m_loading = false;
 }
 
 void ConfigDialog::showEvent(QShowEvent *event)
 {
-    // 每次開起都重新讀取已確認的設定並拍快照,取消時才能復原到上次確認的狀態
+    // 每次開啟都開始一次編輯(拍快照);首頁設定頁已在編輯中則沿用同一份草稿
+    m_session->begin();
     loadConfig();
-    snapshotVisualSettings();
     QDialog::showEvent(event);
-}
-
-void ConfigDialog::snapshotVisualSettings()
-{
-    m_visual.colorScheme = Config.ColorScheme;
-    m_visual.responsiveLayout = Config.responsiveUiEnabled();
-    m_visual.oneHandedness = Config.oneHandedness();
-    m_visual.uiScale = Config.UIScale;
-    m_visual.backgroundImage = Config.BackgroundImage;
-    m_visual.portraitBackgroundImage = Config.value("UI/PortraitBackgroundImage",
-        "image/system/portrait/portrait-background.svg").toString();
-    m_visual.visualMode = Config.VisualMode;
-    m_visual.noIndicator = Config.value("NoIndicator").toBool();
-    m_visual.noEquipAnim = Config.value("NoEquipAnim").toBool();
-    m_visual.noCardMoveAnim = Config.value("NoCardMoveAnim", false).toBool();
-    m_visual.enableAnimatedGenerals = Config.value("EnableAnimatedGenerals", true).toBool();
-    m_visual.enablePointerEffect = Config.EnablePointerEffect;
-    m_visual.effectsProfile = G_EFFECTS.profileName();
-}
-
-void ConfigDialog::previewTheme(int scheme)
-{
-    Config.ColorScheme = scheme;
-    applyColorScheme(scheme);
-    if (Config.VisualMode != "normal")
-        applyVisualMode(Config.VisualMode);
-}
-
-void ConfigDialog::previewVisualMode()
-{
-    switch (ui->visualModeCombo->currentIndex()) {
-    case 1: Config.VisualMode = "grayscale"; break;
-    case 2: Config.VisualMode = "highcontrast"; break;
-    default: Config.VisualMode = "normal"; break;
-    }
-    Config.setValue("VisualMode", Config.VisualMode);
-    applyVisualMode(Config.VisualMode);
-    emit liveVisualChanged();
-}
-
-void ConfigDialog::restoreVisualSettings()
-{
-    if (Config.value("UI/PortraitBackgroundImage").toString() != m_visual.portraitBackgroundImage) {
-        Config.setValue("UI/PortraitBackgroundImage", m_visual.portraitBackgroundImage);
-        if (m_portraitBackground) m_portraitBackground->setText(m_visual.portraitBackgroundImage);
-        emit bg_changed();
-    }
-    Config.setOneHandedness(m_visual.oneHandedness);
-    Config.setResponsiveUiEnabled(m_visual.responsiveLayout);
-    if (m_visual.colorScheme != Config.ColorScheme) {
-        Config.ColorScheme = m_visual.colorScheme;
-        applyColorScheme(m_visual.colorScheme);
-    }
-    if (!qFuzzyCompare(m_visual.uiScale, Config.UIScale)) {
-        Config.UIScale = m_visual.uiScale;
-        emit uiScalePreviewChanged(Config.UIScale);
-    }
-    if (m_visual.backgroundImage != Config.BackgroundImage) {
-        Config.BackgroundImage = m_visual.backgroundImage;
-        Config.setValue("BackgroundImage", m_visual.backgroundImage);
-        emit bg_changed();
-    }
-    if (m_visual.visualMode != Config.VisualMode) {
-        Config.VisualMode = m_visual.visualMode;
-        Config.setValue("VisualMode", Config.VisualMode);
-        applyVisualMode(Config.VisualMode);
-        emit liveVisualChanged();
-    }
-    Config.setValue("NoIndicator", m_visual.noIndicator);
-    Config.setValue("NoEquipAnim", m_visual.noEquipAnim);
-    Config.setValue("NoCardMoveAnim", m_visual.noCardMoveAnim);
-    Config.setValue("EnableAnimatedGenerals", m_visual.enableAnimatedGenerals);
-    Config.EnablePointerEffect = m_visual.enablePointerEffect;
-    Config.setValue("EnablePointerEffect", m_visual.enablePointerEffect);
-#if !defined(QSAN_XP_LEGACY)
-    {
-        EffectsProfile profile = EffectsProfileContract::defaultProfile();
-        if (EffectsProfileContract::parseProfileName(m_visual.effectsProfile, &profile))
-            G_EFFECTS.setProfile(profile, true);
-    }
-#endif
 }
 
 void ConfigDialog::showFont(QLineEdit *lineedit, const QFont &font)
 {
     lineedit->setFont(font);
-    lineedit->setText(QString("%1 %2").arg(font.family()).arg(font.pointSize()));
+    lineedit->setText(SettingsSession::fontLabel(font));
+}
+
+void ConfigDialog::showTextEditColor(const QColor &color)
+{
+    QPalette palette;
+    palette.setColor(QPalette::Text, color);
+    int aver = (color.red() + color.green() + color.blue()) / 3;
+    palette.setColor(QPalette::Base, aver >= 208 ? Qt::black : Qt::white);
+    ui->textEditFontLineEdit->setPalette(palette);
 }
 
 ConfigDialog::~ConfigDialog()
@@ -324,233 +233,35 @@ ConfigDialog::~ConfigDialog()
 
 void ConfigDialog::on_browseBgButton_clicked()
 {
-#if QSAN_ENABLE_VIDEO
-    const QString filter = tr("Images and videos (*.png *.bmp *.jpg *.jpeg *.gif *.webp *.mp4 *.webm *.mkv)");
-#else
-    const QString filter = tr("Images (*.png *.bmp *.jpg *.jpeg *.gif *.webp)");
-#endif
-    QString filename = QFileDialog::getOpenFileName(this,
-        tr("Select a background image"),
-        "image/system/backdrop/",
-        filter);
-
-    if (!filename.isEmpty()) {
-        QString app_path = QApplication::applicationDirPath();
-        if (filename.startsWith(app_path))
-            filename = filename.right(filename.length() - app_path.length() - 1);
-        ui->bgPathLineEdit->setText(filename);
-
-        Config.BackgroundImage = filename;
-        Config.setValue("BackgroundImage", filename);
-
-        emit bg_changed();
-        emit previewChanged();
-    }
+    m_session->chooseBackgroundImage(this);
 }
 
 void ConfigDialog::on_resetBgButton_clicked()
 {
-    ui->bgPathLineEdit->clear();
-
-    QString filename = "image/system/backdrop/default.jpg";
-    Config.BackgroundImage = filename;
-    Config.setValue("BackgroundImage", filename);
-
-    emit bg_changed();
-    emit previewChanged();
-}
-
-void ConfigDialog::saveConfig()
-{
-    float volume = ui->bgmVolumeSlider->value() / 100.0;
-    Config.BGMVolume = volume;
-    Config.setValue("BGMVolume", volume);
-    volume = ui->effectVolumeSlider->value() / 100.0;
-    Config.EffectVolume = volume;
-    Config.setValue("EffectVolume", volume);
-    volume = ui->frontVolumeSlider->value() / 100.0;
-    Config.FrontBGMVolume = volume;
-    Config.setValue("FrontBGMVolume", volume);
-
-    // M2B-A: master / voice / mute and video background. Key names are shared between
-    // Windows and Linux; when older config files lack these keys, Settings::init() already provides stable defaults.
-    Config.MasterVolume = ui->masterVolumeSlider->value() / 100.0f;
-    Config.setValue("MasterVolume", Config.MasterVolume);
-    Config.VoiceVolume = ui->voiceVolumeSlider->value() / 100.0f;
-    Config.setValue("VoiceVolume", Config.VoiceVolume);
-    Config.AudioMuted = ui->muteCheckBox->isChecked();
-    Config.setValue("AudioMuted", Config.AudioMuted);
-    Config.EnableBackgroundVideo = ui->backgroundVideoCheckBox->isChecked();
-    Config.setValue("EnableBackgroundVideo", Config.EnableBackgroundVideo);
-
-    bool enabled = ui->enableEffectCheckBox->isChecked();
-    Config.EnableEffects = enabled;
-    Config.setValue("EnableEffects", enabled);
-
-    enabled = ui->enableLastWordCheckBox->isChecked();
-    Config.EnableLastWord = enabled;
-    Config.setValue("EnableLastWord", enabled);
-
-    /*enabled = ui->enableBgMusicCheckBox->isChecked();
-    Config.EnableBgMusic = enabled;
-    Config.setValue("EnableBgMusic", enabled);*/
-
-#ifdef AUDIO_SUPPORT
-	// 先推新的 master／effect／voice／mute 落 backend，再決定 BGM 播定停：
-	// 否則靜音之後 BGM 仲會用舊增益響一次。
-	Audio::applyConfigVolumes();
-	if(volume>0){
-		if (!ServerInfo.DuringGame&&QFile::exists("audio/system/BGM/front-bgm.ogg"))
-			Audio::playBGM("audio/system/BGM/front-bgm.ogg");
-		Audio::setBGMVolume(volume);
-	}else
-		Audio::stopBGM();
-#endif
-
-    Config.setValue("NoIndicator", ui->noIndicatorCheckBox->isChecked());
-    Config.setValue("NoEquipAnim", ui->noEquipAnimCheckBox->isChecked());
-    Config.setValue("NoCardMoveAnim", ui->noCardMoveAnimCheckBox->isChecked());
-    Config.setValue("EnableAnimatedGenerals", ui->enableAnimatedGeneralsCheckBox->isChecked());
-    Config.EnablePointerEffect = ui->enablePointerEffectCheckBox->isChecked();
-    Config.setValue("EnablePointerEffect", Config.EnablePointerEffect);
-    Config.setValue("UIScale", Config.UIScale);
-
-    // 主題預覽時已寫入 Config.ColorScheme 並套用 palette,確定時一律持久化
-    int newScheme = ui->themeLightRadio->isChecked() ? 1
-                  : ui->themeDarkRadio->isChecked()  ? 2 : 0;
-    Config.ColorScheme = newScheme;
-    Config.setValue("ColorScheme", newScheme);
-
-    switch (ui->visualModeCombo->currentIndex()) {
-    case 1:
-        Config.VisualMode = "grayscale";
-        break;
-    case 2:
-        Config.VisualMode = "highcontrast";
-        break;
-    default:
-        Config.VisualMode = "normal";
-        break;
-    }
-    Config.setValue("VisualMode", Config.VisualMode);
-    // 確保視覺模式(灰階/高對比)與目前主題疊加正確
-    applyVisualMode(Config.VisualMode);
-    emit liveVisualChanged();
-
-    Config.NeverNullifyMyTrick = ui->neverNullifyMyTrickCheckBox->isChecked();
-    Config.setValue("NeverNullifyMyTrick", Config.NeverNullifyMyTrick);
-
-    Config.EnableAutoTarget = ui->autoTargetCheckBox->isChecked();
-    Config.setValue("EnableAutoTarget", Config.EnableAutoTarget);
-
-    Config.EnableIntellectualSelection = ui->intellectualSelectionCheckBox->isChecked();
-    Config.setValue("EnableIntellectualSelection", Config.EnableIntellectualSelection);
-
-    Config.EnableDoubleClick = ui->doubleClickCheckBox->isChecked();
-    Config.setValue("EnableDoubleClick", Config.EnableDoubleClick);
-
-    Config.EnableSuperDrag = ui->superDragCheckBox->isChecked();
-    Config.setValue("EnableSuperDrag", Config.EnableSuperDrag);
-
-    Config.BubbleChatBoxKeepTime = ui->bubbleChatBoxKeepSpinBox->value();
-    Config.setValue("BubbleChatBoxKeepTime", Config.BubbleChatBoxKeepTime);
-
-    Config.EnableAutoBackgroundChange = ui->backgroundChangeCheckBox->isChecked();
-    Config.setValue("EnableAutoBackgroundChange", Config.EnableAutoBackgroundChange);
-
-    Config.EnableCardDescription = ui->backgroundCardDescription->isChecked();
-    Config.setValue("EnableCardDescription", Config.EnableCardDescription);
-
-    Config.setValue("EnableOracleConcepts", ui->enableOracleConceptsCheckBox->isChecked());
-
-    enabled = ui->checkBoxRecorderAutoSave->isChecked();
-    Config.setValue("recorder/autosave", enabled);
-    enabled = ui->checkBoxRecorderNetworkOnly->isChecked();
-    Config.setValue("recorder/networkonly", enabled);
-    enabled = ui->checkBoxRecorderEventSave->isChecked();
-    Config.setValue("recorder/eventsave", enabled);
-
-    if (RoomSceneInstance){
-		MainWindow *mw = static_cast<MainWindow*>(Sanguosha->parent());
-		if (qobject_cast<RoomScene*>(mw->getScene()) == RoomSceneInstance) {
-			RoomSceneInstance->updateVolumeConfig();
-			mw->refitScene();
-		}
-	}
+    m_session->resetBackgroundImage();
 }
 
 void ConfigDialog::on_browseBgMusicButton_clicked()
 {
-    QString filename = QFileDialog::getOpenFileName(this,
-        tr("Select a background music"),
-        "audio/system/BGM",
-        tr("Audio files (*.wav *.mp3 *.ogg)"));
-    if (!filename.isEmpty()) {
-        QString app_path = QApplication::applicationDirPath();
-        if (filename.startsWith(app_path))
-            filename = filename.right(filename.length() - app_path.length() - 1);
-        ui->bgMusicPathLineEdit->setText(filename);
-        Config.setValue("BackgroundMusic", filename);
-    }
-    /*QStringList fileNames = QFileDialog::getOpenFileNames(this, tr("Select a background music"), "audio/system", tr("Audio files (*.wav *.mp3 *.ogg)"));
-	if(fileNames.isEmpty()) return;
-    QString app_path = QApplication::applicationDirPath();
-    app_path.replace("\\", "/");
-    int app_path_len = app_path.length();
-    foreach (const QString &name, fileNames) {
-        const_cast<QString &>(name).replace("\\", "/");
-        if (name.startsWith(app_path)) {
-            const_cast<QString &>(name) = name.right(name.length() - app_path_len - 1);
-        }
-    }
-    ui->bgMusicPathLineEdit->setText(fileNames.join(";"));
-	Config.setValue("BackgroundMusic", fileNames.join(";"));*/
+    m_session->chooseBackgroundMusic(this);
 }
 
 void ConfigDialog::on_resetBgMusicButton_clicked()
 {
-    QString default_music = "audio/system/background.ogg";
-    Config.setValue("BackgroundMusic", default_music);
-    ui->bgMusicPathLineEdit->setText(default_music);
+    m_session->resetBackgroundMusic();
 }
 
 void ConfigDialog::on_changeAppFontButton_clicked()
 {
-    bool ok;
-    QFont font = QFontDialog::getFont(&ok, UiConfig.AppFont, this);
-    if (ok) {
-        UiConfig.AppFont = font;
-        showFont(ui->appFontLineEdit, font);
-
-        Config.setValue("AppFont", font);
-        QApplication::setFont(font);
-    }
+    m_session->chooseAppFont(this);
 }
 
 void ConfigDialog::on_setTextEditFontButton_clicked()
 {
-    bool ok;
-    QFont font = QFontDialog::getFont(&ok, UiConfig.UIFont, this);
-    if (ok) {
-        UiConfig.UIFont = font;
-        showFont(ui->textEditFontLineEdit, font);
-
-        Config.setValue("UIFont", font);
-        QApplication::setFont(font, "QTextEdit");
-    }
+    m_session->chooseTextEditFont(this);
 }
 
 void ConfigDialog::on_setTextEditColorButton_clicked()
 {
-    QColor color = QColorDialog::getColor(UiConfig.TextEditColor, this);
-    if (color.isValid()) {
-        UiConfig.TextEditColor = color;
-        Config.setValue("TextEditColor", color);
-        QPalette palette;
-        palette.setColor(QPalette::Text, color);
-        int aver = (color.red() + color.green() + color.blue()) / 3;
-        palette.setColor(QPalette::Base, aver >= 208 ? Qt::black : Qt::white);
-        ui->textEditFontLineEdit->setPalette(palette);
-    }
+    m_session->chooseTextEditColor(this);
 }
-

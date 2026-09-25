@@ -124,7 +124,8 @@ Item {
         target: homeController
         function onCurrentPageChanged() {
             dock.currentIndex = homeController.currentPage === "generals" ? 1
-                                : homeController.currentPage === "cards" ? 2 : 0
+                                : homeController.currentPage === "cards" ? 2
+                                : homeController.currentPage === "settings" ? 4 : 0
         }
     }
     Connections {
