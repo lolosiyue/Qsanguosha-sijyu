@@ -50,6 +50,12 @@ bool replaySelection(const ViewAsSkillV2 *skill, const ActiveSkillRequest &reque
     return true;
 }
 
+// canWake() consumes the grant and logs it; triggerable() may only look.
+bool hasWakeGrant(const Player *player, const QString &skill)
+{
+    return !player->getTag(skill + "_SKILLCANWAKE").toStringList().isEmpty();
+}
+
 // V2 records history under the activation skill; conversions keep the card's own key.
 QString cardHistoryKey(const QString &cardName, const QString &fallback)
 {
@@ -430,36 +436,52 @@ public:
     }
 };
 
-class SPMoonSpearSkill : public WeaponSkill
+static const Card *respondedCard(TriggerEvent triggerEvent, const QVariant &data)
+{
+    if (triggerEvent == CardUsed)
+        return data.value<CardUseStruct>().card;
+    if (triggerEvent == CardResponded)
+        return data.value<CardResponseStruct>().m_card;
+    return nullptr;
+}
+
+class SPMoonSpearSkill : public WeaponSkillV2
 {
 public:
-    SPMoonSpearSkill() : WeaponSkill("sp_moonspear")
+    SPMoonSpearSkill() : WeaponSkillV2("sp_moonspear", "sp_moonspear")
     {
         events << CardUsed << CardResponded;
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    static QList<ServerPlayer *> targets(Room *room, ServerPlayer *player)
     {
-        if (player->hasFlag("CurrentPlayer"))
-            return false;
-
-        const Card *card = nullptr;
-        if (triggerEvent == CardUsed)
-            card = data.value<CardUseStruct>().card;
-        else if (triggerEvent == CardResponded)
-            card = data.value<CardResponseStruct>().m_card;
-
-        if (!card || card->getTypeId()<1 || !card->isBlack())
-            return false;
-
         QList<ServerPlayer *> targets;
         foreach (ServerPlayer *tmp, room->getAlivePlayers()) {
             if (player->inMyAttackRange(tmp))
                 targets << tmp;
         }
+        return targets;
+    }
 
-        ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "@sp_moonspear", true, true);
+    TriggerList triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const Card *card = respondedCard(triggerEvent, data);
+        if (!player || !WeaponSkillV2::triggerable(player) || player->hasFlag("CurrentPlayer")
+            || !card || card->getTypeId()<1 || !card->isBlack() || targets(room, player).isEmpty())
+            return TriggerList();
+        return TriggerList{{player, QStringList{objectName()}}};
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        ServerPlayer *target = room->askForPlayerChosen(player, targets(room, player), objectName(), "@sp_moonspear", true, true);
         if (!target) return false;
+        ctx.targets = QList<ServerPlayer *>{target};
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &, ServerPlayer *target) const override
+    {
         room->setEmotion(player, "weapon/moonspear");
         if (!room->askForCard(target, "jink", "@moon-spear-jink", QVariant(), Card::MethodResponse, player))
             room->damage(DamageStruct(objectName(), player, target));
@@ -473,47 +495,48 @@ SPMoonSpear::SPMoonSpear(Suit suit, int number)
     setObjectName("sp_moonspear");
 }
 
-class MoonSpearSkill : public WeaponSkill
+class MoonSpearSkill : public WeaponSkillV2
 {
 public:
-    MoonSpearSkill() : WeaponSkill("moon_spear")
+    MoonSpearSkill() : WeaponSkillV2("moon_spear", "moon_spear")
     {
         events << PreCardUsed << CardUsed << CardResponded;
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    // Announces the Slash the spear prompted, once it is actually used.
+    bool recordEvent(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (player->hasFlag("CurrentPlayer"))
-            return false;
-        if (triggerEvent == PreCardUsed){
-            CardUseStruct use = data.value<CardUseStruct>();
-			if (use.card->isKindOf("Slash")&&player->hasFlag("MoonspearUse")){
-				player->setFlags("-MoonspearUse");
-				room->setEmotion(player, "weapon/moonspear");
-				LogMessage log;
-				log.type = "#InvokeSkill";
-				log.from = player;
-				log.arg = "moon_spear";
-				room->sendLog(log);
-				room->notifySkillInvoked(player, "moon_spear");
-			}
-            return false;
-		}
+        if (triggerEvent != PreCardUsed || !player || player->hasFlag("CurrentPlayer")) return true;
+        CardUseStruct use = data.value<CardUseStruct>();
+        if (use.card->isKindOf("Slash")&&player->hasFlag("MoonspearUse")){
+            player->setFlags("-MoonspearUse");
+            room->setEmotion(player, "weapon/moonspear");
+            LogMessage log;
+            log.type = "#InvokeSkill";
+            log.from = player;
+            log.arg = "moon_spear";
+            room->sendLog(log);
+            room->notifySkillInvoked(player, "moon_spear");
+        }
+        return true;
+    }
 
-        const Card *card = nullptr;
-        if (triggerEvent == CardUsed)
-            card = data.value<CardUseStruct>().card;
-        else if (triggerEvent == CardResponded)
-            card = data.value<CardResponseStruct>().m_card;
+    TriggerList triggerable(TriggerEvent triggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        const Card *card = respondedCard(triggerEvent, data);
+        if (!player || !WeaponSkillV2::triggerable(player) || player->hasFlag("CurrentPlayer")
+            || !card || card->getTypeId()<1 || !card->isBlack())
+            return TriggerList();
+        return TriggerList{{player, QStringList{objectName()}}};
+    }
 
-        if (!card || card->getTypeId()<1 || !card->isBlack())
-            return false;
-
+    // The prompted Slash is the invocation; declining it means the spear did nothing.
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+    {
         player->setFlags("MoonspearUse");
-        room->askForUseCard(player, "slash", "@moon-spear-slash", -1, Card::MethodUse, false);
+        const bool used = room->askForUseCard(player, "slash", "@moon-spear-slash", -1, Card::MethodUse, false);
         player->setFlags("-MoonspearUse");
-
-        return false;
+        return used;
     }
 };
 
@@ -1485,117 +1508,132 @@ public:
     }
 };
 
-class Conqueror : public TriggerSkill
+class Conqueror : public TriggerSkillV2
 {
 public:
-    Conqueror() : TriggerSkill("conqueror")
+    Conqueror() : TriggerSkillV2("conqueror")
     {
         events << TargetSpecified;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         CardUseStruct use = data.value<CardUseStruct>();
-        if (use.card != nullptr && use.card->isKindOf("Slash")) {
-            int n = 0;
-            foreach (ServerPlayer *target, use.to) {
-                if (player->askForSkillInvoke(this, QVariant::fromValue(target))) {
-                    QString choice = room->askForChoice(player, objectName(), "BasicCard+EquipCard+TrickCard", QVariant::fromValue(target));
+        if (player && player->isAlive() && player->hasSkill(objectName()) && use.card != nullptr
+            && use.card->isKindOf("Slash") && !use.to.isEmpty())
+            return TriggerList{{player, QStringList{objectName()}}};
+        return TriggerList();
+    }
 
-                    room->broadcastSkillInvoke(objectName(), 1);
+    // Each target has its own optional prompt, in use order.
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        int n = 0;
+        foreach (ServerPlayer *target, use.to) {
+            if (player->askForSkillInvoke(this, QVariant::fromValue(target))) {
+                QString choice = room->askForChoice(player, objectName(), "BasicCard+EquipCard+TrickCard", QVariant::fromValue(target));
 
-                    const Card *c = room->askForCard(target, choice, QString("@conqueror-exchange:%1::%2").arg(player->objectName()).arg(choice), choice, Card::MethodNone);
-                    if (c != nullptr) {
-                        room->broadcastSkillInvoke(objectName(), 2);
-                        CardMoveReason reason(CardMoveReason::S_REASON_GIVE, target->objectName(), player->objectName(), objectName(), "");
-                        room->obtainCard(player, c, reason);
-                        use.nullified_list << target->objectName();
-                        data = QVariant::fromValue(use);
-                    } else {
-                        room->broadcastSkillInvoke(objectName(), 3);
-                        QVariantList jink_list = player->getTag("Jink_" + use.card->toString()).toList();
-                        jink_list[n] = QVariant(0);
-                        player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
-                        LogMessage log;
-                        log.type = "#NoJink";
-                        log.from = target;
-                        room->sendLog(log);
-                    }
+                room->broadcastSkillInvoke(objectName(), 1);
+
+                const Card *c = room->askForCard(target, choice, QString("@conqueror-exchange:%1::%2").arg(player->objectName()).arg(choice), choice, Card::MethodNone);
+                if (c != nullptr) {
+                    room->broadcastSkillInvoke(objectName(), 2);
+                    CardMoveReason reason(CardMoveReason::S_REASON_GIVE, target->objectName(), player->objectName(), objectName(), "");
+                    room->obtainCard(player, c, reason);
+                    use.nullified_list << target->objectName();
+                    *ctx.original_data = QVariant::fromValue(use);
+                } else {
+                    room->broadcastSkillInvoke(objectName(), 3);
+                    QVariantList jink_list = player->getTag("Jink_" + use.card->toString()).toList();
+                    jink_list[n] = QVariant(0);
+                    player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
+                    LogMessage log;
+                    log.type = "#NoJink";
+                    log.from = target;
+                    room->sendLog(log);
                 }
-                ++n;
             }
+            ++n;
         }
         return false;
     }
 };
 
-class Fentian : public PhaseChangeSkill
+class Fentian : public TriggerSkillV2
 {
 public:
-    Fentian() : PhaseChangeSkill("fentian")
+    Fentian() : TriggerSkillV2("fentian")
     {
+        events << EventPhaseStart;
         frequency = Compulsory;
     }
 
-    bool onPhaseChange(ServerPlayer *hanba, Room *room) const
+    static QList<ServerPlayer *> targets(Room *room, ServerPlayer *hanba)
     {
-        if (hanba->getPhase() != Player::Finish)
-            return false;
-
-        if (hanba->getHandcardNum() >= hanba->getHp())
-            return false;
-
         QList<ServerPlayer*> targets;
-
         foreach (ServerPlayer *p, room->getOtherPlayers(hanba)) {
             if (hanba->inMyAttackRange(p) && !p->isNude())
                 targets << p;
         }
+        return targets;
+    }
 
-        if (targets.isEmpty())
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *hanba, QVariant &) const override
+    {
+        if (hanba && hanba->isAlive() && hanba->hasSkill(objectName()) && hanba->getPhase() == Player::Finish
+            && hanba->getHandcardNum() < hanba->getHp() && !targets(room, hanba).isEmpty())
+            return TriggerList{{hanba, QStringList{objectName()}}};
+        return TriggerList();
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *hanba, SkillContext &) const override
+    {
+        QList<ServerPlayer*> candidates = targets(room, hanba);
+        if (candidates.isEmpty())
             return false;
 
         room->broadcastSkillInvoke(objectName());
-        ServerPlayer *target = room->askForPlayerChosen(hanba, targets, objectName(), "@fentian-choose", false, true);
+        ServerPlayer *target = room->askForPlayerChosen(hanba, candidates, objectName(), "@fentian-choose", false, true);
         int id = room->askForCardChosen(hanba, target, "he", objectName());
         hanba->addToPile("burn", id);
         return false;
     }
 };
 
-class FentianRange : public AttackRangeSkill
+class FentianRange : public AttackRangeSkillV2
 {
 public:
-    FentianRange() : AttackRangeSkill("#fentian")
+    FentianRange() : AttackRangeSkillV2("#fentian")
     {
-
     }
 
-    int getExtra(const Player *target, bool) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        if (target->hasSkill(objectName()))
-            return target->getPile("burn").length();
-
-        return 0;
+        const int burn = ctx.holder ? ctx.holder->getPile("burn").length() : 0;
+        return burn > 0 ? CorrectSkillResult::useAmount(burn) : CorrectSkillResult::noEffect();
     }
 };
 
-class Zhiri : public PhaseChangeSkill
+class Zhiri : public TriggerSkillV2
 {
 public:
-    Zhiri() : PhaseChangeSkill("zhiri")
+    Zhiri() : TriggerSkillV2("zhiri")
     {
+        events << EventPhaseStart;
         frequency = Wake;
         waked_skills = "xintan";
     }
 
-    bool triggerable(const ServerPlayer *player) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
-        return player && player->isAlive()&&player->getPhase() == Player::Start
-		&& player->getMark(objectName())<1 && player->hasSkill(objectName());
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->getPhase() != Player::Start
+            || player->getMark(objectName()) > 0) return TriggerList();
+        if (player->getPile("burn").length() < 3 && !hasWakeGrant(player, objectName())) return TriggerList();
+        return TriggerList{{player, QStringList{objectName()}}};
     }
 
-    bool onPhaseChange(ServerPlayer *hanba, Room *room) const
+    bool effect(TriggerEvent, Room *room, ServerPlayer *hanba, SkillContext &) const override
     {
         if (hanba->getPile("burn").length() >= 3) {
             LogMessage log;
@@ -1604,8 +1642,9 @@ public:
             log.arg = QString::number(hanba->getPile("burn").length());
             log.arg2 = objectName();
             room->sendLog(log);
-        }else if(!hanba->canWake(objectName()))
-			return false;
+        } else if (!hanba->canWake(objectName())) {
+            return false;
+        }
         room->broadcastSkillInvoke(objectName());
         room->notifySkillInvoked(hanba,objectName());
         room->doSuperLightbox(hanba, "zhiri");
@@ -1615,7 +1654,6 @@ public:
             room->acquireSkill(hanba, "xintan");
         return false;
     }
-
 };
 
 XintanCard::XintanCard()
@@ -1640,36 +1678,43 @@ void XintanCard::onEffect(CardEffectStruct &effect) const
     room->loseHp(HpLostStruct(effect.to, 1, "xintan", hanba));
 }
 
-class Xintan : public ViewAsSkill
+class Xintan : public ViewAsSkillV2
 {
 public:
-    Xintan() : ViewAsSkill("xintan")
+    Xintan() : ViewAsSkillV2("xintan", 2)
     {
         expand_pile = "burn";
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return player->getPile("burn").length() >= 2 && !player->hasUsed("XintanCard");
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && request.initiator->getPile("burn").length() >= 2 && !request.initiator->hasUsed("XintanCard");
     }
 
-    bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
-        if (selected.length() < 2)
-            return Self->getPile("burn").contains(to_select->getId());
-
-        return false;
+        return ViewAsSkillV2::canSelectCard(request, card) && matchesFilter(request, card, ".")
+            && request.initiator->getPile("burn").contains(card->getEffectiveId());
     }
 
-    const Card *viewAs(const QList<const Card *> &cards) const
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
-        if (cards.length() == 2) {
-            XintanCard *xt = new XintanCard;
-            xt->addSubcards(cards);
-            return xt;
-        }
+        return request.selectedCardIds.size() == 2 && replaySelection(this, request);
+    }
 
-        return nullptr;
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        XintanCard *xt = new XintanCard;
+        xt->addSubcards(request.selectedCardIds);
+        xt->setSkillName(objectName());
+        return xt;
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override
+    {
+        return "XintanCard";
     }
 };
 
@@ -3071,7 +3116,7 @@ public:
 	{
 		if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->getPhase() != Player::Finish
 			|| player->getMark(objectName()) > 0) return TriggerList();
-		if (player->getMark("damage_point_round") < 3 && !player->canWake(objectName())) return TriggerList();
+		if (player->getMark("damage_point_round") < 3 && !hasWakeGrant(player, objectName())) return TriggerList();
 		return TriggerList{{player, QStringList{objectName()}}};
 	}
 
@@ -3084,6 +3129,8 @@ public:
 			log.arg = QString::number(player->getMark("damage_point_round"));
 			log.arg2 = objectName();
 			room->sendLog(log);
+		} else if (!player->canWake(objectName())) {
+			return false;
 		}
 		room->broadcastSkillInvoke(objectName());
 		room->notifySkillInvoked(player, objectName());
@@ -3227,7 +3274,7 @@ public:
 	{
 		if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->getPhase() != Player::Finish
 			|| player->getMark(objectName()) > 0) return TriggerList();
-		if (player->getMark("damage_point_round") < 3 && !player->canWake(objectName())) return TriggerList();
+		if (player->getMark("damage_point_round") < 3 && !hasWakeGrant(player, objectName())) return TriggerList();
 		return TriggerList{{player, QStringList{objectName()}}};
 	}
 
@@ -3240,6 +3287,8 @@ public:
 			log.arg = QString::number(player->getMark("damage_point_round"));
 			log.arg2 = objectName();
 			room->sendLog(log);
+		} else if (!player->canWake(objectName())) {
+			return false;
 		}
 		room->broadcastSkillInvoke(objectName());
 		room->notifySkillInvoked(player, objectName());
@@ -3347,20 +3396,18 @@ public:
 };
 
 // A global lifecycle recorder owns already-paid distances even after Fenxun is detached.
-class FenxunClear : public TriggerSkill {
+class FenxunClear : public TriggerSkillV2 {
 public:
-    FenxunClear() : TriggerSkill("#fenxun-clear") { events << EventPhaseChanging << Death; global = true; }
-    bool triggerable(const ServerPlayer *player) const override {
-        return player && !player->getTag("FenxunTargets").toStringList().isEmpty();
-    }
-    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override {
-        if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to != Player::NotActive) return false;
-        if (event == Death && data.value<DeathStruct>().who != player) return false;
+    FenxunClear() : TriggerSkillV2("#fenxun-clear") { events << EventPhaseChanging << Death; global = true; }
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override {
+        if (!player || player->getTag("FenxunTargets").toStringList().isEmpty()) return true;
+        if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
+        if (event == Death && data.value<DeathStruct>().who != player) return true;
         const QStringList targets = player->getTag("FenxunTargets").toStringList();
         player->removeTag("FenxunTargets");
         for (ServerPlayer *target : room->getAllPlayers(true))
             if (targets.contains(target->objectName())) room->removeFixedDistance(player, target, 1);
-        return false;
+        return true;
     }
 };
 
@@ -3500,7 +3547,7 @@ public:
 	{
 		if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->getPhase() != Player::Start
 			|| player->getMark(objectName()) > 0) return TriggerList();
-		if (!naturalWake(player) && !player->canWake(objectName())) return TriggerList();
+		if (!naturalWake(player) && !hasWakeGrant(player, objectName())) return TriggerList();
 		return TriggerList{{player, QStringList{objectName()}}};
 	}
 
@@ -3514,6 +3561,8 @@ public:
 			log.arg2 = QString::number(zhugedan->aliveCount());
 			log.arg3 = objectName();
 			room->sendLog(log);
+		} else if (!zhugedan->canWake(objectName())) {
+			return false;
 		}
 		zhugedan->peiyin(objectName());
 		room->notifySkillInvoked(zhugedan, objectName());
@@ -4139,7 +4188,7 @@ public:
 	{
 		if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->getPhase() != Player::Start
 			|| player->getMark(objectName()) > 0) return TriggerList();
-		if (!naturalWake(room, player) && !player->canWake(objectName())) return TriggerList();
+		if (!naturalWake(room, player) && !hasWakeGrant(player, objectName())) return TriggerList();
 		return TriggerList{{player, QStringList{objectName()}}};
 	}
 
@@ -4152,6 +4201,8 @@ public:
 			log.arg = QString::number(guanyu->getHandcardNum());
 			log.arg2 = QString::number(guanyu->getHp());
 			room->sendLog(log);
+		} else if (!guanyu->canWake(objectName())) {
+			return false;
 		}
 		room->broadcastSkillInvoke(objectName());
 		room->notifySkillInvoked(guanyu, objectName());
