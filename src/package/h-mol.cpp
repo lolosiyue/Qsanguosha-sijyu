@@ -225,32 +225,15 @@ public:
     { return SkillDialogInfo::guhuo(objectName(), true, true, false, false, true); }
     bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return request.initiator
-            && (request.reason == CardUseStruct::CARD_USE_REASON_PLAY
-                || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+        const Player *player = request.initiator;
+        if (!player || player->getMark("#wuku") < 1 || player->hasFlag("MiewuUsed")) return false;
+        if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY) return true;
+        return (request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE
                 || request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE)
-            && request.initiator->getMark("#wuku") > 0 && !request.initiator->hasFlag("MiewuUsed");
+            && !usableNames(request).isEmpty();
     }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     { return ViewAsSkillV2::canSelectCard(request, candidate) && candidate && !candidate->hasFlag("using"); }
-    const Card *createCard(const ActiveSkillRequest &request) const override
-    {
-        if (!canActivate(request) || !cardSelectionFeasible(request) || request.userString.isEmpty()) return nullptr;
-        ActiveSkillRequest selection = request;
-        selection.selectedCardIds.clear();
-        if (!canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()))) return nullptr;
-        Card *card = Sanguosha->cloneCard(request.userString);
-        if (!card) return nullptr;
-        if (card->getTypeId() != Card::TypeBasic && card->getTypeId() != Card::TypeTrick) {
-            delete card;
-            return nullptr;
-        }
-        card->addSubcards(request.selectedCardIds);
-        card->setSkillName(objectName());
-        card->setShowSkill(objectName());
-        card->setCanRecast(false);
-        return card;
-    }
     bool pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const override
     {
         if (!canActivate(request) || !cardSelectionFeasible(request)
@@ -261,7 +244,14 @@ public:
         room->setPlayerFlag(player, "MiewuUsed");
         return true;
     }
-    QString historyKey(const ActiveSkillRequest &) const override { return "HMiewuCard"; }
+
+protected:
+    Card *buildCard(const ActiveSkillRequest &request, const QString &name) const override
+    {
+        Card *card = ViewAsSkillV2::buildCard(request, name);
+        if (card) card->setShowSkill(objectName());
+        return card;
+    }
 };
 
 class HMiewuDraw : public TriggerSkillV2
@@ -320,7 +310,7 @@ class HGuishuViewAsSkill : public ViewAsSkillV2
 public:
     HGuishuViewAsSkill() : ViewAsSkillV2("heg_guishu", 1) { response_or_use = true; }
     SkillDialogInfo getDialogInfo() const override
-    { return SkillDialogInfo::juguan(objectName(), "befriend_attacking+known_both"); }
+    { return SkillDialogInfo::juguan(objectName(), "befriend_attacking,known_both"); }
     SkillDeclarationReason declarationReason(const Player *self, const QString &value, const Card *) const override
     {
         const QStringList names = {"befriend_attacking", "known_both"};

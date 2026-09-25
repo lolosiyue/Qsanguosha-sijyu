@@ -98,7 +98,26 @@ void SkillDeclarationSession::clearOwnedTag() const
 
 QString SkillDeclarationSession::tagKey() const
 {
-    return declarationObjectName(m_info, m_skillName);
+    return tagKeyFor(m_info, m_skillName);
+}
+
+QString SkillDeclarationSession::tagKeyFor(const SkillDialogInfo &info, const QString &skillName)
+{
+    return declarationObjectName(info, skillName);
+}
+
+bool SkillDeclarationSession::activeFor(const SkillDialogInfo &info,
+                                        CardUseStruct::CardUseReason reason)
+{
+    const QString declarationType = info.parameters.value(QStringLiteral("declarationType")).toString();
+    const QString ruleType = declarationType.isEmpty() ? info.type : declarationType;
+    if (ruleType == QLatin1String("guhuo"))
+        return !info.parameters.value(QStringLiteral("playOnly"), true).toBool() || isPlay(reason);
+    if (ruleType == QLatin1String("juguan")) {
+        const QString raw = info.parameters.value(QStringLiteral("cardNames")).toString();
+        return !raw.isEmpty() && (raw.endsWith('!') || isPlay(reason));
+    }
+    return ruleType == QLatin1String("tiansuan");
 }
 
 bool SkillDeclarationSession::needsDeclaration() const
@@ -240,8 +259,7 @@ void SkillDeclarationSession::build()
     const QString ruleType = declarationType.isEmpty() ? m_info.type : declarationType;
     if (ruleType == QLatin1String("guhuo")) {
         m_supported = true;
-        m_active = !m_info.parameters.value(QStringLiteral("playOnly"), true).toBool()
-            || isPlay(m_reason);
+        m_active = activeFor(m_info, m_reason);
         if (!m_active) {
             m_reasonCode = SkillDeclarationReason::DialogInactive;
             return;
@@ -279,7 +297,7 @@ void SkillDeclarationSession::build()
     } else if (ruleType == QLatin1String("juguan")) {
         m_supported = true;
         const QString raw = m_info.parameters.value(QStringLiteral("cardNames")).toString();
-        m_active = !raw.isEmpty() && (raw.endsWith('!') || isPlay(m_reason));
+        m_active = activeFor(m_info, m_reason);
         if (!m_active) {
             m_reasonCode = SkillDeclarationReason::DialogInactive;
             return;

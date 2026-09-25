@@ -14,6 +14,7 @@
 #include "button.h"
 #include "magatamas-item.h"
 #include "skill-instance-utils.h"
+#include "skill-declaration.h"
 #include "effects/effects-policy.h"
 
 #include <QGraphicsSceneMouseEvent>
@@ -2377,12 +2378,15 @@ void Dashboard::updatePending()
         activeRequest.initiator = m_player;
         activeRequest.activationRef = SkillInstanceRef(m_player->objectName(),
             SkillInstanceKey(activeSkill->objectName(), m_viewAsSkillInstanceID));
-        // Guhuo's dialog stores a client-local declaration. Capture it in the
-        // request; the server must reconstruct from the submitted card instead.
-        if (activeRequest.reason == CardUseStruct::CARD_USE_REASON_PLAY
-            && activeSkill->getDialogInfo().type == QStringLiteral("guhuo")) {
-            const Card *declared = m_player->getTag(activeSkill->objectName()).value<const Card *>();
-            if (declared) activeRequest.userString = declared->objectName();
+        // Guhuo/juguan/tiansuan dialogs store a client-local declaration (a card
+        // clone or a string). Capture it in the request whenever the dialog is
+        // active; the server must reconstruct from the submitted card instead.
+        const SkillDialogInfo dialog = activeSkill->declarationDialog();
+        if (SkillDeclarationSession::activeFor(dialog, activeRequest.reason)) {
+            const QVariant declared = m_player->getTag(
+                SkillDeclarationSession::tagKeyFor(dialog, activeSkill->objectName()));
+            const Card *card = declared.value<const Card *>();
+            activeRequest.userString = card ? card->objectName() : declared.toString();
         }
         foreach (const Card *card, cards)
             activeRequest.selectedCardIds << card->getEffectiveId();

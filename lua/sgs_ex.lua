@@ -188,6 +188,10 @@ function sgs.CreateViewAsSkillV2(spec)
 	if spec.on_effect then skill.on_effect = spec.on_effect end
 	if spec.on_effect_target then skill.on_effect_target = spec.on_effect_target end
 	if spec.on_effect_target_group then skill.on_effect_target_group = spec.on_effect_target_group end
+	-- guhuo_type skills: without create_card/cost the engine validates the declared
+	-- name and asks ambiguous responses; these hooks add a rule or a custom card.
+	if spec.allow_declaration then skill.allow_declaration = spec.allow_declaration end
+	if spec.build_card then skill.build_card = spec.build_card end
 	return skill
 end
 

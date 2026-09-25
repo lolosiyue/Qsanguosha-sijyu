@@ -368,6 +368,13 @@ public:
     LuaFunction on_effect_target_group;
     LuaFunction get_usage_ref;
     LuaFunction get_amount_ref;
+    // Guhuo-style hooks (guhuo_type): extra declaration rule and a custom card build.
+    LuaFunction allow_declaration;
+    LuaFunction build_card;
+
+protected:
+    bool allowDeclaration(const Player *player, const QString &name) const override;
+    Card *buildCard(const ActiveSkillRequest &request, const QString &name) const override;
 
 private:
     TargetMode m_targetMode;

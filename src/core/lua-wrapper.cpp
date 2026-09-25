@@ -95,6 +95,7 @@ LuaViewAsSkillV2::LuaViewAsSkillV2(const QString &name, Frequency frequency, con
     : ViewAsSkillV2(name), can_activate(0), can_select_card(0), card_selection_feasible(0), create_card(0),
       on_cost(0), on_pay(0), can_select_target(0), targets_feasible(0), on_effect(0),
       on_effect_target(0), on_effect_target_group(0), get_usage_ref(0), get_amount_ref(0),
+      allow_declaration(0), build_card(0),
       m_targetMode(SelectTargets),
       m_targetEffectMode(EachTarget), m_willThrowSelectedCards(true), m_limitScope(Limit_None),
       m_maxUsageLimit(1)
