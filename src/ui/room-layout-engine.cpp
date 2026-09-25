@@ -399,6 +399,55 @@ bool placeRibbon(ResponsiveResult &result, int photoCount, const QSize &photoSiz
     }
     return true;
 }
+
+// Portrait U: the canonical seat-ring order runs up the right column, right to
+// left across the top row and down the left column; the table keeps the middle.
+bool placeHorseshoe(ResponsiveResult &result, int photoCount, const QSize &photoSize, double gap)
+{
+    if (photoCount < 1 || photoCount > 19)
+        return false;
+    // The skin's kingdom bar overhangs the photo box; keep side seats off the screen edge.
+    const QRectF area = result.seatsRect.adjusted(gap, 0.0, -gap, 0.0);
+    const double w = photoSize.width();
+    const double h = photoSize.height();
+    int side = 0;
+    for (int i = 0; i < photoCount; ++i) {
+        const int region = SeatRingTable::regularSeatRegions[photoCount - 1][i];
+        if (region == 3 || region == 5)
+            ++side;
+    }
+    const int top = photoCount - 2 * side;
+    const double columns = side > 0 ? w + gap : 0.0;
+    QRectF span(area.left() + columns, area.top(), area.width() - 2.0 * columns, h);
+    if (top * (w + gap) - gap > span.width())
+        span = QRectF(area.left(), area.top(), area.width(), h);
+    if (top * (w + gap) - gap > span.width())
+        return false;
+    const double sideTop = top > 0 ? area.top() + h + gap : area.top();
+    if (side * (h + gap) - gap > area.bottom() - sideTop)
+        return false;
+    const QRectF table(area.left() + columns, sideTop, area.width() - 2.0 * columns, area.bottom() - sideTop);
+    if (table.width() < w || table.height() < h)
+        return false;
+
+    result.photos.resize(photoCount);
+    for (int i = 0; i < photoCount; ++i) {
+        ResponsivePhotoPlacement &placement = result.photos[i];
+        placement.seat = i;
+        if (i < side) {
+            const double step = (area.bottom() - sideTop) / side;
+            placement.center = QPointF(area.right() - w / 2.0, area.bottom() - step * (i + 0.5));
+        } else if (i < side + top) {
+            const double step = span.width() / top;
+            placement.center = QPointF(span.right() - step * (i - side + 0.5), area.top() + h / 2.0);
+        } else {
+            const double step = (area.bottom() - sideTop) / side;
+            placement.center = QPointF(area.left() + w / 2.0, sideTop + step * (i - side - top + 0.5));
+        }
+    }
+    result.tableRect = table;
+    return true;
+}
 }
 
 ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &frame)
@@ -655,7 +704,10 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
     result.seatPresentation = SeatPresentation::Ring;
     const QRectF seatArea = result.tableRect;
     const bool portraitSeats = input.stableRect.height() > input.stableRect.width();
-    if ((portraitSeats && input.photoCount > 0) || !placeRing(result, input.photoCount, input.smallPhotoSize, gap)) {
+    const bool placed = portraitSeats && input.photoCount > 0
+        ? placeHorseshoe(result, input.photoCount, input.smallPhotoSize, gap)
+        : placeRing(result, input.photoCount, input.smallPhotoSize, gap);
+    if (!placed) {
         result.photos.clear();
         result.tableRect = seatArea;
         if (!placeRibbon(result, input.photoCount, input.smallPhotoSize, gap, seatArea, input.firstVisibleSeat)) {
