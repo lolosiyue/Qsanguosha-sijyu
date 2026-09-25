@@ -134,7 +134,12 @@ private:
         static bool fitting = false;
         if (fitting) return;
         QScopedValueRollback<bool> guard(fitting, true);
-        const QRect available = availableGeometry(dialog);
+        // resize()/setGeometry() size the client area while move() places the
+        // frame; keep the desktop title bar and borders inside the viewport too.
+        const QRect frame = dialog->frameGeometry(), client = dialog->geometry();
+        const QMargins decor(client.left() - frame.left(), client.top() - frame.top(),
+            frame.right() - client.right(), frame.bottom() - client.bottom());
+        const QRect available = availableGeometry(dialog).marginsRemoved(decor);
         if (available.isEmpty())
             return;
 
@@ -184,7 +189,7 @@ private:
         const int x = responsive && Config.oneHandedness() == 1 ? available.left()
             : responsive && Config.oneHandedness() == 2 ? available.right() - dialog->width() + 1
             : available.center().x() - dialog->width() / 2;
-        dialog->move(x, y);
+        dialog->move(x - decor.left(), y - decor.top());
 
     }
 
