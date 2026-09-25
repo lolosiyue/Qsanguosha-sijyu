@@ -221,6 +221,25 @@ public:
     SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const QString &skillName, const SkillInstanceRef &parentRef);
     SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const QString &skillName, const SkillInstanceRef &parentRef, bool visible);
     bool detachAttachedSkill(const SkillInstanceRef &ref);
+    // Lets a player answer a named "@@skill" request with a ViewAsSkillV2 it does
+    // not own (e.g. Jilve's Zhiheng). A visible instance attached under the
+    // granting skill's instance exists only for the scope's lifetime.
+    class BorrowedSkillScope
+    {
+    public:
+        BorrowedSkillScope(Room *room, ServerPlayer *player, const QString &skillName, const QString &grantSkill);
+        ~BorrowedSkillScope();
+        BorrowedSkillScope(const BorrowedSkillScope &) = delete;
+        BorrowedSkillScope &operator=(const BorrowedSkillScope &) = delete;
+    private:
+        Room *m_room;
+        SkillInstanceRef m_ref;
+    };
+    // askForUseCard("@@" + skillName) inside a BorrowedSkillScope, for Lua callers
+    // that cannot hold a C++ scope.
+    const Card *askForUseCardWithBorrowedSkill(ServerPlayer *player, const QString &skillName,
+        const QString &grantSkill, const QString &prompt, int notice_index = -1,
+        Card::HandlingMethod method = Card::MethodUse, bool addHistory = true);
     int detachSkillFromPlayer(ServerPlayer*player, const QString&skill_name, bool is_equip = false, bool acquire_only = false, bool event_and_log = true);
     int discardSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skill_name, bool event_and_log = true);
     void handleAcquireDetachSkills(ServerPlayer*player, const QStringList&skill_names, bool acquire_only = false, bool getmark = true, bool event_and_log = true);

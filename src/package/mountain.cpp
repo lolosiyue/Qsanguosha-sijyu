@@ -1556,7 +1556,14 @@ void JilveCard::onUse(Room *room, CardUseStruct &card_use) const
 	foreach(QString s, Sanguosha->getSkillNames()){
 		if(s.endsWith("zhiheng")&&!s.contains("#")&&!shensimayi->hasFlag("JilveZhiheng")&&shensimayi->canDiscard(shensimayi, "he")){
 			const ViewAsSkill* zhiheng = Sanguosha->getViewAsSkill(s);
-			if(zhiheng&&zhiheng->isEnabledAtResponse(shensimayi,"@"+s))
+			if(const ViewAsSkillV2 *zhihengV2 = dynamic_cast<const ViewAsSkillV2 *>(zhiheng)){
+				ActiveSkillRequest request;
+				request.reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+				request.pattern = "@@"+s;
+				request.initiator = shensimayi;
+				if(zhihengV2->canActivate(request))
+					choices << s;
+			}else if(zhiheng&&zhiheng->isEnabledAtResponse(shensimayi,"@"+s))
 				choices << s;
 		}
 		if(s.endsWith("wansha")&&!s.contains("#")&&!shensimayi->hasFlag("JilveWansha")){
@@ -1583,6 +1590,7 @@ void JilveCard::onUse(Room *room, CardUseStruct &card_use) const
         room->acquireSkill(shensimayi, choice);
     } else {
         room->setPlayerFlag(shensimayi, "JilveZhiheng");
+        Room::BorrowedSkillScope borrowed(room, shensimayi, choice, "jilve");
         room->askForUseCard(shensimayi, "@@"+choice, "@jilve-zhiheng", -1, Card::MethodDiscard);
     }
 }

@@ -2074,35 +2074,55 @@ public:
     }
 };
 
-class Zhiheng : public ViewAsSkill
+// Jilve answers "@@zhiheng" through a Room::BorrowedSkillScope instance.
+class Zhiheng : public ViewAsSkillV2
 {
 public:
-    Zhiheng() : ViewAsSkill("zhiheng")
-    {
-		response_pattern = "@@zhiheng";
-    }
+    Zhiheng() : ViewAsSkillV2("zhiheng") {}
 
-    bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        if (ServerInfo.GameMode == "02_1v1" && ServerInfo.GameRuleMode != "Classical" && selected.length() >= 2) return false;
-        return !Self->isJilei(to_select);
+        const Player *player = request.initiator;
+        if (!player) return false;
+        if (request.reason != CardUseStruct::CARD_USE_REASON_PLAY)
+            return request.pattern == "@@zhiheng";
+        return player->canDiscard(player, "he") && canUseAtPlay(player);
     }
-
-    const Card *viewAs(const QList<const Card *> &cards) const
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
-        if (cards.isEmpty())
-            return nullptr;
-
-        ZhihengCard *zhiheng_card = new ZhihengCard;
-        zhiheng_card->addSubcards(cards);
-        zhiheng_card->setSkillName(objectName());
-        return zhiheng_card;
+        const Player *player = request.initiator;
+        if (!player || !candidate || candidate->hasFlag("using")) return false;
+        if (ServerInfo.GameMode == "02_1v1" && ServerInfo.GameRuleMode != "Classical"
+            && request.selectedCardIds.size() >= 2) return false;
+        const int id = candidate->getEffectiveId();
+        return id >= 0 && !request.selectedCardIds.contains(id)
+            && (player->handCards().contains(id) || player->getEquipsId().contains(id))
+            && !player->isJilei(candidate);
     }
-
-    bool isEnabledAtPlay(const Player *player) const
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
-        return player->canDiscard(player, "he") && !player->hasUsed("ZhihengCard");
+        if (request.selectedCardIds.isEmpty()) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        for (int id : request.selectedCardIds) {
+            if (id < 0 || !canSelectCard(selection, Sanguosha->getCard(id))) return false;
+            selection.selectedCardIds << id;
+        }
+        return true;
     }
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        // Keep the established card wire name and material payment.
+        auto *card = new ZhihengCard;
+        card->addSubcards(request.selectedCardIds);
+        card->setSkillName(objectName());
+        return card;
+    }
+    QString historyKey(const ActiveSkillRequest &) const override { return "ZhihengCard"; }
+
+protected:
+    virtual bool canUseAtPlay(const Player *player) const { return !player->hasUsed("ZhihengCard"); }
 };
 
 class Jiuyuan : public TriggerSkill
@@ -4646,9 +4666,10 @@ public:
         setObjectName("super_zhiheng");
     }
 
-    bool isEnabledAtPlay(const Player *player) const
+protected:
+    bool canUseAtPlay(const Player *player) const override
     {
-        return player->canDiscard(player, "he") && player->usedTimes("ZhihengCard") < (player->getLostHp() + 1);
+        return player->usedTimes("ZhihengCard") < (player->getLostHp() + 1);
     }
 };
 
