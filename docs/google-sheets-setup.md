@@ -14,6 +14,7 @@
 | 本人區域 | 可見手牌的名稱／花色／點數及技能摘要；下方為原生提供的可操作候選清單 |
 | 右側 | 最新戰報在上；完整保留的最近 200 條仍見 QSAN Log |
 | 選擇 | D 欄勾選，E 欄指定順序，F 欄處理觀星／角色；重排布局時保留同一互動的草稿，換互動則重新產生候選 |
+| 配色 | 座位標題：藍＝自己、橙＝行動中、灰＝陣亡；候選列以條件格式標示已勾選（淺藍底）與不可用（灰字）；連線狀態以中文顯示 |
 
 戰報直接共用由 TUI 抽出的 `client-log-formatter` 文本路徑，包含武將名、牌面、
 技能及遊戲事件；略過動畫／表情／技能氣泡事件。橋接亦接上 TUI 原有的移牌、
@@ -43,10 +44,10 @@
 
 | 元件 | 職責 |
 |---|---|
-| `apps-script/Locale.gs` | 固定 Sheets 文案的穩定英文鍵與簡中表；遊戲文本一般使用簡中 |
+| `apps-script/Locale.gs` | 全部固定 Sheets 文案（含側邊欄）的穩定英文鍵與大陸簡中表；`qsanFormat_` 處理 `%1` 佔位；遊戲文本來自原生不在此翻譯 |
 | `apps-script/Client.gs` | 玩家憑證、HTTPS 請求、指令恢復與操作入口 |
 | `apps-script/Table.gs`／`Draft.gs` | 工作表呈現、排序選擇與七種標準回覆結構 |
-| `apps-script/Sidebar.html` | 配對、更新與連線控制；卡牌與目標在工作表選取 |
+| `apps-script/Sidebar.html` | HtmlService 模板；分區（連接／房間／對局操作／查詢／更新）的配對、更新與連線控制；卡牌與目標在工作表選取 |
 | `gateway.py` | 一次性配對、每位玩家獨立路由、已授權圖片與有界程序清理 |
 | `src/sheets/sheets-main.cpp` | 以私有 stdin 監護原生 ClientCore／ExcelBridge |
 | `QSanguoshaExcelServer.exe` | 共用的原生 C++／Lua／AI 遊戲 helper |

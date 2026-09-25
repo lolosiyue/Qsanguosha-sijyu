@@ -87,7 +87,7 @@ function onOpen() {
     .addItem(qsanText_('menuCancel'), 'cancelDraft').addItem(qsanText_('menuRetry'), 'retryPending')
     .addItem(qsanText_('menuDetails'), 'detailsFromSheet').addItem(qsanText_('menuDisconnect'), 'disconnect').addToUi();
 }
-function showSidebar() { SpreadsheetApp.getUi().showSidebar(HtmlService.createHtmlOutputFromFile('Sidebar').setTitle(qsanText_('sidebarTitle'))); }
+function showSidebar() { SpreadsheetApp.getUi().showSidebar(HtmlService.createTemplateFromFile('Sidebar').evaluate().setTitle(qsanText_('sidebarTitle'))); }
 function pair(base, code) {
   return locked_(function() {
     if (get_('token', '')) throw new Error(qsanText_('alreadyPaired'));
@@ -142,7 +142,7 @@ function poll() {
     if (reply.api_version !== 1 || reply.session !== get_('session', '') || !decimal_(reply.sequence) || !reply.snapshot) throw new Error(qsanText_('updateIdentityMismatch'));
     render_(reply.snapshot); put_('sequence', reply.sequence);
     const snap = reply.snapshot, game = (snap.state || {}).game || {};
-    return outcome_(snap.connection || qsanText_('updated'), {prompt: interactionPrompt_(snap), gameOver: game.game_over === true, winner: text_(game.result || '')});
+    return outcome_(snap.connection ? connectionText_(snap.connection) : qsanText_('updated'), {prompt: interactionPrompt_(snap), gameOver: game.game_over === true, winner: text_(game.result || '')});
   });
 }
 function applySelection_(selection, draft) {

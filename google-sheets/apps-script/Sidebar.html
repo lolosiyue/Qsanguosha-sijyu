@@ -1,24 +1,35 @@
 <!doctype html>
 <html><head><base target="_top"><style>
-body{font:13px Arial,sans-serif;padding:10px;color:#202124}h3{margin:0 0 8px}label{display:block;margin-top:8px}input,select,button{box-sizing:border-box;width:100%;margin-top:3px;padding:6px}button{cursor:pointer}.grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}.status{white-space:pre-wrap;background:#f1f3f4;padding:8px;margin-top:8px;min-height:32px}.error{color:#b31412}.ok{color:#137333}.muted{color:#5f6368;font-size:12px}img{max-width:100%;max-height:180px;margin-top:8px}
+body{font:13px Arial,sans-serif;padding:10px;color:#202124}h3{margin:0 0 8px}h4{margin:14px 0 4px;font-size:12px;font-weight:bold;color:#5f6368;letter-spacing:.08em}label{display:block;margin-top:8px}input,select,button{box-sizing:border-box;width:100%;margin-top:3px;padding:6px}button{cursor:pointer}button.primary{background:#1a73e8;color:#fff;border:1px solid #1a73e8}button.danger{color:#b31412;border:1px solid #b31412;background:#fff}details{margin-top:4px}summary{cursor:pointer}.grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px}.status{white-space:pre-wrap;background:#f1f3f4;padding:8px;margin-top:8px;min-height:32px}.error{color:#b31412}.ok{color:#137333}.muted{color:#5f6368;font-size:12px}img{max-width:100%;max-height:180px;margin-top:8px}
 </style></head><body>
-<h3>QSanGuosha Sheets</h3><div class="muted">QSAN Actions 是游戏房间。选取座位标题或内容，再按「查询详情」查看完整资料。向下卷动至选择清单勾选，再于此预检／提交。</div>
-<label>HTTPS 服务网址<input id="endpoint" autocomplete="url" placeholder="https://…"></label>
-<label>一次性配对码<input id="code" autocomplete="one-time-code"></label><button onclick="pairNow()">配对</button>
-<div class="grid"><button onclick="invoke('setupWorkbook','工作表已准备')">建立工作表</button><button onclick="invoke('retryPending','已重试待确认指令')">重试待确认指令</button><button onclick="invoke('hostFromSheet','已送出开房')">依工作表开房</button><button onclick="invoke('connectFromSheet','已送出连线')">依工作表连线</button><button onclick="invoke('readyFromSheet','已准备')">准备</button><button onclick="invoke('unreadyFromSheet','已取消准备')">取消准备</button><button onclick="invoke('addRobotFromSheet','已加入 AI')">加入 AI</button><button onclick="invoke('reconnect','已要求重连')">重连</button><button onclick="invoke('previewSheetDraft','已送出预检')">预检目前选取</button><button onclick="invoke('submitSheetDraft','已送出动作')">提交目前选取</button><button onclick="invoke('cancelDraft','已取消互动')">取消互动</button><button onclick="invoke('surrenderFromSheet','已送出投降')">投降</button></div>
-<p class="muted">聊天内容填在 QSAN Room 的 B8。</p><button onclick="invoke('chatFromSheet','聊天已送出')">送出工作表聊天</button>
-<div class="grid"><button onclick="invoke('trustFromSheet','已托管')">托管</button><button onclick="invoke('untrustFromSheet','已取消托管')">取消托管</button></div>
-<p class="muted">选取房间座位，或牌桌、选择清单、目录中的项目。</p><button onclick="invoke('detailsFromSheet','详情已更新')">查询详情</button><button onclick="invoke('catalogFromSheet','目录已更新')">载入房间目录</button>
-<div class="grid"><button onclick="startPolling()">开始更新</button><button id="stop-updates" onclick="stopPolling()">停止更新</button></div><button onclick="leave()">关闭本文件会话</button><button onclick="invoke('abandonPair','已清除过期配对')">清除过期配对</button>
-<div id="status" class="status">读取连线状态中…</div><div id="detailText" class="status" hidden></div><img id="detailImage" hidden alt="详情图片">
+<h3><?= qsanText_('sidebarHeading') ?></h3><div class="muted"><?= qsanText_('sidebarIntro') ?></div>
+<h4><?= qsanText_('secConnect') ?></h4>
+<details id="pair-box" open><summary><?= qsanText_('pairDetails') ?> <span id="pair-state" class="muted"></span></summary>
+<label><?= qsanText_('endpointLabel') ?><input id="endpoint" autocomplete="url" placeholder="https://…"></label>
+<label><?= qsanText_('pairCodeLabel') ?><input id="code" autocomplete="one-time-code"></label>
+<button class="primary" onclick="pairNow()"><?= qsanText_('btnPair') ?></button></details>
+<button onclick="invoke('abandonPair','<?= qsanText_('okClearPair') ?>')"><?= qsanText_('btnClearPair') ?></button>
+<h4><?= qsanText_('secRoom') ?></h4>
+<div class="grid"><button onclick="invoke('hostFromSheet','<?= qsanText_('okHost') ?>')"><?= qsanText_('btnHost') ?></button><button onclick="invoke('connectFromSheet','<?= qsanText_('okConnect') ?>')"><?= qsanText_('secConnect') ?></button><button onclick="invoke('readyFromSheet','<?= qsanText_('okReady') ?>')"><?= qsanText_('btnReady') ?></button><button onclick="invoke('unreadyFromSheet','<?= qsanText_('okUnready') ?>')"><?= qsanText_('btnUnready') ?></button><button onclick="invoke('addRobotFromSheet','<?= qsanText_('okRobot') ?>')"><?= qsanText_('btnAddRobot') ?></button><button onclick="invoke('reconnect','<?= qsanText_('okReconnect') ?>')"><?= qsanText_('btnReconnect') ?></button></div>
+<div class="muted"><?= qsanText_('chatHint') ?></div><button onclick="invoke('chatFromSheet','<?= qsanText_('okChat') ?>')"><?= qsanText_('btnChat') ?></button>
+<h4><?= qsanText_('secActions') ?></h4>
+<div class="grid"><button class="primary" onclick="invoke('previewSheetDraft','<?= qsanText_('okPreview') ?>')"><?= qsanText_('btnPreview') ?></button><button class="primary" onclick="invoke('submitSheetDraft','<?= qsanText_('okSubmit') ?>')"><?= qsanText_('btnSubmit') ?></button><button onclick="invoke('cancelDraft','<?= qsanText_('okCancel') ?>')"><?= qsanText_('btnCancel') ?></button><button class="danger" onclick="invoke('surrenderFromSheet','<?= qsanText_('okSurrender') ?>')"><?= qsanText_('btnSurrender') ?></button><button onclick="invoke('trustFromSheet','<?= qsanText_('okTrust') ?>')"><?= qsanText_('btnTrust') ?></button><button onclick="invoke('untrustFromSheet','<?= qsanText_('okUntrust') ?>')"><?= qsanText_('btnUntrust') ?></button></div>
+<h4><?= qsanText_('secQuery') ?></h4>
+<div class="muted"><?= qsanText_('pickHint') ?></div>
+<div class="grid"><button onclick="invoke('detailsFromSheet','<?= qsanText_('okDetails') ?>')"><?= qsanText_('btnDetails') ?></button><button onclick="invoke('catalogFromSheet','<?= qsanText_('okCatalog') ?>')"><?= qsanText_('menuCatalog') ?></button></div>
+<button onclick="invoke('setupWorkbook','<?= qsanText_('okSetup') ?>')"><?= qsanText_('menuSetup') ?></button>
+<h4><?= qsanText_('secUpdates') ?></h4>
+<div class="grid"><button onclick="startPolling()"><?= qsanText_('btnStart') ?></button><button id="stop-updates" onclick="stopPolling()"><?= qsanText_('btnStop') ?></button></div>
+<button onclick="invoke('retryPending','<?= qsanText_('okRetry') ?>')"><?= qsanText_('menuRetry') ?></button><button class="danger" onclick="leave()"><?= qsanText_('btnLeave') ?></button>
+<div id="status" class="status"><?= qsanText_('stateLoading') ?></div><div id="detailText" class="status" hidden></div><img id="detailImage" hidden alt="<?= qsanText_('detailAlt') ?>">
 <script>
 let inflight=false,timer=null,epoch=0,backoff=2000,polling=false,lastError='',lastErrorKind='';
 const $=id=>document.getElementById(id);
 // Stopping polling stays reachable while a Google request is in flight.
 function busy(v){inflight=v;document.querySelectorAll('button').forEach(b=>{if(b.id!=='stop-updates')b.disabled=v})}
 function show(x,f,kind){
-  let text=typeof x==='string'?x:(x&&x.error)||(x&&x.lastError)||(x&&x.status)||f||'操作完成';
-  if(x&&x.gameOver)text='GAME_OVER\n胜方：'+(x.winner||'请查看牌桌结果');
+  let text=typeof x==='string'?x:(x&&x.error)||(x&&x.lastError)||(x&&x.status)||f||"<?= qsanText_('doneOk') ?>";
+  if(x&&x.gameOver)text='GAME_OVER\n'+"<?= qsanText_('winnerPrefix') ?>"+(x.winner||"<?= qsanText_('winnerUnknown') ?>");
   else if(x&&x.prompt)text+='\n'+x.prompt;
   if(x&&(x.error||x.lastError)){
     const errorKind=kind||'action';
@@ -42,7 +53,7 @@ function call(name,args,onOk,isPoll){
   google.script.run.withSuccessHandler(x=>{
     busy(false);if(serial!==epoch){schedule();return;}
     backoff=2000;
-    if(isPoll&&x&&x.state&&x.state.pending){lastError='前一游戏指令仍待确认；请按「重试待确认指令」。';lastErrorKind='pending';}
+    if(isPoll&&x&&x.state&&x.state.pending){lastError="<?= qsanText_('pollPending') ?>";lastErrorKind='pending';}
     else if(isPoll&&lastErrorKind==='poll'){lastError='';lastErrorKind='';}
     else if(!isPoll){lastError='';lastErrorKind='';}
     (onOk||show)(x);schedule();
@@ -52,10 +63,11 @@ function call(name,args,onOk,isPoll){
   })[name].apply(null,args||[]);
 }
 function invoke(name,f){call(name,[],x=>show(x,f),false)}
-function pairNow(){call('pair',[$('endpoint').value,$('code').value],x=>{show(x,'配对成功');$('code').value='';polling=!!x.paired;},false)}
-function tick(){timer=null;if(polling)call('poll',[],x=>show(x,'已更新'),true)}
+function pairState(x){$('pair-box').open=!x.paired;$('pair-state').textContent=x.paired?"<?= qsanText_('pairedLine') ?>"+String(x.endpoint||'').replace(/^https:\/\//,''):''}
+function pairNow(){call('pair',[$('endpoint').value,$('code').value],x=>{show(x,"<?= qsanText_('pairOk') ?>");$('code').value='';pairState(x);polling=!!x.paired;},false)}
+function tick(){timer=null;if(polling)call('poll',[],x=>show(x,"<?= qsanText_('updated') ?>"),true)}
 function startPolling(){polling=true;schedule()}
-function stopPolling(){polling=false;epoch++;if(timer)clearTimeout(timer);timer=null;show('已停止自动更新')}
-function leave(){if(inflight)return;stopPolling();call('disconnect',[],x=>show(x&&x.ok===false?x:'已正常关闭会话'),false)}
-call('getClientState',[],s=>{if(s.endpoint)$('endpoint').value=s.endpoint;polling=!!s.paired;show(s,s.paired?'恢复更新中…':'请先配对主机');},false);
+function stopPolling(){polling=false;epoch++;if(timer)clearTimeout(timer);timer=null;show("<?= qsanText_('updatesStopped') ?>")}
+function leave(){if(inflight)return;stopPolling();call('disconnect',[],x=>{if(x&&x.ok!==false)pairState({paired:false,endpoint:x.endpoint||''});show(x&&x.ok===false?x:"<?= qsanText_('sessionClosed') ?>")},false)}
+call('getClientState',[],s=>{if(s.endpoint)$('endpoint').value=s.endpoint;pairState(s);polling=!!s.paired;show(s,s.paired?"<?= qsanText_('resuming') ?>":"<?= qsanText_('pairRequired') ?>");},false);
 </script></body></html>
