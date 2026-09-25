@@ -1,6 +1,6 @@
 import { loadTranslations, tr } from "./i18n";
 import { applySceneBackground, defaultTableBgUrl, loadUiConfig } from "./backdrop";
-import { Command, PLACE_HAND, PLACE_EQUIP, PLACE_TABLE, type JsonObject } from "./protocol";
+import { Command, PLACE_DELAYED_TRICK, PLACE_HAND, PLACE_EQUIP, PLACE_TABLE, type JsonObject } from "./protocol";
 import { LiveSession } from "./session";
 import { RulesController } from "./rules-client";
 import { el } from "./ui-dom";
@@ -13,7 +13,7 @@ import type { UiBind, UiState } from "./ui-types";
 // Development preview only. No socket, worker, or game is started by this entry.
 class PreviewSession extends LiveSession {
   override sendReply(_command: number, _replyTo: string, _payload: JsonObject): void {
-    this.interactionError = "已确认预览选择；此页使用模拟资料。";
+    this.interactionError = "已确认预览选择；此页使用模拟数据。";
     render();
   }
   override chat(text: string): void {
@@ -69,6 +69,15 @@ function seed(): void {
   Object.assign(session.state.ensureCard(10020), { object_name: "crossbow", owner: "player-1", place: PLACE_EQUIP, suit: 1, number: 1 });
   Object.assign(session.state.ensureCard(10021), { object_name: "eight_diagram", owner: "self", place: PLACE_EQUIP, suit: 0, number: 2 });
   Object.assign(session.state.ensureCard(10022), { object_name: "slash", owner: "", place: PLACE_TABLE, suit: 0, number: 7 });
+  // Marks, a delayed trick, high maximum HP and a dead seat exercise the Photo badges.
+  Object.assign(session.state.ensureCard(10023), { object_name: "indulgence", owner: "player-2", place: PLACE_DELAYED_TRICK, suit: 2, number: 6 });
+  Object.assign(session.state.ensureCard(10024), { object_name: "chitu", owner: "player-1", place: PLACE_EQUIP, suit: 2, number: 5 });
+  Object.assign(session.state.ensureCard(10025), { object_name: "qinggang_sword", owner: "self", place: PLACE_EQUIP, suit: 0, number: 6 });
+  Object.assign(session.state.ensurePlayer("player-2"), { marks: { "@HuJia": 2, "@preview_unknown": 1, hidden_counter: 3 } });
+  Object.assign(session.state.ensurePlayer("self"), { marks: { "@HuJia": 1 } });
+  Object.assign(session.state.ensurePlayer("player-1"), { hp: 5, max_hp: 7 });
+  if (playerCount > 4)
+    Object.assign(session.state.ensurePlayer("player-4"), { alive: false, role: "rebel", hp: 0 });
   session.state.appendPresentationEvent(Command.LOG_SKILL, "", { log_type: "$DrawCards", from_player: "self", to_players: [], card_string: "10000+10001", arguments: ["2"] });
   session.state.appendPresentationEvent(Command.LOG_SKILL, "", { log_type: "#Damage", from_player: "player-1", to_players: ["player-3"], card_string: "", arguments: ["1", "普通"] });
   session.state.appendPresentationEvent(Command.SPEAK, "", { player_name: "player-1", text: "准备好了，开始吧。" });
@@ -106,7 +115,7 @@ function render(): void {
   disposeLayout();
   const root = document.getElementById("app")!;
   const shell = el("div", { class: scene === "table" ? "app room" : "app wait" });
-  const toolbar = el("div", { class: "toolbar" }, [el("strong", {}, ["房内 UI 预览"]), el("span", { class: "status" }, ["模拟资料・未连线"])]);
+  const toolbar = el("div", { class: "toolbar" }, [el("strong", {}, ["房内 UI 预览"]), el("span", { class: "status" }, ["模拟数据・未连接"])]);
   const scenes = el("select", { "aria-label": "预览画面" });
   for (const [value, label] of [["table", "对局牌桌"], ["lobby", "等待房"], ["generals", "选将画面"]])
     scenes.append(el("option", { value }, [label]));

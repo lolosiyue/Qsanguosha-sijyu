@@ -88,7 +88,7 @@ export function setupBoardLayout(root: HTMLElement, bind: UiBind): () => void {
     const wasStrip = strip;
     strip = portrait.matches || cards.length > REGULAR.length;
     table.classList.toggle("seat-strip", strip);
-    const gap = 8;
+    const gap = 18;
     let photoWidth = Math.min(152, width / 3);
     let photoHeight = 0;
     let fits = cards.length === 0;

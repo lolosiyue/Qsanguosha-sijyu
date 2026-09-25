@@ -312,7 +312,7 @@ export class RulesController {
         || this.status === "failed")
       return;
     if (this.frames.length >= FRAME_BACKLOG) {
-      this.fail("规则串流积压过多；请重新连线");
+      this.fail("规则数据流积压过多；请重新连接");
       return;
     }
     this.frames.push({ schema_version: 1, action: "frame", generation,
@@ -370,13 +370,13 @@ export class RulesController {
       });
       worker.addEventListener("error", (event) => {
         if (this.worker === worker)
-          this.fail(event.message || "WASM Worker 载入失败");
+          this.fail(event.message || "WASM Worker 加载失败");
       });
       worker.addEventListener("messageerror", () => {
         if (this.worker === worker)
           this.fail("无法读取 WASM Worker 回复");
       });
-      this.armTimeout(30000, "WASM 载入逾时；请确认 rules 资源已部署");
+      this.armTimeout(30000, "WASM 加载超时；请确认 rules 资源已部署");
       worker.postMessage({ schema_version: 1, type: "prepare", generation: this.generation });
     } catch (error) {
       this.fail(error instanceof Error ? error.message : String(error), false);
@@ -385,7 +385,7 @@ export class RulesController {
 
   private receive(message: unknown): void {
     if (!isObject(message) || message.schema_version !== 1 || message.generation !== this.generation)
-      throw new Error("WASM Worker 回复版本或连线不符");
+      throw new Error("WASM Worker 回复版本或连接不符");
     if (message.type === "error")
       throw new Error(asString(message.error) || "WASM 规则执行失败");
     if (message.type === "prepared") {
@@ -435,18 +435,18 @@ export class RulesController {
       throw new Error("WASM Worker 查询关联不符");
     const results = (message as unknown as { results: unknown }).results;
     if (!Array.isArray(results) || results.length === 0)
-      throw new Error("WASM 规则串流回复格式错误");
+      throw new Error("WASM 规则数据流回复格式错误");
     const last: unknown = results[results.length - 1];
     if (!isObject(last) || last.schema_version !== 1 || typeof last.success !== "boolean"
         || typeof last.reason !== "string")
-      throw new Error("WASM 规则串流回复格式错误");
+      throw new Error("WASM 规则数据流回复格式错误");
     const query = this.inFlight.query;
     const submission = this.inFlight.submission;
     this.clearTimeout();
     // The runtime reports what it has committed; the browser never assumes it.
     this.native = nativeStatus(last.status);
     if (this.native.generation !== this.generation)
-      throw new Error("WASM 规则串流连线不符");
+      throw new Error("WASM 规则数据流连接不符");
     this.inFlight = null;
     if (submission !== null) {
       if (!last.success) {
@@ -536,7 +536,7 @@ export class RulesController {
     if (key === this.resultKey || key === this.rejectedKey)
       return;
     if (this.session?.state.cardIdSpace !== this.registryCount) {
-      this.fail("伺服器卡牌目录与已载入规则不符；需要相符的规则套件", false);
+      this.fail("服务器卡牌目录与已加载规则不符；需要相符的规则套件", false);
       return;
     }
     this.status = "evaluating";
@@ -557,7 +557,7 @@ export class RulesController {
                     submission: Submission | null = null): void {
     const id = ++this.sequence;
     this.inFlight = { query, submission, id };
-    this.armTimeout(10000, "WASM 规则串流逾时；请重新连线");
+    this.armTimeout(10000, "WASM 规则数据流超时；请重新连接");
     this.worker?.postMessage({ schema_version: 1, type: "stream",
       generation: this.generation, id, ops, event_cursor: this.eventCursor });
   }
@@ -647,7 +647,7 @@ function nativeStatus(value: unknown): NativeStatus {
       || !Number.isSafeInteger(value.revision) || typeof value.request_id !== "string"
       || typeof value.active !== "boolean" || typeof value.synchronizing !== "boolean"
       || typeof value.failed !== "boolean")
-    throw new Error("WASM 规则串流状态格式错误");
+    throw new Error("WASM 规则数据流状态格式错误");
   return { generation: asNumber(value.generation), revision: asNumber(value.revision),
     requestId: asString(value.request_id), active: value.active,
     synchronizing: value.synchronizing, failed: value.failed };

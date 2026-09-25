@@ -101,22 +101,22 @@ export class SoloController {
     };
     worker.onerror = event => {
       event.preventDefault();
-      if (this.worker === worker) this.fail(event.message || "单机执行环境无法启动");
+      if (this.worker === worker) this.fail(event.message || "单机运行环境无法启动");
     };
-    this.timer = setTimeout(() => this.fail("单机内容载入逾时，请重新启动游戏。"), 120000);
+    this.timer = setTimeout(() => this.fail("单机内容加载超时，请重新启动游戏。"), 120000);
     worker.postMessage({ type: "prepare" });
     this.onChange();
     return result;
   }
 
   createTransport(options: SoloOptions): SessionTransport {
-    if (this.status !== "ready" || !this.worker) throw new Error("请先载入单机内容");
+    if (this.status !== "ready" || !this.worker) throw new Error("请先加载单机内容");
     const transport = new SoloTransport(this);
     this.transport = transport;
     this.status = "starting";
     // LiveSession installs its listeners before native Hello can arrive.
     this.worker.postMessage({ type: "start", options });
-    this.timer = setTimeout(() => this.fail("建立对局逾时，请返回首页重试。"), 120000);
+    this.timer = setTimeout(() => this.fail("建立对局超时，请返回首页重试。"), 120000);
     this.onChange();
     return transport;
   }
@@ -139,7 +139,7 @@ export class SoloController {
     if (this.closing) return this.closing;
     if (!this.worker) return Promise.resolve();
     this.clearTimer();
-    this.prepared?.reject(new Error("单机载入已取消"));
+    this.prepared?.reject(new Error("单机加载已取消"));
     this.prepared = null;
     this.status = "stopping";
     this.closing = new Promise(resolve => { this.closed = resolve; });

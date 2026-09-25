@@ -1,4 +1,5 @@
 import type { JsonObject } from "./protocol";
+import { toSimplified } from "./zh-hans";
 
 let table: Record<string, string> = {};
 let staticTable: Record<string, string> = {};
@@ -20,7 +21,7 @@ export async function loadTranslations(): Promise<void> {
     loadJson<Record<string, string>>("/translations.json", {}),
     loadJson<Record<string, JsonObject>>("/cards.json", {})
   ]);
-  staticTable = validStringMap(nextTable);
+  staticTable = simplifiedMap(validStringMap(nextTable));
   table = { ...staticTable };
   cards = nextCards;
 }
@@ -42,12 +43,19 @@ function validStringMap(value: unknown): Record<string, string> {
   return result;
 }
 
+// Package tables mix traditional and simplified text; the Web client shows simplified only.
+function simplifiedMap(map: Record<string, string>): Record<string, string> {
+  for (const key of Object.keys(map))
+    map[key] = toSimplified(map[key]);
+  return map;
+}
+
 export function validateRulesTranslations(value: unknown): Record<string, string> {
   return validStringMap(value);
 }
 
 export function installRulesTranslations(next: unknown): void {
-  table = { ...staticTable, ...validateRulesTranslations(next) };
+  table = { ...staticTable, ...simplifiedMap(validateRulesTranslations(next)) };
 }
 
 export function resetRulesTranslations(): void {

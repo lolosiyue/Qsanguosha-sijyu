@@ -275,11 +275,13 @@ export function interactionView(bind: UiBind): HTMLElement {
     if (!asBool(session.state.gameValue("started")))
       return waitingRoom(bind);
     root.append(el("p", { class: "status" }, [uiText("web.status.waiting_prompt")]));
-    const trust = el("button", {}, [uiText("web.action.trust")]);
+    // Neither control confirms or cancels anything, so the slots stay disabled.
+    const trust = el("button", { class: "trust" }, [uiText("web.action.trust")]);
     trust.addEventListener("click", () => session.trust(true));
     const surrender = el("button", { class: "danger" }, [uiText("web.action.surrender")]);
     surrender.addEventListener("click", () => session.surrender());
-    root.append(trust, surrender);
+    header.append(surrender);
+    actions.append(el("div", { class: "interaction-auxiliary-actions" }, [trust]));
     return finalize();
   }
   const { command, payload, messageId } = interaction;
@@ -302,10 +304,10 @@ export function interactionView(bind: UiBind): HTMLElement {
   // auxiliary control rather than a confirmation/cancellation action.
   if (asBool(session.state.gameValue("started"))) {
     const auxiliary = el("div", { class: "interaction-auxiliary-actions" });
-    const trust = el("button", {}, [uiText("web.action.trust")]);
+    const trust = el("button", { class: "trust" }, [uiText("web.action.trust")]);
     trust.addEventListener("click", () => session.trust(true));
     auxiliary.append(trust);
-    header.append(auxiliary);
+    actions.append(auxiliary);
   }
 
   const submit = (builder: () => JsonObject) => {
@@ -775,7 +777,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       root.append(el("p", {}, [uiText(ZONE_LABELS[zone] ?? "web.zone.extra")]), row);
     }
     const ok = nativeConfirm(bind, command, messageId, submit);
-    const pass = command === Command.PLAY_CARD ? el("button", {}, [uiText("web.action.finish_play")]) : cancel;
+    const pass = command === Command.PLAY_CARD ? el("button", { class: "finish-play" }, [uiText("web.action.finish_play")]) : cancel;
     if (command === Command.PLAY_CARD)
       pass.addEventListener("click", () => submit(() => responseIntent(command, { cancelled: true })));
     root.append(el("p", {}, [uiText("web.selection.instruction")]), ok, pass);

@@ -138,7 +138,7 @@ export class LiveSession {
     this.nativeCaughtUp = true;
     if (this.transportClosed && this.phase !== "finished" && this.phase !== "failed") {
       this.phase = "failed";
-      this.error = this.error || "连线已关闭";
+      this.error = this.error || "连接已关闭";
       this.clearInteraction();
       this.notify();
     }
@@ -251,11 +251,11 @@ export class LiveSession {
       }
     }));
     socket.addEventListener("error", () => this.deliverTransport(() => {
-      this.transportEnded(socket, this.local ? "单机对局执行失败" : "WebSocket 连线失败");
+      this.transportEnded(socket, this.local ? "单机对局执行失败" : "WebSocket 连接失败");
       socket.close();
     }));
     socket.addEventListener("close", () => this.deliverTransport(() => {
-      this.transportEnded(socket, "连线已关闭");
+      this.transportEnded(socket, "连接已关闭");
     }));
     this.notify();
   }

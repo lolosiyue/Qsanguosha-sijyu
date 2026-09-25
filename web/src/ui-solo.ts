@@ -54,16 +54,16 @@ function field(label: string, input: HTMLElement): HTMLElement {
 export function soloSetup(host: SoloUiHost): HTMLElement {
   const controller = host.controller;
   const panel = el("section", { class: "solo-setup", "aria-labelledby": "solo-heading" });
-  panel.append(el("div", { class: "section-heading" }, [el("div", {}, [el("h2", { id: "solo-heading" }, ["单机对局"]), el("p", { class: "status" }, ["使用现有单机内容，设定只保留在这台装置。"])]), el("span", { class: "phase-badge" }, ["可用"])]));
+  panel.append(el("div", { class: "section-heading" }, [el("div", {}, [el("h2", { id: "solo-heading" }, ["单机对局"]), el("p", { class: "status" }, ["使用现有单机内容，设置只保留在这台设备。"])]), el("span", { class: "phase-badge" }, ["可用"])]));
   if (controller.status === "idle" || controller.status === "loading") {
-    const load = el("button", { class: "primary", type: "button" }, [controller.status === "loading" ? "准备中…" : "开始设定"]);
+    const load = el("button", { class: "primary", type: "button" }, [controller.status === "loading" ? "准备中…" : "开始设置"]);
     load.disabled = controller.status === "loading";
     load.addEventListener("click", () => void controller.prepare().catch(() => undefined));
-    panel.append(el("p", { class: "status" }, ["与电脑对战，设定会保留在这台装置。"]), load);
+    panel.append(el("p", { class: "status" }, ["与电脑对战，设置会保留在这台设备。"]), load);
     return panel;
   }
   if (controller.status === "failed" || !controller.catalog) {
-    panel.append(el("p", { class: "error" }, [controller.error || "单机对局目前无法使用。"]));
+    panel.append(el("p", { class: "error" }, [controller.error || "单机对局当前无法使用。"]));
     const retry = el("button", { class: "primary", type: "button" }, ["重试"]);
     retry.addEventListener("click", () => void controller.prepare().catch(() => undefined));
     panel.append(retry);
@@ -75,7 +75,7 @@ export function soloSetup(host: SoloUiHost): HTMLElement {
   for (const item of catalog.modes)
     mode.append(el("option", { value: item.id }, [`${item.name}（${item.player_count}人）`]));
   mode.value = options.mode;
-  const packageSearch = el("input", { id: "solo-package-search", "data-focus-key": "solo-package-search", type: "search", placeholder: "搜寻武将／卡牌包" });
+  const packageSearch = el("input", { id: "solo-package-search", "data-focus-key": "solo-package-search", type: "search", placeholder: "搜索武将／卡牌包" });
   const packageList = el("div", { class: "solo-check-list" });
   const selectedPackages = new Set(options.enabled_packages);
   const renderPackages = () => {
@@ -93,7 +93,7 @@ export function soloSetup(host: SoloUiHost): HTMLElement {
   packageSearch.addEventListener("input", renderPackages);
   renderPackages();
 
-  const generalSearch = el("input", { id: "solo-general-search", "data-focus-key": "solo-general-search", type: "search", placeholder: "搜寻武将" });
+  const generalSearch = el("input", { id: "solo-general-search", "data-focus-key": "solo-general-search", type: "search", placeholder: "搜索武将" });
   const generalList = el("div", { class: "solo-check-list solo-general-list" });
   const bannedGenerals = new Set(options.ban_generals);
   const renderGenerals = () => {
@@ -109,7 +109,7 @@ export function soloSetup(host: SoloUiHost): HTMLElement {
   };
   generalSearch.addEventListener("input", renderGenerals);
   renderGenerals();
-  const name = el("input", { id: "solo-name", "data-focus-key": "solo-name", value: host.name, placeholder: "暱称" });
+  const name = el("input", { id: "solo-name", "data-focus-key": "solo-name", value: host.name, placeholder: "昵称" });
   const avatar = el("input", { id: "solo-avatar", "data-focus-key": "solo-avatar", value: host.avatar, placeholder: "头像" });
   const timeout = el("input", { id: "solo-timeout", "data-focus-key": "solo-timeout", type: "number", min: "0", max: "3600", step: "1", value: String(options.operation_timeout) });
   const delay = el("input", { id: "solo-delay", "data-focus-key": "solo-delay", type: "number", min: "0", max: "60000", step: "1", value: String(options.ai_delay) });
@@ -133,12 +133,12 @@ export function soloSetup(host: SoloUiHost): HTMLElement {
     saveOptions(next);
     host.start(next);
   });
-  const content = el("div", { class: "solo-options" }, [field("暱称", name), field("头像代号", avatar), field("模式", mode)]);
+  const content = el("div", { class: "solo-options" }, [field("昵称", name), field("头像代号", avatar), field("模式", mode)]);
   const advanced = el("details", { class: "solo-advanced" });
-  advanced.append(el("summary", {}, ["进阶设定", el("small", {}, ["卡牌包、禁用武将与节奏"])]),
+  advanced.append(el("summary", {}, ["高级设置", el("small", {}, ["卡牌包、禁用武将与节奏"])]),
     field("启用武将／卡牌包", packageSearch), packageList,
     field("额外禁用武将", generalSearch), generalList,
-    field("操作逾时（秒，0 为不限时）", timeout), field("电脑行动延迟（毫秒）", delay));
+    field("操作超时（秒，0 为不限时）", timeout), field("电脑行动延迟（毫秒）", delay));
   panel.append(content, advanced, submit);
   return panel;
 }

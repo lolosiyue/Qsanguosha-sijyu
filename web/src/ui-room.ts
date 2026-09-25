@@ -1,12 +1,24 @@
 import {
   assetImg,
+  cardNumberUrl,
+  cardSuitUrl,
+  deathImageUrls,
+  equipImageUrls,
   fullskinUrls,
+  handCardNumUrls,
+  judgeIconUrls,
+  kingdomFrameUrls,
   kingdomIconUrls,
   magatamaUrl,
-  roleIconUrls
+  markIconUrls,
+  phaseImageUrl,
+  roleIconUrls,
+  skillButtonUrl,
+  skinImageUrl
 } from "./assets";
 import { playerHandLabel, targetRangeLabel } from "./player-metrics";
 import { tr } from "./i18n";
+import { toSimplified } from "./zh-hans";
 import {
   Command,
   PLACE_DELAYED_TRICK,
@@ -23,7 +35,7 @@ import {
 } from "./protocol";
 import type { PlayerState, PresentationEvent } from "./state";
 import type { RulesSkill } from "./rules-client";
-import { cardLabel, renderCard, skillBaseName, visibleSkills } from "./ui-cards";
+import { cardLabel, cardObjectName, cardSuitNumber, renderCard, skillBaseName, visibleSkills } from "./ui-cards";
 import { el } from "./ui-dom";
 import { interactionView } from "./ui-interaction";
 import type { UiBind } from "./ui-types";
@@ -37,7 +49,7 @@ function playerGeneralName(player: PlayerState | undefined): string {
 const SKILL_STATUS_TEXT: Record<string, string> = {
   missing_skill: "此规则套件没有这个技能",
   invalid_instance: "此技能实例已失效或不属于你",
-  unavailable: "目前条件不允许发动",
+  unavailable: "当前条件不允许发动",
   unknown: "规则尚未判定"
 };
 
@@ -48,7 +60,7 @@ function skillHint(skill: RulesSkill | undefined, description: string): string {
     return description;
   const notes: string[] = [];
   if (!skill.available)
-    notes.push(SKILL_STATUS_TEXT[skill.status] ?? "目前无法发动");
+    notes.push(SKILL_STATUS_TEXT[skill.status] ?? "当前无法发动");
   if (skill.subcard_min >= 0)
     notes.push(skill.subcard_min === skill.subcard_max
       ? `子卡 ${skill.subcard_min} 张` : `子卡 ${skill.subcard_min}–${skill.subcard_max} 张`);
@@ -86,93 +98,165 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
   button.type = "button";
   button.dataset.focusKey = `player-${name}`;
   button.setAttribute("aria-pressed", String(selected));
-  button.classList.toggle("current", asString(session.state.gameValue("current_player")) === name);
-  button.classList.toggle("focused", asStringList(session.state.gameValue("focus")).includes(name));
+  const current = asString(session.state.gameValue("current_player")) === name;
+  const focusPlayers = asStringList(session.state.gameValue("focus"));
+  button.classList.toggle("current", current);
+  button.classList.toggle("focused", focusPlayers.includes(name));
   button.disabled = gameOver;
+  // Layers follow PlayerCardContainer: avatar, focus frame, main frame, then badges.
   const art = el("div", { class: "photo-art" });
   if (general)
     art.append(assetImg(fullskinUrls(general), "", "fullskin"));
+  if (player?.faceup === false)
+    art.append(assetImg([skinImageUrl("fullskin/generals/faceturned.png")], "", "face-turned"));
+  // The focus frame lies between the avatar and the main frame, as in Photo::updateFocus.
+  const frame = selected
+    ? (kind === "photo" ? "system/frame/photoSelected.png" : "system/frame/dashboardSelected.png")
+    : current ? "system/frame/playing.png" : focusPlayers.includes(name) ? "system/frame/responding.png" : "";
+  if (frame)
+    art.append(assetImg([skinImageUrl(frame)], "", "focus-frame"));
+  art.append(assetImg([skinImageUrl(kind === "photo" ? "fullskin/system/photo-back.png" : "fullskin/system/dashboard-avatar.png")], "", "main-frame"));
   const kingdom = asString(player?.kingdom);
-  if (kingdom)
+  if (kingdom) {
+    art.append(assetImg(kingdomFrameUrls(kingdom, kind === "dash"), "", "kingdom-mask"));
     art.append(assetImg(kingdomIconUrls(kingdom), "", "kingdom"));
+  }
+  if (general)
+    art.append(el("span", { class: "general-name" }, [tr(general)]));
+  if (kind === "photo")
+    art.append(el("span", { class: "screen-name" }, [asString(player?.screen_name, name)]));
   const role = asString(player?.role);
   if (role)
     art.append(assetImg(roleIconUrls(role), "", "role"));
-  const hp = asNumber(player?.hp);
-  const maxHp = asNumber(player?.max_hp);
-  const mag = el("div", { class: "magatamas" });
-  mag.append(assetImg([magatamaUrl(hp)], "", "magatama"));
-  mag.append(el("span", {}, [`${hp}/${maxHp}`]));
-  const meta = el("div", { class: "photo-meta" });
-  meta.append(
-    el("strong", { class: "screen-name" }, [asString(player?.screen_name, name)]),
-    el("div", { class: "general-name" }, [tr(general)]),
-    mag,
-    el("div", { class: "hand-count" }, [playerHandLabel(session.state, name, evaluation)])
-  );
-  if (name !== session.state.selfName)
-    meta.append(el("div", { class: "range-info" }, [
-      targetRangeLabel(session.state, session.state.selfName, name, evaluation)
-    ]));
-  art.append(meta);
-  const marks = isObject(player?.marks)
-    ? Object.entries(player.marks).filter(([, value]) => asNumber(value) !== 0)
-      .map(([key, value]) => `${tr(key)}×${asNumber(value)}`).join("、")
-    : "";
-  const equipCount = session.state.cardsForPlayer(name, PLACE_EQUIP).length;
-  const judgeCount = session.state.cardsForPlayer(name, PLACE_DELAYED_TRICK).length;
-  const equipNames = session.state.cardsForPlayer(name, PLACE_EQUIP)
-    .map((id) => cardLabel(bind, id)).filter(Boolean).join("、");
+  const handCount = session.state.playerValue(name, "hand_count");
+  art.append(el("span", { class: "hand-count" }, [
+    assetImg(handCardNumUrls(kingdom), "", "hand-count-bg"),
+    el("span", {}, [String(asNumber(handCount))])
+  ]));
+  art.append(magatamaBox(asNumber(player?.hp), asNumber(player?.max_hp)));
+  if (player?.chained === true)
+    art.append(assetImg([skinImageUrl("system/chain.png")], "", "chain"));
+  const markEntries = isObject(player?.marks) ? Object.entries(player.marks) : [];
+  // Only @ marks are drawn, as images, exactly like ClientPlayer::setMark.
+  const markIcons = markEntries.filter(([key, value]) => key.startsWith("@") && asNumber(value) > 0);
+  if (markIcons.length) {
+    const row = el("span", { class: "photo-marks" });
+    for (const [key, value] of markIcons) {
+      const count = asNumber(value);
+      const mark = el("span", { class: "mark", title: count > 1 ? `${tr(key)} ${count}` : tr(key) },
+        [assetImg(markIconUrls(key), "", "mark-icon")]);
+      if (count > 1)
+        mark.append(el("span", { class: "mark-count" }, [String(count)]));
+      row.append(mark);
+    }
+    art.append(row);
+  }
+  const equipIds = session.state.cardsForPlayer(name, PLACE_EQUIP);
+  if (kind === "photo" && equipIds.length) {
+    const equips = el("span", { class: "photo-equips" });
+    for (const id of equipIds)
+      equips.append(equipBar(bind, id));
+    art.append(equips);
+  }
+  const tricks = session.state.cardsForPlayer(name, PLACE_DELAYED_TRICK);
+  if (kind === "photo" && tricks.length)
+    art.append(judgeIcons(bind, tricks));
+  const phase = asString(player?.phase);
+  if (phase && phase !== "not_active" && phaseImageUrl(phase))
+    art.append(assetImg([phaseImageUrl(phase)], "", "phase"));
+  if (player?.alive === false)
+    art.append(assetImg(deathImageUrls(role || "unknown"), "", "death"));
+  const marks = markEntries.filter(([, value]) => asNumber(value) !== 0)
+    .map(([key, value]) => `${tr(key)}×${asNumber(value)}`).join("、");
+  const equipNames = equipIds.map((id) => cardLabel(bind, id)).filter(Boolean).join("、");
   const pileValue = player?.piles;
   const pileText = isObject(pileValue)
     ? Object.entries(pileValue).map(([key, value]) => `${tr(key)} ${asNumberList(value).length}`)
       .filter((item) => !item.endsWith(" 0")).join("、")
     : "";
-  const focusPlayers = asStringList(session.state.gameValue("focus"));
-  const phase = asString(player?.phase);
   const phaseLabel: Record<string, string> = {
     round_start: "回合开始", start: "开始", judge: "判定", draw: "摸牌",
     play: "出牌", discard: "弃牌", finish: "回合结束", not_active: "非行动"
   };
+  // Screen readers keep the full state that the artwork above only shows visually.
   const stateText = [
-    asNumber(player?.seat, -1) > 0 ? `第 ${asNumber(player?.seat)} 席` : "座次未提供",
+    asNumber(player?.seat, -1) > 0 ? `${asNumber(player?.seat)} 号位` : "座次未提供",
     player?.alive === false ? "已死亡" : "",
-    selected ? "✓ 已选目标" : "",
+    selected ? "已选为目标" : "",
     kingdom ? `势力 ${tr(kingdom)}` : "",
     role ? `身份 ${tr(role)}` : "",
+    `体力 ${asNumber(player?.hp)}/${asNumber(player?.max_hp)}`,
     player?.chained === true ? "连环" : "",
     player?.faceup === false ? "背面" : "",
     marks ? `标记 ${marks}` : "",
-    equipNames ? `装备 ${equipNames}` : `装备 ${equipCount}`,
-    `判定 ${judgeCount}`,
+    equipNames ? `装备 ${equipNames}` : `装备 ${equipIds.length}`,
+    `判定 ${tricks.length}`,
     pileText ? `牌堆 ${pileText}` : "",
     phase ? `阶段 ${phaseLabel[phase] ?? phase}` : "",
-    asString(session.state.gameValue("current_player")) === name ? "目前回合" : "",
-    focusPlayers.includes(name) ? "目前焦点" : ""
+    current ? "当前回合" : "",
+    focusPlayers.includes(name) ? "当前焦点" : ""
   ].filter(Boolean).join(" · ");
-  button.append(art);
-  if (stateText)
-    button.append(el("div", { class: "photo-details" }, [stateText]));
+  button.append(art, el("span", { class: "sr-only" }, [stateText]));
+  // The native Photo keeps these numbers off the frame; hovering reveals them.
+  button.title = [playerHandLabel(session.state, name, evaluation),
+    name !== session.state.selfName ? targetRangeLabel(session.state, session.state.selfName, name, evaluation) : ""]
+    .filter(Boolean).join(" · ");
   button.addEventListener("click", () => bind.togglePlayer(name));
   const wrap = el("div", { class: `${kind}-wrap` });
   wrap.dataset.player = name;
   wrap.dataset.alive = player?.alive === false ? "false" : "true";
   wrap.dataset.seat = String(asNumber(player?.seat, -1));
-  const handCount = session.state.playerValue(name, "hand_count");
   if (typeof handCount === "number" || typeof handCount === "string")
     wrap.dataset.handCount = String(asNumber(handCount));
   wrap.setAttribute("aria-label", seatLabel(bind, name, 0));
   wrap.append(button);
-  const tricks = session.state.cardsForPlayer(name, PLACE_DELAYED_TRICK);
-  if (tricks.length) {
-    const judge = el("div", { class: "photo-judge" });
-    for (const id of tricks)
-      judge.append(renderCard(bind, id, false, false, -1, false));
-    wrap.append(judge);
-  }
   return wrap;
 }
 
+// MagatamasBoxItem: lost HP slots first, then the remaining ones; above five
+// maximum HP a single magatama carries the numbers instead.
+function magatamaBox(hp: number, maxHp: number): HTMLElement {
+  const box = el("span", { class: "magatamas" });
+  if (maxHp <= 0)
+    return box;
+  const index = hp >= maxHp ? 5 : Math.max(0, Math.min(5, hp));
+  if (maxHp <= 5) {
+    for (let i = 0; i < maxHp; ++i)
+      box.append(assetImg([magatamaUrl(i < maxHp - hp ? 0 : index)], "", "magatama"));
+    return box;
+  }
+  box.classList.add("numeric");
+  box.dataset.level = String(index);
+  box.append(assetImg([magatamaUrl(index)], "", "magatama"),
+    el("span", { class: "hp-text" }, [String(hp)]), el("span", { class: "hp-text" }, ["/"]),
+    el("span", { class: "hp-text" }, [String(maxHp)]));
+  return box;
+}
+
+function equipBar(bind: UiBind, cardId: number): HTMLElement {
+  const label = cardLabel(bind, cardId);
+  const bar = el("span", { class: "equip-bar", title: label }, [
+    el("span", { class: "equip-name" }, [label]),
+    assetImg(equipImageUrls(cardObjectName(bind, cardId), true), "", "equip-image")
+  ]);
+  // Suit and point sit on the right end of the bar, as in the Photo equip area.
+  const { suit, number } = cardSuitNumber(bind, cardId);
+  if (number > 0 && number <= 13)
+    bar.append(assetImg([cardNumberUrl(number, suit === "heart" || suit === "diamond")], "", "equip-point"));
+  if (cardSuitUrl(suit))
+    bar.append(assetImg([cardSuitUrl(suit)], "", "equip-suit"));
+  return bar;
+}
+
+function judgeIcons(bind: UiBind, ids: number[]): HTMLElement {
+  const row = el("span", { class: "photo-judge" });
+  for (const id of ids) {
+    const icon = assetImg(judgeIconUrls(cardObjectName(bind, id)), "", "judge-icon");
+    icon.title = cardLabel(bind, id);
+    row.append(icon);
+  }
+  return row;
+}
 function tablePileView(bind: UiBind): HTMLElement {
   const pile = el("div", { class: "table-pile" });
   const tableIds = bind.session.state.cardsAtPlace(PLACE_TABLE)
@@ -221,9 +305,11 @@ export function tableView(bind: UiBind): HTMLElement {
   });
   // Keep every card in native ring order; CSS applies legal filtering only in strip mode.
   seats.dataset.filter = seatFilter;
+  // Like RoomScene, photos that cannot be chosen darken only while choosing targets.
+  seats.classList.toggle("targeting", legalCount > 0);
   if (!ring.some((name) => name !== bind.session.state.selfName))
     seats.append(el("p", { class: "status" }, ["等待其他角色"]));
-  const seatToolbar = el("nav", { class: "seat-toolbar", "aria-label": "座位巡览" });
+  const seatToolbar = el("nav", { class: "seat-toolbar", "aria-label": "座位浏览" });
   const focus = uiFocusPlayer(bind);
   const filterButton = el("button", { type: "button", class: seatFilter === "legal" ? "active" : "" },
     [seatFilter === "legal" ? `可选目标 ${legalCount} / ${ring.length}` : `全部座位（可选 ${legalCount}）`]);
@@ -267,13 +353,13 @@ export function tableView(bind: UiBind): HTMLElement {
     if (node) seats.scrollLeft = node.offsetLeft - (seats.clientWidth - node.clientWidth) / 2;
   };
   for (const [label, action] of [["上一位", () => move(-1)], ["下一位", () => move(1)],
-    ["目前焦点", () => { if (focus) jump(focus); }], ["回到自己", () => {
+    ["当前焦点", () => { if (focus) jump(focus); }], ["回到自己", () => {
       ui.presentation ??= {};
       ui.presentation.browsedSeatIndex = -1;
       document.querySelector<HTMLElement>(".dashboard .dash")?.focus({ preventScroll: true });
     }] ] as const) {
     const button = el("button", { type: "button" }, [label]);
-    button.disabled = label === "目前焦点" && !focus;
+    button.disabled = label === "当前焦点" && !focus;
     button.addEventListener("click", action);
     seatToolbar.append(button);
   }
@@ -317,7 +403,7 @@ export function gameResultView(bind: UiBind): HTMLElement {
     }
     panel.append(list);
   } else
-    panel.append(el("p", { class: "status" }, ["胜方资料未提供"]));
+    panel.append(el("p", { class: "status" }, ["胜方信息未提供"]));
   return panel;
 }
 
@@ -362,8 +448,9 @@ export function logView(bind: UiBind): HTMLElement {
     ...events.filter((event) => event.command === Command.SPEAK).slice(-80)
   ];
   for (const event of visibleEvents) {
-    // Native GameEventStream already supplies the authoritative formatted text.
-    const line = event.text;
+    // Native GameEventStream already supplies the authoritative formatted text;
+    // chat stays as typed, battle lines follow the simplified display tables.
+    const line = event.command === Command.SPEAK ? event.text : toSimplified(event.text);
     if (!line)
       continue;
     const target = event.command === Command.SPEAK ? chat : battle;
@@ -399,7 +486,7 @@ export function logView(bind: UiBind): HTMLElement {
     ui.presentation ??= {};
     ui.presentation.chatDraft = draft.value;
   });
-  const send = el("button", { type: "submit" }, ["送出"]);
+  const send = el("button", { type: "submit" }, ["发送"]);
   chatForm.append(draft, send);
   chatForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -412,7 +499,7 @@ export function logView(bind: UiBind): HTMLElement {
     session.chat(text);
   });
   const collapsed = ui.presentation.mobileLogCollapsed === true;
-  const collapse = el("button", { type: "button", class: "log-collapse", "aria-expanded": String(!collapsed), "aria-label": collapsed ? "展开战报与聊天" : "收起战报与聊天" }, [collapsed ? "展开讯息" : "收起讯息"]);
+  const collapse = el("button", { type: "button", class: "log-collapse", "aria-expanded": String(!collapsed), "aria-label": collapsed ? "展开战报与聊天" : "收起战报与聊天" }, [collapsed ? "展开消息" : "收起消息"]);
   collapse.addEventListener("click", () => {
     ui.presentation ??= {};
     ui.presentation.mobileLogCollapsed = !ui.presentation.mobileLogCollapsed;
@@ -420,26 +507,20 @@ export function logView(bind: UiBind): HTMLElement {
   });
   if (collapsed)
     panel.classList.add("is-collapsed");
-  panel.append(el("h2", { class: "sr-only" }, ["讯息流"]), collapse, filterBar,
+  panel.append(el("h2", { class: "sr-only" }, ["消息流"]), collapse, filterBar,
     el("h2", { class: "log-header" }, ["战报"]), battle,
     el("h2", { class: "log-header" }, ["聊天"]), chat, chatForm);
   return panel;
 }
 
-function pileRow(bind: UiBind, player: string): HTMLElement {
-  const row = el("div", { class: "dash-piles" });
-  const piles = bind.session.state.playerValue(player, "piles");
-  if (!isObject(piles))
-    return row;
-  for (const [name, value] of Object.entries(piles)) {
-    const ids = asNumberList(value);
-    if (ids.length === 0)
-      continue;
-    row.append(el("span", { class: "status" }, [tr(name)]));
-    for (const id of ids)
-      row.append(renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
-  }
-  return row;
+// QSanSkillButton art per frequency. The Web client only has the description,
+// whose leading tag names the same frequency as the native skill.
+function skillButtonType(description: string): string {
+  if (description.startsWith("锁定技")) return "compulsory";
+  if (description.startsWith("觉醒技")) return "awaken";
+  if (description.startsWith("限定技")) return "oneoff";
+  if (description.startsWith("转换技")) return "change";
+  return "proactive";
 }
 
 function skillBar(bind: UiBind): HTMLElement {
@@ -458,6 +539,9 @@ function skillBar(bind: UiBind): HTMLElement {
     skills.push({ name: ui.selectedOption, instanceId: ui.skillInstance });
   if (skills.length === 0)
     return row;
+  // The dock uses wide, medium or narrow buttons like the native skill dock.
+  const columns = skills.length === 1 ? 1 : skills.length % 2 === 0 && skills.length < 6 ? 2 : 3;
+  row.dataset.columns = String(columns);
   for (const skill of skills) {
     const selected = ui.selectedOption === skill.name && ui.skillInstance === skill.instanceId;
     const desc = skillDescription(skill.name);
@@ -470,6 +554,9 @@ function skillBar(bind: UiBind): HTMLElement {
       class: `skill-btn${selected ? " primary" : ""}`,
       title: skillHint(detail, desc || tr(skill.name))
     }, [tr(skill.name)]);
+    const type = skillButtonType(desc);
+    for (const state of ["normal", "hover", "down", "disabled"])
+      button.style.setProperty(`--skill-${state}`, `url("${skillButtonUrl(type, columns, state)}")`);
     const available = !!candidate?.enabled;
     // Descriptions remain visible; only native ViewAs candidates can be activated.
     if (!selected && (!nativeRules || !available))
@@ -493,44 +580,97 @@ function skillBar(bind: UiBind): HTMLElement {
     });
     row.append(button);
   }
-  const selectedDesc = skillDescription(ui.selectedOption);
-  if (ui.selectedOption)
-    row.append(el("p", { class: "skill-desc" }, [
-      selectedDesc || `${tr(ui.selectedOption)}（无技能描述）`
-    ]));
   return row;
 }
 
+function selectedSkillDescription(bind: UiBind): HTMLElement | null {
+  const { ui } = bind;
+  if (!ui.selectedOption)
+    return null;
+  return el("p", { class: "skill-desc" }, [
+    skillDescription(ui.selectedOption) || `${tr(ui.selectedOption)}（无技能描述）`
+  ]);
+}
+
+// Hand cards first, then any private pile the player may pick from, all in one
+// strip like the native Dashboard hand area.
 function handView(bind: UiBind): HTMLElement {
   const hand = el("div", { class: "hand" });
-  const ids = bind.session.state.cardsForPlayer(bind.session.state.selfName, PLACE_HAND);
-  hand.style.setProperty("--hand-count", String(ids.length));
-  if (ids.length === 0)
-    hand.append(el("span", { class: "status" }, ["手牌空"]));
-  for (const [index, id] of ids.entries()) {
+  const self = bind.session.state.selfName;
+  let index = 0;
+  const append = (id: number) => {
     const card = el("div", { class: "hand-card" });
-    card.style.setProperty("--hand-index", String(index));
+    card.style.setProperty("--hand-index", String(index++));
     card.append(renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
     hand.append(card);
+  };
+  bind.session.state.cardsForPlayer(self, PLACE_HAND).forEach(append);
+  const piles = bind.session.state.playerValue(self, "piles");
+  if (isObject(piles)) {
+    for (const [name, value] of Object.entries(piles)) {
+      const ids = asNumberList(value);
+      if (ids.length === 0)
+        continue;
+      hand.append(el("span", { class: "pile-label" }, [tr(name)]));
+      ids.forEach(append);
+    }
   }
+  hand.style.setProperty("--hand-count", String(index));
   return hand;
+}
+
+function dashboardEquips(bind: UiBind, self: string): HTMLElement {
+  const equips = el("div", { class: "dash-equips" });
+  const player = bind.session.state.player(self);
+  equips.append(el("strong", { class: "dash-screen-name" }, [asString(player?.screen_name, self)]));
+  for (const id of bind.session.state.cardsForPlayer(self, PLACE_EQUIP)) {
+    const card = renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id));
+    // Equipment is a bar in the left frame, not a card face.
+    card.classList.add("equip-card");
+    card.querySelector("img")?.replaceWith(assetImg(equipImageUrls(cardObjectName(bind, id), false), "", "equip-image"));
+    equips.append(card);
+  }
+  return equips;
+}
+
+// Frame and platter art resolves through package aliases like every other image.
+function setDashboardSkin(dash: HTMLElement): void {
+  const skin: Record<string, string> = {
+    "--dash-equip-bg": "fullskin/system/dashboard-equip.png",
+    "--dash-hand-bg": "fullskin/system/dashboard-hand.png",
+    "--platter-bg": "system/button/platter/bg.png"
+  };
+  for (const button of ["confirm", "cancel", "discard", "trust"]) {
+    for (const state of ["normal", "hover", "down", "disabled"])
+      skin[`--platter-${button}-${state}`] = `system/button/platter/${button}/${state}.png`;
+  }
+  for (const [name, path] of Object.entries(skin))
+    dash.style.setProperty(name, `url("${skinImageUrl(path)}")`);
 }
 
 export function dashboardView(bind: UiBind): HTMLElement {
   const dash = el("section", { class: "dashboard" });
+  setDashboardSkin(dash);
   const self = bind.session.state.selfName;
-  dash.append(photoCard(bind, self, "dash"));
-  const body = el("div", { class: "dash-body" });
-  const equips = el("div", { class: "dash-equips" });
-  const equipIds = bind.session.state.cardsForPlayer(self, PLACE_EQUIP);
-  if (equipIds.length === 0)
-    equips.append(el("span", { class: "status" }, ["装备空"]));
-  for (const id of equipIds)
-    equips.append(renderCard(bind, id, bind.ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
-  body.append(equips, pileRow(bind, self), skillBar(bind), handView(bind));
-  dash.append(body);
+  const handArea = el("div", { class: "dash-hand" });
+  const tricks = bind.session.state.cardsForPlayer(self, PLACE_DELAYED_TRICK);
+  if (tricks.length)
+    handArea.append(judgeIcons(bind, tricks));
+  handArea.append(handView(bind));
+  // Confirm, cancel, finish and trust sit on the platter between hand and avatar.
   const interaction = interactionView(bind);
   interaction.classList.add("dashboard-interaction");
-  dash.append(interaction);
+  if (!bind.session.interaction)
+    interaction.classList.add("idle");
+  const platter = el("div", { class: "dash-platter" });
+  const actions = interaction.querySelector(".interaction-actions");
+  if (actions)
+    platter.append(actions);
+  const description = selectedSkillDescription(bind);
+  if (description)
+    interaction.querySelector(".interaction-header")?.append(description);
+  const avatar = photoCard(bind, self, "dash");
+  avatar.append(skillBar(bind));
+  dash.append(dashboardEquips(bind, self), handArea, platter, avatar, interaction);
   return dash;
 }

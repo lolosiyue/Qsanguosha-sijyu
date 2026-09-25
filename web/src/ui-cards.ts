@@ -2,7 +2,9 @@ import {
   CARD_BACK_URL,
   UNKNOWN_CARD_URL,
   assetImg,
-  cardFaceUrl
+  cardFaceUrl,
+  cardNumberUrl,
+  cardSuitUrl
 } from "./assets";
 import { cardRecord, tr } from "./i18n";
 import { asBool, asNumber, asString, asStringList, isObject, useMode } from "./protocol";
@@ -29,6 +31,16 @@ export function cardObjectName(bind: UiBind, cardId: number): string {
     || asString(catalog?.object_name);
 }
 
+export function cardSuitNumber(bind: UiBind, cardId: number): { suit: string; number: number } {
+  const card = bind.session.state.card(cardId);
+  const catalog = cardRecord(cardId);
+  const suitRaw = card?.suit ?? catalog?.suit;
+  const suit = typeof suitRaw === "number"
+    ? ["spade", "club", "heart", "diamond"][suitRaw] ?? ""
+    : asString(suitRaw);
+  return { suit, number: asNumber(card?.number, asNumber(catalog?.number)) };
+}
+
 export function cardLabel(bind: UiBind, cardId: number): string {
   const card = bind.session.state.card(cardId);
   const catalog = cardRecord(cardId);
@@ -37,11 +49,7 @@ export function cardLabel(bind: UiBind, cardId: number): string {
     || asString(catalog?.object_name)
     || `#${cardId}`;
   const name = tr(raw);
-  const suitRaw = card?.suit ?? catalog?.suit;
-  const suit = typeof suitRaw === "number"
-    ? ["spade", "club", "heart", "diamond"][suitRaw] ?? ""
-    : asString(suitRaw);
-  const number = asNumber(card?.number, asNumber(catalog?.number));
+  const { suit, number } = cardSuitNumber(bind, cardId);
   if (!suit && number <= 0)
     return name;
   return `${name}[${tr(suit)}${cardNumberText(number)}]`;
@@ -100,6 +108,16 @@ export function renderCard(
     : assetImg([cardFaceUrl(objectName)], UNKNOWN_CARD_URL);
   const caption = el("span", { class: "card-caption" }, [label]);
   button.append(face, caption);
+  if (!hidden) {
+    // CardItem paints the suit and point over the art; the caption only
+    // stands in for missing art.
+    face.addEventListener("load", () => button.classList.toggle("no-art", face.src.endsWith(UNKNOWN_CARD_URL)));
+    const { suit, number } = cardSuitNumber(bind, cardId);
+    if (number > 0 && number <= 13)
+      button.append(assetImg([cardNumberUrl(number, suit === "heart" || suit === "diamond")], "", "card-number"));
+    if (cardSuitUrl(suit))
+      button.append(assetImg([cardSuitUrl(suit)], "", "card-suit"));
+  }
   if (selected)
     button.append(el("span", { class: "card-selected-badge", "aria-hidden": "true" }, ["✓ 已选"]));
 
