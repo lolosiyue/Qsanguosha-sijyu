@@ -156,7 +156,7 @@ interface FocusSnapshot { key: string; value?: string; start: number | null; end
 function focusKey(node: HTMLElement): string {
   if (node.dataset.focusKey || node.id) return node.dataset.focusKey || node.id;
   if (node.matches(".card")) {
-    const zone = node.closest(".hand, .dash-equips, .dash-piles, .interaction-content, .photo-judge, .table-pile");
+    const zone = node.closest(".hand, .dash-equips, .interaction-content, .photo-judge, .table-pile");
     return `${zone?.className}:card:${node.dataset.cardId}:${node.dataset.cardLabel}`;
   }
   const optionGroup = node.closest(".general-pick, .interaction-content .cards, .interaction-actions");
@@ -205,14 +205,14 @@ function finishRender(shell: HTMLElement, focus: FocusSnapshot | null): void {
 function readablePhase(): string {
   if (asBool(session.state.gameValue("game_over"))) return "对局已结束";
   switch (session.phase) {
-    case "connecting": return "正在连线";
+    case "connecting": return "正在连接";
     case "hello": return "正在核对规则";
     case "signup": return "正在加入房间";
     case "setup": return "房间准备中";
     case "active": return "对局进行中";
     case "finished": return "对局已完成";
-    case "failed": return "连线中断";
-    default: return "尚未连线";
+    case "failed": return "连接中断";
+    default: return "尚未连接";
   }
 }
 
@@ -254,10 +254,10 @@ function accessibleSnapshot(bind: UiBind): HTMLElement {
       }),
       ...model.skills.filter((item) => item.enabled).map((item) => `可用技能：${tr(item.label)}`),
       ...model.actions.filter((item) => item.enabled).map((item) => `可用选项：${tr(item.label)}`),
-      model.can_confirm ? "可确认目前选择" : "目前不能确认",
+      model.can_confirm ? "可确认当前选择" : "当前不能确认",
       model.can_cancel ? "可取消" : "不能取消",
       model.can_finish ? "可结束出牌阶段" : ""
-    ].filter(Boolean) : ["目前没有可用的共享操作模型；规则尚未判定。"];
+    ].filter(Boolean) : ["当前没有可用的共享操作模型；规则尚未判定。"];
     const events = view.events.slice(-10).map((event) => event.text).filter(Boolean);
     presentation.accessibleSnapshot = [view.plain_text, "可用操作：", ...actionLines,
       ...(events.length ? ["近期事件：", ...events] : [])].join("\n");
@@ -276,15 +276,15 @@ function accessibleSnapshot(bind: UiBind): HTMLElement {
     if (!text) return;
     const clipboard = navigator.clipboard;
     if (!clipboard || typeof clipboard.writeText !== "function") {
-      presentation.snapshotNotice = "此连线环境无法存取剪贴簿；可直接选取快照文字。";
-      notice.textContent = "此连线环境无法存取剪贴簿；可直接选取快照文字。";
+      presentation.snapshotNotice = "当前环境无法访问剪贴板；可直接选取快照文字。";
+      notice.textContent = "当前环境无法访问剪贴板；可直接选取快照文字。";
       return;
     }
     void clipboard.writeText(text).then(() => {
       presentation.snapshotNotice = "快照已复制。";
       notice.textContent = presentation.snapshotNotice;
     }).catch(() => {
-      presentation.snapshotNotice = "无法使用剪贴簿；可直接选取快照文字。";
+      presentation.snapshotNotice = "无法使用剪贴板；可直接选取快照文字。";
       notice.textContent = presentation.snapshotNotice;
     });
   });

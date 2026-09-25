@@ -84,7 +84,7 @@ export function gameActionModel(evaluation: RulesEvaluation | null, selection: R
   const cardIds = disclosed.length ? disclosed : requestedCards.length ? requestedCards : [...selectableCards];
   const cards = cardIds.map((id) => {
     const enabled = known && legalCards.has(id);
-    return entry(String(id), `卡牌 ${id}`, enabled, selectedCards.has(id), enabled ? "" : known ? "目前不能选择此牌" : "规则尚未判定");
+    return entry(String(id), `卡牌 ${id}`, enabled, selectedCards.has(id), enabled ? "" : known ? "当前不能选择此牌" : "规则尚未判定");
   });
   const legalPlayers = new Set(evaluation.next_targets.candidates);
   const requestedPlayers = stringList(payload.target_players ?? payload.players ?? payload.candidate_players);
@@ -92,7 +92,7 @@ export function gameActionModel(evaluation: RulesEvaluation | null, selection: R
   const players = playerNames.map((name) => {
     const enabled = known && legalPlayers.has(name);
     return entry(name, name, enabled, selectedPlayers.has(name),
-      enabled ? "" : known ? "目前不能选择此玩家" : "规则尚未判定");
+      enabled ? "" : known ? "当前不能选择此玩家" : "规则尚未判定");
   });
   const skills = evaluation.skills.map((skill) => {
     const id = JSON.stringify([skill.name, skill.instance_id]);
@@ -107,7 +107,7 @@ export function gameActionModel(evaluation: RulesEvaluation | null, selection: R
     if (!id) return [];
     const enabled = known && asBool(raw.enabled, true);
     return [entry(id, asString(raw.label) || id, enabled, id === selection.skill_name,
-      enabled ? "" : known ? "目前不能选择此项目" : "规则尚未判定")];
+      enabled ? "" : known ? "当前不能选择此项目" : "规则尚未判定")];
   });
   for (const declaration of evaluation.declarations) {
     actions.push(entry(declaration, declaration, known, declaration === selection.user_string,

@@ -19,20 +19,20 @@ export function connectForm(bind: UiBind): HTMLElement {
   ws.addEventListener("input", () => { ui.ws = ws.value; });
   reconnect.addEventListener("change", () => { ui.reconnect = reconnect.checked; });
   const submit = el("button", { class: "primary", type: "submit" }, [
-    route.roomId === undefined ? "加入目前房间" : `加入房间 ${route.roomId}`
+    route.roomId === undefined ? "加入当前房间" : `加入房间 ${route.roomId}`
   ]);
   submit.disabled = session.phase === "connecting";
   form.append(
-    el("h2", { id: "connect-heading" }, [route.roomId === undefined ? "连线至伺服器" : `加入房间 ${route.roomId}`]),
-    el("p", { class: "form-intro" }, ["保留你的暱称与头像，输入伺服器位址即可开始。"]),
-    el("label", { class: "field" }, ["暱称", name, el("small", {}, ["其他玩家会看见的名称。"])]),
+    el("h2", { id: "connect-heading" }, [route.roomId === undefined ? "连接至服务器" : `加入房间 ${route.roomId}`]),
+    el("p", { class: "form-intro" }, ["保留你的昵称与头像，输入服务器地址即可开始。"]),
+    el("label", { class: "field" }, ["昵称", name, el("small", {}, ["其他玩家会看见的名称。"])]),
     el("label", { class: "field" }, ["头像代号", avatar, el("small", {}, ["使用现有武将美术代号，例如 caocao。"])]),
-    el("label", { class: "field" }, ["WebSocket 位址", ws, el("small", { id: "connect-ws-help" }, ["伺服器提供的连线地址，通常以 ws:// 开头。"])]),
+    el("label", { class: "field" }, ["WebSocket 地址", ws, el("small", { id: "connect-ws-help" }, ["服务器提供的连接地址，通常以 ws:// 开头。"])]),
     el("label", { class: "check-field" }, [reconnect, "重新接回既有席位"]),
     submit
   );
   if (session.phase === "connecting")
-    form.append(el("p", { class: "status" }, ["正在载入并核对规则版本…"]));
+    form.append(el("p", { class: "status" }, ["正在加载并核对规则版本…"]));
   if (session.error)
     form.append(el("p", { class: "error" }, [session.error]));
   form.addEventListener("submit", (event) => {
@@ -60,7 +60,7 @@ export function sharePanel(bind: UiBind, compact = false): HTMLElement {
   if (roomId < 0 || bind.session.phase !== "active")
     return box;
   const url = roomShareUrl(roomId);
-  const copy = el("button", {}, [compact ? "复制网址" : "复制连结"]);
+  const copy = el("button", {}, [compact ? "复制网址" : "复制链接"]);
   copy.addEventListener("click", async () => {
     await navigator.clipboard.writeText(url);
     copy.textContent = "已复制";
@@ -87,7 +87,7 @@ export function waitingRoom(bind: UiBind): HTMLElement {
   const count = session.state.playerNames.length;
   root.append(el("div", { class: "section-heading" }, [
     el("div", {}, [el("h2", { id: "waiting-heading" }, ["等待房"]), el("p", { class: "status" }, [`${mode} · ${count} 位玩家${roomId >= 0 ? ` · 房号 ${roomId}` : ""}`])]),
-    el("span", { class: "phase-badge" }, [session.phase === "active" ? "已连线" : "准备中"])
+    el("span", { class: "phase-badge" }, [session.phase === "active" ? "已连接" : "准备中"])
   ]));
   const roster = el("div", { class: "waiting-roster", role: "list", "aria-label": "房内玩家" });
   for (const name of session.state.playerNames) {
@@ -113,9 +113,9 @@ export function waitingRoom(bind: UiBind): HTMLElement {
   const canAct = session.phase === "active";
   ready.disabled = !canAct;
   robots.disabled = !canAct;
-  const chat = el("input", { id: "waiting-chat", "data-focus-key": "waiting-chat", value: bind.ui.presentation?.chatDraft || "", placeholder: "输入房内讯息", autocomplete: "off", "aria-label": "房内聊天讯息" });
+  const chat = el("input", { id: "waiting-chat", "data-focus-key": "waiting-chat", value: bind.ui.presentation?.chatDraft || "", placeholder: "输入房内消息", autocomplete: "off", "aria-label": "房内聊天消息" });
   chat.addEventListener("input", () => { if (bind.ui.presentation) bind.ui.presentation.chatDraft = chat.value; });
-  const send = el("button", { type: "button" }, ["送出"]);
+  const send = el("button", { type: "button" }, ["发送"]);
   send.disabled = !canAct;
   chat.disabled = !canAct;
   send.addEventListener("click", () => {
