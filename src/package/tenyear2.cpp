@@ -28470,7 +28470,7 @@ static bool huashangPutAsEquip(Room *room, ServerPlayer *player, int cardId, int
 	if(!raw) return false;
 	Card *cloned = Sanguosha->cloneCard(name, raw->getSuit(), raw->getNumber());
 	if(!cloned||!cloned->isKindOf("EquipCard")){
-		cloned->deleteLater();
+		if(cloned) cloned->deleteLater();
 		return false;
 	}
 	WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
@@ -28478,6 +28478,15 @@ static bool huashangPutAsEquip(Room *room, ServerPlayer *player, int cardId, int
 		cloned->deleteLater();
 		return false;
 	}
+	// Refilter during the move resets the card unless #zhizhe and this tag
+	// are already in place. Setting them afterwards leaves a non-equip in
+	// the equip area, and addCard's onInstall crashes.
+	QStringList filter;
+	filter << name << raw->getSuitString() << QString::number(raw->getNumber());
+	room->setTag("ZhizheFilter_" + QString::number(cardId), filter.join("+"));
+	foreach(ServerPlayer *p, room->getAlivePlayers())
+		room->acquireSkill(p, "#zhizhe");
+
 	wrapped->takeOver(cloned);
 	room->notifyUpdateCard(player, cardId, wrapped);
 
@@ -28493,14 +28502,9 @@ static bool huashangPutAsEquip(Room *room, ServerPlayer *player, int cardId, int
 	room->moveCardsAtomic(moves, true);
 	huashangSyncEquipPointer(player, cardId);
 
-	QStringList filter;
-	filter << name << wrapped->getSuitString() << QString::number(wrapped->getNumber());
-	room->setTag("ZhizheFilter_" + QString::number(cardId), filter.join("+"));
 	QStringList ids = room->getTag("huashangEquip").toStringList();
 	ids << QString::number(cardId);
 	room->setTag("huashangEquip", ids);
-	foreach(ServerPlayer *p, room->getAlivePlayers())
-		room->acquireSkill(p, "#zhizhe");
 	return true;
 }
 

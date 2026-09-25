@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "hegemony-mode.h"
 #include "h-rule-cards.h"
 #include "card.h"
 #include "startup-timing.h"
@@ -1432,7 +1433,7 @@ QList<const General *> Engine::getAllGenerals() const
 int Engine::getGeneralCount(bool include_banned, const QString &kingdom) const
 {
     int total = 0;
-	const bool hegemony = currentRoomRuntime() ? Config.EnableHegemony : ServerInfo.EnableHegemony;
+	const bool hegemony = HegemonyMode::enabledForCatalog(currentRoomRuntime() != nullptr);
 	QStringList banPackages = ServerInfo.BanPackages;
 	if (ServerInfo.GameMode == "03_1v2")
 		banPackages << Config.value("Banlist/Doudizhu").toStringList();
@@ -1645,7 +1646,7 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 {
     Card*card = nullptr;
 	RoomRuntime *runtime = currentRoomRuntime();
-	const bool hegemony = runtime ? Config.EnableHegemony : ServerInfo.EnableHegemony;
+	const bool hegemony = HegemonyMode::enabledForCatalog(runtime != nullptr);
 	const Card *modeTemplate = hegemony ? name2cards.value(QStringLiteral("heg:") + name, nullptr) : nullptr;
 	if (modeTemplate && runtime) {
 		// Resolve the physical template, not just its class: multiple horses share a class.
@@ -2304,7 +2305,7 @@ QStringList Engine::getRandomLords() const
 QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool available) const
 {
 	RoomRuntime *runtime = currentRoomRuntime();
-	const bool hegemony = runtime ? Config.EnableHegemony : ServerInfo.EnableHegemony;
+	const bool hegemony = HegemonyMode::enabledForCatalog(runtime != nullptr);
 	const QString mode = runtime ? Config.GameMode.mode_id : ServerInfo.GameMode;
 	QStringList admittedNames;
 	QStringList general_names, ban = ServerInfo.BanPackages;
@@ -2470,7 +2471,7 @@ QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, c
 
 QList<int> Engine::getRandomCards(bool derivative) const
 {
-	const bool hegemony = currentRoomRuntime() ? Config.EnableHegemony : ServerInfo.EnableHegemony;
+	const bool hegemony = HegemonyMode::enabledForCatalog(currentRoomRuntime() != nullptr);
     bool exclude_disaster = !hegemony && Config.GameMode.mode_id == "04_1v3", using_2012_3v3 = false,
 		using_2013_3v3 = false, challengedeveloper = !hegemony && Config.GameMode.mode_id == "challengedeveloper";
     if (!hegemony && Config.GameMode.mode_id == "06_3v3") {
