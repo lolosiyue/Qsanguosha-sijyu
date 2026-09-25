@@ -1443,6 +1443,35 @@ bool Room::detachAttachedSkill(const SkillInstanceRef &ref)
 	return m_skillRuntime->detachAttachedSkill(ref);
 }
 
+Room::BorrowedSkillScope::BorrowedSkillScope(Room *room, ServerPlayer *player,
+                                             const QString &skillName, const QString &grantSkill)
+    : m_room(room)
+{
+    // Legacy skills are borrowed through the client's named-response Effect mark;
+    // a V2 activation must name a real instance of the player.
+    if (!room || !player
+        || !dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(skillName))
+        || !player->getValidSkillInstanceIds(skillName).isEmpty())
+        return;
+    const QList<int> grants = player->getValidSkillInstanceIds(grantSkill);
+    if (grants.isEmpty()) return;
+    m_ref = room->attachSkillToPlayer(player, skillName,
+        SkillInstanceRef(player->objectName(), SkillInstanceKey(grantSkill, grants.first())), true);
+}
+
+Room::BorrowedSkillScope::~BorrowedSkillScope()
+{
+    if (m_ref.isValid()) m_room->detachAttachedSkill(m_ref);
+}
+
+const Card *Room::askForUseCardWithBorrowedSkill(ServerPlayer *player, const QString &skillName,
+    const QString &grantSkill, const QString &prompt, int notice_index,
+    Card::HandlingMethod method, bool addHistory)
+{
+    BorrowedSkillScope borrowed(this, player, skillName, grantSkill);
+    return askForUseCard(player, "@@" + skillName, prompt, notice_index, method, addHistory);
+}
+
 void Room::notifySkillInstanceSnapshot(ServerPlayer *receiver)
 {
 	m_skillRuntime->notifySkillInstanceSnapshot(receiver);

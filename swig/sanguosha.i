@@ -2615,6 +2615,8 @@ public:
 		const char*skill_name = nullptr, bool isProvision = false, const Card*m_toCard = nullptr);
 	const Card*askForUseCard(ServerPlayer*player, const char*pattern, const char*prompt, int notice_index = -1,
 		Card::HandlingMethod method = Card::MethodUse, bool addHistory = true, ServerPlayer*who = nullptr, const Card*whocard = nullptr, const char*flag = nullptr);
+	const Card*askForUseCardWithBorrowedSkill(ServerPlayer*player, const char*skill_name, const char*grant_skill,
+		const char*prompt, int notice_index = -1, Card::HandlingMethod method = Card::MethodUse, bool addHistory = true);
 	CardUseStruct askForUseCardStruct(ServerPlayer*player, const char*pattern, const char*prompt, int notice_index = -1,
 		Card::HandlingMethod method = Card::MethodUse, bool addHistory = true, ServerPlayer*who = nullptr, const Card*whocard = nullptr, const char*flag = nullptr);
 	const Card*askForUseSlashTo(ServerPlayer*slasher, ServerPlayer*victim, const char*prompt,

@@ -1390,28 +1390,24 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		if (skillContexts.isEmpty())
 			break;
 
-		ServerPlayer *chooser = target;
-		if (Config.EnableHegemony || equipmentGroup || !contextSelectors.isEmpty()) {
-			// Only the owner may receive concealed candidates, even when
-			// another player's event triggers them.
-			chooser = nullptr;
-			for (ServerPlayer *owner : room->getAllPlayers(true)) {
-				for (const SkillContext &ctx : skillContexts) {
-					const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
-                        Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name)));
-                    if (definition && definition->triggerOrderPlayer(room, ctx) == owner) { chooser = owner; break; }
-				}
-				if (chooser) break;
+		// Each owner orders only its own skills, in seat order from the current
+		// player, even when another player's event triggers them.
+		ServerPlayer *chooser = nullptr;
+		for (ServerPlayer *owner : room->getAllPlayers(true)) {
+			for (const SkillContext &ctx : skillContexts) {
+				const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
+					Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name)));
+				if (definition && definition->triggerOrderPlayer(room, ctx) == owner) { chooser = owner; break; }
 			}
-			if (!chooser) break;
-			for (int i = skillContexts.size() - 1; i >= 0; --i)
-				{
-                    const SkillContext &ctx = skillContexts.at(i);
-                    const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
-                        Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name)));
-                    if (!definition || definition->triggerOrderPlayer(room, ctx) != chooser)
-                        skillContexts.removeAt(i);
-                }
+			if (chooser) break;
+		}
+		if (!chooser) break;
+		for (int i = skillContexts.size() - 1; i >= 0; --i) {
+			const SkillContext &ctx = skillContexts.at(i);
+			const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
+				Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name)));
+			if (!definition || definition->triggerOrderPlayer(room, ctx) != chooser)
+				skillContexts.removeAt(i);
 		}
 
 		foreach (const SkillContext &ctx, skillContexts) {
@@ -1435,7 +1431,6 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			}
 		}
 
-		// Identity keeps the event chooser; concealed-mode menus use their owner.
 		// 返回值格式："skillName" 或 "skillName:ownerObjectName"
 		QString reason = "GameRule:TriggerOrder";
 		QString name;
@@ -1455,11 +1450,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			name = room->askForTriggerOrder(chooser, reason, skillContexts, !has_compulsory, data);
 
 		if (name == "cancel" || name.isEmpty()) {
-			if (Config.EnableHegemony || equipmentGroup || !contextSelectors.isEmpty()) {
-				declinedOwners.insert(chooser);
-				continue;
-			}
-			break;
+			// Declining ends only this owner's skills; later owners still choose.
+			declinedOwners.insert(chooser);
+			continue;
 		}
 
 		// 解析返回值：提取 skillName 和 ownerObjectName
