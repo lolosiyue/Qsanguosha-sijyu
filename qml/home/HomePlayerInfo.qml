@@ -66,6 +66,9 @@ Item {
             text: homeController.playerName
 
             color: HomeTheme.navTextActive
+            // Portrait artwork (e.g. a white halo) can rise behind the name.
+            style: root.compact ? Text.Outline : Text.Normal
+            styleColor: HomeTheme.onArtScrim
             font.pixelSize: 22
             font.weight: Font.DemiBold
             elide: Text.ElideRight

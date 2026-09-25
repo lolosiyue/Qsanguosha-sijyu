@@ -301,9 +301,12 @@ Item {
 
                 BAToolButton {
                     id: reloadButton
-                    Layout.preferredWidth: root.compact ? HomeTheme.compactTouch + HomeTheme.compactGap : HomeTheme.cardHeaderButtonWidth
+                    Layout.preferredWidth: root.compact ? HomeTheme.cardActionButtonExtent : HomeTheme.cardHeaderButtonWidth
                     Layout.preferredHeight: HomeTheme.cardActionButtonExtent
-                    text: homeController.qtTranslate("CardScene", "Reload")
+                    Accessible.name: homeController.qtTranslate("CardScene", "Reload")
+                    // Four CJK glyphs do not fit a touch-sized button; compact uses the reload glyph.
+                    text: root.compact ? "" : Accessible.name
+                    iconSource: root.compact ? "qrc:/QSanguosha/Home/icons/update.svg" : ""
                     onClicked: {
                         root.cardModel.reload()
                         Qt.callLater(root.selectFirst)
@@ -492,6 +495,23 @@ Item {
                         color: HomeTheme.cardTextMuted
                         font.pixelSize: HomeTheme.cardEmptyFontSize
                         wrapMode: Text.WordWrap
+                    }
+                }
+
+                // Compact rows scroll; fade the cut-off row so it reads as more content.
+                Rectangle {
+                    visible: root.compact && !cardGrid.atYEnd
+                    anchors.left: cardGrid.left
+                    anchors.right: cardGrid.right
+                    anchors.bottom: cardGrid.bottom
+                    height: HomeTheme.cardGridGap * 4
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0
+                            color: Qt.rgba(HomeTheme.cardPanelBottom.r, HomeTheme.cardPanelBottom.g,
+                                           HomeTheme.cardPanelBottom.b, 0)
+                        }
+                        GradientStop { position: 1; color: HomeTheme.cardPanelBottom }
                     }
                 }
 

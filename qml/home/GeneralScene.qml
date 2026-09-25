@@ -650,7 +650,7 @@ Item {
                 Rectangle {
                     Layout.columnSpan: root.compact ? 2 : 1
                     Layout.fillWidth: true
-                    Layout.maximumWidth: 480
+                    Layout.maximumWidth: root.compact ? Number.POSITIVE_INFINITY : 480
                     Layout.preferredHeight: 48
                     radius: 24
                     color: HomeTheme.btnSecondary
@@ -717,6 +717,7 @@ Item {
 
                 Basic.ComboBox {
                     id: kingdomCombo
+                    Layout.columnSpan: root.compact ? 2 : 1
                     Layout.preferredWidth: root.compact ? 140 : 220
                     Layout.fillWidth: root.compact
                     Layout.preferredHeight: 48
@@ -836,6 +837,8 @@ Item {
 
                 BAToolButton {
                     id: filterBtn
+                    // Compact opens the same panel from the pane bar's filter tab.
+                    visible: !root.compact
                     text: root.ui("GeneralOverview", "Search...")
                     implicitWidth: root.compact ? 100 : 140
                     Layout.fillWidth: root.compact
@@ -2278,25 +2281,33 @@ Item {
         z: 80
         onVisibleChanged: {
             if (visible) Qt.callLater(function() { nicknameField.forceActiveFocus() })
-            else if (root.visible) filterBtn.forceActiveFocus()
+            else if (root.visible) (root.compact ? compactBar.filterButton : filterBtn).forceActiveFocus()
         }
 
-        MouseArea {
+        // Modal scrim: the catalog behind must not show through the panel.
+        Rectangle {
             anchors.fill: parent
-            onClicked: filterPanel.visible = false
+            color: HomeTheme.modalScrim
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: filterPanel.visible = false
+            }
         }
 
         BASlantedPanel {
             anchors.centerIn: parent
             width: Math.min(parent.width - 16, 920)
-            height: Math.min(parent.height - 16, 640)
+            // Compact hugs its form instead of leaving an empty tinted slab below it.
+            height: Math.min(parent.height - 16, root.compact
+                ? filterColumn.height + HomeTheme.compactTouch + HomeTheme.compactMargin * 4 : 640)
             slant: -0.04
             cornerRadius: 12
             shadowBlur: 0
             shadowOffset: 0
-            topColor: HomeTheme.baDockTop
-            bottomColor: HomeTheme.baDockBottom
-            borderColor: HomeTheme.baDockBorder
+            topColor: HomeTheme.cardPanelTop
+            bottomColor: HomeTheme.cardPanelBottom
+            borderColor: HomeTheme.cardPanelBorder
             transformOrigin: Item.Center
             scale: root.uiScale
 
@@ -2317,6 +2328,7 @@ Item {
                     spacing: 14
 
                     Text {
+                        visible: !root.compact
                         text: root.ui("GeneralOverview", "Search...")
                         color: HomeTheme.btnSecondaryText
                         font.pixelSize: 24
@@ -2340,7 +2352,8 @@ Item {
                         }
                         ThemeField {
                             id: nicknameField
-                            width: Math.max(80, Math.min(280, filterColumn.width - 102))
+                            width: Math.max(80, root.compact ? filterColumn.width - 102
+                                                             : Math.min(280, filterColumn.width - 102))
                             placeholderText: "?, *"
                             text: root.nicknameFilter
                             onTextChanged: root.nicknameFilter = text
@@ -2380,6 +2393,7 @@ Item {
                         columnSpacing: 12
                         Text {
                             Layout.alignment: Qt.AlignVCenter
+                            Layout.fillWidth: root.compact
                             text: root.ui("GeneralSearch", "MaxHp Min")
                             color: HomeTheme.btnSecondaryText
                         }
@@ -2399,6 +2413,7 @@ Item {
                         }
                         Text {
                             Layout.alignment: Qt.AlignVCenter
+                            Layout.fillWidth: root.compact
                             text: root.ui("GeneralSearch", "MaxHp Max")
                             color: HomeTheme.btnSecondaryText
                         }
@@ -2445,7 +2460,19 @@ Item {
                     }
                 }
             }
+            // Compact header: the title names the pane-bar tab that opened it, beside its exit.
+            Text {
+                visible: root.compact
+                anchors.left: parent.left
+                anchors.leftMargin: HomeTheme.compactMargin + HomeTheme.compactGap
+                anchors.verticalCenter: compactFilterBack.verticalCenter
+                text: qsTr("篩選")
+                color: HomeTheme.btnSecondaryText
+                font.pixelSize: HomeTheme.cardSectionTitleFontSize
+                font.bold: true
+            }
             BAToolButton {
+                id: compactFilterBack
                 visible: root.compact
                 anchors.top: parent.top
                 anchors.right: parent.right
