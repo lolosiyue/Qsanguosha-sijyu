@@ -52,9 +52,9 @@
 | `ol-strengthen` | Jijiang、Guhuo、Huashen／Xinsheng、Qiaobian、Jiushi、Dangxian、Jiaozhao／Danxin 等未完；OLQingjian 取消後牌堆與收據的清理待修 |
 | `olwenwu` | 已無直接 legacy 仍不代表完成；JinTairan 巢狀收益／到期順序、延期效果取消與受益者鉤子待複審。本次只修 Xijue 的 `qsizetype/int` 比較型別 |
 | `tenyear*` | 繼續剩餘家族；Tuicheng、Xianju、Yizhen、Jiewei、Xuanfeng、Kangming、Yongjin 等新批次待獨立讀回 |
-| `dream` | Mishou 首次殺機會在整體取消時的消耗、Tunshi 多實例授技裁定、最後一批修正尚未完整讀回 |
-| `yczh2016/2017`、`yin` | Jiaozhao／Danxin 的指定 findings 已閉；Taoluan、新 2017 家族、Juzhan／Chenglve／OLLijun 限時收據尚待完整複審 |
-| `yjcm*`、`zombine` | 2012 後續旁路付款／序列化差異需再審；2013／2014／2022 仍有 legacy；Huomo／Zhanjue 新族未閉合。Fencheng 舊 C++ 免傷選擇語意的後續調整、2014 Sidi 草稿尚未套入 |
+| `dream` | SV2 Codex：Mishou 首次殺收據改在 cost 消耗，整體／逐目標取消與 bypass 不回滾，並保留精確來源及目標攔截結果；修 IfShenfeng 預覽牌 lease API。Tunshi 保留按技能名去重，多實例授技仍裁定待決；最後一批未完整讀回。dream TU 獨立編譯通過，未做玩法驗收 |
+| `yczh2016/2017`、`yin` | SV2 Codex：修 Danxin 收據寫入 protected tag 的編譯錯誤、YinShicai 用牌歷史 ID 欄位；Taoluan 提供牌／完成回執、新 2017 家族、Juzhan／Chenglve／OLLijun 限時收據仍待完整複審。yczh2016／yin TU 獨立編譯通過，未跑玩法；Jiaozhao／Danxin 先前指定 findings 閉合狀態不擴大為整包完成 |
+| `yjcm*`、`zombine` | SV2 Codex：2012 TU 獨立編譯通過，旁路付款／序列化僅局部讀回，尚未玩法驗收；2013／2014／2022 legacy、Huomo／Zhanjue、zombine 全包複審保留。Fencheng 新舊 C++ 均先詢問可棄牌再走 damage，未另加免傷裁定；免傷對局仍待驗證。2014 Sidi 未找到可直接套用草稿，未遷移 |
 | 其餘早期包 | 有作者來源檢查點，仍需依 [Skill V2 新機制](SkillV2新機制說明.md) 完成整包複審，不能只依零 legacy 盤點結案 |
 
 討襲（Taoxi）由使用者指定暫緩：保留既有實作，不擴充 `ServerPlayer::getHandPile`

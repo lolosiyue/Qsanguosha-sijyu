@@ -346,7 +346,7 @@ public:
         QVariantList pending = target->getTag("DanxinFutureUpgrades").toList();
         pending << QVariantMap{{"serial", serial}, {"recipient", target->objectName()}, {"origin", details.value("origin")}, {"amount", qMin(2, amount)},
             {"source", jiaozhaoRef(ctx.sourceRef)}, {"activation", jiaozhaoRef(ctx.activationRef)}, {"issuer", ctx.owner->objectName()}};
-        target->tag["DanxinFutureUpgrades"] = pending; return false;
+        target->setTag("DanxinFutureUpgrades", pending); return false;
     }
 };
 
@@ -381,14 +381,14 @@ public:
         const SkillContext ctx = data.value<SkillContext>();
         ServerPlayer *holder = room->findPlayerByObjectName(ctx.extra_data.toMap().value("recipient").toString(), true);
         if (ctx.skill_name == objectName() && !ctx.activationRef.isValid() && holder) {
-            QVariantList pending = holder->getTag("DanxinFutureUpgrades").toList(); pending.removeOne(ctx.extra_data); holder->tag["DanxinFutureUpgrades"] = pending;
+            QVariantList pending = holder->getTag("DanxinFutureUpgrades").toList(); pending.removeOne(ctx.extra_data); holder->setTag("DanxinFutureUpgrades", pending);
         }
         return true;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *holder = room->findPlayerByObjectName(ctx.extra_data.toMap().value("recipient").toString(), true);
-        if (holder) { QVariantList pending = holder->getTag("DanxinFutureUpgrades").toList(); pending.removeOne(ctx.extra_data); holder->tag["DanxinFutureUpgrades"] = pending; } return false;
+        if (holder) { QVariantList pending = holder->getTag("DanxinFutureUpgrades").toList(); pending.removeOne(ctx.extra_data); holder->setTag("DanxinFutureUpgrades", pending); } return false;
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {

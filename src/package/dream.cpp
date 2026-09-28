@@ -262,7 +262,13 @@ public:
     bool isSourceAvailable(Room *room, const SkillContext &ctx) const override
     {
         if (ctx.activationRef.isValid()) return TriggerSkillV2::isSourceAvailable(room, ctx);
-        return ctx.invoker && ctx.invoker->getTag("IfMishouReceipts").toList().contains(ctx.extra_data);
+        if (!ctx.invoker) return false;
+        const QVariantList receipts = ctx.invoker->getTag("IfMishouReceipts").toList();
+        // Admission keeps the pre-cost context. Consuming its first-Slash opportunity
+        // must not retire the accepted receipt (nor its ongoing damage conversion).
+        QVariantMap consumed = ctx.extra_data.toMap();
+        consumed.insert("captured", true);
+        return receipts.contains(ctx.extra_data) || receipts.contains(consumed);
     }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
@@ -271,19 +277,21 @@ public:
             && player->getHandcardNum() > 0) addInstances(result, player, objectName());
         return result;
     }
-    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
         if (event == EventPhaseStart) ctx.targets = {ctx.owner};
         if (event == TargetSpecified) {
             QVariantList receipts = ctx.invoker->getTag("IfMishouReceipts").toList();
             const int index = receipts.indexOf(ctx.extra_data);
-            if (index < 0) { ctx.targets.clear(); return false; }
+            if (index < 0 || receipts.at(index).toMap().value("captured").toBool()) return false;
+            // This is the next Slash, even if WillInvoke/Effect or every target is
+            // canceled. It is an opportunity receipt, not a bypassable payment.
             QVariantMap receipt = receipts.at(index).toMap(); receipt.insert("captured", true);
             receipts[index] = receipt; ctx.invoker->setTag("IfMishouReceipts", receipts);
+            ctx.extra_data = receipt;
             ctx.targets = ctx.original_data->value<CardUseStruct>().to;
         }
-        Q_UNUSED(room);
-        return false;
+        return true;
     }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx,
         ServerPlayer *target) const override
@@ -2352,8 +2360,11 @@ public:
         if (!request.initiator || materials(request.initiator).isEmpty()) return false;
         if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY) {
             const Card *slash = createCard(request);
-            const CardLifetimeLease lease(slash);
-            return slash && Slash::IsAvailable(request.initiator, slash);
+            if (!slash) return false;
+            CardLifetimeManager &manager = globalCardLifetimeManager();
+            const CardLifetimeLease lease(manager, manager.observeCard(const_cast<Card *>(slash)));
+            const_cast<Card *>(slash)->deleteLater();
+            return Slash::IsAvailable(request.initiator, slash);
         }
         return request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE && request.pattern.contains("slash");
     }
