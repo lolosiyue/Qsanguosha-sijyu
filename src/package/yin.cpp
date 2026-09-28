@@ -1144,7 +1144,7 @@ public:
     static bool firstOfType(Room *room, ServerPlayer *player, const CardUseStruct &use)
     {
         const QVariant turn = room->historyScopes().value("turn_id");
-        if (!use.card || use.useHistoryEventId <= 0 || turn.toLongLong() <= 0) return false;
+        if (!use.card || use.targetModReveal.useHistoryEventId <= 0 || turn.toLongLong() <= 0) return false;
         QVariantMap query{{"kind", "use_card"}, {"turn_id", turn}, {"player", player->objectName()}, {"limit", 64}};
         qint64 first = 0;
         while (true) {
@@ -1156,7 +1156,7 @@ public:
                 if (!card.contains("type") || fact.value("event_id").toLongLong() <= 0) return false;
                 if (!first && card.value("type").toInt() == int(use.card->getTypeId())) first = fact.value("event_id").toLongLong();
             }
-            if (!page.value("has_more").toBool()) return first == use.useHistoryEventId;
+            if (!page.value("has_more").toBool()) return first == use.targetModReveal.useHistoryEventId;
             query.insert("after", page.value("next_after"));
         }
     }
