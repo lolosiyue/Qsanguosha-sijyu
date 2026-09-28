@@ -37,7 +37,7 @@ public:
     virtual void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
 };
 
-class HQiceCard : public SkillCard
+class HQiceCard : public ActiveSkillCard
 {
     Q_OBJECT
 
@@ -47,10 +47,9 @@ public:
     virtual bool targetFixed() const override;
     virtual bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
     virtual bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
-    virtual void onUse(Room *room, CardUseStruct &card_use) const override;
 };
 
-class HYiguiCard : public SkillCard
+class HYiguiCard : public ActiveSkillCard
 {
     Q_OBJECT
 
@@ -60,8 +59,6 @@ public:
     virtual bool targetFixed() const override;
     virtual bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override;
     virtual bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
-    virtual const Card *validate(CardUseStruct &card_use) const override;
-    virtual const Card *validateInResponse(ServerPlayer *user) const override;
 };
 
 class HXiongsuanCard : public SkillCard

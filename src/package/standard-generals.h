@@ -9,12 +9,14 @@ class Guanxing : public TriggerSkillV2 {
 public:
     explicit Guanxing(const QString &name = "guanxing");
     bool canPreshow() const override;
+    bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent) const override;
     void record(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override;
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
     bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override;
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const override;
 };
 
 class StrengthenPackage : public Package
@@ -49,6 +51,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override;
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const override;
 
 protected:
     int n;
@@ -61,6 +64,14 @@ public:
     Q_INVOKABLE NosRendeCard();
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+// Retained wire entry; the server rebuilds it through RendeViewAsSkill.
+class RendeCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE RendeCard();
 };
 
 class NosKurouCard : public SkillCard
@@ -103,6 +114,7 @@ public:
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override;
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override;
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const override;
 
 protected:
     QString hujia;
@@ -280,14 +292,17 @@ private:
     const QString jijiang;
 };
 
-class JijiangViewAsSkill : public ZeroCardViewAsSkill
+class JijiangViewAsSkill : public ViewAsSkillV2
 {
 public:
     JijiangViewAsSkill();
 
     bool isEnabledAtPlay(const Player *player) const;
     bool isEnabledAtResponse(const Player *player, const QString &pattern) const;
-    const Card *viewAs() const;
+    bool canActivate(const ActiveSkillRequest &request) const override;
+    const Card *createCard(const ActiveSkillRequest &request) const override;
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override;
+    QString historyKey(const ActiveSkillRequest &) const override { return "Slash"; }
 
 private:
     static bool hasShuGenerals(const Player *player);

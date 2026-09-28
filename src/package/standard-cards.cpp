@@ -431,16 +431,21 @@ public:
         return true;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx,
+                      ServerPlayer *target) const override
     {
-        ctx.manual_effect = true;
-        if (ctx.targets.isEmpty()) return false;
-        ServerPlayer *target = ctx.targets.first();
+        if (ctx.choice == "draw") {
+            target->drawCards(getEffectiveAmount(ctx), objectName());
+            return false;
+        }
         if (target->canDiscard(target, "h")
             && room->askForCard(target, ".", "double-sword-card:" + player->objectName(),
                                 *ctx.original_data))
             return false;
-        player->drawCards(1, objectName());
+        // The fallback draw affects the wielder, independently of the Slash target.
+        ctx.choice = "draw";
+        skillEffect(event, room, player, ctx, player);
+        ctx.choice.clear();
         return false;
     }
 };
@@ -471,16 +476,28 @@ public:
         return result;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *, ServerPlayer *player, SkillContext &ctx) const override
     {
-        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        room->setEmotion(player, "weapon/qinggang_sword");
-        room->sendCompulsoryTriggerLog(player, this);
-        // This mandatory effect applies to every target together. It must not
-        // use the optional ordered-target selector, which can skip a prefix.
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        // Admit all mandatory recipients together; each still gets its own hook.
         for (ServerPlayer *target : use.to)
             if (player->hasWeapon(objectName(), target))
-                target->addQinggangTag(use.card);
+                ctx.targets << target;
+        return !ctx.targets.isEmpty();
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &) const override
+    {
+        room->setEmotion(player, "weapon/qinggang_sword");
+        room->sendCompulsoryTriggerLog(player, this);
+        return false;
+    }
+
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx,
+                      ServerPlayer *target) const override
+    {
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (use.card && use.to.contains(target)) target->addQinggangTag(use.card);
         return false;
     }
 };
@@ -530,25 +547,36 @@ public:
 		}
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
+        if (!effect.to || !effect.to->isAlive()) return false;
+        ctx.targets << effect.to;
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx,
+                      ServerPlayer *target) const override
     {
         const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
         if (!effect.card || !effect.from || !effect.to || !effect.to->isAlive()
-            || !effect.from->canSlash(effect.to, nullptr, false))
+            || effect.to != target || !effect.from->canSlash(target, nullptr, false))
             return false;
 
         int weapon_id = -1;
+        bool weapon_was_using = false;
         if (player->getWeapon() && player->getWeapon()->objectName() == objectName()) {
             weapon_id = player->getWeapon()->getId();
+            weapon_was_using = player->getWeapon()->hasFlag("using");
             room->setCardFlag(weapon_id, "using");
         }
+        const bool had_blade_flag = effect.from->hasFlag("BladeUse");
+        auto restore = qScopeGuard([&] {
+            effect.from->setFlags(had_blade_flag ? "BladeUse" : "-BladeUse");
+            if (weapon_id >= 0 && !weapon_was_using) room->setCardFlag(weapon_id, "-using");
+        });
         effect.from->setFlags("BladeUse");
         room->askForUseSlashTo(effect.from, effect.to, QString("blade-slash:%1").arg(effect.to->objectName()), false, true);
-        effect.from->setFlags("-BladeUse");
-
-        if (weapon_id >= 0)
-            room->setCardFlag(weapon_id, "-using");
-
         return false;
     }
 };
@@ -583,8 +611,22 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
         // Card::isEquipped() is client-only; the request owner works on both sides.
-        return request.initiator && ViewAsSkillV2::canSelectCard(request, candidate)
-            && !request.initiator->hasEquip(candidate);
+        return request.initiator && candidate && ViewAsSkillV2::canSelectCard(request, candidate)
+            && !candidate->hasFlag("using") && !request.selectedCardIds.contains(candidate->getEffectiveId())
+            && (request.initiator->handCards().contains(candidate->getEffectiveId())
+                || request.initiator->getHandPile().contains(candidate->getEffectiveId()));
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 2) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        for (int id : request.selectedCardIds) {
+            if (id < 0 || !canSelectCard(selection, Sanguosha->getCard(id))) return false;
+            selection.selectedCardIds << id;
+        }
+        return true;
     }
 
     const Card *createCard(const ActiveSkillRequest &request) const override
@@ -650,15 +692,29 @@ public:
 
     bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
-        return request.initiator && ViewAsSkillV2::canSelectCard(request, candidate)
+        return request.initiator && candidate && ViewAsSkillV2::canSelectCard(request, candidate)
+            && !candidate->hasFlag("using") && !request.selectedCardIds.contains(candidate->getEffectiveId())
+            && (request.initiator->handCards().contains(candidate->getEffectiveId()) || request.initiator->hasEquip(candidate))
             && !(request.initiator->hasEquip(candidate) && candidate->objectName() == objectName())
-            && !request.initiator->isJilei(candidate);
+            && request.initiator->canDiscard(candidate->getEffectiveId());
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 2) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        for (int id : request.selectedCardIds) {
+            if (id < 0 || !canSelectCard(selection, Sanguosha->getCard(id))) return false;
+            selection.selectedCardIds << id;
+        }
+        return true;
     }
 
     const Card *createCard(const ActiveSkillRequest &request) const override
     {
         if (!cardSelectionFeasible(request)) return nullptr;
-        // askForCard(MethodDiscard) owns payment; do not add a proxy payment.
+        // The trigger owns payment after this selection-only prompt.
         DummyCard *card = new DummyCard;
         card->setSkillName(objectName());
         card->addSubcards(request.selectedCardIds);
@@ -683,35 +739,51 @@ public:
         if (!effect.card || !effect.card->isKindOf("Slash") || !effect.to || !effect.to->isAlive()
             || !player->hasWeapon("axe", effect.to))
             return result;
-        const int required = player->getWeapon() && player->getWeapon()->objectName() == objectName() ? 3 : 2;
+        const int required = player->getWeapon() && player->getWeapon()->objectName() == "axe" ? 3 : 2;
         if (player->getCardCount() >= required)
             result.insert(player, QStringList(objectName()));
         return result;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
+        if (!effect.to || !effect.to->isAlive()) return false;
+        const Card *card = room->askForCard(player, "@axe", "@axe:" + effect.to->objectName(),
+            *ctx.original_data, Card::MethodNone, nullptr, false, objectName());
+        if (!card || card->getSubcards().size() != 2) return false;
+        ctx.extra_data = QVariant::fromValue(card->getSubcards());
+        ctx.targets << effect.to;
+        return true;
+    }
+
+    bool pay(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
         CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
 
-        if (!effect.card->isKindOf("Slash")||!effect.to->isAlive()
+        if (!effect.card || !effect.card->isKindOf("Slash") || !effect.to || !effect.to->isAlive()
             || !player->hasWeapon("axe", effect.to))
             return false;
 
-        int n = 3;
-        if (!player->getWeapon() || player->getWeapon()->objectName() != objectName())
-            n = 2;
-
-        const Card *card = nullptr;
-        if (player->getCardCount() >= n) // Need 2 more cards except from the weapon itself
-            card = room->askForCard(player, "@axe", "@axe:" + effect.to->objectName(),
-                                    *ctx.original_data, objectName());
-        if (card) {
-            room->setEmotion(player, "weapon/axe");
-            room->notifySkillInvoked(player, objectName());
-			//effect.card->onEffect(effect);
-            return true;
+        const QList<int> ids = ctx.extra_data.value<QList<int>>();
+        if (ids.size() != 2 || ids.first() == ids.last()) return false;
+        for (int id : ids) {
+            const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
+            if (!card || card->hasFlag("using") || (!player->handCards().contains(id) && !player->hasEquip(card))
+                || (player->hasEquip(card) && card->objectName() == "axe") || !player->canDiscard(id)) return false;
         }
-        return false;
+        DummyCard payment(ids);
+        room->throwCard(&payment, player, player);
+        room->setEmotion(player, "weapon/axe");
+        room->notifySkillInvoked(player, objectName());
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx,
+                      ServerPlayer *target) const override
+    {
+        // A successful payment cancels this target's offset, allowing Slash to continue.
+        return ctx.original_data->value<CardEffectStruct>().to == target;
     }
 };
 
@@ -772,29 +844,39 @@ public:
         return result;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        if (!damage.to || !player->askForSkillInvoke(this, *ctx.original_data)) return false;
+        ctx.targets << damage.to;
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx,
+                      ServerPlayer *target) const override
     {
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
 
         if (damage.card && damage.card->isKindOf("Slash") && damage.by_user && !damage.chain && !damage.transfer
-            && player->hasWeapon(objectName(), damage.to)) {
-			QList<int> horses;
-            const Card*h = damage.to->getDefensiveHorse();
-			if (h && damage.from->canDiscard(damage.to, h->getId()))
-                horses << h->getId();
-			h = damage.to->getOffensiveHorse();
-            if (h && damage.from->canDiscard(damage.to, h->getId()))
-                horses << h->getId();
+            && damage.to == target && damage.from) {
+            for (int i = 0; i < getEffectiveAmount(ctx) && target->isAlive(); ++i) {
+                QList<int> horses;
+                const Card *horse = target->getDefensiveHorse();
+                if (horse && damage.from->canDiscard(target, horse->getEffectiveId()))
+                    horses << horse->getEffectiveId();
+                horse = target->getOffensiveHorse();
+                if (horse && damage.from->canDiscard(target, horse->getEffectiveId()))
+                    horses << horse->getEffectiveId();
+                if (horses.isEmpty()) break;
 
-            if (horses.isEmpty()||!player->askForSkillInvoke(this, *ctx.original_data)) return false;
-
-            room->setEmotion(player, "weapon/kylin_bow");
-
-            room->fillAG(horses, player);
-            int horse = room->askForAG(player, horses, false, objectName(), "@kylin_bow_horse");
-            room->clearAG(player);
-
-            room->throwCard(horse, damage.to, damage.from);
+                room->setEmotion(player, "weapon/kylin_bow");
+                room->fillAG(horses, player);
+                const int id = room->askForAG(player, horses, false, objectName(), "@kylin_bow_horse");
+                room->clearAG(player);
+                if (!horses.contains(id) || !target->getEquipsId().contains(id)
+                    || !damage.from->canDiscard(target, id)) break;
+                room->throwCard(id, target, damage.from);
+            }
         }
 
         return false;
@@ -829,24 +911,29 @@ public:
 	{
 		if (!ctx.original_data) return false;
 		QStringList asked = ctx.original_data->toStringList();
-		Jink *jink = new Jink(Card::NoSuit, 0);
-		jink->setSkillName("_" + objectName());
-		jink->deleteLater();
+		Jink jink(Card::NoSuit, 0);
+		jink.setSkillName("_" + objectName());
 		Card::HandlingMethod method = asked.value(2) == "use" ? Card::MethodUse : Card::MethodResponse;
-		return !player->isCardLimited(jink, method) && player->askForSkillInvoke(this, *ctx.original_data);
+		if (player->isCardLimited(&jink, method) || !player->askForSkillInvoke(this, *ctx.original_data)) return false;
+		ctx.targets << player;
+		return true;
 	}
 
-	bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx,
+                      ServerPlayer *target) const override
 	{
+		if (target != player) return false;
 		room->setEmotion(player, "armor/eight_diagram");
-		Jink *jink = new Jink(Card::NoSuit, 0);
-		jink->setSkillName("_" + objectName());
-		jink->deleteLater();
 		int armor_id = -1;
+		bool armor_was_using = false;
 		if (player->getArmor() && player->getArmor()->objectName() == objectName()) {
 			armor_id = player->getArmor()->getId();
+			armor_was_using = player->getArmor()->hasFlag("using");
 			room->setCardFlag(armor_id, "using");
 		}
+		auto restore = qScopeGuard([&] {
+			if (armor_id >= 0 && !armor_was_using) room->setCardFlag(armor_id, "-using");
+		});
 		JudgeStruct judge;
 		judge.pattern = ".|red";
 		judge.good = true;
@@ -854,10 +941,13 @@ public:
 		judge.who = player;
 
 		room->judge(judge);
-		if (armor_id > -1)
-			room->setCardFlag(armor_id, "-using");
-
 		if (judge.isGood()) {
+			// Allocate only after nested judgment; the provided-card tag owns the continuation.
+			Jink *jink = new Jink(Card::NoSuit, 0);
+			jink->setSkillName("_" + objectName());
+			if (ctx.sourceRef.isValid())
+				jink->setSourceSkill(ctx.sourceRef.key.skillName, ctx.sourceRef.key.instanceID);
+			jink->deleteLater();
 			room->provide(jink);
 			return true;
         }
@@ -1410,26 +1500,31 @@ public:
         return result;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+        if (!damage.to || !player->askForSkillInvoke(objectName(), *ctx.original_data)) return false;
+        ctx.targets << damage.to;
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx,
+                      ServerPlayer *target) const override
     {
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
 
         if (damage.card && damage.card->isKindOf("Slash")
-            && !damage.to->isNude() && damage.by_user && !damage.chain
-
-            && player->hasWeapon(objectName(), damage.to)
-			 && !damage.transfer && player->askForSkillInvoke(objectName(), *ctx.original_data)) {
+            && damage.to == target && damage.from && damage.by_user && !damage.chain && !damage.transfer) {
             room->setEmotion(player, "weapon/ice_sword");
 			room->notifySkillInvoked(player, "ice_sword");
-            if (damage.from->canDiscard(damage.to, "he")) {
-                int card_id = room->askForCardChosen(player, damage.to, "he", "ice_sword", false, Card::MethodDiscard);
-                room->throwCard(Sanguosha->getCard(card_id), damage.to, damage.from);
-
-                if (damage.from->isAlive() && damage.to->isAlive() && damage.from->canDiscard(damage.to, "he")) {
-                    card_id = room->askForCardChosen(player, damage.to, "he", "ice_sword", false, Card::MethodDiscard);
-                    room->throwCard(Sanguosha->getCard(card_id), damage.to, damage.from);
-                }
+            for (int i = 0; i < 2 * getEffectiveAmount(ctx) && damage.from->isAlive()
+                 && target->isAlive() && damage.from->canDiscard(target, "he"); ++i) {
+                const int id = room->askForCardChosen(player, target, "he", objectName(), false, Card::MethodDiscard);
+                if ((!target->handCards().contains(id) && !target->getEquipsId().contains(id))
+                    || !damage.from->canDiscard(target, id)) break;
+                room->throwCard(Sanguosha->getCard(id), target, damage.from);
             }
+            // Prevent the original damage even if later discard callbacks leave no material.
             return true;
         }
         return false;
@@ -1462,10 +1557,17 @@ public:
         return result;
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        ctx.targets << player;
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx,
+                      ServerPlayer *target) const override
     {
         CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
-        if (effect.card->isKindOf("Slash")&&effect.card->isBlack()) {
+        if (effect.to == target && effect.card && effect.card->isKindOf("Slash") && effect.card->isBlack()) {
             LogMessage log;
             log.type = "#ArmorNullify";
             log.from = player;
@@ -1550,17 +1652,73 @@ public:
     {
     }
 
+    static QString usageKey(const Player *player, SkillInstanceRef source = SkillInstanceRef(),
+        const PhysicalEquipSource &physical = PhysicalEquipSource())
+    {
+        if (physical.isValid()) return QString("wooden_ox_card_%1-PlayClear").arg(physical.cardId());
+        const Card *treasure = player ? player->getTreasure() : nullptr;
+        if (!source.isValid() && treasure && treasure->objectName() == "wooden_ox")
+            return QString("wooden_ox_card_%1-PlayClear").arg(treasure->getEffectiveId());
+        return source.isValid()
+            ? QString("wooden_ox_source_%1_%2_%3-PlayClear").arg(source.ownerObjectName, source.key.skillName).arg(source.key.instanceID)
+            : QStringLiteral("wooden_ox_property-PlayClear");
+    }
+
+    static QString receiptKey(const SkillContext &ctx)
+    {
+        const QString frozen = ctx.extra_data.toMap().value("usage_key").toString();
+        return frozen.isEmpty() ? usageKey(ctx.initiator, ctx.sourceRef, ctx.physicalEquipSource) : frozen;
+    }
+    LimitScope getLimitScope() const override { return Limit_Custom; }
+    bool checkCustomUsage(const SkillContext &ctx) const override
+    { return ctx.initiator && ctx.initiator->getMark(receiptKey(ctx)) == 0; }
+    void addUsage(const SkillContext &ctx) const override
+    { if (ctx.initiator) ctx.initiator->getRoom()->addPlayerMark(ctx.initiator, receiptKey(ctx)); }
+    void resetUsage(const SkillContext &ctx) const override
+    { if (ctx.initiator) ctx.initiator->getRoom()->setPlayerMark(ctx.initiator, receiptKey(ctx), 0); }
+    void commitAccepted(SkillContext &ctx) const
+    {
+        QVariantMap receipt = ctx.extra_data.toMap();
+        if (!ctx.initiator || receipt.value("committed").toBool()) return;
+        if (!receipt.contains("usage_key")) receipt.insert("usage_key", usageKey(ctx.initiator, ctx.sourceRef, ctx.physicalEquipSource));
+        receipt.insert("committed", true);
+        ctx.extra_data = receipt;
+        addUsage(ctx);
+    }
+    bool cost(Room *, SkillContext &ctx, const ActiveSkillRequest &) const override
+    {
+        if (!ctx.initiator) return false;
+        // Freeze the admitted source before cost/owner interception can move equipment.
+        ctx.extra_data = QVariantMap{{"usage_key", usageKey(ctx.initiator, ctx.sourceRef, ctx.physicalEquipSource)},
+            {"holder", ctx.initiator->objectName()}, {"committed", false}};
+        return checkCustomUsage(ctx);
+    }
+
     bool canActivate(const ActiveSkillRequest &request) const override
     {
-        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator
-            && request.initiator->hasTreasure(objectName()) && !request.initiator->hasUsed("WoodenOxCard");
+        const Player *player = request.initiator;
+        if (request.reason != CardUseStruct::CARD_USE_REASON_PLAY || !player || !player->hasTreasure(objectName())) return false;
+        if (const auto *server = qobject_cast<const ServerPlayer *>(player)) {
+            SkillContext ctx;
+            ctx.owner = ctx.invoker = ctx.initiator = const_cast<ServerPlayer *>(server);
+            ctx.activationRef = request.activationRef;
+            return prepareEquipSource(server->getRoom(), ctx) && checkCustomUsage(ctx);
+        }
+        const Card *treasure = player->getTreasure();
+        if (treasure && treasure->objectName() == objectName()) return player->getMark(usageKey(player)) == 0;
+        const QList<SkillInstanceRef> sources = player->viewAsEquipSources(objectName());
+        // A zero-ID client entry cannot guess between multiple virtual grants.
+        // Server reconstruction resolves the exact source and enforces its quota.
+        if (sources.size() > 1) return true;
+        return player->getMark(usageKey(player, sources.value(0))) == 0;
     }
 
     bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
         return request.initiator && ViewAsSkillV2::canSelectCard(request, candidate)
             && !candidate->hasFlag("using")
-            && Sanguosha->matchExpPattern(".|.|.|hand", request.initiator, candidate);
+            && !request.selectedCardIds.contains(candidate->getEffectiveId())
+            && request.initiator->handCards().contains(candidate->getEffectiveId());
     }
 
     const Card *createCard(const ActiveSkillRequest &request) const override
@@ -1574,30 +1732,67 @@ public:
     }
 
     TargetMode targetMode() const override { return NoTarget; }
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override
+    { return targets.isEmpty(); }
     bool willThrowSelectedCards() const override { return false; }
     QString historyKey(const ActiveSkillRequest &) const override { return "WoodenOxCard"; }
+
+    bool pay(Room *, SkillContext &ctx, const ActiveSkillRequest &request) const override
+    {
+        if (!checkCustomUsage(ctx) || request.selectedCardIds.size() != 1 || request.selectedCardIds.first() < 0) return false;
+        if (!ctx.sourceRef.isValid() && receiptKey(ctx) != usageKey(ctx.initiator, ctx.sourceRef)) return false;
+        const Card *card = Sanguosha->getCard(request.selectedCardIds.first());
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        if (!canSelectCard(selection, card)) return false;
+        // Payment and the accepted-event fallback share one idempotent receipt.
+        commitAccepted(ctx);
+        return true;
+    }
 
     EffectFlow effect(SkillContext &context) const override
     {
         ServerPlayer *source = context.invoker;
         if (!source || !context.use_card) return FinishSkill;
         Room *room = source->getRoom();
+        commitAccepted(context);
         // Storing the selected hand card is the effect, not a discard payment.
-        source->addToPile(objectName(), context.use_card->getSubcards(), false);
+        context.choice = "store";
+        skillEffect(context, source);
         const Card *treasure = source->getTreasure();
-        if (!treasure || treasure->objectName() != objectName()) return FinishSkill;
+        if (!treasure || treasure->objectName() != objectName()
+            || (context.physicalEquipSource.isValid() && treasure->getEffectiveId() != context.physicalEquipSource.cardId())) return FinishSkill;
 
         QList<ServerPlayer *> targets;
         foreach (ServerPlayer *p, room->getOtherPlayers(source)) {
             if (!p->getTreasure() && p->hasTreasureArea()) targets << p;
         }
         ServerPlayer *target = room->askForPlayerChosen(source, targets, objectName(), "@wooden_ox-move", true);
-        if (target) {
-            room->moveCardTo(treasure, source, target, Player::PlaceEquip,
-                CardMoveReason(CardMoveReason::S_REASON_TRANSFER, source->objectName(), target->objectName(),
-                               objectName(), ""));
+        if (target && targets.contains(target) && source->hasEquip(treasure)) {
+            context.choice = "transfer";
+            QVariantMap receipt = context.extra_data.toMap();
+            receipt.insert("transfer_id", treasure->getEffectiveId());
+            context.extra_data = receipt;
+            skillEffect(context, target);
         }
         return FinishSkill;
+    }
+
+    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+    {
+        ServerPlayer *source = ctx.invoker;
+        if (!source || !ctx.use_card) return ContinueEffects;
+        if (ctx.choice == "store") {
+            const QList<int> ids = ctx.use_card->getSubcards();
+            if (ids.size() == 1 && source->handCards().contains(ids.first()))
+                target->addToPile(objectName(), ids, false);
+        } else if (ctx.choice == "transfer") {
+            const int id = ctx.extra_data.toMap().value("transfer_id").toInt();
+            if (source->getEquipsId().contains(id) && !target->getTreasure() && target->hasTreasureArea())
+                target->getRoom()->moveCardTo(Sanguosha->getCard(id), source, target, Player::PlaceEquip,
+                    CardMoveReason(CardMoveReason::S_REASON_TRANSFER, source->objectName(), target->objectName(), objectName(), ""));
+        }
+        return ContinueEffects;
     }
 };
 
@@ -1613,15 +1808,26 @@ protected:
 public:
     WoodenOxSkill() : TreasureSkillV2("wooden_ox", "wooden_ox")
     {
-        events << CardsMoveOneTime << BeforeCardsMove;
+        events << CardsMoveOneTime << BeforeCardsMove << EventSkillInvoking;
         global = true;
         frequency = Compulsory;
         view_as_skill = new WoodenOxViewAsSkill;
     }
+    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
+    {
+        if (event != EventSkillInvoking) return false;
+        SkillContext active = data.value<SkillContext>();
+        // Physical equipment uses instance zero; match the admitted activation name.
+        if (active.activationRef.key.skillName != objectName() || !active.use_card
+            || active.use_card->getTypeId() != Card::TypeSkill) return false;
+        static_cast<const WoodenOxViewAsSkill *>(view_as_skill)->commitAccepted(active);
+        data = QVariant::fromValue(active);
+        return false;
+    }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList list;
-        if (!player)
+        if (!player || (event != CardsMoveOneTime && event != BeforeCardsMove))
             return list;
         CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
         bool relevant = false;
@@ -1658,10 +1864,23 @@ public:
         return list;
     }
 
+    bool usesEventPriority() const override { return true; }
+
     int getPriority(TriggerEvent triggerEvent) const override
     {
         if (triggerEvent == BeforeCardsMove) return 0;
         return TriggerSkill::getPriority(triggerEvent);
+    }
+
+    bool cost(TriggerEvent event, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
+        if (event == CardsMoveOneTime && move.to == player && player->isAlive()
+            && move.to_place == Player::PlaceEquip && move.from && !move.from->getPile("wooden_ox").isEmpty()) {
+            for (int id : move.card_ids)
+                if (Sanguosha->getCard(id)->objectName() == "wooden_ox") { ctx.targets << player; break; }
+        }
+        return true;
     }
 
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
@@ -1673,11 +1892,7 @@ public:
                 && !move.from->getPile("wooden_ox").isEmpty()) {
                 foreach (int id, move.card_ids) {
                     if (Sanguosha->getCard(id)->objectName() == "wooden_ox") {
-                        if (target && target->isAlive()) {
-                            QList<ServerPlayer *> p_list;
-                            p_list << target;
-                            target->addToPile("wooden_ox", move.from->getPile("wooden_ox"), false, p_list);
-                        } else {
+                        if (!target || !target->isAlive()) {
                             room->throwCard(move.from->getPile("wooden_ox"), "wooden_ox", nullptr);
                         }
                     }
@@ -1712,6 +1927,15 @@ public:
         }
         return false;
     }
+
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx,
+                      ServerPlayer *target) const override
+    {
+        const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
+        if (move.to == target && move.to_place == Player::PlaceEquip && move.from)
+            target->addToPile("wooden_ox", move.from->getPile("wooden_ox"), false, QList<ServerPlayer *>{target});
+        return false;
+    }
 };
 
 WoodenOx::WoodenOx(Suit suit, int number)
@@ -1722,6 +1946,7 @@ WoodenOx::WoodenOx(Suit suit, int number)
 
 void WoodenOx::onUninstall(ServerPlayer *player) const
 {
+    player->getRoom()->setPlayerMark(player, QString("wooden_ox_card_%1-PlayClear").arg(getEffectiveId()), 0);
     player->getRoom()->addPlayerHistory(player, "WoodenOxCard", 0);
     Treasure::onUninstall(player);
 }

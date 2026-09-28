@@ -20,7 +20,6 @@ public:
     Q_INVOKABLE JGJiaoxieCard();
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class JGYingjiCard : public SkillCard
@@ -31,7 +30,6 @@ public:
     Q_INVOKABLE JGYingjiCard();
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 class JGKedingCard : public SkillCard
@@ -43,7 +41,6 @@ public:
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 class JGHanjunCard : public SkillCard
@@ -53,7 +50,6 @@ class JGHanjunCard : public SkillCard
 public:
     Q_INVOKABLE JGHanjunCard();
 
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 

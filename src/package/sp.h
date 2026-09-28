@@ -109,7 +109,6 @@ class LianzhuCard : public SkillCard
     Q_OBJECT
 public:
     Q_INVOKABLE LianzhuCard(QString lianzhu = "lianzhu");
-    void onEffect(CardEffectStruct &effect) const;
 private:
     QString lianzhu;
 };
@@ -279,7 +278,7 @@ public:
 
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
-class AocaiCard : public SkillCard
+class AocaiCard : public ActiveSkillCard
 {
     Q_OBJECT
 
@@ -290,8 +289,6 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
 
-    const Card *validateInResponse(ServerPlayer *user) const;
-    const Card *validate(CardUseStruct &cardUse) const;
 };
 class DuwuCard : public SkillCard
 {

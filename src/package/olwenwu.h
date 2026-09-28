@@ -23,7 +23,6 @@ class JinYingshiCard : public SkillCard
 
 public:
     Q_INVOKABLE JinYingshiCard();
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 class JinXiongzhiCard : public SkillCard
@@ -32,7 +31,6 @@ class JinXiongzhiCard : public SkillCard
 
 public:
     Q_INVOKABLE JinXiongzhiCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
 
 class JinQinglengCard : public SkillCard
@@ -41,7 +39,6 @@ class JinQinglengCard : public SkillCard
 
 public:
     Q_INVOKABLE JinQinglengCard();
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 class ChexuanCard : public SkillCard
@@ -50,7 +47,6 @@ class ChexuanCard : public SkillCard
 
 public:
     Q_INVOKABLE ChexuanCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
 
 class CaozhaoCard : public SkillCard
@@ -59,7 +55,6 @@ class CaozhaoCard : public SkillCard
 
 public:
     Q_INVOKABLE CaozhaoCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
 
 
@@ -77,7 +72,6 @@ class JinYishiCard : public SkillCard
 
 public:
     Q_INVOKABLE JinYishiCard();
-    void onUse(Room *, CardUseStruct &) const;
 };
 
 class JinShiduCard : public SkillCard
@@ -87,7 +81,6 @@ class JinShiduCard : public SkillCard
 public:
     Q_INVOKABLE JinShiduCard();
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class JinRuilveGiveCard : public SkillCard
@@ -96,8 +89,6 @@ class JinRuilveGiveCard : public SkillCard
 
 public:
     Q_INVOKABLE JinRuilveGiveCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 
@@ -115,8 +106,6 @@ class JinChoufaCard : public SkillCard
 
 public:
     Q_INVOKABLE JinChoufaCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class JinYanxiCard : public SkillCard
@@ -126,7 +115,6 @@ class JinYanxiCard : public SkillCard
 public:
     Q_INVOKABLE JinYanxiCard();
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class JinSanchenCard : public SkillCard
@@ -135,8 +123,6 @@ class JinSanchenCard : public SkillCard
 
 public:
     Q_INVOKABLE JinSanchenCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 
@@ -156,7 +142,6 @@ public:
     Q_INVOKABLE JinBolanSkillCard();
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 class JinBingxinCard : public SkillCard
@@ -168,8 +153,6 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool targetFixed() const;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
-    const Card *validate(CardUseStruct &use) const;
-    const Card *validateInResponse(ServerPlayer *player) const;
 };
 
 class TousuiCard : public SkillCard
@@ -178,8 +161,6 @@ class TousuiCard : public SkillCard
 
 public:
     Q_INVOKABLE TousuiCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    const Card *validate(CardUseStruct &use) const;
 };
 
 class YuePackage : public Package
@@ -196,8 +177,6 @@ class JinXuanbeiCard : public SkillCard
 
 public:
     Q_INVOKABLE JinXuanbeiCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class JinXianwanCard : public SkillCard
@@ -208,8 +187,6 @@ public:
     Q_INVOKABLE JinXianwanCard();
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
-    const Card *validate(CardUseStruct &cardUse) const;
-    const Card *validateInResponse(ServerPlayer *user) const;
 };
 
 

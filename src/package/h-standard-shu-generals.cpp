@@ -590,17 +590,8 @@ class HJuxiang : public TriggerSkillV2 {
 public:
     HJuxiang() : TriggerSkillV2("heg_juxiang")
     {
-        events << CardUsed << CardsMoveOneTime << CardFinished;
+        events << CardsMoveOneTime;
         frequency = Compulsory;
-    }
-    void record(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    {
-        if (!ctx.original_data || (event != CardUsed && event != CardFinished)) return;
-        const Card *card = ctx.original_data->value<CardUseStruct>().card;
-        if (!card || !card->isKindOf("SavageAssault")) return;
-        const QList<int> ids = card->isVirtualCard() ? card->getSubcards() : QList<int>{card->getEffectiveId()};
-        for (int id : ids)
-            room->setCardFlag(id, event == CardUsed ? "heg_juxiang_real_sa" : "-heg_juxiang_real_sa");
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
@@ -609,8 +600,18 @@ public:
         if (move.card_ids.isEmpty() || !move.from_places.contains(Player::PlaceTable)
             || move.to_place != Player::DiscardPile || move.reason.m_reason != CardMoveReason::S_REASON_USE
             || room->getCardPlace(move.card_ids.first()) != Player::DiscardPile) return {};
-        for (int id : move.card_ids)
-            if (!Sanguosha->getCard(id)->hasFlag("heg_juxiang_real_sa")) return {};
+        const QVariantMap use = room->historyParent(room->currentHistoryEventId(), "use_card", true);
+        if (use.isEmpty()) return {};
+        const QVariantMap history = room->queryHistoryFacts({{"event_id", use.value("id")}, {"kind", "use_card"}, {"limit", 1}});
+        if (!history.value("complete").toBool() || history.value("items").toList().isEmpty()) return {};
+        const QVariantMap card = history.value("items").toList().first().toMap().value("data").toMap().value("card").toMap();
+        if (!card.value("classes").toStringList().contains("SavageAssault")) return {};
+        QList<int> materials;
+        for (const QVariant &id : card.value("subcards").toList()) materials << id.toInt();
+        if (materials.isEmpty() && card.value("id", -1).toInt() >= 0) materials << card.value("id").toInt();
+        // Qualify the original resolution even when this skill was acquired during use.
+        for (int i = 0; i < move.card_ids.size(); ++i)
+            if (move.from_places.value(i) != Player::PlaceTable || !materials.contains(move.card_ids[i])) return {};
         TriggerList choices;
         for (ServerPlayer *owner : room->findPlayersBySkillName(objectName()))
             if (owner != move.from && ownsHegemonySkill(owner, objectName())) choices[owner] << objectName();
@@ -637,10 +638,24 @@ public:
     HZaiqi() : TriggerSkillV2("heg_zaiqi") { events << EventPhaseEnd; }
     static int redDiscardCount(Room *room)
     {
+        const QVariant turn = room->historyScopes().value("turn_id");
+        if (turn.toLongLong() == 0) return -1;
         int count = 0;
-        for (const QVariant &id : room->getTag("GlobalRoundDisCardPile").toList()) {
-            const Card *card = Sanguosha->getCard(id.toInt());
-            if (card && card->isRed()) ++count;
+        QVariantMap filter{{"turn_id", turn}};
+        for (;;) {
+            const QVariantMap page = room->queryHistoryMoves(filter);
+            if (!page.value("complete").toBool()) return -1;
+            if (!filter.contains("watermark")) filter["watermark"] = page.value("watermark");
+            for (const QVariant &entry : page.value("items").toList()) {
+                const QVariantMap move = entry.toMap().value("data").toMap();
+                if (move.value("to_place", -1).toInt() != Player::DiscardPile) continue;
+                // Count the immutable card at entry, even if it left the discard pile later.
+                const QVariantMap card = move.value("card").toMap();
+                if (!card.contains("red")) return -1;
+                if (card.value("red").toBool()) ++count;
+            }
+            if (!page.value("has_more").toBool()) break;
+            filter["after"] = page.value("next_after");
         }
         return count;
     }
@@ -667,8 +682,8 @@ public:
         QStringList choices{"drawcard"};
         if (ctx.owner && ctx.owner->isAlive() && ctx.owner->isWounded()) choices << "recover";
         if (room->askForChoice(target, objectName(), choices.join("+"), QVariant::fromValue(ctx.owner)) == "recover")
-            room->recover(ctx.owner, RecoverStruct(target, nullptr, 1, objectName()));
-        else target->drawCards(1, objectName());
+            room->recover(ctx.owner, RecoverStruct(target, nullptr, getEffectiveAmount(ctx), objectName()));
+        else target->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
     }
 };

@@ -37,14 +37,18 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
-class Jianying : public TriggerSkill
+class Jianying : public TriggerSkillV2
 {
 public:
-    Jianying();
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const;
+    explicit Jianying(const QString &name = "jianying");
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override;
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override;
 
 protected:
     QString jianying;
+    bool consecutiveMatch(TriggerEvent event, Room *room, ServerPlayer *owner) const;
 };
 
 class XianzhouCard : public SkillCard

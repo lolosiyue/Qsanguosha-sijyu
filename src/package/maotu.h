@@ -21,7 +21,6 @@ public:
     bool targetFixed() const;
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 class MTHongwuCard : public SkillCard
@@ -33,7 +32,6 @@ public:
     bool targetFixed() const;
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 #endif

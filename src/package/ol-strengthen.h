@@ -106,8 +106,6 @@ class OLHuangtianCard : public SkillCard
 
 public:
     Q_INVOKABLE OLHuangtianCard();
-    void onUse(Room *room, CardUseStruct &card_use) const;
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
 };
 
 class OLGuhuoCard : public SkillCard
@@ -132,7 +130,6 @@ class OLQimouCard : public SkillCard
 
 public:
     Q_INVOKABLE OLQimouCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
 
 class OLTianxiangCard : public TenyearTianxiangCard
@@ -149,7 +146,6 @@ class SecondOLHanzhanCard : public SkillCard
 
 public:
     Q_INVOKABLE SecondOLHanzhanCard();
-    void onUse(Room *, CardUseStruct &) const;
 };
 
 class OLWulieCard : public SkillCard
@@ -158,9 +154,6 @@ class OLWulieCard : public SkillCard
 
 public:
     Q_INVOKABLE OLWulieCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLFangquanCard : public SkillCard
@@ -169,7 +162,6 @@ class OLFangquanCard : public SkillCard
 
 public:
     Q_INVOKABLE OLFangquanCard();
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLZhibaCard : public SkillCard
@@ -178,8 +170,6 @@ class OLZhibaCard : public SkillCard
 
 public:
     Q_INVOKABLE OLZhibaCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLZhibaPindianCard : public SkillCard
@@ -188,8 +178,6 @@ class OLZhibaPindianCard : public SkillCard
 
 public:
     Q_INVOKABLE OLZhibaPindianCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 class OLChangbiaoCard : public SkillCard
@@ -198,8 +186,6 @@ class OLChangbiaoCard : public SkillCard
 
 public:
     Q_INVOKABLE OLChangbiaoCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 class OLTiaoxinCard : public SkillCard
@@ -208,8 +194,6 @@ class OLTiaoxinCard : public SkillCard
 
 public:
     Q_INVOKABLE OLTiaoxinCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLZaiqiCard : public SkillCard
@@ -218,8 +202,6 @@ class OLZaiqiCard : public SkillCard
 
 public:
     Q_INVOKABLE OLZaiqiCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLQiaobianCard : public QiaobianCard
@@ -236,8 +218,6 @@ class OLQiangxiCard : public SkillCard
 
 public:
     Q_INVOKABLE OLQiangxiCard();
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLJianmieCard : public SkillCard
@@ -247,7 +227,6 @@ class OLJianmieCard : public SkillCard
 public:
     Q_INVOKABLE OLJianmieCard();
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLMiejiCard : public SkillCard
@@ -257,8 +236,6 @@ class OLMiejiCard : public SkillCard
 public:
     Q_INVOKABLE OLMiejiCard();
 
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLChunlaoCard : public SkillCard
@@ -267,7 +244,6 @@ class OLChunlaoCard : public SkillCard
 
 public:
     Q_INVOKABLE OLChunlaoCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 class OLGanluCard : public SkillCard
@@ -276,11 +252,9 @@ class OLGanluCard : public SkillCard
 
 public:
     Q_INVOKABLE OLGanluCard();
-    void swapEquip(ServerPlayer *first, ServerPlayer *second) const;
 
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 class OLXianzhouCard : public SkillCard
@@ -304,7 +278,6 @@ public:
     Q_INVOKABLE OLZhijianCard();
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLXuanhuoCard : public SkillCard
@@ -313,7 +286,6 @@ class OLXuanhuoCard : public SkillCard
 
 public:
     Q_INVOKABLE OLXuanhuoCard();
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class OLZongxuanCard : public SkillCard
@@ -322,7 +294,6 @@ class OLZongxuanCard : public SkillCard
 
 public:
     Q_INVOKABLE OLZongxuanCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 class OLQingjianCard : public SkillCard
@@ -331,7 +302,6 @@ class OLQingjianCard : public SkillCard
 
 public:
     Q_INVOKABLE OLQingjianCard();
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 class OLJiaozhaoCard : public SkillCard

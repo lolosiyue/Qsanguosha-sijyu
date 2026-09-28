@@ -150,7 +150,7 @@ public:
     HHalfMaxHp() : HRuleReward("heg_halfmaxhp", "@halfmaxhp", "HHalfMaxHpCard") {}
     EffectFlow effect(SkillContext &ctx) const override
     {
-        if (ctx.invoker && ctx.invoker->isAlive()) ctx.invoker->drawCards(1, objectName());
+        if (ctx.invoker && ctx.invoker->isAlive()) ctx.invoker->drawCards(getEffectiveAmount(ctx), objectName());
         return ContinueEffects;
     }
 };
@@ -218,7 +218,7 @@ public:
             if (!targets.isEmpty()) {
                 ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "@heg_careerman-target");
                 if (!target || !targets.contains(target)) return false;
-                state.insert("target", QVariant::fromValue(target));
+                state.insert("target", target->objectName());
             }
         }
         ctx.extra_data = state;
@@ -244,12 +244,23 @@ public:
         if (choice == "peach") {
             auto *peach = new Peach(Card::NoSuit, 0);
             peach->setSkillName("_" + objectName());
-            room->useCard(CardUseStruct(peach, player, player));
+            peach->deleteLater();
+            room->useCardFromSkillEffect(CardUseStruct(peach, player, player), ctx, true);
         } else if (choice == "firstshow") {
-            firstShowEffect(room, player, state.value("target").value<ServerPlayer *>());
+            ctx.manual_effect = true;
+            firstShowEffect(room, player, nullptr);
+            if (ServerPlayer *target = room->findPlayerByObjectName(state.value("target").toString()))
+                skillEffect(ctx, target);
         } else if (!choice.isEmpty()) {
-            player->drawCards(choice == "draw1card" ? 1 : 2, objectName());
+            player->drawCards((choice == "draw1card" ? 1 : 2) * getEffectiveAmount(ctx), objectName());
         }
+        return ContinueEffects;
+    }
+
+    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (ctx.invoker && ctx.invoker->isAlive())
+            firstShowEffect(ctx.invoker->getRoom(), ctx.invoker, target, false);
         return ContinueEffects;
     }
 

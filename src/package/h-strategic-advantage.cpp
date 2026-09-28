@@ -112,16 +112,20 @@ bool askForHalberdSlash(ServerPlayer *player)
 {
     Room *room = player->getRoom();
     const int weaponId = player->getWeapon() ? player->getWeapon()->getEffectiveId() : -1;
+    const bool previousUse = player->hasFlag("HalberdUse");
+    const bool previousFilter = player->hasFlag("HalberdSlashFilter");
+    const bool previousUsing = weaponId >= 0 && Sanguosha->getCard(weaponId)->hasFlag("using");
+    const int previousCount = player->getMark("halberd_count");
     room->setPlayerFlag(player, "HalberdUse");
     room->setPlayerFlag(player, "HalberdSlashFilter");
     if (weaponId >= 0)
         room->setCardFlag(weaponId, "using");
     // Selection state must also clear on cancellation and interrupted resolutions.
     auto clearSelection = qScopeGuard([&]() {
-        if (weaponId >= 0) room->setCardFlag(weaponId, "-using");
-        room->setPlayerFlag(player, "-HalberdUse");
-        room->setPlayerFlag(player, "-HalberdSlashFilter");
-        room->setPlayerMark(player, "halberd_count", 0);
+        if (weaponId >= 0 && !previousUsing) room->setCardFlag(weaponId, "-using");
+        if (!previousUse) room->setPlayerFlag(player, "-HalberdUse");
+        if (!previousFilter) room->setPlayerFlag(player, "-HalberdSlashFilter");
+        room->setPlayerMark(player, "halberd_count", previousCount);
     });
     const bool used = room->askForUseCard(player, "slash", "@heg_Halberd") != nullptr;
     if (!used) room->setPlayerFlag(player, "Global_HalberdFailed");
@@ -153,8 +157,14 @@ public:
         return request.reason == CardUseStruct::CARD_USE_REASON_PLAY ? Slash::IsAvailable(player)
             : request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE && request.pattern == "slash";
     }
-    const Card *createCard(const ActiveSkillRequest &request) const override {
-        return cardSelectionFeasible(request) ? new HHalberdCard : nullptr;
+    TargetMode targetMode() const override { return NoTarget; }
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override
+    { return targets.isEmpty(); }
+    EffectFlow effect(SkillContext &ctx) const override
+    {
+        // Weapon activation is accepted before the nested ordinary Slash request.
+        if (ctx.invoker && ctx.invoker->isAlive()) askForHalberdSlash(ctx.invoker);
+        return FinishSkill;
     }
 };
 
@@ -334,18 +344,24 @@ public:
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override {
         return targets.size() == 1;
     }
+    bool cost(Room *, SkillContext &ctx, const ActiveSkillRequest &) const override {
+        const Card *armor = ctx.invoker->getArmor();
+        if (!armor || armor->objectName() != "Breastplate") return false;
+        ctx.extra_data = armor->getEffectiveId();
+        return true;
+    }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override {
-        ServerPlayer *owner = ctx.owner;
-        const Card *equip = owner ? owner->getArmor() : nullptr;
-        if (!equip || equip->objectName() != "Breastplate" || owner->isEquipsNullified(equip)) return ContinueEffects;
-        // The equipped card is chosen by the equipment source, not a forged subcard.
-        TransferCard transfer;
-        transfer.addSubcard(equip);
-        CardEffectStruct effect;
-        effect.card = &transfer;
-        effect.from = owner;
-        effect.to = target;
-        transfer.onEffect(effect);
+        if (ctx.choice == "draw") {
+            if (target->isAlive()) target->drawCards(getEffectiveAmount(ctx), "transfer");
+            return ContinueEffects;
+        }
+        Room *room = ctx.invoker->getRoom();
+        const int id = ctx.extra_data.isValid() ? ctx.extra_data.toInt() : ctx.physicalEquipSource.cardId();
+        if (room->getCardOwner(id) != ctx.invoker || room->getCardPlace(id) != Player::PlaceEquip) return ContinueEffects;
+        const bool draw = target->hasShownOneGeneral();
+        room->obtainCard(target, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_GIVE,
+            ctx.invoker->objectName(), target->objectName(), "transfer", QString()), true);
+        if (draw) { ctx.choice = "draw"; skillEffect(ctx, ctx.invoker); }
         return ContinueEffects;
     }
 };
@@ -367,13 +383,20 @@ public:
         return list;
     }
 
-    bool cost(TriggerEvent, Room *, ServerPlayer *player, SkillContext &) const override {
+    bool cost(TriggerEvent, Room *, ServerPlayer *player, SkillContext &ctx) const override {
+        if (!player->getArmor()) return false;
+        ctx.extra_data = player->getArmor()->getEffectiveId();
         return player->askForSkillInvoke(this);
     }
-
-    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
+    bool pay(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
+        const int id = ctx.extra_data.toInt();
+        if (!player->getArmor() || player->getArmor()->getEffectiveId() != id) return false;
+        // Removal is the payment; the accepted prevention survives the resulting source loss.
         CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), objectName(), QString());
-        room->moveCardTo(player->getArmor(), NULL, Player::DiscardPile, reason, true);
+        room->moveCardTo(Sanguosha->getCard(id), nullptr, Player::DiscardPile, reason, true);
+        return true;
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
         LogMessage log;
         log.type = "#Breastplate";
@@ -486,32 +509,45 @@ public:
         return list;
     }
 
-    bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
-        if (triggerEvent == DrawNCards) {
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override {
+        ctx.manual_effect = true;
+        return skillEffect(event, room, player, ctx, ctx.owner);
+    }
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *actor) const override {
+        if (event == DrawNCards) {
             DrawStruct draw = ctx.original_data->value<DrawStruct>();
-            ++draw.num;
-            *ctx.original_data = QVariant::fromValue(draw);
+            draw.num += getEffectiveAmount(ctx);
+            ctx.original_data->setValue(draw);
             return false;
         }
-        // The mandatory card use is an effect, after V2 admission and interception.
-        if (!room->askForUseCard(player, "@@heg_JadeSeal!", "@heg_JadeSeal")) {
-            HKnownBoth *kb = new HKnownBoth(Card::NoSuit, 0);
-            kb->setSkillName(objectName());
+        for (int i = 0; i < getEffectiveAmount(ctx) && actor->isAlive(); ++i) {
+            HKnownBoth *card = new HKnownBoth(Card::NoSuit, 0);
+            card->deleteLater(); card->setSkillName(objectName()); card->setCanRecast(false);
+            if (!card->isAvailable(actor)) break;
             QList<ServerPlayer *> targets;
-            foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
-                if (!player->isProhibited(p, kb) && (!p->isKongcheng() || !p->hasShownAllGenerals()))
-                    targets << p;
+            QList<const Player *> selected;
+            for (;;) {
+                QList<ServerPlayer *> candidates;
+                for (ServerPlayer *target : room->getOtherPlayers(actor))
+                    if (!selected.contains(target) && card->targetFilter(selected, target, actor)
+                        && !actor->isProhibited(target, card, selected)) candidates << target;
+                if (candidates.isEmpty()) break;
+                ServerPlayer *target = room->askForPlayerChosen(actor, candidates, objectName(), "@heg_JadeSeal", true);
+                // The first target is mandatory; additional native extra targets remain optional.
+                if (!target) {
+                    if (!targets.isEmpty()) break;
+                    target = candidates.at(qsanRandomBounded(candidates.size()));
+                }
+                if (!target->isAlive() || !card->targetFilter(selected, target, actor)
+                    || actor->isProhibited(target, card, selected)) break;
+                targets << target; selected << target;
             }
-            if (targets.isEmpty()) {
-                delete kb;
-            } else {
-                ServerPlayer *target = targets.at(qsanRandomBounded(targets.length()));
-                room->useCard(CardUseStruct(kb, player, target), false);
-            }
+            if (targets.isEmpty() || !card->targetsFeasible(selected, actor)) break;
+            // Native admission supplied the immutable physical equipment receipt in this context.
+            room->useCardFromSkillEffect(CardUseStruct(card, actor, targets), ctx, false);
         }
         return false;
     }
-
 };
 
 HDrowning::HDrowning(Suit suit, int number)
@@ -1086,18 +1122,24 @@ public:
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override {
         return targets.size() == 1;
     }
+    bool cost(Room *, SkillContext &ctx, const ActiveSkillRequest &) const override {
+        const Card *armor = ctx.invoker->getOffensiveHorse();
+        if (!armor || armor->objectName() != "jingfan") return false;
+        ctx.extra_data = armor->getEffectiveId();
+        return true;
+    }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override {
-        ServerPlayer *owner = ctx.owner;
-        const Card *equip = owner ? owner->getOffensiveHorse() : nullptr;
-        if (!equip || equip->objectName() != "jingfan" || owner->isEquipsNullified(equip)) return ContinueEffects;
-        // The equipped card is chosen by the equipment source, not a forged subcard.
-        TransferCard transfer;
-        transfer.addSubcard(equip);
-        CardEffectStruct effect;
-        effect.card = &transfer;
-        effect.from = owner;
-        effect.to = target;
-        transfer.onEffect(effect);
+        if (ctx.choice == "draw") {
+            if (target->isAlive()) target->drawCards(getEffectiveAmount(ctx), "transfer");
+            return ContinueEffects;
+        }
+        Room *room = ctx.invoker->getRoom();
+        const int id = ctx.extra_data.isValid() ? ctx.extra_data.toInt() : ctx.physicalEquipSource.cardId();
+        if (room->getCardOwner(id) != ctx.invoker || room->getCardPlace(id) != Player::PlaceEquip) return ContinueEffects;
+        const bool draw = target->hasShownOneGeneral();
+        room->obtainCard(target, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_GIVE,
+            ctx.invoker->objectName(), target->objectName(), "transfer", QString()), true);
+        if (draw) { ctx.choice = "draw"; skillEffect(ctx, ctx.invoker); }
         return ContinueEffects;
     }
 };
