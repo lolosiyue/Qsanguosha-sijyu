@@ -309,37 +309,64 @@ public:
         return false;
     }
 };
-class Longyin : public TriggerSkill
+class Longyin : public TriggerSkillV2
 {
 public:
-    Longyin() : TriggerSkill("longyin")
+    Longyin() : TriggerSkillV2("longyin") { events << CardUsed; }
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        events << CardUsed;
-    }
-
-    bool triggerable(const ServerPlayer *target) const
-    {
-        return target != nullptr && target->getPhase() == Player::Play;
-    }
-
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const
-    {
-        CardUseStruct use = data.value<CardUseStruct>();
-        if (use.card->isKindOf("Slash")) {
-            foreach (ServerPlayer *p, room->getAllPlayers()) {
-                if (p->isDead() || !p->hasSkill(objectName()) || !p->canDiscard(p, "he")) continue;
-				if (p->hasAcquiredSkill(objectName())){
-					QString ww = p->property("manweiwoFrom").toString();
-					if(!ww.isEmpty()&&use.from->objectName()!=ww) continue;
-				}
-				if (!room->askForCard(p, "..", "@longyin", data, objectName())) continue;
-                room->broadcastSkillInvoke(objectName(), use.card->isRed() ? 2 : 1);
-                use.m_addHistory = false;
-                data = QVariant::fromValue(use);
-                if (use.card->isRed())
-                    p->drawCards(1, objectName());
+        TriggerList list;
+        const CardUseStruct use = data.value<CardUseStruct>();
+        if (!player || player->getPhase() != Player::Play || use.from != player || !use.card || !use.card->isKindOf("Slash"))
+            return list;
+        for (ServerPlayer *holder : room->getAllPlayers()) {
+            if (!holder->isAlive() || !holder->hasSkill(this) || !holder->canDiscard(holder, "he")) continue;
+            if (holder->hasAcquiredSkill(objectName())) {
+                const QString source = holder->property("manweiwoFrom").toString();
+                if (!source.isEmpty() && use.from->objectName() != source) continue;
             }
+            list[holder] << objectName();
         }
+        return list;
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.original_data || !ctx.owner->isAlive() || !ctx.owner->canDiscard(ctx.owner, "he")) return false;
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (!use.card || !use.card->isKindOf("Slash")) return false;
+        const Card *card = room->askForCard(ctx.owner, "..", "@longyin", *ctx.original_data,
+            Card::MethodNone, nullptr, false, objectName());
+        if (!card || card->getEffectiveId() < 0) return false;
+        ctx.extra_data = QVariantMap{{"id", card->getEffectiveId()}, {"red", use.card->isRed()}};
+        ctx.targets = {ctx.owner};
+        return true;
+    }
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const QVariantMap paid = ctx.extra_data.toMap();
+        if (!ctx.owner || !paid.contains("id")) return false;
+        const int id = paid.value("id").toInt();
+        const Card *card = Sanguosha->getCard(id);
+        const Player::Place place = room->getCardPlace(id);
+        if (id < 0 || !card || card->hasFlag("using") || room->getCardOwner(id) != ctx.owner
+            || !ctx.owner->canDiscard(ctx.owner, id)
+            || (place != Player::PlaceHand && place != Player::PlaceEquip)) return false;
+        room->throwCard(id, objectName(), ctx.owner);
+        return true;
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.original_data) return false;
+        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        use.m_addHistory = false;
+        ctx.original_data->setValue(use);
+        room->broadcastSkillInvoke(objectName(), ctx.extra_data.toMap().value("red").toBool() ? 2 : 1);
+        return false;
+    }
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (target && target->isAlive() && ctx.extra_data.toMap().value("red").toBool() && getEffectiveAmount(ctx) > 0)
+            target->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
     }
 };
@@ -1370,7 +1397,9 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         if (!request.initiator || !card || card->isVirtualCard() || card->hasFlag("using") || request.initiator->isJilei(card)
-            || !request.initiator->getCards("he").contains(card) || request.selectedCardIds.contains(card->getEffectiveId())) return false;
+            || (!request.initiator->handCards().contains(card->getEffectiveId())
+                && !request.initiator->getEquipsId().contains(card->getEffectiveId()))
+            || request.selectedCardIds.contains(card->getEffectiveId())) return false;
         if (request.selectedCardIds.isEmpty()) return true;
         return request.selectedCardIds.size() == 1 && !Sanguosha->getCard(request.selectedCardIds.first())->isKindOf("TrickCard")
             && !card->isKindOf("TrickCard");

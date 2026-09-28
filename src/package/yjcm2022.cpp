@@ -758,33 +758,88 @@ public:
     }
 };
 
-class Duanwan : public TriggerSkill
+class Duanwan : public TriggerSkillV2
 {
 public:
-    Duanwan() : TriggerSkill("duanwan")
+    Duanwan() : TriggerSkillV2("duanwan")
     {
-        events << AskForPeaches;
+        events << EventSkillInvoking << AskForPeaches;
         frequency = Limited;
         limit_mark = "@duanwan";
+        global = true;
     }
-
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    LimitScope getLimitScope() const override { return Limit_Game; }
+    QStringList usableEntries(ServerPlayer *player, QVariant &data) const
     {
-        DyingStruct dying = data.value<DyingStruct>();
-        if (dying.who!=player||player->getMark("@duanwan")<1||!player->askForSkillInvoke(this)) return false;
+        QStringList result;
+        if (!player) return result;
+        Room *room = player->getRoom();
+        for (int id : player->getValidSkillInstanceIds(objectName())) {
+            SkillContext candidate;
+            candidate.owner = candidate.invoker = candidate.initiator = player;
+            candidate.activationRef = SkillInstanceRef(player->objectName(), SkillInstanceKey(objectName(), id));
+            candidate.sourceRef = room->resolveSkillInstanceRootRef(candidate.activationRef);
+            candidate.instanceID = id;
+            candidate.skill_name = objectName() + "#" + QString::number(id);
+            candidate.amount = room->getSkillInstanceAmount(candidate.activationRef);
+            candidate.original_data = &data;
+            if (candidate.sourceRef.isValid() && isUsable(candidate)) result << candidate.skill_name;
+        }
+        return result;
+    }
+    void commitAccepted(Room *room, SkillContext &ctx) const
+    {
+        if (!ctx.owner || !ctx.activationRef.isValid() || ctx.extra_data.toMap().value("quota_committed").toBool()) return;
+        QVariantMap receipt = ctx.extra_data.toMap();
+        receipt.insert("quota_committed", true);
+        ctx.extra_data = receipt;
+        addUsage(ctx);
+        if (ctx.owner->getMark(limit_mark) > 0) room->removePlayerMark(ctx.owner, limit_mark);
+    }
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!isUsable(ctx)) return false;
+        commitAccepted(room, ctx);
+        return true;
+    }
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
+    {
+        if (event != EventSkillInvoking) return true;
+        SkillContext accepted = data.value<SkillContext>();
+        if (accepted.activationRef.key.skillName == objectName() && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()) {
+            commitAccepted(room, accepted);
+            data = QVariant::fromValue(accepted);
+        }
+        return true;
+    }
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event != AskForPeaches) return {};
+        const DyingStruct dying = data.value<DyingStruct>();
+        return player && player == dying.who && player->isAlive() && player->getHp() <= 0 && player->hasSkill(this)
+            ? TriggerList{{player, usableEntries(player, data)}} : TriggerList();
+    }
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!isUsable(ctx) || !ctx.owner || !ctx.original_data) return false;
+        if (!room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data)) return false;
+        ctx.targets = {ctx.owner};
+        return true;
+    }
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner) return false;
         room->broadcastSkillInvoke(objectName());
-        room->doSuperLightbox(player, objectName());
-        room->removePlayerMark(player, "@duanwan");
-        int n = qMin(2, dying.who->getMaxHp()) - dying.who->getHp();
-        room->recover(dying.who, RecoverStruct(player, nullptr, n, objectName()));
-		n = player->getChangeSkillState("diezhang");
-		room->addPlayerMark(player,"diezhang");
-		n += 2;
-		room->changeTranslation(player, "diezhang", n);
-		foreach (QString m, player->getMarkNames()) {
-			if(m.contains("&diezhang+"))
-				room->setPlayerMark(player,m,0);
-		}
+        room->doSuperLightbox(ctx.owner, objectName());
+        int n = qMin(2, ctx.owner->getMaxHp()) - ctx.owner->getHp();
+        room->recover(ctx.owner, RecoverStruct(ctx.owner, nullptr, n, objectName()));
+        n = ctx.owner->getChangeSkillState("diezhang");
+        room->addPlayerMark(ctx.owner, "diezhang");
+        n += 2;
+        room->changeTranslation(ctx.owner, "diezhang", n);
+        for (const QString &mark : ctx.owner->getMarkNames()) {
+            if (mark.contains("&diezhang+")) room->setPlayerMark(ctx.owner, mark, 0);
+        }
         return false;
     }
 };

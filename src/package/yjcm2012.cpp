@@ -247,6 +247,38 @@ public:
         // Shared declaration admission enforces enabled packages, trick kind and live legality.
         return ViewAsSkillV2::createCard(wholeHand);
     }
+    EffectFlow effect(SkillContext &ctx) const override
+    {
+        if (!ctx.initiator || !ctx.use_card) return FinishSkill;
+        Room *room = ctx.initiator->getRoom();
+        if (!room) return FinishSkill;
+        const QList<int> hand = ctx.initiator->handCards();
+        // Empty or locked material cannot be rebuilt into the trick. The phase use is already committed.
+        if (hand.isEmpty()) return FinishSkill;
+        for (int id : hand) {
+            const Card *card = Sanguosha->getCard(id);
+            if (!card || card->hasFlag("using") || room->getCardOwner(id) != ctx.initiator
+                || room->getCardPlace(id) != Player::PlaceHand) return FinishSkill;
+        }
+        const QList<int> ids = ctx.use_card->getSubcards();
+        bool match = ids.size() == hand.size();
+        if (match) {
+            QList<int> seen;
+            for (int id : ids) {
+                if (seen.contains(id) || !hand.contains(id)) { match = false; break; }
+                seen << id;
+            }
+        }
+        if (match) return ContinueEffects;
+        Card *card = Sanguosha->cloneCard(ctx.use_card->objectName(), Card::SuitToBeDecided, -1);
+        if (!card) return FinishSkill;
+        card->addSubcards(hand);
+        card->setSkillName(objectName());
+        card->setCanRecast(false);
+        card->deleteLater();
+        ctx.updated_card = card;
+        return ContinueEffects;
+    }
     bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
     {
         if (!ctx.initiator || !ctx.use_card || !cardSelectionFeasible(request)) return false;
@@ -909,7 +941,15 @@ public:
     }
     EffectFlow effect(SkillContext &ctx) const override
     {
-        if (!ctx.extra_data.isValid() && ctx.use_card) ctx.extra_data = ctx.use_card->getTag("GongqiEquip");
+        // Cost freezes the equip bit. Bypass skips cost, so recover it from the still-addressable card.
+        if (ctx.extra_data.userType() != QMetaType::Bool) {
+            bool equip = false;
+            if (ctx.use_card && ctx.use_card->getSubcards().size() == 1) {
+                const Card *card = Sanguosha->getCard(ctx.use_card->getSubcards().first());
+                if (card) equip = card->isKindOf("EquipCard");
+            }
+            ctx.extra_data = equip;
+        }
         skillEffect(ctx, ctx.invoker);
         return FinishSkill;
     }
@@ -928,7 +968,8 @@ public:
         }
         QVariantList receipts = QJsonDocument::fromJson(target->property("GongqiEffects").toByteArray()).toVariant().toList();
         receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
-            {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}};
+            {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)},
+            {"turn", room->historyScopes().value("turn_id").toLongLong()}};
         room->setPlayerProperty(target, "GongqiEffects", QString::fromUtf8(QJsonDocument::fromVariant(receipts).toJson(QJsonDocument::Compact)));
         if (ctx.extra_data.toBool() && ctx.invoker->isAlive()) {
             QList<ServerPlayer *> candidates;
@@ -964,10 +1005,16 @@ class GongqiRecord : public TriggerSkillV2
 {
 public:
     GongqiRecord() : TriggerSkillV2("#gongqi-record") { events << EventPhaseChanging; global = true; }
-    bool recordEvent(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const override
+    bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (data.value<PhaseChangeStruct>().to == Player::NotActive)
-            for (ServerPlayer *player : room->getAllPlayers(true)) room->setPlayerProperty(player, "GongqiEffects", QString::fromUtf8(QJsonDocument::fromVariant(QVariantList()).toJson(QJsonDocument::Compact)));
+        if (!player || data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
+        const qint64 turn = room->historyScopes().value("turn_id").toLongLong();
+        // A missing turn id must not wipe an outer turn's range when a nested extra turn ends.
+        if (turn <= 0) return true;
+        QVariantList kept;
+        for (const QVariant &entry : QJsonDocument::fromJson(player->property("GongqiEffects").toByteArray()).toVariant().toList())
+            if (entry.toMap().value("turn").toLongLong() != turn) kept << entry;
+        room->setPlayerProperty(player, "GongqiEffects", QString::fromUtf8(QJsonDocument::fromVariant(kept).toJson(QJsonDocument::Compact)));
         return true;
     }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
@@ -1456,12 +1503,37 @@ public:
     }
     EffectFlow effect(SkillContext &ctx) const override
     {
-if (!ctx.invoker) return FinishSkill;
-        if (ctx.choice.isEmpty() && ctx.use_card) {
-            ctx.choice = ctx.use_card->getTag("ChunlaoStore").toBool() ? "store" : "rescue";
-            ctx.extra_data = ctx.use_card->getTag("ChunlaoDying");
+        if (!ctx.invoker) return FinishSkill;
+        Room *room = ctx.invoker->getRoom();
+        if (ctx.choice.isEmpty()) {
+            const QVariant stored = ctx.use_card ? ctx.use_card->getTag("ChunlaoStore") : QVariant();
+            if (stored.isValid()) ctx.choice = stored.toBool() ? "store" : "rescue";
+            else {
+                // A missing tag is not "rescue". Cards still in hand are the store pile.
+                bool allInHand = ctx.use_card && ctx.initiator && !ctx.use_card->getSubcards().isEmpty();
+                if (allInHand) {
+                    for (int id : ctx.use_card->getSubcards()) {
+                        if (!room || room->getCardOwner(id) != ctx.initiator || room->getCardPlace(id) != Player::PlaceHand) {
+                            allInHand = false;
+                            break;
+                        }
+                    }
+                }
+                ctx.choice = allInHand ? "store" : "rescue";
+            }
         }
-        ServerPlayer *target = ctx.choice == "store" ? ctx.invoker : ctx.invoker->getRoom()->findPlayerByObjectName(ctx.extra_data.toString());
+        if (ctx.choice != "store" && ctx.extra_data.toString().isEmpty()) {
+            if (ctx.use_card) {
+                const QVariant dyingName = ctx.use_card->getTag("ChunlaoDying");
+                if (dyingName.isValid() && !dyingName.toString().isEmpty()) ctx.extra_data = dyingName.toString();
+            }
+            if (ctx.extra_data.toString().isEmpty() && room) {
+                ServerPlayer *dying = room->getCurrentDyingPlayer();
+                if (dying) ctx.extra_data = dying->objectName();
+            }
+        }
+        ServerPlayer *target = ctx.choice == "store" ? ctx.invoker
+            : (room ? room->findPlayerByObjectName(ctx.extra_data.toString()) : nullptr);
         if (target) skillEffect(ctx, target);
         return FinishSkill;
     }
