@@ -45,13 +45,13 @@
 
 | 範圍 | 下一步與已知限制 |
 | --- | --- |
-| `mobile` | 繼續 legacy 家族；Fuman 巢狀階段配額、來源／受益者及「下回合結束」期限；Zhuhe 正文與 C++ 牌來源版本差異待裁定 |
-| `mobileshiji` | Xingzhen 尚未遷移；Mouli／Miewu 提供牌完成事件、Yaohu 及全檔生命週期待複審。本次只修 Yaohu 顯示鍵多餘冒號 |
-| `mobile-strengthen` | 已無盤點中的直接 legacy，但 Dingpin 的 response-use 歷史、Benxi 取消清理、MobileAnjian 目標鉤子、MobileZhuikong 受益者／期限尚未閉合；最後一批修正需讀回 |
+| `mobile` | Fuman 配額改按 phase id 保存，結束內層出牌階段不再清掉外層；摸牌歸交牌者，該【殺】在受益者下一個回合結束時失效。Zhuhe 護甲分支錯寫成 `zhuhe2` 已改回 `zhuhe3`。牌來源仍待裁定：正文是從牌堆獲得並使用，C++ 仍從棄牌堆直接使用。其餘 legacy 家族未遷移 |
+| `mobileshiji` | Xingzhen 不遷移：正文是牌堆頂 7 張可見並當基本／錦囊使用，C++ 是另一套換牌／觀星／殺流程，已留 TODO。Mouli／Miewu 完成事件與 Yaohu 階段收據已讀，沿用 CardFinished／PostCardResponded／phase id，本輪未改。全檔其餘生命週期未結案 |
+| `mobile-strengthen` | Dingpin 計入 response-use（`respond_card.is_use`），打出不計。Benxi 在 TurnBroken 清掉仍顯示 active 的階段距離。MobileAnjian 改為每個範圍外目標一條 preferredTarget，不再用裝備才解析的 `->` 字串。MobileZhuikong 用受益者自己的 `-SelfClear` 標記撐到其回合結束；OLZhuikong 仍共用舊 flag。這四項未跑對局 |
 | `ol` | 大量家族仍舊制；TongxieTargetMod 的跨技能混合修正需逐族拆分，避免漏算或雙算 |
 | `ol-strengthen` | Jijiang、Guhuo、Huashen／Xinsheng、Qiaobian、Jiushi、Dangxian、Jiaozhao／Danxin 等未完；OLQingjian 取消後牌堆與收據的清理待修 |
 | `olwenwu` | 已無直接 legacy 仍不代表完成；JinTairan 巢狀收益／到期順序、延期效果取消與受益者鉤子待複審。本次只修 Xijue 的 `qsizetype/int` 比較型別 |
-| `tenyear*` | 繼續剩餘家族；Tuicheng、Xianju、Yizhen、Jiewei、Xuanfeng、Kangming、Yongjin 等新批次待獨立讀回 |
+| `tenyear*` | Tuicheng、Xianju、Kangming、Jiewei、Xuanfeng、Yongjin 已在 V2，本輪讀回沒有改規則。Yizhen 把缺席花色當 0，避免手牌只有一種花色時同時當成「唯一最多」和「最少」。三個檔案的其餘 legacy 家族未遷移，不能把這一批讀回當成整包結案 |
 | `dream` | Mishou 首次殺機會在整體取消時的消耗、Tunshi 多實例授技裁定、最後一批修正尚未完整讀回 |
 | `yczh2016/2017`、`yin` | Jiaozhao／Danxin 的指定 findings 已閉；Taoluan、新 2017 家族、Juzhan／Chenglve／OLLijun 限時收據尚待完整複審 |
 | `yjcm*`、`zombine` | 2012 後續旁路付款／序列化差異需再審；2013／2014／2022 仍有 legacy；Huomo／Zhanjue 新族未閉合。Fencheng 舊 C++ 免傷選擇語意的後續調整、2014 Sidi 草稿尚未套入 |
@@ -59,6 +59,8 @@
 
 討襲（Taoxi）由使用者指定暫緩：保留既有實作，不擴充 `ServerPlayer::getHandPile`
 的多實例借牌入口。此項不是完成，也不以共享單一 `TaoxiId` 冒充逐實例能力。
+
+2026-09-28 只複審 `mobile.cpp`、`mobileshiji.cpp`、`mobile-strengthen.cpp`、`tenyear.cpp`、`tenyear2.cpp`、`tenyear-strengthen.cpp` 裡點名的家族。上表這些行是讀碼結果。Zhuhe 的牌堆／棄牌堆、Xingzhen 的兩套正文都還沒有裁定，所以沒有改玩法。這次沒有把未建置、未對局的技能標成完成。
 
 ## 本輪已落的共用契約
 

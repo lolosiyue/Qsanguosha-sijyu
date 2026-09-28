@@ -7398,6 +7398,19 @@ void FumanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &tar
 	ActiveSkillCard::use(room, source, targets);
 }
 
+static QString fumanPhaseId(const Room *room)
+{
+	if (!room) return QString();
+	const QString phase = room->historyScopes().value("phase_id").toString();
+	return phase.isEmpty() || phase == "0" ? QString() : phase;
+}
+
+static QStringList fumanPhaseTargets(const Player *owner, const SkillInstanceRef &ref, const QString &phase)
+{
+	if (!owner || !ref.isValid() || phase.isEmpty()) return QStringList();
+	return owner->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "phase_targets").toMap().value(phase).toStringList();
+}
+
 class FumanVS : public ViewAsSkillV2
 {
 public:
@@ -7406,17 +7419,26 @@ public:
 	bool checkCustomUsage(const SkillContext &ctx) const override
 	{
 		if (!ctx.owner) return false;
-		const SkillInstanceRef ref = getUsageRef(ctx);
-		const QStringList used = ctx.owner->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "targets").toStringList();
+		const QString phase = fumanPhaseId(ctx.owner->getRoom());
+		if (phase.isEmpty()) return false;
+		const QStringList used = fumanPhaseTargets(ctx.owner, getUsageRef(ctx), phase);
 		for (const Player *target : ctx.owner->getAliveSiblings()) if (!used.contains(target->objectName())) return true;
 		return false;
 	}
 	void addUsage(const SkillContext &ctx) const override
 	{
+		if (!ctx.owner) return;
 		const SkillInstanceRef ref = getUsageRef(ctx);
-		QStringList used = ctx.owner->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "targets").toStringList();
+		const QString phase = fumanPhaseId(ctx.owner->getRoom());
+		if (phase.isEmpty()) return;
+		QVariantMap phases = ctx.owner->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "phase_targets").toMap();
+		QStringList used = phases.value(phase).toStringList();
 		for (ServerPlayer *target : ctx.targets) if (target && !used.contains(target->objectName())) used << target->objectName();
+		phases.insert(phase, used);
+		// "targets" is the owner-visible projection of this phase only. Nested play phases keep their own keys.
+		ctx.owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "phase_targets", phases);
 		ctx.owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "targets", used);
+		ctx.owner->setSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "active_phase", phase);
 	}
 	bool canActivate(const ActiveSkillRequest &request) const override
 	{
@@ -7432,9 +7454,17 @@ public:
 	TargetMode targetMode() const override { return SelectTargets; }
 	bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected, const Player *target) const override
 	{
-		return target && target->isAlive() && selected.isEmpty() && target != request.initiator
-			&& !request.initiator->getSkillInstanceStateValue(request.activationRef.key.skillName,
-				request.activationRef.key.instanceID, "targets").toStringList().contains(target->objectName());
+		if (!request.initiator || !target || !target->isAlive() || !selected.isEmpty() || target == request.initiator) return false;
+		QStringList used;
+		if (const ServerPlayer *server = qobject_cast<const ServerPlayer *>(request.initiator)) {
+			const QString phase = fumanPhaseId(server->getRoom());
+			if (phase.isEmpty()) return false;
+			used = fumanPhaseTargets(server, request.activationRef, phase);
+		} else {
+			used = request.initiator->getSkillInstanceStateValue(request.activationRef.key.skillName,
+				request.activationRef.key.instanceID, "targets").toStringList();
+		}
+		return !used.contains(target->objectName());
 	}
 	bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override { return targets.length() == 1; }
 	QString historyKey(const ActiveSkillRequest &) const override { return "FumanCard"; }
@@ -7465,9 +7495,12 @@ public:
 		const int id = ctx.use_card->getSubcards().value(0, -1);
 		if (id < 0 || room->getCardOwner(id) != ctx.owner || room->getCardPlace(id) != Player::PlaceHand) return ContinueEffects;
 		QVariantList receipts = target->getTag("mobile_fuman_receipts").toList();
-		receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
+		// The gift's draw belongs to the giver. The deadline is the recipient's next turn, not this play phase.
+		receipts << QVariantMap{{"giver", ctx.owner->objectName()}, {"owner", ctx.owner->objectName()},
+			{"source_owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
 			{"instance", ctx.sourceRef.key.instanceID}, {"card", id}, {"amount", getEffectiveAmount(ctx)},
-			{"token", QString::number(room->currentHistoryEventId())}};
+			{"beneficiary", target->objectName()}, {"granted_turn", room->historyScopes().value("turn_id")},
+			{"armed", false}, {"token", QString::number(room->currentHistoryEventId())}};
 		target->setTag("mobile_fuman_receipts", receipts);
 		room->giveCard(ctx.owner, target, Sanguosha->getCard(id), objectName());
 		return ContinueEffects;
@@ -7477,14 +7510,68 @@ public:
 class Fuman : public TriggerSkillV2
 {
 public:
-	Fuman() : TriggerSkillV2("fuman") { events << CardUsed << EventPhaseChanging; global = true; view_as_skill = new FumanVS; }
-	bool recordEvent(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+	Fuman() : TriggerSkillV2("fuman")
+	{ events << CardUsed << EventPhaseChanging << EventPhaseEnd << TurnStart << Death; global = true; view_as_skill = new FumanVS; }
+	static void projectQuotas(Room *room, ServerPlayer *player, TriggerEvent event)
 	{
-		if (event != EventPhaseChanging || !player) return true;
-		const PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-		if (change.from == Player::Play)
-			for (int id : player->getSkillInstanceIds(objectName())) player->removeSkillInstanceStateValue(objectName(), id, "targets");
-		if (change.to == Player::NotActive) player->removeTag("mobile_fuman_receipts");
+		QString projectId = fumanPhaseId(room);
+		if (event == EventPhaseEnd && !projectId.isEmpty()) {
+			const QVariantMap current = room->historyEvent(projectId.toLongLong());
+			const QVariantMap parent = room->historyEvent(current.value("parent_id").toLongLong());
+			// Ending a nested play phase resumes the still-active outer play phase, whose quota must stay.
+			if (parent.value("kind").toString() == "phase" && parent.value("status").toString() == "active"
+				&& parent.value("data").toMap().value("player").toString() == player->objectName()
+				&& parent.value("data").toMap().value("phase").toInt() == int(Player::Play))
+				projectId = parent.value("id").toString();
+		}
+		for (int id : player->getSkillInstanceIds("fuman")) {
+			QVariantMap phases = player->getSkillInstanceStateValue("fuman", id, "phase_targets").toMap();
+			QVariantMap kept;
+			for (auto it = phases.cbegin(); it != phases.cend(); ++it) {
+				const QVariantMap phase = room->historyEvent(it.key().toLongLong());
+				if (phase.value("status").toString() == "active") kept.insert(it.key(), it.value());
+			}
+			player->setSkillInstanceStateValue("fuman", id, "phase_targets", kept);
+			player->setSkillInstanceStateValue("fuman", id, "targets", kept.value(projectId).toStringList());
+			player->setSkillInstanceStateValue("fuman", id, "active_phase", projectId);
+		}
+	}
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	{
+		if (!room) return true;
+		if ((event == EventPhaseChanging || event == EventPhaseEnd) && player) projectQuotas(room, player, event);
+		if (event == TurnStart && player) {
+			const QVariant turn = room->historyScopes().value("turn_id");
+			if (turn.toLongLong() > 0) {
+				QVariantList receipts;
+				for (const QVariant &value : player->getTag("mobile_fuman_receipts").toList()) {
+					QVariantMap receipt = value.toMap();
+					// Arm on the recipient's next turn start. A gift during their current turn waits for the turn after.
+					if (!receipt.value("armed").toBool() && receipt.value("granted_turn").toLongLong() > 0
+						&& receipt.value("granted_turn") != turn) {
+						receipt.insert("armed", true);
+						receipt.insert("expire_turn", turn);
+					}
+					receipts << receipt;
+				}
+				player->setTag("mobile_fuman_receipts", receipts);
+			}
+		}
+		if (event == EventPhaseChanging && player && data.value<PhaseChangeStruct>().to == Player::NotActive) {
+			const QVariant turn = room->historyScopes().value("turn_id");
+			QVariantList kept;
+			for (const QVariant &value : player->getTag("mobile_fuman_receipts").toList()) {
+				const QVariantMap receipt = value.toMap();
+				const bool known = receipt.value("granted_turn").toLongLong() > 0 && turn.toLongLong() > 0;
+				const bool due = known && receipt.value("armed").toBool() && receipt.value("expire_turn") == turn;
+				if (known && !due) kept << receipt;
+			}
+			player->setTag("mobile_fuman_receipts", kept);
+		}
+		if (event == Death) {
+			ServerPlayer *dead = data.value<DeathStruct>().who;
+			if (dead) dead->removeTag("mobile_fuman_receipts");
+		}
 		return true;
 	}
 	bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data, QList<SkillContext> &contexts) const override
@@ -7496,12 +7583,18 @@ public:
 		for (const QVariant &value : player->getTag("mobile_fuman_receipts").toList()) {
 			const QVariantMap receipt = value.toMap();
 			if (!ids.contains(receipt.value("card").toInt())) continue;
+			const QString beneficiary = receipt.value("beneficiary").toString();
+			if (!beneficiary.isEmpty() && beneficiary != player->objectName()) continue;
+			const QString giverName = receipt.value("giver").toString().isEmpty()
+				? receipt.value("owner").toString() : receipt.value("giver").toString();
 			SkillContext ctx;
 			ctx.skill_name = objectName();
-			ctx.owner = room->findPlayerByObjectName(receipt.value("owner").toString(), true);
+			ctx.owner = room->findPlayerByObjectName(giverName, true);
 			if (!ctx.owner) continue;
 			ctx.invoker = ctx.initiator = player;
-			ctx.sourceRef = SkillInstanceRef(ctx.owner->objectName(), SkillInstanceKey(receipt.value("skill").toString(), receipt.value("instance").toInt()));
+			const QString sourceOwner = receipt.value("source_owner").toString().isEmpty()
+				? giverName : receipt.value("source_owner").toString();
+			ctx.sourceRef = SkillInstanceRef(sourceOwner, SkillInstanceKey(receipt.value("skill").toString(), receipt.value("instance").toInt()));
 			ctx.instanceID = ctx.sourceRef.key.instanceID;
 			ctx.amount = receipt.value("amount").toInt();
 			ctx.original_data = &data;
@@ -7512,7 +7605,8 @@ public:
 		}
 		return true;
 	}
-	ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const override { return ctx.invoker; }
+	// The draw belongs to the giver. Order follows that player, not the recipient who used the gifted slash.
+	ServerPlayer *triggerOrderPlayer(Room *, const SkillContext &ctx) const override { return ctx.owner; }
 	bool isSourceAvailable(Room *, const SkillContext &ctx) const override
 	{
 		return ctx.owner && ctx.invoker && ctx.invoker->getTag("mobile_fuman_receipts").toList().contains(ctx.extra_data);
@@ -7527,6 +7621,7 @@ public:
 	}
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
+		if (!target->isAlive()) return false;
 		room->sendCompulsoryTriggerLog(target, objectName(), true, true);
 		target->drawCards(getEffectiveAmount(ctx), objectName());
 		return false;
@@ -19708,6 +19803,9 @@ public:
 class Zhuhe : public TriggerSkill
 {
 public:
+	// TODO(ruling): lang ":zhuhe" says obtain and use one equipment of the chosen suit from the draw pile
+	// (牌堆). This implementation still reads the discard pile and uses the card in place, without first
+	// obtaining it. Do not change the card source until a human rules which version is authoritative.
 	Zhuhe() : TriggerSkill("zhuhe")
 	{
 		events << EventPhaseEnd;
@@ -19748,7 +19846,7 @@ public:
 							player->drawCards(2,objectName());
 						else if(choice=="zhuhe2")
 							room->recover(player,RecoverStruct(objectName(),player));
-						else if(choice=="zhuhe2")
+						else if(choice=="zhuhe3")
 							player->gainHujia();
 					}
 				}
