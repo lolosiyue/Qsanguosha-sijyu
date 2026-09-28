@@ -7,6 +7,7 @@
 #include "roomthread.h"
 #include "json.h"
 #include "exppattern.h"
+#include "skill-instance-utils.h"
 #include "zombine.h"
 
 class ZbGanran : public FilterSkill
@@ -16,22 +17,20 @@ public:
     {
     }
 
-    bool viewFilter(const Card* to_select) const
+    bool viewFilter(const Card *to_select) const
     {
-        if (to_select->getTypeId() == Card::TypeEquip) {
-            Room *room = Sanguosha->currentRoom();
-            return room->getCardPlace(to_select->getId()) != Player::PlaceEquip;
-        }
-        return false;
+        // PlaceEquip stays a real equip. getCardPlace is null-safe for client preview.
+        return to_select && to_select->getTypeId() == Card::TypeEquip
+            && Sanguosha->getCardPlace(to_select->getId()) != Player::PlaceEquip;
     }
 
     const Card *viewAs(const Card *c) const
     {
+        // filterCards takes ownership and calls takeOver. Returning the wrapper
+        // makes a later filter deleteLater the live card.
         IronChain *ironchain = new IronChain(c->getSuit(), c->getNumber());
         ironchain->setSkillName(objectName());
-        WrappedCard *card = Sanguosha->getWrappedCard(c->getId());
-        card->takeOver(ironchain);
-        return card;
+        return ironchain;
     }
 };
 
@@ -159,20 +158,29 @@ public:
         room->setPlayerMark(owner, "&danyu", total);
     }
 
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (event != EventLoseSkill) return false;
+        if (event != EventLoseSkill || !player || data.toString() != objectName()) return false;
         // Loss has already removed the instance; the public mark is only a projection.
-        if (player) refreshMark(room, player);
+        refreshMark(room, player);
         return true;
     }
 
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         if (!player || !player->isAlive() || !player->hasSkill(this)) return {};
-        if ((event == Damage && data.value<DamageStruct>().from == player)
-            || (event == EventPhaseStart && player->getPhase() == Player::RoundStart))
-            return {{player, {objectName()}}};
+        if (event == Damage) {
+            const DamageStruct damage = data.value<DamageStruct>();
+            if (damage.from == player && damage.damage > 0)
+                return {{player, {objectName()}}};
+        } else if (event == EventPhaseStart && player->getPhase() == Player::RoundStart) {
+            QStringList names;
+            for (int id : player->getValidSkillInstanceIds(objectName())) {
+                if (player->getSkillInstanceStateValue(objectName(), id, "pending", 0).toInt() > 0)
+                    names << SkillInstanceUtils::formatName(objectName(), id);
+            }
+            if (!names.isEmpty()) return {{player, names}};
+        }
         return {};
     }
 
@@ -182,23 +190,34 @@ public:
         if (!owner || !ctx.activationRef.isValid()) return false;
         const QString name = ctx.activationRef.key.skillName;
         const int id = ctx.activationRef.key.instanceID;
-        int pending = owner->getSkillInstanceStateValue(name, id, "pending", 0).toInt();
+        const int pending = owner->getSkillInstanceStateValue(name, id, "pending", 0).toInt();
         if (event == Damage && ctx.original_data) {
             const int gained = ctx.original_data->value<DamageStruct>().damage;
+            if (gained <= 0) return false;
             owner->setSkillInstanceStateValue(name, id, "pending", pending + gained);
             refreshMark(room, owner);
         } else if (event == EventPhaseStart && pending > 0) {
-            // Consume this source's accumulation before drawing; other copies remain intact.
-            owner->setSkillInstanceStateValue(name, id, "pending", 0);
-            refreshMark(room, owner);
+            // Snapshot only. A canceled target effect must keep the marks.
             ctx.extra_data = pending;
             ctx.targets = {owner};
         }
         return false;
     }
-    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (target && target->isAlive()) target->drawCards(ctx.extra_data.toInt() * 3 * getEffectiveAmount(ctx), objectName());
+        if (!target || !target->isAlive() || !ctx.owner || !ctx.activationRef.isValid()) return false;
+        const int want = ctx.extra_data.toInt();
+        if (want <= 0) return false;
+        const QString name = ctx.activationRef.key.skillName;
+        const int id = ctx.activationRef.key.instanceID;
+        const int current = ctx.owner->getSkillInstanceStateValue(name, id, "pending", 0).toInt();
+        const int consumed = qMin(want, current);
+        if (consumed <= 0) return false;
+        // Marks added while this target effect was being intercepted stay on the instance.
+        ctx.owner->setSkillInstanceStateValue(name, id, "pending", current - consumed);
+        refreshMark(room, ctx.owner);
+        const int draw = consumed * 3 * getEffectiveAmount(ctx);
+        if (draw > 0) target->drawCards(draw, objectName());
         return false;
     }
 };
@@ -307,6 +326,28 @@ public:
     }
 };
 
+class ZbWanshaLimit : public CardLimitSkill
+{
+public:
+    ZbWanshaLimit() : CardLimitSkill("#zb_wansha-limit") {}
+
+    QString limitList(const Player *) const override { return "use"; }
+
+    QString limitPattern(const Player *target) const override
+    {
+        if (!target || target->hasFlag("Global_Dying")) return QString();
+        for (const Player *player : target->getAliveSiblings()) {
+            if (!player->hasFlag("CurrentPlayer")) continue;
+            // Same turn window as WanshaLimit: a concealed innate copy does not lock peaches.
+            const bool active = player->hasSkill("zb_wansha")
+                && (!Config.EnableHegemony || (player->getPhase() != Player::NotActive
+                    && (player->hasShownSkill("zb_wansha") || player->hasAcquiredSkill("zb_wansha"))));
+            if (active) return "Peach";
+        }
+        return QString();
+    }
+};
+
 class Cee : public ViewAsSkillV2
 {
 public:
@@ -362,6 +403,7 @@ ZombinePackage::ZombinePackage()
     zombie->addSkill(new ZbGanran);
     zombie->addSkill(new ZbZaibian);
     zombie->addSkill(new ZbWansha);
+    zombie->addSkill(new ZbWanshaLimit);
     zombie->addSkill("paoxiao");
 
     General *female_zombie = new General(this, "zb_female_zombie", "god", 5, false);
@@ -374,6 +416,7 @@ ZombinePackage::ZombinePackage()
 
     addMetaObject<CeeCard>();
     addMetaObject<ZbDanyuCard>();
+    related_skills.insert("zb_wansha", "#zb_wansha-limit");
 }
 
 ADD_PACKAGE(Zombine)
