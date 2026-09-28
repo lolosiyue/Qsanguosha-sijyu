@@ -77,7 +77,7 @@
 
 本次同步前，本地 `debug` 位於 `c12f9f44`，相對 `origin/debug` 領先 1、落後 4。
 遠端四個提交為 `f7f8441a`、`cf92cc39`、`5d7581d4`、`9f42e10d`。
-核心交集在 Engine 與 WrappedCard：需同時保留精確 V2 provenance、目標修正歷史排除、
+核心交集在 Engine 與 WrappedCard：合併後同時保留精確 V2 provenance、目標修正歷史排除、
 MaxCardsType／signed residue，以及遠端 distance definition cache 和 identity revision 通知鏈。
 H50P 工具與其 CMake 目標隨遠端保留；本次沒有執行這些工具。
 
@@ -90,11 +90,33 @@ H50P 工具與其 CMake 目標隨遠端保留；本次沒有執行這些工具�
 外部權威為 `lolosiyue/extensions` 的 `main`。本次同步前 HEAD 為 `4c8595d`，
 遠端為 `a596049`，落後 110 個提交；本地 23 份待提交來源與 L 端副本 SHA-256 一致。
 遠端修改 102 條路徑，與這批本地修改重疊的是 `extensions/newgenerals.lua`。
-需保留遠端既有技能的 V2 遷移，以及本地新增 HUMAN 武將內容；不以整檔 ours/theirs 覆蓋。
+合併保留遠端既有技能的 V2 遷移，以及本地新增 HUMAN 武將內容；逐行差異比對確認本地新增內容完整保留。
 外部提交與主倉庫分開記錄；ignored Lua／extension 不強制加入主倉庫。
 
 本次使用普通提交與合併，保留雙方歷史，不 rebase、不 reset、不 force-push。
 最終提交／合併／遠端 HEAD 以本文所屬分支的 Git 紀錄與交付回報為準。
+
+### 本次整合結果
+
+| 倉庫／提交 | 內容 |
+| --- | --- |
+| 主倉庫 `1619a8c0` | 71 個 package 檔與本進度文件，保全未完成的遷移檢查點 |
+| 主倉庫 `b92c3798` | HUMAN Lua V2 bridge、Scenario、SWIG、載入設定及文件 |
+| 主倉庫 `361ba031` | isolated AI 公開資料投影、manifest 及文件 |
+| 主倉庫 `fd45765b` | 合併 `origin/debug` 的四個提交；無文字衝突 |
+| 外部倉庫 `df3249e` | 六個 A package AI 與 facade，共七檔 |
+| 外部倉庫 `bdaf625` | HUMAN 內容及 newgenerals 增補，共十六檔 |
+| 外部倉庫 `6d7cbdb` | 合併 `origin/main` 的 110 個提交；無文字衝突 |
+
+推送目標為主倉庫 `origin/debug` 與外部倉庫 `origin/main`。
+外部合併後只部署本次變更集合：124 組來源／目標中，102 檔需要更新，
+全部 124 組 SHA-256 相符。部署前再次核對 L 端與合併前版本一致，未覆蓋其他本地改動。
+
+主倉庫相對遠端基線的 `git diff --check` 通過；外部 AI 提交亦通過。
+外部 HUMAN 新匯入的九檔保留原有空白格式，共 445 處 `diff --check` 警告，
+因此**外部完整提交範圍的空白檢查未通過**，不將乾淨工作目錄當成該項通過證據。
+警告集中於 Shijia、Xiangqi、birth、guozhan、happyrebel、hezongkangqin、jiangshi、jieyi、system。
+本次未改寫這些來源格式，也未執行 Lua 玩法驗證。
 
 ## 驗證與後續順序
 
