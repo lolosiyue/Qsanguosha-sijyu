@@ -1,4 +1,5 @@
 #include "room-definition-registry.h"
+#include "distance-skill-cache.h"
 
 #include "card.h"
 #include "card-lifetime-manager.h"
@@ -12,11 +13,14 @@
 #include <QThread>
 
 RoomDefinitionRegistry::RoomDefinitionRegistry(Engine &engine)
-    : m_engine(engine), m_nextCardId(int(engine.cards.size()))
+    : m_engine(engine), m_distanceSkillCache(new DistanceSkillCache),
+      m_nextCardId(int(engine.cards.size()))
 {
     // Rule operations are room-owned definitions, independent of package selection.
     addSkills(createHegemonyRuleSkills(&m_definitionRoot));
 }
+
+RoomDefinitionRegistry::~RoomDefinitionRegistry() = default;
 
 bool RoomDefinitionRegistry::moveOwnedObjectsToThread(QThread *targetThread, QString *error)
 {

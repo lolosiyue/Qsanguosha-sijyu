@@ -4,6 +4,7 @@
 //#include "player.h"
 #include "structs.h"
 #include <QThread>
+#include <functional>
 //#include "wrapped-card.h"
 
 class Player;
@@ -16,8 +17,9 @@ class WrappedCard;
 class RoomState
 {
 public:
-    inline RoomState(bool isClient)
-        : m_isClient(isClient), m_ownerThread(QThread::currentThread())
+    inline RoomState(bool isClient, std::function<void()> identityChanged = {})
+        : m_isClient(isClient), m_ownerThread(QThread::currentThread()),
+          m_identityChanged(std::move(identityChanged))
     {
     }
     ~RoomState();
@@ -80,6 +82,7 @@ protected:
     QHash<int, WrappedCard *> m_cards;
     bool m_isClient;
     QThread *m_ownerThread;
+    std::function<void()> m_identityChanged;
     Player *m_currentPlayer;
     QString m_currentCardUsePattern;
     CardUseStruct::CardUseReason m_currentCardUseReason;

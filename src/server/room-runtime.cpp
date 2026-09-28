@@ -27,7 +27,8 @@ thread_local QList<RoomRuntime *> activeRoomRuntimes;
 
 RoomRuntime::RoomRuntime(Room *room)
     : m_room(room), m_definitions(*Sanguosha), m_lua(LuaRuntime::Game), m_ai(room),
-      m_roomState(false), m_loadingDefinitions(false), m_definitionsLoaded(false),
+      m_roomState(false, [this] { advanceStateRevision(CardIdentityChanged); }),
+      m_loadingDefinitions(false), m_definitionsLoaded(false),
       m_nextDecisionId(0), m_stateRevision(0)
 {
     CardLifetimeManager &manager = globalCardLifetimeManager();

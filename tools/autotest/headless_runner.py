@@ -522,7 +522,9 @@ def main():
         print("錯誤: 沒有指定模式", file=sys.stderr)
         return 1
 
-    known_modes = registered_real_modes(args.exe_root)
+    # Engine registers experimental 50p; qsanguosha_server --list-game-modes may
+    # omit it (QSAN_XP_LEGACY GUI filter). Union with FALLBACK so headless soaks work.
+    known_modes = registered_real_modes(args.exe_root) | FALLBACK_REAL_MODES
     illegal_modes = sorted(set(modes) - known_modes)
     if illegal_modes:
         print(

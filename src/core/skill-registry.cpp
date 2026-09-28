@@ -43,6 +43,15 @@ bool SkillRegistry::add(const Skill *skill)
         m_prohibitPindianSkills.removeAll(previous);
     }
 
+    // The sender may outlive this registry (bootstrap/borrowed definitions).
+    // Capture only a weak counter, never this or a room/thread-affine receiver.
+    const std::weak_ptr<std::atomic<quint64>> version = m_version;
+    const auto changed = [version] {
+        if (const auto live = version.lock())
+            live->fetch_add(1, std::memory_order_release);
+    };
+    QObject::connect(mutableSkill, &QObject::destroyed, changed);
+    QObject::connect(mutableSkill, &QObject::objectNameChanged, changed);
     m_skills.insert(name, mutableSkill);
     if (dynamic_cast<const ProhibitSkill *>(skill)) m_prohibitSkills << mutableSkill;
     if (dynamic_cast<const DistanceSkill *>(skill)) m_distanceSkills << mutableSkill;
@@ -56,6 +65,7 @@ bool SkillRegistry::add(const Skill *skill)
     if (dynamic_cast<const CardLimitSkill *>(skill)) m_cardLimitSkills << mutableSkill;
     if (dynamic_cast<const ProhibitPindianSkill *>(skill)) m_prohibitPindianSkills << mutableSkill;
 
+    m_version->fetch_add(1, std::memory_order_release);
     return replaced;
 }
 

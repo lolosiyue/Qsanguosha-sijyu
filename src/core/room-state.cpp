@@ -77,6 +77,9 @@ void RoomState::reset()
         WrappedCard *wrapped = new WrappedCard(nullptr);
         wrapped->setAdoptionOwnerThread(m_ownerThread);
         wrapped->copyEverythingFrom(clone);
+        if (m_identityChanged)
+            QObject::connect(wrapped, &WrappedCard::identityChanged, wrapped,
+                             m_identityChanged, Qt::DirectConnection);
         m_cards[i] = wrapped;
     }
 }
