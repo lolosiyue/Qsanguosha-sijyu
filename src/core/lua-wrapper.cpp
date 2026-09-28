@@ -1,4 +1,5 @@
 #include "lua-wrapper.h"
+#include "room.h"
 #include "room-runtime.h"
 #include "lua-runtime.h"
 #include "engine.h"
