@@ -27,7 +27,6 @@ public:
     Q_INVOKABLE TiaoxinCard();
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class ZhijianCard : public SkillCard
@@ -38,7 +37,6 @@ public:
     Q_INVOKABLE ZhijianCard();
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class GuzhengCard : public SkillCard
@@ -59,7 +57,6 @@ public:
     Q_INVOKABLE ZhibaCard();
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
 class FangquanCard : public SkillCard
@@ -70,7 +67,6 @@ public:
     Q_INVOKABLE FangquanCard();
 
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void onEffect(CardEffectStruct &effect) const;
 };
 
 class MountainPackage : public Package
@@ -95,21 +91,18 @@ class JilveCard : public SkillCard
 
 public:
     Q_INVOKABLE JilveCard();
-
-    void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
-class Longhun : public ViewAsSkill
+class Longhun : public ViewAsSkillV2
 {
 public:
-    Longhun();
-    bool isEnabledAtResponse(const Player *player, const QString &pattern) const;
-    bool isEnabledAtPlay(const Player *player) const;
-    bool viewFilter(const QList<const Card *> &selected, const Card *card) const;
-    const Card *viewAs(const QList<const Card *> &cards) const;
-    int getEffectIndex(const ServerPlayer *player, const Card *card) const;
-    bool isEnabledAtNullification(const ServerPlayer *player) const;
-
+    explicit Longhun(const QString &name = "longhun");
+    bool canActivate(const ActiveSkillRequest &request) const override;
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override;
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override;
+    const Card *createCard(const ActiveSkillRequest &request) const override;
+    int getEffectIndex(const ServerPlayer *player, const Card *card) const override;
+    QString historyKey(const ActiveSkillRequest &request) const override;
 protected:
     virtual int getEffHp(const Player *zhaoyun) const;
 };

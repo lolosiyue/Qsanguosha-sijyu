@@ -142,36 +142,28 @@ bool invokeHegemonySkill(const TriggerSkill *skill, Room *room, ServerPlayer *ow
     return true;
 }
 
-SkillInstanceRef shownFormationSource(ServerPlayer *owner, const QString &name)
+void projectFormationGrant(Room *room, ServerPlayer *target, const QString &skill,
+                           const QString &provider, const QList<SkillInstanceRef> &sources)
 {
-    if (!ownsHegemonySkill(owner, name)) return {};
+    // Every live provider owns its exact child; native copies and sibling auras are independent.
+    for (const SkillInstance &instance : target->getSkillInstances()) {
+        if (instance.skillName == skill && instance.source == SourceAttached
+            && instance.parentRef.key.skillName == provider && !sources.contains(instance.parentRef))
+            room->detachAttachedSkill(SkillInstanceRef(target->objectName(), instance.key()));
+    }
+    for (const SkillInstanceRef &source : sources) room->attachSkillToPlayer(target, skill, source);
+}
+
+QList<SkillInstanceRef> shownFormationSources(const ServerPlayer *owner, const QString &name)
+{
+    QList<SkillInstanceRef> result;
     for (const SkillInstance &instance : owner->getSkillInstances()) {
         if (instance.skillName != name || owner->isSkillInvalid(name, instance.instanceID)) continue;
         const bool shown = instance.bindHead == 1 ? owner->hasShownGeneral1()
             : instance.bindHead == 2 ? owner->hasShownGeneral2() : instance.visible;
-        if (shown) return SkillInstanceRef(owner->objectName(), instance.key());
+        if (shown) result << SkillInstanceRef(owner->objectName(), instance.key());
     }
-    return {};
-}
-
-void projectFormationGrant(Room *room, ServerPlayer *target, const QString &skill,
-                           const QString &provider, const SkillInstanceRef &source)
-{
-    // Keep a single aura grant, bound to its actual provider. Losing the provider
-    // then uses the existing attachment registry's automatic recursive cleanup.
-    bool hasOtherSource = false;
-    bool hasGrant = false;
-    const auto instances = target->getSkillInstances();
-    for (const SkillInstance &instance : instances) {
-        if (instance.skillName != skill) continue;
-        if (instance.source == SourceAttached && instance.parentRef.key.skillName == provider) {
-            const SkillInstanceRef ref(target->objectName(), instance.key());
-            if (!source.isValid() || instance.parentRef != source) room->detachAttachedSkill(ref);
-            else hasGrant = true;
-        } else hasOtherSource = true;
-    }
-    if (source.isValid() && !hasGrant && !hasOtherSource)
-        room->attachSkillToPlayer(target, skill, source);
+    return result;
 }
 
 }
@@ -252,6 +244,7 @@ public:
         const QVariant previous = ctx.owner->getTag("ziliang_aidata");
         ctx.owner->setTag("ziliang_aidata", *ctx.original_data);
         const auto restore = qScopeGuard([&] { ctx.owner->setTag("ziliang_aidata", previous); });
+        Room::BorrowedSkillScope source(room, ctx.owner, objectName(), ctx.activationRef);
         const Card *card = room->askForUseCard(ctx.owner, "@@heg_ziliang", "@heg_ziliang-give", -1, Card::MethodNone);
         if (!card || card->getSubcards().size() != 1) return false;
         ctx.extra_data = card->getSubcards().first();
@@ -362,6 +355,7 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner) return false;
+        Room::BorrowedSkillScope source(room, ctx.owner, objectName(), ctx.activationRef);
         const CardUseStruct use = room->askForUseCardStruct(ctx.owner, "@@heg_huyuan", "@heg_huyuan-equip", -1, Card::MethodNone);
         if (!use.card || use.card->getSubcards().size() != 1 || use.to.size() != 1) return false;
         ctx.extra_data = use.card->getSubcards().first();
@@ -437,6 +431,39 @@ public:
     { return Config.EnableHegemony ? HArraySummon::effect(ctx) : ContinueEffects; }
 };
 
+class HFormationGrantClear : public TriggerSkillV2
+{
+public:
+    HFormationGrantClear() : TriggerSkillV2("#heg_formation-grant-clear")
+    { events << EventPhaseChanging << Death; global = true; }
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *actor, QVariant &data) const override
+    {
+        if (event == Death) actor = data.value<DeathStruct>().who;
+        if (!actor || (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to != Player::NotActive)) return true;
+        for (ServerPlayer *holder : room->getAllPlayers(true)) {
+            const QVariantList grants = holder->property("heg_formation_grants").toList();
+            QVariantList retained;
+            for (const QVariant &value : grants) {
+                const QVariantMap grant = value.toMap();
+                if (grant.value("expires_owner").toString() == actor->objectName())
+                    room->detachSkillFromPlayer(holder, grant.value("skill").toString() + "#" + QString::number(grant.value("id").toInt()));
+                else retained << value;
+            }
+            if (retained != grants) room->setPlayerProperty(holder, "heg_formation_grants", retained);
+        }
+        return true;
+    }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
+    static void grant(Room *room, ServerPlayer *target, const QString &name, const QString &expiresOwner, SkillContext &ctx)
+    {
+        const int id = room->acquireSkillFromEffect(target, name, ctx);
+        if (id <= 0) return;
+        QVariantList grants = target->property("heg_formation_grants").toList();
+        grants << QVariantMap{{"skill", name}, {"id", id}, {"expires_owner", expiresOwner}};
+        room->setPlayerProperty(target, "heg_formation_grants", grants);
+    }
+};
+
 class HHeyi : public TriggerSkillV2 {
 public:
     HHeyi() : TriggerSkillV2("heg_heyi")
@@ -446,14 +473,8 @@ public:
         view_as_skill = new HHeyiSelection;
     }
     bool canPreshow() const override { return false; }
-    void record(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
-    {
-        if (!Config.EnableHegemony && ctx.owner == player && ctx.original_data
-            && (event == Death || (event == EventPhaseChanging
-                && ctx.original_data->value<PhaseChangeStruct>().to == Player::NotActive)))
-            ctx.owner->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients");
-        refresh(room);
-    }
+    void record(TriggerEvent, Room *room, ServerPlayer *, SkillContext &) const override
+    { if (Config.EnableHegemony) refresh(room); }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         return !Config.EnableHegemony && event == EventPhaseChanging && ownsHegemonySkill(player, objectName())
@@ -462,18 +483,16 @@ public:
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        Room::BorrowedSkillScope source(room, ctx.owner, objectName(), ctx.activationRef);
         const auto use = room->askForUseCardStruct(ctx.owner, "@@heg_heyi", "@heg_heyi", -1, Card::MethodNone);
         if (!use.card || use.to.size() < 2 || !use.to.contains(ctx.owner)) return false;
         ctx.targets = use.to;
         return true;
     }
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        QStringList recipients;
-        for (ServerPlayer *target : ctx.targets)
-            if (target != ctx.owner && target->isAlive()) recipients << target->objectName();
-        ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "recipients", recipients);
-        refresh(room);
+        if (target != ctx.owner)
+            HFormationGrantClear::grant(room, target, "feiying", ctx.owner->objectName(), ctx);
         return false;
     }
 private:
@@ -481,25 +500,15 @@ private:
     {
         const auto owners = room->findPlayersBySkillName(objectName());
         for (ServerPlayer *target : room->getPlayers()) {
-            SkillInstanceRef source;
+            QList<SkillInstanceRef> sources;
             if (target->isAlive() && (!Config.EnableHegemony || room->alivePlayerCount() >= 4)) {
                 for (ServerPlayer *owner : owners) {
                     if (owner == target) continue;
-                    if (Config.EnableHegemony) {
-                        if (!owner->inFormationRalation(target)) continue;
-                        source = shownFormationSource(owner, objectName());
-                    } else {
-                        for (int id : owner->getValidSkillInstanceIds(objectName())) {
-                            if (owner->getSkillInstanceStateValue(objectName(), id, "recipients").toStringList().contains(target->objectName())) {
-                                source = SkillInstanceRef(owner->objectName(), SkillInstanceKey(objectName(), id));
-                                break;
-                            }
-                        }
-                    }
-                    if (source.isValid()) break;
+                    if (!owner->inFormationRalation(target)) continue;
+                    sources << shownFormationSources(owner, objectName());
                 }
             }
-            projectFormationGrant(room, target, Config.EnableHegemony ? "heg_feiying" : "feiying", objectName(), source);
+            projectFormationGrant(room, target, "heg_feiying", objectName(), sources);
         }
     }
 };
@@ -529,23 +538,13 @@ public:
         ServerPlayer *current = room->getCurrent();
         const bool ending = event == EventPhaseChanging && player == current && ctx.original_data
             && ctx.original_data->value<PhaseChangeStruct>().to == Player::NotActive;
-        if (!Config.EnableHegemony) {
-            const QString activeTurn = ctx.owner
-                ? ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "active_turn").toString() : QString();
-            const bool turnEnds = player && player->objectName() == activeTurn && ctx.original_data
-                && (event == Death || (event == EventPhaseChanging
-                    && ctx.original_data->value<PhaseChangeStruct>().to == Player::NotActive));
-            if (ctx.owner && (turnEnds || (event == Death && player == ctx.owner)))
-                ctx.owner->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "active_turn");
-            refreshIdentity(room);
-            return;
-        }
+        if (!Config.EnableHegemony) return;
         for (ServerPlayer *owner : room->getPlayers()) {
             const bool active = !ending && current && current->isAlive() && current->getPhase() != Player::NotActive
                 && room->alivePlayerCount() >= 4 && ownsHegemonySkill(owner, objectName())
                 && owner->hasShownSkill(objectName()) && owner->inFormationRalation(current);
             projectFormationGrant(room, owner, "kanpo", objectName(),
-                active ? shownFormationSource(owner, objectName()) : SkillInstanceRef());
+                active ? shownFormationSources(owner, objectName()) : QList<SkillInstanceRef>());
         }
     }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
@@ -564,29 +563,16 @@ public:
         room->broadcastSkillInvoke(objectName(), ctx.owner);
         return true;
     }
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (ctx.owner && ctx.invoker && ctx.invoker->isAlive()) {
-            ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "active_turn", ctx.invoker->objectName());
-            refreshIdentity(room);
-        }
+        ctx.manual_effect = true;
+        if (ctx.owner && ctx.invoker && ctx.invoker->isAlive()) skillEffect(ctx.current_event, ctx.invoker->getRoom(), ctx.invoker, ctx, ctx.owner);
         return false;
     }
-private:
-    void refreshIdentity(Room *room) const
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        for (ServerPlayer *owner : room->getPlayers()) {
-            SkillInstanceRef source;
-            if (ownsHegemonySkill(owner, objectName())) {
-                for (int id : owner->getValidSkillInstanceIds(objectName())) {
-                    if (!owner->getSkillInstanceStateValue(objectName(), id, "active_turn").toString().isEmpty()) {
-                        source = SkillInstanceRef(owner->objectName(), SkillInstanceKey(objectName(), id));
-                        break;
-                    }
-                }
-            }
-            projectFormationGrant(room, owner, "kanpo", objectName(), source);
-        }
+        HFormationGrantClear::grant(room, target, "kanpo", ctx.invoker->objectName(), ctx);
+        return false;
     }
 };
 
@@ -594,29 +580,19 @@ class HShengxi : public TriggerSkillV2 {
 public:
     HShengxi() : TriggerSkillV2("heg_shengxi")
     {
-        events << DamageDone << EventPhaseStart << EventPhaseEnd;
+        events << EventPhaseEnd;
         frequency = Frequent;
         m_baseAmount = 2;
     }
-    void record(TriggerEvent event, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        if (!ctx.owner) return;
-        if (event == EventPhaseStart && ctx.owner == player && player->getPhase() == Player::Play)
-            ctx.owner->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "damaged");
-        if (event == DamageDone && ctx.original_data) {
-            const DamageStruct damage = ctx.original_data->value<DamageStruct>();
-            if (damage.from == ctx.owner && ctx.owner->getPhase() == Player::Play)
-                ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "damaged", true);
-        }
-    }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
-    {
-        if (event != EventPhaseEnd || !ownsHegemonySkill(player, objectName()) || player->getPhase() != Player::Play) return {};
-        QStringList names;
-        for (int id : player->getValidSkillInstanceIds(objectName()))
-            if (!player->getSkillInstanceStateValue(objectName(), id, "damaged", false).toBool())
-                names << SkillInstanceUtils::formatName(objectName(), id);
-        return names.isEmpty() ? TriggerList() : TriggerList{{player, names}};
+        if (!ownsHegemonySkill(player, objectName()) || player->getPhase() != Player::Play) return {};
+        const QVariant phase = room->historyScopes().value("phase_id");
+        if (phase.toLongLong() == 0) return {};
+        // Historical damage predates acquiring this skill too; a missing page is not zero damage.
+        const QVariantMap result = room->queryActualDamage({{"phase_id", phase}, {"from", player->objectName()}, {"limit", 1}});
+        if (!result.value("complete").toBool() || !result.value("items").toList().isEmpty()) return {};
+        return {{player, {objectName()}}};
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     { return invokeHegemonySkill(this, room, ctx.owner); }
@@ -942,6 +918,7 @@ public:
         const QVariant previous = ctx.owner->getTag("qianhuan_data");
         ctx.owner->setTag("qianhuan_data", *ctx.original_data);
         const auto restore = qScopeGuard([&] { ctx.owner->setTag("qianhuan_data", previous); });
+        Room::BorrowedSkillScope source(room, ctx.owner, objectName(), ctx.activationRef);
         const Card *card = room->askForUseCard(ctx.owner, "@@heg_qianhuan",
             "@heg_qianhuan-cancel::" + targetName + ":" + cardName, -1, Card::MethodNone);
         if (!card || card->getSubcards().size() != 1) return false;
@@ -1070,20 +1047,34 @@ public:
 class HJizhao : public TriggerSkillV2 {
 public:
     HJizhao() : TriggerSkillV2("heg_jizhao")
-    { events << AskForPeaches; frequency = Limited; limit_mark = "@heg_jizhao"; }
+    { events << AskForPeaches << EventSkillInvoking;
+        global = true; frequency = Limited; limit_mark = "@heg_jizhao"; }
     bool canPreshow() const override { return false; }
+    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *, QVariant &, QList<SkillContext> &) const override
+    { return event == EventSkillInvoking; }
+    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
+    {
+        if (event != EventSkillInvoking) return false;
+        const SkillContext accepted = data.value<SkillContext>();
+        // Normal payment commits the quota; bypassed payment still consumes this exact accepted source.
+        if (accepted.bypass_cost && accepted.activationRef.isValid()
+            && accepted.activationRef.key.skillName == objectName() && !accepted.use_card) addUsage(accepted);
+        return true;
+    }
+
     LimitScope getLimitScope() const override { return Limit_Game; }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        return ownsHegemonySkill(player, objectName()) && player->getHp() <= 0 && player->getMark(limit_mark) > 0
+        return ownsHegemonySkill(player, objectName()) && player->getHp() <= 0
             && data.value<DyingStruct>().who == player ? TriggerList{{player, {objectName()}}} : TriggerList();
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     { return ctx.original_data && invokeHegemonySkill(this, room, ctx.owner, *ctx.original_data); }
     bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!ctx.owner || ctx.owner->getMark(limit_mark) < 1) return false;
-        ctx.owner->loseMark(limit_mark);
+        if (!ctx.owner || !isUsable(ctx)) return false;
+        addUsage(ctx);
+        if (ctx.owner->getMark(limit_mark) > 0) ctx.owner->loseMark(limit_mark);
         room->doSuperLightbox("heg_lord_liubei", objectName());
         return true;
     }
@@ -1113,6 +1104,9 @@ HFormationPackage::HFormationPackage()
     caohong->addCompanion("heg_caoren");
     caohong->addSkill(new HHuyuan);
     caohong->addSkill(new HHeyi);
+    caohong->addSkill(new HFormationGrantClear);
+    insertRelatedSkills("heg_heyi", "#heg_formation-grant-clear");
+    insertRelatedSkills("heg_tianfu", "#heg_formation-grant-clear");
 
     General *jiangwei = new General(this, "heg_jiangwei", "shu"); // SHU 012 G
     jiangwei->addSkill("tiaoxin");

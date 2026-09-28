@@ -53,6 +53,16 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
+class YeyanV2Card : public ActiveSkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE YeyanV2Card();
+    using ActiveSkillCard::targetFilter;
+    bool targetFilter(const QList<const Player *> &targets, const Player *candidate,
+                      const Player *source, int &maxVotes) const override;
+};
+
 class YeyanCard : public SkillCard
 {
     Q_OBJECT

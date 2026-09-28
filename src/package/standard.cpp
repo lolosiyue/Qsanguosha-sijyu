@@ -680,24 +680,29 @@ int Horse::getCorrect(const Player *) const
     return correct;
 }
 
-class horseSkill : public DistanceSkill
+class horseSkill : public DistanceSkillV2
 {
 public:
     horseSkill(const Horse *horse)
-	: DistanceSkill(horse->objectName()), horse(horse)
+	: DistanceSkillV2(horse->objectName()), horse(horse)
     {
+        // Equipment effects do not manufacture player skill instances.
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getCorrect(const Player *from, const Player *to) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
+        const Player *from = ctx.primary;
+        const Player *to = ctx.secondary;
+        if (!from || !to) return CorrectSkillResult::noEffect();
         if (horse->inherits("OffensiveHorse")){
 			if (from->hasOffensiveHorse(horse->objectName()))
-				return horse->getCorrect(from);
+				return CorrectSkillResult::useAmount(horse->getCorrect(from));
 		}else if(horse->inherits("DefensiveHorse")){
 			if (to->hasDefensiveHorse(horse->objectName()))
-				return horse->getCorrect(to);
+				return CorrectSkillResult::useAmount(horse->getCorrect(to));
 		}
-		return 0;
+		return CorrectSkillResult::noEffect();
     }
 private:
 	const Horse *horse;
@@ -792,103 +797,120 @@ public:
     }
 };
 
-class GameRuleMaxCards : public MaxCardsSkill
+class GameRuleMaxCards : public MaxCardsSkillV2
 {
 public:
-    GameRuleMaxCards() : MaxCardsSkill("gamerulemaxcards")
+    GameRuleMaxCards() : MaxCardsSkillV2("gamerulemaxcards")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getExtra(const Player *target) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
+        const Player *target = ctx.primary;
+        if (!target) return CorrectSkillResult::noEffect();
         int extra = target->getMark("ExtraBfMaxCards")+target->getMark("ExtraBfMaxCards-Clear");
         foreach (const QString &mark, target->getMarkNames()) {
             if (mark.startsWith("ExtraBfMaxCards_"))
                 extra += target->getMark(mark);
         }
-        return extra;
+        return CorrectSkillResult::useAmount(extra);
     }
 };
 
-class GameRuleAttackRange : public AttackRangeSkill
+class GameRuleAttackRange : public AttackRangeSkillV2
 {
 public:
-    GameRuleAttackRange() : AttackRangeSkill("gameruleattackrange")
+    GameRuleAttackRange() : AttackRangeSkillV2("gameruleattackrange")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getExtra(const Player *target, bool) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        return target->getMark("ExtraBfAttackRange")+target->getMark("ExtraBfAttackRange-Clear");
+        return ctx.primary ? CorrectSkillResult::useAmount(
+            ctx.primary->getMark("ExtraBfAttackRange") + ctx.primary->getMark("ExtraBfAttackRange-Clear"))
+            : CorrectSkillResult::noEffect();
     }
 };
 
-class GameRuleSlashBuff : public TargetModSkill
+class GameRuleSlashBuff : public TargetModSkillV2
 {
 public:
-    GameRuleSlashBuff() : TargetModSkill("gameruleslashbuff")
+    GameRuleSlashBuff() : TargetModSkillV2("gameruleslashbuff")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getResidueNum(const Player *from, const Card *, const Player *) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        return from->getMark("ExtraBfSlashCishu")+from->getMark("ExtraBfSlashCishu-Clear");
-    }
-
-    int getDistanceLimit(const Player *from, const Card *, const Player *) const
-    {
-        return from->getMark("ExtraBfSlashJuli")+from->getMark("ExtraBfSlashJuli-Clear");
-    }
-
-    int getExtraTargetNum(const Player *from, const Card *) const
-    {
-        return from->getMark("ExtraBfSlashMubiao")+from->getMark("ExtraBfSlashMubiao-Clear");
+        if (!ctx.primary) return CorrectSkillResult::noEffect();
+        QString mark;
+        switch (ctx.modType) {
+        case Residue: mark = "ExtraBfSlashCishu"; break;
+        case DistanceLimit: mark = "ExtraBfSlashJuli"; break;
+        case ExtraTarget: mark = "ExtraBfSlashMubiao"; break;
+        default: return CorrectSkillResult::noEffect();
+        }
+        return CorrectSkillResult::useAmount(
+            ctx.primary->getMark(mark) + ctx.primary->getMark(mark + "-Clear"));
     }
 };
 
-class GameRuleDistanceFrom : public DistanceSkill
+class GameRuleDistanceFrom : public DistanceSkillV2
 {
 public:
-    GameRuleDistanceFrom() : DistanceSkill("gameruledistancefrom")
+    GameRuleDistanceFrom() : DistanceSkillV2("gameruledistancefrom")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getCorrect(const Player *from, const Player *) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        return from->getMark("ExtraBfDistanceFrom")+from->getMark("ExtraBfDistanceFrom-Clear");
+        return ctx.primary ? CorrectSkillResult::useAmount(
+            ctx.primary->getMark("ExtraBfDistanceFrom") + ctx.primary->getMark("ExtraBfDistanceFrom-Clear"))
+            : CorrectSkillResult::noEffect();
     }
 };
 
-class GameRuleDistanceTo : public DistanceSkill
+class GameRuleDistanceTo : public DistanceSkillV2
 {
 public:
-    GameRuleDistanceTo() : DistanceSkill("gameruledistanceto")
+    GameRuleDistanceTo() : DistanceSkillV2("gameruledistanceto")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getCorrect(const Player *, const Player *to) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        return to->getMark("ExtraBfDistanceTo")+to->getMark("ExtraBfDistanceTo-Clear");
+        return ctx.secondary ? CorrectSkillResult::useAmount(
+            ctx.secondary->getMark("ExtraBfDistanceTo") + ctx.secondary->getMark("ExtraBfDistanceTo-Clear"))
+            : CorrectSkillResult::noEffect();
     }
 };
 
-class GameRuleState : public TriggerSkill
+class GameRuleState : public TriggerSkillV2
 {
 public:
-    GameRuleState() : TriggerSkill("gamerulestate")
+    GameRuleState() : TriggerSkillV2("gamerulestate")
     {
         events << GameStart << EventAcquireSkill << EventLoseSkill << BeforeCardsMove;
         frequency = Compulsory;
         global = true;
     }
 
-    int getPriority(TriggerEvent) const
+    bool usesEventPriority() const override { return true; }
+
+    int getPriority(TriggerEvent) const override
     {
         return 9;
     }
 
-    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
+        // These are global rule bookkeeping and destination constraints, not a
+        // player activation. Run once at priority 9, even without skill holders.
+        if (!player) return true;
         if (event == GameStart) {
             foreach (const Skill *sk, player->getSkillList()) {
                 if (sk->isChangeSkill()) {
@@ -922,7 +944,7 @@ public:
 					}
 					ids << id;
 				}
-				if (ids.isEmpty()) return false;
+				if (ids.isEmpty()) return true;
 				move.removeCardIds(ids);
 				data = QVariant::fromValue(move);
 				room->throwCard(ids, move.reason.m_skillName, nullptr);
@@ -936,13 +958,13 @@ public:
 					}
 					ids << id;
 				}
-				if (ids.isEmpty()) return false;
+				if (ids.isEmpty()) return true;
 				move.removeCardIds(ids);
 				data = QVariant::fromValue(move);
 				room->throwCard(ids, move.reason.m_skillName, nullptr);
 			}
 		}
-        return false;
+        return true;
     }
 };
 

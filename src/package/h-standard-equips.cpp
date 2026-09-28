@@ -28,6 +28,7 @@
 #include "roomthread.h"
 #include "serverplayer.h"
 #include "clientplayer.h"
+#include <QScopeGuard>
 
 HSixSwords::HSixSwords(Suit suit, int number)
     : Weapon(suit, number, 2)
@@ -63,6 +64,7 @@ class HTribladeSkillVS : public ViewAsSkillV2{
 public:
     HTribladeSkillVS() : ViewAsSkillV2("heg_Triblade", 1){
     }
+    bool isEquipSkill() const override { return true; }
 
     bool canActivate(const ActiveSkillRequest &request) const override{
         return request.initiator && request.initiator->isAlive()
@@ -106,7 +108,25 @@ public:
         view_as_skill = new HTribladeSkillVS;
     }
 
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override {
+        const DamageStruct damage = data.value<DamageStruct>();
+        return WeaponSkillV2::triggerable(player) && damage.to && damage.to->isAlive()
+            && damage.card && damage.card->isKindOf("Slash") && damage.by_user && !damage.chain && !damage.transfer
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+
     bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override{
+        QList<ServerPlayer *> previous;
+        const QList<ServerPlayer *> allPlayers = room->getAllPlayers(true);
+        for (ServerPlayer *target : allPlayers) {
+            if (target->hasFlag("TribladeCanBeSelected")) previous << target;
+            room->setPlayerFlag(target, "-TribladeCanBeSelected");
+        }
+        const auto cleanup = qScopeGuard([&] {
+            // Nested damage requests must not inherit or erase another selection's candidates.
+            for (ServerPlayer *target : allPlayers)
+                room->setPlayerFlag(target, previous.contains(target) ? "TribladeCanBeSelected" : "-TribladeCanBeSelected");
+        });
         DamageStruct damage = ctx.original_data->value<DamageStruct>();
         if (damage.to && damage.to->isAlive() && damage.card && damage.card->isKindOf("Slash")
             && damage.by_user && !damage.chain && !damage.transfer){
@@ -121,10 +141,6 @@ public:
                 return false;
             room->askForUseCard(player, "@@heg_Triblade", "@heg_Triblade");
         }
-
-        foreach (ServerPlayer *p, room->getAllPlayers())
-            if (p->hasFlag("TribladeCanBeSelected"))
-                room->setPlayerFlag(p, "-TribladeCanBeSelected");
 
         return false;
     }

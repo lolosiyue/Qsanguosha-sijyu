@@ -111,11 +111,13 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class Chengxiang : public MasochismSkill
+class Chengxiang : public TriggerSkillV2
 {
 public:
     Chengxiang();
-    void onDamaged(ServerPlayer *target, const DamageStruct &damage) const;
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override;
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override;
 
 protected:
     int total_point;

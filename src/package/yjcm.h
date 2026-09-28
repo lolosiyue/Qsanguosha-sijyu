@@ -21,14 +21,16 @@ public:
     NostalgiaYJCMPackage();
 };
 
-class Shangshi : public TriggerSkill
+class Shangshi : public TriggerSkillV2
 {
 public:
     Shangshi();
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *zhangchunhua, QVariant &data) const;
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override;
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override;
 
 protected:
-    virtual int getMaxLostHp(ServerPlayer *zhangchunhua) const;
+    virtual int getMaxLostHp(ServerPlayer *player) const;
 };
 
 class MingceCard : public SkillCard

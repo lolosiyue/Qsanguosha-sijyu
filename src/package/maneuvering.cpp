@@ -279,7 +279,8 @@ public:
             log.from = player;
             log.to << damage.to;
             log.arg = QString::number(damage.damage);
-            log.arg2 = QString::number(++damage.damage);
+            damage.damage += getEffectiveAmount(ctx);
+            log.arg2 = QString::number(damage.damage);
             room->sendLog(log);
             room->notifySkillInvoked(player, objectName());
 
@@ -349,7 +350,8 @@ public:
         log.type = "#VineDamage";
         log.from = player;
         log.arg = QString::number(damage.damage);
-        log.arg2 = QString::number(++damage.damage);
+        damage.damage += getEffectiveAmount(ctx);
+        log.arg2 = QString::number(damage.damage);
         room->sendLog(log);
         room->notifySkillInvoked(player, objectName());
         data = QVariant::fromValue(damage);
@@ -422,9 +424,9 @@ public:
             log.arg2 = objectName();
             room->sendLog(log);
             room->notifySkillInvoked(player, objectName());
-            damage.damage = 1;
+            damage.damage = qMin(damage.damage, qMax(0, getEffectiveAmount(ctx)));
             data = QVariant::fromValue(damage);
-            return false;
+            return damage.damage == 0;
         }
 
         CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
@@ -436,6 +438,7 @@ public:
             room->setEmotion(player, "armor/silver_lion");
             RecoverStruct recover;
             recover.card = card;
+            recover.recover = getEffectiveAmount(ctx);
             room->recover(player, recover);
             break;
         }

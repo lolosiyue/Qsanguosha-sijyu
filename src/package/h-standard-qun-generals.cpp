@@ -59,7 +59,8 @@ public:
         return request.initiator && ViewAsSkillV2::canSelectCard(request, card)
             && card->getEffectiveId() >= 0 && !request.selectedCardIds.contains(card->getEffectiveId())
             && !card->isEquipped()
-            && !publicHistory(request.initiator, LuanjiSuits).contains(card->getSuitString() + "_char");
+            && !request.initiator->getSkillInstanceStateValue(objectName(), request.activationRef.key.instanceID,
+                "paid_suits").toStringList().contains(card->getSuitString() + "_char");
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
@@ -82,6 +83,36 @@ public:
         return card;
     }
     QString historyKey(const ActiveSkillRequest &) const override { return "ArcheryAttack"; }
+    LimitScope getLimitScope() const override { return Limit_Custom; }
+    bool checkCustomUsage(const SkillContext &ctx) const override
+    {
+        return ctx.invoker && ctx.activationRef.isValid();
+    }
+    void addUsage(const SkillContext &ctx) const override
+    {
+        if (!ctx.invoker || !ctx.use_card || !ctx.activationRef.isValid()) return;
+        QStringList suits = ctx.invoker->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "paid_suits").toStringList();
+        for (int id : ctx.use_card->getSubcards()) {
+            const QString suit = Sanguosha->getCard(id)->getSuitString() + "_char";
+            if (!suits.contains(suit)) suits << suit;
+        }
+        ctx.invoker->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "paid_suits", suits);
+    }
+    void resetUsage(const SkillContext &ctx) const override
+    {
+        if (ctx.invoker && ctx.activationRef.isValid())
+            ctx.invoker->removeSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "paid_suits");
+    }
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request) || !ViewAsSkillV2::pay(room, ctx, request)) return false;
+        // Suit quota belongs to this activation instance; the old property is an AI projection only.
+        addUsage(ctx);
+        ctx.use_card->setTag("heg_luanji_receipt", QVariantMap{{"owner", ctx.sourceRef.ownerObjectName},
+            {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID},
+            {"amount", getEffectiveAmount(ctx)}});
+        return true;
+    }
 };
 
 class HLuanji : public TriggerSkillV2
@@ -89,13 +120,23 @@ class HLuanji : public TriggerSkillV2
 public:
     HLuanji() : TriggerSkillV2("heg_luanji")
     {
-        events << PreCardUsed;
+        events << PreCardUsed << EventSkillInvoking;
+        global = true;
         view_as_skill = new HLuanjiViewAsSkill;
     }
     bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent) const override { return 3; }
-    bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
+        if (event == EventSkillInvoking) {
+            const SkillContext accepted = data.value<SkillContext>();
+            if (accepted.bypass_cost && accepted.activationRef.key.skillName == objectName() && accepted.use_card) {
+                view_as_skill->addUsage(accepted);
+                accepted.use_card->setTag("heg_luanji_receipt", QVariantMap{{"owner", accepted.sourceRef.ownerObjectName},
+                    {"skill", accepted.sourceRef.key.skillName}, {"instance", accepted.sourceRef.key.instanceID}, {"amount", accepted.amount}});
+            }
+            return true;
+        }
         const CardUseStruct use = data.value<CardUseStruct>();
         if (!player || use.from != player || !use.card || use.card->getSkillName() != objectName()) return true;
         QStringList suits = publicHistory(player, LuanjiSuits);
@@ -121,7 +162,7 @@ public:
     }
     bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent) const override { return -2; }
-    bool collectTriggerContexts(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data,
+    bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
         QList<SkillContext> &contexts) const override
     {
         if (!player || !player->isAlive()) return true;
@@ -132,9 +173,16 @@ public:
             && response.m_who && player->isFriendWith(response.m_who)) {
             SkillContext ctx;
             ctx.skill_name = objectName();
-            ctx.owner = player;
-            ctx.invoker = player;
-            ctx.initiator = player;
+            const QVariantMap receipt = response.m_toCard->getTag("heg_luanji_receipt").toMap();
+            if (receipt.isEmpty()) return true;
+            ctx.sourceRef = SkillInstanceRef(receipt.value("owner").toString(),
+                SkillInstanceKey(receipt.value("skill").toString(), receipt.value("instance").toInt()));
+            ctx.owner = room->findPlayerByObjectName(ctx.sourceRef.ownerObjectName, true);
+            if (!ctx.owner) return true;
+            ctx.invoker = response.m_who;
+            ctx.initiator = response.m_who;
+            ctx.targets = {player};
+            ctx.amount = receipt.value("amount", 1).toInt();
             ctx.original_data = &data;
             ctx.current_event = event;
             contexts << ctx;
@@ -143,16 +191,16 @@ public:
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
     {
-        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.original_data) return false;
+        if (ctx.targets.isEmpty() || !ctx.targets.first()->isAlive() || !ctx.original_data) return false;
         const CardResponseStruct response = ctx.original_data->value<CardResponseStruct>();
         return response.m_card && response.m_card->isKindOf("Jink") && response.m_toCard
             && response.m_toCard->getSkillName() == "heg_luanji"
-            && response.m_who && ctx.owner->isFriendWith(response.m_who);
+            && response.m_who && ctx.targets.first()->isFriendWith(response.m_who);
     }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         if (!ctx.owner || !ctx.original_data) return false;
-        ServerPlayer *player = ctx.owner;
+        ServerPlayer *player = ctx.targets.first();
         LogMessage log;
         log.type = "#LuanjiDraw";
         log.from = player;
@@ -160,9 +208,10 @@ public:
         room->sendLog(log);
         return room->askForChoice(player, "luanji_draw", "yes+no", *ctx.original_data, QString(), "@heg_luanji-draw") == "yes";
     }
-    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        ctx.owner->drawCards(1, "heg_luanji");
+        // The paid card retains its source even after that skill instance is removed.
+        target->drawCards(getEffectiveAmount(ctx), "heg_luanji");
         return false;
     }
 };
@@ -181,6 +230,8 @@ public:
     {
         for (ServerPlayer *player : room->getAllPlayers(true)) {
             if (!publicHistory(player, LuanjiSuits).isEmpty()) room->setPlayerProperty(player, LuanjiSuits, QString());
+            for (int id : player->getSkillInstanceIds("heg_luanji"))
+                player->removeSkillInstanceStateValue("heg_luanji", id, "paid_suits");
 
         }
         return true;

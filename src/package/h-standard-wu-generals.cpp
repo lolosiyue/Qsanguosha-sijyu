@@ -71,11 +71,64 @@ public:
         return ctx.owner && ctx.owner->isAlive() && ctx.owner->askForSkillInvoke(this);
     }
 
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
     {
-        if (ctx.owner && ctx.owner->isAlive())
-            room->moveField(ctx.owner, objectName(), true, "ej");
+        ctx.manual_effect = true;
+        for (int i = 0; i < getEffectiveAmount(ctx) && ctx.owner->isAlive(); ++i) {
+            QList<ServerPlayer *> sources;
+            for (ServerPlayer *from : room->getAlivePlayers())
+                for (const Card *card : from->getCards("ej"))
+                    if (!destinations(room, ctx.owner, from, card).isEmpty()) { sources << from; break; }
+            if (sources.isEmpty()) break;
+            ServerPlayer *from = room->askForPlayerChosen(ctx.owner, sources, objectName(), "@movefield-from", true);
+            if (!from) break;
+            QList<int> disabled;
+            for (const Card *card : from->getCards("ej"))
+                if (destinations(room, ctx.owner, from, card).isEmpty()) disabled << card->getEffectiveId();
+            const int id = room->askForCardChosen(ctx.owner, from, "ej", objectName(), false, Card::MethodNone, disabled);
+            const Card *card = id >= 0 ? Sanguosha->getCard(id) : nullptr;
+            const auto receivers = destinations(room, ctx.owner, from, card);
+            if (receivers.isEmpty()) break;
+            ServerPlayer *to = room->askForPlayerChosen(ctx.owner, receivers, objectName(), "@movefield-to:" + card->objectName());
+            if (!to) break;
+            const Player::Place place = room->getCardPlace(id);
+            ctx.extra_data = QVariantList();
+            // Both affected seats must accept before the single field transfer commits.
+            skillEffect(event, room, player, ctx, from);
+            skillEffect(event, room, player, ctx, to);
+            if (ctx.extra_data.toList().size() != 2 || room->getCardPlace(id) != place
+                || !destinations(room, ctx.owner, from, card).contains(to)) continue;
+            room->moveCardTo(card, from, to, place,
+                CardMoveReason(CardMoveReason::S_REASON_TRANSFER, ctx.owner->objectName(), objectName(), QString()), true);
+        }
         return false;
+    }
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        QVariantList approved = ctx.extra_data.toList();
+        approved << target->objectName();
+        ctx.extra_data = approved;
+        return false;
+    }
+private:
+    static QList<ServerPlayer *> destinations(Room *room, ServerPlayer *actor, ServerPlayer *from, const Card *card)
+    {
+        QList<ServerPlayer *> result;
+        if (!actor->isAlive() || !from || !from->isAlive() || !card || !from->canMove(from, card->getEffectiveId())
+            || room->getCardOwner(card->getEffectiveId()) != from) return result;
+        const Player::Place place = room->getCardPlace(card->getEffectiveId());
+        for (ServerPlayer *to : room->getAlivePlayers()) {
+            if (to == from || actor->isProhibited(to, card)) continue;
+            if (place == Player::PlaceEquip) {
+                const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+                if (!equip) continue;
+                bool free = true;
+                for (int slot : equip->getOccupyLocations())
+                    if (!to->hasEquipArea(slot) || to->getEquips(slot).size() >= to->getEquipArea(slot)) { free = false; break; }
+                if (free) result << to;
+            } else if (place == Player::PlaceDelayedTrick && to->hasJudgeArea() && !to->containsTrick(card->objectName())) result << to;
+        }
+        return result;
     }
 };
 
@@ -151,6 +204,22 @@ public:
         if (context.invoker && context.invoker->isAlive() && count > 0)
             context.invoker->drawCards(count, objectName());
         return ContinueEffects;
+    }
+};
+
+// Active bypass skips cost(), so publish the selected count before effect hooks.
+class HZhihengCount : public TriggerSkillV2
+{
+public:
+    HZhihengCount() : TriggerSkillV2("#heg_zhiheng-count") { events << EventSkillInvoking; global = true; }
+    bool recordEvent(TriggerEvent, Room *, ServerPlayer *, QVariant &data) const override
+    {
+        SkillContext accepted = data.value<SkillContext>();
+        if (accepted.bypass_cost && accepted.use_card && accepted.skill_name == "heg_zhiheng") {
+            accepted.amount = accepted.use_card->subcardsLength();
+            data.setValue(accepted);
+        }
+        return true;
     }
 };
 
@@ -236,16 +305,22 @@ public:
         return cardSelectionFeasible(request) ? ViewAsSkillV2::createCard(request) : nullptr;
     }
 
-    EffectFlow effect(SkillContext &context) const override
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
     {
-        ServerPlayer *invoker = context.invoker;
-        Room *room = invoker ? invoker->getRoom() : nullptr;
-        if (!invoker || !room) return ContinueEffects;
-        room->loseHp(invoker, 1, true, invoker, objectName());
-        if (!invoker->isAlive()) return ContinueEffects;
-        invoker->drawCards(3, objectName());
-        // Slash quota lives only for this turn; the flag clears at turn end.
-        room->setPlayerFlag(invoker, "heg_kurouInvoked");
+        if (!ViewAsSkillV2::pay(room, ctx, request)) return false;
+        room->loseHp(HpLostStruct(ctx.invoker, 1, objectName(), ctx.invoker));
+        return true;
+    }
+    EffectFlow effect(SkillContext &ctx) const override
+    {
+        if (!ctx.invoker || !ctx.invoker->isAlive()) return ContinueEffects;
+        Room *room = ctx.invoker->getRoom();
+        ctx.invoker->drawCards(3 * getEffectiveAmount(ctx), objectName());
+        QVariantMap receipts = ctx.invoker->property("heg_kurou_receipts").toMap();
+        receipts.insert(QString::number(ctx.activationRef.key.instanceID), QVariantMap{{"owner", ctx.sourceRef.ownerObjectName},
+            {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}});
+        room->setPlayerProperty(ctx.invoker, "heg_kurou_receipts", receipts);
+        room->setPlayerFlag(ctx.invoker, "heg_kurouInvoked");
         return ContinueEffects;
     }
 };
@@ -253,14 +328,26 @@ public:
 class HKurouTarget : public TargetModSkillV2
 {
 public:
-    HKurouTarget() : TargetModSkillV2("#heg_kurou-target") {}
-
+    HKurouTarget() : TargetModSkillV2("#heg_kurou-target") { setHolderSelector(CorrectSkill_System); }
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        return ctx.modType == TargetModSkill::Residue && ctx.holder
-            && ctx.holder->hasFlag("heg_kurouInvoked")
-            && ctx.card && ctx.card->isKindOf("Slash")
-            ? CorrectSkillResult::useAmount(1) : CorrectSkillResult::noEffect();
+        if (ctx.modType != TargetModSkill::Residue || !ctx.primary || !ctx.card || !ctx.card->isKindOf("Slash")) return CorrectSkillResult::noEffect();
+        int amount = 0;
+        for (const QVariant &entry : ctx.primary->property("heg_kurou_receipts").toMap()) amount += entry.toMap().value("amount").toInt();
+        // Paid turn effects survive removal of their granting skill.
+        return amount > 0 ? CorrectSkillResult::useAmount(amount) : CorrectSkillResult::noEffect();
+    }
+};
+
+class HKurouClear : public TriggerSkillV2
+{
+public:
+    HKurouClear() : TriggerSkillV2("#heg_kurou-clear") { events << EventPhaseChanging; global = true; }
+    bool recordEvent(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const override
+    {
+        if (data.value<PhaseChangeStruct>().to == Player::NotActive)
+            for (ServerPlayer *player : room->getAllPlayers(true)) room->setPlayerProperty(player, "heg_kurou_receipts", QVariantMap());
+        return true;
     }
 };
 
@@ -329,6 +416,8 @@ void HStandardPackage::addWuGenerals()
     General *sunquan = new General(this, "heg_sunquan", "wu"); // WU 001
     sunquan->addCompanion("heg_zhoutai");
     sunquan->addSkill(new HZhiheng);
+    sunquan->addSkill(new HZhihengCount);
+    insertRelatedSkills("heg_zhiheng", "#heg_zhiheng-count");
 
     General *ganning = new General(this, "heg_ganning", "wu"); // WU 002
     ganning->addSkill("qixi");
@@ -340,6 +429,8 @@ void HStandardPackage::addWuGenerals()
     General *huanggai = new General(this, "heg_huanggai", "wu"); // WU 004
     huanggai->addSkill(new HKurou);
     huanggai->addSkill(new HKurouTarget);
+    huanggai->addSkill(new HKurouClear);
+    insertRelatedSkills("heg_kurou", "#heg_kurou-clear");
     insertRelatedSkills("heg_kurou", "#heg_kurou-target");
 
     General *zhouyu = new General(this, "heg_zhouyu", "wu", 3); // WU 005

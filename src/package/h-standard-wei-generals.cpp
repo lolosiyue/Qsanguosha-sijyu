@@ -143,32 +143,51 @@ public:
 
 class HLuoyi : public TriggerSkillV2 {
 public:
-    HLuoyi() : TriggerSkillV2("heg_luoyi") { events << EventPhaseEnd << DamageCaused << EventPhaseChanging; }
-    void record(TriggerEvent event, Room *, ServerPlayer *player, SkillContext &ctx) const override {
-        if (event == EventPhaseChanging && player == ctx.owner && ctx.original_data
-            && ctx.original_data->value<PhaseChangeStruct>().to == Player::NotActive)
-            player->removeSkillInstanceStateValue(objectName(), ctx.instanceID, "active");
+    HLuoyi() : TriggerSkillV2("heg_luoyi") { events << EventPhaseEnd << DamageCaused << EventPhaseChanging; global = true; }
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override {
+        if (event == EventPhaseChanging && player && data.value<PhaseChangeStruct>().to == Player::NotActive)
+            room->setPlayerProperty(player, "heg_luoyi_receipts", QVariantMap());
+        return true;
     }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override {
-        if (!player || !player->isAlive() || !player->hasSkill(objectName())) return {};
-        if (event == EventPhaseEnd && player->getPhase() == Player::Draw && player->canDiscard(player, "he"))
-            return {{player, {objectName()}}};
-        if (event == DamageCaused) {
-            DamageStruct damage = data.value<DamageStruct>();
-            if (damage.card && (damage.card->isKindOf("Slash") || damage.card->isKindOf("Duel"))
-                && !damage.chain && !damage.transfer) {
-                QStringList active;
-                for (int id : player->getValidSkillInstanceIds(objectName()))
-                    if (player->getSkillInstanceStateValue(objectName(), id, "active", false).toBool())
-                        active << SkillInstanceUtils::formatName(objectName(), id);
-                if (!active.isEmpty()) return {{player, active}};
-            }
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override {
+        return event == EventPhaseEnd && player && player->isAlive() && player->hasSkill(objectName())
+            && player->getPhase() == Player::Draw && player->canDiscard(player, "he")
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+    bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
+                                QList<SkillContext> &contexts) const override {
+        if (event != DamageCaused) return false;
+        const DamageStruct damage = data.value<DamageStruct>();
+        if (!player || !player->isAlive() || damage.from != player || !damage.card || damage.chain || damage.transfer
+            || (!damage.card->isKindOf("Slash") && !damage.card->isKindOf("Duel"))) return true;
+        const QVariantMap receipts = player->property("heg_luoyi_receipts").toMap();
+        for (auto it = receipts.cbegin(); it != receipts.cend(); ++it) {
+            const QVariantMap receipt = it.value().toMap();
+            SkillContext ctx;
+            ctx.skill_name = objectName();
+            ctx.sourceRef = SkillInstanceRef(receipt.value("owner").toString(),
+                SkillInstanceKey(receipt.value("skill").toString(), receipt.value("instance").toInt()));
+            ctx.owner = room->findPlayerByObjectName(ctx.sourceRef.ownerObjectName, true);
+            if (!ctx.owner) continue;
+            ctx.invoker = player;
+            ctx.initiator = player;
+            ctx.original_data = &data;
+            ctx.current_event = event;
+            ctx.amount = receipt.value("amount", 1).toInt();
+            ctx.extra_data = it.key();
+            contexts << ctx;
         }
-        return {};
+        return true;
+    }
+    bool isSourceAvailable(Room *room, const SkillContext &ctx) const override {
+        if (ctx.current_event != DamageCaused) return TriggerSkillV2::isSourceAvailable(room, ctx);
+        // The paid enhancement survives detachment/invalidation of its original source.
+        return ctx.invoker && ctx.invoker->isAlive()
+            && ctx.invoker->property("heg_luoyi_receipts").toMap().contains(ctx.extra_data.toString());
     }
     bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override {
         if (event == DamageCaused)
-            return ctx.owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "active", false).toBool();
+            return true;
         const Card *card = room->askForCard(ctx.owner, "..", "@heg_luoyi", QVariant(), Card::MethodNone,
                                            nullptr, false, objectName());
         if (!card || card->isVirtualCard() || !ctx.owner->canDiscard(ctx.owner, card->getEffectiveId())) return false;
@@ -189,7 +208,11 @@ public:
             *ctx.original_data = QVariant::fromValue(damage);
         } else {
             room->broadcastSkillInvoke(objectName(), ctx.owner);
-            ctx.owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "active", true);
+            QVariantMap receipts = ctx.owner->property("heg_luoyi_receipts").toMap();
+            const QString key = ctx.sourceRef.ownerObjectName + ":" + QString::number(ctx.sourceRef.key.instanceID);
+            receipts[key] = QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
+                {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}};
+            room->setPlayerProperty(ctx.owner, "heg_luoyi_receipts", receipts);
         }
         return false;
     }
@@ -327,7 +350,7 @@ public:
         if (!fallback) return false;
         const Card *selection = room->askForCard(owner, "@@heg_jushou!", "@heg_jushou", QVariant(), Card::MethodNone);
         const Card *card = selection ? Sanguosha->getCard(selection->getEffectiveId()) : fallback;
-        if (card->isKindOf("EquipCard")) room->useCard(CardUseStruct(card, owner, owner));
+        if (card->isKindOf("EquipCard")) room->useCardFromSkillEffect(CardUseStruct(card, owner, owner), ctx);
         else room->throwCard(card, objectName(), owner);
         if (count > 2 && owner->isAlive()) owner->turnOver();
         return false;
@@ -336,9 +359,10 @@ public:
 
 class HQiangxi : public ViewAsSkillV2 {
 public:
-    HQiangxi() : ViewAsSkillV2("heg_qiangxi", 1) {}
+    HQiangxi() : ViewAsSkillV2("heg_qiangxi", 1) { setPhaseName("Play"); }
+    LimitScope getLimitScope() const override { return Limit_Phase; }
     bool canActivate(const ActiveSkillRequest &request) const override {
-        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY && !request.initiator->hasUsed("HQiangxiCard");
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
     }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override {
         return ViewAsSkillV2::canSelectCard(request, card) && card->isKindOf("Weapon") && !request.initiator->isJilei(card);
@@ -357,8 +381,10 @@ public:
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override { return targets.size() == 1; }
     QString historyKey(const ActiveSkillRequest &) const override { return "HQiangxiCard"; }
     bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override {
-        if (request.selectedCardIds.isEmpty()) { room->loseHp(ctx.initiator, 1, true, ctx.initiator, objectName()); return true; }
-        return ViewAsSkillV2::pay(room, ctx, request);
+        // Reserve this instance's use for both payment alternatives.
+        if (!ViewAsSkillV2::pay(room, ctx, request)) return false;
+        if (request.selectedCardIds.isEmpty()) room->loseHp(ctx.initiator, 1, true, ctx.initiator, objectName());
+        return true;
     }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override {
         ctx.owner->getRoom()->damage(DamageStruct(objectName(), ctx.owner, target, getEffectiveAmount(ctx)));
@@ -438,7 +464,8 @@ public:
         room->broadcastSkillInvoke(objectName(), ctx.owner);
         Slash *slash = new Slash(Card::NoSuit, 0);
         slash->setSkillName("_heg_shensu");
-        room->useCard(CardUseStruct(slash, ctx.owner, ctx.targets), false);
+        slash->deleteLater();
+        room->useCardFromSkillEffect(CardUseStruct(slash, ctx.owner, ctx.targets), ctx, false);
         return false;
     }
 };
