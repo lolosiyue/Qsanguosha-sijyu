@@ -81,8 +81,9 @@ public:
 
     inline QString objectName(bool different_slash = true) const
     {
-		Q_ASSERT(different_slash);
-		return QObject::objectName();
+        if (!different_slash && isKindOf("Slash"))
+            return QStringLiteral("slash");
+        return QObject::objectName();
     }
 
     // property getters/setters
