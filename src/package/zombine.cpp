@@ -166,6 +166,19 @@ public:
         return true;
     }
 
+    void record(TriggerEvent event, Room *, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        if (event != EventPhaseStart || !player || ctx.owner != player
+            || player->getPhase() != Player::RoundStart || !ctx.activationRef.isValid())
+            return;
+        // Freeze eligibility before any turn-start effect draws cards. Marks gained
+        // while this event resolves are not another copy of the same turn start.
+        const QString name = ctx.activationRef.key.skillName;
+        const int id = ctx.activationRef.key.instanceID;
+        const int pending = ctx.owner->getSkillInstanceStateValue(name, id, "pending", 0).toInt();
+        ctx.owner->setSkillInstanceStateValue(name, id, "round_ready", pending);
+    }
+
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         if (!player || !player->isAlive() || !player->hasSkill(this)) return {};
@@ -176,7 +189,7 @@ public:
         } else if (event == EventPhaseStart && player->getPhase() == Player::RoundStart) {
             QStringList names;
             for (int id : player->getValidSkillInstanceIds(objectName())) {
-                if (player->getSkillInstanceStateValue(objectName(), id, "pending", 0).toInt() > 0)
+                if (player->getSkillInstanceStateValue(objectName(), id, "round_ready", 0).toInt() > 0)
                     names << SkillInstanceUtils::formatName(objectName(), id);
             }
             if (!names.isEmpty()) return {{player, names}};
@@ -190,15 +203,17 @@ public:
         if (!owner || !ctx.activationRef.isValid()) return false;
         const QString name = ctx.activationRef.key.skillName;
         const int id = ctx.activationRef.key.instanceID;
-        const int pending = owner->getSkillInstanceStateValue(name, id, "pending", 0).toInt();
         if (event == Damage && ctx.original_data) {
             const int gained = ctx.original_data->value<DamageStruct>().damage;
             if (gained <= 0) return false;
+            const int pending = owner->getSkillInstanceStateValue(name, id, "pending", 0).toInt();
             owner->setSkillInstanceStateValue(name, id, "pending", pending + gained);
             refreshMark(room, owner);
-        } else if (event == EventPhaseStart && pending > 0) {
+        } else if (event == EventPhaseStart) {
+            const int ready = owner->getSkillInstanceStateValue(name, id, "round_ready", 0).toInt();
+            if (ready <= 0) return false;
             // Snapshot only. A canceled target effect must keep the marks.
-            ctx.extra_data = pending;
+            ctx.extra_data = ready;
             ctx.targets = {owner};
         }
         return false;
@@ -215,6 +230,7 @@ public:
         if (consumed <= 0) return false;
         // Marks added while this target effect was being intercepted stay on the instance.
         ctx.owner->setSkillInstanceStateValue(name, id, "pending", current - consumed);
+        ctx.owner->setSkillInstanceStateValue(name, id, "round_ready", 0);
         refreshMark(room, ctx.owner);
         const int draw = consumed * 3 * getEffectiveAmount(ctx);
         if (draw > 0) target->drawCards(draw, objectName());
