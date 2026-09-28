@@ -51,9 +51,9 @@
 | `mobile` | 繼續 legacy 家族；Fuman 巢狀階段配額、來源／受益者及「下回合結束」期限；Zhuhe 正文與 C++ 牌來源版本差異待裁定 |
 | `mobileshiji` | Xingzhen 尚未遷移；Mouli／Miewu 提供牌完成事件、Yaohu 及全檔生命週期待複審。本次只修 Yaohu 顯示鍵多餘冒號 |
 | `mobile-strengthen` | 已無盤點中的直接 legacy，但 Dingpin 的 response-use 歷史、Benxi 取消清理、MobileAnjian 目標鉤子、MobileZhuikong 受益者／期限尚未閉合；最後一批修正需讀回 |
-| `ol` | TongxieTargetMod 已拆成 System 修正：`#tongxie-target` 只處理 `tongxie_slash`；dongxin、bianyu、quanyu、qiangang、chixin、gengzhan、maozhu、ol2shanjia、wangong 各自註冊一次，不乘同協實例。同協本體與 TongxieEffect 仍舊制（共享 `&tongxie+#` 標記，逐實例會雙倍摸牌／抵傷）。直接 legacy 347。未建置、未對局 |
-| `ol-strengthen` | 已遷 Jijiang、Qiaobian 族、Jiushi、Dangxian、Huashen／Select／Clear；OLQingjian 取消時按原牌堆收據還原。ol_zuoci 仍掛標準 V2 Xinsheng，化身池改為與它相同的私有 `Huashens`／`huashen_general`。仍舊制 5：OLGuhuo、OLXianzhou、OLJiaozhaoVS、OLJiaozhao、OLDanxin。Guhuo 與 Jiaozhao／Danxin 的裁定見 PR，未改規則。未建置、未對局 |
-| `olwenwu` | 直接 legacy 仍為 0。JinTairan 回執改在回復與摸牌之後發布；標記按各回執快照重算；失去體力前取消會還原回執，進入 `loseHp` 後不還原。歷史查詢不完整時不發布猜測處罰。未建置、未對局 |
+| `ol` | TongxieTargetMod 已拆成 System 修正：`#tongxie-target` 只處理 `tongxie_slash`；dongxin、bianyu、quanyu、qiangang、chixin、gengzhan、maozhu、ol2shanjia、wangong 各自註冊一次，不乘同協實例。同協本體與 TongxieEffect 仍舊制（共享 `&tongxie+#` 標記，逐實例會雙倍摸牌／抵傷）。直接 legacy 347。三個翻譯單元曾以 Qt 6.4.2／g++ 13 的 server 設定編譯；同協拆分區段沒有診斷，同檔其餘既有錯誤仍在。未對局 |
+| `ol-strengthen` | 已遷 Jijiang、Qiaobian 族、Jiushi、Dangxian、Huashen／Select／Clear；OLQingjian 取消時按原牌堆收據還原。ol_zuoci 仍掛標準 V2 Xinsheng，化身池改為與它相同的私有 `Huashens`／`huashen_general`。仍舊制 5：OLGuhuo、OLXianzhou、OLJiaozhaoVS、OLJiaozhao、OLDanxin。Guhuo 與 Jiaozhao／Danxin 的裁定見 PR，未改規則。翻譯單元曾編譯；新家族區段沒有診斷，同檔其餘既有錯誤仍在。未對局 |
+| `olwenwu` | 直接 legacy 仍為 0。JinTairan 回執改在回復與摸牌之後發布；標記按各回執快照重算；失去體力前取消會還原回執，進入 `loseHp` 後不還原。歷史查詢不完整時不發布猜測處罰。翻譯單元曾編譯；JinTairan 區段沒有診斷，同檔其餘既有錯誤仍在。未對局 |
 | `tenyear*` | 繼續剩餘家族；Tuicheng、Xianju、Yizhen、Jiewei、Xuanfeng、Kangming、Yongjin 等新批次待獨立讀回 |
 | `dream` | Mishou 首次殺機會在整體取消時的消耗、Tunshi 多實例授技裁定、最後一批修正尚未完整讀回 |
 | `yczh2016/2017`、`yin` | Jiaozhao／Danxin 的指定 findings 已閉；Taoluan、新 2017 家族、Juzhan／Chenglve／OLLijun 限時收據尚待完整複審 |
