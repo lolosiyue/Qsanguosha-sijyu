@@ -796,22 +796,58 @@ public:
         duel->addSubcards(request.initiator->getHandcards()); duel->setSkillName(objectName());
         return duel;
     }
-    bool pay(Room *, SkillContext &ctx, const ActiveSkillRequest &request) const override
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
     {
-        if (!ctx.initiator || !ctx.use_card || !canActivate(request)) return false;
-        const QList<int> ids = ctx.use_card->getSubcards();
+        if (!ctx.initiator || !ctx.use_card || !room || !canActivate(request)) return false;
         const QList<int> hand = ctx.initiator->handCards();
-        if (ids.isEmpty() || ids.size() != hand.size()) return false;
-        for (int id : ids) if (!hand.contains(id) || Sanguosha->getCard(id)->hasFlag("using")) return false;
+        const QList<int> ids = ctx.use_card->getSubcards();
+        if (hand.isEmpty() || ids.size() != hand.size()) return false;
+        QList<int> seen;
+        for (int id : ids) {
+            const Card *card = Sanguosha->getCard(id);
+            if (seen.contains(id) || !hand.contains(id) || !card || card->hasFlag("using")
+                || room->getCardOwner(id) != ctx.initiator || room->getCardPlace(id) != Player::PlaceHand) return false;
+            seen << id;
+        }
         return true;
     }
     EffectFlow effect(SkillContext &ctx) const override
     {
         if (!ctx.initiator || !ctx.use_card || !ctx.activationRef.isValid() || !ctx.sourceRef.isValid()) return FinishSkill;
         Room *room = ctx.initiator->getRoom();
+        if (!room) return FinishSkill;
+        const QList<int> hand = ctx.initiator->handCards();
+        if (hand.isEmpty()) return FinishSkill;
+        for (int id : hand) {
+            const Card *card = Sanguosha->getCard(id);
+            if (!card || card->hasFlag("using") || room->getCardOwner(id) != ctx.initiator
+                || room->getCardPlace(id) != Player::PlaceHand) return FinishSkill;
+        }
+        // Incomplete history is not "zero draws"; refuse the duel instead of guessing.
+        const int drawnCount = drawn(room, ctx.initiator, objectName(), ctx.activationRef.key.instanceID);
+        if (drawnCount < 0 || drawnCount >= 2) return FinishSkill;
+        const QList<int> ids = ctx.use_card->getSubcards();
+        bool match = ids.size() == hand.size();
+        if (match) {
+            QList<int> seen;
+            for (int id : ids) {
+                if (seen.contains(id) || !hand.contains(id)) { match = false; break; }
+                seen << id;
+            }
+        }
+        const Card *stamped = ctx.use_card;
+        if (!match) {
+            // Bypass skips pay, so the preview may not still be the whole hand.
+            Duel *duel = new Duel(Card::SuitToBeDecided, -1);
+            duel->addSubcards(hand);
+            duel->setSkillName(objectName());
+            duel->deleteLater();
+            ctx.updated_card = duel;
+            stamped = duel;
+        }
         const int serial = room->getTag("ZhanjueReceiptSerial").toInt() + 1;
         room->setTag("ZhanjueReceiptSerial", serial);
-        ctx.use_card->setTag("ZhanjueEffect", QVariantMap{{"serial", serial}, {"actor", ctx.initiator->objectName()},
+        stamped->setTag("ZhanjueEffect", QVariantMap{{"serial", serial}, {"actor", ctx.initiator->objectName()},
             {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName}, {"source_instance", ctx.sourceRef.key.instanceID},
             {"activation_owner", ctx.activationRef.ownerObjectName}, {"activation_skill", ctx.activationRef.key.skillName},
             {"activation_instance", ctx.activationRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}});
@@ -864,22 +900,24 @@ public:
         if (receipt.value("activation_skill").toString() != objectName() || receipt.value("actor").toString() != player->objectName()
             || receipt.value("use_id").toLongLong() != use.targetModReveal.useHistoryEventId || receipt.value("amount").toInt() <= 0) return true;
         const QVariantMap damage = room->queryCardUseDamage(use.targetModReveal.useHistoryEventId);
-        if (damage.contains("error") || !damage.value("complete").toBool()) return true;
+        const bool damageKnown = !damage.contains("error") && damage.value("complete").toBool();
         QList<ServerPlayer *> recipients;
-        for (const QVariant &entry : damage.value("items").toList()) {
-            ServerPlayer *target = room->findPlayerByObjectName(entry.toMap().value("data").toMap().value("to").toString(), true);
-            if (target) recipients << target;
-        }
-        // Preserve the canonical C++ version's no-damage boundary; OL always draws for the user.
-        if (objectName() == "zhanjue" && recipients.isEmpty()) return true;
-        recipients << player;
+        if (damageKnown) {
+            for (const QVariant &entry : damage.value("items").toList()) {
+                ServerPlayer *target = room->findPlayerByObjectName(entry.toMap().value("data").toMap().value("to").toString(), true);
+                if (target && !recipients.contains(target)) recipients << target;
+            }
+            // No recorded damage is not a draw. An incomplete journal is the same refusal, except OL's own draw does not depend on that list.
+            if (objectName() == "zhanjue" && recipients.isEmpty()) return true;
+        } else if (objectName() != "olzhanjue") return true;
+        if (!recipients.contains(player)) recipients << player;
         room->sortByActionOrder(recipients);
         SkillContext ctx;
         ctx.skill_name = objectName(); ctx.owner = ctx.invoker = ctx.initiator = player;
         ctx.sourceRef = SkillInstanceRef(receipt.value("source_owner").toString(), SkillInstanceKey(receipt.value("source_skill").toString(), receipt.value("source_instance").toInt()));
         if (!ctx.sourceRef.isValid()) return true;
         ctx.instanceID = receipt.value("serial").toInt(); ctx.extra_data = receipt;
-        ctx.original_data = &data; ctx.current_event = event; ctx.targets = recipients; ctx.forced = true;
+        ctx.original_data = &data; ctx.current_event = event; ctx.targets = recipients; ctx.is_forced = true;
         ctx.setModifiedAmount(receipt.value("amount").toInt()); contexts << ctx;
         return true;
     }
@@ -1960,7 +1998,8 @@ public:
     {
         return request.initiator && card && !card->isVirtualCard() && !card->hasFlag("using")
             && request.selectedCardIds.isEmpty() && card->isBlack() && card->getTypeId() != Card::TypeBasic
-            && request.initiator->getCards("he").contains(card);
+            && (request.initiator->handCards().contains(card->getEffectiveId())
+                || request.initiator->getEquipsId().contains(card->getEffectiveId()));
     }
     bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
     {
@@ -2016,10 +2055,17 @@ public:
         if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive) {
             for (ServerPlayer *target : room->getAllPlayers(true)) room->setPlayerProperty(target, "HuomoUsedBasics", "known");
         } else if (event == EventPhaseStart && player && player->getPhase() == Player::RoundStart) {
-            for (ServerPlayer *target : room->getAllPlayers(true))
-                room->setPlayerProperty(target, "HuomoUsedBasics", HuomoVS::usedBasics(room, target).join("+"));
-        } else if (player && (event == CardUsed || event == CardResponded))
-            room->setPlayerProperty(player, "HuomoUsedBasics", HuomoVS::usedBasics(room, player).join("+"));
+            for (ServerPlayer *target : room->getAllPlayers(true)) {
+                const QStringList used = HuomoVS::usedBasics(room, target);
+                // An unknown snapshot must not wipe a projection that still says the list is known.
+                if (used.contains(QStringLiteral("known")))
+                    room->setPlayerProperty(target, "HuomoUsedBasics", used.join("+"));
+            }
+        } else if (player && (event == CardUsed || event == CardResponded)) {
+            const QStringList used = HuomoVS::usedBasics(room, player);
+            if (used.contains(QStringLiteral("known")))
+                room->setPlayerProperty(player, "HuomoUsedBasics", used.join("+"));
+        }
         return true;
     }
 };
@@ -2191,7 +2237,7 @@ public:
         const QVariantMap payment = ctx.extra_data.toMap();
         const int count = payment.value("range").toInt();
         const bool discarded = count > 0
-            ? room->askForDiscard(target, objectName(), count, count, true, false, "@qingxi-throw:" + QString::number(count))
+            ? room->askForDiscard(target, objectName(), count, count, true, false, "@qingxi-throw:" + QString::number(count)) != nullptr
             : room->askForChoice(target, objectName(), "discard+damage", *ctx.original_data) == "discard";
         if (!discarded) {
             DamageStruct damage = ctx.original_data->value<DamageStruct>();
