@@ -169,6 +169,12 @@ void WrappedCard::adoptCard(Card *card, bool requireId)
     setObjectName(card->objectName());
     if (requireId)
         flags = card->getFlags();
+    // Both takeOver and copyEverythingFrom/reset converge here. Failed and
+    // same-inner-card adoptions returned above; initial construction has no
+    // previous live identity. A new inner instance can have different behavior
+    // even when its printed name is unchanged.
+    if (oldCard)
+        emit identityChanged();
 }
 
 void WrappedCard::setFlags(const QString &flag) const

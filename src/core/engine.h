@@ -299,6 +299,7 @@ private:
     QHash<QString, const QMetaObject *> metaobjects;
     //QHash<QString, QString> className2objectName;
     SkillRegistry m_skillRegistry;
+    mutable std::unique_ptr<class DistanceSkillCache> m_distanceSkillCache;
     QHash<QThread *, EngineRuntimeContext *> m_rooms;
     mutable QMutex m_mutex;
     QMap<QString, GameModeStruct> modes;

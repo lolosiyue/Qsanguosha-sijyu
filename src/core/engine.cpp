@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "distance-skill-cache.h"
 #include "hegemony-mode.h"
 #include "h-rule-cards.h"
 #include "card.h"
@@ -505,6 +506,7 @@ QStringList Engine::rulesDeclaredList(const QString &key) const
 }
 
 Engine::Engine(bool isManualMode)
+    : m_distanceSkillCache(new DistanceSkillCache)
 {
     QSanStartupTiming startupPhase("engine.package_prepare");
 #ifdef LOGNETWORK
@@ -949,8 +951,30 @@ QList<const DistanceSkill*> Engine::getDistanceSkills() const
 {
     AiProbe::ScopedProbe probe(AiProbe::Slot_getDistanceSkills);
     RoomRuntime *runtime = currentRoomRuntime();
-    return mergedRuntimeSkills(runtime, m_skillRegistry.distanceSkills(), m_luaSkillNames,
-                               runtime ? runtime->distanceSkills() : QList<const DistanceSkill *>());
+    DistanceSkillCache &cache = runtime ? runtime->definitions().distanceSkillCache()
+                                       : *m_distanceSkillCache;
+    // SkillSet::generation and alive players do not affect this definition
+    // vector. Registries cover every category (including non-distance shadows),
+    // and the exact exclusion set covers bootstrap Lua-definition filtering.
+    return cache.get([&] {
+        return DistanceSkillCache::Stamp {
+            m_skillRegistry.version(),
+            runtime ? runtime->definitions().skillDefinitionVersion() : 0,
+            runtime ? m_luaSkillNames : QSet<QString>()};
+    }, [&] {
+        const auto bootstrap = m_skillRegistry.distanceSkills();
+        DistanceSkillCache::Snapshot snapshot(mergedRuntimeSkills(
+            runtime, bootstrap, m_luaSkillNames,
+            runtime ? runtime->distanceSkills() : QList<const DistanceSkill *>()));
+        if (runtime) {
+            for (const DistanceSkill *skill : bootstrap) {
+                snapshot.dependencies.append(skill);
+                if (const Skill *shadow = runtime->skill(skill->objectName()))
+                    snapshot.dependencies.append(shadow);
+            }
+        }
+        return snapshot;
+    });
 }
 
 // 8. 修復 getMaxCardsSkills
