@@ -52,8 +52,9 @@ Engine*Sanguosha = nullptr;
 thread_local TargetModSkillQueryScope *TargetModSkillQueryScope::s_current = nullptr;
 
 TargetModSkillQueryScope::TargetModSkillQueryScope(const Player *owner,
-    const QList<SkillInstanceRef> &allowedHidden, const QString &historyKey)
-    : m_owner(owner), m_allowedHidden(allowedHidden), m_historyKey(historyKey), m_previous(s_current)
+    const QList<SkillInstanceRef> &allowedHidden, const QString &historyKey, qint64 useHistoryEventId)
+    : m_owner(owner), m_allowedHidden(allowedHidden), m_historyKey(historyKey),
+      m_useHistoryEventId(useHistoryEventId), m_previous(s_current)
 {
     s_current = this;
 }
@@ -66,6 +67,13 @@ int TargetModSkillQueryScope::historyValue(const Player *owner, const QString &k
     // counted. Discount only that increment in queries, never in real history.
     return s_current && s_current->m_owner == owner && !s_current->m_historyKey.isEmpty()
         && s_current->m_historyKey == key ? qMax(0, value - 1) : value;
+}
+
+qint64 TargetModSkillQueryScope::excludedHistoryUse(const Player *owner)
+{
+    // Journal queries remove this exact accepted-use fact, not an assumed last
+    // matching card. Nested uses and other players retain their own history.
+    return s_current && s_current->m_owner == owner ? s_current->m_useHistoryEventId : 0;
 }
 
 bool TargetModSkillQueryScope::allows(const Player *owner, const SkillInstanceRef &ref)
@@ -2837,7 +2845,8 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
                                                int modType,
                                                bool includeWeapon,
                                                bool fixed,
-                                               bool targetModPreview = false)
+                                               bool targetModPreview = false,
+                                               MaxCardsType::MaxCardsCount maxCardsType = MaxCardsType::Max)
 {
     QList<CorrectSkillResult> results;
     if (!skill) return results;
@@ -2848,6 +2857,7 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
         context.secondary = secondary;
         context.card = card;
         context.modType = modType;
+        context.maxCardsType = maxCardsType;
         context.includeWeapon = includeWeapon;
         context.currentAmount = skill->getBaseAmount();
         results << (fixed ? skill->getFixedValue(context) : skill->getCorrection(context));
@@ -2873,6 +2883,7 @@ QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
             context.secondary = secondary;
             context.card = card;
             context.modType = modType;
+            context.maxCardsType = maxCardsType;
             context.includeWeapon = includeWeapon;
             context.currentAmount = instance->hasAmountOverride
                 ? instance->amountOverride : skill->getBaseAmount();
@@ -2889,7 +2900,7 @@ int sumApplicableResults(const QList<CorrectSkillResult> &results, bool residue)
     int total = 0;
     foreach (const CorrectSkillResult &result, results) {
         if (!result.applies) continue;
-        if (residue && (result.unlimited || result.value == -1))
+        if (residue && (result.unlimited || (!result.explicitSigned && result.value == -1)))
             return 1000;
         total += result.value;
     }
@@ -3032,8 +3043,9 @@ int Engine::correctMaxCards(const Player*target, bool fixed, MaxCardsType::MaxCa
             continue;
         }
 
+        // Keep Hongfa's live count query distinct from maximum/minimum previews.
         const QList<CorrectSkillResult> results = evaluateCorrectSkill(
-            v2, v2->getHolderSelector(), target, nullptr, nullptr, -1, true, fixed);
+            v2, v2->getHolderSelector(), target, nullptr, nullptr, -1, true, fixed, false, type);
         ex = fixed ? maximumApplicableResult(results, ex)
                    : ex + sumApplicableResults(results, false);
     }
@@ -3230,7 +3242,7 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
                 v2, v2->getHolderSelector(), from, to, card,
                 TargetModSkill::Residue, true, false);
             foreach (const CorrectSkillResult &result, results) {
-                if (result.applies && (result.unlimited || result.value == -1)) {
+                if (result.applies && (result.unlimited || (!result.explicitSigned && result.value == -1))) {
                     if (locked) lua_mutex.unlock();
                     return true;
                 }

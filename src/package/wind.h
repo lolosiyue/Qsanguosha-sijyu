@@ -53,11 +53,13 @@ public:
     const Card *validateInResponse(ServerPlayer *user) const;
 };
 
-class Jushou : public PhaseChangeSkill
+class Jushou : public TriggerSkillV2
 {
 public:
     Jushou();
-    bool onPhaseChange(ServerPlayer *target, Room *room) const;
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override;
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const override;
 
 protected:
     virtual int getJushouDrawNum(ServerPlayer *caoren) const;

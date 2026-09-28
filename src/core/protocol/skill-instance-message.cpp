@@ -40,6 +40,16 @@ QVariant SkillInstanceEntryMessage::toVariant() const
     if (instance.hasAmountOverride) {
         result.insert(QStringLiteral("amount"), instance.amountOverride);
     }
+    if (instance.frozenSourceRef.isValid() && instance.grantActivationRef.isValid()) {
+        result.insert(QStringLiteral("frozen_source"), QVariantMap{
+            {"owner_name", instance.frozenSourceRef.ownerObjectName},
+            {"skill_name", instance.frozenSourceRef.key.skillName},
+            {"instance_id", instance.frozenSourceRef.key.instanceID}});
+        result.insert(QStringLiteral("grant_activation"), QVariantMap{
+            {"owner_name", instance.grantActivationRef.ownerObjectName},
+            {"skill_name", instance.grantActivationRef.key.skillName},
+            {"instance_id", instance.grantActivationRef.key.instanceID}});
+    }
     if (!instance.correctState.isEmpty())
         result.insert(QStringLiteral("correct_state"), instance.correctState);
     if (!privateState.isEmpty())
@@ -78,6 +88,19 @@ bool SkillInstanceEntryMessage::tryParse(const QVariant &value)
         return false;
     parsed.instance.parentRef = SkillInstanceRef(parentOwner, SkillInstanceKey(parentSkill, parentId));
     parsed.instance.parent = parsed.instance.parentRef.key;
+    if (object.contains("frozen_source") || object.contains("grant_activation")) {
+        if (object.value("frozen_source").userType() != QMetaType::QVariantMap
+            || object.value("grant_activation").userType() != QMetaType::QVariantMap
+            || parsed.instance.source != SourceAcquired || parsed.instance.parentRef.isValid()
+            || parsed.instance.bindHead != 0
+            || !tryParseIdentity(object.value("frozen_source").toMap(),
+                parsed.instance.frozenSourceRef.ownerObjectName,
+                parsed.instance.frozenSourceRef.key.skillName, parsed.instance.frozenSourceRef.key.instanceID)
+            || !tryParseIdentity(object.value("grant_activation").toMap(),
+                parsed.instance.grantActivationRef.ownerObjectName,
+                parsed.instance.grantActivationRef.key.skillName, parsed.instance.grantActivationRef.key.instanceID))
+            return false;
+    }
     if (parsed.instance.hasAmountOverride
         && !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("amount")), parsed.instance.amountOverride))
         return false;

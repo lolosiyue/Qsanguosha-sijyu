@@ -52,12 +52,42 @@ struct SkillInstanceRef {
     }
 };
 
+// Native equipment admission is provenance, not a fabricated player skill instance.
+// Only EquipSkillV2 can mint a receipt; interception and wire parsing cannot invent one.
+class PhysicalEquipSource {
+public:
+    PhysicalEquipSource() = default;
+    bool isValid() const { return m_cardId >= 0 && !m_holder.isEmpty() && !m_equipment.isEmpty() && !m_skill.isEmpty(); }
+    const QString &holder() const { return m_holder; }
+    const QString &equipment() const { return m_equipment; }
+    const QString &skill() const { return m_skill; }
+    int cardId() const { return m_cardId; }
+    QVariantMap toVariantMap() const {
+        return isValid() ? QVariantMap{{"holder", m_holder}, {"equipment", m_equipment}, {"skill", m_skill}, {"card_id", m_cardId}} : QVariantMap();
+    }
+    bool operator==(const PhysicalEquipSource &other) const {
+        return m_holder == other.m_holder && m_equipment == other.m_equipment && m_skill == other.m_skill && m_cardId == other.m_cardId;
+    }
+    bool operator!=(const PhysicalEquipSource &other) const { return !(*this == other); }
+private:
+    friend class EquipSkillV2;
+    PhysicalEquipSource(const QString &holder, const QString &equipment, const QString &skill, int cardId)
+        : m_holder(holder), m_equipment(equipment), m_skill(skill), m_cardId(cardId) {}
+    QString m_holder;
+    QString m_equipment;
+    QString m_skill;
+    int m_cardId = -1;
+};
+
 struct SkillInstance {
     QString skillName;
     int instanceID;
     SkillInstanceSource source;
     SkillInstanceKey parent;
     SkillInstanceRef parentRef;
+    // Applied grants outlive their provider. These are provenance, not lifecycle links.
+    SkillInstanceRef frozenSourceRef;
+    SkillInstanceRef grantActivationRef;
     bool visible;
     bool hasAmountOverride;
     int amountOverride;

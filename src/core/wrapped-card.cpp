@@ -164,6 +164,8 @@ void WrappedCard::adoptCard(Card *card, bool requireId)
     Card::setNumber(card->getNumber());
     m_skillName = card->getSkillName(false);
     m_skillInstanceId = card->getSkillInstanceId();
+    // Replacement/reset takes the new inner card's provenance, never the retired card's tags.
+    m_appliedPhysicalEffectSource = card->m_appliedPhysicalEffectSource;
     setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
     setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
     setObjectName(card->objectName());

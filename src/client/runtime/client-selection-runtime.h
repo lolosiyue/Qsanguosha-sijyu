@@ -189,6 +189,13 @@ inline SkillActivationResult evaluateSkillActivation(
     // not required; canActivate still has to accept this exact pattern.
     const bool namedResponse = patternSkillName(pattern) == activeSkill->objectName()
         && reason != CardUseStruct::CARD_USE_REASON_PLAY;
+    const int scopedId = self->getMark(ViewAsSkillV2::borrowedActivationMarkName(skill->objectName()));
+    if (instanceId == 0 && scopedId > 0) instanceId = scopedId;
+    if (scopedId > 0 && (!self->hasSkillInstance(skill->objectName(), scopedId)
+                        || self->isSkillInvalid(skill->objectName(), scopedId))) {
+        result.status = SkillActivationStatus::InvalidInstance;
+        return result;
+    }
     if (!namedResponse && instanceId > 0) {
         const bool hasInstance = self->hasSkillInstance(skill->objectName(), instanceId);
         if ((!hasInstance && !continuesEffect)
@@ -208,7 +215,7 @@ inline SkillActivationResult evaluateSkillActivation(
     request.initiator = self;
     request.activationRef = SkillInstanceRef(self->objectName(),
         SkillInstanceKey(skill->objectName(), instanceId));
-    result.available = activeSkill->canActivate(request);
+    result.available = activeSkill->canActivateRequest(request);
     result.status = result.available
         ? SkillActivationStatus::Available : SkillActivationStatus::Unavailable;
     return result;
@@ -275,7 +282,12 @@ inline SkillCardBuildResult buildSkillCard(const SkillCardBuildRequest &input)
         return result;
     }
 
-    const SkillCardBuildRequest &requestData = input;
+    SkillCardBuildRequest requestData = input;
+    if (dynamic_cast<const ViewAsSkillV2 *>(viewAs) && requestData.instanceId == 0) {
+        // Shared clients must serialize the same borrowed entry that the server selected.
+        const int scopedId = self->getMark(ViewAsSkillV2::borrowedActivationMarkName(viewAs->objectName()));
+        if (scopedId > 0) requestData.instanceId = scopedId;
+    }
     const auto reason = Sanguosha->getCurrentCardUseReason();
     const QString pattern = Sanguosha->getCurrentCardUsePattern();
     QSet<int> seen;
@@ -324,7 +336,7 @@ inline SkillCardBuildResult buildSkillCard(const SkillCardBuildRequest &input)
         }
         // As in Dashboard::updatePending(), activation must also accept the
         // completed selection, not just the initial skill-button query.
-        if (!v2->canActivate(request)) {
+        if (!v2->canActivateRequest(request)) {
             result.status = SkillCardBuildStatus::ActivationUnavailable;
             return result;
         }

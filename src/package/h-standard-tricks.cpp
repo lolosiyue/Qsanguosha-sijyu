@@ -131,6 +131,7 @@ void HAwaitExhausted::use(Room *room, ServerPlayer *source, QList<ServerPlayer *
     bool all_nullified = nullified_list.contains("_ALL_TARGETS");
     foreach (ServerPlayer *target, targets) {
         CardEffectStruct effect;
+        effect.setSkillUseContext(room->getUseStruct(this));
         effect.card = this;
         effect.from = source;
         effect.to = target;

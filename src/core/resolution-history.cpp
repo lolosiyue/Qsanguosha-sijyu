@@ -5,6 +5,7 @@
 #include <QList>
 #include <QSet>
 #include <QSharedPointer>
+#include <QStringList>
 #include <QVariantList>
 
 #include <algorithm>
@@ -114,6 +115,9 @@ struct Journal {
     qint64 roundScopeId = 0;
     qint64 contextEventId = 0;
     bool complete = true;
+    // Coverage is an origin guarantee, never inferred from observed records.
+    QSet<QString> coveredEvents;
+    QSet<QString> coveredFacts;
 };
 
 struct Scope {
@@ -152,20 +156,60 @@ static bool parseId(const QVariant &value, qint64 *id)
     return true;
 }
 
-static bool eventKind(const QString &kind)
+static const QSet<QString> &eventKinds()
 {
     static const QSet<QString> kinds = {QStringLiteral("game"), QStringLiteral("round"),
         QStringLiteral("turn"), QStringLiteral("phase"), QStringLiteral("skill"),
         QStringLiteral("use_card"), QStringLiteral("respond_card"), QStringLiteral("damage"),
-        QStringLiteral("move_cards"), QStringLiteral("extra_turn")};
-    return kinds.contains(kind);
+        QStringLiteral("move_cards"), QStringLiteral("extra_turn"), QStringLiteral("death"),
+        QStringLiteral("dying"), QStringLiteral("pindian"), QStringLiteral("recover"),
+        QStringLiteral("draw"), QStringLiteral("judge"), QStringLiteral("player_state"), QStringLiteral("lose_hp"),
+        QStringLiteral("show_cards")};
+    return kinds;
 }
 
-static bool factKind(const QString &kind)
+static bool eventKind(const QString &kind) { return eventKinds().contains(kind); }
+
+static const QSet<QString> &factKinds()
 {
     static const QSet<QString> kinds = {QStringLiteral("actual_damage"), QStringLiteral("move"),
-        QStringLiteral("use_card"), QStringLiteral("respond_card"), QStringLiteral("damage_component")};
-    return kinds.contains(kind);
+        QStringLiteral("use_card"), QStringLiteral("respond_card"), QStringLiteral("damage_component"),
+        QStringLiteral("skill_invoked"), QStringLiteral("use_card_targets"),
+        QStringLiteral("death"), QStringLiteral("turn_hp_snapshot"),
+        QStringLiteral("dying_start"), QStringLiteral("dying_result"),
+        QStringLiteral("pindian_start"), QStringLiteral("pindian_result"), QStringLiteral("actual_recover"),
+        QStringLiteral("draw_start"), QStringLiteral("draw_result"),
+        QStringLiteral("judge_start"), QStringLiteral("judge_result"), QStringLiteral("player_state"), QStringLiteral("hp_lost"),
+        QStringLiteral("damage_caused"), QStringLiteral("damage_inflicted"), QStringLiteral("target_confirmed"),
+        QStringLiteral("show_cards")};
+    return kinds;
+}
+
+static bool factKind(const QString &kind) { return factKinds().contains(kind); }
+
+static QVariantList coverageList(const QSet<QString> &kinds)
+{
+    QStringList ordered = kinds.values();
+    ordered.sort();
+    QVariantList result;
+    for (const QString &kind : ordered) result.append(kind);
+    return result;
+}
+
+static QVariantMap coverageMap(const Journal &journal)
+{
+    return {{QStringLiteral("events"), coverageList(journal.coveredEvents)},
+            {QStringLiteral("facts"), coverageList(journal.coveredFacts)}};
+}
+
+static bool queryCovered(const QVariantMap &filter, const QSet<QString> &covered,
+                         const QSet<QString> &supported)
+{
+    if (filter.contains(QStringLiteral("kind")))
+        return covered.contains(filter.value(QStringLiteral("kind")).toString());
+    for (const QString &kind : supported)
+        if (!covered.contains(kind)) return false;
+    return true;
 }
 
 static bool terminalOutcome(const QString &outcome)
@@ -329,7 +373,7 @@ static bool matchAttribution(const QVariantMap &filter, const QVariantMap &data)
 static bool validEventReferences(const QVariant &value, const QHash<qint64, const EventRecord *> &events,
                                  const QString &key = QString())
 {
-    if (key == QLatin1String("cause_event_id")) {
+    if (key == QLatin1String("cause_event_id") || key == QLatin1String("parent_event_id")) {
         qint64 id = 0;
         return parseScopeId(value, &id) && (id == 0 || events.contains(id));
     }
@@ -475,6 +519,9 @@ static void remapPlayers(QVariant &value, const QMap<QString, QString> &mapping,
 {
     if (value.userType() == QMetaType::QVariantMap) {
         QVariantMap map = value.toMap();
+        // Equipment provenance stores the player under holder, not skill_owner.
+        if (key == QLatin1String("physical_equipment") && mapping.contains(map.value("holder").toString()))
+            map["holder"] = mapping.value(map.value("holder").toString());
         for (auto it = map.begin(); it != map.end(); ++it) remapPlayers(it.value(), mapping, it.key());
         value = map;
     } else if (value.userType() == QMetaType::QVariantList) {
@@ -483,10 +530,12 @@ static void remapPlayers(QVariant &value, const QMap<QString, QString> &mapping,
                && (key == QLatin1String("from") || key == QLatin1String("to") || key == QLatin1String("player")
                    || key == QLatin1String("target") || key == QLatin1String("actor") || key == QLatin1String("owner")
                    || key == QLatin1String("skill_owner") || key == QLatin1String("player_id")
-                   || key == QLatin1String("targets") || key == QLatin1String("players")
+                   || key == QLatin1String("targets") || key == QLatin1String("players") || key == QLatin1String("viewers")
                    || key == QLatin1String("source") || key == QLatin1String("invoker")
                    || key == QLatin1String("activation_owner") || key == QLatin1String("reason_player")
-                   || key == QLatin1String("first_player") || key == QLatin1String("source_owner"))) {
+                   || key == QLatin1String("first_player") || key == QLatin1String("source_owner")
+                   || key == QLatin1String("victim") || key == QLatin1String("killer")
+                   || key == QLatin1String("turn_owner"))) {
         value = mapping.value(value.toString());
     }
 }
@@ -523,7 +572,8 @@ QVariantMap ResolutionHistorySnapshot::serialize() const
 {
     QVariantMap result;
     if (!d || !d->journal) { result.insert(QStringLiteral("complete"), false); return result; }
-    result.insert(QStringLiteral("version"), 1);
+    result.insert(QStringLiteral("version"), 2);
+    result.insert(QStringLiteral("coverage"), coverageMap(*d->journal));
     result.insert(QStringLiteral("complete"), isComplete());
     result.insert(QStringLiteral("next_id"), idString(d->journal->nextId));
     result.insert(QStringLiteral("next_sequence"), idString(d->journal->nextSequence));
@@ -549,7 +599,8 @@ bool ResolutionHistorySnapshot::writeJson(SnapshotJsonWriter &writer) const
             && writer.endObject();
     }
     if (!writer.beginObject()) return false;
-    if (!writer.field(QStringLiteral("version"), 1)
+    if (!writer.field(QStringLiteral("version"), 2)
+        || !writer.field(QStringLiteral("coverage"), coverageMap(*d->journal))
         || !writer.field(QStringLiteral("complete"), isComplete())
         || !writer.field(QStringLiteral("next_id"), idString(d->journal->nextId))
         || !writer.field(QStringLiteral("next_sequence"), idString(d->journal->nextSequence))
@@ -595,14 +646,47 @@ bool ResolutionHistorySnapshot::deserialize(const QVariantMap &serialized, Resol
     };
     qint64 version = 0;
     const QVariant versionValue = serialized.value(QStringLiteral("version"));
-    const bool supportedVersion = versionValue.userType() == QMetaType::Double
-        ? versionValue.toDouble() == 1.0 : parseId(versionValue, &version) && version == 1;
+    if (versionValue.userType() == QMetaType::Double) {
+        if (versionValue.toDouble() == 1.0) version = 1;
+        else if (versionValue.toDouble() == 2.0) version = 2;
+    } else if (!parseId(versionValue, &version)) {
+        version = 0;
+    }
+    const bool supportedVersion = version == 1 || version == 2;
     if (!snapshot || !supportedVersion
         || serialized.value(QStringLiteral("complete")).userType() != QMetaType::Bool
         || !serialized.value(QStringLiteral("complete")).toBool()) return fail("unsupported or incomplete snapshot");
     for (const QString &key : {QStringLiteral("events"), QStringLiteral("facts"), QStringLiteral("active")})
         if (serialized.value(key).userType() != QMetaType::QVariantList) return fail("invalid snapshot collection");
     auto journal = QSharedPointer<Journal>::create();
+    if (version == 1) {
+        // Version 1 predates later producers. Preserve only its original
+        // guaranteed kinds, even when a newer kind happens to be present.
+        journal->coveredEvents = {QStringLiteral("game"), QStringLiteral("round"),
+            QStringLiteral("turn"), QStringLiteral("phase"), QStringLiteral("skill"),
+            QStringLiteral("use_card"), QStringLiteral("respond_card"), QStringLiteral("damage"),
+            QStringLiteral("move_cards"), QStringLiteral("extra_turn")};
+        journal->coveredFacts = {QStringLiteral("actual_damage"), QStringLiteral("move"),
+            QStringLiteral("use_card"), QStringLiteral("respond_card"), QStringLiteral("damage_component")};
+    } else {
+        if (serialized.value(QStringLiteral("coverage")).userType() != QMetaType::QVariantMap)
+            return fail("missing snapshot coverage");
+        const QVariantMap coverage = serialized.value(QStringLiteral("coverage")).toMap();
+        if (coverage.size() != 2) return fail("invalid snapshot coverage");
+        const auto readCoverage = [](const QVariant &value, const QSet<QString> &supported,
+                                     QSet<QString> *covered) {
+            if (value.userType() != QMetaType::QVariantList) return false;
+            for (const QVariant &item : value.toList()) {
+                if (item.userType() != QMetaType::QString || !supported.contains(item.toString())
+                    || covered->contains(item.toString())) return false;
+                covered->insert(item.toString());
+            }
+            return true;
+        };
+        if (!readCoverage(coverage.value(QStringLiteral("events")), eventKinds(), &journal->coveredEvents)
+            || !readCoverage(coverage.value(QStringLiteral("facts")), factKinds(), &journal->coveredFacts))
+            return fail("invalid snapshot coverage kinds");
+    }
     if (!parseId(serialized.value(QStringLiteral("next_id")), &journal->nextId)
         || !parseId(serialized.value(QStringLiteral("next_sequence")), &journal->nextSequence)
         || !parseScopeId(serialized.value(QStringLiteral("round_scope_id")), &journal->roundScopeId))
@@ -680,10 +764,14 @@ bool ResolutionHistorySnapshot::remapPlayerIds(const QMap<QString, QString> &map
     auto data = QSharedDataPointer<Data>(new Data); data->journal = journal; d = data; return true;
 }
 
-ResolutionHistoryService::ResolutionHistoryService() : d(new Data) {}
+ResolutionHistoryService::ResolutionHistoryService() : d(new Data)
+{
+    d->journal->coveredEvents = eventKinds();
+    d->journal->coveredFacts = factKinds();
+}
 ResolutionHistoryService::~ResolutionHistoryService() = default;
 
-qint64 ResolutionHistoryService::beginEvent(const QString &kind, const QVariantMap &data)
+qint64 ResolutionHistoryService::beginEvent(const QString &kind, const QVariantMap &data, bool activate)
 {
     d.detach();
     Journal &j = *d->journal;
@@ -706,7 +794,7 @@ qint64 ResolutionHistoryService::beginEvent(const QString &kind, const QVariantM
     if (kind == QLatin1String("phase")) event.phaseId = event.id;
     d->events.add(event, j.events.size(), event.id);
     j.events.append(event);
-    j.active.append(event.id);
+    if (activate) j.active.append(event.id);
     return event.id;
 }
 
@@ -951,14 +1039,24 @@ static QVariantMap runQuery(const Records<T> &records, const Index &index,
 
 QVariantMap ResolutionHistoryService::queryEvents(const QVariantMap &filter) const
 {
-    return runQuery(d->journal->events, d->events, filter, d->journal->nextId - 1,
+    QVariantMap result = runQuery(d->journal->events, d->events, filter, d->journal->nextId - 1,
         d->journal->complete, false, [](const EventRecord &record) { return record.id; }, eventMap);
+    const bool covered = !result.contains(QStringLiteral("error"))
+        && queryCovered(filter, d->journal->coveredEvents, eventKinds());
+    result.insert(QStringLiteral("coverage_complete"), covered);
+    result.insert(QStringLiteral("complete"), result.value(QStringLiteral("complete")).toBool() && covered);
+    return result;
 }
 
 QVariantMap ResolutionHistoryService::queryFacts(const QVariantMap &filter) const
 {
-    return runQuery(d->journal->facts, d->facts, filter, d->journal->nextSequence - 1,
+    QVariantMap result = runQuery(d->journal->facts, d->facts, filter, d->journal->nextSequence - 1,
         d->journal->complete, true, [](const FactRecord &record) { return record.sequence; }, factMap);
+    const bool covered = !result.contains(QStringLiteral("error"))
+        && queryCovered(filter, d->journal->coveredFacts, factKinds());
+    result.insert(QStringLiteral("coverage_complete"), covered);
+    result.insert(QStringLiteral("complete"), result.value(QStringLiteral("complete")).toBool() && covered);
+    return result;
 }
 
 QVariantMap ResolutionHistoryService::currentScopes() const
@@ -1027,9 +1125,9 @@ ResolutionHistoryContextGuard::~ResolutionHistoryContextGuard() noexcept
 ResolutionHistoryEventGuard::ResolutionHistoryEventGuard(ResolutionHistoryService &history,
                                                          const QString &kind,
                                                          const QVariantMap &data,
-                                                         bool enabled)
+                                                         bool enabled, bool activate)
     : service(enabled ? &history : nullptr),
-      eventId(enabled ? history.beginEvent(kind, data) : 0),
+      eventId(enabled ? history.beginEvent(kind, data, activate) : 0),
       uncaughtAtConstruction(std::uncaught_exceptions())
 {
 }

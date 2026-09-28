@@ -42,6 +42,12 @@ UI 別名或任意複合文字；需要這些額外資料的自訂動作仍用 A
 空宣告的回應預覽可由 `request:getPattern()` 選出確定的候選，不能詢問玩家。
 `create_card` 必須自行限制允許的牌種、擴展包及 response pattern；宣告不是權限證明。
 
+C++ 的實例型宣言規則可覆寫
+`allowDeclaration(const ActiveSkillRequest &request, const QString &name)`；
+`request.activationRef` 在伺服器重建、AI 候選及原生／共用 client 宣言 session 中指向
+所選實例。原有 `allowDeclaration(const Player *, ...)` 仍相容；只有需要實例配額時才用新版。
+宣言 session 的 ref 不可由技能名猜測；同名不同實例切換時必須重建候選。
+
 ## 3. 一張牌轉基本牌的骨架
 
 這是拆解寫法的骨架；實際遷移還需接入下一節的 `cost`、原有發動條件、AI 與乒戮重設。

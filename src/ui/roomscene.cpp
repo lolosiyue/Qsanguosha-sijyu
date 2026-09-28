@@ -214,7 +214,7 @@ static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPl
     request.initiator = activePlayer;
     request.activationRef = SkillInstanceRef(activePlayer->objectName(),
         SkillInstanceKey(activeSkill->objectName(), instanceID));
-    if (!activeSkill->canActivate(request))
+    if (!activeSkill->canActivateRequest(request))
         return false;
     // ClientPlayer 不能走 Skill::isUsable（需 ServerPlayer/Room）；改讀已同步的 Usage mark。
     const Skill::LimitScope limitScope = activeSkill->getLimitScope();
@@ -3423,24 +3423,34 @@ void RoomScene::presentSkillDialog(QSanSkillButton *button, QDialog *dialog)
 	clearPresentedDialogSkill(false);
 
 	const ViewAsSkill *skill = button->getViewAsSkill();
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	QString sourceSkill;
+	int instanceId = SkillInstanceUtils::parseName(button->objectName(), sourceSkill);
+	if (skill && activePlayer) {
+		const int scopedId = activePlayer->getMark(ViewAsSkillV2::borrowedActivationMarkName(skill->objectName()));
+		if (scopedId > 0) instanceId = scopedId;
+	}
+	const SkillInstanceRef activationRef = skill && activePlayer
+		? SkillInstanceRef(activePlayer->objectName(), SkillInstanceKey(skill->objectName(), instanceId))
+		: SkillInstanceRef();
 	QStringList optionNames, enabledOptions;
 	QMap<QString, QString> tooltips;
 	bool activateDirectly = false;
 
 	if (GuhuoDialog *guhuoDialog = qobject_cast<GuhuoDialog *>(dialog)) {
-		guhuoDialog->prepareOptions();
+		guhuoDialog->prepareOptions(activationRef);
 		if (!guhuoDialog->shouldPopup())
 			activateDirectly = true;
 		else
 			collectDialogPresenterOptions(guhuoDialog, optionNames, enabledOptions, tooltips);
 	} else if (JuguanDialog *juguanDialog = qobject_cast<JuguanDialog *>(dialog)) {
-		juguanDialog->prepareOptions();
+		juguanDialog->prepareOptions(activationRef);
 		if (!juguanDialog->shouldPopup())
 			activateDirectly = true;
 		else
 			collectDialogPresenterOptions(juguanDialog, optionNames, enabledOptions, tooltips);
 	} else if (TiansuanDialog *tiansuanDialog = qobject_cast<TiansuanDialog *>(dialog)) {
-		tiansuanDialog->prepareOptions();
+		tiansuanDialog->prepareOptions(activationRef);
 		optionNames = tiansuanDialog->getOptionNames();
 		foreach (const QString &option, optionNames) {
 			if (tiansuanDialog->isButtonEnabled(option)) enabledOptions << option;
@@ -4145,9 +4155,11 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 						request.reason = reason;
 						request.pattern = pattern;
 						request.initiator = activePlayer;
+						const int scopedId = activePlayer->getMark(
+							ViewAsSkillV2::borrowedActivationMarkName(activeSkill->objectName()));
 						request.activationRef = SkillInstanceRef(activePlayer->objectName(),
-							SkillInstanceKey(activeSkill->objectName(), 0));
-						available = activeSkill->canActivate(request);
+							SkillInstanceKey(activeSkill->objectName(), scopedId));
+						available = activeSkill->canActivateRequest(request);
 					}
 				} else {
 					activePlayer->addMark("ViewAsSkill_"+skill_name+"Effect");

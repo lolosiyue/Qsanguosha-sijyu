@@ -321,6 +321,28 @@ bool validateSkillInstanceJson(const QJsonObject &object, const QString &path,
         || !requireJsonType(object, QStringLiteral("state"), QJsonValue::Object, path, error)
         || !requireJsonType(object, QStringLiteral("correctState"), QJsonValue::Object, path, error))
         return false;
+    // Optional for older snapshots; a present applied-grant tuple is all-or-nothing.
+    if (object.contains("frozenSource") || object.contains("grantActivation")) {
+        if (!requireJsonType(object, "frozenSource", QJsonValue::Object, path, error)
+            || !requireJsonType(object, "grantActivation", QJsonValue::Object, path, error)) return false;
+        const QJsonObject source = object.value("frozenSource").toObject();
+        const QJsonObject activation = object.value("grantActivation").toObject();
+        if (source.isEmpty() != activation.isEmpty()) return false;
+        if (!source.isEmpty()) {
+            for (const QJsonObject &ref : {source, activation}) {
+                if (!requireJsonType(ref, "owner", QJsonValue::String, path, error)
+                    || !requireJsonType(ref, "skill", QJsonValue::String, path, error)
+                    || !requireJsonInteger(ref, "id", path, error)
+                    || ref.value("owner").toString().isEmpty()
+                    || ref.value("skill").toString().isEmpty()
+                    || ref.value("id").toInt() <= 0) return false;
+            }
+            if (object.value("source").toInt() != SourceAcquired
+                || object.value("bindHead").toInt() != 0
+                || !object.value("parentSkillName").toString().isEmpty()
+                || !object.value("parentRefOwner").toString().isEmpty()) return false;
+        }
+    }
     return true;
 }
 
@@ -346,6 +368,35 @@ bool validateCardJson(const QJsonObject &object, const QString &path,
         || !requireJsonType(object, QStringLiteral("marks"), QJsonValue::Object, path, error)
         || !requireJsonType(object, QStringLiteral("tags"), QJsonValue::Object, path, error))
         return false;
+    const QString appliedKey = QStringLiteral("appliedPhysicalEffectSource");
+    if (object.contains(appliedKey)) {
+        if (!requireJsonType(object, appliedKey, QJsonValue::Object, path, error)) return false;
+        const QJsonObject applied = object.value(appliedKey).toObject();
+        if (!applied.isEmpty()) {
+            const QString appliedPath = path + '.' + appliedKey;
+            for (const QString &key : {QStringLiteral("name"), QStringLiteral("class_name"),
+                    QStringLiteral("source_owner"), QStringLiteral("source_skill"),
+                    QStringLiteral("activation_owner"), QStringLiteral("activation_skill")}) {
+                if (!requireJsonType(applied, key, QJsonValue::String, appliedPath, error)
+                    || applied.value(key).toString().isEmpty()) return false;
+            }
+            for (const QString &key : {QStringLiteral("serial"), QStringLiteral("card_id"), QStringLiteral("suit"), QStringLiteral("number"),
+                    QStringLiteral("source_instance"), QStringLiteral("activation_instance")})
+                if (!requireJsonInteger(applied, key, appliedPath, error)) return false;
+            if (!object.value("modified").toBool() || applied.value("serial").toDouble() <= 0
+                || applied.value("card_id") != object.value("id")
+                || applied.value("name") != object.value("objectName")
+                || applied.value("class_name") != object.value("className")
+                || applied.value("suit") != object.value("suitId")
+                || applied.value("number") != object.value("number")
+                || applied.value("source_instance").toInt() <= 0
+                || applied.value("activation_instance").toInt() <= 0
+                || applied.value("source_skill") != object.value("sourceSkillName")
+                || applied.value("source_instance") != object.value("sourceSkillInstanceId")
+                || applied.value("activation_skill") != object.value("activationSkillName")
+                || applied.value("activation_instance") != object.value("activationSkillInstanceId")) return false;
+        }
+    }
     return validateTypedArray(object.value(QStringLiteral("flags")).toArray(),
                               QJsonValue::String, false, path + QStringLiteral(".flags"), error)
         && validateIntegerObject(object.value(QStringLiteral("marks")).toObject(),
@@ -690,6 +741,10 @@ bool validateState(const GlobalSnapshot &state, QString *error)
             || cardIds.contains(card.id))
             return error ? (*error = QStringLiteral("duplicate or invalid physical card id"), false) : false;
         cardIds.insert(card.id);
+        if (!card.appliedPhysicalEffectSource.isEmpty()
+            && card.appliedPhysicalEffectSource.value("serial").toLongLong()
+                > state.roomTags.value("AppliedPhysicalCardSequence").toLongLong())
+            return error ? (*error = QStringLiteral("physical transformation sequence is incomplete"), false) : false;
         if (!state.cardPlaces.contains(card.id))
             return error ? (*error = QStringLiteral("physical card has no place"), false) : false;
     }
@@ -839,6 +894,14 @@ bool capturePlayer(ServerPlayer *player, PlayerSnapshot *snapshot, QString *erro
         item.parentRefOwner = instance.parentRef.ownerObjectName;
         item.parentRefSkillName = instance.parentRef.key.skillName;
         item.parentRefInstanceID = instance.parentRef.key.instanceID;
+        if (instance.frozenSourceRef.isValid()) {
+            item.frozenSource = {{"owner", instance.frozenSourceRef.ownerObjectName},
+                {"skill", instance.frozenSourceRef.key.skillName},
+                {"id", instance.frozenSourceRef.key.instanceID}};
+            item.grantActivation = {{"owner", instance.grantActivationRef.ownerObjectName},
+                {"skill", instance.grantActivationRef.key.skillName},
+                {"id", instance.grantActivationRef.key.instanceID}};
+        }
         item.visible = instance.visible;
         item.hasAmountOverride = instance.hasAmountOverride;
         item.amountOverride = instance.amountOverride;
@@ -871,6 +934,7 @@ bool captureCard(Card *card, CardSnapshot *snapshot, QString *error)
     snapshot->sourceSkillInstanceId = card->getSourceSkillInstanceId();
     snapshot->activationSkillName = card->getActivationSkillName();
     snapshot->activationSkillInstanceId = card->getActivationSkillInstanceId();
+    snapshot->appliedPhysicalEffectSource = card->appliedPhysicalEffectSource();
     snapshot->modified = card->isModified();
     snapshot->flags = card->getFlags();
     for (const QString &mark : card->getMarkNames())
@@ -908,7 +972,9 @@ QVariantMap SkillInstanceSnapshot::serialize() const
             {QStringLiteral("parentRefInstanceID"), parentRefInstanceID}, {QStringLiteral("visible"), visible},
             {QStringLiteral("hasAmountOverride"), hasAmountOverride}, {QStringLiteral("amountOverride"), amountOverride},
             {QStringLiteral("bindHead"), bindHead}, {QStringLiteral("state"), state},
-            {QStringLiteral("correctState"), correctState}};
+            {QStringLiteral("correctState"), correctState},
+            {QStringLiteral("frozenSource"), frozenSource},
+            {QStringLiteral("grantActivation"), grantActivation}};
 }
 
 SkillInstanceSnapshot SkillInstanceSnapshot::deserialize(const QVariantMap &map)
@@ -922,6 +988,8 @@ SkillInstanceSnapshot SkillInstanceSnapshot::deserialize(const QVariantMap &map)
     result.parentRefOwner = map.value(QStringLiteral("parentRefOwner")).toString();
     result.parentRefSkillName = map.value(QStringLiteral("parentRefSkillName")).toString();
     result.parentRefInstanceID = map.value(QStringLiteral("parentRefInstanceID")).toInt();
+    result.frozenSource = map.value(QStringLiteral("frozenSource")).toMap();
+    result.grantActivation = map.value(QStringLiteral("grantActivation")).toMap();
     result.visible = map.value(QStringLiteral("visible")).toBool();
     result.hasAmountOverride = map.value(QStringLiteral("hasAmountOverride")).toBool();
     result.amountOverride = map.value(QStringLiteral("amountOverride")).toInt();
@@ -946,6 +1014,7 @@ QVariantMap CardSnapshot::serialize() const
     result[QStringLiteral("sourceSkillInstanceId")] = sourceSkillInstanceId;
     result[QStringLiteral("activationSkillName")] = activationSkillName;
     result[QStringLiteral("activationSkillInstanceId")] = activationSkillInstanceId;
+    result[QStringLiteral("appliedPhysicalEffectSource")] = appliedPhysicalEffectSource;
     result[QStringLiteral("modified")] = modified;
     result[QStringLiteral("flags")] = flags;
     result[QStringLiteral("marks")] = QVariantMap();
@@ -972,6 +1041,7 @@ CardSnapshot CardSnapshot::deserialize(const QVariantMap &map)
     result.sourceSkillInstanceId = map.value(QStringLiteral("sourceSkillInstanceId")).toInt();
     result.activationSkillName = map.value(QStringLiteral("activationSkillName")).toString();
     result.activationSkillInstanceId = map.value(QStringLiteral("activationSkillInstanceId")).toInt();
+    result.appliedPhysicalEffectSource = map.value(QStringLiteral("appliedPhysicalEffectSource")).toMap();
     result.modified = map.value(QStringLiteral("modified")).toBool();
     result.flags = map.value(QStringLiteral("flags")).toStringList();
     const QVariantMap marksMap = map.value(QStringLiteral("marks")).toMap();
@@ -1637,7 +1707,9 @@ bool GameSnapshot::validateRuntimeCompatibility(const GlobalSnapshot &state,
         return skillName + QLatin1Char('#') + QString::number(instanceID);
     };
     QMap<QString, QSet<QString>> instances;
+    QSet<QString> providerNames;
     for (const PlayerSnapshot &player : state.players) {
+        providerNames.insert(player.objectName);
         if (!player.general.isEmpty() && !Sanguosha->getGeneral(player.general))
             return fail(QStringLiteral("missing general: %1").arg(player.general));
         if (!player.general2.isEmpty() && !Sanguosha->getGeneral(player.general2))
@@ -1657,6 +1729,10 @@ bool GameSnapshot::validateRuntimeCompatibility(const GlobalSnapshot &state,
     }
     for (const PlayerSnapshot &player : state.players) {
         for (const SkillInstanceSnapshot &instance : player.skillInstances) {
+            for (const QVariantMap &ref : {instance.frozenSource, instance.grantActivation}) {
+                if (!ref.isEmpty() && !providerNames.contains(ref.value("owner").toString()))
+                    return fail(QStringLiteral("broken applied skill grant provider"));
+            }
             if (!instance.parentSkillName.isEmpty()
                 && !instances.value(player.objectName).contains(
                     instanceToken(instance.parentSkillName, instance.parentInstanceID))) {

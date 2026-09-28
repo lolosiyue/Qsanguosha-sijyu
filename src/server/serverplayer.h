@@ -311,6 +311,8 @@ public:
     void clearPendingAnytimeSkills();
 
 protected:
+    void numericStateCommitted(const char *mutation, int hpBefore,
+                               int maxHpBefore, int handBefore) override;
     //Synchronization helpers
     QSemaphore **semas;
     static const int S_NUM_SEMAPHORES;

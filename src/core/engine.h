@@ -49,11 +49,12 @@ using EnginePackageFactory = Package *(*)();
 class TargetModSkillQueryScope final {
 public:
     TargetModSkillQueryScope(const Player *owner, const QList<SkillInstanceRef> &allowedHidden,
-                             const QString &historyKey = QString());
+                             const QString &historyKey = QString(), qint64 useHistoryEventId = 0);
     ~TargetModSkillQueryScope();
     static bool allows(const Player *owner, const SkillInstanceRef &ref);
     static void record(const Player *owner, const SkillInstanceRef &ref, const CorrectSkillResult &result);
     static int historyValue(const Player *owner, const QString &key, int value);
+    static qint64 excludedHistoryUse(const Player *owner);
     QList<SkillInstanceRef> contributors() const { return m_contributors; }
 private:
     Q_DISABLE_COPY(TargetModSkillQueryScope)
@@ -61,6 +62,7 @@ private:
     QList<SkillInstanceRef> m_allowedHidden;
     QList<SkillInstanceRef> m_contributors;
     QString m_historyKey;
+    qint64 m_useHistoryEventId;
     TargetModSkillQueryScope *m_previous;
     static thread_local TargetModSkillQueryScope *s_current;
 };

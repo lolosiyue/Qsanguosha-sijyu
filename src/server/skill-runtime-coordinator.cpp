@@ -15,11 +15,20 @@
 
 using namespace QSanProtocol;
 
+namespace { QString skillAmountGuardKey(const SkillInstanceRef &ref); }
+
 bool SkillRuntimeCoordinator::canReceiveSkillInstance(const Room &room, const ServerPlayer *receiver,
                              const ServerPlayer *owner, const SkillInstance &instance)
 {
     if (!receiver || !owner)
         return false;
+    // The receipt remains registered during removal notifications, after the
+    // live leaf has gone. Never publish its private prompt to other players.
+    const SkillInstanceRef entry(owner->objectName(), instance.key());
+    if (room.m_skillRuntime->m_acceptedViewAsEffects.contains(skillAmountGuardKey(entry))
+        || room.isAcceptedViewAsEffect(entry)
+        || room.isAcceptedViewAsEffect(instance.parentRef))
+        return receiver == owner;
     if (!Config.EnableHegemony) {
         if (receiver == owner)
             return true;
@@ -72,6 +81,11 @@ SkillInstanceEntryMessage skillInstanceMessage(const ServerPlayer *owner,
     SkillInstanceEntryMessage message;
     message.ownerName = owner->objectName();
     message.instance = instance;
+    if (!includePrivateState) {
+        // A public applied grant must not reveal a concealed/retired provider.
+        message.instance.frozenSourceRef = SkillInstanceRef();
+        message.instance.grantActivationRef = SkillInstanceRef();
+    }
     if (includePrivateState) {
         message.privateState = owner->getSkillInstanceState(instance.skillName,
                                                             instance.instanceID);
@@ -188,10 +202,69 @@ SkillInstanceRef SkillRuntimeCoordinator::attachSkillToPlayer(
         player->removeSkillInstance(skillName, instanceId);
         return SkillInstanceRef();
     }
+    if (isAcceptedViewAsEffect(parentRef))
+        player->Player::setSkillInstanceStateValue(skillName, instanceId, "accepted_view_as_effect", true);
     if (skill->inherits("TriggerSkill"))
         m_room.thread->addTriggerSkill(qobject_cast<const TriggerSkill *>(skill));
     notifySkillInstanceUpsert(player, *player->findSkillInstance(skillName, instanceId));
     return child;
+}
+
+SkillInstanceRef SkillRuntimeCoordinator::beginAcceptedViewAsEffect(
+    ServerPlayer *player, const QString &skillName, const SkillContext &accepted)
+{
+    const auto *skill = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(skillName));
+    if (!player || !skill || !accepted.sourceRef.isValid() || !accepted.activationRef.isValid()
+        || accepted.is_canceled || (accepted.current_event != EventSkillEffect
+            && accepted.current_event != EventSkillEffectTarget)) return {};
+    // Only an already accepted server effect may create this receipt. Its parent
+    // is provenance, not an ordinary live-grant dependency or a new acquired skill.
+    const int id = player->createSkillInstance(skillName, SourceAttached, accepted.activationRef, true);
+    const SkillInstanceRef ref(player->objectName(), SkillInstanceKey(skillName, id));
+    m_acceptedViewAsEffects.insert(skillAmountGuardKey(ref), accepted.sourceRef);
+    player->Player::setSkillInstanceAmountOverride(skillName, id,
+        qMax(0, accepted.hasModifiedAmount() ? accepted.modified_amount : accepted.amount));
+    // Owner-only projection permits the exact response entry in Hegemony after
+    // the original root disappeared; the server still requires the receipt map.
+    player->Player::setSkillInstanceStateValue(skillName, id, "accepted_view_as_effect", true);
+    player->Player::setSkillInstanceStateValue(skillName, id, "legacy_activation_lifecycle", true);
+    notifySkillInstanceUpsert(player, *player->findSkillInstance(skillName, id));
+    return ref;
+}
+
+bool SkillRuntimeCoordinator::isAcceptedViewAsEffect(const SkillInstanceRef &ref) const
+{
+    SkillInstanceRef current = ref;
+    QList<SkillInstanceRef> visited;
+    while (current.isValid() && !visited.contains(current)) {
+        visited << current;
+        const ServerPlayer *owner = m_room.findPlayerByObjectName(current.ownerObjectName, true);
+        const SkillInstance *instance = owner
+            ? owner->findSkillInstance(current.key.skillName, current.key.instanceID) : nullptr;
+        if (!instance) return false;
+        if (m_acceptedViewAsEffects.contains(skillAmountGuardKey(current))) return true;
+        if (instance->parentRef.isValid()) current = instance->parentRef;
+        else if (instance->source == SourceHelper && instance->parent.isValid())
+            current = SkillInstanceRef(current.ownerObjectName, instance->parent);
+        else return false;
+    }
+    return false;
+}
+
+void SkillRuntimeCoordinator::endAcceptedViewAsEffect(const SkillInstanceRef &ref)
+{
+    if (!m_acceptedViewAsEffects.contains(skillAmountGuardKey(ref))) return;
+    // Ordinary attachments borrowed from this leaf still end with their owner.
+    detachAttachedSkill(ref);
+    ServerPlayer *owner = m_room.findPlayerByObjectName(ref.ownerObjectName, true);
+    const SkillInstance *instance = owner ? owner->findSkillInstance(ref.key.skillName, ref.key.instanceID) : nullptr;
+    if (instance) {
+        const SkillInstance snapshot = *instance;
+        owner->removeSkillInstance(ref.key.skillName, ref.key.instanceID);
+        // Hegemony removal sends a snapshot, so remove before publishing it.
+        notifySkillInstanceRemove(owner, snapshot);
+    }
+    m_acceptedViewAsEffects.remove(skillAmountGuardKey(ref));
 }
 
 bool SkillRuntimeCoordinator::detachAttachedSkill(const SkillInstanceRef &ref)
@@ -427,11 +500,45 @@ int SkillRuntimeCoordinator::acquireSkillForSlot(ServerPlayer *player, const QSt
                                                  bool head, bool open, bool getmark,
                                                  bool eventAndLog)
 {
+    return acquireSkillInternal(player, skillName, head, open, getmark, eventAndLog, nullptr);
+}
+
+int SkillRuntimeCoordinator::acquireSkillUnbound(ServerPlayer *player, const QString &skillName,
+    bool open, bool getmark, bool eventAndLog)
+{
+    // Card/system acquisition has no general slot and no invented skill provenance.
+    return acquireSkillInternal(player, skillName, true, open, getmark, eventAndLog, nullptr, true);
+}
+
+int SkillRuntimeCoordinator::acquireSkillFromEffect(ServerPlayer *player, const QString &skillName,
+    const SkillContext &accepted, bool open, bool getmark, bool eventAndLog)
+{
+    return acquireSkillFromEffect(player, skillName, accepted, {}, open, getmark, eventAndLog);
+}
+
+int SkillRuntimeCoordinator::acquireSkillFromEffect(ServerPlayer *player, const QString &skillName,
+    const SkillContext &accepted, const std::function<void(int)> &committed,
+    bool open, bool getmark, bool eventAndLog)
+{
+    if (!player || accepted.is_canceled || !accepted.sourceRef.isValid()
+        || !accepted.activationRef.isValid()
+        || (accepted.current_event != EventSkillEffect
+            && accepted.current_event != EventSkillEffectTarget)) return 0;
+    const SkillContext frozen = accepted;
+    return acquireSkillInternal(player, skillName, true, open, getmark, eventAndLog, &frozen, false, committed);
+}
+
+int SkillRuntimeCoordinator::acquireSkillInternal(ServerPlayer *player, const QString &skillName,
+    bool head, bool open, bool getmark, bool eventAndLog, const SkillContext *accepted, bool unbound,
+    const std::function<void(int)> &committed)
+{
     const Skill *skill = Sanguosha->getSkill(skillName);
-    if (!skill)
+    if (!player || !skill)
         return 0;
 
-    const int instanceId = player->acquireSkill(skillName, head);
+    const int instanceId = player->acquireSkill(skillName, head, -1,
+        accepted ? accepted->sourceRef : SkillInstanceRef(),
+        accepted ? accepted->activationRef : SkillInstanceRef(), unbound, committed);
     const SkillInstance *created = player->findSkillInstance(skillName, instanceId);
     if (created)
         notifySkillInstanceUpsert(player, *created);
@@ -442,8 +549,13 @@ int SkillRuntimeCoordinator::acquireSkillForSlot(ServerPlayer *player, const QSt
         const ViewAsEquipSkill *viewAsEquip = Sanguosha->getViewAsEquipSkill(skillName);
         const QString view = viewAsEquip->viewAsEquip(player);
         foreach (const QString &equipName, view.split(",", Qt::SkipEmptyParts)) {
-            if (Sanguosha->getViewAsSkill(equipName))
-                attachSkillToPlayer(player, equipName);
+            if (Sanguosha->getViewAsSkill(equipName)) {
+                if (accepted || unbound)
+                    attachSkillToPlayer(player, equipName,
+                        SkillInstanceRef(player->objectName(), SkillInstanceKey(skillName, instanceId)));
+                else
+                    attachSkillToPlayer(player, equipName);
+            }
         }
     }
 
@@ -470,6 +582,8 @@ int SkillRuntimeCoordinator::acquireSkillForSlot(ServerPlayer *player, const QSt
     }
 
     foreach (const Skill *related, Sanguosha->getRelatedSkills(skillName)) {
+        // EventAcquireSkill can immediately expire the newly applied grant.
+        if (!player->hasSkillInstance(skillName, instanceId)) break;
         const int helperId = player->createSkillInstance(related->objectName(), SourceHelper,
                                                          skillName, instanceId,
                                                          related->isVisible());
@@ -477,7 +591,7 @@ int SkillRuntimeCoordinator::acquireSkillForSlot(ServerPlayer *player, const QSt
         if (helper) {
             // createSkillInstance defaults to an unbound helper.  Bind it to
             // the same general slot before the first client upsert/event.
-            const_cast<SkillInstance *>(helper)->bindHead = head ? 1 : 2;
+            const_cast<SkillInstance *>(helper)->bindHead = (accepted || unbound) ? 0 : (head ? 1 : 2);
             notifySkillInstanceUpsert(player, *helper);
         }
         if (related->inherits("TriggerSkill"))
@@ -912,18 +1026,46 @@ void SkillRuntimeCoordinator::clearSkillInvalidityBySource(ServerPlayer *source)
 }
 
 SkillInstanceRef SkillRuntimeCoordinator::resolveSkillInstanceRootRef(
-    const SkillInstanceRef &ref) const
+    const SkillInstanceRef &ref, bool followFrozenSource) const
 {
-    return SkillInstanceUtils::resolveRootRef(ref, [this](const SkillInstanceRef &current) {
+    SkillInstanceRef current = ref;
+    QList<SkillInstanceRef> visited;
+    while (current.isValid() && !visited.contains(current)) {
+        visited << current;
         const ServerPlayer *owner = m_room.findPlayerByObjectName(current.ownerObjectName, true);
-        return owner ? owner->findSkillInstance(current.key.skillName, current.key.instanceID) : nullptr;
-    });
+        const SkillInstance *instance = owner
+            ? owner->findSkillInstance(current.key.skillName, current.key.instanceID) : nullptr;
+        if (!instance) return {};
+        if (followFrozenSource && instance->frozenSourceRef.isValid())
+            return instance->frozenSourceRef;
+        const auto receipt = m_acceptedViewAsEffects.constFind(skillAmountGuardKey(current));
+        // Ordinary children still need their live chain, but its accepted-effect
+        // boundary supplies frozen provenance even after the original root retires.
+        if (receipt != m_acceptedViewAsEffects.cend()) return receipt.value();
+        if (instance->parentRef.isValid()) current = instance->parentRef;
+        else if (instance->source == SourceHelper && instance->parent.isValid())
+            current = SkillInstanceRef(current.ownerObjectName, instance->parent);
+        else return current;
+    }
+    return {};
 }
 
 bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
 {
+    use.physicalEquipSource = PhysicalEquipSource();
     if (!use.card || !use.from)
         return false;
+    if (!use.card->appliedPhysicalEffectSource().isEmpty()) {
+        SkillContext applied;
+        if (!m_room.physicalCardEffectContext(use.card, applied)
+            || m_room.getCardOwner(use.card->getEffectiveId()) != use.from
+            || use.card->hasFlag("using")) return false;
+        use.sourceRef = applied.sourceRef;
+        use.activationRef = applied.activationRef;
+        use.skillExecutionID = 0;
+        use.hasSkillActivationRequest = false;
+        return true; // The physical transformation was already accepted and paid.
+    }
     QString activationName = use.card->getActivationSkillName();
     int activationId = use.card->getActivationSkillInstanceId();
     if (activationName.isEmpty() && use.card->getTypeId() == Card::TypeSkill) {
@@ -942,9 +1084,9 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
             }
         }
     }
-    const auto *equipmentViewAs = dynamic_cast<const ViewAsSkillV2 *>(
+    const auto *v2ViewAs = dynamic_cast<const ViewAsSkillV2 *>(
         Sanguosha->getViewAsSkill(activationName));
-    if (equipmentViewAs && equipmentViewAs->isEquipSkill() && activationId == 0) {
+    if (v2ViewAs && v2ViewAs->isEquipSkill() && activationId == 0) {
         // Also rebuild legacy AI/card-string submissions with instance zero.
         // Equipment ownership is authoritative; a supplied instance cannot grant it.
         if (!use.card->isVirtualCard())
@@ -953,7 +1095,7 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         source.owner = use.from;
         source.invoker = use.from;
         source.initiator = use.from;
-        if (!equipmentViewAs->prepareEquipSource(&m_room, source)) return false;
+        if (!v2ViewAs->prepareEquipSource(&m_room, source)) return false;
         ActiveSkillRequest request;
         request.reason = m_room.roomRuntime()->state().getCurrentCardUseReason();
         request.pattern = m_room.roomRuntime()->state().getCurrentCardUsePattern();
@@ -962,10 +1104,11 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         request.setCardSelection(use.card);
         for (ServerPlayer *target : use.to)
             request.selectedTargetNames << target->objectName();
-        const Card *rebuilt = m_room.resolveActiveSkillRequest(use.from, equipmentViewAs, request);
+        const Card *rebuilt = m_room.resolveActiveSkillRequest(use.from, v2ViewAs, request);
         if (!rebuilt) return false;
         use.activationRef = source.activationRef;
         use.sourceRef = source.sourceRef;
+        use.physicalEquipSource = source.physicalEquipSource;
         use.changeCard(const_cast<Card *>(rebuilt));
         const_cast<Card *>(use.card)->change_cards.clear();
         // The server-created equipment conversion has no other owner. Keep it
@@ -989,7 +1132,28 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
                 hasOrdinarySource = true;
             }
         }
-        if (projected.isEmpty() || hasOrdinarySource) return true;
+        const int scopedId = v2ViewAs ? use.from->getMark(
+            ViewAsSkillV2::borrowedActivationMarkName(activationName)) : 0;
+        if (projected.isEmpty() || (hasOrdinarySource && !projected.contains(scopedId))) {
+            // Every submitted V2 conversion, including ordinary legacy AI card
+            // strings, must rebuild and pay. Accepted server-generated cards use
+            // Room::useCardFromSkillEffect and never enter this activation resolver.
+            if (!v2ViewAs) return true;
+            projected.clear();
+            for (int id : use.from->getValidSkillInstanceIds(activationName)) {
+                const SkillInstanceRef ref(use.from->objectName(), SkillInstanceKey(activationName, id));
+                if (m_room.canShowGeneralForSkill(ref)) projected << id;
+            }
+            if (projected.isEmpty()) return false;
+        }
+        if (v2ViewAs) {
+            const int scopedId = use.from->getMark(
+                ViewAsSkillV2::borrowedActivationMarkName(activationName));
+            if (scopedId > 0) {
+                if (!projected.contains(scopedId)) return false;
+                projected = {scopedId};
+            }
+        }
         activationId = projected.first();
         if (projected.size() > 1) {
             // Multiple providers remain distinct even for an old AI/card string.
@@ -1020,6 +1184,7 @@ bool SkillRuntimeCoordinator::resolveCardSkillInstance(CardUseStruct &use)
         mutableCard->setActivationSkill(QString(), 0);
         use.hasSkillActivationRequest = false;
         use.sourceRef = SkillInstanceRef();
+        use.physicalEquipSource = PhysicalEquipSource();
         use.activationRef = SkillInstanceRef();
         return true;
     }
@@ -1260,6 +1425,7 @@ void SkillRuntimeCoordinator::setSkillExecutionContext(
     if (!entry)
         return;
     SkillContext stored = context;
+    stored.physicalEquipSource = entry->immutableContextData.value<SkillContext>().physicalEquipSource;
     stored.original_data = &entry->backingData;
     entry->contextData = QVariant::fromValue(stored);
 }

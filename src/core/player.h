@@ -5,6 +5,7 @@
 #include "card.h"
 #include "skill-instance-types.h"
 #include <QMutex>
+#include <functional>
 //#include "wrapped-card.h"
 
 class EquipCard;
@@ -183,6 +184,16 @@ public:
     const Player *getLord(bool include_death = false) const;
 
     int acquireSkill(const QString &skill_name, bool head = true, int instanceId = -1);
+    int acquireSkill(const QString &skill_name, bool head, int instanceId,
+                     const SkillInstanceRef &frozenSource,
+                     const SkillInstanceRef &grantActivation);
+    int acquireSkill(const QString &skill_name, bool head, int instanceId,
+                     const SkillInstanceRef &frozenSource,
+                     const SkillInstanceRef &grantActivation, bool unbound);
+    int acquireSkill(const QString &skill_name, bool head, int instanceId,
+                     const SkillInstanceRef &frozenSource,
+                     const SkillInstanceRef &grantActivation, bool unbound,
+                     const std::function<void(int)> &committed);
     void detachSkill(const QString &skill_name);
     void detachSkill(const QString &skill_name, bool head);
     void detachAllSkills();
@@ -218,6 +229,8 @@ public:
     QList<SkillInstance> getSkillInstances() const;
     void clearSkillInstances();
     void upsertSkillInstance(const SkillInstance &instance);
+    // Restore retired provenance IDs without manufacturing live instances.
+    void reserveSkillInstanceId(const QString &skillName, int instanceID);
     // State 寫入可覆寫：ServerPlayer 會 owner-only 同步到 client。
     virtual void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state);
     QVariantMap getSkillInstanceState(const QString &skillName, int instanceID) const;
@@ -527,6 +540,9 @@ public:
 
 
 protected:
+    // Pure commit observation only; subclasses must not dispatch gameplay here.
+    virtual void numericStateCommitted(const char *mutation, int hpBefore,
+                                       int maxHpBefore, int handBefore);
     bool event(QEvent *event) override;
     const QMultiHash<const Player *, int> &fixedDistances() const { return fixed_distance; }
     const QList<const Player *> &attackRangePairs() const { return attack_range_pair; }
@@ -564,6 +580,10 @@ protected:
     QList<int> broken_equips;
 
 private:
+    friend class PlayerStateService;
+    // Commit receipts before mark_changed can re-enter game rules.
+    void setMarkWithReceipt(const QString &mark, int value,
+                            const std::function<void(const QString &, int, int)> &committed);
     QVariantMap m_skillDescriptionUsage;
     QVariantMap m_skillDescriptionValidity;
     QVariantList m_skillDescriptionEffects;

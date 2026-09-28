@@ -10,6 +10,7 @@
 #include "engine.h"
 #include "generaloverview.h"
 #include "server-info.h"
+#include "skill-instance-utils.h"
 
 #include <QButtonGroup>
 #include <QCommandLinkButton>
@@ -51,6 +52,17 @@ quint64 currentDeclarationRequestId()
         ? ClientInstance->interactionCore()->activeRequestId() : 0;
 }
 
+SkillInstanceRef popupActivationRef(const QString &skillName, const QObject *source)
+{
+    if (!Self) return SkillInstanceRef();
+    QString sourceSkill;
+    int instanceId = source ? SkillInstanceUtils::parseName(source->objectName(), sourceSkill) : 0;
+    if (sourceSkill != skillName) instanceId = 0;
+    const int scopedId = Self->getMark(ViewAsSkillV2::borrowedActivationMarkName(skillName));
+    if (scopedId > 0) instanceId = scopedId;
+    return SkillInstanceRef(Self->objectName(), SkillInstanceKey(skillName, instanceId));
+}
+
 }
 
 QHash<QString, QPointer<GuhuoDialog>> GuhuoDialogs;
@@ -83,7 +95,7 @@ GuhuoDialog::GuhuoDialog(const QString &object, bool left, bool right, bool play
     prepareOptions();
 }
 
-void GuhuoDialog::prepareOptions()
+void GuhuoDialog::prepareOptions(const SkillInstanceRef &activationRef)
 {
     clearButtons();
     delete left_box;
@@ -94,7 +106,7 @@ void GuhuoDialog::prepareOptions()
         actualDialogInfo(objectName(), SkillDialogInfo::guhuo(
             objectName(), show_left, show_right, play_only, slash_combined, delayed_tricks)),
         Self, Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
-        ServerInfo.BanPackages, currentDeclarationRequestId());
+        ServerInfo.BanPackages, currentDeclarationRequestId(), objectName(), activationRef);
     if (declaration->active()) {
         if (show_left) {
             left_box = createLeft();
@@ -165,7 +177,7 @@ bool GuhuoDialog::isButtonEnabled(const QString &button_name) const
 
 void GuhuoDialog::popup()
 {
-    prepareOptions();
+    prepareOptions(popupActivationRef(objectName(), sender()));
     if (!shouldPopup() || !hasEnabledOptions()) {
         emit onButtonClick();
         return;
@@ -244,12 +256,12 @@ JuguanDialog::JuguanDialog(const QString &object, const QString &card_names)
     connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectCard(QAbstractButton *)));
 }
 
-void JuguanDialog::prepareOptions()
+void JuguanDialog::prepareOptions(const SkillInstanceRef &activationRef)
 {
     declaration = std::make_unique<SkillDeclarationSession>(
         SkillDialogInfo::juguan(objectName(), cards), Self,
         Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
-        ServerInfo.BanPackages, currentDeclarationRequestId());
+        ServerInfo.BanPackages, currentDeclarationRequestId(), objectName(), activationRef);
     clearChoice();
     clearButtons();
     if (!shouldPopup())
@@ -313,7 +325,7 @@ bool JuguanDialog::isButtonEnabled(const QString &name) const
 
 void JuguanDialog::popup()
 {
-    prepareOptions();
+    prepareOptions(popupActivationRef(objectName(), sender()));
     if (!shouldPopup() || !hasEnabledOptions()) {
         emit onButtonClick();
         return;
@@ -366,12 +378,12 @@ TiansuanDialog::TiansuanDialog(const QString &name, const QString &choices)
     connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectChoice(QAbstractButton *)));
 }
 
-void TiansuanDialog::prepareOptions()
+void TiansuanDialog::prepareOptions(const SkillInstanceRef &activationRef)
 {
     declaration = std::make_unique<SkillDeclarationSession>(
         SkillDialogInfo::tiansuan(objectName(), tiansuan_choices), Self,
         Sanguosha->getCurrentCardUseReason(), Sanguosha->getCurrentCardUsePattern(),
-        ServerInfo.BanPackages, currentDeclarationRequestId());
+        ServerInfo.BanPackages, currentDeclarationRequestId(), objectName(), activationRef);
     declaration->clearChoice();
     // This singleton is reused across requests. Rebuild its widgets from the
     // same stable choices the table and keyboard presenter consume.
@@ -407,7 +419,7 @@ bool TiansuanDialog::applyOption(const QString &choice)
 
 void TiansuanDialog::popup()
 {
-    prepareOptions();
+    prepareOptions(popupActivationRef(objectName(), sender()));
     for (QAbstractButton *button : group->buttons()) {
         if (button->isEnabled()) {
             button->setFocus();

@@ -23,7 +23,8 @@ namespace SkillInstanceUtils {
     // Shared by server activation and client/server passive evaluation. The
     // lookup supplies the appropriate room/view without exposing hidden data.
     template <typename Lookup>
-    SkillInstanceRef resolveRootRef(const SkillInstanceRef &ref, Lookup lookup)
+    SkillInstanceRef resolveRootRef(const SkillInstanceRef &ref, Lookup lookup,
+                                   bool followFrozenSource = true)
     {
         SkillInstanceRef current = ref;
         QList<SkillInstanceRef> visited;
@@ -31,6 +32,8 @@ namespace SkillInstanceUtils {
             visited << current;
             const SkillInstance *instance = lookup(current);
             if (!instance) return SkillInstanceRef();
+            if (followFrozenSource && instance->frozenSourceRef.isValid())
+                return instance->frozenSourceRef;
             if (instance->parentRef.isValid()) {
                 current = instance->parentRef;
             } else if (instance->source == SourceHelper && instance->parent.isValid()) {

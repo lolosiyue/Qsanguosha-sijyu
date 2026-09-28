@@ -73,7 +73,9 @@ void Player::setShownRole(bool shown)
 void Player::setHp(int hp)
 {
     if (this->hp != hp){
+        const int before = this->hp;
         this->hp = hp;
+        numericStateCommitted("hp", before, max_hp, handcards.size());
         emit hp_changed();
     }
 }
@@ -91,11 +93,18 @@ int Player::getMaxHp() const
 void Player::setMaxHp(int max_hp)
 {
     if (this->max_hp != max_hp){
+		const int hpBefore = hp, maxHpBefore = this->max_hp;
 		this->max_hp = max_hp;
 		if (hp > max_hp)
 			hp = max_hp;
+		numericStateCommitted("maxhp", hpBefore, maxHpBefore, handcards.size());
 		emit hp_changed();
 	}
+}
+
+void Player::numericStateCommitted(const char *, int, int, int)
+{
+    // Clients keep their existing presentation-only setters.
 }
 
 int Player::getLostHp() const
@@ -760,8 +769,32 @@ bool Player::isSkillInvalid(const QString &skill_name, int instanceId) const
 
 int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
 {
+    return acquireSkill(skill_name, head, instanceId, SkillInstanceRef(), SkillInstanceRef());
+}
+
+int Player::acquireSkill(const QString &skill_name, bool head, int instanceId,
+                         const SkillInstanceRef &frozenSource,
+                         const SkillInstanceRef &grantActivation)
+{
+    return acquireSkill(skill_name, head, instanceId, frozenSource, grantActivation, false);
+}
+
+int Player::acquireSkill(const QString &skill_name, bool head, int instanceId,
+                         const SkillInstanceRef &frozenSource,
+                         const SkillInstanceRef &grantActivation, bool unbound)
+{
+    return acquireSkill(skill_name, head, instanceId, frozenSource, grantActivation, unbound, {});
+}
+
+int Player::acquireSkill(const QString &skill_name, bool head, int instanceId,
+                         const SkillInstanceRef &frozenSource,
+                         const SkillInstanceRef &grantActivation, bool unbound,
+                         const std::function<void(int)> &committed)
+{
     bool createdDirectly = false;
     int lastId = m_nextSkillInstanceIds.value(skill_name, 0);
+    // Install frozen provenance before the first skill_set_changed signal.
+    if (frozenSource.isValid() || unbound || committed) instanceId = lastId + 1;
     if (instanceId <= lastId || hasSkillInstance(skill_name, instanceId)) {
         instanceId = createSkillInstance(skill_name, SourceAcquired, true);
     } else {
@@ -775,12 +808,15 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
     inst.instanceID = instanceId;
     inst.source = SourceAcquired;
     inst.parent = SkillInstanceKey();
+    inst.parentRef = SkillInstanceRef();
+    inst.frozenSourceRef = frozenSource;
+    inst.grantActivationRef = grantActivation;
     inst.visible = true;
     inst.state = QVariantMap();
     inst.hasAmountOverride = false;
     inst.amountOverride = 0;
     inst.correctState.clear();
-    inst.bindHead = head ? 1 : 2;
+    inst.bindHead = (unbound || frozenSource.isValid()) ? 0 : (head ? 1 : 2);
 
     if (instanceId > m_nextSkillInstanceIds.value(skill_name, 0))
         m_nextSkillInstanceIds[skill_name] = instanceId;
@@ -790,8 +826,11 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
         acquired_skills << formatted;
 
     QSet<QString> &targetSet = head ? head_acquired_skills : deputy_acquired_skills;
-    targetSet.insert(formatted);
+    if (inst.bindHead != 0) targetSet.insert(formatted);
 
+    // Publish the exact committed ID before the first signal can expire the grant
+    // or unwind acquisition. Receipt callbacks only store state; they never run rules.
+    if (committed) committed(instanceId);
     if (createdDirectly)
         SkillSet::bump();
     emit skill_set_changed();
@@ -1766,9 +1805,18 @@ void Player::removeMark(const QString &mark, int remove_num)
 
 void Player::setMark(const QString &mark, int value)
 {
-    if (getMark(mark) == value) return;
-    if(value==0) marks.remove(mark);
-	else marks[mark] = value;
+    setMarkWithReceipt(mark, value, {});
+}
+
+void Player::setMarkWithReceipt(const QString &mark, int value,
+                               const std::function<void(const QString &, int, int)> &committed)
+{
+    const int before = getMark(mark);
+    if (before == value) return;
+    if (value == 0) marks.remove(mark);
+    else marks[mark] = value;
+    // The callback only stores the receipt; no signal or game event has run yet.
+    if (committed) committed(mark, before, value);
     emit mark_changed();
 }
 
@@ -2138,6 +2186,11 @@ bool Player::isSkillInstanceEffectAvailable(const QString &skillName, int instan
                                            const Player *targetModPreviewOwner) const
 {
     if (!hasSkillInstance(skillName, instanceID)) return false;
+    const SkillInstance *effectEntry = findSkillInstance(skillName, instanceID);
+    if (effectEntry && effectEntry->source == SourceAttached
+        && getSkillInstanceStateValue(skillName, instanceID, "accepted_view_as_effect").toBool()
+        && getMark(ViewAsSkillV2::borrowedActivationMarkName(skillName)) == instanceID)
+        return !isSkillInvalid(skillName, instanceID);
     if (!HegemonyMode::enabledFor(this)) return !isSkillInvalid(skillName, instanceID);
 
     const Player *sourceOwner = this;
@@ -2156,7 +2209,7 @@ bool Player::isSkillInstanceEffectAvailable(const QString &skillName, int instan
             if (!sourceOwner || sourceOwner->isSkillInvalid(current.key.skillName, current.key.instanceID))
                 return nullptr;
             return sourceOwner->findSkillInstance(current.key.skillName, current.key.instanceID);
-        });
+        }, false); // Availability follows the live grant, not its retired provenance.
     if (!root.isValid()) return false;
     const SkillInstance *instance = sourceOwner->findSkillInstance(root.key.skillName, root.key.instanceID);
     // Read the exact root binding, never a shown/acquired same-name sibling.
@@ -2317,6 +2370,12 @@ void Player::clearSkillInstances()
     if (changed)
         SkillSet::bump();
     emit skill_set_changed();
+}
+
+void Player::reserveSkillInstanceId(const QString &skillName, int instanceID)
+{
+    if (skillName.isEmpty() || instanceID <= 0) return;
+    m_nextSkillInstanceIds[skillName] = qMax(m_nextSkillInstanceIds.value(skillName, 0), instanceID);
 }
 
 void Player::upsertSkillInstance(const SkillInstance &instance)
@@ -3485,10 +3544,13 @@ void Player::removeCard(int id, Place place)
     if (id < 0) return;
     switch (place){
     case PlaceHand: {
+		const int before = handcards.size();
 		foreach(const Card *h, handcards){
 			if(h && h->getId()==id)
 				handcards.removeOne(h);
 		}
+        if (before != handcards.size())
+            numericStateCommitted("hand_remove", hp, max_hp, before);
         break;
     }case PlaceEquip: {
         if (const Card *card = Sanguosha->getCard(id)) removeEquip(card);
@@ -3529,6 +3591,7 @@ void Player::addCard(int id, Place place)
 				return;
 		}
         handcards << card;
+        numericStateCommitted("hand_add", hp, max_hp, handcards.size() - 1);
         break;
     }case PlaceEquip: {
         setEquip(card);
@@ -3595,6 +3658,7 @@ const Card *Player::getRandomHandCard() const
 void Player::drawCard(const Card *card)
 {
     handcards << card;
+    numericStateCommitted("hand_draw", hp, max_hp, handcards.size() - 1);
 }
 
 void Player::sortHandCards(const QString &hands)

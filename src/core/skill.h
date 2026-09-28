@@ -14,6 +14,7 @@ struct SkillDeclarationCandidate;
 struct SkillContext {
     QString skill_name;
     SkillInstanceRef sourceRef;
+    PhysicalEquipSource physicalEquipSource;
     SkillInstanceRef activationRef;
     ServerPlayer *initiator;
     ServerPlayer *invoker;
@@ -107,12 +108,13 @@ struct CorrectSkillContext {
     const Player *secondary;
     const Card *card;
     int modType;
+    MaxCardsType::MaxCardsCount maxCardsType;
     bool includeWeapon;
     int currentAmount;
 
     CorrectSkillContext()
         : holder(nullptr), primary(nullptr), secondary(nullptr), card(nullptr),
-          modType(-1), includeWeapon(true), currentAmount(0) {}
+          modType(-1), maxCardsType(MaxCardsType::Max), includeWeapon(true), currentAmount(0) {}
 
     SkillInstanceRef getInstanceRef() const { return instanceRef; }
     const Player *getHolder() const { return holder; }
@@ -120,6 +122,7 @@ struct CorrectSkillContext {
     const Player *getSecondary() const { return secondary; }
     const Card *getCard() const { return card; }
     int getModType() const { return modType; }
+    MaxCardsType::MaxCardsCount getMaxCardsType() const { return maxCardsType; }
     bool includesWeapon() const { return includeWeapon; }
     int getCurrentAmount() const { return currentAmount; }
     QVariant getStateValue(const QString &key, const QVariant &defaultValue = QVariant()) const;
@@ -130,11 +133,18 @@ struct CorrectSkillResult {
     bool applies;
     int value;
     bool unlimited;
+    bool explicitSigned;
 
     CorrectSkillResult(bool isApplicable = false, int amount = 0, bool isUnlimited = false)
-        : applies(isApplicable), value(amount), unlimited(isUnlimited) {}
+        : applies(isApplicable), value(amount), unlimited(isUnlimited), explicitSigned(false) {}
     static CorrectSkillResult noEffect() { return CorrectSkillResult(); }
     static CorrectSkillResult useAmount(int amount) { return CorrectSkillResult(true, amount, false); }
+    static CorrectSkillResult signedAmount(int amount) {
+        // Opt into a finite signed correction without changing the legacy -1 residue sentinel.
+        CorrectSkillResult result(true, amount, false);
+        result.explicitSigned = true;
+        return result;
+    }
     static CorrectSkillResult unlimitedResidue() { return CorrectSkillResult(true, -1, true); }
 };
 
@@ -188,6 +198,9 @@ public:
     // Shared declaration hooks keep specialised candidate and eligibility
     // rules in the skill instead of recreating them in each presenter.
     virtual SkillDeclarationReason declarationReason(const Player *self,
+                                                     const QString &value,
+                                                     const Card *card) const;
+    virtual SkillDeclarationReason declarationReason(const ActiveSkillRequest &request,
                                                      const QString &value,
                                                      const Card *card) const;
     virtual QList<SkillDeclarationCandidate> declarationCandidates(
@@ -290,6 +303,10 @@ public:
     enum EffectFlow { ContinueEffects, FinishSkill };
     explicit ViewAsSkillV2(const QString &name, int n = 0);
 
+    // Shared entry gate for server, AI and presenters. The virtual callback
+    // supplies skill rules; a borrowed response may additionally pin its source.
+    bool canActivateRequest(const ActiveSkillRequest &request) const;
+    static QString borrowedActivationMarkName(const QString &skillName);
     virtual bool canActivate(const ActiveSkillRequest &request) const;
     virtual bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const;
     virtual bool cardSelectionFeasible(const ActiveSkillRequest &request) const;
@@ -346,8 +363,12 @@ public:
     QStringList usableNames(const ActiveSkillRequest &request) const;
     SkillDeclarationReason declarationReason(const Player *self, const QString &value,
                                              const Card *card) const override;
+    SkillDeclarationReason declarationReason(const ActiveSkillRequest &request, const QString &value,
+                                             const Card *card) const override;
 
 protected:
+    // Instance-sensitive declarations share this gate with server reconstruction.
+    virtual bool allowDeclaration(const ActiveSkillRequest &request, const QString &name) const;
     virtual bool allowDeclaration(const Player *player, const QString &name) const;
     // Builds the card for an accepted name: by default a clone over the selected
     // material under this skill's name. Proxy cards override it.
@@ -541,7 +562,9 @@ public:
                  QVariant &data) const override;
 
     bool skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                     SkillContext &ctx, ServerPlayer *target) const;
+                      SkillContext &ctx, ServerPlayer *target) const;
+    // Resurrection effects must opt in; ordinary effects require a living recipient.
+    virtual bool allowsDeadTarget(const SkillContext &, const ServerPlayer *) const { return false; }
 
     virtual void willInvoke(SkillContext &ctx) const;
     virtual void targetConfirming(SkillContext &ctx) const;

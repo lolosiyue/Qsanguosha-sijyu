@@ -369,11 +369,19 @@ void PlayerStateService::safeSetPlayerProperty(ServerPlayer *player,
 }
 
 void PlayerStateService::setPlayerMark(ServerPlayer *player, const QString &mark,
-	int value, QList<ServerPlayer *> onlyViewers)
+    int value, QList<ServerPlayer *> onlyViewers)
 {
-	if (value == player->getMark(mark)) return;
+    setPlayerMarkWithReceipt(player, mark, value, {}, {}, onlyViewers);
+}
 
-	if (mark.endsWith("Clear") && value != 0 && !m_room.current) return;
+bool PlayerStateService::setPlayerMarkWithReceipt(ServerPlayer *player, const QString &mark,
+    int value, const std::function<bool(const QString &, int, int)> &canCommit,
+    const std::function<void(const QString &, int, int)> &committed,
+    QList<ServerPlayer *> onlyViewers)
+{
+	if (value == player->getMark(mark)) return false;
+
+	if (mark.endsWith("Clear") && value != 0 && !m_room.current) return false;
 
 	bool trigger = m_room.hasGameStarted() && !(mark.endsWith("Clear") ||
 		mark.endsWith("_lun") || mark.endsWith("-Keep") || mark == "@HuJia" ||
@@ -388,10 +396,13 @@ void PlayerStateService::setPlayerMark(ServerPlayer *player, const QString &mark
 	QVariant data = QVariant::fromValue(markStruct);
 	if (trigger) {
 		if (m_eventDispatcher.dispatch(MarkChange, player, data))
-			return;
+			return false;
 		markStruct = data.value<MarkStruct>();
-		if (markStruct.count == player->getMark(mark)) return;
 	}
+    // Re-read after MarkChange: nested commits may have changed the same mark.
+    const int before = player->getMark(markStruct.name);
+    if (before == markStruct.count
+        || (canCommit && !canCommit(markStruct.name, before, markStruct.count))) return false;
 	if (Config.EnableHegemony && onlyViewers.isEmpty()) {
 		QList<SkillInstance> sources;
 		for (const SkillInstance &instance : player->getSkillInstances()) {
@@ -414,7 +425,7 @@ void PlayerStateService::setPlayerMark(ServerPlayer *player, const QString &mark
 		}
 	}
 	m_aiDecisions.setMarkVisibility(player, markStruct.name, markStruct.count, onlyViewers);
-	player->setMark(markStruct.name, markStruct.count);
+	player->setMarkWithReceipt(markStruct.name, markStruct.count, committed);
 
 	player->refreshUIState();
 
@@ -427,6 +438,7 @@ void PlayerStateService::setPlayerMark(ServerPlayer *player, const QString &mark
 
 	if (trigger)
 		m_eventDispatcher.dispatch(MarkChanged, player, data);
+    return true;
 }
 
 void PlayerStateService::addPlayerMark(ServerPlayer *player, const QString &mark,

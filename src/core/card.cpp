@@ -45,6 +45,7 @@ static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
     const SkillContext identity = entry->immutableContextData.value<SkillContext>();
     context.skill_name = identity.skill_name;
     context.sourceRef = identity.sourceRef;
+    context.physicalEquipSource = identity.physicalEquipSource;
     context.activationRef = identity.activationRef;
     context.initiator = identity.initiator;
     context.instanceID = identity.instanceID;
@@ -913,7 +914,7 @@ void Card::onUse(Room*room, CardUseStruct &card_use) const
 {
 	const bool deferredHegemonyCost = Config.EnableHegemony
 		&& card_use.activationRef.isValid() && card_use.card->isVirtualCard()
-		&& card_use.card->needsDeferredHegemonyReveal();
+		&& !card_use.isAcceptedSkillEffectCard() && card_use.card->needsDeferredHegemonyReveal();
 	// Ordinary cards retain target construction before PreCardUsed. A paid
 	// conversion may need its revealed allegiance before constructing targets.
 	if (!deferredHegemonyCost)
@@ -1040,7 +1041,7 @@ void Card::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targets) co
 	CardUseStruct cardUse = room->getTag("UseHistory"+toString()).value<CardUseStruct>();
 	foreach (ServerPlayer*target, targets) {
 		CardEffectStruct effect;
-		effect.skillExecutionID = cardUse.skillExecutionID;
+        effect.setSkillUseContext(cardUse);
 		effect.nullified = cardUse.nullified_list.contains("_ALL_TARGETS")
 			||cardUse.nullified_list.contains(target->objectName());
 		if (effect.nullified){

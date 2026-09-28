@@ -134,6 +134,7 @@ CardsMoveOneTimeStruct &CardsMoveOneTimeStruct::operator=(const CardsMoveOneTime
     last_hand_suits = other.last_hand_suits;
     shown_ids = other.shown_ids;
     broken_ids = other.broken_ids;
+    m_equipmentSourcesBefore = other.m_equipmentSourcesBefore;
     return *this;
 }
 

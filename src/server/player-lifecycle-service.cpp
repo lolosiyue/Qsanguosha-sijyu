@@ -257,6 +257,22 @@ void PlayerLifecycleService::revivePlayer(ServerPlayer *player, bool sendLog,
 void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reason,
                                         HpLostStruct *hpLost)
 {
+    // Freeze attribution before death/reveal callbacks can change either camp.
+    ServerPlayer *killer = reason ? reason->from : nullptr;
+    QVariantMap deathFact;
+    if (m_room.historyRecordingEnabled()) {
+        deathFact = {{"victim", victim->objectName()}, {"to", victim->objectName()},
+            {"from", killer ? killer->objectName() : QString()},
+            {"killer", killer ? killer->objectName() : QString()},
+            // Preserve the native death cause before any listener can mutate its payload.
+            {"cause_kind", hpLost ? QStringLiteral("hp_lost")
+                : reason ? QStringLiteral("damage") : QStringLiteral("other")},
+            {"victim_role", victim->getRole()}, {"victim_kingdom", victim->getKingdom()},
+            {"killer_role", killer ? killer->getRole() : QString()},
+            {"killer_kingdom", killer ? killer->getKingdom() : QString()},
+            {"killer_is_friend", killer && killer->isFriendWith(victim)},
+            {"attribution_complete", true}};
+    }
     m_room.clearControllerRelation(victim);
     victim->setAlive(false);
 
@@ -289,9 +305,20 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
     m_notifier.sendLog(log, QList<ServerPlayer *>());
 
     m_room.broadcastProperty(victim, "alive");
-    m_room.revealRole(victim);
+    // Happy Rebel deaths preserve the same private role grants as living players.
+    const bool preserveHiddenRoles = m_room.getMode() == QStringLiteral("7_happyrebel")
+        && m_room.getTag("HappyRebelMode").toBool();
+    if (!preserveHiddenRoles)
+        m_room.revealRole(victim);
     m_notifier.doBroadcastNotify(S_COMMAND_KILL_PLAYER, victim->objectName());
 
+    // One accepted death before GameOverJudge/Death listeners, including final
+    // game-over unwinding. An intercepted BeforeGameOverJudge creates no fact.
+    ResolutionHistoryEventGuard deathHistory(m_room.resolutionHistory(), "death", deathFact,
+                                              m_room.historyRecordingEnabled());
+    if (deathHistory.id() != 0)
+        m_room.resolutionHistory().appendFact(deathHistory.id(), "death", deathFact);
+    deathHistory.finish("completed");
     m_eventDispatcher.dispatch(GameOverJudge, victim, data);
     if (victim->isAlive())
         return;
@@ -335,8 +362,13 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
         foreach (ServerPlayer *player, m_roster.alivePlayers()) {
             if (!player->isOffline())
                 exposeRoles = false;
-            if (victim->getState() != "robot")
-                m_room.notifyProperty(victim, player, "role");
+            if (victim->getState() != "robot") {
+                // syncRole checks canSeeRole without granting new spectator visibility.
+                if (preserveHiddenRoles)
+                    m_room.syncRole(victim, player);
+                else
+                    m_room.notifyProperty(victim, player, "role");
+            }
         }
 
         if (exposeRoles) {

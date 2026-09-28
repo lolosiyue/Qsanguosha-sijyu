@@ -1235,7 +1235,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 
 		bool skipThisTarget = false;
 		bool isSkillCard = effect.card->isKindOf("SkillCard");
-		bool isViewAsCard = !isSkillCard && effect.card->isVirtualCard()
+		bool isViewAsCard = !effect.isAcceptedSkillEffectCard() && !isSkillCard && effect.card->isVirtualCard()
 							&& !effect.card->getSkillName().isEmpty();
 
 		if (isSkillCard || isViewAsCard) {

@@ -41,7 +41,8 @@ public:
     ResolutionHistoryService();
     ~ResolutionHistoryService();
 
-    qint64 beginEvent(const QString &kind, const QVariantMap &data = {});
+    // Inactive events preserve a batch's sibling ancestry until explicitly entered.
+    qint64 beginEvent(const QString &kind, const QVariantMap &data = {}, bool activate = true);
     void finishEvent(qint64 id, const QString &outcome = QStringLiteral("completed"));
     void updateEvent(qint64 id, const QVariantMap &data);
     qint64 appendFact(qint64 eventId, const QString &kind, const QVariantMap &data);
@@ -53,6 +54,8 @@ public:
     QVariantMap event(qint64 id) const;
     QVariantMap findParent(qint64 id, const QString &kind,
                            bool includeSelf = false) const;
+    // complete includes origin coverage of the requested kind(s); imported
+    // older journals can be structurally valid but lack a new kind's history.
     QVariantMap queryEvents(const QVariantMap &filter) const;
     QVariantMap queryFacts(const QVariantMap &filter) const;
     QVariantMap currentScopes() const;
@@ -86,7 +89,8 @@ class ResolutionHistoryEventGuard
 {
 public:
     ResolutionHistoryEventGuard(ResolutionHistoryService &service, const QString &kind,
-                                const QVariantMap &data = {}, bool enabled = true);
+                                const QVariantMap &data = {}, bool enabled = true,
+                                bool activate = true);
     ~ResolutionHistoryEventGuard();
     ResolutionHistoryEventGuard(const ResolutionHistoryEventGuard &) = delete;
     ResolutionHistoryEventGuard &operator=(const ResolutionHistoryEventGuard &) = delete;
