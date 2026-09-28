@@ -311,6 +311,7 @@ static QJsonObject publicDecisionCard(const Card *card)
     QJsonObject result{{"name", card->objectName()}, {"class_name", card->getClassName()},
         {"kind_of", QJsonArray::fromStringList(card->getKindOfNames())},
         {"type_id", int(card->getTypeId())}, {"suit", int(card->getSuit())},
+        {"subtype", card->getSubtype()},
         {"damage_card", card->isDamageCard()},
         {"skill_name", card->getSkillName(false)},
         {"number", card->getNumber()}, {"red", card->isRed()}, {"black", card->isBlack()}};
@@ -1556,6 +1557,19 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
             {"to", effect.to ? effect.to->objectName() : QString()},
             {"card", publicDecisionCard(effect.card)},
             {"card_name", effect.card ? effect.card->objectName() : QString()}});
+    } else if (data.canConvert<CardUseStruct>()) {
+        const CardUseStruct use = data.value<CardUseStruct>();
+        QJsonArray targets;
+        for (const ServerPlayer *target : use.to)
+            if (target) targets.append(target->objectName());
+        // The question exposes the declared use, never its hidden payment IDs.
+        context.insert("use", QJsonObject{
+            {"from", use.from ? use.from->objectName() : QString()},
+            {"to", targets}, {"card", publicDecisionCard(use.card)}});
+    } else if (data.canConvert<ServerPlayer *>()) {
+        const ServerPlayer *target = data.value<ServerPlayer *>();
+        // Only reference the player in the viewer's existing world snapshot.
+        if (target) context.insert("player", target->objectName());
     }
 }
 
