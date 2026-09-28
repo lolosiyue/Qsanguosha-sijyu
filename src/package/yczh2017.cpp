@@ -721,6 +721,9 @@ public:
 	bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const
 	{
 		if (!from || !to || !card || card->isKindOf("SkillCard")) return false;
+		if (const ServerPlayer *server = dynamic_cast<const ServerPlayer *>(from))
+			if (Room *room = server->getRoom())
+				writeCaishiRestrictions(room, "caishi", room->historyScopes().value(QStringLiteral("turn_id")).toLongLong());
 		const QStringList restrictions = from->property("caishi_restrictions").toStringList();
 		// Two instances can accept both options in one turn. Each choice bans its own side.
 		if (restrictions.contains("others") && from != to) return true;
@@ -2248,6 +2251,9 @@ public:
     bool isProhibited(const Player *from, const Player *to, const Card *, const QList<const Player *> &) const
 	{
 		if (!from || !to) return false;
+		if (const ServerPlayer *server = dynamic_cast<const ServerPlayer *>(from))
+			if (Room *room = server->getRoom())
+				writeCaishiRestrictions(room, "olcaishi", room->historyScopes().value(QStringLiteral("turn_id")).toLongLong());
 		return from->property("olcaishi_restrictions").toStringList().contains("self") && from == to;
 	}
 };
