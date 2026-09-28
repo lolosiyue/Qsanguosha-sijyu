@@ -17629,48 +17629,130 @@ public:
 	}
 };
 
-class TongxieTargetMod : public TargetModSkill
+class TongxieTargetMod : public TargetModSkillV2
 {
 public:
-	TongxieTargetMod() : TargetModSkill("#tongxie-target")
+	TongxieTargetMod() : TargetModSkillV2("#tongxie-target")
 	{
+		setHolderSelector(CorrectSkill_System);
 	}
 
-    int getResidueNum(const Player*from, const Card*card, const Player*to) const
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
 	{
-		if (card->hasFlag("tongxie_slash"))
-			return 999;
-		if (card->hasTip("dongxin"))
-			return 999;
-		if (card->getSkillName()=="bianyu")
-			return 999;
-		if (from->hasSkill("quanyu")&&from->property("quanyuBf").toString().contains("quanyu6"))
-			return 999;
-		if (from->hasSkill("qiangang")&&to&&to->property("quanyuBf").toString().contains("quanyu6"))
-			return 999;
+		if (!ctx.card || !ctx.card->hasFlag("tongxie_slash")) return CorrectSkillResult::noEffect();
+		if (ctx.modType == Residue) return CorrectSkillResult::unlimitedResidue();
+		if (ctx.modType == DistanceLimit) return CorrectSkillResult::useAmount(999);
+		return CorrectSkillResult::noEffect();
+	}
+};
+
+// One system definition each. These checks do not require the card user to own tongxie,
+// and they must not multiply once per tongxie instance.
+class DongxinResidue : public TargetModSkillV2
+{
+public:
+	DongxinResidue() : TargetModSkillV2("#dongxin-residue") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+	{
+		return ctx.modType == Residue && ctx.card && ctx.card->hasTip("dongxin")
+			? CorrectSkillResult::unlimitedResidue() : CorrectSkillResult::noEffect();
+	}
+};
+
+class BianyuResidue : public TargetModSkillV2
+{
+public:
+	BianyuResidue() : TargetModSkillV2("#bianyu-residue") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+	{
+		return ctx.modType == Residue && ctx.card && ctx.card->getSkillName() == "bianyu"
+			? CorrectSkillResult::unlimitedResidue() : CorrectSkillResult::noEffect();
+	}
+};
+
+class QuanyuResidue : public TargetModSkillV2
+{
+public:
+	QuanyuResidue() : TargetModSkillV2("#quanyu-residue") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+	{
+		return ctx.modType == Residue && ctx.primary && ctx.primary->hasSkill("quanyu")
+			&& ctx.primary->property("quanyuBf").toString().contains("quanyu6")
+			? CorrectSkillResult::unlimitedResidue() : CorrectSkillResult::noEffect();
+	}
+};
+
+class QiangangResidue : public TargetModSkillV2
+{
+public:
+	QiangangResidue() : TargetModSkillV2("#qiangang-residue") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+	{
+		return ctx.modType == Residue && ctx.primary && ctx.secondary && ctx.primary->hasSkill("qiangang")
+			&& ctx.secondary->property("quanyuBf").toString().contains("quanyu6")
+			? CorrectSkillResult::unlimitedResidue() : CorrectSkillResult::noEffect();
+	}
+};
+
+class ChixinResidue : public TargetModSkillV2
+{
+public:
+	ChixinResidue() : TargetModSkillV2("#chixin-residue") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+	{
+		return ctx.modType == Residue && ctx.primary && ctx.secondary
+			&& ctx.primary->getPhase() == Player::Play && ctx.secondary->getMark("chixin-PlayClear") < 1
+			&& ctx.primary->hasSkill("chixin") && ctx.primary->inMyAttackRange(ctx.secondary)
+			? CorrectSkillResult::unlimitedResidue() : CorrectSkillResult::noEffect();
+	}
+};
+
+class GengzhanResidue : public TargetModSkillV2
+{
+public:
+	GengzhanResidue() : TargetModSkillV2("#gengzhan-residue") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+	{
+		if (ctx.modType != Residue || !ctx.primary || ctx.primary->getPhase() != Player::Play) return CorrectSkillResult::noEffect();
+		const int n = ctx.primary->getMark("&gengzhan_buff");
+		return n > 0 ? CorrectSkillResult::useAmount(n) : CorrectSkillResult::noEffect();
+	}
+};
+
+class MaozhuResidue : public TargetModSkillV2
+{
+public:
+	MaozhuResidue() : TargetModSkillV2("#maozhu-residue") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+	{
+		if (ctx.modType != Residue || !ctx.primary || !ctx.primary->hasSkill("maozhu")) return CorrectSkillResult::noEffect();
 		int n = 0;
-		if (from->getPhase() == Player::Play){
-			if(to&&to->getMark("chixin-PlayClear")<1&&from->hasSkill("chixin")&&from->inMyAttackRange(to))
-				return 999;
-			n += from->getMark("&gengzhan_buff");
-		}
-		if (from->hasSkill("maozhu")){
-			foreach(const Skill*s, from->getVisibleSkillList()){
-				if (!s->isAttachedLordSkill()) n++;
-			}
-		}
-		return n;
+		foreach (const Skill *skill, ctx.primary->getVisibleSkillList())
+			if (!skill->isAttachedLordSkill()) ++n;
+		return n > 0 ? CorrectSkillResult::useAmount(n) : CorrectSkillResult::noEffect();
 	}
+};
 
-	int getDistanceLimit(const Player*from, const Card*card, const Player*) const
+class OL2ShanjiaDistance : public TargetModSkillV2
+{
+public:
+	OL2ShanjiaDistance() : TargetModSkillV2("#ol2shanjia-distance") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
 	{
-		if (card->hasFlag("tongxie_slash"))
-			return 999;
-		if (card->getSkillName()=="ol2shanjia")
-			return 999;
-		if (from->getMark("&wangong")+from->getMark("wangong")>0&&from->hasSkill("wangong"))
-			return 999;
-		return 0;
+		return ctx.modType == DistanceLimit && ctx.card && ctx.card->getSkillName() == "ol2shanjia"
+			? CorrectSkillResult::useAmount(999) : CorrectSkillResult::noEffect();
+	}
+};
+
+class WangongDistance : public TargetModSkillV2
+{
+public:
+	WangongDistance() : TargetModSkillV2("#wangong-distance") { setHolderSelector(CorrectSkill_System); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+	{
+		return ctx.modType == DistanceLimit && ctx.primary && ctx.primary->hasSkill("wangong")
+			&& ctx.primary->getMark("&wangong") + ctx.primary->getMark("wangong") > 0
+			? CorrectSkillResult::useAmount(999) : CorrectSkillResult::noEffect();
 	}
 };
 
@@ -32475,6 +32557,9 @@ OLCcxhPackage::OLCcxhPackage()
 	zhaoyanw->addSkill(new TongxieTargetMod);
 	related_skills.insert("tongxie", "#tongxie");
 	related_skills.insert("tongxie", "#tongxie-target");
+	skills << new DongxinResidue << new BianyuResidue << new QuanyuResidue << new QiangangResidue
+		<< new ChixinResidue << new GengzhanResidue << new MaozhuResidue
+		<< new OL2ShanjiaDistance << new WangongDistance;
 
 	General*dengzhong = new General(this, "dengzhong*xh_huben", "wei", 4);
 	dengzhong->addSkill(new KanpoDZ);

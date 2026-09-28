@@ -27,8 +27,8 @@
 | --- | ---: |
 | `mobile.cpp` | 169 |
 | `mobileshiji.cpp` | 1 |
-| `ol-strengthen.cpp` | 14 |
-| `ol.cpp` | 348 |
+| `ol-strengthen.cpp` | 5 |
+| `ol.cpp` | 347 |
 | `tenyear-strengthen.cpp` | 69 |
 | `tenyear.cpp` | 144 |
 | `tenyear2.cpp` | 451 |
@@ -36,10 +36,13 @@
 | `yjcm2014.cpp` | 14 |
 | `yjcm2015.cpp` | 2 |
 | `yjcm2022.cpp` | 7 |
-| **合計** | **1,234** |
+| **合計** | **1,224** |
 
 同一掃描另得到 3,120 個直接以 `*SkillV2` 為基底的宣告。這兩項不是武將數、
 可用技能數或完成率；不能把未覆審的新類別算成完成。
+
+`ol.cpp` 與 `ol-strengthen.cpp` 的列是後來對這兩檔重掃的結果（348→347、14→5）。
+合計只減去這個差額。其餘檔案與 3,120 的 V2 總數沒有重掃。
 
 ## 複審的主要待辦
 
@@ -48,9 +51,9 @@
 | `mobile` | Fuman 配額改按 phase id 保存，結束內層出牌階段不再清掉外層；摸牌歸交牌者，該【殺】在受益者下一個回合結束時失效。Zhuhe 護甲分支錯寫成 `zhuhe2` 已改回 `zhuhe3`。牌來源仍待裁定：正文是從牌堆獲得並使用，C++ 仍從棄牌堆直接使用。其餘 legacy 家族未遷移 |
 | `mobileshiji` | Xingzhen 不遷移：正文是牌堆頂 7 張可見並當基本／錦囊使用，C++ 是另一套換牌／觀星／殺流程，已留 TODO。Mouli／Miewu 完成事件與 Yaohu 階段收據已讀，沿用 CardFinished／PostCardResponded／phase id，本輪未改。全檔其餘生命週期未結案 |
 | `mobile-strengthen` | Dingpin 計入 response-use（`respond_card.is_use`），打出不計。Benxi 在 TurnBroken 清掉仍顯示 active 的階段距離。MobileAnjian 改為每個範圍外目標一條 preferredTarget，不再用裝備才解析的 `->` 字串。MobileZhuikong 用受益者自己的 `-SelfClear` 標記撐到其回合結束；OLZhuikong 仍共用舊 flag。這四項未跑對局 |
-| `ol` | 大量家族仍舊制；TongxieTargetMod 的跨技能混合修正需逐族拆分，避免漏算或雙算 |
-| `ol-strengthen` | Jijiang、Guhuo、Huashen／Xinsheng、Qiaobian、Jiushi、Dangxian、Jiaozhao／Danxin 等未完；OLQingjian 取消後牌堆與收據的清理待修 |
-| `olwenwu` | 已無直接 legacy 仍不代表完成；JinTairan 巢狀收益／到期順序、延期效果取消與受益者鉤子待複審。本次只修 Xijue 的 `qsizetype/int` 比較型別 |
+| `ol` | TongxieTargetMod 已拆成 System 修正：`#tongxie-target` 只處理 `tongxie_slash`；dongxin、bianyu、quanyu、qiangang、chixin、gengzhan、maozhu、ol2shanjia、wangong 各自註冊一次，不乘同協實例。同協本體與 TongxieEffect 仍舊制（共享 `&tongxie+#` 標記，逐實例會雙倍摸牌／抵傷）。直接 legacy 347。三個翻譯單元曾以 Qt 6.4.2／g++ 13 的 server 設定編譯；同協拆分區段沒有診斷，同檔其餘既有錯誤仍在。未對局 |
+| `ol-strengthen` | 已遷 Jijiang、Qiaobian 族、Jiushi、Dangxian、Huashen／Select／Clear；OLQingjian 取消時按原牌堆收據還原。ol_zuoci 仍掛標準 V2 Xinsheng，化身池改為與它相同的私有 `Huashens`／`huashen_general`。仍舊制 5：OLGuhuo、OLXianzhou、OLJiaozhaoVS、OLJiaozhao、OLDanxin。Guhuo 與 Jiaozhao／Danxin 的裁定見 PR，未改規則。翻譯單元曾編譯；新家族區段沒有診斷，同檔其餘既有錯誤仍在。未對局 |
+| `olwenwu` | 直接 legacy 仍為 0。JinTairan 回執改在回復與摸牌之後發布；標記按各回執快照重算；失去體力前取消會還原回執，進入 `loseHp` 後不還原。歷史查詢不完整時不發布猜測處罰。翻譯單元曾編譯；JinTairan 區段沒有診斷，同檔其餘既有錯誤仍在。未對局 |
 | `tenyear*` | Tuicheng、Xianju、Kangming、Jiewei、Xuanfeng、Yongjin 已在 V2，本輪讀回沒有改規則。Yizhen 把缺席花色當 0，避免手牌只有一種花色時同時當成「唯一最多」和「最少」。三個檔案的其餘 legacy 家族未遷移，不能把這一批讀回當成整包結案 |
 | `dream` | SV2 Codex：Mishou 首次殺收據改在 cost 消耗，整體／逐目標取消與 bypass 不回滾，並保留精確來源及目標攔截結果；修 IfShenfeng 預覽牌 lease API。Tunshi 保留按技能名去重，多實例授技仍裁定待決；最後一批未完整讀回。dream TU 獨立編譯通過，未做玩法驗收。**SV2 Grok leftover（2026-09-29）**：headless 讀回 inventory，`--max-turns 80` 耗盡且無程式／玩法改動；Tunshi 多實例裁定仍開 |
 | `yczh2016/2017`、`yin` | SV2 Codex：修 Danxin 收據寫入 protected tag 的編譯錯誤、YinShicai 用牌歷史 ID 欄位；Taoluan 提供牌／完成回執、新 2017 家族、Juzhan／Chenglve／OLLijun 限時收據仍待完整複審。yczh2016／yin TU 獨立編譯通過，未跑玩法；Jiaozhao／Danxin 先前指定 findings 閉合狀態不擴大為整包完成。**SV2 Grok leftover（2026-09-29）**：僅讀回／盤點，未遷移 yczh2017 全家、未複審 Juzhan／Chenglve／OLLijun；無編譯新 log |
