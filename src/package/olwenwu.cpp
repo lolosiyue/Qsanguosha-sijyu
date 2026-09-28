@@ -2002,6 +2002,51 @@ public:
         }
         return QVariantMap{{"complete", true}, {"recovered", recovered}, {"cards", cards}};
     }
+    static void syncMarks(Room *room, ServerPlayer *player)
+    {
+        int recovered = 0, hands = 0;
+        foreach (const QVariant &entry, player->getTag("jintairan_effects").toList()) {
+            const QVariantMap receipt = entry.toMap();
+            recovered += receipt.value("recovered").toInt();
+            hands += receipt.value("hands").toInt();
+        }
+        room->setPlayerMark(player, "&jintairanrecover", recovered);
+        room->setPlayerMark(player, "&jintairan+draw", hands);
+    }
+    // Display stores the snapshot on the receipt. An incomplete history query publishes nothing.
+    static bool publish(Room *room, ServerPlayer *player, QVariantMap receipt)
+    {
+        const QVariantMap facts = committed(room, player, receipt);
+        if (!facts.value("complete").toBool()) return false;
+        if (facts.value("recovered").toInt() <= 0 && facts.value("cards").toList().isEmpty()) return true;
+        foreach (const QVariant &entry, player->getTag("jintairan_effects").toList()) {
+            const QVariantMap existing = entry.toMap();
+            if (existing.value("parent") == receipt.value("parent")
+                && existing.value("activation_id") == receipt.value("activation_id")
+                && existing.value("activation_owner") == receipt.value("activation_owner")
+                && existing.value("source_id") == receipt.value("source_id")
+                && existing.value("source_owner") == receipt.value("source_owner")) return true;
+        }
+        int hands = 0;
+        foreach (const QVariant &entry, facts.value("cards").toList()) {
+            const int id = entry.toInt();
+            if (room->getCardOwner(id) == player && room->getCardPlace(id) == Player::PlaceHand) {
+                room->setCardTip(id, "jintairan");
+                ++hands;
+            }
+        }
+        const int sequence = room->getTag("jintairan_sequence").toInt() + 1;
+        room->setTag("jintairan_sequence", sequence);
+        receipt.insert("receipt", sequence);
+        receipt.insert("recovered", facts.value("recovered").toInt());
+        receipt.insert("cards", facts.value("cards"));
+        receipt.insert("hands", hands);
+        QVariantList receipts = player->getTag("jintairan_effects").toList();
+        receipts << receipt;
+        player->setTag("jintairan_effects", receipts);
+        syncMarks(room, player);
+        return true;
+    }
     bool isSourceAvailable(Room *room, const SkillContext &ctx) const override
     {
         if (ctx.activationRef.isValid()) return TriggerSkillV2::isSourceAvailable(room, ctx);
@@ -2053,54 +2098,74 @@ public:
         const int amount = getEffectiveAmount(ctx);
         if (amount <= 0) return false;
         if (event == EventPhaseStart) {
-            const QVariantMap committedCards = committed(room, ctx.owner, ctx.extra_data.toMap());
-            if (!committedCards.value("complete").toBool()) return false;
+            const QVariantMap live = committed(room, ctx.owner, ctx.extra_data.toMap());
+            if (!live.value("complete").toBool()) return false;
+            QVariant removed;
+            bool found = false;
             QVariantList receipts = ctx.owner->getTag("jintairan_effects").toList();
-            for (int i = receipts.length() - 1; i >= 0; --i)
-                if (receipts.at(i).toMap().value("receipt").toInt() == ctx.instanceID) receipts.removeAt(i);
-            // Consume before HP loss can enter another phase or kill/revive the recipient.
+            for (int i = receipts.length() - 1; i >= 0; --i) {
+                if (receipts.at(i).toMap().value("receipt").toInt() == ctx.instanceID) {
+                    removed = receipts.takeAt(i);
+                    found = true;
+                }
+            }
+            if (!found) return false;
+            // Drop this receipt before HP loss can open another phase. Other receipts keep their stored marks.
             ctx.owner->setTag("jintairan_effects", receipts);
-            room->setPlayerMark(ctx.owner, "&jintairanrecover", 0);
-            room->setPlayerMark(ctx.owner, "&jintairan+draw", 0);
+            syncMarks(room, ctx.owner);
+            bool finished = false;
+            bool hpApplied = false;
+            const auto cleanup = qScopeGuard([&] {
+                if (finished) return;
+                if (hpApplied) {
+                    foreach (const QVariant &entry, live.value("cards").toList())
+                        room->setCardTip(entry.toInt(), "-jintairan");
+                    return;
+                }
+                QVariantList pending = ctx.owner->getTag("jintairan_effects").toList();
+                pending << removed;
+                ctx.owner->setTag("jintairan_effects", pending);
+                syncMarks(room, ctx.owner);
+                foreach (const QVariant &entry, removed.toMap().value("cards").toList()) {
+                    const int id = entry.toInt();
+                    if (room->getCardOwner(id) == ctx.owner && room->getCardPlace(id) == Player::PlaceHand)
+                        room->setCardTip(id, objectName());
+                }
+            });
             room->sendCompulsoryTriggerLog(ctx.invoker, this);
-            const int recovered = committedCards.value("recovered").toInt();
-            if (recovered > 0) room->loseHp(HpLostStruct(target, recovered * amount, objectName(), ctx.invoker));
+            const int recovered = live.value("recovered").toInt();
+            if (recovered > 0) {
+                hpApplied = true;
+                room->loseHp(HpLostStruct(target, recovered * amount, objectName(), ctx.invoker));
+            }
             QList<int> discard;
-            foreach (const QVariant &entry, committedCards.value("cards").toList()) {
+            foreach (const QVariant &entry, live.value("cards").toList()) {
                 const int id = entry.toInt();
-                room->setCardTip(id, "-jintairan");
                 if (target->isAlive() && room->getCardOwner(id) == target && room->getCardPlace(id) == Player::PlaceHand
                     && !Sanguosha->getCard(id)->hasFlag("using") && target->canDiscard(target, id)) discard << id;
             }
+            foreach (const QVariant &entry, live.value("cards").toList())
+                room->setCardTip(entry.toInt(), "-jintairan");
             if (!discard.isEmpty()) room->throwCard(discard, objectName(), target);
+            finished = true;
             return false;
         }
         const qint64 parent = room->currentHistoryEventId();
         if (parent <= 0) return false;
-        const int sequence = room->getTag("jintairan_sequence").toInt() + 1;
-        room->setTag("jintairan_sequence", sequence);
-        const QVariantMap receipt{{"receipt", sequence}, {"parent", parent},
+        const QVariantMap receipt{{"parent", parent},
             {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName}, {"source_id", ctx.sourceRef.key.instanceID},
             {"activation_owner", ctx.activationRef.ownerObjectName}, {"activation_skill", ctx.activationRef.key.skillName}, {"activation_id", ctx.activationRef.key.instanceID}};
-        QVariantList receipts = target->getTag("jintairan_effects").toList();
-        receipts << receipt;
-        target->setTag("jintairan_effects", receipts);
+        bool published = false;
+        const auto publishOnExit = qScopeGuard([&] {
+            if (published) return;
+            published = true;
+            try { publish(room, target, receipt); } catch (...) {}
+        });
         room->sendCompulsoryTriggerLog(ctx.invoker, this);
         if (target->isWounded()) room->recover(target, RecoverStruct(objectName(), ctx.invoker, target->getLostHp() * amount));
-        const int count = target->getMaxCards() - target->getHandcardNum();
+        const int count = target->isAlive() ? target->getMaxCards() - target->getHandcardNum() : 0;
         if (target->isAlive() && count > 0) room->drawCardsList(target, count * amount, objectName());
-        const QVariantMap result = committed(room, target, receipt);
-        if (result.value("complete").toBool()) {
-            room->addPlayerMark(target, "&jintairanrecover", result.value("recovered").toInt());
-            int hands = 0;
-            foreach (const QVariant &entry, result.value("cards").toList()) {
-                const int id = entry.toInt();
-                if (room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand) continue;
-                room->setCardTip(id, objectName());
-                ++hands;
-            }
-            room->addPlayerMark(target, "&jintairan+draw", hands);
-        }
+        published = publish(room, target, receipt);
         return false;
     }
 };
