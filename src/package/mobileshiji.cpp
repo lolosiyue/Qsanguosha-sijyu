@@ -6957,6 +6957,9 @@ void XingzhenCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &) c
 	}
 }
 
+// TODO(ruling): ":xingzhen" describes a permanent view of the top 7 draw-pile cards, usable as basic
+// cards out of turn and as tricks in turn. This class is a different exchange / guanxing / slash flow.
+// Do not migrate or rewrite the procedure until a human rules which version is authoritative.
 class Xingzhen : public ViewAsSkill
 {
 public:

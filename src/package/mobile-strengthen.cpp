@@ -4197,6 +4197,37 @@ public:
         frequency = Compulsory;
     }
 
+    bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
+                                QList<SkillContext> &contexts) const override
+    {
+        if (event != TargetSpecified) return false;
+        const CardUseStruct use = data.value<CardUseStruct>();
+        if (!player || player->isDead() || use.from != player || !use.card || !use.card->isKindOf("Slash")) return true;
+        for (int id : player->getValidSkillInstanceIds(objectName())) {
+            for (ServerPlayer *target : use.to) {
+                if (!target || !target->isAlive() || target->inMyAttackRange(player)) continue;
+                SkillContext ctx;
+                ctx.owner = player;
+                ctx.invoker = player;
+                ctx.instanceID = id;
+                ctx.activationRef = SkillInstanceRef(player->objectName(), SkillInstanceKey(objectName(), id));
+                ctx.sourceRef = room->resolveSkillInstanceRootRef(ctx.activationRef);
+                if (!ctx.sourceRef.isValid()) continue;
+                ctx.skill_name = objectName() + "#" + QString::number(id);
+                bool amountOk = false;
+                ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
+                if (!amountOk) ctx.amount = getBaseAmount();
+                // One choice per out-of-range target. The "->" string is only parsed for equip skills.
+                ctx.targets = {target};
+                ctx.preferredTarget = target;
+                ctx.preferredTargetSeat = target->getSeat();
+                ctx.current_event = event;
+                ctx.original_data = &data;
+                contexts << ctx;
+            }
+        }
+        return true;
+    }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
         if (event == DamageCaused) {
@@ -4214,16 +4245,7 @@ public:
         }
         return true;
     }
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
-    {
-        if (event != TargetSpecified || !player || player->isDead() || !player->hasSkill(objectName())) return {};
-        const CardUseStruct use = data.value<CardUseStruct>();
-        if (!use.card || !use.card->isKindOf("Slash") || use.from != player) return {};
-        QStringList targets;
-        for (ServerPlayer *target : use.to)
-            if (target->isAlive() && !target->inMyAttackRange(player)) targets << target->objectName();
-        return targets.isEmpty() ? TriggerList() : TriggerList{{player, {objectName() + "->" + targets.join("+")}}};
-    }
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         ServerPlayer *target = ctx.preferredTarget;
@@ -4260,7 +4282,18 @@ public:
     { return TriggerSkillV2::prepareSource(room, ctx) && isUsable(ctx); }
     MobileZhuikong() : TriggerSkillV2("mobilezhuikong")
     {
-        events << EventPhaseStart << EventSkillInvoking;
+        events << EventPhaseStart << EventPhaseChanging << Death << EventSkillInvoking;
+    }
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const bool turnEnd = event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive;
+        ServerPlayer *beneficiary = event == Death ? data.value<DeathStruct>().who : player;
+        if ((turnEnd || event == Death) && beneficiary) {
+            // The imposed turn limit is the beneficiary's, and it ends with that turn even if the grant is gone.
+            room->setPlayerProperty(beneficiary, "mobilezhuikong_limits", QVariantList());
+            room->setPlayerMark(beneficiary, "&mobilezhuikong-SelfClear", 0);
+        }
+        return false;
     }
 
     void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -4303,8 +4336,14 @@ public:
         PindianStruct *pindian = ctx.owner->PinDian(target, objectName());
         if (!pindian) return false;
         if (pindian->success) {
-            // Public imposed turn effect survives losing its granting skill.
-            room->setPlayerFlag(target, "mobilezhuikong");
+            // The restricted player is the turn player. -SelfClear dies with their turn, not with a nested turn or skill loss.
+            QVariantList limits = target->property("mobilezhuikong_limits").toList();
+            limits << QVariantMap{{"beneficiary", target->objectName()}, {"turn", room->historyScopes().value("turn_id")},
+                {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName},
+                {"source_instance", ctx.sourceRef.key.instanceID}, {"activation_owner", ctx.activationRef.ownerObjectName},
+                {"activation_instance", ctx.activationRef.key.instanceID}};
+            room->setPlayerProperty(target, "mobilezhuikong_limits", limits);
+            room->addPlayerMark(target, "&mobilezhuikong-SelfClear");
         } else {
             const int id = pindian->to_card->getEffectiveId();
             if (room->getCardPlace(id) != Player::DiscardPile || ctx.owner->isDead()) return false;
@@ -4331,9 +4370,9 @@ public:
 
     bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const
     {
-        if (card->getTypeId() != Card::TypeSkill && from->hasFlag("mobilezhuikong"))
-            return to != from;
-        return false;
+        if (!from || !to || !card || card->getTypeId() == Card::TypeSkill || to == from) return false;
+        // The flag remains for OLZhuikong, which shares this prohibit rule. The mark is this skill's own deadline.
+        return from->hasFlag("mobilezhuikong") || from->getMark("&mobilezhuikong-SelfClear") > 0;
     }
 };
 
@@ -4499,13 +4538,19 @@ public:
     {
         const QVariant turn=room->historyScopes().value("turn_id"); if(turn.toLongLong()<=0) return {{"known",false}};
         QVariantMap counts;
-        for(const QString &kind:{QString("use_card"),QString("move")}) {
-            QVariantMap filter{{"kind",kind},{"turn_id",turn},{"from",player->objectName()},{"limit",128}};
+        // 使用 includes response-use (respond_card is_use). 打出 is not a use and does not debit a type.
+        for(const QString &kind:{QString("use_card"),QString("respond_card"),QString("move")}) {
+            const QString actor=kind=="respond_card"?QString("player"):QString("from");
+            QVariantMap filter{{"kind",kind},{"turn_id",turn},{actor,player->objectName()},{"limit",128}};
             for(;;) {
                 const QVariantMap page=kind=="move"?room->queryHistoryMoves(filter):room->queryHistoryFacts(filter);
                 if(page.contains("error") || !page.value("complete").toBool()) return {{"known",false}};
                 for(const QVariant &value:page.value("items").toList()) {
                     const QVariantMap data=value.toMap().value("data").toMap();
+                    if(kind=="respond_card") {
+                        if(!data.contains("is_use")) return {{"known",false}};
+                        if(!data.value("is_use").toBool()) continue;
+                    }
                     if(kind=="move" && (data.value("reason").toInt() & CardMoveReason::S_MASK_BASIC_REASON)!=CardMoveReason::S_REASON_DISCARD) continue;
                     const QVariantMap card=data.value(kind=="move"?"card_before":"card").toMap(); if(!card.contains("type")) return {{"known",false}};
                     const int type=card.value("type").toInt(); if(type==Card::TypeSkill) continue;
@@ -5874,7 +5919,7 @@ public:
 class MobileBenxi : public TriggerSkillV2
 {
 public:
-    MobileBenxi() : TriggerSkillV2("mobilebenxi") { global=true; events << EventPhaseStart << EventPhaseChanging << PreCardUsed << CardFinished << Death; }
+    MobileBenxi() : TriggerSkillV2("mobilebenxi") { global=true; events << EventPhaseStart << EventPhaseChanging << PreCardUsed << CardFinished << Death << TurnBroken; }
     static void project(Room *room,ServerPlayer *actor)
     {
         int total=0; for(const QVariant &value:actor->getTag("MobileBenxiReceipts").toList()) total+=value.toMap().value("count").toInt();
@@ -5882,6 +5927,10 @@ public:
     }
     bool recordEvent(TriggerEvent event,Room *room,ServerPlayer *actor,QVariant &data) const override
     {
+        if(event==TurnBroken && actor) {
+            // An interrupted play phase can stay active in history. The distance bonus ends with the broken turn.
+            actor->setTag("MobileBenxiReceipts",QVariantList()); project(room,actor); return false;
+        }
         if(!actor || (event!=Death && event!=EventPhaseChanging)) return false;
         if(event==Death && data.value<DeathStruct>().who!=actor) return false;
         QVariantList kept;
