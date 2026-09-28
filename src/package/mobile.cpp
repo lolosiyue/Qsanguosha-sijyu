@@ -19803,9 +19803,7 @@ public:
 class Zhuhe : public TriggerSkill
 {
 public:
-	// TODO(ruling): lang ":zhuhe" says obtain and use one equipment of the chosen suit from the draw pile
-	// (牌堆). This implementation still reads the discard pile and uses the card in place, without first
-	// obtaining it. Do not change the card source until a human rules which version is authoritative.
+	// Tom 2026-09-29: obtain one equipment of the discarded suit from the draw pile, then use it.
 	Zhuhe() : TriggerSkill("zhuhe")
 	{
 		events << EventPhaseEnd;
@@ -19825,7 +19823,7 @@ public:
 					room->throwCard(dc,objectName(),player);
 					bool has = dc->subcardsLength()>=player->getEquips().length();
 					dc->clearSubcards();
-					foreach (int id, room->getDiscardPile()){
+					foreach (int id, room->getDrawPile()){
 						const Card*sc = Sanguosha->getCard(id);
 						if(sc->getSuit()==c->getSuit()&&sc->isKindOf("EquipCard"))
 							dc->addSubcard(id);
@@ -19835,7 +19833,9 @@ public:
 						int id = room->askForAG(player,dc->getSubcards(),false,objectName());
 						room->clearAG(player);
 						c = Sanguosha->getCard(id);
-						if(c->isAvailable(player))
+						if(c && room->getCardPlace(id)==Player::DrawPile)
+							room->obtainCard(player,c,objectName());
+						if(c && player->isAlive() && player->handCards().contains(id) && c->isAvailable(player))
 							room->useCard(CardUseStruct(c,player));
 					}
 					if(has&&player->isAlive()){
