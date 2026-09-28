@@ -5,11 +5,15 @@
 
 #include <QPointer>
 #include <QReadWriteLock>
+#include <atomic>
+#include <memory>
 
 class SkillRegistry
 {
 public:
     bool add(const Skill *skill);
+    // Includes registration, replacement, QObject rename and destruction.
+    quint64 version() const { return m_version->load(std::memory_order_acquire); }
     bool contains(const QString &skillName) const;
 
     const Skill *find(const QString &skillName) const;
@@ -29,6 +33,8 @@ public:
     QList<const ProhibitPindianSkill *> prohibitPindianSkills() const;
 
 private:
+    std::shared_ptr<std::atomic<quint64>> m_version =
+        std::make_shared<std::atomic<quint64>>(0);
     mutable QReadWriteLock m_lock;
     QHash<QString, QPointer<Skill>> m_skills;
     QList<QPointer<Skill>> m_prohibitSkills;

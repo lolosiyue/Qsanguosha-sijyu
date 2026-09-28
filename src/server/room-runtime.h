@@ -36,6 +36,7 @@ public:
 
     enum StateMutation {
         CardsMoved,
+        CardIdentityChanged,
         PlayerPropertyChanged,
         PlayerLifecycleChanged,
         PlayerMarkChanged,

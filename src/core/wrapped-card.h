@@ -24,6 +24,9 @@ class WrappedCard : public Card
 {
     Q_OBJECT
 
+signals:
+    void identityChanged();
+
 public:
     Q_INVOKABLE WrappedCard(Card *card);
     ~WrappedCard();

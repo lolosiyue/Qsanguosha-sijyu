@@ -1016,6 +1016,17 @@ endif()
 if(QSAN_BUILD_SHEETS)
     include(cmake/QSanguoshaSheets.cmake)
 endif()
+# Explicit local regression target; excluded from normal production builds.
+add_executable(h50p_distance_probe EXCLUDE_FROM_ALL tools/local/h50p_distance_probe.cpp)
+target_include_directories(h50p_distance_probe PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario)
+target_compile_definitions(h50p_distance_probe PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
+target_link_libraries(h50p_distance_probe PRIVATE
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>" ${QSAN_ENGINE_QT_LIBS})
+qsan_link_websocket_gateway(h50p_distance_probe)
+
 if(QSAN_BUILD_SERVER)
     add_executable(qsanguosha_server ${QSAN_DEDICATED_ENTRY_SOURCES})
     set_target_properties(qsanguosha_server PROPERTIES FOLDER "Servers")
