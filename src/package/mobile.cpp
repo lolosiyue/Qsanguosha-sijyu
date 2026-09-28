@@ -3182,7 +3182,6 @@ class XuanjianVS : public ViewAsSkillV2
 public:
 	XuanjianVS() : ViewAsSkillV2("_xuanjian", 1)
 	{
-		filter_pattern = ".|.|.|hand";
 	}
 
 	bool canActivate(const ActiveSkillRequest &request) const override
@@ -3427,7 +3426,7 @@ public:
 		if (suits.length() == 4) room->showCard(ctx.invoker, material);
 		else room->throwCard(ctx.use_card, objectName(), ctx.invoker);
 		QStringList choices;
-		foreach (QString name, ctx.use_card->getUserString().split("+"))
+		foreach (QString name, (qobject_cast<const SkillCard *>(ctx.use_card) ? qobject_cast<const SkillCard *>(ctx.use_card)->getUserString() : QString()).split("+"))
 			if (ctx.invoker->getMark("weizhuang_juguan_remove_" + name + "-Clear") < 1) choices << name;
 		if (choices.isEmpty()) return false;
 		ctx.choice = choices.first();
@@ -3439,7 +3438,7 @@ public:
 	EffectFlow effect(SkillContext &ctx) const override
 	{
 		if (!ctx.invoker || ctx.invoker->isDead()) return FinishSkill;
-		QString name = ctx.choice.isEmpty() ? ctx.use_card->getUserString().split("+").first() : ctx.choice;
+		QString name = ctx.choice.isEmpty() ? (qobject_cast<const SkillCard *>(ctx.use_card) ? qobject_cast<const SkillCard *>(ctx.use_card)->getUserString() : QString()).split("+").first() : ctx.choice;
 		Card *card = Sanguosha->cloneCard(name);
 		if (!card) return FinishSkill;
 		card->setSkillName("_weizhuang");
@@ -6013,7 +6012,6 @@ class Qishe : public ViewAsSkillV2
 public:
 	Qishe() : ViewAsSkillV2("qishe", 1)
 	{
-		filter_pattern = "EquipCard";
 	}
 
 	bool canActivate(const ActiveSkillRequest &request) const override
@@ -6252,7 +6250,6 @@ class Baoxivs : public ViewAsSkillV2
 public:
 	Baoxivs() : ViewAsSkillV2("baoxi", 1)
 	{
-		filter_pattern = ".|.|.|hand";
 		response_pattern = "@@baoxi";
 	}
 	LimitScope getLimitScope() const override { return Limit_Custom; }
@@ -9881,7 +9878,6 @@ class TongquVS : public OneCardViewAsSkill
 public:
 	TongquVS() : OneCardViewAsSkill("tongqu")
 	{
-		filter_pattern = ".";
 		response_pattern = "@@tongqu!";
 	}
 
@@ -10381,7 +10377,6 @@ class GaoyuanVS : public OneCardViewAsSkill
 public:
 	GaoyuanVS() : OneCardViewAsSkill("gaoyuan")
 	{
-		filter_pattern = ".";
 		response_pattern = "@@gaoyuan";
 	}
 
@@ -11619,7 +11614,6 @@ class ZhouxuanVS : public OneCardViewAsSkill
 public:
 	ZhouxuanVS() :OneCardViewAsSkill("zhouxuan")
 	{
-		filter_pattern = ".";
 	}
 
 	bool isEnabledAtPlay(const Player *player) const
@@ -18334,7 +18328,6 @@ class QuchongVs : public OneCardViewAsSkill
 public:
 	QuchongVs() : OneCardViewAsSkill("quchong")
 	{
-		filter_pattern = "EquipCard";
 	}
 
 	const Card *viewAs(const Card *c) const
@@ -18729,7 +18722,6 @@ class MobileJiyuVs : public OneCardViewAsSkill
 public:
 	MobileJiyuVs() : OneCardViewAsSkill("mobilejiyu")
 	{
-		filter_pattern = ".|.|.|hand";
 	}
 
 	const Card *viewAs(const Card *c) const
@@ -19443,7 +19435,6 @@ class MobileJianjiVs : public OneCardViewAsSkill
 public:
 	MobileJianjiVs() : OneCardViewAsSkill("mobilejianji")
 	{
-		filter_pattern = ".|.|.|hand";
 	}
 
 	const Card *viewAs(const Card *c) const
@@ -19750,7 +19741,6 @@ class GanjueVs : public OneCardViewAsSkill
 public:
 	GanjueVs() : OneCardViewAsSkill("ganjue")
 	{
-		filter_pattern = ".|.|.|equipped";
 		response_or_use = true;
 	}
 
@@ -20913,7 +20903,6 @@ class Duanyangvs : public OneCardViewAsSkill
 public:
 	Duanyangvs() : OneCardViewAsSkill("duanyang")
 	{
-		filter_pattern = ".|.|.|duanyang";
 		response_pattern = "@@duanyang";
 		expand_pile = "duanyang";
 	}

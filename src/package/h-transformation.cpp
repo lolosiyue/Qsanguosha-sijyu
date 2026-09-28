@@ -201,7 +201,7 @@ public:
     {
         Room *room = ctx.invoker->getRoom();
         ctx.manual_effect = true;
-        Card *card = Sanguosha->cloneCard(ctx.use_card->getUserString());
+        Card *card = Sanguosha->cloneCard((qobject_cast<const SkillCard *>(ctx.use_card) ? qobject_cast<const SkillCard *>(ctx.use_card)->getUserString() : QString()));
         if (!card) return FinishSkill;
         card->deleteLater();
         card->addSubcards(ctx.use_card->getSubcards());

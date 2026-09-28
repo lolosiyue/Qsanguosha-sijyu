@@ -527,7 +527,7 @@ class GuangyuViewAsSkill : public ViewAsSkillV2
 public:
     GuangyuViewAsSkill() : ViewAsSkillV2("guangyu", 1)
     {
-        setResponsePattern("@@guangyu");
+        response_pattern = "@@guangyu";
     }
 
     bool canActivate(const ActiveSkillRequest &request) const override
@@ -1322,6 +1322,7 @@ public:
     int getPriority(TriggerEvent) const override { return -4; }
     static void project(Room *room)
     {
+        QMap<QString, int> counts;
         for (ServerPlayer *owner : room->getAlivePlayers())
             for (int id : owner->getSkillInstanceIds("inovation_shouyang"))
                 ++counts[owner->getSkillInstanceStateValue("inovation_shouyang", id, "target").toString()];
@@ -2164,7 +2165,7 @@ class YoujiaoViewAsSkill : public ViewAsSkillV2
 public:
     YoujiaoViewAsSkill() : ViewAsSkillV2("youjiao", 1)
     {
-        setResponsePattern("@@youjiao");
+        response_pattern = "@@youjiao";
     }
 
     QString historyKey(const ActiveSkillRequest &) const override { return "KeyTrick"; }

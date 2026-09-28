@@ -229,7 +229,6 @@ public:
     SidiVS() : OneCardViewAsSkill("sidi")
     {
         response_pattern = "@@sidi";
-        filter_pattern = ".|.|.|sidi";
         expand_pile = "sidi";
     }
 
@@ -1815,7 +1814,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         return request.initiator && card && !card->isVirtualCard() && !card->hasFlag("using")
-            && request.selectedCardIds.isEmpty() && request.initiator->getCards("he").contains(card)
+            && request.selectedCardIds.isEmpty() && request.initiator->hasCard(card)
             && !request.initiator->isJilei(card)
             && !state(request).value("types").toList().contains(QVariant(int(card->getTypeId())));
     }

@@ -701,8 +701,8 @@ public:
     {
         if (!ctx.use_card || !ctx.invoker) return FinishSkill;
         // Freeze the accepted conversion, so its follow-up does not require the original grant.
-        ctx.use_card->tag["MobileShuangxiongSource"]=QVariantMap{{"owner",ctx.activationRef.ownerObjectName},{"skill",ctx.activationRef.key.skillName},{"instance",ctx.activationRef.key.instanceID},
-            {"actor",ctx.invoker->objectName()},{"source_owner",ctx.sourceRef.ownerObjectName},{"source_skill",ctx.sourceRef.key.skillName},{"source_instance",ctx.sourceRef.key.instanceID},{"amount",getEffectiveAmount(ctx)}};
+        ctx.use_card->setTag("MobileShuangxiongSource", QVariantMap{{"owner",ctx.activationRef.ownerObjectName},{"skill",ctx.activationRef.key.skillName},{"instance",ctx.activationRef.key.instanceID},
+            {"actor",ctx.invoker->objectName()},{"source_owner",ctx.sourceRef.ownerObjectName},{"source_skill",ctx.sourceRef.key.skillName},{"source_instance",ctx.sourceRef.key.instanceID},{"amount",getEffectiveAmount(ctx)}});
         return ContinueEffects;
     }
 };
@@ -733,7 +733,7 @@ public:
     {
         if(event!=Damaged) return false; const DamageStruct damage=data.value<DamageStruct>();
         if(!actor || actor->isDead() || !damage.card || !damage.from || !damage.card->isKindOf("Duel")) return true;
-        const QVariantMap receipt=damage.card->tag.value("MobileShuangxiongSource").toMap();
+        const QVariantMap receipt=damage.card->getTag("MobileShuangxiongSource").toMap();
         if(receipt.value("actor").toString()!=actor->objectName()) return true;
         const qint64 useId=room->historyParent(room->currentHistoryEventId(),"use_card",true).value("id").toLongLong(); if(useId<=0) return true;
         SkillContext ctx; ctx.skill_name=objectName(); ctx.owner=room->findPlayerByObjectName(receipt.value("owner").toString(),true); ctx.initiator=actor; ctx.invoker=actor;
@@ -745,7 +745,7 @@ public:
         if(ctx.activationRef.isValid()) return TriggerSkillV2::isSourceAvailable(room,ctx);
         if(!ctx.original_data || !ctx.invoker || ctx.invoker->isDead()) return false;
         const DamageStruct damage=ctx.original_data->value<DamageStruct>();
-        return damage.card && damage.card->tag.value("MobileShuangxiongSource")==ctx.extra_data.toMap().value("receipt");
+        return damage.card && damage.card->getTag("MobileShuangxiongSource")==ctx.extra_data.toMap().value("receipt");
     }
     bool cost(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
     {

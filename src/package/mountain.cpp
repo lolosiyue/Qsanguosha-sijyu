@@ -124,7 +124,7 @@ public:
     {
         if (!canActivate(request) || !cardSelectionFeasible(request)) return nullptr;
         const Card *card = ViewAsSkillV2::createCard(request);
-        if (card) card->tag["QiaobianPhase"] = pendingPhase(request);
+        if (card) card->setTag("QiaobianPhase", pendingPhase(request));
         return card;
     }
     QString historyKey(const ActiveSkillRequest &) const override { return "QiaobianCard"; }
@@ -172,7 +172,7 @@ public:
             return ContinueEffects;
         }
         // The admitted phase survives bypass_cost and retirement of the prompt leaf.
-        const int phase = ctx.use_card ? ctx.use_card->tag.value("QiaobianPhase", -1).toInt() : -1;
+        const int phase = ctx.use_card ? ctx.use_card->getTag("QiaobianPhase", -1).toInt() : -1;
         if (phase == Player::Draw) {
             const int count = getEffectiveAmount(ctx);
             for (int i = 0; i < count && actor->isAlive() && target->isAlive() && actor->canGet(target, "h"); ++i) {
@@ -3090,7 +3090,7 @@ void MigrateToMobileStMountain(Package *pkg)
     mobile_shensimayi->addSkill(new MobileRenjie);
     mobile_shensimayi->addSkill(new MobileLianpo);
     mobile_shensimayi->addSkill(new MobileLianpoTurns);
-    related_skills.insertMulti("mobilelianpo", "#mobilelianpo-turns");
+    pkg->insertRelatedSkills("mobilelianpo", "#mobilelianpo-turns");
     mobile_shensimayi->addSkill(new MobileBaiyin);
     pkg->addSkills(new MobileJilve);
 }

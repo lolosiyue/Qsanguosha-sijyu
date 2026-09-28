@@ -909,7 +909,6 @@ class TenyearZhenyiVS : public OneCardViewAsSkill
 public:
 	TenyearZhenyiVS() : OneCardViewAsSkill("tenyearzhenyi")
 	{
-		filter_pattern = ".|.|.|hand";
 		response_or_use = true;
 	}
 
@@ -3053,7 +3052,6 @@ class Lvxinvs : public OneCardViewAsSkill
 public:
 	Lvxinvs() : OneCardViewAsSkill("lvxin")
 	{
-		filter_pattern = ".";
 	}
 
 	bool isEnabledAtPlay(const Player *player) const
@@ -6729,13 +6727,13 @@ public:
             const int id = chosen.value("card", -1).toInt();
             ServerPlayer *holder = room->findPlayerByObjectName(chosen.value("holder").toString());
             if (id >= 0 && holder && room->getCardOwner(id) == holder && room->getCardPlace(id) == Player::PlaceHand
-                && !Sanguosha->getCard(id)->hasFlag("using") && target->canGetCard(holder, id)) room->obtainCard(target, id, false);
+                && !Sanguosha->getCard(id)->hasFlag("using") && target->canGet(holder, id)) room->obtainCard(target, id, false);
             return ContinueEffects;
         }
-        for (int n = 0; n < amount && target->isAlive() && ctx.invoker->isAlive() && ctx.invoker->canGetCard(target, "h"); ++n) {
+        for (int n = 0; n < amount && target->isAlive() && ctx.invoker->isAlive() && ctx.invoker->canGet(target, "h"); ++n) {
             const int id = room->askForCardChosen(ctx.invoker, target, "h", objectName(), false, Card::MethodGet);
             if (id < 0 || room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand
-                || Sanguosha->getCard(id)->hasFlag("using") || !ctx.invoker->canGetCard(target, id)) break;
+                || Sanguosha->getCard(id)->hasFlag("using") || !ctx.invoker->canGet(target, id)) break;
             SkillContext obtain = ctx; obtain.choice = "obtain";
             obtain.extra_data = QVariantMap{{"card", id}, {"holder", target->objectName()}};
             skillEffect(obtain, ctx.invoker);
@@ -7234,7 +7232,6 @@ class Lingsevs : public OneCardViewAsSkill
 public:
 	Lingsevs() : OneCardViewAsSkill("lingse")
 	{
-		filter_pattern = ".|.|.|.";
 	}
 	const Card *viewAs(const Card *originalCard) const
 	{
@@ -7804,7 +7801,6 @@ class ThJiweivs : public OneCardViewAsSkill
 public:
 	ThJiweivs() : OneCardViewAsSkill("thjiweivs&")
 	{
-		filter_pattern = ".|.|.|hand";
 	}
 	const Card *viewAs(const Card *originalCard) const
 	{
@@ -10496,7 +10492,6 @@ class Yinmouvs : public OneCardViewAsSkill
 public:
 	Yinmouvs() : OneCardViewAsSkill("yinmou")
 	{
-		filter_pattern = ".|.|.|#yinmou";
 		response_pattern = "@@yinmou!";
 	}
 	const Card *viewAs(const Card *originalCard) const
@@ -10999,7 +10994,6 @@ class Lingshuvs : public OneCardViewAsSkill
 public:
 	Lingshuvs() : OneCardViewAsSkill("lingshu")
 	{
-		filter_pattern = "^BasicCard";
 	}
 	const Card *viewAs(const Card *originalCard) const
 	{
@@ -11614,7 +11608,6 @@ class Rengouvs : public OneCardViewAsSkill
 public:
 	Rengouvs() : OneCardViewAsSkill("rengouvs&")
 	{
-		filter_pattern = ".!";
 	}
 	const Card *viewAs(const Card *originalCard) const
 	{
@@ -11933,7 +11926,6 @@ class Xisongvs : public OneCardViewAsSkill
 public:
 	Xisongvs() : OneCardViewAsSkill("xisong")
 	{
-		filter_pattern = ".|.|.|#xisong";
 		response_pattern = "@@xisong";
 		expand_pile = "#xisong";
 	}

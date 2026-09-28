@@ -1655,7 +1655,7 @@ public:
         return true;
     }
 
-    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *p, SkillContext &, ServerPlayer *t) const override
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *p, SkillContext &ctx, ServerPlayer *t) const override
     {
         p->peiyin(this);
 
@@ -3536,7 +3536,8 @@ public:
             QList<ServerPlayer *> candidates = room->getOtherPlayers(owner);
             ServerPlayer *from = ctx.original_data->value<DamageStruct>().from; candidates.removeOne(from);
             if (owner->isKongcheng() || candidates.isEmpty()) return false;
-            CardsMoveStruct move = room->askForYijiStruct(owner, owner->handCards(), objectName(), false, false, false,
+            QList<int> hand = owner->handCards();
+            CardsMoveStruct move = room->askForYijiStruct(owner, hand, objectName(), false, false, false,
                 owner->getHandcardNum(), candidates, CardMoveReason(), from ? "@mtfupan-give2:" + from->objectName()
                     : "@mtfupan-give3", false, false);
             ServerPlayer *recipient = qobject_cast<ServerPlayer *>(move.to);
@@ -4678,14 +4679,14 @@ public:
         foreach (ServerPlayer *p, room->getAllPlayers(true)) {
             QVariantList keep;
             QStringList expired;
-            foreach (const QVariant &value, p->tag.value("MTChushiGrants").toList()) {
+            foreach (const QVariant &value, p->getTag("MTChushiGrants").toList()) {
                 const QVariantMap receipt = value.toMap();
                 if (receipt.value("expires").toString() != player->objectName()) { keep << value; continue; }
                 // Retire only the instance created by this accepted grant.
                 if (receipt.value("instance").toInt() > 0)
                     expired << SkillInstanceUtils::formatName(receipt.value("skill").toString(), receipt.value("instance").toInt());
             }
-            p->tag["MTChushiGrants"] = keep;
+            p->setTag("MTChushiGrants", keep);
             foreach (const QString &skill, expired) room->detachSkillFromPlayer(p, skill);
         }
         return true;
@@ -4808,13 +4809,13 @@ public:
     }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *owner, SkillContext &ctx, ServerPlayer *target) const override
     {
-        const int dispatch = target->tag.value("MTJijingNextReceipt").toInt() + 1;
-        target->tag["MTJijingNextReceipt"] = dispatch;
-        QVariantList receipts = target->tag.value("MTJijingReceipts").toList();
+        const int dispatch = target->getTag("MTJijingNextReceipt").toInt() + 1;
+        target->setTag("MTJijingNextReceipt", dispatch);
+        QVariantList receipts = target->getTag("MTJijingReceipts").toList();
         receipts << QVariantMap{{"dispatch", dispatch}, {"turn", room->historyScopes().value("turn_id")},
             {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName},
             {"source_instance", ctx.sourceRef.key.instanceID}};
-        target->tag["MTJijingReceipts"] = receipts;
+        target->setTag("MTJijingReceipts", receipts);
         owner->peiyin(this);
         target->drawCards(getEffectiveAmount(ctx), objectName());
         return false;
@@ -4829,7 +4830,7 @@ public:
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
         if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
-            foreach (ServerPlayer *p, room->getAllPlayers(true)) p->tag.remove("MTJijingReceipts");
+            foreach (ServerPlayer *p, room->getAllPlayers(true)) p->removeTag("MTJijingReceipts");
         return true;
     }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
@@ -4861,8 +4862,8 @@ public:
         foreach (ServerPlayer *p, players) {
             const Card *card = p == pd->from ? pd->from_card : pd->to_card;
             if (!p || p->isDead() || !card || room->getCardPlace(card->getEffectiveId()) != Player::PlaceTable
-                || p->tag.value("MTJijingReceipts").toList().isEmpty() || !gainedThisTurn(room, p, card->getEffectiveId())) continue;
-            foreach (const QVariant &value, p->tag.value("MTJijingReceipts").toList()) {
+                || p->getTag("MTJijingReceipts").toList().isEmpty() || !gainedThisTurn(room, p, card->getEffectiveId())) continue;
+            foreach (const QVariant &value, p->getTag("MTJijingReceipts").toList()) {
                 const QVariantMap receipt = value.toMap();
                 if (receipt.value("turn") != room->historyScopes().value("turn_id")) continue;
                 SkillContext ctx;
@@ -4877,7 +4878,7 @@ public:
         return true;
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
-    { return ctx.owner && ctx.owner->tag.value("MTJijingReceipts").toList().contains(ctx.extra_data); }
+    { return ctx.owner && ctx.owner->getTag("MTJijingReceipts").toList().contains(ctx.extra_data); }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         const PindianStruct *pd = ctx.original_data->value<PindianStruct *>();
@@ -5072,8 +5073,8 @@ public:
         foreach (int id, request.initiator->handCards())
             if (Sanguosha->getCard(id)->hasFlag("using")) return nullptr;
         Slash *slash = handSlash(request.initiator);
-        slash->tag["MTZhuluReceipt"] = request.initiator->getSkillInstanceStateValue(objectName(),
-            request.activationRef.key.instanceID, "receipt");
+        slash->setTag("MTZhuluReceipt", request.initiator->getSkillInstanceStateValue(objectName(),
+            request.activationRef.key.instanceID, "receipt"));
         return slash;
     }
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &targets,
@@ -5125,7 +5126,7 @@ public:
         if (event != EventPhaseChanging) return false;
         if (!player || data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
         // Enumerating a retained effect does not consume its receipt.
-        const QVariantList receipts = player->tag.value("MTZhuluReceipts").toList();
+        const QVariantList receipts = player->getTag("MTZhuluReceipts").toList();
         if (player->isDead() || player->isKongcheng()) return true;
         foreach (const QVariant &value, receipts) {
             const QVariantMap receipt = value.toMap();
@@ -5152,9 +5153,9 @@ public:
     bool effect(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
         if (event == EventPhaseChanging) {
-            QVariantList receipts = owner->tag.value("MTZhuluReceipts").toList();
+            QVariantList receipts = owner->getTag("MTZhuluReceipts").toList();
             receipts.removeAll(ctx.extra_data);
-            owner->tag["MTZhuluReceipts"] = receipts;
+            owner->setTag("MTZhuluReceipts", receipts);
         }
         return TriggerSkillV2::effect(event, room, owner, ctx);
     }
@@ -5186,15 +5187,15 @@ public:
         if (!duplicate) suits << suit;
         state["suits"] = suits; state["banned"] = duplicate;
         owner->setSkillInstanceStateValue(objectName(), ctx.instanceID, "turn_state", state);
-        QVariantList receipts = owner->tag.value("MTZhuluReceipts").toList();
+        QVariantList receipts = owner->getTag("MTZhuluReceipts").toList();
         int index = -1;
         for (int i = 0; i < receipts.size(); ++i)
             if (receipts.at(i).toMap().value("activation_instance").toInt() == ctx.activationRef.key.instanceID
                 && receipts.at(i).toMap().value("turn") == turn) { index = i; break; }
         QVariantMap receipt = index < 0 ? QVariantMap() : receipts.at(index).toMap();
         if (index < 0) {
-            const int dispatch = owner->tag.value("MTZhuluNextReceipt").toInt() + 1;
-            owner->tag["MTZhuluNextReceipt"] = dispatch;
+            const int dispatch = owner->getTag("MTZhuluNextReceipt").toInt() + 1;
+            owner->setTag("MTZhuluNextReceipt", dispatch);
             receipt = QVariantMap{{"turn", turn}, {"dispatch", dispatch}, {"source_owner", ctx.sourceRef.ownerObjectName},
                 {"source_skill", ctx.sourceRef.key.skillName}, {"source_instance", ctx.sourceRef.key.instanceID},
                 {"activation_owner", ctx.activationRef.ownerObjectName}, {"activation_skill", ctx.activationRef.key.skillName},
@@ -5205,7 +5206,7 @@ public:
         if (!ids.contains(id)) ids << id;
         shown[target->objectName()] = ids; receipt["shown"] = shown;
         if (index < 0) receipts << receipt; else receipts[index] = receipt;
-        owner->tag["MTZhuluReceipts"] = receipts;
+        owner->setTag("MTZhuluReceipts", receipts);
         owner->peiyin(this); room->showCard(target, id);
         if (!duplicate) { ctx.choice = "draw"; skillEffect(event, room, owner, ctx, owner); }
         return false;
@@ -5222,7 +5223,7 @@ public:
     {
         const DamageStruct damage = data.value<DamageStruct>();
         if (!damage.card || damage.chain || damage.transfer || !damage.to || !damage.from || damage.from->isDead()) return true;
-        const QVariantMap receipt = damage.card->tag.value("MTZhuluReceipt").toMap();
+        const QVariantMap receipt = damage.card->getTag("MTZhuluReceipt").toMap();
         if (receipt.isEmpty()) return true;
         SkillContext ctx;
         ctx.skill_name = objectName(); ctx.owner = damage.from; ctx.invoker = damage.from; ctx.initiator = damage.from;
@@ -5301,15 +5302,15 @@ public:
         if (target->isDead()) return false;
         const qint64 cause = room->currentHistoryEventId();
         if (!cause) return false; // No invented identity when the journal cannot link this extra turn.
-        const int dispatch = target->tag.value("MTZhengwangNextReceipt").toInt() + 1;
-        target->tag["MTZhengwangNextReceipt"] = dispatch;
+        const int dispatch = target->getTag("MTZhengwangNextReceipt").toInt() + 1;
+        target->setTag("MTZhengwangNextReceipt", dispatch);
         QVariantMap receipt{{"dispatch", dispatch}, {"cause", cause}, {"threshold", ctx.extra_data},
             {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName},
             {"source_instance", ctx.sourceRef.key.instanceID}};
-        QVariantList receipts = target->tag.value("MTZhengwangReceipts").toList();
-        receipts << receipt; target->tag["MTZhengwangReceipts"] = receipts;
+        QVariantList receipts = target->getTag("MTZhengwangReceipts").toList();
+        receipts << receipt; target->setTag("MTZhengwangReceipts", receipts);
         if (room->scheduleExtraTurn(target, ctx.sourceRef) <= 0) {
-            receipts.removeAll(receipt); target->tag["MTZhengwangReceipts"] = receipts;
+            receipts.removeAll(receipt); target->setTag("MTZhengwangReceipts", receipts);
         }
         return false;
     }
@@ -5332,9 +5333,9 @@ public:
     {
         if (event != EventPhaseChanging || !player || data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
         QVariantList keep;
-        foreach (const QVariant &value, player->tag.value("MTZhengwangReceipts").toList())
+        foreach (const QVariant &value, player->getTag("MTZhengwangReceipts").toList())
             if (!currentReceipt(room, value.toMap())) keep << value;
-        player->tag["MTZhengwangReceipts"] = keep;
+        player->setTag("MTZhengwangReceipts", keep);
         return true;
     }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
@@ -5343,7 +5344,7 @@ public:
         if (event != EventPhaseEnd || !player || player->isDead() || player->getPhase() != Player::Play || player->isKongcheng()) return true;
         const int damage = MTZhengwang::turnDamage(room, player);
         if (damage < 0) return true;
-        foreach (const QVariant &value, player->tag.value("MTZhengwangReceipts").toList()) {
+        foreach (const QVariant &value, player->getTag("MTZhengwangReceipts").toList()) {
             const QVariantMap receipt = value.toMap();
             if (!currentReceipt(room, receipt) || damage > receipt.value("threshold").toInt()) continue;
             SkillContext ctx;
@@ -5356,7 +5357,7 @@ public:
         return true;
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
-    { return ctx.owner && ctx.owner->tag.value("MTZhengwangReceipts").toList().contains(ctx.extra_data); }
+    { return ctx.owner && ctx.owner->getTag("MTZhengwangReceipts").toList().contains(ctx.extra_data); }
     bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *target) const override
     { target->throwAllHandCards(); return false; }
 };
@@ -5508,7 +5509,7 @@ public:
     bool recordEvent(TriggerEvent, Room *room, ServerPlayer *, QVariant &) const override
     {
         foreach (ServerPlayer *p, room->getAllPlayers(true)) {
-            const QVariantList grants = p->tag.take("MTZhuizunGrants").toList();
+            const QVariantList grants = ({ QVariant _tag_take = p->getTag("MTZhuizunGrants"); p->removeTag("MTZhuizunGrants"); _tag_take; }).toList();
             foreach (const QVariant &value, grants) {
                 const QVariantMap grant = value.toMap();
                 if (grant.value("instance").toInt() > 0)
@@ -5783,7 +5784,7 @@ public:
         if (event != EventPhaseChanging) return false;
         if (!player || data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
         foreach (ServerPlayer *owner, room->getAlivePlayers())
-            foreach (const QVariant &value, owner->tag.value("MTHongwuReceipts").toList()) {
+            foreach (const QVariant &value, owner->getTag("MTHongwuReceipts").toList()) {
                 const QVariantMap receipt = value.toMap();
                 if (receipt.value("actor").toString() != player->objectName()
                     || receipt.value("turn") != room->historyScopes().value("turn_id")) continue;
@@ -5800,7 +5801,7 @@ public:
     bool isSourceAvailable(Room *room, const SkillContext &ctx) const override
     {
         return ctx.activationRef.isValid() ? TriggerSkillV2::isSourceAvailable(room, ctx)
-            : ctx.owner && ctx.owner->tag.value("MTHongwuReceipts").toList().contains(ctx.extra_data);
+            : ctx.owner && ctx.owner->getTag("MTHongwuReceipts").toList().contains(ctx.extra_data);
     }
     bool cost(TriggerEvent event, Room *room, ServerPlayer *owner, SkillContext &ctx) const override
     {
@@ -5816,8 +5817,8 @@ public:
             return TriggerSkillV2::effect(event, room, owner, ctx);
         }
         const QVariantMap receipt = ctx.extra_data.toMap();
-        QVariantList receipts = owner->tag.value("MTHongwuReceipts").toList();
-        receipts.removeAll(ctx.extra_data); owner->tag["MTHongwuReceipts"] = receipts;
+        QVariantList receipts = owner->getTag("MTHongwuReceipts").toList();
+        receipts.removeAll(ctx.extra_data); owner->setTag("MTHongwuReceipts", receipts);
         ServerPlayer *actor = room->findPlayerByObjectName(receipt.value("actor").toString(), true);
         const auto cleanup = qScopeGuard([&]() {
             if (actor) room->removePlayerCardLimitationByReason(actor, receipt.value("reason").toString());
@@ -5832,16 +5833,16 @@ public:
             target->drawCards(getEffectiveAmount(ctx), objectName());
             if (target->objectName() != ctx.extra_data.toString() || target->isDead()) return false;
             const QString suit = Card::Suit2String(room->askForSuit(target, objectName()));
-            const int dispatch = owner->tag.value("MTHongwuNextReceipt").toInt() + 1;
-            owner->tag["MTHongwuNextReceipt"] = dispatch;
+            const int dispatch = owner->getTag("MTHongwuNextReceipt").toInt() + 1;
+            owner->setTag("MTHongwuNextReceipt", dispatch);
             const QString reason = QString("mthongwu:%1:%2").arg(owner->objectName()).arg(dispatch);
-            QVariantList receipts = owner->tag.value("MTHongwuReceipts").toList();
+            QVariantList receipts = owner->getTag("MTHongwuReceipts").toList();
             receipts << QVariantMap{{"dispatch", dispatch}, {"turn", room->historyScopes().value("turn_id")},
                 {"actor", target->objectName()}, {"suit", suit}, {"reason", reason},
                 {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName},
                 {"source_instance", ctx.sourceRef.key.instanceID}, {"activation_owner", ctx.activationRef.ownerObjectName},
                 {"activation_skill", ctx.activationRef.key.skillName}, {"activation_instance", ctx.activationRef.key.instanceID}};
-            owner->tag["MTHongwuReceipts"] = receipts;
+            owner->setTag("MTHongwuReceipts", receipts);
             LogMessage log; log.type = "#ChooseSuit"; log.from = target; log.arg = suit;
             room->sendLog(log, target);
             room->setPlayerCardLimitation(target, "use,response,discard", QString(".|%1|.|.").arg(suit), true, reason);

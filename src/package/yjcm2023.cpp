@@ -29,7 +29,7 @@ static QString zhizheEquipObjectNameByArea(int area)
 	return QString();
 }
 
-static bool safeTurnCardToEquip(Room *room, ServerPlayer *source, int cardId, const QString &equipObjectName, const QString &skillName)
+static bool safeTurnCardToEquip(Room *room, ServerPlayer *source, int cardId, const QString &equipObjectName, const QString &skillName, ServerPlayer *materialOwner = nullptr)
 {
 	if (!room || !source || equipObjectName.isEmpty())
 		return false;

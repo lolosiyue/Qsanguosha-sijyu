@@ -1608,7 +1608,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         return request.initiator && card && !card->isVirtualCard() && !card->hasFlag("using")
-            && request.selectedCardIds.isEmpty() && request.initiator->getCards("he").contains(card)
+            && request.selectedCardIds.isEmpty() && request.initiator->hasCard(card)
             && !request.initiator->isJilei(card);
     }
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected, const Player *target) const override
@@ -1625,7 +1625,7 @@ public:
     static void commitAccepted(SkillContext &ctx)
     {
         if (!ctx.initiator || !ctx.use_card || !ctx.activationRef.isValid() || ctx.extra_data.toBool()) return;
-        const QString mode = ctx.use_card->getUserString();
+        const QString mode = (qobject_cast<const SkillCard *>(ctx.use_card) ? qobject_cast<const SkillCard *>(ctx.use_card)->getUserString() : QString());
         if (mode != "hp" && mode != "hand") return;
         const auto &key = ctx.activationRef.key;
         QStringList modes = ctx.initiator->getSkillInstanceStateValue(key.skillName, key.instanceID, "used_modes").toStringList();

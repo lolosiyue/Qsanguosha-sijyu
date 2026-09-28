@@ -463,7 +463,7 @@ public:
 class DdzCibei : public TriggerSkillV2
 {
 public:
-    DdzCibei() : TriggerSkillV2("ddzcibei") { events << DamageCaused << EventPhaseChanging << TurnBroken << EventSkillInvoking; setBaseAmount(5); }
+    DdzCibei() : TriggerSkillV2("ddzcibei") { events << DamageCaused << EventPhaseChanging << TurnBroken << EventSkillInvoking; m_baseAmount = 5; }
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool checkCustomUsage(const SkillContext &ctx) const override
     {
@@ -1816,7 +1816,7 @@ class Lisao2 : public Lisao {};
 class Chushan : public TriggerSkillV2
 {
 public:
-    Chushan() : TriggerSkillV2("chushan") { events << GameStart; frequency = Compulsory; setBaseAmount(2); }
+    Chushan() : TriggerSkillV2("chushan") { events << GameStart; frequency = Compulsory; m_baseAmount = 2; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
         return event == GameStart && player && player->isAlive() && player->hasSkill(objectName())
@@ -3431,7 +3431,7 @@ public:
 class DdzChengxiang : public TriggerSkillV2
 {
 public:
-    DdzChengxiang() : TriggerSkillV2("ddzchengxiang") { events << Damaged; setBaseAmount(4); }
+    DdzChengxiang() : TriggerSkillV2("ddzchengxiang") { events << Damaged; m_baseAmount = 4; }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const int damage = data.value<DamageStruct>().damage;

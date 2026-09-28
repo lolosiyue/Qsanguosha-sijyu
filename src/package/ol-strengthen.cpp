@@ -110,7 +110,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
     {
         return request.initiator && candidate && candidate->getEffectiveId() >= 0 && !candidate->hasFlag("using")
-            && (request.initiator->getCards("he").contains(candidate)
+            && (request.initiator->hasCard(candidate)
                 || request.initiator->getHandPile().contains(candidate->getEffectiveId()))
             && request.selectedCardIds.isEmpty()
             && ExpPattern(material).match(request.initiator, candidate);
@@ -661,7 +661,7 @@ public:
     {
         if (!candidate || !request.initiator || !request.selectedCardIds.isEmpty()
             || candidate->getEffectiveId() < 0 || candidate->hasFlag("using")
-            || (!request.initiator->getCards("he").contains(candidate)
+            || (!request.initiator->hasCard(candidate)
                 && !request.initiator->getHandPile().contains(candidate->getEffectiveId()))) return false;
         Card *converted = convert(candidate);
         if (!converted) return false;
@@ -1038,7 +1038,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         return request.initiator && card && request.selectedCardIds.isEmpty() && !card->hasFlag("using")
-            && request.initiator->getCards("he").contains(card)
+            && request.initiator->hasCard(card)
             && (card->isKindOf("Jink") || (card->getSuit() == Card::Spade && request.initiator->handCards().contains(card->getEffectiveId())));
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
@@ -1065,7 +1065,7 @@ public:
         if (getEffectiveAmount(ctx) <= 0 || !ctx.use_card || ctx.use_card->getSubcards().length() != 1) return ContinueEffects;
         const int id = ctx.use_card->getSubcards().first();
         Room *room = target->getRoom();
-        if (room->getCardOwner(id) != ctx.invoker || !ctx.invoker->getCards("he").contains(Sanguosha->getCard(id))
+        if (room->getCardOwner(id) != ctx.invoker || !ctx.invoker->hasCard(Sanguosha->getCard(id))
             || Sanguosha->getCard(id)->hasFlag("using")) return ContinueEffects;
         if (target->isWeidi()) room->broadcastSkillInvoke("weidi", -1, target);
         else room->broadcastSkillInvoke("huangtian", qsanRandomBounded(2) + 5, target);
@@ -1405,7 +1405,6 @@ class OLGuhuo : public OneCardViewAsSkill
 public:
 	OLGuhuo() : OneCardViewAsSkill("olguhuo")
 	{
-		filter_pattern = ".|.|.|hand";
 		response_or_use = true;
 	}
 
@@ -4030,7 +4029,7 @@ public:
                 ctx.invoker, ctx.use_card, "oltiaoxin_slash");
         if (!ctx.invoker->isAlive() || !target->isAlive()) return ContinueEffects;
         // An absent answer is known; an accepted answer needs exact-use evidence before declaring it harmless.
-        if (slash.card && dealtDamage(room, slash.useHistoryEventId, ctx.invoker) != 0) return ContinueEffects;
+        if (slash.card && dealtDamage(room, slash.targetModReveal.useHistoryEventId, ctx.invoker) != 0) return ContinueEffects;
         if (!ctx.invoker->canDiscard(target, "he")) return ContinueEffects;
         QList<int> ids;
         for (int i = 0; i < amount; ++i) {
@@ -4386,7 +4385,7 @@ public:
     {
         if (!canActivate(request) || !cardSelectionFeasible(request)) return nullptr;
         const Card *card = ViewAsSkillV2::createCard(request);
-        if (card) card->tag["OLQiaobianPhase"] = pendingPhase(request);
+        if (card) card->setTag("OLQiaobianPhase", pendingPhase(request));
         return card;
     }
     QString historyKey(const ActiveSkillRequest &) const override { return "OLQiaobianCard"; }
@@ -4419,7 +4418,7 @@ public:
         ServerPlayer *actor = ctx.invoker;
         if (!actor || !actor->isAlive() || !target) return ContinueEffects;
         Room *room = actor->getRoom();
-        const int phase = ctx.use_card ? ctx.use_card->tag.value("OLQiaobianPhase", ctx.choice.toInt()).toInt() : ctx.choice.toInt();
+        const int phase = ctx.use_card ? ctx.use_card->getTag("OLQiaobianPhase", ctx.choice.toInt()).toInt() : ctx.choice.toInt();
         if (phase == Player::Draw) {
             const int count = getEffectiveAmount(ctx);
             for (int i = 0; i < count && actor->isAlive() && target->isAlive() && !target->isKongcheng(); ++i) {
@@ -4770,7 +4769,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         return request.initiator && card && request.selectedCardIds.isEmpty() && card->getEffectiveId() >= 0
-            && card->isKindOf("Weapon") && !card->hasFlag("using") && request.initiator->getCards("he").contains(card)
+            && card->isKindOf("Weapon") && !card->hasFlag("using") && request.initiator->hasCard(card)
             && !request.initiator->isJilei(card);
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
@@ -5124,11 +5123,11 @@ public:
     {
         if (event != CardFinished) return false;
         const CardUseStruct use = data.value<CardUseStruct>();
-        if (!use.card || !player || !player->isAlive() || use.from != player || use.useHistoryEventId <= 0) return true;
+        if (!use.card || !player || !player->isAlive() || use.from != player || use.targetModReveal.useHistoryEventId <= 0) return true;
         const QVariantMap receipt = use.card->getTag("ollihuo_effect").toMap();
         if (receipt.value("actor").toString() != player->objectName() || !ref(receipt, "source").isValid()
             || !ref(receipt, "activation").isValid() || receipt.value("amount").toInt() <= 0) return true;
-        const QVariantMap damage = room->queryCardUseDamage(use.useHistoryEventId);
+        const QVariantMap damage = room->queryCardUseDamage(use.targetModReveal.useHistoryEventId);
         if (!damage.value("complete").toBool() || !damage.value("attribution_complete").toBool()
             || damage.value("items").toList().isEmpty()) return true;
         SkillContext ctx;
@@ -5361,7 +5360,7 @@ public:
         const Card *card = room->askForCard(ctx.invoker, "EquipCard", "olrenxin0:" + target->objectName(),
             *ctx.original_data, Card::MethodNone, nullptr, false, objectName());
         if (!card || card->getEffectiveId() < 0 || card->getSubcards().length() > 1 || card->hasFlag("using")
-            || !ctx.invoker->getCards("he").contains(Sanguosha->getCard(card->getEffectiveId()))
+            || !ctx.invoker->hasCard(Sanguosha->getCard(card->getEffectiveId()))
             || !ctx.invoker->canDiscard(ctx.invoker, card->getEffectiveId())) return false;
         ctx.extra_data = card->getEffectiveId();
         ctx.targets << target;
@@ -5500,7 +5499,7 @@ public:
     {
         return request.initiator && card && card->getEffectiveId() >= 0 && !card->hasFlag("using")
             && !request.selectedCardIds.contains(card->getEffectiveId())
-            && request.initiator->getCards("he").contains(card) && !request.initiator->isJilei(card);
+            && request.initiator->hasCard(card) && !request.initiator->isJilei(card);
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
@@ -5774,7 +5773,7 @@ public:
     {
         return request.initiator && candidate && request.selectedCardIds.isEmpty()
             && !candidate->hasFlag("using") && candidate->isKindOf("EquipCard")
-            && request.initiator->getCards("he").contains(candidate);
+            && request.initiator->hasCard(candidate);
     }
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected, const Player *candidate) const override
     {
@@ -6950,7 +6949,7 @@ public:
         if (!ctx.invoker->askForSkillInvoke(this, *ctx.original_data)) return false;
         const Card *card = room->askForCard(ctx.invoker, "..", "oljiangchi0", *ctx.original_data, Card::MethodNone);
         if (card && (card->getEffectiveId() < 0 || card->getSubcards().length() > 1 || card->hasFlag("using")
-            || !ctx.invoker->getCards("he").contains(Sanguosha->getCard(card->getEffectiveId()))
+            || !ctx.invoker->hasCard(Sanguosha->getCard(card->getEffectiveId()))
             || ctx.invoker->isCardLimited(card, Card::MethodRecast))) return false;
         ctx.extra_data = card ? card->getEffectiveId() : -1;
         ctx.targets << ctx.invoker;
@@ -7514,7 +7513,7 @@ public:
     static bool firstSuit(Room *room, ServerPlayer *player, const CardUseStruct &use)
     {
         const QVariant turn = room->historyScopes().value("turn_id");
-        const qint64 current = use.useHistoryEventId;
+        const qint64 current = use.targetModReveal.useHistoryEventId;
         if (!use.card || use.card->isKindOf("SkillCard") || current <= 0 || turn.toLongLong() <= 0) return false;
         QVariantMap filter{{"kind", "use_card"}, {"player", player->objectName()}, {"turn_id", turn}};
         for (;;) {
@@ -7767,7 +7766,7 @@ public:
     {
         if (!request.initiator || !card || card->isVirtualCard() || card->hasFlag("using")
             || request.selectedCardIds.length() >= 2 || request.selectedCardIds.contains(card->getEffectiveId())) return false;
-        return request.initiator->getCards("he").contains(card) || request.initiator->getHandPile().contains(card->getEffectiveId());
+        return request.initiator->hasCard(card) || request.initiator->getHandPile().contains(card->getEffectiveId());
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
@@ -8055,7 +8054,7 @@ public:
         const Card *card = room->askForCard(ctx.invoker, "EquipCard", "oljiaojin0", *ctx.original_data,
             Card::MethodNone, nullptr, false, objectName());
         if (!card || card->getEffectiveId() < 0 || card->getSubcards().length() > 1 || card->hasFlag("using")
-            || !ctx.invoker->getCards("he").contains(Sanguosha->getCard(card->getEffectiveId()))
+            || !ctx.invoker->hasCard(Sanguosha->getCard(card->getEffectiveId()))
             || !ctx.invoker->canDiscard(ctx.invoker, card->getEffectiveId())) return false;
         ctx.extra_data = card->getEffectiveId();
         ctx.targets << ctx.original_data->value<DamageStruct>().to;
@@ -8100,7 +8099,7 @@ public:
             const QVariantMap receipt = entry.toMap();
             if (receipt.value("turn") == room->historyScopes().value("turn_id")) colors << receipt.value("color").toString();
         }
-        foreach (const QString &color, QStringList{"red", "black", "colorless"})
+        for (const QString &color : QStringList{"red", "black", "colorless"})
             room->setPlayerMark(player, "&oljieqianxi+" + color + "-Clear", colors.contains(color) ? 1 : 0);
     }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
@@ -8173,7 +8172,7 @@ public:
         }
         const Card *card = room->askForCard(ctx.owner, "..", objectName(), *ctx.original_data, Card::MethodNone);
         if (!card || card->getEffectiveId() < 0 || card->isVirtualCard()
-            || !ctx.owner->getCards("he").contains(card) || card->hasFlag("using")) return false;
+            || !ctx.owner->hasCard(card) || card->hasFlag("using")) return false;
         ctx.extra_data = QVariantMap{{"card", card->getEffectiveId()}};
         ctx.targets << ctx.owner;
         return true;

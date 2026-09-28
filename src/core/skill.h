@@ -66,6 +66,7 @@ struct ActiveSkillRequest {
     CardUseStruct::CardUseReason reason;
     QString pattern;
     const Player *initiator;
+    SkillInstanceRef sourceRef;
     SkillInstanceRef activationRef;
     QList<int> selectedCardIds;
     QStringList selectedTargetNames;
@@ -246,11 +247,13 @@ protected:
     bool shiming_skill;
     QString waked_skills;
 
+protected:
+    ServerPlayer *getUsageHolder(const SkillContext &ctx) const;
+    QString getUsageTagKey(const SkillContext &ctx) const;
+
 private:
     friend class Room;
     friend class SkillRuntimeCoordinator;
-    ServerPlayer *getUsageHolder(const SkillContext &ctx) const;
-    QString getUsageTagKey(const SkillContext &ctx) const;
 
     bool lord_skill;
     QStringList sources;
@@ -339,6 +342,7 @@ public:
     void setResponseOrUse(bool enabled) { response_or_use = enabled; }
 
     virtual int getBaseAmount() const;
+    void setBaseAmount(int amount) { m_baseAmount = amount; }
     int getEffectiveAmount(const SkillContext &context) const;
     virtual SkillInstanceRef getAmountRef(const SkillContext &context) const;
 
@@ -377,10 +381,12 @@ protected:
     int m_n;
     int m_baseAmount;
 
+protected:
+    QString declaredName(const ActiveSkillRequest &request) const;
+
 private:
     QStringList listedNames() const;
     bool canDeclareListed(const ActiveSkillRequest &request, const QString &name) const;
-    QString declaredName(const ActiveSkillRequest &request) const;
 };
 
 class ZeroCardViewAsSkill : public ViewAsSkill
@@ -573,6 +579,7 @@ public:
     virtual void effectFinished(SkillContext &ctx) const;
 
     virtual int getBaseAmount() const;
+    void setBaseAmount(int amount) { m_baseAmount = amount; }
     int getEffectiveAmount(const SkillContext &ctx) const;
 
     static QString parseSkillName(const QString &fullName, QString *source = NULL,

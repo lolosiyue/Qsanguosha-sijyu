@@ -699,7 +699,7 @@ public:
     {
         if (!canActivate(request) || !cardSelectionFeasible(request)) return nullptr;
         const Card *card = ViewAsSkillV2::createCard(request);
-        if (card) { card->tag["FuzuoNumber"] = Sanguosha->getCard(request.selectedCardIds.first())->getNumber(); card->tag["FuzuoPindian"] = request.initiator->getSkillInstanceStateValue(objectName(), request.activationRef.key.instanceID, "pindian"); }
+        if (card) { card->setTag("FuzuoNumber", Sanguosha->getCard(request.selectedCardIds.first())->getNumber()); card->setTag("FuzuoPindian", request.initiator->getSkillInstanceStateValue(objectName(), request.activationRef.key.instanceID, "pindian")); }
         return card;
     }
     TargetMode targetMode() const override { return SelectTargets; }
@@ -709,11 +709,11 @@ public:
     QString historyKey(const ActiveSkillRequest &) const override { return "FuzuoCard"; }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
     {
-        const QVariantMap pindian = ctx.use_card->tag.value("FuzuoPindian").toMap();
+        const QVariantMap pindian = ctx.use_card->getTag("FuzuoPindian").toMap();
         if (pindian.value("id").toLongLong() <= 0 || !pindian.value("participants").toStringList().contains(target->objectName())) return ContinueEffects;
         QVariantList receipts = ctx.initiator->getTag("FuzuoReceipts").toList();
         receipts << QVariantMap{{"pindian", pindian.value("id")}, {"activation_owner", ctx.activationRef.ownerObjectName}, {"activation_id", ctx.activationRef.key.instanceID},
-            {"target", target->objectName()}, {"amount", ctx.use_card->tag.value("FuzuoNumber").toInt() / 2 * getEffectiveAmount(ctx)},
+            {"target", target->objectName()}, {"amount", ctx.use_card->getTag("FuzuoNumber").toInt() / 2 * getEffectiveAmount(ctx)},
             {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName}, {"source_id", ctx.sourceRef.key.instanceID}};
         ctx.initiator->setTag("FuzuoReceipts", receipts); return ContinueEffects;
     }

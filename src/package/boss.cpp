@@ -17,7 +17,7 @@
 static bool bossHasEquipKind(const ServerPlayer *player, const QString &kind)
 {
     if (!player) return false;
-    for (const Card *card : player->getEquips()) if (card->isKindOf(kind)) return true;
+    for (const Card *card : player->getEquips()) if (card->isKindOf(kind.toLatin1().constData())) return true;
     return false;
 }
 
@@ -119,7 +119,7 @@ public:
 class BossLuolei : public TriggerSkillV2
 {
 public:
-    BossLuolei() : TriggerSkillV2("bossluolei") { events << EventPhaseStart; setBaseAmount(1); }
+    BossLuolei() : TriggerSkillV2("bossluolei") { events << EventPhaseStart; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
         TriggerList result;
@@ -148,7 +148,7 @@ public:
 class BossGuihuo : public TriggerSkillV2
 {
 public:
-    BossGuihuo() : TriggerSkillV2("bossguihuo") { events << EventPhaseStart; setBaseAmount(1); }
+    BossGuihuo() : TriggerSkillV2("bossguihuo") { events << EventPhaseStart; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
         TriggerList result;
@@ -177,7 +177,7 @@ public:
 class BossMingbao : public TriggerSkillV2
 {
 public:
-    BossMingbao() : TriggerSkillV2("bossmingbao") { events << Death; frequency = Compulsory; setBaseAmount(1); }
+    BossMingbao() : TriggerSkillV2("bossmingbao") { events << Death; frequency = Compulsory; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -209,7 +209,7 @@ public:
 class BossBaolian : public TriggerSkillV2
 {
 public:
-    BossBaolian() : TriggerSkillV2("bossbaolian") { events << EventPhaseStart; frequency = Compulsory; setBaseAmount(2); }
+    BossBaolian() : TriggerSkillV2("bossbaolian") { events << EventPhaseStart; frequency = Compulsory; m_baseAmount = 2; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
         TriggerList result;
@@ -234,7 +234,7 @@ public:
 class BossXiaoshou : public TriggerSkillV2
 {
 public:
-    BossXiaoshou() : TriggerSkillV2("bossxiaoshou") { events << EventPhaseStart; setBaseAmount(2); }
+    BossXiaoshou() : TriggerSkillV2("bossxiaoshou") { events << EventPhaseStart; m_baseAmount = 2; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
     {
         TriggerList result;
@@ -302,7 +302,7 @@ public:
 class BossLianyu : public TriggerSkillV2
 {
 public:
-    BossLianyu() : TriggerSkillV2("bosslianyu") { events << EventPhaseStart; setBaseAmount(1); }
+    BossLianyu() : TriggerSkillV2("bosslianyu") { events << EventPhaseStart; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
         TriggerList result;
@@ -337,7 +337,7 @@ public:
 class BossTaiping : public TriggerSkillV2
 {
 public:
-    BossTaiping() : TriggerSkillV2("bosstaiping") { events << DrawNCards; frequency = Compulsory; setBaseAmount(2); }
+    BossTaiping() : TriggerSkillV2("bosstaiping") { events << DrawNCards; frequency = Compulsory; m_baseAmount = 2; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -399,7 +399,7 @@ public:
 class BossXixing : public TriggerSkillV2
 {
 public:
-    BossXixing() : TriggerSkillV2("bossxixing") { events << EventPhaseStart; setBaseAmount(1); }
+    BossXixing() : TriggerSkillV2("bossxixing") { events << EventPhaseStart; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
     {
         TriggerList result;
@@ -510,7 +510,7 @@ public:
 class BossZuijiu : public TriggerSkillV2
 {
 public:
-    BossZuijiu() : TriggerSkillV2("bosszuijiu") { events << ConfirmDamage; frequency = Compulsory; setBaseAmount(1); }
+    BossZuijiu() : TriggerSkillV2("bosszuijiu") { events << ConfirmDamage; frequency = Compulsory; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -543,7 +543,7 @@ public:
 class BossModao : public TriggerSkillV2
 {
 public:
-    BossModao() : TriggerSkillV2("bossmodao") { events << EventPhaseStart; frequency = Compulsory; setBaseAmount(2); }
+    BossModao() : TriggerSkillV2("bossmodao") { events << EventPhaseStart; frequency = Compulsory; m_baseAmount = 2; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
         TriggerList result;
@@ -704,7 +704,7 @@ public:
 class BossAozhan : public TriggerSkillV2
 {
 public:
-    BossAozhan() : TriggerSkillV2("bossaozhan") { events << DamageForseen << EventPhaseChanging << DrawNCards; frequency = Compulsory; setBaseAmount(1); }
+    BossAozhan() : TriggerSkillV2("bossaozhan") { events << DamageForseen << EventPhaseChanging << DrawNCards; frequency = Compulsory; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -906,7 +906,7 @@ public:
 class Shenqu : public TriggerSkillV2
 {
 public:
-    Shenqu() : TriggerSkillV2("shenqu") { events << EventPhaseStart << Damaged; frequency = Frequent; setBaseAmount(2); }
+    Shenqu() : TriggerSkillV2("shenqu") { events << EventPhaseStart << Damaged; frequency = Frequent; m_baseAmount = 2; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -1033,7 +1033,7 @@ private:
 class Shenwei : public TriggerSkillV2
 {
 public:
-    Shenwei() : TriggerSkillV2("shenwei") { events << DrawNCards; frequency = Compulsory; setBaseAmount(1); }
+    Shenwei() : TriggerSkillV2("shenwei") { events << DrawNCards; frequency = Compulsory; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result;
@@ -1079,7 +1079,7 @@ public:
 class Shenji : public TargetModSkillV2
 {
 public:
-    Shenji() : TargetModSkillV2("shenji") { setBaseAmount(1); frequency = NotCompulsory; }
+    Shenji() : TargetModSkillV2("shenji") { m_baseAmount = 1; frequency = NotCompulsory; }
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
         if (!ctx.primary || !ctx.primary->hasSkill(objectName()))
@@ -1110,7 +1110,7 @@ public:
 class WushuangjiSkill : public WeaponSkillV2
 {
 public:
-    WushuangjiSkill() : WeaponSkillV2("wushuangji", "wushuangji") { events << Damage; setBaseAmount(1); }
+    WushuangjiSkill() : WeaponSkillV2("wushuangji", "wushuangji") { events << Damage; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         TriggerList result; if (event != Damage || !player || !WeaponSkillV2::triggerable(player)) return result;
@@ -1221,7 +1221,7 @@ public:
 class ZijinguanSkill : public TreasureSkillV2
 {
 public:
-    ZijinguanSkill() : TreasureSkillV2("zijinguan", "zijinguan") { events << EventPhaseStart; setBaseAmount(1); }
+    ZijinguanSkill() : TreasureSkillV2("zijinguan", "zijinguan") { events << EventPhaseStart; m_baseAmount = 1; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
         TriggerList result;

@@ -467,7 +467,7 @@ public:
     bool canActivate(const ActiveSkillRequest &request) const override
     { return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY; }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
-    { return request.initiator && card && request.selectedCardIds.isEmpty() && request.initiator->getCards("he").contains(card); }
+    { return request.initiator && card && request.selectedCardIds.isEmpty() && request.initiator->hasCard(card); }
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected, const Player *target) const override
     { return target && target != request.initiator && selected.isEmpty(); }
     bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override { return selected.size() == 1; }
