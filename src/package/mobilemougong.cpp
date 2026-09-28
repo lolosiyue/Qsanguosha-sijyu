@@ -1428,8 +1428,8 @@ public:
         if (ctx.choice == "2") { target->drawCards(3 * amount, objectName()); if (target->isAlive() && !target->faceUp()) target->turnOver(); if (target->isAlive() && target->isChained()) room->setPlayerChained(target); }
         else if (ctx.choice == "3") {
             room->recover(target, RecoverStruct(objectName(), ctx.invoker, amount)); if (target->isDead()) return ContinueEffects;
-            room->gainMaxHp(target, amount, objectName()); QList<int> slots; for (int i = 0; i < 4; ++i) if (!target->hasEquipArea(i)) slots << i;
-            qsanShuffle(slots); for (int i = 0; i < amount && i < slots.size() && target->isAlive(); ++i) target->obtainEquipArea(slots.at(i));
+            room->gainMaxHp(target, amount, objectName()); QList<int> slot_list; for (int i = 0; i < 4; ++i) if (!target->hasEquipArea(i)) slot_list << i;
+            qsanShuffle(slot_list); for (int i = 0; i < amount && i < slot_list.size() && target->isAlive(); ++i) target->obtainEquipArea(slot_list.at(i));
         } else if (ctx.choice == "4") {
             const QVariantMap receipt = ctx.extra_data.toMap(); ServerPlayer *dead = room->findPlayerByObjectName(receipt.value("dead").toString(), true);
             if (!dead || !dead->isDead() || dead->property("ZhuisiPlayer").toBool()) return ContinueEffects;
