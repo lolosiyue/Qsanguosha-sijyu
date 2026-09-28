@@ -35,9 +35,13 @@ def summarize(directory):
         for line in text.splitlines():
             if '[AI_PROBE]' in line:
                 probes.append(line)
+        mobile_samples = sum(count for location, count in locations.items()
+                             if location.endswith('(n_mobile_ensure_instances)'))
         runs.append({
             'log': str(log),
             'sampler_total': samples,
+            'sampler_mobile_ensure_samples': mobile_samples,
+            'sampler_mobile_ensure_percent': 100 * mobile_samples / samples if samples else 0,
             'sampler_top_reported_locations': locations.most_common(15),
             'turn_markers': [x.isoformat() for x in timestamps],
             'turn_gaps_seconds': [(b-a).total_seconds() for a,b in zip(timestamps, timestamps[1:])],
