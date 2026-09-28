@@ -8885,10 +8885,15 @@ public:
         for (const Card *hand : holder->getHandcards()) ++counts[hand->getSuitString()];
         const QString suit = card->getSuitString();
         const int current = counts.value(suit);
+        // Absent suits count as zero. Otherwise a lone suit is both "unique most" and "least".
+        QStringList suits{"spade", "heart", "club", "diamond"};
+        for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
+            if (!suits.contains(it.key())) suits << it.key();
         bool most = true, least = true;
-        for (auto it = counts.constBegin(); it != counts.constEnd(); ++it) {
-            if (it.key() != suit && it.value() >= current) most = false;
-            if (it.value() < current) least = false;
+        for (const QString &name : suits) {
+            const int value = counts.value(name);
+            if (name != suit && value >= current) most = false;
+            if (value < current) least = false;
         }
         return {{"most", most}, {"least", least}, {"suit", suit}};
     }
