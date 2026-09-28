@@ -3123,19 +3123,25 @@ public:
         const DeathStruct death = ctx.original_data->value<DeathStruct>();
         if (!death.who) return false;
         room->sendCompulsoryTriggerLog(ctx.owner, this);
+        // Tom ruling B (2026-09-29): one applied grant per dead skill instance, even when
+        // the beneficiary already has that skill name.
         for (const Skill *skill : death.who->getVisibleSkillList()) {
             if (!target->isAlive()) break;
-            if (target->hasSkill(skill, true) || skill->isAttachedLordSkill()) continue;
-            QVariantMap receipt = dreamReceipt(room, ctx);
-            receipt.insert("skill", skill->objectName());
-            const int id = room->acquireSkillFromEffect(target, skill->objectName(), ctx, [&](int committedId) {
-                // Publish expiry ownership before acquisition observers can end the round.
-                receipt.insert("instance", committedId);
-                QVariantList receipts = target->getTag("IfTunshiGrants").toList();
-                receipts << receipt; target->setTag("IfTunshiGrants", receipts);
-            });
-            if (id > 0 && !target->getTag("IfTunshiGrants").toList().contains(receipt))
-                room->detachSkillFromPlayer(target, SkillInstanceUtils::formatName(skill->objectName(), id), false, true);
+            if (skill->isAttachedLordSkill()) continue;
+            const int grantCount = death.who->getSkillInstanceIds(skill->objectName()).size();
+            for (int i = 0; i < grantCount; ++i) {
+                if (!target->isAlive()) break;
+                QVariantMap receipt = dreamReceipt(room, ctx);
+                receipt.insert("skill", skill->objectName());
+                const int id = room->acquireSkillFromEffect(target, skill->objectName(), ctx, [&](int committedId) {
+                    // Publish expiry ownership before acquisition observers can end the round.
+                    receipt.insert("instance", committedId);
+                    QVariantList receipts = target->getTag("IfTunshiGrants").toList();
+                    receipts << receipt; target->setTag("IfTunshiGrants", receipts);
+                });
+                if (id > 0 && !target->getTag("IfTunshiGrants").toList().contains(receipt))
+                    room->detachSkillFromPlayer(target, SkillInstanceUtils::formatName(skill->objectName(), id), false, true);
+            }
         }
         return false;
     }
