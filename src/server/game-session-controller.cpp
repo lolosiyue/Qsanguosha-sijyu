@@ -1310,7 +1310,7 @@ void GameSessionController::startGame()
 	m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_room.m_cardMovement->drawPile().length());
 
 	if(m_room.scenario){
-		const ScenarioRule*rule = m_room.scenario->getRule();
+		const TriggerSkill*rule = m_room.scenario->getRule();
 		if (rule) m_room.thread->addTriggerSkill(rule);
 	}
 

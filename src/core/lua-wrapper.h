@@ -144,6 +144,14 @@ public:
 
     SkillDialogInfo getDialogInfo() const override;
 
+    void setRule(bool rule) { m_rule = rule; if (rule) global = true; }
+    bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player,
+                                QVariant &data, QList<SkillContext> &contexts) const override;
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
+    bool usesEventPriority() const override { return m_rule; }
+    bool prepareSource(Room *room, SkillContext &ctx) const override;
+    bool isSourceAvailable(Room *room, const SkillContext &ctx) const override;
+
     virtual int getPriority() const;
     virtual int getPriority(TriggerEvent triggerEvent) const;
     virtual Frequency getFrequency(const Player *target) const;
@@ -208,6 +216,45 @@ protected:
     QMap<TriggerEvent, int> priority_table;
     Skill::LimitScope m_limitScope;
     int m_maxUsageLimit;
+    bool m_rule = false;
+};
+
+// Equipment uses the native source authority, including exact virtual grants.
+class LuaEquipSkillV2 : public EquipSkillV2
+{
+public:
+    LuaEquipSkillV2(const char *name, const char *equipment, const char *equipmentType, Frequency frequency);
+    void addEvent(TriggerEvent event) { events << event; }
+    void setGlobal(bool value) { global = value; }
+    void setViewAsSkill(ViewAsSkill *skill) { view_as_skill = skill; }
+    void setBaseAmount(int amount) { m_baseAmount = amount; }
+    void insertPriorityTable(TriggerEvent event, int value) { m_priorities[event] = value; }
+    void setMovementSource(bool enabled) { m_movementSource = enabled; }
+    int getPriority(TriggerEvent event) const override { return m_priorities.value(event, priority); }
+    bool triggerable(const ServerPlayer *player) const override;
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override;
+    void record(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override;
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override;
+    bool pay(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override;
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override;
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *player,
+                      SkillContext &ctx, ServerPlayer *target) const override;
+    void onTurnBroken(const char *callback, TriggerEvent event, Room *room,
+                      ServerPlayer *player, SkillContext &ctx) const;
+    LuaFunction can_trigger;
+    LuaFunction on_record;
+    LuaFunction on_cost;
+    LuaFunction on_pay;
+    LuaFunction on_effect;
+    LuaFunction on_effect_target;
+    LuaFunction on_turn_broken;
+    int priority = 2;
+
+protected:
+    bool usesEventSource(const SkillContext &ctx) const override;
+    QString m_equipmentType;
+    QMap<TriggerEvent, int> m_priorities;
+    bool m_movementSource = false;
 };
 
 class LuaScenarioRule : public ScenarioRule
@@ -321,6 +368,12 @@ class LuaViewAsSkillV2 : public ViewAsSkillV2
 {
 public:
     LuaViewAsSkillV2(const QString &name, Frequency frequency, const QString &limit_mark);
+    bool isEquipSkill() const override;
+    void setHistoryKey(const QString &key) { m_historyKey = key; }
+    QString historyKey(const ActiveSkillRequest &request) const override
+    {
+        return m_historyKey.isEmpty() ? ViewAsSkillV2::historyKey(request) : m_historyKey;
+    }
 
     bool canActivate(const ActiveSkillRequest &request) const;
     bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const;
@@ -382,6 +435,7 @@ private:
     bool m_willThrowSelectedCards;
     Skill::LimitScope m_limitScope;
     int m_maxUsageLimit;
+    QString m_historyKey;
     QString guhuo_type;
     QString juguan_type;
     QString tiansuan_type;

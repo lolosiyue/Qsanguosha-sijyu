@@ -5,7 +5,7 @@
 #include "ai.h"
 
 class Room;
-class ScenarioRule;
+class TriggerSkill;
 
 class Scenario : public Package
 {
@@ -13,11 +13,8 @@ class Scenario : public Package
 
 public:
     explicit Scenario(const QString &name);
-    ScenarioRule *getRule() const;
-    inline void setRule(ScenarioRule *scenario_rule)
-    {
-        rule = scenario_rule;
-    }
+    TriggerSkill *getRule() const;
+    void setRule(TriggerSkill *scenario_rule);
 	
     inline void setScenarioLord(const QString &lord)
     {
@@ -51,7 +48,7 @@ public:
 protected:
     QString lord;
     QStringList loyalists, rebels, renegades;
-    ScenarioRule *rule;
+    TriggerSkill *rule;
     bool expose;
 };
 

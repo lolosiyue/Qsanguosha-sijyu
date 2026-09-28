@@ -456,6 +456,8 @@ public:
 	int getSkillInstanceId(const char*skill_name) const;
 	QList<int> getSkillInstanceIds(const char*skill_name) const;
 	QList<int> getValidSkillInstanceIds(const char*skill_name) const;
+    bool isSkillInstanceEffectAvailable(const char *skillName, int instanceID,
+                                       const Player *targetModPreviewOwner = nullptr) const;
 	QVariant getSkillInstanceCorrectStateValue(const char *skillName, int instanceID, const char *key, const QVariant &defaultValue = QVariant()) const;
 	QList<SkillInstanceKey> getChildSkillInstanceKeys(const SkillInstanceKey &parent) const;
 	QString getSkillDescription() const;
@@ -586,6 +588,11 @@ static bool isNostalGeneral(const Player*p, const char*general_name);
 };
 
 %extend Player {
+    SkillInstanceRef getSkillInstanceParentRef(const char *skillName, int instanceID) const {
+        // Return a value snapshot, never a mutable pointer into the instance registry.
+        const SkillInstance *instance = $self->findSkillInstance(skillName, instanceID);
+        return instance ? instance->parentRef : SkillInstanceRef();
+    }
 	void setTag(const char*key, QVariant&value) {
 		$self->setTag(key, value);
 	}
@@ -1848,8 +1855,8 @@ public:
 class Scenario : public QObject {
 public:
 	Scenario(const char*name);
-	ScenarioRule*getRule() const;
-	void setRule(ScenarioRule*scenario_rule);
+	TriggerSkill*getRule() const;
+	void setRule(TriggerSkill*scenario_rule);
 
 	void setScenarioLord(const char*lord);
 	void addScenarioLoyalists(const char*loyalist);
@@ -2364,6 +2371,11 @@ public:
 	void slashEffect(const SlashEffectStruct&effect);
 	void slashResult(const SlashEffectStruct&effect, const Card*jink);
 	void attachSkillToPlayer(ServerPlayer*player, const char*skill_name);
+    SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const char *skillName,
+                                        const SkillInstanceRef &parentRef);
+    SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const char *skillName,
+                                        const SkillInstanceRef &parentRef, bool visible);
+    bool detachAttachedSkill(const SkillInstanceRef &ref);
 	int detachSkillFromPlayer(ServerPlayer*player, const char*skill_name, bool is_equip = false, bool acquire_only = false, bool event_and_log = true);
 	int discardSkillInstance(ServerPlayer*chooser, ServerPlayer*owner, const char*skill_name, bool event_and_log = true);
 	void handleAcquireDetachSkills(ServerPlayer*player, const char*skill_names, bool acquire_only = false, bool getmark = true, bool event_and_log = true);
