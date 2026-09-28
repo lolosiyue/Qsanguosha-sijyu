@@ -214,7 +214,7 @@ void FumianCard::onUse(Room *room, CardUseStruct &card_use) const
 class Fumian : public TriggerSkillV2
 {
 public:
-    Fumian() : TriggerSkillV2("fumian") { events << EventPhaseStart << DrawNCards << PreCardUsed << PreCardResponded << EventPhaseChanging << EventSkillInvoking << EventSkillEffectFinished; global = true; }
+    Fumian() : TriggerSkillV2("fumian") { events << EventPhaseStart << DrawNCards << PreCardUsed << PreCardResponded << EventPhaseChanging << TurnBroken << EventSkillInvoking << EventSkillEffectFinished; global = true; }
     static QList<ServerPlayer *> extraTargets(Room *room, const CardUseStruct &use)
     {
         QList<ServerPlayer *> result; if (!use.from || !use.card) return result;
@@ -262,7 +262,8 @@ public:
             if (ctx.skill_name == objectName() && !ctx.activationRef.isValid() && ctx.extra_data.toMap().value("choice").toString() == "target") {
                 QVariantList receipts = room->getTag("FumianEffects").toList(); receipts.removeOne(ctx.extra_data); room->setTag("FumianEffects", receipts);
             }
-        } else if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive) {
+        } else if (event == TurnBroken || (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)) {
+            // TurnBroken stays inside the interrupted turn. Drop that turn's receipts before another card resolves in it.
             const qint64 turn = room->historyScopes().value("turn_id").toLongLong(); if (turn <= 0) return true;
             QVariantList kept; for (const QVariant &entry : room->getTag("FumianEffects").toList()) if (entry.toMap().value("turn").toLongLong() != turn) kept << entry;
             room->setTag("FumianEffects", kept);
@@ -330,7 +331,8 @@ public:
                 if (victims.isEmpty()) return false;
                 ServerPlayer *victim = room->askForPlayerChosen(use.from, victims, objectName(), "@fumian:" + use.card->objectName());
                 if (!victims.contains(victim) || !use.card->targetFilter(QList<const Player *>{target}, victim, use.from)) return false;
-                target->tag["collateralVictim"] = QVariant::fromValue(victim);
+                // Collateral pairs the victim from attachTarget. A private tag name is never read.
+                target->setTag("attachTarget", QVariant::fromValue(victim));
             }
             use.to << target; room->sortByActionOrder(use.to); *ctx.original_data = QVariant::fromValue(use); return false;
         }
@@ -473,7 +475,16 @@ public:
     ZhongjianVS(const QString &name = "zhongjian") : ViewAsSkillV2(name, 1) { setPhaseName("Play"); }
     LimitScope getLimitScope() const override { return Limit_Phase; }
     int getMaxUsageLimit(const SkillContext &ctx) const override
-    { return ctx.owner && ctx.owner->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "twice").toBool() ? 2 : 1; }
+    {
+        if (!ctx.owner || !ctx.activationRef.isValid()) return 1;
+        // The cached flag is the client mirror. The server quota follows the live turn, so an inserted turn does not keep or erase the outer one.
+        const ServerPlayer *owner = dynamic_cast<const ServerPlayer *>(ctx.owner);
+        Room *room = owner ? owner->getRoom() : nullptr;
+        if (!room) return ctx.owner->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "twice").toBool() ? 2 : 1;
+        const qint64 turn = room->historyScopes().value(QStringLiteral("turn_id")).toLongLong();
+        if (turn <= 0) return 1;
+        return ctx.owner->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "twice_turns").toMap().value(QString::number(turn)).toBool() ? 2 : 1;
+    }
     bool willThrowSelectedCards() const override { return false; }
     bool canActivate(const ActiveSkillRequest &request) const override
     { return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY && !request.initiator->isKongcheng(); }
@@ -557,17 +568,22 @@ public:
 class Zhongjian : public TriggerSkillV2
 {
 public:
-    Zhongjian(const QString &name = "zhongjian") : TriggerSkillV2(name) { events << EventPhaseChanging << TurnStart; global = true; view_as_skill = new ZhongjianVS(name); }
+    Zhongjian(const QString &name = "zhongjian") : TriggerSkillV2(name) { events << EventPhaseChanging << TurnStart << TurnBroken; global = true; view_as_skill = new ZhongjianVS(name); }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
     {
-        if (event != TurnStart && data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
+        const bool turnStart = event == TurnStart;
+        const bool broken = event == TurnBroken;
+        const bool ending = event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive;
+        if (!turnStart && !broken && !ending) return true;
         const qint64 turn = room->historyScopes().value("turn_id").toLongLong(); if (turn <= 0) return true;
-        const qint64 active = event == TurnStart ? turn : room->historyParent(turn, "turn", false).value("id").toLongLong();
-        // An inserted turn expires only its own quota override, then restores the suspended turn.
+        // NotActive publishes the suspended turn for the client flag. TurnBroken is still that interrupted turn.
+        qint64 shown = turn;
+        if (ending || (broken && room->getCurrent() && room->getCurrent()->getPhase() == Player::NotActive))
+            shown = room->historyParent(turn, "turn", false).value("id").toLongLong();
         for (ServerPlayer *holder : room->getAllPlayers(true)) for (int id : holder->getSkillInstanceIds(objectName())) {
             QVariantMap state = holder->getSkillInstanceState(objectName(), id), turns = state.value("twice_turns").toMap();
-            if (event != TurnStart) turns.remove(QString::number(turn));
-            state.insert("twice_turns", turns); state.insert("twice", turns.value(QString::number(active)).toBool());
+            if (!turnStart) turns.remove(QString::number(turn));
+            state.insert("twice_turns", turns); state.insert("twice", turns.value(QString::number(shown)).toBool());
             holder->setSkillInstanceState(objectName(), id, state);
         }
         return true;
@@ -584,30 +600,38 @@ public:
         return penalty > 0 ? CorrectSkillResult::signedAmount(-penalty * ctx.currentAmount) : CorrectSkillResult::noEffect();
     }
 };
+static void writeCaishiRestrictions(Room *room, const QString &skill, qint64 turn)
+{
+    if (!room) return;
+    static bool projecting = false;
+    if (projecting) return;
+    projecting = true;
+    const auto stop = qScopeGuard([&] { projecting = false; });
+    const QVariantList receipts = room->getTag(skill + "Restrictions").toList();
+    for (ServerPlayer *recipient : room->getAllPlayers(true)) {
+        QStringList restrictions;
+        for (const QVariant &entry : receipts) {
+            const QVariantMap receipt = entry.toMap(); const QString choice = receipt.value("choice").toString();
+            if (receipt.value("turn").toLongLong() == turn && receipt.value("recipient").toString() == recipient->objectName() && !choice.isEmpty() && !restrictions.contains(choice)) restrictions << choice;
+        }
+        const QByteArray property = (skill + "_restrictions").toLatin1();
+        if (recipient->property(property.constData()).toStringList() != restrictions) room->setPlayerProperty(recipient, property.constData(), restrictions);
+    }
+}
+
 class Caishi : public TriggerSkillV2
 {
 public:
     explicit Caishi(const QString &name = "caishi") : TriggerSkillV2(name)
     {
-        events << EventPhaseStart << EventPhaseChanging << TurnStart;
+        events << EventPhaseStart << EventPhaseChanging << TurnStart << TurnBroken;
         if (name == "caishi") events << Death;
         else frequency = Frequent;
         global = true;
     }
     QString correctionName() const { return objectName() == "caishi" ? "#caishimax" : "#olcaishimax"; }
     void projectRestrictions(Room *room, qint64 turn) const
-    {
-        const QVariantList receipts = room->getTag(objectName() + "Restrictions").toList();
-        for (ServerPlayer *recipient : room->getAllPlayers(true)) {
-            QStringList restrictions;
-            for (const QVariant &entry : receipts) {
-                const QVariantMap receipt = entry.toMap(); const QString choice = receipt.value("choice").toString();
-                if (receipt.value("turn").toLongLong() == turn && receipt.value("recipient").toString() == recipient->objectName() && !restrictions.contains(choice)) restrictions << choice;
-            }
-            const QByteArray property = (objectName() + "_restrictions").toLatin1();
-            if (recipient->property(property.constData()).toStringList() != restrictions) room->setPlayerProperty(recipient, property.constData(), restrictions);
-        }
-    }
+    { writeCaishiRestrictions(room, objectName(), turn); }
     void retainRestriction(Room *room, const SkillContext &ctx, ServerPlayer *target, const QString &choice) const
     {
         const qint64 turn = room->historyScopes().value("turn_id").toLongLong(); if (turn <= 0) return;
@@ -621,12 +645,18 @@ public:
     {
         if (event != Death) {
             qint64 turn = room->historyScopes().value("turn_id").toLongLong();
-            const bool ending = (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
+            const bool broken = event == TurnBroken;
+            const bool ending = broken
+                || (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
                 || (event == EventPhaseStart && player && player->getPhase() == Player::NotActive);
             if (ending) {
                 QVariantList kept;
                 for (const QVariant &entry : room->getTag(objectName() + "Restrictions").toList()) if (entry.toMap().value("turn").toLongLong() != turn) kept << entry;
-                room->setTag(objectName() + "Restrictions", kept); turn = room->historyParent(turn, "turn", false).value("id").toLongLong();
+                room->setTag(objectName() + "Restrictions", kept);
+                // A broken turn that never opens NotActive has no later phase event. Publish the suspended turn here.
+                const bool resumeParent = !broken
+                    || (room->getCurrent() && room->getCurrent()->getPhase() == Player::NotActive);
+                if (resumeParent) turn = room->historyParent(turn, "turn", false).value("id").toLongLong();
             }
             projectRestrictions(room, turn); return true;
         }
@@ -690,10 +720,11 @@ public:
 
 	bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const
 	{
-		if (from->property("caishi_restrictions").toStringList().contains("others") && !card->isKindOf("SkillCard"))
-			return from != to;
-		if (from->property("caishi_restrictions").toStringList().contains("self") && !card->isKindOf("SkillCard"))
-			return from == to;
+		if (!from || !to || !card || card->isKindOf("SkillCard")) return false;
+		const QStringList restrictions = from->property("caishi_restrictions").toStringList();
+		// Two instances can accept both options in one turn. Each choice bans its own side.
+		if (restrictions.contains("others") && from != to) return true;
+		if (restrictions.contains("self") && from == to) return true;
 		return false;
 	}
 };
@@ -1191,6 +1222,56 @@ static void jiexunUpgrade(Room *room, ServerPlayer *target, int id)
     target->setSkillInstanceStateValue("funan", id, "upgraded", true);
     room->setPlayerMark(target, "&funan", 1); room->safeSetPlayerProperty(target, "funan_level_up", true); room->changeTranslation(target, "funan", 2);
 }
+static void applyFunanReceipt(Room *room, const QVariantMap &receipt)
+{
+    ServerPlayer *recipient = room->findPlayerByObjectName(receipt.value("recipient").toString(), true);
+    const QString reason = receipt.value("reason").toString();
+    if (!recipient || reason.isEmpty()) return;
+    for (const QVariant &value : receipt.value("cards").toList()) {
+        const int id = value.toInt();
+        if (id >= 0) room->setPlayerCardLimitation(recipient, "use,response", QString::number(id), false, reason);
+    }
+}
+static void clearFunanReceipt(Room *room, const QVariantMap &receipt)
+{
+    ServerPlayer *recipient = room->findPlayerByObjectName(receipt.value("recipient").toString(), true);
+    const QString reason = receipt.value("reason").toString();
+    if (recipient && !reason.isEmpty()) room->removePlayerCardLimitationByReason(recipient, reason);
+}
+static void syncFunanRestrictions(Room *room, qint64 turn)
+{
+    if (!room) return;
+    static bool syncing = false;
+    if (syncing) return;
+    syncing = true;
+    const auto stop = qScopeGuard([&] { syncing = false; });
+    const QVariantList receipts = room->getTag("FunanRestrictions").toList();
+    QVariantList updated;
+    bool changed = false;
+    for (const QVariant &entry : receipts) {
+        QVariantMap receipt = entry.toMap();
+        const bool should = turn > 0 && receipt.value("turn").toLongLong() == turn;
+        if (should != receipt.value("applied").toBool()) {
+            if (should) applyFunanReceipt(room, receipt);
+            else clearFunanReceipt(room, receipt);
+            receipt.insert("applied", should);
+            changed = true;
+        }
+        updated << receipt;
+    }
+    if (changed) room->setTag("FunanRestrictions", updated);
+}
+static void expireFunanTurn(Room *room, qint64 turn)
+{
+    if (!room || turn <= 0) return;
+    QVariantList kept;
+    for (const QVariant &entry : room->getTag("FunanRestrictions").toList()) {
+        const QVariantMap receipt = entry.toMap();
+        if (receipt.value("turn").toLongLong() != turn) { kept << entry; continue; }
+        if (receipt.value("applied").toBool()) clearFunanReceipt(room, receipt);
+    }
+    room->setTag("FunanRestrictions", kept);
+}
 
 class Funan : public TriggerSkillV2
 {
@@ -1236,10 +1317,13 @@ public:
             const int serial = room->getTag("FunanSerial").toInt() + 1; room->setTag("FunanSerial", serial);
             const QString reason = QString("funan:%1").arg(serial);
             QVariantList restrictions = room->getTag("FunanRestrictions").toList();
-            restrictions << QVariantMap{{"turn", turn}, {"recipient", target->objectName()}, {"reason", reason}, {"source", jiexunRef(ctx.sourceRef)}, {"activation", jiexunRef(ctx.activationRef)}};
+            QVariantMap receipt{{"turn", turn}, {"recipient", target->objectName()}, {"reason", reason}, {"cards", ids}, {"applied", true},
+                {"source", jiexunRef(ctx.sourceRef)}, {"activation", jiexunRef(ctx.activationRef)}};
+            restrictions << receipt;
             room->setTag("FunanRestrictions", restrictions);
-            // Exact reason keys prevent expiry from clearing another copy's restriction.
-            for (const QVariant &value : ids) room->setPlayerCardLimitation(target, "use,response", QString::number(value.toInt()), false, reason);
+            // The limit skill outlives the granting instance. Losing 复难 does not lift an accepted restriction.
+            if (target->isAlive() && !target->hasSkill("#funan-limit", true)) room->acquireSkill(target, "#funan-limit", false, false, false);
+            applyFunanReceipt(room, receipt);
         }
         DummyCard cards; for (const QVariant &id : ids) cards.addSubcard(id.toInt()); room->obtainCard(target, &cards, true);
         if (!receive && ctx.owner->isAlive()) { SkillContext next = ctx; next.choice = "receive"; next.targets = {ctx.owner}; skillEffect(event, room, player, next, ctx.owner); }
@@ -1250,25 +1334,40 @@ public:
 class FunanRemove : public TriggerSkillV2
 {
 public:
-    FunanRemove() : TriggerSkillV2("#funanremove") { events << EventPhaseChanging << Death << EventAcquireSkill << GameStart << EventSkillEffectFinished; global = true; frequency = Compulsory; }
+    FunanRemove() : TriggerSkillV2("#funanremove") { events << EventPhaseChanging << EventPhaseStart << TurnStart << TurnBroken << TurnedOver << Death << EventAcquireSkill << GameStart << EventSkillEffectFinished; global = true; frequency = Compulsory; }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (event == EventSkillEffectFinished) {
             const SkillContext ctx = data.value<SkillContext>();
             if (ctx.skill_name == objectName() && !ctx.activationRef.isValid()) {
                 ServerPlayer *holder = room->findPlayerByObjectName(ctx.extra_data.toMap().value("recipient").toString(), true);
-                if (holder) { QVariantList pending = holder->getTag("JiexunUpgrades").toList(); pending.removeOne(ctx.extra_data); holder->tag["JiexunUpgrades"] = pending; }
+                if (holder) { QVariantList pending = holder->getTag("JiexunUpgrades").toList(); pending.removeOne(ctx.extra_data); holder->setTag("JiexunUpgrades", pending); }
             }
             return true;
         }
-        if (event != EventPhaseChanging && event != Death) return true;
-        if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
-        if (event == Death && (!player || data.value<DeathStruct>().who != player || player != room->getCurrent())) return true;
-        const qint64 turn = room->historyScopes().value("turn_id").toLongLong(); if (turn <= 0) return true;
-        QVariantList expired, kept;
-        for (const QVariant &entry : room->getTag("FunanRestrictions").toList()) if (entry.toMap().value("turn").toLongLong() == turn) expired << entry; else kept << entry;
-        room->setTag("FunanRestrictions", kept);
-        for (const QVariant &entry : expired) { const QVariantMap receipt = entry.toMap(); ServerPlayer *recipient = room->findPlayerByObjectName(receipt.value("recipient").toString(), true); if (recipient) room->removePlayerCardLimitationByReason(recipient, receipt.value("reason").toString()); }
+        const bool phaseEvent = event == EventPhaseChanging || event == EventPhaseStart;
+        const bool turnEvent = event == TurnStart || event == TurnBroken || event == TurnedOver || event == Death;
+        if (!phaseEvent && !turnEvent) return true;
+        const QVariantMap scope = room->historyScopes();
+        const qint64 turn = scope.value(QStringLiteral("turn_id")).toLongLong();
+        const qint64 phase = scope.value(QStringLiteral("phase_id")).toLongLong();
+        const bool ending = event == TurnBroken
+            || (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
+            || (event == EventPhaseStart && player && player->getPhase() == Player::NotActive)
+            || (event == Death && player && data.value<DeathStruct>().who == player && player == room->getCurrent());
+        // A face-down extra turn never opens NotActive. Drop only that inserted turn.
+        const bool skippedExtra = event == TurnedOver && room->isCurrentExtraTurn() && phase <= 0 && turn > 0
+            && player && player == room->getCurrent() && player->faceUp();
+        if (event == Death && !ending) return true;
+        qint64 active = turn;
+        if (ending || skippedExtra) {
+            expireFunanTurn(room, turn);
+            // NotActive will not run for a broken turn that never opened a phase. Publish the suspended turn then.
+            const bool resumeParent = (ending && event != TurnBroken) || skippedExtra
+                || (event == TurnBroken && room->getCurrent() && room->getCurrent()->getPhase() == Player::NotActive);
+            if (resumeParent) active = room->historyParent(turn, "turn", false).value("id").toLongLong();
+        }
+        syncFunanRestrictions(room, active);
         return true;
     }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data, QList<SkillContext> &contexts) const override
@@ -1289,7 +1388,7 @@ public:
         ctx.choice = QString::number(jiexunChoose(room, holder, jiexunCandidates(holder, ctx.extra_data.toMap().value("origin").toMap()))); return ctx.choice.toInt() > 0;
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    { ServerPlayer *holder = room->findPlayerByObjectName(ctx.extra_data.toMap().value("recipient").toString(), true); if (holder) { QVariantList pending = holder->getTag("JiexunUpgrades").toList(); pending.removeOne(ctx.extra_data); holder->tag["JiexunUpgrades"] = pending; } return false; }
+    { ServerPlayer *holder = room->findPlayerByObjectName(ctx.extra_data.toMap().value("recipient").toString(), true); if (holder) { QVariantList pending = holder->getTag("JiexunUpgrades").toList(); pending.removeOne(ctx.extra_data); holder->setTag("JiexunUpgrades", pending); } return false; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     { const int id = ctx.choice.toInt(); if (getEffectiveAmount(ctx) > 0 && jiexunCandidates(target, ctx.extra_data.toMap().value("origin").toMap()).contains(id)) jiexunUpgrade(room, target, id); return false; }
 };
@@ -1326,7 +1425,7 @@ public:
             const int id = jiexunChoose(room, target, jiexunCandidates(target, details.value("origin").toMap()));
             if (jiexunCandidates(target, details.value("origin").toMap()).contains(id)) { jiexunUpgrade(room, target, id); return false; }
             const int serial = room->getTag("JiexunSerial").toInt() + 1; room->setTag("JiexunSerial", serial);
-            QVariantList pending = target->getTag("JiexunUpgrades").toList(); pending << QVariantMap{{"serial", serial}, {"recipient", target->objectName()}, {"issuer", ctx.owner->objectName()}, {"origin", details.value("origin")}, {"source", jiexunRef(ctx.sourceRef)}, {"activation", jiexunRef(ctx.activationRef)}}; target->tag["JiexunUpgrades"] = pending; return false;
+            QVariantList pending = target->getTag("JiexunUpgrades").toList(); pending << QVariantMap{{"serial", serial}, {"recipient", target->objectName()}, {"issuer", ctx.owner->objectName()}, {"origin", details.value("origin")}, {"source", jiexunRef(ctx.sourceRef)}, {"activation", jiexunRef(ctx.activationRef)}}; target->setTag("JiexunUpgrades", pending); return false;
         }
         const int amount = getEffectiveAmount(ctx); if (amount <= 0) return false;
         const int draw = details.value("draw").toInt() * amount; if (draw > 0) target->drawCards(draw, objectName());
@@ -1509,7 +1608,7 @@ public:
                 const int id = room->askForAG(target, ids, false, objectName());
                 if (ids.contains(id) && room->getCardOwner(id) == holder && room->getCardPlace(id) == Player::PlaceHand && !Sanguosha->getCard(id)->hasFlag("using")) {
                     ids.removeOne(id);
-                    if (target != holder) room->obtainCard(target, id, CardMoveReason(CardMoveReason::S_REASON_GIVE, holder->objectName(), target->objectName(), objectName(), QString()), true);
+                    if (target != holder) room->obtainCard(target, Sanguosha->getCard(id), CardMoveReason(CardMoveReason::S_REASON_GIVE, holder->objectName(), target->objectName(), objectName(), QString()), true);
                 }
             }
             QVariantList remaining; for (int id : ids) remaining << id; details.insert("ids", remaining); ctx.extra_data = details; return false;
@@ -2115,6 +2214,29 @@ class OLCaishiMax : public CaishiMax
 public:
     OLCaishiMax() : CaishiMax("#olcaishimax") { frequency = Frequent; }
 };
+class FunanLimit : public CardLimitSkill
+{
+public:
+    FunanLimit() : CardLimitSkill("#funan-limit") {}
+    QString limitList(const Player *, const Card *) const override { return "use,response"; }
+    QString limitPattern(const Player *target, const Card *card) const override
+    {
+        const ServerPlayer *player = dynamic_cast<const ServerPlayer *>(target);
+        if (!player || !card) return {};
+        Room *room = player->getRoom();
+        const int id = card->getEffectiveId();
+        if (!room || id < 0) return {};
+        const qint64 turn = room->historyScopes().value(QStringLiteral("turn_id")).toLongLong();
+        if (turn <= 0) return {};
+        for (const QVariant &entry : room->getTag("FunanRestrictions").toList()) {
+            const QVariantMap receipt = entry.toMap();
+            if (receipt.value("turn").toLongLong() != turn || receipt.value("recipient").toString() != player->objectName()) continue;
+            for (const QVariant &value : receipt.value("cards").toList()) if (value.toInt() == id) return QString::number(id);
+        }
+        return {};
+    }
+};
+
 class OLCaishiPro : public ProhibitSkill
 {
 public:
@@ -2125,6 +2247,7 @@ public:
 
     bool isProhibited(const Player *from, const Player *to, const Card *, const QList<const Player *> &) const
 	{
+		if (!from || !to) return false;
 		return from->property("olcaishi_restrictions").toStringList().contains("self") && from == to;
 	}
 };
@@ -2192,7 +2315,7 @@ YCZH2017Package::YCZH2017Package()
 	addMetaObject<HuiminCard>();
 	addMetaObject<TongboCard>();
 
-	skills << new Jixian << new Liexian << new Rouxian << new Hexian << new Wenguagive << new MobileCanyun;
+	skills << new Jixian << new Liexian << new Rouxian << new Hexian << new Wenguagive << new MobileCanyun << new FunanLimit;
 }
 ADD_PACKAGE(YCZH2017)
 
