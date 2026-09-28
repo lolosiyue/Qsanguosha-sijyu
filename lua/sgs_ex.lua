@@ -133,6 +133,59 @@ function sgs.CreateTriggerSkillV2(spec)
 	return skill
 end
 
+-- Rules supply a decision maker without acquiring a Player skill instance.
+function sgs.CreateRuleSkillV2(spec)
+    assert(spec.scenario ~= nil or spec.global ~= false, "CreateRuleSkillV2 is globally registered")
+    local skill = sgs.CreateTriggerSkillV2(spec)
+    skill:setRule(true)
+    if spec.scenario then
+        -- Scenario rules enter through the existing scenario registration point.
+        skill:setGlobal(false)
+        if spec.priority == nil then skill.priority = 0 end
+        spec.scenario:setRule(skill)
+    end
+    return skill
+end
+
+-- Equipment admission remains in EquipSkillV2, including virtual equipment refs.
+function sgs.CreateEquipSkillV2(spec)
+    assert(type(spec.name) == "string")
+    assert(type(spec.equipment) == "string" and spec.equipment ~= "")
+    assert(spec.equipment_type == "weapon" or spec.equipment_type == "armor"
+        or spec.equipment_type == "treasure" or spec.equipment_type == "offensive_horse"
+        or spec.equipment_type == "defensive_horse", "CreateEquipSkillV2 requires equipment_type")
+    assert(spec.on_trigger == nil, "CreateEquipSkillV2 requires V2 lifecycle callbacks")
+    local skill = sgs.LuaEquipSkillV2(spec.name, spec.equipment, spec.equipment_type,
+        spec.frequency or sgs.Skill_NotFrequent)
+    skill:setGlobal(spec.global ~= false)
+    local events = type(spec.events) == "table" and spec.events or { spec.events }
+    for i, event in ipairs(events) do
+        skill:addEvent(event)
+        if type(spec.priority) == "table" and spec.priority[i] ~= nil then
+            skill:insertPriorityTable(event, spec.priority[i])
+        end
+    end
+    if type(spec.priority) == "number" then skill.priority = spec.priority end
+    if spec.base_amount ~= nil then skill:setBaseAmount(spec.base_amount) end
+    if spec.view_as_skill then
+        assert(spec.view_as_skill:objectName() == spec.name,
+            "CreateEquipSkillV2 view_as_skill must use the equipment skill name")
+        skill:setViewAsSkill(spec.view_as_skill)
+    end
+    if spec.movement_source ~= nil then
+        assert(type(spec.movement_source) == "boolean")
+        skill:setMovementSource(spec.movement_source)
+    end
+    for _, name in ipairs({ "can_trigger", "on_record", "on_cost", "on_pay",
+        "on_effect", "on_effect_target", "on_turn_broken" }) do
+        if spec[name] ~= nil then
+            assert(type(spec[name]) == "function", name .. " must be a function")
+            skill[name] = spec[name]
+        end
+    end
+    return skill
+end
+
 function sgs.CreateViewAsSkillV2(spec)
 	assert(type(spec.name) == "string")
 	assert(spec.response_pattern == nil,
@@ -160,6 +213,10 @@ function sgs.CreateViewAsSkillV2(spec)
 	if type(spec.guhuo_type)=="string" and spec.guhuo_type~="" then skill:setGuhuoDialog(spec.guhuo_type) end
 	if type(spec.juguan_type)=="string" and spec.juguan_type~="" then skill:setJuguanDialog(spec.juguan_type) end
 	if type(spec.tiansuan_type)=="string" and spec.tiansuan_type~="" then skill:setTiansuanDialog(spec.tiansuan_type) end
+    if spec.history_key ~= nil then
+        assert(type(spec.history_key) == "string")
+        skill:setHistoryKey(spec.history_key)
+    end
 	skill:setN(spec.n or 0)
 	skill:setResponseOrUse(spec.response_or_use or false)
 	skill:setExpandPile(spec.expand_pile or "")

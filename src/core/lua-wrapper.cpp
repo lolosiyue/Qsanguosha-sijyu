@@ -67,6 +67,88 @@ int LuaTriggerSkillV2::getPriority(TriggerEvent triggerEvent) const
     return priority;
 }
 
+bool LuaTriggerSkillV2::collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player,
+                                            QVariant &data, QList<SkillContext> &contexts) const
+{
+    if (!m_rule) return false;
+    const TriggerList candidates = triggerable(event, room, player, data);
+    for (auto it = candidates.cbegin(); it != candidates.cend(); ++it) {
+        if (!it.key()) continue;
+        for (const QString &name : it.value()) {
+            // A rule selects a decision maker, never another definition or a player grant.
+            if (name != objectName()) continue;
+            SkillContext ctx;
+            ctx.skill_name = objectName();
+            ctx.owner = it.key();
+            ctx.invoker = player;
+            ctx.original_data = &data;
+            ctx.current_event = event;
+            ctx.amount = getBaseAmount();
+            contexts << ctx;
+        }
+    }
+    return true;
+}
+
+bool LuaTriggerSkillV2::recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+{
+    if (!m_rule) return false;
+    SkillContext ctx;
+    ctx.skill_name = objectName();
+    ctx.invoker = player;
+    ctx.original_data = &data;
+    ctx.current_event = event;
+    ctx.amount = getBaseAmount();
+    record(event, room, player, ctx);
+    return true;
+}
+
+bool LuaTriggerSkillV2::prepareSource(Room *room, SkillContext &ctx) const
+{
+    return m_rule ? isSourceAvailable(room, ctx) : TriggerSkillV2::prepareSource(room, ctx);
+}
+
+bool LuaTriggerSkillV2::isSourceAvailable(Room *room, const SkillContext &ctx) const
+{
+    if (!m_rule) return TriggerSkillV2::isSourceAvailable(room, ctx);
+    return room && ctx.owner && room->getAllPlayers(true).contains(ctx.owner)
+        && ctx.skill_name == objectName() && ctx.instanceID == 0
+        && !ctx.activationRef.isValid() && !ctx.sourceRef.isValid();
+}
+
+LuaEquipSkillV2::LuaEquipSkillV2(const char *name, const char *equipment, const char *equipmentType,
+                               Frequency frequency)
+    : EquipSkillV2(name, equipment), m_equipmentType(QString::fromUtf8(equipmentType))
+{
+    this->frequency = frequency;
+}
+
+bool LuaEquipSkillV2::triggerable(const ServerPlayer *player) const
+{
+    if (!player) return false;
+    if (m_equipmentType == "weapon") return player->hasWeapon(m_equipmentName);
+    if (m_equipmentType == "armor") return player->hasArmorEffect(m_equipmentName);
+    if (m_equipmentType == "treasure") return player->hasTreasure(m_equipmentName);
+    if (m_equipmentType == "offensive_horse") return player->hasOffensiveHorse(m_equipmentName);
+    if (m_equipmentType == "defensive_horse") return player->hasDefensiveHorse(m_equipmentName);
+    return false;
+}
+
+bool LuaEquipSkillV2::usesEventSource(const SkillContext &ctx) const
+{
+    if (!m_movementSource || ctx.current_event != CardsMoveOneTime || !ctx.original_data) return false;
+    const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
+    if (!ctx.owner || move.from != ctx.owner) return false;
+    // The event must contain this physical equipment leaving this holder's slot.
+    // A Lua selector cannot manufacture a virtual grant or an unrelated departure.
+    for (int i = 0; i < move.card_ids.size() && i < move.from_places.size(); ++i) {
+        const Card *card = Sanguosha->getEngineCard(move.card_ids.at(i));
+        if (move.from_places.at(i) == Player::PlaceEquip && card && card->objectName() == m_equipmentName)
+            return true;
+    }
+    return false;
+}
+
 LuaProhibitSkill::LuaProhibitSkill(const QString &name, Frequency frequency)
     : ProhibitSkill(name), is_prohibited(0)
 {
@@ -91,6 +173,13 @@ LuaViewAsSkill::LuaViewAsSkill(const QString &name, const QString &response_patt
     this->limit_mark = QString(limit_mark);
 }
 
+bool LuaViewAsSkillV2::isEquipSkill() const
+{
+    // Only the registered equipment's own active component admits a zero-instance request.
+    const auto *equipment = Sanguosha
+        ? dynamic_cast<const EquipSkillV2 *>(Sanguosha->getSkill(objectName())) : nullptr;
+    return equipment && equipment->getViewAsSkill() == this;
+}
 LuaViewAsSkillV2::LuaViewAsSkillV2(const QString &name, Frequency frequency, const QString &limit_mark)
     : ViewAsSkillV2(name), can_activate(0), can_select_card(0), card_selection_feasible(0), create_card(0),
       on_cost(0), on_pay(0), can_select_target(0), targets_feasible(0), on_effect(0),

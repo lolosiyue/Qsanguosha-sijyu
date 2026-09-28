@@ -13,9 +13,16 @@ int Scenario::getPlayerCount() const
     return 1 + loyalists.length() + rebels.length() + renegades.length();
 }
 
-ScenarioRule *Scenario::getRule() const
+TriggerSkill *Scenario::getRule() const
 {
     return rule;
+}
+
+void Scenario::setRule(TriggerSkill *scenario_rule)
+{
+    rule = scenario_rule;
+    // Both native and Lua V2 rules belong to their scenario package registry.
+    if (rule) rule->setParent(this);
 }
 
 bool Scenario::exposeRoles() const

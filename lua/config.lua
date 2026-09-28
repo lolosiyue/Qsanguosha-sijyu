@@ -190,6 +190,22 @@ config = {
 		"extensions/yy.lua",
 		"extensions/zabing.lua",
 		"extensions/zhenghuoCMT.lua;ai=lua/ai/zhenghuoCMT-ai.lua,lua/ai/original-hegemony/heg-basara-ai.lua,lua/ai/original-hegemony/heg-common-ai.lua,lua/ai/original-hegemony/heg-formation-ai.lua,lua/ai/original-hegemony/heg-guanxing-ai.lua,lua/ai/original-hegemony/heg-maneuvering-ai.lua,lua/ai/original-hegemony/heg-momentum-ai.lua,lua/ai/original-hegemony/heg-standard-qun-ai.lua,lua/ai/original-hegemony/heg-standard-shu-ai.lua,lua/ai/original-hegemony/heg-standard-wei-ai.lua,lua/ai/original-hegemony/heg-standard-wu-ai.lua,lua/ai/original-hegemony/heg-standard_cards-ai.lua,lua/ai/original-hegemony/heg-strategic_advantage-ai.lua,lua/ai/original-hegemony/heg-transformation-ai.lua,lua/ai/original-hegemony/heg-power-ai.lua,lua/ai/original-hegemony/heg-manoeuvre-ai.lua,lua/ai/original-hegemony/heg-newsgs-ai.lua,lua/ai/original-hegemony/heg-mol-ai.lua,lua/ai/original-hegemony/heg-overseas-ai.lua,lua/ai/original-hegemony/heg-lord_ex-ai.lua,lua/ai/original-hegemony/heg-loader-ai.lua",
+		-- Append HUMAN content so existing physical card IDs remain stable.
+		"extensions/system.lua",
+		"extensions/birth.lua",
+		"extensions/cdiy.lua",
+		"extensions/ctg.lua",
+		"extensions/game.lua",
+		"extensions/giantequip.lua",
+		"extensions/guozhan.lua",
+		"extensions/happyrebel.lua",
+		"extensions/hezongkangqin.lua",
+		"extensions/jiangshi.lua",
+		"extensions/jieyi.lua",
+		"extensions/Shijia.lua",
+		"extensions/xcx.lua",
+		"extensions/Xiangqi.lua",
+		"extensions/xiuzheng.lua",
 	},
 
 	hulao_generals = {

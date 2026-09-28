@@ -33,6 +33,7 @@ public:
 	void addEvent(TriggerEvent event);
 	void setViewAsSkill(ViewAsSkill *view_as_skill);
 	void setGlobal(bool global);
+	void setRule(bool rule);
 	void setBaseAmount(int amount);
 	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);
@@ -101,6 +102,33 @@ public:
 
 	int priority;
 };
+
+// Keep native equipment source checks visible to SWIG's inheritance graph.
+%nodefaultctor EquipSkillV2;
+class EquipSkillV2 : public TriggerSkillV2 {};
+%feature("new", "0") LuaEquipSkillV2;
+class LuaEquipSkillV2 : public EquipSkillV2 {
+public:
+    LuaEquipSkillV2(const char *name, const char *equipment, const char *equipmentType, Frequency frequency);
+    void addEvent(TriggerEvent event);
+    void setGlobal(bool value);
+    void setViewAsSkill(ViewAsSkill *skill);
+    void setBaseAmount(int amount);
+    void insertPriorityTable(TriggerEvent event, int value);
+    void setMovementSource(bool enabled);
+    LuaFunction can_trigger;
+    LuaFunction on_record;
+    LuaFunction on_cost;
+    LuaFunction on_pay;
+    LuaFunction on_effect;
+    LuaFunction on_effect_target;
+    LuaFunction on_turn_broken;
+    int priority;
+};
+%extend LuaEquipSkillV2 {
+    QString objectName() const { return $self->objectName(); }
+    QVariant property(const char *name) const { return $self->property(name); }
+}
 
 class ScenarioRule : public TriggerSkill {
 public:
@@ -478,6 +506,7 @@ public:
 class LuaViewAsSkillV2: public ViewAsSkillV2 {
 public:
 	LuaViewAsSkillV2(const char *name, Frequency frequency, const char *limit_mark);
+    void setHistoryKey(const char *key);
 	void setTargetMode(TargetMode mode);
 	void setTargetEffectMode(TargetEffectMode mode);
 	void setWillThrowSelectedCards(bool willThrow);
@@ -1223,6 +1252,112 @@ bool LuaTriggerSkillV2::effectTarget(TriggerEvent triggerEvent, Room *room, Serv
 	}
 }
 
+void LuaEquipSkillV2::onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
+                                    ServerPlayer *player, SkillContext &ctx) const
+{
+	if (on_turn_broken == 0) return;
+
+	lua_State *L = room->getLuaState();
+
+	on_turn_broken.push(L);
+
+	LuaEquipSkillV2 *self = const_cast<LuaEquipSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaEquipSkillV2, 0);
+
+	lua_pushstring(L, function_name);
+
+	lua_pushinteger(L, static_cast<int>(triggerEvent));
+
+	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
+
+	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
+
+	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
+
+	if (LuaRuntime::protectedCall(L, 6, 0, 0)) {
+        room->output(QString::fromUtf8(lua_tostring(L, -1)));
+        lua_pop(L, 1);
+    }
+}
+
+void LuaEquipSkillV2::record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
+{
+	if (on_record == 0) return;
+
+	lua_State *L = room->getLuaState();
+
+	on_record.push(L);
+
+	LuaEquipSkillV2 *self = const_cast<LuaEquipSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaEquipSkillV2, 0);
+
+	lua_pushinteger(L, static_cast<int>(triggerEvent));
+
+	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
+
+	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
+
+	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
+
+	if (LuaRuntime::protectedCall(L, 5, 0, 0)) {
+        room->output(QString::fromUtf8(lua_tostring(L, -1)));
+        lua_pop(L, 1);
+    }
+}
+
+// The equipment callbacks enter the same V2 lifecycle; Lua errors fail closed.
+static bool luaEquipV2Callback(const LuaEquipSkillV2 *self, const LuaFunction &callback,
+                               const char *name, TriggerEvent event, Room *room,
+                               ServerPlayer *player, SkillContext &ctx, bool fallback,
+                               ServerPlayer *target = nullptr, bool withTarget = false)
+{
+    if (!callback) return fallback;
+    try {
+        lua_State *L = room->getLuaState();
+        callback.push(L);
+        SWIG_NewPointerObj(L, const_cast<LuaEquipSkillV2 *>(self), SWIGTYPE_p_LuaEquipSkillV2, 0);
+        lua_pushinteger(L, event);
+        SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
+        SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
+        SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
+        if (withTarget) SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
+        if (LuaRuntime::protectedCall(L, withTarget ? 6 : 5, 1, 0)) {
+            room->output(QString::fromUtf8(lua_tostring(L, -1)));
+            lua_pop(L, 1);
+            return false;
+        }
+        const bool result = lua_toboolean(L, -1);
+        lua_pop(L, 1);
+        return result;
+    } catch (TriggerEvent interrupted) {
+        if (interrupted == TurnBroken || interrupted == StageChange)
+            self->onTurnBroken(name, event, room, player, ctx);
+        throw;
+    }
+}
+
+bool LuaEquipSkillV2::cost(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const
+{
+    return luaEquipV2Callback(this, on_cost, "on_cost", event, room, player, ctx, true);
+}
+
+bool LuaEquipSkillV2::pay(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const
+{
+    return luaEquipV2Callback(this, on_pay, "on_pay", event, room, player, ctx, true);
+}
+
+bool LuaEquipSkillV2::effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const
+{
+    return luaEquipV2Callback(this, on_effect, "on_effect", event, room, player, ctx, false);
+}
+
+bool LuaEquipSkillV2::effectTarget(TriggerEvent event, Room *room, ServerPlayer *player,
+                                 SkillContext &ctx, ServerPlayer *target) const
+{
+    return luaEquipV2Callback(this, on_effect_target, "on_effect_target", event, room, player, ctx,
+                              false, target, true);
+}
+
 void LuaTriggerSkillV2::onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
                                     ServerPlayer *player, SkillContext &ctx) const
 {
@@ -1270,17 +1405,19 @@ void LuaTriggerSkillV2::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 	LuaRuntime::protectedCall(L, 5, 0, 0);
 }
 
-TriggerList LuaTriggerSkillV2::triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+template <typename LuaSkill>
+static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfType,
+                                  TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                                  QVariant &data, bool allowNullPlayer)
 {
 	TriggerList result;
-	if (!can_trigger || !player) return result;
+	if (!self->can_trigger || (!player && !allowNullPlayer)) return result;
 
 	lua_State *L = room->getLuaState();
 
-	can_trigger.push(L);
+	self->can_trigger.push(L);
 
-	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaSkill *>(self), selfType, 0);
 
 	lua_pushinteger(L, triggerEvent);
 
@@ -1357,6 +1494,16 @@ TriggerList LuaTriggerSkillV2::triggerable(TriggerEvent triggerEvent, Room *room
 	}
 
 	return result;
+}
+
+TriggerList LuaTriggerSkillV2::triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+{
+    return luaV2TriggerList(this, SWIGTYPE_p_LuaTriggerSkillV2, event, room, player, data, m_rule);
+}
+
+TriggerList LuaEquipSkillV2::triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+{
+    return luaV2TriggerList(this, SWIGTYPE_p_LuaEquipSkillV2, event, room, player, data, true);
 }
 
 void LuaTriggerSkillV2::willInvoke(SkillContext &ctx) const
