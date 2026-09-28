@@ -591,7 +591,6 @@ class TenyearYijueVS : public OneCardViewAsSkill
 public:
 	TenyearYijueVS() : OneCardViewAsSkill("tenyearyijue")
 	{
-		filter_pattern = ".";
 	}
 
 	bool isEnabledAtPlay(const Player *player) const
@@ -2877,7 +2876,6 @@ class SecondTenyearLihuoViewAsSkill : public OneCardViewAsSkill
 public:
 	SecondTenyearLihuoViewAsSkill() : OneCardViewAsSkill("secondtenyearlihuo")
 	{
-		filter_pattern = "%slash";
 		response_or_use = true;
 	}
 
@@ -3325,7 +3323,7 @@ public:
             ServerPlayer *other = room->getCardOwner(id);
             if (other && other->objectName() == selected.value("owner").toString()
                 && (room->getCardPlace(id) == Player::PlaceHand || room->getCardPlace(id) == Player::PlaceEquip)
-                && target->canGetCard(other, id)) room->obtainCard(target, id, false);
+                && target->canGet(other, id)) room->obtainCard(target, id, false);
             return ContinueEffects;
         }
         if (!ctx.initiator || !ctx.use_card || ctx.use_card->getSubcards().size() != 1 || target->isKongcheng()) return ContinueEffects;
@@ -3347,9 +3345,9 @@ public:
         } else if (!slash && jink) {
             const int amount = getEffectiveAmount(ctx);
             for (int n = 0; n < amount && ctx.invoker->isAlive() && target->isAlive()
-                 && ctx.invoker->canGetCard(target, "he"); ++n) {
+                 && ctx.invoker->canGet(target, "he"); ++n) {
                 const int id = room->askForCardChosen(ctx.invoker, target, "he", objectName(), false, Card::MethodGet);
-                if (id < 0 || room->getCardOwner(id) != target || !ctx.invoker->canGetCard(target, id)) break;
+                if (id < 0 || room->getCardOwner(id) != target || !ctx.invoker->canGet(target, id)) break;
                 // The card's recipient receives the nested target hook as well.
                 ctx.choice = "obtain";
                 ctx.extra_data = QVariantMap{{"id", id}, {"owner", target->objectName()}};
@@ -5748,7 +5746,6 @@ public:
 	TenyearSidiVS() : OneCardViewAsSkill("tenyearsidi")
 	{
 		expand_pile = "sidi";
-		filter_pattern = ".|.|.|sidi";
 		response_pattern = "@@tenyearsidi";
 	}
 
@@ -8729,9 +8726,9 @@ public:
             ServerPlayer *donor = room->findPlayerByObjectName(ctx.extra_data.toString());
             if (!donor || donor == target) return ContinueEffects;
             const int count = getEffectiveAmount(ctx);
-            for (int i = 0; i < count && target->isAlive() && donor->isAlive() && target->canGetCard(donor, "h"); ++i) {
+            for (int i = 0; i < count && target->isAlive() && donor->isAlive() && target->canGet(donor, "h"); ++i) {
                 const int id = room->askForCardChosen(target, donor, "h", objectName(), false, Card::MethodGet);
-                if (id < 0 || !donor->handCards().contains(id) || !target->canGetCard(donor, id)) break;
+                if (id < 0 || !donor->handCards().contains(id) || !target->canGet(donor, id)) break;
                 const Card::Suit suit = Sanguosha->getCard(id)->getSuit();
                 room->obtainCard(target, id, false);
                 if (target->handCards().contains(id)) room->showCard(target, id);
@@ -9000,7 +8997,6 @@ public:
 	TenyearXiansiViewAsSkill() : OneCardViewAsSkill("tenyearxiansi")
 	{
 		expand_pile = "counter";
-		filter_pattern = ".|.|.|counter";
 	}
 
 	const Card *viewAs(const Card *card) const

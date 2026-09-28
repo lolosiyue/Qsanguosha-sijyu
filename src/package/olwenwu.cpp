@@ -480,7 +480,7 @@ public:
     }
     static int firstTargets(Room *room, const CardUseStruct &use, const QVariantMap &receipt)
     {
-        if (use.useHistoryEventId <= 0 || !use.from) return -1;
+        if (use.targetModReveal.useHistoryEventId <= 0 || !use.from) return -1;
         QVariantMap filter{{"kind", "use_card"}, {"from", use.from->objectName()}, {"limit", 100}};
         QSet<QString> seen;
         int count = -1;
@@ -500,7 +500,7 @@ public:
                     seen.insert(name.toString());
                     ++fresh;
                 }
-                if (fact.value("event_id").toLongLong() == use.useHistoryEventId) count = fresh;
+                if (fact.value("event_id").toLongLong() == use.targetModReveal.useHistoryEventId) count = fresh;
             }
             if (!page.value("has_more").toBool()) break;
             filter.insert("after", page.value("next_after"));
@@ -1023,7 +1023,7 @@ public:
     {
         return request.initiator && candidate && request.selectedCardIds.isEmpty() && candidate->isBlack()
             && candidate->getEffectiveId() >= 0 && !candidate->hasFlag("using")
-            && request.initiator->getCards("he").contains(candidate) && !request.initiator->isJilei(candidate);
+            && request.initiator->hasCard(candidate) && !request.initiator->isJilei(candidate);
     }
     bool cost(Room *, SkillContext &ctx, const ActiveSkillRequest &) const override
     {
@@ -2617,7 +2617,7 @@ public:
     {
         return request.initiator && card && card->getEffectiveId() >= 0 && !card->hasFlag("using")
             && !request.selectedCardIds.contains(card->getEffectiveId())
-            && (request.initiator->getCards("he").contains(card) || request.initiator->getHandPile().contains(card->getEffectiveId()));
+            && (request.initiator->hasCard(card) || request.initiator->getHandPile().contains(card->getEffectiveId()));
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
@@ -2996,7 +2996,7 @@ JinChoufaCard::JinChoufaCard() { setSkillName("jinchoufa"); }
 class JinChoufaVS : public ViewAsSkillV2
 {
 public:
-    JinChoufaVS() : ViewAsSkillV2("jinchoufa") { setCardCount(0); }
+    JinChoufaVS() : ViewAsSkillV2("jinchoufa") { setN(0); }
     LimitScope getLimitScope() const override { return Limit_Phase; }
     QString historyKey(const ActiveSkillRequest &) const override { return "JinChoufaCard"; }
     bool canActivate(const ActiveSkillRequest &request) const override
@@ -5039,12 +5039,12 @@ public:
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data, QList<SkillContext> &contexts) const override
     {
         const CardUseStruct use = data.value<CardUseStruct>();
-        if (!use.card || use.useHistoryEventId <= 0) return true;
+        if (!use.card || use.targetModReveal.useHistoryEventId <= 0) return true;
         const QVariantMap receipt = use.card->getTag("jinxuanbei_effect").toMap();
         ServerPlayer *drawer = room->findPlayerByObjectName(receipt.value("drawer").toString());
         if (!drawer || !drawer->isAlive() || !ref(receipt, "source").isValid() || !ref(receipt, "activation").isValid()
             || receipt.value("receipt").toInt() <= 0) return true;
-        const QVariantMap damage = room->queryCardUseDamage(use.useHistoryEventId);
+        const QVariantMap damage = room->queryCardUseDamage(use.targetModReveal.useHistoryEventId);
         if (!damage.value("complete").toBool() || !damage.value("attribution_complete").toBool()) return true;
         bool wounded = false;
         foreach (const QVariant &fact, damage.value("items").toList())

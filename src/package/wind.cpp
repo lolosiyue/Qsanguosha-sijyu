@@ -628,9 +628,15 @@ public:
     bool canActivate(const ActiveSkillRequest &request) const override
     {
         if (!request.initiator || request.reason == CardUseStruct::CARD_USE_REASON_PLAY) return false;
-        if (request.pattern == "@@shensu1")
-            return !request.initiator->isSkipped(Player::Judge) && !request.initiator->isSkipped(Player::Draw);
-        return request.pattern == "@@shensu2" && !request.initiator->isSkipped(Player::Play);
+        if (request.pattern == "@@shensu1") {
+            const ServerPlayer *sp = qobject_cast<const ServerPlayer *>(request.initiator);
+            return sp && !sp->isSkipped(Player::Judge) && !sp->isSkipped(Player::Draw);
+        }
+        if (request.pattern == "@@shensu2") {
+            const ServerPlayer *sp = qobject_cast<const ServerPlayer *>(request.initiator);
+            return sp && !sp->isSkipped(Player::Play);
+        }
+        return false;
     }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
@@ -1815,7 +1821,7 @@ class NosBuqu : public TriggerSkillV2
 {
 public:
     NosBuqu() : TriggerSkillV2("nosbuqu") { events << HpChanged << AskForPeachesDone; }
-    bool usesEventPriority(TriggerEvent) const override { return true; }
+    bool usesEventPriority() const override { return true; }
     int getPriority(TriggerEvent event) const override { return event == HpChanged ? 1 : TriggerSkillV2::getPriority(event); }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {

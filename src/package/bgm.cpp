@@ -2226,8 +2226,8 @@ public:
         room->broadcastSkillInvoke(objectName(), 2);
         const Card *cards = room->askForExchange(diaochan, objectName(), count, count, true, "LihunGoBack");
         if (cards && diaochan->isAlive() && target->isAlive())
-            room->moveCardTo(cards, diaochan, target,
-                             CardMoveReason(CardMoveReason::S_REASON_GIVE, diaochan->objectName(), target->objectName(), objectName(), ""));
+            room->moveCardTo(cards, diaochan, target, Player::PlaceHand,
+                             CardMoveReason(CardMoveReason::S_REASON_GIVE, diaochan->objectName(), target->objectName(), objectName(), ""), false);
         return false;
     }
 };

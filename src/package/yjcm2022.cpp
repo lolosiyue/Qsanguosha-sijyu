@@ -117,7 +117,6 @@ class BiejunGive : public OneCardViewAsSkill
 public:
     BiejunGive() : OneCardViewAsSkill("biejun-give&")
     {
-        filter_pattern = ".|.|.|hand";
     }
 
     bool isEnabledAtPlay(const Player *player) const

@@ -79,12 +79,7 @@ public:
     void deleteLater();
     Card(Suit suit = SuitToBeDecided, int number = -1, bool target_fixed = false, bool damage_card = false, bool is_gift = false, bool single_target = false);
 
-    inline QString objectName(bool different_slash = true) const
-    {
-        if (!different_slash && isKindOf("Slash"))
-            return QStringLiteral("slash");
-        return QObject::objectName();
-    }
+    QString objectName(bool different_slash = true) const;
 
     // property getters/setters
     QString getSuitString() const;

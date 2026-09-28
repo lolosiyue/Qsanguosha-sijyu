@@ -898,6 +898,14 @@ public:
     SkillContext getSkillExecutionContext(qint64 executionID) const;
     void setSkillExecutionContext(qint64 executionID, const SkillContext &context);
 
+    // Package skills may refresh client-visible instance state after local mutations.
+    void notifySkillInstanceAmount(ServerPlayer *owner, const SkillInstance &instance);
+    void notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInstance &instance,
+                                         const QString &operation, const QString &key = QString(),
+                                         const QVariant &value = QVariant());
+    const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
+                                          const ActiveSkillRequest &request) const;
+
 protected:
     virtual void run();
     int _m_Id;
@@ -920,10 +928,6 @@ private:
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
     void notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance);
-    void notifySkillInstanceAmount(ServerPlayer *owner, const SkillInstance &instance);
-    void notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInstance &instance,
-                                         const QString &operation, const QString &key = QString(),
-                                         const QVariant &value = QVariant());
     // Owner-only：完整 SkillInstanceState 僅同步給持有者 client（不廣播給其他人）。
     void notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
                                   const QString &operation, const QString &key = QString(),
@@ -932,8 +936,6 @@ private:
                               const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef);
     bool resolveCardSkillInstance(CardUseStruct &use);
     bool areCardTargetsLegal(const CardUseStruct &use) const;
-    const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
-                                          const ActiveSkillRequest &request) const;
     bool isAIMarkVisibleTo(const ServerPlayer *owner, const QString &mark,
                            const ServerPlayer *viewer) const;
     void recordAiEvent(int triggerEvent, ServerPlayer *target, const QVariant &data);

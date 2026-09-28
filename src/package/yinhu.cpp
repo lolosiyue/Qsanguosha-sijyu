@@ -1815,7 +1815,7 @@ public:
 		if (request.pattern == "@@yhbuque") return true;
 		if (request.pattern == "nullification") return true;
 		if (request.pattern == "peach" && request.initiator->getMark("Global_PreventPeach") > 0) return false;
-		for (const QString &name : request.pattern.split(QRegExp("[+,]"))) {
+		for (const QString &name : request.pattern.split(QRegularExpression("[+,]"))) {
 			Card *card = Sanguosha->cloneCard(name.toLower());
 			if (card && card->isKindOf("BasicCard")) { card->deleteLater(); return true; }
 			if (card) card->deleteLater();

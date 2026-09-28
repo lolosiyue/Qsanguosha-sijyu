@@ -148,6 +148,7 @@ public:
                                     MaxCardsType::MaxCardsCount type = MaxCardsType::Max) const override;
     PindianStruct *pindianSelect(ServerPlayer *target, const QString &reason, const Card *card = nullptr);
     bool pindian(PindianStruct *selection);
+    PindianStruct *finishPindian(PindianStruct *selection);
     int getGeneralMaxHp() const;
     int getGeneralStartHp() const;
     int getGeneralStartHujia() const;
@@ -324,7 +325,6 @@ private:
     // must never touch QAbstractSocket directly.
     void disconnectSocketFromOwnerThread();
     void syncHegemonyRevealState();
-    PindianStruct *finishPindian(PindianStruct *selection);
 
     ClientSocket *socket;
     QSanProtocol::ProtocolCodecRouter m_protocolRouter;

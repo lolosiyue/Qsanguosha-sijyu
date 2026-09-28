@@ -272,7 +272,8 @@ public:
         CardUseStruct use = parent.original_data->value<CardUseStruct>();
         if (!use.card) return ContinueEffects;
         ServerPlayer *added = target;
-        if (ctx.use_card->getUserString() == "@@_shuibojian1") {
+        const SkillCard *proxy = qobject_cast<const SkillCard *>(ctx.use_card);
+        if (proxy && proxy->getUserString() == "@@_shuibojian1") {
             const QVariantMap candidates = ctx.invoker->property("shuibojian_candidates").toMap();
             if (ctx.targets.value(0) == target) {
                 if (candidates.contains(target->objectName())) {
@@ -647,7 +648,7 @@ class SichengliangyuSkill : public TreasureSkillV2
 {
 public:
     SichengliangyuSkill() : TreasureSkillV2("_sichengliangyu", "_sichengliangyu")
-    { events << EventPhaseChanging; global = true; setBaseAmount(2); }
+    { events << EventPhaseChanging; global = true; m_baseAmount = 2; }
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const override
     {
         TriggerList result;
@@ -684,7 +685,7 @@ class TiejixuanyuSkill : public TreasureSkillV2
 {
 public:
     TiejixuanyuSkill() : TreasureSkillV2("_tiejixuanyu", "_tiejixuanyu")
-    { events << EventPhaseChanging; global = true; setBaseAmount(2); }
+    { events << EventPhaseChanging; global = true; m_baseAmount = 2; }
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         if (!player || !player->isAlive() || data.value<PhaseChangeStruct>().to != Player::NotActive
@@ -859,7 +860,7 @@ Xishu::Xishu(Suit suit, int number)
 class JinshuSkill : public TreasureSkillV2
 {
 public:
-    JinshuSkill() : TreasureSkillV2("_jinshu", "_jinshu") { events << EventPhaseEnd; frequency = Compulsory; setBaseAmount(5); }
+    JinshuSkill() : TreasureSkillV2("_jinshu", "_jinshu") { events << EventPhaseEnd; frequency = Compulsory; m_baseAmount = 5; }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
         return player && player->isAlive() && TreasureSkillV2::triggerable(player) && player->getPhase() == Player::Play
@@ -1062,7 +1063,7 @@ public:
     SanlveMax() : MaxCardsSkillV2("#_sanlve_max")
     {
         setHolderSelector(CorrectSkill_System);
-        setBaseAmount(1);
+        m_baseAmount = 1;
     }
 
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
@@ -1078,7 +1079,7 @@ public:
     SanlveAttack() : AttackRangeSkillV2("#_sanlve_attack")
     {
         setHolderSelector(CorrectSkill_System);
-        setBaseAmount(1);
+        m_baseAmount = 1;
     }
 
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
@@ -1456,7 +1457,7 @@ public:
         for (int i = 0; i < move.card_ids.size(); ++i)
             if (move.from_places.value(i) == Player::PlaceEquip
                 && Sanguosha->getEngineCard(move.card_ids.at(i))->objectName() == objectName())
-                room->setPlayerProperty(move.from, "pingjian_triggerskill", "");
+                room->setPlayerProperty(qobject_cast<ServerPlayer *>(move.from), "pingjian_triggerskill", "");
         return true;
     }
 
@@ -1555,7 +1556,7 @@ public:
         for (int i = 0; i < move.card_ids.size(); ++i)
             if (move.from_places.value(i) == Player::PlaceEquip
                 && Sanguosha->getEngineCard(move.card_ids.at(i))->objectName() == objectName())
-                room->setPlayerProperty(move.from, "pingjian_triggerskill", "");
+                room->setPlayerProperty(qobject_cast<ServerPlayer *>(move.from), "pingjian_triggerskill", "");
         return true;
     }
 

@@ -1116,7 +1116,7 @@ public:
         const ServerPlayer *server = qobject_cast<const ServerPlayer *>(ctx.primary);
         const bool first = server ? server->getRoom()->countHistoryCards(server, "phase", QString(), false, true) == 0
             : ctx.primary->getMark("heg_wanglie_first") > 0;
-        return first ? CorrectSkillResult::useAmount() : CorrectSkillResult::noEffect();
+        return first ? CorrectSkillResult::unlimitedResidue() : CorrectSkillResult::noEffect();
     }
 };
 class HYinbingX : public TriggerSkillV2
@@ -1346,7 +1346,7 @@ public:
         if (useEvent <= 0) return false;
         const qint64 serial = room->getTag("HMoukuiSerial").toLongLong() + 1;
         room->setTag("HMoukuiSerial", serial);
-        QVariantList receipts = use.card->tag.value("HMoukuiApplied").toList();
+        QVariantList receipts = use.card->getTag("HMoukuiApplied").toList();
         receipts << QVariantMap{{"holder", ctx.owner->objectName()}, {"target", target->objectName()},
             {"use_event", useEvent}, {"serial", serial},
             {"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID},
@@ -1368,7 +1368,7 @@ public:
     void consume(const SkillContext &ctx) const
     {
         const Card *card = receiptCard(ctx); if (!card) return;
-        QVariantList receipts = card->tag.value("HMoukuiApplied").toList();
+        QVariantList receipts = card->getTag("HMoukuiApplied").toList();
         const int index = receipts.indexOf(ctx.extra_data);
         if (index < 0) return;
         // Keep row positions stable while sibling trigger contexts are pending.
@@ -1383,7 +1383,7 @@ public:
         } else if (event == CardFinished) {
             const CardUseStruct use = data.value<CardUseStruct>(); if (!use.card) return false;
             const qint64 useEvent = room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong();
-            QVariantList receipts = use.card->tag.value("HMoukuiApplied").toList();
+            QVariantList receipts = use.card->getTag("HMoukuiApplied").toList();
             for (int i = receipts.size() - 1; i >= 0; --i)
                 if (receipts.at(i).toMap().value("use_event").toLongLong() == useEvent) receipts.removeAt(i);
             use.card->tag.insert("HMoukuiApplied", receipts);
@@ -1398,7 +1398,7 @@ public:
             || !effect.offset_card || !effect.offset_card->isKindOf("Jink")) return true;
         const qint64 useEvent = room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong();
         if (useEvent <= 0) return true;
-        const QVariantList receipts = effect.card->tag.value("HMoukuiApplied").toList();
+        const QVariantList receipts = effect.card->getTag("HMoukuiApplied").toList();
         for (int i = 0; i < receipts.size(); ++i) {
             const QVariantMap receipt = receipts.at(i).toMap();
             if (receipt.value("consumed").toBool() || receipt.value("use_event").toLongLong() != useEvent
@@ -1417,7 +1417,7 @@ public:
     {
         const Card *card = receiptCard(ctx); const QVariantMap receipt = ctx.extra_data.toMap();
         return ctx.sourceRef.isValid() && card && receipt.value("serial").toLongLong() > 0
-            && !receipt.value("consumed").toBool() && card->tag.value("HMoukuiApplied").toList().contains(ctx.extra_data)
+            && !receipt.value("consumed").toBool() && card->getTag("HMoukuiApplied").toList().contains(ctx.extra_data)
             && receipt.value("use_event").toLongLong() == room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong();
     }
     bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
@@ -1602,7 +1602,7 @@ public:
     bool isProhibited(const Player *, const Player *to, const Card *card, const QList<const Player *> &) const override
     {
         return to && card && card->getSkillName(true) == "heg_zhenxi_trick"
-            && card->tag.value("HZhenxiTarget").toString() != to->objectName();
+            && card->getTag("HZhenxiTarget").toString() != to->objectName();
     }
 };
 
@@ -1614,7 +1614,7 @@ public:
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
         return ctx.modType == DistanceLimit && ctx.card && ctx.card->getSkillName(true) == "heg_zhenxi_trick"
-            ? CorrectSkillResult::useAmount() : CorrectSkillResult::noEffect();
+            ? CorrectSkillResult::unlimitedResidue() : CorrectSkillResult::noEffect();
     }
 };
 HJiansuCard::HJiansuCard()
@@ -2515,7 +2515,7 @@ public:
             const SkillContext finished = data.value<SkillContext>();
             if (finished.skill_name == objectName() && finished.choice == "finish" && finished.original_data) {
                 const CardUseStruct use = finished.original_data->value<CardUseStruct>();
-                if (use.card && use.card->tag.value("HKenshangApplied") == finished.extra_data) use.card->tag.remove("HKenshangApplied");
+                if (use.card && use.card->getTag("HKenshangApplied") == finished.extra_data) use.card->removeTag("HKenshangApplied");
             }
             return false;
         }
@@ -2536,7 +2536,7 @@ public:
         if (event != TargetSpecifying && event != CardFinished) return true;
         const CardUseStruct use = data.value<CardUseStruct>();
         if (!use.card || !use.from || !use.from->isAlive() || !use.card->isKindOf("Slash")) return true;
-        const QVariantMap receipt = use.card->tag.value("HKenshangApplied").toMap();
+        const QVariantMap receipt = use.card->getTag("HKenshangApplied").toMap();
         if (receipt.isEmpty() || receipt.value("use_event").toLongLong() != room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong()) return true;
         SkillContext ctx;
         ctx.skill_name = objectName(); ctx.owner = use.from; ctx.invoker = ctx.initiator = player;
@@ -2548,7 +2548,7 @@ public:
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
     { return ctx.sourceRef.isValid() && ctx.original_data && ctx.original_data->value<CardUseStruct>().card
-        && ctx.original_data->value<CardUseStruct>().card->tag.value("HKenshangApplied") == ctx.extra_data; }
+        && ctx.original_data->value<CardUseStruct>().card->getTag("HKenshangApplied") == ctx.extra_data; }
     bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
         CardUseStruct use = ctx.original_data->value<CardUseStruct>();
@@ -3141,15 +3141,15 @@ public:
                 auto slash = std::make_unique<Slash>(Card::NoSuit, 0);
                 slash->setSkillName("_heg_yechou");
                 if (ctx.owner->isProhibited(target, slash.get())) break;
-                slash->tag["HYechouApplied"] = QVariantMap{{"owner", ctx.sourceRef.ownerObjectName},
+                slash->setTag("HYechouApplied", QVariantMap{{"owner", ctx.sourceRef.ownerObjectName},
                     {"skill", ctx.sourceRef.key.skillName}, {"instance", ctx.sourceRef.key.instanceID},
                     {"activation_owner", ctx.activationRef.ownerObjectName},
                     {"activation_skill", ctx.activationRef.key.skillName}, {"activation_instance", ctx.activationRef.key.instanceID},
-                    {"bonus", i == 2 ? 1 : 0}};
+                    {"bonus", i == 2 ? 1 : 0}});
                 CardUseStruct use(slash.get(), ctx.owner, target);
                 if (i == 0) use.no_respond_list << "_ALL_TARGETS";
                 if (i == 1) target->addQinggangTag(slash.get());
-                use.setOwnedCard(std::move(slash));
+                use.setOwnedCard(slash.release());
                 room->useCardFromSkillEffect(use, ctx, false);
             }
         }
@@ -3186,7 +3186,7 @@ public:
         const DamageStruct damage = event == ConfirmDamage ? data.value<DamageStruct>()
             : (data.value<DyingStruct>().damage ? *data.value<DyingStruct>().damage : DamageStruct());
         if (!damage.card || !damage.to) return true;
-        const QVariantMap receipt = damage.card->tag.value("HYechouApplied").toMap();
+        const QVariantMap receipt = damage.card->getTag("HYechouApplied").toMap();
         if (receipt.isEmpty() || (event == ConfirmDamage && (damage.chain || damage.transfer || receipt.value("bonus").toInt() <= 0))) return true;
         if (event == Dying && (data.value<DyingStruct>().who != player || dyingEvent(room) <= 0)) return true;
         ServerPlayer *source = room->findPlayerByObjectName(receipt.value("owner").toString(), true);
@@ -3382,7 +3382,7 @@ public:
             duel->addSubcard(use.card); duel->setSkillName(use.card->getSkillName()); duel->setShowSkill(use.card->showSkill());
             use.changeCard(duel.get()); use.setOwnedCard(duel.release());
             use.card->tag.insert("HXiaoqiConverted", true); *ctx.original_data = QVariant::fromValue(use);
-        } else if (!use.card->isKindOf("Duel") || !use.card->tag.value("HXiaoqiConverted").toBool()) return false;
+        } else if (!use.card->isKindOf("Duel") || !use.card->getTag("HXiaoqiConverted").toBool()) return false;
         int count = 0;
         for (ServerPlayer *other : room->getAlivePlayers()) {
             const General *generals[] = {other->hasShownGeneral1() ? other->getGeneral() : nullptr,

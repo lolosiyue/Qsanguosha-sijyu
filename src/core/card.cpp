@@ -88,6 +88,15 @@ bool Card::event(QEvent *event)
     return QObject::event(event);
 }
 
+QString Card::objectName(bool different_slash) const
+{
+    // Non-virtual: Card* calls with different_slash=false must not assert.
+    // Match Slash::objectName and normalize Slash kinds to "slash".
+    if (!different_slash && isKindOf("Slash"))
+        return QStringLiteral("slash");
+    return QObject::objectName();
+}
+
 QString Card::getSuitString() const
 {
 	return Suit2String(getSuit());

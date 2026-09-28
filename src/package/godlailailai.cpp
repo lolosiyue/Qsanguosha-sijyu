@@ -2016,7 +2016,7 @@ public:
     {
         return request.initiator && card && request.selectedCardIds.size() < 2
             && !request.selectedCardIds.contains(card->getEffectiveId()) && !card->hasFlag("using")
-            && request.initiator->getCards("he").contains(card)
+            && request.initiator->hasCard(card)
             && !(card->isEquipped() && card->objectName() == objectName())
             && request.initiator->canDiscard(request.initiator, card->getEffectiveId());
     }
@@ -2068,7 +2068,7 @@ public:
         for (const QVariant &value : ctx.extra_data.toList()) {
             const int id = value.toInt();
             const Card *card = Sanguosha->getCard(id);
-            if (!card || ids.contains(id) || !owner->getCards("he").contains(card)
+            if (!card || ids.contains(id) || !owner->hasCard(card)
                 || (card->isEquipped() && card->objectName() == objectName()) || !owner->canDiscard(owner, id)) return false;
             ids << id;
         }

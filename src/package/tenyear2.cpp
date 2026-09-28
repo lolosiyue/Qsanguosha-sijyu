@@ -1065,7 +1065,6 @@ class XuezhaoVS : public OneCardViewAsSkill
 public:
 	XuezhaoVS(const QString&xuezhao): OneCardViewAsSkill(xuezhao),xuezhao(xuezhao)
 	{
-		filter_pattern = ".|.|.|hand!";
 	}
 
 	bool isEnabledAtPlay(const Player*player)const
@@ -1909,7 +1908,6 @@ class CixiaoVS : public OneCardViewAsSkill
 public:
 	CixiaoVS(): OneCardViewAsSkill("cixiao")
 	{
-		filter_pattern = ".!";
 		response_pattern = "@@cixiao";
 	}
 
@@ -8016,7 +8014,6 @@ class TenyearShuhe : public OneCardViewAsSkill
 public:
 	TenyearShuhe(): OneCardViewAsSkill("tenyearshuhe")
 	{
-	filter_pattern = ".|.|.|hand";
 	}
 
 	bool isEnabledAtPlay(const Player*player)const
@@ -8531,7 +8528,7 @@ public:
 		if (!turn.toULongLong()) return -1;
 		int count = 0;
 		QVariant watermark;
-		foreach (const QString &kind, QStringList{"use_card", "respond_card"}) {
+		for (const QString &kind : QStringList{"use_card", "respond_card"}) {
 			QVariantMap filter{{"kind", kind}, {"turn_id", turn}, {kind == "use_card" ? "from" : "player", player->objectName()}, {"limit", 64}};
 			if (watermark.isValid()) filter.insert("watermark", watermark);
 			for (;;) {
@@ -10380,7 +10377,6 @@ class WeilieVS : public OneCardViewAsSkill
 public:
 	WeilieVS(): OneCardViewAsSkill("weilie")
 	{
-		filter_pattern = ".!";
 	}
 
 	const Card*viewAs(const Card*c)const
@@ -12206,7 +12202,6 @@ class LiushiVS : public OneCardViewAsSkill
 public:
 	LiushiVS(): OneCardViewAsSkill("liushi")
 	{
-		filter_pattern = ".|heart";
 	}
 
 	const Card*viewAs(const Card*originalCard)const
@@ -14294,7 +14289,6 @@ class Jichun : public OneCardViewAsSkill
 public:
 	Jichun(): OneCardViewAsSkill("jichun")
 	{
-		filter_pattern = ".";
 	}
 
 	const Card*viewAs(const Card*originalCard)const
@@ -15945,7 +15939,7 @@ public:
 		if (!actor || !scopeID.toULongLong()) return false;
 		QMap<int, int> counts;
 		QVariant watermark;
-		foreach (const QString &kind, QStringList{"use_card", "respond_card"}) {
+		for (const QString &kind : QStringList{"use_card", "respond_card"}) {
 			QVariantMap filter{{"kind", kind}, {scope, scopeID}, {kind == "use_card" ? "from" : "player", actor->objectName()}, {"limit", 64}};
 			if (watermark.isValid()) filter.insert("watermark", watermark);
 			for (;;) {
@@ -16370,7 +16364,6 @@ class Fuhai : public OneCardViewAsSkill
 public:
 	Fuhai(): OneCardViewAsSkill("fuhai")
 	{
-		filter_pattern = ".|.|.|hand";
 	}
 
 	bool isEnabledAtPlay(const Player*player)const
@@ -20504,7 +20497,6 @@ public:
 	JingongViewAsSkill(const QString&name): OneCardViewAsSkill(name),name(name)
 	{
 		response_or_use = true;
-		filter_pattern = "EquipCard,Slash";
 	}
 
 	const Card*viewAs(const Card*originalCard)const
@@ -21239,7 +21231,6 @@ class LijiVS : public OneCardViewAsSkill
 public:
 	LijiVS(): OneCardViewAsSkill("liji")
 	{
-		filter_pattern = ".";
 	}
 
 	bool isEnabledAtPlay(const Player*player)const
@@ -23116,7 +23107,6 @@ class TenyearLianji : public OneCardViewAsSkill
 public:
 	TenyearLianji(): OneCardViewAsSkill("tenyearlianji")
 	{
-		filter_pattern = ".|.|.|hand!";
 	}
 
 	bool isEnabledAtPlay(const Player*player)const
@@ -26863,7 +26853,6 @@ class MiaoxianVS : public OneCardViewAsSkill
 public:
 	MiaoxianVS(): OneCardViewAsSkill("miaoxian")
 	{
-		filter_pattern = ".|black|.|hand";
         response_or_use = true;
 	}
 
@@ -27415,7 +27404,6 @@ public:
 	JiqiaosyVS(): OneCardViewAsSkill("jiqiaosy")
 	{
 		expand_pile = "jiqiaosy";
-		filter_pattern = ".|.|.|jiqiaosy";
 		response_pattern = "@@jiqiaosy!";
 	}
 
@@ -30954,7 +30942,6 @@ public:
 	{
 		response_pattern = "@@yuanrong!";
 		expand_pile = "#yuanrong";
-		filter_pattern = ".|.|.|#yuanrong";
 	}
 
 	const Card*viewAs(const Card*originalCard)const
@@ -36753,7 +36740,6 @@ class ThSpShefuViewAsSkill : public OneCardViewAsSkill
 public:
 	ThSpShefuViewAsSkill() : OneCardViewAsSkill("thspshefu")
 	{
-		filter_pattern = ".|.|.|.";
 		response_pattern = "@@thspshefu";
 	}
 

@@ -65,7 +65,7 @@ void QuhuCard::use(Room *room, ServerPlayer *xunyu, QList<ServerPlayer *> &targe
 class Jieming : public TriggerSkillV2
 {
 public:
-    Jieming() : TriggerSkillV2("jieming") { events << Damaged; setBaseAmount(5); }
+    Jieming() : TriggerSkillV2("jieming") { events << Damaged; m_baseAmount = 5; }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
         const int damage = data.value<DamageStruct>().damage;
@@ -205,7 +205,7 @@ public:
         return request.initiator && to_select && request.selectedCardIds.isEmpty()
             && !to_select->hasFlag("using") && to_select->isKindOf("Weapon")
             && request.initiator->canDiscard(to_select->getEffectiveId())
-            && request.initiator->getCards("he").contains(to_select);
+            && request.initiator->hasCard(to_select);
     }
 
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
@@ -340,7 +340,7 @@ class XueyiMCS : public MaxCardsSkillV2
 {
 public:
     XueyiMCS() : MaxCardsSkillV2("#xueyi")
-    { setBaseAmount(2); }
+    { m_baseAmount = 2; }
 
     CorrectSkillResult getCorrection(const CorrectSkillContext &context) const override
     {
@@ -584,7 +584,7 @@ public:
     Niepan() : TriggerSkillV2("niepan")
     {
         events << AskForPeaches;
-        setBaseAmount(3);
+        m_baseAmount = 3;
         frequency = Limited;
         limit_mark = "@nirvana";
     }
@@ -1285,7 +1285,7 @@ class Qixing : public TriggerSkillV2
 {
 public:
     Qixing() : TriggerSkillV2("qixing")
-    { view_as_skill = new QixingVS; events << EventPhaseEnd << DrawNCards << AfterDrawNCards; global = true; setBaseAmount(7); }
+    { view_as_skill = new QixingVS; events << EventPhaseEnd << DrawNCards << AfterDrawNCards; global = true; m_baseAmount = 7; }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         if (!player || !player->isAlive() || !player->hasSkill(objectName())) return {};
@@ -1436,7 +1436,6 @@ public:
     KuangfengViewAsSkill() : ViewAsSkillV2("kuangfeng", 1)
     {
         response_pattern = "@@kuangfeng";
-        filter_pattern = ".|.|.|stars";
         expand_pile = "stars";
     }
 
@@ -1612,7 +1611,6 @@ public:
     DawuViewAsSkill() : ViewAsSkillV2("dawu", 1)
     {
         response_pattern = "@@dawu";
-        filter_pattern = ".|.|.|stars";
         expand_pile = "stars";
     }
 

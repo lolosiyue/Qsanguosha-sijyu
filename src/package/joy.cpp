@@ -85,7 +85,7 @@ public:
         const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
         bool hasShit = false;
         if (move.from == player && move.from_places.contains(Player::PlaceHand)
-			&& (move.to_place == Player::PlaceTable || move.to_place == Player::PlaceDiscardPile)) {
+			&& (move.to_place == Player::PlaceTable || move.to_place == Player::DiscardPile)) {
             for (int i = 0; i < move.card_ids.length(); ++i) {
                 if (move.from_places.at(i) == Player::PlaceHand
                     && Sanguosha->getCard(move.card_ids.at(i))->isKindOf("Shit")) {
@@ -120,7 +120,7 @@ public:
         return hasShit && move.from == ctx.owner && ctx.owner->isAlive()
             && ctx.owner->hasFlag("CurrentPlayer")
             && move.from_places.contains(Player::PlaceHand)
-			&& (move.to_place == Player::PlaceTable || move.to_place == Player::PlaceDiscardPile);
+			&& (move.to_place == Player::PlaceTable || move.to_place == Player::DiscardPile);
     }
 
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
@@ -129,7 +129,7 @@ public:
         const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
         ServerPlayer *player = ctx.invoker;
         if (move.from == player && move.from_places.contains(Player::PlaceHand)
-			&& (move.to_place == Player::PlaceTable || move.to_place == Player::PlaceDiscardPile)) {
+			&& (move.to_place == Player::PlaceTable || move.to_place == Player::DiscardPile)) {
             for (int i = 0; i < move.card_ids.length(); i++) {
                 if(move.from_places.at(i)!=Player::PlaceHand) continue;
 				const Card*shit = Sanguosha->getCard(move.card_ids.at(i));
@@ -500,9 +500,9 @@ public:
     void commitAccepted(SkillContext &ctx) const
     {
         if (!ctx.initiator || ctx.extra_data.toMap().value("committed").toBool()) return;
-        if (ctx.choice.isEmpty()) ctx.choice = ctx.use_card ? ctx.use_card->tag.value("FiveLinesMode").toString() : QString();
+        if (ctx.choice.isEmpty()) ctx.choice = ctx.use_card ? ctx.use_card->getTag("FiveLinesMode").toString() : QString();
         QVariantMap receipt = ctx.extra_data.toMap();
-        if (receipt.isEmpty() && ctx.use_card) receipt = ctx.use_card->tag.value("FiveLinesReceipt").toMap();
+        if (receipt.isEmpty() && ctx.use_card) receipt = ctx.use_card->getTag("FiveLinesReceipt").toMap();
         ctx.extra_data = receipt;
         receipt["given_key"] = receiptKey(ctx, "given"); receipt["jieyin_key"] = receiptKey(ctx, "jieyin");
         receipt["given"] = ctx.initiator->getMark(receipt.value("given_key").toString()); receipt["committed"] = true;
@@ -571,8 +571,8 @@ public:
         if (!card) return nullptr;
         SkillContext frozen; frozen.activationRef = request.activationRef;
         if (const auto *server = qobject_cast<const ServerPlayer *>(request.initiator)) { frozen.owner = frozen.invoker = frozen.initiator = const_cast<ServerPlayer *>(server); prepareEquipSource(server->getRoom(), frozen); }
-        card->tag["FiveLinesMode"] = mode(request.initiator->getHp());
-        card->tag["FiveLinesReceipt"] = QVariantMap{{"given_key", stateKey(request.initiator, frozen.sourceRef, "given")}, {"jieyin_key", stateKey(request.initiator, frozen.sourceRef, "jieyin")}};
+        card->setTag("FiveLinesMode", mode(request.initiator->getHp()));
+        card->setTag("FiveLinesReceipt", QVariantMap{{"given_key", stateKey(request.initiator, frozen.sourceRef, "given")}, {"jieyin_key", stateKey(request.initiator, frozen.sourceRef, "jieyin")}});
         return card;
     }
     QString historyKey(const ActiveSkillRequest &request) const override
@@ -585,8 +585,8 @@ public:
     {
         if (!request.initiator) return false;
         if (!ctx.use_card) return false;
-        ctx.choice = ctx.use_card->tag.value("FiveLinesMode").toString();
-        ctx.extra_data = ctx.use_card->tag.value("FiveLinesReceipt");
+        ctx.choice = ctx.use_card->getTag("FiveLinesMode").toString();
+        ctx.extra_data = ctx.use_card->getTag("FiveLinesReceipt");
         return true;
     }
     bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
@@ -610,7 +610,7 @@ public:
     {
         if (!ctx.invoker || !ctx.invoker->isAlive()) return FinishSkill;
         if (ctx.use_card && ctx.use_card->getTypeId() != Card::TypeSkill) return ContinueEffects;
-        if (ctx.choice.isEmpty() && ctx.use_card) ctx.choice = ctx.use_card->tag.value("FiveLinesMode").toString();
+        if (ctx.choice.isEmpty() && ctx.use_card) ctx.choice = ctx.use_card->getTag("FiveLinesMode").toString();
         ctx.manual_effect = true;
         if (ctx.choice == "kurou") skillEffect(ctx, ctx.invoker);
         else if (ctx.choice == "jieyin") {

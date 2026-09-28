@@ -3482,7 +3482,7 @@ public:
     static QStringList unclaimedGenerals(Room *room, ServerPlayer *victim)
     {
         if (!victim) return {};
-        const QStringList claimed = victim->tag.value("HShiluClaimed").toStringList();
+        const QStringList claimed = victim->getTag("HShiluClaimed").toStringList();
         QStringList result;
         for (const QString &name : QStringList{victim->getActualGeneral1Name(), victim->getActualGeneral2Name()}) {
             if (name.isEmpty() || name.contains("sujiang") || claimed.contains(name) || result.contains(name)) continue;
@@ -3496,7 +3496,7 @@ public:
     bool recordEvent(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
     {
         if (event == BuryVictim && player && player == data.value<DeathStruct>().who)
-            player->tag.remove("HShiluClaimed");
+            player->removeTag("HShiluClaimed");
         return true;
     }
     int getPriority(TriggerEvent event) const override
@@ -3615,10 +3615,10 @@ public:
 
             player->addGeneralToPile("massacre", generals);
             // addGeneralToPile commits synchronously; only actual received corpse cards are claimed.
-            QStringList claimed = target->tag.value("HShiluClaimed").toStringList();
+            QStringList claimed = target->getTag("HShiluClaimed").toStringList();
             for (const QString &name : corpse)
                 if (player->getGeneralPile("massacre").contains(name) && !claimed.contains(name)) claimed << name;
-            target->tag.insert("HShiluClaimed", claimed);
+            target->setTag("HShiluClaimed", claimed);
 
         } else if (triggerEvent == EventPhaseStart) {
             player->drawCards(ctx.extra_data.toList().size() * getEffectiveAmount(ctx), objectName());
@@ -3783,7 +3783,7 @@ public:
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
     {
         if (event != EventPhaseStart || !player || player->getPhase() != Player::RoundStart) return true;
-        const QVariantList expired = player->tag.take("HCongchaReceipts").toList();
+        const QVariantList expired = ({ QVariant _tag_take = player->getTag("HCongchaReceipts"); player->removeTag("HCongchaReceipts"); _tag_take; }).toList();
         for (const QVariant &value : expired) {
             ServerPlayer *target = room->findPlayerByObjectName(value.toMap().value("target").toString());
             if (target) room->removePlayerMark(target, "##congcha");
@@ -3817,11 +3817,11 @@ public:
             DrawStruct draw = ctx.original_data->value<DrawStruct>(); draw.num += 2 * getEffectiveAmount(ctx);
             *ctx.original_data = QVariant::fromValue(draw);
         } else if (!target->hasShownOneGeneral()) {
-            QVariantList receipts = ctx.owner->tag.value("HCongchaReceipts").toList();
+            QVariantList receipts = ctx.owner->getTag("HCongchaReceipts").toList();
             receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
                 {"instance", ctx.sourceRef.key.instanceID}, {"target", target->objectName()},
                 {"amount", getEffectiveAmount(ctx)}, {"dispatch", lordExReceiptId(ctx.owner)}};
-            ctx.owner->tag.insert("HCongchaReceipts", receipts);
+            ctx.owner->setTag("HCongchaReceipts", receipts);
             room->addPlayerMark(target, "##congcha");
         }
         return false;
@@ -3845,15 +3845,15 @@ public:
         // Consume on the first reveal even if the eventual continuation is intercepted.
         for (ServerPlayer *owner : room->getAllPlayers(true)) {
             QVariantList kept;
-            for (const QVariant &value : owner->tag.value("HCongchaReceipts").toList()) {
+            for (const QVariant &value : owner->getTag("HCongchaReceipts").toList()) {
                 QVariantMap receipt = value.toMap();
                 if (receipt.value("target").toString() != player->objectName()) { kept << value; continue; }
                 receipt.insert("actor", owner->objectName()); receipt.insert("event", key); pending << receipt;
                 ++consumed;
             }
-            owner->tag.insert("HCongchaReceipts", kept);
+            owner->setTag("HCongchaReceipts", kept);
         }
-        player->tag.insert(key, pending);
+        player->setTag(key, pending);
         // Publish all consumption before MarkChange can re-enter another reveal.
         if (consumed > 0) room->removePlayerMark(player, "##congcha", consumed);
         return true;
@@ -3861,7 +3861,7 @@ public:
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data, QList<SkillContext> &contexts) const override
     {
         if (!player || !player->isAlive()) return true;
-        for (const QVariant &value : player->tag.value(eventKey(room)).toList()) {
+        for (const QVariant &value : player->getTag(eventKey(room)).toList()) {
             const QVariantMap receipt = value.toMap();
             ServerPlayer *owner = room->findPlayerByObjectName(receipt.value("actor").toString());
             if (!owner || !owner->isAlive()) continue;
@@ -3874,7 +3874,7 @@ public:
         return true;
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
-    { return ctx.owner && ctx.owner->isAlive() && ctx.invoker && ctx.invoker->tag.value(ctx.extra_data.toMap().value("event").toString()).toList().contains(ctx.extra_data); }
+    { return ctx.owner && ctx.owner->isAlive() && ctx.invoker && ctx.invoker->getTag(ctx.extra_data.toMap().value("event").toString()).toList().contains(ctx.extra_data); }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
@@ -4027,11 +4027,11 @@ public:
             const QVariantMap receipt = death.damage->card->getTag("HXisheReceipt").toMap();
             if (receipt.isEmpty()) return true;
             ServerPlayer *actor = death.damage->from;
-            QVariantList receipts = actor->tag.value("HXisheKills").toList();
+            QVariantList receipts = actor->getTag("HXisheKills").toList();
             if (!receipts.contains(receipt)) receipts << receipt;
-            actor->tag.insert("HXisheKills", receipts);
+            actor->setTag("HXisheKills", receipts);
         } else if (event == EventPhaseStart && player && player->getPhase() == Player::RoundStart) {
-            for (ServerPlayer *actor : room->getAllPlayers(true)) actor->tag.remove("HXisheKills");
+            for (ServerPlayer *actor : room->getAllPlayers(true)) actor->removeTag("HXisheKills");
         }
         return true;
     }
@@ -4087,7 +4087,7 @@ public:
         if (data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
         for (ServerPlayer *actor : room->getAlivePlayers()) {
             if (!actor->canTransform() || actor->getMark("xishetransformUsed") > 0) continue;
-            for (const QVariant &value : actor->tag.value("HXisheKills").toList()) {
+            for (const QVariant &value : actor->getTag("HXisheKills").toList()) {
                 const QVariantMap receipt = value.toMap();
                 SkillContext ctx; ctx.skill_name = objectName(); ctx.owner = ctx.invoker = ctx.initiator = actor;
                 ctx.sourceRef = SkillInstanceRef(receipt.value("owner").toString(), SkillInstanceKey(receipt.value("skill").toString(), receipt.value("instance").toInt()));
@@ -4098,7 +4098,7 @@ public:
         return true;
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
-    { return ctx.owner && ctx.owner->getMark("xishetransformUsed") == 0 && ctx.owner->tag.value("HXisheKills").toList().contains(ctx.extra_data); }
+    { return ctx.owner && ctx.owner->getMark("xishetransformUsed") == 0 && ctx.owner->getTag("HXisheKills").toList().contains(ctx.extra_data); }
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     { return lordExChoice(room, ctx.owner, "transform_xishe", "yes+no", QVariant(), "@transform-ask:::xishe") == "yes"; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
@@ -4533,7 +4533,7 @@ public:
     HJuejue() : TriggerSkillV2("heg_juejue") { events << EventPhaseStart << EventPhaseChanging; global = true; }
     bool recordEvent(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
     {
-        if (event == EventPhaseChanging && player) player->tag.remove("HJuejueReceipts");
+        if (event == EventPhaseChanging && player) player->removeTag("HJuejueReceipts");
         return true;
     }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
@@ -4549,10 +4549,10 @@ public:
     { ctx.targets = {ctx.owner}; return false; }
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        QVariantList receipts = target->tag.value("HJuejueReceipts").toList();
+        QVariantList receipts = target->getTag("HJuejueReceipts").toList();
         receipts << QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
             {"instance", ctx.sourceRef.key.instanceID}, {"amount", getEffectiveAmount(ctx)}, {"dispatch", lordExReceiptId(target)}};
-        target->tag.insert("HJuejueReceipts", receipts);
+        target->setTag("HJuejueReceipts", receipts);
         return false;
     }
 };
@@ -4566,7 +4566,7 @@ public:
         if (!player || !player->isAlive() || player->getPhase() != Player::Discard) return true;
         const int discarded = lordExDiscardCount(player, true);
         if (discarded <= 0) return true;
-        for (const QVariant &value : player->tag.value("HJuejueReceipts").toList()) {
+        for (const QVariant &value : player->getTag("HJuejueReceipts").toList()) {
             const QVariantMap receipt = value.toMap();
             SkillContext ctx; ctx.skill_name = objectName(); ctx.owner = ctx.invoker = ctx.initiator = player;
             ctx.sourceRef = SkillInstanceRef(receipt.value("owner").toString(), SkillInstanceKey(receipt.value("skill").toString(), receipt.value("instance").toInt()));
@@ -4577,7 +4577,7 @@ public:
         return true;
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
-    { return ctx.owner && ctx.owner->tag.value("HJuejueReceipts").toList().contains(ctx.extra_data); }
+    { return ctx.owner && ctx.owner->getTag("HJuejueReceipts").toList().contains(ctx.extra_data); }
     bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     { ctx.targets = room->getOtherPlayers(ctx.owner); return false; }
@@ -4862,9 +4862,9 @@ public:
         for (ServerPlayer *other : room->getAlivePlayers()) if (ctx.owner->isFriendWith(other)) choices << other;
         if (choices.isEmpty()) return false;
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        const QVariant old = ctx.owner->tag.value("tongling-damage");
-        ctx.owner->tag.insert("tongling-damage", *ctx.original_data);
-        const auto restore = qScopeGuard([&] { if (old.isValid()) ctx.owner->tag.insert("tongling-damage", old); else ctx.owner->tag.remove("tongling-damage"); });
+        const QVariant old = ctx.owner->getTag("tongling-damage");
+        ctx.owner->setTag("tongling-damage", *ctx.original_data);
+        const auto restore = qScopeGuard([&] { if (old.isValid()) ctx.owner->setTag("tongling-damage", old); else ctx.owner->removeTag("tongling-damage"); });
         ServerPlayer *target = room->askForPlayerChosen(ctx.owner, choices, objectName(), "@tongling-invoke::" + damage.to->objectName(), true, true);
         if (!target) return false;
         ctx.targets = {target}; return true;
@@ -4886,11 +4886,11 @@ public:
         Room::AcceptedViewAsEffectScope borrowed(room, target, "heg_tongling_usecard", ctx);
         if (!borrowed.isValid()) return false;
         const auto prompt = lordExPromptScope(room, target, borrowed.activationRef());
-        const QVariant oldTarget = target->property("tongling_usetarget"), oldDamage = target->tag.value("tongling-damage");
-        room->setPlayerProperty(target, "tongling_usetarget", damage.to->objectName()); target->tag.insert("tongling-damage", *ctx.original_data);
+        const QVariant oldTarget = target->property("tongling_usetarget"), oldDamage = target->getTag("tongling-damage");
+        room->setPlayerProperty(target, "tongling_usetarget", damage.to->objectName()); target->setTag("tongling-damage", *ctx.original_data);
         const auto restore = qScopeGuard([&] {
             room->setPlayerProperty(target, "tongling_usetarget", oldTarget);
-            if (oldDamage.isValid()) target->tag.insert("tongling-damage", oldDamage); else target->tag.remove("tongling-damage");
+            if (oldDamage.isValid()) target->setTag("tongling-damage", oldDamage); else target->removeTag("tongling-damage");
         });
         const CardUseStruct used = room->askForUseCardStruct(target, "@@heg_tongling_usecard", "@tongling-usecard::" + damage.to->objectName(), -1, Card::MethodUse, false);
         const qint64 useId = used.targetModReveal.useHistoryEventId;

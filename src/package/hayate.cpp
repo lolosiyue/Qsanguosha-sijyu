@@ -499,7 +499,7 @@ public:
     bool cost(TriggerEvent, Room *, ServerPlayer *owner, SkillContext &ctx) const override
     {
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
-        ctx.choice = owner->askForChoice(objectName(), "youdraw+hedraws");
+        ctx.choice = owner->getRoom()->askForChoice(owner, objectName(), "youdraw+hedraws");
         ctx.targets << (ctx.choice == "youdraw" ? owner : ctx.invoker);
         return true;
     }
@@ -558,7 +558,7 @@ public:
     {
         return request.selectedCardIds.isEmpty() && card && card->getEffectiveId() >= 0
             && !card->hasFlag("using") && request.initiator
-            && request.initiator->getCards("h").contains(card);
+            && request.initiator->handCards().contains(card->getEffectiveId());
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
@@ -960,7 +960,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         return request.selectedCardIds.isEmpty() && card && card->getEffectiveId() >= 0 && !card->hasFlag("using")
-            && request.initiator && request.initiator->getCards("h").contains(card);
+            && request.initiator && request.initiator->handCards().contains(card->getEffectiveId());
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
@@ -1207,17 +1207,17 @@ public:
         }
         if (!owner->isAlive()) return true;
         room->doLightbox(objectName() + "$", 800);
-        const bool hp = room->askForChoice(owner, objectName(), "rennai_hp+rennai_handcardnum") == "rennai_hp";
+        const bool hp = owner->getRoom()->askForChoice(owner, objectName(), "rennai_hp+rennai_handcardnum") == "rennai_hp";
         QStringList choices;
         for (ServerPlayer *candidate : room->getAlivePlayers()) {
             const QString value = QString::number(hp ? candidate->getHp() : candidate->getHandcardNum());
             if (!choices.contains(value)) choices << value;
         }
         const QString kind = hp ? "hp" : "handcardnum";
-        const int value = room->askForChoice(owner, objectName(), choices.join('+'), kind).toInt();
+        const int value = owner->getRoom()->askForChoice(owner, objectName(), choices.join('+'), kind).toInt();
         SkillContext freeze = ctx;
         freeze.targets.clear();
-        freeze.choice = room->askForChoice(owner, objectName(), "rennai_gain+rennai_lose", kind + '+' + QString::number(value));
+        freeze.choice = owner->getRoom()->askForChoice(owner, objectName(), "rennai_gain+rennai_lose", kind + '+' + QString::number(value));
         for (ServerPlayer *candidate : room->getAlivePlayers())
             if ((hp ? candidate->getHp() : candidate->getHandcardNum()) == value) freeze.targets << candidate;
         // Every chosen recipient participates in the V2 target interception path.
@@ -1715,7 +1715,7 @@ public:
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     {
         return card && card->getEffectiveId() >= 0 && !card->hasFlag("using") && request.initiator
-            && !request.selectedCardIds.contains(card->getEffectiveId()) && request.initiator->getCards("he").contains(card);
+            && !request.selectedCardIds.contains(card->getEffectiveId()) && request.initiator->hasCard(card);
     }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
@@ -1861,7 +1861,7 @@ public:
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
         QStringList choices{"1_Zuozhan", "2_Zuozhan", "3_Zuozhan", "4_Zuozhan"}, order;
         while (choices.size() > 1) {
-            const QString choice = room->askForChoice(owner, QString("zuozhan%1%from:").arg(order.size() + 1)
+            const QString choice = owner->getRoom()->askForChoice(owner, QString("zuozhan%1%from:").arg(order.size() + 1)
                 + ctx.invoker->objectName(), choices.join('+'));
             if (!choices.contains(choice)) return false;
             order << choice; choices.removeAll(choice);
@@ -2046,7 +2046,7 @@ public:
         owner->setTag("MengxianJudge", QVariantMap{{"owner", ctx.sourceRef.ownerObjectName}, {"skill", ctx.sourceRef.key.skillName},
             {"instance", ctx.sourceRef.key.instanceID}, {"execution", ctx.executionID}});
         do {
-            const QString choice = room->askForChoice(owner, objectName(), owner->canDiscard(owner, "h") ? "basic+trick+equip" : "basic+trick");
+            const QString choice = owner->getRoom()->askForChoice(owner, objectName(), owner->canDiscard(owner, "h") ? "basic+trick+equip" : "basic+trick");
             if (choice == "equip") {
                 const int id = room->askForCardChosen(owner, owner, "h", objectName(), false, Card::MethodDiscard);
                 if (id < 0 || room->getCardOwner(id) != owner || room->getCardPlace(id) != Player::PlaceHand
@@ -2622,7 +2622,7 @@ public:
     { return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator->isAlive(); }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
     { return request.selectedCardIds.isEmpty() && card && card->isKindOf("EquipCard") && card->getEffectiveId() >= 0
-        && !card->hasFlag("using") && request.initiator && request.initiator->getCards("he").contains(card); }
+        && !card->hasFlag("using") && request.initiator && request.initiator->hasCard(card); }
     bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
     {
         if (request.selectedCardIds.size() != 1) return false;
@@ -3093,7 +3093,7 @@ public:
         if (event == Damaged) { ctx.choice = "clear"; ctx.targets << owner; return true; }
         if (!owner->askForSkillInvoke(this, *ctx.original_data)) return false;
         const int charge = owner->getSkillInstanceStateValue(objectName(), ctx.instanceID, "charge").toInt();
-        ctx.choice = owner->askForChoice(objectName(), charge > 0 ? "juhe_skip+juhe_lose" : "juhe_skip", *ctx.original_data);
+        ctx.choice = owner->getRoom()->askForChoice(owner, objectName(), charge > 0 ? "juhe_skip+juhe_lose" : "juhe_skip", *ctx.original_data);
         ctx.targets << (ctx.choice == "juhe_skip" ? owner : room->askForPlayerChosen(owner, room->getAlivePlayers(), objectName()));
         return true;
     }
@@ -3148,7 +3148,7 @@ public:
         for (int id : owner->handCards()) if (owner->canDiscard(owner, id)) ++available;
         QStringList choices;
         for (int n = 0; n <= qMin(2, available); ++n) choices << QString::number(n);
-        const int count = room->askForChoice(owner, objectName(), choices.join('+'), *ctx.original_data).toInt();
+        const int count = owner->getRoom()->askForChoice(owner, objectName(), choices.join('+'), *ctx.original_data).toInt();
         const QList<int> selected = count > 0 ? room->askForCardsChosen(owner, owner, "h", objectName(), count, count,
             false, Card::MethodDiscard, {}, false) : QList<int>();
         if (selected.size() != count) return false;

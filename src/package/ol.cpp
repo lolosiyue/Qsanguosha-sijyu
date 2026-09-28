@@ -553,7 +553,6 @@ class OLMumu : public OneCardViewAsSkill
 public:
 	OLMumu() : OneCardViewAsSkill("olmumu")
 	{
-		filter_pattern = "Slash#TrickCard|black!";
 	}
 
 	const Card*viewAs(const Card*originalCard) const
@@ -739,7 +738,6 @@ class OLMumu2VS : public OneCardViewAsSkill
 public:
 	OLMumu2VS() : OneCardViewAsSkill("olmumu2")
 	{
-		filter_pattern = ".!";
 	}
 
 	bool isEnabledAtPlay(const Player*player) const
@@ -3465,7 +3463,7 @@ public:
 		const CardUseStruct use = data.value<CardUseStruct>();
 		if (!use.card) return event != CardUsed;
 		if (event == CardFinished) {
-			use.card->tag.remove("ZiruoEligibleSources");
+			use.card->removeTag("ZiruoEligibleSources");
 			return true;
 		}
 		if (event != PreCardUsed) return false;
@@ -3483,7 +3481,7 @@ public:
 			}
 		}
 		// A use-local receipt freezes which source's hand edge matched before material movement.
-		use.card->tag["ZiruoEligibleSources"] = QVariantMap{{"owner", player ? player->objectName() : QString()}, {"sources", eligible}};
+		use.card->setTag("ZiruoEligibleSources", QVariantMap{{"owner", player ? player->objectName() : QString()}, {"sources", eligible}});
 		return true;
 	}
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
@@ -3492,7 +3490,7 @@ public:
 		if (event != CardUsed || !player || !player->isAlive() || !player->hasSkill(objectName())) return result;
 		const CardUseStruct use = data.value<CardUseStruct>();
 		if (!use.card) return result;
-		const QVariantMap receipt = use.card->tag.value("ZiruoEligibleSources").toMap();
+		const QVariantMap receipt = use.card->getTag("ZiruoEligibleSources").toMap();
 		if (receipt.value("owner").toString() == player->objectName())
 			result[player] = receipt.value("sources").toStringList();
 		return result;
@@ -5681,7 +5679,7 @@ public:
 		if (!duel->isAvailable(source) || source->isCardLimited(duel.get(), Card::MethodUse)
 			|| source->isProhibited(target, duel.get())) return ContinueEffects;
 		duel->setFlags("YUANBEN");
-		CardUseStruct use; use.setOwnedCard(std::move(duel)); use.from = source; use.to << target;
+		CardUseStruct use; use.setOwnedCard(duel.release()); use.from = source; use.to << target;
 		room->useCardFromSkillEffect(use, ctx, true);
 		return ContinueEffects;
 	}
@@ -6133,7 +6131,6 @@ public:
 	{
 		expand_pile = "spzhxuan";
 		response_pattern = "@@zhouxuanz";
-		filter_pattern = ".|.|.|spzhxuan";
 	}
 
 	const Card*viewAs(const Card*originalCard) const
@@ -10032,7 +10029,6 @@ class MoushiVS : public OneCardViewAsSkill
 public:
 	MoushiVS() :OneCardViewAsSkill("moushi")
 	{
-		filter_pattern = ".|.|.|hand";
 	}
 
 	bool isEnabledAtPlay(const Player*player) const
@@ -12303,7 +12299,6 @@ class ShefuViewAsSkill : public OneCardViewAsSkill
 public:
 	ShefuViewAsSkill() : OneCardViewAsSkill("shefu")
 	{
-		filter_pattern = ".|.|.|hand";
 		response_pattern = "@@shefu";
 	}
 
@@ -12784,7 +12779,6 @@ class OLLianji : public OneCardViewAsSkill
 public:
 	OLLianji() : OneCardViewAsSkill("ollianji")
 	{
-		filter_pattern = ".|.|.|hand!";
 	}
 
 	bool isEnabledAtPlay(const Player*player) const
@@ -15647,7 +15641,6 @@ class NewZhoufuVS : public OneCardViewAsSkill
 public:
 	NewZhoufuVS(const QString &zhoufu) : OneCardViewAsSkill(zhoufu), zhoufu(zhoufu)
 	{
-		filter_pattern = ".|.|.|hand";
 	}
 
 	bool isEnabledAtPlay(const Player*player) const
@@ -27721,7 +27714,7 @@ public:
 			auto slash = std::make_unique<Slash>(Card::NoSuit, 0);
 			slash->setSkillName("_suyi");
 			if (!ctx.invoker->canSlash(target, slash.get(), false)) continue;
-			use.setOwnedCard(std::move(slash)); use.from = ctx.invoker; use.to << target;
+			use.setOwnedCard(slash.release()); use.from = ctx.invoker; use.to << target;
 			room->useCardFromSkillEffect(use, ctx, true);
 		}
 		return ContinueEffects;

@@ -85,7 +85,7 @@ public:
         const Card *card = ViewAsSkillV2::createCard(request); if (!card || !request.initiator) return card;
         bool all = !request.initiator->isKongcheng();
         for (int id : request.initiator->handCards()) if (!request.selectedCardIds.contains(id)) all = false;
-        card->tag["MobileMouZhihengAll"] = all; return card;
+        card->setTag("MobileMouZhihengAll", all); return card;
     }
     EffectFlow effect(SkillContext &ctx) const override
 	{
@@ -95,7 +95,7 @@ public:
     }
     EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
     {
-        const bool all = ctx.use_card->tag.value("MobileMouZhihengAll").toBool();
+        const bool all = ctx.use_card->getTag("MobileMouZhihengAll").toBool();
         int count = ctx.use_card->subcardsLength();
         if (all) count += target->getMark("&mobilemouye") + 1;
         count *= getEffectiveAmount(ctx);
@@ -1814,13 +1814,13 @@ public:
         }
         if (event == CardFinished) {
             const Card *card = data.value<CardUseStruct>().card; if (!card) return false;
-            const qint64 serial = card->tag.value("MobileMouGongqiCard").toLongLong(); if (!serial) return false;
+            const qint64 serial = card->getTag("MobileMouGongqiCard").toLongLong(); if (!serial) return false;
             for (ServerPlayer *p : room->getAllPlayers(true)) {
                 QVariantList kept; for (const QVariant &value : p->getTag("MobileMouGongqiRestrictions").toList())
                     if (value.toMap().value("card").toLongLong() != serial) kept << value;
                 project(room, p, kept);
             }
-            card->tag.remove("MobileMouGongqiCard");
+            card->removeTag("MobileMouGongqiCard");
         }
         return false;
     }
@@ -1830,8 +1830,8 @@ public:
         const CardUseStruct use = data.value<CardUseStruct>();
         if (!actor || actor->isDead() || use.from != actor || !use.card || use.card->getTypeId() == Card::TypeSkill) return true;
         const QVariantList receipts = actor->getTag("MobileMouGongqiPhases").toList(); if (receipts.isEmpty()) return true;
-        qint64 serial = use.card->tag.value("MobileMouGongqiCard").toLongLong();
-        if (!serial) { serial = room->getTag("MobileMouGongqiSequence").toLongLong() + 1; room->setTag("MobileMouGongqiSequence", serial); use.card->tag["MobileMouGongqiCard"] = serial; }
+        qint64 serial = use.card->getTag("MobileMouGongqiCard").toLongLong();
+        if (!serial) { serial = room->getTag("MobileMouGongqiSequence").toLongLong() + 1; room->setTag("MobileMouGongqiSequence", serial); use.card->setTag("MobileMouGongqiCard", serial); }
         for (const QVariant &value : receipts) {
             QVariantMap receipt = value.toMap(); receipt["card"] = serial; receipt["beneficiary"] = actor->objectName();
             SkillContext ctx; ctx.skill_name = objectName(); ctx.owner = room->findPlayerByObjectName(receipt.value("owner").toString(), true);
@@ -2093,15 +2093,15 @@ public:
         QVariantMap receipt{{"serial",serial},{"use",useId},{"turn",room->historyScopes().value("turn_id")},{"suits",suits},{"damage",0},{"owner",ctx.activationRef.ownerObjectName},{"skill",ctx.activationRef.key.skillName},{"instance",ctx.activationRef.key.instanceID},
             {"source_owner",ctx.sourceRef.ownerObjectName},{"source_skill",ctx.sourceRef.key.skillName},{"source_instance",ctx.sourceRef.key.instanceID}};
         // Publish before revealing cards: interrupted/nested movement must still see the accepted attack.
-        QVariantList receipts = use.card->tag.value("MobileMouLiegongReceipts").toList(); receipts << receipt;
-        use.card->tag["MobileMouLiegongReceipts"] = receipts;
+        QVariantList receipts = use.card->getTag("MobileMouLiegongReceipts").toList(); receipts << receipt;
+        use.card->setTag("MobileMouLiegongReceipts", receipts);
         const int count = qMax(0,int(suits.size())-1) * getEffectiveAmount(ctx); int damage = 0;
         if (count > 0) for (int id : room->showDrawPile(target,count,objectName(),false)) if (suits.contains(Sanguosha->getCard(id)->getSuitString())) ++damage;
-        receipts = use.card->tag.value("MobileMouLiegongReceipts").toList(); bool retained = false;
+        receipts = use.card->getTag("MobileMouLiegongReceipts").toList(); bool retained = false;
         for (QVariant &value : receipts) if (value.toMap().value("serial").toLongLong() == serial) {
             receipt = value.toMap(); receipt["damage"] = damage; value = receipt; retained = true; break;
         }
-        use.card->tag["MobileMouLiegongReceipts"] = receipts;
+        use.card->setTag("MobileMouLiegongReceipts", receipts);
         if (retained && count > 0 && use.to.first()->isAlive()) { ctx.choice = "restrict"; ctx.extra_data = receipt; skillEffect(event,room,actor,ctx,use.to.first()); }
         return false;
     }
@@ -2134,12 +2134,12 @@ public:
         const Card *card = event == CardFinished ? data.value<CardUseStruct>().card : data.value<CardEffectStruct>().card; if (!card) return false;
         const qint64 useId = room->historyParent(room->currentHistoryEventId(),"use_card",true).value("id").toLongLong(); if (useId <= 0) return false;
         QVariantList kept, matching;
-        for (const QVariant &value : card->tag.value("MobileMouLiegongReceipts").toList()) {
+        for (const QVariant &value : card->getTag("MobileMouLiegongReceipts").toList()) {
             if (value.toMap().value("use").toLongLong() == useId) matching << value;
             else kept << value;
         }
         // Publish the removal before state/mark callbacks may create a nested receipt.
-        if (event == CardFinished) card->tag["MobileMouLiegongReceipts"] = kept;
+        if (event == CardFinished) card->setTag("MobileMouLiegongReceipts", kept);
         for (const QVariant &value : matching) {
             const QVariantMap receipt = value.toMap();
             if (event == CardFinished) { ServerPlayer *owner = room->findPlayerByObjectName(receipt.value("owner").toString(),true);
@@ -2156,7 +2156,7 @@ public:
     {
         if (event != ConfirmDamage) return true; const DamageStruct damage = data.value<DamageStruct>(); if (!damage.card || !damage.to || damage.to->isDead()) return true;
         const qint64 useId = room->historyParent(room->currentHistoryEventId(),"use_card",true).value("id").toLongLong(); if (useId <= 0) return true;
-        for (const QVariant &value : damage.card->tag.value("MobileMouLiegongReceipts").toList()) {
+        for (const QVariant &value : damage.card->getTag("MobileMouLiegongReceipts").toList()) {
             const QVariantMap receipt = value.toMap(); if (receipt.value("use").toLongLong() != useId || receipt.value("damage").toInt() <= 0) continue;
             SkillContext ctx; ctx.skill_name = objectName(); ctx.owner = room->findPlayerByObjectName(receipt.value("owner").toString(),true); ctx.initiator = ctx.owner; ctx.invoker = damage.from;
             ctx.instanceID = receipt.value("serial").toInt(); ctx.sourceRef = SkillInstanceRef(receipt.value("source_owner").toString(),SkillInstanceKey(receipt.value("source_skill").toString(),receipt.value("source_instance").toInt()));
@@ -2165,7 +2165,7 @@ public:
         return true;
     }
     bool isSourceAvailable(Room *, const SkillContext &ctx) const override
-    { const DamageStruct damage = ctx.original_data->value<DamageStruct>(); return damage.card && damage.card->tag.value("MobileMouLiegongReceipts").toList().contains(ctx.extra_data); }
+    { const DamageStruct damage = ctx.original_data->value<DamageStruct>(); return damage.card && damage.card->getTag("MobileMouLiegongReceipts").toList().contains(ctx.extra_data); }
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
     bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     { DamageStruct damage = ctx.original_data->value<DamageStruct>(); if (damage.to == target) { damage.damage += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(damage); } return false; }
@@ -2948,7 +2948,7 @@ public:
         const ServerPlayer *server = qobject_cast<const ServerPlayer *>(request.initiator);
         const QVariantMap origin = server ? server->getTag("MobileMouJingcePromptOrigin").toMap() : QVariantMap();
         if (server && origin.isEmpty()) return nullptr;
-        const Card *card = ViewAsSkillV2::createCard(request); if (card) card->tag["MobileMouJingceOrigin"] = origin; return card;
+        const Card *card = ViewAsSkillV2::createCard(request); if (card) card->setTag("MobileMouJingceOrigin", origin); return card;
     }
     bool willThrowSelectedCards() const override { return false; }
     bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
@@ -2979,7 +2979,7 @@ public:
         for (int i = 0; i < ids.size(); ++i) {
             const int id = ids.at(i); if (!ctx.initiator->getPile(objectName()).contains(id)) continue;
             const qint64 serial = room->getTag("MobileMouJingceSequence").toLongLong() + 1; room->setTag("MobileMouJingceSequence", serial);
-            const QVariantMap origin = ctx.use_card->tag.value("MobileMouJingceOrigin").toMap();
+            const QVariantMap origin = ctx.use_card->getTag("MobileMouJingceOrigin").toMap();
             QVariantMap receipt{{"main_owner",origin.value("owner")},{"main_instance",origin.value("instance")},{"serial", serial}, {"card", id}, {"target", predictions.value(QString::number(id))}, {"amount", (i + 1) * getEffectiveAmount(ctx)},
                 {"owner", ctx.activationRef.ownerObjectName}, {"skill", ctx.activationRef.key.skillName}, {"instance", ctx.activationRef.key.instanceID},
                 {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName}, {"source_instance", ctx.sourceRef.key.instanceID}};
@@ -3702,11 +3702,11 @@ public:
     {
         const QString receiptKey = key(room); if (receiptKey.isEmpty()) return false;
         const Card *card = nullptr;
-        if (event == CardFinished) { card = data.value<CardUseStruct>().card; if (card) card->tag.remove(receiptKey); return false; }
+        if (event == CardFinished) { card = data.value<CardUseStruct>().card; if (card) card->removeTag(receiptKey); return false; }
         if (event == CardResponded) { const CardResponseStruct response = data.value<CardResponseStruct>(); if (response.m_card && response.m_card->isKindOf("Slash")) card = response.m_toCard; }
         else if (event == CardUsed) { const CardUseStruct use = data.value<CardUseStruct>(); if (use.card && use.card->isKindOf("Jink")) card = use.whocard; }
-        if (card && actor) { QVariantMap receipt = card->tag.value(receiptKey).toMap(); if (receipt.isEmpty()) return false;
-            QStringList used = receipt.value("used").toStringList(); if (!used.contains(actor->objectName())) used << actor->objectName(); receipt["used"] = used; card->tag[receiptKey] = receipt; }
+        if (card && actor) { QVariantMap receipt = card->getTag(receiptKey).toMap(); if (receipt.isEmpty()) return false;
+            QStringList used = receipt.value("used").toStringList(); if (!used.contains(actor->objectName())) used << actor->objectName(); receipt["used"] = used; card->setTag(receiptKey, receipt); }
         return false;
     }
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *actor, QVariant &data, QList<SkillContext> &contexts) const override
@@ -3715,7 +3715,7 @@ public:
         const Card *card = event == CardResponded ? data.value<CardResponseStruct>().m_toCard : data.value<DamageStruct>().card;
         ServerPlayer *target = event == CardResponded ? actor : data.value<DamageStruct>().to;
         const QString receiptKey = key(room); if (!card || !target || target->isDead() || receiptKey.isEmpty()) return true;
-        const QVariantMap state = card->tag.value(receiptKey).toMap();
+        const QVariantMap state = card->getTag(receiptKey).toMap();
         if (event == CardResponded && (!card->isKindOf("Duel") || state.value("responding").toStringList().contains(target->objectName()))) return true;
         if (event == ConfirmDamage && state.value("used").toStringList().contains(target->objectName())) return true;
         QVariantList receipts;
@@ -3740,7 +3740,7 @@ public:
         if (!ctx.original_data || !ctx.invoker || ctx.invoker->isDead()) return false;
         const Card *card = ctx.choice == "respond" ? ctx.original_data->value<CardResponseStruct>().m_toCard : ctx.original_data->value<DamageStruct>().card;
         if (!card) return false; QVariantMap receipt = ctx.extra_data.toMap(); const QString receiptKey = receipt.take("key").toString();
-        return card->tag.value(receiptKey).toMap().value("sources").toList().contains(receipt);
+        return card->getTag(receiptKey).toMap().value("sources").toList().contains(receipt);
     }
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *actor, QVariant &data) const override
     {
@@ -3762,9 +3762,9 @@ public:
         if (event == ConfirmDamage) { DamageStruct damage = ctx.original_data->value<DamageStruct>(); if (damage.to == target) { damage.damage += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(damage); } return false; }
         if (event == CardResponded) {
             CardResponseStruct response = ctx.original_data->value<CardResponseStruct>(); const Card *card = response.m_toCard; if (!card || !response.m_who) return false;
-            const QString receiptKey = ctx.extra_data.toMap().value("key").toString(); QVariantMap state = card->tag.value(receiptKey).toMap(); const QStringList previous = state.value("responding").toStringList();
-            QStringList responding = previous; responding << target->objectName(); state["responding"] = responding; card->tag[receiptKey] = state;
-            const auto restore = qScopeGuard([&] { QVariantMap current = card->tag.value(receiptKey).toMap(); current["responding"] = previous; card->tag[receiptKey] = current; });
+            const QString receiptKey = ctx.extra_data.toMap().value("key").toString(); QVariantMap state = card->getTag(receiptKey).toMap(); const QStringList previous = state.value("responding").toStringList();
+            QStringList responding = previous; responding << target->objectName(); state["responding"] = responding; card->setTag(receiptKey, state);
+            const auto restore = qScopeGuard([&] { QVariantMap current = card->getTag(receiptKey).toMap(); current["responding"] = previous; card->setTag(receiptKey, current); });
             CardEffectStruct effect; effect.card = card; effect.from = response.m_who; effect.to = target;
             for (int i = 0; i < getEffectiveAmount(ctx) && target->isAlive(); ++i)
                 if (!room->askForCard(target, "slash", "duel-slash:" + response.m_who->objectName(), QVariant::fromValue(effect), Card::MethodResponse, response.m_who, false, "", false, card)) {
@@ -3778,10 +3778,10 @@ public:
             if (index >= 0 && index < jinks.size() && jinks.at(index).toInt() > 0) { jinks[index] = qMax(jinks.at(index).toInt(), 1 + amount); use.from->setTag("Jink_" + use.card->toString(), jinks); }
         }
         const qint64 serial = room->getTag("MobileMouWushuangSequence").toLongLong() + 1; room->setTag("MobileMouWushuangSequence", serial);
-        QVariantMap state = use.card->tag.value(receiptKey).toMap(); QVariantList sources = state.value("sources").toList();
+        QVariantMap state = use.card->getTag(receiptKey).toMap(); QVariantList sources = state.value("sources").toList();
         sources << QVariantMap{{"serial", serial}, {"target", target->objectName()}, {"amount", amount}, {"owner", ctx.activationRef.ownerObjectName}, {"skill", ctx.activationRef.key.skillName}, {"instance", ctx.activationRef.key.instanceID},
             {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName}, {"source_instance", ctx.sourceRef.key.instanceID}};
-        state["sources"] = sources; use.card->tag[receiptKey] = state; return false;
+        state["sources"] = sources; use.card->setTag(receiptKey, state); return false;
     }
 };
 

@@ -1168,7 +1168,7 @@ public:
         if (!ctx.invoker || !ctx.invoker->isAlive()) return false;
         if (ctx.choice == "draw") { target->drawCards(ctx.extra_data.toInt() * getEffectiveAmount(ctx), objectName()); return false; }
         const int id = ctx.extra_data.toInt(); const Card *card = Sanguosha->getCard(id);
-        if (!card || room->getCardOwner(id) != ctx.invoker || !ctx.invoker->getCards("he").contains(card) || card->hasFlag("using")) return false;
+        if (!card || room->getCardOwner(id) != ctx.invoker || !ctx.invoker->hasCard(card) || card->hasFlag("using")) return false;
         const int draw = card->isKindOf("EquipCard") ? 2 : 1;
         room->obtainCard(target, card, CardMoveReason(CardMoveReason::S_REASON_GIVE, ctx.invoker->objectName(), target->objectName(), objectName(), ""), false);
         ctx.choice = "draw"; ctx.extra_data = draw;

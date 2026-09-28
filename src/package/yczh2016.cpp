@@ -189,7 +189,7 @@ public:
         if (!cardSelectionFeasible(request)) return nullptr;
         if (!conversion(request)) {
             ActiveSkillCard *card = new ActiveSkillCard; card->setActiveSkill(this); card->setSkillName(objectName()); card->addSubcards(request.selectedCardIds);
-            card->tag["jiaozhao_level"] = qBound(0, state(request).value("level").toInt(), 2); return card;
+            card->setTag("jiaozhao_level", qBound(0, state(request).value("level").toInt(), 2)); return card;
         }
         Card *card = Sanguosha->cloneCard(state(request).value("declaration").toString());
         if (card) { card->setSkillName(objectName()); card->setCanRecast(false); card->addSubcards(request.selectedCardIds); }
@@ -253,7 +253,7 @@ public:
         if (!ctx.use_card || ctx.use_card->getSubcards().size() != 1 || getEffectiveAmount(ctx) <= 0) return ContinueEffects;
         const int material = ctx.use_card->getSubcards().first();
         if (room->getCardOwner(material) != target || room->getCardPlace(material) != Player::PlaceHand || Sanguosha->getCard(material)->hasFlag("using")) return ContinueEffects;
-        const int level = qBound(0, ctx.use_card->tag.value("jiaozhao_level").toInt(), 2);
+        const int level = qBound(0, ctx.use_card->getTag("jiaozhao_level").toInt(), 2);
         room->showCard(target, material);
         ServerPlayer *declarer = target;
         if (level < 2) {

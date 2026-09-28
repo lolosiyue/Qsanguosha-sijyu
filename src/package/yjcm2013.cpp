@@ -1892,19 +1892,19 @@ public:
         NosRenxinCard *card = new NosRenxinCard;
         if (const ServerPlayer *player = qobject_cast<const ServerPlayer *>(request.initiator)) {
             const ServerPlayer *dying = player->getRoom()->getCurrentDyingPlayer();
-            card->tag["NosRenxinDying"] = dying ? dying->objectName() : QString();
+            card->setTag("NosRenxinDying", dying ? dying->objectName() : QString());
             QVariantList ids;
             for (int id : player->handCards()) ids << id;
-            card->tag["NosRenxinHand"] = ids;
+            card->setTag("NosRenxinHand", ids);
         }
         return card;
     }
     bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override
     {
         if (!ctx.initiator || !ctx.use_card) return false;
-        const QString name = ctx.use_card->tag.value("NosRenxinDying").toString();
+        const QString name = ctx.use_card->getTag("NosRenxinDying").toString();
         ServerPlayer *dying = name.isEmpty() ? nullptr : room->findPlayerByObjectName(name, true);
-        const QVariantList ids = ctx.use_card->tag.value("NosRenxinHand").toList();
+        const QVariantList ids = ctx.use_card->getTag("NosRenxinHand").toList();
         if (!dying || !dying->isAlive() || ids.isEmpty()) return false;
         for (const QVariant &value : ids) {
             const int id = value.toInt();
@@ -1928,7 +1928,7 @@ public:
     EffectFlow effect(SkillContext &ctx) const override
     {
         if (!ctx.initiator || !ctx.use_card) return FinishSkill;
-        const QString name = ctx.use_card->tag.value("NosRenxinDying").toString();
+        const QString name = ctx.use_card->getTag("NosRenxinDying").toString();
         ServerPlayer *dying = name.isEmpty() ? nullptr : ctx.initiator->getRoom()->findPlayerByObjectName(name, true);
         if (dying) skillEffect(ctx, dying);
         return FinishSkill;
