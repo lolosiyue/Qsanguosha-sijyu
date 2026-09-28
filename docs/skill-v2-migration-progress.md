@@ -49,8 +49,8 @@
 
 | 範圍 | 下一步與已知限制 |
 | --- | --- |
-| `mobile` | Fuman 配額改按 phase id 保存，結束內層出牌階段不再清掉外層；摸牌歸交牌者，該【殺】在受益者下一個回合結束時失效。Zhuhe 護甲分支錯寫成 `zhuhe2` 已改回 `zhuhe3`。牌來源仍待裁定：正文是從牌堆獲得並使用，C++ 仍從棄牌堆直接使用。其餘 legacy 家族未遷移 |
-| `mobileshiji` | Xingzhen 不遷移：正文是牌堆頂 7 張可見並當基本／錦囊使用，C++ 是另一套換牌／觀星／殺流程，已留 TODO。Mouli／Miewu 完成事件與 Yaohu 階段收據已讀，沿用 CardFinished／PostCardResponded／phase id，本輪未改。全檔其餘生命週期未結案 |
+| `mobile` | Fuman 配額改按 phase id 保存，結束內層出牌階段不再清掉外層；摸牌歸交牌者，該【殺】在受益者下一個回合結束時失效。Zhuhe 護甲分支維持 `zhuhe3`。Tom 2026-09-29：築墼從牌堆獲得並使用該花色裝備，不再讀棄牌堆。其餘 legacy 家族未遷移 |
+| `mobileshiji` | Tom 2026-09-29：唔重做永久頂7。Xingzhen 維持現行交換／觀星流，不改架構。Mouli／Miewu 完成事件與 Yaohu 階段收據已讀，沿用 CardFinished／PostCardResponded／phase id，本輪未改。全檔其餘生命週期未結案 |
 | `mobile-strengthen` | Dingpin 計入 response-use（`respond_card.is_use`），打出不計。Benxi 在 TurnBroken 清掉仍顯示 active 的階段距離。MobileAnjian 改為每個範圍外目標一條 preferredTarget，不再用裝備才解析的 `->` 字串。MobileZhuikong 用受益者自己的 `-SelfClear` 標記撐到其回合結束；OLZhuikong 仍共用舊 flag。這四項未跑對局 |
 | `ol` | TongxieTargetMod 已拆成 System 修正：`#tongxie-target` 只處理 `tongxie_slash`；dongxin、bianyu、quanyu、qiangang、chixin、gengzhan、maozhu、ol2shanjia、wangong 各自註冊一次，不乘同協實例。同協本體與 TongxieEffect 仍舊制（共享 `&tongxie+#` 標記，逐實例會雙倍摸牌／抵傷）。直接 legacy 347。三個翻譯單元曾以 Qt 6.4.2／g++ 13 的 server 設定編譯；同協拆分區段沒有診斷，同檔其餘既有錯誤仍在。未對局 |
 | `ol-strengthen` | 已遷 Jijiang、Qiaobian 族、Jiushi、Dangxian、Huashen／Select／Clear；OLQingjian 取消時按原牌堆收據還原。ol_zuoci 仍掛標準 V2 Xinsheng，化身池改為與它相同的私有 `Huashens`／`huashen_general`。仍舊制 5：OLGuhuo、OLXianzhou、OLJiaozhaoVS、OLJiaozhao、OLDanxin。Guhuo 與 Jiaozhao／Danxin 的裁定見 PR，未改規則。翻譯單元曾編譯；新家族區段沒有診斷，同檔其餘既有錯誤仍在。未對局 |
@@ -64,7 +64,9 @@
 討襲（Taoxi）由使用者指定暫緩：保留既有實作，不擴充 `ServerPlayer::getHandPile`
 的多實例借牌入口。此項不是完成，也不以共享單一 `TaoxiId` 冒充逐實例能力。
 
-2026-09-28 只複審 `mobile.cpp`、`mobileshiji.cpp`、`mobile-strengthen.cpp`、`tenyear.cpp`、`tenyear2.cpp`、`tenyear-strengthen.cpp` 裡點名的家族。上表這些行是讀碼結果。Zhuhe 的牌堆／棄牌堆、Xingzhen 的兩套正文都還沒有裁定，所以沒有改玩法。這次沒有把未建置、未對局的技能標成完成。
+2026-09-28 只複審 `mobile.cpp`、`mobileshiji.cpp`、`mobile-strengthen.cpp`、`tenyear.cpp`、`tenyear2.cpp`、`tenyear-strengthen.cpp` 裡點名的家族。上表這些行是讀碼結果。這次沒有把未建置、未對局的技能標成完成。
+
+2026-09-29 Tom 裁定：Zhuhe 從牌堆獲得並使用該花色裝備。Xingzhen 唔重做永久頂7，現行交換／觀星流維持。Tunshi 不在這次改動裡。
 
 ## 本輪已落的共用契約
 
