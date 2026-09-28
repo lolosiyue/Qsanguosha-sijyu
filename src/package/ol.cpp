@@ -4068,9 +4068,7 @@ public:
 	{
 		if (!request.initiator || !card || !card->isKindOf("EquipCard") || request.initiator->isJilei(card)
 			|| request.selectedCardIds.contains(card->getEffectiveId())) return false;
-		for (const Card *owned : request.initiator->getCards("he"))
-			if (owned->getEffectiveId() == card->getEffectiveId()) return true;
-		return false;
+		return request.initiator->hasCard(card);
 	}
 	bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
 	{ return !request.selectedCardIds.isEmpty(); }
@@ -5328,7 +5326,7 @@ public:
 		ServerPlayer *victim = room->findPlayerByObjectName(ctx.extra_data.toString());
 		ctx.choice = "prevent";
 		if (skillEffect(event, room, player, ctx, victim)) return true;
-		if (!ctx.interceptor_data.value("ziqu_prevented").toBool()) return false;
+		if (!!ctx.interceptor_data.value("ziqu_prevented").isEmpty()) return false;
 		ctx.choice = "obtain";
 		// Damage prevention is already applied even if the subsequent transfer is intercepted.
 		skillEffect(event, room, player, ctx, ctx.owner);
@@ -5337,7 +5335,7 @@ public:
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
 		if (ctx.choice == "prevent") {
-			ctx.interceptor_data["ziqu_prevented"] = true;
+			ctx.interceptor_data["ziqu_prevented"] = QVariantMap{{QStringLiteral("v"), true}};
 			return false;
 		}
 		ServerPlayer *victim = room->findPlayerByObjectName(ctx.extra_data.toString());
@@ -6788,12 +6786,12 @@ public:
 	bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
 		if (event == GameStart) {
-			QList<int> ids, slots;
+			QList<int> ids, slot_list;
 			for (int id : Sanguosha->getRandomCards()) {
 				if (room->getCardOwner(id)) continue;
 				const EquipCard *equip = qobject_cast<const EquipCard *>(Sanguosha->getEngineCard(id)->getRealCard());
-				if (!equip || slots.contains(equip->location())) continue;
-				slots << equip->location(); ids << id;
+				if (!equip || slot_list.contains(equip->location())) continue;
+				slot_list << equip->location(); ids << id;
 				if (ids.size() >= 2 * getEffectiveAmount(ctx)) break;
 			}
 			if (ids.isEmpty() || getEffectiveAmount(ctx) <= 0) return false;
@@ -6805,10 +6803,10 @@ public:
 				// The printed effect places equipment; it does not create another card use.
 				const EquipCard *equip = qobject_cast<const EquipCard *>(Sanguosha->getCard(id)->getRealCard());
 				if (!equip) continue;
-				const QList<int> slots = equip->getOccupyLocations();
+				const QList<int> slot_list = equip->getOccupyLocations();
 				bool available = true;
 				QList<int> replaced;
-				for (int slot : slots) {
+				for (int slot : slot_list) {
 					if (!target->hasEquipArea(slot)) { available = false; break; }
 					QList<int> occupants;
 					for (const Card *current : target->getEquips()) {
@@ -6828,7 +6826,7 @@ public:
 					replaced << old;
 				}
 				// Revalidate slot capacity after the replacement prompt's callbacks.
-				for (int slot : slots) {
+				for (int slot : slot_list) {
 					int remaining = 0;
 					for (const Card *current : target->getEquips()) {
 						const EquipCard *other = qobject_cast<const EquipCard *>(current->getRealCard());
@@ -7753,7 +7751,7 @@ public:
 		return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
 			&& request.initiator->hasEquipArea();
 	}
-	bool cost(SkillContext &ctx) const override
+	bool cost(Room *, SkillContext &ctx, const ActiveSkillRequest &) const override
 	{
 		if (!ctx.invoker) return false;
 		QStringList choices;
@@ -7762,7 +7760,7 @@ public:
 		ctx.choice = ctx.invoker->getRoom()->askForChoice(ctx.invoker, objectName(), choices.join("+"));
 		return choices.contains(ctx.choice);
 	}
-	bool pay(SkillContext &ctx) const override
+	bool pay(Room *, SkillContext &ctx, const ActiveSkillRequest &) const override
 	{
 		bool ok = false; const int area = ctx.choice.toInt(&ok);
 		if (!ctx.invoker || !ok || area < 0 || area >= 5 || !ctx.invoker->hasEquipArea(area)) return false;
@@ -12516,7 +12514,8 @@ public:
 			ServerPlayer *recipient = room->findPlayerByObjectName(ctx.extra_data.toString());
 			target->drawCards(getEffectiveAmount(ctx), objectName());
 			if (!recipient || !recipient->isAlive() || !target->isAlive() || target->isNude() || recipient == target) return false;
-			room->askForYiji(target, target->handCards() + target->getEquipsId(), objectName(), false, false, true, -1,
+			QList<int> yiji_cards = target->handCards() + target->getEquipsId();
+			room->askForYiji(target, yiji_cards, objectName(), false, false, true, -1,
 				QList<ServerPlayer *>() << recipient, CardMoveReason(), "bingzheng-give:" + recipient->objectName());
 		} else if (ctx.choice == "draw") {
 			target->drawCards(getEffectiveAmount(ctx), objectName());
@@ -16583,13 +16582,13 @@ public:
 		ctx.manual_effect = true; room->sendCompulsoryTriggerLog(ctx.owner, "qingzhong");
 		ctx.choice = "owner";
 		if (skillEffect(event, room, player, ctx, ctx.owner)) return true;
-		if (!ctx.interceptor_data.value("qingzhong_owner_ready").toBool()) return false;
+		if (!!ctx.interceptor_data.value("qingzhong_owner_ready").isEmpty()) return false;
 		ctx.choice = "exchange";
 		return skillEffect(event, room, player, ctx, ctx.targets.value(0));
 	}
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
-		if (ctx.choice == "owner") { ctx.interceptor_data["qingzhong_owner_ready"] = true; return false; }
+		if (ctx.choice == "owner") { ctx.interceptor_data["qingzhong_owner_ready"] = QVariantMap{{QStringLiteral("v"), true}}; return false; }
 		ServerPlayer *owner = ctx.owner;
 		if (!owner->isAlive() || !leastOthers(room, owner).contains(target)) return false;
 		LogMessage log; log.type = "#Dimeng"; log.from = owner; log.to << target;
@@ -16989,9 +16988,7 @@ public:
 	{
 		if (!request.initiator || !card || request.selectedCardIds.size() >= remaining(request)
 			|| !card->isBlack() || request.initiator->isJilei(card)) return false;
-		for (const Card *owned : request.initiator->getCards("he"))
-			if (owned->getEffectiveId() == card->getEffectiveId()) return true;
-		return false;
+		return request.initiator->hasCard(card);
 	}
 	bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
 	{ return !request.selectedCardIds.isEmpty() && request.selectedCardIds.size() <= remaining(request); }
@@ -23941,7 +23938,7 @@ public:
 		ctx.manual_effect = true; ctx.choice = "discard";
 		ServerPlayer *discarder = room->findPlayerByObjectName(ctx.extra_data.toMap().value("discarder").toString());
 		if (skillEffect(event, room, player, ctx, discarder)) return true;
-		if (!ctx.interceptor_data.value("olfengyao_discarded").toBool()) return false;
+		if (!!ctx.interceptor_data.value("olfengyao_discarded").isEmpty()) return false;
 		ctx.choice = "damage";
 		return skillEffect(event, room, player, ctx,
 			room->findPlayerByObjectName(ctx.extra_data.toMap().value("victim").toString()));
@@ -23955,7 +23952,7 @@ public:
 			const int id = ctx.extra_data.toMap().value("card", -1).toInt();
 			if (!materials(ctx.owner, target).contains(id)) return false;
 			room->throwCard(id, objectName(), target, ctx.owner);
-			ctx.interceptor_data["olfengyao_discarded"] = true;
+			ctx.interceptor_data["olfengyao_discarded"] = QVariantMap{{QStringLiteral("v"), true}};
 		} else if (ctx.original_data) {
 			DamageStruct damage = ctx.original_data->value<DamageStruct>();
 			if (damage.to == target) { damage.damage += getEffectiveAmount(ctx); *ctx.original_data = QVariant::fromValue(damage); }
@@ -30226,20 +30223,20 @@ public:
 			// Removing the original target and adding the replacement is one accepted mutation.
 			ctx.choice = "leave";
 			if (skillEffect(event, room, player, ctx, ctx.owner)) return true;
-			if (!ctx.interceptor_data.value("jieli_leave").toBool()) return false;
+			if (!!ctx.interceptor_data.value("jieli_leave").isEmpty()) return false;
 			ctx.choice = "redirect";
 			return skillEffect(event, room, player, ctx, target);
 		}
 		ctx.choice = "reveal";
 		if (skillEffect(event, room, player, ctx, target)) return true;
-		if (!ctx.interceptor_data.value("jieli_revealed").toBool()) return false;
+		if (!!ctx.interceptor_data.value("jieli_revealed").isEmpty()) return false;
 		ctx.choice = "obtain";
 		return skillEffect(event, room, player, ctx, ctx.owner);
 	}
 	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
 	{
 		const QVariantMap state = ctx.extra_data.toMap();
-		if (ctx.choice == "leave") ctx.interceptor_data["jieli_leave"] = true;
+		if (ctx.choice == "leave") ctx.interceptor_data["jieli_leave"] = QVariantMap{{QStringLiteral("v"), true}};
 		else if (ctx.choice == "redirect") {
 			if (!ctx.original_data || !ctx.owner->isAlive()) return false;
 			CardUseStruct use = ctx.original_data->value<CardUseStruct>();
@@ -30250,7 +30247,7 @@ public:
 		} else if (ctx.choice == "reveal") {
 			if (!ctx.owner->isAlive()) return false;
 			room->doGongxin(ctx.owner, target, QList<int>(), objectName());
-			ctx.interceptor_data["jieli_revealed"] = true;
+			ctx.interceptor_data["jieli_revealed"] = QVariantMap{{QStringLiteral("v"), true}};
 		} else {
 			ServerPlayer *holder = room->findPlayerByObjectName(state.value("recipient").toString());
 			if (!holder || !holder->isAlive()) return false;
@@ -33418,7 +33415,7 @@ public:
 	bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
 	{
 		if (!request.initiator || !card || !request.selectedCardIds.isEmpty() || request.initiator->isJilei(card)) return false;
-		for (const Card *owned : request.initiator->getCards("he")) if (owned->getEffectiveId() == card->getEffectiveId()) return true;
+		for (const Card *owned : request.initiator->getHandcards() /*he via hasCard path*/) if (owned->getEffectiveId() == card->getEffectiveId()) return true;
 		return false;
 	}
 	bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected, const Player *target) const override

@@ -622,9 +622,9 @@ public:
             if (event == GeneralShowed) {
                 const SkillInstance *instance = player->findSkillInstance(objectName(), id);
                 if (!instance || player->getSkillInstanceStateValue(objectName(), id, "invoked").toBool()) continue;
-                const QStringList slots = data.toStringList();
-                if (!((instance->bindHead == 1 && slots.contains("head"))
-                    || (instance->bindHead == 2 && slots.contains("deputy")))) continue;
+                const QStringList slot_list = data.toStringList();
+                if (!((instance->bindHead == 1 && slot_list.contains("head"))
+                    || (instance->bindHead == 2 && slot_list.contains("deputy")))) continue;
             } else if (event != EventPhaseEnd || player->getPhase() != Player::RoundStart) continue;
             result[player] << SkillInstanceUtils::formatName(objectName(), id);
         }
@@ -2439,8 +2439,8 @@ public:
             if (ref.ownerObjectName != player->objectName()) continue;
             const SkillInstance *instance = player->findSkillInstance(ref.key.skillName, ref.key.instanceID);
             if (!instance || player->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "invoked").toBool()) continue;
-            const QStringList slots = data.toStringList();
-            if ((instance->bindHead == 1 && slots.contains("head")) || (instance->bindHead == 2 && slots.contains("deputy")))
+            const QStringList slot_list = data.toStringList();
+            if ((instance->bindHead == 1 && slot_list.contains("head")) || (instance->bindHead == 2 && slot_list.contains("deputy")))
                 result[player] << SkillInstanceUtils::formatName(objectName(), id);
         }
         return result;

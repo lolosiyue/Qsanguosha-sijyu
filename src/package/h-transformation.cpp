@@ -1342,10 +1342,6 @@ public:
         return available.mid(0, n);
     }
 
-    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *eventPlayer, QVariant &) const override
-    {
-        return TriggerList();
-    }
 };
 
 class HYiguiClear : public TriggerSkillV2
@@ -2309,7 +2305,7 @@ public:
         ctx.manual_effect = true;
         if (event != EventPhaseStart) {
             if (ctx.owner->getTreasure())
-                *ctx.original_data = room->changeMoveData(*ctx.original_data, {ctx.owner->getTreasure()->getEffectiveId()});
+                *ctx.original_data = room->changeMoveData(*ctx.original_data, QList<int>() << ctx.owner->getTreasure()->getEffectiveId());
             return false;
         }
         ctx.choice = "draw";
@@ -2940,8 +2936,8 @@ public:
         const auto costGuard = qScopeGuard([&] {
             if (flagAdded) ctx.owner->setFlags("-Global_askForSkillCost");
         });
-        if (shenlvmeng->askForSkillInvoke(this)) {
-            room->broadcastSkillInvoke(objectName(), shenlvmeng);
+        if (ctx.owner && ctx.owner->askForSkillInvoke(this)) {
+            room->broadcastSkillInvoke(objectName(), ctx.owner);
             return true;
         }
 
@@ -2956,7 +2952,8 @@ public:
     bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *) const override
     {
         ctx.manual_effect = true;
-        Room *room = shenlvmeng->getRoom();
+        ServerPlayer *shenlvmeng = ctx.owner;
+        if (!shenlvmeng) return false;
         room->notifySkillInvoked(shenlvmeng, objectName());
 
         QList<int> card_ids = room->getNCards(qMax(0, getEffectiveAmount(ctx)));

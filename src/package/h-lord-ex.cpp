@@ -2108,7 +2108,7 @@ public:
     {
         for (const QVariant &value : ctx.original_data->toList()) {
             const CardsMoveOneTimeStruct move = value.value<CardsMoveOneTimeStruct>();
-            if (eligible(room, ctx.owner, move) && move.from && !ctx.targets.contains(move.from)) ctx.targets << move.from;
+            if (eligible(room, ctx.owner, move) && move.from && !ctx.targets.contains(move.from)) ctx.targets << qobject_cast<ServerPlayer *>(move.from);
         }
         return false;
     }
@@ -2133,7 +2133,7 @@ private:
     static bool eligible(Room *room, ServerPlayer *owner, const CardsMoveOneTimeStruct &move)
     {
         if (!owner || !move.from || !move.from_places.contains(Player::PlaceEquip)
-            || !owner->inFormationRalation(move.from)) return false;
+            || !owner->inFormationRalation(qobject_cast<ServerPlayer *>(move.from))) return false;
         if (move.reason.m_reason != CardMoveReason::S_REASON_DISMANTLE
             && !(move.to && move.to != move.from && move.to_place == Player::PlaceHand && move.reason.m_reason != CardMoveReason::S_REASON_GIVE)) return false;
         ServerPlayer *actor = room->findPlayerByObjectName(move.reason.m_playerId);
@@ -2922,7 +2922,7 @@ public:
         else if (event == CardsMoveBatch) {
             for (const QVariant &value : ctx.original_data->toList()) {
                 const CardsMoveOneTimeStruct move = value.value<CardsMoveOneTimeStruct>();
-                if (discardedByOther(move, ctx.owner) && !ctx.targets.contains(move.from)) ctx.targets << move.from;
+                if (discardedByOther(move, ctx.owner) && !ctx.targets.contains(move.from)) ctx.targets << qobject_cast<ServerPlayer *>(move.from);
             }
         } else ctx.targets = {ctx.owner};
         return false;
@@ -4588,7 +4588,7 @@ public:
         const Card *reply = room->askForExchange(target, "heg_juejue", count, count, false,
             "@juejue-discard:" + ctx.owner->objectName() + "::" + QString::number(count), true, ".|.|.|hand");
         QList<int> ids = reply ? reply->getSubcards() : QList<int>();
-        if (reply) reply->deleteLater();
+        if (reply) const_cast<Card *>(reply)->deleteLater();
         bool valid = ids.size() == count;
         QSet<int> unique;
         for (int id : ids) {

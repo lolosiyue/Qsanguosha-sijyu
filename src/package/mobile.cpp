@@ -3423,7 +3423,7 @@ public:
 		foreach (const Card *h, ctx.invoker->getHandcards()) if (h->hasTip("mingzhi") && !suits.contains(h->getSuitString())) suits << h->getSuitString();
 		foreach (const Card *c, ctx.invoker->getEquips()) if (!suits.contains(c->getSuitString())) suits << c->getSuitString();
 		const Card *material = Sanguosha->getCard(ctx.use_card->getSubcards().first());
-		if (suits.length() == 4) room->showCard(ctx.invoker, material);
+		if (suits.length() == 4) room->showCard(ctx.invoker, material->getEffectiveId());
 		else room->throwCard(ctx.use_card, objectName(), ctx.invoker);
 		QStringList choices;
 		foreach (QString name, (qobject_cast<const SkillCard *>(ctx.use_card) ? qobject_cast<const SkillCard *>(ctx.use_card)->getUserString() : QString()).split("+"))
@@ -17552,7 +17552,7 @@ public:
 class Zhujin : public ViewAsSkillV2
 {
 public:
-	Zhujin() : ViewAsSkillV2("zhujin", 1) { response_or_use = true; filter_pattern = "BasicCard"; }
+	Zhujin() : ViewAsSkillV2("zhujin", 1) { response_or_use = true; }
 	LimitScope getLimitScope() const override { return Limit_Custom; }
 	bool willThrowSelectedCards() const override { return false; }
 	static QString usageKey(const SkillInstanceRef &ref, const QString &name)
