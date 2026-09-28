@@ -12,6 +12,7 @@
 class Card;
 class Player;
 class Skill;
+struct ActiveSkillRequest;
 
 enum class SkillDeclarationReason
 {
@@ -57,13 +58,15 @@ public:
                              CardUseStruct::CardUseReason reason,
                              const QString &pattern = QString(),
                              const QStringList &bannedPackages = QStringList(),
-                             quint64 requestId = 0);
+                             quint64 requestId = 0,
+                             const SkillInstanceRef &activationRef = SkillInstanceRef());
     SkillDeclarationSession(const SkillDialogInfo &info, Player *self,
                              CardUseStruct::CardUseReason reason,
                              const QString &pattern = QString(),
                              const QStringList &bannedPackages = QStringList(),
                              quint64 requestId = 0,
-                             const QString &skillName = QString());
+                             const QString &skillName = QString(),
+                             const SkillInstanceRef &activationRef = SkillInstanceRef());
     ~SkillDeclarationSession();
 
     SkillDeclarationSession(const SkillDeclarationSession &) = delete;
@@ -77,6 +80,7 @@ public:
 
     SkillDialogInfo info() const { return m_info; }
     QString skillName() const { return m_skillName; }
+    SkillInstanceRef activationRef() const { return m_activationRef; }
     bool supported() const { return m_supported; }
     bool active() const { return m_active; }
     bool needsDeclaration() const;
@@ -98,8 +102,11 @@ private:
     bool cardCommonlyEnabled(const Card *card, const QString &value,
                              SkillDeclarationReason *reason) const;
     QString tagKey() const;
+    ActiveSkillRequest declarationRequest() const;
+    SkillDeclarationReason declarationReason(const QString &value, const Card *card) const;
 
     QString m_skillName;
+    SkillInstanceRef m_activationRef;
     QPointer<Player> m_self;
     CardUseStruct::CardUseReason m_reason;
     QString m_pattern;

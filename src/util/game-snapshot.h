@@ -44,6 +44,8 @@ struct SkillInstanceSnapshot
     QString parentRefOwner;
     QString parentRefSkillName;
     int parentRefInstanceID = 0;
+    QVariantMap frozenSource;
+    QVariantMap grantActivation;
     bool visible = true;
     bool hasAmountOverride = false;
     int amountOverride = 0;
@@ -69,6 +71,7 @@ struct CardSnapshot
     int sourceSkillInstanceId = 0;
     QString activationSkillName;
     int activationSkillInstanceId = 0;
+    QVariantMap appliedPhysicalEffectSource;
     bool modified = false;
     QStringList flags;
     QMap<QString, int> marks;

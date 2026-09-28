@@ -25,7 +25,7 @@ class GuhuoDialog : public QDialog
 public:
     static GuhuoDialog *getInstance(const QString &object, bool left = true, bool right = true,
         bool play_only = true, bool slash_combined = false, bool delayed_tricks = false, bool update = false);
-    void prepareOptions();
+    void prepareOptions(const SkillInstanceRef &activationRef = SkillInstanceRef());
     QStringList getOptionNames() const;
     const Card *getOptionCard(const QString &option_name) const;
     bool applyOption(const QString &option_name);
@@ -71,7 +71,7 @@ class JuguanDialog : public QDialog
 
 public:
     static JuguanDialog *getInstance(const QString &object, const QString &card_names);
-    void prepareOptions();
+    void prepareOptions(const SkillInstanceRef &activationRef = SkillInstanceRef());
     QStringList getOptionNames() const;
     const Card *getOptionCard(const QString &option_name) const;
     bool applyOption(const QString &option_name);
@@ -105,7 +105,7 @@ class TiansuanDialog : public QDialog
 
 public:
     static TiansuanDialog *getInstance(const QString &name, const QString &choices = QString());
-    void prepareOptions();
+    void prepareOptions(const SkillInstanceRef &activationRef = SkillInstanceRef());
     QStringList getOptionNames() const;
     bool isButtonEnabled(const QString &choice) const;
     bool applyOption(const QString &choice);

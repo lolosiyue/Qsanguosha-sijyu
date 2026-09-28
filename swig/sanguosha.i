@@ -2164,6 +2164,7 @@ struct CorrectSkillContext {
 	const Player *getSecondary() const;
 	const Card *getCard() const;
 	int getModType() const;
+	MaxCardsType::MaxCardsCount getMaxCardsType() const;
 	bool includesWeapon() const;
 	int getCurrentAmount() const;
 	QVariant getStateValue(const QString &key, const QVariant &defaultValue = QVariant()) const;

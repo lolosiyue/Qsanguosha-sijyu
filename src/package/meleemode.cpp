@@ -1,4 +1,5 @@
 #include "meleemode.h"
+#include "card-lifetime-manager.h"
 #include "standard.h"
 #include "room.h"
 #include "engine.h"
@@ -7,18 +8,15 @@
 #include "util.h"
 #include <QDateTime>
 
-class MeleeMode : public TriggerSkill
+class MeleeMode : public TriggerSkillV2
 {
     public:
-	MeleeMode() : TriggerSkill("melee_mode")
+	MeleeMode() : TriggerSkillV2("melee_mode")
 	{
 		events << GameStart << TurnStart << RoundStart << BuryVictim;
 		global = true;
 	}
-    bool triggerable(const ServerPlayer *target) const
-	{
-		return target&&target->isAlive();
-	}
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
     bool checkMeleeCondition(Room *room) const
     {
         if (!Config.EnableMeleeMode)
@@ -26,10 +24,11 @@ class MeleeMode : public TriggerSkill
 
         return room->getTag("MeleeModeActive").toBool();
     }
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    bool recordEvent(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        if (!Config.EnableMeleeMode)
-            return false;
+        // Mode transitions are room rules, without a fabricated player skill source.
+        if (!player || (triggerEvent != BuryVictim && !player->isAlive()) || !Config.EnableMeleeMode)
+            return true;
 
         QString mode = room->getMode();
         int modePlayerCount = Sanguosha->getPlayerCount(mode);
@@ -39,7 +38,7 @@ class MeleeMode : public TriggerSkill
         bool usesAliveThreshold = isHegemonyMode || isSupportedIdentityMode;
 
         if (!isDoudizhu && !usesAliveThreshold)
-            return false;
+            return true;
 
         switch (triggerEvent) {
         case GameStart: {
@@ -68,7 +67,7 @@ class MeleeMode : public TriggerSkill
                 room->sendLog(log);
 
                 foreach (ServerPlayer *p, room->getAlivePlayers()) {
-                    room->setPlayerCardLimitation(p, "use", "Peach", false);
+                    room->setPlayerCardLimitation(p, "use", "Peach", false, objectName());
                     room->attachSkillToPlayer(p, "melee_peach");
                 }
             }
@@ -118,7 +117,8 @@ class MeleeMode : public TriggerSkill
                 room->sendLog(log);
 
                 foreach (ServerPlayer *p, room->getAlivePlayers()) {
-                    room->setPlayerCardLimitation(p, "use", "Peach", false);
+                    room->setPlayerCardLimitation(p, "use", "Peach", false, objectName());
+                    room->attachSkillToPlayer(p, "melee_peach");
                 }
             }
             break;
@@ -126,45 +126,52 @@ class MeleeMode : public TriggerSkill
         default:
             break;
         }
-        return false;
+        return true;
     }
 };
 
-class MeleePeach : public OneCardViewAsSkill
+class MeleePeach : public ViewAsSkillV2
 {
 public:
-	MeleePeach() : OneCardViewAsSkill("melee_peach")
-	{
-		filter_pattern = "Peach|.|.|hand!";
-        attached_lord_skill = true;
-	}
-
-    const Card *viewAs(const Card *originalCard) const
+    MeleePeach() : ViewAsSkillV2("melee_peach", 1) { attached_lord_skill = true; }
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        CardUseStruct::CardUseReason reason = Sanguosha->getCurrentCardUseReason();
-        QString pattern = Sanguosha->getCurrentCardUsePattern();
-        if (reason == CardUseStruct::CARD_USE_REASON_PLAY || pattern.contains("slash", Qt::CaseInsensitive)) {
-            Slash *slash = new Slash(originalCard->getSuit(), originalCard->getNumber());
-            slash->addSubcard(originalCard);
-            slash->setSkillName("_" + objectName());
-            return slash;
-        } else if (pattern.contains("jink", Qt::CaseInsensitive)) {
-            Jink *jink = new Jink(originalCard->getSuit(), originalCard->getNumber());
-            jink->addSubcard(originalCard);
-            jink->setSkillName("_" + objectName());
-            return jink;
+        return request.initiator && (request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            ? Slash::IsAvailable(request.initiator)
+            : request.pattern.contains("slash", Qt::CaseInsensitive)
+                || request.pattern.contains("jink", Qt::CaseInsensitive));
+    }
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        return request.initiator && card && request.selectedCardIds.isEmpty() && card->isKindOf("Peach")
+            && !card->hasFlag("using") && request.initiator->handCards().contains(card->getEffectiveId());
+    }
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1) return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request)) return nullptr;
+        const Card *original = Sanguosha->getCard(request.selectedCardIds.first());
+        Card *card = nullptr;
+        if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY || request.pattern.contains("slash", Qt::CaseInsensitive))
+            card = new Slash(original->getSuit(), original->getNumber());
+        else if (request.pattern.contains("jink", Qt::CaseInsensitive))
+            card = new Jink(original->getSuit(), original->getNumber());
+        if (card) {
+            card->addSubcard(original);
+            card->setSkillName("_" + objectName());
         }
-        return nullptr;
+        return card;
     }
-
-    bool isEnabledAtPlay(const Player *player) const
+    QString historyKey(const ActiveSkillRequest &request) const override
     {
-        return Slash::IsAvailable(player);
-    }
-
-    bool isEnabledAtResponse(const Player *, const QString &pattern) const
-    {
-        return pattern.contains("slash", Qt::CaseInsensitive) || pattern.contains("jink", Qt::CaseInsensitive);
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            || request.pattern.contains("slash", Qt::CaseInsensitive) ? "Slash" : "Jink";
     }
 };
 
@@ -248,12 +255,18 @@ void MeleeSlashJink::onUse(Room *room, CardUseStruct &card_use) const
         Jink *jink = new Jink(card_use.card->getSuit(), card_use.card->getNumber());
         jink->setSkillName(skillName);
         jink->addSubcard(card_use.card);
+        CardLifetimeManager &manager = globalCardLifetimeManager();
+        CardLifetimeLease lease(manager, manager.observeCard(jink));
+        jink->deleteLater();
         card_use.card = jink;
         BasicCard::onUse(room, card_use);
     } else {
         Slash *slash = new Slash(card_use.card->getSuit(), card_use.card->getNumber());
         slash->setSkillName(skillName);
         slash->addSubcard(card_use.card);
+        CardLifetimeManager &manager = globalCardLifetimeManager();
+        CardLifetimeLease lease(manager, manager.observeCard(slash));
+        slash->deleteLater();
         card_use.card = slash;
         BasicCard::onUse(room, card_use);
     }

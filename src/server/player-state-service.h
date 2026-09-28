@@ -61,7 +61,11 @@ public:
 		const QString &value);
 
 private:
-	// Room::applyDamageHp uses this hook to commit damage history at the
+    bool setPlayerMarkWithReceipt(ServerPlayer *player, const QString &mark, int value,
+        const std::function<bool(const QString &, int, int)> &canCommit,
+        const std::function<void(const QString &, int, int)> &committed,
+        QList<ServerPlayer *> onlyViewers);
+	// Room::applyDamageHp/recover use this hook to commit immutable history at the
 	// property mutation point, before HpChanged observers can run.
 	void setPlayerProperty(ServerPlayer *player, const char *propertyName,
 		const QVariant &value, const std::function<void()> &beforeEventDispatch);

@@ -2,6 +2,7 @@
 #define _STRUCTS_H
 
 class Card;
+struct CardUseStruct;
 
 #include "skill-instance-types.h"
 #include "serverplayer.h"
@@ -125,6 +126,11 @@ struct CardEffectStruct {
     bool no_offset;
     int extra_effect;
     int skillExecutionID;
+    bool isAcceptedSkillEffectCard() const { return m_acceptedSkillEffectCard; }
+    void setSkillUseContext(const CardUseStruct &use);
+    PhysicalEquipSource physicalEquipSource;
+private:
+    bool m_acceptedSkillEffectCard = false;
 };
 
 struct SlashEffectStruct {
@@ -163,6 +169,8 @@ struct TargetModRevealState {
     // contributors. An empty entry means no general needs to be revealed.
     QList<QList<SkillInstanceRef>> options;
     QString historyKey;
+    // Identity of this use, including uses excluded from the legacy player counter.
+    qint64 useHistoryEventId = 0;
 };
 
 struct CardUseStruct {
@@ -190,6 +198,7 @@ struct CardUseStruct {
     void clientReply();
     void changeCard(Card*newcard);
     void setOwnedCard(Card *ownedCard);
+    bool isAcceptedSkillEffectCard() const { return m_acceptedSkillEffectCard; }
 
     const Card*card;
     ServerPlayer*from;
@@ -211,10 +220,14 @@ struct CardUseStruct {
     TargetModRevealState targetModReveal;
     bool hasSkillActivationRequest;
     SkillInstanceRef sourceRef;
+    PhysicalEquipSource physicalEquipSource;
     SkillInstanceRef activationRef;
     int skillExecutionID;
 
 private:
+    friend class Room;
+    // Server continuation identity is copied internally but never parsed from a request.
+    bool m_acceptedSkillEffectCard = false;
     void replaceCard(const Card *newCard, Card *ownedCard = nullptr);
 
     // CardUseStruct owns only a transient Card; use a manager-aware deleter.
@@ -399,6 +412,15 @@ struct CardsMoveOneTimeStruct {
     QList<int> shown_ids;
     QList<int> broken_ids;
 
+    // Native pre-removal equipment identity; independent of optional history recording.
+    QPair<QString, QString> equipmentSourceBefore(int cardId) const
+    { return m_equipmentSourcesBefore.value(cardId); }
+
+private:
+    friend class CardMovementService;
+    QMap<int, QPair<QString, QString>> m_equipmentSourcesBefore;
+
+public:
     inline void removeCardIds(const QList<int>&to_remove)
     {
         // from_places / from_pile_names / open 必須與 card_ids 平行；
@@ -673,6 +695,7 @@ struct CardResponseStruct {
     bool m_isRetrial;
     const Card*m_toCard;
     SkillInstanceRef sourceRef;
+    PhysicalEquipSource physicalEquipSource;
     SkillInstanceRef activationRef;
     int skillExecutionID;
     bool nullified;//响应无效
@@ -688,6 +711,7 @@ struct MarkStruct {
 
 struct DrawStruct {
     DrawStruct();
+    qint64 historyEventId; // Engine-owned identity; restored after mutable draw callbacks.
     ServerPlayer*who;
     QString reason;
     int num;

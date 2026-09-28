@@ -42,8 +42,9 @@ QString skillDeclarationReasonName(SkillDeclarationReason reason)
 
 SkillDeclarationSession::SkillDeclarationSession(
     const QString &skillName, Player *self, CardUseStruct::CardUseReason reason,
-    const QString &pattern, const QStringList &bannedPackages, quint64 requestId)
-    : m_skillName(skillName), m_self(self), m_reason(reason), m_pattern(pattern),
+    const QString &pattern, const QStringList &bannedPackages, quint64 requestId,
+    const SkillInstanceRef &activationRef)
+    : m_skillName(skillName), m_activationRef(activationRef), m_self(self), m_reason(reason), m_pattern(pattern),
       m_bannedPackages(bannedPackages), m_requestId(requestId)
 {
     m_bannedPackages.removeDuplicates();
@@ -53,8 +54,8 @@ SkillDeclarationSession::SkillDeclarationSession(
 SkillDeclarationSession::SkillDeclarationSession(
     const SkillDialogInfo &info, Player *self, CardUseStruct::CardUseReason reason,
     const QString &pattern, const QStringList &bannedPackages,
-    quint64 requestId, const QString &skillName)
-    : m_skillName(skillName), m_self(self), m_reason(reason), m_pattern(pattern),
+    quint64 requestId, const QString &skillName, const SkillInstanceRef &activationRef)
+    : m_skillName(skillName), m_activationRef(activationRef), m_self(self), m_reason(reason), m_pattern(pattern),
       m_bannedPackages(bannedPackages), m_requestId(requestId), m_info(info),
       m_infoProvided(true)
 {
@@ -99,6 +100,28 @@ void SkillDeclarationSession::clearOwnedTag() const
 QString SkillDeclarationSession::tagKey() const
 {
     return tagKeyFor(m_info, m_skillName);
+}
+
+ActiveSkillRequest SkillDeclarationSession::declarationRequest() const
+{
+    ActiveSkillRequest request;
+    request.initiator = m_self;
+    request.reason = m_reason;
+    request.pattern = m_pattern;
+    request.activationRef = m_activationRef;
+    return request;
+}
+
+SkillDeclarationReason SkillDeclarationSession::declarationReason(const QString &value, const Card *card) const
+{
+    const ActiveSkillRequest request = declarationRequest();
+    const SkillDeclarationReason reason = m_skill
+        ? m_skill->declarationReason(request, value, card) : SkillDeclarationReason::None;
+    if (reason != SkillDeclarationReason::None) return reason;
+    // A trigger may own the dialog while its V2 view-as owns declaration quotas.
+    const QString skillName = m_skillName.isEmpty() ? m_info.objectName : m_skillName;
+    const auto *viewAs = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(skillName));
+    return viewAs && viewAs != m_skill ? viewAs->declarationReason(request, value, card) : reason;
 }
 
 QString SkillDeclarationSession::tagKeyFor(const SkillDialogInfo &info, const QString &skillName)
@@ -195,7 +218,7 @@ bool SkillDeclarationSession::cardCommonlyEnabled(
         return false;
     }
     if (m_skill != nullptr) {
-        const SkillDeclarationReason specialized = m_skill->declarationReason(m_self, value, card);
+        const SkillDeclarationReason specialized = declarationReason(value, card);
         if (specialized != SkillDeclarationReason::None) {
             if (reason != nullptr) *reason = specialized;
             return false;
@@ -397,7 +420,7 @@ SkillDeclarationValidation SkillDeclarationSession::validate(const QString &valu
             liveEnabled = cardCommonlyEnabled(card, candidate.value, &liveReason);
         } else if (m_skill != nullptr) {
             const SkillDeclarationReason specialized =
-                m_skill->declarationReason(m_self, candidate.value, nullptr);
+                declarationReason(candidate.value, nullptr);
             if (specialized != SkillDeclarationReason::None) {
                 liveEnabled = false;
                 liveReason = specialized;

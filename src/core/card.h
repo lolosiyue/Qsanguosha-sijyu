@@ -116,6 +116,7 @@ public:
     virtual void setSkillName(const QString &skill_name);
     void setSkillInstanceId(int id) { m_skillInstanceId = id; }
     int getSkillInstanceId() const { return m_skillInstanceId; }
+    QVariantMap appliedPhysicalEffectSource() const { return m_appliedPhysicalEffectSource; }
     void setSourceSkill(const QString &name, int instanceId) { m_sourceSkillName = name; m_sourceSkillInstanceId = instanceId; }
     QString getSourceSkillName() const { return m_sourceSkillName.isEmpty() ? getSkillName(false) : m_sourceSkillName; }
     int getSourceSkillInstanceId() const { return m_sourceSkillInstanceId > 0 ? m_sourceSkillInstanceId : m_skillInstanceId; }
@@ -276,6 +277,12 @@ protected:
     Card::HandlingMethod handling_method;
 
     mutable QStringList flags;
+
+private:
+    friend class Room;
+    friend class WrappedCard;
+    // Native authority only: neither card strings nor ordinary tags can mint this receipt.
+    QVariantMap m_appliedPhysicalEffectSource;
 };
 
 class SkillCard : public Card

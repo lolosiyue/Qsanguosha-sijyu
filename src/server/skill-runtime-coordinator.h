@@ -6,6 +6,7 @@
 #include "skill-instance-utils.h"
 
 #include <QSet>
+#include <functional>
 
 class Room;
 
@@ -22,6 +23,11 @@ public:
     SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const QString &skillName,
                                          const SkillInstanceRef &parentRef, bool visible);
     bool detachAttachedSkill(const SkillInstanceRef &ref);
+    SkillInstanceRef beginAcceptedViewAsEffect(ServerPlayer *player, const QString &skillName,
+                                               const SkillContext &accepted);
+    void endAcceptedViewAsEffect(const SkillInstanceRef &ref);
+    bool isAcceptedViewAsEffect(const SkillInstanceRef &ref) const;
+
     int detachSkillFromPlayer(ServerPlayer *player, const QString &skillName,
                               bool isEquip, bool acquireOnly, bool eventAndLog);
     int discardSkillInstance(ServerPlayer *chooser, ServerPlayer *owner,
@@ -38,6 +44,14 @@ public:
     int acquireSkillForSlot(ServerPlayer *player, const QString &skillName,
                             bool head, bool open, bool getmark,
                             bool eventAndLog);
+    int acquireSkillUnbound(ServerPlayer *player, const QString &skillName,
+                            bool open, bool getmark, bool eventAndLog);
+    int acquireSkillFromEffect(ServerPlayer *player, const QString &skillName,
+                               const SkillContext &accepted, bool open,
+                               bool getmark, bool eventAndLog);
+    int acquireSkillFromEffect(ServerPlayer *player, const QString &skillName,
+                               const SkillContext &accepted, const std::function<void(int)> &committed,
+                               bool open, bool getmark, bool eventAndLog);
 
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
@@ -73,7 +87,8 @@ public:
                                int instanceId);
     void clearSkillInvalidityBySource(ServerPlayer *source);
 
-    SkillInstanceRef resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const;
+    SkillInstanceRef resolveSkillInstanceRootRef(const SkillInstanceRef &ref,
+                                                bool followFrozenSource = true) const;
     bool resolveCardSkillInstance(CardUseStruct &use);
 
     bool reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
@@ -89,6 +104,10 @@ public:
     void setSkillExecutionContext(qint64 executionID, const SkillContext &context);
 
 private:
+    int acquireSkillInternal(ServerPlayer *player, const QString &skillName,
+                              bool head, bool open, bool getmark, bool eventAndLog,
+                              const SkillContext *accepted, bool unbound = false,
+                              const std::function<void(int)> &committed = {});
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner,
                             const QString &skillName, bool visibleOnly,
                             bool acquiredOnly);
@@ -96,6 +115,7 @@ private:
                                        int instanceId, bool isEquip, bool eventAndLog);
 
     Room &m_room;
+    QMap<QString, SkillInstanceRef> m_acceptedViewAsEffects;
     QSet<QString> m_changingSkillAmounts;
     SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
 };

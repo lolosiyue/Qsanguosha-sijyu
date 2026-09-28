@@ -73,6 +73,7 @@
 | `getSecondary()` | `Player` | Distance／TargetMod 的另一參與者，可能為空 |
 | `getCard()` | `Card` | TargetMod 查詢卡牌，其他類型通常為空 |
 | `getModType()` | `int` | TargetMod 的 `Residue`／`DistanceLimit`／`ExtraTarget` |
+| `getMaxCardsType()` | `MaxCardsType::MaxCardsCount` | MaxCards 查詢的 `Max`／`Normal`／`Min`；保留即時計算與上下界預覽的區別，其他修正及貢獻預覽預設為 `Max` |
 | `includesWeapon()` | `bool` | AttackRange 查詢是否包含武器 |
 | `getCurrentAmount()` | `int` | 本實例 override；沒有 override 時為共享 base |
 | `getStateValue(key, default)` | `QVariant` | 讀取本實例公開 `correctState` |
@@ -91,7 +92,7 @@ callback 不應修改 context。需要改變持久狀態時，使用 Room API。
 | 其他型別 | 記錄 warning，失敗關閉 (Fail-closed) |
 | callback 發生錯誤 | 記錄 warning，本實例本次貢獻為零 |
 
-只有 `TargetModSkill_Residue` 的 `-1` 表示無限次數；其他類型的 `-1` 保留為普通負數。
+Lua 數值回傳與 C++ `CorrectSkillResult::useAmount()` 保留既有約定：只有 `TargetModSkill_Residue` 的 `-1` 表示無限次數；其他類型的 `-1` 保留為普通負數。
 
 ## 7. Lua 建立技能
 
@@ -299,6 +300,8 @@ public:
 ```
 
 Skill 衍生類別不加入 `Q_OBJECT`。callback 不得自行遍歷同名技能持有者，也不得把結果乘以實例數；Engine 已負責逐實例呼叫。
+
+C++ 需要有限的次數減少時，使用 `CorrectSkillResult::signedAmount(delta)`；例如 `signedAmount(-1)` 只減少一次，不授予無限次數。此入口設定 `explicitSigned`，聚合數值與 `hasResidueUnlimited()` 均遵守該標記。`useAmount(-1)`、Lua 數值 `-1` 及 `unlimitedResidue()` 的既有次數語意不變；明確的 `unlimited` 旗標仍優先。本入口僅供 C++，未新增 SWIG／Lua API。
 
 ## 13. Snapshot、Delta 與 UI
 

@@ -15,6 +15,7 @@
 - 新 V2 查詢與 `createCard()` 必須無副作用。
 - 不用 Room Tag 保存 execution-local 資料。
 - 舊 AI、日誌、翻譯、history key、response pattern 必須逐項審核。
+- 舊 AI `@SkillCard` 可保留原具名類別及 metaobject，constructor 須提供精確技能名；伺服器會為命中 V2 的零實例 SkillCard 選取有效來源並走既有 `resolveActiveSkillRequest()` 重建，多來源沿用實例選擇。`historyKey()` 只控制計次，不參與技能解析。效果生成的普通牌不因 `skillName` 被當成另一次主動發動。
 - 遇到混合 `validate/onUse` 時人工拆分，不要求橋接層猜測。
 
 ## 3. 遷移前盤點表
@@ -105,6 +106,36 @@ guhuo 選牌、宣告牌名重建與回應時的二次選擇，見
   及失效檢查。已存在的有效技能實例入口仍走原有實例驗證。
 - 朱雀羽扇只接受一張未使用中的普通殺，產生保留花色、點數與材料的火殺；支援出牌與
   回應使用，不支援純打出。`historyKey()` 保留 `FireSlash`，不另計羽扇使用次數。
+
+### 5.2 精確借用來源
+
+`Room::BorrowedSkillScope(room, player, skillName, parentRef)` 接受本次授予來源的精確 ref。
+即使受詢者已有同名技能，回覆亦限定為該 parent 的 attached child；`activationRef()` 可查得它。
+scope 保存並恢復外層 selector，只有本次新建的 child 才在退出時移除，不刪既有或外層附掛。
+精確 ref overload 亦可附掛 TriggerSkillV2，交由 `triggerSkillSources()` 執行；純觸發技不設定視為技 selector。
+伺服器、AI 與 UI 的正式入口呼叫 `canActivateRequest()`：先核對同步的內部 selector，再呼叫
+技能覆寫的 `canActivate()`。selector 使用 `sys_` mark，避免引發遊戲的 MarkChange 事件；
+舊零實例 SkillCard 亦遵守同一 selector，不能自行改選另一份實例。這不改變技能配額或材料規則。
+
+### 5.3 三種 scope 的責任
+
+| 資料 | 既有機制 | 邊界 |
+|---|---|---|
+| 每份技能的選擇、進度、授予 ref | instance state | 僅保存 primitive values；按規則明確清理，目前沒有通用自動到期 StateScope |
+| 每階段、回合、輪或整場的使用額度 | `Skill::LimitScope` | 以 activation ref 計次；舊 `historyKey` 可保留相容用途，不再用共享 `hasUsed` 封鎖不同實例 |
+| 已發生的用牌、移牌或實際傷害 | [Resolution History](resolution-history.md) | 明確選擇 phase/turn/round scope，檢查完整性與分頁；scope 0 或未知不等於零次 |
+
+公開的持續效果／AI 相容標記可保留。先確認 journal 已涵蓋原規則需要的事實與時間點，
+不可把尚未記錄的事件或當前待結算傷害當作完整歷史。
+
+### 5.4 宣言的精確實例
+
+按實例限制可宣言牌名時，覆寫 `allowDeclaration(const ActiveSkillRequest &, const QString &)`，
+由 `request.activationRef` 讀取該份技能的 state／quota。`canDeclare()`、`usableNames()` 及
+宣言視窗共用此掛鉤；舊 `allowDeclaration(const Player *, ...)` 預設仍由新版掛鉤轉呼叫。
+`SkillDeclarationSession` 的尾參數可接收 `activationRef`，原生 guhuo/juguan/tiansuan 視窗與
+共用 client session 傳入所選實例，快取亦按 ref 區分。借用請求沿用其精確 selector。
+未選定實例的初始建構可能仍帶空 ref，實例型規則不得把它猜成第一份同名技能。
 
 ## 6. validate 人工分類
 

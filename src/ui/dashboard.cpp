@@ -1732,7 +1732,7 @@ bool Dashboard::canActivateMarkCard(const QString &skillName, int instanceId) co
     request.reason = ClientInstance->getRoomState()->getCurrentCardUseReason();
     request.pattern = ClientInstance->getRoomState()->getCurrentCardUsePattern();
     request.activationRef = SkillInstanceRef(m_player->objectName(), SkillInstanceKey(skillName, instanceId));
-    return skill->canActivate(request);
+    return skill->canActivateRequest(request);
 }
 
 void Dashboard::updateMarkCards()
@@ -2192,6 +2192,11 @@ void Dashboard::startPending(const ViewAsSkill *skill, int instanceId)
     // Card-local actions have no skill-dock button to supply their instance.
     if (instanceId > 0)
         m_viewAsSkillInstanceID = instanceId;
+    if (const auto *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(skill)) {
+        const int scopedId = m_player ? m_player->getMark(
+            ViewAsSkillV2::borrowedActivationMarkName(activeSkill->objectName())) : 0;
+        if (scopedId > 0) m_viewAsSkillInstanceID = scopedId;
+    }
     if (skill == nullptr || m_player == nullptr
         || !m_player->hasSkillInstance(skill->objectName(), m_viewAsSkillInstanceID))
         m_viewAsSkillInstanceID = 0;
@@ -2421,7 +2426,7 @@ void Dashboard::updatePending()
     }
 
     const Card *new_pending_card = activeSkill
-        ? (activeSkill->canActivate(activeRequest) && activeSkill->cardSelectionFeasible(activeRequest)
+        ? (activeSkill->canActivateRequest(activeRequest) && activeSkill->cardSelectionFeasible(activeRequest)
             ? activeSkill->createCard(activeRequest) : nullptr)
         : view_as_skill->viewAs(cards);
     if (new_pending_card) {

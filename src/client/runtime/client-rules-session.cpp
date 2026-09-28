@@ -538,15 +538,27 @@ bool nextSubcard(const ClientRules::SkillCardBuildRequest &draft,
     return skill->viewFilter(cards, card);
 }
 
+SkillInstanceRef declarationActivationRef(const ClientRules::SkillCardBuildRequest &draft, const Scene &scene)
+{
+    int instanceId = draft.instanceId;
+    if (const Player *self = scene.players.self()) {
+        const int scopedId = self->getMark(ViewAsSkillV2::borrowedActivationMarkName(draft.skillName));
+        if (instanceId == 0 && scopedId > 0) instanceId = scopedId;
+    }
+    return SkillInstanceRef(scene.state.selfName(), SkillInstanceKey(draft.skillName, instanceId));
+}
+
 QString applyDeclaration(const ClientRules::SkillCardBuildRequest &draft,
                          const Prompt &prompt, Scene &scene)
 {
+    const SkillInstanceRef activationRef = declarationActivationRef(draft, scene);
     if (scene.declarationSession == nullptr
-        || scene.declarationSession->skillName() != draft.skillName) {
+        || scene.declarationSession->skillName() != draft.skillName
+        || scene.declarationSession->activationRef() != activationRef) {
         scene.declarationSession = std::make_unique<SkillDeclarationSession>(
             draft.skillName, scene.players.self(), prompt.reason, prompt.cards.selection.pattern,
             scene.state.setup().value(QStringLiteral("ban_packages")).toStringList(),
-            prompt.request.requestId);
+            prompt.request.requestId, activationRef);
     }
     if (!scene.declarationSession->active())
         return {};
@@ -813,7 +825,7 @@ QStringList declarations(const ClientRules::SkillCardBuildRequest &draft,
     scene.declarationSession = std::make_unique<SkillDeclarationSession>(
         draft.skillName, scene.players.self(), prompt.reason, prompt.cards.selection.pattern,
         scene.state.setup().value(QStringLiteral("ban_packages")).toStringList(),
-        prompt.request.requestId);
+        prompt.request.requestId, declarationActivationRef(draft, scene));
     if (!scene.declarationSession->active())
         return {};
     QStringList result;

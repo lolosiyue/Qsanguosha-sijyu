@@ -173,6 +173,9 @@ public:
     RoomThread*getThread() const;
     ServerPlayer*getCurrent() const;
     void setCurrent(ServerPlayer*current);
+    // Immediate nested turn; preserve provenance without changing scheduling semantics.
+    void executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
+                          const QString &reason, const SkillInstanceRef &sourceRef);
     int scheduleExtraTurn(ServerPlayer *player, const QString &reason = QString(),
                           QList<Player::Phase> phases = QList<Player::Phase>(), int times = 1);
     int scheduleExtraTurn(ServerPlayer *player, const SkillInstanceRef &sourceRef,
@@ -230,13 +233,38 @@ public:
     {
     public:
         BorrowedSkillScope(Room *room, ServerPlayer *player, const QString &skillName, const QString &grantSkill);
+        BorrowedSkillScope(Room *room, ServerPlayer *player, const QString &skillName, const SkillInstanceRef &parentRef);
         ~BorrowedSkillScope();
         BorrowedSkillScope(const BorrowedSkillScope &) = delete;
         BorrowedSkillScope &operator=(const BorrowedSkillScope &) = delete;
+        SkillInstanceRef activationRef() const { return m_ref; }
+    private:
+        void attach(ServerPlayer *player, const QString &skillName, const SkillInstanceRef &parentRef);
+        Room *m_room;
+        ServerPlayer *m_player;
+        SkillInstanceRef m_ref;
+        int m_previousInstance;
+        bool m_created;
+    };
+    // A paid/accepted effect can finish its prompt after its original grant retires.
+    // Unlike ordinary borrowing, this exact leaf is owned by the effect scope.
+    class AcceptedViewAsEffectScope
+    {
+    public:
+        AcceptedViewAsEffectScope(Room *room, ServerPlayer *player, const QString &skillName,
+                                  const SkillContext &accepted);
+        ~AcceptedViewAsEffectScope();
+        AcceptedViewAsEffectScope(const AcceptedViewAsEffectScope &) = delete;
+        AcceptedViewAsEffectScope &operator=(const AcceptedViewAsEffectScope &) = delete;
+        SkillInstanceRef activationRef() const { return m_ref; }
+        bool isValid() const { return m_ref.isValid(); }
     private:
         Room *m_room;
+        ServerPlayer *m_player;
         SkillInstanceRef m_ref;
+        int m_previousInstance;
     };
+    bool isAcceptedViewAsEffect(const SkillInstanceRef &ref) const;
     // askForUseCard("@@" + skillName) inside a BorrowedSkillScope, for Lua callers
     // that cannot hold a C++ scope.
     const Card *askForUseCardWithBorrowedSkill(ServerPlayer *player, const QString &skillName,
@@ -253,6 +281,12 @@ public:
     void setPlayerFlag(ServerPlayer*player, const QString&flag);
     void setPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value);
     void setPlayerMark(ServerPlayer*player, const QString&mark, int value, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
+    // Native receipt callbacks must only inspect/store state, never trigger game rules.
+    // Return value means a commit occurred, even if a later observer changes it again.
+    bool setPlayerMarkWithReceipt(ServerPlayer *player, const QString &mark, int value,
+        const std::function<bool(const QString &, int, int)> &canCommit,
+        const std::function<void(const QString &, int, int)> &committed,
+        QList<ServerPlayer *> onlyViewers = {});
     void addPlayerMark(ServerPlayer*player, const QString&mark, int add_num = 1, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
     void removePlayerMark(ServerPlayer*player, const QString&mark, int remove_num = 1);
     void setPlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
@@ -279,6 +313,12 @@ public:
     CardUseStruct getUseStruct(const Card*card);
     bool useCard(const CardUseStruct&use, bool add_history = false);
     bool useCard(CardUseStruct&use, bool add_history = false);
+    // Server-only continuation of an accepted effect, never a player activation request.
+    bool useCardFromSkillEffect(const CardUseStruct &use, const SkillContext &accepted, bool add_history = false);
+    bool useCardFromSkillEffect(CardUseStruct &use, const SkillContext &accepted, bool add_history = false);
+    // Stamp an already-installed physical transformation before publishing it to clients.
+    bool setPhysicalCardEffectSource(int cardId, const SkillContext &accepted);
+    bool restorePhysicalCardEffectSource(int cardId, const QVariantMap &receipt);
     void damage(DamageStruct damage);
     void loseHp(ServerPlayer*victim, int lose = 1, bool ignore_hujia = true, ServerPlayer*from = nullptr, const QString&reason = "");
     void loseHp(const HpLostStruct&lost_data);
@@ -287,6 +327,8 @@ public:
     void gainMaxHp(ServerPlayer*player, int gain = 1, const QString&reason = "");
     bool changeMaxHpForAwakenSkill(ServerPlayer*player, int magnitude = -1, const QString&reason = "");
     void recover(ServerPlayer*player, const RecoverStruct&recover, bool set_emotion = false);
+    // C++ callers can query this exact recovery without including nested recoveries.
+    void recover(ServerPlayer*player, const RecoverStruct&recover, bool set_emotion, qint64 *historyEventId);
     void changeKingdom(ServerPlayer*player, const QString&kingdom);
     ServerPlayer*getSaver(ServerPlayer*player) const;
     bool cardEffect(const Card*card, ServerPlayer*from, ServerPlayer*to, bool multiple = false);
@@ -500,6 +542,17 @@ public:
     int acquireSkillForSlot(ServerPlayer *player, const QString &skill_name, bool head,
                             bool open = true, bool getmark = true,
                             bool event_and_log = true);
+    // Card/system acquisition without a general slot or fabricated source provenance.
+    int acquireSkillUnbound(ServerPlayer *player, const QString &skillName,
+                            bool open = true, bool getmark = true, bool eventAndLog = true);
+    // Applied grant: independent lifetime; package expires the returned exact ID.
+    int acquireSkillFromEffect(ServerPlayer *player, const QString &skillName,
+                                const SkillContext &accepted, bool open = true,
+                                bool getmark = true, bool eventAndLog = true);
+    // Store-only receipt, called after grant commit and before any acquire callbacks.
+    int acquireSkillFromEffect(ServerPlayer *player, const QString &skillName,
+                                const SkillContext &accepted, const std::function<void(int)> &committed,
+                                bool open = true, bool getmark = true, bool eventAndLog = true);
     // Remove only matching root instances bound to the requested general slot.
     int detachSkillForSlot(ServerPlayer *player, const QString &skillName, bool head,
                            bool isEquip = false, bool acquireOnly = false, bool eventAndLog = true);
@@ -851,13 +904,17 @@ protected:
 
 private:
     bool completeRuntimeInitialization(bool runtimeReady, const QString &runtimeError);
+    void beginNumericStateHistory();
+    void recordNumericStateCommit(ServerPlayer *player, const char *mutation,
+        int hpBefore, int maxHpBefore, int handBefore, int hpAfter, int maxHpAfter, int handAfter);
+    bool useCardInternal(CardUseStruct &use, bool add_history, const SkillContext *acceptedEffect);
+    bool skillEffectCardMaterialsValid(const Card *card) const;
+    bool physicalCardEffectContext(const Card *card, SkillContext &context) const;
     friend struct ScenarioWorkRuntimeTestAccess;
     void addPlayerToRoster(ServerPlayer *player);
     void removePlayerFromRoster(ServerPlayer *player);
     void replacePlayerOrder(const QList<ServerPlayer *> &players);
     void broadcastSeatRing();
-    void executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
-                          const QString &reason, const SkillInstanceRef &sourceRef);
     void processScheduledExtraTurns();
 
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
@@ -1026,6 +1083,7 @@ private:
     QString m_takeoverError;
     QString m_workError;
     bool m_takeoverRestoring = false;
+    bool m_numericStateHistoryStarted = false;
     std::atomic_bool m_stopRequested{false};
 
     JsonArray m_fillAGarg;

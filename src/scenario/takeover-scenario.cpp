@@ -125,6 +125,15 @@ void restorePlayer(Room *room, TakeoverScenario *scenario, ServerPlayer *player,
                 SkillInstanceKey(saved.parentRefSkillName, saved.parentRefInstanceID))
             : SkillInstanceRef();
         instance.visible = saved.visible;
+        // Provider instances may have retired; only remap the stable player identity.
+        auto restoreProvenance = [scenario](const QVariantMap &ref) {
+            ServerPlayer *owner = scenario->runtimePlayer(ref.value("owner").toString());
+            return owner ? SkillInstanceRef(owner->objectName(),
+                SkillInstanceKey(ref.value("skill").toString(), ref.value("id").toInt()))
+                : SkillInstanceRef();
+        };
+        instance.frozenSourceRef = restoreProvenance(saved.frozenSource);
+        instance.grantActivationRef = restoreProvenance(saved.grantActivation);
         instance.hasAmountOverride = saved.hasAmountOverride;
         instance.amountOverride = saved.amountOverride;
         instance.bindHead = saved.bindHead;
@@ -217,6 +226,15 @@ bool restoreCards(Room *room, TakeoverScenario *scenario)
         foreach (const QString &key, saved.tags.keys())
             wrapped->setTag(key, saved.tags.value(key));
         wrapped->setModified(saved.modified);
+        QVariantMap applied = saved.appliedPhysicalEffectSource;
+        if (!applied.isEmpty()) {
+            for (const QString &key : {QStringLiteral("source_owner"), QStringLiteral("activation_owner")}) {
+                ServerPlayer *owner = scenario->runtimePlayer(applied.value(key).toString());
+                if (!owner) return false;
+                applied[key] = owner->objectName();
+            }
+        }
+        if (!room->restorePhysicalCardEffectSource(saved.id, applied)) return false;
     }
 
     // GameReady runs before GameRule's initial draw.  The room's only cards
@@ -566,6 +584,17 @@ bool TakeoverRule::restore(Room *room) const
             scenario->runtimePlayer(seatName)->setState(QStringLiteral("robot"));
     }
 
+    // Run after every player's clear/upsert pass, so another seat's restore
+    // cannot erase the retired provider's reserved identity.
+    for (const QString &seatName : order) {
+        for (const SkillInstance &instance : scenario->runtimePlayer(seatName)->getSkillInstances()) {
+            for (const SkillInstanceRef &ref : {instance.frozenSourceRef, instance.grantActivationRef}) {
+                ServerPlayer *owner = ref.isValid()
+                    ? room->findPlayerByObjectName(ref.ownerObjectName, true) : nullptr;
+                if (owner) owner->reserveSkillInstanceId(ref.key.skillName, ref.key.instanceID);
+            }
+        }
+    }
     room->rebuildAlivePlayers();
 
     if (!restoreCards(room, scenario)) {

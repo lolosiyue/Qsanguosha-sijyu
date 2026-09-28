@@ -9,11 +9,12 @@
 | API | 用途 |
 |---|---|
 | `player:gainAnExtraTurn(phases)` | 立即、巢狀執行額外回合；既有語意不變 |
+| `room->executeExtraTurn(player, phases, reason, sourceRef)` | 原生 V2 立即、巢狀執行，保留精確來源；不改成延後排程 |
 | `room:scheduleExtraTurn(player, reason, phases, times)` | Legacy 技能按名稱排程 |
 | `room:scheduleExtraTurn(player, sourceRef, phases, times)` | V2 技能按 `SkillInstanceRef` 精確排程 |
 | `room:isCurrentExtraTurn()` | 查詢目前是否正在執行額外回合 |
-| `room:getCurrentExtraTurnReason()` | 取得目前排程的文字來源；立即 API 回傳空字串 |
-| `room:getCurrentExtraTurnSourceRef()` | 取得目前排程的技能實例來源；Legacy／立即 API 回傳無效引用 |
+| `room:getCurrentExtraTurnReason()` | 取得目前排程的文字來源；舊立即 API 回傳空字串；V2 立即 API 保留 reason |
+| `room:getCurrentExtraTurnSourceRef()` | 取得目前排程的技能實例來源；Legacy／舊立即 API 回傳無效引用；V2 立即 API 保留 sourceRef |
 
 `phases` 為空時執行完整回合；非空時依傳入順序執行，引擎自動補上 `NotActive`。`times` 預設為 `1`，小於或等於零時不建立排程。API 回傳實際排入的數量。
 

@@ -176,10 +176,11 @@ void Slash::onUse(Room *room, CardUseStruct &use) const
 
 void Slash::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
-    CardUseStruct cardUse = room->getTag("UseHistory"+toString()).value<CardUseStruct>();
+    CardUseStruct cardUse = room->getUseStruct(this);
 	QVariantList jink_list = source->getTag("Jink_"+toString()).toList();
     foreach (ServerPlayer *target, targets) {
 		CardEffectStruct effect;
+        effect.setSkillUseContext(cardUse);
 
 		if(jink_list.length()>0)
 			effect.offset_num = jink_list.takeFirst().toInt();

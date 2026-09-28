@@ -397,6 +397,12 @@ SkillDeclarationReason Skill::declarationReason(const Player *, const QString &,
     return SkillDeclarationReason::None;
 }
 
+SkillDeclarationReason Skill::declarationReason(const ActiveSkillRequest &request,
+    const QString &value, const Card *card) const
+{
+    return declarationReason(request.initiator, value, card);
+}
+
 QList<SkillDeclarationCandidate> Skill::declarationCandidates(
     const Player *, CardUseStruct::CardUseReason, const QString &, const QStringList &, quint64) const
 {
@@ -513,6 +519,28 @@ ViewAsSkillV2::ViewAsSkillV2(const QString &name, int n)
 {
 }
 
+QString ViewAsSkillV2::borrowedActivationMarkName(const QString &skillName)
+{
+    // An internal selector must not trigger gameplay MarkChanged callbacks.
+    return QStringLiteral("sys_BorrowedActivation_%1").arg(skillName);
+}
+
+bool ViewAsSkillV2::canActivateRequest(const ActiveSkillRequest &request) const
+{
+    if (!request.initiator) return false;
+    // A retained accepted effect exposes only its response prompt, never a new
+    // Play action while nested draw/recast callbacks run before that prompt.
+    if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+        && request.initiator->getSkillInstanceStateValue(objectName(),
+            request.activationRef.key.instanceID, "accepted_view_as_effect").toBool()) return false;
+    const int requiredId = request.initiator->getMark(borrowedActivationMarkName(objectName()));
+    if (requiredId > 0
+        && request.activationRef != SkillInstanceRef(request.initiator->objectName(),
+                                                     SkillInstanceKey(objectName(), requiredId)))
+        return false;
+    return canActivate(request);
+}
+
 bool ViewAsSkillV2::canActivate(const ActiveSkillRequest &) const
 {
     return false;
@@ -527,6 +555,7 @@ bool ViewAsSkillV2::prepareEquipSource(Room *room, SkillContext &context) const
     SkillContext source = context;
     if (!equip->prepareSource(room, source)) return false;
     context.sourceRef = source.sourceRef;
+    context.physicalEquipSource = source.physicalEquipSource;
     // Name the activation entry without claiming that instance zero is a real instance.
     context.activationRef = SkillInstanceRef(context.owner->objectName(),
         SkillInstanceKey(objectName(), 0));
@@ -673,6 +702,7 @@ ViewAsSkillV2::EffectFlow ViewAsSkillV2::skillEffect(SkillContext &context, Serv
     // EffectTarget interceptors may update effect state, but never execution identity.
     context.skill_name = identity.skill_name;
     context.sourceRef = identity.sourceRef;
+    context.physicalEquipSource = identity.physicalEquipSource;
     context.activationRef = identity.activationRef;
     context.initiator = identity.initiator;
     context.invoker = identity.invoker;
@@ -685,7 +715,9 @@ ViewAsSkillV2::EffectFlow ViewAsSkillV2::skillEffect(SkillContext &context, Serv
     context.amount = identity.amount;
     context.current_event = EventSkillEffectTarget;
 
-    return skipped ? ContinueEffects : effectOnTarget(context, target);
+    // Manual traversal obeys the same cancellation and post-hook liveness gate.
+    if (skipped || context.is_canceled || !target->isAlive()) return ContinueEffects;
+    return effectOnTarget(context, target);
 }
 
 void ViewAsSkillV2::setN(int n)
@@ -781,7 +813,7 @@ bool ViewAsSkillV2::canDeclare(const ActiveSkillRequest &request, const QString 
 bool ViewAsSkillV2::canDeclareListed(const ActiveSkillRequest &request, const QString &name) const
 {
     const Player *player = request.initiator;
-    if (!player || name.isEmpty() || !allowDeclaration(player, name))
+    if (!player || name.isEmpty() || !allowDeclaration(request, name))
         return false;
     const bool play = request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
     // Only named card demands are declarable; "." and "@" requests ask for real cards.
@@ -821,6 +853,11 @@ QString ViewAsSkillV2::declaredName(const ActiveSkillRequest &request) const
     return usableNames(request).value(0);
 }
 
+bool ViewAsSkillV2::allowDeclaration(const ActiveSkillRequest &request, const QString &name) const
+{
+    return allowDeclaration(request.initiator, name);
+}
+
 bool ViewAsSkillV2::allowDeclaration(const Player *, const QString &) const
 {
     return true;
@@ -841,6 +878,16 @@ SkillDeclarationReason ViewAsSkillV2::declarationReason(
 {
     if (!declaresCardName()) return ViewAsSkill::declarationReason(self, value, card);
     return self && allowDeclaration(self, value)
+        ? SkillDeclarationReason::None : SkillDeclarationReason::CardUnavailable;
+}
+
+SkillDeclarationReason ViewAsSkillV2::declarationReason(
+    const ActiveSkillRequest &request, const QString &value, const Card *card) const
+{
+    // Preserve specialised legacy reasons while applying the exact V2 instance gate.
+    const SkillDeclarationReason reason = declarationReason(request.initiator, value, card);
+    if (reason != SkillDeclarationReason::None) return reason;
+    return request.initiator && allowDeclaration(request, value)
         ? SkillDeclarationReason::None : SkillDeclarationReason::CardUnavailable;
 }
 
@@ -1101,7 +1148,7 @@ bool TriggerSkillV2::effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillCon
 bool TriggerSkillV2::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                                   SkillContext &ctx, ServerPlayer *target) const
 {
-    if (!room || !target || !target->isAlive())
+    if (!room || !target || (!target->isAlive() && !allowsDeadTarget(ctx, target)))
         return false;
 
     const SkillContext identity = ctx;
@@ -1122,6 +1169,7 @@ bool TriggerSkillV2::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPl
     // EffectTarget interceptors may update effect state, but never execution identity.
     ctx.skill_name = identity.skill_name;
     ctx.sourceRef = identity.sourceRef;
+    ctx.physicalEquipSource = identity.physicalEquipSource;
     ctx.activationRef = identity.activationRef;
     ctx.initiator = identity.initiator;
     ctx.invoker = identity.invoker;
@@ -1134,7 +1182,10 @@ bool TriggerSkillV2::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPl
     ctx.amount = identity.amount;
     ctx.current_event = EventSkillEffectTarget;
 
-    if (skip)
+    // Setting cancellation is sufficient; the interceptor need not break
+    // the surrounding game event to suppress this recipient's effect.
+    if (skip || ctx.is_canceled
+        || (!target->isAlive() && !allowsDeadTarget(ctx, target)))
         return false;
 
     return effectTarget(triggerEvent, room, player, ctx, target);
@@ -1608,13 +1659,40 @@ bool EquipSkillV2::prepareSource(Room *room, SkillContext &ctx) const
 {
     ctx.activationRef = SkillInstanceRef();
     ctx.sourceRef = SkillInstanceRef();
+    ctx.physicalEquipSource = PhysicalEquipSource();
     if (!ctx.owner) return false;
     // Event-owned effects are explicitly admitted by their event selector,
     // even when the card has left play or its former holder has died.
-    if (usesEventSource(ctx)) return true;
+    if (usesEventSource(ctx)) {
+        // A leave-equipment effect belongs to the original physical card, even
+        // after uninstall/filter callbacks or a replacement in the same slot.
+        if (ctx.original_data && ctx.original_data->canConvert<CardsMoveOneTimeStruct>()
+            && (ctx.current_event == BeforeCardsMove || ctx.current_event == CardsMoveOneTime)) {
+            const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
+            for (int i = 0; i < move.card_ids.size(); ++i) {
+                const int id = move.card_ids.at(i);
+                if (id < 0) continue;
+                QPair<QString, QString> original = move.equipmentSourceBefore(id);
+                if (ctx.current_event == BeforeCardsMove && move.from == ctx.owner
+                    && move.from_places.value(i, Player::PlaceUnknown) == Player::PlaceEquip
+                    && room->getCardOwner(id) == ctx.owner && room->getCardPlace(id) == Player::PlaceEquip) {
+                    const Card *card = Sanguosha->getCard(id);
+                    if (card && card->getTypeId() == Card::TypeEquip)
+                        original = {ctx.owner->objectName(), card->objectName()};
+                }
+                if (original.first != ctx.owner->objectName() || original.second != m_equipmentName) continue;
+                ctx.physicalEquipSource = PhysicalEquipSource(original.first, original.second, objectName(), id);
+                break;
+            }
+        }
+        return true;
+    }
     if (!static_cast<const TriggerSkill *>(this)->triggerable(ctx.owner)) return false;
-    for (const Card *equip : ctx.owner->getEquips())
-        if (equip->objectName() == m_equipmentName) return true;
+    for (const Card *equip : ctx.owner->getEquips()) {
+        if (equip->objectName() != m_equipmentName || equip->getEffectiveId() < 0) continue;
+        ctx.physicalEquipSource = PhysicalEquipSource(ctx.owner->objectName(), m_equipmentName, objectName(), equip->getEffectiveId());
+        return true;
+    }
     for (const SkillInstanceRef &source : ctx.owner->viewAsEquipSources(m_equipmentName)) {
         if (!source.isValid() || (room->canShowGeneralForSkill(source)
             && room->isSkillPreshownForTrigger(source))) {
@@ -1934,6 +2012,7 @@ QVariant SkillContext::toVariant() const
         map["instanceID"] = instanceID;
     if (executionID > 0)
         map["executionID"] = executionID;
+    if (physicalEquipSource.isValid()) map["physical_equipment"] = physicalEquipSource.toVariantMap();
     if (sourceRef.isValid())
         map["source"] = sourceRef.ownerObjectName + "/" + sourceRef.key.skillName + "#" + QString::number(sourceRef.key.instanceID);
     if (activationRef.isValid())

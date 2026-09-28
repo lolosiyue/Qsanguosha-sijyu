@@ -1072,7 +1072,7 @@ bool AiDecisionCoordinator::buildSkillActionContext(
     request.pattern = pattern;
     request.initiator = player;
     request.activationRef = SkillInstanceRef(player->objectName(), instance.key());
-    if (!skill->canActivate(request)) return false;
+    if (!skill->canActivateRequest(request)) return false;
 
     SkillContext context;
     context.initiator = player;
@@ -1168,7 +1168,7 @@ Card *AiDecisionCoordinator::buildSpecCard(ServerPlayer *player, const AIRequest
     activation.pattern = request.pattern;
     activation.initiator = player;
     activation.activationRef = authorized->activationRef;
-    if (!skill->canActivate(activation)) return nullptr;
+    if (!skill->canActivateRequest(activation)) return nullptr;
     if (authorized->costCount > 0 && !skill->hasIndependentAIConversion()) return nullptr;
     // Revalidate each prefix, not just the final number of cards.
     foreach (int id, spec.subcardIds) {

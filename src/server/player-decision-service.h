@@ -105,6 +105,10 @@ public:
                                QList<SkillContext> &contexts, bool optional, const QVariant &data);
 
 private:
+    friend class Room;
+    struct ProvisionFrame;
+    ProvisionFrame *m_provisionFrame = nullptr;
+    void markProvidedResponse(const Card *card);
     Room &m_room;
     EventDispatcher &m_eventDispatcher;
     QMap<QString, QVariant> m_testOverrides;

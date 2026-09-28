@@ -303,6 +303,15 @@ Room *ServerPlayer::getRoom() const
 	return room;
 }
 
+void ServerPlayer::numericStateCommitted(const char *mutation, int hpBefore,
+                                         int maxHpBefore, int handBefore)
+{
+    // Freeze values before hp_changed/gameplay_property_changed can re-enter.
+    if (room)
+        room->recordNumericStateCommit(this, mutation, hpBefore, maxHpBefore, handBefore,
+            getHp(), getMaxHp(), getHandcardNum());
+}
+
 void ServerPlayer::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state)
 {
 	if (!findSkillInstance(skillName, instanceID)) return;
@@ -1058,6 +1067,20 @@ PindianStruct *ServerPlayer::finishPindian(PindianStruct *pindian_struct)
     if (!pindian_struct) return nullptr;
     ServerPlayer *target = pindian_struct->to;
     const QString reason = pindian_struct->reason;
+    const auto snapshotPindian = [&]() {
+        return QVariantMap{{"from", pindian_struct->from ? pindian_struct->from->objectName() : QString()},
+            {"to", pindian_struct->to ? pindian_struct->to->objectName() : QString()},
+            {"reason", pindian_struct->reason},
+            {"from_card", room->historyCardSnapshot(pindian_struct->from_card)},
+            {"to_card", room->historyCardSnapshot(pindian_struct->to_card)},
+            {"from_number", pindian_struct->from_number}, {"to_number", pindian_struct->to_number},
+            {"attribution_complete", true}};
+    };
+    const QVariantMap initialPindian = snapshotPindian();
+    ResolutionHistoryEventGuard pindianHistory(room->resolutionHistory(), "pindian", initialPindian,
+                                                room->historyRecordingEnabled());
+    if (pindianHistory.id() != 0)
+        room->resolutionHistory().appendFact(pindianHistory.id(), "pindian_start", initialPindian);
     QVariant data;
     LogMessage log;
     QList<CardsMoveStruct> moves;
@@ -1065,7 +1088,14 @@ PindianStruct *ServerPlayer::finishPindian(PindianStruct *pindian_struct)
 	room->getThread()->trigger(PindianVerifying, room, this, data);
 	pindian_struct = data.value<PindianStruct *>();
 
-	pindian_struct->success = pindian_struct->from_number > pindian_struct->to_number;
+    pindian_struct->success = pindian_struct->from_number > pindian_struct->to_number;
+    // Freeze the verified result before observers open another pindian with the
+    // same players/cards. The event identity, not those values, links callbacks.
+    if (pindianHistory.id() != 0) {
+        QVariantMap result = snapshotPindian();
+        result.insert("success", pindian_struct->success);
+        room->resolutionHistory().appendFact(pindianHistory.id(), "pindian_result", result);
+    }
 
 	log.type = pindian_struct->success ? "#PindianSuccess" : "#PindianFailure";
 	log.from = this;
@@ -1107,6 +1137,7 @@ PindianStruct *ServerPlayer::finishPindian(PindianStruct *pindian_struct)
 		.arg(target->objectName()).arg(pindian_struct->to_card->getEffectiveId());
 	room->getThread()->trigger(ChoiceMade, room, this, data);
 
+    pindianHistory.finish("completed");
 	return pindian_struct;
 }
 
@@ -1137,7 +1168,7 @@ bool ServerPlayer::changePhase(Phase from, Phase to)
 		room->resolutionHistory(), QStringLiteral("phase"),
 		QVariantMap{{QStringLiteral("player"), objectName()},
 			{QStringLiteral("from_phase"), static_cast<int>(from)},
-			{QStringLiteral("phase"), static_cast<int>(to)}},
+			{QStringLiteral("phase"), static_cast<int>(to)}, {QStringLiteral("entered"), false}},
 		room->historyRecordingEnabled());
 
 	try {
@@ -1150,6 +1181,7 @@ bool ServerPlayer::changePhase(Phase from, Phase to)
 	setPhase(phase_change.to);
 	if(phase_change.to == NotActive){
 		room->broadcastProperty(this, "phase");
+		phaseHistory.update({{QStringLiteral("entered"), true}});
 		room->getThread()->trigger(EventPhaseStart, room, this);
 		room->processScheduledExtraTurns();
 		phaseHistory.finish(QStringLiteral("completed"));
@@ -1164,6 +1196,7 @@ bool ServerPlayer::changePhase(Phase from, Phase to)
 	room->broadcastProperty(this, "phase");
 
 	// Match XXY's freeChain boundaries without flushing inside a skill effect.
+	phaseHistory.update({{QStringLiteral("entered"), true}});
 	const bool phaseEnded = room->getThread()->trigger(EventPhaseStart, room, this, data);
 	room->flushHegemonyReveals();
 	if (!phaseEnded) {
@@ -1228,7 +1261,7 @@ void ServerPlayer::play(QList<Phase> set_phases)
 			room->resolutionHistory(), QStringLiteral("phase"),
 			QVariantMap{{QStringLiteral("player"), objectName()},
 				{QStringLiteral("from_phase"), static_cast<int>(phase_change.from)},
-				{QStringLiteral("phase"), static_cast<int>(phase_change.to)}},
+				{QStringLiteral("phase"), static_cast<int>(phase_change.to)}, {QStringLiteral("entered"), false}},
 			room->historyRecordingEnabled());
 		try {
 		bool skip = room->getThread()->trigger(EventPhaseChanging, room, this, data);
@@ -1239,6 +1272,7 @@ void ServerPlayer::play(QList<Phase> set_phases)
 		setPhase(phases[i]);
 		room->broadcastProperty(this, "phase");
 		if(phases[i] == NotActive){
+			phaseHistory.update({{QStringLiteral("entered"), true}});
 			room->getThread()->trigger(EventPhaseStart, room, this, data);
 			phaseHistory.finish(QStringLiteral("completed"));
 			break;
@@ -1254,6 +1288,7 @@ void ServerPlayer::play(QList<Phase> set_phases)
 			data = QVariant::fromValue(phase_change);
 		}
 		// A TurnStart frame encloses all phases; it must not delay reveal rewards.
+		phaseHistory.update({{QStringLiteral("entered"), true}});
 		const bool phaseEnded = room->getThread()->trigger(EventPhaseStart, room, this, data);
 		room->flushHegemonyReveals();
 		if (!phaseEnded) {

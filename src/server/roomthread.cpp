@@ -101,11 +101,20 @@ CardEffectStruct &CardEffectStruct::operator=(const CardEffectStruct &other)
 	card=other.card; offset_card=other.offset_card; offset_num=other.offset_num; from=other.from; to=other.to;
 	multiple=other.multiple; nullified=other.nullified; no_respond=other.no_respond; no_offset=other.no_offset;
 	extra_effect=other.extra_effect; skillExecutionID=other.skillExecutionID;
+    m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
+    physicalEquipSource=other.physicalEquipSource;
 	globalCardLifetimeManager().retainEventPayload(this, {card, offset_card});
 	return *this;
 }
 CardEffectStruct &CardEffectStruct::operator=(CardEffectStruct &&other) noexcept { return operator=(static_cast<const CardEffectStruct &>(other)); }
 CardEffectStruct::~CardEffectStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
+void CardEffectStruct::setSkillUseContext(const CardUseStruct &use)
+{
+    skillExecutionID = use.skillExecutionID;
+    physicalEquipSource = use.physicalEquipSource;
+    m_acceptedSkillEffectCard = use.isAcceptedSkillEffectCard();
+}
+
 
 SlashEffectStruct::SlashEffectStruct()
 	: jink_num(1), slash(nullptr), jink(nullptr), from(nullptr), to(nullptr), drank(0), nature(DamageStruct::Normal), multiple(false), nullified(false),
@@ -166,7 +175,7 @@ MarkStruct::MarkStruct()
 }
 
 DrawStruct::DrawStruct()
-	: who(nullptr), num(1), top(true), visible(false)
+	: historyEventId(0), who(nullptr), num(1), top(true), visible(false)
 {
 }
 
@@ -271,6 +280,8 @@ CardUseStruct &CardUseStruct::operator=(const CardUseStruct &other)
 	whocard=other.whocard; who=other.who; no_respond_list=other.no_respond_list; no_offset_list=other.no_offset_list;
 	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
+    m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
+    physicalEquipSource=other.physicalEquipSource;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=other.m_ownedCard;
 	targetModReveal=other.targetModReveal;
 	globalCardLifetimeManager().retainEventPayload(this, {card, whocard, m_ownedCard.data()});
@@ -285,12 +296,15 @@ CardUseStruct &CardUseStruct::operator=(CardUseStruct &&other) noexcept
 	whocard=other.whocard; who=other.who; no_respond_list=std::move(other.no_respond_list); no_offset_list=std::move(other.no_offset_list);
 	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
+    m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
+    physicalEquipSource=other.physicalEquipSource;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=std::move(other.m_ownedCard);
 	targetModReveal=std::move(other.targetModReveal);
 	globalCardLifetimeManager().retainEventPayload(this, {card, whocard, m_ownedCard.data()});
 	globalCardLifetimeManager().releaseEventPayload(&other);
 	other.card = nullptr;
 	other.whocard = nullptr;
+    other.m_acceptedSkillEffectCard = false;
 	return *this;
 }
 CardUseStruct::~CardUseStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
@@ -360,6 +374,8 @@ bool CardUseStruct::isValid(const QString &pattern) const
 
 bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 {
+    m_acceptedSkillEffectCard = false;
+    sourceRef = SkillInstanceRef(); activationRef = SkillInstanceRef(); physicalEquipSource = PhysicalEquipSource(); skillExecutionID = 0;
 	JsonArray use = usage.value<JsonArray>();
 	replaceCard(nullptr);
 	to.clear();
@@ -390,6 +406,8 @@ bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 
 void CardUseStruct::parse(const QString &str, Room*room)
 {
+    m_acceptedSkillEffectCard = false;
+    sourceRef = SkillInstanceRef(); activationRef = SkillInstanceRef(); physicalEquipSource = PhysicalEquipSource(); skillExecutionID = 0;
 	replaceCard(nullptr);
 	to.clear();
 	m_validateTargets = true;
@@ -473,7 +491,7 @@ CardResponseStruct &CardResponseStruct::operator=(const CardResponseStruct &othe
 	if (this == &other) return *this;
 	globalCardLifetimeManager().releaseEventPayload(this);
 	m_card=other.m_card; m_who=other.m_who; m_isUse=other.m_isUse; m_isHandcard=other.m_isHandcard;
-	m_isRetrial=other.m_isRetrial; m_toCard=other.m_toCard; sourceRef=other.sourceRef;
+	m_isRetrial=other.m_isRetrial; m_toCard=other.m_toCard; sourceRef=other.sourceRef; physicalEquipSource=other.physicalEquipSource;
 	activationRef=other.activationRef; skillExecutionID=other.skillExecutionID; nullified=other.nullified;
 	globalCardLifetimeManager().retainEventPayload(this, {m_card, m_toCard});
 	return *this;
@@ -483,7 +501,7 @@ CardResponseStruct &CardResponseStruct::operator=(CardResponseStruct &&other) no
 	if (this == &other) return *this;
 	globalCardLifetimeManager().releaseEventPayload(this);
 	m_card=other.m_card; m_who=other.m_who; m_isUse=other.m_isUse; m_isHandcard=other.m_isHandcard;
-	m_isRetrial=other.m_isRetrial; m_toCard=other.m_toCard; sourceRef=other.sourceRef;
+	m_isRetrial=other.m_isRetrial; m_toCard=other.m_toCard; sourceRef=other.sourceRef; physicalEquipSource=other.physicalEquipSource;
 	activationRef=other.activationRef; skillExecutionID=other.skillExecutionID; nullified=other.nullified;
 	globalCardLifetimeManager().retainEventPayload(this, {m_card, m_toCard});
 	globalCardLifetimeManager().releaseEventPayload(&other);
@@ -957,6 +975,7 @@ void RoomThread::run()
 			}
 		}
 		room->removeDerivativeCards();
+		room->beginNumericStateHistory();
 		constructTriggerTable();
 		trigger(GameReady, room, nullptr);
 		room->markGameReadyCompleted();
@@ -1134,10 +1153,38 @@ bool RoomThread::triggerSkillSources(TriggerEvent event, Room *room, ServerPlaye
     return broken;
 }
 
+namespace {
+// Restore between author callbacks, so the next interceptor observes admission
+// identity while retaining mutations to cancellation, targets and effect values.
+void restorePhysicalEquipmentIdentity(QVariant &data, const QVariant &physicalIdentity)
+{
+    if (physicalIdentity.canConvert<SkillContext>() && data.canConvert<SkillContext>()) {
+        SkillContext updated = data.value<SkillContext>();
+        updated.physicalEquipSource = physicalIdentity.value<SkillContext>().physicalEquipSource;
+        data = QVariant::fromValue(updated);
+    } else if (physicalIdentity.canConvert<CardUseStruct>() && data.canConvert<CardUseStruct>()) {
+        CardUseStruct updated = data.value<CardUseStruct>();
+        updated.physicalEquipSource = physicalIdentity.value<CardUseStruct>().physicalEquipSource;
+        data = QVariant::fromValue(updated);
+    } else if (physicalIdentity.canConvert<CardEffectStruct>() && data.canConvert<CardEffectStruct>()) {
+        CardEffectStruct updated = data.value<CardEffectStruct>();
+        updated.physicalEquipSource = physicalIdentity.value<CardEffectStruct>().physicalEquipSource;
+        data = QVariant::fromValue(updated);
+    } else if (physicalIdentity.canConvert<CardResponseStruct>() && data.canConvert<CardResponseStruct>()) {
+        CardResponseStruct updated = data.value<CardResponseStruct>();
+        updated.physicalEquipSource = physicalIdentity.value<CardResponseStruct>().physicalEquipSource;
+        data = QVariant::fromValue(updated);
+    }
+}
+}
+
 bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data,
                                 const QList<TriggerSkill *> *equipmentGroup,
                                 const QList<SkillInstanceRef> *allowedSources)
 {
+    const QVariant physicalIdentity = data;
+    const auto restoreIdentity = [&] { restorePhysicalEquipmentIdentity(data, physicalIdentity); };
+    const auto physicalGuard = qScopeGuard(restoreIdentity);
 	QList<TriggerSkill *> v2_skills;
 	if (equipmentGroup) {
 		v2_skills = *equipmentGroup;
@@ -1167,7 +1214,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	foreach (const TriggerSkill *ts, v2_skills) {
 		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 		if (!v2) continue;
-		if (v2->recordEvent(triggerEvent, room, target, data)) continue;
+        const bool recorded = v2->recordEvent(triggerEvent, room, target, data);
+        restoreIdentity();
+        if (recorded) continue;
 		if (v2->isEquipSkill()) {
 			// Card cleanup must run even after onUninstall has detached the skill.
 			// This is one event record, not a synthetic Player skill instance.
@@ -1178,6 +1227,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			recordCtx.original_data = &data;
 			recordCtx.current_event = triggerEvent;
 			v2->record(triggerEvent, room, target, recordCtx);
+            restoreIdentity();
 			continue;
 		}
 		foreach (ServerPlayer *owner, room->getAllPlayers(true)) {
@@ -1189,13 +1239,15 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				recordCtx.instanceID = instanceId;
 				recordCtx.activationRef = SkillInstanceRef(
 					owner->objectName(), SkillInstanceKey(v2->objectName(), instanceId));
-                recordCtx.sourceRef = recordCtx.activationRef;
+                if (room->isAcceptedViewAsEffect(recordCtx.activationRef)) continue;
+                recordCtx.sourceRef = room->resolveSkillInstanceRootRef(recordCtx.activationRef);
+                if (!recordCtx.sourceRef.isValid()) continue;
                 if (allowedSources) {
                     const SkillInstanceRef root = SkillInstanceUtils::resolveRootRef(recordCtx.activationRef,
                         [room](const SkillInstanceRef &source) -> const SkillInstance * {
                             const ServerPlayer *sourceOwner = room->findPlayerByObjectName(source.ownerObjectName, true);
                             return sourceOwner ? sourceOwner->findSkillInstance(source.key.skillName, source.key.instanceID) : nullptr;
-                        });
+                        }, false);
                     if (!allowedSources->contains(recordCtx.activationRef) && !allowedSources->contains(root)) continue;
                 }
 				bool amountOk = false;
@@ -1204,6 +1256,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				recordCtx.original_data = &data;
 				recordCtx.current_event = triggerEvent;
 				v2->record(triggerEvent, room, target, recordCtx);
+                restoreIdentity();
 			}
 		}
 	}
@@ -1226,13 +1279,16 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 			if (!v2) continue;
         QList<SkillContext> supplied;
-        if (v2->collectTriggerContexts(triggerEvent, room, target, data, supplied)) {
+        const bool collected = v2->collectTriggerContexts(triggerEvent, room, target, data, supplied);
+        restoreIdentity();
+        if (collected) {
             QMap<QString, QStringList> precedingTargets;
             QSet<QString> compulsoryOrderedKeys;
             for (SkillContext ctx : supplied) {
                 const QString definitionName = TriggerSkillV2::parseSkillName(ctx.skill_name);
                 const auto *definition = dynamic_cast<const TriggerSkillV2 *>(Sanguosha->getTriggerSkill(definitionName));
                 if (!definition || !ctx.owner) continue;
+                if (room->isAcceptedViewAsEffect(ctx.activationRef)) continue;
                 ServerPlayer *decisionMaker = definition->triggerOrderPlayer(room, ctx);
                 if (!decisionMaker || declinedOwners.contains(decisionMaker)) continue;
                 const QString key = skillInstanceRuntimeKey(ctx.owner, definitionName, ctx.instanceID)
@@ -1260,6 +1316,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             continue;
         }
 		TriggerList list = v2->triggerable(triggerEvent, room, target, data);
+        restoreIdentity();
 		
 		QMap<ServerPlayer *, QStringList>::iterator it;
 			for (it = list.begin(); it != list.end(); ++it) {
@@ -1343,6 +1400,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 						foreach (int resolvedId, instanceIds) {
 							const SkillInstanceRef ref(p->objectName(), SkillInstanceKey(skillName, resolvedId));
+                            // Accepted continuation leaves authorize only their response prompt.
+                            if (room->isAcceptedViewAsEffect(ref)) continue;
 							QString key = skillInstanceRuntimeKey(p, skillName, resolvedId);
 							int currentTriggerCount = triggerCounts.value(key, 0);
 							int effectiveMultiplier = qMax(multiplier, maxMultipliers.value(key, 0));
@@ -1355,7 +1414,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.invoker = target;
 								ctx.instanceID = resolvedId;
 								if (!v2->isEquipSkill() && !removalSource) ctx.activationRef = ref;
-								ctx.sourceRef = ctx.activationRef;
+								ctx.sourceRef = room->resolveSkillInstanceRootRef(ctx.activationRef);
+                                if (ctx.activationRef.isValid() && !ctx.sourceRef.isValid()) continue;
 								bool amountOk = false;
 								if (!v2->isEquipSkill())
 									ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
@@ -1382,7 +1442,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                     [room](const SkillInstanceRef &source) -> const SkillInstance * {
                         const ServerPlayer *owner = room->findPlayerByObjectName(source.ownerObjectName, true);
                         return owner ? owner->findSkillInstance(source.key.skillName, source.key.instanceID) : nullptr;
-                    });
+                    }, false);
                 if (!allowedSources->contains(ref) && !allowedSources->contains(root))
                     skillContexts.removeAt(i);
             }
@@ -1416,7 +1476,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			if (room->isGeneralHiddenForSkill(ctx.activationRef)) continue;
 			const QString definitionName = TriggerSkillV2::parseSkillName(ctx.skill_name);
 			const TriggerSkill *ts = Sanguosha->getTriggerSkill(definitionName, ctx.instanceID);
-			if (ts && ts->getFrequency(ctx.owner) == Skill::Compulsory) {
+			// Awakening and this invocation's forced flag also remove the order
+			// dialog's cancel option; concealed sources keep the gate above.
+			const Skill::Frequency frequency = ts ? ts->getFrequency(ctx.owner) : Skill::NotFrequent;
+			if (ctx.is_forced || frequency == Skill::Compulsory || frequency == Skill::Wake) {
 				has_compulsory = true;
 				break;
 			}
@@ -1536,6 +1599,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			room->resolutionHistory(), QStringLiteral("skill"),
 			room->historySkillContext(*selected_ctx), room->historyRecordingEnabled());
 		bool do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx);
+        restoreIdentity();
+        selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
 		if (!do_cost) {
 			skillHistory.finish(QStringLiteral("cancelled"));
 			continue;
@@ -1570,6 +1635,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				continue;
 			}
 			bool do_pay = v2->pay(triggerEvent, room, skill_owner, *selected_ctx);
+            restoreIdentity();
+            selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
 			if (!do_pay) {
 				skillHistory.finish(QStringLiteral("pay_failed"));
 				continue;
@@ -1581,8 +1648,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillTargetConfirming, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
-		skillHistory.update(room->historySkillContext(*selected_ctx));
 		selected_ctx->targets = selected_ctx->updated_targets;
+		skillHistory.update(room->historySkillContext(*selected_ctx));
 
 		const bool sourceWasAlive = skill_owner->isAlive();
         if (selectedSource.isValid() && (!sourceAvailable() || !room->showGeneralForSkill(selectedSource)
@@ -1600,14 +1667,24 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             completionStarted = true;
             if (contextEventInFlight) *selected_ctx = ctx_data.value<SkillContext>();
             selected_ctx->sourceRef = sourceContext.sourceRef;
+            selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
             selected_ctx->activationRef = sourceContext.activationRef;
             selected_ctx->owner = sourceContext.owner;
             selected_ctx->instanceID = sourceContext.instanceID;
             selected_ctx->current_event = EventSkillEffectFinished;
             QVariant finishedData = QVariant::fromValue(*selected_ctx);
+            // Finished observers can mutate the final targets and then throw.
+            // Read back on both exits while all context storage is still live.
+            const auto historyGuard = qScopeGuard([&]() {
+                *selected_ctx = finishedData.value<SkillContext>();
+                selected_ctx->sourceRef = sourceContext.sourceRef;
+                selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
+                selected_ctx->activationRef = sourceContext.activationRef;
+                selected_ctx->owner = sourceContext.owner;
+                selected_ctx->instanceID = sourceContext.instanceID;
+                skillHistory.update(room->historySkillContext(*selected_ctx));
+            });
             trigger(EventSkillEffectFinished, room, skill_owner, finishedData);
-            *selected_ctx = finishedData.value<SkillContext>();
-            skillHistory.update(room->historySkillContext(*selected_ctx));
         };
         const auto completionGuard = qScopeGuard([&]() {
             // Normal exits finish explicitly below. On unwinding, preserve the
@@ -1632,6 +1709,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         bool skip_effect = trigger(EventSkillEffect, room, skill_owner, ctx_data);
         *selected_ctx = ctx_data.value<SkillContext>();
         contextEventInFlight = false;
+        // Acceptance already committed payment/quota. Cancellation suppresses
+        // the effect without rolling back that accepted invocation.
+        skip_effect = skip_effect || selected_ctx->is_canceled;
 
         // Interceptors may remove the exact grant after revelation as well.
         if (!sourceAvailable()) {
@@ -1641,10 +1721,14 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         }
         if (!skip_effect) {
             broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx);
+            restoreIdentity();
+            selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
 
             if (!broken && !selected_ctx->manual_effect && !selected_ctx->targets.isEmpty()) {
                 foreach (ServerPlayer *t, selected_ctx->targets) {
                     bool target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t);
+                    restoreIdentity();
+                    selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
                     if (target_broken)
                         broken = true;
                 }
@@ -1775,8 +1859,17 @@ static bool invalidatesDistanceCache(TriggerEvent triggerEvent)
 	}
 }
 
+namespace {
+void recordTurnHpSnapshot(Room *room, qint64 turnId, const QString &boundary, const QString &completion);
+}
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
+    // Physical provenance is native admission data. Hooks may change effect state,
+    // but cannot replace this receipt with another equipment or an empty identity.
+    const QVariant physicalIdentity = data;
+    const auto restorePhysicalIdentity = qScopeGuard([&] {
+        restorePhysicalEquipmentIdentity(data, physicalIdentity);
+    });
 	// Room APIs used by TakeoverRule must update containers and notifications
 	// without replaying historical gameplay triggers during reconstruction.
 	if (room && room->isRestoringTakeoverSnapshot())
@@ -1784,6 +1877,31 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 	if (!room)
 		return dispatchTrigger(triggerEvent, room, target, data);
 	room->processPendingPreshows();
+
+    // Record accepted invocations, not skill scopes opened before cost/payment.
+    // Legacy adapters also emit SkillTriggered; record that path only once.
+    if (room->historyRecordingEnabled()
+        && (triggerEvent == EventSkillInvoking || triggerEvent == SkillTriggered)) {
+        QVariantMap invocation;
+        if (triggerEvent == EventSkillInvoking) {
+            const SkillContext context = data.value<SkillContext>();
+            if ((context.activationRef.isValid() || context.physicalEquipSource.isValid() || context.use_card)
+                && !context.extra_data.toMap().value(QStringLiteral("legacy_activation")).toBool()) {
+                invocation = room->historySkillContext(context);
+                invocation.insert(QStringLiteral("invoked_skill"), context.activationRef.isValid()
+                    ? context.activationRef.key.skillName : context.skill_name);
+            }
+        } else {
+            invocation.insert(QStringLiteral("invoked_skill"), data.toString());
+            // The legacy notification identifies its actor, not an exact source.
+            invocation.insert(QStringLiteral("attribution_complete"), false);
+        }
+        if (!invocation.isEmpty() && target) {
+            invocation.insert(QStringLiteral("player"), target->objectName());
+            room->resolutionHistory().appendFact(room->currentHistoryEventId(),
+                QStringLiteral("skill_invoked"), invocation);
+        }
+    }
 
 	const bool outerTurn = triggerEvent == TurnStart && event_stack.isEmpty();
 	QVariantMap turnData;
@@ -1801,7 +1919,59 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 	}
 	ResolutionHistoryEventGuard turnHistory(room->resolutionHistory(), QStringLiteral("turn"),
 		turnData, room->historyRecordingEnabled() && triggerEvent == TurnStart);
+    if (turnHistory.id() != 0) recordTurnHpSnapshot(room, turnHistory.id(), "start", "running");
 	bool broken = false;
+	// Capture the enclosing use before callbacks can open nested uses. The
+	// accepted-use fact keeps its original targets; completion is a new fact.
+	const qint64 targetUseEventId = triggerEvent == TargetSpecified && room->historyRecordingEnabled()
+		? room->historyParent(room->currentHistoryEventId(), "use_card", true).value("id").toLongLong() : 0;
+    // A stage fact records reaching this dispatch, even when a listener later
+    // prevents its result or interrupts it. Do not infer it from actual damage.
+    if (room->historyRecordingEnabled()
+        && (triggerEvent == DamageCaused || triggerEvent == DamageInflicted)
+        && data.canConvert<DamageStruct>()) {
+        const DamageStruct damage = data.value<DamageStruct>();
+        const qint64 eventId = room->historyParent(room->currentHistoryEventId(),
+            QStringLiteral("damage"), true).value(QStringLiteral("id")).toLongLong();
+        if (eventId > 0) {
+            QVariantMap fact = room->historyCause(CardMoveReason(CardMoveReason::S_REASON_UNKNOWN,
+                damage.from ? damage.from->objectName() : QString(), damage.reason, QString()));
+            fact.insert(QStringLiteral("damage_event_id"), eventId);
+            fact.insert(QStringLiteral("player"), target ? target->objectName() : QString());
+            fact.insert(QStringLiteral("from"), damage.from ? damage.from->objectName() : QString());
+            fact.insert(QStringLiteral("to"), damage.to ? damage.to->objectName() : QString());
+            fact.insert(QStringLiteral("requested_amount"), damage.damage);
+            fact.insert(QStringLiteral("nature"), int(damage.nature));
+            fact.insert(QStringLiteral("chain"), damage.chain);
+            fact.insert(QStringLiteral("transfer"), damage.transfer);
+            fact.insert(QStringLiteral("card"), room->historyCardSnapshot(damage.card));
+            room->resolutionHistory().appendFact(eventId,
+                triggerEvent == DamageCaused ? QStringLiteral("damage_caused") : QStringLiteral("damage_inflicted"), fact);
+        }
+    } else if (room->historyRecordingEnabled() && triggerEvent == TargetConfirmed
+               && target && data.canConvert<CardUseStruct>()) {
+        const CardUseStruct use = data.value<CardUseStruct>();
+        const qint64 eventId = room->historyParent(room->currentHistoryEventId(),
+            QStringLiteral("use_card"), true).value(QStringLiteral("id")).toLongLong();
+        // TargetConfirmed is broadcast to observers too. Only actual recipients
+        // contribute a confirmation, using this seat's pre-dispatch target list.
+        if (eventId > 0 && use.card && use.to.contains(target)) {
+            QVariantList targets;
+            for (const ServerPlayer *recipient : use.to)
+                if (recipient) targets << recipient->objectName();
+            CardMoveReason reason(CardMoveReason::S_REASON_USE,
+                use.from ? use.from->objectName() : QString(), use.card->getSkillName(), QString());
+            reason.m_useStruct = use;
+            QVariantMap fact = room->historyCause(reason);
+            fact.insert(QStringLiteral("use_event_id"), eventId);
+            fact.insert(QStringLiteral("player"), target->objectName());
+            fact.insert(QStringLiteral("to"), target->objectName());
+            fact.insert(QStringLiteral("from"), use.from ? use.from->objectName() : QString());
+            fact.insert(QStringLiteral("card"), room->historyCardSnapshot(use.card));
+            fact.insert(QStringLiteral("targets"), targets);
+            room->resolutionHistory().appendFact(eventId, QStringLiteral("target_confirmed"), fact);
+        }
+    }
 	try {
 		broken = dispatchTrigger(triggerEvent, room, target, data);
 	} catch (TriggerEvent) {
@@ -1809,7 +1979,21 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 			rememberInterruptedTurn(turnHistory.id());
 		throw;
 	}
-	turnHistory.finish(broken ? QStringLiteral("broken") : QStringLiteral("completed"));
+	if (targetUseEventId > 0 && data.canConvert<CardUseStruct>()) {
+		const CardUseStruct use = data.value<CardUseStruct>();
+		if (use.from && use.card) {
+			QVariantList targets;
+			for (const ServerPlayer *recipient : use.to)
+				if (recipient) targets << recipient->objectName();
+			room->resolutionHistory().appendFact(targetUseEventId, "use_card_targets",
+				{{"use_event_id", targetUseEventId}, {"from", use.from->objectName()},
+				 {"player", use.from->objectName()}, {"card", room->historyCardSnapshot(use.card)},
+				 {"targets", targets}, {"attribution_complete", true}});
+		}
+	}
+	if (turnHistory.id() != 0)
+        recordTurnHpSnapshot(room, turnHistory.id(), "end", broken ? "broken" : "completed");
+    turnHistory.finish(broken ? QStringLiteral("broken") : QStringLiteral("completed"));
 	// dispatchTrigger's CardLifetimeScope and deferred work must finish first.
 	// Exceptions skip this point: the guard records an aborted turn while the
 	// mode-specific phase cleanup remains responsible for control flow.
@@ -1839,6 +2023,22 @@ void RoomThread::reclaimCompletedTurn()
 		room->roomRuntime()->reclaimTurnCards();
 }
 
+namespace {
+void recordTurnHpSnapshot(Room *room, qint64 turnId, const QString &boundary,
+                          const QString &completion)
+{
+    if (!room || !turnId || !room->historyRecordingEnabled()) return;
+    ResolutionHistoryContextGuard context(room->resolutionHistory(), turnId, true);
+    const QString actor = room->historyEvent(turnId).value("data").toMap().value("player").toString();
+    for (ServerPlayer *player : room->getAllPlayers(true)) {
+        room->resolutionHistory().appendFact(turnId, "turn_hp_snapshot",
+            {{"player", player->objectName()}, {"hp", player->getHp()}, {"alive", player->isAlive()},
+             {"phase", int(player->getPhase())}, {"turn_owner", actor}, {"boundary", boundary},
+             {"completion", completion}, {"attribution_complete", true}});
+    }
+}
+}
+
 void RoomThread::rememberInterruptedTurn(qint64 eventId)
 {
 	m_interruptedTurnEventId = eventId;
@@ -1858,6 +2058,7 @@ qint64 RoomThread::interruptedTurn() const
 
 void RoomThread::clearInterruptedTurn()
 {
+    recordTurnHpSnapshot(room, m_interruptedTurnEventId, "end", "interrupted");
 	m_interruptedTurnEventId = 0;
 }
 
@@ -1885,6 +2086,7 @@ void RoomThread::clearInterruptedPhase()
 
 bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
+    const QVariant physicalIdentity = data;
 	if (room)
 		room->throwIfStopRequested();
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
@@ -2018,6 +2220,7 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
                 m_legacyExecutionFrames << legacyFrame;
                 const auto legacyFrameGuard = qScopeGuard([&]() { m_legacyExecutionFrames.removeLast(); });
                 broken = ts->trigger(triggerEvent,room,target,data);
+                restorePhysicalEquipmentIdentity(data, physicalIdentity);
 				skillHistory.finish(broken ? QStringLiteral("broken") : QStringLiteral("completed"));
 				if(triggerEvent!=SkillTriggered&&room->getTag("notifyInvoked:"+ts->objectName()).toBool()){
 					room->removeTag("notifyInvoked:"+ts->objectName());
@@ -2095,7 +2298,7 @@ LegacySkillActivation::LegacySkillActivation(Room *room, ServerPlayer *owner,
     }
     const SkillInstanceRef source = room->resolveSkillInstanceRootRef(activation);
     if (!source.isValid() || !owner->getValidSkillInstanceIds(skillName).contains(activation.key.instanceID)
-        || !room->showGeneralForSkill(source)
+        || !room->showGeneralForSkill(activation)
         || !owner->getValidSkillInstanceIds(skillName).contains(activation.key.instanceID)) {
         m_allowed = false;
         return;
