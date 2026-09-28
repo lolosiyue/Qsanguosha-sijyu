@@ -16,9 +16,15 @@
 class YinAllowances : public TriggerSkillV2
 {
 public:
-    YinAllowances() : TriggerSkillV2("#yin-allowances") { global = true; events << TurnStart << EventPhaseStart << EventPhaseEnd << EventPhaseChanging; }
+    YinAllowances() : TriggerSkillV2("#yin-allowances")
+    { global = true; events << TurnStart << EventPhaseStart << EventPhaseEnd << EventPhaseChanging << TurnBroken << TurnedOver; }
     static void project(Room *room, qint64 turn, qint64 phase)
     {
+        // Property writes can re-enter prohibit / target-mod checks. Those checks call projectCurrent.
+        static bool projecting = false;
+        if (!room || projecting) return;
+        projecting = true;
+        const auto stop = qScopeGuard([&]() { projecting = false; });
         const QVariantList receipts = room->getTag("YinAllowances").toList();
         for (ServerPlayer *recipient : room->getAllPlayers(true)) {
             QStringList prohibited, suits; int residue = 0;
@@ -48,24 +54,49 @@ public:
             {"activation_owner", ctx.activationRef.ownerObjectName}, {"activation_skill", ctx.activationRef.key.skillName}, {"activation_id", ctx.activationRef.key.instanceID}};
         room->setTag("YinAllowances", receipts); project(room, turn, phase);
     }
+    static void projectCurrent(Room *room)
+    {
+        if (!room) return;
+        const QVariantMap scope = room->historyScopes();
+        project(room, scope.value("turn_id").toLongLong(), scope.value("phase_id").toLongLong());
+    }
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
         const QVariantMap scope = room->historyScopes();
         qint64 turn = scope.value("turn_id").toLongLong(), phase = scope.value("phase_id").toLongLong();
-        const bool endingTurn = (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
+        const bool endingTurn = event == TurnBroken
+            || (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
             || (event == EventPhaseStart && player && player->getPhase() == Player::NotActive);
-        if (endingTurn || (event == EventPhaseEnd && player && player->getPhase() == Player::Play)) {
+        // A face-down extra turn never opens a phase, so NotActive cleanup does not run.
+        // Restore the caller before TurnStart returns; a face-down player is turned face up and skips play.
+        const bool skippedExtraTurn = event == TurnedOver && room->isCurrentExtraTurn() && phase <= 0 && turn > 0
+            && player && player == room->getCurrent() && player->faceUp();
+        const bool endingPlay = event == EventPhaseEnd && player && player->getPhase() == Player::Play;
+        if (endingTurn || skippedExtraTurn || endingPlay) {
             QVariantList kept;
             for (const QVariant &entry : room->getTag("YinAllowances").toList()) {
                 const QVariantMap receipt = entry.toMap();
-                const bool expires = (endingTurn && receipt.value("turn").toLongLong() == turn)
-                    || (!endingTurn && receipt.value("kind").toString() == "ollijun" && receipt.value("phase").toLongLong() == phase);
+                const bool expires = ((endingTurn || skippedExtraTurn) && receipt.value("turn").toLongLong() == turn)
+                    || (endingPlay && !endingTurn && !skippedExtraTurn && receipt.value("kind").toString() == "ollijun"
+                        && receipt.value("phase").toLongLong() == phase);
                 if (!expires) kept << entry;
             }
             room->setTag("YinAllowances", kept);
-            if (endingTurn) {
-                const QVariantMap outer = room->historyParent(turn, "turn", false); turn = outer.value("id").toLongLong();
-                phase = room->historyParent(scope.value("turn_id").toLongLong(), "phase", false).value("id").toLongLong();
+            // TurnBroken is still scoped to the interrupted turn. Do not publish the outer turn until that scope ends.
+            if ((endingTurn && event != TurnBroken) || skippedExtraTurn) {
+                const qint64 ended = turn;
+                turn = room->historyParent(ended, "turn", false).value("id").toLongLong();
+                phase = room->historyParent(ended, "phase", false).value("id").toLongLong();
+            }
+        }
+        if (!endingTurn && !skippedExtraTurn && event == EventPhaseEnd && phase > 0) {
+            const QVariantMap current = room->historyEvent(phase);
+            const QVariantMap parent = room->historyEvent(current.value("parent_id").toLongLong());
+            // Ending a nested phase resumes the still-active outer phase. Its play-phase slash allowance must stay.
+            if (parent.value("kind").toString() == "phase" && parent.value("status").toString() == "active") {
+                const qint64 parentTurn = parent.value("turn_id").toLongLong();
+                if (parentTurn > 0) turn = parentTurn;
+                phase = parent.value("id").toLongLong();
             }
         }
         project(room, turn, phase); return true;
@@ -153,6 +184,7 @@ public:
 
     bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const
     {
+        if (const ServerPlayer *server = dynamic_cast<const ServerPlayer *>(from)) YinAllowances::projectCurrent(server->getRoom());
         return from && to && card && !card->isKindOf("SkillCard") && from->property("juzhan_prohibited").toStringList().contains(to->objectName());
     }
 };
@@ -732,6 +764,7 @@ public:
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
         // The accepted turn allowance is a recipient resource and survives its granting lord source.
+        if (const ServerPlayer *server = dynamic_cast<const ServerPlayer *>(ctx.primary)) YinAllowances::projectCurrent(server->getRoom());
         return ctx.modType == Residue && ctx.primary && ctx.primary->getPhase() == Player::Play
             ? CorrectSkillResult::useAmount(ctx.primary->property("ollijun_residue").toInt() * ctx.currentAmount) : CorrectSkillResult::noEffect();
     }
@@ -1087,39 +1120,47 @@ public:
         if (target->isDead() || count <= 0 || !target->canDiscard(target, "h")) return ContinueEffects;
         const QVariantMap before = room->queryHistoryMoves({{"from", target->objectName()}, {"limit", 1}});
         const Card *discarded = room->askForDiscard(target, objectName(), count, count, false);
-        if (!discarded || !before.value("complete").toBool() || ctx.executionID <= 0) return ContinueEffects;
+        if (!discarded || ctx.executionID <= 0) return ContinueEffects;
         const QList<int> selected = discarded->getSubcards();
+        const auto grant = [&](const QSet<int> &suits) {
+            // Accepted recipient allowances stay after the granting instance is retired.
+            for (int suit : suits) {
+                const QString name = Card::Suit2String(Card::Suit(suit));
+                YinAllowances::apply(room, ctx, target, "chenglve", name);
+                room->setPlayerMark(target, "&chenglve+" + name + "_char-Clear", 1);
+            }
+        };
+        const auto liveSuits = [&]() {
+            QSet<int> suits;
+            for (int id : selected) if (const Card *card = Sanguosha->getCard(id)) suits.insert(int(card->getSuit()));
+            return suits;
+        };
+        // Suit is a public move fact. Incomplete history is unknown, not "no discard".
+        const auto historyKnown = [](const QVariantMap &page) {
+            return page.value("error").toString().isEmpty() && page.value("complete").toBool();
+        };
+        if (!historyKnown(before)) { grant(liveSuits()); return ContinueEffects; }
         QVariantMap query{{"from", target->objectName()}, {"after", before.value("watermark")}, {"limit", 64}};
         QSet<int> suits;
-        while (true) {
+        bool unknown = false;
+        while (!unknown) {
             const QVariantMap page = room->queryHistoryMoves(query);
-            if (!page.value("complete").toBool() || !page.value("attribution_complete").toBool()) return ContinueEffects;
+            if (!historyKnown(page)) { unknown = true; break; }
             if (!query.contains("watermark")) query.insert("watermark", page.value("watermark"));
             for (const QVariant &entry : page.value("items").toList()) {
                 const QVariantMap move = entry.toMap().value("data").toMap();
                 if (!selected.contains(move.value("card_id", -1).toInt()) || move.value("execution_id").toLongLong() != ctx.executionID
                     || move.value("from_place").toInt() != Player::PlaceHand || move.value("to_place").toInt() != Player::DiscardPile
                     || (move.value("reason").toInt() & CardMoveReason::S_MASK_BASIC_REASON) != CardMoveReason::S_REASON_DISCARD) continue;
-                const QVariantMap card = move.value("card_before").toMap();
-                if (!card.contains("suit")) return ContinueEffects;
+                QVariantMap card = move.value("card_before").toMap();
+                if (!card.contains("suit")) card = move.value("card").toMap();
+                if (!card.contains("suit")) { unknown = true; break; }
                 suits.insert(card.value("suit").toInt());
             }
-            if (!page.value("has_more").toBool()) break;
+            if (unknown || !page.value("has_more").toBool()) break;
             query.insert("after", page.value("next_after"));
         }
-        // These are accepted recipient allowances, independent of the granting instance's later retirement.
-        for (int suit : suits) {
-            QString name;
-            switch (Card::Suit(suit)) {
-            case Card::Spade: name = "spade"; break;
-            case Card::Club: name = "club"; break;
-            case Card::Heart: name = "heart"; break;
-            case Card::Diamond: name = "diamond"; break;
-            default: name = "no_suit"; break;
-            }
-            YinAllowances::apply(room, ctx, target, "chenglve", name);
-            room->setPlayerMark(target, "&chenglve+" + name + "_char-Clear", 1);
-        }
+        grant(unknown ? liveSuits() : suits);
         return ContinueEffects;
     }
 };
@@ -1130,6 +1171,7 @@ public:
     ChenglveTargetMod() : TargetModSkillV2("#chenglve-target", ".") { setHolderSelector(CorrectSkill_System); }
     CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
+        if (const ServerPlayer *server = dynamic_cast<const ServerPlayer *>(ctx.primary)) YinAllowances::projectCurrent(server->getRoom());
         if (!ctx.primary || !ctx.card || ctx.card->isKindOf("SkillCard") || ctx.currentAmount <= 0
             || !ctx.primary->property("chenglve_suits").toStringList().contains(ctx.card->getSuitString())) return CorrectSkillResult::noEffect();
         if (ctx.modType == Residue) return CorrectSkillResult::unlimitedResidue();
