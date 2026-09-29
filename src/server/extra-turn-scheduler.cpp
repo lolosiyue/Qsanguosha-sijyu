@@ -304,12 +304,18 @@ void ExtraTurnScheduler::execute(ServerPlayer *player, QList<Player::Phase> phas
             ResolutionHistoryContextGuard context(
                 m_room.resolutionHistory(), cleanupEvent,
                 m_room.historyRecordingEnabled() && cleanupEvent != 0);
-            if (controlEvent == TurnBroken && player->getPhase() != Player::NotActive) {
+            // Mirror RoomThread::_handleTurnBroken*: always dispatch TurnBroken so
+            // skill projections see a cleanup event even when no phase opened yet
+            // (phase still NotActive). Then end an in-progress phase if needed.
+            if (controlEvent == TurnBroken) {
                 try {
-                    QString gameRule = m_room.getMode() == "04_1v3" ? "hulaopass_mode" : "game_rule";
-                    const GameRule *rule = qobject_cast<const GameRule *>(Sanguosha->getSkill(gameRule));
-                    if (rule) rule->trigger(EventPhaseEnd, &m_room, player);
-                    player->changePhase(player->getPhase(), Player::NotActive);
+                    m_room.getThread()->trigger(TurnBroken, &m_room, player);
+                    if (player->getPhase() != Player::NotActive) {
+                        QString gameRule = m_room.getMode() == "04_1v3" ? "hulaopass_mode" : "game_rule";
+                        const GameRule *rule = qobject_cast<const GameRule *>(Sanguosha->getSkill(gameRule));
+                        if (rule) rule->trigger(EventPhaseEnd, &m_room, player);
+                        player->changePhase(player->getPhase(), Player::NotActive);
+                    }
                 } catch (TriggerEvent) {
                     // The original control event remains authoritative.
                 }
