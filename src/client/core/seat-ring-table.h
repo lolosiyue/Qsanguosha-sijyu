@@ -1,13 +1,13 @@
 #ifndef SEAT_RING_TABLE_H
 #define SEAT_RING_TABLE_H
 
-// The seat ring regions -- the project-wide norm docs/ui-roadmap.md 2.1 refers to.
+// The seat ring regions -- the project-wide norm shared by every shell.
 //
 // Each row maps seat order to one of the eight U-shaped table regions around the
 // player. Index 0 is the seat next to the player and the order continues around the
 // ring, so the row is what makes "the one on your left" mean the same thing in every
 // shell. For the regular table the row index is opponent count - 1, which covers 1..19
-// opponents; past 20 players the ring is undefined and a shell must degrade (2.1).
+// opponents; past 20 players the ring is undefined and a shell must degrade.
 // Rows are ragged -- entries past the opponent count are zero padding and never read.
 //
 // Shells must not re-invent this ordering:

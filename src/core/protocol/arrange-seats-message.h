@@ -4,11 +4,11 @@
 #include <QStringList>
 #include <QVariant>
 
-// docs/large-room-ui-protocol-audit.md D4: the seat ring carries its own
-// play direction, so a reconnecting, spectating or late-joining client never
-// has to infer it from the battle log.  Every S_COMMAND_ARRANGE_SEATS carries
-// the flag, including the one at game start -- a replay seek replays from the
-// first event, and only a value that is re-asserted there can be rewound.
+// The seat ring carries its own play direction, so a reconnecting, spectating or
+// late-joining client never has to infer it from the battle log.  Every
+// S_COMMAND_ARRANGE_SEATS carries the flag, including the one at game start --
+// a replay seek replays from the first event, and only a value that is
+// re-asserted there can be rewound.
 struct ArrangeSeatsMessage
 {
     static constexpr int SchemaVersion = 2;

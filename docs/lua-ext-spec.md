@@ -892,6 +892,98 @@ scenario_rule = sgs.CreateScenarioRule {
 }
 ```
 
+### 7.6 模式註冊（`createMode`）
+
+`createMode{}` 定義於 `extensions/addFunction.lua`。擴展載入流程會先載入該檔，因此擴展內可直接使用全域 `createMode`。
+
+```lua
+-- 單一模式：模式 ID 由 roles 的人數與 class 合成，例：6_ctg
+createMode{
+    name = "陳塘關模式",
+    class = "ctg",
+    roles = "ZCCCCC",
+    skipChooseGeneral = true,
+    showRole = true,
+}
+
+-- 模式組：roles 為陣列，每個元素註冊一個模式，並歸入同名分組
+createMode{
+    name = "世家模式",
+    class = "shijia",
+    roles = {"ZNNNNN", "ZNNNNNN", "ZNNNNNNN", "ZNNNNNNNN", "ZNNNNNNNNN"},
+    skipChooseGeneral = true,
+    showRole = true,
+}
+-- 生成 ID 06_shijia ～ 10_shijia，分組名稱為「世家模式」
+
+-- 自訂各模式的顯示名稱
+createMode{
+    name = "競技模式",
+    class = "competitive",
+    roles = {"ZCFF", "ZCCCFF", "ZCCCCFFF"},
+    names = {"4人競技賽", "6人競技賽", "8人競技賽"},
+    showRole = true,
+}
+```
+
+| 欄位 | 說明 |
+|------|------|
+| `name` | 模式顯示名稱；多模式時同時作為分組名稱 |
+| `class` | 模式 ID 的字尾，ID 形式為 `<人數>_<class>` |
+| `roles` | 身份配置字串，或配置字串陣列（每個元素一個模式） |
+| `names` | 多模式時的逐項顯示名稱（可選）；缺項以「<人數>人」為名 |
+| `shuffleSeats` | 是否打亂座次，預設 `true`（不再接受 `shuffleRoles`） |
+| `lordWelfare`／`lord_welfare` | 主公福利，預設 `true` |
+| `skipChooseGeneral` | 略過引擎選將，玩家先設為 `anjiang`，由 Lua 在 `GameReady` 完成選將，預設 `false` |
+| `showRole` | `true` 公開所有身份；`false` 只公開主公，其餘僅通知本人，預設 `false` |
+| `rewardPolicy`／`winPolicy` | 獎懲與勝負政策字串（亦接受 `reward_policy`／`win_policy`） |
+| `reward`／`getWinner` | 覆寫獎懲與勝負的函數（`getWinner` 亦接受 `get_winner`） |
+| `ai`／`teams` | 模式 AI 政策，轉交 `sgs.registerModeAI`（見下節） |
+
+- 回傳成功註冊的模式 ID 陣列；多模式定義只要有一個成功，就以成功項目呼叫 `addModeGroup()`。
+- 重複的模式 ID 會被引擎拒絕，該項不列入回傳值。
+- `reward`／`getWinner` 會寫入當前 VM 的 `sgs.GameModeCallbacks[mode_id]`，`addModes` 因重複 ID 失敗時仍寫入（Room 會再載入 `sanguosha.lua`）。
+- `reward(killer, victim)` 回傳 `true` 表示已處理，`false`／`nil` 繼續跑 C++ 政策；`getWinner(victim)` 回傳勝負字串即立刻結束，`""` 表示尚未分出勝負，`nil` 交給 `win_policy`。
+- 未知的政策字串會 `qWarning` 後回退 `identity`。
+- `GameModeStruct` 不暴露給 Lua；模式特性一律由 `createMode{}` 與 `sgs.Sanguosha` 的 setter 決定。
+- 自訂身份須先用 `sgs.Sanguosha:addRoleMapping(roleName, "V")` 註冊（縮寫為唯一 ASCII 大寫字母），再建立使用該縮寫的模式；含未註冊縮寫的模式會被拒絕。自訂身份的 `getRoleEnum()` 回傳 `UnknownRole`，需要自行提供 `getWinner`。
+
+### 7.7 模式 AI 政策（`sgs.registerModeAI`）
+
+`createMode` 的 `ai` 與 `teams` 欄位會轉交 `sgs.registerModeAI(mode_id, spec)`；也可直接呼叫。實作與預設值以 `lua/ai/mode-ai.lua` 為準。
+
+```lua
+createMode{
+    name = "自訂陣營模式",
+    class = "custom",
+    roles = "ZFF",
+    ai = {
+        -- relation(world, from_id, to_id) 回傳 "friend"／"enemy"／"neutral"／"unknown"
+        relation = function(world, from_id, to_id) return "unknown" end,
+        -- objective(world, target_id, state, process) 回傳數值分數
+        objective = function(world, target_id) return 0 end,
+    },
+    -- teams 的鍵為隊伍名，值為身份名清單
+    teams = { first = {"lord"}, second = {"rebel"} },
+}
+```
+
+- hook 名稱限 `relation`、`objective`、`rolePredictable`、`gameProcess`、`onIntention`；填錯或型別不符會在載入時 `assert` 失敗。
+- `spec.roles` 以身份名為鍵，可逐身份覆寫上層 hook。
+- `intentions` 是 `onIntention` 的高階寫法，`objectiveByRole` 是 `objective` 的高階寫法；兩者不可與對應的底層 hook 同時使用。
+- `roles`／`teams` 中的身份必須已註冊，否則 `assert` 失敗。
+- 作者提供的政策會覆寫引擎內建的同名模式政策。
+
+### 7.8 模式檢測
+
+```lua
+-- 單模式
+if room:getMode() == "6_ctg" then ... end
+
+-- 模式組
+if sgs.Sanguosha:getModeGroup(room:getMode()) == "世家模式" then ... end
+```
+
 ---
 
 ## 8. 事件系統

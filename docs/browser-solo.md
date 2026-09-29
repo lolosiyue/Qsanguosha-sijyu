@@ -10,7 +10,7 @@ localStorage 本機偏好可保留。這條路徑不啟動、連接或代理外�
 
 ## 目前邊界
 
-2026-09-12 已補齊 Qt 6.11.1 `wasm_multithread` 的 QtBase 與 WebSockets，位於
+Qt 6.11.1 `wasm_multithread` 的 QtBase 與 WebSockets 已補齊，位於
 `H:/Qt6111/6.11.1/wasm_multithread`；既有 native 與 singlethread kits 保留。
 `cmake/QSanguoshaWebSolo.cmake` 要求 `QT_FEATURE_thread`，目前 configure 已通過。
 Emscripten 版本基線是 4.0.7。單執行緒 CLI/client runtime 與新的多執行緒 Solo
@@ -159,4 +159,4 @@ missing Lua/AI trees, media collisions and a nonempty destination. It writes
 
 ## Verification
 
-The 2026-09-12 verification covered build, packaging, browser startup, full-game and cleanup; the failed log rendering and unmeasured lifetime gates remain known gaps.
+Log rendering fails and the package lifetime gates are not measured; both remain known gaps.

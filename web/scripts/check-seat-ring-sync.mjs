@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Hold web/src/ui-seat-layout.ts to the shared seat ring table in
 // src/client/core/seat-ring-table.h. The web shell cannot include the C++ header, so the
-// copy is checked instead of shared; docs/ui-roadmap.md 2.1 requires the seat order to be
+// copy is checked instead of shared; the shared contract requires the seat order to be
 // identical across shells, and nothing else enforces that.
 //
 // The C++ rows are ragged -- regularSeatRegions is declared [][20] and zero-pads every row

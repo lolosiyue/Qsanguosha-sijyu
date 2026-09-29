@@ -25,7 +25,7 @@ The executable is `release/QSanguosha.exe`. Complete [runtime deployment and con
 | Run a server in Docker | [Docker server](docs/docker-server.md) |
 | Build and install on Android | [Android](docs/android-build.md) |
 | Play in a terminal or browser | [TUI](docs/tui-client.md), [Web](docs/web-client.md), [Browser Solo](docs/browser-solo.md) |
-| Use spreadsheet clients | [Excel](docs/excel-client.md), [Google Sheets](docs/google-sheets-client.md) |
+| Use spreadsheet clients | [Excel](docs/excel-packaging.md), [Google Sheets](docs/google-sheets-client.md) |
 | Develop extensions or explore the engine | [Documentation index](docs/README.md) |
 
 ## Licenses and attribution

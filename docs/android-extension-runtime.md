@@ -1,7 +1,5 @@
 # Android 擴展實體目錄
 
-2026-09-12；首版功能來源基線 `debug@9b7920c4469d42f40f8e4bcb66d15d8bcb6e727a`。
-
 沿用 `TODO/human` 的隨包部署方式：APK 附送 Lua／AI／擴展，缺檔才釋出，
 保留已有擴展腳本。核心 Lua 基線隨 APK 升級，規則見下表。首次聲畫另用 ZIP 匯入，後續沿用已安裝媒體；個別圖片缺檔不擋局。
 
@@ -19,7 +17,7 @@
 | 使用者資料 | `<AppDataLocation>/userdata` 保存設定、紀錄及學習資料，與內容快照分開。 |
 | 診斷路徑 | 既有明確 `--asset-root`／`QSAN_ASSET_ROOT` 保留優先權。 |
 
-## Android 啟動政策（2026-09-16 使用者修訂）
+## Android 啟動政策（使用者修訂）
 
 **Android 不再雜湊資源、不逐檔掃描聲畫，也不因圖片缺檔擋住開局。**
 
@@ -36,20 +34,14 @@ ZIP 解壓器的 CRC／格式解析仍屬檔案讀取。私有目錄連結只做
 不讀取媒體 payload。首次尚未安裝媒體仍顯示匯入入口；已安裝媒體缺個別圖片不再擋局。
 Web／網路規則身分與聲畫資源是不同契約，本次只移除 Android 資源校驗。
 
-以下效能紀錄保留歷史實測；其中串流 SHA／收據的描述已由上述政策取代。
+修訂後的 APK 已移除舊收據：資源準備不計算媒體雜湊，缺個別圖片不再擋住連線。
+Android 連線仍在開局前發生 AudioTrack SIGSEGV，沒有 GAME_OVER；server 正常退出、
+連接埠釋放。目前未套用音訊替代方案，也沒有重試。
 
-最終修訂 APK 已增量建置、`install -r` 並實際執行：資源準備 **6,924 ms**，
-`active_media_ready=true`，舊收據已移除，缺 8 張圖片不再擋住連線。
-Android 連線 `03_1v2` 在開局前發生 AudioTrack SIGSEGV，沒有 GAME_OVER；
-server 正常退出、連接埠釋放。未套用音訊替代方案或重試；證據在
-`builds/android-content-performance-20260916/no-hash-run/summary.md`。
-
-## 2026-09-16 匯入／更新效能修正（來源檢查點）
+## 匯入／更新效能修正
 
 固定單一環境以 [Android 建置文件](android-build.md#android-daily-environment) 為準。
-舊 APK 的完整媒體匯入約 17 分鐘，資源更新的 `prepareStartup` 實測 879,382 ms；
-此數據只作修正前基線。新 APK 已建置，取得快照建立的局部實測；完整啟動仍逾時，
-首次完整匯入未重測，詳見下方驗證紀錄，不能將局部時間當作總耗時。
+完整啟動仍會逾時，首次完整匯入的新耗時尚未重測，不能將局部時間當作總耗時。
 
 | 瓶頸 | 新行為 |
 |---|---|
@@ -68,14 +60,12 @@ server 正常退出、連接埠釋放。未套用音訊替代方案或重試；�
 舊實體快照可讀；Android 首次升級用現有 blob 重建引用，不清 App 資料、不要求重匯 ZIP。
 active／pending／previous 及其引用 blob 沿用既有 GC 與回復規則；舊版實體副本按正常
 版本保留週期淘汰，不手動清除。Windows fixture 保留實體複製；共享連結的完整契約
-需要 POSIX fixture 驗證，尚未執行；AVD 只確認實際目錄引用與快照建立。
+需要 POSIX fixture 驗證。AVD 只確認實際目錄引用與快照建立。
 
-最終回歸來源涵蓋：seek／串流 provider、索引、reader 重用、取消、忽略舊雜湊欄位、
+回歸來源涵蓋：seek／串流 provider、索引、reader 重用、取消、忽略舊雜湊欄位、
 移除舊收據、APK 更新後缺少個別圖片仍可沿用媒體、
 Lua／baseline 更新與 rollback 共用同一媒體、混合媒體啟停、偽造連結及 GC 不追入引用目錄。
 日誌分開記錄 archive／payload／snapshot 毫秒數，以及 snapshot 實際複製的 bytes。
-本批只允許完成檢查點後的 targeted build／focused 與同一 AVD 資源路徑驗證，
-不藉此重開完整對局或擴入 AudioTrack 原生崩潰修復。
 
 ## 整包管理
 
@@ -96,26 +86,10 @@ Lua／baseline 更新與 rollback 共用同一媒體、混合媒體啟停、偽�
 隨包 `config.lua`。規則宣告順序、依賴與 Lua 內容參與身份校驗；AI、翻譯及媒體保留角色界線。
 原生、Web／WASM 及伺服器均同步此身份，Protocol V2 不變。
 
-## 驗證紀錄
+## 已知限制
 
-2026-09-16 效能檢查點（證據：`builds/android-content-performance-20260916/`）：
+共享連結的完整契約仍需 POSIX 專用 fixture 驗證，Windows fixture 不涵蓋 UNIX 分支；
+完整對局與 AudioTrack 修復均未涵蓋在本路徑。既有 GC 仍同步執行。
 
-| 項目 | 結果 |
-|---|---|
-| Windows 既有 host target 編譯／focused executable | PASS，20.01 秒；沒有執行 CTest |
-| Android arm64 Debug APK | PASS；同一 CMake／Gradle cache，35 個 Gradle tasks 中 31 個 up-to-date |
-| 同一 AVD `install -r` | PASS，14.11 秒；沒有重匯媒體或清 App 資料 |
-| 舊媒體轉共享引用 | 實際新 runtime 的 image／audio／font 為 3 個符號連結，均指向原媒體 blob |
-| 新快照建立 | 28,261 ms；實體複製 33,427,689 bytes 的規則／介面資源，媒體 payload 沒有複製 |
-| 完整內容啟動 | TIMEOUT：60 秒內未完成；已停止 App，不能判定啟動／媒體完整性通過 |
-| 首次完整 ZIP 匯入的新耗時 | NOT RUN；沒有為測速重匯 2.7 GB |
-| POSIX 專用 fixture、完整對局、AudioTrack 修復 | NOT RUN；Windows fixture 不涵蓋 UNIX 分支 |
-
-停止時 active 已切到新 snapshot，但 startup receipt 仍指向舊 active，表示完整啟動校驗
-尚未提交；`active_media_ready` 的中途值不能當該次通過證據。這是舊設計的歷史紀錄，
-後續版本已移除收據與聲畫掃描。主工作區當時新增 8 張圖片，APK inventory 比已匯入原包多 8 檔，
-見 `media-inventory-drift.json`；這是獨立完整性差異，不得用重匯整包掩蓋效能結果。
-既有 GC 仍同步執行，但本次停止時尚無證據確認卡在 GC；不把推測寫成根因。
-
-完整契約及未執行矩陣見 [首版功能](android-first-release.md)。舊 APK 的 AudioTrack
-SIGSEGV 與桌面 client access violation 保持獨立，這批效能修改不宣稱修復它們。
+舊 APK 的 AudioTrack
+SIGSEGV 與桌面 client access violation 保持獨立；本頁的效能修改不宣稱修復它們。

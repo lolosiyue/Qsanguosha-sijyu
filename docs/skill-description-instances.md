@@ -101,6 +101,3 @@ room->removeSkillEffectDescription(target, "author-scoped-id");
 
 既有未登記語意的 state、舊式自訂計數與效果仍需由技能作者提供 metadata；本功能不會把缺少資料視為零、不會虛構来源／期限。
 
-## 驗證紀錄
-
-2026-09-20 驗證涵蓋兩批建置與 focused 結果、缺少 SVG 的建置失敗、fixture 空指標失敗與修正，以及 GUI 回饋修訂的複驗。

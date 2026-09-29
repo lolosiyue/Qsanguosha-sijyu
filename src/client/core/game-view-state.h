@@ -87,9 +87,9 @@ struct GameViewState
     QList<GameViewPlayer> players;
     QVariantMap privatePiles;
     QVariantList recentEvents;
-    // docs/ui-roadmap.md 2.7 asks who is acting on whom.  The battle log already
-    // carries that as structured fields, so it is projected as relations rather
-    // than re-derived from the narration in recentEvents.
+    // Who is acting on whom is part of the shared UI contract.  The battle log
+    // already carries that as structured fields, so it is projected as relations
+    // rather than re-derived from the narration in recentEvents.
     QVariantList recentRelations;
     bool playOrderKnown = false;
     QStringList responseFocus;

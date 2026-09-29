@@ -1,6 +1,6 @@
 # Isolated AI layer 現況
 
-Isolated AI 按 Room 與觀察者隔離狀態；本文件說明各層責任與純值邊界。共用策略契約見[共用層對照](isolated-ai-common-layer.md)，逐項接線與缺口見[入口盤點](isolated-ai-common-inventory.md)。
+Isolated AI 按 Room 與觀察者隔離狀態；本文件說明各層責任與純值邊界。共用策略契約見[共用層對照](isolated-ai-common-layer.md)。
 
 ## 分層
 
@@ -29,4 +29,4 @@ state 掃描是每 viewer `O(n + visible state)`，排序是 `O(n log n)`，全 
 
 完整 legacy V1 view-as/轉化 callback、個別 skill hook 的 native API、完整 cardEffect/prohibition/distance/range/usage legality、秘密資訊與所有逐武將策略，仍是 native/coverage debt。逐武將策略與完整對局驗收尚未完成。
 
-驗證結果見[共用層驗證紀錄](isolated-ai-common-layer.md#驗證狀態)；新增技能見[撰寫指南](isolated-ai-authoring-guide.md)。
+共用層 contract 與 API 見[共用層對照](isolated-ai-common-layer.md)；新增技能見[撰寫指南](isolated-ai-authoring-guide.md)。

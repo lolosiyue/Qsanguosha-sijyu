@@ -147,37 +147,3 @@ into a separate build directory for this purpose. Native exports must be equal
 before/after AI deployment and AI byte changes, while similarly named extra Lua
 files must still fail export. These assertions precede the real server/Web gate.
 
-### Server-only AI local acceptance (2026-09-08)
-
-Validated the uncommitted server-only AI change on `debug` base `52d73b9` using
-Qt 6.11.1 / Emscripten 4.0.7 and real Windows Chrome:
-
-| Layer | Result |
-|---|---|
-| Targeted rebuild | Native server, native exporter and production WASM linked |
-| Server-only content | AI deployment and changes to SmartAI/middleclass preserve identity; similarly named extra Lua rejects |
-| Harness checks | W2 3 and shared HTTP/browser 6 passed; Vite `.js` MIME handling corrected |
-| Actual browser admission | Native/WASM identities equal, Web signup active, legacy TCP accepted |
-| Rejection paths | Eight invalid signup cases including reconnect, plus stale paired WASM rejected by old Web loader |
-| Web artifacts | TypeScript and direct Vite build passed; build/public/dist runtime hashes matched |
-
-No full gameplay or remote CI was run. The aggregate npm build stopped at its
-existing stale translation artifact check; direct Vite output does not establish
-that aggregate gate. Server startup also logged an external `inovation-ai.lua`
-missing-field warning, so this admission result is not full AI gameplay acceptance.
-
-### Original local implementation evidence (2026-09-08)
-
-Checked in the W2 working tree based on PR31 `311a494`; these results are not
-remote CI or production browser acceptance.
-
-| Layer | Result |
-|---|---|
-| Targeted Windows Debug compile | Engine, server, native fixture runner and identity executable linked successfully |
-| Focused C++ identity/wire executable | 60 checks passed; no CTest invocation |
-| Web focused tests and TypeScript | 8 tests passed; application and browser probe type checks passed |
-| Python harness self-tests | W2 2 checks and shared browser harness 6 checks passed |
-| Actual native exports | 495 cards, 146 package registrations, 29 interactions; reordered cards and altered Lua produce distinct identities |
-| Actual native unsupported closure | An extra hidden Lua file rejects export with `rules_content_unsupported` |
-| Native/Web encoding | Web verifies all three actual native identity seals and rejects both changed content bundles |
-| Production WASM/browser/server gate | Added to remote workflow; not run locally |

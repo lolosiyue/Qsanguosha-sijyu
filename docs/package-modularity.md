@@ -233,161 +233,31 @@ rewrite a v2 rules identity into v3. Optional legacy image/audio directories
 may be absent for a package deployment. Binary assets are served over HTTP;
 the Web rules virtual filesystem receives declared Lua content only.
 
-## Source tests
+## Platform differences and upgrade contract
 
-Focused standard-library test cases are in `tools/packages/tests/`. They cover
-declaration ordering, unresolved media, explicit ownership, safe copy behavior,
-and sealed hashes. Their existence is not a report that they were executed;
-run/build gates are recorded by the coordinating phase checkpoint.
+Android catalog loading skips the filesystem inventory and the resource digests
+while retaining manifest path/role checks and the required Lua files. Missing
+presentation assets and media-only APK inventory changes do not block startup.
+Desktop package verification and network rule identity stay strict, and ZIP path,
+size and CRC validation are retained.
 
-## Phase 2 checkpoint validation — 2026-09-16
+Baseline upgrades refresh the APK-owned [`lua/sanguosha.lua`](../lua/sanguosha.lua)
+bootstrap atomically and publish `bootstrap_version=1` only after publication.
+Retained `lang/*.lua` declarations are refreshed the same way through
+`presentation_version=1`, including baselines that carry the same APK resource
+revision. Existing snapshots, package versions, rule scripts and user translation
+overrides are preserved.
 
-Implementation and validation were performed in the isolated
-`codex/package-modularity-phase2` worktree, based on
-`2759c82413701c4eeb998bfcfe684f2cf1624f49`. Builds and executable tests started
-only after the phase 2 source checkpoint was declared complete.
+Focused standard-library cases for the packaging tools live in
+`tools/packages/tests/`; they cover declaration ordering, unresolved media,
+explicit ownership, safe copy behavior and sealed hashes.
 
-| Gate | Result and scope |
-| --- | --- |
-| Windows native build | PASS: VS 2026 / Qt 6.11.1 Debug engine, `QSanguosha`, and six focused test targets. Existing optional Qt TaskTree and FreeType PDB warnings did not block the build. |
-| Native focused executables | PASS: package catalog, package store, package runtime, rules content manifest (43 checks), Android content store, and production Lua package loader. Each invocation finished within 60 seconds; final Android run took about 22 seconds. |
-| Web | PASS: TypeScript checking, three focused test files / 23 tests, and Vite production build. |
-| Python | PASS: 15 migration/packaging tests, including a complete synthetic Solo packaging fixture. Synthetic WASM bytes test packaging only; no WASM execution is claimed. |
-| Local HTTP | PASS: served the real migrated sijyu manifest/Lua bytes through `/packages`; encoded traversal returned HTTP 403. The temporary server was stopped. |
-| Code-only migration | PASS: standard empty native-package manifest and sijyu Lua/AI pilot generated under ignored artifacts; native catalog accepted both. Copied sijyu source/AI SHA-256 values matched the original files. |
-| Static checks | PASS: `git diff --check`; package Lua/manifests remain trackable, image/audio paths are ignored. |
-| Native GUI interaction | NOT RUN; executable built only. |
-| Android APK/device and WASM runtime | NOT RUN; Android store was tested as a desktop focused executable. |
-| Full game, local CTest, remote CI | NOT RUN. |
-
-Local evidence is under `artifacts/package-validation/`: `native-results.json`,
-per-target logs, native build logs, `web-validation.log`, `python-tests.log`,
-`pilot-hashes.json`, and `probe_http.log`. These generated artifacts are ignored.
-The changes are uncommitted; no merge or push was performed. No files in the
-original QSanguosha worktree or the authoritative external extension repository
-were modified by this work.
-
-## Device acceptance follow-up — 2026-09-16
-
-The earlier checkpoint table is a historical result. Subsequent Android and
-Browser Solo acceptance uses the same isolated branch and records each attempt
-under `artifacts/package-device-acceptance-20260916/`. Final gate outcomes and
-cleanup evidence are in that directory's `summary.md`; builds, startup, gameplay,
-and clean shutdown remain separate gates.
-
-The follow-up fixes same-ID Android package migration, lazy package Lua preload,
-and the Solo package AI closure. The ZIP reader now bounds retries for a source
-that temporarily returns no bytes and recognizes a fully consumed fixed-length
-source even when its EOF flag lags. Focused tests cover both cases. A device ZIP
-whose digest differed from the host was replaced with a verified copy; this is
-separate from the reader robustness change.
-
-The external `scarlet.lua` description skill `s4_txbw_general_duel_rule` is now
-registered before it is attached. Unknown-skill validation remains enabled.
-Only that Lua file was synchronized to the authoritative extension repository;
-its other pre-existing changes were preserved. No commit or push was made.
-
-After replacing client WASM artifacts, publish their bundle into
-`web/public/rules` **before** running Vite: the frontend pins that bundle's digest
-at build time. Replacing only `web/dist/rules` leaves the old loader bound to an
-older deployment and correctly produces `rules_reload_required`.
-
-Local media and migrated pilot Lua are test inputs in ignored runtime/artifact
-directories. They are not source-control deliverables. Device coverage uses an
-API 33 x86_64 emulator with ARM translation and 4 KB pages; it does not establish
-physical arm64 or 16 KB runtime compatibility.
-
-Final follow-up outcome: native/APK/WASM builds and focused regressions passed.
-Browser Solo completed one natural `03_1v2` game with `lord+loyalist` winning,
-then returned home and prepared again. Complete UI timeout/fallback coverage and
-normal launcher exit remain unverified. Android imported and activated the full
-verified media ZIP, but the standard-audio APK crashed in AudioTrack before game
-start (`SIGSEGV`, `__cfi_slowpath` / `maybeCallDataCallback`). Android online is
-failed and same-process Solo is blocked; no audio-engine fix or repeated game
-was attempted under the two-issue authorization. The paired server shut down
-normally with exit 0. See the per-attempt evidence for cleanup and limitations.
+Client WASM artifacts must be published into `web/public/rules` **before** the
+frontend's Vite build: the frontend pins that bundle's digest at build time, and
+replacing only `web/dist/rules` leaves the loader bound to the older deployment
+and correctly produces `rules_reload_required`.
 
 
-## Debug integration — 2026-09-16
 
-The isolated package branch is fast-forwarded to debug `49c4213` and retains
-phase 1–2 changes. Android inherits the NULL audio backend and software rendering
-workaround. Audio remains temporarily muted; this does not repair the audio engine.
 
-Android catalog loading skips filesystem inventory and resource digests, while
-retaining manifest path/role checks and required Lua files. Missing presentation
-assets and media-only APK inventory changes do not block startup. Desktop package
-verification and network rule identity remain strict. ZIP path, size, and CRC
-validation are retained. Integration evidence is under
-`artifacts/package-debug-integration-20260916/`; earlier device results are historical.
 
-The first upgrade attempt exposed a stale APK-owned [`lua/sanguosha.lua`](../lua/sanguosha.lua): the
-old loader rejected newly installed modular paths. Baseline upgrades now refresh
-that bootstrap atomically and mark `bootstrap_version=1` only after publication.
-The constant metadata marker also repairs an already migrated baseline carrying
-the same APK resource revision. Existing snapshots and user extension overrides
-remain preserved. Focused upgrade fixtures cover both revision cases.
-
-A separate retained-declaration gap is still open: the upgraded private runtime
-contains `lang/zh_CN/Audio/MaotuPackageLines.lua` without a corresponding retained
-Lua declaration. The strict rules identity reports `rules_content_unsupported`;
-this is not a missing-image or media-hash launch gate. The extra migration repair
-and connected retest require the separately requested bounded follow-up.
-
-The final integration HEAD is `31a9e81` (the additional commit changes documents
-only; compiled code remains based on `49c4213` plus the isolated modifications).
-Native and Android incremental builds, package catalog checks, Android content
-store focused checks, and Web type checking passed. The repaired APK reached the
-home screen with retained media and both pilot packages active.
-
-One Android same-process `03_1v2` game reached the natural result screen at
-10:27, with the rebel/farmer side winning. Trustee was active, so manual UI
-acceptance is not established. The process then aborted during RoomRuntime
-shutdown with non-zero Card lifetime gauges; this is a failed clean-exit gate,
-not a full-game acceptance pass. A preceding Scudo size-class exhaustion warning
-is retained as evidence, without attributing its cause. No second Solo game or
-native-lifetime repair was attempted. Test settings were restored, host servers
-exited normally, and the existing emulator was left running. Connected gameplay
-remains blocked by the declaration gap above. WASM was not rebuilt or rerun after
-this debug integration, and physical-device coverage remains untested.
-
-## Retained translation repair and WASM rerun — 2026-09-16
-
-The retained-declaration gap above is repaired. APK-owned `lang/*.lua` declarations
-are refreshed through an atomic presentation migration (`presentation_version=1`),
-including existing baselines with the same APK revision. Rule scripts, dependencies,
-package versions, existing snapshots, and user translation overrides remain pinned.
-New APK translations in an overridden package resolve through the APK presentation
-baseline. No media inventory scan or resource hashing is added. Regression fixtures
-cover translation overrides, immutable snapshots, and legacy-to-modular migration.
-
-Native, APK, client WASM, and Solo WASM builds succeeded with matching C++/binding/
-protocol fingerprints. The Android content-store focused executable passed in
-57.14 seconds. Web protocol/translation checks, TypeScript checking, production
-build, and Solo packaging passed. No local CTest was run.
-
-The repaired device snapshot declared the formerly missing translation, retained
-media readiness, and activated both pilot packages. Its paired server produced a
-valid `declared-v2` ServerHello. Android gameplay remains **BLOCKED**: another task
-replaced the shared emulator APK at 06:11:18 UTC, after this test launched at
-06:11:06 UTC. The user chose to defer Android and finish WASM. The host server
-exited normally (0); its watcher and reverse mapping were cleaned up. No further
-Android installation or game was attempted.
-
-One Browser Solo `03_1v2` game ran from 06:21:01 UTC to the observed natural result
-at 06:28:31 UTC. The UI reported `lord+loyalist` winning (Zhao Yun as lord); the
-human Lu Xun seat was a rebel. Manual UI covered general selection, card reveal,
-Jink response, Peach, Iron Chain recast, equipment, discard, and dying responses.
-Neither trustee nor surrender was clicked. Timeout/fallback coverage was not
-instrumented, and the raw GAME_OVER packet was not separately captured. The UI
-returned home and prepared again without starting a second game; captured console
-warnings/errors were empty. This establishes the observed natural-result and
-home/reprepare gates, not comprehensive manual-UI or engine-shutdown acceptance.
-
-The created browser tab was closed. The local launcher remained running and was
-explicitly stopped after verifying its PID/path; normal launcher exit is therefore
-not proven. Test ports 9529 and 19542–19544 were released. Card lifetime was not
-modified during this follow-up, as requested; its existing debug-branch issue and
-Worker clean-shutdown gate remain outside this repair. Evidence, source hashes,
-and separate gate results are in `artifacts/package-followup-20260916/summary.md`.
-No commit or push was made; local media remains ignored.

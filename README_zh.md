@@ -25,7 +25,7 @@ cmake --build --preset release
 | Docker 伺服器 | [Docker 部署](docs/docker-server.md) |
 | Android 建置與安裝 | [Android](docs/android-build.md) |
 | 終端與瀏覽器遊戲 | [TUI](docs/tui-client.md)、[Web](docs/web-client.md)、[Browser Solo](docs/browser-solo.md) |
-| 試算表客戶端 | [Excel](docs/excel-client.md)、[Google Sheets](docs/google-sheets-client.md) |
+| 試算表客戶端 | [Excel](docs/excel-packaging.md)、[Google Sheets](docs/google-sheets-client.md) |
 | 擴展開發與引擎參考 | [文件索引](docs/README.md) |
 
 ## 授權與歸屬

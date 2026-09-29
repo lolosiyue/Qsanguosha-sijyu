@@ -769,8 +769,9 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 
 #### 15.2.1 AIWorldView
 
-模式／身份 hook 與 Room 身份明示服務的介面、相容界線及驗證狀態見
-[AI 身份、陣營與身份明示解耦](ai-identity-mode-decoupling-plan.md)。模式規則與觀察者推測
+模式／身份 hook 與 Room 身份明示服務的介面與相容界線見
+[隔離 AI 分層](isolated-ai-layer.md)，模式政策的 Lua 入口見
+[模式 AI 政策](lua-ext-spec.md#77-模式-ai-政策sgsregistermodeai)。模式規則與觀察者推測
 狀態保留在每個 Room 的 Lua VM，`mode_policy` 僅傳遞已驗證的純值判定至隔離 AI。
 
 `request.world_view` 是 request 建立當下的 immutable value snapshot，不含 `Room *`、
@@ -810,8 +811,8 @@ array 與 string-key table 讀取 snapshot。
 
 #### 15.2.2 共用轉接層：request 內物件映射
 
-後續共用入口的全域／原生依賴、快照缺口及分批順序見
-[SmartAI 共用轉接層依賴盤點](smart-ai-adapter-dependency-audit.md)；各介面的實作與驗證狀態列於該盤點。
+後續共用入口的全域／原生依賴、快照缺口與覆蓋範圍見
+[隔離 AI 分層](isolated-ai-layer.md)與[共用策略入口](isolated-ai-common-layer.md)。
 
 `isolated-facades.lua` 在每次 `SmartAIView.new(request)` 建立獨立 `RoomView` 與玩家映射。
 同一 request 的 `self.player`、房間查詢、friends／enemies 共用同一個 `PlayerView`，可用
@@ -828,7 +829,7 @@ array 與 string-key table 讀取 snapshot。
 | 舊快照缺少名單順序 | 相應清單查詢回 nil，不自行按座號或 self 優先重排 |
 | 未支援原生能力 | `getRoom()`、`getTag()`、`getPile()`、距離／合法性推演與 mutation API 仍不提供；不得把缺失能力當作安全的預設決策 |
 
-代理型別與集合契約（2026-09-17，程式／契約案例已寫，執行驗證尚未進行）：
+代理型別與集合契約：
 
 | 介面 | 契約 |
 |---|---|
@@ -847,10 +848,10 @@ array 與 string-key table 讀取 snapshot。
 isCard／aiUseCard 等 userdata guard 與 native 查詢仍待後續分批處理（回呼 ABI 與結果轉換見 §15.2.3），
 不能直接把 PlayerView 傳入這些舊入口。未暴露 `sgs.SPlayerList/CardList` 原生建構器。
 
-此檢查點只擴充共用轉接層，不新增技能 handler、不切換 Isolated／Shadow 路由，
-也不宣稱整份 SmartAI 可直接在 sandbox 執行。[`tests/lua/isolated-adapter-contract.lua`](../tests/lua/isolated-adapter-contract.lua)
+這一層只擴充共用轉接層，不新增技能 handler、不切換 Isolated／Shadow 路由，
+也不宣稱整份 SmartAI 可直接在 sandbox 執行。契約案例 `tests/lua/isolated-adapter-contract.lua`
 由既有 room-runtime-isolation suite 在真實 sandbox 載入；原生測試另覆蓋 C++ 順序投影、
-序列化及 activate／use_card 共用入口。2026-09-17：程式與契約原始碼完成，尚未建置或執行。
+序列化及 activate／use_card 共用入口。
 
 `PlayerView:getSkills()` 一個可見 instance 對應一個 `SkillView`，保留同名多實例與
 `instance_id`；`hasSkill("name#instance")` 可精確查詢，invalid instance 不算持有。
@@ -917,10 +918,9 @@ legacy callback 的第五參數是 `AILegacyRequest`，只在 request 帶 `skill
 沙箱 `sgs` 另反射 `Card::HandlingMethod`（`sgs.Card_MethodUse` 等），讓 legacy callback 的第三
 參數可以比對；其餘 enum 與 `string:split/contains/startsWith` 等工具仍未提供。
 
-此檢查點只定義回呼 ABI、分派與結果轉換，不新增技能 handler、不改路由、不擴大
+這一層只定義回呼 ABI、分派與結果轉換，不新增技能 handler、不改路由、不擴大
 DecisionKind。契約案例在 `tests/lua/isolated-adapter-contract.lua`（request view 與
-normalize），分派與轉換的端到端案例在 [`tests/room-runtime-isolation-test.cpp`](../tests/room-runtime-isolation-test.cpp)。
-2026-09-17：程式與契約原始碼完成，尚未建置或執行。
+normalize），分派與轉換的端到端案例在 `tests/room-runtime-isolation-test.cpp`。
 
 #### 15.2.4 共用入口的型別邊界（legacy 側）
 
@@ -953,10 +953,9 @@ normalize），分派與轉換的端到端案例在 [`tests/room-runtime-isolati
 仍以舊 guard 判斷的 `evaluateWeapon`（`type(card)~="userdata"` 回 -1）與 `needToThrowArmor`
 （回 false）屬傷害／防禦族，依盤點要整族一起做值型投影，不在本批。
 
-契約案例在 [`tests/lua/value-boundary-contract.lua`](../tests/lua/value-boundary-contract.lua)，由 room-runtime-isolation suite 以獨立
+契約案例在 `tests/lua/value-boundary-contract.lua`，由 room-runtime-isolation suite 以獨立
 Lua state 載入（不啟動 Room，也不載 Engine），涵蓋沒有 facade 時的原生分支、代理辨識、
-卡牌／技能身份與未支援訊息。2026-09-17：程式與契約原始碼完成，只做 Lua 語法檢查，
-未建置、未執行。`lua/ai/smart-ai.lua`（SHA-256 `7BFB480DE8354354D00D628AE6E0CFC88E691333B56BC16BF0A0C19F1C549ED4`）與 `lua/ai/value-boundary.lua`
+卡牌／技能身份與未支援訊息。`lua/ai/smart-ai.lua` 與 `lua/ai/value-boundary.lua`
 都不在主倉庫版本控制內。
 
 #### 15.2.5 值型詢問：請求種類、候選與答案
@@ -997,7 +996,7 @@ adapter，兩張表也不互為 alias。
 | `{kind="pass"}` | 明示拒答 |
 | 其他（含 `kind="use_card"`） | 例外；出牌動作不是值型答案 |
 
-路由沿用同一張表：未設定的 kind／callback 由 `routeFor` 回 `Isolated`（2026-09-18 起），
+路由沿用同一張表：未設定的 kind／callback 由 `routeFor` 回 `Isolated`，
 isolated 端拒答即回退 legacy。`AiIsolatedCallbacks` 等三份設定的 callback 名稱由一份白名單
 決定，含 `askForSkillInvoke`、`askForChoice`、`askForSuit`、`askForKingdom`、
 `askForGeneral`。隔離結果過期（decision id 或 revision 不符）直接不採用；legacy 答案
@@ -1060,10 +1059,6 @@ AI。轉化牌（view-as）要等值型出牌與造卡批次，本批不接受�
 答案。仍留在舊 AI 的能力是轉化牌（view-as）與需要 `QVariant data` 的事件上下文——前者等
 值型造牌批次，後者等事件投影批次；這兩種情況隔離 handler 回 unhandled，由舊 AI 作答。
 
-2026-09-17：程式與契約原始碼完成，`tests/lua/isolated-adapter-contract.lua` 補了各 kind 的
-轉換案例，`tests/room-runtime-isolation-test.cpp` 補了從 Room facade 到隔離 VM 的端到端案例
-（值型詢問、選牌選人的候選授權、回應牌的 request 形狀與未持有牌被拒）；尚未建置或執行。
-
 #### 15.2.6 牌區投影：可見牌、牌堆與位置索引
 
 快照多出四個牌區欄位，全部只放這名 viewer 能看到的內容：
@@ -1093,9 +1088,6 @@ AI。轉化牌（view-as）要等值型出牌與造卡批次，本批不接受�
 索引只在 request 建立時組一次，和其他代理一樣不跨 request 重用；牌移動後舊 request 的
 索引就過期，提交時仍由 revision 檢查擋下。
 
-2026-09-17：程式與契約案例完成（`tests/lua/isolated-adapter-contract.lua` 涵蓋未知／部分可見／
-已知為空與位置索引），尚未建置或執行。
-
 #### 15.2.7 共用衍生資料：玩家、卡牌、技能與純值工具
 
 共用入口常問的衍生值改由快照提供，缺投影就沒有那個 getter，不會回一個看起來合理的預設值。
@@ -1117,8 +1109,6 @@ AI。轉化牌（view-as）要等值型出牌與造卡批次，本批不接受�
 
 `string.split`／`contains`／`startsWith`／`endsWith` 以純 Lua 補進沙箱，與 gameplay VM 同名
 同語意，只做字串處理；若環境已有實作則不覆寫。
-
-2026-09-17：程式與契約案例完成，尚未建置或執行。
 
 #### 15.2.8 合法候選契約：可用牌、可選目標與距離
 
@@ -1149,8 +1139,6 @@ B 是否仍合法」這種逐步收斂的查詢，屬於值型推演批次，本
 轉牌與過濾後的候選（view-as／`CardFilter` 結果）仍不在這裡：它們要先有值型造牌介面，
 屬於下一批。
 
-2026-09-17：程式與契約案例完成，尚未建置或執行。
-
 #### 15.2.9 值型出牌與推演暫存
 
 隔離 handler 不造牌，只描述要哪張牌。`use_card` 結果除了舊的 `card` 字串外，可改帶
@@ -1178,8 +1166,6 @@ C 類。需要虛擬牌就用 spec。
 別的觀察者看到。舊實作用玩家 flag／property／history 當暫存的做法不再需要，也不允許——
 那些是權威狀態。
 
-2026-09-17：程式與契約案例完成，尚未建置或執行。
-
 #### 15.2.10 技能實例候選與來源關係
 
 出牌類請求除了原本那個「這次是為哪個實例建的」`skill_action` 之外，另帶
@@ -1201,8 +1187,6 @@ instance 時回第一筆，不會把兩個實例併成一個。
 就是自己）。權威端一律重新檢查：owner 必須是提問的玩家，非 `Activate` 的請求還必須命中
 `skill_actions` 裡真的提供過的那一筆，接著用 `findSkillInstance` 重建上下文並重跑
 `canActivate` 與次數檢查，才會造 proxy。AI 指名只是選擇，不是授權。
-
-2026-09-17：程式與契約案例完成，尚未建置或執行。
 
 #### 15.2.11 值型事件上下文
 
@@ -1233,8 +1217,6 @@ nil（未知），有投影但沒有該類事件回空集合。
 `filterEvent`），但隔離側只看這份值型紀錄。「目前正在結算哪張牌」這種即時查詢不提供——
 current player 不等於傷害來源或正在結算的 use，要什麼就從事件序列自己判斷。
 
-2026-09-17：程式與契約案例完成，尚未建置或執行。
-
 #### 15.2.12 AI 狀態分層：規則、推測、暫存與持久化
 
 隔離側的狀態明確分成四層，各有自己的生命週期：
@@ -1260,8 +1242,6 @@ VM 因指令上限或記憶體上限重建時，registry 由載入腳本重建�
 容忍 `recall` 回 nil，不能假設記憶一定在。`current_self`／`global_room` 這類隱式上下文在隔離
 VM 不存在，狀態只能從 request、記憶或 `ai_data` 來。
 
-2026-09-17：程式與契約案例完成，尚未建置或執行。
-
 #### 15.2.13 模式、身份與控制鏈
 
 規則關係與推測關係是兩套查詢，互相不頂替：
@@ -1284,8 +1264,6 @@ VM 不存在，狀態只能從 request、記憶或 `ai_data` 來。
 模式規則本身仍在各 Room 的 gameplay VM（`mode-ai.lua`）評估，只把已驗證的純值判定送進隔離
 VM，這一層不變。
 
-2026-09-17：程式與契約案例完成，尚未建置或執行。
-
 #### 15.2.14 提交與過期結果
 
 每種結果都要通過同一組檢查才會提交，檢查一律在權威端做：
@@ -1305,8 +1283,6 @@ VM，這一層不變。
 候選與數量檢查只套用在隔離答案上。舊 AI 的答案維持它在這條路由存在之前的行為：指標原樣
 回傳、清單原樣採用，避免新增的檢查改變既有對局結果。這個分界由 `runAnswer` 的
 `fromIsolated` 回報。
-
-2026-09-17：程式完成，尚未建置或執行。
 
 #### 15.2.15 通用決策流程（隔離版）
 
@@ -1332,9 +1308,7 @@ VM，這一層不變。
 逐實例探測只派給 `ai_skill_activate[probe.activation_skill]`，沒註冊或拒答就記為新版
 尚未覆蓋。一般詢問都沒人接才走 `planTurnUse()`：可提交完整權威候選上的合法方案；
 沒有答案且還有未知選項時維持 unhandled，只有選項已完整處理才能回 pass。`activate` 預設路由為
-`Isolated`（2026-09-18 起），此 handler 直接參與決策。
-
-2026-09-17：程式與原生案例完成（`decisionCorePlansATurnFromCandidates`），尚未建置或執行。
+`Isolated`，此 handler 直接參與決策。
 
 #### 15.2.16 載入分層與覆蓋率
 
@@ -1357,11 +1331,9 @@ VM，這一層不變。
 隔離 handler 回 unhandled、結果過期或執行出錯均為新版失敗。權威端雖保留故障保底，
 但不能以其答案作為策略出口、覆蓋率或完成證據。
 
-2026-09-17：程式與原生案例完成（`coverageReportListsWhatIsWired`），尚未建置或執行。
-
 #### 15.2.17 切換與驗收程序
 
-2026-09-18 移除 Shadow 雙跑比對。2026-09-21 明確採獨立新版的完成標準：所有未設定的
+Shadow 雙跑比對已移除；完成標準採獨立新版：所有未設定的
 kind／callback 預設 `Isolated`，每題由新版完成。`AiLegacyDirectCallbacks`／
 `AiLegacyAdaptedCallbacks` 仍是明示的相容選項，其執行結果不屬於新版驗收。
 
@@ -1410,7 +1382,7 @@ response resolver；isolated 結果未通過驗證時直接回退 legacy，不�
 
 ### Isolated PR 07：有序目標、規劃分支與多牌成本
 
-本節描述 PR 07 的契約；執行驗證狀態見 `ai-migration-status.md`。
+本節描述 PR 07 的契約。
 
 | API／欄位 | 契約 |
 |---|---|
@@ -1434,9 +1406,8 @@ scratch 不是模擬器；預留牌／使用次數不等於正式 history、quot
 重複投票目標、任意多牌轉化、跨 request 意圖、Shadow、覆蓋率與效能量測均不由本節宣稱完成。
 目前多牌參數契約由測試專用技能驗證，尚未開啟任何正式武將的 opt-in。
 
-2026-09-21 靜態收尾修正（**未建置、未執行**）：候選預算只在 `ai_decide`
+候選預算只在 `ai_decide`
 開始新決策時重置，更換 public scratch 或 facade 不重置；完整投影中的 `{}` 表示
 沒有可行序列，`{{}}` 才表示可不選目標完成。未知組合／合法目標／所需敵友關係
 維持 unsupported；策略拒絕前也先確認候選完整性。`newCard` 的第一張參數化票
 無法綁定指定成本時，繼續查後續符合條件的 instance/source，不改寫票的來源。
-新增契約案例與兩個固定目標 fixture 僅完成來源修改，沒有執行或破壞驗證證據。

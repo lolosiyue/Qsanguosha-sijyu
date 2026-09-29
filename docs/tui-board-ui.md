@@ -407,7 +407,6 @@ smoke 與 golden test 支撐，**不得以 CI 綠燈冒充**。
 
 - `docs/tui-client.md`：新增 `--ui` 選項列、board 模式章節、`/board` 指令，
   並修正 §4.2 指出的 Ctrl+C 敘述。
-- `docs/tui-client-architecture.md`：加入 `TuiPresenter` 分層。
 
 ## 9. 實作階段
 
