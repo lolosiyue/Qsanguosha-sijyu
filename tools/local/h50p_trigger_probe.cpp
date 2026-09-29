@@ -5,8 +5,12 @@
 #include "room-roster.h"
 #include "runtime-paths.h"
 #include "serverplayer.h"
+#include "lua-wrapper.h"
+#include "invalidity-gate.h"
+#include "lua.hpp"
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QFile>
 #include <functional>
 #include <cstdio>
 #include <cstdlib>
@@ -68,6 +72,16 @@ public:
     mutable int calls = 0;
 };
 
+class InvalidityCounter : public InvaliditySkill {
+public:
+    InvalidityCounter(const QString &name) : InvaliditySkill(name) {}
+    bool isSkillValid(const Player *, const Skill *) const override {
+        ++calls;
+        return false;
+    }
+    mutable int calls = 0;
+};
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -82,6 +96,94 @@ int main(int argc, char **argv)
         p->setObjectName(QString("p%1").arg(i));
         RoomTestAccess::add(*room, p);
         players << p;
+    }
+    auto *markRule = new InvalidityCounter("h50p_mark_invalidity");
+    auto *currentRule = new InvalidityCounter("h50p_current_invalidity");
+    markRule->setProperty("InvalidityMarkPrefix", "h50p_mark_");
+    currentRule->setProperty("InvalidityCurrentSiblingSkill", "h50p_current_skill");
+    room->roomRuntime()->addSkills({markRule, currentRule});
+    engine.registerRoom(room->roomRuntime());
+    RecordProbe validityTarget;
+    check(engine.correctSkillValidity(players[0], &validityTarget), "inactive invalidity gates");
+    check(markRule->calls == 0 && currentRule->calls == 0, "inactive gates avoid callbacks");
+    players[0]->setMark("h50p_mark_" + validityTarget.objectName(), 1);
+    check(!engine.correctSkillValidity(players[0], &validityTarget) && markRule->calls == 1,
+          "live positive mark runs callback");
+    players[0]->setMark("h50p_mark_" + validityTarget.objectName(), 0);
+    check(engine.correctSkillValidity(players[0], &validityTarget), "mark removal stays live");
+    players[1]->setFlags("CurrentPlayer");
+    check(engine.correctSkillValidity(players[0], &validityTarget), "flag without ownership");
+    const int currentId = players[1]->createSkillInstance("h50p_current_skill", SourceAcquired);
+    check(!engine.correctSkillValidity(players[0], &validityTarget) && currentRule->calls == 1,
+          "live flag and attachment run callback");
+    check(engine.correctSkillValidity(players[1], &validityTarget), "current owner excludes self");
+    players[1]->setAlive(false);
+    check(engine.correctSkillValidity(players[0], &validityTarget), "dead current sibling excluded");
+    players[1]->setAlive(true);
+    check(!engine.correctSkillValidity(players[0], &validityTarget), "revival visible");
+    players[0]->setFlags("CurrentPlayer");
+    check(engine.correctSkillValidity(players[2], &validityTarget), "first flagged sibling wins");
+    players[0]->setFlags("-CurrentPlayer");
+    players[1]->removeSkillInstance("h50p_current_skill", currentId);
+    check(engine.correctSkillValidity(players[0], &validityTarget), "detachment visible");
+    players[1]->setFlags("-CurrentPlayer");
+    markRule->setProperty("InvalidityMarkPrefix", QVariant());
+    check(!engine.correctSkillValidity(players[0], &validityTarget), "unconfigured callback retained");
+    markRule->setProperty("InvalidityMarkPrefix", "h50p_mark_");
+    engine.unregisterRoom();
+    printf("PASS: actual Engine invalidity gates: live marks/flags/attachment/death/revival, self exclusion, first flag, unconfigured fallback\n");
+    {
+        LuaRuntime lua(LuaRuntime::Auxiliary);
+        check(lua.initialize(&error), qPrintable(error));
+        LuaRuntime::Binding binding(lua);
+        check(lua.loadScript("lua/utilities.lua", &error), qPrintable(error));
+        QFile source("extensions/sijyuoffline.lua");
+        check(source.open(QIODevice::ReadOnly), "open real offline callbacks");
+        const QByteArray code = source.readAll();
+        LuaInvaliditySkill podai("h50p_podai", Skill::Compulsory);
+        LuaInvaliditySkill ducai("h50p_ducai", Skill::Compulsory);
+        const auto loadCallback = [&](LuaInvaliditySkill &rule, const QByteArray &name) {
+            const int begin = code.indexOf(name + " = sgs.CreateInvaliditySkill{");
+            const int end = code.indexOf("\n}", begin);
+            check(begin >= 0 && end > begin, "locate real callback source");
+            const QByteArray chunk = "sgs.CreateInvaliditySkill = function(spec) return spec end\n"
+                + code.mid(begin, end + 2 - begin) + "\nreturn " + name + ".skill_valid";
+            check(luaL_dostring(lua.state(), chunk.constData()) == LUA_OK, "load real callback");
+            rule.skill_valid = LuaFunction(lua.state(), luaL_ref(lua.state(), LUA_REGISTRYINDEX));
+        };
+        loadCallback(podai, "sfofl_podaiInvalidity");
+        loadCallback(ducai, "sfofl_ducaiInvalidity");
+        podai.setProperty("InvalidityMarkPrefix", "sfofl_podai");
+        ducai.setProperty("InvalidityCurrentSiblingSkill", "sfofl_ducai");
+        const auto compare = [&] {
+            for (ServerPlayer *p : players) {
+                for (LuaInvaliditySkill *rule : {&podai, &ducai}) {
+                    const bool original = rule->isSkillValid(p, &validityTarget);
+                    const bool gated = !invalidityCallbackMayReject(rule, p, &validityTarget)
+                        || rule->isSkillValid(p, &validityTarget);
+                    check(original == gated, "native gate matches actual Lua callback");
+                }
+            }
+        };
+        compare();
+        players[0]->setMark("sfofl_podai" + validityTarget.objectName(), 1);
+        players[1]->setFlags("CurrentPlayer");
+        const int id = players[1]->createSkillInstance("sfofl_ducai", SourceAcquired);
+        compare();
+        players[0]->setFlags("CurrentPlayer"); compare();
+        players[0]->setFlags("-CurrentPlayer");
+        players[1]->setAlive(false); compare();
+        players[1]->setAlive(true); compare();
+        players[1]->removeSkillInstance("sfofl_ducai", id); compare();
+        players[1]->setFlags("-CurrentPlayer");
+        players[0]->setMark("sfofl_podai" + validityTarget.objectName(), 0); compare();
+        LuaTriggerSkillV2 noRecord("h50p_empty_record", Skill::Compulsory, "");
+        QVariant data;
+        check(noRecord.recordEvent(GameReady, room, players[0], data), "absent record callback skips owners");
+        check(luaL_dostring(lua.state(), "return function() end") == LUA_OK, "record callback fixture");
+        noRecord.on_record = LuaFunction(lua.state(), luaL_ref(lua.state(), LUA_REGISTRYINDEX));
+        check(!noRecord.recordEvent(GameReady, room, players[0], data), "present record retains owner dispatch");
+        printf("PASS: native gates match real sijyuoffline Lua callbacks for 50 players across seven live states; absent/present Lua V2 record dispatch\n");
     }
     RoomRoster roster;
     roster.replacePlayers(players);
@@ -122,6 +224,9 @@ int main(int argc, char **argv)
     players[0]->createSkillInstance(name, SourceAcquired);
     RoomTestAccess::dispatch(thread, room, skill);
     check(skill->seen == QStringList({"p0#1", "p0#2", "p30#1"}), "multiple instances and generation invalidation");
+    skill->seen.clear();
+    RoomTestAccess::dispatch(thread, room, skill);
+    check(skill->seen == QStringList({"p0#1", "p0#2", "p30#1"}), "cached positive IDs retain order");
     players[0]->removeSkillInstance(name, 1);
     players[0]->removeSkillInstance(name, 2);
     players[30]->removeSkillInstance(name, 1);

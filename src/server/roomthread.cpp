@@ -1240,9 +1240,11 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         foreach (ServerPlayer *owner, recordPlayers) {
             // Records may attach/detach instances, including on later owners.
             // After any mutation resume the original live scan for this record.
-            if (SkillSet::generation() == recordGeneration && v2->objectName() == recordName
-                && !candidates.contains(owner)) continue;
-			foreach (int instanceId, owner->getSkillInstanceIds(v2->objectName())) {
+            const bool indexed = SkillSet::generation() == recordGeneration && v2->objectName() == recordName;
+            if (indexed && !candidates.contains(owner)) continue;
+            const QList<int> instanceIds = indexed ? candidates.value(owner)
+                : owner->getSkillInstanceIds(v2->objectName());
+			foreach (int instanceId, instanceIds) {
 				SkillContext recordCtx;
 				recordCtx.skill_name = v2->objectName();
 				recordCtx.owner = owner;

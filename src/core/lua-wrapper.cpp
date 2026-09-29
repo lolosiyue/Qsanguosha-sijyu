@@ -93,6 +93,9 @@ bool LuaTriggerSkillV2::collectTriggerContexts(TriggerEvent event, Room *room, S
 
 bool LuaTriggerSkillV2::recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
 {
+    // An absent Lua callback is a no-op for every owner and instance. Avoid
+    // enumerating them and resolving source/amount contexts just to return.
+    if (!on_record) return true;
     if (!m_rule) return false;
     SkillContext ctx;
     ctx.skill_name = objectName();
