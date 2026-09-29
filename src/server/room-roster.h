@@ -49,6 +49,10 @@ private:
 
     QList<ServerPlayer *> m_players;
     QList<ServerPlayer *> m_alivePlayers;
+    // Only includeDead order is cached: alive flags can change independently.
+    mutable QList<ServerPlayer *> m_orderedSource;
+    mutable QList<ServerPlayer *> m_orderedPlayers;
+    mutable ServerPlayer *m_orderedCurrent = nullptr;
     bool m_playOrderReversed = false;
 };
 

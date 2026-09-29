@@ -4,6 +4,7 @@
 
 #include "engine.h"
 #include "room.h"
+#include "roomthread.h"
 #include "server-info.h"
 #include "settings.h"
 #include "skill-runtime-coordinator.h"
@@ -2157,6 +2158,20 @@ bool AiDecisionCoordinator::decideTriggerOrder(ServerPlayer *player, const QStri
                                                QString &answer) const
 {
     if (!player || !player->getAI()) return false;
+    // Initial dealing emits many nested trigger menus. Use the established
+    // SmartAI policy here without constructing a snapshot/isolated facade for
+    // each menu. The caller still normalizes candidates and gates hidden skills.
+    if (const RoomThread *thread = m_room.getThread()) {
+        for (const EventTriplet &event : *thread->getEventStack()) {
+            if (event.event() == GameReady) {
+                static const bool probe = qEnvironmentVariableIntValue("QSAN_AI_WV_PROBE") > 0;
+                if (probe) qInfo() << "[AI_WV] trigger_order startup_legacy choices="
+                                   << candidates.size() << "optional=" << optional;
+                answer = player->getAI()->askForTriggerOrder(reason, skills, optional, data);
+                return true;
+            }
+        }
+    }
     AIChoiceOptions options;
     options.reason = reason;
     options.choices = candidates;

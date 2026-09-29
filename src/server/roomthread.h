@@ -115,6 +115,7 @@ protected:
 
 private:
     friend class LegacySkillActivation;
+    friend struct RoomTestAccess;
     struct LegacyExecutionFrame {
         QString skillName;
         TriggerEvent event;
