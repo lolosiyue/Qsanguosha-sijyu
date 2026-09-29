@@ -1,0 +1,18 @@
+--- a/extensions/sijyuoffline.lua
++++ b/extensions/sijyuoffline.lua
+@@ -15877,6 +15877,7 @@
+ }
+ sfofl_podaiInvalidity = sgs.CreateInvaliditySkill{
+ 	name = "#sfofl_podaiInvalidity",
++	validity_mark_prefix = "sfofl_podai",
+ 	skill_valid = function(self, player, skill)
+ 		if skill and player and player:getMark("sfofl_podai"..skill:objectName()) >= 1 then
+ 			return false
+@@ -19810,6 +19811,7 @@
+ 
+ sfofl_ducaiInvalidity = sgs.CreateInvaliditySkill{
+ 	name = "#sfofl_ducaiInvalidity",
++	validity_current_sibling_skill = "sfofl_ducai",
+ 	skill_valid = function(self, player, skill)
+         for _, p in sgs.qlist(player:getAliveSiblings()) do
+             if p:hasFlag("CurrentPlayer") then

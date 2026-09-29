@@ -5,22 +5,28 @@
 #include "serverplayer.h"
 #include "skill-set-generation.h"
 #include <QPointer>
-#include <QSet>
+#include <QHash>
 
-// Ownership only, never validity or callback results. Callers retain a value
+// Ownership and ordered instance IDs only, never validity or callback results.
+// getSkillNames() enumerates each owner's QMap in the same ID order as
+// getSkillInstanceIds(). Callers retain a value
 // snapshot across nested dispatch and stop filtering if generation changes.
 class V2RecordOwnerIndex
 {
 public:
-    QSet<ServerPlayer *> candidates(Room *room, const QList<ServerPlayer *> &players,
+    QHash<ServerPlayer *, QList<int>> candidates(Room *room, const QList<ServerPlayer *> &players,
                                     const QString &name, quint64 &generation)
     {
         generation = SkillSet::generation();
         if (m_room != room || m_generation != generation || m_players != players) {
             m_owners.clear();
-            for (ServerPlayer *player : players)
-                for (const QString &skill : player->getSkillNames())
-                    m_owners[SkillInstanceUtils::baseName(skill)].insert(player);
+            for (ServerPlayer *player : players) {
+                for (const QString &skill : player->getSkillNames()) {
+                    QString baseName;
+                    const int id = SkillInstanceUtils::parseName(skill, baseName);
+                    m_owners[baseName][player].append(id);
+                }
+            }
             m_room = room;
             m_generation = generation;
             m_players = players;
@@ -32,7 +38,7 @@ private:
     QPointer<Room> m_room;
     quint64 m_generation = 0;
     QList<ServerPlayer *> m_players;
-    QHash<QString, QSet<ServerPlayer *>> m_owners;
+    QHash<QString, QHash<ServerPlayer *, QList<int>>> m_owners;
 };
 
 #endif
