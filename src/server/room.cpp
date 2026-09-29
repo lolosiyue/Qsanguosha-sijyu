@@ -4329,6 +4329,8 @@ bool Room::useCardInternal(CardUseStruct &use, bool add_history, const SkillCont
 								  : (card->getSkillName().isEmpty() ? card->objectName() : card->getSkillName());
 		skillCardCtx.invoker = use.from;
 		skillCardCtx.owner = skillCard ? skillCard->getSkillOwner() : nullptr;
+		if (!skillCardCtx.owner && use.sourceRef.isValid())
+			skillCardCtx.owner = findPlayerByObjectName(use.sourceRef.ownerObjectName);
 		if (!skillCardCtx.owner) skillCardCtx.owner = use.from;
 		skillCardCtx.targets = use.to;
 		skillCardCtx.instanceID = use.activationRef.isValid() ? use.activationRef.key.instanceID
