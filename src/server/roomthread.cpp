@@ -1510,16 +1510,17 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		// 返回值格式："skillName" 或 "skillName:ownerObjectName"
 		QString reason = "GameRule:TriggerOrder";
 		QString name;
-		if (equipmentGroup) {
-			// Global compulsory helpers (e.g. Wooden Ox cleanup) never ask permission.
-			for (const SkillContext &ctx : skillContexts) {
-				const TriggerSkill *skill = Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name));
-				if (skill && skill->isGlobal() && skill->getFrequency(ctx.owner) == Skill::Compulsory
-                    && !room->isGeneralHiddenForSkill(ctx.activationRef)) {
-					name = SkillInstanceUtils::formatName(ctx.skill_name, ctx.instanceID);
-                    if (ctx.owner != chooser) name += ':' + ctx.owner->objectName();
-					break;
-				}
+		// Global rule/record/cleanup callbacks are not player ordering choices,
+		// even when Lua leaves their frequency at the default NotFrequent.
+		// Resolve them through the normal cost/effect path before offering skills;
+		// a concealed general source still requires its owner's reveal consent.
+		for (const SkillContext &ctx : skillContexts) {
+			const TriggerSkill *skill = Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name));
+			if (skill && skill->isGlobal()
+				&& !room->isGeneralHiddenForSkill(ctx.activationRef)) {
+				name = SkillInstanceUtils::formatName(ctx.skill_name, ctx.instanceID);
+				if (ctx.owner != chooser) name += ':' + ctx.owner->objectName();
+				break;
 			}
 		}
 		if (name.isEmpty())
