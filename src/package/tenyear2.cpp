@@ -1454,7 +1454,8 @@ public:
 		room->setPlayerMark(player, "zongfan", 1);
 		room->sendCompulsoryTriggerLog(player, objectName(), true, true);
 		room->doSuperLightbox(player, "zongfan");
-		const int given = qMin(room->askForyiji(player, player->handCards(), objectName()).length(), 5);
+		QList<int> ids = player->handCards();
+		const int given = qMin(room->askForyiji(player, ids, objectName()).length(), 5);
 		if (player->isDead()) return true;
 		if (room->changeMaxHpForAwakenSkill(player, given, objectName())) {
 			room->recover(player, RecoverStruct(player, nullptr, qMin(given, player->getMaxHp() - player->getHp()), "zongfan"));
