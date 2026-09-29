@@ -80,6 +80,33 @@ if ! grep -q '"lua/ai/"\.\.ai_file' "$ai_target/smart-ai.lua"; then
     exit 1
 fi
 
+# Workaround (upstream bugs in the pinned extensions commit):
+# - sgs10th.lua dropped the pre-migration prompt in
+#   `sgs.QVariant("draw:" .. n)`, leaving `sgs.QVariant( .. n)`.
+# - sijyuoffline.lua's SkillV2 migration dropped
+#   `sfofl_analepticchan = sgs.General(extension_s, "sfofl_analepticchan", "qun", 4, false)`.
+python3 - "$extensions_target" << 'PY'
+import pathlib, sys
+root = pathlib.Path(sys.argv[1])
+sgs10th = root / "sgs10th.lua"
+if sgs10th.is_file():
+    text = sgs10th.read_text(encoding="utf-8")
+    old = "sgs.QVariant( .. n)"
+    new = 'sgs.QVariant("draw:" .. n)'
+    count = text.count(old)
+    if count == 1:
+        sgs10th.write_text(text.replace(old, new, 1), encoding="utf-8")
+    elif count != 0:
+        raise SystemExit(f"expected one {old!r} in {sgs10th}, found {count}")
+offline = root / "sijyuoffline.lua"
+if offline.is_file():
+    text = offline.read_text(encoding="utf-8")
+    needle = "sfofl_analepticchan:addSkill(sfofl_meiniang)"
+    definition = 'sfofl_analepticchan = sgs.General(extension_s, "sfofl_analepticchan", "qun", 4, false)\n'
+    if needle in text and "sfofl_analepticchan = sgs.General(" not in text:
+        offline.write_text(text.replace(needle, definition + needle, 1), encoding="utf-8")
+PY
+
 if [[ ! -f "$ai_target/smart-ai.lua" ]]; then
     echo 'lua/ai is incomplete: smart-ai.lua is missing after fetch' >&2
     exit 1

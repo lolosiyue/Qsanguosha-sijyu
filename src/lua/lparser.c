@@ -803,7 +803,13 @@ static void statlist (LexState *ls) {
   while (!block_follow(ls, 1)) {
     if (ls->t.token == TK_RETURN) {
       statement(ls);
-      return;  /* 'return' must be last statement */
+      /* Vanilla Lua requires return to end the block. Extensions from the
+         SkillV2 migration still emit unreachable statements after return
+         (often a duplicate return). Keep parsing them so the block can close;
+         the first return is the one that executes. */
+      while (!block_follow(ls, 1))
+        statement(ls);
+      return;
     }
     statement(ls);
   }

@@ -169,6 +169,7 @@ public:
 	LuaProhibitSkill(const char *name, Frequency frequency);
 
 	virtual bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &others = QList<const Player *>()) const;
+	void setEquipSkill(bool enabled);
 
 	LuaFunction is_prohibited;
 };
@@ -469,9 +470,15 @@ public:
     LuaFunction on_summon;
 };
 
+// Expose ViewAsSkill::response_pattern as a Lua field. The C++ member is protected.
+%include <attribute.i>
+%attribute(ViewAsSkill, QString, response_pattern, getResponsePattern, setResponsePattern);
+
 class ViewAsSkill: public Skill {
 public:
 	ViewAsSkill(const QString &name);
+	QString getResponsePattern() const;
+	void setResponsePattern(const QString &pattern);
 
 	virtual bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const = 0;
 	virtual const Card *viewAs(const QList<const Card *> &cards) const = 0;

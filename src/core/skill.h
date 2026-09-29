@@ -290,6 +290,15 @@ public:
     {
         expand_pile = pile_names;
     }
+    // Lua packages still assign the legacy nullification probe (Kanpo does this in C++).
+    inline void setResponsePattern(const QString &pattern)
+    {
+        response_pattern = pattern;
+    }
+    inline QString getResponsePattern() const
+    {
+        return response_pattern;
+    }
     QList<int> getExpandPileCardIds(const Player *player) const;
 
 protected:
