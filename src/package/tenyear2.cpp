@@ -2032,28 +2032,24 @@ public:
 	}
 };
 
-class CixiaoSkill : public TriggerSkill
+class CixiaoSkill : public TriggerSkillV2
 {
 public:
-	CixiaoSkill(): TriggerSkill("#cixiao-skill")
-	{
-		events << MarkChanged;
-	}
+	CixiaoSkill(): TriggerSkillV2("#cixiao-skill") { events << MarkChanged; }
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 
-	bool triggerable(const ServerPlayer*target)const
+	bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
-		return target != nullptr&& target->isAlive();
-	}
-
-	bool trigger(TriggerEvent,Room*room,ServerPlayer*player,QVariant&data)const
-	{
-		MarkStruct mark = data.value<MarkStruct>();
-		if(mark.name != "&cxyizi")return false;
-		if(player->getMark("&cxyizi")<= 0)
-			room->detachSkillFromPlayer(player,"panshi");
+		if (!room || !player || !player->isAlive()) return true;
+		const MarkStruct mark = data.value<MarkStruct>();
+		if (mark.name != "&cxyizi") return true;
+		if (player->getMark("&cxyizi") <= 0)
+			room->detachSkillFromPlayer(player, "panshi");
 		else
-			room->acquireSkill(player,"panshi");
-		return false;
+			room->acquireSkill(player, "panshi");
+		return true;
 	}
 };
 
@@ -4699,100 +4695,107 @@ public:
 	}
 };
 
-class TenyearMingfa : public TriggerSkill
+class TenyearMingfa : public TriggerSkillV2
 {
 public:
-	TenyearMingfa(): TriggerSkill("tenyearmingfa")
+	TenyearMingfa(): TriggerSkillV2("tenyearmingfa") { events << CardFinished; }
+
+	static bool applicable(Room *room, ServerPlayer *player, const CardUseStruct &use)
 	{
-		events << CardFinished;
+		return room && player && player->isAlive()
+			&& player->getPhase() == Player::Play && player->getMark("tenyearmingfa_used-PlayClear") <= 0
+			&& use.card && !use.card->isVirtualCard(true)
+			&& (use.card->isKindOf("Slash") || use.card->isNDTrick())
+			&& room->CardInPlace(use.card, Player::DiscardPile)
+			&& player->getPile("tenyearmingfa").isEmpty();
 	}
 
-	bool trigger(TriggerEvent,Room*room,ServerPlayer*player,QVariant&data)const
+	TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
-		if(player->getPhase()!= Player::Play || player->getMark("tenyearmingfa_used-PlayClear")> 0)return false;
-		CardUseStruct use = data.value<CardUseStruct>();
-		if(use.card->isVirtualCard(true))return false;
-		if(!use.card->isKindOf("Slash")&& !use.card->isNDTrick())return false;
-		if(!room->CardInPlace(use.card,Player::DiscardPile))return false;
-		if(!player->getPile("tenyearmingfa").isEmpty())return false;
-		if(!player->askForSkillInvoke(this,"tenyearmingfa:" + use.card->objectName()))return false;
-		player->peiyin(this);
+		TriggerList result;
+		if (player && player->hasSkill(this) && applicable(room, player, data.value<CardUseStruct>()))
+			tenyear2OneInstance(result, player, this);
+		return result;
+	}
 
-		room->addPlayerMark(player,"tenyearmingfa_used-PlayClear");
-		player->addToPile(objectName(),use.card);
+	bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+	{
+		const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+		if (!use.card) return false;
+		return ctx.owner->askForSkillInvoke(this, "tenyearmingfa:" + use.card->objectName());
+	}
 
-		ServerPlayer*t = room->askForPlayerChosen(player,room->getOtherPlayers(player),objectName(),"@tenyearmingfa-target");
-		room->addPlayerMark(player,"tenyearmingfa_used-PlayClear");
-		room->doAnimate(1,player->objectName(),t->objectName());
-
-		foreach(ServerPlayer*p,room->getOtherPlayers(player))
-			room->setPlayerMark(p,"&tenyearmingfa+#" + player->objectName(),0);
-		room->setPlayerMark(t,"&tenyearmingfa+#" + player->objectName(),1);
-
-		player->setTag("TenyearMingfaTarget", t->objectName());
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+		if (!applicable(room, ctx.owner, use)) return false;
+		ctx.owner->peiyin(this);
+		room->addPlayerMark(ctx.owner, "tenyearmingfa_used-PlayClear");
+		ctx.owner->addToPile(objectName(), use.card);
+		ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(), "@tenyearmingfa-target");
+		if (!target) return false;
+		room->addPlayerMark(ctx.owner, "tenyearmingfa_used-PlayClear");
+		room->doAnimate(1, ctx.owner->objectName(), target->objectName());
+		foreach (ServerPlayer *other, room->getOtherPlayers(ctx.owner))
+			room->setPlayerMark(other, "&tenyearmingfa+#" + ctx.owner->objectName(), 0);
+		room->setPlayerMark(target, "&tenyearmingfa+#" + ctx.owner->objectName(), 1);
+		ctx.owner->setTag("TenyearMingfaTarget", target->objectName());
 		return false;
 	}
 };
 
-class TenyearMingfaEffect : public TriggerSkill
+class TenyearMingfaEffect : public TriggerSkillV2
 {
 public:
-	TenyearMingfaEffect(): TriggerSkill("#tenyearmingfa")
-	{
-		events << EventPhaseChanging << Death;
-	}
+	TenyearMingfaEffect(): TriggerSkillV2("#tenyearmingfa") { events << EventPhaseChanging << Death; }
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 
-	bool triggerable(const ServerPlayer*target)const
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
-		return target != nullptr;
-	}
-
-	bool trigger(TriggerEvent event,Room*room,ServerPlayer*player,QVariant&data)const
-	{
-		if(event==Death){
-			DeathStruct death = data.value<DeathStruct>();
-			if(death.who != player)return false;
-			foreach(ServerPlayer*p,room->getOtherPlayers(player)){
-				if(p->getTag("TenyearMingfaTarget").toString()!= player->objectName())continue;
-				p->removeTag("TenyearMingfaTarget");
-				QList<int> mingfa = p->getPile("tenyearmingfa");
-				if(mingfa.isEmpty())continue;
-				room->sendCompulsoryTriggerLog(p,"tenyearmingfa",true,true);
-				DummyCard*dummy = new DummyCard(mingfa);
-				CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,p->objectName(),"tenyearmingfa","");
-				room->throwCard(dummy,reason,nullptr);
+		if (!room || !player) return true;
+		if (event == Death) {
+			const DeathStruct death = data.value<DeathStruct>();
+			if (death.who != player) return true;
+			foreach (ServerPlayer *owner, room->getOtherPlayers(player)) {
+				if (owner->getTag("TenyearMingfaTarget").toString() != player->objectName()) continue;
+				owner->removeTag("TenyearMingfaTarget");
+				const QList<int> mingfa = owner->getPile("tenyearmingfa");
+				if (mingfa.isEmpty()) continue;
+				room->sendCompulsoryTriggerLog(owner, "tenyearmingfa", true, true);
+				DummyCard *dummy = new DummyCard(mingfa);
+				CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, owner->objectName(), "tenyearmingfa", "");
+				room->throwCard(dummy, reason, nullptr);
 				dummy->deleteLater();
 			}
-			return false;
+			return true;
 		}
-		if(data.value<PhaseChangeStruct>().to != Player::NotActive)return false;
-		foreach(ServerPlayer*p,room->getOtherPlayers(player)){
-			room->setPlayerMark(player,"&tenyearmingfa+#" + p->objectName(),0);
-			if(p->getTag("TenyearMingfaTarget").toString()!= player->objectName())continue;
-			p->removeTag("TenyearMingfaTarget");
-			QList<int> mingfa = p->getPile("tenyearmingfa");
-			if(mingfa.isEmpty())continue;
-			room->sendCompulsoryTriggerLog(p,"tenyearmingfa",true,true);
-
-			const Card*card = Sanguosha->getCard(mingfa.first());
-			Card*c = Sanguosha->cloneCard(card->objectName());
-			c->setSkillName("_tenyearmingfa");
-			c->deleteLater();
-			int hand = player->getHandcardNum();
-			hand = qMin(hand,5);
-			hand = qMax(hand,1);
-			for(int i = 0; i < hand; i++){
-				if(p->isDead()|| player->isDead()|| !p->canUse(c,player,true))break;
-				room->useCard(CardUseStruct(c,p,player));
+		if (data.value<PhaseChangeStruct>().to != Player::NotActive) return true;
+		foreach (ServerPlayer *owner, room->getOtherPlayers(player)) {
+			room->setPlayerMark(player, "&tenyearmingfa+#" + owner->objectName(), 0);
+			if (owner->getTag("TenyearMingfaTarget").toString() != player->objectName()) continue;
+			owner->removeTag("TenyearMingfaTarget");
+			QList<int> mingfa = owner->getPile("tenyearmingfa");
+			if (mingfa.isEmpty()) continue;
+			room->sendCompulsoryTriggerLog(owner, "tenyearmingfa", true, true);
+			const Card *card = Sanguosha->getCard(mingfa.first());
+			Card *cloned = Sanguosha->cloneCard(card->objectName());
+			cloned->setSkillName("_tenyearmingfa");
+			cloned->deleteLater();
+			int hand = qMax(1, qMin(player->getHandcardNum(), 5));
+			for (int i = 0; i < hand; ++i) {
+				if (owner->isDead() || player->isDead() || !owner->canUse(cloned, player, true)) break;
+				room->useCard(CardUseStruct(cloned, owner, player));
 			}
-			mingfa = p->getPile("tenyearmingfa");
-			if(mingfa.isEmpty())continue;
-			DummyCard*dummy = new DummyCard(mingfa);
-			CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,p->objectName(),"tenyearmingfa","");
-			room->throwCard(dummy,reason,nullptr);
+			mingfa = owner->getPile("tenyearmingfa");
+			if (mingfa.isEmpty()) continue;
+			DummyCard *dummy = new DummyCard(mingfa);
+			CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, owner->objectName(), "tenyearmingfa", "");
+			room->throwCard(dummy, reason, nullptr);
 			dummy->deleteLater();
 		}
-		return false;
+		return true;
 	}
 };
 
@@ -27734,24 +27737,20 @@ public:
 	}
 };
 
-class JiqiaosyEnter : public TriggerSkill
+class JiqiaosyEnter : public TriggerSkillV2
 {
 public:
-	JiqiaosyEnter(): TriggerSkill("#jiqiaosy")
-	{
-		events << EventPhaseEnd;
-	}
+	JiqiaosyEnter(): TriggerSkillV2("#jiqiaosy") { events << EventPhaseEnd; }
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 
-	bool triggerable(const ServerPlayer*target)const
+	bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
 	{
-		return target != nullptr&& !target->getPile("jiqiaosy").isEmpty()&& target->getPhase()== Player::Play;
-	}
-
-	bool trigger(TriggerEvent,Room*room,ServerPlayer*player,QVariant&)const
-	{
-		room->sendCompulsoryTriggerLog(player,"jiqiaosy",true,true);
+		if (!room || !player || player->getPile("jiqiaosy").isEmpty() || player->getPhase() != Player::Play) return true;
+		room->sendCompulsoryTriggerLog(player, "jiqiaosy", true, true);
 		player->clearOnePrivatePile("jiqiaosy");
-		return false;
+		return true;
 	}
 };
 
@@ -28881,84 +28880,79 @@ public:
 	}
 };
 
-class TenyearJilei : public TriggerSkill
+class TenyearJilei : public TriggerSkillV2
 {
 public:
-	TenyearJilei(): TriggerSkill("tenyearjilei")
+	TenyearJilei(): TriggerSkillV2("tenyearjilei") { events << Damaged; }
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
 	{
-		events << Damaged;
+		TriggerList result;
+		const DamageStruct damage = data.value<DamageStruct>();
+		if (player && player->isAlive() && player->hasSkill(this) && damage.from && !damage.from->isDead())
+			tenyear2OneInstance(result, player, this);
+		return result;
 	}
 
-	bool trigger(TriggerEvent,Room*room,ServerPlayer*yangxiu,QVariant&data)const
+	bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
 	{
-		DamageStruct damage = data.value<DamageStruct>();
-		if(!damage.from || damage.from->isDead())return false;
+		const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+		if (!damage.from || damage.from->isDead()) return false;
+		if (!room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data)) return false;
+		ctx.choice = room->askForChoice(ctx.owner, objectName(), "BasicCard+EquipCard+TrickCard");
+		return !ctx.choice.isEmpty();
+	}
 
-		if(room->askForSkillInvoke(yangxiu,objectName(),data)){
-			QString choice = room->askForChoice(yangxiu,objectName(),"BasicCard+EquipCard+TrickCard");
-			room->broadcastSkillInvoke(objectName());
-
-			LogMessage log;
-			log.type = "#Jilei";
-			log.from = damage.from;
-			log.arg = choice;
-			room->sendLog(log);
-
-			QStringList jilei_list = damage.from->getTag(objectName()).toStringList();
-			if(jilei_list.contains(choice))return false;
-			jilei_list.append(choice);
-			damage.from->setTag(objectName(), QVariant::fromValue(jilei_list));
-			QString _type = choice + "|.|.|hand"; // Handcards only
-			room->setPlayerCardLimitation(damage.from,"use,response,discard",_type,false);
-
-			if(damage.from->getMark("&tenyearjilei+" + choice)== 0)
-				room->setPlayerMark(damage.from,"&tenyearjilei+" + choice,1);
-		}
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+		if (!damage.from || damage.from->isDead() || ctx.choice.isEmpty()) return false;
+		room->broadcastSkillInvoke(objectName());
+		LogMessage log;
+		log.type = "#Jilei";
+		log.from = damage.from;
+		log.arg = ctx.choice;
+		room->sendLog(log);
+		QStringList jilei_list = damage.from->getTag(objectName()).toStringList();
+		if (jilei_list.contains(ctx.choice)) return false;
+		jilei_list.append(ctx.choice);
+		damage.from->setTag(objectName(), QVariant::fromValue(jilei_list));
+		room->setPlayerCardLimitation(damage.from, "use,response,discard", ctx.choice + "|.|.|hand", false);
+		if (damage.from->getMark("&tenyearjilei+" + ctx.choice) == 0)
+			room->setPlayerMark(damage.from, "&tenyearjilei+" + ctx.choice, 1);
 		return false;
 	}
 };
 
-class TenyearJileiClear : public TriggerSkill
+class TenyearJileiClear : public TriggerSkillV2
 {
 public:
-	TenyearJileiClear(): TriggerSkill("#tenyearjilei-clear")
-	{
-		events << EventPhaseChanging << Death;
-	}
+	TenyearJileiClear(): TriggerSkillV2("#tenyearjilei-clear") { events << EventPhaseChanging << Death; }
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 5; }
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 
-	int getPriority(TriggerEvent)const
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *target, QVariant &data) const override
 	{
-		return 5;
-	}
-
-	bool triggerable(const ServerPlayer*target)const
-	{
-		return target != nullptr;
-	}
-
-	bool trigger(TriggerEvent triggerEvent,Room*room,ServerPlayer*target,QVariant&data)const
-	{
-		if(triggerEvent==EventPhaseChanging){
-			PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-			if(change.to != Player::RoundStart)return false;
-		} else if(triggerEvent==Death){
-			DeathStruct death = data.value<DeathStruct>();
-			if(death.who != target)return false;
+		if (!room || !target) return true;
+		if (event == EventPhaseChanging) {
+			if (data.value<PhaseChangeStruct>().to != Player::RoundStart) return true;
+		} else if (event == Death) {
+			if (data.value<DeathStruct>().who != target) return true;
+		} else
+			return true;
+		const QStringList jilei_list = target->getTag("tenyearjilei").toStringList();
+		if (jilei_list.isEmpty()) return true;
+		LogMessage log;
+		log.type = "#JileiClear";
+		log.from = target;
+		room->sendLog(log);
+		foreach (const QString &jilei_type, jilei_list) {
+			room->removePlayerCardLimitation(target, "use,response,discard", jilei_type + "|.|.|hand$0");
+			room->setPlayerMark(target, "&tenyearjilei+" + jilei_type, 0);
 		}
-		QStringList jilei_list = target->getTag("tenyearjilei").toStringList();
-		if(!jilei_list.isEmpty()){
-			LogMessage log;
-			log.type = "#JileiClear";
-			log.from = target;
-			room->sendLog(log);
-
-			foreach(QString jilei_type,jilei_list){
-				room->removePlayerCardLimitation(target,"use,response,discard",jilei_type + "|.|.|hand$0");
-				room->setPlayerMark(target,"&tenyearjilei+" + jilei_type,0);
-			}
-			target->removeTag("tenyearjilei");
-		}
-		return false;
+		target->removeTag("tenyearjilei");
+		return true;
 	}
 };
 
@@ -35602,46 +35596,99 @@ public:
 };
 
 
-class Jini : public TriggerSkill
+class Jini : public TriggerSkillV2
 {
 public:
-	Jini(): TriggerSkill("jini")
-	{
-		events << Damaged << PreCardUsed;
-	}
-	bool trigger(TriggerEvent event,Room*room,ServerPlayer*player,QVariant&data) const
-	{
-		if(event==Damaged){
-			int n = player->getMaxHp()-player->getMark("jiniNum-Clear");
-			if(n>0&&player->getHandcardNum()>0){
-				Card*dc = room->askForExchange(player,objectName(),n,1,false,QString("jini0:%1").arg(n),true);
-				if(dc){
-					player->skillInvoked(objectName());
-					player->addMark("jiniNum-Clear",dc->subcardsLength());
-					LogMessage log;
-					log.type = "$RecastCard";
-					log.from = player;
-					log.card_str = ListI2S(dc->getSubcards()).join("+");
-					room->sendLog(log);
+	Jini(): TriggerSkillV2("jini") { events << Damaged << PreCardUsed; }
 
-					CardMoveReason reason(CardMoveReason::S_REASON_RECAST,player->objectName(),objectName(),"");
-					room->moveCardTo(dc,nullptr,Player::DiscardPile,reason,true);
-					foreach(int id,player->drawCardsList(dc->subcardsLength(),"recast")){
-						if(Sanguosha->getCard(id)->isKindOf("Slash")){
-							DamageStruct damage = data.value<DamageStruct>();
-							if(damage.from&&player->canSlash(damage.from,false))
-								room->askForUseSlashTo(player,damage.from,"jini1:"+damage.from->objectName(),false,false,false,nullptr,nullptr,"jiniUse");
-							break;
-						}
-					}
-				}
-			}
-		}else{
-			CardUseStruct use = data.value<CardUseStruct>();
-			if(use.card->hasFlag("jiniUse")){
-				use.no_respond_list << use.to.last()->objectName();
-				data.setValue(use);
-			}
+	bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
+		QList<SkillContext> &contexts) const override
+	{
+		if (event != PreCardUsed) return false;
+		if (!room || !player || !player->isAlive() || !player->hasSkill(this)) return true;
+		const CardUseStruct use = data.value<CardUseStruct>();
+		if (!use.card || !use.card->hasFlag("jiniUse") || use.to.isEmpty()) return true;
+		const QList<int> ids = player->getValidSkillInstanceIds(objectName());
+		if (ids.isEmpty()) return true;
+		SkillContext ctx;
+		ctx.skill_name = objectName();
+		ctx.owner = ctx.invoker = ctx.initiator = player;
+		ctx.instanceID = ids.first();
+		ctx.activationRef = SkillInstanceRef(player->objectName(), SkillInstanceKey(objectName(), ctx.instanceID));
+		ctx.sourceRef = room->resolveSkillInstanceRootRef(ctx.activationRef);
+		if (!ctx.sourceRef.isValid()) return true;
+		bool amountOk = false;
+		ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
+		if (!amountOk) ctx.amount = getBaseAmount();
+		ctx.original_data = &data;
+		ctx.current_event = event;
+		ctx.is_forced = true;
+		contexts << ctx;
+		return true;
+	}
+
+	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
+	{
+		TriggerList result;
+		if (event != Damaged || !player || !player->isAlive() || !player->hasSkill(this)) return result;
+		if (player->getMaxHp() - player->getMark("jiniNum-Clear") > 0 && player->getHandcardNum() > 0)
+			tenyear2OneInstance(result, player, this);
+		return result;
+	}
+
+	bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		if (event != Damaged) return true;
+		const int n = ctx.owner->getMaxHp() - ctx.owner->getMark("jiniNum-Clear");
+		if (n <= 0 || ctx.owner->getHandcardNum() <= 0) return false;
+		Card *selected = room->askForExchange(ctx.owner, objectName(), n, 1, false, QString("jini0:%1").arg(n), true);
+		if (!selected || selected->getSubcards().isEmpty()) return false;
+		QVariantList stored;
+		foreach (int id, selected->getSubcards()) stored << id;
+		ctx.extra_data = stored;
+		selected->deleteLater();
+		return true;
+	}
+
+	bool pay(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		if (event != Damaged) return true;
+		QList<int> ids;
+		foreach (const QVariant &value, ctx.extra_data.toList()) ids << value.toInt();
+		if (ids.isEmpty()) return false;
+		foreach (int id, ids)
+			if (room->getCardOwner(id) != ctx.owner || room->getCardPlace(id) != Player::PlaceHand) return false;
+		ctx.owner->skillInvoked(objectName());
+		ctx.owner->addMark("jiniNum-Clear", ids.length());
+		LogMessage log;
+		log.type = "$RecastCard";
+		log.from = ctx.owner;
+		log.card_str = ListI2S(ids).join("+");
+		room->sendLog(log);
+		DummyCard *dummy = new DummyCard(ids);
+		CardMoveReason reason(CardMoveReason::S_REASON_RECAST, ctx.owner->objectName(), objectName(), "");
+		room->moveCardTo(dummy, nullptr, Player::DiscardPile, reason, true);
+		dummy->deleteLater();
+		return true;
+	}
+
+	bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		if (event == PreCardUsed) {
+			CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+			if (!use.card || !use.card->hasFlag("jiniUse") || use.to.isEmpty()) return false;
+			use.no_respond_list << use.to.last()->objectName();
+			*ctx.original_data = QVariant::fromValue(use);
+			return false;
+		}
+		QList<int> ids;
+		foreach (const QVariant &value, ctx.extra_data.toList()) ids << value.toInt();
+		foreach (int id, ctx.owner->drawCardsList(ids.length(), "recast")) {
+			if (!Sanguosha->getCard(id)->isKindOf("Slash")) continue;
+			const DamageStruct damage = ctx.original_data->value<DamageStruct>();
+			if (damage.from && ctx.owner->canSlash(damage.from, false))
+				room->askForUseSlashTo(ctx.owner, damage.from, "jini1:" + damage.from->objectName(), false, false, false, nullptr, nullptr, "jiniUse");
+			break;
 		}
 		return false;
 	}
