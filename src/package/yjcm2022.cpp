@@ -572,7 +572,9 @@ class Koujing : public TriggerSkill
 public:
     Koujing() : TriggerSkill("koujing")
     {
-        events << Damaged << EventPhaseChanging << EventPhaseStart;
+        // CardUsed suppresses slash history for koujing-wrapped cards; CardsMoveOneTime
+        // clears per-card marks when those hands leave. Both handlers already existed.
+        events << Damaged << EventPhaseChanging << EventPhaseStart << CardUsed << CardsMoveOneTime;
         waked_skills = "#koujing-target";
     }
 
