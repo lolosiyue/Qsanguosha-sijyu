@@ -298,7 +298,8 @@ QByteArray ProtocolV2Codec::encode(
 
     const QByteArray encoded = QJsonDocument(object).toJson(QJsonDocument::Compact);
     if (encoded.size() > MaxPacketSize) {
-        encodeFailure(error, QStringLiteral("Protocol V2 packet exceeds 65535 bytes"));
+        encodeFailure(error, QStringLiteral("Protocol V2 packet exceeds %1 bytes")
+            .arg(MaxPacketSize));
         return QByteArray();
     }
     return encoded;
@@ -315,7 +316,8 @@ ProtocolDecodeResult ProtocolV2Codec::decode(
                              QStringLiteral("Protocol V2 input is empty"));
     if (raw.size() > MaxPacketSize)
         return decodeFailure(ProtocolDecodeError::PacketTooLarge,
-                             QStringLiteral("Protocol V2 packet exceeds 65535 bytes"));
+                             QStringLiteral("Protocol V2 packet exceeds %1 bytes")
+                                 .arg(MaxPacketSize));
 
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(

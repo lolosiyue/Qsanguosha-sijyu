@@ -46,7 +46,10 @@ struct ProtocolFrameAppendResult
 class ProtocolFrameBuffer
 {
 public:
-    static constexpr qsizetype MaxFrameSize = 65535;
+    // Kept in lockstep with ProtocolV2Codec::MaxPacketSize: this buffer hands
+    // whole frames straight to that codec, so a smaller cap here would just
+    // move the same "packet too large" failure earlier.
+    static constexpr qsizetype MaxFrameSize = 4 * 1024 * 1024;
 
     ProtocolFrameAppendResult append(QByteArrayView bytes);
     void clear();
