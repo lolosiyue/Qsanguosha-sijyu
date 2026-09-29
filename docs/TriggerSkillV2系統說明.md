@@ -876,6 +876,7 @@ skill_table[event] → [skillA_ptr, skillB_ptr]  (同名技能的不同實例)
 ### 選擇階段（Selection Phase）
 
 - 玩家通過 `askForTriggerOrder` 選擇
+- `askForTriggerOrder` 用於同一時機的武將技能排序（例如受到傷害後的 `yiji`、`jieming`）。global 規則／記錄／清理回呼在一般與裝備事件分組中均自動進入原有 cost／effect 流程，不因未宣告 `Compulsory` 而加入排序選單；暗將來源仍保留亮將同意。
 - 名稱格式：`skillName*multiplier#instanceId`
 - 實例定位透過玩家層 `Player::findSkillInstance(skillName, instanceID)`（非 Engine 技能查找）；`Engine::getTriggerSkill(name, instanceId)` 的 instanceId 參數僅為相容保留（見上節）
 
