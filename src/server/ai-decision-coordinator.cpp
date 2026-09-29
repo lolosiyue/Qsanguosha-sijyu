@@ -614,12 +614,19 @@ AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() con
         // Armor visibility still depends on the viewer in hegemony. The blocking
         // scan and the physical armor do not, so they are resolved once.
         bool armorBlocked = false;
-        for (const SkillInstance &instance : player->getSkillInstances()) {
-            if (Sanguosha->getViewAsEquipSkill(instance.skillName)
-                && !player->isSkillInvalid(instance.skillName, instance.instanceID)) {
-                armorBlocked = true;
-                break;
+        // Same 50p cost trap as Player::viewAsEquipSources: scan the small
+        // ViewAsEquipSkill list instead of every attached skill instance.
+        foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills()) {
+            if (!skill) continue;
+            const QString skillName = skill->objectName();
+            if (!player->hasSkill(skillName)) continue;
+            for (int id : player->getSkillInstanceIds(skillName)) {
+                if (!player->isSkillInvalid(skillName, id)) {
+                    armorBlocked = true;
+                    break;
+                }
             }
+            if (armorBlocked) break;
         }
         row.armorBasis = !armorBlocked
             && player->property("View_As_Equips_List").toString().isEmpty();

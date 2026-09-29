@@ -1286,12 +1286,17 @@ QList<SkillInstanceRef> Player::viewAsEquipSources(const QString &equip_name) co
         Sanguosha->getLuaMutex().lock();
     }
     QList<SkillInstanceRef> sources;
-    for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
-        const ViewAsEquipSkill *skill = Sanguosha->getViewAsEquipSkill(it.key());
-        if (!skill || !hasSkill(it.key())
+    // Walk the small ViewAsEquipSkill registry (~tens), not every skill instance
+    // on the player. 50p attaches hundreds of global innates; AI WorldView
+    // (HorseSkill / getAttackRange) used to call getViewAsEquipSkill per
+    // instance and soft-stick GameReady InitialHandCards TriggerOrder.
+    foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills()) {
+        if (!skill) continue;
+        const QString skillName = skill->objectName();
+        if (!hasSkill(skillName)
             || !skill->viewAsEquip(this).split(",").contains(equip_name)) continue;
-        for (int id : getValidSkillInstanceIds(it.key()))
-            sources << SkillInstanceRef(objectName(), SkillInstanceKey(it.key(), id));
+        for (int id : getValidSkillInstanceIds(skillName))
+            sources << SkillInstanceRef(objectName(), SkillInstanceKey(skillName, id));
     }
     Sanguosha->getLuaMutex().unlock();
     return sources;
