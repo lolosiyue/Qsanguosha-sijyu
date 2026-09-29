@@ -258,6 +258,23 @@ void Player::clearFlags()
     emit gameplay_property_changed();
 }
 
+
+namespace {
+
+bool playerMayHaveVirtualEquip(const Player *player)
+{
+    if (!player) return false;
+    if (!player->property("View_As_Equips_List").toString().isEmpty())
+        return true;
+    foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills()) {
+        if (skill && player->hasSkill(skill->objectName()))
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
 int Player::getAttackRange(bool include_weapon) const
 {
     if (hasFlag("InfinityAttackRange"))
@@ -270,13 +287,25 @@ int Player::getAttackRange(bool include_weapon) const
         include_weapon = false;
 
     if (include_weapon){
-		static QList<const Weapon *> weapons = Sanguosha->findChildren<const Weapon *>();
-		foreach(const Weapon *w, weapons){
-			if (hasWeapon(w->objectName())){
-				if (range==1) range = w->getRange(this);
-				else range = qMax(range,w->getRange(this));
-			}
-		}
+        // Physical weapons first. Only scan the full Weapon catalog (and thus
+        // viewAsEquip) when this player can actually grant virtual equips —
+        // otherwise 50p AI WorldView does weapons×players×TriggerOrder findChildren
+        // work for every seat every decision.
+        foreach (const EquipCard *eq, getWeapons()) {
+            const Weapon *w = qobject_cast<const Weapon *>(eq);
+            if (!w) continue;
+            if (range == 1) range = w->getRange(this);
+            else range = qMax(range, w->getRange(this));
+        }
+        if (playerMayHaveVirtualEquip(this)) {
+            static QList<const Weapon *> weapons = Sanguosha->findChildren<const Weapon *>();
+            foreach (const Weapon *w, weapons) {
+                if (hasWeapon(w->objectName())) {
+                    if (range == 1) range = w->getRange(this);
+                    else range = qMax(range, w->getRange(this));
+                }
+            }
+        }
     }
     range += Sanguosha->correctAttackRange(this, include_weapon, false);
     return qMax(range, 0);
