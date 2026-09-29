@@ -212,96 +212,230 @@ public:
 
 SidiCard::SidiCard()
 {
+    // Preserve the legacy AI/metaobject entry while the server resolves it through Skill V2.
     target_fixed = true;
     will_throw = false;
     handling_method = Card::MethodNone;
+    setSkillName("sidi");
 }
 
-void SidiCard::use(Room *room, ServerPlayer *, QList<ServerPlayer *> &) const
-{
-    CardMoveReason reason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, "", "sidi", "");
-    room->throwCard(this, reason, nullptr);
-}
-
-class SidiVS : public OneCardViewAsSkill
+class SidiVS : public ViewAsSkillV2
 {
 public:
-    SidiVS() : OneCardViewAsSkill("sidi")
+    SidiVS() : ViewAsSkillV2("sidi", 1)
     {
-        response_pattern = "@@sidi";
         expand_pile = "sidi";
+        response_pattern = "@@sidi";
     }
 
-    const Card *viewAs(const Card *originalCard) const
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
-        SidiCard *sd = new SidiCard;
-        sd->addSubcard(originalCard);
-        return sd;
+        return request.initiator && request.pattern == "@@sidi"
+            && !request.initiator->getPile("sidi").isEmpty();
+    }
+
+    TargetMode targetMode() const override { return NoTarget; }
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        return request.initiator && card && request.selectedCardIds.isEmpty()
+            && !card->hasFlag("using")
+            && getExpandPileCardIds(request.initiator).contains(card->getEffectiveId());
+    }
+
+    bool willThrowSelectedCards() const override { return false; }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "SidiCard"; }
+
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &request) const override
+    {
+        if (!room || !ctx.initiator || request.selectedCardIds.size() != 1) return false;
+        const int id = request.selectedCardIds.first();
+        if (!ctx.initiator->getPile("sidi").contains(id) || room->getCardOwner(id) != ctx.initiator
+            || room->getCardPlace(id) != Player::PlaceSpecial || Sanguosha->getCard(id)->hasFlag("using")) return false;
+        room->throwCard(Sanguosha->getCard(id),
+            CardMoveReason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, "", "sidi", ""), nullptr);
+        return true;
+    }
+
+    EffectFlow effect(SkillContext &ctx) const override
+    {
+        if (!ctx.initiator || !ctx.activationRef.isValid()) return FinishSkill;
+        const int instance = ctx.activationRef.key.instanceID;
+        const QString skill = ctx.activationRef.key.skillName;
+        const QVariantMap state = ctx.initiator->getSkillInstanceState(skill, instance);
+        const QString targetName = state.value("pending_reduction_target").toString();
+        const qint64 phaseId = state.value("pending_reduction_phase").toLongLong();
+        ctx.initiator->removeSkillInstanceStateValue(skill, instance, "pending_reduction_target");
+        ctx.initiator->removeSkillInstanceStateValue(skill, instance, "pending_reduction_phase");
+        Room *room = ctx.initiator->getRoom();
+        ServerPlayer *target = room->findPlayerByObjectName(targetName);
+        if (!target || !target->isAlive() || target->getPhase() != Player::Play || phaseId <= 0
+            || room->historyScopes().value("phase_id").toLongLong() != phaseId) return FinishSkill;
+        ctx.extra_data = phaseId;
+        skillEffect(ctx, target);
+        return FinishSkill;
+    }
+
+    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!ctx.initiator || !target || !target->isAlive() || target->getPhase() != Player::Play) return FinishSkill;
+        const qint64 phaseId = ctx.extra_data.toLongLong();
+        Room *room = target->getRoom();
+        if (phaseId <= 0 || room->historyScopes().value("phase_id").toLongLong() != phaseId) return FinishSkill;
+        QVariantMap phaseUsage = target->property("SidiPhaseUsage").toMap();
+        const QString key = QString::number(phaseId);
+        const int count = phaseUsage.value(key).toInt() + 1;
+        phaseUsage.insert(key, count);
+        room->setPlayerProperty(target, "SidiPhaseUsage", phaseUsage);
+        room->setPlayerMark(target, "sidi", count);
+        return ContinueEffects;
     }
 };
 
-class Sidi : public TriggerSkill
+class Sidi : public TriggerSkillV2
 {
 public:
-    Sidi() : TriggerSkill("sidi")
+    Sidi() : TriggerSkillV2("sidi")
     {
-        events << CardUsed << EventPhaseStart << EventPhaseChanging;
-        //frequency = Frequent;
+        events << CardUsed << EventPhaseStart << EventPhaseEnd << EventPhaseChanging << TurnBroken;
+        global = true;
         view_as_skill = new SidiVS;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        return target != nullptr;
+        if (!player) return true;
+        const QVariant phase = room->historyScopes().value("phase_id");
+        const QString phaseKey = phase.toLongLong() > 0 ? QString::number(phase.toLongLong()) : QString();
+        if (event == EventPhaseEnd && player->getPhase() == Player::Play) {
+            QVariantMap phaseUsage = player->property("SidiPhaseUsage").toMap();
+            if (!phaseKey.isEmpty()) phaseUsage.remove(phaseKey);
+            room->setPlayerProperty(player, "SidiPhaseUsage", phaseUsage);
+            room->setPlayerMark(player, "sidi", 0);
+        } else if (event == TurnBroken) {
+            QVariantMap phaseUsage = player->property("SidiPhaseUsage").toMap();
+            if (!phaseKey.isEmpty()) phaseUsage.remove(phaseKey);
+            room->setPlayerProperty(player, "SidiPhaseUsage", phaseUsage);
+            room->setPlayerMark(player, "sidi", 0);
+        } else if (event == EventPhaseChanging) {
+            room->setPlayerMark(player, "sidi", phaseKey.isEmpty() ? 0
+                : player->property("SidiPhaseUsage").toMap().value(phaseKey).toInt());
+        } else if (event == EventPhaseStart && player->getPhase() == Player::Play) {
+            room->setPlayerMark(player, "sidi", player->property("SidiPhaseUsage").toMap()
+                .value(QString::number(phase.toLongLong())).toInt());
+        }
+        return true;
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (triggerEvent == EventPhaseChanging) {
-            PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-            if (change.from == Player::Play)
-                room->setPlayerMark(player, "sidi", 0);
-        } else if (triggerEvent == CardUsed) {
-            CardUseStruct use = data.value<CardUseStruct>();
-            if (use.card->isKindOf("Jink")) {
-                foreach (ServerPlayer *p, room->getAllPlayers()) {
-                    if (TriggerSkill::triggerable(p) && (p == player || p->hasFlag("CurrentPlayer"))
-                        && room->askForSkillInvoke(p, objectName(), data)) {
-                        room->broadcastSkillInvoke(objectName(), 1);
-                        QList<int> ids = room->getNCards(1, false); // For UI
-                        CardsMoveStruct move(ids, nullptr, Player::PlaceTable,
-                            CardMoveReason(CardMoveReason::S_REASON_TURNOVER, p->objectName(), "sidi", ""));
-                        room->moveCardsAtomic(move, true);
-                        p->addToPile("sidi", ids);
-                    }
-                }
+        if (!player || !player->isAlive()) return {};
+        if (event == CardUsed) {
+            const CardUseStruct use = data.value<CardUseStruct>();
+            if (!use.card || !use.card->isKindOf("Jink")) return {};
+            TriggerList result;
+            for (ServerPlayer *owner : room->getAllPlayers())
+                if (owner->isAlive() && owner->hasSkill(this)
+                    && (owner == player || owner->hasFlag("CurrentPlayer")))
+                    result[owner] << objectName();
+            return result;
+        }
+        if (event == EventPhaseStart && player->getPhase() == Player::Play) {
+            TriggerList result;
+            for (ServerPlayer *owner : room->getOtherPlayers(player))
+                if (owner->isAlive() && owner->hasSkill(this) && !owner->getPile("sidi").isEmpty())
+                    result[owner] << objectName();
+            return result;
+        }
+        return {};
+    }
+
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.invoker || !ctx.owner->isAlive() || !ctx.invoker->isAlive()) return false;
+        if (event == CardUsed)
+            if (ctx.original_data && room->askForSkillInvoke(ctx.owner, objectName(), *ctx.original_data)) {
+                ctx.targets = {ctx.owner};
+                return true;
             }
-        } else if (triggerEvent == EventPhaseStart && player->getPhase() == Player::Play) {
-            foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
-                if (player->getPhase() != Player::Play) return false;
-                if (TriggerSkill::triggerable(p) && p->getPile("sidi").length() > 0 && room->askForUseCard(p, "@@sidi", "sidi_remove:remove", -1, Card::MethodNone))
-                    room->addPlayerMark(player, "sidi");
-            }
+            else return false;
+        if (event == EventPhaseStart) {
+            if (ctx.invoker->getPhase() != Player::Play || ctx.owner->getPile("sidi").isEmpty()) return false;
+            ctx.targets = {ctx.owner};
+            return true;
         }
         return false;
     }
 
-    int getEffectIndex(const ServerPlayer *, const Card *) const
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        return 2;
+        if (event == CardUsed && ctx.owner) room->broadcastSkillInvoke(objectName(), 1);
+        return false;
+    }
+
+    bool effectTarget(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx,
+        ServerPlayer *target) const override
+    {
+        if (!target || !target->isAlive()) return false;
+        if (event == CardUsed) {
+            if (getEffectiveAmount(ctx) > 0) {
+                const QList<int> ids = room->getNCards(getEffectiveAmount(ctx), false);
+                if (!ids.isEmpty()) {
+                    CardsMoveStruct move(ids, nullptr, Player::PlaceTable,
+                        CardMoveReason(CardMoveReason::S_REASON_TURNOVER, ctx.owner->objectName(), "sidi", ""));
+                    room->moveCardsAtomic(move, true);
+                    if (target->isAlive()) target->addToPile("sidi", ids);
+                }
+            }
+            return false;
+        }
+        if (event != EventPhaseStart || !ctx.invoker || !ctx.invoker->isAlive()
+            || ctx.invoker->getPhase() != Player::Play) return false;
+        const int attempts = qMax(0, getEffectiveAmount(ctx));
+        for (int i = 0; i < attempts && target->isAlive() && !target->getPile("sidi").isEmpty(); ++i) {
+            Room::AcceptedViewAsEffectScope accepted(room, target, objectName(), ctx);
+            if (!accepted.isValid()) break;
+            const qint64 phaseId = room->historyScopes().value("phase_id").toLongLong();
+            if (phaseId <= 0 || ctx.invoker->getPhase() != Player::Play) break;
+            const int id = accepted.activationRef().key.instanceID;
+            target->setSkillInstanceStateValue(objectName(), id, "pending_reduction_target", ctx.invoker->objectName());
+            target->setSkillInstanceStateValue(objectName(), id, "pending_reduction_phase", phaseId);
+            const auto clearPending = qScopeGuard([target, id] {
+                target->removeSkillInstanceStateValue("sidi", id, "pending_reduction_target");
+                target->removeSkillInstanceStateValue("sidi", id, "pending_reduction_phase");
+            });
+            const QString phaseKey = QString::number(phaseId);
+            const int before = ctx.invoker->property("SidiPhaseUsage").toMap().value(phaseKey).toInt();
+            if (!room->askForUseCard(target, "@@sidi", "sidi_remove:remove", -1, Card::MethodNone)) break;
+            const int after = ctx.invoker->property("SidiPhaseUsage").toMap().value(phaseKey).toInt();
+            if (after <= before) break;
+        }
+        return false;
     }
 };
 
-class SidiTargetMod : public TargetModSkill
+class SidiTargetMod : public TargetModSkillV2
 {
 public:
-    SidiTargetMod() : TargetModSkill("#sidi-target")
+    SidiTargetMod() : TargetModSkillV2("#sidi-target")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getResidueNum(const Player *from, const Card *card, const Player *) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        return card->isKindOf("Slash") ? -from->getMark("sidi") : 0;
+        if (ctx.modType != TargetModSkill::Residue || !ctx.primary || !ctx.card
+            || !ctx.card->isKindOf("Slash")) return CorrectSkillResult::noEffect();
+        const ServerPlayer *player = qobject_cast<const ServerPlayer *>(ctx.primary);
+        int count = ctx.primary->getMark("sidi");
+        if (player) {
+            const qint64 phaseId = player->getRoom()->historyScopes().value("phase_id").toLongLong();
+            if (phaseId <= 0) return CorrectSkillResult::noEffect();
+            count = ctx.primary->property("SidiPhaseUsage").toMap()
+                .value(QString::number(phaseId)).toInt();
+        }
+        return count > 0 ? CorrectSkillResult::signedAmount(-count) : CorrectSkillResult::noEffect();
     }
 };
 
@@ -371,19 +505,19 @@ public:
     }
 };
 
-class ShenduanTargetMod : public TargetModSkill
+class ShenduanTargetMod : public TargetModSkillV2
 {
 public:
-    ShenduanTargetMod() : TargetModSkill("#shenduan-target")
+    ShenduanTargetMod() : TargetModSkillV2("#shenduan-target", "SupplyShortage")
     {
-        pattern = "SupplyShortage";
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getDistanceLimit(const Player *, const Card *card, const Player *) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        if (card->getSkillName() == "shenduan")
-            return 1000;
-        return 0;
+        return ctx.modType == TargetModSkill::DistanceLimit && ctx.card
+            && ctx.card->getSkillName() == "shenduan"
+            ? CorrectSkillResult::useAmount(1000) : CorrectSkillResult::noEffect();
     }
 };
 
@@ -521,18 +655,19 @@ public:
 
 // the part of Armor ignorance is coupled in Player::hasArmorEffect
 
-class BenxiTargetMod : public TargetModSkill
+class BenxiTargetMod : public TargetModSkillV2
 {
 public:
-    BenxiTargetMod() : TargetModSkill("#benxi-target")
+    BenxiTargetMod() : TargetModSkillV2("#benxi-target")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getExtraTargetNum(const Player *from, const Card *card) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        if (isAllAdjacent(from, card)&&from->hasSkill("benxi"))
-            return 1;
-        return 0;
+        return ctx.modType == TargetModSkill::ExtraTarget && ctx.primary && ctx.card
+            && ctx.primary->hasSkill("benxi") && isAllAdjacent(ctx.primary, ctx.card)
+            ? CorrectSkillResult::useAmount(1) : CorrectSkillResult::noEffect();
     }
 
 private:
@@ -550,18 +685,20 @@ private:
     }
 };
 
-class BenxiDistance : public DistanceSkill
+class BenxiDistance : public DistanceSkillV2
 {
 public:
-    BenxiDistance() : DistanceSkill("#benxi-dist")
+    BenxiDistance() : DistanceSkillV2("#benxi-dist")
     {
+        setHolderSelector(CorrectSkill_System);
     }
 
-    int getCorrect(const Player *from, const Player *) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        if (from->hasFlag("CurrentPlayer")&&from->hasSkill("benxi"))
-            return -from->getMark("&benxi-Clear");
-        return 0;
+        if (!ctx.primary || !ctx.primary->hasFlag("CurrentPlayer") || !ctx.primary->hasSkill("benxi"))
+            return CorrectSkillResult::noEffect();
+        const int count = ctx.primary->getMark("&benxi-Clear");
+        return count > 0 ? CorrectSkillResult::signedAmount(-count) : CorrectSkillResult::noEffect();
     }
 };
 

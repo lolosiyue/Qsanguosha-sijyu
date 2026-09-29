@@ -1564,70 +1564,162 @@ void FenchengCard::onEffect(CardEffectStruct &effect) const
 	room->damage(DamageStruct("fencheng", effect.from, effect.to, 2, DamageStruct::Fire));
 }
 
-class Zhuikong : public TriggerSkill
+static void appendZhuikongReceipt(Room *room, ServerPlayer *beneficiary, const SkillContext &ctx,
+    qint64 turnId, const QString &effect)
+{
+    if (!room || !beneficiary || turnId <= 0 || !ctx.sourceRef.isValid() || !ctx.activationRef.isValid()) return;
+    QVariantMap receipt{{"beneficiary", beneficiary->objectName()}, {"challenger", ctx.owner ? ctx.owner->objectName() : QString()},
+        {"turn_id", turnId}, {"effect", effect},
+        {"source_owner", ctx.sourceRef.ownerObjectName}, {"source_skill", ctx.sourceRef.key.skillName},
+        {"source_instance", ctx.sourceRef.key.instanceID}, {"activation_owner", ctx.activationRef.ownerObjectName},
+        {"activation_skill", ctx.activationRef.key.skillName}, {"activation_instance", ctx.activationRef.key.instanceID}};
+    QVariantList receipts = room->getTag("YJCM2013ZhuikongReceipts").toList();
+    receipts << receipt;
+    room->setTag("YJCM2013ZhuikongReceipts", receipts);
+}
+
+static void projectZhuikong(Room *room, qint64 turnId)
+{
+    static bool projecting = false;
+    if (!room || projecting) return;
+    projecting = true;
+    const auto stop = qScopeGuard([&]() { projecting = false; });
+    const QVariantList receipts = room->getTag("YJCM2013ZhuikongReceipts").toList();
+    for (ServerPlayer *beneficiary : room->getAllPlayers(true)) {
+        QStringList fixedTargets;
+        bool prohibit = false;
+        for (const QVariant &value : receipts) {
+            const QVariantMap receipt = value.toMap();
+            if (receipt.value("beneficiary").toString() != beneficiary->objectName()
+                || turnId <= 0 || receipt.value("turn_id").toLongLong() != turnId) continue;
+            const QString effect = receipt.value("effect").toString();
+            if (effect == "fixed_distance") {
+                const QString challenger = receipt.value("challenger").toString();
+                if (!challenger.isEmpty() && !fixedTargets.contains(challenger)) fixedTargets << challenger;
+            } else if (effect == "prohibit") {
+                prohibit = true;
+            }
+        }
+        const QStringList oldFixedTargets = beneficiary->property("zhuikong_fixed_targets").toStringList();
+        for (const QString &name : oldFixedTargets) {
+            if (fixedTargets.contains(name)) continue;
+            ServerPlayer *challenger = room->findPlayerByObjectName(name, true);
+            if (!challenger) continue;
+            const int contributions = beneficiary->fixedDistanceCount(challenger, 1);
+            if (contributions <= 0) continue;
+            room->removeFixedDistance(beneficiary, challenger, 1);
+            for (int i = 1; i < contributions; ++i)
+                room->setFixedDistance(beneficiary, challenger, 1);
+        }
+        for (const QString &name : fixedTargets) {
+            if (oldFixedTargets.contains(name)) continue;
+            if (ServerPlayer *challenger = room->findPlayerByObjectName(name, true))
+                room->setFixedDistance(beneficiary, challenger, 1);
+        }
+        if (oldFixedTargets != fixedTargets)
+            room->setPlayerProperty(beneficiary, "zhuikong_fixed_targets", fixedTargets);
+        if (beneficiary->property("zhuikong_prohibit_active").toBool() != prohibit)
+            room->setPlayerProperty(beneficiary, "zhuikong_prohibit_active", prohibit);
+    }
+}
+
+static void projectZhuikongCurrent(Room *room)
+{
+    if (room) projectZhuikong(room, room->historyScopes().value("turn_id").toLongLong());
+}
+
+static void expireZhuikongTurn(Room *room, qint64 turnId, ServerPlayer *deadBeneficiary = nullptr)
+{
+    if (!room || (turnId <= 0 && !deadBeneficiary)) return;
+    QVariantList kept;
+    for (const QVariant &entry : room->getTag("YJCM2013ZhuikongReceipts").toList()) {
+        const QVariantMap receipt = entry.toMap();
+        const bool expires = (deadBeneficiary && receipt.value("beneficiary").toString() == deadBeneficiary->objectName())
+            || (turnId > 0 && receipt.value("turn_id").toLongLong() == turnId);
+        if (!expires) kept << entry;
+    }
+    room->setTag("YJCM2013ZhuikongReceipts", kept);
+}
+
+static bool recordZhuikongScope(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data)
+{
+    if (!room) return false;
+    const QVariantMap scope = room->historyScopes();
+    qint64 turn = scope.value("turn_id").toLongLong();
+    const bool endingTurn = event == TurnBroken
+        || (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
+        || (event == EventPhaseStart && player && player->getPhase() == Player::NotActive);
+    const bool skippedExtraTurn = event == TurnedOver && room->isCurrentExtraTurn()
+        && scope.value("phase_id").toLongLong() <= 0 && turn > 0
+        && player && player == room->getCurrent() && player->faceUp();
+    const bool dead = event == Death;
+    if (endingTurn || skippedExtraTurn || dead) {
+        const qint64 ended = turn;
+        // Death removes only that beneficiary's receipts; the active turn remains live.
+        expireZhuikongTurn(room, dead ? 0 : turn, dead ? data.value<DeathStruct>().who : nullptr);
+        if ((endingTurn && event != TurnBroken) || skippedExtraTurn)
+            turn = room->historyParent(ended, "turn", false).value("id").toLongLong();
+    }
+    // TurnBroken remains scoped to the interrupted turn; the next scoped query projects its actual caller.
+    projectZhuikong(room, turn);
+    return false;
+}
+
+class Zhuikong : public TriggerSkillV2
 {
 public:
-    Zhuikong() : TriggerSkill("zhuikong")
+    Zhuikong() : TriggerSkillV2("zhuikong") { events << EventPhaseStart; }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        events << EventPhaseStart;
+        if (!room || !player || player->isDead() || player->getPhase() != Player::RoundStart
+            || room->historyScopes().value("turn_id").toLongLong() <= 0) return {};
+        TriggerList result;
+        for (ServerPlayer *owner : room->getOtherPlayers(player))
+            if (owner->isAlive() && owner->hasSkill(this) && owner->isWounded() && owner->canPindian(player))
+                result[owner] << objectName();
+        return result;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        return target != nullptr;
+        if (!ctx.owner || !ctx.invoker || ctx.owner->isDead() || ctx.invoker->isDead() || !ctx.owner->isWounded()
+            || !ctx.owner->canPindian(ctx.invoker) || !ctx.owner->askForSkillInvoke(objectName(), ctx.invoker)) return false;
+        ctx.targets = {ctx.invoker};
+        return true;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (player->getPhase() != Player::RoundStart)
-            return false;
-
-        foreach (ServerPlayer *fuhuanghou, room->getAllPlayers()) {
-            if (TriggerSkill::triggerable(fuhuanghou)
-                && fuhuanghou->isWounded() && fuhuanghou->canPindian(player)
-                && room->askForSkillInvoke(fuhuanghou, objectName())) {
-                room->broadcastSkillInvoke("zhuikong");
-                if (fuhuanghou->pindian(player, objectName(), nullptr)) {
-                    room->setPlayerFlag(player, "zhuikong");
-                } else {
-                    room->setFixedDistance(player, fuhuanghou, 1);
-                    QVariantList zhuikonglist = player->getTag(objectName()).toList();
-                    zhuikonglist.append(QVariant::fromValue(fuhuanghou));
-                    player->setTag(objectName(), QVariant::fromValue(zhuikonglist));
-                }
-            }
+        if (!room || !ctx.owner || !target || target->isDead() || !ctx.owner->canPindian(target)
+            || !ctx.sourceRef.isValid() || !ctx.activationRef.isValid()) return false;
+        room->broadcastSkillInvoke(objectName());
+        PindianStruct *pindian = ctx.owner->PinDian(target, objectName());
+        if (!pindian) return false;
+        const qint64 turnId = room->historyScopes().value("turn_id").toLongLong();
+        if (pindian->success) {
+            appendZhuikongReceipt(room, target, ctx, turnId, "prohibit");
+            projectZhuikongCurrent(room);
+        } else {
+            appendZhuikongReceipt(room, target, ctx, turnId, "fixed_distance");
+            projectZhuikongCurrent(room);
         }
         return false;
     }
 };
 
-class ZhuikongClear : public TriggerSkill
+class ZhuikongClear : public TriggerSkillV2
 {
 public:
-    ZhuikongClear() : TriggerSkill("#zhuikong-clear")
+    ZhuikongClear() : TriggerSkillV2("#zhuikong-clear")
     {
-        events << EventPhaseChanging;
+        events << TurnStart << EventPhaseStart << EventPhaseEnd << EventPhaseChanging << TurnBroken << TurnedOver << Death;
+        global = true;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        return target != nullptr;
-    }
-
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-        if (change.to != Player::NotActive)
-            return false;
-
-        QVariantList zhuikonglist = player->getTag("zhuikong").toList();
-        if (zhuikonglist.isEmpty()) return false;
-        foreach (QVariant p, zhuikonglist) {
-            ServerPlayer *fuhuanghou = p.value<ServerPlayer *>();
-            room->removeFixedDistance(player, fuhuanghou, 1);
-        }
-        player->removeTag("zhuikong");
-        return false;
+        return recordZhuikongScope(event, room, player, data);
     }
 };
 
@@ -1640,7 +1732,10 @@ public:
 
     bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const
     {
-        return card->getTypeId() != Card::TypeSkill && to != from && from->hasFlag("zhuikong");
+        if (const ServerPlayer *server = dynamic_cast<const ServerPlayer *>(from))
+            projectZhuikongCurrent(server->getRoom());
+        return from && to && card && card->getTypeId() != Card::TypeSkill && to != from
+            && from->property("zhuikong_prohibit_active").toBool();
     }
 };
 
@@ -1941,74 +2036,61 @@ public:
     }
 };
 
-class NosZhuikong : public TriggerSkill
+class NosZhuikong : public TriggerSkillV2
 {
 public:
-    NosZhuikong() : TriggerSkill("noszhuikong")
+    NosZhuikong() : TriggerSkillV2("noszhuikong") { events << EventPhaseStart; }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
-        events << EventPhaseStart;
+        if (!room || !player || player->isDead() || player->getPhase() != Player::RoundStart
+            || room->historyScopes().value("turn_id").toLongLong() <= 0) return {};
+        TriggerList result;
+        for (ServerPlayer *owner : room->getOtherPlayers(player))
+            if (owner->isAlive() && owner->hasSkill(this) && owner->isWounded() && owner->canPindian(player))
+                result[owner] << objectName();
+        return result;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
     {
-        return target != nullptr;
+        if (!ctx.owner || !ctx.invoker || ctx.owner->isDead() || ctx.invoker->isDead() || !ctx.owner->isWounded()
+            || !ctx.owner->canPindian(ctx.invoker) || !ctx.owner->askForSkillInvoke(objectName(), ctx.invoker)) return false;
+        ctx.targets = {ctx.invoker};
+        return true;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
     {
-        if (player->getPhase() != Player::RoundStart)
-            return false;
-
-        bool skip = false;
-        foreach (ServerPlayer *fuhuanghou, room->getAllPlayers()) {
-            if (TriggerSkill::triggerable(fuhuanghou)
-                && fuhuanghou->isWounded() && fuhuanghou->canPindian(player)
-                && room->askForSkillInvoke(fuhuanghou, objectName())) {
-                room->broadcastSkillInvoke("zhuikong");
-                if (fuhuanghou->pindian(player, objectName(), nullptr)) {
-                    if (!skip) {
-                        player->skip(Player::Play);
-                        skip = true;
-                    }
-                } else {
-                    room->setFixedDistance(player, fuhuanghou, 1);
-                    QVariantList zhuikonglist = player->getTag(objectName()).toList();
-                    zhuikonglist.append(QVariant::fromValue(fuhuanghou));
-                    player->setTag(objectName(), QVariant::fromValue(zhuikonglist));
-                }
-            }
+        if (!room || !ctx.owner || !target || target->isDead() || !ctx.owner->canPindian(target)
+            || !ctx.sourceRef.isValid() || !ctx.activationRef.isValid()) return false;
+        room->broadcastSkillInvoke("zhuikong");
+        PindianStruct *pindian = ctx.owner->PinDian(target, objectName());
+        if (!pindian) return false;
+        const qint64 turnId = room->historyScopes().value("turn_id").toLongLong();
+        if (pindian->success) {
+            appendZhuikongReceipt(room, target, ctx, turnId, "skip_play");
+            if (!target->isSkipped(Player::Play)) target->skip(Player::Play);
+        } else {
+            appendZhuikongReceipt(room, target, ctx, turnId, "fixed_distance");
+            projectZhuikongCurrent(room);
         }
         return false;
     }
 };
 
-class NosZhuikongClear : public TriggerSkill
+class NosZhuikongClear : public TriggerSkillV2
 {
 public:
-    NosZhuikongClear() : TriggerSkill("#noszhuikong-clear")
+    NosZhuikongClear() : TriggerSkillV2("#noszhuikong-clear")
     {
-        events << EventPhaseChanging;
+        events << TurnStart << EventPhaseStart << EventPhaseEnd << EventPhaseChanging << TurnBroken << TurnedOver << Death;
+        global = true;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        return target != nullptr;
-    }
-
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-        if (change.to != Player::NotActive)
-            return false;
-
-        QVariantList zhuikonglist = player->getTag("noszhuikong").toList();
-        if (zhuikonglist.isEmpty()) return false;
-        foreach (QVariant p, zhuikonglist) {
-            ServerPlayer *fuhuanghou = p.value<ServerPlayer *>();
-            room->removeFixedDistance(player, fuhuanghou, 1);
-        }
-        player->removeTag("noszhuikong");
-        return false;
+        return recordZhuikongScope(event, room, player, data);
     }
 };
 
@@ -2101,25 +2183,31 @@ public:
     }
 };
 
-class NosMiejiEffect : public TriggerSkill
+class NosMiejiEffect : public TriggerSkillV2
 {
 public:
-    NosMiejiEffect() : TriggerSkill("#nosmieji-effect")
+    NosMiejiEffect() : TriggerSkillV2("#nosmieji-effect")
     {
         events << PreCardUsed;
     }
 
-    int getPriority(TriggerEvent) const
+    int getPriority(TriggerEvent) const override
     {
         return 6;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
-        CardUseStruct use = data.value<CardUseStruct>();
-        if (use.card->isKindOf("SingleTargetTrick") && !use.card->targetFixed() && use.to.length() > 1
-            && use.card->isBlack() && use.from->hasSkill("nosmieji"))
-            room->broadcastSkillInvoke("mieji");
+        const CardUseStruct use = data.value<CardUseStruct>();
+        return player && use.from == player && player->isAlive() && player->hasSkill("nosmieji")
+            && use.card && use.card->isKindOf("SingleTargetTrick") && !use.card->targetFixed()
+            && use.to.length() > 1 && use.card->isBlack()
+            ? TriggerList{{player, {objectName()}}} : TriggerList();
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (room && ctx.owner && ctx.owner->isAlive()) room->broadcastSkillInvoke("mieji");
         return false;
     }
 };

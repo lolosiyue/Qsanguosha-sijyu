@@ -3783,7 +3783,10 @@ public:
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
     {
         if (event != EventPhaseStart || !player || player->getPhase() != Player::RoundStart) return true;
-        const QVariantList expired = ({ QVariant _tag_take = player->getTag("HCongchaReceipts"); player->removeTag("HCongchaReceipts"); _tag_take; }).toList();
+        const QVariant receipts = player->getTag("HCongchaReceipts");
+        // Consume the receipts before cleanup can trigger further events.
+        player->removeTag("HCongchaReceipts");
+        const QVariantList expired = receipts.toList();
         for (const QVariant &value : expired) {
             ServerPlayer *target = room->findPlayerByObjectName(value.toMap().value("target").toString());
             if (target) room->removePlayerMark(target, "##congcha");

@@ -257,19 +257,6 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
 };
 
-class OLXianzhouCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE OLXianzhouCard();
-    void swapEquip(ServerPlayer *first, ServerPlayer *second) const;
-
-    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
-};
-
 class OLZhijianCard : public SkillCard
 {
     Q_OBJECT
@@ -310,7 +297,6 @@ class OLJiaozhaoCard : public SkillCard
 
 public:
     Q_INVOKABLE OLJiaozhaoCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 

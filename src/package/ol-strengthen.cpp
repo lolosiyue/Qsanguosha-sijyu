@@ -5686,63 +5686,6 @@ public:
     }
 };
 
-OLXianzhouCard::OLXianzhouCard()
-{
-	mute = true;
-	will_throw = false;
-	handling_method = Card::MethodNone;
-}
-
-void OLXianzhouCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
-{
-	QString pattern = Sanguosha->currentRoomState()->getCurrentCardUsePattern();
-	foreach (ServerPlayer *p, targets) {
-		if (pattern == "@xianzhou") {
-			room->damage(DamageStruct(getSkillName(),source,p));
-		} else {
-			room->removePlayerMark(source, "@olxianzhou");
-			room->doSuperLightbox(source, "olxianzhou");
-			room->setPlayerMark(p, "olxianzhou", source->getEquips().length());
-			room->giveCard(source,p,source->getEquipsId(),getSkillName());
-		}
-	}
-}
-
-bool OLXianzhouCard::targetsFeasible(const QList<const Player *> &targets, const Player *Self) const
-{
-	return targets.length() == Self->getMark("olxianzhou");
-}
-
-bool OLXianzhouCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
-{
-	return targets.length() < Self->getMark("olxianzhou") && Self->inMyAttackRange(to_select);
-}
-
-class OLXianzhou : public ZeroCardViewAsSkill
-{
-public:
-	OLXianzhou() : ZeroCardViewAsSkill("olxianzhou")
-	{
-		frequency = Skill::Limited;
-		limit_mark = "@olxianzhou";
-	}
-
-	bool isEnabledAtPlay(const Player *player) const
-	{
-		return player->getMark("@olxianzhou") > 0 && player->getEquips().length() > 0;
-	}
-
-	bool isEnabledAtResponse(const Player *, const QString &pattern) const
-	{
-		return pattern == "@olxianzhou";
-	}
-
-	const Card *viewAs() const
-	{
-		return new OLXianzhouCard;
-	}
-};
-
 OLZhijianCard::OLZhijianCard()
 {
     setSkillName("olzhijian");
@@ -8233,123 +8176,255 @@ public:
 
 OLJiaozhaoCard::OLJiaozhaoCard()
 {
+	setSkillName("oljiaozhao");
 	will_throw = false;
 	handling_method = Card::MethodNone;
 	target_fixed = true;
 }
 
-void OLJiaozhaoCard::use(Room *room, ServerPlayer *player, QList<ServerPlayer *> &) const
-{
-	int x = player->property("oljiaozhaoUp").toInt();
-	if(x<2) room->showCard(player,getEffectiveId());
-	QList<int>ids = room->getAvailableCardList(player,"basic,trick","oljiaozhao",this);
-	if(x<1){
-		foreach (int id, ids) {
-			const Card*c = Sanguosha->getEngineCard(id);
-			if(player->getMark("oljiaozhaoBan"+c->objectName())>0)
-				ids.removeOne(id);
-		}
-	}
-	if(ids.isEmpty()) return;
-	if(x<2) room->setCardTip(getEffectiveId(),"oljiaozhao-Clear");
-	room->fillAG(ids, player);
-	int id = room->askForAG(player,ids,true,"oljiaozhao","oljiaozhao0");
-	room->clearAG(player);
-	if(id<0) id = ids.first();
-	const Card*c = Sanguosha->getEngineCard(id);
-	LogMessage log;
-	log.type = "#ShouxiChoice";
-	log.from = player;
-	log.arg = c->objectName();
-	room->setPlayerProperty(player,"oljiaozhaoCn",c->objectName());
-	player->addMark("oljiaozhaoBan"+c->objectName());
-	if(x>1) room->askForUseCard(player,"@@oljiaozhao","oljiaozhao1:"+c->objectName());
-	else room->sendLog(log);
-}
-
-class OLJiaozhaoVS : public ViewAsSkill
+class OLJiaozhaoVS : public ViewAsSkillV2
 {
 public:
-	OLJiaozhaoVS() : ViewAsSkill("oljiaozhao")
+	OLJiaozhaoVS() : ViewAsSkillV2("oljiaozhao", 1) { response_or_use = true; }
+	LimitScope getLimitScope() const override { return Limit_Custom; }
+	TargetMode targetMode() const override { return NoTarget; }
+	bool willThrowSelectedCards() const override { return false; }
+	bool checkCustomUsage(const SkillContext &ctx) const override
 	{
+		if (!ctx.owner || !ctx.activationRef.isValid()) return false;
+		// Active-skill availability is probed before createCard(); the exact reveal/continuation card is checked at payment.
+		if (!ctx.use_card) return true;
+		if (ctx.use_card->getTag("OLJiaozhaoContinuation").toBool())
+			return !ctx.owner->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "continuation_spent").toBool();
+		return !isRevealCard(ctx.use_card) || !turnUsed(ctx.owner, ctx.activationRef);
 	}
-
-	bool viewFilter(const QList<const Card *> &cards, const Card *to_select) const
+	static bool commitAccepted(const OLJiaozhaoVS &skill, SkillContext &ctx)
 	{
-		QString pattern = Sanguosha->getCurrentCardUsePattern();
-		if(pattern=="@@oljiaozhao") return false;
-		if(pattern.isEmpty()){
-			foreach (const Card *h, Self->getHandcards()) {
-				if(h->hasTip("oljiaozhao"))
-					return cards.isEmpty()&&to_select==h;
-			}
-			return cards.isEmpty();
-		}
-		return cards.isEmpty()&&to_select->hasTip("oljiaozhao");
+		if (!ctx.owner || !ctx.activationRef.isValid() || !ctx.use_card) return false;
+		QVariantMap receipt = ctx.interceptor_data.value("oljiaozhao");
+		if (receipt.value("committed").toBool()) return true;
+		const bool reveal = isRevealCard(ctx.use_card);
+		const bool continuation = ctx.use_card->getTag("OLJiaozhaoContinuation").toBool();
+		if (!reveal && !continuation) return true;
+		if (!skill.checkCustomUsage(ctx)) return false;
+		skill.addUsage(ctx);
+		receipt.insert("committed", true);
+		ctx.interceptor_data.insert("oljiaozhao", receipt);
+		return true;
 	}
-
-	bool isEnabledAtPlay(const Player *player) const
+	void addUsage(const SkillContext &ctx) const override
 	{
-		foreach (const Card *h, player->getHandcards()) {
-			if(h->hasTip("oljiaozhao")){
-				Card*dc = Sanguosha->cloneCard(player->property("oljiaozhaoCn").toString());
-				dc->setSkillName("oljiaozhao");
-				dc->addSubcard(h);
-				dc->deleteLater();
-				if(dc->isAvailable(player))
-					return true;
-			}
+		if (!ctx.use_card || !ctx.owner || !ctx.activationRef.isValid()) return;
+		if (ctx.use_card->getTag("OLJiaozhaoContinuation").toBool()) {
+			ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "continuation_spent", true);
+			return;
 		}
-		return player->usedTimes("OLJiaozhaoCard")<1;
+		if (!isRevealCard(ctx.use_card)) return;
+		const QString turn = ctx.owner->getRoom()->historyScopes().value("turn_id").toString();
+		if (turn.isEmpty() || turn == "0") return;
+		QVariantMap usage = ctx.owner->getSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "turn_usage").toMap();
+		usage.insert(turn, true);
+		ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "turn_usage", usage);
+		ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "current_turn_used", true);
 	}
-
-	bool isEnabledAtResponse(const Player *player, const QString &pattern) const
+	QString historyKey(const ActiveSkillRequest &request) const override
 	{
-		foreach (const Card *h, player->getHandcards()) {
-			if(h->hasTip("oljiaozhao")){
-				foreach (QString p, pattern.split("+")) {
-					if(player->property("oljiaozhaoCn").toString().contains(p))
-						return true;
-				}
-			}
+		const int material = request.selectedCardIds.value(0, -1);
+		const int pending = request.initiator && request.activationRef.isValid()
+			? request.initiator->getSkillInstanceStateValue(objectName(), request.activationRef.key.instanceID, "material_id", -1).toInt() : -1;
+		if (material >= 0 && material == pending) {
+			Card *converted = Sanguosha->cloneCard(declaration(request.initiator, request.activationRef));
+			if (converted) { const QString key = converted->getClassName(); delete converted; return key; }
 		}
-		return pattern=="@@oljiaozhao";
+		return "OLJiaozhaoCard";
 	}
-
-	const Card *viewAs(const QList<const Card *> &cards) const
+	bool canActivate(const ActiveSkillRequest &request) const override
 	{
-		if(cards.isEmpty()){
-			if(Self->property("oljiaozhaoUp").toInt()>1){
-				Card*dc = Sanguosha->cloneCard(Self->property("oljiaozhaoCn").toString());
-				dc->setSkillName(objectName());
-				return dc;
-			}
-			return nullptr;
+		const Player *player = request.initiator;
+		if (!player || !player->isAlive() || !request.activationRef.isValid()
+			|| !player->findSkillInstance(objectName(), request.activationRef.key.instanceID)) return false;
+		if (request.pattern == "@@oljiaozhao")
+			return player->getSkillInstanceStateValue(objectName(), request.activationRef.key.instanceID, "continuation", false).toBool()
+				&& !player->getSkillInstanceStateValue(objectName(), request.activationRef.key.instanceID, "continuation_spent", false).toBool()
+				&& !declaration(player, request.activationRef).isEmpty();
+		const int material = pendingMaterial(player, request.activationRef);
+		if (material >= 0 && materialInHand(player, material))
+			return usableConversion(player, request, material);
+		return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && !turnUsed(player, request.activationRef)
+			&& !player->isKongcheng();
+	}
+	bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+	{
+		if (request.pattern == "@@oljiaozhao") return false;
+		if (!canActivate(request) || !request.initiator || !card || card->hasFlag("using")
+			|| !request.initiator->getHandcards().contains(card)) return false;
+		const int pending = pendingMaterial(request.initiator, request.activationRef);
+		if (pending >= 0 && materialInHand(request.initiator, pending))
+			return card->getEffectiveId() == pending && usableConversion(request.initiator, request, pending);
+		return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && !turnUsed(request.initiator, request.activationRef);
+	}
+	bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+	{
+		if (request.pattern == "@@oljiaozhao") return request.selectedCardIds.isEmpty() && canActivate(request);
+		if (request.selectedCardIds.size() != 1) return false;
+		ActiveSkillRequest empty = request; empty.selectedCardIds.clear();
+		return canSelectCard(empty, Sanguosha->getCard(request.selectedCardIds.first()));
+	}
+	bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &targets) const override { return targets.isEmpty(); }
+	const Card *createCard(const ActiveSkillRequest &request) const override
+	{
+		if (!cardSelectionFeasible(request)) return nullptr;
+		if (request.pattern == "@@oljiaozhao") {
+			Card *converted = Sanguosha->cloneCard(declaration(request.initiator, request.activationRef));
+			if (converted) { converted->setSkillName(objectName()); converted->setTag("OLJiaozhaoContinuation", true); }
+			return converted;
 		}
-		if(cards[0]->hasTip("oljiaozhao")){
-			Card*dc = Sanguosha->cloneCard(Self->property("oljiaozhaoCn").toString());
-			dc->setSkillName(objectName());
-			dc->addSubcards(cards);
-			return dc;
+		const int id = request.selectedCardIds.first();
+		if (id == pendingMaterial(request.initiator, request.activationRef)) {
+			Card *converted = Sanguosha->cloneCard(declaration(request.initiator, request.activationRef));
+			if (converted) { converted->setSkillName(objectName()); converted->addSubcard(id); }
+			return converted;
 		}
-		OLJiaozhaoCard *card = new OLJiaozhaoCard;
-		card->addSubcards(cards);
+		ActiveSkillCard *card = new ActiveSkillCard;
+		card->setActiveSkill(this); card->setSkillName(objectName()); card->addSubcard(id); card->setTag("OLJiaozhaoReveal", true);
 		return card;
+	}
+	bool pay(Room *, SkillContext &ctx, const ActiveSkillRequest &request) const override
+	{
+		if (!cardSelectionFeasible(request) || !ctx.initiator || !ctx.use_card) return false;
+		return commitAccepted(*this, ctx);
+	}
+	EffectFlow effect(SkillContext &ctx) const override
+	{
+		if (!ctx.initiator || !qobject_cast<const ActiveSkillCard *>(ctx.use_card)) return ContinueEffects;
+		skillEffect(ctx, ctx.initiator);
+		return FinishSkill;
+	}
+	EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+	{
+		if (!target || !target->isAlive() || !ctx.use_card) return ContinueEffects;
+		Room *room = target->getRoom();
+		const int material = ctx.use_card->getSubcards().value(0, -1);
+		if (material < 0 || room->getCardOwner(material) != target || room->getCardPlace(material) != Player::PlaceHand) return FinishSkill;
+		const int level = qBound(0, target->property("oljiaozhaoUp").toInt(), 2);
+		if (level < 2) room->showCard(target, material);
+		QList<int> ids = room->getAvailableCardList(target, "basic,trick", objectName(), ctx.use_card);
+		if (level < 1)
+			for (int i = ids.length() - 1; i >= 0; --i)
+				if (target->getMark("oljiaozhaoBan" + Sanguosha->getEngineCard(ids.at(i))->objectName()) > 0) ids.removeAt(i);
+		if (ids.isEmpty()) return FinishSkill;
+		if (level < 2) room->setCardTip(material, "oljiaozhao-Clear"); // Tip is UI/AI projection; legality comes from instance state below.
+		room->fillAG(ids, target);
+		int id = -1;
+		try { id = room->askForAG(target, ids, true, objectName(), "oljiaozhao0"); }
+		catch (...) { room->clearAG(target); throw; }
+		room->clearAG(target);
+		if (!ids.contains(id)) id = ids.first();
+		const QString name = Sanguosha->getEngineCard(id)->objectName();
+		LogMessage log; log.type = "#ShouxiChoice"; log.from = target; log.arg = name;
+		room->setPlayerProperty(target, "oljiaozhaoCn", name); // Legacy UI/AI projection only.
+		room->addPlayerMark(target, "oljiaozhaoBan" + name);
+		if (level < 2) {
+			target->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "declaration", name);
+			target->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "material_id", material);
+			target->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "material_turn_id", room->historyScopes().value("turn_id"));
+			room->sendLog(log);
+		} else {
+			Room::AcceptedViewAsEffectScope continuation(room, target, objectName(), ctx);
+			if (continuation.isValid()) {
+				const SkillInstanceRef continuationRef = continuation.activationRef();
+				target->setSkillInstanceStateValue(continuationRef.key.skillName, continuationRef.key.instanceID, "declaration", name);
+				target->setSkillInstanceStateValue(continuationRef.key.skillName, continuationRef.key.instanceID, "continuation", true);
+				target->setSkillInstanceStateValue(continuationRef.key.skillName, continuationRef.key.instanceID, "continuation_spent", false);
+				room->askForUseCard(target, "@@oljiaozhao", "oljiaozhao1:" + name);
+			}
+		}
+		return FinishSkill;
+	}
+private:
+	static bool isRevealCard(const Card *card)
+	{ return card && (card->getTag("OLJiaozhaoReveal").toBool() || card->getClassName() == "OLJiaozhaoCard"); }
+	static QString declaration(const Player *player, const SkillInstanceRef &ref)
+	{ return player && ref.isValid() ? player->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "declaration").toString() : QString(); }
+	static int pendingMaterial(const Player *player, const SkillInstanceRef &ref)
+	{ return player && ref.isValid() ? player->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "material_id", -1).toInt() : -1; }
+	static bool materialInHand(const Player *player, int id)
+	{ return player && id >= 0 && player->getHandcards().contains(Sanguosha->getCard(id)) && !Sanguosha->getCard(id)->hasFlag("using"); }
+	static bool turnUsed(const Player *player, const SkillInstanceRef &ref)
+	{
+		if (!player || !ref.isValid()) return true;
+		if (const ServerPlayer *server = dynamic_cast<const ServerPlayer *>(player)) {
+			const QString turn = server->getRoom()->historyScopes().value("turn_id").toString();
+			return turn.isEmpty() || turn == "0" || player->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "turn_usage").toMap().value(turn).toBool();
+		}
+		return player->getSkillInstanceStateValue(ref.key.skillName, ref.key.instanceID, "current_turn_used").toBool();
+	}
+	static bool usableConversion(const Player *player, const ActiveSkillRequest &request, int id)
+	{
+		const QString name = declaration(player, request.activationRef);
+		if (name.isEmpty()) return false;
+		Card *converted = Sanguosha->cloneCard(name);
+		if (!converted) return false;
+		converted->setSkillName("oljiaozhao"); converted->addSubcard(id);
+		bool valid = converted->isAvailable(player);
+		if (request.reason != CardUseStruct::CARD_USE_REASON_PLAY) {
+			valid = false;
+			for (const QString &part : request.pattern.split("+"))
+				if (name.contains(part)) { valid = true; break; }
+		}
+		delete converted;
+		return valid;
 	}
 };
 
-class OLJiaozhao : public TriggerSkill
+class OLJiaozhao : public TriggerSkillV2
 {
 public:
-	OLJiaozhao() : TriggerSkill("oljiaozhao")
+	OLJiaozhao() : TriggerSkillV2("oljiaozhao")
 	{
-		//events << PreCardUsed;
 		view_as_skill = new OLJiaozhaoVS;
+		events << TurnStart << EventPhaseStart << EventPhaseEnd << EventPhaseChanging << TurnBroken << TurnedOver << EventSkillInvoking;
+		global = true;
 		waked_skills = "#OLJiaozhaoProhibit";
 	}
-
-	bool trigger(TriggerEvent, Room *, ServerPlayer *, QVariant &) const
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return {}; }
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
+		if (event == EventSkillInvoking && data.canConvert<SkillContext>()) {
+			SkillContext accepted = data.value<SkillContext>();
+			if (accepted.activationRef.key.skillName == objectName()) {
+				const auto *active = dynamic_cast<const OLJiaozhaoVS *>(view_as_skill);
+				if (active && !OLJiaozhaoVS::commitAccepted(*active, accepted)) accepted.is_canceled = true;
+				data = QVariant::fromValue(accepted);
+			}
+			return false;
+		}
+		if (!room || !player) return false;
+		qint64 visibleTurn = room->historyScopes().value("turn_id").toLongLong();
+		const bool endingTurn = event == TurnBroken
+			|| (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive)
+			|| (event == EventPhaseStart && player->getPhase() == Player::NotActive);
+		const bool skippedExtraTurn = event == TurnedOver && room->isCurrentExtraTurn()
+			&& room->historyScopes().value("phase_id").toLongLong() <= 0 && visibleTurn > 0
+			&& player == room->getCurrent() && player->faceUp();
+		if (endingTurn || skippedExtraTurn) {
+			for (ServerPlayer *holder : room->getAllPlayers(true))
+				for (int id : holder->getSkillInstanceIds(objectName())) {
+					const QVariantMap state = holder->getSkillInstanceState(objectName(), id);
+					if (state.value("material_turn_id").toLongLong() != visibleTurn) continue;
+					holder->setSkillInstanceStateValue(objectName(), id, "declaration", QVariant());
+					holder->setSkillInstanceStateValue(objectName(), id, "material_id", -1);
+					holder->setSkillInstanceStateValue(objectName(), id, "continuation", false);
+					holder->setSkillInstanceStateValue(objectName(), id, "continuation_spent", false);
+					holder->setSkillInstanceStateValue(objectName(), id, "material_turn_id", QVariant());
+				}
+			if ((endingTurn && event != TurnBroken) || skippedExtraTurn)
+				visibleTurn = room->historyParent(visibleTurn, "turn", false).value("id").toLongLong();
+		}
+		for (ServerPlayer *holder : room->getAllPlayers(true))
+			for (int id : holder->getSkillInstanceIds(objectName()))
+				holder->setSkillInstanceStateValue(objectName(), id, "current_turn_used",
+					holder->getSkillInstanceStateValue(objectName(), id, "turn_usage").toMap().value(QString::number(visibleTurn)).toBool());
 		return false;
 	}
 };
@@ -8369,25 +8444,37 @@ public:
 	}
 };
 
-class OLDanxin : public TriggerSkill
+class OLDanxin : public TriggerSkillV2
 {
 public:
-	OLDanxin() : TriggerSkill("oldanxin")
+	OLDanxin() : TriggerSkillV2("oldanxin")
 	{
 		events << Damaged;
 	}
 
-	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
 	{
-		if(triggerEvent==Damaged){
-			if (player->askForSkillInvoke(objectName(),data)) {
-				player->peiyin(objectName());
-				player->drawCards(1,objectName());
-				int x = player->property("oljiaozhaoUp").toInt()+1;
-				room->setPlayerProperty(player,"oljiaozhaoUp",x);
-				if(x<3) room->changeTranslation(player,"oljiaozhao",x);
-			}
-		}
+		return event == Damaged && player && player->isAlive() && player->hasSkill(this)
+			? TriggerList{{player, {objectName()}}} : TriggerList();
+	}
+
+	bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+	{
+		if (!ctx.owner || !ctx.original_data || !ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data)) return false;
+		ctx.targets << ctx.owner;
+		return true;
+	}
+
+	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+	{
+		if (!target || !target->isAlive()) return false;
+		target->peiyin(objectName());
+		const int amount = getEffectiveAmount(ctx);
+		if (amount > 0) target->drawCards(amount, objectName());
+		// OL's permanent level remains player-wide; each Danxin instance still has its own trigger source.
+		const int level = target->property("oljiaozhaoUp").toInt() + 1;
+		room->setPlayerProperty(target, "oljiaozhaoUp", level);
+		if (level < 3) room->changeTranslation(target, "oljiaozhao", level);
 		return false;
 	}
 };
