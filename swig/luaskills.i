@@ -116,6 +116,10 @@ public:
     void setBaseAmount(int amount);
     void insertPriorityTable(TriggerEvent event, int value);
     void setMovementSource(bool enabled);
+    // SWIG clears the pure-virtual flag only when this 4-arg trigger is redeclared
+    // here. TriggerSkillV2 implements it in C++, but that override is absent from
+    // the SWIG interface, so LuaEquipSkillV2 was exported as a non-callable table.
+    virtual bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const;
     LuaFunction can_trigger;
     LuaFunction on_record;
     LuaFunction on_cost;
