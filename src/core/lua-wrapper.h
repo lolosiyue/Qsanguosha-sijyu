@@ -299,8 +299,14 @@ public:
     LuaProhibitSkill(const QString &name, Frequency frequency);
 
     bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &others = QList<const Player *>()) const;
+    // Equipment prohibitions are not EquipSkillV2, but still need the equip invalidity exemption.
+    void setEquipSkill(bool enabled) { m_equipSkill = enabled; }
+    bool isEquipSkill() const override { return m_equipSkill; }
 
     LuaFunction is_prohibited;
+
+private:
+    bool m_equipSkill = false;
 };
 
 class LuaProhibitPindianSkill : public ProhibitPindianSkill
