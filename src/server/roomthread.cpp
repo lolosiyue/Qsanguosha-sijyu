@@ -10,6 +10,7 @@
 #include "exppattern.h"
 #include "skill-instance-utils.h"
 #include "skill-set-generation.h"
+#include "v2-record-owner-index.h"
 #include "crashhandler.h"
 #include "../core/resolution-history.h"
 #include <QDebug>
@@ -1230,8 +1231,20 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             restoreIdentity();
 			continue;
 		}
-		foreach (ServerPlayer *owner, room->getAllPlayers(true)) {
-			foreach (int instanceId, owner->getSkillInstanceIds(v2->objectName())) {
+        const auto recordPlayers = room->getAllPlayers(true);
+        static thread_local V2RecordOwnerIndex recordOwners;
+        quint64 recordGeneration;
+        const QString recordName = v2->objectName();
+        const auto candidates = recordOwners.candidates(room, recordPlayers, recordName, recordGeneration);
+        if (candidates.isEmpty()) continue;
+        foreach (ServerPlayer *owner, recordPlayers) {
+            // Records may attach/detach instances, including on later owners.
+            // After any mutation resume the original live scan for this record.
+            const bool indexed = SkillSet::generation() == recordGeneration && v2->objectName() == recordName;
+            if (indexed && !candidates.contains(owner)) continue;
+            const QList<int> instanceIds = indexed ? candidates.value(owner)
+                : owner->getSkillInstanceIds(v2->objectName());
+			foreach (int instanceId, instanceIds) {
 				SkillContext recordCtx;
 				recordCtx.skill_name = v2->objectName();
 				recordCtx.owner = owner;

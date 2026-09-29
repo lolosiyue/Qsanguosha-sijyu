@@ -2375,6 +2375,8 @@ public:
                                         const SkillInstanceRef &parentRef);
     SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const char *skillName,
                                         const SkillInstanceRef &parentRef, bool visible);
+    SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const QString &skill_name,
+                                        const SkillInstanceRef &parent_ref);
     bool detachAttachedSkill(const SkillInstanceRef &ref);
 	int detachSkillFromPlayer(ServerPlayer*player, const char*skill_name, bool is_equip = false, bool acquire_only = false, bool event_and_log = true);
 	int discardSkillInstance(ServerPlayer*chooser, ServerPlayer*owner, const char*skill_name, bool event_and_log = true);
