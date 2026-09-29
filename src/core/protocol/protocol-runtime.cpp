@@ -113,7 +113,8 @@ ProtocolFrameAppendResult ProtocolFrameBuffer::append(QByteArrayView bytes)
         const qsizetype frameSize = newline - (hasCrDelimiter ? 1 : 0);
         if (frameSize > MaxFrameSize) {
             result.success = false;
-            result.detail = QStringLiteral("Protocol frame exceeds 65535 encoded bytes");
+            result.detail = QStringLiteral("Protocol frame exceeds %1 encoded bytes")
+                .arg(MaxFrameSize);
             m_buffer.clear();
             return result;
         }
@@ -129,7 +130,8 @@ ProtocolFrameAppendResult ProtocolFrameBuffer::append(QByteArrayView bytes)
         && m_buffer.endsWith('\r');
     if (m_buffer.size() > MaxFrameSize && !mayEndWithCrDelimiter) {
         result.success = false;
-        result.detail = QStringLiteral("Protocol frame exceeds 65535 encoded bytes without a delimiter");
+        result.detail = QStringLiteral("Protocol frame exceeds %1 encoded bytes without a delimiter")
+            .arg(MaxFrameSize);
         m_buffer.clear();
     }
     return result;

@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "invalidity-gate.h"
 #include "distance-skill-cache.h"
 #include "hegemony-mode.h"
 #include "h-rule-cards.h"
@@ -3292,6 +3293,7 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 
     bool ret = true;
     foreach (const InvaliditySkill*is, getInvaliditySkills()) {
+        if (!invalidityCallbackMayReject(is, player, skill)) continue;
         if (is->isSkillValid(player, skill)) continue;
         ret = false;
         break;

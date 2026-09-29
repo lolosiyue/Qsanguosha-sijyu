@@ -1619,19 +1619,45 @@ public:
             }
             return CorrectSkillResult::useAmount(correct);
         }
+        // Physical horses (same as hegemony). Full horse-catalog × viewAsEquip
+        // only when a seat can grant virtual equips — 50p AI distance matrix
+        // otherwise pays findChildren×hasHorse on every pair.
         int oh_correct = 0, dh_correct = 0;
-		static QList<const OffensiveHorse *> from_ohs = Sanguosha->findChildren<const OffensiveHorse *>();
-		foreach (const OffensiveHorse *oh, from_ohs) {
-			if (from->hasOffensiveHorse(oh->objectName()))
-				oh_correct = qMin(oh->getCorrect(from), oh_correct);
-		}
-
-		static QList<const DefensiveHorse *> to_dhs = Sanguosha->findChildren<const DefensiveHorse *>();
-		foreach (const DefensiveHorse *dh, to_dhs){
-			if(dh->objectName()=="god_horse") continue;
-			if(to->hasDefensiveHorse(dh->objectName()))
-				dh_correct = qMax(dh_correct, dh->getCorrect(to));
-		}
+        auto mayVirtual = [](const Player *p) -> bool {
+            if (!p) return false;
+            if (!p->property("View_As_Equips_List").toString().isEmpty())
+                return true;
+            foreach (const ViewAsEquipSkill *skill, Sanguosha->getViewAsEquipSkills()) {
+                if (skill && p->hasSkill(skill->objectName()))
+                    return true;
+            }
+            return false;
+        };
+        if (from->getOffensiveHorse()
+            && !from->isEquipsNullified(from->getOffensiveHorse(), to)) {
+            const Horse *horse = qobject_cast<const Horse *>(from->getOffensiveHorse()->getRealCard());
+            if (horse) oh_correct = qMin(horse->getCorrect(from), oh_correct);
+        }
+        if (to->getDefensiveHorse()
+            && !to->isEquipsNullified(to->getDefensiveHorse(), from)) {
+            const Horse *horse = qobject_cast<const Horse *>(to->getDefensiveHorse()->getRealCard());
+            if (horse) dh_correct = qMax(dh_correct, horse->getCorrect(to));
+        }
+        if (mayVirtual(from)) {
+            static QList<const OffensiveHorse *> from_ohs = Sanguosha->findChildren<const OffensiveHorse *>();
+            foreach (const OffensiveHorse *oh, from_ohs) {
+                if (from->hasOffensiveHorse(oh->objectName()))
+                    oh_correct = qMin(oh->getCorrect(from), oh_correct);
+            }
+        }
+        if (mayVirtual(to)) {
+            static QList<const DefensiveHorse *> to_dhs = Sanguosha->findChildren<const DefensiveHorse *>();
+            foreach (const DefensiveHorse *dh, to_dhs) {
+                if (dh->objectName() == "god_horse") continue;
+                if (to->hasDefensiveHorse(dh->objectName()))
+                    dh_correct = qMax(dh_correct, dh->getCorrect(to));
+            }
+        }
         return CorrectSkillResult::useAmount(oh_correct + dh_correct);
     }
 };
