@@ -173,6 +173,7 @@ private:
         QList<PublicPlayer> players;
     };
 
+    PublicBoard publicBoard() const;
     PublicBoard buildPublicBoard() const;
     AIWorldView projectWorldView(const PublicBoard &board, ServerPlayer *viewer,
                                  bool compactPolicy, bool eventOnly) const;
@@ -181,6 +182,14 @@ private:
     QHash<QString, QSet<QString>> m_markViewers;
     QList<AIEventView> m_events;
     quint64 m_eventSequence = 0;
+    // Extend the recordEvent memo across events and requests at the same revision.
+    // Never memoize projections: visibility flags, private state and policy are live.
+    mutable bool m_publicBoardValid = false;
+    mutable PublicBoard m_publicBoard;
+    mutable quint64 m_publicBoardGeneration = 0;
+    mutable quint64 m_publicBoardDefinitions = 0;
+    mutable QList<ServerPlayer *> m_publicBoardPlayers;
+    mutable QList<ServerPlayer *> m_publicBoardAlivePlayers;
     // Only the room-wide geometry is shared; hidden cards and policy stay viewer-scoped.
     mutable bool m_distanceCacheValid = false;
     mutable quint64 m_distanceRevision = 0;

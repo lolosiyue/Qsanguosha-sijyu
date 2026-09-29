@@ -512,27 +512,10 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
         || triggerEvent == HpRecover || triggerEvent == Death
         || (triggerEvent == ChoiceMade && event.kind == QStringLiteral("choice"));
     if (!canonical || !Config.EnableAI || !m_room.roomRuntime()->ai().lua().rawState()) return;
-    // Public facts (max cards, attack range, equips, skill metadata) do not
-    // depend on the observer. Build them once per unchanged revision; a mode
-    // hook that mutates the board bumps the revision and the next seat rebuilds.
-    PublicBoard board;
-    quint64 boardRevision = 0;
-    quint64 boardSkillGeneration = 0;
-    bool boardValid = false;
+    // Share the same revision-scoped public facts with decision requests.
     for (ServerPlayer *observer : m_room.getAlivePlayers()) {
         if (event.privateEvent && event.privateViewer != observer->objectName()) continue;
-        const quint64 revision = m_room.roomRuntime()->stateRevision();
-        const quint64 skillGeneration = SkillSet::generation();
-        if (!boardValid || boardRevision != revision || boardSkillGeneration != skillGeneration) {
-            board = buildPublicBoard();
-            boardValid = revision == m_room.roomRuntime()->stateRevision()
-                && skillGeneration == SkillSet::generation();
-            if (boardValid) {
-                boardRevision = revision;
-                boardSkillGeneration = skillGeneration;
-            }
-        }
-        AIWorldView world = projectWorldView(board, observer, true, true);
+        AIWorldView world = buildWorldView(observer, true, true);
         AIEventView visible = event;
         if (visible.privateViewer != observer->objectName()) visible.privateCardIds.clear();
         visible.privateViewer.clear();
@@ -542,6 +525,48 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
             qWarning().noquote() << "Isolated AI event rejected:" << event.sequence
                                   << observer->objectName() << error;
     }
+}
+
+AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::publicBoard() const
+{
+    static const bool probe = qEnvironmentVariableIntValue("QSAN_AI_WV_PROBE") > 0;
+    const quint64 revision = m_room.roomRuntime()->stateRevision();
+    const quint64 generation = SkillSet::generation();
+    const quint64 definitions = m_room.roomRuntime()->definitions().skillDefinitionVersion();
+    const quint64 eventSequence = m_eventSequence;
+    const auto players = m_room.getPlayers();
+    const auto alivePlayers = m_room.getAlivePlayers();
+    if (m_publicBoardValid && m_publicBoard.revision == revision
+        && m_publicBoardGeneration == generation
+        && m_publicBoardDefinitions == definitions
+        && m_publicBoardPlayers == players && m_publicBoardAlivePlayers == alivePlayers) {
+        if (probe) qInfo() << "[AI_WV] public_board hit revision=" << revision
+                           << "event=" << eventSequence;
+        return m_publicBoard;
+    }
+
+    // Invalidate before calling gameplay hooks. Keep a local value: a nested
+    // request must not overwrite the snapshot an outer projection is using.
+    m_publicBoardValid = false;
+    QElapsedTimer timer;
+    if (probe) timer.start();
+    const PublicBoard board = buildPublicBoard();
+    m_publicBoardValid = revision == m_room.roomRuntime()->stateRevision()
+        && generation == SkillSet::generation()
+        && definitions == m_room.roomRuntime()->definitions().skillDefinitionVersion()
+        && players == m_room.getPlayers()
+        && alivePlayers == m_room.getAlivePlayers();
+    if (m_publicBoardValid) {
+        m_publicBoard = board;
+        m_publicBoardGeneration = generation;
+        m_publicBoardDefinitions = definitions;
+        m_publicBoardPlayers = players;
+        m_publicBoardAlivePlayers = alivePlayers;
+    }
+    if (probe) qInfo() << "[AI_WV] public_board build revision=" << revision
+                       << "event=" << eventSequence << "ms=" << timer.elapsed()
+                       << "reusable=" << m_publicBoardValid;
+    return board;
 }
 
 AiDecisionCoordinator::PublicBoard AiDecisionCoordinator::buildPublicBoard() const
@@ -820,7 +845,8 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
         }
     }
     const auto distancePlayers = m_room.getAlivePlayers();
-    const auto distanceSkills = Sanguosha->getDistanceSkills();
+    const auto distanceSkills = !eventOnly && !compactPolicy
+        ? Sanguosha->getDistanceSkills() : QList<const DistanceSkill *>();
     const quint64 distanceRevision = m_room.roomRuntime()->stateRevision();
     const quint64 skillGeneration = SkillSet::generation();
     if (eventOnly) {
@@ -884,7 +910,7 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
     world.modeId = m_room.getMode();
     world.revision = m_room.roomRuntime()->stateRevision();
     if (!viewer || viewer->getRoom() != &m_room) return world;
-    return projectWorldView(buildPublicBoard(), viewer, compactPolicy, eventOnly);
+    return projectWorldView(publicBoard(), viewer, compactPolicy, eventOnly);
 }
 
 AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
@@ -907,7 +933,11 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     // isolated snapshot or allow an isolated Lua handler to override that AI.
     if (!Config.EnableAI)
         return request;
-    request.worldView = buildWorldView(player, true);
+    // Trigger ordering offers skill names, not card/target actions. Use the
+    // existing event snapshot contract: public/private facts and mode policy,
+    // without eagerly evaluating every viewer distance or copying card history.
+    // Unsupported isolated callbacks still fall back through runAnswer.
+    request.worldView = buildWorldView(player, true, kind == AIRequest::TriggerOrder);
     if (player && (kind == AIRequest::Activate || kind == AIRequest::UseCard
                    || kind == AIRequest::RespondCard)) {
         EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
