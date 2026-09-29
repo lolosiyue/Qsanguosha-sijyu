@@ -54,6 +54,16 @@ static void olFirstTriggerInstance(TriggerList &result, ServerPlayer *owner, con
 		break;
 	}
 }
+
+// Legacy single-prompt limited skills: offer only the first usable quota instance per owner.
+static TriggerList olFirstUsableTriggerInstance(const TriggerSkillV2 *skill, const TriggerList &candidates,
+	ServerPlayer *invoker, TriggerEvent event)
+{
+	TriggerList result = olUsableTriggerInstances(skill, candidates, invoker, event);
+	for (auto it = result.begin(); it != result.end(); ++it)
+		while (it.value().length() > 1) it.value().removeLast();
+	return result;
+}
 TunanCard::TunanCard()
 {
 	setSkillName("tunan");
@@ -2092,27 +2102,69 @@ public:
 	}
 };
 
-class Luanfeng : public TriggerSkill
+class Luanfeng : public TriggerSkillV2
 {
 public:
-	Luanfeng() : TriggerSkill("luanfeng")
+	Luanfeng() : TriggerSkillV2("luanfeng")
 	{
-		events << Dying;
+		events << EventSkillInvoking << Dying;
 		frequency = Limited;
 		limit_mark = "@luanfengMark";
 	}
 
+	LimitScope getLimitScope() const override { return Limit_Game; }
 
-	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &data) const
+	bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
 	{
-		if (player->getMark("@luanfengMark") <= 0) return false;
-		DyingStruct dying = data.value<DyingStruct>();
-		if (dying.who->getMaxHp() < player->getMaxHp()) return false;
-		if (!player->askForSkillInvoke(this, dying.who)) return false;
+		if (event != EventSkillInvoking) return false;
+		const SkillContext accepted = data.value<SkillContext>();
+		// Bypassed payment still consumes only the exact accepted activation's quota.
+		if (accepted.bypass_cost && accepted.skill_name == objectName()
+			&& accepted.activationRef.isValid() && accepted.activationRef.key.skillName == objectName())
+			addUsage(accepted);
+		return true;
+	}
 
+	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+	{
+		if (event == EventSkillInvoking) return TriggerList();
+		TriggerList result;
+		const DyingStruct dying = data.value<DyingStruct>();
+		// Dying visits each observer; the legacy mark and max-HP gates stay per owner.
+		if (player && player->isAlive() && player->hasSkill(objectName()) && player->getMark("@luanfengMark") > 0
+			&& dying.who && dying.who->getMaxHp() >= player->getMaxHp()) result[player] << objectName();
+		return olFirstUsableTriggerInstance(this, result, player, event);
+	}
+
+	bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+	{
+		// Commit before invocation/effect hooks can cancel or recursively invoke this source.
+		if (!isUsable(ctx)) return false;
+		addUsage(ctx);
+		return true;
+	}
+
+	bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+	{
+		if (!ctx.owner || !ctx.original_data || !isUsable(ctx)) return false;
+		const DyingStruct dying = ctx.original_data->value<DyingStruct>();
+		return dying.who && ctx.owner->askForSkillInvoke(this, dying.who);
+	}
+
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		ServerPlayer *player = ctx.owner;
+		DyingStruct dying = ctx.original_data->value<DyingStruct>();
+		int remaining = 0;
+		for (int id : player->getSkillInstanceIds(objectName())) {
+			SkillContext copy = ctx;
+			copy.activationRef = SkillInstanceRef(player->objectName(), SkillInstanceKey(objectName(), id));
+			copy.instanceID = id;
+			if (isUsable(copy)) ++remaining;
+		}
 		room->broadcastSkillInvoke(objectName());
 		room->doSuperLightbox(player, "luanfeng");
-		room->removePlayerMark(player, "@luanfengMark");
+		room->setPlayerMark(player, limit_mark, remaining);
 
 		int recover = qMin(3, dying.who->getMaxHp()) - dying.who->getHp();
 		room->recover(dying.who, RecoverStruct(player, nullptr, recover, "luanfeng"));
@@ -4187,22 +4239,27 @@ public:
 	}
 };
 
-class LinglongTrigger : public TriggerSkill
+class LinglongTrigger : public TriggerSkillV2
 {
 public:
-	LinglongTrigger() : TriggerSkill("#linglong")
+	LinglongTrigger() : TriggerSkillV2("#linglong")
 	{
 		events << GameStart << EventAcquireSkill << EventLoseSkill << CardsMoveOneTime << InvokeSkill;
 		frequency = Compulsory;
 	}
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	// The qicai grant and linglong_qicai mark are owner state; settle once per event, not per instance.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
+		if (!player || !player->isAlive() || !player->hasSkill(objectName())) return true;
 		if (event == EventLoseSkill && data.value<SkillChangeStruct>().skillName == "linglong"){
 			player->removeMark("linglong_qicai");
 			room->detachSkillFromPlayer(player, "qicai", false, true);
 		} else if (event == InvokeSkill && player->hasSkill("linglong")){
-			if (data.toString() != "eight_diagram" || player->getArmor()) return false;
+			if (data.toString() != "eight_diagram" || player->getArmor()) return true;
 			room->sendCompulsoryTriggerLog(player, "linglong", true, true);
 		}else{
 			if (player->getTreasure()){
@@ -4218,7 +4275,7 @@ public:
 				}
 			}
 		}
-		return false;
+		return true;
 	}
 };
 
@@ -4652,35 +4709,77 @@ public:
 	}
 };
 
-class Suiren : public PhaseChangeSkill
+class Suiren : public TriggerSkillV2
 {
 public:
-	Suiren() : PhaseChangeSkill("suiren")
+	Suiren() : TriggerSkillV2("suiren")
 	{
+		events << EventSkillInvoking << EventPhaseStart;
 		frequency = Limited;
 		limit_mark = "@suiren";
 	}
 
-	bool triggerable(const ServerPlayer*target) const
+	LimitScope getLimitScope() const override { return Limit_Game; }
+
+	bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
 	{
-		return TriggerSkill::triggerable(target) && target->getPhase() == Player::Start && target->getMark("@suiren") > 0;
+		if (event != EventSkillInvoking) return false;
+		const SkillContext accepted = data.value<SkillContext>();
+		// Bypassed payment still consumes only the exact accepted activation's quota.
+		if (accepted.bypass_cost && accepted.skill_name == objectName()
+			&& accepted.activationRef.isValid() && accepted.activationRef.key.skillName == objectName())
+			addUsage(accepted);
+		return true;
 	}
 
-	bool onPhaseChange(ServerPlayer*target, Room*room) const
+	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
 	{
-		ServerPlayer*p = room->askForPlayerChosen(target, room->getAlivePlayers(), objectName(), "@suiren-draw", true, true);
-		if (p == nullptr)
-			return false;
+		if (event == EventSkillInvoking) return TriggerList();
+		TriggerList result;
+		if (player && player->isAlive() && player->getPhase() == Player::Start && player->getMark("@suiren") > 0
+			&& player->hasSkill(objectName())) result[player] << objectName();
+		return olFirstUsableTriggerInstance(this, result, player, event);
+	}
 
+	bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+	{
+		// Commit before invocation/effect hooks can cancel or recursively invoke this source.
+		if (!isUsable(ctx)) return false;
+		addUsage(ctx);
+		return true;
+	}
+
+	bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		if (!ctx.owner || !isUsable(ctx)) return false;
+		ServerPlayer *p = room->askForPlayerChosen(ctx.owner, room->getAlivePlayers(), objectName(), "@suiren-draw", true, true);
+		if (!p) return false;
+		// Legacy had no target event for the drawer; carry the choice without entering ctx.targets.
+		ctx.extra_data = QVariant::fromValue(p);
+		return true;
+	}
+
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		ServerPlayer *target = ctx.owner;
+		ServerPlayer *p = ctx.extra_data.value<ServerPlayer *>();
+		int remaining = 0;
+		for (int id : target->getSkillInstanceIds(objectName())) {
+			SkillContext copy = ctx;
+			copy.activationRef = SkillInstanceRef(target->objectName(), SkillInstanceKey(objectName(), id));
+			copy.instanceID = id;
+			if (isUsable(copy)) ++remaining;
+		}
 		room->broadcastSkillInvoke(objectName());
 		room->doSuperLightbox(target, "suiren");
-		room->setPlayerMark(target, "@suiren", 0);
-		
+		room->setPlayerMark(target, limit_mark, remaining);
+
 		room->handleAcquireDetachSkills(target, "-yicong");
 		int maxhp = target->getMaxHp() + 1;
 		room->setPlayerProperty(target, "maxhp", maxhp);
 		room->recover(target, RecoverStruct(objectName(), target));
 
+		if (!p) return false;
 		room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, target->objectName(), p->objectName());
 		p->drawCards(3, objectName());
 
@@ -4887,41 +4986,46 @@ public:
 	}
 };
 
-class Gushe : public TriggerSkill
+class Gushe : public TriggerSkillV2
 {
 public:
-	Gushe() : TriggerSkill("gushe")
+	Gushe() : TriggerSkillV2("gushe")
 	{
 		events << MarkChanged;
 		view_as_skill = new GusheVS;
 	}
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 
-	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &data) const
+	// Death by &raoshe is owner state; settle once per mark change, not per instance.
+	bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
+		if (!player || !player->isAlive() || !player->hasSkill(objectName())) return true;
 		MarkStruct mark = data.value<MarkStruct>();
 		if (mark.name == "&raoshe" && player->getMark("&raoshe") >= 7)
 			room->killPlayer(player);
-		return false;
+		return true;
 	}
 };
 
-class Jici : public TriggerSkill
+class Jici : public TriggerSkillV2
 {
 public:
-	Jici() : TriggerSkill("jici")
+	Jici() : TriggerSkillV2("jici")
 	{
 		events << PindianVerifying;
 	}
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target != nullptr;
-	}
-
-	bool trigger(TriggerEvent, Room*room, ServerPlayer*, QVariant &data) const
+	// Legacy walks both pindian players in action order once per verification;
+	// keeping the loop here settles each jici owner once instead of once per instance.
+	bool recordEvent(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const override
 	{
 		PindianStruct*pindian = data.value<PindianStruct*>();
-		if (pindian->reason != "gushe") return false;
+		if (!pindian || pindian->reason != "gushe") return true;
 
 		QList<ServerPlayer*> pindian_players;
 		pindian_players << pindian->from << pindian->to;
@@ -4966,7 +5070,7 @@ public:
 				}
 			}
 		}
-		return false;
+		return true;
 	}
 };
 
@@ -5408,22 +5512,35 @@ private:
 	}
 };
 
-class Diaoling : public PhaseChangeSkill
+class Diaoling : public TriggerSkillV2
 {
 public:
-	Diaoling() : PhaseChangeSkill("diaoling")
+	Diaoling() : TriggerSkillV2("diaoling")
 	{
+		events << EventPhaseStart;
 		frequency = Wake;
 	}
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
 
-	bool triggerable(const ServerPlayer*player) const
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
 	{
-		return player && player->isAlive()&&player->getPhase() == Player::RoundStart
-		&& player->getMark(objectName())<1 && player->hasSkill(objectName());
+		TriggerList result;
+		if (player && player->isAlive() && player->getPhase() == Player::RoundStart
+			&& player->getMark(objectName()) < 1 && player->hasSkill(objectName()))
+			olFirstTriggerInstance(result, player, this);
+		return result;
 	}
 
-	bool onPhaseChange(ServerPlayer*player, Room*room) const
+	bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
 	{
+		ServerPlayer *player = ctx.owner;
+		return player->getMark("&mubing") + player->getMark("mubing_num") >= 6 || player->canWake(objectName());
+	}
+
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		ServerPlayer *player = ctx.owner;
 		int mark = player->getMark("&mubing") + player->getMark("mubing_num");
 		if (mark >= 6){
 			LogMessage log;
@@ -5432,8 +5549,7 @@ public:
 			log.arg = "mubing";
 			log.arg2 = QString::number(mark);
 			room->sendLog(log);
-		}else if(!player->canWake(objectName()))
-			return false;
+		}
 		room->broadcastSkillInvoke(objectName());
 		room->notifySkillInvoked(player, objectName());
 		room->doSuperLightbox(player, objectName());
@@ -5461,20 +5577,25 @@ public:
 	}
 };
 
-class DiaolingRecord : public TriggerSkill
+class DiaolingRecord : public TriggerSkillV2
 {
 public:
-	DiaolingRecord() : TriggerSkill("#diaoling-record")
+	DiaolingRecord() : TriggerSkillV2("#diaoling-record")
 	{
 		events << CardsMoveOneTime;
         global = true;
 	}
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
 
-	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &data) const
+	// Global counter: settle once per move, without requiring the mover to hold any instance.
+	bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
+		if (!player) return true;
 		CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-		if (move.reason.m_skillName!="mubing"||move.to!=player) return false;
-		if (move.to_place!=Player::PlaceHand) return false;
+		if (move.reason.m_skillName!="mubing"||move.to!=player) return true;
+		if (move.to_place!=Player::PlaceHand) return true;
 		int n = 0;
 		foreach(int id, move.card_ids){
 			const Card*c = Sanguosha->getCard(id);
@@ -5485,12 +5606,12 @@ public:
 			else if (c->isKindOf("TrickCard") && c->isDamageCard())
 				n++;
 		}
-		if (n <= 0) return false;
+		if (n <= 0) return true;
 		if (player->getMark("diaoling")<1&&player->hasSkill("diaoling", true))
 			room->addPlayerMark(player, "&mubing", n);
 		else
 			player->addMark("mubing_num", n);
-		return false;
+		return true;
 	}
 };
 
