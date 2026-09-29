@@ -5509,7 +5509,10 @@ public:
     bool recordEvent(TriggerEvent, Room *room, ServerPlayer *, QVariant &) const override
     {
         foreach (ServerPlayer *p, room->getAllPlayers(true)) {
-            const QVariantList grants = ({ QVariant _tag_take = p->getTag("MTZhuizunGrants"); p->removeTag("MTZhuizunGrants"); _tag_take; }).toList();
+            const QVariant grantReceipts = p->getTag("MTZhuizunGrants");
+            // Consume the grants before detaching skills can trigger further events.
+            p->removeTag("MTZhuizunGrants");
+            const QVariantList grants = grantReceipts.toList();
             foreach (const QVariant &value, grants) {
                 const QVariantMap grant = value.toMap();
                 if (grant.value("instance").toInt() > 0)

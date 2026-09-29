@@ -81,8 +81,6 @@ class SidiCard : public SkillCard
 
 public:
     Q_INVOKABLE SidiCard();
-
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 class PindiCard : public SkillCard

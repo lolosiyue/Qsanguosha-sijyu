@@ -666,94 +666,205 @@ public:
     }
 };
 
-class KoujingTargetMod : public TargetModSkill
+class KoujingTargetMod : public TargetModSkillV2
 {
 public:
-    KoujingTargetMod() : TargetModSkill("#koujing-target")
+    KoujingTargetMod() : TargetModSkillV2("#koujing-target", "Slash")
     {
+        setHolderSelector(CorrectSkill_System);
+        setBaseAmount(1000);
         frequency = NotFrequent;
     }
 
-    int getResidueNum(const Player *from, const Card *card, const Player *) const
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        if (card->getSkillName() == "koujing")
-            return 1000;
-		if(card->isKindOf("Slash")&&from->getMark("diezhang")<1&&from->hasSkill("diezhang"))
-			return 1;
-        return 0;
+        if (ctx.modType != TargetModSkill::Residue || !ctx.primary || !ctx.card)
+            return CorrectSkillResult::noEffect();
+        if (ctx.card->getSkillName() == "koujing")
+            return CorrectSkillResult::useAmount(ctx.currentAmount);
+        return ctx.primary->getMark("diezhang") < 1 && ctx.primary->hasSkill("diezhang")
+            ? CorrectSkillResult::useAmount(1) : CorrectSkillResult::noEffect();
     }
 };
 
-class Diezhang : public TriggerSkill
+class Diezhang : public TriggerSkillV2
 {
 public:
-    Diezhang() : TriggerSkill("diezhang")
+    Diezhang() : TriggerSkillV2("diezhang")
     {
-        events << CardOffset;
+        events << CardOffset << EventSkillInvoking;
 		change_skill = true;
+		global = true;
     }
 
-    bool triggerable(const ServerPlayer *target) const
+    struct Branch
     {
-        return target && target->isAlive();
+        int side = 0;
+        int amount = 0;
+        ServerPlayer *target = nullptr;
+        QString turnId;
+    };
+
+    Branch branch(const SkillContext &ctx) const
+    {
+        Branch result;
+        if (!ctx.owner || !ctx.original_data) return result;
+        const CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
+        if (!effect.offset_card) return result;
+        Room *room = ctx.owner->getRoom();
+        const CardUseStruct use = room->getUseStruct(effect.offset_card);
+        ServerPlayer *eventPlayer = ctx.invoker;
+        auto *cardUser = use.from;
+        if (!eventPlayer || !eventPlayer->isAlive() || !cardUser || !cardUser->isAlive()
+            || !eventPlayer->hasTurn()) return result;
+
+        const QString turnId = room->historyScopes().value("turn_id").toString();
+        const int instanceId = ctx.activationRef.key.instanceID;
+        const QVariant storedState = ctx.owner->getSkillInstanceStateValue(
+            objectName(), instanceId, "diezhang_state");
+        // A new physical skill instance starts in stance 1. The visible change-skill state is shared
+        // presentation state, so it must not initialize a later instance from another copy's use.
+        const int stance = storedState.isValid() ? storedState.toInt() : 1;
+        const bool awakened = ctx.owner->getMark("diezhang") > 0;
+        const QVariantMap quotaTurns = ctx.owner->getSkillInstanceStateValue(
+            objectName(), instanceId, "quota_turns").toMap();
+        const bool quotaAvailable = !turnId.isEmpty() && turnId != "0" && !quotaTurns.contains(turnId);
+
+        if (ctx.owner == eventPlayer) {
+            result.target = cardUser;
+            if (!awakened && stance == 1) { result.side = 1; result.amount = 1; }
+            else if (awakened && stance == 2 && quotaAvailable) { result.side = 1; result.amount = 2; result.turnId = turnId; }
+        } else if (ctx.owner == cardUser) {
+            result.target = eventPlayer;
+            if (!awakened && stance == 2) { result.side = 2; result.amount = 1; }
+            else if (awakened && stance == 1 && quotaAvailable) { result.side = 2; result.amount = 2; result.turnId = turnId; }
+        }
+        return result;
     }
 
-    void diezhangEffect(ServerPlayer *player, ServerPlayer *to, int n, int x) const
+    LimitScope getLimitScope() const override { return Limit_Custom; }
+
+    bool checkCustomUsage(const SkillContext &ctx) const override
     {
-        Room *room = player->getRoom();
-		if(n==1){
-			if(player->canDiscard(player,"he")
-			&&room->askForCard(player,"..","diezhang0:1:"+to->objectName(),QVariant(),objectName()+"%-1")){
-				if(x==1) room->setChangeSkillState(player, objectName(), 2);
-				else player->addMark("diezhangUse-Clear");
-				Card*dc = Sanguosha->cloneCard("slash");
-				dc->setSkillName("_diezhang");
-				for (int i = 0; i < x; i++) {
-					if(player->canSlash(to,dc,false))
-						room->useCard(CardUseStruct(dc,player,to));
-				}
-				dc->deleteLater();
-			}
-		}else{
-			if(player->askForSkillInvoke(this,to)){
-				if(x==1) room->setChangeSkillState(player, objectName(), 2);
-				else player->addMark("diezhangUse-Clear");
-				player->peiyin(this);
-				player->drawCards(x,objectName());
-				Card*dc = Sanguosha->cloneCard("slash");
-				dc->setSkillName("_diezhang");
-				if(player->canSlash(to,dc,false))
-					room->useCard(CardUseStruct(dc,player,to));
-				dc->deleteLater();
-			}
-		}
+        const Branch current = branch(ctx);
+        return current.side != 0 && (current.amount != 2 || !current.turnId.isEmpty());
     }
 
-    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+    bool commitAccepted(SkillContext &ctx) const
     {
-        if (event == CardOffset) {
-            CardEffectStruct effect = data.value<CardEffectStruct>();
-            CardUseStruct use = room->getUseStruct(effect.offset_card);
-            if (use.from!=player&&use.from->isAlive()&&player->hasTurn()){
-				if(player->hasSkill(objectName())){
-					if(player->getMark("diezhang")<1){
-						if(player->getChangeSkillState(objectName()) == 1)
-							diezhangEffect(player,use.from,1,1);
-					}else if(player->getMark("diezhangUse-Clear")<1){
-						if(player->getChangeSkillState(objectName()) == 2)
-							diezhangEffect(player,use.from,1,2);
-					}
-				}
-				if(use.from->hasSkill(objectName())){
-					if(use.from->getMark("diezhang")<1){
-						if(use.from->getChangeSkillState(objectName()) == 2)
-							diezhangEffect(use.from,player,2,1);
-					}else if(use.from->getMark("diezhangUse-Clear")<1){
-						if(use.from->getChangeSkillState(objectName()) == 1)
-							diezhangEffect(use.from,player,2,2);
-					}
-				}
-			}
+        QVariantMap receipt = ctx.extra_data.toMap();
+        if (receipt.value("accepted_committed").toBool()) return true;
+        const Branch current = branch(ctx);
+        if (current.side == 0 || !ctx.owner || !ctx.activationRef.isValid()) return false;
+        if (!receipt.contains("side") || !receipt.contains("amount") || !receipt.contains("turn_id")
+            || receipt.value("side").toInt() != current.side
+            || receipt.value("amount").toInt() != current.amount
+            || receipt.value("turn_id").toString() != current.turnId) return false;
+        if (current.amount == 2) {
+            if (current.turnId.isEmpty()) return false;
+            QVariantMap quotaTurns = ctx.owner->getSkillInstanceStateValue(
+                objectName(), ctx.activationRef.key.instanceID, "quota_turns").toMap();
+            quotaTurns[current.turnId] = true;
+            ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "quota_turns", quotaTurns);
+            receipt["quota_committed"] = true;
+        } else if (current.amount == 1) {
+            ctx.owner->setSkillInstanceStateValue(objectName(), ctx.activationRef.key.instanceID, "diezhang_state", 2);
+            ctx.owner->getRoom()->setChangeSkillState(ctx.owner, objectName(), 2);
+        } else {
+            return false;
+        }
+        receipt["side"] = current.side;
+        receipt["amount"] = current.amount;
+        receipt["turn_id"] = current.turnId;
+        receipt["accepted_committed"] = true;
+        ctx.extra_data = receipt;
+        return true;
+    }
+
+    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
+    {
+        if (event != EventSkillInvoking) return true;
+        SkillContext accepted = data.value<SkillContext>();
+        if (accepted.activationRef.isValid() && accepted.activationRef.key.skillName == objectName()
+            && accepted.bypass_cost
+            && TriggerSkillV2::parseSkillName(accepted.skill_name) == objectName()
+            && !commitAccepted(accepted))
+            accepted.is_canceled = true;
+        data = QVariant::fromValue(accepted);
+        return true;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event != CardOffset) return {};
+        if (!player || !player->isAlive()) return {};
+        const CardEffectStruct effect = data.value<CardEffectStruct>();
+        if (!effect.offset_card) return {};
+        const CardUseStruct use = player->getRoom()->getUseStruct(effect.offset_card);
+        if (!use.from || !use.from->isAlive() || use.from == player || !player->hasTurn()) return {};
+        TriggerList result;
+        if (player->hasSkill(this)) result[player] << objectName();
+        if (use.from->hasSkill(this)) result[use.from] << objectName();
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const Branch current = branch(ctx);
+        if (current.side == 0 || !current.target || !current.target->isAlive()) return false;
+        ctx.targets = {current.target};
+        ctx.extra_data = QVariantMap{{"side", current.side}, {"amount", current.amount},
+            {"turn_id", current.turnId}};
+        if (current.side == 1) {
+            if (!ctx.owner->canDiscard(ctx.owner, "he")) return false;
+            const Card *selected = room->askForCard(ctx.owner, "..", "diezhang0:1:" + current.target->objectName(),
+                QVariant(), Card::MethodNone, nullptr, false, objectName() + "%-1");
+            if (!selected || selected->isVirtualCard() || selected->getEffectiveId() < 0
+                || !ctx.owner->canDiscard(ctx.owner, selected->getEffectiveId())) return false;
+            QVariantMap receipt = ctx.extra_data.toMap();
+            receipt["payment"] = selected->getEffectiveId();
+            ctx.extra_data = receipt;
+            return true;
+        }
+        if (!ctx.owner->askForSkillInvoke(this, current.target)) return false;
+        return true;
+    }
+
+    bool pay(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.activationRef.isValid() || !isUsable(ctx)) return false;
+        const QVariantMap receipt = ctx.extra_data.toMap();
+        int payment = -1;
+        if (receipt.value("side").toInt() == 1) {
+            payment = receipt.value("payment", -1).toInt();
+            if (payment < 0 || !ctx.owner->canDiscard(ctx.owner, payment)
+                || room->getCardOwner(payment) != ctx.owner
+                || (room->getCardPlace(payment) != Player::PlaceHand && room->getCardPlace(payment) != Player::PlaceEquip)) return false;
+        }
+        if (!commitAccepted(ctx)) return false;
+        if (payment >= 0) room->throwCard(payment, objectName(), ctx.owner, ctx.owner);
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!ctx.owner || !target || !target->isAlive()) return false;
+        const QVariantMap receipt = ctx.extra_data.toMap();
+        const int amount = getEffectiveAmount(ctx) * receipt.value("amount").toInt();
+        if (receipt.value("side").toInt() == 2 && amount > 0) {
+            ctx.owner->peiyin(this);
+            ctx.owner->drawCards(amount, objectName());
+        }
+        if (!ctx.owner->isAlive() || !target->isAlive()) return false;
+        const int repeats = receipt.value("side").toInt() == 1 ? amount : 1;
+        for (int i = 0; i < repeats && ctx.owner->isAlive() && target->isAlive(); ++i) {
+            Card *slash = Sanguosha->cloneCard("slash");
+            if (!slash) break;
+            slash->setSkillName("_diezhang");
+            CardUseStruct use(slash, ctx.owner, target);
+            use.setOwnedCard(slash);
+            if (!ctx.owner->canSlash(target, slash, false)) continue;
+            room->useCardFromSkillEffect(use, ctx, true);
         }
         return false;
     }
