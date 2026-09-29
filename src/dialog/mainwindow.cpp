@@ -1117,10 +1117,49 @@ void MainWindow::restoreAndroidOfflineMarker()
 }
 #endif
 
+// WSLg 會把這扇 X 視窗停在 (-32768,-32768)。標題列仍能按，客戶區的點擊進不了視窗。
+static QRect placedOnScreen(QSize size, QPoint pos)
+{
+	if (QScreen *screen = QGuiApplication::primaryScreen()) {
+		const QRect avail = screen->availableGeometry();
+		if (avail.isValid() && !avail.isEmpty()) {
+			size = size.expandedTo(QSize(640, 480)).boundedTo(avail.size());
+			const int maxX = qMax(avail.left(), avail.right() - size.width() + 1);
+			const int maxY = qMax(avail.top(), avail.bottom() - size.height() + 1);
+			pos.setX(qBound(avail.left(), pos.x(), maxX));
+			pos.setY(qBound(avail.top(), pos.y(), maxY));
+		}
+	}
+	return QRect(pos, size);
+}
+
+static void bringClientAreaOnScreen(QWidget *window)
+{
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+	static int corrections = 0;
+	if (!window || corrections >= 3)
+		return;
+	const QPoint topLeft = window->frameGeometry().topLeft();
+	if (topLeft.x() > -16000 && topLeft.y() > -16000)
+		return;
+	QScreen *screen = QGuiApplication::primaryScreen();
+	if (!screen)
+		return;
+	const QRect avail = screen->availableGeometry();
+	++corrections;
+	window->move(avail.left() + 48, avail.top() + 48);
+#else
+	Q_UNUSED(window);
+#endif
+}
+
 void MainWindow::restoreFromConfig()
 {
-	resize(Config.value("WindowSize", QSize(1366, 706)).toSize());
-	move(Config.value("WindowPosition", QPoint(-8, -8)).toPoint());
+	const QRect placed = placedOnScreen(
+		Config.value("WindowSize", QSize(1366, 706)).toSize(),
+		Config.value("WindowPosition", QPoint(0, 0)).toPoint());
+	resize(placed.size());
+	move(placed.topLeft());
 	Qt::WindowStates window_state = (Qt::WindowStates)Config.value("WindowState").toInt();
 	if (window_state != Qt::WindowMinimized)
 		setWindowState(window_state);
@@ -1184,8 +1223,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
 	// __gc 終結器經 SWIG 回調 C++ 物件)出的崩潰不再上報 —— 玩家已主動退出。
 	CrashHandler::beginShutdown();
 
-	Config.setValue("WindowSize", size());
-	Config.setValue("WindowPosition", pos());
+	const QRect placed = placedOnScreen(size(), pos());
+	Config.setValue("WindowSize", placed.size());
+	Config.setValue("WindowPosition", placed.topLeft());
 	Config.setValue("WindowState", (int)windowState());
 
 	QMainWindow::closeEvent(event);
@@ -1215,6 +1255,14 @@ static void reportWindowState(QWidget *w)
 		(const wchar_t *)name.utf16());
 }
 
+void MainWindow::showEvent(QShowEvent *event)
+{
+	QMainWindow::showEvent(event);
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+	QTimer::singleShot(0, this, [this]() { bringClientAreaOnScreen(this); });
+#endif
+}
+
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
 	QMainWindow::resizeEvent(event);
@@ -1228,6 +1276,7 @@ void MainWindow::moveEvent(QMoveEvent *event)
 {
 	QMainWindow::moveEvent(event);
 	reportWindowState(this);
+	bringClientAreaOnScreen(this);
 }
 
 MainWindow::~MainWindow()
