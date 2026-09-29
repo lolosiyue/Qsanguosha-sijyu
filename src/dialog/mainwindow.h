@@ -105,6 +105,7 @@ signals:
 
 protected:
     virtual void closeEvent(QCloseEvent *);
+    void showEvent(QShowEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void moveEvent(QMoveEvent *event) override;
 #ifdef Q_OS_ANDROID
