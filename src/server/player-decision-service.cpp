@@ -1549,7 +1549,9 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 		responseCtx.activationRef = resp.activationRef;
 		responseCtx.initiator = player;
 		responseCtx.invoker = player;
-		responseCtx.owner = skillCard ? skillCard->getSkillOwner() : player;
+		responseCtx.owner = skillCard ? skillCard->getSkillOwner() : nullptr;
+		if (!responseCtx.owner && resp.sourceRef.isValid())
+			responseCtx.owner = m_room.findPlayerByObjectName(resp.sourceRef.ownerObjectName);
 		if (!responseCtx.owner) responseCtx.owner = player;
         responseCtx.instanceID = resp.activationRef.isValid() ? resp.activationRef.key.instanceID
             : (skillCard ? skillCard->getSkillInstanceId() : 0);
