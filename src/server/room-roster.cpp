@@ -53,7 +53,11 @@ QList<ServerPlayer *> RoomRoster::orderedFrom(ServerPlayer *current, bool includ
     if (index < 0)
         return m_players;
 
+    if (includeDead && m_orderedCurrent == current && m_orderedSource == m_players)
+        return m_orderedPlayers;
+
     QList<ServerPlayer *> orderedPlayers;
+    orderedPlayers.reserve(m_players.size());
     for (int i = index; i < m_players.length(); ++i) {
         if (includeDead || m_players[i]->isAlive())
             orderedPlayers << m_players[i];
@@ -61,6 +65,11 @@ QList<ServerPlayer *> RoomRoster::orderedFrom(ServerPlayer *current, bool includ
     for (int i = 0; i < index; ++i) {
         if (includeDead || m_players[i]->isAlive())
             orderedPlayers << m_players[i];
+    }
+    if (includeDead) {
+        m_orderedSource = m_players;
+        m_orderedCurrent = current;
+        m_orderedPlayers = orderedPlayers;
     }
     return orderedPlayers;
 }
