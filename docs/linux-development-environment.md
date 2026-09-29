@@ -33,14 +33,13 @@ Linux .deb packaging（M3.1；deferred，見 linux-packaging.md）
 直版（portrait）UI
 ```
 
-> 2026-09-12 更新：Android 原生執行期已落地（`a3d2e30`；見 [`android-build.md`](android-build.md)／[`android-first-release.md`](android-first-release.md)）；WASM 已有 Web client 與 solo 離線包建置入口（`QSAN_BUILD_WASM_WEB_CLIENT`／`QSAN_BUILD_WASM_SOLO`；見 [`web-client-wasm-runtime.md`](web-client-wasm-runtime.md)／[`browser-solo.md`](browser-solo.md)）。兩者不再列為未完成。
+> Android 原生執行期與 Web／solo 的 WASM 建置入口均已落地，見 [`android-build.md`](android-build.md)／[`android-extension-runtime.md`](android-extension-runtime.md) 與 [`web-client-wasm-runtime.md`](web-client-wasm-runtime.md)／[`browser-solo.md`](browser-solo.md)；兩者不在未完成清單。
 
 > ⚠️ `--local-response-ui-capabilities` 在建立 `QApplication` 之前就直接回傳 JSON，所以它是
 > **binary capability smoke**，不是 GUI／offscreen startup smoke。真正的 `QApplication`／
 > `MainWindow`／`HomeScene` 啟動驗證是 M1 的 `--ui-startup-smoke`（見 [§4.5](#45-linux-gui-m1-startup-smoke)）。
 
 - Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete；Linux GUI M2（network game）Complete；Linux GUI M2B-A（multimedia）Complete；Linux GUI M2B-B（effects profiles）Complete
-- Last Updated: 2026-09-12
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 的 🛠️ Development Environment section。
 
 ## 1. 平台基線
@@ -927,17 +926,6 @@ echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
 echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
 ```
 
-| 項目 | 2026-08-28 於 WSLg 實測 |
-|---|---|
-| `DISPLAY` | `:0` |
-| `WAYLAND_DISPLAY` | `wayland-0` |
-| `XDG_RUNTIME_DIR` | `/run/user/1000` |
-| Qt platform plugin | `xcb` |
-| Qt 版本 | 6.11.1 |
-| Renderer | 預設（OpenGL）與 `QT_QUICK_BACKEND=software` 都通過 |
-| `--ui-startup-smoke` | PASS，exit code 0，6 個 stage 全部 `ok:true` |
-| 可見啟動 `./debug/QSanguosha` | PASS，能開啟主視窗，`Home QML status: QQuickWidget::Ready` |
-
 > `qsanguosha_engine` 是 STATIC library，用 [`$<LINK_LIBRARY:WHOLE_ARCHIVE,...>`](../CMakeLists.txt) 在 `qsanguosha_server` 引入 source，只 link `Qt6::Core` 與 `Qt6::Network`。CMake 有 allowlist gate，link 了其他 Qt target（例如 Widgets）會立刻 `FATAL_ERROR`。
 
 ## 5. Lua / SWIG
@@ -1194,7 +1182,7 @@ QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
 
 ### 9.2 Linux GUI 驗證政策
 
-`linux-gui-ci.yml` 已於 2026-08-30 移除；一般 GUI source 改動沒有獨立 Linux GUI
+`linux-gui-ci.yml` 已移除；一般 GUI source 改動沒有獨立 Linux GUI
 compile gate。本機驗證沿用 [§4.5](#45-linux-gui-m1-startup-smoke)、
 [§4.7](#47-linux-gui-m2b-a-multimedia-smoke) 與
 [§4.8](#48-linux-gui-m2b-b-effects-smoke) 的指令。
@@ -1205,7 +1193,7 @@ M1 startup、M2B-A multimedia 與 M2B-B full／reduced／none。這個 workflow 
 packaging 路徑、相關 PR、`push main`、tag 或手動 dispatch 觸發，不是一般 GUI
 compile CI。
 
-> **M2 的 network game job 已經由 CI 移除（2026-08-28）。** runner 沒有美術／音訊
+> **M2 的 network game job 已經由 CI 移除。** runner 沒有美術／音訊
 > 資產，在無資產環境下 client 與 server 打完一局之後會一起 SIGSEGV；同一個
 > binary 在資產齊全的本機是 8/8 PASS。Windows 環境同樣有這個問題，headless mode
 > 閃退本身也是遊戲中已有現象。所以 `gui_network_smoke.py` 改為**本機 gate**，

@@ -1,8 +1,8 @@
 # Excel bridge IPC v1
 
 Implementation contract for the worksheet/VBA frontend. This document describes
-the new local adapter, not a replacement for Protocol V2. Product acceptance is
-pending until the separate gates in `excel-client.md` pass.
+the new local adapter, not a replacement for Protocol V2. Packaging inputs and the
+supported hosts are listed in [`excel-packaging.md`](excel-packaging.md).
 
 ## Ownership and framing
 

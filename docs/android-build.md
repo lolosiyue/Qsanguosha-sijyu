@@ -1,12 +1,12 @@
 # Android APK 建置、更新與驗收
 
 本機日常使用原生 `x86_64` APK 與既有 API 33 模擬器；`arm64-v8a` 留作實機／發行建置參考。
-日常驗收入口見 [Android 簡化驗收](android-acceptance.md)：覆蓋安裝、日誌／截圖收集、完整局與正常退出分開判定。
+本機日常驗收以覆蓋安裝、`adb logcat`／截圖收集，以及完整局與正常退出分開判定為準。
 首次外部聲畫 ZIP／Storage Access Framework（SAF）匯入流程保留於本文後半，日常更新不需重做。
 
 **版本固定規則：Android 不再雜湊資源、不逐檔掃描聲畫，也不因圖片缺檔擋住開局。**
 已安裝媒體在 APK 更新後繼續沿用；新增圖片不觸發全包重匯。
-詳細契約見 [Android 版本固定規則](android-first-release.md#android-版本固定規則2026-09-16)。
+版本固定規則的執行期行為見 [Android 擴展執行期](android-extension-runtime.md)。
 
 <a id="android-daily-environment"></a>
 ## 本機唯一日常環境
@@ -36,7 +36,7 @@
 2. 完成授權檢查點後，在同一 cache 增量建置一次；不用 `--fresh`、`--clean-first`。
 3. 重用 `emulator-5586`；未啟動只啟動 `Responsive_API_33`，不用 `-wipe-data`、新 AVD 或新媒體副本。
 4. 正常關閉 App，再以驗收助手 `run --install` 執行 `install --no-streaming -r` 與 `sync`；簽章不符就停止，不能卸載或清除資料。
-5. 選擇 [首頁短驗收／05p 完整局](android-acceptance.md)，各自收集證據。驗收工具不建置、不修改模式設定、不自動判定 GAME_OVER。
+5. 分別記錄首頁短驗收與 05p 完整局的證據。驗收工具不建置、不修改模式設定、不自動判定 GAME_OVER。
 
 固定建置命令（已有建置授權及完成檢查點時）：
 
@@ -89,27 +89,24 @@ try {
 | 使用者確實要更新媒體 | 更新媒體；APK 新增圖片不自動觸發重匯，也不因圖片缺檔擋局 |
 | 資料被清除、媒體損壞、升級衝突 | 保存錯誤並判斷原因；不自動清除資料或重匯整包 |
 
-**已觀察到的耗時原因**：2026-09-16 首次 ZIP 匯入 34,511 個檔案，約 17 分鐘；
-100% 只表示解壓進度，後面仍會建立可用版本。此 AVD 的 SELinux 拒絕硬連結
-（hard link），程式退回逐檔實體複製。新增 APK 基線資源也觸發了第二輪版本複製；
-這不是重新選 ZIP 匯入，但同樣會耗時、占用數 GB；該次啟動內容準備實測 879,382 ms。
-這些是舊 APK 數據。[新資源流程的來源修正](android-extension-runtime.md#2026-09-16-匯入更新效能修正來源檢查點)
-已移除平方次數 ZIP 比對、可 seek 來源的 spool／重複雜湊讀取及媒體版本複製。
-新 APK 已實測建立 3 個媒體目錄引用：快照 28,261 ms，只複製約 33 MB 規則／介面。
-該次舊檢查在 60 秒停止。後續移除資源雜湊與聲畫掃描的 APK 已實測內容準備
-6,924 ms，缺 8 張圖片未擋住連線；對局仍因 AudioTrack 崩潰而未完成。
-首次完整匯入新耗時未重測，不能用啟動秒數代替。
+**已知耗時來源**：首次 ZIP 匯入的 100% 只表示解壓進度，後面仍會建立可用版本。
+此 AVD 的 SELinux 拒絕硬連結（hard link），程式退回逐檔實體複製；新增 APK
+基線資源也觸發第二輪版本複製，同樣會耗時並占用數 GB。[新資源流程的來源修正](android-extension-runtime.md#匯入更新效能修正)
+已移除平方次數 ZIP 比對、可 seek 來源的 spool／重複雜湊讀取及媒體版本複製；
+內容準備只建立媒體目錄引用並複製規則／介面。移除資源雜湊與聲畫掃描後，缺圖片
+不再擋住連線；對局仍會因 AudioTrack 崩潰而未完成。首次完整匯入的新耗時尚未重測，
+不能用啟動秒數代替。
 
 首次匯入期間 Download ZIP、私有 spool、解壓 blob 與 runtime 版本可能同時存在，
 12 GiB 分割區曾接近滿載。日常不要重複保留傳輸副本；匯入完成後清理本輪傳輸檔，
 保留 H 碟原包與 App 私有資料。不要手動刪除 content store 的 baseline／blobs／versions。
 
-此 AVD 是 API 33 x86_64／4 KiB pages；2026-09-20 日常 APK 已改用原生 x86_64。
-本文 2026-09-16 的 arm64 APK／ARM translation 紀錄屬歷史證據，不能混作目前 ABI；兩者均不等同實機或折疊機驗收。
+此 AVD 是 API 33 x86_64／4 KiB pages；日常 APK 使用原生 x86_64。模擬器上的
+ARM translation 執行不能代替 arm64 實機；兩者均不等同實機或折疊機驗收。
 
 ## 固定工具鏈與目錄
 
-### 共用遊戲呈現入口（2026-09-16，尚未裝置驗收）
+### 共用遊戲呈現入口（尚未裝置驗收）
 
 對局右上角「More actions」選單提供「遊戲狀態」與「遊戲操作面板」。兩者沿用
 桌面的 `GameViewState`／`GameActionModel` 與 RoomScene 草稿，不另外實作 QML
@@ -117,7 +114,7 @@ try {
 至少 48 logical-pixel 觸控高度。關閉面板不取消請求，背景及同步未完成時停用操作。
 
 支援與限制見 [共用呈現契約](client-core-interaction-model.md#other-client-adapters)。
-此批 Android build、裝置觸控／外接鍵盤、TalkBack 均 **NOT RUN**；桌面測試結果
+Android 建置、裝置觸控／外接鍵盤與 TalkBack 尚未驗收；桌面測試結果
 不能代替 Android gate。
 
 ### 建置預設值
@@ -235,7 +232,7 @@ Android APK 的 `runtime-content-base.json` 必須由 CMake 產生的 filtered `
 python tools/android/test-runtime-descriptor.py
 ```
 
-此項結果：5 tests passed。這只證明宣告覆蓋、缺檔拒絕、未宣告 extension 拒絕、路徑穿越拒絕及重複套用穩定；APK 建置、ServerHello 實際連線與完整對局仍須另行驗收。
+此腳本涵蓋宣告覆蓋、缺檔拒絕、未宣告 extension 拒絕、路徑穿越拒絕及重複套用穩定；APK 建置、ServerHello 實際連線與完整對局仍須另行驗收。
 
 既有安裝遵守 missing-only，原有同名包宣告不會被新版 APK 靜默覆寫。因此舊測試版的無效宣告不能只靠 `install -r` 修好；需透過整包管理匯入有效宣告，或在隔離測試副本使用明確 `--asset-root`。後者只算診斷部署，不能當作正常升級驗收。
 
@@ -289,7 +286,7 @@ $readelf = Join-Path $env:LOCALAPPDATA 'Android\Sdk\ndk\27.2.12479018\toolchains
 
 逐一檢查 APK 內每個 `.so` 的 ELF Machine 為 AArch64，所有 `LOAD` segment 的 Align 至少為 `0x4000`；只檢查主程式或 ELF header 不足以證明所有依賴符合 16 KB。`apksigner` 需先將上面的 JDK 21 設為該程序的 `JAVA_HOME`。
 
-## Android 暫時靜音（2026-09-16）
+## Android 暫時靜音
 
 Android Debug／Release preset、CMake Android 預設與 `tools/build-android.ps1`
 均選擇既有 `NULL` 音訊後端，暫停音效、武將語音及 BGM。這是使用者同意的暫時
@@ -303,20 +300,19 @@ Qt Multimedia 仍供其他介面／影片功能使用。Windows 與 Linux 的音
 驗收須區分「靜音 APK 建置／啟動／前後景成功」與「音訊缺陷修復」；前者不代表後者，
 也不代表完整對局通過。
 
-同日的 Android 啟動修復檢查點改用 Qt Quick `software` 後端及既有 raster 牌桌
+Android 啟動修復改用 Qt Quick `software` 後端及既有 raster 牌桌
 viewport，避免模擬器上已觀察到的 OpenGL 破圖與前後景 EGL context 失效。
 選擇在第一個 Quick window 建立前完成；Windows／Linux 保持原有 OpenGL 路徑。
 這是相容性繞過，GPU shader 特效與影片顯示可能受限，不能當作完整視覺功能驗收。
 軟體後端限制見 [Qt 官方文件](https://doc.qt.io/qt-6/qtquick-visualcanvas-adaptations-software.html)。
 
-本次靜音＋software Debug APK 已增量建置（exit 0）、覆蓋安裝，確認首頁顯示、
-「關於」對話框與已就緒首頁的前後景恢復（同一 PID，17.8 秒檢查無崩潰）。
-首頁約 49 秒才就緒，第一次自動化 48 秒子預算逾時仍保留為失敗，不外推為啟動效能通過。
-證據位於 `builds/android-silent-20260916/report.md`；完整对局、實機、CI 及 GPU 特效未驗收。
+靜音＋software 的 Debug APK 首頁可顯示，「關於」對話框與已就緒首頁的前後景
+恢復正常；首頁啟動時間偏長，尚未外推為啟動效能通過。
+完整對局、實機、CI 及 GPU 特效未驗收。
 
-## AAudio CFI 音訊橋接：已確認故障機制（2026-09-16）
+## AAudio CFI 音訊橋接：已確認故障機制
 
-由既有兩宗 AudioTrack 崩潰（PID 7606／3856）的二進位 tombstone，
+由既有 AudioTrack 崩潰的二進位 tombstone，
 已取得 callback、Qt guest、ndk_translation helper 及 fault shadow 的必要映射。
 host AAudio 準備呼叫的 x86_64 stub 位於匿名 rwx 區域，內嵌目標分別指向
 Qt Multimedia ARM64 程式碼及 libndk_translation.so；兩份 stub 去除 ASLR
@@ -327,45 +323,27 @@ Qt Multimedia ARM64 程式碼及 libndk_translation.so；兩份 stub 去除 ASLR
 CFI 型別失敗處理。這已確認該映像／ARM 橋接路徑的 CFI 整合失效，
 仍未定位 translator／linker 的具體實作錯誤，也未核實任何已修復版本。
 
-詳細映射、指令、擷取限制及後續驗證方向見
-`builds/android-audio-investigation-20260916/cfi-boundary-confirmed.md`。
-二進位擷取仍有每筆 256 KiB 限制，但上述必要映射完整可見。
-該次未建置、安裝或重新啟用音訊；保留 NULL 隔離。
+二進位擷取仍有每筆 256 KiB 限制，但上述必要映射完整可見。保留 NULL 隔離。
 WAV、音量零、Qt push mode 或單設 QT_MEDIA_BACKEND 都不能保證避開此回呼。
 
-## 開局後主執行緒 0x58：隱藏手牌修正（2026-09-16）
+## 開局後主執行緒 0x58：隱藏手牌修正
 
-`builds/android-complete-game-20260916-0952/` 的 PID 4915 崩潰使用 NULL 音訊與
-software／raster APK。完整 SYSTEM_TOMBSTONE 的記憶體指令，與 APK 同 BuildId
-`d1808843aa1fec0b24370989114ee5b943f8f6ee` 的 native 符號相符：
+NULL 音訊與 software／raster APK 的開局後崩潰，完整 SYSTEM_TOMBSTONE 的記憶體
+指令與 native 符號相符：
 `Player::addCard()` 呼叫空卡牌的 `Card::getId()`，讀取 `this + 0x58`。
 
-該 Android 固定工作樹漏帶主分支 `5097690` 的隱藏手牌修正。開局收到的 `-1`
+該 Android 固定工作樹漏帶主分支的隱藏手牌修正。開局收到的 `-1`
 代表未知牌，只能增加手牌張數，不能放入實體 `Card *` 清單；同一筆手牌移動也
-不能重複計入。更新 APK 前須將該提交的 `src/core/player.cpp`、
+不能重複計入。更新 APK 前須將該修正的 `src/core/player.cpp`、
 `src/client/client.cpp`、`src/client/clientplayer.cpp/.h` 一起對齊到固定 Android
 工作樹，不能只同步 UI／音訊檔案。保留其他工作樹差異，不作整樹覆蓋。
 
-該次已補入這組修正並通過 `git apply --check`／`git diff --check`；
-APK 重建與開局回歸尚待執行。這個空卡牌缺陷與前節的 AAudio CFI callback
-崩潰不同，修復它不代表恢復有聲。完整證據與驗證狀態見
-`builds/android-mainthread-investigation-20260916/`。
+APK 重建與開局回歸尚未執行。這個空卡牌缺陷與前節的 AAudio CFI callback
+崩潰不同，修復它不代表恢復有聲。
 
 ## 驗證限制與故障分類
 
 目前只驗證 Android Emulator。x86_64 模擬器執行 arm64 APK 時包含 ARM translation layer，不能代替 arm64 實機、Android 9/16 或 16 KB page-size 環境。最新 API 33 模擬器的已知音訊閃退位於 AAudio CFI callback under translation；目前證據不能把它歸因於某一個 OGG 檔案。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。四個短 UI WAV 只降低 codec 依賴，不代表完整 OGG 已驗收。
 
-本頁不執行 CTest、跨版本矩陣或手機驗收；05p 完整對局流程與最新結果見 [簡化驗收](android-acceptance.md)。相關契約見 [Android 首版功能](android-first-release.md)，目錄與版本切換見 [Android 擴展實體目錄](android-extension-runtime.md)。
+本頁不執行 CTest、跨版本矩陣或手機驗收。目錄與版本切換見 [Android 擴展實體目錄](android-extension-runtime.md)。
 
-## 歷史建置證據（不作目前驗收）
-
-| 輪次 | 證據 | 限制 |
-|---|---|---|
-| CP1 | `builds/android-cp1/`；舊 Debug APK SHA-256 `00db9718f62766b0497742244b5e82948f240f70d4d15c03a62effee14ba67fc` | 舊 source/產物；未做手機、Release、完整對局驗收 |
-| 首版重建 | `builds/android-v1-validation/`；複製 Debug APK `QSanguosha-Android-arm64-debug.apk` SHA-256 `0baed09ee133af17ed929b8178cf8edcf3c6a0ffa79c3ffbc4f5c4da345d3dea` | Android 13 x86_64 emulator 以 ARM translation 執行，4 KB page；不能代替 arm64 實機/16 KB；音訊輸出有限制 |
-| 宣告修正後 Qt build10 | `QSanguosha-Android-arm64-debug-qt-10.apk`，363,550,018 bytes；SHA-256 `2749358d9e8166a0c2b8dee4570eae888b307ea24c4206e2fb9c5deb8490e262` | 建置、Debug 簽章、ELF／ZIP 16 KB 靜態稽核通過；不能沿用 build09 診斷 APK 的對局結果 |
-| 無音訊診斷 build09 | `QSanguosha-Android-arm64-debug-null-audio.apk`；SHA-256 `f1edf1b55dec34bc3d6f65c8a42cc02e56444c382da236cdf08af65123a68a62` | 編譯選項 `QSAN_AUDIO_BACKEND=NULL`；只隔離 AAudio 問題，不能當正常音訊版本交付 |
-
-歷史「建置通過」與「靜態對齊通過」只適用於各自 source hash、工具鏈及 APK；來源修改後必須重新建立與稽核。
-
-完整對局與清理結果見 `builds/android-v1-validation/android-gameplay-summary.md`；模擬器、診斷部署與正常 APK 的證據分列。以上 APK、log 與 audit 均位於 `builds/android-v1-validation/`，不是需要加入 Git 的來源檔。

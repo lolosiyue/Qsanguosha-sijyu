@@ -59,12 +59,8 @@
 4. 逐項評估 request 候選並保留 unknown 記錄；只要有已知完整合法 action 就交給 normalization，沒有 action 且仍有 unknown 才回 NotCovered。權威端仍重驗 pattern、method、ticket、target、成本與 revision。
 5. 補 source fixture 與 coverage case；不要以單一成功案例代表全量 SmartAI parity。
 
-## 驗證狀態
+相關設計邊界：[`docs/lua-ai-spec.md`](lua-ai-spec.md)。
 
-2026-09-21 已完成建置、契約與生命週期測量驗證。
-
-相關設計邊界：[`docs/ai-identity-mode-decoupling-plan.md`](ai-identity-mode-decoupling-plan.md)、[`docs/smart-ai-adapter-dependency-audit.md`](smart-ai-adapter-dependency-audit.md)、[`docs/lua-ai-spec.md`](lua-ai-spec.md)。
-
-## Scarlet 參考技能所需共用接口（2026-09-25）
+## Scarlet 參考技能所需共用接口
 
 新增 addHandPile／getAllPeachNum、draw 目標推薦與無牌普通傷害接口。具體覆蓋與未覆蓋分支、原版保留行為及靜態檢查點見 [Scarlet isolated AI](scarlet-isolated-ai-examples.md)。此批不是全套 SmartAI 傷害／推薦策略完成證據。

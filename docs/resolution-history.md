@@ -268,7 +268,7 @@ restore 時先驗證並 remap snapshot player ids，再 restore history；pendin
 
 目前以 256 筆分頁及共享快照降低複製量，後續記錄修改只複製受影響的頁與儲存樹路徑；不長期持有 Card／Player 指標或完整 execution。Replay 播放器最多快取一個載入的 snapshot。32 位元伺服器的已落盤快照只留路徑、雜湊與回合索引，按需載入時也只快取一筆；64 位元伺服器維持記憶體保存。32 位元存檔逐筆輸出事件、玩家及牌，以 64 KiB 輸出緩衝避免同時建立整份 QVariant 歷史、JSON 文件及輸出位元組；單筆 payload 的正規化仍有暫存成本。64 位元預設序列化仍建立完整值結構，載入／還原仍須解析整份文件及重建索引，因此仍可能產生歷史大小級別的記憶體峰值。記憶體需求仍隨歷史資料量增加。
 
-2026-09-20 的 05P 重測僅量到整個程序 working set：採樣中伺服器最低約 343 MB、最高約 1,419 MB，TUI 約 183–188 MB（十進位 MB）。伺服器數字同時包含規則、Lua、AI、replay 等配置，沒有關閉歷史的同條件基準，不能將這段增幅全歸因於歷史，亦不能宣稱歷史只增加少量 RAM。隔離量測 journal 與 snapshot 保留量仍是未完成的效能驗證。
+目前沒有關閉歷史的同條件基準，不能將整段增幅全歸因於歷史，亦不能宣稱歷史只增加少量 RAM；隔離量測 journal 與 snapshot 保留量仍未完成。
 
 ## 參考實作
 
@@ -285,9 +285,7 @@ FreeKill 的事件模型可作概念參考，但不是本專案的 API 來源：
 
 FreeKill 的 `getEventsOfScope`／`findParent` 是設計參考；本專案的 `historyParent` 明確只查 ancestor，`queryHistory*` 的 filter key、結果 key、watermark 與 completeness semantics 以本文上方的 C++/SWIG 介面為準。
 
-## 驗證紀錄
-
-2026-09-20 驗證涵蓋建置、focused cases、首次 TUI 逾時及修正後同種子重測。
+## 各事件與 fact 的實作契約
 
 ### 死亡與回合 HP 邊界快照
 

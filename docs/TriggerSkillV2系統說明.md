@@ -2,7 +2,7 @@
 
 > 本文行號為 2026-09-06 實測，僅供輔助對照；程式碼重構後行號會漂移，請一律以符號／函式名搜尋定位。
 
-> **2026-08-09 校對**：本文件已同步現行實作。**2026-09-20**：多實例模型權威規格自 `skill-instance-refactor-plan.md`（Ticket 1–9 全部完成，檔案刪除）併入本文件「Instance ID 機制」與「多實例行為規格」節；SkillContext 現行欄位見 §核心資料結構。
+> 本文件已同步現行實作。多實例模型的權威規格見本文件「Instance ID 機制」與「多實例行為規格」節；SkillContext 現行欄位見 §核心資料結構。
 
 ## 概述
 
@@ -85,7 +85,7 @@ struct SkillContext {
 
 **已停用**：`Skill::m_instanceId`／`m_globalInstanceCount`（舊 Skill 物件級 ID）自 2026-07-16 重構後已廢止，現僅為 `src/core/skill.h` 中該二成員的未使用宣告（現約 :228-229，死碼）；`Skill::getInstanceId()` 已刪除。
 
-現行模型（原 `skill-instance-refactor-plan.md` §2／§3 權威規格，2026-09-20 併入本節與下方「多實例行為規格」）：
+現行模型（權威規格見本節與下方「多實例行為規格」）：
 
 | 項目 | 說明 |
 |------|------|
@@ -185,6 +185,7 @@ can_trigger return "skill#N" → 只建立指定實例的 SkillContext
 - 展開後再次驗證 owner、持有、有效性與 instance state；不存在或無效的精確 ID 直接忽略。
 - `on_record` 按每個現存實例逐一呼叫，context 帶 owner、skill_name、instanceID、original_data、current_event。
 - `triggerCounts`、`maxMultipliers`、`triggeredSkills`、`selected_ctx` 與選項驗證一律使用 `(owner, skillName, instanceID)`；禁止只用 `skillName#instanceID` 的 Room 全域 key，避免不同玩家碰撞。
+- **分派與排序**：`RoomThread::addTriggerSkill()` 會同步建立每事件的 V2 分表，dispatch 不再以 `inherits("TriggerSkillV2")` 掃描整張主表。主表與 V2 分表用同一組當次、每房優先序值做 `stable_sort`；排序不改寫全域共享的 `TriggerSkill::dynamic_priority`。`record()` 仍對每個 V2 技能分別取得 `getAllPlayers(true)`，保留前一個 callback 改變 roster 後、下一個技能可觀察到新狀態的語意。
 
 #### 裝備觸發技能 V2
 
@@ -2311,29 +2312,4 @@ end
 2. **避免重複計算**：將計算結果存入 `ctx.extra_data`
 3. **善用 multiplier**：讓系統自動觸發多次，而非手動循環
 4. **減少 on_effect_target 檢查**：在 on_cost 已篩選目標
-# 2026-07-16 技能實例模型更新
 
-本節優先於下方舊版說明。`Skill` 仍是 Engine 共用的全域定義，不再持有玩家 instanceID，也不 clone `Skill QObject`。
-
-| 欄位 | 權威來源 |
-|---|---|
-| `skill_name` | 基礎技能名，例如 `baGua` |
-| `instanceID` | `Player::SkillInstance`，只在同一 `(owner, skillName)` 範圍內唯一 |
-| owner | `SkillContext::owner` |
-| invoker | `SkillContext::invoker` |
-| runtime key | `ownerObjectName + skillName + instanceID` |
-
-`TriggerSkillV2::triggerable()` 可只回傳 base name；RoomThread 會依 owner 的有效實例展開。若回傳 `skill#N`，則只執行該有效實例。`record()` 也按有效實例各執行一次。
-
-> **2026-09-02 效能契約**：`RoomThread::addTriggerSkill()` 會同步建立每事件的 V2 分表，dispatch 不再以 `inherits("TriggerSkillV2")` 掃描整張主表。主表與 V2 分表使用同一組當次、每房優先序值做 `stable_sort`；排序不再改寫全域共享 `TriggerSkill::dynamic_priority`。`record()` 仍對每個 V2 技能分別取得 `getAllPlayers(true)`，保留前一個 callback 改變 roster 後、下一個技能可觀察到新狀態的語意。
-
-> **2026-08-05 修正**：Lua `on_record` 為 **5 參數**（`skill, event, room, player, ctx`），第 5 參為 `SkillContext` 引用；早期 7 參數草案（多塞 `data/owner`）已回退（swig/luaskills.i `lua_pcall(L, 5)`，2026-08-05 與 H 權威版對齊）。下方為現行簽名：
-
-```lua
-on_record = function(skill, event, room, player, ctx)
-    local id = ctx.instanceID
-    -- state/usage 必須使用 ctx.sourceRef（owner + skill name + id）定位
-end
-```
-
-舊文件中的 `Skill::m_instanceId`、`m_globalInstanceCount` 與全域 `skill#N` 定義已廢止（2026-08-09 已同步修正本文主體各節，此節保留為歷史對照）。

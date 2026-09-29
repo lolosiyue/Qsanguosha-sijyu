@@ -7,8 +7,7 @@ rejected with `stream_snapshot_api_disabled` when stream mode is enabled.
 
 The shared rules identity and WebSocket admission gate are defined in
 [rules-bundle-identity.md](rules-bundle-identity.md). The streaming contract is
-defined in [native-rules-ingress.md](native-rules-ingress.md). Fixture tests and
-production runtime results are recorded separately in the linked validation reports.
+defined in [Stream ABI](#stream-abi) below.
 
 ## Target architecture
 
@@ -226,7 +225,7 @@ are configuration, not browser memory/performance acceptance.
 | Export | MEMFS/JSON contract |
 |---|---|
 | `_qsan_client_initialize` | Initializes once and writes `/work/init.json`: bridge schema 2, native `rules_bundle`, `card_count`, and numeric-ID registry entries with object name, integer suit, number, class and package |
-| `_qsan_client_stream` | Reads `/work/stream.json` (at most 4 MiB; `schema_version`, `action`, `generation`, plus action fields) and writes `/work/stream-result.json`; the `ClientRulesIngress` actions cover snapshot/interaction/query operations — see [native-rules-ingress.md](native-rules-ingress.md) |
+| `_qsan_client_stream` | Reads `/work/stream.json` (at most 4 MiB; `schema_version`, `action`, `generation`, plus action fields) and writes `/work/stream-result.json`; the actions are listed in [Stream ABI](#stream-abi) |
 | `_qsan_client_shutdown` | Ends the engine lifetime; the closed module cannot initialize again |
 
 The host must establish isolated MEMFS configuration in `preRun`, then verify
@@ -234,6 +233,48 @@ embedded assets after the Emscripten factory resolves and before initialization.
 Queries run serially. The main-thread controller discards stale generation or
 revision results. Failure disposes the Worker; explicit rule reload or a new
 connection creates a fresh Worker.
+
+## Stream ABI
+
+`_qsan_client_stream` is the browser Worker's entry point. Initialize the host
+first, write one JSON object to `/work/stream.json`, invoke the export, and read
+`/work/stream-result.json`. Both paths are fixed by the host and are not a
+caller-selectable filesystem interface.
+
+Every operation carries exactly `schema_version: 1`, `action` and `generation`,
+plus the action's own fields. Schema and generation/revision numbers must be
+integers, request IDs stay canonical decimal strings, and unknown fields are
+rejected.
+
+| Action | Additional fields | Meaning |
+|---|---|---|
+| `reset` | none | Bind the initialized Engine's W2 identity and start a strictly newer connection generation |
+| `frame` | `direction`, `frame` | Observe an `incoming` or `outgoing` raw UTF-8 protocol frame through the existing native decoder |
+| `query` | `revision`, `request_id`, `selection` | Evaluate the current request against committed native state |
+| `view` | none | Read committed state only, never pending STATE_SYNC state |
+
+The result carries `success`, `reason` and `status`; `status` reports the
+generation, revision, active/failed/synchronizing flags, the current request ID
+and the W2 bundle ID. A successful query also carries the production
+`evaluation` result. A nonzero ABI status is a host I/O, JSON or lifetime
+failure, not a game-rule answer: semantic rejections return zero with
+`success: false`, and an obsolete generation can neither mutate nor poison a
+newer stream. Output is replaced atomically.
+
+Once a host opts into `reset`, the old external-snapshot `evaluate` entry rejects
+with `stream_snapshot_api_disabled` for that Engine's life. Runtime shutdown is
+terminal.
+
+The stream reuses the production `ProtocolCodecRouter`,
+`ClientSessionController`, `ClientGameStateReducer`,
+`ProtocolInteractionRequestBuilder` and `ClientRulesSession` reply encoder; no
+card-name rules are copied into JavaScript. Incoming and outgoing frame IDs
+increase independently, and every accepted frame advances the revision. A query
+must match the exact current generation, revision and request. `STATE_SYNC` begin
+preserves the previously committed view and cancels the old selection; the
+matching end commits once, while an overlap, an unmatched end or an interaction
+arriving during sync fails the stream. Observing an already sent reply verifies
+correlation, not server game legality.
 
 Builds do not modify `web/public`. To package already-built artifacts:
 
@@ -306,11 +347,7 @@ A query is a preview, never a move:
   that draws randomness cannot advance the process-wide fallback stream that a
   later query would observe.
 
-## Remaining acceptance and scope
-
-Production compile/link, repeated-query and lifecycle execution, native/WASM
-parity for live snapshots, actual browser interaction/reconnect acceptance and
-deployment checks remain unperformed.
+## Scope boundary
 
 Arbitrary extension loading and complete server/runtime ruleset negotiation
 remain outside the `declared-v2` manifest profile; no claim of
@@ -328,7 +365,8 @@ Package the `.bundle.json` deployment manifest before building the Web
 frontend. WebSocket signup requires this identity, including reconnect; legacy
 TCP clients may still omit it.
 
-Since the W3b cutover ([native-rules-ingress.md](native-rules-ingress.md)) the
+Since the W3b cutover onto the
+[Stream ABI](#stream-abi) the
 Worker drives the runtime through `_qsan_client_stream` instead of the
 per-query `request.json`/`result.json` evaluate files; the recipe above
 describes the build/packaging layout, while the PR31-era `.assets.json`

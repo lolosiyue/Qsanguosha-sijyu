@@ -374,12 +374,11 @@ DEB STATUS: DEFERRED（M3.1）
   API）。沒有任何一個現行 Ubuntu series 的 archive 能提供 Qt >= 6.11，
   所以「.deb 依賴 distro Qt」（策略 A）今日根本做不到。
 
-驗證證據（2026-08-28，Launchpad published sources，source_name=qt6-base）:
+Ubuntu archive 提供的 Qt（部署前需重新核對）:
   noble    (24.04 LTS)  6.4.2+dfsg-21.1build5
   plucky   (25.04)      6.8.3+dfsg-0ubuntu2
   questing (25.10)      6.9.2+dfsg-1ubuntu1
   resolute (26.04 LTS)  6.10.2+dfsg-7
-  本機 apt-cache policy qt6-base-dev → 6.10.2+dfsg-7（Ubuntu 26.04）
   對比 GUI 實際使用的 Qt：6.11.1
 
   也就是說 24.04（任務指定的目標）差 7 個 minor version，連最新 LTS 都仍然
@@ -393,7 +392,7 @@ DEB STATUS: DEFERRED（M3.1）
   而且功能上與已經交付的 portable bundle 完全重疊。要不要走這條路是產品決定，
   應該由 maintainer 決定，不應該在這個 PR 裡悄悄決定。
 
-  策略 C（暫時只出 AppImage／portable）就是本 PR 實際採取的做法。
+  策略 C（暫時只出 AppImage／portable）是目前採取的做法。
 
 後續 M3.1:
   1. maintainer 選擇策略 B 或 C。
@@ -403,7 +402,7 @@ DEB STATUS: DEFERRED（M3.1）
      purge 全循環才可以標 PASS。
   3. 如果是 C：在 README 講明 Linux 正式發佈就是 AppImage 與 portable。
 
-這個決定不阻礙 portable bundle 與 AppImage，兩者在本 PR 已經完成並驗證。
+這個決定不阻礙 portable bundle 與 AppImage。
 ```
 
 ---

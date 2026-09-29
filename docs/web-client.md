@@ -3,9 +3,7 @@
 TypeScript compact SPA in [`web/`](../web/). It talks Protocol V2 over the
 existing WebSocket gateway (default `9528`). Card-selection rules run in a
 dedicated Web Worker using the opt-in C++/Lua WASM build target, while the
-browser keeps TypeScript/DOM presentation. This PR #31 follow-up is
-source implementation only: no tests, configure, compile, rebuild, artifact
-packaging or browser acceptance were run for this change.
+browser keeps TypeScript/DOM presentation.
 
 ## Run
 
@@ -121,8 +119,9 @@ The right-hand log is a fixed pane with internal scroll so it cannot
 stretch the table. Portrait stacks table / log / dashboard so the room
 stays on one screen.
 
-Battle log lines are composed in the test fixture [`web/tests/fixtures/log-text-legacy.ts`](../web/tests/fixtures/log-text-legacy.ts),
-matching the desktop `ClientLogBox` templates rather than `split` + `tr()`.
+Battle log lines follow the desktop `ClientLogBox` templates
+(`web/tests/fixtures/log-text-legacy.ts` was the reference fixture) rather than
+`split` + `tr()`.
 Interaction `prompt` strings from `askForCard` / `askForDiscard` /
 `askForPlayerChosen` use the same colon list as GUI `Client::formatPromptList`
 (`key:%src:%dest:%arg:%arg2`); C++ TUI/GUI share `formatClientPromptList` in

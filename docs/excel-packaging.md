@@ -4,6 +4,21 @@
 來源、runtime-only staging 和正式封裝使用同一套工具；實際 Excel 操作與完整對局屬另行驗收，
 不在本頁記錄。
 
+## 支援範圍與限制
+
+Excel 橋接遵循 [Excel IPC v1](excel-ipc.md)。
+
+| 執行期 | 環境 | 限制 |
+|------|------|------|
+| modern | Windows 10／11 x64、Qt 6 full runtime | 需完整的 Qt6 執行檔／DLL、Lua、AI、extensions、lang、image、audio |
+| legacy | Windows XP SP3／7／8.1／10 x86、Qt 5.6 | 最多 10 人 |
+
+- `.xlsm` 版不實作 QML 自訂互動（`qml_interact`／`qsanguosha.qml`），因此同一份活頁簿可適用兩套執行期；依賴 QML 自訂互動的內容路徑必須明確排除。
+- 前端互動覆蓋範圍記錄於 [excel/frontend-coverage.json](../excel/frontend-coverage.json)。
+- 正式交付需提供已編譯 VBA 的 `.xlsm`。
+- 圖片路徑必須落在封裝 image root；VBA 不組裝 wire card text 或 Protocol V2 packet。
+- 支援的 Office host 為 Excel 2010 x86 與 modern Office 2016+ x86／x64；TrustAccess 不得變更。
+
 ## 輸入
 
 [tools/excel/package.py](../tools/excel/package.py) 需要對應版本的 bridge、server、Lua／AI、extensions、lang、

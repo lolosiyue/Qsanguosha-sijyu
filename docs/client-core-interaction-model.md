@@ -75,11 +75,10 @@ Desktop strings use English source keys; shared formatter keys remain compatible
 with other clients. Card, player and skill labels retain the existing engine
 translation source. Stable action IDs and keyboard mnemonics do not change.
 Phase enum names resolve to the existing lowercase locale keys, with explicit
-NotActive/RoundStart mappings. Localization validation on 2026-09-16 passed the
-GUI/QM build, 107-key catalog checks and the existing panel executable (6 results
-including init/cleanup). Windows accessibility inspection confirmed Simplified
+NotActive/RoundStart mappings. The GUI/QM build covers the panel strings through
+the 107-key catalog, and the Windows accessibility tree exposes Simplified
 Chinese controls and snapshot text. This is separate from NVDA/manual gameplay
-acceptance; evidence: `builds/game-panel-translation-validation.md`.
+acceptance.
 
 - **View → 游戏状态**, or **Ctrl+Shift+I**: open/update a non-modal read-only text
   snapshot with Update, Copy and Close. Text remains frozen until explicitly
@@ -131,25 +130,19 @@ acceptance; evidence: `builds/game-panel-translation-validation.md`.
   is not an arbitrary multi-recipient assignment editor or a claim that every
   skill's custom interface is fully playable from the keyboard.
 
-### Native askFor keyboard checkpoint (2026-09-21)
+### Native askFor keyboard support
 
 Scope: the modern GUI client, action panel **closed**, excluding `askForQml`.
-The expanded checkpoint contains 61 native-keyboard fixtures covering representative
-and boundary paths for all 26 non-QML `Client::askFor*` handlers, plus general
-arrangement. The Debug GUI incremental build passed in
-`builds/native-keyboard-arrangement-build-retry.log`. Automatic run evidence is
-stored under `builds/native-keyboard-final-run/` and its targeted recheck directory.
-Latest results: **60/61 PASS**; the 50-seat target fixture exceeded both the
-45-second batch and 60-second isolated initialization limits before keyboard input.
-It remains unverified. Consolidated results: `builds/native-keyboard-final-run/final-summary.json`.
-Bootstrap explicitly controls hotkeys, intellectual selection and automatic targets;
-Longdan and Yiji have both automatic and manual-selection cases.
+The fixture set covers representative and boundary paths for all 26 non-QML
+`Client::askFor*` handlers, plus general arrangement. Bootstrap explicitly
+controls hotkeys, intellectual selection and automatic targets; Longdan and Yiji
+have both automatic and manual-selection cases. A 50-seat target fixture times
+out during initialization before any keyboard input, so very large rooms stay
+uncovered.
 
-This batch also repairs optional trigger-order cancellation's empty-string reply,
-defers the optional free-general chooser until opened, and keeps arrangement replies
-at the server-required three slots even when more generals are offered. Runner
-fixtures use the current typed protocol, valid mode seat counts, and exact typed
-reply payload comparisons. Original failed reports remain available.
+Optional trigger-order cancellation replies with the empty string, the optional
+free-general chooser defers until it is opened, and arrangement replies stay at
+the server-required three slots even when more generals are offered.
 
 | Client request family | Native keyboard path, without the action panel |
 | --- | --- |
@@ -189,7 +182,7 @@ and back alone; the current keyboard path still distinguishes group navigation,
 toggle and submission and uses extra keys for rearrangement. Device input mapping,
 remote-only focus recovery and a complete game remain separate work.
 
-Static review and `git diff --check` cover this checkpoint. The runner's
+The runner's
 `cases/native-keyboard/` fixtures use actual key press/release events through
 production FitView or the focused request widget and fail if the action panel is
 open. The 61 cases include concealed opponent hand counts, equipment costs,
@@ -205,7 +198,7 @@ fixture does not establish full-game acceptance.
 
 ### Other client adapters
 
-The next source checkpoint connects TUI, Web and Android to the same contract.
+TUI, Web and Android connect to the same contract.
 Existing network messages, Lua/SWIG APIs and response encoders remain unchanged.
 
 | Client | Presentation source and entry point | Action boundary |
@@ -227,13 +220,13 @@ panel does not cancel the game request. Background application state disables
 actions, and dispatch rechecks application, connection and synchronization state.
 An external keyboard uses the same snapshot shortcut and release guard.
 TalkBack behavior and small-screen layout require separate device acceptance.
-Excel and legacy XP retain their existing interfaces in this checkpoint.
+Excel and legacy XP retain their existing interfaces.
 
 ### Manual desktop and screen-reader handoff
 
-The user will perform final Windows Qt 6.11.1 + NVDA verification. Until actual
-results are recorded, that gate stays **NOT RUN**. A compiled widget contract or
-an accessibility-tree inspection does not establish NVDA reading behavior.
+The user performs final Windows Qt 6.11.1 + NVDA verification. A compiled widget
+contract or an accessibility-tree inspection does not establish NVDA reading
+behavior.
 
 Record the executable build/time, NVDA version, case, observed focus/name/state
 and actual reply outcome. Keep a failed case's visible prompt and reply report.
@@ -248,14 +241,15 @@ and actual reply outcome. Keep a failed case's visible prompt and reply report.
 | Gongxin and trigger order | Only disclosed cards are readable; read-only completion works; duplicate labels preserve distinct instance IDs; mandatory cancel stays disabled |
 | Request timeout/replacement/reconnect | Old focused actions cannot answer a newer request; editing resumes only after committed synchronization |
 
-The existing [local response inspector](room-askfor-ui-matrix.md) includes
-buttons for the production control panel and text snapshot. Its captured reply
-can verify a single fixture interaction without a full match. It does not cover
-the MainWindow shortcut/menu, live TCP reconnection or full-game acceptance.
+The existing local response inspector
+([`src/ui/testing/local-response-ui-inspector.cpp`](../src/ui/testing/local-response-ui-inspector.cpp))
+includes buttons for the production control panel and text snapshot. Its captured
+reply can verify a single fixture interaction without a full match. It does not
+cover the MainWindow shortcut/menu, live TCP reconnection or full-game acceptance.
 
 ### Presentation gates
 
-The 2026-09-16 presentation checks covered the focused checks, full CTest run, failed fixture and retry, and subsequent keyboard checkpoint. Live-room keyboard parity and screen-reader acceptance remain separate checks.
+Live-room keyboard parity and screen-reader acceptance remain separate checks.
 
 ## QML interaction
 

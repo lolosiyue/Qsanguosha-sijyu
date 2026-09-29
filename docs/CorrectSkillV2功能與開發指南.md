@@ -361,7 +361,7 @@ RoomScene 收到信號後重新驗證技能按鈕、選牌狀態與目標預覽�
 
 CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client reconnect、隱藏 metadata 及 legacy 對局回歸，才可開始遷移正式技能。
 
-### 16.1 Room integration 期望（自 correct-skill-v2-test-matrix 併入，2026-09-12）
+### 16.1 Room integration 期望
 
 原驗證載體為 C++ `~test` fixture（`active_skill_v2_tester` 及 `#correct_v2_*_test` 系列，原於 [`src/package/standard-generals.cpp`](../src/package/standard-generals.cpp)，已刪除；System fixture 原本預設不貢獻，僅 primary 的 `correct_v2_system_enabled` mark 大於零才啟用）。更早的 Lua factory smoke 與 Room integration fixture 已隨 `lua/test/` 刪除（commit `a904221`），由 CTest＋`tools/autotest/` 取代。多實例 Room integration 驗證應滿足：
 
@@ -393,8 +393,8 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 | 內容 | 位置 |
 |---|---|
 | Engine 規格摘要 | [`engine-correct-skills.md`](engine-correct-skills.md) |
-| 驗證矩陣 | 原 `correct-skill-v2-test-matrix.md` 已於 2026-09-12 併入 §16.1 後刪除（其「待重審」狀態欄一併棄置，未重審項見 §16.1 待補清單） |
-| 多實例總體設計 | [`TriggerSkillV2系統說明.md`](TriggerSkillV2系統說明.md)「Instance ID 機制／多實例行為規格」（現行權威；原 `skill-instance-refactor-plan.md` 2026-09-20 併入後刪除，更早的「multi-skill-instance-design」未採納，見 git 歷史） |
+| 驗證矩陣 | 見 §16.1 Room integration 期望（含待補環境驗證清單） |
+| 多實例總體設計 | [`TriggerSkillV2系統說明.md`](TriggerSkillV2系統說明.md)「Instance ID 機制／多實例行為規格」（現行權威） |
 | C++ 類別與 context | [`src/core/skill.h`](../src/core/skill.h)、[`src/core/skill.cpp`](../src/core/skill.cpp) |
 | amount／correctState Room API | [`src/server/room.h`](../src/server/room.h)、[`src/server/room.cpp`](../src/server/room.cpp) |
 | Lua factory | [`lua/sgs_ex.lua`](../lua/sgs_ex.lua) |
