@@ -8,7 +8,7 @@ export const PLACE_SPECIAL = 4;
 export const PLACE_DISCARD = 5;
 export const PLACE_DRAW = 6;
 export const PLACE_TABLE = 7;
-export const MAX_FRAME_BYTES = 65535;
+export const MAX_FRAME_BYTES = 4 * 1024 * 1024;
 
 export const Command = {
   UNKNOWN: 0,
@@ -201,7 +201,7 @@ export function encodeMessage(message: ProtocolMessage): string {
   }
   const text = JSON.stringify(object);
   if (text.length > MAX_FRAME_BYTES)
-    throw new Error("frame exceeds 65535 UTF-8 bytes");
+    throw new Error(`frame exceeds ${MAX_FRAME_BYTES} UTF-8 bytes`);
   if (text.includes("\n") || text.includes("\r"))
     throw new Error("frame contains CR or LF");
   return text;
@@ -209,7 +209,7 @@ export function encodeMessage(message: ProtocolMessage): string {
 
 export function decodeMessage(text: string): ProtocolMessage {
   if (text.length > MAX_FRAME_BYTES)
-    throw new Error("frame exceeds 65535 UTF-8 bytes");
+    throw new Error(`frame exceeds ${MAX_FRAME_BYTES} UTF-8 bytes`);
   if (text.includes("\n") || text.includes("\r"))
     throw new Error("frame contains CR or LF");
   const value = JSON.parse(text) as JsonObject;
