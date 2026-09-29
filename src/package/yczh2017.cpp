@@ -214,7 +214,7 @@ void FumianCard::onUse(Room *room, CardUseStruct &card_use) const
 class Fumian : public TriggerSkillV2
 {
 public:
-    Fumian() : TriggerSkillV2("fumian") { events << EventPhaseStart << DrawNCards << PreCardUsed << PreCardResponded << EventPhaseChanging << TurnBroken << EventSkillInvoking << EventSkillEffectFinished; global = true; }
+    Fumian() : TriggerSkillV2("fumian") { events << EventPhaseStart << DrawNCards << PreCardUsed << EventPhaseChanging << TurnBroken << EventSkillInvoking << EventSkillEffectFinished; global = true; }
     static QList<ServerPlayer *> extraTargets(Room *room, const CardUseStruct &use)
     {
         QList<ServerPlayer *> result; if (!use.from || !use.card) return result;
@@ -273,10 +273,12 @@ public:
     bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data, QList<SkillContext> &contexts) const override
     {
         if (event == EventPhaseStart) return false;
-        if (!player || player->isDead() || (event != DrawNCards && event != PreCardUsed && event != PreCardResponded)) return true;
+        // Target grants only attach on PreCardUsed. CardResponseStruct has no target list,
+        // so a red response-use must not burn the "next red" receipt.
+        if (!player || player->isDead() || (event != DrawNCards && event != PreCardUsed)) return true;
         if (event == DrawNCards && data.value<DrawStruct>().reason != "draw_phase") return true;
-        const Card *card = event == PreCardUsed ? data.value<CardUseStruct>().card : event == PreCardResponded ? data.value<CardResponseStruct>().m_card : nullptr;
-        if (event != DrawNCards && (!card || !card->isRed() || card->isKindOf("SkillCard") || player->getPhase() == Player::NotActive || (event == PreCardResponded && !data.value<CardResponseStruct>().m_isUse))) return true;
+        const Card *card = event == PreCardUsed ? data.value<CardUseStruct>().card : nullptr;
+        if (event != DrawNCards && (!card || !card->isRed() || card->isKindOf("SkillCard") || player->getPhase() == Player::NotActive)) return true;
         const qint64 turn = room->historyScopes().value("turn_id").toLongLong(); if (turn <= 0) return true;
         for (const QVariant &entry : room->getTag("FumianEffects").toList()) {
             const QVariantMap receipt = entry.toMap();
@@ -301,7 +303,7 @@ public:
     }
     bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event == PreCardUsed || event == PreCardResponded) {
+        if (event == PreCardUsed) {
             QVariantList receipts = room->getTag("FumianEffects").toList(); receipts.removeOne(ctx.extra_data); room->setTag("FumianEffects", receipts);
         }
         return false;
