@@ -122,28 +122,20 @@ version mismatch, reload required, and unsupported content/interactions.
 
 ## Verification
 
-- `qsanguosha_rules_identity_tests`: pure C++ identity and Hello/Signup wire gates.
-- `web/tests/rules-identity.test.ts`: readiness/cancellation, same-count reorder,
-  altered Lua digest, missing schemas, bridge mismatch and mixed artifact tests.
-- `check-rules-bundle.py --self-test`: deployment fingerprint and HTTP allowlist.
-- Remote WASM workflow: compile the production Worker and real server; compare
-  native export to real WASM identity, reach active signup, verify missing/changed
-  metadata rejection including reconnect, and preserve legacy TCP signup. A
-  second real browser run keeps the old compiled Web loader while serving a
-  changed, valid WASM binary with a freshly paired manifest; it must request reload
-  before admission even though the bridge version is unchanged.
+The W2 test harness (`qsanguosha_rules_identity_tests`, `web/tests/rules-identity.test.ts`,
+`check-rules-bundle.py`, the remote WASM workflow and the `--server-ai-root`
+admission harness) was removed with all test suites on 2026-09-25. No automated
+gate covers admission now. What they pinned stays the contract above:
 
-The remote browser gate requires every named case and writes
-`rules-bundle-summary.json`; missing tools, timeout or missing evidence fails.
-Fixture parity remains a separate gate. No local CTest or long gameplay gate is
-required by this implementation; local focused checks do not establish real WASM,
-browser or full repository CI acceptance.
+- native export and real WASM identity are equal; reordered cards or an altered
+  Lua digest give a distinct identity;
+- server-only AI deployment (`lua/ai/*.lua`, `lua/ai/isolated/*.lua`, `lua/lib/middleclass.lua`)
+  and its byte changes do not change the identity, while similarly named extra Lua
+  files must still fail export with `rules_content_unsupported`;
+- missing or changed metadata is rejected at signup, including reconnect, and
+  legacy TCP signup is preserved;
+- an old compiled Web loader served a changed, valid WASM binary with a freshly
+  paired manifest must request reload before admission.
 
-The admission harness accepts `--server-ai-root` (default: repository root),
-copies its `lua/ai/*.lua` and `lua/ai/isolated/*.lua` into its private server
-deployment, and adds the repository's `lua/lib/middleclass.lua`. It does not copy
-extensions, other libraries or AI runtime data. CI fetches the external runtime
-into a separate build directory for this purpose. Native exports must be equal
-before/after AI deployment and AI byte changes, while similarly named extra Lua
-files must still fail export. These assertions precede the real server/Web gate.
-
+Verify a change to identity code by building the native server and production
+WASM, then joining the real server from the Web client (see [web-client.md](web-client.md)).

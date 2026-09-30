@@ -26,7 +26,16 @@ cmake --build --preset release
 | Android 建置與安裝 | [Android](docs/android-build.md) |
 | 終端與瀏覽器遊戲 | [TUI](docs/tui-client.md)、[Web](docs/web-client.md)、[Browser Solo](docs/browser-solo.md) |
 | 試算表客戶端 | [Excel](docs/excel-packaging.md)、[Google Sheets](docs/google-sheets-client.md) |
+| 驗證改動（smoke 與 headless 對局） | [驗證方式](docs/linux-development-environment.md#8-自動化驗證)、[autotest 工具](tools/autotest/README.md) |
 | 擴展開發與引擎參考 | [文件索引](docs/README.md) |
+
+## 倉庫外的內容
+
+倉庫不追蹤 Lua AI、擴展，以及美術、音效與字型。
+
+- `lua/ai/`、`extensions/` 與 `lua/luaoldenemy_lib.lua` 來自獨立的 [extensions 倉庫](https://github.com/lolosiyue/extensions)（`main`）。執行 `bash tools/ci/fetch-extensions.sh <倉庫根目錄>` 取得；Windows 對應腳本為 `tools/ci/fetch-extensions.ps1`。
+- `image/`、`audio/`、`font/`、`hero-skin/` 屬於發行素材。缺少時遊戲仍可啟動並回報缺少的 optional 資產；`QSanguosha --asset-report` 會列出缺項。
+- 倉庫內沒有單元測試與 CTest（2026-09-25 移除）；改動以上面連結的 smoke 腳本與 headless 對局驗證。
 
 ## 授權與歸屬
 

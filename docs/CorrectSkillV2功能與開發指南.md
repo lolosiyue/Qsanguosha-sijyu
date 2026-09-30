@@ -401,5 +401,5 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 | Lua factory | [`lua/sgs_ex.lua`](../lua/sgs_ex.lua) |
 | SWIG Lua callback | [`swig/luaskills.i`](../swig/luaskills.i) |
 | C++ 測試 fixture | `src/package/standard-generals.cpp` 的 `~test` package |
-| Lua factory smoke | 已移除：`lua/test/examples/test_correct_skill_v2.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，由 CTest／`tools/autotest` 取代 |
+| Lua factory smoke | 已移除：`lua/test/examples/test_correct_skill_v2.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，改由 CTest／`tools/autotest` 承接（CTest 後於 2026-09-25 一併移除，現只剩 `tools/autotest`） |
 | Room integration fixture | 已移除：`lua/test/examples/test_correct_skill_v2_room.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，由 CTest／`tools/autotest` 取代 |

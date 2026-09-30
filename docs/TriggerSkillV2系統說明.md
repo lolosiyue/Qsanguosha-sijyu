@@ -229,7 +229,7 @@ struct SkillChangeStruct {
 ```
 
 - C++ `data.toString()` 與 Lua `data:toString()` 永遠回傳基礎技能名；C++ 新碼用 `data.value<SkillChangeStruct>()`，Lua 新碼用 `data:toSkillChange()`。
-- 舊監聽者會在每次實例獲得／失去時執行，語意不正確者列入人工審核（見 `skill-instance-callsite-audit.md`）。
+- 舊監聽者會在每次實例獲得／失去時執行，語意不正確者列入人工審核（原盤點文件 `skill-instance-callsite-audit.md` 已刪除，見 git 歷史）。
 
 #### 客戶端 UI
 

@@ -26,8 +26,8 @@ NONE      no decorative animation at all; every game object reaches its final
 | Runtime façade (`G_EFFECTS`), object counters | `src/ui/effects/effects-policy.{h,cpp}` | `Settings` |
 
 `effects-profile` and `effects-completion` deliberately stay Qt-Core-only so the
-contract is testable in CTest without a `QApplication`, an OpenGL context or a
-single art asset (`tests/effects_profile/effects-profile-test.cpp`).
+contract is usable without a `QApplication`, an OpenGL context or a
+single art asset.
 
 ### Asking the policy
 
@@ -202,12 +202,6 @@ the CLI, and — for `none` — that the finished game created zero Spine, QMovi
 QML overlay and video objects. Per AGENTS.md this stays a **local** gate: a CI
 runner has no art assets and crashes in the rendering path regardless of branch.
 
-### Unit contract
-
-```bash
-ctest --test-dir builds/cmake-linux-gui-gcc-debug -R qsanguosha_effects_profile_contract -V
-```
-
 ## CI
 
 The standalone Linux GUI compile/effects workflow was removed on 2026-08-30.
@@ -216,11 +210,12 @@ against both the portable archive and extracted AppImage when the packaging
 gate is triggered. Ordinary GUI source changes do not start a separate Linux
 GUI compile job.
 
-The package smokes run entirely on the synthetic fixtures in `tests/fixtures/effects/`
+The package smokes run entirely on synthetic fixtures generated on demand by
+`tools/ci/make-effects-fixtures.py` into the ignored `tools/ci/fixtures/effects/`
 (a 4x4 GIF, a few 8x8 PNGs, a deliberately broken Spine directory). **A
-production-asset smoke is never a clean-checkout blocker** — see
-`tests/fixtures/effects/README.md` for why there is no valid Spine fixture and
-what would have to change to add one.
+production-asset smoke is never a clean-checkout blocker.** There is no valid
+Spine fixture on purpose: the `spine` stage only checks that load failures
+degrade without crashing and that REDUCED/NONE construct no `SpineGlItem`.
 
 ## Object budget
 
