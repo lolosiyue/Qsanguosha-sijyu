@@ -3,7 +3,7 @@
 `qsanguosha_tui` 現時只有一套滾動行輸出。本文件規格化第二套呈現層：全螢幕
 ASCII 牌桌（board），與現有行模式（classic）並存，由啟動時決定。
 
-日期：2026-09-06
+日期：2026-09-06；狀態：已實作（2026-09-25 落地）
 
 ## 0. 決策摘要
 
@@ -37,7 +37,7 @@ board 模式專屬的新指令（`/board` 除外）。
    classic 下被拒絕時的）錯誤訊息路徑中，這是 classic 為了讓玩家知道 board
    模式存在而必須承載的最小接觸面，不是又一個未列出的偏差。
 
-不變式 1 與 2 由 §7.2 的 parity 測試釘死，不依賴 code review。
+不變式 1 與 2 的維持方式見 §7.1。
 
 ## 2. 分層與模組邊界
 
@@ -214,7 +214,7 @@ capacity = cellCols × cellRows − (中央牌堆／棄牌那格)
 board 只在 ANSI 可用時才啟動（`--plain`／`NO_COLOR` 強制 classic，見 §6.1），
 因此色彩可無條件使用，但只承載**已在文字中表達過的資訊**，不作為唯一載體：
 勢力著色、當前玩家高亮、瀕死與陣亡標色、自己那格加框。任一格在去色後仍須
-可讀，golden test 比對的是去色後的純文字（`toPlainText()`）。
+可讀；`toPlainText()` 供去色後的純文字比對。
 
 2026-09-25 落地：自己那格改粗體青色（`TuiAttr::Self`）；一般格的勢力名依桌面版
 旗色（魏藍、蜀紅、吳綠、群灰、神黃、晉紫，其餘金色）、體力紅心依桌面勾玉規則
@@ -352,54 +352,38 @@ Ctrl+Break 經原子旗標交回 Qt event loop；關閉主控台與 fatal signal
 - **退出碼**：沿用現有分配，不新增。終端初始化失敗歸 `6`（本地 TUI
   runtime/input），`--ui` 用法錯誤歸 `2`。
 
-## 7. 測試策略
+## 7. 驗證方式
 
-### 7.1 新增單元／contract 測試
+> 2026-09-25 倉庫移除所有單元／contract／golden 測試（`720a8df`）。原本規劃的
+> `tests/tui/*-test.cpp` 與 parity 測試已不存在；下列是現行、可執行的驗證。
 
-接上現有 `tests/tui/` 的七個檔案，加入同一測試目標。
+### 7.1 不變式 1、2 的現況
 
-| 檔案 | 釘住的行為 |
-|---|---|
-| `tui-text-width-test.cpp` | CJK 全形寬度、組合字元、`elide()` 邊界；尤其**永不從中間劈開一個全形字** |
-| `tui-screen-test.cpp` | `putText` 裁切、畫框、`toPlainText()` golden；**diff 最小性**：未變更的 cell 必須產生零位元組輸出 |
-| `tui-board-layout-test.cpp` | 60×18／80×24／120×40 的 pane rect、capacity、2–10 及 20 人的分頁切法、座位→區域映射與 `s_regularSeatIndex` 一致 |
-| `tui-line-editor-test.cpp` | 跨 read 斷開的 escape sequence、CJK 游標、歷史、Tab 補全、Esc 清行、16384 上限 |
-| `tui-board-view-test.cpp` | 由 `ClientGameState` fixture 出發的整幅畫面 golden |
-| `tui-ui-parity-test.cpp` | §1 不變式 1 與 2 |
+parity 測試（對 29 個 interaction request 逐一比對 classic／board 交給
+`ClientCore` 的 `InteractionResponse`）已隨測試移除，**不再有自動化證據**。
+不變式 1、2 現靠結構維持：board 的所有輸入都經 `lineReady(QString)` 進入同一個
+parser，視圖操作不碰 wire；改動 `TuiBoardPresenter`／`TuiLineEditor` 時須以
+`tui_network_smoke.py` 對照 classic 的輸出。
 
-Golden 檔置於 `tests/tui/golden/*.txt`，以 `QSAN_TUI_GOLDEN_WRITE=1` 重生。
+### 7.2 需要真 pty 的部分
 
-### 7.2 Parity 測試即驗收閘
-
-`tui-ui-parity-test` 對 `InteractionCommandRegistry` 中有 presenter 的
-**29 個 interaction request** 逐一執行 classic／board 對照，board 側額外插入
-翻頁、開關 overlay、resize 事件，斷言交給 `ClientCore` 的
-`InteractionResponse` 逐欄相同。任何一條不同即紅燈。
-
-這是不變式 1 與 2 唯一站得住的證據。
-
-### 7.3 需要真 pty 的部分
-
-raw mode、`SIGWINCH`、alternate screen 還原無法以單元測試覆蓋。
+raw mode、`SIGWINCH`、alternate screen 還原無法以一般 smoke 覆蓋。
 `tools/autotest/tui_board_smoke.py` 開 pty 執行 client，依序：進入 alternate
 screen → resize 兩次 → 送 SIGINT → 斷言還原序列確實寫出且 termios 已復原。
 
 **此為本機閘，不入 CI**：CI runner 無穩定 pty，納入只會製造間歇紅燈。定位與
 `--network-ui-smoke` 相同。
 
-### 7.4 必須維持綠燈且不應修改的既有閘
+### 7.3 對局 smoke
 
-`qsanguosha_tui_contract_tests`、`qsanguosha_tui_live_tcp_tests`、七個現有
-`tests/tui/*-test.cpp`、Windows dumpbin 依賴閘、`deploy-tui` package smoke、
-`tui_network_smoke.py` 的 `03_1v2` 完整對局與 reconnect。
+`tools/autotest/tui_network_smoke.py` 的 `03_1v2` 完整對局與 reconnect 由
+`linux-server-ci.yml` 在 main push／手動觸發時執行（classic）；
+`deploy-tui` package smoke 驗成品。這些不得為遷就 board 而修改。
 
-若其中任何一個需要修改才能通過，即代表抽象有漏，應返回修正設計，
-不得修改測試遷就實作。CI 僅新增編譯目標，不新增對局。
-
-### 7.5 驗收證據紀律
+### 7.4 驗收證據紀律
 
 board 模式在 CI 完全無法執行（無 pty）。「board 可用」此一結論只能由本機 pty
-smoke 與 golden test 支撐，**不得以 CI 綠燈冒充**。
+smoke 與實機操作支撐，**不得以 CI 綠燈冒充**。
 
 ## 8. 文件更新
 
@@ -410,18 +394,18 @@ smoke 與 golden test 支撐，**不得以 CI 綠燈冒充**。
 
 ## 9. 實作階段
 
-每一階段各自可獨立落地並保持全綠，不留半完成狀態。
+每一階段各自可獨立落地，不留半完成狀態。
 
 | 階段 | 內容 | 完成條件 |
 |---|---|---|
-| P1 | `TuiPresenter` 抽象 + `TuiStreamPresenter`；`Resolvers` 抽出 | 現有七個 TUI 測試與 `tui_network_smoke.py` 全綠，輸出逐位元組不變 |
-| P2 | `tui-text-width` + `TuiScreen` | `tui-text-width-test`、`tui-screen-test` 通過，含 diff 最小性 |
+| P1 | `TuiPresenter` 抽象 + `TuiStreamPresenter`；`Resolvers` 抽出 | `tui_network_smoke.py` 全綠，classic 輸出逐位元組不變 |
+| P2 | `tui-text-width` + `TuiScreen` | 幀緩衝 diff 最小性（未變更 cell 零位元組輸出） |
 | P3 | `TuiTerminal` 與 §4.2 的 SIGINT 修正 | pty smoke 的還原斷言通過；classic 在兩平台共用 `interruptRequested` |
-| P4 | `TuiLineEditor` | `tui-line-editor-test` 通過，含跨 read 斷開的序列 |
-| P5 | `TuiBoardLayout` 與分頁 | `tui-board-layout-test` 涵蓋 2–10、20 人與三個尺寸 |
-| P6 | `TuiBoardView`、`TuiBoardPresenter`、overlay | `tui-board-view-test` golden 通過 |
-| P7 | `--ui` 決議、`QSettings`、啟動詢問 | §6.1 決議表逐列有測試 |
-| P8 | 全量 parity 測試、pty smoke、文件更新 | §7.2 的 29 條全綠；§8 文件已改 |
+| P4 | `TuiLineEditor` | 跨 read 斷開的 escape sequence 可正確組回 |
+| P5 | `TuiBoardLayout` 與分頁 | 2–10、20 人與三個尺寸皆可排版 |
+| P6 | `TuiBoardView`、`TuiBoardPresenter`、overlay | 整幅畫面去色後可讀 |
+| P7 | `--ui` 決議、`QSettings`、啟動詢問 | §6.1 決議表逐列驗過 |
+| P8 | pty smoke、文件更新 | §7.2 的還原斷言通過；§8 文件已改 |
 
 P1 是唯一會碰到 classic 程式碼路徑的階段，因此它的驗收標準最嚴：輸出必須
 逐位元組不變。P3 是例外中的例外——它刻意改變 Linux 上 Ctrl+C 的行為，屬 §4.2

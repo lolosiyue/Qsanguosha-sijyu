@@ -36,39 +36,23 @@ cmake --build builds/web-launcher --config Release --target qsanguosha_web_launc
 
 ## Native rules export
 
-Solo package 的 `--rules-bundle` 必須由相同來源建置的 native fixture runner
-匯出。桌面工作目錄含有 `etc/` 或未宣告 Lua 時，原生匯出會拒絕
-`rules_content_unsupported`。先建立乾淨的 declared closure，保留原始
+Solo package 的 `--rules-bundle` 必須由相同來源建置的 native 匯出器產生。
+桌面工作目錄含有 `etc/` 或未宣告 Lua 時，原生匯出會拒絕 `rules_content_unsupported`。先建立乾淨的 declared closure，保留原始
 `lua/config.lua` bytes 與宣告順序，再於獨立 userdata 匯出；不可放寬原生檢查。
 `--prepare-content` 支援目前產生器輸出的 literal `extension_names` 表格，
 不執行任意 Lua；原生匯出仍是規則身份的最終判據。
 
+> ⚠️ **匯出器已不在倉庫。** 原本的 `qsanguosha_rules_fixture_runner --export-rules-bundle`
+> 隨 `720a8df`（2026-09-25，移除全部測試）一併刪除，現時沒有任何 target 能產生
+> `native-rules-bundle.json`，因此完整 Solo 打包（`package-web-solo.py` 需要
+> `--rules-bundle`）無法從乾淨 checkout 重現。要打包須先自 `720a8df^` 還原該 target
+> （`cmake/QSanguoshaRulesFixtures.cmake` 與其 fixture support 原始碼），或另寫匯出器。
+> 匯出時的環境要求不變：獨立 `QSAN_USER_DATA_ROOT`、清除 `LUA_*` 環境變數，並以
+> `--asset-root` 指向上面的 declared closure。
+
 ```powershell
 python tools/package-web-solo.py --prepare-content --asset-root . `
   --destination builds/browser-solo-artifacts/declared-content
-New-Item -ItemType Directory -Force builds/browser-solo-artifacts/export-userdata | Out-Null
-$taskExportPath = $env:PATH
-$taskExportUserData = $env:QSAN_USER_DATA_ROOT
-$taskLuaEnv = @{}
-try {
-  $env:PATH = "H:\Qt6111\6.11.1\msvc2022_64\bin;$env:PATH"
-  $env:QSAN_USER_DATA_ROOT = (Resolve-Path builds/browser-solo-artifacts/export-userdata).Path
-  foreach ($name in @('LUA_PATH','LUA_CPATH','LUA_INIT','LUA_PATH_5_4','LUA_CPATH_5_4','LUA_INIT_5_4')) {
-    $taskLuaEnv[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
-    [Environment]::SetEnvironmentVariable($name, $null, 'Process')
-  }
-  .\builds\cmake-vs2026\Debug\qsanguosha_rules_fixture_runner.exe `
-    --export-rules-bundle `
-    --asset-root builds/browser-solo-artifacts/declared-content `
-    --output builds/browser-solo-artifacts/native-rules-bundle.json
-  if ($LASTEXITCODE -ne 0) { throw 'Native rules export failed' }
-} finally {
-  $env:PATH = $taskExportPath
-  $env:QSAN_USER_DATA_ROOT = $taskExportUserData
-  foreach ($name in $taskLuaEnv.Keys) {
-    [Environment]::SetEnvironmentVariable($name, $taskLuaEnv[$name], 'Process')
-  }
-}
 ```
 
 五個 builtin Lua 檔案是 core identity 輸入，但 declared-v1 manifest 也可包含宣告的
@@ -94,18 +78,18 @@ $QT_WASM_MULTI = "<Qt6.11.1-wasm_multithread>"
 cmake -S . -B builds/web-wasm-single -G Ninja `
   -DCMAKE_TOOLCHAIN_FILE="$QT_WASM_SINGLE/lib/cmake/Qt6/qt.toolchain.cmake" `
   -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQT_HOST_PATH="$QT_NATIVE" `
-  -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF `
-  -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF `
-  -DQSAN_BUILD_WASM_RULES_FIXTURES=OFF -DQSAN_BUILD_WASM_WEB_CLIENT=ON `
+  -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF `
+  -DQSAN_BUILD_SERVER=OFF `
+  -DQSAN_BUILD_WASM_WEB_CLIENT=ON `
   -DQSAN_BUILD_WASM_SOLO=OFF
 cmake --build builds/web-wasm-single --target qsanguosha_client_wasm
 
 cmake -S . -B builds/web-solo -G Ninja `
   -DCMAKE_TOOLCHAIN_FILE="$QT_WASM_MULTI/lib/cmake/Qt6/qt.toolchain.cmake" `
   -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQT_HOST_PATH="$QT_NATIVE" `
-  -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF `
-  -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF `
-  -DQSAN_BUILD_WASM_RULES_FIXTURES=OFF -DQSAN_BUILD_WASM_WEB_CLIENT=OFF `
+  -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF `
+  -DQSAN_BUILD_SERVER=OFF `
+  -DQSAN_BUILD_WASM_WEB_CLIENT=OFF `
   -DQSAN_BUILD_WASM_SOLO=ON
 cmake --build builds/web-solo --target qsanguosha_solo_wasm
 ```

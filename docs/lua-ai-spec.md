@@ -848,10 +848,10 @@ array 與 string-key table 讀取 snapshot。
 isCard／aiUseCard 等 userdata guard 與 native 查詢仍待後續分批處理（回呼 ABI 與結果轉換見 §15.2.3），
 不能直接把 PlayerView 傳入這些舊入口。未暴露 `sgs.SPlayerList/CardList` 原生建構器。
 
-這一層只擴充共用轉接層，不新增技能 handler、不切換 Isolated／Shadow 路由，
-也不宣稱整份 SmartAI 可直接在 sandbox 執行。契約案例 `tests/lua/isolated-adapter-contract.lua`
-由既有 room-runtime-isolation suite 在真實 sandbox 載入；原生測試另覆蓋 C++ 順序投影、
-序列化及 activate／use_card 共用入口。
+此檢查點只擴充共用轉接層，不新增技能 handler、不切換 Isolated／Shadow 路由，
+也不宣稱整份 SmartAI 可直接在 sandbox 執行。原本的 `isolated-adapter-contract.lua` 與
+room-runtime-isolation suite（C++ 順序投影、序列化及 activate／use_card 共用入口）
+已隨全部測試於 2026-09-25 移除。
 
 `PlayerView:getSkills()` 一個可見 instance 對應一個 `SkillView`，保留同名多實例與
 `instance_id`；`hasSkill("name#instance")` 可精確查詢，invalid instance 不算持有。
@@ -918,9 +918,8 @@ legacy callback 的第五參數是 `AILegacyRequest`，只在 request 帶 `skill
 沙箱 `sgs` 另反射 `Card::HandlingMethod`（`sgs.Card_MethodUse` 等），讓 legacy callback 的第三
 參數可以比對；其餘 enum 與 `string:split/contains/startsWith` 等工具仍未提供。
 
-這一層只定義回呼 ABI、分派與結果轉換，不新增技能 handler、不改路由、不擴大
-DecisionKind。契約案例在 `tests/lua/isolated-adapter-contract.lua`（request view 與
-normalize），分派與轉換的端到端案例在 `tests/room-runtime-isolation-test.cpp`。
+此檢查點只定義回呼 ABI、分派與結果轉換，不新增技能 handler、不改路由、不擴大
+DecisionKind。原契約案例（request view 與 normalize、分派與轉換的端到端）已隨測試移除。
 
 #### 15.2.4 共用入口的型別邊界（legacy 側）
 
@@ -953,9 +952,9 @@ normalize），分派與轉換的端到端案例在 `tests/room-runtime-isolatio
 仍以舊 guard 判斷的 `evaluateWeapon`（`type(card)~="userdata"` 回 -1）與 `needToThrowArmor`
 （回 false）屬傷害／防禦族，依盤點要整族一起做值型投影，不在本批。
 
-契約案例在 `tests/lua/value-boundary-contract.lua`，由 room-runtime-isolation suite 以獨立
-Lua state 載入（不啟動 Room，也不載 Engine），涵蓋沒有 facade 時的原生分支、代理辨識、
-卡牌／技能身份與未支援訊息。`lua/ai/smart-ai.lua` 與 `lua/ai/value-boundary.lua`
+原契約案例（`value-boundary-contract.lua`，以獨立 Lua state 載入、不啟動 Room、也不載
+Engine）已隨測試移除；它涵蓋的是沒有 facade 時的原生分支、代理辨識、卡牌／技能身份與
+未支援訊息。`lua/ai/smart-ai.lua` 與 `lua/ai/value-boundary.lua`
 都不在主倉庫版本控制內。
 
 #### 15.2.5 值型詢問：請求種類、候選與答案
@@ -1342,8 +1341,8 @@ kind／callback 預設 `Isolated`，每題由新版完成。`AiLegacyDirectCallb
 1. 驗收範圍內的決策全部由 isolated 產生且通過權威端驗證；任何 SmartAI 保底觸發均失敗。
    `ai-common` 直接呼叫 `AiLuaRuntime::decideIsolated`，不經協調器保底；fixture 在 production
    decision binding 與指令預算內執行，並確認 VM 沒有 `SmartAI`／`global_room`／原生 Engine。
-2. 隔離性：`tests/room-runtime-isolation-test.cpp` 全綠（含 VM 分離、沙箱封鎖、可見性、
-   代理契約、值型詢問、候選授權、決策核心與覆蓋率報告）。
+2. 隔離性：VM 分離、沙箱封鎖、可見性、代理契約、值型詢問、候選授權、決策核心與覆蓋率報告
+   （原由 room-runtime-isolation suite 驗證；該 suite 已於 2026-09-25 移除，現無自動化覆蓋）。
 3. 重建：指令／記憶體上限觸發後 VM 重建，`ai_memory` 歸零而決策仍能繼續（既有案例
    `aiInstructionLimitRebuildsRuntime`）。
 4. 效能：以 `QSAN_AI_PROBE=1` 比較相同設定的單次決策耗時；計入快照、hook 與權威端驗證，

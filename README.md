@@ -26,7 +26,16 @@ The executable is `release/QSanguosha.exe`. Complete [runtime deployment and con
 | Build and install on Android | [Android](docs/android-build.md) |
 | Play in a terminal or browser | [TUI](docs/tui-client.md), [Web](docs/web-client.md), [Browser Solo](docs/browser-solo.md) |
 | Use spreadsheet clients | [Excel](docs/excel-packaging.md), [Google Sheets](docs/google-sheets-client.md) |
+| Verify a change (smoke tests, headless games) | [Verification](docs/linux-development-environment.md#8-自動化驗證), [autotest tools](tools/autotest/README.md) |
 | Develop extensions or explore the engine | [Documentation index](docs/README.md) |
+
+## Content outside this repository
+
+The repository does not track the Lua AI and extensions, or the art, audio and fonts.
+
+- `lua/ai/`, `extensions/` and `lua/luaoldenemy_lib.lua` come from the separate [extensions repository](https://github.com/lolosiyue/extensions) (`main`). `bash tools/ci/fetch-extensions.sh <repository-root>` fetches them; the Windows equivalent is `tools/ci/fetch-extensions.ps1`.
+- `image/`, `audio/`, `font/` and `hero-skin/` are release assets. Without them the game still starts and reports missing optional assets; `QSanguosha --asset-report` lists what is missing.
+- There are no unit tests or CTest in the repository (removed 2026-09-25); changes are verified with the smoke scripts and headless games linked above.
 
 ## Licenses and attribution
 
