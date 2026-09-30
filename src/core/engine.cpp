@@ -2925,7 +2925,7 @@ int sumApplicableResults(const QList<CorrectSkillResult> &results, bool residue)
     int total = 0;
     foreach (const CorrectSkillResult &result, results) {
         if (!result.applies) continue;
-        if (residue && (result.unlimited || (!result.explicitSigned && result.value == -1)))
+        if (residue && result.unlimited)
             return 1000;
         total += result.value;
     }
@@ -3267,7 +3267,7 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
                 v2, v2->getHolderSelector(), from, to, card,
                 TargetModSkill::Residue, true, false);
             foreach (const CorrectSkillResult &result, results) {
-                if (result.applies && (result.unlimited || (!result.explicitSigned && result.value == -1))) {
+                if (result.applies && result.unlimited) {
                     if (locked) lua_mutex.unlock();
                     return true;
                 }

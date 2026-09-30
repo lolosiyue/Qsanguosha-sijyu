@@ -89,7 +89,7 @@ Lua callback 回傳契約：
 
 Lua callback 出錯或回傳其他型別時記錄 warning，本實例本次貢獻為零。
 
-fixed callback 沒有設定時代表無固定值。所有適用實例的 fixed 值取最大值。只有 `TargetModSkill::Residue` 的 `-1` 表示無限；其他修正的 `-1` 保留為有號整數。
+fixed callback 沒有設定時代表無固定值。所有適用實例的 fixed 值取最大值。`TargetModSkill::Residue` 的無限不再用裸 `-1` 表示，而是用 `CorrectSkillResult::unlimitedResidue()` / `unlimited` 旗標；裸 `-1` 仍是有限有號修正，等同少用一次。其他修正的 `-1` 也保留為有號整數。
 
 ## amount API 與事件
 
@@ -126,7 +126,7 @@ Legacy 四類修正技能不遍歷 runtime instance，仍每個技能定義計�
 ## 開放門檻
 
 - 五種 selector、owner 隔離、精確失效、正負與零值。
-- fixed 最大值及只有 Residue `-1` 無限。
+- fixed 最大值；Residue 無限藉由 `unlimitedResidue()` / `unlimited` 旗標表達，不再用裸 `-1`。
 - set/add/reset、Changing 修改／取消、Changed 通知與同 ref 防遞迴。
 - correctState set/remove/clear、snapshot 重連及隱藏 metadata 權限。
 - 同一玩家兩實例、另一玩家同名技能、client/server 一致。

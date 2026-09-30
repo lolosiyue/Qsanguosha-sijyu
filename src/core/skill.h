@@ -141,7 +141,8 @@ struct CorrectSkillResult {
     static CorrectSkillResult noEffect() { return CorrectSkillResult(); }
     static CorrectSkillResult useAmount(int amount) { return CorrectSkillResult(true, amount, false); }
     static CorrectSkillResult signedAmount(int amount) {
-        // Opt into a finite signed correction without changing the legacy -1 residue sentinel.
+        // Finite signed correction marker; kept for callers that opted out of the
+        // legacy -1 residue sentinel (sentinel removed: -1 is now always finite).
         CorrectSkillResult result(true, amount, false);
         result.explicitSigned = true;
         return result;
