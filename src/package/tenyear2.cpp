@@ -1,4 +1,5 @@
 #include "tenyear.h"
+#include <algorithm>
 #include "skill-declaration.h"
 #include "skill-instance-utils.h"
 //#include "settings.h"
@@ -33006,7 +33007,7 @@ public:
 
 	static bool applicable(const ServerPlayer *player, const CardUseStruct &use)
 	{
-		return player && use.card && use.card->getTypeId() > 0 && use.card->isBlack() && use.to.contains(player)
+		return player && use.card && use.card->getTypeId() > 0 && use.card->isBlack() && std::find(use.to.cbegin(), use.to.cend(), player) != use.to.cend()
 			&& !(use.card->isVirtualCard() && use.card->getEffectiveId() >= 0);
 	}
 

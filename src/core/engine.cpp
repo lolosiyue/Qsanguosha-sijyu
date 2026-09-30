@@ -2397,7 +2397,7 @@ QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool availabl
         // obeys the same mode preference as the normal pool.
         const QSet<QString> modeNames = qsanToSet(
             filterGeneralVersionsForMode(admittedNames + general_names, hegemony));
-        general_names.removeIf([&modeNames](const QString &name) {
+        qsanRemoveIf(general_names, [&modeNames](const QString &name) {
             return !modeNames.contains(name);
         });
     }

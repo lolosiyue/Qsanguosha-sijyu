@@ -38,9 +38,21 @@ inline bool qsanForwardPointerHoverAsMouseMove(QObject *receiver, QEvent *event)
         return false;
 
     const auto *hover = static_cast<const QHoverEvent *>(event);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QMouseEvent mouse(QEvent::MouseMove, hover->position(), hover->position(),
         hover->globalPosition(), Qt::NoButton, QGuiApplication::mouseButtons(),
         hover->modifiers());
+#else
+    // Qt 5 hover events carry only local coordinates; map through the receiver.
+    const auto *widget = qobject_cast<QWidget *>(receiver);
+    if (!widget)
+        return false;
+    const QPointF local = hover->posF();
+    QMouseEvent mouse(QEvent::MouseMove, local,
+        local + QPointF(widget->mapTo(widget->window(), QPoint())),
+        local + QPointF(widget->mapToGlobal(QPoint())), Qt::NoButton,
+        QGuiApplication::mouseButtons(), hover->modifiers());
+#endif
     mouse.setTimestamp(hover->timestamp());
 
     forwarding = true;

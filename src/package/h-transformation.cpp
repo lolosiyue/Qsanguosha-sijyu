@@ -19,6 +19,7 @@
     *********************************************************************/
 
 #include "h-transformation.h"
+#include "qt-collection-utils.h"
 #include "h-formation.h"
 #include "skill.h"
 #include "client.h"
@@ -172,7 +173,7 @@ public:
         if (request.selectedCardIds.isEmpty()) return true;
         const QList<int> hand = request.initiator->handCards();
         return request.selectedCardIds.size() == hand.size()
-            && QSet<int>(request.selectedCardIds.cbegin(), request.selectedCardIds.cend()) == QSet<int>(hand.cbegin(), hand.cend());
+            && qsanToSet(request.selectedCardIds) == qsanToSet(hand);
     }
 
     HQice() : ViewAsSkillV2("heg_qice")

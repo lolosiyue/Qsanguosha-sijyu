@@ -1,4 +1,5 @@
 #include "dream.h"
+#include "qt-collection-utils.h"
 #include "skill-instance-utils.h"
 #include "standard.h"
 #include "maneuvering.h"
@@ -2384,14 +2385,14 @@ public:
         if (!ctx.use_card || !ctx.initiator) return false;
         const QList<int> ids = materials(ctx.initiator);
         const QList<int> submitted = ctx.use_card->getSubcards();
-        return !ids.isEmpty() && QSet<int>(ids.begin(), ids.end()) == QSet<int>(submitted.begin(), submitted.end());
+        return !ids.isEmpty() && qsanToSet(ids) == qsanToSet(submitted);
     }
     EffectFlow effect(SkillContext &ctx) const override
     {
         if (!ctx.use_card || !ctx.initiator) return FinishSkill;
         const QList<int> ids = materials(ctx.initiator), submitted = ctx.use_card->getSubcards();
         // A waived payment does not authorize stale or partial conversion materials.
-        if (ids.isEmpty() || QSet<int>(ids.begin(), ids.end()) != QSet<int>(submitted.begin(), submitted.end())) return FinishSkill;
+        if (ids.isEmpty() || qsanToSet(ids) != qsanToSet(submitted)) return FinishSkill;
         ctx.use_card->setTag("IfShenfengApplied", dreamReceipt(ctx.initiator->getRoom(), ctx));
         return ContinueEffects;
     }

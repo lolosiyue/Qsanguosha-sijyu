@@ -1,4 +1,5 @@
 #include "generaloverview.h"
+#include "qt-collection-utils.h"
 #include <QtGlobal>
 #include "ui_generaloverview.h"
 #include "engine.h"
@@ -350,7 +351,7 @@ void GeneralOverview::fillGenerals(const QList<const General *> &generals, bool 
     const auto *selected = ui->tableWidget->item(ui->tableWidget->currentRow(), 0);
     const QString selected_name = selected ? selected->data(Qt::UserRole).toString() : QString();
     if (!same_name_filter.isEmpty()) {
-        copy_generals.removeIf([this](const General *general) {
+        qsanRemoveIf(copy_generals, [this](const General *general) {
             return !Sanguosha->sameNameWith(general->objectName(), same_name_filter);
         });
     }

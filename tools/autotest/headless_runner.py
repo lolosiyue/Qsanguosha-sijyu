@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Final, TypeAlias
 
 from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
-                           find_exe, hex_exit, is_crash_code, kill_pid,
+                           find_exe, hex_exit, is_crash_code,
                            log_dir_for, log_has_smart_ai_failure,
                            parse_headless_log, qt_console_env,
                            resolve_workdir, spawn, stamp, tail_lines,
@@ -425,15 +425,16 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
             break
         if time.time() > deadline:
             timed_out = True
-            kill_pid(proc.pid)
-            code = proc.wait()
+            # Kill through our child handle; taskkill failure must not leave an unbounded wait.
+            proc.kill()
+            code = wait_exit(proc, 5)
             break
         # 自動化測試: smart-ai 載入失敗 — 同 VM 的後續局都會壞, 提前結束省時間
         if log_has_smart_ai_failure(headless_log):
             print("  [%s] [%s] smart-ai 載入失敗, 提前結束 (後續局無法正常進行)"
                   % (label, time.strftime("%H:%M:%S")))
-            kill_pid(proc.pid)
-            code = proc.wait()
+            proc.kill()
+            code = wait_exit(proc, 5)
             smart_ai_failed = True
             break
         finished, failed, done = parse_headless_log(headless_log)
@@ -458,6 +459,8 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         process_failures.append(f"finished={n_finished}/{games}")
     if failed != 0:
         process_failures.append(f"failed-games={failed}")
+    if code is None:
+        process_failures.append("process-still-running")
     if code != 0:
         process_failures.append(f"exit={code}")
     process_failure = ";".join(process_failures)

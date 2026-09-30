@@ -8339,7 +8339,7 @@ void Room::processRequestPreshow(ServerPlayer *player, const QVariant &arg)
     const QVariantMap payload = arg.toMap();
     const QVariant name = payload.value(QStringLiteral("skill_name"));
     const QVariant enabled = payload.value(QStringLiteral("preshowed"));
-    if (name.metaType().id() != QMetaType::QString || enabled.metaType().id() != QMetaType::Bool
+    if (name.userType() != QMetaType::QString || enabled.userType() != QMetaType::Bool
         || name.toString().size() > 256) return;
     // Socket callbacks never inspect the worker-owned instance containers.
     // Coalesce repeat clicks and bound malformed identities until the next drain.

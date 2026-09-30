@@ -157,6 +157,31 @@ FreeType 原始碼需解壓為 `builds/android-toolchain/src/freetype-2.14.3/CMa
 
 ## 建置 APK
 
+### ARM 32 位元（armeabi-v7a）
+
+ARMv7 沿用 Qt 6.11.1 與現有 Android GUI，最低 Android 9／API 28；
+不使用 XP／Qt 5 相容層。`android-armv7-debug`／`android-armv7-release`
+及對應 `-apk` presets 使用獨立建置目錄，不覆寫日常 x86_64 cache。
+
+在既有共用工具鏈補入同版 ARMv7 kit（不另建 SDK／JDK／Gradle cache）：
+
+```powershell
+python -m aqt install-qt all_os android 6.11.1 android_armv7 `
+  -O H:/qsan-android-x86_64/qt `
+  -m qtmultimedia qtwebsockets qtshadertools qt5compat
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-android.ps1 `
+  -Configuration Release -Abi armeabi-v7a `
+  -ToolchainRoot H:/qsan-android-x86_64 `
+  -SdkRoot "$env:LOCALAPPDATA/Android/Sdk"
+```
+
+腳本會為 ARMv7 建立獨立 `freetype-armv7`，重用共用 FreeType 原始碼。
+Release APK 簽章狀態依現有 Gradle 配置；未簽章產物不能直接安裝。
+建置成功不代表 32 位元實機、記憶體峰值或完整對局驗收通過；
+不要以 x86_64 模擬器驗收代替 ARMv7 裝置驗收。
+
+### 通用建置入口
+
 以下為通用建置參考；本機日常只執行上方「本機唯一日常環境」的固定命令。
 腳本會暫時設定 Android、Java、Qt 及獨立 Gradle cache，完成後還原 PowerShell 環境；亦會先建立 FreeType Android static dependency。
 

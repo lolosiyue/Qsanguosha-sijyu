@@ -1,4 +1,5 @@
 #include "tenyear.h"
+#include <QScopeGuard>
 #include "skill-instance-utils.h"
 //#include "settings.h"
 //#include "skill.h"
@@ -637,7 +638,7 @@ public:
             obtain.extra_data = QVariantMap{{"victim", target->objectName()}, {"card", id}};
             skillEffect(event, room, ctx.owner, obtain, ctx.owner);
             // The receipt becomes a bool only when this owner recipient accepted the extraction.
-            obtained = obtained || (obtain.extra_data.metaType().id() == QMetaType::Bool && obtain.extra_data.toBool());
+            obtained = obtained || (obtain.extra_data.userType() == QMetaType::Bool && obtain.extra_data.toBool());
         }
         if (!obtained) return false;
         SkillContext draw = ctx; draw.choice = "draw";

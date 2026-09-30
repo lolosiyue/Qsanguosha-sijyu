@@ -1,4 +1,5 @@
 #include "choosegeneraldialog.h"
+#include "qt-collection-utils.h"
 //#include "general.h"
 #include "engine.h"
 #include "oracle_helper.h"
@@ -276,7 +277,7 @@ FreeChooseDialog::FreeChooseDialog(const QString &name, QWidget *parent, ButtonG
     group->setExclusive(type == Exclusive);
 
     QMap<QString, QList<const General *> > map;
-    const QSet<QString> allowed(allowedGenerals.cbegin(), allowedGenerals.cend());
+    const QSet<QString> allowed = qsanToSet(allowedGenerals);
     static QList<const General *> all_generals = Sanguosha->findChildren<const General *>();
     foreach (const General *general, all_generals) {
         if (general->isTotallyHidden() || (!allowed.isEmpty() && !allowed.contains(general->objectName())))

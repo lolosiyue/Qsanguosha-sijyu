@@ -345,6 +345,15 @@ export class LiveSession {
     this.sendControl(Command.TRUST, { schema_version: 1, trusted });
   }
 
+  preshowSkill(skillName: string, preshowed: boolean): void {
+    // Match Client::requestSkillPreshow; the server owns skill eligibility.
+    this.sendControl(Command.PRESHOW, {
+      schema_version: 1,
+      skill_name: skillName,
+      preshowed
+    });
+  }
+
   surrender(): void {
     this.sendControl(Command.SURRENDER, { schema_version: 1, requested: true });
   }
