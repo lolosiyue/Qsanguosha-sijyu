@@ -37,6 +37,7 @@
 | validate | 是否有詢問、支付、效果、replacement |
 | onUse | 是否呼叫基底；是否混合代價／效果／事件 |
 | history | 舊 class name／Lua `#objectName` |
+| priority | 舊 `getPriority()` override 與其值；是否依賴與 legacy 技能的相對順序（見 §7.3） |
 | AI | 是否依 Player Tag、card class、source owner |
 | logs/UI | skillName、語音、attachedlord provider |
 
@@ -72,6 +73,29 @@ guhuo 選牌、宣告牌名重建與回應時的二次選擇，見
 - UI 使用非標準多階段 Dialog，現有 `userString` 無法穩定重建。
 - AI 嚴重依賴 Room/Player Tag 時序。
 
+### 4.4 無 V2 對應的基底類別
+
+下列舊基底類別目前沒有 V2 對應機制，衍生技能暫留 legacy，不納入遷移批次；確需遷移時先開獨立設計票（計數為 2026-09-25 稽核值，動工前以 `grep ': public <Base>'` 重查）：
+
+| 舊基底類別 | 存量 | 備註 |
+|---|---|---|
+| `ProhibitSkill` | 約 59 | 無 V2 對應 |
+| `CardLimitSkill` | 約 57 | 無 V2 對應 |
+| `FilterSkill` | 約 18 | V2 無對應過濾層 |
+| `ViewAsEquipSkill` | 約 7 | 與 `FilterSkill` 組合（如 doudizhu `RuyiBf`/`Ruyi`）無 V2 對應 |
+| `DetachEffectSkill` | 約 18 | 無 V2 對應 |
+| `InvaliditySkill` | 約 15 | V2 以精確 instance invalidity 取代，需逐一比對 |
+
+判定流程：技能若只繼承上表基底而不含其他可遷移行為，直接標記暫留；若同時有可遷移的主動部分，只遷移主動部分並保留 legacy 被動層。
+
+### 4.5 SkillCard::use／onEffect 的落點
+
+舊 SkillCard 存量大（`ol.h` 122 類、`tenyear.h` 199 類等），多數帶 `targetFilter`、部分自訂 `onUse`。選型判準：
+
+- `targetFilter`＋呼叫基底的 `use`＋`onEffect` 的標準形狀：優先走 §4.1（普通卡）或 §4.2（proxy custom action）；`targetFilter` 對應 proxy `canSelectTarget`。
+- 自訂 `onUse`（混合代價／效果／手動觸發）：按 §6、§7 拆分；屬 monolithic 時先標記暫緩（見 §7.2 的標記實況）。
+- `SkillCard::onEffect(CardEffectStruct &)`：逐目標效果對應 `effectOnTarget`，一次吃整組目標對應 `effectOnTargetGroup`；不屬於單一目標的部分進整體 `effect`。
+
 ## 5. 舊 API 到 V2 的映射
 
 | 舊位置 | V2 位置 |
@@ -103,7 +127,8 @@ guhuo 選牌、宣告牌名重建與回應時的二次選擇，見
   `createCard()` 重建卡牌。同名 `EquipSkillV2` 必須實際持有該視為技；來源檢查沿用其
   `prepareSource()`／`isSourceAvailable()`，不以卡名猜測其他技能。
 - 實體裝備不產生武將技能來源；虛擬裝備保留授予技能的精確 `sourceRef`，沿用預亮、揭將
-  及失效檢查。已存在的有效技能實例入口仍走原有實例驗證。
+  及失效檢查。已存在的有效技能實例入口仍走原有實例驗證。裝備 activation 的來源準備
+  由 `prepareEquipSource()`／`isEquipSourceAvailable()` 承接，不為裝備虛構 Player 技能實例。
 - 朱雀羽扇只接受一張未使用中的普通殺，產生保留花色、點數與材料的火殺；支援出牌與
   回應使用，不支援純打出。`historyKey()` 保留 `FireSlash`，不另計羽扇使用次數。
 
@@ -137,6 +162,56 @@ scope 保存並恢復外層 selector，只有本次新建的 child 才在退出�
 共用 client session 傳入所選實例，快取亦按 ref 區分。借用請求沿用其精確 selector。
 未選定實例的初始建構可能仍帶空 ref，實例型規則不得把它猜成第一份同名技能。
 
+### 5.5 舊 TriggerSkill 子類 → TriggerSkillV2
+
+| 舊基底類別 | 隱含事件 | 舊 callback | V2 對應 |
+|---|---|---|---|
+| `PhaseChangeSkill` | `EventPhaseStart` | `onPhaseChange(player, room)`（返回 true 中斷事件） | `events << EventPhaseStart`；`triggerable()` 篩 `player->getPhase()`；詢問進 `cost`、效果進 `effect` |
+| `MasochismSkill` | `Damaged` | `onDamaged(target, damage)` | `events << Damaged`；`DamageStruct` 由 `ctx.original_data` 讀取 |
+| `DrawCardsSkill` | `DrawNCards` | `getDrawNum(player, n)` | 見 §5.6 |
+| `GameStartSkill` | `GameStart` | `onGameStart(player)` | `events << GameStart`；setup 進 `effect`，需詢問時進 `cost` |
+| `RetrialSkill` | `AskForRetrial` | `onRetrial(player, judge)` | `events << AskForRetrial`；改判寫回 `JudgeStruct` |
+
+已依此收斂的參考遷移：`MasochismSkill→Jianxiong/Yiji/Fankui`、`DrawCardsSkill→Tuxi/NosLuoyi/NosYingzi`、`PhaseChangeSkill→YijiObtain/Qinxue/Wangzun`、`RetrialSkill→Guicai/NosGuicai`、`GameStartSkill→MTLiaoshiChoose` 等（以現行 `src/package` 為準）。
+
+舊基底 `triggerable` 預設檢查 `target == owner && owner->isAlive() && owner->hasSkill(objectName())`；V2 `triggerable()` 須保留同樣條件，並回傳 `TriggerList{{owner, {objectName()}}}`。
+
+### 5.6 DrawCardsSkill 專節
+
+舊 `getDrawNum(player, n)` 允許在回傳前做互動查詢（`askForPlayerChosen`、`showDrawPile` 等，如 bgm `Zhaolie`、olwenwu `JinHuishi`），也可回傳負數表示減少摸牌。V2 改寫契約：
+
+- `events << DrawNCards`；`triggerable()` 篩 `DrawStruct.reason`（摸牌階段為 `"draw_phase"`；初始手牌為 `"InitialHandCards"`，對應舊 `is_initial`）。
+- 詢問放 `cost()`，結果存 `ctx.extra_data`。
+- `effect()`（常配合 `ctx.manual_effect = true` 的 `effectTarget`）從 `*ctx.original_data` 取出 `DrawStruct`，改寫 `draw.num` 後寫回 `*ctx.original_data`；資料由框架帶回 `AfterDrawNCards` 一側的既有流程。
+- 舊技能有自訂 `getPriority()` 或依賴事件內相對順序時，另 override `usesEventPriority()` + `getPriority()`（見 §7.3；如 Tuxi 保留 `return 1`）。
+
+參考實作：`src/package/standard-generals.cpp` 的 `Tuxi`、`src/package/maotu.cpp` 的 `MTWeiqie`。
+
+### 5.7 覺醒技（Wake）
+
+舊覺醒技依賴 `Skill::Wake` frequency，由引擎在 legacy 迴圈檢查 `canWake()`。該呼叫會消耗覺醒 grant 並記 log，遷移後語意改變：
+
+- `triggerable()` **不得**呼叫 `ServerPlayer::canWake()`；只檢查 grant tag（如 `hasWakeGrant()` 讀 `<skill>_SKILLCANWAKE`）與自身條件。
+- grant 的消耗移到結算時（`effect()` 執行覺醒、`changeMaxHpForAwakenSkill`、`acquireSkill` 一併處理），不再依賴 legacy 迴圈的 `canWake()` 副作用。
+- 引擎對 legacy Wake 的 `canWake()` 檢查只存在於 legacy 派送迴圈，V2 不經過。
+
+參考實作：`src/package/sp.cpp` 的 Zhiri 等已遷移覺醒技。
+
+### 5.8 C++ 宣告式選牌 API（guhuo 類）
+
+guhuo／juguan／tiansuan 類宣告式技能在 C++ 端有完整 API（`src/core/skill.h` 的 `ViewAsSkillV2`），不必把這類技能導向 Lua：
+
+| hook | 責任 |
+|---|---|
+| `declarationDialog()` | 回傳技能（或其 owner）的宣告框資訊，決定基本牌／錦囊宣告 UI |
+| `declaresCardName()`／`declaresByDialog(reason)` | 是否以宣告牌名／宣告框為準；回應按 pattern 取名時 `declaresByDialog` 為 false |
+| `usableNames(request)` | 列出允許宣告的牌名（套用 dialog 過濾與禁用） |
+| `allowDeclaration(request, name)` | 逐實例宣言限制（見 §5.4） |
+| `buildCard(request, name)` | 由接受的牌名建卡；預設以選中材料 clone 並掛技能名，proxy 卡覆寫 |
+| `declarationReason(...)` | 宣告理由分類 |
+
+同一組規則同時餵 client 宣告框、預設 `createCard()`、回應時預設 `cost()` 的二次選擇與預設 `historyKey()`；宣告框外或 pattern 外的宣言不會變成卡牌。Lua 端對應 `guhuo_type`（只決定宣告框樣式）與 factory 的 `n`／`setN()`（固定選牌張數）：宣告框樣式與選牌數分開設定，互不推導。
+
 ## 6. validate 人工分類
 
 `validate()/validateInResponse()` 必須逐行分成以下類別：
@@ -152,7 +227,7 @@ scope 保存並恢復外層 selector，只有本次新建的 child 才在退出�
 
 - 不保留「validate 先做副作用，再期待 WillInvoke 可撤銷」的舊結構。
 - `createCard` 不得 ask、move、mark、log、random。
-- 無法安全拆分時標記 `LegacyValidateLimited`，暫留舊技能。
+- 無法安全拆分時標記 `LegacyValidateLimited`，暫留舊技能（該標記目前無引擎實作，`src/` 零命中，僅作 ticket 分類）。
 - validate replacement 不建立第二 execution；sourceRef／activationRef 保持原值。
 
 ## 7. onUse 人工分類
@@ -173,9 +248,41 @@ scope 保存並恢復外層 selector，只有本次新建的 child 才在退出�
 - 真正支付移到 pay。
 - 遊戲結果移到 effect／target effect。
 - 原有 PreCardUsed/CardUsed/CardFinished 手動觸發全部刪除，交由引擎生命週期。
-- 遷移完成前標記 `LegacyOnUseLimited`。
+- 遷移完成前標記 `LegacyOnUseLimited`。注意：引擎側的 `LegacyOnUseLimited` 是 Card 動態
+  property（`Room` 在 EventSkillEffect 攔截自訂 onUse 時讀取，`src/server/room.cpp`），
+  不是技能標記，且目前沒有任何 package 設定它；遷移 ticket 中的「標記」指人工分類，
+  不是可設定的技能介面。
 
 橋接層攔截 monolithic onUse 時只保證整段跳過且不閃退，不保證代價、CardUsed 或移牌語意。
+
+### 7.3 recordEvent 與事件優先序（遷移保命機制）
+
+`TriggerSkillV2` 派送層有兩個舊 `TriggerSkill` 介面沒有的鉤子，決定觸發時序與記錄清理，遷移前必須盤點：
+
+**兩段式派送**（`RoomThread::trigger()`）：
+
+1. 所有 V2 技能先於 legacy 執行；V2 內部按 `getPriority()` 排序。
+2. legacy 迴圈按 `sortTriggerSkills()`（`getPriority()`＋座位序）執行；純 V2 技能在該迴圈被跳過。
+3. `usesEventPriority()` 回傳 true 的 V2 技能（裝備技 `isEquipSkill()` 自動視同 true）改在
+   legacy 迴圈中按 `getPriority()` 分組、插回原 legacy 位置執行。
+
+因此遷移一個技能就會改變它在同一事件內相對其他技能的執行順序。舊技能有自訂
+`getPriority()`（或依賴與 legacy 技能的相對順序）時，必須 override `usesEventPriority()`
+並保留原 `getPriority()` 值（如 Tuxi `return 1`、YijiObtain `return 4`）。
+
+**recordEvent()**：record 階段每個 V2 定義、每個事件只呼叫一次（不逐 owner 實例）；
+回傳 true 即由技能自行完成本次事件的記錄／收牌，框架跳過逐實例 `record()`。
+適用於「事件發生即收牌」類行為（如 YijiObtain 於摸牌階段開始時收 `yiji` 澤）。
+不覆寫時，`record()` 對每個現存玩家的每個實例各得一次完整 context。
+
+### 7.4 onUse→use 資料傳遞替代
+
+舊 SkillCard 常以 Room Tag 在 `onUse()` 與 `use()`／`onEffect()` 之間傳遞
+CardUseStruct（如 jianshu 遷移前的 `JianshuCard::onUse` 以 `setTag` 存、`use()` 讀回；
+倉內 `setTag` 存量以百計）。V2 不需要：execution-local 資料放 `ctx.extra_data`
+（`cost`／`pay` 寫、`effect*` 讀），逐目標續接用 `effectOnTarget`／`effectOnTargetGroup`
+直接讀 `ctx.use_card`／`ctx.targets`。遷移時逐處把 Tag 讀寫改為 ctx 欄位，
+不得把 Room Tag 帶進新技能（§2 既有禁令）。
 
 ## 8. cost 與 pay 判定法
 
@@ -275,6 +382,14 @@ AI use_func / ai_skill_use_func
 ```
 
 - 若外部程式依賴舊 SkillCard history key，覆寫 `historyKey()`。
+- `hasIndependentAIConversion()` 是 opt-in AI 契約：宣稱後 AI 可獨立提交恰好 `getN()` 張
+  手牌的轉化（`canSelectCard` 對空選集也要接受、每次選擇產生相同卡身分與目標規則、
+  無花色／點數繼承、裝備代價或選牌副作用）。原註釋要求 contract test；測試套件已移除，
+  改以 headless 對局與 `~test` 合成技能回歸滿足（見 §16）。
+- 一般轉化卡（非 `Card::TypeSkill`）的 history key 記卡牌類名，**不記**技能 key：只有真正的
+  SkillCard／proxy 卡才用 activation skill 的 `#<name>Card`（引擎在 `Room::useCardInternal`
+  按 `getTypeId() == Card::TypeSkill` 分流）。把普通轉化卡記在技能 key 下會繞過原生每回合
+  限制（如諸葛連弩次數）。
 - `skillName` 只作效果／日誌歸因；root source 使用 sourceRef。
 - 舊 AI 未遷移時仍可透過 base-name fallback，但 source-sensitive attached 技能必須另審。
 - 不為了通過 AI 而把 instanceID 再塞入技能名稱字串。
@@ -361,8 +476,10 @@ V2 映射：
 
 ## 16. 當前狀態
 
-- 本文件只建立規範。
-- 沒有正式技能獲准在核心 Ticket 1–12 內遷移。
+- 正式技能已按批次遷移：`src/package` 現有數百個 `TriggerSkillV2`／`ViewAsSkillV2`
+  （數值隨批次成長，動工前重查）；CorrectSkillV2 系亦有正式技能
+  （如 `Paoxiao : public TargetModSkillV2`）。
+- 本文件為遷移規範；每批遷移依 §14 ticket 模板建立，先記錄舊行為再改 API。
 - 遷移驗證走 [`tools/autotest/headless_runner.py`](../tools/autotest/headless_runner.py)
   的 headless 對局（倉庫已無 CTest，2026-09-25 移除），並可加入 `~test` 合成技能。
 

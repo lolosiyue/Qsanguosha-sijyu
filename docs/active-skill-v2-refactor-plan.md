@@ -317,7 +317,8 @@ InvalidTargetUpdate
 - 返回 null 不建立 execution。
 - WillInvoke 不能撤銷 validate 已發生副作用。
 - bypass_cost 不能跳過 validate 內的代價。
-- 這類技能標記 `LegacyValidateLimited`，由人工遷移。
+- 這類技能標記 `LegacyValidateLimited`，由人工遷移。（該標記目前無引擎實作，`src/` 零命中，
+  僅作 ticket 分類，不是可設定的技能介面。）
 
 ### 9.3 legacy onUse
 
@@ -331,7 +332,9 @@ InvalidTargetUpdate
 - 不處理該 onUse 內的移牌、代價或日誌。
 - 已提交的 V2 配額與使用歷史仍計入。
 - 唯一相容要求是安全返回、不閃退。
-- 標記 `LegacyOnUseLimited`，正確語意交由人工遷移。
+- 標記 `LegacyOnUseLimited`，正確語意交由人工遷移。（引擎側為 Card 動態 property，
+  在 `Room` 以 EventSkillEffect 攔截自訂 onUse 時讀取；目前沒有任何 package 設定它，
+  規範中的「標記」指 ticket 分類。）
 
 ### 9.4 bypass_cost
 
@@ -475,7 +478,10 @@ V2 proxy selected-card 預設支付：
 ### 11.7 proxy 歷史名稱
 
 - C++ 實際類別只有一個通用 `ActiveSkillCard`。
-- 對外 objectName/history key 預設按 activation skill 產生 `#<activationSkillName>Card`。
+- 對外 objectName／history key 只有 `Card::TypeSkill` 的 SkillCard／proxy 卡預設按 activation
+  skill 產生 `#<activationSkillName>Card`；普通轉化卡記卡牌類名（card class），不得記在技能
+  key 之下，否則繞過原生每回合限制（如連弩次數；引擎在 `Room::useCardInternal` 按
+  `getTypeId() == Card::TypeSkill` 分流，`8f6b160c` 修正）。
 - `ViewAsSkillV2::historyKey()` 可覆寫為舊 SkillCard key，供未來人工遷移對齊舊觸發器／AI。
 - V2 使用配額不依賴 card history key。
 
@@ -649,6 +655,9 @@ instruction budget 保護，超限即停用該 Room 的 Isolated VM、保留 leg
 | ViewAsSkillV2 proxy | 原生 | 是 | 是 | 完整 V2 契約 |
 | Pure response | 是 | 不適用 | 依卡類型 | nullified response |
 | Nullification | 是 | 有目標才有 | 依卡類型 | skip 不取消錦囊 |
+
+`Legacy*Limited` 標記現況：`LegacyOnUseLimited` 為 Card 動態 property（現無 package 設定）、
+`LegacyValidateLimited` 無引擎實作；兩者目前均屬 ticket 分類，見 §9.2／§9.3。
 
 ## 17. Ticket 路線圖
 
