@@ -92,7 +92,7 @@ callback 不應修改 context。需要改變持久狀態時，使用 Room API。
 | 其他型別 | 記錄 warning，失敗關閉 (Fail-closed) |
 | callback 發生錯誤 | 記錄 warning，本實例本次貢獻為零 |
 
-Lua 數值回傳與 C++ `CorrectSkillResult::useAmount()` 保留既有約定：只有 `TargetModSkill_Residue` 的 `-1` 表示無限次數；其他類型的 `-1` 保留為普通負數。
+Lua 數值回傳與 C++ `CorrectSkillResult::useAmount()` 採用一致語意：所有 `-1` 皆為普通有號負修正（例如 Residue `-1` = 使用次數 -1）。Residue 無限次數必須明確表達：Lua 回傳 `sgs.CorrectSkillResult.unlimitedResidue()`（或等價 `sgs.CorrectSkillResult(true, -1, true)`），C++ 使用 `CorrectSkillResult::unlimitedResidue()`；僅 `unlimited` 旗標會換算為 1000 並令 `hasResidueUnlimited()` 為 true。
 
 ## 7. Lua 建立技能
 
@@ -145,7 +145,7 @@ local slash_residue = sgs.CreateTargetModSkillV2 {
 }
 ```
 
-若 Residue 要表示無限次數，callback 明確回傳 `-1`。不要把其他修正類型的 `-1` 當成無限。
+若 Residue 要表示無限次數，callback 須回傳 `sgs.CorrectSkillResult.unlimitedResidue()`；裸 `-1` 已改為有限減 1 次，不再代表無限。
 
 ### 7.4 AttackRangeSkillV2
 
@@ -301,7 +301,7 @@ public:
 
 Skill 衍生類別不加入 `Q_OBJECT`。callback 不得自行遍歷同名技能持有者，也不得把結果乘以實例數；Engine 已負責逐實例呼叫。
 
-C++ 需要有限的次數減少時，使用 `CorrectSkillResult::signedAmount(delta)`；例如 `signedAmount(-1)` 只減少一次，不授予無限次數。此入口設定 `explicitSigned`，聚合數值與 `hasResidueUnlimited()` 均遵守該標記。`useAmount(-1)`、Lua 數值 `-1` 及 `unlimitedResidue()` 的既有次數語意不變；明確的 `unlimited` 旗標仍優先。本入口僅供 C++，未新增 SWIG／Lua API。
+`-1` 現在與其他負數一致，一律為有限有號修正（Residue `-1` = 少使用一次）。`CorrectSkillResult::signedAmount(delta)` 仍保留（設定 `explicitSigned`），但目前聚合已不再對 `-1` 做特殊解讀，效果等同 `useAmount(delta)`。無限次數一律走 `unlimitedResidue()`／`unlimited` 旗標；Lua 端可回傳 `sgs.CorrectSkillResult.unlimitedResidue()`（`luaCorrectSkillResult` 已支援 userdata `CorrectSkillResult` 轉換）。
 
 ## 13. Snapshot、Delta 與 UI
 
@@ -340,7 +340,7 @@ RoomScene 收到信號後重新驗證技能按鈕、選牌狀態與目標預覽�
 | selector | 明確決定 Primary、Secondary、Participants、AllHolders 或 System |
 | callback | 只計算單一 context instance，不自行乘實例數 |
 | 回傳值 | `nil/false`、`true`、數字三態使用正確 |
-| 負數 | 確認只有 Residue `-1` 使用無限語意 |
+| 負數 | Residue `-1` 為有限減 1；無限須用 `unlimitedResidue()` |
 | instanceRef | 持久改值必須保存 owner＋skillName＋instanceID |
 | state | 公開修正狀態放 `correctState`，私密資料留在 server state |
 | 失效 | 驗證指定 instanceID 失效不影響其他實例 |
@@ -379,7 +379,8 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 | correctState | 單 key set/remove 只影響指定實例 |
 | exact invalidity | 只排除指定 instanceID |
 | fixed | 適用結果取最大 |
-| TargetMod Residue `-1` | `hasResidueUnlimited()` 為 true |
+| TargetMod Residue `unlimitedResidue()` | `hasResidueUnlimited()` 為 true，聚合為 1000 |
+| TargetMod Residue `-1`（含 Lua 數值） | 保留有號整數 `-1`（有限減一次） |
 | 其他 `-1` | 保留有號整數，不轉 1000 |
 
 待補環境驗證：

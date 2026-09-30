@@ -1847,6 +1847,14 @@ static CorrectSkillResult luaCorrectSkillResult(lua_State *L, int currentAmount,
 		lua_pop(L, 1);
 		return CorrectSkillResult::useAmount(value);
 	}
+	if (lua_isuserdata(L, -1)) {
+		CorrectSkillResult *result = NULL;
+		if (SWIG_ConvertPtr(L, -1, (void**)&result, SWIGTYPE_p_CorrectSkillResult, 0) == SWIG_OK && result) {
+			const CorrectSkillResult converted = *result;
+			lua_pop(L, 1);
+			return converted;
+		}
+	}
 	qWarning("%s returned an unsupported value; contribution ignored", callbackName);
 	lua_pop(L, 1);
 	return CorrectSkillResult::noEffect();
