@@ -274,10 +274,26 @@ struct SkillChangeStruct {
 | 方法 | 返回值 | 說明 |
 |------|--------|------|
 | `triggerable(event, room, player, data)` | `TriggerList` | 收集可觸發的技能 |
-| `record(event, room, player, data, owner)` | `void` | 記錄階段（全技能執行） |
-| `cost(event, room, player, data, ask_who)` | `bool` | 消耗階段（是否執行） |
-| `effect(event, room, player, data, ask_who)` | `bool` | 效果階段（是否中斷） |
-| `trigger(event, room, player, data, owner)` | `bool` | 完整流程（cost → effect） |
+| `record(event, room, player, ctx)` | `void` | 記錄階段（每個現存玩家實例各一次，context 完整） |
+| `cost(event, room, player, ctx)` | `bool` | 消耗階段（是否執行） |
+| `pay(event, room, player, ctx)` | `bool` | 支付代價（`ctx.bypass_cost` 時跳過） |
+| `effect(event, room, player, ctx)` | `bool` | 效果階段（是否中斷） |
+| `effectTarget(event, room, player, ctx, target)` | `bool` | 逐目標效果（框架遍歷或 `manual_effect` 手動派發） |
+| `trigger(event, room, player, data, owner)` | `bool` | 引擎入口；框架組裝 `SkillContext` 後走 record → cost → pay → effect |
+
+#### 派送與記錄鉤子
+
+下列鉤子決定 V2 技能在事件內的執行時序與記錄方式，舊 `TriggerSkill` 沒有對應介面；
+從 legacy 遷移依賴相對順序或特殊記錄時機的技能前，必須先盤點（見 migration-guide §7.3）：
+
+| 方法 | 返回值 | 說明 |
+|------|--------|------|
+| `recordEvent(event, room, target, data)` | `bool` | 自管記錄：每個 V2 定義、每個事件只呼叫一次（不逐 owner 實例）；回傳 true 即由技能自行完成記錄，框架跳過逐實例 `record()` |
+| `usesEventPriority()` | `bool` | true 時本技能改在 legacy 迴圈按 `getPriority()` 分組、插回原 legacy 位置執行；`isEquipSkill()` 自動視同 true |
+| `getPriority(event)` | `int` | 觸發優先序（`TriggerSkill` 預設 2）；V2 全體先於 legacy 執行、內部按此排序，遷移一個技能即改變事件內相對順序 |
+| `acceptsRemovalEvent(event, data)` | `bool` | opt-in：接受（已驗證的）實例移除事件，不用於 revive 已退役實例 |
+| `collectTriggerContexts(event, room, player, data, contexts)` | `bool` | opt-in：自訂觸發來源收集（供應精確來源／決策者）；false 走一般 owner 索引 |
+| `triggerOrderPlayer(room, ctx)` | `ServerPlayer *` | 自訂 askForTriggerOrder 的決策者（預設 `ctx.owner`） |
 
 ### 觸發流程
 
@@ -332,6 +348,18 @@ triggerV2Skills(event, room, target, data)
             │
             └─ trigger(EventSkillEffectFinished, ctx) ← 公共事件
 ```
+
+### DrawNCards 改寫契約（DrawCardsSkill 遷移）
+
+舊 `DrawCardsSkill::getDrawNum(player, n)` 可在回傳前做互動查詢、可回傳負數；V2 改寫規則：
+
+- `events << DrawNCards`；`triggerable()` 篩 `DrawStruct.reason`（`"draw_phase"`／初始手牌 `"InitialHandCards"`）。
+- 詢問進 `cost()`，結果存 `ctx.extra_data`。
+- `effect()`（常配 `ctx.manual_effect = true` 的 `effectTarget`）從 `*ctx.original_data` 取出
+  `DrawStruct`，改寫 `draw.num` 後**必須寫回** `*ctx.original_data`，後續摸牌流程才讀得到新值。
+- 舊 `getPriority()` 或事件內相對順序依賴，以 `usesEventPriority()` + `getPriority()` 保留。
+
+參考實作：`src/package/standard-generals.cpp` 的 `Tuxi`、`src/package/maotu.cpp` 的 `MTWeiqie`。
 
 ### skillEffect 方法
 
@@ -906,7 +934,6 @@ skill_table[event] → [skillA_ptr, skillB_ptr]  (同名技能的不同實例)
 
 ```cpp
 class BaGuaSkill : public TriggerSkillV2 {
-    Q_OBJECT
 public:
     BaGuaSkill() : TriggerSkillV2("baGua") {
         events << DamageCaused << DamageInflicted;
@@ -922,12 +949,12 @@ public:
     }
 
     bool cost(TriggerEvent event, Room *room, ServerPlayer *player,
-             QVariant &data, ServerPlayer *ask_who) const override {
+             SkillContext &ctx) const override {
         return room->askForDiscard(player, objectName(), 1, true);
     }
 
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player,
-               QVariant &data, ServerPlayer *ask_who) const override {
+               SkillContext &ctx) const override {
         // 八卦效果邏輯
         return false;
     }
@@ -1182,16 +1209,13 @@ public:
     }
 
     bool cost(TriggerEvent event, Room *room, ServerPlayer *player,
-             QVariant &data, ServerPlayer *ask_who) const override {
+             SkillContext &ctx) const override {
         // ... 消耗階段邏輯
         return true;
     }
 
     bool effect(TriggerEvent event, Room *room, ServerPlayer *player,
-               QVariant &data, ServerPlayer *ask_who) const override {
-        SkillContext ctx;
-        ctx.invoker = player;
-        ctx.owner = player;
+               SkillContext &ctx) const override {
         addUsage(ctx);  // 結算成功後增加次數（usage ref 由框架自 ctx 解析）
         // ... 效果邏輯
         return false;

@@ -16,7 +16,7 @@
 | Lua callback | 類別各自定義 | 統一三態回傳契約 |
 | 精確失效 | 以技能名為主 | 可排除指定 instanceID |
 
-目前只應使用測試技能驗證。正式技能須在完整執行期矩陣通過後才可遷移。
+目前只應使用測試技能驗證。正式技能已按批次遷移（TriggerSkillV2／ViewAsSkillV2 全包批次進行中；CorrectSkillV2 系如 `Paoxiao : public TargetModSkillV2` 已入標準包）；新增 CorrectSkillV2 正式技能仍應附對局回歸，其餘環境驗證項目見 §16.1。
 
 ## 2. 支援類別
 
@@ -355,15 +355,15 @@ RoomScene 收到信號後重新驗證技能按鈕、選牌狀態與目標預覽�
 | Release x64 編譯 | 已通過，0 errors |
 | C++／Lua fixture | 已建立 |
 | 本機 executable runtime | 正常運作；專案已遷 CMake＋Qt 6.11.1（VS 2026 x64），`debug/QSanguosha.exe` 可正常啟動 |
-| CorrectSkillV2 正式技能 | 尚未開放 |
-| TriggerV2 正式技能 | 可小量新增並附獨立回歸 |
-| ViewAsSkillV2 正式技能 | 尚未開放 |
+| CorrectSkillV2 正式技能 | 已有正式技能（如 `Paoxiao : TargetModSkillV2`）；新增仍附對局回歸 |
+| TriggerV2 正式技能 | 已大量遷移（`src/package` 全包批次進行中） |
+| ViewAsSkillV2 正式技能 | 已開放並按批次遷移（如 `jianshu`、`TuxiViewAsSkill`） |
 
-CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client reconnect、隱藏 metadata 及 legacy 對局回歸，才可開始遷移正式技能。
+CorrectSkillV2 後續新增正式技能，仍應在可正常啟動的環境完成對應範圍的 Room lifecycle、client reconnect、隱藏 metadata 及 legacy 對局回歸。
 
 ### 16.1 Room integration 期望
 
-原驗證載體為 C++ `~test` fixture（`active_skill_v2_tester` 及 `#correct_v2_*_test` 系列，原於 [`src/package/standard-generals.cpp`](../src/package/standard-generals.cpp)，已刪除；System fixture 原本預設不貢獻，僅 primary 的 `correct_v2_system_enabled` mark 大於零才啟用）。更早的 Lua factory smoke 與 Room integration fixture 已隨 `lua/test/` 刪除（commit `a904221`），由 CTest＋`tools/autotest/` 取代。多實例 Room integration 驗證應滿足：
+原驗證載體為 C++ `~test` fixture（`active_skill_v2_tester` 及 `#correct_v2_*_test` 系列，原於 [`src/package/standard-generals.cpp`](../src/package/standard-generals.cpp)，已刪除；System fixture 原本預設不貢獻，僅 primary 的 `correct_v2_system_enabled` mark 大於零才啟用）。更早的 Lua factory smoke 與 Room integration fixture 已隨 `lua/test/` 刪除（commit `a904221`），由 `tools/autotest/` 承接（CTest 已於 2026-09-25 全數移除）。多實例 Room integration 驗證應滿足：
 
 | 案例 | 期望 |
 |---|---|
@@ -387,7 +387,7 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 
 - 兩個實際 client 的 snapshot 重連、amount/state delta 與隱藏 metadata 權限封包。
 - Legacy Mashu、MaxCards、TargetMod、AttackRange 的實際對局回歸錄像／快照。
-- ViewAsSkillV2 的 Play、response-use、pure response、nullification、AI、UI 與中斷 lifecycle；未通過前仍不開放正式技能填充。
+- ViewAsSkillV2 的 Play、response-use、pure response、nullification、AI、UI 與中斷 lifecycle；此清單未補齊前，對應路徑的新增應逐案附回歸。
 
 ## 17. 相關檔案
 
@@ -402,4 +402,4 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 | SWIG Lua callback | [`swig/luaskills.i`](../swig/luaskills.i) |
 | C++ 測試 fixture | `src/package/standard-generals.cpp` 的 `~test` package |
 | Lua factory smoke | 已移除：`lua/test/examples/test_correct_skill_v2.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，改由 CTest／`tools/autotest` 承接（CTest 後於 2026-09-25 一併移除，現只剩 `tools/autotest`） |
-| Room integration fixture | 已移除：`lua/test/examples/test_correct_skill_v2_room.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，由 CTest／`tools/autotest` 取代 |
+| Room integration fixture | 已移除：`lua/test/examples/test_correct_skill_v2_room.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，由 `tools/autotest` 承接（CTest 已於 2026-09-25 移除） |
