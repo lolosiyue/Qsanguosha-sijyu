@@ -1391,7 +1391,7 @@ public:
             if (player->getGeneral2() && player->hasShownGeneral2()) shown << player->getActualGeneral2()->getVisibleSkillList();
             for (const Skill *skill : shown) {
                 choices.removeAll(skill->objectName());
-                QString name = skill->objectName(); if (name.endsWith("_xh")) choices.removeAll(name.chopped(3));
+                QString name = skill->objectName(); if (name.endsWith("_xh")) choices.removeAll(name.left(name.size() - 3));
             }
         }
         if (choices.isEmpty()) return ContinueEffects;

@@ -7159,7 +7159,7 @@ public:
 				&& !(slash && card->isKindOf("Slash")) && name != card->objectName()) break;
 		}
 		// A revealed card moved by a nested skill is no longer part of this acquisition.
-		revealed.removeIf([&](int id) { return room->getCardPlace(id) != Player::PlaceTable; });
+		qsanRemoveIf(revealed, [&](int id) { return room->getCardPlace(id) != Player::PlaceTable; });
 		if (target->isAlive() && !revealed.isEmpty()) { DummyCard cards(revealed); room->obtainCard(target, &cards); }
 		return false;
 	}
@@ -9514,13 +9514,13 @@ public:
 		} else if (ctx.choice == "receive") {
 			if (!ctx.owner->isAlive()) return false;
 			QList<int> gift = ListV2I(state.value("gift").toList());
-			gift.removeIf([&](int id) { return !ctx.owner->handCards().contains(id); });
+			qsanRemoveIf(gift, [&](int id) { return !ctx.owner->handCards().contains(id); });
 			if (gift.isEmpty()) return false;
 			DummyCard material(gift); room->giveCard(ctx.owner, target, &material, objectName());
 			if (!target->isAlive() || !ctx.owner->isAlive() || target->isKongcheng()) return false;
 			const Card *show = room->askForExchange(target, objectName(), target->getHandcardNum(), 1, false, "xiashu-show");
 			QList<int> ids = show ? show->getSubcards() : QList<int>();
-			ids.removeIf([&](int id) { return !target->handCards().contains(id); });
+			qsanRemoveIf(ids, [&](int id) { return !target->handCards().contains(id); });
 			if (ids.isEmpty() && !target->isKongcheng()) ids << target->handCards().first();
 			if (ids.isEmpty()) return false;
 			LogMessage log; log.type = "$ShowCard"; log.from = target; log.card_str = ListI2S(ids).join("+"); room->sendLog(log);
@@ -9540,7 +9540,7 @@ public:
 			ServerPlayer *other = room->findPlayerByObjectName(state.value("other").toString());
 			if (!other || !other->isAlive()) return false;
 			QList<int> ids = ListV2I(state.value("extract").toList());
-			ids.removeIf([&](int id) { return !other->handCards().contains(id); });
+			qsanRemoveIf(ids, [&](int id) { return !other->handCards().contains(id); });
 			if (ids.isEmpty()) return false;
 			DummyCard material(ids);
 			room->obtainCard(target, &material, CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, target->objectName()), state.value("visible").toBool());
@@ -9937,7 +9937,7 @@ public:
 		}
 		if (!ctx.owner->isAlive()) return false;
 		QList<int> ids = ListV2I(state.value("cards").toList());
-		ids.removeIf([&](int id) { return !ctx.owner->handCards().contains(id); });
+		qsanRemoveIf(ids, [&](int id) { return !ctx.owner->handCards().contains(id); });
 		if (ids.isEmpty()) return false;
 		// Selection does not move cards; both the giver and actual recipient accepted their hooks.
 		room->broadcastSkillInvoke(objectName()); room->notifySkillInvoked(ctx.owner, objectName());
@@ -10067,7 +10067,7 @@ public:
 			room->fillAG(shows); room->getThread()->delay();
 		}
 		// The display may invoke nested callbacks; never discard a card now owned elsewhere.
-		ids.removeIf([&](int id) { return room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand; });
+		qsanRemoveIf(ids, [&](int id) { return room->getCardOwner(id) != target || room->getCardPlace(id) != Player::PlaceHand; });
 		if (!target->isAlive() || ids.isEmpty()) return false;
 		DummyCard material(ids); room->throwCard(&material, target);
 		if (target->isAlive()) target->drawCards(2 * ids.size() * getEffectiveAmount(ctx), objectName());
@@ -18491,14 +18491,14 @@ public:
 			const Card *card = room->askForExchange(target, objectName(), count, count, false,
 				"@liehou-give1:" + ctx.owner->objectName());
 			QList<int> ids = card ? card->getSubcards() : QList<int>();
-			ids.removeIf([&](int id) { return !target->handCards().contains(id); });
+			qsanRemoveIf(ids, [&](int id) { return !target->handCards().contains(id); });
 			if (ids.size() != count) ids = target->handCards().mid(0, count);
 			state.insert("cards", ListI2V(ids)); ctx.extra_data = state;
 		} else if (ctx.choice == "receive") {
 			ServerPlayer *donor = room->findPlayerByObjectName(state.value("donor").toString());
 			if (!donor || !donor->isAlive()) return ContinueEffects;
 			QList<int> ids = ListV2I(state.value("cards").toList());
-			ids.removeIf([&](int id) { return !donor->handCards().contains(id); });
+			qsanRemoveIf(ids, [&](int id) { return !donor->handCards().contains(id); });
 			if (ids.isEmpty()) return ContinueEffects;
 			DummyCard gift(ids); room->giveCard(donor, target, &gift, objectName());
 			if (!target->isAlive() || target->isKongcheng()) return ContinueEffects;
@@ -18521,7 +18521,7 @@ public:
 			}
 		} else if (ctx.choice == "give" && ctx.owner->isAlive()) {
 			QList<int> ids = ListV2I(state.value("gift").toList());
-			ids.removeIf([&](int id) { return !ctx.owner->handCards().contains(id); });
+			qsanRemoveIf(ids, [&](int id) { return !ctx.owner->handCards().contains(id); });
 			if (!ids.isEmpty()) { DummyCard gift(ids); room->giveCard(ctx.owner, target, &gift, objectName()); }
 		}
 		return ContinueEffects;
@@ -20320,7 +20320,7 @@ public:
 			if (id < 0 || ids.contains(id)) break;
 			ids << id;
 		}
-		ids.removeIf([&](int id) { return room->getCardOwner(id) != target || !ctx.owner->canDiscard(target, id); });
+		qsanRemoveIf(ids, [&](int id) { return room->getCardOwner(id) != target || !ctx.owner->canDiscard(target, id); });
 		if (!ids.isEmpty()) room->throwCard(ids, objectName(), target, ctx.owner);
 		return false;
 	}
@@ -26597,7 +26597,7 @@ public:
 			ServerPlayer *giver = room->findPlayerByObjectName(state.value("source").toString());
 			if (!giver || !giver->isAlive()) return false;
 			QList<int> ids = ListV2I(state.value("cards").toList());
-			ids.removeIf([&](int id) { return room->getCardOwner(id) != giver || room->getCardPlace(id) != Player::PlaceEquip; });
+			qsanRemoveIf(ids, [&](int id) { return room->getCardOwner(id) != giver || room->getCardPlace(id) != Player::PlaceEquip; });
 			if (!ids.isEmpty()) {
 				DummyCard gift(ids);
 				room->giveCard(giver, target, &gift, objectName());
@@ -28376,7 +28376,7 @@ public:
 				if (id < 0 || ids.contains(id)) break;
 				ids << id;
 			}
-			ids.removeIf([&](int id) { return room->getCardOwner(id) != target || !ctx.owner->canDiscard(target, id); });
+			qsanRemoveIf(ids, [&](int id) { return room->getCardOwner(id) != target || !ctx.owner->canDiscard(target, id); });
 			if (!ids.isEmpty()) room->throwCard(ids, objectName(), target, ctx.owner);
 		}
 		return false;

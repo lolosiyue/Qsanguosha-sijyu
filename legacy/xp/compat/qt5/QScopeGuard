@@ -27,6 +27,12 @@ public:
     QScopeGuard(const QScopeGuard &) = delete;
     QScopeGuard &operator=(const QScopeGuard &) = delete;
 
+    void dismiss() noexcept
+    {
+        // Explicit cleanup has completed; suppress the destructor fallback.
+        m_active = false;
+    }
+
 private:
     Function m_function;
     bool m_active;

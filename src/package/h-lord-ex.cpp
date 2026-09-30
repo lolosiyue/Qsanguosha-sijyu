@@ -2108,7 +2108,7 @@ public:
     {
         for (const QVariant &value : ctx.original_data->toList()) {
             const CardsMoveOneTimeStruct move = value.value<CardsMoveOneTimeStruct>();
-            if (eligible(room, ctx.owner, move) && move.from && !ctx.targets.contains(move.from)) ctx.targets << qobject_cast<ServerPlayer *>(move.from);
+            if (eligible(room, ctx.owner, move) && move.from && std::find(ctx.targets.cbegin(), ctx.targets.cend(), move.from) == ctx.targets.cend()) ctx.targets << qobject_cast<ServerPlayer *>(move.from);
         }
         return false;
     }
@@ -2922,7 +2922,7 @@ public:
         else if (event == CardsMoveBatch) {
             for (const QVariant &value : ctx.original_data->toList()) {
                 const CardsMoveOneTimeStruct move = value.value<CardsMoveOneTimeStruct>();
-                if (discardedByOther(move, ctx.owner) && !ctx.targets.contains(move.from)) ctx.targets << qobject_cast<ServerPlayer *>(move.from);
+                if (discardedByOther(move, ctx.owner) && std::find(ctx.targets.cbegin(), ctx.targets.cend(), move.from) == ctx.targets.cend()) ctx.targets << qobject_cast<ServerPlayer *>(move.from);
             }
         } else ctx.targets = {ctx.owner};
         return false;

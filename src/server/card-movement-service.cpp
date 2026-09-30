@@ -10,6 +10,8 @@
 
 #include <QScopeGuard>
 #include <QSet>
+#include <QDebug>
+#include <QElapsedTimer>
 
 #include <algorithm>
 #include <functional>
@@ -1291,6 +1293,20 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
                                       const std::function<void()> &notifyGain,
                                       const std::function<void(int)> &insertIntoDrawPile)
 {
+    // Temporary 10P diagnosis: bracket the initial hand move and luck-card gate.
+    const bool lagProbe = qgetenv("QSAN_10P_LAG_PROBE") == "1"
+        && !cardsMoves.isEmpty()
+        && cardsMoves.first().reason.m_skillName == "InitialHandCards";
+    QElapsedTimer lagTimer;
+    if (lagProbe) {
+        lagTimer.start();
+        qWarning().noquote() << "[LAG_PROBE] begin initial_hand commit";
+    }
+    const auto lagGuard = qScopeGuard([&]() {
+        if (lagProbe)
+            qWarning().noquote() << "[LAG_PROBE] end initial_hand commit"
+                                 << lagTimer.elapsed() << "ms";
+    });
     // Capture values before removeCard/onUninstall or wrapped-card filtering.
     // Each commit owns its snapshots, so nested moves cannot overwrite them.
     const auto cardsBefore = snapshotCardsBeforeMove(m_room, cardsMoves);
@@ -1394,6 +1410,9 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
     if (cardsMoves.first().reason.m_skillName == "InitialHandCards"
         && cardsMoves.first().reason.m_reason == CardMoveReason::S_REASON_DRAW)
         m_room.askForLuckCard(cardsMoves);
+    if (lagProbe)
+        qWarning().noquote() << "[LAG_PROBE] after luck_card"
+                             << lagTimer.elapsed() << "ms";
 
     QList<int> selectedToDiscard;
     QList<int> processedIds;

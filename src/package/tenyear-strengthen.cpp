@@ -6072,7 +6072,7 @@ public:
             SkillContext receive = ctx; receive.choice = "receive";
             receive.extra_data = QVariantMap{{"card", id}, {"giver", target->objectName()}};
             skillEffect(receive, ctx.invoker);
-            ctx.extra_data = receive.extra_data.metaType().id() == QMetaType::Bool && receive.extra_data.toBool();
+            ctx.extra_data = receive.extra_data.userType() == QMetaType::Bool && receive.extra_data.toBool();
             return ContinueEffects;
         }
         if (ctx.choice == "receive") {

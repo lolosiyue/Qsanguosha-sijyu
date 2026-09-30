@@ -172,10 +172,12 @@ void DesktopGamePresentation::updateKeyboardCursor()
     } else if (m_keyboardKind == QLatin1String("player")) {
         for (auto it = m_scene->item2player.cbegin(); it != m_scene->item2player.cend(); ++it)
             if (it.value() && it.value()->objectName() == m_keyboardId) item = it.key();
+#if !defined(QSAN_XP_LEGACY)
         // Large rooms retain invisible canonical Photos. Outline their native
         // visible projection, while intents still update the canonical draft.
         if (m_scene->m_largeRoomOverview && m_scene->m_largeRoomOverview->isVisible())
             item = m_scene->m_largeRoomOverview->keyboardTarget(m_keyboardId);
+#endif
     } else if (m_keyboardKind == QLatin1String("skill")) {
         for (auto *button : m_scene->m_skillButtons)
             if (button->objectName() == m_keyboardId) item = button;

@@ -126,6 +126,28 @@
       }
     },
     {
+      "name": "android-armv7-debug",
+      "displayName": "Android armeabi-v7a (Qt 6.11.1, Debug)",
+      "inherits": "android-arm64-debug",
+      "binaryDir": "${sourceDir}/builds/android-armv7-debug",
+      "cacheVariables": {
+        "ANDROID_ABI": "armeabi-v7a",
+        "QSAN_ANDROID_ABI": "armeabi-v7a",
+        "QT_ANDROID_ABIS": "armeabi-v7a"
+      }
+    },
+    {
+      "name": "android-armv7-release",
+      "displayName": "Android armeabi-v7a (Qt 6.11.1, Release)",
+      "inherits": "android-arm64-release",
+      "binaryDir": "${sourceDir}/builds/android-armv7-release",
+      "cacheVariables": {
+        "ANDROID_ABI": "armeabi-v7a",
+        "QSAN_ANDROID_ABI": "armeabi-v7a",
+        "QT_ANDROID_ABIS": "armeabi-v7a"
+      }
+    },
+    {
       "name": "android-x86_64-debug",
       "displayName": "Android x86_64 (Qt 6.11.1, Debug)",
       "generator": "Ninja",
@@ -307,6 +329,26 @@
     {
       "name": "android-arm64-release-apk",
       "configurePreset": "android-arm64-release",
+      "targets": ["apk"]
+    },
+    {
+      "name": "android-armv7-debug",
+      "configurePreset": "android-armv7-debug",
+      "targets": ["QSanguosha"]
+    },
+    {
+      "name": "android-armv7-release",
+      "configurePreset": "android-armv7-release",
+      "targets": ["QSanguosha"]
+    },
+    {
+      "name": "android-armv7-debug-apk",
+      "configurePreset": "android-armv7-debug",
+      "targets": ["apk"]
+    },
+    {
+      "name": "android-armv7-release-apk",
+      "configurePreset": "android-armv7-release",
       "targets": ["apk"]
     },
     {

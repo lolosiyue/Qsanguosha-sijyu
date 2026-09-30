@@ -223,5 +223,5 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
         room->notifyProperty(player, player, "hegemony_kingdom");
         player->clearSelected();
     }
-    room->setTag("HegemonyUsedGenerals", QStringList(chosen.begin(), chosen.end()));
+    room->setTag("HegemonyUsedGenerals", QStringList(chosen.values()));
 }

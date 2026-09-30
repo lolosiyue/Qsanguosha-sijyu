@@ -1,4 +1,5 @@
 #include "ai-decision-coordinator.h"
+#include "qt-collection-utils.h"
 #include "ai-runtime.h"
 #include "card-lifetime-manager.h"
 
@@ -479,7 +480,7 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
                 event.cardIds << use.card->getEffectiveId();
         }
     }
-    if (triggerEvent == ChoiceMade && data.metaType().id() == QMetaType::QString) {
+    if (triggerEvent == ChoiceMade && data.userType() == QMetaType::QString) {
         // Admit public choices only. Serialized response/Yiji card IDs may be
         // hidden, so never copy the raw ChoiceMade string into a public event.
         const QStringList choice = data.toString().split(QChar(':'));
@@ -934,11 +935,22 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     // isolated snapshot or allow an isolated Lua handler to override that AI.
     if (!Config.EnableAI)
         return request;
+    // Temporary 10P diagnosis: bracket request construction, which AI_PROBE excludes.
+    const bool lagProbe = qgetenv("QSAN_10P_LAG_PROBE") == "1";
+    QElapsedTimer lagTimer;
+    if (lagProbe) {
+        lagTimer.start();
+        qWarning().noquote() << "[LAG_PROBE] begin request" << request.decisionId
+                             << request.viewerObjectName << int(kind);
+    }
     // Trigger ordering offers skill names, not card/target actions. Use the
     // existing event snapshot contract: public/private facts and mode policy,
     // without eagerly evaluating every viewer distance or copying card history.
     // Unsupported isolated callbacks still fall back through runAnswer.
     request.worldView = buildWorldView(player, true, kind == AIRequest::TriggerOrder);
+    if (lagProbe)
+        qWarning().noquote() << "[LAG_PROBE] world request" << request.decisionId
+                             << lagTimer.elapsed() << "ms";
     if (player && (kind == AIRequest::Activate || kind == AIRequest::UseCard
                    || kind == AIRequest::RespondCard)) {
         EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
@@ -961,6 +973,9 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
             request.cardCandidates[index].candidateId = index + 1;
         buildCardConversions(player, request, projectionBudget);
     }
+    if (lagProbe)
+        qWarning().noquote() << "[LAG_PROBE] end request" << request.decisionId
+                             << lagTimer.elapsed() << "ms";
     return request;
 }
 
@@ -1549,7 +1564,7 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
             if (equip) owned << equip->getEffectiveId();
         // Response candidates already carry the authority's pattern/method gates.
         // Invocation/choice outcomes describe owned cards, not skill-cost legality.
-        const QSet<int> ownedSet(owned.cbegin(), owned.cend());
+        const QSet<int> ownedSet = qsanToSet(owned);
         const QList<int> candidates = request.kind == AIRequest::RespondCard
             ? request.choiceOptions.cardIds : owned;
         QJsonObject outcomes;
@@ -1794,7 +1809,7 @@ bool AiDecisionCoordinator::decideDiscard(ServerPlayer *player, const QString &r
     if (result.kind != AIResult::Answer) return false;
     if (fromIsolated) {
         // Only cards the question offered may come back, in the amount it allows.
-        const QSet<int> offered(candidates.cbegin(), candidates.cend());
+        const QSet<int> offered = qsanToSet(candidates);
         QSet<int> seen;
         foreach (const int cardId, result.action.selectedCardIds) {
             if (!offered.contains(cardId) || seen.contains(cardId))
@@ -2143,8 +2158,8 @@ bool AiDecisionCoordinator::decideGuanxing(ServerPlayer *player, const QList<int
     seen << result.action.bottomCardIds;
     if (seen.size() != cards.size())
         return false;
-    const QSet<int> expected(cards.cbegin(), cards.cend());
-    const QSet<int> actual(seen.cbegin(), seen.cend());
+    const QSet<int> expected = qsanToSet(cards);
+    const QSet<int> actual = qsanToSet(seen);
     if (actual.size() != seen.size() || actual != expected) return false;
     up = result.action.selectedCardIds;
     bottom = result.action.bottomCardIds;
@@ -2300,7 +2315,7 @@ AIRequest AiDecisionCoordinator::makeResponseRequest(ServerPlayer *player,
     options.candidatesComplete = physicalOnly
         || request.conversionsEnumerated;
     const QList<int> hand = player ? player->handCards() : QList<int>();
-    const QSet<int> handSet(hand.cbegin(), hand.cend());
+    const QSet<int> handSet = qsanToSet(hand);
     for (const AICardCandidateView &candidate : request.cardCandidates) {
         // Showing/pindian/physical responses choose the viewer's hand. Equipment is
         // still available as a conversion cost, never as an arbitrary shown card.
@@ -2413,6 +2428,9 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
     if (!player || !player->getAI()) return false;
     const QString callbackName = request.kind == AIRequest::Activate
         ? QStringLiteral("activate") : QStringLiteral("askForUseCard");
+    if (qgetenv("QSAN_10P_LAG_PROBE") == "1")
+        qWarning().noquote() << "[LAG_PROBE] begin decide" << request.decisionId
+                             << player->objectName() << callbackName;
     // 診斷插樁: 量測單次 AI 決策的耗時與熱點呼叫次數 (QSAN_AI_PROBE=1 才啟用)。
     QElapsedTimer probeTimer;
     if (AiProbe::enabled()) {

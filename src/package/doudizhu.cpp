@@ -1,4 +1,5 @@
 #include "doudizhu.h"
+#include "qt-collection-utils.h"
 //#include "settings.h"
 //#include "skill.h"
 //#include "standard.h"
@@ -2174,7 +2175,7 @@ public:
         if (event != GameStart && grants.size() >= 5) return false;
         QStringList available = candidates();
         qsanShuffle(available);
-        available.removeIf([&names](const QString &name) { return names.contains(name); });
+        qsanRemoveIf(available, [&names](const QString &name) { return names.contains(name); });
         QString chosen;
         if (event == GameStart) {
             const QStringList options = available.mid(0, 3);
@@ -3107,7 +3108,7 @@ public:
             const QVariantMap selected = ctx.extra_data.toMap();
             ServerPlayer *giver = room->findPlayerByObjectName(selected.value("giver").toString(), true);
             QList<int> ids = ListV2I(selected.value("ids").toList());
-            ids.removeIf([&](int id) { return !giver || room->getCardOwner(id) != giver || room->getCardPlace(id) != Player::PlaceHand
+            qsanRemoveIf(ids, [&](int id) { return !giver || room->getCardOwner(id) != giver || room->getCardPlace(id) != Player::PlaceHand
                 || Sanguosha->getCard(id)->hasFlag("using") || !target->canGet(giver, id); });
             if (!ids.isEmpty()) { DummyCard cards(ids); room->obtainCard(target, &cards, false); }
             return false;
@@ -3248,7 +3249,7 @@ public:
         } else {
             const Card *card = ddzEffectCard(event, *ctx.original_data);
             QList<int> ids = card->isVirtualCard() ? card->getSubcards() : QList<int>{card->getEffectiveId()};
-            ids.removeIf([&](int id) { return room->getCardPlace(id) != Player::DiscardPile && room->getCardPlace(id) != Player::PlaceTable; });
+            qsanRemoveIf(ids, [&](int id) { return room->getCardPlace(id) != Player::DiscardPile && room->getCardPlace(id) != Player::PlaceTable; });
             if (!ids.isEmpty()) { DummyCard cards(ids); room->obtainCard(target, &cards); }
         }
         return false;
@@ -3519,7 +3520,7 @@ public:
             room->takeAG(target, id, false);
         }
         room->clearAG();
-        obtained.removeIf([&](int id) { return room->getCardPlace(id) != Player::PlaceTable; });
+        qsanRemoveIf(obtained, [&](int id) { return room->getCardPlace(id) != Player::PlaceTable; });
         if (!obtained.isEmpty() && target->isAlive()) {
             // Save this copy's next reveal bonus before obtain-card triggers can activate it again.
             sum = 0;
@@ -4251,7 +4252,7 @@ public:
         if (ctx.choice == "receive") {
             QList<int> ids = ListV2I(ctx.extra_data.toMap().value("ids").toList());
             const QString giver = ctx.extra_data.toMap().value("giver").toString();
-            ids.removeIf([&](int id) { return room->getCardPlace(id) != Player::PlaceHand
+            qsanRemoveIf(ids, [&](int id) { return room->getCardPlace(id) != Player::PlaceHand
                 || !room->getCardOwner(id) || room->getCardOwner(id)->objectName() != giver || !target->canGet(room->getCardOwner(id), id) || Sanguosha->getCard(id)->hasFlag("using"); });
             if (!ids.isEmpty()) { DummyCard cards(ids); room->obtainCard(target, &cards, false); }
         } else if (ctx.choice == "restrict") {

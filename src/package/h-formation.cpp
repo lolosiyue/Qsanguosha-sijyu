@@ -20,6 +20,7 @@
 
 // Original HEG content: see docs/hegemony-original-names.json for the import namespace.
 #include "h-formation.h"
+#include "qt-collection-utils.h"
 #include "standard-generals.h"
 #include "standard.h"
 #include "maneuvering.h"
@@ -418,7 +419,7 @@ public:
     {
         if (Config.EnableHegemony) return targets.isEmpty();
         if (targets.size() < 2 || !targets.contains(request.initiator)) return false;
-        if (QSet<const Player *>(targets.cbegin(), targets.cend()).size() != targets.size()) return false;
+        if (qsanToSet(targets).size() != targets.size()) return false;
         // A contiguous set on the living seating ring has at most one outgoing edge.
         int boundaries = 0;
         for (const Player *target : targets) {

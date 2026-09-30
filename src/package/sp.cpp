@@ -4991,7 +4991,7 @@ public:
         request.reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
         request.pattern = "@@bifa";
         request.selectedCardIds = {selected.value("id").toInt()};
-        request.selectedTargetNames = {target->objectName()};
+        request.selectedTargetNames = QStringList{target->objectName()};
         // Resume the selection through a real accepted use, preserving CardUsed consumers.
         const Card *card = room->resolveActiveSkillRequest(ctx.owner, static_cast<const ViewAsSkillV2 *>(view_as_skill), request);
         if (!card) return false;

@@ -265,7 +265,9 @@ void GameSessionController::prepareForStart()
 				const QVariantList reply = owner->getClientReply().toList();
 				const QVariantList names = reply.value(0).toList();
 				const QVariantList seats = reply.value(1).toList();
-				QList<ServerPlayer *> ordered(players.size(), nullptr);
+				QList<ServerPlayer *> ordered;
+				// Qt 5.6 QList has no size/value constructor; retain one slot per seat.
+				for (int i = 0; i < players.size(); ++i) ordered << nullptr;
 				QSet<QString> seen;
 				bool valid = reply.size() == 2 && names.size() == players.size() && seats.size() == players.size();
 				for (int i = 0; valid && i < names.size(); ++i) {

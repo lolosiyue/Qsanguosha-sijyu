@@ -1,7 +1,7 @@
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Debug',
-    [ValidateSet('arm64-v8a', 'x86_64')]
+    [ValidateSet('arm64-v8a', 'armeabi-v7a', 'x86_64')]
     [string]$Abi = 'arm64-v8a',
     [string]$ToolchainRoot = '',
     [string]$QtRoot = '',
@@ -19,10 +19,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-# Qt names the arm64 target directory android_arm64_v8a but the x86_64 one android_x86_64;
-# presets and the FreeType prefixes use the shorter arm64 / x86_64 tags.
-$qtAbiTag = if ($Abi -eq 'arm64-v8a') { 'arm64_v8a' } else { $Abi }
-$abiTag = if ($Abi -eq 'arm64-v8a') { 'arm64' } else { $Abi }
+# Qt kit names differ from the ABI and preset names; keep each ABI's cache separate.
+$qtAbiTag = switch ($Abi) {
+    'arm64-v8a' { 'arm64_v8a' }
+    'armeabi-v7a' { 'armv7' }
+    default { $Abi }
+}
+$abiTag = switch ($Abi) {
+    'arm64-v8a' { 'arm64' }
+    'armeabi-v7a' { 'armv7' }
+    default { $Abi }
+}
 if (!$ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot 'builds/android-toolchain' }
 if (!$QtRoot) { $QtRoot = Join-Path $ToolchainRoot "qt/6.11.1/android_$qtAbiTag" }
 if (!$SdkRoot) { $SdkRoot = Join-Path $ToolchainRoot 'sdk' }
