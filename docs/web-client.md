@@ -65,12 +65,13 @@ server is started — for styling and layout iteration.
 
 `npm run build` runs the Protocol V2 drift check
 ([`web/scripts/check-protocol-sync.mjs`](../web/scripts/check-protocol-sync.mjs)),
-a `translations.json` freshness check against `lang/zh_CN/*.lua`, `tsc --noEmit`,
-and `vitest run`. The drift check compares `protocol.ts` Command IDs and
+a `translations.json` freshness check against `lang/zh_CN/*.lua`, a seat-ring sync
+check and `tsc --noEmit`, then `vite build`. The drift check compares `protocol.ts` Command IDs and
 `replies.ts` `REPLY_COMMAND` to
 [`artifacts/protocol-v2-flow-matrix.json`](../artifacts/protocol-v2-flow-matrix.json)
 (command_id and request→reply pairing only; listed client-emitted field names
-are existence-checked, payload types are out of scope). `npm test` is vitest only.
+are existence-checked, payload types are out of scope). There is no `npm test`
+(vitest was removed 2026-09-25).
 If translations.json is missing or older than the Lua tables, re-run the dump
 command above.
 
@@ -119,9 +120,8 @@ The right-hand log is a fixed pane with internal scroll so it cannot
 stretch the table. Portrait stacks table / log / dashboard so the room
 stays on one screen.
 
-Battle log lines follow the desktop `ClientLogBox` templates
-(`web/tests/fixtures/log-text-legacy.ts` was the reference fixture) rather than
-`split` + `tr()`.
+Battle log lines match the desktop `ClientLogBox` templates rather than `split` + `tr()`
+(the former fixture `web/tests/fixtures/log-text-legacy.ts` was removed with the test suites).
 Interaction `prompt` strings from `askForCard` / `askForDiscard` /
 `askForPlayerChosen` use the same colon list as GUI `Client::formatPromptList`
 (`key:%src:%dest:%arg:%arg2`); C++ TUI/GUI share `formatClientPromptList` in

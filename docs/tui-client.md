@@ -183,14 +183,11 @@ viewport 尺寸觸發重繪；`TuiInput` 將 `ReadConsoleInputW` 的 UTF-16 按�
 啟動前先探測 VT output 能力並立即還原探測用 mode；只有不支援的主控台才在
 明確指定 `--ui board` 時以 exit `2` 拒絕。自動／記憶路徑遇到不支援的主控台
 會說明原因並改用 classic。`--plain`、`NO_COLOR`、script 及 redirected IO 的
-既有規則不變。Windows 可直接執行 `qsanguosha_tui_tests --suite terminal`：
-測試自行建立私有隱藏主控台，驗證按鍵、畫面角落、中文字、縮放與 mode 還原，
-不接管執行測試者的主控台。
+既有規則不變。
 
-**證據紀律**：Windows 私有主控台測試可驗證 console 後端；Unix 終端驗證仍用
-本機 `tools/autotest/tui_board_smoke.py`（raw mode／`SIGWINCH`／終端還原）。
-這些測試及 `tests/tui/*-test.cpp` 的 golden test 不取代真人對局驗收；CI 綠燈不得
-被當成 board 模式本身可用的證明（見 `tui-board-ui.md` §7.5）。
+**證據紀律**：Unix 終端驗證用本機 `tools/autotest/tui_board_smoke.py`（raw mode／
+`SIGWINCH`／終端還原）；Windows console 後端只能實機驗證。這些都不取代真人對局
+驗收；CI 綠燈不得被當成 board 模式本身可用的證明（見 `tui-board-ui.md` §7.4）。
 
 ## Reconnect
 
@@ -242,9 +239,9 @@ dependency gate、`--help` 及 `--version`。Linux 以 `qsan_tui` component 安�
 
 ## Validation gates
 
-本機允許的短 gate：targeted Debug compile、直接執行 `qsanguosha_tui_contract_tests`、
-`qsanguosha_tui_live_tcp_tests`、Windows `dumpbin` dependency gate、`deploy-tui`
-package smoke、`git diff --check`。本機不執行 CTest 或長時間 gameplay。
+本機允許的短 gate：targeted Debug compile、Windows `dumpbin` dependency gate、
+`deploy-tui` package smoke、`git diff --check`。倉庫已無單元測試與 CTest
+（2026-09-25 移除），本機也不跑長時間 gameplay。
 
 短時 real-TCP connection smoke 可加 `--connection-only`；它只證明 production
 server／TUI 的 connect、signup、setup、ready 與 clean exit，不會被列為 full-game

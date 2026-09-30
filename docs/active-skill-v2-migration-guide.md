@@ -363,6 +363,6 @@ V2 映射：
 
 - 本文件只建立規範。
 - 沒有正式技能獲准在核心 Ticket 1–12 內遷移。
-- 第一批實作的測試走既有自動化基建：CTest（`tests/CMakeLists.txt` 的 `qsan_add_ctest()`）
-  與 [`tools/autotest/headless_runner.py`](../tools/autotest/headless_runner.py)，並可加入 `~test` 合成技能。
+- 遷移驗證走 [`tools/autotest/headless_runner.py`](../tools/autotest/headless_runner.py)
+  的 headless 對局（倉庫已無 CTest，2026-09-25 移除），並可加入 `~test` 合成技能。
 

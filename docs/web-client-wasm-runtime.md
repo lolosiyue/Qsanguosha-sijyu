@@ -138,20 +138,17 @@ must finish rule evaluation in the same event handler. A JS/WASM binding must
 never export that pointer; it copies the canonical card text and structured
 selection result before crossing the boundary.
 
-The `tui-play-skills` regression suite also calls the shared API directly to
-cover borrowed prompts, wrapped-card filtering, V2 context and ordered
-selection, target evaluation, and response encoding. Separate native/WASM
-fixture consumers cover their recorded scenes; neither suite establishes the
-production browser session's acceptance.
+The shared API is also called directly by `tui-play-skills` (borrowed prompts,
+wrapped-card filtering, V2 context and ordered selection, target evaluation,
+response encoding). No automated suite establishes the production browser
+session's acceptance.
 
 ## Persistent Web runtime
 
-The fixture targets remain separate consumers. `qsanguosha_client_wasm` links
+`qsanguosha_client_wasm` links
 the existing `qsanguosha_client_runtime`, whole engine/package registrations,
 `InteractionReplyEncoder`, and the production `ClientRulesSession`/WASM entry
-sources. It does not link `qsanguosha_rules_fixture_support`, the fixture
-evaluator, or a renamed fixture CLI main. Native product source inventories are
-unchanged by this opt-in product.
+sources. Native product source inventories are unchanged by this opt-in product.
 
 The WASM entry keeps one QCoreApplication/engine alive across requests.
 `ClientRulesSession` creates a fresh projected scene from the client-visible
@@ -191,17 +188,13 @@ source "$EMSDK/emsdk_env.sh"
 cmake -S . -B build/web-wasm -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$QT_WASM/lib/cmake/Qt6/qt.toolchain.cmake" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQT_HOST_PATH="$QT_NATIVE" \
-  -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
-  -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF \
-  -DQSAN_BUILD_WASM_RULES_FIXTURES=OFF -DQSAN_BUILD_WASM_WEB_CLIENT=ON
+  -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
+  -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_WASM_WEB_CLIENT=ON
 cmake --build build/web-wasm --target qsanguosha_client_wasm
 ```
 
-`QSAN_BUILD_WASM_WEB_CLIENT` defaults OFF and works independently of
-`QSAN_BUILD_WASM_RULES_FIXTURES`. Both may be ON in the same cross build; they
-reuse one asset recipe and exception model while retaining distinct targets,
-entry points and output directories. Native products, the native fixture runner
-and `BUILD_TESTING` must be OFF for that cross build. The production session
+`QSAN_BUILD_WASM_WEB_CLIENT` defaults OFF. Native products must be OFF for that
+cross build. The production session
 sources are compiled only by the production WASM target.
 
 Generated artifacts under `build/web-wasm/web-wasm/RelWithDebInfo/`:
@@ -219,7 +212,7 @@ Worker requires the stream entry and C++ rejects the file-based snapshot query
 with `stream_snapshot_api_disabled` in stream mode. Emscripten exposes `FS`
 and `ENV` to the host. The module
 has no `main` entry, permits memory growth, starts with 128 MiB memory and an
-8 MiB stack, and preserves the fixture's exception mode. These inherited sizes
+8 MiB stack, and preserves the WASM exception mode. These inherited sizes
 are configuration, not browser memory/performance acceptance.
 
 | Export | MEMFS/JSON contract |
