@@ -79,8 +79,6 @@
 | 進度與繼承 | 歷史入口、試玩隔離、重複结果、寫入失敗、卡牌／技能／容量衝突 |
 | 完整作品 | 分享至相容環境、兩關通關、關閉後續玩、主客戶端及伺服器乾淨退出 |
 
-`qsanguosha_scenario_work_tests` 是 Qt Core focused executable，CTest 註冊供遠端 CI 使用。本地不執行 CTest；targeted build／focused executable 仍須完成檢查點及取得授權。GUI 與完整對局另需人工驗收，不能以靜態檢查或建置代替。
-
-`qsanguosha_core_tests --suite scenario-work-runtime` 提供開局准入、固定席位、目標條件與繼承資料的測試案例；完整對局的事件派發、結算與乾淨退出另行驗收。
+原 `qsanguosha_scenario_work_tests` 與 `qsanguosha_core_tests --suite scenario-work-runtime`（開局准入、固定席位、目標條件與繼承資料）已隨全部測試於 2026-09-25 移除，上表現無自動化覆蓋。GUI 與完整對局需人工驗收，不能以靜態檢查或建置代替；完整對局的事件派發、結算與乾淨退出另行驗收。
 
 當前實作輪次的建置、focused、GUI／完整對局與 CI 結果應分開回報；尚未執行者維持 NOT RUN。

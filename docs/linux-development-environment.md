@@ -8,7 +8,7 @@ Server 使用 `QCoreApplication`，不需要 X11／Wayland、FMOD 或任何 GUI�
 
 | 階段 | 狀態 |
 |---|---|
-| Linux Server（build／CI／三級 TCP network integration／systemd） | **Complete** |
+| Linux Server（build／CI／shutdown 與 TUI 完整對局 smoke／systemd） | **Complete** |
 | Linux GUI M0（configure ＋ compile ＋ link） | **Complete** — 本機驗證；沒有獨立 Linux GUI compile CI |
 | Linux GUI M1（GUI startup：`QApplication`／`MainWindow`／HomeScene／event loop） | **Complete** — `linux-package-ci.yml` 由成品在 Xvfb ＋ `xcb` 跑 `--ui-startup-smoke`；WSLg 手動驗證 |
 | Linux GUI M2（RoomScene 真實 TCP 對局） | **Complete** — 由 `gui_network_smoke.py` 在**資產齊全的本機**驗證；不在 CI 跑（見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)） |
@@ -40,7 +40,8 @@ Linux .deb packaging（M3.1；deferred，見 linux-packaging.md）
 > `MainWindow`／`HomeScene` 啟動驗證是 M1 的 `--ui-startup-smoke`（見 [§4.5](#45-linux-gui-m1-startup-smoke)）。
 
 - Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete；Linux GUI M2（network game）Complete；Linux GUI M2B-A（multimedia）Complete；Linux GUI M2B-B（effects profiles）Complete
-- 對應 Windows 開發環境請見 [`README.md`](../README.md) 的 🛠️ Development Environment section。
+- Last Updated: 2026-09-30
+- 對應 Windows 開發環境請見 [`windows-build.md`](windows-build.md)。
 
 ## 1. 平台基線
 
@@ -91,8 +92,7 @@ sudo apt install -y \
 
 這個清單同時 cover 預設開啟的 TUI client（`qsanguosha_tui` 只用 Qt Core／Network，無需額外套件）。
 
-> 舊版指南曾要求 `qt6-5compat-dev`（CTest 測試用的 Qt6 Core5Compat）；Core5Compat
-> 已自建置移除，現在 `BUILD_TESTING=ON` 都只是額外找 `Qt6::Gui`，這個套件已不需要。
+> 舊版指南曾要求 `qt6-5compat-dev`（Qt6 Core5Compat）；建置已不使用它，這個套件不需要。
 
 ### 2.2 GUI client（`QSAN_BUILD_GUI=ON`）
 
@@ -181,9 +181,7 @@ sudo apt install -y clang
 | `QSAN_BUILD_SERVER` | `ON` | `ON` | dedicated server `qsanguosha_server` |
 | `QSAN_BUILD_TUI` | `ON` | `ON` | Protocol V2 終端客戶端 `qsanguosha_tui`（見 [`docs/tui-client.md`](tui-client.md)） |
 
-Linux 的 `QSAN_BUILD_GUI` 預設 `OFF` 是為了保護現有 Linux Server CI：server-only configure 只會 `find_package` Core／Network／WebSockets（加 `BUILD_TESTING=ON` 時的 `Gui`），不會因為 GUI source 存在而要求 Quick／Widgets／Multimedia。TUI 預設 `ON`，與 server 一起編譯，同樣只需要 Core／Network。要 build Linux GUI 就顯式開 `-DQSAN_BUILD_GUI=ON`（下面的 preset 已經設定好）。Windows XP／Qt 5.6.3 的 `QSAN_BUILD_XP_LEGACY` 會從 `QSAN_QT_COMPONENTS` 拿掉 WebSockets，引擎亦不編 `websocketsocket.cpp`。
-
-`BUILD_TESTING=ON` 需要 `QSAN_BUILD_SERVER=ON`（CTest 直接驅動 `qsanguosha_server`），CMake 會在 configure 階段 `FATAL_ERROR` 提示。
+Linux 的 `QSAN_BUILD_GUI` 預設 `OFF` 是為了保護現有 Linux Server CI：server-only configure 只會 `find_package` Core／Network／WebSockets，不會因為 GUI source 存在而要求 Quick／Widgets／Multimedia。TUI 預設 `ON`，與 server 一起編譯，同樣只需要 Core／Network。要 build Linux GUI 就顯式開 `-DQSAN_BUILD_GUI=ON`（下面的 preset 已經設定好）。Windows XP／Qt 5.6.3 的 `QSAN_BUILD_XP_LEGACY` 會從 `QSAN_QT_COMPONENTS` 拿掉 WebSockets，引擎亦不編 `websocketsocket.cpp`。
 
 ## 4. Configure + Build
 
@@ -193,8 +191,8 @@ Linux 的 `QSAN_BUILD_GUI` 預設 `OFF` 是為了保護現有 Linux Server CI：
 
 | Configure preset | Build preset | binaryDir | 產品 |
 |---|---|---|---|
-| `linux-server-gcc-debug` | `linux-server-debug` | `builds/cmake-linux-server-gcc-debug` | server + TUI + CTest |
-| `linux-gui-gcc-debug` | `linux-gui-debug` | `builds/cmake-linux-gui-gcc-debug` | GUI + server + TUI + CTest |
+| `linux-server-gcc-debug` | `linux-server-debug` | `builds/cmake-linux-server-gcc-debug` | server + TUI |
+| `linux-gui-gcc-debug` | `linux-gui-debug` | `builds/cmake-linux-gui-gcc-debug` | GUI + server + TUI |
 
 Linux GUI（`CMAKE_PREFIX_PATH` 指向 Qt 6.11.1，見 [2.2](#22-gui-clientqsan_build_guion)）：
 
@@ -211,14 +209,12 @@ Linux server：
 ```bash
 cmake --preset linux-server-gcc-debug
 cmake --build --preset linux-server-debug --parallel
-ctest --test-dir builds/cmake-linux-server-gcc-debug --output-on-failure
 ```
 
 ### 4.2 直接執行 CMake（GCC）
 
 ```bash
 cmake -S . -B build-linux-gcc -G Ninja \
-    -DBUILD_TESTING=ON \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_C_COMPILER=/usr/bin/gcc \
     -DCMAKE_CXX_COMPILER=/usr/bin/g++
@@ -231,7 +227,6 @@ cmake --build build-linux-gcc
 
 ```bash
 cmake -S . -B build-linux-clang -G Ninja \
-    -DBUILD_TESTING=ON \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_C_COMPILER=/usr/bin/clang \
     -DCMAKE_CXX_COMPILER=/usr/bin/clang++
@@ -466,7 +461,7 @@ python3 tools/autotest/gui_network_smoke.py \
     --exe-root . --mode 02p --seed 20260828 \
     --artifact-dir gui-network-artifacts --no-xvfb --platform xcb
 
-# CI（Xvfb）
+# 沒有 display 時（Xvfb）
 python3 tools/autotest/gui_network_smoke.py \
     --exe-root . --mode 05p --seed 20260828 \
     --artifact-dir gui-network-artifacts --xvfb --platform xcb
@@ -474,7 +469,7 @@ python3 tools/autotest/gui_network_smoke.py \
 
 Runner 負責：
 
-- 借一個**空閒 TCP port**（平行 CI job 不會衝突）
+- 借一個**空閒 TCP port**（平行執行不會衝突）
 - 用**固定 seed**，並且在 summary 記下 mode／seed／port／server 與 client 的
   SHA-256／extensions commit／timeout 設定
 - 寫一份確定性的 server INI overlay（關掉 RandomSeat／雙將／作弊／幸運牌），
@@ -485,76 +480,28 @@ Runner 負責：
 - **沒有任何 retry**。一局就是一局，不會跑到偶然 PASS 為止。
 
 `--require-interactions` 可以要求某些互動一定要經真 UI 覆蓋過（預設
-`choose_general,play_phase`）。CI 只 gate `choose_general`，因為對局如何展開受
-server 端 AI 影響，其餘覆蓋率照樣寫入 artifact 供檢視。
+`choose_general,play_phase`）。對局如何展開受 server 端 AI 影響，座位不同可能遇不到
+`play_phase`／`ask_for_card`，覆蓋率一律寫入 artifact 供檢視。
 
 跨平台部分（執行檔定位、process group spawn、process-tree 清理、exit code 解讀、
 空閒 port）抽出到 `tools/autotest/runner_common.py`，`network_runner.py` 與
 `gui_network_smoke.py` 共用；`network_runner.py` 亦因此在 Linux 可執行。
 
-### 已知的 base 缺陷:`server-teardown-crash`
+### 已修的 base 缺陷
 
-M2 的 runner 找到一個**與本分支無關**的 server 缺陷,並且刻意不隱藏它:
+以下兩個崩潰曾由 M2 runner 揭出，現已修好。**新見到的崩潰不要假設是它們，要當新缺陷查。**
 
-> 對局打完、client 正常離開之後,`qsanguosha_server` 在拆房時
-> SIGSEGV/SIGABRT。
-
-Backtrace(以 `LD_PRELOAD` 掛一個 `backtrace()` handler 取得,再用 `addr2line`
-還原):
-
-```
-Room::~Room()                              src/server/room.cpp:243
-  → GameSnapshotService::~GameSnapshotService()   src/server/game-snapshot-service.cpp:15
-    → GlobalSnapshot::~GlobalSnapshot()           src/util/game-snapshot.h:54
-      → QMap<QString, QVariant>::~QMap()
-        → CardUseStruct::~CardUseStruct()         src/server/roomthread.cpp:278
-          → QSharedPointer<Card> deref → Card::deleteLater()   src/core/card.cpp:66
-            → CardLifetimeManager::observeCard()  src/core/card-lifetime-manager.cpp:208
-              → QObject::thread()   ← SIGSEGV(Card 已經被釋放)
-```
-
-也就是 snapshot 內的 `CardUseStruct` 活得比它引用的 `Card` 久。
-
-三重對照,證明與 M2 無關:
-
-1. 本分支改過的檔案中,**沒有一個**會編入 `qsanguosha_engine` 或
-   `qsanguosha_server`(唯一能進入 server-only build 的是兩個 CTest 專用檔案)。
-2. 用 M1 merge base(`50e5750`)編譯出的 `qsanguosha_server` 配同一個 client,
-   一樣重現同一個 SIGSEGV。
-3. 完全不用 `--network-ui-smoke`、改用舊有 `--auto-robots` 托管流程,一樣重現。
-
-所以 runner 有一個**明確而且有界**的降級開關:
-
-```bash
-python3 tools/autotest/gui_network_smoke.py ...     --known-base-defect server-teardown-crash
-```
-
-這個開關**不是**靜音開關:
-
-* 崩潰照樣偵測、照樣列印(`KNOWN BASE DEFECT (downgraded, still recorded)`)、
-  照樣寫入 `summary["known_base_defects"]`;
-* 只有在 server 已經寫出**帶勝方的 game over**、而且 client 已經 **exit 0**
-  之後發生的 server 崩潰才會被降級。對局途中死掉的 server 永遠是失敗;
-* 缺陷 id 是一個封閉清單(`KNOWN_BASE_DEFECTS`),加一個新 id 是一次要 review
-  的改動;
-* 復原條件:card-lifetime / GameSnapshot 的擁有權修好之後,在 CI 拿走這個
-  flag 即可。
-
-### 已知的 5 人局 client 繪製崩潰(暫時非阻擋)
-
-`05p` 的 GUI client 會在對局途中 SIGSEGV,backtrace 全部落在 Qt Widgets 的
-`QGraphicsView::paintEvent` → `QGraphicsScene` 繪製路徑,沒有任何 QSanguosha frame。
-
-已知邊界:
-
-* `02p` 用同一條 responder 路徑**不會**重現 → 不是 responder 本身的邏輯問題;
-* 同一個 client、改用舊有 `--auto-robots` 托管流程(完全不經 UI responder)
-  **不會**重現 → 要有真實 UI 互動才觸發;
-* 也就是 5 人版面特有的繪製問題,不屬於 M2 的修復範圍。
-
-M2 的 network job 已經由 CI 移除（見 [§9.2](#92-linux-gui-驗證政策)），所以這個
-繪製崩潰目前不會阻擋任何 CI job；在**資產齊全**本機執行 05p 對局仍然會遇到，
-`02p` 不受影響。修好 5 人局 RoomScene 的繪製崩潰之前，05p 只適合作診斷用途。
+* **`server-teardown-crash`**（對局打完後 server 拆房時 SIGSEGV／SIGABRT）：兩個收尾
+  use-after-free 已修——`a234944`（`GameSnapshot` 共同持有已退役的 `Card`）與
+  `73eb98b`（Lua state 活過 worker 收尾）。runner 仍保留
+  `--known-base-defect server-teardown-crash` 降級開關：它**只在**偵測到崩潰、
+  server 已寫出帶勝方的 game over 且 client exit 0 之後才降級，崩潰照樣印出並寫入
+  `summary["known_base_defects"]`；連續多局都沒觸發就可以拿掉。
+* **05p client 繪製崩潰**（`QGraphicsScene` 的 BSP index 留住已銷毀 item 指針）：
+  已修（`1eb3f76`、`d5e62de`），`RoomScene` 改用
+  `setItemIndexMethod(QGraphicsScene::NoIndex)`。**不准改回 Qt 預設的
+  `BspTreeIndex`**——只修 `PlayerCardContainer::updateMark()` 等同步 `delete`
+  proxy widget 的位置並不夠，真 allocator 下仍有未識別的殘留來源。
 
 ### 素材
 
@@ -655,7 +602,7 @@ bash tools/ci/linux-gui-multimedia-smoke.sh ./relwithdebinfo/QSanguosha artifact
 # 影片降級路徑：特意指一個不存在的 .mp4
 bash tools/ci/linux-gui-multimedia-smoke.sh ./relwithdebinfo/QSanguosha artifacts \
     --no-xvfb --platform xcb --label video-missing \
-    --video-source tests/fixtures/media/no-such-clip.mp4 \
+    --video-source tools/ci/fixtures/media/no-such-clip.mp4 \
     --expect-video-reason asset_missing
 ```
 
@@ -703,10 +650,10 @@ Audio::quit() 之後 backend 真的是 "none"
 
 **不會**用「沒有 console error」做成功條件。
 
-測試 fixture 在 `tests/fixtures/media/`，全部是
-`tools/ci/make-media-fixtures.py` 生成的合成正弦波（1–5 KB），不是正式遊戲資產。
+測試 fixture 由 smoke 腳本按需以 `tools/ci/make-media-fixtures.py` 生成到被忽略的
+`tools/ci/fixtures/media/`，全部是合成正弦波（1–5 KB），不是正式遊戲資產，也不入庫。
 `button-down.wav` 名稱不可以改：`classifyAudioFile()` 靠 basename 識別短 UI 音效。
-刻意**沒有**影片 fixture（見該目錄的 `README.md`）。
+刻意**沒有**影片 fixture，影片路徑只驗降級。
 
 ### 設定
 
@@ -847,11 +794,11 @@ Runner 會驗 client 真的由 CLI 解析出要求的那個 profile，而 `none`
 portable 與 AppImage 成品各跑 full／reduced／none profile；這個是成品 gate，
 不會因一般 GUI source 改動而單獨觸發。
 
-成品 smoke 只用 `tests/fixtures/effects/` 的合成 fixture（4x4 GIF、幾張
+成品 smoke 只用 `tools/ci/fixtures/effects/`（按需生成、不入庫）的合成 fixture（4x4 GIF、幾張
 8x8 PNG、一個特意弄壞的 Spine 目錄），全部由
 `tools/ci/make-effects-fixtures.py` 用標準庫生成，不是遊戲資產。
 **備齊正式資產的 production smoke 不會成為 clean checkout 的 blocker。**
-為什麼沒有合法 Spine fixture、將來要加時怎麼做，見該目錄的 `README.md`。
+沒有合法 Spine fixture 是刻意的：Spine 階段只驗「載入失敗要降級、不可崩潰」與 REDUCED／NONE 不建立 `SpineGlItem`。
 
 驗的是行為，不是 pixel。screenshot 只作 failure artifact。
 
@@ -1118,36 +1065,17 @@ ExecStart=/usr/local/bin/qsanguosha_server --config /etc/qsanguosha/server.ini -
 
 `LogsDirectory=qsanguosha` 會建立可寫的 `/var/log/qsanguosha`。若安裝 prefix 不是 `/usr/local`，以 CMake 產生並安裝的 unit 內實際路徑為準。
 
-## 8. 測試 (CTest)
+## 8. 自動化驗證
 
-`tests/` 目錄有 CTest。Configure 之後直接執行：
+2026-09-25 起倉庫不再包含單元測試、CTest 與 `BUILD_TESTING`；驗證只靠可執行的 smoke 與對局 runner：
 
-```bash
-cmake --build build-linux-gcc
-ctest --test-dir build-linux-gcc --output-on-failure
-```
-
-Linux CTest 的單一 `qsanguosha_network_integration` suite 依序執行三級真實 TCP
-network integration，並逐 level 輸出 PASS/FAIL 與結尾摘要：
-
-1. Level 1：啟動 server、TCP connect／disconnect，確認 server 仍可回應 console，再以 SIGTERM 正常退出。
-2. Level 2：完成 version／setup handshake、signup，從 `players` snapshot 確認 server 已識別玩家，再正常斷線。
-3. Level 3：兩個 TCP client handshake／signup、填滿 `02p` room、開局後轉托管、完成自動對局、收到 game over、等待 room dispose，再驗證 SIGTERM clean exit 與 `CARD_LIFETIME_ZERO`。
-
-三個 child case 使用獨立臨時 `XDG_CONFIG_HOME`、CLI `--port 0` 與固定 seed，
-從 `Listening on` 取得實際 port；suite 標記為 `network` 並強制 serial 執行。
-只跑 network suite：
-
-```bash
-ctest --test-dir build-linux-gcc --output-on-failure -L network
-```
-
-其餘測試以 `qsanguosha_server_cli_contract`、`qsanguosha_server_unit`、
-`qsanguosha_runtime_contract` 等 suite 整理 parser／help／version、INI
-validation／precedence、engine smoke、card-lifetime、player-decision、room-runtime、
-protocol messages、request、room-roster、player-lifecycle、skill-runtime、lua-runtime、
-extra-turn 等 coverage。7-command console smoke 因 runtime/failure domain 不同仍獨立。
-可配置 `-DBUILD_TESTING=OFF` 跳過。
+| 範圍 | 入口 |
+|---|---|
+| server 收尾、console、logging | `tools/ci/server-shutdown-smoke.sh`、`server-console-smoke.sh`、`server-logging-smoke.sh` |
+| TUI 完整對局與中途重連 | `tools/autotest/tui_network_smoke.py`（`--mode 03_1v2`、`--reconnect`） |
+| headless／網絡對局 | `tools/autotest/headless_runner.py`、`network_runner.py`（見 [`tools/autotest/README.md`](../tools/autotest/README.md)） |
+| GUI 啟動、多媒體、效果、對局 | [§4.5](#45-linux-gui-m1-startup-smoke)～[§4.8](#48-linux-gui-m2b-b-effects-smoke) |
+| 打包成品 | `tools/ci/linux-package-smoke.sh` |
 
 ## 9. GitHub Actions CI
 
@@ -1159,14 +1087,13 @@ Ubuntu 24.04 依事件分成日常 gate 與完整 gate：
 
 | 事件 | 編譯器 | 驗證 | install | shutdown |
 |---|---|---|---|---|
-| PR → `debug`／`main`、`push debug` | GCC | 直接執行 protocol contract suites（`qsanguosha_protocol_tests`）＋ TUI contract／live-tcp gates（`qsanguosha_tui_tests`）＋ network Level 2（handshake／signup） | 不跑 | 跑 |
-| `push main`、`workflow_dispatch` | GCC + Clang | 完整 CTest，包含 network Level 1–3 ＋ TUI deterministic 完整對局與中途重連 smoke（`03_1v2`） | deploy-server、install、systemd | 跑 |
+| PR → `debug`／`main` | GCC | 建置全部預設 target | 不跑 | 跑 |
+| `push debug` | GCC | 只建置 `qsanguosha_server`、`qsanguosha_tui` | 不跑 | 跑 |
+| `push main`、`workflow_dispatch` | GCC + Clang | 建置全部 target ＋ `deploy-server`；GCC 另跑 TUI deterministic 完整對局與中途重連 smoke（`03_1v2`） | install、systemd 版面檢查 | 跑 |
 
 兩層都安裝 Qt6／Ninja、hash-pinned SWIG 4.3.1，下載 `lua/ai/`、`extensions/`
-與共用 Lua runtime，再以 RelWithDebInfo configure／build。日常 gate 已經不執行
-`ctest -L fast`，是直接驅動合併後的測試執行檔（每個執行檔用 `--suite` 選子案）；
-Level 1 與獨立 shutdown smoke 重疊，完整 `02p` 自動對局 Level 3 留在 main／
-手動 gate。無論成功或失敗都上傳 JUnit 與 server log。沒有 nightly schedule。
+與共用 Lua runtime，再以 RelWithDebInfo configure。沒有 ctest 步驟，也沒有
+nightly schedule。無論成功或失敗都上傳 `ci-logs/`。
 
 本機可以用相同 smoke script 驗證：
 

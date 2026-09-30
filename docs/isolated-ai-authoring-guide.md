@@ -8,7 +8,6 @@
 |---|---|---|
 | 技能規則 | `extensions/<package>.lua` | `extensions/<package>.lua` |
 | 新 AI | `ai/isolated/<package>-ai.lua` | `lua/ai/isolated/<package>-ai.lua` |
-| 共用測試 | 主倉庫 `tests/lua/` | 同左 |
 
 套件啟用時，loader 會找對應 `<package>-ai.lua`；不要將個別套件加入 `ai_isolated_core`。若設定了 `AiIsolatedScripts`，它會覆寫預設載入清單，須確認有載入測試所需核心與套件腳本。新增 isolated 檔案亦須登記 `docs/ai-runtime-manifest.json`；套件 handler 標為非 required。修改 L 端後逐檔同步回外部倉庫，不將 `lua/ai/` 強制加入主倉庫。
 
@@ -83,6 +82,6 @@ end
 
 ## 驗證
 
-至少補「有答案、明確拒絕、必要資料未知、非法候選、借用／多實例身份」適用案例，放到 `tests/lua/` 並接入 native runner。執行適用 focused 契約；V2 conversion 另驗 native 重建與拒絕。分開記錄 registry 登記、契約結果與新技能的完整對局結果。
+倉庫已無 Lua 契約測試與 native runner（2026-09-25 移除）。新技能至少以 headless 對局（`tools/autotest/headless_runner.py`）確認：有答案、明確拒絕、必要資料未知、非法候選、借用／多實例身份這幾種情況都不會靜靜退回 SmartAI 保底。V2 conversion 另驗 native 重建與拒絕。分開記錄 registry 登記與新技能的完整對局結果。
 
-更多純值 API 與既有契約見 [Lua AI 規範](lua-ai-spec.md)、[共用層](isolated-ai-common-layer.md)、`tests/lua/isolated-response-use-contract.lua` 與 `tests/lua/isolated-strategic-helpers-contract.lua`。本文範例未註冊為實際技能，僅供作者對照。
+更多純值 API 與既有契約見 [Lua AI 規範](lua-ai-spec.md)、[共用層](isolated-ai-common-layer.md)。本文範例未註冊為實際技能，僅供作者對照。

@@ -88,7 +88,6 @@ Cloudflare HTTPS 通道只用於受控測試，測試後關閉。既有 Excel lo
 | [`cmake/QSanguoshaSheets.cmake`](../cmake/QSanguoshaSheets.cmake) | opt-in Windows Qt6 target，依賴 Excel 共用 helper，輸出至 excel-debug／excel-release |
 | [`google-sheets/gateway.py`](../google-sheets/gateway.py) | 單次配對、nonce 恢復、每玩家隔離、目的地允許清單、素材識別碼與有界關閉 |
 | `google-sheets/apps-script/` | 文件／使用者憑證、持久 pending 指令、儲存格草稿、目錄、結局與詳情 |
-| `google-sheets/tests/` | gateway 與純草稿／指令恢復 focused 已執行；native probe 與 Sheets UI 的證據分開 |
 
 ## Google 官方限制參考
 
