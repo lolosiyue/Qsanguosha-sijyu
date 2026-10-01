@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <QDebug>
 #include <QFile>
+#include <QSet>
 
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
@@ -218,16 +219,32 @@ QString Skill::getDescription(const Player *target, int instanceId) const
 			if(des_src.contains(mark))
 			des_src.replace(mark, QString("<font color=%1><b>%2</b></font>").arg(colorMap[skill_type]).arg(mark));
 		}
-		static QStringList skillNames;
-		if(skillNames.isEmpty()){
-			foreach (QString sn, Sanguosha->getSkillNames()) {
-				mark = Sanguosha->translate(sn);
-				if(mark!=sn) skillNames << mark;
+		// 只加粗「“技能名”」。掃描描述裡最內層的引號對再查表；
+		// 舊寫法對全擴展上萬個譯名逐一 contains，GUI 刷新 tooltip 時會卡住數秒。
+		static const QSet<QString> skillNames = [] {
+			QSet<QString> names;
+			foreach (const QString &sn, Sanguosha->getSkillNames()) {
+				const QString translated = Sanguosha->translate(sn);
+				if (translated != sn) names.insert(translated);
 			}
+			return names;
+		}();
+		const QChar openQuote(0x201C), closeQuote(0x201D);
+		QString bolded;
+		int copied = 0, previousClose = -1;
+		for (int close = des_src.indexOf(closeQuote); close >= 0;
+			 previousClose = close, close = des_src.indexOf(closeQuote, close + 1)) {
+			const int open = des_src.lastIndexOf(openQuote, close);
+			if (open <= previousClose) continue;
+			const QString inner = des_src.mid(open + 1, close - open - 1);
+			if (!skillNames.contains(inner)) continue;
+			bolded += des_src.mid(copied, open + 1 - copied);
+			bolded += QLatin1String("<b>") + inner + QLatin1String("</b>");
+			copied = close;
 		}
-		foreach (QString snt, skillNames) {
-			if(des_src.contains(snt))
-				des_src.replace(QString("“%1”").arg(snt), QString("“<b>%1</b>”").arg(snt));
+		if (copied > 0) {
+			bolded += des_src.mid(copied);
+			des_src = bolded;
 		}
 	}
 	if (Config.value("AutoSuitReplacement").toBool()) {

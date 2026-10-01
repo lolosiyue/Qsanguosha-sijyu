@@ -1,6 +1,59 @@
 #include "pixmapanimation.h"
 #include "skin-bank.h"
 
+#include <QCoreApplication>
+#include <QImage>
+#include <QPixmapCache>
+#include <QPointer>
+#include <QRunnable>
+#include <QThread>
+#include <QThreadPool>
+#include <atomic>
+#include <memory>
+
+namespace {
+
+struct PrewarmJob
+{
+    QString cacheKey;
+    QString fileName;
+};
+
+class EmotionPrewarmTask final : public QRunnable
+{
+public:
+    EmotionPrewarmTask(QObject *context, QList<PrewarmJob> jobs, std::shared_ptr<std::atomic_bool> cancelled)
+        : m_context(context), m_jobs(std::move(jobs)), m_cancelled(std::move(cancelled))
+    {
+    }
+
+    void run() override
+    {
+        QThread::currentThread()->setPriority(QThread::LowestPriority);
+        for (const PrewarmJob &job : m_jobs) {
+            if (m_cancelled->load())
+                return;
+            // 解碼在背景；QPixmap 只能在主執行緒建立，逐幀交回。
+            const QImage image(job.fileName);
+            if (image.isNull())
+                continue;
+            const QString key = job.cacheKey;
+            QMetaObject::invokeMethod(m_context, [key, image]() {
+                QPixmap cached;
+                if (!QPixmapCache::find(key, &cached))
+                    QPixmapCache::insert(key, QPixmap::fromImage(image));
+            }, Qt::QueuedConnection);
+        }
+    }
+
+private:
+    QObject *m_context;
+    QList<PrewarmJob> m_jobs;
+    std::shared_ptr<std::atomic_bool> m_cancelled;
+};
+
+} // namespace
+
 const int PixmapAnimation::S_DEFAULT_INTERVAL = 50;
 
 PixmapAnimation::PixmapAnimation(QGraphicsScene *)
@@ -158,6 +211,37 @@ QPixmap PixmapAnimation::GetFrameFromCache(const QString &filename)
             QPixmapCache::insert(filename, pixmap);
     }
     return pixmap;
+}
+
+void PixmapAnimation::PrewarmEmotions(QObject *context, const QStringList &emotions)
+{
+    if (!context)
+        return;
+    QList<PrewarmJob> jobs;
+    for (const QString &emotion : emotions) {
+        for (int i = 0;; ++i) {
+            const QString source = QString("image/system/emotion/%1/%2.png").arg(emotion).arg(i);
+            if (!QFile::exists(source))
+                break;
+            const QString key = G_ROOM_SKIN.pixmapFileCacheKey(source);
+            QPixmap cached;
+            if (QPixmapCache::find(key, &cached))
+                continue;
+            const QString fileName = G_ROOM_SKIN.plainPixmapFile(source);
+            if (!fileName.isEmpty())
+                jobs << PrewarmJob{key, fileName};
+        }
+    }
+    if (jobs.isEmpty())
+        return;
+
+    // 單執行緒、低優先，避免和遊戲搶核心；pool 是 context 的子物件，
+    // context 解構時先設取消旗標，再等目前這一幀解完。
+    auto cancelled = std::make_shared<std::atomic_bool>(false);
+    QObject::connect(context, &QObject::destroyed, [cancelled]() { cancelled->store(true); });
+    QThreadPool *pool = new QThreadPool(context);
+    pool->setMaxThreadCount(1);
+    pool->start(new EmotionPrewarmTask(context, jobs, cancelled));
 }
 
 int PixmapAnimation::GetFrameCount(const QString &emotion)

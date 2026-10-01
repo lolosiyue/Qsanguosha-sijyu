@@ -18,6 +18,7 @@
 #include "effects/effects-policy.h"
 #include <QElapsedTimer>
 #include <QMutexLocker>
+#include <QTimer>
 
 using namespace QSanProtocol;
 
@@ -1465,10 +1466,11 @@ void PlayerCardContainer::setPlayer(ClientPlayer *player)
         connect(player, SIGNAL(hp_changed()), this, SLOT(updateHp()));
         // Deliver after snapshot/upsert mutations finish, including parent/bind metadata.
         const auto tooltipConnection = Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection);
+        const auto coalescedConnection = Qt::ConnectionType(Qt::AutoConnection | Qt::UniqueConnection);
         connect(player, &Player::skill_set_changed, this,
-                &PlayerCardContainer::updateAvatarTooltip, tooltipConnection);
+                &PlayerCardContainer::scheduleAvatarTooltipUpdate, coalescedConnection);
         connect(player, &Player::skill_state_changed, this,
-                &PlayerCardContainer::updateAvatarTooltip, tooltipConnection);
+                &PlayerCardContainer::scheduleAvatarTooltipUpdate, coalescedConnection);
         connect(player, &Player::gameplay_property_changed, this,
                 &PlayerCardContainer::updateGeneralIndicators, tooltipConnection);
         connect(player, &Player::skill_set_changed, this,
@@ -1870,6 +1872,18 @@ void PlayerCardContainer::onAvatarHoverLeave()
 	if (heroSKinBtn->isMouseInside()) return;
 	heroSKinBtn->hide();
 	doAvatarHoverLeave();
+}
+
+void PlayerCardContainer::scheduleAvatarTooltipUpdate()
+{
+    // 一批快照／技能事件只重建一次；每個 emit 各排一次 queued 呼叫會連續重建數十次。
+    if (m_avatarTooltipPending)
+        return;
+    m_avatarTooltipPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_avatarTooltipPending = false;
+        updateAvatarTooltip();
+    });
 }
 
 void PlayerCardContainer::updateAvatarTooltip()

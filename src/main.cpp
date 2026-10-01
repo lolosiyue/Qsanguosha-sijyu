@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QLoggingCategory>
 #include <QApplication>
+#include <QPixmapCache>
 #include <QCoreApplication>
 #include <QStringList>
 #include <QScopeGuard>
@@ -187,6 +188,13 @@ int main(int argc, char *argv[]) {
         new QCoreApplication(argc, argv);
     else {
         new QApplication(argc, argv);
+        // Qt 預設 10 MB。單個 success 表情解碼後就 9 MB，出牌時幀圖反覆被逐出、
+        // 在主執行緒重新解 PNG，每次卡 150–300 ms。
+#ifdef Q_OS_ANDROID
+        QPixmapCache::setCacheLimit(128 * 1024);
+#else
+        QPixmapCache::setCacheLimit(256 * 1024);
+#endif
 #if !defined(QSAN_XP_LEGACY)
         installWidgetAccessibility(QCoreApplication::instance());
 #endif

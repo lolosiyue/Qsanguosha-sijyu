@@ -22,6 +22,7 @@ namespace RoomLayoutEngine {
 struct Input;
 struct Result;
 }
+struct PlayerRecordStruct;
 #if QSAN_ENABLE_SPINE
 #include "CharacterSpineActionController.h"
 #endif
@@ -398,6 +399,8 @@ private:
 
     void useCard(const Card *card);
     void fillTable(QTableWidget *table, const QList<const ClientPlayer *> &players);
+    void fillTable(QTableWidget *table, const QList<const ClientPlayer *> &players,
+        const QMap<QString, PlayerRecordStruct *> &record_map);
     void chooseSkillButton();
 
     void selectTarget(int order, bool multiple);

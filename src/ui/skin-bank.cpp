@@ -1053,17 +1053,34 @@ QPixmap IQSanComponentSkin::getPixmapFileName(const QString &key) const
 	return _readConfig(_m_imageConfig, key);
 }
 
+QString IQSanComponentSkin::pixmapFileCacheKey(const QString &sourceFileName) const
+{
+    const QString assetRoot = QSanRuntimePaths::assetRoot();
+    const QString root = assetRoot.isEmpty() ? QDir::currentPath() : assetRoot;
+    return QStringLiteral("skin-file:%1:%2:%3:%4:%5")
+        .arg(QSanPackages::catalogRevision()).arg(m_visualRevision)
+        .arg(root.size()).arg(root).arg(sourceFileName);
+}
+
+QString IQSanComponentSkin::plainPixmapFile(const QString &sourceFileName) const
+{
+    const QString fileName = QSanRuntimePaths::assetPath(sourceFileName);
+    if (fileName.isEmpty() || !packageAssetExists(fileName))
+        return QString();
+    const int suffixPos = fileName.lastIndexOf('.');
+    if (suffixPos > 0 && !fileName.left(suffixPos).endsWith("@2x")
+        && packageAssetExists(fileName.left(suffixPos) + "@2x" + fileName.mid(suffixPos)))
+        return QString();
+    return fileName;
+}
+
 QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &sourceFileName, bool cache) const
 {
     if (sourceFileName == "deprecated" || sourceFileName.isEmpty())
         return QPixmap(1, 1);
     // Consult the bounded Qt cache before touching the filesystem. Catalog and
     // skin replacement fence old results; misses still use the validated resolver.
-    const QString assetRoot = QSanRuntimePaths::assetRoot();
-    const QString root = assetRoot.isEmpty() ? QDir::currentPath() : assetRoot;
-    const QString cacheKey = QStringLiteral("skin-file:%1:%2:%3:%4:%5")
-        .arg(QSanPackages::catalogRevision()).arg(m_visualRevision)
-        .arg(root.size()).arg(root).arg(sourceFileName);
+    const QString cacheKey = pixmapFileCacheKey(sourceFileName);
     QPixmap cachedPixmap;
     if (cache && QPixmapCache::find(cacheKey, &cachedPixmap))
         return cachedPixmap;
