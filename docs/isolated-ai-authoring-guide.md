@@ -73,7 +73,7 @@ end
 | 有合法答案 | 回當次 offered choice、ID／target 或授權計劃 |
 | 明確不發動 | invoke 回 `false`；其他 request 只在允許拒絕時回 `{kind="pass"}` |
 | 未覆蓋 | `ai_unsupported(reason, key)`；不要拿空集合或 0 代替 unknown |
-| handler 回 nil | 讓該 dispatcher 繼續其他已接通策略／default；最終仍無答案才是未覆蓋 |
+| handler 回 nil | 讓該 dispatcher 繼續其他已接通策略／default；最終仍無答案才是未覆蓋。值型詢問若 SmartAI 有同理由 hook（C++ 標 `options.context.legacy_hook`），共用 default 讓位，改由 SmartAI 作答 |
 | 關係 | 用 `self:isFriend`／mode policy；未知不等於敵人，不硬編碼角色 |
 | 可見資料 | `self.player`、`self.room` 都是 value facade，不是 native Player／Room |
 | 跨詢問記憶 | 只存純值、按 viewer 分區；不保留 facade、userdata 或他人私有資料 |

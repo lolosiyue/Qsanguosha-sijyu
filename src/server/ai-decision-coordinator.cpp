@@ -2,6 +2,7 @@
 #include "qt-collection-utils.h"
 #include "ai-runtime.h"
 #include "card-lifetime-manager.h"
+#include "lua.hpp"
 
 #include "engine.h"
 #include "room.h"
@@ -1500,6 +1501,53 @@ AIResult AiDecisionCoordinator::legacyAnswerResult(const AIRequest &request,
     return result;
 }
 
+// The isolated shared defaults (false, random, pass) answer every value question,
+// which would leave no refusal for SmartAI's per-reason hooks to take over. Report
+// whether this room VM's SmartAI keeps a hook for the reason, using the same table
+// and key spelling SmartAI's own lookup uses.
+static bool hasLegacyReasonHook(LuaRuntime &runtime, const QString &callbackName,
+                                const QString &reason)
+{
+    static const struct {
+        const char *callback;
+        const char *table;
+        bool normalizeDash;
+    } hooks[] = {
+        {"askForSkillInvoke", "ai_skill_invoke", true},
+        {"askForChoice", "ai_skill_choice", false},
+        {"askForSuit", "ai_skill_suit", false},
+        {"askForGeneral", "ai_general_choice", false},
+        {"askForDiscard", "ai_skill_discard", false},
+        {"askForAG", "ai_skill_askforag", true},
+        {"askForCardChosen", "ai_skill_cardchosen", true},
+        {"askForYiji", "ai_skill_askforyiji", true},
+        {"askForPlayerChosen", "ai_skill_playerchosen", true},
+        {"askForPlayersChosen", "ai_skill_playerschosen", false},
+    };
+    if (reason.isEmpty() || !runtime.rawState()) return false;
+    for (const auto &hook : hooks) {
+        if (callbackName != QLatin1String(hook.callback)) continue;
+        QString key = reason;
+        if (hook.normalizeDash) key.replace(QLatin1Char('-'), QLatin1Char('_'));
+        LuaRuntime::Binding binding(runtime, false);
+        lua_State *state = runtime.state();
+        const int top = lua_gettop(state);
+        bool found = false;
+        lua_getglobal(state, "sgs");
+        if (lua_istable(state, -1)) {
+            lua_getfield(state, -1, hook.table);
+            if (lua_istable(state, -1)) {
+                lua_pushstring(state, key.toUtf8().constData());
+                lua_rawget(state, -2);
+                found = !lua_isnil(state, -1);
+            }
+        }
+        lua_settop(state, top);
+        return found;
+    }
+    return false;
+}
+
 bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &request,
                                       const QString &callbackName, const LegacyAnswer &legacy,
                                       AIResult &result, bool *fromIsolated) const
@@ -1513,7 +1561,17 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
         : AiRouteLegacyDirect;
     bool isolatedAnswer = false;
     if (route == AiRouteIsolated) {
-        result = m_room.roomRuntime()->ai().decideIsolated(request);
+        // Isolated reason handlers still answer first; only its shared default
+        // steps aside, so the refusal reaches SmartAI's hook below.
+        const bool deferDefault = qobject_cast<LuaAI *>(player->getAI())
+            && hasLegacyReasonHook(m_room.roomRuntime()->lua(), callbackName,
+                                   request.choiceOptions.reason);
+        AIRequest hinted;
+        if (deferDefault) {
+            hinted = request;
+            hinted.choiceOptions.context.insert(QStringLiteral("legacy_hook"), true);
+        }
+        result = m_room.roomRuntime()->ai().decideIsolated(deferDefault ? hinted : request);
         // An isolated answer counts only while it still belongs to this decision and
         // this board state. A stale one is dropped and the legacy AI answers instead;
         // the stamp is never rewritten to make an old answer acceptable.
@@ -1527,6 +1585,11 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
     } else {
         result = legacy(request);
     }
+    if (qEnvironmentVariableIsSet("QSAN_TMP_ROUTE_TRACE"))
+        fprintf(stderr, "AI_ROUTE %s reason=%s src=%s answer=%s\n",
+                qPrintable(callbackName), qPrintable(request.choiceOptions.reason),
+                isolatedAnswer ? "isolated" : "legacy",
+                result.kind == AIResult::Answer ? qPrintable(result.action.userString) : "-");
     if (!result.handled || !result.errorCode.isEmpty())
         return false;
     if (result.kind == AIResult::UseCard)
