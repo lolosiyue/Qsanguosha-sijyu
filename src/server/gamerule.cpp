@@ -1,6 +1,7 @@
 #include "gamerule.h"
 #include "hegemony-mode.h"
 #include <QScopeGuard>
+#include <QSet>
 #include "room.h"
 #include "engine.h"
 #include "structs.h"
@@ -1003,12 +1004,18 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     }
     case AskForPeaches: {
         DyingStruct dying = data.value<DyingStruct>();
+        // 用不出去的牌（如思相頂三張沒有桃）不改變任何狀態，瀕死旗標也不會清；
+        // 同一張再交出來只會再失敗一次。同一輪裡重複交出失敗過的牌視為放棄。
+        QSet<QString> failedPeaches;
         while (dying.who->hasFlag("Global_Dying")) {
             //room->getThread()->trigger(PreventPeach,room,player,data);
 			const Card *peach = room->askForSinglePeach(player,dying.who);
             //room->getThread()->trigger(AfterPreventPeach,room,player,data);
-            if(peach) room->useCard(CardUseStruct(peach,player,dying.who));
-			else break;
+            if(!peach) break;
+            const QString key = peach->toString();
+            if (failedPeaches.contains(key)) break;
+            if (!room->useCard(CardUseStruct(peach,player,dying.who)))
+                failedPeaches.insert(key);
         }
         break;
     }
