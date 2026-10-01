@@ -1585,11 +1585,6 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
     } else {
         result = legacy(request);
     }
-    if (qEnvironmentVariableIsSet("QSAN_TMP_ROUTE_TRACE"))
-        fprintf(stderr, "AI_ROUTE %s reason=%s src=%s answer=%s\n",
-                qPrintable(callbackName), qPrintable(request.choiceOptions.reason),
-                isolatedAnswer ? "isolated" : "legacy",
-                result.kind == AIResult::Answer ? qPrintable(result.action.userString) : "-");
     if (!result.handled || !result.errorCode.isEmpty())
         return false;
     if (result.kind == AIResult::UseCard)
