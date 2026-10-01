@@ -1117,7 +1117,7 @@ void MainWindow::restoreAndroidOfflineMarker()
 }
 #endif
 
-// WSLg 會把這扇 X 視窗停在 (-32768,-32768)。標題列仍能按，客戶區的點擊進不了視窗。
+// WSLg 會把這扇 X 視窗停在 (-32768,-32768)，或在多螢幕時最大化到主螢幕以外。
 static QRect placedOnScreen(QSize size, QPoint pos)
 {
 	if (QScreen *screen = QGuiApplication::primaryScreen()) {
@@ -1133,23 +1133,37 @@ static QRect placedOnScreen(QSize size, QPoint pos)
 	return QRect(pos, size);
 }
 
-static void bringClientAreaOnScreen(QWidget *window)
+static void bringClientAreaOnScreen(QWidget *window, bool followPrimary)
 {
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
 	static int corrections = 0;
 	if (!window || corrections >= 3)
 		return;
-	const QPoint topLeft = window->frameGeometry().topLeft();
-	if (topLeft.x() > -16000 && topLeft.y() > -16000)
-		return;
 	QScreen *screen = QGuiApplication::primaryScreen();
 	if (!screen)
 		return;
 	const QRect avail = screen->availableGeometry();
+	const QRect frame = window->frameGeometry();
+	const QPoint topLeft = frame.topLeft();
+	const bool parked = topLeft.x() <= -16000 || topLeft.y() <= -16000;
+	// 外框比客戶區高出一截。中心在主螢幕裡時，標題列仍可能在 y<0，點不到。
+	const bool captionClipped = followPrimary && avail.isValid()
+		&& (frame.top() < avail.top() || frame.left() < avail.left());
+	const bool offPrimary = followPrimary && avail.isValid()
+		&& !avail.contains(frame.center());
+	if (!parked && !offPrimary && !captionClipped)
+		return;
 	++corrections;
-	window->move(avail.left() + 48, avail.top() + 48);
+	if (window->isMaximized() || window->isFullScreen())
+		window->showNormal();
+	const QPoint frameMargin = window->geometry().topLeft() - frame.topLeft();
+	const QPoint target(avail.left() + 8, avail.top() + 8);
+	const QRect placed = placedOnScreen(window->size(), target + frameMargin);
+	window->resize(placed.size());
+	window->move(placed.topLeft());
 #else
 	Q_UNUSED(window);
+	Q_UNUSED(followPrimary);
 #endif
 }
 
@@ -1259,7 +1273,8 @@ void MainWindow::showEvent(QShowEvent *event)
 {
 	QMainWindow::showEvent(event);
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
-	QTimer::singleShot(0, this, [this]() { bringClientAreaOnScreen(this); });
+	QTimer::singleShot(0, this, [this]() { bringClientAreaOnScreen(this, true); });
+	QTimer::singleShot(200, this, [this]() { bringClientAreaOnScreen(this, true); });
 #endif
 }
 
@@ -1276,7 +1291,7 @@ void MainWindow::moveEvent(QMoveEvent *event)
 {
 	QMainWindow::moveEvent(event);
 	reportWindowState(this);
-	bringClientAreaOnScreen(this);
+	bringClientAreaOnScreen(this, false);
 }
 
 MainWindow::~MainWindow()
