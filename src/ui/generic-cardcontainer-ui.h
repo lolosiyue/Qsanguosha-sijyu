@@ -104,6 +104,7 @@ public:
     virtual void startHuaShen(QString generalName, QString skillName);
     virtual void stopHuaShen();
     virtual void updateAvatarTooltip();
+    void scheduleAvatarTooltipUpdate();
 
     inline void hookMouseEvents();
 
@@ -282,6 +283,7 @@ protected slots:
 
 private:
     bool _startLaying();
+    bool m_avatarTooltipPending = false;
     void clearVotes();
     int _lastZ;
     bool _allZAdjusted;
