@@ -2160,8 +2160,12 @@ void Dashboard::enableCards()
         if (pile == "wooden_ox" || pile.startsWith("&"))
             expandPileCards(pile);
     }
-    foreach(CardItem *card_item, m_handCards)
-        card_item->setEnabled(card_item->getCard()->isAvailable(m_player));/*
+    {
+        // isAvailable 對每個其他角色各試一次 targetFilter；同一張牌的共用修正值只算一次。
+        TargetModMemoScope targetModMemo;
+        foreach(CardItem *card_item, m_handCards)
+            card_item->setEnabled(card_item->getCard()->isAvailable(m_player));
+    }/*
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         if (_m_equipCards[i]&&_m_equipSkillBtns[i]) {
             const ViewAsSkill*vs = Sanguosha->getViewAsSkill(_m_equipCards[i]->objectName());

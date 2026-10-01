@@ -67,6 +67,21 @@ private:
     static thread_local TargetModSkillQueryScope *s_current;
 };
 
+// UI 一次刷新可選目標或可用手牌時盤面不變，同參數的目標、距離與攻擊範圍修正只算一次。
+// 只在建立它的執行緒、它的生存期內生效；伺服器不建立。
+class TargetModMemoScope final {
+public:
+    TargetModMemoScope();
+    ~TargetModMemoScope();
+private:
+    friend class Engine;
+    Q_DISABLE_COPY(TargetModMemoScope)
+    // 指標之外再帶牌面字串：範圍內臨時牌被立即刪除、新牌落在同一地址時不會誤中。
+    QHash<QString, int> m_values;
+    TargetModMemoScope *m_previous;
+    static thread_local TargetModMemoScope *s_current;
+};
+
 struct EasyTextItem {
     QString text;
     QString audioPath;

@@ -6,18 +6,82 @@ ExpPattern::ExpPattern(const QString &exp)
     this->exp = exp;
 	available = exp.startsWith("$");
 	if(available) this->exp.remove("$");
+
+    // '|' means 'and', '#' means 'or'. See matchOne() for the meaning of each part.
+    foreach (const QString &one_exp, this->exp.split('#')) {
+        Alternative alternative;
+        const QStringList factors = one_exp.split('|');
+        alternative.factorCount = factors.length();
+        alternative.anyName = factors[0] == ".";
+        if (!alternative.anyName) {
+            foreach (const QString &or_name, factors[0].split(',')) {
+                QList<Term> group;
+                foreach (QString name, or_name.split('+')) {
+                    Term term;
+                    term.negated = name.startsWith('^');
+                    if (term.negated) name = name.mid(1);
+                    term.text = name;
+                    term.className = name.toLocal8Bit();
+                    group << term;
+                }
+                alternative.names << group;
+            }
+        }
+        if (factors.length() >= 2) {
+            alternative.anySuit = factors[1] == ".";
+            if (!alternative.anySuit) {
+                foreach (QString suit, factors[1].split(',')) {
+                    Term term;
+                    term.negated = suit.startsWith('^');
+                    if (term.negated) suit = suit.mid(1);
+                    term.text = suit;
+                    alternative.suits << term;
+                }
+            }
+        }
+        if (factors.length() >= 3) {
+            alternative.anyNumber = factors[2] == ".";
+            if (!alternative.anyNumber) {
+                foreach (QString number, factors[2].split(',')) {
+                    NumberTerm term;
+                    term.negated = number.startsWith('^');
+                    if (term.negated) number = number.mid(1);
+                    term.text = number;
+                    if (number.contains('~')) {
+                        term.isRange = true;
+                        const QStringList params = number.split('~');
+                        if (params[0].size() > 0) term.from = params[0].toInt();
+                        if (params[1].size() > 0) term.to = params[1].toInt();
+                    } else {
+                        term.value = number.toInt(&term.isInt);
+                    }
+                    alternative.numbers << term;
+                }
+            }
+        }
+        if (factors.length() >= 4) {
+            alternative.anyPlace = factors[3] == ".";
+            if (!alternative.anyPlace) {
+                foreach (QString place, factors[3].split(',')) {
+                    Term term;
+                    term.negated = place.startsWith('^');
+                    if (term.negated) place = place.mid(1);
+                    term.text = place;
+                    alternative.places << term;
+                }
+            }
+        }
+        alternatives << alternative;
+    }
 }
 
 bool ExpPattern::match(const Player *player, const Card *card) const
 {
 	if(available&&player&&!card->isAvailable(player))
 		return false;
-	if(exp.contains('#')){
-		foreach(QString one_exp, exp.split('#'))
-			if (matchOne(player, card, one_exp)) return true;
-		return false;
-	}
-	return matchOne(player, card, exp);
+	foreach (const Alternative &alternative, alternatives)
+		if (matchOne(player, card, alternative)) return true;
+	return false;
 }
 
 // '|' means 'and', '#' means 'or'.
@@ -29,19 +93,27 @@ bool ExpPattern::match(const Player *player, const Card *card) const
 // 4th part means the card place, and ',' means more than one options,
 // "hand" stands for handcard and "equipped" stands for the cards in the placeequip
 // if it is neigher "hand" nor "equipped", it stands for the pile the card is in.
-bool ExpPattern::matchOne(const Player *player, const Card *card, QString one_exp) const
+bool ExpPattern::matchOne(const Player *player, const Card *card, const Alternative &alternative) const
 {
-    QStringList factors = one_exp.split('|');
-	if(factors[0]!="."){
+	if(!alternative.anyName){
+		// Card 字串只在型別比對失敗時才組，和原本的短路順序一致。
+		const QString type = card->getType();
+		const QString percentName = "%" + card->objectName();
+		QString cardString;
+		bool cardStringReady = false;
 		bool checkpoint = false;
-		foreach (QString or_name, factors[0].split(',')) {
-			foreach (QString name, or_name.split('+')) {
-				bool positive = name.startsWith('^');
-				if (positive) name = name.mid(1);
-				if (card->getType()==name||card->toString()==name||"%"+card->objectName()==name||card->isKindOf(name.toLocal8Bit().data()))
-					checkpoint = !positive;
-				else
-					checkpoint = positive;
+		foreach (const QList<Term> &group, alternative.names) {
+			foreach (const Term &term, group) {
+				bool hit = type == term.text;
+				if (!hit) {
+					if (!cardStringReady) {
+						cardString = card->toString();
+						cardStringReady = true;
+					}
+					hit = cardString == term.text || percentName == term.text
+						|| card->isKindOf(term.className.constData());
+				}
+				checkpoint = hit ? !term.negated : term.negated;
 				if (!checkpoint) break;
 			}
 			if (checkpoint) break;
@@ -49,61 +121,51 @@ bool ExpPattern::matchOne(const Player *player, const Card *card, QString one_ex
 		if (!checkpoint)
 			return false;
 	}
-	if(factors.length()<2)
+	if(alternative.factorCount<2)
 		return true;
-	
-	if(factors[1]!="."){
+
+	if(!alternative.anySuit){
+		const QString suitString = card->getSuitString();
+		const QString colorString = card->getColorString();
 		bool checkpoint = false;
-		foreach (QString suit, factors[1].split(',')) {
-			bool positive = suit.startsWith('^');
-			if (positive) suit = suit.mid(1);
-			if (card->getSuitString() == suit || card->getColorString() == suit)
-				checkpoint = !positive;
+		foreach (const Term &suit, alternative.suits) {
+			if (suitString == suit.text || colorString == suit.text)
+				checkpoint = !suit.negated;
 			else
-				checkpoint = positive;
+				checkpoint = suit.negated;
 			if (checkpoint) break;
 		}
 		if (!checkpoint)
 			return false;
 	}
-	if(factors.length()<3)
+	if(alternative.factorCount<3)
 		return true;
-	
-	if(factors[2]!="."){
+
+	if(!alternative.anyNumber){
 		bool checkpoint = false;
-		foreach (QString number, factors[2].split(',')) {
-			bool positive = number.startsWith('^');
-			if (positive) number = number.mid(1);
-			checkpoint = positive;
-			if(number.contains('~')){
-				int from = 1, to = 13;
-				QStringList params = number.split('~');
-				if (params[0].size()>0) from = params[0].toInt();
-				if (params[1].size()>0) to = params[1].toInt();
-				if(card->getNumber() >= from && card->getNumber() <= to)
-					checkpoint = !positive;
-			}else{
-				bool can;
-				int n = number.toInt(&can);
-				if(can){
-					if(n==card->getNumber())
-						checkpoint = !positive;
-				}else if(number==card->getNumberString())
-					checkpoint = !positive;
-			}
+		foreach (const NumberTerm &number, alternative.numbers) {
+			checkpoint = number.negated;
+			if(number.isRange){
+				if(card->getNumber() >= number.from && card->getNumber() <= number.to)
+					checkpoint = !number.negated;
+			}else if(number.isInt){
+				if(number.value==card->getNumber())
+					checkpoint = !number.negated;
+			}else if(number.text==card->getNumberString())
+				checkpoint = !number.negated;
 			if (checkpoint) break;
 		}
 		if (!checkpoint)
 			return false;
 	}
-	if(factors.length()<4)
+	if(alternative.factorCount<4)
 		return true;
-	
-	if(factors[3]!="."&&player){
+
+	if(!alternative.anyPlace&&player){
 		bool checkpoint = false;
-		foreach (QString place, factors[3].split(',')) {
-			bool positive = place.startsWith('^');
-			if (positive) place = place.mid(1);
+		foreach (const Term &term, alternative.places) {
+			const bool positive = term.negated;
+			const QString &place = term.text;
 			foreach (int id, card->getSubcards()) {
 				checkpoint = positive;
 				if (place == "equipped"){
@@ -132,41 +194,5 @@ bool ExpPattern::matchOne(const Player *player, const Card *card, QString one_ex
 		}
 		return false;
 	}
-	return true;/*
-
-	checkpoint = factors[3] == "." || !player;
-    if (!checkpoint){
-		QStringList places = factors[3].split(',');
-		foreach (int id, card->getSubcards()) {
-			checkpoint = false;
-			foreach (QString place, places) {
-				bool positive = place.startsWith('^');
-				if (positive) place = place.mid(1);
-				checkpoint = positive;
-				if (place == "equipped"){
-					if(player->getEquipsId().contains(id))
-						checkpoint = !positive;
-				}else if (place == "hand"){
-					if(player->handCards().contains(id))
-						checkpoint = !positive;
-				}else if (place.startsWith("%")) {
-					place = place.mid(1);
-					foreach(const Player *as, player->getAliveSiblings()){
-						if (as->getPile(place).contains(id)) {
-							checkpoint = !positive;
-							break;
-						}
-					}
-				} else{
-					if(player->getPile(place).contains(id))
-						checkpoint = !positive;
-				}
-				if (checkpoint)
-					break;
-			}
-			if (!checkpoint)
-				break;
-        }
-    }
-    return checkpoint;*/
+	return true;
 }

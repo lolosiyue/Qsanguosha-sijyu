@@ -887,7 +887,17 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	_m_bgEnabled = false;
 
 	_m_isInDragAndUseMode = false;
-	_m_superDragStarted = false;/*
+	_m_superDragStarted = false;
+
+	// 首次播放時同步解 PNG 會卡 30–300 ms；常用卡牌與結算表情先在背景解好。
+	if (G_EFFECTS.animationsEnabled())
+		PixmapAnimation::PrewarmEmotions(this, QStringList()
+			<< "slash_red" << "slash_black" << "slash" << "jink" << "peach" << "analeptic"
+			<< "damage" << "fire_slash" << "thunder_slash" << "chain" << "success" << "no-success"
+			<< "judgegood" << "judgebad" << "nullification" << "duel" << "skill_nullify"
+			<< "ex_nihilo" << "snatch" << "dismantlement" << "savage_assault" << "archery_attack"
+			<< "amazing_grace" << "god_salvation" << "collateral" << "indulgence"
+			<< "supply_shortage" << "lightning" << "iron_chain" << "fire_attack");/*
 
 #ifndef QT_DEBUG
 	_m_animationEngine = new QQmlEngine(this);
@@ -2198,6 +2208,8 @@ void RoomScene::updateTargetsEnablity(const Card*card)
 			item->setFlag(QGraphicsItem::ItemIsSelectable,!card||maxVotes > 0);
 	}*/
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
+	// 每個候選角色都會用同樣參數查一次「可額外指定幾名目標」等修正值；這一輪只算一次。
+	TargetModMemoScope targetModMemo;
 	foreach (PlayerCardContainer*item,item2player.keys()){
 		int maxVotes = 0;
 		if(card){
@@ -4801,8 +4813,11 @@ void RoomScene::onGameOver()
 			loser_list << player;
 	}
 
-	fillTable(winner_table,winner_list);
-	fillTable(loser_table,loser_list);
+	// 整份錄像只解析一次；勝負兩張表各解析一次會在結算時多卡數百毫秒。
+	RecAnalysis record(ClientInstance->getReplayPath());
+	const QMap<QString,PlayerRecordStruct*> record_map = record.getRecordMap();
+	fillTable(winner_table,winner_list,record_map);
+	fillTable(loser_table,loser_list,record_map);
 
 	m_replay->recorderAutoSave();
 
@@ -4888,12 +4903,16 @@ void RoomScene::viewGenerals(const QString&reason,const QStringList&names)
 
 void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&players)
 {
+	RecAnalysis record(ClientInstance->getReplayPath());
+	fillTable(table,players,record.getRecordMap());
+}
+
+void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&players,
+	const QMap<QString,PlayerRecordStruct*>&record_map)
+{
 	table->setColumnCount(10);
 	table->setRowCount(players.length());
 	table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-
-	RecAnalysis record(ClientInstance->getReplayPath());
-	QMap<QString,PlayerRecordStruct*> record_map = record.getRecordMap();
 
 	static QStringList labels;
 	if(labels.isEmpty()){
