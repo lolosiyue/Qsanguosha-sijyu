@@ -86,6 +86,10 @@ public:
     QPixmap getPixmap(const QString &key, const QString &arg = "", bool cache = false) const;
     QPixmap getPixmapFileName(const QString &key) const;
     QPixmap getPixmapFromFileName(const QString &fileName, bool cache = false) const;
+    // getPixmapFromFileName(fileName, true) 使用的快取鍵，以及它會直接讀取的檔案。
+    // 有 @2x 版本或缺檔時回傳空檔名，呼叫端應交回 getPixmapFromFileName 處理。
+    QString pixmapFileCacheKey(const QString &fileName) const;
+    QString plainPixmapFile(const QString &fileName) const;
     QStringList getAudioFileNames(const QString &key) const;
     QString getRandomAudioFileName(const QString &key) const;
     bool isImageKeyDefined(const QString &key) const;
