@@ -690,8 +690,9 @@ public:
 
     bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const
     {
+        // 攻擊範圍要逐個修正技求值，放在技能檢查之後。
         return !card->isKindOf("SkillCard") && from != to && from->getPhase() == Player::Play
-		&& !to->inMyAttackRange(from) && from->hasSkill("chezheng");
+		&& from->hasSkill("chezheng") && !to->inMyAttackRange(from);
     }
 };
 
