@@ -2041,50 +2041,59 @@ CardUseStruct PlayerDecisionService::askForUseSlashToStruct(ServerPlayer*slasher
 
 const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, ServerPlayer*dying)
 {
-	CardLifetimeScope cardScope(globalCardLifetimeManager());
-	m_room.tryPause();
-	m_room.notifyMoveFocus(player, S_COMMAND_ASK_PEACH);
-	m_room.m_runtime->state().setCurrentCardUsePattern(player==dying?"peach+analeptic":"peach");
-	m_room.m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
+	QSet<QString> rejected;
+	forever {
+		CardLifetimeScope cardScope(globalCardLifetimeManager());
+		m_room.tryPause();
+		m_room.notifyMoveFocus(player, S_COMMAND_ASK_PEACH);
+		m_room.m_runtime->state().setCurrentCardUsePattern(player==dying?"peach+analeptic":"peach");
+		m_room.m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
 
-	const Card*card = nullptr;
-	SkillInstanceRef sourceRef;
-	SkillInstanceRef activationRef;
+		const Card*card = nullptr;
+		SkillInstanceRef sourceRef;
+		SkillInstanceRef activationRef;
 
-	AI*ai = player->getAI();
-	if (ai){
-		QElapsedTimer timer;
-		timer.start();
-		card = m_room.decideAiSinglePeach(player, dying);
-		if (Config.AIDelay>timer.elapsed())
-			m_room.thread->delay(Config.AIDelay-timer.elapsed());
-	}else{
-		JsonArray arg;
-		arg << dying->objectName() << 1-dying->getHp();
-		if (m_room.doRequest(player, S_COMMAND_ASK_PEACH, arg, true)){
-			CardUseStruct response;
-			response.from = player;
-			if (response.tryParse(player->getClientReply(), &m_room) && m_room.resolveCardSkillInstance(response)) {
-				card = response.card;
-				sourceRef = response.sourceRef;
-				activationRef = response.activationRef;
-			}
+		AI*ai = player->getAI();
+		if (ai){
+			QElapsedTimer timer;
+			timer.start();
+			card = m_room.decideAiSinglePeach(player, dying);
+			if (Config.AIDelay>timer.elapsed())
+				m_room.thread->delay(Config.AIDelay-timer.elapsed());
 		}else{
-			ai = player->getAI();
-			if(ai) card = m_room.decideAiSinglePeach(player, dying);
+			JsonArray arg;
+			arg << dying->objectName() << 1-dying->getHp();
+			if (m_room.doRequest(player, S_COMMAND_ASK_PEACH, arg, true)){
+				CardUseStruct response;
+				response.from = player;
+				if (response.tryParse(player->getClientReply(), &m_room) && m_room.resolveCardSkillInstance(response)) {
+					card = response.card;
+					sourceRef = response.sourceRef;
+					activationRef = response.activationRef;
+				}
+			}else{
+				ai = player->getAI();
+				if(ai) card = m_room.decideAiSinglePeach(player, dying);
+			}
 		}
-	}
-	if (card){
-		card = card->validateInResponse(player);
-		if (!card||player->isCardLimited(card, Card::MethodUse))
-			return askForSinglePeach(player, dying);
-		else{
-			m_room.notifyCardProvenance("response_use", player, card, sourceRef, activationRef);
-			QVariant decisionData = QString("peach:%1:%2:%3").arg(dying->objectName()).arg(1-dying->getHp()).arg(card->toString());
-			m_eventDispatcher.dispatch(ChoiceMade, player, decisionData);
+		if (card){
+			const QString offered = card->toString();
+			card = card->validateInResponse(player);
+			if (!card||player->isCardLimited(card, Card::MethodUse)){
+				// 同一張被駁回的牌再交出來只會再被駁回；遞迴重問沒有上限。
+				if (rejected.contains(offered))
+					return nullptr;
+				rejected.insert(offered);
+				continue;
+			}
+			else{
+				m_room.notifyCardProvenance("response_use", player, card, sourceRef, activationRef);
+				QVariant decisionData = QString("peach:%1:%2:%3").arg(dying->objectName()).arg(1-dying->getHp()).arg(card->toString());
+				m_eventDispatcher.dispatch(ChoiceMade, player, decisionData);
+			}
 		}
+		return card;
 	}
-	return card;
 }
 
 void PlayerDecisionService::activate(ServerPlayer*player, CardUseStruct&card_use)
