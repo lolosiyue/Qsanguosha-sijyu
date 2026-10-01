@@ -52,6 +52,11 @@
 Engine*Sanguosha = nullptr;
 
 thread_local TargetModSkillQueryScope *TargetModSkillQueryScope::s_current = nullptr;
+thread_local TargetModMemoScope *TargetModMemoScope::s_current = nullptr;
+
+TargetModMemoScope::TargetModMemoScope() : m_previous(s_current) { s_current = this; }
+
+TargetModMemoScope::~TargetModMemoScope() { s_current = m_previous; }
 
 TargetModSkillQueryScope::TargetModSkillQueryScope(const Player *owner,
     const QList<SkillInstanceRef> &allowedHidden, const QString &historyKey, qint64 useHistoryEventId)
@@ -3014,6 +3019,14 @@ QString findLegacySkillHolderName(const Player *anchor, const QString &skillName
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
     AiProbe::ScopedProbe probe(AiProbe::Slot_correctDistance);
+    // 距離不看牌；可用手牌刷新時每張殺都會對每個角色再算一次。
+    TargetModMemoScope *memo = TargetModMemoScope::s_current;
+    const QString memoKey = memo ? QStringLiteral("distance|%1|%2|%3").arg(quintptr(from))
+        .arg(quintptr(to)).arg(int(fixed)) : QString();
+    if (memo) {
+        const auto cached = memo->m_values.constFind(memoKey);
+        if (cached != memo->m_values.constEnd()) return cached.value();
+    }
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (from && from->inherits("ClientPlayer")) return 0;
@@ -3043,6 +3056,7 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
                         : correct + sumApplicableResults(results, false);
     }
     if (locked) lua_mutex.unlock();
+    if (memo) memo->m_values.insert(memoKey, correct);
 	return correct;
 }
 
@@ -3168,6 +3182,14 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
 {
     if (!from || !card) return 0;
 
+    TargetModMemoScope *memo = TargetModMemoScope::s_current;
+    const QString memoKey = memo ? QStringLiteral("%1|%2|%3|%4|%5").arg(int(type))
+        .arg(quintptr(from)).arg(quintptr(to)).arg(quintptr(card)).arg(card->toString()) : QString();
+    if (memo) {
+        const auto cached = memo->m_values.constFind(memoKey);
+        if (cached != memo->m_values.constEnd()) return cached.value();
+    }
+
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (from && from->inherits("ClientPlayer")) return 0;
@@ -3231,6 +3253,7 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         }
     }
     if (locked) lua_mutex.unlock();
+    if (memo) memo->m_values.insert(memoKey, x);
     return x;
 }
 
@@ -3305,6 +3328,15 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
+    // 攻擊範圍只看出牌者；選目標時每個候選角色都會再問一次。
+    TargetModMemoScope *memo = TargetModMemoScope::s_current;
+    const QString memoKey = memo ? QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
+        .arg(int(include_weapon)).arg(int(fixed)) : QString();
+    if (memo) {
+        const auto cached = memo->m_values.constFind(memoKey);
+        if (cached != memo->m_values.constEnd()) return cached.value();
+    }
+
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (target && target->inherits("ClientPlayer")) return 0;
@@ -3332,6 +3364,7 @@ int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fi
                       : extra + sumApplicableResults(results, false);
     }
     if (locked) lua_mutex.unlock();
+    if (memo) memo->m_values.insert(memoKey, extra);
 	return extra;
 }
 

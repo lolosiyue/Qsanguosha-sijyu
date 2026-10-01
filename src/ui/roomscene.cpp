@@ -2208,6 +2208,8 @@ void RoomScene::updateTargetsEnablity(const Card*card)
 			item->setFlag(QGraphicsItem::ItemIsSelectable,!card||maxVotes > 0);
 	}*/
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
+	// 每個候選角色都會用同樣參數查一次「可額外指定幾名目標」等修正值；這一輪只算一次。
+	TargetModMemoScope targetModMemo;
 	foreach (PlayerCardContainer*item,item2player.keys()){
 		int maxVotes = 0;
 		if(card){
