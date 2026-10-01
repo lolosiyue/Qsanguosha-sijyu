@@ -432,6 +432,15 @@ function sgs.CreateInvaliditySkill(spec)
 	--if type(spec.skill_valid)=="function" then
 		skill.skill_valid = spec.skill_valid
 	--end
+	-- 可選的必要條件（src/core/invalidity-gate.h）：不成立時 C++ 直接判有效，不呼叫 skill_valid。
+	-- validity_mark_prefix：skill_valid 只在 player 有「前綴..技能名」標記時才可能判失效。
+	-- validity_current_sibling_skill：只在首個帶 CurrentPlayer 的存活他人擁有該技能時才可能判失效。
+	if type(spec.validity_mark_prefix)=="string" then
+		skill:setProperty("InvalidityMarkPrefix",sgs.QVariant(spec.validity_mark_prefix))
+	end
+	if type(spec.validity_current_sibling_skill)=="string" then
+		skill:setProperty("InvalidityCurrentSiblingSkill",sgs.QVariant(spec.validity_current_sibling_skill))
+	end
 	return skill
 end
 

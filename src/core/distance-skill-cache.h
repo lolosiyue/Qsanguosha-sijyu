@@ -8,7 +8,8 @@
 
 // Only definition pointers are memoized. No player state, callback results or
 // distances belong here. Instances live with the engine or room definitions.
-class DistanceSkillCache
+template<typename T>
+class DefinitionListCache
 {
 public:
     struct Stamp {
@@ -24,18 +25,18 @@ public:
     };
 
     struct Snapshot {
-        Snapshot(const QList<const DistanceSkill *> &value) : skills(value)
+        Snapshot(const QList<const T *> &value) : skills(value)
         {
-            for (const DistanceSkill *skill : value) dependencies.append(skill);
+            for (const T *skill : value) dependencies.append(skill);
         }
-        QList<const DistanceSkill *> skills;
+        QList<const T *> skills;
         // Also include excluded bootstrap entries and non-distance shadows:
         // their destruction/rename can change which definitions are merged.
         QList<const Skill *> dependencies;
     };
 
     template<typename ReadStamp, typename Build>
-    QList<const DistanceSkill *> get(ReadStamp readStamp, Build build)
+    QList<const T *> get(ReadStamp readStamp, Build build)
     {
         QMutexLocker locker(&m_mutex);
         const Stamp before = readStamp();
@@ -84,8 +85,21 @@ private:
     QMutex m_mutex;
     bool m_valid = false;
     Stamp m_stamp {0, 0, {}};
-    QList<const DistanceSkill *> m_skills;
+    QList<const T *> m_skills;
     QList<Dependency> m_live;
+};
+
+class DistanceSkillCache final : public DefinitionListCache<DistanceSkill> {};
+
+// The other merged definition lists, same contract as DistanceSkillCache.
+struct DefinitionListCaches {
+    DefinitionListCache<ProhibitSkill> prohibit;
+    DefinitionListCache<MaxCardsSkill> maxCards;
+    DefinitionListCache<TargetModSkill> targetMod;
+    DefinitionListCache<InvaliditySkill> invalidity;
+    DefinitionListCache<AttackRangeSkill> attackRange;
+    DefinitionListCache<ViewAsEquipSkill> viewAsEquip;
+    DefinitionListCache<CardLimitSkill> cardLimit;
 };
 
 #endif

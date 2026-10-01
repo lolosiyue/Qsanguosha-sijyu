@@ -10,6 +10,7 @@
 #include <QSet>
 
 class DistanceSkillCache;
+struct DefinitionListCaches;
 class Card;
 class CardPattern;
 class Engine;
@@ -24,6 +25,7 @@ public:
     explicit RoomDefinitionRegistry(Engine &engine);
     ~RoomDefinitionRegistry();
     DistanceSkillCache &distanceSkillCache() const { return *m_distanceSkillCache; }
+    DefinitionListCaches &definitionListCaches() const { return *m_definitionListCaches; }
 
     void setBaselineAddresses(const QSet<const void *> &addresses) { m_baselineAddresses = addresses; }
     void clear();
@@ -77,6 +79,7 @@ private:
     Engine &m_engine;
     SkillRegistry m_skills;
     mutable std::unique_ptr<DistanceSkillCache> m_distanceSkillCache;
+    mutable std::unique_ptr<DefinitionListCaches> m_definitionListCaches;
     int m_nextCardId;
 
     QHash<QString, Package *> m_packages;

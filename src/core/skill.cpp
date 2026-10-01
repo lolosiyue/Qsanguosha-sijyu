@@ -1,5 +1,6 @@
 #include "skill.h"
 #include "skill-declaration.h"
+#include <QEvent>
 #include "runtime-paths.h"
 #include "startup-timing.h"
 #include "settings.h"
@@ -1508,6 +1509,15 @@ SlashNoDistanceLimitSkill::SlashNoDistanceLimitSkill(const QString &skill_name)
 InvaliditySkill::InvaliditySkill(const QString &name)
     : Skill(name)
 {
+}
+
+bool InvaliditySkill::event(QEvent *event)
+{
+    if (event->type() == QEvent::DynamicPropertyChange) {
+        m_gateMarkPrefix = property("InvalidityMarkPrefix").toString();
+        m_gateCurrentSiblingSkill = property("InvalidityCurrentSiblingSkill").toString();
+    }
+    return Skill::event(event);
 }
 
 int SlashNoDistanceLimitSkill::getDistanceLimit(const Player *from, const Card *card, const Player *) const

@@ -11,6 +11,7 @@
 #include "json.h"
 #include "engine-translation-catalog.h"
 #include <QMutex>
+#include <functional>
 #include <QThread>
 #include <QVariantMap>
 #include <QJsonObject>
@@ -56,6 +57,7 @@ public:
     static int historyValue(const Player *owner, const QString &key, int value);
     static qint64 excludedHistoryUse(const Player *owner);
     QList<SkillInstanceRef> contributors() const { return m_contributors; }
+    static bool isActive() { return s_current; }
 private:
     Q_DISABLE_COPY(TargetModSkillQueryScope)
     const Player *m_owner;
@@ -68,16 +70,21 @@ private:
 };
 
 // UI 一次刷新可選目標或可用手牌時盤面不變，同參數的目標、距離與攻擊範圍修正只算一次。
-// 只在建立它的執行緒、它的生存期內生效；伺服器不建立。
+// 只在建立它的執行緒、它的生存期內生效。伺服器建 AI 請求時帶房間狀態版本建立：
+// 回呼改了盤面、版本前進，備忘即清空。重放選目標（TargetModSkillQueryScope）期間不備忘。
 class TargetModMemoScope final {
 public:
     TargetModMemoScope();
+    explicit TargetModMemoScope(std::function<quint64()> revision);
     ~TargetModMemoScope();
 private:
     friend class Engine;
     Q_DISABLE_COPY(TargetModMemoScope)
+    static TargetModMemoScope *active();
     // 指標之外再帶牌面字串：範圍內臨時牌被立即刪除、新牌落在同一地址時不會誤中。
     QHash<QString, int> m_values;
+    std::function<quint64()> m_revision;
+    quint64 m_seenRevision = 0;
     TargetModMemoScope *m_previous;
     static thread_local TargetModMemoScope *s_current;
 };
@@ -317,6 +324,7 @@ private:
     //QHash<QString, QString> className2objectName;
     SkillRegistry m_skillRegistry;
     mutable std::unique_ptr<class DistanceSkillCache> m_distanceSkillCache;
+    mutable std::unique_ptr<struct DefinitionListCaches> m_definitionListCaches;
     QHash<QThread *, EngineRuntimeContext *> m_rooms;
     mutable QMutex m_mutex;
     QMap<QString, GameModeStruct> modes;

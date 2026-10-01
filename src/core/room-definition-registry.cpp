@@ -14,6 +14,7 @@
 
 RoomDefinitionRegistry::RoomDefinitionRegistry(Engine &engine)
     : m_engine(engine), m_distanceSkillCache(new DistanceSkillCache),
+      m_definitionListCaches(new DefinitionListCaches),
       m_nextCardId(int(engine.cards.size()))
 {
     // Rule operations are room-owned definitions, independent of package selection.
