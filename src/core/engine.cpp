@@ -56,7 +56,27 @@ thread_local TargetModMemoScope *TargetModMemoScope::s_current = nullptr;
 
 TargetModMemoScope::TargetModMemoScope() : m_previous(s_current) { s_current = this; }
 
+TargetModMemoScope::TargetModMemoScope(std::function<quint64()> revision)
+    : m_revision(std::move(revision)), m_previous(s_current)
+{
+    if (m_revision) m_seenRevision = m_revision();
+    s_current = this;
+}
+
 TargetModMemoScope::~TargetModMemoScope() { s_current = m_previous; }
+
+TargetModMemoScope *TargetModMemoScope::active()
+{
+    if (!s_current || TargetModSkillQueryScope::isActive()) return nullptr;
+    if (s_current->m_revision) {
+        const quint64 revision = s_current->m_revision();
+        if (revision != s_current->m_seenRevision) {
+            s_current->m_values.clear();
+            s_current->m_seenRevision = revision;
+        }
+    }
+    return s_current;
+}
 
 TargetModSkillQueryScope::TargetModSkillQueryScope(const Player *owner,
     const QList<SkillInstanceRef> &allowedHidden, const QString &historyKey, qint64 useHistoryEventId)
@@ -246,6 +266,37 @@ QList<const T *> mergedRuntimeSkills(RoomRuntime *runtime, const QList<const T *
         }
     }
     return result;
+}
+
+// Same merge, memoized per engine/room the way getDistanceSkills() is: queried on
+// every validity, prohibition and target-mod check, rebuilt only when a registry,
+// the room's definitions or one of the merged definition objects changes.
+template<typename T, typename Cache, typename BootstrapSkills, typename RoomSkills>
+QList<const T *> cachedMergedRuntimeSkills(Cache &cache, RoomRuntime *runtime,
+                                           const SkillRegistry &registry,
+                                           BootstrapSkills bootstrapSkills,
+                                           const QSet<QString> &runtimeDefinitionNames,
+                                           RoomSkills roomSkills)
+{
+    return cache.get([&] {
+        return typename Cache::Stamp {
+            registry.version(),
+            runtime ? runtime->definitions().skillDefinitionVersion() : 0,
+            runtime ? runtimeDefinitionNames : QSet<QString>()};
+    }, [&] {
+        const QList<const T *> bootstrap = bootstrapSkills();
+        typename Cache::Snapshot snapshot(mergedRuntimeSkills(
+            runtime, bootstrap, runtimeDefinitionNames,
+            runtime ? roomSkills() : QList<const T *>()));
+        if (runtime) {
+            for (const T *skill : bootstrap) {
+                snapshot.dependencies.append(skill);
+                if (const Skill *shadow = runtime->skill(skill->objectName()))
+                    snapshot.dependencies.append(shadow);
+            }
+        }
+        return snapshot;
+    });
 }
 
 }
@@ -520,7 +571,8 @@ QStringList Engine::rulesDeclaredList(const QString &key) const
 }
 
 Engine::Engine(bool isManualMode)
-    : m_distanceSkillCache(new DistanceSkillCache)
+    : m_distanceSkillCache(new DistanceSkillCache),
+      m_definitionListCaches(new DefinitionListCaches)
 {
     QSanStartupTiming startupPhase("engine.package_prepare");
 #ifdef LOGNETWORK
@@ -956,8 +1008,10 @@ void Engine::addSkills(QList<const Skill*> all_skills)
 QList<const ProhibitSkill*> Engine::getProhibitSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    return mergedRuntimeSkills(runtime, m_skillRegistry.prohibitSkills(), m_luaSkillNames,
-                               runtime ? runtime->prohibitSkills() : QList<const ProhibitSkill *>());
+    DefinitionListCaches &caches = runtime ? runtime->definitions().definitionListCaches()
+                                           : *m_definitionListCaches;
+    return cachedMergedRuntimeSkills<ProhibitSkill>(caches.prohibit, runtime, m_skillRegistry,
+        [this] { return m_skillRegistry.prohibitSkills(); }, m_luaSkillNames, [runtime] { return runtime->prohibitSkills(); });
 }
 
 // 7. 修復 getDistanceSkills
@@ -970,48 +1024,37 @@ QList<const DistanceSkill*> Engine::getDistanceSkills() const
     // SkillSet::generation and alive players do not affect this definition
     // vector. Registries cover every category (including non-distance shadows),
     // and the exact exclusion set covers bootstrap Lua-definition filtering.
-    return cache.get([&] {
-        return DistanceSkillCache::Stamp {
-            m_skillRegistry.version(),
-            runtime ? runtime->definitions().skillDefinitionVersion() : 0,
-            runtime ? m_luaSkillNames : QSet<QString>()};
-    }, [&] {
-        const auto bootstrap = m_skillRegistry.distanceSkills();
-        DistanceSkillCache::Snapshot snapshot(mergedRuntimeSkills(
-            runtime, bootstrap, m_luaSkillNames,
-            runtime ? runtime->distanceSkills() : QList<const DistanceSkill *>()));
-        if (runtime) {
-            for (const DistanceSkill *skill : bootstrap) {
-                snapshot.dependencies.append(skill);
-                if (const Skill *shadow = runtime->skill(skill->objectName()))
-                    snapshot.dependencies.append(shadow);
-            }
-        }
-        return snapshot;
-    });
+    return cachedMergedRuntimeSkills<DistanceSkill>(cache, runtime, m_skillRegistry,
+        [this] { return m_skillRegistry.distanceSkills(); }, m_luaSkillNames, [runtime] { return runtime->distanceSkills(); });
 }
 
 // 8. 修復 getMaxCardsSkills
 QList<const MaxCardsSkill*> Engine::getMaxCardsSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    return mergedRuntimeSkills(runtime, m_skillRegistry.maxCardsSkills(), m_luaSkillNames,
-                               runtime ? runtime->maxCardsSkills() : QList<const MaxCardsSkill *>());
+    DefinitionListCaches &caches = runtime ? runtime->definitions().definitionListCaches()
+                                           : *m_definitionListCaches;
+    return cachedMergedRuntimeSkills<MaxCardsSkill>(caches.maxCards, runtime, m_skillRegistry,
+        [this] { return m_skillRegistry.maxCardsSkills(); }, m_luaSkillNames, [runtime] { return runtime->maxCardsSkills(); });
 }
 
 // 9. 修復 getTargetModSkills
 QList<const TargetModSkill*> Engine::getTargetModSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    return mergedRuntimeSkills(runtime, m_skillRegistry.targetModSkills(), m_luaSkillNames,
-                               runtime ? runtime->targetModSkills() : QList<const TargetModSkill *>());
+    DefinitionListCaches &caches = runtime ? runtime->definitions().definitionListCaches()
+                                           : *m_definitionListCaches;
+    return cachedMergedRuntimeSkills<TargetModSkill>(caches.targetMod, runtime, m_skillRegistry,
+        [this] { return m_skillRegistry.targetModSkills(); }, m_luaSkillNames, [runtime] { return runtime->targetModSkills(); });
 }
 
 QList<const InvaliditySkill*> Engine::getInvaliditySkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    return mergedRuntimeSkills(runtime, m_skillRegistry.invaliditySkills(), m_luaSkillNames,
-                               runtime ? runtime->invaliditySkills() : QList<const InvaliditySkill *>());
+    DefinitionListCaches &caches = runtime ? runtime->definitions().definitionListCaches()
+                                           : *m_definitionListCaches;
+    return cachedMergedRuntimeSkills<InvaliditySkill>(caches.invalidity, runtime, m_skillRegistry,
+        [this] { return m_skillRegistry.invaliditySkills(); }, m_luaSkillNames, [runtime] { return runtime->invaliditySkills(); });
 }
 
 QList<const TriggerSkill*> Engine::getGlobalTriggerSkills() const
@@ -1025,24 +1068,30 @@ QList<const TriggerSkill*> Engine::getGlobalTriggerSkills() const
 QList<const AttackRangeSkill*> Engine::getAttackRangeSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    return mergedRuntimeSkills(runtime, m_skillRegistry.attackRangeSkills(), m_luaSkillNames,
-                               runtime ? runtime->attackRangeSkills() : QList<const AttackRangeSkill *>());
+    DefinitionListCaches &caches = runtime ? runtime->definitions().definitionListCaches()
+                                           : *m_definitionListCaches;
+    return cachedMergedRuntimeSkills<AttackRangeSkill>(caches.attackRange, runtime, m_skillRegistry,
+        [this] { return m_skillRegistry.attackRangeSkills(); }, m_luaSkillNames, [runtime] { return runtime->attackRangeSkills(); });
 }
 
 // 3. 修復 getViewAsEquipSkills
 QList<const ViewAsEquipSkill*> Engine::getViewAsEquipSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    return mergedRuntimeSkills(runtime, m_skillRegistry.viewAsEquipSkills(), m_luaSkillNames,
-                               runtime ? runtime->viewAsEquipSkills() : QList<const ViewAsEquipSkill *>());
+    DefinitionListCaches &caches = runtime ? runtime->definitions().definitionListCaches()
+                                           : *m_definitionListCaches;
+    return cachedMergedRuntimeSkills<ViewAsEquipSkill>(caches.viewAsEquip, runtime, m_skillRegistry,
+        [this] { return m_skillRegistry.viewAsEquipSkills(); }, m_luaSkillNames, [runtime] { return runtime->viewAsEquipSkills(); });
 }
 
 // 4. 修復 getCardLimitSkills
 QList<const CardLimitSkill*> Engine::getCardLimitSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
-    return mergedRuntimeSkills(runtime, m_skillRegistry.cardLimitSkills(), m_luaSkillNames,
-                               runtime ? runtime->cardLimitSkills() : QList<const CardLimitSkill *>());
+    DefinitionListCaches &caches = runtime ? runtime->definitions().definitionListCaches()
+                                           : *m_definitionListCaches;
+    return cachedMergedRuntimeSkills<CardLimitSkill>(caches.cardLimit, runtime, m_skillRegistry,
+        [this] { return m_skillRegistry.cardLimitSkills(); }, m_luaSkillNames, [runtime] { return runtime->cardLimitSkills(); });
 }
 
 // 5. 修復 getProhibitPindianSkills
@@ -3020,7 +3069,7 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 {
     AiProbe::ScopedProbe probe(AiProbe::Slot_correctDistance);
     // 距離不看牌；可用手牌刷新時每張殺都會對每個角色再算一次。
-    TargetModMemoScope *memo = TargetModMemoScope::s_current;
+    TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? QStringLiteral("distance|%1|%2|%3").arg(quintptr(from))
         .arg(quintptr(to)).arg(int(fixed)) : QString();
     if (memo) {
@@ -3182,7 +3231,7 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
 {
     if (!from || !card) return 0;
 
-    TargetModMemoScope *memo = TargetModMemoScope::s_current;
+    TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? QStringLiteral("%1|%2|%3|%4|%5").arg(int(type))
         .arg(quintptr(from)).arg(quintptr(to)).arg(quintptr(card)).arg(card->toString()) : QString();
     if (memo) {
@@ -3329,7 +3378,7 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
     // 攻擊範圍只看出牌者；選目標時每個候選角色都會再問一次。
-    TargetModMemoScope *memo = TargetModMemoScope::s_current;
+    TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
         .arg(int(include_weapon)).arg(int(fixed)) : QString();
     if (memo) {

@@ -773,6 +773,17 @@ public:
     InvaliditySkill(const QString &skill_name);
 
     virtual bool isSkillValid(const Player *player, const Skill *skill) const = 0;
+
+    // invalidity-gate.h 的必要條件，鏡像同名動態屬性；每次查詢都會讀，不能每次走 property()。
+    const QString &gateMarkPrefix() const { return m_gateMarkPrefix; }
+    const QString &gateCurrentSiblingSkill() const { return m_gateCurrentSiblingSkill; }
+
+protected:
+    bool event(QEvent *event) override;
+
+private:
+    QString m_gateMarkPrefix;
+    QString m_gateCurrentSiblingSkill;
 };
 
 class AttackRangeSkill : public Skill

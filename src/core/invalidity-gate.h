@@ -10,12 +10,12 @@
 inline bool invalidityCallbackMayReject(const InvaliditySkill *rule,
                                         const Player *player, const Skill *skill)
 {
-    const QString prefix = rule->property("InvalidityMarkPrefix").toString();
+    const QString &prefix = rule->gateMarkPrefix();
     if (!prefix.isEmpty()
         && (!player || !skill || player->getMark(prefix + skill->objectName()) < 1))
         return false;
 
-    const QString currentSkill = rule->property("InvalidityCurrentSiblingSkill").toString();
+    const QString &currentSkill = rule->gateCurrentSiblingSkill();
     if (!currentSkill.isEmpty() && player) {
         // Match getAliveSiblings() order and its exclusion of self, including
         // the first-flag-wins behavior if several players have CurrentPlayer.

@@ -28,6 +28,9 @@ public:
     void setMarkVisibility(const ServerPlayer *owner, const QString &mark, int value,
                            const QList<ServerPlayer *> &viewers);
 
+    AIRequest makeRequestHeader(ServerPlayer *player, AIRequest::DecisionKind kind,
+                                CardUseStruct::CardUseReason reason, const QString &pattern,
+                                const QString &prompt, Card::HandlingMethod method) const;
     AIRequest makeRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
                           CardUseStruct::CardUseReason reason, const QString &pattern,
                           const QString &prompt, Card::HandlingMethod method) const;
@@ -35,10 +38,11 @@ public:
     bool buildSkillActionContext(ServerPlayer *player, const SkillInstance &instance,
                                  CardUseStruct::CardUseReason reason, const QString &pattern,
                                  AiSkillActionContext &actionContext) const;
+    // project=false 只填請求表頭與技能上下文，不建盤面與候選；給只讀發動資格／instance 的呼叫者。
     bool buildSkillActionRequest(ServerPlayer *player, const SkillInstance &instance,
                                  CardUseStruct::CardUseReason reason, const QString &pattern,
                                  const QString &prompt, Card::HandlingMethod method,
-                                 AIRequest &request) const;
+                                 AIRequest &request, bool project = true) const;
     bool decideSkillAction(ServerPlayer *player, CardUseStruct::CardUseReason reason,
                            const QString &pattern, const QString &prompt,
                            Card::HandlingMethod method, CardUseStruct &cardUse) const;

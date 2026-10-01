@@ -915,12 +915,12 @@ AIWorldView AiDecisionCoordinator::buildWorldView(ServerPlayer *viewer, bool com
     return projectWorldView(publicBoard(), viewer, compactPolicy, eventOnly);
 }
 
-AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
-                                             AIRequest::DecisionKind kind,
-                                             CardUseStruct::CardUseReason reason,
-                                             const QString &pattern,
-                                             const QString &prompt,
-                                             Card::HandlingMethod method) const
+AIRequest AiDecisionCoordinator::makeRequestHeader(ServerPlayer *player,
+                                                   AIRequest::DecisionKind kind,
+                                                   CardUseStruct::CardUseReason reason,
+                                                   const QString &pattern,
+                                                   const QString &prompt,
+                                                   Card::HandlingMethod method) const
 {
     AIRequest request;
     request.kind = kind;
@@ -931,10 +931,23 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     request.pattern = pattern;
     request.prompt = prompt;
     request.handlingMethod = method;
+    return request;
+}
+
+AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
+                                             AIRequest::DecisionKind kind,
+                                             CardUseStruct::CardUseReason reason,
+                                             const QString &pattern,
+                                             const QString &prompt,
+                                             Card::HandlingMethod method) const
+{
+    AIRequest request = makeRequestHeader(player, kind, reason, pattern, prompt, method);
     // --ai off selects the native fallback. It must not build the quadratic
     // isolated snapshot or allow an isolated Lua handler to override that AI.
     if (!Config.EnableAI)
         return request;
+    // 建請求只讀盤面：同一版本內，距離、攻擊範圍與目標修正對同參數只求值一次。
+    TargetModMemoScope targetModMemo([this]() { return m_room.roomRuntime()->stateRevision(); });
     // Temporary 10P diagnosis: bracket request construction, which AI_PROBE excludes.
     const bool lagProbe = qgetenv("QSAN_10P_LAG_PROBE") == "1";
     QElapsedTimer lagTimer;
@@ -1153,12 +1166,14 @@ bool AiDecisionCoordinator::buildSkillActionContext(
 bool AiDecisionCoordinator::buildSkillActionRequest(
     ServerPlayer *player, const SkillInstance &instance,
     CardUseStruct::CardUseReason reason, const QString &pattern,
-    const QString &prompt, Card::HandlingMethod method, AIRequest &aiRequest) const
+    const QString &prompt, Card::HandlingMethod method, AIRequest &aiRequest, bool project) const
 {
     AiSkillActionContext actionContext;
     if (!buildSkillActionContext(player, instance, reason, pattern, actionContext))
         return false;
-    aiRequest = makeRequest(player, AIRequest::UseCard, reason, pattern, prompt, method);
+    aiRequest = project
+        ? makeRequest(player, AIRequest::UseCard, reason, pattern, prompt, method)
+        : makeRequestHeader(player, AIRequest::UseCard, reason, pattern, prompt, method);
     aiRequest.hasSkillActionContext = true;
     aiRequest.skillActionContext = actionContext;
     return true;
@@ -1417,7 +1432,7 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
                                                                   claimed.key.instanceID);
         if (!instance
             || !buildSkillActionRequest(player, *instance, request.reason, request.pattern,
-                                        request.prompt, request.handlingMethod, playRequest)
+                                        request.prompt, request.handlingMethod, playRequest, false)
             || playRequest.skillActionContext.activationRef != claimed)
             return false;
     } else if (result.action.skillActionContext.activationRef != request.skillActionContext.activationRef
@@ -2536,7 +2551,7 @@ int AiDecisionCoordinator::skillActionInstanceId(ServerPlayer *player,
         if (instance.skillName != skillName) continue;
         AIRequest request;
         if (buildSkillActionRequest(player, instance, CardUseStruct::CARD_USE_REASON_PLAY,
-            QString(), QString(), Card::MethodUse, request))
+            QString(), QString(), Card::MethodUse, request, false))
             return instance.instanceID;
     }
     return -1;
@@ -2550,7 +2565,8 @@ AiLegacyRequestView AiDecisionCoordinator::skillActionContext(
     if (!player) return AiLegacyRequestView();
     foreach (const SkillInstance &instance, player->getSkillInstances()) {
         if (instance.skillName != skillName) continue;
-        if (buildSkillActionRequest(player, instance, reason, pattern, prompt, method, request))
+        // 舊 Lua 只讀發動／來源 instance 與額度，不讀盤面或候選。
+        if (buildSkillActionRequest(player, instance, reason, pattern, prompt, method, request, false))
             return AiLegacyRequestView(request, player);
     }
     return AiLegacyRequestView();
