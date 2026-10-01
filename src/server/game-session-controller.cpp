@@ -676,6 +676,8 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		RoomThreadHegemony::chooseGenerals(&m_room);
 		return;
 	}
+	// QSAN_NO_HIDDEN_GENERAL skips the opening conceal. Hide skills still exist.
+	const bool concealHiddenGenerals = qgetenv("QSAN_NO_HIDDEN_GENERAL").isEmpty();
 	if (Config.Enable2ndGeneral)
 		Config.Enable2ndGeneral = m_room.mode!="02_1v1"&&m_room.mode!="06_3v3"&&m_room.mode!="06_XMode"&&m_room.mode!="04_1v3";
 	if (players.isEmpty()) players = m_room.getPlayers();
@@ -709,7 +711,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		}
 		the_lord->setGeneralName(general);
 		m_room.notifyProperty(the_lord, the_lord, "general");
-		if (the_lord->hasHideSkill()){
+		if (concealHiddenGenerals && the_lord->hasHideSkill()){
 			m_room.setPlayerProperty(the_lord, "yinni_general", general);
 			general = "yinni_hide";
 			the_lord->setGeneralName(general);
@@ -731,7 +733,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 			}
 			the_lord->setGeneral2Name(general);
 			m_room.notifyProperty(the_lord, the_lord, "general2");
-			if (the_lord->hasHideSkill()){
+			if (concealHiddenGenerals && the_lord->hasHideSkill()){
 				m_room.setPlayerProperty(the_lord, "yinni_general2", general);
 				general = "yinni_hide";
 				the_lord->setGeneral2Name(general);
@@ -770,7 +772,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 			triggerGeneralNotChosen(player, player->getSelected(), chosen, "for_general");
 
 		if (m_room._setPlayerGeneral(player, chosen, true)){
-			if (player->hasHideSkill()){
+			if (concealHiddenGenerals && player->hasHideSkill()){
 				m_room.setPlayerProperty(player, "yinni_general", player->getGeneralName());
 				player->setGeneralName("yinni_hide");
 			}
@@ -787,7 +789,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		foreach(ServerPlayer*player, players){
 			if ((player->m_isClientResponseReady&&m_room._setPlayerGeneral(player, player->getClientReply().toString(), false))
 				||m_room._setPlayerGeneral(player, m_room._chooseDefaultGeneral(player), false)){
-				if(player->hasHideSkill(2)){
+				if(concealHiddenGenerals && player->hasHideSkill(2)){
 					m_room.setPlayerProperty(player, "yinni_general2", player->getGeneral2Name());
 					player->setGeneral2Name("yinni_hide");
 				}
