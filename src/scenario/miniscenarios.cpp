@@ -97,7 +97,8 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
         // Work sessions already bind the configured human seat; legacy mini
         // scenes retain their historical robot-first rotation.
         if (!room->isWorkSession()) {
-            while (!players.isEmpty() && players.first()->getState() == "robot")
+            // 最多轉一圈：無頭測試全員是 robot，不設上限會永遠輪下去。
+            for (int turns = players.length(); turns > 0 && players.first()->getState() == "robot"; --turns)
                 players.append(players.takeFirst());
         }
 
