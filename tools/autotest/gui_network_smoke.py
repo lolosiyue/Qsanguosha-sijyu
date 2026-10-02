@@ -153,12 +153,13 @@ def write_server_config(path, args):
     requires the same seed to produce the same game on CI and locally, so
     every switch that could alter the deal (random seating, dual generals,
     cheats, ...) is hardcoded here."""
+    free_choose = bool(getattr(args, "general", ""))
     lines = [
         "[General]",
         "RandomSeat=false",
         "Enable2ndGeneral=false",
-        "EnableCheat=false",
-        "FreeChoose=false",
+        "EnableCheat=%s" % ("true" if free_choose else "false"),
+        "FreeChoose=%s" % ("true" if free_choose else "false"),
         "EnableHegemony=false",
         "EnableLuckCard=false",
         # Room::askForLuckCard reads this count; the legacy boolean alone
@@ -210,6 +211,8 @@ def build_client_command(args, client_exe, port, result_path, screenshot_path):
         "--network-ui-smoke-stall-ms", str(args.stall_ms),
         "--network-ui-smoke-screenshot", screenshot_path,
     ]
+    if getattr(args, "general", ""):
+        command += ["--test-general", args.general]
     if args.effects_profile:
         command += ["--effects-profile", args.effects_profile]
     if args.xvfb:
@@ -351,6 +354,8 @@ def main():
     parser.add_argument("--client-exe", default=None,
                         help="直接指定 GUI client 執行檔 (預設: 由 --exe-root 搜尋)")
     parser.add_argument("--mode", required=True, help="遊戲模式 ID (例: 02p / 05p)")
+    parser.add_argument("--general", default="",
+                        help="指定 client 自動選將 (--test-general)；空則由 UI responder 選")
     parser.add_argument("--seed", required=True,
                         help="固定遊戲 seed (unsigned 十進位整數)")
     parser.add_argument("--artifact-dir", default="gui-network-artifacts")
