@@ -676,6 +676,12 @@ Item {
                         leftPadding: 0
                         rightPadding: 0
                         background: Item {}
+                        // 開頁即取得焦點；預設游標每 0.5 秒閃一次，QQuickWidget 每閃都整幀重繪。
+                        cursorDelegate: Rectangle {
+                            width: 2
+                            color: searchField.color
+                            visible: searchField.cursorVisible
+                        }
                         // 連續輸入只在停頓後重篩一次，避免每個字都重排整張網格。
                         onTextChanged: searchDebounce.restart()
                         KeyNavigation.tab: kingdomCombo
