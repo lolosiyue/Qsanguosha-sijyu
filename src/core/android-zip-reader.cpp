@@ -11,10 +11,73 @@
 #include <sys/stat.h>
 #include <zlib.h>
 
+#if defined(Q_OS_ANDROID) && QT_POINTER_SIZE == 4
+#include <QFileDevice>
+#include <cerrno>
+#include <cstring>
+#include <unistd.h>
+#endif
+
 namespace {
 constexpr quint64 kBufferSize = 256 * 1024;
 constexpr quint64 kSpoolReserve = 64 * 1024 * 1024;
 constexpr qint64 kSourceIdleTimeoutMs = 4000;
+
+#if defined(Q_OS_ANDROID) && QT_POINTER_SIZE == 4
+class AndroidLargeFileDevice final : public QIODevice
+{
+public:
+    AndroidLargeFileDevice(int descriptor, qint64 fileSize)
+        : m_descriptor(descriptor), m_size(fileSize)
+    { open(QIODevice::ReadOnly | QIODevice::Unbuffered); }
+
+    qint64 size() const override { return m_size; }
+    bool seek(qint64 position) override
+    {
+        if (position < 0 || !QIODevice::seek(position)) return false;
+        m_readOffset = position;
+        return true;
+    }
+
+protected:
+    qint64 readData(char *data, qint64 maxSize) override
+    {
+        if (maxSize <= 0 || m_readOffset >= m_size) return 0;
+        const qint64 count = qMin(qMin(maxSize, m_size - m_readOffset),
+                                  qint64(std::numeric_limits<ssize_t>::max()));
+        ssize_t result;
+        // Use a private read cursor: pread64 neither truncates the offset nor
+        // moves the borrowed QFile descriptor behind Qt's buffering state.
+        do {
+            result = ::pread64(m_descriptor, data, size_t(count), off64_t(m_readOffset));
+        } while (result < 0 && errno == EINTR);
+        if (result < 0) {
+            setErrorString(QString::fromLocal8Bit(std::strerror(errno)));
+            return -1;
+        }
+        m_readOffset += result;
+        return result;
+    }
+    qint64 writeData(const char *, qint64) override { return -1; }
+
+private:
+    const int m_descriptor;
+    const qint64 m_size;
+    qint64 m_readOffset = 0;
+};
+
+std::unique_ptr<QIODevice> largeFileInput(QIODevice &source)
+{
+    auto *file = qobject_cast<QFileDevice *>(&source);
+    if (!file || file->handle() < 0) return {};
+    struct stat64 status;
+    if (::fstat64(file->handle(), &status) != 0 || !S_ISREG(status.st_mode)
+        || status.st_size <= std::numeric_limits<qint32>::max()) return {};
+    // This Qt ARMv7 runtime uses 32-bit file offsets. Keep ordinary ZIPs and
+    // non-file providers on the existing path, adapting only files above 2 GiB.
+    return std::make_unique<AndroidLargeFileDevice>(file->handle(), qint64(status.st_size));
+}
+#endif
 
 bool addChecked(quint64 a, quint64 b, quint64 *out)
 {
@@ -119,42 +182,47 @@ bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::Import
 {
     m_entries.clear(); m_entryByOffset.clear(); m_archiveSize = 0; m_centralOffset = 0; m_limits = limits;
     m_input = nullptr;
+    m_nativeInput.reset();
     if (m_spool.isOpen()) m_spool.close();
     if (!m_spool.fileName().isEmpty()) m_spool.remove();
     if (cancel && cancel->load()) return fail(error, QStringLiteral("import cancelled"));
-    const qint64 sourceStart = source.pos();
-    const qint64 sourceSize = source.size();
+#if defined(Q_OS_ANDROID) && QT_POINTER_SIZE == 4
+    if (source.pos() == 0) m_nativeInput = largeFileInput(source);
+#endif
+    QIODevice &inputSource = m_nativeInput ? *m_nativeInput : source;
+    const qint64 sourceStart = inputSource.pos();
+    const qint64 sourceSize = inputSource.size();
     // Local SAF files can seek. Keep their descriptor instead of copying the
     // entire ZIP into private storage; pipes/providers still use bounded spool.
-    if (!source.isSequential() && sourceStart == 0 && sourceSize >= 22 && source.seek(sourceSize - 1)) {
-        if (!source.seek(0)) return fail(error, QStringLiteral("cannot rewind ZIP source"));
+    if (!inputSource.isSequential() && sourceStart == 0 && sourceSize >= 22 && inputSource.seek(sourceSize - 1)) {
+        if (!inputSource.seek(0)) return fail(error, QStringLiteral("cannot rewind ZIP source"));
         m_archiveSize = quint64(sourceSize);
         if (m_limits.maxArchiveBytes && m_archiveSize > m_limits.maxArchiveBytes)
             return fail(error, QStringLiteral("archive size limit exceeded"));
-        m_input = &source;
+        m_input = &inputSource;
     } else {
-        if (source.pos() != sourceStart && !source.seek(sourceStart))
+        if (inputSource.pos() != sourceStart && !inputSource.seek(sourceStart))
             return fail(error, QStringLiteral("cannot restore ZIP source position"));
         if (!m_spool.open() || !m_spool.resize(0))
             return fail(error, QStringLiteral("cannot create ZIP spool: ") + m_spool.errorString());
         QByteArray buffer(int(kBufferSize), Qt::Uninitialized);
-        const qint64 expectedBytes = !source.isSequential() && sourceStart >= 0 && sourceSize > sourceStart
+        const qint64 expectedBytes = !inputSource.isSequential() && sourceStart >= 0 && sourceSize > sourceStart
             ? sourceSize - sourceStart : -1;
         QElapsedTimer idleTimer;
         idleTimer.start();
         for (;;) {
             if (cancel && cancel->load()) return fail(error, QStringLiteral("import cancelled"));
-            const qint64 n = source.read(buffer.data(), buffer.size());
-            if (n < 0) return fail(error, source.errorString());
+            const qint64 n = inputSource.read(buffer.data(), buffer.size());
+            if (n < 0) return fail(error, inputSource.errorString());
             if (!n) {
-                if (source.atEnd()) break;
+                if (inputSource.atEnd()) break;
                 // Preserve bounded provider retries only on the spool fallback;
                 // seekable SAF sources keep the upstream direct-read fast path.
                 if (expectedBytes >= 0 && m_archiveSize == quint64(expectedBytes)
-                    && source.size() == sourceSize) break;
+                    && inputSource.size() == sourceSize) break;
                 if (idleTimer.elapsed() >= kSourceIdleTimeoutMs)
                     return fail(error, QStringLiteral("source stalled while reading ZIP (copied=%1, position=%2, size=%3)")
-                        .arg(m_archiveSize).arg(source.pos()).arg(source.size()));
+                        .arg(m_archiveSize).arg(inputSource.pos()).arg(inputSource.size()));
                 QThread::msleep(10);
                 continue;
             }
@@ -172,6 +240,10 @@ bool AndroidZipReader::open(QIODevice &source, const AndroidContentStore::Import
         }
         if (!m_spool.flush()) return fail(error, QStringLiteral("cannot flush ZIP spool"));
         m_input = &m_spool;
+#if defined(Q_OS_ANDROID) && QT_POINTER_SIZE == 4
+        m_nativeInput = largeFileInput(m_spool);
+        if (m_nativeInput) m_input = m_nativeInput.get();
+#endif
     }
     if (m_archiveSize < 22) return fail(error, QStringLiteral("invalid ZIP archive"));
     const quint64 tailSize = qMin<quint64>(m_archiveSize, 65557); QByteArray tail;

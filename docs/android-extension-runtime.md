@@ -35,13 +35,16 @@ ZIP 解壓器的 CRC／格式解析仍屬檔案讀取。私有目錄連結只做
 Web／網路規則身分與聲畫資源是不同契約，本次只移除 Android 資源校驗。
 
 修訂後的 APK 已移除舊收據：資源準備不計算媒體雜湊，缺個別圖片不再擋住連線。
-Android 連線仍在開局前發生 AudioTrack SIGSEGV，沒有 GAME_OVER；server 正常退出、
-連接埠釋放。目前未套用音訊替代方案，也沒有重試。
+先前 API 33 ARM translation 的有聲連線在開局前發生 AudioTrack SIGSEGV，沒有 GAME_OVER；
+當時 server 正常退出、連接埠釋放，未重試。2026-10-03 的 ARMv7／LDPlayer 單機
+`03_1v2` 以 `NULL` 音訊完成自然結局與正常退出；這不代表有聲路徑已修復。
+環境、操作與證據見 [ARMv7 操作與問題處理](android-build.md#android-armv7-reuse)。
 
 ## 匯入／更新效能修正
 
 固定單一環境以 [Android 建置文件](android-build.md#android-daily-environment) 為準。
-完整啟動仍會逾時，首次完整匯入的新耗時尚未重測，不能將局部時間當作總耗時。
+先前 AVD 的完整啟動曾逾時，首次完整匯入的新耗時未在該環境重測，不能將局部時間
+當作總耗時；下節另記 ARMv7／LDPlayer 的大檔完整匯入結果，不混用兩個環境的時間。
 
 | 瓶頸 | 新行為 |
 |---|---|
@@ -50,6 +53,11 @@ Android 連線仍在開局前發生 AudioTrack SIGSEGV，沒有 GAME_OVER；serv
 | 每檔寫完再開檔讀取 SHA-256 | 現行政策移除：不計算／比對媒體 SHA-256 |
 | 每檔遍歷相同父目錄、每檔同步磁碟 | 同一受鎖定操作內快取已核對的真實父目錄；Android 的全新 staging 檔整批 `syncfs` 後才發布 |
 | 更新 Lua／APK 基線重複複製聲畫 | 新 snapshot 只建立媒體引用；完整媒體通常只需 image／audio／font 三個目錄連結，payload 寫入一次 |
+
+32 位元 Android 的 ZIP reader 對超過 2 GiB 的普通檔案使用 `fstat64`／`pread64`，
+避免已編譯 Qt runtime 的 32 位元檔案位移截斷。來源與私有 spool 均使用此讀取路徑，
+descriptor 仍由原 QFile 持有；其他 ABI、小檔案及串流 provider 沿用原流程。
+匯入大小限制、路徑／中央目錄／CRC 驗證與取消流程維持相同規則。
 
 符號連結只由 store 建立：完整根目錄必須全部來自同一已啟用完整媒體包；混合來源
 使用精確逐檔引用。載入時核對 package version、固定 blob 位置、相對檔名及真實
@@ -66,6 +74,29 @@ active／pending／previous 及其引用 blob 沿用既有 GC 與回復規則；
 移除舊收據、APK 更新後缺少個別圖片仍可沿用媒體、
 Lua／baseline 更新與 rollback 共用同一媒體、混合媒體啟停、偽造連結及 GC 不追入引用目錄。
 日誌分開記錄 archive／payload／snapshot 毫秒數，以及 snapshot 實際複製的 bytes。
+
+<a id="android-32bit-zip-footer"></a>
+### ARMv7 大檔 ZIP footer 失敗
+
+2026-10-03 使用完整 2,754,338,324-byte 媒體 ZIP，首次 SAF 匯入在 footer 階段回報
+`cannot read ZIP footer`。實際 Qt ARMv7 runtime 使用 `lseek`／`fseek`／`fstat`；
+已編譯函式庫的 32 位元檔案位移無法靠 App 加編譯巨集補救。
+Android 的 32 位元 ABI 限制見 [Android 官方說明](https://android.googlesource.com/platform/bionic/%2Bshow/master/docs/32-bit-abi.md)。
+
+修正位於 `src/core/android-zip-reader.cpp/.h`：只在 Android／32 位元、普通檔案且大於
+2 GiB 時使用借用 descriptor 的 `QIODevice`，由 `fstat64` 取得長度、`pread64` 以獨立
+64 位元游標讀取；不接管 descriptor，也不改變原 QFile 的游標。直接來源與私有 spool
+均套用；其他 ABI、小檔案、不可 seek provider 的既有流程及全部 ZIP 邊界檢查保留。
+修正後增量建置、同憑證覆蓋更新，成功匯入同一完整 ZIP 並重啟開局；沒有清 App 資料、
+換媒體包或修改第三方 Qt。第一份失敗與修正後證據見
+[本次報告](../builds/android-armv7-10p-20261003/summary.md)。
+
+| 下次看到的現象 | 判斷順序 |
+|---|---|
+| 32 位元、大於 2 GiB、footer 讀取失敗 | 先確認待測 APK 是否含此 reader 修正及實際 ABI／來源長度，保留錯誤；不要先推定 ZIP 壞掉、重打包或重建工具鏈 |
+| 小檔案、其他 ABI 或其他格式錯誤 | 不直接套用本次根因；沿原中央目錄／CRC／路徑／大小錯誤分類，以現有證據判斷 |
+| 100% 後仍在準備 | 解壓百分比不等於 active 已切換；等待完整暫存／發布成功再重啟，不能反覆匯入 |
+| 已完成匯入，只更新 APK | 保留 App 媒體，沿用 `install -r`；不重匯、不掃描或雜湊聲畫 |
 
 ## 整包管理
 
@@ -89,7 +120,8 @@ Lua／baseline 更新與 rollback 共用同一媒體、混合媒體啟停、偽�
 ## 已知限制
 
 共享連結的完整契約仍需 POSIX 專用 fixture 驗證，Windows fixture 不涵蓋 UNIX 分支；
-完整對局與 AudioTrack 修復均未涵蓋在本路徑。既有 GC 仍同步執行。
+有聲完整對局與 AudioTrack 修復未涵蓋在本路徑；已通過的 ARMv7／LDPlayer 靜音單機局
+另見上方操作與證據。既有 GC 仍同步執行。
 
 舊 APK 的 AudioTrack
 SIGSEGV 與桌面 client access violation 保持獨立；本頁的效能修改不宣稱修復它們。
