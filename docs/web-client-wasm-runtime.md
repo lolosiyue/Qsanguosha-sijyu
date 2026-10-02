@@ -292,6 +292,69 @@ SPA fallback after the static `/rules/` route. Missing artifacts must return a
 visible runtime failure rather than an HTML application shell masquerading as
 the module. Use HTTPS or localhost for the Worker's Web Crypto asset checks.
 
+## Initialization diagnostics and dependencies
+
+2026-10-03 的 Web 10P 初始化問題已解決，並完成實際 Web 托管局。
+操作與未解問題見 [Web 10P 重用流程](web-client.md#web-10p-reuse-and-troubleshooting)，
+詳細證據見本機 `builds/web-10p-20261003/native-diagnostics/` 和 `game-02/`。
+
+### Read the first concrete failure
+
+`web/src/rules-worker.ts` 記錄 module 準備、部署核對、module 初始化、
+native code identity、server identity、內容下載／安裝／核對及 native client
+初始化等階段。Emscripten 可拋出一般物件，不能只以 `String(error)` 轉換；
+錯誤回覆保留 name、message、errno、code，錯誤文字最多 8192 字元。
+既有原生日誌維持有界保存（總字串長度最多 16384、單行最多 2048，
+均按 JavaScript 字串 length 計算），由
+`rules-client.ts` 將日誌串成文字輸出到 console。
+
+`src/client/runtime/client-rules-wasm.cpp` 的 `_qsan_client_initialize()`
+安裝 Qt message handler，把 `qFormatLogMessage` 結果寫入並 flush stderr，
+使 Worker 的 Module.printErr 能保留原生 exit 前的首個原因；ABI 未更動。
+只看 `ExitStatus: Program terminated with exit(1)` 仍不足以判定根因。
+
+本次具體錯誤是 `cannot open lua/ai/mode-ai.lua: No such file or directory`。
+呼叫來源為 declared extension `extensions/addFunction.lua` 的 createMode，
+並非看到 `lua/sanguosha.lua` 錯誤前綴就能認定該檔直接載入 AI。
+原本僅註冊模式 metadata 的呼叫也無條件 dofile server AI 模組；
+Client 的 declared-v2 內容刻意排除 AI，故初始化退出。
+現有修復只在 `spec.ai ~= nil` 或 `spec.teams ~= nil` 需要註冊政策，且
+VM 尚未有 `sgs.registerModeAI` 時才載入 mode-ai。metadata-only 模式
+可在 Client 初始化；真正 AI 政策仍保留載入與註冊流程。
+不要用擴大 Client 內容清單、假 AI API 或再建一套 bootstrap 避開錯誤。
+server 自身仍須有其 AI 依賴，包含隔離部署另外補入的 middleclass。
+
+### Reuse the Windows build cache
+
+本局實際增量目錄為 `builds/repository-review-wasm`，配置為 RelWithDebInfo、
+Ninja、Qt 6.11.1 `wasm_singlethread`、Emscripten 4.0.7；host tools 使用
+同版本 `msvc2022_64`。下列命令是既有目錄的續作入口，僅在受影響產物
+需要更新且當輪已授權建置檢查點時執行；產物符合時可直接沿用。
+
+```powershell
+# Keep the configured Ninja cache; emsdk_env.bat must affect the build process.
+cmd /d /c 'call H:\Qt6111\Tools\emsdk\emsdk_env.bat >nul && "H:\Program file\visualstudio\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build builds/repository-review-wasm --target qsanguosha_client_wasm --parallel 8'
+
+# Package this output pair before Vite embeds the deployment bundle ID.
+python tools/package-web-runtime.py `
+  --module builds/repository-review-wasm/web-wasm/RelWithDebInfo/qsanguosha_client_wasm.mjs `
+  --destination web/public/rules
+Push-Location web
+npm run build
+Pop-Location
+```
+
+本機 Node 位於 `H:\Program file\nodejs`、Python 為 `C:\Python311\python.exe`；
+需要時使用完整路徑或只對子程序配置 PATH。Emsdk 環境入口需在 kit 目錄
+生成設定檔，MSBuild FileTracker 及 loopback 監聽也曾受工具沙箱限制；
+應按實際權限錯誤處理執行環境，不能把它當成 native／WASM 程式缺陷。
+
+首次 WASM 全量建置較長，增量連結後 wasm-opt 仍可能運算數分鐘；
+保留正在工作的建置程序及首個失敗日誌，不因暫時沒有輸出就重新 configure
+或重開相同建置。需要更新 native server 時，同步使用專案的 Debug 增量
+建置入口；若改動影響 rules code identity，server／WASM 必須重新對齊後
+再部署。此處不宣告任意 dirty source 或不同 kit 的 ABI 相容性。
+
 ## Structured interaction contract
 
 `ClientRulesIngress` already builds the shared ClientCore `InteractionRequest`

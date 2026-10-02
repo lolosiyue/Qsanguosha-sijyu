@@ -46,10 +46,26 @@ instead — the scan exempts `lua/ai/` as server-only content:
 python tools\package-web-solo.py --prepare-content --asset-root . `
   --destination builds\web-declared-content
 Copy-Item config.ini builds\web-declared-content\
-Copy-Item -Recurse lua\ai builds\web-declared-content\lua\
-Push-Location builds\web-declared-content
-<repo>\debug\qsanguosha_server.exe --port 9527 --websocket-port 9528
-Pop-Location
+# Fresh isolated root only: exclude VCS metadata and runtime debris from AI.
+python -c "import shutil; shutil.copytree('lua/ai', 'builds/web-declared-content/lua/ai', ignore=shutil.ignore_patterns('.git', '.stignore', 'logs', 'data', 'temp', '*.bak', '*.bak-*'))"
+New-Item -ItemType Directory -Force builds\web-declared-content\lua\lib | Out-Null
+Copy-Item lua\lib\middleclass.lua builds\web-declared-content\lua\lib\
+# Debug server/TUI require the matching Qt Debug DLL directory on PATH.
+$serverExe = (Resolve-Path debug\qsanguosha_server.exe).Path
+$runtimeRoot = (Resolve-Path builds\web-declared-content).Path
+$qtPathBefore = $env:PATH
+$runtimeRootBefore = $env:QSAN_RUNTIME_ROOT
+Push-Location $runtimeRoot
+try {
+  $env:PATH = "H:\Qt6111\6.11.1\msvc2022_64\bin;$env:PATH"
+  $env:QSAN_RUNTIME_ROOT = $runtimeRoot
+  & $serverExe --bind-address 127.0.0.1 --port 9527 --websocket-port 9528 `
+    --asset-root $runtimeRoot
+} finally {
+  Pop-Location
+  $env:PATH = $qtPathBefore
+  $env:QSAN_RUNTIME_ROOT = $runtimeRootBefore
+}
 ```
 
 Open `http://127.0.0.1:5173/` to join `current`, or
@@ -74,6 +90,82 @@ are existence-checked, payload types are out of scope). There is no `npm test`
 (vitest was removed 2026-09-25).
 If translations.json is missing or older than the Lua tables, re-run the dump
 command above.
+
+## Web 10P reuse and troubleshooting
+
+2026-10-03 已完成實際 Web Client 加九個 AI 的身份 `10p` 托管局，
+自然結局為反賊勝；Web 結算、server exit=0、分頁關閉與連接埠回收均已確認。
+續作先讀 [本局報告](../builds/web-10p-20261003/report.md)、
+`summary.json` 和 `game-02/artifact-manifest.json`。
+`builds/` 不入 Git；這些是本機證據，清除建置目錄後仍以本節和
+[WASM 初始化判讀](web-client-wasm-runtime.md#initialization-diagnostics-and-dependencies)
+作操作入口，不把歷史成功當作新來源的驗收。
+
+### Reuse order
+
+1. **先核對，符合才重用。** 沿用 `builds/repository-review-wasm` 的增量快取、
+   同一套 `.mjs`／`.wasm`／`.bundle.json` 和已準備的隔離 runtime。
+   比對本局 artifact manifest、目前來源／內容與 server 的 rules identity；
+   來源、內容或產物不符才處理受影響步驟。保留其他工作的 dirty 修改，
+   不重新清倉、全量 configure 或複製整個工作樹。
+2. **按實際變更重新配對。** 原生來源變更可能改變 code identity，即使
+   該檔案沒有修改 Web UI，也不能沿用不符的 WASM。需要建置時先完成
+   授權檢查點，再增量建置相應 server／WASM，package 三個產物，最後
+   `npm run build`。前端會嵌入 deployment bundle ID，順序不能倒置。
+3. **隔離內容完整才開服務。** `--prepare-content` 產生 declared closure，
+   server AI 另行部署並排除 `.git`／`.stignore`／logs／data／temp／備份檔；
+   另補 `lua/lib/middleclass.lua`。既有隔離目錄已符合時不重做複製，
+   不用完整 extensions／etc 目錄補洞，也不改使用者根目錄設定。
+4. **先完成候選與開局詢問，再托管。** 本局 `FreeAssign=true`，配置為
+   1 主公、3 忠臣、5 反賊、1 內奸；九個 AI 加入後仍須提交身份、準備、
+   選將及開局技能詢問。本次主公選太史慈[国]，回答「職業選擇」否後才按
+   托管。若已有待答詢問，直接按托管會留下舊 Web 提示，見下表。
+5. **沿用正在推進的一局至結算。** 未回覆的候選詢問、原生初始化與
+   AI 計算都計入服務 watchdog。第一局 1800 秒期限在第八位首次回合
+   用盡；第二局改為 7200 秒服務期限，實際遊戲 18 分 35 秒結束。
+   7200 秒是該局的 watchdog 設定，並非其他配置的必然完成時間。
+   下次執行完整局仍依當輪授權設定期限，不因本次結果自動取得重跑授權。
+
+本次隔離設定為 `GameMode=10p`、`EnableHegemony=false`、
+`Enable2ndGeneral=false`、`EnableCheat=false`、`FreeChoose=false`、
+`FreeAssign=true`、`OriginAIDelay=0`、`AIDelayAD=0`。server 使用
+`--game-mode 10p --ai on --ai-delay 0 --operation-timeout 120 --seed 20261003`，
+`--asset-root` 與 `QSAN_RUNTIME_ROOT` 均指向隔離 runtime；WebSocket URL 由
+`?ws=` 明確指定。下一局先確認要求是否仍相同，再修改隔離設定，
+不要只從武將的 `[国]` 名稱或隱匿畫面推斷已變成國戰模式。
+
+| 問題／可見證據 | 本次原因或處理 | 下次沿用方式 |
+|---|---|---|
+| `[object Object]`，繼而 `ExitStatus exit(1)` | Worker 的一般物件錯誤和 Qt 原生日誌原先不可見；createMode 無政策時也載入被 Client 排除的 server AI | 先看 stage、name/message/errno/code 及有界原生日誌；沿用條件載入修復，不再先猜技能或塞入全套 AI |
+| server 啟動找不到 middleclass | declared Client closure 不等於 server AI 所需檔案 | 在隔離根補 `lua/lib/middleclass.lua`；與缺 Qt Debug DLL 分開判讀 |
+| Emsdk 環境設定、FileTracker 或本機監聽被沙箱拒絕 | 已確認是本輪工具執行權限限制 | 在允許的工具權限下執行相同有界工作，不反覆跑同一失敗命令、不把它寫成遊戲回歸 |
+| code identity／部署配對不符 | 同期原生來源改動需要重新封存、配對產物 | 對齊 server／WASM 後 package，再建置前端；不混用兩次輸出的檔案 |
+| 托管後舊技能詢問／倒數仍顯示 | server 托管會釋放待答請求，Web 尚有舊提示殘留；晚按否可得到 request_expired | 目前先回答待答詢問再托管；此為操作避開方式，UI 修復仍未完成，不能據此宣告後端逾時 |
+| 第一局 watchdog 到期 | 期限從服務啟動計算，未等到 GAME_OVER | 保留逾時局證據為未完成；程序仍推進時不反覆重啟；新局使用獨立輸出目錄與 stop.request |
+| 回合快照 unsupported／lossy 警告 | 觀察到 QDateTime 的 MeleeModeStartTime 和 CardEffectStruct 的 TrickEffectData | 保留警告，對局可繼續；不得宣告快照／重播／seek 通過 |
+| `Pindian card for shuangren not found!!` | 本局仍有後續拼點牌、傷害及自然結局，警告成因未修復 | 保留為技能待查項，不把整局成功等同雙刃正確性驗收 |
+| 大量技能控制項溢出 | 結算可讀，但 Web 外觀尚有已觀察問題 | 保留畫面與債務，不把托管局成功當作響應式／完整 UI 驗收 |
+| 根目錄 config.ini 雜湊漂移 | 同期工作中發生，來源未確認 | 使用隔離 config；記錄差異，不擅自還原其他工作的設定 |
+
+### Finish and preserve evidence
+
+完整局需同時保留 server 的 `game start` → `game over <winner>`、
+Web「遊戲結束」和勝方 DOM／截圖；斷線、逾時、強制停止或僅顯示座位
+都不算通過。結算證據先保存，再關閉本局 Web 分頁，向 server console
+送出 `shutdown`，等待正常退出並核對 owned PID 不存在、連接埠已釋放。
+
+本局 helper `builds/web-10p-20261003/host.py` 支援
+`<新輸出子目錄> <服務期限秒數>`，每局使用自己的 stop.request，並給
+server console shutdown 60 秒收尾。它是本機證據 helper，不是已追蹤的
+產品工具；下次先確認檔案仍存在且參數／連接埠適用，再決定是否沿用。
+第一局進行中停止時 server 收尾未在舊 15 秒等待內完成，最後以控制事件
+退出，exit 非 0，故沒有判為通過。第二局自然結束後 server exit=0，
+且有 CARD_LIFETIME_ZERO；preview 的 `0xC000013A` 是控制事件停止，
+必須與 server 的正常退出分開記錄。
+
+本次未驗收手動出牌、重連、重播／seek、Browser Solo、Release、CI 或
+跨平台矩陣。外部 `extensions/addFunction.lua` 修復已回寫 H 端權威並核對
+L／H／隔離副本相同；後續修改仍需依 `AGENTS.md` 的外部權威規則同步。
 
 ## Behaviour
 

@@ -386,8 +386,12 @@ export class RulesController {
   private receive(message: unknown): void {
     if (!isObject(message) || message.schema_version !== 1 || message.generation !== this.generation)
       throw new Error("WASM Worker 回复版本或连接不符");
-    if (message.type === "error")
+    if (message.type === "error") {
+      // Keep the Worker's bounded native log visible when initialization fails.
+      console.warn("WASM runtime failure:", asString(message.stage), asString(message.error),
+        Array.isArray(message.logs) ? message.logs.join("\n") : "");
       throw new Error(asString(message.error) || "WASM 规则执行失败");
+    }
     if (message.type === "prepared") {
       if (!this.prepareWait || !isObject(message.code) || typeof message.code.code_id !== "string")
         throw new Error("rules_identity_invalid");
