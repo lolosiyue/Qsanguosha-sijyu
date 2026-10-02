@@ -5,6 +5,8 @@
 首次外部聲畫 ZIP／Storage Access Framework（SAF）匯入流程保留於本文後半，日常更新不需重做。
 32 位元 ARMv7 的裝置選擇、模式設定與收尾，直接查閱
 [ARMv7 操作與問題處理](#android-armv7-reuse)；不要重新準備工具鏈或媒體包。
+使用者指定 Android 14／雷電14 時，改查 [雷電14 重用流程](#android-14-ldplayer-reuse)，
+不啟動 API 33 AVD、不下載新的 system image；建置仍沿用同一 x86_64 cache。
 
 **版本固定規則：Android 不再雜湊資源、不逐檔掃描聲畫，也不因圖片缺檔擋住開局。**
 已安裝媒體在 APK 更新後繼續沿用；新增圖片不觸發全包重匯。
@@ -13,7 +15,7 @@
 <a id="android-daily-environment"></a>
 ## 本機唯一日常環境
 
-日常操作固定使用下面這套環境，保留 App 資料、媒體與建置快取。
+未指定其他裝置時，日常操作固定使用下面這套環境，保留 App 資料、媒體與建置快取。
 本頁是日常 Android 操作的唯一入口；後文的首次安裝教學不代表每次建置都要重做。
 
 | 用途 | 固定位置／值 |
@@ -105,6 +107,165 @@ try {
 
 此 AVD 是 API 33 x86_64／4 KiB pages；日常 APK 使用原生 x86_64。模擬器上的
 ARM translation 執行不能代替 arm64 實機；兩者均不等同實機或折疊機驗收。
+
+<a id="android-14-ldplayer-reuse"></a>
+## Android 14／雷電14：重用與故障處理（2026-10-03）
+
+本節適用於使用者指定既有雷電14的工作。優先重用既有安裝、App 資料、媒體及上方 x86_64
+建置快取；「最新版 Android APK」不代表下載新 Android 映像。既有 API 33 AVD 不能當作
+Android 14 驗收。以下位置是本次實測錨點；每次重新核對程序、VM、序號與 API，不沿用舊 PID。
+
+| 項目 | 本次沿用值 |
+|---|---|
+| LDPlayer | `L:\LDPlayer\LDPlayer14`，版本 `14.0.9.2`，index `0` |
+| VM 身分 | UUID `20160302-aaaa-aaaa-4882-000000000000`；本次 guest IP `172.16.1.15` |
+| VBox 控制工具 | `C:\Program Files\ldplayer9box\VBoxManage.exe`；工具路徑含 9 不代表 guest 是 Android 9 |
+| 獨立 ADB 通道 | 本次 `127.0.0.1:5591`，localhost 暫時 NAT 到已確認的 LD14 guest `5555` |
+| 系統 | Android `14`／API `34`、x86_64、4 KiB pages |
+| 本次 APK 建置 | `tools/build-android.ps1 -Configuration Debug -Abi x86_64 -AudioBackend NULL`；既有 `H:\qsan-android-x86_64` |
+| 已完成證據 | [05P 報告](../builds/android-10p-20261003-011a/summary.md)、[機器結果](../builds/android-10p-20261003-011a/result.json) |
+
+### 先辨認裝置，再建立通道
+
+LD9 與 LD14 可同時有 index `0`、VM 名稱 `leidian0`。本次即使執行 LD14 的
+`ldconsole adb --index 0`，預設 `5555` 仍連到 LD9／Android 9。所有命令必須使用明確的
+`adb -s <序號>`，並以 guest `getprop` 證明版本；不能只憑 console 路徑、名稱或視窗標題。
+
+```powershell
+$ld14Console = 'L:\LDPlayer\LDPlayer14\ldconsole.exe'
+$ld14VBox = 'C:\Program Files\ldplayer9box\VBoxManage.exe'
+$ld14Adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+$ld14StartedByThisRun = $false # 只有本輪自行啟動的原停止實例才改為 true。
+& $ld14Console list2
+& $ld14VBox list runningvms
+& $ld14Adb devices -l
+```
+
+先將 `list2` 的 GUI／VM PID 對照程序路徑與 `--startvm` UUID，確認是使用者指定的既有 LD14。
+若它原本停止且本輪已授權啟動，只啟動此實例。再核對該 VM 的 guest IP；下例 IP 是本次值，
+不能猜另一台 VM 的 IP 或重用其他工作的 NAT 規則。需要獨立通道時才執行：
+
+```powershell
+$ld14Vm = '20160302-aaaa-aaaa-4882-000000000000' # 已核對的 LD14 UUID。
+$ld14GuestIp = '172.16.1.15' # 先核對這次仍是該 VM 的 guest IP。
+$ld14Port = 5591
+$ld14Serial = "127.0.0.1:$ld14Port"
+$ld14Rule = 'qsan-05p-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+if (Get-NetTCPConnection -LocalPort $ld14Port -State Listen -ErrorAction SilentlyContinue) {
+    throw 'Port already used; inspect ownership instead of replacing the mapping.'
+}
+& $ld14VBox controlvm $ld14Vm natpf1 "$ld14Rule,tcp,127.0.0.1,$ld14Port,$ld14GuestIp,5555"
+if ($LASTEXITCODE -ne 0) { throw 'Owned LD14 NAT setup failed.' }
+& $ld14Adb connect $ld14Serial
+if ($LASTEXITCODE -ne 0) { throw 'LD14 ADB connection failed.' }
+& $ld14Adb -s $ld14Serial shell getprop ro.build.version.release
+$ld14Api = (& $ld14Adb -s $ld14Serial shell getprop ro.build.version.sdk).Trim()
+if ($ld14Api -ne '34') { throw 'Wrong Android target; do not install.' }
+& $ld14Adb -s $ld14Serial shell getprop sys.boot_completed
+& $ld14Adb -s $ld14Serial shell getprop ro.product.cpu.abilist
+& $ld14Adb -s $ld14Serial shell getconf PAGE_SIZE
+```
+
+`controlvm ... natpf1` 是執行中的暫時規則；不改持久 VM 設定，不開放到外部網卡。
+記住本輪 rule、序號、程序身分及模擬器原本是否啟動，正確記錄 `$ld14StartedByThisRun`，
+供最後精確還原；不要重啟共用 ADB server。
+
+### 建置、安裝與 server 版本對齊
+
+1. 先核對來源與 dirty state，依上方固定命令在既有 cache 增量建置；沒有新來源時沿用已建 APK。
+   建置仍需本輪授權與完成檢查點，不因讀到本節自動執行。
+   本次已驗收的是 NULL 包，重現時明確傳入 `-AudioBackend NULL`，不依賴之後可能變更的預設值；
+   其他音訊後端須另有驗收證據，不能沿用本次靜音結果。
+2. 核對建置退出碼、新 APK 路徑及持久簽章。LD14 使用下例 streaming 覆蓋安裝，保留資料：
+
+   ```powershell
+   $ld14Apk = 'L:\finaldebug\QSanguosha-v2\builds\android-x86_64-debug\cmake\android-app\android-build\build\outputs\apk\debug\android-build-debug.apk'
+   & $ld14Adb -s $ld14Serial install --streaming -r $ld14Apk
+   if ($LASTEXITCODE -ne 0) { throw 'Install failed; preserve App data and inspect the error.' }
+   & $ld14Adb -s $ld14Serial shell sync
+   ```
+
+3. 外部 Windows server 先保存本輪固定副本及其原生規則身分；不能一直指向其他工作也會更新的
+   `debug/qsanguosha_server.exe`。核對 APK **實際打包的** native library 與固定 server 的
+   CPP／bindings 身分，不只看 HEAD、CMake cache 或 APK 檔案時間。
+4. 若連線拒絕 rules identity，區分原生 CPP／bindings 不同與有效 Lua／規則不同。
+   規則、extensions、lang 及宣告只在隔離 server runtime 對齊 Android active runtime，
+   保留裝置原內容；server AI 為 server-owned，使用本次建置來源的現行 AI，不能被裝置舊 AI 覆蓋。
+   不停用身分檢查，不改外部 Lua 權威倉庫，不搬移、掃描或雜湊聲畫。
+
+| 本次問題 | 判定與下次處理 |
+|---|---|
+| `--no-streaming` 安裝出現 restorecon／`INSTALL_FAILED_MEDIA_UNAVAILABLE` | streaming `install -r` 成功；不卸載、不清資料、不改 SELinux／root |
+| Gradle 已 `BUILD SUCCESSFUL`，外層未退出 | 本輪 idle daemon 保留輸出管線；依 [daemon 處理](#android-armv7-reuse) 核對身分後只停本輪 daemon，等待真正退出碼，不重建 |
+| APK 舊 CPP、共享 server 已被其他工作更新 | 固定 server、重新對齊原生身分；本次做一次必要 Android 增量更新，不以同一 HEAD 當一致證據 |
+| server mirror 的舊 AI 在初始化時失敗 | 恢復本次 APK 建置來源的 server AI；規則／翻譯仍用已對齊副本，未開局不能算完整局 |
+| 顯示「加入完整聲畫 ZIP」、`boot_attempt=true` | 先讀 [啟動未完成回復](android-extension-runtime.md#android-boot-attempt-recovery)，不因按鈕文字重新匯入 ZIP |
+| ADB offline 且 VBox 有 host `powerDown` | 保存第一份 VM／App 日誌；caller 未知不判成 App crash，不反覆重開局或擴大引擎除錯 |
+
+### 完整 05P 與正常收尾
+
+本次是 Android GUI 連線 Windows server 加四席機器人；不是 Android 內建單機 server 驗收。
+server 使用 `05p`、AI on、Cheat off、operation timeout 15 秒、AI delay 0，並保存 seed、設定及
+`--autotest-log`。長對局需本輪明確授權；本次上限 30 分鐘不構成日後自動執行的授權。
+
+server 初始化成功、規則身分相符後，沿用產品的 `--network-ui-smoke`，不用再建立另一套 GUI
+回覆邏輯。參數說明見 [既有 native GUI 工具](linux-development-environment.md#--network-ui-smoke)。
+下例埠須改為**本輪已啟動 server 的 TCP 埠**；`--websocket-port 0` 會自動分配 WebSocket 埠，
+不是停用 WebSocket，收尾須從 server 日誌取得實際埠。
+
+```powershell
+$ld14GamePort = 3671 # 本次範例；先核對正在使用的 server TCP 埠。
+$ld14RunId = Get-Date -Format 'yyyyMMdd-HHmmss'
+$ld14RemoteResult = "/data/user/0/org.qsanguosha.game/files/android-05p-$ld14RunId.json"
+& $ld14Adb -s $ld14Serial reverse "tcp:$ld14GamePort" "tcp:$ld14GamePort"
+if ($LASTEXITCODE -ne 0) { throw 'Owned reverse mapping failed; do not launch.' }
+$ld14Args = "-connect:127.0.0.1:$ld14GamePort --auto-robots --network-ui-smoke --network-ui-smoke-result $ld14RemoteResult --network-ui-smoke-timeout-ms 1800000 --network-ui-smoke-stall-ms 600000"
+# 完整 applicationArguments 必須在遠端 shell 保持單一引數。
+& $ld14Adb -s $ld14Serial shell am start -W `
+  -n org.qsanguosha.game/org.qtproject.qt.android.bindings.QtActivity `
+  --es applicationArguments "'$ld14Args'"
+```
+
+結果檔每輪使用新名稱，避免讀到舊 JSON。先收集本輪 logcat／server 原始日誌，再啟動；不要清空
+crash buffer。啟動監看使用產品實際標記 **`[AUTOTEST] game start`**，結局是
+**`[AUTOTEST] game over <winner>`**。本次監看器錯找大寫 `GAME_START`，在真正開局後仍觸發
+啟動逾時並中止了一局；修正後才完成自然局。不能只用標記檔存在判定開局，也不能向 producer
+日誌補寫自造標記。收到實際 game start 後停用開局前 deadline，保留對局總上限。
+
+| 完成條件 | 必要證據 |
+|---|---|
+| 自然完整局 | client `game_started=true`、`game_over=true`、`ok=true`，與 server 原始開局／結局及 winner 相符 |
+| GUI 回覆 | responder request／reply 與 UI actions；`trustee_engaged=false`，託管 fallback 不能冒充此 gate |
+| client 正常退出 | 等待自行退出、`pidof` 為空；`dumpsys activity exit-info` 對應本輪 PID 的 `EXIT_SELF / status 0` |
+| server 正常退出 | 正常 console `shutdown`、退出 0、生命週期最終歸零；不用強停代替 |
+| 清理 | TCP／實際 WebSocket 埠釋放、collector／本輪程序無殘留、只移除自己的 reverse／NAT |
+
+結果及退出資訊可透過指定序號讀取，保存本輪輸出，不讀其他實例的舊紀錄：
+
+```powershell
+& $ld14Adb -s $ld14Serial exec-out run-as org.qsanguosha.game cat "files/android-05p-$ld14RunId.json"
+& $ld14Adb -s $ld14Serial shell dumpsys activity exit-info org.qsanguosha.game
+& $ld14Adb -s $ld14Serial shell pidof org.qsanguosha.game
+```
+
+App 已自行退出、server 已正常關閉後，先保存 final content state 與退出證據，再依本輪保存的值清理：
+
+```powershell
+& $ld14Adb -s $ld14Serial reverse --remove "tcp:$ld14GamePort"
+& $ld14VBox controlvm $ld14Vm natpf1 delete $ld14Rule
+& $ld14Adb disconnect $ld14Serial
+# 僅在確認仍是本輪啟動的 LD14、且它原本停止時，正常還原停止狀態。
+if ($ld14StartedByThisRun) { & $ld14Console quit --index 0 }
+```
+
+reverse 已由本輪 runner 移除時不重複執行。LD14 原本已運行則保留，不關其他實例或全域 ADB。
+最後核對本輪程序與三種埠，不以 `quit` 命令退出碼代替清理完成證據。
+
+2026-10-03 的修正後 05P 自然完成，反賊勝，對局 319 秒；無託管，client `EXIT_SELF / 0`、
+server 退出 0，清理通過。此前被監看器強停的局及未開局嘗試均不算 PASS。日誌仍有
+`hegemony-ai.lua:450` 的 `cloneCard` nil、shuangren 拼點卡未找到及 snapshot JSON 有損序列化
+警告；保留作待處理項，完整局通過不代表它們已修復。NULL 音訊、有 full effects 計數或既有
+聲畫不能證明有聲、人工觸控、特定視覺效果或 ARM 實機通過。
 
 <a id="android-armv7-reuse"></a>
 ## ARMv7 操作與問題處理（2026-10-03）
