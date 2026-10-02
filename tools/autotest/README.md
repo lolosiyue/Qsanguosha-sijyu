@@ -99,6 +99,19 @@ marker log; 失敗時另存最後 UI state 與截圖。
 模式 ID 以 registry 為準 (`qsanguosha_server --list-game-modes`): 2 人局是
 `02p`, 5 人局是 `05p`。詳細契約見 [Linux 開發指南](../../docs/linux-development-environment.md)。
 
+## XP VM — 使用 legacy 專用驗收入口
+
+XP 的配對程式為 `QSanguoshaXP.exe` / `QSanguoshaXPServer.exe`；外部伺服器
+AI 對局使用 `--xp-acceptance=external`。本次 XP 獨立入口未啟動主線
+`--auto-robots` / `--network-ui-smoke` driver，不能拿候場畫面判定成功。
+專用 driver 有 10 分鐘期限，按設計填 robot 並啟用托管，不涵蓋手動 request UI。
+
+建置、部署、ISO、Guest Control／無憑證 CMD 備援、server INI 陷阱與清理方式，
+統一查閱 [XP legacy 指南](../../docs/windows-xp-legacy-build.md#xp-acceptance-entry-and-isolated-settings)，
+不另建一套 XP runner 流程。2026-10-03 單次測試已完成執行：server 有完整結局，
+GUI `FAIL_timeout`／exit 1；保留兩者不同結果，不自動 retry。
+後續字體修正只有 source/static 證據，尚未重建或驗收畫面。
+
 ## crash_report.py — 集中閃退資訊 (可持續執行)
 
 掃描 exe-root 的 `dmp/` + `record/` 與 `tools\autotest\autotest-logs\` 全部

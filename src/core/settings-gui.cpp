@@ -1,5 +1,8 @@
 #include "settings.h"
 #include "engine.h"
+#ifdef QSAN_XP_LEGACY
+#include "runtime-paths.h"
+#endif
 #include <QApplication>
 #include <QStyleFactory>
 #include <QStyleHints>
@@ -180,7 +183,32 @@ void UiSettings::init()
     SmallFont.setPixelSize(GetConfigFromLuaState(lua, "small_font").toInt());
     TinyFont.setPixelSize(GetConfigFromLuaState(lua, "tiny_font").toInt());
     SmallFont.setWeight(QFont::Bold);
-    AppFont = Config.value("AppFont", QApplication::font("QMainWindow")).value<QFont>();
-    UIFont = Config.value("UIFont", QApplication::font("QTextEdit")).value<QFont>();
+    QFont appDefaultFont = QApplication::font("QMainWindow");
+    QFont textDefaultFont = QApplication::font("QTextEdit");
+#ifdef QSAN_XP_LEGACY
+    // XP may lack CJK system fonts; use the bundled regular face for UI text
+    // instead of letting the system substitute the decorative title font.
+    const QString uiFontPath = QSanRuntimePaths::assetPath(QStringLiteral("font/simsun.ttf"));
+    const int uiFontId = QFontDatabase::addApplicationFont(uiFontPath);
+    const QStringList uiFontFamilies = uiFontId == -1
+        ? QStringList() : QFontDatabase::applicationFontFamilies(uiFontId);
+    if (!uiFontFamilies.isEmpty()) {
+        QFont *defaultFonts[] = { &appDefaultFont, &textDefaultFont };
+        for (QFont *font : defaultFonts) {
+            font->setFamily(uiFontFamilies.first());
+            font->setStyleName(QString());
+            font->setStyle(QFont::StyleNormal);
+            font->setWeight(QFont::Normal);
+            // Underline is a separate decoration, independent of normal style.
+            font->setUnderline(false);
+            font->setStyleStrategy(QFont::PreferAntialias);
+        }
+    } else {
+        qWarning("UI font file %s could not be loaded; falling back to system font", qPrintable(uiFontPath));
+    }
+#endif
+    // Saved font choices remain authoritative on every platform.
+    AppFont = Config.value("AppFont", appDefaultFont).value<QFont>();
+    UIFont = Config.value("UIFont", textDefaultFont).value<QFont>();
     TextEditColor = QColor(Config.value("TextEditColor", "white").toString());
 }

@@ -1228,9 +1228,9 @@ QList<const Package*> Engine::getPackages() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
     if (!runtime)
-        return findChildren<const Package*>(Qt::FindDirectChildrenOnly);
+        return findChildren<const Package*>(QString(), Qt::FindDirectChildrenOnly);
     QList<const Package *> result = runtime->packages();
-    foreach (const Package *package, findChildren<const Package *>(Qt::FindDirectChildrenOnly))
+    foreach (const Package *package, findChildren<const Package *>(QString(), Qt::FindDirectChildrenOnly))
         if (!m_luaPackageNames.contains(package->objectName())
             && !runtime->package(package->objectName())) result << package;
     return result;

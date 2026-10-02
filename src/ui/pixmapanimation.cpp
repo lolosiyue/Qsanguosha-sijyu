@@ -8,6 +8,7 @@
 #include <QRunnable>
 #include <QThread>
 #include <QThreadPool>
+#include <QTimer>
 #include <atomic>
 #include <memory>
 
@@ -38,11 +39,12 @@ public:
             if (image.isNull())
                 continue;
             const QString key = job.cacheKey;
-            QMetaObject::invokeMethod(m_context, [key, image]() {
+            // The context schedules GUI work on its thread on Qt 5.6 as well.
+            QTimer::singleShot(0, m_context, [key, image]() {
                 QPixmap cached;
                 if (!QPixmapCache::find(key, &cached))
                     QPixmapCache::insert(key, QPixmap::fromImage(image));
-            }, Qt::QueuedConnection);
+            });
         }
     }
 

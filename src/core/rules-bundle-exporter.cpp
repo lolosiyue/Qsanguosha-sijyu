@@ -42,6 +42,7 @@ bool regularAsset(const QString &path)
 // while size, mtime and ctime all match, so a replaced file is still read and rehashed.
 QString fileSha256(const QString &absolutePath)
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     struct Entry
     {
         qint64 size;
@@ -62,16 +63,21 @@ QString fileSha256(const QString &absolutePath)
         if (it != cache.constEnd() && it->size == size && it->modified == modified && it->changed == changed)
             return it->sha256;
     }
+#endif
 
+    // Qt 5.6 has no metadata change time. Rehash instead of trusting size/mtime
+    // alone, which could reuse a stale digest after a same-size replacement.
     QFile file(absolutePath);
     if (!file.open(QIODevice::ReadOnly)) return {};
     const QByteArray bytes = file.readAll();
     if (file.error() != QFile::NoError) return {};
     const QString sha256 = QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     if (bytes.size() == size) {
         QMutexLocker lock(&mutex);
         cache.insert(absolutePath, Entry{size, modified, changed, sha256});
     }
+#endif
     return sha256;
 }
 
