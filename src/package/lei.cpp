@@ -1073,6 +1073,11 @@ class LeiyongsiMaxCards : public MaxCardsSkillV2
 {
 public:
     LeiyongsiMaxCards() : MaxCardsSkillV2("#leiyongsimaxmards") { setHolderSelector(CorrectSkill_System); }
+    CorrectSkillResult getCorrection(const CorrectSkillContext &) const override
+    {
+        // A fixed hand limit must not inherit the default extra-card bonus.
+        return CorrectSkillResult::noEffect();
+    }
     CorrectSkillResult getFixedValue(const CorrectSkillContext &ctx) const override
     {
         const Player *target = ctx.primary;
