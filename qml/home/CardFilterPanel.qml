@@ -154,6 +154,12 @@ Item {
                 Accessible.name: homeController.qtTranslate("CardScene", "Search cards")
                 onTextChanged: searchDebounce.restart()
                 onActiveFocusChanged: if (activeFocus) root.revealItem(searchInput)
+                // 開頁即取得焦點；預設游標每 0.5 秒閃一次，QQuickWidget 每閃都整幀重繪。
+                cursorDelegate: Rectangle {
+                    width: 2
+                    color: searchInput.color
+                    visible: searchInput.cursorVisible
+                }
                 background: Rectangle {
                     radius: HomeTheme.cardControlRadius
                     color: HomeTheme.cardInputFill
