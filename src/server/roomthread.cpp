@@ -1764,6 +1764,17 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 void RoomThread::refreshDistanceCacheIfDirty(Room *room)
 {
 	if (!room || !m_distanceCacheDirty) return;
+	// These properties only feed client displays. A room seated entirely by
+	// robots has no client to show them to; stay dirty so a later refresh still
+	// runs if that changes.
+	bool hasClient = false;
+	foreach (ServerPlayer *player, room->getPlayers()) {
+		if (player->getState() != QLatin1String("robot")) {
+			hasClient = true;
+			break;
+		}
+	}
+	if (!hasClient) return;
 
 	// Clear before rebuilding so nested events can schedule a later refresh.
 	m_distanceCacheDirty = false;

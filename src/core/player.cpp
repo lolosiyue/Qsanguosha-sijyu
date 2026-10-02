@@ -18,6 +18,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <atomic>
+
+namespace {
+// Bumped whenever a Player is created or destroyed; sibling lists cached per
+// parent are rebuilt when it, or the parent's child count, changes.
+std::atomic<quint64> g_playerGeneration{1};
+}
 
 Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
@@ -33,6 +40,7 @@ Player::Player(QObject *parent)
 	static QList<const char*> areas;
 	if(areas.isEmpty()) areas << "weapon_area" << "armor_area" << "defensive_horse_area" << "offensive_horse_area" << "treasure_area";
 	foreach(int ea, equip_area) setProperty(areas[ea], true);
+	g_playerGeneration.fetch_add(1, std::memory_order_acq_rel);
 }
 
 void Player::setScreenName(const QString &screen_name)
@@ -164,6 +172,7 @@ void Player::setSeat(int seat)
 
 Player::~Player()
 {
+    g_playerGeneration.fetch_add(1, std::memory_order_acq_rel);
     clearTags();
 }
 
@@ -222,6 +231,14 @@ void Player::setAlive(bool alive)
 QString Player::getFlags() const
 {
     return getFlagList().join("|");
+}
+
+bool Player::hasFlagContaining(const QString &part) const
+{
+    for (const QString &flag : flags) {
+        if (flag.contains(part)) return true;
+    }
+    return false;
 }
 
 QStringList Player::getFlagList() const
@@ -3232,7 +3249,30 @@ QList<const Player *> Player::getSiblings(bool include_self) const
 {
     QList<const Player *> siblings;
     if (parent()){
-        siblings = parent()->findChildren<const Player *>();
+        // Players are always direct children of their Room/Client. The Room also
+        // parents many other objects, so scanning its children on every rule query
+        // is costly in large rooms; reuse the list until a Player is created or
+        // destroyed or the parent's children change.
+        struct CachedSiblings {
+            quint64 generation = 0;
+            qsizetype childCount = -1;
+            QList<const Player *> players;
+        };
+        static thread_local QHash<const QObject *, CachedSiblings> cache;
+        const QObject *owner = parent();
+        const quint64 generation = g_playerGeneration.load(std::memory_order_acquire);
+        const qsizetype childCount = owner->children().size();
+        auto it = cache.find(owner);
+        if (it == cache.end()) {
+            if (cache.size() > 32) cache.clear();
+            it = cache.insert(owner, CachedSiblings());
+        }
+        if (it->generation != generation || it->childCount != childCount) {
+            it->players = owner->findChildren<const Player *>(Qt::FindDirectChildrenOnly);
+            it->generation = generation;
+            it->childCount = childCount;
+        }
+        siblings = it->players;
         if (include_self) return siblings;
 		siblings.removeOne(this);
     }
@@ -3763,7 +3803,18 @@ const QMap<QString, QHash<QString, QString> > &Player::getAllCardDescriptionSwap
     return card_description_swaps;
 }
 
+namespace {
+std::atomic_bool g_controllerTagEverSet{false};
+}
+
+bool Player::controllerTagEverSet()
+{
+    return g_controllerTagEverSet.load(std::memory_order_relaxed);
+}
+
 void Player::setTag(const QString &key, const QVariant &value) {
+    if (key == QLatin1String("Controller_Name") && !value.toString().isEmpty())
+        g_controllerTagEverSet.store(true, std::memory_order_relaxed);
     QByteArray error;
     if (!globalCardLifetimeManager().retainVariantTag(this, key.toUtf8(), value, &error)) {
         qWarning("Player tag '%s' rejected: %s", qPrintable(key), error.constData());
