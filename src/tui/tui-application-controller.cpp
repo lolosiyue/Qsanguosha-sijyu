@@ -953,15 +953,23 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
             if (!selectedTargets.isEmpty())
                 lines << tuiText("tui_action_selected_targets") + selectedTargets.join(tuiText("tui_list_separator"));
         }
+        // The stream keeps the reducer's labels ("presentation event 41",
+        // "$AppendSeparator"). These five lines use the live transcript's
+        // sentences; an event with nothing to read does not take a slot.
+        QStringList traces;
         const QList<GamePresentationEvent> events = m_eventStream.events();
-        const int first = qMax(0, events.size() - 5);
-        for (int i = first; i < events.size(); ++i) {
+        for (int i = events.size() - 1; i >= 0 && traces.size() < 5; --i) {
             const GamePresentationEvent &event = events.at(i);
-            lines << tuiText("tui_event_trace")
+            const QString line = presentationText(event.command, event.text, event.payload);
+            // A leftover reducer label is not a sentence the player can read.
+            if (line.isEmpty() || line.startsWith(QLatin1String("presentation event ")))
+                continue;
+            traces.prepend(tuiText("tui_event_trace")
                 .arg(QString::number(event.generation), QString::number(event.sequence))
                 .arg(event.command)
-                .arg(TuiRenderer::sanitize(event.text, 512));
+                .arg(TuiRenderer::sanitize(line, 512)));
         }
+        lines << traces;
         writeOutput(lines.join(QLatin1Char('\n')));
     } else if (intent.type == TuiCommandType::Players) {
         writeDump(m_renderer.renderPlayers(*m_core.state()));

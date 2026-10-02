@@ -49,7 +49,8 @@ colon list：`key:%src:%dest:%arg:%arg2`）。出牌階段 ViewAs／SkillCard �
 `viewAs` 組線在 `src/tui/tui-play-skills.cpp`。仁區追蹤對齊 `RoomScene::RenPile`，
 `GAME_START`／`STATE_SYNC begin` 清空。`event 9`
 （`S_GAME_EVENT_UPDATE_SKILL`）仍不進戰報。core reducer 不把 GET_CARD 改成
-presentation。
+presentation。`/status` 尾端最多五筆與即時戰報同一套玩家句子（`$AppendSeparator`
+顯示為 `--------`）。
 
 ## 啟動及 CLI
 
