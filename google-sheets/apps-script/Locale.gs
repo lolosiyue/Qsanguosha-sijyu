@@ -2,12 +2,12 @@
 // text, including the Sidebar.html template. Dynamic game text comes from the native
 // bridge and must not be translated or reconstructed here.
 const QSAN_TEXT = Object.freeze({
-  assignSeatsHelp: '在 QSAN Actions 的 F 列为每位玩家填写座位号，每个座位只能使用一次；全部玩家保持勾选。势力在选将后决定。',
+  assignSeatsHelp: '在 QSAN 操作的 F 列为每位玩家填写座位号，每个座位只能使用一次；全部玩家保持勾选。势力在选将后决定。',
   generalPairHelp: '勾选两名武将，顺序列填 1（主将）、2（副将）。取消勾选可重选，交换顺序可交换主副；预检通过后再提交。取消按钮只清除本次选择。',
   generalPairOrder: '请选择两名武将，并明确填写顺序 1（主将）和 2（副将）。',
   generalPairInvalid: '此主副将组合或顺序不合法，请重新选择。',
   generalPairCleared: '已清除主副将选择，可以重新选择。',
-  menuRoot: 'QSanGuosha',
+  menuRoot: '三国杀',
   menuSetup: '创建专用工作表',
   menuConnect: '连接与操作控制',
   menuCatalog: '加载房间目录',
@@ -17,9 +17,9 @@ const QSAN_TEXT = Object.freeze({
   menuRetry: '重试待确认命令',
   menuDetails: '查询详情（座位／项目）',
   menuDisconnect: '离开并关闭会话',
-  sidebarTitle: '三国杀・Sheets',
-  sidebarHeading: 'QSanGuosha Sheets',
-  sidebarIntro: 'QSAN Actions 是游戏房间。选择座位标题或内容，再点击“查询详情”查看完整数据。向下滚动至选择列表勾选，再在此预检／提交。',
+  sidebarTitle: '三国杀・Google Sheets',
+  sidebarHeading: '三国杀・Google Sheets',
+  sidebarIntro: 'QSAN 操作是游戏房间。选择座位标题或内容，再点击“查询详情”查看完整数据。向下滚动至选择列表勾选，再在此预检／提交。',
   secConnect: '连接',
   secRoom: '房间',
   secActions: '对局操作',
@@ -34,10 +34,10 @@ const QSAN_TEXT = Object.freeze({
   btnHost: '创建房间',
   btnReady: '准备',
   btnUnready: '取消准备',
-  btnAddRobot: '添加 AI',
+  btnAddRobot: '添加电脑玩家',
   btnReconnect: '请求重连',
   btnChat: '发送聊天',
-  chatHint: '聊天内容填在 QSAN Room 的 B8。',
+  chatHint: '聊天内容填在 QSAN 房间的 B8。',
   btnPreview: '预检',
   btnSubmit: '提交',
   btnCancel: '取消互动',
@@ -65,7 +65,7 @@ const QSAN_TEXT = Object.freeze({
   okConnect: '已发送连接',
   okReady: '已准备',
   okUnready: '已取消准备',
-  okRobot: '已添加 AI',
+  okRobot: '已添加电脑玩家',
   okReconnect: '已请求重连',
   okPreview: '已发送预检',
   okSubmit: '已发送操作',
@@ -129,12 +129,12 @@ const QSAN_TEXT = Object.freeze({
   roomHdrValue: '可编辑值',
   roomHdrNote: '说明',
   roomName: '玩家名称',
-  roomAvatar: '头像武将 ID',
-  roomAvatarNote: '目录列出可用 ID',
+  roomAvatar: '头像武将识别码',
+  roomAvatarNote: '目录列出可用武将识别码',
   roomServer: '游戏服务器',
-  roomServerNote: '加入已有服务器；须主机 allow-game 允许',
+  roomServerNote: '加入已有服务器；须主机允许此连接地址',
   roomPort: '游戏端口',
-  roomRobots: 'AI 人数',
+  roomRobots: '电脑玩家人数',
   roomRobotsNote: '创建房间时添加的人数；0 表示补满',
   roomGuide: '操作说明',
   roomGuideValue: '先开启侧边栏',
@@ -142,9 +142,9 @@ const QSAN_TEXT = Object.freeze({
   roomChat: '聊天内容',
   roomChatNote: '输入后点击侧边栏发送聊天',
   roomSettings: '房间设置',
-  roomSettingsNote: '列表每行一个 ID；设置由原生验证',
+  roomSettingsNote: '列表每行一个识别码；设置由原生验证',
   roomCatalog: '目录',
-  roomCatalogValue: 'QSanGuosha 菜单 → 加载房间目录',
+  roomCatalogValue: '三国杀菜单 → 加载房间目录',
   roomCatalogNote: '提供模式、武将、牌包与其他设置',
   roomColName: '设置名称',
   roomColType: '类型',
@@ -174,6 +174,7 @@ const QSAN_TEXT = Object.freeze({
   gameOverPrefix: '对局结束 · ',
   roundNumber: '第 %1 回合',
   pileRemain: '牌堆剩余 %1',
+  pileRemainLabel: '牌堆剩余',
   pileRemainBoard: '牌堆剩余：%1',
   selfPrefix: '自己 · ',
   seatPos: '%1 号位 · ',
@@ -184,19 +185,19 @@ const QSAN_TEXT = Object.freeze({
   handTitle: '自己的手牌 · %1 张',
   handEmpty: '没有手牌',
   skillsLabel: '技能：',
-  roomHelp: '下方 D 列勾选卡牌／目标／选项；E 列指定顺序。技能先预检取得声明；观星在 F 列填 top/bottom。',
+  roomHelp: '下方 D 列勾选卡牌／目标／选项；E 列指定顺序。技能先预检取得声明；观星在 F 列选择牌堆顶／牌堆底。',
   seatLegend: '座位标题颜色：蓝＝自己，橙＝行动中，灰＝阵亡。',
   unsupportedNote: '此互动不支持，未发送回复。',
   selectRange: '选择范围：',
   cancelHint: '　可通过菜单或侧边栏取消／结束出牌。',
-  logTitle: '战报 · 最新在上（完整记录见 QSAN Log）',
+  logTitle: '战报 · 最新在上（完整记录见 QSAN 战报）',
   logBoardTitle: '战报',
   hdrKind: '项目类型',
-  hdrId: 'ID',
+  hdrId: '识别码',
   hdrName: '名称',
   hdrCheck: '勾选',
   hdrOrder: '顺序（可填 1,3）',
-  hdrSide: 'top／bottom／角色',
+  hdrSide: '牌堆位置／身份',
   hdrEnabled: '可用',
   hdrDesc: '说明',
   hdrSkill: '技能名称',
@@ -216,17 +217,17 @@ const QSAN_TEXT = Object.freeze({
   publicCards: '公开牌区',
   selfSkills: '自己的技能',
   nativeSeqError: '原生互动序号格式错误。',
-  freeOption: '自行输入选项 ID（第二列）',
+  freeOption: '自行输入选项识别码（第二列）',
   catHdrType: '类型',
   catHdrInfo: '信息',
-  catalogDone: '目录已写入 QSAN Catalog；额外设置加入 QSAN Room。',
+  catalogDone: '目录已写入 QSAN 目录；额外设置加入 QSAN 房间。',
   pickItemRow: '请先选择一个项目行。',
   pickSheet: '请在牌桌、互动或目录选择项目。',
   pickSeat: '请选择一个座位的标题或内容，再点击“查询详情”；卡牌／技能可在下方列表选择。',
   labelItem: '项目',
   labelMarks: '完整标记',
   labelMaxHp: '体力上限',
-  detailsDone: '详情已显示于侧边栏，并写入 QSAN Details。',
+  detailsDone: '详情已显示于侧边栏，并写入 QSAN 详情。',
   waitInteraction: '等待互动',
   yourTurn: '当前轮到你处理此互动。',
   skillInvoke: '是否发动技能“%1”？',
@@ -240,18 +241,54 @@ const QSAN_TEXT = Object.freeze({
   connNone: '未连接',
   integerRequired: '请输入整数。',
   integerRange: '整数超出范围。',
-  booleanInvalid: '布尔字段请填 TRUE 或 FALSE。',
+  booleanInvalid: '布尔字段请选择“是”或“否”。',
   unavailablePicked: '选中了不可用项目，请重新预检。',
   multiOrderTargets: '只有目标可以填入多个顺序，例如 1,3。',
   orderDuplicate: '顺序不可重复。',
   singleChoice: '此项只能选一个。',
   optionRequired: '请选择一个选项。',
   roleRequired: '请为玩家选择原生提供的角色。',
-  guanxingSide: '观星位置请填 top 或 bottom。',
+  guanxingSide: '观星位置请选择“牌堆顶”或“牌堆底”。',
   distributionTarget: '每次分牌请选择一名接收者。',
   unsupportedShape: '此互动尚不支持，没有发送任何回复。',
   noInteraction: '当前没有待回复互动。',
-  rowsNotLoaded: '互动选项尚未加载，请刷新。'
+  rowsNotLoaded: '互动选项尚未加载，请刷新。',
+  valueYes: '是', valueNo: '否',
+  kindOption: '选项', kindCard: '卡牌', kindPlayer: '玩家', kindSkill: '技能',
+  kindDeclaration: '声明', kindGeneral: '武将', kindAssignment: '身份分配',
+  kindRearrange: '牌序调整', kindMode: '模式', kindPackage: '扩展包', kindPile: '牌堆',
+  sideTop: '牌堆顶', sideBottom: '牌堆底',
+  roleLord: '主公', roleLoyalist: '忠臣', roleRebel: '反贼', roleRenegade: '内奸',
+  kingdomWei: '魏', kingdomShu: '蜀', kingdomWu: '吴', kingdomQun: '群',
+  kingdomJin: '晋', kingdomGod: '神', kingdomCareerist: '野心家',
+  phaseRoundStart: '回合开始', phaseStart: '准备阶段', phaseJudge: '判定阶段',
+  phaseDraw: '摸牌阶段', phasePlay: '出牌阶段', phaseDiscard: '弃牌阶段', phaseFinish: '结束阶段',
+  hiddenCard: '暗牌', unknownCard: '未知牌', gameEnded: '对局结束',
+  statusWaiting: '等待准备', statusPlaying: '对局进行中', statusPreparing: '正在准备房间',
+  fieldName: '名称', fieldRole: '身份', fieldRoles: '身份列表', fieldKingdom: '势力',
+  fieldPackage: '所属扩展包', fieldAdder: '作者', fieldPlayerCount: '玩家人数',
+  fieldSkills: '技能识别码', fieldGeneral: '武将识别码', fieldDeputyGeneral: '副将识别码',
+  fieldGeneralLabel: '武将名称', fieldDeputyGeneralLabel: '副将名称', fieldSeat: '座位',
+  fieldAlive: '存活', fieldChained: '连环', fieldFaceUp: '正面朝上', fieldPhase: '阶段',
+  fieldSuit: '花色', fieldNumber: '点数', fieldColor: '颜色', fieldPlace: '所在区域',
+  fieldOwner: '所属玩家', fieldHidden: '暗牌', fieldPile: '牌堆识别码', fieldPiles: '牌堆',
+  fieldFlags: '状态标志', fieldProperties: '属性', fieldMetadata: '信息',
+  fieldAvailable: '可用', fieldAttached: '附加技能', fieldVisible: '可见',
+  fieldCardCount: '卡牌数', fieldCardId: '卡牌识别码', fieldCards: '卡牌',
+  fieldWinnerRoles: '获胜身份', fieldWinnerPlayers: '获胜玩家',
+  suitSpade: '黑桃', suitClub: '梅花', suitHeart: '红桃', suitDiamond: '方块', suitNone: '无花色',
+  colorRed: '红色', colorBlack: '黑色', colorNone: '无色',
+  startupTimeout: '原生房间初始化超过时限，请核对主机日志。',
+  handshakeTimeout: '连接握手超过时限。', noActiveRequest: '当前没有待回复互动。',
+  requestExpired: '互动已更新，请刷新后重新选择。', wireUnavailable: '互动数据尚未就绪，请刷新。',
+  invalidOption: '所选选项不合法，请重新选择。', invalidTargets: '所选目标不合法，请重新选择。',
+  invalidCards: '所选卡牌不合法，请重新选择。', invalidSkill: '所选技能不合法，请重新选择。',
+  invalidDeclaration: '所选声明不合法，请重新选择。',
+  serviceCode: '操作未完成，错误码：%1',
+  pairExpired: '配对码已失效，请取得新的配对码。', nativeUnavailable: '原生会话已不可用。',
+  destinationDenied: '主机未允许连接此游戏服务器。',
+  sheetBoard: 'QSAN 牌桌', sheetActions: 'QSAN 操作', sheetRoom: 'QSAN 房间',
+  sheetCatalog: 'QSAN 目录', sheetDetails: 'QSAN 详情', sheetLog: 'QSAN 战报'
 });
 function qsanText_(key) { return Object.prototype.hasOwnProperty.call(QSAN_TEXT, key) ? QSAN_TEXT[key] : String(key); }
 function qsanFormat_(key) {
@@ -260,10 +297,85 @@ function qsanFormat_(key) {
   return text;
 }
 // Older worksheets may still store Traditional Chinese setting types.
-// Accept those legacy values and stable English IDs without rewriting stored cells.
+// Read legacy type labels during migration without changing setting identities.
 const QSAN_SETTING_TYPES = Object.freeze({
-  keep: ['保留', 'Keep'], bool: ['布尔', '布林', 'Boolean'], integer: ['整数', '整數', 'Integer'], list: ['列表', '清单', '清單', 'List']
+  keep: ['保留', 'Keep'], bool: ['布尔', '布林', 'Boolean'], integer: ['整数', '整數', 'Integer'],
+  list: ['列表', '清单', '清單', 'List'], text: ['文本', '文字', 'Text']
 });
 function qsanSettingType_(value, key) {
   return QSAN_SETTING_TYPES[key].indexOf(String(value)) >= 0;
+}
+const QSAN_KIND_KEYS = Object.freeze({option: 'kindOption', card: 'kindCard', player: 'kindPlayer',
+  skill: 'kindSkill', declaration: 'kindDeclaration', general: 'kindGeneral', assignment: 'kindAssignment',
+  rearrange: 'kindRearrange', mode: 'kindMode', package: 'kindPackage', pile: 'kindPile'});
+const QSAN_SHEET_KEYS = Object.freeze({'QSAN Board': 'sheetBoard', 'QSAN Actions': 'sheetActions',
+  'QSAN Room': 'sheetRoom', 'QSAN Catalog': 'sheetCatalog', 'QSAN Details': 'sheetDetails', 'QSAN Log': 'sheetLog'});
+const QSAN_FACTION_KEYS = Object.freeze({lord: 'roleLord', loyalist: 'roleLoyalist', rebel: 'roleRebel',
+  renegade: 'roleRenegade', wei: 'kingdomWei', shu: 'kingdomShu', wu: 'kingdomWu', qun: 'kingdomQun',
+  jin: 'kingdomJin', god: 'kingdomGod', careerist: 'kingdomCareerist'});
+const QSAN_PHASE_KEYS = Object.freeze({round_start: 'phaseRoundStart', start: 'phaseStart', judge: 'phaseJudge',
+  draw: 'phaseDraw', play: 'phasePlay', discard: 'phaseDiscard', finish: 'phaseFinish'});
+const QSAN_FIELD_KEYS = Object.freeze({id: 'hdrId', name: 'fieldName', label: 'fieldName', type: 'catHdrType',
+  description: 'hdrDesc', detail: 'hdrDesc', marks: 'labelMarks', equip: 'equipLabel', hp: 'hpLabel',
+  max_hp: 'labelMaxHp', hand_count: 'hdrHandCount', role: 'fieldRole', roles: 'fieldRoles', kingdom: 'fieldKingdom',
+  package: 'fieldPackage', adder: 'fieldAdder', player_count: 'fieldPlayerCount', skills: 'fieldSkills',
+  general: 'fieldGeneral', deputy_general: 'fieldDeputyGeneral', general_label: 'fieldGeneralLabel',
+  deputy_general_label: 'fieldDeputyGeneralLabel', seat: 'fieldSeat', alive: 'fieldAlive', chained: 'fieldChained',
+  face_up: 'fieldFaceUp', phase: 'fieldPhase', phase_label: 'fieldPhase', suit: 'fieldSuit', number: 'fieldNumber',
+  color: 'fieldColor', place: 'fieldPlace', owner: 'fieldOwner', hidden: 'fieldHidden', pile: 'fieldPile',
+  piles: 'fieldPiles', flags: 'fieldFlags', properties: 'fieldProperties', metadata: 'fieldMetadata',
+  enabled: 'hdrEnabled', available: 'fieldAvailable', attached_lord_skill: 'fieldAttached', visible: 'fieldVisible',
+  instance_id: 'hdrInstance', skill_instance_id: 'hdrInstance', skill_name: 'hdrSkill',
+  card_count: 'fieldCardCount', card_id: 'fieldCardId', cards: 'fieldCards',
+  winner_roles: 'fieldWinnerRoles', winner_players: 'fieldWinnerPlayers'});
+function qsanMappedText_(map, value) { return map[String(value)] ? qsanText_(map[String(value)]) : String(value == null ? '' : value); }
+function qsanMappedId_(map, value) {
+  const text = String(value);
+  return Object.keys(map).find(id => qsanText_(map[id]) === text) || text;
+}
+// Only display enums are reversible; names, IDs and response payloads are untouched.
+function qsanKind_(value) { return qsanMappedId_(QSAN_KIND_KEYS, value); }
+function qsanSheetId_(value) { return qsanMappedId_(QSAN_SHEET_KEYS, value); }
+function qsanSheetName_(value) { return qsanMappedText_(QSAN_SHEET_KEYS, qsanSheetId_(value)); }
+function qsanKindText_(value) { return qsanMappedText_(QSAN_KIND_KEYS, qsanKind_(value)); }
+function qsanFaction_(value) { return qsanMappedId_(QSAN_FACTION_KEYS, value); }
+function qsanSide_(value) { return qsanMappedId_({top: 'sideTop', bottom: 'sideBottom'}, value).toLowerCase(); }
+function qsanSideText_(value) { return qsanMappedText_({top: 'sideTop', bottom: 'sideBottom'}, qsanSide_(value)); }
+function qsanFieldText_(value) { return qsanMappedText_(QSAN_FIELD_KEYS, value); }
+function qsanFieldValue_(key, value) {
+  if (Array.isArray(value)) return value.map(item => qsanFieldValue_(key, item));
+  if (key === 'role' || key === 'roles' || key === 'kingdom' || key === 'winner_roles') return qsanMappedText_(QSAN_FACTION_KEYS, value);
+  if (key === 'phase') return qsanMappedText_(QSAN_PHASE_KEYS, value);
+  if (key === 'suit') return qsanMappedText_({spade: 'suitSpade', club: 'suitClub', heart: 'suitHeart', diamond: 'suitDiamond', no_suit: 'suitNone'}, value);
+  if (key === 'color') return qsanMappedText_({red: 'colorRed', black: 'colorBlack', colorless: 'colorNone'}, value);
+  return value;
+}
+function qsanStatus_(value) {
+  return qsanMappedText_({GAME_OVER: 'gameEnded', game_over: 'gameEnded', waiting: 'statusWaiting',
+    playing: 'statusPlaying', preparing: 'statusPreparing'}, value);
+}
+function qsanLegacyUi_(value) {
+  const text = String(value == null ? '' : value), keys = {'名稱': 'hdrName', '識別碼': 'hdrId', '說明': 'hdrDesc',
+    '體力': 'hpLabel', '體力上限': 'labelMaxHp', '手牌數': 'hdrHandCount', '完整標記': 'labelMarks',
+    '裝備': 'equipLabel', '公開牌區': 'publicCards', '自己的技能': 'selfSkills', '等待互動': 'waitInteraction',
+    '當前沒有處理中的牌': 'pileEmpty', '目前沒有處理中的牌': 'pileEmpty', '沒有手牌': 'handEmpty', '已連線': 'connActive',
+    '已斷開': 'connDisconnected', '連線中': 'connConnecting', '連線失敗': 'connFailed', '未連線': 'connNone',
+    '預檢：待重新預檢': 'preflightIdle', none: 'waitInteraction'};
+  if (keys[text]) return qsanText_(keys[text]);
+  // Translate legacy owned labels while preserving counts and native skill names.
+  const hand = /^(?:本人手牌|自己的手牌) · (\d+) 張$/.exec(text);
+  if (hand) return qsanFormat_('handTitle', hand[1]);
+  if (/^技能：/.test(text)) return qsanText_('skillsLabel') + (text.slice(3) === '無' ? qsanText_('noneLabel') : text.slice(3));
+  return text.replace(/^預檢：/, qsanText_('preflight'));
+}
+function qsanError_(value) {
+  const text = String(value || ''), code = text.split(':')[0].trim();
+  const keys = {startup_timeout: 'startupTimeout', handshake_timeout: 'handshakeTimeout',
+    no_active_request: 'noActiveRequest', request_id_mismatch: 'requestExpired', stale_interaction: 'requestExpired',
+    wire_payload_unavailable: 'wireUnavailable', option_required: 'optionRequired', invalid_option: 'invalidOption',
+    invalid_targets: 'invalidTargets', invalid_cards: 'invalidCards', invalid_skill: 'invalidSkill',
+    invalid_declaration: 'invalidDeclaration', not_paired: 'pairRequired', pair_expired: 'pairExpired',
+    pair_not_found: 'pairExpired', native_unavailable: 'nativeUnavailable', destination_denied: 'destinationDenied'};
+  if (keys[code]) return qsanText_(keys[code]);
+  return text && /^[A-Za-z0-9_ .:/-]+$/.test(text) ? qsanFormat_('serviceCode', text) : text;
 }

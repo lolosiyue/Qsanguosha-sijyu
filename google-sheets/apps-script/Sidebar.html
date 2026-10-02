@@ -29,7 +29,7 @@ const $=id=>document.getElementById(id);
 function busy(v){inflight=v;document.querySelectorAll('button').forEach(b=>{if(b.id!=='stop-updates')b.disabled=v})}
 function show(x,f,kind){
   let text=typeof x==='string'?x:(x&&x.error)||(x&&x.lastError)||(x&&x.status)||f||"<?= qsanText_('doneOk') ?>";
-  if(x&&x.gameOver)text='GAME_OVER\n'+"<?= qsanText_('winnerPrefix') ?>"+(x.winner||"<?= qsanText_('winnerUnknown') ?>");
+  if(x&&x.gameOver)text="<?= qsanText_('gameEnded') ?>"+'\n'+"<?= qsanText_('winnerPrefix') ?>"+(x.winner||"<?= qsanText_('winnerUnknown') ?>");
   else if(x&&x.prompt)text+='\n'+x.prompt;
   if(x&&(x.error||x.lastError)){
     const errorKind=kind||'action';

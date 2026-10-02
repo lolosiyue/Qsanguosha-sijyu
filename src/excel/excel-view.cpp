@@ -58,7 +58,9 @@ QString ruleDescription(const QString &name, bool isGeneral = false)
     if (!Sanguosha || name.isEmpty()) return {};
     // Generals have a composed skill description, not a :general translation.
     if (isGeneral) {
-        const General *general = Sanguosha->getGeneral(name);
+        const QString generalName = name.endsWith(QLatin1String("(lord)"))
+            ? name.left(name.size() - 6) : name;
+        const General *general = Sanguosha->getGeneral(generalName);
         return general ? plainText(general->getSkillDescription(true)) : QString();
     }
     if (const Skill *skill = Sanguosha->getSkill(name))
@@ -203,7 +205,14 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
     };
     QJsonArray options, cards, players, skills, declarations, generals;
     const auto label = [](const QString &name) {
-        return plainText(Sanguosha ? Sanguosha->translate(name) : name);
+        // The server's lord marker decorates a general ID; it is not part of its translation key.
+        const bool lordMarker = name.endsWith(QLatin1String("(lord)"));
+        const QString key = lordMarker ? name.left(name.size() - 6) : name;
+        QString text = plainText(Sanguosha ? Sanguosha->translate(key) : key);
+        if (lordMarker)
+            text += QLatin1String(" (") + plainText(Sanguosha ? Sanguosha->translate("lord") : QStringLiteral("lord"))
+                + QLatin1Char(')');
+        return text;
     };
     for (const QJsonValue &entry : payload.value(QStringLiteral("options")).toArray()) {
         const QJsonObject source = entry.toObject();
@@ -218,7 +227,8 @@ QJsonObject interactionUi(const ClientCore &core, const QString &assetRoot,
         if (pair.size() == 2)
             item.insert(QStringLiteral("label"), label(pair.first()) + QStringLiteral(" / ") + label(pair.last()));
         if (Sanguosha) {
-            const General *general = Sanguosha->getGeneral(id);
+            const QString generalName = id.endsWith(QLatin1String("(lord)")) ? id.left(id.size() - 6) : id;
+            const General *general = Sanguosha->getGeneral(generalName);
             if (general) item.insert(QStringLiteral("image"), generalImage(assetRoot, general));
         }
         const bool choosingGeneral = request.type == InteractionType::ChooseGeneral;
