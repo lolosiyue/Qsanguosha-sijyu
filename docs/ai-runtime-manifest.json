@@ -258,7 +258,7 @@
     {
       "path": "lua/ai/isolated/scarlet-ai.lua",
       "vm": "isolated",
-      "role": "Scarlet isolated handlers: s4_sunjian plus s4_cangzhuo and s4_zhiji reference decisions.",
+      "role": "Scarlet isolated handlers: s4_sunjian, s4_cangzhuo, s4_zhiji, s4_cloud_zhangliao (tuxi/yongqian), s4_cloud_huangzhong (liegong/yongyi), s4_cloud_sunquan (yingzi tags and instance state), s4_lubu (xianfeng/jiwu), s4_zhaoyun (jiuzhu), s4_huanzhaoyun (longxin/jiezhan), s4_zhurong (lieren/juxiang), s4_guanyu (wusheng/benxi), s4_zhangfei (paoxiao), s4_machao (tieji), s4_huangzhong (liegong), and s4_2_zhaoyun (longdan).",
       "load_order": null,
       "loaded_by_default": null,
       "required": false,
