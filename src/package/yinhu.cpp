@@ -4869,7 +4869,9 @@ public:
 
 			try {
 				QVariant data;
-				triggerskill->trigger(Appear, room, player, data);
+				// The borrowed skill acts for this player; the four-argument V2 entry
+				// leaves ctx.owner null and its cost() dereferences it.
+				triggerskill->trigger(Appear, room, player, data, player);
 				if (player->isAlive() && !player->getGeneral2()) {
 
 					QStringList gens;
