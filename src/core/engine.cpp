@@ -406,8 +406,8 @@ void Engine::_loadModScenarios()
 void Engine::addPackage(const QString &name)
 {
     QSanStartupTiming startupPhase("package.lookup", QString(), true);
-    // 防止重複實例化
-    if (findChild<const Package*>(name)) {
+    // 防止重複實例化。套件只掛在 Engine 直屬子物件；遞迴找會走遍全部武將／技能／卡。
+    if (findChild<const Package*>(name, Qt::FindDirectChildrenOnly)) {
         return; 
     }
 
@@ -1111,7 +1111,7 @@ void Engine::addPackage(Package*package)
         return;
     }
     QSanStartupTiming startupPhase("package.registration_lookup", QString(), true);
-    if (findChild<const Package*>(package->objectName()))
+    if (findChild<const Package*>(package->objectName(), Qt::FindDirectChildrenOnly))
         return;
 
     startupPhase.next("package.cards_patterns");
@@ -1228,9 +1228,9 @@ QList<const Package*> Engine::getPackages() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
     if (!runtime)
-        return findChildren<const Package*>();
+        return findChildren<const Package*>(Qt::FindDirectChildrenOnly);
     QList<const Package *> result = runtime->packages();
-    foreach (const Package *package, findChildren<const Package *>())
+    foreach (const Package *package, findChildren<const Package *>(Qt::FindDirectChildrenOnly))
         if (!m_luaPackageNames.contains(package->objectName())
             && !runtime->package(package->objectName())) result << package;
     return result;
@@ -1248,12 +1248,12 @@ Package*Engine::getPackage(const QString &package_name)
 		const Package *package = runtime->package(package_name);
 		if (package) return const_cast<Package *>(package);
 		if (m_luaPackageNames.contains(package_name)) return nullptr;
-		Package *basePackage = findChild<Package *>(package_name);
+		Package *basePackage = findChild<Package *>(package_name, Qt::FindDirectChildrenOnly);
 		if (basePackage && runtime->isLoadingDefinitions())
 			return runtime->packageOverlay(basePackage);
 		return basePackage;
 	}
-	return findChild<Package*>(package_name);
+	return findChild<Package*>(package_name, Qt::FindDirectChildrenOnly);
 }
 
 Package *Engine::clonePackageDefinition(const QString &objectName) const
