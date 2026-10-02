@@ -11,6 +11,8 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QMutex>
 #include <QJsonArray>
 #include <QSet>
 
@@ -35,16 +37,52 @@ bool regularAsset(const QString &path)
     return QFileInfo(current).isFile();
 }
 
+// The identity is rebuilt for every hello and signup, and rehashing every declared
+// Lua file each time stalled the GUI thread on room entry. A digest is reused only
+// while size, mtime and ctime all match, so a replaced file is still read and rehashed.
+QString fileSha256(const QString &absolutePath)
+{
+    struct Entry
+    {
+        qint64 size;
+        qint64 modified;
+        qint64 changed;
+        QString sha256;
+    };
+    static QMutex mutex;
+    static QHash<QString, Entry> cache;
+
+    const QFileInfo info(absolutePath);
+    const qint64 size = info.size();
+    const qint64 modified = info.lastModified().toMSecsSinceEpoch();
+    const qint64 changed = info.metadataChangeTime().toMSecsSinceEpoch();
+    {
+        QMutexLocker lock(&mutex);
+        const auto it = cache.constFind(absolutePath);
+        if (it != cache.constEnd() && it->size == size && it->modified == modified && it->changed == changed)
+            return it->sha256;
+    }
+
+    QFile file(absolutePath);
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    const QByteArray bytes = file.readAll();
+    if (file.error() != QFile::NoError) return {};
+    const QString sha256 = QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex());
+    if (bytes.size() == size) {
+        QMutexLocker lock(&mutex);
+        cache.insert(absolutePath, Entry{size, modified, changed, sha256});
+    }
+    return sha256;
+}
+
 QJsonObject snapshot(const QStringList &paths)
 {
     QJsonObject result;
     for (const auto &path : paths) {
         if (!regularAsset(path)) return {};
-        QFile file(QSanRuntimePaths::assetPath(path));
-        if (!file.open(QIODevice::ReadOnly)) return {};
-        const QByteArray bytes = file.readAll();
-        if (file.error() != QFile::NoError) return {};
-        result.insert(path, QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex()));
+        const QString sha256 = fileSha256(QSanRuntimePaths::assetPath(path));
+        if (sha256.isEmpty()) return {};
+        result.insert(path, sha256);
     }
     return result;
 }
