@@ -59,6 +59,7 @@ let phase: "new" | "initializing" | "ready" | "failed" | "disposed" = "new";
 let generation: number | undefined;
 let runtime: RulesModule | undefined;
 let aborted = false;
+let errorStage = "new";
 const logs: string[] = [];
 let logSize = 0;
 
@@ -78,9 +79,14 @@ function integer(value: unknown, minimum: number): value is number {
 }
 
 function reportError(error: unknown, requestGeneration: number, id?: number): void {
+  // Emscripten filesystem exceptions can be plain objects instead of Error.
+  const fields = record(error) ? ["name", "message", "errno", "code"]
+    .filter(key => typeof error[key] === "string" || typeof error[key] === "number")
+    .map(key => `${key}=${String(error[key])}`).join(", ") : "";
+  const detail = error instanceof Error ? error.message : fields || String(error);
   worker.postMessage({ schema_version: 1, type: "error", generation: requestGeneration,
     ...(id === undefined ? {} : { id }),
-    error: (error instanceof Error ? error.message : String(error)).slice(0, 8192),
+    error: detail.slice(0, 8192), stage: errorStage,
     logs: [...logs] });
 }
 
@@ -91,6 +97,7 @@ function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 function readOutput(fs: WasmFs, path: string): Uint8Array {
+  errorStage = `read output ${path}`;
   const stat = fs.lstat(path);
   if (!fs.isFile(stat.mode) || stat.size <= 0 || stat.size > OUTPUT_LIMIT) {
     throw new Error("WASM result must be a nonempty file of at most 8 MiB");
@@ -112,6 +119,7 @@ async function download(url: URL, limit?: number): Promise<Uint8Array> {
 }
 
 async function prepare(requestGeneration: number): Promise<void> {
+  errorStage = "prepare module";
   if (phase !== "new") throw new Error("WASM Worker has already been initialized");
   generation = requestGeneration;
   phase = "initializing";
@@ -125,6 +133,7 @@ async function prepare(requestGeneration: number): Promise<void> {
   const [wasmBinary, moduleBytes, bundleBytes] = await Promise.all([
     download(wasmUrl), download(moduleUrl, 16 * 1024 * 1024), download(bundleUrl, MANIFEST_LIMIT),
   ]);
+  errorStage = "verify deployment";
   await verifyDeploymentBundle(bundleBytes,
     typeof __QSAN_RULES_DEPLOYMENT_ID__ === "string" ? __QSAN_RULES_DEPLOYMENT_ID__ : "", {
     "qsanguosha_client_wasm.mjs": moduleBytes,
@@ -137,6 +146,7 @@ async function prepare(requestGeneration: number): Promise<void> {
   // Import precisely the bytes just verified, avoiding a second cached fetch.
   const verifiedUrl = URL.createObjectURL(new Blob([ownedBuffer(moduleBytes)], { type: "text/javascript" }));
   let factory;
+  errorStage = "import module";
   try { ({ default: factory } = await import(/* @vite-ignore */ verifiedUrl)); }
   finally { URL.revokeObjectURL(verifiedUrl); }
   if (typeof factory !== "function") throw new Error("WASM module must export an Emscripten factory");
@@ -177,6 +187,7 @@ async function prepare(requestGeneration: number): Promise<void> {
     for (const path of ["/work", "/userdata/config", "/userdata/data", "/tmp"]) fs.mkdirTree(path);
     fs.chdir("/work");
   });
+  errorStage = "initialize module";
   runtime = await factory(options) as RulesModule;
   if (aborted || !runtime?.FS || typeof runtime._qsan_client_bridge_schema !== "function"
       || runtime._qsan_client_bridge_schema() !== RULES_BRIDGE_SCHEMA
@@ -186,6 +197,7 @@ async function prepare(requestGeneration: number): Promise<void> {
       || typeof runtime._qsan_client_shutdown !== "function") {
     throw new Error("WASM initialization failed or client runtime exports are missing");
   }
+  errorStage = "native code identity";
   const codeStatus = runtime._qsan_client_code_identity();
   if (aborted || codeStatus !== 0) throw new Error(`WASM code identity failed (${codeStatus})`);
   const code = JSON.parse(decoder.decode(readOutput(runtime.FS, "/work/code.json")));
@@ -202,15 +214,20 @@ async function prepare(requestGeneration: number): Promise<void> {
 }
 
 async function initialize(requestGeneration: number, serverIdentity: unknown, contentValue: unknown): Promise<void> {
+  errorStage = "verify server identity";
   if (phase !== "initializing" || !runtime || aborted) throw new Error("rules_reload_required");
   const server = await verifyNativeIdentity(serverIdentity);
   const code = JSON.parse(decoder.decode(readOutput(runtime.FS, "/work/code.json")));
   if (!record(code) || code.code_id !== server.code_id) throw new Error("rules_version_mismatch");
   const content = validateContentManifest(contentValue);
+  errorStage = "fetch content";
   const files = await fetchContent(content);
+  errorStage = "install content";
   installContent(runtime.FS, files, content.runtime_content);
+  errorStage = "verify installed content";
   await verifyInstalledContent(runtime.FS, content);
   if (aborted) throw new Error("WASM initialization aborted");
+  errorStage = "native client initialization";
   const status = runtime._qsan_client_initialize();
   if (aborted || status !== 0) throw new Error(`WASM client initialization failed (${status})`);
   const info: unknown = JSON.parse(decoder.decode(readOutput(runtime.FS, "/work/init.json")));
@@ -242,6 +259,7 @@ async function initialize(requestGeneration: number, serverIdentity: unknown, co
   // Arm raw-frame ingress before the transport exists. This permanently locks
   // out the external-snapshot entry, so no browser state can replace the
   // native one for the rest of this Engine's life.
+  errorStage = "reset native stream";
   const armed = runStream({ schema_version: 1, action: "reset", generation: requestGeneration });
   if (armed.success !== true) {
     throw new Error(`WASM stream reset rejected: ${String(armed.reason)}`);
