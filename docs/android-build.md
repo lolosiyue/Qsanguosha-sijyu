@@ -3,6 +3,8 @@
 本機日常使用原生 `x86_64` APK 與既有 API 33 模擬器；`arm64-v8a` 留作實機／發行建置參考。
 本機日常驗收以覆蓋安裝、`adb logcat`／截圖收集，以及完整局與正常退出分開判定為準。
 首次外部聲畫 ZIP／Storage Access Framework（SAF）匯入流程保留於本文後半，日常更新不需重做。
+32 位元 ARMv7 的裝置選擇、模式設定與收尾，直接查閱
+[ARMv7 操作與問題處理](#android-armv7-reuse)；不要重新準備工具鏈或媒體包。
 
 **版本固定規則：Android 不再雜湊資源、不逐檔掃描聲畫，也不因圖片缺檔擋住開局。**
 已安裝媒體在 APK 更新後繼續沿用；新增圖片不觸發全包重匯。
@@ -94,8 +96,8 @@ try {
 基線資源也觸發第二輪版本複製，同樣會耗時並占用數 GB。[新資源流程的來源修正](android-extension-runtime.md#匯入更新效能修正)
 已移除平方次數 ZIP 比對、可 seek 來源的 spool／重複雜湊讀取及媒體版本複製；
 內容準備只建立媒體目錄引用並複製規則／介面。移除資源雜湊與聲畫掃描後，缺圖片
-不再擋住連線；對局仍會因 AudioTrack 崩潰而未完成。首次完整匯入的新耗時尚未重測，
-不能用啟動秒數代替。
+不再擋住連線；先前該 AVD 的有聲局因 AudioTrack 崩潰而未完成。該環境首次完整
+匯入的新耗時未重測，不能用啟動秒數代替；ARMv7／LDPlayer 的靜音完整局另見下節。
 
 首次匯入期間 Download ZIP、私有 spool、解壓 blob 與 runtime 版本可能同時存在，
 12 GiB 分割區曾接近滿載。日常不要重複保留傳輸副本；匯入完成後清理本輪傳輸檔，
@@ -103,6 +105,127 @@ try {
 
 此 AVD 是 API 33 x86_64／4 KiB pages；日常 APK 使用原生 x86_64。模擬器上的
 ARM translation 執行不能代替 arm64 實機；兩者均不等同實機或折疊機驗收。
+
+<a id="android-armv7-reuse"></a>
+## ARMv7 操作與問題處理（2026-10-03）
+
+本節保存本次 32 位元建置與單機 `03_1v2` 的可重用流程，不取代上方 x86_64 日常環境。
+本次經使用者授權改用既有 LDPlayer 9，保留所有 App 資料；下次先核對任務授權與裝置 ABI，
+不因這筆歷史紀錄自動切換模擬器或啟用 root。
+
+### 沿用位置與建置
+
+| 用途 | 已使用的位置／值 |
+|---|---|
+| ARMv7 Qt kit | `H:\qsan-android-x86_64\qt\6.11.1\android_armv7`；共用根目錄名稱保留 x86_64，實際 kit 是 ARMv7 |
+| ARMv7 Release cache | `builds/android-armv7-release`；`CMakeCache.txt` 在此根目錄，不在其 `cmake/` 子目錄 |
+| 工具鏈 | 共用根 `H:\qsan-android-x86_64`、JDK 21、NDK `27.2.12479018`、既有 SDK；不另裝一套 |
+| Release 原產物 | `builds/android-armv7-release/cmake/android-app/android-build/build/outputs/apk/release/android-build-release-unsigned.apk` |
+| 已簽章修正 APK | `builds/android-armv7-10p-20261003/QSanguosha-armeabi-v7a-release-zip64-signed.apk` |
+| LDPlayer 9 | `L:\phone\LDPlayer\LDPlayer9`；既有 index `0`，名稱「雷電模擬器L」 |
+| 本次裝置 | Android 9／API 28、`zygote64_32`、`libnb.so` ARM translation；當時序號 `emulator-5554`，同一實例亦顯示為 `127.0.0.1:5555` |
+| 實例設定 | `L:\phone\LDPlayer\LDPlayer9\vms\config\leidian0.config`；本次原狀為 ADB 關閉、root 停用 |
+| 已匯入媒體 | 沿用 App 私有內容；原包仍是 `H:\qsan-validation\room-responsive-20260916\qsan-media.zip` |
+| 一次性證據 | [完整驗收報告](../builds/android-armv7-10p-20261003/summary.md)；目錄的 10p 是原任務名稱，實際指定局改為 `03_1v2` |
+
+裝置啟動後先用 `adb devices -l` 與 LDPlayer `list2` 確認序號對應的 index，所有 ADB 操作指定
+`-s`。不要把別的工作正在使用的實例、重複 TCP 別名或 offline 項目當成新的待測裝置。
+
+```powershell
+$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+$serial = 'emulator-5554' # 先確認它仍對應已授權的 LDPlayer index 0。
+& $adb -s $serial shell getprop ro.product.cpu.abilist
+& $adb -s $serial shell getprop ro.product.cpu.abilist32
+& $adb -s $serial shell getprop ro.zygote
+```
+
+原 `Responsive_API_33` 只有 x86_64／arm64，`zygote64` 不支援 32 位元 App；
+ARM64 translation 存在也不等於能跑 ARMv7。先做上面的只讀核對，ABI 不符即停止安裝，
+不重建同一 APK、不清資料，也不另建 AVD。
+
+已有建置授權且完成約定檢查點後，沿用此命令增量建置：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-android.ps1 `
+  -Configuration Release -Abi armeabi-v7a `
+  -ToolchainRoot H:\qsan-android-x86_64 `
+  -SdkRoot "$env:LOCALAPPDATA\Android\Sdk" -AudioBackend NULL
+if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
+```
+
+`-Abi` 使用 `armeabi-v7a`；`armv7` 是 kit／preset／cache 名稱，不能拿來當腳本的 ABI 參數。
+核對 cache 的來源仍是 L、`ANDROID_ABI=armeabi-v7a`、`QSAN_AUDIO_BACKEND=NULL`，
+保留增量 cache，不用 `--fresh` 或 `--clean-first`。沒有來源變更時可沿用已交付 APK，
+不為讀文件再建置或重跑已完成的局。
+
+本次 Release 原產物未簽章，另外以既有持久開發憑證簽章；沿用下方
+「固定開發簽名與覆蓋更新」的本機設定，金鑰與密碼不寫入文檔或倉庫。
+先以 `apksigner verify --verbose --print-certs` 核對原憑證，再 `install -r`；
+簽章不符就停止，不卸載。本次 APK 的 90 個 `.so` 均為 `ELF32 / EM_ARM`，唯一 ABI 是
+`armeabi-v7a`；檢查應涵蓋 APK 內所有 native libraries，不只主程式。
+
+本次曾在 Gradle 顯示 `BUILD SUCCESSFUL`、APK 已產出後，外層命令仍等待輸出管線 EOF；
+新啟動的 Gradle daemon 保留了管線。先保存建置日誌、核對本輪 APK 與程序命令列／啟動時間，
+只處理能證明由本輪建立的 daemon，再等待外層退出碼。不能因此重新建置、清 cache、
+將成功文字直接當退出碼，或停止全部 Java／其他工作共用的 daemon。
+
+### 首次匯入與模式設定
+
+| 遇到的問題 | 已確認處理／下次入口 |
+|---|---|
+| ARMv7 匯入 2.75 GB ZIP 報 `cannot read ZIP footer` | 使用已包含 32 位元大檔 reader 修正的 APK，見 [大檔 ZIP 故障分類](android-extension-runtime.md#android-32bit-zip-footer)；保存首次錯誤，不重打包或反覆傳輸同一媒體 |
+| 匯入進度達 100% | 還要確認完整暫存／版本準備成功，再重啟使版本生效；只有 `adb push` 或解壓 100% 不算匯入完成。已完成匯入的日常 APK 更新不重匯 |
+| 本次 APK 首頁固定 2P，沒有模式設定入口 | 先查本次待測版本是否已提供設定入口；只有仍缺入口且取得明確授權時才暫時 root 調整 App 設定。模式鍵是 `GameMode=03_1v2`，不是顯示名稱 `03_1V2` |
+| `adb root` 不支援 production adbd | 不反覆嘗試；本次使用 LDPlayer 正式 `modify --index 0 --root 1` 後重啟，透過 `su` 僅存取 QSanguosha 私有檔案，操作後停用並驗證 |
+| `su -c cat` 的輸出將 LF 轉為 CRLF | 二進位備份用 `exec-out` 讀取 Base64，再在主機解碼及以 bytes 儲存；不能把終端文字輸出直接當設定原檔 |
+| Android 返回鍵意外觸發預設 2P | 首頁不以 BACK 當選單／退出操作；使用 `KEYCODE_MENU` 開啟原生選單。誤開局另記中止，不計指定完整局 |
+
+需要暫改設定時，先正常關閉 App 並確認 PID 消失；先備份 LDPlayer 原設定檔，
+再啟用 root。App 設定實際位置是
+`/data/user/0/org.qsanguosha.game/files/config.ini`，不是 `userdata/` 或某個 runtime 快照內。
+記錄原檔 bytes、UID、GID 與 mode；本次為 11420 bytes、`10062:10062:600`，這些數字不能
+當下一次的固定值。先取得未經文字換行轉換的備份，再只改 `[General]` 的 `GameMode`，
+若缺鍵則新增該鍵；寫回既有 inode，避免替換檔案造成 owner／權限改變。
+
+可重用的原始位元讀取方式如下；命令僅在已授權的暫時 root 期間使用，ADB 輸出須以 bytes
+捕捉，Base64 在主機解碼，不能經 PowerShell 的文字重導向保存原檔：
+
+```text
+adb -s <已確認序號> exec-out su -c "base64 /data/user/0/org.qsanguosha.game/files/config.ini"
+```
+
+寫回後以同一方法逐位元核對，並核對 owner／mode；重新啟動 App，先看首頁確實顯示
+「3人局［斗地主］」，再點 QuickJoin。備份及還原在 App 關閉時做，避免 App 稍後覆寫設定。
+本次的 `configure_mode_verified.py`／`restore_app_config.py` 是證據目錄中的一次性腳本，
+包含固定序號、原 bytes 與 UID，不能直接當成下次通用 runner。
+
+### 結局判定與還原順序
+
+1. 開局前保存診斷日誌基線、實際模式／人數、ABI、音訊後端與預算。本次從開局起使用產品
+   auto-robots／選將／Trustee，不在卡住後更改驗收方式。`--test-general=caocao` 不在候選時
+   會正常選其他候選，核對 `chooseGeneral` 日誌；本次實際是 `heg_xugong`。
+2. `client_autotest_diag.log` 可能在目前 active 的 `content/versions/<id>/runtime/`，
+   另有 `userdata/` 日誌；查實際 active 路徑，不沿用舊版本 UUID。只看本次基線之後新增的
+   `GAME_STARTED players=3`／`GAME_OVER`，再以勝負畫面確認勝方。
+   `GAME_OVER victory=0` 是本機玩家未勝，不能把 `0` 當勝方 ID 或失敗的完整局。
+3. 勝負對話框出現後，先保存結果、點「Return to main menu」。模態對話框未關閉時，
+   背後 Game 選單不能用來退出。返回首頁後 `KEYCODE_MENU` → Game → Exit → 確認；
+   `force-stop`、重啟模擬器或殺程序僅是異常清理，不能算正常退出。
+4. 分開核對房間收尾與 App 退出：本次單機使用 loopback 9527／9528，返回首頁後埠及
+   App UID 的 socket 已消失，正常退出後 PID 消失。下次從本輪 PID／UID 與 socket
+   記錄識別歸屬，不拿其他 App 的 listener 當成孤兒。
+5. App 退出後還原設定原 bytes、UID／GID／mode，只清理本輪新增的 Download ZIP、
+   設定傳輸檔與 UI dump；保留已匯入媒體、H 碟原包與其他 App 資料。
+6. 若原本 root 停用，`modify --index 0 --root 0` 後重啟，核對一般 ADB 為 shell UID、
+   `su` 不存在且 App 沒有自動重開；只看 host 設定欄位不算 guest root 已停用。
+   關閉本輪實例，確認停止後精確還原 LDPlayer 原設定，包括 ADB 開關。
+   回收本輪 collector，不停止共用 ADB server，也不影響其他實例。
+
+本次唯一指定局自然 `GAME_OVER`，地主孫尚香［國］勝，場內 12 分 40 秒；
+正常回首頁／退出、埠釋放、App 設定與 LDPlayer 原設定還原均已核對。
+原定 10P 已被使用者改為 `03_1v2`，不再補跑 10P；ARM translation、`NULL` 音訊與託管
+不能代替實機、音訊或人工觸控驗收。逾時、崩潰或停止只保存第一份失敗證據，
+新增修復／重開局仍遵守範圍與檢查點授權，不因完整測試授權無限重試。
 
 ## 固定工具鏈與目錄
 
@@ -333,7 +456,8 @@ viewport，避免模擬器上已觀察到的 OpenGL 破圖與前後景 EGL conte
 
 靜音＋software 的 Debug APK 首頁可顯示，「關於」對話框與已就緒首頁的前後景
 恢復正常；首頁啟動時間偏長，尚未外推為啟動效能通過。
-完整對局、實機、CI 及 GPU 特效未驗收。
+該次 Debug 首頁短驗收未涵蓋完整對局、實機、CI 及 GPU 特效；後續 ARMv7／LDPlayer
+Release 靜音單機完整局見 [本次紀錄](#android-armv7-reuse)，不外推其他 gate。
 
 ## AAudio CFI 音訊橋接：已確認故障機制
 
@@ -357,14 +481,15 @@ NULL 音訊與 software／raster APK 的開局後崩潰，完整 SYSTEM_TOMBSTON
 指令與 native 符號相符：
 `Player::addCard()` 呼叫空卡牌的 `Card::getId()`，讀取 `this + 0x58`。
 
-該 Android 固定工作樹漏帶主分支的隱藏手牌修正。開局收到的 `-1`
+當時 Android 工作樹漏帶主分支的隱藏手牌修正。開局收到的 `-1`
 代表未知牌，只能增加手牌張數，不能放入實體 `Card *` 清單；同一筆手牌移動也
-不能重複計入。更新 APK 前須將該修正的 `src/core/player.cpp`、
-`src/client/client.cpp`、`src/client/clientplayer.cpp/.h` 一起對齊到固定 Android
-工作樹，不能只同步 UI／音訊檔案。保留其他工作樹差異，不作整樹覆蓋。
+不能重複計入。此歷史紀錄供問題分類，涉及 `src/core/player.cpp`、
+`src/client/client.cpp`、`src/client/clientplayer.cpp/.h`。目前直接從 L 建置，
+先確認來源是否已含修正，不再複製到舊 Android 工作樹或只同步 UI／音訊檔案。
 
-APK 重建與開局回歸尚未執行。這個空卡牌缺陷與前節的 AAudio CFI callback
-崩潰不同，修復它不代表恢復有聲。
+該次記錄沒有 APK 重建與開局回歸證據；不能用它判定新版仍未驗。後續 ARMv7 完整局
+證據另見上方紀錄。這個空卡牌缺陷與前節的 AAudio CFI callback 崩潰不同，修復它
+不代表恢復有聲。
 
 ## 驗證限制與故障分類
 

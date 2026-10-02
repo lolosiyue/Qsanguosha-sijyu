@@ -6,6 +6,8 @@
 #include <QTemporaryFile>
 #include <QHash>
 
+#include <memory>
+
 class AndroidZipReader
 {
 public:
@@ -37,6 +39,8 @@ private:
     // Caller keeps source open until extraction ends; sequential sources use m_spool.
     QIODevice *m_input = nullptr;
     QTemporaryFile m_spool;
+    // The adapter borrows a descriptor from source or m_spool; destroy it first.
+    std::unique_ptr<QIODevice> m_nativeInput;
     QList<Entry> m_entries;
     QHash<quint64, qsizetype> m_entryByOffset;
     quint64 m_archiveSize = 0;
