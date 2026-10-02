@@ -651,6 +651,11 @@ class JigongMax : public MaxCardsSkillV2
 {
 public:
     JigongMax() : MaxCardsSkillV2("#jigong") { setHolderSelector(CorrectSkill_System); }
+    CorrectSkillResult getCorrection(const CorrectSkillContext &) const override
+    {
+        // A fixed hand limit must not inherit the default extra-card bonus.
+        return CorrectSkillResult::noEffect();
+    }
     CorrectSkillResult getFixedValue(const CorrectSkillContext &ctx) const override
     {
         if (!ctx.primary || QJsonDocument::fromJson(ctx.primary->property("JigongEffects").toByteArray()).toVariant().toList().isEmpty() || ctx.currentAmount <= 0)

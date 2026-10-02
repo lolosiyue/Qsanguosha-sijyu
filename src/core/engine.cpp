@@ -3199,7 +3199,8 @@ QList<SkillUIContribution> Engine::listMaxCardsSkillContributions(const MaxCards
         foreach (const CorrectSkillEvalItem &item,
                  evaluateCorrectSkillDetailed(v2, v2->getHolderSelector(),
                                               target, nullptr, nullptr, -1, true, true)) {
-            if (!item.result.applies) continue;
+            // Negative fixed limits are ignored by correctMaxCards as well.
+            if (!item.result.applies || item.result.value < 0) continue;
             hasFixed = true;
             const QString key = item.holderName;
             if (!fixedByHolder.contains(key) || item.result.value > fixedByHolder.value(key))
