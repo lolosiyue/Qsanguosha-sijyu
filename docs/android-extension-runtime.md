@@ -40,6 +40,37 @@ Web／網路規則身分與聲畫資源是不同契約，本次只移除 Android
 `03_1v2` 以 `NULL` 音訊完成自然結局與正常退出；這不代表有聲路徑已修復。
 環境、操作與證據見 [ARMv7 操作與問題處理](android-build.md#android-armv7-reuse)。
 
+<a id="android-boot-attempt-recovery"></a>
+### 啟動未完成回復：不要把按鈕文字當作媒體缺失
+
+2026-10-03 雷電14／Android14 啟動時，內容準備已結束，`content/state.json` 同時有
+`active_media_ready=true` 與 `boot_attempt=true`；畫面顯示「加入完整聲畫 ZIP」按鈕。
+後者是資源管理／回復介面的既有入口，不能單憑文字判定缺少 ZIP，也不能因而重新匯入完整媒體。
+media-ready 標記僅表示管理器狀態，並不證明全部媒體 payload 或有聲播放已驗收。
+
+`boot_attempt` 是上次內容啟動未完成的保護標記；App／VM 中途退出可能留下它，原因需另查。
+建立 Engine 與 QA controller 前會先執行內容準備及回復；`--asset-root` 不會跳過這個啟動入口。
+先確認序號確實是指定 VM、App 是否處於前景及本輪退出／VM 日誌，保留首次錯誤。
+本次 VBox 只證明 host 發出 `powerDown`，未定位 caller，不能宣稱是遊戲原生崩潰。
+
+若使用者選擇只重試同一內容，**移除 `boot_attempt` 是一次有界的人工回復例外，需有該次授權**；
+不作為日常啟動步驟，不改「失敗先進回復介面」政策。本次已經取得使用者同意並成功執行：
+
+1. App 不在運行時，以指定序號的 `run-as org.qsanguosha.game` 讀取 `files/content/state.json`。
+   保存原檔及提案，只移除 `boot_attempt`，保留其他所有欄位。
+2. 提案具體列出 active、previous、媒體狀態均不變，未切回版本、未停用擴展、未重匯 ZIP、未清資料。
+3. 套用前重新讀取狀態，須與已核准提案的原始狀態完全相符；若有變動就停止，不覆寫新狀態。
+4. 以 App 自身 UID、私有暫存檔及同目錄原子替換寫入；不用 root，不手動刪 baseline／blobs／versions。
+5. 讀回 JSON，確認差異只有該標記，保存 before／after；然後正常啟動一次。
+6. 正常啟動可能依既有流程重新合成 active snapshot，這不代表手動回復時改寫了 active。
+   保存啟動後狀態，不強行恢復舊 UUID 或另外固定舊 runtime。
+7. 同一阻擋或 VM offline 再發生，保存證據並停止；新的引擎修復、清資料、下載或反覆完整局須另界定範圍。
+
+具體批准差異、before／after 及正常 05P 結果見
+[本次回復與驗收報告](../builds/android-10p-20261003-011a/summary.md)。可重用的裝置／連線／
+完整局流程見 [雷電14 操作](android-build.md#android-14-ldplayer-reuse)。本次保留聲畫與擴展，
+自然完成 05P 並正常退出；不外推為有聲或手動 GUI 驗收。
+
 ## 匯入／更新效能修正
 
 固定單一環境以 [Android 建置文件](android-build.md#android-daily-environment) 為準。
