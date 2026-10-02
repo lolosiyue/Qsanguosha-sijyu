@@ -27,7 +27,7 @@ function shape_(request) {
 function ordered_(rows, bank, repeats) {
   const items = [];
   rows.forEach((r, index) => {
-    if (r[0] !== bank || !chosen_(r[3])) return;
+    if (qsanKind_(r[0]) !== bank || !chosen_(r[3])) return;
     if (!boolean_(r[6])) throw new Error(qsanText_('unavailablePicked'));
     const raw = String(r[4]).trim();
     const places = raw ? raw.split(',').map(x => integer_(x.trim(), 1)) : [1000000 + index];
@@ -67,7 +67,7 @@ function draftFromRows_(meta, rows) {
     }
     case 'assignment': {
       const assignments = selected('assignment').map(r => {
-        const role = String(r[5]); if ((meta.roles || []).indexOf(role) < 0) throw new Error(qsanText_('roleRequired'));
+        const role = qsanFaction_(r[5]); if ((meta.roles || []).indexOf(role) < 0) throw new Error(qsanText_('roleRequired'));
         return {name: String(r[1]), value: role};
       });
       return {assignments: assignments};
@@ -75,7 +75,7 @@ function draftFromRows_(meta, rows) {
     case 'rearrangement': {
       const top = [], bottom = [];
       selected('rearrange').forEach(r => {
-        const side = String(r[5]).toLowerCase();
+        const side = qsanSide_(r[5]);
         if (side !== 'top' && side !== 'bottom') throw new Error(qsanText_('guanxingSide'));
         (side === 'top' ? top : bottom).push(integer_(r[1], 0));
       });

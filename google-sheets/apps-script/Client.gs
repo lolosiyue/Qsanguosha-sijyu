@@ -75,10 +75,10 @@ function fetch_(path, body, base) {
   const status = response.getResponseCode();
   if (status >= 300 && status < 400) throw new Error(qsanText_('redirectRejected'));
   let value; try { value = JSON.parse(response.getContentText()); } catch (_) { throw new Error(qsanText_('invalidResponse')); }
-  if (status < 200 || status >= 300) { const error = new Error(String(value.error || qsanText_('serviceUnavailable'))); error.httpStatus = status; throw error; }
+  if (status < 200 || status >= 300) { const error = new Error(qsanError_(value.error || qsanText_('serviceUnavailable'))); error.httpStatus = status; throw error; }
   return value;
 }
-function getClientState() { return {paired: !!get_('token', ''), endpoint: get_('endpoint', ''), pending: !!get_('pending', ''), lastError: get_('last_error', '')}; }
+function getClientState() { return {paired: !!get_('token', ''), endpoint: get_('endpoint', ''), pending: !!get_('pending', ''), lastError: qsanError_(get_('last_error', ''))}; }
 function outcome_(status, extra) { return Object.assign({state: getClientState(), status: status}, extra || {}); }
 function onOpen() {
   SpreadsheetApp.getUi().createMenu(qsanText_('menuRoot')).addItem(qsanText_('menuSetup'), 'setupWorkbook')
@@ -125,7 +125,7 @@ function finishCommand_(body) {
   // full catalog/snapshot in the limited user property store.
   saveJson_('receipt', {id: body.id, name: body.name, ok: reply.ok, error: String(reply.error || '')});
   clearPending_();
-  if (!reply.ok) { drop_('preflight'); throw new Error(String(reply.error || qsanText_('nativeRejected'))); }
+  if (!reply.ok) { drop_('preflight'); throw new Error(qsanError_(reply.error || qsanText_('nativeRejected'))); }
   drop_('last_error'); return reply.result || {};
 }
 function retryPending() {
@@ -133,7 +133,7 @@ function retryPending() {
     const body = pending_();
     if (body) { const result = finishCommand_(body); if (body.name === 'select' && result.selection) applySelection_(result.selection, body.args.draft); return outcome_(qsanText_('retryConfirmed')); }
     const receipt = json_('receipt', null);
-    return outcome_(receipt ? (receipt.ok ? qsanText_('lastSuccess') : qsanText_('lastRejected') + receipt.error) : qsanText_('noPending'));
+    return outcome_(receipt ? (receipt.ok ? qsanText_('lastSuccess') : qsanText_('lastRejected') + qsanError_(receipt.error)) : qsanText_('noPending'));
   });
 }
 function poll() {
@@ -149,18 +149,18 @@ function applySelection_(selection, draft) {
   const meta = json_('meta', {});
   if (selection.generation !== meta.generation || selection.revision !== meta.revision || selection.request_id !== meta.request_id) throw new Error(qsanText_('preflightExpired'));
   saveJson_('preflight', {hash: digest_(JSON.stringify({meta: meta, draft: draft})), can_confirm: selection.can_confirm === true});
-  renderPreflight_(qsanText_('preflight') + (selection.can_confirm ? qsanText_('canConfirm') : String(selection.reason || qsanText_('continueSelecting'))));
+  renderPreflight_(qsanText_('preflight') + (selection.can_confirm ? qsanText_('canConfirm') : qsanError_(selection.reason || qsanText_('continueSelecting'))));
   if (selection.ui) renderActions_(meta, selection.ui, true);
 }
 function previewSheetDraft() {
   return locked_(function() { const selected = readDraft_(), result = command_('select', {request_id: selected.meta.request_id, draft: selected.draft}, selected.meta);
-    applySelection_(result.selection || {}, selected.draft); return outcome_(result.selection.can_confirm ? qsanText_('preflightPassed') : String(result.selection.reason || qsanText_('continueSelecting'))); });
+    applySelection_(result.selection || {}, selected.draft); return outcome_(result.selection.can_confirm ? qsanText_('preflightPassed') : qsanError_(result.selection.reason || qsanText_('continueSelecting'))); });
 }
 function submitSheetDraft() {
   return locked_(function() {
     const selected = readDraft_(), result = command_('select', {request_id: selected.meta.request_id, draft: selected.draft}, selected.meta);
     applySelection_(result.selection || {}, selected.draft);
-    if (!result.selection.can_confirm) throw new Error(String(result.selection.reason || qsanText_('incompleteSelection')));
+    if (!result.selection.can_confirm) throw new Error(qsanError_(result.selection.reason || qsanText_('incompleteSelection')));
     // Submit the exact captured identity and draft that native preflight saw.
     command_('submit', {request_id: selected.meta.request_id, draft: selected.draft}, selected.meta);
     drop_('preflight'); return outcome_(qsanText_('submitted'));

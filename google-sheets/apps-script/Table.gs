@@ -1,8 +1,9 @@
 /** Cells are the playable UI. Remote text is always written as literal text. */
 function text_(value) {
   if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return qsanText_(value ? 'valueYes' : 'valueNo');
   if (Array.isArray(value)) return value.map(text_).join('、');
-  if (typeof value === 'object') return Object.keys(value).map(k => k + '：' + text_(value[k])).join('；');
+  if (typeof value === 'object') return Object.keys(value).map(k => qsanFieldText_(k) + '：' + text_(qsanFieldValue_(k, value[k]))).join('；');
   return String(value);
 }
 function equipLabels_(value) {
@@ -35,7 +36,8 @@ function safe_(value) {
   return /^\s*[=+@-]/.test(text) ? "'" + text : text;
 }
 function sheet_(name) {
-  const sheet = SpreadsheetApp.getActive().getSheetByName(name);
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(qsanSheetName_(name)) || ss.getSheetByName(qsanSheetId_(name));
   if (!sheet || !sheet.getDeveloperMetadata().some(x => x.getKey() === 'QSAN_OWNER' && x.getValue() === QSAN.VERSION))
     throw new Error(qsanText_('ownedSheetRequired'));
   return sheet;
@@ -58,9 +60,11 @@ function setupWorkbook() { return locked_(function() { setup_(); return outcome_
 function setup_() {
   const ss = SpreadsheetApp.getActive();
   QSAN.SHEETS.forEach(name => {
-    let sheet = ss.getSheetByName(name);
+    const displayName = qsanSheetName_(name);
+    let sheet = ss.getSheetByName(displayName) || ss.getSheetByName(name);
     if (sheet) {
       sheet_(name); sheet.setColumnWidth(2, 180); sheet.setColumnWidth(3, 260); sheet.setColumnWidth(8, 330); sheet.setColumnWidth(11, 90);
+      if (sheet.getName() === name) sheet.setName(displayName);
       sheet.getRange(1, 1, sheet.getMaxRows(), 10).setWrap(true);
       sheet.getRange(1, 11, sheet.getMaxRows(), 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
       if (name === 'QSAN Log') sheet.setColumnWidth(1, 900);
@@ -70,7 +74,7 @@ function setup_() {
       }
       return;
     }
-    sheet = ss.insertSheet(name); sheet.addDeveloperMetadata('QSAN_OWNER', QSAN.VERSION);
+    sheet = ss.insertSheet(displayName); sheet.addDeveloperMetadata('QSAN_OWNER', QSAN.VERSION);
     sheet.setFrozenRows(name === 'QSAN Actions' ? 6 : 1);
     sheet.setColumnWidths(1, 11, 110); sheet.setColumnWidth(2, 180); sheet.setColumnWidth(3, 260); sheet.setColumnWidth(8, 330); sheet.setColumnWidth(11, 90);
     if (name === 'QSAN Log') sheet.setColumnWidth(1, 900);
@@ -104,6 +108,133 @@ function setup_() {
     ], 3);
   }
   writeBlock_('QSAN Details', 'detail_header', 1, 1, [[qsanText_('detailTitle'), qsanText_('detailHint')]], 2);
+  localizeWorkbook_();
+}
+function actionDisplayRow_(row) {
+  const display = row.slice();
+  display[0] = qsanKindText_(row[0]);
+  display[5] = qsanKind_(row[0]) === 'rearrange' ? qsanSideText_(row[5])
+    : qsanKind_(row[0]) === 'assignment' ? qsanMappedText_(QSAN_FACTION_KEYS, qsanFaction_(row[5])) : row[5];
+  display[6] = row[6] === '' ? '' : qsanText_(boolean_(row[6]) ? 'valueYes' : 'valueNo');
+  display[7] = description_({description: row[7]});
+  return display;
+}
+function actionHeaders_() {
+  return ['hdrKind', 'hdrId', 'hdrName', 'hdrCheck', 'hdrOrder', 'hdrSide', 'hdrEnabled', 'hdrDesc', 'hdrSkill', 'hdrInstance'].map(qsanText_).concat('');
+}
+function actionFormatting_(sheet, first, count) {
+  const candidates = ensureRange_(sheet, first, 1, Math.max(500, count), 11);
+  sheet.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$D' + first + '=TRUE')
+      .setBackground('#d2e3fc').setRanges([candidates]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$G' + first + '="' + qsanText_('valueNo') + '"')
+      .setFontColor('#9aa0a6').setRanges([candidates]).build()]);
+}
+function localizeWorkbook_() {
+  // Upgrade owned display cells only. Connection settings, IDs, drafts and credentials survive.
+  const room = sheet_('QSAN Room');
+  const names = ['roomHdrConnect', 'roomName', 'roomAvatar', 'roomServer', 'roomPort', 'roomRobots',
+    'roomGuide', 'roomChat', 'roomSettings', 'roomCatalog', 'roomColName'];
+  room.getRange(1, 1, names.length, 1).setValues(names.map(key => [qsanText_(key)]));
+  const notes = ['roomHdrNote', '', 'roomAvatarNote', 'roomServerNote', '', 'roomRobotsNote',
+    'roomGuideNote', 'roomChatNote', 'roomSettingsNote', 'roomCatalogNote', 'roomColValue'];
+  room.getRange(1, 3, notes.length, 1).setValues(notes.map(key => [key ? qsanText_(key) : '']));
+  room.getRange(1, 2).setValue(qsanText_('roomHdrValue'));
+  room.getRange(7, 2).setValue(qsanText_('roomGuideValue'));
+  room.getRange(10, 2).setValue(qsanText_('roomCatalogValue'));
+  room.getRange(11, 2).setValue(qsanText_('roomColType'));
+  const last = room.getLastRow();
+  if (last >= 12) {
+    const settings = room.getRange(12, 2, last - 11, 2).getValues();
+    settings.forEach(row => {
+      const type = Object.keys(QSAN_SETTING_TYPES).find(key => qsanSettingType_(row[0], key));
+      if (type) row[0] = qsanText_({keep: 'settingKeep', bool: 'settingBool', integer: 'settingInteger', list: 'settingList', text: 'settingText'}[type]);
+      if (type === 'bool') row[1] = qsanText_(boolean_(row[1]) ? 'valueYes' : 'valueNo');
+      if (type === 'keep') row[1] = qsanText_('settingKeepNote');
+    });
+    // Replace legacy boolean dropdowns before writing the translated choices.
+    settings.forEach((row, i) => { if (qsanSettingType_(row[0], 'bool')) room.getRange(i + 12, 3).clearDataValidations(); });
+    room.getRange(12, 2, settings.length, 2).setValues(settings.map(row => row.map(safe_)));
+    settings.forEach((row, i) => { if (qsanSettingType_(row[0], 'bool')) room.getRange(i + 12, 3)
+      .setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList([qsanText_('valueYes'), qsanText_('valueNo')], true).setAllowInvalid(false).build()); });
+  }
+  const actions = sheet_('QSAN Actions'), first = actionFirst_(), count = Number(get_('action_rows', '0'));
+  actions.getRange(first - 1, 1, 1, 11).setValues([actionHeaders_()]);
+  if (count) {
+    const rows = actions.getRange(first, 1, count, QSAN.COLS).getValues().map(actionDisplayRow_);
+    actions.getRange(first, 6, count, 1).clearDataValidations();
+    actions.getRange(first, 1, count, QSAN.COLS).setValues(rows.map(row => row.map(safe_)));
+    actions.getRange(first, 4, count, 1).setNumberFormat('General').setValues(rows.map(row => [chosen_(row[3])]))
+      .setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+    const meta = json_('meta', {});
+    if (meta.shape === 'rearrangement') actions.getRange(first, 6, count, 1).setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInList([qsanText_('sideTop'), qsanText_('sideBottom')], true).setAllowInvalid(false).build());
+    if (meta.shape === 'assignment') actions.getRange(first, 6, count, 1).setDataValidation(SpreadsheetApp.newDataValidation()
+      .requireValueInList((meta.roles || []).map(role => qsanMappedText_(QSAN_FACTION_KEYS, role)), true).setAllowInvalid(false).build());
+  }
+  actionFormatting_(actions, first, count);
+  if (first > QSAN.FIRST) {
+    // The fixed room panels are owned UI, while seat names and game text stay native.
+    actions.getRange(1, 1).setValue(qsanText_('roomTitle'));
+    actions.getRange(2, 1).setValue(String(actions.getRange(2, 1).getValue()).replace(/牌堆剩餘/g, qsanText_('pileRemainLabel')));
+    actions.getRange(12, 5).setValue(qsanText_('pileTitle'));
+    actions.getRange(13, 5).setValue(safe_(qsanLegacyUi_(actions.getRange(13, 5).getValue())));
+    actions.getRange(17, 5).setValue(qsanText_('promptPrefix') + qsanLegacyUi_(String(actions.getRange(17, 5).getValue()).replace(/^(?:(?:現時行動|目前行動|当前行动)\s*·\s*)+/, '')));
+    actions.getRange(18, 5).setValue(safe_(qsanLegacyUi_(actions.getRange(18, 5).getValue())));
+    actions.getRange(4, 13).setValue(qsanText_('logTitle'));
+    // Legacy hand and preflight panels can move with the room and hand size.
+    const panels = actions.getRange(1, 1, first - 1, 13).getValues();
+    panels.forEach((row, i) => {
+      [0, 4].forEach(col => {
+        const translated = qsanLegacyUi_(row[col]);
+        if (translated !== String(row[col])) actions.getRange(i + 1, col + 1).setValue(safe_(translated));
+      });
+      if (i >= 4 && row[12] !== '') actions.getRange(i + 1, 13).setValue(safe_(qsanError_(row[12])));
+    });
+    const preflight = get_('preflight_message', '');
+    if (preflight) put_('preflight_message', qsanLegacyUi_(preflight));
+    const meta = json_('meta', {});
+    actions.getRange(first - 4, 1).setValue(qsanText_('roomHelp') + '\n' +
+      (meta.shape === 'unsupported' ? qsanText_('unsupportedNote') : qsanText_('selectRange') + (meta.min == null ? '' : meta.min) + ' ～ ' + (meta.max == null ? '' : meta.max)) +
+      (meta.cancelable ? qsanText_('cancelHint') : '') + '\n' + qsanText_('seatLegend'));
+  }
+  const board = sheet_('QSAN Board');
+  board.getRange(1, 1, 1, 11).setValues([['boardTitle', 'hdrId', 'hdrName', 'hdrHp', 'hdrHandCount', 'hdrEquip', 'hdrStatus', 'hdrDesc', 'hdrSkill', 'hdrInstanceShort'].map(qsanText_).concat('')]);
+  ['hdrStatus', 'rowRoundPile', 'rowWinner'].forEach((key, i) => board.getRange(i + 2, 1).setValue(qsanText_(key)));
+  if (board.getLastRow() >= 5) {
+    const kinds = board.getRange(5, 1, board.getLastRow() - 4, 1);
+    kinds.setValues(kinds.getValues().map(row => [qsanKindText_(row[0])]));
+  }
+  board.getRange(2, 7).setValue(qsanStatus_(board.getRange(2, 7).getValue()));
+  board.getRange(2, 3).setValue(qsanLegacyUi_(board.getRange(2, 3).getValue()));
+  board.getRange(3, 3).setValue(String(board.getRange(3, 3).getValue()).replace(/牌堆剩餘/g, qsanText_('pileRemainLabel')));
+  const catalog = sheet_('QSAN Catalog');
+  catalog.getRange(1, 1, 1, 4).setValues([['catHdrType', 'hdrId', 'hdrName', 'catHdrInfo'].map(qsanText_)]);
+  if (catalog.getLastRow() > 1) {
+    const kinds = catalog.getRange(2, 1, catalog.getLastRow() - 1, 1);
+    kinds.setValues(kinds.getValues().map(row => [qsanKindText_(row[0])]));
+    const info = catalog.getRange(2, 4, catalog.getLastRow() - 1, 1);
+    info.setValues(info.getValues().map(row => [safe_(String(row[0]).split('；').map(part => {
+      const match = /^([^：]+)：(.*)$/.exec(part);
+      return match ? qsanFieldText_(match[1]) + '：' + text_(qsanFieldValue_(match[1], match[2])) : part;
+    }).join('；'))]));
+  }
+  const details = sheet_('QSAN Details');
+  if (details.getLastRow() > 1) {
+    const fields = details.getRange(2, 1, details.getLastRow() - 1, 2);
+    fields.setValues(fields.getValues().map(row => [qsanLegacyUi_(qsanFieldText_(row[0])),
+      safe_(row[0] === 'description' || row[0] === 'detail' || row[0] === '說明' ? description_({description: row[1]}) : text_(qsanFieldValue_(row[0], row[1])))]));
+  }
+  const log = sheet_('QSAN Log');
+  log.getRange(1, 1).setValue(qsanText_('logBoardTitle'));
+  if (log.getLastRow() > 1) {
+    const entries = log.getRange(2, 1, log.getLastRow() - 1, 1);
+    entries.setValues(entries.getValues().map(row => [safe_(qsanError_(row[0]))]));
+  }
+  // Force future rendering to refresh the translated headers without losing interaction identity.
+  const props = PropertiesService.getUserProperties(), p = prefix_();
+  Object.keys(props.getProperties()).filter(key => key.startsWith(p + 'block_')).forEach(key => props.deleteProperty(key));
+  drop_('actions_signature'); put_('locale_version', 'zh-CN-2');
 }
 function description_(item) {
   // Accept both native description fields; never show an untranslated lookup key.
@@ -132,14 +263,13 @@ function roomPlan_(snapshot) {
   return {seats, bottom, handHeight, first: bottom + handHeight + 15};
 }
 function roomCardText_(card) {
-  if (!card || card.hidden) return '暗牌';
+  if (!card || card.hidden) return qsanText_('hiddenCard');
   const suit = {spade: '♠', club: '♣', heart: '♥', diamond: '♦'}[card.suit] || '';
   const number = {1: 'A', 11: 'J', 12: 'Q', 13: 'K'}[card.number] || card.number || '';
-  return (card.label || card.name || '未知牌') + (suit || number ? '[' + suit + number + ']' : '');
+  return (card.label || card.name || qsanText_('unknownCard')) + (suit || number ? '[' + suit + number + ']' : '');
 }
 function roomPhase_(player) {
-  return player.phase_label || ({round_start: '回合开始', start: '准备阶段', judge: '判定阶段', draw: '摸牌阶段',
-    play: '出牌阶段', discard: '弃牌阶段', finish: '结束阶段', not_active: '', none: ''}[player.phase] || player.phase || '');
+  return player.phase_label || (player.phase === 'not_active' || player.phase === 'none' ? '' : qsanMappedText_(QSAN_PHASE_KEYS, player.phase || ''));
 }
 function connectionText_(state) {
   const key = {connecting: 'connConnecting', reconnecting: 'connReconnecting', handshake: 'connHandshake',
@@ -147,10 +277,7 @@ function connectionText_(state) {
   return key ? qsanText_(key) : (state ? String(state) : qsanText_('connNone'));
 }
 function factionText_(value) {
-  const roles = {lord: '主公', loyalist: '忠臣', rebel: '反贼', renegade: '内奸'};
-  const kingdoms = {wei: '魏', shu: '蜀', wu: '吴', qun: '群', jin: '晋', god: '神', careerist: '野心家'};
-  const text = String(value || '');
-  return roles[text] || kingdoms[text] || text;
+  return qsanMappedText_(QSAN_FACTION_KEYS, value || '');
 }
 function roomSeatText_(seat, view) {
   const p = seat.player;
@@ -185,7 +312,7 @@ function roomZones_(plan) {
     .concat(Array.from({length: Math.floor((plan.first - 6) / 2)}, (_, i) => ({key: 'log_' + i, row: i * 2 + 5, col: 13, height: 2, width: 4})));
 }
 function prepareRoom_(plan) {
-  const signature = digest_(JSON.stringify({version: 2, first: plan.first, seats: plan.seats.map(s => [s.row, s.col]), handHeight: plan.handHeight}));
+  const signature = digest_(JSON.stringify({version: 3, first: plan.first, seats: plan.seats.map(s => [s.row, s.col]), handHeight: plan.handHeight}));
   if (get_('room_layout', '') === signature) return;
   const sheet = sheet_('QSAN Actions'), first = actionFirst_(), count = Number(get_('action_rows', '0'));
   drop_('room_seats'); drop_('room_seat_styles');
@@ -203,13 +330,7 @@ function prepareRoom_(plan) {
   });
   sheet.getRange(18, 5, plan.bottom - 21, 3).setBackground('#fff0c7');
   sheet.getRange(plan.first - 1, 1, 1, 11).setBackground('#254d3d').setFontColor('#ffffff').setFontWeight('bold');
-  const candidates = ensureRange_(sheet, plan.first, 1, 500, 11);
-  sheet.clearConditionalFormatRules();
-  sheet.setConditionalFormatRules([
-    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$D' + plan.first + '=TRUE')
-      .setBackground('#d2e3fc').setRanges([candidates]).build(),
-    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$G' + plan.first + '=FALSE')
-      .setFontColor('#9aa0a6').setRanges([candidates]).build()]);
+  actionFormatting_(sheet, plan.first, count);
   // Clear only rendering caches: request identity, credentials and pending commands survive.
   const props = PropertiesService.getUserProperties(), prefix = prefix_() + 'block_';
   Object.keys(props.getProperties()).filter(k => k.startsWith(prefix + 'room_') || k.startsWith(prefix + 'action_header')).forEach(k => props.deleteProperty(k));
@@ -253,7 +374,7 @@ function renderRoom_(snapshot, meta) {
   // PlaceTable is 7; equipment, delayed tricks and discard pile are separate zones.
   put('pile_title', qsanText_('pileTitle'));
   put('pile', (view.cards || []).filter(c => Number(c.place) === 7).map(roomCardText_).join('、') || qsanText_('pileEmpty'));
-  put('prompt_title', qsanText_('promptPrefix') + (view.interaction_label || meta.type));
+  put('prompt_title', qsanText_('promptPrefix') + qsanLegacyUi_(view.interaction_label || meta.type));
   put('prompt', game.game_over ? qsanText_('gameOver') + text_(game.result || '') : interactionPrompt_(snapshot));
   put('preflight', get_('preflight_message', qsanText_('preflightIdle')));
   put('hand_title', qsanFormat_('handTitle', (view.hand || []).length));
@@ -264,10 +385,8 @@ function renderRoom_(snapshot, meta) {
     (meta.cancelable ? qsanText_('cancelHint') : '') + '\n' + qsanText_('seatLegend'));
   put('log_title', qsanText_('logTitle'));
   const logCount = Math.floor((plan.first - 6) / 2), logs = (view.logs || []).slice(-logCount).reverse();
-  for (let i = 0; i < logCount; ++i) put('log_' + i, logs[i] || '');
-  writeBlock_('QSAN Actions', 'action_header', plan.first - 1, 1,
-    [[qsanText_('hdrKind'), qsanText_('hdrId'), qsanText_('hdrName'), qsanText_('hdrCheck'), qsanText_('hdrOrder'),
-      qsanText_('hdrSide'), qsanText_('hdrEnabled'), qsanText_('hdrDesc'), qsanText_('hdrSkill'), qsanText_('hdrInstance'), '']], 11);
+  for (let i = 0; i < logCount; ++i) put('log_' + i, qsanError_(logs[i] || ''));
+  writeBlock_('QSAN Actions', 'action_header', plan.first - 1, 1, [actionHeaders_()], 11);
 }
 function renderPreflight_(message) {
   // The central preflight panel has a fixed relation to the seat ring, independent of hand size.
@@ -311,7 +430,7 @@ function render_(snapshot) {
   renderActions_(meta, ui, !!sameRequest);
   const board = [[qsanText_('boardTitle'), qsanText_('hdrId'), qsanText_('hdrName'), qsanText_('hdrHp'), qsanText_('hdrHandCount'),
       qsanText_('hdrEquip'), qsanText_('hdrStatus'), qsanText_('hdrDesc'), qsanText_('hdrSkill'), qsanText_('hdrInstanceShort'), ''],
-    [qsanText_('hdrStatus'), '', connectionText_(snapshot.connection), '', '', '', game.game_over ? 'GAME_OVER' : (view.status || game.status || ''), '', '', '', ''],
+    [qsanText_('hdrStatus'), '', connectionText_(snapshot.connection), '', '', '', game.game_over ? qsanText_('gameEnded') : qsanStatus_(view.status || game.status || ''), '', '', '', ''],
     [qsanText_('rowRoundPile'), game.round === undefined ? '' : game.round,
       game.draw_pile_count === undefined ? '' : qsanFormat_('pileRemainBoard', game.draw_pile_count), '', '', '', '', '', '', '', ''],
     [qsanText_('rowWinner'), '', text_(game.result || ''), '', '', '', '', '', '', '', '']];
@@ -328,8 +447,9 @@ function render_(snapshot) {
   (view.hand || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', qsanText_('selfHand'), '', description_(c), '', '', '']));
   (view.cards || []).forEach(c => board.push(['card', c.id, c.label || c.name, '', '', qsanText_('publicCards'), '', description_(c), '', '', '']));
   (view.skills || []).forEach(s => board.push(['skill', s.name || s.id, s.label, '', '', qsanText_('selfSkills'), '', description_(s), s.name || s.id, s.instance_id || s.skill_instance_id || 0, '']));
+  board.slice(4).forEach(row => { row[0] = qsanKindText_(row[0]); });
   writeBlock_('QSAN Board', 'board', 1, 1, board, 11);
-  writeBlock_('QSAN Log', 'log', 1, 1, [[qsanText_('logBoardTitle')]].concat((view.logs || []).map(x => [x])), 1);
+  writeBlock_('QSAN Log', 'log', 1, 1, [[qsanText_('logBoardTitle')]].concat((view.logs || []).map(x => [qsanError_(x)])), 1);
   // Commit the new identity only once its candidate rows were written.
   saveJson_('meta', meta);
 }
@@ -354,25 +474,25 @@ function renderActions_(meta, ui, preserve) {
   if (meta.shape === 'rearrangement') add('rearrange', ui.cards);
   if (meta.shape === 'general_arrangement') add('general', ui.generals && ui.generals.length ? ui.generals : meta.generals);
   if (meta.shape === 'general_pair') add('general', ui.generals);
-  const signature = digest_(JSON.stringify({schema: 'actions-checkbox-v2', generation: meta.generation, request: meta.request_id, rows: rows}));
+  const signature = digest_(JSON.stringify({schema: 'actions-zh-CN-v3', generation: meta.generation, request: meta.request_id, rows: rows}));
   if (preserve && get_('actions_signature', '') === signature) return;
   const sheet = sheet_('QSAN Actions'), count = Number(get_('action_rows', '0')), old = {};
-  if (preserve && count) sheet.getRange(first, 1, count, QSAN.COLS).getValues().forEach(r => { old[r[0] + '\n' + r[1] + '\n' + r[9]] = r; });
+  if (preserve && count) sheet.getRange(first, 1, count, QSAN.COLS).getValues().forEach(r => { old[qsanKind_(r[0]) + '\n' + r[1] + '\n' + r[9]] = r; });
   rows.forEach(r => { const prior = old[r[0] + '\n' + r[1] + '\n' + r[9]]; if (prior) {
     r[3] = prior[3] === true || String(prior[3]).toLowerCase() === 'true' || String(prior[3]) === '是';
     r[4] = prior[4]; r[5] = prior[5];
   } else r[3] = Boolean(r[3]); });
   if (count) sheet.getRange(first, 1, count, QSAN.COLS).clearContent().clearDataValidations();
   if (rows.length) {
-    ensureRange_(sheet, first, 1, rows.length, QSAN.COLS).setNumberFormat('@').setValues(rows.map(r => r.map(safe_)));
+    ensureRange_(sheet, first, 1, rows.length, QSAN.COLS).setNumberFormat('@').setValues(rows.map(actionDisplayRow_).map(r => r.map(safe_)));
     // Column D is a real boolean checkbox column; text format turns false into a literal string.
     sheet.getRange(first, 4, rows.length, 1).setNumberFormat('General').setValues(rows.map(r => [Boolean(r[3])]));
     // Validation creates checkboxes without resetting already selected values.
     sheet.getRange(first, 4, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
     sheet.getRange(first, 4, rows.length, 3).setBackground('#e9f3ff');
     sheet.getRange(first, 11, rows.length, 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
-    if (meta.shape === 'rearrangement') sheet.getRange(first, 6, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['top', 'bottom'], true).setAllowInvalid(false).build());
-    if (meta.shape === 'assignment' && meta.roles.length) sheet.getRange(first, 6, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(meta.roles, true).setAllowInvalid(false).build());
+    if (meta.shape === 'rearrangement') sheet.getRange(first, 6, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList([qsanText_('sideTop'), qsanText_('sideBottom')], true).setAllowInvalid(false).build());
+    if (meta.shape === 'assignment' && meta.roles.length) sheet.getRange(first, 6, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(meta.roles.map(role => qsanMappedText_(QSAN_FACTION_KEYS, role)), true).setAllowInvalid(false).build());
   }
   put_('action_rows', rows.length); put_('actions_signature', signature);
 }
@@ -380,7 +500,7 @@ function catalogFromSheet() {
   return locked_(function() {
     const catalog = command_('catalog', {}), rows = [[qsanText_('catHdrType'), qsanText_('hdrId'), qsanText_('hdrName'), qsanText_('catHdrInfo')]];
     [['mode', catalog.modes], ['general', catalog.generals], ['package', catalog.packages]].forEach(bank => {
-      (bank[1] || []).forEach(item => rows.push([bank[0], item.id, item.label, text_(item.metadata || {player_count: item.player_count || ''})]));
+      (bank[1] || []).forEach(item => rows.push([qsanKindText_(bank[0]), item.id, item.label, text_(item.metadata || {player_count: item.player_count || ''})]));
     });
     writeBlock_('QSAN Catalog', 'catalog', 1, 1, rows, 4);
     const room = sheet_('QSAN Room'), last = room.getLastRow(), existing = new Set(room.getRange(12, 1, Math.max(1, last - 11), 1).getValues().map(r => String(r[0])));
@@ -388,7 +508,7 @@ function catalogFromSheet() {
     Object.keys(catalog.settings || {}).forEach(key => {
       if (existing.has(key)) return;
       const v = catalog.settings[key]; let type = qsanText_('settingText'), value = v;
-      if (typeof v === 'boolean') type = qsanText_('settingBool');
+      if (typeof v === 'boolean') { type = qsanText_('settingBool'); value = qsanText_(v ? 'valueYes' : 'valueNo'); }
       else if (typeof v === 'number' && Number.isInteger(v)) type = qsanText_('settingInteger');
       else if (Array.isArray(v) && v.every(x => typeof x === 'string')) { type = qsanText_('settingList'); value = v.join('\n'); }
       else if (typeof v === 'object' || typeof v === 'number') { type = qsanText_('settingKeep'); value = qsanText_('settingKeepNote'); }
@@ -414,14 +534,14 @@ function detailValues_(value) {
 function detailsFromSheet() {
   return locked_(function() {
     const range = SpreadsheetApp.getActiveRange(); if (!range) throw new Error(qsanText_('pickItemRow'));
-    const sheet = range.getSheet(), name = sheet.getName();
+    const sheet = range.getSheet(), name = qsanSheetId_(sheet.getName());
     if (['QSAN Board', 'QSAN Actions', 'QSAN Catalog'].indexOf(name) < 0) throw new Error(qsanText_('pickSheet'));
     sheet_(name);
     const inRoom = name === 'QSAN Actions' && range.getRow() < actionFirst_();
     const seat = inRoom ? roomSeatAt_(range) : null;
     if (inRoom && !seat) throw new Error(qsanText_('pickSeat'));
     const row = seat ? ['player', seat.id, '', '', '', '', '', '', '', '', ''] : sheet.getRange(range.getRow(), 1, 1, 11).getValues()[0];
-    let kind = String(row[0]), key = String(row[1]);
+    let kind = qsanKind_(row[0]), key = String(row[1]);
     if (kind === 'rearrange') kind = 'card';
     if (kind === 'assignment') kind = 'player';
     if (kind === 'skill') key = String(row[8] || key);
@@ -432,10 +552,8 @@ function detailsFromSheet() {
     if (supported.indexOf(kind) >= 0) result = command_('details', {kind: kind, key: key});
     else result = {label: row[2], description: row[7] || ''};
     const rows = [[qsanText_('labelItem'), result.label || row[2]], [qsanText_('hdrId'), key]];
-    const visible = detailValues_(result), labels = {description: qsanText_('hdrDesc'), detail: qsanText_('hdrDesc'),
-      marks: qsanText_('labelMarks'), equip: qsanText_('equipLabel'), hp: qsanText_('hpLabel'),
-      max_hp: qsanText_('labelMaxHp'), hand_count: qsanText_('hdrHandCount')};
-    Object.keys(visible).filter(k => k !== 'id' && k !== 'label').forEach(k => rows.push([labels[k] || k, text_(visible[k])]));
+    const visible = detailValues_(result);
+    Object.keys(visible).filter(k => k !== 'id' && k !== 'label').forEach(k => rows.push([qsanFieldText_(k), text_(qsanFieldValue_(k, visible[k]))]));
     writeBlock_('QSAN Details', 'details', 2, 1, rows, 2);
     const asset = result.image || result.general_image; let image = '';
     if (typeof asset === 'string' && /^\/v1\/assets\/[0-9a-f]{64}$/.test(asset)) {
