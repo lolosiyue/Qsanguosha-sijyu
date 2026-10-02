@@ -600,6 +600,11 @@ public:
     ServerPlayer*findPlayer(const QString&general_name, bool include_dead = false) const;
     QList<ServerPlayer*> findPlayersBySkillName(const QString&skill_name) const;
     ServerPlayer*findPlayerBySkillName(const QString&skill_name, bool include_lose = false) const;
+    // First alive player, in getAllPlayers() order, holding the flag (or any flag
+    // containing it when partial) / a positive mark. Native scans for global
+    // skills that would otherwise wrap every player in Lua on each event.
+    ServerPlayer*findPlayerWithFlag(const QString&flag, bool partial = false) const;
+    ServerPlayer*findPlayerWithMark(const QString&mark) const;
     ServerPlayer*findPlayerByObjectName(const QString&objectName, bool include_dead = false) const;
     void installEquip(ServerPlayer*player, const QString&equip_name);
     void resetAI(ServerPlayer*player);

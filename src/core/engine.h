@@ -158,6 +158,8 @@ public:
     Package *getPackage(const QString &package_name);
     void setPackage(Package *package);
     QStringList getBanPackages() const;
+    // Membership test without copying the whole list into Lua on every call.
+    bool isPackageBanned(const QString &package) const;
     QStringList getZhinangCards() const;
     void setZhinangCard(const QString &flag);
     Card *cloneCard(const Card *card) const;

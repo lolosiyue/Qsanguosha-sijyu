@@ -160,6 +160,7 @@ public:
     QStringList getFlagList() const;
     virtual void setFlags(const QString &flag);
     bool hasFlag(const QString &flag) const;
+    bool hasFlagContaining(const QString &part) const;
     void clearFlags();
 
     bool faceUp() const;
@@ -497,6 +498,9 @@ public:
     bool setProperty(const char* name, const QVariant& value);
 
     static bool isNostalGeneral(const Player *p, const QString &general_name);
+    // One-way: true once any player in this process has had a Controller_Name
+    // tag. Lets AI relationship checks skip the per-call controller chain walk.
+    static bool controllerTagEverSet();
     
     bool hasLordSkillKingdom(const QString &kingdom, const Player *player = nullptr) const;
 

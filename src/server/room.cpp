@@ -2737,6 +2737,24 @@ ServerPlayer*Room::findPlayerBySkillName(const QString&skill_name, bool include_
 	return m_roster->findFirstBySkill(skill_name, current, include_lose);
 }
 
+ServerPlayer*Room::findPlayerWithFlag(const QString&flag, bool partial) const
+{
+	foreach (ServerPlayer *player, getAllPlayers()) {
+		if (partial ? player->hasFlagContaining(flag) : player->hasFlag(flag))
+			return player;
+	}
+	return nullptr;
+}
+
+ServerPlayer*Room::findPlayerWithMark(const QString&mark) const
+{
+	foreach (ServerPlayer *player, getAllPlayers()) {
+		if (player->getMark(mark) > 0)
+			return player;
+	}
+	return nullptr;
+}
+
 ServerPlayer*Room::findPlayerByObjectName(const QString&objectName, bool include_dead) const
 {
 	return m_roster->findByObjectName(objectName, current, include_dead);

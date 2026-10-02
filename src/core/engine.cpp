@@ -1224,6 +1224,11 @@ QStringList Engine::getBanPackages() const
     return Config.BanPackages;
 }
 
+bool Engine::isPackageBanned(const QString &package) const
+{
+    return Config.BanPackages.contains(package);
+}
+
 QList<const Package*> Engine::getPackages() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
