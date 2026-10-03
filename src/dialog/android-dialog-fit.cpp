@@ -23,6 +23,9 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWindow>
+#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
+#include <QDesktopWidget>
+#endif
 
 namespace {
 
@@ -47,7 +50,9 @@ public:
         case QEvent::Show:
         case QEvent::Resize:
         case QEvent::WindowStateChange:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
         case QEvent::SafeAreaMarginsChange:
+#endif
             schedule(dialog);
             break;
         default:
@@ -93,7 +98,11 @@ private:
 
     static QRect availableGeometry(QDialog *dialog)
     {
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
         QScreen *screen = dialog->screen();
+#else
+        QScreen *screen = QGuiApplication::screens().value(QApplication::desktop()->screenNumber(dialog));
+#endif
         if (!screen)
             screen = QGuiApplication::primaryScreen();
         if (!screen)
@@ -111,10 +120,12 @@ private:
             }
         }
 #endif
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
         if (QWindow *window = dialog->windowHandle()) {
             const QMargins safe = window->safeAreaMargins();
             available.adjust(safe.left(), safe.top(), -safe.right(), -safe.bottom());
         }
+#endif
 
         const QInputMethod *inputMethod = QGuiApplication::inputMethod();
         if (inputMethod && inputMethod->isVisible()) {

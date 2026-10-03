@@ -52,9 +52,7 @@
 #include "settings.h"
 #include "button.h"
 #include "build-features.h"
-#if !defined(QSAN_XP_LEGACY)
 #include "android-dialog-fit.h"
-#endif
 #if QSAN_ENABLE_QML
 #include "homecontroller.h"
 #include "pointer-effect-overlay.h"
@@ -255,11 +253,8 @@ MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), ui(new Ui::MainWindow), server(nullptr)
 {
 	ui->setupUi(this);
-#if !defined(QSAN_XP_LEGACY)
     installAndroidDialogFit(qApp); // Shared fitting also serves desktop portrait preview.
-#endif
 
-#if !defined(QSAN_XP_LEGACY)
 	// Keep the state shortcut independent of the table's legacy hotkey setting.
 	QAction *stateAction = ui->menuView->addAction(tr("Game State"));
 	stateAction->setObjectName(QStringLiteral("actionGameStateSnapshot"));
@@ -279,7 +274,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(inspectorAction, &QAction::triggered, this, [this]() {
         if (gameView) gameView->showPlayerInspector();
     });
-#endif
 
 	setWindowTitle(tr("Sanguosha")+" 岁末 "+Sanguosha->getVersionNumber());
 
@@ -660,7 +654,6 @@ void MainWindow::setupLocalLoadingPage()
 	});
 #endif
 
-#if !defined(QSAN_XP_LEGACY)
     auto fitLoadingPage = [this, panel, layout, panelLayout] {
         const bool compact = Config.responsiveUiEnabled();
         panel->setMinimumWidth(compact ? 0 : 520);
@@ -674,7 +667,6 @@ void MainWindow::setupLocalLoadingPage()
     };
     connect(&Config, &Settings::uiLayoutChanged, this, fitLoadingPage);
     fitLoadingPage();
-#endif
 	pageStack->addWidget(localLoadingPage);
 }
 
@@ -1169,12 +1161,19 @@ static void bringClientAreaOnScreen(QWidget *window, bool followPrimary)
 
 void MainWindow::restoreFromConfig()
 {
-	const QRect placed = placedOnScreen(
-		Config.value("WindowSize", QSize(1366, 706)).toSize(),
+	const QSize requested = Config.value("WindowSize", QSize(1366, 706)).toSize();
+	const QRect placed = placedOnScreen(requested,
 		Config.value("WindowPosition", QPoint(0, 0)).toPoint());
 	resize(placed.size());
 	move(placed.topLeft());
 	Qt::WindowStates window_state = (Qt::WindowStates)Config.value("WindowState").toInt();
+#ifdef Q_OS_WIN
+	// A client area clamped to the work area still adds the title bar and
+	// borders, pushing the dashboard under the taskbar on 800x600-class screens.
+	if (window_state == Qt::WindowNoState
+		&& (requested.width() > placed.width() || requested.height() > placed.height()))
+		window_state = Qt::WindowMaximized;
+#endif
 	if (window_state != Qt::WindowMinimized)
 		setWindowState(window_state);
 

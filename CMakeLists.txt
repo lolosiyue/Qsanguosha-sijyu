@@ -146,6 +146,10 @@ if(QSAN_BUILD_XP_LEGACY)
     # QStringLiteral uses function-local statics heavily, so keep the complete
     # XP target graph on the pre-VS2015 initialization model.
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/Zc:threadSafeInit->")
+    # v141 widens Qt 5.6's u"" "..." QStringLiteral through the system code
+    # page even under /utf-8, garbling non-ASCII text. Select Qt's own
+    # QString::fromUtf8 fallback; a definition must precede the PCH's <QString>.
+    add_compile_definitions(QT_NO_UNICODE_LITERAL)
 endif()
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
@@ -1332,12 +1336,10 @@ if(QSAN_BUILD_GUI)
     endif()
     set_target_properties(${QSAN_GUI_TARGET} PROPERTIES FOLDER "Clients")
 
-    if(NOT QSAN_BUILD_XP_LEGACY)
-        target_sources(${QSAN_GUI_TARGET} PRIVATE
-            src/dialog/android-dialog-fit.cpp
-            src/dialog/android-dialog-fit.h
-        )
-    endif()
+    target_sources(${QSAN_GUI_TARGET} PRIVATE
+        src/dialog/android-dialog-fit.cpp
+        src/dialog/android-dialog-fit.h
+    )
     if(ANDROID)
         target_sources(${QSAN_GUI_TARGET} PRIVATE
             src/dialog/android-content-dialog.cpp

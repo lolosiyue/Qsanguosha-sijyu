@@ -10,13 +10,11 @@ bool RoomInputRouter::route(QKeyEvent *event, bool hotkeysEnabled) const
 {
     if (event == nullptr)
         return false;
-#if !defined(QSAN_XP_LEGACY)
     if (event->key() == Qt::Key_I
         && event->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier)) {
         event->accept();
         return true;
     }
-#endif
     if (!hotkeysEnabled || (m_callbacks.chatFocused && m_callbacks.chatFocused()))
         return false;
 

@@ -120,13 +120,11 @@ public:
     void changeTextEditBackground();
     void adjustItems();
     void adjustItems(const QSizeF &viewportSize);
-#if !defined(QSAN_XP_LEGACY)
     void attachOverlay(RoomOverlayHost *overlay);
     void setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled);
     const RoomLayoutEngine::ResponsiveResult &responsiveLayout() const { return m_responsiveLayout; }
     bool largeRoomRequired() const { return photos.size() >= 20 && photos.size() <= 49; }
     DesktopGamePresentation *gamePresentation();
-#endif
     void applyUiElementScale(qreal scale);
     void setTouchUiEnabled(bool enabled);
     void setSafeAreaMargins(const QMargins &margins);
@@ -247,7 +245,6 @@ private:
     void applyLayout(const RoomLayoutEngine::Result &layout);
     void applyTableLayout(const RoomLayoutEngine::Result &layout);
     QSet<int> m_nativeKeysDown;
-#if !defined(QSAN_XP_LEGACY)
     DesktopGamePresentation *m_gamePresentation = nullptr;
     QPointer<RoomOverlayHost> m_overlayHost;
     bool m_responsiveEnabled = false;
@@ -256,7 +253,6 @@ private:
     RoomLayoutEngine::ResponsiveResult m_responsiveLayout;
     LargeRoomOverview *m_largeRoomOverview = nullptr;
     void applyResponsiveLayout();
-#endif
     bool _shouldIgnoreDisplayMove(CardsMoveStruct &movement);
     QString _describeMoveForDiagnostics(const CardsMoveStruct &move) const;
     bool _processCardsMove(CardsMoveStruct &move, bool isLost);

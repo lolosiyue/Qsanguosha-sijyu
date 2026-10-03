@@ -6,10 +6,8 @@
 #include "settings.h"
 #include "skin-bank.h"
 #include "startscene.h"
-#if !defined(QSAN_XP_LEGACY)
 #include "room-overlay-host.h"
 #include "room-window-posture.h"
-#endif
 
 #if !QSAN_USE_RASTER_VIEWPORT
 #include <QDebug>
@@ -226,8 +224,13 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
 #endif
     qsanEnableWidgetPointerHover(this);
     qsanEnableWidgetPointerHover(viewport());
-    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
 #if !defined(QSAN_XP_LEGACY)
+    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+#else
+    // Software painting on old CPUs: repaint only the dirty items' bounding
+    // area instead of the whole window on every timer and animation tick.
+    setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
+#endif
     // Main window and diagnostic FitViews share one Android listener. Destroying
     // a secondary view must not detach the main game's posture subscription.
     static QPointer<RoomWindowPosture> sharedPosture;
@@ -242,7 +245,6 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
         setResponsiveRoomEnabled(Config.responsiveUiEnabled());
     });
     connect(m_posture, &RoomWindowPosture::postureChanged, this, [this]() { refit(); });
-#endif
     applyVisualMode();
 }
 
@@ -294,7 +296,6 @@ void FitView::setScene(QGraphicsScene *next)
 {
     QGraphicsView::setScene(next);
     qsanEnableWidgetPointerHover(viewport());
-#if !defined(QSAN_XP_LEGACY)
     if (!qobject_cast<RoomScene *>(next)) {
         // Rotation is an application preference; returning home keeps it enabled.
         if (m_posture) m_posture->setResponsivePreview(m_responsiveEnabled);
@@ -303,7 +304,6 @@ void FitView::setScene(QGraphicsScene *next)
         m_overlayRoom = nullptr;
         m_hasPreviousProfile = false;
     }
-#endif
     refit();
 }
 
@@ -317,17 +317,14 @@ void FitView::setStableSafeAreaMargins(const QMargins &margins)
 
 void FitView::showPlayerInspector()
 {
-#if !defined(QSAN_XP_LEGACY)
     if (auto *room = qobject_cast<RoomScene *>(scene())) {
         ensureRoomOverlay(room);
         m_overlay->inspectPlayer(QString());
     }
-#endif
 }
 
 void FitView::setResponsiveRoomEnabled(bool enabled)
 {
-#if !defined(QSAN_XP_LEGACY)
     m_responsiveEnabled = enabled;
     Config.setResponsiveUiEnabled(enabled);
     if (m_posture) m_posture->setResponsivePreview(enabled);
@@ -335,12 +332,8 @@ void FitView::setResponsiveRoomEnabled(bool enabled)
     if (m_overlay && m_overlay->responsiveEnabled() != enabled)
         m_overlay->setResponsiveEnabled(enabled);
     refit();
-#else
-    Q_UNUSED(enabled);
-#endif
 }
 
-#if !defined(QSAN_XP_LEGACY)
 void FitView::ensureRoomOverlay(RoomScene *room)
 {
     if (m_overlay && m_overlayRoom == room)
@@ -364,7 +357,6 @@ void FitView::ensureRoomOverlay(RoomScene *room)
     applyVisualMode();
     m_overlay->show();
 }
-#endif
 
 void FitView::setSafeAreaMargins(const QMargins &margins)
 {
@@ -379,12 +371,10 @@ void FitView::setSafeAreaMargins(const QMargins &margins)
 void FitView::setUiScale(qreal scale)
 {
     m_uiScale = qBound<qreal>(1.0, scale, 2.0);
-#if !defined(QSAN_XP_LEGACY)
     if (m_responsiveEnabled) {
         refit();
         return;
     }
-#endif
     if (auto *roomScene = qobject_cast<RoomScene *>(scene())) {
         roomScene->applyUiElementScale(m_uiScale);
         roomScene->refreshTouchTargets(transform().m11());
@@ -445,7 +435,6 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
     resetTransform();
 
     if (auto *roomScene = qobject_cast<RoomScene *>(scene())) {
-#if !defined(QSAN_XP_LEGACY)
         if (m_fitting)
             return;
         m_fitting = true;
@@ -501,7 +490,6 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
                 || input.fold.posture != RoomLayoutEngine::FoldPosture::None
                 || input.fold.separating || input.fold.occluding));
         roomScene->setResponsiveLayout(input, responsiveRoom);
-#endif
         const QRectF newSceneRect(QPointF(0, 0), QSizeF(viewportSize));
         roomScene->adjustItems(QSizeF(viewportSize));
         setSceneRect(roomScene->sceneRect());
@@ -510,7 +498,6 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
         roomScene->applyUiElementScale(m_uiScale);
         roomScene->refreshTouchTargets(transform().m11());
         setBackgroundBrush(false);
-#if !defined(QSAN_XP_LEGACY)
         if (responsiveRoom) {
             const auto &layout = roomScene->responsiveLayout();
             m_previousProfile = layout.profile;
@@ -531,7 +518,6 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
         }
         m_overlay->raise();
         m_fitting = false;
-#endif
         return;
     }
 
