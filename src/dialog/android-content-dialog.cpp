@@ -116,11 +116,11 @@ void AndroidContentDialog::configure(AndroidContentStore *store) { contentStore 
 bool AndroidContentDialog::prepareStartup(QString *error)
 {
     if (!contentStore) {
-        if (error) *error = QStringLiteral("內容儲存區尚未設定。");
+        if (error) *error = tr("Content store is not configured.");
         return false;
     }
     StartupWaitDialog dialog;
-    dialog.setWindowTitle(QStringLiteral("三國殺 · 準備啟動"));
+    dialog.setWindowTitle(tr("QSanguosha · Preparing to start"));
     dialog.setAttribute(Qt::WA_QuitOnClose, false);
     dialog.setWindowFlag(Qt::WindowCloseButtonHint, false);
     dialog.setObjectName(QStringLiteral("androidStartupPage"));
@@ -137,10 +137,10 @@ bool AndroidContentDialog::prepareStartup(QString *error)
     auto *panelLayout = new QVBoxLayout(panel);
     panelLayout->setContentsMargins(36, 26, 36, 28);
     panelLayout->setSpacing(10);
-    auto *eyebrow = styledLabel(QStringLiteral("準備啟動"), "androidContentEyebrow", panel);
+    auto *eyebrow = styledLabel(tr("Preparing to start"), "androidContentEyebrow", panel);
     eyebrow->setAlignment(Qt::AlignCenter);
     panelLayout->addWidget(eyebrow);
-    auto *title = styledLabel(QStringLiteral("三國殺"), "androidContentTitle", panel);
+    auto *title = styledLabel(tr("QSanguosha"), "androidContentTitle", panel);
     title->setAlignment(Qt::AlignCenter);
     panelLayout->addWidget(title);
     auto *divider = new QFrame(panel);
@@ -148,7 +148,7 @@ bool AndroidContentDialog::prepareStartup(QString *error)
     divider->setFixedHeight(1);
     panelLayout->addWidget(divider);
     panelLayout->addSpacing(4);
-    auto *label = styledLabel(QStringLiteral("正在檢查資源與套用待生效內容……"),
+    auto *label = styledLabel(tr("Checking resources and applying pending content…"),
         "androidContentStatus", panel);
     label->setAlignment(Qt::AlignCenter);
     panelLayout->addWidget(label);
@@ -157,8 +157,7 @@ bool AndroidContentDialog::prepareStartup(QString *error)
     progress->setTextVisible(false);
     progress->setRange(0, 0);
     panelLayout->addWidget(progress);
-    auto *hint = styledLabel(QStringLiteral(
-        "完整聲畫資源包含大量檔案，首次啟動可能需要數分鐘，請稍候。"), "androidContentHint", panel);
+    auto *hint = styledLabel(tr("The full media resources contain many files. The first launch may take several minutes; please wait."), "androidContentHint", panel);
     hint->setAlignment(Qt::AlignCenter);
     panelLayout->addWidget(hint);
     layout->addWidget(panel);
@@ -181,7 +180,7 @@ bool AndroidContentDialog::prepareStartup(QString *error)
     QObject::connect(worker.get(), &QThread::finished, &dialog, [&] {
         worker->wait();
         finished = true;
-        label->setText(QStringLiteral("資源處理已結束，返回前景後顯示結果。"));
+        label->setText(tr("Resource processing has finished. The result appears once the app returns to the foreground."));
         progress->setRange(0, 1);
         progress->setValue(1);
         continueWhenReady();
@@ -195,7 +194,7 @@ bool AndroidContentDialog::prepareStartup(QString *error)
     worker->wait();
     if (error) *error = workerError;
     if (result != QDialog::Accepted) {
-        if (error && error->isEmpty()) *error = QStringLiteral("啟動已中止。");
+        if (error && error->isEmpty()) *error = tr("Startup was aborted.");
         return false;
     }
     return ok;
@@ -220,7 +219,7 @@ void AndroidContentDialog::openManager(QWidget *parent)
 AndroidContentDialog::AndroidContentDialog(bool startup, QWidget *parent)
     : QDialog(parent), m_startup(startup)
 {
-    setWindowTitle(QStringLiteral("三國殺 · 資源與擴展"));
+    setWindowTitle(tr("QSanguosha · Resources and extensions"));
     setObjectName(QStringLiteral("androidContentDialog"));
     setProperty("androidContentDialogOwnScroll", true);
     setAttribute(Qt::WA_QuitOnClose, false);
@@ -249,24 +248,24 @@ AndroidContentDialog::AndroidContentDialog(bool startup, QWidget *parent)
     bodyScroll->setWidget(body);
     body->setAutoFillBackground(false); // setWidget() turns it on; keep the page gradient.
     outer->addWidget(bodyScroll, 1);
-    layout->addWidget(styledLabel(QStringLiteral("資源與擴展"), "androidContentTitle", body));
+    layout->addWidget(styledLabel(tr("Resources and extensions"), "androidContentTitle", body));
     m_status = styledLabel(QString(), "androidContentStatus", this);
     m_status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     layout->addWidget(m_status);
-    auto *notice = styledLabel(QStringLiteral(
-        "首次開局須完整匯入聲畫資源。匯入與管理變更在重新啟動後生效。\n"
-        "只匯入信任的 Lua：腳本可使用完整 Lua 能力，讀寫本程式可存取的檔案。"
-        "匯入期間請保持前景；切背景或鎖屏會取消本次匯入。"), "androidContentHint", this);
+    auto *notice = styledLabel(tr(
+        "Import the full media resources before the first game. Imports and management changes take effect after a restart.\n"
+        "Only import Lua you trust: scripts have full Lua access and can read and write any file this app can access. "
+        "Keep the app in the foreground while importing; switching away or locking the screen cancels the import."), "androidContentHint", this);
     notice->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     layout->addWidget(notice);
-    layout->addWidget(styledLabel(QStringLiteral("已安裝整包"), "androidContentSection", body));
+    layout->addWidget(styledLabel(tr("Installed packages"), "androidContentSection", body));
     m_packages = new QListWidget(this);
     m_packages->setObjectName(QStringLiteral("androidContentPackages"));
     m_packages->setFixedHeight(120);
     QScroller::grabGesture(m_packages->viewport(), QScroller::LeftMouseButtonGesture);
     m_packages->viewport()->setAttribute(Qt::WA_AcceptTouchEvents, false);
     layout->addWidget(m_packages);
-    layout->addWidget(styledLabel(QStringLiteral("匯入與管理"), "androidContentSection", body));
+    layout->addWidget(styledLabel(tr("Import and manage"), "androidContentSection", body));
     auto *panel = new QWidget(body);
     auto *buttons = new QGridLayout(panel);
     buttons->setContentsMargins(0, 0, 0, 0);
@@ -282,11 +281,11 @@ AndroidContentDialog::AndroidContentDialog(bool startup, QWidget *parent)
         connect(button, &QPushButton::clicked, this, fn);
         return button;
     };
-    add(QStringLiteral("匯入完整聲畫 ZIP"), [this] { importFile(true, false); }, "primary");
-    add(QStringLiteral("匯入擴展 ZIP"), [this] { importFile(false, false); });
-    add(QStringLiteral("匯入模組化套件 ZIP"), [this] { importFile(false, false, true); });
-    add(QStringLiteral("匯入單一 Lua"), [this] { importFile(false, true); });
-    add(QStringLiteral("啟用／停用整包"), [this] {
+    add(tr("Import full media ZIP"), [this] { importFile(true, false); }, "primary");
+    add(tr("Import extension ZIP"), [this] { importFile(false, false); });
+    add(tr("Import modular package ZIP"), [this] { importFile(false, false, true); });
+    add(tr("Import single Lua"), [this] { importFile(false, true); });
+    add(tr("Enable/disable package"), [this] {
         const QString id = selectedPackage();
         if (id.isEmpty()) return;
         for (const auto &p : contentStore->packages()) if (p.id == id) {
@@ -294,21 +293,21 @@ AndroidContentDialog::AndroidContentDialog(bool startup, QWidget *parent)
             break;
         }
     });
-    add(QStringLiteral("移除所選整包"), [this] {
+    add(tr("Remove selected package"), [this] {
         const QString id = selectedPackage();
         if (id.isEmpty()) return;
-        if (QMessageBox::question(this, QStringLiteral("移除擴展"),
-            QStringLiteral("移除「%1」？重新啟動後生效。").arg(id)) == QMessageBox::Yes)
+        if (QMessageBox::question(this, tr("Remove extension"),
+            tr("Remove \"%1\"? This takes effect after a restart.").arg(id)) == QMessageBox::Yes)
             run([id](QString *e) { return contentStore->removePackage(id, e); });
     }, "danger");
-    add(QStringLiteral("所選整包上移"), [this] { movePackage(-1); });
-    add(QStringLiteral("所選整包下移"), [this] { movePackage(1); });
-    add(QStringLiteral("匯出載入順序"), [this] { exportOrder(); });
-    add(QStringLiteral("切回上一版本"), [this] {
+    add(tr("Move selected package up"), [this] { movePackage(-1); });
+    add(tr("Move selected package down"), [this] { movePackage(1); });
+    add(tr("Export load order"), [this] { exportOrder(); });
+    add(tr("Switch back to the previous version"), [this] {
         const bool recovery = m_startup && contentStore->needsRecovery();
         run([recovery](QString *e) { return recovery ? contentStore->recoverPrevious(e) : contentStore->rollback(e); });
     });
-    m_recoverButton = add(QStringLiteral("停用上次匯入／取消待套用變更"), [this] {
+    m_recoverButton = add(tr("Disable last import / discard pending changes"), [this] {
         run([](QString *e) { return contentStore->discardPendingAndDisableLastImport(e); });
     });
     layout->addWidget(panel);
@@ -319,17 +318,17 @@ AndroidContentDialog::AndroidContentDialog(bool startup, QWidget *parent)
     outer->addWidget(m_progress);
     auto *footer = new QHBoxLayout;
     footer->setSpacing(8);
-    m_cancelButton = new QPushButton(QStringLiteral("取消匯入"), this);
+    m_cancelButton = new QPushButton(tr("Cancel import"), this);
     m_cancelButton->setMinimumHeight(48);
     m_cancelButton->setProperty("androidRole", QStringLiteral("secondary"));
     connect(m_cancelButton, &QPushButton::clicked, this, [this] { m_cancel.store(true); });
     footer->addWidget(m_cancelButton);
-    m_continue = new QPushButton(startup ? QStringLiteral("進入首頁") : QStringLiteral("完成"), this);
+    m_continue = new QPushButton(startup ? tr("Enter home") : tr("Done"), this);
     m_continue->setMinimumHeight(48);
     m_continue->setProperty("androidRole", QStringLiteral("primary"));
     connect(m_continue, &QPushButton::clicked, this, &QDialog::accept);
     footer->addWidget(m_continue);
-    auto *close = new QPushButton(startup ? QStringLiteral("關閉程式") : QStringLiteral("返回"), this);
+    auto *close = new QPushButton(startup ? tr("Close app") : tr("Back"), this);
     close->setMinimumHeight(48);
     close->setProperty("androidRole", QStringLiteral("secondary"));
     connect(close, &QPushButton::clicked, this, &AndroidContentDialog::reject);
@@ -378,23 +377,23 @@ void AndroidContentDialog::refresh()
     for (const auto &p : contentStore->packages()) {
         const QString version = p.packageVersion.isEmpty() ? QString() : QStringLiteral(" · v%1").arg(p.packageVersion);
         auto *item = new QListWidgetItem(QStringLiteral("%1%2  · %3%4")
-            .arg(p.id, version, p.enabled ? QStringLiteral("已啟用") : QStringLiteral("已停用"),
-                 p.bundled ? QStringLiteral(" · 隨包原版") : QString()), m_packages);
+            .arg(p.id, version, p.enabled ? tr("Enabled") : tr("Disabled"),
+                 p.bundled ? tr(" · Bundled original") : QString()), m_packages);
         item->setData(Qt::UserRole, p.id);
         if (p.id == selected) m_packages->setCurrentItem(item);
     }
     const bool upgradeConflict = contentStore->status().value("upgrade_conflict").toBool();
     m_recoverButton->setText(upgradeConflict
-        ? QStringLiteral("還原隨包擴展，保留媒體")
-        : QStringLiteral("停用上次匯入／取消待套用變更"));
+        ? tr("Restore bundled extensions, keep media")
+        : tr("Disable last import / discard pending changes"));
     m_status->setText(upgradeConflict
-        ? QStringLiteral("APK 新增內容與現有擴展衝突。請調整整包，或還原隨包擴展；舊內容仍保留於上一版本。\n%1")
+        ? tr("New APK content conflicts with existing extensions. Adjust the packages or restore the bundled extensions; the old content stays in the previous version.\n%1")
             .arg(contentStore->status().value("recovery_error").toString())
         : contentStore->needsRecovery()
-        ? QStringLiteral("上次內容啟動未完成。請停用上次匯入或切回上一版本。")
-        : contentStore->hasPending() ? QStringLiteral("變更已完整暫存。請關閉並重新開啟程式以套用。")
-        : contentStore->mediaReady() ? QStringLiteral("完整資源已就緒。")
-        : QStringLiteral("尚未匯入完整聲畫資源，暫不能開局。"));
+        ? tr("The last content startup did not finish. Disable the last import or switch back to the previous version.")
+        : contentStore->hasPending() ? tr("Changes are fully staged. Close and reopen the app to apply them.")
+        : contentStore->mediaReady() ? tr("Full resources are ready.")
+        : tr("The full media resources have not been imported; games cannot start yet."));
     for (auto *button : m_actions) button->setEnabled(true);
     m_packages->setEnabled(true);
     m_cancelButton->setEnabled(false);
@@ -420,7 +419,7 @@ void AndroidContentDialog::run(const std::function<bool(QString *)> &operation)
     m_packages->setEnabled(false);
     m_continue->setEnabled(false);
     m_cancelButton->setEnabled(true);
-    m_status->setText(QStringLiteral("正在處理，請保持前景……"));
+    m_status->setText(tr("Processing; keep the app in the foreground…"));
     revealStatus();
     struct Result { bool ok = false; QString error; };
     auto result = std::make_shared<Result>();
@@ -433,7 +432,7 @@ void AndroidContentDialog::run(const std::function<bool(QString *)> &operation)
         if (!result->ok) {
             qWarning() << "Android content import:" << result->error;
             m_status->setText(result->error.isEmpty()
-                ? QStringLiteral("操作已取消，現用版本保留。") : result->error);
+                ? tr("Operation cancelled; the current version is kept.") : result->error);
         }
         else m_progress->setValue(100);
         revealStatus();
@@ -444,9 +443,9 @@ void AndroidContentDialog::run(const std::function<bool(QString *)> &operation)
 
 void AndroidContentDialog::importFile(bool media, bool singleLua, bool modularPackage)
 {
-    const QUrl url = QFileDialog::getOpenFileUrl(this, QStringLiteral("選擇匯入檔案"), QUrl(),
-        singleLua ? QStringLiteral("Lua (*.lua);;所有檔案 (*)")
-                  : QStringLiteral("ZIP (*.zip);;所有檔案 (*)"));
+    const QUrl url = QFileDialog::getOpenFileUrl(this, tr("Select a file to import"), QUrl(),
+        singleLua ? tr("Lua (*.lua);;All files (*)")
+                  : tr("ZIP (*.zip);;All files (*)"));
     if (url.isEmpty()) return;
     QString filename = QFileInfo(url.path()).fileName();
     QString bundle;
@@ -454,8 +453,8 @@ void AndroidContentDialog::importFile(bool media, bool singleLua, bool modularPa
         bool ok = false;
         const QString proposal = QFileInfo(filename).completeBaseName()
             .replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_.-]")), QStringLiteral("_"));
-        bundle = QInputDialog::getText(this, QStringLiteral("整包名稱"),
-            QStringLiteral("相同名稱會替換原包並保留載入位置；其他包的檔案衝突會拒絕匯入。"),
+        bundle = QInputDialog::getText(this, tr("Package name"),
+            tr("A package with the same name is replaced and keeps its load position; file conflicts with other packages reject the import."),
             QLineEdit::Normal, proposal, &ok).trimmed();
         if (!ok || bundle.isEmpty()) return;
         if (singleLua) filename = bundle + QStringLiteral(".lua");
@@ -463,7 +462,7 @@ void AndroidContentDialog::importFile(bool media, bool singleLua, bool modularPa
     }
     // File selection briefly backgrounds the activity; start only after it returns.
     if (QGuiApplication::applicationState() != Qt::ApplicationActive) {
-        m_status->setText(QStringLiteral("請回到前景後重新選取檔案。"));
+        m_status->setText(tr("Return to the foreground and select the file again."));
         revealStatus();
         return;
     }
@@ -492,12 +491,12 @@ void AndroidContentDialog::movePackage(int offset)
 
 void AndroidContentDialog::exportOrder()
 {
-    const QUrl url = QFileDialog::getSaveFileUrl(this, QStringLiteral("匯出載入順序"),
+    const QUrl url = QFileDialog::getSaveFileUrl(this, tr("Export load order"),
         QUrl(QStringLiteral("runtime-content.json")), QStringLiteral("JSON (*.json)"));
     if (url.isEmpty()) return;
     QFile file(devicePath(url));
     QString error;
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)
         || !contentStore->exportDescriptor(file, &error) || !file.flush())
-        QMessageBox::warning(this, QStringLiteral("匯出失敗"), error.isEmpty() ? file.errorString() : error);
+        QMessageBox::warning(this, tr("Export failed"), error.isEmpty() ? file.errorString() : error);
 }

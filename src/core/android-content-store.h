@@ -1,6 +1,7 @@
 #ifndef QSAN_ANDROID_CONTENT_STORE_H
 #define QSAN_ANDROID_CONTENT_STORE_H
 
+#include <QCoreApplication>
 #include <QIODevice>
 #include <QList>
 #include <QString>
@@ -17,6 +18,7 @@
 // 不因 Lua／APK 基線更新複製媒體。規則／Lua 仍為各版本的獨立實體檔。
 class AndroidContentStore
 {
+    Q_DECLARE_TR_FUNCTIONS(AndroidContentStore)
 public:
     struct ImportLimits
     {

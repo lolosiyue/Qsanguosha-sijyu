@@ -1760,6 +1760,9 @@ if(QSAN_BUILD_GUI)
                 src/core/engine.cpp
                 src/core/scenario-work.cpp
                 src/scenario/work-scenario.cpp
+                # Android-only; listed so desktop lupdate keeps their strings.
+                src/core/android-content-store.cpp
+                src/dialog/android-content-dialog.cpp
                 ${QSAN_FORMS}
                 qml/home/HomeScene.qml
                 qml/home/HomeMainButton.qml

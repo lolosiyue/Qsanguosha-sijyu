@@ -2,6 +2,604 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>AndroidContentDialog</name>
+    <message>
+        <source>Content store is not configured.</source>
+        <translation>内容存储区尚未设置。</translation>
+    </message>
+    <message>
+        <source>QSanguosha · Preparing to start</source>
+        <translation>三国杀 · 准备启动</translation>
+    </message>
+    <message>
+        <source>Preparing to start</source>
+        <translation>准备启动</translation>
+    </message>
+    <message>
+        <source>QSanguosha</source>
+        <translation>三国杀</translation>
+    </message>
+    <message>
+        <source>Checking resources and applying pending content…</source>
+        <translation>正在检查资源与应用待生效内容……</translation>
+    </message>
+    <message>
+        <source>The full media resources contain many files. The first launch may take several minutes; please wait.</source>
+        <translation>完整声画资源包含大量文件，首次启动可能需要数分钟，请稍候。</translation>
+    </message>
+    <message>
+        <source>Resource processing has finished. The result appears once the app returns to the foreground.</source>
+        <translation>资源处理已结束，返回前台后显示结果。</translation>
+    </message>
+    <message>
+        <source>Startup was aborted.</source>
+        <translation>启动已中止。</translation>
+    </message>
+    <message>
+        <source>QSanguosha · Resources and extensions</source>
+        <translation>三国杀 · 资源与扩展</translation>
+    </message>
+    <message>
+        <source>Resources and extensions</source>
+        <translation>资源与扩展</translation>
+    </message>
+    <message>
+        <source>Import the full media resources before the first game. Imports and management changes take effect after a restart.
+Only import Lua you trust: scripts have full Lua access and can read and write any file this app can access. Keep the app in the foreground while importing; switching away or locking the screen cancels the import.</source>
+        <translation>首次开局须完整导入声画资源。导入与管理变更在重新启动后生效。
+只导入信任的 Lua：脚本可使用完整 Lua 能力，读写本程序可访问的文件。导入期间请保持前台；切到后台或锁屏会取消本次导入。</translation>
+    </message>
+    <message>
+        <source>Installed packages</source>
+        <translation>已安装整包</translation>
+    </message>
+    <message>
+        <source>Import and manage</source>
+        <translation>导入与管理</translation>
+    </message>
+    <message>
+        <source>Import full media ZIP</source>
+        <translation>导入完整声画 ZIP</translation>
+    </message>
+    <message>
+        <source>Import extension ZIP</source>
+        <translation>导入扩展 ZIP</translation>
+    </message>
+    <message>
+        <source>Import modular package ZIP</source>
+        <translation>导入模块化套件 ZIP</translation>
+    </message>
+    <message>
+        <source>Import single Lua</source>
+        <translation>导入单个 Lua</translation>
+    </message>
+    <message>
+        <source>Enable/disable package</source>
+        <translation>启用／停用整包</translation>
+    </message>
+    <message>
+        <source>Remove selected package</source>
+        <translation>移除所选整包</translation>
+    </message>
+    <message>
+        <source>Remove extension</source>
+        <translation>移除扩展</translation>
+    </message>
+    <message>
+        <source>Remove &quot;%1&quot;? This takes effect after a restart.</source>
+        <translation>移除「%1」？重新启动后生效。</translation>
+    </message>
+    <message>
+        <source>Move selected package up</source>
+        <translation>所选整包上移</translation>
+    </message>
+    <message>
+        <source>Move selected package down</source>
+        <translation>所选整包下移</translation>
+    </message>
+    <message>
+        <source>Export load order</source>
+        <translation>导出加载顺序</translation>
+    </message>
+    <message>
+        <source>Switch back to the previous version</source>
+        <translation>切回上一版本</translation>
+    </message>
+    <message>
+        <source>Disable last import / discard pending changes</source>
+        <translation>停用上次导入／取消待应用变更</translation>
+    </message>
+    <message>
+        <source>Cancel import</source>
+        <translation>取消导入</translation>
+    </message>
+    <message>
+        <source>Enter home</source>
+        <translation>进入首页</translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation>完成</translation>
+    </message>
+    <message>
+        <source>Close app</source>
+        <translation>关闭程序</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>返回</translation>
+    </message>
+    <message>
+        <source>Enabled</source>
+        <translation>已启用</translation>
+    </message>
+    <message>
+        <source>Disabled</source>
+        <translation>已停用</translation>
+    </message>
+    <message>
+        <source> · Bundled original</source>
+        <translation> · 随包原版</translation>
+    </message>
+    <message>
+        <source>Restore bundled extensions, keep media</source>
+        <translation>还原随包扩展，保留媒体</translation>
+    </message>
+    <message>
+        <source>New APK content conflicts with existing extensions. Adjust the packages or restore the bundled extensions; the old content stays in the previous version.
+%1</source>
+        <translation>APK 新增内容与现有扩展冲突。请调整整包，或还原随包扩展；旧内容仍保留于上一版本。
+%1</translation>
+    </message>
+    <message>
+        <source>The last content startup did not finish. Disable the last import or switch back to the previous version.</source>
+        <translation>上次内容启动未完成。请停用上次导入或切回上一版本。</translation>
+    </message>
+    <message>
+        <source>Changes are fully staged. Close and reopen the app to apply them.</source>
+        <translation>变更已完整暂存。请关闭并重新打开程序以应用。</translation>
+    </message>
+    <message>
+        <source>Full resources are ready.</source>
+        <translation>完整资源已就绪。</translation>
+    </message>
+    <message>
+        <source>The full media resources have not been imported; games cannot start yet.</source>
+        <translation>尚未导入完整声画资源，暂不能开局。</translation>
+    </message>
+    <message>
+        <source>Processing; keep the app in the foreground…</source>
+        <translation>正在处理，请保持前台……</translation>
+    </message>
+    <message>
+        <source>Operation cancelled; the current version is kept.</source>
+        <translation>操作已取消，现用版本保留。</translation>
+    </message>
+    <message>
+        <source>Select a file to import</source>
+        <translation>选择导入文件</translation>
+    </message>
+    <message>
+        <source>Lua (*.lua);;All files (*)</source>
+        <translation>Lua (*.lua);;所有文件 (*)</translation>
+    </message>
+    <message>
+        <source>ZIP (*.zip);;All files (*)</source>
+        <translation>ZIP (*.zip);;所有文件 (*)</translation>
+    </message>
+    <message>
+        <source>Package name</source>
+        <translation>整包名称</translation>
+    </message>
+    <message>
+        <source>A package with the same name is replaced and keeps its load position; file conflicts with other packages reject the import.</source>
+        <translation>相同名称会替换原包并保留加载位置；其他包的文件冲突会拒绝导入。</translation>
+    </message>
+    <message>
+        <source>Return to the foreground and select the file again.</source>
+        <translation>请回到前台后重新选取文件。</translation>
+    </message>
+    <message>
+        <source>Export failed</source>
+        <translation>导出失败</translation>
+    </message>
+    <message>
+        <source>Resource initialization failed</source>
+        <translation>资源初始化失败</translation>
+    </message>
+    <message>
+        <source>Cannot record startup state</source>
+        <translation>无法记录启动状态</translation>
+    </message>
+    <message>
+        <source>Cannot finish the startup record</source>
+        <translation>无法完成启动记录</translation>
+    </message>
+</context>
+<context>
+    <name>AndroidContentStore</name>
+    <message>
+        <source>Lua file exceeds import limits</source>
+        <translation>Lua 文件超出导入限制</translation>
+    </message>
+    <message>
+        <source>Lua input read failed</source>
+        <translation>读取 Lua 输入失败</translation>
+    </message>
+    <message>
+        <source>bundled modular package conflicts with a legacy package: %1</source>
+        <translation>随包模块化套件与旧版整包冲突：%1</translation>
+    </message>
+    <message>
+        <source>cannot atomically add bundled modular package: %1</source>
+        <translation>无法原子性加入随包模块化套件：%1</translation>
+    </message>
+    <message>
+        <source>cannot atomically publish metadata: %1</source>
+        <translation>无法原子性发布元数据：%1</translation>
+    </message>
+    <message>
+        <source>cannot copy content: %1</source>
+        <translation>无法复制内容：%1</translation>
+    </message>
+    <message>
+        <source>cannot create directory: %1</source>
+        <translation>无法创建目录：%1</translation>
+    </message>
+    <message>
+        <source>cannot export effective descriptor</source>
+        <translation>无法导出生效的描述文件</translation>
+    </message>
+    <message>
+        <source>cannot flush imported file</source>
+        <translation>无法写入导入的文件</translation>
+    </message>
+    <message>
+        <source>cannot open staged payload for synchronization</source>
+        <translation>无法打开暂存内容以进行同步</translation>
+    </message>
+    <message>
+        <source>cannot preserve legacy edits</source>
+        <translation>无法保留旧版修改</translation>
+    </message>
+    <message>
+        <source>cannot preserve legacy payload</source>
+        <translation>无法保留旧版内容</translation>
+    </message>
+    <message>
+        <source>cannot publish baseline</source>
+        <translation>无法发布基线</translation>
+    </message>
+    <message>
+        <source>cannot publish complete content version</source>
+        <translation>无法发布完整内容版本</translation>
+    </message>
+    <message>
+        <source>cannot publish extension payload</source>
+        <translation>无法发布扩展内容</translation>
+    </message>
+    <message>
+        <source>cannot publish imported file</source>
+        <translation>无法发布导入的文件</translation>
+    </message>
+    <message>
+        <source>cannot publish media payload</source>
+        <translation>无法发布声画内容</translation>
+    </message>
+    <message>
+        <source>cannot publish modular package payload</source>
+        <translation>无法发布模块化套件内容</translation>
+    </message>
+    <message>
+        <source>cannot read bounded content metadata: %1</source>
+        <translation>无法读取内容元数据（超出大小限制或无法读取）：%1</translation>
+    </message>
+    <message>
+        <source>cannot read legacy content</source>
+        <translation>无法读取旧版内容</translation>
+    </message>
+    <message>
+        <source>cannot reference shared media directory: %1</source>
+        <translation>无法引用共享声画目录：%1</translation>
+    </message>
+    <message>
+        <source>cannot reference shared media: %1</source>
+        <translation>无法引用共享声画：%1</translation>
+    </message>
+    <message>
+        <source>cannot stage Lua file</source>
+        <translation>无法暂存 Lua 文件</translation>
+    </message>
+    <message>
+        <source>cannot stage a complete APK modular package</source>
+        <translation>无法暂存完整的 APK 模块化套件</translation>
+    </message>
+    <message>
+        <source>cannot stage baseline</source>
+        <translation>无法暂存基线</translation>
+    </message>
+    <message>
+        <source>cannot stage bundled modular packages</source>
+        <translation>无法暂存随包模块化套件</translation>
+    </message>
+    <message>
+        <source>cannot stage content version</source>
+        <translation>无法暂存内容版本</translation>
+    </message>
+    <message>
+        <source>cannot stage extension package</source>
+        <translation>无法暂存扩展整包</translation>
+    </message>
+    <message>
+        <source>cannot stage imported file</source>
+        <translation>无法暂存导入的文件</translation>
+    </message>
+    <message>
+        <source>cannot stage media package</source>
+        <translation>无法暂存声画资源包</translation>
+    </message>
+    <message>
+        <source>cannot stage modular package</source>
+        <translation>无法暂存模块化套件</translation>
+    </message>
+    <message>
+        <source>cannot synchronize staged payload</source>
+        <translation>无法同步暂存内容</translation>
+    </message>
+    <message>
+        <source>cannot write Lua import</source>
+        <translation>无法写入导入的 Lua</translation>
+    </message>
+    <message>
+        <source>case-colliding APK package name: %1</source>
+        <translation>APK 整包名称仅大小写不同而冲突：%1</translation>
+    </message>
+    <message>
+        <source>case-colliding runtime paths</source>
+        <translation>运行时路径仅大小写不同而冲突</translation>
+    </message>
+    <message>
+        <source>content directory is a symbolic link: %1</source>
+        <translation>内容目录是符号链接：%1</translation>
+    </message>
+    <message>
+        <source>content import cancelled</source>
+        <translation>内容导入已取消</translation>
+    </message>
+    <message>
+        <source>content manifest is too large</source>
+        <translation>内容清单过大</translation>
+    </message>
+    <message>
+        <source>content package file is missing: %1</source>
+        <translation>内容整包文件缺失：%1</translation>
+    </message>
+    <message>
+        <source>content path is owned by another enabled package: %1</source>
+        <translation>内容路径已被另一个启用的整包占用：%1</translation>
+    </message>
+    <message>
+        <source>content publish failed</source>
+        <translation>内容发布失败</translation>
+    </message>
+    <message>
+        <source>content read failed</source>
+        <translation>内容读取失败</translation>
+    </message>
+    <message>
+        <source>content store has not been prepared</source>
+        <translation>内容存储区尚未准备完成</translation>
+    </message>
+    <message>
+        <source>content store is busy</source>
+        <translation>内容存储区忙碌中</translation>
+    </message>
+    <message>
+        <source>content version is incomplete: %1</source>
+        <translation>内容版本不完整：%1</translation>
+    </message>
+    <message>
+        <source>content write failed</source>
+        <translation>内容写入失败</translation>
+    </message>
+    <message>
+        <source>descriptor references a file outside its package: %1</source>
+        <translation>描述文件引用了整包外的文件：%1</translation>
+    </message>
+    <message>
+        <source>descriptor references missing package file: %1</source>
+        <translation>描述文件引用了缺失的整包文件：%1</translation>
+    </message>
+    <message>
+        <source>duplicate descriptor file: %1</source>
+        <translation>描述文件重复：%1</translation>
+    </message>
+    <message>
+        <source>duplicate or invalid package id</source>
+        <translation>整包 ID 重复或无效</translation>
+    </message>
+    <message>
+        <source>duplicate package in order</source>
+        <translation>加载顺序中有重复的整包</translation>
+    </message>
+    <message>
+        <source>empty or incomplete Lua import</source>
+        <translation>导入的 Lua 为空或不完整</translation>
+    </message>
+    <message>
+        <source>extension ZIP contains protected or unsupported content: %1</source>
+        <translation>扩展 ZIP 含有受保护或不支持的内容：%1</translation>
+    </message>
+    <message>
+        <source>extension import must be .lua or .zip</source>
+        <translation>扩展导入必须是 .lua 或 .zip 文件</translation>
+    </message>
+    <message>
+        <source>extension package contains no extension script</source>
+        <translation>扩展整包不含任何扩展脚本</translation>
+    </message>
+    <message>
+        <source>insufficient private storage for a complete content version</source>
+        <translation>私有存储空间不足，无法建立完整内容版本</translation>
+    </message>
+    <message>
+        <source>invalid APK presentation source: %1</source>
+        <translation>无效的 APK 界面资源来源：%1</translation>
+    </message>
+    <message>
+        <source>invalid Lua filename</source>
+        <translation>无效的 Lua 文件名</translation>
+    </message>
+    <message>
+        <source>invalid baseline path</source>
+        <translation>无效的基线路径</translation>
+    </message>
+    <message>
+        <source>invalid bundled package name</source>
+        <translation>无效的随包整包名称</translation>
+    </message>
+    <message>
+        <source>invalid content JSON: %1</source>
+        <translation>无效的内容 JSON：%1</translation>
+    </message>
+    <message>
+        <source>invalid content version id</source>
+        <translation>无效的内容版本 ID</translation>
+    </message>
+    <message>
+        <source>invalid extension descriptor schema</source>
+        <translation>无效的扩展描述文件格式</translation>
+    </message>
+    <message>
+        <source>invalid extension filename or package id</source>
+        <translation>无效的扩展文件名或整包 ID</translation>
+    </message>
+    <message>
+        <source>invalid import manifest JSON</source>
+        <translation>无效的导入清单 JSON</translation>
+    </message>
+    <message>
+        <source>invalid legacy runtime path</source>
+        <translation>无效的旧版运行时路径</translation>
+    </message>
+    <message>
+        <source>invalid media manifest</source>
+        <translation>无效的声画清单</translation>
+    </message>
+    <message>
+        <source>invalid modular package id</source>
+        <translation>无效的模块化套件 ID</translation>
+    </message>
+    <message>
+        <source>invalid new bundled package name</source>
+        <translation>无效的新随包整包名称</translation>
+    </message>
+    <message>
+        <source>invalid package version</source>
+        <translation>无效的整包版本</translation>
+    </message>
+    <message>
+        <source>invalid preserved legacy override</source>
+        <translation>无效的已保留旧版覆盖</translation>
+    </message>
+    <message>
+        <source>invalid snapshot package path</source>
+        <translation>无效的快照整包路径</translation>
+    </message>
+    <message>
+        <source>legacy content read failed</source>
+        <translation>旧版内容读取失败</translation>
+    </message>
+    <message>
+        <source>media manifest does not exactly describe ZIP payload</source>
+        <translation>声画清单与 ZIP 内容不完全一致</translation>
+    </message>
+    <message>
+        <source>media manifest path or size mismatch: %1</source>
+        <translation>声画清单路径或大小不符：%1</translation>
+    </message>
+    <message>
+        <source>modular package ZIP must contain root manifest.json</source>
+        <translation>模块化套件 ZIP 根目录必须包含 manifest.json</translation>
+    </message>
+    <message>
+        <source>modular package import must be a ZIP file</source>
+        <translation>模块化套件导入必须是 ZIP 文件</translation>
+    </message>
+    <message>
+        <source>modular package payload is missing: %1</source>
+        <translation>模块化套件内容缺失：%1</translation>
+    </message>
+    <message>
+        <source>new APK package conflicts with a user package: %1</source>
+        <translation>APK 新增整包与用户整包冲突：%1</translation>
+    </message>
+    <message>
+        <source>non-regular baseline bootstrap: %1</source>
+        <translation>基线启动文件不是普通文件：%1</translation>
+    </message>
+    <message>
+        <source>non-regular baseline content: %1</source>
+        <translation>基线内容不是普通文件：%1</translation>
+    </message>
+    <message>
+        <source>non-regular content source: %1</source>
+        <translation>内容来源不是普通文件：%1</translation>
+    </message>
+    <message>
+        <source>non-regular object in content tree</source>
+        <translation>内容目录中有非普通文件的对象</translation>
+    </message>
+    <message>
+        <source>package attempts to replace protected runtime content: %1</source>
+        <translation>整包试图替换受保护的运行时内容：%1</translation>
+    </message>
+    <message>
+        <source>package collides with baseline content: %1</source>
+        <translation>整包与基线内容冲突：%1</translation>
+    </message>
+    <message>
+        <source>package order must include every package once</source>
+        <translation>加载顺序必须包含每个整包且仅一次</translation>
+    </message>
+    <message>
+        <source>package payload is missing: %1</source>
+        <translation>整包内容缺失：%1</translation>
+    </message>
+    <message>
+        <source>preserved legacy override is missing</source>
+        <translation>已保留的旧版覆盖缺失</translation>
+    </message>
+    <message>
+        <source>qsan-media.json is missing</source>
+        <translation>缺少 qsan-media.json</translation>
+    </message>
+    <message>
+        <source>snapshot descriptor does not match its packages</source>
+        <translation>快照描述文件与其整包不符</translation>
+    </message>
+    <message>
+        <source>unauthorized media payload path: %1</source>
+        <translation>未经授权的声画内容路径：%1</translation>
+    </message>
+    <message>
+        <source>undeclared Lua in extension package: %1</source>
+        <translation>扩展整包中有未声明的 Lua：%1</translation>
+    </message>
+    <message>
+        <source>undeclared modular package payload: %1</source>
+        <translation>模块化套件中有未声明的内容：%1</translation>
+    </message>
+    <message>
+        <source>unknown package</source>
+        <translation>未知的整包</translation>
+    </message>
+    <message>
+        <source>unknown package in order</source>
+        <translation>加载顺序中有未知的整包</translation>
+    </message>
+</context>
+<context>
     <name>BanIpDialog</name>
     <message>
         <location filename="../src/dialog/banipdialog.cpp" line="44"/>
@@ -3424,7 +4022,7 @@
     </message>
     <message>
         <source>Resources and extensions...</source>
-        <translation>資源與擴展……</translation>
+        <translation>资源与扩展……</translation>
     </message>
     <message>
         <source>Maiden at prayer</source>
