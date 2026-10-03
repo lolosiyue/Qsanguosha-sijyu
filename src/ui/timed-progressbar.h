@@ -71,7 +71,7 @@ protected:
     QSanProtocol::ProcessInstanceType m_instanceType;
 };
 
-//新增一个计时器，用于游戏计时
+// Timer used for the game countdown.
 //#include <QLabel>
 //#include <QTime>
 //class QTimer;

@@ -4538,7 +4538,7 @@ public:
     {
         const QVariant turn=room->historyScopes().value("turn_id"); if(turn.toLongLong()<=0) return {{"known",false}};
         QVariantMap counts;
-        // 使用 includes response-use (respond_card is_use). 打出 is not a use and does not debit a type.
+        // Usage includes response-use (respond_card.is_use); a response that is not a use does not consume a card type.
         for(const QString &kind:{QString("use_card"),QString("respond_card"),QString("move")}) {
             const QString actor=kind=="respond_card"?QString("player"):QString("from");
             QVariantMap filter{{"kind",kind},{"turn_id",turn},{actor,player->objectName()},{"limit",128}};

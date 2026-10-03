@@ -108,7 +108,7 @@ void GameRule::onPhaseProceed(ServerPlayer *player,Room *room) const
     }
     case Player::Play: {
 		player->removeTag("AI_FailedUse");
-		for (int i = 0; i < 9; i++){//防止无限询问
+		for (int i = 0; i < 9; i++){// Prevent unbounded prompting.
             if(!player->isAlive()) break;
 			CardUseStruct card_use;
             room->activate(player,card_use);
@@ -116,7 +116,7 @@ void GameRule::onPhaseProceed(ServerPlayer *player,Room *room) const
 			if(room->useCard(card_use,true)) {
 				i = 0;
 			} else {
-				// activate 每次只交 turnUse[0]；同一張被 areCardTargetsLegal／validate 駁回會空耗 9 次後直接棄牌
+				// Activate supplies only turnUse[0]; if areCardTargetsLegal/validate rejects it, retries waste nine attempts before discarding.
 				QStringList failed = player->getTag("AI_FailedUse").toStringList();
 				const QString key = card_use.card->toString();
 				if (!failed.contains(key))
@@ -173,7 +173,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     switch (triggerEvent) {
     case GameReady: {// Handle global events
 		if(player) break;
-		// 登記本局總人數,供崩潰摘要用(輪數稍後由 RoundStart 更新)
+		// Register the total player count for crash summaries; RoundStart records the round later.
 		CrashHandler::setGameStats(room->getPlayers().length(), 0);
 		room->initializeReplayRecordPath();
 		ServerPlayer *lord = room->getLord();
@@ -363,7 +363,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			if(player->getMark("TurnLengthCount")<rsdata.toInt()){
 				room->setTag("TurnLengthCount",rsdata);
 				room->doBroadcastNotify(QSanProtocol::S_COMMAND_ADD_ROUND,rsdata);
-				// 登記已進行輪數,供崩潰摘要用
+				// Register the number of rounds played.
 				CrashHandler::setGameStats(room->getPlayers().length(), rsdata.toInt());
 				if (room->historyRecordingEnabled()) {
 					room->resolutionHistory().beginRound({
@@ -391,7 +391,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			}
         }
         if(player->faceUp()) {
-            room->addPlayerMark(player,"Global_TurnCount2");  //这个标记是真正进行的回合数，被翻面了不增加
+            room->addPlayerMark(player,"Global_TurnCount2");  // This counts actual turns; being turned over does not increment it.
 			QVariant rsdata = room->getTag("TurnLengthCount");
             room->getThread()->trigger(TurnStarted,room,player,rsdata);
             player->play();
@@ -1004,8 +1004,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     }
     case AskForPeaches: {
         DyingStruct dying = data.value<DyingStruct>();
-        // 用不出去的牌（如思相頂三張沒有桃）不改變任何狀態，瀕死旗標也不會清；
-        // 同一張再交出來只會再失敗一次。同一輪裡重複交出失敗過的牌視為放棄。
+        // An unusable card (for example, one of Xiangsi's top three without a Peach) changes no state and leaves the dying flag set;
+        // submitting it again fails again. Repeating a failed card during the same round counts as passing.
         QSet<QString> failedPeaches;
         while (dying.who->hasFlag("Global_Dying")) {
             //room->getThread()->trigger(PreventPeach,room,player,data);
@@ -1431,7 +1431,7 @@ case BuryVictim: {
             room->getThread()->delay(Config.S_JUDGE_LONG_DELAY);
         }
 		judge->card = Sanguosha->cloneCard(judge->card);
-		data.setValue(judge);//克隆判定牌以达到保留判定牌信息
+		data.setValue(judge);// Clone the judgement card to preserve its details.
         break;
     }
     case FinishJudge: {
@@ -1439,7 +1439,7 @@ case BuryVictim: {
         if(judge->throw_card&&room->getCardPlace(judge->card->getEffectiveId())==Player::PlaceJudge) {
             CardMoveReason reason(CardMoveReason::S_REASON_JUDGEDONE,judge->who->objectName(),judge->reason,"");
             if(judge->retrial_by_response) reason.m_extraData = QVariant::fromValue(judge->retrial_by_response);
-            reason.m_useStruct.card = judge->card;//这样可以知道这是生效后的判定牌
+            reason.m_useStruct.card = judge->card;// This identifies the card as the one produced by the resolved judgement.
             room->moveCardTo(judge->card,nullptr,Player::DiscardPile,reason,true);
         }
 		if(judge->card->parent()) break;

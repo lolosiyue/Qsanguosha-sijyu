@@ -23,12 +23,12 @@ enum class AssetRootSource {
     None,
     CommandLine,        // --asset-root <path>
     Environment,        // QSAN_ASSET_ROOT
-    InstalledPrefix,    // <appDir>/../share/qsanguosha（GNUInstallDirs 安裝樹）
-    PortableBundle,     // <appDir>/share/qsanguosha（可攜／AppImage 版面）
-    WorkingDirectory,   // 目前工作目錄（開發樹的既有行為）
-    ApplicationDir,     // binary 隔籬（Windows deploy 版面）
+    InstalledPrefix,    // <appDir>/../share/qsanguosha (GNUInstallDirs install tree)
+    PortableBundle,     // <appDir>/share/qsanguosha (portable/AppImage layout)
+    WorkingDirectory,   // Current working directory (existing development-tree behavior)
+    ApplicationDir,     // Directory beside the binary (Windows deployment layout)
     ApplicationParent,  // <appDir>/.. (build output directory outside the source tree)
-    AndroidApplicationData, // <AppDataLocation>/runtime（APK 逐檔補齊的可寫副本）
+    AndroidApplicationData, // <AppDataLocation>/runtime (writable per-file copy from the APK)
 };
 
 struct Resolution
@@ -60,8 +60,8 @@ const Resolution &resolution();
 QString applicationDir();
 QString assetRoot();
 QString userDataRoot();
-// asset root 係咪打包版面（--asset-root／QSAN_ASSET_ROOT／安裝樹／可攜包）。
-// 未 resolve 或者開發樹就係 false。
+// Whether the asset root uses a packaged layout (--asset-root / QSAN_ASSET_ROOT / install tree / portable bundle).
+// Returns false before resolution and for the development tree.
 bool isPackaged();
 
 // Assets under assetRoot; on Android this is a writable copy. With relative empty, returns
@@ -69,13 +69,13 @@ bool isPackaged();
 QString assetPath(const QString &relative);
 // Writable files under userDataRoot; the parent directory is created as a side effect.
 QString userDataPath(const QString &relative);
-// 對局記錄／replay 的目錄（會建立）。
+// Directory for game records and replays (created on demand).
 QString recordDir();
 // Content the user may customize but that also ships a bundled version (custom scenarios
 // and the like): user data first, falling back to the asset tree when not found. The
 // returned path is not guaranteed to exist.
 QString readablePath(const QString &relative);
-// 自訂劇本目錄（可寫，會建立）。
+// Writable directory for custom scenarios (created on demand).
 QString customSceneDir();
 
 QString sourceName(AssetRootSource source);

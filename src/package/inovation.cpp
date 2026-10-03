@@ -4667,9 +4667,9 @@ public:
     { if (target && target->isAlive() && ctx.owner->getPile("huanshu").contains(ctx.extra_data.toInt())) room->obtainCard(target, ctx.extra_data.toInt()); return false; }
 };
 
-// inovation_fengbi: 標記技（封弊）——效果實作在
-// PlayerDecisionService::askForCardChosen（他人不可指名其手牌）
-// 與 PlayerCardContainer::updateHandcardNum（對其他玩家隱藏手牌數）
+// inovation_fengbi is a marker skill; its effect is implemented in
+// PlayerDecisionService::askForCardChosen (other players cannot choose their hand cards)
+// and PlayerCardContainer::updateHandcardNum (hide hand counts from other players).
 class InovationFengbi : public TriggerSkillV2
 {
 public:

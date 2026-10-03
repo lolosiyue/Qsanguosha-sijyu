@@ -1,10 +1,6 @@
 @echo off
-rem ============================================================
-rem  real-network test entry (calls network_runner.py)
-rem  All options are set below. Leave empty = use default.
-rem ============================================================
+rem Run network_runner.py with the options below.
 
-rem ---- your choices (edit here) ------------------------------
 set MODES=08p
 set RUNS=1
 set GENERAL=s4_huangzhong
@@ -12,9 +8,8 @@ set GENERAL2=
 set CONSOLE=
 set LOG_DIR=
 set LABEL=
-rem  CONSOLE = set to 1 to show server output on this terminal
-rem  (server.log is skipped; marker file still written)
-rem ------------------------------------------------------------
+rem CONSOLE shows server output in this terminal.
+rem When enabled, server.log is skipped but the marker file is still written.
 
 set "ARGS=--exe-root "%~dp0..\..""
 if not "%MODES%"==""    set "ARGS=%ARGS% --modes "%MODES%""

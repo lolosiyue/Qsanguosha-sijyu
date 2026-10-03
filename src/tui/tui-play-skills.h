@@ -38,7 +38,7 @@ bool tuiSkillActivationAvailable(const QString &skillName, int instanceId,
                                  CardUseStruct::CardUseReason reason,
                                  const QString &pattern, bool *known);
 
-// viewAs / V2 createCard → Card::toString() for the wire.
+// viewAs / V2 createCard -> Card::toString() for the wire.
 //
 // builtCard, when asked for, also hands back the card the text was made from.
 // It stays valid for the rest of the current event handler and no longer: the

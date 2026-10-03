@@ -10,22 +10,22 @@ Item {
         id: heroCard
         source: "../image/large/"+hero.split(":")[1]+".png"
 
-        // 缩放控制属性
+        // Zoom controls.
         property real manualScale: 1.0
         property real minScale: 0.2
         property real maxScale: 2.0
         property real baseScaleFactor: 1.0
 
-        // 变换属性
+        // Transform properties.
         property real rotationAngle: 0
         property real mirrorFactor: 1
 
-        // 动态计算属性
+        // Dynamically calculated properties.
         property real totalScale: baseScaleFactor * manualScale * mirrorFactor
         property real scaledWidth: implicitWidth * Math.abs(totalScale)
         property real scaledHeight: implicitHeight * Math.abs(totalScale)
 
-        // 初始居中位置
+        // Initial centered position.
         width: implicitWidth
         height: implicitHeight
         x: (root.width - scaledWidth) / 2
@@ -36,7 +36,7 @@ Item {
                 origin.x: heroCard.width / 2
                 origin.y: heroCard.height / 2
                 xScale: {
-                    // 自动计算基础缩放比例
+                    // Calculate the base scale automatically.
                     var base = Math.min(
                         (root.width * 0.9) / heroCard.implicitWidth,
                         (root.height * 0.9) / heroCard.implicitHeight
@@ -53,7 +53,7 @@ Item {
             }
         ]
 
-        // 左键拖拽区域
+        // Left-button drag area.
         MouseArea {
             id: dragArea
             anchors.fill: parent
@@ -62,14 +62,14 @@ Item {
             drag.axis: Drag.XAndYAxis
 
             onDoubleClicked: {
-                // 镜像时保持视觉中心不变
+                // Keep the visual center fixed when mirrored.
                 var visualCenterX = heroCard.x + heroCard.scaledWidth/2
                 heroCard.mirrorFactor *= -1
                 heroCard.x = visualCenterX - heroCard.scaledWidth/2
             }
         }
 
-        // 中键缩放区域
+        // Middle-button zoom area.
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.MiddleButton
@@ -92,22 +92,22 @@ Item {
 
             onPositionChanged: {
                 if (pressed) {
-                    // 计算缩放增量
+                    // Calculate the zoom delta.
                     var delta = (mouseY - startY) * 0.004
                     var targetScale = initialScale + delta
 
-                    // 强制缩放范围
+                    // Clamp the zoom range.
                     var clampedScale = Math.max(heroCard.minScale,
                                               Math.min(heroCard.maxScale,
                                               targetScale))
 
-                    // 达到边界时停止变化
+                    // Stop at the limit.
                     if (clampedScale !== targetScale) return
 
-                    // 计算缩放比例
+                    // Calculate the scale.
                     var scaleRatio = clampedScale / initialScale
 
-                    // 更新位置和缩放值
+                    // Update position and scale.
                     heroCard.x = initialX + mouseXInItem * (1 - scaleRatio)
                     heroCard.y = initialY + mouseYInItem * (1 - scaleRatio)
                     heroCard.manualScale = clampedScale
@@ -115,7 +115,7 @@ Item {
             }
         }
 
-        // 右键旋转区域
+        // Right-button rotation area.
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.RightButton

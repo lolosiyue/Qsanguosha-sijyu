@@ -2,10 +2,10 @@
 
 #if defined(QSG_CRASH_HANDLER) && defined(Q_OS_WIN)
 
-// QSG_BUILD_ID —— 由 build.ps1 每次构建前按当前 git HEAD 刷新写入 build_id.h。
-// 走头文件而非编译宏:头文件内容变才能让 make 重编本文件,exe 内嵌的 id
-// 因此始终与符号包文件名一致。详见 build.ps1 的 Write-BuildIdHeader。
-// 不经 build.ps1 直接 qmake 时该文件可能缺失,__has_include 守卫 + 回退 unknown。
+// QSG_BUILD_ID is generated from the current Git HEAD by build.ps1 before each build.
+// A header change triggers recompilation, keeping the embedded ID aligned with the symbol-package filename.
+// See Write-BuildIdHeader in build.ps1.
+// Direct qmake builds may lack this file; __has_include falls back to unknown.
 #if defined(__has_include)
 #  if __has_include("build_id.h")
 #    include "build_id.h"
@@ -24,9 +24,9 @@
 #include <exception>
 #include <new>
 
-// Lua C API:崩溃时只读地走出 Lua 调用栈(.lua 文件名 + 行号)。
-// QSanguosha 始终带 Lua 构建(QSanguosha.pro 里 CONFIG+=lua 默认开),
-// src/lua 在 INCLUDEPATH 上,故可直接 include。
+// Read the Lua call stack (.lua filename and line) through the Lua C API.
+// Lua is always built (CONFIG+=lua is enabled by default in QSanguosha.pro),
+// and src/lua is on INCLUDEPATH.
 #include "lua.hpp"
 
 #ifndef RRF_RT_REG_SZ
@@ -35,25 +35,25 @@
 
 namespace {
 
-// 防重入:崩溃处理过程中若再次崩溃,直接放弃,不递归。
+// Prevent recursion: abandon crash handling if it crashes again.
 volatile LONG g_handling = 0;
 
-// 进程是否已进入正常关闭流程(qApp->exec() 已返回)。
-// 退出时 Lua 关闭状态机会跑 __gc 终结器,终结器经 SWIG 回调 C++ 析构,
-// 期间抛出的未捕获异常会走到 terminate/SEH —— 这是退出清理阶段的崩溃,
-// 玩家已主动退出、无任何损失,不是"玩到一半闪退",故不弹崩溃报告。
+// Whether normal shutdown has begun (qApp->exec() has returned).
+// Lua shutdown runs __gc finalizers, which can call C++ destructors through SWIG.
+// An uncaught exception there reaches terminate/SEH during user-requested cleanup,
+// not a crash during gameplay, so do not show a crash report.
 volatile LONG g_shuttingDown = 0;
 
-// 启动时填充,崩溃时直接写出。8KB 足够。
+// Filled at startup for direct crash-time output; 8 KB is sufficient.
 char g_envInfo[8192] = {0};
 
-// 主线程 ID 与启动时刻 —— 崩溃时用来判断崩在哪个线程、进程已运行多久。
+// Main-thread ID and startup time identify the crashing thread and process uptime.
 DWORD g_mainThreadId = 0;
 ULONGLONG g_startTick = 0;
 wchar_t g_dumpDirectory[MAX_PATH] = L"dmp";
 wchar_t g_configPath[MAX_PATH] = L"config.ini";
 
-// GetTickCount64 在部分 SDK 头里要 _WIN32_WINNT>=0x0600 才声明,运行时取地址绕开。
+// Some SDK headers declare GetTickCount64 only with _WIN32_WINNT>=0x0600; resolve it at runtime.
 ULONGLONG tickCount64()
 {
     typedef ULONGLONG (WINAPI *Fn)(void);
@@ -62,26 +62,26 @@ ULONGLONG tickCount64()
     return fn ? fn() : GetTickCount();
 }
 
-// 当前对局录像文件绝对路径;由 setLiveRecordPath 维护,空串表示不在对局中。
+// Absolute path to the current replay file; maintained by setLiveRecordPath, empty outside a game.
 wchar_t g_liveRecord[MAX_PATH] = {0};
 
-// 游戏版本号;由 setVersion 维护。install() 时 Engine 未就绪,故先给占位值,
-// 万一在 Engine 构造完成前就崩溃,文件名/摘要里的版本段不至于为空。
+// Game version, maintained by setVersion. Engine is unavailable during install(), so use a placeholder
+// in filenames and summaries if a crash occurs before Engine construction completes.
 char g_version[64] = "unknown";
 
-// 崩溃那一刻的主窗口状态与游戏阶段;由 setWindowState / setGamePhase 维护。
-// UI 线程写、崩溃线程读,无锁:这是尽力而为的诊断信息,撕裂读取至多得到
-// 一行乱码,不影响 minidump。
+// Window state and game phase at the crash, maintained by setWindowState / setGamePhase.
+// Written on the UI thread and read by the crash thread without locking; this best-effort diagnostic
+// may be torn, but that does not affect the minidump.
 char g_windowState[256] = {0};
-int  g_gamePhase = 0; // 见 CrashHandler::GamePhase
+int  g_gamePhase = 0; // See CrashHandler::GamePhase.
 
-// Qt 侧暂存的游戏配置摘要(UTF-8)。16 KB 够装 100+ 个包名的中文翻译。
-// UI 线程写、崩溃读,无锁:撕裂至多得到旧值,与同组诊断信息一致。
+// UTF-8 game-configuration summary staged by Qt; 16 KB holds translated names for 100+ packages.
+// Written on the UI thread and read by the crash thread without locking; a torn read may return an older value.
 char g_gameConfig[16384] = {0};
 
-// 本局信息:开局时刻(tick)、总人数、已进行轮数。
-// 开局由 setGamePhase / setGameStats 登记,切回大厅时清零。
-// 写线程(对局逻辑线程 / UI 线程)与崩溃读线程无锁,撕裂至多得到一个旧值,可接受。
+// Current-game data: start tick, player count, and completed rounds.
+// Registered at game start by setGamePhase / setGameStats and cleared on return to the lobby.
+// Writers (game logic or UI thread) and the crash reader do not lock; a torn read may return an older value.
 ULONGLONG g_gameStartTick = 0;
 int g_playerCount = 0;
 int g_gameRound   = 0;
@@ -95,15 +95,15 @@ void appendEnv(const char *fmt, ...)
     if (used >= sizeof(g_envInfo) - 1) return;
     va_list args;
     va_start(args, fmt);
-    wvsprintfA(g_envInfo + used, fmt, args); // wvsprintfA 不支持 %f,够用
+    wvsprintfA(g_envInfo + used, fmt, args); // wvsprintfA does not support %f; this is sufficient.
     va_end(args);
 }
 
-// RegGetValueW 的函数指针类型(运行时从 advapi32 取地址,免显式链接)。
+// Function-pointer type for RegGetValueW, resolved from advapi32 at runtime to avoid an explicit link.
 typedef LONG (WINAPI *RegGetValueWFn)(HKEY, LPCWSTR, LPCWSTR, DWORD,
                                       LPDWORD, PVOID, LPDWORD);
 
-// 读 HKLM 下一个字符串型注册表值,转 UTF-8 写入 out;失败则 out 不变。
+// Read a string value from HKLM, convert it to UTF-8, and write it to out; leave out unchanged on failure.
 void readRegStr(RegGetValueWFn fn, const wchar_t *subkey,
                 const wchar_t *value, char *out, int outBytes)
 {
@@ -116,8 +116,8 @@ void readRegStr(RegGetValueWFn fn, const wchar_t *subkey,
                             nullptr, nullptr);
 }
 
-// EnumDisplayMonitors 回调:逐个打印显示器分辨率、位置、设备名。
-// 设备名(\\.\DISPLAYn)与 setWindowState 登记的屏幕名同源,可对上"游戏在哪块屏"。
+// EnumDisplayMonitors callback: report each display's resolution, position, and device name.
+// The device name (\\.\DISPLAYn) matches the screen recorded by setWindowState.
 BOOL CALLBACK monitorEnumProc(HMONITOR hMon, HDC, LPRECT, LPARAM lp)
 {
     int *idx = (int *)lp;
@@ -143,7 +143,7 @@ void collectEnvInfo()
     appendEnv("==== 环境信息 ====\r\n");
     appendEnv("Build ID: %s\r\n", QSG_BUILD_ID);
 
-    // OS 版本:RtlGetVersion 不会像 GetVersionEx 那样在 Win8.1+ 撒谎
+    // RtlGetVersion reports the OS version accurately, unlike GetVersionEx on Windows 8.1 and later.
     typedef LONG (WINAPI *RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
     RTL_OSVERSIONINFOW osv = {};
     osv.dwOSVersionInfoSize = sizeof(osv);
@@ -207,8 +207,8 @@ void collectEnvInfo()
         appendEnv("系统区域: %s\r\n", loc8);
     }
 
-    // ---- 硬件型号(CPU/显卡/主板)与硬盘容量 ----
-    // Reg* / EnumDisplayDevices 运行时取地址,避免显式链接 advapi32/user32。
+    // ---- Hardware model (CPU/GPU/motherboard) and disk capacity ----
+    // Resolve Reg* / EnumDisplayDevices at runtime to avoid explicit advapi32/user32 links.
     HMODULE advapi = LoadLibraryW(L"advapi32.dll");
     RegGetValueWFn regGet = advapi
         ? (RegGetValueWFn)(void(*)())GetProcAddress(advapi, "RegGetValueW") : nullptr;
@@ -240,11 +240,11 @@ void collectEnvInfo()
             ZeroMemory(&dd, sizeof(dd));
             dd.cb = sizeof(dd);
             if (!enumDD(nullptr, i, &dd, 0)) break;
-            if (!(dd.StateFlags & DISPLAY_DEVICE_ACTIVE)) continue; // 跳过未启用/镜像驱动
+            if (!(dd.StateFlags & DISPLAY_DEVICE_ACTIVE)) continue; // Skip disabled and mirrored drivers.
             char gpu[256] = {0};
             WideCharToMultiByte(CP_UTF8, 0, dd.DeviceString, -1,
                                 gpu, sizeof(gpu), nullptr, nullptr);
-            // 同一显卡接多块显示器会重复枚举,去掉相邻重复
+            // Multiple displays on one GPU can repeat an adapter; remove adjacent duplicates.
             if (gpu[0] && lstrcmpA(gpu, lastGpu) != 0) {
                 appendEnv("显卡: %s\r\n", gpu);
                 lstrcpynA(lastGpu, gpu, sizeof(lastGpu));
@@ -252,14 +252,14 @@ void collectEnvInfo()
         }
     }
 
-    // 硬盘容量:游戏所在盘(传 nullptr 即当前工作目录所在卷)
+    // Disk capacity for the game drive (nullptr selects the current working-directory volume).
     ULARGE_INTEGER diskAvail, diskTotal, diskTotalFree;
     if (GetDiskFreeSpaceExW(nullptr, &diskAvail, &diskTotal, &diskTotalFree))
         appendEnv("硬盘(游戏所在盘): 总 %d GB / 可用 %d GB\r\n",
                   (int)(diskTotal.QuadPart / (1024ULL * 1024 * 1024)),
                   (int)(diskTotalFree.QuadPart / (1024ULL * 1024 * 1024)));
 
-    // 程序路径、工作目录、命令行
+    // Executable path, working directory, and command line.
     wchar_t pathw[MAX_PATH] = {0};
     char path8[MAX_PATH * 3] = {0};
     if (GetModuleFileNameW(nullptr, pathw, MAX_PATH)) {
@@ -278,8 +278,8 @@ void collectEnvInfo()
         appendEnv("命令行: %s\r\n", cmd8);
 }
 
-// 把崩溃文件名前缀(不含扩展名)写入 out(宽字符)。
-// 例:dmp\crash-20260515-203045-20260420-a1b2c3d
+// Write the crash-file prefix, without an extension, to out as a wide string.
+// Example: dmp\crash-20260515-203045-20260420-a1b2c3d
 void buildPrefix(wchar_t *out, size_t cch)
 {
     SYSTEMTIME st;
@@ -293,12 +293,12 @@ void buildPrefix(wchar_t *out, size_t cch)
               g_dumpDirectory,
               st.wYear, st.wMonth, st.wDay,
               st.wHour, st.wMinute, st.wSecond,
-              g_version,         // 游戏版本号,由 setVersion 在 Engine 构造后登记
+              g_version,         // Game version, registered by setVersion after Engine construction.
               QSG_BUILD_ID);
     (void)cch;
 }
 
-// 写 minidump 到 <prefix>.dmp。pointers 为 nullptr 时用当前上下文合成。
+// Write a minidump to <prefix>.dmp; synthesize a context when pointers is null.
 bool writeMiniDump(const wchar_t *prefix, EXCEPTION_POINTERS *pointers)
 {
     wchar_t path[MAX_PATH];
@@ -309,7 +309,7 @@ bool writeMiniDump(const wchar_t *prefix, EXCEPTION_POINTERS *pointers)
     if (hFile == INVALID_HANDLE_VALUE)
         return false;
 
-    // abort/terminate 等路径没有 EXCEPTION_POINTERS,合成一份。
+    // abort/terminate paths have no EXCEPTION_POINTERS, so synthesize a context.
     EXCEPTION_RECORD record;
     CONTEXT context;
     EXCEPTION_POINTERS synthesized;
@@ -317,7 +317,7 @@ bool writeMiniDump(const wchar_t *prefix, EXCEPTION_POINTERS *pointers)
         ZeroMemory(&record, sizeof(record));
         ZeroMemory(&context, sizeof(context));
         RtlCaptureContext(&context);
-        record.ExceptionCode = 0xE0000001; // 自定义"非 SEH 崩溃"码
+        record.ExceptionCode = 0xE0000001; // Custom code for a non-SEH crash.
         synthesized.ExceptionRecord = &record;
         synthesized.ContextRecord = &context;
         pointers = &synthesized;
@@ -334,10 +334,10 @@ bool writeMiniDump(const wchar_t *prefix, EXCEPTION_POINTERS *pointers)
     return ok != FALSE;
 }
 
-// 读磁盘上 PE 文件(exe/dll)头里的链接时首选基址 ImageBase。
-// 关键:不能从内存里映射模块的 PE 头取这个值 —— 开了 ASLR 后,加载器会把内存
-// 里的 OptionalHeader.ImageBase 改写成重定位后的运行时随机基址;只有磁盘上的
-// 文件不被改动,读它才拿得到 addr2line 要的链接基址。失败返回 0。
+// Read the preferred link-time ImageBase from a PE file on disk (EXE/DLL).
+// Do not read it from the mapped in-memory PE header: with ASLR, the loader replaces
+// OptionalHeader.ImageBase with the randomized runtime base. The unchanged disk file
+// provides the link base required by addr2line; return 0 on failure.
 ULONGLONG diskImageBase(const wchar_t *path)
 {
     HANDLE f = CreateFileW(path, GENERIC_READ,
@@ -362,7 +362,7 @@ ULONGLONG diskImageBase(const wchar_t *path)
     return base;
 }
 
-// 写崩溃摘要 txt 到 <prefix>.txt。
+// Write the crash summary to <prefix>.txt.
 void writeSummary(const wchar_t *prefix, const char *reason,
                   EXCEPTION_POINTERS *pointers)
 {
@@ -384,7 +384,7 @@ void writeSummary(const wchar_t *prefix, const char *reason,
               reason, g_version, (unsigned)tid, threadKind, upSec);
     WriteFile(h, buf, lstrlenA(buf), &written, nullptr);
 
-    // 崩溃时进程内存占用(K32GetProcessMemoryInfo 运行时取地址,免链接 psapi)
+    // Process memory usage at crash time; resolve K32GetProcessMemoryInfo at runtime to avoid linking psapi.
     typedef BOOL (WINAPI *GetProcMemFn)(HANDLE, PROCESS_MEMORY_COUNTERS *, DWORD);
     GetProcMemFn memFn = (GetProcMemFn)(void(*)())GetProcAddress(
         GetModuleHandleW(L"kernel32.dll"), "K32GetProcessMemoryInfo");
@@ -401,7 +401,7 @@ void writeSummary(const wchar_t *prefix, const char *reason,
         }
     }
 
-    // 游戏阶段与窗口状态(崩溃那一刻,由 UI 线程登记)
+    // Game phase and window state at the time of the crash, recorded by the UI thread.
     const char *phaseStr;
     switch (g_gamePhase) {
     case 1:  phaseStr = "对局中(玩家存活)";              break;
@@ -416,15 +416,15 @@ void writeSummary(const wchar_t *prefix, const char *reason,
         WriteFile(h, buf, lstrlenA(buf), &written, nullptr);
     }
 
-    // 本局信息(开局时刻/人数/轮数,见 setGamePhase / setGameStats)。
-    // g_gameStartTick 非 0 即说明崩溃时正在对局/回放中。
+    // Current-game data (start time, player count, rounds; see setGamePhase / setGameStats).
+    // A nonzero g_gameStartTick means the crash occurred during a game or replay.
     if (g_gameStartTick != 0) {
         unsigned gameSec = (unsigned)((tickCount64() - g_gameStartTick) / 1000);
         if (g_playerCount > 0)
             wsprintfA(buf, "本局时长: %u 秒\r\n本局人数: %d 人\r\n"
                            "已进行轮数: 第 %d 轮\r\n",
                       gameSec, g_playerCount, g_gameRound);
-        else // 回放等场景拿不到人数/轮数,只给时长
+        else // Replays and similar contexts may have duration but no player or round count.
             wsprintfA(buf, "本局时长: %u 秒\r\n", gameSec);
         WriteFile(h, buf, lstrlenA(buf), &written, nullptr);
     }
@@ -435,7 +435,7 @@ void writeSummary(const wchar_t *prefix, const char *reason,
                   (unsigned)pointers->ExceptionRecord->ExceptionCode, addr);
         WriteFile(h, buf, lstrlenA(buf), &written, nullptr);
 
-        // 解析崩溃地址所属模块、相对偏移、符号化用的虚拟地址
+        // Resolve the module, relative offset, and symbolization address for the crash address.
         HMODULE mod = nullptr;
         if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -446,11 +446,11 @@ void writeSummary(const wchar_t *prefix, const char *reason,
             modName = modName ? modName + 1 : modPath;
             uintptr_t offset = (uintptr_t)addr - (uintptr_t)mod;
 
-            // addr2line 要的是"PE 链接时首选基址 + RVA"的虚拟地址 —— 不是运行
-            // 时地址(模块可能被 ASLR 重定位过),也不是裸 RVA。首选基址必须从
-            // 磁盘上的模块文件读:内存里 PE 头的 ImageBase 已被加载器改成运行
-            // 时随机基址。读盘失败时退回内存基址(等价修复前的老行为 —— 未开
-            // ASLR 时仍正确,Qt5 的 mingw730 构建即此情形)。
+            // addr2line expects the PE link base plus RVA, not the runtime address
+            // (the module may have been relocated by ASLR) or the bare RVA. Read the preferred base
+            // from the module file on disk: the loader changes the in-memory PE header's ImageBase
+            // to the randomized runtime base. If reading from disk fails, use the memory base,
+            // matching the previous behavior; this remains correct without ASLR (as in Qt 5's mingw730 build).
             ULONGLONG linkBase = diskImageBase(modPath);
             if (linkBase == 0)
                 linkBase = (ULONGLONG)mod;
@@ -463,8 +463,8 @@ void writeSummary(const wchar_t *prefix, const char *reason,
             WriteFile(h, buf, lstrlenA(buf), &written, nullptr);
         }
     } else {
-        // 没有异常上下文 —— abort/terminate/SIGABRT 类,或玩家手动上报卡死。
-        // 把 reason 带上,既准确又免去再加分支。
+        // No exception context: abort/terminate/SIGABRT or a user-submitted hang report.
+        // Include the reason directly instead of adding another branch.
         char nabuf[256];
         wsprintfA(nabuf, "异常: 无(%s)\r\n", reason);
         WriteFile(h, nabuf, lstrlenA(nabuf), &written, nullptr);
@@ -473,8 +473,8 @@ void writeSummary(const wchar_t *prefix, const char *reason,
     WriteFile(h, "\r\n", 2, &written, nullptr);
     WriteFile(h, g_envInfo, lstrlenA(g_envInfo), &written, nullptr);
 
-    // 游戏配置摘要(Qt 侧由 stashGameConfigForCrash 预暂存,见 settings.cpp)。
-    // 不为空才写出标题,极早期崩溃 / 未初始化时段静默跳过、避免出现空标题。
+    // Game-configuration summary staged by Qt; see stashGameConfigForCrash in settings.cpp.
+    // Omit the title when empty, such as during an early crash before initialization.
     if (g_gameConfig[0]) {
         const char *hdr = "\r\n==== 游戏配置 ====\r\n";
         WriteFile(h, hdr, lstrlenA(hdr), &written, nullptr);
@@ -484,10 +484,10 @@ void writeSummary(const wchar_t *prefix, const char *reason,
     CloseHandle(h);
 }
 
-// 把当前工作目录的 config.ini 复制到 dmp\<prefix>-config.ini,供事后排查。
-// 失败静默(老用户首次启动 config.ini 可能尚未生成;占用、
-// 权限失败也不影响主流程)。crashhandler 始终在工作目录 = 部署目录运行,
-// config.ini 即 Settings 实际读写的那份。
+// Copy the working directory's config.ini to dmp\<prefix>-config.ini for diagnosis.
+// Ignore failures: config.ini may not exist on a first launch, and the copy may fail because of
+// sharing or permissions. CrashHandler runs from the deployment directory, where Settings reads config.ini.
+// config.ini is the same file Settings reads and writes.
 void copyConfigIni(const wchar_t *prefix)
 {
     wchar_t dst[MAX_PATH];
@@ -495,11 +495,11 @@ void copyConfigIni(const wchar_t *prefix)
     CopyFileW(g_configPath, dst, FALSE);
 }
 
-// 把崩溃线程当前的 Lua 调用栈(.lua 文件名 + 行号)写进已打开的摘要文件 h。
-// 为什么需要它:minidump / 原生栈回溯只能看到 C 调用栈,而所有 Lua 函数都由
-// 解释器 luaV_execute 这一个 C 函数解释执行 —— "执行到哪个 .lua 第几行"存在
-// Lua 自己的调用信息链(lua_State 的 CallInfo)里,不在 C 栈上。这里调 Lua
-// 调试接口把它读出来。lua_getstack / lua_getinfo 只读遍历,不分配、不执行 Lua。
+// Append the crashing thread's Lua call stack (.lua filename and line) to the open summary file h.
+// Native dumps and stack traces show only the C call stack; Lua functions all execute inside
+// luaV_execute, so the current Lua source line exists in Lua's CallInfo chain, not the C stack.
+// Read it through the Lua debug API.
+// lua_getstack / lua_getinfo traverse existing state without allocating or executing Lua.
 void writeLuaStack(HANDLE h)
 {
     lua_State *L = (lua_State *)g_luaState;
@@ -516,16 +516,16 @@ void writeLuaStack(HANDLE h)
     for (int level = 0; level < 100 && lua_getstack(L, level, &ar); ++level) {
         if (!lua_getinfo(L, "Sln", &ar))
             break;
-        // 函数名:Lua 仅在"能从调用处推断名字"时给得出 —— 经 pcall / C API
-        // 调用的函数没有名字,此时退而给出函数定义所在行,照样能定位。
-        if (ar.currentline >= 0) { // Lua 帧:有源文件与行号
+        // Lua provides a function name only when it can infer one from the call site; calls through
+        // pcall / the C API may have none, so report the function-definition line instead.
+        if (ar.currentline >= 0) { // Lua frame with source file and line.
             if (ar.name && ar.name[0])
                 wsprintfA(buf, "  #%d  %s:%d  函数 %s\r\n",
                           level, ar.short_src, ar.currentline, ar.name);
             else
                 wsprintfA(buf, "  #%d  %s:%d  (函数定义于第 %d 行)\r\n",
                           level, ar.short_src, ar.currentline, ar.linedefined);
-        } else {                   // C 帧(SWIG wrapper / Lua 库函数,原生栈里已有)
+        } else {                   // C frame (SWIG wrapper / Lua library function), already present in the native stack.
             const char *name = (ar.name && ar.name[0]) ? ar.name : "?";
             wsprintfA(buf, "  #%d  [C]  %s\r\n", level, name);
         }
@@ -538,8 +538,8 @@ void writeLuaStack(HANDLE h)
     }
 }
 
-// 把 Lua 调用栈追加到摘要 txt 末尾。仅在崩溃线程就是登记 Lua 状态机的那个
-// 线程时才做(见 g_luaState 注释)。
+// Append the Lua call stack to the summary only when this is the thread that registered
+// g_luaState; see its comment.
 void appendLuaStack(const wchar_t *prefix)
 {
     if (!g_luaState || GetCurrentThreadId() != g_luaThreadId)
@@ -555,10 +555,10 @@ void appendLuaStack(const wchar_t *prefix)
     CloseHandle(h);
 }
 
-// 所有捕获路径最终汇入这里。pointers 可能为 nullptr(abort/terminate 等路径)。
+// All capture paths converge here; pointers may be null for abort/terminate paths.
 void handleCrash(const char *reason, EXCEPTION_POINTERS *pointers)
 {
-    // 已进入正常关闭流程:退出清理阶段的崩溃不上报(见 g_shuttingDown 注释)。
+    // Do not report crashes during normal shutdown cleanup; see g_shuttingDown.
     if (g_shuttingDown)
         return;
 
@@ -574,9 +574,9 @@ void handleCrash(const char *reason, EXCEPTION_POINTERS *pointers)
     writeSummary(prefix, reason, pointers);
     copyConfigIni(prefix);
 
-    // Lua 调用栈最后追加 —— 回查 Lua 调试信息有极小的二次崩溃风险(崩溃可能
-    // 已损坏 Lua 内存)。放在 minidump、摘要都落地之后,万一这步再崩,
-    // 前面成果不受影响。
+    // Append the Lua call stack last: reading Lua debug state has a very small risk of another crash
+    // if the original crash damaged Lua memory. The minidump and summary are already saved,
+    // so those results remain available if this step fails.
     appendLuaStack(prefix);
 }
 
@@ -621,8 +621,8 @@ void install()
     SetUnhandledExceptionFilter(sehFilter);
     std::set_terminate(terminateHandler);
     signal(SIGABRT, sigabrtHandler);
-    // 不调用 _set_abort_behavior:MinGW 的 msvcrt 导入库无此符号;
-    // 且 sigabrtHandler 会 _exit,系统 abort 对话框本就来不及弹出。
+    // Do not call _set_abort_behavior: MinGW's msvcrt import library lacks this symbol,
+    // and sigabrtHandler calls _exit before the system abort dialog could appear.
     collectEnvInfo();
 }
 
@@ -649,12 +649,12 @@ void setGamePhase(GamePhase phase)
 {
     g_gamePhase = (int)phase;
     if (phase == PhaseLobby) {
-        // 回大厅:本局信息作废,清零 —— 否则下次崩在大厅会带上一局的残留
+        // On return to the lobby, clear current-game data so a later lobby crash cannot report stale values.
         g_gameStartTick = 0;
         g_playerCount = 0;
         g_gameRound = 0;
     } else if (g_gameStartTick == 0) {
-        // 首次进入对局 / 回放,记下开局时刻,供崩溃时算本局时长
+        // Record the game or replay start time for crash-time duration reporting.
         g_gameStartTick = tickCount64();
     }
 }
@@ -693,12 +693,12 @@ void setGameConfig(const char *utf8)
 
 void reportHang()
 {
-    // 玩家手动上报路径,与 handleCrash 同构,但:
-    //   - 不锁全局 g_handling —— 后续真崩溃仍要能正常报告。用本地 once
-    //     标志只防本函数自己被快速点出重入,结束前清掉。
-    //   - 不退出进程 —— 卡死处理完毕,玩家自行关窗口。
-    //   - 没有异常上下文,writeMiniDump 已有 nullptr 合成逻辑。
-    // 设计稿:docs/specs/2026-05-20-hang-report-and-crash-config-design.md
+    // User-triggered hang report, similar to handleCrash, but:
+    //   - Do not lock g_handling, so a later real crash can still be reported. A local once
+    //     flag prevents re-entry into this function and is cleared before it returns.
+    //   - Do not exit the process; the user closes the window after handling the hang.
+    //   - There is no exception context; writeMiniDump synthesizes one for nullptr.
+    // Design: docs/specs/2026-05-20-hang-report-and-crash-config-design.md
     static volatile LONG once = 0;
     if (InterlockedExchange(&once, 1) != 0)
         return;
@@ -736,7 +736,7 @@ void selfTest(const char *type)
 
 } // namespace CrashHandler
 
-#else  // 非 Windows 或未启用 crash handler:空实现
+#else  // Empty implementation on non-Windows builds or when crash handling is disabled.
 
 namespace CrashHandler {
 void install() {}

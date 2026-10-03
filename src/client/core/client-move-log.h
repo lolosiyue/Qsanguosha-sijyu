@@ -25,7 +25,7 @@ struct ClientLogRecord
 };
 
 // Place integers match Player::Place. Reason integers match CardMoveReason.
-// renPile tracks table cards currently in 仁区, matching RoomScene::RenPile.
+// renPile tracks table cards currently in the Ren zone, matching RoomScene::RenPile.
 QList<ClientLogRecord> synthesizeLoseCardLogs(const QVariantMap &move);
 QList<ClientLogRecord> synthesizeGetCardLogs(const QVariantMap &move);
 QList<ClientLogRecord> synthesizeCardMovementLogs(int command, const QVariantMap &payload,

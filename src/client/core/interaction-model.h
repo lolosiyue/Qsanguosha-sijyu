@@ -292,7 +292,7 @@ struct InteractionRequest
     // Correlation ID assigned by ClientCore, monotonically increasing, starting at 1.
     // 0 = unassigned.
     quint64 requestId = 0;
-    // Protocol V2 message_id 直接存入 requestId，作完整 quint64 關聯。
+    // Protocol V2 message_id is stored as requestId for full-quint64 correlation.
     InteractionType type = InteractionType::None;
     // Raw value of QSanProtocol::CommandType. ClientCore does not include protocol.h, so
     // it is stored as int.
@@ -317,8 +317,8 @@ struct InteractionRequest
     InteractionResponseShape responseSchema = InteractionResponseShape::None;
     InteractionPayload payload;
 
-    // 只准 diagnostic／logging／display-only 資料。所有 gameplay constraint
-    // 必須有 typed payload field；metadata key 由測試 allowlist 鎖定。
+    // Only diagnostic, logging, or display data belongs here. Gameplay constraints
+    // require typed payload fields; tests pin the allowed metadata keys.
     QVariantMap metadata;
 
     bool isValid() const;
@@ -459,19 +459,19 @@ enum class InteractionRejection
     NoActiveRequest,           // no request currently awaiting an answer
     RequestIdMismatch,         // reply's id is not the active request
     AlreadyCompleted,          // duplicate reply: this request was already answered
-    RequestCancelled,          // request 已取消後再 reply
-    RequestExpired,            // request 已過期
+    RequestCancelled,          // request was cancelled before the reply
+    RequestExpired,            // request expired
     KindMismatch,              // answer kind does not match the request
     UnknownOption,             // nonexistent option
     DisabledOption,            // exists but the server marked it non-selectable
-    UnknownPlayer,             // 非 selectable player
+    UnknownPlayer,             // player is not selectable
     DuplicatePlayer,
-    UnknownCard,               // 非 selectable card／id 超出值域
+    UnknownCard,               // card is not selectable or its id is out of range
     DisabledCard,
     DuplicateCard,
     UnknownGeneral = 20,
     DuplicateGeneral,
-    SelectionCountOutOfRange,  // selection 數量錯誤
+    SelectionCountOutOfRange,  // selection count is invalid
     NotCancelable              // non-cancelable request received an empty answer
 };
 

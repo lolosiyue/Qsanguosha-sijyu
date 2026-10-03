@@ -4,8 +4,8 @@ import QtQuick.Controls.Basic as Basic
 import QtQuick.Layouts
 import "."
 
-// 首頁設定頁:與舊版 ConfigDialog 共用 settingsSession(C++ SettingsSession),
-// 這裡只負責外觀。預覽鍵變動即時套用,「儲存」才寫入,「取消」或離開此頁即復原。
+// The settings page shares C++ SettingsSession with the legacy ConfigDialog.
+// This page controls presentation only: preview changes apply immediately; Save persists them, while Cancel or leaving reverts them.
 Item {
     id: root
     objectName: "settingsScene"
@@ -312,7 +312,7 @@ Item {
             columnSpacing: HomeTheme.cardPanelGap
             rowSpacing: HomeTheme.compactGap
 
-            // 分頁:寬版在左側直排,窄版改成內容上方的橫條。
+            // Tabs are vertical when wide and move above the content when narrow.
             GridLayout {
                 Layout.alignment: Qt.AlignTop
                 Layout.fillWidth: root.compact
@@ -367,7 +367,6 @@ Item {
                         width: formView.width - HomeTheme.cardGridGap
                         spacing: HomeTheme.settingsRowGap
 
-                        // —— 顯示 ——
                         ColumnLayout {
                             visible: root.section === 0
                             Layout.fillWidth: true
@@ -524,7 +523,6 @@ Item {
                             }
                         }
 
-                        // —— 音訊 ——
                         ColumnLayout {
                             visible: root.section === 1
                             Layout.fillWidth: true
@@ -573,7 +571,6 @@ Item {
                             }
                         }
 
-                        // —— 遊戲 ——
                         ColumnLayout {
                             visible: root.section === 2
                             Layout.fillWidth: true

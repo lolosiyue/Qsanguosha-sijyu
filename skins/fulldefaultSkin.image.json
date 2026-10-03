@@ -58,7 +58,6 @@
 "photoExtraSkillBg": "image/system/huashenSkillBg.png",
 "dashboardExtraSkillBg": "image/system/huashenSkillBg.png",
 
-// general default directories
 "playerGeneralIcon-default-0": ["image/fullskin/generals/full/%1.jpg", [71, 28, 134, 134], [40, 40]],
 "playerGeneralIcon-default-1": ["image/fullskin/generals/full/%1.jpg", [0, 0, 250, 292], [165, 191]],
 "playerGeneralIcon-default-2": ["image/fullskin/generals/full/%1.jpg", [71, 28, 134, 134]],
@@ -74,7 +73,7 @@
 "generalCircleMask-0": "deprecated",
 "generalCircleMask-1": ["image/generals/double-general/circle-dashboard-mask.png", [73, 0, 71, 71]],
 
-// generals defined later will override default path and also previously defined generals
+// Later general entries override earlier ones and the defaults.
 "playerGeneralIcon-anjiang-0": ["image/generals/big/anjiang.jpg", [0, 0, 134, 134], [40, 40]],
 "playerGeneralIcon-anjiang-2": "image/generals/big/anjiang.jpg",
 "playerGeneralIcon-anjiang-4": ["image/fullskin/generals/full/anjiang.jpg", [63, 0, 124, 289], [77, 179]],
@@ -131,7 +130,6 @@
 "heroSkinContainerGeneralIcon-bf_lijueguosi-0": ["image/fullskin/generals/full/bf_lijueguosi.jpg", [52, 0, 170, 292]],
 "heroSkinContainerGeneralIcon-bf_lijueguosi": ["image/heroskin/fullskin/generals/full/bf_lijueguosi_%1.jpg", [52, 0, 170, 292]],
 
-// buttons
 "dashboardButtonSetBg": "image/system/button/platter/bg.png",
 "button-platter": "image/system/button/platter/%1/%2.png",
 "button-skill": "image/fullskin/system/button/skill/%1/%3-%2.png",
@@ -141,26 +139,21 @@
 "button-player_container": "image/system/button/player_container/%1/%2.png",
 "button-carditem": "image/system/button/carditem/%1/%2.png",
 
-// icons
 "saveMe": "image/system/death/save-me.png",
 "playerActioned": "image/system/3v3/actioned.png",
 "playerReady": "image/system/ready.png",
 "playerOwner": "image/system/owner.png",
 
-// card relevant
 "handCardBack": "image/system/card-back.png",
 "generalCardBack": "image/system/unknown.png",
 
-// equips
 "photoEquip-default": "image/fullskin/small-equips/%1.png",
 "dashboardEquip-default": "image/equips/%1.png",
 
-// kingdoms
 "kingdomColorMask-default": "image/fullskin/kingdom/frame/%1.png",
 "dashboardKingdomColorMask-default": "image/fullskin/kingdom/frame/dashboard/%1.png",
 "kingdomIcon-default": "image/kingdom/icon/%1.png",
 
-// cards
 "button-carditem": "image/system/button/carditem/%1/%2.png",
 "handCardMainPhoto-default": "image/card/%1.jpg",
 "handCardMainPhoto-default2": "image/generals/card/%1.jpg",

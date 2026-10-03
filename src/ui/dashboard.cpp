@@ -243,10 +243,10 @@ Dashboard::Dashboard(QGraphicsPixmapItem *widget)
 
 Dashboard::~Dashboard()
 {
-    // 子物件 (CardItem/動畫) 會在 ~QObject 銷毀階段觸發 destroyed 連線，
-    // 但屆時 m_hoverOriginalZ / m_hoverScaleAnimations 等成員已先被析構，
-    // Qt6 的 assertObjectType 會因此斷言失敗。故在此先斷開所有相關連線，
-    // 並停止/釋放 hover 動畫，避免析構期間存取已銷毀的成員。
+    // Child destroyed() signals can run during QObject teardown, after the hover-state members are gone; disconnect them and stop the animations in the destructor.
+
+
+
     for (auto it = m_hoverDestroyConnections.constBegin(); it != m_hoverDestroyConnections.constEnd(); ++it)
         QObject::disconnect(it.value());
     for (auto it = m_animDestroyConnections.constBegin(); it != m_animDestroyConnections.constEnd(); ++it)
@@ -2161,7 +2161,7 @@ void Dashboard::enableCards()
             expandPileCards(pile);
     }
     {
-        // isAvailable 對每個其他角色各試一次 targetFilter；同一張牌的共用修正值只算一次。
+        // isAvailable() checks targetFilter for every other player; compute shared card modifiers once.
         TargetModMemoScope targetModMemo;
         foreach(CardItem *card_item, m_handCards)
             card_item->setEnabled(card_item->getCard()->isAvailable(m_player));

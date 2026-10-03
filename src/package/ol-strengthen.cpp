@@ -6071,16 +6071,16 @@ public:
 
 	QString limitList(const Player *) const
 	{
-		return "discard";//设置为限制弃置
+		return "discard";// Set the discard limitation.
 	}
 
 	QString limitPattern(const Player *target, const Card *card) const
 	{
 		if(card->isKindOf("Armor")||card->isKindOf("Treasure")){
-			foreach (const Player *p, target->getAliveSiblings()) {//获取其他角色
-				if (p->getEquipsId().contains(card->getId())//这张牌在他的装备区
-					&&p->hasSkill("olqicai"))//且这个角色拥有奇才
-					return card->toString();//则这张牌不能被target弃置
+			foreach (const Player *p, target->getAliveSiblings()) {// Iterate over other players.
+				if (p->getEquipsId().contains(card->getId())// The card is in this player's equipment area.
+					&&p->hasSkill("olqicai"))// This player has Qicai.
+					return card->toString();// Therefore, the target cannot discard this card.
 			}
 		}
 		return "";

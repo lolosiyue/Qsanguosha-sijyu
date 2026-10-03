@@ -112,7 +112,6 @@ protected:
 };
 typedef Package* (*PackageFactory)();
 
-// 2. 將原本的 PackageHash 改為儲存 PackageFactory
 typedef QHash<QString, PackageFactory> PackageHash;
 
 class PackageAdder
@@ -126,7 +125,6 @@ public:
     static PackageHash &packages(void);
 };
 
-// 3. 延遲實例化的巨集
 #define ADD_PACKAGE(name) \
     static Package* create##name##Package() { \
         Package *package = new name##Package; \

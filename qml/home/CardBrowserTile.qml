@@ -92,7 +92,7 @@ Item {
                 fillMode: Image.PreserveAspectFit
                 sourceSize.width: Math.ceil(width)
                 sourceSize.height: Math.ceil(height)
-                // 快取命中時一建立就是 Ready，不會觸發動畫；只有換頁後新解碼的圖淡入。
+                // Cached images start ready without animation; only newly decoded pages fade in.
                 opacity: status === Image.Ready ? 1 : 0
                 Behavior on opacity { OpacityAnimator { duration: 120 } }
             }

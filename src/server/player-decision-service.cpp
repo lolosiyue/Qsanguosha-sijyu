@@ -593,9 +593,9 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
     }
     int card_id = -1;
 
-    // inovation_fengbi：目標持有封弊且選擇者非本人時，手牌不可被指名；
-    // 裝備區／判定區有牌可選則剝去 "h"，只剩手牌可選時由伺服器直接隨機，
-    // 不下發 S_COMMAND_CHOOSE_CARD 對話框
+    // inovation_fengbi: when the target has Fengbi and another player chooses, hand cards cannot be named;
+    // if equipment or judgement cards are available, remove h; if only hand cards remain, the server chooses randomly
+    // without sending an S_COMMAND_CHOOSE_CARD dialog.
     QString flags_copy = flags;
     bool fengbi_random_pick = false;
     bool choose_hidden_hand = false;
@@ -917,7 +917,7 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
         if (!m_room.isGeneralHiddenForSkill(contexts.at(i).activationRef))
             fallbackIndices << i;
 
-    // 格式二支援：返回值格式為 "skillName:ownerObjectName" 或 "skillName"
+    // Format 2 supports replies of "skillName:ownerObjectName" or "skillName".
     QString result;
     if (answer.isEmpty() && !contexts.isEmpty()) {
         if (fallbackIndices.isEmpty()) return "cancel";
@@ -932,12 +932,12 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
             result = skillFullName;
         }
     } else {
-        // 客戶端返回格式："skillName[#instanceId]:ownerName:invokerName..."，取前兩段
+        // Client reply format: "skillName[#instanceId]:ownerName:invokerName..."; parse the first two fields.
         QStringList replyParts = answer.split(":");
         QString replySkillName = replyParts.value(0);
         QString ownerObjectName = replyParts.value(1);
 
-        // 解析客戶端回覆中的 #instanceID（考慮 # 開頭隱藏技能）
+        // Parse #instanceID from the client reply, accounting for hidden skills that begin with #.
         QString replyBaseName;
         int replyInstanceId = SkillInstanceUtils::parseName(replySkillName, replyBaseName);
         replySkillName = replyBaseName;
@@ -945,7 +945,7 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
         bool found = false;
         foreach (const SkillContext &ctx, contexts) {
             if (ctx.skill_name == replySkillName) {
-                // 若客戶端回覆帶 instanceID，精確匹配；否則用第一個匹配
+                // When the reply includes an instanceID, match it exactly; otherwise use the first match.
                 if (replyInstanceId > 0 && ctx.instanceID != replyInstanceId)
                     continue;
                 if (ownerObjectName.isEmpty()) {
@@ -2080,7 +2080,7 @@ const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, Server
 			const QString offered = card->toString();
 			card = card->validateInResponse(player);
 			if (!card||player->isCardLimited(card, Card::MethodUse)){
-				// 同一張被駁回的牌再交出來只會再被駁回；遞迴重問沒有上限。
+				// A rejected card will be rejected again if resubmitted; recursive prompting has no limit.
 				if (rejected.contains(offered))
 					return nullptr;
 				rejected.insert(offered);

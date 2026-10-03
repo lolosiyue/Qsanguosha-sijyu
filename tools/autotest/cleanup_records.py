@@ -34,7 +34,7 @@ def collect(exe_root):
             if n.lower().endswith(".dmp"):
                 add(os.path.join(d, n))
 
-    # crashhandler 報告 (08-10 crashhandler 移植後新格式: txt + config.ini)
+    # Crash-handler reports use a text file and config.ini.
     for pat in ("crash-*.txt", "crash-*-config.ini"):
         for base in (os.path.join(exe_root, "dmp"), exe_root):
             if not os.path.isdir(base):
@@ -49,7 +49,7 @@ def collect(exe_root):
             if n.lower().endswith(".txt"):
                 add(os.path.join(d, n))
 
-    # autotest-logs: 根層 + tools/autotest 下 (兩代 runner 產出位置)
+    # Autotest logs may be at the repository root or under tools/autotest.
     for d in (os.path.join(exe_root, "autotest-logs"),
               os.path.join(exe_root, "tools", "autotest", "autotest-logs")):
         if os.path.isdir(d):
@@ -61,7 +61,7 @@ def collect(exe_root):
     if os.path.isfile(p):
         add(p)
 
-    # 根目錄與 release 散落 log
+    # Scattered root-level and release logs.
     for pat in ("headless_verify*.log", "headless_log_*.txt"):
         for base in (exe_root, os.path.join(exe_root, "release")):
             if not os.path.isdir(base):
@@ -96,14 +96,14 @@ def main():
             continue
         try:
             if is_dir:
-                # 只清 autotest-logs 內子目錄 (collect 產生的路徑天然受限於 exe_root)
+                # Remove only autotest-logs subdirectories, whose paths are constrained to exe_root.
                 shutil.rmtree(path)
                 n_dirs += 1
             else:
                 os.remove(path)
                 n_files += 1
         except OSError as e:
-            # 檔案被 exe 鎖定 (例如 record/debug.txt) 時跳過，不中斷
+            # Skip locked files, such as record/debug.txt, without stopping cleanup.
             print("skip %s (%s)" % (rel, e))
 
     if not args.dry_run:

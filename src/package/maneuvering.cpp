@@ -547,7 +547,7 @@ bool IronChain::targetFilter(const QList<const Player *> &targets, const Player 
 bool IronChain::targetsFeasible(const QList<const Player *> &targets, const Player *Self) const
 {
     bool rec = (Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY)
-			&& can_recast && getSkillName() != "sangu"; //暂时先这样解决吧
+			&& can_recast && getSkillName() != "sangu"; // Temporary workaround.
     foreach (int id, Self->getHandPile()) {
         if (subcards.contains(id)) {
             rec = false;

@@ -146,7 +146,7 @@ protected:
     }
 };
 
-} // namespace
+}
 
 void installWidgetAccessibility(QObject *application)
 {

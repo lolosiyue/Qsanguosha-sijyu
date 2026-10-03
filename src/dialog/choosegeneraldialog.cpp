@@ -237,7 +237,7 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
 void ChooseGeneralDialog::done(int result)
 {
     if (m_freeChooseDialog != nullptr) {
-        // 安全釋放：將銷毀任務排入事件迴圈，確保 FreeChooseDialog 執行完所有程式碼後才真正死亡
+        // Defer destruction until FreeChooseDialog has finished its current event.
         m_freeChooseDialog->deleteLater();
         m_freeChooseDialog = nullptr;
     }
@@ -300,7 +300,7 @@ FreeChooseDialog::FreeChooseDialog(const QString &name, QWidget *parent, ButtonG
 		scrollArea->setWidget(tab);
 		scrollArea->setMinimumSize(1500, 564);
 		scrollArea->setWidgetResizable(true);
-		scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);//隐藏水平滚动条
+		scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);// Hide the horizontal scrollbar.
 
 		tab_widget->addTab(scrollArea, QIcon(G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_KINGDOM_ICON, kingdom)),
 						Sanguosha->translate(kingdom));
@@ -361,7 +361,7 @@ void FreeChooseDialog::chooseGeneral()
         if (button) emit general_chosen(button->objectName());
     }
 
-    // 在修改了 done() 使用 deleteLater() 後，這裡的 accept() 就絕對安全了！
+    // deleteLater() keeps accept() safe after done().
     accept();
 }
 

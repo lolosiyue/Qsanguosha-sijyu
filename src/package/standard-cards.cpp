@@ -64,7 +64,7 @@ void Slash::onUse(Room *room, CardUseStruct &use) const
         QVariant data = QVariant::fromValue(use);
 
         QStringList flags = getFlags();
-        room->getThread()->trigger(PreChangeSlash, room, use.from, data);  //用以在此时机给卡牌添加flag或其他记录，请勿在此时机将use.card进行更改
+        room->getThread()->trigger(PreChangeSlash, room, use.from, data);  // Use this timing to add card flags or other records; do not change use.card here.
         use = data.value<CardUseStruct>();
 		if(this!=use.card){
 			foreach (QString flag, flags)
@@ -72,7 +72,7 @@ void Slash::onUse(Room *room, CardUseStruct &use) const
 			flags = use.card->getFlags();
 		}
 
-        room->getThread()->trigger(ChangeSlash, room, use.from, data);  //请勿在此时机将【杀】变为其他不属于【杀】的牌
+        room->getThread()->trigger(ChangeSlash, room, use.from, data);  // Do not convert Slash into a non-Slash card at this timing.
         use = data.value<CardUseStruct>();
 		foreach (QString flag, flags)
 			room->setCardFlag(use.card, flag);
@@ -344,9 +344,9 @@ QString Peach::getSubtype() const
 
 bool Peach::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
-    return targets.isEmpty()//目标表为空（未选择目标）
-	&& to_select->isWounded()//待选角色已受伤
-	&& !Self->isProhibited(to_select, this, targets);//使用者不是禁止选择待选角色
+    return targets.isEmpty()// The target list is empty (no target selected).
+	&& to_select->isWounded()// The candidate is wounded.
+	&& !Self->isProhibited(to_select, this, targets);// The user is not prohibited from selecting this candidate.
 }
 
 void Peach::onUse(Room *room, CardUseStruct &use) const
@@ -1107,7 +1107,7 @@ bool Collateral::targetFilter(const QList<const Player *> &targets, const Player
 {
     int collateral_targets = 1+Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, Self, this);
 	if (targets.length()>=collateral_targets*2) return false;
-	if (targets.length()%2==1) {/*感觉不用考虑空城，指定杀目标最后手牌是无懈，目标出无懈后就无法杀他了
+	if (targets.length()%2==1) {/* No need to handle Kongcheng here: if the Slash targets the final hand card and the target plays Nullification, the Slash cannot target them afterward.
         if (to_select == Self && Self->hasSkill("kongcheng") && Self->isLastHandCard(this, true))
             return false;*/
         const Player *slashFrom = targets[targets.length()-1];

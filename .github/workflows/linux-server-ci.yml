@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # PR 與 debug push 只建立 GCC job；main push／手動驗證才展開 GCC + Clang。
+        # PRs and debug pushes run GCC; main pushes and manual runs also cover Clang.
         compiler: ${{ fromJSON((github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && '[{"name":"GCC","id":"gcc","cc":"gcc","cxx":"g++","cxx_flags":"","package":"g++"},{"name":"Clang","id":"clang","cc":"clang","cxx":"clang++","cxx_flags":"-Wno-inconsistent-missing-override","package":"clang"}]' || '[{"name":"GCC","id":"gcc","cc":"gcc","cxx":"g++","cxx_flags":"","package":"g++"}]') }}
 
     steps:

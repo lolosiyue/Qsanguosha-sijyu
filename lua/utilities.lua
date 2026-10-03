@@ -1,11 +1,9 @@
 
 -- the iterator of QList object
 --
--- 型別判斷提到 sgs.qlist() 做一次就好: 迭代期間 list 的型別不可能變, 但舊版把
--- 三個 type() 檢查與 .length 存在性檢查放在迭代器本體, 於是每個元素都重跑一次。
--- 20 人局的 Lua 取樣分析裡, 這個迭代器佔掉 AI 側樣本的 56%, 其中光是那兩行型別
--- 檢查就佔 21%。改成 userdata / table 各一支迭代器, 兩者都是模組層級的函式,
--- 所以沒有 per-call 的 closure 配置。長度仍然每步重算 (list 可能在迭代期間變動)。
+-- Choose the iterator type once per sgs.qlist() call; the list type cannot change during iteration.
+-- Separate userdata and table iterators avoid repeating type checks and allocating a closure per call.
+-- Recompute length on each step because the list may change during iteration.
 local qlist_userdata_iterator = function(list, n)
 	if n < list:length() - 1 then
 		return n + 1, list:at(n + 1) -- the next element of list
@@ -164,8 +162,7 @@ function string:matchOne(option)
 end
 
 function string:startsWith(substr)
-	-- string.sub 每次都會配置一個新字串; 用 plain 模式的 string.find 在 C 層比對,
-	-- 不配置也不產生 GC 壓力。長度守衛保留, 順便讓 substr 較長時直接短路。
+	-- Use plain string.find to avoid allocating a substring; keep the length guard to short-circuit long inputs.
 	local len = #substr
 	return len > 0 and len <= #self and string.find(self, substr, 1, true) == 1
 end

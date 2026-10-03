@@ -332,7 +332,7 @@ void EffectsSmokeController::scheduleNext(void (EffectsSmokeController::*slot)()
     QTimer::singleShot(delayMs, this, slot);
 }
 
-// ── stage: policy ────────────────────────────────────────────────────────────
+// Policy stage
 // The profile resolved by the product's policy must match what the CLI and the
 // settings claim, and every feature gate must follow EffectsProfileContract.
 // This stage is the executable proof that "settings and the test CLI run the
@@ -410,7 +410,7 @@ void EffectsSmokeController::stagePolicy()
         return;
     }
 
-    // Duration scale 亦要對得上，否則 REDUCED 會靜靜變成 FULL。
+    // The duration scale must also match, or REDUCED will silently become FULL.
     const int scaled = G_EFFECTS.scaledDuration(Config.S_MOVE_CARD_ANIMATION_DURATION);
     details.insert(QStringLiteral("card_move_duration_ms"),
         Config.S_MOVE_CARD_ANIMATION_DURATION);
@@ -441,7 +441,7 @@ void EffectsSmokeController::stagePolicy()
     scheduleNext(&EffectsSmokeController::stageCompletion);
 }
 
-// ── stage: completion ────────────────────────────────────────────────────────
+// Completion stage
 // exactly-once contract: played to the end, skipped, destroyed mid-play, or
 // stuck and reaped by the watchdog — each of the four paths must deliver
 // exactly once; once the context is dead, none may deliver at all.
@@ -461,7 +461,7 @@ void EffectsSmokeController::stageCompletion()
     auto stalled = QSharedPointer<int>::create(0);
     auto orphaned = QSharedPointer<int>::create(0);
 
-    // 1. 正常播完。
+    // 1. Normal completion.
     auto *finishTarget = new SmokeAnimationTarget;
     finishTarget->setParent(this);
     auto *finishAnim = new QPropertyAnimation(finishTarget, "value");
@@ -502,7 +502,7 @@ void EffectsSmokeController::stageCompletion()
     EffectsCompletion::completeNow(doomedTarget, [orphaned]() { ++(*orphaned); });
     delete doomedTarget;
 
-    // 全部係 queued／timer 派送，所以行返幾轉 event loop 先驗。
+    // All callbacks are queued or timer-dispatched, so run several event-loop turns before checking.
     QTimer::singleShot(300, this, [this, counts, finished, skipped, destroyed, stalled,
             orphaned]() {
         if (m_finished)
@@ -552,7 +552,7 @@ void EffectsSmokeController::stageCompletion()
     });
 }
 
-// ── stage: animation ─────────────────────────────────────────────────────────
+// Animation stage
 // PixmapAnimation is the backbone of the lightbox, emotion icons, and judgment
 // boxes. Two things must be proven here: with frames it loads; without frames
 // it must return nullptr (call sites rely on that nullptr to decide whether to
@@ -618,7 +618,7 @@ void EffectsSmokeController::stageAnimation()
     scheduleNext(&EffectsSmokeController::stageGif);
 }
 
-// ── stage: gif ───────────────────────────────────────────────────────────────
+// GIF stage
 // Runs the product's EmotionItem (QLabel + QMovie). Four fixtures cover: a
 // normal animation, a single frame, a truncated file, and a non-GIF file.
 // None of them may crash, and none may leave the label blank.
@@ -654,7 +654,7 @@ void EffectsSmokeController::stageGif()
     for (const GifCase &gifCase : cases) {
         const QString path = fixturePath(QLatin1String(gifCase.file));
         const bool present = QFileInfo::exists(path);
-        // 產品路徑：EmotionItem 自己決定用 QMovie 定落靜態 fallback。
+        // Production path: EmotionItem chooses between QMovie and a static fallback.
         EmotionItem *item = new EmotionItem(path, 1, nullptr);
         const QMovie *movie = item->movie();
         QJsonObject entry;
@@ -709,7 +709,7 @@ void EffectsSmokeController::stageGif()
     scheduleNext(&EffectsSmokeController::stageSpine);
 }
 
-// ── stage: spine ─────────────────────────────────────────────────────────────
+// Spine stage
 // There is no valid synthetic Spine fixture (see tools/ci/make-effects-fixtures.py),
 // so this stage verifies lifecycle and degradation: when Spine is disallowed,
 // not a single SpineGlItem may be created; when Spine is allowed but the asset
@@ -782,7 +782,7 @@ void EffectsSmokeController::stageSpine()
     scheduleNext(&EffectsSmokeController::stageBudget);
 }
 
-// ── stage: budget ────────────────────────────────────────────────────────────
+// Budget stage
 // "NONE creates no Spine, QMovie, or video object" is enforced here.
 void EffectsSmokeController::stageBudget()
 {
@@ -818,7 +818,7 @@ void EffectsSmokeController::stageBudget()
     scheduleNext(&EffectsSmokeController::stageShutdown);
 }
 
-// ── stage: shutdown ──────────────────────────────────────────────────────────
+// Shutdown stage
 void EffectsSmokeController::stageShutdown()
 {
     if (m_finished)

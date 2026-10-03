@@ -68,7 +68,7 @@ Item {
             cardsMounted = true
     }
 
-    // 設定頁與舊版 dialog 共用 settingsSession:進頁開始編輯,未儲存就離開即復原。
+    // The settings page and legacy dialog share SettingsSession: edits start on entry and revert if left unsaved.
     onSettingsOpenChanged: {
         if (settingsOpen) {
             settingsMounted = true
@@ -78,8 +78,8 @@ Item {
         }
     }
 
-    // Popup / ToolTip 畫在視窗 Overlay 層，不在 contentHost 底下，要另外套同一個濾鏡。
-    // Overlay 沒有 popup 時自己隱藏，layer 不會多一次合成。
+    // Popups and tooltips use the window Overlay, so apply the same filter outside contentHost.
+    // Hide the overlay layer when it has no popups to avoid an extra composition pass.
     readonly property Item popupOverlay: Overlay.overlay
     onPopupOverlayChanged: attachPopupOverlayEffect()
     function attachPopupOverlayEffect() {
@@ -105,7 +105,7 @@ Item {
         anchors.rightMargin: root.SafeArea.margins.right
         anchors.bottomMargin: root.SafeArea.margins.bottom
         clip: true
-        // 僅在灰階/高對比時離屏合成；Qt 6 saturation -1.0 才是去色（0.0 為不變）
+        // Apply the grayscale/high-contrast filter offscreen only when needed; Qt 6 saturation -1.0 removes color.
         layer.enabled: root.visualMode !== "normal"
         layer.effect: MultiEffect {
             autoPaddingEnabled: false
@@ -118,8 +118,8 @@ Item {
             anchors.fill: parent
         }
 
-        // 固定 1920×1080 設計畫布：永遠完整 fit 進視窗（框架不動）。
-        // UIScale 只作用在各元素自己的 transform，不缩放整張畫布。
+        // Fixed 1920x1080 design canvas; fit the whole frame into the window.
+        // UIScale affects each element transform, not the design canvas.
         Item {
             id: uiCanvas
             visible: !root.compact
@@ -131,7 +131,7 @@ Item {
 
             scale: Math.min(contentHost.width / 1920, contentHost.height / 1080)
 
-            // 角色：佔滿上下，放大且底緣下沉，下半身疊入底部導覽列，略偏中間
+            // Character artwork fills the height, enlarged and lowered behind the bottom dock.
             CharacterLayer {
                 id: characterLayer
 
@@ -145,7 +145,7 @@ Item {
                 width: Math.min(parent.width * 0.5, 1300)
             }
 
-            // 底部導覽列：唯一受置中內容區（safe area）限制的元素
+            // Only the bottom dock is constrained to the centered safe area.
             Item {
                 id: safeArea
 
@@ -182,7 +182,7 @@ Item {
                 }
             }
 
-            // 左上角玩家資訊：頭像＋名稱（與快速加入對話框一致）
+            // Top-left player info: avatar and name, matching Quick Join.
             HomePlayerInfo {
                 id: playerInfo
 
@@ -203,7 +203,7 @@ Item {
                 }
             }
 
-            // LOGO：移至右側三個主按鈕上方
+            // Place the logo above the three main buttons on the right.
             Image {
                 id: logo
 
@@ -328,7 +328,7 @@ Item {
                 }
             }
 
-            // Loader 編譯期間先畫面板骨架；Ready 後揭 GeneralScene，立繪再分幀載入
+            // Show the panel skeleton during Loader compilation, then reveal GeneralScene and load portraits across frames.
             Item {
                 id: generalPageSkeleton
                 anchors.fill: generalPage
@@ -452,7 +452,7 @@ Item {
                                 id: skGrid
                                 anchors.fill: parent
                                 anchors.margins: HomeTheme.generalGridMargin
-                                // 跟 GeneralScene 一樣讀已存的欄數，揭頁時格子才不會跳動。
+                                // Read the saved column count before revealing the page to prevent the grid from shifting.
                                 readonly property int savedCols: homeController.generalGridColumns()
                                 readonly property bool tableMode: HomeTheme.resolvedGridColumns(width, savedCols)
                                                                   >= HomeTheme.generalGridMaxColumns
@@ -783,7 +783,7 @@ Item {
         enabled: false
     }
 
-    // 鍵盤方向鍵導航圖：各面板按鈕之間的上下左右連線
+    // Keyboard navigation links between the controls on each panel.
     function applyHomeNavGraph() {
         if (root.compact) return
         actionPanel.quickJoinBtn.KeyNavigation.right = sideBar.settingsBtn
@@ -917,7 +917,7 @@ Item {
         for (var i = 0; i < buttons.length; ++i) buttons[i].KeyNavigation.up = entry
     }
 
-    // 首頁站穩後再偷載：800ms 空等，避免跟進場動畫搶 IO／解碼。
+    // Load after the home page settles; the 800 ms delay avoids competing with entrance animation and image decoding.
     Item {
         id: generalArtPrefetch
         x: -4000

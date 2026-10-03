@@ -5,7 +5,7 @@
 //#include <QVariantMap>
 //#include <QTimer>
 
-// 嵌入式QML加载器 - 直接在游戏窗口上渲染QML
+// Embedded QML overlay rendered over the game window.
 class EmbeddedQmlLoader : public QObject {
     Q_OBJECT
     
@@ -13,35 +13,35 @@ public:
     explicit EmbeddedQmlLoader(QObject *parent = nullptr);
     ~EmbeddedQmlLoader();
     
-    // 在父窗口上创建QML叠加层
+    // Create the overlay on the parent window.
     bool loadQmlOverlay(QWidget *parentWindow,
                        const QString &qmlFile,
                        int width, int height,
                        const QVariantMap &contextVars = QVariantMap(),
                        bool enableClickThrough = false);
     
-    // 设置位置（相对于父窗口）
+    // Set the position relative to the parent.
     void setPosition(int x, int y);
     
-    // 设置透明度
+    // Set the opacity.
     void setOpacity(qreal opacity);
     
-    // 显示/隐藏
+    // Show or hide the overlay.
     void show();
     void hide();
     void close();
     
-    // 获取错误信息
+    // Return the load error, if any.
     QString getLastError() const;
 
 public slots:
-    // 供QML调用的关闭方法
+    // Close the overlay from QML.
     void closeFromQml();
     void receiveQmlResult(const QVariant &result);
     void timeout();
 
 signals:
-    // 特效完成信号
+    // Emitted when the effect completes.
     void effectFinished();
     void effectError(const QString &error);
     void qmlResultReady(const QVariant &result);
@@ -56,7 +56,7 @@ private:
     QString m_lastError;
     QTimer *m_autoCloseTimer;
     bool m_enableClickThrough;
-    QWidget *m_originalFocusWidget;  // 保存原始焦点窗口
+    QWidget *m_originalFocusWidget;  // Original focus window, restored when the overlay closes.
 
     void setupQmlWidget();
     void connectQmlSignals();

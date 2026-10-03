@@ -15,18 +15,12 @@
 #include <algorithm>
 #include <utility>
 
-// The Chinese status words, brackets and headings below ("✖阵亡", "手牌",
-// "牌堆"...) are written out as plain literals rather than routed through
-// tuiText()/TUICommon.lua. Everything TUICommon carries is a full sentence or
-// a wire-token translation shared with classic mode; these are fixed layout
-// furniture that the spec (docs/tui-board-ui.md §3.1) pins to an exact glyph,
-// and tui-board-layout.cpp already sets the precedent of a literal Chinese
-// string for board-only text ("终端太小..." in tuiComputeBoardGeometry).
+// Board labels are fixed-glyph layout text, not translation keys.
 
 namespace {
 
 // Mirrors tui-board-layout.cpp's own (file-local) CellWidth/CellHeight --
-// the spec's "每個玩家格固定 20 × 3" (§3.1). Duplicated rather than shared
+// the spec's "Each player cell is fixed at 20 x 3" (section 3.1). Duplicated rather than shared
 // because TuiBoardGeometry does not expose them directly, only their effect
 // via TuiSeatSlot::rect; drawPile() below needs the raw numbers back to
 // reconstruct which grid cell tui-board-layout.cpp left empty for it.
@@ -43,11 +37,11 @@ QString modeName(const TuiResolvers &resolvers, const QString &mode)
     return resolvers.mode && !mode.isEmpty() ? resolvers.mode(mode) : mode;
 }
 
-// "wei" -> "魏", "wei+shu" (kingdom not yet declared) -> "魏/蜀", matching
+// "wei" -> "Wei", "wei+shu" (kingdom not yet declared) -> "Wei/Shu", matching
 // TuiRenderer::kingdomText()'s own handling of the same wire value -- but
 // read structurally (general -> kingdom code -> translated) through
 // resolvers rather than through a pre-composed sentence, per
-// docs/tui-board-ui.md §2.2's split between the two UIs.
+// docs/tui-board-ui.md section 2.2's split between the two UIs.
 QString translatedKingdom(const TuiResolvers &resolvers, const QString &generalName)
 {
     const QString code = resolvers.kingdom ? resolvers.kingdom(generalName) : QString();
@@ -62,7 +56,7 @@ QString translatedKingdom(const TuiResolvers &resolvers, const QString &generalN
     return resolvers.name ? resolvers.name(code) : code;
 }
 
-// spec §3.4: filled/hollow hearts up to 8 maxHp, numeric past that so a
+// spec section 3.4: filled/hollow hearts up to 8 maxHp, numeric past that so a
 // boosted general's cell does not blow past its 20-column budget.
 QString hpText(int hp, int maxHp)
 {
@@ -71,7 +65,7 @@ QString hpText(int hp, int maxHp)
     if (maxHp <= 8) {
         QString hearts;
         for (int i = 0; i < maxHp; ++i)
-            hearts += QChar(i < hp ? 0x2665 : 0x2661); // ♥ / ♡
+            hearts += QChar(i < hp ? 0x2665 : 0x2661); // Heart and hollow-heart glyphs.
         return hearts;
     }
     return QStringLiteral("♥ %1/%2").arg(hp).arg(maxHp);
@@ -99,7 +93,7 @@ bool isGameStarted(const ClientGameState &state)
 // index 0 is TuiSeatSlot::seatOffset 1, index 1 is offset 2, and so on
 // wrapping around the table. Mirrors ClientPlayer::seatStep()'s ring but,
 // unlike that one, keeps dead players in the ring: the board still owes them
-// a cell (spec §3.1's 貂蝉 example is dead and still drawn).
+// a cell (spec section 3.1's Diao Chan example is dead and still drawn).
 QStringList seatOrderFromSelf(const ClientGameState &state)
 {
     QVector<std::pair<int, QString>> ring;
@@ -122,7 +116,7 @@ QStringList seatOrderFromSelf(const ClientGameState &state)
 }
 
 // A run of line 1 drawn again in its own colour over the cell's base
-// attribute: the kingdom name and the hearts (spec §3.7). Columns are display
+// attribute: the kingdom name and the hearts (spec section 3.7). Columns are display
 // columns from the cell's left edge.
 struct CellSpan
 {
@@ -137,19 +131,7 @@ struct PlayerCell
     QList<CellSpan> spans;
 };
 
-// The three fixed lines of one player's cell (spec §3.1):
-//   line 1: [seat]name kingdom hp        -- prefixed with ▶ if it is this
-//                                            player's turn, suffixed (我) for
-//                                            self.
-//   line 2: role handN [装.../装N] [判...]
-//   line 3: status markers (blank when none apply).
-// `width` is CellWidth (20) for an opponent slot, or the room's own width for
-// the self cell -- see TuiBoardGeometry::self, which is not 20 wide because
-// it does not have to share a row with siblings the way the ring's grid
-// cells do. That extra room is also why only the self cell spells out full
-// equipment names (spec's worked example does this for 时语 but shows only a
-// count for 曹操): a narrow opponent cell has room for a role, a hand count
-// and an equipment count, but not "装【青釭剑】【八卦阵】" as well.
+// Each player cell has three rows. The wider self cell can show equipment names; opponent cells show counts.
 PlayerCell playerCellLines(const TuiResolvers &resolvers, const ClientGameState &state,
                            const QString &name, bool isSelf, int width,
                            const GameViewPlayer *projected, bool projectedCurrent)
@@ -174,8 +156,8 @@ PlayerCell playerCellLines(const TuiResolvers &resolvers, const ClientGameState 
     const QString displayName = generalName.isEmpty()
         ? QString() : (resolvers.name ? resolvers.name(generalName) : generalName);
     // The current-player marker is a line-1 prefix, not a line-3 status word:
-    // spec §3.1's worked example shows a bare ▶ in front of 时语's own seat
-    // bracket ("▶[1]时语(我)") with nothing added to her (blank) third line.
+    // spec section 3.1's worked example shows a bare > in front of Shi Yu's own seat
+    // bracket (">[1]Shi Yu(me)") with nothing added to her (blank) third line.
     const QString prefix = current ? QStringLiteral("▶") : QString();
     const QString suffix = isSelf ? tuiText("tui_board_self_suffix") : QString();
     const QString seatTag = QStringLiteral("[%1]").arg(seat);
@@ -232,12 +214,7 @@ PlayerCell playerCellLines(const TuiResolvers &resolvers, const ClientGameState 
     if (!line2.isEmpty())
         line2 += QLatin1Char(' ');
     line2 += tuiText("tui_board_hand_count").arg(handCount);
-    // Only the self cell spells out card names in brackets (spec's worked
-    // example does this for 时语's own equipment). A 20-column opponent slot
-    // does not have room for even one typical card name in brackets once the
-    // role, hand count and a card-count prefix are in -- an earlier version
-    // of this code tried names there too and tuiPadTo's final elide cut mid
-    // bracket ("判【乐…"), a worse result than just showing how many.
+    // Opponent cells show equipment counts; only the wider self cell has room for full names.
     if (!equip.isEmpty()) {
         if (isSelf) {
             line2 += QLatin1Char(' ') + tuiText("tui_board_equipment_label");
@@ -309,7 +286,7 @@ int layoutHandLines(const QStringList &entries, int width, QStringList *lines)
         // More cards than 5 lines can show. Rather than silently dropping
         // them (or inventing a second, hand-only pagination scheme), cut the
         // last line down and name exactly how many are off-screen -- spec
-        // §3.2's "超出加 ...(+N)".
+        // section 3.2's "overflow + ...(+N)".
         const int hidden = static_cast<int>(entries.size() - idx);
         const QString suffix = QStringLiteral(" …(+%1)").arg(hidden);
         QString &last = (*lines)[lines->size() - 1];
@@ -326,7 +303,7 @@ int layoutHandLines(const QStringList &entries, int width, QStringList *lines)
 // through this row.
 QString borderRow(int cols, QChar left, QChar right, QChar junction, int junctionCol)
 {
-    QString row(cols, QChar(0x2500)); // ─
+    QString row(cols, QChar(0x2500)); // horizontal line
     if (cols > 0)
         row[0] = left;
     if (cols > 1)
@@ -348,16 +325,7 @@ void putTitle(TuiScreen &screen, int row, int col, const QString &title, int max
     screen.putText(row, col, framed);
 }
 
-// Draws the whole outer frame in one pass: the room and log panes stand
-// side by side down to the room/hand separator, and below that the hand and
-// input panes each span the FULL board width -- spec §3.1's worked example
-// shows this plainly (the "├ 手牌 ...┴...┤" separator's lone "┴" is the
-// ghost of the room/log divider terminating, and neither the hand nor the
-// input row shows an internal "│" anywhere). TuiBoardGeometry's own rects
-// only describe pure content areas (no border rows/cols), by construction --
-// hand.cols and input.cols still measure just the room's width, which is
-// why this function does not draw the frame from those rects directly and
-// instead recomputes the full-width span itself.
+// The hand and input panes span the full board width; geometry rectangles describe content only.
 void drawFrame(TuiScreen &screen, const TuiBoardGeometry &geom, const QString &roomTitle)
 {
     const int rows = screen.rows();
@@ -377,7 +345,7 @@ void drawFrame(TuiScreen &screen, const TuiBoardGeometry &geom, const QString &r
     putTitle(screen, 0, dividerCol + 2, tuiText("tui_board_log_title"), cols - 1 - (dividerCol + 2));
     putTitle(screen, roomBottomRow, 2, tuiText("tui_section_hand"), cols - 4);
 
-    const QChar vertical(0x2502); // │
+    const QChar vertical(0x2502); // vertical line
     for (int row = geom.room.row; row < roomBottomRow; ++row) {
         screen.putText(row, 0, vertical);
         screen.putText(row, dividerCol, vertical);
@@ -450,9 +418,9 @@ void drawSelf(TuiScreen &screen, const TuiResolvers &resolvers, const ClientGame
     const PlayerCell cell = playerCellLines(resolvers, state, self, true, geom.self.cols,
         projected, presentation != nullptr && presentation->currentPlayer == self);
     // Bold cyan rather than a drawn box: an actual border would have to steal
-    // one of the cell's three content rows, and spec §3.1's worked example
-    // shows no border glyph around 时语's cell either -- just the ▶ prefix and
-    // the (我) suffix, both already plain text so the stripped golden keeps
+    // one of the cell's three content rows, and spec section 3.1's worked example
+    // shows no border glyph around Shi Yu's cell either -- just the > prefix and
+    // the (me) suffix, both already plain text so the stripped golden keeps
     // the distinction without the attribute.
     for (int i = 0; i < cell.lines.size() && i < geom.self.rows; ++i)
         screen.putText(geom.self.row + i, geom.self.col, cell.lines.at(i), TuiAttr::Self, geom.self.cols);
@@ -476,8 +444,8 @@ TuiAttr cellAttr(const ClientGameState &state, const QString &name,
 }
 
 // Finds the one opponent-grid cell this page's seats did not claim (spec
-// §3.6: capacity always reserves exactly one for the pile) and writes
-// "牌堆 N   弃牌 N" into it, centred. Recomputes the same (row, col) grid
+// section 3.6: capacity always reserves exactly one for the pile) and writes
+// "draw pile N   discard pile N" into it, centred. Recomputes the same (row, col) grid
 // tui-board-layout.cpp's orderedGridCells() fills rather than asking it
 // directly -- that helper is file-local -- by reading back where this page's
 // slots actually landed and taking the first grid position none of them used.
@@ -560,21 +528,7 @@ void drawHand(TuiScreen &screen, const TuiBoardGeometry &geom, const QStringList
         screen.putText(geom.hand.row + i, col, tuiPadTo(lines.at(i), width));
 }
 
-// The input pane is two content rows (spec §3.2: "1 行提示 + 1 行輸入").
-// docs/tui-board-ui.md §3.1's worked example draws them as a single visual
-// row, but that is the doc compressing its illustration for space -- the
-// pane-rule table is explicit about two rows, and TuiBoardGeometry.input
-// reserves two, so this treats them as separate: row 1 is the prompt (or a
-// pending writeError() notice standing in for it, since the pane has no
-// third row to give a notice of its own), row 2 is what has been typed so
-// far plus a cursor glyph -- a real character, not just an attribute, so a
-// monochrome terminal still sees where typing will land.
-// col/width are the caller's, not the rect's: input.cols measures only the
-// room's width (see drawFrame's note above) while the drawn input row spans
-// the full board, so the framed path passes the frame's own insets. The
-// below-the-floor path (§3.5) draws no frame and passes the whole width --
-// hard-coding col 1 / cols-2 there wasted a column at each edge on exactly
-// the size where every column counts.
+// The input pane has prompt and input rows. Use the full framed width, or the whole width below the layout floor.
 QString actionSummary(const GameActionModel &model)
 {
     if (!model.requestId || !model.supported) return {};
@@ -608,15 +562,7 @@ void drawInput(TuiScreen &screen, const TuiBoardGeometry &geom, const TuiBoardVi
     screen.putText(geom.input.row + 1, cursorCol, QStringLiteral("▌"), TuiAttr::Current);
 }
 
-// Shared by render() and the public computeGeometry() so the two can never
-// disagree about which page an opponent lands on: the hand-line estimate
-// depends on the actual hand entries, and duplicating that computation
-// instead of factoring it out is exactly how a presenter's idea of "page 2"
-// would end up one page off from what render() actually draws there.
-// `handLinesOut`, when not null, receives the wrapped hand-pane text so
-// render() can draw it without re-running layoutHandLines() a second time;
-// computeGeometry()'s callers only ever want the geometry, so they leave it
-// null.
+// Share geometry and hand wrapping so render() and computeGeometry() place seats identically.
 TuiBoardGeometry geometryFor(const TuiResolvers &resolvers, const ClientGameState &state,
                             int rows, int cols, const GameViewState *presentation,
                             QStringList *handLinesOut = nullptr)
@@ -662,21 +608,7 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     screen->clear();
 
     if (!geom.usable) {
-        // spec §3.5: "提示行與輸入行是最後才犧牲的兩行" -- below the size
-        // floor the room/log/hand panes are what go away, never the
-        // prompt/input rows, because they are the only way a player can
-        // still act while waiting for the window to grow (an interaction
-        // request must still be answerable in this state). The previous
-        // implementation had the order backwards: it drew one centred
-        // message and returned, which sacrificed prompt+input on every
-        // single too-small frame right along with the rest of the board.
-        //
-        // Reserve up to the last two rows for exactly the same prompt+input
-        // drawInput() draws once the board is usable -- fed a minimal
-        // geometry, since tuiComputeBoardGeometry() never computed a real
-        // `input` rect for this path (bailing out with usable=false is
-        // precisely what happened instead) -- and use whatever is left
-        // above that for the "too small" message itself.
+        // Below the size floor, preserve the prompt and input rows so active requests remain answerable.
         const int inputRows = std::min(2, rows);
         const int messageRows = rows - inputRows;
         if (messageRows > 0)

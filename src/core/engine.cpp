@@ -406,16 +406,16 @@ void Engine::_loadModScenarios()
 void Engine::addPackage(const QString &name)
 {
     QSanStartupTiming startupPhase("package.lookup", QString(), true);
-    // 防止重複實例化。套件只掛在 Engine 直屬子物件；遞迴找會走遍全部武將／技能／卡。
+    // Prevent duplicates; packages are direct Engine children, so recursive lookup would also search every general, skill and card.
     if (findChild<const Package*>(name, Qt::FindDirectChildrenOnly)) {
         return; 
     }
 
-    // 從 Hash Map 取得工廠函數
+    // Retrieve the factory function from the hash map.
     PackageFactory factory = PackageAdder::packages().value(name, nullptr);
     if (factory) {
         startupPhase.next("package.factory");
-        Package *pack = factory(); // 真正執行 new 的地方
+        Package *pack = factory(); // Construct the instance here.
         m_packageFactories.insert(pack->objectName(), factory);
         startupPhase.finish();
         addPackage(pack);
@@ -862,7 +862,7 @@ Engine::Engine(bool isManualMode)
 	Config.setValue("AutoSuitReplacement", true);
 
 	ZhinangCards << "ExNihilo" << "Dismantlement" << "Nullification" << "Qizhengxiangsheng"
-			<< "Mantianguohai" << "Tiaojiyanmei" << "Binglinchengxia";//添加初始智囊牌名
+			<< "Mantianguohai" << "Tiaojiyanmei" << "Binglinchengxia";// Add the initial advisory-card names.
 	available_generals = generals;
     foreach (Card*c, cards) {
 		if(patterns.contains(c->objectName())||c->getTypeId()>2) continue;
@@ -1014,7 +1014,7 @@ QList<const ProhibitSkill*> Engine::getProhibitSkills() const
         [this] { return m_skillRegistry.prohibitSkills(); }, m_luaSkillNames, [runtime] { return runtime->prohibitSkills(); });
 }
 
-// 7. 修復 getDistanceSkills
+// getDistanceSkills
 QList<const DistanceSkill*> Engine::getDistanceSkills() const
 {
     AiProbe::ScopedProbe probe(AiProbe::Slot_getDistanceSkills);
@@ -1028,7 +1028,7 @@ QList<const DistanceSkill*> Engine::getDistanceSkills() const
         [this] { return m_skillRegistry.distanceSkills(); }, m_luaSkillNames, [runtime] { return runtime->distanceSkills(); });
 }
 
-// 8. 修復 getMaxCardsSkills
+// getMaxCardsSkills
 QList<const MaxCardsSkill*> Engine::getMaxCardsSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
@@ -1038,7 +1038,7 @@ QList<const MaxCardsSkill*> Engine::getMaxCardsSkills() const
         [this] { return m_skillRegistry.maxCardsSkills(); }, m_luaSkillNames, [runtime] { return runtime->maxCardsSkills(); });
 }
 
-// 9. 修復 getTargetModSkills
+// getTargetModSkills
 QList<const TargetModSkill*> Engine::getTargetModSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
@@ -1064,7 +1064,7 @@ QList<const TriggerSkill*> Engine::getGlobalTriggerSkills() const
                                runtime ? runtime->globalTriggerSkills() : QList<const TriggerSkill *>());
 }
 
-// 2. 修復 getAttackRangeSkills
+// getAttackRangeSkills
 QList<const AttackRangeSkill*> Engine::getAttackRangeSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
@@ -1074,7 +1074,7 @@ QList<const AttackRangeSkill*> Engine::getAttackRangeSkills() const
         [this] { return m_skillRegistry.attackRangeSkills(); }, m_luaSkillNames, [runtime] { return runtime->attackRangeSkills(); });
 }
 
-// 3. 修復 getViewAsEquipSkills
+// getViewAsEquipSkills
 QList<const ViewAsEquipSkill*> Engine::getViewAsEquipSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
@@ -1084,7 +1084,7 @@ QList<const ViewAsEquipSkill*> Engine::getViewAsEquipSkills() const
         [this] { return m_skillRegistry.viewAsEquipSkills(); }, m_luaSkillNames, [runtime] { return runtime->viewAsEquipSkills(); });
 }
 
-// 4. 修復 getCardLimitSkills
+// getCardLimitSkills
 QList<const CardLimitSkill*> Engine::getCardLimitSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
@@ -1094,7 +1094,7 @@ QList<const CardLimitSkill*> Engine::getCardLimitSkills() const
         [this] { return m_skillRegistry.cardLimitSkills(); }, m_luaSkillNames, [runtime] { return runtime->cardLimitSkills(); });
 }
 
-// 5. 修復 getProhibitPindianSkills
+// getProhibitPindianSkills
 QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
 {
     RoomRuntime *runtime = currentRoomRuntime();
@@ -1329,8 +1329,8 @@ void Engine::setPackage(Package*package)
         if (!skill) continue;
         if (m_skillRegistry.contains(skill->objectName())) continue;
 
-        // [修復點] 使用 const_cast 將 const Skill* 轉為 Skill*
-        // 這是 QPointer 正常工作所必須的
+        // Cast away const so QPointer can track the Skill object.
+        //
         newSkills << skill;
 
         if (skill->getWakedSkills().isEmpty()) continue;
@@ -2803,15 +2803,15 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
 
     const CardLimitSkill *ret = nullptr;
 
-    // 擁有者過濾。所有 CardLimitSkill 的 limitList() 實作都回傳常數字串, 真正的守門
-    // 條件埋在 limitPattern() 裡, 所以場上根本沒人擁有的限制技也會被完整評估一次 ——
-    // 20 人局實測 #OLJieQianxiLimit 單次決策花掉 33.8 秒, 而該局沒有任何人有這個技能。
-    // 這些技能一律掛在某個武將身上 (General::addSkill -> Room -> Player::addSkill,
-    // 連 # 開頭的輔助技也會建立 SourceHelper 實例), 因此「全場沒有任何人擁有」時它
-    // 不可能成立。用 getSiblings(true) 而非 getAliveSiblings: 死亡玩家留下的標記可能
-    // 還在, 保守地讓其限制技維持啟用。
-    // 這個集合每回合只變幾次, 但單次 AI 決策會查數萬次, 所以照技能集合世代快取起來,
-    // 只有真的有人增減技能時才重建 (重建走 getSkillList, 貴但罕見)。
+    // Filter card-limit skills by ownership. limitList() returns a constant
+    // string; limitPattern() contains the real gate, so every skill was
+    // evaluated even when no player owned it. In a 20-player game, one AI
+    // decision spent 33.8 seconds on #OLJieQianxiLimit although nobody had it.
+    // Every such skill is attached to a general, including # helpers through
+    // SourceHelper. Use getSiblings(true): dead players may retain enabling marks.
+    //
+    // This set changes only a few times per turn but is queried thousands of times
+    // per AI decision; cache it by skill-set generation and rebuild only on change.
     static thread_local quint64 s_ownedGen = 0;
     static thread_local const QObject *s_ownedRoom = nullptr;
     static thread_local QSet<QString> s_ownedNames;
@@ -2835,9 +2835,9 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
         AiProbe::ScopedProbe probe(AiProbe::Slot_limitOwnerFilter);
         return s_ownedNames.contains(skillName);
     };
-    // 對拍模式 (QSAN_LIMIT_FILTER_VERIFY=1): 不跳過任何技能, 照舊全部評估,
-    // 但只要「會被過濾掉的技能其實命中了」就記錄下來。行為與未過濾版完全相同,
-    // 用來證明過濾條件沒有漏掉真正成立的限制。
+    // With QSAN_LIMIT_FILTER_VERIFY=1, evaluate every skill as before and log
+    // any skill that the filter would skip but that actually matches.
+    // This verifies the filter without changing behavior.
     static const bool s_filterVerify = !qgetenv("QSAN_LIMIT_FILTER_VERIFY").isEmpty()
                                        && qgetenv("QSAN_LIMIT_FILTER_VERIFY") != "0";
 
@@ -3068,7 +3068,7 @@ QString findLegacySkillHolderName(const Player *anchor, const QString &skillName
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
     AiProbe::ScopedProbe probe(AiProbe::Slot_correctDistance);
-    // 距離不看牌；可用手牌刷新時每張殺都會對每個角色再算一次。
+    // Distance ignores cards; hand refreshes recalculate each Slash against every player.
     TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? QStringLiteral("distance|%1|%2|%3").arg(quintptr(from))
         .arg(quintptr(to)).arg(int(fixed)) : QString();
@@ -3185,7 +3185,7 @@ QList<SkillUIContribution> Engine::listMaxCardsSkillContributions(const MaxCards
         const int extra = skill->getExtra(target);
         if (fixed >= 0 || extra != 0) {
             const QString holder = findLegacySkillHolderName(target, skill->objectName());
-            // 與舊 UI 一致：同一技能 fixed 優先於 extra
+            // Preserve the legacy UI rule: fixed takes precedence over extra for one skill.
             if (fixed >= 0)
                 out << SkillUIContribution(holder, fixed, true);
             else
@@ -3378,7 +3378,7 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
-    // 攻擊範圍只看出牌者；選目標時每個候選角色都會再問一次。
+    // Attack range depends only on the source; target selection asks again for each candidate.
     TargetModMemoScope *memo = TargetModMemoScope::active();
     const QString memoKey = memo ? QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
         .arg(int(include_weapon)).arg(int(fixed)) : QString();
@@ -3490,10 +3490,10 @@ void Engine::godLottery(QStringList &list) const
 	foreach (const General *general, getAllGenerals()) {
 		if(general->getKingdom()=="god"&&general->objectName().contains("shen")){
 			if(qsanRandomBounded(10000)<=Config.value(general->objectName()).toInt()) {
-                //qDebug((general->objectName()+"被抽中").toUtf8().data());
+
 				list.append(general->objectName());
 			}//else
-				//qDebug((general->objectName()+"没中").toUtf8().data());
+
 		}
 	}
 	Config.endGroup();

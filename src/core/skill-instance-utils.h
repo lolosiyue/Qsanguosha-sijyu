@@ -7,16 +7,16 @@
 #include "json.h"
 #include "skill-instance-types.h"
 
-// 集中實作 instance 名稱格式化與解析
-// 命名慣例：
-//   innate 技能   → "skillName"
-//   acquired #N   → "skillName#N"
-//   hidden innate → "#hiddenSkill"
-//   hidden #N     → "#hiddenSkill#N"
+// Centralize formatting and parsing of instance names.
+// Naming:
+//   innate skill   -> "skillName"
+//   acquired #N    -> "skillName#N"
+//   hidden innate  -> "#hiddenSkill"
+//   hidden #N      -> "#hiddenSkill#N"
 //
-// # 分隔符規則：
-//   若字串以 # 開頭（隱藏技能 prefix），第一個 # 後的下一個 # 才是實例分隔符；
-//   否則第一個 # 即為實例分隔符。
+// # separator rule:
+//   For a leading hidden-skill #, the next # is the instance separator.
+//   Otherwise, the first # is the instance separator.
 
 namespace SkillInstanceUtils {
 
@@ -84,36 +84,36 @@ namespace SkillInstanceUtils {
     bool decodeActivationRequest(const JsonArray &usage, const QString &cardSkillName,
                                  SkillActivationRequest &request);
 
-    // 格式化完整實例名稱
-    // instanceID=0 時不回綴 #N
+    // Format the complete instance name.
+    // instanceID=0 omits the #N suffix.
     QString formatName(const QString &skillName, int instanceID);
 
-    // 解析完整名稱，拆出 base name 與 instanceID
-    // instanceID=0 表示未指定；所有真實實例 ID 都是正整數
+    // Parse the full name into base name and instanceID.
+    // instanceID=0 means unspecified; every live instance ID is positive.
     int parseName(const QString &fullName, QString &skillName);
 
-    // 只取 instanceID（0 表示未指定）
+    // Return only the instanceID (0 means unspecified).
     inline int parseInstanceId(const QString &fullName) {
         QString unused;
         return parseName(fullName, unused);
     }
 
-    // 只取 base name（去除 #N 尾綴）
+    // Return only the base name (without the #N suffix).
     inline QString baseName(const QString &fullName) {
         QString name;
         parseName(fullName, name);
         return name;
     }
 
-    // 判斷是否包含實例尾綴
+    // Check for an instance suffix.
     bool hasInstanceId(const QString &fullName);
 
-    // 判斷是否為隱藏技能（以 # 開頭）
+    // Check whether the name is a hidden skill (starts with #).
     inline bool isHiddenSkill(const QString &name) {
         return name.startsWith('#');
     }
 
-    // 從完整名稱取得隱藏技能的純名稱（去除前綴 #）
+    // Return the hidden skill's plain name (without the leading #).
     inline QString hiddenSkillBase(const QString &name) {
         return name.startsWith('#') ? name.mid(1) : name;
     }

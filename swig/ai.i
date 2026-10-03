@@ -375,9 +375,8 @@ void LuaAI::filterEvent(TriggerEvent event, ServerPlayer *player, const QVariant
 	pushCallback(L, __FUNCTION__);
 	lua_pushinteger(L, event);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
-	// data 以 heap 拷貝 + OWN 傳給 Lua：Lua 側（smart-ai filterEvent）會把
-	// data 存入全域 sgs.filterData，若傳棧上引用則 filterEvent 返回後懸垂
-	// （後續 sgs.filterData[event]:toCardEffect() 等讀取 → 0xC0000005）
+	// Copy data to Lua-owned heap storage: smart-ai's filterEvent stores it globally in sgs.filterData.
+	// A stack reference would dangle after filterEvent returns and can crash later reads.
 	QVariant *dataCopy = new QVariant(data);
 	SWIG_NewPointerObj(L, dataCopy, SWIGTYPE_p_QVariant, SWIG_POINTER_OWN);
 
@@ -584,8 +583,7 @@ const Card *LuaAI::askForSinglePeach(ServerPlayer *dying)
 	}
 	const Card *card = Card::Parse(result);
 	if (!card) return nullptr;
-	// 與 askForCard 一致：字串可能只有 skillName/#id，補齊 activation/source
-	// 供後續 useCard → resolveCardSkillInstance 走 V2 cost/pay。
+	// Match askForCard: complete skillName/#id answers with activation and source for V2 cost/pay.
 	const QString pattern = (self == dying) ? QStringLiteral("peach+analeptic")
 						   : QStringLiteral("peach");
 	AiLegacyRequestView request = room->getAiSkillActionContext(

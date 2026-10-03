@@ -207,7 +207,7 @@ void RoleAssignDialog::updateSeatLabels()
 void RoomScene::startAssign()
 {
     if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
-        // 自動化模式略過模態對話框，沿用拒絕時的預設身份回覆。
+        // Automated mode avoids the modal dialog and uses the default reply for a rejected choice.
         ClientInstance->onPlayerCancelAssignRole();
         return;
     }

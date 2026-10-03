@@ -472,7 +472,7 @@ void PlayerCardContainer::updatePhase()
 		}else{
 			if (_m_progressBar) _m_progressBar->hide();
 			if (_m_phaseIcon) _m_phaseIcon->hide();
-			// 回合結束後部分 & display mark 的 private-pile 按鈕會丟；mark 值仍在，重套一次
+			// Some private-pile buttons are dropped after the turn while their marks remain; rebuild them once.
 			foreach (const QString &markName, m_player->getMarkNames()) {
 				if (markName.startsWith("&") && m_player->getMark(markName) > 0)
 					updateMark(markName, m_player->getMark(markName));
@@ -674,7 +674,7 @@ void PlayerCardContainer::updateMark(const QString &mark_name, int mark_num)
         QPushButton *button = new QPushButton;
 		button->setObjectName(mark_name);
 		button->setProperty("private_pile", "true");
-		//button->setStyleSheet("background-color:transparent");//把标记背景变透明
+
         if (_m_privatePiles.contains(mark_name)){
 			_m_privatePiles[mark_name]->widget()->deleteLater();
 			_m_privatePiles[mark_name]->setWidget(nullptr);
@@ -815,7 +815,7 @@ void PlayerCardContainer::paintHandcardNum(int handcardNum, int hp, int maxCards
         _m_handCardNumText->setZValue(100);
     }
     _m_handCardNumText->setPos(mapFromItem(_getAvatarParent(), QPointF(wideArea.x(), wideArea.y())));
-    // inovation_fengbi：手牌數只對持有者本人以外的玩家隱藏
+    // Hand count is hidden from other players while Fengbi is active.
     _m_handCardNumText->setVisible(!hideHandcardNum);
 
 }
@@ -859,7 +859,7 @@ void PlayerCardContainer::updateHandcardNum()
                         }
                         int val = m_player->getMark(mark_name);
                         if (val != 0) {
-                            // reason 可能含 "_"，來源(玩家 objectName) 只在末段能解析為玩家時才拆分
+                            // A reason may contain '_'; parse the source player only from the final component.
                             QString real_reason = data;
                             QString source_objname;
                             int last_sep = data.lastIndexOf('_');
@@ -897,7 +897,7 @@ void PlayerCardContainer::updateHandcardNum()
             }
         }
 
-        // 從 Server 推播的 Tag 讀取各技能對手牌上限的影響（零 Lua 呼叫）
+        // Read skill hand-limit adjustments from the server tag without calling Lua.
         foreach (const QString &entry, mc_tag) {
             if (!entry.contains("^")) continue;
             QStringList parts = entry.split("^");
@@ -1062,7 +1062,7 @@ void PlayerCardContainer::_updateEquips()
     }
     const QStringList &vae_tag = m_player->uiState().viewAsEquipSkills;
     foreach (QString entry, vae_tag) {
-        QStringList parts = entry.split("^"); // 記得用 ^ 切割
+        QStringList parts = entry.split("^"); // Split on '^'.
         if (parts.length() >= 2) {
             Card *ec = Sanguosha->cloneCard(parts[0]);
             if (ec) try_add_simulated_equip(ec, parts[1]);
@@ -1109,7 +1109,7 @@ void PlayerCardContainer::_updateEquips()
     const QStringList &off_skills = uiState.offensiveSkills;
     const int def_dist = uiState.defensiveDistance;
     const QStringList &def_skills = uiState.defensiveSkills;
-    // PHOTO 馬位窄：字級依 horsePointArea 縮放；Dashboard 高度較大時接近原 13
+    // The horse slot is narrower than weapon and armor in the compact Photo layout; scale the label accordingly.
     const int distFontPx = qBound(8, _m_layout->m_horsePointArea.height(), 14);
 
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
@@ -1793,9 +1793,9 @@ void PlayerCardContainer::startHuaShen(QString generalName, QString skillName)
 
     stopHuaShen();
     _m_huashenAnimation = G_ROOM_SKIN.createHuaShenAnimation(pixmap, animRect.topLeft(), _getAvatarParent(), _m_huashenItem);
-    // The avatar is a loopCount=2000 looping blink. NONE does not create it: the
-    // avatar is still built and shown (the avatar state must stay visible), just
-    // without constant repaints. Duration must not be 0 - a looping animation with duration 0 finishes instantly, i.e. the state would vanish.
+    // Keep the avatar visible without creating a repaint loop when animated effects are disabled.
+
+
     if (G_EFFECTS.animationsEnabled()) {
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
         _m_huashenAnimation->start();
@@ -1876,7 +1876,7 @@ void PlayerCardContainer::onAvatarHoverLeave()
 
 void PlayerCardContainer::scheduleAvatarTooltipUpdate()
 {
-    // 一批快照／技能事件只重建一次；每個 emit 各排一次 queued 呼叫會連續重建數十次。
+    // Rebuild once for a batch of snapshots or skill events; queuing one call per emit would trigger dozens of rebuilds.
     if (m_avatarTooltipPending)
         return;
     m_avatarTooltipPending = true;
@@ -2572,9 +2572,7 @@ void PlayerCardContainer::updateHandcardViewer()
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
 //  Dynamic skin background
-// ═══════════════════════════════════════════════════════════════════════════
 
 void PlayerCardContainer::setDynamicBackground(const QString &imagePath)
 {

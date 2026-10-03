@@ -7440,7 +7440,7 @@ public:
 					room->broadcastSkillInvoke(objectName());
 					pattern = pattern + "!";
 
-					room->fillAG(trick_card, geter);  //偷懒用AG
+					room->fillAG(trick_card, geter);  // Use the AG dialog to simplify selection.
 					int id = room->askForAG(geter, trick_card, false, objectName());
 					zongxuan_card.removeOne(id);
 					room->clearAG(geter);

@@ -37,16 +37,16 @@ class PlayerCardContainer;
 class Photo;
 class Dashboard;
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Data types
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 /// Identifies a character action type.
 enum class ActionType {
-    Attack,      // 攻击  (was "GongJi")
-    Special,     // 特殊  (was "TeShu")
-    Entrance,    // 出场  (was "chuchang" / "ChuChang")
-    Idle         // 待机  (was "DaiJi")
+    Attack,      // Attack
+    Special,     // Special
+    Entrance,    // Entrance
+    Idle         // Idle
 };
 
 /// Required by QHash<ActionType, ...> — scoped enums need an explicit qHash.
@@ -114,9 +114,9 @@ struct PlayerActionState {
     bool alive = true;
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Controller
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 class CharacterSpineActionController : public QObject
 {
@@ -126,7 +126,7 @@ public:
     explicit CharacterSpineActionController(QGraphicsScene *scene, QObject *parent = nullptr);
     ~CharacterSpineActionController() override;
 
-    // ─── Configuration ──────────────────────────────────────────
+
 
     /// Set the path prefix where Spine assets live (e.g. "assets/dynamic").
     void setAssetPathPrefix(const QString &prefix);
@@ -146,7 +146,7 @@ public:
     void updateSeatGeometry(const QString &playerId,
                             const QPointF &position, const QSizeF &size);
 
-    // ─── Pre-loading ────────────────────────────────────────────
+
 
     /// Pre-load all Spine skeletons needed for a player's skins.
     /// Loads happen via SpineGlItem::loadSpine; actions' duration/showTime
@@ -169,7 +169,7 @@ public:
     /// Check if a dynamic skin path exists.
     bool hasDynamicSkin(const QString &resolvedGeneral, int skinIndex) const;
 
-    // ─── Action triggering ──────────────────────────────────────
+
 
     /// Attempt to trigger an action for a player.
     /// @param playerId    Seat id.
@@ -193,7 +193,7 @@ public:
     /// Mark player as dead (blocks future actions, fades out pop-outs).
     void setPlayerAlive(const QString &playerId, bool alive);
 
-    // ─── Cooldown settings ──────────────────────────────────────
+
 
     /// Minimum milliseconds between two actions on the same seat.
     void setCooldownMs(int ms) { _cooldownMs = ms; }
@@ -219,7 +219,7 @@ signals:
     void skinBackgroundChanged(const QString &playerId, const QString &backgroundPath);
 
 private:
-    // ─── Helpers ────────────────────────────────────────────────
+
     SkinConfig *findSkin(const QString &playerId, ActionType action, QString &outSkinId);
     ActionMetadata *resolveAction(SkinConfig *skin, ActionType action);
     SpineGlItem *createPopOutItem(const SkinConfig &skin, const ActionMetadata &meta);
@@ -240,7 +240,7 @@ private:
     void returnToIdle(const QString &playerId);
     void cleanupPopOut(PlayerActionState &state);
 
-    // ─── Data ───────────────────────────────────────────────────
+
     QGraphicsScene *_scene;
     QString         _assetPrefix;
 
@@ -257,7 +257,7 @@ private:
     int   _cooldownMs      = 40;
     bool  _mutualExclusion = true;
     float _playbackSpeed   = 1.2f;
-    int   _returnDelayMs   = 400;   ///< Delay for "return to frame" motion
+    int   _returnDelayMs   = 400;   ///< Delay before returning to the seat position.
     int   _showTimeBeforeMs= 100;   ///< Extra showTime padding
 };
 

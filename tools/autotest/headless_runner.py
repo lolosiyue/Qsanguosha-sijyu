@@ -56,7 +56,7 @@ def registered_real_modes(exe_root: str) -> frozenset[str]:
     if out.returncode != 0:
         return FALLBACK_REAL_MODES
     modes = set()
-    for line in out.stdout.splitlines()[1:]:  # 第一行係 "ID\tPLAYERS\tNAME"
+    for line in out.stdout.splitlines()[1:]:  # First row: ID	PLAYERS	NAME.
         parts = line.split("\t")
         if len(parts) >= 2 and parts[0].strip():
             modes.add(parts[0].strip())
@@ -65,7 +65,7 @@ def registered_real_modes(exe_root: str) -> frozenset[str]:
 
 PER_GAME_TIMEOUT: Final[int] = int(
     os.environ.get("QSAN_HEADLESS_PER_GAME_TIMEOUT", "3600")
-)  # 可由環境變數覆寫的每局有界上限 (秒)
+)  # Per-game timeout, overridable through the environment.
 
 
 CUR_GAME_RE = re.compile(r">>> Starting headless game (\d+) <<<")
@@ -389,14 +389,13 @@ def report_progress(label, games, prev, finished, failed):
 
 
 def run_mode(args, exe, workdir, mode, games, tag=""):
-    # 自動化測試: --spawn-delay 讓多份 process 依索引分批啟動,
-    # 避開「同時啟動大量 exe」被安全軟體行為攔截 (PROD 實測 10 個同時只有 2 個存活)
+    # Stagger process startup to avoid security software blocking simultaneous executables.
     delay = getattr(args, "spawn_delay", 0)
     if delay > 0 and tag:
         time.sleep(delay * (int(tag) - 1))
-    # 同一模式多份平行時, 各自獨立 log 檔 (tag 為 process 編號)
+    # Give parallel runs of the same mode separate logs tagged by process index.
     suffix = "-%s" % tag if tag else ""
-    # 每次執行一個時間戳資料夾 (headless/<時間戳>/), 不再重名覆蓋
+    # Use a unique timestamped output directory for each run.
     run_dir = getattr(args, "run_dir", log_dir_for(args))
     log_path = os.path.join(run_dir, "%s%s.log" % (mode, suffix))
     headless_log = os.path.join(run_dir, "%s%s-headless.log" % (mode, suffix))
@@ -405,7 +404,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
            "--headless-log", headless_log]
     if getattr(args, "seed", None) is not None:
         cmd += ["--seed", str(args.seed)]
-    # 自動化測試: 指定主公武將 (--test-general/--test-general2), 反覆測同一武將找 bug
+    # Repeat a selected general to reproduce issues.
     if getattr(args, "general", ""):
         cmd += ["--test-general", args.general]
     if getattr(args, "general2", ""):
@@ -415,7 +414,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     deadline = time.time() + timeout
     timed_out = False
     code = None
-    # 輪詢標記檔, 每局開始/完成即在 CMD 印進度
+    # Poll marker files and report each game's start and completion.
     prev = {"total": 0, "failed": 0}
     prev_started = set()
     smart_ai_failed = False
@@ -429,7 +428,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
             proc.kill()
             code = wait_exit(proc, 5)
             break
-        # 自動化測試: smart-ai 載入失敗 — 同 VM 的後續局都會壞, 提前結束省時間
+        # Stop early if SmartAI loading fails; later games in the same VM would fail too.
         if log_has_smart_ai_failure(headless_log):
             print("  [%s] [%s] smart-ai 載入失敗, 提前結束 (後續局無法正常進行)"
                   % (label, time.strftime("%H:%M:%S")))
@@ -465,8 +464,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         process_failures.append(f"exit={code}")
     process_failure = ";".join(process_failures)
     ok = (not process_failures) and gauge_validation.status == "valid"
-    # 閃退摘要: 非逾時且 exit code 是 Windows 崩潰碼 (0xC0000005 等) 才算閃退;
-    # exit=1 等小值是應用程式自行退出 (如啟動失敗), 不算崩潰
+    # Treat Windows crash codes as crashes, but not timeouts or small application exit codes.
     crashed = (not timed_out) and is_crash_code(code)
     context = tail_lines(headless_log, 20) if crashed else []
     return {
@@ -491,7 +489,7 @@ def close_proc(proc):
 
 
 def main():
-    # log 行含中文, console 編碼 (cp950) 印不出時以 ? 取代, 避免 runner 自己炸掉
+    # Replace unprintable console characters so Chinese log lines cannot crash the runner.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description="QSanguosha headless 壓力測試 runner")
@@ -543,16 +541,16 @@ def main():
         return 2
     workdir = resolve_workdir(args.exe_root)
     log_root = log_dir_for(args)
-    # 每次執行一個時間戳資料夾 (headless/<時間戳>/), 不再重名覆蓋
+    # Use a unique timestamped output directory for each run.
     args.run_dir = os.path.join(log_root, "headless", "%s-%d" % (stamp(), os.getpid()))
     os.makedirs(args.run_dir, exist_ok=True)
     print("執行檔: %s" % exe)
     print("cwd   : %s" % workdir)
     print("log   : %s" % args.run_dir)
 
-    # 任務展開:
-    #   - 模式數 >= parallel: 每個模式 1 份任務 (全部都要跑), 同時最多 parallel 個
-    #   - 模式數 <  parallel: 同一模式 round-robin 補到 parallel 份任務, 全部同時執行
+    # Expand work into parallel tasks:
+    # - If modes >= parallelism, run each mode once, up to the concurrency limit.
+    # - Otherwise, distribute repeated runs across modes until the limit is filled.
     parallel = max(1, args.parallel)
     if len(modes) >= parallel:
         tasks = [(m, "") for m in modes]
@@ -587,7 +585,7 @@ def main():
                     top = sorted(r["winners"].items(), key=lambda kv: -kv[1])[:3]
                     print("        勝方分布: %s" % ", ".join(
                         "%s x%d" % (w, c) for w, c in top))
-                # 閃退摘要: exit 翻譯 + 崩潰前 20 行 log
+                # Summarize translated exit codes and the last 20 log lines before a crash.
                 if r.get("crashed"):
                     print("        閃退: %s (%s)" % (r.get("exit_name"), r.get("exit_hex")))
                     for line in r.get("crash_context", []):

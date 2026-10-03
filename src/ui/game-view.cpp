@@ -38,10 +38,10 @@ bool isVisualModeActive()
     return isGrayscaleMode() || Config.VisualMode == QLatin1String("highcontrast");
 }
 
-// 與 HomeScene 的 MultiEffect 同參數:灰階全去色,高對比 contrast +0.35。
+// Match HomeScene's grayscale and high-contrast settings.
 constexpr int kHighContrastPercent = 135;
 
-// CPU 後製:光柵 viewport 整張畫面,以及 GL 版浮在 viewport 上的 QWidget overlay。
+// CPU post-processing covers the raster viewport and QWidget overlays above the GL viewport.
 class VisualModeEffect final : public QGraphicsEffect
 {
 public:
@@ -57,7 +57,7 @@ protected:
         const QPixmap pixmap = sourcePixmap(Qt::DeviceCoordinates, &offset, QGraphicsEffect::NoPad);
         if (pixmap.isNull())
             return;
-        // premultiplied:對比以 a/2 為中心拉伸並夾在 [0, a],半透明邊緣才不會溢色。
+        // Keep premultiplied alpha within [0, a] so translucent edges do not overflow.
         QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
         for (int y = 0; y < image.height(); ++y) {
             QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
@@ -88,7 +88,7 @@ private:
 } // namespace
 
 #if !QSAN_USE_RASTER_VIEWPORT
-// GPU 後製:把 QOpenGLWidget 已畫好的 FBO 複製成貼圖,再用 shader 蓋回去。
+// GPU post-processing copies the QOpenGLWidget framebuffer to a texture and applies the shader.
 class GameViewGlFilter final : public QObject
 {
 public:
@@ -97,14 +97,14 @@ public:
     {
     }
 
-    // 需在 beginNativePainting/endNativePainting 之間呼叫。
+    // Call this between beginNativePainting() and endNativePainting().
     void apply(bool grayscale)
     {
         QOpenGLContext *context = QOpenGLContext::currentContext();
         if (!context || m_failed)
             return;
         if (m_context != context) {
-            // widget 換 top-level 時 context 會重建;刪 GL 物件前要先 makeCurrent。
+            // Moving a widget to another top-level window recreates its context; make it current before deleting GL objects.
             m_context = context;
             connect(context, &QOpenGLContext::aboutToBeDestroyed, this, [this]() {
                 m_widget->makeCurrent();
@@ -252,10 +252,10 @@ void FitView::applyVisualMode()
 {
     const bool active = isVisualModeActive();
 #if QSAN_USE_RASTER_VIEWPORT
-    // overlay 是 viewport 的子 widget,一併被這層效果處理。
+    // This overlay is a viewport child and needs the same post-processing.
     viewport()->setGraphicsEffect(active ? new VisualModeEffect(isGrayscaleMode()) : nullptr);
 #elif !defined(QSAN_XP_LEGACY)
-    // GL viewport 由 drawForeground 後製;overlay 是另外合成的 QWidget,要自己套。
+    // The GL viewport is post-processed in drawForeground(); composite the QWidget overlay separately.
     if (m_overlay)
         m_overlay->setGraphicsEffect(active ? new VisualModeEffect(isGrayscaleMode()) : nullptr);
 #endif
@@ -297,7 +297,7 @@ void FitView::setScene(QGraphicsScene *next)
     QGraphicsView::setScene(next);
     qsanEnableWidgetPointerHover(viewport());
     if (!qobject_cast<RoomScene *>(next)) {
-        // Rotation is an application preference; returning home keeps it enabled.
+        // Rotation is an application preference and remains enabled when returning home.
         if (m_posture) m_posture->setResponsivePreview(m_responsiveEnabled);
         delete m_overlay;
         m_overlay = nullptr;

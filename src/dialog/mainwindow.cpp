@@ -279,7 +279,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 	setWindowTitle(tr("Sanguosha")+" 岁末 "+Sanguosha->getVersionNumber());
 
-	// 啟動即在大廳,登記給 crash handler(進入對局/回放時由 RoomScene 更新)
+	// Register the lobby window with the crash handler; RoomScene updates it for games and replays.
 	CrashHandler::setGamePhase(CrashHandler::PhaseLobby);
 
 	scene = nullptr;
@@ -288,7 +288,7 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(ui->actionStart_Game, SIGNAL(triggered()), connection_dialog, SLOT(exec()));
 	connect(connection_dialog, SIGNAL(accepted()), this, SLOT(startConnection()));
 
-	// 設定 dialog 與首頁設定頁共用同一個 session:預覽、儲存、復原只在這裡接線一次
+	// Wire the shared settings session once for both settings views.
 	settingsSession = new SettingsSession(this);
 	config_dialog = new ConfigDialog(settingsSession, this);
 	connect(ui->actionConfigure, SIGNAL(triggered()), config_dialog, SLOT(show()));
@@ -1151,7 +1151,7 @@ void MainWindow::restoreAndroidOfflineMarker()
 }
 #endif
 
-// WSLg 會把這扇 X 視窗停在 (-32768,-32768)，或在多螢幕時最大化到主螢幕以外。
+// WSLg may place this window at (-32768,-32768) or maximize it beyond the primary screen.
 static QRect placedOnScreen(QSize size, QPoint pos)
 {
 	if (QScreen *screen = QGuiApplication::primaryScreen()) {
@@ -1180,7 +1180,7 @@ static void bringClientAreaOnScreen(QWidget *window, bool followPrimary)
 	const QRect frame = window->frameGeometry();
 	const QPoint topLeft = frame.topLeft();
 	const bool parked = topLeft.x() <= -16000 || topLeft.y() <= -16000;
-	// 外框比客戶區高出一截。中心在主螢幕裡時，標題列仍可能在 y<0，點不到。
+	// The title bar can remain above the screen even when the client area is centered.
 	const bool captionClipped = followPrimary && avail.isValid()
 		&& (frame.top() < avail.top() || frame.left() < avail.left());
 	const bool offPrimary = followPrimary && avail.isValid()
@@ -1251,12 +1251,12 @@ void MainWindow::closeEvent(QCloseEvent *event)
 		return;
 	}
 #endif
-	// 本程序自己託管 Server,而 Room 的收尾是非同步的: beginShutdown() 只提出
-	// 要求,要 event loop 繼續泵事件才會完成。直接 quit() 會讓 main 一邊拆 Room,
-	// 遊戲執行緒一邊還在讀它;而卡在 BlockingQueuedConnection 回 main 的
-	// RoomThread (Room::signalSetProperty) 永遠回不來。
+	// This process owns the server, and Room shutdown is asynchronous. Keep the event loop running until beginShutdown() completes.
+	// Quitting immediately would destroy Room while its game thread may still read it.
+	// RoomThread can also block on a BlockingQueuedConnection back to main.
+
 	if (server && !server->shutdownComplete()) {
-		// 收尾期間事件照泵,先收起視窗,免得再接到一次關閉而重入。
+		// Hide the window during shutdown so another close event cannot re-enter cleanup.
 		hide();
 		QPointer<Server> hostedServer(server);
 		hostedServer->beginShutdown();
@@ -1274,8 +1274,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
 		drainLoop.exec();
 	}
 
-	// 主視窗被關 = 正常退出。此後退出清理階段(Engine 析構、Lua 關閉、
-	// __gc 終結器經 SWIG 回調 C++ 物件)出的崩潰不再上報 —— 玩家已主動退出。
+	// A user-initiated close is a normal exit; suppress crash reports during later Engine/Lua/SWIG teardown.
+
 	CrashHandler::beginShutdown();
 
 	const QRect placed = placedOnScreen(size(), pos());
@@ -1287,7 +1287,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 	qApp->quit();
 }
 
-// 把當前主視窗幾何與所在螢幕登記給 crash handler,崩潰摘要裡用得到。
+// Record the main window geometry and screen for crash reports.
 static void reportWindowState(QWidget *w)
 {
 	QRect g = w->geometry();
@@ -1824,7 +1824,7 @@ void MainWindow::applyReplayRestoreState(const ReplayRestoreState &state)
 
 void MainWindow::checkVersion(const QString &server_version, const QString &server_mod, int card_num)
 {
-	// 自動化測試: 略過 MOD/卡牌數/版本檢查, 直接 signup (server/client 為不同 target, 載入套件數可能不同)
+	// Automated tests skip package, card-count and version checks because server and client targets may load different packages.
 	const bool autotest = !m_takeoverInProgress
 		&& (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty());
 	if (autotest) {
@@ -2134,7 +2134,7 @@ void MainWindow::enterRoom()
 	updateAndroidSafeArea();
 #endif
 
-	// 自動化測試: --auto-robots 由 owner 自動填滿 AI (填滿後伺服器端自動開局)
+	// Automated tests let the owner fill the room with AI and start the game.
 	if (Config.AutoAddRobots || m_takeoverInProgress
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
 		|| m_scenarioWork

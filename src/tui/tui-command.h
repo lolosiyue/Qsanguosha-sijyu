@@ -22,7 +22,7 @@ enum class TuiCommandType
     Reconnect,
     Quit,
     Cancel,
-    // A local view command (docs/tui-board-ui.md §3.6): board mode's presenter
+    // A local view command (docs/tui-board-ui.md section 3.6): board mode's presenter
     // pages to it. Ignored outright in classic mode, where there is no page
     // to turn to; it must never reach TuiApplicationController's branches
     // that send an intent to the session.
@@ -44,7 +44,7 @@ struct TuiCommandIntent
     bool fillRemaining = false;
     int count = 0;
     // TuiCommandType::Board only: the page the player typed, 1-based (as
-    // shown by the room title's own "‹n/N›"). The controller converts to the
+    // shown by the room title's own "<n/N>"). The controller converts to the
     // 0-based page TuiBoardPresenter::setPage() takes.
     int page = 0;
 };

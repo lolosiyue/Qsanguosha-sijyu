@@ -75,7 +75,7 @@ bool EffectsProfileContract::spineEnabled(EffectsProfile profile)
 
 bool EffectsProfileContract::gifEnabled(EffectsProfile profile)
 {
-    // Reduced 保留 QMovie 但只會用首幀（見 VisualEffectsPolicy::gifPlaybackAllowed）。
+    // REDUCED keeps QMovie but shows only its first frame; see VisualEffectsPolicy::gifPlaybackAllowed.
     return profile != EffectsProfile::None;
 }
 
@@ -86,7 +86,7 @@ bool EffectsProfileContract::videoEnabled(EffectsProfile profile)
 
 bool EffectsProfileContract::qmlEffectsEnabled(EffectsProfile profile)
 {
-    // 全屏 QML 技能特效同 Spine 一樣係 overlay 級數的開銷。
+    // Full-screen QML skill effects have the same overlay cost as Spine effects.
     return profile == EffectsProfile::Full;
 }
 

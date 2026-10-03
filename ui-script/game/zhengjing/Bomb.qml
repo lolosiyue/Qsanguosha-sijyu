@@ -10,11 +10,11 @@ Rectangle {
     objectName: "gameItem"
 
     property real velocityX: (Math.random() - 0.5) * 8
-    property real velocityY: -25  // 比水果稍慢的初速度
-    property real gravity: 0.6    // 更大的重力加速度
+    property real velocityY: -25  // Initial velocity is slightly lower than the fruit's.
+    property real gravity: 0.6    // Use greater gravity.
     property var rootParent: parent
 
-    // 炸弹符号（红色X）
+    // Bomb symbol (red X).
     Rectangle {
         anchors.centerIn: parent
         width: parent.width * 0.8
@@ -52,13 +52,13 @@ Rectangle {
         anchors.fill: parent
         onClicked: {
             main.cleanScore()
-            main.endGame()  // 点击炸弹立即结束游戏
+            main.endGame()  // Clicking a bomb ends the game immediately.
             explodeAnimation.start()
             destroy(500)
         }
     }
 
-    // 爆炸动画
+    // Explosion animation.
     ParallelAnimation {
         id: explodeAnimation
         NumberAnimation {

@@ -43,7 +43,7 @@ Item {
         fillMode: Image.PreserveAspectFit
         height: parent.height * 1.347
         width: parent.width
-        // ?嗆挾鈭?.834
+
         source: img + (loop ? "bgloop" : "bg") + curr + ".png"
         opacity: 0
     }

@@ -18,26 +18,7 @@ class ClientGameState;
 struct InteractionRequest;
 class TuiTerminal;
 
-// Assembles TuiBoardView + TuiScreen + TuiLineEditor into the one object the
-// controller talks to once board mode is running: it repaints on
-// stateChanged()/interactionChanged(), sends writeOutput() to the log
-// scrollback and writeDump() to a full-screen overlay (spec §5.2 -- only the
-// six long-dump commands ever call writeDump(); everything else, interaction
-// prompts included, is writeOutput() and never opens an overlay no matter how
-// many lines it is), and turns decoded keys into either a view action
-// (paging, scrolling, opening/closing the overlay) or a line-editor
-// keystroke.
-//
-// Design invariant 1 (docs/tui-board-ui.md): a view action never touches the
-// wire. That is not a convention this class has to remember to honour --
-// there is no member here that names ClientLiveSession, ClientCore, or
-// anything that could send a protocol message, so setPage()/toggleOverlay()/
-// handleKey()'s paging branches have no path to one even by accident. The
-// only way anything this class does ever reaches the server is the completed
-// line handed back through handleKey()'s `submitted` out-parameter, which the
-// controller feeds through the exact same handleInputLine() classic mode
-// always used (invariant 2) -- this class never calls into ClientCore or the
-// session itself.
+// View actions stay local; submitted lines return through the controller's existing input path.
 class TuiBoardPresenter final : public QObject, public TuiPresenter
 {
     Q_OBJECT
@@ -50,20 +31,7 @@ public:
     // signal keeps the viewport in sync (see the constructor body).
     explicit TuiBoardPresenter(QSize size, TuiResolvers resolvers, TuiTerminal *terminal = nullptr);
 
-    // Called by the controller once TuiTerminal::enter() has actually put the
-    // terminal into the alternate screen (see start() in
-    // tui-application-controller.cpp). Before this runs, flushToTerminal()
-    // holds every frame instead of writing it: this presenter is constructed,
-    // and paints its first frame, well before enter() has run, and writing
-    // that frame straight to the terminal's raw fd at that point would land on
-    // the user's real (primary) screen instead of the alternate one -- an
-    // ordering bug, not a cosmetic one, since those bytes would then persist
-    // in the shell's scrollback after the alternate screen is later left. If
-    // enter() never succeeds, this is never called, and nothing this
-    // presenter draws ever reaches the terminal. Safe to call more than once;
-    // only the first call does anything. No-op when constructed without a
-    // real terminal (the unit test's form): flushToTerminal() already never
-    // touches a null m_terminal, so there is nothing here to hold back.
+    // Hold frames until the terminal has entered the alternate screen; this is a no-op without a real terminal.
     void terminalEntered();
 
     void writeOutput(const QString &text) override;
@@ -86,16 +54,16 @@ public:
     void setPage(int page);
     int page() const { return m_viewState.page; }
     // The page count as of the last repaint. Display-only (the room title's
-    // "‹n/N›"); nothing here gates on it, for the reason setPage() explains.
+    // "<n/N>"); nothing here gates on it, for the reason setPage() explains.
     int pageCount() const { return m_pageCount; }
     // Opens a full-screen scrollable overlay showing `content`, or closes the
     // current one when `content` is empty. `content` is exactly what the
     // controller already builds through TuiRenderer for /players, /log,
-    // /hand, /skills, /piles and /equip (spec §5.2) -- this class never
+    // /hand, /skills, /piles and /equip (spec section 5.2) -- this class never
     // builds that text itself.
     void toggleOverlay(const QString &content);
     // Forwards to the embedded TuiLineEditor's own setCompleter() (spec
-    // §5.1: "Tab 補全，直接重用現有 m_completer"). The controller installs the
+    // section 5.1: "Tab completion reuses the existing m_completer"). The controller installs the
     // exact same completer function on TuiInput for classic mode; board mode
     // never assembles lines through TuiInput at all (raw mode hands this
     // presenter individual keys instead, see tui-application-controller.cpp's
@@ -103,7 +71,7 @@ public:
     // never learns about completion and Tab does nothing there.
     void setCompleter(std::function<QString(const QString &, QStringList *)> completer);
     // Rebuilds the character grid for a new terminal size and forces one
-    // full frame; TuiScreen's own diff resumes after (spec §3.8).
+    // full frame; TuiScreen's own diff resumes after (spec section 3.8).
     void setViewportSize(QSize size);
     // Consumes one decoded key. Overlay scrolling/closing and page-flipping
     // are handled here and never reach the line editor; everything else is
@@ -140,7 +108,7 @@ private:
     TuiScreen m_screen;
     TuiLineEditor m_editor;
     // Non-owning: the controller owns the real terminal (RAII per
-    // docs/tui-board-ui.md §4.1) and outlives this presenter.
+    // docs/tui-board-ui.md section 4.1) and outlives this presenter.
     TuiTerminal *m_terminal = nullptr;
 
     TuiBoardViewState m_viewState;
@@ -153,8 +121,8 @@ private:
     QString m_lastCurrentPlayer;
     // Set by setPage(), cleared by the next turn change or interaction
     // request -- see stateChanged()/interactionChanged() for why it is only
-    // ever cleared there and nowhere else (docs/tui-board-ui.md §3.6: "手動
-    // 翻頁壓住自動跟隨，但只壓到下一次回合轉換或下一個請求為止").
+    // ever cleared there and nowhere else (docs/tui-board-ui.md section 3.6: "manual
+    // paging overrides auto-follow until the next turn change or request").
     bool m_manualPage = false;
     int m_pageCount = 1;
 

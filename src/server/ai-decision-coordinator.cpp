@@ -947,7 +947,7 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     // isolated snapshot or allow an isolated Lua handler to override that AI.
     if (!Config.EnableAI)
         return request;
-    // 建請求只讀盤面：同一版本內，距離、攻擊範圍與目標修正對同參數只求值一次。
+    // Build the request from a read-only board snapshot; within one revision, evaluate matching distance, attack-range, and target-modifier queries once.
     TargetModMemoScope targetModMemo([this]() { return m_room.roomRuntime()->stateRevision(); });
     // Temporary 10P diagnosis: bracket request construction, which AI_PROBE excludes.
     const bool lagProbe = qgetenv("QSAN_10P_LAG_PROBE") == "1";
@@ -1411,8 +1411,8 @@ bool AiDecisionCoordinator::applyResult(ServerPlayer *player, const AIRequest &r
         return false;
     AIRequest playRequest;
     if (!request.hasSkillActionContext) {
-        // 出牌階段的 Activate 請求不帶技能上下文; AI 選了 V2 主動技時由結果指明 instance,
-        // 這裡按該 instance 重新建立上下文 (歸屬、canActivate、次數都重驗) 再造 proxy。
+        // Activate requests during play do not carry skill context. For a V2 active skill, the AI result identifies the instance,
+        // so rebuild and revalidate its ownership, canActivate, and usage count before creating the proxy.
         SkillInstanceRef claimed = result.action.skillActionContext.activationRef;
         if (claimed.ownerObjectName.isEmpty())
             claimed.ownerObjectName = player->objectName();
@@ -2504,7 +2504,7 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
     if (qgetenv("QSAN_10P_LAG_PROBE") == "1")
         qWarning().noquote() << "[LAG_PROBE] begin decide" << request.decisionId
                              << player->objectName() << callbackName;
-    // 診斷插樁: 量測單次 AI 決策的耗時與熱點呼叫次數 (QSAN_AI_PROBE=1 才啟用)。
+    // Diagnostic probe for AI-decision duration and hot-call counts; enabled only by QSAN_AI_PROBE=1.
     QElapsedTimer probeTimer;
     if (AiProbe::enabled()) {
         AiProbe::reset();
@@ -2623,7 +2623,7 @@ AiLegacyRequestView AiDecisionCoordinator::skillActionContext(
     if (!player) return AiLegacyRequestView();
     foreach (const SkillInstance &instance, player->getSkillInstances()) {
         if (instance.skillName != skillName) continue;
-        // 舊 Lua 只讀發動／來源 instance 與額度，不讀盤面或候選。
+        // Legacy Lua reads only the source instance and quota; it does not read the board or candidates.
         if (buildSkillActionRequest(player, instance, reason, pattern, prompt, method, request, false))
             return AiLegacyRequestView(request, player);
     }

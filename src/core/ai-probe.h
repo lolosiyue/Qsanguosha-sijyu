@@ -1,9 +1,9 @@
 #ifndef _AI_PROBE_H
 #define _AI_PROBE_H
 
-// 診斷插樁: 量測單次 AI 決策裡「技能有效性 / 距離修正 / 卡牌限制」的呼叫次數與耗時。
-// 預設完全關閉 (只有一個 thread_local bool 的分支), 以 QSAN_AI_PROBE=1 開啟,
-// QSAN_AI_PROBE_MS=<毫秒> 設定只回報超過該耗時的決策 (預設 200)。
+// Optional probe for skill validity, distance modifiers and card-limit calls
+// during one AI decision. Disabled by default; QSAN_AI_PROBE=1 enables it.
+// QSAN_AI_PROBE_MS=<milliseconds> sets the reporting threshold (default 200).
 
 #include <QElapsedTimer>
 #include <QString>
@@ -34,7 +34,7 @@ void reset();
 void bump(Slot slot);
 void addNanos(Slot slot, qint64 nanos);
 
-// 計次 + 計時的 RAII; 探針關閉時只剩一個 bool 判斷。
+// Count and time a scope; disabled probes add only one thread-local bool check.
 class ScopedProbe
 {
 public:
@@ -55,7 +55,7 @@ private:
     bool m_on;
     QElapsedTimer m_timer;
 };
-// 記錄一次 CardLimitSkill::limitPattern 的耗時, 以技能名與卡名分別累計。
+// Record CardLimitSkill::limitPattern time, grouped by skill and card name.
 void recordLimitPattern(const QString &skillName, const QString &cardName, qint64 nanos);
 QString report();
 

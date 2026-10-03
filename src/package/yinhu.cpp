@@ -3792,7 +3792,7 @@ public:
 		if (use.card->isKindOf("SkillCard") || !use.to.contains(player) || use.to.length() != 1) return false;
 		QList<ServerPlayer *> targets;
 		foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
-			if (player->isProhibited(p, use.card)) continue;  //这里不用canUse函数，免得【酒】被判定为不能用
+			if (player->isProhibited(p, use.card)) continue;  // Do not call canUse here, or Analeptic may be rejected as unusable.
 			if (!use.card->targetFilter(QList<const Player *>(), p, player)) continue;
 			targets << p;
 		}
@@ -4744,7 +4744,7 @@ public:
 		room->setPlayerProperty(player, "YHShanhaiGetIds", ListI2S(ids).join("+"));
 
 		try {
-			while (player->isAlive()) {  //这里其实有bug，如果插入了获得牌，之前的记录就没了
+			while (player->isAlive()) {  // This path has a bug: inserting an acquired card loses the previous record.
 				if (!room->askForUseCard(player, "@@yhshanhai", "@yhshanhai")) break;
 				QList<int> hands = player->handCards();
 				foreach (int id, ids) {
@@ -5497,7 +5497,7 @@ YinhuPackage::YinhuPackage()
 	yh_chenshou->addSkill(new YHZhushi);
 	yh_chenshou->addSkill(new YHZhushiPut);
 	yh_chenshou->addSkill(new YHQubi);
-	//yh_chenshou->addSkill(new Skill("yhqubi", Skill::Compulsory)); //耦合进了Room::drawCards
+	//yh_chenshou->addSkill(new Skill("yhqubi", Skill::Compulsory)); // Coupled into Room::drawCards.
 	yh_chenshou->addSkill(new YHShijin);
 	related_skills.insert("yhzhushi", "#yhzhushi");
 

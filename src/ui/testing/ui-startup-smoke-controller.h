@@ -13,16 +13,16 @@
 class MainWindow;
 class QTimer;
 
-// The real startup smoke for Linux GUI M1.
-//
-// Unlike --local-response-ui-capabilities (a binary capability query that
-// returns before QApplication), this controller always runs the full GUI
-// startup path:
-//
-//     QApplication → engine/runtime → MainWindow → HomeScene/QML → event loop
-//
-// It does not duplicate a fake HomeScene startup flow; it creates the product's
-// own MainWindow directly, judges readiness via MainWindow's home scene signal,
+// Controller for the product's GUI startup smoke.
+
+// Runs the complete startup path: QApplication, Engine, MainWindow, HomeScene/QML and the event loop.
+
+
+
+
+
+
+
 // and then exits on its own.
 class UiStartupSmokeController final : public QObject
 {
@@ -44,11 +44,11 @@ public:
     // ran, treat it as no smoke requested and return the fallback.
     static int abortEarly(const QString &stage, const QString &error, int fallbackExitCode);
 
-    // 走完產品正常 GUI 初始化之後呼叫：建立 MainWindow、載入 HomeScene、行 event
-    // loop、等 ready condition，然後自動退出。回傳 process exit code。
+    // Call after normal GUI initialization to create MainWindow, load HomeScene, run the event loop, wait for readiness, and exit.
+
     static int run();
 
-    // atexit 兜底：任何未經 finish() 的退出路徑都補一行 failure result。
+    // The atexit fallback emits a failure result for exits that bypass finish().
     static void reportUnfinishedAtExit();
 
 private slots:

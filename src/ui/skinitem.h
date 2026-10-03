@@ -22,8 +22,8 @@ protected:
     virtual void hoverEnterEvent(QGraphicsSceneHoverEvent *);
     virtual void hoverLeaveEvent(QGraphicsSceneHoverEvent *);
 
-    //必须要重载mousePressEvent函数，即使该函数实现为空，
-    //否则mouseReleaseEvent函数将无法接收鼠标消息
+    // Override mousePressEvent() even when it does nothing, or
+    // mouseReleaseEvent() will not receive the event.
     virtual void mousePressEvent(QGraphicsSceneMouseEvent *) {}
     virtual void mouseReleaseEvent(QGraphicsSceneMouseEvent *);
 

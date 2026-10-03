@@ -59,11 +59,11 @@ Card::CardType EquipCard::getTypeId() const
 bool EquipCard::isAvailable(const Player *player) const
 {
     if (targetFixed()) {
-        // 检查所有需要的装备栏是否都存在（支持双栏装备）
+        // Check that every required equipment slot exists, including both slots for dual-slot equipment.
         QList<int> occupy_slots = getOccupyLocations();
         foreach (int slot, occupy_slots) {
             if (!player->hasEquipArea(slot)) {
-                return false;  // 有任何一个栏位不存在，就不能使用
+                return false;  // If any slot is absent, the card cannot be used.
             }
         }
         return Card::isAvailable(player) && !player->isProhibited(player, this);
@@ -76,11 +76,11 @@ bool EquipCard::targetFilter(const QList<const Player *> &targets, const Player 
 	if (!targets.isEmpty() || Self->isProhibited(to_select, this))
 		return false;
 	
-	// 检查目标是否拥有所有需要的装备栏（支持双栏装备）
+	// Check that the target has every required equipment slot, including both slots for dual-slot equipment.
 	QList<int> occupy_slots = getOccupyLocations();
 	foreach (int slot, occupy_slots) {
 		if (!to_select->hasEquipArea(slot)) {
-			return false;  // 有任何一个栏位不存在，就不能选择该目标
+			return false;  // If any slot is absent, the target cannot be selected.
 		}
 	}
 	return true;
@@ -119,13 +119,13 @@ void EquipCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &tar
     if (!room->CardInTable(this)) return;
     CardUseStruct use = room->getTag("UseHistory"+toString()).value<CardUseStruct>();
     
-    // 获取装备占用的所有栏位
+    // Get every slot occupied by the equipment.
     QList<int> occupy_slots = getOccupyLocations();
     
     foreach (ServerPlayer *to, targets) {
 		if (to->isDead()) continue;
 		
-		// 检查是否所有需要的栏位都存在（没有被废除）
+		// Check that every required slot exists and is not abolished.
 		bool all_slots_available = true;
 		foreach (int slot, occupy_slots) {
 			if (!to->hasEquipArea(slot)) {
@@ -135,7 +135,7 @@ void EquipCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &tar
 		}
 		
 		if (!all_slots_available) {
-			// 某个栏位被废除了，装备失败
+			// Equipping fails if a required slot is abolished.
 			LogMessage log;
 			log.type = "#EquipAreaAbandoned";
 			log.from = to;
@@ -243,19 +243,19 @@ void EquipCard::onUninstall(ServerPlayer *player) const
 	player->getRoom()->detachSkillFromPlayer(player,objectName(),true,true,false);
 }
 
-// 双栏装备支持：获取装备实际占用的栏位列表
+// Get the actual slots occupied by dual-slot equipment.
 QList<int> EquipCard::getOccupyLocations() const
 {
     if (!occupy_locations.isEmpty())
         return occupy_locations;
     
-    // 默认返回单个location
+    // By default, return a single location.
     QList<int> result;
     result << location();
     return result;
 }
 
-// 设置装备占用的栏位（用于Lua创建的装备）
+// Set the slots occupied by Lua-created equipment.
 void EquipCard::setOccupyLocations(const QList<int> &locations)
 {
     this->occupy_locations = locations;

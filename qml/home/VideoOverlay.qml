@@ -10,7 +10,7 @@ Item {
     id: root
 
     property url source: ""
-    // 結果分類同 MultimediaSmokeReport 用同一套字串。
+    // Use the same result labels as MultimediaSmokeReport.
     signal videoReady()
     signal failed(string reason, string message)
 
@@ -47,7 +47,7 @@ Item {
                 root.failed("codec_unsupported", "InvalidMedia");
         }
 
-        // source 就緒後需呼叫 play() 才會有畫面
+        // Call play() when the source is ready; Qt 6 Video does not autoplay.
         Component.onCompleted: player.play()
         onSourceChanged: player.play()
     }

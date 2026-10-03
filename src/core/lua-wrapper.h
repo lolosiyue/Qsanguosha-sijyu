@@ -7,8 +7,8 @@
 
 struct lua_State;
 
-// Lua 除錯: 產生含 Lua call stack (stack traceback, 檔名:行號) 的錯誤訊息。
-// 呼叫時錯誤訊息須在堆疊頂; 本函數只 push/pop 自己的 traceback, 原錯誤訊息留在原位。
+// Lua debugging: add the Lua call stack (file and line) to an error message.
+// The original error must be on top; this helper pushes and pops only its traceback.
 QString luaErrorWithTraceback(lua_State *L, const char *fallback = nullptr);
 
 class LuaTriggerSkill : public TriggerSkill

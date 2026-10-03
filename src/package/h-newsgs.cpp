@@ -3895,7 +3895,7 @@ public:
     }
 
 private:
-    static int GetHanNumFromString(QString str)     //获取汉字个数
+    static int GetHanNumFromString(QString str)     // Count Chinese characters.
     {
        int count = 0;
        for(int i = 0; i < str.length(); i++)

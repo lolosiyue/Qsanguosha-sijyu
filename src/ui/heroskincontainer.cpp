@@ -138,7 +138,7 @@ QStringList HeroSkinContainer::getHeroSkinFiles(const QString &generalName)
 
 void HeroSkinContainer::initSkins()
 {
-    //dummyRectItem对象的用途是作为SkinItem对象们的滚动剪切区域
+    // Clip the scrolling SkinItems to this dummy rectangle.
     QGraphicsRectItem *dummyRectItem = new QGraphicsRectItem(QRectF(LEFT_MARGIN, 35,
         AVAILABLE_AREA_WIDTH, 174), this);
     dummyRectItem->setFlag(ItemHasNoContents);
@@ -155,7 +155,7 @@ void HeroSkinContainer::initSkins()
         }
     }
 
-    //默认武将皮肤
+    // Default general skin.
     if (0 != skinIndexUsed) {
         createSkinItem(0, dummyRectItem);
     }

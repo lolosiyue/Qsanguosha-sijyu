@@ -19,8 +19,8 @@ const QString kDefaultBackground = QStringLiteral("image/system/backdrop/default
 const QString kDefaultPortrait = QStringLiteral("image/system/portrait/portrait-background.svg");
 const QString kDefaultMusic = QStringLiteral("audio/system/background.ogg");
 
-// 預覽鍵:revert() 依此順序復原。單手偏好在自適應版面之前,
-// 因為選了單手會順帶開啟自適應版面,復原時必須先放掉它。
+// Revert preview keys in this order: hand preference enables responsive layout, so restore it first.
+// One-hand mode enables responsive layout, so restore it first when reverting preview settings.
 const QStringList &previewKeys()
 {
     static const QStringList keys = {
@@ -33,7 +33,7 @@ const QStringList &previewKeys()
     return keys;
 }
 
-// QML 傳進來的數字可能是 int 或 double;依既有值的型別收斂,比較與寫入才一致。
+// QML may pass an int or double; normalize to the existing value's type for consistent comparison and storage.
 QVariant coerced(const QVariant &current, const QVariant &value)
 {
     switch (current.userType()) {
@@ -62,7 +62,7 @@ QWidget *dialogParent(QWidget *parent)
 SettingsSession::SettingsSession(QObject *parent)
     : QObject(parent)
 {
-    // 版面偏好也能從首頁的「版面與單手操作」改動;同步進草稿,外觀才不會顯示舊值。
+    // Home settings can also change layout preferences; sync the draft so both views stay current.
     connect(&Config, &Settings::uiLayoutChanged, this, [this] {
         updateValue(kResponsiveLayout, Config.responsiveUiEnabled());
         updateValue(kOneHandedness, Config.oneHandedness());
@@ -78,7 +78,7 @@ QString SettingsSession::fontLabel(const QFont &font)
 void SettingsSession::load()
 {
     QVariantMap v;
-    // 顯示
+
     v.insert(QStringLiteral("ColorScheme"), qBound(0, Config.ColorScheme, 2));
     v.insert(kResponsiveLayout, Config.responsiveUiEnabled());
     v.insert(kOneHandedness, Config.oneHandedness());
@@ -101,7 +101,7 @@ void SettingsSession::load()
     v.insert(QStringLiteral("EnableAutoBackgroundChange"), Config.EnableAutoBackgroundChange);
     v.insert(QStringLiteral("EnableBackgroundVideo"), Config.EnableBackgroundVideo);
 
-    // 音訊
+
     v.insert(QStringLiteral("BackgroundMusic"), Config.value("BackgroundMusic", kDefaultMusic).toString());
     v.insert(QStringLiteral("EnableEffects"), Config.EnableEffects);
     v.insert(QStringLiteral("EnableLastWord"), Config.EnableLastWord);
@@ -112,7 +112,7 @@ void SettingsSession::load()
     v.insert(QStringLiteral("MasterVolume"), double(Config.MasterVolume));
     v.insert(QStringLiteral("VoiceVolume"), double(Config.VoiceVolume));
 
-    // 遊戲
+
     v.insert(QStringLiteral("NeverNullifyMyTrick"), Config.NeverNullifyMyTrick);
     v.insert(QStringLiteral("EnableAutoTarget"), Config.EnableAutoTarget);
     v.insert(QStringLiteral("EnableIntellectualSelection"), Config.EnableIntellectualSelection);
@@ -202,7 +202,7 @@ void SettingsSession::applyPreview(const QString &key, const QVariant &value)
         Config.EnablePointerEffect = value.toBool();
         Config.setValue("EnablePointerEffect", Config.EnablePointerEffect);
     } else if (key == QLatin1String("EffectsProfile")) {
-        // The effect profile and --effects-profile share one VisualEffectsPolicy: what
+        // The effect profile and --effects-profile share VisualEffectsPolicy; XP remains a fixed raster profile.
         // changes here is the same object, not a second set of settings. XP is a fixed raster profile.
 #if !defined(QSAN_XP_LEGACY)
         EffectsProfile profile = EffectsProfileContract::defaultProfile();
@@ -210,7 +210,7 @@ void SettingsSession::applyPreview(const QString &key, const QVariant &value)
             G_EFFECTS.setProfile(profile, true);
 #endif
     } else {
-        // NoIndicator 等勾選遊戲內以 Config.value() 即時讀取,預覽需立即寫入 QSettings。
+        // These options read Config.value() during a game, so preview writes them to QSettings immediately.
         Config.setValue(key, value);
     }
 }
@@ -242,7 +242,7 @@ void SettingsSession::commit()
     Config.FrontBGMVolume = real("FrontBGMVolume");
     Config.setValue("FrontBGMVolume", Config.FrontBGMVolume);
 
-    // M2B-A: master / voice / mute and video background. Key names are shared between
+    // The master, voice and mute keys are shared across Windows and Linux; Settings::init() supplies defaults for older files.
     // Windows and Linux; when older config files lack these keys, Settings::init() already provides stable defaults.
     Config.MasterVolume = real("MasterVolume");
     Config.setValue("MasterVolume", Config.MasterVolume);
@@ -259,8 +259,8 @@ void SettingsSession::commit()
     Config.setValue("EnableLastWord", Config.EnableLastWord);
 
 #ifdef AUDIO_SUPPORT
-    // 先推新的 master／effect／voice／mute 落 backend，再決定 BGM 播定停：
-    // 否則靜音之後 BGM 仲會用舊增益響一次。
+    // Apply new volume values before updating BGM, or muting can leave one playback using the old gain.
+    // Otherwise BGM may play once at the old gain after muting.
     Audio::applyConfigVolumes();
     if (Config.FrontBGMVolume > 0) {
         if (!ServerInfo.DuringGame && QFile::exists("audio/system/BGM/front-bgm.ogg"))
@@ -270,13 +270,13 @@ void SettingsSession::commit()
         Audio::stopBGM();
 #endif
 
-    // 預覽鍵已寫入 Config;縮放、主題與視覺模式在確定時一律持久化。
+    // Preview keys are already applied; persist scale, theme and visual mode on commit.
     Config.setValue("UIScale", Config.UIScale);
     Config.ColorScheme = m_values.value(QStringLiteral("ColorScheme")).toInt();
     Config.setValue("ColorScheme", Config.ColorScheme);
     Config.VisualMode = m_values.value(QStringLiteral("VisualMode")).toString();
     Config.setValue("VisualMode", Config.VisualMode);
-    // 確保視覺模式(灰階/高對比)與目前主題疊加正確
+    // Combine grayscale/high-contrast with the current theme.
     applyVisualMode(Config.VisualMode);
     emit visualModeChanged();
 

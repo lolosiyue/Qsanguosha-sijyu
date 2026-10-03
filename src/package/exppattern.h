@@ -9,7 +9,7 @@ public:
     ExpPattern(const QString &exp);
     virtual bool match(const Player *player, const Card *card) const;
 private:
-    // 表達式在建構時拆好；match() 在選目標時每張牌、每個技能都會跑，不能每次重切字串。
+    // Parse the expression at construction; match() runs for every card and skill during target selection.
     struct Term {
         QString text;
         QByteArray className;
@@ -26,7 +26,7 @@ private:
     struct Alternative {
         int factorCount = 0;
         bool anyName = false, anySuit = false, anyNumber = false, anyPlace = false;
-        QList<QList<Term>> names; // ',' 分隔的「或」，每組內 '+' 分隔的「且」
+        QList<QList<Term>> names; // Commas separate alternatives; plus signs within a group mean all conditions must match.
         QList<Term> suits;
         QList<NumberTerm> numbers;
         QList<Term> places;

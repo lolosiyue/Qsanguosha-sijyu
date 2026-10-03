@@ -139,7 +139,7 @@ function uiFormat(key: string, values: Record<string, string | number>): string 
 }
 
 // The native answer for the selection the shell is currently showing. Anything
-// else — a stale request, a newer state revision — reads as "not ready yet".
+// else -- a stale request, a newer state revision -- reads as "not ready yet".
 function nativeEvaluation(bind: UiBind): RulesEvaluation | null {
   return bind.rules.current(bind.session, bind.rulesSelection()) ? bind.rules.result : null;
 }
@@ -236,7 +236,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       .filter((node): node is HTMLButtonElement => node instanceof HTMLButtonElement);
     if (buttons.length === 2) {
       // Every two-action branch constructs its primary action first and its
-      // cancellation/pass action second. This also covers 是／否 and 結束出牌
+      // cancellation/pass action second. This also covers yes/no and finish-play-card
       // without inferring semantics from translated button text or colour.
       confirmSlot.append(buttons[0]);
       cancelSlot.append(buttons[1]);
@@ -750,7 +750,7 @@ export function interactionView(bind: UiBind): HTMLElement {
       root.append(el("p", {}, [uiText("web.selection.target_order")]), targets);
     }
     // Hand and equips already have their own rows. Everything else the runtime
-    // offers — hand pile, expand pile, a sibling's pile — is grouped by the
+    // offers -- hand pile, expand pile, a sibling's pile -- is grouped by the
     // zone the runtime reported instead of being inferred from ownership.
     const piles = session.state.playerValue(session.state.selfName, "piles");
     const inDashboard = new Set([

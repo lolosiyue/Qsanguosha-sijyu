@@ -7223,7 +7223,7 @@ public:
 	Suizheng(): TriggerSkill("suizheng")
 	{
 		events << EventPhaseEnd << EventPhaseStart << DamageDone;
-		waked_skills = "#suizheng";  //在这里添加关联的隐藏技就行了
+		waked_skills = "#suizheng";  // Add related hidden skills here.
 	}
 
 	bool triggerable(const ServerPlayer*target)const
@@ -8317,7 +8317,7 @@ public:
 				who = use.who;
 			} else {
 				CardResponseStruct res = data.value<CardResponseStruct>();
-				if(res.m_isRetrial)return false;  //不加改判会崩，不知为啥
+				if(res.m_isRetrial)return false;  // The retrial check is required to prevent a crash; the cause is unknown.
 				card = res.m_card;
 				tocard = res.m_toCard;
 				who = res.m_who;
@@ -9415,7 +9415,7 @@ public:
 				}
 				room->setPlayerMark(player,"&lyznxi",mark);
 
-				const TriggerSkill*fengxiang = Sanguosha->getTriggerSkill("fengxiang");  //神杀对CardsMoveOneTimeStruct的处理，导致只能这样做了
+				const TriggerSkill*fengxiang = Sanguosha->getTriggerSkill("fengxiang");  // QSanguosha's handling of CardsMoveOneTimeStruct requires this workaround.
 				if(fengxiang){
 					ServerPlayer*mostxi = room->getTag("MostXiPlayer").value<ServerPlayer*>();
 					QList<ServerPlayer*> players = room->getAlivePlayers();
@@ -17670,7 +17670,7 @@ public:
 		int jia = player->getMark("&bihuofjia+#" + turn + "-SelfClear"),jian = player->getMark("&bihuofjian+#" + turn + "-SelfClear");
 		int draw = n + jia - jian;
 		Room*room = player->getRoom();
-		//room->setPlayerMark(player,"&bihuofjia+#" + QString::number(turn)+"-SelfClear",0);   //是下回合摸牌阶段摸牌数受影响，不是下一个摸牌阶段摸牌数
+		//room->setPlayerMark(player,"&bihuofjia+#" + QString::number(turn)+"-SelfClear",0);   // This affects the draw count in the next turn's Draw Phase, not the next Draw Phase in general.
 		//room->setPlayerMark(player,"&bihuofjian+#" + QString::number(turn)+"-SelfClear",0);
 		if(jia > 0 || jian > 0){
 			LogMessage log;
@@ -23309,7 +23309,6 @@ public:
 			foreach(ServerPlayer*p,room->getAllPlayers())
 				room->setPlayerMark(p,"wumeiHP-Clear",p->getHp());
 		} else if(event==TurnStarted){
-			//尝试过载change.to==Player::RoundStart时询问技能，结果兵和乐出了bug：如果对自己用，两个回合对应的阶段都跳过了
 			if(player->isDead()|| !player->hasSkill(objectName())|| player->getMark("wumeiUsed_lun")> 0)return false;
 			ServerPlayer*t = room->askForPlayerChosen(player,room->getAllPlayers(),objectName(),"@wumei-target",true,true);
 			if(!t)return false;
@@ -25003,7 +25002,7 @@ public:
 		} else {
 			DamageStruct damage = data.value<DamageStruct>();
 			if(!damage.card || !damage.card->isKindOf("Slash")|| damage.to->isDead())return false;
-			//int n = damage.card->getTag("XiliDamage").toInt(); //ai运行时无法获取这个tag
+			//int n = damage.card->getTag("XiliDamage").toInt(); // The AI cannot read this tag at runtime.
 			int n = room->getTag("XiliDamage" + damage.card->toString()).toInt();
 			if(n <= 0)return false;
 			damage.damage += n;
@@ -29527,7 +29526,7 @@ public:
 	{
 		DamageStruct damage = data.value<DamageStruct>();
 		if(player->getMark("&jinjianadd-Clear")> 0 || player->getMark("&jinjianreduce-Clear")> 0){
-			if(!damage.tips.contains("jinjian_invoke")) //处理对自己造成伤害的问题，可以先+1再-1
+			if(!damage.tips.contains("jinjian_invoke")) // Handle self-inflicted damage by adding one point, then subtracting one.
 				return false;
 		}
 
@@ -30661,7 +30660,7 @@ public:
 			log.from = p;
 			log.arg = objectName();
 			room->sendLog(log);
-			//p->peiyin(this);女BB机~~~
+			//p->peiyin(this); // nonstop female voice~~~
 			room->notifySkillInvoked(p,objectName());
 			QStringList _names;
 			foreach(QString str,names)
@@ -33301,7 +33300,7 @@ static QString huashangZhizheName(int area)
 	return QString();
 }
 
-// filterCards(refilter) 會 resetCard 再 takeOver，equips 仍握著已被 deleteLater 的舊 getRealCard()。
+// filterCards(refilter) resets the card, then takes it over; equips still holds the old getRealCard() scheduled for deleteLater().
 static void huashangSyncEquipPointer(ServerPlayer *player, int cardId)
 {
 	const Card *c = Sanguosha->getCard(cardId);
@@ -38542,7 +38541,7 @@ General*caobao = new General(this,"caobao","qun",4);
 
 
 
-{//黄巾之乱
+{// Yellow Turban Rebellion
 	General*sp_hansui = new General(this,"sp_hansui","qun",4);
 	sp_hansui->addSkill(new SpNiluan);
 	sp_hansui->addSkill(new Weiwu);
@@ -38566,7 +38565,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	xushao->addSkill(new Pingjian);
 	addMetaObject<PingjianCard>();
 }
-{//诸侯伐董
+{// Coalition against Dong Zhuo
 	General*tenyear_quyi = new General(this,"tenyear_quyi","qun",4);
 	tenyear_quyi->addSkill(new TenyearFuqi);
 	tenyear_quyi->addSkill("jiaozi");
@@ -38593,7 +38592,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<JijingCard>();
 
 }
-{//徐州风云
+{// Turmoil in Xuzhou
 	General*tenyear_taoqian = new General(this,"tenyear_taoqian","qun",3);
 	tenyear_taoqian->addSkill("zhaohuo");
 	tenyear_taoqian->addSkill(new TenyearYixiang);
@@ -38634,7 +38633,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	second_qiuliju->addSkill("suirenq");
 
 }
-{//中原狼烟
+{// War Fires in the Central Plains
 	General*tenyear_dongcheng = new General(this,"tenyear_dongcheng","qun",4);
 	tenyear_dongcheng->addSkill(new Xuezhao("xuezhao"));
 	addMetaObject<XuezhaoCard>();
@@ -38661,7 +38660,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<TenyearHuoshuiCard>();
 	addMetaObject<TenyearQingchengCard>();
 }
-{//虓虎悲歌
+{// Lament of the Tiger
 	General*haomeng = new General(this,"haomeng","qun",7);
 	haomeng->addSkill(new Xiongmang);
 	addMetaObject<XiongmangCard>();
@@ -38680,7 +38679,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	yanrou->addSkill(new Choutao);
 	yanrou->addSkill(new Xiangshu);
 }
-{//群雄伺动
+{// Warlords on the Move
 	General*chezhou = new General(this,"chezhou","wei",4);
 	chezhou->addSkill(new ThShefu);
 	chezhou->addSkill(new Pigua);
@@ -38698,7 +38697,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	hansong->addSkill(new ThShuaiyan);
 	
 }
-{//文和乱武
+{// Wenhe's Turmoil
 	General*lijue = new General(this,"lijue","qun",6,true,false,false,4);
 	lijue->addSkill(new Langxi);
 	lijue->addSkill(new Yisuan);
@@ -38747,7 +38746,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	niufu->addSkill(new XiongraoClear);
 	niufu->addSkill(new XiongraoInvalidity);
 }
-{//逐鹿天下
+{// Contending for the Realm
 	General*weiwenzhugezhi = new General(this,"weiwenzhugezhi","wu",4);
 	weiwenzhugezhi->addSkill(new Fuhai);
 	addMetaObject<FuhaiCard>();
@@ -38757,7 +38756,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	zhanggong->addSkill(new Zhenxing);
 	addMetaObject<SpQianxinCard>();
 }
-{//食禄尽忠
+{// Serve with Loyalty
 	General*shamoke = new General(this,"shamoke","shu",4);
 	shamoke->addSkill(new Jili);
 
@@ -38769,7 +38768,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	cuilie->addSkill(new Chibi);
 	addMetaObject<ZijueCard>();
 }
-{//戚宦之争
+{// Conflict between Consort Clans and Eunuchs
 	General*sp_hejin = new General(this,"sp_hejin","qun",4);
 	sp_hejin->addSkill(new SpMouzhu);
 	sp_hejin->addSkill(new SpYanhuo);
@@ -38797,7 +38796,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	mushun->addSkill(new Shizhao);
 	mushun->addSkill(new ShizhaoDamage);
 }
-{//上兵伐谋
+{// Strategy Above All
 	General*sp_yiji = new General(this,"sp_yiji","shu",3);
 	sp_yiji->addSkill(new Jijie);
 	sp_yiji->addSkill(new Jiyuan);
@@ -38815,7 +38814,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	zhangwen->addSkill(new Sibian);
 	addMetaObject<SongshuCard>();
 }
-{//兵临城下
+{// Enemy at the Gates
 	General*sp_niujin = new General(this,"sp_niujin","wei",4);
 	sp_niujin->addSkill(new SpCuorui);
 	sp_niujin->addSkill(new SpLiewei);
@@ -38870,7 +38869,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<LibangCard>();
 
 }
-{//千里单骑
+{// A Thousand-Li Ride Alone
 	General*qinyilu = new General(this,"qinyilu","qun",3);
 	qinyilu->addSkill(new Piaoping);
 	qinyilu->addSkill(new Tuoxian);
@@ -38892,7 +38891,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	tenyear_hujinding->addSkill("huaizi");
 
 }
-{//烽火连天
+{// Flames of War
 	General*sp_tongyuan = new General(this,"sp_tongyuan","qun",4);
 	sp_tongyuan->addSkill(new Chaofeng("chaofeng"));
 	sp_tongyuan->addSkill(new Chuanshu("chuanshu"));
@@ -38919,7 +38918,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<HeqiaCard>();
 	addMetaObject<HeqiaUseCard>();
 }
-{//无双上将
+{// Peerless General
 	General*tenyear_panfeng = new General(this,"tenyear_panfeng","qun",4);
 	tenyear_panfeng->addSkill(new TenyearKuangfu);
 	tenyear_panfeng->addSkill(new SlashNoDistanceLimitSkill("tenyearkuangfu"));
@@ -38953,7 +38952,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	caiyang->addSkill(new Jiaofeng);
 	addMetaObject<XunjiCard>();
 }
-{//才子佳人
+{// Talented Scholar and Beauty
 	General*tenyear_sunluyu = new General(this,"tenyear_sunluyu","wu",3,false);
 	tenyear_sunluyu->addSkill(new TenyearMeibu("tenyearmeibu"));
 	tenyear_sunluyu->addSkill(new TenyearMumu);
@@ -39030,7 +39029,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<GuilinCard>();
 
 }
-{//芝兰玉树
+{// Orchid and Jade Tree
 	General*zhanghu = new General(this,"zhanghu","wei",4);
 	zhanghu->addSkill(new Cuijian);
 	zhanghu->addSkill(new Tongyuan);
@@ -39090,7 +39089,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	erji->addSkill(new Yanxi);
 	addMetaObject<ZouyiCard>();
 }
-{//天下归心
+{// Hearts Return to the Realm
 	General*tenyear_kanze = new General(this,"tenyear_kanze*xh_sibi","wu",3);
 	tenyear_kanze->addSkill("xiashu");
 	tenyear_kanze->addSkill("tenyearkuanshi");
@@ -39148,7 +39147,7 @@ General*caobao = new General(this,"caobao","qun",4);
 
 
 }
-{//代汉涂高
+{// The Han Gives Way to Wei
 	General*mamidi = new General(this,"mamidi*xh_sibi","qun",6);
 	mamidi->setStartHp(4);
 	mamidi->addSkill(new Bingjie);
@@ -39159,7 +39158,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	General*zhangxun = new General(this,"zhangxun","qun",4);
 	zhangxun->addSkill(new Suizheng);
 	zhangxun->addSkill(new SuizhengTargetMod);
-	//由于新功能，关联的隐藏技能不需要单独加给related_skills了
+	// Related hidden skills no longer need separate related_skills entries.
 
 	General*yuejiu = new General(this,"yuejiu","qun",4);
 	yuejiu->addSkill(new Cuijin);
@@ -39173,7 +39172,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	leibo->addSkill(new ShuaijieVS);
 	addMetaObject<ShuaijieCard>();
 }
-{//江湖之远
+{// Far from Court
 	General*guanning = new General(this,"guanning","qun",7);
 	guanning->setStartHp(3);
 	guanning->addSkill(new Dunshi);
@@ -39202,7 +39201,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<YinluCard>();
 	skills << new YlLequan << new YlHuoxi << new YlZhangqi << new YlYunxiang;
 }
-{//悬壶济世
+{// Healing the World
 	General*jiping = new General(this,"jiping","qun",3);
 	jiping->addSkill(new Xunli);
 	jiping->addSkill(new Zhishi);
@@ -39222,7 +39221,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	zhenghun->addSkill(new PitianKeep);
 	addMetaObject<QiangzhiZHCard>();
 }
-{//纵横捭阖
+{// Diplomacy and Stratagems
 	General*luyusheng = new General(this,"luyusheng","wu",3,false);
 	luyusheng->addSkill(new Zhente);
 	luyusheng->addSkill(new Zhiwei);
@@ -39264,7 +39263,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	tenyear_yanghu->addSkill(new TenyearMingfaEffect);
 	related_skills.insert("tenyearmingfa","#tenyearmingfa");
 }
-{//匡鼎炎汉
+{// Restore the Han
 	General*liuba = new General(this,"liuba","shu",3);
 	liuba->addSkill(new Zhubi);
 	liuba->addSkill(new Liuzhuan);
@@ -39316,7 +39315,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	zhugejun->addSkill(new Gumai);
 	addMetaObject<GengduCard>();
 }
-{//太平甲子
+{// The Peaceful Jiazi Era
 	General*guanhai = new General(this,"guanhai","qun",4);
 	guanhai->addSkill(new Suoliang);
 	guanhai->addSkill(new Qinbao);
@@ -39330,7 +39329,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	zhangkai->addSkill(new XiangshuZK);
 	zhangkai->addSkill(new XiangshuZKEffect);
 }
-{//异军突起
+{// New Forces Arise
 	General*gongsundu = new General(this,"gongsundu","qun",4);
 	gongsundu->addSkill(new Zhenze);
 	gongsundu->addSkill(new Anliao);
@@ -39342,7 +39341,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<TanluanCard>();
 	skills << new Tanluan;
 }
-{//正音雅乐
+{// Refined Music
 	General*yue_diaochan = new General(this,"yue_diaochan","qun",3,false);
 	yue_diaochan->addSkill(new Tanban);
 	yue_diaochan->addSkill(new TanbanLimit);
@@ -39361,7 +39360,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	yue_zhugeguo->addSkill(new Xidi);
 	yue_zhugeguo->addSkill(new Chengyan);
 }
-{//百战虎贲
+{// Battle-Hardened Elite
 	General*tenyear_wutugu = new General(this,"tenyear_wutugu","qun",15);
 	tenyear_wutugu->addSkill(new TenyearRanshang);
 	tenyear_wutugu->addSkill(new TenyearHanyong);
@@ -39419,7 +39418,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	linglie->addSkill(new Ningzhun);
 	addMetaObject<ShouhuCard>();
 }
-{//奇人异士
+{// Extraordinary People
 	General*tenyear_zhangbao = new General(this,"tenyear_zhangbao","qun",3);
 	tenyear_zhangbao->addSkill("tenyearzhoufu");
 	tenyear_zhangbao->addSkill(new TenyearYingbing);
@@ -39483,7 +39482,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	suyue->addSkill(new Hangzhu);
 	addMetaObject<HangzhuCard>();
 }
-{//计将安出
+{// What Strategy?
 	General*tenyear_wangyun = new General(this,"tenyear_wangyun","qun",4);
 	tenyear_wangyun->addSkill(new TenyearLianji);
 	tenyear_wangyun->addSkill(new TenyearMoucheng);
@@ -39514,7 +39513,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<JianjiYHCard>();
 
 }
-{//豆寇梢头
+{// Budding Beauty
 	General*tenyear_zhugeguo = new General(this,"tenyear_zhugeguo","shu",3,false);
 	tenyear_zhugeguo->addSkill(new TenyearYuhua);
 	tenyear_zhugeguo->addSkill(new TenyearQirang);
@@ -39579,7 +39578,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	addMetaObject<MohuaCard>();
 
 }
-{//皇家贵胄
+{// Imperial Nobility
 	General*tenyear_shixie = new General(this,"tenyear_shixie","qun",3);
 	tenyear_shixie->addSkill(new Tenyearbiluan);
 	tenyear_shixie->addSkill(new TenyearbiluanTrigger);
@@ -39644,7 +39643,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	xuxin->addSkill(new Minshan);
 
 }
-{//往者可谏
+{// Lessons from the Past
 	General*tenyear_erqiao = new General(this,"tenyear_erqiao","wu",3,false);
 	tenyear_erqiao->addSkill("tenyearxingwu");
 	tenyear_erqiao->addSkill("olluoyan");
@@ -39654,7 +39653,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	tenyear_new_spmachao->addSkill(new TenyearNewShichou);
 	addMetaObject<TenyearNewShichouCard>();
 }
-{//章台春望
+{// Spring at Zhangtai
 	General*guozhao = new General(this,"guozhao","wei",3,false);
 	guozhao->addSkill(new Pianchong);
 	guozhao->addSkill(new PianchongEffect);
@@ -39691,7 +39690,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	related_skills.insert("zhuihuan","#zhuihuan");
 
 }
-{//锦瑟良缘
+{// Fated Match
 	General*caojinyu = new General(this,"caojinyu","wei",3,false);
 	caojinyu->addSkill(new Yuqi);
 	caojinyu->addSkill(new Shanshen);
@@ -39747,7 +39746,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	dongxu->addSkill(new Dandu);
 
 }
-{//笔舌如椽
+{// Eloquence of Pen and Tongue
 	General*tenyear_zhugeke = new General(this,"tenyear_zhugeke","wu",3);
 	tenyear_zhugeke->addSkill(new TenyearAocai);
 	tenyear_zhugeke->addSkill(new TenyearDuwu);
@@ -39810,7 +39809,7 @@ General*caobao = new General(this,"caobao","qun",4);
 	huanjie->addSkill(new Qingzheng);
 	addMetaObject<JianliCard>();
 }
-{//钟灵毓秀
+{// Nature's Finest
 	General*dongguiren = new General(this,"dongguiren","qun",3,false);
 	dongguiren->addSkill(new Lianzhi);
 	dongguiren->addSkill(new Lingfang);

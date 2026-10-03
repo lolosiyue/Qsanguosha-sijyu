@@ -113,8 +113,8 @@ struct CardEffectStruct {
 
     const Card*card;
 	
-    const Card*offset_card;//抵消这张即将生效牌的牌
-    int offset_num;//需要用多少张牌抵消
+    const Card*offset_card;// Card that offsets the incoming effect.
+    int offset_num;// Number of cards required for the offset.
 
     ServerPlayer*from;
     ServerPlayer*to;
@@ -311,7 +311,7 @@ public:
 
     inline bool operator < (const CardMoveReason&other) const
     {
-        // 逐欄位字典序比較，維持有序容器要求的嚴格弱序。
+        // Compare fields lexicographically to satisfy the strict weak ordering required by ordered containers.
         if (m_reason != other.m_reason)
             return m_reason < other.m_reason;
         if (m_playerId != other.m_playerId)
@@ -423,8 +423,8 @@ private:
 public:
     inline void removeCardIds(const QList<int>&to_remove)
     {
-        // from_places / from_pile_names / open 必須與 card_ids 平行；
-        // 上游若長度不一致，舊實作 removeAt 會越界（PROD headless Qt6Core AV）。
+        // from_places / from_pile_names / open must be parallel to card_ids;
+        // an upstream length mismatch made the old removeAt path access out of bounds (production headless Qt6Core AV).
         foreach (int id, to_remove) {
             int index = card_ids.indexOf(id);
             if (index < 0)
@@ -524,7 +524,7 @@ struct CardsMoveStruct {
 
     inline bool operator < (const CardsMoveStruct&other) const
     {
-        // 指標使用 std::less 取得可供有序容器使用的完整順序。
+        // std::less provides the total pointer ordering required by ordered containers.
         const std::less<Player *> playerLess;
         if (from != other.from)
             return playerLess(from, other.from);
@@ -646,7 +646,7 @@ struct JudgeStruct {
     bool time_consuming;
     bool negative;
     bool play_animation;
-    bool throw_card;//是否将判定牌置入弃牌堆
+    bool throw_card;// Whether to put the judgement card into the discard pile.
     ServerPlayer*retrial_by_response; // record whether the current judge card is provided by a response retrial
 
 private:
@@ -698,7 +698,7 @@ struct CardResponseStruct {
     PhysicalEquipSource physicalEquipSource;
     SkillInstanceRef activationRef;
     int skillExecutionID;
-    bool nullified;//响应无效
+    bool nullified;// The response is nullified.
 };
 
 struct MarkStruct {
@@ -878,13 +878,13 @@ enum TriggerEvent {
 
     PreChangeSlash,
     ChangeSlash,
-    SlashEffected,//已废除，不再触发
-    SlashProceed,//已废除，不再触发
-    SlashHit,//已废除，不再触发
-    SlashMissed,//已废除，不再触发
+    SlashEffected,// Deprecated; no longer triggered.
+    SlashProceed,// Deprecated; no longer triggered.
+    SlashHit,// Deprecated; no longer triggered.
+    SlashMissed,// Deprecated; no longer triggered.
 
-    JinkEffect,//已废除，不再触发
-    NullificationEffect,//已废除，不再触发
+    JinkEffect,// Deprecated; no longer triggered.
+    NullificationEffect,// Deprecated; no longer triggered.
 
     CardAsked,
     PreCardResponded,
@@ -905,7 +905,7 @@ enum TriggerEvent {
     PostCardEffected,
     CardFinished,
     TrickCardCanceling,
-    TrickEffect,//已废除，不再触发
+    TrickEffect,// Deprecated; no longer triggered.
     CardOnEffect,
 	CardOffset,
 

@@ -149,7 +149,7 @@ Item {
         }
     }
 
-    // 武將包導覽欄：直式放在列表左側，窄版改成橫條。
+    // Package navigation is vertical beside the list, then becomes a horizontal strip on narrow screens.
     component PackageNavList: ListView {
         id: navList
         property var entries: []
@@ -244,7 +244,7 @@ Item {
             }
         }
 
-        // 一排放不下全部勾玉時，改成單一圖示加數字，避免體力多的武將蓋滿立繪。
+        // Collapse excess HP markers to one icon and a count so they do not cover the portrait.
         readonly property bool hpCompact: overlay.maxHp > Math.floor((overlay.width + 1) / 12)
 
         Flow {
@@ -311,7 +311,7 @@ Item {
         }
         return []
     }
-    // 搜尋與同名篩選跨全部武將包；其餘時候只列導覽選中的那一包，網格才不會一次塞進上千張。
+    // Search spans all packages; otherwise show only the selected package to avoid building a thousand-card grid.
     readonly property bool navScoped: navPackage.length > 0
                                       && searchText.length === 0 && sameNameFilter.length === 0
     property int detailTab: 0
@@ -371,7 +371,7 @@ Item {
 
     readonly property var catalog: homeController.generalModel
     readonly property bool catalogPending: !catalog || !catalog.loaded
-    // 切換選中時先保留上一位武將的詳情，新資料到了才替換，避免整塊面板閃回骨架。
+    // Keep the previous general visible until the replacement loads to avoid a skeleton flash.
     readonly property string shownName: String(details.name || "")
     readonly property bool detailsReady: shownName.length > 0
     readonly property bool detailsPending: selectedName.length > 0 && !detailsReady
@@ -407,7 +407,7 @@ Item {
 
     function pickNavPackage(key) {
         navPackage = key
-        // 點武將包代表回到分包瀏覽，清掉會跨包的搜尋與同名篩選。
+        // Selecting a package returns to package browsing and clears cross-package filters.
         searchField.clear()
         searchDebounce.stop()
         searchText = ""
@@ -463,7 +463,7 @@ Item {
             searchField.forceActiveFocus()
     }
 
-    // 依 generalPackages() 的 group 欄位把武將包切成與伺服器設定相同的分類。
+    // Group packages by generalPackages().group to match the server settings.
     function groupPackages(entries) {
         var groups = []
         var byKey = {}
@@ -676,13 +676,13 @@ Item {
                         leftPadding: 0
                         rightPadding: 0
                         background: Item {}
-                        // 開頁即取得焦點；預設游標每 0.5 秒閃一次，QQuickWidget 每閃都整幀重繪。
+                        // Focus on open; disable the blinking cursor because each blink repaints the whole QQuickWidget.
                         cursorDelegate: Rectangle {
                             width: 2
                             color: searchField.color
                             visible: searchField.cursorVisible
                         }
-                        // 連續輸入只在停頓後重篩一次，避免每個字都重排整張網格。
+                        // Debounce continuous typing so the grid is filtered once after input pauses.
                         onTextChanged: searchDebounce.restart()
                         KeyNavigation.tab: kingdomCombo
                         KeyNavigation.backtab: banBtn
@@ -1572,7 +1572,7 @@ Item {
 
                         Image {
                             id: cardImg
-                            // 換圖時保留舊圖到新圖解碼完成；只有從無到有才顯示骨架。
+                            // Keep the previous image until the replacement decodes; show a skeleton only when no image exists.
                             property bool hasFrame: false
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: parent.top
@@ -1857,7 +1857,7 @@ Item {
                                         width: parent.width
                                         visible: root.detailsReady && String(details.information || "").length > 0
                                         text: details.information || ""
-                                        // 簡介常以填充字元開頭再接 <i>/<br>，AutoText 認不成 HTML。
+                                        // Descriptions often start with a fill character before <i>/<br>, which AutoText does not recognize as HTML.
                                         textFormat: TextEdit.RichText
                                         color: HomeTheme.pillText
                                         font.pixelSize: 13

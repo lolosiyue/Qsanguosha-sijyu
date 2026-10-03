@@ -275,8 +275,8 @@ void ExtraTurnScheduler::execute(ServerPlayer *player, QList<Player::Phase> phas
         m_room.setCurrent(previousCurrent);
     };
 
-    // 額外回合本身是可查詢的結算範圍；source/cause 只記 primitive identity，
-    // 不把 ServerPlayer 或 SkillInstance 指標寫入可重播歷史。
+    // An extra turn is a queryable resolution scope; source/cause store only primitive identity,
+    // so replayable history does not retain ServerPlayer or SkillInstance pointers.
     QVariantMap historyData;
     historyData.insert(QStringLiteral("player"), player->objectName());
     historyData.insert(QStringLiteral("reason"), reason);

@@ -174,7 +174,7 @@ public:
     Q_INVOKABLE void playAudio(const QString &path) const;
     Q_INVOKABLE void playCardAudio(int cardId, const QString &variant) const;
     Q_INVOKABLE void applyGeneralFilter(const QVariantMap &filters);
-    // 僅 GUI 首頁 idle 呼叫：預設篩選目錄。已載入則略過，避免蓋掉玩家篩選。
+    // Call only while the home page is idle; warm the default-filtered catalog unless loaded, preserving user filters.
     Q_INVOKABLE void warmGeneralCatalog();
     Q_INVOKABLE QUrl prefetchArtUrl(int index) const;
 
@@ -190,7 +190,7 @@ public:
 
     Q_INVOKABLE void refreshCharacterImage();
 
-    // 重新發送玩家資訊變更信號（回到首頁時由 MainWindow 呼叫）
+    // Re-emit the player-info-changed signal when MainWindow returns to the home page.
     Q_INVOKABLE void refreshPlayerInfo();
 
     qreal uiScale() const;

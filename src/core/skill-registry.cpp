@@ -98,9 +98,9 @@ QList<const Skill *> SkillRegistry::allSkills() const
 {
     QReadLocker locker(&m_lock);
     QList<const Skill *> result;
-    // 遍歷 Hash 中的所有 QPointer
+    // Iterate over every QPointer in the hash.
     foreach (const QPointer<Skill> &skill, m_skills.values())
-        // QPointer 自動魔法：如果對象被 delete 了，isNull() 會變 true
+        // QPointer becomes null automatically when its object is deleted.
         if (skill) result << skill.data();
     return result;
 }

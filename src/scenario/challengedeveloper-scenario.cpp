@@ -29,7 +29,7 @@ public:
                    << "dev_yuanjiati" << "dev_funima" << "dev_para" << "dev_rara" << "dev_fsu" << "dev_hmqgg" << "dev_tak" << "dev_lzx"
                    << "dev_cheshen" << "dev_36li" << "dev_tan" << "dev_zhangzheng" << "dev_jiaqi" << "dev_zy" << "dev_jiaoshen";
         developers << "dev_ysister" << "dev_xusine" << "dev_luaxs";
-		if(Sanguosha->getGeneral("xiaxiaoke"))//当武将库中有时加入小珂酱
+		if(Sanguosha->getGeneral("xiaxiaoke"))// Add Xiaoke Jiang when she is present in the general pool.
 			developers << "xiaxiaoke";
         return developers;
     }

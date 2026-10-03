@@ -13,16 +13,16 @@
 class MainWindow;
 class QTimer;
 
-// The multimedia smoke for Linux GUI M2B-A.
-//
-// Like the M1 startup smoke, this runs the product's own path: QApplication →
-// engine → MainWindow → HomeScene/QML, then drives the real Audio facade inside
-// the same process (without spinning up a fake audio system), and finally reads
-// the video state reported by HomeController.
-//
-// CI has neither an audio device nor video assets, so the pass criteria are
-// "objects can be created, sources can be set, missing files or devices degrade
-// gracefully, clean teardown, no crash or hang" — not "sound is actually heard".
+// Multimedia smoke controller for the GUI startup and audio paths.
+
+// Runs the product's QApplication, Engine, MainWindow, HomeScene and Audio facade, then reads the video status from HomeController.
+
+
+
+
+// CI has no audio device or video assets; it verifies resource setup, fallback, teardown, and crash-free completion, not audible output.
+
+
 class MultimediaSmokeController final : public QObject
 {
     Q_OBJECT
@@ -55,8 +55,8 @@ private:
     void emitStage(const QString &stage, bool ok, const QJsonObject &details = QJsonObject());
     void failStage(const QString &stage, const QString &error,
         const QJsonObject &details = QJsonObject());
-    // 每個 stage 之間都要行返幾轉 event loop：Qt Multimedia 的 state transition
-    // 係非同步的，同步連環 call 會驗到一個未 settle 的狀態。
+    // Qt Multimedia state changes are asynchronous; let the event loop advance between stages.
+
     void scheduleNext(void (MultimediaSmokeController::*slot)(), int delayMs = 120);
     int remainingMs() const;
     bool failIfDeadlineExceeded(const QString &stage, bool force = false);

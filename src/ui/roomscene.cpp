@@ -102,12 +102,12 @@ static QDialog *dialogForSkill(const Skill *skill, QWidget *parent = nullptr)
     if (skill == nullptr)
         return nullptr;
 
-    // Skill metadata is the only engine/UI boundary; widget factories live in
-    // the GUI target, including specialized declaration and preview dialogs.
+    // Skill metadata is the engine/UI boundary; GUI-specific widget factories stay in this target.
+
     return SkillDialogRegistry::create(skill->getDialogInfo(), parent);
 }
 
-// 自動化測試模式: --auto-robots 或 --test-general 啟動時, 選將/選先手等互動自動回應
+// Automated mode responds to general-selection and starting-player prompts when --auto-robots or --test-general is set.
 static bool isAutoTestClient()
 {
     return Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty();
@@ -115,8 +115,8 @@ static bool isAutoTestClient()
 
 static void setPortraitAnimationVisible(PlayerCardContainer *container, bool visible)
 {
-    // Canonical Photos retain selection state at opacity zero; their decorative
-    // decoders must follow presentation visibility independently of that state.
+    // Canonical Photos retain selection state at zero opacity; their animation visibility must follow presentation state separately.
+
     if (auto *avatar = container->getAvartarItem()) avatar->setPresentationVisible(visible);
     if (auto *avatar = container->getSmallAvartarItem()) avatar->setPresentationVisible(visible);
 }
@@ -215,7 +215,7 @@ static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPl
         SkillInstanceKey(activeSkill->objectName(), instanceID));
     if (!activeSkill->canActivateRequest(request))
         return false;
-    // ClientPlayer 不能走 Skill::isUsable（需 ServerPlayer/Room）；改讀已同步的 Usage mark。
+    // ClientPlayer cannot call Skill::isUsable(), which requires ServerPlayer/Room; read the synchronized usage mark instead.
     const Skill::LimitScope limitScope = activeSkill->getLimitScope();
     if (limitScope != Skill::Limit_None && limitScope != Skill::Limit_Custom) {
         QString suffix;
@@ -258,7 +258,7 @@ static void collectDialogPresenterOptions(DialogType *dialog, QStringList &optio
 
 void RoomScene::resetPiles()
 {
-	// @todo: fix this...
+
 }
 
 #include "qsanbutton.h"
@@ -274,7 +274,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
     requestFocusShortcut->setAutoRepeat(false);
     connect(this, &QObject::destroyed, requestFocusShortcut, &QObject::deleteLater);
     connect(requestFocusShortcut, &QShortcut::activated, this, [this]() {
-        // Recover request focus without changing the option or selection draft.
+        // Restore request focus without changing the current option or selection draft.
         QWidget *window = QApplication::activeModalWidget();
         if (!window && m_presentedDialog && m_presentedDialog->isVisible())
             window = m_presentedDialog;
@@ -565,8 +565,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	addItem(m_chooseGeneralBox);
 	m_chooseGeneralBox->setZValue(20002.0);
 	if (ClientCore *core = ClientInstance->interactionCore()) {
-		// Replacement, cancellation and accepted replies must retire the old draft
-		// and countdown before a subsequent request can be presented.
+		// Replacing or cancelling a request retires its previous draft and countdown.
+
 		connect(core, &ClientCore::requestStarted, m_chooseGeneralBox, &ChooseGeneralBox::clear);
 		connect(core, &ClientCore::requestCancelled, m_chooseGeneralBox, &ChooseGeneralBox::clear);
 		connect(core, &ClientCore::responseAccepted, m_chooseGeneralBox, &ChooseGeneralBox::clear);
@@ -589,8 +589,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(card_container,SIGNAL(item_chosen(int)),ClientInstance,SLOT(onPlayerChooseAG(int)));
 	connect(card_container,SIGNAL(item_gongxined(int)),ClientInstance,SLOT(onPlayerReplyGongxin(int)));
 	connect(ClientInstance->interactionCore(), &ClientCore::requestStarted, this, [this]() {
-		// A replacement may keep the same Client status. Its old local skill
-		// choices must not be reinterpreted as a draft for the new request.
+		// A replacement can retain the same Client status; do not reuse the old request's skill choices.
+
 		if (m_presentedDialog && m_presentedDialogRequest != ClientInstance->interactionCore()->activeRequestId())
 			clearPresentedDialogSkill(true);
 	});
@@ -631,8 +631,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 		connect(ClientInstance,SIGNAL(arrange_started(QString)),m_kofArrange,SLOT(startArrange(QString)));
 
 		QAction*action = change_general_menu->addAction(tr("Change general ..."));
-		// Building the full general catalogue must not block draft/arrangement
-		// requests. Keep this optional editor lazy and owned by the current window.
+		// Keep the optional general editor lazy so large catalogues do not block other requests.
+
 		connect(action, &QAction::triggered, this,
 			[this, generalChanger = QPointer<FreeChooseDialog>()]() mutable {
 				if (!generalChanger) {
@@ -709,7 +709,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	m_timerLabel = new TimerLabel(this);
 	m_timerLabel->resize(60,30);
-	m_timerLabel->setStyleSheet("background-color:transparent"); //半透明
+	m_timerLabel->setStyleSheet("background-color:transparent");
 
 	/*prompt_box = new Window(nullptr,QSize(480,200));
 	prompt_box->setOpacity(0);
@@ -811,25 +811,25 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	animations = new EffectAnimation();
 	animations->setParent(this);
 
-	// Do not switch back to BspTreeIndex (the Qt default). With the default index this scene
-	// SIGSEGVs mid-game: the crash point is QGraphicsSceneBspTree::climbTree(), which reads an
-	// already-destroyed item pointer from a BSP leaf list and dereferences it. One confirmed
-	// source of stale entries was PlayerCardContainer::updateMark() synchronously deleting
-	// the mark buttons' QGraphicsProxyWidget (ASan described both alloc and free stacks at the
-	// crash moment); that one is fixed, but fixing it alone was not enough - under the real allocator unidentified stale sources remain.
-	//
-	// Both index implementations receive the same removeItem()/deleteItem() calls, but only the BSP
-	// one leaves stale entries behind; QGraphicsSceneLinearIndex does not. Measured (05p seed 20260909, same binary,
-	// only this line changed): BspTree crashed 5/5, NoIndex 0/5; on the ASan build 8/8 vs 0/17.
-	//
-	// NoIndex is also the choice Qt's own documentation recommends for this scene: with many items
-	// moving constantly (a hand of flying CardItems) the BSP tree would be rebuilt nonstop;
-	// NoIndex's O(1) insert/remove fits better at the cost of O(n) lookups, and this scene's item count is far below the scale that needs an index.
+	// Use QGraphicsSceneLinearIndex: synchronous deletion of embedded widgets can leave stale BSP entries.
+	// The scene also has many moving items, so avoiding repeated BSP rebuilds suits this workload.
+
+
+
+
+
+
+
+
+
+
+
+
 	setItemIndexMethod(QGraphicsScene::NoIndex);
 
-	// ── Spine pop-out action controller ──
-	// When spineEnabled() is false (REDUCED / NONE) no controller is created at all:
-	// no controller means no skeleton, atlas texture or GL resources. Every
+	// Do not create a Spine controller when effects are disabled; every caller handles the absent controller.
+
+
 	// call site already null-guards, so semantics are unchanged.
 #if QSAN_ENABLE_SPINE
 	if (G_EFFECTS.spineEnabled()) {
@@ -886,7 +886,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	_m_isInDragAndUseMode = false;
 	_m_superDragStarted = false;
 
-	// 首次播放時同步解 PNG 會卡 30–300 ms；常用卡牌與結算表情先在背景解好。
+	// Decode common card and result PNGs off the GUI thread; synchronous first-use decoding can block for hundreds of milliseconds.
 	if (G_EFFECTS.animationsEnabled())
 		PixmapAnimation::PrewarmEmotions(this, QStringList()
 			<< "slash_red" << "slash_black" << "slash" << "jink" << "peach" << "analeptic"
@@ -1082,7 +1082,7 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		// stop huashen animation
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		if(skill_name.contains("huashen")) container->stopHuaShen();
-		// inovation_fengbi：取得／失去封弊後刷新手牌數顯示
+		// Refresh the hand-count display when inovation_fengbi is gained or lost.
 		if(skill_name=="inovation_fengbi"&&container) container->updateHandcardNum();
 		//container->updateAvatarTooltip();
 		break;
@@ -1203,9 +1203,9 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		if(player->getMark("secondMode")>0&&player->getGeneralName()=="shenlvbu1"&&(newHeroName.startsWith("shenlvbu")))
 			Sanguosha->playSystemAudioEffect("stagechange");
 
-		// ── Spine pop-out: register dynamic skin for the NEW hero ──
-		// This is the deferred activation path: if the new hero has a
-		// dynamic skin entry in JSON, register + preload + entrance now.
+		// Register and preload the new hero's configured dynamic skin before its entrance animation.
+
+
 #if QSAN_ENABLE_SPINE
 		if (_spineActionController && player) {
 			bool isPrimary = !isSecondaryHero;
@@ -1460,8 +1460,8 @@ void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &inp
     if (m_responsiveEnabled == enabled)
         return;
     m_responsiveEnabled = enabled;
-    // Opacity keeps the canonical selection and eligibility intact. Hiding or
-    // disabling a selected QGraphicsItem would clear the target/card draft.
+    // Keep the canonical selection and eligibility intact while hiding the Photo.
+
     const qreal opacity = enabled ? 0.0 : 1.0;
     dashboard->setOpacity(1.0);
     log_box_widget->setOpacity(opacity);
@@ -1583,8 +1583,8 @@ void RoomScene::applyResponsiveLayout()
         place.floatingArea = table.floatingArea;
         photos[i]->setScale(1.0);
         bool visible = i < layout.photos.size() && layout.photos[i].visible;
-        // Canonical Photos retain draft/eligibility ownership. The overview is a
-        // separate value projection; no seat is removed or moved into a focus slot.
+        // Canonical Photos own drafts and eligibility; the overview is a separate value projection.
+
         if (input.largeRoom) visible = false;
         table.photos.append(place);
         photos[i]->setOpacity(visible ? 1.0 : 0.0);
@@ -2195,7 +2195,7 @@ void RoomScene::updateTargetsEnablity(const Card*card)
 			item->setFlag(QGraphicsItem::ItemIsSelectable,!card||maxVotes > 0);
 	}*/
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
-	// 每個候選角色都會用同樣參數查一次「可額外指定幾名目標」等修正值；這一輪只算一次。
+	// Candidate players share the same target-modifier values; compute them once for this pass.
 	TargetModMemoScope targetModMemo;
 	foreach (PlayerCardContainer*item,item2player.keys()){
 		int maxVotes = 0;
@@ -2467,23 +2467,23 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 	if(!main_window->isActiveWindow())
 		Sanguosha->playSystemAudioEffect("prelude");
 
-	// Linux GUI M2 network smoke: pick the first entry of the server-sent list (after
-	// name sorting) so the whole game is reproducible under a fixed seed. This runs
-	// before --test-general because --test-general's general is usually not in the
-	// 5-choose-1 list, and the server would silently fall back to _chooseDefaultGeneral, making the choice uncertain.
+	// For reproducible network smoke runs, choose from the server-provided list before applying --test-general, which may request an unavailable general.
+
+
+
 	if (NetworkUiSmokeResponder::isActive() && Config.AutoPickGeneral.isEmpty()) {
 		m_autoPickGeneralAskCount++;
 		if (NetworkUiSmokeResponder::instance()->answerChooseGeneral(generals))
 			return;
 	}
 
-	// 自動化測試: --test-general 指定自動選將, 略過選將對話框
-	// server 在 FreeChoose(EnableCheat) 下接受任意回覆 (room.cpp askForGeneral/chooseGenerals),
-	// 因此不檢查武將是否在提供清單中; 否則 5/120 隨機清單 96% 不含指定武將 -> 永遠卡選將
+	// Automated --test-general may use any general accepted by FreeChoose(EnableCheat), even when it is absent from the random offer list.
+
+
 	if (!Config.AutoPickGeneral.isEmpty()) {
 		QString pick = Config.AutoPickGeneral;
 		m_autoPickGeneralAskCount++;
-		// 雙將模式: 第 1 次詢問選主將(指定), 第 2 次詢問選副將(--test-general2 指定, 否則清單隨機)
+		// In dual-general mode, use --test-general for the head and --test-general2 for the deputy; otherwise choose the deputy from the offer list.
 		if (ServerInfo.Enable2ndGeneral && m_autoPickGeneralAskCount == 2) {
 			if (!Config.AutoPickGeneral2.isEmpty()) {
 				pick = Config.AutoPickGeneral2;
@@ -2608,7 +2608,7 @@ QGroupBox*RoomScene::createOptionBox(const QString&skillName,const QStringList&o
 		if(text==translated)
 			translated = Sanguosha->translate(option);
 
-		if(!src.isEmpty())  //考虑到tip是数字的问题
+		if(!src.isEmpty())
 			translated.replace("%src",ClientInstance->getPlayerName(src));
 		if(!arg2.isEmpty())
 			translated.replace("%arg2",ClientInstance->getPlayerName(arg2));
@@ -2808,7 +2808,7 @@ void RoomScene::chooseCard(const ClientPlayer*player,const QString&flags,const Q
 
 void RoomScene::chooseOrder(QSanProtocol::Game3v3ChooseOrderCommand reason)
 {
-	// 自動化測試: 自動選擇先手 (warm/cool 隨機, 由 Client 端處理)
+	// Automated mode selects the starting player; the Client chooses randomly between warm and cool.
 	if (isAutoTestClient()) {
 		ClientInstance->onPlayerChooseOrder();
 		return;
@@ -2945,7 +2945,7 @@ GenericCardContainer*RoomScene::_getGenericCardContainer(Player::Place place,con
 	// WuGu also presents faction tricks returning to or leaving the edict reservoir.
 	if(place==Player::DiscardPile||place==Player::PlaceJudge||place==Player::DrawPile||place==Player::PlaceTable
 		||place==Player::PlaceWuGu)
-		return m_tablePile;// @todo: AG must be a pile with name rather than simply using the name special...
+		return m_tablePile;// TODO: AG should use a named pile instead of the special-pile name.
 	if(player==Self) return dashboard;
 	if(player){
 		Photo *photo = name2photo.value(player->objectName(), nullptr);
@@ -3030,7 +3030,7 @@ void RoomScene::getCards(int moveId,QList<CardsMoveStruct> card_moves)
 		_processCardsMove(card_moves[i],false);
 		if(_shouldIgnoreDisplayMove(card_moves[i])) continue;
 		card_container->m_currentPlayer = (ClientPlayer*)card_moves[i].to;
-		// 未配對的 GET（moveId=-1）時 stash 為空；Qt6 Release takeFirst() 對空 QList 是 AV
+		// An unmatched GET (moveId=-1) leaves the stash empty; guard takeFirst(), which can crash on an empty QList in Qt 6 Release.
 		if(!_m_cardsMoveStash.contains(moveId)||_m_cardsMoveStash[moveId].isEmpty())
 			continue;
 		QList<CardItem*> cards = _m_cardsMoveStash[moveId].takeFirst();
@@ -3049,8 +3049,8 @@ void RoomScene::getCards(int moveId,QList<CardsMoveStruct> card_moves)
 		keepGetCardLog(card_moves[i]);
 		GenericCardContainer*to_container = _getGenericCardContainer(card_moves[i].to_place,card_moves[i].to);
 		if(to_container==nullptr){
-			// The destination has no seat on this scene (seen once in a 20p soak right after
-			// the lianying AI fallback); drop the animation rather than dereference null.
+			// Drop the animation when the destination player has no seat in this scene.
+
 			qWarning().noquote() << "RoomScene::getCards: no container for" << _describeMoveForDiagnostics(card_moves[i]);
 			foreach (CardItem*card,cards){
 				card->setVisible(false);
@@ -3384,8 +3384,8 @@ void RoomScene::wireSkillDialog(QSanSkillButton *button, QDialog *dialog)
 {
 	if (button == nullptr || dialog == nullptr)
 		return;
-	// Record the existing resolver's result, including legacy getDialog-only
-	// skills. The text panel must not instantiate dialogs to classify buttons.
+	// Reuse the existing resolver result, including legacy getDialog-only skills; do not instantiate dialogs to classify actions.
+
 	button->setProperty("gamePresentationNeedsDialog", true);
 
 	if (dialog->parent() != main_window)
@@ -3860,7 +3860,7 @@ void RoomScene::doTimeout()
 		break;
 	}
 	case Client::AskForGongxin: {
-		// A draft is not consent to submit on timeout.
+		// A selection draft does not authorize submission on timeout.
 		card_container->submitGongxin();
 		break;
 	}
@@ -4022,8 +4022,8 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 	dashboard->updateTransferButtons();
 
-	// Named V2 responses resolve an activation instance through a button. Keep
-	// request-only selectors available during that request, then remove them.
+	// Keep request-only selectors for the named V2 activation, then remove them.
+
 	if (activePlayer) {
 		for (const SkillInstance &instance : activePlayer->getSkillInstances()) {
 			const Skill *skill = Sanguosha->getSkill(instance.skillName);
@@ -4035,8 +4035,8 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		}
 	}
 
-	// General selection can refresh skill buttons before GAME_START registers
-	// a thread-local Engine room. The Client already owns the request state.
+	// General selection may refresh skill buttons before GAME_START registers a thread-local Engine room; request state belongs to Client.
+
 	const QString skillPattern = ClientInstance->getRoomState()->getCurrentCardUsePattern();
 	foreach (QSanSkillButton*button,m_skillButtons){
 		const ViewAsSkill*vsSkill = button->getViewAsSkill();
@@ -4134,8 +4134,8 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 				QSanSkillButton *responseButton = nullptr;
 				bool available = false;
 				if (activeSkill) {
-					// A named response has no legacy response_pattern in V2. Resolve the
-					// exact activation instance and let canActivate() inspect reason/pattern.
+					// V2 has no legacy response_pattern; resolve the activation instance and let canActivate() validate the request.
+
 					foreach (QSanSkillButton *button, m_skillButtons) {
 						if (button->getViewAsSkill() == skill
 							&& isSkillButtonAvailable(button, activePlayer, reason, pattern)) {
@@ -4144,7 +4144,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 							break;
 						}
 					}
-					// The asked player may not own the skill. Borrow it for this prompt.
+					// The asked player may not own this skill; borrow it for the request.
 					if (!available) {
 						ActiveSkillRequest request;
 						request.reason = reason;
@@ -4262,7 +4262,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 			cancel_button->setEnabled(false);
 			discard_button->setEnabled(false);
 		} else if (m_playerCardBox) {
-			// PlayerCardBox exists, don't show m_choiceDialog
+
 		} else if(m_choiceDialog!=nullptr){
 			m_choiceDialog->setParent(main_window,Qt::Dialog);
 			m_choiceDialog->show();
@@ -4301,10 +4301,10 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 	case Client::AskForPlayerChoose: {
 		showPromptBox();
 
-		// F1: the choice constraints come from the structured request, no longer from
-		// several public Client fields. The values are identical to before one by one
-		// (askForPlayerChosen() builds this request from the same server payload), so UI
-		// behavior is unchanged; the difference is that the rule constraints now have a single source of truth instead of being scattered across writable Client fields.
+		// Read choice constraints from the structured request as the single source of truth.
+
+
+
 		const PlayerInteractionPayload *payload = activeRequest != nullptr
 			? activeRequest->payloadAs<PlayerInteractionPayload>() : nullptr;
 		const QStringList selectablePlayers = payload != nullptr
@@ -4384,7 +4384,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 	if(ServerInfo.OperationTimeout<1)
 		return;
 
-	// do timeout
+
 	if(newStatus!=Client::NotActive&&newStatus!=oldStatus){
 		QApplication::alert(main_window);
 		connect(dashboard,SIGNAL(progressBarTimedOut()),this,SLOT(doTimeout()));
@@ -4564,12 +4564,12 @@ void RoomScene::doCancelButton()
 		break;
 	}
 	case Client::AskForShowOrPindian: {
-		// Show / pindian are mandatory responses (minSelection=1, cancelable=false):
-		// sending an empty answer gets rejected by ClientCore as "cancelling a
-		// non-cancelable request", leaving the client unanswered until the server's
-		// operation timeout. When the server gets an empty answer it just uses its own
-		// getRandomHandCard() anyway (player-decision-service.cpp askForCardShow /
-		// askForPindian), so here we answer locally with a hand card instead: still "a random one if nothing chosen", but it answers immediately.
+		// Show and pindian requests are mandatory. If nothing is selected, submit a local hand card so the server receives an immediate reply.
+
+
+
+
+
 		const Card *fallback = dashboard->getSelected();
 		if (fallback == nullptr && Self != nullptr) {
 			const QList<const Card *> handcards = Self->getHandcards();
@@ -4661,7 +4661,7 @@ void RoomScene::startInXs()
 
 void RoomScene::changeHp(const QString&who,int delta,int nature,int losthj)
 {
-	// update
+
 	Photo*photo = name2photo.value(who,nullptr);
 	if(photo) photo->updateHp();
 	else dashboard->update();
@@ -4822,7 +4822,7 @@ void RoomScene::onGameOver()
 	layout->addWidget(loser_box,loser_list.length()+1);
 	dialog->setLayout(layout);
 
-	// 整份錄像只解析一次；勝負兩張表各解析一次會在結算時多卡數百毫秒。
+	// Parse the replay once and reuse it for both result tables.
 	RecAnalysis record(ClientInstance->getReplayPath());
 	const QMap<QString,PlayerRecordStruct*> record_map = record.getRecordMap();
 	fillTable(winner_table,winner_list,record_map);
@@ -5091,7 +5091,7 @@ void RoomScene::killPlayer(const QString&who)
 {
 	const General*general = nullptr;
 	if(who==Self->objectName()){
-		// 玩家本人陣亡 → AI 接管快進(錄像回放不計)
+		// Outside replay, the local player's death transfers control to AI.
 		if(!ClientInstance->getReplayer())
 			CrashHandler::setGamePhase(CrashHandler::PhaseDeadFastForward);
 		dashboard->stopHuaShen();
@@ -5122,7 +5122,7 @@ void RoomScene::killPlayer(const QString&who)
 	if(Config.EnableEffects&&Config.EnableLastWord&&!Self->hasFlag("marshalling"))
 		general->lastWord();
 
-	// ── Spine pop-out: mark player dead → fade out any running action ──
+
 #if QSAN_ENABLE_SPINE
 	if (_spineActionController)
 		_spineActionController->setPlayerAlive(who, false);
@@ -5132,7 +5132,7 @@ void RoomScene::killPlayer(const QString&who)
 void RoomScene::revivePlayer(const QString&who)
 {
 	if(who==Self->objectName()){
-		// 玩家本人復活,重新接管對局
+		// Reviving the local player returns control to the player.
 		if(!ClientInstance->getReplayer())
 			CrashHandler::setGamePhase(CrashHandler::PhasePlaying);
 		dashboard->revivePlayer();
@@ -5150,12 +5150,12 @@ void RoomScene::revivePlayer(const QString&who)
 		//photo->updateAvatarTooltip();
 	}
 
-	// ── Spine pop-out: revive → allow actions again + trigger entrance ──
+
 #if QSAN_ENABLE_SPINE
 	if (_spineActionController) {
 		qWarning("[RoomScene] revivePlayer '%s': marking alive + triggering entrance", qPrintable(who));
 		_spineActionController->setPlayerAlive(who, true);
-		// Trigger entrance animation as a visual revival effect
+
 		bool isLocal = (who == Self->objectName());
 		_spineActionController->triggerAction(who, ActionType::Entrance,
 		                                      QList<QPointF>(), isLocal);
@@ -5277,7 +5277,7 @@ void RoomScene::chooseSkillButton()
 void RoomScene::attachSkill(const QString&skill_name)
 {
 	const Skill*skill = Sanguosha->getSkill(skill_name);
-	//if(skill&&!Self->hasSkill(skill_name,true))  如果不添加的话，再变身一次就没这些图标了
+
 	if(skill){
 		const Player *activePlayer = getCurrentOperationPlayer(dashboard);
 		if(skill->isLordSkill() && (activePlayer == nullptr || !activePlayer->isLord())) return;
@@ -5295,13 +5295,13 @@ void RoomScene::attachSkill(const ClientPlayer *player, const QString &skill_nam
 
 void RoomScene::detachSkill(const QString&skill_name)
 {
-	// for all the skills has a ViewAsSkill Effect { Client::setMark(const Json::Value&) }
-	// this is a DIRTY HACK!!! for we should prevent the ViewAsSkill button been removed temporily by duanchang
+	// Keep view-as skill buttons available while the corresponding temporary effect mark is active.
+
 	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	QString baseName = SkillInstanceUtils::baseName(skill_name);
 	if(activePlayer != nullptr && activePlayer->getMark("ViewAsSkill_"+baseName+"Effect")>0) return;
 	QSanSkillButton*btn = dashboard->removeSkillButton(skill_name);
-	if(!btn) return;//be care LordSkill and SPConvertSkill
+	if(!btn) return;
 	m_skillButtons.removeAll(btn);
 	btn->deleteLater();
 	refreshSkillInstanceButtonLabels(baseName);
@@ -5333,7 +5333,7 @@ void RoomScene::updateSkill(const QString&skill_name)
     int instanceId = SkillInstanceUtils::parseName(skill_name, baseName);
     const Skill *updatedSkill = Sanguosha->getSkill(baseName);
     if (activePlayer && updatedSkill && updatedSkill->property("VisibilityMark").isValid()) {
-        // Reconcile just this rule action; preserve unrelated selections and buttons.
+        // Update this rule action while preserving unrelated selections and buttons.
         for (const SkillInstance &instance : activePlayer->getSkillInstances()) {
             if (instance.skillName != baseName || !instance.visible) continue;
             const QString name = SkillInstanceUtils::formatName(baseName, instance.instanceID);
@@ -5359,7 +5359,7 @@ void RoomScene::updateSkill(const QString&skill_name)
 			LuaLocker locker;
 			const Skill *s = button->getSkill();
 			button->setToolTip(buildOracleTooltip(s->getOracleText(activePlayer), s->getDescription(activePlayer, buttonInstanceId)));
-			// Description refreshes must retain the hidden skill's action hint.
+			// Keep the hidden skill's action hint when its description is refreshed.
 			if (ServerInfo.EnableHegemony && activePlayer == Self && Self
 				&& Self->canPreshowSkill(button->objectName())) {
 				button->setToolTip(button->toolTip() + QLatin1String("\n")
@@ -5559,11 +5559,11 @@ void RoomScene::onGameStart()
 
 	trust_button->setEnabled(true);
 
-	// Automated testing: entrust (auto-play) right from the start so human input never blocks the game.
-	//
-	// Except in the M2 network smoke: once entrusted, the server-side AI replies, so
-	// askFor requests never reach the client's RoomScene - but "request over real TCP
-	// to the UI and the UI replying to the server" is exactly what M2 proves. The responder has its own stall watchdog; entrust kicks in only when truly stuck.
+	// Automated games enable trustee from the start so missing human input cannot stall the room.
+
+	// The network smoke leaves trustee off until its stall watchdog fires so requests reach the client UI.
+
+
 	if (isAutoTestClient() && !NetworkUiSmokeResponder::isActive()
 		&& Self && Self->getState() != "trust") {
 		QTimer::singleShot(500, this, [this]() {
@@ -5572,18 +5572,18 @@ void RoomScene::onGameStart()
 		});
 	}
 
-	// 自動化測試: 每局重置選將詢問計數 (雙將模式主/副將各問一次)
+	// Reset the automated general-selection count for each game; dual-general mode asks twice.
 	m_autoPickGeneralAskCount = 0;
 
 	game_started = true;
 
-	// ── Spine pop-out: register skins + preload once game starts ──
-	// Only register and preload for players that actually have dynamic skins
-	// in the JSON config. Players without skins pay zero cost.
+
+	// Register and preload only players whose configuration contains dynamic skins.
+
 #if QSAN_ENABLE_SPINE
 	registerDynamicSkinsForAllPlayers();
 	updateSpineSeatGeometry();
-	// Preload only players that got at least one skin registered
+	// Preload only players with a registered skin.
 	if (_spineActionController) {
 		foreach (Photo *photo, photos) {
 			const ClientPlayer *p = photo->getPlayer();
@@ -5806,8 +5806,8 @@ QGraphicsObject*RoomScene::getAnimationObject(const QString&name) const
 
 void RoomScene::doMovingAnimation(const QString&name,const QStringList&args)
 {
-	// Purely decorative (the flying Nullification icon): NONE creates no items at
-	// all; the final state is "nothing extra on screen". The game flow never waits for this animation.
+	// The flying Nullification icon is decoration; NONE skips it and the game flow does not wait for it.
+
 	if (!G_EFFECTS.animationsEnabled()) {
 		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 		return;
@@ -5843,7 +5843,7 @@ void RoomScene::doMovingAnimation(const QString&name,const QStringList&args)
 
 	G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
 	group->start(QAbstractAnimation::DeleteWhenStopped);
-	// exactly-once：播完、被拆、或者 scene 收檔，item 都一定會清走一次。
+	// Always remove the item exactly once, whether it finishes, is destroyed, or its scene closes.
 	EffectsCompletion::whenFinished(group, item, [item]() { item->deleteLater(); });
 }
 
@@ -5875,9 +5875,9 @@ void RoomScene::doAppearingAnimation(const QString&name,const QStringList&args)
 
 void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 {
-	// The lightbox is a semi-transparent rect covering the whole table, removed only
-	// via the animation's finished(). The NONE profile must not create it: created
-	// without playing, it could never be removed. Same issue as the missing-asset fix below.
+	// The lightbox is removed when the animation finishes; do not create it under NONE, when no animation can clear it.
+
+
 	if (!G_EFFECTS.animationsEnabled()) {
 		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 		return;
@@ -5889,7 +5889,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 	int duration = G_EFFECTS.scaledDuration(disp_arg.first().toInt());
 	int pixelSize = disp_arg.last().toInt();
 
-	// 支援動態參數替換：duration:pixelSize:arg1:arg2:...
+	// Dynamic argument format: duration:pixelSize:arg1:arg2:...
 	if (disp_arg.size() > 2) {
 		for (int i = 2; i < disp_arg.size(); ++i) {
 			QString arg = disp_arg.at(i);
@@ -5898,8 +5898,8 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 		}
 	}
 
-	// 空心輪廓（預設黑色 1px pen）不是要顯示的內容，把 rect 外推到
-	// sceneRect 之外，讓輪廓被 QGraphicsView 裁切，避免 HDPI 下露出黑框。
+	// This hollow outline is only a clipping boundary; extend it beyond
+	// sceneRect so its default 1px pen cannot show at high DPI.
 	QRectF rect = sceneRect();
 	rect.adjust(-50, -50, 50, 50);
 	QGraphicsRectItem*lightbox = addRect(rect);
@@ -5939,13 +5939,13 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 			pma->moveBy(-sceneRect().width()*_m_roomLayout->m_infoPlaneWidthPercentage/2,0);
 			connect(pma,SIGNAL(finished()),this,SLOT(removeLightBox()));
 		} else {
-			// image/system/emotion/<name>/0.png is missing (exactly what a clean
-			// checkout without real art assets looks like). The lightbox is 80% opaque
-			// and is removed only by PixmapAnimation::finished() - no animation means no
-			// finished(), so the rect would cover the table forever: the game stays playable but nothing is visible.
-			//
-			// This branch used to be dead code: PixmapAnimation::setPath()'s do-while
-			// made valid() always true, so GetPixmapAnimation() never returned
+			// If the effect image is missing, there is no animation to remove this
+			// translucent lightbox. Clear the box immediately so the table remains visible.
+
+
+
+
+
 			// nullptr. Only after setPath() became a while loop does this branch actually run.
 			qWarning("[RoomScene] lightbox animation '%s' has no frames; removing the lightbox",
 				qPrintable(word.mid(5)));
@@ -5955,7 +5955,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 	}
 #ifndef Q_OS_WINRT
 #if QSAN_ENABLE_QML
-    else if(word.startsWith("skill=")){  // 重新启用武将特效的使用异步动画
+    else if(word.startsWith("skill=")){
         // Full-screen QML skill effects run only under FULL. REDUCED / NONE clears the lightbox directly:
         // this rect exists to be covered by the QML overlay; without the overlay it must not remain.
         if (!G_EFFECTS.qmlEffectsEnabled()) {
@@ -5967,9 +5967,9 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         QString hero = word.mid(6);
         const QString skill = args.value(1,QString());
 
-        // 提取武將名字和皮膚編號
+
         QString heroName = hero;
-        int skinId = 0;  // 0 表示原皮
+        int skinId = 0;
         if (hero.contains("/")) {
             int lastSlash = hero.lastIndexOf("/");
             QString fileName = hero.mid(lastSlash + 1);
@@ -5988,12 +5988,12 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
             heroName = fileName;
         }
 
-        // 使用嵌入式QML加载器
+
         QString qmlPath = "ui-script/animation.qml";
         int effectWidth = sceneRect().width();
         int effectHeight = sceneRect().height();
 
-        // 配置上面的参数
+
         QVariantMap params;
         params.insert("hero",hero);
         params.insert("heroName",Sanguosha->translate(hero));
@@ -6004,39 +6004,39 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         params.insert("sceneHeight",effectHeight);
         params.insert("tableWidth",m_tableCenterPos.x()*2);
 
-        // 设置QML参数
 
-        // 创建嵌入式QML加载器
+
+
         EmbeddedQmlLoader*embeddedLoader = new EmbeddedQmlLoader(this);
         G_EFFECTS.note(VisualEffectsPolicy::QmlOverlaysCreated);
 
-        // 连接信号
+
         connect(embeddedLoader,&EmbeddedQmlLoader::effectFinished,[embeddedLoader,this](){
 #ifdef Q_OS_ANDROID
-            // 安卓平台：特效结束后更新按钮位置
+
             QPointer<Dashboard> safeDashboard = dashboard;
             if(safeDashboard){
                 QTimer::singleShot(300,[safeDashboard](){
-                    // 使用QPointer确保dashboard仍然存在
+
                     if(safeDashboard){
-                        //safeDashboard->_updateMobileBigButtonsPosition();
+
                     }
                 });
             }
 #endif
-            // embeddedLoader 会自动清理自己
+
         });
 
         connect(embeddedLoader,&EmbeddedQmlLoader::effectError,[embeddedLoader](const QString&){
             embeddedLoader->deleteLater();
         });
 
-        // 加载QML覆盖层
+
         QWidget*parentWidget = nullptr;
         if(!this->views().isEmpty()){
-            parentWidget = this->views().first(); // 获取第一个QGraphicsView
+            parentWidget = this->views().first();
         } else {
-            parentWidget = main_window; // 回退到主窗口
+            parentWidget = main_window;
         }
 
         bool success = embeddedLoader->loadQmlOverlay(
@@ -6050,7 +6050,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         if(!success)
 			embeddedLoader->deleteLater();
 
-        // QML 疊層自帶全視窗特效，此 rect 無用途；比照 spine=/background= 清理
+
         removeItem(lightbox);
         delete lightbox;
     }
@@ -6064,14 +6064,14 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         const QString hero = word.mid(6);
         const QString skill = args.value(1,QString());
 
-        // 使用嵌入式QML加载器
+
         QString qmlPath = "ui-script/animation.qml";
 
-        // 使用游戏场景的实际尺寸
+
         int effectWidth = sceneRect().width();
         int effectHeight = sceneRect().height();
 
-        // 配置上面的参数
+
         QVariantMap params;
         params.insert("hero",hero);
         params.insert("heroName",Sanguosha->translate(hero));
@@ -6080,39 +6080,39 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         params.insert("sceneHeight",effectHeight);
         params.insert("tableWidth",m_tableCenterPos.x()*2);
 
-        // 设置幽灵效果参数
 
-        // 创建嵌入式QML加载器
+
+
         EmbeddedQmlLoader*embeddedLoader = new EmbeddedQmlLoader(this);
         G_EFFECTS.note(VisualEffectsPolicy::QmlOverlaysCreated);
 
-        // 连接信号
+
         connect(embeddedLoader,&EmbeddedQmlLoader::effectFinished,[embeddedLoader,this](){
 #ifdef Q_OS_ANDROID
-            // 安卓平台：幽灵特效结束后更新按钮位置
+
             QPointer<Dashboard> safeDashboard = dashboard;
             if(safeDashboard){
                 QTimer::singleShot(300,[safeDashboard](){
-                    // 使用QPointer确保dashboard仍然存在
+
                     if(safeDashboard){
-                        //safeDashboard->_updateMobileBigButtonsPosition();
+
                     }
                 });
             }
 #endif
-            // embeddedLoader 会自动清理自己
+
         });
 
         connect(embeddedLoader,&EmbeddedQmlLoader::effectError,[embeddedLoader](const QString&){
             embeddedLoader->deleteLater();
         });
 
-        // 加载QML覆盖层，启用点击穿透
+
         QWidget*parentWidget = nullptr;
         if(!this->views().isEmpty()){
-            parentWidget = this->views().first(); // 获取第一个QGraphicsView
+            parentWidget = this->views().first();
         } else {
-            parentWidget = main_window; // 回退到主窗口
+            parentWidget = main_window;
         }
 
         bool success = embeddedLoader->loadQmlOverlay(
@@ -6121,13 +6121,13 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
             effectWidth,
             effectHeight,
             params,
-            true// 启用点击穿透模式
+            true
         );
 
         if(!success)
             embeddedLoader->deleteLater();
 
-        // QML 疊層自帶全視窗特效，此 rect 無用途；比照 spine=/background= 清理
+
         removeItem(lightbox);
         delete lightbox;
     }
@@ -6141,12 +6141,12 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 #endif
 #if QSAN_ENABLE_SPINE
     else if(word.startsWith("spine=")){
-        // Spine dynamic full-screen effect -- render as QGraphicsItem (SpineGlItem)
-        // NOTE: Cannot use QOpenGLWidget overlay because FitView already
-        // uses QOpenGLWidget as viewport; Qt 5 forbids nested QOpenGLWidgets.
-        //
-        // REDUCED / NONE never new a SpineGlItem: no atlas / skel reads, no GL
-        // texture allocation, no waiting on animationFinished.
+        // Render Spine full-screen effects as QGraphicsItems; FitView already uses QOpenGLWidget, and Qt 5 does not support nested QOpenGLWidgets.
+
+
+
+        // REDUCED and NONE skip Spine item creation, resource loading and animation waits.
+
         if (!G_EFFECTS.spineEnabled()) {
             G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
             removeItem(lightbox);
@@ -6172,8 +6172,8 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 		qWarning("[RoomScene] spine= branch: spineArg='%s' animName='%s' runtime='%s'",
 				 qPrintable(spineArg), qPrintable(animName), qPrintable(runtimeVersion));
 
-        // Ensure the viewport's GL context is current so that
-        // atlas texture loading (QOpenGLTexture) succeeds.
+        // Make the viewport's GL context current before loading atlas textures.
+
         QOpenGLWidget *glViewport = nullptr;
         if(!this->views().isEmpty()){
             QGraphicsView *gv = this->views().first();
@@ -6195,7 +6195,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 		if (!runtimeVersion.isEmpty())
 			spineItem->setRuntimeVersionHint(runtimeVersion);
         addItem(spineItem);
-		spineItem->setZValue(9999); // force on top of all scene elements
+		spineItem->setZValue(9999);
 
         bool loaded = spineItem->loadSpine(spineArg, animName);
 
@@ -6244,7 +6244,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
             delete spineItem;
         }
 
-        // Remove lightbox since spine overlay handles its own display
+
         delete lightbox;
         return;
     }
@@ -6328,8 +6328,8 @@ void RoomScene::showIndicator(const QString&from,const QString&to)
 	QPointF start = obj1->sceneBoundingRect().center();
 	QPointF finish = obj2->sceneBoundingRect().center();
 
-	// Indicator lines are one-shot decoration: REDUCED keeps them (shortened) so the
-	// player still sees who points at whom; NONE skips them - they have no final state to reach and the game flow never waits for them.
+	// REDUCED keeps shortened indicator lines so players can see the target; NONE skips these decorative effects.
+
 	if (G_EFFECTS.animationsEnabled()) {
 		IndicatorItem*indicator = new IndicatorItem(start,finish,ClientInstance->getPlayer(from));
 		indicator->setPos(qMin(start.x(),finish.x()),qMin(start.y(),finish.y()));
@@ -6341,7 +6341,7 @@ void RoomScene::showIndicator(const QString&from,const QString&to)
 		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 	}
 
-	// ── Spine pop-out: trigger Attack action on indicator (from → to) ──
+
 #if QSAN_ENABLE_SPINE
 	if (_spineActionController && game_started) {
 		bool isLocal = (from == Self->objectName());
@@ -6513,7 +6513,7 @@ void RoomScene::showServerInformation()
 
 void RoomScene::surrender()
 {
-	// 單機(對 AI)：除自己外全是 robot，不限出牌階段。聯機維持原投票時機。
+	// Offline games allow voting against AI outside the play phase; network games keep the original timing.
 	bool singlePlayer = true;
 	foreach(const ClientPlayer *p, ClientInstance->getPlayers()){
 		if(p!=Self && p->getState()!="robot"){ singlePlayer=false; break; }
@@ -6671,7 +6671,7 @@ void RoomScene::updateRoles(const QString&roles)
 					++aliveCount;
 			}
 
-			// 空間不足時，每種身份只保留一個圖示；沒有存活者則顯示灰色圖示。
+			// When space is limited, show one icon per role and gray it out if no players remain.
 			QGraphicsPixmapItem *item = addPixmap(map.value(aliveCount > 0 ? abbreviation : abbreviation.toLower()));
 			qreal itemWidth = item->boundingRect().width();
 			if (aliveCount > 1) {
@@ -6895,7 +6895,7 @@ void PromptInfoItem::setHtml(const QString&painter)
 
 void PromptInfoItem::paint(QPainter*painter,const QStyleOptionGraphicsItem*,QWidget*)
 {
-	//过滤掉多余的前后空白字符
+	// Trim leading and trailing whitespace.
 	QString text = toPlainText();
 	if(!text.isEmpty()){
 		QStringList texts;
@@ -6903,7 +6903,7 @@ void PromptInfoItem::paint(QPainter*painter,const QStyleOptionGraphicsItem*,QWid
 			texts.append(plainText.trimmed());
 		text = texts.join("\n");
 
-		//经测试发现，ttf字体显示不出“红桃”、“黑桃”等这些图形符号，故将它们替换为相应的文字说明
+		// Replace suit glyphs with text because the TTF font cannot render them.
 		text.replace(Sanguosha->translate("spade_char"),Sanguosha->translate("spade"));
 		text.replace(Sanguosha->translate("club_char"),Sanguosha->translate("club"));
 		text.replace(Sanguosha->translate("heart_char"),Sanguosha->translate("heart"));
@@ -6916,9 +6916,9 @@ void PromptInfoItem::paint(QPainter*painter,const QStyleOptionGraphicsItem*,QWid
 	}
 }*/
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Spine pop-out action controller helpers
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 #if QSAN_ENABLE_SPINE
 void RoomScene::registerDynamicSkinForPlayer(const QString &playerName,

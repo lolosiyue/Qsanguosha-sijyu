@@ -28,7 +28,6 @@ IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 # File:// URL prefix for absolute image paths
 FILE_PREFIX = "file:///" + str(PROJECT_ROOT).replace("\\", "/").rstrip("/") + "/"
 
-# ── Lua Parsing ────────────────────────────────────────────────────
 
 def strip_comments(text):
     text = re.sub(r"--\[\[.*?\]\]--", "", text, flags=re.DOTALL)
@@ -86,7 +85,6 @@ def parse_package_order(config_path):
     return {name: i for i, name in enumerate(names)}
 
 
-# ── Faction Name Translations ──────────────────────────────────────
 
 FACTION_NAMES = {
     "wei": "魏", "shu": "蜀", "wu": "吳", "qun": "群", "jin": "晉", "god": "神",
@@ -100,7 +98,6 @@ FACTION_NAMES = {
     "kegui": "可貴", "kesheng": "可勝", "kexian": "可賢", "keyao": "可耀",
 }
 
-# ── Package Display Names ──────────────────────────────────────────
 
 PACKAGE_DISPLAY = {
     # Official / Core packages
@@ -142,7 +139,7 @@ PACKAGE_DISPLAY = {
     "Happy2v2Package": "歡樂2v2",
     "DoudizhuPackage": "鬥地主",
     "HegemonyPackage": "國戰",
-    # Yi Jiang Cheng Ming (一將成名) series
+    # Yi Jiang Cheng Ming (One General's Rise to Fame) series.
     "YJCMPackage": "一將成名",
     "YJCM2012Package": "一將成名2012",
     "YJCM2013Package": "一將成名2013",
@@ -231,10 +228,9 @@ PACKAGE_DISPLAY = {
     "wolf1411": "狼1411",
 }
 
-# ── Standard General Skills (for C++-defined warriors) ────────────
 
 STANDARD_SKILLS = {
-    # Wei (魏) — Standard
+    # Wei: standard skills.
     "caocao": ["jianxiong", "hujia"],
     "simayi": ["fankui", "guicai"],
     "xiahoudun": ["ganglie"],
@@ -260,7 +256,7 @@ STANDARD_SKILLS = {
     "haozhao": ["guzheng"],
     "caohong": ["qinxue", "qinxueWake"],
     "caozhang": ["zhuhai"],
-    # Shu (蜀) — Standard
+    # Shu: standard skills.
     "liubei": ["rende", "jijiang"],
     "guanyu": ["wusheng"],
     "zhangfei": ["paoxiao"],
@@ -279,7 +275,7 @@ STANDARD_SKILLS = {
     "menghuo": ["zaiqi"],
     "zhurong": ["juxiang"],
     "liufeng": ["jisi"],
-    # Wu (吳) — Standard
+    # Wu: standard skills.
     "sunquan": ["zhiheng"],
     "zhouyu": ["yingzi", "fanjian"],
     "ganning": ["qixi"],
@@ -296,7 +292,7 @@ STANDARD_SKILLS = {
     "sunce": ["bazhan"],
     "sunjian": ["yinghun"],
     "sunliang": ["qianxin", "qianxinWake"],
-    # Qun (群) — Standard
+    # Qun: standard skills.
     "huatuo": ["jijiu", "qingjian"],
     "lvbu": ["wushuang"],
     "diaochan": ["lijian", "biyue"],
@@ -311,7 +307,7 @@ STANDARD_SKILLS = {
     "jiling": ["zhaxiang"],
     "gongsunzan": ["yicong"],
     "nos_liubiao": ["noszishou"],
-    # Jin (晉)
+    # Jin: standard skills.
     "simashi": ["quanli"],
     "simazhao": ["quanmou"],
     "wangyuanji": ["xianshi"],
@@ -319,7 +315,6 @@ STANDARD_SKILLS = {
 }
 
 
-# ── Standard General Fallbacks (kingdom, hp for C++-defined warriors) ─
 
 _STANDARD_GENERALS = {
     "caocao": ("wei", 4), "xiahoudun": ("wei", 4), "xiahouyuan": ("wei", 4),
@@ -394,7 +389,6 @@ def _apply_standard_skills(warriors):
                 w["skills"] = list(skills)
 
 
-# ── Warrior Extraction ─────────────────────────────────────────────
 
 def extract_warriors():
     """Extract all warrior definitions, preserving package file order."""
@@ -485,7 +479,6 @@ def extract_warriors():
 
         pkg_name = ext_file.stem
 
-        # ── Parse all LoadTranslationTable blocks for warrior names ──
         trans_tables = {}
         for tt_match in re.finditer(
             r"""sgs\.LoadTranslationTable\s*\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}""",
@@ -499,7 +492,6 @@ def extract_warriors():
             ):
                 trans_tables[kv.group(1)] = kv.group(2).replace('\\"', '"')
 
-        # ── Build var -> skill name map ──
         var_to_skill = {}
         skill_def_pat = re.compile(
             r"""(\w+)\s*=\s*sgs\.(?:Create|Lua)\w*Skill\s*\{[^}]*?name\s*=\s*"([^"]+)"[^}]*\}""",
@@ -508,7 +500,6 @@ def extract_warriors():
         for sm in skill_def_pat.finditer(text):
             var_to_skill[sm.group(1)] = sm.group(2)
 
-        # ── Extract sgs.General calls ──
         for m in ext_pat.finditer(text):
             var_name = m.group(1)
             wid = m.group(3)
@@ -570,7 +561,6 @@ def extract_warriors():
             if pkg_name not in w["files"]:
                 w["files"].append(pkg_name)
 
-            # ── Find addSkill calls for this warrior ──
             addskill_pat = re.compile(
                 re.escape(var_name) + r""":addSkill\s*\(\s*(?:"([^"]+)"|(\w+))\s*\)"""
             )
@@ -611,7 +601,6 @@ def extract_skill_translations():
     return skills
 
 
-# ── Image Path Resolution ──────────────────────────────────────────
 
 def resolve_image_paths(warriors):
     """Check and resolve image paths using file:/// absolute URLs."""
@@ -676,7 +665,6 @@ def resolve_image_paths(warriors):
     return result
 
 
-# ── HTML Template ──────────────────────────────────────────────────
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -2359,7 +2347,6 @@ document.addEventListener("DOMContentLoaded", init);
 </html>"""
 
 
-# ── HTML Generation ─────────────────────────────────────────────────
 
 def generate_html(warriors_data, kingdom_colors, skill_data):
     """Inject warrior data, kingdom colors, and skill data into HTML template."""
@@ -2379,7 +2366,6 @@ def generate_html(warriors_data, kingdom_colors, skill_data):
     return html
 
 
-# ── CLI ─────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(

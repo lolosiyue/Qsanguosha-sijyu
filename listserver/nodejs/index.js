@@ -7,13 +7,13 @@ var fs=require('fs');
 var logs=new Array(4);
 var serverList=new Array();
 var version=1;
-var official=[['115.159.24.202',9527],['115.159.24.202',9529]];//官服
+var official=[['115.159.24.202',9527],['115.159.24.202',9529]];// Official server
 var logFile;
 var lastDate;
 init();
 
 var server=http.createServer(httpRequest);
-server.listen(80,'127.0.0.1');//监听端口，只接受IPV4
+server.listen(80,'127.0.0.1');// Listen on IPv4 only.
 
 function httpRequest(request,response)
 {

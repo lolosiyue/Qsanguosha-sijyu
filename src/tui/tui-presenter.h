@@ -19,7 +19,7 @@ public:
     virtual ~TuiPresenter() = default;
     virtual void writeOutput(const QString &text) = 0;
     // Exactly the six long-dump commands' output (/players, /log, /hand,
-    // /skills, /piles, /equip -- spec §5.2): the one kind of output board
+    // /skills, /piles, /equip -- spec section 5.2): the one kind of output board
     // mode is allowed to take the whole screen for. Everything else --
     // interaction prompts included, which routinely run longer than any of
     // these dumps -- goes through writeOutput() and must never trigger an
@@ -36,7 +36,7 @@ public:
     // that a board mode exists; see TuiStreamPresenter's own no-op bodies for
     // why that presenter has nothing to do with either call. TuiBoardPresenter
     // is the one implementation that repaints from them (docs/tui-board-ui.md
-    // §3.6).
+    // section 3.6).
     virtual void stateChanged(const ClientGameState &state) = 0;
     // nullptr means no request is in flight right now -- answered, cancelled,
     // superseded, or none has ever arrived.

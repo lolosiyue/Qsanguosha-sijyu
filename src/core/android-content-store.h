@@ -11,11 +11,11 @@
 #include <atomic>
 #include <functional>
 
-// Android 私有內容的 staged store。
+// Staged store for Android private content.
 //
-// 所有變更先寫入新版本，下一次啟動由 prepareStartup() 驗證後切換；
-// Engine 看到完整、可回復的 runtime 樹；不可變聲畫引用同一私有 blob，
-// 不因 Lua／APK 基線更新複製媒體。規則／Lua 仍為各版本的獨立實體檔。
+// Write every change to a new version and let prepareStartup() validate and activate it on the next launch;
+// Engine then sees a complete, recoverable runtime tree. Immutable media references share the same private blob,
+// while rules and Lua remain separate physical files for each version.
 class AndroidContentStore
 {
     Q_DECLARE_TR_FUNCTIONS(AndroidContentStore)
@@ -47,10 +47,10 @@ public:
     using Cancelled = std::atomic_bool;
     using Progress = std::function<void(quint64 completed, quint64 total)>;
 
-    // appDataRoot 為空時使用 QStandardPaths::AppDataLocation。
+    // Use QStandardPaths::AppDataLocation when appDataRoot is empty.
     explicit AndroidContentStore(const QString &appDataRoot = QString());
 
-    // 必須在 QSanRuntimePaths::resolve() 前呼叫，套用 pending journal。
+    // Call before QSanRuntimePaths::resolve() to apply the pending journal.
     bool prepareStartup(QString *error = nullptr);
     QString runtimeRoot() const;
     bool mediaReady() const;
@@ -59,14 +59,14 @@ public:
     QVariantMap status() const;
     QList<PackageInfo> packages() const;
 
-    // 啟動成功清除 boot marker；保留 previous 供明確 rollback。
+    // Clear the boot marker after a successful launch; retain previous for explicit rollback.
     bool beginBootAttempt(QString *error = nullptr);
     bool markBootSuccessful(QString *error = nullptr);
     bool recoverPrevious(QString *error = nullptr);
     bool discardPendingAndDisableLastImport(QString *error = nullptr);
 
-    // source 可為 QFile 或 SAF content URI 對應的非 seekable QIODevice。
-    // 實作需分塊讀取；必要時只 spool 到私有 temp，不得 readAll 大型媒體包。
+    // source may be a QFile or a non-seekable QIODevice backed by a SAF content URI.
+    // Read in chunks; spool only to private temporary storage when needed, never readAll a large media package.
     bool stageMedia(QIODevice &source, Cancelled *cancel = nullptr,
                     const Progress &progress = Progress(), QString *error = nullptr);
     bool stageExtension(QIODevice &source, const QString &filename,
@@ -76,7 +76,7 @@ public:
                              Cancelled *cancel = nullptr,
                              const Progress &progress = Progress(), QString *error = nullptr);
 
-    // 以下操作只修改 pending 版本，下一次啟動才生效。
+    // These operations modify only the pending version and take effect on the next launch.
     bool setPackageEnabled(const QString &packageId, bool enabled, QString *error = nullptr);
     bool removePackage(const QString &packageId, QString *error = nullptr);
     bool reorderPackages(const QStringList &packageIds, QString *error = nullptr);

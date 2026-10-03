@@ -135,21 +135,7 @@ void windowsFatalSignalHandler(int number)
 
 #if defined(Q_OS_UNIX)
 
-// --- State the fatal-signal path needs, laid out for async-signal-safety ---
-//
-// A signal handler may only touch plain data with async-signal-safe
-// functions: write(), and reads/writes of a sig_atomic_t. It must not
-// allocate, must not touch a QByteArray or QString, and must not call into
-// Qt. That rules out building the restore sequence, or even looking it up
-// via TuiTerminal::restoreSequence(), from inside the handler -- so enter()
-// builds it once, up front, into this plain buffer, and the handler only
-// ever writes bytes that already exist.
-//
-// There is exactly one controlling terminal per process, so this state is
-// process-global rather than per-TuiTerminal-instance on purpose: a second
-// TuiTerminal entering raw mode on top of the first would not make sense
-// either, and the crash handler only ever needs to undo the one real
-// takeover.
+// Build the restore sequence before signals arrive; the handler uses only prebuilt data and async-signal-safe operations.
 constexpr int kMaxRestoreBytes = 64;
 char g_restoreBytes[kMaxRestoreBytes];
 volatile sig_atomic_t g_restoreLength = 0;
@@ -162,18 +148,7 @@ volatile sig_atomic_t g_wakeWriteFd = -1;
 
 extern "C" void tuiTerminalSignalHandler(int number)
 {
-    // Get the terminal back for every signal here that actually ends the
-    // session -- the fatal ones below, and SIGTERM/SIGHUP, which fall
-    // through to the same "please shut down" path afterwards. SIGWINCH is
-    // deliberately excluded: a plain resize does not end anything, and
-    // writing the restore sequence for it would leave the alternate screen
-    // (and re-show the cursor) on every window resize, with nothing after it
-    // ever re-entering the alternate screen -- the resize repaint below only
-    // ever emits a fresh frame, never `\x1b[?1049h` again. If a resize
-    // happens to race a real fatal signal, that signal's own invocation of
-    // this same handler still writes the restore bytes; the only thing lost
-    // by excluding SIGWINCH is a redundant write of bytes the fatal signal
-    // was going to write anyway.
+    // Restore the terminal on exit signals, but not SIGWINCH, which must leave the alternate screen active.
     if (number != SIGWINCH && g_restoreLength > 0 && g_restoreFd >= 0)
         ::write(int(g_restoreFd), g_restoreBytes, size_t(g_restoreLength));
 
@@ -195,32 +170,12 @@ extern "C" void tuiTerminalSignalHandler(int number)
         ::write(int(g_wakeWriteFd), &token, 1);
 }
 
-// --- Shared SIGINT state, and the one handler that unifies its two owners ---
-//
-// Classic mode never takes the terminal into raw mode or the alternate
-// screen, so it has nothing in common with the restore-sequence state above
-// except SIGINT itself: both TuiTerminal::enter() and
-// tuiInstallInterruptHandler() (the latter installed unconditionally by
-// TuiInput on Unix, in both classic and board mode) need to own it. This
-// self-pipe stays separate from TuiTerminal's wake pipe so classic mode
-// never needs a TuiTerminal instance at all -- but, unlike that pipe, the
-// *signal handler* for SIGINT below is shared rather than duplicated, so
-// installing one of these two owners can never silently disable the other.
+// Both terminal takeover and classic input use the shared SIGINT handler and self-pipe.
 int g_interruptWakePipe[2] = { -1, -1 };
 std::function<void()> g_interruptCallback;
 QSocketNotifier *g_interruptNotifier = nullptr;
 
-// sigaction() only ever keeps the *last* installed handler for a given
-// signal. Before this function existed, TuiTerminal::enter() and
-// tuiInstallInterruptHandler() each installed their own SIGINT handler, so
-// whichever ran second silently disabled the first: depending on install
-// order, Ctrl+C then either restored the terminal without disconnecting, or
-// disconnected without restoring the terminal -- and board mode runs both.
-// Routing both installers through this one function instead makes the
-// install idempotent (reinstalling the same function changes nothing), so
-// the order stops mattering. Each half below is inert when its owner was
-// never installed: g_restoreLength stays 0 with no TuiTerminal entered, and
-// g_interruptWakePipe[1] stays -1 with no tuiInstallInterruptHandler call.
+// Install one idempotent SIGINT handler so the terminal and input owners cannot replace each other.
 extern "C" void tuiSigintSignalHandler(int /* number */)
 {
     if (g_restoreLength > 0 && g_restoreFd >= 0)
@@ -265,16 +220,7 @@ TuiTerminal::~TuiTerminal()
 
 bool TuiTerminal::enter(QString *error)
 {
-    // A second enter() while the terminal is still taken must not re-run
-    // tcgetattr(): that would capture the *already-raw*, unechoed termios as
-    // the new "original", so leave() would then restore the terminal to
-    // that raw state instead of the user's real shell settings -- silently
-    // wrecking the shell, the exact failure this class exists to prevent.
-    // Nothing calls enter() twice today, but a later caller retrying after a
-    // failed board-mode start is a reasonable thing to write, so this guard
-    // needs to exist before that caller does. Mirrors leave()'s own
-    // compare_exchange re-entrancy guard rather than leaving enter()
-    // asymmetric with it.
+    // Do not enter raw mode twice: save the original shell settings only on the first successful entry.
     if (!m_left.load()) {
         if (error != nullptr)
             *error = QStringLiteral("tui: terminal already entered; call leave() first");
@@ -636,16 +582,7 @@ void tuiInstallInterruptHandler(std::function<void()> callback)
                 char token = 0;
                 const ssize_t n = ::read(g_interruptWakePipe[0], &token, 1);
                 if (n == 1) {
-                    // Call a copy, not the global itself. The callback's own
-                    // work reaches TuiInput::stop(), which calls
-                    // tuiClearInterruptHandler() -- destroying the
-                    // std::function while it is executing. That survives
-                    // today only because the installed lambda captures a bare
-                    // `this` small enough to live in the function's inline
-                    // buffer and touches nothing after the emit; a capture one
-                    // pointer larger is heap-allocated and this becomes a
-                    // use-after-free, which is a shape this repo has been
-                    // bitten by before.
+                    // Invoke a copy because the callback may clear the stored std::function while it runs.
                     std::function<void()> callback = g_interruptCallback;
                     if (callback)
                         callback();

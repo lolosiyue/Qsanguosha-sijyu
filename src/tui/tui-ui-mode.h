@@ -17,7 +17,7 @@ struct TuiUiModeInputs
     bool hasScript = false;
     bool stdoutIsTty = false;
     bool stdinIsTty = false;
-    // True for --plain, --no-color, or NO_COLOR. docs/tui-board-ui.md §6.1
+    // --plain, --no-color and NO_COLOR share the same mode-selection rule.
     // treats all three as one forcing condition and nothing downstream needs
     // to tell them apart, so the caller folds them into this one bool.
     bool plain = false;
@@ -29,11 +29,11 @@ struct TuiUiModeInputs
 struct TuiUiModeDecision
 {
     TuiUiMode mode = TuiUiMode::Classic;
-    // True only for the unset-flag / TTY / no-saved-choice row (§6.1's last
+    // True only when no mode is forced and no choice has been saved; tui-main.cpp prompts before connecting.
     // row): tui-main.cpp must ask before connecting, and this is the only
     // case where it should.
     bool askUser = false;
-    // True for the deliberate error row (§6.1's 4th row: a forcing condition
+    // True for an explicit board/forcing conflict or an unknown --ui value.
     // together with an explicit --ui board) and for an unrecognised --ui
     // value. tui-main.cpp turns either into exit code 2, printing
     // conflictReason.
@@ -41,7 +41,7 @@ struct TuiUiModeDecision
     QString conflictReason;
 };
 
-// Resolves docs/tui-board-ui.md §6.1's table top to bottom, first match
+// Pure implementation of the mode-selection table in docs/tui-board-ui.md section 6.1.
 // wins. Pure: the same inputs produce the same decision every time, with no
 // filesystem or terminal access of its own.
 TuiUiModeDecision tuiResolveUiMode(const TuiUiModeInputs &inputs);

@@ -899,7 +899,7 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
 {
     // /board is a view action -- it stays legal mid-prompt for the same
     // reason Players/Hand/etc. do: paging never blocks answering
-    // (docs/tui-board-ui.md §3.6, "分頁永遠不會是「答不到題」的原因").
+    // Paging is a view action and must never prevent answering an active prompt.
     static const QSet<TuiCommandType> promptSafeCommands{TuiCommandType::Cancel,
         TuiCommandType::Help, TuiCommandType::Status, TuiCommandType::Players,
         TuiCommandType::Hand, TuiCommandType::Equipment, TuiCommandType::Piles,
@@ -1362,15 +1362,7 @@ QStringList TuiApplicationController::completionExtraTokens() const
     return tokens;
 }
 
-// The screen and the log file are sanitized separately and on purpose. The
-// log file is a plain transcript, so it never carries colour; the presenter
-// may, because TuiRenderer::heading() writes one and TuiStreamPresenter can
-// render it. Sanitizing once and sharing the result is what silently broke
-// both: the shared pass dropped the ESC byte and left "[1;36m" behind as
-// text, so classic printed the parameters instead of colouring the heading
-// and the board put them in its cell grid. Which sanitizer is used still does
-// not depend on the mode -- a presenter that cannot render colour drops it
-// itself -- so --log-file content stays identical either way (TuiPresenter).
+// Log files stay plain text; only a presenter that renders color receives ANSI sequences.
 void TuiApplicationController::writeOutput(const QString &text)
 {
     m_presenter->writeOutput(TuiRenderer::sanitizePresentable(text, 16384));

@@ -11,9 +11,7 @@
 #include <QtMath>
 #include <QTimer>
 
-// ═══════════════════════════════════════════════════════════════════════════
 //  Construction / destruction
-// ═══════════════════════════════════════════════════════════════════════════
 
 SpineIndicatorLine::SpineIndicatorLine(QGraphicsScene *scene, QObject *parent)
     : QObject(parent)
@@ -44,9 +42,7 @@ SpineIndicatorLine::~SpineIndicatorLine()
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 //  Launch
-// ═══════════════════════════════════════════════════════════════════════════
 
 void SpineIndicatorLine::launch(const QString &skelName,
                                  const QString &runtimeVersion,
@@ -115,9 +111,7 @@ void SpineIndicatorLine::launch(const QString &skelName,
             this, &SpineIndicatorLine::onBeamAnimationFinished);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 //  Burst effect
-// ═══════════════════════════════════════════════════════════════════════════
 
 void SpineIndicatorLine::spawnBurstEffect(const QString &effectSkelName,
                                             const QString &runtimeVersion,
@@ -151,9 +145,7 @@ void SpineIndicatorLine::spawnBurstEffect(const QString &effectSkelName,
             this, &SpineIndicatorLine::onBurstAnimationFinished);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 //  Cleanup
-// ═══════════════════════════════════════════════════════════════════════════
 
 void SpineIndicatorLine::onBeamAnimationFinished()
 {

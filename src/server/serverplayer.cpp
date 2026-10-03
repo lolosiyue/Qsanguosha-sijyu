@@ -2443,12 +2443,12 @@ void ServerPlayer::enterYinniState(int type)
 		room->setPlayerProperty(this, "yinni_general", getGeneralName());
 		room->setPlayerProperty(this, "yinni_general_kingdom", getKingdom());
 	}
-	if (type > 0) {  //只变主将
+	if (type > 0) {  // Change only the head general.
 		room->changeHero(this, "yinni_hide", false, false, false, false);
 		return;
-	} else if (type == 0)  //主将、副将都变
+	} else if (type == 0)  // Change both head and deputy generals.
 		room->changeHero(this, "yinni_hide", true, false, false, false);
-	if(getGeneral2()){  //只变副将
+	if(getGeneral2()){  // Change only the deputy general.
 		room->setPlayerProperty(this, "yinni_general2", getGeneral2Name());
 		room->changeHero(this, "yinni_hide", false, false, true, false);
 	}

@@ -432,9 +432,9 @@ function sgs.CreateInvaliditySkill(spec)
 	--if type(spec.skill_valid)=="function" then
 		skill.skill_valid = spec.skill_valid
 	--end
-	-- 可選的必要條件（src/core/invalidity-gate.h）：不成立時 C++ 直接判有效，不呼叫 skill_valid。
-	-- validity_mark_prefix：skill_valid 只在 player 有「前綴..技能名」標記時才可能判失效。
-	-- validity_current_sibling_skill：只在首個帶 CurrentPlayer 的存活他人擁有該技能時才可能判失效。
+	-- Optional prerequisite (src/core/invalidity-gate.h): if false, C++ treats the skill as valid without calling skill_valid.
+	-- validity_mark_prefix: skill_valid can invalidate a skill only when the player has the prefix..skillName mark.
+	-- validity_current_sibling_skill: invalidation is possible only when the first living other player with CurrentPlayer has the skill.
 	if type(spec.validity_mark_prefix)=="string" then
 		skill:setProperty("InvalidityMarkPrefix",sgs.QVariant(spec.validity_mark_prefix))
 	end
@@ -820,7 +820,7 @@ function onUse_GlobalEffect(self,room,card_use)
 	self:cardOnUse(room,card_use)
 end
 
-function onUse_DelayedTrick(self,room,card_use)--不启用
+function onUse_DelayedTrick(self,room,card_use)--Disabled
 	local data = sgs.QVariant()
 	data:setValue(card_use)
 	local thread = room:getThread()

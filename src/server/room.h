@@ -146,8 +146,8 @@ public:
     TakeoverScenario *takeoverScenario() const;
     bool isFull() const;
     bool isFinished() const;
-    // 喚醒 doRequest / pause 等待, 不 join worker。供 gameOver 回收前使用
-    // (stopGameThreads 的 wait 會與 BlockingQueuedConnection 在 main 互鎖)。
+    // Wake doRequest / pause without joining the worker; used before gameOver reclaims it.
+    // stopGameThreads::wait can deadlock with BlockingQueuedConnection on main.
     void abortWaitingRequests();
     // Request every room worker to stop without waiting; the owner must keep
     // pumping its event loop before calling stopGameThreads/destruction.
@@ -159,9 +159,9 @@ public:
     void waitForApplicationForeground();
     bool canPause(ServerPlayer*p) const;
     void tryPause();
-    // 單機(對 AI)：除房主外全是 robot。用於放寬隨時投降，已陣亡的其他真人仍算聯機。
+    // Single-player against AI: everyone except the host is a robot. Used to allow surrender at any time; dead human players still make the room multiplayer.
     bool isSinglePlayerMode() const;
-    // 單機投降就地消費：已收到投降且確為單機時 makeSurrender(房主)。由 RoomThread::delay 呼叫。
+    // Consume single-player surrender locally after confirming it: makeSurrender(host). Called by RoomThread::delay.
     void trySinglePlayerSurrender();
     // Cooperative stop point for the game thread: once requestStopGameThreads() has
     // run, unwinds the game with GameFinished (the same path gameOver takes) instead
@@ -928,7 +928,7 @@ private:
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
     void notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance);
-    // Owner-only：完整 SkillInstanceState 僅同步給持有者 client（不廣播給其他人）。
+    // Owner-only: send the full SkillInstanceState only to its owning client.
     void notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
                                   const QString &operation, const QString &key = QString(),
                                   const QVariant &value = QVariant());

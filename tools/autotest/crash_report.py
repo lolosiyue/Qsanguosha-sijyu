@@ -18,7 +18,7 @@ import sys
 from runner_common import log_dir_for, stamp, write_csv
 from minidump_parse import parse_dump
 
-# DIA 符號解析為可選依賴 (需 VS msdia140.dll + 對應 PDB)
+# DIA symbol lookup is optional and requires msdia140.dll and matching PDB files.
 try:
     from dia_symbol import DiaPdb
     HAS_DIA = True
@@ -69,7 +69,7 @@ def collect_logs(log_dir):
         return out
     for root, _dirs, files in os.walk(log_dir):
         if os.sep + "crash-report" in root or root.endswith("crash-report"):
-            continue  # 排除 crash-report 本身 (可持續執行不自我掃描)
+            continue  # Exclude this report so repeated scans do not include their own output.
         for f in files:
             if f.endswith(".log"):
                 p = os.path.join(root, f)
@@ -239,10 +239,10 @@ def main():
     print("dmp=%d log=%d record=%d debug_backup=%d"
           % (len(dmps), len(logs), len(recs), n_dbg))
 
-    # 符號解析 (可選): 崩潰模組為 QSanguosha.exe 時附函式名+行號
+    # Optionally resolve QSanguosha.exe crashes to function names and lines with DIA.
     pdb = None
     pdb_path = args.pdb or os.path.join(exe_root, "release", "QSanguosha.pdb")
-    extra_pdbs = {}  # module 名 (basename) -> DiaPdb
+    extra_pdbs = {}  # Module basename -> DiaPdb.
     if not os.path.isfile(pdb_path):
         print("symbols : 無 PDB (%s), 不附符號 (可用 --pdb 指定)" % pdb_path)
     elif HAS_DIA:
@@ -268,13 +268,13 @@ def main():
             else:
                 print("symbols : %s 不存在 (%s)" % (spath, mod))
 
-    # 每顆 dmp: 匹配最近 log / 最近 record
+    # Match each dump with the nearest log and record.
     rows = []
     for d in dmps:
         t = d["ts"]
         if t is None:
             continue
-        # log 匹配: 優先 runN.log / server.log (局專屬), 其次 autotest.log 等
+        # Prefer per-run logs, then shared autotest logs.
         run_cands = [(rel, lt) for _p, rel, lt, _s in logs
                      if rel.split(os.sep)[-1].startswith(("run", "server"))]
         best_log, lg = match_nearest(run_cands, t)
@@ -282,8 +282,7 @@ def main():
             best_log, lg = match_nearest(
                 [(rel, lt) for _p, rel, lt, _s in logs], t)
         best_rec, rg = match_nearest(recs, t)
-        # debug-before-runN.txt 在 run N 開始前複製 = 含 run N-1 內容;
-        # 閃退局 runN 的備份 = 時間在 dmp 之後的第一個備份檔
+        # The pre-run debug backup may contain the previous run; for a crash, use the first backup newer than the dump.
         def _first_after(cands):
             after = sorted(
                 [(rel, dt) for rel, dt in cands
@@ -294,7 +293,7 @@ def main():
         dbg_rel, dbg_diff = _first_after(dbg_backups["debug"])
         ai_rel, ai_diff = _first_after(dbg_backups["ai_cstring"]
                                        + dbg_backups["ai_cstringEvent"])
-        # 符號: 崩潰模組為 QSanguosha.exe 時用 DIA 查函式; 外部模組用 --symbol-map
+        # Use DIA for QSanguosha.exe and --symbol-map for external modules.
         sym_name, sym_disp, sym_line = "-", "-", "-"
         fmod = d.get("fault_module", "")
         frva = d.get("fault_rva", -1)
@@ -344,7 +343,7 @@ def main():
     write_csv(csv_path, header, rows)
     print("inventory: %s (%d dmp)" % (csv_path, len(rows)))
 
-    # 批次摘要
+    # Batch summary.
     rows2 = summarize_batches(log_dir)
     csv2 = os.path.join(report_dir, "batches.csv")
     if rows2:
@@ -352,7 +351,7 @@ def main():
                          "detail"], rows2)
         print("batches  : %s (%d rows)" % (csv2, len(rows2)))
 
-    # 控制台摘要
+    # Console summary.
     print("-" * 100)
     for r in rows:
         print("%s | %s | %s | %s | %s | %s | %s | %s | log=%s(%ss)" % (

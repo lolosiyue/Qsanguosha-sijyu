@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 
-// 斜切面板本體：只負責底板／邊線／陰影／可選上沿，不含文字或 icon。
+// Draws the sheared panel base, edges, shadow and optional top accent; content stays outside.
 Item {
     id: root
 

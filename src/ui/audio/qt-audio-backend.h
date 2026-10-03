@@ -16,24 +16,24 @@ class QMediaPlayer;
 class QSoundEffect;
 QT_END_NAMESPACE
 
-// Backend for the Linux GUI, running Qt Multimedia.
-//
-// Resource policy (three paths deliberately kept separate, never sharing a player):
-//
-//   * Short UI sounds: a small set of frequently used sounds preloaded as QSoundEffect (low latency, replayable).
-//     Only preloads the names in preloadedEffectNames(); general voices are never transcoded or fully loaded into memory.
-//   * General voices: a fixed-size QMediaPlayer + QAudioOutput pool with a cap on
-//     simultaneous playback, recycled automatically when finished; when the pool is full the oldest slot is evicted - a pair is never newed per playback.
-//   * BGM: its own player / output, never mixed with the voice pool.
-//
-// No audio device, missing file, or unsupported codec is just a warning + degradation, never a crash.
+// Qt Multimedia backend for Linux GUI.
+
+// Keep short UI sounds, voice playback and BGM on separate resource paths.
+
+// Short UI sounds use preloaded QSoundEffect; voice assets are not transcoded or loaded wholesale.
+
+// Voice playback uses a bounded reusable player/output pool.
+
+// BGM has its own player and output.
+
+// Missing devices, files and unsupported codecs degrade to warnings rather than crashes.
 class QtMediaAudioBackend final : public IAudioBackend
 {
 public:
     QtMediaAudioBackend();
     ~QtMediaAudioBackend() override;
 
-    // 預載的短音效名（audio/system/<name>.ogg）。
+    // Short UI sounds preloaded for low-latency playback.
     static QStringList preloadedEffectNames();
     static int maxConcurrentVoices();
     static int maxConcurrentEffects();

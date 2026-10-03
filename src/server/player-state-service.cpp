@@ -204,13 +204,13 @@ void PlayerStateService::setPlayerProperty(ServerPlayer *player,
 	const char *propertyName, const QVariant &value,
 	const std::function<void()> &beforeEventDispatch)
 {
-	if (!player) return; // 防禦空檢查
+	if (!player) return; // Guard against an empty check.
 
 	const quint64 revisionBefore = m_runtime.stateRevision();
 	int old = player->getMaxHp();
 	bool same = player->property(propertyName).toString() == value.toString();
 
-	// 關鍵邏輯：保持 Room 原有的 BlockingQueuedConnection 跨執行緒寫入路徑。
+	// Preserve Room's existing cross-thread write path through BlockingQueuedConnection.
 	if (QThread::currentThread() == player->thread()) {
 		player->setProperty(propertyName, value);
 	}
@@ -302,7 +302,7 @@ void PlayerStateService::setPlayerProperty(ServerPlayer *player,
 			m_eventDispatcher.dispatch(ObtainEquipArea, player, data);
 		}
 		else {
-			// 保持既有行為；裝備索引的相鄰問題不在本次重構範圍。
+			// Preserve existing behavior; adjacent equipment-index handling is outside this refactor.
 			if (player->getEquip(1))
 				m_cardMovement.throwCard(player->getEquip(1),
 					CardMoveReason(CardMoveReason::S_REASON_THROW, player->objectName()),

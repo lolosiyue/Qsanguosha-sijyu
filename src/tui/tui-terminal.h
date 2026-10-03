@@ -29,17 +29,7 @@ class QTimer;
 struct TuiWindowsTerminalState;
 #endif
 
-// Takes the terminal into raw mode and the alternate screen for the ASCII
-// board UI, and hands it back on every path that unwinds -- normal shutdown,
-// SIGINT/SIGTERM/SIGHUP, and a crash (SIGSEGV/SIGABRT). See tui-terminal.cpp
-// for why the signal handler has to be written the way it is.
-// Windows uses console control events, viewport polling and best-effort fatal
-// signal restoration; console modes and code pages have one owner here.
-//
-// Constructed with fds rather than reaching for STDIN_FILENO/STDOUT_FILENO
-// itself so a test can hand it a pipe: entering raw mode and the alternate
-// screen for real on whatever terminal launched the test process would wreck
-// that shell.
+// Owns terminal mode, alternate-screen entry and restoration. Injected file descriptors keep tests off the user's terminal.
 class TuiTerminal final : public QObject
 {
     Q_OBJECT
@@ -131,20 +121,7 @@ private:
 // signal at all.
 void tuiInstallInterruptHandler(std::function<void()> callback);
 
-// Drops whatever callback tuiInstallInterruptHandler() last installed,
-// without touching the shared self-pipe/signal-handler plumbing installed
-// alongside it (that stays for the rest of the process, as documented
-// above -- there is only ever one controlling terminal, and the shared
-// SIGINT handler is meant to live exactly as long as the process does).
-// Call this when the object a callback captures (typically a TuiInput*) is
-// about to be destroyed: tuiInstallInterruptHandler()'s own callback is a
-// bare capture with no lifetime tracking of its own, so a SIGINT delivered
-// (or one already queued in the self-pipe, drained on the next event-loop
-// turn) after that object is gone would otherwise invoke a dangling
-// pointer -- this repo has a documented history of exactly this shape of
-// teardown use-after-free elsewhere. Production never destroys its one
-// TuiInput before the process exits, so this is mainly what keeps a test
-// harness that constructs and destroys more than one TuiInput safe.
+// Clear callbacks before their captured object is destroyed; the shared signal plumbing remains installed.
 void tuiClearInterruptHandler();
 
 #endif

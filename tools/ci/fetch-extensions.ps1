@@ -1,15 +1,4 @@
-# Fetches runtime Lua content from the extensions repository (single source of truth):
-#   <repo>/ai/            -> <root>/lua/ai/     (smart-ai.lua + all package AI scripts)
-#   <repo>/extensions/    -> <root>/extensions/ (Lua extension packages)
-#   <repo>/lua/           -> <root>/lua/        (shared libs, e.g. luaoldenemy_lib.lua)
-#
-# Why not git submodule: the extensions repo root also contains src/, doc/, etc.
-# and only its ai/, extensions/ and lua/ subfolders are needed at runtime.
-#
-# Usage (CI):
-#   & .\tools\ci\fetch-extensions.ps1
-# Usage (local verification):
-#   & .\tools\ci\fetch-extensions.ps1 -Root C:\tmp\sgs-verify
+# Fetch runtime Lua content from the extensions repository, the single source of truth.
 param(
     [string]$Root = $env:GITHUB_WORKSPACE,
     [string]$Repo = "https://github.com/lolosiyue/extensions.git",
@@ -49,8 +38,7 @@ Copy-Item -Path (Join-Path $cloneDir "ai\isolated\*.lua") -Destination (Join-Pat
 if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "smart-ai.lua"))) {
     throw "lua/ai is incomplete: smart-ai.lua missing after fetch"
 }
-# Case-sensitive 修正：上游 extensions 倉庫檔名大小寫混合，Linux 下 pcall(dofile,"lua/ai/"..sl) 會失配
-# 對齊 fetch-extensions.sh 的 sed 邏輯： "lua/ai/"..sl -> "lua/ai/"..ai_file (保留原始檔案大小寫)
+# Preserve upstream filename case in AI loader paths for case-sensitive filesystems.
 $smartAiPath = Join-Path $aiTarget "smart-ai.lua"
 $smartAiContent = Get-Content -LiteralPath $smartAiPath -Raw
 if ($smartAiContent.Contains('"lua/ai/"..sl')) {
@@ -60,12 +48,9 @@ if ($smartAiContent.Contains('"lua/ai/"..sl')) {
 if (-not ((Get-Content -LiteralPath $smartAiPath -Raw).Contains('"lua/ai/"..ai_file'))) {
     throw "lua/ai/smart-ai.lua patch failed: lowercase AI filename loop not fixed"
 }
-# 隔離 AI runtime：bootstrap、facades，再加 lua/ai/isolated-bootstrap.lua 自己
-# 在 ai_isolated_core 宣告的那幾支 dispatcher。任一支核心載不進去就會讓
-# AiLuaRuntime::initialize() 失敗，而 routeFor() 預設走 AiRouteIsolated，
-# 等於每個 Room 都沒有 AI；因此在 fetch 就失敗，不要拖到開房才爆。
-# 各套件的 handler（isolated/<套件名>-ai.lua）刻意不檢查：某個套件還沒有
-# 隔離 AI 是正常狀態。完整清單見 docs/ai-runtime-manifest.json。
+# Fetch isolated AI bootstrap, facades, and core dispatchers declared in isolated-bootstrap.lua.
+# Missing core scripts prevent AiLuaRuntime initialization; fail here rather than when a Room starts.
+# Per-package handlers are optional; packages without one may have no isolated AI yet.
 foreach ($relative in @("mode-ai.lua", "isolated-bootstrap.lua", "isolated-facades.lua",
         "isolated\ask-for-use-card.lua", "isolated\ask-for-choice.lua",
         "isolated\decision-core.lua", "isolated\retrial.lua",

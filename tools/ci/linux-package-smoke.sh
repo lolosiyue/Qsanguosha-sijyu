@@ -1,30 +1,6 @@
 #!/usr/bin/env bash
+# Run startup, multimedia, effects, and server contracts against a packaged artifact.
 #
-# Linux package smoke (M3).
-#
-# Runs the M1 startup, M2B-A multimedia and M2B-B effects contracts against a
-# *package artifact* rather than against the build tree.  That distinction is
-# the whole point: a build-tree binary finds its Qt through an absolute RPATH
-# and its data through the repository it was built in, so it can pass every
-# earlier milestone while the shipped package fails to start on a player's
-# machine.
-#
-# Two package shapes are supported and both are exercised the same way:
-#
-#   portable  a directory extracted from QSanguosha-*.tar.zst
-#   appimage  the squashfs-root/ produced by --appimage-extract
-#
-# Usage:
-#   tools/ci/linux-package-smoke.sh <bundle-root> <artifact-dir> [options]
-#
-# Options:
-#   --kind <portable|appimage>   layout of <bundle-root> (default: autodetect)
-#   --label <name>               artifact filename prefix
-#   --platform <xcb|offscreen>   Qt platform plugin (default: offscreen)
-#   --no-xvfb                    run against the current DISPLAY
-#   --profiles "a b c"           effects profiles to run (default: "none reduced full")
-#   --skip-multimedia            skip the multimedia contract
-#   --process-timeout <seconds>  per-run runner timeout (default: 200)
 
 set -uo pipefail
 
@@ -98,10 +74,7 @@ echo "kind             : $KIND"
 echo "platform         : $PLATFORM"
 echo "effects profiles : $PROFILES"
 
-# ---------------------------------------------------------------------------
-# Layout: the package has to describe itself correctly before anything else is
-# worth running.  --asset-report is also the first thing a player is asked for
-# when they report "it does not start".
+# Verify package metadata before running binaries.
 # ---------------------------------------------------------------------------
 echo
 echo "-- asset report (from a directory outside the package) --"
@@ -145,9 +118,6 @@ raise SystemExit(1 if problems else 0)
 PY
 [ $? -eq 0 ] || note_failure "the package does not resolve its own layout"
 
-# ---------------------------------------------------------------------------
-# M1 startup, from the package.
-# ---------------------------------------------------------------------------
 echo
 echo "-- M1 startup smoke --"
 bash "$SCRIPT_DIR/linux-gui-startup-smoke.sh" "$CLIENT" "$ARTIFACT_DIR" \
@@ -155,10 +125,7 @@ bash "$SCRIPT_DIR/linux-gui-startup-smoke.sh" "$CLIENT" "$ARTIFACT_DIR" \
     --timeout-ms 60000 --process-timeout "$PROCESS_TIMEOUT" \
     || note_failure "startup smoke from the package"
 
-# ---------------------------------------------------------------------------
-# M2B-A multimedia, from the package.  This is the one that proves the Qt
-# multimedia plugin and its FFmpeg libraries were actually deployed: a bundle
-# missing them still starts, and only fails when something asks for audio.
+# Verify deployed multimedia plugins and FFmpeg libraries, which are used only at runtime.
 # ---------------------------------------------------------------------------
 if [ "$SKIP_MULTIMEDIA" -eq 0 ]; then
     echo
@@ -178,9 +145,6 @@ if [ "$SKIP_MULTIMEDIA" -eq 0 ]; then
         || note_failure "video fallback from the package"
 fi
 
-# ---------------------------------------------------------------------------
-# M2B-B effects profiles, from the package.
-# ---------------------------------------------------------------------------
 for profile in $PROFILES; do
     echo
     echo "-- M2B-B effects smoke ($profile) --"
@@ -191,9 +155,7 @@ for profile in $PROFILES; do
         || note_failure "effects smoke ($profile) from the package"
 done
 
-# ---------------------------------------------------------------------------
-# The dedicated server has to work out of the same package.
-# ---------------------------------------------------------------------------
+# Verify the dedicated server from the same package.
 echo
 echo "-- dedicated server from the package --"
 ( cd / && "$SERVER" --check-config --list-game-modes ) \

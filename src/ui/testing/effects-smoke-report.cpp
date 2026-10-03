@@ -7,7 +7,7 @@ namespace {
 
 const int kSchemaVersion = 1;
 const int kDefaultTimeoutMs = 30000;
-// 下限只係擋 0／負數之類的手誤；負向契約測試需要一個一定會觸發的極短 timeout。
+// The lower bound catches typos; negative contract checks need a very short timeout that is guaranteed to fire.
 const int kMinimumTimeoutMs = 100;
 const int kMaximumTimeoutMs = 180000;
 

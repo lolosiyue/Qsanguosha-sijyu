@@ -1,7 +1,7 @@
 import QtQuick
 import "."
 
-// 左上角玩家資訊：頭像＋名稱（資料源與快速加入對話框相同，純顯示）
+// Top-left player info: avatar and name, shared with Quick Join; display only.
 Item {
     id: root
 
@@ -35,7 +35,7 @@ Item {
             mipmap: false
         }
 
-        // 無頭像或載入失敗時，以名稱首字代替
+        // Use the first character of the name when the avatar is missing or fails to load.
         Text {
             id: fallbackText
 

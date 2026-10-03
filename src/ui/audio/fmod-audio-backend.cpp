@@ -6,12 +6,12 @@
 
 #include <fmod.h>
 
-// Moved over from src/core/audio.cpp. The FMOD call order, parameters and cache
-// strategy are kept as-is: M2B-A only wraps them in IAudioBackend, without changing Windows playback behavior.
-//
-// The only addition is the volume source: playback used to read Config.EffectVolume
-// directly each time; now it comes from AudioVolumes pushed down by the facade.
-// With defaults (master=1, voice=1, mute=false), effectGain()/voiceGain() both equal Config.EffectVolume - behavior unchanged.
+
+
+
+
+
+
 namespace {
 
 class Sound;

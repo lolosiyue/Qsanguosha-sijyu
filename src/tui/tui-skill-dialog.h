@@ -38,7 +38,7 @@ bool tuiSkillNeedsDeclaration(const QString &skillName, const QStringList &banPa
 // empty option only clears, and is an error only when one was required.
 //
 // The option is matched against both the internal name ("slash") and the
-// translated one ("杀"). On failure error carries the listing the player needs.
+// Match either the internal option name or its translated label; on failure, error contains the available choices.
 bool tuiApplySkillDeclaration(const QString &skillName, const QString &option,
                               const QStringList &banPackages, QString *error,
                               quint64 requestId = 0);

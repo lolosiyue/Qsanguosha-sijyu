@@ -280,8 +280,8 @@ void ClientPlayer::changePile(const QString &name, bool add, QList<int> card_ids
 				piles[name].removeOne(Card::S_UNKNOWN_CARD_ID);
 			else if (!piles[name].isEmpty())
 				piles[name].removeAt(0);
-			// 防衛: 空 pile 的 removeAt(0) 在 Release 下越界 (QList::remove 僅 debug 斷言),
-			// 會損壞 QList 內部狀態, 之後的 memcpy 崩潰。跳過即安全。
+			// An empty-pile removeAt(0) is out of bounds in Release; QList only
+			// asserts in Debug, and the invalid state later crashes during memcpy.
 		}
 		if(piles[name].isEmpty())
 			piles.remove(name);

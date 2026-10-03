@@ -3,11 +3,11 @@
 
 #include "audio-backend.h"
 
-// Backend for Windows GUI Release. The implementation was moved verbatim from
-// src/core/audio.cpp: FMOD call order and parameters are unchanged - M2B-A does not alter Windows playback behavior.
-//
-// This header never includes any FMOD header: the bundled FMOD header is only on
-// the Windows Release include path; putting it here would break Linux / Debug builds.
+// Windows Release backend. FMOD headers stay out of this file because they are unavailable to Linux and Debug builds.
+
+
+
+
 class FmodAudioBackend final : public IAudioBackend
 {
 public:

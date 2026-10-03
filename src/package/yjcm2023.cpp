@@ -57,8 +57,8 @@ static bool safeTurnCardToEquip(Room *room, ServerPlayer *source, int cardId, co
 	if (!wrapped)
 		return false;
 
-	// 移入装备区时 updateCardsChange 会 refilter，把牌重置回引擎原牌；
-	// #zhizhe 的 tag 与技能必须在移动前就位，否则非装备牌进装备区
+	// Moving a card into the equipment area makes updateCardsChange refilter it to the engine's original face.
+	// Set #zhizhe's tag and skill before moving it, or a non-equipment card can enter the equipment area.
 	QStringList info;
 	info << equipObjectName << rawCard->getSuitString() << QString::number(rawCard->getNumber()) << skillName;
 	room->setTag("ZhizheFilter_" + QString::number(cardId), info.join("+"));

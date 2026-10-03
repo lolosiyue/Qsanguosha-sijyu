@@ -106,11 +106,11 @@ public:
     QString HostAddress;
     QString UserName;
     QString UserAvatar;
-    // 自動化測試: --test-general 指定自動選將 (空字串 = 不啟用)
+    // Automated testing: --test-general selects a fixed lord; empty means random.
     QString AutoPickGeneral;
-    // 自動化測試: --test-general2 指定雙將模式副將 (空字串 = 副將清單隨機)
+    // Automated testing: --test-general2 selects a fixed deputy; empty means random.
     QString AutoPickGeneral2;
-    // 自動化測試: --auto-robots owner 連線後自動填滿 AI 並開局
+    // Automated testing: --auto-robots fills seats and starts after the owner connects.
     bool AutoAddRobots;
     QStringList HistoryIPs;
     ushort DetectorPort;
@@ -146,7 +146,7 @@ public:
     qreal UIScale;
     QString VisualMode;
 
-    // 主题:0=跟随系统,1=亮色,2=暗色。值即 Qt::ColorScheme 枚举值。
+    // Theme: 0 follows the system, 1 is light, and 2 is dark (Qt::ColorScheme values).
     int ColorScheme;
 
     // consts
@@ -186,21 +186,21 @@ public:
 extern UiSettings UiConfig;
 #endif
 
-// 切换/初始化应用主题:
-//   Qt 6 的 QStyle::standardPalette() 会跟随系统 colorScheme 返回明暗色,
-//   系统为暗色时必然拿到暗色 palette;且 styleHints->setColorScheme() 是
-//   Qt 6.8+ API,Qt 6.5.3 不可用。因此亮/暗两套 palette 都在代码里手动
-//   构建,完全脱离系统状态,再重设 Fusion style 触发全局 repolish。
-// scheme: 0=跟随系统,1=亮色,2=暗色 (同 Qt::ColorScheme 枚举值)
+// Set or initialize the application theme:
+// Qt 6 QStyle::standardPalette() follows the system color scheme, so a dark system
+// always returns dark colors. styleHints->setColorScheme() is Qt 6.8+, unavailable
+// in Qt 6.5.3. Build both palettes explicitly, independent of system state, then
+// reapply Fusion to repolish the UI.
+// scheme: 0 follows system, 1 is light, 2 is dark (Qt::ColorScheme values).
 void applyColorScheme(int scheme);
 
-// 视觉模式: normal / grayscale / highcontrast。
-// 在 applyColorScheme 的明暗基底上再做灰阶或高对比 palette 变换;
-// normal 则回到纯主题 palette。
+// Visual mode: normal, grayscale, or highcontrast.
+// Grayscale and highcontrast transform the base theme;
+// normal restores the base palette.
 void applyVisualMode(const QString &mode);
 
-// 把当前 Config 状态格式化为 UTF-8 配置摘要,供 CrashHandler::setGameConfig
-// (Settings::init() 末尾调用,使崩溃上报始终带最新配置)。
+// Format the current Config state as UTF-8 for CrashHandler::setGameConfig().
+// Settings::init() calls this at the end so crash reports use current settings.
 QByteArray buildGameConfigSummary();
 void stashGameConfigForCrash();
 

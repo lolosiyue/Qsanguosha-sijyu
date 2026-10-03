@@ -141,11 +141,7 @@ QString TuiRenderer::formatPrompt(const QString &prompt,
 
 namespace {
 
-// Index just past the escape sequence beginning at `begin` (which must point
-// at an ESC). Dropping the ESC on its own -- what this file used to do -- is
-// not sanitizing: every byte after it ("[1;36m") is ordinary printable text
-// and survived onto the screen, which is exactly how a prompt title came out
-// reading "[1;36m选择武将[0m". The whole sequence has to go, or none of it.
+// Remove the full escape sequence; dropping only ESC leaks its printable parameters.
 qsizetype escapeSequenceEnd(const QString &text, qsizetype begin)
 {
     const qsizetype size = text.size();
@@ -337,8 +333,8 @@ QString TuiRenderer::heading(const QString &text) const
                          : QStringLiteral("== %1 ==").arg(safe);
 }
 
-// Colour only ever repeats what the text already says (docs/tui-board-ui.md
-// §3.7), so --plain output and the log file lose nothing when it is dropped.
+// Color repeats meaning already present in text; --plain and log output remain complete without it.
+// section 3.7), so --plain output and the log file lose nothing when it is dropped.
 QString TuiRenderer::colored(const QString &text, TuiAttr attr) const
 {
     const QString sgr = tuiAttrSgr(attr);
@@ -692,7 +688,7 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
                          : nameText(player.value(QStringLiteral("role")).toString()), 64),
                  extras);
         }
-        // Empty zones are the common case; listing "装备=[] 判定=[]" for every
+        // Empty zones are the common case; listing "equipment=[] judging area=[]" for every
         // player buried the few that actually hold something.
         QStringList zones;
         const auto addZone = [&zones, &separator](const char *key, const QStringList &entries,
@@ -730,12 +726,7 @@ QString TuiRenderer::renderHand(const ClientGameState &state) const
         if (card.value(QStringLiteral("owner")).toString() != self
             || card.value(QStringLiteral("place")).toInt() != 0)
             continue;
-        // This used to read game.available_cards, which nothing ever fills:
-        // S_COMMAND_AVAILABLE_CARDS has handlers on both clients and no sender
-        // anywhere, and the desktop's own available_cards is the whole draw
-        // pile from GAME_START (used only to tell whether a game is on), so
-        // even a populated one would have marked every card in hand. The
-        // engine answers the question that was meant.
+        // Ask the engine resolver for hand-card legality; available_cards is not authoritative.
         const int cardId = card.value(QStringLiteral("id")).toInt();
         lines << tuiText("tui_hand_line")
             .arg(++index).arg(cardId)

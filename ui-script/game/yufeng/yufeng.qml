@@ -10,7 +10,7 @@ Item {
     property bool isRunning: true
     property real groundHeight: 20
     property int starPipesCreated: 0
-    property int timeLeft: 10  // 剩余时间属性
+    property int timeLeft: 10  // Remaining-time property.
 
     MouseArea {
         anchors.fill: parent
@@ -44,7 +44,7 @@ Item {
         anchors.bottom: parent.bottom
     }
 
-    // 胜利计时器（原10秒计时器）
+    // Victory timer.
     Timer {
         id: victoryTimer
         interval: 10000
@@ -55,11 +55,11 @@ Item {
                 resultText.text = "胜利！得分：" + score
             }
             const success = fileHandler.writeFile("yufeng.txt", score)
-            closeTimer.start()  // 启动关闭计时
+            closeTimer.start()  // Start or stop the timer.
         }
     }
 
-    // 倒计时显示
+    // Countdown display.
     Text {
         id: timeText
         text: "剩余时间: " + timeLeft
@@ -78,7 +78,7 @@ Item {
         }
     }
 
-    // 倒计时计时器
+    // Countdown timer.
     Timer {
         id: countdownTimer
         interval: 1000
@@ -89,7 +89,7 @@ Item {
         }
     }
 
-    // 关闭应用计时器
+    // Application close timer.
     Timer {
         id: closeTimer
         interval: 2000

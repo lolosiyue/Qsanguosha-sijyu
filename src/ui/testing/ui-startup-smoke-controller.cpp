@@ -272,12 +272,12 @@ int UiStartupSmokeController::execute()
     connect(m_timeoutTimer, &QTimer::timeout, this, &UiStartupSmokeController::onTimeout);
     m_timeoutTimer->start();
 
-    // queued callback：真正行入 event loop 之後先會執行，係 event loop 已啟動的證明。
+    // This queued callback runs only after the event loop starts.
     QTimer::singleShot(0, this, &UiStartupSmokeController::onEventLoopEntered);
 
     const int rc = qApp->exec();
     if (!m_finished) {
-        // event loop 提早結束（例如視窗被關）而未有結論。
+        // The event loop ended before the smoke produced a result.
         finish(false, m_pendingStage,
             QStringLiteral("event loop exited before the startup smoke completed"),
             UiStartupSmokeReport::SetupFailed);
@@ -312,7 +312,7 @@ void UiStartupSmokeController::onEventLoopEntered()
         onHomeSceneReady();
     else if (m_mainWindow->hasHomeSceneError())
         onHomeSceneFailed(m_mainWindow->homeSceneError());
-    // 否則等 signal / timeout。
+    // Otherwise wait for the signal or timeout.
 }
 
 void UiStartupSmokeController::onHomeSceneReady()

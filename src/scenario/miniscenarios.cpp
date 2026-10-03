@@ -97,7 +97,7 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
         // Work sessions already bind the configured human seat; legacy mini
         // scenes retain their historical robot-first rotation.
         if (!room->isWorkSession()) {
-            // 最多轉一圈：無頭測試全員是 robot，不設上限會永遠輪下去。
+            // Scan at most one full rotation; headless sessions may have only robots, which would otherwise loop forever.
             for (int turns = players.length(); turns > 0 && players.first()->getState() == "robot"; --turns)
                 players.append(players.takeFirst());
         }
@@ -218,7 +218,7 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
             if (hujia > 0)
                 room->addPlayerMark(sp, "@HuJia", hujia);
 
-            // 允許小型場景覆寫武將預設護甲值。
+            // Allow mini-scenarios to override a general's default armor.
             str = this->players.at(i)["hujia"];
             if (!str.isEmpty())
                 room->setPlayerMark(sp, "@HuJia", qMax(0, str.toInt()));

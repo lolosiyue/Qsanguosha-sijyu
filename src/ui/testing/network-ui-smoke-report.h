@@ -16,11 +16,11 @@
 class NetworkUiSmokeReport
 {
 public:
-    // stdout marker 前綴。CI 靠呢兩個 token 解析結果，改動即係改契約。
+    // CI parses these stdout marker prefixes; changing them changes the report contract.
     static const char *const StageMarker;  // "NETWORK_UI_STAGE"
     static const char *const ResultMarker; // "NETWORK_UI_RESULT"
 
-    // marker payload 的 schema version；欄位語意有 breaking change 先加。
+    // Increment the marker schema version when field semantics change incompatibly.
     static int schemaVersion();
 
     // Failure classification must be fine-grained enough that the CI artifact
@@ -33,15 +33,15 @@ public:
         Passed = 0,
         InvalidArguments = 1,
         ConnectFailed = 2,          // TCP connect failed (server not started / wrong port)
-        SignupFailed = 3,           // signup／setup 未完成
-        RoomSceneFailed = 4,        // RoomScene 未建立
-        DashboardFailed = 5,        // Dashboard 未建立
-        GeneralSelectionFailed = 6, // 選將請求未回覆
-        GameStartFailed = 7,        // 未開局
-        InteractionFailed = 8,      // askFor 請求無法經 UI 回覆
+        SignupFailed = 3,           // Signup/setup incomplete.
+        RoomSceneFailed = 4,        // RoomScene was not created.
+        DashboardFailed = 5,        // Dashboard was not created.
+        GeneralSelectionFailed = 6, // General-selection request unanswered.
+        GameStartFailed = 7,        // Game did not start.
+        InteractionFailed = 8,      // An askFor request was not answered through the UI.
         GameOverNotReached = 9,     // game started but game over never arrived
-        Disconnected = 10,          // 局中被 server 斷線
-        Timeout = 11,               // app 內部總 timeout
+        Disconnected = 10,          // Server disconnected during the game.
+        Timeout = 11,               // Application-level timeout.
         InternalError = 12
     };
 
@@ -77,8 +77,8 @@ public:
     static int minimumStallMs();
     static int maximumStallMs();
 
-    // 只認完全相符的 flag 或者 "--flag=value" 形式，避免 "--network-ui-smoke-xxx"
-    // 之類的前綴誤判成 "--network-ui-smoke"。
+    // Accept only the exact flag or --flag=value; do not treat a longer prefix as the same option.
+
     static bool isRequested(const QStringList &arguments);
     static bool parseTimeoutMs(const QStringList &arguments, int *timeoutMs, QString *error);
     static bool parseStallMs(const QStringList &arguments, int *stallMs, QString *error);
@@ -125,7 +125,7 @@ public:
     static QJsonObject resultPayload(bool ok, const QString &stage, const QString &error,
         ExitCode exitCode, const QJsonObject &details = QJsonObject());
 
-    // 失敗 stage → exit code 的固定對照（timeout／斷線除外，由 caller 直接傳）。
+    // Fixed mapping from failed stage to exit code; the caller handles timeout and disconnect.
     static ExitCode exitCodeForFailedStage(const QString &stage);
 };
 

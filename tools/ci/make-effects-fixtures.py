@@ -31,7 +31,6 @@ import zlib
 from pathlib import Path
 
 
-# ── GIF ──────────────────────────────────────────────────────────────────────
 
 def _lzw_encode(indices, min_code_size):
     """Minimal GIF-flavoured LZW encoder (LSB-first, variable code width)."""
@@ -109,7 +108,6 @@ def make_gif(width, height, frames, delay_cs=10, loop=True):
     return bytes(data)
 
 
-# ── PNG ──────────────────────────────────────────────────────────────────────
 
 def make_png(width, height, rgb):
     """Solid-colour RGB PNG."""
@@ -129,7 +127,6 @@ def make_png(width, height, rgb):
             + chunk(b"IEND", b""))
 
 
-# ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("tools/ci/fixtures/effects")
