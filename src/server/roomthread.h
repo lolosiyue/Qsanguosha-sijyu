@@ -79,6 +79,8 @@ public:
     // Invalidates only the client-facing distanceTo_* synchronization cache.
     // Server-side game rules continue to call Player::distanceTo() directly.
     void markDistanceCacheDirty();
+    // Initial skill grants share the same deferred presentation boundary.
+    void preparePlayers();
     // Coalesce presentation work inside triggers; requests flush before input.
     bool deferPlayerUiState(ServerPlayer *player);
     void flushPlayerUiState();
@@ -159,6 +161,7 @@ private:
 
     Room *room;
     bool m_playerUiStateDirty = false;
+    bool m_preparingPlayerUiState = false;
     bool m_flushingPlayerUiState = false;
     QSet<ServerPlayer *> m_pendingPlayerUiState;
     std::atomic_bool m_skillDescriptionsDirty{true};

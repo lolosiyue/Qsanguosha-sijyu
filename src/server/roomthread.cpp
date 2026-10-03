@@ -1510,6 +1510,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		// Return format: "skillName" or "skillName:ownerObjectName".
 		QString reason = "GameRule:TriggerOrder";
 		QString name;
+		bool globalRule = false;
 		// Global rule/record/cleanup callbacks are not player ordering choices,
 		// even when Lua leaves their frequency at the default NotFrequent.
 		// Resolve them through the normal cost/effect path before offering skills;
@@ -1520,6 +1521,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				&& !room->isGeneralHiddenForSkill(ctx.activationRef)) {
 				name = SkillInstanceUtils::formatName(ctx.skill_name, ctx.instanceID);
 				if (ctx.owner != chooser) name += ':' + ctx.owner->objectName();
+				globalRule = true;
 				break;
 			}
 		}
@@ -1583,6 +1585,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		ServerPlayer *skill_owner = selected_ctx->owner;
 		if (!skill_owner) continue;
 		const bool equipment = v2->isEquipSkill();
+		// Hidden global rule/record callbacks are not player skill invocations. They keep
+		// cost/effect and every context state, but skip the six skill observer events.
+		const bool silentRule = globalRule && v2->isGlobal() && !v2->isVisible();
 		const SkillInstanceRef selectedSource = selected_ctx->activationRef;
         // Keep the admitted source immutable across cost/interceptor callbacks.
         const SkillContext sourceContext = *selected_ctx;
@@ -1622,7 +1627,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 		selected_ctx->current_event = EventSkillWillInvoke;
 		QVariant ctx_data = QVariant::fromValue(*selected_ctx);
-		trigger(EventSkillWillInvoke, room, skill_owner, ctx_data);
+		if (!silentRule) trigger(EventSkillWillInvoke, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
 		skillHistory.update(room->historySkillContext(*selected_ctx));
 		maxMultipliers[key] = qMax(maxMultipliers.value(key, 0), selected_ctx->multiplier);
@@ -1634,7 +1639,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		if (!selected_ctx->bypass_cost) {
 			selected_ctx->current_event = EventSkillPay;
 			ctx_data = QVariant::fromValue(*selected_ctx);
-			trigger(EventSkillPay, room, skill_owner, ctx_data);
+			if (!silentRule) trigger(EventSkillPay, room, skill_owner, ctx_data);
 			*selected_ctx = ctx_data.value<SkillContext>();
 			skillHistory.update(room->historySkillContext(*selected_ctx));
 
@@ -1660,7 +1665,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		selected_ctx->current_event = EventSkillTargetConfirming;
 		selected_ctx->updated_targets = selected_ctx->targets;
 		ctx_data = QVariant::fromValue(*selected_ctx);
-		trigger(EventSkillTargetConfirming, room, skill_owner, ctx_data);
+		if (!silentRule) trigger(EventSkillTargetConfirming, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
 		selected_ctx->targets = selected_ctx->updated_targets;
 		skillHistory.update(room->historySkillContext(*selected_ctx));
@@ -1698,7 +1703,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 selected_ctx->instanceID = sourceContext.instanceID;
                 skillHistory.update(room->historySkillContext(*selected_ctx));
             });
-            trigger(EventSkillEffectFinished, room, skill_owner, finishedData);
+            if (!silentRule) trigger(EventSkillEffectFinished, room, skill_owner, finishedData);
         };
         const auto completionGuard = qScopeGuard([&]() {
             // Normal exits finish explicitly below. On unwinding, preserve the
@@ -1712,7 +1717,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         ctx_data = QVariant::fromValue(*selected_ctx);
         invocationStarted = true;
         contextEventInFlight = true;
-        trigger(EventSkillInvoking, room, skill_owner, ctx_data);
+        if (!silentRule) trigger(EventSkillInvoking, room, skill_owner, ctx_data);
         *selected_ctx = ctx_data.value<SkillContext>();
         contextEventInFlight = false;
         skillHistory.update(room->historySkillContext(*selected_ctx));
@@ -1720,7 +1725,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         selected_ctx->current_event = EventSkillEffect;
         ctx_data = QVariant::fromValue(*selected_ctx);
         contextEventInFlight = true;
-        bool skip_effect = trigger(EventSkillEffect, room, skill_owner, ctx_data);
+        bool skip_effect = !silentRule && trigger(EventSkillEffect, room, skill_owner, ctx_data);
         *selected_ctx = ctx_data.value<SkillContext>();
         contextEventInFlight = false;
         // Acceptance already committed payment/quota. Cancellation suppresses
@@ -1788,11 +1793,20 @@ void RoomThread::refreshDistanceCacheIfDirty(Room *room)
 	}
 }
 
+void RoomThread::preparePlayers()
+{
+    // Keep skill creation and notifications immediate, but project only the
+    // completed roster at startGame's existing final presentation boundary.
+    QScopedValueRollback<bool> preparing(m_preparingPlayerUiState, true);
+    m_playerUiStateDirty = true;
+    room->preparePlayers();
+}
+
 bool RoomThread::deferPlayerUiState(ServerPlayer *player)
 {
     // Shutdown must not spend another turn rebuilding Lua-backed presentation.
     if (isInterruptionRequested()) return true;
-    if (m_flushingPlayerUiState || event_stack.isEmpty()) return false;
+    if (m_flushingPlayerUiState || (event_stack.isEmpty() && !m_preparingPlayerUiState)) return false;
     m_pendingPlayerUiState.insert(player);
     return true;
 }
@@ -1800,7 +1814,7 @@ bool RoomThread::deferPlayerUiState(ServerPlayer *player)
 void RoomThread::flushPlayerUiState()
 {
     if (isRunning() && QThread::currentThread() != this) return;
-    if (!room || isInterruptionRequested() || m_flushingPlayerUiState) return;
+    if (!room || isInterruptionRequested() || m_flushingPlayerUiState || m_preparingPlayerUiState) return;
     const bool allPlayers = m_playerUiStateDirty;
     const bool descriptions = m_skillDescriptionsDirty.exchange(false);
     const auto pending = m_pendingPlayerUiState;
