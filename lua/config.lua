@@ -406,7 +406,7 @@ config = {
 		"nos_caorui+guohuanghou",
 		"sunyi+xushi",
 		"jiachong+liwan|guohuai",
-		"simashi+xianhouhui|yanghuiyu",
+		"simashi+xianhouhui|mobile_yanghuiyu",
 		"duyu+xuangongzhu",
 		"wanghun+zhongyan",
 		"guansuo+huanman|baosanniang|wangtao|wangyue",

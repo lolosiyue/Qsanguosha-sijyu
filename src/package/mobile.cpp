@@ -13283,43 +13283,16 @@ void HongyiCard::onEffect(CardEffectStruct &effect) const
 	room->addPlayerMark(effect.to, "&hongyi");
 }
 
-class HongyiVS : public ViewAsSkill
+class HongyiVS : public ZeroCardViewAsSkill
 {
 public:
-	HongyiVS() : ViewAsSkill("hongyi")
+	HongyiVS() : ZeroCardViewAsSkill("hongyi")
 	{
 	}
 
-	bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const
+	const Card *viewAs() const
 	{
-		int n = 0;
-		foreach (const Player *p, Self->getSiblings()) {
-			if (p->isDead()) {
-				n++;
-				if (n >= 2)
-					break;
-			}
-		}
-		if (n == 0) return false;
-		return !Self->isJilei(to_select) && selected.length() < n;
-	}
-
-	const Card *viewAs(const QList<const Card *> &cards) const
-	{
-		int n = 0;
-		foreach (const Player *p, Self->getSiblings()) {
-			if (p->isDead()) {
-				n++;
-				if (n >= 2)
-					break;
-			}
-		}
-		if (cards.length() != n) return nullptr;
-
-		HongyiCard *c = new HongyiCard;
-		if (!cards.isEmpty())
-			c->addSubcards(cards);
-		return c;
+		return new HongyiCard;
 	}
 
 	bool isEnabledAtPlay(const Player *player) const
@@ -13351,40 +13324,8 @@ public:
 
 	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
 	{
-		if (event == DamageCaused) {
-			if (player->getMark("&hongyi") <= 0) return false;
-			DamageStruct damage = data.value<DamageStruct>();
-			int n = 0;
-			for (int i = 1; i <= player->getMark("&hongyi"); i++) {
-				LogMessage log;
-				log.type = "#ZhenguEffect";
-				log.from = player;
-				log.arg = objectName();
-				room->sendLog(log);
-
-				JudgeStruct judge;
-				judge.who = player;
-				judge.reason = objectName();
-				judge.pattern = ".";
-				judge.play_animation = false;
-				room->judge(judge);
-
-				if (judge.card->getColor() == Card::Red)
-					room->drawCards(damage.to, 1, objectName());
-				else if (judge.card->getColor() == Card::Black)
-					n--;
-				if (player->isDead()) break;
-			}
-			if (n < 0) return player->damageRevises(data,n);
-		} else{
-			if (event == Death) {
-				DeathStruct death = data.value<DeathStruct>();
-				if (player != death.who) return false;
-			} else if (event == EventLoseSkill) {
-				if (data.toString() != objectName()) return false;
-			}else if (event == EventPhaseStart) {
-				if (player->getPhase() != Player::RoundStart) return false;
-			}
+		if (event == EventPhaseStart) {
+			if (player->getPhase() != Player::RoundStart) return false;
 			QStringList names = player->property("hongyi_targets").toStringList();
 			if (names.isEmpty()) return false;
 			room->setPlayerProperty(player, "hongyi_targets", QStringList());
@@ -13392,155 +13333,11 @@ public:
 				ServerPlayer *p = room->findChild<ServerPlayer *>(name);
 				if (p) room->removePlayerMark(p, "&hongyi");
 			}
-		}
-		return false;
-	}
-};
-
-class Quanfeng : public TriggerSkillV2
-{
-public:
-	Quanfeng() : TriggerSkillV2("quanfeng")
-	{
-		frequency = Compulsory; limited_skill = true; limit_mark = "@quanfengMark";
-		events << Death << EventSkillInvoking;
-	}
-	LimitScope getLimitScope() const override { return Limit_Game; }
-	void addUsage(const SkillContext &ctx) const override
-	{
-		TriggerSkillV2::addUsage(ctx);
-		const SkillInstanceRef ref = getUsageRef(ctx);
-		ServerPlayer *holder = ctx.owner ? ctx.owner->getRoom()->findPlayerByObjectName(ref.ownerObjectName, true) : nullptr;
-		if (holder) holder->getRoom()->removePlayerMark(holder, limit_mark);
-	}
-	void record(TriggerEvent event, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (event != EventSkillInvoking || !ctx.original_data) return;
-		const SkillContext accepted = ctx.original_data->value<SkillContext>();
-		if (accepted.skill_name == objectName() && accepted.activationRef.isValid()
-			&& accepted.activationRef == ctx.activationRef && accepted.bypass_cost) addUsage(accepted);
-	}
-	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
-	{
-		// Death is broadcast to every seat; only nominate this holder once.
-		return event == Death && player && player->isAlive() && player->hasSkill(objectName()) && data.value<DeathStruct>().who
-			? TriggerList{{player, {objectName()}}} : TriggerList();
-	}
-	bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (!isUsable(ctx)) return false;
-		const ServerPlayer *dead = ctx.original_data->value<DeathStruct>().who;
-		if (!dead) return false;
-		QStringList choices;
-		for (const Skill *skill : dead->getSkillList())
-			if (!skill->isLimitedSkill() && skill->getFrequency() != Wake && !skill->isLordSkill() && !skill->isAttachedLordSkill()
-				&& !choices.contains(skill->objectName())) choices << skill->objectName();
-		ctx.extra_data = choices;
-		ctx.targets = {ctx.owner};
-		ctx.manual_effect = true;
-		return true;
-	}
-	bool pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
-	{
-		if (!isUsable(ctx)) return false;
-		addUsage(ctx);
-		return true;
-	}
-	bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
-	{
-		room->sendCompulsoryTriggerLog(ctx.owner, this);
-		room->doSuperLightbox(ctx.owner, objectName());
-		const int amount = ctx.modified_amount;
-		const bool modified = ctx.modified_amount_set;
-		for (const QString &stage : QStringList{"acquire", "maxhp", "recover"}) {
-			ctx.choice = stage; ctx.modified_amount = amount; ctx.modified_amount_set = modified;
-			if (ctx.owner->isAlive()) skillEffect(event, room, ctx.owner, ctx, ctx.owner);
-		}
-		return false;
-	}
-	bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
-	{
-		if (ctx.choice == "acquire") {
-			const QStringList choices = ctx.extra_data.toStringList();
-			if (!choices.isEmpty()) {
-				const QString choice = room->askForChoice(ctx.owner, objectName(), choices.join("+"));
-				// The copied ability is a new permanent grant with the accepted effect's frozen origin.
-				if (choices.contains(choice)) room->acquireSkillFromEffect(target, choice, ctx);
-			}
-		} else if (ctx.choice == "maxhp") room->gainMaxHp(target, getEffectiveAmount(ctx), objectName());
-		else room->recover(target, RecoverStruct(ctx.owner, nullptr, getEffectiveAmount(ctx), objectName()));
-		return false;
-	}
-};
-
-SecondHongyiCard::SecondHongyiCard()
-{
-}
-
-void SecondHongyiCard::onEffect(CardEffectStruct &effect) const
-{
-	Room *room = effect.to->getRoom();
-	QStringList names = effect.from->property("secondhongyi_targets").toStringList();
-	names << effect.to->objectName();
-	room->setPlayerProperty(effect.from, "secondhongyi_targets", names);
-	room->addPlayerMark(effect.to, "&secondhongyi");
-}
-
-class SecondHongyiVS : public ZeroCardViewAsSkill
-{
-public:
-	SecondHongyiVS() : ZeroCardViewAsSkill("secondhongyi")
-	{
-	}
-
-	const Card *viewAs() const
-	{
-		return new SecondHongyiCard;
-	}
-
-	bool isEnabledAtPlay(const Player *player) const
-	{
-		return !player->hasUsed("SecondHongyiCard");
-	}
-};
-
-class SecondHongyi : public TriggerSkill
-{
-public:
-	SecondHongyi() : TriggerSkill("secondhongyi")
-	{
-		events << DamageCaused << EventPhaseStart << Death << EventLoseSkill;
-		view_as_skill = new SecondHongyiVS;
-	}
-
-	bool triggerable(const ServerPlayer *target) const
-	{
-		return target != nullptr;
-	}
-
-	int getPriority(TriggerEvent event) const
-	{
-		if (event == EventPhaseStart)
-			return 5;
-		return TriggerSkill::getPriority(event);
-	}
-
-	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
-	{
-		if (event == EventPhaseStart) {
-			if (player->getPhase() != Player::RoundStart) return false;
-			QStringList names = player->property("secondhongyi_targets").toStringList();
-			if (names.isEmpty()) return false;
-			room->setPlayerProperty(player, "secondhongyi_targets", QStringList());
-			foreach (QString name, names) {
-				ServerPlayer *p = room->findChild<ServerPlayer *>(name);
-				if (p) room->removePlayerMark(p, "&secondhongyi");
-			}
 		} else if (event == DamageCaused) {
-			if (player->isDead() || player->getMark("&secondhongyi") <= 0) return false;
+			if (player->isDead() || player->getMark("&hongyi") <= 0) return false;
 			DamageStruct damage = data.value<DamageStruct>();
 			int n = 0;
-			for (int i = 1; i <= player->getMark("&secondhongyi"); i++) {
+			for (int i = 1; i <= player->getMark("&hongyi"); i++) {
 				if (player->isDead()) break;
 				LogMessage log;
 				log.type = "#ZhenguEffect";
@@ -13564,47 +13361,47 @@ public:
 		} else if (event == Death) {
 			DeathStruct death = data.value<DeathStruct>();
 			if (player != death.who) return false;
-			QStringList names = player->property("secondhongyi_targets").toStringList();
+			QStringList names = player->property("hongyi_targets").toStringList();
 			if (names.isEmpty()) return false;
-			room->setPlayerProperty(player, "secondhongyi_targets", QStringList());
+			room->setPlayerProperty(player, "hongyi_targets", QStringList());
 			foreach (QString name, names) {
 				ServerPlayer *p = room->findChild<ServerPlayer *>(name);
-				if (p) room->removePlayerMark(p, "&secondhongyi");
+				if (p) room->removePlayerMark(p, "&hongyi");
 			}
 		} else if (event == EventLoseSkill) {
 			if (data.toString() != objectName()) return false;
-			QStringList names = player->property("secondhongyi_targets").toStringList();
+			QStringList names = player->property("hongyi_targets").toStringList();
 			if (names.isEmpty()) return false;
-			room->setPlayerProperty(player, "secondhongyi_targets", QStringList());
+			room->setPlayerProperty(player, "hongyi_targets", QStringList());
 			foreach (QString name, names) {
 				ServerPlayer *p = room->findChild<ServerPlayer *>(name);
-				if (p) room->removePlayerMark(p, "&secondhongyi");
+				if (p) room->removePlayerMark(p, "&hongyi");
 			}
 		}
 		return false;
 	}
 };
 
-class SecondQuanfeng : public TriggerSkill
+class Quanfeng : public TriggerSkill
 {
 public:
-	SecondQuanfeng() : TriggerSkill("secondquanfeng")
+	Quanfeng() : TriggerSkill("quanfeng")
 	{
 		events << Death << AskForPeaches;
 		frequency = Limited;
-		limit_mark = "@secondquanfengMark";
+		limit_mark = "@quanfengMark";
 	}
 
 	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
 	{
-		if (player->getMark("@secondquanfengMark") <= 0) return false;
+		if (player->getMark("@quanfengMark") <= 0) return false;
 		if (event == Death) {
 			DeathStruct death = data.value<DeathStruct>();
 			if (!player->askForSkillInvoke(this, death.who)) return false;
 			room->broadcastSkillInvoke(objectName());
-			room->doSuperLightbox(player, "secondquanfeng");
-			room->removePlayerMark(player, "@secondquanfengMark");
-			room->handleAcquireDetachSkills(player, "-secondhongyi");
+			room->doSuperLightbox(player, "quanfeng");
+			room->removePlayerMark(player, "@quanfengMark");
+			room->handleAcquireDetachSkills(player, "-hongyi");
 
 			QStringList skills;
 			const General *general = Sanguosha->getGeneral(death.who->getGeneralName());
@@ -13624,17 +13421,17 @@ public:
 			if (!skills.isEmpty())
 				room->handleAcquireDetachSkills(player, skills);
 			room->gainMaxHp(player, 1, objectName());
-			room->recover(player, RecoverStruct("secondquanfeng", player));
+			room->recover(player, RecoverStruct("quanfeng", player));
 		} else {
 			DyingStruct dying = data.value<DyingStruct>();
 			if (dying.who != player) return false;
 			if (!player->askForSkillInvoke(this)) return false;
 			room->broadcastSkillInvoke(objectName());
-			room->doSuperLightbox(player, "secondquanfeng");
-			room->removePlayerMark(player, "@secondquanfengMark");
+			room->doSuperLightbox(player, "quanfeng");
+			room->removePlayerMark(player, "@quanfengMark");
 			room->gainMaxHp(player, 2, objectName());
 			int num = qMin(4, player->getMaxHp() - player->getHp());
-			room->recover(player, RecoverStruct(player, nullptr, num, "secondquanfeng"));
+			room->recover(player, RecoverStruct(player, nullptr, num, "quanfeng"));
 		}
 		return false;
 	}
@@ -21649,15 +21446,10 @@ mobileSpPackage::mobileSpPackage()
 	wangyuanji->addSkill(new Shangjian);
 	related_skills.insert("qianchong", "#qianchong-target");
 
-	General *yanghuiyu = new General(this, "yanghuiyu", "wei", 3, false);
-	yanghuiyu->addSkill(new Hongyi);
-	yanghuiyu->addSkill(new Quanfeng);
-
-	General *second_yanghuiyu = new General(this, "second_yanghuiyu", "wei", 3, false);
-	second_yanghuiyu->addSkill(new SecondHongyi);
-	second_yanghuiyu->addSkill(new SecondQuanfeng);
+	General *mobile_yanghuiyu = new General(this, "mobile_yanghuiyu", "wei", 3, false);
+	mobile_yanghuiyu->addSkill(new Hongyi);
+	mobile_yanghuiyu->addSkill(new Quanfeng);
 	addMetaObject<HongyiCard>();
-	addMetaObject<SecondHongyiCard>();
 
 	General *liuye = new General(this, "liuye", "wei", 3);
 	liuye->addSkill(new Polu("polu"));
