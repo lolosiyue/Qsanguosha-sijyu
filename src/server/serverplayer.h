@@ -304,6 +304,9 @@ public:
     void setAvatarIcon(const QString &avatar_name, bool isSmall = false);
     bool damageRevises(QVariant &data, int n);
     Q_INVOKABLE void refreshUIState(bool force = false);
+    // Old trigger entry broadcast the handMax property before skills ran.
+    // Deferred UI rebuilds leave that number stale until the turn unwinds.
+    void broadcastHandMax();
     void refreshSkillDescriptionState();
 
     QStringList getPendingAnytimeSkills() const;

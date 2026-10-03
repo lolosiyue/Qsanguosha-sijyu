@@ -1863,6 +1863,28 @@ void RoomThread::flushOutermostDeferredWork(Room *room)
 	room->processPendingAnytimeSkills();
 }
 
+// Pre-deferral trigger entry: recompute and broadcast the hand limit before
+// skills run. Waiting for an empty event stack holds the number until turn end.
+static bool syncsHandLimit(TriggerEvent triggerEvent)
+{
+	switch (triggerEvent) {
+	case HpChanged:
+	case MaxHpChanged:
+	case CardsMoveOneTime:
+	case EventAcquireSkill:
+	case EventLoseSkill:
+	case MarkChanged:
+	case KingdomChanged:
+	case Death:
+	case Revive:
+	case TurnStart:
+	case GameStart:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static bool invalidatesDistanceCache(TriggerEvent triggerEvent)
 {
 	switch (triggerEvent) {
@@ -2176,6 +2198,10 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 	if (invalidatesDistanceCache(triggerEvent)) {
 		m_playerUiStateDirty = true;
 		markDistanceCacheDirty();
+	}
+	if (syncsHandLimit(triggerEvent)) {
+		foreach (ServerPlayer *player, room->getAlivePlayers())
+			player->broadcastHandMax();
 	}
 	try {
 		broken = triggerV2Skills(triggerEvent, room, target, data);

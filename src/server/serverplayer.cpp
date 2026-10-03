@@ -262,6 +262,15 @@ void ServerPlayer::refreshUIState(bool force)
     room->notifyPlayerUIState(this, state);
 }
 
+void ServerPlayer::broadcastHandMax()
+{
+    if (!room || !isAlive()) return;
+    const int handMax = getMaxCards();
+    if (handMax == m_uiState.handMax) return;
+    m_uiState.handMax = handMax;
+    room->notifyPlayerUIState(this, m_uiState);
+}
+
 void ServerPlayer::refreshSkillDescriptionState()
 {
     if (!room) return;
