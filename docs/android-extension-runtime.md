@@ -10,7 +10,7 @@
 | APK 來源 | `lua/`、`extensions/`、`lang/`、QML、皮膚設定、基本字型及翻譯，以 Qt resources 放在 `:/assets/`；外部擴展副本不納入主倉庫。 |
 | 舊版釋出 | `<AppDataLocation>/runtime` 在首次安裝、APK 資源變更及失敗回復時只補缺檔，已有同名檔不覆寫。CP1 留下的使用者修改另保留於初始內容快照。 |
 | 隨包原版 | `content/baseline` 從 APK 保存原版，與使用者修改分開；APK 新增檔及宣告以 revision 日誌追加。 |
-| 核心 Lua 升級 | `lua/config.lua`、`lua/sanguosha.lua`、`lua/utilities.lua`、`lua/sgs_ex.lua`、`lua/lib/json.lua` 的 baseline 隨 APK revision 更新；bootstrap migration version 2 修復相同資源 revision 下的舊部署。成功後重組新快照，舊快照及已捕捉的使用者覆蓋保留，聲畫沿用原 blob。啟動失敗仍先走回復介面，不自動跳過。 |
+| 核心 Lua 升級 | `lua/config.lua`、`lua/sanguosha.lua`、`lua/utilities.lua`、`lua/sgs_ex.lua`、`lua/lib/json.lua`、`lua/ai/mode-ai.lua` 的 baseline 隨 APK revision 更新。bootstrap migration version 3 會換上含 `registerStandardModeAI` 的 mode AI；version 2 修復相同資源 revision 下的舊部署。成功後重組新快照，舊快照及已捕捉的使用者覆蓋保留，聲畫沿用原 blob。啟動失敗仍先走回復介面，不自動跳過。 |
 | Engine 來源 | `content/versions/<id>/runtime` 保留完整相對路徑；Lua／規則是版本獨立實體檔，聲畫引用私有 blob。建立 Engine 前設定 runtime root，既有 `image/`／`audio/`／`font/` 消費端不變。 |
 | 套用變更 | 完成解壓與版本組合後寫 pending；重新啟動才切換 active，上一 active 保留為 previous。不做資源雜湊或啟動聲畫全掃描。 |
 | 未變動媒體 | Android／POSIX 快照使用受中繼資料約束的符號連結；完整媒體目錄直接引用同一 blob，混合來源目錄逐檔引用。禁止硬連結失敗後靜默複製整包聲畫。 |
@@ -35,7 +35,7 @@ ZIP 解壓器的 CRC／格式解析仍屬檔案讀取。私有目錄連結只做
 Web／網路規則身分與聲畫資源是不同契約，本次只移除 Android 資源校驗。
 
 修訂後的 APK 已移除舊收據：資源準備不計算媒體雜湊，缺個別圖片不再擋住連線。
-先前 API 33 ARM translation 的有聲連線在開局前發生 AudioTrack SIGSEGV，沒有 GAME_OVER；
+先前 ARM translation 的有聲連線在開局前發生 AudioTrack SIGSEGV，沒有 GAME_OVER；
 當時 server 正常退出、連接埠釋放，未重試。2026-10-03 的 ARMv7／LDPlayer 單機
 `03_1v2` 以 `NULL` 音訊完成自然結局與正常退出；這不代表有聲路徑已修復。
 環境、操作與證據見 [ARMv7 操作與問題處理](android-build.md#android-armv7-reuse)。
