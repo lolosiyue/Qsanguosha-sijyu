@@ -595,19 +595,19 @@ $readelf = Join-Path $env:LOCALAPPDATA 'Android\Sdk\ndk\27.2.12479018\toolchains
 
 逐一檢查 APK 內每個 `.so` 的 ELF Machine 為 AArch64，所有 `LOAD` segment 的 Align 至少為 `0x4000`；只檢查主程式或 ELF header 不足以證明所有依賴符合 16 KB。`apksigner` 需先將上面的 JDK 21 設為該程序的 `JAVA_HOME`。
 
-## Android 暫時靜音
+## Android 音訊
 
 Android Debug／Release preset、CMake Android 預設與 `tools/build-android.ps1`
-均選擇既有 `NULL` 音訊後端，暫停音效、武將語音及 BGM。這是使用者同意的暫時
-繞過方案；原有 Qt6 Multimedia 路徑會觸發 AAudio callback 崩潰，尚未證明已修復。
-Qt Multimedia 仍供其他介面／影片功能使用。Windows 與 Linux 的音訊預設不變。
+選擇 `ANDROID` 後端：`AudioBridge` 用 `SoundPool` 播短音效、用 `MediaPlayer`
+播語音與 BGM，直接讀既有 OGG。這條路徑不向 AAudio 登記 native callback。
+`QT` 仍會走進 Qt Multimedia 的 AAudio callback，在 ARM 轉譯模擬器上會崩潰，
+不能當預設。`NULL` 仍可用 `-AudioBackend NULL` 做出靜音包。Windows 與 Linux
+的音訊預設不變。Qt Multimedia 仍供其他介面／影片功能使用；影片音軌不走
+`AudioBridge`。
 
-不需 FMOD SDK、不更換第三方庫、不刪除已匯入媒體。日常建置沿用上方固定工作樹、
-建置快取及 AVD。若另行授權調查有聲版本，才用 `-AudioBackend QT`（或 CMake
-`-DQSAN_AUDIO_BACKEND=QT`）重新啟用原音訊路徑。
-
-驗收須區分「靜音 APK 建置／啟動／前後景成功」與「音訊缺陷修復」；前者不代表後者，
-也不代表完整對局通過。
+不需 FMOD SDK、不更換第三方庫、不把 OGG 轉成 WAV。API 29 起短音效用
+`SoundPool.load(String)`；API 28 的載入留在 `AudioBridge.loadEffectSample()`
+的 `SDK_INT` 分支，目前該分支不播放短音效。這次改動尚未在模擬器或實機驗收出聲。
 
 Android 啟動修復改用 Qt Quick `software` 後端及既有 raster 牌桌
 viewport，避免模擬器上已觀察到的 OpenGL 破圖與前後景 EGL context 失效。
@@ -633,7 +633,7 @@ Qt Multimedia ARM64 程式碼及 libndk_translation.so；兩份 stub 去除 ASLR
 CFI 型別失敗處理。這已確認該映像／ARM 橋接路徑的 CFI 整合失效，
 仍未定位 translator／linker 的具體實作錯誤，也未核實任何已修復版本。
 
-二進位擷取仍有每筆 256 KiB 限制，但上述必要映射完整可見。保留 NULL 隔離。
+二進位擷取仍有每筆 256 KiB 限制，但上述必要映射完整可見。`QT` 後端仍會進入這次回呼，所以 Android 預設改走 `AudioBridge`。
 WAV、音量零、Qt push mode 或單設 QT_MEDIA_BACKEND 都不能保證避開此回呼。
 
 ## 開局後主執行緒 0x58：隱藏手牌修正
@@ -657,4 +657,3 @@ NULL 音訊與 software／raster APK 的開局後崩潰，完整 SYSTEM_TOMBSTON
 目前只驗證 Android Emulator。x86_64 模擬器執行 arm64 APK 時包含 ARM translation layer，不能代替 arm64 實機、Android 9/16 或 16 KB page-size 環境。最新 API 33 模擬器的已知音訊閃退位於 AAudio CFI callback under translation；目前證據不能把它歸因於某一個 OGG 檔案。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。四個短 UI WAV 只降低 codec 依賴，不代表完整 OGG 已驗收。
 
 本頁不執行 CTest、跨版本矩陣或手機驗收。目錄與版本切換見 [Android 擴展實體目錄](android-extension-runtime.md)。
-

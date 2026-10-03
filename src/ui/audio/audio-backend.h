@@ -5,18 +5,7 @@
 #include <QString>
 #include <QStringList>
 
-// The M2B-A audio backend abstraction.
-//
-// The product has only ever had the one `Audio` facade (src/core/audio.h); no second
-// facade is opened here: `Audio` stays the single entry point and merely delegates to one of the backends below.
-//
-//     Audio  ──►  IAudioBackend
-//                   ├── FmodAudioBackend      Windows GUI Release
-//                   ├── QtMediaAudioBackend   Linux GUI (Qt Multimedia)
-//                   └── NullAudioBackend      dedicated server / tests / fallback
-//
-// Backend selection happens only in one place - CMake (QSAN_AUDIO_BACKEND) and
-// audio-backend-factory.cpp; call sites never scatter #ifdef Q_OS_LINUX.
+// CMake and audio-backend-factory.cpp select the backend; call sites stay platform-neutral.
 
 // Short UI sounds and general voices run two different resource paths on the Qt
 // backend (QSoundEffect vs player pool), so the facade must tell the backend which kind this call is.
@@ -54,7 +43,7 @@ class IAudioBackend
 public:
     virtual ~IAudioBackend() = default;
 
-    // "fmod" / "qt" / "null". Shows up in the multimedia smoke report, so it is a contract.
+    // "fmod" / "qt" / "android" / "null". Shows up in the multimedia smoke report, so it is a contract.
     virtual QString name() const = 0;
 
     // Create the underlying resources. Returning false means this backend is unusable
@@ -89,12 +78,10 @@ public:
     virtual QJsonObject diagnostics() const = 0;
 };
 
-// CMake's QSAN_AUDIO_BACKEND decides which implementation is compiled in. The
-// implementation is in audio-backend-factory.cpp, the only backend-selection point in the whole codebase.
 IAudioBackend *createConfiguredAudioBackend();
 IAudioBackend *createNullAudioBackend();
 
-// 會預載成低延遲短音效的 audio/system/<name>.ogg 名單。
+// Names of short UI sounds preloaded for low-latency playback.
 QStringList shortUiEffectNames();
 
 // Whether a playback request is a short UI sound or a voice / one-shot long sound.

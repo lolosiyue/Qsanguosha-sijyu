@@ -11,8 +11,8 @@ param(
     [string]$JavaRoot = '',
     [string]$CMakeExe = '',
     [string]$NinjaExe = 'H:\Qt6111\Tools\Ninja\ninja.exe',
-    [ValidateSet('QT', 'NULL')]
-    [string]$AudioBackend = 'NULL',
+    [ValidateSet('QT', 'ANDROID', 'NULL')]
+    [string]$AudioBackend = 'ANDROID',
     [ValidateRange(1, 32)]
     [int]$Parallel = 8
 )

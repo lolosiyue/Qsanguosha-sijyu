@@ -10,10 +10,10 @@
 #endif
 #include <QJsonArray>
 
-// Implementation of the Audio facade. It only does three things:
-//   * pick the backend (once, via createConfiguredAudioBackend());
-//   * remember volume state so master / mute can be applied to every channel;
-//   * guarantee that no call site crashes when init() has not run or quit() already has.
+// The facade selects one backend, stores volume state, and makes calls safe before init() or after quit().
+
+
+
 namespace {
 
 IAudioBackend *g_backend = nullptr;
@@ -40,8 +40,8 @@ void Audio::init()
         return;
 
 #ifdef Q_OS_ANDROID
-    // MainWindow can be constructed before Audio::init(), and the first
-    // application-state callback may therefore arrive before a backend exists.
+    // The first Android application-state callback may arrive before Audio::init().
+    // Read the current Android state so that transition is not lost.
     // Recover the actual Android state here instead of losing that transition.
     if (qGuiApp) {
         const Qt::ApplicationState state = qGuiApp->applicationState();
@@ -51,8 +51,8 @@ void Audio::init()
 
     g_backend = createConfiguredAudioBackend();
     if (g_backend && !g_backend->initialize()) {
-        // An unusable backend (no FMOD system, missing Qt Multimedia plugin, ...)
-        // must not hang the GUI: degrade to the null backend; the game keeps running, just without sound.
+        // If a backend cannot initialize, use the silent backend so the GUI remains responsive.
+
         qWarning().noquote() << "Audio: backend" << g_backend->name()
                              << "failed to initialize; falling back to the null backend";
         delete g_backend;
