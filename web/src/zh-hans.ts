@@ -1,6 +1,6 @@
 // Traditional -> Simplified single-character table for Web display text.
-// Generated from OpenCC t2s (TSCharacters, first candidate), omitting qian and zha because both are standard simplified characters in qiankun and nazha.
-// Japanese lines retain kanji; converting characters such as the Japanese kanji for battle or the Japanese kanji for seeing would change the text.
+// Generated from OpenCC t2s (TSCharacters, first candidate), omitting 乾 and 吒,
+// which are also standard simplified characters (乾坤, 哪吒).
 const TRADITIONAL = ""
   + "㑯㑳㑶㓨㘚㜄㜏㠏㥮㩜㩳㩵䁻䃮䊷䋙䋚䋹䋻䍦䎱䙡䜀䝼䥇䥑䥱䦛䦟䯀䰾䱷䱽䲁䲘䴉丟並亂亙亞佇佈佔併來侖侶侷俁係俔俠俥俬倀倆倈倉個們倖倫倲偉偑側偵偽傌傑傖傘備傢傭傯傳傴債傷傾僂僅僉僑僕僞僥僨僱價儀儁儂億儈儉儎儐"
   + "儔儕儘償優儲儷儸儺儻儼兇兌兒兗內兩冊冑冪凈凍凜凱別刪剄則剋剎剗剛剝剮剴創剷劃劇劉劊劌劍劏劑劚勁動務勛勝勞勢勩勱勳勵勸勻匭匯匱區協卹卻卽厙厠厤厭厲厴參叄叢吳吶呂咼員唄唸問啓啞啟啢喎喚喪喫喬單喲嗆嗇嗊嗎嗚"
@@ -68,7 +68,7 @@ const table = new Map<string, string>();
 for (let i = 0; i < TRADITIONAL.length; ++i)
   table.set(TRADITIONAL[i], SIMPLIFIED[i]);
 
-// Japanese lines keep their kanji; converting the Japanese kanji for battle or the Japanese kanji for seeing there would change the text.
+// Japanese lines keep their kanji; converting 戦 or 見 there would change the text.
 const KANA = /[\u3040-\u30ff]/u;
 
 export function toSimplified(text: string): string {
