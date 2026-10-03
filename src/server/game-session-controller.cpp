@@ -1269,9 +1269,9 @@ void GameSessionController::startGame()
 
 	if(!m_room.thread) m_room.thread = new RoomThread(&m_room);
 
-	m_room.preparePlayers();
-	foreach (ServerPlayer *player, players)
-		player->refreshUIState();
+	m_room.thread->preparePlayers();
+	// Flush the completed initial roster before snapshots and GAME_START.
+	m_room.thread->flushPlayerUiState();
 	foreach (ServerPlayer *receiver, players)
 		m_room.notifySkillInstanceSnapshot(receiver);
 
