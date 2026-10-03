@@ -7,7 +7,6 @@ ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
     : QDialog(parent), ui(new Ui::ConfigDialog), m_session(session)
 {
     ui->setupUi(this);
-#if !defined(QSAN_XP_LEGACY)
     auto *layoutGroup = new QGroupBox(tr("直向與單手操作"), this);
     auto *layoutOptions = new QVBoxLayout(layoutGroup);
     m_responsiveLayout = new QCheckBox(tr("自適應版面（首頁、對話框與牌桌）"), layoutGroup);
@@ -35,7 +34,6 @@ ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
     connect(m_oneHandedness, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int hand) {
         bindValue("UI/RoomHandedness", hand);
     });
-#endif
     ui->fullSkinCheckBox->setEnabled(false);
     ui->fullSkinCheckBox->setChecked(true);
     ui->bubbleChatBoxKeepSpinBox->setSuffix(tr(" millisecond"));

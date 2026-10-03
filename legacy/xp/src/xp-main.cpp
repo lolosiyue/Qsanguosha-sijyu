@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPixmapCache>
 #include <QStandardPaths>
 
 #include "audio.h"
@@ -28,6 +29,7 @@
 #include "settings.h"
 #include "xp-control-protocol.h"
 #include "legacy/xp/src/xp-gui-acceptance.h"
+#include <windows.h>
 
 namespace
 {
@@ -41,6 +43,25 @@ void appendEarlyStartupStage(const char *stage)
         return;
     fprintf(log, "%s\r\n", stage);
     fclose(log);
+}
+
+// Qt 5.6 rounds the Windows scale to an integer, so 150% and 175% render at 2x
+// on a logical desktop smaller than the table and the fixed-size dialogs.
+int xpSystemDpi()
+{
+    // Vista+ virtualizes DPI for unaware processes and would report 96.
+    typedef BOOL (WINAPI *SetProcessDPIAwareFn)();
+    if (const HMODULE user32 = GetModuleHandleW(L"user32.dll")) {
+        if (const SetProcessDPIAwareFn setAware = reinterpret_cast<SetProcessDPIAwareFn>(
+                GetProcAddress(user32, "SetProcessDPIAware")))
+            setAware();
+    }
+    const HDC screen = GetDC(Q_NULLPTR);
+    if (screen == Q_NULLPTR)
+        return 96;
+    const int dpi = GetDeviceCaps(screen, LOGPIXELSX);
+    ReleaseDC(Q_NULLPTR, screen);
+    return dpi;
 }
 
 void xpEarlyMessageHandler(QtMsgType, const QMessageLogContext &,
@@ -184,18 +205,34 @@ int main(int argc, char *argv[])
     qInstallMessageHandler(xpEarlyMessageHandler);
 
     // Qt 5.6 requires these attributes before the application object exists.
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    // Below 200% the table renders 1:1 and only point-sized text follows DPI.
+    const int systemDpi = xpSystemDpi();
+    if (systemDpi >= 192)
+        QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 
     appendEarlyStartupStage("constructing application");
     QCoreApplication *application = new QApplication(argc, argv);
     appendEarlyStartupStage("application constructed");
+    // Qt 5.6 reads an invalid system LOGFONT on XP (point size 0, random
+    // underline/strike-out bits); every font that leaves them unset inherits it.
+    QFont defaultFont = QApplication::font();
+    defaultFont.setUnderline(false);
+    defaultFont.setStrikeOut(false);
+    defaultFont.setOverline(false);
+    defaultFont.setItalic(false);
+    if (defaultFont.pointSizeF() <= 0)
+        defaultFont.setPointSize(9);
+    QApplication::setFont(defaultFont);
+    // Qt's 10 MB default evicts skin and emotion frames during play, and each
+    // miss re-decodes PNGs on the GUI thread. 64 MB stays safe for 512 MB XP RAM.
+    QPixmapCache::setCacheLimit(64 * 1024);
     application->setApplicationName(QStringLiteral("QSanguoshaXP"));
     application->setApplicationVersion(QStringLiteral("XP-SP3-x86"));
     application->addLibraryPath(application->applicationDirPath());
     installXpStartupLog(qEnvironmentVariable("QSAN_USER_DATA_ROOT"));
     appendEarlyStartupStage("Qt startup log installed");
-    qDebug("XP startup: application initialized");
+    qDebug("XP startup: application initialized dpi=%d", systemDpi);
 
     QString pathError;
     if (!QSanRuntimePaths::resolve(application->arguments(), &pathError)) {

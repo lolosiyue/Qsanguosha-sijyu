@@ -67,6 +67,18 @@ struct QStringConverter
 // Qt 5.6 names the indexed QList swap overload swap().
 #define swapItemsAt swap
 
+// QOverload arrived in Qt 5.7; select the same member overloads by signature.
+template <typename... Args>
+struct QOverload
+{
+    template <typename R, typename T>
+    static constexpr auto of(R (T::*ptr)(Args...)) -> decltype(ptr) { return ptr; }
+    template <typename R, typename T>
+    static constexpr auto of(R (T::*ptr)(Args...) const) -> decltype(ptr) { return ptr; }
+    template <typename R>
+    static constexpr auto of(R (*ptr)(Args...)) -> decltype(ptr) { return ptr; }
+};
+
 #endif
 #endif
 

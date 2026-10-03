@@ -205,15 +205,13 @@ if(ANDROID)
         src/ui/floatingball.h)
 endif()
 
-if(NOT QSAN_BUILD_XP_LEGACY)
-    list(APPEND QSAN_SOURCES
-        src/ui/room-overlay-host.cpp
-        src/ui/room-overlay-host.h
-        src/ui/large-room-overview.cpp
-        src/ui/large-room-overview.h
-        src/ui/room-window-posture.cpp
-        src/ui/room-window-posture.h)
-endif()
+list(APPEND QSAN_SOURCES
+    src/ui/room-overlay-host.cpp
+    src/ui/room-overlay-host.h
+    src/ui/large-room-overview.cpp
+    src/ui/large-room-overview.h
+    src/ui/room-window-posture.cpp
+    src/ui/room-window-posture.h)
 
 set(QSAN_LUA_SOURCES
     src/lua/lapi.c

@@ -42,7 +42,6 @@ private:
 #if !QSAN_USE_RASTER_VIEWPORT
     GameViewGlFilter *m_glFilter = nullptr;
 #endif
-#if !defined(QSAN_XP_LEGACY)
     void ensureRoomOverlay(RoomScene *room);
     QPointer<RoomOverlayHost> m_overlay;
     QPointer<RoomScene> m_overlayRoom;
@@ -51,7 +50,6 @@ private:
     bool m_hasPreviousProfile = false;
     bool m_responsiveEnabled = false;
     bool m_fitting = false;
-#endif
     QMargins m_stableSafeMargins;
 
     qreal m_uiScale = 1.0;

@@ -29,11 +29,9 @@
 #include "playercardbox.h"
 #include "cardcontainer.h"
 #include "recorder.h"
-#if !defined(QSAN_XP_LEGACY)
 #include "desktop-game-presentation.h"
 #include "room-overlay-host.h"
 #include "large-room-overview.h"
-#endif
 #include "indicatoritem.h"
 #include "generaloverview.h"
 #include "pixmapanimation.h"
@@ -270,7 +268,6 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
 {
 	setParent(main_window);
-#if !defined(QSAN_XP_LEGACY)
     auto *requestFocusShortcut = new QShortcut(QKeySequence(Qt::Key_F6), main_window);
     requestFocusShortcut->setContext(Qt::ApplicationShortcut);
     requestFocusShortcut->setAutoRepeat(false);
@@ -293,7 +290,6 @@ RoomScene::RoomScene(QMainWindow*main_window)
             views().first()->setFocus(Qt::ShortcutFocusReason);
         }
     });
-#endif
 	m_inputRouter = new RoomInputRouter({
 		[this]() { return chat_edit != nullptr && chat_edit->hasFocus(); },
 		[this]() { trust(); }, [this]() { chooseSkillButton(); }, [this]() {
@@ -980,13 +976,11 @@ RoomScene::~RoomScene()
     m_chatController = nullptr;
     delete m_inputRouter;
     m_inputRouter = nullptr;
-#if !defined(QSAN_XP_LEGACY)
     // Detach the secondary document views before their scene-owned sources die.
     delete m_overlayHost;
     delete m_largeRoomOverview;
 	delete m_gamePresentation;
 	m_gamePresentation = nullptr;
-#endif
 	delete m_replay;
 	m_replay = nullptr;
 
@@ -1434,7 +1428,6 @@ void RoomScene::adjustItems(const QSizeF &viewportSize)
     adjustItems();
 }
 
-#if !defined(QSAN_XP_LEGACY)
 DesktopGamePresentation *RoomScene::gamePresentation()
 {
     if (!m_gamePresentation)
@@ -1632,7 +1625,6 @@ void RoomScene::applyResponsiveLayout()
     m_tableBg->setVisible(input.stableRect.height() <= input.stableRect.width());
     emit responsiveGeometryChanged();
 }
-#endif
 
 void RoomScene::applyLayout(const RoomLayoutEngine::Result &layout)
 {
@@ -1670,12 +1662,10 @@ void RoomScene::applyLayout(const RoomLayoutEngine::Result &layout)
 
 void RoomScene::adjustItems()
 {
-#if !defined(QSAN_XP_LEGACY)
     if (m_responsiveEnabled) {
         applyResponsiveLayout();
         return;
     }
-#endif
     auto input = layoutInput(sceneRect(), true);
     const auto frame = RoomLayoutEngine::compute(input);
     if (!frame.valid)
@@ -1717,12 +1707,10 @@ void RoomScene::adjustItems()
 
 void RoomScene::applyUiElementScale(qreal scale)
 {
-#if !defined(QSAN_XP_LEGACY)
     // Responsive placements already account for the measured UI scale. Scaling
     // every Photo again here would invalidate the ring's no-overlap decision.
     if (m_responsiveEnabled)
         return;
-#endif
 	scale = qBound<qreal>(1.0, scale, 2.0);
 
 	auto scaleAt = [scale](QGraphicsItem *item, const QPointF &origin) {
@@ -1885,12 +1873,10 @@ void RoomScene::showTouchCardPreview(CardItem *card)
 
 void RoomScene::updateTable()
 {
-#if !defined(QSAN_XP_LEGACY)
     if (m_responsiveEnabled) {
         applyResponsiveLayout();
         return;
     }
-#endif
     // Seat reordering and control-context switches must not apply the viewport
     // clamp a second time. They consume the already established scene bounds.
     const auto layout = RoomLayoutEngine::compute(layoutInput(sceneRect(), false));
@@ -2341,9 +2327,7 @@ bool RoomScene::handleNativeKey(QKeyEvent *event)
             handled = m_playerCardBox->handleChooseKey(choiceKey);
         }
     }
-#if !defined(QSAN_XP_LEGACY)
     if (!handled) handled = gamePresentation()->handleTableKey(event);
-#endif
     if (handled) {
         event->accept();
     } else m_nativeKeysDown.remove(key);
@@ -2353,14 +2337,12 @@ bool RoomScene::handleNativeKey(QKeyEvent *event)
 void RoomScene::keyReleaseEvent(QKeyEvent*event)
 {
     if (handleNativeKey(event)) return;
-#if !defined(QSAN_XP_LEGACY)
     // Native confirmation happens on press. A QWidget chooser may close on
     // that press, leaving its release targeted at the next table request.
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
         event->accept();
         return;
     }
-#endif
     if (m_inputRouter != nullptr) {
         m_inputRouter->route(event, Config.EnableHotKey);
         return;

@@ -517,7 +517,11 @@ struct LargeRoomOverview::Data
         const QStringList previousOverviewOrder = overview->order;
         const bool newSession = generation != next.sessionGeneration;
         const bool requestChanged = request != model.requestId;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         const bool playersShared = !newSession && next.players.constData() == view.players.constData();
+#else
+        const bool playersShared = !newSession && next.players.isSharedWith(view.players);
+#endif
         if (newSession || requestChanged) { preview.clear(); cursor.clear(); }
         if (newSession) { lockedPlayer.clear(); inspected.clear(); detail->hide(); close->hide(); detailText->hide(); }
         generation = next.sessionGeneration; request = model.requestId; view = next; actions = model;

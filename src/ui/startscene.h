@@ -1,14 +1,15 @@
 #ifndef _START_SCENE_H
 #define _START_SCENE_H
 
-//#include "button.h"
-//#include "qsan-selectable-item.h"
-//#include "server.h"
-
+#include <QGraphicsScene>
 #include <QKeyEvent>
+#include <QPixmap>
 
-class Button;
-class QSanSelectableItem;
+class HomeButton;
+class HomePlate;
+class QGraphicsPixmapItem;
+class QGraphicsSimpleTextItem;
+class QTextEdit;
 class Server;
 #ifdef QSAN_XP_LEGACY
 class LocalServerController;
@@ -30,20 +31,28 @@ public:
 
 protected:
     virtual void keyPressEvent(QKeyEvent *event);
+    void drawBackground(QPainter *painter, const QRectF &rect) override;
 
 private:
+    void relayout();
+    void rebuildBackdrop();
     void printServerInfo();
     void selectButton(int index);
-    void navigateUp();
-    void navigateDown();
-    void navigateLeft();
-    void navigateRight();
 
-    QSanSelectableItem *logo;
+    QGraphicsPixmapItem *logo;
+    QGraphicsPixmapItem *portrait;
+    HomePlate *log_plate;
+    HomePlate *dock;
+    QGraphicsSimpleTextItem *website_text;
+    QPixmap logo_source;
+    QPixmap portrait_source;
+    QPixmap backdrop_source;
+    QPixmap backdrop;
     QTextEdit *server_log;
     Server *m_server;
-    QList<Button *> buttons;
+    QList<HomeButton *> buttons;
     int m_currentIndex;
+    bool m_relayouting;
 };
 
 #endif
