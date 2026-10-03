@@ -85,36 +85,32 @@ if(QSAN_BUILD_WASM_SOLO)
     add_link_options(-pthread)
 endif()
 
-# Audio backend. A single variable decides which implementation the GUI client uses;
-# call sites contain no platform #ifdef:
+# GUI call sites use one audio facade; server-only builds use the NULL backend.
 #
-#   FMOD  Windows GUI Release (bundled fmodex, behaves exactly as before)
-#   QT    Linux GUI (Qt Multimedia)
-#   NULL  dedicated server / CI / any build that must stay silent
-#
-# The dedicated server does not compile in any audio files, so NULL is also the
-# natural default for server-only builds.
 if(WIN32)
     set(QSAN_AUDIO_BACKEND_DEFAULT "FMOD")
 elseif(ANDROID)
-    # Temporary Android workaround for the AAudio callback crash.
-    set(QSAN_AUDIO_BACKEND_DEFAULT "NULL")
+    set(QSAN_AUDIO_BACKEND_DEFAULT "ANDROID")
 elseif(QSAN_BUILD_GUI)
     set(QSAN_AUDIO_BACKEND_DEFAULT "QT")
 else()
     set(QSAN_AUDIO_BACKEND_DEFAULT "NULL")
 endif()
 set(QSAN_AUDIO_BACKEND "${QSAN_AUDIO_BACKEND_DEFAULT}" CACHE STRING
-    "Audio backend for the GUI client: FMOD | QT | NULL")
-set_property(CACHE QSAN_AUDIO_BACKEND PROPERTY STRINGS FMOD QT NULL)
-if(NOT QSAN_AUDIO_BACKEND MATCHES "^(FMOD|QT|NULL)$")
+    "Audio backend for the GUI client: FMOD | QT | ANDROID | NULL")
+set_property(CACHE QSAN_AUDIO_BACKEND PROPERTY STRINGS FMOD QT ANDROID NULL)
+if(NOT QSAN_AUDIO_BACKEND MATCHES "^(FMOD|QT|ANDROID|NULL)$")
     message(FATAL_ERROR
-        "QSAN_AUDIO_BACKEND must be one of FMOD, QT, NULL (got '${QSAN_AUDIO_BACKEND}')")
+        "QSAN_AUDIO_BACKEND must be one of FMOD, QT, ANDROID, NULL (got '${QSAN_AUDIO_BACKEND}')")
 endif()
 if(QSAN_AUDIO_BACKEND STREQUAL "FMOD" AND NOT WIN32)
     message(FATAL_ERROR
         "QSAN_AUDIO_BACKEND=FMOD is Windows-only: lib/win/x64/fmodex.lib and include/fmod "
         "are Windows binaries and must never be linked or included on other platforms")
+endif()
+if(QSAN_AUDIO_BACKEND STREQUAL "ANDROID" AND NOT ANDROID)
+    message(FATAL_ERROR
+        "QSAN_AUDIO_BACKEND=ANDROID requires the Android toolchain")
 endif()
 
 if(WIN32)
@@ -1408,9 +1404,7 @@ if(QSAN_BUILD_GUI)
         )
     endif()
 
-    # Audio facade + backend。facade（src/core/audio.h + src/ui/audio/audio.cpp）
-    # 同 null backend 一定編入，所以任何 config 的 call site 都有實作可以連；
-    # 真正的 FMOD／Qt 實作先至按 QSAN_AUDIO_BACKEND 加入。
+    # Always compile the audio facade and NULL backend; add FMOD, Qt, or Android backends by QSAN_AUDIO_BACKEND.
     target_sources(${QSAN_GUI_TARGET} PRIVATE
         src/core/audio.h
         src/ui/audio/audio.cpp
@@ -1446,6 +1440,12 @@ if(QSAN_BUILD_GUI)
             src/ui/audio/qt-audio-backend.h
         )
         target_compile_definitions(${QSAN_GUI_TARGET} PRIVATE QSAN_AUDIO_BACKEND_QT)
+    elseif(QSAN_AUDIO_BACKEND STREQUAL "ANDROID")
+        target_sources(${QSAN_GUI_TARGET} PRIVATE
+            src/ui/audio/android-audio-backend.cpp
+            src/ui/audio/android-audio-backend.h
+        )
+        target_compile_definitions(${QSAN_GUI_TARGET} PRIVATE QSAN_AUDIO_BACKEND_ANDROID)
     endif()
 
     target_include_directories(${QSAN_GUI_TARGET} PRIVATE

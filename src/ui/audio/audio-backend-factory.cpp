@@ -9,22 +9,28 @@
 #ifdef QSAN_AUDIO_BACKEND_QT
 #include "qt-audio-backend.h"
 #endif
+#ifdef QSAN_AUDIO_BACKEND_ANDROID
+#include "android-audio-backend.h"
+#endif
 
-// The only place in the whole codebase that selects the audio backend.
-//
+// Backend selection is centralized here; call sites do not branch on Q_OS_LINUX.
+
 // Which backend gets compiled in is decided by CMake's QSAN_AUDIO_BACKEND:
 //
-//   QSAN_AUDIO_BACKEND=FMOD  → QSAN_AUDIO_BACKEND_FMOD（Windows GUI Release）
-//   QSAN_AUDIO_BACKEND=QT    → QSAN_AUDIO_BACKEND_QT（Linux GUI）
-//   QSAN_AUDIO_BACKEND=NULL  -> neither is defined
-//
-// No call site needs #ifdef Q_OS_LINUX.
+//   QSAN_AUDIO_BACKEND=FMOD     → QSAN_AUDIO_BACKEND_FMOD（Windows GUI Release）
+//   QSAN_AUDIO_BACKEND=QT       → QSAN_AUDIO_BACKEND_QT（Linux GUI）
+//   QSAN_AUDIO_BACKEND=ANDROID  → QSAN_AUDIO_BACKEND_ANDROID（Android SoundPool / MediaPlayer）
+//   QSAN_AUDIO_BACKEND=NULL     -> neither is defined
+
+
 IAudioBackend *createConfiguredAudioBackend()
 {
 #if defined(QSAN_AUDIO_BACKEND_FMOD)
     return new FmodAudioBackend;
 #elif defined(QSAN_AUDIO_BACKEND_QT)
     return new QtMediaAudioBackend;
+#elif defined(QSAN_AUDIO_BACKEND_ANDROID)
+    return new AndroidAudioBackend;
 #else
     return new NullAudioBackend;
 #endif

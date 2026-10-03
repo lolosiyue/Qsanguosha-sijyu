@@ -94,7 +94,7 @@
         "QSAN_BUILD_SERVER": "OFF",
         "QSAN_BUILD_TUI": "OFF",
         "QSAN_BUILD_EXCEL": "OFF",
-        "QSAN_AUDIO_BACKEND": "NULL"
+        "QSAN_AUDIO_BACKEND": "ANDROID"
       }
     },
     {
@@ -122,7 +122,7 @@
         "QSAN_BUILD_SERVER": "OFF",
         "QSAN_BUILD_TUI": "OFF",
         "QSAN_BUILD_EXCEL": "OFF",
-        "QSAN_AUDIO_BACKEND": "NULL"
+        "QSAN_AUDIO_BACKEND": "ANDROID"
       }
     },
     {
@@ -173,7 +173,7 @@
         "QSAN_BUILD_SERVER": "OFF",
         "QSAN_BUILD_TUI": "OFF",
         "QSAN_BUILD_EXCEL": "OFF",
-        "QSAN_AUDIO_BACKEND": "NULL"
+        "QSAN_AUDIO_BACKEND": "ANDROID"
       }
     },
     {
@@ -202,7 +202,7 @@
         "QSAN_BUILD_SERVER": "OFF",
         "QSAN_BUILD_TUI": "OFF",
         "QSAN_BUILD_EXCEL": "OFF",
-        "QSAN_AUDIO_BACKEND": "NULL"
+        "QSAN_AUDIO_BACKEND": "ANDROID"
       }
     }
   ],

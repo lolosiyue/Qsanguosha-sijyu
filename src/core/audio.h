@@ -33,17 +33,17 @@ public:
 
     static QString getVersion();
 
-    // ── M2B-A 新增的觀測／設定接口 ──────────────────────────────────────
-    // 目前生效的 backend 名（"fmod" / "qt" / "null"）。
+    // Runtime controls and diagnostics.
+    // Active backend name: "fmod", "qt", "android", or "null".
     static QString backendName();
     static bool isInitialized();
     // Whether a usable output device really exists. No device is not an error; there is
     // simply no sound.
     static bool hasOutputDevice();
-    // 由 Config 讀 master／effect／voice／mute 並推落 backend。設定畫面按確定
-    // 之後呼叫一次即可。
+    // Read master/effect/voice/mute from Config and apply them to the backend.
+    // Call after the settings dialog accepts its changes.
     static void applyConfigVolumes();
-    // --multimedia-smoke 同 about dialog 用的結構化狀態。
+    // Structured status for --multimedia-smoke and the About dialog.
     static QJsonObject diagnostics();
 };
 
