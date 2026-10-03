@@ -93,6 +93,7 @@
 #include <QComboBox>
 #include <QMessageBox>
 #include <QVBoxLayout>
+#include <QHeaderView>
 #include <QGraphicsProxyWidget>
 #include "client-live-session.h"
 
@@ -4767,12 +4768,35 @@ void RoomScene::onGameOver()
 	QDialog*dialog = new QDialog(main_window);
 	dialog->resize(800,600);
 	dialog->setWindowTitle(victory ? tr("Victory") : tr("Failure"));
+	// The banner uses dark fill and light text in both themes; use gold for the winner and the palette color for the loser.
+	dialog->setStyleSheet(QString(
+		"QLabel#result_banner{color:%1;padding:14px;border-radius:8px;border:1px solid %2;"
+		"background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 %3,stop:0.5 %4,stop:1 %3);}"
+		"QGroupBox{font-weight:bold;border:1px solid palette(mid);border-radius:6px;margin-top:14px;padding-top:6px;}"
+		"QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 6px;}"
+		"QGroupBox#winner_box{border:2px solid #c9a45c;}"
+		"QGroupBox#winner_box::title{color:#b8913f;}"
+		"QTableWidget#winner_table QHeaderView::section{background:#c9a45c;color:#2a2114;font-weight:bold;border:none;padding:4px;}")
+		.arg(victory ? "#fff4dc" : "#ffe3dc",victory ? "#e0bd73" : "#a8645c",
+			victory ? "#4a3818" : "#2e1c1e",victory ? "#8a6a2e" : "#5e3432"));
+
+	QLabel*banner = new QLabel(victory ? tr("Victory") : tr("Failure"));
+	banner->setObjectName("result_banner");
+	banner->setAlignment(Qt::AlignCenter);
+	// QSS has no letter-spacing property; set it on QFont.
+	QFont banner_font = banner->font();
+	banner_font.setPixelSize(30);
+	banner_font.setBold(true);
+	banner_font.setLetterSpacing(QFont::AbsoluteSpacing,12);
+	banner->setFont(banner_font);
 
 	QGroupBox*winner_box = new QGroupBox(tr("Winner(s)"));
 	QGroupBox*loser_box = new QGroupBox(tr("Loser(s)"));
+	winner_box->setObjectName("winner_box");
 
 	QTableWidget*winner_table = new QTableWidget;
 	QTableWidget*loser_table = new QTableWidget;
+	winner_table->setObjectName("winner_table");
 
 	QVBoxLayout*winner_layout = new QVBoxLayout;
 	winner_layout->addWidget(winner_table);
@@ -4782,11 +4806,6 @@ void RoomScene::onGameOver()
 	loser_layout->addWidget(loser_table);
 	loser_box->setLayout(loser_layout);
 
-	QVBoxLayout*layout = new QVBoxLayout;
-	layout->addWidget(winner_box);
-	layout->addWidget(loser_box);
-	dialog->setLayout(layout);
-
 	QList<const ClientPlayer*> winner_list,loser_list;
 	foreach (const ClientPlayer*player,ClientInstance->getPlayers()){
 		if(player->property("win").toBool())
@@ -4794,6 +4813,14 @@ void RoomScene::onGameOver()
 		else
 			loser_list << player;
 	}
+
+	// Divide the two tables' height by player count so a single winner does not leave half the dialog empty.
+	QVBoxLayout*layout = new QVBoxLayout;
+	layout->setSpacing(10);
+	layout->addWidget(banner);
+	layout->addWidget(winner_box,winner_list.length()+1);
+	layout->addWidget(loser_box,loser_list.length()+1);
+	dialog->setLayout(layout);
 
 	// 整份錄像只解析一次；勝負兩張表各解析一次會在結算時多卡數百毫秒。
 	RecAnalysis record(ClientInstance->getReplayPath());
@@ -4821,6 +4848,7 @@ void RoomScene::addRestartButton(QDialog*dialog)
 
 	QPushButton*restart_button = new QPushButton(goto_next ? tr("Next Stage") : tr("Restart Game"));
 	QPushButton*return_button = new QPushButton(tr("Return to main menu"));
+	restart_button->setDefault(true);
 	QHBoxLayout*hlayout = new QHBoxLayout;
 	hlayout->addStretch();
 	hlayout->addWidget(restart_button);
@@ -4911,13 +4939,21 @@ void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&pl
 	}
 	table->setHorizontalHeaderLabels(labels);
 	table->setSelectionBehavior(QTableWidget::SelectRows);
+	table->setAlternatingRowColors(true);
+	table->setShowGrid(false);
+	table->setIconSize(G_COMMON_LAYOUT.m_tinyAvatarSize);
+	table->verticalHeader()->hide();
+	table->verticalHeader()->setDefaultSectionSize(G_COMMON_LAYOUT.m_tinyAvatarSize.height()+8);
+	table->horizontalHeader()->setStretchLastSection(true);
 
 	for (int i = 0;i < players.length();i++){
 		const ClientPlayer*player = players[i];
 
 		QTableWidgetItem*item = new QTableWidgetItem;
 		item->setText(player->getLogName());
-		item->setTextAlignment(Qt::AlignCenter);
+		if(player->getGeneral())
+			item->setIcon(QIcon(G_ROOM_SKIN.getGeneralPixmap(player->getGeneralName(),QSanRoomSkin::S_GENERAL_ICON_SIZE_TINY)));
+		item->setTextAlignment(Qt::AlignVCenter|Qt::AlignLeft);
 		table->setItem(i,0,item);
 
 		item = new QTableWidgetItem;
@@ -5014,7 +5050,7 @@ void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&pl
 		table->setItem(i,9,item);
 	}
 
-	for (int i = 2;i < 10;i++)
+	for (int i = 0;i < 10;i++)
 		table->resizeColumnToContents(i);
 }
 

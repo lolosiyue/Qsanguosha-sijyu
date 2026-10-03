@@ -383,7 +383,8 @@ export function gameResultView(bind: UiBind): HTMLElement {
   const result = isObject(payload)
     ? summarizeGameResult(payload, session.state.playerNames, session.state.selfName)
     : { draw: false, winners: [], selfOutcome: "unknown" as const };
-  const panel = el("section", { class: "game-result", "aria-labelledby": "game-result-heading" });
+  const tone = result.draw ? "draw" : result.selfOutcome;
+  const panel = el("section", { class: `game-result ${tone}`, "aria-labelledby": "game-result-heading" });
   panel.append(el("h2", { id: "game-result-heading" }, [result.draw ? "平局" : "游戏结束"]));
   if (result.selfOutcome === "victory")
     panel.append(el("p", { class: "game-result-outcome victory" }, ["你方胜利"]));
@@ -398,8 +399,10 @@ export function gameResultView(bind: UiBind): HTMLElement {
       const name = winner.objectName
         ? (asString(session.state.player(winner.objectName)?.screen_name) || winner.objectName)
         : "";
-      const role = winner.role ? `（${resultRoleLabel(winner.role)}）` : "";
-      list.append(el("li", {}, [`${name || resultRoleLabel(winner.role)}${name ? role : ""}`]));
+      const item = el("li", {}, [el("span", { class: "name" }, [name || resultRoleLabel(winner.role)])]);
+      if (name && winner.role)
+        item.append(el("span", { class: "role", "data-role": winner.role }, [resultRoleLabel(winner.role)]));
+      list.append(item);
     }
     panel.append(list);
   } else
