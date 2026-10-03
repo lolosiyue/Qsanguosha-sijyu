@@ -165,6 +165,7 @@ void FloatingBall::togglePanel()
     }
     if (!isEnabled() || m_available.isEmpty())
         return;
+    emit aboutToShowPanel();
     const QRect bounds(parentWidget()->mapToGlobal(m_available.topLeft()), m_available.size());
     m_panel->resize(qMin(440, bounds.width()),
                     qMin(m_grid->sizeHint().height() + 20, bounds.height()));

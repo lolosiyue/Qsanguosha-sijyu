@@ -30,6 +30,9 @@ public:
     void setResponsiveEnabled(bool enabled);
     bool responsiveEnabled() const;
     bool logVisible() const;
+    bool logShown() const;
+    bool logToggleEnabled() const;
+    void toggleLog();
     bool chatVisible() const;
     bool inspectorRequested() const;
     void inspectPlayer(const QString &player);
@@ -50,6 +53,7 @@ protected:
 
 private:
     void createPersistentUi();
+    void showLayoutMenu(const QPoint &globalPos);
     void updateFromPresentation(const GameViewState &view, const GameActionModel &actions);
     void updateGeometry();
     void updateMask();

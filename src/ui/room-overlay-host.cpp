@@ -69,6 +69,50 @@ RoomOverlayHost::RoomOverlayHost(QWidget *parent)
     updateGeometry();
 }
 
+void RoomOverlayHost::showLayoutMenu(const QPoint &globalPos)
+{
+    auto *menu = new QMenu(this);
+    menu->setStyleSheet(QStringLiteral("QMenu::item { min-height: 48px; padding: 0 12px; }"));
+    QAction *responsive = menu->addAction(tr("Responsive preview"));
+    responsive->setCheckable(true);
+    responsive->setChecked(m_responsiveEnabled);
+    connect(responsive, &QAction::toggled, this, &RoomOverlayHost::setResponsiveEnabled);
+    menu->addAction(tr("Player details"), this, [this] {
+        if (m_inspectedPlayer.isEmpty() && !m_view.players.isEmpty())
+            m_inspectedPlayer = m_view.operatingPlayer;
+        setInspectorOpen(true);
+    });
+    QAction *logAction = menu->addAction(tr("Game log"), this, &RoomOverlayHost::toggleLog);
+    logAction->setCheckable(true);
+    logAction->setChecked(logShown());
+    logAction->setEnabled(logToggleEnabled());
+    menu->addAction(tr("Chat"), this, [this] {
+        if (m_layout.nativeChrome) {
+            emit nativeChatToggleRequested();
+            return;
+        }
+        m_chatVisible = !m_chatVisible; updateGeometry(); emit layoutPreferencesChanged();
+    });
+    auto *hand = menu->addMenu(tr("One-handed layout"));
+    auto *group = new QActionGroup(hand);
+    group->setExclusive(true);
+    const QList<QPair<QString, RoomLayoutEngine::Handedness>> values = {
+        {tr("None"), RoomLayoutEngine::Handedness::None},
+        {tr("Left"), RoomLayoutEngine::Handedness::Left},
+        {tr("Right"), RoomLayoutEngine::Handedness::Right}};
+    for (const auto &value : values) {
+        QAction *action = hand->addAction(value.first);
+        action->setCheckable(true);
+        action->setChecked(value.second == m_handedness);
+        group->addAction(action);
+        connect(action, &QAction::triggered, this, [this, value] { saveHandedness(value.second); });
+    }
+    menu->addSeparator();
+    menu->addAction(tr("Game controls"), this, &RoomOverlayHost::controlsRequested);
+    menu->exec(globalPos);
+    menu->deleteLater();
+}
+
 void RoomOverlayHost::createPersistentUi()
 {
     m_launcher = new QToolButton(this);
@@ -92,51 +136,12 @@ void RoomOverlayHost::createPersistentUi()
     m_launcher->setAccessibleName(tr("Room layout and views"));
     setTouchSize(m_launcher);
     connect(m_launcher, &QToolButton::clicked, this, [this] {
-        auto *menu = new QMenu(this);
-        menu->setStyleSheet(QStringLiteral("QMenu::item { min-height: 48px; padding: 0 12px; }"));
-        QAction *responsive = menu->addAction(tr("Responsive preview"));
-        responsive->setCheckable(true);
-        responsive->setChecked(m_responsiveEnabled);
-        connect(responsive, &QAction::toggled, this, &RoomOverlayHost::setResponsiveEnabled);
-        menu->addAction(tr("Player details"), this, [this] {
-            if (m_inspectedPlayer.isEmpty() && !m_view.players.isEmpty())
-                m_inspectedPlayer = m_view.operatingPlayer;
-            setInspectorOpen(true);
-        });
-        QAction *logAction = menu->addAction(tr("Game log"), this, [this] {
-            m_logVisible = !m_logVisible; updateGeometry(); emit layoutPreferencesChanged();
-        });
-        logAction->setCheckable(true);
-        logAction->setChecked(m_logVisible || m_layout.logAlwaysVisible);
-        logAction->setEnabled(!m_layout.logAlwaysVisible
-            && (m_responsiveEnabled || m_layout.profile == RoomLayoutEngine::Profile::LargeRoom)
-            && m_layout.profile != RoomLayoutEngine::Profile::LegacyLandscape);
-        menu->addAction(tr("Chat"), this, [this] {
-            if (m_layout.nativeChrome) {
-                emit nativeChatToggleRequested();
-                return;
-            }
-            m_chatVisible = !m_chatVisible; updateGeometry(); emit layoutPreferencesChanged();
-        });
-        auto *hand = menu->addMenu(tr("One-handed layout"));
-        auto *group = new QActionGroup(hand);
-        group->setExclusive(true);
-        const QList<QPair<QString, RoomLayoutEngine::Handedness>> values = {
-            {tr("None"), RoomLayoutEngine::Handedness::None},
-            {tr("Left"), RoomLayoutEngine::Handedness::Left},
-            {tr("Right"), RoomLayoutEngine::Handedness::Right}};
-        for (const auto &value : values) {
-            QAction *action = hand->addAction(value.first);
-            action->setCheckable(true);
-            action->setChecked(value.second == m_handedness);
-            group->addAction(action);
-            connect(action, &QAction::triggered, this, [this, value] { saveHandedness(value.second); });
-        }
-        menu->addSeparator();
-        menu->addAction(tr("Game controls"), this, &RoomOverlayHost::controlsRequested);
-        menu->exec(m_launcher->mapToGlobal(QPoint(0, m_launcher->height())));
-        menu->deleteLater();
+        showLayoutMenu(m_launcher->mapToGlobal(QPoint(0, m_launcher->height())));
     });
+#ifdef Q_OS_ANDROID
+    // The floating ball already shows a menu glyph and carries these entries.
+    m_launcher->hide();
+#endif
 
     // Native Photo items receive the clicks; this control only pages their positions.
     m_nativeSeatScroll = new QScrollBar(Qt::Horizontal, this);
@@ -238,6 +243,22 @@ void RoomOverlayHost::setResponsiveEnabled(bool enabled)
 }
 
 bool RoomOverlayHost::responsiveEnabled() const { return m_responsiveEnabled; }
+
+bool RoomOverlayHost::logShown() const { return m_logVisible || m_layout.logAlwaysVisible; }
+
+bool RoomOverlayHost::logToggleEnabled() const
+{
+    return !m_layout.logAlwaysVisible
+        && (m_responsiveEnabled || m_layout.profile == RoomLayoutEngine::Profile::LargeRoom)
+        && m_layout.profile != RoomLayoutEngine::Profile::LegacyLandscape;
+}
+
+void RoomOverlayHost::toggleLog()
+{
+    m_logVisible = !m_logVisible;
+    updateGeometry();
+    emit layoutPreferencesChanged();
+}
 bool RoomOverlayHost::logVisible() const { return m_logVisible; }
 bool RoomOverlayHost::chatVisible() const { return m_chatVisible; }
 bool RoomOverlayHost::inspectorRequested() const { return m_inspectorRequested; }
@@ -433,9 +454,9 @@ void RoomOverlayHost::updateGeometry()
         m_nativeSeatScroll->setPageStep(qMax(1, m_layout.visibleSeatCount));
         m_nativeSeatScroll->setValue(m_layout.firstVisibleSeat);
         // Keep the paging control in the reserved header, clear of all native targets.
-        m_nativeSeatScroll->setGeometry(m_launcher->geometry().right() + 8,
-            m_launcher->y(), qMax(0, (header.isEmpty() ? pane.right() : header.right())
-                - m_launcher->geometry().right() - 8), 48);
+        const int seatLeft = m_launcher->isHidden() ? m_launcher->x() : m_launcher->geometry().right() + 8;
+        m_nativeSeatScroll->setGeometry(seatLeft,
+            m_launcher->y(), qMax(0, (header.isEmpty() ? pane.right() : header.right()) - seatLeft), 48);
     }
     m_chatPanel->setVisible(active && m_chatVisible && !m_layout.nativeChrome);
     updateMask();
@@ -443,6 +464,7 @@ void RoomOverlayHost::updateGeometry()
 
 void RoomOverlayHost::updateMask()
 {
+    // Keep the launcher rect even when hidden: an empty region would clear the mask.
     QRegion region(m_launcher->geometry());
     if (m_nativeSeatScroll->isVisible()) region += m_nativeSeatScroll->geometry();
     if (m_inspector->isVisible()) region += m_inspector->geometry();

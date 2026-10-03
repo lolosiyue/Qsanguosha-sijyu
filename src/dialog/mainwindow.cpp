@@ -13,6 +13,8 @@
 #ifdef Q_OS_ANDROID
 #include "android-content-dialog.h"
 #include "floatingball.h"
+#include "room-overlay-host.h"
+#include <QActionGroup>
 #endif
 #include "recorder.h"
 #include "lua.hpp"
@@ -938,12 +940,52 @@ void MainWindow::setupAndroidUi()
 	connect(resources, &QAction::triggered, this, [this]() {
 		AndroidContentDialog::openManager(this);
 	});
-	// L2 only: reuse live desktop actions; skills and player details stay on the table.
+	// The room overlay hides its own menu launcher on Android; its entries live here
+	// at one level. Chat stays on the original chat box action.
+	auto *responsive = new QAction(tr("Responsive preview"), m_androidMenuButton);
+	responsive->setCheckable(true);
+	connect(responsive, &QAction::triggered, this, [this](bool checked) {
+		if (RoomOverlayHost *overlay = gameView ? gameView->roomOverlay() : nullptr)
+			overlay->setResponsiveEnabled(checked);
+	});
+	auto *gameLog = new QAction(tr("Game log"), m_androidMenuButton);
+	gameLog->setCheckable(true);
+	connect(gameLog, &QAction::triggered, this, [this]() {
+		if (RoomOverlayHost *overlay = gameView ? gameView->roomOverlay() : nullptr)
+			overlay->toggleLog();
+	});
+	auto *handGroup = new QActionGroup(m_androidMenuButton);
+	const QList<QPair<QString, RoomLayoutEngine::Handedness>> hands = {
+		{tr("One-handed: none"), RoomLayoutEngine::Handedness::None},
+		{tr("One-handed: left"), RoomLayoutEngine::Handedness::Left},
+		{tr("One-handed: right"), RoomLayoutEngine::Handedness::Right}};
+	for (const auto &hand : hands) {
+		QAction *action = handGroup->addAction(hand.first);
+		action->setCheckable(true);
+		action->setData(static_cast<int>(hand.second));
+		connect(action, &QAction::triggered, this, [hand]() {
+			Config.setOneHandedness(static_cast<int>(hand.second));
+		});
+	}
+	connect(m_androidMenuButton, &FloatingBall::aboutToShowPanel, this,
+		[this, responsive, gameLog, handGroup]() {
+		RoomOverlayHost *overlay = gameView ? gameView->roomOverlay() : nullptr;
+		responsive->setChecked(overlay && overlay->responsiveEnabled());
+		gameLog->setChecked(overlay && overlay->logShown());
+		gameLog->setEnabled(overlay && overlay->logToggleEnabled());
+		for (QAction *action : handGroup->actions())
+			action->setChecked(action->data().toInt() == Config.oneHandedness());
+	});
+	QAction *inspector = findChild<QAction *>(QStringLiteral("actionRoomPlayerInspector"));
+	// L2 only: reuse live desktop actions; skills stay on the table.
 	for (QAction *action : {ui->actionGeneral_Overview, ui->actionCard_Overview,
 		ui->actionScenario_Overview, ui->actionConfigure, resources,
 		ui->actionServerInformation, ui->actionSaveRecord, ui->actionPause_Resume,
-		ui->actionHide_Show_chat_box, ui->actionSurrender})
+		ui->actionHide_Show_chat_box, responsive, inspector, gameLog})
 		m_androidMenuButton->addPanelAction(action);
+	for (QAction *action : handGroup->actions())
+		m_androidMenuButton->addPanelAction(action);
+	m_androidMenuButton->addPanelAction(ui->actionSurrender);
 	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameStateSnapshot")))
 		m_androidMenuButton->addPanelAction(action);
 	if (auto *action = findChild<QAction *>(QStringLiteral("actionGameControlPanel")))

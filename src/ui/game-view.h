@@ -23,6 +23,7 @@ public:
     void setStableSafeAreaMargins(const QMargins &margins);
     void setScene(QGraphicsScene *scene);
     void showPlayerInspector();
+    RoomOverlayHost *roomOverlay();
     void setResponsiveRoomEnabled(bool enabled);
 
     void setUiScale(qreal scale);
