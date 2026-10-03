@@ -378,15 +378,6 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class SecondHongyiCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE SecondHongyiCard();
-    void onEffect(CardEffectStruct &effect) const;
-};
-
 class SpZhaoxinCard : public SkillCard
 {
     Q_OBJECT
