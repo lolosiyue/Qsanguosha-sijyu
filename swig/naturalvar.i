@@ -62,7 +62,7 @@ SWIG_arg++;
 %typemap(arginit) QString const &
 "QString $1_str;"
 
-// 重載方法分派走 typecheck typemap（不設則預期 QString userdata，Lua 字串永不匹配）
+// Overloads use the typecheck typemap; without it, Lua strings are treated as QString userdata and never match.
 %typemap(typecheck, precedence=SWIG_TYPECHECK_STRING) QString const &
 %{
 	$1 = lua_isstring(L, $input) ? 1 : 0;

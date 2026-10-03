@@ -54,7 +54,7 @@ MEDIA_EXT = IMAGE_EXT | AUDIO_EXT
 ASSET_ROOTS = ("image", "audio", "hero-skin", "font", "resource")
 
 # Where references may legitimately be written. tools/, docs/ and tests/ are
-# excluded on purpose — a path printed by a helper script is not a runtime
+# Exclude paths printed by helper scripts; they are not runtime lookups.
 # lookup, and including it buries the real findings.
 REF_SOURCES = {
     "src": (".cpp", ".h", ".hpp"),

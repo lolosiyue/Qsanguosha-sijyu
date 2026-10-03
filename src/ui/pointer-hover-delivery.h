@@ -9,7 +9,7 @@
 #include <QObject>
 #include <QWidget>
 
-// Wayland (WSLg, GNOME, …) often delivers pointer motion as QEvent::Hover*
+// Wayland often sends QEvent::Hover* without a matching QEvent::MouseMove.
 // without a matching QEvent::MouseMove. QGraphicsView and QQuickWidget only
 // turn MouseMove into scene / QML hover, so cards and home buttons stay idle.
 inline bool qsanIsPointerHoverEvent(QEvent::Type type)

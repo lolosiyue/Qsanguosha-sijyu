@@ -5,12 +5,12 @@
 #include <QVariant>
 #include <QVariantMap>
 
-// 技能多實例基礎型別——不依賴 serverplayer，故可安全被 structs.h 與 player.h 共用
+// Multi-instance skill value types; independent of ServerPlayer so structs.h and player.h can share them.
 
 enum SkillInstanceSource {
-    SourceInnate,      // 原生技能（武將天生）
-    SourceAcquired,    // 後天獲得（Room::acquireSkill）
-    SourceHelper,      // related helper 技能（隨父實例級聯移除）
+    SourceInnate,      // Innate general skill.
+    SourceAcquired,    // Acquired through Room::acquireSkill.
+    SourceHelper,      // Related helper, removed with its parent instance.
     SourceAttached
 };
 
@@ -92,7 +92,7 @@ struct SkillInstance {
     bool hasAmountOverride;
     int amountOverride;
     QVariantMap correctState;
-    int bindHead; // 0=未綁定, 1=主將, 2=副將
+    int bindHead; // 0=unbound, 1=head general, 2=deputy general.
 
     SkillInstance()
         : instanceID(0), source(SourceInnate), visible(true),
@@ -102,7 +102,7 @@ struct SkillInstance {
 
 private:
     friend class Player;
-    // 私有邏輯 state：server 權威；僅 owner-only 同步到持有者 client（見 Room::notifySkillInstanceState）
+    // Private logical state is server-authoritative and synchronized only to its owner; see Room::notifySkillInstanceState.
     QVariantMap state;
 };
 

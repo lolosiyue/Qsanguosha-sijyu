@@ -69,9 +69,9 @@ private:
     static thread_local TargetModSkillQueryScope *s_current;
 };
 
-// UI 一次刷新可選目標或可用手牌時盤面不變，同參數的目標、距離與攻擊範圍修正只算一次。
-// 只在建立它的執行緒、它的生存期內生效。伺服器建 AI 請求時帶房間狀態版本建立：
-// 回呼改了盤面、版本前進，備忘即清空。重放選目標（TargetModSkillQueryScope）期間不備忘。
+// Cache identical target, distance and attack-range queries during one unchanged UI refresh.
+// The cache is local to its thread and lifetime and keyed by the server request revision.
+// TargetModSkillQueryScope replay bypasses it.
 class TargetModMemoScope final {
 public:
     TargetModMemoScope();
@@ -81,7 +81,7 @@ private:
     friend class Engine;
     Q_DISABLE_COPY(TargetModMemoScope)
     static TargetModMemoScope *active();
-    // 指標之外再帶牌面字串：範圍內臨時牌被立即刪除、新牌落在同一地址時不會誤中。
+    // Include the card string as well as its pointer so a deleted temporary card replaced at the same address cannot match.
     QHash<QString, int> m_values;
     std::function<quint64()> m_revision;
     quint64 m_seenRevision = 0;
@@ -99,9 +99,9 @@ struct EasyTextItem {
         : text(t), audioPath(audio), type(tp) {}
 };
 
-// UI tooltip 用：單一技能對某目標的數值貢獻（可含實際 holder）
+// Tooltip contribution from one skill for a target; may include its holder.
 struct SkillUIContribution {
-    QString holderName; // 空 = System／無 holder → client 顯示「自身/系统」
+    QString holderName; // Empty means System/no holder; the client displays "Self/System".
     int value;
     bool isFixed;
 
@@ -265,9 +265,9 @@ public:
     int correctDistance(const Player *from, const Player *to, bool fixed = false) const;
     int correctMaxCards(const Player *target, bool fixed = false,
         MaxCardsType::MaxCardsCount type = MaxCardsType::Max) const;
-    // 單一距離技能貢獻（V1 getCorrect／V2 evaluateCorrectSkill）；供 refreshUIState
+    // One distance-skill contribution (V1 getCorrect/V2 evaluateCorrectSkill), for refreshUIState.
     int contributionOfDistanceSkill(const DistanceSkill *skill, const Player *from, const Player *to, bool fixed = false) const;
-    // 單一手牌上限技能貢獻列表（依實際 holder 拆條；fixed 優先於 extra）
+    // Per-holder hand-limit skill contributions; fixed takes precedence over extra.
     QList<SkillUIContribution> listMaxCardsSkillContributions(const MaxCardsSkill *skill, const Player *target) const;
     int correctCardTarget(const TargetModSkill::ModType type, const Player *from, const Card *card, const Player *to = nullptr) const;
     bool hasResidueUnlimited(const Player *from, const Card *card, const Player *to = nullptr) const;

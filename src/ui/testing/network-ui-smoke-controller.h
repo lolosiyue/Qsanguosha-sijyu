@@ -49,10 +49,10 @@ public:
     // with *exitCode.
     static bool begin(const QStringList &arguments, MainWindow *mainWindow, int *exitCode);
 
-    // qApp->exec() 之後呼叫,回傳 smoke 的 process exit code。
+    // Call after qApp->exec(); returns the smoke process exit code.
     static int finish(int applicationExitCode);
 
-    // atexit 兜底:任何未經 finish 的退出路徑都補一行 failure result。
+    // The atexit fallback emits a failure result for exits that bypass finish().
     static void reportUnfinishedAtExit();
 
 private slots:

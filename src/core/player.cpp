@@ -611,13 +611,13 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
     QString baseName;
     int queryInstanceId = SkillInstanceUtils::parseName(skill_name, baseName);
 
-    // 先從 SSOT m_skillInstances 查詢持有
+    // Look up ownership in the SSOT m_skillInstances map first.
     bool ownsViaInstances = false;
     if (queryInstanceId > 0) {
         ownsViaInstances = hasSkillInstance(baseName, queryInstanceId);
     } else {
-        // constFind: 舊寫法查兩次, 而且 const 版 QMap::operator[] 是 by-value 多載,
-        // 會把整個內層 QMap<int, SkillInstance> 深拷貝一份。
+        // The old code searched twice. Const QMap::operator[] returns by value,
+        // copying the entire nested QMap<int, SkillInstance>.
         const auto it = m_skillInstances.constFind(baseName);
         ownsViaInstances = (it != m_skillInstances.constEnd()) && !it->isEmpty();
     }
@@ -872,7 +872,7 @@ void Player::detachSkill(const QString &skill_name)
     QString base;
     int instId = SkillInstanceUtils::parseName(skill_name, base);
     if (instId == 0) {
-        // 移除該名稱全部實例（SSOT + 舊容器一致）
+        // Remove all instances with this name from SSOT and the legacy container.
         bool changed = m_skillInstances.remove(skill_name) > 0;
         QString prefix = skill_name + "#";
         QStringList toRemove;
@@ -900,7 +900,7 @@ void Player::detachSkill(const QString &skill_name, bool head)
     QString base;
     int instId = SkillInstanceUtils::parseName(skill_name, base);
     if (instId == 0) {
-        // 移除該名稱全部實例（SSOT + 舊容器一致）
+        // Remove all instances with this name from SSOT and the legacy container.
         bool changed = m_skillInstances.remove(skill_name) > 0;
         QString prefix = skill_name + "#";
         QStringList toRemove;
@@ -910,7 +910,7 @@ void Player::detachSkill(const QString &skill_name, bool head)
         }
         foreach (const QString &s, toRemove)
             changed = targetSet.remove(s) || changed;
-        // 也從 acquired_skills 清同名全部
+        // Also remove all matching entries from acquired_skills.
         QStringList toRemove2;
         foreach (const QString &s, acquired_skills) {
             if (s == skill_name || s.startsWith(prefix))
@@ -934,7 +934,7 @@ void Player::detachAllSkills()
     const bool changed = !m_skillInstances.isEmpty() || !acquired_skills.isEmpty()
         || !head_acquired_skills.isEmpty() || !deputy_acquired_skills.isEmpty();
     m_skillInstances.clear();
-    // 不清除 m_nextSkillInstanceIds：ID 永不重用
+    // Keep m_nextSkillInstanceIds: IDs are never reused.
     acquired_skills.clear();
     head_acquired_skills.clear();
     deputy_acquired_skills.clear();
@@ -947,7 +947,7 @@ void Player::addSkill(const QString &skill_name)
 {
     if (!skills.contains(skill_name))
         skills << skill_name;
-    // 每次加入都建立新的原生實例（主將／副將同名技能各自獨立）
+    // Each acquisition creates a distinct native instance; head and deputy copies differ.
     int parentId = createSkillInstance(skill_name, SourceInnate, true);
     foreach (const Skill *related, Sanguosha->getRelatedSkills(skill_name))
         createSkillInstance(related->objectName(), SourceHelper, skill_name, parentId, related->isVisible());
@@ -967,7 +967,7 @@ void Player::addSkill(const QString &skill_name, bool head_skill)
         deputy_skills[skill_name] = !skill->canPreshow() || general2_showed;
     }
 
-    // 每次加入都建立新的原生實例（主將／副將同名技能各自獨立）
+    // Each acquisition creates a distinct native instance; head and deputy copies differ.
     int newId = createSkillInstance(skill_name, SourceInnate, true);
     m_skillInstances[skill_name][newId].bindHead = head_skill ? 1 : 2;
     foreach (const Skill *related, Sanguosha->getRelatedSkills(skill_name)) {
@@ -980,7 +980,7 @@ void Player::addSkill(const QString &skill_name, bool head_skill)
 void Player::loseSkill(const QString &skill_name)
 {
     const bool removedLegacySkill = skills.removeOne(skill_name);
-    // 移除一個原生實例（source=SourceInnate, ID 最小者）
+    // Remove the lowest-ID native instance (source=SourceInnate).
     auto outerIt = m_skillInstances.find(skill_name);
     if (outerIt == m_skillInstances.end()) {
         if (removedLegacySkill)
@@ -1011,7 +1011,7 @@ void Player::loseSkill(const QString &skill_name, bool head)
     const bool removedLegacySkill = head
         ? head_skills.remove(skill_name) > 0
         : deputy_skills.remove(skill_name) > 0;
-    // 依 bindHead 移除對應主將／副將的原生實例
+    // Remove the native instance bound to the selected head/deputy slot.
     auto outerIt = m_skillInstances.find(skill_name);
     if (outerIt == m_skillInstances.end()) {
         if (removedLegacySkill)
@@ -1338,10 +1338,10 @@ bool Player::isLocked(const Card *card, bool isHandcard) const
 	return isCardLimited(card, Card::MethodUse, isHandcard);
 }
 
-// EquipsNullified 的 pattern 沿用 ExpPattern 的四欄格式（卡名／花色／點數／區域）。
-// 只寫卡名的簡寫（例如 "Armor"、"Armor|red"）要在這裡補成四欄，不可以直接接上
-// "|.|.|"：那樣會得到 `Armor|.|.|`，第四欄是空字串而不是通配符 "."，
-// ExpPattern::matchOne() 的區域判斷會直接回 false，令限制靜靜失效。
+// EquipsNullified uses ExpPattern's four fields: card, suit, number, and place.
+// Expand short forms such as "Armor" or "Armor|red" before matching.
+// Appending "|.|.|" would leave the fourth field empty, not the wildcard ".";
+// ExpPattern::matchOne() would then reject the place and silently disable the limit.
 static QString normalizedEquipsNullifiedPattern(const QString &pattern)
 {
 	QString normalized = pattern;
@@ -1373,13 +1373,13 @@ bool Player::isEquipsNullified(const Card *card, const Player *sourcePlayer) con
 	QString basePattern = card->objectName();
 	if (basePattern.isEmpty()) return false;
 
-	// `|target:<objectName>` 是 EquipsNullified 專屬的來源玩家條件：ExpPattern
-	// 只解析卡名／花色／點數／區域四欄，所以帶 target 的 pattern 不能在通用
-	// CardLimitation 路徑處理，必須在這裡自己拆出來。否則 target 會被丟掉，
-	// 令「只對某個來源無效」退化成「對所有人無效」。
+	// EquipsNullified alone supports |target:<objectName>. ExpPattern only parses
+	// card, suit, number and place, so the generic CardLimitation path would drop
+	// the target field and turn a source-specific restriction into a global one.
+	//
 	const QString targetMarker = QStringLiteral("|target:");
 	foreach (QString pattern, card_limitation.value(Card::MethodEffect)) {
-		pattern.chop(2); // $0（永久）／$1（單回合）後綴
+		pattern.chop(2); // $0 means permanent; $1 means one turn.
 
 		QString targetName;
 		const int markerPos = pattern.lastIndexOf(targetMarker);
@@ -1387,7 +1387,7 @@ bool Player::isEquipsNullified(const Card *card, const Player *sourcePlayer) con
 			targetName = pattern.mid(markerPos + targetMarker.length());
 			pattern = pattern.left(markerPos);
 
-			// 只對指定來源生效；沒有來源上下文時不套用。
+			// Apply only to the specified source; skip when no source is known.
 			if (sourcePlayer == nullptr || sourcePlayer->objectName() != targetName)
 				continue;
 		}
@@ -2106,7 +2106,7 @@ QList<const Skill *> Player::getSkillList(bool include_equip, bool visible_only)
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_getSkillList);
     QList<const Skill *> skillList;
     QSet<QString> added;
-    // 從 SSOT m_skillInstances 派生（已解析 baseName）
+    // Derive this from SSOT m_skillInstances (baseName already resolved).
     for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
         const QString &baseName = outerIt.key();
         if (!include_equip && hasEquipSkill(baseName)) continue;
@@ -2261,7 +2261,7 @@ bool Player::isSkillInstanceEffectAvailable(const QString &skillName, int instan
 }
 
 // ========================================
-// 技能多實例權威容器 (SSOT) API
+// Multi-instance skill authority (SSOT) API.
 // ========================================
 int Player::createSkillInstance(const QString &skillName, SkillInstanceSource source, bool visible)
 {
@@ -3802,28 +3802,28 @@ bool Player::setProperty(const char* name, const QVariant& value) {
 
 
 /**
- * 檢查玩家是否符合特定的主公技勢力要求
- * @param player 玩家對象指針
- * @param targetKingdom 目標勢力代碼 (例如 "qun", "wei", "shu")
+ * Checks whether a player meets the kingdom requirement for a lord skill.
+ * @param player Player being checked.
+ * @param targetKingdom Target kingdom code (for example, "qun", "wei", "shu").
  */
 bool Player::hasLordSkillKingdom(const QString& targetKingdom, const Player *player) const {
-    // 1. 優先檢查：如果玩家本國勢力直接符合，無需檢查屬性
+    // 1. Check the player's own kingdom first; no property lookup is needed on a match.
     if (this->getKingdom() == targetKingdom) {
         return true;
     }
 
-    // 2. 獲取特殊屬性
+    // 2. Read the special property.
     const QString lordskill_kingdom = this->property("lordskill_kingdom").toString();
     
-    // 3. 如果屬性為空，且第1步已失敗，則返回 false
+    // 3. If the property is empty after step 1 failed, return false.
     if (lordskill_kingdom.isEmpty()) {
         return false;
     }
 
-    // 4. 解析屬性：檢查是否包含目標勢力或 "all"
+    // 4. Check whether the property contains the target kingdom or "all".
     const QStringList kingdoms = lordskill_kingdom.split('+');
     if (player) {
-        // 如果提供了目標玩家，還可以檢查目標玩家是否符合要求
+        // If a target player is supplied, check whether that player also qualifies.
         if (kingdoms.contains(player->objectName())) {
             return true;
         }
@@ -4132,7 +4132,7 @@ bool Player::inHeadSkills(const QString &skill_name) const
     
     if (!skill->isVisible()) {
         const Skill *main_skill = Sanguosha->getMainSkill(skill_name);
-        // 未登錄關聯的隱藏技會由 getMainSkill 原樣返回；不可對自身遞迴。
+        // An unregistered hidden skill is returned unchanged by getMainSkill; do not recurse on itself.
         if (main_skill != nullptr && main_skill != skill)
             return inHeadSkills(main_skill->objectName());
     }
@@ -4161,7 +4161,7 @@ bool Player::inDeputySkills(const QString &skill_name) const
     
     if (!skill->isVisible()) {
         const Skill *main_skill = Sanguosha->getMainSkill(skill_name);
-        // 同上：只有解析到另一個主技能時才轉交判斷。
+        // Likewise, delegate only when resolution found a different main skill.
         if (main_skill != nullptr && main_skill != skill)
             return inDeputySkills(main_skill->objectName());
     }

@@ -325,7 +325,7 @@ void MultimediaSmokeController::scheduleNext(
     QTimer::singleShot(delayMs, this, slot);
 }
 
-// ── stage: backend ───────────────────────────────────────────────────────────
+
 void MultimediaSmokeController::stageBackend()
 {
     if (m_finished)
@@ -347,7 +347,7 @@ void MultimediaSmokeController::stageBackend()
     scheduleNext(&MultimediaSmokeController::stageUiEffect);
 }
 
-// ── stage: 短 UI 音效 ────────────────────────────────────────────────────────
+// Stage: short UI sound effects.
 void MultimediaSmokeController::stageUiEffect()
 {
     if (m_finished || failIfDeadlineExceeded(QStringLiteral("ui_effect")))
@@ -378,7 +378,7 @@ void MultimediaSmokeController::stageUiEffect()
     scheduleNext(&MultimediaSmokeController::stageVoice);
 }
 
-// ── stage: 武將語音 pool ─────────────────────────────────────────────────────
+// Stage: voice playback pool.
 void MultimediaSmokeController::stageVoice()
 {
     if (m_finished || failIfDeadlineExceeded(QStringLiteral("voice")))
@@ -410,7 +410,7 @@ void MultimediaSmokeController::stageVoice()
     scheduleNext(&MultimediaSmokeController::stageBgm);
 }
 
-// ── stage: BGM ───────────────────────────────────────────────────────────────
+// Stage: background music.
 void MultimediaSmokeController::stageBgm()
 {
     if (m_finished || failIfDeadlineExceeded(QStringLiteral("bgm")))
@@ -434,7 +434,7 @@ void MultimediaSmokeController::stageBgm()
     scheduleNext(&MultimediaSmokeController::stageMissingAsset);
 }
 
-// ── stage: 缺檔案降級 ────────────────────────────────────────────────────────
+// Stage: missing-asset fallback.
 void MultimediaSmokeController::stageMissingAsset()
 {
     if (m_finished || failIfDeadlineExceeded(QStringLiteral("missing_asset")))
@@ -456,7 +456,7 @@ void MultimediaSmokeController::stageMissingAsset()
     scheduleNext(&MultimediaSmokeController::stageVideo);
 }
 
-// ── stage: 影片／QML media component ─────────────────────────────────────────
+// Stage: video/QML media component.
 void MultimediaSmokeController::stageVideo()
 {
     if (m_finished || failIfDeadlineExceeded(QStringLiteral("video")))
@@ -509,7 +509,7 @@ void MultimediaSmokeController::stageVideo()
     scheduleNext(&MultimediaSmokeController::stageShutdown);
 }
 
-// ── stage: shutdown ──────────────────────────────────────────────────────────
+
 void MultimediaSmokeController::stageShutdown()
 {
     if (m_finished || failIfDeadlineExceeded(QStringLiteral("shutdown")))

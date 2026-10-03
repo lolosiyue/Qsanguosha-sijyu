@@ -15,7 +15,7 @@ DesktopInteractionView::DesktopInteractionView(Client *client)
 
 DesktopInteractionView::~DesktopInteractionView()
 {
-    // View 死之前一定要同 core 解綁,否則 core 會 present 落一嚿死物度。
+    // Unbind from the core before this view is destroyed, or the core may present a request to a dead view.
     if (m_client != nullptr && m_client->interactionCore() != nullptr
         && m_client->interactionCore()->view() == this) {
         m_client->interactionCore()->detachView();

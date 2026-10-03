@@ -1475,7 +1475,7 @@ bool OLQingceCard::targetFilter(const QList<const Player *> &targets, const Play
 void OLQingceCard::onEffect(CardEffectStruct &effect) const
 {
     Room *room = effect.from->getRoom();
-    //把顺序调整成先获得“荣”，再弃牌
+    // Gain 'Rong' before discarding.
     QList<int> list;
     foreach (int id, this->getSubcards()) {
         if (effect.from->getPile("rong").contains(id))

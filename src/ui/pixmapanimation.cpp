@@ -34,7 +34,7 @@ public:
         for (const PrewarmJob &job : m_jobs) {
             if (m_cancelled->load())
                 return;
-            // 解碼在背景；QPixmap 只能在主執行緒建立，逐幀交回。
+            // Decode frames in the background; create QPixmaps on the GUI thread and deliver them one at a time.
             const QImage image(job.fileName);
             if (image.isNull())
                 continue;
@@ -237,8 +237,8 @@ void PixmapAnimation::PrewarmEmotions(QObject *context, const QStringList &emoti
     if (jobs.isEmpty())
         return;
 
-    // 單執行緒、低優先，避免和遊戲搶核心；pool 是 context 的子物件，
-    // context 解構時先設取消旗標，再等目前這一幀解完。
+    // Use a low-priority single-thread pool so decoding does not compete with the game.
+    // The context cancels pending work and waits for the current frame during destruction.
     auto cancelled = std::make_shared<std::atomic_bool>(false);
     QObject::connect(context, &QObject::destroyed, [cancelled]() { cancelled->store(true); });
     QThreadPool *pool = new QThreadPool(context);

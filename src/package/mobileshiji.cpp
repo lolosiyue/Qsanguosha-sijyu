@@ -6957,7 +6957,6 @@ void XingzhenCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &) c
 	}
 }
 
-// Tom 2026-09-29：唔重做永久頂7。時機觀星 7 可接受，現行交換／觀星／殺流程維持。
 class Xingzhen : public ViewAsSkill
 {
 public:

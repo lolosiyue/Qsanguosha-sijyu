@@ -123,18 +123,18 @@ void GameSessionController::gameOver(const QString &winner, TerminationCause cau
 
 	ServerPlayer* target = nullptr;
 
-	// 直接從全體玩家清單中尋找有效目標
-	// 優先順序：存活玩家 > RestPlayer > 任何玩家
+	// Find a valid target among all players.
+	// Priority: living player > RestPlayer > any player.
 	foreach (ServerPlayer* p, m_room.getPlayers()) {
 		if (!p) continue;
-		// 生還玩家優先
+		// Prefer a surviving player.
 		if (p->isAlive()) {
 			target = p;
 			break;
 		}
 	}
 
-	// 降級策略：若無生還玩家，嘗試 RestPlayer
+	// Fallback: if no player survives, try RestPlayer.
 	if (!target) {
 		foreach (ServerPlayer* p, m_room.getPlayers()) {
 			if (!p) continue;
@@ -145,7 +145,7 @@ void GameSessionController::gameOver(const QString &winner, TerminationCause cau
 		}
 	}
 
-	// 最終降級：使用任何可用的玩家
+	// Final fallback: use any available player.
 	if (!target) {
 		target = m_room.getPlayers().first();
 	}
@@ -685,7 +685,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 	QString general = "sujiang";
 	ServerPlayer*the_lord = m_room.getLord();
 	if (players.contains(the_lord)){
-		// 自動化測試: headless 指定主公武將 (--test-general), 跳過隨機選將
+		// Automated test: headless mode uses --test-general for a fixed lord and skips random selection.
 		const QString forcedName = Server::forcedHeadlessGeneral;
 		const bool forced = Server::isHeadlessMode && !forcedName.isEmpty()
 			&& Sanguosha->getGeneral(forcedName) != nullptr;
@@ -722,7 +722,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		if(Config.Enable2ndGeneral){
 			if(general=="yinni_hide") general = the_lord->property("yinni_general").toString();
 			lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt(),QSet<QString>()<<general);
-			// 自動化測試: headless 指定主公副將 (--test-general2), 否則隨機
+			// Automated test: headless mode uses --test-general2 for a fixed deputy; otherwise choose randomly.
 			const QString forced2Name = Server::forcedHeadlessGeneral2;
 			if (Server::isHeadlessMode && !forced2Name.isEmpty()
 				&& Sanguosha->getGeneral(forced2Name) != nullptr

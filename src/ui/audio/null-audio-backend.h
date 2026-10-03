@@ -3,10 +3,10 @@
 
 #include "audio-backend.h"
 
-// The silent backend. Used in three cases:
-//   * QSAN_AUDIO_BACKEND=NULL builds (dedicated server / CI);
-//   * Windows Debug (FMOD links only in Release - silent, same as the old behavior);
-//   * fallback when a real backend's initialize() fails.
+// Silent backend for NULL builds, Windows Debug and failed real-backend initialization.
+
+
+
 class NullAudioBackend final : public IAudioBackend
 {
 public:

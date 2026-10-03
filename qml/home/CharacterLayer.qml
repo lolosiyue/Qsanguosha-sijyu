@@ -3,7 +3,7 @@ import QtQuick
 Item {
     id: root
 
-    // 底緣向下延伸 0.5 倍視窗高：放大角色並讓下半身疊入底部導覽列被遮蓋
+    // Extend the artwork below the window by half its height so the enlarged character tucks behind the bottom dock.
     property real baseBottomMargin: -parent.height * 0.5
     property bool compact: false
 

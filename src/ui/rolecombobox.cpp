@@ -138,7 +138,7 @@ void RoleComboBox::fix(const QString &role)
         return;
     }
     
-    // 初始暗置身份必須維持 expand()，不能當成固定身份處理。
+    // An initially hidden role must remain expandable; do not treat it as fixed.
     if (role == "unknown" && _m_fixedRole.isEmpty()) {
         if (items.isEmpty()) {
             createRoleItems();

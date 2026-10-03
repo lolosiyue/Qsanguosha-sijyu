@@ -11,10 +11,10 @@ class QTextDocument;
 
 #if defined(QSAN_ENGINE_BUILD)
 using ClientPlayer = Player;
-// engine 與 GUI 各自持有一個獨立的 Self（GUI 經 setEngineSelf() 同步過來）。
-// MSVC 會按型別 mangle 全域變數，兩個 `Self` 天然不衝突；Itanium ABI（GCC／Clang）
-// 不 mangle 全域變數名，所以 engine 這一個必須放入 namespace 才不會與 GUI 的
-// `ClientPlayer *Self` 產生 multiple definition。
+// The engine and GUI hold separate Self pointers; setEngineSelf() synchronizes
+// the GUI copy. MSVC mangles global names by type, but Itanium ABI (GCC/Clang)
+// does not, so the engine definition must be namespaced to avoid a duplicate
+// symbol with the GUI's ClientPlayer *Self.
 namespace QSanEngine {
 extern Player *Self;
 }

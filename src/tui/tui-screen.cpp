@@ -2,15 +2,7 @@
 
 #include <QStringList>
 
-// The SGR code for each attribute, applied on its own (never stacked -- see
-// the reset-before-apply comment in TuiScreen::flush()). Normal needs none:
-// a run that never leaves Normal never emits an SGR at all, which is most of
-// the board's own text. tui-board-view.cpp applies these for real (the self
-// cell, notices, the input cursor, dying/dead players, hit points, kingdom
-// names), so the distinctions below are load-bearing: the current player's
-// turn in reverse video, lethal HP and dead generals both reading as "faded"
-// in different ways, kingdoms in the desktop's banner colours (bright
-// variants, which stay legible on a dark console).
+// SGR attributes distinguish turn, health, kingdom and status states; Normal emits no sequence.
 QString tuiAttrSgr(TuiAttr attr)
 {
     switch (attr) {
@@ -147,16 +139,7 @@ void TuiScreen::putText(int row, int col, const QString &text, TuiAttr attr, int
             break; // Clipping, not wrapping: a torn row is worse than a cut word.
 
         QChar glyph = *it;
-        // A control character has no cell width and no glyph, but it would be
-        // written into the stream verbatim by flush(): a bare LF inside an
-        // absolutely-positioned diff run scrolls the alternate screen exactly
-        // the way the trailing row separator used to (see the full-repaint
-        // comment below), and a TAB moves the cursor an unpredictable
-        // distance. TuiRenderer::sanitize() deliberately keeps \n and \t
-        // because classic mode needs them, so text reaching a cell grid can
-        // still carry them -- a multi-line error message is the common case.
-        // Substitute a space here, at the one choke point every pane draws
-        // through, rather than trusting each caller to strip them.
+        // Replace control characters with spaces before they reach the cell grid.
         if (glyph.unicode() < 0x20 || glyph.unicode() == 0x7f)
             glyph = QLatin1Char(' ');
         char32_t code = glyph.unicode();
@@ -203,12 +186,12 @@ void TuiScreen::drawBox(const TuiRect &rect, const QString &title)
     const int left = rect.col;
     const int right = rect.col + rect.cols - 1;
 
-    const QChar topLeft(0x250C);     // ┌
-    const QChar topRight(0x2510);    // ┐
-    const QChar bottomLeft(0x2514);  // └
-    const QChar bottomRight(0x2518); // ┘
-    const QChar horizontal(0x2500);  // ─
-    const QChar vertical(0x2502);    // │
+    const QChar topLeft(0x250C);     // Top-left corner.
+    const QChar topRight(0x2510);    // Top-right corner.
+    const QChar bottomLeft(0x2514);  // Bottom-left corner.
+    const QChar bottomRight(0x2518); // Bottom-right corner.
+    const QChar horizontal(0x2500);  // Horizontal border.
+    const QChar vertical(0x2502);    // Vertical border.
 
     writeCell(top, left, topLeft, TuiAttr::Normal, false);
     writeCell(top, right, topRight, TuiAttr::Normal, false);
@@ -266,16 +249,7 @@ QString TuiScreen::flush()
     QString output;
 
     if (m_fullRepaint) {
-        // Nothing to diff the first frame against: paint everything. One
-        // "go home" escape plus a plain newline BETWEEN rows is enough,
-        // because every row is being repainted in full anyway. The
-        // separator goes between rows only, never after the last one: a
-        // terminal whose height exactly equals the screen's own row count
-        // has no scrollback room to absorb a trailing "\r\n" after the
-        // bottom row, so emitting one there scrolls the alternate screen up
-        // by a line, carrying the top border off screen and leaving every
-        // absolute-position escape the diff path emits afterwards addressed
-        // against a screen that has silently shifted underneath it.
+        // Separate full-frame rows without a trailing newline; the bottom-right cell must not trigger scrolling.
         output += QStringLiteral("\x1b[H");
         for (int row = 0; row < m_rows; ++row) {
             if (row > 0)
@@ -325,7 +299,7 @@ QString TuiScreen::toPlainText() const
             line += cell.glyph;
         }
         // Only the right end is trimmed: leading columns are meaningful
-        // (indentation before a name, e.g. "  曹操"), but trailing padding out
+        // Leading spaces are meaningful (for example, before a name); trim only trailing padding.
         // to the fixed grid width is a rendering detail a golden test should
         // not have to spell out.
         int end = line.size();

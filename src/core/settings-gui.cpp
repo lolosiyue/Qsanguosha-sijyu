@@ -11,8 +11,8 @@
 #include <QFont>
 #include <QMessageBox>
 
-// 构建明暗主题的基础 palette(不依赖 standardPalette,详见 applyColorScheme 注释)。
-// 0=跟随系统(读 getter 判断当前系统是亮还是暗),1=强制亮色,2=强制暗色。
+// Build the light/dark base palette without relying on standardPalette().
+// 0 follows the system, 1 forces light, and 2 forces dark.
 static QPalette buildColorSchemePalette(int scheme)
 {
     int s = qBound(0, scheme, 2);
@@ -24,14 +24,14 @@ static QPalette buildColorSchemePalette(int scheme)
     bool dark = (s == 2);
 #endif
 
-    // 每次都新建 Fusion 实例,确保 standardPalette() 干净;直接复用旧 style 的
-    // standardPalette 会拿到上一轮缓存的内容。
+    // Create a fresh Fusion style so standardPalette() has no cached state.
+    // Reusing the previous style would carry its old palette forward.
     QStyle *fusion = QStyleFactory::create("Fusion");
     qApp->setStyle(fusion);
     QPalette pal;
     if (dark) {
-        // 暗色 palette:参考 Qt 官方 Dark Style 例子的配色,文字从纯白柔化为中灰,
-        // 避免高对比刺眼。系统强调色(通常蓝色)在暗色下刺眼,高亮改回中性蓝灰。
+        // Dark palette follows Qt's official example, with softer gray text and a neutral blue-gray highlight.
+        // The system accent is too bright against the dark background.
         const QColor softText(0xcf, 0xcf, 0xcf);
         const QColor softDisabled(0x80, 0x80, 0x80);
         pal.setColor(QPalette::Window, QColor(0x35, 0x35, 0x35));
@@ -52,8 +52,8 @@ static QPalette buildColorSchemePalette(int scheme)
         pal.setColor(QPalette::Disabled, QPalette::ButtonText, softDisabled);
         pal.setColor(QPalette::Disabled, QPalette::Button, QColor(0x2b, 0x2b, 0x2b));
     } else {
-        // 亮色 palette:使用 Qt 标准 Fusion 亮色配色。即使系统处于暗色模式,
-        // 也必须给出确定的浅色值,否则 standardPalette() 会带出暗色。
+        // Set explicit Fusion light values even when the system is dark; otherwise
+        // standardPalette() would return dark colors.
         const QColor button(0xef, 0xef, 0xef);
         const QColor text(Qt::black);
         const QColor disabled(0x80, 0x80, 0x80);
@@ -75,14 +75,14 @@ static QPalette buildColorSchemePalette(int scheme)
         pal.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
         pal.setColor(QPalette::Disabled, QPalette::Button, button);
     }
-    // 不论条件分支都返回,调用方统一 setPalette,否则亮切暗再切亮时旧 palette 不更新。
+    // Route every branch through setPalette so switching light -> dark -> light updates the palette.
     return pal;
 }
 
-// 统一入口:设置 palette 并重设 stylesheet 触发全局 repolish。
-// sanguosha.qss 里 palette(base)/palette(window) 等是 setStyleSheet 时一次性解析的,
-// 之后不重设 palette 不会反映到 stylesheet 上色。这里清空再重设触发全局 repolish,
-// 让 tab 内容/按钮背景按新 palette 上色。
+// Shared entry point: set the palette and repolish the stylesheet.
+// QSS palette(base/window) values are resolved when setStyleSheet() runs.
+// Clear and reapply the stylesheet so tabs and buttons use the new palette.
+// This repolishes tab contents and button backgrounds with the new palette.
 static void applyPalette(const QPalette &pal)
 {
     qApp->setPalette(pal);
@@ -95,14 +95,14 @@ static void applyPalette(const QPalette &pal)
 
 void applyColorScheme(int scheme)
 {
-    // -server / --lua-test / --headless 等 headless 模式只用 QCoreApplication,
-    // 没有 QApplication 的 setStyle/setPalette/setStyleSheet 语义,直接跳过。
+    // Headless modes such as -server, --lua-test and --headless use only
+    // QCoreApplication, so skip QApplication-only style and palette APIs.
     if (!qobject_cast<QApplication *>(qApp))
         return;
     applyPalette(buildColorSchemePalette(scheme));
 }
 
-// 亮度转灰阶 (Rec.601 luma)
+// Convert luma to grayscale (Rec. 601).
 static QColor grayColor(const QColor &c)
 {
     int lum = qRound(0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue());
@@ -113,7 +113,7 @@ void applyVisualMode(const QString &mode)
 {
     if (!qobject_cast<QApplication *>(qApp))
         return;
-    // normal 直接回到当前主题的明暗 palette。
+    // Normal mode restores the current light/dark theme palette.
     if (mode == "normal") {
         applyColorScheme(Config.ColorScheme);
         return;
@@ -121,7 +121,7 @@ void applyVisualMode(const QString &mode)
 
     QPalette pal = buildColorSchemePalette(Config.ColorScheme);
     if (mode == "grayscale") {
-        // 灰阶:以当前明暗主题为基底,将所有角色颜色去饱和。
+        // Grayscale desaturates role colors on top of the current theme.
         const QList<QPalette::ColorRole> roles = {
             QPalette::Window, QPalette::WindowText, QPalette::Base,
             QPalette::AlternateBase, QPalette::ToolTipBase, QPalette::ToolTipText,
@@ -134,7 +134,7 @@ void applyVisualMode(const QString &mode)
             pal.setColor(QPalette::Disabled, role, grayColor(pal.color(QPalette::Disabled, role)));
         }
     } else {
-        // highcontrast:纯黑白高对比 palette。
+        // High-contrast mode uses a black-and-white palette.
         pal.setColor(QPalette::Window, Qt::white);
         pal.setColor(QPalette::WindowText, Qt::black);
         pal.setColor(QPalette::Base, Qt::white);
@@ -175,7 +175,7 @@ void UiSettings::init()
         SmallFont.setFamily(font_family);
         TinyFont.setFamily(font_family);
     } else {
-        // 自動化測試/無 font 目錄環境: 改非阻塞警告, 避免 QMessageBox 卡死 client
+        // Without a font directory, automated/headless runs need a non-blocking warning to avoid hanging the client.
         qWarning("Font file %s could not be loaded; falling back to system font", qPrintable(font_path));
     }
 

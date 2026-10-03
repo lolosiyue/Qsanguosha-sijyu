@@ -56,19 +56,19 @@ qint64 FileHandler::getFileSize(const QString &filePath)
 
 QString FileHandler::processPath(const QString &rawPath)
 {
-    // 处理路径中的空格和特殊字符（跨平台兼容）
+    // Handle spaces and special characters in paths across platforms.
     QString processedPath = rawPath;
     if (rawPath.startsWith("file://")) {
         processedPath = QUrl(rawPath).toLocalFile();
     }/*
 
-    // 安卓平台路径适配
+    // Android path handling.
 #ifdef Q_OS_ANDROID
-    // 如果是相对路径，且不是绝对路径，则使用安卓数据目录
+    // Resolve relative paths under the Android data directory.
     if (!processedPath.startsWith("/") && !processedPath.contains(":")) {
         QString androidDataPath = AndroidAssets::getWritableDataPath();
         processedPath = androidDataPath + "/" + processedPath;
-        // 安卓路径适配
+        // Android path handling.
     }
 #endif*/
 
@@ -79,17 +79,17 @@ QStringList FileHandler::getImageList(const QString& dirPath) {
     const QString processedPath = processPath(dirPath);
     QDir directory(processedPath);
 
-    // Qt5.4兼容写法
+    // Qt 5.4-compatible form.
     QStringList filters;
     filters << "*.jpg" << "*.jpeg";
 
     QStringList images = directory.entryList(
-        filters,           // 文件名过滤器
-        QDir::Files,       // 只匹配文件（原QDir::Filter::Files）
-        QDir::Name         // 按文件名排序（原QDir::SortFlag::Name）
+        filters,           // Filename filter.
+        QDir::Files,       // Match files only (formerly QDir::Filter::Files).
+        QDir::Name         // Sort by filename (formerly QDir::SortFlag::Name).
     );
 
-    // 转换为完整路径
+    // Convert to an absolute path.
     for(int i = 0; i < images.size(); ++i) {
         images[i] = directory.filePath(images[i]);
     }

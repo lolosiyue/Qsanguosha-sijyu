@@ -1433,7 +1433,7 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
                     target->removeCard(id, Player::PlaceEquip);
                     m_discardPile->prepend(id);
                     setCardMapping(id, nullptr, Player::DiscardPile);
-                    // from 必須是原裝備區，否則 client loseCards 對不到 CardItem
+                    // from must be the original equipment zone so the client can match loseCards with CardItem.
                     invalidEquipMoves << CardsMoveStruct(id, target, nullptr,
                         Player::PlaceEquip, Player::DiscardPile,
                         CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
@@ -1466,7 +1466,7 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
                     target->removeCard(id, Player::PlaceEquip);
                     m_discardPile->prepend(id);
                     setCardMapping(id, nullptr, Player::DiscardPile);
-                    // from 必須是原裝備區，否則 client loseCards 對不到 CardItem
+                    // from must be the original equipment zone so the client can match loseCards with CardItem.
                     invalidEquipMoves << CardsMoveStruct(id, target, nullptr,
                         Player::PlaceEquip, Player::DiscardPile,
                         CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
@@ -1516,7 +1516,7 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
         }
     }
     if (!invalidEquipMoves.isEmpty()) {
-        // 必須成對：只送 GET 會讓 moveId 變 -1，client getCards 對空 stash takeFirst AV
+        // These messages must be paired: GET alone leaves moveId at -1 and makes client getCards call takeFirst on an empty stash.
         m_room.notifyMoveCards(true, invalidEquipMoves, true);
         m_room.notifyMoveCards(false, invalidEquipMoves, true);
     }

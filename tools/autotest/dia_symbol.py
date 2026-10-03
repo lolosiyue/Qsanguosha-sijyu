@@ -15,7 +15,6 @@ import os
 
 from ctypes import wintypes as w
 
-# ── GUID 常數 (取自 VS2019 DIA SDK dia2.h) ─────────────────
 CLSID_DiaSource = "{E6756135-1E65-4D17-8576-610761398C3C}"
 IID_IDiaDataSource = "{79F1BB5F-B66E-48E5-B6A9-1545C323CA3D}"
 IID_IDiaSession = "{2F609EE1-D1C8-4E24-8288-3326BADCD211}"

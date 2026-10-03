@@ -8,8 +8,8 @@ namespace Ui {
 
 class SettingsSession;
 
-// 舊版設定 dialog:遊戲內選單與無 QML 的建置仍使用。讀寫、預覽、復原都交給
-// SettingsSession,與首頁 SettingsScene.qml 共用同一份邏輯;這裡只負責 widget。
+// Legacy widget used by the in-game menu and builds without QML. SettingsSession shares preview, save and restore behavior with the home page.
+// SettingsSession shares logic with the home-page SettingsScene.qml; this class provides the widget.
 class ConfigDialog : public QDialog
 {
     Q_OBJECT
@@ -27,7 +27,7 @@ private:
     void showTextEditColor(const QColor &color);
 
     void loadConfig();
-    // widget 變動時寫回 session;載入中不回寫,避免把畫面同步當成使用者操作。
+    // Persist widget changes to the session, but ignore updates while loading its values.
     void bindValue(const QString &key, const QVariant &value);
     bool m_loading = false;
 

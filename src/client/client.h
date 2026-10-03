@@ -10,10 +10,10 @@
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
-// Client 的 signal/slot 以 ClientPlayer * / const ClientPlayer * /
-// QList<const ClientPlayer *> 為參數，moc 產生的 metatype array 需要完整型別
-// (Q_DECLARE_METATYPE(T*) 會 static_assert(sizeof(T)))，所以必須完整 include。
-// clientplayer.h 只前置宣告 class Client，不會造成 circular include。
+// Client signals and slots use ClientPlayer pointer types and lists. Qt's
+// generated metatype array requires complete types (Q_DECLARE_METATYPE(T*)
+// asserts sizeof(T)), so include the full definition. clientplayer.h only
+// forward-declares Client, so this does not create a circular include.
 #include "clientplayer.h"
 #include <QJsonArray>
 #include <QRegularExpression>
@@ -419,7 +419,7 @@ private:
     void syncInteractionState();
 
     void updatePileNum();
-    // prompt_doc 都寫埋。
+    // The request builder has already written prompt_doc.
     QString setPromptList(const QStringList &text);
     // Only builds strings, never touches prompt_doc: migrated interactions are presented
     // by DesktopInteractionView, so the request builder must not write UI documents at
@@ -447,7 +447,7 @@ private slots:
     void onPlayerChooseRole3v3();
 
 public slots:
-    // 自動化測試: roomscene 直接呼叫自動選先手 (原為 private)
+    // Test hook: RoomScene calls this to auto-select the starting player.
     void onPlayerChooseOrder();
 
 signals:

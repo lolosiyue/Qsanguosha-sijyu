@@ -91,7 +91,7 @@ namespace SkillInstanceUtils {
             return 0;
         }
 
-        // 隱藏技能以 # 開頭；從第二個字元開始找實例分隔符。
+        // Hidden skills start with #; the instance separator is the next #.
         int searchStart = fullName.startsWith('#') ? 1 : 0;
         int split = fullName.indexOf('#', searchStart);
 

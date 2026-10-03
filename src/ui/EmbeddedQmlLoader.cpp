@@ -15,9 +15,9 @@ EmbeddedQmlLoader::EmbeddedQmlLoader(QObject *parent)
     , m_autoCloseTimer(new QTimer(this))
     , m_enableClickThrough(false)
 {
-    // 移除创建日志
 
-    // 设置自动关闭定时器
+
+
     m_autoCloseTimer->setSingleShot(true);
     connect(m_autoCloseTimer, &QTimer::timeout, this, &EmbeddedQmlLoader::close);
 }
@@ -28,7 +28,7 @@ EmbeddedQmlLoader::~EmbeddedQmlLoader()
         m_qmlWidget->deleteLater();
 		m_qmlWidget = nullptr;
     }
-    // 移除销毁日志
+
 }
 
 bool EmbeddedQmlLoader::loadQmlOverlay(QWidget *parentWindow,
@@ -37,23 +37,23 @@ bool EmbeddedQmlLoader::loadQmlOverlay(QWidget *parentWindow,
                                       const QVariantMap &contextVars,
                                       bool enableClickThrough)
 {
-    // 移除开始加载日志
+
     
     if (!parentWindow) {
         m_lastError = "父窗口为空";
         return false;
     }
     
-    // 检查文件存在性 - 支持PC和安卓平台
+
     QString fullPath = qmlFile;/*
     if (!QFile::exists(fullPath)) {
 #ifdef Q_OS_ANDROID
-        // 安卓平台：使用外部存储路径
+        // Android: use the external-data path.
         QString androidDataPath = AndroidAssets::getWritableDataPath();
         fullPath = androidDataPath + "/" + qmlFile;
-        // 安卓平台路径处理
+        // Resolve the Android data path.
 #else
-        // PC平台：使用应用程序目录
+        // Desktop: use the application directory.
         fullPath = QApplication::applicationDirPath() + "/" + qmlFile;
 #endif
     }*/
@@ -63,57 +63,57 @@ bool EmbeddedQmlLoader::loadQmlOverlay(QWidget *parentWindow,
         return false;
     }
     
-    // 移除找到文件日志
     
-    // 保存父窗口引用和点击穿透设置
+
+
     m_parentWindow = parentWindow;
     m_enableClickThrough = enableClickThrough;
 
-    // 保存当前焦点窗口，用于后续恢复
+
     m_originalFocusWidget = QApplication::focusWidget();
 
-    // 创建QQuickWidget（直接在父窗口上）
+
     m_qmlWidget = new QQuickWidget(parentWindow);
 
 #ifdef Q_OS_ANDROID
-    // 安卓平台特殊设置 - 防止抢夺焦点
+
     m_qmlWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
-    m_qmlWidget->setAttribute(Qt::WA_ShowWithoutActivating, true);  // 显示但不激活
+    m_qmlWidget->setAttribute(Qt::WA_ShowWithoutActivating, true);
     m_qmlWidget->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
 #endif
     
-    // 设置QML组件属性
+
     setupQmlWidget();
     
-    // 设置上下文变量
+
     QQmlContext *context = m_qmlWidget->rootContext();
     FileHandler *fileHandler = new FileHandler(m_qmlWidget);
     context->setContextProperty("fileHandler", fileHandler);
     // Qt 6 resolves context properties while setSource() creates the component.
     context->setContextProperty("qmlLoader", this);
     
-    // 设置自定义上下文变量
+
     for (auto it = contextVars.begin(); it != contextVars.end(); ++it) {
         context->setContextProperty(it.key(), it.value());
-        // 移除上下文变量设置日志
+
     }
     
-    // 设置尺寸和位置
+
 
     m_qmlWidget->resize(width, height);
 
-    // 居中显示
+
     int x = (parentWindow->width() - width) / 2;
     int y = (parentWindow->height() - height) / 2;
     m_qmlWidget->move(x, y);
     
-    // 移除位置尺寸日志
     
-    // 连接状态变化信号
+
+
     connect(m_qmlWidget, &QQuickWidget::statusChanged, 
             this, &EmbeddedQmlLoader::onQmlStatusChanged);
     
-    // 加载QML文件
+
     m_qmlWidget->setSource(QUrl::fromLocalFile(fullPath));
     return true;
 }
@@ -122,36 +122,36 @@ void EmbeddedQmlLoader::setupQmlWidget()
     if (!m_qmlWidget) return;
 
 #ifdef Q_OS_ANDROID
-    // 安卓平台特殊设置
-    m_qmlWidget->setClearColor(Qt::transparent);  // 恢复透明背景
+
+    m_qmlWidget->setClearColor(Qt::transparent);
     m_qmlWidget->setAttribute(Qt::WA_TranslucentBackground, true);
 
-    // 关键：防止抢夺焦点
+    // Do not activate the overlay; the underlying dialog must keep keyboard focus.
     m_qmlWidget->setAttribute(Qt::WA_ShowWithoutActivating, true);
     m_qmlWidget->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
 
 #else
-    // PC平台：完美相容 QOpenGLWidget 的透明背景設定
+    // Transparent QML overlays must composite correctly over the QOpenGLWidget viewport.
     
-    // 1. 強制 QML 引擎使用帶有 8-bit Alpha 通道的渲染格式
+    // Use an alpha-capable render format.
     QSurfaceFormat format = m_qmlWidget->format();
     format.setAlphaBufferSize(8);
     m_qmlWidget->setFormat(format);
 
-    // 2. 設置 QML 畫布的清除色為全透明
+    // Clear the QML canvas to transparent.
     m_qmlWidget->setClearColor(Qt::transparent);
 
-    // 3. 關鍵：告訴 Qt 視窗系統這個 Widget 背景可穿透 (這行原本漏掉了)
+    // Enable transparent-window input handling so the overlay can pass clicks through.
     m_qmlWidget->setAttribute(Qt::WA_TranslucentBackground, true);
 
-    // 4. 確保疊加在最上層
+    // Keep the overlay above the game view.
     m_qmlWidget->setAttribute(Qt::WA_AlwaysStackOnTop, true);
 #endif
 
     m_qmlWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
     m_qmlWidget->setAttribute(Qt::WA_DeleteOnClose, false);
 
-    // 设置点击穿透（ghost=特效专用）
+    // Only ghost effects pass mouse input through to the game.
     if (m_enableClickThrough) {
         m_qmlWidget->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     }
@@ -161,7 +161,7 @@ void EmbeddedQmlLoader::onQmlStatusChanged(QQuickWidget::Status status)
 {
     switch (status) {
     case QQuickWidget::Ready:{
-			// QML加载成功
+
 			connectQmlSignals();
 			show();
 			break;
@@ -191,7 +191,7 @@ void EmbeddedQmlLoader::connectQmlSignals()
         return;
     }
 
-    // 连接QML中的完成信号
+
     connect(rootItem, SIGNAL(animationCompleted()), this, SLOT(onAnimationCompleted()));
     connect(rootItem, SIGNAL(finished(QVariant)), this, SLOT(receiveQmlResult(QVariant)));
 
@@ -199,10 +199,10 @@ void EmbeddedQmlLoader::connectQmlSignals()
 
 void EmbeddedQmlLoader::onAnimationCompleted()
 {
-    // QML动画完成
+
     emit effectFinished();
 
-    // 延迟关闭，给QML一点时间完成清理
+
     m_autoCloseTimer->start(100);
 }
 
@@ -210,7 +210,7 @@ void EmbeddedQmlLoader::setPosition(int x, int y)
 {
     if (m_qmlWidget) {
         m_qmlWidget->move(x, y);
-        // 设置位置
+
     }
 }
 
@@ -218,7 +218,7 @@ void EmbeddedQmlLoader::setOpacity(qreal opacity)
 {
     if (m_qmlWidget) {
         m_qmlWidget->setWindowOpacity(opacity);
-        // 设置透明度
+
     }
 }
 
@@ -229,12 +229,12 @@ void EmbeddedQmlLoader::show()
         m_qmlWidget->raise();
 
 #ifdef Q_OS_ANDROID
-        // 安卓平台：显示QML后恢复焦点，但不影响按钮
+
         if (m_parentWindow) {
             m_parentWindow->raise();
             m_parentWindow->activateWindow();
         }
-        // 延迟恢复原始焦点，避免立即影响按钮显示
+        // Restore focus after the overlay is shown; do not activate it over the game buttons.
         QTimer::singleShot(100, [this]() {
             if (m_originalFocusWidget) {
                 m_originalFocusWidget->setFocus();
@@ -248,7 +248,7 @@ void EmbeddedQmlLoader::hide()
 {
     if (m_qmlWidget) {
         m_qmlWidget->hide();
-        // QML组件已隐藏
+
     }
 }
 
@@ -261,13 +261,13 @@ void EmbeddedQmlLoader::close()
     }
 
 #ifdef Q_OS_ANDROID
-    // 安卓平台：QML关闭后恢复焦点
+
     if (m_parentWindow) {
         m_parentWindow->raise();
         m_parentWindow->activateWindow();
     }
 
-    // 简单的延迟恢复焦点
+
     QTimer::singleShot(100, [this]() {
         if (m_originalFocusWidget) {
             m_originalFocusWidget->setFocus();
@@ -276,7 +276,7 @@ void EmbeddedQmlLoader::close()
 #endif
 
     emit effectFinished();
-    deleteLater();  // 自动销毁加载器
+    deleteLater();
 }
 
 QString EmbeddedQmlLoader::getLastError() const

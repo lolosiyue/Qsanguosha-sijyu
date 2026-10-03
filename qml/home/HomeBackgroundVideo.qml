@@ -48,7 +48,7 @@ Item {
                 backdropSource = root.portrait ? "" : homeController.randomBackdrop();
             }
 
-            // Qt 6 的 Video 不會自動播放，source 就緒後需呼叫 play() 才會有畫面
+            // Qt 6 Video does not autoplay; call play() when the source is ready.
             Component.onCompleted: bgVideo.play()
             onSourceChanged: bgVideo.play()
         }

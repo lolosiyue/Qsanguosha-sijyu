@@ -653,7 +653,6 @@ public:
 	virtual QString getSubtype() const;
 	virtual bool isKindOf(const char *cardType) const;
 
-	// the lua callbacks
 	LuaFunction filter;
 	LuaFunction feasible;
 	LuaFunction available;
@@ -692,7 +691,6 @@ public:
 	virtual QString getSubtype() const;
 	virtual bool isKindOf(const char *cardType) const;
 
-	// the lua callbacks
 	LuaFunction filter;
 	LuaFunction feasible;
 	LuaFunction available;
@@ -723,7 +721,6 @@ public:
 	virtual QString getClassName();
 	virtual bool isKindOf(const char *cardType);
 
-	// the lua callbacks
 	LuaFunction filter;
 	LuaFunction feasible;
 	LuaFunction available;
@@ -748,7 +745,6 @@ public:
 	virtual QString getClassName();
 	virtual bool isKindOf(const char *cardType);
 
-	// the lua callbacks
 	LuaFunction filter;
 	LuaFunction feasible;
 	LuaFunction available;
@@ -774,7 +770,6 @@ public:
 	virtual QString getClassName();
 	virtual bool isKindOf(const char *cardType);
 
-	// the lua callbacks
 	LuaFunction filter;
 	LuaFunction feasible;
 	LuaFunction available;
@@ -801,7 +796,6 @@ public:
 	virtual QString getClassName();
 	virtual bool isKindOf(const char *cardType);
 
-	// the lua callbacks
 	LuaFunction filter;
 	LuaFunction feasible;
 	LuaFunction available;
@@ -828,7 +822,6 @@ public:
 	virtual QString getClassName();
 	virtual bool isKindOf(const char *cardType);
 
-	// the lua callbacks
 	LuaFunction filter;
 	LuaFunction feasible;
 	LuaFunction available;
@@ -854,7 +847,6 @@ public:
 	virtual QString getClassName();
 	virtual bool isKindOf(const char *cardType);
 
-	// the lua callbacks
 	LuaFunction filter;
 	LuaFunction feasible;
 	LuaFunction available;
@@ -959,7 +951,6 @@ bool LuaTriggerSkill::triggerable(ServerPlayer *target, Room *room, TriggerEvent
 
 	lua_State*L = room->getLuaState();
 
-	// the callback function
 	can_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
@@ -987,7 +978,6 @@ bool LuaTriggerSkill::canWake(TriggerEvent event, ServerPlayer *player, QVariant
 
 	lua_State*L = room->getLuaState();
 
-	// the callback function
 	can_wake.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerSkill, 0);
 	lua_pushinteger(L, event);
@@ -1014,16 +1004,11 @@ bool LuaTriggerSkill::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 
 	lua_State*L = room->getLuaState();
 
-	// the callback
 	on_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerSkill, 0);
-	// the first argument: event
 	lua_pushinteger(L, event);
-	// the second argument: player
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
-	// the last event: data
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
-	// append Room as an argument
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 
 	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
@@ -1443,17 +1428,17 @@ static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfTy
 		return result;
 	}
 
-	// 檢查第一個返回值（L[-2]）是否是 false
+	// Check whether the first return value (L[-2]) is false.
 	if (lua_isboolean(L, -2) && !lua_toboolean(L, -2)) {
 		lua_pop(L, 2);
 		return result;
 	}
 
-	// 直接嘗試轉換為字符串（對齊參考項目做法）
+	// Attempt direct string conversion.
 	QString trigger_str = QString::fromUtf8(lua_tostring(L, -2));
 	QString obj_name_str = QString::fromUtf8(lua_tostring(L, -1));
 
-	// 格式二：obj_name_str 非空表示多個技能擁有者
+	// A non-empty obj_name_str identifies multiple skill owners.
 	if (!obj_name_str.isEmpty()) {
 		lua_pop(L, 2);
 
@@ -1462,14 +1447,14 @@ static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfTy
 			QStringList obj_name_list = obj_name_str.split("|");
 
 			for (int i = 0; i < skill_list.size() && i < obj_name_list.size(); ++i) {
-				// 使用 findPlayerByObjectName 搜索玩家（objectName），而非 findPlayer（general_name）
+				// Find the player by objectName, not general name.
 				ServerPlayer *who = room->findPlayerByObjectName(obj_name_list.at(i), true);
 				if (who && !skill_list.at(i).isEmpty()) {
 					QStringList names = skill_list.at(i).split("+");
 					foreach (const QString &name, names) {
 						QString skillName = name.trimmed();
 						if (!skillName.isEmpty()) {
-							// RoomThread 統一展開 base name 並驗證精確 instanceID。
+							// RoomThread expands the base name and validates the exact instance ID.
 							result[who] << skillName;
 						}
 					}
@@ -1479,13 +1464,13 @@ static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfTy
 		return result;
 	}
 
-	// 格式一：單一技能擁有者
+	// A single skill owner.
 	ServerPlayer *ask_who = NULL;
 	if (lua_isuserdata(L, -1)) {
 		SWIG_ConvertPtr(L, -1, (void**)&ask_who, SWIGTYPE_p_ServerPlayer, 0);
 	}
 
-	// 檢查第一個返回值（L[-2]）是否是 skillName (string)
+	// Check whether the first return value (L[-2]) is the skill name string.
 	if (lua_isstring(L, -2)) {
 		QString names = QString::fromUtf8(lua_tostring(L, -2));
 		lua_pop(L, 2);
@@ -1708,7 +1693,6 @@ bool LuaScenarioRule::triggerable(const ServerPlayer *target) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback function
 	can_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaScenarioRule, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
@@ -1732,13 +1716,12 @@ bool LuaScenarioRule::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 
 	lua_State*L = room->getLuaState();
 
-	// the callback
 	on_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaScenarioRule, 0);
-	lua_pushinteger(L, event);// the first argument: event
-	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);// the second argument: player
-	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);// the last event: data
-	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);// append Room as an argument
+	lua_pushinteger(L, event);
+	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
+	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
+	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 
 	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
@@ -2429,7 +2412,6 @@ bool LuaViewAsSkill::shouldBeVisible(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	should_be_visible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -2451,7 +2433,6 @@ bool LuaViewAsSkill::isEnabledAtPlay(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	enabled_at_play.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -2473,7 +2454,6 @@ bool LuaViewAsSkill::isEnabledAtResponse(const Player *player, const QString &pa
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	enabled_at_response.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -2497,7 +2477,6 @@ bool LuaViewAsSkill::isEnabledAtNullification(const ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	enabled_at_nullification.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -2532,7 +2511,6 @@ bool LuaSkillCard::targetFilter(const QList<const Player *> &targets, const Play
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -2564,7 +2542,6 @@ bool LuaSkillCard::targetsFeasible(const QList<const Player *> &targets, const P
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -2591,7 +2568,6 @@ void LuaSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	about_to_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
@@ -2611,7 +2587,6 @@ void LuaSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
@@ -2636,7 +2611,6 @@ void LuaSkillCard::onEffect(CardEffectStruct &effect) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_effect.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
@@ -2655,7 +2629,6 @@ const Card *LuaSkillCard::validate(CardUseStruct &cardUse) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_validate.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
@@ -2680,7 +2653,6 @@ const Card *LuaSkillCard::validateInResponse(ServerPlayer *user) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_validate_in_response.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
@@ -2698,7 +2670,6 @@ const Card *LuaSkillCard::validateInResponse(ServerPlayer *user) const
 	return SkillCard::validateInResponse(user);
 }
 
-// ---------------------
 
 bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *self) const
 {
@@ -2707,7 +2678,6 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -2739,7 +2709,6 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -2771,7 +2740,6 @@ bool LuaBasicCard::targetsFeasible(const QList<const Player *> &targets, const P
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -2798,7 +2766,6 @@ void LuaBasicCard::onUse(Room *room, CardUseStruct &card_use) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	about_to_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
@@ -2818,7 +2785,6 @@ void LuaBasicCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
@@ -2843,7 +2809,6 @@ void LuaBasicCard::onEffect(CardEffectStruct &effect) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_effect.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
@@ -2862,7 +2827,6 @@ bool LuaBasicCard::isAvailable(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -2884,7 +2848,6 @@ const Card *LuaBasicCard::validate(CardUseStruct &cardUse) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_validate.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
@@ -2909,7 +2872,6 @@ const Card *LuaBasicCard::validateInResponse(ServerPlayer *user) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_validate_in_response.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
@@ -2936,7 +2898,6 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -2968,7 +2929,6 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3000,7 +2960,6 @@ bool LuaTrickCard::targetsFeasible(const QList<const Player *> &targets, const P
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3027,7 +2986,6 @@ void LuaTrickCard::onNullified(ServerPlayer *target) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_nullified.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
@@ -3046,7 +3004,6 @@ bool LuaTrickCard::isCancelable(const CardEffectStruct &effect) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	is_cancelable.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
@@ -3067,7 +3024,6 @@ void LuaTrickCard::onUse(Room *room, CardUseStruct &card_use) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	about_to_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
@@ -3087,7 +3043,6 @@ void LuaTrickCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
@@ -3113,7 +3068,6 @@ void LuaTrickCard::onEffect(CardEffectStruct &effect) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_effect.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
@@ -3132,7 +3086,6 @@ bool LuaTrickCard::isAvailable(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -3154,7 +3107,6 @@ const Card *LuaTrickCard::validate(CardUseStruct &cardUse) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_validate.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
@@ -3179,7 +3131,6 @@ const Card *LuaTrickCard::validateInResponse(ServerPlayer *user) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_validate_in_response.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
@@ -3204,7 +3155,6 @@ bool LuaWeapon::targetFilter(const QList<const Player *> &targets, const Player 
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3232,7 +3182,6 @@ bool LuaWeapon::targetsFeasible(const QList<const Player *> &targets, const Play
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3259,7 +3208,6 @@ bool LuaWeapon::isAvailable(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -3281,7 +3229,6 @@ void LuaWeapon::onInstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3300,7 +3247,6 @@ void LuaWeapon::onUninstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3319,7 +3265,6 @@ bool LuaArmor::targetFilter(const QList<const Player *> &targets, const Player *
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3347,7 +3292,6 @@ bool LuaArmor::targetsFeasible(const QList<const Player *> &targets, const Playe
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3374,7 +3318,6 @@ bool LuaArmor::isAvailable(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -3396,7 +3339,6 @@ void LuaArmor::onInstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3415,7 +3357,6 @@ void LuaArmor::onUninstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3434,7 +3375,6 @@ bool LuaHorse::targetFilter(const QList<const Player *> &targets, const Player *
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3462,7 +3402,6 @@ bool LuaHorse::targetsFeasible(const QList<const Player *> &targets, const Playe
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3489,7 +3428,6 @@ bool LuaHorse::isAvailable(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -3511,7 +3449,6 @@ void LuaHorse::onInstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3530,7 +3467,6 @@ void LuaHorse::onUninstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3570,7 +3506,6 @@ bool LuaOffensiveHorse::targetFilter(const QList<const Player *> &targets, const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3598,7 +3533,6 @@ bool LuaOffensiveHorse::isAvailable(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -3620,7 +3554,6 @@ bool LuaOffensiveHorse::targetsFeasible(const QList<const Player *> &targets, co
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3647,7 +3580,6 @@ void LuaOffensiveHorse::onInstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3666,7 +3598,6 @@ void LuaOffensiveHorse::onUninstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3706,7 +3637,6 @@ bool LuaDefensiveHorse::targetFilter(const QList<const Player *> &targets, const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
@@ -3735,7 +3665,6 @@ bool LuaDefensiveHorse::targetsFeasible(const QList<const Player *> &targets, co
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3762,7 +3691,6 @@ bool LuaDefensiveHorse::isAvailable(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -3784,7 +3712,6 @@ void LuaDefensiveHorse::onInstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3803,7 +3730,6 @@ void LuaDefensiveHorse::onUninstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3843,7 +3769,6 @@ bool LuaTreasure::targetFilter(const QList<const Player *> &targets, const Playe
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3871,7 +3796,6 @@ bool LuaTreasure::targetsFeasible(const QList<const Player *> &targets, const Pl
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3898,7 +3822,6 @@ bool LuaTreasure::isAvailable(const Player *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
@@ -3920,7 +3843,6 @@ void LuaTreasure::onInstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -3939,7 +3861,6 @@ void LuaTreasure::onUninstall(ServerPlayer *player) const
 
 	lua_State*L = LuaRuntime::currentState();
 
-	// the callback
 	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);

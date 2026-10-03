@@ -96,7 +96,7 @@ bool ExpPattern::match(const Player *player, const Card *card) const
 bool ExpPattern::matchOne(const Player *player, const Card *card, const Alternative &alternative) const
 {
 	if(!alternative.anyName){
-		// Card 字串只在型別比對失敗時才組，和原本的短路順序一致。
+		// Build the card string only when type matching fails, preserving the short-circuit order.
 		const QString type = card->getType();
 		const QString percentName = "%" + card->objectName();
 		QString cardString;

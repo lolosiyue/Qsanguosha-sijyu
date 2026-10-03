@@ -11,7 +11,7 @@ namespace {
 
 // Traditional -> Simplified, one character for one character: the same table
 // the Web client uses (web/src/zh-hans.ts, OpenCC t2s TSCharacters, first
-// candidate, minus 乾 and 吒, which are also standard simplified characters).
+// The table maps each character at index i to the character at the same index in the other string.
 // Index i of one string pairs with index i of the other.
 const char16_t TraditionalChars[] =
     u"㑯㑳㑶㓨㘚㜄㜏㠏㥮㩜㩳㩵䁻䃮䊷䋙䋚䋹䋻䍦䎱䙡䜀䝼䥇䥑䥱䦛䦟䯀䰾䱷䱽䲁䲘䴉丟並亂亙亞佇佈佔併來侖侶侷俁係俔俠俥俬倀倆倈倉個們倖倫倲偉偑側偵偽傌傑傖傘備傢傭傯傳傴債傷傾僂僅僉僑僕僞僥僨僱價儀儁儂億"
@@ -104,7 +104,7 @@ QString tuiText(const char *key)
 
 QString tuiToSimplified(const QString &text)
 {
-    // Japanese lines keep their kanji; converting 戦 or 見 there would change the text.
+    // Preserve Japanese lines; changing the Japanese kanji for battle or the Japanese kanji for seeing would alter their text.
     for (QChar ch : text) {
         if (ch.unicode() >= 0x3040 && ch.unicode() <= 0x30ff)
             return text;

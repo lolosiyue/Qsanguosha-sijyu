@@ -1,9 +1,9 @@
 pragma Singleton
 import QtQuick
 
-// 主頁主題色集中表：依 homeController.isDarkTheme 在亮/暗兩套色間切換。
-// 亮色為 BA-style 主視覺；暗色用深海軍藍／暗冰藍，避免純黑。
-// 各元件一律引用 HomeTheme.xxx，不得再寫死色值。
+// Central home-page palette, selected by homeController.isDarkTheme.
+// Use the dark navy/ice-blue palette instead of pure black.
+// Components should read HomeTheme values instead of hard-coding colors.
 Item {
     id: theme
 
@@ -23,7 +23,6 @@ Item {
     readonly property int catalogDetailContentHeight: 840
     readonly property int catalogPortraitHeight: 180
 
-    // —— BA 語意色 ——
     readonly property color baNavy: isDark ? "#D6E8F4" : "#073B5B"
     readonly property color baBlue: isDark ? "#8FBDD4" : "#185879"
     readonly property color baSky: isDark ? "#3AA8D4" : "#4EB8EA"
@@ -31,8 +30,8 @@ Item {
     readonly property color baWhite: isDark ? "#E8F3FA" : "#F3F8FD"
     readonly property color baYellow: "#FFD84D"
 
-    // 技能名：亮／暗都維持對比，勿用 btnPrimary（暗色過深）
-    // 衍生技名條相對本體技反相：亮色對齊實體卡黑底白字；暗色改淺底深字，避免黑條埋進海軍藍底。
+    // Keep skill names legible in both themes; btnPrimary is too dark in dark mode.
+    // Invert derived-skill labels against the base skill: match the physical card in light mode and avoid blending into navy in dark mode.
     readonly property color skillName: isDark ? "#7EDAF2" : "#0B6B8A"
     readonly property color skillNameRelated: isDark ? "#0B1A2E" : "#FFF8EC"
     readonly property color skillPlate: isDark ? "#553AA8D4" : "#CCE4F4"
@@ -45,10 +44,10 @@ Item {
     readonly property color tabSkillsBorder: isDark ? "#5AA8D4" : "#4EB8EA"
     readonly property color tabVoiceBorder: isDark ? "#8A7AB0" : "#8B73A8"
 
-    // 疊在立繪／卡圖上的標籤（不隨亮暗主題反轉，保證對比）
+    // Labels over portraits and card art retain contrast in both themes.
     readonly property color onArtScrim: "#D10B1A2E"
     readonly property color onArtText: "#F4F8FC"
-    // 模態面板背後的遮罩：壓暗並隔開底下的頁面內容
+    // Dim the page behind modal panels.
     readonly property color modalScrim: isDark ? "#B3050D18" : "#8C0B1A2E"
 
     readonly property color baDockTop: isDark ? "#CC243A58" : "#F0F3F8FD"
@@ -77,7 +76,7 @@ Item {
     readonly property color baFocusRing: isDark ? "#CCFFFFFF" : "#4EB8EA"
     readonly property color baFocusRingHigh: isDark ? "#FFFFFFFF" : "#FFFFFF"
 
-    // 背景底層（底色，背景圖半透明疊其上）
+    // Background base color, with the image layered above it.
     readonly property color windowBg: isDark ? "#0B1A2E" : "#D8E2F0"
 
     readonly property real backdropOpacity: isDark ? 0.45 : 0.32
@@ -87,7 +86,7 @@ Item {
     readonly property color gradientMidBot: isDark ? "#05FFFFFF" : "#06FFFFFF"
     readonly property color gradientBottom: isDark ? "#000B1A2E" : "#00D8E2F0"
 
-    // 底部 Dock／面板（對應 baDock*）
+    // Bottom dock and panels.
     readonly property color panelTop:    baDockTop
     readonly property color panelBottom: baDockBottom
     readonly property color panelBorder: baDockBorder
@@ -260,7 +259,7 @@ Item {
     readonly property int cardSkeletonTitleHeight: 26
     readonly property int cardSkeletonSubtitleHeight: 13
 
-    // 設定頁布局
+    // Settings page layout.
     readonly property int settingsNavWidth: 220
     readonly property int settingsLabelWidth: 300
     readonly property int settingsChoiceWidth: 280
@@ -274,14 +273,14 @@ Item {
     readonly property int settingsFooterButtonWidth: 200
     readonly property int settingsFooterButtonHeight: 56
 
-    // 武將頁布局：骨架與載入後畫面共用，避免尺寸對不齊
+    // Shared general-page skeleton and loaded layout to keep dimensions aligned.
     readonly property int generalHeaderHeight: 88
     readonly property int generalPageHMargin: 28
     readonly property int generalPageTopMargin: 18
     readonly property int generalPageBottomMargin: 8
     readonly property int generalPanelGap: 16
     readonly property real generalListShare: 0.40
-    // 左側「分類｜武將包」兩欄導覽；寬度從詳情面板扣，格子尺寸不變
+    // Two-column category/package navigation; reduce its width before shrinking the grid.
     readonly property int generalPackageNavWidth: 280
     readonly property int generalGridMargin: 16
     readonly property int generalCellMinWidth: 122

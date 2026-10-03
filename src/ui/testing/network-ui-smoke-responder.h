@@ -15,22 +15,22 @@ class PlayerCardContainer;
 class RoomScene;
 class QTimer;
 
-// Linux GUI M2: UI auto-responder that stands in for a human during a real network game.
+// UI responder for a real network game.
+
+// Server requests arrive over TCP and pass through Client and RoomScene; the responder selects enabled native items and submits through RoomScene.
+
+
+
+
+
+
 //
-// It is not another client and not an in-process fake: the server's request
-// arrives over real TCP at this process, is dispatched by the product's Client
-// to the product's RoomScene, and RoomScene builds its pending skill / dialog /
-// target selection state as usual; the responder merely plays the mouse,
-// picking the genuinely enabled CardItem / Photo / button, and finally runs
-// RoomScene's own doOkButton() / doCancelButton() to send the reply back to the
-// server.
+// First-legal-choice selection keeps fixed-seed runs reproducible.
 //
-// The strategy deliberately sticks to "the first legal choice" instead of random numbers: under a fixed seed the whole game is reproducible.
-//
-// Fallback: if some request cannot be answered through the UI within stallMs
-// (e.g. an interaction form M2 does not cover), switch to trustee so the game
-// is guaranteed to finish, and record trustee_fallback in the report — it is
-// never silently ignored.
+// If the UI cannot answer within stallMs, switch to trustee and record trustee_fallback in the report.
+
+
+
 class NetworkUiSmokeResponder final : public QObject
 {
     Q_OBJECT
@@ -42,12 +42,12 @@ public:
     static NetworkUiSmokeResponder *instance();
     static bool isActive();
 
-    // Smoke entry for RoomScene::chooseGeneral. Picks the first entry of the
-    // list provided by the server, which guarantees reproducibility under a
-    // fixed seed and avoids falling into the uncertain path where the server
-    // falls back to _chooseDefaultGeneral because the chosen general is not in
-    // the list. Returns false when the list is empty, leaving RoomScene to run
-    // its original FreeChooseDialog flow.
+    // Choose the first server-provided general for reproducible smoke runs.
+    // If the list is empty, leave the original FreeChooseDialog flow intact.
+
+
+
+
     bool answerChooseGeneral(const QStringList &generals);
 
     bool trusteeEngaged() const;
@@ -68,7 +68,7 @@ private:
     void recordAction(const QString &name);
     void engageTrustee(const QString &reason);
 
-    // 每個 handler 回傳 true = 已經經 UI 送出回覆／已推進一步。
+    // True means the handler submitted a UI reply or advanced the request.
     bool stepPlaying();
     bool stepResponding(Client::Status status);
     bool stepDiscarding(Client::Status status);
@@ -103,7 +103,7 @@ private:
     QElapsedTimer m_pendingSince;
 
     int m_stallMs;
-    // 本次請求已經試過幾多張手牌(每格 event loop 試一張)。
+    // Number of hand cards tried for this request, one per event-loop turn.
     int m_cardCursor = 0;
     bool m_stepScheduled = false;
     bool m_requestPending = false;

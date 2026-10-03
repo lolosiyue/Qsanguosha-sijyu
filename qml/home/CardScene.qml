@@ -89,7 +89,7 @@ Item {
     }
 
     function applyFilter(values) {
-        // 結果沒變就保留目前選取，不跳回第一張。
+        // Keep the current selection when results are unchanged.
         if (cardModel.applyFilter(values))
             Qt.callLater(selectFirst)
     }

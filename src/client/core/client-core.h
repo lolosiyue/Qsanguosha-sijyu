@@ -86,7 +86,7 @@ public:
     // when there is no deadline, the deadline has not passed, or there is no request.
     bool expireIfDue();
 
-    // 診斷:snapshot、smoke report 同測試會讀。
+    // Read by diagnostics, snapshots, smoke reports and tests.
     quint64 acceptedCount() const { return m_acceptedCount; }
     quint64 rejectedCount() const { return m_rejectedCount; }
     quint64 cancelledCount() const { return m_cancelledCount; }

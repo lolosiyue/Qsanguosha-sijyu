@@ -98,7 +98,7 @@ public:
 	RoomInitializationThread(RoomRuntime *runtime, QThread *returnThread, QObject *parent)
 		: QThread(parent), m_runtime(runtime), m_returnThread(returnThread)
 	{
-		// 收工診斷要講得出係邊條 thread 揸住 card-lifetime scope。
+		// Shutdown diagnostics must identify the thread holding the card-lifetime scope.
 		setObjectName(QStringLiteral("RoomInitializationThread"));
 	}
 
@@ -1922,7 +1922,7 @@ bool Server::listen()
 #endif
 	if (!created_successfully || !server->listen())
 		return false;
-	// Qt 5.6.3／XP 不編 WebSockets；TCP 成敗不得綁在 WS bind 上。
+	// Qt 5.6.3/Windows XP has no WebSockets support; TCP startup must not depend on binding WebSockets.
 #if QSAN_ENABLE_WEBSOCKETS
 	if (websocketServer == nullptr || !websocketServer->listen())
 		return false;
@@ -2505,8 +2505,8 @@ void Server::waitForDisposingRooms()
 {
 	if (!disposingRoomStillRunning())
 		return;
-	// Room ctor 在 main 同步執行, 期間無法處理 leftover RoomThread 的
-	// BlockingQueuedConnection。先泵 queued slot, 等舊 worker 結束再 new Room。
+	// Room construction runs synchronously on main, which cannot process a leftover RoomThread's
+	// BlockingQueuedConnection meanwhile. Pump queued slots until the old worker exits before creating a new Room.
 	QElapsedTimer timer;
 	timer.start();
 	while (disposingRoomStillRunning() && timer.elapsed() < 10000)
@@ -2726,11 +2726,11 @@ void Server::writeHeadlessLog(const QString &msg)
     if (logStream) {
         *logStream << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz")
                     << " " << msg << "\n";
-        // 自動化測試: 緩衝寫入, 每 100 行或每 1 秒 flush 一次, 降低儲存裝置寫入次數
-        // (逐行 flush 對 HDD/SSD 的寫入放大; 閃退最多丟失最後 ~1 秒的普通 log,
-        //  正常結束時 static QFile 析構會 flush, 啟動失敗 exit=1 同)
-        // 標記行 (>>> / [AUTOTEST] / ERROR) 立即 flush: headless 完成後退出階段會
-        // 0xC0000409 崩潰, 若 done 標記留在緩衝, runner 會誤判遊戲未完成
+        // Automated tests: buffer writes and flush every 100 lines or second to reduce storage writes.
+        // Per-line flushes amplify HDD/SSD writes; a crash may lose at most the last second of ordinary logs,
+        // while normal shutdown and startup failure (exit=1) flush through static QFile destruction.
+        // Flush marker lines (>>> / [AUTOTEST] / ERROR) immediately: headless shutdown can crash
+        // with 0xC0000409, and a buffered completion marker would make the runner report an incomplete game.
         static int pending = 0;
         static QElapsedTimer flushTimer;
         static bool timerStarted = false;
@@ -2777,9 +2777,9 @@ void Server::startHeadlessGame()
         return;
     }
 
-    // 自動化測試: headless 加速 — 跳過 AI 節奏延遲與開局倒數 (to_test 檢查見
-    // roomthread.cpp delay() 與 room.cpp run() 的 using_countdown), 並清除
-    // AIDelay (1v1/3v3 選將的 msleep(Config.AIDelay) 也會受影響)。
+    // Automated tests: speed up headless runs by skipping AI pacing and the start countdown (see
+    // roomthread.cpp delay() and room.cpp run()'s using_countdown), and clear
+    // AIDelay (also used by msleep(Config.AIDelay) during 1v1/3v3 general selection).
     room->setProperty("to_test", "headless");
     Config.AIDelay = Config.OriginAIDelay = 0;
 
@@ -2788,13 +2788,13 @@ void Server::startHeadlessGame()
     connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount, gameLimit](const QString &winner) {
         Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 
-        // 局間等待保留 500ms: 實測 0ms 會讓 game N+1 開局 ~9 秒時 fail-fast
-        // 閃退 (0xC0000409, 無 minidump) — old room 資源釋放與新局啟動需緩衝。
-        // 家族 C 防護: 絕不在局間 blocking wait — RoomThread 收尾可能需要
-        // main thread 處理 queued/blocking 事件 (room.cpp BlockingQueuedConnection),
-        // blocking 會互等死鎖。改非阻塞輪詢: main thread 每 100ms 檢查
-        // RoomThread 是否已結束, 結束後才 deleteLater 並啟動下一局;
-        // 逾時 10s 強制推進 (writeHeadlessLog ERROR 標記)。
+        // Keep a 500 ms inter-game delay: testing at 0 ms caused a fail-fast crash about nine seconds into the next game
+        // (0xC0000409, no minidump); old-room cleanup and next-game startup need time to settle.
+        // Family C protection: never block while waiting between games; RoomThread cleanup may need
+        // main to process queued/blocking events (Room.cpp BlockingQueuedConnection),
+        // which would deadlock. Poll without blocking: main checks every 100 ms
+        // until RoomThread exits, then deleteLater and start the next game;
+        // force progress after ten seconds and record an ERROR marker.
         auto continueAfterRoom = [this, currentGameCount, gameLimit]() {
             releaseFreedRoomHeap();
             if (currentGameCount < gameLimit) {
@@ -2900,7 +2900,7 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
     }
 
     if (headless) {
-        // 自動化測試: headless 加速, 同 startHeadlessGame
+        // Automated tests: headless acceleration, same as startHeadlessGame.
         room->setProperty("to_test", "headless");
         Config.AIDelay = Config.OriginAIDelay = 0;
     }
@@ -2909,8 +2909,8 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
     connect(room, &Room::game_over, this, [this, roomPtr, headless](const QString &winner) {
         qDebug() << "Test game finished. Winner:" << winner;
 
-        // 局間等待保留 500ms, 同 startHeadlessGame (0ms 會引致次局 fail-fast 閃退)
-        // 家族 C 防護, 同 startHeadlessGame: 非阻塞輪詢等 RoomThread 結束再刪 room
+        // Keep a 500 ms inter-game delay, as in startHeadlessGame; zero caused the next-game fail-fast crash.
+        // Family C protection, as in startHeadlessGame: poll without blocking until RoomThread exits, then delete the room.
         QTimer::singleShot(500, this, [this, roomPtr, headless]() {
             if (roomPtr) {
                 RoomThread *rt = roomPtr->getThread();

@@ -29,7 +29,7 @@ public:
     void setUiScale(qreal scale);
     void refit();
     void setBackgroundBrush(bool centerAsOrigin);
-    // 灰階/高對比:牌桌是 QGraphicsView,吃不到 palette,要對畫面後製。
+    // QGraphicsView does not use the palette for its table, so grayscale/high-contrast is applied as post-processing.
     void applyVisualMode();
 
 protected:

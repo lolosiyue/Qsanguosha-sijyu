@@ -3,8 +3,8 @@
  * QOpenGLWidget-based fullscreen overlay for playing Spine dynamic effects
  * on top of the game window (similar to EmbeddedQmlLoader but for Spine).
  *
- * Used for "出框" (breakout-frame) fullscreen special effects such as
- * 为君担忧 (XingXiang / BeiJing spine animations).
+ * Used for breakout-frame fullscreen special effects such as
+ * "为君担忧" (XingXiang / BeiJing spine animations).
  *****************************************************************************/
 
 #ifndef SPINE_EFFECT_WIDGET_H

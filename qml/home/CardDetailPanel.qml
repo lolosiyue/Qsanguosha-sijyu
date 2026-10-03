@@ -145,7 +145,7 @@ Item {
                         anchors.margins: HomeTheme.cardDetailImageInset
                         source: root.detail.imageUrl || ""
                         asynchronous: true
-                        // 切換卡牌時保留舊圖到新圖解碼完成，避免詳情圖閃白。
+                        // Keep the previous image visible until the replacement decodes to avoid a white flash.
                         retainWhileLoading: true
                         cache: true
                         fillMode: Image.PreserveAspectFit

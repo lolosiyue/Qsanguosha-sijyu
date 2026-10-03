@@ -1761,7 +1761,6 @@ public:
 };
 
 
-// 1. 建構子實作：接收參數並賦值給 m_propertyName
 
 
 class HuashenSelect : public TriggerSkillV2

@@ -854,7 +854,7 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
 	_m_lastMovementId = 0;
-	// 首次投降無視計時器；必須 start()，否則 elapsed() 未定義，首次請求會被 5 秒守衛攔死。
+	// The first surrender request bypasses the timer but must call start(); otherwise elapsed() is undefined and the initial request fails the five-second guard.
 	_m_isFirstSurrenderRequest = true;
 	_m_timeSinceLastSurrenderRequest.start();
 
@@ -1538,7 +1538,7 @@ void Room::judge(JudgeStruct&judge_struct)
 		if(getCardPlace(judge_struct.card->getEffectiveId())==Player::PlaceJudge)
 			moveCardTo(judge_struct.card,nullptr,Player::DiscardPile,CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER, judge_struct.who->objectName(),"judge",""),true);
 		judge_struct.card = nullptr;
-		judge(judge_struct);//终止并重新判定
+		judge(judge_struct);// Terminate and rejudge.
 	}else {
 		// Freeze the settled judgement before FinishJudge can obtain/move its card.
 		recordResult("completed");
@@ -1952,7 +1952,7 @@ ServerPlayer *Room::getRequestTarget(ServerPlayer *player) const
 bool Room::doRequest(ServerPlayer*player, QSanProtocol::CommandType command, const QVariant&arg, time_t timeOut, bool wait)
 {
 	bool result = m_requests->request(player, command, arg, timeOut, wait);
-	// 單機對 AI：求閃／求桃等被投降打斷後就地結束。PLAY_CARD 仍走出牌階段原路徑。
+	// In single-player against AI, end the current flow when surrender interrupts a Slash/Jink or Peach prompt. PLAY_CARD still follows the normal play-phase path.
 	if (wait && command != S_COMMAND_PLAY_CARD
 		&& m_surrenderRequestReceived && isSinglePlayerMode())
 		makeSurrender(player);
@@ -2607,7 +2607,7 @@ bool Room::isSinglePlayerMode() const
 {
 	ServerPlayer *owner = getOwner();
 	if (!owner) return false;
-	// 用完整名單(含已陣亡)：其他真人死後若只看存活者會誤判成單機。
+	// Check the full roster, including dead players; otherwise another human's death could make a multiplayer room look like single-player.
 	foreach (ServerPlayer *p, getPlayers()) {
 		if (p != owner && p->getState() != "robot")
 			return false;
@@ -2621,7 +2621,7 @@ void Room::trySinglePlayerSurrender()
 		return;
 	ServerPlayer *owner = getOwner();
 	if (!owner) return;
-	// 單機無人表決，makeSurrender 必走 gameOver 拋 GameFinished，由 RoomThread::run 接住。
+	// Single-player has no voters; makeSurrender must call gameOver and throw GameFinished for RoomThread::run to catch.
 	makeSurrender(owner);
 }
 
@@ -2748,7 +2748,7 @@ void Room::resetAI(ServerPlayer*player)
 	if (smart_ai){
 		index = ais.indexOf(smart_ai);
 		ais.removeOne(smart_ai);
-		//delete smart_ai;  changeHero在非主线程会闪退
+		// Deleting smart_ai here crashes because changeHero may run off the main thread.
 		smart_ai->deleteLater();
 	}
 	AI*new_ai = cloneAI(player);
@@ -2907,9 +2907,9 @@ void Room::reportDisconnection()
 
 			doBroadcastNotify(S_COMMAND_REMOVE_PLAYER, player->objectName());
 		} else {
-			// 房間已滿且 Room::run 已啟動 (Game Seed 已送出), 但身份尚未分配。
-			// 舊邏輯不移除玩家也不標 offline, doRequest 會對空 socket 等到逾時,
-			// 殘留 RoomThread 再與下一局 Room 建構在 main 上互鎖。
+			// The room is full and Room::run has started (the Game Seed was sent), but roles have not yet been assigned.
+			// The old path neither removes the player nor marks them offline, so doRequest waits on an empty socket until timeout;
+			// the leftover RoomThread can then deadlock with the next Room construction on main.
 			if (player->m_isWaitingReply)
 				player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 			m_gameSession->abort(GameSessionController::TerminationCause::Disconnected);
@@ -3038,7 +3038,7 @@ void Room::processRequestSurrender(ServerPlayer*player, const QVariant &arg)
 
 	//@todo: Strictly speaking, the client must be in the PLAY phase
 	//@todo: return false for 3v3 and 1v1!!!
-	// 單機即使 idle 也受理，只記 flag；聯機仍要求服務端正在等回覆。
+	// Accept the request in single-player even while idle and record only the flag; multiplayer still requires the server to await a reply.
 	const bool single = isSinglePlayerMode();
 	if (!single && !player->m_isWaitingReply)
 		return;
@@ -3049,7 +3049,7 @@ void Room::processRequestSurrender(ServerPlayer*player, const QVariant &arg)
 	_m_isFirstSurrenderRequest = false;
 	_m_timeSinceLastSurrenderRequest.restart();
 	m_surrenderRequestReceived = true;
-	// idle 時沒人 acquire，亂 release 會污染下次 getResult。
+	// No one acquires while idle; an unmatched release would corrupt the next getResult.
 	if (player->m_isWaitingReply)
 		player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 	return;
@@ -3657,8 +3657,8 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	if (!skill->canActivateRequest(request) || !skill->cardSelectionFeasible(request))
 		return nullptr;
 	{
-		// 額度（limit_scope）必須在 create 前攔截；不可只靠後續 reserve
-		// （cost 在 reserve 之前，否則會先 askForChoice 再失敗）。
+		// Enforce the limit_scope quota before create; relying only on reserve is too late,
+		// because cost runs before reserve and would prompt with askForChoice before failing.
 		SkillContext usageCtx;
 		usageCtx.invoker = player;
 		usageCtx.owner = player;
@@ -5505,7 +5505,7 @@ void Room::removeDerivativeCards()
 
 void Room::updateCardsChange(const CardsMoveStruct&move)
 {
-	//区域失去
+	// The area loses a card.
 	if(move.from_place==Player::PlaceTable){
 		QVariantList ren = tag["ren_pile"].toList();
 		if(ren.length()>0){
@@ -5520,7 +5520,7 @@ void Room::updateCardsChange(const CardsMoveStruct&move)
 			clearCardFlag(cardId);
 	}
 
-	//区域获得
+	// The area gains a card.
 	if(move.to_pile_name=="ren_pile"){
 		QVariantList ren = tag["ren_pile"].toList();
 		foreach(int id, move.card_ids){
@@ -5755,21 +5755,21 @@ void Room::doSuperLightbox(ServerPlayer*player, const QString&skillName, bool de
 void Room::doAnimate(QSanProtocol::AnimateType type, const QString&arg1, const QString&arg2,
 	QList<ServerPlayer*> players)
 {
-	// TODO(AI/Future): 预留“沙盒模式/模拟模式”动画副作用保护点。
-	// 当前主分支尚未具备 m_simulation_mode / markSimulationEffect 等完整基础设施，
-	// 暂不直接引入行为改动，避免破坏现有流程。
+	// TODO(AI/Future): Reserve a hook to protect animation side effects in sandbox/simulation mode.
+	// The current branch lacks the full m_simulation_mode / markSimulationEffect infrastructure,
+	// so do not introduce behavior changes here yet.
 	//
-	// 未来若引入沙盒机制，可在这里接入（示意）：
+	// Future simulation support could be connected here, for example:
 	// if (m_simulation_mode) {
 	// 	DEBUG_LOG("SANDBOX", QString("doAnimate detected: type=%1, arg1=%2 -> INTERRUPT").arg(type).arg(arg1));
 	// 	markSimulationEffect();
 	// 	return;
 	// }
 	//
-	// 接入前请先确保：
-	// 1) Room 成员与生命周期：m_simulation_mode / m_simulation_has_effect
-	// 2) 接口：enterSimulation()/exitSimulation()/markSimulationEffect()/simulationHasEffect()
-	// 3) RoomThread 触发链路的异常与回滚策略已联动。
+	// Before integrating, ensure:
+	// 1) Room fields and lifecycle: m_simulation_mode / m_simulation_has_effect
+	// 2) APIs: enterSimulation()/exitSimulation()/markSimulationEffect()/simulationHasEffect()
+	// 3) Exception and rollback handling are coordinated with the RoomThread trigger path.
 
 	JsonArray arg;
 	arg << (int)type << arg1 << arg2;
@@ -6287,11 +6287,11 @@ bool Room::isAkarin(ServerPlayer*player, ServerPlayer*to) const
 
 void Room::setLoopEmotion(ServerPlayer*target, const QString&emotion)
 {
-    // TODO: setLoopEmotion 尚未正確實現
-    // 預期功能：在玩家頭像區域附加或移除持續性的動態視覺特效（如鐵索連環狀態）
-    // 現況：目前只是發送 "loopmove=xxx" 到客戶端，會被當作普通文字顯示
-    // 正確實現需要：在 doLightboxAnimation 中新增 loopmove= 處理分支，
-    //               在玩家頭像區域顯示持續性視覺特效，支援 "." 參數移除特效
+    // TODO: setLoopEmotion is not implemented correctly yet.
+    // Intended behavior: add or remove persistent visual effects (such as chained status) on the player portrait.
+    // Currently, "loopmove=xxx" is sent to the client and displayed as ordinary text.
+    // A complete implementation needs a loopmove= branch in doLightboxAnimation
+    // to show persistent effects on portraits and remove them for the "." parameter.
     if (!target) return;
     doAnimate(S_ANIMATE_LIGHTBOX, QString("loopmove=%1").arg(emotion), target->objectName());
 }
@@ -7898,8 +7898,8 @@ QList<int> Room::getAvailableCardList(ServerPlayer*player, const QString&flags, 
 QList<ServerPlayer*> Room::getCardTargets(ServerPlayer*from, const Card*card, QList<ServerPlayer*> except_players)
 {
 	QList<ServerPlayer*> targets;
-	//if (!card->isAvailable(from)) return targets;  //【杀】、【酒】就不能获取目标了
-	//这个函数获得的是所有可以成为目标的角色，所以【无中生有】、【桃】、【酒】、装备牌等不会只return自己
+	// Do not filter by isAvailable here; it would omit targets for cards such as Slash and Analeptic.
+	// This returns every eligible target, so cards that target anyone (such as Amazing Grace, Peach, and equipment) are not restricted to the user.
 	foreach(ServerPlayer*p, getAlivePlayers()){
 		if (except_players.contains(p)) continue;
 		int x = 0;
@@ -8053,10 +8053,10 @@ void Room::changeTranslation(ServerPlayer*player, const QString&skill_name, cons
 		setPlayerProperty(player,propKey.toStdString().c_str(),args1.last());
 	}
 	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args1);
-	//更新技能图标上的技能描述
+	// Update the skill description on the skill icon.
 	QString notifyName = instanceId > 0 ? QString("%1#%2").arg(skill_name).arg(instanceId) : skill_name;
 	if (player->hasSkill(notifyName, true))
-		doNotify(player, S_COMMAND_UPDATE_SKILL, notifyName);  //自带更新武将图上的技能描述的功能，但有时会失灵，不知道为何
+		doNotify(player, S_COMMAND_UPDATE_SKILL, notifyName);  // The built-in general-image description update sometimes fails for unknown reasons.
 }
 
 void Room::changeTranslation(ServerPlayer*player, const QString&skill_name, int num, int instanceId)
@@ -8212,7 +8212,7 @@ void Room::notifyMoveToPile(ServerPlayer*player, const QList<int>&cards, const Q
 		}
 		foreach(int id, cards){
 			/*const Card*card = Sanguosha->getCard(id);
-			QStringList info;//为了处理锁定视为技影响的卡牌，先用这个蠢方法
+			QStringList info;
 			info << "CardInformationHelper" << card->getSuitString() << QString::number(card->getNumber());
 			setCardFlag(card, info.join("|"));*/
 			if(place==Player::PlaceUnknown) place = getCardPlace(id);
@@ -8486,7 +8486,7 @@ void Room::clearTestOverrides()
 
 void Room::initializeLuaTestEnvironment()
 {
-	// Lua 測試執行器以 ROOM 存取目前房間。
+	// The Lua test runner accesses the current room through ROOM.
 	doScript("ROOM = R");
 }
 

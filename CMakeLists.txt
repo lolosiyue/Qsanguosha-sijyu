@@ -21,8 +21,8 @@ if(QSAN_BUILD_XP_LEGACY AND NOT WIN32)
     message(FATAL_ERROR "QSAN_BUILD_XP_LEGACY is available on Windows only")
 endif()
 
-# 產品選項：GUI client 與 dedicated server 各自獨立，平台只決定預設值，
-# 不再由平台永久決定產品是否存在。
+# GUI client and dedicated server are independent products; platform affects defaults only.
+# Product availability is not permanently determined by platform.
 if(WIN32 OR ANDROID)
     set(QSAN_BUILD_GUI_DEFAULT ON)
 else()
@@ -156,14 +156,13 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-# WebSockets 閘道用 QWebSocket::setMaxAllowedIncomingFrameSize（Qt 5.15+）
-# 與 QOverload（Qt 5.7+）。Qt 5.6.3／XP 編不過，原生 TCP 仍是該產品的 listen 路徑。
+# The WebSocket gateway uses Qt 5.15+ APIs and is unavailable to the Qt 5.6.3 XP build; XP listens over native TCP.
 set(QSAN_ENABLE_WEBSOCKETS ON)
 if(QSAN_BUILD_XP_LEGACY)
     set(QSAN_ENABLE_WEBSOCKETS OFF)
 endif()
 
-# 單一 Qt component 清單，按產品分層，避免 Windows／Linux 各自維護會漂移的兩份清單。
+# Keep one product-layered Qt component list to prevent platform lists from drifting.
 set(QSAN_QT_COMPONENTS Core Network)
 if(QSAN_ENABLE_WEBSOCKETS)
     list(APPEND QSAN_QT_COMPONENTS WebSockets)
@@ -196,14 +195,8 @@ endif()
 
 list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
 
-# The Qt baseline of the GUI product is consistent between Windows and Linux. GUI
-# sources use APIs only added in Qt 6.5 (e.g. QStyleHints::colorScheme()), and the
-# production Windows toolchain is already Qt 6.11.1, so GUI builds explicitly require
-# 6.11.
-#
-# The server-only build deliberately skips this floor: the dedicated server only needs
-# Core/Network (plus WebSockets on Qt6) and must stay buildable against the
-# distro-provided Qt 6.x (e.g. 6.4.2 on Ubuntu 24.04). XP/Qt 5.6.3 does not use WebSockets.
+# GUI builds require Qt 6.11: shared GUI sources use APIs added in Qt 6.5, and Windows ships Qt 6.11.1.
+# Server-only builds use Core/Network and remain compatible with distro Qt 6.x; XP uses Qt 5.6.3 without WebSockets.
 set(QSAN_QT_GUI_MINIMUM_VERSION 6.11)
 
 if(QSAN_BUILD_GUI OR WIN32)
@@ -1053,7 +1046,7 @@ if(QSAN_BUILD_SERVER)
     qsan_link_websocket_gateway(qsanguosha_server)
     if(WIN32)
         target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
-        # crash handler(crashhandler.cpp, Release 啟用)需要
+        # The Release crash handler needs the Windows DbgHelp library.
         target_link_libraries(qsanguosha_server PRIVATE
             "$<$<CONFIG:Release>:dbghelp>"
             "$<$<CONFIG:Release>:user32>"
@@ -1291,8 +1284,8 @@ endif()
 
 
 if(QSAN_BUILD_GUI)
-    # GUI 產品的 source／MOC header／form／QML resource／askFor runner 由 Windows
-    # 與 Linux 共用；平台只追加平台專屬項目，不維護第二套 source list。
+    # Windows and Linux share the GUI source, MOC, form, QML resource, and askFor runner lists.
+    # Each platform adds only its platform-specific entries.
     set(QSAN_GUI_SOURCES
         ${QSAN_SOURCES}
         ${QSAN_MOC_HEADERS}
@@ -1358,7 +1351,7 @@ if(QSAN_BUILD_GUI)
             "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_qml.qrc"
         )
 
-        # home 介面圖示為本機資源，不入庫；本機存在 icons 目錄時才編譯進 qrc，避免 CI 缺少資源導致 RCC 錯誤
+        # Include local home icons in the QRC only when present, so CI can build without them.
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/icons")
             target_sources(${QSAN_GUI_TARGET} PRIVATE
                 "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_assets.qrc"
@@ -1484,8 +1477,7 @@ if(QSAN_BUILD_GUI)
         )
     endif()
 
-    # Qt QML import path / bin 目錄：Windows 的 Qt prefix layout 與 Linux distro
-    # layout 不同，改由 Qt 自身回報的安裝路徑推導。
+    # Derive the QML import and binary paths from Qt because Windows and Linux use different prefix layouts.
     if(QSAN_BUILD_XP_LEGACY)
         set(QSAN_QT_QML_DIR "")
         set(QSAN_QT_BIN_DIR "${QT_PREFIX}/bin")
@@ -1639,7 +1631,7 @@ if(QSAN_BUILD_GUI)
         # static target; never search the host's desktop installation.
         target_link_libraries(${QSAN_GUI_TARGET} PRIVATE Freetype::Freetype)
     else()
-        # Linux 使用系統 Freetype；不 link 任何 bundled *.lib，亦不需要 FMOD。
+        # Linux uses system FreeType and does not link bundled libraries or FMOD.
         find_package(Freetype REQUIRED)
         target_link_libraries(${QSAN_GUI_TARGET} PRIVATE Freetype::Freetype)
     endif()
@@ -1880,10 +1872,9 @@ if(UNIX AND NOT ANDROID AND QSAN_BUILD_GUI)
     )
 endif()
 
-# glibc floor(Linux x86_64):喺 glibc 2.43 嘅發行版 link,acosf／atan2f／sqrtf 會綁到
-# 2.43 新版 symbol,GUI 就喺 Ubuntu 24.04 等舊啲嘅系統開唔到。--wrap 將呼叫轉去
-# src/util/linux-glibc-compat.c,再由佢叫每個 x86_64 libm 都有嘅 GLIBC_2.2.5 版本。
-# tools/packaging/check-glibc-floor.py 會指出下一個要咁樣釘住嘅 symbol。
+# Cap the Linux x86_64 glibc baseline: newer glibc links these libm calls to symbols unavailable on Ubuntu 24.04.
+# Wrap them through linux-glibc-compat.c, which calls the GLIBC_2.2.5 libm symbols.
+# check-glibc-floor.py reports additional symbols that need wrappers.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     add_library(qsanguosha_glibc_compat OBJECT src/util/linux-glibc-compat.c)
     foreach(qsan_glibc_target QSanguosha qsanguosha_server qsanguosha_tui)

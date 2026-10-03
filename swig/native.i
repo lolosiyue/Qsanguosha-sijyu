@@ -174,8 +174,7 @@ static int Alert(lua_State *lua)
 
 static int IsHeadless(lua_State *lua)
 {
-	// 非 GUI 情境判定：net runner/engine build 恆 true；
-	// GUI build 依執行期參數（--test-scenario 無論有無 -h 一律視為自動化）
+	// Non-GUI builds are always automated; GUI builds follow the runtime test flags.
 #if defined(QSAN_ENGINE_BUILD)
 	lua_pushboolean(lua, true);
 #else

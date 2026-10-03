@@ -4,7 +4,7 @@ Rectangle {
     color: "transparent"
 
     signal animationCompleted() 
-    //?陝Notify憭抒?
+
 	Image {
 		id: heroCard
         opacity: 0

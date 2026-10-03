@@ -38,7 +38,7 @@ public:
     bool buildSkillActionContext(ServerPlayer *player, const SkillInstance &instance,
                                  CardUseStruct::CardUseReason reason, const QString &pattern,
                                  AiSkillActionContext &actionContext) const;
-    // project=false 只填請求表頭與技能上下文，不建盤面與候選；給只讀發動資格／instance 的呼叫者。
+    // project=false builds only the request header and skill context, without board state or candidates; used by read-only activation/instance queries.
     bool buildSkillActionRequest(ServerPlayer *player, const SkillInstance &instance,
                                  CardUseStruct::CardUseReason reason, const QString &pattern,
                                  const QString &prompt, Card::HandlingMethod method,

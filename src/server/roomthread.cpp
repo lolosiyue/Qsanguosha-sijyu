@@ -1211,7 +1211,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	QMap<QString, QStringList> consumedEquipmentTargets;
 	QMap<QString, QStringList> consumedContextTargets;
 
-	// record 每個事件只執行一次，並逐現存玩家實例提供完整 context。
+	// Run once per recorded event and provide full context for each current player instance.
 	foreach (const TriggerSkill *ts, v2_skills) {
 		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 		if (!v2) continue;
@@ -1507,7 +1507,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			}
 		}
 
-		// 返回值格式："skillName" 或 "skillName:ownerObjectName"
+		// Return format: "skillName" or "skillName:ownerObjectName".
 		QString reason = "GameRule:TriggerOrder";
 		QString name;
 		// Global rule/record/cleanup callbacks are not player ordering choices,
@@ -1532,12 +1532,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			continue;
 		}
 
-		// 解析返回值：提取 skillName 和 ownerObjectName
+		// Parse the return value into skillName and ownerObjectName.
 		QString ownerObjectName;
 		QString skillName = name;
 		int split = -1;
 		if ((split = name.indexOf(':')) != -1) {
-			skillName = name.left(split);           // 格式二：skillName:ownerObjectName
+			skillName = name.left(split);           // Format 2: skillName:ownerObjectName.
 			ownerObjectName = name.mid(split + 1);
 		}
 
@@ -1556,13 +1556,13 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(result_skill));
 		if (!v2) continue;
 
-		// 格式二支援：查找 selected_ctx 時用 ownerObjectName 匹配
+		// Format 2: match selected_ctx by ownerObjectName.
 		SkillContext *selected_ctx = nullptr;
 		for (int i = 0; i < skillContexts.size(); ++i) {
 			if (skillContexts[i].skill_name == selectedName &&
 				skillContexts[i].instanceID == instanceId) {
-				// 格式一：ownerObjectName 空時，匹配 owner == chooser
-				// 格式二：ownerObjectName 非空時，匹配 owner->objectName() == ownerObjectName
+				// Format 1: ownerObjectName is empty; match owner == chooser.
+				// Format 2: ownerObjectName is set; match owner->objectName() == ownerObjectName.
 				if (ownerObjectName.isEmpty()) {
 					if (v2->triggerOrderPlayer(room, skillContexts[i]) == chooser) {
 						selected_ctx = &skillContexts[i];
@@ -1607,7 +1607,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		triggerCounts[key] = triggerCounts.value(key, 0) + 1;
 		triggeredSkills.insert(key);
 
-		// 格式二支援：cost 使用 selected_ctx->owner（技能擁有者）作為 player
+		// Format 2: use selected_ctx->owner (the skill owner) as the player for cost.
 		Room::ResolutionScope resolution(*room, skillName);
 		ResolutionHistoryEventGuard skillHistory(
 			room->resolutionHistory(), QStringLiteral("skill"),
@@ -2410,6 +2410,6 @@ void RoomThread::delay(long secs)
 	if (Config.AIDelay>0&&room->property("to_test").isNull())
 		msleep(secs);
 	room->throwIfStopRequested();
-	// 單機投降高頻消費點：AI 每步都會路過。非單機／無訊號時只是一次 bool 判斷。
+	// Frequent single-player surrender check: AI passes here each step. Outside single-player or without a signal, this costs one bool check.
 	room->trySinglePlayerSurrender();
 }

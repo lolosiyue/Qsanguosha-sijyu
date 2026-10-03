@@ -3,7 +3,7 @@ error_reporting(0);
 if(!array_key_exists('p',$_GET)) die();
 $porto=intval($_GET['p']);
 if(!($porto>0&&$porto<=65535)) die();
-//将IP端口转化为二进制
+// Convert the IP address and port to binary.
 $port=pack('v',$porto);
 $addrarray=explode('.',$_SERVER['REMOTE_ADDR']);
 $addr='';
@@ -13,7 +13,7 @@ for($i=3;$i>=0;$i--)
 }
 $val=$addr.$port;
 $needtest=true;
-//官服
+// Official server
 $official=file_get_contents('official');
 $oflen=0;
 if($official&&$official%10==0)
@@ -26,7 +26,7 @@ if($official&&$official%10==0)
 			die('0');
 	}
 }
-//读取数据
+// Read the data.
 $kv=new SaeKV();
 if(!$kv->init())
 	die('3');
@@ -47,7 +47,7 @@ if($file!==false&&strlen($file)%10==0)
 		}
 	}
 }
-//检查外部端口是否开放
+// Check whether the external port is open.
 if(array_key_exists('r',$_GET))
 {
 	if($_GET['r']=='1')
@@ -55,12 +55,12 @@ if(array_key_exists('r',$_GET))
 }
 if($needtest)
 {
-	//默认使用socket
+	// Use a socket by default.
 	$socket=fsockopen('tcp://'.$_SERVER['REMOTE_ADDR'],$porto,$errno,$errstr,10);
 	if(!$socket)
 		die('1');
 	fclose($socket);
-	//改用fetchURL，实现云豆0消耗，方式比较取巧
+	// Switch to fetchURL to avoid cloud-bean charges.
 	/*$url='http://'.$_SERVER['REMOTE_ADDR'].':'.$porto.'/';
 	$ch=curl_init();
 	curl_setopt($ch,CURLOPT_URL,$url);
@@ -70,7 +70,7 @@ if($needtest)
 		die('1');*/
 }
 $version=pack('v',1);
-//读取文件，剔除重复和超时的服务器
+// Read the file and remove duplicate or timed-out servers.
 $newfile='';
 $dup=false;
 $len=strlen($file);
@@ -95,7 +95,7 @@ if($file!==false&&$len%10==0)
 	}
 }
 if(!$needtest&&!$dup) die('2');
-//保存文件
+// Save the file.
 $time=pack('L',time());
 $newfile=$val.$time.$newfile;
 for($i=0;$i<5;$i++)

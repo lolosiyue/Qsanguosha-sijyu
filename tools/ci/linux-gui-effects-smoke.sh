@@ -1,35 +1,6 @@
 #!/usr/bin/env bash
+# Run the GUI effects contract with bounded app and process timeouts.
 #
-# Linux GUI M2B-B effects smoke.
-#
-# Drives the real GUI path (QApplication -> engine -> MainWindow -> HomeScene/QML
-# -> Qt event loop) and then the real effects system for one profile: the
-# centralized VisualEffectsPolicy, the exactly-once completion contract, the
-# missing/malformed asset fallbacks for frame animations, GIF and Spine, and the
-# per-profile object budget.  Two independent timeouts guard the run:
-#
-#   * the app-level --effects-timeout-ms, which reports a failure marker; and
-#   * the process-level `timeout` below, which kills a Qt event loop that hangs
-#     hard enough to never reach its own timer.
-#
-# The runner never requires production art: a clean checkout has none.  It
-# asserts behaviour ("a missing asset degrades to a static UI", "profile none
-# creates no Spine/QMovie/video object"), never pixels.
-#
-# Usage:
-#   tools/ci/linux-gui-effects-smoke.sh <executable> <artifact-dir> [options]
-#
-# Options:
-#   --profile <full|reduced|none>  effects profile to exercise (default: full)
-#   --platform <xcb|offscreen>     Qt platform plugin (default: xcb, under Xvfb)
-#   --no-xvfb                      run against the current DISPLAY (WSLg, X11)
-#   --timeout-ms <ms>              app-level timeout (default: 45000)
-#   --process-timeout <seconds>    runner-level timeout (default: 120)
-#   --expect <pass|fail>           expected outcome (default: pass)
-#   --expect-stage <stage>         with --expect fail: the stage to blame
-#   --expect-reason <reason>       with --expect fail: stage_failed | timeout
-#   --fixtures <dir>               fixture root (default: tools/ci/fixtures/effects)
-#   --label <name>                 artifact filename prefix (default: profile)
 
 set -uo pipefail
 
@@ -79,9 +50,7 @@ fi
 
 [ -n "$LABEL" ] || LABEL="$PROFILE"
 mkdir -p "$ARTIFACT_DIR"
-# The game now resolves its data directory and chdir()s into it, so a
-# relative report path would land inside the install tree instead of the
-# artifact directory.  Absolutise before handing anything to the binary.
+# The game changes to its data directory; make report paths absolute before launching it.
 ARTIFACT_DIR="$(cd "$ARTIFACT_DIR" && pwd)"
 EXECUTABLE="$(cd "$(dirname "$EXECUTABLE")" && pwd)/$(basename "$EXECUTABLE")"
 LOG="$ARTIFACT_DIR/effects-smoke-$LABEL.log"
@@ -90,22 +59,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 [ -n "$FIXTURES" ] || FIXTURES="tools/ci/fixtures/effects"
-# Relative fixture paths are relative to the repository, not to the data
-# directory the game chdir()s into.  Resolve them here so the same command line
-# works against a build tree and against an installed/portable/AppImage bundle.
+# Resolve fixture paths from the repository because the game changes its working directory.
 case "$FIXTURES" in
     /*) ;;
     *) FIXTURES="$REPO_ROOT/$FIXTURES" ;;
 esac
 
-# The asset stages are only meaningful with their fixtures present; regenerate
+# Regenerate effects fixtures when they are absent from a bundle-only checkout.
 # them if this is a bundle-only checkout.
 if [ ! -f "$FIXTURES/animated.gif" ]; then
     python3 "$SCRIPT_DIR/make-effects-fixtures.py" "$FIXTURES"
 fi
 
-# Qt/Mesa software rendering: the CI runner has no GPU, and pixel output is not
-# what this smoke asserts.
+# CI uses software rendering; this smoke checks behavior, not pixels.
 export QT_QPA_PLATFORM="$PLATFORM"
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
@@ -162,14 +128,9 @@ VALIDATE_ARGS=("$LOG" --exit-code "$STATUS" --expect "$EXPECT" --expect-profile 
 python3 "$SCRIPT_DIR/validate-effects-smoke.py" "${VALIDATE_ARGS[@]}"
 VALIDATION=$?
 
-# No orphan may outlive the smoke: a leaked QSanguosha or Xvfb would poison the
-# next CI step.  Scoped to this run's own process group.
+# Clean up only this run's process group so no smoke processes survive into the next CI step.
 LEAKED=0
-# `wait` returns as soon as the app exits, but xvfb-run still has to reap its
-# Xvfb, and a process group does not empty instantaneously.  Checking at that
-# exact moment turns a normal few-hundred-millisecond teardown into a failure,
-# so give the group a bounded grace period first.  A process that is genuinely
-# stuck is still caught - it simply never leaves.
+# Allow a bounded grace period for xvfb-run to reap Xvfb after the app exits.
 if [ -n "$SETSID" ]; then
     for _ in $(seq 1 20); do
         pgrep -g "$CHILD" >/dev/null 2>&1 || break

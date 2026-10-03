@@ -28,7 +28,7 @@ Item {
         var next = root.portrait ? "" : homeController.randomBackdrop();
         if (root.portrait || (next.toString() !== "" && next !== backdropSource))
             backdropSource = next;
-        // 保留原因，只額外標記「靜態背景已經頂上」。
+        // Preserve the failure reason and mark that the static background has taken over.
         homeController.confirmVideoFallback();
     }
 

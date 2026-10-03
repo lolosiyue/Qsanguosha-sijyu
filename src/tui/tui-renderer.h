@@ -12,9 +12,7 @@ struct InteractionRequest;
 class TuiRenderer
 {
 public:
-    // The renderer used to own these; they moved out so the board presenter can
-    // ask the engine the same questions without pulling in line formatting.
-    // The aliases keep every existing TuiRenderer::Resolvers reference valid.
+    // Shared resolver types are declared in tui-resolvers.h.
     using CardTargets = TuiCardTargets;
     using Resolvers = TuiResolvers;
     using CardResolver = std::function<QString(int)>;
@@ -64,7 +62,7 @@ private:
     QString colored(const QString &text, TuiAttr attr) const;
     QString cardText(const ClientGameState &state, int cardId) const;
     QString playerText(const QString &objectName) const;
-    // "時語（sgs1）" -- a script and /players still speak object names.
+    // For example, a displayed general name with its object name; scripts and /players still use object names.
     QString playerLabel(const QString &objectName) const;
     QString gameStatusText(const QString &status) const;
     QString kingdomText(const QVariantMap &player) const;

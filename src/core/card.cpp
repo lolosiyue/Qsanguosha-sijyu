@@ -559,7 +559,7 @@ bool Card::isZhinangCard() const
 
 void Card::addCharTag(QString tag)
 {
-	// 絕對防禦：如果 Qt 的核心應用程式還沒啟動（靜態初始化階段），禁止操作動態屬性
+	// Do not access dynamic properties before the Qt application exists during static initialization.
 	if (QCoreApplication::instance() == nullptr) {
 		qWarning() << "Warning: addCharTag called before QCoreApplication is ready. Tag:" << tag;
 		return;

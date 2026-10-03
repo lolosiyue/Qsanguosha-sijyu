@@ -1911,7 +1911,7 @@ GeneralAssignDialog::GeneralAssignDialog(QWidget *parent, bool can_ban)
 		scrollArea->setWidget(tab);
 		scrollArea->setMinimumSize(0, 0);
 		scrollArea->setWidgetResizable(true);
-		scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);//原本隐藏水平滚动条；小視窗允許捲動，避免截斷。
+		scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);// Keep the original hidden horizontal scrollbar; small windows can scroll instead of clipping content.
 
 		tab_widget->addTab(scrollArea, QIcon(G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_KINGDOM_ICON, kingdom)),
 						Sanguosha->translate(kingdom));

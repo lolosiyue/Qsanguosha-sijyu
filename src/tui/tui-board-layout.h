@@ -42,19 +42,7 @@ struct TuiBoardGeometry
     QVector<TuiSeatSlot> seatSlots;
 };
 
-// Lays out the board for a terminal of `rows` rows by `cols` columns.
-//
-// NOTE: this is (rows, cols) -- rows FIRST -- the opposite order from
-// QSize(width, height), i.e. QSize's own (cols, rows). A caller building this
-// from a QSize must pass size.height() then size.width(); passing the QSize's
-// natural order transposes the whole board.
-//
-// `handLines` is how many lines the caller wants reserved for the player's
-// hand pane (clamped to [1, 5] inside); `playerCount` includes the local
-// player, so a two-player game passes 2. Below 60x18 the board refuses to lay
-// out at all (`usable` is false and `unusableReason` says why) rather than
-// returning a geometry that would draw a torn table -- the caller keeps
-// running and asks again once the terminal is resized.
+// Arguments are rows then columns (unlike QSize); playerCount includes the local player. Below 60x18, usable is false.
 TuiBoardGeometry tuiComputeBoardGeometry(int rows, int cols, int playerCount, int handLines);
 
 #endif

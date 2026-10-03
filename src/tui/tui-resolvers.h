@@ -39,7 +39,7 @@ struct TuiResolvers
     // property, so it is read off the general the way Player::getKingdom() does.
     std::function<QString(const QString &)> kingdom;
     // What the engine says about a candidate in the request being answered --
-    // "不可用", "不符" and so on, already worded. Empty means nothing to add.
+    // For example, the renderer may provide an already-worded "unavailable" or "does not match" hint.
     // The renderer never acts on it: an advisory that turns out wrong must not
     // be able to hide a legal answer.
     std::function<QString(int)> cardHint;

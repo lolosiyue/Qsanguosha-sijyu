@@ -774,7 +774,7 @@ public:
 
     virtual bool isSkillValid(const Player *player, const Skill *skill) const = 0;
 
-    // invalidity-gate.h 的必要條件，鏡像同名動態屬性；每次查詢都會讀，不能每次走 property()。
+    // Required by invalidity-gate.h; mirrors the dynamic property of the same name and avoids a property() lookup on every query.
     const QString &gateMarkPrefix() const { return m_gateMarkPrefix; }
     const QString &gateCurrentSiblingSkill() const { return m_gateCurrentSiblingSkill; }
 

@@ -34,14 +34,14 @@ from runner_common import (MARK_GAME_OVER, MARK_GAME_START, common_args,
 
 SERVER_EXE = "qsanguosha_server"
 CLIENT_EXE = "QSanguosha"
-DEFAULT_SERVER_PORT = 9527  # 與 config.ini ServerPort 一致
-SERVER_STARTUP_TIMEOUT = 60   # 等 server 就緒 (秒)
+DEFAULT_SERVER_PORT = 9527  # Match config.ini ServerPort.
+SERVER_STARTUP_TIMEOUT = 60   # Server startup timeout in seconds.
 GAME_TIMEOUT: Final[int] = int(
     os.environ.get("QSAN_NETWORK_GAME_TIMEOUT", "3600")
-)  # 可由環境變數覆寫的單局有界上限 (秒)
-CLIENT_JOIN_TIMEOUT = 120     # 等 client 連上並開局 (秒)
-MAX_START_RETRIES = 2         # server 開局前閃退時, 同一局最多重試次數
-CLIENT_EXIT_GRACE = 10        # client 退出後等局末標記的寬限 (秒)
+)  # Per-game timeout, overridable through the environment.
+CLIENT_JOIN_TIMEOUT = 120     # Wait for client connection and game start.
+MAX_START_RETRIES = 2         # Maximum retries when the server crashes before game start.
+CLIENT_EXIT_GRACE = 10        # Grace period for the game-over marker after client exit.
 
 
 def read_markers(log_path, offset):
@@ -61,8 +61,8 @@ def wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=No
     deadline = time.time() + timeout
     client_deadline = None
     while time.time() < deadline:
-        # 自動化測試: 等待期間監控 server 存活 — 閃退時提前回傳 SERVER_DIED。
-        # 先取存活狀態再讀標記: 死前寫下的標記仍算數, 開局後隨即閃退才不會被當成開局前閃退
+        # Monitor server health while waiting and return SERVER_DIED promptly on a crash.
+        # Read liveness before markers so a marker written before a crash is preserved.
         died = server_proc is not None and server_proc.poll() is not None
         client_gone = client_proc is not None and client_proc.poll() is not None
         offset, lines = read_markers(log_path, offset)
@@ -71,8 +71,7 @@ def wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=No
                 return line, offset
         if died:
             return "SERVER_DIED", offset
-        # client 退出 (如 WSLg compositor 崩潰斷線) 時 server 仍會託管打完該局;
-        # 給一段寬限等標記, 以免把「局末 client 先退出」誤判為局中斷線
+        # The server may finish a game after the client disconnects; allow time for its final marker.
         if client_gone:
             if client_deadline is None:
                 client_deadline = time.time() + CLIENT_EXIT_GRACE
@@ -114,7 +113,7 @@ def restart_server(args, exe_root, workdir, mode, proc, marker_file, server_log,
     terminate_tree(proc)
     close_proc(proc)
     if os.path.isfile(marker_file):
-        os.remove(marker_file)  # 標記檔是 Append, 新 server 需從乾淨檔開始
+        os.remove(marker_file)  # Marker files append data, so start each server with a clean file.
     port = args.port
     proc = spawn(server_command(server_exe, mode, marker_file, port),
                  workdir, server_log,
@@ -127,7 +126,7 @@ def restart_server(args, exe_root, workdir, mode, proc, marker_file, server_log,
 
 
 def run_mode(args, exe_root, workdir, mode, runs, general):
-    # 每次執行一個時間戳資料夾 (network/<時間戳>/<mode>/), 不再重名覆蓋
+    # Use a unique timestamped directory for each run.
     run_dir = os.path.join(log_dir_for(args), "network", stamp(), mode)
     os.makedirs(run_dir, exist_ok=True)
     marker_file = os.path.join(run_dir, "autotest.log")
@@ -155,13 +154,10 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
         while run_id < runs:
             if start_retries == 0:
                 run_id += 1
-            # 重試用獨立檔名, 保留閃退那次嘗試的 client log
+            # Use a separate retry log so the crashed attempt's client log is preserved.
             client_log = os.path.join(run_dir, "run%d%s.log" % (
                 run_id, "-retry%d" % start_retries if start_retries else ""))
-            # 自動化測試: 閃退局沒有完整 record; 唯一即時記錄是
-            # <workdir>/record/debug.txt 與 lua/ai/cstring{,Event},
-            # 下局開始即被覆寫。在 spawn 新 client 前各複製一份,
-            # 保存上一局的遊戲/AI 內容。
+            # A crashed game may have no complete record; preserve its live debug and AI logs before the next game overwrites them.
             _backup_runtime_files(workdir, run_dir, run_id)
             print("  局 %d/%d: 啟動 client" % (run_id, runs))
             client_cmd = [client_exe, "-connect:127.0.0.1:%d" % port,
@@ -169,7 +165,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
             if getattr(args, "general2", ""):
                 client_cmd += ["--test-general2", args.general2]
             client_cmd += ["--auto-robots"]
-            # GUI client 的 qDebug/qWarning 導向 runN.log (QT_LOGGING_TO_CONSOLE)
+            # Route GUI client diagnostics to the per-run log.
             client = spawn(client_cmd, workdir, client_log, env=qt_console_env())
 
             start_line, marker_offset = wait_for_marker(
@@ -177,7 +173,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 CLIENT_JOIN_TIMEOUT, marker_offset, server_proc=proc)
             ccode = None
             if start_line == "SERVER_DIED":
-                # 自動化測試: server 閃退 — 記一筆失敗, 重啟後重試本局 (有上限)
+                # Record a failed server attempt and retry the game within the configured limit.
                 terminate_tree(client)
                 close_proc(client)
                 ctx = tail_lines(marker_file, 20)
@@ -228,8 +224,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 GAME_TIMEOUT, marker_offset, server_proc=proc, client_proc=client)
             lost_note = ""
             if over_line == "CLIENT_DIED":
-                # 自動化測試: client 局中退出 — server 會託管該座位打完;
-                # 記下斷線, 等局末再開下一局, 以免新 client 撞上仍在進行的房間
+                # The server may finish a game after a client disconnect; wait before starting another client to avoid a room collision.
                 lost_code = client.poll()
                 lost_note = "client 局中退出 exit=%s %s" % (lost_code, describe_exit(lost_code))
                 print("  [WARN] 局 %d: %s, 等 server 打完本局" % (run_id, lost_note))
@@ -238,7 +233,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                     marker_file, lambda l: MARK_GAME_OVER.search(l),
                     remaining, marker_offset, server_proc=proc)
             if over_line == "SERVER_DIED":
-                # 自動化測試: server 閃退 — 該局記失敗, 重啟後繼續下一局
+                # Record a server crash as a failed game, restart, and continue.
                 terminate_tree(client)
                 close_proc(client)
                 ctx = tail_lines(marker_file, 20)
@@ -256,7 +251,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 marker_offset = 0
                 time.sleep(1)
                 continue
-            # 先確認 client 是否已自行閃退, 再殺 (強制終止會蓋掉真正的閃退碼)
+            # Record the client's natural crash code before terminating it.
             ccode = wait_exit(client, 3)
             if ccode is None:
                 terminate_tree(client)
@@ -301,8 +296,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 marker_offset = 0
                 time.sleep(1)
                 continue
-            # 自動化測試: smart-ai 載入失敗偵測 — 常駐 server 的 Lua VM 已半壞,
-            # 局間 delay 10 秒 + 重啟 server (新 server 的第一個 Room 會重載 smart-ai)
+            # A SmartAI load failure can leave the resident Lua VM unusable; delay, then restart the server.
             if log_has_smart_ai_failure(marker_file) or log_has_smart_ai_failure(server_log):
                 print("  smart-ai 載入失敗, delay 10s 後重啟 server 再開下局")
                 time.sleep(10)
@@ -326,7 +320,7 @@ def close_proc(proc):
 
 
 def main():
-    # log 行含中文, console 編碼 (cp950) 印不出時以 ? 取代, 避免 runner 自己炸掉
+    # Replace unprintable console characters so Chinese log lines cannot crash the runner.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description="QSanguosha 真實網路測試 runner")

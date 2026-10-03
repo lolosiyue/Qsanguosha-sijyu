@@ -14,23 +14,23 @@
 class UiStartupSmokeReport
 {
 public:
-    // stdout marker 前綴。CI 靠呢兩個 token 解析結果，改動即係改契約。
+    // CI parses these stdout marker prefixes; changing them changes the report contract.
     static const char *const StageMarker;  // "UI_STARTUP_STAGE"
     static const char *const ResultMarker; // "UI_STARTUP_RESULT"
 
-    // marker payload 的 schema version；欄位語意有 breaking change 先加。
+    // Increment the marker schema version when field semantics change incompatibly.
     static int schemaVersion();
 
     enum ExitCode {
         Passed = 0,
-        SetupFailed = 1,   // QApplication／engine／MainWindow 未能建立
-        QmlLoadFailed = 2, // HomeScene／QML component 載入失敗
-        Timeout = 3,       // app 內部 timeout 觸發
+        SetupFailed = 1,   // QApplication, Engine or MainWindow could not be created.
+        QmlLoadFailed = 2, // HomeScene or a QML component failed to load.
+        Timeout = 3,       // Application-level timeout.
         InvalidArguments = 4,
         InternalError = 5
     };
 
-    // stage 名稱，按實際發生次序。
+    // Stage names in execution order.
     static QStringList stageOrder();
     static bool isKnownStage(const QString &stage);
 
@@ -43,8 +43,8 @@ public:
     static int minimumTimeoutMs();
     static int maximumTimeoutMs();
 
-    // 只認完全相符的 flag 或者 "--flag=value" 形式，避免 "--ui-startup-smoke-foo"
-    // 之類的前綴誤判。
+    // Accept only the exact flag or --flag=value; do not treat a longer prefix as the same option.
+
     static bool isRequested(const QStringList &arguments);
     static bool parseTimeoutMs(const QStringList &arguments, int *timeoutMs, QString *error);
     static QString parseReportPath(const QStringList &arguments);
@@ -73,7 +73,7 @@ public:
     static QJsonObject resultPayload(bool ok, const QString &stage, const QString &error,
         ExitCode exitCode, const QJsonObject &details = QJsonObject());
 
-    // 失敗 stage → exit code 的固定對照（timeout 除外，由 caller 直接傳 Timeout）。
+    // Fixed mapping from failed stage to exit code; the caller handles timeout.
     static ExitCode exitCodeForFailedStage(const QString &stage);
 };
 

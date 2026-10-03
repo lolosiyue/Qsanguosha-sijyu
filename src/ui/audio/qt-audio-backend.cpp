@@ -194,7 +194,7 @@ void QtMediaAudioBackend::play(const QString &filename, bool superpose, AudioCha
     }
 #endif
     if (!QFileInfo::exists(path)) {
-        // 缺檔案只係 warning。呢條路本身就會發生:語音資產係 optional。
+        // Missing voice assets are expected; treat them as warnings.
         ++m_missingFiles;
         qWarning().noquote() << "QtMediaAudioBackend: missing audio file" << path;
         return;

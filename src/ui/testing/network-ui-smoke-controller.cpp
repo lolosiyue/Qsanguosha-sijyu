@@ -221,8 +221,8 @@ void NetworkUiSmokeController::onRoomSceneCreated(RoomScene *scene)
         {QStringLiteral("scene_height"), scene->height()}
     });
 
-    // Dashboard 係 RoomScene 的一部分,但係獨立驗一次:M2 要分得出「RoomScene 起到
-    // 但 Dashboard 構造失敗」呢種情況。
+    // Check Dashboard construction separately from RoomScene creation.
+
     Dashboard *dashboard = scene->dashboard;
     if (dashboard == nullptr || dashboard->scene() != scene) {
         failStage(QLatin1String(NetworkUiSmokeReport::StageDashboard),

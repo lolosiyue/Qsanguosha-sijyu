@@ -1,5 +1,4 @@
 {
-	// card effect
 	"playerAudioEffect-common-weapon": "audio/card/common/weapon.ogg",
 	"playerAudioEffect-common-armor": "audio/card/common/armor.ogg",
 	"playerAudioEffect-common-horse": "audio/card/common/horse.ogg",

@@ -18,9 +18,9 @@
 
 #include <spine/spine.h>
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  SpineEffectWidget
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 SpineEffectWidget::SpineEffectWidget(QWidget *parent)
     : QOpenGLWidget(parent)
@@ -59,7 +59,7 @@ SpineEffectWidget::~SpineEffectWidget() {
     cleanupSpine();
 }
 
-// ─── Public API ─────────────────────────────────────────────────────────────
+
 
 bool SpineEffectWidget::playEffect(const QString &basePath,
                                     const QString &animationName,
@@ -76,7 +76,7 @@ bool SpineEffectWidget::playEffectFiles(const QString &atlasPath, const QString 
     _autoClose = autoClose;
     _pausedForBackground = false;
 
-    // Make sure GL context is current
+    // Make the GL context current before creating or releasing GL resources.
     makeCurrent();
     if (!context() || QOpenGLContext::currentContext() != context()) {
         emit effectError(QStringLiteral("Spine OpenGL context is unavailable"));
@@ -201,7 +201,7 @@ void SpineEffectWidget::setSpineOffset(float x, float y) {
     _spineOffsetY = y;
 }
 
-// ─── OpenGL overrides ───────────────────────────────────────────────────────
+
 
 void SpineEffectWidget::initializeGL() {
     initializeOpenGLFunctions();
@@ -285,7 +285,7 @@ void SpineEffectWidget::onContextAboutToBeDestroyed() {
     QOpenGLContext *previous = QOpenGLContext::currentContext();
     QSurface *previousSurface = previous ? previous->surface() : nullptr;
     makeCurrent();
-    // A detached/destroying viewport may no longer have a usable window
+    // A detached or closing viewport may no longer have a usable window surface; release shared resources through a pbuffer.
     // surface. The owner can still release shared resources on a pbuffer.
     QOffscreenSurface cleanupSurface;
     if (context() && QOpenGLContext::currentContext() != context()
@@ -296,7 +296,7 @@ void SpineEffectWidget::onContextAboutToBeDestroyed() {
             context()->makeCurrent(&cleanupSurface);
     }
     if (QOpenGLContext::currentContext() != context()) {
-        // Never release a texture using an unrelated current context.
+        // Never release a texture with an unrelated current context.
         if (QOpenGLContext *current = QOpenGLContext::currentContext())
             current->doneCurrent();
     }
@@ -307,7 +307,7 @@ void SpineEffectWidget::onContextAboutToBeDestroyed() {
     doneCurrent();
     if (previous && previousSurface)
         previous->makeCurrent(previousSurface);
-    // Keep the complete CPU AnimationState (time, queues and callbacks).
+        // Keep CPU animation state intact across context loss.
 }
 
 void SpineEffectWidget::resizeGL(int w, int h) {
@@ -333,7 +333,6 @@ void SpineEffectWidget::paintGL() {
     renderSkeleton();
 }
 
-// ─── Private slots ──────────────────────────────────────────────────────────
 
 void SpineEffectWidget::onFrameTimer() {
     if (!_playing || !_skeleton || !_animState || !_shader) return;
@@ -359,7 +358,6 @@ void SpineEffectWidget::onAutoClose() {
     }
 }
 
-// ─── Private ────────────────────────────────────────────────────────────────
 
 bool SpineEffectWidget::loadSpineData(const QString &atlasPath, const QString &skelPath) {
     cleanupSpine();

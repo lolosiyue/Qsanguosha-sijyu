@@ -30,7 +30,7 @@ TuiUiModeDecision tuiResolveUiMode(const TuiUiModeInputs &inputs)
 {
     TuiUiModeDecision decision;
 
-    // Not one of docs/tui-board-ui.md §6.1's own rows -- the table assumes
+    // Reject unrecognized values first; the decision table assumes a known --ui value.
     // --ui is either absent or one of the two known values. Checked first so
     // a typo is reported as itself rather than as whatever the table's other
     // rows happen to fall through to.
@@ -44,7 +44,7 @@ TuiUiModeDecision tuiResolveUiMode(const TuiUiModeInputs &inputs)
         return decision;
     }
 
-    // §6.1 rows 1-3: each forcing condition alone means classic, no
+    // A forcing condition selects classic without prompting.
     // question asked. Evaluated in the table's own order, first match wins,
     // though nothing downstream cares which one fired except the message
     // below.
@@ -57,7 +57,7 @@ TuiUiModeDecision tuiResolveUiMode(const TuiUiModeInputs &inputs)
         forcingReason = tr("--plain／--no-color／NO_COLOR");
 
     if (!forcingReason.isEmpty()) {
-        // §6.1 row 4, the deliberate one: asking for board while a forcing
+        // Explicit --ui board conflicts with a forcing condition; report the conflict instead of silently downgrading.
         // condition holds is an error, not a silent downgrade. Downgrading
         // here would turn "I asked for board and got no board" into
         // something the player has to go debug; erasing that signal is
@@ -75,7 +75,7 @@ TuiUiModeDecision tuiResolveUiMode(const TuiUiModeInputs &inputs)
         return decision;
     }
 
-    // §6.1 row 5: an explicit choice with no forcing condition is followed
+    // Follow an explicit choice when no forcing condition applies.
     // exactly, never questioned.
     if (wantsBoard) {
         decision.mode = TuiUiMode::Board;
@@ -86,7 +86,7 @@ TuiUiModeDecision tuiResolveUiMode(const TuiUiModeInputs &inputs)
         return decision;
     }
 
-    // §6.1 row 6: no --ui, but a previous run's answer was remembered.
+    // Use the previously saved choice when --ui is omitted.
     if (inputs.savedChoice == QStringLiteral("board")) {
         decision.mode = TuiUiMode::Board;
         return decision;
@@ -96,7 +96,7 @@ TuiUiModeDecision tuiResolveUiMode(const TuiUiModeInputs &inputs)
         return decision;
     }
 
-    // §6.1 row 7: nothing on file, nothing forced -- ask once, before
+    // Ask once before connecting when no choice is saved and no condition forces a mode.
     // connecting. mode stays TuiUiMode::Classic (the struct's default) until
     // the caller records an answer.
     decision.askUser = true;

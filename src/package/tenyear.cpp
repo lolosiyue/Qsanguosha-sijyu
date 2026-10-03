@@ -1375,7 +1375,7 @@ public:
 
 			while (!chongfu.isEmpty()) {
 				if (player->isDead()) break;
-				room->fillAG(chongfu, player);   //偷懒用AG，而且九张牌移进手里，牌太多操作也麻烦
+				room->fillAG(chongfu, player);   // Use the AG dialog for convenience; moving nine cards into the hand makes manual selection cumbersome.
 				int id = room->askForAG(player, chongfu, false, objectName());
 				room->clearAG(player);
 
@@ -5149,7 +5149,7 @@ TenyearXdPackage::TenyearXdPackage()
 	: Package("tenyear_xd")
 {
 
-//神·武
+// Shenwu
 	General *shenjiangwei = new General(this, "shenjiangwei*xd_shenwu", "god");
 	shenjiangwei->addSkill(new Tianren);
 	shenjiangwei->addSkill(new Jiufa);
@@ -5227,7 +5227,7 @@ TenyearXdPackage::TenyearXdPackage()
 	skills << new Qizhou("olqizhou") << new QizhouLose("olqizhou");
 	addMetaObject<ShanxiCard>();
 
-//祈福
+// Pray for Blessings
 	General *tenyear_baosanniang = new General(this, "tenyear_baosanniang*qifu", "shu", 3, false);
 	tenyear_baosanniang->addSkill("wuniang");
 	tenyear_baosanniang->addSkill(new TenyearXushen);
@@ -5252,7 +5252,7 @@ TenyearXdPackage::TenyearXdPackage()
 	tenyear_zhangqiying->addSkill(new TenyearZhenyi);
 	tenyear_zhangqiying->addSkill("dianhua");
 
-//隐山之玉
+// Jade of the Hidden Mountain
 	General *zhouyi = new General(this, "zhouyi*xd_yinyu", "wu", 3, false);
 	zhouyi->addSkill(new Zhukou);
 	zhouyi->addSkill(new Mengqing);
@@ -5271,13 +5271,13 @@ TenyearXdPackage::TenyearXdPackage()
 	guotiying->addSkill(new Kanyu);
 	guotiying->addSkill(new Zhee);
 
-//高山仰止
+// Revered Heights
 	General *tenyear_wanglang = new General(this, "tenyear_wanglang", "wei", 3);
 	tenyear_wanglang->addSkill(new TenyearGushe);
 	tenyear_wanglang->addSkill(new TenyearJici);
 	addMetaObject<TenyearGusheCard>();
 
-//武庙
+// Martial Temple
 	General *wumiao_zhugeliang = new General(this, "wumiao_zhugeliang", "shu", 7);
 	wumiao_zhugeliang->setStartHp(4);
 	wumiao_zhugeliang->addSkill(new MYJincui);

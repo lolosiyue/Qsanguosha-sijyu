@@ -9,9 +9,9 @@ Rectangle {
     property int score: 0
     property bool gameRunning: true
     property real startTime: 0
-    property int bombProbability: 40 // 20%概率生成炸弹
+    property int bombProbability: 40 // 20% chance to spawn a bomb.
 
-    // 调试边界（红色边框）
+    // Debug boundary (red border).
     Rectangle {
         anchors.fill: parent
         color: "transparent"
@@ -73,7 +73,7 @@ Rectangle {
         onTriggered: main.animationCompleted()
     }
     function cleanScore() {
-            score = 0  // 分数清零
+            score = 0  // Reset the score.
         }
 
     function endGame() {
@@ -93,7 +93,7 @@ Rectangle {
     function createGameItem() {
         if(!gameRunning) return
 
-        // 随机生成水果或炸弹
+        // Spawn a fruit or bomb at random.
         var isBomb = Math.random() * 100 < bombProbability
         var component = Qt.createComponent(isBomb ? "Bomb.qml" : "Fruit.qml")
 
@@ -114,6 +114,6 @@ Rectangle {
     Component.onCompleted: {
         startTime = new Date().getTime()
         Qt.createComponent("Fruit.qml")
-        Qt.createComponent("Bomb.qml")  // 预加载炸弹组件
+        Qt.createComponent("Bomb.qml")  // Preload the bomb component.
     }
 }

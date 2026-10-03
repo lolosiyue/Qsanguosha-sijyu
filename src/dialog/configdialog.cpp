@@ -55,7 +55,7 @@ ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
     connect(ui->enableEffectCheckBox, SIGNAL(toggled(bool)), ui->enableLastWordCheckBox, SLOT(setEnabled(bool)));
     connect(ui->checkBoxRecorderAutoSave, SIGNAL(toggled(bool)), ui->checkBoxRecorderNetworkOnly, SLOT(setEnabled(bool)));
 
-    // 「顯示」分頁視角元素由 session 即時預覽,按確定才寫入設定檔,取消復原
+    // Display-tab preview changes apply to the shared session; OK saves them and Cancel restores them.
     connect(ui->themeSystemRadio, &QRadioButton::toggled, this, [this](bool on) { if (on) bindValue("ColorScheme", 0); });
     connect(ui->themeLightRadio, &QRadioButton::toggled, this, [this](bool on) { if (on) bindValue("ColorScheme", 1); });
     connect(ui->themeDarkRadio, &QRadioButton::toggled, this, [this](bool on) { if (on) bindValue("ColorScheme", 2); });
@@ -113,7 +113,7 @@ ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
     // and would silently leave Cancel unable to restore the already-applied preview settings.
     connect(this, &QDialog::accepted, m_session, &SettingsSession::commit);
     connect(this, &QDialog::rejected, m_session, &SettingsSession::revert);
-    // 首頁設定頁或版面浮窗改動同一份 session 時,widget 跟著更新。
+    // Home settings and this dialog edit the same session, so both views stay in sync.
     connect(m_session, &SettingsSession::valuesChanged, this, &ConfigDialog::loadConfig);
 
     loadConfig();
@@ -127,13 +127,13 @@ void ConfigDialog::bindValue(const QString &key, const QVariant &value)
 
 void ConfigDialog::loadConfig()
 {
-    // 程式設定 widget 值時不回寫 session(避免每次開啟 dialog 就重套 palette / 重載主頁)
+    // Loading widget values must not write back to the session or reapply previews.
     m_loading = true;
     const QVariantMap v = m_session->values();
     if (m_responsiveLayout) m_responsiveLayout->setChecked(v.value("UI/ResponsiveLayout").toBool());
     if (m_oneHandedness) m_oneHandedness->setCurrentIndex(v.value("UI/RoomHandedness").toInt());
     if (m_portraitBackground) m_portraitBackground->setText(v.value("UI/PortraitBackgroundImage").toString());
-    // 主题:0/1/2 直对 Qt::ColorScheme {Unknown(跟随系统), Light, Dark}
+    // Map the theme index directly to Qt::ColorScheme: Unknown follows the system.
     switch (v.value("ColorScheme").toInt()) {
     case 1: ui->themeLightRadio->setChecked(true); break;
     case 2: ui->themeDarkRadio->setChecked(true); break;
@@ -180,7 +180,7 @@ void ConfigDialog::loadConfig()
     ui->muteCheckBox->setChecked(v.value("AudioMuted").toBool());
     ui->backgroundVideoCheckBox->setChecked(v.value("EnableBackgroundVideo").toBool());
 
-    // tab 2
+
     ui->neverNullifyMyTrickCheckBox->setChecked(v.value("NeverNullifyMyTrick").toBool());
     ui->autoTargetCheckBox->setChecked(v.value("EnableAutoTarget").toBool());
     ui->intellectualSelectionCheckBox->setChecked(v.value("EnableIntellectualSelection").toBool());
@@ -203,7 +203,7 @@ void ConfigDialog::loadConfig()
 
 void ConfigDialog::showEvent(QShowEvent *event)
 {
-    // 每次開啟都開始一次編輯(拍快照);首頁設定頁已在編輯中則沿用同一份草稿
+    // Start an edit snapshot, or reuse the draft already open in the home settings page.
     m_session->begin();
     loadConfig();
     QDialog::showEvent(event);

@@ -25,7 +25,7 @@ public:
     static PixmapAnimation *GetPixmapAnimation(QGraphicsItem *parent, const QString & emotion);
     static QPixmap GetFrameFromCache(const QString &filename);
     static int GetFrameCount(const QString &emotion);
-    // 在背景執行緒預先解碼常用表情幀並放進 QPixmapCache；context 解構時取消。
+    // Predecode common emotion frames off-thread into QPixmapCache; context destruction cancels the work.
     static void PrewarmEmotions(QObject *context, const QStringList &emotions);
 
     static const int S_DEFAULT_INTERVAL;

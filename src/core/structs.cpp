@@ -6,7 +6,7 @@
 #include "protocol/protocol-message-utils.h"
 #include <QMetaType>
 
-// 註冊技能多實例相關 metatype——確保 QVariant::toString() 回傳基礎技能名
+// Register metatypes for multi-instance skills so QVariant::toString() returns the base skill name.
 static struct SkillInstanceMetaRegistrar {
     SkillInstanceMetaRegistrar() {
         qRegisterMetaType<SkillInstanceKey>("SkillInstanceKey");

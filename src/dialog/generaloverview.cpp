@@ -328,7 +328,7 @@ void GeneralOverview::setPreviewMode(bool preview)
         ui->changeHeroSkinButton->hide();
         ui->banGeneral->hide();
         ui->untieGeneral->hide();
-        ui->searchButton->hide(); // 把搜尋按鈕也隱藏起來，保持介面乾淨
+        ui->searchButton->hide(); // Hide the search button with the search controls.
         ui->sameNameButton->hide();
     }
 }
@@ -747,7 +747,7 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 
 	ui->generalPhoto->setPixmap(G_ROOM_SKIN.getCardMainPixmap(general_name));
 
-	// 【修改區塊 1】如果是預覽模式，強制隱藏；否則正常判斷
+
     if (m_previewMode) {
         ui->changeHeroSkinButton->hide();
         ui->banGeneral->hide();

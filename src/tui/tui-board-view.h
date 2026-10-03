@@ -37,18 +37,7 @@ struct TuiBoardViewState
     bool hasPresentation = false;
 };
 
-// Paints one ClientGameState into a TuiScreen: room (seat ring or, before
-// GAME_START, the waiting room), log, hand and input. This is the only layer
-// that knows what a kingdom or a judge card is -- TuiBoardLayout upstream is
-// pure geometry, and TuiScreen downstream is a character grid that has never
-// heard of Sanguosha.
-//
-// Every other helper this needs (seat ordering, cell text, hand wrapping,
-// frame drawing) is a free function in tui-board-view.cpp's anonymous
-// namespace rather than a member here: none of it needs access to
-// m_resolvers directly (it is threaded through as a parameter), and keeping
-// it out of the header means a resolver-table change never forces every
-// includer of this header to recompile.
+// Converts ClientGameState into the board; geometry and screen rendering remain separate layers.
 class TuiBoardView
 {
 public:
@@ -59,7 +48,7 @@ public:
 
     // The layout render() would use for this state and viewport. Exposed so
     // TuiBoardPresenter can answer "how many pages are there" and "which page
-    // is player X on" (auto-follow, docs/tui-board-ui.md §3.6) from the same
+    // is player X on" (auto-follow, docs/tui-board-ui.md section 3.6) from the same
     // hand-line-count and seat-order math render() already owns, instead of
     // keeping a second copy that could silently drift from what actually gets
     // drawn.
@@ -75,7 +64,7 @@ public:
                        const QString &name) const;
 
     // The prompt row's text for a request: its title and its translated,
-    // player-named prompt, e.g. "打出牌：张飞 对你使用【杀】，请打出一张【闪】".
+    // player-named prompt, e.g. "play card: Zhang Fei uses [Slash] on you; play a [Dodge]".
     QString promptText(const InteractionRequest &request) const;
 
 private:

@@ -291,7 +291,7 @@ private:
     QDialog *m_choiceDialog; // Dialog for choosing generals, suits, card/equip, or kingdoms
     PlayerCardBox *m_playerCardBox;
 
-    int m_autoPickGeneralAskCount = 0; // 自動化測試: 本次遊戲第幾次選將詢問 (雙將模式第 2 次 = 副將)
+    int m_autoPickGeneralAskCount = 0; // Automated-test ordinal for this game's general-selection prompt (2 = deputy in dual-general mode).
 
     QGraphicsRectItem *pausing_item;
     QGraphicsSimpleTextItem *pausing_text;

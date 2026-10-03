@@ -5,7 +5,7 @@
 
 class CardItem;
 
-// 蠱惑聲明牌中央提示：聲明時顯示牌背，結算時翻開實際牌。
+// The declaration shows the card back; resolution reveals the actual card.
 class GuhuoBox : public QSanSelectableItem
 {
     Q_OBJECT

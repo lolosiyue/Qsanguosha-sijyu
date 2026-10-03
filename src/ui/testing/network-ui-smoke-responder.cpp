@@ -168,7 +168,7 @@ void NetworkUiSmokeResponder::onServerReply(int)
 
 void NetworkUiSmokeResponder::onStatusChanged(Client::Status, Client::Status)
 {
-    // 新一個請求 = 由第一張手牌重新試起。
+    // Start each new request with the first hand card.
     m_cardCursor = 0;
     scheduleStep();
 }
@@ -267,7 +267,7 @@ QList<CardItem *> NetworkUiSmokeResponder::enabledHandCards() const
         if (item && item->isEnabled() && item->isVisible() && item->getCard())
             items << item;
     }
-    // 固定 seed 下手牌顯示次序可能受動畫影響，用 card id 排序令選擇可重現。
+    // Sort by card ID so animation timing cannot change choices under a fixed seed.
     std::sort(items.begin(), items.end(), [](CardItem *left, CardItem *right) {
         return left->getCard()->getEffectiveId() < right->getCard()->getEffectiveId();
     });
@@ -335,8 +335,8 @@ bool NetworkUiSmokeResponder::trySelectTargetsFor()
         const QList<PlayerCardContainer *> candidates = selectableTargets();
         if (candidates.isEmpty())
             return m_scene->ok_button != nullptr && m_scene->ok_button->isEnabled();
-        // setSelected() 會經 selected_changed → RoomScene::updateSelectedTargets，
-        // 即係同真人撳落去行同一條路，包括 targetFilter／targetsFeasible 重算。
+        // setSelected() follows the same targetFilter/targetsFeasible path as a human click.
+
         candidates.constFirst()->setSelected(true);
         recordAction(QLatin1String(NetworkUiSmokeReport::ActionSelectTarget));
     }
@@ -443,7 +443,7 @@ bool NetworkUiSmokeResponder::stepExecDialog()
     if (m_scene.isNull())
         return false;
 
-    // askForCardChosen：PlayerCardBox 蓋過 m_choiceDialog（RoomScene 自己的規則）。
+    // RoomScene uses PlayerCardBox over m_choiceDialog for askForCardChosen.
     if (m_scene->m_playerCardBox != nullptr && m_scene->m_playerCardBox->isVisible()) {
         QList<CardItem *> items;
         collectCardItems(m_scene->m_playerCardBox, &items);
@@ -477,7 +477,7 @@ bool NetworkUiSmokeResponder::stepExecDialog()
 
 bool NetworkUiSmokeResponder::stepSkillInvoke()
 {
-    // 發動技能比拒絕更能證明 request → UI → reply 走通，亦更接近真人行為。
+    // Invoking a skill exercises the request-to-UI-to-reply path more fully than declining.
     if (clickButton(QStringLiteral("ok"))) {
         recordAction(QLatin1String(NetworkUiSmokeReport::ActionInvokeSkill));
         return true;

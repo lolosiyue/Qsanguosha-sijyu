@@ -14,8 +14,8 @@
 //
 // The three profiles only affect what is seen, never game rules or network replies:
 //
-//   Full     完整動畫 + Spine + GIF + QML 特效 + 影片
-//   Reduced  保留必要狀態提示，縮短動畫，停用 Spine／影片／QML 全屏特效
+// Full: all animation, Spine, GIF, QML effects and video.
+// Reduced: retain essential state feedback, shorten animation, and disable Spine, video and full-screen QML effects.
 //   None     all decorative animations complete instantly, no Spine / QMovie / video objects created
 enum class EffectsProfile {
     Full,
@@ -60,7 +60,7 @@ public:
     static int scaledDuration(EffectsProfile profile, int durationMs);
 
     // ── CLI ─────────────────────────────────────────────────────────────
-    // 同時接受 "--effects-profile none" 同 "--effects-profile=none"。
+    // Accept both "--effects-profile none" and "--effects-profile=none".
     struct CliOverride {
         bool present = false;
         bool valid = false;

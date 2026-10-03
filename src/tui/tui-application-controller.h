@@ -35,7 +35,7 @@ struct TuiApplicationOptions
     QString logFile;
     QString scriptFile;
     // Set by tui-main.cpp from tuiResolveUiMode()'s decision
-    // (docs/tui-board-ui.md §6.1: --ui, TTY detection, QSettings, the
+    // (The mode, TTY, settings and startup prompt are resolved in tui-ui-mode.h/.cpp.)
     // connect-time prompt all live in tui-ui-mode.h/.cpp, not here) --
     // TuiUiMode::Board turns into true, everything else leaves this false.
     bool boardMode = false;
@@ -71,7 +71,7 @@ private:
     bool trySkipRoleAssignment();
     void writeOutput(const QString &text);
     // Only for the six long-dump commands (/players, /log, /hand, /skills,
-    // /piles, /equip -- spec §5.2); everything else, including interaction
+    // /piles, /equip -- spec section 5.2); everything else, including interaction
     // prompts, stays on writeOutput() so board mode never opens an overlay
     // for anything but these.
     void writeDump(const QString &text);

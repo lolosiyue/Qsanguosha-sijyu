@@ -2,8 +2,8 @@
 
 Item {
     id: root
-    // 憒??.BB
-    // 蝝??”嚗葷??x1嚗葷?渲x1嚗摮1嚗Gx1
+
+
 
     //property int sceneHeight: 720
     //property int sceneWidth: 1280
@@ -152,7 +152,7 @@ Item {
         //rotation: 130
     }
 
-    // ???啁迅摰?6F
+
     ParallelAnimation {
         id: anim
         running: true

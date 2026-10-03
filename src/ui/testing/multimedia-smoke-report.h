@@ -22,10 +22,10 @@ public:
 
     enum ExitCode {
         Passed = 0,
-        SetupFailed = 1,       // QApplication／engine／MainWindow 未能建立
-        AudioStageFailed = 2,  // backend／ui_effect／voice／bgm／missing_asset
+        SetupFailed = 1,       // QApplication, Engine or MainWindow could not be created.
+        AudioStageFailed = 2,  // Backend, UI effect, voice, BGM or missing-asset failure.
         VideoStageFailed = 3,  // QML media component initialization failed with no static fallback
-        Timeout = 4,           // app 內部 timeout
+        Timeout = 4,           // Application-level timeout.
         InvalidArguments = 5,
         InternalError = 6
     };

@@ -59,7 +59,7 @@ STAGE_MARKER = "NETWORK_UI_STAGE"
 RESULT_MARKER = "NETWORK_UI_RESULT"
 SCHEMA_VERSION = 1
 
-# 必須全部出現且 ok=true，次序同 NetworkUiSmokeReport::stageOrder() 一致。
+# All stages must appear with ok=true, in NetworkUiSmokeReport::stageOrder() order.
 REQUIRED_STAGES = (
     "connected",
     "signed_up",
@@ -73,23 +73,9 @@ REQUIRED_STAGES = (
 
 DEFAULT_REQUIRED_INTERACTIONS = ("choose_general", "play_phase")
 
-# 已知的 base 缺陷。列在這裡不等於可以忽略:runner 一定照樣偵測、照樣列印、照樣
-# 寫入 summary["known_base_defects"];--known-base-defect 只是把「這一項」由
-# problems 降級為警告,而且每一項都有明確的復原條件。
-#
+# Allowlisted base defects remain visible in the summary and are downgraded only with explicit recovery conditions.
 # server-teardown-crash
-#   現象 : 對局結束、client 正常離開之後, qsanguosha_server 在拆房時 SIGSEGV/SIGABRT。
-#   證據 : Room::~Room() → GameSnapshotService::~GameSnapshotService()
-#          → GlobalSnapshot::~GlobalSnapshot() → QMap<QString,QVariant>::~QMap()
-#          → CardUseStruct::~CardUseStruct() → QSharedPointer<Card> deref
-#          → Card::deleteLater() → CardLifetimeManager::observeCard()
-#          → QObject::thread() 讀到已釋放的 Card。
-#          全部 frame 都在本分支沒有改過的檔案裡; 以 M1 merge base 編出來的
-#          qsanguosha_server 一樣重現; 用舊有的 --auto-robots 托管流程(完全不經
-#          本分支的 UI responder)一樣重現。
-#   界線 : 只有在「server 已經寫出帶勝方的 game over」而且「client 已經 exit 0」
-#          之後發生的 server 崩潰才會被降級。對局途中的 server 崩潰永遠是失敗。
-#   移除 : card-lifetime / GameSnapshot 的擁有權修好之後, 拿掉這個 flag 即可。
+# Downgrade only after a winner-bearing game-over and a clean client exit; crashes during a game always fail.
 KNOWN_BASE_DEFECTS = {"server-teardown-crash"}
 
 
@@ -188,8 +174,7 @@ def client_environment(args, artifact_dir):
     env["QT_QPA_PLATFORM"] = args.platform
     env.setdefault("QT_QUICK_BACKEND", "software")
     env.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
-    # GUI 子系統的 qDebug/qWarning 導向 stderr，否則 Windows 上會走
-    # OutputDebugString、log 會係空的。
+    # Route Qt GUI diagnostics to stderr so Windows captures them instead of sending them to OutputDebugString.
     env["QT_ASSUME_STDERR_HAS_CONSOLE"] = "1"
     env["QT_FORCE_STDERR_LOGGING"] = "1"
     if not IS_WINDOWS:
@@ -323,8 +308,8 @@ def evaluate(args, summary, stages, results, client_code, server_markers):
         server_issues.append("the server crashed: %s"
                              % describe_exit(lifecycle["server_exit"]))
 
-    # 只有「完整打完一局、client 亦已經乾淨退出」之後的 server 崩潰,先至符合
-    # server-teardown-crash 的形狀。對局途中死掉的 server 永遠是失敗。
+    # Only a server crash after a completed game and clean client exit matches server-teardown-crash.
+    # A server crash during a game always fails.
     teardown_only = (server_markers["game_over"] not in (None, "none")
                      and client_code == 0)
     if server_issues and "server-teardown-crash" in allowed and teardown_only:

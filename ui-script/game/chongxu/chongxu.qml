@@ -11,18 +11,18 @@ Item {
     property int score: 0
     property bool gameRunning: true
     property int remainingTime: 10
-    property int maxScore: 5 // 最大分数限制
+    property int maxScore: 5 // Maximum score.
     Component.onCompleted: {
            forceActiveFocus()
 
        }
-    // 游戏背景
+    // Game background.
     Rectangle {
         anchors.fill: parent
         color: "#303030"
     }
 
-    // 玩家角色（添加平滑移动）
+    // Player character with smooth movement.
     Rectangle {
         id: player
         width: 80
@@ -38,7 +38,7 @@ Item {
         }
     }
 
-    // 计时器显示
+    // Timer display.
     Text {
         anchors.top: parent.top
         anchors.right: parent.right
@@ -50,7 +50,7 @@ Item {
         styleColor: "black"
     }
 
-    // 分数显示
+    // Score display.
     Text {
         id: scoreText
         anchors.top: parent.top
@@ -62,7 +62,7 @@ Item {
         styleColor: "black"
     }
 
-    // 游戏结束显示
+    // Game-over display.
     Text {
         id: gameOverText
         anchors.centerIn: parent
@@ -74,7 +74,7 @@ Item {
         styleColor: "white"
     }
 
-    // 键盘控制（改进长按响应）
+    // Keyboard controls with improved key-repeat response.
     Keys.onPressed: {
         if (!activeFocus) forceActiveFocus()
         if (gameRunning) {
@@ -102,16 +102,16 @@ Item {
         }
     }
     function cleanupItems() {
-        // 遍历所有子对象
+        // Iterate over all child objects.
         for (var i = children.length - 1; i >= 0; i--) {
             var child = children[i]
-            // 通过对象名称识别掉落物
+            // Identify falling items by object name.
             if (child.objectName === "fallingItem") {
                 child.destroy()
             }
         }
     }
-    // 游戏时间控制
+    // Game timer.
     Timer {
         id: gameTimer
         interval: 1000
@@ -122,7 +122,7 @@ Item {
             if (remainingTime <= 0) {
                 gameRunning = false
                 gameOverText.visible = true
-                cleanupItems()  // 新增清理操作
+                cleanupItems()  // Add cleanup.
                 const success = fileHandler.writeFile("chongxu.txt", score)
                 endTimer.start()
             }
@@ -135,14 +135,14 @@ Item {
         onTriggered: root.animationCompleted()
     }
 
-    // 物体生成计时器
+    // Item spawn timer.
     Timer {
         id: spawnTimer
-        interval: 250  // 频率提升到每250ms生成（每秒4个）
+        interval: 250  // Increase spawn rate to every 250 ms (four per second).
         running: gameRunning
         repeat: true
         onTriggered: {
-            // 每次生成2个物品
+            // Spawn two items at a time.
             for(var i=0; i<2; i++){
                 var component = Qt.createComponent("FallingItem.qml")
                 if (component.status === Component.Ready) {
@@ -156,13 +156,13 @@ Item {
 
 
     function checkCollision(item) {
-        if (!gameRunning) return  // 达到最高分后停止检测
+        if (!gameRunning) return  // Stop checking after reaching the maximum score.
 
         if (item.y + item.height >= player.y &&
             item.x + item.width >= player.x &&
             item.x <= player.x + player.width) {
 
-            // 分数封顶处理
+            // Cap the score.
            score = Math.min(maxScore, Math.max(0, score + item.value))
             item.destroy()
             collisionEffect.start()
@@ -171,7 +171,7 @@ Item {
         }
     }
 
-    // 碰撞特效
+    // Collision effect.
     SequentialAnimation {
         id: collisionEffect
         ParallelAnimation {

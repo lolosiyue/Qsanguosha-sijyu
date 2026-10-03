@@ -36,38 +36,7 @@ int ceilDiv(int numerator, int denominator)
     return (numerator + denominator - 1) / denominator;
 }
 
-// The ordered list of opponent-grid cells (row, col) that the `n` seats on
-// one page fill, in seat order. Shape depends on cellCols -- the degradation
-// ladder from spec 3.6 -- and, for the ring (cellCols >= 3), on `n` itself:
-// see below for why the split cannot be a fixed function of the grid alone.
-//
-// This reduces the shared seat ring table (SeatRingTable::regularSeatRegions in
-// src/client/core/seat-ring-table.h) to the same three regions it ultimately
-// buckets into. Per the seatAreas[8] rectangles the desktop builds from it
-// (src/ui/room-layout-engine.cpp, "| 4 | table | 3 |", region 5 = 0+3, region
-// 6 = 2+4) regions 3 and 5 sit on the RIGHT (x = col2, AlignRight) and 4 and
-// 6 sit on the LEFT (x = pad, AlignLeft); 1 and 7 are the top row.
-//
-// The WITHIN-region direction also comes from the desktop, not just the
-// region membership: RoomLayoutEngine::compute() appends left-column (4/6)
-// seats in seat order but PREPENDS top-row and right-column (1/7, 3/5) seats,
-// and disperse() then lays each region's list out
-// left-to-right (top) or top-to-bottom (sides) in list order. Net effect: the
-// right column reads bottom-to-top, the top row reads right-to-left, and the
-// left column reads top-to-bottom -- one continuous counter-clockwise ring
-// starting at the player's right. That is the one thing this function must
-// reproduce exactly, because it is the whole mechanism by which a player who
-// knows the desktop client can tell at a glance who is downstream; how many
-// seats each region gets is not (the desktop grows the side columns to keep
-// a fixed-size photo from getting too tall on a canvas, which does not apply
-// to a scrolling character grid, so that growth table is not reproduced).
-//
-// The side/top split is computed from `n`, the actual population of this
-// page, rather than from cellRows*cellCols: a fixed split sized for a full
-// page (up to `capacity` seats) would let a handful of opponents exhaust the
-// right column's full height before ever reaching the top or the left --
-// visually a list, not a ring. Growing the sides by roughly a quarter of `n`
-// keeps a small page's ring proportioned to what is actually on it.
+// Preserve desktop counter-clockwise seat order; size the side/top split to the player count.
 QVector<std::pair<int, int>> orderedGridCells(int cellCols, int cellRows, int n)
 {
     QVector<std::pair<int, int>> cells;
@@ -158,16 +127,7 @@ TuiBoardGeometry tuiComputeBoardGeometry(int rows, int cols, int playerCount, in
     // opponent-sized (CellHeight-row) rows.
     const int cellRows = (roomRows - 3) / CellHeight;
 
-    // Capacity is a function of how many opponent cells physically fit --
-    // never of the player count. A 9-player game wedged into an 80x24
-    // terminal takes exactly the same "does it fit, and if not, page" path a
-    // 20-player game takes in the same terminal; there is deliberately no
-    // branch anywhere in this function that asks "is this a lot of
-    // players?". One cell is reserved for the central draw/discard pile --
-    // except in the degenerate 1x1 grid (reachable at exactly 60x18 with
-    // handLines >= 4), where max(1, ...) hands that single cell to a seat
-    // instead: a page that seats nobody is worse than a page with no visible
-    // pile marker.
+    // Capacity follows available cells. Reserve one for the central pile unless a 1x1 grid would seat nobody.
     const int capacity = std::max(1, cellCols * cellRows - 1);
 
     geometry.usable = true;
@@ -178,14 +138,7 @@ TuiBoardGeometry tuiComputeBoardGeometry(int rows, int cols, int playerCount, in
     geometry.pageCount = std::max(1, ceilDiv(opponentCount, capacity));
 
     geometry.room = TuiRect{1, 1, roomRows, roomCols};
-    // The log pane sits beside the room pane, not beside the whole screen:
-    // its height must be bounded by the same region the room pane is
-    // (roomRows), not by the screen's own row count minus the frame
-    // (rows - 2). Using rows - 2 here let the log pane claim rows the
-    // hand/input panes below the room pane already own, so the newest lines
-    // drawLog() writes there were silently overwritten by drawHand()/
-    // drawInput() afterwards -- the log always looked several messages
-    // stale even though the data was written correctly.
+    // Bound the log pane to roomRows so it cannot overlap the hand and input panes.
     geometry.log = TuiRect{1, roomCols + 2, roomRows, logCols};
     geometry.hand = TuiRect{roomRows + 2, 1, handRows, roomCols};
     geometry.input = TuiRect{roomRows + handRows + 3, 1, inputRows, roomCols};

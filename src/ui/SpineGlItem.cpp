@@ -28,9 +28,7 @@
 // spine-cpp includes
 #include <spine/spine.h>
 
-// ═══════════════════════════════════════════════════════════════════════════
 //  QtSpineTextureLoader
-// ═══════════════════════════════════════════════════════════════════════════
 
 namespace {
 // Texture destruction must never run against an unrelated current context.
@@ -176,9 +174,7 @@ bool QtSpineTextureLoader::hasValidPages() const {
     return !_loadFailed && !_textures.isEmpty();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 //  SpineGlItem
-// ═══════════════════════════════════════════════════════════════════════════
 
 // SkeletonData and its Atlas are immutable after parsing.  They can therefore
 // be shared by independent Skeleton/AnimationState instances, while the cache
@@ -323,7 +319,7 @@ SpineGlItem::~SpineGlItem() {
     _skeletonData = nullptr;
 }
 
-// ─── Loading ────────────────────────────────────────────────────────────────
+// Loading
 
 bool SpineGlItem::loadSpine(const QString &basePath, const QString &animationName) {
     QString atlasPath = basePath + ".atlas";
@@ -633,7 +629,7 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
     return true;
 }
 
-// ─── Playback ───────────────────────────────────────────────────────────────
+// Playback
 
 void SpineGlItem::play(bool loop) {
     _loop = loop;
@@ -716,7 +712,7 @@ void SpineGlItem::addAnimation(int trackIndex, const QString &name, bool loop, f
     }
 }
 
-// ─── Transform ──────────────────────────────────────────────────────────────
+// Transform
 
 void SpineGlItem::setRenderRect(const QRectF &rect) {
     prepareGeometryChange();
@@ -759,7 +755,7 @@ float SpineGlItem::animationDuration() const {
     return entry->getAnimation()->getDuration();
 }
 
-// ─── QGraphicsItem overrides ────────────────────────────────────────────────
+// QGraphicsItem overrides
 
 QRectF SpineGlItem::boundingRect() const {
     return QRectF(QPointF(0, 0), _renderRect.size());
@@ -779,7 +775,6 @@ void SpineGlItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     painter->endNativePainting();
 }
 
-// ─── Private ────────────────────────────────────────────────────────────────
 
 void SpineGlItem::onTimer() {
     if (!_playing && !isTweening()) {
@@ -1364,9 +1359,7 @@ void SpineGlItem::renderSpine(QPainter *painter) {
     _shader->release();
     gl->glDepthMask(GL_TRUE); // restore
 }
-// ═══════════════════════════════════════════════════════════════════════════
 //  Tween / Motion
-// ═══════════════════════════════════════════════════════════════════════════
 
 static float easeInOutQuad(float t) {
     return t < 0.5f ? 2.0f * t * t : 1.0f - (-2.0f * t + 2.0f) * (-2.0f * t + 2.0f) * 0.5f;
@@ -1481,9 +1474,7 @@ void SpineGlItem::updateTweens(float deltaSeconds) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
 //  Animation cache
-// ═══════════════════════════════════════════════════════════════════════════
 
 void SpineGlItem::buildAnimationCache() {
     _cachedAnimations.clear();

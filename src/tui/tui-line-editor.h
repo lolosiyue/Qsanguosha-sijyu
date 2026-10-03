@@ -28,11 +28,7 @@ enum class TuiKey {
     PageUp,
     PageDown,
     Interrupt,
-    // Readline-style kill commands. Not in the plan's original interface
-    // sketch, but required by the byte-to-key table in the same spec and by
-    // the project's input-handling section: dropping them silently (as an
-    // earlier revision of this file did) was ruled a spec gap, not a valid
-    // reading of an enum that was never meant to be frozen.
+    // Readline-style kill commands supported by the key decoder.
     KillToLineStart,  // Ctrl+U: erase from line start to the cursor
     KillToLineEnd,    // Ctrl+K: erase from the cursor to line end
     KillPreviousWord, // Ctrl+W: erase the word immediately before the cursor
@@ -55,16 +51,7 @@ class TuiKeyDecoder
 public:
     QVector<TuiKeyEvent> feed(const QByteArray &bytes);
 
-    // A lone ESC byte (the Escape key) is indistinguishable from the first
-    // byte of an escape sequence that got split across reads until either
-    // the rest of the sequence shows up or a short timeout proves nothing
-    // is coming. feed() alone cannot run that timeout -- only the caller
-    // knows the event loop's clock -- so this is exposed for the caller to
-    // invoke from a short (conventionally ~20ms) single-shot timer that it
-    // (re)starts whenever feed() leaves a lone ESC pending. Returns the
-    // resolved Escape event, or an empty vector when there is nothing
-    // pending (including when the pending ESC has since grown into a real
-    // sequence).
+    // Resolve a lone Escape after the caller's short timer; a pending sequence is not Escape.
     QVector<TuiKeyEvent> resolvePendingEscape();
 
 private:

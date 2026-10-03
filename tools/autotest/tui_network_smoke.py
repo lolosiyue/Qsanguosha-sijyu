@@ -87,8 +87,7 @@ def write_tui_script(path, reconnect, connection_only=False, game_timeout_ms=600
     if connection_only:
         lines.append("assert state connection.state active")
     elif general:
-        # 指定武將需由 client 親自回答 choose_general; 先填滿開局,
-        # 選完才開 trust 託管, 否則 server AI 會先搶答選將.
+        # The client must choose the general before trust is enabled, or server AI may answer first.
         lines += [
             "/addrobot all",
             "wait interaction choose_general 120000",

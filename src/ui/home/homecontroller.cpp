@@ -850,7 +850,7 @@ void HomeController::openHome()
 
 void HomeController::openGenerals()
 {
-    // 先切頁讓 HomeScene 立刻畫出 skeleton；目錄在下一幀才載入。
+    // Switch pages first so HomeScene can draw its skeleton before the catalog loads next frame.
     setCurrentPage(QStringLiteral("generals"));
 }
 

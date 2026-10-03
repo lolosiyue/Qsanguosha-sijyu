@@ -8,7 +8,7 @@ import datetime
 import os
 import struct
 
-# 例外碼翻譯表
+# Exception-code descriptions.
 EXC_NAMES = {
     0xC0000005: "ACCESS_VIOLATION (存取違規)",
     0xC0000409: "FAIL_FAST (fail-fast / GS cookie)",

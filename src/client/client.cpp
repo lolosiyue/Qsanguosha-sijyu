@@ -664,7 +664,7 @@ bool Client::processServerRequest(const ProtocolMessage &message)
 	return true;
 }
 
-// ── Client Architecture F1:ClientCore plumbing ─────────────────────────
+// ClientCore plumbing
 //
 // Every new request from the server invalidates the previous one: the server has already
 // moved on, so a late answer must not be treated as valid. Interactions that are not
@@ -773,7 +773,7 @@ bool Client::submitInteractionResponse(InteractionResponse response)
 		});
 }
 
-// ── Presentation ports of DesktopInteractionView ─────────────────────────────────
+// Presentation ports
 
 void Client::presentGeneralChoice(const InteractionRequest &request)
 {
@@ -2948,7 +2948,7 @@ void Client::syncSkillInstances(const QVariant &payload)
 		return;
 	}
 
-	// Owner-only private state：set/remove/clear/replace
+	// Owner-only private-state operations: set, remove, clear, or replace.
 	if (message.action == SkillInstanceMessage::State) {
 		if (!owner || !owner->hasSkillInstance(message.skillName, message.instanceId)) return;
 		bool applied = false;

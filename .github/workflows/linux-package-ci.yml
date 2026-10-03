@@ -1,22 +1,6 @@
 name: Linux package CI
 
-# Linux GUI M3:build the shipping artifacts and smoke-test the artifacts
-# themselves.
-#
-# The standalone build-tree Linux GUI CI has been removed; only the file that actually
-# reaches players is verified here. A build-tree binary finds Qt via absolute RPATH and
-# assets via the repository, so it can fully pass local M0–M2B while the packaged
-# artifact fails to launch - that difference is exactly why M3 exists.
-#
-# Deliberately not run on every source change: a full package plus the complete smoke
-# suite takes about half an hour. It runs only when packaging-related paths change,
-# when a PR targets debug/main, on push to main, on tags, or on manual dispatch;
-# a push to debug does not repackage again after the PR gate.
-#
-# A GUI game (gui_network_smoke.py) likewise does not run here: the runner has no
-# art/audio assets, and with assets missing the client and server both SIGSEGV after
-# one game, unrelated to the PR. For this decision and the local verification
-# practice, see AGENTS.md "GUI runtime stays out of CI".
+# Build and smoke-test shipping artifacts; build-tree success does not prove package startup.
 
 on:
   pull_request:
@@ -59,10 +43,8 @@ concurrency:
 
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
-  # AppImage type2 runtime. Upstream only publishes a rolling "continuous" release, so
-  # the sha256 of the actually tested build is pinned here; once upstream rebuilds this
-  # job goes red immediately, and the value must be updated only after a human verified
-  # the new runtime - never silently swallow an unverified binary into the package.
+  # Pin the tested AppImage runtime because upstream publishes only a rolling release.
+  # A runtime update must be verified before changing this checksum.
   QSAN_APPIMAGE_RUNTIME_SHA256: 1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
 
 jobs:
@@ -137,24 +119,16 @@ jobs:
             -r tools/ci/requirements.txt
           echo "$RUNNER_TEMP/qsanguosha-ci-venv/bin" >> "$GITHUB_PATH"
 
-      # extensions/ and lua/ai/ are required assets: without them the package builds
-      # but no game can start, so a fetch failure must go red here instead of shipping
-      # a broken package.
+      # Extensions and Lua AI are required for gameplay; fail if either fetch fails.
       - name: Fetch Lua AI and extensions
         run: bash tools/ci/fetch-extensions.sh "$GITHUB_WORKSPACE"
 
-      # ------------------------------------------------------------------
-      # Contract checks that need no build
-      # ------------------------------------------------------------------
       - name: Validate the desktop entry
         run: |
           desktop-file-validate packaging/linux/qsanguosha.desktop
           echo "desktop-file-validate: OK"
           python3 tools/packaging/validate-desktop-entry.py packaging/linux/qsanguosha.desktop
 
-      # ------------------------------------------------------------------
-      # Build and package
-      # ------------------------------------------------------------------
       - name: Configure the Release GUI build
         run: |
           cmake -S . -B build/package -G Ninja \
@@ -195,9 +169,6 @@ jobs:
           cat dist/build-info.json
           cat dist/SHA256SUMS
 
-      # ------------------------------------------------------------------
-      # Verify the artifacts, not the build tree
-      # ------------------------------------------------------------------
       - name: Extract the portable archive outside the repository
         run: |
           # A directory with a space in the name is the classic packaging bug;
@@ -224,8 +195,7 @@ jobs:
             --kind portable --label portable --platform offscreen --no-xvfb \
             --process-timeout 300
 
-      # xcb is the path that really opens a native window; offscreen alone does not
-      # count as proof.
+      # Require xcb to exercise native window creation; offscreen alone is insufficient.
       - name: Portable bundle startup smoke under Xvfb (xcb)
         run: |
           root=$(find "$RUNNER_TEMP/portable check" -maxdepth 1 -mindepth 1 -type d | head -n 1)
@@ -233,9 +203,7 @@ jobs:
             --platform xcb --label portable-xvfb-xcb \
             --timeout-ms 60000 --process-timeout 300
 
-      # The CI container has no FUSE, so the AppImage must use its own
-      # --appimage-extract. This is also the path AppImage users take on machines
-      # without libfuse2.
+      # CI has no FUSE; extract the AppImage using its built-in path, as users may do without libfuse2.
       - name: Extract the AppImage without FUSE
         run: |
           mkdir -p "$RUNNER_TEMP/appimage check"
@@ -281,9 +249,6 @@ jobs:
             || { echo "missing scalable icon" >&2; exit 1; }
           echo "desktop integration OK"
 
-      # ------------------------------------------------------------------
-      # Server packaging must not regress
-      # ------------------------------------------------------------------
       - name: A server-only install pulls in no GUI Qt and no GUI assets
         run: |
           cmake -S . -B build/server-only -G Ninja \
@@ -306,8 +271,7 @@ jobs:
             >"$RUNNER_TEMP/server-only-assets.json"
           echo "server-only install OK"
 
-      # DESTDIR is the entry point for distro packaging (.deb/.rpm all rely on it). If
-      # it breaks, downstream packaging dies immediately, so this guards it here.
+      # DESTDIR is required by downstream distro packagers.
       - name: The install tree honours DESTDIR
         run: |
           DESTDIR="$RUNNER_TEMP/destdir" cmake --install build/package --prefix /usr --strip \

@@ -198,13 +198,7 @@ int main(int argc, char *argv[])
             return usageError(tr("--avatar 不能为空"));
     }
 
-    // The mode decision itself (docs/tui-board-ui.md §6.1) is a pure
-    // function of these five facts; gathering isatty()/QSettings state here,
-    // once, is what keeps tuiResolveUiMode() itself free of environment
-    // access and therefore testable with plain structs. A conflict is a
-    // usage error like the ones just above, so it is checked here too --
-    // before EngineBootstrap::initialize(), same as every other --xxx
-    // validation in this function.
+    // Gather mode inputs here to keep tuiResolveUiMode() pure; validate conflicts before engine startup.
     TuiUiModeDecision uiDecision;
     if (!dumpTranslations) {
         TuiUiModeInputs uiInputs;
@@ -329,17 +323,7 @@ int main(int argc, char *argv[])
     tuiSimplifyTranslations();
     QObject::disconnect(&app, SIGNAL(aboutToQuit()), Sanguosha, SLOT(deleteLater()));
 
-    // The one-time startup question (§6.1's last row): only reached when
-    // tuiResolveUiMode() found stdin *and* stdout to be real terminals, no
-    // --script, no --plain/--no-color/NO_COLOR, no --ui and nothing saved --
-    // so this is also the only place in main() that ever blocks on stdin,
-    // and it does so before ClientLiveSession::connectToServer() runs
-    // (inside controller.start(), further below), never after: there must
-    // be no state where the client is connected but sitting at a menu.
-    // tuiText() needs Sanguosha, so this can only run after
-    // EngineBootstrap::initialize() above -- unlike the usage-error messages
-    // near the top of main(), which run before the engine exists and so use
-    // tr() instead.
+    // Ask for a mode only when both streams are TTYs and no option or saved choice decides it; ask before connecting.
     if (uiDecision.askUser) {
         writeUtf8(stdout, tuiText("tui_ui_mode_prompt"));
         std::string rawLine;
@@ -374,20 +358,7 @@ int main(int argc, char *argv[])
     {
         TuiApplicationController controller(options);
         if (!controller.start(&error)) {
-            // Do NOT write the error here: in board mode, start() may have
-            // already taken the terminal into the alternate screen (e.g. it
-            // fails later, at --log-file open, well after
-            // TuiTerminal::enter() succeeded) and controller (with it, its
-            // TuiTerminal member) is still alive at this point in the
-            // block -- its RAII restore (~TuiTerminal(), §4.1) has not run
-            // yet. Writing to stderr now would paint straight into the
-            // alternate screen buffer and lose the message the moment the
-            // screen is left, which is exactly what used to happen: a
-            // startup failure produced a blank terminal with the real error
-            // sitting, invisibly, in scrollback nobody ever sees again.
-            // Record the failure and defer the write past the closing brace
-            // below, where `controller` (and its terminal, if entered) has
-            // already been destroyed and the primary screen is back.
+            // Defer startup errors until controller destruction restores the primary terminal.
             startupFailed = true;
         } else {
             result = app.exec();

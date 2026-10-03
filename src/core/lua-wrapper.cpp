@@ -304,11 +304,11 @@ QString luaErrorWithTraceback(lua_State *L, const char *fallback)
     const char *msg = lua_tostring(L, -1);
     if (!msg)
         msg = fallback ? fallback : "(unknown Lua error)";
-    // level=1: 略過本函數, 從呼叫端開始顯示 Lua call stack (含檔名:行號)
+    // Use level 1 to show the Lua call stack from the caller, including file and line.
     luaL_traceback(L, L, msg, 1);
     const char *tb = lua_tostring(L, -1);
     QString result = tb ? QString::fromUtf8(tb) : QString::fromUtf8(msg);
-    lua_pop(L, 1); // 彈掉 traceback, 原錯誤訊息留在堆疊頂供呼叫端 lua_pop
+    lua_pop(L, 1); // Remove the traceback, leaving the original error on top for lua_pop().
     return result;
 }
 
@@ -428,7 +428,7 @@ LuaSkillCard *LuaSkillCard::Parse(const QString &str)
     static QRegularExpression rx("#(\\w+):(.*):(.*)");
     static QRegularExpression e_rx("#(\\w*)\\[(\\w+):(.+)\\]:(.*):(.*)");
 
-    // objectName 已含 # 時 toString 曾產出 ##name[...]，正規化成單一 # 前綴
+    // Normalize the duplicate # prefix once objectName already starts with #.
     QString wire = str;
     while (wire.startsWith(QStringLiteral("##")))
         wire.remove(0, 1);

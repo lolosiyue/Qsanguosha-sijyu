@@ -3,7 +3,7 @@ import QtQuick 2.12
 
 Item {
     id: root
-    objectName: "fallingItem"  // 添加识别标识
+    objectName: "fallingItem"  // Add an identification marker.
     width: 40
     height: 40
 
@@ -39,7 +39,7 @@ Item {
     function startFall(container) {
         gameRoot = container
         x = Math.random() * (container.width - width)
-        y = 0  // 明确设置初始位置
+        y = 0  // Set the initial position explicitly.
         fallAnimation.start()
     }
 
@@ -57,16 +57,16 @@ Item {
     onYChanged: if(gameRoot) gameRoot.checkCollision(root)
 
     Component.onCompleted: {
-        // 保持50%红球概率
+        // Keep the red ball probability at 50%.
         if (Math.random() < 0.5) {
-            value = -2  // 调整为扣2分
+            value = -2  // Change the penalty to 2 points.
             itemColor = "red"
         } else {
-            value = 1   // 好球加1分
+            value = 1   // Award 1 point for a good hit.
         }
     }
 
-    // 修复后的消失动画
+    // Disappearance animation.
     SequentialAnimation {
         id: destroyAnim
         ParallelAnimation {

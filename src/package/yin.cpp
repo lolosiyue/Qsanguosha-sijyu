@@ -690,7 +690,7 @@ public:
 
     bool isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &) const
     {
-        // 攻擊範圍要逐個修正技求值，放在技能檢查之後。
+        // Evaluate attack-range modifiers individually after checking skill validity.
         return !card->isKindOf("SkillCard") && from != to && from->getPhase() == Player::Play
 		&& from->hasSkill("chezheng") && !to->inMyAttackRange(from);
     }
@@ -1826,7 +1826,7 @@ YinPackage::YinPackage()
     yin_xuyou->addSkill(new ChenglveTargetMod);
     yin_xuyou->addSkill(new YinShicai);
     yin_xuyou->addSkill(new Cunmu);
-    //yin_xuyou->addSkill(new Skill("cunmu", Skill::Compulsory)); //耦合进了Room::drawCards
+    //yin_xuyou->addSkill(new Skill("cunmu", Skill::Compulsory)); // Coupled into Room::drawCards.
     related_skills.insert("chenglve", "#chenglve-target");
 
     General *luzhi = new General(this, "luzhi", "qun", 3);

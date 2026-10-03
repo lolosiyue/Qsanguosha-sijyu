@@ -312,9 +312,9 @@ PointerEffectOverlay::PointerEffectOverlay(QWidget *host)
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
     setAutoFillBackground(false);
     setFocusPolicy(Qt::NoFocus);
-    // 獨立 Tool 視窗才能畫在 QOpenGLWidget 上面。
-    // WindowTransparentForInput 在 WSLg 會把客戶區的點擊直接丟掉，標題列卻仍可按。
-    // 所以這層收下指標事件，再交回中央畫面。
+    // A separate tool window is needed to draw above QOpenGLWidget.
+    // Under WSLg, WindowTransparentForInput drops client-area clicks but still allows title-bar input.
+    // Receive pointer events here and forward them to the central view.
 
     m_timer.setInterval(16);
     connect(&m_timer, &QTimer::timeout, this, &PointerEffectOverlay::onFrame);
@@ -798,7 +798,7 @@ QImage PointerFxEngine::loadAsset(const QString &fileName, bool luminanceAsAlpha
     if (image.isNull())
         return makeBuiltinMask(fileName);
 
-    // 可選外部貼圖：白圖+不透明黑底須把亮度寫進 alpha，否則 Plus 會留下黑方塊
+    // For an external white texture with an opaque black background, move brightness into alpha to avoid black blocks in Plus mode.
     image = image.convertToFormat(QImage::Format_ARGB32);
     for (int y = 0; y < image.height(); ++y) {
         auto *line = reinterpret_cast<QRgb *>(image.scanLine(y));
@@ -987,7 +987,7 @@ HomePointerFxItem::HomePointerFxItem(QQuickItem *parent)
     setFillColor(Qt::transparent);
     setAntialiasing(true);
     setMipmap(false);
-    // NVIDIA：FramebufferObject + Plus 混合會在 nvoglv64 對 nullptr 讀取 (0xC0000005)
+    // NVIDIA's FramebufferObject + Plus path can dereference null in nvoglv64.
     setRenderTarget(QQuickPaintedItem::Image);
     // Keep the software Image target at half of the 1920x1080 design canvas.
     setTextureSize(QSize(960, 540));

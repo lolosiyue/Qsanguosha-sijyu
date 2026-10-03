@@ -1326,7 +1326,7 @@ public:
                 {"source", jiexunRef(ctx.sourceRef)}, {"activation", jiexunRef(ctx.activationRef)}};
             restrictions << receipt;
             room->setTag("FunanRestrictions", restrictions);
-            // The limit skill outlives the granting instance. Losing 复难 does not lift an accepted restriction.
+            // The limit skill outlives the granting instance. Losing Funan does not lift an accepted restriction.
             if (target->isAlive() && !target->hasSkill("#funan-limit", true)) room->acquireSkill(target, "#funan-limit", false, false, false);
             applyFunanReceipt(room, receipt);
         }

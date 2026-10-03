@@ -220,8 +220,8 @@ QString Skill::getDescription(const Player *target, int instanceId) const
 			if(des_src.contains(mark))
 			des_src.replace(mark, QString("<font color=%1><b>%2</b></font>").arg(colorMap[skill_type]).arg(mark));
 		}
-		// 只加粗「“技能名”」。掃描描述裡最內層的引號對再查表；
-		// 舊寫法對全擴展上萬個譯名逐一 contains，GUI 刷新 tooltip 時會卡住數秒。
+		// Bold only skill names in quotation marks. Find innermost quoted pairs in the description before looking them up;
+		// the old approach scanned over ten thousand extension translations with contains() on each GUI tooltip refresh.
 		static const QSet<QString> skillNames = [] {
 			QSet<QString> names;
 			foreach (const QString &sn, Sanguosha->getSkillNames()) {

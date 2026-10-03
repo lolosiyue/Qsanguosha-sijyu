@@ -27,15 +27,8 @@
     "chooseGeneralBoxDenseIconSize": [130, 130],
     "bubbleChatBoxShowAreaSize": [138, 64],
     "tinyAvatarSize": [40, 40],
-    // When hp exceeds 5, we use text (e.g. 5/8) instead of drawing more than 5 magatamas. The color
-    // and font are specified below.
-    // All the font in skin file takes the following format:
-    // simple font: ["fontName", fontSize, fontWeight(bold), foreColor(rgba)]
-    // shawdow font: ["fontName", fontSize, fontWeight(bold), foreColor(rgba), shadowRadius,
-    //                shadowDecadeFactor, shadowOffset, shadowDeepestColor]
-    // the shadow radius is the width of shadow on each end; the shadow decade factor specifies how
-    // fast shadow will disappear; specifying a shadow radius of 5 but decade factor of 0 is equivalent
-    // to specify a solid border of width 5.
+    // Above 5 HP, show a fraction instead of drawing more than five magatamas.
+    // Font: [name, size, bold, color]; shadow font adds [radius, decay, offset, deepestColor].
     // @todo: adjust these colors!
     "magatamaFont": [
         ["Arial", [15, 15, -2], 80, [233, 0, 0, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
@@ -45,8 +38,7 @@
         ["Arial", [15, 15, -2], 80, [141, 195, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
         ["Arial", [15, 15, -2], 80, [66, 174, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]]
     ],
-    // I realized that some MOD might need a wider background area than the foreground magatamas in order
-    // to draw certain effect. The following factor specifies the number of invisible magatama to be appended.
+    // Extra background magatama slots let mods draw effects beyond the foreground row.
     "hpExtraSpaceHolder": 1
 },
 "room":
@@ -64,7 +56,7 @@
     "discardPileMinWidth": 465,
     "discardPilePadding": 50,
     "minimumSceneSize": [1130, 650], // if smaller than this size, switch to compact skin
-    //make sure that default skin's minimum scene size is smaller than maximum scene size in compact skin to avoid deadloop!!!
+    // Keep the default minimum below compact's maximum to prevent a layout loop.
     "minimumSceneSize-10player": [1050, 800],
     "maximumSceneSize": [1280, 720],
     "maximumSceneSize-10player": [1200, 900]
@@ -158,7 +150,7 @@
     "equipPointFontRed": ["Arial", [14, 14, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
     "delayedTrickFirstRegion": [3, 3, 28, 28],
     "delayedTrickStep": [28, 0],
-    // the width of the region to disperse cards when the cards are to be moved to the special pile.
+    // Width available for cards moving into the special pile.
     "disperseWidth": 250,
     "roleComboBoxPos": [-30, 34],
     "changePrimaryHeroSkinBtnPos": [25, 30],
@@ -176,14 +168,7 @@
     "smallAvatarNameArea": [84, 23, 40, 60],
     "avatarNameFont": ["SimLi", [18, 18, 0], 0, [255, 255, 255, 255], 1, 10, [0, 0], [50, 50, 50, 200]],
     "smallAvatarNameFont": ["@SimLi", [18, 18, 0], 0, [255, 255, 255, 255], 4, 10, [0, 0], [50, 50, 50, 200]],
-    // must be in one of the following format:
-    // [offsetX, offestY, sizeX, sizeY]
-    // [childAnchor, parentAnchor, [offsetX, offsetY]]
-    // [childAnchor, parentAnchor, [offsetX, offsetY], [sizeX, sizeY]]
-    // if childAnchor and/or parentAnchor are not set, then area will be aligned using top left corner of both child and parent
-    // otherwise, the corner of child specified by "childAnchor" will first be aligned to that of parent specified by "parentAnchor",
-    // and offset if applied after the alignment is done. When the 4th parameter [sizeX, sizeY] is specified, fixed size of the area
-    // is used; otherwise, it means area's size is variable with the content of that area, the program will adjust the size automatically
+    // Area: [x, y, width, height] or [childAnchor, parentAnchor, [x, y], optional [width, height]]. Anchors align first and offsets follow; without anchors, areas align at top left, and without size, content determines area size.
     "markTextArea": ["bottomRight", "bottomRight",  [-60, 15]],
     "phaseArea": ["bottomRight", "bottomRight", [-150, 20], [209, 18]],
     "kingdomIconArea": [-63, 1, 28, 25],
@@ -300,8 +285,7 @@
                  ["simkai", [13, 13, 1], 50, [0, 0, 0, 255], 1, 1, [0, 0], [255, 255, 190, 128]],  // medium
                  ["simkai", [13, 13, 0], 50, [0, 0, 0, 255], 1, 1, [0, 0], [255, 255, 190, 128]]],  // narrow
 
-    // The following settings override the text color defined above
-    // xxButtonColor = [normalColor, downColor, disabledColor, hoverColor]
+    // Override the text color by button state.
     "awakenFontColor": [[[255, 255, 255, 255], [0, 0, 0, 155]], // normalColor = [penColor, shadowColor]
                         [[255, 255, 255, 255], [0, 0, 0, 155]], // downColor = [penColor, shadowColor]
                         [[255, 255, 255, 255], [0, 0, 0, 155]], // disableColor = [penColor, shadowColor]

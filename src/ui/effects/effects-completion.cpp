@@ -23,7 +23,7 @@ EffectsCompletionGuard::EffectsCompletionGuard(QAbstractAnimation *animation, QO
     // destructor is far into undefined territory. The guard cleans up via the connections below; no path leaves it behind.
 
     if (animation) {
-        // 1. 動畫播完 → 派一次。
+        // Fire once when the animation finishes.
         connect(animation, &QAbstractAnimation::finished, this, [this]() { fire(); });
 
         // 2. The animation is deleted while playing (scene shutdown, the same effect

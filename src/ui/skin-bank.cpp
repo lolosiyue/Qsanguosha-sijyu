@@ -479,13 +479,13 @@ QPixmap QSanRoomSkin::getGeneralPixmapForPhoto(const QString &generalName, Gener
 	QString key = QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size).arg(name);
 	QPixmap pixmap;
 	
-	// 使用 getPixmap() 取得 base pixmap，確保完整 fallback 鏈
+	// Use getPixmap() to retain the full fallback chain.
 	if (isImageKeyDefined(key))
 		pixmap = getPixmap(key);
 	else
 		pixmap = getPixmap(QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size), name);
 	
-	// 雙將時檢查是否有 fulldual 圖片可覆蓋
+	// For dual generals, check whether a fulldual image overrides the base image.
 	if (isDualGeneral && !pixmap.isNull()) {
 		QString gn = name;
 		QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);

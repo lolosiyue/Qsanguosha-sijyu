@@ -22,9 +22,9 @@
 #include <QJsonArray>
 #include <QRegularExpression>
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Construction / destruction
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 CharacterSpineActionController::CharacterSpineActionController(QGraphicsScene *scene, QObject *parent)
     : QObject(parent)
@@ -50,9 +50,9 @@ CharacterSpineActionController::~CharacterSpineActionController()
     _scene = nullptr;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Configuration
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 void CharacterSpineActionController::setAssetPathPrefix(const QString &prefix)
 {
@@ -99,9 +99,9 @@ void CharacterSpineActionController::updateSeatGeometry(const QString &playerId,
     state.seatSize = size;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Pre-loading
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 static const char *actionTypeName(ActionType a)
 {
@@ -191,9 +191,9 @@ void CharacterSpineActionController::preloadPlayer(const QString &playerId)
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Auto-discovery of animations from a single skeleton
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 /// Well-known animation name aliases per ActionType.
 /// The first match found in the skeleton wins.
@@ -258,8 +258,8 @@ void CharacterSpineActionController::autoDiscoverActions(SpineGlItem *probe, Ski
         }
     }
 
-    // ── Fallback: if no known aliases matched, use the sole/longest animation ──
-    // Many skins have a single animation named "play", "animation", etc.
+    // Fallback: if no known alias matches, use the sole or longest animation.
+    // Many skins provide only a generic animation such as "play" or "animation".
     // Map it to all unassigned action types so the skin still works.
     if (skin.actions.isEmpty() && !anims.isEmpty()) {
         // Pick the longest-duration animation (or the only one)
@@ -292,9 +292,9 @@ void CharacterSpineActionController::autoDiscoverActions(SpineGlItem *probe, Ski
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Dynamic skin registration (path-based)
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 /// Determines the skin root path based on the resolved general name and skin index.
 /// When skinIndex > 0: hero-skin/[generalName]/[skinIndex]/dynamicSkin/
@@ -420,9 +420,9 @@ bool CharacterSpineActionController::hasDynamicSkin(const QString &resolvedGener
     return QDir(fullPath).exists();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Action triggering
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 bool CharacterSpineActionController::triggerAction(const QString &playerId,
                                                     ActionType action,
@@ -430,7 +430,7 @@ bool CharacterSpineActionController::triggerAction(const QString &playerId,
                                                     bool isLocalPlayer,
                                                     const QPointF &attackDirection)
 {
-    // RoomScene never creates this controller when spineEnabled() is false,
+    // RoomScene omits this controller when Spine is disabled, but keep the guard here too so no skeleton is created.
     // but the controller must also guard itself: with Spine disallowed, no skeleton is created at all.
     if (!G_EFFECTS.spineEnabled())
         return false;
@@ -455,7 +455,7 @@ bool CharacterSpineActionController::triggerAction(const QString &playerId,
             return false;
         // Consecutive same-type attack is allowed (chain hits)
         if (state.currentAction == action && action == ActionType::Attack) {
-            // Chain hit: reset the hold timer but keep the pop-out
+            // A chained hit resets the hold timer without removing the current pop-out.
             // (equivalent to lianxuChuKuang in JS)
         } else if (state.currentAction != action)
             return false;
@@ -546,9 +546,9 @@ void CharacterSpineActionController::setPlayerAlive(const QString &playerId, boo
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Internal helpers
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+
 
 SkinConfig *CharacterSpineActionController::findSkin(const QString &playerId,
                                                        ActionType action,

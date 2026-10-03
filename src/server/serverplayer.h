@@ -42,7 +42,7 @@ public:
     QString reportHeader() const;
     //void drawCard(const Card *card);
     Room *getRoom() const;
-    // Owner-only 同步 SkillInstanceState（覆寫 Player，既有 Lua player:set* 自動走 notify）
+    // Owner-only synchronization of SkillInstanceState. Player setters used by Lua automatically call notify.
     void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state) override;
     void removeSkillInstanceState(const QString &skillName, int instanceID) override;
     void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value) override;

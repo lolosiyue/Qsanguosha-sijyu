@@ -17,12 +17,8 @@ from collections import Counter, defaultdict
 
 IS_WINDOWS = os.name == "nt"
 
-# ── 執行檔定位 ──────────────────────────────────────────────
 
-# Windows 的多組態產生器輸出到 release\ / debug\; Linux 的 CMakePresets 用
-# relwithdebinfo/ (CI 基線) 或 debug/。次序 = 優先次序: 先 release, 再
-# RelWithDebInfo, 最後先至係 debug, 免得倉庫入面一份舊 debug build 靜靜蓋過
-# 剛剛編好的 CI 組態。
+# Prefer release, then RelWithDebInfo, then debug to avoid selecting a stale debug build over a recent CI build.
 _EXE_SUBDIRS = ("release", "relwithdebinfo", "RelWithDebInfo", "debug", "")
 
 
@@ -61,7 +57,6 @@ def resolve_workdir(exe_root):
     return exe_root
 
 
-# ── TCP port ────────────────────────────────────────────────
 
 def free_tcp_port(host="127.0.0.1"):
     """向 OS 借一個當下空閒的 TCP port 並立即歸還。
@@ -102,9 +97,8 @@ def wait_port_released(port, timeout, host="127.0.0.1"):
         time.sleep(0.2)
     return not port_open(port, host)
 
-# ── 日誌標記解析 ────────────────────────────────────────────
 
-# Windows 常見 exit code 翻譯 (閃退摘要用)
+# Windows exit-code descriptions used in crash summaries.
 EXIT_NAMES = {
     0xC0000005: "STATUS_ACCESS_VIOLATION (存取違規)",
     0xC0000409: "STATUS_STACK_BUFFER_OVERRUN (fail-fast / GS cookie)",
@@ -124,13 +118,7 @@ def hex_exit(code):
         return "n/a"
     return "0x%08X" % (code & 0xFFFFFFFF)
 
-# POSIX: Popen.returncode is -N for a process killed by signal N.
-#
-# getattr is used instead of writing signal.SIGBUS directly: the signal module
-# on Windows has no SIGBUS, so direct attribute access would raise
-# AttributeError at import time, instantly killing every Windows runner that
-# imports this module (headless smoke, the CTest runner contract tests) --
-# nothing to do with exit-code translation itself.
+# POSIX Popen.returncode is -N when a process is terminated by signal N.
 _POSIX_CRASH_SIGNALS = {
     getattr(signal, name)
     for name in ("SIGILL", "SIGABRT", "SIGFPE", "SIGSEGV", "SIGBUS")
@@ -206,10 +194,10 @@ def tail_lines(path, n=20):
         data = f.read().decode("utf-8", errors="replace")
     lines = data.splitlines()
     if size > chunk and lines:
-        lines = lines[1:]  # 第一行可能被截斷
+        lines = lines[1:]  # The first line may be truncated.
     return lines[-n:]
 
-# smart-ai / Lua AI 載入失敗的 log 標記 (runner 偵測用)
+# SmartAI/Lua AI load-failure markers used by the runner.
 SMART_AI_FAIL_MARKERS = (
     "LuaAI script failed to load",
     "LuaAI 载失败",
@@ -251,7 +239,7 @@ def parse_headless_log(path):
     if os.path.isfile(path):
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
-        # 取最後一個 run header 之後的行
+        # Keep lines after the final run header.
         start = 0
         for i, line in enumerate(lines):
             if HEADLESS_HEADER.search(line):
@@ -268,7 +256,6 @@ def parse_headless_log(path):
                 done = True
     return finished, failed, done
 
-# ── 子行程管理 ──────────────────────────────────────────────
 
 def _group_kwargs():
     """讓子行程自成一個 process group / job, 之後可以整棵樹一次過清理。
@@ -387,7 +374,7 @@ def terminate_tree(proc, graceful_timeout=10, kill_timeout=5):
         return None, "already"
     if proc.poll() is not None:
         code = proc.poll()
-        _kill_tree(proc.pid, "kill")  # 收拾可能仍在的孫行程
+        _kill_tree(proc.pid, "kill")  # Clean up any remaining child processes.
         return code, "already"
 
     request_shutdown(proc)
@@ -441,7 +428,6 @@ def tail_markers(log_path, after_offset=0):
             markers.append(line)
     return offset, markers
 
-# ── 輸出 ────────────────────────────────────────────────────
 
 def write_csv(path, header, rows):
     os.makedirs(os.path.dirname(path), exist_ok=True)

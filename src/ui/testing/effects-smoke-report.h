@@ -32,12 +32,12 @@ public:
 
     enum ExitCode {
         Passed = 0,
-        SetupFailed = 1,          // QApplication／engine／MainWindow 未能建立
+        SetupFailed = 1,          // QApplication, Engine or MainWindow could not be created.
         PolicyStageFailed = 2,    // profile resolution or feature gate mismatch
         CompletionStageFailed = 3,// exactly-once contract violated
         AssetStageFailed = 4,     // missing or broken asset failed to degrade (gif/spine/animation)
         BudgetStageFailed = 5,    // profile created objects it must not create
-        Timeout = 6,              // app 內部 timeout
+        Timeout = 6,              // Application-level timeout.
         InvalidArguments = 7,
         InternalError = 8
     };

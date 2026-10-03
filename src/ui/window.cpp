@@ -119,7 +119,7 @@ void Window::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget 
 void Window::appear()
 {
     if (!G_EFFECTS.animationsEnabled()) {
-        // 最終狀態:視窗完全展開、完全不透明。
+        // Final state: fully expanded and opaque.
         G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         scaleTransform->setXScale(1);
         scaleTransform->setYScale(1);

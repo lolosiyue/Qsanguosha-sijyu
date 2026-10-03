@@ -363,8 +363,8 @@ protected:
     // behind neighboring cards and squeezed downward.
     QHash<CardItem *, qreal> m_hoverOriginalZ;
     QHash<CardItem *, QPropertyAnimation *> m_hoverScaleAnimations;
-    // 追蹤 destroyed 連線 handle，析構時先斷開，避免子物件在 ~QObject
-    // 銷毀階段觸發連線而存取已析構的成員。
+    // Track destroyed() connections so teardown can disconnect them before child signals
+    // reach already-destroyed members.
     QHash<QObject *, QMetaObject::Connection> m_hoverDestroyConnections;
     QHash<QObject *, QMetaObject::Connection> m_animDestroyConnections;
     void _startHoverScaleAnimation(CardItem *card, qreal endScale, QEasingCurve::Type curve);

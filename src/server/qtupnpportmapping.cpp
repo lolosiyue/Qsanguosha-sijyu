@@ -326,13 +326,13 @@ aa:
         i=socket->readLine(ba.data(),1024);
         if(i<=0) return;
         remain.append(ba.left(i));
-        if(remain[remain.length()-1]!='\n')//没读完整行，等下一次SIGNAL再继续读
+        if(remain[remain.length()-1]!='\n')// The line is incomplete; wait for the next SIGNAL before continuing to read.
         {
             return;
         }
         if(state==3)
         {
-            if(remain.length()==2&&remain.startsWith("\r\n"))//HTTP头部分结束了
+            if(remain.length()==2&&remain.startsWith("\r\n"))// End of the HTTP header section.
             {
                 state=4;
                 remain.clear();
@@ -344,7 +344,7 @@ aa:
                 goto aa;
             }
         }
-        if(remain.length()<=2)//行太短
+        if(remain.length()<=2)// The line is too short.
         {
             parent->rootFailed(this);
             return;

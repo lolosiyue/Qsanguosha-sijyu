@@ -1,5 +1,5 @@
--- 聊天快捷语言配置文件
--- 这个文件用于配置聊天界面的快捷语言选项
+-- Chat quick-language configuration.
+-- Configure the quick-language options shown in chat.
 
 chat_config = {
     easy_text = {

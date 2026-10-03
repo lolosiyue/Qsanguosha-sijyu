@@ -409,7 +409,7 @@ ClientLogFormatRequest requestFromSkillLog(const QVariantMap &payload)
 QString formatClientSkillLogText(const QVariantMap &payload, const ClientLogPlayerNameResolver &playerName)
 {
     // lang writes several templates for the desktop log box, tags and all --
-    // "#AskForPeaches" asks for a <b><font>桃</font></b>.
+    // "#AskForPeaches" prompts for a <b><font>Peach</font></b>.
     return clientPlainLogText(
         formatClientLog(requestFromSkillLog(payload), clientTextLogStyle(playerName)));
 }

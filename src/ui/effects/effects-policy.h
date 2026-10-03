@@ -25,7 +25,7 @@ class VisualEffectsPolicy
 public:
     static VisualEffectsPolicy &instance();
 
-    // arguments 通常係 qApp->arguments()。CLI > 使用者設定 > 預設。
+    // Usually qApp->arguments(). Priority: CLI, user settings, then default.
     void initialize(const QStringList &arguments);
     bool isInitialized() const { return m_initialized; }
 
@@ -35,7 +35,7 @@ public:
     QString source() const { return m_source; }
     QString resolutionError() const { return m_error; }
 
-    // 設定對話框用：即時生效，persist=true 會寫入 QSettings。
+    // Used by the settings dialog; applies immediately and persists when persist=true.
     void setProfile(EffectsProfile profile, bool persist);
 
     // ── Feature gate ────────────────────────────────────────────────────

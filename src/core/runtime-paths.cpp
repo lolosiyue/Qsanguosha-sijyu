@@ -157,7 +157,7 @@ bool assetRootIsPackaged(AssetRootSource source)
 QString xdgUserDataRoot()
 {
 #ifdef Q_OS_ANDROID
-    // 設定／紀錄與可編輯的 Lua runtime 分開，全部留在 app 私有空間。
+    // Keep settings/logs and the editable Lua runtime separate, all under app-private storage.
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     return appData.isEmpty() ? QString() : QDir(appData).filePath(QStringLiteral("userdata"));
 #else
@@ -206,8 +206,8 @@ bool resolve(const QStringList &arguments, QString *error)
 
 #ifdef Q_OS_ANDROID
     if (g_resolution.error.isEmpty() && g_resolution.assetRoot.isEmpty()) {
-        // QApplication 已建立；每次啟動只補缺少的隨包檔，不覆蓋使用者擴展。
-        // 釋出失敗不能退回另一份規則，也不能帶著部分 runtime 建立 Engine。
+        // QApplication exists; on each launch, add only missing bundled files and preserve user extensions.
+        // If materialization fails, do not fall back to another ruleset or construct Engine with a partial runtime.
         const QString prepared = QCoreApplication::instance()
             ? QCoreApplication::instance()->property("androidRuntimeRoot").toString() : QString();
         const QString root = prepared.isEmpty() ? AndroidAssets::getWritableDataPath() : prepared;

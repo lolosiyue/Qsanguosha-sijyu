@@ -1,10 +1,6 @@
 @echo off
-rem ============================================================
-rem  headless stress-test entry (calls headless_runner.py)
-rem  All options are set below. Leave empty = use default.
-rem ============================================================
+rem Run headless_runner.py with the options below.
 
-rem ---- your choices (edit here) ------------------------------
 set MODES=08p
 set GAMES=3
 set PARALLEL=1
@@ -13,19 +9,14 @@ set GENERAL2=
 set SPAWNDELAY=3
 set LOG_DIR=
 set LABEL=
-rem  EXE/SEED are required by the runner contract (no implicit
-rem  discovery). EXE: release first, then debug. SEED defaults to
-rem  today's date yyyyMMdd; override either variable to pin them.
+rem EXE and SEED are passed explicitly; defaults are selected below.
 if not defined EXE if exist "%~dp0..\..\release\QSanguosha.exe" set "EXE=%~dp0..\..\release\QSanguosha.exe"
 if not defined EXE set "EXE=%~dp0..\..\debug\QSanguosha.exe"
 if not defined SEED for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set "SEED=%%i"
-rem  PARALLEL    = total parallel processes; when there are fewer
-rem  modes than PARALLEL, the same mode is duplicated round-robin
-rem  GENERAL     = force the lord to this general every game
-rem  GENERAL2    = dual-general mode: force the lord's deputy general
-rem  SPAWNDELAY  = seconds between process spawns (0 = all at once);
-rem                staggered start avoids antivirus behavior blocking
-rem ------------------------------------------------------------
+rem PARALLEL sets the process limit; repeated modes fill unused slots.
+rem GENERAL forces the lord's general in each game.
+rem GENERAL2 forces the lord's deputy in dual-general mode.
+rem SPAWNDELAY sets the interval between starts; stagger them to avoid antivirus blocking.
 
 set "ARGS=--exe-root "%~dp0..\.." --exe "%EXE%" --seed %SEED%"
 if not "%MODES%"==""   set "ARGS=%ARGS% --modes "%MODES%""

@@ -2,13 +2,7 @@
 
 set -euo pipefail
 
-# Fetch runtime Lua content from the extensions repository (single source of truth):
-#   <repo>/ai/*.lua         -> <root>/lua/ai/
-#   <repo>/extensions/*.lua -> <root>/extensions/
-#   <repo>/lua/*.lua        -> <root>/lua/
-#
-# Usage:
-#   tools/ci/fetch-extensions.sh [repository-root]
+# Fetch runtime Lua content from the extensions repository, the single source of truth.
 
 root=${1:-${GITHUB_WORKSPACE:-}}
 repo=${QSAN_EXTENSIONS_REPO:-https://github.com/lolosiyue/extensions.git}
@@ -27,8 +21,7 @@ cleanup()
 }
 trap cleanup EXIT
 
-# QSAN_EXTENSIONS_REF may be a branch, tag or full commit id. `clone --branch`
-# cannot take a commit id, so fetch the ref into an empty sparse repository.
+# QSAN_EXTENSIONS_REF may be a branch, tag, or commit; commit IDs require fetching into a sparse repository.
 git init --quiet "$clone_dir"
 git -C "$clone_dir" remote add origin "$repo"
 git -C "$clone_dir" sparse-checkout set ai extensions lua
@@ -44,10 +37,7 @@ extensions_target="$root/extensions"
 lua_target="$root/lua"
 mkdir -p "$ai_target" "$extensions_target" "$lua_target"
 
-# lua/ai/ is the one subtree the declared-v1 content scan exempts, so AI is copied
-# whole: the repository keeps content in ai/isolated and ai/temp, and a flat copy
-# drops it.  That is not a quiet degradation - the engine then fails to bootstrap
-# with "extensions/gaoda.lua: attempt to concatenate a nil value".
+# Copy lua/ai/ recursively so isolated and temporary subdirectories are retained.
 copy_lua_tree()
 {
     local source=$1 target=$2
@@ -55,10 +45,7 @@ copy_lua_tree()
     ( cd "$source" && find . -type f -name '*.lua' -exec cp -f --parents -- {} "$target/" \; )
 }
 
-# extensions/ and lua/ stay flat.  lua/config.lua's extension_names is the only list
-# the loader reads, so a nested .lua adds nothing the engine can use; it only makes
-# contentScanIsDeclared() reject the bundle, and the server then answers
-# rules_bundle={"error_code": "rules_content_unsupported"} and refuses every Web client.
+# Keep extensions/ and lua/ flat: nested Lua files are undeclared and rejected by contentScanIsDeclared().
 copy_lua_top_level()
 {
     local source=$1 target=$2
@@ -70,21 +57,14 @@ copy_lua_tree "$clone_dir/ai" "$ai_target"
 copy_lua_top_level "$clone_dir/extensions" "$extensions_target"
 copy_lua_top_level "$clone_dir/lua" "$lua_target"
 
-# Workaround (upstream bug in lolosiyue/extensions): the AI load loop uses the
-# lowercased package name as filename ("lua/ai/"..sl), but the files on disk are
-# mixed-case (e.g. NyarzFirst-ai.lua). On case-sensitive filesystems dofile()
-# fails for every mixed-case package. Patch it to use the real filename instead.
+# Rewrite AI loader paths to preserve the actual upstream filename case on case-sensitive filesystems.
 sed -i 's/"lua\/ai\/"\.\.sl/"lua\/ai\/"\.\.ai_file/g' "$ai_target/smart-ai.lua"
 if ! grep -q '"lua/ai/"\.\.ai_file' "$ai_target/smart-ai.lua"; then
     echo 'lua/ai/smart-ai.lua patch failed: lowercase AI filename loop not fixed' >&2
     exit 1
 fi
 
-# Workaround (upstream bugs in the pinned extensions commit):
-# - sgs10th.lua dropped the pre-migration prompt in
-#   `sgs.QVariant("draw:" .. n)`, leaving `sgs.QVariant( .. n)`.
-# - sijyuoffline.lua's SkillV2 migration dropped
-#   `sfofl_analepticchan = sgs.General(extension_s, "sfofl_analepticchan", "qun", 4, false)`.
+# Repair malformed declarations in the pinned upstream content before packaging.
 python3 - "$extensions_target" << 'PY'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
@@ -115,10 +95,7 @@ if [[ ! -f "$lua_target/luaoldenemy_lib.lua" ]]; then
     echo 'lua is incomplete: luaoldenemy_lib.lua is missing after fetch' >&2
     exit 1
 fi
-# Every .lua the upstream repository has must exist here, apart from the undeclared
-# nested extension and lua content the copy deliberately leaves behind: a silently
-# thinner copy is what "attempt to concatenate a nil value" during engine bootstrap
-# looks like.  case patterns match "/" like any other character, so the nested
+# Verify every upstream Lua file is present, except undeclared nested content intentionally left out.
 # patterns have to come first.
 missing=0
 while IFS= read -r relative; do

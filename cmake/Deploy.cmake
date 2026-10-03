@@ -29,9 +29,8 @@ if(NOT deploy_result EQUAL 0)
     message(FATAL_ERROR "windeployqt failed with exit code ${deploy_result}")
 endif()
 
-# exe 未直接 import Qt6Multimedia.dll（僅由 QML Video 動態載入），windeployqt
-# 依賴掃描不一定會部署 multimedia 後端 plugin。這裡明確從 Qt 安裝目錄複製
-# plugins/multimedia/ 與 Qt6Multimedia*.dll，確保影片背景可播放。
+# QML loads Qt Multimedia dynamically, so windeployqt may miss the video plugin.
+# Copy the multimedia plugin and DLLs explicitly to keep video backgrounds available.
 get_filename_component(qt_bin_dir "${QSAN_WINDEPLOYQT}" DIRECTORY)
 get_filename_component(qt_prefix "${qt_bin_dir}" DIRECTORY)
 get_filename_component(output_dir "${QSAN_EXECUTABLE}" DIRECTORY)

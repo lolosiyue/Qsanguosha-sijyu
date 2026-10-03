@@ -15,8 +15,7 @@ set -eu
 HERE="$(dirname "$(readlink -f "${0}")")"
 # Qt 6 prefers Wayland when WAYLAND_DISPLAY is set. Hover for QQuickWidget and
 # QGraphicsView (and the pointer-effect Tool overlay) then never sees MouseMove.
-# If an X11 display is available — including XWayland — use xcb. Opt into
-# Wayland with QT_QPA_PLATFORM=wayland.
+# If X11 or XWayland is available, use xcb; set QT_QPA_PLATFORM=wayland to opt into Wayland.
 if [ -z "${QT_QPA_PLATFORM:-}" ] && [ -n "${DISPLAY:-}" ]; then
     export QT_QPA_PLATFORM=xcb
 fi

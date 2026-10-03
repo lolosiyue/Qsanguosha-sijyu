@@ -605,7 +605,7 @@ static bool isNostalGeneral(const Player*p, const char*general_name);
 		$self->removeTag(tag_name);
     }
 
-	// Lua 直接綁在 Player*，避免走 QObject::objectName/property 的 SWIG 上轉型
+	// Bind Lua directly to Player* to avoid SWIG casts through QObject properties.
 	QString objectName() const {
 		return $self->objectName();
 	}
@@ -920,8 +920,8 @@ struct CardEffectStruct {
 
 	const Card*card;
 	
-	const Card*offset_card;//抵消这张即将生效牌的牌
-	int offset_num;//需要用多少张牌抵消
+	const Card*offset_card;// Card that cancels the pending card.
+	int offset_num;// Number of cards required to cancel it.
 
 	ServerPlayer*from;
 	ServerPlayer*to;
@@ -979,10 +979,10 @@ struct CardUseStruct {
 	bool m_addHistory;
 	bool m_isHandcard;
 	QStringList nullified_list;
-	const Card*whocard;  //令你使用牌的牌，例如【借刀杀人】
-	ServerPlayer*who;  //令你使用牌的角色
-	QStringList no_respond_list; //不能被响应
-	QStringList no_offset_list; //不能被抵消
+	const Card*whocard;  // Card that causes the current card use, such as Collateral.
+	ServerPlayer*who;  // Player who caused the current card use.
+	QStringList no_respond_list; // Cannot be responded to.
+	QStringList no_offset_list; // Cannot be nullified.
     int extra_use;
     bool bypass_cost;
 };
@@ -1073,7 +1073,7 @@ struct JudgeStruct {
 	bool good;
 	QString reason;
 	bool time_consuming;
-	bool throw_card;//是否将判定牌置入弃牌堆
+	bool throw_card;// Whether to place the judgment card in the discard pile.
 	ServerPlayer*retrial_by_response; // record whether the current judge card is provided by a response retrial
 };
 
@@ -1107,8 +1107,8 @@ struct CardResponseStruct {
 	bool m_isUse;
 	bool m_isRetrial;
 	bool m_isHandcard;
-	const Card*m_toCard;  //令你使用或打出牌的牌
-	bool nullified;//响应无效
+	const Card*m_toCard;  // Card that caused the current use or response.
+	bool nullified;// Response is invalid.
 };
 
 struct PlayerNumStruct {
@@ -1130,12 +1130,12 @@ struct MarkStruct {
 
 struct DrawStruct {
 	DrawStruct();
-	ServerPlayer*who;//摸牌者
-	QString reason;//摸牌信息
-	int num;//摸牌数
-	bool top;//正向摸牌（从牌堆顶摸）
-	bool visible;//摸牌可见
-	QList<int> card_ids;//摸到的牌id表
+	ServerPlayer*who;// Player who draws cards.
+	QString reason;// Draw metadata.
+	int num;// Number of cards to draw.
+	bool top;// Draw from the top of the draw pile.
+	bool visible;// Whether the cards are visible.
+	QList<int> card_ids;// IDs of drawn cards.
 };
 
 struct ShownCardChangedStruct {
@@ -1198,8 +1198,8 @@ enum TriggerEvent {
 
 	DrawNCards,
 	AfterDrawNCards,
-	DrawInitialCards,//已废除，不再触发
-	AfterDrawInitialCards,//已废除，不再触发
+	DrawInitialCards,// Deprecated; retained for compatibility.
+	AfterDrawInitialCards,// Deprecated; retained for compatibility.
 
 	StartHpRecover,
 	PreHpRecover,
@@ -1235,7 +1235,7 @@ enum TriggerEvent {
 	DamageForseen,    // the first event in a damage -- kuangfeng dawu
 	DamageCaused,     // the moment for -- qianxi..
 	DamageInflicted,  // the moment for -- tianxiang..
-	PreDamageDone,    // before reducing Hp --已废除，不再触发
+	PreDamageDone,    // Before HP loss (deprecated).
 	DamageDone,       // it's time to do the damage
 	Damage,           // the moment for -- lieren..
 	Damaged,          // the moment for -- yiji..
@@ -1266,13 +1266,13 @@ enum TriggerEvent {
 
 	PreChangeSlash,
 	ChangeSlash,
-	SlashEffected,//已废除，不再触发
-	SlashProceed,//已废除，不再触发
-	SlashHit,//已废除，不再触发
-	SlashMissed,//已废除，不再触发
+	SlashEffected,// Deprecated; retained for compatibility.
+	SlashProceed,// Deprecated; retained for compatibility.
+	SlashHit,// Deprecated; retained for compatibility.
+	SlashMissed,// Deprecated; retained for compatibility.
 
-	JinkEffect,//已废除，不再触发
-	NullificationEffect,//已废除，不再触发
+	JinkEffect,// Deprecated; retained for compatibility.
+	NullificationEffect,// Deprecated; retained for compatibility.
 
 	CardAsked,
 	PreCardResponded,
@@ -1293,7 +1293,7 @@ enum TriggerEvent {
 	PostCardEffected,
 	CardFinished,
 	TrickCardCanceling,
-	TrickEffect,//已废除，不再触发
+	TrickEffect,// Deprecated; retained for compatibility.
 	CardOnEffect,
 	CardOffset,
 
@@ -2471,8 +2471,8 @@ public:
 	void moveCardsToEndOfDrawpile(ServerPlayer*player, QList<int> card_ids, const char*skill_name, bool visible = false, bool guanxing = false);
 	void moveCardsInToDrawpile(ServerPlayer*player, const Card*card, const char*skill_name, int n = 0, bool visible = false);
 	void moveCardsInToDrawpile(ServerPlayer*player, int card_id, const char*skill_name, int n = 0, bool visible = false);
-	void moveCardsInToDrawpile(ServerPlayer*player, QList<int> card_ids, const char*skill_name, int n = 0, bool visible = false);  //card_ids的顺序不会被打乱
-	void shuffleIntoDrawPile(ServerPlayer*player, QList<int> card_ids, const char*skill_name, bool visible = false);  //card_ids的顺序会被打乱
+	void moveCardsInToDrawpile(ServerPlayer*player, QList<int> card_ids, const char*skill_name, int n = 0, bool visible = false);  // card_ids order is preserved.
+	void shuffleIntoDrawPile(ServerPlayer*player, QList<int> card_ids, const char*skill_name, bool visible = false);  // card_ids order is randomized.
 	void removeDerivativeCards();
 	void giveCard(ServerPlayer*from, ServerPlayer*to, const Card*card, const char*skill_name, bool visible = false);
 	void giveCard(ServerPlayer*from, ServerPlayer*to, QList<int> give_ids, const char*skill_name, bool visible = false);
