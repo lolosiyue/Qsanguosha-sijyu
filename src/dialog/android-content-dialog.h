@@ -1,6 +1,7 @@
 #ifndef QSAN_ANDROID_CONTENT_DIALOG_H
 #define QSAN_ANDROID_CONTENT_DIALOG_H
 
+#include <QCoreApplication>
 #include <QDialog>
 #include <QList>
 #include <atomic>
@@ -17,6 +18,7 @@ class QThread;
 // The store has one owner. While a worker mutates it the GUI only touches cancel.
 class AndroidContentDialog : public QDialog
 {
+    Q_DECLARE_TR_FUNCTIONS(AndroidContentDialog)
 public:
     static void configure(AndroidContentStore *store);
     static bool prepareStartup(QString *error);

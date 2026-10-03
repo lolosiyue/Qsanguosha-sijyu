@@ -218,10 +218,17 @@ int main(int argc, char *argv[]) {
 #ifdef Q_OS_ANDROID
     if (!headlessApp) {
         installAndroidDialogFit(qobject_cast<QApplication *>(QCoreApplication::instance()));
+        // Content dialogs run before the runtime tree exists; use the catalogs embedded in the APK.
+        // Both translators uninstall themselves when this block ends.
+        QTranslator startupQtTranslator, startupTranslator;
+        if (startupQtTranslator.load(QStringLiteral(":/assets/translations/qt_zh_CN.qm")))
+            qApp->installTranslator(&startupQtTranslator);
+        if (startupTranslator.load(QStringLiteral(":/assets/translations/sanguosha.qm")))
+            qApp->installTranslator(&startupTranslator);
         QString contentError;
         AndroidContentDialog::configure(&androidContent);
         if (!AndroidContentDialog::prepareStartup(&contentError)) {
-            QMessageBox::critical(nullptr, QStringLiteral("資源初始化失敗"), contentError);
+            QMessageBox::critical(nullptr, AndroidContentDialog::tr("Resource initialization failed"), contentError);
             return 6;
         }
         // Keep all game creation behind complete media validation and recovery.
@@ -359,6 +366,12 @@ int main(int argc, char *argv[]) {
     // falls back to English.
     QTranslator qt_translator, translator;
     const auto loadTranslation = [](QTranslator &target, const QString &fileName) {
+#ifdef Q_OS_ANDROID
+        // The runtime copy is deployed once and never refreshed, and extensions cannot ship
+        // catalogs; the APK's embedded catalog always matches this binary.
+        if (target.load(QStringLiteral(":/assets/translations/") + fileName))
+            return;
+#endif
         if (target.load(QSanRuntimePaths::assetPath(QStringLiteral("translations/") + fileName)))
             return;
         target.load(QSanRuntimePaths::assetPath(fileName));
@@ -373,7 +386,7 @@ int main(int argc, char *argv[]) {
     if (!headlessApp) {
         QString contentError;
         if (!androidContent.beginBootAttempt(&contentError)) {
-            QMessageBox::critical(nullptr, QStringLiteral("無法記錄啟動狀態"), contentError);
+            QMessageBox::critical(nullptr, AndroidContentDialog::tr("Cannot record startup state"), contentError);
             return 6;
         }
     }
@@ -630,7 +643,7 @@ int main(int argc, char *argv[]) {
     const auto completeAndroidBoot = [&androidContent, main_window] {
         QString error;
         if (!androidContent.markBootSuccessful(&error))
-            QMessageBox::warning(main_window, QStringLiteral("無法完成啟動記錄"), error);
+            QMessageBox::warning(main_window, AndroidContentDialog::tr("Cannot finish the startup record"), error);
     };
     if (main_window->isHomeSceneReady()) completeAndroidBoot();
     else QObject::connect(main_window, &MainWindow::homeSceneReady, main_window, completeAndroidBoot,
