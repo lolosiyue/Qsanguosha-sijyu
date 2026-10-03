@@ -82,7 +82,7 @@ def collect(args, device):
                     digest.update(block)
             result["apk"] = {"path": str(args.apk.resolve()), "sha256": digest.hexdigest(),
                              "bytes": args.apk.stat().st_size}
-            installed = device.run("install", "--no-streaming", "-r", str(args.apk),
+            installed = device.run("install", "--streaming", "-r", str(args.apk),
                                    timeout=180, check=False)
             (out / "install.txt").write_bytes(installed.stdout + installed.stderr)
             if installed.returncode or b"Success" not in installed.stdout:
@@ -157,7 +157,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["check", "run", "capture"])
     parser.add_argument("--adb", default=str(sdk_adb) if sdk_adb.is_file() else shutil.which("adb") or "adb")
-    parser.add_argument("--serial", default="emulator-5586")
+    parser.add_argument("--serial", required=True,
+                        help="adb serial of the identified LDPlayer 14")
     parser.add_argument("--apk", type=Path, default=APK)
     parser.add_argument("--output", type=Path, help="new directory for run; existing attempt directory for capture")
     parser.add_argument("--install", action="store_true", help="install -r before launching; app must be stopped")
@@ -171,7 +172,7 @@ def main():
         parser.error("--seconds and --interval must be positive")
     device = Device(args)
     if device.run("get-state").stdout.strip() != b"device":
-        raise RuntimeError("Selected device is not online; reuse the existing AVD")
+        raise RuntimeError("Selected device is not online; identify LDPlayer 14 before continuing.")
     if args.action == "check":
         print(json.dumps({"serial": args.serial, "pid": device.pid(),
                           "device_abi": device.run("shell", "getprop", "ro.product.cpu.abi").stdout.decode().strip(),

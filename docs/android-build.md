@@ -1,12 +1,12 @@
 # Android APK 建置、更新與驗收
 
-本機日常使用原生 `x86_64` APK 與既有 API 33 模擬器；`arm64-v8a` 留作實機／發行建置參考。
+本機日常使用原生 `x86_64` APK，裝置是既有雷電14；`arm64-v8a` 留作實機／發行建置參考。
 本機日常驗收以覆蓋安裝、`adb logcat`／截圖收集，以及完整局與正常退出分開判定為準。
 首次外部聲畫 ZIP／Storage Access Framework（SAF）匯入流程保留於本文後半，日常更新不需重做。
 32 位元 ARMv7 的裝置選擇、模式設定與收尾，直接查閱
 [ARMv7 操作與問題處理](#android-armv7-reuse)；不要重新準備工具鏈或媒體包。
-使用者指定 Android 14／雷電14 時，改查 [雷電14 重用流程](#android-14-ldplayer-reuse)，
-不啟動 API 33 AVD、不下載新的 system image；建置仍沿用同一 x86_64 cache。
+未指定其他裝置時，直接使用 [雷電14 重用流程](#android-14-ldplayer-reuse)。
+建置仍沿用同一 x86_64 cache，不下載新的 system image。
 
 **版本固定規則：Android 不再雜湊資源、不逐檔掃描聲畫，也不因圖片缺檔擋住開局。**
 已安裝媒體在 APK 更新後繼續沿用；新增圖片不觸發全包重匯。
@@ -23,9 +23,7 @@
 | Android 建置來源 | `L:\finaldebug\QSanguosha-v2`；既有 cache 的 CMAKE_HOME_DIRECTORY 指向此處 |
 | Debug 建置目錄 | `L:\finaldebug\QSanguosha-v2\builds\android-x86_64-debug`，junction 指向 `H:\qsan-android-x86_64\build-debug` |
 | 共用工具鏈 | `H:\qsan-android-x86_64`；Qt target=`qt/6.11.1/android_x86_64`，Gradle cache=`gradle` |
-| AVD home | `H:\qsan-validation\room-responsive-20260916\avd` |
-| 唯一 AVD／序號 | `Responsive_API_33`／`emulator-5586`，沿用既有 12 GiB userdata |
-| Emulator | `C:\Users\a3160\AppData\Local\Android\Sdk\emulator\emulator.exe` |
+| 日常裝置 | 雷電14 index `0`，見 [雷電14 重用流程](#android-14-ldplayer-reuse) |
 | SDK／ADB | `%LOCALAPPDATA%\Android\Sdk`／其 `platform-tools\adb.exe` |
 | 媒體原包 | `H:\qsan-validation\room-responsive-20260916\qsan-media.zip` |
 | App | `org.qsanguosha.game`，保持相同簽章，以 `install -r` 更新 |
@@ -38,8 +36,8 @@
 
 1. 在 L 工作區核對本次來源與 dirty state；不再複製到舊 Android 工作樹。
 2. 完成授權檢查點後，在同一 cache 增量建置一次；不用 `--fresh`、`--clean-first`。
-3. 重用 `emulator-5586`；未啟動只啟動 `Responsive_API_33`，不用 `-wipe-data`、新 AVD 或新媒體副本。
-4. 正常關閉 App，再以驗收助手 `run --install` 執行 `install --no-streaming -r` 與 `sync`；簽章不符就停止，不能卸載或清除資料。
+3. 重用雷電14，不用 `-wipe-data`、新 AVD 或新媒體副本。
+4. 依雷電14流程以 `install --streaming -r` 覆蓋安裝並 `sync`；簽章不符就停止，不能卸載或清除資料。
 5. 分別記錄首頁短驗收與 05p 完整局的證據。驗收工具不建置、不修改模式設定、不自動判定 GAME_OVER。
 
 固定建置命令（已有建置授權及完成檢查點時）：
@@ -60,29 +58,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 若 PowerShell 把原生命令的 stderr warning 升格為 `NativeCommandError`，保存紀錄並核對實際退出碼，
 不要清除建置樹；互動式使用上述腳本，避免另以 `$ErrorActionPreference='Stop'` 包住 `2>&1` 的外層管線。
 
-既有 AVD 未啟動時，人工驗收可開啟可見視窗；已有序號就沿用，不另開實例：
-
-```powershell
-$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-& $adb devices -l
-# 確認沒有 emulator-5586 才執行以下區塊；offline 先診斷，不能開第二份。
-$savedAvdHome = $env:ANDROID_AVD_HOME
-try {
-    $env:ANDROID_AVD_HOME = 'H:\qsan-validation\room-responsive-20260916\avd'
-    if (!(Test-Path "$env:ANDROID_AVD_HOME\Responsive_API_33.ini")) {
-        throw 'Existing AVD missing; do not create a replacement.'
-    }
-    if ((& $adb devices) -match '^emulator-5586\s') {
-        throw 'Reuse the existing emulator or inspect its offline state.'
-    }
-    Start-Process "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" `
-      -ArgumentList '-avd Responsive_API_33 -port 5586 -no-snapshot -no-boot-anim -gpu swiftshader_indirect' `
-      -WindowStyle Normal
-} finally { $env:ANDROID_AVD_HOME = $savedAvdHome }
-```
-
-無畫面代理驗收才加 `-no-window` 並使用 `-WindowStyle Hidden`。本例不等待開機完成；
-`python tools/android/acceptance.py check` 可確認序號在線。新助手不會自動啟動或關閉模擬器。
+裝置啟動、序號核對與視窗都走雷電14。
 
 ### 何時才需要媒體操作
 
@@ -94,26 +70,22 @@ try {
 | 資料被清除、媒體損壞、升級衝突 | 保存錯誤並判斷原因；不自動清除資料或重匯整包 |
 
 **已知耗時來源**：首次 ZIP 匯入的 100% 只表示解壓進度，後面仍會建立可用版本。
-此 AVD 的 SELinux 拒絕硬連結（hard link），程式退回逐檔實體複製；新增 APK
-基線資源也觸發第二輪版本複製，同樣會耗時並占用數 GB。[新資源流程的來源修正](android-extension-runtime.md#匯入更新效能修正)
+[新資源流程的來源修正](android-extension-runtime.md#匯入更新效能修正)
 已移除平方次數 ZIP 比對、可 seek 來源的 spool／重複雜湊讀取及媒體版本複製；
 內容準備只建立媒體目錄引用並複製規則／介面。移除資源雜湊與聲畫掃描後，缺圖片
-不再擋住連線；先前該 AVD 的有聲局因 AudioTrack 崩潰而未完成。該環境首次完整
-匯入的新耗時未重測，不能用啟動秒數代替；ARMv7／LDPlayer 的靜音完整局另見下節。
+不再擋住連線。首次完整匯入的新耗時未在雷電14重測，不能用啟動秒數代替；
+ARMv7／LDPlayer 的靜音完整局另見下節。
 
-首次匯入期間 Download ZIP、私有 spool、解壓 blob 與 runtime 版本可能同時存在，
-12 GiB 分割區曾接近滿載。日常不要重複保留傳輸副本；匯入完成後清理本輪傳輸檔，
-保留 H 碟原包與 App 私有資料。不要手動刪除 content store 的 baseline／blobs／versions。
-
-此 AVD 是 API 33 x86_64／4 KiB pages；日常 APK 使用原生 x86_64。模擬器上的
-ARM translation 執行不能代替 arm64 實機；兩者均不等同實機或折疊機驗收。
+日常不要重複保留傳輸副本；匯入完成後清理本輪傳輸檔，保留 H 碟原包與 App 私有資料。
+不要手動刪除 content store 的 baseline／blobs／versions。日常 APK 使用原生 x86_64。
+ARM translation 不能代替 arm64 實機，也不等同實機或折疊機驗收。
 
 <a id="android-14-ldplayer-reuse"></a>
 ## Android 14／雷電14：重用與故障處理（2026-10-03）
 
-本節適用於使用者指定既有雷電14的工作。優先重用既有安裝、App 資料、媒體及上方 x86_64
-建置快取；「最新版 Android APK」不代表下載新 Android 映像。既有 API 33 AVD 不能當作
-Android 14 驗收。以下位置是本次實測錨點；每次重新核對程序、VM、序號與 API，不沿用舊 PID。
+本節是未指定裝置時的日常 Android 裝置，也適用於使用者指定雷電14的工作。優先重用既有安裝、App 資料、媒體及上方 x86_64
+建置快取；「最新版 Android APK」不代表下載新 Android 映像。
+以下位置是本次實測錨點；每次重新核對程序、VM、序號與 API，不沿用舊 PID。
 
 | 項目 | 本次沿用值 |
 |---|---|
@@ -300,7 +272,6 @@ $serial = 'emulator-5554' # 先確認它仍對應已授權的 LDPlayer index 0�
 & $adb -s $serial shell getprop ro.zygote
 ```
 
-原 `Responsive_API_33` 只有 x86_64／arm64，`zygote64` 不支援 32 位元 App；
 ARM64 translation 存在也不等於能跑 ARMv7。先做上面的只讀核對，ABI 不符即停止安裝，
 不重建同一 APK、不清資料，也不另建 AVD。
 
@@ -310,12 +281,12 @@ ARM64 translation 存在也不等於能跑 ARMv7。先做上面的只讀核對�
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-android.ps1 `
   -Configuration Release -Abi armeabi-v7a `
   -ToolchainRoot H:\qsan-android-x86_64 `
-  -SdkRoot "$env:LOCALAPPDATA\Android\Sdk" -AudioBackend NULL
+  -SdkRoot "$env:LOCALAPPDATA\Android\Sdk" -AudioBackend ANDROID
 if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 ```
 
 `-Abi` 使用 `armeabi-v7a`；`armv7` 是 kit／preset／cache 名稱，不能拿來當腳本的 ABI 參數。
-核對 cache 的來源仍是 L、`ANDROID_ABI=armeabi-v7a`、`QSAN_AUDIO_BACKEND=NULL`，
+核對 cache 的來源仍是 L、`ANDROID_ABI=armeabi-v7a`、`QSAN_AUDIO_BACKEND=ANDROID`，
 保留增量 cache，不用 `--fresh` 或 `--clean-first`。沒有來源變更時可沿用已交付 APK，
 不為讀文件再建置或重跑已完成的局。
 
@@ -527,7 +498,7 @@ Debug APK 不再使用 Gradle 自動產生的金鑰。`resource/android/build.gr
 換機時搬移同一份金鑰與設定並修正 `storeFile`，不可重新生成。
 
 後續保持套件名稱 `org.qsanguosha.game`、相同簽名與不倒退的版本，以
-`adb -s emulator-5586 install -r <新 APK 路徑>` 更新，保留 App 資料。
+`adb -s <已核對的雷電14序號> install -r <新 APK 路徑>` 更新，保留 App 資料。
 遇到 `INSTALL_FAILED_UPDATE_INCOMPATIBLE` 應核對新舊憑證；不要自動解除安裝。
 這是目前開發安裝的簽名延續，不是商店 Release 發布金鑰配置。
 
@@ -564,7 +535,7 @@ python tools/android/create-media-package.py . builds/android-release/qsan-media
 
 ```powershell
 & $adb devices -l
-$serial = 'emulator-5586' # 本機固定 AVD；安裝路徑使用上方固定工作流的 $apk。
+$serial = '<已核對的雷電14序號>' # 先按雷電14流程核對。
 & $adb -s $serial install -r $apk
 & $adb -s $serial shell am start -W -n org.qsanguosha.game/org.qtproject.qt.android.bindings.QtActivity
 ```
@@ -654,6 +625,7 @@ NULL 音訊與 software／raster APK 的開局後崩潰，完整 SYSTEM_TOMBSTON
 
 ## 驗證限制與故障分類
 
-目前只驗證 Android Emulator。x86_64 模擬器執行 arm64 APK 時包含 ARM translation layer，不能代替 arm64 實機、Android 9/16 或 16 KB page-size 環境。最新 API 33 模擬器的已知音訊閃退位於 AAudio CFI callback under translation；目前證據不能把它歸因於某一個 OGG 檔案。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。四個短 UI WAV 只降低 codec 依賴，不代表完整 OGG 已驗收。
+x86_64 上的 ARM translation 不能代替 arm64 實機、Android 9 或 16 KB page-size 環境。QT 後端在轉譯層的 AAudio CFI callback 崩潰不能歸因於某一個 OGG 檔案。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。四個短 UI WAV 只降低 codec 依賴，不代表完整 OGG 已驗收。
 
 本頁不執行 CTest、跨版本矩陣或手機驗收。目錄與版本切換見 [Android 擴展實體目錄](android-extension-runtime.md)。
+
