@@ -323,6 +323,15 @@ void FitView::showPlayerInspector()
     }
 }
 
+RoomOverlayHost *FitView::roomOverlay()
+{
+    if (auto *room = qobject_cast<RoomScene *>(scene())) {
+        ensureRoomOverlay(room);
+        return m_overlay;
+    }
+    return nullptr;
+}
+
 void FitView::setResponsiveRoomEnabled(bool enabled)
 {
     m_responsiveEnabled = enabled;

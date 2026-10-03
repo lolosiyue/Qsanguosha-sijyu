@@ -12,10 +12,16 @@ class QScrollArea;
 // Android L2 launcher, adapted from TODO/human without duplicating game actions.
 class FloatingBall final : public QToolButton
 {
+    Q_OBJECT
+
 public:
     explicit FloatingBall(QWidget *parent);
     void addPanelAction(QAction *action, QAction *availability = nullptr);
     void setAvailableGeometry(const QRect &rect);
+
+signals:
+    // Lets owners refresh action states that have no change notification.
+    void aboutToShowPanel();
 
 protected:
     void paintEvent(QPaintEvent *event) override;

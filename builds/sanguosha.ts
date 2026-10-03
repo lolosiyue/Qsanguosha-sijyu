@@ -1545,7 +1545,7 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     <message>
         <location filename="../qml/home/CardDetailPanel.qml" line="72"/>
         <source>Card details</source>
-        <translation>卡牌詳情</translation>
+        <translation>卡牌详情</translation>
     </message>
 </context>
 <context>
@@ -2929,11 +2929,11 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>The scene could not be saved.</source>
-        <translation>無法儲存場景。</translation>
+        <translation>无法保存场景。</translation>
     </message>
     <message>
         <source>The scene document is invalid.</source>
-        <translation>場景文件無效。</translation>
+        <translation>场景文件无效。</translation>
     </message>
 </context>
 <context>
@@ -3804,17 +3804,17 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     <message>
         <location filename="../src/ui/cardcontainer.cpp" line="584"/>
         <source>Please arrange the cards</source>
-        <translation>觀星</translation>
+        <translation>观星</translation>
     </message>
     <message>
         <location filename="../src/ui/cardcontainer.cpp" line="587"/>
         <source>%1 is arranging the cards</source>
-        <translation>%1 正在觀星</translation>
+        <translation>%1 正在观星</translation>
     </message>
     <message>
         <location filename="../src/ui/cardcontainer.cpp" line="627"/>
         <source>cards on the top of the pile</source>
-        <translation>牌堆頂</translation>
+        <translation>牌堆顶</translation>
     </message>
     <message>
         <location filename="../src/ui/cardcontainer.cpp" line="638"/>
@@ -3894,7 +3894,7 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Scenario Works</source>
-        <translation>劇情作品</translation>
+        <translation>剧情作品</translation>
     </message>
 </context>
 <context>
@@ -4018,31 +4018,55 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     <name>MainWindow</name>
     <message>
         <source>Floating menu</source>
-        <translation>懸浮選單</translation>
+        <translation>悬浮菜单</translation>
     </message>
     <message>
         <source>Resources and extensions...</source>
         <translation>资源与扩展……</translation>
     </message>
     <message>
+        <source>Player Details</source>
+        <translation>角色详情</translation>
+    </message>
+    <message>
+        <source>Responsive preview</source>
+        <translation>自适应布局预览</translation>
+    </message>
+    <message>
+        <source>Game log</source>
+        <translation>战报</translation>
+    </message>
+    <message>
+        <source>One-handed: none</source>
+        <translation>单手布局：无</translation>
+    </message>
+    <message>
+        <source>One-handed: left</source>
+        <translation>单手布局：左手</translation>
+    </message>
+    <message>
+        <source>One-handed: right</source>
+        <translation>单手布局：右手</translation>
+    </message>
+    <message>
         <source>Maiden at prayer</source>
-        <translation>少女祈禱中</translation>
+        <translation>少女祈祷中</translation>
     </message>
     <message>
         <source>Please wait, the game will begin shortly.</source>
-        <translation>稍候片刻，即將進入牌局。</translation>
+        <translation>稍候片刻，即将进入牌局。</translation>
     </message>
     <message>
         <source>Connecting to game room...</source>
-        <translation>正在連線至遊戲房間……</translation>
+        <translation>正在连接游戏房间……</translation>
     </message>
     <message>
         <source>Preparing game room...</source>
-        <translation>正在準備遊戲房間……</translation>
+        <translation>正在准备游戏房间……</translation>
     </message>
     <message>
         <source>The server card or general catalog does not match the client.</source>
-        <translation>伺服器的卡牌或武將目錄與客戶端不同，無法加入遊戲。</translation>
+        <translation>服务器的卡牌或武将目录与客户端不同，无法加入游戏。</translation>
     </message>
     <message>
         <location filename="../src/dialog/mainwindow.cpp" line="445"/>
@@ -5037,51 +5061,51 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Cannot play work</source>
-        <translation>無法遊玩作品</translation>
+        <translation>无法游玩作品</translation>
     </message>
     <message>
         <source>Cannot save example work</source>
-        <translation>無法儲存範例作品</translation>
+        <translation>无法保存示例作品</translation>
     </message>
     <message>
         <source>Next Stage</source>
-        <translation>下一階段</translation>
+        <translation>下一阶段</translation>
     </message>
     <message>
         <source>Progress was not saved: %1</source>
-        <translation>進度未儲存：%1</translation>
+        <translation>进度未保存：%1</translation>
     </message>
     <message>
         <source>Retry saving progress</source>
-        <translation>重試儲存進度</translation>
+        <translation>重试保存进度</translation>
     </message>
     <message>
         <source>Retry this entry</source>
-        <translation>重試此項目</translation>
+        <translation>重试此项目</translation>
     </message>
     <message>
         <source>Return to the home page before opening the work library.</source>
-        <translation>開啟作品庫前請先返回首頁。</translation>
+        <translation>打开作品库前请先返回首页。</translation>
     </message>
     <message>
         <source>Return to work library</source>
-        <translation>返回作品庫</translation>
+        <translation>返回作品库</translation>
     </message>
     <message>
         <source>Scenario Works</source>
-        <translation>劇情作品</translation>
+        <translation>剧情作品</translation>
     </message>
     <message>
         <source>Stage cleared.</source>
-        <translation>階段完成。</translation>
+        <translation>阶段完成。</translation>
     </message>
     <message>
         <source>Stage not cleared.</source>
-        <translation>階段未完成。</translation>
+        <translation>阶段未完成。</translation>
     </message>
     <message>
         <source>The previous room has not finished stopping. No new stage was started.</source>
-        <translation>上一個房間尚未停止，未啟動新關卡。</translation>
+        <translation>上一个房间尚未停止，未启动新关卡。</translation>
     </message>
     <message>
         <source>The required identity mode is unavailable.</source>
@@ -5089,19 +5113,19 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>The selected stage entry is missing.</source>
-        <translation>選取的階段項目不存在。</translation>
+        <translation>选取的阶段项目不存在。</translation>
     </message>
     <message>
         <source>This stage entry is locked.</source>
-        <translation>此階段項目尚未解鎖。</translation>
+        <translation>此阶段项目尚未解锁。</translation>
     </message>
     <message>
         <source>Trial play does not change your progress.</source>
-        <translation>試玩不會變更進度。</translation>
+        <translation>试玩不会变更进度。</translation>
     </message>
     <message>
         <source>Waiting for the scenario result...</source>
-        <translation>正在等待劇情結果……</translation>
+        <translation>正在等待剧情结果……</translation>
     </message>
 </context>
 <context>
@@ -5249,7 +5273,7 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Non-equipment skills are invalid</source>
-        <translation>非裝備技能失效</translation>
+        <translation>非装备技能失效</translation>
     </message>
     <message>
         <source>%1%2 is invalid</source>
@@ -5265,7 +5289,7 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Discard</source>
-        <translation>棄置</translation>
+        <translation>弃置</translation>
     </message>
     <message>
         <source>Action %1</source>
@@ -5273,11 +5297,11 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Card %1 is restricted (pattern: %2)</source>
-        <translation>卡牌%1受限（規則：%2）</translation>
+        <translation>卡牌%1受限（规则：%2）</translation>
     </message>
     <message>
         <source>Source: %1</source>
-        <translation>來源：%1</translation>
+        <translation>来源：%1</translation>
     </message>
     <message>
         <source>Reason: %1</source>
@@ -5285,15 +5309,15 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Target: %1</source>
-        <translation>作用對象：%1</translation>
+        <translation>作用对象：%1</translation>
     </message>
     <message>
         <source>Until the end of this turn</source>
-        <translation>至本回合結束</translation>
+        <translation>至本回合结束</translation>
     </message>
     <message>
         <source>Ends: %1</source>
-        <translation>結束條件：%1</translation>
+        <translation>结束条件：%1</translation>
     </message>
     <message>
         <source>Innate</source>
@@ -5301,7 +5325,7 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Acquired</source>
-        <translation>後天獲得</translation>
+        <translation>后天获得</translation>
     </message>
     <message>
         <source>Attached skill</source>
@@ -5309,23 +5333,23 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Related helper</source>
-        <translation>關聯附屬</translation>
+        <translation>关联附属</translation>
     </message>
     <message>
         <source> / Head general</source>
-        <translation>／主將</translation>
+        <translation>／主将</translation>
     </message>
     <message>
         <source> / Deputy general</source>
-        <translation>／副將</translation>
+        <translation>／副将</translation>
     </message>
     <message>
         <source>Counter unavailable</source>
-        <translation>計數來源不可用</translation>
+        <translation>计数来源不可用</translation>
     </message>
     <message>
         <source>This round</source>
-        <translation>本輪</translation>
+        <translation>本轮</translation>
     </message>
     <message>
         <source>This turn</source>
@@ -5337,19 +5361,19 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>This phase</source>
-        <translation>本階段</translation>
+        <translation>本阶段</translation>
     </message>
     <message>
         <source>%1 count</source>
-        <translation>%1計數</translation>
+        <translation>%1计数</translation>
     </message>
     <message>
         <source>Custom scope</source>
-        <translation>自訂範圍</translation>
+        <translation>自定义范围</translation>
     </message>
     <message>
         <source>%1 shared count, see %2</source>
-        <translation>%1共用次數，見 %2</translation>
+        <translation>%1共用次数，见 %2</translation>
     </message>
     <message>
         <source>%1: used %2 / %3 times</source>
@@ -5357,23 +5381,23 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source> (shared count)</source>
-        <translation>（共用次數）</translation>
+        <translation>（共用次数）</translation>
     </message>
     <message>
         <source> (no uses currently available)</source>
-        <translation>（目前無可用額度）</translation>
+        <translation>（目前无可用额度）</translation>
     </message>
     <message>
         <source>; %1 reserved, not yet committed</source>
-        <translation>；另有 %1 次預留，尚未提交</translation>
+        <translation>；另有 %1 次预留，尚未提交</translation>
     </message>
     <message>
         <source>Usage: %1</source>
-        <translation>使用情況：%1</translation>
+        <translation>使用情况：%1</translation>
     </message>
     <message>
         <source>Skill state: %1: %2</source>
-        <translation>技能狀態：%1：%2</translation>
+        <translation>技能状态：%1：%2</translation>
     </message>
     <message>
         <source>Modification: %1: %2</source>
@@ -5381,15 +5405,15 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Skill state: %1 more entries (see technical details)</source>
-        <translation>技能狀態：另有 %1 項記錄（見技術資料）</translation>
+        <translation>技能状态：另有 %1 项记录（见技术数据）</translation>
     </message>
     <message>
         <source>%1 modified by: %2</source>
-        <translation>%1 修改來源：%2</translation>
+        <translation>%1 修改来源：%2</translation>
     </message>
     <message>
         <source>Modified by: %1</source>
-        <translation>修改來源：%1</translation>
+        <translation>修改来源：%1</translation>
     </message>
     <message>
         <source>Modification reason: %1</source>
@@ -5397,11 +5421,11 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Absolute override amountOverride: %1</source>
-        <translation>數值覆寫（絕對值） amountOverride: %1</translation>
+        <translation>数值覆盖（绝对值） amountOverride: %1</translation>
     </message>
     <message>
         <source>Technical details</source>
-        <translation>技術資料</translation>
+        <translation>技术数据</translation>
     </message>
     <message>
         <source>Current effects</source>
@@ -5417,7 +5441,7 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>Custom reset period</source>
-        <translation>自訂重設週期</translation>
+        <translation>自定义重置周期</translation>
     </message>
 </context>
 <context>
@@ -5588,19 +5612,19 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     </message>
     <message>
         <source>HP</source>
-        <translation>體力</translation>
+        <translation>体力</translation>
     </message>
     <message>
         <source>Mark</source>
-        <translation>標記</translation>
+        <translation>标记</translation>
     </message>
     <message>
         <source>Scene</source>
-        <translation>場景</translation>
+        <translation>场景</translation>
     </message>
     <message>
         <source>Stage</source>
-        <translation>劇情階段</translation>
+        <translation>剧情阶段</translation>
     </message>
     <message>
         <source>≤</source>
@@ -6876,7 +6900,7 @@ P = 你自己, R = 你所在的房间</translation>
     <message>
         <location filename="../src/server/server.cpp" line="405"/>
         <source>Reward the first showing player</source>
-        <translation>首位亮將玩家獎勵</translation>
+        <translation>首位亮将玩家奖励</translation>
     </message>
     <message>
         <source>启用UPNP端口映射</source>
@@ -7955,11 +7979,11 @@ Recent events:</source>
     <name>LargeRoomOverview</name>
     <message>
         <source>Expand focus</source>
-        <translation>展開焦點</translation>
+        <translation>展开焦点</translation>
     </message>
     <message>
         <source>Collapse focus</source>
-        <translation>收縮焦點</translation>
+        <translation>收缩焦点</translation>
     </message>
     <message>
         <source>Self</source>
@@ -7967,39 +7991,39 @@ Recent events:</source>
     </message>
     <message>
         <source>Observation locked</source>
-        <translation>已鎖定觀察</translation>
+        <translation>已锁定观察</translation>
     </message>
     <message>
         <source>Target preview</source>
-        <translation>目標預覽</translation>
+        <translation>目标预览</translation>
     </message>
     <message>
         <source>Primary focus</source>
-        <translation>主焦點 · 結算角色</translation>
+        <translation>主焦点 · 结算角色</translation>
     </message>
     <message>
         <source>Source / target</source>
-        <translation>次焦點 · 來源／目標</translation>
+        <translation>次焦点 · 来源／目标</translation>
     </message>
     <message>
         <source>Following - Lock</source>
-        <translation>跟隨中 · 鎖定</translation>
+        <translation>跟随中 · 锁定</translation>
     </message>
     <message>
         <source>Locked - Follow</source>
-        <translation>已鎖定 · 跟隨</translation>
+        <translation>已锁定 · 跟随</translation>
     </message>
     <message>
         <source>Player details (scroll to browse)</source>
-        <translation>玩家詳細資料（滾輪捲動）</translation>
+        <translation>玩家详细信息（滚轮滚动）</translation>
     </message>
     <message>
         <source>HP %1/%2 - Hand %3 - Limit %4</source>
-        <translation>體力 %1/%2 · 手牌 %3 · 上限 %4</translation>
+        <translation>体力 %1/%2 · 手牌 %3 · 上限 %4</translation>
     </message>
     <message>
         <source>Distance %1 - Attack modifier %2 - Defense modifier %3</source>
-        <translation>距離 %1 · 進攻修正 %2 · 防禦修正 %3</translation>
+        <translation>距离 %1 · 进攻修正 %2 · 防御修正 %3</translation>
     </message>
     <message>
         <source>Alive</source>
@@ -8007,7 +8031,7 @@ Recent events:</source>
     </message>
     <message>
         <source>Dead</source>
-        <translation>陣亡</translation>
+        <translation>阵亡</translation>
     </message>
     <message>
         <source>Face down</source>
@@ -8019,23 +8043,23 @@ Recent events:</source>
     </message>
     <message>
         <source>Chained</source>
-        <translation>連環</translation>
+        <translation>连环</translation>
     </message>
     <message>
         <source>Unchained</source>
-        <translation>未連環</translation>
+        <translation>未连环</translation>
     </message>
     <message>
         <source>Removed</source>
-        <translation>移出遊戲</translation>
+        <translation>移出游戏</translation>
     </message>
     <message>
         <source>Role: %1 - Kingdom: %2</source>
-        <translation>身分：%1 · 勢力：%2</translation>
+        <translation>身份：%1 · 势力：%2</translation>
     </message>
     <message>
         <source>Equipment: </source>
-        <translation>裝備：</translation>
+        <translation>装备：</translation>
     </message>
     <message>
         <source>Judging: </source>
@@ -8047,7 +8071,7 @@ Recent events:</source>
     </message>
     <message>
         <source>Mark %1: %2</source>
-        <translation>標記 %1：%2</translation>
+        <translation>标记 %1：%2</translation>
     </message>
     <message>
         <source>Pile %1: %2</source>
@@ -8059,27 +8083,27 @@ Recent events:</source>
     </message>
     <message>
         <source>Resolution</source>
-        <translation>◆ 結算</translation>
+        <translation>◆ 结算</translation>
     </message>
     <message>
         <source>No player selection is required</source>
-        <translation>目前沒有需要選取的角色</translation>
+        <translation>目前没有需要选取的角色</translation>
     </message>
     <message>
         <source>No legal targets for this card or skill</source>
-        <translation>目前牌／技能沒有合法目標</translation>
+        <translation>目前牌／技能没有合法目标</translation>
     </message>
     <message>
         <source>Legal targets %1 / %2 - Selected %3%4</source>
-        <translation>可選目標 %1 / %2　已選 %3%4</translation>
+        <translation>可选目标 %1 / %2　已选 %3%4</translation>
     </message>
     <message>
         <source>No active resolution</source>
-        <translation>目前沒有活動結算</translation>
+        <translation>目前没有活动结算</translation>
     </message>
     <message>
         <source>Resolution information is not synchronized</source>
-        <translation>結算資訊尚未同步</translation>
+        <translation>结算信息尚未同步</translation>
     </message>
     <message>
         <source>Using a card</source>
@@ -8091,11 +8115,11 @@ Recent events:</source>
     </message>
     <message>
         <source>Damage</source>
-        <translation>傷害</translation>
+        <translation>伤害</translation>
     </message>
     <message>
         <source>Recovery</source>
-        <translation>回復體力</translation>
+        <translation>回复体力</translation>
     </message>
     <message>
         <source>Judgement</source>
@@ -8103,7 +8127,7 @@ Recent events:</source>
     </message>
     <message>
         <source>Dying rescue</source>
-        <translation>瀕死求救</translation>
+        <translation>濒死求救</translation>
     </message>
     <message>
         <source>Skill effect</source>
@@ -8111,21 +8135,21 @@ Recent events:</source>
     </message>
     <message>
         <source>%1 is resolving %2</source>
-        <translation>%1 正在結算 %2</translation>
+        <translation>%1 正在结算 %2</translation>
     </message>
     <message>
         <source>
 Waiting for %1 to respond</source>
         <translation>
-正在等待 %1 回應</translation>
+正在等待 %1 回应</translation>
     </message>
     <message>
         <source>Current resolution: </source>
-        <translation>當前結算：</translation>
+        <translation>当前结算：</translation>
     </message>
     <message>
         <source>Jump to focus</source>
-        <translation>跳回當前焦點</translation>
+        <translation>跳回当前焦点</translation>
     </message>
     <message>
         <source>Jump to self</source>
@@ -8133,11 +8157,11 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Lock observation</source>
-        <translation>鎖定觀察</translation>
+        <translation>锁定观察</translation>
     </message>
     <message>
         <source>Legal targets only</source>
-        <translation>只看可選</translation>
+        <translation>只看可选</translation>
     </message>
     <message>
         <source>All players</source>
@@ -8149,11 +8173,11 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Sort: distance</source>
-        <translation>排序：距離</translation>
+        <translation>排序：距离</translation>
     </message>
     <message>
         <source>Sort: proximity</source>
-        <translation>排序：鄰近</translation>
+        <translation>排序：邻近</translation>
     </message>
     <message>
         <source>Sort: legality</source>
@@ -8161,7 +8185,7 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Close details</source>
-        <translation>關閉詳細卡</translation>
+        <translation>关闭详细卡</translation>
     </message>
     <message>
         <source>%1 -&gt; %2: %3</source>
@@ -8184,35 +8208,35 @@ Waiting for %1 to respond</source>
     <name>ScenarioWorkEditorDialog</name>
     <message>
         <source>A mark predicate needs a mark name.</source>
-        <translation>標記條件需要標記名稱。</translation>
+        <translation>标记条件需要标记名称。</translation>
     </message>
     <message>
         <source>Add predicate</source>
-        <translation>新增條件</translation>
+        <translation>新增条件</translation>
     </message>
     <message>
         <source>Add scene</source>
-        <translation>新增場景</translation>
+        <translation>新增场景</translation>
     </message>
     <message>
         <source>Add stage entry</source>
-        <translation>新增階段項目</translation>
+        <translation>新增阶段项目</translation>
     </message>
     <message>
         <source>All predicates must match (unchecked: any)</source>
-        <translation>所有條件都必須符合（取消勾選代表任一）</translation>
+        <translation>所有条件都必须符合（取消勾选代表任一）</translation>
     </message>
     <message>
         <source>Allow second general</source>
-        <translation>允許第二武將</translation>
+        <translation>允许第二武将</translation>
     </message>
     <message>
         <source>An entry still references this revision. Repin or remove that entry first.</source>
-        <translation>仍有項目引用此版本，請先重新固定或移除該項目。</translation>
+        <translation>仍有项目引用此版本，请先重新固定或移除该项目。</translation>
     </message>
     <message>
         <source>An objective needs at least one success predicate.</source>
-        <translation>目標至少需要一項成功條件。</translation>
+        <translation>目标至少需要一项成功条件。</translation>
     </message>
     <message>
         <source>Author</source>
@@ -8220,91 +8244,91 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Cannot add stage entry</source>
-        <translation>無法新增階段項目</translation>
+        <translation>无法新增阶段项目</translation>
     </message>
     <message>
         <source>Cannot import scene</source>
-        <translation>無法匯入場景</translation>
+        <translation>无法导入场景</translation>
     </message>
     <message>
         <source>Cannot remove scene</source>
-        <translation>無法移除場景</translation>
+        <translation>无法移除场景</translation>
     </message>
     <message>
         <source>Carry state policy</source>
-        <translation>延續狀態策略</translation>
+        <translation>延续状态策略</translation>
     </message>
     <message>
         <source>Change compatibility</source>
-        <translation>變更相容性</translation>
+        <translation>变更兼容性</translation>
     </message>
     <message>
         <source>Comparison</source>
-        <translation>比較</translation>
+        <translation>比较</translation>
     </message>
     <message>
         <source>Configure success/failure goals</source>
-        <translation>設定成功／失敗目標</translation>
+        <translation>设置成功／失败目标</translation>
     </message>
     <message>
         <source>Configure the initial scene first.</source>
-        <translation>請先設定初始場景。</translation>
+        <translation>请先设置初始场景。</translation>
     </message>
     <message>
         <source>Edit</source>
-        <translation>編輯</translation>
+        <translation>编辑</translation>
     </message>
     <message>
         <source>Edit entry / pinned revision</source>
-        <translation>編輯項目／固定版本</translation>
+        <translation>编辑项目／固定版本</translation>
     </message>
     <message>
         <source>Edit initial scene configuration</source>
-        <translation>編輯初始場景設定</translation>
+        <translation>编辑初始场景设置</translation>
     </message>
     <message>
         <source>Edit scene</source>
-        <translation>編輯場景</translation>
+        <translation>编辑场景</translation>
     </message>
     <message>
         <source>Edit stage entry</source>
-        <translation>編輯階段項目</translation>
+        <translation>编辑阶段项目</translation>
     </message>
     <message>
         <source>Ending</source>
-        <translation>結局</translation>
+        <translation>结局</translation>
     </message>
     <message>
         <source>Equipment</source>
-        <translation>裝備</translation>
+        <translation>装备</translation>
     </message>
     <message>
         <source>Existing entries keep their pinned revision. Use Edit entry / pinned revision to select the new revision.</source>
-        <translation>現有項目會保留固定版本。請使用「編輯項目／固定版本」選擇新版本。</translation>
+        <translation>现有项目会保留固定版本。请使用「编辑项目／固定版本」选择新版本。</translation>
     </message>
     <message>
         <source>Failure predicates</source>
-        <translation>失敗條件</translation>
+        <translation>失败条件</translation>
     </message>
     <message>
         <source>Fixed seats and roles</source>
-        <translation>固定座位與身份</translation>
+        <translation>固定座位与身份</translation>
     </message>
     <message>
         <source>Free choice</source>
-        <translation>自由選擇</translation>
+        <translation>自由选择</translation>
     </message>
     <message>
         <source>Generals</source>
-        <translation>武將</translation>
+        <translation>武将</translation>
     </message>
     <message>
         <source>Goal definition</source>
-        <translation>目標定義</translation>
+        <translation>目标定义</translation>
     </message>
     <message>
         <source>HP</source>
-        <translation>體力</translation>
+        <translation>体力</translation>
     </message>
     <message>
         <source>Hand</source>
@@ -8312,19 +8336,19 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Hujia</source>
-        <translation>護甲</translation>
+        <translation>护甲</translation>
     </message>
     <message>
         <source>Import existing scene</source>
-        <translation>匯入現有場景</translation>
+        <translation>导入现有场景</translation>
     </message>
     <message>
         <source>Import this work into the library and explicitly rebind its compatibility before copying scenes into this work.</source>
-        <translation>請先將此作品匯入作品庫並明確重新綁定相容性，再將場景複製到此作品。</translation>
+        <translation>请先将此作品导入作品库并明确重新绑定兼容性，再将场景复制到此作品。</translation>
     </message>
     <message>
         <source>Imported</source>
-        <translation>已匯入</translation>
+        <translation>已导入</translation>
     </message>
     <message>
         <source>Incompatible work</source>
@@ -8332,31 +8356,31 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Introduction</source>
-        <translation>簡介</translation>
+        <translation>简介</translation>
     </message>
     <message>
         <source>Invalid goal</source>
-        <translation>目標無效</translation>
+        <translation>目标无效</translation>
     </message>
     <message>
         <source>Invalid scene</source>
-        <translation>場景無效</translation>
+        <translation>场景无效</translation>
     </message>
     <message>
         <source>Invalid work</source>
-        <translation>作品無效</translation>
+        <translation>作品无效</translation>
     </message>
     <message>
         <source>Mark</source>
-        <translation>標記</translation>
+        <translation>标记</translation>
     </message>
     <message>
         <source>Marks</source>
-        <translation>標記</translation>
+        <translation>标记</translation>
     </message>
     <message>
         <source>Max HP</source>
-        <translation>最大體力</translation>
+        <translation>最大体力</translation>
     </message>
     <message>
         <source>Move down</source>
@@ -8368,39 +8392,39 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Objective</source>
-        <translation>目標</translation>
+        <translation>目标</translation>
     </message>
     <message>
         <source>Opening</source>
-        <translation>開場</translation>
+        <translation>开场</translation>
     </message>
     <message>
         <source>Ordered stage entries</source>
-        <translation>有序階段項目</translation>
+        <translation>有序阶段项目</translation>
     </message>
     <message>
         <source>Override the pinned scene goals</source>
-        <translation>覆寫固定場景目標</translation>
+        <translation>覆盖固定场景目标</translation>
     </message>
     <message>
         <source>Pin a scene revision first.</source>
-        <translation>請先固定場景版本。</translation>
+        <translation>请先固定场景版本。</translation>
     </message>
     <message>
         <source>Pinned scene</source>
-        <translation>固定場景</translation>
+        <translation>固定场景</translation>
     </message>
     <message>
         <source>Pinned scene revisions</source>
-        <translation>固定場景版本</translation>
+        <translation>固定场景版本</translation>
     </message>
     <message>
         <source>Player seat (zero based)</source>
-        <translation>玩家座位（從零開始）</translation>
+        <translation>玩家座位（从零开始）</translation>
     </message>
     <message>
         <source>Rebinding changes the meaning of physical card IDs if the catalog changed. Review every initial scene and carried card before using this work. Scene symbols will be validated against the current runtime; existing progress remains tied to the old revision.</source>
-        <translation>若卡牌目錄已變更，重新綁定會改變實體卡牌 ID 的意義。使用前請檢查所有初始場景與延續卡牌。場景符號會依目前執行環境驗證；既有進度仍繫結於舊版本。</translation>
+        <translation>若卡牌目录已变更，重新绑定会改变实体卡牌 ID 的意义。使用前请检查所有初始场景与延续卡牌。场景符号会依目前运行环境验证；既有进度仍绑定于旧版本。</translation>
     </message>
     <message>
         <source>Remove</source>
@@ -8408,47 +8432,47 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Remove predicate</source>
-        <translation>移除條件</translation>
+        <translation>移除条件</translation>
     </message>
     <message>
         <source>Required extensions</source>
-        <translation>必要擴充套件</translation>
+        <translation>必要扩展包</translation>
     </message>
     <message>
         <source>Rule</source>
-        <translation>規則</translation>
+        <translation>规则</translation>
     </message>
     <message>
         <source>Rule identity</source>
-        <translation>規則身份</translation>
+        <translation>规则身份</translation>
     </message>
     <message>
         <source>Scene or work files (*.txt *.qswork.json)</source>
-        <translation>場景或作品檔案（*.txt *.qswork.json）</translation>
+        <translation>场景或作品文件（*.txt *.qswork.json）</translation>
     </message>
     <message>
         <source>Scene revision saved</source>
-        <translation>場景版本已儲存</translation>
+        <translation>场景版本已保存</translation>
     </message>
     <message>
         <source>Scene work</source>
-        <translation>場景作品</translation>
+        <translation>场景作品</translation>
     </message>
     <message>
         <source>Seat (zero based)</source>
-        <translation>座位（從零開始）</translation>
+        <translation>座位（从零开始）</translation>
     </message>
     <message>
         <source>Select a stage entry first.</source>
-        <translation>請先選擇階段項目。</translation>
+        <translation>请先选择阶段项目。</translation>
     </message>
     <message>
         <source>Sequential unlock</source>
-        <translation>依序解鎖</translation>
+        <translation>依序解锁</translation>
     </message>
     <message>
         <source>Settlement</source>
-        <translation>結算</translation>
+        <translation>结算</translation>
     </message>
     <message>
         <source>Skills</source>
@@ -8456,114 +8480,114 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Stage selection</source>
-        <translation>階段選擇</translation>
+        <translation>阶段选择</translation>
     </message>
     <message>
         <source>Stage work</source>
-        <translation>階段作品</translation>
+        <translation>阶段作品</translation>
     </message>
     <message>
         <source>Success predicates</source>
-        <translation>成功條件</translation>
+        <translation>成功条件</translation>
     </message>
     <message>
         <source>The player seat must exist in the initial scene.</source>
-        <translation>玩家座位必須存在於初始場景中。</translation>
+        <translation>玩家座位必须存在于初始场景中。</translation>
     </message>
     <message>
         <source>Title</source>
-        <translation>標題</translation>
+        <translation>标题</translation>
     </message>
     <message>
         <source>Trial launch</source>
-        <translation>試玩</translation>
+        <translation>试玩</translation>
     </message>
     <message>
         <source>Type</source>
-        <translation>類型</translation>
+        <translation>类型</translation>
     </message>
     <message>
         <source>Use current runtime manifest and card catalog</source>
-        <translation>使用目前執行環境清單與卡牌目錄</translation>
+        <translation>使用目前运行环境列表与卡牌目录</translation>
     </message>
     <message>
         <source>Use custom goals</source>
-        <translation>使用自訂目標</translation>
+        <translation>使用自定义目标</translation>
     </message>
     <message>
         <source>Value</source>
-        <translation>數值</translation>
+        <translation>数值</translation>
     </message>
     <message>
         <source>Work editor</source>
-        <translation>作品編輯器</translation>
+        <translation>作品编辑器</translation>
     </message>
     <message>
         <source>Work type</source>
-        <translation>作品類型</translation>
+        <translation>作品类型</translation>
     </message>
     <message>
         <source>comma-separated acquired skills</source>
-        <translation>以逗號分隔的獲得技能</translation>
+        <translation>以逗号分隔的获得技能</translation>
     </message>
     <message>
         <source>comma-separated marks</source>
-        <translation>以逗號分隔的標記</translation>
+        <translation>以逗号分隔的标记</translation>
     </message>
 </context>
 <context>
     <name>ScenarioWorkLibraryDialog</name>
     <message>
         <source> (Copy)</source>
-        <translation>（複本）</translation>
+        <translation>（副本）</translation>
     </message>
     <message>
         <source> (Locked)</source>
-        <translation>（已鎖定）</translation>
+        <translation>（已锁定）</translation>
     </message>
     <message>
         <source>Cannot export work</source>
-        <translation>無法匯出作品</translation>
+        <translation>无法导出作品</translation>
     </message>
     <message>
         <source>Cannot read progress</source>
-        <translation>無法讀取進度</translation>
+        <translation>无法读取进度</translation>
     </message>
     <message>
         <source>Cannot save work</source>
-        <translation>無法儲存作品</translation>
+        <translation>无法保存作品</translation>
     </message>
     <message>
         <source>Choose entry</source>
-        <translation>選擇項目</translation>
+        <translation>选择项目</translation>
     </message>
     <message>
         <source>Choose the initial state for this entry</source>
-        <translation>選擇此項目的初始狀態</translation>
+        <translation>选择此项目的初始状态</translation>
     </message>
     <message>
         <source>Close</source>
-        <translation>關閉</translation>
+        <translation>关闭</translation>
     </message>
     <message>
         <source>Complete the preceding stage first.</source>
-        <translation>請先完成前一階段。</translation>
+        <translation>请先完成前一阶段。</translation>
     </message>
     <message>
         <source>Continue</source>
-        <translation>繼續</translation>
+        <translation>继续</translation>
     </message>
     <message>
         <source>Duplicate</source>
-        <translation>複製</translation>
+        <translation>复制</translation>
     </message>
     <message>
         <source>Edit</source>
-        <translation>編輯</translation>
+        <translation>编辑</translation>
     </message>
     <message>
         <source>Entry locked</source>
-        <translation>項目尚未解鎖</translation>
+        <translation>项目尚未解锁</translation>
     </message>
     <message>
         <source>Export</source>
@@ -8571,19 +8595,19 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Export work</source>
-        <translation>匯出作品</translation>
+        <translation>导出作品</translation>
     </message>
     <message>
         <source>History</source>
-        <translation>歷史</translation>
+        <translation>历史</translation>
     </message>
     <message>
         <source>Import</source>
-        <translation>匯入</translation>
+        <translation>导入</translation>
     </message>
     <message>
         <source>Import work</source>
-        <translation>匯入作品</translation>
+        <translation>导入作品</translation>
     </message>
     <message>
         <source>Incompatible work</source>
@@ -8591,7 +8615,7 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>Invalid work</source>
-        <translation>作品無效</translation>
+        <translation>作品无效</translation>
     </message>
     <message>
         <source>Latest snapshot (%1)</source>
@@ -8599,38 +8623,38 @@ Waiting for %1 to respond</source>
     </message>
     <message>
         <source>New scene work</source>
-        <translation>新增場景作品</translation>
+        <translation>新增场景作品</translation>
     </message>
     <message>
         <source>New stage work</source>
-        <translation>新增階段作品</translation>
+        <translation>新增阶段作品</translation>
     </message>
     <message>
         <source>No continuation is available.</source>
-        <translation>沒有可繼續的進度。</translation>
+        <translation>没有可继续的进度。</translation>
     </message>
     <message>
         <source>Original entry</source>
-        <translation>原始項目</translation>
+        <translation>原始项目</translation>
     </message>
     <message>
         <source>Play</source>
-        <translation>遊玩</translation>
+        <translation>游玩</translation>
     </message>
     <message>
         <source>Rule: %1
 Required extensions: %2</source>
-        <translation>規則：%1
-必要擴充套件：%2</translation>
+        <translation>规则：%1
+必要扩展包：%2</translation>
     </message>
     <message>
         <source>This work was created for a different runtime manifest or card catalog. Saved compatibility:
 %1
 Current compatibility:
 %2</source>
-        <translation>此作品建立於不同的執行環境清單或卡牌目錄。儲存的相容性：
+        <translation>此作品创建于不同的运行环境列表或卡牌目录。保存的兼容性：
 %1
-目前相容性：
+目前兼容性：
 %2</translation>
     </message>
     <message>
@@ -8639,7 +8663,7 @@ Author: %2
 Revision: %3
 
 %4</source>
-        <translation>標題：%1
+        <translation>标题：%1
 作者：%2
 版本：%3
 
@@ -8647,38 +8671,38 @@ Revision: %3
     </message>
     <message>
         <source>Work files (*.qswork.json)</source>
-        <translation>作品檔案（*.qswork.json）</translation>
+        <translation>作品文件（*.qswork.json）</translation>
     </message>
     <message>
         <source>Work library</source>
-        <translation>作品庫</translation>
+        <translation>作品库</translation>
     </message>
 </context>
 <context>
     <name>ScenarioWorkExamples</name>
     <message>
         <source>Chapter 1: Rest before departure</source>
-        <translation>第一章：出發前休息</translation>
+        <translation>第一章：出发前休息</translation>
     </message>
     <message>
         <source>Chapter 2: The gatekeeper</source>
-        <translation>第二章：守門人</translation>
+        <translation>第二章：守门人</translation>
     </message>
     <message>
         <source>Defeat the opponent with your Slash before your first turn ends.</source>
-        <translation>在你的第一個回合結束前用殺擊敗對手。</translation>
+        <translation>在你的第一个回合结束前用杀击败对手。</translation>
     </message>
     <message>
         <source>Objective completed. You can replay this scene from its original setup.</source>
-        <translation>目標已完成。你可以從原始設定重新遊玩此場景。</translation>
+        <translation>目标已完成。你可以从原始设置重新游玩此场景。</translation>
     </message>
     <message>
         <source>Puzzle: One turn</source>
-        <translation>謎題：一個回合</translation>
+        <translation>谜题：一个回合</translation>
     </message>
     <message>
         <source>Short story: A journey begins</source>
-        <translation>短篇故事：旅程開始</translation>
+        <translation>短篇故事：旅程开始</translation>
     </message>
     <message>
         <source>Skill case: Kurou</source>
@@ -8686,126 +8710,126 @@ Revision: %3
     </message>
     <message>
         <source>Tutorial: Recover health</source>
-        <translation>教學：恢復體力</translation>
+        <translation>教学：恢复体力</translation>
     </message>
     <message>
         <source>Use Kurou. Check its health cost and draw effect; the objective checks health at effect completion.</source>
-        <translation>使用苦肉，檢查其體力代價與摸牌效果；目標會在效果結算時檢查體力。</translation>
+        <translation>使用苦肉，检查其体力代价与摸牌效果；目标会在效果结算时检查体力。</translation>
     </message>
     <message>
         <source>Use the Peach in your hand to reach 2 health. The scene ends after the effect resolves.</source>
-        <translation>使用手中的桃將體力提升至 2 點。效果結算後場景結束。</translation>
+        <translation>使用手中的桃将体力提升至 2 点。效果结算后场景结束。</translation>
     </message>
     <message>
         <source>Your health and general carry over from the previous chapter. Defeat the gatekeeper.</source>
-        <translation>你的體力與武將會從上一章延續。擊敗守門人。</translation>
+        <translation>你的体力与武将会从上一章延续。击败守门人。</translation>
     </message>
 </context>
 <context>
     <name>ScenarioWorkRuntime</name>
     <message>
         <source>Carried card conflicts with next scene ownership</source>
-        <translation>延續卡牌與下一場景的持有卡牌衝突</translation>
+        <translation>延续卡牌与下一场景的持有卡牌冲突</translation>
     </message>
     <message>
         <source>Carried equipment exceeds next scene slots</source>
-        <translation>延續裝備超出下一場景的欄位</translation>
+        <translation>延续装备超出下一场景的装备栏</translation>
     </message>
     <message>
         <source>Carry key is not allowed by policy: %1</source>
-        <translation>延續鍵不在策略允許範圍內：%1</translation>
+        <translation>延续键不在策略允许范围内：%1</translation>
     </message>
     <message>
         <source>Invalid carried mark: %1</source>
-        <translation>無效的延續標記：%1</translation>
+        <translation>无效的延续标记：%1</translation>
     </message>
     <message>
         <source>Invalid carried skill: %1</source>
-        <translation>無效的延續技能：%1</translation>
+        <translation>无效的延续技能：%1</translation>
     </message>
     <message>
         <source>Invalid carry %1</source>
-        <translation>無效的延續資料 %1</translation>
+        <translation>无效的延续数据 %1</translation>
     </message>
     <message>
         <source>Invalid or repeated carried card</source>
-        <translation>無效或重複的延續卡牌</translation>
+        <translation>无效或重复的延续卡牌</translation>
     </message>
     <message>
         <source>Invalid or repeated scene card: %1</source>
-        <translation>無效或重複的場景卡牌：%1</translation>
+        <translation>无效或重复的场景卡牌：%1</translation>
     </message>
     <message>
         <source>Invalid scene draw-pile card</source>
-        <translation>無效的場景牌堆卡牌</translation>
+        <translation>无效的场景牌堆卡牌</translation>
     </message>
     <message>
         <source>Missing work launch</source>
-        <translation>缺少作品啟動資料</translation>
+        <translation>缺少作品启动数据</translation>
     </message>
     <message>
         <source>Scene equipment exceeds available slots</source>
-        <translation>場景裝備超出可用欄位</translation>
+        <translation>场景装备超出可用装备栏</translation>
     </message>
     <message>
         <source>Scene health exceeds or cannot resolve maximum health</source>
-        <translation>場景體力超出上限或無法解析最大體力</translation>
+        <translation>场景体力超出上限或无法解析最大体力</translation>
     </message>
     <message>
         <source>Scene second general requires secondGeneral rules</source>
-        <translation>場景第二武將需要 secondGeneral 規則</translation>
+        <translation>场景第二武将需要 secondGeneral 规则</translation>
     </message>
     <message>
         <source>Second-general carry requires secondGeneral rules</source>
-        <translation>延續第二武將需要 secondGeneral 規則</translation>
+        <translation>延续第二武将需要 secondGeneral 规则</translation>
     </message>
     <message>
         <source>Unable to open work scene setup</source>
-        <translation>無法讀取作品場景設定</translation>
+        <translation>无法读取作品场景设置</translation>
     </message>
     <message>
         <source>Unknown carried general: %1</source>
-        <translation>未知的延續武將：%1</translation>
+        <translation>未知的延续武将：%1</translation>
     </message>
     <message>
         <source>Unknown scene general: %1</source>
-        <translation>未知的場景武將：%1</translation>
+        <translation>未知的场景武将：%1</translation>
     </message>
     <message>
         <source>Unknown scene skill: %1</source>
-        <translation>未知的場景技能：%1</translation>
+        <translation>未知的场景技能：%1</translation>
     </message>
     <message>
         <source>Unsupported work rule: %1</source>
-        <translation>不支援的作品規則：%1</translation>
+        <translation>不支持的作品规则：%1</translation>
     </message>
     <message>
         <source>Work compatibility fingerprint does not match this engine</source>
-        <translation>作品相容性指紋與此引擎不符</translation>
+        <translation>作品兼容性指纹与此引擎不符</translation>
     </message>
     <message>
         <source>Work entry does not resolve to its scene revision</source>
-        <translation>作品項目無法解析至其場景版本</translation>
+        <translation>作品项目无法解析至其场景版本</translation>
     </message>
     <message>
         <source>Work launch cannot also restore a snapshot</source>
-        <translation>作品開局不能同時還原對局快照</translation>
+        <translation>作品开局不能同时还原对局快照</translation>
     </message>
     <message>
         <source>Work player seat is outside scene seats</source>
-        <translation>作品玩家座位超出場景座位範圍</translation>
+        <translation>作品玩家座位超出场景座位范围</translation>
     </message>
     <message>
         <source>Work revision does not match its contents</source>
-        <translation>作品版本與內容不一致</translation>
+        <translation>作品版本与内容不一致</translation>
     </message>
     <message>
         <source>Work scene must define at least two players</source>
-        <translation>作品場景必須設定至少兩名玩家</translation>
+        <translation>作品场景必须设置至少两名玩家</translation>
     </message>
     <message>
         <source>Work scene rule is unavailable</source>
-        <translation>作品場景規則不可用</translation>
+        <translation>作品场景规则不可用</translation>
     </message>
     <message>
         <source>Work seats cannot use randomRoles</source>
@@ -8816,327 +8840,327 @@ Revision: %3
     <name>ScenarioWork</name>
     <message>
         <source>Cannot create library directory.</source>
-        <translation>無法建立作品庫目錄。</translation>
+        <translation>无法创建作品库目录。</translation>
     </message>
     <message>
         <source>Cannot read document or document too large.</source>
-        <translation>無法讀取文件，或文件過大。</translation>
+        <translation>无法读取文件，或文件过大。</translation>
     </message>
     <message>
         <source>Cannot save library document.</source>
-        <translation>無法儲存作品庫文件。</translation>
+        <translation>无法保存作品库文件。</translation>
     </message>
     <message>
         <source>Carry cards must be an array.</source>
-        <translation>延續卡牌必須是陣列。</translation>
+        <translation>延续卡牌必须是数组。</translation>
     </message>
     <message>
         <source>Carry health exceeds maximum health.</source>
-        <translation>延續體力超過最大體力。</translation>
+        <translation>延续体力超过最大体力。</translation>
     </message>
     <message>
         <source>Carry marks must be an array.</source>
-        <translation>延續標記必須是陣列。</translation>
+        <translation>延续标记必须是数组。</translation>
     </message>
     <message>
         <source>Carry switches must be boolean.</source>
-        <translation>延續開關必須是布林值。</translation>
+        <translation>延续开关必须是布尔值。</translation>
     </message>
     <message>
         <source>Conflicting legacy endings.</source>
-        <translation>舊式結局規則互相衝突。</translation>
+        <translation>旧式结局规则互相冲突。</translation>
     </message>
     <message>
         <source>Document too large.</source>
-        <translation>文件過大。</translation>
+        <translation>文件过大。</translation>
     </message>
     <message>
         <source>Duplicate fixed pile.</source>
-        <translation>固定牌堆有重複項目。</translation>
+        <translation>固定牌堆有重复项目。</translation>
     </message>
     <message>
         <source>Entry is not available.</source>
-        <translation>項目不可用。</translation>
+        <translation>项目不可用。</translation>
     </message>
     <message>
         <source>Entry must reference an exact scene revision.</source>
-        <translation>項目必須引用精確的場景版本。</translation>
+        <translation>项目必须引用精确的场景版本。</translation>
     </message>
     <message>
         <source>Extension manifest must be sorted.</source>
-        <translation>擴充套件清單必須排序。</translation>
+        <translation>扩展包列表必须排序。</translation>
     </message>
     <message>
         <source>Fixed seats must be enabled.</source>
-        <translation>必須啟用固定座位。</translation>
+        <translation>必须启用固定座位。</translation>
     </message>
     <message>
         <source>Invalid JSON document.</source>
-        <translation>JSON 文件無效。</translation>
+        <translation>JSON 文件无效。</translation>
     </message>
     <message>
         <source>Invalid acquired skills.</source>
-        <translation>獲得技能無效。</translation>
+        <translation>获得技能无效。</translation>
     </message>
     <message>
         <source>Invalid carry general.</source>
-        <translation>延續武將無效。</translation>
+        <translation>延续武将无效。</translation>
     </message>
     <message>
         <source>Invalid carry health value.</source>
-        <translation>延續體力數值無效。</translation>
+        <translation>延续体力数值无效。</translation>
     </message>
     <message>
         <source>Invalid carry mark.</source>
-        <translation>延續標記無效。</translation>
+        <translation>延续标记无效。</translation>
     </message>
     <message>
         <source>Invalid carry policy names.</source>
-        <translation>延續策略名稱無效。</translation>
+        <translation>延续策略名称无效。</translation>
     </message>
     <message>
         <source>Invalid compatibility fingerprint.</source>
-        <translation>相容性指紋無效。</translation>
+        <translation>兼容性指纹无效。</translation>
     </message>
     <message>
         <source>Invalid continuation identity.</source>
-        <translation>延續身份無效。</translation>
+        <translation>延续身份无效。</translation>
     </message>
     <message>
         <source>Invalid draw count or health adjustment.</source>
-        <translation>摸牌數或體力調整無效。</translation>
+        <translation>摸牌数或体力调整无效。</translation>
     </message>
     <message>
         <source>Invalid entry fields.</source>
-        <translation>項目欄位無效。</translation>
+        <translation>项目字段无效。</translation>
     </message>
     <message>
         <source>Invalid equipment capacity.</source>
-        <translation>裝備容量無效。</translation>
+        <translation>装备容量无效。</translation>
     </message>
     <message>
         <source>Invalid existing progress.</source>
-        <translation>既有進度無效。</translation>
+        <translation>既有进度无效。</translation>
     </message>
     <message>
         <source>Invalid extension manifest.</source>
-        <translation>擴充套件清單無效。</translation>
+        <translation>扩展包列表无效。</translation>
     </message>
     <message>
         <source>Invalid fixed pile card.</source>
-        <translation>固定牌堆卡牌無效。</translation>
+        <translation>固定牌堆卡牌无效。</translation>
     </message>
     <message>
         <source>Invalid goal predicate.</source>
-        <translation>目標條件無效。</translation>
+        <translation>目标条件无效。</translation>
     </message>
     <message>
         <source>Invalid legacy round count.</source>
-        <translation>舊式回合數無效。</translation>
+        <translation>旧式回合数无效。</translation>
     </message>
     <message>
         <source>Invalid or duplicate carry card.</source>
-        <translation>延續卡牌無效或重複。</translation>
+        <translation>延续卡牌无效或重复。</translation>
     </message>
     <message>
         <source>Invalid or duplicate entry identity.</source>
-        <translation>項目身份無效或重複。</translation>
+        <translation>项目身份无效或重复。</translation>
     </message>
     <message>
         <source>Invalid or duplicate physical card.</source>
-        <translation>實體卡牌無效或重複。</translation>
+        <translation>实体卡牌无效或重复。</translation>
     </message>
     <message>
         <source>Invalid or repeated scene field.</source>
-        <translation>場景欄位無效或重複。</translation>
+        <translation>场景字段无效或重复。</translation>
     </message>
     <message>
         <source>Invalid predicate fields.</source>
-        <translation>條件欄位無效。</translation>
+        <translation>条件字段无效。</translation>
     </message>
     <message>
         <source>Invalid progress document.</source>
-        <translation>進度文件無效。</translation>
+        <translation>进度文件无效。</translation>
     </message>
     <message>
         <source>Invalid progress identifiers.</source>
-        <translation>進度識別碼無效。</translation>
+        <translation>进度标识符无效。</translation>
     </message>
     <message>
         <source>Invalid progress identity.</source>
-        <translation>進度身份無效。</translation>
+        <translation>进度身份无效。</translation>
     </message>
     <message>
         <source>Invalid progress snapshot.</source>
-        <translation>進度快照無效。</translation>
+        <translation>进度快照无效。</translation>
     </message>
     <message>
         <source>Invalid scene document.</source>
-        <translation>場景文件無效。</translation>
+        <translation>场景文件无效。</translation>
     </message>
     <message>
         <source>Invalid scene field.</source>
-        <translation>場景欄位無效。</translation>
+        <translation>场景字段无效。</translation>
     </message>
     <message>
         <source>Invalid scene fields.</source>
-        <translation>場景欄位無效。</translation>
+        <translation>场景字段无效。</translation>
     </message>
     <message>
         <source>Invalid scene health value.</source>
-        <translation>場景體力數值無效。</translation>
+        <translation>场景体力数值无效。</translation>
     </message>
     <message>
         <source>Invalid scene identity or revision.</source>
-        <translation>場景身份或版本無效。</translation>
+        <translation>场景身份或版本无效。</translation>
     </message>
     <message>
         <source>Invalid scene mark or equipment capacity.</source>
-        <translation>場景標記或裝備容量無效。</translation>
+        <translation>场景标记或装备容量无效。</translation>
     </message>
     <message>
         <source>Invalid scene or entry count.</source>
-        <translation>場景或項目數量無效。</translation>
+        <translation>场景或项目数量无效。</translation>
     </message>
     <message>
         <source>Invalid snapshot fields.</source>
-        <translation>快照欄位無效。</translation>
+        <translation>快照字段无效。</translation>
     </message>
     <message>
         <source>Invalid work document fields.</source>
-        <translation>作品文件欄位無效。</translation>
+        <translation>作品文件字段无效。</translation>
     </message>
     <message>
         <source>Invalid work identity or rule.</source>
-        <translation>作品身份或規則無效。</translation>
+        <translation>作品身份或规则无效。</translation>
     </message>
     <message>
         <source>Missing progress output.</source>
-        <translation>缺少進度輸出。</translation>
+        <translation>缺少进度输出。</translation>
     </message>
     <message>
         <source>Objective goals conflict with legacy endings.</source>
-        <translation>目標與舊式結局規則衝突。</translation>
+        <translation>目标与旧式结局规则冲突。</translation>
     </message>
     <message>
         <source>Objective requires success predicates.</source>
-        <translation>目標必須包含成功條件。</translation>
+        <translation>目标必须包含成功条件。</translation>
     </message>
     <message>
         <source>Only one goal definition is allowed.</source>
-        <translation>每個項目只能有一個目標定義。</translation>
+        <translation>每个项目只能有一个目标定义。</translation>
     </message>
     <message>
         <source>Player general is required.</source>
-        <translation>必須指定玩家武將。</translation>
+        <translation>必须指定玩家武将。</translation>
     </message>
     <message>
         <source>Player seat is outside the scene.</source>
-        <translation>玩家座位超出場景範圍。</translation>
+        <translation>玩家座位超出场景范围。</translation>
     </message>
     <message>
         <source>Progress identity cannot change.</source>
-        <translation>進度身份不可變更。</translation>
+        <translation>进度身份不可变更。</translation>
     </message>
     <message>
         <source>Repeated legacy option.</source>
-        <translation>舊式選項重複。</translation>
+        <translation>旧式选项重复。</translation>
     </message>
     <message>
         <source>Saved progress cannot be changed.</source>
-        <translation>已儲存進度不可變更。</translation>
+        <translation>已保存进度不可变更。</translation>
     </message>
     <message>
         <source>Saved progress cannot be removed.</source>
-        <translation>已儲存進度不可移除。</translation>
+        <translation>已保存进度不可移除。</translation>
     </message>
     <message>
         <source>Scene flags must be boolean.</source>
-        <translation>場景旗標必須是布林值。</translation>
+        <translation>场景标志必须是布尔值。</translation>
     </message>
     <message>
         <source>Scene health exceeds maximum health.</source>
-        <translation>場景體力超過最大體力。</translation>
+        <translation>场景体力超过最大体力。</translation>
     </message>
     <message>
         <source>Scene needs 2 to 10 players.</source>
-        <translation>場景需要 2 至 10 名玩家。</translation>
+        <translation>场景需要 2 至 10 名玩家。</translation>
     </message>
     <message>
         <source>Scene needs exactly one starter.</source>
-        <translation>場景必須恰好有一名起始玩家。</translation>
+        <translation>场景必须恰好有一名起始玩家。</translation>
     </message>
     <message>
         <source>Scene requires opposing camps and at most one lord.</source>
-        <translation>場景需要敵對陣營，且最多一名主公。</translation>
+        <translation>场景需要敌对阵营，且最多一名主公。</translation>
     </message>
     <message>
         <source>Scene work must contain one scene identity.</source>
-        <translation>場景作品必須包含一個場景身份。</translation>
+        <translation>场景作品必须包含一个场景身份。</translation>
     </message>
     <message>
         <source>Second general must be boolean.</source>
-        <translation>第二武將設定必須是布林值。</translation>
+        <translation>第二武将设置必须是布尔值。</translation>
     </message>
     <message>
         <source>Snapshot target does not follow its source entry.</source>
-        <translation>快照目標不是來源項目的下一項。</translation>
+        <translation>快照目标不是来源项目的下一项。</translation>
     </message>
     <message>
         <source>Starter must be boolean.</source>
-        <translation>起始玩家設定必須是布林值。</translation>
+        <translation>起始玩家设置必须是布尔值。</translation>
     </message>
     <message>
         <source>Unknown carry policy field.</source>
-        <translation>未知的延續策略欄位。</translation>
+        <translation>未知的延续策略字段。</translation>
     </message>
     <message>
         <source>Unknown completed entry.</source>
-        <translation>未知的已完成項目。</translation>
+        <translation>未知的已完成项目。</translation>
     </message>
     <message>
         <source>Unknown continuation entry.</source>
-        <translation>未知的延續項目。</translation>
+        <translation>未知的延续项目。</translation>
     </message>
     <message>
         <source>Unknown export data is not allowed.</source>
-        <translation>不允許未知的匯出資料。</translation>
+        <translation>不允许未知的导出数据。</translation>
     </message>
     <message>
         <source>Unknown goal field.</source>
-        <translation>未知的目標欄位。</translation>
+        <translation>未知的目标字段。</translation>
     </message>
     <message>
         <source>Unknown goal group field.</source>
-        <translation>未知的目標群組欄位。</translation>
+        <translation>未知的目标分组字段。</translation>
     </message>
     <message>
         <source>Unknown goal mode.</source>
-        <translation>未知的目標模式。</translation>
+        <translation>未知的目标模式。</translation>
     </message>
     <message>
         <source>Unknown selection policy.</source>
-        <translation>未知的選擇策略。</translation>
+        <translation>未知的选择策略。</translation>
     </message>
     <message>
         <source>Unknown work kind.</source>
-        <translation>未知的作品類型。</translation>
+        <translation>未知的作品类型。</translation>
     </message>
     <message>
         <source>Unsafe library path.</source>
-        <translation>作品庫路徑不安全。</translation>
+        <translation>作品库路径不安全。</translation>
     </message>
     <message>
         <source>Unsafe path or document too large.</source>
-        <translation>路徑不安全或文件過大。</translation>
+        <translation>路径不安全或文件过大。</translation>
     </message>
     <message>
         <source>Unsafe progress path.</source>
-        <translation>進度路徑不安全。</translation>
+        <translation>进度路径不安全。</translation>
     </message>
     <message>
         <source>Unsupported carry field.</source>
-        <translation>不支援的延續欄位。</translation>
+        <translation>不支持的延续字段。</translation>
     </message>
     <message>
         <source>Unsupported player role.</source>
@@ -9144,11 +9168,11 @@ Revision: %3
     </message>
     <message>
         <source>Unsupported rule field.</source>
-        <translation>不支援的規則欄位。</translation>
+        <translation>不支持的规则字段。</translation>
     </message>
     <message>
         <source>Untitled scene</source>
-        <translation>未命名場景</translation>
+        <translation>未命名场景</translation>
     </message>
     <message>
         <source>Untitled work</source>
@@ -9156,67 +9180,67 @@ Revision: %3
     </message>
     <message>
         <source>Work revision does not match content.</source>
-        <translation>作品版本與內容不一致。</translation>
+        <translation>作品版本与内容不一致。</translation>
     </message>
     <message>
         <source>entry must be object</source>
-        <translation>項目必須是物件</translation>
+        <translation>项目必须是对象</translation>
     </message>
     <message>
         <source>goal group must be object</source>
-        <translation>目標群組必須是物件</translation>
+        <translation>目标分组必须是对象</translation>
     </message>
     <message>
         <source>goal must be object</source>
-        <translation>目標必須是物件</translation>
+        <translation>目标必须是对象</translation>
     </message>
     <message>
         <source>goals must be array</source>
-        <translation>目標必須是陣列</translation>
+        <translation>目标必须是数组</translation>
     </message>
     <message>
         <source>invalid goal group</source>
-        <translation>無效的目標群組</translation>
+        <translation>无效的目标分组</translation>
     </message>
     <message>
         <source>predicate must be an object</source>
-        <translation>條件必須是物件</translation>
+        <translation>条件必须是对象</translation>
     </message>
     <message>
         <source>predicate seat must be integer</source>
-        <translation>條件座位必須是整數</translation>
+        <translation>条件座位必须是整数</translation>
     </message>
     <message>
         <source>predicate threshold must be integer</source>
-        <translation>條件門檻必須是整數</translation>
+        <translation>条件门槛必须是整数</translation>
     </message>
     <message>
         <source>result entry does not exist</source>
-        <translation>結果項目不存在</translation>
+        <translation>结果项目不存在</translation>
     </message>
     <message>
         <source>result identity mismatch</source>
-        <translation>結果身份不符</translation>
+        <translation>结果身份不符</translation>
     </message>
     <message>
         <source>scene id/setup missing</source>
-        <translation>缺少場景 id 或 setup</translation>
+        <translation>缺少场景 id 或 setup</translation>
     </message>
     <message>
         <source>scene must be object</source>
-        <translation>場景必須是物件</translation>
+        <translation>场景必须是对象</translation>
     </message>
     <message>
         <source>unknown goal mode</source>
-        <translation>未知的目標模式</translation>
+        <translation>未知的目标模式</translation>
     </message>
     <message>
         <source>unknown predicate operator</source>
-        <translation>未知的條件運算子</translation>
+        <translation>未知的条件运算符</translation>
     </message>
     <message>
         <source>unknown predicate type</source>
-        <translation>未知的條件類型</translation>
+        <translation>未知的条件类型</translation>
     </message>
 </context>
 <context>
@@ -9259,6 +9283,145 @@ Revision: %3
     <message>
         <source>Game over! Score: %1</source>
         <translation>游戏结束！得分: %1</translation>
+    </message>
+</context>
+<context>
+    <name>RoomOverlayHost</name>
+    <message>
+        <source>Room layout and views</source>
+        <translation>牌桌布局与视图</translation>
+    </message>
+    <message>
+        <source>Responsive preview</source>
+        <translation>自适应布局预览</translation>
+    </message>
+    <message>
+        <source>Player details</source>
+        <translation>角色详情</translation>
+    </message>
+    <message>
+        <source>Game log</source>
+        <translation>战报</translation>
+    </message>
+    <message>
+        <source>Chat</source>
+        <translation>聊天</translation>
+    </message>
+    <message>
+        <source>One-handed layout</source>
+        <translation>单手布局</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>无</translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation>左手</translation>
+    </message>
+    <message>
+        <source>Right</source>
+        <translation>右手</translation>
+    </message>
+    <message>
+        <source>Game controls</source>
+        <translation>游戏操作面板</translation>
+    </message>
+    <message>
+        <source>Player seats</source>
+        <translation>座位</translation>
+    </message>
+    <message>
+        <source>Close player details</source>
+        <translation>关闭角色详情</translation>
+    </message>
+    <message>
+        <source>Send</source>
+        <translation>发送</translation>
+    </message>
+    <message>
+        <source>Synchronizing game state…</source>
+        <translation>正在同步游戏状态……</translation>
+    </message>
+    <message>
+        <source>HP: %1/%2</source>
+        <translation>体力：%1/%2</translation>
+    </message>
+    <message>
+        <source>Hand: %1</source>
+        <translation>手牌数：%1</translation>
+    </message>
+    <message>
+        <source>Alive: %1</source>
+        <translation>存活：%1</translation>
+    </message>
+    <message>
+        <source>Yes</source>
+        <translation>是</translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation>否</translation>
+    </message>
+    <message>
+        <source>Role: %1</source>
+        <translation>身份：%1</translation>
+    </message>
+    <message>
+        <source>Face up: %1</source>
+        <translation>武将牌正面朝上：%1</translation>
+    </message>
+    <message>
+        <source>Chained: %1</source>
+        <translation>连环：%1</translation>
+    </message>
+    <message>
+        <source>Removed: %1</source>
+        <translation>移出游戏：%1</translation>
+    </message>
+    <message>
+        <source>Hand limit: %1</source>
+        <translation>手牌上限：%1</translation>
+    </message>
+    <message>
+        <source>Distance: %1</source>
+        <translation>距离：%1</translation>
+    </message>
+    <message>
+        <source>Offensive distance: %1</source>
+        <translation>进攻距离：%1</translation>
+    </message>
+    <message>
+        <source>Defensive distance: %1</source>
+        <translation>防御距离：%1</translation>
+    </message>
+    <message>
+        <source>Equipment: %1</source>
+        <translation>装备：%1</translation>
+    </message>
+    <message>
+        <source>Judging area: %1</source>
+        <translation>判定区：%1</translation>
+    </message>
+    <message>
+        <source>Visible hand: %1</source>
+        <translation>可见手牌：%1</translation>
+    </message>
+    <message>
+        <source>Skills: %1</source>
+        <translation>技能：%1</translation>
+    </message>
+    <message>
+        <source>Marks:</source>
+        <translation>标记：</translation>
+    </message>
+    <message>
+        <source>Piles:</source>
+        <translation>武将牌上的牌：</translation>
+    </message>
+    <message>
+        <source>  Visible: %1</source>
+        <translation>  可见：%1</translation>
     </message>
 </context>
 </TS>
