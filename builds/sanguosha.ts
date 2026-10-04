@@ -44,9 +44,9 @@
         <translation>资源与扩展</translation>
     </message>
     <message>
-        <source>Import the full media resources before the first game. Imports and management changes take effect after a restart.
+        <source>Games can start without the full media resources, using text cards and no sound. Imports and management changes take effect after a restart.
 Only import Lua you trust: scripts have full Lua access and can read and write any file this app can access. Keep the app in the foreground while importing; switching away or locking the screen cancels the import.</source>
-        <translation>首次开局须完整导入声画资源。导入与管理变更在重新启动后生效。
+        <translation>未导入完整声画资源也可开局，届时使用文字牌面且无声音。导入与管理变更在重新启动后生效。
 只导入信任的 Lua：脚本可使用完整 Lua 能力，读写本程序可访问的文件。导入期间请保持前台；切到后台或锁屏会取消本次导入。</translation>
     </message>
     <message>
@@ -164,8 +164,8 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
         <translation>完整资源已就绪。</translation>
     </message>
     <message>
-        <source>The full media resources have not been imported; games cannot start yet.</source>
-        <translation>尚未导入完整声画资源，暂不能开局。</translation>
+        <source>The full media resources have not been imported; games use text cards and no sound.</source>
+        <translation>尚未导入完整声画资源，对局将使用文字牌面且无声音。</translation>
     </message>
     <message>
         <source>Processing; keep the app in the foreground…</source>

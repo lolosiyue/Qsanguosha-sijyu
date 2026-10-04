@@ -227,8 +227,8 @@ int main(int argc, char *argv[]) {
             QMessageBox::critical(nullptr, AndroidContentDialog::tr("Resource initialization failed"), contentError);
             return 6;
         }
-        // Keep all game creation behind complete media validation and recovery.
-        if (!AndroidContentDialog::prepareForGame()) return 0;
+        // Keep all game creation behind content recovery; media is optional.
+        if (!AndroidContentDialog::prepareForHome()) return 0;
         qApp->setProperty("androidRuntimeRoot", androidContent.runtimeRoot());
     }
 #endif

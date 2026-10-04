@@ -1515,7 +1515,7 @@ void MainWindow::startLocalConsoleGame()
     if (m_scenarioWork) return;
 #endif
 #ifdef Q_OS_ANDROID
-	// The first offline game is gated on the private media bundle being complete.
+	// The first offline game is gated on content recovery, not on the media bundle.
 	if (!AndroidContentDialog::prepareForGame())
 		return;
 	m_androidLocalRoomActive = true;

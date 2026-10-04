@@ -22,6 +22,7 @@ class AndroidContentDialog : public QDialog
 public:
     static void configure(AndroidContentStore *store);
     static bool prepareStartup(QString *error);
+    static bool prepareForHome();
     static bool prepareForGame();
     static void openManager(QWidget *parent);
     explicit AndroidContentDialog(bool startup, QWidget *parent = nullptr);
