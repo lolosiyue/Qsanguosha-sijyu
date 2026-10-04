@@ -380,7 +380,7 @@ ServerPlayer *RequestCoordinator::raceRequest(QList<ServerPlayer *> players,
              it != controllerMap.constEnd(); ++it)
             controllerIndex[it.key()] = controllerIndex.value(it.key(), 0) + 1;
 
-        if (m_room.applicationActiveElapsed() - clockStart >= timeOut)
+        if (!m_room.noClock() && m_room.applicationActiveElapsed() - clockStart >= timeOut)
             return nullptr;
     }
 }
@@ -396,7 +396,7 @@ ServerPlayer *RequestCoordinator::getRaceResult(QList<ServerPlayer *> players, C
     for (int i = 0; i < players.size(); ++i) {
         roomSemaphoreHeld = false;
         bool acquired = true;
-        if (Config.OperationNoLimit)
+        if (m_room.noClock())
             acquired = acquireRaceSignal(-1);
         else {
             time_t remainTime = timeOut - (m_room.applicationActiveElapsed() - clockStart);
@@ -466,7 +466,7 @@ bool RequestCoordinator::getResult(ServerPlayer *player, time_t timeOut)
     if (player->isOnline() || !redirectedTargetName.isEmpty()) {
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
 
-        acquireInteractive(player, Config.OperationNoLimit ? 600000 : timeOut);
+        acquireInteractive(player, m_room.noClock() ? -1 : timeOut);
 
         player->acquireLock(ServerPlayer::SEMA_MUTEX);
         validResult = player->m_isClientResponseReady;
@@ -492,7 +492,8 @@ bool RequestCoordinator::acquireInteractive(ServerPlayer *player, time_t timeOut
     while (!waitsAborted()) {
         m_room.waitForApplicationForeground();
         if (waitsAborted()) return false;
-        const time_t remaining = timeOut - (m_room.applicationActiveElapsed() - clockStart);
+        const time_t remaining = timeOut < 0 ? 100
+            : timeOut - (m_room.applicationActiveElapsed() - clockStart);
         const time_t slice = qBound<time_t>(time_t(0), remaining, time_t(100));
         const bool acquired = player->tryAcquireLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE, slice);
         m_room.processPendingPreshows();
