@@ -147,9 +147,6 @@
 "handCardBack": "image/system/card-back.png",
 "generalCardBack": "image/system/unknown.png",
 
-"photoEquip-default": "image/fullskin/small-equips/%1.png",
-"dashboardEquip-default": "image/equips/%1.png",
-
 "kingdomColorMask-default": "image/fullskin/kingdom/frame/%1.png",
 "dashboardKingdomColorMask-default": "image/fullskin/kingdom/frame/dashboard/%1.png",
 "kingdomIcon-default": "image/kingdom/icon/%1.png",

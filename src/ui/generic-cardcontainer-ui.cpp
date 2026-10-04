@@ -1849,7 +1849,6 @@ namespace {
 QPixmap PlayerCardContainer::_getEquipPixmap(const Card *equip, int slot)
 {
     // Vector equip row: beige fill, thin black edge, cropped card art, and a clerical name.
-    // Baked dashboardEquip / photoEquip skin images stay unused.
     // Dashboard and Photo both crop the card art. A Photo horse shows +1/-1 and omits the name.
     const int supersample = getUITextSupersample();
     const QSize slotSize = _m_layout->m_equipAreas[slot].size();
