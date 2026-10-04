@@ -4,8 +4,6 @@
 #include <QObject>
 #include <QGraphicsPixmapItem>
 #include <QMovie>
-#include <QLabel>
-#include <QGraphicsProxyWidget>
 
 class PlayerCardContainer;
 
@@ -45,6 +43,11 @@ protected:
 private:
     bool isPrimaryAvartarItem() const;
     bool isSecondaryAvartarItem() const;
+    // Paint the current GIF frame at the layout size. A high-dpi frame whose
+    // device ratio was dropped paints past the seat until a graphics effect
+    // flattens the item back into its bounding rect.
+    void showMovieFrame();
+    QPixmap fittedPixmap(const QPixmap &source) const;
 
     static void initSkinChangingFrames();
 
@@ -63,11 +66,10 @@ private:
     int m_currentSkinChangingFrameIndex;
 
     QMovie *m_movie;
-    QLabel *m_movieLabel;
-    QGraphicsProxyWidget *m_proxyWidget;
     bool m_isAnimated;
     QString m_currentImagePath;
     QPixmap m_staticPixmap;
+    QSize m_frameSize;
     QString m_targetImagePath;
     QString m_targetGeneralName;
     bool m_presentationVisible;
