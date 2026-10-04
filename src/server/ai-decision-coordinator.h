@@ -119,6 +119,8 @@ private:
     bool runAnswer(ServerPlayer *player, const AIRequest &request, const QString &callbackName,
                    const LegacyAnswer &legacy, AIResult &result,
                    bool *fromIsolated = nullptr) const;
+    bool externalAnswer(ServerPlayer *player, const AIRequest &request, AIResult &result,
+                        const std::function<bool(const AIResult &)> &validate) const;
     static AIResult legacyAnswerResult(const AIRequest &request, const QString &answer);
     void projectDecisionContext(ServerPlayer *viewer, const QVariant &data,
                                 AIRequest &request) const;

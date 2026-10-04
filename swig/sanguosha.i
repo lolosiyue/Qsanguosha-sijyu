@@ -2179,6 +2179,8 @@ struct CorrectSkillContext {
 
 struct CorrectSkillResult {
 	CorrectSkillResult(bool isApplicable = false, int amount = 0, bool isUnlimited = false);
+	static CorrectSkillResult noEffect();
+	static CorrectSkillResult useAmount(int amount);
 	static CorrectSkillResult unlimitedResidue();
 	bool applies;
 	int value;

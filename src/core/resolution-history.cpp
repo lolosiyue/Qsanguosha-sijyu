@@ -1,8 +1,10 @@
 #include "resolution-history.h"
 #include "snapshot-json-writer.h"
 
+#include <QDataStream>
 #include <QHash>
 #include <QList>
+#include <QQueue>
 #include <QSet>
 #include <QSharedPointer>
 #include <QStringList>
@@ -13,6 +15,7 @@
 #include <array>
 #include <limits>
 #include <cmath>
+#include <cstring>
 #include <iterator>
 #include <memory>
 
@@ -275,6 +278,122 @@ static QVariantMap cleanMap(const QVariantMap &source, bool *valid = nullptr)
         return {};
     return clean.toMap();
 }
+
+// Share only the backing storage of equal, already-validated payloads. Every
+// event/fact keeps its own identity, scope, sequence and place in the journal.
+// This bounded, room-local optimization never belongs to a snapshot.
+class PayloadCache {
+    static constexpr int MaxEntries = 4096;
+    static constexpr int MaxKeyBytes = 4096;
+    static constexpr int MaxTotalKeyBytes = 8 * 1024 * 1024;
+    static constexpr int MaxNodes = 128;
+    static constexpr int MaxStringUnits = 1536;
+
+    QHash<QByteArray, QVariantMap> entries;
+    QQueue<QByteArray> insertionOrder;
+    int keyBytes = 0;
+    const bool enabled = qgetenv("QSAN_HISTORY_PAYLOAD_SHARING") != QByteArrayLiteral("0");
+
+    static bool fits(const QVariant &value, int &nodes, int &stringUnits, int depth = 0)
+    {
+        // Bound transient encoding work as well as retained cache entries.
+        // Large/deep payloads remain valid journal records and simply bypass it.
+        if (depth > 16 || ++nodes > MaxNodes) return false;
+        const int type = value.userType();
+        if (type == QMetaType::QString) {
+            const QString text = value.toString();
+            const auto units = qMax(text.size(), text.capacity());
+            if (units > MaxStringUnits - stringUnits) return false;
+            stringUnits += int(units);
+        } else if (type == QMetaType::QVariantList) {
+            const QVariantList list = value.toList();
+            if (list.size() > MaxNodes - nodes) return false;
+            for (const QVariant &item : list)
+                if (!fits(item, nodes, stringUnits, depth + 1)) return false;
+        } else if (type == QMetaType::QVariantMap) {
+            const QVariantMap map = value.toMap();
+            if (map.size() > MaxNodes - nodes) return false;
+            for (auto it = map.cbegin(); it != map.cend(); ++it) {
+                const auto units = qMax(it.key().size(), it.key().capacity());
+                if (units > MaxStringUnits - stringUnits) return false;
+                stringUnits += int(units);
+                if (!fits(it.value(), nodes, stringUnits, depth + 1)) return false;
+            }
+        }
+        return true;
+    }
+
+    static bool sameString(const QString &left, const QString &right)
+    {
+        return left.isNull() == right.isNull() && left == right;
+    }
+
+    static bool sameValue(const QVariant &left, const QVariant &right)
+    {
+        if (left.userType() != right.userType() || left.isNull() != right.isNull()) return false;
+        switch (left.userType()) {
+        case QMetaType::UnknownType: return !left.isValid() && !right.isValid();
+        case QMetaType::QString: return sameString(left.toString(), right.toString());
+        case QMetaType::Double: {
+            const double a = left.toDouble(), b = right.toDouble();
+            return std::memcmp(&a, &b, sizeof(double)) == 0;
+        }
+        case QMetaType::QVariantMap: {
+            const QVariantMap a = left.toMap(), b = right.toMap();
+            if (a.size() != b.size()) return false;
+            auto bi = b.cbegin();
+            for (auto ai = a.cbegin(); ai != a.cend(); ++ai, ++bi)
+                if (!sameString(ai.key(), bi.key()) || !sameValue(ai.value(), bi.value())) return false;
+            return true;
+        }
+        case QMetaType::QVariantList: {
+            const QVariantList a = left.toList(), b = right.toList();
+            if (a.size() != b.size()) return false;
+            for (int i = 0; i < a.size(); ++i)
+                if (!sameValue(a.at(i), b.at(i))) return false;
+            return true;
+        }
+        default: return left == right; // Remaining validated scalar types are exact.
+        }
+    }
+
+public:
+    QVariantMap intern(const QVariantMap &clean)
+    {
+        if (!enabled || clean.isEmpty()) return clean;
+        int nodes = 0, stringUnits = 0;
+        if (!fits(clean, nodes, stringUnits)) return clean;
+        QByteArray key;
+        QDataStream stream(&key, QIODevice::WriteOnly);
+        stream.setVersion(QDataStream::Qt_5_6);
+        stream.setFloatingPointPrecision(QDataStream::DoublePrecision);
+        stream << clean;
+        if (stream.status() != QDataStream::Ok || key.size() > MaxKeyBytes) return clean;
+        const auto found = entries.constFind(key);
+        if (found != entries.cend()) {
+            // Typed bytes and a full equality check both have to agree. Never
+            // coalesce int/uint/int64, null/empty strings, or signed double zero.
+            return sameValue(clean, found.value()) ? found.value() : clean;
+        }
+        while (!insertionOrder.isEmpty()
+               && (entries.size() >= MaxEntries || keyBytes + key.size() > MaxTotalKeyBytes)) {
+            const QByteArray oldest = insertionOrder.dequeue();
+            keyBytes -= oldest.size();
+            entries.remove(oldest);
+        }
+        entries.insert(key, clean);
+        insertionOrder.enqueue(key);
+        keyBytes += key.size();
+        return clean;
+    }
+
+    void clear()
+    {
+        entries.clear();
+        insertionOrder.clear();
+        keyBytes = 0;
+    }
+};
 
 static QVariantMap eventMap(const EventRecord &event)
 {
@@ -549,7 +668,10 @@ struct ResolutionHistorySnapshot::Data : public QSharedData {
 struct ResolutionHistoryService::Data : public QSharedData {
     QSharedPointer<Journal> journal = QSharedPointer<Journal>::create();
     Index events, facts;
+    PayloadCache payloadCache;
     Data() = default;
+    // A detached service starts with an empty cache; journal values still share
+    // their immutable backing maps through the existing persistent pages.
     Data(const Data &other) : QSharedData(other), journal(QSharedPointer<Journal>::create(*other.journal)), events(other.events), facts(other.facts) {}
     void rebuild() {
         events = Index(); facts = Index();
@@ -788,7 +910,7 @@ qint64 ResolutionHistoryService::beginEvent(const QString &kind, const QVariantM
     event.roundId = scope.roundId;
     event.turnId = scope.turnId;
     event.phaseId = scope.phaseId;
-    event.data = clean;
+    event.data = kind == QLatin1String("skill") ? d->payloadCache.intern(clean) : clean;
     if (kind == QLatin1String("round")) event.roundId = event.id;
     if (kind == QLatin1String("turn")) { event.turnId = event.id; event.phaseId = 0; }
     if (kind == QLatin1String("phase")) event.phaseId = event.id;
@@ -821,6 +943,7 @@ void ResolutionHistoryService::updateEvent(qint64 id, const QVariantMap &data)
     if (found == d->events.byId.cend()) return;
     EventRecord record = d->journal->events.at(found.value());
     for (auto it = clean.cbegin(); it != clean.cend(); ++it) record.data.insert(it.key(), it.value());
+    if (record.kind == QLatin1String("skill")) record.data = d->payloadCache.intern(record.data);
     d->journal->events.set(found.value(), record);
 }
 
@@ -844,7 +967,7 @@ qint64 ResolutionHistoryService::appendFact(qint64 eventId, const QString &kind,
     fact.roundId = scope.roundId;
     fact.turnId = scope.turnId;
     fact.phaseId = scope.phaseId;
-    fact.data = clean;
+    fact.data = kind == QLatin1String("skill_invoked") ? d->payloadCache.intern(clean) : clean;
     d->facts.add(fact, j.facts.size(), fact.eventId);
     j.facts.append(fact);
     return fact.id;
@@ -1086,6 +1209,7 @@ bool ResolutionHistoryService::restore(const ResolutionHistorySnapshot &snapshot
     d.detach();
     d->journal = QSharedPointer<Journal>::create(*snapshot.d->journal);
     d->rebuild();
+    d->payloadCache.clear();
     return true;
 }
 
