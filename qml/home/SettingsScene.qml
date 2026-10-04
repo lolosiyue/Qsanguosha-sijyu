@@ -10,7 +10,6 @@ Item {
     id: root
     objectName: "settingsScene"
 
-    property real uiScale: 1.0
     property bool compact: Config.responsiveUiEnabled && (width < 900 || height > width)
     property int section: 0
     readonly property var values: settingsSession.values

@@ -315,7 +315,6 @@ Item {
     readonly property bool navScoped: navPackage.length > 0
                                       && searchText.length === 0 && sameNameFilter.length === 0
     property int detailTab: 0
-    property real uiScale: 1.0
     property bool compact: Config.responsiveUiEnabled && (width < 900 || height > width)
     property int compactPane: 0
     readonly property int visibleColumns: compact
@@ -1155,8 +1154,6 @@ Item {
                             anchors.margins: HomeTheme.generalCellInset
                             radius: 8
                             clip: true
-                            transformOrigin: Item.Center
-                            scale: root.uiScale
                             color: root.selectedName === delegateRoot.name
                                    ? HomeTheme.navBgActive
                                    : HomeTheme.btnSecondary
@@ -1557,8 +1554,6 @@ Item {
                         Layout.preferredHeight: root.compact ? HomeTheme.catalogPortraitHeight : -1
                         Layout.fillHeight: !root.compact
                         clip: true
-                        transformOrigin: Item.Top
-                        scale: root.uiScale
 
                         SkeletonBlock {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -1599,8 +1594,6 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: !root.compact
-                        transformOrigin: Item.TopLeft
-                        scale: root.uiScale
                         spacing: 8
 
                         SkeletonBlock {
@@ -2314,8 +2307,6 @@ Item {
             topColor: HomeTheme.cardPanelTop
             bottomColor: HomeTheme.cardPanelBottom
             borderColor: HomeTheme.cardPanelBorder
-            transformOrigin: Item.Center
-            scale: root.uiScale
 
             MouseArea { anchors.fill: parent }
 

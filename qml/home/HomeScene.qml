@@ -118,18 +118,19 @@ Item {
             anchors.fill: parent
         }
 
-        // Fixed 1920x1080 design canvas; fit the whole frame into the window.
-        // UIScale affects each element transform, not the design canvas.
+        // 1920x1080 design canvas fitted into the window. UIScale shrinks the canvas so
+        // the layout reflows at the larger size; 1280x720 is the smallest canvas it fits.
         Item {
             id: uiCanvas
             visible: !root.compact
 
             anchors.centerIn: parent
 
-            width: 1920
-            height: 1080
+            readonly property real zoom: Math.min(root.uiScale, 1.5)
+            width: 1920 / zoom
+            height: 1080 / zoom
 
-            scale: Math.min(contentHost.width / 1920, contentHost.height / 1080)
+            scale: Math.min(contentHost.width / width, contentHost.height / height)
 
             // Character artwork fills the height, enlarged and lowered behind the bottom dock.
             CharacterLayer {
@@ -162,12 +163,9 @@ Item {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 12
 
-                    width: 1440
+                    width: Math.min(1440, parent.width)
                     height: 136
                     opacity: 0
-
-                    transformOrigin: Item.Bottom
-                    scale: root.uiScale
 
                     transform: Translate {
                         id: bottomEnter
@@ -194,9 +192,6 @@ Item {
                 anchors.topMargin: 24
                 opacity: 0
 
-                transformOrigin: Item.TopLeft
-                scale: root.uiScale
-
                 transform: Translate {
                     id: playerEnter
                     x: -180
@@ -222,9 +217,6 @@ Item {
                 mipmap: false
                 opacity: 0
 
-                transformOrigin: Item.BottomRight
-                scale: root.uiScale
-
                 transform: Translate {
                     id: logoEnter
                     y: -20
@@ -241,11 +233,8 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: -25
 
-                width: Math.min(520, parent.width * 0.3)
+                width: Math.max(implicitWidth, Math.min(520, parent.width * 0.3))
                 opacity: 0
-
-                transformOrigin: Item.Right
-                scale: root.uiScale
 
                 transform: Translate {
                     id: actionEnter
@@ -267,9 +256,6 @@ Item {
                 anchors.rightMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
                 opacity: 0
-
-                transformOrigin: Item.Right
-                scale: root.uiScale
 
                 transform: Translate {
                     id: sideEnter
@@ -297,7 +283,6 @@ Item {
                 visible: root.generalsOpen && !root.generalPageBusy
                 onStatusChanged: {
                     if (status === Loader.Ready && generalPage.item) {
-                        generalPage.item.uiScale = root.compact ? 1.0 : root.uiScale
                         if (root.generalsOpen) {
                             root.applyGeneralsNavGraph()
                             generalPage.item.takeKeyboard()
@@ -310,13 +295,6 @@ Item {
                 target: generalPage.item
                 property: "compact"
                 value: root.compact
-                when: generalPage.item !== null
-            }
-
-            Binding {
-                target: generalPage.item
-                property: "uiScale"
-                value: root.compact ? 1.0 : root.uiScale
                 when: generalPage.item !== null
             }
 
@@ -570,7 +548,6 @@ Item {
                 visible: root.cardsOpen && !root.cardPageBusy
                 onStatusChanged: {
                     if (status === Loader.Ready && cardPage.item) {
-                        cardPage.item.uiScale = root.compact ? 1.0 : root.uiScale
                         if (root.cardsOpen) {
                             root.applyCardsNavGraph()
                             cardPage.item.takeKeyboard()
@@ -583,13 +560,6 @@ Item {
                 target: cardPage.item
                 property: "compact"
                 value: root.compact
-                when: cardPage.item !== null
-            }
-
-            Binding {
-                target: cardPage.item
-                property: "uiScale"
-                value: root.compact ? 1.0 : root.uiScale
                 when: cardPage.item !== null
             }
 
@@ -630,13 +600,6 @@ Item {
                 when: settingsPage.item !== null
             }
 
-            Binding {
-                target: settingsPage.item
-                property: "uiScale"
-                value: root.compact ? 1.0 : root.uiScale
-                when: settingsPage.item !== null
-            }
-
             Connections {
                 target: settingsPage.item
                 ignoreUnknownSignals: true
@@ -669,8 +632,6 @@ Item {
                         topColor: HomeTheme.cardPanelTop
                         bottomColor: HomeTheme.cardPanelBottom
                         borderColor: HomeTheme.cardPanelBorder
-                        transformOrigin: Item.Top
-                        scale: root.uiScale
 
                         Row {
                             anchors.fill: parent
@@ -705,16 +666,12 @@ Item {
                             width: HomeTheme.cardFilterWidth
                             height: parent.height
                             radius: HomeTheme.cardPanelRadius
-                            transformOrigin: Item.TopLeft
-                            scale: root.uiScale
                         }
 
                         Item {
                             width: parent.width - HomeTheme.cardFilterWidth - HomeTheme.cardDetailWidth
                                    - HomeTheme.cardPanelGap * 2
                             height: parent.height
-                            transformOrigin: Item.Top
-                            scale: root.uiScale
 
                             Grid {
                                 id: cardSkeletonGrid
@@ -743,8 +700,6 @@ Item {
                             width: HomeTheme.cardDetailWidth
                             height: parent.height
                             radius: HomeTheme.cardPanelRadius
-                            transformOrigin: Item.TopRight
-                            scale: root.uiScale
                         }
                     }
                 }
@@ -929,7 +884,7 @@ Item {
         z: -1
 
         readonly property int gridInnerWidth: {
-            var colW = 1920 - HomeTheme.generalPageHMargin * 2
+            var colW = uiCanvas.width - HomeTheme.generalPageHMargin * 2
             var listW = Math.round((colW - HomeTheme.generalPanelGap)
                                    * HomeTheme.generalListShare)
             return Math.max(1, listW - HomeTheme.generalGridMargin * 2)

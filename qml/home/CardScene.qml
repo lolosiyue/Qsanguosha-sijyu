@@ -7,7 +7,6 @@ Item {
     id: root
     objectName: "cardScene"
 
-    property real uiScale: 1.0
     property bool compact: Config.responsiveUiEnabled && (width < 900 || height > width)
     property int compactPane: 0
     readonly property var navigationEntry: compact ? sortBox : backButton
@@ -198,8 +197,6 @@ Item {
             id: headerPanel
             width: parent.width
             height: root.compact ? HomeTheme.catalogCompactHeaderHeight : HomeTheme.cardHeaderHeight
-            transformOrigin: Item.Top
-            scale: root.uiScale
             slant: -0.05
             cornerRadius: HomeTheme.cardPanelRadius
             shadowBlur: 0
@@ -339,8 +336,6 @@ Item {
                 height: parent.height
                 cardModel: root.cardModel
                 sortKey: root.sortKey
-                transformOrigin: Item.TopLeft
-                scale: root.uiScale
                 onFiltersChanged: function(values) { root.applyFilter(values) }
             }
 
@@ -350,8 +345,6 @@ Item {
                 width: root.compact ? parent.width : parent.width - HomeTheme.cardFilterWidth - HomeTheme.cardDetailWidth
                        - HomeTheme.cardPanelGap * 2
                 height: parent.height
-                transformOrigin: Item.Top
-                scale: root.uiScale
 
                 BASlantedPanel {
                     anchors.fill: parent
@@ -540,8 +533,6 @@ Item {
                 height: parent.height
                 cardModel: root.cardModel
                 detail: root.selectedDetail
-                transformOrigin: Item.TopRight
-                scale: root.uiScale
             }
         }
     }
