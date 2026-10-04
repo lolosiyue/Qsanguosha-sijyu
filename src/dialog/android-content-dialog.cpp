@@ -200,13 +200,22 @@ bool AndroidContentDialog::prepareStartup(QString *error)
     return ok;
 }
 
+bool AndroidContentDialog::prepareForHome()
+{
+    if (!contentStore) return false;
+    // Without media the page still shows at launch so the import is easy to find; it can be skipped.
+    if (contentStore->mediaReady() && !contentStore->needsRecovery()) return true;
+    AndroidContentDialog dialog(true);
+    return dialog.exec() == QDialog::Accepted && !contentStore->needsRecovery();
+}
+
 bool AndroidContentDialog::prepareForGame()
 {
     if (!contentStore) return false;
-    if (contentStore->mediaReady() && !contentStore->needsRecovery()) return true;
+    // Media is optional: without it the room uses the text skin and stays silent.
+    if (!contentStore->needsRecovery()) return true;
     AndroidContentDialog dialog(true);
-    return dialog.exec() == QDialog::Accepted
-        && contentStore->mediaReady() && !contentStore->needsRecovery();
+    return dialog.exec() == QDialog::Accepted && !contentStore->needsRecovery();
 }
 
 void AndroidContentDialog::openManager(QWidget *parent)
@@ -253,7 +262,7 @@ AndroidContentDialog::AndroidContentDialog(bool startup, QWidget *parent)
     m_status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     layout->addWidget(m_status);
     auto *notice = styledLabel(tr(
-        "Import the full media resources before the first game. Imports and management changes take effect after a restart.\n"
+        "Games can start without the full media resources, using text cards and no sound. Imports and management changes take effect after a restart.\n"
         "Only import Lua you trust: scripts have full Lua access and can read and write any file this app can access. "
         "Keep the app in the foreground while importing; switching away or locking the screen cancels the import."), "androidContentHint", this);
     notice->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
@@ -393,11 +402,11 @@ void AndroidContentDialog::refresh()
         ? tr("The last content startup did not finish. Disable the last import or switch back to the previous version.")
         : contentStore->hasPending() ? tr("Changes are fully staged. Close and reopen the app to apply them.")
         : contentStore->mediaReady() ? tr("Full resources are ready.")
-        : tr("The full media resources have not been imported; games cannot start yet."));
+        : tr("The full media resources have not been imported; games use text cards and no sound."));
     for (auto *button : m_actions) button->setEnabled(true);
     m_packages->setEnabled(true);
     m_cancelButton->setEnabled(false);
-    m_continue->setEnabled(!m_startup || (contentStore->mediaReady() && !contentStore->needsRecovery()));
+    m_continue->setEnabled(!m_startup || !contentStore->needsRecovery());
 }
 
 void AndroidContentDialog::revealStatus()
