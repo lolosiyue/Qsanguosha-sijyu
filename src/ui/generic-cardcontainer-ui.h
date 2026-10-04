@@ -20,6 +20,22 @@ class MagatamasBoxItem;
 class RoleComboBox;
 class QSanCommandProgressBar;
 
+// A Qt 6 QGraphicsProxyWidget surface stays at dpr 1, so a supersampled pixmap
+// passed through QLabel is scaled up by the view and looks soft. Equip rows paint
+// themselves so the painter follows the view transform.
+class EquipPixmapItem : public QGraphicsObject
+{
+    Q_OBJECT
+public:
+    explicit EquipPixmapItem(QGraphicsItem *parent = nullptr);
+    void setPixmap(const QPixmap &pixmap);
+    QRectF boundingRect() const override;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
+
+private:
+    QPixmap m_pixmap;
+};
+
 class GenericCardContainer : public QGraphicsObject
 {
     Q_OBJECT
@@ -181,7 +197,7 @@ protected:
     void _clearPixmap(QGraphicsPixmapItem *item);
     QPixmap _getPixmap(const QString &key, bool cache = false);
     QPixmap _getPixmap(const QString &key, const QString &arg, bool cache = false);
-    QPixmap _getEquipPixmap(const Card *equip, const QString &arg = "");
+    QPixmap _getEquipPixmap(const Card *equip, int slot);
     virtual void _adjustComponentZValues(bool killed = false);
     void _updateFloatingArea();
     // We use QList of cards instead of a single card as parameter here, just in case
@@ -235,9 +251,8 @@ protected:
     QList<QGraphicsPixmapItem *> _m_judgeIcons;
     QList<CardItem *> _m_judgeCards;
 
-    QGraphicsProxyWidget *_m_equipRegions[S_EQUIP_AREA_LENGTH];
+    EquipPixmapItem *_m_equipRegions[S_EQUIP_AREA_LENGTH];
     CardItem *_m_equipCards[S_EQUIP_AREA_LENGTH];
-    QLabel *_m_equipLabel[S_EQUIP_AREA_LENGTH];
     QParallelAnimationGroup *_m_equipAnim[S_EQUIP_AREA_LENGTH];
     QMutex _mutexEquipAnim;
 

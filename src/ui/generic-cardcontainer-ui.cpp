@@ -17,10 +17,48 @@
 #include "effects/effects-completion.h"
 #include "effects/effects-policy.h"
 #include <QElapsedTimer>
+#include <QFontDatabase>
+#include <QFontMetrics>
+#include <QImage>
 #include <QMutexLocker>
 #include <QTimer>
 
 using namespace QSanProtocol;
+
+EquipPixmapItem::EquipPixmapItem(QGraphicsItem *parent)
+    : QGraphicsObject(parent)
+{
+}
+
+void EquipPixmapItem::setPixmap(const QPixmap &pixmap)
+{
+    prepareGeometryChange();
+    m_pixmap = pixmap;
+    update();
+}
+
+static QSizeF equipPixmapLogicalSize(const QPixmap &pixmap)
+{
+    // deviceIndependentSize() arrived in Qt 6.2. Qt 5.6 width()/height() are device
+    // pixels, so divide by dpr or an XP equip slot grows with the supersample factor.
+    const qreal ratio = pixmap.devicePixelRatio();
+    if (ratio <= 1.0)
+        return QSizeF(pixmap.size());
+    return QSizeF(pixmap.width(), pixmap.height()) / ratio;
+}
+
+QRectF EquipPixmapItem::boundingRect() const
+{
+    return QRectF(QPointF(0, 0), equipPixmapLogicalSize(m_pixmap));
+}
+
+void EquipPixmapItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
+{
+    if (m_pixmap.isNull())
+        return;
+    painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter->drawPixmap(QPointF(0, 0), m_pixmap);
+}
 
 void PlayerCardContainer::setApplicationSuspended(bool suspended, bool offline)
 {
@@ -1125,7 +1163,7 @@ void PlayerCardContainer::_updateEquips()
 
         if (displayed_real_equips.contains(i)) {
             const Card *card = displayed_real_equips[i];
-            pixmap = _getEquipPixmap(card);
+            pixmap = _getEquipPixmap(card, i);
             tooltip = card ? card->getDescription(m_player) : QString();
             opacity = 1.0;
             has_card_image = true;
@@ -1133,7 +1171,7 @@ void PlayerCardContainer::_updateEquips()
 
         else if (_m_equipCards[i]) {
             const Card *card = _m_equipCards[i]->getCard();
-            pixmap = _getEquipPixmap(card);
+            pixmap = _getEquipPixmap(card, i);
             tooltip = card ? card->getDescription(m_player) : QString();
             opacity = 1.0;
             has_card_image = true;
@@ -1141,7 +1179,7 @@ void PlayerCardContainer::_updateEquips()
 
         else if (shadow_slots.contains(i)) {
             const Card *occupying_card = shadow_slots[i];
-            pixmap = _getEquipPixmap(occupying_card);
+            pixmap = _getEquipPixmap(occupying_card, i);
             tooltip = occupying_card ? occupying_card->getDescription(m_player) : QString();
             opacity = 1.0;
             has_card_image = true;
@@ -1149,7 +1187,7 @@ void PlayerCardContainer::_updateEquips()
         else if (simulated_equips.contains(i)) {
             const Card *card = simulated_equips[i];
             QString skill_name = simulated_equip_skills[i];
-            pixmap = _getEquipPixmap(card);
+            pixmap = _getEquipPixmap(card, i);
 
             QString skillText;
             if (skill_name.isEmpty()) skillText = Sanguosha->translate("skill_transform");
@@ -1169,7 +1207,8 @@ void PlayerCardContainer::_updateEquips()
                 painter.setRenderHint(QPainter::Antialiasing);
                 QString skill_val_str = (skill_dist > 0 ? "+" : "") + QString::number(skill_dist);
                 QRect pointArea = (is_def || is_off) ? _m_layout->m_horsePointArea : _m_layout->m_equipPointArea;
-                QRect overlayArea(0, 0, qMax(0, pointArea.left() - 3), pixmap.height());
+                const int logicalHeight = qRound(equipPixmapLogicalSize(pixmap).height());
+                QRect overlayArea(0, 0, qMax(0, pointArea.left() - 3), logicalHeight);
                 QFont boldFont;
                 boldFont.setPixelSize(distFontPx);
                 boldFont.setBold(true);
@@ -1192,7 +1231,7 @@ void PlayerCardContainer::_updateEquips()
                                .arg(skill_val_str);
             }
 
-            _m_equipLabel[i]->setPixmap(pixmap);
+            _m_equipRegions[i]->setPixmap(pixmap);
             _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
             _m_equipRegions[i]->setToolTip(tooltip);
             _m_equipRegions[i]->setOpacity(opacity);
@@ -1221,7 +1260,7 @@ void PlayerCardContainer::_updateEquips()
                 painter.setPen(mainColor);
                 painter.drawText(textArea, Qt::AlignCenter, val_str);
 
-                _m_equipLabel[i]->setPixmap(empty_pixmap);
+                _m_equipRegions[i]->setPixmap(empty_pixmap);
                 _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
 
                 QStringList translated_skills;
@@ -1242,7 +1281,7 @@ void PlayerCardContainer::_updateEquips()
                 _m_equipRegions[i]->setOpacity(0);
             }
         } else {
-            _m_equipLabel[i]->setPixmap(_getEquipPixmap(nullptr, QString("equip%1lose").arg(i)));
+            _m_equipRegions[i]->setPixmap(_getEquipPixmap(nullptr, i));
             _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
             _m_equipRegions[i]->setToolTip("");
             _m_equipRegions[i]->setOpacity(1.0);
@@ -1399,7 +1438,7 @@ void PlayerCardContainer::repaintAll(bool all)
 				delete _m_equipCards[i];
 			}
 			_m_equipCards[i] = nullptr;
-			_m_equipLabel[i]->setPixmap(QPixmap(_m_layout->m_equipAreas[i].size()));
+			_m_equipRegions[i]->setPixmap(QPixmap(_m_layout->m_equipAreas[i].size()));
 			_m_equipRegions[i]->setOpacity(0);
 			_m_equipRegions[i]->hide();
 		}
@@ -1581,58 +1620,407 @@ void PlayerCardContainer::addDelayedTricks(QList<CardItem *> &tricks)
     }
 }
 
-QPixmap PlayerCardContainer::_getEquipPixmap(const Card *equip, const QString &arg)
+namespace {
+    // Equip-row names are drawn in clerical script instead of baked skin Equip images.
+    QString equipRowFamily()
+    {
+        static QString chosen;
+        if (!chosen.isEmpty())
+            return chosen;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const QStringList available = QFontDatabase::families();
+#else
+        QFontDatabase database;
+        const QStringList available = database.families();
+#endif
+        const QStringList preferred = QStringList()
+            << QStringLiteral("隶书")
+            << QStringLiteral("LiSu")
+            << QStringLiteral("STLiti")
+            << QStringLiteral("SimSun")
+            << QStringLiteral("微软雅黑")
+            << QStringLiteral("Microsoft YaHei");
+        foreach (const QString &name, preferred) {
+            if (available.contains(name)) {
+                chosen = name;
+                return chosen;
+            }
+        }
+        chosen = QStringLiteral("SimSun");
+        return chosen;
+    }
+
+    QFont equipRowFont(int pixelSize)
+    {
+        QFont font;
+#if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
+        font.setFamilies(QStringList() << QStringLiteral("隶书")
+                                       << QStringLiteral("LiSu")
+                                       << QStringLiteral("STLiti")
+                                       << QStringLiteral("SimSun")
+                                       << QStringLiteral("微软雅黑"));
+#else
+        // Qt 5.6 has no setFamilies. Pick one installed face; clerical script is often missing on XP.
+        font.setFamily(equipRowFamily());
+#endif
+        font.setPixelSize(qMax(8, pixelSize));
+        font.setBold(true);
+        font.setStyleStrategy(QFont::PreferAntialias);
+        font.setHintingPreference(QFont::PreferNoHinting);
+        return font;
+    }
+
+    // Tighten tracking, then stretch, only when the name does not fit. Short names keep their width.
+    QFont equipNameFontFit(int pixelSize, const QString &text, qreal maxWidth)
+    {
+        QFont font = equipRowFont(pixelSize);
+        if (maxWidth <= 0.0 || text.isEmpty())
+            return font;
+        if (QFontMetricsF(font).horizontalAdvance(text) <= maxWidth)
+            return font;
+        qreal spacing = 0.0;
+        while (QFontMetricsF(font).horizontalAdvance(text) > maxWidth && spacing > -3.0) {
+            spacing -= 0.5;
+            font.setLetterSpacing(QFont::AbsoluteSpacing, spacing);
+        }
+        int stretch = 100;
+        while (QFontMetricsF(font).horizontalAdvance(text) > maxWidth && stretch > 70) {
+            stretch -= 2;
+            font.setStretch(stretch);
+        }
+        return font;
+    }
+
+    // Weapon range uses Chinese numerals and falls back to digits outside 0-10.
+    QString chineseNumeral(int n)
+    {
+        static const QString digits[] = {
+            QStringLiteral("〇"), QStringLiteral("一"), QStringLiteral("二"),
+            QStringLiteral("三"), QStringLiteral("四"), QStringLiteral("五"),
+            QStringLiteral("六"), QStringLiteral("七"), QStringLiteral("八"),
+            QStringLiteral("九"), QStringLiteral("十")
+        };
+        if (n >= 0 && n < 11)
+            return digits[n];
+        return QString::number(n);
+    }
+
+    // Crop the card illustration from the main art. On a 400x560 face that is
+    // (63,121)-(338,332), with a 2px feathered edge.
+    void paintEquipCardArtIcon(QPainter &painter, const QRectF &box, const QString &cardName, int supersample)
+    {
+        const QPixmap card = G_ROOM_SKIN.getCardMainPixmap(cardName, true);
+        if (card.width() < 4 || card.height() < 4)
+            return;
+        const qreal cardWidth = card.width();
+        const qreal cardHeight = card.height();
+        QRectF source(cardWidth * (63.0 / 400.0), cardHeight * (121.0 / 560.0),
+                      cardWidth * (275.0 / 400.0), cardHeight * (211.0 / 560.0));
+        source &= QRectF(0, 0, cardWidth, cardHeight);
+
+        const int width = qMax(1, qRound(box.width() * supersample));
+        const int height = qMax(1, qRound(box.height() * supersample));
+        QImage image(width, height, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        {
+            QPainter imagePainter(&image);
+            imagePainter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            imagePainter.drawPixmap(QRectF(0, 0, width, height), card, source);
+        }
+        const qreal feather = 2.0 * supersample;
+        if (feather >= 1.0) {
+            for (int y = 0; y < height; ++y) {
+                QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+                for (int x = 0; x < width; ++x) {
+                    const qreal dist = qMin(qMin<qreal>(x, width - 1 - x), qMin<qreal>(y, height - 1 - y));
+                    if (dist >= feather)
+                        continue;
+                    const qreal fade = dist / feather;
+                    const QRgb color = line[x];
+                    line[x] = qRgba(qRound(qRed(color) * fade), qRound(qGreen(color) * fade),
+                                    qRound(qBlue(color) * fade), qRound(qAlpha(color) * fade));
+                }
+            }
+        }
+        painter.drawImage(box, image);
+    }
+
+    void paintEquipRowBg(QPainter &painter, const QRectF &row)
+    {
+        painter.save();
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.fillRect(row, QColor(217, 212, 190));
+        painter.setBrush(Qt::NoBrush);
+        painter.setPen(QPen(QColor(0, 0, 0, 179), 1.0));
+        painter.drawRect(row.adjusted(0.5, 0.5, -0.5, -0.5));
+        painter.restore();
+    }
+
+    void boxBlurArgb(QImage &image, int radius, int passes)
+    {
+        const int width = image.width();
+        const int height = image.height();
+        if (radius < 1 || width < 2 || height < 2)
+            return;
+        for (int pass = 0; pass < passes; ++pass) {
+            QImage temporary = image;
+            for (int y = 0; y < height; ++y) {
+                const QRgb *source = reinterpret_cast<const QRgb *>(temporary.constScanLine(y));
+                QRgb *destination = reinterpret_cast<QRgb *>(image.scanLine(y));
+                for (int x = 0; x < width; ++x) {
+                    int alpha = 0, red = 0, green = 0, blue = 0, count = 0;
+                    for (int k = -radius; k <= radius; ++k) {
+                        const int xx = x + k;
+                        if (xx < 0 || xx >= width)
+                            continue;
+                        const QRgb color = source[xx];
+                        alpha += qAlpha(color);
+                        red += qRed(color);
+                        green += qGreen(color);
+                        blue += qBlue(color);
+                        ++count;
+                    }
+                    destination[x] = qRgba(red / count, green / count, blue / count, alpha / count);
+                }
+            }
+            temporary = image;
+            for (int y = 0; y < height; ++y) {
+                QRgb *destination = reinterpret_cast<QRgb *>(image.scanLine(y));
+                for (int x = 0; x < width; ++x) {
+                    int alpha = 0, red = 0, green = 0, blue = 0, count = 0;
+                    for (int k = -radius; k <= radius; ++k) {
+                        const int yy = y + k;
+                        if (yy < 0 || yy >= height)
+                            continue;
+                        const QRgb color = reinterpret_cast<const QRgb *>(temporary.constScanLine(yy))[x];
+                        alpha += qAlpha(color);
+                        red += qRed(color);
+                        green += qGreen(color);
+                        blue += qBlue(color);
+                        ++count;
+                    }
+                    destination[x] = qRgba(red / count, green / count, blue / count, alpha / count);
+                }
+            }
+        }
+    }
+
+    // A soft glow keeps the dark clerical text readable on the beige row.
+    void drawGlowText(QPainter &painter, const QRectF &rect, int flags, const QString &text,
+                      const QColor &textColor, const QColor &glowColor)
+    {
+        const qreal deviceRatio = qMax(1.0, painter.device()->devicePixelRatioF());
+        const int pad = 8;
+        const int width = qMax(1, qRound((rect.width() + 2 * pad) * deviceRatio));
+        const int height = qMax(1, qRound((rect.height() + 2 * pad) * deviceRatio));
+        QImage glow(width, height, QImage::Format_ARGB32_Premultiplied);
+        glow.fill(Qt::transparent);
+        {
+            QPainter glowPainter(&glow);
+            glowPainter.scale(deviceRatio, deviceRatio);
+            glowPainter.setFont(painter.font());
+            glowPainter.setPen(glowColor);
+            glowPainter.drawText(QRectF(pad, pad, rect.width(), rect.height()), flags, text);
+        }
+        boxBlurArgb(glow, qMax(1, qRound(1.6 * deviceRatio)), 3);
+        painter.save();
+        const QRectF glowDestination(rect.x() - pad, rect.y() - pad, rect.width() + 2 * pad, rect.height() + 2 * pad);
+        for (int i = 0; i < 2; ++i)
+            painter.drawImage(glowDestination, glow);
+        painter.setPen(textColor);
+        painter.drawText(rect, flags, text);
+        painter.restore();
+    }
+
+    void paintEquipNumber(QPainter &painter, const QRect &pointArea, const QPixmap &numberPixmap,
+                          qreal heightScale, qreal xOffset, qreal yOffset)
+    {
+        if (numberPixmap.isNull() || numberPixmap.width() <= 1 || numberPixmap.height() <= 1)
+            return;
+        const qreal numberHeight = pointArea.height() * heightScale;
+        const qreal numberWidth = numberPixmap.width() * numberHeight / numberPixmap.height();
+        const QRectF numberRect(pointArea.x() + xOffset,
+                                pointArea.y() + (pointArea.height() - numberHeight) / 2.0 + yOffset,
+                                numberWidth, numberHeight);
+        painter.drawPixmap(numberRect, numberPixmap, QRectF(numberPixmap.rect()));
+    }
+}
+
+QPixmap PlayerCardContainer::_getEquipPixmap(const Card *equip, int slot)
 {
-    // Horse slots are narrower than weapon/armor slots in the small photo layout.
-    QSize equipSize = _m_layout->m_equipAreas[0].size();
-    if (equip && equip->isKindOf("Horse"))
-        equipSize = _m_layout->m_equipAreas[2].size();
-    QPixmap equipIcon(equipSize);
+    // Vector equip row: beige fill, thin black edge, cropped card art, and a clerical name.
+    // Baked dashboardEquip / photoEquip skin images stay unused.
+    // Dashboard and Photo both crop the card art. A Photo horse shows +1/-1 and omits the name.
+    const int supersample = getUITextSupersample();
+    const QSize slotSize = _m_layout->m_equipAreas[slot].size();
+    QPixmap equipIcon(slotSize * supersample);
     equipIcon.fill(Qt::transparent);
+    equipIcon.setDevicePixelRatio(supersample);
+
+    const bool isHorse = slot == 2 || slot == 3;
+    const bool isDashboard = getResourceKeyName() == QSanRoomSkin::S_SKIN_KEY_DASHBOARD;
+    QRect suitArea = isHorse ? _m_layout->m_horseSuitArea : _m_layout->m_equipSuitArea;
+    QRect pointArea = isHorse ? _m_layout->m_horsePointArea : _m_layout->m_equipPointArea;
+
+    auto paintAbolished = [&](QPainter &painter) {
+        const QColor textColor(38, 30, 16);
+        const QString abolished = Sanguosha->translate(QStringLiteral("EquipAreaX"));
+        if (isDashboard) {
+            const qreal scale = slotSize.width() / 298.0;
+            const QRectF outer(0, 0, slotSize.width(), slotSize.height());
+            painter.fillRect(outer, QColor(0, 0, 0));
+            const QRectF inner = outer.adjusted(0.0, 4.0 * scale, -4.0 * scale, -4.0 * scale);
+            painter.fillRect(inner, QColor(217, 212, 190));
+            const int fontPx = qMax(8, qRound(inner.height() * 0.84) - 3);
+            const QColor glowColor(255, 253, 228, 255);
+            const QRectF rangeRect(60.0 * scale + 2.0, inner.top(), (100.0 - 60.0) * scale, inner.height());
+            painter.setFont(equipRowFont(fontPx));
+            drawGlowText(painter, rangeRect, Qt::AlignVCenter | Qt::AlignLeft,
+                         QStringLiteral("×"), textColor, glowColor);
+            const qreal nameLeft = 100.0 * scale;
+            const QRectF nameRect(nameLeft, inner.top(),
+                                  qMax<qreal>(8.0, pointArea.x() - 2.0 - nameLeft), inner.height());
+            painter.setFont(equipNameFontFit(fontPx, abolished, nameRect.width()));
+            drawGlowText(painter, nameRect, Qt::AlignVCenter | Qt::AlignLeft, abolished, textColor, glowColor);
+            return;
+        }
+
+        const QRectF equipPanel = QRectF(_m_layout->m_equipImageArea).adjusted(0, 2, -3, -2);
+        const QRectF panelRect = isHorse
+            ? QRectF(0, equipPanel.top(), slotSize.width(), equipPanel.height())
+            : equipPanel;
+        paintEquipRowBg(painter, panelRect);
+        const qreal iconHeight = panelRect.height();
+        const qreal iconWidth = iconHeight * (275.0 / 211.0);
+        const QRectF iconBox(panelRect.left(), panelRect.top(), iconWidth, iconHeight);
+        const qreal prefixLeft = iconBox.right() + 3.0;
+        const qreal prefixWidth = panelRect.height() * 1.3;
+        const qreal nameLeft = prefixLeft + prefixWidth + 2.0;
+        const QRectF prefixRect(prefixLeft, panelRect.top(), prefixWidth, panelRect.height());
+        painter.setPen(textColor);
+        painter.setFont(equipRowFont(qRound(panelRect.height() * 0.84)));
+        painter.drawText(prefixRect, Qt::AlignVCenter | Qt::AlignHCenter, QStringLiteral("×"));
+        const QRectF nameRect(nameLeft, panelRect.top(),
+                              qMax<qreal>(8.0, suitArea.left() - 1.0 - nameLeft), panelRect.height());
+        painter.drawText(nameRect, Qt::AlignVCenter | Qt::AlignLeft, abolished);
+    };
+
+    if (!equip) {
+        QPainter painter(&equipIcon);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.setRenderHint(QPainter::TextAntialiasing);
+        painter.setRenderHint(QPainter::Antialiasing);
+        paintAbolished(painter);
+        return equipIcon;
+    }
+
     QPainter painter(&equipIcon);
-	if(equip){
-		const Card *realCard = Sanguosha->getEngineCard(equip->getEffectiveId());
-        if (realCard == nullptr) realCard = equip;
-		if (realCard->objectName().contains("_zhizhe_")) realCard = equip;
-		// icon / background
-		QRect imageArea = _m_layout->m_equipImageArea;
-		QRect suitArea = _m_layout->m_equipSuitArea;
-		QRect pointArea = _m_layout->m_equipPointArea;
-		if (equip->isKindOf("Horse")){
-			imageArea = _m_layout->m_horseImageArea;
-			suitArea = _m_layout->m_horseSuitArea;
-			pointArea = _m_layout->m_horsePointArea;
-		}
-		painter.drawPixmap(imageArea, _getPixmap(QSanRoomSkin::S_SKIN_KEY_EQUIP_ICON, equip->objectName()));
-		// equip suit
-		painter.drawPixmap(suitArea, G_ROOM_SKIN.getCardSuitPixmap(equip->getSuit()));
-		// equip point
-		if (realCard->isRed()) {
-			_m_layout->m_equipPointFontRed.paintText(&painter,
-				pointArea, Qt::AlignLeft | Qt::AlignCenter,
-				equip->getNumberString());
-		} else {
-			_m_layout->m_equipPointFontBlack.paintText(&painter,
-				pointArea, Qt::AlignLeft | Qt::AlignCenter,
-				equip->getNumberString());
-		}
-	}else if(!arg.isEmpty()){
-		// icon / background
-		QRect imageArea = _m_layout->m_equipImageArea;
-		QRect suitArea = _m_layout->m_equipSuitArea;
-		QRect pointArea = _m_layout->m_equipPointArea;
-		if (arg.contains("2")||arg.contains("3")){
-			imageArea = _m_layout->m_horseImageArea;
-			suitArea = _m_layout->m_horseSuitArea;
-			pointArea = _m_layout->m_horsePointArea;
-		}
-		painter.drawPixmap(imageArea, _getPixmap(QSanRoomSkin::S_SKIN_KEY_EQUIP_ICON, arg));
-		// equip suit
-		painter.drawPixmap(suitArea, G_ROOM_SKIN.getCardSuitPixmap(Card::NoSuit));
-		// equip point
-		_m_layout->m_equipPointFontBlack.paintText(&painter,
-			pointArea, Qt::AlignLeft | Qt::AlignVCenter, "");
-	}
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    const QPixmap numberPixmap = G_ROOM_SKIN.getCardNumberPixmap(equip->getNumber(), !equip->isRed());
+    if (isDashboard) {
+        // Dashboard layout scales from a 298x50 baseline. A 149-wide slot uses a factor near 0.5.
+        const qreal scale = slotSize.width() / 298.0;
+        const QRectF outer(0, 0, slotSize.width(), slotSize.height());
+        painter.fillRect(outer, QColor(0, 0, 0));
+        const QRectF inner = outer.adjusted(0.0, 4.0 * scale, -4.0 * scale, -4.0 * scale);
+        painter.fillRect(inner, QColor(217, 212, 190));
+
+        const qreal iconHeight = inner.height();
+        const qreal iconWidth = iconHeight * 275.0 / 211.0;
+        const QRectF iconBox(16.0 * scale - 4.0, inner.top(), iconWidth, iconHeight);
+        paintEquipCardArtIcon(painter, iconBox, equip->objectName(), supersample);
+
+        const int fontPx = qMax(8, qRound(inner.height() * 0.84) - 3);
+        const QColor textColor(38, 30, 16);
+        const QColor glowColor(255, 253, 228, 255);
+        const QRectF rangeRect(60.0 * scale + 2.0, inner.top(), (100.0 - 60.0) * scale, inner.height());
+        if (const Horse *horse = qobject_cast<const Horse *>(equip->getRealCard())) {
+            const int correct = horse->getCorrect(m_player);
+            const QString distance = (correct > 0 ? QStringLiteral("+") : QString()) + QString::number(correct);
+            auto horseFont = _m_layout->m_equipPointFontBlack;
+            horseFont.m_spacing -= 4;
+            horseFont.m_fontSize -= QSize(1, 1);
+            painter.drawPixmap(rangeRect.topLeft() - QPointF(0, 1),
+                               horseFont.paintTextToQPixmap(rangeRect.size().toSize(),
+                                                            Qt::AlignVCenter | Qt::AlignLeft, distance));
+        } else if (const Weapon *weapon = qobject_cast<const Weapon *>(equip->getRealCard())) {
+            painter.setFont(equipRowFont(fontPx));
+            drawGlowText(painter, rangeRect, Qt::AlignVCenter | Qt::AlignLeft,
+                         chineseNumeral(weapon->getRange(m_player)), textColor, glowColor);
+        }
+
+        const qreal nameLeft = 100.0 * scale;
+        const QRectF nameRect(nameLeft, inner.top(),
+                              qMax<qreal>(8.0, pointArea.x() - 2.0 - nameLeft), inner.height());
+        const QString equipName = Sanguosha->translate(equip->objectName());
+        painter.setFont(equipNameFontFit(fontPx, equipName, nameRect.width()));
+        drawGlowText(painter, nameRect, Qt::AlignVCenter | Qt::AlignLeft, equipName, textColor, glowColor);
+
+        suitArea.translate(-2, -1);
+        QRectF suitRect(suitArea);
+        suitRect.adjust(suitRect.width() * 0.005, suitRect.height() * 0.005,
+                        -suitRect.width() * 0.005, -suitRect.height() * 0.005);
+        const QPixmap suitPixmap = G_ROOM_SKIN.getCardSuitPixmap(equip->getSuit());
+        painter.drawPixmap(suitRect, suitPixmap, QRectF(suitPixmap.rect()));
+        paintEquipNumber(painter, pointArea, numberPixmap, 0.891,
+                         -6.0 + (isHorse ? 0.0 : -1.0), 3.0);
+        return equipIcon;
+    }
+
+    // Photo uses a horizontal strip. Horse slots are half width and show only the distance.
+    const QRectF equipPanel = QRectF(_m_layout->m_equipImageArea).adjusted(0, 2, -3, -2);
+    const QRectF panelRect = isHorse
+        ? QRectF(0, equipPanel.top(), slotSize.width(), equipPanel.height())
+        : equipPanel;
+    paintEquipRowBg(painter, panelRect);
+
+    const qreal iconHeight = panelRect.height();
+    const qreal iconWidth = iconHeight * (275.0 / 211.0);
+    const QRectF iconBox(panelRect.left(), panelRect.top(), iconWidth, iconHeight);
+    paintEquipCardArtIcon(painter, iconBox, equip->objectName(), supersample);
+
+    const qreal prefixLeft = iconBox.right() + 3.0;
+    const qreal prefixWidth = panelRect.height() * 1.3;
+    const qreal nameLeft = prefixLeft + prefixWidth + 2.0;
+    const qreal contentRight = suitArea.left() - 1.0;
+    const QRectF prefixRect(prefixLeft, panelRect.top(), prefixWidth, panelRect.height());
+    if (const Horse *horse = qobject_cast<const Horse *>(equip->getRealCard())) {
+        const int correct = horse->getCorrect(m_player);
+        const QString distance = (correct > 0 ? QStringLiteral("+") : QString()) + QString::number(correct);
+        auto horseFont = _m_layout->m_equipPointFontBlack;
+        horseFont.m_fontSize -= QSize(3, 3);
+        horseFont.m_spacing -= 4;
+        if (correct < 0)
+            horseFont.m_spacing += 2;
+        painter.drawPixmap(prefixRect.topLeft() - QPointF(0, 1),
+                           horseFont.paintTextToQPixmap(prefixRect.size().toSize(),
+                                                        Qt::AlignVCenter | Qt::AlignLeft, distance));
+    } else if (const Weapon *weapon = qobject_cast<const Weapon *>(equip->getRealCard())) {
+        painter.setPen(QColor(38, 30, 16));
+        painter.setFont(equipRowFont(qRound(panelRect.height() * 0.84)));
+        painter.drawText(prefixRect, Qt::AlignVCenter | Qt::AlignHCenter,
+                         chineseNumeral(weapon->getRange(m_player)));
+    }
+
+    if (!isHorse) {
+        const QRectF nameRect(nameLeft, panelRect.top(),
+                              qMax<qreal>(8.0, contentRight - nameLeft), panelRect.height());
+        painter.setPen(QColor(38, 30, 16));
+        painter.setFont(equipRowFont(qRound(panelRect.height() * 0.84)));
+        painter.drawText(nameRect, Qt::AlignVCenter | Qt::AlignLeft, Sanguosha->translate(equip->objectName()));
+    }
+
+    QRectF suitRect(suitArea);
+    suitRect.adjust(suitRect.width() * 0.05, suitRect.height() * 0.05,
+                    -suitRect.width() * 0.05, -suitRect.height() * 0.05);
+    const QPixmap suitPixmap = G_ROOM_SKIN.getCardSuitPixmap(equip->getSuit());
+    painter.drawPixmap(suitRect, suitPixmap, QRectF(suitPixmap.rect()));
+    pointArea.translate(2, 0);
+    paintEquipNumber(painter, pointArea, numberPixmap, 0.9504,
+                     -2.0 + (isHorse ? 0.0 : -1.0), isHorse ? 3.0 : 2.0);
     return equipIcon;
 }
 
@@ -1670,9 +2058,8 @@ void PlayerCardContainer::addEquips(QList<CardItem *> &equips)
         QString description = card->getDescription(m_player);
         _m_equipRegions[index]->setToolTip(description);
 		
-        QPixmap pixmap = _getEquipPixmap(card);
-        _m_equipLabel[index]->setPixmap(pixmap);
-        _m_equipLabel[index]->setFixedSize(pixmap.size());
+        QPixmap pixmap = _getEquipPixmap(card, index);
+        _m_equipRegions[index]->setPixmap(pixmap);
 		
         _mutexEquipAnim.lock();
         _m_equipRegions[index]->setPos(_m_layout->m_equipAreas[index].topLeft()+QPoint(_m_layout->m_equipAreas[index].width()/2,0));
@@ -1943,7 +2330,6 @@ PlayerCardContainer::PlayerCardContainer()
         _m_equipCards[i] = nullptr;
         _m_equipRegions[i] = nullptr;
         _m_equipAnim[i] = nullptr;
-        _m_equipLabel[i] = nullptr;
     }
     _m_huashenItem = nullptr;
     _m_huashenAnimation = nullptr;
@@ -2108,11 +2494,8 @@ void PlayerCardContainer::_createControls()
     _updateProgressBar();
 
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        _m_equipLabel[i] = new QLabel;
-        _m_equipLabel[i]->setStyleSheet("QLabel { background-color: transparent; }");
-        _m_equipLabel[i]->setPixmap(QPixmap(_m_layout->m_equipAreas[i].size()));
-        _m_equipRegions[i] = new QGraphicsProxyWidget();
-        _m_equipRegions[i]->setWidget(_m_equipLabel[i]);
+        _m_equipRegions[i] = new EquipPixmapItem(_getEquipParent());
+        _m_equipRegions[i]->setPixmap(QPixmap(_m_layout->m_equipAreas[i].size()));
         _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
         _m_equipRegions[i]->setParentItem(_getEquipParent());
         _m_equipRegions[i]->hide();
