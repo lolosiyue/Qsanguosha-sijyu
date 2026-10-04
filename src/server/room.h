@@ -33,6 +33,8 @@ struct AiLegacyRequestView;
 struct PlayerUIState;
 class ServerPlayer;
 class AiDecisionCoordinator;
+class ExternalAgentEndpoint;
+enum class ExternalAgentDisconnectPolicy;
 class SkillRuntimeCoordinator;
 class GameSnapshotService;
 class RoomNotifier;
@@ -153,6 +155,12 @@ public:
     // pumping its event loop before calling stopGameThreads/destruction.
     void requestStopGameThreads();
     bool allGameThreadsStopped() const;
+    // Configure before starting workers. The returned capability belongs to one seat.
+    std::shared_ptr<ExternalAgentEndpoint> attachExternalAgent(
+        ServerPlayer *player, ExternalAgentDisconnectPolicy policy);
+    std::shared_ptr<ExternalAgentEndpoint> externalAgent(const QString &seat) const;
+    void setNoClock(bool enabled);
+    bool noClock() const;
     void setApplicationBackgrounded(bool backgrounded);
     bool isApplicationBackgrounded() const;
     qint64 applicationActiveElapsed() const;
@@ -1004,6 +1012,8 @@ private:
     std::unique_ptr<RoomRuntime> m_runtime;
     std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
     std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;
+    QHash<QString, std::shared_ptr<ExternalAgentEndpoint>> m_externalAgents;
+    bool m_noClock = false;
     std::unique_ptr<ExtraTurnScheduler> m_extraTurns;
     std::unique_ptr<RoomNotifier> m_notifier;
     std::unique_ptr<RequestCoordinator> m_requests;

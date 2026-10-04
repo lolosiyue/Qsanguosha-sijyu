@@ -1,3 +1,4 @@
+#include "external-agent.h"
 #include "ai-decision-coordinator.h"
 #include "qt-collection-utils.h"
 #include "ai-runtime.h"
@@ -412,11 +413,12 @@ void AiDecisionCoordinator::recordEvent(int triggerEvent, ServerPlayer *target,
         event.place = int(move.to_place);
         event.amount = move.card_ids.size();
         // Cards that land in a hidden hand are known to their new owner only.
-        const bool publicDestination = move.to_place != Player::PlaceHand
-            && move.to_place != Player::PlaceSpecial;
+        const bool publicDestination = move.to_place == Player::PlaceEquip
+            || move.to_place == Player::PlaceDelayedTrick
+            || move.to_place == Player::DiscardPile || move.to_place == Player::PlaceTable;
         if (publicDestination) {
             event.cardIds = move.card_ids;
-        } else {
+        } else if (move.to_place == Player::PlaceHand || move.to_place == Player::PlaceSpecial) {
             event.privateCardIds = move.card_ids;
             event.privateViewer = event.to;
         }
@@ -945,7 +947,7 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     AIRequest request = makeRequestHeader(player, kind, reason, pattern, prompt, method);
     // --ai off selects the native fallback. It must not build the quadratic
     // isolated snapshot or allow an isolated Lua handler to override that AI.
-    if (!Config.EnableAI)
+    if (!Config.EnableAI && (!player || !m_room.externalAgent(player->objectName())))
         return request;
     // Build the request from a read-only board snapshot; within one revision, evaluate matching distance, attack-range, and target-modifier queries once.
     TargetModMemoScope targetModMemo([this]() { return m_room.roomRuntime()->stateRevision(); });
@@ -1548,6 +1550,38 @@ static bool hasLegacyReasonHook(LuaRuntime &runtime, const QString &callbackName
     return false;
 }
 
+bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest &request,
+    AIResult &result, const std::function<bool(const AIResult &)> &validate) const
+{
+    auto endpoint = m_room.externalAgent(player->objectName());
+    if (!endpoint) return false;
+    endpoint->begin(request);
+    while (true) {
+        const auto outcome = endpoint->awaitReply(result);
+        if (outcome == ExternalAgentEndpoint::Fallback) {
+            endpoint->finish();
+            qInfo() << "[EXTERNAL_AGENT] explicit SmartAI fallback" << player->objectName();
+            return false;
+        }
+        if (outcome == ExternalAgentEndpoint::Cancelled) {
+            endpoint->finish();
+            m_room.requestStopGameThreads();
+            throw GameFinished;
+        }
+        if (request.stateRevision != m_room.roomRuntime()->stateRevision()) {
+            // Never restamp a snapshot or silently choose for an obsolete prompt.
+            endpoint->reject(QStringLiteral("stale-world"));
+            endpoint->cancel();
+            continue;
+        }
+        if (validate(result)) {
+            endpoint->finish();
+            return true;
+        }
+        endpoint->reject(QStringLiteral("illegal-action"));
+    }
+}
+
 bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &request,
                                       const QString &callbackName, const LegacyAnswer &legacy,
                                       AIResult &result, bool *fromIsolated) const
@@ -1555,12 +1589,18 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
     if (fromIsolated)
         *fromIsolated = false;
     if (!player || !player->getAI()) return false;
+    if (externalAnswer(player, request, result, [](const AIResult &) { return true; })) {
+        if (fromIsolated) *fromIsolated = true; // strict candidate/count gates
+        return true;
+    }
     const AiRoute route = Config.EnableAI
         ? m_room.roomRuntime()->ai().routes().routeFor(
             request.kind, callbackName, request.choiceOptions.reason)
         : AiRouteLegacyDirect;
     bool isolatedAnswer = false;
-    if (route == AiRouteIsolated) {
+    if (m_room.externalAgent(player->objectName())) {
+        result = legacy(request);
+    } else if (route == AiRouteIsolated) {
         // Isolated reason handlers still answer first; only its shared default
         // steps aside, so the refusal reaches SmartAI's hook below.
         const bool deferDefault = qobject_cast<LuaAI *>(player->getAI())
@@ -1604,7 +1644,7 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
 void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const QVariant &data,
                                                    AIRequest &request) const
 {
-    if (!viewer || !Config.EnableAI) return;
+    if (!viewer || (!Config.EnableAI && !m_room.externalAgent(viewer->objectName()))) return;
     EngineRuntimeContextScope scope(*Sanguosha, &m_room);
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
     QJsonObject &context = request.choiceOptions.context;
@@ -2251,7 +2291,7 @@ bool AiDecisionCoordinator::decideTriggerOrder(ServerPlayer *player, const QStri
     // each menu. The caller still normalizes candidates and gates hidden skills.
     if (const RoomThread *thread = m_room.getThread()) {
         for (const EventTriplet &event : *thread->getEventStack()) {
-            if (event.event() == GameReady) {
+            if (event.event() == GameReady && !m_room.externalAgent(player->objectName())) {
                 static const bool probe = qEnvironmentVariableIntValue("QSAN_AI_WV_PROBE") > 0;
                 if (probe) qInfo() << "[AI_WV] trigger_order startup_legacy choices="
                                    << candidates.size() << "optional=" << optional;
@@ -2285,6 +2325,14 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
                                                   const LegacyCard &legacy) const
 {
     if (!player || !player->getAI()) return nullptr;
+    AIResult externalResult;
+    const Card *externalCard = nullptr;
+    if (externalAnswer(player, request, externalResult, [&](const AIResult &answer) {
+            if (answer.kind == AIResult::Pass) return request.choiceOptions.optional;
+            externalCard = responseCard(player, request, answer);
+            return externalCard != nullptr;
+        })) return externalCard;
+    if (m_room.externalAgent(player->objectName())) return legacy();
     const AiRoute route = Config.EnableAI
         ? m_room.roomRuntime()->ai().routes().routeFor(
             request.kind, callbackName, request.choiceOptions.reason)
@@ -2499,6 +2547,30 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
                                    CardUseStruct &cardUse) const
 {
     if (!player || !player->getAI()) return false;
+    AIResult externalResult;
+    if (externalAnswer(player, request, externalResult, [&](const AIResult &answer) {
+            CardUseStruct candidate = cardUse;
+            if (!applyResult(player, request, answer, candidate)) return false;
+            if (candidate.card) {
+                if (player->isCardLimited(candidate.card, request.handlingMethod)) return false;
+                if (request.kind == AIRequest::Activate && !candidate.card->isAvailable(player)) return false;
+                if (request.kind == AIRequest::UseCard && !candidate.hasSkillActivationRequest) {
+                    QString pattern = request.pattern;
+                    if (pattern.endsWith(QLatin1Char('!'))) pattern.chop(1);
+                    if (!pattern.isEmpty() && !Sanguosha->matchPattern(pattern, player, candidate.card))
+                        return false;
+                }
+                QList<const Player *> targets;
+                for (const auto *target : candidate.to) {
+                    if (m_room.isProhibited(player, target, candidate.card, targets)
+                        || !candidate.card->targetFilter(targets, target, player)) return false;
+                    targets << target;
+                }
+                if (!candidate.card->targetsFeasible(targets, player)) return false;
+            }
+            cardUse = candidate;
+            return true;
+        })) return true;
     const QString callbackName = request.kind == AIRequest::Activate
         ? QStringLiteral("activate") : QStringLiteral("askForUseCard");
     if (qgetenv("QSAN_10P_LAG_PROBE") == "1")
@@ -2531,7 +2603,7 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
     } probeGuard{probeTimer, player, callbackName, request};
     const QString skillName = request.hasSkillActionContext
         ? request.skillActionContext.getActivationSkillName() : QString();
-    const AiRoute route = Config.EnableAI
+    const AiRoute route = Config.EnableAI && !m_room.externalAgent(player->objectName())
         ? m_room.roomRuntime()->ai().routes().routeFor(request.kind, callbackName, skillName)
         : AiRouteLegacyDirect;
     if (route == AiRouteLegacyDirect) {
