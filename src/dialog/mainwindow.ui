@@ -94,7 +94,7 @@
     <addaction name="actionAbout_Lua"/>
     <addaction name="actionAbout_fmod"/>
     <addaction name="separator"/>
-    <addaction name="actionAcknowledgement_2"/>
+    <addaction name="actionAcknowledgement"/>
     <addaction name="separator"/>
     <addaction name="actionRole_assign_table"/>
    </widget>
@@ -284,22 +284,9 @@
     <string>Scenario overview</string>
    </property>
   </action>
-  <action name="actionScript_editor">
-   <property name="enabled">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>Script editor</string>
-   </property>
-  </action>
   <action name="actionBroadcast">
    <property name="text">
     <string>Broadcast ...</string>
-   </property>
-  </action>
-  <action name="actionAcknowledgement">
-   <property name="text">
-    <string>Acknowledgement</string>
    </property>
   </action>
   <action name="actionDamage_maker">
@@ -308,14 +295,6 @@
    </property>
    <property name="text">
     <string>Damage maker</string>
-   </property>
-  </action>
-  <action name="actionExpand_dashboard">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>Expand dashboard</string>
    </property>
   </action>
   <action name="actionDeath_note">
@@ -336,30 +315,9 @@
     <string>Ctrl+T</string>
    </property>
   </action>
-  <action name="actionPackaging">
-   <property name="text">
-    <string>Package manager ...</string>
-   </property>
-   <property name="shortcut">
-    <string>Ctrl+P</string>
-   </property>
-  </action>
-  <action name="actionAI_Melee">
-   <property name="text">
-    <string>AI Melee</string>
-   </property>
-   <property name="shortcut">
-    <string>Ctrl+M</string>
-   </property>
-  </action>
   <action name="actionReplay_file_convert">
    <property name="text">
     <string>Replay file convert ...</string>
-   </property>
-  </action>
-  <action name="actionSend_lowlevel_command">
-   <property name="text">
-    <string>Send lowlevel command ...</string>
    </property>
   </action>
   <action name="actionView_ban_list">
@@ -400,7 +358,7 @@
     <string>Never nullify my trick</string>
    </property>
   </action>
-  <action name="actionAcknowledgement_2">
+  <action name="actionAcknowledgement">
    <property name="text">
     <string>Acknowledgement</string>
    </property>
@@ -517,86 +475,6 @@
     <string notr="true">在牌局中可以通过字母键按牌名首字母选择可用牌</string>
    </property>
   </action>
-  <action name="action8">
-   <property name="text">
-    <string>Key_J</string>
-   </property>
-  </action>
-  <action name="action9">
-   <property name="text">
-    <string>Key_P</string>
-   </property>
-  </action>
-  <action name="actionKey_O">
-   <property name="text">
-    <string>Key_O</string>
-   </property>
-  </action>
-  <action name="actionKey_E">
-   <property name="text">
-    <string>Key_E</string>
-   </property>
-  </action>
-  <action name="actionKey_W">
-   <property name="text">
-    <string>Key_W</string>
-   </property>
-  </action>
-  <action name="actionKey_F">
-   <property name="text">
-    <string>Key_F</string>
-   </property>
-  </action>
-  <action name="actionKey_H">
-   <property name="text">
-    <string>Key_H</string>
-   </property>
-  </action>
-  <action name="actionKey_T">
-   <property name="text">
-    <string>Key_T</string>
-   </property>
-  </action>
-  <action name="actionKey_A">
-   <property name="text">
-    <string>Key_A</string>
-   </property>
-  </action>
-  <action name="actionKey_N">
-   <property name="text">
-    <string>Key_N</string>
-   </property>
-  </action>
-  <action name="actionKey_Q">
-   <property name="text">
-    <string>Key_Q</string>
-   </property>
-  </action>
-  <action name="actionKey_C">
-   <property name="text">
-    <string>Key_C</string>
-   </property>
-  </action>
-  <action name="actionKey_U">
-   <property name="text">
-    <string>Key_U</string>
-   </property>
-  </action>
-  <action name="actionKey_L">
-   <property name="text">
-    <string>Key_L</string>
-   </property>
-  </action>
-  <action name="actionKey_I">
-   <property name="text">
-    <string>Key_I</string>
-   </property>
-  </action>
-  <action name="actionKey_B">
-   <property name="text">
-    <string>Key_B</string>
-   </property>
-  </action>
   <action name="actionKey_Left">
    <property name="text">
     <string>往左选牌</string>
@@ -635,16 +513,6 @@
    </property>
    <property name="shortcut">
     <string>Space</string>
-   </property>
-  </action>
-  <action name="action0_4">
-   <property name="text">
-    <string>Key_0~4</string>
-   </property>
-  </action>
-  <action name="actionKey_5_9">
-   <property name="text">
-    <string>Key_5~9</string>
    </property>
   </action>
   <action name="actionKey_D">
