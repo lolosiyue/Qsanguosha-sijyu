@@ -1418,10 +1418,6 @@ void MainWindow::on_actionStart_Server_triggered()
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
     if (m_scenarioWork) return;
 #endif
-#ifdef Q_OS_ANDROID
-	startLocalConsoleGame();
-	return;
-#endif
 #ifdef QSAN_XP_LEGACY
 	if (localServer->active()) return;
 #endif
