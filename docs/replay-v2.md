@@ -29,6 +29,29 @@ not supported. There is no converter. Snapshot loading is also a breaking
 cutover: a snapshot must use the current schema and older or unknown snapshot
 schemas are rejected.
 
+## Result statistics
+
+The live recorder feeds validated typed messages into `RecAnalysis` as they
+arrive. Result dialogs copy this player-sized statistics snapshot and calculate
+designations, instead of rescanning the game history on the UI thread. An open
+replayer supplies its already validated events to the same statistics reducer.
+The final-message check is retained so later events do not make an earlier
+`GAME_OVER` count as the terminal result. Analysis of other text or PNG files
+still uses the complete strict Replay V2 reader.
+
+The desktop result dialog prepares its hidden table widgets and polishes their
+shared style at game start. At game end it sets the outcome banner, fills the
+two tables from one statistics snapshot, and measures their columns in one pass.
+While showing it, an event guard pauses updates of the frozen room viewports
+until the result's first Paint event, then schedules their updates again. If
+closed before painting, destruction of the guard restores the viewports too.
+The prepared dialog is consumed once and disposed after closing, including when
+a replay reaches another ending.
+
+For a bounded manual or net-runner diagnosis, `QSAN_WINNER_DIALOG_TRACE=1`
+logs client preparation, dialog stages, the first dialog paint event, and the
+displayed result rows. It is disabled by default and does not change game rules.
+
 ## PNG container
 
 The PNG container transports compressed Replay V2 JSONL bytes in lossless RGBA

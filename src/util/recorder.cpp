@@ -1,5 +1,6 @@
 ﻿#include "recorder.h"
 #include "protocol.h"
+#include "record-analysis.h"
 #include "engine.h"
 #include "replay-index.h"
 #include "game-snapshot.h"
@@ -57,13 +58,19 @@ Recorder::Recorder(QObject *parent, bool takeover)
     : QObject(parent),
     buffer(Sanguosha ? Sanguosha->getVersion() : QStringLiteral("unknown"),
            Sanguosha ? Sanguosha->getMODName() : QStringLiteral("unknown"),
-           takeover)
+           takeover),
+    m_analysis(new RecAnalysis(this))
 {
 }
 
 bool Recorder::recordMessage(const ProtocolMessage &message, QString *error)
 {
-    return buffer.recordMessage(message, error);
+    if (!buffer.recordMessage(message, error))
+        return false;
+
+    // Update the existing statistics reducer as messages arrive, not at game end.
+    m_analysis->recordMessage(message);
+    return true;
 }
 
 bool Recorder::save(const QString &filename) const
@@ -80,6 +87,11 @@ bool Recorder::save(const QString &filename) const
 QList<QByteArray> Recorder::getRecords() const
 {
     return buffer.getRecords();
+}
+
+const RecAnalysis *Recorder::getAnalysis() const
+{
+    return m_analysis;
 }
 
 QByteArray Recorder::rawReplayData() const

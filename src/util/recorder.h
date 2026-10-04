@@ -15,6 +15,7 @@
 
 class ReplayIndex;
 class GameSnapshot;
+class RecAnalysis;
 
 class Recorder : public QObject
 {
@@ -30,10 +31,12 @@ public:
     bool recordMessage(const QSanProtocol::ProtocolMessage &message,
                        QString *error = nullptr);
     QList<QByteArray> getRecords() const;
+    const RecAnalysis *getAnalysis() const;
     QByteArray rawReplayData() const;
 
 private:
     RecordBuffer buffer;
+    RecAnalysis *m_analysis;
 };
 
 class Replayer : public QThread

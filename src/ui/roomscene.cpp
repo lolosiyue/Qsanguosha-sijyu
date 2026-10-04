@@ -83,6 +83,11 @@
 #include <QMovie>
 #include <algorithm>
 #include <QDateTime>
+#include <QElapsedTimer>
+#include <QDebug>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QFile>
 #include <QTextStream>
 #include <QTimer>
@@ -978,6 +983,7 @@ void RoomScene::exitOnsoleContext()
 
 RoomScene::~RoomScene()
 {
+    delete m_resultDialog.data();
     delete m_chatController;
     m_chatController = nullptr;
     delete m_inputRouter;
@@ -4745,11 +4751,79 @@ void RoomScene::onStandoff()
 	dialog->exec();
 }
 
+QDialog *RoomScene::prepareResultDialog()
+{
+	if (m_resultDialog) return m_resultDialog;
+	QDialog*dialog = new QDialog(main_window);
+	dialog->resize(800,600);
+	dialog->setStyleSheet(QString(
+		"QGroupBox{font-weight:bold;border:1px solid palette(mid);border-radius:6px;margin-top:14px;padding-top:6px;}"
+		"QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 6px;}"
+		"QGroupBox#winner_box{border:2px solid #c9a45c;}"
+		"QGroupBox#winner_box::title{color:#b8913f;}"
+		"QTableWidget#winner_table QHeaderView::section{background:#c9a45c;color:#2a2114;font-weight:bold;border:none;padding:4px;}"));
+
+	QLabel*banner = new QLabel(tr("Victory"), dialog);
+	banner->setObjectName("result_banner");
+	banner->setAlignment(Qt::AlignCenter);
+	// QSS has no letter-spacing property; set it on QFont.
+	QFont banner_font = banner->font();
+	banner_font.setPixelSize(30);
+	banner_font.setBold(true);
+	banner_font.setLetterSpacing(QFont::AbsoluteSpacing,12);
+	banner->setFont(banner_font);
+
+	QGroupBox*winner_box = new QGroupBox(tr("Winner(s)"), dialog);
+	QGroupBox*loser_box = new QGroupBox(tr("Loser(s)"), dialog);
+	winner_box->setObjectName("winner_box");
+
+	QTableWidget*winner_table = new QTableWidget(winner_box);
+	QTableWidget*loser_table = new QTableWidget(loser_box);
+	loser_table->setObjectName("loser_table");
+	winner_table->setObjectName("winner_table");
+
+	QVBoxLayout*winner_layout = new QVBoxLayout;
+	winner_layout->addWidget(winner_table);
+	winner_box->setLayout(winner_layout);
+
+	QVBoxLayout*loser_layout = new QVBoxLayout;
+	loser_layout->addWidget(loser_table);
+	loser_box->setLayout(loser_layout);
+
+	QVBoxLayout*layout = new QVBoxLayout;
+	layout->setSpacing(10);
+	layout->addWidget(banner);
+	layout->addWidget(winner_box,1);
+	layout->addWidget(loser_box,1);
+	dialog->setLayout(layout);
+	// Polish the existing widgets while the game is running, before the result is needed.
+	fillTable(winner_table, {}, {});
+	fillTable(loser_table, {}, {});
+	dialog->ensurePolished();
+	for (QWidget *child : dialog->findChildren<QWidget*>()) child->ensurePolished();
+	dialog->layout()->activate();
+	m_resultDialog = dialog;
+	return dialog;
+}
+
 void RoomScene::onGameOver()
 {
+	const bool traceResult = qEnvironmentVariableIntValue("QSAN_WINNER_DIALOG_TRACE") != 0;
+	QElapsedTimer resultTimer;
+	if (traceResult) resultTimer.start();
+	qint64 previousResultMs = 0;
+	const auto traceStage = [&](const char *stage) {
+		if (!traceResult) return;
+		const qint64 elapsed = resultTimer.elapsed();
+		qInfo().noquote() << "WINNER_DIALOG" << QJsonDocument(QJsonObject{
+			{"stage", QString::fromLatin1(stage)}, {"total_ms", static_cast<int>(elapsed)},
+			{"duration_ms", static_cast<int>(elapsed - previousResultMs)}}).toJson(QJsonDocument::Compact);
+		previousResultMs = elapsed;
+	};
 	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(UiConfig.TextEditColor.name())));
 
 	freeze();
+	traceStage("freeze");
 
 	bool victory = Self->property("win").toBool();
 	QString win_effect = "audio/system/lose.ogg";
@@ -4771,73 +4845,101 @@ void RoomScene::onGameOver()
 		}
 	}
 	Sanguosha->playAudioEffect(win_effect);
-	QDialog*dialog = new QDialog(main_window);
-	dialog->resize(800,600);
+	traceStage("audio");
+	QDialog *dialog = prepareResultDialog();
+	// Consume the prepared dialog once; replaying another ending needs fresh navigation.
+	m_resultDialog.clear();
+	connect(dialog, &QDialog::finished, dialog, &QObject::deleteLater);
 	dialog->setWindowTitle(victory ? tr("Victory") : tr("Failure"));
-	// The banner uses dark fill and light text in both themes; use gold for the winner and the palette color for the loser.
-	dialog->setStyleSheet(QString(
-		"QLabel#result_banner{color:%1;padding:14px;border-radius:8px;border:1px solid %2;"
-		"background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 %3,stop:0.5 %4,stop:1 %3);}"
-		"QGroupBox{font-weight:bold;border:1px solid palette(mid);border-radius:6px;margin-top:14px;padding-top:6px;}"
-		"QGroupBox::title{subcontrol-origin:margin;left:12px;padding:0 6px;}"
-		"QGroupBox#winner_box{border:2px solid #c9a45c;}"
-		"QGroupBox#winner_box::title{color:#b8913f;}"
-		"QTableWidget#winner_table QHeaderView::section{background:#c9a45c;color:#2a2114;font-weight:bold;border:none;padding:4px;}")
+	QLabel *banner = dialog->findChild<QLabel*>("result_banner");
+	banner->setText(victory ? tr("Victory") : tr("Failure"));
+	// Only the banner depends on victory; the tables retain their pre-polished style.
+	banner->setStyleSheet(QString(
+		"QLabel{color:%1;padding:14px;border-radius:8px;border:1px solid %2;"
+		"background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 %3,stop:0.5 %4,stop:1 %3);}")
 		.arg(victory ? "#fff4dc" : "#ffe3dc",victory ? "#e0bd73" : "#a8645c",
 			victory ? "#4a3818" : "#2e1c1e",victory ? "#8a6a2e" : "#5e3432"));
-
-	QLabel*banner = new QLabel(victory ? tr("Victory") : tr("Failure"));
-	banner->setObjectName("result_banner");
-	banner->setAlignment(Qt::AlignCenter);
-	// QSS has no letter-spacing property; set it on QFont.
-	QFont banner_font = banner->font();
-	banner_font.setPixelSize(30);
-	banner_font.setBold(true);
-	banner_font.setLetterSpacing(QFont::AbsoluteSpacing,12);
-	banner->setFont(banner_font);
-
-	QGroupBox*winner_box = new QGroupBox(tr("Winner(s)"));
-	QGroupBox*loser_box = new QGroupBox(tr("Loser(s)"));
-	winner_box->setObjectName("winner_box");
-
-	QTableWidget*winner_table = new QTableWidget;
-	QTableWidget*loser_table = new QTableWidget;
-	winner_table->setObjectName("winner_table");
-
-	QVBoxLayout*winner_layout = new QVBoxLayout;
-	winner_layout->addWidget(winner_table);
-	winner_box->setLayout(winner_layout);
-
-	QVBoxLayout*loser_layout = new QVBoxLayout;
-	loser_layout->addWidget(loser_table);
-	loser_box->setLayout(loser_layout);
-
-	QList<const ClientPlayer*> winner_list,loser_list;
-	foreach (const ClientPlayer*player,ClientInstance->getPlayers()){
-		if(player->property("win").toBool())
-			winner_list << player;
-		else
-			loser_list << player;
+	QTableWidget *winner_table = dialog->findChild<QTableWidget*>("winner_table");
+	QTableWidget *loser_table = dialog->findChild<QTableWidget*>("loser_table");
+	QList<const ClientPlayer*> winner_list, loser_list;
+	for (const ClientPlayer *player : ClientInstance->getPlayers()) {
+		if (player->property("win").toBool()) winner_list << player;
+		else loser_list << player;
 	}
+	QVBoxLayout *layout = qobject_cast<QVBoxLayout*>(dialog->layout());
+	layout->setStretch(1, winner_list.length() + 1);
+	layout->setStretch(2, loser_list.length() + 1);
+	traceStage("widgets");
 
-	// Divide the two tables' height by player count so a single winner does not leave half the dialog empty.
-	QVBoxLayout*layout = new QVBoxLayout;
-	layout->setSpacing(10);
-	layout->addWidget(banner);
-	layout->addWidget(winner_box,winner_list.length()+1);
-	layout->addWidget(loser_box,loser_list.length()+1);
-	dialog->setLayout(layout);
-
-	// Parse the replay once and reuse it for both result tables.
+	// Snapshot the accumulated statistics once for both result tables.
 	RecAnalysis record(ClientInstance->getReplayPath());
 	const QMap<QString,PlayerRecordStruct*> record_map = record.getRecordMap();
+	traceStage("analysis");
 	fillTable(winner_table,winner_list,record_map);
 	fillTable(loser_table,loser_list,record_map);
+	traceStage("tables");
 
 	m_replay->recorderAutoSave();
+	traceStage("autosave");
 
 	addRestartButton(dialog);
 	connect(dialog,SIGNAL(rejected()),this,SIGNAL(game_over_dialog_rejected()));
+	traceStage("ready");
+	{
+		// Let the result paint before the frozen room spends time redrawing behind it.
+		class ResultPaintGuard final : public QObject {
+		public:
+			ResultPaintGuard(QDialog *resultDialog, const QElapsedTimer &timer,
+				bool trace, const QList<QGraphicsView*> &sceneViews)
+				: QObject(resultDialog), m_timer(timer), m_trace(trace) {
+				for (QGraphicsView *view : sceneViews) {
+					QWidget *viewport = view->viewport();
+					if (!viewport->updatesEnabled()) continue;
+					m_backdrops.append(viewport);
+					viewport->setUpdatesEnabled(false);
+				}
+				resultDialog->installEventFilter(this);
+			}
+			~ResultPaintGuard() override { restoreBackdrops(); }
+		protected:
+			bool eventFilter(QObject *watched, QEvent *event) override {
+				if (event->type() != QEvent::Paint) return false;
+				if (m_trace) {
+					const qint64 elapsed = m_timer.elapsed();
+					qInfo().noquote() << "WINNER_DIALOG" << QJsonDocument(QJsonObject{
+						{"stage", "first_paint"}, {"total_ms", static_cast<int>(elapsed)}}).toJson(QJsonDocument::Compact);
+					for (QTableWidget *table : watched->findChildren<QTableWidget*>()) {
+						for (int row = 0; row < table->rowCount(); ++row) {
+							QJsonArray cells;
+							for (int col = 0; col < table->columnCount(); ++col)
+								cells.append(table->item(row, col) ? table->item(row, col)->text() : QString());
+							qInfo().noquote() << "WINNER_DIALOG_ROW" << QJsonDocument(QJsonObject{
+								{"winner", table->objectName() == QLatin1String("winner_table")},
+								{"cells", cells}}).toJson(QJsonDocument::Compact);
+						}
+					}
+				}
+				// Restoring updates schedules the room repaint after this result frame.
+				restoreBackdrops();
+				watched->removeEventFilter(this);
+				deleteLater();
+				return false;
+			}
+		private:
+			void restoreBackdrops() {
+				for (const QPointer<QWidget> &viewport : m_backdrops)
+					if (viewport) viewport->setUpdatesEnabled(true);
+				m_backdrops.clear();
+			}
+			QElapsedTimer m_timer;
+			bool m_trace;
+			QList<QPointer<QWidget>> m_backdrops;
+		};
+		new ResultPaintGuard(dialog, resultTimer, traceResult, views());
+	}
+	dialog->setWindowModality(Qt::ApplicationModal);
+	dialog->show();
+	traceStage("shown");
 	dialog->exec();
 }
 
@@ -5056,8 +5158,8 @@ void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&pl
 		table->setItem(i,9,item);
 	}
 
-	for (int i = 0;i < 10;i++)
-		table->resizeColumnToContents(i);
+	// Measure all columns in one header pass rather than ten layout updates.
+	table->resizeColumnsToContents();
 }
 
 void RoomScene::updateCardDescription(const QString &player_name, const QString &card_name)
@@ -5540,6 +5642,7 @@ void KOFOrderBox::killPlayer(const QString&general_name)
 
 void RoomScene::onGameStart()
 {
+	QTimer::singleShot(0, this, [this]() { prepareResultDialog(); });
 	main_window->activateWindow();
 	if(ServerInfo.GameMode.contains("_mini_")){
 		QString id = Config.GameMode.mode_id;
