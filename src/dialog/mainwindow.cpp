@@ -258,7 +258,8 @@ MainWindow::MainWindow(QWidget *parent)
     installAndroidDialogFit(qApp); // Shared fitting also serves desktop portrait preview.
 
 	// Keep the state shortcut independent of the table's legacy hotkey setting.
-	QAction *stateAction = ui->menuView->addAction(tr("Game State"));
+	ui->menuOptions->addSeparator();
+	QAction *stateAction = ui->menuOptions->addAction(tr("Game State"));
 	stateAction->setObjectName(QStringLiteral("actionGameStateSnapshot"));
 	stateAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
 	// The snapshot and control panel are separate non-modal top-level windows.
@@ -266,12 +267,12 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(stateAction, &QAction::triggered, this, [this]() {
 		if (RoomScene *room = qobject_cast<RoomScene *>(scene)) room->showGameStateSnapshot();
 	});
-	QAction *controlAction = ui->menuView->addAction(tr("Game Control Panel"));
+	QAction *controlAction = ui->menuOptions->addAction(tr("Game Control Panel"));
 	controlAction->setObjectName(QStringLiteral("actionGameControlPanel"));
 	connect(controlAction, &QAction::triggered, this, [this]() {
 		if (RoomScene *room = qobject_cast<RoomScene *>(scene)) room->showGameControlPanel();
 	});
-    QAction *inspectorAction = ui->menuView->addAction(tr("Player Details"));
+    QAction *inspectorAction = ui->menuOptions->addAction(tr("Player Details"));
     inspectorAction->setObjectName(QStringLiteral("actionRoomPlayerInspector"));
     connect(inspectorAction, &QAction::triggered, this, [this]() {
         if (gameView) gameView->showPlayerInspector();
@@ -300,7 +301,6 @@ MainWindow::MainWindow(QWidget *parent)
 #endif
 
 	connect(ui->actionAbout_Qt, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
-	connect(ui->actionAcknowledgement_2, SIGNAL(triggered()), this, SLOT(on_actionAcknowledgement_triggered()));
 
 	pageStack = new QStackedWidget(this);
 
@@ -840,7 +840,6 @@ void MainWindow::showHomePage()
 	ui->actionDeath_note->disconnect();
 	ui->actionDamage_maker->disconnect();
 	ui->actionRevive_wand->disconnect();
-	ui->actionSend_lowlevel_command->disconnect();
 	ui->actionExecute_script_at_server_side->disconnect();
 	ui->actionState_editor->disconnect();
 
@@ -2118,7 +2117,6 @@ void MainWindow::enterRoom()
 		ui->actionDeath_note->disconnect();
 		ui->actionDamage_maker->disconnect();
 		ui->actionRevive_wand->disconnect();
-		ui->actionSend_lowlevel_command->disconnect();
 		ui->actionExecute_script_at_server_side->disconnect();
 		ui->actionState_editor->disconnect();
 	}
