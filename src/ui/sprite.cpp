@@ -194,8 +194,16 @@ void SentbackEffect::draw(QPainter *painter)
 
     if (pixmap.isNull()) return;
 
+    if (grayed && (grayed->size() != pixmap.size()
+                   || grayed->devicePixelRatio() != pixmap.devicePixelRatio())) {
+        delete grayed;
+        grayed = nullptr;
+    }
     if (!grayed) {
         grayed = new QImage(pixmap.size(), QImage::Format_ARGB32);
+        // pixmap.size() is in device pixels. Without the source ratio the gray
+        // layer paints that many logical pixels and spills down-right on high dpi.
+        grayed->setDevicePixelRatio(pixmap.devicePixelRatio());
 
         QImage image = pixmap.toImage();
         int width = image.width();
