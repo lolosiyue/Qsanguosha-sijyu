@@ -373,6 +373,7 @@ CommonTranslationTable = {
 	["EquipArea2"] = "+1坐骑栏",
 	["EquipArea3"] = "-1坐骑栏",
 	["EquipArea4"] = "宝物栏",
+	["EquipAreaX"] = "已废除",
 	["kill"] = "",
 
 	["use upon"] = "对",
