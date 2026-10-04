@@ -18,6 +18,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QRegularExpression>
 
 Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
@@ -2642,6 +2643,18 @@ QVariantList Player::getCardLimitationDetails() const
 }
 
 namespace {
+// Nested skill-type and suit <font> tags override an outer colour, so wrapping
+// only the body still leaves the bold name and those words in their active colours.
+QString greyInvalidSkillText(const QString &html)
+{
+    QString text = html;
+    text.remove(QRegularExpression(QStringLiteral("<font\\b[^>]*>"),
+                                   QRegularExpression::CaseInsensitiveOption));
+    text.remove(QRegularExpression(QStringLiteral("</font>"),
+                                   QRegularExpression::CaseInsensitiveOption));
+    return QStringLiteral("<font color=\"#bab8ba\">") + text + QStringLiteral("</font>");
+}
+
 QString descriptionLabel(const QString &key)
 {
     const QString translated = Sanguosha->translate(key);
@@ -2774,19 +2787,27 @@ QString Player::getSkillDescription(const Player *viewer) const
             continue;
         const QString skillName = skill->objectName();
         bool skillValid = true;
-		{
-			// Use cached skill validity to avoid calling into Lua from UI thread
-			bool skillOwned = ownsSkill(skill->objectName())
-				|| (useInnateSkillsAfterDeath && skills.contains(skill->objectName()));
-			if (skillOwned) {
-				if (!skill->isAttachedLordSkill() && !skill->property("IgnoreInvalidity").toBool() && skill->isVisible()) {
-					QMutexLocker locker(&m_skillCacheMutex);
-					skillValid = m_skillValidityCache.value(skill->objectName(), true);
-				}
-			} else {
-				skillValid = false;
-			}
-		}
+        const bool skillOwned = ownsSkill(skill->objectName())
+            || (useInnateSkillsAfterDeath && skills.contains(skill->objectName()));
+        // Attached-lord and IgnoreInvalidity skills stay in their normal colour.
+        const bool tracksValidity = skillOwned && !skill->isAttachedLordSkill()
+            && !skill->property("IgnoreInvalidity").toBool() && skill->isVisible();
+        // The description snapshot is authoritative. ClientPlayer never fills
+        // m_skillValidityCache, so a missing entry must not default to "valid".
+        // Non-client callers keep that cache and do not enter Lua from here.
+        const auto snapshotValid = [this](const Skill *queried, int id, bool cacheFallback) {
+            const QString key = SkillInstanceUtils::formatName(queried->objectName(), id);
+            if (m_skillDescriptionValidity.contains(key))
+                return m_skillDescriptionValidity.value(key).toBool();
+            if (inherits("ClientPlayer"))
+                return !isSkillInvalid(queried, id);
+            QMutexLocker locker(&m_skillCacheMutex);
+            return m_skillValidityCache.value(queried->objectName(), cacheFallback);
+        };
+        if (!skillOwned)
+            skillValid = false;
+        else if (tracksValidity && getSkillInstanceIds(skillName).isEmpty())
+            skillValid = snapshotValid(skill, 0, true);
 
         // Keep ownership in the player's instance table, never infer it from related skills.
         // Group equal rendered bodies, preserving the stable instance-ID order.
@@ -2819,7 +2840,7 @@ QString Player::getSkillDescription(const Player *viewer) const
             }
             QString detail = QString("<b>#%1</b> %2").arg(id).arg(source.toHtmlEscaped());
             const QString instanceKey = SkillInstanceUtils::formatName(skillName, id);
-            const bool instanceValid = m_skillDescriptionValidity.value(instanceKey, skillValid).toBool();
+            const bool instanceValid = tracksValidity ? snapshotValid(skill, id, skillValid) : skillValid;
             groupValid[group] = groupValid.at(group) || instanceValid;
             const QVariantMap usage = viewer == this ? m_skillDescriptionUsage.value(instanceKey).toMap()
                                                      : QVariantMap();
@@ -2949,7 +2970,7 @@ QString Player::getSkillDescription(const Player *viewer) const
                 .arg(tr("Technical details"), technical.join("<br/>"));
             // Equal bodies can contain both valid and invalid instances. Grey the
             // affected instance's details without adding a redundant status row.
-            if (!instanceValid) detail = "<font color=\"#bab8ba\">" + detail + "</font>";
+            if (!instanceValid) detail = greyInvalidSkillText(detail);
             details[group] << detail;
         }
         // Death/legacy descriptions have no runtime instance and must not fabricate one.
@@ -2962,10 +2983,14 @@ QString Player::getSkillDescription(const Player *viewer) const
         }
         const QString oracle = skill->getOracleText(this);
         for (int group = 0; group < bodies.size(); ++group) {
-            QString body = bodies.at(group);
-            if (!groupValid.at(group)) body = "<font color=\"#bab8ba\">" + body + "</font>";
-            description += QString("<b>%1</b>：%2<br/>")
-                .arg(Sanguosha->translate(skillName), body);
+            // Include the skill name. Leaving it outside the grey span made an
+            // invalid skill look active, and nested type colours did the same
+            // to the body.
+            QString line = QString("<b>%1</b>：%2")
+                .arg(Sanguosha->translate(skillName), bodies.at(group));
+            if (!groupValid.at(group))
+                line = greyInvalidSkillText(line);
+            description += line + "<br/>";
             if (!oracle.isEmpty())
                 description += QString("<font color=\"#bab8ba\">%1</font><br/>").arg(oracle);
             if (!details.at(group).isEmpty())
