@@ -13269,9 +13269,9 @@ public:
 		return false;
 	}
 };
+
 HongyiCard::HongyiCard()
 {
-	handling_method = Card::MethodDiscard;
 }
 
 void HongyiCard::onEffect(CardEffectStruct &effect) const
