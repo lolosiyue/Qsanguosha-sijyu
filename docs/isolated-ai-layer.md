@@ -2,6 +2,8 @@
 
 Isolated AI 按 Room 與觀察者隔離狀態；本文件說明各層責任與純值邊界。共用策略契約見[共用層對照](isolated-ai-common-layer.md)。
 
+目前移植驗收與缺口見[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)；執行後續 SmartAI 移植請按[遵循文件](isolated-ai-migration-playbook.md)建立逐分支帳與分級證據。
+
 ## 分層
 
 | 層 | 目前責任 | 純值界線 |

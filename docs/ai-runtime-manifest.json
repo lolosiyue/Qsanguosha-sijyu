@@ -80,7 +80,8 @@
     "decision-core.lua",
     "retrial.lua",
     "strategy-hooks.lua",
-    "event-intention.lua"
+    "event-intention.lua",
+    "smart-ai-functions.lua"
   ],
   "isolated_core_scripts_source": "lua/ai/isolated-bootstrap.lua ai_isolated_core",
   "isolated_core_scripts_note": "Declared in the Lua tree, not in C++, so the list travels with the scripts it names. The host only carries it out, because the sandbox removes dofile. Order matters: ask-for-use-card.lua installs the handler registries the package handlers write into.",
@@ -241,6 +242,42 @@
       "package": "assassins"
     },
     {
+      "path": "lua/ai/isolated/keguibao-ai.lua",
+      "vm": "isolated",
+      "role": "Keguibao package decisions: invoke, choice, player selection, card need, damage hooks, and V2 activation over conversion tickets or skill actions.",
+      "load_order": null,
+      "loaded_by_default": null,
+      "required": false,
+      "if_missing": "package_loses_its_isolated_ai",
+      "gated_by": ["check-ai-runtime-manifest.py"],
+      "kind": "package_handler",
+      "package": "keguibao"
+    },
+    {
+      "path": "lua/ai/isolated/meow-ai.lua",
+      "vm": "isolated",
+      "role": "Meow package decisions. Extends the isolated SmartAI-equivalent helpers; skill names and handlers stay in this file.",
+      "load_order": null,
+      "loaded_by_default": null,
+      "required": false,
+      "if_missing": "package_loses_its_isolated_ai",
+      "gated_by": ["check-ai-runtime-manifest.py"],
+      "kind": "package_handler",
+      "package": "meow"
+    },
+    {
+      "path": "lua/ai/isolated/mcompetition-ai.lua",
+      "vm": "isolated",
+      "role": "mcompetition package decisions. Shared SmartAI-equivalent helpers stay in smart-ai-functions.lua; this file only extends skill lists and skill handlers. Unprojected string data and room tags stay unsupported.",
+      "load_order": null,
+      "loaded_by_default": null,
+      "required": false,
+      "if_missing": "package_loses_its_isolated_ai",
+      "gated_by": ["check-ai-runtime-manifest.py"],
+      "kind": "package_handler",
+      "package": "mcompetition"
+    },
+    {
       "path": "lua/ai/isolated/standard-ai.lua",
       "vm": "isolated",
       "role": "Migrated standard-package handlers (currently @@lianying only).",
@@ -270,6 +307,35 @@
       ],
       "kind": "package_handler",
       "package": "scarlet"
+    },
+    {
+      "path": "lua/ai/isolated/kexianbao-ai.lua",
+      "vm": "isolated",
+      "role": "Kexianbao isolated handlers. Skill lists and per-skill decisions extend smart-ai-functions.lua; character names stay in this file.",
+      "load_order": null,
+      "loaded_by_default": null,
+      "required": false,
+      "if_missing": "package_loses_its_isolated_ai",
+      "status": "loaded_with_its_package",
+      "gated_by": [
+        "check-ai-runtime-manifest.py"
+      ],
+      "kind": "package_handler",
+      "package": "kexianbao"
+    },
+    {
+      "path": "lua/ai/isolated/shadow-ai.lua",
+      "vm": "isolated",
+      "role": "Shadow package decisions over the isolated SmartAI-equivalent helpers. Extends skill lists, keep values and y_ handlers; move, tag and property questions stay unsupported.",
+      "load_order": null,
+      "loaded_by_default": null,
+      "required": false,
+      "if_missing": "package_loses_its_isolated_ai",
+      "gated_by": [
+        "check-ai-runtime-manifest.py"
+      ],
+      "kind": "package_handler",
+      "package": "shadow"
     },
     {
       "path": "lua/ai/isolated/pass-ai.lua",
@@ -405,6 +471,22 @@
       "vm": "isolated",
       "role": "Atomic viewer-scoped event intention and memory proposals.",
       "load_order": 8,
+      "loaded_by_default": true,
+      "required": true,
+      "if_missing": "hard_fail",
+      "gated_by": [
+        "fetch-extensions.sh",
+        "fetch-extensions.ps1",
+        "check-ai-runtime-manifest.py",
+        "QSAN_ASSET_REQUIRED"
+      ],
+      "kind": "core"
+    },
+    {
+      "path": "lua/ai/isolated/smart-ai-functions.lua",
+      "vm": "isolated",
+      "role": "SmartAI-equivalent pure-value helpers. Packages extend them with skill lists and hook tables; character names stay in package scripts.",
+      "load_order": 9,
       "loaded_by_default": true,
       "required": true,
       "if_missing": "hard_fail",

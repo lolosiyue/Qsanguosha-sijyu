@@ -1,6 +1,6 @@
 # Scarlet V2 isolated AI：原版策略移植
 
-實作在 `lua/ai/isolated/scarlet-ai.lua`，外部權威來源為 extensions 倉庫的 `ai/isolated/scarlet-ai.lua`。本批覆蓋藏拙／志繼所需共用路徑，不表示 Scarlet 全包或 SmartAI 全部策略已移植。
+實作在 `lua/ai/isolated/scarlet-ai.lua`，外部權威來源為 extensions 倉庫的 `ai/isolated/scarlet-ai.lua`。共用 SmartAI 相等函式在 `lua/ai/isolated/smart-ai-functions.lua`；Scarlet 只擴充技能名單與單挑點數。本批覆蓋藏拙／志繼所需共用路徑，不表示 Scarlet 全包或 SmartAI 全部策略已移植。
 
 | 技能 | 原版決策順序 |
 |---|---|

@@ -1153,6 +1153,7 @@ if(UNIX AND NOT ANDROID)
         lua/ai/isolated/retrial.lua
         lua/ai/isolated/strategy-hooks.lua
         lua/ai/isolated/event-intention.lua
+        lua/ai/isolated/smart-ai-functions.lua
         lua/ai/mode-ai.lua
         extensions
     )

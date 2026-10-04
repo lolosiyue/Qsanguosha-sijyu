@@ -320,6 +320,13 @@ static QJsonObject publicDecisionCard(const Card *card)
         {"number", card->getNumber()}, {"red", card->isRed()}, {"black", card->isBlack()}};
     if (const auto *weapon = dynamic_cast<const Weapon *>(card))
         result.insert("weapon_range", weapon->getRange());
+    // Public card flags (for example zhashicardflag) are part of the declared
+    // card, not a hidden hand. Empty means no flag, not an unknown set.
+    QJsonArray flags;
+    for (const QString &flag : card->getFlags())
+        flags.append(flag);
+    if (!flags.isEmpty())
+        result.insert(QStringLiteral("flags"), flags);
     return result;
 }
 
@@ -1676,6 +1683,21 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
             {"amount", damage.damage}, {"nature", int(damage.nature)}, {"reason", damage.reason},
             {"card", publicDecisionCard(damage.card)},
             {"card_name", damage.card ? damage.card->objectName() : QString()}});
+    } else if (data.canConvert<DyingStruct>()) {
+        const DyingStruct dying = data.value<DyingStruct>();
+        QJsonObject dyingObject;
+        if (dying.who)
+            dyingObject.insert(QStringLiteral("who"), dying.who->objectName());
+        if (dying.damage) {
+            const DamageStruct &damage = *dying.damage;
+            dyingObject.insert(QStringLiteral("damage"), QJsonObject{
+                {"from", damage.from ? damage.from->objectName() : QString()},
+                {"to", damage.to ? damage.to->objectName() : QString()},
+                {"amount", damage.damage}, {"nature", int(damage.nature)},
+                {"reason", damage.reason}, {"card", publicDecisionCard(damage.card)},
+                {"card_name", damage.card ? damage.card->objectName() : QString()}});
+        }
+        context.insert(QStringLiteral("dying"), dyingObject);
     } else if (data.canConvert<CardEffectStruct>()) {
         const CardEffectStruct effect = data.value<CardEffectStruct>();
         context.insert("effect", QJsonObject{
@@ -1696,6 +1718,33 @@ void AiDecisionCoordinator::projectDecisionContext(ServerPlayer *viewer, const Q
         const ServerPlayer *target = data.value<ServerPlayer *>();
         // Only reference the player in the viewer's existing world snapshot.
         if (target) context.insert("player", target->objectName());
+    }
+    // Some asks pass only a player, and keep the surrounding struct in a room tag
+    // for the duration of that question. Project those tags as the same value
+    // objects; do not invent a struct the tag does not currently hold.
+    if (!context.contains(QStringLiteral("damage"))) {
+        const QVariant tagged = m_room.getTag(QStringLiteral("CurrentDamageStruct"));
+        if (tagged.canConvert<DamageStruct>()) {
+            const DamageStruct damage = tagged.value<DamageStruct>();
+            context.insert(QStringLiteral("damage"), QJsonObject{
+                {"from", damage.from ? damage.from->objectName() : QString()},
+                {"to", damage.to ? damage.to->objectName() : QString()},
+                {"amount", damage.damage}, {"nature", int(damage.nature)},
+                {"reason", damage.reason}, {"card", publicDecisionCard(damage.card)},
+                {"card_name", damage.card ? damage.card->objectName() : QString()}});
+        }
+    }
+    if (!context.contains(QStringLiteral("use"))) {
+        const QVariant tagged = m_room.getTag(QStringLiteral("CurrentUseStruct"));
+        if (tagged.canConvert<CardUseStruct>()) {
+            const CardUseStruct use = tagged.value<CardUseStruct>();
+            QJsonArray targets;
+            for (const ServerPlayer *target : use.to)
+                if (target) targets.append(target->objectName());
+            context.insert(QStringLiteral("use"), QJsonObject{
+                {"from", use.from ? use.from->objectName() : QString()},
+                {"to", targets}, {"card", publicDecisionCard(use.card)}});
+        }
     }
 }
 
