@@ -18,6 +18,7 @@
 %native(GetProperty) int GetProperty(lua_State *lua);
 %native(Alert) int Alert(lua_State *lua);
 %native(IsHeadless) int IsHeadless(lua_State *lua);
+%native(ControllerTagInUse) int ControllerTagInUse(lua_State *lua);
 
 %{
 
@@ -170,6 +171,12 @@ static int Alert(lua_State *lua)
 #endif
 
 	return 0;
+}
+
+static int ControllerTagInUse(lua_State *lua)
+{
+	lua_pushboolean(lua, Player::controllerTagEverSet());
+	return 1;
 }
 
 static int IsHeadless(lua_State *lua)
