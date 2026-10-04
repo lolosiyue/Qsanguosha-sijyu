@@ -1,18 +1,13 @@
 import QtQuick
 import "."
 
+// Static on purpose: the home page is hosted by a QQuickWidget, which has no render thread.
+// A looping pulse (even an Animator) re-renders and flushes the whole scene on the GUI thread
+// every frame until the last tile loads, which is what made catalog loading stutter.
 Rectangle {
     id: bone
     radius: 6
     color: HomeTheme.baIce
-    opacity: 0.55
+    opacity: 0.7
     clip: true
-
-    // The Animator runs on the render thread, keeping the pulse smooth while the GUI builds the grid.
-    SequentialAnimation {
-        running: bone.visible && bone.width > 0 && bone.height > 0
-        loops: Animation.Infinite
-        OpacityAnimator { target: bone; to: 0.95; duration: 750; easing.type: Easing.InOutQuad }
-        OpacityAnimator { target: bone; to: 0.42; duration: 750; easing.type: Easing.InOutQuad }
-    }
 }
