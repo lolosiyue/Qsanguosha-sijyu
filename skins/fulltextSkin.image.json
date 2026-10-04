@@ -220,9 +220,6 @@
 "handCardBack": "gen:label/？?w=93&h=130&c=#6d3b1f&b=#3d1f0f&bw=3&r=4&fg=#f0d9a0&px=60",
 "generalCardBack": "gen:label/？?w=200&h=290&c=#6d3b1f&b=#3d1f0f&bw=4&r=8&fg=#f0d9a0&px=120",
 
-"photoEquip-default": "gen:equip/%1?w=140&h=19",
-"dashboardEquip-default": "gen:equip/%1?w=149&h=25",
-
 "kingdomColorMask-default": "gen:kingdom/%1?w=18&h=90",
 "dashboardKingdomColorMask-default": "gen:kingdom/%1?w=87&h=21",
 "kingdomIcon-default": "gen:kingdom/%1?w=28&h=28&m=icon",

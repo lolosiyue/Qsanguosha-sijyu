@@ -1157,25 +1157,8 @@ QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &sourceFileName,
 
         if (!packageAssetExists(fileName) && !hasHighDpiFile) {
             QString name = extractCardNameFromPath(fileName);
-            if (!name.isEmpty()) {
-                bool isCardPath = fileName.contains("image/card/") && !fileName.contains("image/generals/card");
-                bool isEquipPath = fileName.contains("image/equips/") || fileName.contains("image/fullskin/small-equips/");
-                if (!isCardPath && !isEquipPath) {
-                    return QPixmap(1, 1);
-                }
-
-                if (isCardPath) {
-                    pixmap = generateFallbackCardImage(name);
-                } else {
-                    QSize equipSize;
-                    if (fileName.contains("image/fullskin/small-equips/")) {
-                        bool isHorseEquip = isHorseEquipByName(name);
-                        equipSize = isHorseEquip ? QSize(70, 19) : QSize(140, 19);
-                    } else {
-                        equipSize = QSize(149, 25);
-                    }
-                    pixmap = generateFallbackEquipImage(name, equipSize);
-                }
+            if (!name.isEmpty() && fileName.contains("image/card/") && !fileName.contains("image/generals/card")) {
+                pixmap = generateFallbackCardImage(name);
                 if (cache && !pixmap.isNull()) {
                     QPixmapCache::insert(cacheKey, pixmap);
                 }
@@ -1875,63 +1858,6 @@ QString IQSanComponentSkin::getCardDisplayName(const QString &cardObjectName)
 	return translated;
 }
 
-void IQSanComponentSkin::drawHorizontalText(QPainter &painter, const QRect &rect,
-	const QString &text, const QFont &font)
-{
-	if (text.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
-		return;
-
-	painter.save();
-
-	QFont actualFont = font;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-	QStringList availableFonts = QFontDatabase::families();
-#else
-	QFontDatabase fontDatabase;
-	QStringList availableFonts = fontDatabase.families();
-#endif
-
-	if (!availableFonts.contains(font.family())) {
-		QStringList fallbackFonts;
-		fallbackFonts << "SimHei" << "SimSun" << "Microsoft YaHei" << "Arial";
-
-		bool fontFound = false;
-		for (const QString &fallbackFont : fallbackFonts) {
-			if (availableFonts.contains(fallbackFont)) {
-				actualFont.setFamily(fallbackFont);
-				fontFound = true;
-				break;
-			}
-		}
-
-		if (!fontFound) {
-			actualFont = QFont();
-			actualFont.setPointSize(font.pointSize());
-			actualFont.setBold(font.bold());
-		}
-	}
-
-	painter.setFont(actualFont);
-
-	QFontMetrics fm(actualFont);
-	int textWidth = fm.horizontalAdvance(text);
-	if (textWidth > rect.width()) {
-		int newSize = actualFont.pointSize() * rect.width() / textWidth;
-		if (newSize < 8) newSize = 8;
-		actualFont.setPointSize(newSize);
-		painter.setFont(actualFont);
-		QFontMetrics newFm(actualFont);
-		textWidth = newFm.horizontalAdvance(text);
-	}
-
-	int x = rect.left() + (rect.width() - textWidth) / 2;
-	int y = rect.top() + rect.height() / 2 + fm.ascent() / 2;
-
-	painter.drawText(x, y, text);
-
-	painter.restore();
-}
-
 void IQSanComponentSkin::drawVerticalText(QPainter &painter, const QRect &rect,
 	const QString &text, const QFont &font)
 {
@@ -2015,20 +1941,6 @@ void IQSanComponentSkin::drawVerticalText(QPainter &painter, const QRect &rect,
 	painter.restore();
 }
 
-bool IQSanComponentSkin::isHorseEquipByName(const QString &equipName)
-{
-	if (equipName.isEmpty())
-		return false;
-
-	Card *card = Sanguosha->cloneCard(equipName, Card::SuitToBeDecided, 0);
-	if (card == nullptr)
-		return false;
-
-	bool isHorse = card->isKindOf("OffensiveHorse") || card->isKindOf("DefensiveHorse");
-	card->deleteLater();
-	return isHorse;
-}
-
 QPixmap IQSanComponentSkin::generateFallbackCardImage(const QString &cardName, const QSize &size)
 {
 	bool enabled = Config.value("FallbackImage/Enabled", true).toBool();
@@ -2094,80 +2006,6 @@ QPixmap IQSanComponentSkin::generateFallbackCardImage(const QString &cardName, c
 	QRect textRect(10, 10, actualSize.width() - 20, actualSize.height() - 20);
 	painter.setPen(textColor);
 	drawVerticalText(painter, textRect, displayName, font);
-
-	painter.end();
-
-	return pixmap;
-}
-
-QPixmap IQSanComponentSkin::generateFallbackEquipImage(const QString &equipName, const QSize &size)
-{
-	bool enabled = Config.value("FallbackImage/Enabled", true).toBool();
-	if (!enabled)
-		return QPixmap(1, 1);
-
-	if (equipName.isEmpty())
-		return QPixmap(1, 1);
-
-	QColor textColor = QColor(Config.value("FallbackImage/EquipTextColor", "#000000").toString());
-	QString fontFamily = Config.value("FallbackImage/FontFamily", "SimHei").toString();
-	int fontSize = Config.value("FallbackImage/EquipFontSize", 12).toInt();
-
-	int imageWidth = size.width() > 0 ? size.width() : 149;
-	int imageHeight = size.height() > 0 ? size.height() : 25;
-
-	if (fontSize < 8 || fontSize > 100)
-		fontSize = 12;
-
-	QSize actualSize(imageWidth, imageHeight);
-
-	QPixmap pixmap(actualSize);
-	if (pixmap.isNull())
-		return QPixmap(1, 1);
-
-	bool isHorseEquip = false;
-	if (size.height() <= 19) {
-		isHorseEquip = isHorseEquipByName(equipName);
-	}
-	QString backgroundImagePath;
-	if (isHorseEquip) {
-		backgroundImagePath = Config.value("FallbackImage/SmallEquipHorseBackgroundImage", "image/fullskin/small-equips/default.png").toString();
-	} else if (size.height() <= 19) {
-		backgroundImagePath = Config.value("FallbackImage/SmallEquipBackgroundImage", "image/fullskin/small-equips/default.png").toString();
-	} else {
-		backgroundImagePath = Config.value("FallbackImage/EquipBackgroundImage", "image/equips/default.png").toString();
-	}
-
-	if (!backgroundImagePath.isEmpty() && packageAssetExists(backgroundImagePath)) {
-		QPixmap bg(backgroundImagePath);
-		if (!bg.isNull()) {
-			pixmap = bg.scaled(actualSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-		} else {
-			pixmap.fill(Qt::white);
-		}
-	} else {
-		pixmap.fill(Qt::white);
-	}
-
-	QPainter painter(&pixmap);
-	if (!painter.isActive())
-		return QPixmap(1, 1);
-
-	painter.setRenderHint(QPainter::Antialiasing);
-	painter.setRenderHint(QPainter::TextAntialiasing);
-
-	QString displayName = getCardDisplayName(equipName);
-	if (displayName.isEmpty())
-		displayName = equipName;
-
-	QFont font;
-	font.setFamily(fontFamily);
-	font.setPointSize(fontSize);
-	font.setBold(true);
-
-	QRect textRect(2, 2, actualSize.width() - 4, actualSize.height() - 4);
-	painter.setPen(textColor);
-	drawHorizontalText(painter, textRect, displayName, font);
 
 	painter.end();
 
