@@ -268,6 +268,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	: main_window(main_window),m_tableBgPixmap(1,1),m_tableBgPixmapOrig(1,1),game_started(false),
 	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
 {
+	// Apply a skin chosen during the previous game before any room item reads it.
+	QSanSkinFactory::getInstance().switchSkin(Config.value("RoomSkin").toString());
 	setParent(main_window);
     auto *requestFocusShortcut = new QShortcut(QKeySequence(Qt::Key_F6), main_window);
     requestFocusShortcut->setContext(Qt::ApplicationShortcut);
@@ -690,8 +692,11 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(chat_widget,SIGNAL(chat_widget_msg(QString)),this,SLOT(appendChatEdit(QString)));
 	connect(chat_widget, SIGNAL(gift_mode_activated(QString)), this, SLOT(onGiftModeActivated(QString)));
 
-	m_emotionPanel = new EmotionPanel();
-	connect(m_emotionPanel, SIGNAL(emotionSelected(int)), this, SLOT(onEmotionIconSelected(int)));
+	// The emotion icons are artwork; without it the panel stays unset and its shortcut does nothing.
+	if (QSanSkinFactory::isArtworkInstalled()) {
+		m_emotionPanel = new EmotionPanel();
+		connect(m_emotionPanel, SIGNAL(emotionSelected(int)), this, SLOT(onEmotionIconSelected(int)));
+	}
 
 	if(ServerInfo.DisableChat)
 		chat_edit_widget->hide();
@@ -2532,7 +2537,7 @@ void RoomScene::chooseSuit(const QStringList&suits)
 
 	foreach (QString suit,suits){
 		QCommandLinkButton*button = new QCommandLinkButton;
-		button->setIcon(QIcon(QString("image/system/cardsuit/%1.png").arg(suit)));
+		button->setIcon(QIcon(G_ROOM_SKIN.getPixmapFromFileName(QString("image/system/cardsuit/%1.png").arg(suit))));
 		button->setText(Sanguosha->translate(suit));
 		button->setObjectName(suit);
 
@@ -2559,7 +2564,7 @@ void RoomScene::chooseKingdom(const QStringList&kingdoms)
 
 	foreach (QString kingdom,kingdoms){
 		QCommandLinkButton*button = new QCommandLinkButton;
-		QPixmap kingdom_pixmap(QString("image/kingdom/icon/%1.png").arg(kingdom));
+		QPixmap kingdom_pixmap = G_ROOM_SKIN.getPixmapFromFileName(QString("image/kingdom/icon/%1.png").arg(kingdom));
 
 		button->setIcon(QIcon(kingdom_pixmap));
 		button->setIconSize(kingdom_pixmap.size());
@@ -2872,7 +2877,7 @@ void RoomScene::chooseRole(const QString&scheme,const QStringList&roles)
 	foreach (QString role,roles){
 		QCommandLinkButton*button = new QCommandLinkButton(jargon[role]);
 		if(scheme=="AllRoles")
-			button->setIcon(QIcon(QString("image/system/roles/%1.png").arg(role)));
+			button->setIcon(QIcon(G_ROOM_SKIN.getPixmapFromFileName(QString("image/system/roles/%1.png").arg(role))));
 		layout->addWidget(button);
 		button->setObjectName(role);
 		connect(button,SIGNAL(clicked()),ClientInstance,SLOT(onPlayerChooseRole3v3()));
@@ -4972,11 +4977,11 @@ void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&pl
 		item = new QTableWidgetItem;
 
 		if(ServerInfo.EnableHegemony){
-			QIcon icon(QString("image/kingdom/icon/%1.png").arg(player->getKingdom()));
+			QIcon icon(G_ROOM_SKIN.getPixmapFromFileName(QString("image/kingdom/icon/%1.png").arg(player->getKingdom())));
 			item->setIcon(icon);
 			item->setText(Sanguosha->translate(player->getKingdom()));
 		} else {
-			QIcon icon(QString("image/system/roles/%1.png").arg(player->getRole()));
+			QIcon icon(G_ROOM_SKIN.getPixmapFromFileName(QString("image/system/roles/%1.png").arg(player->getRole())));
 			item->setIcon(icon);
 			QString role = player->getRole();
 			if(ServerInfo.GameMode.startsWith("06_")){
@@ -5492,7 +5497,7 @@ KOFOrderBox::KOFOrderBox(bool self,QGraphicsScene*scene)
 {
 	QString basename = self ? "self" : "enemy";
 	QString path = QString("image/system/1v1/%1.png").arg(basename);
-	setPixmap(QPixmap(path));
+	setPixmap(G_ROOM_SKIN.getPixmapFromFileName(path));
 	scene->addItem(this);
 
 	for (int i = 0;i < 3;i++){
@@ -5522,7 +5527,7 @@ void KOFOrderBox::killPlayer(const QString&general_name)
 {
 	for (int i = 0;i < revealed;i++){
 		if(avatars[i]->isEnabled()&&avatars[i]->objectName()==general_name){
-			QPixmap pixmap("image/system/death/unknown.png");
+			QPixmap pixmap = G_ROOM_SKIN.getPixmapFromFileName("image/system/death/unknown.png");
 			QGraphicsPixmapItem*death = new QGraphicsPixmapItem(pixmap,avatars[i]);
 			death->setScale(0.5);
 			death->moveBy(15,0);
@@ -5898,6 +5903,11 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 			word = word.arg(translatedArg);
 		}
 	}
+
+	// Image and frame lightboxes only show artwork; text lightboxes still play.
+	if ((word.startsWith("image=") || word.startsWith("anim=") || word.startsWith("lani="))
+		&& !QSanSkinFactory::isArtworkInstalled())
+		return;
 
 	// This hollow outline is only a clipping boundary; extend it beyond
 	// sceneRect so its default 1px pen cannot show at high DPI.
@@ -6394,6 +6404,11 @@ void RoomScene::doAnimation(int name,const QStringList&args)
 		anim_name[S_ANIMATE_EGG] = "egg";
 	}
 
+	// These animations only show artwork (gifts and the flying effect images).
+	static const QSet<int> artworkOnly = {S_ANIMATE_NULLIFICATION, S_ANIMATE_FIRE, S_ANIMATE_LIGHTNING,
+		S_ANIMATE_ICE, S_ANIMATE_FLOWER, S_ANIMATE_EGG};
+	if (artworkOnly.contains(name) && !QSanSkinFactory::isArtworkInstalled()) return;
+
 	AnimationFunc func = map.value((AnimateType)name,nullptr);
 	if(func) (this->*func)(anim_name.value((AnimateType)name,""),args);
 }
@@ -6614,8 +6629,8 @@ void RoomScene::doPindianAnimation()
 
 static void AddRoleIcon(QMap<QChar,QPixmap>&map,QChar abbreviation,const QString&role)
 {
-	QPixmap pixmap(QString("image/system/roles/small-%1.png").arg(role));
-	if (pixmap.isNull()) {
+	QPixmap pixmap;
+	if (!G_ROOM_SKIN.loadPixmap(pixmap, QString("image/system/roles/small-%1.png").arg(role))) {
 		qWarning("Role icon for '%s' is missing; abbreviation '%s' will be skipped.",
 			qPrintable(role), qPrintable(QString(abbreviation)));
 		return;

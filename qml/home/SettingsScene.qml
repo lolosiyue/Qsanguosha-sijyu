@@ -385,6 +385,20 @@ Item {
                                 }
                             }
                             SettingRow {
+                                SettingLabel { text: qsTranslate("ConfigDialog", "牌桌主题") }
+                                SettingChoice {
+                                    key: "RoomSkin"
+                                    accessibleLabel: qsTranslate("ConfigDialog", "牌桌主题")
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    ToolTip.text: qsTranslate("ConfigDialog", "文字主题不使用图片素材；对局中修改将在下一局生效。")
+                                    options: [
+                                        { "value": "fulldefault", "label": qsTranslate("ConfigDialog", "图片") },
+                                        { "value": "text", "label": qsTranslate("ConfigDialog", "文字") }
+                                    ]
+                                }
+                            }
+                            SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "界面缩放") }
                                 SettingSlider {
                                     key: "UIScale"

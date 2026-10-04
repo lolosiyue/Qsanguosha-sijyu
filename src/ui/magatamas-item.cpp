@@ -58,11 +58,17 @@ void MagatamasBoxItem::setIconSize(QSize size)
 
 QRectF MagatamasBoxItem::boundingRect() const
 {
-    int buckets = qMin(m_maxHp, 5) + G_COMMON_LAYOUT.m_hpExtraSpaceHolder;
+    int buckets = (_showsHpAsNumber() ? 5 : qMin(m_maxHp, 5)) + G_COMMON_LAYOUT.m_hpExtraSpaceHolder;
     if (m_orientation == Qt::Horizontal)
         return QRectF(0, 0, buckets * m_iconSize.width(), m_iconSize.height());
     else
         return QRectF(0, 0, m_iconSize.width(), buckets * m_iconSize.height());
+}
+
+// Past five icons, or when the skin asks for it, hp is one icon followed by "hp / max".
+bool MagatamasBoxItem::_showsHpAsNumber() const
+{
+    return m_maxHp > 5 || G_ROOM_SKIN.isHpShownAsNumber();
 }
 
 void MagatamasBoxItem::setHp(int hp)
@@ -137,7 +143,7 @@ void MagatamasBoxItem::_doHpChangeAnimation(int newHp)
         xStep = width;
         yStep = 0;
     }
-	int pos = m_maxHp > 5 ? 1 : (m_maxHp - 1 - newHp);
+	int pos = _showsHpAsNumber() ? 1 : (m_maxHp - 1 - newHp);
     for (int i = qMax(newHp, mHp - 10); i < mHp; i++) {
         Sprite *aniMaga = new Sprite;
         aniMaga->setPixmap(_icons[qBound(1, i, 5)]);
@@ -192,7 +198,7 @@ void MagatamasBoxItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *
             painter->restore();
     }
 
-    if (m_maxHp <= 5) {
+    if (!_showsHpAsNumber()) {
         int i;
         for (i = 0; i < qMin(m_maxHp-m_hp, m_maxHp); i++) {
             QRect rect(xStep * i, yStep * i, m_imageArea.width(), m_imageArea.height());

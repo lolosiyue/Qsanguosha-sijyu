@@ -1,6 +1,7 @@
 #include "chatwidget.h"
 #include "engine.h"
 #include "engine-chat-catalog.h"
+#include "skin-bank.h"
 
 MyPixmapItem::MyPixmapItem(const QPixmap &pixmap, QGraphicsItem *parentItem)
     : QGraphicsPixmapItem(pixmap, parentItem)
@@ -122,7 +123,7 @@ void MyPixmapItem::initEasyTextPos()
 }
 
 ChatWidget::ChatWidget()
-    : base_pixmap("image/system/chatface/base.png")
+    : base_pixmap(G_ROOM_SKIN.getPixmapFromFileName("image/system/chatface/base.png"))
 {
     setFlags(ItemIsFocusable);
     setAcceptHoverEvents(true);
@@ -136,15 +137,24 @@ ChatWidget::ChatWidget()
     easytextButton = addButton("easytextBt", 48 + 1);
     flowerButton = addButton("flowerBt", 72 + 2);
     eggButton = addButton("eggBt", 96 + 3);
+    // Faces, preset phrases and gifts are drawn from artwork; only sending text works without it.
+    if (!QSanSkinFactory::isArtworkInstalled()) {
+        chatfaceButton->hide();
+        easytextButton->hide();
+        flowerButton->hide();
+        eggButton->hide();
+        // The hidden buttons used to cover the base outline.
+        base->setPen(Qt::NoPen);
+    }
 
-    chat_face_board = new MyPixmapItem(QPixmap("image/system/chatface/faceboard.png"), this);
+    chat_face_board = new MyPixmapItem(G_ROOM_SKIN.getPixmapFromFileName("image/system/chatface/faceboard.png"), this);
     chat_face_board->setSize(160, 180);
     chat_face_board->setPos(-160 + 74, -180 - 1);
     chat_face_board->setZValue(10000);
     chat_face_board->setVisible(false);
     chat_face_board->itemName = "faceboard";
 
-    easy_text_board = new MyPixmapItem(QPixmap("image/system/chatface/easytextboard.png"), this);
+    easy_text_board = new MyPixmapItem(G_ROOM_SKIN.getPixmapFromFileName("image/system/chatface/easytextboard.png"), this);
     easy_text_board->setSize(180, 222);
     easy_text_board->setPos(-106, -223);
     easy_text_board->setZValue(10000);
@@ -267,8 +277,8 @@ QPushButton *ChatWidget::createButton(const QString &name)
     QPushButton *button = new QPushButton;
     button->setEnabled(true);
 
-    QPixmap iconOn(QString("image/system/chatface/%1On.png").arg(name));
-    QPixmap iconOff(QString("image/system/chatface/%1.png").arg(name));
+    QPixmap iconOn = G_ROOM_SKIN.getPixmapFromFileName(QString("image/system/chatface/%1On.png").arg(name));
+    QPixmap iconOff = G_ROOM_SKIN.getPixmapFromFileName(QString("image/system/chatface/%1.png").arg(name));
 
     QIcon icon;
     icon.addPixmap(iconOff, QIcon::Normal, QIcon::Off);

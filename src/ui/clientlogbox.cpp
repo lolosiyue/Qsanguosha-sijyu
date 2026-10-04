@@ -18,6 +18,15 @@ ClientLogBox::ClientLogBox(QWidget *parent)
     }
 }
 
+// Log lines reference suit icons by path; a generated skin draws them instead.
+QVariant ClientLogBox::loadResource(int type, const QUrl &name)
+{
+    QPixmap pixmap;
+    if (type == QTextDocument::ImageResource && G_ROOM_SKIN.loadPixmap(pixmap, name.toString()))
+        return pixmap;
+    return QTextEdit::loadResource(type, name);
+}
+
 void ClientLogBox::appendLog(const QString &type, const QString &from_general, const QStringList &tos,
     QString card_str, QString arg, QString arg2, QString arg3, QString arg4, QString arg5)
 {

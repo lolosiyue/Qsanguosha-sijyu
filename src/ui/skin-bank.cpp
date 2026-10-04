@@ -12,6 +12,7 @@
 #include <QPixmapCache>
 #include "runtime-paths.h"
 #include "package-catalog.h"
+#include "procedural-skin.h"
 #include <QScreen>
 
 using namespace JsonUtils;
@@ -416,6 +417,11 @@ QPixmap QSanRoomSkin::getProgressBarPixmap(int percentile) const
 	return QPixmap(1, 1);
 }
 
+bool QSanRoomSkin::isHpShownAsNumber() const
+{
+	return _m_imageConfig.value("hpAsNumber").toBool();
+}
+
 QPixmap QSanRoomSkin::getCardMainPixmap(const QString &cardName, bool cache) const
 {
 	if (cardName == "unknown") return getPixmap("handCardBack", "", true);
@@ -486,7 +492,9 @@ QPixmap QSanRoomSkin::getGeneralPixmapForPhoto(const QString &generalName, Gener
 		pixmap = getPixmap(QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size), name);
 	
 	// For dual generals, check whether a fulldual image overrides the base image.
-	if (isDualGeneral && !pixmap.isNull()) {
+	// A generated avatar skin must not mix in artwork.
+	const QString defaultKey = QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size).arg(S_SKIN_KEY_DEFAULT);
+	if (isDualGeneral && !pixmap.isNull() && !ProceduralSkin::isUri(_m_imageConfig.value(defaultKey).toString())) {
 		QString gn = name;
 		QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
 		QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
@@ -924,7 +932,7 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 		QString groupKey = key.arg(S_SKIN_KEY_DEFAULT);
 		QString fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
 		fileName = fileNameToResolve.arg(arg);
-		if (!packageAssetExists(fileName)) {
+		if (!ProceduralSkin::isUri(fileName) && !packageAssetExists(fileName)) {
 			bool isGeneralCard = Sanguosha->getGeneral(arg) != nullptr;
 			if (isGeneralCard) {
 				groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
@@ -940,6 +948,10 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 			}
 		}
 	}
+
+	// Generated art has no file, so none of the file fallbacks below apply.
+	if (ProceduralSkin::isUri(fileName))
+		return getPixmapFromFileName(fileName, cache);
 
 	// Image parameter fallback: use setImage general's picture when file doesn't exist
 	if (!packageAssetExists(fileName) && !arg.isEmpty()) {
@@ -1062,8 +1074,44 @@ QString IQSanComponentSkin::pixmapFileCacheKey(const QString &sourceFileName) co
         .arg(root.size()).arg(root).arg(sourceFileName);
 }
 
+QString IQSanComponentSkin::_generatedFileUri(const QString &fileName) const
+{
+    const JsonObject files = _m_imageConfig.value("generatedFiles").toMap();
+    if (files.isEmpty() || ProceduralSkin::isUri(fileName))
+        return QString();
+    const QString exact = files.value(fileName).toString();
+    if (!exact.isEmpty())
+        return exact;
+    for (auto it = files.constBegin(); it != files.constEnd(); ++it) {
+        // A '*' wildcard would put "/*" in the key, which the JSON comment stripper treats as a comment.
+        const int slot = it.key().indexOf(QLatin1String("%1"));
+        if (slot < 0)
+            continue;
+        const QString prefix = it.key().left(slot), suffix = it.key().mid(slot + 2);
+        if (fileName.size() > prefix.size() + suffix.size() && fileName.startsWith(prefix) && fileName.endsWith(suffix))
+            return it.value().toString().replace(QLatin1String("%1"), fileName.mid(prefix.size(), fileName.size() - prefix.size() - suffix.size()));
+    }
+    return QString();
+}
+
+bool IQSanComponentSkin::generatesFile(const QString &fileName) const
+{
+    return !_generatedFileUri(fileName).isEmpty();
+}
+
+bool IQSanComponentSkin::loadPixmap(QPixmap &pixmap, const QString &fileName) const
+{
+    const QString generated = _generatedFileUri(fileName);
+    if (generated.isEmpty())
+        return pixmap.load(fileName);
+    pixmap = getPixmapFromFileName(generated);
+    return true;
+}
+
 QString IQSanComponentSkin::plainPixmapFile(const QString &sourceFileName) const
 {
+    if (!_generatedFileUri(sourceFileName).isEmpty())
+        return QString();
     const QString fileName = QSanRuntimePaths::assetPath(sourceFileName);
     if (fileName.isEmpty() || !packageAssetExists(fileName))
         return QString();
@@ -1078,10 +1126,21 @@ QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &sourceFileName,
 {
     if (sourceFileName == "deprecated" || sourceFileName.isEmpty())
         return QPixmap(1, 1);
+    const QString generated = _generatedFileUri(sourceFileName);
+    if (!generated.isEmpty())
+        return getPixmapFromFileName(generated, cache);
     // Consult the bounded Qt cache before touching the filesystem. Catalog and
     // skin replacement fence old results; misses still use the validated resolver.
     const QString cacheKey = pixmapFileCacheKey(sourceFileName);
     QPixmap cachedPixmap;
+    if (ProceduralSkin::isUri(sourceFileName)) {
+        // Drawing text is slower than a cache hit, so generated art is always cached.
+        if (!QPixmapCache::find(cacheKey, &cachedPixmap)) {
+            cachedPixmap = ProceduralSkin::render(sourceFileName, _m_imageConfig.value("generatedButtons").toMap());
+            QPixmapCache::insert(cacheKey, cachedPixmap);
+        }
+        return cachedPixmap;
+    }
     if (cache && QPixmapCache::find(cacheKey, &cachedPixmap))
         return cachedPixmap;
     const QString fileName = QSanRuntimePaths::assetPath(sourceFileName);
@@ -1726,11 +1785,25 @@ const QSanSkinScheme &QSanSkinFactory::getCurrentSkinScheme()
 	return this->_sm_currentSkin;
 }
 
+bool QSanSkinFactory::isArtworkInstalled()
+{
+	// The artwork ships as one image/ tree, so one known file tells whether it is there.
+	static const bool installed = packageAssetExists("image/system/card-back.png");
+	return installed;
+}
+
 bool QSanSkinFactory::switchSkin(QString skinName)
 {
+	// A saved choice may name a skin this platform's list lacks.
+	if (!_m_skinList.contains(skinName)) skinName = S_DEFAULT_SKIN_NAME;
+	// A build without the artwork would draw blank cards; the text skin needs no files.
+	if (skinName == S_DEFAULT_SKIN_NAME && _m_skinList.contains(S_TEXT_SKIN_NAME) && !isArtworkInstalled())
+		skinName = S_TEXT_SKIN_NAME;
 	if (skinName == _m_skinName) return false;
 	bool success = false;
 	if (_m_skinName != S_DEFAULT_SKIN_NAME) {
+		// Image configs merge into the loaded one, so drop the old skin's extra keys first.
+		_sm_currentSkin = QSanSkinScheme();
 		success = _sm_currentSkin.load(_m_skinList[S_DEFAULT_SKIN_NAME.toLatin1().constData()]);
 		if (!success) qWarning("Cannot load default skin!");
 	}
@@ -1744,11 +1817,12 @@ QSanSkinFactory::QSanSkinFactory(const char *fileName)
 {
 	S_DEFAULT_SKIN_NAME = "fulldefault";
 	S_COMPACT_SKIN_NAME = "fullcompact";
+	S_TEXT_SKIN_NAME = "text";
 
 	JsonDocument doc = JsonDocument::fromFilePath(fileName);
 	_m_skinList = doc.object();
 	_m_skinName = "";
-	switchSkin(S_DEFAULT_SKIN_NAME);
+	switchSkin(Config.value("RoomSkin", S_DEFAULT_SKIN_NAME).toString());
 }
 
 const QString &QSanSkinFactory::getCurrentSkinName() const

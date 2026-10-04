@@ -86,6 +86,10 @@ public:
     QPixmap getPixmap(const QString &key, const QString &arg = "", bool cache = false) const;
     QPixmap getPixmapFileName(const QString &key) const;
     QPixmap getPixmapFromFileName(const QString &fileName, bool cache = false) const;
+    // Loads fileName, or the art this skin generates in its place; false if neither exists.
+    bool loadPixmap(QPixmap &pixmap, const QString &fileName) const;
+    // True when this skin draws fileName itself instead of reading it.
+    bool generatesFile(const QString &fileName) const;
     // Cache key used by getPixmapFromFileName(fileName, true), and the file it reads.
     // Return an empty filename for @2x assets or missing files so the caller can use getPixmapFromFileName().
     QString pixmapFileCacheKey(const QString &fileName) const;
@@ -113,6 +117,8 @@ protected:
     QString _readImageConfig(const QString &key, QRect &clipRegion, bool &clipping,
         QSize &newScale, bool &scaled,
         const QString &defaultValue = "") const;
+    // The "generatedFiles" entry maps file paths (one %1 slot allowed) to generated art.
+    QString _generatedFileUri(const QString &fileName) const;
 
     JsonObject _m_imageConfig;
     JsonObject _m_audioConfig;
@@ -385,6 +391,7 @@ public:
     QString getPlayerAudioEffectPathWithGeneral(const QString &eventName, const QString &category, int index,
                                                  const QString &generalName, int skinIndex) const;
     QPixmap getProgressBarPixmap(int percentile) const;
+    bool isHpShownAsNumber() const;
 
     // Animations
     QAbstractAnimation *createHuaShenAnimation(QPixmap &huashenAvatar, QPoint topLeft, QGraphicsItem *parent,
@@ -483,9 +490,12 @@ public:
     const QString &getCurrentSkinName() const;
     const QSanSkinScheme &getCurrentSkinScheme();
     bool switchSkin(QString skinName);
+    // False when the image/ artwork is not installed; features that only show artwork turn off.
+    static bool isArtworkInstalled();
 
     QString S_DEFAULT_SKIN_NAME;
     QString S_COMPACT_SKIN_NAME;
+    QString S_TEXT_SKIN_NAME;
 
 protected:
     QSanSkinFactory(const char *fileName);

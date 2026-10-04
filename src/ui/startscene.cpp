@@ -16,6 +16,7 @@
 #include <QImageReader>
 #include <QLinearGradient>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPointer>
 #include <QScopedValueRollback>
 #include <QScreen>
@@ -336,6 +337,22 @@ QPixmap loadScreenSized(const QString &path, bool cover)
     return QPixmap::fromImage(reader.read());
 }
 
+// Builds without the logo artwork show the game title, drawn large so downscaling stays sharp.
+QPixmap titleLogo()
+{
+    QPainterPath path;
+    path.addText(0, 0, homeFont(96, true), QCoreApplication::translate("MainWindow", "Sanguosha"));
+    const QRectF bounds = path.boundingRect().adjusted(-6, -6, 6, 6);
+    QPixmap pixmap(bounds.size().toSize());
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.translate(-bounds.topLeft());
+    painter.strokePath(path, QPen(homePalette().primaryBottom, 8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.fillPath(path, Qt::white);
+    return pixmap;
+}
+
 } // namespace
 
 StartScene::StartScene()
@@ -346,7 +363,8 @@ StartScene::StartScene()
 
     portrait_source = loadScreenSized(QStringLiteral("image/home/character.png"), false);
     backdrop_source = loadScreenSized(Config.BackgroundImage, true);
-    logo_source.load(QStringLiteral("image/logo/logo.png"));
+    if (!logo_source.load(QStringLiteral("image/logo/logo.png")))
+        logo_source = titleLogo();
 
     portrait = addPixmap(QPixmap());
     portrait->setTransformationMode(Qt::SmoothTransformation);

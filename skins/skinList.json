@@ -5,5 +5,12 @@
 "roomImageConfigFile": "skins/fulldefaultSkin.image.json",
 "roomAudioConfigFile": "skins/defaultSkin.audio.json",
 "roomAnimationConfigFile": "skins/defaultSkin.animation.json"
+},
+"text":
+{
+"roomLayoutConfigFile": "skins/fulldefaultSkin.layout.json",
+"roomImageConfigFile": "skins/fulltextSkin.image.json",
+"roomAudioConfigFile": "skins/defaultSkin.audio.json",
+"roomAnimationConfigFile": "skins/defaultSkin.animation.json"
 }
 }

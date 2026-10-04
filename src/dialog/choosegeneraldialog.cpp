@@ -19,7 +19,7 @@ using namespace QSanProtocol;
 OptionButton::OptionButton(QString icon_path, const QString &caption, QWidget *parent)
     : QToolButton(parent)
 {
-    QPixmap pixmap(icon_path);
+    QPixmap pixmap = G_ROOM_SKIN.getPixmapFromFileName(icon_path);
     QIcon icon(pixmap);
 
     setIcon(icon);

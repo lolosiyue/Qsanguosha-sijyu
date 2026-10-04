@@ -336,7 +336,7 @@ private:
     ChatWidget *chat_widget;
     RoomInputRouter *m_inputRouter = nullptr;
     RoomChatController *m_chatController = nullptr;
-    EmotionPanel *m_emotionPanel;
+    EmotionPanel *m_emotionPanel = nullptr;
     QPixmap m_rolesBoxBackgroundOrig;
     QPixmap m_rolesBoxBackground;
     QGraphicsPixmapItem *m_rolesBox;

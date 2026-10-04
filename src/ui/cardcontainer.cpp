@@ -13,7 +13,7 @@ static int pileContainerTitleWidth(const QString &pileName)
 }
 
 CardContainer::CardContainer()
-    : _m_background("image/system/card-container.png")
+    : _m_background(G_ROOM_SKIN.getPixmapFromFileName("image/system/card-container.png"))
 {
     setTransform(QTransform::fromTranslate(-_m_background.width() / 2, -_m_background.height() / 2), true);
     _m_boundingRect = QRectF(QPoint(0, 0), _m_background.size());

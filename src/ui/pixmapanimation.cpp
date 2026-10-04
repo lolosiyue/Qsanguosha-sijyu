@@ -168,6 +168,9 @@ PixmapAnimation *PixmapAnimation::GetPixmapAnimation(QGraphicsItem *parent, cons
     // The code below reads parent->boundingRect() to center; with no parent there is nothing to do.
     if (parent == nullptr)
         return nullptr;
+    // Every frame is artwork; skip the frame probes when none is installed.
+    if (!QSanSkinFactory::isArtworkInstalled())
+        return nullptr;
 
     PixmapAnimation *pma = new PixmapAnimation();
     pma->setPath(QString("image/system/emotion/%1/").arg(emotion));

@@ -1,4 +1,5 @@
 #include "homecardmodel.h"
+#include "skin-image-provider.h"
 
 #include "card-overview-data.h"
 #include "card.h"
@@ -121,8 +122,12 @@ QString kindLabel(const QString &key)
 QUrl existingImage(const QString &relativePath, const QString &fallback)
 {
     QString path = QDir::current().absoluteFilePath(relativePath);
-    if (!QFile::exists(path))
+    if (!QFile::exists(path)) {
+        const QUrl generated = SkinImageProvider::generatedUrl(relativePath);
+        if (!generated.isEmpty())
+            return generated;
         path = QDir::current().absoluteFilePath(fallback);
+    }
     return QUrl::fromLocalFile(path);
 }
 

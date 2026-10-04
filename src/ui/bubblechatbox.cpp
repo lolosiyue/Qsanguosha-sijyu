@@ -1,5 +1,6 @@
 #include "bubblechatbox.h"
 #include "settings.h"
+#include "skin-bank.h"
 #include "effects/effects-policy.h"
 
 static const int PixelsPerLine = 168;
@@ -12,7 +13,7 @@ static const int BoxFrameHeight = 28;
 static const int AnimationDuration = 500;
 
 BubbleChatBox::BubbleChatBox(const QRect &area, QGraphicsItem *parent)
-    : QGraphicsObject(parent), backgroundPixmap("image/system/bubble.png"),
+    : QGraphicsObject(parent), backgroundPixmap(G_ROOM_SKIN.getPixmapFromFileName("image/system/bubble.png")),
     rect(backgroundPixmap.rect()), area(area), chatLabel(new BubbleChatLabel(this)),
     appearAndDisappear(new QPropertyAnimation(this, "opacity", this))
 {

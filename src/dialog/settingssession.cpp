@@ -5,6 +5,7 @@
 #include "mainwindow.h"
 #include "engine.h"
 #include "clientstruct.h"
+#include "skin-bank.h"
 #include "effects/effects-policy.h"
 #include "effects/effects-profile.h"
 #ifdef AUDIO_SUPPORT
@@ -83,6 +84,7 @@ void SettingsSession::load()
     v.insert(kResponsiveLayout, Config.responsiveUiEnabled());
     v.insert(kOneHandedness, Config.oneHandedness());
     v.insert(QStringLiteral("UIScale"), double(Config.UIScale));
+    v.insert(QStringLiteral("RoomSkin"), Config.value("RoomSkin", QSanSkinFactory::getInstance().S_DEFAULT_SKIN_NAME).toString());
     v.insert(QStringLiteral("BackgroundImage"), Config.BackgroundImage);
     v.insert(kPortraitBackground, Config.value(kPortraitBackground, kDefaultPortrait).toString());
     v.insert(QStringLiteral("VisualMode"), Config.VisualMode);
@@ -274,6 +276,10 @@ void SettingsSession::commit()
     Config.setValue("UIScale", Config.UIScale);
     Config.ColorScheme = m_values.value(QStringLiteral("ColorScheme")).toInt();
     Config.setValue("ColorScheme", Config.ColorScheme);
+    Config.setValue("RoomSkin", m_values.value(QStringLiteral("RoomSkin")).toString());
+    // Room widgets keep the pixmaps they were built with, so a running game switches at its next room.
+    if (!RoomSceneInstance)
+        QSanSkinFactory::getInstance().switchSkin(Config.value("RoomSkin").toString());
     Config.VisualMode = m_values.value(QStringLiteral("VisualMode")).toString();
     Config.setValue("VisualMode", Config.VisualMode);
     // Combine grayscale/high-contrast with the current theme.

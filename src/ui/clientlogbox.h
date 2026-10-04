@@ -13,6 +13,9 @@ public:
         const QString card_str = "", const QString arg = "", const QString arg2 = "",
         const QString arg3 = "", const QString arg4 = "", const QString arg5 = "");
 
+protected:
+    QVariant loadResource(int type, const QUrl &name) override;
+
 private:
     QString bold(const QString &str, QColor color) const;
 
