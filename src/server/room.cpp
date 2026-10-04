@@ -1,3 +1,4 @@
+#include "external-agent.h"
 #include "room.h"
 #include "game-rng.h"
 #include "protocol/resolution-state-message.h"
@@ -1021,6 +1022,7 @@ void Room::requestStopGameThreads()
 	foreach (ServerPlayer *player, getPlayers())
 		player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 	m_requests->unblockWaits();
+	for (const auto &endpoint : m_externalAgents) endpoint->cancel();
 
 	foreach (QThread *worker, workers) {
 		if (!worker || worker == QThread::currentThread())
@@ -1028,6 +1030,35 @@ void Room::requestStopGameThreads()
 		worker->requestInterruption();
 		worker->quit();
 	}
+}
+
+std::shared_ptr<ExternalAgentEndpoint> Room::attachExternalAgent(
+    ServerPlayer *player, ExternalAgentEndpoint::DisconnectPolicy policy)
+{
+    if (!player || player->getRoom() != this || isRunning() || getThread()
+        || player->getState() != "robot" || m_externalAgents.contains(player->objectName())
+        || Config.EnableHegemony || mode == "02_1v1" || mode == "06_3v3" || mode == "06_XMode")
+        return {};
+    if (!getPlayers().contains(player)) return {};
+    if (player->objectName().isEmpty()) player->setObjectName(generatePlayerName());
+    auto endpoint = std::make_shared<ExternalAgentEndpoint>(player->objectName(), policy);
+    m_externalAgents.insert(player->objectName(), endpoint);
+    return endpoint;
+}
+
+std::shared_ptr<ExternalAgentEndpoint> Room::externalAgent(const QString &seat) const
+{
+    return m_externalAgents.value(seat);
+}
+
+void Room::setNoClock(bool enabled)
+{
+    if (!isRunning() && !getThread()) m_noClock = enabled;
+}
+
+bool Room::noClock() const
+{
+    return m_noClock || Config.OperationNoLimit;
 }
 
 bool Room::allGameThreadsStopped() const
@@ -1053,6 +1084,7 @@ void Room::abortWaitingRequests()
 	foreach (ServerPlayer *player, getPlayers())
 		player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 	m_requests->unblockWaits();
+	for (const auto &endpoint : m_externalAgents) endpoint->cancel();
 }
 
 void Room::setApplicationBackgrounded(bool backgrounded)
@@ -2057,6 +2089,13 @@ bool Room::notifyMoveFocus(ServerPlayer*player, CommandType command)
 
 bool Room::notifyMoveFocus(const QList<ServerPlayer*>&players, CommandType command, Countdown countdown)
 {
+    bool externalFocus = false;
+    for (const auto *player : players)
+        externalFocus = externalFocus || bool(externalAgent(player->objectName()));
+    if (noClock() || externalFocus) {
+        countdown.type = Countdown::S_COUNTDOWN_NO_LIMIT;
+        countdown.current = countdown.max = 0;
+    }
 	JsonArray arg, arg1;
 	foreach(ServerPlayer*p, players){
 		if (p->hasFlag("ignoreFocus"))
@@ -3180,7 +3219,13 @@ bool Room::changeBGM(const QString&bgm_name, bool reset, QList<ServerPlayer*> to
 
 void Room::run()
 {
-	m_gameSession->run();
+    try {
+        m_gameSession->run();
+    } catch (TriggerEvent event) {
+        // External cancellation can unwind a general-selection prompt before
+        // RoomThread starts. Never let that cooperative stop escape QThread::run.
+        if (event != GameFinished) throw;
+    }
 }
 
 void Room::assignRoles()
@@ -7130,7 +7175,10 @@ int Room::doGongxin(ServerPlayer*shenlvmeng, ServerPlayer*target, QList<int> ena
 	shenlvmeng->setTag(skill_name, QVariant::fromValue(target));
 	AI*ai = shenlvmeng->getAI();
 	if (ai){
-		card_id = ai->askForAG(enabled_ids, true, skill_name);
+        if (externalAgent(shenlvmeng->objectName()))
+            decideAiAmazingGrace(shenlvmeng, enabled_ids, true, skill_name, card_id);
+        else
+            card_id = ai->askForAG(enabled_ids, true, skill_name);
 	} else {/*
 		foreach(int cardId, hand){
 			WrappedCard*card = Sanguosha->getWrappedCard(cardId);
