@@ -15,6 +15,9 @@
 #include "runtime-paths.h"
 #include "settings.h"
 #include "engine.h"
+#include "client.h"
+#include "clientplayer.h"
+#include "oracle_helper.h"
 
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
@@ -139,6 +142,11 @@ public:
         p->drawText(QRectF(0, 108, MiniWidth, 18), Qt::AlignCenter, caption);
         if (!alive) { p->setPen(QPen(Qt::lightGray, 2)); p->drawLine(8, 8, 24, 24); p->drawLine(24, 8, 8, 24); }
     }
+    void setTipBase(const QString &tip) {
+        tipBase = tip;
+        if (isUnderMouse()) refreshToolTip();
+        else if (toolTip() != tip) setToolTip(tip);
+    }
     std::function<void(const QString &, bool, bool)> clicked;
     std::function<void(const QString &)> hovered;
     std::function<void()> unhovered;
@@ -147,7 +155,7 @@ public:
     QString name;
     TargetBadge *badge;
 protected:
-    void hoverEnterEvent(QGraphicsSceneHoverEvent *) override { if (hovered) hovered(name); }
+    void hoverEnterEvent(QGraphicsSceneHoverEvent *) override { refreshToolTip(); if (hovered) hovered(name); }
     void hoverLeaveEvent(QGraphicsSceneHoverEvent *) override { if (unhovered) unhovered(); }
     void mousePressEvent(QGraphicsSceneMouseEvent *e) override {
         parentItem()->setFocus(Qt::MouseFocusReason);
@@ -164,7 +172,17 @@ protected:
     }
     void wheelEvent(QGraphicsSceneWheelEvent *e) override { if (wheeled) wheeled(e->delta() > 0 ? -1 : 1); e->accept(); }
 private:
-    QString mark;
+    // Match the native Photo tooltip; built on hover so 50 seats skip it on every refresh.
+    void refreshToolTip() {
+        const ClientPlayer *player = ClientInstance ? ClientInstance->getPlayer(name) : nullptr;
+        const General *general = player ? player->getGeneral() : nullptr;
+        const QString skills = player ? buildOracleTooltip(general ? general->getOracleText() : QString(),
+            player->getSkillDescription(Self)) : QString();
+        const QString tip = skills.isEmpty() ? tipBase
+            : tipBase.toHtmlEscaped().replace(QLatin1Char('\n'), QLatin1String("<br/>")) + QLatin1String("<br/><br/>") + skills;
+        if (toolTip() != tip) setToolTip(tip);
+    }
+    QString mark, tipBase;
     Photo *photo;
     bool alive = true, self = false, moved = false, responseFrame = false;
     QPointF start, last;
@@ -453,7 +471,7 @@ struct LargeRoomOverview::Data
             entry.selected ? qMax(1, entry.selectedVotes) : 0);
         mini->badge->setCursor(id == cursor);
         const QString tip = p->label + (entry.reason.isEmpty() ? QString() : QLatin1Char('\n') + entry.reason);
-        if (mini->toolTip() != tip) mini->setToolTip(tip);
+        mini->setTipBase(tip);
     }
     void refreshRows(bool forceAll = true, const QSet<QString> &changed = {}) {
         const bool bindAll = forceAll || (sortMode != 0 && !changed.isEmpty());
