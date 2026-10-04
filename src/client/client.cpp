@@ -34,6 +34,7 @@
 #include <QSet>
 #include <QJsonDocument>
 #include <QDebug>
+#include <QElapsedTimer>
 #include <QDateTime>
 #include <QFile>
 #include <QTextStream>
@@ -2051,6 +2052,24 @@ QString Client::getReplayPath() const
 	return "";
 }
 
+QList<QSanProtocol::ProtocolMessage> Client::getAnalysisMessages() const
+{
+	if (replayer) {
+		QList<QSanProtocol::ProtocolMessage> messages;
+		const auto &events = replayer->events();
+		messages.reserve(events.size());
+		for (const QSanReplay::ReplayEvent &event : events)
+			messages.append(event.message);
+		return messages;
+	}
+	return {};
+}
+
+const RecAnalysis *Client::getRecordedAnalysis() const
+{
+	return recorder ? recorder->getAnalysis() : nullptr;
+}
+
 QTextDocument *Client::getLinesDoc() const
 {
 	return lines_doc;
@@ -2237,6 +2256,9 @@ void Client::askForExchange(const QVariant &exchange)
 
 void Client::gameOver(const QVariant &arg)
 {
+	const bool traceResult = qEnvironmentVariableIntValue("QSAN_WINNER_DIALOG_TRACE") != 0;
+	QElapsedTimer resultTimer;
+	if (traceResult) resultTimer.start();
 	disconnectFromHost();
 	m_isGameOver = true;
 	setStatus(Client::NotActive);
@@ -2263,6 +2285,8 @@ void Client::gameOver(const QVariant &arg)
 	}
 
 	Sanguosha->unregisterRoom();
+	if (traceResult)
+		qInfo().noquote() << "WINNER_CLIENT_PREPARE_MS" << resultTimer.elapsed();
 	if (args.value(QStringLiteral("standoff")).toBool()) {
 		emit standoff();
 	}else

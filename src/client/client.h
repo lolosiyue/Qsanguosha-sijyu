@@ -19,6 +19,7 @@
 #include <QRegularExpression>
 
 class Recorder;
+class RecAnalysis;
 class Replayer;
 class DesktopInteractionView;
 class QTextDocument;
@@ -111,6 +112,8 @@ public:
     ClientPlayer *getLastPlayer(ClientPlayer *player) const;
     bool save(const QString &filename) const;
     QList<QByteArray> getRecords() const;
+    QList<QSanProtocol::ProtocolMessage> getAnalysisMessages() const;
+    const RecAnalysis *getRecordedAnalysis() const;
     QString getReplayPath() const;
     Replayer *getReplayer() const;
     QString getPlayerName(const QString &str);

@@ -5,6 +5,8 @@
 //#include "engine.h"
 //#include "serverplayer.h"
 
+#include "protocol/protocol-message.h"
+
 struct PlayerRecordStruct;
 class Player;
 
@@ -14,6 +16,7 @@ class RecAnalysis : public QObject
 
 public:
     explicit RecAnalysis(QString dir = "");
+    explicit RecAnalysis(QObject *parent);
     ~RecAnalysis();
 
     static const unsigned int M_ALL_PLAYER = 0xFFFF;
@@ -35,6 +38,7 @@ public:
     };
 
     void initialize(QString dir = "");
+    void recordMessage(const QSanProtocol::ProtocolMessage &message);
     PlayerRecordStruct *getPlayerRecord(const Player *player) const;
     QMap<QString, PlayerRecordStruct *> getRecordMap() const;
     QStringList getRecordPackages() const;
@@ -55,6 +59,8 @@ public:
     void initialDesignation();
 
 private:
+    void copyStatistics(const RecAnalysis &source);
+    void finishStatistics();
     PlayerRecordStruct *getPlayer(QString object_name, const QString &addition_name = "");
     unsigned int findPlayerOfDamage(int n) const;
     unsigned int findPlayerOfDamaged(int n) const;
@@ -72,6 +78,8 @@ private:
     QString m_recordChat;
     int m_recordPlayers;
     PlayerRecordStruct *m_currentPlayer;
+    QStringList m_roleOrder;
+    QSanProtocol::ProtocolMessage m_lastMessage;
 
     mutable QStringList m_tempSatisfiedObject;
 };

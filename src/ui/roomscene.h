@@ -394,6 +394,8 @@ private:
     QString _translateMovement(const CardsMoveStruct &move);
 
     void useCard(const Card *card);
+    QDialog *prepareResultDialog();
+    QPointer<QDialog> m_resultDialog;
     void fillTable(QTableWidget *table, const QList<const ClientPlayer *> &players);
     void fillTable(QTableWidget *table, const QList<const ClientPlayer *> &players,
         const QMap<QString, PlayerRecordStruct *> &record_map);
