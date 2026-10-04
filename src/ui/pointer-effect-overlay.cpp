@@ -18,7 +18,6 @@
 #include <QPainterPath>
 #include <QPen>
 #include <QPixmap>
-#include <QPolygon>
 #include <QQuickWindow>
 #include <QWheelEvent>
 #include <QtMath>
@@ -138,27 +137,35 @@ QImage makeTriangleMask()
 
 QImage makeCursorArrow()
 {
-    const int size = 32;
+    // Silhouette traced from PCIcon_MousePoint.png, so builds without image/ keep the same cursor;
+    // styleCursorImage() colors it from alpha alone.
+    const int size = 64;
     QImage image(size, size, QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing, true);
-    QPolygon arrow;
-    arrow << QPoint(3, 3) << QPoint(3, 27) << QPoint(9, 21)
-          << QPoint(14, 29) << QPoint(18, 27) << QPoint(12, 18) << QPoint(21, 18);
-    QLinearGradient fill(3, 3, 18, 24);
-    fill.setColorAt(0.0, QColor(120, 214, 250));
-    fill.setColorAt(1.0, QColor(47, 142, 196));
-    painter.setBrush(fill);
-    painter.setPen(QPen(Qt::white, 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawPolygon(arrow);
+    QPainterPath arrow;
+    arrow.moveTo(0.3, 8.3);
+    arrow.quadTo(0.3, -7.5, 11.9, 3.3);
+    arrow.lineTo(46.1, 35.3);
+    arrow.lineTo(46.1, 38.1);
+    arrow.quadTo(46.1, 41.7, 42.6, 42.4);
+    arrow.lineTo(24.6, 45.9);
+    arrow.lineTo(12.0, 55.3);
+    arrow.quadTo(0.3, 64.1, 0.3, 49.5);
+    arrow.closeSubpath();
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 255, 255, 82));
+    painter.drawPath(arrow.translated(-0.2, 3.5));
+    painter.setBrush(Qt::white);
+    painter.drawPath(arrow);
     return image;
 }
 
 QImage styleCursorImage(const QImage &src)
 {
     if (src.isNull())
-        return makeCursorArrow();
+        return styleCursorImage(makeCursorArrow());
 
     const QImage src32 = src.convertToFormat(QImage::Format_ARGB32);
     const int w = src32.width();
