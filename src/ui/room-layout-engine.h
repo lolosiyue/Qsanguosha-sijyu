@@ -185,6 +185,8 @@ struct Input
     QSize smallPhotoSize;
     QSize normalPhotoSize;
     QSize bigPhotoSize;
+    // The dashboard and discard pile are scaled after layout; Photos are fitted at this scale.
+    double uiScale = 1.0;
 };
 
 struct PhotoPlacement

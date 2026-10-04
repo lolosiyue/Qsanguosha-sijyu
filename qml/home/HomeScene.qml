@@ -710,9 +710,15 @@ Item {
     HomeCompactShell {
         id: compactShell
         parent: contentHost
-        anchors.fill: parent
-        anchors.margins: HomeTheme.compactMargin
-        anchors.bottomMargin: 0
+        // UIScale lays the shell out narrower and enlarges it; 320 is the narrowest width it fits.
+        readonly property real availableWidth: contentHost.width - HomeTheme.compactMargin * 2
+        readonly property real zoom: Math.min(root.uiScale, Math.max(1.0, availableWidth / 320))
+        x: HomeTheme.compactMargin
+        y: HomeTheme.compactMargin
+        width: availableWidth / zoom
+        height: (contentHost.height - HomeTheme.compactMargin) / zoom
+        scale: zoom
+        transformOrigin: Item.TopLeft
         visible: root.compact
         subPageOpen: root.subPageOpen
         pageLoading: root.generalPageBusy || root.cardPageBusy
