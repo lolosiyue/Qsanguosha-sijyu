@@ -1918,6 +1918,7 @@ public:
 	Package*getPackage(const char*package_name);
 	void setPackage(Package*package);
 	QStringList getBanPackages() const;
+	bool isPackageBanned(const char*package) const;
 	QStringList getZhinangCards() const;
 	void setZhinangCard(const char*flag);
 	Card*cloneCard(const Card*card) const;
@@ -2527,6 +2528,8 @@ public:
 	int getCardFromPile(const char*card_name);
 	ServerPlayer*findPlayer(const char*general_name, bool include_dead = false) const;
 	ServerPlayer*findPlayerBySkillName(const char*skill_name, bool include_lose = false) const;
+	ServerPlayer*findPlayerWithFlag(const char*flag, bool partial = false) const;
+	ServerPlayer*findPlayerWithMark(const char*mark) const;
 	ServerPlayer*findPlayerByObjectName(const char*objectName, bool include_dead = false) const;
 	QList<ServerPlayer*> findPlayersBySkillName(const char*skill_name) const;
 	void installEquip(ServerPlayer*player, const char*equip_name);
