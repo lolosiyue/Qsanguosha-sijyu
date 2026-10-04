@@ -2506,15 +2506,18 @@ bool Engine::hasCard(const QString &name) const
 
 bool Engine::sameNameWith(const QString &name1, const QString &name2) const
 {
-    if(name1.contains(name2)||name2.contains(name1))
-		return true;
-    if(name1.contains("_")&&name2.contains(name1.split("_").last()))
-		return true;
-    if(name2.contains("_")&&name1.contains(name2.split("_").last()))
-		return true;
-	return false;
-	//return name1.contains(name2)||name2.contains(name1)
-	//||name1.contains(name2.split("_").last())||name2.contains(name1.split("_").last());
+    if (name1.contains(name2) || name2.contains(name1))
+        return true;
+    // The last "_" piece is the character id (ol_zhaoyun -> zhaoyun).
+    // A one-letter piece is a version mark (xingzhaoyun_o). Using it as the
+    // id makes contains() succeed for almost every general that has that letter.
+    const auto tailMatches = [](const QString &name, const QString &other) {
+        const int splitAt = name.lastIndexOf(QLatin1Char('_'));
+        if (splitAt < 0 || splitAt >= name.size() - 2)
+            return false;
+        return other.contains(name.mid(splitAt + 1));
+    };
+    return tailMatches(name1, name2) || tailMatches(name2, name1);
 }
 
 QList<const Skill *> Engine::getSafeSkills() const
