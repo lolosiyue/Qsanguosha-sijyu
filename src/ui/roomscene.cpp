@@ -6652,6 +6652,13 @@ void RoomScene::updateRoles(const QString&roles)
 	if(ServerInfo.EnableHegemony) return;
 
 	static QMap<QChar,QPixmap> map;
+	// The icons outlive the room, so rebuild them when a later room switched skins.
+	static QString mapSkin;
+	const QString &skin = QSanSkinFactory::getInstance().getCurrentSkinName();
+	if (mapSkin != skin) {
+		map.clear();
+		mapSkin = skin;
+	}
 	if(map.isEmpty()){
 		foreach (const QString &role, Sanguosha->getAllRegisteredRoles()) {
 			QString abbreviation = Sanguosha->getRoleAbbreviation(role);
