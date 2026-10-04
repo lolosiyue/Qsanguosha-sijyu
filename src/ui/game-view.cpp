@@ -380,14 +380,8 @@ void FitView::setSafeAreaMargins(const QMargins &margins)
 void FitView::setUiScale(qreal scale)
 {
     m_uiScale = qBound<qreal>(1.0, scale, 2.0);
-    if (m_responsiveEnabled) {
-        refit();
-        return;
-    }
-    if (auto *roomScene = qobject_cast<RoomScene *>(scene())) {
-        roomScene->applyUiElementScale(m_uiScale);
-        roomScene->refreshTouchTargets(transform().m11());
-    }
+    // Photo positions depend on the scale, so both layouts reflow.
+    refit();
 }
 
 void FitView::refit()

@@ -155,7 +155,8 @@ Result compute(const Input &input)
     const int tablePad = static_cast<int>(input.skin.scenePadding + input.skin.photoRoomPadding);
     // Preserve legacy integer truncation after QRectF-derived values enter int locals.
     result.tableWidth = static_cast<int>(result.infoRect.left() - tablePad * 2);
-    result.tableHeight = static_cast<int>(result.sceneRect.height() - tablePad * 2 - input.dashboardHeight);
+    result.tableHeight = static_cast<int>(result.sceneRect.height() - tablePad * 2
+                                          - input.dashboardHeight * input.uiScale);
     if (input.gameStarted && (input.mode == Mode::Hulao || input.mode == Mode::ThreeVThree))
         result.tableHeight -= input.skin.photoVDistance;
 
@@ -181,11 +182,11 @@ Result compute(const Input &input)
     const PhotoLayoutFit::LayoutDimensions big = {
         static_cast<double>(input.bigPhotoSize.width()), static_cast<double>(input.bigPhotoSize.height()) };
     const PhotoLayoutFit::Result fit = PhotoLayoutFit::choose(
-        result.tableWidth, result.tableHeight, regionCounts, input.skin.photoHDistance,
-        input.skin.photoVDistance, smallDims, normal, big);
+        result.tableWidth / input.uiScale, result.tableHeight / input.uiScale, regionCounts,
+        input.skin.photoHDistance, input.skin.photoVDistance, smallDims, normal, big);
     result.photoTier = fit.tier == PhotoLayoutFit::LayoutTier::Big ? PhotoTier::Big
         : fit.tier == PhotoLayoutFit::LayoutTier::Normal ? PhotoTier::Normal : PhotoTier::Small;
-    result.photoScale = fit.scale;
+    result.photoScale = fit.scale * input.uiScale;
     result.photoBaseSize = result.photoTier == PhotoTier::Big ? input.bigPhotoSize
         : result.photoTier == PhotoTier::Normal ? input.normalPhotoSize : input.smallPhotoSize;
 
@@ -222,7 +223,7 @@ Result compute(const Input &input)
                    input.skin.dashboardFloatingAreaHeight);
     floating.moveBottomLeft(QPoint(static_cast<int>(result.tableRect.left()), 0));
     result.floatingArea = floating;
-    result.discardPileSize = QSize(qMax(static_cast<int>(result.tableRect.width())
+    result.discardPileSize = QSize(qMax(static_cast<int>(result.tableRect.width() / input.uiScale)
                                         - input.skin.discardPilePadding * 2,
                                         input.skin.discardPileMinWidth), input.skin.cardNormalHeight);
 

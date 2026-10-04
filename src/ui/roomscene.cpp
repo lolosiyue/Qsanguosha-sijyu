@@ -1417,6 +1417,8 @@ RoomLayoutEngine::Input RoomScene::layoutInput(const QRectF &viewport, bool clam
     input.smallPhotoSize = photoSize(G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeSmall));
     input.normalPhotoSize = photoSize(G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeNormal));
     input.bigPhotoSize = photoSize(G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeBig));
+    // Responsive layouts apply UIScale through their own photo size.
+    input.uiScale = m_responsiveEnabled ? 1.0 : qBound<qreal>(1.0, Config.UIScale, 2.0);
     return input;
 }
 
@@ -1735,8 +1737,7 @@ void RoomScene::applyUiElementScale(qreal scale)
 		dashboard->setX(frame.dashboardRect.center().x() - r.center().x());
 		scaleAt(dashboard, QPointF(r.center().x(), r.bottom()));
 	}
-	foreach (Photo *photo, photos)
-		scaleCenter(photo);
+	// Photos are already fitted at this scale by the layout engine.
 	scaleCenter(m_tablePile);
 	scaleCenter(self_box);
 	scaleCenter(enemy_box);
