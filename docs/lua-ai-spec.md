@@ -1035,16 +1035,18 @@ C++ 端再做一次授權檢查：答案裡的牌必須在 `card_ids` 內、玩�
 `ai_skill_playerschosen`，鍵一樣是 reason。
 
 回應牌族（`askForCard`、`askForNullification`、`askForCardShow`、`askForPindian`、
-`askForSinglePeach`）共用 `RespondCard` 一種 kind，因為結果形狀相同：一張自己手上的牌。
+`askForSinglePeach`）共用 `RespondCard` 一種 kind，結果可為 offered 實體牌，或本題已授權的 V2 轉化規格。
 `options.question` 記錄實際是哪個詢問，`options.reason` 是該詢問的 reason／pattern，
 `request.pattern` 與 `request.handling_method` 沿用出牌詢問的欄位，`options.card_ids`
-是自己的手牌 ID，`options.players` 放該詢問的關係人（無懈的來源與目標、拼點對手、瀕死者）。
+是權威端依 pattern／method 篩選的實體候選 ID，`options.players` 放該詢問的關係人（無懈的來源與目標、拼點對手、瀕死者）。
 
 這族的舊答案是 `const Card *`，可能是轉化出來的虛擬牌。虛擬牌轉成字串再 parse 回來會換一
 個物件，影響回應的驗證與生命週期，因此 **legacy 路由的指標原樣回傳**，不繞經值模型。
-隔離路由只接受
-`{cards = {id}}`，且該 ID 必須是這名玩家手上或裝備區的實體牌，否則整份答案作廢並回退舊
-AI。轉化牌（view-as）要等值型出牌與造卡批次，本批不接受。
+隔離路由接受 `{cards = {id}}`，且該 ID 必須屬於本題授權的實體候選；也接受
+`{kind="answer", card_spec=...}`，由 native 核對本題 conversion ticket、activation/source
+instance、成本、pattern／method 與 revision 後重建。show／pindian 仍限定 offered 實體牌，
+不能用 card_spec；V1 view-as 與未投影成本並未因此全部完成。非法結果仍可能回退舊 AI，
+但 fallback 不算 isolated 驗收通過。
 
 隔離側 registry 依 `options.question` 再分表：`ai_skill_cardask`、`ai_nullification`、
 `ai_cardshow`、`ai_skill_pindian`、`ai_skill_singlepeach`，每張表的鍵一樣是 reason。
@@ -1055,8 +1057,9 @@ AI。轉化牌（view-as）要等值型出牌與造卡批次，本批不接受�
 正規化與隨機退路；它的 `skills` 映射與 `data` 仍留在 legacy 呼叫裡，沒有跨界。
 
 至此二十個 AI 公開入口都走同一條通路：`activate`／`askForUseCard` 用出牌結果，其餘用值型
-答案。仍留在舊 AI 的能力是轉化牌（view-as）與需要 `QVariant data` 的事件上下文——前者等
-值型造牌批次，後者等事件投影批次；這兩種情況隔離 handler 回 unhandled，由舊 AI 作答。
+答案。部分 V2 轉化與型別化事件上下文已有純值投影；未覆蓋的 V1 view-as、成本／合法性或
+任意 `QVariant data` 操作仍是缺口。handler 未處理或 native 拒絕可觸發舊 AI 保底，不能
+據此宣稱策略已移植。事件另核對 `event-intention.lua` 的實際 consumer 與 ABI。
 
 #### 15.2.6 牌區投影：可見牌、牌堆與位置索引
 
@@ -1332,24 +1335,28 @@ VM，這一層不變。
 
 #### 15.2.17 切換與驗收程序
 
-Shadow 雙跑比對已移除；完成標準採獨立新版：所有未設定的
-kind／callback 預設 `Isolated`，每題由新版完成。`AiLegacyDirectCallbacks`／
-`AiLegacyAdaptedCallbacks` 仍是明示的相容選項，其執行結果不屬於新版驗收。
+Shadow 雙跑比對已移除；完成標準採獨立新版。一般未設定的 kind／callback 預設
+`Isolated`；`EnableHegemony` 仍先採 `LegacyAdapted` 預設，再套顯式 route override。
+`AiLegacyDirectCallbacks`／`AiLegacyAdaptedCallbacks` 是相容選項，其執行結果不屬於新版驗收。
 
 建議的驗收門檻（需另獲建置與執行授權）：
 
 1. 驗收範圍內的決策全部由 isolated 產生且通過權威端驗證；任何 SmartAI 保底觸發均失敗。
-   `ai-common` 直接呼叫 `AiLuaRuntime::decideIsolated`，不經協調器保底；fixture 在 production
-   decision binding 與指令預算內執行，並確認 VM 沒有 `SmartAI`／`global_room`／原生 Engine。
+   舊 `ai-common` fixture 已移除，不能當成可執行入口。現有 coordinator 尚缺逐題路由、native
+   接受／拒絕及 fallback 的完整觀測；只有完局或無 error log 時，此項仍是 BLOCKED。
 2. 隔離性：VM 分離、沙箱封鎖、可見性、代理契約、值型詢問、候選授權、決策核心與覆蓋率報告
    （原由 room-runtime-isolation suite 驗證；該 suite 已於 2026-09-25 移除，現無自動化覆蓋）。
-3. 重建：指令／記憶體上限觸發後 VM 重建，`ai_memory` 歸零而決策仍能繼續（既有案例
-   `aiInstructionLimitRebuildsRuntime`）。
-4. 效能：以 `QSAN_AI_PROBE=1` 比較相同設定的單次決策耗時；計入快照、hook 與權威端驗證，
-   不混入 SmartAI 保底耗時作為新版策略效能。O(n) 掃描與 O(n log n) 排序分別列明。
+3. 重建：指令／記憶體上限觸發後 VM 重建，`ai_memory` 歸零而決策仍能繼續；舊案例
+   `aiInstructionLimitRebuildsRuntime` 僅是歷史參考，當前沒有該自動化 gate。
+4. 效能：現有 `QSAN_AI_PROBE=1` 在 request 建立後才開始計時，且可包含 SmartAI fallback，
+   不能直接表示含快照的 isolated 全流程或純策略耗時。量測須另有來源與階段證據，
+   O(n) 掃描與 O(n log n) 排序分別列明。
 
 這一節描述的是程序與門檻。實際跑完整對局與量效能需要建置與執行授權，在此之前不宣稱
 任何入口已完成驗收。
+
+執行移植請按[遵循文件](isolated-ai-migration-playbook.md)逐分支記錄；目前來源與驗收缺口見
+[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)。不新增已被移除的測試套件或 fixture。
 
 ### 15.3 RoomThread 邊界
 

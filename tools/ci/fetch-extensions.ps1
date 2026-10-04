@@ -54,7 +54,8 @@ if (-not ((Get-Content -LiteralPath $smartAiPath -Raw).Contains('"lua/ai/"..ai_f
 foreach ($relative in @("mode-ai.lua", "isolated-bootstrap.lua", "isolated-facades.lua",
         "isolated\ask-for-use-card.lua", "isolated\ask-for-choice.lua",
         "isolated\decision-core.lua", "isolated\retrial.lua",
-        "isolated\strategy-hooks.lua", "isolated\event-intention.lua")) {
+        "isolated\strategy-hooks.lua", "isolated\event-intention.lua",
+        "isolated\smart-ai-functions.lua")) {
     if (-not (Test-Path -LiteralPath (Join-Path $aiTarget $relative))) {
         throw "lua/ai is incomplete: $relative missing after fetch"
     }

@@ -32,7 +32,8 @@
 namespace {
 constexpr qint64 kJsonLimit = 32 * 1024 * 1024;
 constexpr quint64 kReserve = 64 * 1024 * 1024;
-constexpr int kBootstrapVersion = 2;
+// 3 refreshes lua/ai/mode-ai.lua. The room calls sgs.registerStandardModeAI after loading it.
+constexpr int kBootstrapVersion = 3;
 constexpr int kPresentationVersion = 1;
 bool cancelled(AndroidContentStore::Cancelled *cancel, QString *error);
 bool fail(QString *error, const QString &message)
@@ -76,7 +77,7 @@ bool optionalMediaPath(const QString &path)
 }
 bool coreLuaPath(const QString &path)
 {
-    static const QSet<QString> core{ "lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua", "lua/sgs_ex.lua", "lua/lib/json.lua" };
+    static const QSet<QString> core{ "lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua", "lua/sgs_ex.lua", "lua/lib/json.lua", "lua/ai/mode-ai.lua" };
     return core.contains(path);
 }
 bool extensionPath(const QString &path)

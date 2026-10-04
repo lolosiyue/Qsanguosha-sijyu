@@ -2,6 +2,8 @@
 
 新技能分成「遊戲規則」與「AI 決策」兩份。規則執行與最終合法性仍由 native／gameplay VM 負責；isolated AI 只讀當前觀察者可見的純值快照，提出答案。
 
+移植既有 SmartAI 時，先按[移植遵循文件](isolated-ai-migration-playbook.md)建立逐分支策略帳；現有實作的已知失敗與未驗項見[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)。不要以本指南的簡單新技能範例代替原策略。
+
 ## 檔案位置
 
 | 內容 | 外部 extensions 權威倉庫 | L 工作樹 |
@@ -82,6 +84,8 @@ end
 
 ## 驗證
 
-倉庫已無 Lua 契約測試與 native runner（2026-09-25 移除）。新技能至少以 headless 對局（`tools/autotest/headless_runner.py`）確認：有答案、明確拒絕、必要資料未知、非法候選、借用／多實例身份這幾種情況都不會靜靜退回 SmartAI 保底。V2 conversion 另驗 native 重建與拒絕。分開記錄 registry 登記與新技能的完整對局結果。
+倉庫已無舊 Lua 契約測試與 isolation runner（2026-09-25 移除），不新增測試套件或 fixture。先完成策略帳、consumer／ABI、語法、manifest 與逐檔來源同步的靜態檢查，再依已授權檢查點執行建置／產品 QA。
+
+行為驗收需實際觸發：有答案、明確拒絕、必要資料未知、非法候選、借用／多實例身份；V2 conversion 另驗 native 重建與拒絕。`tools/autotest/headless_runner.py` 預設單局超過本地 60 秒限制，僅在取得長測授權後使用。現有 runner 沒有逐題 isolated／native 拒絕／SmartAI fallback 的完整觀測；無 error 或成功完局不足以證明零保底，缺少證據時記 BLOCKED。分開記錄 registry 登記、isolated 決策接受及完整對局結果。
 
 更多純值 API 與既有契約見 [Lua AI 規範](lua-ai-spec.md)、[共用層](isolated-ai-common-layer.md)。本文範例未註冊為實際技能，僅供作者對照。

@@ -16,7 +16,7 @@
 | `needKongcheng`、`getBestHp`、`needToLoseHp` | 手牌／血量共用規則與 `ai_getLeastHandcardNum_skill`、`ai_getBestHp_skill`、`ai_need_damaged`、damage adjustment hooks | 保留原版關鍵優先序、精確 callback ABI 與 false；傷害只屬公開基準加 hook 的策略估算，未等價移植全部原生傷害分支。另提供 `dodiscard`、`aiUsecard`、`needToloseHp` 相容拼法。 |
 | `needRetrial`、`getRetrialCardId`、`getFinalRetrial` | `retrial.lua`、`getDecisionData():toJudge()` | C++ 投影 `JudgeStruct::isGood(card)` 結果；支援常見判定、交換、Lightning 保留、拆牌偏好與最低 keep。FilterSkill、連鎖傷害、Beige 花色效果、最終改判能力缺資料時保持 unknown。 |
 | `ai_use_revises`／`ai_useto_revises`／`ai_target_revises`／`ai_used_revises` | `tryUseCard` 的同一推演流程 | 使用 skill instance 的可見能力，重複技能去重；target revise 只重排完整權威組合。AOE 使用 affected targets；`used` 不在 dummy 推演觸發。另接 `ai_skill_use_func`、`ai_skill_carduse`、`ai_slash_prohibit`。 |
-| mode 身份／意圖 hooks | `mode-ai.lua` 的 `onIntention`／宣告式 `intentions`，每 Room＋viewer 的純值 state | intention 是模式 hook 的原子更新入口；隔離查詢唯讀，事件更新才改 state。legacy `ai_card_intention` 等表尚未自動接成此事件來源，不能以登記表存在宣稱已搬遷。 |
+| mode 身份／意圖 hooks | `mode-ai.lua` 的 `onIntention`／宣告式 `intentions`，以及 `event-intention.lua` 的純值事件 consumers | 每 Room＋viewer 的 state 以原子 delta 更新，隔離查詢唯讀。已消費 card intention、player/Yiji/skill choice、damage 與 visible-skill callbacks；仍須逐項核對投影與 ABI，不能以登記表存在宣稱所有 legacy 策略已搬遷。 |
 
 ## Mode、身份與 privacy 契約
 
@@ -49,7 +49,7 @@
 
 時間推演 (Planning) 按 viewer 保存純值；target／cost 授權券同時綁定 decision ID 與 state revision，跨 request 的一般 intent 只在 revision 未變時保留。`ai_coverage.outcomes()` 提供結果分類計數，與 registry 的宣告覆蓋率分開；沒有對局量測就不能把宣告數當作實際覆蓋率。
 
-`respond_card` 目前只接受實體牌答案：show／pindian 是實體限定問題；conversion 逐項檢查，已知完整合法的實體 action 可先回答，未知 conversion 另記錄。持有有效 V1 view-as 的 response 保守視為未知；合法轉化閃／桃不能被空實體候選吞掉。
+`respond_card` 接受實體牌答案及當次 authority 授權的 V2 conversion `card_spec`；show／pindian 仍是 offered 實體牌限定。conversion 逐項檢查，已知完整合法的 action 可先回答，未知 conversion 另記錄。未覆蓋 V1 view-as 的 response 保留 unknown；合法轉化閃／桃不能被空實體候選吞掉。
 
 新增共用策略時，優先新增純值 facade 欄位、明確 registry handler 與 coverage declaration：
 
@@ -57,10 +57,14 @@
 2. 在既有 class／skill registry 掛 handler；不要在核心寫角色或武將名稱硬編碼。
 3. handler 只回 `AIUsePlan`／值型 result；未知資料回 `AIUnsupported`。牌策略不填 plan 代表該牌不使用；request handler 的 `nil` 是未處理，明確拒絕整題才回 `{kind="pass"}`。
 4. 逐項評估 request 候選並保留 unknown 記錄；只要有已知完整合法 action 就交給 normalization，沒有 action 且仍有 unknown 才回 NotCovered。權威端仍重驗 pattern、method、ticket、target、成本與 revision。
-5. 補 source fixture 與 coverage case；不要以單一成功案例代表全量 SmartAI parity。
+5. 補逐分支 coverage 帳與實際驗收證據；遵守現行不新增測試套件／fixture 的規範，不以單一成功案例代表全量 SmartAI parity。原生路由、驗證拒絕與 fallback 缺少觀測時，獨立驗收記 BLOCKED。
 
 相關設計邊界：[`docs/lua-ai-spec.md`](lua-ai-spec.md)。
+
+搬運既有策略時按[移植遵循文件](isolated-ai-migration-playbook.md)執行；[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)已記錄排序消費端、unknown 與部署 gate 的發現及修正狀態，不能將下列函式清單視為等價性通過證明。
 
 ## Scarlet 參考技能所需共用接口
 
 新增 addHandPile／getAllPeachNum、draw 目標推薦與無牌普通傷害接口。具體覆蓋與未覆蓋分支、原版保留行為及靜態檢查點見 [Scarlet isolated AI](scarlet-isolated-ai-examples.md)。此批不是全套 SmartAI 傷害／推薦策略完成證據。
+
+`lua/ai/isolated/smart-ai-functions.lua` 補上套件會呼叫的 SmartAI 相等函式（可見牌選取、殺是否有效、命中、棄牌、找人出殺、跳過出牌階段、`getDefenseSlash`、`getWoundedFriend`、`getCardId`、`sortEnemies`、`updatePlayers`、`hasTuntianEffect`、`adjacentPlayers`、`isLordHealthy`，以及 `bignumber`／`slash` 牌需）。未知投影回 nil。套件用 `sgs.append_skill_list`、`sgs.ai_slash_benefit`、`sgs.ai_valuable_card`、`sgs.ai_will_skip_play`、`sgs.ai_turn_over`、`sgs.ai_defense_slash`、`sgs.ai_hasTuntianEffect_skill`、`sgs.ai_jueqing_effect` 擴充，不把武將名寫進這層。Scarlet 的技能名單與單挑點數在 `isolated/scarlet-ai.lua`。mcompetition 的技能名單與 handler 在 `isolated/mcompetition-ai.lua`。Shadow 的技能名單與 `y_` 決策在 `isolated/shadow-ai.lua`。舊版 `lua/ai/scarlet-ai.lua`、`lua/ai/mcompetition-ai.lua` 與 `lua/ai/shadow-ai.lua` 的逐技能 callback 仍在 gameplay VM，未整檔搬進 isolated。字串 data、房間 tag、移動與玩家屬性沒有投影時，對應詢問維持 unsupported。
