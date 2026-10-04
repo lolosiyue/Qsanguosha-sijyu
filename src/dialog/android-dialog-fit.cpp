@@ -108,16 +108,21 @@ private:
         if (!screen)
             return {};
 
+        QWidget *mainWindow = nullptr;
+        for (QWidget *owner = dialog->parentWidget(); owner; owner = owner->parentWidget()) {
+            if (qobject_cast<QMainWindow *>(owner)) {
+                mainWindow = owner;
+                break;
+            }
+        }
+        // A dialog already nudged onto the next monitor must not follow itself.
+        // Fit against the main window's screen, then clip to that window.
+        if (mainWindow && mainWindow->screen())
+            screen = mainWindow->screen();
         QRect available = screen->availableGeometry();
 #ifndef Q_OS_ANDROID
-        // Preview uses the main window's viewport, not the whole desktop monitor.
-        if (Config.responsiveUiEnabled()) {
-            for (QWidget *owner = dialog->parentWidget(); owner; owner = owner->parentWidget()) {
-                if (qobject_cast<QMainWindow *>(owner)) {
-                    available = available.intersected(QRect(owner->mapToGlobal(QPoint()), owner->size()));
-                    break;
-                }
-            }
+        if (Config.responsiveUiEnabled() && mainWindow) {
+            available = available.intersected(QRect(mainWindow->mapToGlobal(QPoint()), mainWindow->size()));
         }
 #endif
 #if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
@@ -154,6 +159,15 @@ private:
         if (available.isEmpty())
             return;
 
+#ifndef Q_OS_ANDROID
+        // A wide desktop keeps each dialog's designed size. The fitter restacks
+        // controls and resizes from sizeHint, which is what makes every dialog
+        // look wrong on a normal monitor. Narrow and portrait previews still fit.
+        const bool narrowViewport = available.width() < 600 || available.height() > available.width();
+        if (!narrowViewport)
+            return;
+#endif
+
         if (dialog->property("androidContentDialogOwnScroll").toBool()) {
             // This dialog already scrolls its body and keeps its footer fixed.
             // Use one available rectangle for both origin and extent; Android
@@ -166,7 +180,16 @@ private:
         }
 
         const bool responsive = Config.responsiveUiEnabled();
-        const QSize preferred = dialog->sizeHint().expandedTo(dialog->minimumSizeHint());
+        QSize preferred = dialog->sizeHint().expandedTo(dialog->minimumSizeHint());
+        // Remember a real content size before wrapping clears the outer minimum.
+        // A later pass can see a 0x0 scroll-area hint and must not replace this.
+        if (preferred.width() > 1 && preferred.height() > 1)
+            dialog->setProperty("androidDialogFitContentSize", preferred);
+        else {
+            const QSize saved = dialog->property("androidDialogFitContentSize").toSize();
+            if (saved.width() > 1 && saved.height() > 1)
+                preferred = saved;
+        }
         if ((responsive || preferred.height() > available.height() || preferred.width() > available.width())
             && !dialog->property("androidDialogFitWrapped").toBool())
             wrapContents(dialog);
@@ -187,20 +210,60 @@ private:
             else if (auto *box = qobject_cast<QBoxLayout *>(footer->layout()))
                 box->setDirection(narrow ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
         }
-        QSize bounded = (responsive ? dialog->sizeHint() : preferred).boundedTo(available.size());
+        QSize hint = responsive ? dialog->sizeHint().expandedTo(dialog->minimumSizeHint()) : preferred;
+        // After the scroll wrap, sizeHint() can be 0x0 or 1x1 until polish.
+        // qMax(1, 0) then asks Windows for a 1px window, which a bottom-right
+        // one-handed place pushes onto the neighbouring monitor.
+        if (hint.width() <= 1 || hint.height() <= 1)
+            hint = preferred;
+        if (hint.width() <= 1 || hint.height() <= 1)
+            return;
+        QSize bounded = hint.boundedTo(available.size());
         if (responsive && (available.width() < 600 || available.height() > available.width()))
             bounded.setWidth(available.width());
-        bounded.setWidth(qMax(1, bounded.width()));
-        bounded.setHeight(qMax(1, bounded.height()));
-        dialog->setMaximumSize(available.size());
+        if (bounded.width() < 1 || bounded.height() < 1)
+            return;
+        dialog->setMaximumSize(available.size().expandedTo(bounded));
         dialog->resize(bounded);
-        const int y = responsive && Config.oneHandedness() != 0
-            ? available.bottom() - dialog->height() + 1
-            : available.center().y() - dialog->height() / 2;
-        const int x = responsive && Config.oneHandedness() == 1 ? available.left()
-            : responsive && Config.oneHandedness() == 2 ? available.right() - dialog->width() + 1
-            : available.center().x() - dialog->width() / 2;
-        dialog->move(x - decor.left(), y - decor.top());
+        // Place the size we just requested. dialog->height() can still be the
+        // rejected 1px frame if Windows has not applied the resize yet.
+        const int placedWidth = bounded.width();
+        const int placedHeight = bounded.height();
+        // Thumb-corner placement is for a phone or a narrow portrait preview.
+        // On a wide desktop the same right-hand setting parks every dialog on
+        // the monitor edge, which is the next display on a multi-monitor desk.
+        const bool narrow = available.width() < 600 || available.height() > available.width();
+#ifdef Q_OS_ANDROID
+        const bool thumbAnchor = Config.oneHandedness() != 0;
+#else
+        const bool thumbAnchor = responsive && narrow && Config.oneHandedness() != 0;
+#endif
+        const int y = thumbAnchor
+            ? available.bottom() - placedHeight + 1
+            : available.center().y() - placedHeight / 2;
+        const int x = !thumbAnchor ? available.center().x() - placedWidth / 2
+            : Config.oneHandedness() == 1 ? available.left()
+            : Config.oneHandedness() == 2 ? available.right() - placedWidth + 1
+            : available.center().x() - placedWidth / 2;
+        QScreen *screen = dialog->screen();
+        for (QWidget *owner = dialog->parentWidget(); owner; owner = owner->parentWidget()) {
+            if (auto *window = qobject_cast<QMainWindow *>(owner); window && window->screen()) {
+                screen = window->screen();
+                break;
+            }
+        }
+        if (!screen)
+            screen = QGuiApplication::primaryScreen();
+        int frameX = x - decor.left();
+        int frameY = y - decor.top();
+        if (screen) {
+            const QRect screenBounds = screen->availableGeometry();
+            const int frameW = placedWidth + decor.left() + decor.right();
+            const int frameH = placedHeight + decor.top() + decor.bottom();
+            frameX = qBound(screenBounds.left(), frameX, qMax(screenBounds.left(), screenBounds.right() - frameW + 1));
+            frameY = qBound(screenBounds.top(), frameY, qMax(screenBounds.top(), screenBounds.bottom() - frameH + 1));
+        }
+        dialog->move(frameX, frameY);
 
     }
 

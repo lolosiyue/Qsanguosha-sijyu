@@ -14,7 +14,8 @@ static const int ExpandWidth = 826;
 
 void ConnectionDialog::hideAvatarList()
 {
-    if (!ui->avatarList->isVisible()) return;
+    // isVisible() is false until the dialog is on screen, so it cannot guard
+    // this hide. Skip it and the list stays in the first layout pass.
     ui->avatarList->hide();
     ui->avatarList->clear();
 }
@@ -89,7 +90,12 @@ void ConnectionDialog::setPreferredWidth(int width)
 #if defined(QSAN_XP_LEGACY)
     setFixedWidth(width);
 #else
-    if (!Config.responsiveUiEnabled()) resize(width, sizeHint().height());
+    // sizeHint() can be the .ui height while the stacked layout's minimum is taller.
+    // Requesting the shorter size makes Windows reject the geometry and collapse the dialog.
+    const QSize hint = sizeHint().expandedTo(minimumSizeHint());
+    if (hint.height() < 1)
+        return;
+    resize(qMax(width, hint.width()), hint.height());
 #endif
 }
 
