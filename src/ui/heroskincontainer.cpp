@@ -66,6 +66,9 @@ HeroSkinContainer::HeroSkinContainer(const QString &generalName,
 
 bool HeroSkinContainer::hasSkin(const QString &generalName)
 {
+    // Skins replace artwork, so a build without the artwork offers none.
+    if (!QSanSkinFactory::isArtworkInstalled())
+        return false;
     if (!m_generalToHasSkin.contains(generalName)) {
         QDir dir(QString("hero-skin/%1").arg(generalName));
         if (dir.exists()) {

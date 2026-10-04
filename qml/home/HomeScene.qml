@@ -202,7 +202,7 @@ Item {
             Image {
                 id: logo
 
-                visible: !root.subPageOpen && source.toString() !== "" && status === Image.Ready
+                visible: !root.subPageOpen
 
                 anchors.right: actionPanel.right
                 anchors.bottom: actionPanel.top
@@ -220,6 +220,22 @@ Item {
                 transform: Translate {
                     id: logoEnter
                     y: -20
+                }
+
+                // Builds without the logo artwork show the game title instead.
+                Text {
+                    anchors.fill: parent
+                    visible: logo.status !== Image.Ready
+                    text: qsTranslate("MainWindow", "Sanguosha")
+                    color: "#ffffff"
+                    style: Text.Outline
+                    styleColor: "#1565c0"
+                    font.bold: true
+                    font.pixelSize: 40
+                    fontSizeMode: Text.Fit
+                    minimumPixelSize: 12
+                    horizontalAlignment: Text.AlignRight
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
 

@@ -2209,7 +2209,7 @@ void PlayerCardContainer::_updateDeathIcon()
 {
     if (!m_player || m_player->isAlive()) return;
     QRect deathArea = _m_layout->m_deathIconRegion.getTranslatedRect(_getDeathIconParent()->boundingRect().toRect());
-    _paintPixmap(_m_deathIcon, deathArea, QPixmap(m_player->getDeathPixmapPath()), _getDeathIconParent());
+    _paintPixmap(_m_deathIcon, deathArea, G_ROOM_SKIN.getPixmapFromFileName(m_player->getDeathPixmapPath()), _getDeathIconParent());
     _m_deathIcon->setZValue(11);
 }
 

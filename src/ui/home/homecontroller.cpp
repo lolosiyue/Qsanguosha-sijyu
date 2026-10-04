@@ -3,6 +3,7 @@
 #include "engine.h"
 #include "general.h"
 #include "skill.h"
+#include "skin-image-provider.h"
 #include "settings.h"
 #include "package.h"
 #include "heroskincontainer.h"
@@ -42,6 +43,14 @@ QUrl firstExistingImage(const QStringList &stems)
                 if (QFile::exists(path))
                     return QUrl::fromLocalFile(path);
             }
+        }
+    }
+    // Without the files, use art the room skin can draw.
+    for (const QString &stem : stems) {
+        for (const QString &suffix : suffixes) {
+            const QUrl url = SkinImageProvider::generatedUrl(stem + suffix);
+            if (!url.isEmpty())
+                return url;
         }
     }
     return {};
@@ -1041,8 +1050,11 @@ QUrl HomeController::generalFullImage(const QString &generalName) const
 QUrl HomeController::magatamaImage(int index) const
 {
     const int clamped = qBound(0, index, 5);
-    return QUrl::fromLocalFile(QDir::current().absoluteFilePath(
-        QStringLiteral("image/system/magatamas/%1.png").arg(clamped)));
+    const QString path = QStringLiteral("image/system/magatamas/%1.png").arg(clamped);
+    const QUrl generated = SkinImageProvider::generatedUrl(path);
+    if (!generated.isEmpty())
+        return generated;
+    return QUrl::fromLocalFile(QDir::current().absoluteFilePath(path));
 }
 
 QUrl HomeController::hujiaImage() const
@@ -1055,8 +1067,11 @@ QUrl HomeController::hujiaImage() const
 
 QUrl HomeController::lordIcon() const
 {
-    return QUrl::fromLocalFile(QDir::current().absoluteFilePath(
-        QStringLiteral("image/system/roles/lord.png")));
+    const QString path = QStringLiteral("image/system/roles/lord.png");
+    const QUrl generated = SkinImageProvider::generatedUrl(path);
+    if (!generated.isEmpty())
+        return generated;
+    return QUrl::fromLocalFile(QDir::current().absoluteFilePath(path));
 }
 
 QUrl HomeController::navButtonImage(const QString &name) const

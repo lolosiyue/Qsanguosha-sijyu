@@ -1,6 +1,7 @@
 #include "window.h"
 #include "settings.h"
 #include "button.h"
+#include "skin-bank.h"
 #include "effects/effects-policy.h"
 
 Window::Window(const QString &title, const QSizeF &size, const QString &path)
@@ -8,9 +9,9 @@ Window::Window(const QString &title, const QSizeF &size, const QString &path)
 {
     setFlags(ItemIsMovable);
 
-    if (!path.isEmpty()) bg = new QPixmap(path);
-    else if(size.width() > size.height()) bg = new QPixmap("image/system/tip.png");
-	else bg = new QPixmap("image/system/about.png");
+    if (!path.isEmpty()) bg = new QPixmap(G_ROOM_SKIN.getPixmapFromFileName(path));
+    else if(size.width() > size.height()) bg = new QPixmap(G_ROOM_SKIN.getPixmapFromFileName("image/system/tip.png"));
+	else bg = new QPixmap(G_ROOM_SKIN.getPixmapFromFileName("image/system/about.png"));
 
     QImage bgimg = bg->toImage();
     outimg = new QImage(size.toSize(), QImage::Format_ARGB32);

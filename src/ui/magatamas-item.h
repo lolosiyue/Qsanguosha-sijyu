@@ -59,6 +59,7 @@ protected:
     void _autoAdjustPos();
     void _updateLayout();
     void _doHpChangeAnimation(int newHp);
+    bool _showsHpAsNumber() const;
     QPoint m_anchor;
     Qt::Alignment m_align;
     bool anchorEnabled;

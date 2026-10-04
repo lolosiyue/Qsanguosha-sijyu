@@ -149,6 +149,7 @@ set(QSAN_SOURCES
     src/ui/effects/effects-profile.cpp
     src/ui/home/homecontroller.cpp
     src/ui/home/homecardmodel.cpp
+    src/ui/home/skin-image-provider.cpp
     src/ui/EmbeddedQmlLoader.cpp
     src/ui/emotionpanel.cpp
     src/ui/generic-cardcontainer-ui.cpp
@@ -177,6 +178,7 @@ set(QSAN_SOURCES
     src/ui/desktop-game-presentation.h
     src/ui/game-control-panel.cpp
     src/ui/game-control-panel.h
+    src/ui/procedural-skin.cpp
     src/ui/skin-bank.cpp
     src/ui/skill-dialog-registry.cpp
     src/ui/SpineAnimationManager.cpp
@@ -367,6 +369,7 @@ set(QSAN_MOC_HEADERS
     src/ui/effects/effects-completion.h
     src/ui/home/homecontroller.h
     src/ui/home/homecardmodel.h
+    src/ui/home/skin-image-provider.h
     src/ui/EmbeddedQmlLoader.h
     src/ui/emotionpanel.h
     src/ui/generic-cardcontainer-ui.h
@@ -389,6 +392,7 @@ set(QSAN_MOC_HEADERS
     src/ui/room-debug-dialogs.h
     src/ui/kof-arrange-controller.h
     src/ui/room-replay-controller.h
+    src/ui/procedural-skin.h
     src/ui/skin-bank.h
     src/ui/SpineAnimationManager.h
     src/ui/SpineEffectWidget.h

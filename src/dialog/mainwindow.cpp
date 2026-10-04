@@ -62,6 +62,9 @@
 #endif
 #include "game-view.h"
 #include "crashhandler.h"
+#if QSAN_ENABLE_QML
+#include "skin-image-provider.h"
+#endif
 #ifdef AUDIO_SUPPORT
 #include "audio.h"
 #endif
@@ -329,6 +332,7 @@ MainWindow::MainWindow(QWidget *parent)
 		homeWidget->installEventFilter(new PointerHoverForwardFilter(homeWidget));
 		homePageWidget = homeWidget;
 	}
+	homeQmlEngine()->addImageProvider(SkinImageProvider::Id, new SkinImageProvider);
 	qInfo().noquote() << "Home render host:" << m_homeRenderHost;
 #endif
 	gameView = new FitView(nullptr, this);

@@ -2,6 +2,7 @@
 //#include "audio.h"
 #include "engine.h"
 #include "settings.h"
+#include "skin-bank.h"
 
 static QRectF ButtonRect(0, 0, 189, 46);
 
@@ -46,7 +47,7 @@ void Button::init()
 
     title_item->setGraphicsEffect(de);
 
-    static QImage bgimg("image/system/button/button.png");
+    const QImage bgimg = G_ROOM_SKIN.getPixmapFromFileName("image/system/button/button.png").toImage();
 
     qreal pad = 10;
 

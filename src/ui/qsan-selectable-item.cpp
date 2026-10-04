@@ -1,5 +1,6 @@
 #include "qsan-selectable-item.h"
 #include "ui-utils.h"
+#include "skin-bank.h"
 
 QSanSelectableItem::QSanSelectableItem(const QString &filename, bool center_as_origin)
 {
@@ -22,7 +23,7 @@ bool QSanSelectableItem::load(const QString &filename, QSize size, bool center_a
 
 bool QSanSelectableItem::_load(const QString &filename, QSize size, bool useNewSize, bool center_as_origin)
 {
-    bool success = _m_mainPixmap.load(filename);
+    bool success = G_ROOM_SKIN.loadPixmap(_m_mainPixmap, filename);
 
     if (!success) {
         QImageReader reader(filename);
