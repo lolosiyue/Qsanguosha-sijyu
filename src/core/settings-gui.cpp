@@ -199,8 +199,6 @@ void UiSettings::init()
             font->setStyleName(QString());
             font->setStyle(QFont::StyleNormal);
             font->setWeight(QFont::Normal);
-            // Underline is a separate decoration, independent of normal style.
-            font->setUnderline(false);
             font->setStyleStrategy(QFont::PreferAntialias);
         }
     } else {
