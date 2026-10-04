@@ -1,6 +1,7 @@
 ﻿#include "nativesocket.h"
 #include "settings.h"
 #include <QPointer>
+#include <QScopeGuard>
 #include <QtNetwork>
 
 NativeServerSocket::NativeServerSocket()
@@ -88,6 +89,17 @@ NativeClientSocket::NativeClientSocket(QTcpSocket *socket)
     connect(&timerSignup,SIGNAL(timeout()),this,SLOT(disconnectFromHost()));
 }
 
+NativeClientSocket::~NativeClientSocket()
+{
+    if (!m_inReadyRead)
+        return;
+    // QAbstractSocket emits channelReadyRead() after this readyRead() receiver
+    // returns; getMessage() releases the orphaned socket once that unwinds.
+    socket->disconnect(this);
+    socket->abort();
+    socket->setParent(nullptr);
+}
+
 void NativeClientSocket::init()
 {
     connect(socket, SIGNAL(disconnected()), this, SIGNAL(disconnected()));
@@ -130,6 +142,14 @@ void NativeClientSocket::getMessage()
     // A direct receiver can open a modal dialog and destroy this transport
     // before returning (for example, GAME_OVER -> return to the home page).
     const QPointer<NativeClientSocket> guard(this);
+    QTcpSocket *const transport = socket;
+    m_inReadyRead = true;
+    const auto release = qScopeGuard([&guard, transport]() {
+        if (guard)
+            guard->m_inReadyRead = false;
+        else
+            transport->deleteLater();
+    });
     const QSanProtocol::ProtocolFrameAppendResult result =
         m_frameBuffer.append(socket->readAll());
     if (!result.success) {

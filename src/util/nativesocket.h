@@ -39,6 +39,7 @@ class NativeClientSocket : public ClientSocket
 public:
     NativeClientSocket();
     NativeClientSocket(QTcpSocket *socket);
+    ~NativeClientSocket() override;
 
     virtual void connectToHost();
     void connectToHost(const QString &host, quint16 port);
@@ -58,6 +59,7 @@ private slots:
 private:
     QTcpSocket *const socket;
     QSanProtocol::ProtocolFrameBuffer m_frameBuffer;
+    bool m_inReadyRead = false;
 
     void init();
 };
