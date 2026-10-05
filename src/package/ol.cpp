@@ -8820,28 +8820,27 @@ public:
 	}
 };
 
-class Qiaoli : public TriggerSkill
+class Qiaoli : public TriggerSkillV2
 {
 public:
-	Qiaoli() : TriggerSkill("qiaoli")
+	Qiaoli() : TriggerSkillV2("qiaoli")
 	{
 		events << PreCardUsed << Damage << EventPhaseStart;
 		view_as_skill = new QiaoliVS;
 	}
 
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target != nullptr;
-	}
 
-	int getPriority(TriggerEvent triggerEvent) const
+	int getPriority(TriggerEvent triggerEvent) const override
 	{
 		if (triggerEvent == PreCardUsed)
 			return 5;
-		return TriggerSkill::getPriority(triggerEvent);
+		return TriggerSkillV2::getPriority(triggerEvent);
 	}
 
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+
+	// PreCardUsed Duel flags, Damage weapon yiji, and Finish equip obtain settle once for the event player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if (event == PreCardUsed){
 			CardUseStruct use = data.value<CardUseStruct>();
@@ -8933,6 +8932,12 @@ public:
 			}
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -10236,18 +10241,25 @@ public:
 	}
 };
 
-class Denglou : public PhaseChangeSkill
+class Denglou : public TriggerSkillV2
 {
 public:
-	Denglou() : PhaseChangeSkill("denglou")
+	Denglou() : TriggerSkillV2("denglou")
 	{
+		events << EventPhaseStart;
 		frequency = Limited;
 		limit_mark = "@denglouMark";
 		view_as_skill = new DenglouVS;
 	}
 
-	bool onPhaseChange(ServerPlayer*player, Room*room) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// Limited Finish empty-hand preview/use of basics settles once for the skill owner.
+	bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
 	{
+		if (!player || !player->isAlive() || !player->hasSkill(objectName())) return false;
+
 		if (player->getPhase() != Player::Finish) return false;
 		if (!player->isKongcheng() || player->getMark("@denglouMark") <= 0) return false;
 		if (!player->askForSkillInvoke(this)) return false;
@@ -10362,6 +10374,12 @@ public:
 		room->throwCard(new_dummy, reason, nullptr);
 		new_dummy->deleteLater();
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -13354,21 +13372,21 @@ public:
 	}
 };
 
-class Shefu : public TriggerSkill
+class Shefu : public TriggerSkillV2
 {
 public:
-	Shefu() : TriggerSkill("shefu")
+	Shefu() : TriggerSkillV2("shefu")
 	{
 		events << CardUsed << EventPhaseStart;
 		view_as_skill = new ShefuViewAsSkill;
 	}
 
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target && target->isAlive();
-	}
 
-	bool trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// CardUsed ambush cancel and Finish ambush place settle once for the event player.
+	bool recordEvent(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if (triggerEvent == CardUsed){
 			CardUseStruct use = data.value<CardUseStruct>();
@@ -13405,7 +13423,7 @@ public:
 			room->askForUseCard(player, "@@shefu", "@shefu-prompt", -1, Card::MethodNone);
 		}
 		return false;
-	}
+		}
 
 	SkillDialogInfo getDialogInfo() const override
 	{
@@ -13426,12 +13444,18 @@ public:
 		return 1;
 	}
 
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
+	}
 private:
 	bool ShefuTriggerable(ServerPlayer*chengyu) const
 	{
 		return !chengyu->hasFlag("CurrentPlayer")
 			&& chengyu->hasSkill("shefu") && !chengyu->getPile("ambush").isEmpty();
 	}
+
 };
 
 class BenyuViewAsSkill : public ViewAsSkill
@@ -14841,17 +14865,22 @@ public:
 	}
 };
 
-class OLLuanzhan : public TriggerSkill
+class OLLuanzhan : public TriggerSkillV2
 {
 public:
-	OLLuanzhan() : TriggerSkill("olluanzhan")
+	OLLuanzhan() : TriggerSkillV2("olluanzhan")
 	{
 		events << TargetSpecified << PreCardUsed;
 		view_as_skill = new OLLuanzhanVS;
 	}
 
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// PreCardUsed extra targets and TargetSpecified mark halve settle once for the skill owner.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
+		if (!player || !player->isAlive() || !player->hasSkill(objectName())) return false;
 		CardUseStruct use = data.value<CardUseStruct>();
 		if (event == PreCardUsed){
 			int n = player->getMark("&luanzhanMark") + player->getMark("luanzhanMark") + player->getMark("olluanzhanMark");
@@ -14919,6 +14948,12 @@ public:
 			}
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -16129,21 +16164,21 @@ public:
 	}
 };
 
-class SpCanshi : public TriggerSkill
+class SpCanshi : public TriggerSkillV2
 {
 public:
-	SpCanshi() : TriggerSkill("spcanshi")
+	SpCanshi() : TriggerSkillV2("spcanshi")
 	{
 		events << TargetSpecifying;
 		view_as_skill = new SpCanshiVS;
 	}
 
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target != nullptr && target->isAlive();
-	}
 
-	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// TargetSpecifying kui extra/remove targets settle once for the event player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		CardUseStruct use = data.value<CardUseStruct>();
 		if (!use.card->isKindOf("BasicCard") && !use.card->isNDTrick()) return false;
@@ -16203,6 +16238,12 @@ public:
 			use.from->loseAllMarks("&kui");
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -17138,17 +17179,21 @@ public:
 	}
 };
 
-class Jianjie : public TriggerSkill
+class Jianjie : public TriggerSkillV2
 {
 public:
-	Jianjie() : TriggerSkill("jianjie")
+	Jianjie() : TriggerSkillV2("jianjie")
 	{
 		events << EventPhaseStart << Death << MarkChanged;
 		view_as_skill = new JianjieVS;
         global = true;
 	}
 
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// RoundStart signet grant, Death transfer, and MarkChanged skill sync settle once for the event player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if (event == EventPhaseStart){
 			if(player->getPhase() == Player::RoundStart)
@@ -17209,6 +17254,12 @@ public:
 			}
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -18146,27 +18197,26 @@ public:
 	}
 };
 
-class Xiying : public TriggerSkill
+class Xiying : public TriggerSkillV2
 {
 public:
-	Xiying(const QString &xiying) : TriggerSkill(xiying), xiying(xiying)
+	Xiying(const QString &xiying) : TriggerSkillV2(xiying), xiying(xiying)
 	{
 		events << EventPhaseStart << Death << EventPhaseChanging << EventPhaseEnd;
 	}
 
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target != nullptr;
-	}
 
-	int getPriority(TriggerEvent event) const
+	int getPriority(TriggerEvent event) const override
 	{
 		if (event == EventPhaseStart)
-			return TriggerSkill::getPriority(event);
+			return TriggerSkillV2::getPriority(event);
 		return 5;
 	}
 
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+
+	// Play discard limit, Finish obtain, PlayEnd damage mark, and Death/NotActive clear settle once for the event player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if (event == EventPhaseStart){
 			if (xiying == "secondxiying" && player->isAlive() && player->getPhase() == Player::Finish){
@@ -18231,9 +18281,15 @@ public:
 			}
 		}
 		return false;
+		}
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 private:
 	QString xiying;
+
 };
 
 class SpYoudi : public TriggerSkillV2
@@ -23494,19 +23550,19 @@ public:
 	}
 };
 
-class Qingya : public TriggerSkill
+class Qingya : public TriggerSkillV2
 {
 public:
-	Qingya() : TriggerSkill("qingya")
+	Qingya() : TriggerSkillV2("qingya")
 	{
 		events << TargetSpecified << EventPhaseEnd;
 		view_as_skill = new QingyaVs;
 	}
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target&&target->isAlive();
-	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// Slash TargetSpecified path discard and phase-end reuse settle once for the event player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if (event==TargetSpecified){
 			CardUseStruct use = data.value<CardUseStruct>();
@@ -23580,6 +23636,12 @@ public:
 			}
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -24204,19 +24266,19 @@ public:
 	}
 };
 
-class Qushi : public TriggerSkill
+class Qushi : public TriggerSkillV2
 {
 public:
-	Qushi() : TriggerSkill("qushi")
+	Qushi() : TriggerSkillV2("qushi")
 	{
 		events << CardFinished << EventPhaseStart;
 		view_as_skill = new QushiVs;
 	}
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target&&target->getPile("qu_shi").length()>0;
-	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// CardFinished type marks and Finish pile throw/draw settle once for qu_shi pile holders.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if(event==CardFinished){
 			CardUseStruct use = data.value<CardUseStruct>();
@@ -24245,6 +24307,12 @@ public:
 			}
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -24652,20 +24720,20 @@ public:
 	}
 };
 
-class Chenglie : public TriggerSkill
+class Chenglie : public TriggerSkillV2
 {
 public:
-	Chenglie() : TriggerSkill("chenglie")
+	Chenglie() : TriggerSkillV2("chenglie")
 	{
 		events << CardFinished << CardUsed << CardOnEffect;
 		view_as_skill = new ChenglieVs;
 		waked_skills = "#chenglie_mod";
 	}
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target&&target->isAlive();
-	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// Multi-target Slash preview, CardUsed respond give, and CardOnEffect recover settle once for the event player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
 		if(event==CardFinished){
 			CardUseStruct use = data.value<CardUseStruct>();
@@ -24728,6 +24796,12 @@ public:
 			room->setCardFlag(use.card,"chenglieUse");
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -25274,15 +25348,20 @@ public:
 	}
 };
 
-class Jinming : public TriggerSkill
+class Jinming : public TriggerSkillV2
 {
 public:
-	Jinming() : TriggerSkill("jinming")
+	Jinming() : TriggerSkillV2("jinming")
 	{
 		events << EventPhaseChanging << CardUsed << CardsMoveOneTime << Damage << HpRecover;
 	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// Start choice, NotActive draw tallies, and Clear counters settle once for the skill owner.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
+		if (!player || !player->isAlive() || !player->hasSkill(objectName())) return false;
 		if(event==EventPhaseChanging){
 			PhaseChangeStruct change = data.value<PhaseChangeStruct>();
 			if(change.to==Player::Start){
@@ -25382,6 +25461,12 @@ public:
 			}
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -36880,22 +36965,25 @@ public:
 	}
 };
 
-class Tianxing : public PhaseChangeSkill
+class Tianxing : public TriggerSkillV2
 {
 public:
-	Tianxing() : PhaseChangeSkill("tianxing")
+	Tianxing() : TriggerSkillV2("tianxing")
 	{
+		events << EventPhaseStart;
 		frequency = Wake;
 	}
 
-	bool triggerable(const ServerPlayer*player) const
-	{
-		return player && player->isAlive()&&player->getPhase() == Player::Start
-		&& player->getMark(objectName())<1 && player->hasSkill(objectName());
-	}
 
-	bool onPhaseChange(ServerPlayer*target, Room*room) const
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// Wake Start pile check, maxHp change, and skill choice settle once for the skill owner.
+	bool recordEvent(TriggerEvent, Room *room, ServerPlayer *target, QVariant &) const override
 	{
+		if (!target || !target->isAlive() || target->getPhase() != Player::Start
+			|| target->getMark(objectName()) >= 1 || !target->hasSkill(objectName())) return false;
+
 		if (target->getPile("cychu").length() >= 3){
 			LogMessage log;
 			log.type = "#DengjiWake";
@@ -36937,6 +37025,12 @@ public:
 			room->handleAcquireDetachSkills(target, skill);
 		}
 		return false;
+		}
+
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
