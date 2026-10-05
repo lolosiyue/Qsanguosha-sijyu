@@ -33202,6 +33202,11 @@ class ThHcZhuijiDistance : public DistanceSkillV2
 {
 public:
 	ThHcZhuijiDistance(): DistanceSkillV2("#ThHcZhuijiDistance") { setBaseAmount(1); }
+	CorrectSkillResult getCorrection(const CorrectSkillContext &) const override
+	{
+		// Pursuit changes fixed distance only; other targets keep their normal distance.
+		return CorrectSkillResult::noEffect();
+	}
 	CorrectSkillResult getFixedValue(const CorrectSkillContext &ctx) const override
 	{
 		if (!ctx.secondary) return CorrectSkillResult::noEffect();
