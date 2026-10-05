@@ -676,8 +676,8 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		RoomThreadHegemony::chooseGenerals(&m_room);
 		return;
 	}
-	// QSAN_NO_HIDDEN_GENERAL skips the opening conceal. Hide skills still exist.
-	const bool concealHiddenGenerals = qgetenv("QSAN_NO_HIDDEN_GENERAL").isEmpty();
+	// NoHiddenGeneral and QSAN_NO_HIDDEN_GENERAL skip the opening conceal.
+	const bool concealHiddenGenerals = Config.concealOpeningHiddenGenerals();
 	if (Config.Enable2ndGeneral)
 		Config.Enable2ndGeneral = m_room.mode!="02_1v1"&&m_room.mode!="06_3v3"&&m_room.mode!="06_XMode"&&m_room.mode!="04_1v3";
 	if (players.isEmpty()) players = m_room.getPlayers();
@@ -733,7 +733,7 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 			}
 			the_lord->setGeneral2Name(general);
 			m_room.notifyProperty(the_lord, the_lord, "general2");
-			if (concealHiddenGenerals && the_lord->hasHideSkill()){
+			if (concealHiddenGenerals && the_lord->hasHideSkill(2)){
 				m_room.setPlayerProperty(the_lord, "yinni_general2", general);
 				general = "yinni_hide";
 				the_lord->setGeneral2Name(general);

@@ -274,6 +274,11 @@ void Settings::reinitializeConfigFile()
 }
 #endif
 
+bool Settings::concealOpeningHiddenGenerals() const
+{
+    return !NoHiddenGeneral && qgetenv("QSAN_NO_HIDDEN_GENERAL").isEmpty();
+}
+
 void Settings::init()
 {
 #ifdef Q_OS_ANDROID
@@ -374,6 +379,7 @@ void Settings::init()
     FreeAssignSelf = EnableCheat && value("FreeAssignSelf", false).toBool();
     Enable2ndGeneral = value("Enable2ndGeneral", false).toBool();
     EnableHegemony = value("EnableHegemony", false).toBool();
+    NoHiddenGeneral = value("NoHiddenGeneral", false).toBool();
     if (EnableHegemony) {
         // Hegemony always uses its own concealed two-general rules.
         Enable2ndGeneral = true;
