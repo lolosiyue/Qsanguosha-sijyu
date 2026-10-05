@@ -155,7 +155,10 @@ QList<ServerPlayer *> RoomRoster::findBySkill(const QString &skillName, ServerPl
 
 ServerPlayer *RoomRoster::findFirstBySkill(const QString &skillName, ServerPlayer *current, bool includeLose) const
 {
-    if (!includeLose && !skillPresent(skillName))
+    // Raw ownership also cannot succeed when the skill is absent. Keep formatted
+    // instance queries on their original path; presence stores base names only.
+    // Positive hits still scan the live roster and apply the requested validity gate.
+    if ((!includeLose || !skillName.contains(QLatin1Char('#'))) && !skillPresent(skillName))
         return nullptr;
     foreach (ServerPlayer *player, orderedFrom(current, false)) {
         if (player->hasSkill(skillName, includeLose))

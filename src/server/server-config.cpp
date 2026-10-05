@@ -112,6 +112,8 @@ const QList<SettingSpec> &settingSpecs()
         booleanSetting("EnableAI", true),
         booleanSetting("AIChat", true),
         booleanSetting("AIHumanized", true),
+        booleanSetting("50PNativeFlagScan", true),
+        booleanSetting("50PNativeSkillScan", true),
         integerSetting("OriginAIDelay", 1000, 0, 600000),
         booleanSetting("AlterAIDelayAD", false),
         integerSetting("AIDelayAD", 0, 0, 600000),
