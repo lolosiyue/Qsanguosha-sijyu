@@ -1412,6 +1412,7 @@ static TriggerList luaV2TriggerList(const LuaSkill *self, swig_type_info *selfTy
 	lua_State *L = room->getLuaState();
 
 	self->can_trigger.push(L);
+	SkillTriggerScope triggerScope(self);
 
 	SWIG_NewPointerObj(L, const_cast<LuaSkill *>(self), selfType, 0);
 

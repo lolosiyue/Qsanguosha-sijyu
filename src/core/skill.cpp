@@ -20,6 +20,26 @@
 #include <QFile>
 #include <QSet>
 
+namespace {
+thread_local const Skill *g_skillTriggerScope = nullptr;
+}
+
+SkillTriggerScope::SkillTriggerScope(const Skill *skill)
+    : m_previous(g_skillTriggerScope)
+{
+    g_skillTriggerScope = skill;
+}
+
+SkillTriggerScope::~SkillTriggerScope()
+{
+    g_skillTriggerScope = m_previous;
+}
+
+const Skill *SkillTriggerScope::current()
+{
+    return g_skillTriggerScope;
+}
+
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
 	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$"))
@@ -1135,6 +1155,9 @@ bool TriggerSkillV2::prepareSource(Room *room, SkillContext &ctx) const
 
 bool TriggerSkillV2::isSourceAvailable(Room *room, const SkillContext &ctx) const
 {
+    // A global timing skill stays on the engine table. No seat owns an instance.
+    if (isGlobal() && !isEquipSkill() && ctx.instanceID == 0 && !ctx.activationRef.isValid())
+        return room && ctx.owner && room->getAllPlayers(true).contains(ctx.owner);
     const SkillInstanceRef &source = ctx.activationRef;
     return ctx.owner && source.isValid()
         && ctx.owner->hasSkillInstance(source.key.skillName, source.key.instanceID)

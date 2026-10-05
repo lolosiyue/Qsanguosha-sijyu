@@ -2,6 +2,7 @@
 #define ROOM_ROSTER_H
 
 #include <QList>
+#include <QSet>
 #include <QString>
 
 class ServerPlayer;
@@ -46,6 +47,8 @@ public:
 
 private:
     void relinkPlayers();
+    bool skillPresent(const QString &skillName) const;
+    void invalidateSkillPresence();
 
     QList<ServerPlayer *> m_players;
     QList<ServerPlayer *> m_alivePlayers;
@@ -54,6 +57,9 @@ private:
     mutable QList<ServerPlayer *> m_orderedPlayers;
     mutable ServerPlayer *m_orderedCurrent = nullptr;
     bool m_playOrderReversed = false;
+    mutable bool m_skillPresenceDirty = true;
+    mutable quint64 m_skillPresenceGeneration = 0;
+    mutable QSet<QString> m_skillPresence;
 };
 
 #endif

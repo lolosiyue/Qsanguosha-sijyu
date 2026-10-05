@@ -1,18 +1,22 @@
 #include "room-roster.h"
 
 #include "serverplayer.h"
+#include "skill-instance-utils.h"
+#include "skill-set-generation.h"
 
 #include <QStringList>
 
 void RoomRoster::add(ServerPlayer *player)
 {
     m_players << player;
+    invalidateSkillPresence();
 }
 
 void RoomRoster::remove(ServerPlayer *player)
 {
     m_players.removeOne(player);
     m_alivePlayers.removeOne(player);
+    invalidateSkillPresence();
 }
 
 void RoomRoster::insertAfter(ServerPlayer *before, ServerPlayer *player, bool addToAlive)
@@ -20,6 +24,7 @@ void RoomRoster::insertAfter(ServerPlayer *before, ServerPlayer *player, bool ad
     m_players.insert(m_players.indexOf(before) + 1, player);
     if (addToAlive)
         m_alivePlayers.insert(m_alivePlayers.indexOf(before) + 1, player);
+    invalidateSkillPresence();
 }
 
 void RoomRoster::replacePlayers(const QList<ServerPlayer *> &players)
@@ -27,6 +32,7 @@ void RoomRoster::replacePlayers(const QList<ServerPlayer *> &players)
     m_players = players;
     rebuildAlive();
     relinkPlayers();
+    invalidateSkillPresence();
 }
 
 QList<ServerPlayer *> RoomRoster::players() const
@@ -109,9 +115,37 @@ ServerPlayer *RoomRoster::findByObjectName(const QString &objectName, ServerPlay
     return nullptr;
 }
 
+void RoomRoster::invalidateSkillPresence()
+{
+    m_skillPresenceDirty = true;
+}
+
+bool RoomRoster::skillPresent(const QString &skillName) const
+{
+    const quint64 generation = SkillSet::generation();
+    if (m_skillPresenceDirty || m_skillPresenceGeneration != generation) {
+        m_skillPresence.clear();
+        for (ServerPlayer *player : m_players) {
+            if (!player)
+                continue;
+            for (const QString &formatted : player->getSkillNames()) {
+                QString baseName;
+                SkillInstanceUtils::parseName(formatted, baseName);
+                if (!baseName.isEmpty())
+                    m_skillPresence.insert(baseName);
+            }
+        }
+        m_skillPresenceGeneration = generation;
+        m_skillPresenceDirty = false;
+    }
+    return m_skillPresence.contains(skillName);
+}
+
 QList<ServerPlayer *> RoomRoster::findBySkill(const QString &skillName, ServerPlayer *current) const
 {
     QList<ServerPlayer *> playersWithSkill;
+    if (!skillPresent(skillName))
+        return playersWithSkill;
     foreach (ServerPlayer *player, orderedFrom(current, false)) {
         if (player->hasSkill(skillName))
             playersWithSkill << player;
@@ -121,6 +155,8 @@ QList<ServerPlayer *> RoomRoster::findBySkill(const QString &skillName, ServerPl
 
 ServerPlayer *RoomRoster::findFirstBySkill(const QString &skillName, ServerPlayer *current, bool includeLose) const
 {
+    if (!includeLose && !skillPresent(skillName))
+        return nullptr;
     foreach (ServerPlayer *player, orderedFrom(current, false)) {
         if (player->hasSkill(skillName, includeLose))
             return player;
