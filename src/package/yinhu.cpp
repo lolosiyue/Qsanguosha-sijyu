@@ -2096,7 +2096,7 @@ public:
 class YHSigongEffect : public TriggerSkillV2
 {
 public:
-    YHSigongEffect() : TriggerSkillV2("#yhsigong") { events << EventPhaseEnd; hide_skill = true; global = true; frequency = Compulsory; }
+    YHSigongEffect() : TriggerSkillV2("#yhsigong") { events << EventPhaseEnd; global = true; frequency = Compulsory; }
     static bool hasDiscard(Room *room)
     {
         const QVariant turn = room->historyScopes().value("turn_id");

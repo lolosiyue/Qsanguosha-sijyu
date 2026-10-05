@@ -74,6 +74,9 @@ public:
     bool FreeAssignSelf;
     bool Enable2ndGeneral;
     bool EnableHegemony;
+    // QSettings key NoHiddenGeneral. True skips the opening yinni_hide conceal.
+    bool NoHiddenGeneral;
+    bool concealOpeningHiddenGenerals() const;
     bool EnableMeleeMode;
     int MaxHpScheme;
     int Scheme0Subtraction;
