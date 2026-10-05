@@ -19436,19 +19436,98 @@ bool MobileKuangxiangCard::targetFilter(const QList<const Player *> &targets, co
 	return targets.isEmpty()&&Self->getHandcardNum()>to->getHandcardNum();
 }
 
+namespace {
+const char *kuangxiangReceipts = "mobile_kuangxiang_receipts";
+const char *kuangxiangDispatches = "mobile_kuangxiang_dispatches";
+QString kuangxiangDepth(Room *room)
+{ return QString::number(room->getThread()->getEventStack()->size()); }
+qint64 nextKuangxiangSerial(Room *room)
+{
+    const qint64 serial = room->getTag("mobile_kuangxiang_serial").toLongLong() + 1;
+    room->setTag("mobile_kuangxiang_serial", serial);
+    return serial;
+}
+SkillInstanceRef kuangxiangSource(const QVariantMap &receipt)
+{
+    return SkillInstanceRef(receipt.value("source_owner").toString(),
+        SkillInstanceKey(receipt.value("source_skill").toString(), receipt.value("source_instance").toInt()));
+}
+}
+
 void MobileKuangxiangCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
-	foreach (ServerPlayer *p, targets) {
-		room->swapCards(source,p,"h","mobilekuangxiang");
-		foreach (int id, source->handCards()){
-			room->setCardTip(id,"mobilekuangxiang");
-			room->setCardFlag(id,"mobilekuangxiang");
-		}
-		foreach (int id, p->handCards()){
-			room->setCardTip(id,"mobilekuangxiang");
-			room->setCardFlag(id,"mobilekuangxiang");
-		}
-	}
+    if (!source || !source->isAlive()) return;
+    if (!getActivationSkillName().isEmpty() && getActivationSkillName() != "mobilekuangxiang") return;
+    // Ordinary legacy view-as/AI cards have no instance field. Use the same
+    // explicit-copy choice policy as the native activation resolver.
+    int activationId = getActivationSkillInstanceId();
+    if (activationId == 0) {
+        QList<int> available;
+        for (int id : source->getValidSkillInstanceIds("mobilekuangxiang")) {
+            const SkillInstanceRef ref(source->objectName(), SkillInstanceKey("mobilekuangxiang", id));
+            if (room->canShowGeneralForSkill(ref)) available << id;
+        }
+        if (available.isEmpty()) return;
+        activationId = available.first();
+        if (available.size() > 1) {
+            QStringList choices;
+            for (int id : available) choices << SkillInstanceUtils::formatName("mobilekuangxiang", id);
+            const int selected = choices.indexOf(room->askForChoice(source, "mobilekuangxiang", choices.join("+")));
+            if (selected < 0) return;
+            activationId = available.at(selected);
+        }
+    }
+    const SkillInstanceRef activation(source->objectName(), SkillInstanceKey("mobilekuangxiang", activationId));
+    if (!source->isAlive() || !source->getValidSkillInstanceIds("mobilekuangxiang").contains(activationId)
+        || !room->canShowGeneralForSkill(activation)) return;
+    // Pin the selected source before swap callbacks can remove its grant.
+    const SkillInstanceRef root = room->resolveSkillInstanceRootRef(activation);
+    if (!root.isValid()) return;
+    for (ServerPlayer *target : targets) {
+        const QList<int> sourceCards = source->handCards(), targetCards = target->handCards();
+        const qint64 swap = nextKuangxiangSerial(room);
+        QVariantList receipts = room->getTag(kuangxiangReceipts).toList();
+        if (root.isValid()) {
+            const auto add = [&](ServerPlayer *recipient, const QList<int> &ids) {
+                if (ids.isEmpty()) return;
+                QVariantList values;
+                for (int id : ids) values << id;
+                receipts << QVariantMap{{"serial", nextKuangxiangSerial(room)}, {"swap", swap},
+                    {"issuer", source->objectName()}, {"recipient", recipient->objectName()},
+                    {"activation_skill", activation.key.skillName}, {"activation_instance", activation.key.instanceID},
+                    {"source_owner", root.ownerObjectName}, {"source_skill", root.key.skillName},
+                    {"source_instance", root.key.instanceID}, {"ids", values}, {"received", QVariantList()},
+                    {"initializing", true}, {"spent", false}, {"consumed", false}};
+            };
+            add(source, targetCards);
+            add(target, sourceCards);
+            room->setTag(kuangxiangReceipts, receipts);
+        }
+        room->swapCards(source, target, "h", "mobilekuangxiang");
+        receipts = room->getTag(kuangxiangReceipts).toList();
+        for (QVariant &entry : receipts) {
+            QVariantMap receipt = entry.toMap();
+            if (receipt.value("swap").toLongLong() != swap) continue;
+            receipt["initializing"] = false;
+            receipt["ids"] = receipt.value("received");
+            entry = receipt;
+        }
+        room->setTag(kuangxiangReceipts, receipts);
+        for (ServerPlayer *recipient : {source, target}) {
+            for (int id : recipient->handCards()) {
+                bool received = false;
+                for (const QVariant &entry : receipts) {
+                    const QVariantMap receipt = entry.toMap();
+                    if (receipt.value("swap").toLongLong() == swap
+                        && receipt.value("recipient").toString() == recipient->objectName()
+                        && receipt.value("received").toList().contains(id)) received = true;
+                }
+                if (!received) continue;
+                room->setCardTip(id, "mobilekuangxiang");
+                room->setCardFlag(id, "mobilekuangxiang");
+            }
+        }
+    }
 }
 
 class MobileKuangxiangVs : public ZeroCardViewAsSkill
@@ -19470,43 +19549,153 @@ public:
 	}
 };
 
-class MobileKuangxiang : public TriggerSkill
+class MobileKuangxiang : public TriggerSkillV2
 {
 public:
-	MobileKuangxiang() : TriggerSkill("mobilekuangxiang")
-	{
-		events << CardsMoveOneTime << EventPhaseStart;
-		view_as_skill = new MobileKuangxiangVs;
-	}
-	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
-	{
-		if(event==CardsMoveOneTime){
-			CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-			if(move.from_places.contains(Player::PlaceHand)){
-				foreach (int id, move.card_ids){
-					if(Sanguosha->getCard(id)->hasFlag("mobilekuangxiang")){
-						bool has = false;
-						foreach (const Card*h, move.from->getHandcards()){
-							if(h->hasTip("mobilekuangxiang")) has = true;
-						}
-						if(!has){
-							const TriggerSkill*xy = Sanguosha->getTriggerSkill("xuye");
-							if(xy) xy->trigger(Damaged,room,player,data);
-						}
-						break;
-					}
-				}
-			}
-		}else if(player->getPhase()==Player::Play){
-			foreach (ServerPlayer *p, room->getAlivePlayers()) {
-				foreach (int id, p->handCards()){
-					room->setCardTip(id,"-mobilekuangxiang");
-					room->setCardFlag(id,"-mobilekuangxiang");
-				}
-			}
-		}
-		return false;
-	}
+    MobileKuangxiang() : TriggerSkillV2("mobilekuangxiang")
+    {
+        events << CardsMoveOneTime << EventPhaseStart;
+        global = true;
+        view_as_skill = new MobileKuangxiangVs;
+    }
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (!player) return true;
+        QVariantList receipts = room->getTag(kuangxiangReceipts).toList();
+        if (receipts.isEmpty()) return true;
+        if (event == EventPhaseStart) {
+            if (player->getPhase() != Player::Play) return true;
+            const int before = receipts.size();
+            for (int i = receipts.size() - 1; i >= 0; --i)
+                if (receipts[i].toMap().value("issuer").toString() == player->objectName()) receipts.removeAt(i);
+            if (receipts.size() == before) return true;
+            room->setTag(kuangxiangReceipts, receipts);
+            for (ServerPlayer *holder : room->getAllPlayers(true)) {
+                for (int id : holder->handCards()) {
+                    const Card *card = Sanguosha->getCard(id);
+                    if (!card || (!card->hasFlag("mobilekuangxiang") && !card->hasTip("mobilekuangxiang"))) continue;
+                    bool retained = false;
+                    for (const QVariant &entry : receipts) {
+                        const QVariantMap receipt = entry.toMap();
+                        if (receipt.value("recipient").toString() == holder->objectName()
+                            && receipt.value("received").toList().contains(id)) retained = true;
+                    }
+                    if (!retained) { room->setCardTip(id, "-mobilekuangxiang"); room->setCardFlag(id, "-mobilekuangxiang"); }
+                }
+            }
+            return true;
+        }
+        // A move is broadcast to every player; inspect its physical endpoints once.
+        const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        if (!move.from || move.from != player) return true;
+        QVariantMap dispatches = room->getTag(kuangxiangDispatches).toMap();
+        const qint64 dispatch = nextKuangxiangSerial(room);
+        dispatches[kuangxiangDepth(room)] = dispatch;
+        room->setTag(kuangxiangDispatches, dispatches);
+        for (QVariant &entry : receipts) {
+            QVariantMap receipt = entry.toMap();
+            const QString recipientName = receipt.value("recipient").toString();
+            const QVariantList ids = receipt.value("ids").toList();
+            QVariantList received = receipt.value("received").toList();
+            // Atomic swaps commit every destination before notifying listeners.
+            // Observe all delivered cards before a nested callback can lose them.
+            if (receipt.value("initializing").toBool()) {
+                ServerPlayer *recipient = room->findPlayerByObjectName(recipientName, true);
+                if (recipient) for (const QVariant &id : ids)
+                    if (recipient->handCards().contains(id.toInt()) && !received.contains(id)) received << id;
+                // An earlier move recorder may already have removed a newly
+                // delivered card. Its departure from this recipient's hand is
+                // also delivery evidence, even when the live hand is now empty.
+                if (player->objectName() == recipientName) {
+                    for (int i = 0; i < move.card_ids.size(); ++i) {
+                        const int id = move.card_ids[i];
+                        if (move.from_places.value(i) == Player::PlaceHand
+                            && ids.contains(id) && !received.contains(id)) received << id;
+                    }
+                }
+                receipt["received"] = received;
+            }
+            if (move.to && move.to->objectName() == recipientName && move.to_place == Player::PlaceHand) {
+                for (int id : move.card_ids)
+                    if (ids.contains(id) && !received.contains(id)) received << id;
+                receipt["received"] = received;
+            }
+            if (receipt.value("spent").toBool()
+                || player->objectName() != recipientName || received.isEmpty()) { entry = receipt; continue; }
+            bool lostReceived = false;
+            for (int i = 0; i < move.card_ids.size(); ++i)
+                if (move.from_places.value(i) == Player::PlaceHand && received.contains(move.card_ids[i])) lostReceived = true;
+            bool stillHeld = false;
+            for (const QVariant &id : received) if (player->handCards().contains(id.toInt())) stillHeld = true;
+            if (lostReceived && !stillHeld) {
+                receipt["spent"] = true;
+                receipt["dispatch"] = dispatch;
+            }
+            entry = receipt;
+        }
+        room->setTag(kuangxiangReceipts, receipts);
+        return true;
+    }
+    bool collectTriggerContexts(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data,
+        QList<SkillContext> &out) const override
+    {
+        if (event != CardsMoveOneTime || !player) return true;
+        const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        if (move.from != player) return true;
+        const qint64 dispatch = room->getTag(kuangxiangDispatches).toMap().value(kuangxiangDepth(room)).toLongLong();
+        for (const QVariant &entry : room->getTag(kuangxiangReceipts).toList()) {
+            const QVariantMap receipt = entry.toMap();
+            if (!receipt.value("spent").toBool() || receipt.value("consumed").toBool()
+                || receipt.value("dispatch").toLongLong() != dispatch) continue;
+            ServerPlayer *owner = room->findPlayerByObjectName(receipt.value("issuer").toString(), true);
+            if (!owner || !owner->isAlive() || !player->isAlive()) continue;
+            SkillContext ctx;
+            ctx.owner = owner; ctx.invoker = ctx.initiator = player;
+            ctx.skill_name = objectName();
+            ctx.instanceID = receipt.value("activation_instance").toInt();
+            ctx.trigger_count = receipt.value("serial").toInt();
+            ctx.sourceRef = kuangxiangSource(receipt);
+            ctx.original_data = &data; ctx.current_event = event;
+            ctx.amount = 2; ctx.manual_effect = true;
+            ctx.targets = {player}; ctx.extra_data = receipt;
+            out << ctx;
+        }
+        return true;
+    }
+    bool isSourceAvailable(Room *room, const SkillContext &ctx) const override
+    {
+        if (!ctx.owner || !ctx.owner->isAlive() || !ctx.sourceRef.isValid()) return false;
+        const qint64 serial = ctx.extra_data.toMap().value("serial").toLongLong();
+        for (const QVariant &entry : room->getTag(kuangxiangReceipts).toList()) {
+            const QVariantMap receipt = entry.toMap();
+            if (receipt.value("serial").toLongLong() == serial && kuangxiangSource(receipt) == ctx.sourceRef) return true;
+        }
+        return false;
+    }
+    bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const qint64 serial = ctx.extra_data.toMap().value("serial").toLongLong();
+        QVariantList receipts = room->getTag(kuangxiangReceipts).toList();
+        bool found = false;
+        for (QVariant &entry : receipts) {
+            QVariantMap receipt = entry.toMap();
+            if (receipt.value("serial").toLongLong() != serial || receipt.value("consumed").toBool()) continue;
+            receipt["consumed"] = true; entry = receipt; found = true; break;
+        }
+        room->setTag(kuangxiangReceipts, receipts);
+        if (!found || !ctx.invoker || !ctx.invoker->isAlive()) return false;
+        const auto *xuye = dynamic_cast<const TriggerSkillV2 *>(Sanguosha->getTriggerSkill("xuye"));
+        return xuye && xuye->cost(event, room, ctx.owner, ctx);
+    }
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        // Borrow only the effect. Do not dispatch Damaged or apply its least-hand condition.
+        const auto *xuye = dynamic_cast<const TriggerSkillV2 *>(Sanguosha->getTriggerSkill("xuye"));
+        if (!xuye) return false;
+        SkillContext borrowed = ctx;
+        borrowed.skill_name = "xuye";
+        return xuye->effect(event, room, ctx.owner, borrowed);
+    }
 };
 
 GanjueCard::GanjueCard()
