@@ -181,7 +181,7 @@ public:
             const bool wasDown = faces.value(QString::number(damageId)).toBool();
             if (!wasDown || !player->isAlive() || player->faceUp()) continue;
             SkillContext ctx;
-            ctx.skill_name = objectName() + "#" + QString::number(id);
+            ctx.skill_name = objectName();
             ctx.owner = ctx.invoker = ctx.initiator = player;
             ctx.instanceID = id;
             ctx.activationRef = SkillInstanceRef(player->objectName(), SkillInstanceKey(objectName(), id));
@@ -2330,7 +2330,7 @@ public:
                 ctx.activationRef = SkillInstanceRef(player->objectName(), SkillInstanceKey(objectName(), id));
                 ctx.sourceRef = room->resolveSkillInstanceRootRef(ctx.activationRef);
                 if (!ctx.sourceRef.isValid()) continue;
-                ctx.skill_name = objectName() + "#" + QString::number(id);
+                ctx.skill_name = objectName() + "->" + target->objectName();
                 ctx.amount = room->getSkillInstanceAmount(ctx.activationRef);
                 ctx.targets = {target}; ctx.preferredTarget = target; ctx.preferredTargetSeat = target->getSeat();
                 ctx.current_event = event; ctx.original_data = &data; contexts << ctx;

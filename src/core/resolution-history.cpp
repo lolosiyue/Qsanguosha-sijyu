@@ -21,25 +21,38 @@
 
 namespace {
 
-// Persistent radix tree: snapshots share immutable pages; an edit copies only
-// one 256-record page and the bounded path to it, never the whole journal.
+// Persistent radix tree: snapshots share pages and paths. A write detaches only
+// shared nodes and the affected page; an unshared journal updates in place.
 template<typename T> class Records {
     static constexpr int PageSize = 256;
     struct Node {
-        std::shared_ptr<const Node> left, right;
-        std::shared_ptr<const QVector<T>> page;
+        std::shared_ptr<Node> left, right;
+        std::shared_ptr<QVector<T>> page;
     };
-    std::shared_ptr<const Node> root;
+    std::shared_ptr<Node> root;
     qsizetype count = 0;
-    static std::shared_ptr<const Node> replace(const std::shared_ptr<const Node> &old,
-                                              quint64 pageId, int bit,
-                                              const std::shared_ptr<const QVector<T>> &page)
+    QVector<T> &writablePage(qsizetype index)
     {
-        auto node = old ? std::make_shared<Node>(*old) : std::make_shared<Node>();
-        if (bit < 0) node->page = page;
-        else if ((pageId >> bit) & 1) node->right = replace(node->right, pageId, bit - 1, page);
-        else node->left = replace(node->left, pageId, bit - 1, page);
-        return node;
+        // Root uniqueness alone is insufficient: descendants may still belong
+        // to a retained snapshot after an earlier path was detached.
+        auto *link = &root;
+        const quint64 pageId = quint64(index / PageSize);
+        for (int bit = 31; ; --bit) {
+            if (!*link) *link = std::make_shared<Node>();
+            else if (!link->unique()) *link = std::make_shared<Node>(**link);
+            Node &node = **link;
+            if (bit < 0) {
+                if (!node.page) {
+                    node.page = std::make_shared<QVector<T>>();
+                    node.page->reserve(PageSize);
+                } else if (!node.page.unique()) {
+                    node.page = std::make_shared<QVector<T>>(*node.page);
+                }
+                // QVector detaches its implicitly shared storage on mutation.
+                return *node.page;
+            }
+            link = ((pageId >> bit) & 1) ? &node.right : &node.left;
+        }
     }
     const QVector<T> *pageAt(qsizetype index) const
     {
@@ -54,16 +67,11 @@ public:
     const T &at(qsizetype index) const { return pageAt(index)->at(index % PageSize); }
     void set(qsizetype index, const T &value)
     {
-        auto page = std::make_shared<QVector<T>>(*pageAt(index));
-        (*page)[index % PageSize] = value;
-        root = replace(root, quint64(index / PageSize), 31, page);
+        writablePage(index)[index % PageSize] = value;
     }
     void append(const T &value)
     {
-        const auto *old = pageAt(count);
-        auto page = old ? std::make_shared<QVector<T>>(*old) : std::make_shared<QVector<T>>();
-        page->append(value);
-        root = replace(root, quint64(count / PageSize), 31, page);
+        writablePage(count).append(value);
         ++count;
     }
     struct Iterator {

@@ -4213,11 +4213,11 @@ public:
                 ctx.activationRef = SkillInstanceRef(player->objectName(), SkillInstanceKey(objectName(), id));
                 ctx.sourceRef = room->resolveSkillInstanceRootRef(ctx.activationRef);
                 if (!ctx.sourceRef.isValid()) continue;
-                ctx.skill_name = objectName() + "#" + QString::number(id);
+                ctx.skill_name = objectName() + "->" + target->objectName();
                 bool amountOk = false;
                 ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
                 if (!amountOk) ctx.amount = getBaseAmount();
-                // One choice per out-of-range target. The "->" string is only parsed for equip skills.
+                // Distinct target choices; the dispatcher appends the instance ID.
                 ctx.targets = {target};
                 ctx.preferredTarget = target;
                 ctx.preferredTargetSeat = target->getSeat();
