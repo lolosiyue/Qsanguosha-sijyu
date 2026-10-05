@@ -152,12 +152,22 @@ SkillRuntimeCoordinator::SkillRuntimeCoordinator(Room &room)
 void SkillRuntimeCoordinator::attachSkillToPlayer(ServerPlayer *player,
                                                    const QString &skillName)
 {
+    const Skill *skill = Sanguosha->getSkill(skillName);
+    const auto *trigger = dynamic_cast<const TriggerSkill *>(skill);
+    const Skill *asking = SkillTriggerScope::current();
+    // can_trigger manufacturing an owner is not a grant. The global table already runs it.
+    if (player && trigger && trigger->isGlobal() && !skill->isEquipSkill()
+        && asking && asking->objectName() == skillName) {
+        if (m_room.thread)
+            m_room.thread->addTriggerSkill(trigger);
+        return;
+    }
+
     const int instanceId = player->acquireSkill(skillName);
     const SkillInstance *instance = player->findSkillInstance(skillName, instanceId);
     if (instance)
         notifySkillInstanceUpsert(player, *instance);
 
-    const Skill *skill = Sanguosha->getSkill(skillName);
     if (skill && skill->isVisible()
         && skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty()) {
         player->addClub(skill->getClubName());

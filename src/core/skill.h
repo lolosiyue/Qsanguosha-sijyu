@@ -2,7 +2,23 @@
 #define _SKILL_H
 
 class Room;
+class Skill;
 class SkillRuntimeCoordinator;
+
+// Active while a V2 can_trigger callback runs. A global timing skill must not
+// acquire itself onto the event seat from inside that callback.
+class SkillTriggerScope
+{
+public:
+    explicit SkillTriggerScope(const Skill *skill);
+    ~SkillTriggerScope();
+    static const Skill *current();
+
+private:
+    const Skill *m_previous;
+    SkillTriggerScope(const SkillTriggerScope &) = delete;
+    SkillTriggerScope &operator=(const SkillTriggerScope &) = delete;
+};
 
 #include "skill-dialog-info.h"
 #include "structs.h"

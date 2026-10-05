@@ -1236,7 +1236,21 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         quint64 recordGeneration;
         const QString recordName = v2->objectName();
         const auto candidates = recordOwners.candidates(room, recordPlayers, recordName, recordGeneration);
-        if (candidates.isEmpty()) continue;
+        if (candidates.isEmpty()) {
+            // No seat holds this global skill. Record once for the event target.
+            if (target && v2->isGlobal() && !v2->isEquipSkill()) {
+                SkillContext recordCtx;
+                recordCtx.skill_name = v2->objectName();
+                recordCtx.owner = target;
+                recordCtx.invoker = target;
+                recordCtx.original_data = &data;
+                recordCtx.current_event = triggerEvent;
+                recordCtx.amount = v2->getBaseAmount();
+                v2->record(triggerEvent, room, target, recordCtx);
+                restoreIdentity();
+            }
+            continue;
+        }
         foreach (ServerPlayer *owner, recordPlayers) {
             // Records may attach/detach instances, including on later owners.
             // After any mutation resume the original live scan for this record.
@@ -1409,6 +1423,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								instanceIds << instanceId;
 						} else {
 							instanceIds = p->getValidSkillInstanceIds(skillName);
+                            if (instanceIds.isEmpty() && skillName == v2->objectName()
+                                && v2->isGlobal() && !v2->isEquipSkill())
+                                instanceIds << 0;
 						}
 
 						foreach (int resolvedId, instanceIds) {
