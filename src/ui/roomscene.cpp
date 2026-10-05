@@ -1453,12 +1453,6 @@ void RoomScene::attachOverlay(RoomOverlayHost *overlay)
 {
     m_overlayHost = overlay;
     overlay->setPresentation(gamePresentation());
-    overlay->setChatDocument(chat_box->document(), chat_edit);
-    connect(overlay, &RoomOverlayHost::sendChatRequested, this, [this]() {
-        if (chat_edit->isEnabled()) speak();
-    });
-    connect(overlay, &RoomOverlayHost::controlsRequested, this, &RoomScene::showGameControlPanel);
-    connect(overlay, &RoomOverlayHost::nativeChatToggleRequested, this, &RoomScene::setChatBoxVisibleSlot);
 }
 
 void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled)
