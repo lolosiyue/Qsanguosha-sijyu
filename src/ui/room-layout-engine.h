@@ -90,7 +90,6 @@ struct ResponsiveInput
     bool inspectorRequested = false;
     bool inspectorPinned = false;
     bool logVisible = false;
-    bool chatVisible = false;
 };
 
 struct ResponsivePhotoPlacement
@@ -117,7 +116,6 @@ struct ResponsiveResult
     QRectF handRect;
     QRectF promptRect;
     QRectF logRect;
-    QRectF chatRect;
     bool logAlwaysVisible = false; // Landscape large rooms retain the native right-hand log.
     bool nativeChrome = false; // Use the skin's original log/chat, roles and background.
     QRectF safeInteractionRect;

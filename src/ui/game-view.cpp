@@ -458,7 +458,6 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
         input.hasPreviousProfile = m_hasPreviousProfile;
         input.inspectorRequested = m_overlay->inspectorRequested();
         input.logVisible = m_overlay->logVisible();
-        input.chatVisible = m_overlay->chatVisible();
         input.handedness = m_overlay->handedness();
         input.firstVisibleSeat = m_overlay->firstVisibleSeat();
         if (m_posture) {

@@ -461,7 +461,6 @@ ResponsiveResult computeLargeRoom(const ResponsiveInput &input, const Result &fr
     result.nativeChrome = result.logAlwaysVisible = true;
     result.mainRect = frame.sceneRect;
     result.logRect = frame.logRect;
-    result.chatRect = frame.chatRect;
     result.interactionRect = result.safeInteractionRect = frame.dashboardRect;
     // Only the opponent area changes: the skin still owns the entire right column.
     const QRectF area(frame.displayRect.left(), frame.displayRect.top(),
@@ -550,7 +549,6 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
         // Portrait uses the same overview and candidate semantics; the original
         // log remains an on-demand overlay, independent of roster browsing.
         if (input.logVisible) result.logRect = result.resolutionRect;
-        if (input.chatVisible) result.chatRect = result.tableRect;
         return result;
     }
 
@@ -664,28 +662,18 @@ ResponsiveResult computeResponsive(const ResponsiveInput &input)
     if (!usesTabletopInteractionPane)
         result.tableRect.setBottom(qMax(result.tableRect.top(), result.interactionRect.top() - gap));
 
-    // Visible log/chat panels occupy only the table band above interaction controls.
-    if (input.logVisible && !input.chatVisible
-        && input.stableRect.height() > input.stableRect.width() && validRect(result.tableRect)) {
+    // A visible log panel occupies only the table band above interaction controls.
+    if (input.logVisible && input.stableRect.height() > input.stableRect.width()
+        && validRect(result.tableRect)) {
         // The native log opens over the table, leaving seats and the hand in place.
         result.logRect = result.tableRect;
-    } else if ((input.logVisible || input.chatVisible) && validRect(result.tableRect)) {
+    } else if (input.logVisible && validRect(result.tableRect)) {
         const double panelWidth = qMin(result.tableRect.width() * 0.28, 320.0);
         const double panelHeight = result.tableRect.height();
         const QRectF panelColumn(result.tableRect.right() - panelWidth, result.tableRect.top(),
                                  panelWidth, panelHeight);
         result.tableRect.setRight(panelColumn.left() - gap);
-        if (input.logVisible && input.chatVisible) {
-            result.logRect = QRectF(panelColumn.left(), panelColumn.top(), panelColumn.width(),
-                                    qMax(0.0, panelColumn.height() / 2.0 - gap / 2.0));
-            result.chatRect = QRectF(panelColumn.left(), panelColumn.center().y() + gap / 2.0,
-                                     panelColumn.width(),
-                                     qMax(0.0, panelColumn.height() / 2.0 - gap / 2.0));
-        } else if (input.logVisible) {
-            result.logRect = panelColumn;
-        } else {
-            result.chatRect = panelColumn;
-        }
+        result.logRect = panelColumn;
     }
 
     const double actionHeight = qMin(touch, result.interactionRect.height());
