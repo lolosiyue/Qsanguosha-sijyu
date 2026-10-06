@@ -31,8 +31,9 @@ When the mode is on:
   and never overridden.
 - Widget tooltips are suppressed (they are a hover-only desktop concept).
 - The room skin loads `skins/<name>.tv.layout.json` on top of the regular
-  layout file when present (`fulldefaultSkin.tv.layout.json` ships font bumps
-  to >= 18 skin px, i.e. >= 27 px at 1080p). Scene sizes are unchanged.
+  layout file when present (`fulldefaultSkin.tv.layout.json` and
+  `fulldefaultSkinAlt.tv.layout.json` — the Linux skin list — ship font
+  bumps to >= 18 skin px, i.e. >= 27 px at 1080p). Scene sizes are unchanged.
 - `qss/bigpicture_tv.qss` is appended to the application stylesheet
   (>= 64 px buttons, visible focus ring).
 - `SpatialFocusFilter` is installed application-wide: arrow keys navigate

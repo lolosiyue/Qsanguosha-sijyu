@@ -141,6 +141,24 @@ static void applyBigPictureScaleFactor()
         qputenv("QT_SCALE_FACTOR", "2");
 }
 
+// Base stylesheet plus the TV overlay (>=64px buttons, visible focus ring)
+// only while big-picture mode is active. Normal sessions get byte-identical
+// styling to before.
+static void applyQsanStyleSheet(bool bigPictureMode)
+{
+    QString style;
+    QFile file(QStringLiteral("qss/sanguosha.qss"));
+    if (file.open(QIODevice::ReadOnly))
+        style += QTextStream(&file).readAll();
+    if (bigPictureMode) {
+        QFile tvFile(QStringLiteral("qss/bigpicture_tv.qss"));
+        if (tvFile.open(QIODevice::ReadOnly))
+            style += QTextStream(&tvFile).readAll();
+    }
+    if (!style.isEmpty())
+        qApp->setStyleSheet(style);
+}
+
 int main(int argc, char *argv[]) {
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
     // Under WSLg/XWayland, XI2 sends clicks to the window frame but not the QQuickWidget/QOpenGLWidget client area.
@@ -635,11 +653,7 @@ int main(int argc, char *argv[]) {
         Server *server = new Server(qApp);
 
         if (!headless) {
-            QFile file("qss/sanguosha.qss");
-            if (file.open(QIODevice::ReadOnly)) {
-                QTextStream stream(&file);
-                qApp->setStyleSheet(stream.readAll());
-            }
+            applyQsanStyleSheet(bigPictureMode);
 
             MainWindow *main_window = new MainWindow;
             Sanguosha->setParent(main_window);
@@ -673,11 +687,7 @@ int main(int argc, char *argv[]) {
     }
 
     startupPhase.next("main.stylesheet");
-    QFile file("qss/sanguosha.qss");
-    if (file.open(QIODevice::ReadOnly)) {
-        QTextStream stream(&file);
-        qApp->setStyleSheet(stream.readAll());
-    }
+    applyQsanStyleSheet(bigPictureMode);
 
     startupPhase.finish();
     startupTotal.finish();
