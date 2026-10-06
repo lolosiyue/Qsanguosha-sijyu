@@ -20,6 +20,7 @@
 #include <cmath>
 #include <limits>
 #include <utility>
+#include <exception>
 
 namespace {
 
@@ -36,6 +37,63 @@ QAtomicInteger<quint64> &nextGeneration()
 }
 
 thread_local LuaRuntime *currentRuntime = nullptr;
+
+// Each C++ entry owns its transport. Nested native -> Lua -> native calls
+// rethrow into the next protected entry only after Lua restores that entry.
+struct ProtectedTransport {
+    LuaRuntime *runtime;
+    ProtectedTransport *previous;
+    std::exception_ptr exception;
+};
+thread_local ProtectedTransport *protectedTransport = nullptr;
+
+int protectedBridge(lua_State *state, void (*callback)(lua_State *, void *),
+                    void *argument, void *host, int mode)
+{
+    ProtectedTransport *transport = protectedTransport;
+    while (transport && transport->runtime != host) transport = transport->previous;
+    if (mode == 1) return transport && bool(transport->exception);
+    if (mode == 2) {
+        if (transport && transport->exception) std::rethrow_exception(transport->exception);
+        return LUA_OK;
+    }
+    bool failed = false;
+    try {
+        callback(state, argument);
+    } catch (...) {
+        if (transport && !transport->exception) transport->exception = std::current_exception();
+        failed = true;
+    }
+    // No C++ callback frames or catch-handler objects remain when a Lua
+    // allocation may longjmp. The diagnostic itself is private server-side;
+    // this sentinel carries no event/card/player information.
+    if (failed) {
+        lua_pushliteral(state, "native event cascade cancelled");
+        return LUA_ERRRUN;
+    }
+    return LUA_OK;
+}
+
+int protectedCallWithTransport(lua_State *state, LuaRuntime *runtime,
+                               int arguments, int results, int errorFunction)
+{
+    const int base = lua_gettop(state) - arguments - 1;
+    ProtectedTransport transport{runtime, protectedTransport, {}};
+    protectedTransport = &transport;
+    try {
+        const int status = lua_pcall(state, arguments, results, errorFunction);
+        protectedTransport = transport.previous;
+        if (transport.exception) {
+            lua_settop(state, base);
+            std::rethrow_exception(transport.exception);
+        }
+        return status;
+    } catch (...) {
+        protectedTransport = transport.previous;
+        lua_settop(state, base);
+        throw;
+    }
+}
 
 void drainLifetimeDomain(CardLifetimeManager &manager, const void *domain)
 {
@@ -417,6 +475,8 @@ bool LuaRuntime::initialize(QString *error)
         return false;
     }
 
+    lua_setprotectedbridge(m_state, &protectedBridge, this);
+
     m_generation = nextGeneration().fetchAndAddRelaxed(1) + 1;
     m_owner = QThread::currentThread();
     {
@@ -462,8 +522,7 @@ bool LuaRuntime::loadScript(const QString &path, QString *error)
         lua_pop(L, 1);
         return false;
     }
-    LuaInvocationScope invocation(*this);
-    if (lua_pcall(L, 0, LUA_MULTRET, 0) != 0) {
+    if (protectedCall(L, 0, LUA_MULTRET, 0) != 0) {
         if (error)
             *error = QString::fromUtf8(lua_tostring(L, -1));
         lua_pop(L, 1);
@@ -578,8 +637,7 @@ bool LuaRuntime::exportTakeoverState(QVariantMap &state, QString *error)
                 *error = QStringLiteral("takeover provider '%1' export callback is unavailable").arg(name);
             return false;
         }
-        LuaInvocationScope invocation(*this);
-        const int result = lua_pcall(lua, 0, LUA_MULTRET, 0);
+        const int result = protectedCall(lua, 0, LUA_MULTRET, 0);
         if (result != LUA_OK) {
             const QString callbackError = luaStackError(lua);
             lua_settop(lua, base);
@@ -680,8 +738,7 @@ bool LuaRuntime::restoreTakeoverState(const QVariantMap &state, QString *error)
                              .arg(name, conversionError);
             return false;
         }
-        LuaInvocationScope invocation(*this);
-        if (lua_pcall(lua, 1, 0, 0) != LUA_OK) {
+        if (protectedCall(lua, 1, 0, 0) != LUA_OK) {
             const QString callbackError = luaStackError(lua);
             lua_settop(lua, base);
             if (error)
@@ -745,17 +802,20 @@ int LuaRuntime::protectedCall(lua_State *state, int argumentCount,
                               int resultCount, int errorFunction)
 {
     LuaRuntime *runtime = fromState(state);
+    // Coroutine states share their runtime's bridge, but only the main state
+    // is in the ownership registry. Native callbacks already bind the owner.
+    if (!runtime) runtime = currentRuntime;
     if (!runtime)
         return lua_pcall(state, argumentCount, resultCount, errorFunction);
 
     if (currentRuntime == runtime) {
         LuaInvocationScope invocation(*runtime);
-        return lua_pcall(state, argumentCount, resultCount, errorFunction);
+        return protectedCallWithTransport(state, runtime, argumentCount, resultCount, errorFunction);
     }
 
     Binding binding(*runtime, false);
     LuaInvocationScope invocation(*runtime);
-    return lua_pcall(state, argumentCount, resultCount, errorFunction);
+    return protectedCallWithTransport(state, runtime, argumentCount, resultCount, errorFunction);
 }
 
 void LuaRuntime::setCurrentForThread(LuaRuntime *runtime)

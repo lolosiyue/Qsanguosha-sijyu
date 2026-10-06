@@ -66,6 +66,41 @@
 #include <QJsonDocument>
 #include <QStandardPaths>
 #include <vector>
+#include <type_traits>
+
+namespace {
+template <typename Function>
+auto runRecoverableCascade(Room &room, RoomThread *thread, Function &&function, bool structural = false)
+    -> decltype(function())
+{
+    using Result = decltype(function());
+    if (!thread) return function();
+    if ((thread->isMandatoryCleanup() || thread->isNativeCommitActive()) && thread->isCascadeCancelled()) {
+        if (structural) return function();
+        if constexpr (std::is_void_v<Result>) return;
+        else return Result{};
+    }
+    RoomThread::CascadeScope cascade(*thread);
+    const auto clearReceipts = qScopeGuard([&] {
+        if (cascade.ownsRoot()) room.finishTriggerCascade(cascade.id(), false);
+    });
+    try {
+        if constexpr (std::is_void_v<Result>) {
+            function();
+            cascade.checkpoint();
+        } else {
+            Result result = function();
+            cascade.checkpoint();
+            return result;
+        }
+    } catch (const TriggerCascadeBreak &cancel) {
+        if (!cascade.ownsRoot() || cancel.cascadeId != cascade.id()) throw;
+        RoomThread::MandatoryCleanupScope cleanup(*thread);
+        room.finishTriggerCascade(cascade.id(), true);
+        if constexpr (!std::is_void_v<Result>) return Result{};
+    }
+}
+}
 
 // This object lives with the room on the server thread. Its subprocess sees
 // only loopback seat capabilities passed through stdin, and never a Room or
@@ -1067,6 +1102,9 @@ Room::~Room()
 			.arg(getId()).arg(stopped ? "true" : "false");
 	if (!stopped)
 		qFatal("Room worker did not stop before runtime destruction");
+	m_playerLifecycle->clearCancelledDeaths();
+	m_pendingDying.clear();
+	m_cancelledHpCauses.clear();
 	m_hybrid50.reset();
 	if (m_runtime) {
 		if (shutdownTraceEnabled())
@@ -1524,76 +1562,294 @@ void Room::outputEventStack()
 	output(msg);
 }
 
-void Room::enterDying(ServerPlayer*player, DamageStruct*reason, HpLostStruct*hplost)
+struct Room::DyingCursor {
+    enum Stage { Start, Enter, Observers, Savers, PeachesDone, Quit, Finished } stage = Start;
+    QPointer<ServerPlayer> player;
+    DamageStruct damage;
+    HpLostStruct hpLost;
+    bool hasDamage = false, hasHpLost = false;
+    CardLifetimeLease causeLease;
+    QVariant data;
+    QList<QPointer<ServerPlayer>> observers, savers;
+    int observerIndex = 0, saverIndex = 0;
+    quint64 owner = 0, completedOwner = 0;
+    qint64 history = 0;
+    bool observersReady = false, resolved = false, retained = false;
+    bool decisionIncomplete = false;
+    bool nativeDecisionStarted = false;
+    QVariant saverAtDeferral;
+};
+
+void Room::enterDying(ServerPlayer *player, DamageStruct *reason, HpLostStruct *hpLost)
 {
-    ResolutionScope resolution(*this, QStringLiteral("dying"), player, reason ? reason->from : nullptr, player);
+    auto cursor = std::make_shared<DyingCursor>();
+    cursor->player = player;
+    cursor->owner = thread->cascadeId();
+    if (reason) {
+        cursor->hasDamage = true;
+        cursor->damage = *reason;
+        cursor->causeLease = CardLifetimeLease(globalCardLifetimeManager(),
+                                               globalCardLifetimeManager().liveToken(reason->card));
+    }
+    if (hpLost) { cursor->hasHpLost = true; cursor->hpLost = *hpLost; }
+    DyingStruct dying;
+    dying.who = player;
+    dying.damage = cursor->hasDamage ? &cursor->damage : nullptr;
+    dying.hplost = cursor->hasHpLost ? &cursor->hpLost : nullptr;
+    cursor->data = QVariant::fromValue(dying);
+    continueDying(cursor);
+    if (cursor->completedOwner && !thread->hasActiveCascade() && !thread->isCascadeCancelled())
+        finishTriggerCascade(cursor->completedOwner, true);
+}
+
+void Room::continueDying(const std::shared_ptr<DyingCursor> &cursor)
+{
+    ServerPlayer *player = cursor->player;
+    if (!player) return;
+    if (cursor->stage == DyingCursor::Finished) {
+        m_cancelledHpCauses.remove(player);
+        if (cursor->retained && cursor->owner) m_completedDying[cursor->owner].insert(player);
+        return;
+    }
+    ++m_dyingCursorDepth;
+    const auto cursorGuard = qScopeGuard([&] { --m_dyingCursorDepth; });
+    RoomThread::DyingContinuationScope continuation(*thread, true, cursor->retained ? cursor->owner : 0);
+    const QVariant previousDying = getTag("CurrentDying");
+    const bool previousFlag = player->hasFlag("Global_Dying");
+    const QVariant previousSaver = player->getTag("MyDyingSaver");
+    const auto restoreFrame = qScopeGuard([&] {
+        if (previousDying.isValid()) setTag("CurrentDying", previousDying);
+        else removeTag("CurrentDying");
+        setPlayerFlag(player, previousFlag ? "Global_Dying" : "-Global_Dying");
+        if (previousSaver.isValid()) player->setTag("MyDyingSaver", previousSaver);
+        else player->removeTag("MyDyingSaver");
+    });
+    if (cursor->retained) {
+        if (cursor->saverAtDeferral.isValid()) player->setTag("MyDyingSaver", cursor->saverAtDeferral);
+        else player->removeTag("MyDyingSaver");
+    }
+    DamageStruct *reason = cursor->hasDamage ? &cursor->damage : nullptr;
+    HpLostStruct *hpLost = cursor->hasHpLost ? &cursor->hpLost : nullptr;
+    ResolutionScope resolution(*this, "dying", player, reason ? reason->from : nullptr, player);
     QVariantMap dyingFact{{"player", player->objectName()}, {"to", player->objectName()},
         {"from", reason && reason->from ? reason->from->objectName() : QString()},
-        {"reason", reason ? reason->reason : hplost ? hplost->reason : QString()},
+        {"reason", reason ? reason->reason : hpLost ? hpLost->reason : QString()},
         {"hp", player->getHp()}, {"alive", player->isAlive()}, {"attribution_complete", true}};
-    ResolutionHistoryEventGuard dyingHistory(m_resolutionHistory, "dying", dyingFact, historyRecordingEnabled());
-    if (dyingHistory.id() != 0)
-        m_resolutionHistory.appendFact(dyingHistory.id(), "dying_start", dyingFact);
-	setPlayerFlag(player, "Global_Dying");
-	QStringList currentdying = getTag("CurrentDying").toStringList();
-	currentdying << player->objectName();
-	setTag("CurrentDying", currentdying);
+    if (!cursor->history && historyRecordingEnabled()) {
+        cursor->history = m_resolutionHistory.beginEvent("dying", dyingFact, false);
+        m_resolutionHistory.appendFact(cursor->history, "dying_start", dyingFact);
+    }
+    ResolutionHistoryContextGuard historyContext(m_resolutionHistory, cursor->history, cursor->history != 0);
+    const auto finishHistory = qScopeGuard([&] {
+        if (!cursor->history) return;
+        if (cursor->stage == DyingCursor::Finished) m_resolutionHistory.finishEvent(cursor->history, "completed");
+        else if (!cursor->retained) m_resolutionHistory.finishEvent(cursor->history, "interrupted");
+    });
+    if (cursor->stage != DyingCursor::Start && (cursor->resolved || !player->isAlive() || player->getHp() > 0))
+        cursor->stage = DyingCursor::Quit;
+    setPlayerFlag(player, "Global_Dying");
+    QStringList current = previousDying.toStringList();
+    current << player->objectName();
+    setTag("CurrentDying", current);
+    const auto event = [&](TriggerEvent e, ServerPlayer *target) {
+        if (thread->isSettlementBudgetExhausted()) return false;
+        return thread->invokeDyingEvent(continuation, e, target, cursor->data,
+            e == AskForPeachesDone ? &cursor->nativeDecisionStarted : nullptr);
+    };
+    try {
+        while (cursor->stage != DyingCursor::Finished) {
+            if (!thread->settlementCursorCheckpoint(player)) {
+                // The offending callback has unwound. A retained frame must
+                // wait until its canonical card/container commit is complete.
+                if (thread->isNativeCommitActive() || thread->isDyingEventActive() || m_dyingCursorDepth > 1)
+                    throw TriggerCascadeBreak{thread->cascadeId()};
+                RoomThread::MandatoryCleanupScope canonical(*thread);
+                const quint64 failedContext = thread->cascadeId();
+                finishTriggerCascade(failedContext, true);
+                adoptCancelledDying(failedContext, continuation.cancelledCascadeId()
+                    ? continuation.cancelledCascadeId() : failedContext);
+                const bool unfinished = cursor->stage != DyingCursor::Quit || cursor->decisionIncomplete;
+                const bool forceDeath = unfinished && !cursor->resolved && !cursor->nativeDecisionStarted
+                    && player->isAlive() && player->getHp() <= 0
+                    && player->hasFlag("Global_Dying");
+                cursor->decisionIncomplete = false;
+                cursor->stage = DyingCursor::Quit;
+                if (forceDeath) {
+                    qWarning().noquote() << "ROOMTHREAD_SETTLEMENT_FORCED_DEATH"
+                        << QJsonDocument(QJsonObject{{"room", getId()}, {"player", player->objectName().left(64)},
+                            {"phase", int(player->getPhase())}}).toJson(QJsonDocument::Compact);
+                    // Keep the original cause and existing native death/mode
+                    // settlement. Optional author death/rescue work is cut.
+                    killPlayer(player, reason, hpLost);
+                }
+            }
+            switch (cursor->stage) {
+            case DyingCursor::Start: {
+                cursor->stage = DyingCursor::Enter;
+                JsonArray arg;
+                arg << S_GAME_EVENT_PLAYER_DYING << player->objectName();
+                doBroadcastNotify(S_COMMAND_LOG_EVENT, arg);
+                break;
+            }
+            case DyingCursor::Enter:
+                cursor->stage = DyingCursor::Observers;
+                if (event(EnterDying, player) || !player->hasFlag("Global_Dying"))
+                    cursor->stage = DyingCursor::Quit;
+                break;
+            case DyingCursor::Observers:
+                if (!cursor->observersReady) {
+                    cursor->observersReady = true;
+                    for (ServerPlayer *p : getAllPlayers()) cursor->observers << p;
+                }
+                if (!player->hasFlag("Global_Dying")) { cursor->stage = DyingCursor::Quit; break; }
+                if (cursor->observerIndex < cursor->observers.size()) {
+                    ServerPlayer *observer = cursor->observers[cursor->observerIndex++];
+                    if (observer && (event(Dying, observer) || !player->hasFlag("Global_Dying")))
+                        cursor->observerIndex = cursor->observers.size();
+                } else {
+                    cursor->stage = DyingCursor::Savers;
+                    LogMessage log;
+                    log.type = "#AskForPeaches";
+                    log.from = player;
+                    log.to = getAllPlayers();
+                    log.arg = QString::number(1-player->getHp());
+                    for (ServerPlayer *saver : log.to) cursor->savers << saver;
+                    sendLog(log);
+                }
+                break;
+            case DyingCursor::Savers:
+                if (!player->hasFlag("Global_Dying")) { cursor->stage = DyingCursor::Quit; break; }
+                if (cursor->saverIndex < cursor->savers.size()) {
+                    ServerPlayer *saver = cursor->savers[cursor->saverIndex++];
+                    if (!saver) break;
+                    const QVariant previous = saver->property("currentdying");
+                    setPlayerProperty(saver, "currentdying", player->objectName());
+                    const auto restoreSaver = qScopeGuard([&] { setPlayerProperty(saver, "currentdying", previous); });
+                    event(AskForPeaches, saver);
+                } else {
+                    cursor->stage = DyingCursor::PeachesDone;
+                    notifyMoveFocus(player, S_COMMAND_ASK_PEACH);
+                }
+                break;
+            case DyingCursor::PeachesDone:
+                cursor->stage = DyingCursor::Quit;
+                cursor->decisionIncomplete = true;
+                event(AskForPeachesDone, player);
+                if (!thread->isSettlementBudgetExhausted() || cursor->nativeDecisionStarted || !player->isAlive()
+                    || player->getHp() > 0 || !player->hasFlag("Global_Dying"))
+                    cursor->decisionIncomplete = false;
+                break;
+            case DyingCursor::Quit: {
+                cursor->stage = DyingCursor::Finished;
+                setPlayerFlag(player, "-Global_Dying");
+                current = getTag("CurrentDying").toStringList();
+                current.removeOne(player->objectName());
+                setTag("CurrentDying", current);
+                if (player->isAlive()) {
+                    JsonArray arg;
+                    arg << S_GAME_EVENT_PLAYER_QUITDYING << player->objectName();
+                    doBroadcastNotify(S_COMMAND_LOG_EVENT, arg);
+                }
+                dyingFact.insert("hp", player->getHp());
+                dyingFact.insert("alive", player->isAlive());
+                if (cursor->history) m_resolutionHistory.appendFact(cursor->history, "dying_result", dyingFact);
+                event(QuitDying, player);
+                player->removeTag("MyDyingSaver");
+                break;
+            }
+            case DyingCursor::Finished: break;
+            }
+        }
+    } catch (const TriggerCascadeBreak &cancel) {
+        // Physical commits and nested total exhaustion must unwind the
+        // offending callback before this original frame can continue. Retain
+        // the already-advanced cursor, never replay EnterDying or a saver.
+        cursor->owner = cancel.cascadeId;
+        cursor->resolved = !player->hasFlag("Global_Dying") || !player->isAlive() || player->getHp() > 0;
+        cursor->saverAtDeferral = player->getTag("MyDyingSaver");
+        if (thread->isNativeCommitActive() || thread->isSettlementBudgetExhausted()) {
+            cursor->retained = true;
+            bool queued = false;
+            for (const auto &pending : m_pendingDying)
+                if (pending == cursor) queued = true;
+            if (!queued) m_pendingDying << cursor;
+        }
+        throw;
+    }
+    if (continuation.cancelled()) {
+        cursor->completedOwner = continuation.cancelledCascadeId();
+        m_completedDying[cursor->completedOwner].insert(player);
+    }
+    if (cursor->retained && cursor->owner) m_completedDying[cursor->owner].insert(player);
+    m_cancelledHpCauses.remove(player);
+    continuation.rethrowCancelled();
+}
 
-	JsonArray arg;
-	arg << QSanProtocol::S_GAME_EVENT_PLAYER_DYING << player->objectName();
-	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
+void Room::adoptCancelledDying(quint64 from, quint64 owner)
+{
+    if (m_finishingCascadeDepth) owner = m_finishingCascadeId;
+    if (from == owner) return;
+    for (const auto &cursor : m_pendingDying) if (cursor->owner == from) cursor->owner = owner;
+    m_playerLifecycle->adoptCancelledDeaths(from, owner);
+    m_completedDying[owner].unite(m_completedDying.take(from));
+    if (m_completedDying[owner].isEmpty()) m_completedDying.remove(owner);
+}
 
-	DyingStruct dying;
-	dying.who = player;
-	dying.damage = reason;
-	dying.hplost = hplost;
-	QVariant dying_data = QVariant::fromValue(dying);
-
-	if (!(thread->trigger(EnterDying, this, player, dying_data) || !player->hasFlag("Global_Dying"))){
-		LogMessage log;
-		log.type = "#enterDying";
-		log.from = player;
-		//sendLog(log);
-		foreach(ServerPlayer*p, getAllPlayers()){
-			if (thread->trigger(Dying, this, p, dying_data) || !player->hasFlag("Global_Dying"))
-				break;
-		}
-		//thread->trigger(Dying, this, player, dying_data);
-		if (player->hasFlag("Global_Dying")){
-			log.type = "#AskForPeaches";
-			log.to = getAllPlayers();
-			log.arg = QString::number(1-player->getHp());
-			sendLog(log);
-			foreach(ServerPlayer*saver, log.to){
-				QString cd = saver->property("currentdying").toString();
-				setPlayerProperty(saver, "currentdying", player->objectName());
-				thread->trigger(AskForPeaches, this, saver, dying_data);
-				setPlayerProperty(saver, "currentdying", cd);
-				if (!player->hasFlag("Global_Dying")) break;
-			}
-			notifyMoveFocus(player, S_COMMAND_ASK_PEACH);
-			thread->trigger(AskForPeachesDone, this, player, dying_data);
-		}
-	}
-	setPlayerFlag(player, "-Global_Dying");
-
-	currentdying = getTag("CurrentDying").toStringList();
-	currentdying.removeOne(player->objectName());
-	setTag("CurrentDying", currentdying);
-
-	if (player->isAlive()){
-		JsonArray arg;
-		arg << QSanProtocol::S_GAME_EVENT_PLAYER_QUITDYING << player->objectName();
-		doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
-	}
-    // The same event remains current while QuitDying effects observe its result.
-    dyingFact.insert("hp", player->getHp());
-    dyingFact.insert("alive", player->isAlive());
-    if (dyingHistory.id() != 0)
-        m_resolutionHistory.appendFact(dyingHistory.id(), "dying_result", dyingFact);
-    thread->trigger(QuitDying, this, player, dying_data);
-    player->removeTag("MyDyingSaver");
-    dyingHistory.finish("completed");
+void Room::finishTriggerCascade(quint64 cascadeId, bool cancelled)
+{
+    thread->finishDeferredCascade(cascadeId, cancelled);
+    if (!cancelled) {
+        m_completedDying.remove(cascadeId);
+        m_cardMovement->finishTriggerCascade(cascadeId, false, thread->cascadeParentId());
+        return;
+    }
+    RoomThread::MandatoryCleanupScope cleanup(*thread);
+    m_cardMovement->finishTriggerCascade(cascadeId, true);
+    // An existing dying event retains its native cursor. Its event-level
+    // recovery cleans resources only; it must never re-enter that frame.
+    if (m_dyingCursorDepth || m_playerLifecycle->hasActiveDeathCursor()) return;
+    ++m_finishingCascadeDepth;
+    const quint64 previousFinishing = m_finishingCascadeId;
+    m_finishingCascadeId = cascadeId;
+    const auto finishing = qScopeGuard([&] { --m_finishingCascadeDepth; m_finishingCascadeId = previousFinishing; });
+    const auto drain = [&] { do {
+        m_playerLifecycle->finishCancelledDeaths(cascadeId);
+        bool resumed = false;
+        for (int i = 0; i < m_pendingDying.size();) {
+            if (m_pendingDying[i]->owner != cascadeId) { ++i; continue; }
+            const auto cursor = m_pendingDying.takeAt(i);
+            resumed = true;
+            try { continueDying(cursor); }
+            catch (const TriggerCascadeBreak &cancel) { if (cancel.cascadeId != cascadeId) throw; }
+        }
+        if (!resumed) break;
+    } while (true); };
+    drain();
+    QSet<ServerPlayer *> completed = m_completedDying.take(cascadeId);
+    for (ServerPlayer *player : getAlivePlayers()) {
+        if (!m_cancelledHpCauses.contains(player)) continue;
+        if (player->getHp() > 0 || player->hasFlag("Global_Dying") || completed.contains(player)) continue;
+        const QVariant attribution = m_cancelledHpCauses.take(player);
+        DamageStruct damage = attribution.value<DamageStruct>();
+        HpLostStruct hpLost = attribution.value<HpLostStruct>();
+        RoomThread::DyingContinuationScope original(*thread, true, cascadeId);
+        try {
+            enterDying(player,
+                attribution.canConvert<DamageStruct>() && damage.to == player ? &damage : nullptr,
+                attribution.canConvert<HpLostStruct>() && hpLost.to == player ? &hpLost : nullptr);
+        } catch (const TriggerCascadeBreak &cancel) {
+            if (cancel.cascadeId != thread->cascadeId()) throw;
+            adoptCancelledDying(cancel.cascadeId, cascadeId);
+        }
+    }
+    drain();
+    completed.unite(m_completedDying.take(cascadeId));
+    for (auto cause = m_cancelledHpCauses.begin(); cause != m_cancelledHpCauses.end();) {
+        if (!cause.key()->isAlive() || cause.key()->getHp() > 0 || completed.contains(cause.key()))
+            cause = m_cancelledHpCauses.erase(cause);
+        else ++cause;
+    }
+    thread->retireCancelledCallbackOrigins(cascadeId);
 }
 
 ServerPlayer*Room::getCurrentDyingPlayer() const
@@ -1660,6 +1916,9 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 
 void Room::judge(JudgeStruct&judge_struct)
 {
+	RoomThread::CascadeScope cascade(*thread, false);
+	m_cardMovement->beginJudgement();
+	const auto judgementReceipt = qScopeGuard([&] { m_cardMovement->endJudgement(); });
 	ResolutionScope resolution(*this, QStringLiteral("judge"), judge_struct.who, nullptr, judge_struct.who);
 	QVariantMap start = historyCause(CardMoveReason(CardMoveReason::S_REASON_JUDGE,
 		judge_struct.who ? judge_struct.who->objectName() : QString(), judge_struct.reason, QString()));
@@ -1719,6 +1978,9 @@ void Room::judge(JudgeStruct&judge_struct)
 	}
 }
 
+void Room::retainJudgeSnapshot(Card *card) { m_cardMovement->retainJudgeSnapshot(card); }
+void Room::releaseJudgeSnapshot(Card *card) { m_cardMovement->releaseJudgeSnapshot(card); }
+
 void Room::sendJudgeResult(const JudgeStruct*judge)
 {
 	JsonArray arg;
@@ -1738,6 +2000,8 @@ void Room::sendJudgeResult(const JudgeStruct*judge)
 
 QList<int> Room::getNCards(int n, bool update_pile_number, bool isTop)
 {
+	if (!thread) return m_cardMovement->getNCards(n, update_pile_number, isTop);
+	RoomThread::CascadeScope cascade(*thread, false);
 	return m_cardMovement->getNCards(n, update_pile_number, isTop);
 }
 
@@ -2275,27 +2539,27 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
 
 void Room::obtainCard(ServerPlayer*target, const Card*card, const CardMoveReason&reason, bool visible)
 {
-	m_cardMovement->obtainCard(target, card, reason, visible);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->obtainCard(target, card, reason, visible); }, true);
 }
 
 void Room::obtainCard(ServerPlayer*target, const Card*card, bool visible)
 {
-	m_cardMovement->obtainCard(target, card, visible);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->obtainCard(target, card, visible); }, true);
 }
 
 void Room::obtainCard(ServerPlayer*target, int card_id, bool visible)
 {
-	m_cardMovement->obtainCard(target, card_id, visible);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->obtainCard(target, card_id, visible); }, true);
 }
 
 void Room::obtainCard(ServerPlayer*target, const Card*card, const QString&skill_name, bool visible)
 {
-	m_cardMovement->obtainCard(target, card, skill_name, visible);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->obtainCard(target, card, skill_name, visible); }, true);
 }
 
 void Room::obtainCard(ServerPlayer*target, int card_id, const QString&skill_name, bool visible)
 {
-	m_cardMovement->obtainCard(target, card_id, skill_name, visible);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->obtainCard(target, card_id, skill_name, visible); }, true);
 }
 
 void Room::recastCard(ServerPlayer *player, const Card *card, const QString &skill_name)
@@ -3060,6 +3324,8 @@ const ProhibitPindianSkill*Room::isPindianProhibited(const Player*from, const Pl
 
 int Room::drawCard(bool isTop)
 {
+	if (!thread) return m_cardMovement->drawCard(isTop);
+	RoomThread::CascadeScope cascade(*thread, false);
 	return m_cardMovement->drawCard(isTop);
 }
 
@@ -4343,6 +4609,13 @@ bool Room::skillEffectCardMaterialsValid(const Card *card) const
 
 bool Room::useCardInternal(CardUseStruct &use, bool add_history, const SkillContext *acceptedEffect)
 {
+    return runRecoverableCascade(*this, thread, [&] {
+        return resolveCardUse(use, add_history, acceptedEffect);
+    });
+}
+
+bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillContext *acceptedEffect)
+{
     SkillContext physicalEffect;
     QVariantMap physicalEffectReceipt;
     if (!acceptedEffect && use.card && !use.card->appliedPhysicalEffectSource().isEmpty()) {
@@ -4922,6 +5195,26 @@ bool Room::useCardInternal(CardUseStruct &use, bool add_history, const SkillCont
 	const bool effectSkipped = skipOnUse || use.skipSkillEffect;
 	finishSkillExecution(effectSkipped ? SkillExecutionEffectSkipped : SkillExecutionCompleted);
 	if (effectSkipped) useHistory.finish(QStringLiteral("skipped"));
+	} catch (const TriggerCascadeBreak &) {
+		RoomThread::MandatoryCleanupScope cleanup(*thread);
+		if (use.card) removeTag(use.card->toString() + "PendingNullification");
+		if (skillUsageReserved && !skillUsageCommitted)
+			releaseActiveSkillUsage(activeSkill, skillCardCtx);
+		skillUsageReserved = false;
+		QList<int> pending;
+		for (int id : ids) {
+			if (getCardPlace(id) == Player::PlaceTable) pending << id;
+			setCardFlag(id, "-using");
+		}
+		if (!pending.isEmpty()) {
+			CardMoveReason reason(CardMoveReason::S_REASON_UNKNOWN, use.from->objectName(),
+			                     use.card ? use.card->getSkillName() : QString(), "cascade_cancelled");
+			moveCardsAtomic(CardsMoveStruct(pending, use.from, nullptr, Player::PlaceTable,
+			                              Player::DiscardPile, reason), true);
+		}
+		if (use.card) for (ServerPlayer *player : getAllPlayers()) player->removeQinggangTag(use.card);
+		finishSkillExecution(SkillExecutionNoResult);
+		throw;
 	} catch (TriggerEvent triggerEvent){
 		if (use.card)
 			removeTag(use.card->toString() + "PendingNullification");
@@ -5267,6 +5560,11 @@ bool Room::isJinkEffected(ServerPlayer*user, const Card*jink)
 
 void Room::damage(DamageStruct damage)
 {
+    runRecoverableCascade(*this, thread, [&] { resolveDamage(damage); });
+}
+
+void Room::resolveDamage(DamageStruct damage)
+{
 	if (damage.damage<1 || !damage.to->isAlive()) return;
 	ResolutionScope resolution(*this, QStringLiteral("damage"), damage.to, damage.from, damage.to);
 	ResolutionHistoryEventGuard damageHistory(m_resolutionHistory, QStringLiteral("damage"),
@@ -5276,6 +5574,10 @@ void Room::damage(DamageStruct damage)
 		 {QStringLiteral("card"), historyCardSnapshot(damage.card)},
 		 {QStringLiteral("reason_skill"), damage.reason}}, historyRecordingEnabled());
 
+	const int previousDepth = m_damageStack.size();
+	const QVariant previousDamage = getTag("CurrentDamageStruct");
+	QHash<ServerPlayer *, QVariant> previousTransfers;
+	for (ServerPlayer *player : getPlayers()) previousTransfers.insert(player, player->getTag("TransferDamage"));
 	try {
 		bool prevented = true;
 		QVariant data = QVariant::fromValue(damage);
@@ -5351,6 +5653,19 @@ void Room::damage(DamageStruct damage)
 			if (m_damageStack.isEmpty()) removeTag("CurrentDamageStruct");
 			else setTag("CurrentDamageStruct", QVariant::fromValue(m_damageStack.first()));
 		}
+	} catch (const TriggerCascadeBreak &) {
+		const auto restoreDamage = qScopeGuard([&] {
+			while (m_damageStack.size() > previousDepth) m_damageStack.pop();
+			if (previousDamage.isValid()) setTag("CurrentDamageStruct", previousDamage);
+			else removeTag("CurrentDamageStruct");
+			for (auto previous = previousTransfers.cbegin(); previous != previousTransfers.cend(); ++previous) {
+				// A consumed transfer is a completed effect; never resurrect it.
+				if (!previous.key()->getTag("TransferDamage").isValid()) continue;
+				if (previous.value().isValid()) previous.key()->setTag("TransferDamage", previous.value());
+				else previous.key()->removeTag("TransferDamage");
+			}
+		});
+		throw;
 	} catch (TriggerEvent triggerEvent){
 		if (triggerEvent == StageChange || triggerEvent == TurnBroken
 			|| triggerEvent == GameFinished){
@@ -5578,57 +5893,59 @@ void Room::notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner
 
 QList<int> Room::drawCardsList(ServerPlayer*player, int n, const QString&reason, bool isTop, bool visible)
 {
-	return m_cardMovement->drawCardsList(player, n, reason, isTop, visible);
+	return runRecoverableCascade(*this, thread, [&] {
+		return m_cardMovement->drawCardsList(player, n, reason, isTop, visible);
+	});
 }
 
 void Room::drawCards(ServerPlayer*player, int n, const QString&reason, bool isTop, bool visible)
 {
-	m_cardMovement->drawCards(player, n, reason, isTop, visible);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->drawCards(player, n, reason, isTop, visible); });
 }
 
 void Room::drawCards(QList<ServerPlayer*> players, int n, const QString&reason, bool isTop, bool visible)
 {
-	m_cardMovement->drawCards(players, n, reason, isTop, visible);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->drawCards(players, n, reason, isTop, visible); });
 }
 
 void Room::drawCards(QList<ServerPlayer*> players, QList<int> n_list, const QString&reason, bool isTop, bool visible)
 {
-	m_cardMovement->drawCards(players, n_list, reason, isTop, visible);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->drawCards(players, n_list, reason, isTop, visible); });
 }
 
 void Room::throwCard(const Card*card, ServerPlayer*who, ServerPlayer*thrower)
 {
-	m_cardMovement->throwCard(card, who, thrower);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->throwCard(card, who, thrower); }, true);
 }
 
 void Room::throwCard(const Card*card, const CardMoveReason&reason, ServerPlayer*who, ServerPlayer*thrower)
 {
-	m_cardMovement->throwCard(card, reason, who, thrower);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->throwCard(card, reason, who, thrower); }, true);
 }
 
 void Room::throwCard(QList<int> card_ids, const CardMoveReason&reason, ServerPlayer*who, ServerPlayer*thrower)
 {
-	m_cardMovement->throwCard(card_ids, reason, who, thrower);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->throwCard(card_ids, reason, who, thrower); }, true);
 }
 
 void Room::throwCard(int card_id, ServerPlayer*who, ServerPlayer*thrower)
 {
-	m_cardMovement->throwCard(card_id, who, thrower);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->throwCard(card_id, who, thrower); }, true);
 }
 
 void Room::throwCard(int card_id, const QString&skill_name, ServerPlayer*who, ServerPlayer*thrower)
 {
-	m_cardMovement->throwCard(card_id, skill_name, who, thrower);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->throwCard(card_id, skill_name, who, thrower); }, true);
 }
 
 void Room::throwCard(const Card*card, const QString&skill_name, ServerPlayer*who, ServerPlayer*thrower)
 {
-	m_cardMovement->throwCard(card, skill_name, who, thrower);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->throwCard(card, skill_name, who, thrower); }, true);
 }
 
 void Room::throwCard(QList<int> card_ids, const QString&skill_name, ServerPlayer*who, ServerPlayer*thrower)
 {
-	m_cardMovement->throwCard(card_ids, skill_name, who, thrower);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->throwCard(card_ids, skill_name, who, thrower); }, true);
 }
 
 RoomThread*Room::getThread() const
@@ -5638,26 +5955,27 @@ RoomThread*Room::getThread() const
 
 void Room::moveCardTo(const Card*card, ServerPlayer*dstPlayer, Player::Place dstPlace, bool visible, bool guanxin)
 {
-	m_cardMovement->moveCardTo(card, dstPlayer, dstPlace, visible, guanxin);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->moveCardTo(card, dstPlayer, dstPlace, visible, guanxin); }, true);
 }
 
 void Room::moveCardTo(const Card*card, ServerPlayer*dstPlayer, Player::Place dstPlace,
 	const CardMoveReason&reason, bool visible, bool guanxin)
 {
-	m_cardMovement->moveCardTo(card, dstPlayer, dstPlace, reason, visible, guanxin);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->moveCardTo(card, dstPlayer, dstPlace, reason, visible, guanxin); }, true);
 }
 
 void Room::moveCardTo(const Card*card, ServerPlayer*srcPlayer, ServerPlayer*dstPlayer, Player::Place dstPlace,
 	const CardMoveReason&reason, bool visible, bool guanxin)
 {
-	m_cardMovement->moveCardTo(card, srcPlayer, dstPlayer, dstPlace, reason, visible, guanxin);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->moveCardTo(card, srcPlayer, dstPlayer, dstPlace, reason, visible, guanxin); }, true);
 }
 
 void Room::moveCardTo(const Card*card, ServerPlayer*srcPlayer, ServerPlayer*dstPlayer, Player::Place dstPlace,
 	const QString&pileName, const CardMoveReason&reason, bool visible, bool guanxin)
 {
-	m_cardMovement->moveCardTo(card, srcPlayer, dstPlayer, dstPlace,
-		pileName, reason, visible, guanxin);
+	runRecoverableCascade(*this, thread, [&] {
+		m_cardMovement->moveCardTo(card, srcPlayer, dstPlayer, dstPlace, pileName, reason, visible, guanxin);
+	}, true);
 }
 
 QList<CardsMoveStruct> Room::_breakDownCardMoves(QList<CardsMoveStruct> cards_moves)
@@ -5687,12 +6005,12 @@ QVariant Room::changeMoveData(const QVariant &data, const QList<int> &ids)
 
 void Room::moveCardsAtomic(CardsMoveStruct cards_move, bool visible, bool guanxing)
 {
-	m_cardMovement->moveCardsAtomic(cards_move, visible, guanxing);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->moveCardsAtomic(cards_move, visible, guanxing); }, true);
 }
 
 void Room::moveCardsAtomic(QList<CardsMoveStruct> cards_moves, bool visible, bool guanxing)
 {
-	m_cardMovement->moveCardsAtomic(cards_moves, visible, guanxing);
+	runRecoverableCascade(*this, thread, [&] { m_cardMovement->moveCardsAtomic(cards_moves, visible, guanxing); }, true);
 }
 
 void Room::moveCardsToEndOfDrawpile(ServerPlayer*player, QList<int> card_ids, const QString&skill_name, bool visible, bool guanxing)
@@ -6394,9 +6712,18 @@ void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refil
 			broadcastResetCard(getPlayers(), cardId);
 		const Card*card = nullptr;
 		foreach(const FilterSkill*skill, filterSkills){
-			if (skill->viewFilter(cards[i])&&player->hasSkill(skill->objectName())){
+			bool matches = false;
+			if (thread) {
+				if (!thread->invokeStructuralCallback([&] { matches = skill->viewFilter(cards[i]); },
+                    skill, QStringLiteral("filter-viewFilter"), player)) break;
+			} else matches = skill->viewFilter(cards[i]);
+			if (matches&&player->hasSkill(skill->objectName())){
 				if(card) const_cast<Card *>(card)->deleteLater();
-				card = skill->viewAs(cards[i]);
+				card = nullptr;
+				if (thread) {
+					if (!thread->invokeStructuralCallback([&] { card = skill->viewAs(cards[i]); },
+                        skill, QStringLiteral("filter-viewAs"), player)) break;
+				} else card = skill->viewAs(cards[i]);
 			}
 		}
 		if (card==nullptr) continue;
@@ -6468,7 +6795,7 @@ void Room::setTag(const QString&key, const QVariant&value)
 	tag.insert(key, value);
 	if (changed && roomRuntime())
 		roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
-	if (scenario) scenario->onTagSet(this, key);
+	if (scenario && !(thread && thread->isMandatoryCleanup())) scenario->onTagSet(this, key);
 }
 
 QVariant Room::getTag(const QString&key) const
@@ -8547,7 +8874,7 @@ int Room::getBossModeExpMult(int level) const
 	lua_pushinteger(getLuaState(), level);
 	int res = 0;
 	LuaRuntime::LuaInvocationScope invocation(m_runtime->lua());
-	if (lua_pcall(getLuaState(), 1, 1, 0) == 0){
+	if (LuaRuntime::protectedCall(getLuaState(), 1, 1, 0) == 0){
 		res = lua_tointeger(getLuaState(), -1);
 		lua_pop(getLuaState(), 1);
 	} else {
@@ -8612,12 +8939,20 @@ void Room::processPendingAnytimeSkills()
 		QStringList pending = player->getPendingAnytimeSkills();
 		if (pending.isEmpty()) continue;
 		foreach (const QString &skill_name, pending) {
+			// Consume this request before author code runs: a cancelled callback must
+			// not be replayed at the next empty-stack flush. Other queued requests
+			// retain their own cascade ownership and are left for a later flush.
+			player->removePendingAnytimeSkill(skill_name);
+			const auto completion = qScopeGuard([&] { notifyAnytimeSkillDone(player, skill_name); });
 			const AnytimeSkill *skill = qobject_cast<const AnytimeSkill *>(Sanguosha->getSkill(skill_name));
 			if (!skill) continue;
-			skill->onTrigger(this, player);
-			notifyAnytimeSkillDone(player, skill_name);
+			const auto callback = [&] { skill->onTrigger(this, player); };
+			if (thread) {
+				if (!thread->invokeStructuralCallback(callback, skill, QStringLiteral("anytime"), player)) return;
+			} else {
+				callback();
+			}
 		}
-		player->clearPendingAnytimeSkills();
 	}
 }
 
@@ -8778,7 +9113,7 @@ void Room::cancelTarget(CardUseStruct &use, ServerPlayer *player)
 
 void Room::moveCards(QList<CardsMoveStruct> moves, bool visible, bool enforceOrigin)
 {
-    m_cardMovement->moveCards(moves, visible, enforceOrigin);
+    runRecoverableCascade(*this, thread, [&] { m_cardMovement->moveCards(moves, visible, enforceOrigin); }, true);
 }
 
 QString Room::askForGeneral(ServerPlayer *player, const QStringList &generals,

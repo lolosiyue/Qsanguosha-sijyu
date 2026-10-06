@@ -156,6 +156,14 @@ LUA_API lua_Number lua_version (lua_State *L) {
   return LUA_VERSION_NUM;
 }
 
+LUA_API void lua_setprotectedbridge (lua_State *L,
+                                    lua_ProtectedBridge bridge, void *host) {
+  lua_lock(L);
+  G(L)->protectedbridge = bridge;
+  G(L)->protectedbridgehost = host;
+  lua_unlock(L);
+}
+
 
 
 /*

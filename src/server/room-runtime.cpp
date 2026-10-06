@@ -587,7 +587,7 @@ bool RoomRuntime::initialize(QString *error)
             lua_getfield(state, -1, "LoadPackageScript");
             lua_remove(state, -2);
             lua_pushstring(state, path.toUtf8().constData());
-            if (lua_pcall(state, 1, 0, 0) != LUA_OK) {
+            if (LuaRuntime::protectedCall(state, 1, 0, 0) != LUA_OK) {
                 if (error) *error = QString::fromUtf8(lua_tostring(state, -1));
                 lua_pop(state, 1);
                 return failPhase();

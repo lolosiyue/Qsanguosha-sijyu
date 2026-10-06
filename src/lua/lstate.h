@@ -293,6 +293,8 @@ typedef struct global_State {
   GCObject *finobjrold;  /* list of really old objects with finalizers */
   struct lua_State *twups;  /* list of threads with open upvalues */
   lua_CFunction panic;  /* to be called in unprotected errors */
+  lua_ProtectedBridge protectedbridge;
+  void *protectedbridgehost;
   struct lua_State *mainthread;
   TString *memerrmsg;  /* message for memory-allocation errors */
   TString *tmname[TM_N];  /* array with tag-method names */
@@ -405,4 +407,3 @@ LUAI_FUNC int luaE_resetthread (lua_State *L, int status);
 
 
 #endif
-

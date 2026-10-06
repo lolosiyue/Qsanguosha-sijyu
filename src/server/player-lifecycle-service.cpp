@@ -1,6 +1,7 @@
 #include "player-lifecycle-service.h"
 
 #include "card-movement-service.h"
+#include "card-lifetime-manager.h"
 #include "event-dispatcher.h"
 #include "gamerule.h"
 #include "room.h"
@@ -254,41 +255,111 @@ void PlayerLifecycleService::revivePlayer(ServerPlayer *player, bool sendLog,
     m_room.safeSetPlayerProperty(player, "Revived_Times", revivedTimes);
 }
 
-void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reason,
-                                        HpLostStruct *hpLost)
+struct PlayerLifecycleService::DeathCursor {
+    enum Stage { Start, BeforeOver, Announce, GameOver, AfterGameOver, Death, Clubs, Bury, Detach, Reason, Spectate, Finished } stage = Start;
+    QPointer<ServerPlayer> victim, killer;
+    DamageStruct damage;
+    HpLostStruct hpLost;
+    bool hasDamage = false, hasHpLost = false;
+    CardLifetimeLease causeLease;
+    QVariant data;
+    QVariantMap fact;
+    QList<QPointer<ServerPlayer>> observers;
+    int observerIndex = 0;
+    bool observersReady = false;
+    quint64 owner = 0, completedOwner = 0;
+    bool retained = false;
+};
+
+void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reason, HpLostStruct *hpLost)
 {
-    // Freeze attribution before death/reveal callbacks can change either camp.
-    ServerPlayer *killer = reason ? reason->from : nullptr;
-    QVariantMap deathFact;
+    auto cursor = std::make_shared<DeathCursor>();
+    cursor->victim = victim;
+    cursor->killer = reason ? reason->from : nullptr;
+    cursor->owner = m_room.getThread()->cascadeId();
+    if (reason) {
+        cursor->hasDamage = true;
+        cursor->damage = *reason;
+        cursor->causeLease = CardLifetimeLease(globalCardLifetimeManager(),
+                                               globalCardLifetimeManager().liveToken(reason->card));
+    }
+    if (hpLost) { cursor->hasHpLost = true; cursor->hpLost = *hpLost; }
+    ServerPlayer *killer = cursor->killer;
     if (m_room.historyRecordingEnabled()) {
-        deathFact = {{"victim", victim->objectName()}, {"to", victim->objectName()},
+        cursor->fact = {{"victim", victim->objectName()}, {"to", victim->objectName()},
             {"from", killer ? killer->objectName() : QString()},
             {"killer", killer ? killer->objectName() : QString()},
-            // Preserve the native death cause before any listener can mutate its payload.
-            {"cause_kind", hpLost ? QStringLiteral("hp_lost")
-                : reason ? QStringLiteral("damage") : QStringLiteral("other")},
+            {"cause_kind", hpLost ? QStringLiteral("hp_lost") : reason ? QStringLiteral("damage") : QStringLiteral("other")},
             {"victim_role", victim->getRole()}, {"victim_kingdom", victim->getKingdom()},
             {"killer_role", killer ? killer->getRole() : QString()},
             {"killer_kingdom", killer ? killer->getKingdom() : QString()},
-            {"killer_is_friend", killer && killer->isFriendWith(victim)},
-            {"attribution_complete", true}};
+            {"killer_is_friend", killer && killer->isFriendWith(victim)}, {"attribution_complete", true}};
     }
-    m_room.clearControllerRelation(victim);
-    victim->setAlive(false);
-
-    const QList<ServerPlayer *> affected = m_roster.alivePlayersAfter(victim);
-    m_roster.removeAlive(victim);
-    foreach (ServerPlayer *affectedPlayer, affected)
-        m_room.broadcastProperty(affectedPlayer, "seat");
-
     DeathStruct death;
     death.who = victim;
-    death.damage = reason;
-    death.hplost = hpLost;
-    QVariant data = QVariant::fromValue(death);
-    if (m_eventDispatcher.dispatch(BeforeGameOverJudge, victim, data))
-        return;
+    death.damage = cursor->hasDamage ? &cursor->damage : nullptr;
+    death.hplost = cursor->hasHpLost ? &cursor->hpLost : nullptr;
+    cursor->data = QVariant::fromValue(death);
+    continueDeath(cursor, m_room.getThread()->isMandatoryCleanup()
+        && m_room.getThread()->isCascadeCancelled());
+    if (cursor->completedOwner && !m_room.getThread()->hasActiveCascade() && !m_room.getThread()->isCascadeCancelled())
+        m_room.finishTriggerCascade(cursor->completedOwner, true);
+}
 
+void PlayerLifecycleService::adoptCancelledDeaths(quint64 from, quint64 owner)
+{
+    for (const auto &cursor : m_pendingDeaths) if (cursor->owner == from) cursor->owner = owner;
+}
+
+void PlayerLifecycleService::finishCancelledDeaths(quint64 cascadeId)
+{
+    for (int i = 0; i < m_pendingDeaths.size();) {
+        if (m_pendingDeaths[i]->owner != cascadeId) { ++i; continue; }
+        const auto cursor = m_pendingDeaths.takeAt(i);
+        try { continueDeath(cursor); }
+        catch (const TriggerCascadeBreak &cancel) { if (cancel.cascadeId != cascadeId) throw; }
+    }
+}
+
+void PlayerLifecycleService::continueDeath(const std::shared_ptr<DeathCursor> &cursor, bool canonicalOnly)
+{
+    ServerPlayer *victim = cursor->victim;
+    if (!victim || cursor->stage == DeathCursor::Finished) return;
+    auto *thread = m_room.getThread();
+    ++m_deathCursorDepth;
+    const auto depthGuard = qScopeGuard([&] { --m_deathCursorDepth; });
+    RoomThread::DyingContinuationScope continuation(*thread, !canonicalOnly
+        && !(thread->isMandatoryCleanup() && thread->isCascadeCancelled()), cursor->retained ? cursor->owner : 0);
+    DamageStruct *reason = cursor->hasDamage ? &cursor->damage : nullptr;
+    QVariant &data = cursor->data;
+    DeathStruct death = data.value<DeathStruct>();
+    const auto event = [&](TriggerEvent e, ServerPlayer *target) {
+        if (canonicalOnly || thread->isSettlementBudgetExhausted()) {
+            RoomThread::MandatoryCleanupScope canonical(*thread);
+            if (e == GameOverJudge || e == BuryVictim)
+                return thread->triggerMandatoryGameRule(e, target, data);
+            return false;
+        }
+        return thread->invokeDyingEvent(continuation, e, target, data);
+    };
+    try {
+        while (cursor->stage != DeathCursor::Finished) {
+            switch (cursor->stage) {
+            case DeathCursor::Start: {
+                cursor->stage = DeathCursor::BeforeOver;
+                m_room.clearControllerRelation(victim);
+                victim->setAlive(false);
+                const QList<ServerPlayer *> affected = m_roster.alivePlayersAfter(victim);
+                m_roster.removeAlive(victim);
+                for (ServerPlayer *player : affected) m_room.broadcastProperty(player, "seat");
+                break;
+            }
+            case DeathCursor::BeforeOver:
+                cursor->stage = DeathCursor::Announce;
+                if (event(BeforeGameOverJudge, victim)) cursor->stage = DeathCursor::Finished;
+                break;
+            case DeathCursor::Announce: {
+                cursor->stage = DeathCursor::GameOver;
     m_room.updateStateItem();
     LogMessage log;
     log.to << victim;
@@ -312,39 +383,62 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
         m_room.revealRole(victim);
     m_notifier.doBroadcastNotify(S_COMMAND_KILL_PLAYER, victim->objectName());
 
-    // One accepted death before GameOverJudge/Death listeners, including final
-    // game-over unwinding. An intercepted BeforeGameOverJudge creates no fact.
-    ResolutionHistoryEventGuard deathHistory(m_room.resolutionHistory(), "death", deathFact,
-                                              m_room.historyRecordingEnabled());
-    if (deathHistory.id() != 0)
-        m_room.resolutionHistory().appendFact(deathHistory.id(), "death", deathFact);
-    deathHistory.finish("completed");
-    m_eventDispatcher.dispatch(GameOverJudge, victim, data);
-    if (victim->isAlive())
-        return;
-
-    m_room.setEmotion(victim, "death");
-    foreach (ServerPlayer *player, m_roster.orderedFrom(m_room.current, true)) {
-        if (player->isAlive() || player == victim)
-            m_eventDispatcher.dispatch(Death, player, data);
-    }
-    if (victim->isAlive())
-        return;
-
+                ResolutionHistoryEventGuard deathHistory(m_room.resolutionHistory(), "death", cursor->fact,
+                                                          m_room.historyRecordingEnabled());
+                if (deathHistory.id()) m_room.resolutionHistory().appendFact(deathHistory.id(), "death", cursor->fact);
+                deathHistory.finish("completed");
+                break;
+            }
+            case DeathCursor::GameOver:
+                cursor->stage = DeathCursor::AfterGameOver;
+                event(GameOverJudge, victim);
+                break;
+            case DeathCursor::AfterGameOver:
+                cursor->stage = DeathCursor::Death;
+                if (victim->isAlive()) cursor->stage = DeathCursor::Finished;
+                else m_room.setEmotion(victim, "death");
+                break;
+            case DeathCursor::Death:
+                if (!cursor->observersReady) {
+                    cursor->observersReady = true;
+                    for (ServerPlayer *p : m_roster.orderedFrom(m_room.current, true)) cursor->observers << p;
+                }
+                if (cursor->observerIndex < cursor->observers.size()) {
+                    ServerPlayer *observer = cursor->observers[cursor->observerIndex++];
+                    if (observer && (observer->isAlive() || observer == victim)) event(::Death, observer);
+                } else cursor->stage = victim->isAlive() ? DeathCursor::Finished : DeathCursor::Clubs;
+                break;
+            case DeathCursor::Clubs: {
+                cursor->stage = DeathCursor::Bury;
     foreach (const Skill *skill, victim->getSkillList()) {
-        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+        Skill::Frequency frequency = skill->Skill::getFrequency();
+        if (!canonicalOnly && !thread->isMandatoryCleanup() && !thread->isSettlementBudgetExhausted())
+            thread->invokeDyingCallback(continuation, [&] { frequency = skill->getFrequency(); });
+        if (frequency == Skill::Club && !skill->getClubName().isEmpty())
             m_room.clearClub(skill->getClubName());
     }
 
-    try {
-        m_eventDispatcher.dispatch(BuryVictim, victim, data);
-    } catch (TriggerEvent triggerEvent) {
-        if (triggerEvent == TurnBroken || triggerEvent == StageChange)
-            victim->setMark("wujieNoRewardAndPunish-Keep", 0);
-    }
+                break;
+            }
+            case DeathCursor::Bury:
+                cursor->stage = DeathCursor::Detach;
+                try { event(BuryVictim, victim); }
+                catch (TriggerEvent e) {
+                    if (e == TurnBroken || e == StageChange) victim->setMark("wujieNoRewardAndPunish-Keep", 0);
+                }
+                break;
+            case DeathCursor::Detach: {
+                if ((canonicalOnly || thread->isSettlementBudgetExhausted()) && victim->isAlive()) {
+                    m_room.m_cancelledHpCauses.remove(victim);
+                    cursor->stage = DeathCursor::Finished; break;
+                }
+                cursor->stage = DeathCursor::Reason;
     victim->setMark("wujieNoRewardAndPunish-Keep", 0);
     victim->detachAllSkills();
-
+                break;
+            }
+            case DeathCursor::Reason: {
+                cursor->stage = DeathCursor::Spectate;
     death = data.value<DeathStruct>();
     if (death.damage) {
         QString deathReason = death.damage->reason;
@@ -357,6 +451,12 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
         m_room.setPlayerProperty(victim, "My_Death_Reason", deathReason);
     }
 
+                break;
+            }
+            case DeathCursor::Spectate: {
+                cursor->stage = DeathCursor::Finished;
+                const bool preserveHiddenRoles = m_room.getMode() == QStringLiteral("7_happyrebel")
+                    && m_room.getTag("HappyRebelMode").toBool();
     if (!victim->isAlive() && Config.EnableAI) {
         bool exposeRoles = true;
         foreach (ServerPlayer *player, m_roster.alivePlayers()) {
@@ -389,12 +489,33 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
                         Config.AIDelay = qMax(Config.AIDelay * 8 / playerCount, 100);
                 }
             }
-            if (victim->isOnline() && Config.SurrenderAtDeath
+            if (!canonicalOnly && !thread->isSettlementBudgetExhausted()
+                && victim->isOnline() && Config.SurrenderAtDeath
                 && m_room.mode != "02_1v1" && m_room.mode != "06_XMode"
                 && m_room.askForSkillInvoke(victim, "surrender", "yes", false))
                 m_room.makeSurrender(victim);
         }
+    }                break;
+            }
+            case DeathCursor::Finished: break;
+            }
+        }
+    } catch (const TriggerCascadeBreak &cancel) {
+        cursor->owner = cancel.cascadeId;
+        if (thread->isNativeCommitActive()) {
+            cursor->retained = true;
+            if (!m_pendingDeaths.contains(cursor)) m_pendingDeaths << cursor;
+        } else {
+            // Nested dying/death events unwind their author cascade to its
+            // oldest owner. Only the remaining canonical corpse operations
+            // may run here; no failed death listener or kill entry is replayed.
+            RoomThread::MandatoryCleanupScope cleanup(*thread);
+            continueDeath(cursor, true);
+        }
+        throw;
     }
+    cursor->completedOwner = continuation.cancelledCascadeId();
+    continuation.rethrowCancelled();
 }
 
 void PlayerLifecycleService::changeHero(ServerPlayer *player, const QString &newGeneral,
@@ -472,7 +593,8 @@ void PlayerLifecycleService::changeHero(ServerPlayer *player, const QString &new
             }
             if (skill->inherits("ViewAsEquipSkill")) {
                 const ViewAsEquipSkill *viewAsEquip = Sanguosha->getViewAsEquipSkill(skill->objectName());
-                const QString view = viewAsEquip->viewAsEquip(player);
+                QString view;
+                if (!m_room.getThread()->invokeStructuralCallback([&] { view = viewAsEquip->viewAsEquip(player); })) continue;
                 if (!view.isEmpty()) {
                     foreach (const QString &equipName, view.split(",")) {
                         if (Sanguosha->getViewAsSkill(equipName))
@@ -482,10 +604,12 @@ void PlayerLifecycleService::changeHero(ServerPlayer *player, const QString &new
             } else if (skill->inherits("TriggerSkill")) {
                 const TriggerSkill *triggerSkill = qobject_cast<const TriggerSkill *>(skill);
                 m_eventDispatcher.registerTriggerSkill(triggerSkill);
-                if (invokeStart && triggerSkill->hasEvent(GameStart)
-                    && triggerSkill->triggerable(player, &m_room, GameStart)) {
+                bool eligible = false;
+                if (invokeStart && triggerSkill->hasEvent(GameStart))
+                    m_room.getThread()->invokeStructuralCallback([&] { eligible = triggerSkill->triggerable(player, &m_room, GameStart); });
+                if (eligible) {
                     QVariant data;
-                    triggerSkill->trigger(GameStart, &m_room, player, data);
+                    m_room.getThread()->invokeStructuralCallback([&] { triggerSkill->trigger(GameStart, &m_room, player, data); });
                 }
             }
         }
@@ -677,12 +801,22 @@ void PlayerLifecycleService::requestSummonBetween(ServerPlayer *before, ServerPl
     request.before = before;
     request.after = after;
     request.generalName = generalName;
+    if (m_room.getThread()) request.cascadeId = m_room.getThread()->deferredCreatorCascadeId();
     m_pendingSummons.append(request);
 }
 
 bool PlayerLifecycleService::hasPendingSummons() const
 {
     return !m_pendingSummons.isEmpty();
+}
+
+void PlayerLifecycleService::finishDeferredCascade(quint64 token, bool cancelled, quint64 parentToken)
+{
+    for (int i = m_pendingSummons.size() - 1; i >= 0; --i) {
+        if (m_pendingSummons.at(i).cascadeId != token) continue;
+        if (cancelled) m_pendingSummons.removeAt(i);
+        else m_pendingSummons[i].cascadeId = parentToken;
+    }
 }
 
 void PlayerLifecycleService::processPendingSummons()
