@@ -157,6 +157,7 @@ set(QSAN_SOURCES
     src/ui/giftitem.cpp
     src/ui/game-view.cpp
     src/ui/graphicsbox.cpp
+    src/ui/general-info-card.cpp
     src/ui/graphicspixmaphoveritem.cpp
     src/ui/indicatoritem.cpp
     src/ui/magatamas-item.cpp
@@ -377,6 +378,7 @@ set(QSAN_MOC_HEADERS
     src/ui/giftitem.h
     src/ui/game-view.h
     src/ui/graphicsbox.h
+    src/ui/general-info-card.h
     src/ui/graphicspixmaphoveritem.h
     src/ui/indicatoritem.h
     src/ui/magatamas-item.h
