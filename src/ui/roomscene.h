@@ -18,6 +18,8 @@
 #include <QPointer>
 #include <QSet>
 
+enum class UiAction : int;
+
 namespace RoomLayoutEngine {
 struct Input;
 struct Result;
@@ -117,6 +119,8 @@ public:
     void showGameStateSnapshot();
     void showGameControlPanel();
     bool handleNativeKey(QKeyEvent *event);
+    // Gamepad/remote actions while the table is the active surface (see UiActionDispatcher).
+    bool handleUiAction(UiAction action);
     void changeTextEditBackground();
     void adjustItems();
     void adjustItems(const QSizeF &viewportSize);
@@ -245,6 +249,8 @@ private:
     void applyLayout(const RoomLayoutEngine::Result &layout);
     void applyTableLayout(const RoomLayoutEngine::Result &layout);
     QSet<int> m_nativeKeysDown;
+    bool nativeInputOwnedElsewhere() const;
+    bool nativeRequestActive() const;
     DesktopGamePresentation *m_gamePresentation = nullptr;
     QPointer<RoomOverlayHost> m_overlayHost;
     bool m_responsiveEnabled = false;

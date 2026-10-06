@@ -176,6 +176,19 @@ set(QSAN_SOURCES
     src/ui/room-layout-engine.h
     src/ui/desktop-game-presentation.cpp
     src/ui/desktop-game-presentation.h
+    src/ui/table-button-legend.cpp
+    src/ui/table-button-legend.h
+    src/ui/input/gamepad-backend.h
+    src/ui/input/gamepad-bootstrap.cpp
+    src/ui/input/gamepad-bootstrap.h
+    src/ui/input/gamepad-service.cpp
+    src/ui/input/gamepad-service.h
+    src/ui/input/input-mode-tracker.cpp
+    src/ui/input/input-mode-tracker.h
+    src/ui/input/ui-action.cpp
+    src/ui/input/ui-action.h
+    src/ui/input/ui-action-dispatcher.cpp
+    src/ui/input/ui-action-dispatcher.h
     src/ui/game-control-panel.cpp
     src/ui/game-control-panel.h
     src/ui/procedural-skin.cpp

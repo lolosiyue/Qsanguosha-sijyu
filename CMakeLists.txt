@@ -1289,6 +1289,16 @@ if(UNIX AND NOT ANDROID AND QSAN_BUILD_SERVER)
 endif()
 
 
+# Gamepad input (big-picture mode). Desktop builds try SDL3 and quietly fall back
+# to a build without device polling when SDL3 is not installed.
+if(ANDROID OR QSAN_BUILD_XP_LEGACY OR EMSCRIPTEN)
+    set(qsan_gamepad_default OFF)
+else()
+    set(qsan_gamepad_default ON)
+endif()
+option(QSAN_ENABLE_GAMEPAD "Poll gamepads through SDL3 in the GUI client (skipped when SDL3 is missing)" ${qsan_gamepad_default})
+option(QSAN_TEST_GAMEPAD "Build the gamepad input unit tests" OFF)
+
 if(QSAN_BUILD_GUI)
     # Windows and Linux share the GUI source, MOC, form, QML resource, and askFor runner lists.
     # Each platform adds only its platform-specific entries.
@@ -1463,8 +1473,28 @@ if(QSAN_BUILD_GUI)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/audio
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/effects
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/home
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/input
         ${CMAKE_CURRENT_SOURCE_DIR}/src/util
     )
+
+    set(QSAN_GAMEPAD_SDL3_ACTIVE OFF)
+    if(QSAN_ENABLE_GAMEPAD)
+        find_package(SDL3 CONFIG QUIET)
+        if(TARGET SDL3::SDL3)
+            set(QSAN_GAMEPAD_SDL3_ACTIVE ON)
+            target_sources(${QSAN_GUI_TARGET} PRIVATE
+                src/ui/input/sdl3-gamepad-backend.cpp
+                src/ui/input/sdl3-gamepad-backend.h
+            )
+            target_compile_definitions(${QSAN_GUI_TARGET} PRIVATE QSAN_HAS_SDL3=1)
+            target_link_libraries(${QSAN_GUI_TARGET} PRIVATE SDL3::SDL3)
+            message(STATUS "QSanguosha gamepad input: SDL3 ${SDL3_VERSION}")
+        else()
+            message(STATUS "QSanguosha gamepad input: SDL3 not found, building without device polling")
+        endif()
+    else()
+        message(STATUS "QSanguosha gamepad input: disabled (QSAN_ENABLE_GAMEPAD=OFF)")
+    endif()
 
     if(QSAN_BUILD_XP_LEGACY)
         target_include_directories(${QSAN_GUI_TARGET} BEFORE PRIVATE
@@ -1937,6 +1967,47 @@ if(QSAN_TEST_EXTERNAL_AGENTS)
     set_tests_properties(external_agent_contract external_agent_cancel_game external_agent_game PROPERTIES
         FIXTURES_REQUIRED external_agent_runtime RUN_SERIAL TRUE
         ENVIRONMENT "QSAN_ASSET_ROOT=${qsan_external_runtime};QSAN_USER_DATA_ROOT=${qsan_external_runtime}")
+endif()
+
+if(QSAN_TEST_GAMEPAD AND QSAN_BUILD_GUI)
+    enable_testing()
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    # Fake-backend tests: device state machine, key mapping, dispatch and input mode.
+    add_executable(qsanguosha_gamepad_tests
+        tests/gamepad-input-test.cpp
+        src/ui/input/gamepad-backend.h
+        src/ui/input/gamepad-service.cpp
+        src/ui/input/gamepad-service.h
+        src/ui/input/input-mode-tracker.cpp
+        src/ui/input/input-mode-tracker.h
+        src/ui/input/ui-action.cpp
+        src/ui/input/ui-action.h
+        src/ui/input/ui-action-dispatcher.cpp
+        src/ui/input/ui-action-dispatcher.h
+    )
+    set_target_properties(qsanguosha_gamepad_tests PROPERTIES AUTOMOC ON)
+    target_include_directories(qsanguosha_gamepad_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/input)
+    target_link_libraries(qsanguosha_gamepad_tests PRIVATE Qt6::Test Qt6::Widgets)
+    add_test(NAME gamepad_input COMMAND qsanguosha_gamepad_tests)
+    set_tests_properties(gamepad_input PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+    if(QSAN_GAMEPAD_SDL3_ACTIVE)
+        # Real SDL3 event path with SDL virtual joysticks (no hardware needed).
+        add_executable(qsanguosha_gamepad_sdl3_tests
+            tests/gamepad-sdl3-test.cpp
+            src/ui/input/gamepad-backend.h
+            src/ui/input/gamepad-service.cpp
+            src/ui/input/gamepad-service.h
+            src/ui/input/sdl3-gamepad-backend.cpp
+            src/ui/input/sdl3-gamepad-backend.h
+            src/ui/input/ui-action.cpp
+            src/ui/input/ui-action.h
+        )
+        set_target_properties(qsanguosha_gamepad_sdl3_tests PROPERTIES AUTOMOC ON)
+        target_include_directories(qsanguosha_gamepad_sdl3_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/input)
+        target_link_libraries(qsanguosha_gamepad_sdl3_tests PRIVATE Qt6::Test Qt6::Core SDL3::SDL3)
+        add_test(NAME gamepad_sdl3_backend COMMAND qsanguosha_gamepad_sdl3_tests)
+        set_tests_properties(gamepad_sdl3_backend PROPERTIES TIMEOUT 60)
+    endif()
 endif()
 
 option(QSAN_BUILD_EXTERNAL_AGENT_HOST "Build the loopback-only external-agent example host" OFF)

@@ -79,6 +79,7 @@ private:
     bool runActions(QString *error);
     bool runAction(int index, QString *error);
     bool pressKey(const QJsonObject &action, QString *error);
+    bool dispatchUiAction(const QJsonObject &action, QString *error);
     bool validateReply(QString *error);
     bool validateSnapshot(const QJsonObject &expected, const QJsonObject &actual,
         const QString &path);
