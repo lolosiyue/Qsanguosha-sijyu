@@ -210,8 +210,8 @@ int main(int argc, char *argv[]) {
 #ifdef Q_OS_ANDROID
     AndroidContentStore androidContent;
 #endif
-    const auto releaseEffectsApplication = qScopeGuard([effectsSmoke]() {
-        if (effectsSmoke) {
+    const auto releaseSmokeApplication = qScopeGuard([effectsSmoke, multimediaSmoke]() {
+        if (effectsSmoke || multimediaSmoke) {
             // The smoke releases its window/controller first. QApplication
             // must then release shared GL/thread resources before Qt statics,
             // including on argument, initialization and timeout failures.
