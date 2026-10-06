@@ -17,7 +17,7 @@
 #include "engine.h"
 #include "client.h"
 #include "clientplayer.h"
-#include "oracle_helper.h"
+#include "general-info-card.h"
 
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
@@ -175,11 +175,8 @@ private:
     // Match the native Photo tooltip; built on hover so 50 seats skip it on every refresh.
     void refreshToolTip() {
         const ClientPlayer *player = ClientInstance ? ClientInstance->getPlayer(name) : nullptr;
-        const General *general = player ? player->getGeneral() : nullptr;
-        const QString skills = player ? buildOracleTooltip(general ? general->getOracleText() : QString(),
-            player->getSkillDescription(Self)) : QString();
-        const QString tip = skills.isEmpty() ? tipBase
-            : tipBase.toHtmlEscaped().replace(QLatin1Char('\n'), QLatin1String("<br/>")) + QLatin1String("<br/><br/>") + skills;
+        const QString tip = player ? GeneralInfoCard::forPlayer(player, Self, GeneralInfoCard::Focus::Head, tipBase)
+                                   : tipBase;
         if (toolTip() != tip) setToolTip(tip);
     }
     QString mark, tipBase;
