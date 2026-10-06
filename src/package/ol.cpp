@@ -22193,20 +22193,22 @@ static bool liwenXianLW(ServerPlayer*a, ServerPlayer*b)
 	return a->getMark("&xianLW") > b->getMark("&xianLW");
 }
 
-class Liwen : public TriggerSkill
+class Liwen : public TriggerSkillV2
 {
 public:
-	Liwen() : TriggerSkill("liwen")
+	Liwen() : TriggerSkillV2("liwen")
 	{
 		events << CardUsed << EventPhaseChanging << MarkChanged << GameStart;
 		global = true;
 	}
-	bool triggerable(const ServerPlayer*target) const
+
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// CardUsed xian gain, GameStart marks, MarkChanged draws, and NotActive xian handout settle once for the event player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
-		return target&&target->isAlive();
-	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
-	{
+		if (!player || !player->isAlive()) return false;
 		if(event==EventPhaseChanging){
 			PhaseChangeStruct change = data.value<PhaseChangeStruct>();
 			if (change.to==Player::NotActive&&player->getMark("&xianLW")>0&&player->hasSkill(objectName())){
@@ -22272,46 +22274,29 @@ public:
 		}
 		return false;
 	}
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
+	}
 };
 
-class Zhengyi : public TriggerSkill
+class Zhengyi : public TriggerSkillV2
 {
 public:
-	Zhengyi() : TriggerSkill("zhengyi")
+	Zhengyi() : TriggerSkillV2("zhengyi")
 	{
 		events << DamageInflicted << DamageComplete;
 	}
-	bool triggerable(const ServerPlayer*target) const
+
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// DamageComplete hp loss for the prevented damage settles once for the damaged player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
-		return target!=nullptr;
-	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
-	{
-		if(event==DamageInflicted){
-			DamageStruct damage = data.value<DamageStruct>();
-			if (damage.nature==DamageStruct::Normal&&player->getMark("&xianLW")>0){
-				foreach(ServerPlayer*p, room->getAllPlayers()){
-					if(!p->hasSkill(objectName())) continue;
-					room->sendCompulsoryTriggerLog(p,this);
-					QList<ServerPlayer*>aps;
-					int n = 0;
-					foreach(ServerPlayer*q, room->getOtherPlayers(player)){
-						if(q->getMark("&xianLW")>0&&room->askForChoice(q,objectName(),"yes+no",data)=="yes"){
-							n = qMax(n,q->getHp());
-							aps << q;
-						}
-					}
-					if(aps.isEmpty()) continue;
-					QStringList lh;
-					foreach(ServerPlayer*q, aps){
-						if(q->getHp()>=n) lh << q->objectName();
-					}
-					player->setTag("zhengyiLoseHp", lh);
-					player->setTag("zhengyiDamage", damage.damage);
-					return player->damageRevises(data,-damage.damage);
-				}
-			}
-		}else if(event==DamageComplete){
+		if (!player) return false;
+		if(event==DamageComplete){
 			DamageStruct damage = data.value<DamageStruct>();
 			if(damage.prevented){
 				int n = player->getTag("zhengyiDamage").toInt();
@@ -22326,6 +22311,46 @@ public:
 			}
 		}
 		return false;
+	}
+
+	// Each owner in seat order runs the xian vote; the first accepted vote prevents the damage.
+	TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+	{
+		TriggerList result;
+		if (event != DamageInflicted || !player) return result;
+		DamageStruct damage = data.value<DamageStruct>();
+		if (damage.nature != DamageStruct::Normal || player->getMark("&xianLW") <= 0) return result;
+		foreach (ServerPlayer *p, room->getAllPlayers()) {
+			if (p->hasSkill(objectName()))
+				olFirstTriggerInstance(result, p, this);
+		}
+		return result;
+	}
+
+	bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+	{
+		ServerPlayer *p = ctx.owner, *player = ctx.invoker;
+		if (!p || !player || !ctx.original_data) return false;
+		QVariant &data = *ctx.original_data;
+		DamageStruct damage = data.value<DamageStruct>();
+		if (damage.nature != DamageStruct::Normal || player->getMark("&xianLW") <= 0) return false;
+		room->sendCompulsoryTriggerLog(p,this);
+		QList<ServerPlayer*>aps;
+		int n = 0;
+		foreach(ServerPlayer*q, room->getOtherPlayers(player)){
+			if(q->getMark("&xianLW")>0&&room->askForChoice(q,objectName(),"yes+no",data)=="yes"){
+				n = qMax(n,q->getHp());
+				aps << q;
+			}
+		}
+		if(aps.isEmpty()) return false;
+		QStringList lh;
+		foreach(ServerPlayer*q, aps){
+			if(q->getHp()>=n) lh << q->objectName();
+		}
+		player->setTag("zhengyiLoseHp", lh);
+		player->setTag("zhengyiDamage", damage.damage);
+		return player->damageRevises(data,-damage.damage);
 	}
 };
 
@@ -25584,19 +25609,21 @@ public:
 };
 
 
-class Yanliang : public TriggerSkill
+class Yanliang : public TriggerSkillV2
 {
 public:
-	Yanliang() : TriggerSkill("yanliang$")
+	Yanliang() : TriggerSkillV2("yanliang$")
 	{
 		events << EventPhaseStart << EventPhaseEnd << EventAcquireSkill;
 	}
-	bool triggerable(const ServerPlayer*target) const
+
+	bool usesEventPriority() const override { return true; }
+	int getPriority(TriggerEvent) const override { return 2; }
+
+	// Lord acquire attach and Play start/end yanliangvs attach/detach settle once for the event player.
+	bool recordEvent(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
 	{
-		return target&&target->isAlive();
-	}
-	bool trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*player, QVariant &) const
-	{
+		if (!player || !player->isAlive()) return false;
 		if (triggerEvent == EventAcquireSkill&&player->hasLordSkill(this,true)){
 			foreach(ServerPlayer*p, room->getOtherPlayers(player)){
 				if (p->getPhase()==Player::Play&&!p->hasSkill("yanliangvs",true)){
@@ -25617,6 +25644,11 @@ public:
 				room->detachSkillFromPlayer(player, "yanliangvs", true);
 		}
 		return false;
+	}
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
@@ -25817,25 +25849,26 @@ public:
 	}
 };
 
-class Huiyun : public TriggerSkill
+class Huiyun : public TriggerSkillV2
 {
 public:
-	Huiyun() : TriggerSkill("huiyun")
+	Huiyun() : TriggerSkillV2("huiyun")
 	{
 		events << CardFinished << CardOnEffect << CardEffected << ShowCards;
 		view_as_skill = new HuiyunVs;
 	}
-	bool triggerable(const ServerPlayer*target) const
-	{
-		return target&&target->isAlive();
-	}
-	int getPriority(TriggerEvent triggerEvent) const
+	int getPriority(TriggerEvent triggerEvent) const override
 	{
 		if (triggerEvent == CardEffected) return -2;
-		return TriggerSkill::getPriority(triggerEvent);
+		return TriggerSkillV2::getPriority(triggerEvent);
 	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+
+	bool usesEventPriority() const override { return true; }
+
+	// CardFinished recast choices and effect/show id tracking settle once for the event player.
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
 	{
+		if (!player || !player->isAlive()) return false;
 		if(event==CardFinished){
 			CardUseStruct use = data.value<CardUseStruct>();
 			if(use.card->getSkillNames().contains(objectName())){
@@ -25911,6 +25944,11 @@ public:
 			}
 		}
 		return false;
+	}
+
+	TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+	{
+		return TriggerList();
 	}
 };
 
