@@ -222,6 +222,12 @@ public:
     void output(const QString&message);
     void outputEventStack();
     void enterDying(ServerPlayer*player, DamageStruct*reason, HpLostStruct*hplost = nullptr);
+    // Native cancellation finalization; invoked before the owning operation
+    // clears its latch. No normal author dispatch is allowed during this work.
+    void finishTriggerCascade(quint64 cascadeId, bool cancelled);
+    void settleCancelledDying(ServerPlayer *player, DamageStruct *reason, HpLostStruct *hpLost = nullptr);
+    void retainJudgeSnapshot(Card *card);
+    void releaseJudgeSnapshot(Card *card);
     ServerPlayer*getCurrentDyingPlayer() const;
     ServerPlayer*getCardUser(const Card*card) const;
     void killPlayer(ServerPlayer*victim, DamageStruct*reason = nullptr, HpLostStruct*hplost = nullptr);
@@ -934,6 +940,8 @@ private:
     void recordNumericStateCommit(ServerPlayer *player, const char *mutation,
         int hpBefore, int maxHpBefore, int handBefore, int hpAfter, int maxHpAfter, int handAfter);
     bool useCardInternal(CardUseStruct &use, bool add_history, const SkillContext *acceptedEffect);
+    bool resolveCardUse(CardUseStruct &use, bool add_history, const SkillContext *acceptedEffect);
+    void resolveDamage(DamageStruct damage);
     bool skillEffectCardMaterialsValid(const Card *card) const;
     bool physicalCardEffectContext(const Card *card, SkillContext &context) const;
     friend struct ScenarioWorkRuntimeTestAccess;

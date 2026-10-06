@@ -2,10 +2,13 @@
 #define _ROOM_THREAD_H
 
 #include "structs.h"
+#include "trigger-cascade-break.h"
+#include "trigger-dispatch-budget.h"
 
 #include <QHash>
 #include <QSet>
 #include <atomic>
+#include <functional>
 
 class GameRule;
 struct SkillContext;
@@ -67,6 +70,75 @@ class RoomThread : public QThread
 
 public:
     explicit RoomThread(Room *room);
+    // Recoverable operations (draw/card use/damage) own a cascade only when
+    // there is no enclosing operation. Judge joins; it must never manufacture
+    // a successful JudgeStruct after cancellation.
+    class CascadeScope {
+    public:
+        explicit CascadeScope(RoomThread &thread, bool recoverable = true);
+        ~CascadeScope();
+        CascadeScope(const CascadeScope &) = delete;
+        CascadeScope &operator=(const CascadeScope &) = delete;
+        bool ownsRoot() const { return m_ownsRoot; }
+        quint64 id() const { return m_id; }
+        bool cancelled() const;
+        void checkpoint() const;
+    private:
+        RoomThread &m_thread;
+        bool m_ownsRoot = false;
+        quint64 m_id = 0;
+        TriggerDispatchBudget m_previousBudget;
+        quint64 m_previousGeneration = 0;
+        quint64 m_previousId = 0;
+        bool m_joinOnly = false;
+        bool m_holdsBudget = false;
+    };
+    class MandatoryCleanupScope {
+    public:
+        explicit MandatoryCleanupScope(RoomThread &thread) : m_thread(thread) { ++m_thread.m_mandatoryCleanupDepth; }
+        ~MandatoryCleanupScope() { --m_thread.m_mandatoryCleanupDepth; }
+        MandatoryCleanupScope(const MandatoryCleanupScope &) = delete;
+        MandatoryCleanupScope &operator=(const MandatoryCleanupScope &) = delete;
+    private:
+        RoomThread &m_thread;
+    };
+    // Cancellation unwinds an author callback, then canonical physical commit
+    // completes without more optional dispatch. Checkpoint after this scope.
+    class NativeCommitScope {
+    public:
+        explicit NativeCommitScope(RoomThread &thread) : m_thread(thread) {
+            if (thread.m_dispatchBudget.depth() == 0) {
+                thread.beginTriggerDispatch(NonTrigger, nullptr, false);
+                m_holdsBudget = true;
+                m_generation = thread.m_budgetGeneration;
+            }
+            ++m_thread.m_nativeCommitDepth;
+            m_thread.m_commitAuthorDepths << m_thread.m_authorCallbackDepth;
+        }
+        ~NativeCommitScope() {
+            m_thread.m_commitAuthorDepths.removeLast();
+            --m_thread.m_nativeCommitDepth;
+            if (m_holdsBudget) m_thread.leaveTriggerDispatch(m_generation);
+        }
+        NativeCommitScope(const NativeCommitScope &) = delete;
+        NativeCommitScope &operator=(const NativeCommitScope &) = delete;
+    private:
+        RoomThread &m_thread;
+        bool m_holdsBudget = false;
+        quint64 m_generation = 0;
+    };
+    quint64 cascadeId() const { return m_cascadeId; }
+    quint64 cascadeParentId() const { return m_operationRootActive ? m_operationParentId : 0; }
+    bool hasActiveCascade() const { return m_cascadeId && m_dispatchBudget.depth() != 0; }
+    bool isCascadeCancelled() const { return m_dispatchBudget.aborted(); }
+    bool isMandatoryCleanup() const { return m_mandatoryCleanupDepth != 0; }
+    bool triggerMandatoryGameRule(TriggerEvent event, ServerPlayer *target, QVariant &data);
+    bool invokeStructuralCallback(const std::function<void()> &callback);
+    void recordDeferredAnytime(ServerPlayer *player, const QString &skill);
+    void recordDeferredReveal(ServerPlayer *player, const QString &slot);
+    void finishDeferredCascade(quint64 cascadeId, bool cancelled);
+    quint64 deferredCreatorCascadeId() const;
+    void checkCascadeCancellation() const;
     void constructTriggerTable();
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data);
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target);
@@ -157,9 +229,39 @@ private:
     void refreshDistanceCacheIfDirty(Room *room);
     void flushOutermostDeferredWork(Room *room);
     void emitPerfTrace() const;
+    void checkTriggerDispatchAbort() const { checkCascadeCancellation(); }
+    void beginTriggerDispatch(TriggerEvent event, ServerPlayer *target, bool countEvent = true);
+    void triggerDispatchStep(TriggerEvent event, ServerPlayer *target, const QString &skill = QString());
+    [[noreturn]] void abortTriggerDispatch(TriggerEvent event, ServerPlayer *target, const QString &skill);
+    bool invokeAuthorCallback(const std::function<void()> &callback, bool nativeBoundary = false);
+    bool suppressOptionalDispatch() const;
+    void leaveTriggerDispatch(quint64 generation);
     const QByteArray &distancePropertyName(const ServerPlayer *player);
 
     Room *room;
+    TriggerDispatchBudget m_dispatchBudget;
+    quint64 m_budgetGeneration = 1;
+    quint64 m_nextCascadeId = 0;
+    quint64 m_cascadeId = 0;
+    quint64 m_operationParentId = 0;
+    bool m_operationRootActive = false;
+    unsigned m_joinOnlyDepth = 0;
+    unsigned m_authorCallbackDepth = 0;
+    QSet<int> m_discardOptionalFrames;
+    unsigned m_nativeCommitDepth = 0;
+    QList<unsigned> m_commitAuthorDepths;
+    unsigned m_mandatoryCleanupDepth = 0;
+    bool m_dispatchAbortReported = false;
+    struct DispatchBreadcrumb {
+        int event;
+        QString player;
+        int phase;
+        QString skill;
+    };
+    QList<DispatchBreadcrumb> m_dispatchRecent;
+    using DeferredEntries = QHash<ServerPlayer *, QSet<QString>>;
+    QHash<quint64, DeferredEntries> m_deferredAnytime;
+    QHash<quint64, DeferredEntries> m_deferredReveals;
     bool m_playerUiStateDirty = false;
     bool m_preparingPlayerUiState = false;
     bool m_flushingPlayerUiState = false;

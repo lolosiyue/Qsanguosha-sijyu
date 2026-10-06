@@ -48,6 +48,7 @@ public:
                               const QString &generalName);
     bool hasPendingSummons() const;
     void processPendingSummons();
+    void finishDeferredCascade(quint64 cascadeId, bool cancelled, quint64 parentCascadeId = 0);
     ServerPlayer *insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after,
                                       const QString &generalName);
 
@@ -61,6 +62,7 @@ private:
         ServerPlayer *before;
         ServerPlayer *after;
         QString generalName;
+        quint64 cascadeId = 0;
     };
 
     Room &m_room;

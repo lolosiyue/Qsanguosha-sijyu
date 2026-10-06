@@ -12,10 +12,12 @@
 #include "skill-set-generation.h"
 #include "v2-record-owner-index.h"
 #include "crashhandler.h"
+#include "player-lifecycle-service.h"
 #include "../core/resolution-history.h"
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QScopeGuard>
 
 #include <cstdio>
@@ -538,8 +540,27 @@ QString EventTriplet::toString() const
 		.arg(_m_target ? _m_target->getGeneralName() : "");
 }
 
+namespace {
+TriggerDispatchBudget::Limits triggerDispatchLimits()
+{
+    TriggerDispatchBudget::Limits limits;
+    limits.enabled = Config.value("RoomThreadTriggerGuardEnabled", true).toBool();
+    const auto positive = [](const char *key, quint64 fallback) {
+        bool ok = false;
+        const qint64 value = Config.value(key, QVariant::fromValue(qint64(fallback))).toLongLong(&ok);
+        return ok && value > 0 ? quint64(value) : fallback;
+    };
+    limits.depth = unsigned(qMin<quint64>(512, positive("RoomThreadTriggerMaxDepth", limits.depth)));
+    limits.events = positive("RoomThreadTriggerMaxEvents", limits.events);
+    limits.steps = positive("RoomThreadTriggerMaxSteps", limits.steps);
+    limits.contexts = positive("RoomThreadTriggerMaxContexts", limits.contexts);
+    return limits;
+}
+}
+
 RoomThread::RoomThread(Room*room)
 	: room(room),
+	  m_dispatchBudget(triggerDispatchLimits()),
 	  m_perfTraceEnabled(Config.value("RoomThreadPerfTrace", false).toBool()),
 	  m_profileRoomId(room ? room->getId() : -1),
 	  m_profileMode(room ? room->getMode() : QString())
@@ -551,6 +572,247 @@ RoomThread::RoomThread(Room*room)
 		connect(this, &QThread::finished, this,
 			&RoomThread::emitPerfTrace, Qt::DirectConnection);
 	}
+}
+
+void RoomThread::checkCascadeCancellation() const
+{
+    if (m_dispatchBudget.aborted() && !suppressOptionalDispatch())
+        throw TriggerCascadeBreak{m_cascadeId};
+}
+
+bool RoomThread::suppressOptionalDispatch() const
+{
+    return m_mandatoryCleanupDepth || (m_nativeCommitDepth && isCascadeCancelled()
+        && m_authorCallbackDepth <= m_commitAuthorDepths.last());
+}
+
+bool RoomThread::triggerMandatoryGameRule(TriggerEvent event, ServerPlayer *target, QVariant &data)
+{
+    Q_ASSERT(isMandatoryCleanup());
+    for (TriggerSkill *skill : skill_table[event]) {
+        if (auto *rule = qobject_cast<GameRule *>(skill))
+            return rule->trigger(event, room, target, data);
+    }
+    return false;
+}
+
+bool RoomThread::invokeStructuralCallback(const std::function<void()> &callback)
+{
+    if (!m_nativeCommitDepth) return invokeAuthorCallback(callback);
+    if (isCascadeCancelled()) return false;
+    ++m_authorCallbackDepth;
+    const auto authorGuard = qScopeGuard([this]() { --m_authorCallbackDepth; });
+    try {
+        callback();
+        checkTriggerDispatchAbort();
+        return true;
+    } catch (const TriggerCascadeBreak &) {
+        // The entire author callback has unwound. Keep cancellation latched,
+        // but let its native physical move finish before the caller checkpoint.
+        return false;
+    }
+}
+
+quint64 RoomThread::deferredCreatorCascadeId() const
+{
+    if (!m_dispatchBudget.depth() || !m_cascadeId || !room) return 0;
+    const bool gameplayThread = QThread::currentThread() == this
+        || LuaRuntime::current() == &room->roomRuntime()->lua();
+    return gameplayThread ? m_cascadeId : 0;
+}
+
+void RoomThread::recordDeferredAnytime(ServerPlayer *player, const QString &skill)
+{
+    const quint64 token = deferredCreatorCascadeId();
+    if (token && player) m_deferredAnytime[token][player].insert(skill);
+}
+
+void RoomThread::recordDeferredReveal(ServerPlayer *player, const QString &slot)
+{
+    const quint64 token = deferredCreatorCascadeId();
+    if (token && player) m_deferredReveals[token][player].insert(slot);
+}
+
+void RoomThread::finishDeferredCascade(quint64 token, bool cancelled)
+{
+    const quint64 parent = !cancelled && m_operationRootActive && token == m_cascadeId
+        ? m_operationParentId : 0;
+    if (room) room->m_playerLifecycle->finishDeferredCascade(token, cancelled, parent);
+    const DeferredEntries anytime = m_deferredAnytime.take(token);
+    const DeferredEntries reveals = m_deferredReveals.take(token);
+    if (!cancelled) {
+        if (parent) {
+            for (auto it = anytime.cbegin(); it != anytime.cend(); ++it)
+                m_deferredAnytime[parent][it.key()].unite(it.value());
+            for (auto it = reveals.cbegin(); it != reveals.cend(); ++it)
+                m_deferredReveals[parent][it.key()].unite(it.value());
+        }
+        return;
+    }
+    for (auto player = anytime.cbegin(); player != anytime.cend(); ++player) {
+        for (const QString &skill : player.value()) {
+            if (!player.key()->getPendingAnytimeSkills().contains(skill)) continue;
+            player.key()->removePendingAnytimeSkill(skill);
+            room->notifyAnytimeSkillDone(player.key(), skill);
+        }
+    }
+    for (auto player = reveals.cbegin(); player != reveals.cend(); ++player) {
+        const QString key = QStringLiteral("HegemonyPendingReveals:") + player.key()->objectName();
+        QStringList pending = room->getTag(key).toStringList();
+        for (const QString &slot : player.value()) pending.removeAll(slot);
+        // This is bookkeeping cleanup; bypass scenario onTagSet callbacks.
+        if (pending.isEmpty()) room->tag.remove(key);
+        else room->tag.insert(key, pending);
+    }
+}
+
+RoomThread::CascadeScope::CascadeScope(RoomThread &thread, bool recoverable)
+    : m_thread(thread), m_previousBudget(thread.m_dispatchBudget)
+{
+    thread.checkCascadeCancellation();
+    if (!recoverable || thread.m_operationRootActive || thread.m_joinOnlyDepth) {
+        if (!recoverable) { m_joinOnly = true; ++thread.m_joinOnlyDepth; }
+        if (!recoverable && thread.m_dispatchBudget.depth() == 0) {
+            thread.beginTriggerDispatch(NonTrigger, nullptr, false);
+            m_holdsBudget = true;
+            m_previousGeneration = thread.m_budgetGeneration;
+        }
+        m_id = thread.m_cascadeId;
+        return;
+    }
+    // Charge the enclosing author callback as well: repeated shallow draws
+    // must not reset its cumulative budget on every recoverable operation.
+    if (thread.m_dispatchBudget.depth()) {
+        thread.triggerDispatchStep(NonTrigger, nullptr);
+        m_previousBudget = thread.m_dispatchBudget;
+    }
+    m_ownsRoot = true;
+    m_previousGeneration = thread.m_budgetGeneration;
+    m_previousId = thread.m_cascadeId;
+    thread.m_operationParentId = m_previousId;
+    m_id = thread.m_cascadeId = ++thread.m_nextCascadeId;
+    ++thread.m_budgetGeneration;
+    thread.m_operationRootActive = true;
+    thread.m_dispatchBudget = TriggerDispatchBudget(m_previousBudget.limits());
+    thread.m_dispatchBudget.enter(false);
+    thread.m_dispatchAbortReported = false;
+    thread.m_dispatchRecent.clear();
+}
+
+RoomThread::CascadeScope::~CascadeScope()
+{
+    if (m_joinOnly) --m_thread.m_joinOnlyDepth;
+    if (m_holdsBudget) m_thread.leaveTriggerDispatch(m_previousGeneration);
+    if (!m_ownsRoot) return;
+    m_thread.m_dispatchBudget = m_previousBudget;
+    m_thread.m_budgetGeneration = m_previousGeneration;
+    m_thread.m_cascadeId = m_previousId;
+    m_thread.m_operationParentId = 0;
+    m_thread.m_operationRootActive = false;
+    m_thread.m_dispatchAbortReported = false;
+    m_thread.m_dispatchRecent.clear();
+}
+
+bool RoomThread::CascadeScope::cancelled() const
+{
+    return m_thread.m_cascadeId == m_id && m_thread.isCascadeCancelled();
+}
+
+void RoomThread::CascadeScope::checkpoint() const
+{
+    m_thread.checkCascadeCancellation();
+}
+
+bool RoomThread::invokeAuthorCallback(const std::function<void()> &callback, bool nativeBoundary)
+{
+    if (suppressOptionalDispatch()) return false;
+    if (!nativeBoundary && m_discardOptionalFrames.contains(event_stack.size())) return false;
+    const bool holdsBudget = m_dispatchBudget.depth() == 0;
+    if (holdsBudget) beginTriggerDispatch(NonTrigger, nullptr, false);
+    const quint64 budgetGeneration = m_budgetGeneration;
+    const auto budgetGuard = qScopeGuard([&]() { if (holdsBudget) leaveTriggerDispatch(budgetGeneration); });
+    ++m_authorCallbackDepth;
+    const auto authorGuard = qScopeGuard([this]() { --m_authorCallbackDepth; });
+    try {
+        callback();
+        checkTriggerDispatchAbort();
+        return true;
+    } catch (const TriggerCascadeBreak &cancel) {
+        if (m_operationRootActive || m_joinOnlyDepth || m_authorCallbackDepth != 1
+            || m_nativeCommitDepth || cancel.cascadeId != m_cascadeId) throw;
+        MandatoryCleanupScope cleanup(*this);
+        room->finishTriggerCascade(m_cascadeId, true);
+        m_dispatchBudget.resetCascade();
+        m_dispatchAbortReported = false;
+        m_dispatchRecent.clear();
+        m_discardOptionalFrames.insert(event_stack.size());
+        return false;
+    }
+}
+
+void RoomThread::beginTriggerDispatch(TriggerEvent event, ServerPlayer *target, bool countEvent)
+{
+    checkTriggerDispatchAbort();
+    if (m_dispatchBudget.depth() == 0) {
+        m_dispatchRecent.clear();
+        m_dispatchAbortReported = false;
+        if (!m_operationRootActive) m_cascadeId = ++m_nextCascadeId;
+    }
+    if (m_dispatchBudget.enter(countEvent) != TriggerDispatchBudget::Failure::None)
+        abortTriggerDispatch(event, target, QString());
+    if (m_dispatchBudget.limits().enabled) {
+        if (m_dispatchRecent.size() == 32) m_dispatchRecent.removeFirst();
+        m_dispatchRecent << DispatchBreadcrumb{int(event), target ? target->objectName().left(64) : QString(),
+            target ? int(target->getPhase()) : -1, QString()};
+    }
+}
+
+void RoomThread::triggerDispatchStep(TriggerEvent event, ServerPlayer *target, const QString &skill)
+{
+    checkTriggerDispatchAbort();
+    if (m_dispatchBudget.limits().enabled && !skill.isEmpty()) {
+        if (m_dispatchRecent.size() == 32) m_dispatchRecent.removeFirst();
+        m_dispatchRecent << DispatchBreadcrumb{int(event), target ? target->objectName().left(64) : QString(),
+            target ? int(target->getPhase()) : -1, skill.left(160)};
+    }
+    if (m_dispatchBudget.step() != TriggerDispatchBudget::Failure::None)
+        abortTriggerDispatch(event, target, skill);
+    if (room) room->throwIfStopRequested();
+}
+
+void RoomThread::leaveTriggerDispatch(quint64 generation)
+{
+    if (m_budgetGeneration != generation) return;
+    m_dispatchBudget.leave();
+    if (!m_dispatchBudget.depth() && !m_operationRootActive && !isCascadeCancelled()) {
+        if (room && m_cascadeId) room->finishTriggerCascade(m_cascadeId, false);
+        m_cascadeId = 0;
+    }
+}
+
+void RoomThread::abortTriggerDispatch(TriggerEvent event, ServerPlayer *target, const QString &skill)
+{
+    if (!m_dispatchAbortReported) {
+        m_dispatchAbortReported = true;
+        QJsonArray recent;
+        for (const DispatchBreadcrumb &entry : m_dispatchRecent)
+            recent.append(QJsonObject{{"event", entry.event}, {"player", entry.player},
+                {"phase", entry.phase}, {"skill", entry.skill}});
+        const auto &limits = m_dispatchBudget.limits();
+        const QJsonObject diagnostic{{"room", m_profileRoomId}, {"mode", m_profileMode},
+            {"cascade", QString::number(m_cascadeId)},
+            {"limit", int(m_dispatchBudget.failure())}, {"depth", int(m_dispatchBudget.depth())},
+            {"events", double(m_dispatchBudget.events())}, {"steps", double(m_dispatchBudget.steps())},
+            {"max_depth", int(limits.depth)}, {"max_events", double(limits.events)},
+            {"max_steps", double(limits.steps)}, {"max_contexts", double(limits.contexts)}, {"event", int(event)},
+            {"player", target ? target->objectName().left(64) : QString()},
+            {"phase", target ? int(target->getPhase()) : -1}, {"skill", skill.left(160)}, {"recent", recent}};
+        // This diagnostic is server-only. Never include QVariant event data,
+        // card identities, private hands, roles or hidden general names.
+        qWarning().noquote() << "ROOMTHREAD_CASCADE_BREAK"
+            << QJsonDocument(diagnostic).toJson(QJsonDocument::Compact);
+    }
+    throw TriggerCascadeBreak{m_cascadeId};
 }
 
 void RoomThread::emitPerfTrace() const
@@ -687,32 +949,59 @@ void RoomThread::run3v3(QList<ServerPlayer*> &first, QList<ServerPlayer*> &secon
 
 void RoomThread::_handleTurnBroken3v3(QList<ServerPlayer*> &first, QList<ServerPlayer*> &second, GameRule*game_rule)
 {
-	try {
-		ServerPlayer*player = room->getCurrent();
-		{
-			const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
-			ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
-				room->historyRecordingEnabled() && cleanupEvent != 0);
-			trigger(TurnBroken, room, player);
-			if (player->getPhase() != Player::NotActive) {
-				game_rule->trigger(EventPhaseEnd, room, player);
-				player->changePhase(player->getPhase(), Player::NotActive);
-			}
-			if (!player->hasFlag("actioned"))
-				room->setPlayerFlag(player, "actioned");
+    ServerPlayer *next = nullptr;
+    {
+        // Retried TurnBroken cleanup is one cascade even when each trigger
+        // returns/throws at shallow depth. Do not extend this scope into play.
+        beginTriggerDispatch(TurnBroken, room->getCurrent(), false);
+        const quint64 cleanupGeneration = m_budgetGeneration;
+        const auto budgetGuard = qScopeGuard([&]() { leaveTriggerDispatch(cleanupGeneration); });
+        try {
+        for (;;) {
+            triggerDispatchStep(TurnBroken, room->getCurrent());
+            try {
+                ServerPlayer*player = room->getCurrent();
+                {
+                    const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
+                    ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
+                        room->historyRecordingEnabled() && cleanupEvent != 0);
+                    trigger(TurnBroken, room, player);
+                    if (player->getPhase() != Player::NotActive) {
+                        game_rule->trigger(EventPhaseEnd, room, player);
+                        player->changePhase(player->getPhase(), Player::NotActive);
+                    }
+                    if (!player->hasFlag("actioned"))
+                        room->setPlayerFlag(player, "actioned");
 
-			reclaimCompletedTurn();
-		}
-		clearInterruptedTurn();
-		clearInterruptedPhase();
-		ServerPlayer*next = find3v3Next(first, second);
-		run3v3(first, second, game_rule, next);
-	}catch (TriggerEvent triggerEvent) {
-		if (triggerEvent == TurnBroken)
-			_handleTurnBroken3v3(first, second, game_rule);
-		else
-			throw triggerEvent;
-	}
+                    reclaimCompletedTurn();
+                }
+                clearInterruptedTurn();
+                clearInterruptedPhase();
+                next = find3v3Next(first, second);
+                checkTriggerDispatchAbort();
+                break;
+            } catch (TriggerEvent event) {
+                checkTriggerDispatchAbort();
+                if (event != TurnBroken) throw;
+            }
+        }
+        } catch (const TriggerCascadeBreak &cancel) {
+            MandatoryCleanupScope cleanup(*this);
+            room->finishTriggerCascade(cancel.cascadeId, true);
+            ServerPlayer *player = room->getCurrent();
+            if (player->getPhase() != Player::NotActive) {
+                game_rule->trigger(EventPhaseEnd, room, player);
+                player->changePhase(player->getPhase(), Player::NotActive);
+            }
+            if (!player->hasFlag("actioned")) room->setPlayerFlag(player, "actioned");
+            reclaimCompletedTurn();
+            clearInterruptedTurn();
+            clearInterruptedPhase();
+            next = find3v3Next(first, second);
+            m_dispatchBudget.resetCascade();
+        }
+    }
+    run3v3(first, second, game_rule, next);
 }
 
 ServerPlayer*RoomThread::findHulaoPassNext(ServerPlayer*shenlvbu, QList<ServerPlayer*> league, int stage)
@@ -818,33 +1107,59 @@ void RoomThread::actionHulaoPass(ServerPlayer*shenlvbu, QList<ServerPlayer*> lea
 
 void RoomThread::_handleTurnBrokenHulaoPass(ServerPlayer*shenlvbu, QList<ServerPlayer*> league, GameRule*game_rule, int stage)
 {
-	try {
-		ServerPlayer*player = room->getCurrent();
-		ServerPlayer *next = nullptr;
-		{
-			const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
-			ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
-				room->historyRecordingEnabled() && cleanupEvent != 0);
-			trigger(TurnBroken, room, player);
-			next = findHulaoPassNext(shenlvbu, league, stage);
-			if (player->getPhase() != Player::NotActive) {
-				game_rule->trigger(EventPhaseEnd, room, player);
-				player->changePhase(player->getPhase(), Player::NotActive);
-				if (player != shenlvbu && stage == 1)
-					room->setPlayerFlag(player, "actioned");
-			}
-			reclaimCompletedTurn();
-		}
-		clearInterruptedTurn();
-		clearInterruptedPhase();
-		room->setCurrent(next);
-		actionHulaoPass(shenlvbu, league, game_rule, stage);
-	}catch (TriggerEvent triggerEvent) {
-		if (triggerEvent == TurnBroken)
-			_handleTurnBrokenHulaoPass(shenlvbu, league, game_rule, stage);
-		else
-			throw triggerEvent;
-	}
+    ServerPlayer *next = nullptr;
+    {
+        // Retried TurnBroken cleanup is one cascade even when each trigger
+        // returns/throws at shallow depth. Do not extend this scope into play.
+        beginTriggerDispatch(TurnBroken, room->getCurrent(), false);
+        const quint64 cleanupGeneration = m_budgetGeneration;
+        const auto budgetGuard = qScopeGuard([&]() { leaveTriggerDispatch(cleanupGeneration); });
+        try {
+        for (;;) {
+            triggerDispatchStep(TurnBroken, room->getCurrent());
+            try {
+                ServerPlayer*player = room->getCurrent();
+                {
+                    const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
+                    ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
+                        room->historyRecordingEnabled() && cleanupEvent != 0);
+                    trigger(TurnBroken, room, player);
+                    next = findHulaoPassNext(shenlvbu, league, stage);
+                    if (player->getPhase() != Player::NotActive) {
+                        game_rule->trigger(EventPhaseEnd, room, player);
+                        player->changePhase(player->getPhase(), Player::NotActive);
+                        if (player != shenlvbu && stage == 1)
+                            room->setPlayerFlag(player, "actioned");
+                    }
+                    reclaimCompletedTurn();
+                }
+                clearInterruptedTurn();
+                clearInterruptedPhase();
+                checkTriggerDispatchAbort();
+                break;
+            } catch (TriggerEvent event) {
+                checkTriggerDispatchAbort();
+                if (event != TurnBroken) throw;
+            }
+        }
+        } catch (const TriggerCascadeBreak &cancel) {
+            MandatoryCleanupScope cleanup(*this);
+            room->finishTriggerCascade(cancel.cascadeId, true);
+            ServerPlayer *player = room->getCurrent();
+            next = findHulaoPassNext(shenlvbu, league, stage);
+            if (player->getPhase() != Player::NotActive) {
+                game_rule->trigger(EventPhaseEnd, room, player);
+                player->changePhase(player->getPhase(), Player::NotActive);
+                if (player != shenlvbu && stage == 1) room->setPlayerFlag(player, "actioned");
+            }
+            reclaimCompletedTurn();
+            clearInterruptedTurn();
+            clearInterruptedPhase();
+            m_dispatchBudget.resetCascade();
+        }
+    }
+    room->setCurrent(next);
+    actionHulaoPass(shenlvbu, league, game_rule, stage);
 }
 
 void RoomThread::actionNormal(GameRule*game_rule)
@@ -870,31 +1185,56 @@ void RoomThread::actionNormal(GameRule*game_rule)
 
 void RoomThread::_handleTurnBrokenNormal(GameRule*game_rule)
 {
-	try {
-		ServerPlayer*player = room->getCurrent();
-		ServerPlayer *next = nullptr;
-		{
-			const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
-			ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
-				room->historyRecordingEnabled() && cleanupEvent != 0);
-			trigger(TurnBroken, room, player);
-			next = player->getNextGamePlayer();
-			if (player->getPhase() != Player::NotActive) {
-				game_rule->trigger(EventPhaseEnd, room, player);
-				player->changePhase(player->getPhase(), Player::NotActive);
-			}
-			reclaimCompletedTurn();
-		}
-		clearInterruptedTurn();
-		clearInterruptedPhase();
-		room->setCurrent(next);
-		actionNormal(game_rule);
-	}catch (TriggerEvent triggerEvent) {
-		if (triggerEvent == TurnBroken)
-			_handleTurnBrokenNormal(game_rule);
-		else
-			throw triggerEvent;
-	}
+    ServerPlayer *next = nullptr;
+    {
+        // Retried TurnBroken cleanup is one cascade even when each trigger
+        // returns/throws at shallow depth. Do not extend this scope into play.
+        beginTriggerDispatch(TurnBroken, room->getCurrent(), false);
+        const quint64 cleanupGeneration = m_budgetGeneration;
+        const auto budgetGuard = qScopeGuard([&]() { leaveTriggerDispatch(cleanupGeneration); });
+        try {
+        for (;;) {
+            triggerDispatchStep(TurnBroken, room->getCurrent());
+            try {
+                ServerPlayer*player = room->getCurrent();
+                {
+                    const qint64 cleanupEvent = interruptedPhase() != 0 ? interruptedPhase() : interruptedTurn();
+                    ResolutionHistoryContextGuard context(room->resolutionHistory(), cleanupEvent,
+                        room->historyRecordingEnabled() && cleanupEvent != 0);
+                    trigger(TurnBroken, room, player);
+                    next = player->getNextGamePlayer();
+                    if (player->getPhase() != Player::NotActive) {
+                        game_rule->trigger(EventPhaseEnd, room, player);
+                        player->changePhase(player->getPhase(), Player::NotActive);
+                    }
+                    reclaimCompletedTurn();
+                }
+                clearInterruptedTurn();
+                clearInterruptedPhase();
+                checkTriggerDispatchAbort();
+                break;
+            } catch (TriggerEvent event) {
+                checkTriggerDispatchAbort();
+                if (event != TurnBroken) throw;
+            }
+        }
+        } catch (const TriggerCascadeBreak &cancel) {
+            MandatoryCleanupScope cleanup(*this);
+            room->finishTriggerCascade(cancel.cascadeId, true);
+            ServerPlayer *player = room->getCurrent();
+            next = player->getNextGamePlayer();
+            if (player->getPhase() != Player::NotActive) {
+                game_rule->trigger(EventPhaseEnd, room, player);
+                player->changePhase(player->getPhase(), Player::NotActive);
+            }
+            reclaimCompletedTurn();
+            clearInterruptedTurn();
+            clearInterruptedPhase();
+            m_dispatchBudget.resetCascade();
+        }
+    }
+    room->setCurrent(next);
+    actionNormal(game_rule);
 }
 
 void RoomThread::run()
@@ -925,6 +1265,7 @@ void RoomThread::run()
 		qWarning("Cannot register the Room worker for turn-end Card reclamation");
 		return;
 	}
+    try {
 	if (room->getPlayers().size() > 20 && room->getLuaState()) {
 		// Large rooms create many short-lived Lua argument wrappers. Collect them
 		// during play instead of leaving a long finalizer backlog for lua_close.
@@ -1009,6 +1350,9 @@ void RoomThread::run()
 		} else
 			Q_ASSERT(false);
 	}
+    } catch (TriggerEvent event) {
+        if (event != GameFinished) throw;
+    }
 }
 
 const QList<EventTriplet>*RoomThread::getEventStack() const
@@ -1018,6 +1362,14 @@ const QList<EventTriplet>*RoomThread::getEventStack() const
 
 void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, bool includeLose)
 {
+    if (suppressOptionalDispatch()) return;
+    checkTriggerDispatchAbort();
+    const bool independent = m_dispatchBudget.depth() == 0;
+    if (independent) beginTriggerDispatch(triggerEvent, nullptr, false);
+    const quint64 budgetGeneration = m_budgetGeneration;
+    const auto budgetGuard = qScopeGuard([this, independent, budgetGeneration]() {
+        if (independent) { leaveTriggerDispatch(budgetGeneration); m_discardOptionalFrames.remove(0); }
+    });
 	QList<TriggerSkill *> &skills = skill_table[triggerEvent];
 	if (skills.length() < 2)
 		return;
@@ -1048,7 +1400,13 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 	priorities.reserve(skills.length());
 	foreach (TriggerSkill *skill, skills) {
 		double len = players.length();
-		double priority = skill->getPriority(triggerEvent);
+        double priority = 0;
+        if (qobject_cast<GameRule *>(skill)) priority = skill->getPriority(triggerEvent);
+        else invokeAuthorCallback([&]() {
+            triggerDispatchStep(triggerEvent, nullptr, skill->objectName());
+            priority = skill->getPriority(triggerEvent);
+        });
+        checkTriggerDispatchAbort();
 		const QString skillName = skill->objectName();
 		const auto candidates = owners.value(skillName);
 		foreach (ServerPlayer *player, players) {
@@ -1129,7 +1487,14 @@ static QString skillInstanceRuntimeKey(const ServerPlayer *owner, const QString 
 bool RoomThread::triggerSkillSources(TriggerEvent event, Room *room, ServerPlayer *target,
     QVariant &data, const QList<SkillInstanceRef> &sources)
 {
+    if (suppressOptionalDispatch()) return false;
+    checkTriggerDispatchAbort();
     if (!room || sources.isEmpty()) return false;
+    beginTriggerDispatch(event, target);
+    const quint64 budgetGeneration = m_budgetGeneration;
+    const auto budgetGuard = qScopeGuard([this, budgetGeneration]() {
+        leaveTriggerDispatch(budgetGeneration);
+    });
     QList<TriggerSkill *> selected;
     for (TriggerSkill *skill : v2_skill_table[event]) {
         for (const SkillInstanceRef &ref : sources) {
@@ -1142,16 +1507,33 @@ bool RoomThread::triggerSkillSources(TriggerEvent event, Room *room, ServerPlaye
     }
     // Keep nested callbacks inside this initialization event until it unwinds.
     event_stack << EventTriplet(event, room, target);
-    bool broken = false;
+    const int frameDepth = event_stack.size();
+    const bool hadZeroDiscard = m_discardOptionalFrames.contains(0);
+    bool stacked = true;
+    const auto stackGuard = qScopeGuard([&]() {
+        m_discardOptionalFrames.remove(frameDepth);
+        if (!hadZeroDiscard) m_discardOptionalFrames.remove(0);
+        if (stacked) event_stack.removeLast();
+    });
     try {
-        broken = triggerV2Skills(event, room, target, data, &selected, &sources);
-    } catch (...) {
+        bool broken = false;
+        if (!invokeAuthorCallback([&]() { broken = triggerV2Skills(event, room, target, data, &selected, &sources); })) return false;
+        checkTriggerDispatchAbort();
+        stacked = false;
         event_stack.removeLast();
-        throw;
+        flushOutermostDeferredWork(room);
+        checkTriggerDispatchAbort();
+        return broken;
+    } catch (const TriggerCascadeBreak &cancel) {
+        if (suppressOptionalDispatch()) return false;
+        if (m_operationRootActive || m_joinOnlyDepth || m_authorCallbackDepth || m_nativeCommitDepth
+            || cancel.cascadeId != m_cascadeId) throw;
+        MandatoryCleanupScope cleanup(*this);
+        room->finishTriggerCascade(m_cascadeId, true);
+        m_dispatchBudget.resetCascade();
+        m_dispatchAbortReported = false;
+        return false;
     }
-    event_stack.removeLast();
-    flushOutermostDeferredWork(room);
-    return broken;
 }
 
 namespace {
@@ -1215,7 +1597,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	foreach (const TriggerSkill *ts, v2_skills) {
 		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 		if (!v2) continue;
-        const bool recorded = v2->recordEvent(triggerEvent, room, target, data);
+        triggerDispatchStep(triggerEvent, target, v2->objectName());
+        bool recorded = false;
+        if (!invokeAuthorCallback([&]() { recorded = v2->recordEvent(triggerEvent, room, target, data); })) return false;
+        checkTriggerDispatchAbort();
         restoreIdentity();
         if (recorded) continue;
 		if (v2->isEquipSkill()) {
@@ -1227,8 +1612,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			recordCtx.invoker = target;
 			recordCtx.original_data = &data;
 			recordCtx.current_event = triggerEvent;
-			v2->record(triggerEvent, room, target, recordCtx);
-            restoreIdentity();
+			if (!invokeAuthorCallback([&]() { v2->record(triggerEvent, room, target, recordCtx); })) return false;
+			checkTriggerDispatchAbort();
+			restoreIdentity();
 			continue;
 		}
         const auto recordPlayers = room->getAllPlayers(true);
@@ -1246,7 +1632,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 recordCtx.original_data = &data;
                 recordCtx.current_event = triggerEvent;
                 recordCtx.amount = v2->getBaseAmount();
-                v2->record(triggerEvent, room, target, recordCtx);
+                if (!invokeAuthorCallback([&]() { v2->record(triggerEvent, room, target, recordCtx); })) return false;
+                checkTriggerDispatchAbort();
                 restoreIdentity();
             }
             continue;
@@ -1259,6 +1646,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             const QList<int> instanceIds = indexed ? candidates.value(owner)
                 : owner->getSkillInstanceIds(v2->objectName());
 			foreach (int instanceId, instanceIds) {
+                triggerDispatchStep(triggerEvent, owner, v2->objectName());
 				SkillContext recordCtx;
 				recordCtx.skill_name = v2->objectName();
 				recordCtx.owner = owner;
@@ -1282,8 +1670,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				if (!amountOk) recordCtx.amount = v2->getBaseAmount();
 				recordCtx.original_data = &data;
 				recordCtx.current_event = triggerEvent;
-				v2->record(triggerEvent, room, target, recordCtx);
-                restoreIdentity();
+				if (!invokeAuthorCallback([&]() { v2->record(triggerEvent, room, target, recordCtx); })) return false;
+				checkTriggerDispatchAbort();
+				restoreIdentity();
 			}
 		}
 	}
@@ -1291,12 +1680,18 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	bool broken = false;
 
 	while (!broken) {
+        triggerDispatchStep(triggerEvent, target);
 		if (equipmentGroup && (triggerEvent == EnterDying || triggerEvent == Dying
 			|| triggerEvent == AskForPeaches)) {
 			const ServerPlayer *dying = data.value<DyingStruct>().who;
 			if (!dying || !dying->hasFlag("Global_Dying")) break;
 		}
 		QList<SkillContext> skillContexts;
+        const auto appendContext = [&](const SkillContext &ctx) {
+            if (m_dispatchBudget.checkContexts(quint64(skillContexts.size())) != TriggerDispatchBudget::Failure::None)
+                abortTriggerDispatch(triggerEvent, ctx.owner, ctx.skill_name);
+            skillContexts << ctx;
+        };
 		QMap<QString, QStringList> equipmentTargetPrefixes;
 		QMap<QString, QStringList> contextTargetPrefixes;
 		QSet<const TriggerSkillV2 *> contextSelectors;
@@ -1305,13 +1700,17 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		foreach (const TriggerSkill *ts, v2_skills) {
 			TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 			if (!v2) continue;
+        triggerDispatchStep(triggerEvent, target, v2->objectName());
         QList<SkillContext> supplied;
-        const bool collected = v2->collectTriggerContexts(triggerEvent, room, target, data, supplied);
+        bool collected = false;
+        if (!invokeAuthorCallback([&]() { collected = v2->collectTriggerContexts(triggerEvent, room, target, data, supplied); })) return false;
+        checkTriggerDispatchAbort();
         restoreIdentity();
         if (collected) {
             QMap<QString, QStringList> precedingTargets;
             QSet<QString> compulsoryOrderedKeys;
             for (SkillContext ctx : supplied) {
+                triggerDispatchStep(triggerEvent, ctx.owner, ts->objectName());
                 const QString definitionName = TriggerSkillV2::parseSkillName(ctx.skill_name);
                 const auto *definition = dynamic_cast<const TriggerSkillV2 *>(Sanguosha->getTriggerSkill(definitionName));
                 if (!definition || !ctx.owner) continue;
@@ -1337,14 +1736,16 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 if (definition->prepareSource(room, ctx)) {
                     if (orderedCompulsory) compulsoryOrderedKeys.insert(orderedKey);
                     contextSelectors.insert(definition);
-                    skillContexts << ctx;
+                    appendContext(ctx);
                 }
             }
             continue;
         }
-		TriggerList list = v2->triggerable(triggerEvent, room, target, data);
-        restoreIdentity();
-		
+		TriggerList list;
+        if (!invokeAuthorCallback([&]() { list = v2->triggerable(triggerEvent, room, target, data); })) return false;
+		checkTriggerDispatchAbort();
+		restoreIdentity();
+
 		QMap<ServerPlayer *, QStringList>::iterator it;
 			for (it = list.begin(); it != list.end(); ++it) {
 				ServerPlayer *p = it.key();
@@ -1352,6 +1753,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				QStringList &skills = it.value();
 				if (!skills.isEmpty()) {
 					foreach (const QString &skill, skills) {
+                        triggerDispatchStep(triggerEvent, p, v2->objectName());
 						QString skillName = skill;
 						int multiplier = 1;
 						int split = skillName.indexOf('*');
@@ -1394,6 +1796,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								const QString key = skillInstanceRuntimeKey(p, skillName, 0);
 								const QStringList targets = orderedTargets.split('+', Qt::SkipEmptyParts);
 								for (int i = 0; i < targets.size(); ++i) {
+                                    triggerDispatchStep(triggerEvent, p, v2->objectName());
 									if (consumedEquipmentTargets.value(key).contains(targets.at(i))) continue;
 									ServerPlayer *effectTarget = room->findPlayerByObjectName(targets.at(i), true);
 									if (!effectTarget) continue;
@@ -1408,7 +1811,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 									ctx.current_event = triggerEvent;
 									ctx.amount = v2->getBaseAmount();
 									ctx.trigger_count = triggerCounts.value(key);
-									if (v2->prepareSource(room, ctx)) skillContexts << ctx;
+									if (v2->prepareSource(room, ctx)) appendContext(ctx);
 									// Selecting a later target declines the preceding targets.
 									equipmentTargetPrefixes.insert(p->objectName() + '|' + ctx.skill_name,
 										targets.mid(0, i + 1));
@@ -1438,6 +1841,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 							if (currentTriggerCount >= effectiveMultiplier)
 								continue;
 							for (int i = 0; i < effectiveMultiplier - currentTriggerCount; ++i) {
+                                triggerDispatchStep(triggerEvent, p, v2->objectName());
 								SkillContext ctx;
 								ctx.skill_name = skillName;
 								ctx.owner = p;
@@ -1454,7 +1858,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.multiplier = effectiveMultiplier;
 								ctx.original_data = &data;
 								ctx.current_event = triggerEvent;
-								if (v2->prepareSource(room, ctx)) skillContexts << ctx;
+								if (v2->prepareSource(room, ctx)) appendContext(ctx);
 							}
 						}
 					}
@@ -1574,6 +1978,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(result_skill));
 		if (!v2) continue;
+        triggerDispatchStep(triggerEvent, target, v2->objectName());
 
 		// Format 2: match selected_ctx by ownerObjectName.
 		SkillContext *selected_ctx = nullptr;
@@ -1634,8 +2039,11 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		ResolutionHistoryEventGuard skillHistory(
 			room->resolutionHistory(), QStringLiteral("skill"),
 			room->historySkillContext(*selected_ctx), room->historyRecordingEnabled());
-		bool do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx);
-        restoreIdentity();
+		triggerDispatchStep(triggerEvent, skill_owner, v2->objectName());
+		bool do_cost = false;
+        if (!invokeAuthorCallback([&]() { do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+		checkTriggerDispatchAbort();
+		restoreIdentity();
         selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
 		if (!do_cost) {
 			skillHistory.finish(QStringLiteral("cancelled"));
@@ -1670,8 +2078,11 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				skillHistory.finish(QStringLiteral("source_unavailable"));
 				continue;
 			}
-			bool do_pay = v2->pay(triggerEvent, room, skill_owner, *selected_ctx);
-            restoreIdentity();
+			triggerDispatchStep(triggerEvent, skill_owner, v2->objectName());
+			bool do_pay = false;
+            if (!invokeAuthorCallback([&]() { do_pay = v2->pay(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+			checkTriggerDispatchAbort();
+			restoreIdentity();
             selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
 			if (!do_pay) {
 				skillHistory.finish(QStringLiteral("pay_failed"));
@@ -1756,13 +2167,17 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             continue;
         }
         if (!skip_effect) {
-            broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx);
+            if (!invokeAuthorCallback([&]() { broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+            checkTriggerDispatchAbort();
             restoreIdentity();
             selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
 
             if (!broken && !selected_ctx->manual_effect && !selected_ctx->targets.isEmpty()) {
                 foreach (ServerPlayer *t, selected_ctx->targets) {
-                    bool target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t);
+                    triggerDispatchStep(triggerEvent, t, v2->objectName());
+                    bool target_broken = false;
+                    if (!invokeAuthorCallback([&]() { target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t); })) return false;
+                    checkTriggerDispatchAbort();
                     restoreIdentity();
                     selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
                     if (target_broken)
@@ -1780,6 +2195,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 void RoomThread::refreshDistanceCacheIfDirty(Room *room)
 {
+	if (suppressOptionalDispatch()) return;
 	if (!room || !m_distanceCacheDirty) return;
 	// These properties only feed client displays. A room seated entirely by
 	// robots has no client to show them to; stay dirty so a later refresh still
@@ -1832,6 +2248,10 @@ void RoomThread::preparePlayers()
 
 bool RoomThread::deferPlayerUiState(ServerPlayer *player)
 {
+    if (suppressOptionalDispatch()) {
+        m_pendingPlayerUiState.insert(player);
+        return true;
+    }
     // Shutdown must not spend another turn rebuilding Lua-backed presentation.
     if (isInterruptionRequested()) return true;
     if (m_flushingPlayerUiState || (event_stack.isEmpty() && !m_preparingPlayerUiState)) return false;
@@ -1841,6 +2261,7 @@ bool RoomThread::deferPlayerUiState(ServerPlayer *player)
 
 void RoomThread::flushPlayerUiState()
 {
+    if (suppressOptionalDispatch()) return;
     if (isRunning() && QThread::currentThread() != this) return;
     if (!room || isInterruptionRequested() || m_flushingPlayerUiState || m_preparingPlayerUiState) return;
     const bool allPlayers = m_playerUiStateDirty;
@@ -1878,17 +2299,31 @@ void RoomThread::refreshSkillDescriptions()
 
 void RoomThread::flushOutermostDeferredWork(Room *room)
 {
+    if (suppressOptionalDispatch()) return;
+    checkTriggerDispatchAbort();
     if (!room || !event_stack.isEmpty() || isInterruptionRequested()) return;
+    const bool hadDiscard = m_discardOptionalFrames.contains(0);
+    const auto discardGuard = qScopeGuard([&]() {
+        if (!hadDiscard) m_discardOptionalFrames.remove(0);
+    });
     room->processPendingPreshows();
+    checkTriggerDispatchAbort();
     room->flushHegemonyReveals();
+    m_deferredReveals.clear();
+    checkTriggerDispatchAbort();
     flushPlayerUiState();
+    checkTriggerDispatchAbort();
 
 	refreshDistanceCacheIfDirty(room);
+    checkTriggerDispatchAbort();
 
 	if (room->hasPendingSummons())
 		room->processPendingSummons();
 
+	checkTriggerDispatchAbort();
 	room->processPendingAnytimeSkills();
+    m_deferredAnytime.clear();
+    checkTriggerDispatchAbort();
 }
 
 // Pre-deferral trigger entry: recompute and broadcast the hand limit before
@@ -1942,6 +2377,14 @@ void recordTurnHpSnapshot(Room *room, qint64 turnId, const QString &boundary, co
 }
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
+    if (isMandatoryCleanup() && (triggerEvent == GameOverJudge || triggerEvent == BuryVictim))
+        return triggerMandatoryGameRule(triggerEvent, target, data);
+    if (suppressOptionalDispatch()) return false;
+    beginTriggerDispatch(triggerEvent, target);
+    const quint64 budgetGeneration = m_budgetGeneration;
+    const auto budgetGuard = qScopeGuard([this, budgetGeneration]() {
+        leaveTriggerDispatch(budgetGeneration);
+    });
     // Physical provenance is native admission data. Hooks may change effect state,
     // but cannot replace this receipt with another equipment or an empty identity.
     const QVariant physicalIdentity = data;
@@ -1955,6 +2398,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 	if (!room)
 		return dispatchTrigger(triggerEvent, room, target, data);
 	room->processPendingPreshows();
+    checkTriggerDispatchAbort();
 
     // Record accepted invocations, not skill scopes opened before cost/payment.
     // Legacy adapters also emit SkillTriggered; record that path only once.
@@ -2092,6 +2536,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 			|| triggerEvent == EventPhaseEnd || triggerEvent == EventPhaseProceeding || outerTurn))
 			room->evaluateWorkObjectives();
 	}
+    checkTriggerDispatchAbort();
 	return broken;
 }
 
@@ -2173,55 +2618,17 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 	// push it to event stack
 	EventTriplet triplet(triggerEvent, room, target);
 	event_stack.push_back(triplet);
-	bool broken = false;/*
-	QList<ServerPlayer*>players = room->getAllPlayers(true);
-	foreach(ServerPlayer*p,players){
-		QList<TriggerSkill*>triggered;
-		while(broken==false){
-			if(triggerEvent==EnterDying||triggerEvent==Dying||triggerEvent==AskForPeaches){
-				if(!data.value<DyingStruct>().who->hasFlag("Global_Dying"))
-					break;
-			}
-			int x = -99;
-			QHash<int,QList<TriggerSkill*> >i2ss;
-			foreach(TriggerSkill*ts,skill_table[triggerEvent]){
-				if(triggered.contains(ts)) continue;
-				if(ts->triggerable(target,room,triggerEvent,p,data)){
-					int n = ts->getPriority(triggerEvent);
-					i2ss[n] << ts;
-					x = qMax(x,n);
-				}
-			}
-			if(i2ss.isEmpty()) break;
-			QStringList choices;
-			foreach(TriggerSkill*ts,i2ss[x]){
-				if(p->hasSkill(ts->objectName(),true)){
-					if(ts->isVisible()){
-						choices << ts->objectName();
-						continue;
-					}
-				}if(p!=players.first())
-					continue;
-				triggered << ts;
-				room->tryPause();
-				broken = ts->trigger(triggerEvent,room,target,data,p);
-				i2ss.clear();
-				break;
-			}
-			if(i2ss.isEmpty()) continue;
-			if(choices.isEmpty()) break;
-			QString choice = choices.first();
-			if(choices.length()>1) choice = room->askForChoice(p,"triggered",choices.join("+"),data);
-			foreach(TriggerSkill*ts,i2ss[x]){
-				if(ts->objectName()==choice){
-					triggered << ts;
-					room->tryPause();
-					broken = ts->trigger(triggerEvent,room,target,data,p);
-					break;
-				}
-			}
-		}
-	}*/
+	bool stacked = true;
+    const int frameDepth = event_stack.size();
+    const bool hadZeroDiscard = m_discardOptionalFrames.contains(0);
+    const auto stackGuard = qScopeGuard([this, &stacked, frameDepth, hadZeroDiscard]() {
+        m_discardOptionalFrames.remove(frameDepth);
+        if (!hadZeroDiscard) m_discardOptionalFrames.remove(0);
+        if (stacked) event_stack.pop_back();
+    });
+	bool broken = false;
+    QSet<TriggerSkill *> triggered;
+    try {
 	sortTriggerSkills(triggerEvent, room, false);
 	if (invalidatesDistanceCache(triggerEvent)) {
 		m_playerUiStateDirty = true;
@@ -2231,17 +2638,19 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 		foreach (ServerPlayer *player, room->getAlivePlayers())
 			player->broadcastHandMax();
 	}
-	try {
-		broken = triggerV2Skills(triggerEvent, room, target, data);
+		invokeAuthorCallback([&]() { broken = triggerV2Skills(triggerEvent, room, target, data); });
 		if (broken) {
+			stacked = false;
 			event_stack.pop_back();
 			flushOutermostDeferredWork(room);
+            checkTriggerDispatchAbort();
 			return broken;
 		}
 		// This is membership only; event order still comes from skill_table.
-		QSet<TriggerSkill *> triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
 			TriggerSkill*ts = skill_table[triggerEvent][i];
+            if (m_discardOptionalFrames.contains(event_stack.size()) && !qobject_cast<GameRule *>(ts)) continue;
+            triggerDispatchStep(triggerEvent, target, ts->objectName());
 			if (m_perfTraceEnabled)
 				++m_triggerDispatchProfile.mainTableCandidateVisitCount;
 			if (m_triggerSkillTraits.value(ts).v2 && !usesV2EventPriority(ts)) continue;
@@ -2252,22 +2661,33 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
                 if (!data.value<DyingStruct>().who->hasFlag("Global_Dying")) break;
             }
             if (m_triggerSkillTraits.value(ts).v2 && usesV2EventPriority(ts)) {
-                QList<TriggerSkill *> group;
-                for (TriggerSkill *candidate : skill_table[triggerEvent]) {
-                    if (m_triggerSkillTraits.value(candidate).v2 && usesV2EventPriority(candidate)
-                        && candidate->getPriority(triggerEvent) == ts->getPriority(triggerEvent)
-                        && (candidate == ts || !triggered.contains(candidate))) {
-                        group << candidate;
-                        triggered << candidate;
+                if (!invokeAuthorCallback([&]() {
+                    QList<TriggerSkill *> group;
+                    for (TriggerSkill *candidate : skill_table[triggerEvent]) {
+                        if (m_triggerSkillTraits.value(candidate).v2 && usesV2EventPriority(candidate)
+                            && candidate->getPriority(triggerEvent) == ts->getPriority(triggerEvent)
+                            && (candidate == ts || !triggered.contains(candidate))) {
+                            group << candidate;
+                            triggered << candidate;
+                        }
                     }
-                }
-                broken = triggerV2Skills(triggerEvent, room, target, data, &group);
+                    broken = triggerV2Skills(triggerEvent, room, target, data, &group);
+                })) continue;
                 if (broken) break;
                 if (tableRevision != m_triggerTableRevision[triggerEvent]) i = -1;
                 continue;
             }
-			if (ts->triggerable(target,room,triggerEvent,target,data)) {
-				if(ts->getFrequency(target)==Skill::Wake&&!ts->canWake(triggerEvent,target,data,room)) continue;
+            bool eligible = false;
+            if (qobject_cast<GameRule *>(ts)) eligible = ts->triggerable(target, room, triggerEvent, target, data);
+            else if (!invokeAuthorCallback([&]() { eligible = ts->triggerable(target, room, triggerEvent, target, data); })) continue;
+			if (eligible) {
+                Skill::Frequency frequency = Skill::NotFrequent;
+                if (qobject_cast<GameRule *>(ts)) frequency = ts->getFrequency(target);
+                else if (!invokeAuthorCallback([&]() { frequency = ts->getFrequency(target); })) continue;
+                if (frequency == Skill::Wake) {
+                    bool canWake = false;
+                    if (!invokeAuthorCallback([&]() { canWake = ts->canWake(triggerEvent, target, data, room); }) || !canWake) continue;
+                }
 				room->tryPause();
 				Room::ResolutionScope resolution(*room, ts->objectName());
 				const bool isRule = ts->inherits("GameRule")
@@ -2301,7 +2721,32 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
                 }
                 m_legacyExecutionFrames << legacyFrame;
                 const auto legacyFrameGuard = qScopeGuard([&]() { m_legacyExecutionFrames.removeLast(); });
-                broken = ts->trigger(triggerEvent,room,target,data);
+                if (!isRule) {
+                    if (!invokeAuthorCallback([&]() { broken = ts->trigger(triggerEvent, room, target, data); })) {
+                        skillHistory.finish(QStringLiteral("cascade_cancelled"));
+                        continue;
+                    }
+                } else if (!m_operationRootActive && m_authorCallbackDepth == 0
+                    && (triggerEvent == TurnStart || triggerEvent == EventPhaseProceeding)) {
+                    const TriggerDispatchBudget driverBudget = m_dispatchBudget;
+                    const quint64 driverGeneration = m_budgetGeneration;
+                    const quint64 driverId = m_cascadeId;
+                    ++m_budgetGeneration;
+                    m_cascadeId = 0;
+                    m_dispatchBudget = TriggerDispatchBudget(driverBudget.limits());
+                    const auto driverGuard = qScopeGuard([&]() {
+                        m_dispatchBudget = driverBudget;
+                        m_budgetGeneration = driverGeneration;
+                        m_cascadeId = driverId;
+                    });
+                    if (triggerEvent == EventPhaseProceeding && target && target->getPhase() == Player::Judge)
+                        invokeAuthorCallback([&]() { broken = ts->trigger(triggerEvent, room, target, data); }, true);
+                    else
+                        broken = ts->trigger(triggerEvent, room, target, data);
+                } else {
+                    broken = ts->trigger(triggerEvent, room, target, data);
+                }
+                checkTriggerDispatchAbort();
                 restorePhysicalEquipmentIdentity(data, physicalIdentity);
 				skillHistory.finish(broken ? QStringLiteral("broken") : QStringLiteral("completed"));
 				if(triggerEvent!=SkillTriggered&&room->getTag("notifyInvoked:"+ts->objectName()).toBool()){
@@ -2315,19 +2760,67 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 				if (tableRevision != m_triggerTableRevision[triggerEvent]) i = -1;
 			}
 		}
+		checkTriggerDispatchAbort();
 		room->recordAiEvent(int(triggerEvent), target, data);
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
+		stacked = false;
 		event_stack.pop_back();// pop event stack
 		flushOutermostDeferredWork(room);
 
+    } catch (const TriggerCascadeBreak &cancel) {
+        if (suppressOptionalDispatch()) return false;
+        if (m_nativeCommitDepth) throw;
+        if (m_operationRootActive || m_joinOnlyDepth || m_authorCallbackDepth
+            || cancel.cascadeId != m_cascadeId) throw;
+        {
+            MandatoryCleanupScope cleanup(*this);
+            room->finishTriggerCascade(m_cascadeId, true);
+        }
+        m_dispatchBudget.resetCascade();
+        m_dispatchAbortReported = false;
+        m_discardOptionalFrames.insert(event_stack.size());
+        // Optional observers are discarded; an unexecuted native turn/phase
+        // driver must still run so cancellation does not skip the turn.
+        for (TriggerSkill *skill : skill_table[triggerEvent]) {
+            if (triggered.contains(skill)) continue;
+            if (auto *rule = qobject_cast<GameRule *>(skill)) {
+                const TriggerDispatchBudget savedBudget = m_dispatchBudget;
+                const quint64 savedGeneration = m_budgetGeneration;
+                const quint64 savedId = m_cascadeId;
+                ++m_budgetGeneration;
+                m_cascadeId = 0;
+                m_dispatchBudget = TriggerDispatchBudget(savedBudget.limits());
+                const auto ruleGuard = qScopeGuard([&]() {
+                    m_dispatchBudget = savedBudget;
+                    m_budgetGeneration = savedGeneration;
+                    m_cascadeId = savedId;
+                });
+                if (triggerEvent == EventPhaseProceeding && target && target->getPhase() == Player::Judge)
+                    invokeAuthorCallback([&]() { rule->trigger(triggerEvent, room, target, data); }, true);
+                else
+                    rule->trigger(triggerEvent, room, target, data);
+            }
+        }
+        return false;
     }catch (TriggerEvent throwed_event) {
-		room->recordAiEvent(int(triggerEvent), target, data);
-		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
-		event_stack.pop_back();// pop event stack
-		flushOutermostDeferredWork(room);
+        checkTriggerDispatchAbort();
+        if (!stacked) throw;
+        try {
+            room->recordAiEvent(int(triggerEvent), target, data);
+            if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
+            checkTriggerDispatchAbort();
+            stacked = false;
+            event_stack.pop_back();
+            flushOutermostDeferredWork(room);
+        } catch (...) {
+            // A cleanup observer must not replace the interrupted turn/stage.
+            // A sticky safety abort always takes precedence over recovery.
+            checkTriggerDispatchAbort();
+        }
         throw throwed_event;
 	}
 	//room->tryPause();
+    checkTriggerDispatchAbort();
 	return broken;
 }
 

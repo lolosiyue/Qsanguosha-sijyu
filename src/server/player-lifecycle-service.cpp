@@ -677,12 +677,22 @@ void PlayerLifecycleService::requestSummonBetween(ServerPlayer *before, ServerPl
     request.before = before;
     request.after = after;
     request.generalName = generalName;
+    if (m_room.getThread()) request.cascadeId = m_room.getThread()->deferredCreatorCascadeId();
     m_pendingSummons.append(request);
 }
 
 bool PlayerLifecycleService::hasPendingSummons() const
 {
     return !m_pendingSummons.isEmpty();
+}
+
+void PlayerLifecycleService::finishDeferredCascade(quint64 token, bool cancelled, quint64 parentToken)
+{
+    for (int i = m_pendingSummons.size() - 1; i >= 0; --i) {
+        if (m_pendingSummons.at(i).cascadeId != token) continue;
+        if (cancelled) m_pendingSummons.removeAt(i);
+        else m_pendingSummons[i].cascadeId = parentToken;
+    }
 }
 
 void PlayerLifecycleService::processPendingSummons()

@@ -1431,6 +1431,7 @@ case BuryVictim: {
             room->getThread()->delay(Config.S_JUDGE_LONG_DELAY);
         }
 		judge->card = Sanguosha->cloneCard(judge->card);
+		room->retainJudgeSnapshot(const_cast<Card *>(judge->card));
 		data.setValue(judge);// Clone the judgement card to preserve its details.
         break;
     }
@@ -1443,6 +1444,7 @@ case BuryVictim: {
             room->moveCardTo(judge->card,nullptr,Player::DiscardPile,reason,true);
         }
 		if(judge->card->parent()) break;
+		room->releaseJudgeSnapshot(const_cast<Card *>(judge->card));
 		((Card*)judge->card)->deleteLater();
         break;
     }
