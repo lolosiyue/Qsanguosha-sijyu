@@ -157,11 +157,14 @@ ThemePackDialog::ThemePackDialog(QWidget *parent)
         const QStringList order = pendingOrder();
         ThemePacks::reload();
         populate();
-        // Keep unsaved ordering across a rescan.
-        for (int i = order.size() - 1; i >= 0; --i) {
+        // Rebuild from the pending list, rather than the persisted selection:
+        // rescan must preserve unsaved disables and priority changes too.
+        while (m_enabled->count() > 0)
+            m_available->addItem(m_enabled->takeItem(0));
+        for (const QString &id : order) {
             for (int row = 0; row < m_available->count(); ++row) {
-                if (m_available->item(row)->data(kIdRole).toString() == order.at(i)) {
-                    m_enabled->insertItem(0, m_available->takeItem(row));
+                if (m_available->item(row)->data(kIdRole).toString() == id) {
+                    m_enabled->addItem(m_available->takeItem(row));
                     break;
                 }
             }
