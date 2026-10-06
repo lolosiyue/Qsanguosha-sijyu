@@ -19,6 +19,29 @@ namespace
 const int kIdRole = Qt::UserRole;
 const QSize kIconSize(96, 54);
 
+// The labels in skins/theme-slots.json, listed so lupdate keeps their translations.
+[[maybe_unused]] const char *const kSlotLabels[] = {
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Card back"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "General card back"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Indicator line"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Emotion effects"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Dashboard equipment area"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Dashboard hand area"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Dashboard avatar area"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Dashboard button tray"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Log background"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "CardContainer background"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Skin panel background"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Chat bubble background"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Seat frame"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Table background"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Table text color"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Log text color"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Log acting player color"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Log target player color"),
+    QT_TRANSLATE_NOOP("ThemePackDialog", "Log card and value color"),
+};
+
 QPixmap previewIcon(const ThemePacks::Pack &pack, const QSize &size)
 {
     QPixmap source;
@@ -39,7 +62,7 @@ QPixmap previewIcon(const ThemePacks::Pack &pack, const QSize &size)
 
 QString itemText(const ThemePacks::Pack &pack)
 {
-    QString second = pack.author.isEmpty() ? QObject::tr("未知作者") : pack.author;
+    QString second = pack.author.isEmpty() ? ThemePackDialog::tr("Unknown author") : pack.author;
     if (!pack.version.isEmpty())
         second += QStringLiteral("  v") + pack.version;
     return pack.name + QLatin1Char('\n') + second;
@@ -56,13 +79,14 @@ ThemePackDialog::ThemePackDialog(QWidget *parent)
     : QDialog(parent)
 {
     setObjectName(QStringLiteral("themePackDialog"));
-    setWindowTitle(tr("主題包管理"));
+    setWindowTitle(tr("Theme Pack Manager"));
     resize(900, 560);
 
     auto *layout = new QVBoxLayout(this);
-    auto *intro = new QLabel(tr("右邊係已啟用嘅主題，越上面優先度越高：同一個素材槽由最高優先嘅主題提供，"
-        "所有主題都冇嘅槽位用返預設素材。按「套用」即時儲存；之後開嘅房間同新出現嘅元件會用新素材，"
-        "已經喺牌桌上嘅元件要重新入房先會換。"), this);
+    auto *intro = new QLabel(tr("Enabled packs are on the right; the higher a pack, the higher its priority. Each art slot "
+        "comes from the highest-priority pack that provides it, and slots no pack provides use the default art. "
+        "Apply saves at once; rooms opened afterwards and newly shown elements use the new art, while elements "
+        "already on the table change after re-entering the room."), this);
     intro->setWordWrap(true);
     layout->addWidget(intro);
 
@@ -79,7 +103,7 @@ ThemePackDialog::ThemePackDialog(QWidget *parent)
         return list;
     };
 
-    auto *availableBox = new QGroupBox(tr("可用主題"), this);
+    auto *availableBox = new QGroupBox(tr("Available"), this);
     auto *availableLayout = new QVBoxLayout(availableBox);
     m_available = makeList(QStringLiteral("availableThemes"));
     availableLayout->addWidget(m_available);
@@ -87,22 +111,22 @@ ThemePackDialog::ThemePackDialog(QWidget *parent)
 
     auto *moveButtons = new QVBoxLayout;
     moveButtons->addStretch();
-    m_enable = new QPushButton(tr("啟用 →"), this);
-    m_disable = new QPushButton(tr("← 停用"), this);
-    m_up = new QPushButton(tr("↑ 提高優先"), this);
-    m_down = new QPushButton(tr("↓ 降低優先"), this);
+    m_enable = new QPushButton(tr("Enable") + QStringLiteral(" →"), this);
+    m_disable = new QPushButton(QStringLiteral("← ") + tr("Disable"), this);
+    m_up = new QPushButton(QStringLiteral("↑ ") + tr("Raise priority"), this);
+    m_down = new QPushButton(QStringLiteral("↓ ") + tr("Lower priority"), this);
     for (QPushButton *button : {m_enable, m_disable, m_up, m_down})
         moveButtons->addWidget(button);
     moveButtons->addStretch();
     columns->addLayout(moveButtons);
 
-    auto *enabledBox = new QGroupBox(tr("已啟用（上 = 最高優先）"), this);
+    auto *enabledBox = new QGroupBox(tr("Enabled (top = highest priority)"), this);
     auto *enabledLayout = new QVBoxLayout(enabledBox);
     m_enabled = makeList(QStringLiteral("enabledThemes"));
     enabledLayout->addWidget(m_enabled);
     columns->addWidget(enabledBox, 3);
 
-    auto *detailBox = new QGroupBox(tr("詳情"), this);
+    auto *detailBox = new QGroupBox(tr("Details"), this);
     auto *detailLayout = new QVBoxLayout(detailBox);
     m_preview = new QLabel(detailBox);
     m_preview->setFixedSize(256, 144);
@@ -118,17 +142,17 @@ ThemePackDialog::ThemePackDialog(QWidget *parent)
     columns->addWidget(detailBox, 3);
 
     auto *footer = new QHBoxLayout;
-    auto *openFolder = new QPushButton(tr("開啟主題資料夾"), this);
-    auto *rescan = new QPushButton(tr("重新掃描"), this);
+    auto *openFolder = new QPushButton(tr("Open theme folder"), this);
+    auto *rescan = new QPushButton(tr("Rescan"), this);
     m_status = new QLabel(this);
     footer->addWidget(openFolder);
     footer->addWidget(rescan);
     footer->addWidget(m_status, 1);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Apply | QDialogButtonBox::Cancel, this);
     m_apply = buttons->button(QDialogButtonBox::Apply);
-    m_apply->setText(tr("套用"));
-    buttons->button(QDialogButtonBox::Ok)->setText(tr("確定"));
-    buttons->button(QDialogButtonBox::Cancel)->setText(tr("取消"));
+    m_apply->setText(tr("Apply"));
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("OK"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
     footer->addWidget(buttons);
     layout->addLayout(footer);
 
@@ -206,12 +230,12 @@ void ThemePackDialog::populate()
     }
 
     m_status->setText(packs.isEmpty()
-        ? tr("未搵到主題包：將含 theme.json 嘅資料夾放入 %1").arg(QDir::toNativeSeparators(ThemePacks::userThemeDirectory()))
-        : tr("已安裝 %1 個主題，啟用緊 %2 個").arg(packs.size()).arg(enabled.size()));
+        ? tr("No theme packs found: put a folder containing theme.json into %1").arg(QDir::toNativeSeparators(ThemePacks::userThemeDirectory()))
+        : tr("%1 theme packs installed, %2 enabled").arg(packs.size()).arg(enabled.size()));
     m_available->setCurrentRow(-1);
     m_enabled->setCurrentRow(-1);
     m_preview->clear();
-    m_details->setText(tr("揀一個主題睇詳情。"));
+    m_details->setText(tr("Select a theme pack to see its details."));
     updateButtons();
 }
 
@@ -226,22 +250,26 @@ void ThemePackDialog::showDetails(QListWidgetItem *item)
         QStringList provided;
         for (const ThemePacks::Slot &slot : ThemePacks::slotTable()) {
             if (pack.slotFiles.contains(slot.id))
-                provided << slot.label.toHtmlEscaped();
+                provided << tr(slot.label.toUtf8().constData()).toHtmlEscaped();
+        }
+        for (const ThemePacks::ColorSlot &slot : ThemePacks::colorTable()) {
+            if (pack.colors.contains(slot.id))
+                provided << tr(slot.label.toUtf8().constData()).toHtmlEscaped();
         }
         if (!pack.files.isEmpty())
-            provided << tr("另加 %1 個檔案覆蓋").arg(pack.files.size());
+            provided << tr("%1 extra file overrides").arg(pack.files.size());
         QString html = QStringLiteral("<b>%1</b><br/>").arg(pack.name.toHtmlEscaped());
-        html += tr("作者：%1").arg(pack.author.toHtmlEscaped()) + QStringLiteral("<br/>");
-        html += tr("版本：%1").arg(pack.version.toHtmlEscaped()) + QStringLiteral("<br/>");
-        html += tr("ID：%1").arg(pack.id.toHtmlEscaped()) + QStringLiteral("<br/>");
+        html += tr("Author: %1").arg(pack.author.toHtmlEscaped()) + QStringLiteral("<br/>");
+        html += tr("Version: %1").arg(pack.version.toHtmlEscaped()) + QStringLiteral("<br/>");
+        html += tr("ID: %1").arg(pack.id.toHtmlEscaped()) + QStringLiteral("<br/>");
         if (!pack.description.isEmpty())
             html += QStringLiteral("<p>%1</p>").arg(pack.description.toHtmlEscaped());
-        html += QStringLiteral("<p>") + tr("提供素材槽：%1").arg(provided.isEmpty() ? tr("（無）") : provided.join(QStringLiteral("、"))) + QStringLiteral("</p>");
+        html += QStringLiteral("<p>") + tr("Provided slots: %1").arg(provided.isEmpty() ? tr("(none)") : provided.join(tr(", ", "list separator"))) + QStringLiteral("</p>");
         if (!pack.warnings.isEmpty()) {
             QStringList escaped;
             for (const QString &warning : pack.warnings)
                 escaped << warning.toHtmlEscaped();
-            html += QStringLiteral("<p style='color:#c0392b'>") + tr("警告：") + QStringLiteral("<br/>")
+            html += QStringLiteral("<p style='color:#c0392b'>") + tr("Warnings:") + QStringLiteral("<br/>")
                 + escaped.join(QStringLiteral("<br/>")) + QStringLiteral("</p>");
         }
         html += QStringLiteral("<p style='color:gray'>%1</p>").arg(QDir::toNativeSeparators(pack.root).toHtmlEscaped());
@@ -302,7 +330,7 @@ bool ThemePackDialog::apply()
 {
     const bool changed = ThemePacks::setEnabledIds(pendingOrder());
     if (changed)
-        m_status->setText(tr("已套用：之後開嘅房間同新出現嘅元件會用新素材。"));
+        m_status->setText(tr("Applied: rooms opened from now on and newly shown elements use the new art."));
     updateButtons();
     return changed;
 }

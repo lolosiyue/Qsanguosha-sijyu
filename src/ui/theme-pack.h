@@ -1,6 +1,7 @@
 #ifndef QSAN_THEME_PACK_H
 #define QSAN_THEME_PACK_H
 
+#include <QColor>
 #include <QList>
 #include <QMap>
 #include <QString>
@@ -8,7 +9,8 @@
 
 // Theme packs replace room art slot by slot, like resource packs: each pack is a folder
 // with a theme.json manifest, packs are stacked in a user-chosen order, and any slot no
-// enabled pack fills keeps the skin's own art. skins/theme-slots.json lists the slots.
+// enabled pack fills keeps the skin's own art. skins/theme-slots.json lists the slots
+// and the text colors a pack may set to stay readable on its backgrounds.
 //
 // With no pack enabled every lookup returns an empty string before touching a lock or
 // the filesystem, so the default look is unchanged.
@@ -29,6 +31,12 @@ struct Slot
     int width = 0, height = 0;
 };
 
+struct ColorSlot
+{
+    QString id;
+    QString label;
+};
+
 struct Pack
 {
     QString id;
@@ -45,12 +53,15 @@ struct Pack
     // Legacy asset path (case-folded, "image/...") -> absolute file; a key ending in '/'
     // maps a whole folder.
     QMap<QString, QString> files;
+    // Color slot id -> color (only valid entries).
+    QMap<QString, QColor> colors;
     // Problems found while reading the manifest; the pack still loads what it can.
     QStringList warnings;
 };
 
 const QList<Slot> &slotTable();
 const Slot *findSlot(const QString &id);
+const QList<ColorSlot> &colorTable();
 
 // Folders scanned for packs: <asset root>/themes, then <user data>/themes.
 QStringList searchDirectories();
@@ -72,6 +83,8 @@ bool isActive();
 // Bumped on every rebuild so pixmap caches keyed by it drop themed results.
 quint64 revision();
 
+// The highest enabled pack's color for a color slot, or fallback when none sets it.
+QColor color(const QString &id, const QColor &fallback);
 // Absolute replacement for a slot, or empty when no enabled pack provides it.
 QString overrideForSlot(const QString &slotId);
 // Absolute replacement for a skin image key, or empty.

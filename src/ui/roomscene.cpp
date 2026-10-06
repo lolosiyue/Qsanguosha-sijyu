@@ -18,6 +18,7 @@
 #include "room.h"
 #include "client.h"
 #include "settings.h"
+#include "theme-pack.h"
 #include "cardcontainer.h"
 #include "guhuo-box.h"
 #include "choosegeneralbox.h"
@@ -675,7 +676,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	chat_box_widget->setObjectName("chat_box_widget");
 	chat_box_widget->setZValue(7);
 	chat_box->setReadOnly(true);
-	chat_box->setStyleSheet(QString("QTextEdit { color: %1;}").arg(UiConfig.TextEditColor.name()));
+	chat_box->setStyleSheet(QString("QTextEdit { color: %1;}").arg(ThemePacks::color(QStringLiteral("table-text"), UiConfig.TextEditColor).name()));
 	connect(ClientInstance,SIGNAL(line_spoken(QString)),chat_box,SLOT(append(QString)));
 	connect(ClientInstance,SIGNAL(player_speak(const QString&,const QString&)),
 		this,SLOT(showBubbleChatBox(const QString&,const QString&)));
@@ -716,7 +717,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	// log box
 	log_box = new ClientLogBox;
 	log_box->setObjectName("log_box");
-	log_box->setTextColor(UiConfig.TextEditColor);
+	log_box->setTextColor(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor));
 	// Without a "log-box-bg" theme slot or skin key the log keeps the global QTextEdit border.
 	const QString logBorder = G_ROOM_SKIN.getSlotFileName(QStringLiteral("log-box-bg"));
 	if (!logBorder.isEmpty())
@@ -4838,7 +4839,7 @@ void RoomScene::changeMaxHp(const QString&who,int delta)
 
 void RoomScene::onStandoff()
 {
-	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(UiConfig.TextEditColor.name())));
+	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor).name())));
 
 	freeze();
 	Sanguosha->playSystemAudioEffect("standoff");
@@ -4929,7 +4930,7 @@ void RoomScene::onGameOver()
 			{"duration_ms", static_cast<int>(elapsed - previousResultMs)}}).toJson(QJsonDocument::Compact);
 		previousResultMs = elapsed;
 	};
-	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(UiConfig.TextEditColor.name())));
+	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor).name())));
 
 	freeze();
 	traceStage("freeze");
@@ -5773,7 +5774,7 @@ void RoomScene::onGameStart()
 		control_panel->hide();
 
 	if(Self&&!Self->hasFlag("marshalling"))
-		log_box->append(QString(tr("<font color='%1'>---------- Game Start ----------</font>").arg(UiConfig.TextEditColor.name())));
+		log_box->append(QString(tr("<font color='%1'>---------- Game Start ----------</font>").arg(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor).name())));
 
 	trust_button->setEnabled(true);
 

@@ -4,6 +4,7 @@
 #include "client-log-formatter.h"
 #include "roomscene.h"
 #include "client.h"
+#include "theme-pack.h"
 
 ClientLogBox::ClientLogBox(QWidget *parent)
     : QTextEdit(parent)
@@ -33,7 +34,7 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     if (Self->hasFlag("marshalling")) return;
 
     if (type == "$AppendSeparator") {
-        append(QStringLiteral("<font color='%1'>------------------------------</font>").arg(UiConfig.TextEditColor.name()));
+        append(QStringLiteral("<font color='%1'>------------------------------</font>").arg(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor).name()));
         return;
     }
 
@@ -66,10 +67,10 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     style.translate = [](const QString &key) { return Sanguosha->translate(key); };
     style.cardLogName = [](const Card *card) { return card->getLogName(); };
     style.playerName = [](const QString &name) { return ClientInstance->getPlayerName(name); };
-    style.wrapFrom = [this](const QString &text) { return bold(text, Qt::green); };
-    style.wrapTo = [this](const QString &text) { return bold(text, Qt::red); };
-    style.wrapArg = [this](const QString &text) { return bold(text, Qt::yellow); };
-    style.wrapCard = [this](const QString &text) { return bold(text, Qt::yellow); };
+    style.wrapFrom = [this](const QString &text) { return bold(text, ThemePacks::color(QStringLiteral("log-from"), Qt::green)); };
+    style.wrapTo = [this](const QString &text) { return bold(text, ThemePacks::color(QStringLiteral("log-to"), Qt::red)); };
+    style.wrapArg = [this](const QString &text) { return bold(text, ThemePacks::color(QStringLiteral("log-highlight"), Qt::yellow)); };
+    style.wrapCard = [this](const QString &text) { return bold(text, ThemePacks::color(QStringLiteral("log-highlight"), Qt::yellow)); };
     style.onUseCardTargets = [](const QString &from, const QStringList &targets) {
         foreach (const QString &to, targets)
             RoomSceneInstance->showIndicator(from, to);
@@ -79,7 +80,7 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     if (log.isEmpty())
         return;
 
-    const QString html = append(QString("<font color='%2'>%1</font>").arg(log).arg(UiConfig.TextEditColor.name()));
+    const QString html = append(QString("<font color='%2'>%1</font>").arg(log).arg(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor).name()));
     if (type.contains("#Guhuo"))
         RoomSceneInstance->setGuhuoLog(html);
 }
@@ -96,7 +97,7 @@ void ClientLogBox::appendLog(const QStringList &log_str)
 		log_str[3], log_str[4], log_str[5], log_str[6], log_str[7], log_str[8]);
 	else{
 		QString err_string = tr("Log string is not well formatted: %1").arg(log_str.join(","));
-        append(QString("<font color='%1'>%2</font>").arg(UiConfig.TextEditColor.name()).arg(err_string));
+        append(QString("<font color='%1'>%2</font>").arg(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor).name()).arg(err_string));
 	}
 }
 

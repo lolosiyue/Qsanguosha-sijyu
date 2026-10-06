@@ -28,7 +28,7 @@ ConfigDialog::ConfigDialog(SettingsSession *session, QWidget *parent)
     connect(browsePortrait, &QPushButton::clicked, this, [this] { m_session->choosePortraitBackground(this); });
     connect(resetPortrait, &QPushButton::clicked, m_session, &SettingsSession::resetPortraitBackground);
     ui->envLayout->insertWidget(0, layoutGroup);
-    auto *themeButton = new QPushButton(tr("主題包管理…"), this);
+    auto *themeButton = new QPushButton(tr("Manage theme packs..."), this);
     themeButton->setObjectName(QStringLiteral("themePackButton"));
     connect(themeButton, &QPushButton::clicked, this, [this] { m_session->openThemePacks(this); });
     ui->envLayout->insertWidget(1, themeButton);
