@@ -259,7 +259,7 @@ void Photo::setEmotion(const QString &emotion, bool permanent)
         return;
     }
 
-    QString path = QString("image/system/emotion/%1.png").arg(emotion);
+    const QString path = PixmapAnimation::EmotionFile(emotion);
     if (QFile::exists(path)) {
         QPixmap pixmap = PixmapAnimation::GetFrameFromCache(path);
         emotion_item->setPixmap(pixmap);

@@ -1,0 +1,57 @@
+// Theme-pack slot registry. Each slot names one replaceable piece of room art.
+// Resolution order for a slot: enabled theme packs (highest priority first), then the
+// current skin's image keys ("skinKeys", first one defined wins), then "default".
+// "redirect": true also routes every load of the "default" file through the theme, so
+// other code that reads the same file picks up the replacement too.
+// kind "directory": the slot value is a folder that mirrors "default"; each animation
+// is taken whole from the first theme that has its frame 0.png.
+// docs/theme-pack-guide.md explains the theme side of this file.
+{
+"format": 1,
+"slots": [
+    {"id": "card-back", "kind": "image", "group": "card", "label": "牌背",
+     "default": "image/system/card-back.png", "redirect": true,
+     "skinKeys": ["handCardBack", "handCardMainPhoto-unknown"], "size": [93, 130]},
+    {"id": "general-card-back", "kind": "image", "group": "card", "label": "武將牌背",
+     "default": "image/system/unknown.png", "redirect": true,
+     "skinKeys": ["generalCardBack"]},
+    {"id": "indicator-line", "kind": "image", "group": "effect", "label": "指示線",
+     "default": "",
+     "skinKeys": ["indicatorLine"], "size": [256, 16],
+     "note": "Stretched along the line from source to target; without one the line is drawn in the source's kingdom color."},
+    {"id": "emotion", "kind": "directory", "group": "effect", "label": "emotion 播放特效",
+     "default": "image/system/emotion/", "redirect": true,
+     "note": "Mirror image/system/emotion/: <name>/0.png, 1.png, ... for animations, <name>.png for single images."},
+    {"id": "dashboard-equip", "kind": "image", "group": "dashboard", "label": "Dashboard 裝備區",
+     "default": "image/fullskin/system/dashboard-equip.png", "redirect": true,
+     "skinKeys": ["dashboardLeftFrame"]},
+    {"id": "dashboard-hand", "kind": "image", "group": "dashboard", "label": "Dashboard 手牌區",
+     "default": "image/fullskin/system/dashboard-hand.png", "redirect": true,
+     "skinKeys": ["dashboardMiddleFrame"]},
+    {"id": "dashboard-avatar", "kind": "image", "group": "dashboard", "label": "Dashboard 頭像區",
+     "default": "image/fullskin/system/dashboard-avatar.png", "redirect": true,
+     "skinKeys": ["dashboardRightFrame"]},
+    {"id": "dashboard-button-platter", "kind": "image", "group": "dashboard", "label": "Dashboard 按鈕托盤",
+     "default": "image/system/button/platter/bg.png", "redirect": true,
+     "skinKeys": ["dashboardButtonSetBg"]},
+    {"id": "log-box-bg", "kind": "image", "group": "panel", "label": "戰報背景",
+     "default": "",
+     "skinKeys": ["logBoxBorder"],
+     "note": "Nine-slice border image with a 10px edge; replaces image/system/border.png for the log box only."},
+    {"id": "card-container-bg", "kind": "image", "group": "panel", "label": "CardContainer 背景",
+     "default": "image/system/card-container.png", "redirect": true,
+     "skinKeys": ["cardContainerBg"], "size": [716, 346]},
+    {"id": "heroskin-container-bg", "kind": "image", "group": "panel", "label": "換皮膚面板背景",
+     "default": "image/system/heroskin-container.png", "redirect": true,
+     "skinKeys": ["heroSkinContainerBg"]},
+    {"id": "bubble-chat-bg", "kind": "image", "group": "panel", "label": "聊天氣泡背景",
+     "default": "image/system/bubble.png", "redirect": true,
+     "skinKeys": ["bubbleChatBg"]},
+    {"id": "photo-frame", "kind": "image", "group": "seat", "label": "座位框",
+     "default": "image/fullskin/system/photo-back.png", "redirect": true,
+     "skinKeys": ["photoMainFrame"]},
+    {"id": "table-bg", "kind": "image", "group": "table", "label": "牌桌背景",
+     "default": "image/system/backdrop/default.jpg", "redirect": false,
+     "skinKeys": ["tableBg"]}
+]
+}

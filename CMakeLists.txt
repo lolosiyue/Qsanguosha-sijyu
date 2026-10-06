@@ -1185,6 +1185,7 @@ if(UNIX AND NOT ANDROID)
         list(APPEND QSAN_ASSET_REQUIRED
             skins/skinList.json
             skins/resource_aliases.json
+            skins/theme-slots.json
             qss
             ui-script/animation.qml
         )
@@ -1837,7 +1838,7 @@ if(UNIX AND NOT ANDROID AND QSAN_BUILD_GUI)
     # reports a "required missing" entry instead of a fatal error mid-install. The
     # package smoke then goes red because of it.
     set(QSAN_GUI_DATA_DIRECTORIES "")
-    foreach(qsan_gui_directory qss skins ui-script)
+    foreach(qsan_gui_directory qss skins themes ui-script)
         if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${qsan_gui_directory}")
             list(APPEND QSAN_GUI_DATA_DIRECTORIES ${qsan_gui_directory})
         endif()
