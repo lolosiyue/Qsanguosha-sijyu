@@ -21,6 +21,12 @@ namespace
 const char *const kEnabledKey = "ThemePacks/Enabled";
 const char *const kManifestName = "theme.json";
 
+struct FileLayer
+{
+    QHash<QString, QString> exact;
+    QList<QPair<QString, QString>> folders;
+};
+
 struct State
 {
     bool loaded = false;
@@ -28,9 +34,8 @@ struct State
     QStringList enabled;
     QHash<QString, QString> slotOverrides;
     QHash<QString, QString> keyOverrides;
-    QHash<QString, QString> fileOverrides;
-    // Legacy folder prefix -> theme folders, highest priority first; longest prefix first.
-    QList<QPair<QString, QStringList>> folderOverrides;
+    // Highest pack first; within each pack manifest files precede slot redirects.
+    QList<FileLayer> fileLayers;
 };
 
 QReadWriteLock g_lock;
@@ -118,29 +123,32 @@ QString containedPath(const QString &root, const QString &relative, bool folder)
     return folder ? canonical + QLatin1Char('/') : canonical;
 }
 
-void addFolderOverride(State &state, const QString &legacyFolder, const QString &themeFolder)
+void addFolderOverride(FileLayer &layer, const QString &legacyFolder, const QString &themeFolder)
 {
     QString prefix = normalizeLegacy(legacyFolder);
     if (prefix.isEmpty())
         return;
     if (!prefix.endsWith(QLatin1Char('/')))
         prefix += QLatin1Char('/');
-    for (auto &entry : state.folderOverrides) {
-        if (entry.first == prefix) {
-            // Packs are applied lowest priority first, so a later one goes in front.
-            entry.second.prepend(themeFolder);
-            return;
-        }
-    }
-    state.folderOverrides.append(qMakePair(prefix, QStringList(themeFolder)));
+    layer.folders.append(qMakePair(prefix, themeFolder));
+}
+
+void prependLayer(State &state, FileLayer layer)
+{
+    if (layer.exact.isEmpty() && layer.folders.isEmpty())
+        return;
+    std::sort(layer.folders.begin(), layer.folders.end(),
+        [](const QPair<QString, QString> &a, const QPair<QString, QString> &b) {
+            return a.first.size() > b.first.size();
+        });
+    state.fileLayers.prepend(layer);
 }
 
 void rebuildLocked(State &state)
 {
     state.slotOverrides.clear();
     state.keyOverrides.clear();
-    state.fileOverrides.clear();
-    state.folderOverrides.clear();
+    state.fileLayers.clear();
 
     QHash<QString, const Pack *> byId;
     for (const Pack &pack : state.packs)
@@ -150,6 +158,7 @@ void rebuildLocked(State &state)
         const Pack *pack = byId.value(state.enabled.at(i));
         if (!pack)
             continue;
+        FileLayer slotLayer, fileLayer;
         for (auto it = pack->slotFiles.constBegin(); it != pack->slotFiles.constEnd(); ++it) {
             const Slot *slot = findSlot(it.key());
             if (!slot)
@@ -157,33 +166,79 @@ void rebuildLocked(State &state)
             state.slotOverrides.insert(slot->id, it.value());
             if (slot->directory) {
                 if (!slot->defaultPath.isEmpty())
-                    addFolderOverride(state, slot->defaultPath, it.value());
+                    addFolderOverride(slotLayer, slot->defaultPath, it.value());
                 continue;
             }
             for (const QString &key : slot->skinKeys)
                 state.keyOverrides.insert(key, it.value());
             if (slot->redirect && !slot->defaultPath.isEmpty())
-                state.fileOverrides.insert(normalizeLegacy(slot->defaultPath), it.value());
+                slotLayer.exact.insert(normalizeLegacy(slot->defaultPath), it.value());
         }
         for (auto it = pack->files.constBegin(); it != pack->files.constEnd(); ++it) {
             if (it.key().endsWith(QLatin1Char('/')))
-                addFolderOverride(state, it.key(), it.value());
+                addFolderOverride(fileLayer, it.key(), it.value());
             else
-                state.fileOverrides.insert(it.key(), it.value());
+                fileLayer.exact.insert(it.key(), it.value());
         }
+        prependLayer(state, slotLayer);
+        prependLayer(state, fileLayer);
     }
-    std::sort(state.folderOverrides.begin(), state.folderOverrides.end(),
-        [](const QPair<QString, QStringList> &a, const QPair<QString, QStringList> &b) {
-            return a.first.size() > b.first.size();
-        });
 
     {
         QMutexLocker locker(&g_folderCacheMutex);
         g_folderCache.clear();
     }
     g_active.store(!state.slotOverrides.isEmpty() || !state.keyOverrides.isEmpty()
-        || !state.fileOverrides.isEmpty() || !state.folderOverrides.isEmpty());
+        || !state.fileLayers.isEmpty());
     ++g_revision;
+}
+
+QString resolveFile(const QString &legacyPath, bool foldersOnly)
+{
+    const QString key = normalizeLegacy(legacyPath);
+    if (!key.startsWith(QLatin1String("image/")) || key.endsWith(QLatin1Char('/')))
+        return QString();
+    QList<FileLayer> layers;
+    QString cacheKey;
+    {
+        QReadLocker locker(&g_lock);
+        layers = g_state.fileLayers;
+        // A lookup racing with rebuild cannot repopulate the new revision's cache.
+        cacheKey = QString::number(g_revision.load()) + (foldersOnly ? QLatin1String(":dir:") : QLatin1String(":file:"))
+            + legacyPath;
+    }
+    {
+        QMutexLocker locker(&g_folderCacheMutex);
+        const auto cached = g_folderCache.constFind(cacheKey);
+        if (cached != g_folderCache.constEnd())
+            return cached.value();
+    }
+    const QString callerPath = QDir::cleanPath(QDir::fromNativeSeparators(legacyPath));
+    QString result;
+    for (const FileLayer &layer : layers) {
+        if (!foldersOnly) {
+            const QString exact = layer.exact.value(key);
+            if (!exact.isEmpty() && QFileInfo(exact).isFile()) {
+                result = exact;
+                break;
+            }
+        }
+        for (const auto &entry : layer.folders) {
+            if (!key.startsWith(entry.first))
+                continue;
+            // Prefixes are case-folded; preserve the caller's file spelling.
+            const QString candidate = entry.second + callerPath.right(key.size() - entry.first.size());
+            if (QFileInfo(candidate).isFile()) {
+                result = candidate;
+                break;
+            }
+        }
+        if (!result.isEmpty())
+            break;
+    }
+    QMutexLocker locker(&g_folderCacheMutex);
+    g_folderCache.insert(cacheKey, result);
+    return result;
 }
 
 QList<Pack> scan()
@@ -418,45 +473,7 @@ QString overrideForFile(const QString &legacyPath)
 {
     if (!g_active.load())
         return QString();
-    const QString key = normalizeLegacy(legacyPath);
-    if (!key.startsWith(QLatin1String("image/")) || key.endsWith(QLatin1Char('/')))
-        return QString();
-    QStringList folders;
-    QString prefix;
-    {
-        QReadLocker locker(&g_lock);
-        const auto exact = g_state.fileOverrides.constFind(key);
-        if (exact != g_state.fileOverrides.constEnd())
-            return exact.value();
-        for (const auto &entry : g_state.folderOverrides) {
-            if (key.startsWith(entry.first)) {
-                prefix = entry.first;
-                folders = entry.second;
-                break;
-            }
-        }
-    }
-    if (folders.isEmpty())
-        return QString();
-    {
-        QMutexLocker locker(&g_folderCacheMutex);
-        const auto cached = g_folderCache.constFind(key);
-        if (cached != g_folderCache.constEnd())
-            return cached.value();
-    }
-    // Folder keys are case-folded; the rest of the path keeps the caller's spelling.
-    const QString rest = QDir::cleanPath(QDir::fromNativeSeparators(legacyPath)).right(key.size() - prefix.size());
-    QString result;
-    for (const QString &folder : folders) {
-        const QString candidate = folder + rest;
-        if (QFileInfo(candidate).isFile()) {
-            result = candidate;
-            break;
-        }
-    }
-    QMutexLocker locker(&g_folderCacheMutex);
-    g_folderCache.insert(key, result);
-    return result;
+    return resolveFile(legacyPath, false);
 }
 
 QString resolveDirectory(const QString &legacyDir, const QString &probe)
@@ -466,9 +483,9 @@ QString resolveDirectory(const QString &legacyDir, const QString &probe)
     QString folder = legacyDir;
     if (!folder.endsWith(QLatin1Char('/')))
         folder += QLatin1Char('/');
-    const QString themed = overrideForFile(folder + probe);
-    // An exact "files" entry may rename the frame; only a mirrored folder is a whole animation.
-    if (themed.isEmpty() || !themed.endsWith(QLatin1Char('/') + probe))
+    // Exact frame overrides never select an animation: take its whole mirrored folder.
+    const QString themed = resolveFile(folder + probe, true);
+    if (themed.isEmpty())
         return legacyDir;
     return themed.left(themed.size() - probe.size());
 }
