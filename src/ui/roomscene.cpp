@@ -3931,10 +3931,20 @@ void RoomScene::doTimeout()
 		break;
 	}
 	case Client::Responding:
-	case Client::Discarding:
-	case Client::Exchanging:
 	case Client::ExecDialog:
 	case Client::AskForShowOrPindian: {
+		doCancelButton();
+		break;
+	}
+	case Client::Discarding:
+	case Client::Exchanging: {
+		const ClientCore *core = ClientInstance->interactionCore();
+		const InteractionType type = (ClientInstance->getStatus() & Client::ClientStatusBasicMask) == Client::Exchanging
+			? InteractionType::ExchangeCard : InteractionType::DiscardCard;
+		// Mandatory requests use the server's existing timeout selection. Preserve
+		// the local draft until the server advances instead of submitting an illegal Cancel.
+		if (core != nullptr && core->hasActiveRequest(type) && !core->activeRequest().cancelable)
+			break;
 		doCancelButton();
 		break;
 	}
@@ -4489,7 +4499,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 	if(newStatus!=Client::NotActive&&newStatus!=oldStatus){
 		QApplication::alert(main_window);
-		connect(dashboard,SIGNAL(progressBarTimedOut()),this,SLOT(doTimeout()));
+		connect(dashboard,SIGNAL(progressBarTimedOut()),this,SLOT(doTimeout()),Qt::UniqueConnection);
 		dashboard->showProgressBar(ClientInstance->getCountdown());
 	}
 }
