@@ -75,7 +75,7 @@ auto runRecoverableCascade(Room &room, RoomThread *thread, Function &&function, 
 {
     using Result = decltype(function());
     if (!thread) return function();
-    if (thread->isMandatoryCleanup() && thread->isCascadeCancelled()) {
+    if ((thread->isMandatoryCleanup() || thread->isNativeCommitActive()) && thread->isCascadeCancelled()) {
         if (structural) return function();
         if constexpr (std::is_void_v<Result>) return;
         else return Result{};
@@ -1102,6 +1102,9 @@ Room::~Room()
 			.arg(getId()).arg(stopped ? "true" : "false");
 	if (!stopped)
 		qFatal("Room worker did not stop before runtime destruction");
+	m_playerLifecycle->clearCancelledDeaths();
+	m_pendingDying.clear();
+	m_cancelledHpCauses.clear();
 	m_hybrid50.reset();
 	if (m_runtime) {
 		if (shutdownTraceEnabled())
@@ -1559,174 +1562,261 @@ void Room::outputEventStack()
 	output(msg);
 }
 
-void Room::enterDying(ServerPlayer*player, DamageStruct*reason, HpLostStruct*hplost)
+struct Room::DyingCursor {
+    enum Stage { Start, Enter, Observers, Savers, PeachesDone, Quit, Finished } stage = Start;
+    QPointer<ServerPlayer> player;
+    DamageStruct damage;
+    HpLostStruct hpLost;
+    bool hasDamage = false, hasHpLost = false;
+    CardLifetimeLease causeLease;
+    QVariant data;
+    QList<QPointer<ServerPlayer>> observers, savers;
+    int observerIndex = 0, saverIndex = 0;
+    quint64 owner = 0, completedOwner = 0;
+    qint64 history = 0;
+    bool observersReady = false, resolved = false, retained = false;
+    QVariant saverAtDeferral;
+};
+
+void Room::enterDying(ServerPlayer *player, DamageStruct *reason, HpLostStruct *hpLost)
 {
+    auto cursor = std::make_shared<DyingCursor>();
+    cursor->player = player;
+    cursor->owner = thread->cascadeId();
+    if (reason) {
+        cursor->hasDamage = true;
+        cursor->damage = *reason;
+        cursor->causeLease = CardLifetimeLease(globalCardLifetimeManager(),
+                                               globalCardLifetimeManager().liveToken(reason->card));
+    }
+    if (hpLost) { cursor->hasHpLost = true; cursor->hpLost = *hpLost; }
+    DyingStruct dying;
+    dying.who = player;
+    dying.damage = cursor->hasDamage ? &cursor->damage : nullptr;
+    dying.hplost = cursor->hasHpLost ? &cursor->hpLost : nullptr;
+    cursor->data = QVariant::fromValue(dying);
+    continueDying(cursor);
+    if (cursor->completedOwner && !thread->hasActiveCascade() && !thread->isCascadeCancelled())
+        finishTriggerCascade(cursor->completedOwner, true);
+}
+
+void Room::continueDying(const std::shared_ptr<DyingCursor> &cursor)
+{
+    ServerPlayer *player = cursor->player;
+    if (!player) return;
+    if (cursor->stage == DyingCursor::Finished) {
+        m_cancelledHpCauses.remove(player);
+        if (cursor->retained && cursor->owner) m_completedDying[cursor->owner].insert(player);
+        return;
+    }
+    ++m_dyingCursorDepth;
+    const auto cursorGuard = qScopeGuard([&] { --m_dyingCursorDepth; });
+    RoomThread::DyingContinuationScope continuation(*thread, true, cursor->retained ? cursor->owner : 0);
     const QVariant previousDying = getTag("CurrentDying");
     const bool previousFlag = player->hasFlag("Global_Dying");
     const QVariant previousSaver = player->getTag("MyDyingSaver");
-    const auto restoreDyingFrame = qScopeGuard([&] {
+    const auto restoreFrame = qScopeGuard([&] {
         if (previousDying.isValid()) setTag("CurrentDying", previousDying);
         else removeTag("CurrentDying");
         setPlayerFlag(player, previousFlag ? "Global_Dying" : "-Global_Dying");
         if (previousSaver.isValid()) player->setTag("MyDyingSaver", previousSaver);
         else player->removeTag("MyDyingSaver");
     });
-    try {
-    ResolutionScope resolution(*this, QStringLiteral("dying"), player, reason ? reason->from : nullptr, player);
+    if (cursor->retained) {
+        if (cursor->saverAtDeferral.isValid()) player->setTag("MyDyingSaver", cursor->saverAtDeferral);
+        else player->removeTag("MyDyingSaver");
+    }
+    DamageStruct *reason = cursor->hasDamage ? &cursor->damage : nullptr;
+    HpLostStruct *hpLost = cursor->hasHpLost ? &cursor->hpLost : nullptr;
+    ResolutionScope resolution(*this, "dying", player, reason ? reason->from : nullptr, player);
     QVariantMap dyingFact{{"player", player->objectName()}, {"to", player->objectName()},
         {"from", reason && reason->from ? reason->from->objectName() : QString()},
-        {"reason", reason ? reason->reason : hplost ? hplost->reason : QString()},
+        {"reason", reason ? reason->reason : hpLost ? hpLost->reason : QString()},
         {"hp", player->getHp()}, {"alive", player->isAlive()}, {"attribution_complete", true}};
-    ResolutionHistoryEventGuard dyingHistory(m_resolutionHistory, "dying", dyingFact, historyRecordingEnabled());
-    if (dyingHistory.id() != 0)
-        m_resolutionHistory.appendFact(dyingHistory.id(), "dying_start", dyingFact);
-	setPlayerFlag(player, "Global_Dying");
-	QStringList currentdying = getTag("CurrentDying").toStringList();
-	currentdying << player->objectName();
-	setTag("CurrentDying", currentdying);
-
-	JsonArray arg;
-	arg << QSanProtocol::S_GAME_EVENT_PLAYER_DYING << player->objectName();
-	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
-
-	DyingStruct dying;
-	dying.who = player;
-	dying.damage = reason;
-	dying.hplost = hplost;
-	QVariant dying_data = QVariant::fromValue(dying);
-
-	if (!(thread->trigger(EnterDying, this, player, dying_data) || !player->hasFlag("Global_Dying"))){
-		LogMessage log;
-		log.type = "#enterDying";
-		log.from = player;
-		//sendLog(log);
-		foreach(ServerPlayer*p, getAllPlayers()){
-			if (thread->trigger(Dying, this, p, dying_data) || !player->hasFlag("Global_Dying"))
-				break;
-		}
-		//thread->trigger(Dying, this, player, dying_data);
-		if (player->hasFlag("Global_Dying")){
-			log.type = "#AskForPeaches";
-			log.to = getAllPlayers();
-			log.arg = QString::number(1-player->getHp());
-			sendLog(log);
-			foreach(ServerPlayer*saver, log.to){
-				QString cd = saver->property("currentdying").toString();
-				setPlayerProperty(saver, "currentdying", player->objectName());
-				const auto restoreSaver = qScopeGuard([&] { setPlayerProperty(saver, "currentdying", cd); });
-				thread->trigger(AskForPeaches, this, saver, dying_data);
-				if (!player->hasFlag("Global_Dying")) break;
-			}
-			notifyMoveFocus(player, S_COMMAND_ASK_PEACH);
-			thread->trigger(AskForPeachesDone, this, player, dying_data);
-		}
-	}
-	setPlayerFlag(player, "-Global_Dying");
-
-	currentdying = getTag("CurrentDying").toStringList();
-	currentdying.removeOne(player->objectName());
-	setTag("CurrentDying", currentdying);
-
-	if (player->isAlive()){
-		JsonArray arg;
-		arg << QSanProtocol::S_GAME_EVENT_PLAYER_QUITDYING << player->objectName();
-		doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
-	}
-    // The same event remains current while QuitDying effects observe its result.
-    dyingFact.insert("hp", player->getHp());
-    dyingFact.insert("alive", player->isAlive());
-    if (dyingHistory.id() != 0)
-        m_resolutionHistory.appendFact(dyingHistory.id(), "dying_result", dyingFact);
-    thread->trigger(QuitDying, this, player, dying_data);
-    player->removeTag("MyDyingSaver");
-    dyingHistory.finish("completed");
-    } catch (const TriggerCascadeBreak &) {
-        settleCancelledDying(player, reason, hplost);
+    if (!cursor->history && historyRecordingEnabled()) {
+        cursor->history = m_resolutionHistory.beginEvent("dying", dyingFact, false);
+        m_resolutionHistory.appendFact(cursor->history, "dying_start", dyingFact);
+    }
+    ResolutionHistoryContextGuard historyContext(m_resolutionHistory, cursor->history, cursor->history != 0);
+    const auto finishHistory = qScopeGuard([&] {
+        if (!cursor->history) return;
+        if (cursor->stage == DyingCursor::Finished) m_resolutionHistory.finishEvent(cursor->history, "completed");
+        else if (!cursor->retained) m_resolutionHistory.finishEvent(cursor->history, "interrupted");
+    });
+    if (cursor->stage != DyingCursor::Start && (cursor->resolved || !player->isAlive() || player->getHp() > 0))
+        cursor->stage = DyingCursor::Quit;
+    setPlayerFlag(player, "Global_Dying");
+    QStringList current = previousDying.toStringList();
+    current << player->objectName();
+    setTag("CurrentDying", current);
+    const auto event = [&](TriggerEvent e, ServerPlayer *target) {
+        return thread->invokeDyingEvent(continuation, e, target, cursor->data);
+    };
+    try {
+        while (cursor->stage != DyingCursor::Finished) {
+            switch (cursor->stage) {
+            case DyingCursor::Start: {
+                cursor->stage = DyingCursor::Enter;
+                JsonArray arg;
+                arg << S_GAME_EVENT_PLAYER_DYING << player->objectName();
+                doBroadcastNotify(S_COMMAND_LOG_EVENT, arg);
+                break;
+            }
+            case DyingCursor::Enter:
+                cursor->stage = DyingCursor::Observers;
+                if (event(EnterDying, player) || !player->hasFlag("Global_Dying"))
+                    cursor->stage = DyingCursor::Quit;
+                break;
+            case DyingCursor::Observers:
+                if (!cursor->observersReady) {
+                    cursor->observersReady = true;
+                    for (ServerPlayer *p : getAllPlayers()) cursor->observers << p;
+                }
+                if (!player->hasFlag("Global_Dying")) { cursor->stage = DyingCursor::Quit; break; }
+                if (cursor->observerIndex < cursor->observers.size()) {
+                    ServerPlayer *observer = cursor->observers[cursor->observerIndex++];
+                    if (observer && (event(Dying, observer) || !player->hasFlag("Global_Dying")))
+                        cursor->observerIndex = cursor->observers.size();
+                } else {
+                    cursor->stage = DyingCursor::Savers;
+                    LogMessage log;
+                    log.type = "#AskForPeaches";
+                    log.from = player;
+                    log.to = getAllPlayers();
+                    log.arg = QString::number(1-player->getHp());
+                    for (ServerPlayer *saver : log.to) cursor->savers << saver;
+                    sendLog(log);
+                }
+                break;
+            case DyingCursor::Savers:
+                if (!player->hasFlag("Global_Dying")) { cursor->stage = DyingCursor::Quit; break; }
+                if (cursor->saverIndex < cursor->savers.size()) {
+                    ServerPlayer *saver = cursor->savers[cursor->saverIndex++];
+                    if (!saver) break;
+                    const QVariant previous = saver->property("currentdying");
+                    setPlayerProperty(saver, "currentdying", player->objectName());
+                    const auto restoreSaver = qScopeGuard([&] { setPlayerProperty(saver, "currentdying", previous); });
+                    event(AskForPeaches, saver);
+                } else {
+                    cursor->stage = DyingCursor::PeachesDone;
+                    notifyMoveFocus(player, S_COMMAND_ASK_PEACH);
+                }
+                break;
+            case DyingCursor::PeachesDone:
+                cursor->stage = DyingCursor::Quit;
+                event(AskForPeachesDone, player);
+                break;
+            case DyingCursor::Quit: {
+                cursor->stage = DyingCursor::Finished;
+                setPlayerFlag(player, "-Global_Dying");
+                current = getTag("CurrentDying").toStringList();
+                current.removeOne(player->objectName());
+                setTag("CurrentDying", current);
+                if (player->isAlive()) {
+                    JsonArray arg;
+                    arg << S_GAME_EVENT_PLAYER_QUITDYING << player->objectName();
+                    doBroadcastNotify(S_COMMAND_LOG_EVENT, arg);
+                }
+                dyingFact.insert("hp", player->getHp());
+                dyingFact.insert("alive", player->isAlive());
+                if (cursor->history) m_resolutionHistory.appendFact(cursor->history, "dying_result", dyingFact);
+                event(QuitDying, player);
+                player->removeTag("MyDyingSaver");
+                break;
+            }
+            case DyingCursor::Finished: break;
+            }
+        }
+    } catch (const TriggerCascadeBreak &cancel) {
+        // Only an active physical commit prevents this original frame from
+        // continuing synchronously. Its callback must unwind first; retain
+        // the already-advanced cursor, never replay EnterDying or a saver.
+        cursor->owner = cancel.cascadeId;
+        cursor->resolved = !player->hasFlag("Global_Dying") || !player->isAlive() || player->getHp() > 0;
+        cursor->saverAtDeferral = player->getTag("MyDyingSaver");
+        if (thread->isNativeCommitActive()) {
+            cursor->retained = true;
+            bool queued = false;
+            for (const auto &pending : m_pendingDying)
+                if (pending == cursor) queued = true;
+            if (!queued) m_pendingDying << cursor;
+        }
         throw;
     }
+    if (continuation.cancelled()) {
+        cursor->completedOwner = continuation.cancelledCascadeId();
+        m_completedDying[cursor->completedOwner].insert(player);
+    }
+    if (cursor->retained && cursor->owner) m_completedDying[cursor->owner].insert(player);
+    m_cancelledHpCauses.remove(player);
+    continuation.rethrowCancelled();
+}
+
+void Room::adoptCancelledDying(quint64 from, quint64 owner)
+{
+    if (m_finishingCascadeDepth) owner = m_finishingCascadeId;
+    if (from == owner) return;
+    for (const auto &cursor : m_pendingDying) if (cursor->owner == from) cursor->owner = owner;
+    m_playerLifecycle->adoptCancelledDeaths(from, owner);
+    m_completedDying[owner].unite(m_completedDying.take(from));
+    if (m_completedDying[owner].isEmpty()) m_completedDying.remove(owner);
 }
 
 void Room::finishTriggerCascade(quint64 cascadeId, bool cancelled)
 {
     thread->finishDeferredCascade(cascadeId, cancelled);
     if (!cancelled) {
+        m_completedDying.remove(cascadeId);
         m_cardMovement->finishTriggerCascade(cascadeId, false, thread->cascadeParentId());
         return;
     }
     RoomThread::MandatoryCleanupScope cleanup(*thread);
     m_cardMovement->finishTriggerCascade(cascadeId, true);
-    // HpChanged may have been interrupted before its native GameRule listener.
-    // Settle committed HP even when enterDying was never reached.
-    const QVariant hpCause = getTag("HpChangedData");
-    for (ServerPlayer *player : getAlivePlayers()) {
-        if (player->getHp() > 0) continue;
-        DamageStruct damage = hpCause.value<DamageStruct>();
-        HpLostStruct hpLost = hpCause.value<HpLostStruct>();
-        settleCancelledDying(player,
-            hpCause.canConvert<DamageStruct>() && damage.to == player ? &damage : nullptr,
-            hpCause.canConvert<HpLostStruct>() && hpLost.to == player ? &hpLost : nullptr);
-    }
-}
-
-void Room::settleCancelledDying(ServerPlayer *player, DamageStruct *reason, HpLostStruct *hpLost)
-{
-    if (!player || !player->isAlive() || player->getHp() > 0) return;
-    RoomThread::MandatoryCleanupScope cleanup(*thread);
-    ResolutionScope resolution(*this, QStringLiteral("dying_cleanup"), player,
-                               reason ? reason->from : nullptr, player);
-    const QVariant previousDying = getTag("CurrentDying");
-    const QVariant previousSaver = player->getTag("MyDyingSaver");
-    const QVariant previousHpCause = getTag("HpChangedData");
-    const auto restore = qScopeGuard([&] {
-        setPlayerFlag(player, "-Global_Dying");
-        if (previousDying.isValid()) setTag("CurrentDying", previousDying);
-        else removeTag("CurrentDying");
-        if (previousSaver.isValid()) player->setTag("MyDyingSaver", previousSaver);
-        else player->removeTag("MyDyingSaver");
-        if (previousHpCause.isValid()) setTag("HpChangedData", previousHpCause);
-        else removeTag("HpChangedData");
-    });
-    setPlayerFlag(player, "Global_Dying");
-    QStringList dying = previousDying.toStringList();
-    if (!dying.contains(player->objectName())) dying << player->objectName();
-    setTag("CurrentDying", dying);
-    QSet<int> consumed;
-    for (ServerPlayer *saver : getAllPlayers()) {
-        if (!saver->isAlive()) continue;
-        const QVariant previous = saver->property("currentdying");
-        setPlayerProperty(saver, "currentdying", player->objectName());
-        const auto restoreSaver = qScopeGuard([&] { setPlayerProperty(saver, "currentdying", previous); });
-        // Only physical material can fund rescue. No author onEffect callback
-        // is restarted; standard Peach/Analeptic recovery is settled natively.
-        while (player->isAlive() && player->getHp() <= 0) {
-            const Card *peach = m_playerDecisions->askForPhysicalPeach(saver, player);
-            if (!peach || !(peach->isKindOf("Peach")
-                           || (saver == player && peach->isKindOf("Analeptic")))) break;
-            const QList<int> ids = peach->isVirtualCard() ? peach->getSubcards()
-                                                       : QList<int>{peach->getEffectiveId()};
-            bool valid = !ids.isEmpty();
-            for (int id : ids) {
-                const Player::Place place = getCardPlace(id);
-                if (id < 0 || consumed.contains(id) || getCardOwner(id) != saver
-                    || (place != Player::PlaceHand && place != Player::PlaceEquip
-                        && !saver->getHandPile().contains(id))) valid = false;
-            }
-            if (!valid) break;
-            for (int id : ids) consumed.insert(id);
-            CardMoveReason cost(CardMoveReason::S_REASON_USE, saver->objectName(),
-                                player->objectName(), peach->getSkillName(), "cascade_rescue");
-            moveCardsAtomic(CardsMoveStruct(ids, saver, nullptr, Player::PlaceUnknown,
-                                          Player::DiscardPile, cost), true);
-            recover(player, RecoverStruct(saver, peach), true);
+    // An existing dying event retains its native cursor. Its event-level
+    // recovery cleans resources only; it must never re-enter that frame.
+    if (m_dyingCursorDepth || m_playerLifecycle->hasActiveDeathCursor()) return;
+    ++m_finishingCascadeDepth;
+    const quint64 previousFinishing = m_finishingCascadeId;
+    m_finishingCascadeId = cascadeId;
+    const auto finishing = qScopeGuard([&] { --m_finishingCascadeDepth; m_finishingCascadeId = previousFinishing; });
+    const auto drain = [&] { do {
+        m_playerLifecycle->finishCancelledDeaths(cascadeId);
+        bool resumed = false;
+        for (int i = 0; i < m_pendingDying.size();) {
+            if (m_pendingDying[i]->owner != cascadeId) { ++i; continue; }
+            const auto cursor = m_pendingDying.takeAt(i);
+            resumed = true;
+            try { continueDying(cursor); }
+            catch (const TriggerCascadeBreak &cancel) { if (cancel.cascadeId != cascadeId) throw; }
         }
-        if (!player->isAlive() || player->getHp() > 0) break;
+        if (!resumed) break;
+    } while (true); };
+    drain();
+    QSet<ServerPlayer *> completed = m_completedDying.take(cascadeId);
+    for (ServerPlayer *player : getAlivePlayers()) {
+        if (!m_cancelledHpCauses.contains(player)) continue;
+        if (player->getHp() > 0 || player->hasFlag("Global_Dying") || completed.contains(player)) continue;
+        const QVariant attribution = m_cancelledHpCauses.take(player);
+        DamageStruct damage = attribution.value<DamageStruct>();
+        HpLostStruct hpLost = attribution.value<HpLostStruct>();
+        RoomThread::DyingContinuationScope original(*thread, true, cascadeId);
+        try {
+            enterDying(player,
+                attribution.canConvert<DamageStruct>() && damage.to == player ? &damage : nullptr,
+                attribution.canConvert<HpLostStruct>() && hpLost.to == player ? &hpLost : nullptr);
+        } catch (const TriggerCascadeBreak &cancel) {
+            if (cancel.cascadeId != thread->cascadeId()) throw;
+            adoptCancelledDying(cancel.cascadeId, cascadeId);
+        }
     }
-    if (player->isAlive() && player->getHp() <= 0) killPlayer(player, reason, hpLost);
-    if (player->isAlive()) {
-        JsonArray notification;
-        notification << S_GAME_EVENT_PLAYER_QUITDYING << player->objectName();
-        doBroadcastNotify(S_COMMAND_LOG_EVENT, notification);
+    drain();
+    completed.unite(m_completedDying.take(cascadeId));
+    for (auto cause = m_cancelledHpCauses.begin(); cause != m_cancelledHpCauses.end();) {
+        if (!cause.key()->isAlive() || cause.key()->getHp() > 0 || completed.contains(cause.key()))
+            cause = m_cancelledHpCauses.erase(cause);
+        else ++cause;
     }
+    thread->retireCancelledCallbackOrigins(cascadeId);
 }
 
 ServerPlayer*Room::getCurrentDyingPlayer() const
@@ -5542,7 +5632,6 @@ void Room::resolveDamage(DamageStruct damage)
 				else previous.key()->removeTag("TransferDamage");
 			}
 		});
-		settleCancelledDying(damage.to, &damage);
 		throw;
 	} catch (TriggerEvent triggerEvent){
 		if (triggerEvent == StageChange || triggerEvent == TurnBroken
@@ -6592,13 +6681,15 @@ void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refil
 		foreach(const FilterSkill*skill, filterSkills){
 			bool matches = false;
 			if (thread) {
-				if (!thread->invokeStructuralCallback([&] { matches = skill->viewFilter(cards[i]); })) break;
+				if (!thread->invokeStructuralCallback([&] { matches = skill->viewFilter(cards[i]); },
+                    skill, QStringLiteral("filter-viewFilter"), player)) break;
 			} else matches = skill->viewFilter(cards[i]);
 			if (matches&&player->hasSkill(skill->objectName())){
 				if(card) const_cast<Card *>(card)->deleteLater();
 				card = nullptr;
 				if (thread) {
-					if (!thread->invokeStructuralCallback([&] { card = skill->viewAs(cards[i]); })) break;
+					if (!thread->invokeStructuralCallback([&] { card = skill->viewAs(cards[i]); },
+                        skill, QStringLiteral("filter-viewAs"), player)) break;
 				} else card = skill->viewAs(cards[i]);
 			}
 		}
@@ -8824,7 +8915,7 @@ void Room::processPendingAnytimeSkills()
 			if (!skill) continue;
 			const auto callback = [&] { skill->onTrigger(this, player); };
 			if (thread) {
-				if (!thread->invokeStructuralCallback(callback)) return;
+				if (!thread->invokeStructuralCallback(callback, skill, QStringLiteral("anytime"), player)) return;
 			} else {
 				callback();
 			}

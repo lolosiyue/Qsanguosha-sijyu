@@ -225,7 +225,6 @@ public:
     // Native cancellation finalization; invoked before the owning operation
     // clears its latch. No normal author dispatch is allowed during this work.
     void finishTriggerCascade(quint64 cascadeId, bool cancelled);
-    void settleCancelledDying(ServerPlayer *player, DamageStruct *reason, HpLostStruct *hpLost = nullptr);
     void retainJudgeSnapshot(Card *card);
     void releaseJudgeSnapshot(Card *card);
     ServerPlayer*getCurrentDyingPlayer() const;
@@ -1131,6 +1130,15 @@ private:
 
     static QString generatePlayerName();
     void prepareForStart();
+    struct DyingCursor;
+    void continueDying(const std::shared_ptr<DyingCursor> &cursor);
+    void adoptCancelledDying(quint64 from, quint64 owner);
+    QList<std::shared_ptr<DyingCursor>> m_pendingDying;
+    QHash<quint64, QSet<ServerPlayer *>> m_completedDying;
+    QHash<ServerPlayer *, QVariant> m_cancelledHpCauses;
+    unsigned m_dyingCursorDepth = 0;
+    unsigned m_finishingCascadeDepth = 0;
+    quint64 m_finishingCascadeId = 0;
     void chooseGenerals(QList<ServerPlayer*> players = QList<ServerPlayer*>());
     bool hasGameStarted() const;
     bool isGamePlaying() const;

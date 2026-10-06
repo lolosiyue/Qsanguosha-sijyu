@@ -541,6 +541,17 @@ QString EventTriplet::toString() const
 }
 
 namespace {
+QString callbackContextSource(const SkillContext &context)
+{
+    const auto ref = [](const SkillInstanceRef &source) {
+        return QVariantList{source.ownerObjectName, source.key.skillName, source.key.instanceID};
+    };
+    const QVariantMap identity{{QStringLiteral("source"), ref(context.sourceRef)},
+        {QStringLiteral("activation"), ref(context.activationRef)},
+        {QStringLiteral("physical"), context.physicalEquipSource.toVariantMap()},
+        {QStringLiteral("owner"), context.owner ? context.owner->objectName() : QString()}};
+    return QString::fromUtf8(QJsonDocument::fromVariant(identity).toJson(QJsonDocument::Compact));
+}
 TriggerDispatchBudget::Limits triggerDispatchLimits()
 {
     TriggerDispatchBudget::Limits limits;
@@ -586,6 +597,174 @@ bool RoomThread::suppressOptionalDispatch() const
         && m_authorCallbackDepth <= m_commitAuthorDepths.last());
 }
 
+struct RoomThread::DyingContinuationScope::State {
+    TriggerDispatchBudget budget;
+    quint64 generation, id, parent;
+    bool operation, reported;
+    unsigned join, author, mandatory, commit;
+    QList<unsigned> commitAuthors;
+    QSet<int> discarded;
+    QList<DispatchBreadcrumb> recent;
+    QList<QString> origins;
+    quint64 settlementOwner;
+    TriggerCascadeBreak cancellation;
+    bool propagate = true;
+};
+
+std::unique_ptr<RoomThread::DyingContinuationScope::State>
+RoomThread::DyingContinuationScope::capture(const TriggerCascadeBreak &cancel) const
+{
+    return std::make_unique<State>(State{m_thread.m_dispatchBudget,
+        m_thread.m_budgetGeneration, m_thread.m_cascadeId, m_thread.m_operationParentId,
+        m_thread.m_operationRootActive, m_thread.m_dispatchAbortReported,
+        m_thread.m_joinOnlyDepth, m_thread.m_authorCallbackDepth,
+        m_thread.m_mandatoryCleanupDepth, m_thread.m_nativeCommitDepth,
+        m_thread.m_commitAuthorDepths, m_thread.m_discardOptionalFrames,
+        m_thread.m_dispatchRecent, m_thread.m_callbackOrigins,
+        m_thread.m_settlementOwner, cancel});
+}
+
+RoomThread::DyingContinuationScope::DyingContinuationScope(RoomThread &thread, bool isolateCancelled,
+                                                         quint64 retainedOwner)
+    : m_thread(thread)
+{
+    if (!thread.isCascadeCancelled() && !thread.hasActiveCascade()
+        && !thread.m_operationRootActive && !thread.m_joinOnlyDepth && !thread.m_authorCallbackDepth)
+        m_unownedEntry = capture(TriggerCascadeBreak{0});
+    if (isolateCancelled && thread.isCascadeCancelled()) resume(TriggerCascadeBreak{thread.m_cascadeId});
+    else if (isolateCancelled && retainedOwner) resume(TriggerCascadeBreak{retainedOwner});
+}
+
+void RoomThread::DyingContinuationScope::resume(const TriggerCascadeBreak &cancel)
+{
+    // A callback must unwind before its enclosing physical move can finish.
+    // That original dying cursor must be retained by the native owner and
+    // resumed after the commit checkpoint, never inside partial containers.
+    if (m_thread.m_nativeCommitDepth) throw cancel;
+    if (!m_state) {
+        if (m_unownedEntry) {
+            m_state = std::move(m_unownedEntry);
+            m_state->cancellation = cancel;
+            m_state->propagate = false;
+        } else {
+            m_state = capture(cancel);
+        }
+    }
+    const quint64 owner = m_state->settlementOwner ? m_state->settlementOwner : m_state->cancellation.cascadeId;
+    if (cancel.cascadeId != owner) {
+        m_thread.m_cancelledCallbackOrigins[owner].unite(m_thread.m_cancelledCallbackOrigins.take(cancel.cascadeId));
+    }
+    m_thread.m_settlementOwner = owner;
+    m_thread.m_callbackOrigins.clear();
+    m_thread.m_dispatchBudget = TriggerDispatchBudget(m_state->budget.limits());
+    m_thread.m_dispatchBudget.enter(false);
+    ++m_thread.m_budgetGeneration;
+    m_thread.m_cascadeId = ++m_thread.m_nextCascadeId;
+    m_thread.m_operationParentId = 0;
+    m_thread.m_operationRootActive = true;
+    m_thread.m_joinOnlyDepth = m_thread.m_authorCallbackDepth = 0;
+    m_thread.m_mandatoryCleanupDepth = m_thread.m_nativeCommitDepth = 0;
+    m_thread.m_commitAuthorDepths.clear();
+    m_thread.m_discardOptionalFrames.clear();
+    m_thread.m_dispatchAbortReported = false;
+    m_thread.m_dispatchRecent.clear();
+}
+
+RoomThread::DyingContinuationScope::~DyingContinuationScope()
+{
+    if (!m_state) return;
+    // Receipt retirement/promotion contains no gameplay dispatch. Any stable
+    // completed rescue effects remain committed when the parent unwinds.
+    if (m_thread.room) m_thread.room->finishTriggerCascade(m_thread.m_cascadeId, false);
+    m_thread.m_dispatchBudget = m_state->budget;
+    m_thread.m_budgetGeneration = m_state->generation;
+    m_thread.m_cascadeId = m_state->id;
+    m_thread.m_operationParentId = m_state->parent;
+    m_thread.m_operationRootActive = m_state->operation;
+    m_thread.m_joinOnlyDepth = m_state->join;
+    m_thread.m_authorCallbackDepth = m_state->author;
+    m_thread.m_mandatoryCleanupDepth = m_state->mandatory;
+    m_thread.m_nativeCommitDepth = m_state->commit;
+    m_thread.m_commitAuthorDepths = m_state->commitAuthors;
+    m_thread.m_discardOptionalFrames = m_state->discarded;
+    m_thread.m_dispatchAbortReported = m_state->reported;
+    m_thread.m_dispatchRecent = m_state->recent;
+    m_thread.m_callbackOrigins = m_state->origins;
+    m_thread.m_settlementOwner = m_state->settlementOwner;
+}
+
+void RoomThread::DyingContinuationScope::rethrowCancelled() const
+{
+    if (m_state && m_state->propagate) throw m_state->cancellation;
+}
+
+quint64 RoomThread::DyingContinuationScope::cancelledCascadeId() const
+{
+    return m_state ? m_state->cancellation.cascadeId : 0;
+}
+
+void RoomThread::noteDyingNativeRule(TriggerEvent event, ServerPlayer *target, QVariant &data)
+{
+    if (!m_dyingRuleFrames.isEmpty()) {
+        const DyingRuleFrame &frame = m_dyingRuleFrames.last();
+        if (frame.event == event && frame.target == target && frame.data == &data)
+            *frame.entered = true;
+    }
+}
+
+bool RoomThread::invokeDyingEvent(DyingContinuationScope &continuation,
+                                TriggerEvent event, ServerPlayer *target, QVariant &data)
+{
+    bool nativeEntered = false;
+    const bool nestedEvent = !m_dyingRuleFrames.isEmpty();
+    try {
+        // Join the complete original event, including AskForPeaches' native
+        // validation/card-use loop. Child roots cannot consume its receipt.
+        ++m_joinOnlyDepth;
+        m_dyingRuleFrames << DyingRuleFrame{event, target, &data, &nativeEntered};
+        const auto eventGuard = qScopeGuard([&] {
+            m_dyingRuleFrames.removeLast();
+            --m_joinOnlyDepth;
+        });
+        return trigger(event, room, target, data);
+    } catch (const TriggerCascadeBreak &cancel) {
+        if (nestedEvent || m_nativeCommitDepth || cancel.cascadeId != m_cascadeId) throw;
+        {
+            MandatoryCleanupScope cleanup(*this);
+            room->finishTriggerCascade(cancel.cascadeId, true);
+            // Required existing native settlement must still start if the
+            // event was interrupted before its rule. An already-entered
+            // killPlayer owns continuation of its own original death cursor.
+            if (!nativeEntered && (event == AskForPeachesDone || event == GameOverJudge || event == BuryVictim))
+                triggerMandatoryGameRule(event, target, data);
+        }
+        continuation.resume(cancel);
+        room->adoptCancelledDying(cancel.cascadeId, continuation.cancelledCascadeId());
+        return false;
+    }
+}
+
+bool RoomThread::invokeDyingCallback(DyingContinuationScope &continuation,
+                                   const std::function<void()> &callback)
+{
+    const bool nested = !m_dyingRuleFrames.isEmpty();
+    try {
+        CascadeScope joined(*this, false);
+        callback();
+        joined.checkpoint();
+        return true;
+    } catch (const TriggerCascadeBreak &cancel) {
+        if (nested || m_nativeCommitDepth || cancel.cascadeId != m_cascadeId) throw;
+        {
+            MandatoryCleanupScope cleanup(*this);
+            room->finishTriggerCascade(cancel.cascadeId, true);
+        }
+        continuation.resume(cancel);
+        room->adoptCancelledDying(cancel.cascadeId, continuation.cancelledCascadeId());
+        return false;
+    }
+}
+
 bool RoomThread::triggerMandatoryGameRule(TriggerEvent event, ServerPlayer *target, QVariant &data)
 {
     Q_ASSERT(isMandatoryCleanup());
@@ -596,8 +775,27 @@ bool RoomThread::triggerMandatoryGameRule(TriggerEvent event, ServerPlayer *targ
     return false;
 }
 
-bool RoomThread::invokeStructuralCallback(const std::function<void()> &callback)
+bool RoomThread::enterCallbackOrigin(const void *definition, TriggerEvent event, ServerPlayer *target,
+                                    const QString &site, const QString &source, int instance)
 {
+    const QString key = QStringLiteral("%1/%2/%3/%4/%5/%6")
+        .arg(quintptr(definition), 0, 16).arg(int(event)).arg(quintptr(target), 0, 16)
+        .arg(site).arg(source).arg(instance);
+    if (m_settlementOwner && m_cancelledCallbackOrigins.value(m_settlementOwner).contains(key)) return false;
+    m_callbackOrigins << key;
+    return true;
+}
+
+void RoomThread::retireCancelledCallbackOrigins(quint64 owner)
+{
+    m_cancelledCallbackOrigins.remove(owner);
+}
+
+bool RoomThread::invokeStructuralCallback(const std::function<void()> &callback,
+                                         const void *definition, const QString &site, ServerPlayer *target)
+{
+    if (definition && !enterCallbackOrigin(definition, NonTrigger, target, site)) return false;
+    const auto originGuard = qScopeGuard([&] { if (definition) m_callbackOrigins.removeLast(); });
     if (!m_nativeCommitDepth) return invokeAuthorCallback(callback);
     if (isCascadeCancelled()) return false;
     ++m_authorCallbackDepth;
@@ -738,6 +936,9 @@ bool RoomThread::invokeAuthorCallback(const std::function<void()> &callback, boo
         checkTriggerDispatchAbort();
         return true;
     } catch (const TriggerCascadeBreak &cancel) {
+        if (m_nativeDeathCommitDepth && m_nativeCommitDepth
+            && m_authorCallbackDepth == m_commitAuthorDepths.last() + 1)
+            return false;
         if (m_operationRootActive || m_joinOnlyDepth || m_authorCallbackDepth != 1
             || m_nativeCommitDepth || cancel.cascadeId != m_cascadeId) throw;
         MandatoryCleanupScope cleanup(*this);
@@ -769,6 +970,7 @@ void RoomThread::beginTriggerDispatch(TriggerEvent event, ServerPlayer *target, 
 
 void RoomThread::triggerDispatchStep(TriggerEvent event, ServerPlayer *target, const QString &skill)
 {
+    if (suppressOptionalDispatch()) return;
     checkTriggerDispatchAbort();
     if (m_dispatchBudget.limits().enabled && !skill.isEmpty()) {
         if (m_dispatchRecent.size() == 32) m_dispatchRecent.removeFirst();
@@ -792,6 +994,15 @@ void RoomThread::leaveTriggerDispatch(quint64 generation)
 
 void RoomThread::abortTriggerDispatch(TriggerEvent event, ServerPlayer *target, const QString &skill)
 {
+    // Record explicit causal callback entries, rather than infer origins from
+    // event names or the diagnostic ring. The original owner keeps these
+    // receipts while its retained native dying/death cursor finishes.
+    const quint64 owner = m_settlementOwner ? m_settlementOwner : m_cascadeId;
+    QSet<QString> &origins = m_cancelledCallbackOrigins[owner];
+    for (const QString &origin : m_callbackOrigins) {
+        if (quint64(origins.size()) >= m_dispatchBudget.limits().contexts) break;
+        origins.insert(origin);
+    }
     if (!m_dispatchAbortReported) {
         m_dispatchAbortReported = true;
         QJsonArray recent;
@@ -1399,11 +1610,17 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 	QHash<const TriggerSkill *, double> priorities;
 	priorities.reserve(skills.length());
 	foreach (TriggerSkill *skill, skills) {
+        const bool authored = !qobject_cast<GameRule *>(skill);
+        if (authored) triggerDispatchStep(triggerEvent, nullptr, skill->objectName());
+        if (authored && !enterCallbackOrigin(skill, triggerEvent, nullptr, QStringLiteral("priority"))) {
+            priorities.insert(skill, 0);
+            continue;
+        }
+        const auto originGuard = qScopeGuard([&] { if (authored) m_callbackOrigins.removeLast(); });
 		double len = players.length();
         double priority = 0;
         if (qobject_cast<GameRule *>(skill)) priority = skill->getPriority(triggerEvent);
         else invokeAuthorCallback([&]() {
-            triggerDispatchStep(triggerEvent, nullptr, skill->objectName());
             priority = skill->getPriority(triggerEvent);
         });
         checkTriggerDispatchAbort();
@@ -1566,6 +1783,14 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                                 const QList<SkillInstanceRef> *allowedSources)
 {
     const QVariant physicalIdentity = data;
+    const auto invokeOrigin = [&](const TriggerSkill *definition, const QString &site,
+                                  const SkillContext *context, const std::function<void()> &callback) {
+        const QString source = context ? callbackContextSource(*context) : QString();
+        if (!enterCallbackOrigin(definition, triggerEvent, target, site, source,
+                                 context ? context->instanceID : 0)) return false;
+        const auto originGuard = qScopeGuard([&] { m_callbackOrigins.removeLast(); });
+        return invokeAuthorCallback(callback);
+    };
     const auto restoreIdentity = [&] { restorePhysicalEquipmentIdentity(data, physicalIdentity); };
     const auto physicalGuard = qScopeGuard(restoreIdentity);
 	QList<TriggerSkill *> v2_skills;
@@ -1599,7 +1824,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		if (!v2) continue;
         triggerDispatchStep(triggerEvent, target, v2->objectName());
         bool recorded = false;
-        if (!invokeAuthorCallback([&]() { recorded = v2->recordEvent(triggerEvent, room, target, data); })) return false;
+        invokeOrigin(v2, QStringLiteral("v2-recordEvent"), nullptr,
+                     [&]() { recorded = v2->recordEvent(triggerEvent, room, target, data); });
         checkTriggerDispatchAbort();
         restoreIdentity();
         if (recorded) continue;
@@ -1612,7 +1838,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			recordCtx.invoker = target;
 			recordCtx.original_data = &data;
 			recordCtx.current_event = triggerEvent;
-			if (!invokeAuthorCallback([&]() { v2->record(triggerEvent, room, target, recordCtx); })) return false;
+			invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); });
 			checkTriggerDispatchAbort();
 			restoreIdentity();
 			continue;
@@ -1632,7 +1858,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 recordCtx.original_data = &data;
                 recordCtx.current_event = triggerEvent;
                 recordCtx.amount = v2->getBaseAmount();
-                if (!invokeAuthorCallback([&]() { v2->record(triggerEvent, room, target, recordCtx); })) return false;
+                invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); });
                 checkTriggerDispatchAbort();
                 restoreIdentity();
             }
@@ -1670,7 +1896,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				if (!amountOk) recordCtx.amount = v2->getBaseAmount();
 				recordCtx.original_data = &data;
 				recordCtx.current_event = triggerEvent;
-				if (!invokeAuthorCallback([&]() { v2->record(triggerEvent, room, target, recordCtx); })) return false;
+				invokeOrigin(v2, QStringLiteral("v2-record"), &recordCtx, [&]() { v2->record(triggerEvent, room, target, recordCtx); });
 				checkTriggerDispatchAbort();
 				restoreIdentity();
 			}
@@ -1688,6 +1914,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		}
 		QList<SkillContext> skillContexts;
         const auto appendContext = [&](const SkillContext &ctx) {
+            const auto *definition = Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name), ctx.instanceID);
+            const QString source = callbackContextSource(ctx);
+            if (!enterCallbackOrigin(definition, triggerEvent, target, QStringLiteral("v2-source"), source, ctx.instanceID)) return;
+            m_callbackOrigins.removeLast();
+            if (!enterCallbackOrigin(definition, triggerEvent, target, QStringLiteral("v2-selected"), source, ctx.instanceID)) return;
+            m_callbackOrigins.removeLast();
             if (m_dispatchBudget.checkContexts(quint64(skillContexts.size())) != TriggerDispatchBudget::Failure::None)
                 abortTriggerDispatch(triggerEvent, ctx.owner, ctx.skill_name);
             skillContexts << ctx;
@@ -1703,7 +1935,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
         triggerDispatchStep(triggerEvent, target, v2->objectName());
         QList<SkillContext> supplied;
         bool collected = false;
-        if (!invokeAuthorCallback([&]() { collected = v2->collectTriggerContexts(triggerEvent, room, target, data, supplied); })) return false;
+        invokeOrigin(v2, QStringLiteral("v2-collect"), nullptr,
+                     [&]() { collected = v2->collectTriggerContexts(triggerEvent, room, target, data, supplied); });
         checkTriggerDispatchAbort();
         restoreIdentity();
         if (collected) {
@@ -1715,7 +1948,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 const auto *definition = dynamic_cast<const TriggerSkillV2 *>(Sanguosha->getTriggerSkill(definitionName));
                 if (!definition || !ctx.owner) continue;
                 if (room->isAcceptedViewAsEffect(ctx.activationRef)) continue;
-                ServerPlayer *decisionMaker = definition->triggerOrderPlayer(room, ctx);
+                ServerPlayer *decisionMaker = nullptr;
+                invokeOrigin(definition, QStringLiteral("v2-source"), &ctx,
+                             [&] { decisionMaker = definition->triggerOrderPlayer(room, ctx); });
                 if (!decisionMaker || declinedOwners.contains(decisionMaker)) continue;
                 const QString key = skillInstanceRuntimeKey(ctx.owner, definitionName, ctx.instanceID)
                     + '|' + (ctx.invoker ? ctx.invoker->objectName() : QString());
@@ -1728,12 +1963,17 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 } else if (ctx.trigger_count < triggerCounts.value(key)) {
                     continue;
                 }
-                const Skill::Frequency frequency = definition->getFrequency(ctx.owner);
+                Skill::Frequency frequency = Skill::NotFrequent;
+                invokeOrigin(definition, QStringLiteral("v2-source"), &ctx,
+                             [&] { frequency = definition->getFrequency(ctx.owner); });
                 const bool orderedCompulsory = ctx.preferredTarget
                     && !room->isGeneralHiddenForSkill(ctx.activationRef)
                     && (frequency == Skill::Compulsory || frequency == Skill::Wake);
                 if (orderedCompulsory && compulsoryOrderedKeys.contains(orderedKey)) continue;
-                if (definition->prepareSource(room, ctx)) {
+                bool prepared = false;
+                invokeOrigin(definition, QStringLiteral("v2-source"), &ctx,
+                             [&] { prepared = definition->prepareSource(room, ctx); });
+                if (prepared) {
                     if (orderedCompulsory) compulsoryOrderedKeys.insert(orderedKey);
                     contextSelectors.insert(definition);
                     appendContext(ctx);
@@ -1742,7 +1982,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             continue;
         }
 		TriggerList list;
-        if (!invokeAuthorCallback([&]() { list = v2->triggerable(triggerEvent, room, target, data); })) return false;
+        invokeOrigin(v2, QStringLiteral("v2-triggerable"), nullptr,
+                     [&]() { list = v2->triggerable(triggerEvent, room, target, data); });
 		checkTriggerDispatchAbort();
 		restoreIdentity();
 
@@ -1811,11 +2052,17 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 									ctx.current_event = triggerEvent;
 									ctx.amount = v2->getBaseAmount();
 									ctx.trigger_count = triggerCounts.value(key);
-									if (v2->prepareSource(room, ctx)) appendContext(ctx);
+                                    bool prepared = false;
+                                    invokeOrigin(v2, QStringLiteral("v2-source"), &ctx,
+                                                 [&] { prepared = v2->prepareSource(room, ctx); });
+                                    if (prepared) appendContext(ctx);
 									// Selecting a later target declines the preceding targets.
 									equipmentTargetPrefixes.insert(p->objectName() + '|' + ctx.skill_name,
 										targets.mid(0, i + 1));
-									if (v2->getFrequency(p) == Skill::Compulsory && p->hasShownSkill(v2)) break;
+                                    Skill::Frequency frequency = Skill::NotFrequent;
+                                    invokeOrigin(v2, QStringLiteral("v2-source"), &ctx,
+                                                 [&] { frequency = v2->getFrequency(p); });
+                                    if (frequency == Skill::Compulsory && p->hasShownSkill(v2)) break;
 								}
 								continue;
 							}
@@ -1858,7 +2105,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.multiplier = effectiveMultiplier;
 								ctx.original_data = &data;
 								ctx.current_event = triggerEvent;
-								if (v2->prepareSource(room, ctx)) appendContext(ctx);
+                                bool prepared = false;
+                                invokeOrigin(v2, QStringLiteral("v2-source"), &ctx,
+                                             [&] { prepared = v2->prepareSource(room, ctx); });
+                                if (prepared) appendContext(ctx);
 							}
 						}
 					}
@@ -1891,7 +2141,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			for (const SkillContext &ctx : skillContexts) {
 				const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
 					Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name)));
-				if (definition && definition->triggerOrderPlayer(room, ctx) == owner) { chooser = owner; break; }
+                ServerPlayer *decisionMaker = nullptr;
+                if (definition) invokeOrigin(definition, QStringLiteral("v2-source"), &ctx,
+                                             [&] { decisionMaker = definition->triggerOrderPlayer(room, ctx); });
+                if (decisionMaker == owner) { chooser = owner; break; }
 			}
 			if (chooser) break;
 		}
@@ -1900,7 +2153,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			const SkillContext &ctx = skillContexts.at(i);
 			const auto *definition = dynamic_cast<const TriggerSkillV2 *>(
 				Sanguosha->getTriggerSkill(TriggerSkillV2::parseSkillName(ctx.skill_name)));
-			if (!definition || definition->triggerOrderPlayer(room, ctx) != chooser)
+            ServerPlayer *decisionMaker = nullptr;
+            if (definition) invokeOrigin(definition, QStringLiteral("v2-source"), &ctx,
+                                         [&] { decisionMaker = definition->triggerOrderPlayer(room, ctx); });
+            if (!definition || decisionMaker != chooser)
 				skillContexts.removeAt(i);
 		}
 
@@ -1912,7 +2168,9 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			const TriggerSkill *ts = Sanguosha->getTriggerSkill(definitionName, ctx.instanceID);
 			// Awakening and this invocation's forced flag also remove the order
 			// dialog's cancel option; concealed sources keep the gate above.
-			const Skill::Frequency frequency = ts ? ts->getFrequency(ctx.owner) : Skill::NotFrequent;
+            Skill::Frequency frequency = Skill::NotFrequent;
+            if (ts) invokeOrigin(ts, QStringLiteral("v2-source"), &ctx,
+                                 [&] { frequency = ts->getFrequency(ctx.owner); });
 			if (ctx.is_forced || frequency == Skill::Compulsory || frequency == Skill::Wake) {
 				has_compulsory = true;
 				break;
@@ -1988,7 +2246,10 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				// Format 1: ownerObjectName is empty; match owner == chooser.
 				// Format 2: ownerObjectName is set; match owner->objectName() == ownerObjectName.
 				if (ownerObjectName.isEmpty()) {
-					if (v2->triggerOrderPlayer(room, skillContexts[i]) == chooser) {
+                    ServerPlayer *decisionMaker = nullptr;
+                    invokeOrigin(v2, QStringLiteral("v2-source"), &skillContexts[i],
+                                 [&] { decisionMaker = v2->triggerOrderPlayer(room, skillContexts[i]); });
+                    if (decisionMaker == chooser) {
 						selected_ctx = &skillContexts[i];
 						break;
 					}
@@ -2006,6 +2267,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 		ServerPlayer *skill_owner = selected_ctx->owner;
 		if (!skill_owner) continue;
+        const QString originSource = callbackContextSource(*selected_ctx);
+        if (!enterCallbackOrigin(v2, triggerEvent, target, QStringLiteral("v2-selected"),
+                                 originSource, selected_ctx->instanceID)) {
+            return false; // appendContext normally removes this exact source before selection.
+        }
+        const auto originGuard = qScopeGuard([&] { m_callbackOrigins.removeLast(); });
 		const bool equipment = v2->isEquipSkill();
 		// Hidden global rule/record callbacks are not player skill invocations. They keep
 		// cost/effect and every context state, but skip the six skill observer events.
@@ -2649,8 +2916,11 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 		// This is membership only; event order still comes from skill_table.
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
 			TriggerSkill*ts = skill_table[triggerEvent][i];
-            if (m_discardOptionalFrames.contains(event_stack.size()) && !qobject_cast<GameRule *>(ts)) continue;
             triggerDispatchStep(triggerEvent, target, ts->objectName());
+            const bool authored = !qobject_cast<GameRule *>(ts);
+            if (authored && !enterCallbackOrigin(ts, triggerEvent, target, QStringLiteral("v1-lifecycle"))) continue;
+            const auto originGuard = qScopeGuard([&] { if (authored) m_callbackOrigins.removeLast(); });
+            if (m_discardOptionalFrames.contains(event_stack.size()) && !qobject_cast<GameRule *>(ts)) continue;
 			if (m_perfTraceEnabled)
 				++m_triggerDispatchProfile.mainTableCandidateVisitCount;
 			if (m_triggerSkillTraits.value(ts).v2 && !usesV2EventPriority(ts)) continue;
@@ -2744,7 +3014,18 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
                     else
                         broken = ts->trigger(triggerEvent, room, target, data);
                 } else {
-                    broken = ts->trigger(triggerEvent, room, target, data);
+                    noteDyingNativeRule(triggerEvent, target, data);
+                    if (triggerEvent == BuryVictim) {
+                        // The native corpse/mode transition must finish once
+                        // started. Author callbacks unwind independently;
+                        // the latched receipt is checked after native commit.
+                        NativeCommitScope commit(*this);
+                        ++m_nativeDeathCommitDepth;
+                        const auto deathCommit = qScopeGuard([&] { --m_nativeDeathCommitDepth; });
+                        broken = ts->trigger(triggerEvent, room, target, data);
+                    } else {
+                        broken = ts->trigger(triggerEvent, room, target, data);
+                    }
                 }
                 checkTriggerDispatchAbort();
                 restorePhysicalEquipmentIdentity(data, physicalIdentity);
