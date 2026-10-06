@@ -10,6 +10,7 @@
 #include "kof-arrange-controller.h"
 #include "room-replay-controller.h"
 #include "dashboard.h"
+#include "general-info-card.h"
 #include "table-pile.h"
 #include "ui-rng.h"
 #include "carditem.h"
@@ -5714,7 +5715,7 @@ void KOFOrderBox::revealGeneral(const QString&name)
 		avatars[revealed]->setObjectName(name);
 		const General*general = Sanguosha->getGeneral(name);
 		if(general)
-			avatars[revealed]->setToolTip(buildOracleTooltip(general->getOracleText(), general->getSkillDescription(true)));
+			avatars[revealed]->setToolTip(GeneralInfoCard::forGeneral(general));
 		revealed++;
 	}
 }
