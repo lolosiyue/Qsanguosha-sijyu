@@ -13,12 +13,16 @@
 #include "server-core.h"
 #include "settings.h"
 #include "runtime-paths.h"
+#include "standard.h"
+#include "wrapped-card.h"
 #include <QCoreApplication>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QDebug>
 #include <lua.hpp>
 #include <QFile>
+#include <QCryptographicHash>
 #include <atomic>
 #include <future>
 #include <thread>
@@ -30,7 +34,20 @@ struct RoomTestAccess {
     static AiDecisionCoordinator &ai(Room &room) { return *room.m_aiDecisions; }
     static void begin(ExternalAgentEndpoint &e, const AIRequest &q) { e.begin(q); }
     static auto await(ExternalAgentEndpoint &e, AIResult &r) { return e.awaitReply(r); }
+    static void reject(ExternalAgentEndpoint &e, const QString &error) { e.reject(error); }
     static void finish(ExternalAgentEndpoint &e) { e.finish(); }
+    static bool runNativeChoice(Room &room, ServerPlayer *player,
+                                const AIRequest &request, AIResult &result,
+                                int &nativeCalls) {
+        auto &ai = *room.m_aiDecisions;
+        return ai.runAnswer(player, request, QStringLiteral("askForChoice"),
+            [&nativeCalls](const AIRequest &q) {
+                ++nativeCalls;
+                return AiDecisionCoordinator::legacyAnswerResult(q, QStringLiteral("no"));
+            }, result);
+    }
+    static bool hybridSelected(const Room &room) { return room.m_hybrid50Selected; }
+    static QString hybridGameId(const Room &room) { return room.m_sessionConfig.hybridGameId; }
     static bool waitRace(Room &room) { return room.m_requests->acquireRaceSignal(-1); }
     static bool wait(Room &room, ServerPlayer *p, time_t timeout) {
         return room.m_requests->acquireInteractive(p, timeout);
@@ -91,6 +108,99 @@ static void mailboxTests()
     RoomTestAccess::begin(fallback, q);
     CHECK(!fallback.submit(r));
     fallback.cancel(); RoomTestAccess::finish(fallback);
+    // Only the opted-in hybrid uses an absolute deadline. After it falls
+    // back, a late result for the same ticket cannot replace native SmartAI.
+    ExternalAgentEndpoint bounded("seat", ExternalAgentEndpoint::SmartAIFallback);
+    bounded.enableBoundedHybrid(25);
+    CHECK(bounded.boundedHybrid());
+    q = question();
+    RoomTestAccess::begin(bounded, q);
+    QThread::msleep(10);
+    RoomTestAccess::reject(bounded, QStringLiteral("invalid-answer"));
+    CHECK(RoomTestAccess::await(bounded, ignored) == ExternalAgentEndpoint::Fallback);
+    CHECK(!bounded.submit(mockExternalAgentAnswer(q), &error));
+    RoomTestAccess::finish(bounded);
+    CHECK(!fallback.boundedHybrid());
+    ExternalAgentEndpoint late("seat", ExternalAgentEndpoint::SmartAIFallback);
+    late.enableBoundedHybrid(10);
+    RoomTestAccess::begin(late, q);
+    QThread::msleep(20); // expire before either submit or await runs
+    CHECK(!late.submit(mockExternalAgentAnswer(q), &error) && error == "adapter-timeout");
+    CHECK(RoomTestAccess::await(late, ignored) == ExternalAgentEndpoint::Fallback);
+    CHECK(!late.requestLocal(q.decisionId, q.stateRevision, &error));
+    RoomTestAccess::finish(late);
+    // Local is a per-decision resolution, independent of the disconnect policy.
+    ExternalAgentEndpoint local("seat", ExternalAgentEndpoint::Pause);
+    q = question();
+    CHECK(!local.requestLocal(q.decisionId,q.stateRevision,&error) && error == "not-waiting");
+    RoomTestAccess::begin(local,q);
+    CHECK(!local.requestLocal(q.decisionId-1,q.stateRevision,&error) && error == "stale");
+    CHECK(!local.requestLocal(q.decisionId,q.stateRevision-1,&error) && error == "stale");
+    CHECK(local.pending(resumed) && resumed.decisionId == q.decisionId);
+    CHECK(local.requestLocal(q.decisionId,q.stateRevision,&error) && error.isEmpty());
+    CHECK(local.lastError().isEmpty() && local.status() == "local-queued");
+    CHECK(!local.pending(resumed));
+    CHECK(!local.requestLocal(q.decisionId,q.stateRevision,&error) && error == "duplicate");
+    CHECK(!local.submit(mockExternalAgentAnswer(q),&error) && error == "duplicate");
+    CHECK(RoomTestAccess::await(local,ignored) == ExternalAgentEndpoint::Local);
+    RoomTestAccess::finish(local);
+    CHECK(local.status() == "idle" && local.lastError().isEmpty());
+    CHECK(!local.requestLocal(q.decisionId,q.stateRevision,&error) && error == "not-waiting");
+    ++q.decisionId;
+    RoomTestAccess::begin(local,q);
+    CHECK(local.pending(resumed));
+    CHECK(!local.requestLocal(q.decisionId-1,q.stateRevision,&error) && error == "stale");
+    CHECK(local.submit(mockExternalAgentAnswer(q),&error) && error.isEmpty());
+    CHECK(RoomTestAccess::await(local,ignored) == ExternalAgentEndpoint::Reply);
+    RoomTestAccess::finish(local);
+    // Both seats can be pending at once, and one seat's route cannot resolve the other.
+    auto otherQuestion = q; otherQuestion.viewerObjectName = "other"; ++otherQuestion.decisionId;
+    ExternalAgentEndpoint other("other", ExternalAgentEndpoint::Pause);
+    ++q.decisionId; ++q.decisionId;
+    RoomTestAccess::begin(local,q); RoomTestAccess::begin(other,otherQuestion);
+    CHECK(!local.requestLocal(otherQuestion.decisionId,otherQuestion.stateRevision,&error) && error == "stale");
+    CHECK(other.pending(resumed) && resumed.viewerObjectName == "other");
+    CHECK(local.requestLocal(q.decisionId,q.stateRevision));
+    CHECK(other.pending(resumed));
+    CHECK(other.submit(mockExternalAgentAnswer(otherQuestion)));
+    CHECK(RoomTestAccess::await(local,ignored) == ExternalAgentEndpoint::Local);
+    CHECK(RoomTestAccess::await(other,ignored) == ExternalAgentEndpoint::Reply);
+    RoomTestAccess::finish(local); RoomTestAccess::finish(other);
+    // Concurrent local and external resolutions accept exactly one contender.
+    for (int i = 0; i < 8; ++i) {
+        ++q.decisionId; RoomTestAccess::begin(local,q);
+        std::atomic_bool start{false};
+        auto native = std::async(std::launch::async,[&] {
+            while (!start.load()) std::this_thread::yield();
+            return local.requestLocal(q.decisionId,q.stateRevision);
+        });
+        auto external = std::async(std::launch::async,[&] {
+            while (!start.load()) std::this_thread::yield();
+            return local.submit(mockExternalAgentAnswer(q));
+        });
+        start = true;
+        const bool nativeAccepted = native.get(), externalAccepted = external.get();
+        CHECK(nativeAccepted != externalAccepted);
+        CHECK(RoomTestAccess::await(local,ignored)
+            == (nativeAccepted ? ExternalAgentEndpoint::Local : ExternalAgentEndpoint::Reply));
+        RoomTestAccess::finish(local);
+        CHECK(local.status() == "idle" && local.lastError().isEmpty());
+    }
+    // A successful local choice clears an earlier authority rejection.
+    ++q.decisionId; RoomTestAccess::begin(local,q);
+    CHECK(local.submit(mockExternalAgentAnswer(q)));
+    CHECK(RoomTestAccess::await(local,ignored) == ExternalAgentEndpoint::Reply);
+    RoomTestAccess::reject(local,"illegal-action");
+    CHECK(local.pending(resumed) && local.lastError() == "illegal-action");
+    CHECK(local.requestLocal(q.decisionId,q.stateRevision));
+    CHECK(local.lastError().isEmpty());
+    CHECK(RoomTestAccess::await(local,ignored) == ExternalAgentEndpoint::Local);
+    RoomTestAccess::finish(local);
+    // Socket loss after accepting local cannot change that queued route.
+    ++q.decisionId; RoomTestAccess::begin(local,q);
+    CHECK(local.requestLocal(q.decisionId,q.stateRevision)); local.disconnect();
+    CHECK(RoomTestAccess::await(local,ignored) == ExternalAgentEndpoint::Local);
+    RoomTestAccess::finish(local); local.reconnect();
     // Structured limits and selection contracts.
     q.kind = AIRequest::Discard; q.choiceOptions.cardIds = {1, 2};
     q.choiceOptions.minCount = q.choiceOptions.maxCount = 2;
@@ -105,7 +215,81 @@ static void mailboxTests()
         CHECK(ExternalAgentEndpoint::validateShape(q,r));
         r.action.selectedCardIds = {99}; CHECK(!ExternalAgentEndpoint::validateShape(q,r));
     }
-    qInfo() << "PASS mailbox: asynchronous wait, stale, duplicate, shape, reconnect, cancellation, explicit fallback";
+    qInfo() << "PASS mailbox: asynchronous wait, stale, duplicate, shape, reconnect, cancellation, explicit fallback, atomic local, concurrent routes, multiple seats";
+}
+
+static QJsonObject transportCall(QTcpSocket &client, const QJsonObject &message)
+{
+    CHECK(client.write(QJsonDocument(message).toJson(QJsonDocument::Compact) + '\n') > 0);
+    QElapsedTimer clock; clock.start();
+    while (!client.canReadLine()) {
+        CHECK(clock.elapsed() < 2000);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+        std::this_thread::yield();
+    }
+    QJsonParseError error;
+    const auto reply = QJsonDocument::fromJson(client.readLine(), &error);
+    CHECK(error.error == QJsonParseError::NoError && reply.isObject());
+    return reply.object();
+}
+
+static void transportTests()
+{
+    auto endpoint = std::make_shared<ExternalAgentEndpoint>("seat",ExternalAgentEndpoint::Pause);
+    auto other = std::make_shared<ExternalAgentEndpoint>("other",ExternalAgentEndpoint::Pause);
+    ExternalAgentLocalTransport transport(endpoint), otherTransport(other);
+    CHECK(transport.listen() && otherTransport.listen());
+    QTcpSocket client, otherClient;
+    const auto connect = [](QTcpSocket &socket, ExternalAgentLocalTransport &host) {
+        const auto bootstrap = host.bootstrap();
+        socket.connectToHost(bootstrap["host"].toString(),quint16(bootstrap["port"].toInt()));
+        CHECK(socket.waitForConnected(2000));
+        CHECK(transportCall(socket,{{"op","hello"},{"version",1},{"token",bootstrap["token"]}})["ok"].toBool());
+    };
+    connect(client,transport); connect(otherClient,otherTransport);
+    auto q = question();
+    auto second = q; second.viewerObjectName = "other"; ++second.decisionId;
+    RoomTestAccess::begin(*endpoint,q); RoomTestAccess::begin(*other,second);
+    QJsonObject command{{"op","local"},{"decisionId",QString::number(q.decisionId)},
+                        {"stateRevision",QString::number(q.stateRevision)}};
+    auto invalid = command; invalid["decisionId"] = 9;
+    CHECK(transportCall(client,invalid)["error"] == "invalid-local");
+    invalid = command; invalid["decisionId"] = "09";
+    CHECK(transportCall(client,invalid)["error"] == "invalid-local");
+    invalid = command; invalid["decisionId"] = "18446744073709551616";
+    CHECK(transportCall(client,invalid)["error"] == "invalid-local");
+    invalid = command; invalid.remove("stateRevision");
+    CHECK(transportCall(client,invalid)["error"] == "invalid-local");
+    invalid = command; invalid["seat"] = "other";
+    CHECK(transportCall(client,invalid)["error"] == "unknown-operation");
+    invalid = command; invalid["stateRevision"] = "16";
+    CHECK(transportCall(client,invalid)["error"] == "stale");
+    CHECK(transportCall(otherClient,command)["error"] == "stale");
+    const auto accepted = transportCall(client,command);
+    CHECK(accepted["ok"].toBool() && accepted["queued"].toBool() && accepted["route"] == "local");
+    CHECK(transportCall(client,command)["error"] == "duplicate");
+    const auto queued = transportCall(client,{{"op","poll"}});
+    CHECK(queued["status"] == "local-queued" && !queued.contains("request"));
+    CHECK(transportCall(otherClient,{{"op","poll"}})["request"].toObject()["viewerObjectName"] == "other");
+    AIResult ignored;
+    CHECK(RoomTestAccess::await(*endpoint,ignored) == ExternalAgentEndpoint::Local);
+    RoomTestAccess::finish(*endpoint);
+    CHECK(transportCall(client,{{"op","poll"}})["status"] == "idle");
+    ++q.decisionId; ++q.decisionId; RoomTestAccess::begin(*endpoint,q);
+    CHECK(transportCall(client,command)["error"] == "stale");
+    const auto next = transportCall(client,{{"op","poll"}});
+    CHECK(next["status"] == "waiting-no-clock");
+    CHECK(next["request"].toObject()["decisionId"] == QString::number(q.decisionId));
+    const QJsonObject answer{{"decisionId",QString::number(q.decisionId)},
+        {"stateRevision",QString::number(q.stateRevision)},{"kind","answer"},
+        {"action",QJsonObject{{"userString","yes"}}}};
+    CHECK(transportCall(client,{{"op","submit"},{"result",answer}})["ok"].toBool());
+    CHECK(RoomTestAccess::await(*endpoint,ignored) == ExternalAgentEndpoint::Reply);
+    RoomTestAccess::finish(*endpoint);
+    CHECK(other->requestLocal(second.decisionId,second.stateRevision));
+    CHECK(RoomTestAccess::await(*other,ignored) == ExternalAgentEndpoint::Local);
+    RoomTestAccess::finish(*other);
+    qInfo() << "PASS transport: bounded local shape, stale and duplicate commands, independent seat capabilities, local then external";
 }
 
 static ServerPlayer *addSeat(Room &room, const QString &name, const QString &role)
@@ -137,10 +321,31 @@ static std::thread answerNext(std::shared_ptr<ExternalAgentEndpoint> endpoint,
     });
 }
 
+static std::thread localNext(std::shared_ptr<ExternalAgentEndpoint> endpoint)
+{
+    return std::thread([endpoint] {
+        QElapsedTimer clock; clock.start(); AIRequest q;
+        while (!endpoint->pending(q)) {
+            CHECK(clock.elapsed() < 10000);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        CHECK(endpoint->requestLocal(q.decisionId,q.stateRevision));
+    });
+}
+
 class CountingAI : public TrustAI {
 public:
     explicit CountingAI(ServerPlayer *p) : TrustAI(p) {}
     int calls = 0;
+    int activateCalls = 0, useCalls = 0, responseCalls = 0;
+    void activate(CardUseStruct &use) override { ++activateCalls; use.card = nullptr; }
+    QString askForUseCard(const QString &, const QString &, const Card::HandlingMethod) override {
+        ++useCalls; return ".";
+    }
+    const Card *askForCard(const QString &, const QString &, const QVariant &,
+                          const Card::HandlingMethod) override {
+        ++responseCalls; return nullptr;
+    }
     QString askForChoice(const QString &, const QString &, const QVariant &) override {
         ++calls; return "no";
     }
@@ -154,7 +359,7 @@ static void roomTests()
     room.roomRuntime()->state().reset();
     auto *p = addSeat(room, "external", "rebel");
     auto *other = addSeat(room, "opponent", "renegade");
-    p->setAI(new TrustAI(p));
+    auto *seatCounting = new CountingAI(p); p->setAI(seatCounting);
     auto *counting = new CountingAI(other); other->setAI(counting);
     auto endpoint = room.attachExternalAgent(p, ExternalAgentEndpoint::Pause);
     CHECK(endpoint);
@@ -271,23 +476,98 @@ static void roomTests()
     });
     CardUseStruct use; CHECK(RoomTestAccess::ai(room).decide(p, play, use));
     illegal.join(); CHECK(!use.card);
-    // Explicit fallback invokes the configured seat AI exactly once, and reconnect returns to external.
-    otherEndpoint->disconnect();
+    // Explicit local resolves one callback, and the next prompt returns to external
+    // without reconnecting. Exercise both Pause and disconnect-fallback seats.
+    worker = localNext(endpoint);
+    CHECK(RoomTestAccess::ai(room).decideChoice(p,"test","yes+no",QVariant(),answer));
+    worker.join(); CHECK(answer == "no" && seatCounting->calls == 1);
+    CHECK(endpoint->status() == "idle" && endpoint->lastError().isEmpty());
+    worker = answerNext(endpoint);
+    CHECK(RoomTestAccess::ai(room).decideChoice(p,"test","yes+no",QVariant(),answer));
+    worker.join(); CHECK(answer == "yes" && seatCounting->calls == 1);
+    for (const auto kind : {AIRequest::Activate, AIRequest::UseCard}) {
+        auto action = RoomTestAccess::ai(room).makeRequest(p,kind,CardUseStruct::CARD_USE_REASON_PLAY,
+                                                         QString(),QString(),Card::MethodUse);
+        worker = localNext(endpoint);
+        CHECK(RoomTestAccess::ai(room).decide(p,action,use));
+        worker.join(); CHECK(!use.card);
+        CHECK((kind == AIRequest::Activate ? seatCounting->activateCalls : seatCounting->useCalls) == 1);
+        action = RoomTestAccess::ai(room).makeRequest(p,kind,CardUseStruct::CARD_USE_REASON_PLAY,
+                                                    QString(),QString(),Card::MethodUse);
+        worker = answerNext(endpoint);
+        CHECK(RoomTestAccess::ai(room).decide(p,action,use));
+        worker.join(); CHECK(!use.card);
+        CHECK((kind == AIRequest::Activate ? seatCounting->activateCalls : seatCounting->useCalls) == 1);
+    }
+    worker = localNext(endpoint);
+    CHECK(!RoomTestAccess::ai(room).decideResponseCard(p,"nullification","test",QVariant(),Card::MethodResponse));
+    worker.join(); CHECK(seatCounting->responseCalls == 1);
+    worker = answerNext(endpoint);
+    CHECK(!RoomTestAccess::ai(room).decideResponseCard(p,"nullification","test",QVariant(),Card::MethodResponse));
+    worker.join(); CHECK(seatCounting->responseCalls == 1);
+    worker = localNext(otherEndpoint);
     CHECK(RoomTestAccess::ai(room).decideChoice(other,"test","yes+no",QVariant(),answer));
-    CHECK(answer == "no" && counting->calls == 1);
-    otherEndpoint->reconnect();
+    worker.join(); CHECK(answer == "no" && counting->calls == 1);
+    CHECK(otherEndpoint->status() == "idle" && otherEndpoint->lastError().isEmpty());
     worker = answerNext(otherEndpoint);
     CHECK(RoomTestAccess::ai(room).decideChoice(other,"test","yes+no",QVariant(),answer));
     worker.join(); CHECK(answer == "yes" && counting->calls == 1);
+    // Explicit fallback invokes the configured seat AI exactly once, and reconnect returns to external.
+    otherEndpoint->disconnect();
+    CHECK(RoomTestAccess::ai(room).decideChoice(other,"test","yes+no",QVariant(),answer));
+    CHECK(answer == "no" && counting->calls == 2);
+    otherEndpoint->reconnect();
+    worker = answerNext(otherEndpoint);
+    CHECK(RoomTestAccess::ai(room).decideChoice(other,"test","yes+no",QVariant(),answer));
+    worker.join(); CHECK(answer == "yes" && counting->calls == 2);
+    // Opt-in bounded room path: a submitted answer for an obsolete world is
+    // discarded, current native SmartAI runs once, and the room stays usable.
+    otherEndpoint->enableBoundedHybrid(1000);
+    AIChoiceOptions staleOptions;
+    staleOptions.reason = QStringLiteral("test");
+    staleOptions.choices << QStringLiteral("yes") << QStringLiteral("no");
+    auto staleChoice = RoomTestAccess::ai(room).makeChoiceRequest(other, AIRequest::Choice,
+                                                                 staleOptions);
+    staleChoice.stateRevision = 0;
+    AIResult staleResult;
+    int staleNativeCalls = 0;
+    worker = answerNext(otherEndpoint);
+    CHECK(RoomTestAccess::runNativeChoice(room, other, staleChoice, staleResult,
+                                         staleNativeCalls));
+    worker.join();
+    CHECK(staleNativeCalls == 1 && staleResult.action.userString == "no");
+    CHECK(staleResult.stateRevision == room.roomRuntime()->stateRevision());
+    CHECK(!otherEndpoint->submit(mockExternalAgentAnswer(staleChoice)));
+    CHECK(otherEndpoint->status() == "smart-ai-fallback");
+    otherEndpoint->reconnect();
+    auto illegalHybrid = RoomTestAccess::ai(room).makeRequest(other, AIRequest::Activate,
+        CardUseStruct::CARD_USE_REASON_PLAY, QString(), QString(), Card::MethodUse);
+    worker = std::thread([&] {
+        QElapsedTimer clock; clock.start(); AIRequest q;
+        while (!otherEndpoint->pending(q)) {
+            CHECK(clock.elapsed() < 10000);
+            std::this_thread::yield();
+        }
+        auto r = mockExternalAgentAnswer(q);
+        r.kind = AIResult::UseCard;
+        r.action.useCardId = jink; // belongs to the other actor
+        CHECK(otherEndpoint->submit(r));
+    });
+    const int beforeHybridNative = counting->activateCalls;
+    CHECK(RoomTestAccess::ai(room).decide(other, illegalHybrid, use));
+    worker.join();
+    CHECK(!use.card && counting->activateCalls == beforeHybridNative + 1);
+    CHECK(otherEndpoint->status() == "smart-ai-fallback");
     auto race = std::async(std::launch::async, [&] { return RoomTestAccess::waitRace(room); });
     CHECK(race.wait_for(std::chrono::milliseconds(150)) == std::future_status::timeout);
     // An authoritative revision change never restamps an old result.
     play.stateRevision = 0;
-    worker = answerNext(endpoint);
+    worker = localNext(endpoint);
     bool staleCancelled = false;
     try { RoomTestAccess::ai(room).decide(p, play, use); }
     catch (TriggerEvent e) { staleCancelled = e == GameFinished; }
     worker.join(); CHECK(staleCancelled); CHECK(endpoint->lastError() == "stale-world");
+    CHECK(seatCounting->activateCalls == 1); // stale local never reaches the native callback
     CHECK(race.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
     CHECK(!race.get());
     // Cancellation wakes an indefinite native request wait and external decision.
@@ -296,6 +576,250 @@ static void roomTests()
     CHECK(aborted.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
     CHECK(endpoint->status() == "cancelled");
     qInfo() << "PASS room: hidden information, seat isolation, strict choices, Jink/Peach/Nullification, no-clock wake/abort";
+}
+
+// Offline target-enumeration fixtures. The cards and rule skills below are only
+// registered in this synthetic room; no game workers or provider requests run.
+class Target50Prohibit : public ProhibitSkill {
+public:
+    Target50Prohibit() : ProhibitSkill("#target50_prohibit") {}
+    bool isProhibited(const Player *from, const Player *to, const Card *,
+                      const QList<const Player *> &) const override {
+        return from && to && (to->hasFlag("Target50Blocked")
+            || (from->hasFlag("Target50OnlyThree") && (to->getSeat() < 2 || to->getSeat() > 4)));
+    }
+};
+
+class Target50GlobalExtra : public TargetModSkill {
+public:
+    Target50GlobalExtra() : TargetModSkill("target50_global_extra") {}
+    int getExtraTargetNum(const Player *from, const Card *) const override {
+        return from && from->hasFlag("Target50GlobalExtra") ? 1 : 0;
+    }
+};
+
+class Target50CandidateExtra : public TargetModSkillV2 {
+public:
+    Target50CandidateExtra() : TargetModSkillV2("target50_candidate_extra") {}
+    CorrectSkillResult getCorrection(const CorrectSkillContext &context) const override {
+        if (context.modType == TargetModSkill::ExtraTarget && context.secondary && onSecondaryQuery) {
+            auto action = std::move(onSecondaryQuery);
+            onSecondaryQuery = {};
+            action();
+        }
+        if (context.modType == TargetModSkill::ExtraTarget && context.primary
+            && context.primary->hasFlag("Target50CandidateExtra") && context.secondary
+            && context.secondary->getSeat() == 4)
+            return CorrectSkillResult::useAmount(1);
+        return CorrectSkillResult::noEffect();
+    }
+    mutable std::function<void()> onSecondaryQuery;
+};
+
+class Target50Card : public BasicCard {
+public:
+    enum Shape { OrderedPairs, PrefixDependent, Overflow, RepeatedVotes };
+    explicit Target50Card(Shape shape) : BasicCard(Card::Spade, 7), shape(shape) {
+        setObjectName("target50_fixture");
+    }
+    QString getSubtype() const override { return "target50_fixture"; }
+    bool isAvailable(const Player *) const override { return true; }
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *) const override {
+        ++feasibleCalls;
+        return targets.size() == (shape == RepeatedVotes ? 1 : 2);
+    }
+    bool targetFilter(const QList<const Player *> &targets, const Player *to,
+                      const Player *from, int &votes) const override {
+        ++filterCalls; votes = 0;
+        if (to == from || targets.size() >= 2) return false;
+        bool allowed = false;
+        if (shape == Overflow || shape == RepeatedVotes) allowed = !targets.contains(to);
+        else if (targets.isEmpty()) allowed = to->getSeat() == 2 || to->getSeat() == 3;
+        else if (shape == OrderedPairs) allowed = to->getSeat() == 5 || to->getSeat() == 6;
+        else allowed = to->getSeat() == (targets.first()->getSeat() == 2 ? 5 : 6);
+        if (allowed) votes = shape == RepeatedVotes ? 2 : 1;
+        return allowed;
+    }
+    mutable int filterCalls = 0, feasibleCalls = 0;
+    Shape shape;
+};
+
+// This subclass intentionally shares Slash's QObject metadata and printed name,
+// but permits two targets. An optimization based only on name/metaObject is unsafe.
+class Target50ExtendedSlash : public Slash {
+public:
+    Target50ExtendedSlash() : Slash(Card::Spade, 7) {}
+    bool isAvailable(const Player *) const override { return true; }
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *) const override {
+        return targets.size() == 2;
+    }
+    bool targetFilter(const QList<const Player *> &targets, const Player *to,
+                      const Player *from) const override {
+        return targets.size() < 2 && to != from && !targets.contains(to);
+    }
+};
+
+static QString target50Hash(const QList<QStringList> &combinations)
+{
+    QStringList keys;
+    for (const auto &targets : combinations) keys << targets.join(QChar(0x1f));
+    keys.sort();
+    return QString::fromLatin1(QCryptographicHash::hash(keys.join(QChar(0x1e)).toUtf8(),
+                                                       QCryptographicHash::Sha256).toHex());
+}
+
+static QList<QStringList> target50Oracle(Room &room, ServerPlayer *from, const Card *card, int maxDepth)
+{
+    QList<QStringList> result;
+    QList<const Player *> prefix;
+    QStringList names;
+    std::function<void()> visit = [&] {
+        if (card->targetsFeasible(prefix,from)) result << names;
+        if (prefix.size() == maxDepth) return;
+        for (auto *target : room.getAlivePlayers()) {
+            if (prefix.contains(target)) continue;
+            int votes = 0;
+            card->targetFilter(prefix,target,from,votes);
+            CHECK(votes <= 1); // this oracle intentionally excludes unsupported repeated votes
+            if (!votes || room.isProhibited(from,target,card,prefix)) continue;
+            prefix << target; names << target->objectName();
+            visit();
+            prefix.removeLast(); names.removeLast();
+        }
+    };
+    visit();
+    return result;
+}
+
+static int target50Benchmark(QCoreApplication &app)
+{
+    const bool requireComplete = app.arguments().contains("--target50-require-complete");
+    Room room(nullptr,"50p",GameSessionConfig(20261005));
+    EngineRuntimeContextScope scope(*Sanguosha,&room);
+    LuaRuntime::Binding binding(room.roomRuntime()->lua());
+    room.roomRuntime()->state().reset();
+    RoomTestAccess::attachThread(room);
+    QList<ServerPlayer *> seats;
+    for (int i = 1; i <= 50; ++i) {
+        auto *seat = addSeat(room,QString("target50_%1").arg(i),i == 1 ? "lord" : "rebel");
+        seat->setAI(new TrustAI(seat)); seats << seat;
+    }
+    auto *from = seats.first();
+    from->setFlags("InfinityAttackRange");
+    auto *candidateExtra = new Target50CandidateExtra;
+    Sanguosha->addSkills({new Target50Prohibit, new Target50GlobalExtra, candidateExtra});
+    from->acquireSkill("target50_global_extra"); from->acquireSkill("target50_candidate_extra");
+    room.setCurrentCardUse(QString(),CardUseStruct::CARD_USE_REASON_PLAY);
+    int cardId = -1;
+    for (int id : room.getDrawPile()) {
+        if (Sanguosha->getCard(id)->objectName() == "slash") { cardId = id; break; }
+    }
+    CHECK(cardId >= 0);
+    room.moveCardTo(Sanguosha->getCard(cardId),from,Player::PlaceHand,false);
+    auto *wrapped = dynamic_cast<WrappedCard *>(room.getCard(cardId)); CHECK(wrapped);
+    const QVariantMap originalOverrides = Config.valueOverrides();
+    QJsonArray rows;
+    int repeatCount = 7;
+    const auto args = app.arguments();
+    const int repeatAt = args.indexOf("--target50-repeats");
+    if (repeatAt >= 0 && repeatAt + 1 < args.size()) {
+        bool ok = false; repeatCount = args.at(repeatAt+1).toInt(&ok);
+        CHECK(ok && repeatCount >= 1 && repeatCount <= 100);
+    }
+    const auto run = [&](const QString &name, int maxDepth, bool overflowExpected = false,
+                         bool repeatedVotes = false, bool mustComplete = false) {
+        const Card *card = wrapped;
+        const auto expected = repeatedVotes ? QList<QStringList>() : target50Oracle(room,from,card,maxDepth);
+        QJsonArray timings;
+        AICardCandidateView candidate;
+        for (int i = -2; i < repeatCount; ++i) {
+            QElapsedTimer timer; timer.start();
+            const auto request = RoomTestAccess::ai(room).makeRequest(from,AIRequest::Activate,
+                CardUseStruct::CARD_USE_REASON_PLAY,QString(),QString(),Card::MethodUse);
+            const auto elapsed = timer.nsecsElapsed();
+            CHECK(request.cardCandidates.size() == 1);
+            candidate = request.cardCandidates.first();
+            CHECK(candidate.cardId == cardId && candidate.available && !candidate.limited);
+            if (candidate.completeCoverage) {
+                CHECK(!overflowExpected && !repeatedVotes);
+                CHECK(candidate.targetCombinations.size() == expected.size());
+                CHECK(target50Hash(candidate.targetCombinations) == target50Hash(expected));
+            } else CHECK(candidate.targetCombinations.isEmpty());
+            if (mustComplete || (requireComplete && name == "native_slash_49")) CHECK(candidate.completeCoverage);
+            if (overflowExpected || repeatedVotes) CHECK(!candidate.completeCoverage);
+            if (i >= 0) timings << QString::number(elapsed);
+        }
+        QJsonObject row{{"case",name},{"complete",candidate.completeCoverage},
+            {"native_combinations",candidate.targetCombinations.size()},
+            {"oracle_combinations",expected.size()},{"oracle_sha256",target50Hash(expected)},
+            {"native_sha256",target50Hash(candidate.targetCombinations)},
+            {"first_targets",candidate.legalTargets.size()},{"request_ns",timings},
+            {"overflow_expected",overflowExpected},{"repeated_votes",repeatedVotes}};
+        if (const auto *fixture = dynamic_cast<const Target50Card *>(wrapped->getRealCard())) {
+            row["fixture_filter_calls_total"] = fixture->filterCalls;
+            row["fixture_feasible_calls_total"] = fixture->feasibleCalls;
+        }
+        rows << row;
+        qInfo().noquote() << "TARGET50_CASE" << QJsonDocument(row).toJson(QJsonDocument::Compact);
+    };
+    run("native_slash_49",1); // baseline may be conservatively incomplete
+    from->setFlags("Target50OnlyThree");
+    run("native_slash_three",1,false,false,true);
+    seats.at(2)->setFlags("Target50Blocked");
+    run("native_slash_changed_prohibition",1,false,false,true);
+    seats.at(2)->setFlags("-Target50Blocked");
+    from->setFlags("Target50GlobalExtra");
+    run("native_slash_global_extra",2,false,false,true);
+    from->setFlags("-Target50GlobalExtra"); from->setFlags("Target50CandidateExtra");
+    run("native_slash_candidate_extra",2,false,false,true);
+    from->setFlags("-Target50CandidateExtra"); from->setFlags("-Target50OnlyThree");
+    wrapped->takeOver(new Target50Card(Target50Card::OrderedPairs));
+    run("custom_ordered_pairs",2,false,false,true);
+    seats.at(5)->setFlags("Target50Blocked");
+    run("custom_changed_prohibition",2,false,false,true);
+    seats.at(5)->setFlags("-Target50Blocked");
+    wrapped->takeOver(new Target50Card(Target50Card::PrefixDependent));
+    run("custom_prefix_dependent",2,false,false,true);
+    wrapped->takeOver(new Target50Card(Target50Card::RepeatedVotes));
+    run("custom_repeated_votes",1,false,true);
+    wrapped->takeOver(new Target50Card(Target50Card::Overflow));
+    run("custom_combination_overflow",2,true);
+    wrapped->takeOver(new Target50ExtendedSlash);
+    run("slash_subclass_overflow",2,true);
+    room.resetCard(cardId);
+    QVariantMap limitedOverrides = originalOverrides;
+    limitedOverrides.insert("AiTargetProjectionBudget",4); Config.setValueOverrides(limitedOverrides);
+    run("native_probe_overflow",1,true);
+    Config.setValueOverrides(originalOverrides);
+    // Extra correctness checks outside the unchanged before/after timing cases.
+    // Availability already queried the global modifier. Arm only a secondary
+    // query, which the new bound performs after capturing enumeration state.
+    // Persistent flag mutations need an explicit guard: flags need not bump revision.
+    for (int mode = 0; mode < 3; ++mode) {
+        bool mutationObserved = false;
+        candidateExtra->onSecondaryQuery = [&, mode] {
+            mutationObserved = true;
+            if (mode == 0) from->setFlags("Target50DuringBound");
+            else if (mode == 1)
+                room.setPlayerMark(from,"target50_mutation",from->getMark("target50_mutation")+1);
+            else Sanguosha->addSkills({new TargetModSkill("target50_registered_during_bound")});
+        };
+        const auto definitionsBefore = room.roomRuntime()->definitions().skillDefinitionVersion();
+        const auto request = RoomTestAccess::ai(room).makeRequest(from,AIRequest::Activate,
+            CardUseStruct::CARD_USE_REASON_PLAY,QString(),QString(),Card::MethodUse);
+        CHECK(request.cardCandidates.size() == 1);
+        CHECK(!request.cardCandidates.first().completeCoverage);
+        CHECK(request.cardCandidates.first().targetCombinations.isEmpty());
+        CHECK(mutationObserved && !candidateExtra->onSecondaryQuery);
+        if (mode == 2) CHECK(room.roomRuntime()->definitions().skillDefinitionVersion() > definitionsBefore);
+        from->setFlags("-Target50DuringBound");
+    }
+    qInfo() << "PASS target50 mutation guard: ExtraTarget callback flag, revision and definition changes leave coverage incomplete";
+    const QJsonObject report{{"schema",1},{"fixture","native_target50"},{"seats",50},
+        {"seed","20261005"},{"provider_requests",0},{"cases",rows},
+        {"timing_scope","whole native makeRequest; target legality oracle outside timing"}};
+    qInfo().noquote() << "TARGET50_REPORT" << QJsonDocument(report).toJson(QJsonDocument::Compact);
+    return 0;
 }
 
 static int gameTest(QCoreApplication &app)
@@ -386,6 +910,7 @@ local ctx = {
     getCard = function() return {getSkillNames = function()
         return matching and {"ny_10th_jieling"} or {} end} end
 }
+
 for _, kind in ipairs({sgs.TargetModSkill_Residue, sgs.TargetModSkill_DistanceLimit}) do
     mod = kind
     matching = false
@@ -407,6 +932,40 @@ assert(not ny_10th_jieling_target.correct_func(nil,ctx).applies)
     return true;
 }
 
+static int hybridSetupContract()
+{
+    // The test subprocess deliberately has no runtime secret, so signup can
+    // prove missing setup continues with native AI without any paid request.
+    CHECK(qEnvironmentVariableIsEmpty("TYPESAFE_API_KEY"));
+    CHECK(Sanguosha->getAvailableModes().contains(QStringLiteral("50p")));
+    CHECK(!useJevHybrid50("02p", true, true));
+    CHECK(!useJevHybrid50("50p", false, true));
+    CHECK(!useJevHybrid50("50p", true, false));
+    CHECK(!useJevHybrid50("50p", true, true, true));
+    CHECK(useJevHybrid50("50p", true, true));
+    Config.BanPackages.clear();
+    Config.setValueOverrides({{"JevHybrid50P", true}});
+    GameSessionConfig session(20261005);
+    const auto preservedId = session.hybridGameId;
+    Room room(nullptr, "50p", session);
+    CHECK(room.hasLuaRuntime());
+    CHECK(RoomTestAccess::hybridSelected(room));
+    CHECK(RoomTestAccess::hybridGameId(room) == preservedId);
+    auto *robot = room.addAIPlayer();
+    room.signup(robot, QStringLiteral("OfflineRobot"), QString(), true);
+    CHECK(!room.externalAgent(robot->objectName()));
+    CHECK(robot->getState() == "robot");
+    Config.setValueOverrides({{"JevHybrid50P", false}});
+    CHECK(RoomTestAccess::hybridSelected(room)); // saved room choice survives toggles
+    Room ordinary(nullptr, "50p", GameSessionConfig(20261006));
+    CHECK(!RoomTestAccess::hybridSelected(ordinary));
+    Config.setValueOverrides({{"JevHybrid50P", true}});
+    Room otherMode(nullptr, "02p", GameSessionConfig(20261007));
+    CHECK(!RoomTestAccess::hybridSelected(otherMode));
+    qInfo() << "PASS selectable 50p room gate, stable game id, no-secret native fallback";
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -423,6 +982,7 @@ int main(int argc, char **argv)
         lua_close(L); return 0;
     }
     mailboxTests();
+    transportTests();
     QString error;
     CHECK(QSanRuntimePaths::resolve(app.arguments(), &error));
     Config.setValueOverrides({{"AiLegacyDirectCallbacks", QStringLiteral(
@@ -437,7 +997,7 @@ int main(int argc, char **argv)
     Config.EnableAI = true;
     Config.Enable2ndGeneral = false;
     Config.EnableHegemony = false;
-    Config.GameMode = Sanguosha->getGameMode("02p");
+    Config.GameMode = Sanguosha->getGameMode(app.arguments().contains("--target50-benchmark") ? "50p" : "02p");
     // A sufficient, explicit native general pool keeps this a boundary test.
     Config.BanPackages.clear();
     const QStringList packages = {"standard", "standard_cards", "standard_ex_cards", "maneuvering"};
@@ -445,7 +1005,9 @@ int main(int argc, char **argv)
         if (!packages.contains(package->objectName())) Config.BanPackages << package->objectName();
     Config.AIDelay = Config.OriginAIDelay = 0;
     int result = 0;
-    if (app.arguments().contains("--game") || app.arguments().contains("--cancel-game")) result = gameTest(app);
+    if (app.arguments().contains("--target50-benchmark")) result = target50Benchmark(app);
+    else if (app.arguments().contains("--hybrid-setup-contract")) result = hybridSetupContract();
+    else if (app.arguments().contains("--game") || app.arguments().contains("--cancel-game")) result = gameTest(app);
     else if (app.arguments().contains("--lua-corrections"))
         result = correctionCompatibility(app.arguments().last()) ? 0 : 1;
     else roomTests();
