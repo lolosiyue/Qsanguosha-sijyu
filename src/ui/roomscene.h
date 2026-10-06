@@ -116,6 +116,8 @@ public:
     ~RoomScene();
     void showGameStateSnapshot();
     void showGameControlPanel();
+    void showControllerMenu();
+    bool controllerOwnsDialog(const QWidget *dialog) const;
     bool handleNativeKey(QKeyEvent *event);
     void changeTextEditBackground();
     void adjustItems();

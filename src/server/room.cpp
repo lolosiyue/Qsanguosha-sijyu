@@ -1,6 +1,8 @@
 #include "external-agent.h"
 #include "external-agent-transport.h"
 #include "room.h"
+#include "controller-input-diagnostics.h"
+#include <QJsonArray>
 #include "game-rng.h"
 #include "protocol/resolution-state-message.h"
 #include "qt-collection-utils.h"
@@ -4212,7 +4214,20 @@ bool Room::useCard(const CardUseStruct&use, bool add_history)
 
 bool Room::useCard(CardUseStruct&use, bool add_history)
 {
-    return useCardInternal(use, add_history, nullptr);
+    QJsonObject evidence;
+    if (!qEnvironmentVariable("QSAN_CONTROLLER_SERVER_TRACE").isEmpty()) {
+        evidence.insert("player", use.from ? use.from->objectName() : QString());
+        evidence.insert("card", use.card ? use.card->toString() : QString());
+        QStringList targets;
+        for (const auto *target : use.to) if (target) targets << target->objectName();
+        evidence.insert("targets", QJsonArray::fromStringList(targets));
+    }
+    const bool result = useCardInternal(use, add_history, nullptr);
+    if (!evidence.isEmpty()) {
+        evidence.insert("accepted", result);
+        writeControllerServerEvidence(QStringLiteral("native-card-resolution"), evidence);
+    }
+    return result;
 }
 
 bool Room::useCardFromSkillEffect(const CardUseStruct &use, const SkillContext &accepted, bool add_history)
