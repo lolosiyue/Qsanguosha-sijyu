@@ -11,6 +11,7 @@
 #include <QScopeGuard>
 
 #include "mainwindow.h"
+#include "gamepad-bootstrap.h"
 #if !defined(QSAN_XP_LEGACY)
 #include "widget-accessibility.h"
 #endif
@@ -608,6 +609,7 @@ int main(int argc, char *argv[]) {
 #endif
     Sanguosha->setParent(main_window);
     main_window->show();
+    QSanInput::installGamepadInput(main_window);
 
     const auto releaseGui = [main_window] {
         // Preserve the Engine lifetime boundary; GUI deletion must not trigger native or Lua teardown through MainWindow children.

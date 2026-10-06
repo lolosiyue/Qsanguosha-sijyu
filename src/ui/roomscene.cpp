@@ -155,6 +155,9 @@ static ClientPlayer *getControlRootPlayer(const ClientPlayer *player)
 
 #include "testing/network-ui-smoke-responder.h"
 #include "ui-utils.h"
+#include "input-mode-tracker.h"
+#include "ui-action-dispatcher.h"
+#include <QWindow>
 
 using namespace QSanProtocol;
 
@@ -276,6 +279,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	// Apply a skin chosen during the previous game before any room item reads it.
 	QSanSkinFactory::getInstance().switchSkin(Config.value("RoomSkin").toString());
 	setParent(main_window);
+    // Gamepad actions reach the table semantically while it is the active surface.
+    UiActionDispatcher::instance()->setTableHandler(this, [this](UiAction action) { return handleUiAction(action); });
     auto *requestFocusShortcut = new QShortcut(QKeySequence(Qt::Key_F6), main_window);
     requestFocusShortcut->setContext(Qt::ApplicationShortcut);
     requestFocusShortcut->setAutoRepeat(false);
@@ -991,6 +996,7 @@ RoomScene::~RoomScene()
     // Detach the secondary document views before their scene-owned sources die.
     delete m_overlayHost;
     delete m_largeRoomOverview;
+	if (auto *dispatcher = UiActionDispatcher::instance()) dispatcher->clearTableHandler(this);
 	delete m_gamePresentation;
 	m_gamePresentation = nullptr;
 	delete m_replay;
@@ -2270,19 +2276,8 @@ bool RoomScene::handleNativeKey(QKeyEvent *event)
         event->accept(); // One activation per physical key press, even across requests.
         return true;
     }
-    if (!ClientInstance || QApplication::activeModalWidget()
-        || (chat_edit && chat_edit->hasFocus())) return false;
-    for (QGraphicsItem *item = focusItem(); item; item = item->parentItem()) {
-        if (dynamic_cast<QGraphicsProxyWidget *>(item)) return false;
-        if (auto *text = dynamic_cast<QGraphicsTextItem *>(item))
-            if (text->textInteractionFlags() != Qt::NoTextInteraction) return false;
-    }
+    if (!ClientInstance || nativeInputOwnedElsewhere() || !nativeRequestActive()) return false;
     ClientCore *core = ClientInstance->interactionCore();
-    const auto *session = ClientInstance->liveSession();
-    if (!core || !core->hasActiveRequest() || ClientInstance->getReplayer()
-        || ClientInstance->isPresentationStateSyncActive() || !session || !session->isActive()
-        || session->isStateSyncActive() || core->activeRequest().isExpired(core->now())
-        || core->activeRequest().type == InteractionType::QmlInteract) return false;
 
     // Reserve the key before callbacks: opening a skill dialog may run a nested
     // event loop before this handler returns.
@@ -2339,6 +2334,54 @@ bool RoomScene::handleNativeKey(QKeyEvent *event)
         event->accept();
     } else m_nativeKeysDown.remove(key);
     return handled;
+}
+
+bool RoomScene::nativeInputOwnedElsewhere() const
+{
+    if (QApplication::activeModalWidget() || (chat_edit && chat_edit->hasFocus())) return true;
+    for (QGraphicsItem *item = focusItem(); item; item = item->parentItem()) {
+        if (dynamic_cast<QGraphicsProxyWidget *>(item)) return true;
+        if (auto *text = dynamic_cast<QGraphicsTextItem *>(item))
+            if (text->textInteractionFlags() != Qt::NoTextInteraction) return true;
+    }
+    return false;
+}
+
+bool RoomScene::nativeRequestActive() const
+{
+    if (!ClientInstance) return false;
+    ClientCore *core = ClientInstance->interactionCore();
+    const auto *session = ClientInstance->liveSession();
+    return core && core->hasActiveRequest() && !ClientInstance->getReplayer()
+        && !ClientInstance->isPresentationStateSyncActive() && session && session->isActive()
+        && !session->isStateSyncActive() && !core->activeRequest().isExpired(core->now())
+        && core->activeRequest().type != InteractionType::QmlInteract;
+}
+
+bool RoomScene::handleUiAction(UiAction action)
+{
+    // Only while this table is what the player sees and nothing above it owns input;
+    // otherwise the dispatcher sends the generic key to the focused window.
+    if (views().isEmpty() || views().first()->scene() != this || !views().first()->isVisible()) return false;
+    if (!ClientInstance || nativeInputOwnedElsewhere()) return false;
+    const QWidget *window = views().first()->window();
+    if (const QWindow *focus = QGuiApplication::focusWindow())
+        if (window && focus != window->windowHandle()) return false; // A non-modal dialog has focus.
+    if (!nativeRequestActive()) return true; // The table owns input but nothing awaits an answer.
+    if (gamePresentation()->handleUiAction(action)) return true;
+    // Choice boxes (AG, Guanxing, trigger order, general choice) keep their native key handlers.
+    Qt::KeyboardModifiers modifiers;
+    const int key = QSanInput::uiActionKey(action, UiKeyMap::Table, &modifiers);
+    if (!key) return true;
+    InputModeTracker::SyntheticInputScope synthetic;
+    QPointer<RoomScene> guard(this);
+    QKeyEvent press(QEvent::KeyPress, key, modifiers);
+    handleNativeKey(&press);
+    if (guard) {
+        QKeyEvent release(QEvent::KeyRelease, key, modifiers);
+        handleNativeKey(&release);
+    }
+    return true;
 }
 
 void RoomScene::keyReleaseEvent(QKeyEvent*event)

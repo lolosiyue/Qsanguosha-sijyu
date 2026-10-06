@@ -16,6 +16,9 @@
 #include "roomscene.h"
 #include "skill.h"
 #include "large-room-overview.h"
+#include "gamepad-bootstrap.h"
+#include "input-mode-tracker.h"
+#include "table-button-legend.h"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -26,6 +29,7 @@
 #include <QTimer>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QtMath>
 #include <algorithm>
 
 void RoomScene::showGameStateSnapshot()
@@ -45,14 +49,24 @@ namespace {
 class TableKeyboardMarker final : public QGraphicsObject
 {
 public:
-    QRectF boundingRect() const override { return m_rect; }
+    QRectF boundingRect() const override { return boundingRectFor(); }
     void locate(const QRectF &rect) {
         if (m_rect == rect) return;
         prepareGeometryChange();
         m_rect = rect;
         update();
     }
+    void setTvStyle(bool tv) {
+        if (m_tv == tv) return;
+        prepareGeometryChange();
+        m_tv = tv;
+        update();
+    }
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) override {
+        if (m_tv) {
+            paintTv(painter);
+            return;
+        }
         QPen pen(QApplication::palette().color(QPalette::Highlight), 3, Qt::DashLine);
         pen.setCosmetic(true);
         painter->setPen(pen);
@@ -60,7 +74,32 @@ public:
         painter->drawRect(m_rect.adjusted(2, 2, -2, -2));
     }
 private:
+    // Big-picture ring: a solid outline outside the item plus a soft glow. Widths
+    // are in item units, so the ring grows with the scene on 1080p and 4K.
+    static constexpr qreal kTvOutset = 5;
+    static constexpr qreal kTvGlow = 9;
+    QRectF tvRect() const { return m_rect.adjusted(-kTvOutset, -kTvOutset, kTvOutset, kTvOutset); }
+    QRectF boundingRectFor() const {
+        return m_tv ? tvRect().adjusted(-kTvGlow, -kTvGlow, kTvGlow, kTvGlow) : m_rect;
+    }
+    void paintTv(QPainter *painter) {
+        const QColor accent(255, 200, 61);
+        const QRectF ring = tvRect();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setBrush(Qt::NoBrush);
+        for (int i = 3; i >= 1; --i) {
+            QColor glow = accent;
+            glow.setAlpha(36 + (3 - i) * 28);
+            painter->setPen(QPen(glow, 4 + i * 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter->drawRoundedRect(ring, 8, 8);
+        }
+        painter->setPen(QPen(accent, 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter->drawRoundedRect(ring, 8, 8);
+        painter->setPen(QPen(QColor(255, 255, 255, 220), 1.5));
+        painter->drawRoundedRect(ring.adjusted(3, 3, -3, -3), 6, 6);
+    }
     QRectF m_rect;
+    bool m_tv = false;
 };
 
 QString plain(const QString &text)
@@ -106,6 +145,14 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     connect(scene->m_chooseTriggerOrderBox, &ChooseTriggerOrderBox::draftChanged, this, [this]() { scheduleRefresh(); });
     connect(scene->m_chooseGeneralBox, &ChooseGeneralBox::draftChanged, this, [this]() { scheduleRefresh(); });
     connect(scene->dashboard, &Dashboard::dialogOptionSelectionChanged, this, [this]() { scheduleRefresh(); });
+    m_tvFocus = QSanInput::bigPictureActive();
+    if (m_tvFocus) {
+        // Mouse use hides the TV ring but keeps its position; keys/pad show it again.
+        connect(InputModeTracker::instance(), &InputModeTracker::modeChanged, this, [this]() {
+            updateKeyboardCursor();
+            scheduleRefresh();
+        });
+    }
 #ifdef Q_OS_ANDROID
     connect(qApp, &QGuiApplication::applicationStateChanged, this, [this]() {
         // Fence queued taps even if suspend/resume completes before publication.
@@ -143,6 +190,7 @@ DesktopGamePresentation::~DesktopGamePresentation()
     delete m_panel;
     delete m_snapshot;
     delete m_keyboardMarker;
+    delete m_legend;
 }
 
 void DesktopGamePresentation::clearKeyboardCursor()
@@ -166,12 +214,7 @@ void DesktopGamePresentation::updateKeyboardCursor()
                 if (QString::number(card->getId()) == m_keyboardId) item = card;
         }
     } else if (m_keyboardKind == QLatin1String("player")) {
-        for (auto it = m_scene->item2player.cbegin(); it != m_scene->item2player.cend(); ++it)
-            if (it.value() && it.value()->objectName() == m_keyboardId) item = it.key();
-        // Large rooms retain invisible canonical Photos. Outline their native
-        // visible projection, while intents still update the canonical draft.
-        if (m_scene->m_largeRoomOverview && m_scene->m_largeRoomOverview->isVisible())
-            item = m_scene->m_largeRoomOverview->keyboardTarget(m_keyboardId);
+        item = playerItem(m_keyboardId);
     } else if (m_keyboardKind == QLatin1String("skill")) {
         for (auto *button : m_scene->m_skillButtons)
             if (button->objectName() == m_keyboardId) item = button;
@@ -182,7 +225,9 @@ void DesktopGamePresentation::updateKeyboardCursor()
         else if (m_keyboardId == QLatin1String("cancel")) item = m_scene->cancel_button;
         else if (m_keyboardId == QLatin1String("finish")) item = m_scene->discard_button;
     }
-    if (!item || !item->isVisible()) {
+    const auto *tracker = InputModeTracker::existing();
+    const bool mouseMode = m_tvFocus && tracker && tracker->mode() == InputModeTracker::Mode::Mouse;
+    if (!item || !item->isVisible() || mouseMode) {
         if (m_keyboardMarker) m_keyboardMarker->hide();
         return;
     }
@@ -196,8 +241,71 @@ void DesktopGamePresentation::updateKeyboardCursor()
     // Follow the item's movement/scale (hand selection, target rows and reflow).
     // QPointer clears if that item's destruction also destroys the outline.
     m_keyboardMarker->setParentItem(item);
-    static_cast<TableKeyboardMarker *>(m_keyboardMarker.data())->locate(item->boundingRect());
+    auto *marker = static_cast<TableKeyboardMarker *>(m_keyboardMarker.data());
+    marker->setTvStyle(m_tvFocus);
+    marker->locate(item->boundingRect());
     m_keyboardMarker->show();
+}
+
+QGraphicsObject *DesktopGamePresentation::playerItem(const QString &name) const
+{
+    QGraphicsObject *item = nullptr;
+    for (auto it = m_scene->item2player.cbegin(); it != m_scene->item2player.cend(); ++it)
+        if (it.value() && it.value()->objectName() == name) item = it.key();
+    // Large rooms retain invisible canonical Photos. Outline their native
+    // visible projection, while intents still update the canonical draft.
+    if (m_scene->m_largeRoomOverview && m_scene->m_largeRoomOverview->isVisible())
+        item = m_scene->m_largeRoomOverview->keyboardTarget(name);
+    return item;
+}
+
+bool DesktopGamePresentation::tableInteractionSupported() const
+{
+    return m_model.supported && (cardInteraction(m_model.request.type)
+        || m_model.request.type == InteractionType::SkillInvoke
+        || m_model.request.type == InteractionType::LuckCard
+        || m_model.request.type == InteractionType::Surrender);
+}
+
+QList<DesktopGamePresentation::KeyboardGroup> DesktopGamePresentation::keyboardGroups(bool *booleanPrompt) const
+{
+    QList<KeyboardGroup> groups;
+    const auto append = [&groups](const QString &kind, const QList<GameActionEntry> &entries) {
+        QList<GameActionEntry> enabled;
+        for (const auto &entry : entries) if (entry.enabled) enabled << entry;
+        if (!enabled.isEmpty()) groups.append({kind, enabled});
+    };
+    if (m_model.actionContext == QLatin1String("skill-dialog"))
+        append(QStringLiteral("option"), m_model.actions);
+    append(QStringLiteral("card"), m_model.cards);
+    append(QStringLiteral("player"), m_model.players);
+    append(QStringLiteral("skill"), m_model.skills);
+    QList<GameActionEntry> commands;
+    // Boolean prompts use the existing yes/no room buttons, not an unseen option draft.
+    *booleanPrompt = m_client && (m_client->getStatus() & Client::ClientStatusBasicMask) == Client::AskForSkillInvoke;
+    if (m_model.canConfirm || (*booleanPrompt && m_scene->ok_button->isEnabled()))
+        commands.append({QStringLiteral("confirm"), {}, true, false, {}});
+    if (m_model.canCancel) commands.append({QStringLiteral("cancel"), {}, true, false, {}});
+    if (m_model.canFinish) commands.append({QStringLiteral("finish"), {}, true, false, {}});
+    append(QStringLiteral("command"), commands);
+    return groups;
+}
+
+void DesktopGamePresentation::locateCursor(const QList<KeyboardGroup> &groups, int *groupIndex, int *entryIndex) const
+{
+    *groupIndex = -1;
+    *entryIndex = -1;
+    for (int g = 0; g < groups.size(); ++g) {
+        if (groups.at(g).kind != m_keyboardKind) continue;
+        *groupIndex = g;
+        for (int i = 0; i < groups.at(g).entries.size(); ++i)
+            if (groups.at(g).entries.at(i).id == m_keyboardId) *entryIndex = i;
+    }
+}
+
+void DesktopGamePresentation::submitCurrent(const QString &kind, const QString &id, bool selected)
+{
+    applyIntent(kind, id, selected, m_model.sessionGeneration, m_model.presentationRevision, m_model.requestId);
 }
 
 bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
@@ -214,40 +322,14 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
     if (!tab && !arrow && !enter && key != Qt::Key_Space && key != Qt::Key_Escape
         && key != Qt::Key_F2 && key != Qt::Key_Plus && key != Qt::Key_Minus) return false;
     refresh();
-    if (!m_model.supported || (!cardInteraction(m_model.request.type)
-        && m_model.request.type != InteractionType::SkillInvoke
-        && m_model.request.type != InteractionType::LuckCard
-        && m_model.request.type != InteractionType::Surrender)) return false;
+    if (!tableInteractionSupported()) return false;
 
-    struct Group { QString kind; QList<GameActionEntry> entries; };
-    QList<Group> groups;
-    const auto append = [&groups](const QString &kind, const QList<GameActionEntry> &entries) {
-        QList<GameActionEntry> enabled;
-        for (const auto &entry : entries) if (entry.enabled) enabled << entry;
-        if (!enabled.isEmpty()) groups.append({kind, enabled});
-    };
-    if (m_model.actionContext == QLatin1String("skill-dialog"))
-        append(QStringLiteral("option"), m_model.actions);
-    append(QStringLiteral("card"), m_model.cards);
-    append(QStringLiteral("player"), m_model.players);
-    append(QStringLiteral("skill"), m_model.skills);
-    QList<GameActionEntry> commands;
-    // Boolean prompts use the existing yes/no room buttons, not an unseen option draft.
-    const bool booleanPrompt = (m_client->getStatus() & Client::ClientStatusBasicMask) == Client::AskForSkillInvoke;
-    if (m_model.canConfirm || (booleanPrompt && m_scene->ok_button->isEnabled()))
-        commands.append({QStringLiteral("confirm"), {}, true, false, {}});
-    if (m_model.canCancel) commands.append({QStringLiteral("cancel"), {}, true, false, {}});
-    if (m_model.canFinish) commands.append({QStringLiteral("finish"), {}, true, false, {}});
-    append(QStringLiteral("command"), commands);
+    bool booleanPrompt = false;
+    const QList<KeyboardGroup> groups = keyboardGroups(&booleanPrompt);
     if (groups.isEmpty()) { clearKeyboardCursor(); return tab || enter; }
 
     int groupIndex = -1, entryIndex = -1;
-    for (int g = 0; g < groups.size(); ++g) {
-        if (groups.at(g).kind != m_keyboardKind) continue;
-        groupIndex = g;
-        for (int i = 0; i < groups.at(g).entries.size(); ++i)
-            if (groups.at(g).entries.at(i).id == m_keyboardId) entryIndex = i;
-    }
+    locateCursor(groups, &groupIndex, &entryIndex);
     if (tab || key == Qt::Key_F2 || (arrow && !m_keyboardKind.isEmpty())) {
         const bool backward = key == Qt::Key_Backtab || key == Qt::Key_Left || key == Qt::Key_Up
             || (tab && event->modifiers().testFlag(Qt::ShiftModifier));
@@ -266,11 +348,12 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
             : (entryIndex + direction + entries.size()) % entries.size();
         m_keyboardKind = groups.at(groupIndex).kind;
         m_keyboardId = entries.at(entryIndex).id;
+        m_cursorFromAutoFocus = false;
         updateKeyboardCursor();
         return true;
     }
     const auto submit = [this](const QString &kind, const QString &id, bool selected) {
-        applyIntent(kind, id, selected, m_model.sessionGeneration, m_model.presentationRevision, m_model.requestId);
+        submitCurrent(kind, id, selected);
     };
     if (key == Qt::Key_Escape) {
         if (m_model.canCancel) submit(QStringLiteral("cancel"), {}, false);
@@ -303,6 +386,373 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
         return true;
     }
     return false;
+}
+
+namespace {
+// Clockwise angle (degrees) around the table seen from the bottom seat:
+// bottom 0, left 90, top 180, right 270.
+qreal seatAngle(const QPointF &point, const QPointF &center)
+{
+    const QPointF v = point - center;
+    qreal angle = qRadiansToDegrees(qAtan2(-v.x(), v.y()));
+    if (angle < 0) angle += 360;
+    return angle;
+}
+
+qreal angleDistance(qreal a, qreal b)
+{
+    const qreal d = qAbs(a - b);
+    return qMin(d, 360 - d);
+}
+}
+
+QString DesktopGamePresentation::ringNeighbour(const QList<GameActionEntry> &players, const QString &from,
+                                               UiAction action) const
+{
+    // Seat geometry comes from the items on screen, so every layout profile,
+    // handedness and the large-room overview get a ring that matches what is shown.
+    QHash<QString, QPointF> anchors;
+    QPointF center;
+    int counted = 0;
+    for (auto it = m_scene->item2player.cbegin(); it != m_scene->item2player.cend(); ++it) {
+        if (!it.value()) continue;
+        QGraphicsObject *item = playerItem(it.value()->objectName());
+        if (!item) continue;
+        const QPointF anchor = item->sceneBoundingRect().center();
+        anchors.insert(it.value()->objectName(), anchor);
+        center += anchor;
+        ++counted;
+    }
+    if (counted == 0 || !anchors.contains(from)) return QString();
+    center /= counted;
+    const QPointF origin = anchors.value(from);
+
+    if (action == UiAction::Left || action == UiAction::Right) {
+        QList<QPair<qreal, QString>> ring;
+        for (const auto &entry : players)
+            if (anchors.contains(entry.id)) ring.append({seatAngle(anchors.value(entry.id), center), entry.id});
+        std::sort(ring.begin(), ring.end());
+        int index = -1;
+        for (int i = 0; i < ring.size(); ++i) if (ring.at(i).second == from) index = i;
+        if (index < 0 || ring.size() < 2) return from;
+        // Right walks clockwise (left column, top row left to right, right column).
+        const int step = action == UiAction::Right ? 1 : -1;
+        return ring.at((index + step + ring.size()) % ring.size()).second;
+    }
+
+    const bool up = action == UiAction::Up;
+    QString best;
+    qreal bestScore = 0;
+    for (const auto &entry : players) {
+        if (entry.id == from || !anchors.contains(entry.id)) continue;
+        const QPointF delta = anchors.value(entry.id) - origin;
+        if (up ? delta.y() > -8 : delta.y() < 8) continue;
+        const qreal score = qAbs(delta.y()) + 2 * qAbs(delta.x());
+        if (best.isEmpty() || score < bestScore) { best = entry.id; bestScore = score; }
+    }
+    if (!best.isEmpty() || !up) return best.isEmpty() ? from : best;
+    // Nothing above (top row): jump across the table.
+    const qreal fromAngle = seatAngle(origin, center);
+    qreal across = -1;
+    for (const auto &entry : players) {
+        if (entry.id == from || !anchors.contains(entry.id)) continue;
+        const qreal distance = angleDistance(seatAngle(anchors.value(entry.id), center), fromAngle);
+        if (distance > across) { across = distance; best = entry.id; }
+    }
+    return best.isEmpty() ? from : best;
+}
+
+int DesktopGamePresentation::initialEntry(const KeyboardGroup &group) const
+{
+    const auto &entries = group.entries;
+    if (group.kind == QLatin1String("command")) {
+        // Responses default to declining; other requests to confirming.
+        const InteractionType type = m_model.request.type;
+        const bool response = type == InteractionType::ResponseCard || type == InteractionType::AskPeach
+            || type == InteractionType::Nullification;
+        const QString preferred = response ? QStringLiteral("cancel") : QStringLiteral("confirm");
+        for (int i = 0; i < entries.size(); ++i) if (entries.at(i).id == preferred) return i;
+        return 0;
+    }
+    if (group.kind == QLatin1String("option")) {
+        for (int i = 0; i < entries.size(); ++i) if (entries.at(i).selected) return i;
+        return 0;
+    }
+    if (group.kind == QLatin1String("card")) {
+        for (int i = 0; i < entries.size(); ++i)
+            if (!entries.at(i).id.startsWith(QLatin1String("equip:"))) return i; // First usable hand card.
+        return 0;
+    }
+    if (group.kind == QLatin1String("player")) {
+        // Nearest legal target to the operating seat, measured around the ring.
+        const ClientPlayer *self = m_scene->getDashboardPlayer();
+        QGraphicsObject *selfItem = self ? playerItem(self->objectName()) : nullptr;
+        QPointF center;
+        int counted = 0;
+        QList<QPointF> anchors;
+        for (const auto &entry : entries) {
+            QGraphicsObject *item = playerItem(entry.id);
+            anchors.append(item ? item->sceneBoundingRect().center() : QPointF());
+        }
+        for (auto it = m_scene->item2player.cbegin(); it != m_scene->item2player.cend(); ++it) {
+            if (!it.value()) continue;
+            if (QGraphicsObject *item = playerItem(it.value()->objectName())) {
+                center += item->sceneBoundingRect().center();
+                ++counted;
+            }
+        }
+        if (!selfItem || counted == 0) return 0;
+        center /= counted;
+        const qreal selfAngle = seatAngle(selfItem->sceneBoundingRect().center(), center);
+        int best = 0;
+        qreal bestDistance = 1000;
+        for (int i = 0; i < entries.size(); ++i) {
+            if (anchors.at(i).isNull()) continue;
+            const qreal distance = angleDistance(seatAngle(anchors.at(i), center), selfAngle);
+            if (distance < bestDistance) { bestDistance = distance; best = i; }
+        }
+        return best;
+    }
+    return 0;
+}
+
+void DesktopGamePresentation::placeInitialFocus(const QList<KeyboardGroup> &groups)
+{
+    if (groups.isEmpty()) return;
+    const auto find = [&groups](const char *kind) {
+        for (int i = 0; i < groups.size(); ++i) if (groups.at(i).kind == QLatin1String(kind)) return i;
+        return -1;
+    };
+    const InteractionType type = m_model.request.type;
+    int group = -1;
+    if (type == InteractionType::SkillInvoke || type == InteractionType::LuckCard
+        || type == InteractionType::Surrender)
+        group = find("command");
+    if (group < 0 && m_model.actionContext == QLatin1String("skill-dialog")) group = find("option");
+    if (group < 0) group = find("card");
+    if (group < 0) group = find("player");
+    if (group < 0) group = find("command");
+    if (group < 0) group = 0;
+    m_keyboardKind = groups.at(group).kind;
+    m_keyboardId = groups.at(group).entries.at(initialEntry(groups.at(group))).id;
+    updateKeyboardCursor();
+}
+
+bool DesktopGamePresentation::clearDraftSelection()
+{
+    // Unselect one item at a time against the freshly projected draft: removing
+    // a card can also drop its targets.
+    bool cleared = false;
+    for (int guard = 0; guard < 64; ++guard) {
+        QString kind, id;
+        for (const auto &entry : m_model.cards)
+            if (entry.selected && entry.enabled) { kind = QStringLiteral("card"); id = entry.id; break; }
+        if (id.isEmpty())
+            for (const auto &entry : m_model.players)
+                if (entry.selected && entry.enabled) { kind = QStringLiteral("player"); id = entry.id; break; }
+        if (id.isEmpty()) break;
+        const quint64 before = m_model.presentationRevision;
+        submitCurrent(kind, id, false);
+        if (m_model.presentationRevision == before) break; // Rejected; fall back to cancel.
+        cleared = true;
+    }
+    return cleared;
+}
+
+bool DesktopGamePresentation::handleUiAction(UiAction action)
+{
+    // Automatic focus must not land inside this refresh: with no visible focus,
+    // the press below only reveals it instead of acting on an unseen default.
+    m_suppressAutoFocus = true;
+    refresh();
+    m_suppressAutoFocus = false;
+    if (!tableInteractionSupported()) return false;
+
+    bool booleanPrompt = false;
+    QList<KeyboardGroup> groups = keyboardGroups(&booleanPrompt);
+    if (groups.isEmpty()) {
+        clearKeyboardCursor();
+        return action == UiAction::Confirm || action == UiAction::PreviousGroup || action == UiAction::NextGroup;
+    }
+    int groupIndex = -1, entryIndex = -1;
+    locateCursor(groups, &groupIndex, &entryIndex);
+    const bool located = groupIndex >= 0 && entryIndex >= 0;
+    m_cursorFromAutoFocus = false;
+    const auto focus = [this](const KeyboardGroup &group, int index) {
+        m_keyboardKind = group.kind;
+        m_keyboardId = group.entries.at(index).id;
+        updateKeyboardCursor();
+    };
+
+    switch (action) {
+    case UiAction::Up:
+    case UiAction::Down:
+    case UiAction::Left:
+    case UiAction::Right: {
+        // The first press only reveals focus; it never moves past the default.
+        if (!located) { placeInitialFocus(groups); return true; }
+        const KeyboardGroup &group = groups.at(groupIndex);
+        if (group.kind == QLatin1String("player")) {
+            const QString next = ringNeighbour(group.entries, m_keyboardId, action);
+            if (!next.isEmpty()) m_keyboardId = next;
+            updateKeyboardCursor();
+            return true;
+        }
+        const int step = action == UiAction::Right || action == UiAction::Down ? 1 : -1;
+        focus(group, (entryIndex + step + group.entries.size()) % group.entries.size());
+        return true;
+    }
+    case UiAction::PreviousGroup:
+    case UiAction::NextGroup: {
+        const bool backward = action == UiAction::PreviousGroup;
+        const int next = groupIndex < 0 ? (backward ? groups.size() - 1 : 0)
+            : (groupIndex + (backward ? -1 : 1) + groups.size()) % groups.size();
+        focus(groups.at(next), initialEntry(groups.at(next)));
+        return true;
+    }
+    case UiAction::PreviousPage:
+    case UiAction::NextPage: {
+        int target = groupIndex < 0 ? 0 : groupIndex;
+        for (int i = 0; i < groups.size(); ++i) if (groups.at(i).kind == QLatin1String("card")) target = i;
+        const auto &entries = groups.at(target).entries;
+        focus(groups.at(target), action == UiAction::PreviousPage ? 0 : entries.size() - 1);
+        return true;
+    }
+    case UiAction::Accept: {
+        if (!located) { placeInitialFocus(groups); return true; }
+        const GameActionEntry entry = groups.at(groupIndex).entries.at(entryIndex);
+        if (m_keyboardKind == QLatin1String("command")) {
+            if (booleanPrompt && entry.id == QLatin1String("confirm")) m_scene->doOkButton();
+            else submitCurrent(entry.id, {}, true);
+            updateKeyboardCursor();
+            return true;
+        }
+        const QString kind = m_keyboardKind;
+        submitCurrent(kind, entry.id, !entry.selected);
+        if (kind == QLatin1String("skill")) {
+            clearKeyboardCursor(); // The skill's costs/options become the new groups.
+            if (tableInteractionSupported()) placeInitialFocus(keyboardGroups(&booleanPrompt));
+            return true;
+        }
+        if (kind == QLatin1String("card") && !entry.selected && tableInteractionSupported()) {
+            // Choosing a card that now needs targets moves on to the nearest legal one.
+            groups = keyboardGroups(&booleanPrompt);
+            const bool targetChosen = std::any_of(m_model.players.cbegin(), m_model.players.cend(),
+                [](const GameActionEntry &player) { return player.selected; });
+            for (const auto &group : groups) {
+                if (group.kind == QLatin1String("player") && !targetChosen) {
+                    focus(group, initialEntry(group));
+                    return true;
+                }
+            }
+        }
+        updateKeyboardCursor();
+        return true;
+    }
+    case UiAction::Confirm:
+        if (booleanPrompt) m_scene->doOkButton();
+        else if (m_model.canConfirm) submitCurrent(QStringLiteral("confirm"), {}, true);
+        return true;
+    case UiAction::Back:
+        // First press clears the draft, the next one cancels (the existing Escape path).
+        if (clearDraftSelection()) {
+            updateKeyboardCursor();
+            return true;
+        }
+        if (m_model.canCancel) submitCurrent(QStringLiteral("cancel"), {}, false);
+        clearKeyboardCursor();
+        return true;
+    case UiAction::Secondary:
+        if (!m_model.canFinish) return false;
+        submitCurrent(QStringLiteral("finish"), {}, true);
+        clearKeyboardCursor();
+        return true;
+    case UiAction::Details:
+    case UiAction::View:
+    case UiAction::Menu:
+        return false; // Information card, log drawer and room menu arrive with BP-1f/BP-2.
+    }
+    return false;
+}
+
+bool DesktopGamePresentation::focusLayerActive() const
+{
+    if (m_tvFocus) return true;
+    const auto *tracker = InputModeTracker::existing();
+    return tracker && tracker->mode() == InputModeTracker::Mode::Gamepad;
+}
+
+void DesktopGamePresentation::updateFocusLayer()
+{
+    bool booleanPrompt = false;
+    QList<KeyboardGroup> groups;
+    if (tableInteractionSupported()) groups = keyboardGroups(&booleanPrompt);
+    const auto *tracker = InputModeTracker::existing();
+    if (tracker && tracker->mode() == InputModeTracker::Mode::Gamepad && !groups.isEmpty()) {
+        int groupIndex = -1, entryIndex = -1;
+        locateCursor(groups, &groupIndex, &entryIndex);
+        const bool located = groupIndex >= 0 && entryIndex >= 0;
+        if (!located && m_keyboardKind.isEmpty() && m_autoFocusRequest != m_model.requestId) {
+            // A new request while playing with a pad: put focus on the likely action.
+            m_autoFocusRequest = m_model.requestId;
+            placeInitialFocus(groups);
+            m_cursorFromAutoFocus = true;
+        } else if (m_cursorFromAutoFocus && located && groups.at(groupIndex).kind == QLatin1String("command")
+                   && groups.size() > 1) {
+            // Cards/targets were projected after the commands; prefer them while untouched.
+            placeInitialFocus(groups);
+        }
+    }
+    if (m_tvFocus) updateLegend(groups, booleanPrompt);
+}
+
+void DesktopGamePresentation::updateLegend(const QList<KeyboardGroup> &groups, bool booleanPrompt)
+{
+    QList<TableButtonLegend::Entry> entries;
+    if (!groups.isEmpty()) {
+        const auto *tracker = InputModeTracker::existing();
+        const GlyphStyle style = tracker && tracker->mode() == InputModeTracker::Mode::Keyboard
+            ? GlyphStyle::Keyboard : QSanInput::currentGlyphStyle();
+        const auto glyph = [style](UiAction action) { return QSanInput::uiActionGlyph(action, style); };
+        const bool selectable = std::any_of(groups.cbegin(), groups.cend(),
+            [](const KeyboardGroup &group) { return group.kind != QLatin1String("command"); });
+        const auto selected = [](const QList<GameActionEntry> &list) {
+            return std::any_of(list.cbegin(), list.cend(),
+                [](const GameActionEntry &entry) { return entry.selected && entry.enabled; });
+        };
+        entries.append({glyph(UiAction::Left), tr("Move")});
+        if (selectable) entries.append({glyph(UiAction::Accept), tr("Select")});
+        if (m_model.canConfirm || (booleanPrompt && m_scene->ok_button->isEnabled()))
+            entries.append({glyph(UiAction::Confirm), tr("Confirm")});
+        if (selected(m_model.cards) || selected(m_model.players))
+            entries.append({glyph(UiAction::Back), tr("Clear")});
+        else if (m_model.canCancel)
+            entries.append({glyph(UiAction::Back), tr("Cancel")});
+        if (m_model.canFinish && style != GlyphStyle::Keyboard)
+            entries.append({glyph(UiAction::Secondary), tr("End phase")});
+        if (groups.size() > 1)
+            entries.append({glyph(UiAction::PreviousGroup) + QStringLiteral(" / ") + glyph(UiAction::NextGroup),
+                            tr("Switch group")});
+    }
+    if (entries.isEmpty()) {
+        if (m_legend) m_legend->hide();
+        return;
+    }
+    if (!m_legend) {
+        auto *legend = new TableButtonLegend;
+        legend->setZValue(10001);
+        m_scene->addItem(legend);
+        m_legend = legend;
+    }
+    m_legend->setEntries(entries);
+    // Centered above the dashboard, clear of the hand cards and the countdown bar on its top edge.
+    const QRectF scene = m_scene->sceneRect();
+    const QRectF size = m_legend->boundingRect();
+    qreal bottom = scene.bottom() - 8;
+    if (m_scene->dashboard && m_scene->dashboard->isVisible())
+        bottom = qMin(bottom, m_scene->dashboard->sceneBoundingRect().top() - 24);
+    m_legend->setPos(scene.center().x() - size.width() / 2, bottom - size.height());
+    m_legend->show();
 }
 
 void DesktopGamePresentation::setLiveConsumer(QObject *consumer, bool live)
@@ -346,7 +796,8 @@ void DesktopGamePresentation::submitIntent(const QString &kind, const QString &i
 
 void DesktopGamePresentation::scheduleRefresh()
 {
-    if ((m_liveConsumers.isEmpty() && (!m_panel || !m_panel->isVisible())) || m_refreshPending) return;
+    if ((m_liveConsumers.isEmpty() && (!m_panel || !m_panel->isVisible()) && !focusLayerActive())
+        || m_refreshPending) return;
     m_refreshPending = true;
     QTimer::singleShot(0, this, [this]() {
         m_refreshPending = false;
@@ -711,6 +1162,7 @@ void DesktopGamePresentation::refresh()
             emit presentationChanged(m_cachedView, m_model);
         }
     }
+    if (focusLayerActive() && !m_suppressAutoFocus) updateFocusLayer();
 }
 
 GameViewState DesktopGamePresentation::viewState() const

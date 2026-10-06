@@ -16,6 +16,7 @@
 #include <cstdio>
 #include "structs.h"
 #include "test-client-socket.h"
+#include "ui-action-dispatcher.h"
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -920,6 +921,29 @@ bool LocalResponseUiController::pressKey(const QJsonObject &action, QString *err
     return true;
 }
 
+bool LocalResponseUiController::dispatchUiAction(const QJsonObject &action, QString *error)
+{
+    // Inject the semantic action through the production dispatcher, exactly as
+    // GamepadService does; no gamepad or SDL is needed.
+    const QString name = action.value(QStringLiteral("action")).toString();
+    UiAction uiAction;
+    if (!QSanInput::uiActionFromName(name, &uiAction)) {
+        *error = QStringLiteral("unsupported ui action '%1'").arg(name);
+        return false;
+    }
+    for (QWidget *widget : QApplication::topLevelWidgets()) {
+        if (qobject_cast<GameControlPanel *>(widget) && widget->isVisible()) {
+            *error = QStringLiteral("ui action fixture requires the game control panel closed");
+            return false;
+        }
+    }
+    if (!UiActionDispatcher::instance()->dispatch(uiAction)) {
+        *error = QStringLiteral("ui action '%1' was not delivered").arg(name);
+        return false;
+    }
+    return true;
+}
+
 bool LocalResponseUiController::runAction(int index, QString *error)
 {
     const QJsonObject action = m_case.actions().at(index).toObject();
@@ -929,6 +953,8 @@ bool LocalResponseUiController::runAction(int index, QString *error)
 
     if (type == QStringLiteral("key_press"))
         ok = pressKey(action, &actionError);
+    else if (type == QStringLiteral("ui_action"))
+        ok = dispatchUiAction(action, &actionError);
     else if (type == QStringLiteral("select_card"))
         ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), true, &actionError);
     else if (type == QStringLiteral("unselect_card"))
