@@ -18,6 +18,8 @@ public:
     // Mode entries in dialog order: grouped modes, single modes, then scenarios and mini scenes.
     Q_INVOKABLE QVariantList modes() const;
     Q_INVOKABLE QVariantList packageSections() const;
+    // Built on hover; walking every package's generals and cards up front stalls the page.
+    Q_INVOKABLE QString packageTooltip(const QString &name) const;
     Q_INVOKABLE QString detectAddress() const;
 
     // Sub-editors stay dialogs; QML calls them after its click handler returns.

@@ -55,8 +55,7 @@ QVariantMap packageEntry(const Package *package)
     return { { QStringLiteral("name"), name },
              { QStringLiteral("label"), Sanguosha->translate(name) },
              { QStringLiteral("checked"), !Config.BanPackages.contains(name) && !package->isForbid() },
-             { QStringLiteral("enabled"), !package->isForbid() },
-             { QStringLiteral("tooltip"), packageContents(package) } };
+             { QStringLiteral("enabled"), !package->isForbid() } };
 }
 
 QVariantMap packageSection(const QString &title, const QVariantList &packages)
@@ -230,6 +229,12 @@ QVariantList ServerSetupSession::packageSections() const
     if (!luaCards.isEmpty())
         sections << packageSection(Sanguosha->translate(QStringLiteral("lua_card")), luaCards);
     return sections;
+}
+
+QString ServerSetupSession::packageTooltip(const QString &name) const
+{
+    const Package *package = Sanguosha->findChild<const Package *>(name);
+    return package ? packageContents(package) : QString();
 }
 
 QString ServerSetupSession::detectAddress() const
