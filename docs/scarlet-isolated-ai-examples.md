@@ -22,17 +22,15 @@ native 只新增純值投影：可見牌堆的 `cards` metadata 與已投影技�
 
 原版已存在的行為保留：draw 基礎評分中的 `needDraw(to, notDraw)` 使用未定義變數，通常不加分；傷害估算中的 `getMark("@inu_to")` 即使 0 也為 Lua truthy。這些不是本批修正的規則。志繼仍按原 AI 的基準 1 傷估算，未新增 V2 修改後成本的權威預演。
 
-## 實作前列出的失敗情境與待驗收
+## 待驗收情境
 
 | 情境 | 預期 |
 |---|---|
 | 非空牌堆 metadata 缺失、ID 不匹配或閉合牌堆 | 不回部分卡牌集合 |
 | 未知關係、救援轉化或傷害條件 | unsupported，不當成 0、非友方或安全自傷 |
 | 推薦 hook veto／非有限分數 | veto 排除該目標；壞資料 unsupported |
-| 無正分且全為敵方候選 | 按原版 fallback 首名，不擅自改成 pass |
+| 無正分且全為敵方候選 | 按原版 fallback 首名，不改成 pass |
 | 背水安全成立／不成立／隨機邊界 | 保留原版短路順序及 RNG 試擲次數 |
-| 借用／多實例 | 純值 handler 無跨實例快取；dispatcher 身份與 native 拒絕仍待執行驗證 |
+| 借用／多實例 | 純值 handler 無跨實例快取；dispatcher 身份與 native 拒絕待執行驗證 |
 
-## 驗證狀態
-
-完成原始碼整合、靜態審查與 Lua 語法解析。尚未執行 build、Lua handler、native focused、CTest、完整對局或 CI；新 native 投影須重新建置後才可使用。既有備陣／伐逆不在本批審查範圍。完整契約見 [isolated AI 寫法](isolated-ai-authoring-guide.md)。
+狀態：已完成原始碼整合、靜態審查與 Lua 語法解析；尚未建置或執行（新 native 投影須重新建置後才可用）。備陣／伐逆不在本批範圍。契約見 [isolated AI 寫法](isolated-ai-authoring-guide.md)。
