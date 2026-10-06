@@ -16,6 +16,7 @@ class GameTextSnapshotDialog;
 class QAbstractButton;
 class QKeyEvent;
 class QGraphicsObject;
+class QStatusBar;
 
 // The Qt desktop/Android adapter projects existing RoomScene/Dashboard selections. It owns
 // no second card draft, rule engine or interaction session.
@@ -79,6 +80,7 @@ private:
     bool m_controllerNavigation = false;
     QString m_controllerPlayer;
     QPointer<QGraphicsObject> m_keyboardMarker;
+    QPointer<QStatusBar> m_keyboardStatusBar;
 };
 
 #endif

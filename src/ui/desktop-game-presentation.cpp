@@ -152,8 +152,9 @@ void DesktopGamePresentation::clearKeyboardCursor()
     m_keyboardKind.clear();
     m_keyboardId.clear();
     if (m_keyboardMarker) m_keyboardMarker->hide();
-    if (m_scene->mainWindow()) {
-        auto *status = m_scene->mainWindow()->statusBar();
+    // The parent QMainWindow may already be in QWidget destruction when its
+    // RoomScene child is deleted. Never call its statusBar() factory then.
+    if (auto *status = m_keyboardStatusBar.data()) {
         if (status->property("controllerHintStyled").toBool()) {
             status->setStyleSheet(status->property("controllerHintOriginalStyle").toString());
             status->setProperty("controllerHintStyled", false);
@@ -167,6 +168,7 @@ void DesktopGamePresentation::updateKeyboardCursor()
 {
     if (m_controllerNavigation && !m_keyboardKind.isEmpty() && m_scene->mainWindow()) {
         auto *status = m_scene->mainWindow()->statusBar();
+        m_keyboardStatusBar = status;
         if (!status->property("controllerHintStyled").toBool()) {
             const QString original = status->styleSheet();
             status->setProperty("controllerHintOriginalStyle", original);
