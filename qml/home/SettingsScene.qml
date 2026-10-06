@@ -88,6 +88,9 @@ Item {
         spacing: 10
         checked: root.values[key] === true
         onToggled: root.set(key, checked)
+        // Accessible toggle otherwise only changes checked, bypassing the draft.
+        Accessible.onToggleAction: check.click()
+        Accessible.onPressAction: check.click()
         onActiveFocusChanged: if (activeFocus) root.reveal(check)
         Keys.onShortcutOverride: function(event) {
             if (event.key === Qt.Key_Space)
