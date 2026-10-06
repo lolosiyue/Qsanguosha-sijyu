@@ -101,6 +101,8 @@ public:
     const Card *_askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to,
                                      bool positive);
     const Card *askForSinglePeach(ServerPlayer *player, ServerPlayer *dying);
+    // Cancellation settlement excludes author validation/view-as effects.
+    const Card *askForPhysicalPeach(ServerPlayer *player, ServerPlayer *dying);
     QString askForTriggerOrder(ServerPlayer *player, const QString &reason,
                                QList<SkillContext> &contexts, bool optional, const QVariant &data);
 
