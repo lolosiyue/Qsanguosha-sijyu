@@ -26,6 +26,7 @@
 #include <QTimer>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QStatusBar>
 #include <algorithm>
 
 void RoomScene::showGameStateSnapshot()
@@ -139,6 +140,7 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
 
 DesktopGamePresentation::~DesktopGamePresentation()
 {
+    clearKeyboardCursor();
     // These are parented to the main window, whose lifetime exceeds RoomScene.
     delete m_panel;
     delete m_snapshot;
@@ -150,10 +152,34 @@ void DesktopGamePresentation::clearKeyboardCursor()
     m_keyboardKind.clear();
     m_keyboardId.clear();
     if (m_keyboardMarker) m_keyboardMarker->hide();
+    // The parent QMainWindow may already be in QWidget destruction when its
+    // RoomScene child is deleted. Never call its statusBar() factory then.
+    if (auto *status = m_keyboardStatusBar.data()) {
+        if (status->property("controllerHintStyled").toBool()) {
+            status->setStyleSheet(status->property("controllerHintOriginalStyle").toString());
+            status->setProperty("controllerHintStyled", false);
+            status->setProperty("controllerHintOriginalStyle", QVariant());
+            status->clearMessage();
+        }
+    }
 }
 
 void DesktopGamePresentation::updateKeyboardCursor()
 {
+    if (m_controllerNavigation && !m_keyboardKind.isEmpty() && m_scene->mainWindow()) {
+        auto *status = m_scene->mainWindow()->statusBar();
+        m_keyboardStatusBar = status;
+        if (!status->property("controllerHintStyled").toBool()) {
+            const QString original = status->styleSheet();
+            status->setProperty("controllerHintOriginalStyle", original);
+            status->setProperty("controllerHintStyled", true);
+            status->setStyleSheet(original + QStringLiteral("\nQStatusBar { color: #ffffff; background-color: #222222; }"));
+        }
+        QString label = m_keyboardId;
+        for (const auto &entries : {m_model.cards, m_model.players, m_model.skills, m_model.actions})
+            for (const auto &entry : entries) if (entry.id == m_keyboardId) label = entry.label;
+        status->showMessage(tr("Controller focus: %1 — South: select; West: confirm; East: back").arg(label));
+    }
     QGraphicsObject *item = nullptr;
     Dashboard *dashboard = m_scene->dashboard;
     if (m_keyboardKind == QLatin1String("card")) {
@@ -214,7 +240,7 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
     if (!tab && !arrow && !enter && key != Qt::Key_Space && key != Qt::Key_Escape
         && key != Qt::Key_F2 && key != Qt::Key_Plus && key != Qt::Key_Minus) return false;
     refresh();
-    if (!m_model.supported || (!cardInteraction(m_model.request.type)
+    if (!m_model.supported || (!m_controllerNavigation && !cardInteraction(m_model.request.type)
         && m_model.request.type != InteractionType::SkillInvoke
         && m_model.request.type != InteractionType::LuckCard
         && m_model.request.type != InteractionType::Surrender)) return false;
@@ -226,7 +252,7 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
         for (const auto &entry : entries) if (entry.enabled) enabled << entry;
         if (!enabled.isEmpty()) groups.append({kind, enabled});
     };
-    if (m_model.actionContext == QLatin1String("skill-dialog"))
+    if (m_controllerNavigation || m_model.actionContext == QLatin1String("skill-dialog"))
         append(QStringLiteral("option"), m_model.actions);
     append(QStringLiteral("card"), m_model.cards);
     append(QStringLiteral("player"), m_model.players);
@@ -238,6 +264,17 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
         commands.append({QStringLiteral("confirm"), {}, true, false, {}});
     if (m_model.canCancel) commands.append({QStringLiteral("cancel"), {}, true, false, {}});
     if (m_model.canFinish) commands.append({QStringLiteral("finish"), {}, true, false, {}});
+    if (m_controllerNavigation) {
+        commands.append({QStringLiteral("controller-inspect"), tr("Details"), true, false, {}});
+        commands.append({QStringLiteral("controller-menu"), tr("Game menu"), true, false, {}});
+        for (const auto &entry : m_model.players) {
+            if (entry.id != m_controllerPlayer || entry.maxVotes <= 1) continue;
+            if (entry.enabled && entry.selectedVotes < entry.maxVotes)
+                commands.append({QStringLiteral("controller-add-vote"), tr("Add target vote"), true, false, {}});
+            if (entry.selectedVotes > 0)
+                commands.append({QStringLiteral("controller-remove-vote"), tr("Remove target vote"), true, false, {}});
+        }
+    }
     append(QStringLiteral("command"), commands);
     if (groups.isEmpty()) { clearKeyboardCursor(); return tab || enter; }
 
@@ -266,6 +303,7 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
             : (entryIndex + direction + entries.size()) % entries.size();
         m_keyboardKind = groups.at(groupIndex).kind;
         m_keyboardId = entries.at(entryIndex).id;
+        if (m_keyboardKind == QLatin1String("player")) m_controllerPlayer = m_keyboardId;
         updateKeyboardCursor();
         return true;
     }
@@ -287,7 +325,11 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
     const auto entry = groups.at(groupIndex).entries.at(entryIndex);
     if (key == Qt::Key_Space) {
         if (m_keyboardKind == QLatin1String("command")) {
-            if (booleanPrompt && entry.id == QLatin1String("confirm")) m_scene->doOkButton();
+            if (entry.id == QLatin1String("controller-inspect")) showControllerDetails();
+            else if (entry.id == QLatin1String("controller-menu")) m_scene->showControllerMenu();
+            else if (entry.id == QLatin1String("controller-add-vote")) submit(QStringLiteral("player-add-vote"), m_controllerPlayer, true);
+            else if (entry.id == QLatin1String("controller-remove-vote")) submit(QStringLiteral("player-remove-vote"), m_controllerPlayer, true);
+            else if (booleanPrompt && entry.id == QLatin1String("confirm")) m_scene->doOkButton();
             else submit(entry.id, {}, true);
         } else {
             const bool skill = m_keyboardKind == QLatin1String("skill");
@@ -303,6 +345,77 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
         return true;
     }
     return false;
+}
+
+GameActionModel DesktopGamePresentation::currentActions()
+{
+    refresh();
+    return m_model;
+}
+
+void DesktopGamePresentation::showControllerDetails()
+{
+    QString description;
+    if (m_keyboardKind == QLatin1String("card")) {
+        for (const auto &entry : m_model.cards) {
+            if (entry.id != m_keyboardId) continue;
+            const QString id = entry.id.startsWith(QLatin1String("equip:")) ? entry.id.mid(6) : entry.id;
+            bool known = false;
+            const int cardId = id.toInt(&known);
+            const Card *card = known && cardId >= 0 ? Sanguosha->getCard(cardId) : nullptr;
+            if (card) description = entry.label + '\n' + plain(card->getDescription());
+        }
+    } else if (m_keyboardKind == QLatin1String("skill")) {
+        for (auto *button : m_scene->m_skillButtons)
+            if (button->objectName() == m_keyboardId) description = plain(button->toolTip());
+    }
+    if (description.isEmpty()) { showSnapshot(); return; }
+    if (!m_snapshot) {
+        m_snapshot = new GameTextSnapshotDialog(m_scene->mainWindow());
+        connect(m_snapshot, &GameTextSnapshotDialog::refreshRequested, this, &DesktopGamePresentation::showSnapshot);
+    }
+    m_snapshot->showSnapshot(description);
+}
+
+bool DesktopGamePresentation::handleControllerAction(ControllerAction action)
+{
+    refresh();
+    if (!m_model.supported) return false;
+    // The existing widget projection exposes pile movement as explicit buttons.
+    // Every button remains reachable with D-pad + South/East.
+    if (m_model.arrangingCards) { showControls(); return true; }
+    if (action == ControllerAction::Inspect) { showControllerDetails(); return true; }
+    if (action == ControllerAction::Recover) { clearKeyboardCursor(); action = ControllerAction::NextGroup; }
+    int key = 0;
+    switch (action) {
+    case ControllerAction::Up: case ControllerAction::PreviousGroup: key = Qt::Key_Backtab; break;
+    case ControllerAction::Down: case ControllerAction::NextGroup: key = Qt::Key_Tab; break;
+    case ControllerAction::Left: key = Qt::Key_Left; break;
+    case ControllerAction::Right: key = Qt::Key_Right; break;
+    case ControllerAction::Activate: key = Qt::Key_Space; break;
+    case ControllerAction::Submit: key = Qt::Key_Return; break;
+    case ControllerAction::Back: key = Qt::Key_Escape; break;
+    case ControllerAction::PreviousPage: key = Qt::Key_Left; break;
+    case ControllerAction::NextPage: key = Qt::Key_Right; break;
+    default: return false;
+    }
+    // Recover automatically when the previous request or a dynamic skill removed
+    // the stable cursor. No activation can silently become a legacy hotkey.
+    if (m_keyboardKind.isEmpty() && key != Qt::Key_Escape && key != Qt::Key_Return) {
+        QKeyEvent recover(QEvent::KeyPress, Qt::Key_Tab, Qt::NoModifier);
+        m_controllerNavigation = true;
+        handleTableKey(&recover);
+        m_controllerNavigation = false;
+        if (key == Qt::Key_Space) return true; // First press establishes visible focus.
+    }
+    const int count = action == ControllerAction::PreviousPage || action == ControllerAction::NextPage ? 10 : 1;
+    m_controllerNavigation = true;
+    for (int i = 0; i < count; ++i) {
+        QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier);
+        handleTableKey(&event);
+    }
+    m_controllerNavigation = false;
+    return true;
 }
 
 void DesktopGamePresentation::setLiveConsumer(QObject *consumer, bool live)
@@ -468,7 +581,9 @@ GameActionModel DesktopGamePresentation::actionModel() const
                 label, enabled, selected, enabled ? QString() : tr("View only")});
             model.canConfirm |= selected;
         }
-        model.canConfirm |= request.cancelable && box->selectedGongxinCard() < 0;
+        // Empty Gongxin is an explicit acknowledgement/no-operation response,
+        // distinct from a Cancel. Inspection must remain confirmable when mandatory.
+        model.canConfirm |= box->selectedGongxinCard() < 0;
         model.canCancel = request.cancelable;
         model.prompt = tr("Gongxin: %1\nRevealed cards: %2\n%3")
             .arg(playerLabel(gongxin->targetPlayer), visibleLabels.join(QStringLiteral("、")),
@@ -616,11 +731,18 @@ GameActionModel DesktopGamePresentation::actionModel() const
     }
     // Eligibility and the selection draft remain exactly the ones used by the
     // graphical table, including view-as, equip and expanded-pile candidates.
+    QList<int> selectedCardOrder;
+    for (const auto *pending : dashboard->pendings) selectedCardOrder << pending->getId();
+    const auto orderedCardLabel = [&selectedCardOrder](int id, const QString &label) {
+        const int index = selectedCardOrder.indexOf(id);
+        return selectedCardOrder.size() > 1 && index >= 0
+            ? tr("Selected #%1: %2").arg(index + 1).arg(label) : label;
+    };
     if (request.type != InteractionType::ChoosePlayer) {
         for (CardItem *item : dashboard->getHandCards()) {
             if (item->getId() < 0) continue;
             const bool enabled = item->isEnabled() || item->isSelected();
-            model.cards.append({QString::number(item->getId()), cardLabel(item->getId()),
+            model.cards.append({QString::number(item->getId()), orderedCardLabel(item->getId(), cardLabel(item->getId())),
                 enabled, item->isSelected(), enabled ? QString() : tr("This card cannot currently be selected")});
         }
         for (int slot = 0; slot < S_EQUIP_AREA_LENGTH; ++slot) {
@@ -628,7 +750,7 @@ GameActionModel DesktopGamePresentation::actionModel() const
             if (!item) continue;
             const bool enabled = item->isMarkable() || item->isMarked();
             model.cards.append({QStringLiteral("equip:") + QString::number(item->getId()),
-                tr("Equipment: %1").arg(cardLabel(item->getId())), enabled, item->isMarked(),
+                orderedCardLabel(item->getId(), tr("Equipment: %1").arg(cardLabel(item->getId()))), enabled, item->isMarked(),
                 enabled ? QString() : tr("This equipment cannot currently be selected")});
         }
     }
@@ -639,6 +761,9 @@ GameActionModel DesktopGamePresentation::actionModel() const
             || (item->isEnabled() && item->flags().testFlag(QGraphicsItem::ItemIsSelectable));
         GameActionEntry entry{player->objectName(), playerLabel(player->objectName()),
             enabled, item->isSelected(), enabled ? QString() : tr("This player cannot currently be selected")};
+        const int selectionIndex = m_scene->selected_targets.indexOf(player);
+        if (selectionIndex >= 0 && m_scene->selected_targets.size() > 1)
+            entry.label = tr("Selected #%1: %2").arg(selectionIndex + 1).arg(entry.label);
         // Dead Hulao players reuse getVotes() for their reform countdown.
         entry.selectedVotes = item->isSelected() ? qMax(item->getVotes(), 1) : 0;
         entry.maxVotes = item->maxVotes();
@@ -652,7 +777,9 @@ GameActionModel DesktopGamePresentation::actionModel() const
         return seatIndex.value(a.id, -1) < seatIndex.value(b.id, -1);
     });
     for (QSanSkillButton *button : m_scene->m_skillButtons) {
-        if (!button->getViewAsSkill() || !button->isVisibleTo(m_scene->dashboard)) continue;
+        if ((!button->getViewAsSkill() && !button->preshowEnabled()
+            && !(button->getSkill() && button->getSkill()->inherits("AnytimeSkill")))
+            || !button->isVisibleTo(m_scene->dashboard)) continue;
         const bool dialogNeeded = button->property("gamePresentationNeedsDialog").toBool()
             || button->getSkill()->getDialogInfo().isValid();
         const bool enabled = button->isEnabled();

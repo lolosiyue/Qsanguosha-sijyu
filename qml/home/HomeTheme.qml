@@ -8,12 +8,18 @@ Item {
     id: theme
 
     readonly property bool isDark: homeController.isDarkTheme
+    readonly property bool tvMode: homeController ? homeController.tvMode : false
+    readonly property real tvFontScale: tvMode ? 1.5 : 1.0
+    readonly property int focusBorderWidth: tvMode ? 5 : 2
+    readonly property real focusScale: tvMode ? 1.05 : 1.0
+    readonly property color focusGlow: isDark ? "#993AA8D4" : "#994EB8EA"
+    readonly property int focusGlowRadius: tvMode ? 16 : 0
 
     // Compact application shell: dimensions stay in logical pixels, never canvas scale.
     readonly property int compactMargin: 12
     readonly property int compactGap: 8
     readonly property int compactTouch: 48
-    readonly property int compactText: 16
+    readonly property int compactText: tvMode ? Math.round(16 * tvFontScale) : 16
     readonly property int compactRadius: 8
     readonly property int compactHandWidth: 360
     // Icon-over-text footer tiles; matches the compact home action tiles.
@@ -195,12 +201,12 @@ Item {
     readonly property int cardControlHPadding: 12
     readonly property int cardPopupMaxHeight: 280
     readonly property int cardSectionGap: 11
-    readonly property int cardTitleFontSize: 29
-    readonly property int cardSectionTitleFontSize: 21
-    readonly property int cardBodyFontSize: 14
-    readonly property int cardCaptionFontSize: 13
-    readonly property int cardMetaFontSize: 12
-    readonly property int cardControlFontSize: 13
+    readonly property int cardTitleFontSize: tvMode ? Math.round(29 * tvFontScale) : 29
+    readonly property int cardSectionTitleFontSize: tvMode ? Math.round(21 * tvFontScale) : 21
+    readonly property int cardBodyFontSize: tvMode ? Math.round(14 * tvFontScale) : 14
+    readonly property int cardCaptionFontSize: tvMode ? Math.round(13 * tvFontScale) : 13
+    readonly property int cardMetaFontSize: tvMode ? Math.round(12 * tvFontScale) : 12
+    readonly property int cardControlFontSize: tvMode ? Math.round(13 * tvFontScale) : 13
     readonly property int cardBorderWidth: 1
     readonly property int cardSelectedBorderWidth: 2
     readonly property int cardFocusBorderWidth: 3
@@ -213,14 +219,14 @@ Item {
     readonly property int cardSortWidth: 170
     // Fixed row height so the grid scrolls; the next row peeks below three full rows at 1080p.
     readonly property int cardTileHeight: 240
-    readonly property int cardEmptyFontSize: 17
+    readonly property int cardEmptyFontSize: tvMode ? Math.round(17 * tvFontScale) : 17
     readonly property int cardTileAccentWidth: 5
     readonly property int cardTileAccentRadius: 3
     readonly property int cardTileMotionDuration: 120
     readonly property int cardTileImageMaxWidth: 116
     readonly property int cardTileImageInset: 3
     readonly property int cardTileTextGap: 6
-    readonly property int cardTileTitleFontSize: 17
+    readonly property int cardTileTitleFontSize: tvMode ? Math.round(17 * tvFontScale) : 17
     readonly property int cardBadgeHPadding: 8
     readonly property int cardBadgeHeight: 24
     readonly property int cardBadgeRadius: 5
@@ -231,12 +237,12 @@ Item {
     readonly property int cardDetailImageHeight: 238
     readonly property int cardDetailImageInset: 4
     readonly property int cardDetailMetaGap: 7
-    readonly property int cardDetailNameFontSize: 24
-    readonly property int cardDetailSuitFontSize: 16
-    readonly property int cardDetailTypeFontSize: 15
+    readonly property int cardDetailNameFontSize: tvMode ? Math.round(24 * tvFontScale) : 24
+    readonly property int cardDetailSuitFontSize: tvMode ? Math.round(16 * tvFontScale) : 16
+    readonly property int cardDetailTypeFontSize: tvMode ? Math.round(15 * tvFontScale) : 15
     readonly property int cardDetailFlagHeight: 25
     readonly property int cardDetailFlagRadius: 5
-    readonly property int cardDetailSectionFontSize: 17
+    readonly property int cardDetailSectionFontSize: tvMode ? Math.round(17 * tvFontScale) : 17
     readonly property int cardDetailAudioGap: 8
     readonly property int cardDividerHeight: 1
     readonly property int cardFilterDividerTopMargin: 4
@@ -267,8 +273,8 @@ Item {
     readonly property int settingsChoiceWidth: 280
     readonly property int settingsValueWidth: 72
     readonly property int settingsRowGap: 12
-    readonly property int settingsFontSize: 17
-    readonly property int settingsGroupFontSize: 21
+    readonly property int settingsFontSize: tvMode ? Math.round(17 * tvFontScale) : 17
+    readonly property int settingsGroupFontSize: tvMode ? Math.round(21 * tvFontScale) : 21
     readonly property int settingsCheckSize: 22
     readonly property int settingsSliderTrack: 6
     readonly property int settingsSliderHandle: 24

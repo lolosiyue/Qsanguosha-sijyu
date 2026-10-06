@@ -1,6 +1,7 @@
 #include "carditem.h"
 #include "engine.h"
 #include "oracle_helper.h"
+#include "general-info-card.h"
 #include "roomscene.h"
 #include "qsanbutton.h"
 #include "skin-bank.h"
@@ -146,7 +147,7 @@ void CardItem::changeGeneral(const QString &general_name)
     setObjectName(general_name);
     const General *general = Sanguosha->getGeneral(general_name);
     if (general) {
-        setToolTip(buildOracleTooltip(general->getOracleText(), general->getSkillDescription(true)));
+        setToolTip(GeneralInfoCard::forGeneral(general));
     } else {
         _m_isUnknownGeneral = true;
         setToolTip("");

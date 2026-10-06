@@ -107,6 +107,7 @@ class HomeController final : public QObject
     Q_PROPERTY(int artRevision READ artRevision NOTIFY artRevisionChanged)
     Q_PROPERTY(qreal uiScale READ uiScale NOTIFY visualSettingsChanged)
     Q_PROPERTY(QString visualMode READ visualMode NOTIFY visualSettingsChanged)
+    Q_PROPERTY(bool tvMode READ tvMode NOTIFY tvModeChanged)
 
 public:
     explicit HomeController(QObject *parent = nullptr);
@@ -210,6 +211,7 @@ public:
 
     qreal uiScale() const;
     QString visualMode() const;
+    bool tvMode() const;
     Q_INVOKABLE void notifyVisualSettings();
 
 signals:
@@ -235,6 +237,7 @@ signals:
     void currentPageChanged();
     void artRevisionChanged();
     void visualSettingsChanged();
+    void tvModeChanged();
 
 private:
     void switchQmlScene(const QUrl &source);
@@ -250,4 +253,5 @@ private:
     mutable QHash<QString, QUrl> m_fullImageCache;
     mutable QHash<QString, QUrl> m_kingdomIconCache;
     QVariantMap m_videoStatus;
+    bool m_tvMode = false;
 };

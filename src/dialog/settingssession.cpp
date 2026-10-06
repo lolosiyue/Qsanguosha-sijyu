@@ -6,6 +6,7 @@
 #include "engine.h"
 #include "clientstruct.h"
 #include "skin-bank.h"
+#include "theme-pack-dialog.h"
 #include "effects/effects-policy.h"
 #include "effects/effects-profile.h"
 #ifdef AUDIO_SUPPORT
@@ -102,6 +103,8 @@ void SettingsSession::load()
     v.insert(QStringLiteral("TextEditColor"), UiConfig.TextEditColor);
     v.insert(QStringLiteral("EnableAutoBackgroundChange"), Config.EnableAutoBackgroundChange);
     v.insert(QStringLiteral("EnableBackgroundVideo"), Config.EnableBackgroundVideo);
+    v.insert(QStringLiteral("BigPicture/Enabled"),
+             Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool());
 
 
     v.insert(QStringLiteral("BackgroundMusic"), Config.value("BackgroundMusic", kDefaultMusic).toString());
@@ -254,6 +257,7 @@ void SettingsSession::commit()
     Config.setValue("AudioMuted", Config.AudioMuted);
     Config.EnableBackgroundVideo = flag("EnableBackgroundVideo");
     Config.setValue("EnableBackgroundVideo", Config.EnableBackgroundVideo);
+    Config.setValue(QStringLiteral("BigPicture/Enabled"), flag("BigPicture/Enabled"));
 
     Config.EnableEffects = flag("EnableEffects");
     Config.setValue("EnableEffects", Config.EnableEffects);
@@ -405,4 +409,9 @@ void SettingsSession::chooseTextEditColor(QWidget *parent)
     UiConfig.TextEditColor = color;
     Config.setValue("TextEditColor", color);
     updateValue(QStringLiteral("TextEditColor"), color);
+}
+
+void SettingsSession::openThemePacks(QWidget *parent)
+{
+    ThemePackDialog::openManager(dialogParent(parent));
 }

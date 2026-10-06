@@ -15,6 +15,7 @@ set(QSAN_SOURCES
     src/dialog/cardoverview.cpp
     src/dialog/choosegeneraldialog.cpp
     src/dialog/configdialog.cpp
+    src/dialog/theme-pack-dialog.cpp
     src/dialog/connectiondialog.cpp
     src/dialog/customassigndialog.cpp
     src/dialog/dialogslsettings.cpp
@@ -159,6 +160,7 @@ set(QSAN_SOURCES
     src/ui/giftitem.cpp
     src/ui/game-view.cpp
     src/ui/graphicsbox.cpp
+    src/ui/general-info-card.cpp
     src/ui/graphicspixmaphoveritem.cpp
     src/ui/indicatoritem.cpp
     src/ui/magatamas-item.cpp
@@ -182,6 +184,7 @@ set(QSAN_SOURCES
     src/ui/game-control-panel.h
     src/ui/procedural-skin.cpp
     src/ui/skin-bank.cpp
+    src/ui/theme-pack.cpp
     src/ui/skill-dialog-registry.cpp
     src/ui/SpineAnimationManager.cpp
     src/ui/SpineEffectWidget.cpp
@@ -264,6 +267,7 @@ set(QSAN_MOC_HEADERS
     src/dialog/cardoverview.h
     src/dialog/choosegeneraldialog.h
     src/dialog/configdialog.h
+    src/dialog/theme-pack-dialog.h
     src/dialog/connectiondialog.h
     src/dialog/customassigndialog.h
     src/dialog/dialogslsettings.h
@@ -381,6 +385,7 @@ set(QSAN_MOC_HEADERS
     src/ui/giftitem.h
     src/ui/game-view.h
     src/ui/graphicsbox.h
+    src/ui/general-info-card.h
     src/ui/graphicspixmaphoveritem.h
     src/ui/indicatoritem.h
     src/ui/magatamas-item.h
@@ -398,6 +403,7 @@ set(QSAN_MOC_HEADERS
     src/ui/room-replay-controller.h
     src/ui/procedural-skin.h
     src/ui/skin-bank.h
+    src/ui/theme-pack.h
     src/ui/SpineAnimationManager.h
     src/ui/SpineEffectWidget.h
     src/ui/SpineGlItem.h

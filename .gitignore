@@ -30,6 +30,12 @@ qml/home/icons/*.svg
 !qml/home/icons/settings.svg
 !qml/home/icons/about.svg
 !qml/home/icons/update.svg
+!qml/home/icons/sun.svg
+!qml/home/icons/moon.svg
+!qml/home/icons/home.svg
+!qml/home/icons/generals.svg
+!qml/home/icons/cards.svg
+!qml/home/icons/replays.svg
 qml/home/nav/*.png
 qml/home/art/
 # Local Debug runtime outputs and assets; do not version them.
