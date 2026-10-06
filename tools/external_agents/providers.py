@@ -1,7 +1,9 @@
 """Bounded synthetic-game decision adapters. No credentials or prompts are logged.
 
 This module is independent of native transport; game_client adapts seat DTOs.
-Prices were checked against official documentation on 2026-10-04.
+JEV pricing/Choice contract were checked against official documentation on
+2026-10-06. Offline validation never contacts a provider. The bounded Choice
+sum-drift compatibility policy is local; the published contract still sums to 1.
 """
 from __future__ import annotations
 
@@ -18,10 +20,13 @@ import urllib.request
 
 LEDGER_PATH = Path('/workspace/external-agent-paid-ledger.json')
 CAP_NANODOLLARS = 1_500_000_000  # $1.50; $0.50 headroom below the combined $2 ceiling.
+GAME_CAP_NANODOLLARS = 98_000_000  # $0.098; headroom below the user's $0.10 hard limit.
 MAX_REQUESTS = 64
 MAX_INPUT_BYTES = 16_384
 MAX_OUTPUT_TOKENS = 256
 MAX_RESPONSE_BYTES = 65_536
+JEV_STRICT_SUM_BOUNDS = (0.999, 1.001)
+JEV_COMPAT_SUM_BOUNDS = (0.99, 1.01)
 # Reserve the ENTIRE published input context, rather than guess a tokenizer or
 # undocumented server overhead. Unknown/failed calls retain full reservations.
 POLICY = {
@@ -76,22 +81,33 @@ class BudgetLedger:
     A caller must reuse this ledger across retries and process restarts. The live
     harness always uses LEDGER_PATH; an alternate path is for offline tests only.
     """
-    def __init__(self, path=LEDGER_PATH):
+    def __init__(self, path=LEDGER_PATH, max_requests=MAX_REQUESTS):
         self.path = Path(path)
+        if type(max_requests) is not int or not 1 <= max_requests <= 100_000:
+            raise DecisionError('request_limit_invalid')
+        self.max_requests = max_requests
 
     def _read(self):
         if not self.path.exists():
             return {'schema': 1, 'cap_nanodollars': CAP_NANODOLLARS,
-                    'prior_upper_bound_nanodollars': 0, 'attempts': []}
+                    'prior_upper_bound_nanodollars': 0, 'attempts': [],
+                    'request_limit': self.max_requests}
         try:
             data = json.loads(self.path.read_text())
             if (data['schema'] != 1 or data['cap_nanodollars'] != CAP_NANODOLLARS
                     or not _integer(data['prior_upper_bound_nanodollars'])
-                    or len(data['attempts']) > MAX_REQUESTS):
+                    or not _integer(data.get('request_limit', MAX_REQUESTS))
+                    or not 1 <= data.get('request_limit', MAX_REQUESTS) <= 100_000
+                    or len(data['attempts']) > data.get('request_limit', MAX_REQUESTS)):
                 raise ValueError()
             for index, a in enumerate(data['attempts'], 1):
                 if (a['id'] != index or a['reserved_nanodollars'] != reservation(a['provider'])
                         or a['model'] != POLICY[a['provider']]['model']):
+                    raise ValueError()
+                if 'game_id' in a and (not isinstance(a['game_id'], str)
+                        or not 1 <= len(a['game_id']) <= 96
+                        or not a['game_id'].isascii()
+                        or not all(c.isalnum() or c in '-_:' for c in a['game_id'])):
                     raise ValueError()
                 if 'settled_peak_nanodollars' in a:
                     policy = POLICY[a['provider']]
@@ -110,6 +126,10 @@ class BudgetLedger:
                         raise ValueError()
             if self._total(data) > CAP_NANODOLLARS:
                 raise ValueError()
+            game_ids = {a['game_id'] for a in data['attempts'] if 'game_id' in a}
+            if any(self._game_total(data, game_id) > GAME_CAP_NANODOLLARS
+                   for game_id in game_ids):
+                raise ValueError()
             return data
         except (ValueError, KeyError, TypeError, OSError):
             raise DecisionError('ledger_invalid') from None
@@ -119,6 +139,11 @@ class BudgetLedger:
         return data['prior_upper_bound_nanodollars'] + sum(
             a.get('settled_peak_nanodollars', a['reserved_nanodollars'])
             for a in data['attempts'])
+
+    @staticmethod
+    def _game_total(data, game_id):
+        return sum(a.get('settled_peak_nanodollars', a['reserved_nanodollars'])
+                   for a in data['attempts'] if a.get('game_id') == game_id)
 
     def _save(self, data):
         fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix='.budget-')
@@ -137,19 +162,29 @@ class BudgetLedger:
             if os.path.exists(tmp):
                 os.unlink(tmp)
 
-    def execute(self, provider, operation):
+    def execute(self, provider, operation, game_id=None):
         """Hold cross-process lock through reservation, network call and receipt."""
+        if self.path == LEDGER_PATH and game_id is None:
+            raise DecisionError('game_id_required')
+        if game_id is not None and (not isinstance(game_id, str)
+                or not 1 <= len(game_id) <= 96 or not game_id.isascii()
+                or not all(c.isalnum() or c in '-_:' for c in game_id)):
+            raise DecisionError('game_id_invalid')
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.with_suffix('.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             data = self._read()
             amount = reservation(provider)
-            if (len(data['attempts']) >= MAX_REQUESTS
+            if (len(data['attempts']) >= min(self.max_requests, data.get('request_limit', MAX_REQUESTS))
                     or self._total(data) + amount > CAP_NANODOLLARS):
                 raise BudgetExhausted('shared_budget_exhausted')
+            if game_id is not None and self._game_total(data, game_id) + amount > GAME_CAP_NANODOLLARS:
+                raise BudgetExhausted('game_budget_exhausted')
             attempt = {'id': len(data['attempts']) + 1, 'provider': provider,
                        'model': POLICY[provider]['model'], 'reserved_nanodollars': amount,
                        'status': 'reserved', 'provider_reported_billed_usd': None}
+            if game_id is not None:
+                attempt['game_id'] = game_id
             data['attempts'].append(attempt)
             self._save(data)  # MUST be durable before the HTTP request.
             start = time.monotonic()
@@ -173,6 +208,16 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _response_object(pairs):
+    """Reject ambiguous duplicate JSON keys before they collapse into a dict."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise DecisionError('response_duplicate_key')
+        result[key] = value
+    return result
+
+
 def https_post(provider, body):
     """Use configured proxy and TLS trust; no redirect, retry or alternate host."""
     p = POLICY[provider]
@@ -188,7 +233,7 @@ def https_post(provider, body):
             if len(raw) > MAX_RESPONSE_BYTES:
                 raise DecisionError('response_too_large')
             try:
-                value = json.loads(raw)
+                value = json.loads(raw, object_pairs_hook=_response_object)
             except (ValueError, UnicodeError):
                 raise DecisionError('response_not_json') from None
             if not isinstance(value, dict):
@@ -217,12 +262,77 @@ def _usage(provider, response):
                 + output_tokens * p['output_nano_per_token']}
 
 
-def _options(options):
-    if (not isinstance(options, dict) or not 2 <= len(options) <= 16
+def _options(options, limit=16):
+    if (not isinstance(options, dict) or not 2 <= len(options) <= limit
             or any(not isinstance(k, str) or not k.isascii() or not k.isidentifier()
                    or len(k) > 32 or not isinstance(v, str) or len(v) > 512
                    for k, v in options.items())):
         raise DecisionError('options_invalid')
+
+
+def _validate_choice_probabilities(probabilities, confidence, options):
+    """Validate a complete Choice distribution; return weights and scalar audit.
+
+    Retain strict in-band weights. Outside that band, accept only the closed
+    [0.99, 1.01] sum interval and divide EVERY weight by the same positive sum.
+    This is a bounded local compatibility policy, not proof of provider rounding.
+    No tolerance grows with option count. math.fsum and explicit float bounds
+    avoid a subtraction-induced ambiguity at the inclusive endpoints.
+    Require every strict rank/tie to survive floating-point division; otherwise
+    reject. The provider's choice and confidence are never repaired/recomputed.
+    Diagnostics contain no option names, individual values, or response body.
+    Range checks precede math.isfinite so huge malformed integers cannot overflow.
+    """
+    def unit_number(value):
+        return (type(value) in (int, float) and 0 <= value <= 1
+                and math.isfinite(value))
+
+    diagnostics = {'schema': 2, 'policy': 'jev_choice_bounded_sum_v1',
+                   'strict_sum_bounds': list(JEV_STRICT_SUM_BOUNDS),
+                   'compat_sum_bounds': list(JEV_COMPAT_SUM_BOUNDS),
+                   'normalization_applied': False,
+                   'expected_count': len(options), 'issues': []}
+    issues = diagnostics['issues']
+    if not isinstance(probabilities, dict):
+        issues.append('probabilities_not_object')
+    else:
+        keys, expected = set(probabilities), set(options)
+        diagnostics.update(probability_count=len(probabilities),
+                           missing_count=len(expected - keys),
+                           unexpected_count=len(keys - expected))
+        if keys != expected:
+            issues.append('probability_keys_mismatch')
+        invalid = sum(not unit_number(v) for v in probabilities.values())
+        diagnostics['invalid_value_count'] = invalid
+        if invalid:
+            issues.append('probability_value_invalid')
+        else:
+            total = math.fsum(probabilities.values())
+            diagnostics['probability_sum'] = total
+            diagnostics['sum_error'] = total - 1
+            if not JEV_COMPAT_SUM_BOUNDS[0] <= total <= JEV_COMPAT_SUM_BOUNDS[1]:
+                issues.append('probability_sum_invalid')
+    if not unit_number(confidence):
+        issues.append('confidence_invalid')
+    if issues:
+        return None, diagnostics
+    if JEV_STRICT_SUM_BOUNDS[0] <= total <= JEV_STRICT_SUM_BOUNDS[1]:
+        diagnostics['acceptance'] = 'strict_sum_band'
+        return probabilities, diagnostics
+    normalized = {key: value / total for key, value in probabilities.items()}
+    ordered = sorted(probabilities, key=probabilities.get)
+    ranking_preserved = all(
+        (probabilities[left] < probabilities[right])
+        == (normalized[left] < normalized[right])
+        for left, right in zip(ordered, ordered[1:]))
+    if not ranking_preserved:
+        issues.append('normalization_rank_changed')
+        return None, diagnostics
+    diagnostics.update(acceptance='bounded_sum_compatibility',
+                       normalization_applied=True, normalization_scale=1 / total,
+                       normalized_sum=math.fsum(normalized.values()),
+                       ranking_preserved=True)
+    return normalized, diagnostics
 
 
 def _state(state):
@@ -251,15 +361,18 @@ def _state(state):
 
 
 class ProviderAdapters:
-    def __init__(self, ledger=None, transport=https_post):
+    def __init__(self, ledger=None, transport=https_post, allowed_providers=None,
+                 game_id=None):
         self.ledger = ledger if ledger is not None else BudgetLedger()
         self.transport = transport
+        self.allowed_providers = frozenset(allowed_providers or POLICY)
+        self.game_id = game_id
 
-    def choose(self, provider, state, options):
-        if provider not in POLICY:
+    def prepare_payload(self, provider, state, options):
+        if provider not in POLICY or provider not in self.allowed_providers:
             raise DecisionError('provider_not_authorized')
         _state(state)
-        _options(options)
+        _options(options, 255 if provider == 'jev' else 16)
         if provider == 'deepseek':
             payload = {'model': POLICY[provider]['model'], 'max_tokens': MAX_OUTPUT_TOKENS,
                 'thinking': {'type': 'disabled'}, 'response_format': {'type': 'json_object'},
@@ -276,6 +389,10 @@ class ProviderAdapters:
         body = encode(payload)
         if len(body) > MAX_INPUT_BYTES:
             raise DecisionError('input_too_large')
+        return body
+
+    def choose(self, provider, state, options):
+        body = self.prepare_payload(provider, state, options)
         def operation(attempt):
             response = self.transport(provider, body)
             receipt = _usage(provider, response)
@@ -307,12 +424,10 @@ class ProviderAdapters:
                         raise DecisionError('decision_type_invalid')
                     probabilities = answer['probabilities']
                     confidence = answer['confidence']
-                    if (not isinstance(probabilities, dict) or set(probabilities) != set(options)
-                            or any(type(v) not in (int, float) or not math.isfinite(v)
-                                   or not 0 <= v <= 1 for v in probabilities.values())
-                            or abs(sum(probabilities.values()) - 1) > 0.001
-                            or type(confidence) not in (int, float)
-                            or not math.isfinite(confidence) or not 0 <= confidence <= 1):
+                    probabilities, diagnostics = _validate_choice_probabilities(
+                        probabilities, confidence, options)
+                    attempt['probability_validation'] = diagnostics
+                    if diagnostics['issues']:
                         raise DecisionError('probabilities_invalid')
                     attempt['confidence'] = confidence
                 choice = answer['choice']
@@ -329,7 +444,7 @@ class ProviderAdapters:
             attempt['settled_peak_nanodollars'] = receipt[
                 'local_peak_usage_estimate_nanodollars']
             return choice
-        return self.ledger.execute(provider, operation)
+        return self.ledger.execute(provider, operation, game_id=self.game_id)
 
     def route(self, state, options):
         # Small immediate choices suit Jev; larger choices go directly to Flash.

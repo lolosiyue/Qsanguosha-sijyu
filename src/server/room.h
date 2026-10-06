@@ -34,7 +34,9 @@ struct PlayerUIState;
 class ServerPlayer;
 class AiDecisionCoordinator;
 class ExternalAgentEndpoint;
+class RoomHybrid50;
 enum class ExternalAgentDisconnectPolicy;
+enum class ExternalAgentProjectionPolicy;
 class SkillRuntimeCoordinator;
 class GameSnapshotService;
 class RoomNotifier;
@@ -158,6 +160,9 @@ public:
     // Configure before starting workers. The returned capability belongs to one seat.
     std::shared_ptr<ExternalAgentEndpoint> attachExternalAgent(
         ServerPlayer *player, ExternalAgentDisconnectPolicy policy);
+    std::shared_ptr<ExternalAgentEndpoint> attachExternalAgent(
+        ServerPlayer *player, ExternalAgentDisconnectPolicy policy,
+        ExternalAgentProjectionPolicy projection);
     std::shared_ptr<ExternalAgentEndpoint> externalAgent(const QString &seat) const;
     void setNoClock(bool enabled);
     bool noClock() const;
@@ -1018,6 +1023,8 @@ private:
     std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
     std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;
     QHash<QString, std::shared_ptr<ExternalAgentEndpoint>> m_externalAgents;
+    std::unique_ptr<RoomHybrid50> m_hybrid50;
+    bool m_hybrid50Selected = false;
     bool m_noClock = false;
     std::unique_ptr<ExtraTurnScheduler> m_extraTurns;
     std::unique_ptr<RoomNotifier> m_notifier;

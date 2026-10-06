@@ -44,6 +44,11 @@ HegemonyMaxChoice=7
 EnableAI=true
 AIChat=true
 AIHumanized=true
+; 50P only: exact live native scans for selected extension temporary-move flags.
+50PNativeFlagScan=true
+; 50P only: exact owner-absence guards and live sibling counts in selected extensions.
+; Set either native-scan option false to retain that extension's original traversal.
+50PNativeSkillScan=true
 OriginAIDelay=1000
 AlterAIDelayAD=false
 AIDelayAD=0

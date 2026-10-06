@@ -1,14 +1,35 @@
 #include "external-agent.h"
+#include <QElapsedTimer>
 #include <QMutexLocker>
 #include <QSet>
 
-ExternalAgentEndpoint::ExternalAgentEndpoint(QString seat, DisconnectPolicy policy)
-    : m_seat(std::move(seat)), m_policy(policy) {}
+ExternalAgentEndpoint::ExternalAgentEndpoint(QString seat, DisconnectPolicy policy,
+                                             ProjectionPolicy projection)
+    : m_seat(std::move(seat)), m_policy(policy), m_projection(projection) {}
+
+bool ExternalAgentEndpoint::requiresWorldView(AIRequest::DecisionKind kind) const
+{
+    if (m_projection == ProjectionPolicy::Full) return true;
+    // CardChosen derives its visible candidates from the projected board.
+    // Activate/UseCard and Player(s)Chosen may go to JEV; all keep full views.
+    // Unknown future categories conservatively retain the default contract.
+    switch (kind) {
+    case AIRequest::SkillInvoke: case AIRequest::Choice: case AIRequest::Suit:
+    case AIRequest::Kingdom: case AIRequest::General: case AIRequest::Discard:
+    case AIRequest::AmazingGrace: case AIRequest::Yiji: case AIRequest::RespondCard:
+    case AIRequest::Guanxing: case AIRequest::TriggerOrder:
+        return false;
+    default:
+        return true;
+    }
+}
 
 bool ExternalAgentEndpoint::pending(AIRequest &request) const
 {
     QMutexLocker lock(&m_mutex);
-    if (!m_pending || m_submitted || !m_connected || m_cancelled) return false;
+    if (m_hybridBounded && m_pending && m_requestTimer.elapsed() >= m_hybridDeadlineMs)
+        return false;
+    if (!m_pending || m_submitted || m_localRequested || !m_connected || m_cancelled) return false;
     request = m_request;
     return true;
 }
@@ -16,9 +37,17 @@ bool ExternalAgentEndpoint::pending(AIRequest &request) const
 bool ExternalAgentEndpoint::submit(const AIResult &result, QString *error)
 {
     QMutexLocker lock(&m_mutex);
+    if (m_hybridBounded && m_pending && m_requestTimer.elapsed() >= m_hybridDeadlineMs) {
+        m_connected = false;
+        m_submitted = false;
+        m_error = QStringLiteral("adapter-timeout");
+        if (error) *error = m_error;
+        m_changed.wakeAll();
+        return false;
+    }
     QString reason;
     if (m_cancelled || !m_connected || !m_pending) reason = QStringLiteral("not-waiting");
-    else if (m_submitted) reason = QStringLiteral("duplicate");
+    else if (m_submitted || m_localRequested) reason = QStringLiteral("duplicate");
     else if (result.decisionId != m_request.decisionId
              || result.stateRevision != m_request.stateRevision) reason = QStringLiteral("stale");
     else if (!validateShape(m_request, result)) reason = QStringLiteral("invalid-answer");
@@ -29,8 +58,38 @@ bool ExternalAgentEndpoint::submit(const AIResult &result, QString *error)
     }
     m_result = result;
     m_submitted = true;
+    m_error.clear();
+    if (error) error->clear();
     m_changed.wakeAll();
     return true; // queued; authoritative legality is checked on the room worker
+}
+
+bool ExternalAgentEndpoint::requestLocal(quint64 decisionId, quint64 stateRevision, QString *error)
+{
+    QMutexLocker lock(&m_mutex);
+    if (m_hybridBounded && m_pending && m_requestTimer.elapsed() >= m_hybridDeadlineMs) {
+        m_connected = false;
+        m_localRequested = false;
+        m_error = QStringLiteral("adapter-timeout");
+        if (error) *error = m_error;
+        m_changed.wakeAll();
+        return false;
+    }
+    QString reason;
+    if (m_cancelled || !m_connected || !m_pending) reason = QStringLiteral("not-waiting");
+    else if (m_submitted || m_localRequested) reason = QStringLiteral("duplicate");
+    else if (decisionId != m_request.decisionId || stateRevision != m_request.stateRevision)
+        reason = QStringLiteral("stale");
+    if (!reason.isEmpty()) {
+        m_error = reason;
+        if (error) *error = reason;
+        return false;
+    }
+    m_localRequested = true;
+    m_error.clear();
+    if (error) error->clear();
+    m_changed.wakeAll();
+    return true;
 }
 
 void ExternalAgentEndpoint::begin(const AIRequest &request)
@@ -43,27 +102,60 @@ void ExternalAgentEndpoint::begin(const AIRequest &request)
         return;
     }
     m_request = request;
+    if (m_hybridBounded) m_requestTimer.start();
     m_pending = true;
     m_submitted = false;
+    m_localRequested = false;
+    m_result = AIResult();
     m_error.clear();
 }
 
 ExternalAgentEndpoint::Outcome ExternalAgentEndpoint::awaitReply(AIResult &result)
 {
     QMutexLocker lock(&m_mutex);
-    // No deadline: decision/cost budgets belong to the adapter, not game time.
+    // Opt-in room adapters must never hold a game worker forever if their
+    // process or provider stalls. Other external sessions retain their policy.
     while (!m_cancelled) {
+        if (m_hybridBounded && m_requestTimer.elapsed() >= m_hybridDeadlineMs) {
+            m_connected = false;
+            m_submitted = false;
+            m_localRequested = false;
+            m_error = QStringLiteral("adapter-timeout");
+            return Fallback;
+        }
+        // An accepted local route is atomic even if its socket then disconnects.
+        if (m_localRequested) return Local;
         if (!m_connected && m_policy == SmartAIFallback) return Fallback;
         if (m_connected && m_submitted) { result = m_result; return Reply; }
-        m_changed.wait(&m_mutex);
+        if (m_hybridBounded) {
+            const qint64 remaining = m_hybridDeadlineMs - m_requestTimer.elapsed();
+            if (remaining <= 0) {
+                m_connected = false;
+                m_submitted = false;
+                m_error = QStringLiteral("adapter-timeout");
+                return Fallback;
+            }
+            m_changed.wait(&m_mutex, static_cast<unsigned long>(remaining));
+        } else m_changed.wait(&m_mutex);
     }
     return Cancelled;
+}
+
+void ExternalAgentEndpoint::enableBoundedHybrid(int deadlineMs)
+{
+    QMutexLocker lock(&m_mutex);
+    if (m_policy == SmartAIFallback && !m_pending && deadlineMs >= 1
+        && deadlineMs <= 30000) {
+        m_hybridDeadlineMs = deadlineMs;
+        m_hybridBounded = true;
+    }
 }
 
 void ExternalAgentEndpoint::reject(const QString &reason)
 {
     QMutexLocker lock(&m_mutex);
     m_submitted = false;
+    m_localRequested = false;
     m_result = AIResult();
     m_error = reason;
 }
@@ -71,9 +163,10 @@ void ExternalAgentEndpoint::reject(const QString &reason)
 void ExternalAgentEndpoint::finish()
 {
     QMutexLocker lock(&m_mutex);
-    m_pending = m_submitted = false;
+    m_pending = m_submitted = m_localRequested = false;
     m_request = AIRequest();
     m_result = AIResult();
+    if (!m_cancelled) m_error.clear();
 }
 
 void ExternalAgentEndpoint::disconnect()
@@ -102,6 +195,7 @@ QString ExternalAgentEndpoint::status() const
 {
     QMutexLocker lock(&m_mutex);
     if (m_cancelled) return QStringLiteral("cancelled");
+    if (m_localRequested) return QStringLiteral("local-queued");
     if (!m_connected) return m_policy == Pause ? QStringLiteral("paused-disconnected")
                                              : QStringLiteral("smart-ai-fallback");
     if (m_submitted) return QStringLiteral("validating");

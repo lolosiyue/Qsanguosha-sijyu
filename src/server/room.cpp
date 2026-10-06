@@ -1,4 +1,5 @@
 #include "external-agent.h"
+#include "external-agent-transport.h"
 #include "room.h"
 #include "game-rng.h"
 #include "protocol/resolution-state-message.h"
@@ -58,6 +59,133 @@
 #include <QDir>
 #include <QSet>
 #include <QScopeGuard>
+#include <QProcess>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QStandardPaths>
+#include <vector>
+
+// This object lives with the room on the server thread. Its subprocess sees
+// only loopback seat capabilities passed through stdin, and never a Room or
+// human-controlled seat. Any setup/process failure leaves native SmartAI live.
+class RoomHybrid50 final : public QObject
+{
+public:
+    RoomHybrid50(Room *room, QString gameId)
+        : QObject(room), m_room(room), m_gameId(std::move(gameId))
+    {
+        connect(&m_process, &QProcess::readyReadStandardOutput, this, [this] {
+            m_notices += m_process.readAllStandardOutput();
+            if (m_notices.size() > 1024) m_notices.clear();
+            while (true) {
+                const int end = m_notices.indexOf('\n');
+                if (end < 0) break;
+                const QByteArray line = m_notices.left(end).trimmed();
+                m_notices.remove(0, end + 1);
+                if (line == "NOTICE budget") notice(QStringLiteral("JEV game budget reached; SmartAI continues."));
+                else if (line == "NOTICE provider") notice(QStringLiteral("JEV unavailable; SmartAI continues."));
+            }
+        });
+        connect(&m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                this, [this](int, QProcess::ExitStatus) {
+            for (const auto &endpoint : m_endpoints) endpoint->disconnect();
+            notice(QStringLiteral("JEV adapter stopped; SmartAI continues."));
+        });
+    }
+
+    ~RoomHybrid50() override
+    {
+        for (const auto &endpoint : m_endpoints) endpoint->disconnect();
+        for (auto &transport : m_transports) transport->close();
+        if (m_process.state() != QProcess::NotRunning) {
+            m_process.terminate();
+            if (!m_process.waitForFinished(1000)) {
+                m_process.kill();
+                m_process.waitForFinished(1000);
+            }
+        }
+    }
+
+    void add(ServerPlayer *seat)
+    {
+        if (!ensureStarted()) return;
+        auto endpoint = m_room->attachExternalAgent(seat,
+            ExternalAgentEndpoint::SmartAIFallback,
+            ExternalAgentProjectionPolicy::LocalDecisions);
+        if (!endpoint) return;
+        endpoint->enableBoundedHybrid();
+        auto transport = std::make_unique<ExternalAgentLocalTransport>(endpoint);
+        if (!transport->listen()) {
+            endpoint->disconnect();
+            notice(QStringLiteral("JEV adapter unavailable; SmartAI continues."));
+            return;
+        }
+        QJsonObject message{{"op", "seat"}, {"bootstrap", transport->bootstrap()}};
+        message["bootstrap"] = transport->bootstrap();
+        QJsonObject bootstrap = message["bootstrap"].toObject();
+        bootstrap.insert("objectName", seat->objectName());
+        message["bootstrap"] = bootstrap;
+        m_endpoints.push_back(endpoint);
+        m_transports.push_back(std::move(transport));
+        m_process.write(QJsonDocument(message).toJson(QJsonDocument::Compact) + '\n');
+    }
+
+private:
+    bool ensureStarted()
+    {
+        if (m_started) return m_process.state() != QProcess::NotRunning;
+        m_started = true;
+        if (qEnvironmentVariable("TYPESAFE_API_KEY").isEmpty()
+            || (qEnvironmentVariable("HTTPS_PROXY").isEmpty()
+                && qEnvironmentVariable("https_proxy").isEmpty())) {
+            notice(QStringLiteral("JEV setup unavailable; SmartAI continues."));
+            return false;
+        }
+        const QString python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+        QString script;
+        const QStringList roots{QDir::currentPath(), QCoreApplication::applicationDirPath(),
+                                QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("..")};
+        for (const QString &root : roots) {
+            const QString candidate = QDir(root).absoluteFilePath(
+                QStringLiteral("tools/external_agents/room_hybrid_worker.py"));
+            if (QFileInfo(candidate).isFile()) { script = candidate; break; }
+        }
+        if (python.isEmpty() || script.isEmpty()) {
+            notice(QStringLiteral("JEV setup unavailable; SmartAI continues."));
+            return false;
+        }
+        m_process.setStandardErrorFile(QProcess::nullDevice());
+        m_process.start(python, {script});
+        if (!m_process.waitForStarted(500)) {
+            notice(QStringLiteral("JEV adapter unavailable; SmartAI continues."));
+            return false;
+        }
+        const QJsonObject init{{"op", "init"}, {"game_id", m_gameId}};
+        m_process.write(QJsonDocument(init).toJson(QJsonDocument::Compact) + '\n');
+        return true;
+    }
+
+    void notice(const QString &message)
+    {
+        if (m_lastNotice == message) return;
+        m_lastNotice = message;
+        QSanProtocol::DiagnosticPayload diagnostic;
+        diagnostic.code = QStringLiteral("jev_hybrid_fallback");
+        diagnostic.message = message;
+        diagnostic.fatal = false;
+        m_room->doBroadcastNotify(QSanProtocol::S_COMMAND_WARN, diagnostic.toVariant());
+        qInfo().noquote() << message;
+    }
+
+    Room *m_room;
+    QString m_gameId;
+    QString m_lastNotice;
+    QByteArray m_notices;
+    QProcess m_process;
+    bool m_started = false;
+    std::vector<std::shared_ptr<ExternalAgentEndpoint>> m_endpoints;
+    std::vector<std::unique_ptr<ExternalAgentLocalTransport>> m_transports;
+};
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -851,6 +979,9 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false),
 	m_sessionConfig(sessionConfig)
 {
+	m_hybrid50Selected = useJevHybrid50(mode, Config.EnableAI,
+		Config.value("JevHybrid50P", false).toBool(), m_sessionConfig.takeover)
+		&& !m_sessionConfig.hybridGameId.isEmpty();
 	application_elapsed_timer.start();
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
@@ -934,6 +1065,7 @@ Room::~Room()
 			.arg(getId()).arg(stopped ? "true" : "false");
 	if (!stopped)
 		qFatal("Room worker did not stop before runtime destruction");
+	m_hybrid50.reset();
 	if (m_runtime) {
 		if (shutdownTraceEnabled())
 			qInfo().noquote() << QStringLiteral("shutdown_trace room=%1 event=shutdownFinal_enter").arg(getId());
@@ -1035,13 +1167,20 @@ void Room::requestStopGameThreads()
 std::shared_ptr<ExternalAgentEndpoint> Room::attachExternalAgent(
     ServerPlayer *player, ExternalAgentEndpoint::DisconnectPolicy policy)
 {
+    return attachExternalAgent(player, policy, ExternalAgentProjectionPolicy::Full);
+}
+
+std::shared_ptr<ExternalAgentEndpoint> Room::attachExternalAgent(
+    ServerPlayer *player, ExternalAgentEndpoint::DisconnectPolicy policy,
+    ExternalAgentProjectionPolicy projection)
+{
     if (!player || player->getRoom() != this || isRunning() || getThread()
         || player->getState() != "robot" || m_externalAgents.contains(player->objectName())
         || Config.EnableHegemony || mode == "02_1v1" || mode == "06_3v3" || mode == "06_XMode")
         return {};
     if (!getPlayers().contains(player)) return {};
     if (player->objectName().isEmpty()) player->setObjectName(generatePlayerName());
-    auto endpoint = std::make_shared<ExternalAgentEndpoint>(player->objectName(), policy);
+    auto endpoint = std::make_shared<ExternalAgentEndpoint>(player->objectName(), policy, projection);
     m_externalAgents.insert(player->objectName(), endpoint);
     return endpoint;
 }
@@ -3210,6 +3349,11 @@ void Room::setReadyCommand(ServerPlayer *, const QVariant &payload)
 
 void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&avatar, bool is_robot)
 {
+	if (m_hybrid50Selected && is_robot && player && player->getState() == "robot") {
+		if (!m_hybrid50)
+			m_hybrid50 = std::make_unique<RoomHybrid50>(this, m_sessionConfig.hybridGameId);
+		m_hybrid50->add(player);
+	}
 	m_playerLifecycle->signup(player, screen_name, avatar, is_robot);
 }
 
