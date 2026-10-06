@@ -68,6 +68,8 @@ AvatarCards forPlayerAvatars(const Player *player, const QString &skillDescripti
 
 // Builds the card on the first tooltip request instead of when the widget is created.
 void setLazyToolTip(QWidget *widget, const QString &generalName);
+// Materializes a lazy card for non-hover readers, such as controller inspection.
+void ensureToolTip(QWidget *widget);
 }
 
 #endif // GENERAL_INFO_CARD_H

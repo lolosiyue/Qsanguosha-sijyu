@@ -8,6 +8,7 @@
 #include "client-core.h"
 #include "client-live-session.h"
 #include "game-view.h"
+#include "general-info-card.h"
 #include <QApplication>
 #include <QAbstractButton>
 #include <QAbstractItemView>
@@ -277,6 +278,7 @@ bool ControllerRouter::routeWidget(QWidget *scope, ControllerAction action)
         return true;
     }
     if (action == ControllerAction::Inspect) {
+        GeneralInfoCard::ensureToolTip(focused);
         QString detail = focused->accessibleDescription();
         if (detail.isEmpty()) detail = focused->toolTip();
         if (detail.isEmpty()) detail = focused->accessibleName();

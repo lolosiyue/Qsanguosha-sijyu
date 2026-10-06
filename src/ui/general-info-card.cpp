@@ -451,9 +451,7 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
         if (event->type() == QEvent::ToolTip) {
-            auto *widget = qobject_cast<QWidget *>(watched);
-            if (widget && widget->toolTip().isEmpty())
-                widget->setToolTip(GeneralInfoCard::forGeneral(widget->property(LazyGeneralProperty).toString()));
+            GeneralInfoCard::ensureToolTip(qobject_cast<QWidget *>(watched));
         }
         return QObject::eventFilter(watched, event);
     }
@@ -540,5 +538,13 @@ void setLazyToolTip(QWidget *widget, const QString &generalName)
     widget->setProperty(LazyGeneralProperty, generalName);
     widget->setToolTip(QString());
     widget->installEventFilter(filter);
+}
+
+void ensureToolTip(QWidget *widget)
+{
+    if (!widget || !widget->toolTip().isEmpty()) return;
+    const QVariant generalName = widget->property(LazyGeneralProperty);
+    if (generalName.isValid())
+        widget->setToolTip(forGeneral(generalName.toString()));
 }
 }
