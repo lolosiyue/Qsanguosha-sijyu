@@ -325,6 +325,11 @@ bool LocalResponseUiController::bootstrap(QString *error)
     setupPayload.operationTimeout = m_mode == RunnerMode::Inspect ? 0 : 15;
     setupPayload.nullificationCountdown = 8;
     setupPayload.playerCount = mode.player_count;
+    // Optional room flags for fixtures that need hegemony or dual-general presentation.
+    const QJsonObject server = bootstrapObject.value(QStringLiteral("server")).toObject();
+    setupPayload.enableHegemony = server.value(QStringLiteral("hegemony")).toBool();
+    setupPayload.enableSecondGeneral = server.value(QStringLiteral("second_general")).toBool();
+    setupPayload.freeChoose = server.value(QStringLiteral("free_choose")).toBool();
     ProtocolMessage setup;
     setup.type = ProtocolMessageType::Notification;
     setup.source = ProtocolEndpoint::Lobby;
@@ -458,14 +463,48 @@ bool LocalResponseUiController::bootstrap(QString *error)
             return false;
     }
 
-    const QJsonArray skills = selfObject.value(QStringLiteral("skills")).toArray();
-    for (const QJsonValue &value : skills) {
-        const QString skillName = value.toString();
-        if (!Sanguosha->getSkill(skillName)) {
-            *error = QStringLiteral("bootstrap skill '%1' is not loaded").arg(skillName);
-            return false;
+    // Opponent skills and general piles let hover fixtures show real seat descriptions.
+    auto attachSkillsAndPiles = [this, error](const QString &name, const QJsonObject &player) {
+        for (const QJsonValue &value : player.value(QStringLiteral("skills")).toArray()) {
+            const QString skillName = value.toString();
+            if (!Sanguosha->getSkill(skillName)) {
+                *error = QStringLiteral("bootstrap skill '%1' is not loaded").arg(skillName);
+                return false;
+            }
+            if (!injectNotification(S_COMMAND_ATTACH_SKILL, JsonArray() << name << skillName, error))
+                return false;
         }
-        if (!injectNotification(S_COMMAND_ATTACH_SKILL, JsonArray() << selfName << skillName, error))
+        const QJsonObject piles = player.value(QStringLiteral("general_piles")).toObject();
+        for (auto pile = piles.constBegin(); pile != piles.constEnd(); ++pile) {
+            const QVariantMap body {
+                { QStringLiteral("schema_version"), 1 },
+                { QStringLiteral("action"), QStringLiteral("general_pile") },
+                { QStringLiteral("player_name"), name },
+                { QStringLiteral("pile_name"), pile.key() },
+                { QStringLiteral("general_names"), pile.value().toVariant().toStringList() },
+                { QStringLiteral("add"), true }
+            };
+            if (!injectNotification(S_COMMAND_SET_PROPERTY, body, error))
+                return false;
+        }
+        return true;
+    };
+    if (!attachSkillsAndPiles(selfName, selfObject))
+        return false;
+    for (const QJsonValue &value : players) {
+        const QJsonObject player = value.toObject();
+        if (!attachSkillsAndPiles(player.value(QStringLiteral("object_name")).toString(), player))
+            return false;
+    }
+    // 1v1 order boxes only fill from reveal notifications.
+    for (const QJsonValue &value : bootstrapObject.value(QStringLiteral("reveal_generals")).toArray()) {
+        const QJsonObject reveal = value.toObject();
+        const QVariantMap body {
+            { QStringLiteral("schema_version"), 1 },
+            { QStringLiteral("player_name"), reveal.value(QStringLiteral("player")).toString() },
+            { QStringLiteral("general_name"), reveal.value(QStringLiteral("general")).toString() }
+        };
+        if (!injectNotification(S_COMMAND_REVEAL_GENERAL, body, error))
             return false;
     }
 
