@@ -119,6 +119,17 @@ void TargetModSkillQueryScope::record(const Player *owner, const SkillInstanceRe
 
 namespace {
 
+void (*loadPulse)() = nullptr;
+
+void loadPulseHook(lua_State *, lua_Debug *)
+{
+    static QElapsedTimer sinceLastPulse;
+    if (sinceLastPulse.isValid() && sinceLastPulse.elapsed() < 30)
+        return;
+    loadPulse();
+    sinceLastPulse.start();
+}
+
 bool isOriginalHegemonyCardPackage(const QString &name)
 {
     return name == QLatin1String("heg_standard_cards") || name == QLatin1String("heg_strategic_advantage")
@@ -570,6 +581,11 @@ QStringList Engine::rulesDeclaredList(const QString &key) const
     return paths;
 }
 
+void Engine::setLoadPulse(void (*pulse)())
+{
+    loadPulse = pulse;
+}
+
 Engine::Engine(bool isManualMode)
     : m_distanceSkillCache(new DistanceSkillCache),
       m_definitionListCaches(new DefinitionListCaches)
@@ -746,7 +762,11 @@ Engine::Engine(bool isManualMode)
 
     startupPhase.next("engine.lua_extensions");
     m_loadingLuaDefinitions = true;
+    if (loadPulse)
+        lua_sethook(bootstrapLua, loadPulseHook, LUA_MASKCOUNT, 10000);
     const bool loadedLuaDefinitions = DoLuaScript(bootstrapLua, "lua/sanguosha.lua");
+    if (loadPulse)
+        lua_sethook(bootstrapLua, nullptr, 0, 0);
     m_loadingLuaDefinitions = false;
     if (!loadedLuaDefinitions) {
         exit(1);

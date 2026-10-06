@@ -2,6 +2,7 @@
   <qresource prefix="/QSanguosha/Home">
     <file alias="CatalogPaneBar.qml">CatalogPaneBar.qml</file>
     <file alias="HomeScene.qml">HomeScene.qml</file>
+    <file alias="BootSplash.qml">BootSplash.qml</file>
     <file alias="HomeLayoutControls.qml">HomeLayoutControls.qml</file>
     <file alias="HomeCompactShell.qml">HomeCompactShell.qml</file>
 

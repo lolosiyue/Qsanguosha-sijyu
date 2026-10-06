@@ -1222,6 +1222,74 @@ Item {
         }
     }
 
+    // While the boot splash shows and this window is still invisible, open each catalog page
+    // until its first page has loaded and drawn, so the first real visit does not stall.
+    property int bootStep: 0
+    property double bootStepStart: 0
+    property double bootReadyAt: 0
+
+    Timer {
+        id: bootWarmup
+        interval: 16
+        repeat: true
+        onTriggered: root.advanceBootWarmup()
+    }
+
+    function startBootWarmup() {
+        if (!homeController.bootSplashActive)
+            return
+        bootStep = 0
+        bootStepStart = Date.now()
+        bootReadyAt = 0
+        homeController.openGenerals()
+        bootWarmup.start()
+    }
+
+    function bootPageReady() {
+        switch (bootStep) {
+        case 0:
+            return generalPage.item !== null && !generalPage.item.catalogPending
+                    && generalPage.item.detailsReady
+        case 1:
+            return root.cardsReadyForSmoke
+        default:
+            if (!serverPage.item || serverPage.item.packagesLoading)
+                return false
+            // The package tab draws once all its checkboxes are in.
+            serverPage.item.section = 1
+            return true
+        }
+    }
+
+    function advanceBootWarmup() {
+        var now = Date.now()
+        // Nobody sees this window yet, so the package list can be fed in longer slices.
+        if (bootStep === 2 && serverPage.item && serverPage.item.packagesLoading)
+            serverPage.item.buildPackages(now + 48)
+        // A page that never reports ready (an empty catalog) moves on after 8 s.
+        if (!bootPageReady() && now - bootStepStart < 8000) {
+            bootReadyAt = 0
+            return
+        }
+        // Give the ready page time to draw and decode its first images.
+        if (bootReadyAt === 0)
+            bootReadyAt = now
+        if (now - bootReadyAt < 250)
+            return
+        ++bootStep
+        bootStepStart = now
+        bootReadyAt = 0
+        if (bootStep === 1) {
+            homeController.openCards()
+        } else if (bootStep === 2) {
+            homeController.startServer()
+        } else {
+            bootWarmup.stop()
+            homeController.openHome()
+            homeController.reportBootPagesReady()
+        }
+    }
+
     function startGeneralPrefetch() {
         homeController.warmGeneralCatalog()
         var n = homeController.generalModel ? homeController.generalModel.count : 0
@@ -1250,12 +1318,26 @@ Item {
             Qt.callLater(root.restoreHomeKeyboard)
         else
             actionPanel.quickJoinBtn.forceActiveFocus()
-        enterAnim.start()
+        // The window is shown and sized after this scene is created.
+        if (homeController.bootSplashActive)
+            Qt.callLater(startBootWarmup)
+        else
+            enterAnim.start()
         generalPrefetchStart.start()
     }
 
     Connections {
         target: homeController
+        // The splash is fading out; a warm-up it cut short ends on the home page.
+        function onBootSplashActiveChanged() {
+            if (homeController.bootSplashActive)
+                return
+            if (bootWarmup.running) {
+                bootWarmup.stop()
+                homeController.openHome()
+            }
+            enterAnim.start()
+        }
         function onCurrentPageChanged() {
             if (!root.tvKeepTabFocus) {
                 bottomBar.currentIndex = root.generalsOpen ? 1 : root.cardsOpen ? 2

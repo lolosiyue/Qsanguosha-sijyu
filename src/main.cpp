@@ -11,6 +11,7 @@
 #include <QScopeGuard>
 
 #include "mainwindow.h"
+#include "boot-splash.h"
 #if !defined(QSAN_XP_LEGACY)
 #include "widget-accessibility.h"
 #endif
@@ -370,6 +371,18 @@ int main(int argc, char *argv[]) {
     qApp->installTranslator(&qt_translator);
     qApp->installTranslator(&translator);
 
+#if QSAN_ENABLE_QML && !defined(Q_OS_ANDROID)
+    // The boot animation runs on its own render thread while the engine blocks this one.
+    BootSplash *bootSplash = nullptr;
+    if (!headlessApp && !uiStartupSmoke && !multimediaSmoke && !effectsSmoke
+        && !NetworkUiSmokeController::isRequested(appArgs) && BootSplash::wanted(appArgs))
+        bootSplash = BootSplash::show();
+    // Windows marks a window that stops reading messages for 5 s as hung and may freeze
+    // it behind a ghost copy; the Lua extensions alone take longer than that.
+    if (bootSplash)
+        Engine::setLoadPulse([] { QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents); });
+#endif
+
 #ifdef Q_OS_ANDROID
     if (!headlessApp) {
         QString contentError;
@@ -622,6 +635,10 @@ int main(int argc, char *argv[]) {
                           Qt::SingleShotConnection);
 #endif
     Sanguosha->setParent(main_window);
+#if QSAN_ENABLE_QML && !defined(Q_OS_ANDROID)
+    if (bootSplash)
+        bootSplash->cover(main_window);
+#endif
     main_window->show();
 
     const auto releaseGui = [main_window] {

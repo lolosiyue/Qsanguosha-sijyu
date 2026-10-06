@@ -108,6 +108,9 @@ class HomeController final : public QObject
     Q_PROPERTY(qreal uiScale READ uiScale NOTIFY visualSettingsChanged)
     Q_PROPERTY(QString visualMode READ visualMode NOTIFY visualSettingsChanged)
     Q_PROPERTY(bool tvMode READ tvMode NOTIFY tvModeChanged)
+    // While the boot splash shows, HomeScene warms its catalog pages and holds its
+    // entrance until this turns false.
+    Q_PROPERTY(bool bootSplashActive READ bootSplashActive NOTIFY bootSplashActiveChanged)
 
 public:
     explicit HomeController(QObject *parent = nullptr);
@@ -214,6 +217,11 @@ public:
     bool tvMode() const;
     Q_INVOKABLE void notifyVisualSettings();
 
+    bool bootSplashActive() const;
+    void setBootSplashActive(bool active);
+    // HomeScene: the catalog pages under the boot splash have loaded and drawn once.
+    Q_INVOKABLE void reportBootPagesReady();
+
 signals:
     void videoStatusChanged();
     void quickJoinRequested();
@@ -238,6 +246,8 @@ signals:
     void artRevisionChanged();
     void visualSettingsChanged();
     void tvModeChanged();
+    void bootSplashActiveChanged();
+    void bootPagesReady();
 
 private:
     void switchQmlScene(const QUrl &source);
@@ -254,4 +264,5 @@ private:
     mutable QHash<QString, QUrl> m_kingdomIconCache;
     QVariantMap m_videoStatus;
     bool m_tvMode = false;
+    bool m_bootSplashActive = false;
 };

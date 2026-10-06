@@ -119,6 +119,10 @@ public:
 	Engine(bool isManualMode = false);
     ~Engine();
 
+    // A GUI boot passes a callback that keeps its windows responsive; it runs about
+    // every 30 ms while the Lua extensions load.
+    static void setLoadPulse(void (*pulse)());
+
     void addTranslationEntry(const QString &key, const QString &value);
     QString translate(const QString &to_translate, bool initial = false) const;
     QVariantMap translationTable() const;

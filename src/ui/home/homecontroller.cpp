@@ -1,4 +1,5 @@
 #include "homecontroller.h"
+#include "boot-splash.h"
 #include "card.h"
 #include "engine.h"
 #include "general.h"
@@ -646,6 +647,7 @@ int HomeGeneralModel::indexOfName(const QString &name) const
 HomeController::HomeController(QObject *parent)
     : QObject(parent)
     , m_tvMode(Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool())
+    , m_bootSplashActive(BootSplash::isCovering())
 {
     // Write a definite state before any QML verdict arrives, so the ambiguous
     // "nobody reported anything" blank can never appear.
@@ -1649,6 +1651,24 @@ void HomeController::notifyVisualSettings()
         emit tvModeChanged();
     }
     emit visualSettingsChanged();
+}
+
+bool HomeController::bootSplashActive() const
+{
+    return m_bootSplashActive;
+}
+
+void HomeController::setBootSplashActive(bool active)
+{
+    if (m_bootSplashActive == active)
+        return;
+    m_bootSplashActive = active;
+    emit bootSplashActiveChanged();
+}
+
+void HomeController::reportBootPagesReady()
+{
+    emit bootPagesReady();
 }
 
 bool HomeController::isDarkTheme() const
