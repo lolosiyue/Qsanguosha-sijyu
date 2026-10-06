@@ -1,12 +1,10 @@
 # Android APK 建置、更新與驗收
 
 本機日常使用原生 `x86_64` APK，裝置是既有雷電14；`arm64-v8a` 留作實機／發行建置參考。
-本機日常驗收以覆蓋安裝、`adb logcat`／截圖收集，以及完整局與正常退出分開判定為準。
-首次外部聲畫 ZIP／Storage Access Framework（SAF）匯入流程保留於本文後半，日常更新不需重做。
-32 位元 ARMv7 的裝置選擇、模式設定與收尾，直接查閱
-[ARMv7 操作與問題處理](#android-armv7-reuse)；不要重新準備工具鏈或媒體包。
-未指定其他裝置時，直接使用 [雷電14 重用流程](#android-14-ldplayer-reuse)。
-建置仍沿用同一 x86_64 cache，不下載新的 system image。
+日常驗收以覆蓋安裝、`adb logcat`／截圖收集為準，完整局與正常退出分開判定。
+未指定其他裝置時，直接使用 [雷電14 重用流程](#android-14-ldplayer-reuse)；
+32 位元 ARMv7 見 [ARMv7 操作與問題處理](#android-armv7-reuse)。建置沿用同一 x86_64 cache，不下載新的 system image。
+首次外部聲畫 ZIP／Storage Access Framework（SAF）匯入流程在本文後半，日常更新不需重做。
 
 **版本固定規則：Android 不再雜湊資源、不逐檔掃描聲畫，也不因圖片缺檔擋住開局。**
 已安裝媒體在 APK 更新後繼續沿用；新增圖片不觸發全包重匯。
@@ -52,11 +50,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 ```
 
 此通用腳本會 reconfigure 既有 preset，不另建 cache；Qt／NDK／FreeType 路徑沿用固定工具鏈。
-若 cache 設定未變、只需最快增量建置，可在 Android 環境已設定的 shell 執行
-`cmake --build builds/android-x86_64-debug --target apk --parallel 8`。
-不要拿桌面 Qt 或未設定 JAVA_HOME／GRADLE_USER_HOME 的 shell 直接套用。
-若 PowerShell 把原生命令的 stderr warning 升格為 `NativeCommandError`，保存紀錄並核對實際退出碼，
-不要清除建置樹；互動式使用上述腳本，避免另以 `$ErrorActionPreference='Stop'` 包住 `2>&1` 的外層管線。
+cache 設定未變時，可在已設定 Android 環境的 shell 執行 `cmake --build builds/android-x86_64-debug --target apk --parallel 8`
+（不要用桌面 Qt 或未設定 JAVA_HOME／GRADLE_USER_HOME 的 shell）。
+PowerShell 把原生命令的 stderr warning 升格為 `NativeCommandError` 時，核對實際退出碼，不要清除建置樹。
 
 裝置啟動、序號核對與視窗都走雷電14。
 
@@ -69,23 +65,16 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 | 使用者確實要更新媒體 | 更新媒體；APK 新增圖片不自動觸發重匯，也不因圖片缺檔擋局 |
 | 資料被清除、媒體損壞、升級衝突 | 保存錯誤並判斷原因；不自動清除資料或重匯整包 |
 
-**已知耗時來源**：首次 ZIP 匯入的 100% 只表示解壓進度，後面仍會建立可用版本。
-[新資源流程的來源修正](android-extension-runtime.md#匯入更新效能修正)
-已移除平方次數 ZIP 比對、可 seek 來源的 spool／重複雜湊讀取及媒體版本複製；
-內容準備只建立媒體目錄引用並複製規則／介面。移除資源雜湊與聲畫掃描後，缺圖片
-不再擋住連線。首次完整匯入的新耗時未在雷電14重測，不能用啟動秒數代替；
-ARMv7／LDPlayer 的靜音完整局另見下節。
-
-日常不要重複保留傳輸副本；匯入完成後清理本輪傳輸檔，保留 H 碟原包與 App 私有資料。
-不要手動刪除 content store 的 baseline／blobs／versions。日常 APK 使用原生 x86_64。
-ARM translation 不能代替 arm64 實機，也不等同實機或折疊機驗收。
+**首次匯入**：ZIP 匯入的 100% 只表示解壓進度，後面仍會建立可用版本
+（[匯入效能修正](android-extension-runtime.md#匯入更新效能修正)）；缺圖片不再擋住連線。
+匯入完成後清理本輪傳輸檔，保留 H 碟原包與 App 私有資料，不手動刪除 content store 的 baseline／blobs／versions。
+日常 APK 使用原生 x86_64；ARM translation 不能代替 arm64 實機或折疊機。
 
 <a id="android-14-ldplayer-reuse"></a>
 ## Android 14／雷電14：重用與故障處理（2026-10-03）
 
-本節是未指定裝置時的日常 Android 裝置，也適用於使用者指定雷電14的工作。優先重用既有安裝、App 資料、媒體及上方 x86_64
-建置快取；「最新版 Android APK」不代表下載新 Android 映像。
-以下位置是本次實測錨點；每次重新核對程序、VM、序號與 API，不沿用舊 PID。
+本節是未指定裝置時的日常 Android 裝置，也適用於使用者指定雷電14的工作。優先重用既有安裝、App 資料、媒體及上方 x86_64 建置快取。
+以下位置是實測錨點；每次重新核對程序、VM、序號與 API，不沿用舊 PID。
 
 | 項目 | 本次沿用值 |
 |---|---|
@@ -198,11 +187,9 @@ $ld14Args = "-connect:127.0.0.1:$ld14GamePort --auto-robots --network-ui-smoke -
   --es applicationArguments "'$ld14Args'"
 ```
 
-結果檔每輪使用新名稱，避免讀到舊 JSON。先收集本輪 logcat／server 原始日誌，再啟動；不要清空
-crash buffer。啟動監看使用產品實際標記 **`[AUTOTEST] game start`**，結局是
-**`[AUTOTEST] game over <winner>`**。本次監看器錯找大寫 `GAME_START`，在真正開局後仍觸發
-啟動逾時並中止了一局；修正後才完成自然局。不能只用標記檔存在判定開局，也不能向 producer
-日誌補寫自造標記。收到實際 game start 後停用開局前 deadline，保留對局總上限。
+結果檔每輪使用新名稱；先收集本輪 logcat／server 原始日誌再啟動，不清空 crash buffer。
+啟動標記是產品實際輸出的 **`[AUTOTEST] game start`**，結局是 **`[AUTOTEST] game over <winner>`**（注意大小寫，
+不可自造標記）；收到 game start 後停用開局前 deadline，保留對局總上限。
 
 | 完成條件 | 必要證據 |
 |---|---|
@@ -233,18 +220,15 @@ if ($ld14StartedByThisRun) { & $ld14Console quit --index 0 }
 reverse 已由本輪 runner 移除時不重複執行。LD14 原本已運行則保留，不關其他實例或全域 ADB。
 最後核對本輪程序與三種埠，不以 `quit` 命令退出碼代替清理完成證據。
 
-2026-10-03 的修正後 05P 自然完成，反賊勝，對局 319 秒；無託管，client `EXIT_SELF / 0`、
-server 退出 0，清理通過。此前被監看器強停的局及未開局嘗試均不算 PASS。日誌仍有
-`hegemony-ai.lua:450` 的 `cloneCard` nil、shuangren 拼點卡未找到及 snapshot JSON 有損序列化
-警告；保留作待處理項，完整局通過不代表它們已修復。NULL 音訊、有 full effects 計數或既有
-聲畫不能證明有聲、人工觸控、特定視覺效果或 ARM 實機通過。
+最近一次 05P（2026-10-03）自然完成，反賊勝，319 秒，無託管，client `EXIT_SELF / 0`、server 退出 0，清理通過。
+日誌仍有 `hegemony-ai.lua:450` 的 `cloneCard` nil、shuangren 拼點卡未找到及 snapshot JSON 有損序列化警告，列為待處理項。
+NULL 音訊的結果不能代表有聲、人工觸控、特定視覺效果或 ARM 實機。
 
 <a id="android-armv7-reuse"></a>
 ## ARMv7 操作與問題處理（2026-10-03）
 
-本節保存本次 32 位元建置與單機 `03_1v2` 的可重用流程，不取代上方 x86_64 日常環境。
-本次經使用者授權改用既有 LDPlayer 9，保留所有 App 資料；下次先核對任務授權與裝置 ABI，
-不因這筆歷史紀錄自動切換模擬器或啟用 root。
+本節是 32 位元建置與單機 `03_1v2` 的可重用流程，不取代上方 x86_64 日常環境。
+使用既有 LDPlayer 9 並保留 App 資料；使用前先核對任務授權與裝置 ABI，不自動切換模擬器或啟用 root。
 
 ### 沿用位置與建置
 
@@ -261,8 +245,7 @@ server 退出 0，清理通過。此前被監看器強停的局及未開局嘗�
 | 已匯入媒體 | 沿用 App 私有內容；原包仍是 `H:\qsan-validation\room-responsive-20260916\qsan-media.zip` |
 | 一次性證據 | [完整驗收報告](../builds/android-armv7-10p-20261003/summary.md)；目錄的 10p 是原任務名稱，實際指定局改為 `03_1v2` |
 
-裝置啟動後先用 `adb devices -l` 與 LDPlayer `list2` 確認序號對應的 index，所有 ADB 操作指定
-`-s`。不要把別的工作正在使用的實例、重複 TCP 別名或 offline 項目當成新的待測裝置。
+裝置啟動後先用 `adb devices -l` 與 LDPlayer `list2` 確認序號對應的 index，所有 ADB 操作指定 `-s`。
 
 ```powershell
 $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
@@ -272,8 +255,7 @@ $serial = 'emulator-5554' # 先確認它仍對應已授權的 LDPlayer index 0�
 & $adb -s $serial shell getprop ro.zygote
 ```
 
-ARM64 translation 存在也不等於能跑 ARMv7。先做上面的只讀核對，ABI 不符即停止安裝，
-不重建同一 APK、不清資料，也不另建 AVD。
+先做上面的只讀 ABI 核對（ARM64 translation 不等於能跑 ARMv7）；ABI 不符即停止安裝，不清資料、不另建 AVD。
 
 已有建置授權且完成約定檢查點後，沿用此命令增量建置：
 
@@ -286,20 +268,15 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 ```
 
 `-Abi` 使用 `armeabi-v7a`；`armv7` 是 kit／preset／cache 名稱，不能拿來當腳本的 ABI 參數。
-核對 cache 的來源仍是 L、`ANDROID_ABI=armeabi-v7a`、`QSAN_AUDIO_BACKEND=ANDROID`，
-保留增量 cache，不用 `--fresh` 或 `--clean-first`。沒有來源變更時可沿用已交付 APK，
-不為讀文件再建置或重跑已完成的局。
+核對 cache 的來源仍是 L、`ANDROID_ABI=armeabi-v7a`、`QSAN_AUDIO_BACKEND=ANDROID`，保留增量 cache，不用 `--fresh` 或 `--clean-first`。
 
-本次 Release 原產物未簽章，另外以既有持久開發憑證簽章；沿用下方
-「固定開發簽名與覆蓋更新」的本機設定，金鑰與密碼不寫入文檔或倉庫。
-先以 `apksigner verify --verbose --print-certs` 核對原憑證，再 `install -r`；
-簽章不符就停止，不卸載。本次 APK 的 90 個 `.so` 均為 `ELF32 / EM_ARM`，唯一 ABI 是
-`armeabi-v7a`；檢查應涵蓋 APK 內所有 native libraries，不只主程式。
+Release 原產物未簽章，以既有持久開發憑證簽章（見下方「固定開發簽名與覆蓋更新」，金鑰與密碼不入文檔或倉庫）。
+先 `apksigner verify --verbose --print-certs` 核對憑證再 `install -r`，簽章不符就停止，不卸載。
+檢查應涵蓋 APK 內所有 native libraries（本次 90 個 `.so` 均為 `ELF32 / EM_ARM`，唯一 ABI `armeabi-v7a`）。
 
-本次曾在 Gradle 顯示 `BUILD SUCCESSFUL`、APK 已產出後，外層命令仍等待輸出管線 EOF；
-新啟動的 Gradle daemon 保留了管線。先保存建置日誌、核對本輪 APK 與程序命令列／啟動時間，
-只處理能證明由本輪建立的 daemon，再等待外層退出碼。不能因此重新建置、清 cache、
-將成功文字直接當退出碼，或停止全部 Java／其他工作共用的 daemon。
+Gradle 顯示 `BUILD SUCCESSFUL` 而外層命令仍等待輸出管線 EOF 時，是新啟動的 Gradle daemon 保留了管線：
+先保存建置日誌，核對 APK 與程序命令列／啟動時間，只停止能證明由本輪建立的 daemon 並等待真正退出碼；
+不重新建置、不清 cache、不停全部 Java／共用 daemon。
 
 ### 首次匯入與模式設定
 
@@ -312,24 +289,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 | `su -c cat` 的輸出將 LF 轉為 CRLF | 二進位備份用 `exec-out` 讀取 Base64，再在主機解碼及以 bytes 儲存；不能把終端文字輸出直接當設定原檔 |
 | Android 返回鍵意外觸發預設 2P | 首頁不以 BACK 當選單／退出操作；使用 `KEYCODE_MENU` 開啟原生選單。誤開局另記中止，不計指定完整局 |
 
-需要暫改設定時，先正常關閉 App 並確認 PID 消失；先備份 LDPlayer 原設定檔，
-再啟用 root。App 設定實際位置是
-`/data/user/0/org.qsanguosha.game/files/config.ini`，不是 `userdata/` 或某個 runtime 快照內。
-記錄原檔 bytes、UID、GID 與 mode；本次為 11420 bytes、`10062:10062:600`，這些數字不能
-當下一次的固定值。先取得未經文字換行轉換的備份，再只改 `[General]` 的 `GameMode`，
-若缺鍵則新增該鍵；寫回既有 inode，避免替換檔案造成 owner／權限改變。
-
-可重用的原始位元讀取方式如下；命令僅在已授權的暫時 root 期間使用，ADB 輸出須以 bytes
-捕捉，Base64 在主機解碼，不能經 PowerShell 的文字重導向保存原檔：
-
-```text
-adb -s <已確認序號> exec-out su -c "base64 /data/user/0/org.qsanguosha.game/files/config.ini"
-```
-
-寫回後以同一方法逐位元核對，並核對 owner／mode；重新啟動 App，先看首頁確實顯示
-「3人局［斗地主］」，再點 QuickJoin。備份及還原在 App 關閉時做，避免 App 稍後覆寫設定。
-本次的 `configure_mode_verified.py`／`restore_app_config.py` 是證據目錄中的一次性腳本，
-包含固定序號、原 bytes 與 UID，不能直接當成下次通用 runner。
+需要暫改設定時：先正常關閉 App 並確認 PID 消失，備份 LDPlayer 原設定檔，再啟用 root。
+App 設定在 `/data/user/0/org.qsanguosha.game/files/config.ini`。先以 `exec-out su -c "base64 ..."` 取得未經換行轉換的
+備份（Base64 在主機解碼，不經 PowerShell 文字重導向），記錄原 bytes、UID、GID 與 mode，
+只改 `[General]` 的 `GameMode`（缺鍵則新增），寫回既有 inode 以保留 owner／權限；
+寫回後逐位元核對，重啟 App 確認首頁顯示「3人局［斗地主］」再點 QuickJoin。備份與還原都在 App 關閉時做。
 
 ### 結局判定與還原順序
 
@@ -353,11 +317,9 @@ adb -s <已確認序號> exec-out su -c "base64 /data/user/0/org.qsanguosha.game
    關閉本輪實例，確認停止後精確還原 LDPlayer 原設定，包括 ADB 開關。
    回收本輪 collector，不停止共用 ADB server，也不影響其他實例。
 
-本次唯一指定局自然 `GAME_OVER`，地主孫尚香［國］勝，場內 12 分 40 秒；
-正常回首頁／退出、埠釋放、App 設定與 LDPlayer 原設定還原均已核對。
-原定 10P 已被使用者改為 `03_1v2`，不再補跑 10P；ARM translation、`NULL` 音訊與託管
-不能代替實機、音訊或人工觸控驗收。逾時、崩潰或停止只保存第一份失敗證據，
-新增修復／重開局仍遵守範圍與檢查點授權，不因完整測試授權無限重試。
+本次指定局自然 `GAME_OVER`，地主孫尚香［國］勝，場內 12 分 40 秒；正常回首頁／退出、埠釋放、設定還原均已核對。
+ARM translation、`NULL` 音訊與託管不能代替實機、音訊或人工觸控驗收。逾時、崩潰或停止只保存第一份失敗證據，
+新增修復／重開局仍遵守範圍與檢查點授權。
 
 ## 固定工具鏈與目錄
 
@@ -368,9 +330,7 @@ adb -s <已確認序號> exec-out su -c "base64 /data/user/0/org.qsanguosha.game
 回覆或規則。文字快照主動更新、可複製；操作面板使用標準 Widgets、整頁捲動及
 至少 48 logical-pixel 觸控高度。關閉面板不取消請求，背景及同步未完成時停用操作。
 
-支援與限制見 [共用呈現契約](client-core-interaction-model.md#other-client-adapters)。
-Android 建置、裝置觸控／外接鍵盤與 TalkBack 尚未驗收；桌面測試結果
-不能代替 Android gate。
+支援與限制見 [共用呈現契約](client-core-interaction-model.md#other-client-adapters)；Android 裝置觸控／外接鍵盤與 TalkBack 尚未驗收。
 
 ### 建置預設值
 
@@ -430,10 +390,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-android.ps1 `
   -SdkRoot "$env:LOCALAPPDATA/Android/Sdk"
 ```
 
-腳本會為 ARMv7 建立獨立 `freetype-armv7`，重用共用 FreeType 原始碼。
-Release APK 簽章狀態依現有 Gradle 配置；未簽章產物不能直接安裝。
-建置成功不代表 32 位元實機、記憶體峰值或完整對局驗收通過；
-不要以 x86_64 模擬器驗收代替 ARMv7 裝置驗收。
+腳本會為 ARMv7 建立獨立 `freetype-armv7`，重用共用 FreeType 原始碼。Release APK 簽章狀態依現有 Gradle 配置，未簽章產物不能直接安裝。
 
 ### 通用建置入口
 
@@ -512,7 +469,7 @@ Android APK 的 `runtime-content-base.json` 必須由 CMake 產生的 filtered `
 python tools/android/test-runtime-descriptor.py
 ```
 
-此腳本涵蓋宣告覆蓋、缺檔拒絕、未宣告 extension 拒絕、路徑穿越拒絕及重複套用穩定；APK 建置、ServerHello 實際連線與完整對局仍須另行驗收。
+此腳本涵蓋宣告覆蓋、缺檔拒絕、未宣告 extension 拒絕、路徑穿越拒絕及重複套用穩定。
 
 既有安裝遵守 missing-only，原有同名包宣告不會被新版 APK 靜默覆寫。因此舊測試版的無效宣告不能只靠 `install -r` 修好；需透過整包管理匯入有效宣告，或在隔離測試副本使用明確 `--asset-root`。後者只算診斷部署，不能當作正常升級驗收。
 
@@ -562,9 +519,8 @@ $readelf = Join-Path $env:LOCALAPPDATA 'Android\Sdk\ndk\27.2.12479018\toolchains
 & $readelf -h -lW '<解壓後的 lib/arm64-v8a/某個.so>'
 ```
 
-`apksigner` 證明簽章存在，`zipalign -P 16` 檢查 ZIP 對齊，`aapt2` 檢查 package/SDK metadata；這些不能證明可玩、音效輸出或 16 KB 裝置執行。
-
-逐一檢查 APK 內每個 `.so` 的 ELF Machine 為 AArch64，所有 `LOAD` segment 的 Align 至少為 `0x4000`；只檢查主程式或 ELF header 不足以證明所有依賴符合 16 KB。`apksigner` 需先將上面的 JDK 21 設為該程序的 `JAVA_HOME`。
+`apksigner` 驗證簽章，`zipalign -P 16` 檢查 ZIP 對齊，`aapt2` 檢查 package/SDK metadata。
+須逐一檢查 APK 內每個 `.so` 的 ELF Machine 為 AArch64，且所有 `LOAD` segment 的 Align 至少 `0x4000`。`apksigner` 需先將上面的 JDK 21 設為 `JAVA_HOME`。
 
 ## Android 音訊
 
@@ -576,56 +532,20 @@ Android Debug／Release preset、CMake Android 預設與 `tools/build-android.ps
 的音訊預設不變。Qt Multimedia 仍供其他介面／影片功能使用；影片音軌不走
 `AudioBridge`。
 
-不需 FMOD SDK、不更換第三方庫、不把 OGG 轉成 WAV。API 29 起短音效用
-`SoundPool.load(String)`；API 28 的載入留在 `AudioBridge.loadEffectSample()`
-的 `SDK_INT` 分支，目前該分支不播放短音效。這次改動尚未在模擬器或實機驗收出聲。
+不需 FMOD SDK、不更換第三方庫、不把 OGG 轉成 WAV。API 29 起短音效用 `SoundPool.load(String)`；
+API 28 的載入留在 `AudioBridge.loadEffectSample()` 的 `SDK_INT` 分支，目前該分支不播放短音效。出聲尚未在模擬器或實機驗收。
 
-Android 啟動修復改用 Qt Quick `software` 後端及既有 raster 牌桌
-viewport，避免模擬器上已觀察到的 OpenGL 破圖與前後景 EGL context 失效。
-選擇在第一個 Quick window 建立前完成；Windows／Linux 保持原有 OpenGL 路徑。
-這是相容性繞過，GPU shader 特效與影片顯示可能受限，不能當作完整視覺功能驗收。
-軟體後端限制見 [Qt 官方文件](https://doc.qt.io/qt-6/qtquick-visualcanvas-adaptations-software.html)。
+Android 啟動改用 Qt Quick `software` 後端及既有 raster 牌桌 viewport，避免模擬器上的 OpenGL 破圖與前後景 EGL context 失效；
+選擇在第一個 Quick window 建立前完成，Windows／Linux 維持 OpenGL。這是相容性繞過，GPU shader 特效與影片顯示可能受限
+（見 [Qt 官方文件](https://doc.qt.io/qt-6/qtquick-visualcanvas-adaptations-software.html)）。
+靜音＋software 的 Debug APK 首頁與「關於」對話框顯示正常，首頁啟動時間偏長；ARMv7／LDPlayer Release 靜音單機完整局見 [ARMv7 紀錄](#android-armv7-reuse)。
 
-靜音＋software 的 Debug APK 首頁可顯示，「關於」對話框與已就緒首頁的前後景
-恢復正常；首頁啟動時間偏長，尚未外推為啟動效能通過。
-該次 Debug 首頁短驗收未涵蓋完整對局、實機、CI 及 GPU 特效；後續 ARMv7／LDPlayer
-Release 靜音單機完整局見 [本次紀錄](#android-armv7-reuse)，不外推其他 gate。
+## 已確認的故障分類
 
-## AAudio CFI 音訊橋接：已確認故障機制
-
-由既有 AudioTrack 崩潰的二進位 tombstone，
-已取得 callback、Qt guest、ndk_translation helper 及 fault shadow 的必要映射。
-host AAudio 準備呼叫的 x86_64 stub 位於匿名 rwx 區域，內嵌目標分別指向
-Qt Multimedia ARM64 程式碼及 libndk_translation.so；兩份 stub 去除 ASLR
-立即數後一致。
-
-同 BuildId libdl.so 的 __cfi_slowpath+29 是讀取 16-bit shadow 的指令；
-兩次 fault 都精確落在不可讀的 [anon:cfi shadow]，尚未執行 callback 或
-CFI 型別失敗處理。這已確認該映像／ARM 橋接路徑的 CFI 整合失效，
-仍未定位 translator／linker 的具體實作錯誤，也未核實任何已修復版本。
-
-二進位擷取仍有每筆 256 KiB 限制，但上述必要映射完整可見。`QT` 後端仍會進入這次回呼，所以 Android 預設改走 `AudioBridge`。
-WAV、音量零、Qt push mode 或單設 QT_MEDIA_BACKEND 都不能保證避開此回呼。
-
-## 開局後主執行緒 0x58：隱藏手牌修正
-
-NULL 音訊與 software／raster APK 的開局後崩潰，完整 SYSTEM_TOMBSTONE 的記憶體
-指令與 native 符號相符：
-`Player::addCard()` 呼叫空卡牌的 `Card::getId()`，讀取 `this + 0x58`。
-
-當時 Android 工作樹漏帶主分支的隱藏手牌修正。開局收到的 `-1`
-代表未知牌，只能增加手牌張數，不能放入實體 `Card *` 清單；同一筆手牌移動也
-不能重複計入。此歷史紀錄供問題分類，涉及 `src/core/player.cpp`、
-`src/client/client.cpp`、`src/client/clientplayer.cpp/.h`。目前直接從 L 建置，
-先確認來源是否已含修正，不再複製到舊 Android 工作樹或只同步 UI／音訊檔案。
-
-該次記錄沒有 APK 重建與開局回歸證據；不能用它判定新版仍未驗。後續 ARMv7 完整局
-證據另見上方紀錄。這個空卡牌缺陷與前節的 AAudio CFI callback 崩潰不同，修復它
-不代表恢復有聲。
+- **`QT` 音訊後端**：Qt Multimedia 的 AAudio callback 在 ARM 轉譯模擬器上因 `libdl.so` 的 `__cfi_slowpath` 讀取不可讀的 `[anon:cfi shadow]` 而崩潰（映像／ARM 橋接的 CFI 整合失效，具體 translator／linker 錯誤未定位）。WAV、音量零、Qt push mode、單設 `QT_MEDIA_BACKEND` 都不能避開，所以 Android 預設走 `AudioBridge`。
+- **開局後主執行緒 0x58**：開局收到的 `-1`（未知牌）只能增加手牌張數，不能放入實體 `Card *` 清單，也不能重複計入同一筆手牌移動；否則 `Player::addCard()` 對空卡牌呼叫 `Card::getId()` 讀取 `this + 0x58` 崩潰。涉及 `src/core/player.cpp`、`src/client/client.cpp`、`src/client/clientplayer.cpp/.h`；目前直接從 L 建置，先確認來源已含修正。此缺陷與 AAudio 崩潰無關，修復它不會恢復有聲。
 
 ## 驗證限制與故障分類
 
-x86_64 上的 ARM translation 不能代替 arm64 實機、Android 9 或 16 KB page-size 環境。QT 後端在轉譯層的 AAudio CFI callback 崩潰不能歸因於某一個 OGG 檔案。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。四個短 UI WAV 只降低 codec 依賴，不代表完整 OGG 已驗收。
-
-本頁不執行 CTest、跨版本矩陣或手機驗收。目錄與版本切換見 [Android 擴展實體目錄](android-extension-runtime.md)。
+x86_64 上的 ARM translation 不能代替 arm64 實機、Android 9 或 16 KB page-size 環境。遇到閃退須連同 `adb logcat`、ABI、映像及是否播放音效記錄，不能只憑閃退判定規則核心回歸。目錄與版本切換見 [Android 擴展實體目錄](android-extension-runtime.md)。
 

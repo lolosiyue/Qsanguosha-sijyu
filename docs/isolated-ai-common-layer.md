@@ -2,7 +2,7 @@
 
 本文 `lua/ai/` 路徑指部署檔案；版本與取得方式見[外部 Lua 來源](lua-ai-spec.md#外部-lua-來源)。
 
-本文件是目前 standalone `lua/ai/isolated/` 純值 AI 架構的維護錨點。原版 SmartAI 只作行為參考；共用層接收 viewer-scoped 純值 (pure values)，提出值型答案，再由 C++ 權威端重驗。安全 fallback 只是故障保護，觸發即代表 isolated acceptance 失敗，不是完成證據。
+本文件是目前 standalone `lua/ai/isolated/` 純值 AI 架構的維護錨點。原版 SmartAI 只作行為參考；共用層接收 viewer-scoped 純值 (pure values)，提出值型答案，再由 C++ 權威端重驗。安全 fallback 只是故障保護；任何 `unhandled`／unsupported／error 觸發都使 isolated acceptance 失敗。
 
 ## 原版入口與目前共用 API
 
@@ -30,11 +30,11 @@
 
 預設詢問已包含：頻率驅動的 skill invoke、choice 排除 `benghuai`、suit 權重、general 可選項、discard、AG、card chosen、Yiji、player(s) chosen、實體回應／show／pindian／救桃／無懈。隨機選擇使用 runtime 受控 RNG。Guanxing 雙向排序目前只覆蓋自己摸牌前且沒有待判定的基線：按需求排序全放頂；只有明確 draw count 才分頂／底，不推測摸牌數。
 
-`nil` 是 `unhandled`，表示 isolated 尚未處理；`AIUnsupported` 是 unsupported，代表 isolated defect/debt 並記錄原因；`{kind="pass"}` 是已處理的 pass。安全 fallback 可在故障時保住流程，但任何 `unhandled`／unsupported／error 觸發都使 isolated acceptance 失敗。`"."`／空字串經 normalization 也是 declined/pass，但 compulsory pattern (`!`) 不接受 declined／pass。這三者不可合併成「沒有出牌」。
+`nil` 是 `unhandled`（isolated 尚未處理）；`AIUnsupported` 是 unsupported（isolated defect/debt，記錄原因）；`{kind="pass"}` 是已處理的 pass。`"."`／空字串經 normalization 也是 declined/pass，但 compulsory pattern (`!`) 不接受 declined／pass。三者不可合併成「沒有出牌」。
 
 每個共用 registry 透過 `ai_coverage.declare` 申報；未註冊、過期、資料不完整、未知 conversion 或未知 target strategy 記錄 bounded `NotCovered`／`Error` metadata，並視為 isolated acceptance debt。逐候選 unknown 不會取消同一 request 中已知完整合法 action；只有沒有可行 action 且仍有 unknown 才使該 request NotCovered。已知為空和列不完必須分開。
 
-目前仍有 standalone debt：逐武將／逐技能 activation、conversion／view-as 的所有 pattern 與 cost 語意、`cardEffect` 依賴事件上下文、完整排序與牌值模型，以及需要 native effect／move／userdata 的 response。這些路徑是 `NotCovered`，不能把安全 fallback 或參考 SmartAI 行為當作 isolated 完成。
+目前仍有 standalone debt：逐武將／逐技能 activation、conversion／view-as 的所有 pattern 與 cost 語意、`cardEffect` 依賴事件上下文、完整排序與牌值模型，以及需要 native effect／move／userdata 的 response，皆為 `NotCovered`。
 
 ## 複雜度與擴展方式
 
@@ -47,7 +47,7 @@
 | 目標組合／轉化成本 | 權威端有探測 budget，耗盡為 incomplete；固定上限 k 的獨立成本選擇 O(k n)，不枚舉手牌子集。 |
 | 給牌需求 | 共用救命／裝備優先項先預分類；任意技能 `ai_cardneed` 仍須牌 × 適用 hook 比對，不能宣稱這部分為 O(n)。 |
 
-時間推演 (Planning) 按 viewer 保存純值；target／cost 授權券同時綁定 decision ID 與 state revision，跨 request 的一般 intent 只在 revision 未變時保留。`ai_coverage.outcomes()` 提供結果分類計數，與 registry 的宣告覆蓋率分開；沒有對局量測就不能把宣告數當作實際覆蓋率。
+時間推演 (Planning) 按 viewer 保存純值；target／cost 授權券同時綁定 decision ID 與 state revision，跨 request 的一般 intent 只在 revision 未變時保留。`ai_coverage.outcomes()` 提供結果分類計數，與 registry 的宣告覆蓋率分開。
 
 `respond_card` 接受實體牌答案及當次 authority 授權的 V2 conversion `card_spec`；show／pindian 仍是 offered 實體牌限定。conversion 逐項檢查，已知完整合法的 action 可先回答，未知 conversion 另記錄。未覆蓋 V1 view-as 的 response 保留 unknown；合法轉化閃／桃不能被空實體候選吞掉。
 
@@ -57,14 +57,12 @@
 2. 在既有 class／skill registry 掛 handler；不要在核心寫角色或武將名稱硬編碼。
 3. handler 只回 `AIUsePlan`／值型 result；未知資料回 `AIUnsupported`。牌策略不填 plan 代表該牌不使用；request handler 的 `nil` 是未處理，明確拒絕整題才回 `{kind="pass"}`。
 4. 逐項評估 request 候選並保留 unknown 記錄；只要有已知完整合法 action 就交給 normalization，沒有 action 且仍有 unknown 才回 NotCovered。權威端仍重驗 pattern、method、ticket、target、成本與 revision。
-5. 補逐分支 coverage 帳與實際驗收證據；遵守現行不新增測試套件／fixture 的規範，不以單一成功案例代表全量 SmartAI parity。原生路由、驗證拒絕與 fallback 缺少觀測時，獨立驗收記 BLOCKED。
+5. 補逐分支 coverage 帳與實際驗收證據（不新增測試套件／fixture）。原生路由、驗證拒絕與 fallback 缺少觀測時，獨立驗收記 BLOCKED。
 
-相關設計邊界：[`docs/lua-ai-spec.md`](lua-ai-spec.md)。
-
-搬運既有策略時按[移植遵循文件](isolated-ai-migration-playbook.md)執行；[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)已記錄排序消費端、unknown 與部署 gate 的發現及修正狀態，不能將下列函式清單視為等價性通過證明。
+相關設計邊界：[`docs/lua-ai-spec.md`](lua-ai-spec.md)。搬運既有策略時按[移植遵循文件](isolated-ai-migration-playbook.md)；以下函式清單不是等價性通過證明，驗收狀態見[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)。
 
 ## Scarlet 參考技能所需共用接口
 
-新增 addHandPile／getAllPeachNum、draw 目標推薦與無牌普通傷害接口。具體覆蓋與未覆蓋分支、原版保留行為及靜態檢查點見 [Scarlet isolated AI](scarlet-isolated-ai-examples.md)。此批不是全套 SmartAI 傷害／推薦策略完成證據。
+新增 addHandPile／getAllPeachNum、draw 目標推薦與無牌普通傷害接口；覆蓋與未覆蓋分支見 [Scarlet isolated AI](scarlet-isolated-ai-examples.md)。
 
-`lua/ai/isolated/smart-ai-functions.lua` 補上套件會呼叫的 SmartAI 相等函式（可見牌選取、殺是否有效、命中、棄牌、找人出殺、跳過出牌階段、`getDefenseSlash`、`getWoundedFriend`、`getCardId`、`sortEnemies`、`updatePlayers`、`hasTuntianEffect`、`adjacentPlayers`、`isLordHealthy`，以及 `bignumber`／`slash` 牌需）。未知投影回 nil。套件用 `sgs.append_skill_list`、`sgs.ai_slash_benefit`、`sgs.ai_valuable_card`、`sgs.ai_will_skip_play`、`sgs.ai_turn_over`、`sgs.ai_defense_slash`、`sgs.ai_hasTuntianEffect_skill`、`sgs.ai_jueqing_effect` 擴充，不把武將名寫進這層。Scarlet 的技能名單與單挑點數在 `isolated/scarlet-ai.lua`。mcompetition 的技能名單與 handler 在 `isolated/mcompetition-ai.lua`。Shadow 的技能名單與 `y_` 決策在 `isolated/shadow-ai.lua`。舊版 `lua/ai/scarlet-ai.lua`、`lua/ai/mcompetition-ai.lua` 與 `lua/ai/shadow-ai.lua` 的逐技能 callback 仍在 gameplay VM，未整檔搬進 isolated。字串 data、房間 tag、移動與玩家屬性沒有投影時，對應詢問維持 unsupported。
+`lua/ai/isolated/smart-ai-functions.lua` 補上套件會呼叫的 SmartAI 相等函式（可見牌選取、殺是否有效、命中、棄牌、找人出殺、跳過出牌階段、`getDefenseSlash`、`getWoundedFriend`、`getCardId`、`sortEnemies`、`updatePlayers`、`hasTuntianEffect`、`adjacentPlayers`、`isLordHealthy`，以及 `bignumber`／`slash` 牌需），未知投影回 nil。套件用 `sgs.append_skill_list`、`sgs.ai_slash_benefit`、`sgs.ai_valuable_card`、`sgs.ai_will_skip_play`、`sgs.ai_turn_over`、`sgs.ai_defense_slash`、`sgs.ai_hasTuntianEffect_skill`、`sgs.ai_jueqing_effect` 擴充，武將名不寫進這層。Scarlet、mcompetition、Shadow 的技能名單與策略分別在 `isolated/scarlet-ai.lua`、`isolated/mcompetition-ai.lua`、`isolated/shadow-ai.lua`；舊版同名檔的逐技能 callback 仍在 gameplay VM。字串 data、房間 tag、移動與玩家屬性沒有投影時，對應詢問維持 unsupported。
