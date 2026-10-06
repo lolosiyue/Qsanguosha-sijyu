@@ -93,6 +93,32 @@ public:
         bool m_joinOnly = false;
         bool m_holdsBudget = false;
     };
+    // A dying/death frame keeps its original native cursor after an event
+    // cancellation. Only the cancelled stage is discarded; the saved owning
+    // cascade remains cancelled when this continuation finishes.
+    class DyingContinuationScope {
+    public:
+        explicit DyingContinuationScope(RoomThread &thread, bool isolateCancelled = true,
+                                        quint64 retainedOwner = 0);
+        ~DyingContinuationScope();
+        DyingContinuationScope(const DyingContinuationScope &) = delete;
+        DyingContinuationScope &operator=(const DyingContinuationScope &) = delete;
+        bool cancelled() const { return bool(m_state); }
+        quint64 cancelledCascadeId() const;
+        void rethrowCancelled() const;
+    private:
+        friend class RoomThread;
+        struct State;
+        std::unique_ptr<State> capture(const TriggerCascadeBreak &cancel) const;
+        void resume(const TriggerCascadeBreak &cancel);
+        RoomThread &m_thread;
+        std::unique_ptr<State> m_state;
+        std::unique_ptr<State> m_unownedEntry;
+    };
+    bool invokeDyingEvent(DyingContinuationScope &continuation, TriggerEvent event,
+                         ServerPlayer *target, QVariant &data);
+    bool invokeDyingCallback(DyingContinuationScope &continuation,
+                            const std::function<void()> &callback);
     class MandatoryCleanupScope {
     public:
         explicit MandatoryCleanupScope(RoomThread &thread) : m_thread(thread) { ++m_thread.m_mandatoryCleanupDepth; }
@@ -132,8 +158,12 @@ public:
     bool hasActiveCascade() const { return m_cascadeId && m_dispatchBudget.depth() != 0; }
     bool isCascadeCancelled() const { return m_dispatchBudget.aborted(); }
     bool isMandatoryCleanup() const { return m_mandatoryCleanupDepth != 0; }
+    bool isNativeCommitActive() const { return m_nativeCommitDepth != 0; }
     bool triggerMandatoryGameRule(TriggerEvent event, ServerPlayer *target, QVariant &data);
-    bool invokeStructuralCallback(const std::function<void()> &callback);
+    bool invokeStructuralCallback(const std::function<void()> &callback,
+                                  const void *definition = nullptr, const QString &site = QString(),
+                                  ServerPlayer *target = nullptr);
+    void retireCancelledCallbackOrigins(quint64 owner);
     void recordDeferredAnytime(ServerPlayer *player, const QString &skill);
     void recordDeferredReveal(ServerPlayer *player, const QString &slot);
     void finishDeferredCascade(quint64 cascadeId, bool cancelled);
@@ -235,6 +265,9 @@ private:
     [[noreturn]] void abortTriggerDispatch(TriggerEvent event, ServerPlayer *target, const QString &skill);
     bool invokeAuthorCallback(const std::function<void()> &callback, bool nativeBoundary = false);
     bool suppressOptionalDispatch() const;
+    void noteDyingNativeRule(TriggerEvent event, ServerPlayer *target, QVariant &data);
+    bool enterCallbackOrigin(const void *definition, TriggerEvent event, ServerPlayer *target,
+                             const QString &site, const QString &source = QString(), int instance = 0);
     void leaveTriggerDispatch(quint64 generation);
     const QByteArray &distancePropertyName(const ServerPlayer *player);
 
@@ -249,6 +282,7 @@ private:
     unsigned m_authorCallbackDepth = 0;
     QSet<int> m_discardOptionalFrames;
     unsigned m_nativeCommitDepth = 0;
+    unsigned m_nativeDeathCommitDepth = 0;
     QList<unsigned> m_commitAuthorDepths;
     unsigned m_mandatoryCleanupDepth = 0;
     bool m_dispatchAbortReported = false;
@@ -259,6 +293,16 @@ private:
         QString skill;
     };
     QList<DispatchBreadcrumb> m_dispatchRecent;
+    struct DyingRuleFrame {
+        TriggerEvent event;
+        ServerPlayer *target;
+        QVariant *data;
+        bool *entered;
+    };
+    QList<DyingRuleFrame> m_dyingRuleFrames;
+    QList<QString> m_callbackOrigins;
+    QHash<quint64, QSet<QString>> m_cancelledCallbackOrigins;
+    quint64 m_settlementOwner = 0;
     using DeferredEntries = QHash<ServerPlayer *, QSet<QString>>;
     QHash<quint64, DeferredEntries> m_deferredAnytime;
     QHash<quint64, DeferredEntries> m_deferredReveals;

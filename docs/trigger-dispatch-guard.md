@@ -12,6 +12,23 @@ consume cancellation. `judge()` never returns a fabricated successful result
 from an interrupted judgement. Native TurnStart and phase drivers have separate
 recovery ownership, since TurnStart encloses the whole turn.
 
+## Draft settlement blocker
+
+This branch is not ready to publish. Exact causal callback quarantine now follows
+one original cancelled owner across retained native dying/death cursors. The
+native repeating-generation fixture terminates naturally, while an unrelated
+original death-prevention observer remains available.
+
+Continuation contexts still obtain fresh event/step counters. Quarantine is
+bounded and cannot prove termination when causal definitions, sources or targets
+continually change. One cumulative settlement budget needs an explicit exhaustion
+outcome for unfinished original cursors. Silently passing remaining rescuers can
+change a survivable original settlement into death. That fallback has not been
+selected or implemented. Retaining the cursor and suspending the affected room,
+or aborting that room without declaring a winner, require an explicit lifecycle
+choice. The PR remains draft; the dispatch guarantees below do not yet cover
+arbitrary deferred settlement generations.
+
 ## Configuration
 
 Settings are read once when each RoomThread is constructed.
@@ -65,11 +82,30 @@ deferred work and author-backed presentation while structural cleanup runs.
 Only registered native GameRule handling for GameOverJudge and BuryVictim is
 routed through this suppression boundary.
 
-Committed HP at or below zero completes required rescue/death settlement.
-Emergency rescue accepts an owned physical Peach or self Analeptic with its physical cost;
-virtual and view-as offers pass. It does not restart arbitrary card/skill
-effects. Genuine victory reached by required death settlement follows normal
-game completion; the guard does not manufacture a room-abort result.
+Committed HP at or below zero continues through the existing `enterDying`,
+GameRule AskForPeaches/AskForPeachesDone, `askForSinglePeach` and `useCard` flow.
+Normal validation, virtual/view-as conversion and rescue skills remain available.
+There is no separate emergency rescue algorithm or physical-card restriction.
+The cancelled ancestor stays latched while original native stages continue; an
+interrupted stage advances its existing observer/rescuer cursor instead of replaying
+completed stages. If a physical move must finish first, that original cursor is
+retained until its canonical checkpoint. Genuine victory reached by original
+death settlement follows normal game completion; the guard does not manufacture
+a room-abort result.
+
+Only interrupted authoritative HP commits are candidates for unfinished native
+dying settlement. An unrelated cancellation does not re-enter a previously
+completed HP-zero death-prevention result. Original cursors retain observer/saver
+position, cause-card lifetime and history attribution across physical commits.
+
+Quarantine records actual causal callback identities under the original cancelled
+owner. V1 and V2 query/dispatch identities include the definition, callback site,
+event and target; selected V2 activations also retain complete source/activation
+and physical-equipment provenance. Equipment callback identity includes its card
+lifetime generation. Exact failed activations are discarded; healthy sibling
+sources and ordinary conversion/rescue callbacks remain eligible. The quarantine
+is retired with its original owner and never inferred from repeated event names
+or the diagnostic ring.
 
 Cancelled cascade-owned summon, anytime and pending reveal work is removed.
 Unrelated prior/network requests and committed visibility changes are

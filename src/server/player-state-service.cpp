@@ -245,6 +245,10 @@ void PlayerStateService::setPlayerProperty(ServerPlayer *player,
 	QString property = QString(propertyName);
 	if (property == QStringLiteral("hp")) {
 		QVariant data = m_room.getTag("HpChangedData");
+        // Record the committed HP transition, not an arbitrary interrupted
+        // damage event or every pre-existing zero-HP player in the room.
+        if (player->getHp() <= 0) m_room.m_cancelledHpCauses.insert(player, data);
+        else m_room.m_cancelledHpCauses.remove(player);
 		m_eventDispatcher.dispatch(HpChanged, player, data);
 	}
 	else if (property == QStringLiteral("maxhp")) {

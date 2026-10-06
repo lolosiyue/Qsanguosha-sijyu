@@ -2039,47 +2039,6 @@ CardUseStruct PlayerDecisionService::askForUseSlashToStruct(ServerPlayer*slasher
 	return use;
 }
 
-const Card *PlayerDecisionService::askForPhysicalPeach(ServerPlayer *player, ServerPlayer *dying)
-{
-    auto &state = m_room.m_runtime->state();
-    const QString previousPattern = state.getCurrentCardUsePattern();
-    const auto previousReason = state.getCurrentCardUseReason();
-    const auto restore = qScopeGuard([&] {
-        state.setCurrentCardUsePattern(previousPattern);
-        state.setCurrentCardUseReason(previousReason);
-    });
-    state.setCurrentCardUsePattern(player == dying ? "peach+analeptic" : "peach");
-    state.setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
-    const auto eligible = [&](const Card *card) {
-        if (!card || card->isVirtualCard() || card->getEffectiveId() < 0) return false;
-        const int id = card->getEffectiveId();
-        if (m_room.getCardOwner(id) != player
-            || (m_room.getCardPlace(id) != Player::PlaceHand && !player->getHandPile().contains(id))) return false;
-        return (card->isKindOf("Peach") || (player == dying && card->isKindOf("Analeptic")))
-            && !player->isCardLimited(card, Card::MethodUse);
-    };
-    // Avoid author AI/validateInResponse callbacks after cancellation. Native
-    // autonomous seats select an existing physical rescue card; humans retain
-    // the normal Peach request and may pass. Virtual/view-as offers are passes.
-    if (player->getState() != "online") {
-        for (const Card *card : player->getHandcards()) if (eligible(card)) return card;
-        for (int id : player->getHandPile()) {
-            const Card *card = Sanguosha->getCard(id);
-            if (eligible(card)) return card;
-        }
-        return nullptr;
-    }
-    m_room.tryPause();
-    m_room.notifyMoveFocus(player, S_COMMAND_ASK_PEACH);
-    JsonArray request;
-    request << dying->objectName() << 1 - dying->getHp();
-    if (!m_room.doRequest(player, S_COMMAND_ASK_PEACH, request, true)) return nullptr;
-    CardUseStruct response;
-    response.from = player;
-    if (!response.tryParse(player->getClientReply(), &m_room) || !eligible(response.card)) return nullptr;
-    return response.card;
-}
-
 const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, ServerPlayer*dying)
 {
 	QSet<QString> rejected;
