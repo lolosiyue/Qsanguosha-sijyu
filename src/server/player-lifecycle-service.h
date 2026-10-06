@@ -32,6 +32,10 @@ public:
     void marshal(ServerPlayer *player);
 
     void killPlayer(ServerPlayer *victim, DamageStruct *reason, HpLostStruct *hpLost);
+    bool hasActiveDeathCursor() const { return m_deathCursorDepth != 0; }
+    void finishCancelledDeaths(quint64 cascadeId);
+    void clearCancelledDeaths() { m_pendingDeaths.clear(); }
+    void adoptCancelledDeaths(quint64 from, quint64 owner);
     void revivePlayer(ServerPlayer *player, bool sendLog, bool throwMark, bool visibleOnly);
     void restPlayer(ServerPlayer *player, const QString &reason, bool discardCards);
     void directRestPlayer(ServerPlayer *player, const QString &reason, bool discardCards);
@@ -48,6 +52,7 @@ public:
                               const QString &generalName);
     bool hasPendingSummons() const;
     void processPendingSummons();
+    void finishDeferredCascade(quint64 cascadeId, bool cancelled, quint64 parentCascadeId = 0);
     ServerPlayer *insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after,
                                       const QString &generalName);
 
@@ -61,6 +66,7 @@ private:
         ServerPlayer *before;
         ServerPlayer *after;
         QString generalName;
+        quint64 cascadeId = 0;
     };
 
     Room &m_room;
@@ -71,6 +77,10 @@ private:
     EventDispatcher &m_eventDispatcher;
     QList<SummonRequest> m_pendingSummons;
     QList<ServerPlayer *> m_dynamicPlayers;
+    struct DeathCursor;
+    void continueDeath(const std::shared_ptr<DeathCursor> &cursor, bool canonicalOnly = false);
+    QList<std::shared_ptr<DeathCursor>> m_pendingDeaths;
+    unsigned m_deathCursorDepth = 0;
     quint64 m_nextStateSyncId = 1;
 };
 

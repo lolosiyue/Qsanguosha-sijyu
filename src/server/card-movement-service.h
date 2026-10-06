@@ -5,6 +5,8 @@
 
 #include <QList>
 #include <QMap>
+#include <QSet>
+#include <QPointer>
 #include <functional>
 
 class Card;
@@ -42,6 +44,13 @@ public:
 
     QList<int> getNCards(int n, bool updatePileNumber, bool isTop);
     int drawCard(bool isTop);
+    // Receipts survive nested/finished judgements until their owning cascade
+    // ends. Only resources still in transient zones are retired on cancellation.
+    void beginJudgement();
+    void endJudgement();
+    void finishTriggerCascade(quint64 cascadeId, bool cancelled, quint64 parentId = 0);
+    void retainJudgeSnapshot(Card *card);
+    void releaseJudgeSnapshot(Card *card);
     void swapPile();
     int getCardFromPile(const QString &cardPattern);
     void returnToTopDrawPile(QList<int> cards);
@@ -177,6 +186,11 @@ private:
                      const QMap<int, CardsMoveStruct> *origins = nullptr,
                      const std::function<void()> &notifyGain = {},
                      const std::function<void(int)> &insertIntoDrawPile = {});
+    QVariant commitMovesInternal(QList<CardsMoveStruct> cardsMoves, bool visible, bool guanxing,
+                     ResolutionHistoryEventGuard &historyGuard, bool notify,
+                     const QMap<int, CardsMoveStruct> *origins,
+                     const std::function<void()> &notifyGain,
+                     const std::function<void(int)> &insertIntoDrawPile);
     QList<CardsMoveOneTimeStruct> triggerMoveBatch(TriggerEvent event,
         const QList<CardsMoveOneTimeStruct> &moves);
     QList<CardsMoveOneTimeStruct> triggerSingleMoves(TriggerEvent event,
@@ -196,6 +210,15 @@ private:
     QList<int> m_tableCards;
     QList<int> *m_drawPile;
     QList<int> *m_discardPile;
+    struct DrawReservation { bool top; quint64 order; };
+    int m_judgementDepth = 0;
+    struct CascadeReceipts {
+        quint64 reservationOrder = 0;
+        QMap<int, DrawReservation> drawReservations;
+        QSet<int> transientCards;
+        QList<QPointer<Card>> judgeSnapshots;
+    };
+    QMap<quint64, CascadeReceipts> m_cascadeReceipts;
 };
 
 #endif

@@ -387,6 +387,8 @@ static lua_State *newstate (lua_Alloc f, void *ud,
   g->strt.hash = NULL;
   setnilvalue(&g->l_registry);
   g->panic = NULL;
+  g->protectedbridge = NULL;
+  g->protectedbridgehost = NULL;
   g->gcstate = GCSpause;
   g->gckind = KGC_INC;
   g->gcstopem = 0;
@@ -457,4 +459,3 @@ void luaE_warnerror (lua_State *L, const char *where) {
   luaE_warning(L, msg, 1);
   luaE_warning(L, ")", 0);
 }
-
