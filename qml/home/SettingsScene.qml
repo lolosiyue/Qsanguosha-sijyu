@@ -404,10 +404,10 @@ Item {
                                 }
                             }
                             SettingRow {
-                                SettingLabel { text: qsTranslate("ConfigDialog", "主題包") }
+                                SettingLabel { text: qsTranslate("ConfigDialog", "Theme packs") }
                                 FormButton {
                                     objectName: "themePackButton"
-                                    text: qsTranslate("ConfigDialog", "主題包管理…")
+                                    text: qsTranslate("ConfigDialog", "Manage theme packs...")
                                     onClicked: Qt.callLater(function() { settingsSession.openThemePacks() })
                                 }
                             }

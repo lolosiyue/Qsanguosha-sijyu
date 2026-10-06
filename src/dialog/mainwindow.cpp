@@ -396,7 +396,7 @@ MainWindow::MainWindow(QWidget *parent)
 		PackageManagerDialog::openManager(QSanRuntimePaths::assetRoot(),
 			QSanRuntimePaths::userDataRoot(), this);
 	});
-	packageMenu->addAction(tr("主題包管理…"), this, [this]() { ThemePackDialog::openManager(this); });
+	packageMenu->addAction(tr("Manage theme packs..."), this, [this]() { ThemePackDialog::openManager(this); });
 #endif
 
 	connect(ui->actionRestart_Game, &QAction::triggered, this, [this]() {

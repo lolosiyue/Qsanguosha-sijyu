@@ -12,6 +12,7 @@
 #include "interaction-reply-encoder.h"
 #include "runtime-paths.h"
 #include "settings.h"
+#include "theme-pack.h"
 #include "ui-rng.h"
 #include "card-lifetime-manager.h"
 #include "engine.h"
@@ -3346,7 +3347,7 @@ void Client::speak(const QVariant &speak)
 	if (from) {
 		emit player_speak(payload.speaker, QString("<p style=\"margin:3px 2px;\">%1</p>").arg(text));
 		QString title = QString("<b>(%1)%2</b>").arg(from->screenName()).arg(Sanguosha->translate(from->getGeneralName()));
-		text = tr("<font color='%1'>[%2] said: %3 </font>").arg(UiConfig.TextEditColor.name()).arg(title).arg(text);
+		text = tr("<font color='%1'>[%2] said: %3 </font>").arg(ThemePacks::color(QStringLiteral("table-text"), UiConfig.TextEditColor).name()).arg(title).arg(text);
 	}else
 		text = tr("<font color='red'>System: %1</font>").arg(text);
 

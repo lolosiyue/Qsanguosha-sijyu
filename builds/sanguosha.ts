@@ -2665,6 +2665,14 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
         <source>文字</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Theme packs</source>
+        <translation>主题包</translation>
+    </message>
+    <message>
+        <source>Manage theme packs...</source>
+        <translation>主题包管理…</translation>
+    </message>
 </context>
 <context>
     <name>ConnectionDialog</name>
@@ -6561,6 +6569,10 @@ Waiting for %1 to respond</source>
         <location filename="../src/dialog/mainwindow.cpp" line="2596"/>
         <source>Waiting for the scenario result...</source>
         <translation>正在等待剧情结果……</translation>
+    </message>
+    <message>
+        <source>Manage theme packs...</source>
+        <translation>主题包管理…</translation>
     </message>
 </context>
 <context>
@@ -11243,6 +11255,229 @@ P = 你自己, R = 你所在的房间</translation>
         <location filename="../src/ui/room-debug-dialogs.cpp" line="177"/>
         <source>OK</source>
         <translation type="unfinished">确定</translation>
+    </message>
+</context>
+<context>
+    <name>ThemePackDialog</name>
+    <message>
+        <source>Card back</source>
+        <translation>牌背</translation>
+    </message>
+    <message>
+        <source>General card back</source>
+        <translation>武将牌背</translation>
+    </message>
+    <message>
+        <source>Indicator line</source>
+        <translation>指示线</translation>
+    </message>
+    <message>
+        <source>Emotion effects</source>
+        <translation>emotion 播放特效</translation>
+    </message>
+    <message>
+        <source>Dashboard equipment area</source>
+        <translation>Dashboard 装备区</translation>
+    </message>
+    <message>
+        <source>Dashboard hand area</source>
+        <translation>Dashboard 手牌区</translation>
+    </message>
+    <message>
+        <source>Dashboard avatar area</source>
+        <translation>Dashboard 头像区</translation>
+    </message>
+    <message>
+        <source>Dashboard button tray</source>
+        <translation>Dashboard 按钮托盘</translation>
+    </message>
+    <message>
+        <source>Log background</source>
+        <translation>战报背景</translation>
+    </message>
+    <message>
+        <source>CardContainer background</source>
+        <translation>CardContainer 背景</translation>
+    </message>
+    <message>
+        <source>Skin panel background</source>
+        <translation>换皮肤面板背景</translation>
+    </message>
+    <message>
+        <source>Chat bubble background</source>
+        <translation>聊天气泡背景</translation>
+    </message>
+    <message>
+        <source>Seat frame</source>
+        <translation>座位框</translation>
+    </message>
+    <message>
+        <source>Table background</source>
+        <translation>牌桌背景</translation>
+    </message>
+    <message>
+        <source>Unknown author</source>
+        <translation>未知作者</translation>
+    </message>
+    <message>
+        <source>Theme Pack Manager</source>
+        <translation>主题包管理</translation>
+    </message>
+    <message>
+        <source>Enabled packs are on the right; the higher a pack, the higher its priority. Each art slot comes from the highest-priority pack that provides it, and slots no pack provides use the default art. Apply saves at once; rooms opened afterwards and newly shown elements use the new art, while elements already on the table change after re-entering the room.</source>
+        <translation>右侧为已启用的主题包，越靠上优先级越高：同一素材槽由优先级最高的主题包提供，所有主题包都未提供的槽位使用默认素材。点击“应用”立即保存；之后打开的房间和新出现的元素会使用新素材，已在牌桌上的元素需重新进入房间才会更新。</translation>
+    </message>
+    <message>
+        <source>Available</source>
+        <translation>可用主题包</translation>
+    </message>
+    <message>
+        <source>Enable</source>
+        <translation>启用</translation>
+    </message>
+    <message>
+        <source>Disable</source>
+        <translation>停用</translation>
+    </message>
+    <message>
+        <source>Raise priority</source>
+        <translation>提高优先级</translation>
+    </message>
+    <message>
+        <source>Lower priority</source>
+        <translation>降低优先级</translation>
+    </message>
+    <message>
+        <source>Enabled (top = highest priority)</source>
+        <translation>已启用（越靠上优先级越高）</translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation>详情</translation>
+    </message>
+    <message>
+        <source>Open theme folder</source>
+        <translation>打开主题文件夹</translation>
+    </message>
+    <message>
+        <source>Rescan</source>
+        <translation>重新扫描</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>No theme packs found: put a folder containing theme.json into %1</source>
+        <translation>未找到主题包：请将含 theme.json 的文件夹放入 %1</translation>
+    </message>
+    <message>
+        <source>%1 theme packs installed, %2 enabled</source>
+        <translation>已安装 %1 个主题包，已启用 %2 个</translation>
+    </message>
+    <message>
+        <source>Select a theme pack to see its details.</source>
+        <translation>选择一个主题包查看详情。</translation>
+    </message>
+    <message>
+        <source>%1 extra file overrides</source>
+        <translation>另有 %1 个文件覆盖</translation>
+    </message>
+    <message>
+        <source>Author: %1</source>
+        <translation>作者：%1</translation>
+    </message>
+    <message>
+        <source>Version: %1</source>
+        <translation>版本：%1</translation>
+    </message>
+    <message>
+        <source>ID: %1</source>
+        <translation>ID：%1</translation>
+    </message>
+    <message>
+        <source>Provided slots: %1</source>
+        <translation>提供的素材槽：%1</translation>
+    </message>
+    <message>
+        <source>(none)</source>
+        <translation>（无）</translation>
+    </message>
+    <message>
+        <source>, </source>
+        <comment>list separator</comment>
+        <translation>、</translation>
+    </message>
+    <message>
+        <source>Warnings:</source>
+        <translation>警告：</translation>
+    </message>
+    <message>
+        <source>Applied: rooms opened from now on and newly shown elements use the new art.</source>
+        <translation>已应用：之后打开的房间和新出现的元素会使用新素材。</translation>
+    </message>
+    <message>
+        <source>Table text color</source>
+        <translation>牌桌文字颜色</translation>
+    </message>
+    <message>
+        <source>Log text color</source>
+        <translation>战报文字颜色</translation>
+    </message>
+    <message>
+        <source>Log acting player color</source>
+        <translation>战报行动角色颜色</translation>
+    </message>
+    <message>
+        <source>Log target player color</source>
+        <translation>战报目标角色颜色</translation>
+    </message>
+    <message>
+        <source>Log card and value color</source>
+        <translation>战报卡牌与数值颜色</translation>
+    </message>
+</context>
+<context>
+    <name>ThemePacks</name>
+    <message>
+        <source>format %1 is newer than this game understands; unknown fields are ignored</source>
+        <translation>格式版本 %1 高于本游戏支持的版本；未知字段将被忽略</translation>
+    </message>
+    <message>
+        <source>unknown slot &quot;%1&quot;</source>
+        <translation>未知素材槽“%1”</translation>
+    </message>
+    <message>
+        <source>slot &quot;%1&quot;: folder &quot;%2&quot; is missing or outside the pack</source>
+        <translation>素材槽“%1”：文件夹“%2”不存在或不在主题包内</translation>
+    </message>
+    <message>
+        <source>slot &quot;%1&quot;: file &quot;%2&quot; is missing or outside the pack</source>
+        <translation>素材槽“%1”：文件“%2”不存在或不在主题包内</translation>
+    </message>
+    <message>
+        <source>files: &quot;%1&quot; is not an image/ path</source>
+        <translation>files：“%1”不是 image/ 路径</translation>
+    </message>
+    <message>
+        <source>files: &quot;%1&quot; is missing or outside the pack</source>
+        <translation>files：“%1”不存在或不在主题包内</translation>
+    </message>
+    <message>
+        <source>unknown color &quot;%1&quot;</source>
+        <translation>未知颜色“%1”</translation>
+    </message>
+    <message>
+        <source>color &quot;%1&quot;: &quot;%2&quot; is not a valid color</source>
+        <translation>颜色“%1”：“%2”不是有效的颜色值</translation>
     </message>
 </context>
 <context>

@@ -2,6 +2,7 @@
 
 #include "audio.h"
 #include "settings.h"
+#include "theme-pack.h"
 
 #include <QCoreApplication>
 #include <QObject>
@@ -69,7 +70,7 @@ void RoomChatController::submit()
         } else {
             const QString title = m_callbacks.speakerTitle ? m_callbacks.speakerTitle() : QString();
             appendLocal(QCoreApplication::translate("RoomScene", "<font color='%1'>[%2] said: %3 </font>")
-                .arg(UiConfig.TextEditColor.name(), title, text));
+                .arg(ThemePacks::color(QStringLiteral("table-text"), UiConfig.TextEditColor).name(), title, text));
         }
     }
     if (m_callbacks.clearDraft)

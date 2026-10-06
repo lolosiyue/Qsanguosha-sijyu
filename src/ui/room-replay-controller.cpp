@@ -14,6 +14,7 @@
 #include "roomscene.h"
 #include "runtime-paths.h"
 #include "settings.h"
+#include "theme-pack.h"
 #ifdef QSAN_XP_LEGACY
 #include "local-server-controller.h"
 #include "mainwindow.h"
@@ -94,7 +95,7 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 	time_label->setAttribute(Qt::WA_NoSystemBackground);
 	time_label->setText("-----------------------------------------------------");
 	QPalette palette;
-	palette.setColor(QPalette::WindowText,UiConfig.TextEditColor);
+	palette.setColor(QPalette::WindowText,ThemePacks::color(QStringLiteral("table-text"), UiConfig.TextEditColor));
 	time_label->setPalette(palette);
 
 	QGraphicsProxyWidget*widget = new QGraphicsProxyWidget(this);

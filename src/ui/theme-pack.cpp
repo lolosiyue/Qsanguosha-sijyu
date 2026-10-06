@@ -3,6 +3,7 @@
 #include "runtime-paths.h"
 #include "settings.h"
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -34,6 +35,7 @@ struct State
     QStringList enabled;
     QHash<QString, QString> slotOverrides;
     QHash<QString, QString> keyOverrides;
+    QHash<QString, QColor> colorOverrides;
     // Highest pack first; within each pack manifest files precede slot redirects.
     QList<FileLayer> fileLayers;
 };
@@ -47,16 +49,24 @@ std::atomic<quint64> g_revision{0};
 QMutex g_folderCacheMutex;
 QHash<QString, QString> g_folderCache;
 
+const JsonObject &registry()
+{
+    static const JsonObject object = [] {
+        const QString path = QSanRuntimePaths::assetPath(QStringLiteral("skins/theme-slots.json"));
+        const JsonDocument doc = JsonDocument::fromFilePath(path);
+        if (!doc.isValid() || !doc.isObject()) {
+            qWarning().noquote() << "Theme slots: cannot read" << path << doc.errorString();
+            return JsonObject();
+        }
+        return doc.object();
+    }();
+    return object;
+}
+
 QList<Slot> loadSlotTable()
 {
     QList<Slot> result;
-    const QString path = QSanRuntimePaths::assetPath(QStringLiteral("skins/theme-slots.json"));
-    const JsonDocument doc = JsonDocument::fromFilePath(path);
-    if (!doc.isValid() || !doc.isObject()) {
-        qWarning().noquote() << "Theme slots: cannot read" << path << doc.errorString();
-        return result;
-    }
-    const QVariantList entries = doc.object().value(QStringLiteral("slots")).toList();
+    const QVariantList entries = registry().value(QStringLiteral("slots")).toList();
     for (const QVariant &entry : entries) {
         const JsonObject object = entry.toMap();
         Slot slot;
@@ -75,6 +85,22 @@ QList<Slot> loadSlotTable()
             slot.width = size.at(0).toInt();
             slot.height = size.at(1).toInt();
         }
+        result << slot;
+    }
+    return result;
+}
+
+QList<ColorSlot> loadColorTable()
+{
+    QList<ColorSlot> result;
+    const QVariantList entries = registry().value(QStringLiteral("colors")).toList();
+    for (const QVariant &entry : entries) {
+        const JsonObject object = entry.toMap();
+        ColorSlot slot;
+        slot.id = object.value(QStringLiteral("id")).toString();
+        if (slot.id.isEmpty())
+            continue;
+        slot.label = object.value(QStringLiteral("label"), slot.id).toString();
         result << slot;
     }
     return result;
@@ -148,6 +174,7 @@ void rebuildLocked(State &state)
 {
     state.slotOverrides.clear();
     state.keyOverrides.clear();
+    state.colorOverrides.clear();
     state.fileLayers.clear();
 
     QHash<QString, const Pack *> byId;
@@ -174,6 +201,8 @@ void rebuildLocked(State &state)
             if (slot->redirect && !slot->defaultPath.isEmpty())
                 slotLayer.exact.insert(normalizeLegacy(slot->defaultPath), it.value());
         }
+        for (auto it = pack->colors.constBegin(); it != pack->colors.constEnd(); ++it)
+            state.colorOverrides.insert(it.key(), it.value());
         for (auto it = pack->files.constBegin(); it != pack->files.constEnd(); ++it) {
             if (it.key().endsWith(QLatin1Char('/')))
                 addFolderOverride(fileLayer, it.key(), it.value());
@@ -189,7 +218,7 @@ void rebuildLocked(State &state)
         g_folderCache.clear();
     }
     g_active.store(!state.slotOverrides.isEmpty() || !state.keyOverrides.isEmpty()
-        || !state.fileLayers.isEmpty());
+        || !state.colorOverrides.isEmpty() || !state.fileLayers.isEmpty());
     ++g_revision;
 }
 
@@ -298,6 +327,12 @@ const Slot *findSlot(const QString &id)
     return nullptr;
 }
 
+const QList<ColorSlot> &colorTable()
+{
+    static const QList<ColorSlot> table = loadColorTable();
+    return table;
+}
+
 QString userThemeDirectory()
 {
     const QString path = QSanRuntimePaths::userDataPath(QStringLiteral("themes/.keep"));
@@ -338,7 +373,7 @@ Pack parsePack(const QString &directory, QString *error)
     const JsonObject manifest = doc.object();
     const int format = manifest.value(QStringLiteral("format"), 1).toInt();
     if (format > 1)
-        pack.warnings << QStringLiteral("format %1 is newer than this game understands; unknown fields are ignored").arg(format);
+        pack.warnings << QCoreApplication::translate("ThemePacks", "format %1 is newer than this game understands; unknown fields are ignored").arg(format);
 
     pack.id = manifest.value(QStringLiteral("id")).toString().trimmed();
     if (pack.id.isEmpty())
@@ -360,29 +395,48 @@ Pack parsePack(const QString &directory, QString *error)
     for (auto it = slotMap.constBegin(); it != slotMap.constEnd(); ++it) {
         const Slot *slot = findSlot(it.key());
         if (!slot) {
-            pack.warnings << QStringLiteral("unknown slot \"%1\"").arg(it.key());
+            pack.warnings << QCoreApplication::translate("ThemePacks", "unknown slot \"%1\"").arg(it.key());
             continue;
         }
         const QString target = containedPath(pack.root, it.value().toString(), slot->directory);
         if (target.isEmpty()) {
-            pack.warnings << QStringLiteral("slot \"%1\": %2 \"%3\" is missing or outside the pack")
-                .arg(it.key(), slot->directory ? QStringLiteral("folder") : QStringLiteral("file"), it.value().toString());
+            pack.warnings << (slot->directory
+                ? QCoreApplication::translate("ThemePacks", "slot \"%1\": folder \"%2\" is missing or outside the pack")
+                : QCoreApplication::translate("ThemePacks", "slot \"%1\": file \"%2\" is missing or outside the pack"))
+                .arg(it.key(), it.value().toString());
             continue;
         }
         pack.slotFiles.insert(slot->id, target);
+    }
+
+    const JsonObject colorMap = manifest.value(QStringLiteral("colors")).toMap();
+    for (auto it = colorMap.constBegin(); it != colorMap.constEnd(); ++it) {
+        const bool known = std::any_of(colorTable().cbegin(), colorTable().cend(),
+            [&](const ColorSlot &slot) { return slot.id == it.key(); });
+        if (!known) {
+            pack.warnings << QCoreApplication::translate("ThemePacks", "unknown color \"%1\"").arg(it.key());
+            continue;
+        }
+        const QColor color(it.value().toString());
+        if (!color.isValid()) {
+            pack.warnings << QCoreApplication::translate("ThemePacks", "color \"%1\": \"%2\" is not a valid color")
+                .arg(it.key(), it.value().toString());
+            continue;
+        }
+        pack.colors.insert(it.key(), color);
     }
 
     const JsonObject fileMap = manifest.value(QStringLiteral("files")).toMap();
     for (auto it = fileMap.constBegin(); it != fileMap.constEnd(); ++it) {
         const QString legacy = normalizeLegacy(it.key());
         if (!legacy.startsWith(QLatin1String("image/"))) {
-            pack.warnings << QStringLiteral("files: \"%1\" is not an image/ path").arg(it.key());
+            pack.warnings << QCoreApplication::translate("ThemePacks", "files: \"%1\" is not an image/ path").arg(it.key());
             continue;
         }
         const bool folder = legacy.endsWith(QLatin1Char('/'));
         const QString target = containedPath(pack.root, it.value().toString(), folder);
         if (target.isEmpty()) {
-            pack.warnings << QStringLiteral("files: \"%1\" is missing or outside the pack").arg(it.value().toString());
+            pack.warnings << QCoreApplication::translate("ThemePacks", "files: \"%1\" is missing or outside the pack").arg(it.value().toString());
             continue;
         }
         pack.files.insert(legacy, target);
@@ -451,6 +505,14 @@ bool isActive()
 quint64 revision()
 {
     return g_revision.load();
+}
+
+QColor color(const QString &id, const QColor &fallback)
+{
+    if (!g_active.load())
+        return fallback;
+    QReadLocker locker(&g_lock);
+    return g_state.colorOverrides.value(id, fallback);
 }
 
 QString overrideForSlot(const QString &slotId)
