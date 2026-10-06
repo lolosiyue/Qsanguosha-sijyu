@@ -300,7 +300,8 @@ void PlayerLifecycleService::killPlayer(ServerPlayer *victim, DamageStruct *reas
     death.damage = cursor->hasDamage ? &cursor->damage : nullptr;
     death.hplost = cursor->hasHpLost ? &cursor->hpLost : nullptr;
     cursor->data = QVariant::fromValue(death);
-    continueDeath(cursor);
+    continueDeath(cursor, m_room.getThread()->isMandatoryCleanup()
+        && m_room.getThread()->isCascadeCancelled());
     if (cursor->completedOwner && !m_room.getThread()->hasActiveCascade() && !m_room.getThread()->isCascadeCancelled())
         m_room.finishTriggerCascade(cursor->completedOwner, true);
 }
@@ -333,6 +334,12 @@ void PlayerLifecycleService::continueDeath(const std::shared_ptr<DeathCursor> &c
     QVariant &data = cursor->data;
     DeathStruct death = data.value<DeathStruct>();
     const auto event = [&](TriggerEvent e, ServerPlayer *target) {
+        if (canonicalOnly || thread->isSettlementBudgetExhausted()) {
+            RoomThread::MandatoryCleanupScope canonical(*thread);
+            if (e == GameOverJudge || e == BuryVictim)
+                return thread->triggerMandatoryGameRule(e, target, data);
+            return false;
+        }
         return thread->invokeDyingEvent(continuation, e, target, data);
     };
     try {
@@ -405,7 +412,7 @@ void PlayerLifecycleService::continueDeath(const std::shared_ptr<DeathCursor> &c
                 cursor->stage = DeathCursor::Bury;
     foreach (const Skill *skill, victim->getSkillList()) {
         Skill::Frequency frequency = skill->Skill::getFrequency();
-        if (!canonicalOnly && !thread->isMandatoryCleanup())
+        if (!canonicalOnly && !thread->isMandatoryCleanup() && !thread->isSettlementBudgetExhausted())
             thread->invokeDyingCallback(continuation, [&] { frequency = skill->getFrequency(); });
         if (frequency == Skill::Club && !skill->getClubName().isEmpty())
             m_room.clearClub(skill->getClubName());
@@ -421,6 +428,10 @@ void PlayerLifecycleService::continueDeath(const std::shared_ptr<DeathCursor> &c
                 }
                 break;
             case DeathCursor::Detach: {
+                if ((canonicalOnly || thread->isSettlementBudgetExhausted()) && victim->isAlive()) {
+                    m_room.m_cancelledHpCauses.remove(victim);
+                    cursor->stage = DeathCursor::Finished; break;
+                }
                 cursor->stage = DeathCursor::Reason;
     victim->setMark("wujieNoRewardAndPunish-Keep", 0);
     victim->detachAllSkills();
@@ -478,7 +489,8 @@ void PlayerLifecycleService::continueDeath(const std::shared_ptr<DeathCursor> &c
                         Config.AIDelay = qMax(Config.AIDelay * 8 / playerCount, 100);
                 }
             }
-            if (victim->isOnline() && Config.SurrenderAtDeath
+            if (!canonicalOnly && !thread->isSettlementBudgetExhausted()
+                && victim->isOnline() && Config.SurrenderAtDeath
                 && m_room.mode != "02_1v1" && m_room.mode != "06_XMode"
                 && m_room.askForSkillInvoke(victim, "surrender", "yes", false))
                 m_room.makeSurrender(victim);

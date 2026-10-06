@@ -49,6 +49,7 @@ public:
     std::uint64_t steps() const { return m_steps; }
     const Limits &limits() const { return m_limits; }
     Failure failure() const { return m_failure; }
+    void cancel(Failure failure) { if (!aborted()) fail(failure); }
     void resetCascade() { m_failure = Failure::None; m_events = m_steps = 0; }
 
 private:

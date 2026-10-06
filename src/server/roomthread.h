@@ -116,7 +116,7 @@ public:
         std::unique_ptr<State> m_unownedEntry;
     };
     bool invokeDyingEvent(DyingContinuationScope &continuation, TriggerEvent event,
-                         ServerPlayer *target, QVariant &data);
+                         ServerPlayer *target, QVariant &data, bool *nativeEnteredResult = nullptr);
     bool invokeDyingCallback(DyingContinuationScope &continuation,
                             const std::function<void()> &callback);
     class MandatoryCleanupScope {
@@ -133,7 +133,7 @@ public:
     class NativeCommitScope {
     public:
         explicit NativeCommitScope(RoomThread &thread) : m_thread(thread) {
-            if (thread.m_dispatchBudget.depth() == 0) {
+            if (thread.m_dispatchBudget.depth() == 0 && !thread.isMandatoryCleanup()) {
                 thread.beginTriggerDispatch(NonTrigger, nullptr, false);
                 m_holdsBudget = true;
                 m_generation = thread.m_budgetGeneration;
@@ -159,6 +159,10 @@ public:
     bool isCascadeCancelled() const { return m_dispatchBudget.aborted(); }
     bool isMandatoryCleanup() const { return m_mandatoryCleanupDepth != 0; }
     bool isNativeCommitActive() const { return m_nativeCommitDepth != 0; }
+    bool isSettlementBudgetExhausted() const;
+    bool isDyingEventActive() const { return !m_dyingRuleFrames.isEmpty(); }
+    bool settlementCursorCheckpoint(ServerPlayer *player);
+    void settlementStepCheckpoint(ServerPlayer *player);
     bool triggerMandatoryGameRule(TriggerEvent event, ServerPlayer *target, QVariant &data);
     bool invokeStructuralCallback(const std::function<void()> &callback,
                                   const void *definition = nullptr, const QString &site = QString(),
@@ -268,6 +272,7 @@ private:
     void noteDyingNativeRule(TriggerEvent event, ServerPlayer *target, QVariant &data);
     bool enterCallbackOrigin(const void *definition, TriggerEvent event, ServerPlayer *target,
                              const QString &site, const QString &source = QString(), int instance = 0);
+    bool chargeSettlementWork(bool event, TriggerEvent triggerEvent, ServerPlayer *target);
     void leaveTriggerDispatch(quint64 generation);
     const QByteArray &distancePropertyName(const ServerPlayer *player);
 
@@ -303,6 +308,12 @@ private:
     QList<QString> m_callbackOrigins;
     QHash<quint64, QSet<QString>> m_cancelledCallbackOrigins;
     quint64 m_settlementOwner = 0;
+    struct SettlementEpoch {
+        quint64 events = 0, steps = 0;
+        bool exhausted = false;
+    };
+    TriggerDispatchBudget::Limits m_settlementLimits;
+    QHash<quint64, SettlementEpoch> m_settlementEpochs;
     using DeferredEntries = QHash<ServerPlayer *, QSet<QString>>;
     QHash<quint64, DeferredEntries> m_deferredAnytime;
     QHash<quint64, DeferredEntries> m_deferredReveals;
