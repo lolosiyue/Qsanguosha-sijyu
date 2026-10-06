@@ -24,6 +24,7 @@
 #include "collapsible-section.h"
 #include "customassigndialog.h"
 #include "package.h"
+#include "serversetupsession.h"
 #endif
 #include "miniscenarios.h"
 #if !defined(QSAN_SERVER_CORE_ONLY)
@@ -1347,7 +1348,7 @@ void ServerDialog::onServerButtonClicked()
 	accept();
 }
 
-Select3v3GeneralDialog::Select3v3GeneralDialog(QDialog *parent)
+Select3v3GeneralDialog::Select3v3GeneralDialog(QWidget *parent)
 	: QDialog(parent)
 {
 	setWindowTitle(tr("Select generals in extend 3v3 mode"));
@@ -1589,145 +1590,87 @@ int ServerDialog::config()
 	if (result() != Accepted)
 		return 0;
 
-	Config.ServerName = server_name_edit->text();
-	Config.OperationTimeout = timeout_spinbox->value();
-	Config.OperationNoLimit = nolimit_checkbox->isChecked();
-	Config.RandomSeat = random_seat_checkbox->isChecked();
-	Config.EnableCheat = enable_cheat_checkbox->isChecked();
-	Config.FreeChoose = Config.EnableCheat && free_choose_checkbox->isChecked();
-	Config.FreeAssignSelf = Config.EnableCheat && free_assign_self_checkbox->isChecked() && free_assign_checkbox->isEnabled();
-	Config.ForbidSIMC = forbid_same_ip_checkbox->isChecked();
-	Config.DisableChat = disable_chat_checkbox->isChecked();
-	Config.Enable2ndGeneral = second_general_checkbox->isChecked();
-	Config.EnableHegemony = hegemony_checkbox->isChecked() && hegemony_checkbox->isEnabled();
-	if (Config.EnableHegemony) {
-		// Hegemony always owns the dual-general concealed setup.
-		Config.Enable2ndGeneral = true;
-	}
-	Config.EnableMeleeMode = melee_mode_checkbox->isChecked();
-	Config.MaxHpScheme = max_hp_scheme_ComboBox->currentIndex();
-	if (Config.MaxHpScheme == 0) {
-		Config.Scheme0Subtraction = scheme0_subtraction_spinbox->value();
-		Config.PreventAwakenBelow3 = false;
-	} else {
-		Config.Scheme0Subtraction = 3;
-		Config.PreventAwakenBelow3 = prevent_awaken_below3_checkbox->isChecked();
-	}
-	Config.Address = address_edit->text();
-	Config.CountDownSeconds = game_start_spinbox->value();
-	Config.NullificationCountDown = nullification_spinbox->value();
-	Config.EnableMinimizeDialog = minimize_dialog_checkbox->isChecked();
-	Config.EnableAI = ai_enable_checkbox->isChecked();
-	Config.OriginAIDelay = ai_delay_spinbox->value();
-	Config.AIDelay = Config.OriginAIDelay;
-	Config.AIDelayAD = ai_delay_ad_spinbox->value();
-	Config.AlterAIDelayAD = ai_delay_altered_checkbox->isChecked();
-	Config.ServerPort = port_edit->text().toInt();
-	Config.DisableLua = disable_lua_checkbox->isChecked();
-	Config.AddGodGeneral = add_god_general->isChecked();
-	Config.GeneralVersionDedup = general_version_dedup->isChecked();
-	Config.SurrenderAtDeath = surrender_at_death_checkbox->isChecked();
+	QVariantMap values;
+	values.insert("ServerName", server_name_edit->text());
+	values.insert("OperationTimeout", timeout_spinbox->value());
+	values.insert("OperationNoLimit", nolimit_checkbox->isChecked());
+	values.insert("RandomSeat", random_seat_checkbox->isChecked());
+	values.insert("EnableCheat", enable_cheat_checkbox->isChecked());
+	values.insert("FreeChoose", free_choose_checkbox->isChecked());
+	values.insert("FreeAssign", free_assign_checkbox->isChecked());
+	values.insert("FreeAssignSelf", free_assign_self_checkbox->isChecked() && free_assign_checkbox->isEnabled());
+	values.insert("ForbidSIMC", forbid_same_ip_checkbox->isChecked());
+	values.insert("DisableChat", disable_chat_checkbox->isChecked());
+	values.insert("Enable2ndGeneral", second_general_checkbox->isChecked());
+	values.insert("EnableHegemony", hegemony_checkbox->isChecked() && hegemony_checkbox->isEnabled());
+	values.insert("EnableMeleeMode", melee_mode_checkbox->isChecked());
+	values.insert("MaxHpScheme", max_hp_scheme_ComboBox->currentIndex());
+	values.insert("Scheme0Subtraction", scheme0_subtraction_spinbox->value());
+	values.insert("PreventAwakenBelow3", prevent_awaken_below3_checkbox->isChecked());
+	values.insert("Address", address_edit->text());
+	values.insert("CountDownSeconds", game_start_spinbox->value());
+	values.insert("NullificationCountDown", nullification_spinbox->value());
+	values.insert("EnableMinimizeDialog", minimize_dialog_checkbox->isChecked());
+	values.insert("EnableAI", ai_enable_checkbox->isChecked());
+	values.insert("OriginAIDelay", ai_delay_spinbox->value());
+	values.insert("AIDelayAD", ai_delay_ad_spinbox->value());
+	values.insert("AlterAIDelayAD", ai_delay_altered_checkbox->isChecked());
+	values.insert("ServerPort", port_edit->text().toInt());
+	values.insert("DisableLua", disable_lua_checkbox->isChecked());
+	values.insert("AddGodGeneral", add_god_general->isChecked());
+	values.insert("GeneralVersionDedup", general_version_dedup->isChecked());
+	values.insert("SurrenderAtDeath", surrender_at_death_checkbox->isChecked());
 
 	// game mode
 	if (mode_group->checkedButton()) {
 		QString objname = mode_group->checkedButton()->objectName();
 		if (objname == "scenario")
-			Config.GameMode = Sanguosha->getGameMode(scenario_ComboBox->itemData(scenario_ComboBox->currentIndex()).toString());
+			values.insert("GameMode", scenario_ComboBox->itemData(scenario_ComboBox->currentIndex()).toString());
 		else if (objname == "mini") {
 			if (mini_scene_ComboBox->isEnabled())
-				Config.GameMode = Sanguosha->getGameMode(mini_scene_ComboBox->itemData(mini_scene_ComboBox->currentIndex()).toString());
+				values.insert("GameMode", mini_scene_ComboBox->itemData(mini_scene_ComboBox->currentIndex()).toString());
 			else
-				Config.GameMode = Sanguosha->getGameMode("custom_scenario");
+				values.insert("GameMode", QStringLiteral("custom_scenario"));
 		} else
-			Config.GameMode = Sanguosha->getGameMode(objname);
+			values.insert("GameMode", objname);
 	}
 
-	Config.setValue("ServerName", Config.ServerName);
-	Config.setValue("GameMode", Config.GameMode.mode_id);
-	Config.setValue("OperationTimeout", Config.OperationTimeout);
-	Config.setValue("OperationNoLimit", Config.OperationNoLimit);
-	Config.setValue("RandomSeat", Config.RandomSeat);
-	Config.setValue("EnableCheat", Config.EnableCheat);
-	Config.setValue("FreeChoose", Config.FreeChoose);
-	Config.setValue("FreeAssign", Config.EnableCheat && free_assign_checkbox->isChecked());
-	Config.setValue("FreeAssignSelf", Config.FreeAssignSelf);
-	Config.setValue("PileSwappingLimitation", pile_swapping_spinbox->value());
-	Config.setValue("WithoutLordskill", without_lordskill_checkbox->isChecked());
-	Config.setValue("EnableSPConvert", sp_convert_checkbox->isChecked());
-	Config.setValue("MaxChoice", maxchoice_spinbox->value());
-	Config.setValue("LordMaxChoice", lord_maxchoice_spinbox->value());
-	Config.setValue("NonLordMaxChoice", nonlord_maxchoice_spinbox->value());
-	Config.setValue("ForbidSIMC", Config.ForbidSIMC);
-	Config.setValue("DisableChat", Config.DisableChat);
-	Config.setValue("Enable2ndGeneral", Config.Enable2ndGeneral);
-	Config.setValue("EnableHegemony", Config.EnableHegemony);
-	Config.setValue("EnableMeleeMode", Config.EnableMeleeMode);
-	Config.setValue("HegemonyMaxChoice", hegemony_maxchoice_spinbox->value());
-	Config.setValue("RewardTheFirstShowingPlayer", reward_first_showing_checkbox->isChecked());
-	Config.setValue("MaxHpScheme", Config.MaxHpScheme);
-	Config.setValue("Scheme0Subtraction", Config.Scheme0Subtraction);
-	Config.setValue("PreventAwakenBelow3", Config.PreventAwakenBelow3);
-	Config.setValue("CountDownSeconds", game_start_spinbox->value());
-	Config.setValue("NullificationCountDown", nullification_spinbox->value());
-	Config.setValue("EnableMinimizeDialog", Config.EnableMinimizeDialog);
-	Config.setValue("EnableAI", Config.EnableAI);
-	// Remember the player's preference even while another mode temporarily
-	// disables the control; the room gate applies it only to AI-enabled 50p.
-	Config.setValue("JevHybrid50P", jev_hybrid_50p_checkbox->isChecked());
-	Config.setValue("AIChat", ai_chat_checkbox->isChecked());
-	Config.setValue("AIHumanized", ai_humanized_checkbox->isChecked());
-	Config.setValue("OriginAIDelay", Config.OriginAIDelay);
-	Config.setValue("AlterAIDelayAD", ai_delay_altered_checkbox->isChecked());
-	Config.setValue("AIDelayAD", Config.AIDelayAD);
-	Config.setValue("SurrenderAtDeath", Config.SurrenderAtDeath);
-	Config.setValue("LuckCardTimes", luck_card_spinbox->value());
-	Config.setValue("ServerPort", Config.ServerPort);
-	Config.setValue("Address", Config.Address);
-	Config.setValue("DisableLua", disable_lua_checkbox->isChecked());
-	Config.setValue("AddGodGeneral", add_god_general->isChecked());
-	Config.setValue("GeneralVersionDedup", Config.GeneralVersionDedup);
-	Config.setValue("serverconfig/upnp",checkBoxUpnp->isChecked());
-	Config.setValue("serverconfig/addtolistserver",checkBoxAddToListServer->isChecked());
+	values.insert("PileSwappingLimitation", pile_swapping_spinbox->value());
+	values.insert("WithoutLordskill", without_lordskill_checkbox->isChecked());
+	values.insert("EnableSPConvert", sp_convert_checkbox->isChecked());
+	values.insert("MaxChoice", maxchoice_spinbox->value());
+	values.insert("LordMaxChoice", lord_maxchoice_spinbox->value());
+	values.insert("NonLordMaxChoice", nonlord_maxchoice_spinbox->value());
+	values.insert("HegemonyMaxChoice", hegemony_maxchoice_spinbox->value());
+	values.insert("RewardTheFirstShowingPlayer", reward_first_showing_checkbox->isChecked());
+	values.insert("JevHybrid50P", jev_hybrid_50p_checkbox->isChecked());
+	values.insert("AIChat", ai_chat_checkbox->isChecked());
+	values.insert("AIHumanized", ai_humanized_checkbox->isChecked());
+	values.insert("LuckCardTimes", luck_card_spinbox->value());
+	values.insert("serverconfig/upnp", checkBoxUpnp->isChecked());
+	values.insert("serverconfig/addtolistserver", checkBoxAddToListServer->isChecked());
 
-	Config.beginGroup("3v3");
-	Config.setValue("UsingExtension", !official_3v3_radiobutton->isChecked());
-	Config.setValue("RoleChoose", role_choose_ComboBox->itemData(role_choose_ComboBox->currentIndex()).toString());
-	Config.setValue("ExcludeDisasters", exclude_disaster_checkbox->isChecked());
-	Config.setValue("OfficialRule", official_3v3_ComboBox->itemData(official_3v3_ComboBox->currentIndex()).toString());
-	Config.endGroup();
+	values.insert("3v3/UsingExtension", !official_3v3_radiobutton->isChecked());
+	values.insert("3v3/RoleChoose", role_choose_ComboBox->itemData(role_choose_ComboBox->currentIndex()).toString());
+	values.insert("3v3/ExcludeDisasters", exclude_disaster_checkbox->isChecked());
+	values.insert("3v3/OfficialRule", official_3v3_ComboBox->itemData(official_3v3_ComboBox->currentIndex()).toString());
+	values.insert("1v1/Rule", official_1v1_ComboBox->itemData(official_1v1_ComboBox->currentIndex()).toString());
+	values.insert("1v1/UsingExtension", kof_using_extension_checkbox->isChecked());
+	values.insert("1v1/UsingCardExtension", kof_card_extension_checkbox->isChecked());
+	values.insert("XMode/RoleChooseX", role_choose_xmode_ComboBox->itemData(role_choose_xmode_ComboBox->currentIndex()).toString());
 
-	Config.beginGroup("1v1");
-	Config.setValue("Rule", official_1v1_ComboBox->itemData(official_1v1_ComboBox->currentIndex()).toString());
-	Config.setValue("UsingExtension", kof_using_extension_checkbox->isChecked());
-	Config.setValue("UsingCardExtension", kof_card_extension_checkbox->isChecked());
-	Config.endGroup();
-
-	Config.beginGroup("XMode");
-	Config.setValue("RoleChooseX", role_choose_xmode_ComboBox->itemData(role_choose_xmode_ComboBox->currentIndex()).toString());
-	Config.endGroup();
-
-	Config.EnabledPackages.clear();
-	Config.BanPackages.clear();
+	QStringList enabledPackages;
+	QStringList banPackages;
 	foreach (QAbstractButton *checkbox, extension_group->buttons()) {
 		if (checkbox->isChecked())
-			Config.EnabledPackages << checkbox->objectName();
+			enabledPackages << checkbox->objectName();
 		else
-			Config.BanPackages << checkbox->objectName();
+			banPackages << checkbox->objectName();
 	}
-	const QStringList specialPackageAdders =
-		Sanguosha->getPackageMap().value(QStringLiteral("g_special_play"));
-	foreach (const Package *package, Sanguosha->getPackages()) {
-		if ((package->inherits("Scenario")
-			 || specialPackageAdders.contains(package->adderName()))
-			 && !Config.BanPackages.contains(package->objectName())) {
-			Config.BanPackages << package->objectName();
-		}
-	}
-	Config.setValue("EnabledPackages", Config.EnabledPackages);
-	Config.setValue("EnabledPackagesMigrationVersion", 2);
-	Config.remove("BanPackages");
-	Config.sync();
+	values.insert("EnabledPackages", enabledPackages);
+	values.insert("BanPackages", banPackages);
 
+	ServerSetupSession::commit(values);
 	return accept_type;
 }
 

@@ -67,10 +67,19 @@ Item {
     readonly property bool generalsOpen: homeController.currentPage === "generals"
     readonly property bool cardsOpen: homeController.currentPage === "cards"
     readonly property bool settingsOpen: homeController.currentPage === "settings"
-    readonly property bool subPageOpen: generalsOpen || cardsOpen || settingsOpen
+    readonly property bool replaysOpen: homeController.currentPage === "replays"
+    readonly property bool worksOpen: homeController.currentPage === "works"
+    readonly property bool serverOpen: homeController.currentPage === "server"
+    readonly property bool subPageOpen: generalsOpen || cardsOpen || settingsOpen || replaysOpen || worksOpen
+                                        || serverOpen
     property bool generalsMounted: false
     property bool cardsMounted: false
+    // Card a general's skill text linked to before CardScene finished loading.
+    property string pendingCardName: ""
     property bool settingsMounted: false
+    property bool replaysMounted: false
+    property bool worksMounted: false
+    property bool serverMounted: false
     property bool tvKeepTabFocus: false
     property double tvTabCycleAt: 0
     readonly property bool generalPageBusy: {
@@ -97,6 +106,25 @@ Item {
     onCardsOpenChanged: {
         if (cardsOpen)
             cardsMounted = true
+    }
+
+    onReplaysOpenChanged: {
+        if (replaysOpen)
+            replaysMounted = true
+    }
+
+    onWorksOpenChanged: {
+        if (worksOpen)
+            worksMounted = true
+    }
+
+    // The server page reads Config on every entry; a loaded page is reused.
+    onServerOpenChanged: {
+        if (!serverOpen)
+            return
+        if (serverPage.item)
+            serverPage.item.reload()
+        serverMounted = true
     }
 
     // The settings page and legacy dialog share SettingsSession: edits start on entry and revert if left unsaved.
@@ -309,6 +337,8 @@ Item {
                     x: 150
                 }
 
+                layoutBtn.safeInsets: root.SafeArea.margins
+
                 onSettingsClicked: homeController.openSettings()
                 onAboutClicked: homeController.openAbout()
                 onUpdateClicked: homeController.checkUpdates()
@@ -351,6 +381,14 @@ Item {
                 ignoreUnknownSignals: true
                 function onNavigationEndpointChanged() {
                     if (root.generalsOpen) Qt.callLater(root.applyGeneralsNavGraph)
+                }
+                function onCardLinkActivated(objectName) {
+                    // CardScene may still be loading; it picks the card up when ready.
+                    if (cardPage.item)
+                        cardPage.item.showCard(objectName)
+                    else
+                        root.pendingCardName = objectName
+                    homeController.openCards()
                 }
             }
 
@@ -596,6 +634,10 @@ Item {
                 visible: root.cardsOpen && !root.cardPageBusy
                 onStatusChanged: {
                     if (status === Loader.Ready && cardPage.item) {
+                        if (root.pendingCardName.length > 0) {
+                            cardPage.item.showCard(root.pendingCardName)
+                            root.pendingCardName = ""
+                        }
                         if (root.cardsOpen) {
                             root.applyCardsNavGraph()
                             if (!root.tvKeepTabFocus)
@@ -656,6 +698,119 @@ Item {
                 function onNavigationEndpointChanged() {
                     if (root.settingsOpen)
                         Qt.callLater(root.applySettingsNavGraph)
+                }
+            }
+
+            Loader {
+                id: replaysPage
+                parent: root.compact ? compactShell.pageHost : uiCanvas
+
+                anchors.fill: parent
+                // Sheared panel edges overhang their box; the compact host clips at its edges.
+                anchors.leftMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.rightMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.bottomMargin: root.compact ? 0 : 148
+                z: 40
+                active: root.replaysMounted
+                source: "RecordScene.qml"
+                visible: root.replaysOpen
+                onLoaded: {
+                    if (root.replaysOpen) {
+                        root.applyReplaysNavGraph()
+                        if (!root.tvKeepTabFocus)
+                            replaysPage.item.takeKeyboard()
+                    }
+                }
+            }
+
+            Binding {
+                target: replaysPage.item
+                property: "compact"
+                value: root.compact
+                when: replaysPage.item !== null
+            }
+
+            Connections {
+                target: replaysPage.item
+                ignoreUnknownSignals: true
+                function onNavigationEndpointChanged() {
+                    if (root.replaysOpen)
+                        Qt.callLater(root.applyReplaysNavGraph)
+                }
+            }
+
+            Loader {
+                id: worksPage
+                parent: root.compact ? compactShell.pageHost : uiCanvas
+
+                anchors.fill: parent
+                // Sheared panel edges overhang their box; the compact host clips at its edges.
+                anchors.leftMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.rightMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.bottomMargin: root.compact ? 0 : 148
+                z: 40
+                active: root.worksMounted
+                source: "ScenarioWorksScene.qml"
+                visible: root.worksOpen
+                onLoaded: {
+                    if (root.worksOpen) {
+                        root.applyWorksNavGraph()
+                        worksPage.item.takeKeyboard()
+                    }
+                }
+            }
+
+            Binding {
+                target: worksPage.item
+                property: "compact"
+                value: root.compact
+                when: worksPage.item !== null
+            }
+
+            Connections {
+                target: worksPage.item
+                ignoreUnknownSignals: true
+                function onNavigationEndpointChanged() {
+                    if (root.worksOpen)
+                        Qt.callLater(root.applyWorksNavGraph)
+                }
+            }
+
+            Loader {
+                id: serverPage
+                parent: root.compact ? compactShell.pageHost : uiCanvas
+
+                anchors.fill: parent
+                // Sheared panel edges overhang their box; the compact host clips at its edges.
+                anchors.leftMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.rightMargin: root.compact ? HomeTheme.compactGap : 0
+                anchors.bottomMargin: root.compact ? 0 : 148
+                z: 40
+                active: root.serverMounted
+                source: "ServerScene.qml"
+                visible: root.serverOpen
+                onLoaded: {
+                    serverPage.item.reload()
+                    if (root.serverOpen) {
+                        root.applyServerNavGraph()
+                        serverPage.item.takeKeyboard()
+                    }
+                }
+            }
+
+            Binding {
+                target: serverPage.item
+                property: "compact"
+                value: root.compact
+                when: serverPage.item !== null
+            }
+
+            Connections {
+                target: serverPage.item
+                ignoreUnknownSignals: true
+                function onNavigationEndpointChanged() {
+                    if (root.serverOpen)
+                        Qt.callLater(root.applyServerNavGraph)
                 }
             }
 
@@ -773,20 +928,6 @@ Item {
         subPageOpen: root.subPageOpen
         pageLoading: root.generalPageBusy || root.cardPageBusy
     }
-    // This entry is outside the scaled landscape canvas and remains reachable on every home page.
-    HomeLayoutControls {
-        id: layoutControls
-        parent: contentHost
-        // Portrait reaches these options from the Settings page, leaving the dock at the bottom.
-        visible: !root.compact
-        safeInsets: root.SafeArea.margins
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: HomeTheme.compactMargin
-        x: Config.oneHandedness === 1 ? HomeTheme.compactMargin
-           : parent.width - width - HomeTheme.compactMargin
-        width: Math.min(implicitWidth, parent.width - HomeTheme.compactMargin * 2)
-        z: 150
-    }
 
     HomePointerFx {
         anchors.fill: parent
@@ -813,12 +954,16 @@ Item {
         actionPanel.joinGameBtn.KeyNavigation.up = actionPanel.quickJoinBtn
         actionPanel.quickJoinBtn.KeyNavigation.up = bottomBar.homeBtn
 
+        sideBar.layoutBtn.KeyNavigation.left = actionPanel.worksBtn.visible ? actionPanel.worksBtn : actionPanel.startServerBtn
+
         sideBar.settingsBtn.KeyNavigation.down = sideBar.aboutBtn
         sideBar.aboutBtn.KeyNavigation.down = sideBar.updateBtn
-        sideBar.updateBtn.KeyNavigation.down = sideBar.settingsBtn
+        sideBar.updateBtn.KeyNavigation.down = sideBar.layoutBtn
+        sideBar.layoutBtn.KeyNavigation.down = sideBar.settingsBtn
+        sideBar.layoutBtn.KeyNavigation.up = sideBar.updateBtn
         sideBar.updateBtn.KeyNavigation.up = sideBar.aboutBtn
         sideBar.aboutBtn.KeyNavigation.up = sideBar.settingsBtn
-        sideBar.settingsBtn.KeyNavigation.up = sideBar.updateBtn
+        sideBar.settingsBtn.KeyNavigation.up = sideBar.layoutBtn
 
         bottomBar.homeBtn.KeyNavigation.right = bottomBar.generalsBtn
         bottomBar.generalsBtn.KeyNavigation.right = bottomBar.cardsBtn
@@ -902,11 +1047,32 @@ Item {
             applyCompactCatalogNav(s.navigationEntry, s.lastControl)
     }
 
+    function applyReplaysNavGraph() {
+        var r = replaysPage.item
+        if (r)
+            applyCompactCatalogNav(r.navigationEntry, r.lastControl)
+    }
+
+    function applyWorksNavGraph() {
+        var w = worksPage.item
+        if (w)
+            applyCompactCatalogNav(w.navigationEntry, w.lastControl)
+    }
+
+    function applyServerNavGraph() {
+        var s = serverPage.item
+        if (s)
+            applyCompactCatalogNav(s.navigationEntry, s.lastControl)
+    }
+
     function restoreHomeKeyboard() {
         if (root.compact) {
             if (root.generalsOpen) applyGeneralsNavGraph()
             else if (root.cardsOpen) applyCardsNavGraph()
             else if (root.settingsOpen) applySettingsNavGraph()
+            else if (root.replaysOpen) applyReplaysNavGraph()
+            else if (root.worksOpen) applyWorksNavGraph()
+            else if (root.serverOpen) applyServerNavGraph()
             if (HomeTheme.tvMode && compactShell.quickJoinBtn && !root.subPageOpen)
                 compactShell.quickJoinBtn.forceActiveFocus()
             else
@@ -939,6 +1105,8 @@ Item {
             return 1
         if (root.cardsOpen)
             return 2
+        if (root.replaysOpen)
+            return 3
         if (root.settingsOpen)
             return 4
         return 0
@@ -1072,6 +1240,10 @@ Item {
             settingsMounted = true
             settingsSession.begin()
         }
+        if (worksOpen)
+            worksMounted = true
+        if (serverOpen)
+            serverMounted = true
         applyHomeNavGraph()
         attachPopupOverlayEffect()
         if (HomeTheme.tvMode)
@@ -1087,7 +1259,7 @@ Item {
         function onCurrentPageChanged() {
             if (!root.tvKeepTabFocus) {
                 bottomBar.currentIndex = root.generalsOpen ? 1 : root.cardsOpen ? 2
-                                         : root.settingsOpen ? 4 : 0
+                                         : root.replaysOpen ? 3 : root.settingsOpen ? 4 : 0
             }
             if (root.generalsOpen) {
                 if (generalPage.item) {
@@ -1106,6 +1278,24 @@ Item {
                     root.applySettingsNavGraph()
                     if (!root.tvKeepTabFocus)
                         settingsPage.item.takeKeyboard()
+                }
+            } else if (root.replaysOpen) {
+                if (replaysPage.item) {
+                    root.applyReplaysNavGraph()
+                    if (!root.tvKeepTabFocus)
+                        replaysPage.item.takeKeyboard()
+                }
+            } else if (root.worksOpen) {
+                if (worksPage.item) {
+                    root.applyWorksNavGraph()
+                    if (!root.tvKeepTabFocus)
+                        worksPage.item.takeKeyboard()
+                }
+            } else if (root.serverOpen) {
+                if (serverPage.item) {
+                    root.applyServerNavGraph()
+                    if (!root.tvKeepTabFocus)
+                        serverPage.item.takeKeyboard()
                 }
             } else if (!root.tvKeepTabFocus) {
                 Qt.callLater(root.restoreHomeKeyboard)

@@ -10,7 +10,15 @@
 #include "skin-bank.h"
 #include "ui-rng.h"
 #include "effects/effects-policy.h"
+#include "game-snapshot.h"
+#include "record-analysis.h"
+#include "recorder.h"
+#include "runtime-paths.h"
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QLocale>
+#include <QSaveFile>
 #include <QLibraryInfo>
 #include <QSet>
 #include <QDir>
@@ -493,7 +501,8 @@ void HomeGeneralModel::applyFilter(const QVariantMap &filters)
     const QString sameName = filters.value(QStringLiteral("sameName")).toString();
     const bool includeHidden = filters.value(QStringLiteral("includeHidden"), true).toBool();
     const int hpMin = filters.value(QStringLiteral("hpMin"), 0).toInt();
-    const int hpMax = filters.value(QStringLiteral("hpMax"), 0).toInt();
+    // As in the legacy search dialog, an upper bound below the lower one means "exactly the lower bound".
+    const int hpMax = qMax(hpMin, filters.value(QStringLiteral("hpMax"), 0).toInt());
     const QStringList genders = [&filters]() {
         const QVariant value = filters.value(QStringLiteral("genders"));
         if (value.userType() == QMetaType::QStringList)
@@ -805,7 +814,7 @@ void HomeController::joinGame()
 
 void HomeController::startServer()
 {
-    emit startServerRequested();
+    setCurrentPage(QStringLiteral("server"));
 }
 
 bool HomeController::scenarioWorksAvailable() const
@@ -820,6 +829,11 @@ bool HomeController::scenarioWorksAvailable() const
 void HomeController::openScenarioWorks()
 {
     if (scenarioWorksAvailable()) emit scenarioWorksRequested();
+}
+
+void HomeController::openScenarioWorksPage()
+{
+    setCurrentPage(QStringLiteral("works"));
 }
 
 void HomeController::switchQmlScene(const QUrl &source)
@@ -902,7 +916,193 @@ void HomeController::openCards()
 
 void HomeController::openReplays()
 {
+    setCurrentPage(QStringLiteral("replays"));
+}
+
+namespace {
+
+// The replays page only touches regular files directly inside the record directory.
+bool isRecordFile(const QString &path)
+{
+    const QFileInfo info(path);
+    return info.isFile() && !info.isSymLink()
+        && QDir::cleanPath(info.absolutePath())
+            == QDir::cleanPath(QDir(QSanRuntimePaths::recordDir()).absolutePath());
+}
+
+bool isTextReplay(const QFileInfo &info)
+{
+    return info.suffix().compare(QStringLiteral("txt"), Qt::CaseInsensitive) == 0;
+}
+
+// Prefer the system trash so a mistaken delete stays recoverable.
+bool discardPath(const QString &path)
+{
+    if (QFile::moveToTrash(path))
+        return true;
+    return QFileInfo(path).isDir() ? QDir(path).removeRecursively() : QFile::remove(path);
+}
+
+} // namespace
+
+QString HomeController::recordFolder() const
+{
+    return QDir::toNativeSeparators(QSanRuntimePaths::recordDir());
+}
+
+QVariantList HomeController::replayFiles() const
+{
+    QVariantList result;
+    const QDir dir(QSanRuntimePaths::recordDir());
+    const QFileInfoList files = dir.entryInfoList(
+        {QStringLiteral("*.txt"), QStringLiteral("*.png")}, QDir::Files, QDir::Time);
+    for (const QFileInfo &info : files) {
+        const bool text = isTextReplay(info);
+        QVariantMap item;
+        item.insert(QStringLiteral("path"), info.absoluteFilePath());
+        item.insert(QStringLiteral("name"), info.completeBaseName());
+        item.insert(QStringLiteral("format"), text ? QStringLiteral("TXT") : QStringLiteral("PNG"));
+        item.insert(QStringLiteral("size"), QLocale::system().formattedDataSize(info.size()));
+        item.insert(QStringLiteral("modified"),
+                    info.lastModified().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+        // Takeover accepts only a text replay paired with a finalized snapshot manifest.
+        item.insert(QStringLiteral("takeover"), text && QFileInfo::exists(
+            GameSnapshot::getSnapshotDir(info.absoluteFilePath()) + QStringLiteral("/manifest.json")));
+        result.append(item);
+    }
+    return result;
+}
+
+QVariantMap HomeController::replayDetails(const QString &path) const
+{
+    QVariantMap result;
+    if (!Sanguosha || !isRecordFile(path))
+        return result;
+
+    const RecAnalysis analysis(path);
+    const QMap<QString, PlayerRecordStruct *> records = analysis.getRecordMap();
+    if (records.isEmpty())
+        return result;
+
+    const QStringList winners = analysis.getRecordWinners();
+    QVariantList players;
+    for (auto it = records.cbegin(); it != records.cend(); ++it) {
+        const PlayerRecordStruct *rec = it.value();
+        QString screenName = Sanguosha->translate(rec->m_screenName);
+        if (rec->m_statue == QLatin1String("robot"))
+            screenName += QStringLiteral("(%1)").arg(Sanguosha->translate(QStringLiteral("robot")));
+        QString generals = Sanguosha->translate(rec->m_generalName);
+        if (!rec->m_general2Name.isEmpty())
+            generals += QStringLiteral("/") + Sanguosha->translate(rec->m_general2Name);
+
+        QVariantMap player;
+        player.insert(QStringLiteral("screenName"), screenName);
+        player.insert(QStringLiteral("generals"), generals);
+        player.insert(QStringLiteral("role"), Sanguosha->translate(rec->m_role));
+        player.insert(QStringLiteral("alive"), rec->m_isAlive);
+        player.insert(QStringLiteral("winner"), winners.contains(rec->m_role) || winners.contains(it.key()));
+        player.insert(QStringLiteral("turns"), rec->m_turnCount);
+        player.insert(QStringLiteral("recover"), rec->m_recover);
+        player.insert(QStringLiteral("damage"), rec->m_damage);
+        player.insert(QStringLiteral("damaged"), rec->m_damaged);
+        player.insert(QStringLiteral("kill"), rec->m_kill);
+        player.insert(QStringLiteral("designation"), rec->m_designation.join(QStringLiteral(", ")));
+        players.append(player);
+    }
+
+    result.insert(QStringLiteral("valid"), true);
+    result.insert(QStringLiteral("mode"), Sanguosha->getModeName(analysis.getRecordGameMode()));
+    result.insert(QStringLiteral("options"), analysis.getRecordServerOptions().join(QStringLiteral(", ")));
+    result.insert(QStringLiteral("packages"), analysis.getRecordPackages().join(QStringLiteral(", ")));
+    // The analysis joins chat lines with HTML breaks; the page shows plain text.
+    result.insert(QStringLiteral("chat"),
+                  analysis.getRecordChat().replace(QStringLiteral("<br/>"), QStringLiteral("\n")).trimmed());
+    result.insert(QStringLiteral("players"), players);
+    return result;
+}
+
+void HomeController::playReplay(const QString &path)
+{
+    if (isRecordFile(path))
+        emit replayFileRequested(path);
+}
+
+void HomeController::browseReplay()
+{
     emit replaysRequested();
+}
+
+void HomeController::openRecordFolder() const
+{
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QSanRuntimePaths::recordDir()));
+}
+
+QString HomeController::convertReplay(const QString &path) const
+{
+    if (!isRecordFile(path))
+        return QString();
+
+    const QFileInfo info(path);
+    const bool toImage = isTextReplay(info);
+    const QString target = info.absoluteDir().absoluteFilePath(
+        info.completeBaseName() + (toImage ? QStringLiteral(".png") : QStringLiteral(".txt")));
+    if (QFileInfo::exists(target))
+        return QString();
+
+    if (toImage) {
+        QFile source(path);
+        if (!source.open(QIODevice::ReadOnly) || !Recorder::TXT2PNG(source.readAll()).save(target))
+            return QString();
+        return target;
+    }
+
+    const QByteArray data = Recorder::PNG2TXT(path);
+    QSaveFile output(target);
+    if (data.isEmpty() || !output.open(QIODevice::WriteOnly)
+        || output.write(data) != data.size() || !output.commit())
+        return QString();
+    return target;
+}
+
+QString HomeController::renameReplay(const QString &path, const QString &name) const
+{
+    static const QRegularExpression invalidName(QStringLiteral("[\\\\/:*?\"<>|]"));
+    const QString baseName = name.trimmed();
+    if (!isRecordFile(path) || baseName.isEmpty() || baseName.startsWith(QLatin1Char('.'))
+        || baseName.contains(invalidName))
+        return QString();
+
+    const QFileInfo info(path);
+    const QString target = info.absoluteDir().absoluteFilePath(baseName + QStringLiteral(".") + info.suffix());
+    if (QFileInfo::exists(target) || !QFile::rename(path, target))
+        return QString();
+
+    // A text replay keeps its takeover snapshots, which are paired by content hash, not by name.
+    if (isTextReplay(info)) {
+        const QString snapshots = GameSnapshot::getSnapshotDir(path);
+        const QString targetSnapshots = GameSnapshot::getSnapshotDir(target);
+        if (QFileInfo(snapshots).isDir()
+            && (QFileInfo::exists(targetSnapshots) || !QDir().rename(snapshots, targetSnapshots))) {
+            QFile::rename(target, path);
+            return QString();
+        }
+    }
+    return target;
+}
+
+bool HomeController::deleteReplay(const QString &path) const
+{
+    if (!isRecordFile(path))
+        return false;
+
+    const QFileInfo info(path);
+    const QString snapshots = GameSnapshot::getSnapshotDir(path);
+    if (!discardPath(path))
+        return false;
+    // Only a text replay can use the snapshots; an image copy leaves them in place.
+    if (isTextReplay(info) && QFileInfo(snapshots).isDir())
+        discardPath(snapshots);
+    return true;
 }
 
 void HomeController::openSettings()
@@ -1325,7 +1525,7 @@ QVariantMap HomeController::generalDetails(const QString &generalName) const
         QVariantMap item;
         item.insert(QStringLiteral("name"), skill->objectName());
         item.insert(QStringLiteral("displayName"), Sanguosha->translate(skill->objectName()));
-        item.insert(QStringLiteral("description"), skill->getDescription());
+        item.insert(QStringLiteral("description"), m_cardModel.linkCardNames(skill->getDescription()));
         item.insert(QStringLiteral("oracleText"), skill->getOracleText());
         item.insert(QStringLiteral("tags"), skillTagLabels(skill));
         item.insert(QStringLiteral("related"),

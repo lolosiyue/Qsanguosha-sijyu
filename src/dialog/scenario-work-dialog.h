@@ -11,7 +11,7 @@ class QTextEdit;
 class QComboBox;
 class QCheckBox;
 class QSpinBox;
-class QPushButton;
+class ScenarioWorkLibrary;
 
 class ScenarioWorkEditorDialog : public QDialog {
     Q_OBJECT
@@ -71,50 +71,21 @@ private:
     QListWidget *m_entries = nullptr;
 };
 
+// Widget view over ScenarioWorkLibrary for builds without the QML home page.
 class ScenarioWorkLibraryDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit ScenarioWorkLibraryDialog(const QString &libraryRoot,
-        const QJsonObject &compatibility = QJsonObject(), QWidget *parent = nullptr);
-    void resumeTrialDraft();
-
-signals:
-    void playRequested(const ScenarioWork::WorkLaunch &launch);
+    explicit ScenarioWorkLibraryDialog(ScenarioWorkLibrary *library, QWidget *parent = nullptr);
 
 private slots:
-    void reload();
-    void newSceneWork();
-    void newStageWork();
-    void editWork();
-    void duplicateWork();
-    void importWork();
-    void exportWork();
+    void refresh();
     void playWork();
-    void continueWork();
-    void chooseHistory();
 
 private:
-    void refresh();
-    ScenarioWork::WorkDefinition currentWork(bool *ok = nullptr) const;
-    void openEditor(ScenarioWork::WorkDefinition work);
-    bool writeWork(const ScenarioWork::WorkDefinition &work);
     QString selectedPath() const;
-    QString compatibilityError(const ScenarioWork::WorkDefinition &work) const;
-    void launchWork(const ScenarioWork::WorkDefinition &work, const QString &entryId,
-        const ScenarioWork::CarryState &carry, bool trial);
-    void chooseEntryState(const ScenarioWork::WorkDefinition &work, const QString &entryId,
-        const ScenarioWork::WorkProgress &progress);
 
-    QString m_libraryRoot;
-    QJsonObject m_runtimeCompatibility;
+    ScenarioWorkLibrary *m_library = nullptr;
     QListWidget *m_list = nullptr;
-    QPushButton *m_edit = nullptr;
-    QPushButton *m_duplicate = nullptr;
-    QPushButton *m_export = nullptr;
-    QPushButton *m_play = nullptr;
-    QPushButton *m_continue = nullptr;
-    ScenarioWork::WorkDefinition m_trialDraft;
-    bool m_hasTrialDraft = false;
 };
 
 #endif
