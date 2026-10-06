@@ -18,6 +18,7 @@
 #include "mainwindow.h"
 #if !defined(QSAN_XP_LEGACY)
 #include "widget-accessibility.h"
+#include "input/spatial-focus-filter.h"
 #endif
 #include "settings.h"
 #include "banpair.h"
@@ -331,6 +332,10 @@ int main(int argc, char *argv[]) {
             // Hover tooltips are a desktop concept; suppress them on TV.
             static BigPictureTooltipFilter tooltipFilter;
             qApp->installEventFilter(&tooltipFilter);
+#if !defined(QSAN_XP_LEGACY)
+            // Spatial arrow/Enter/Esc navigation plus modal scrims in dialogs.
+            qApp->installEventFilter(new SpatialFocusFilter(qApp));
+#endif
         }
     }
 
