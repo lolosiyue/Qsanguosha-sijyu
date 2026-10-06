@@ -387,7 +387,11 @@ bool validateResponse(const QJsonObject &descriptor, const QVariant &response,
     if (!parseContract(descriptor, &contract, error))
         return false;
 
-    if (contract.canCancel && response == contract.cancelValue)
+    // QVariant equality coerces numeric strings and numbers, including values
+    // nested in lists/maps. Compare JSON values to preserve the declared types;
+    // numeric QVariant representations still share JSON's single number type.
+    if (contract.canCancel && isJsonVariant(response)
+        && QJsonValue::fromVariant(response) == QJsonValue::fromVariant(contract.cancelValue))
         return true;
 
     if (response.userType() != QMetaType::QVariantMap)
