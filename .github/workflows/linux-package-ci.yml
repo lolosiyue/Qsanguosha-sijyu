@@ -52,6 +52,9 @@ jobs:
     name: Linux package (build, audit, smoke)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      QSAN_MULTIMEDIA_CRASH_DIAGNOSTICS: '1'
+      QSAN_MULTIMEDIA_DEBUG_SYMBOLS: ${{ github.workspace }}/relwithdebinfo/QSanguosha
 
     steps:
       - name: Check out source
@@ -79,6 +82,7 @@ jobs:
             cmake \
             desktop-file-utils \
             g++ \
+            gdb \
             libfreetype-dev \
             libgl-dev \
             ninja-build \
