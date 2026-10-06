@@ -356,8 +356,7 @@ void LuaBattleArraySkill::summonFriends(ServerPlayer *player) const
     LuaRuntime *runtime = LuaRuntime::fromState(L);
     if (runtime == nullptr)
         return;
-    LuaRuntime::LuaInvocationScope invocation(*runtime);
-    int result = lua_pcall(L, 1, 0, 0);
+    int result = LuaRuntime::protectedCall(L, 1, 0, 0);
     if (result != 0) {
         qWarning("LuaBattleArraySkill::summonFriends error: %s",
                  qUtf8Printable(luaErrorWithTraceback(L)));

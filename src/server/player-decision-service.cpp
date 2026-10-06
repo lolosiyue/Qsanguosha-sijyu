@@ -2043,6 +2043,7 @@ const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, Server
 {
 	QSet<QString> rejected;
 	forever {
+		m_room.getThread()->settlementStepCheckpoint(dying);
 		CardLifetimeScope cardScope(globalCardLifetimeManager());
 		m_room.tryPause();
 		m_room.notifyMoveFocus(player, S_COMMAND_ASK_PEACH);

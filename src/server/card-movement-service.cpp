@@ -292,6 +292,19 @@ QList<int> &CardMovementService::primaryPile()
 void CardMovementService::setCardMapping(int cardId, ServerPlayer *owner,
                                          Player::Place place)
 {
+    const quint64 cascade = m_room.getThread() && m_room.getThread()->hasActiveCascade()
+        ? m_room.getThread()->cascadeId() : 0;
+    if (cascade) {
+        for (auto &receipts : m_cascadeReceipts) {
+            if (place != Player::DrawPile && place != Player::DrawPileBottom)
+                receipts.drawReservations.remove(cardId);
+            if (place != Player::PlaceJudge && place != Player::PlaceTable)
+                receipts.transientCards.remove(cardId);
+        }
+        if ((place == Player::PlaceJudge && m_judgementDepth > 0)
+            || (place == Player::PlaceTable && m_locations.place(cardId) != Player::PlaceTable))
+            m_cascadeReceipts[cascade].transientCards.insert(cardId);
+    }
     // Bottom is an insertion instruction, never a separate physical zone.
     m_locations.set(cardId, owner, canonicalPlace(place));
 }
@@ -325,7 +338,85 @@ int CardMovementService::drawCard(bool isTop)
 {
     m_room.getThread()->trigger(FetchDrawPileCard, &m_room, nullptr);
     if (m_drawPile->isEmpty()) swapPile();
-    return isTop ? m_drawPile->takeFirst() : m_drawPile->takeLast();
+    const int id = isTop ? m_drawPile->takeFirst() : m_drawPile->takeLast();
+    const quint64 cascade = m_room.getThread() && m_room.getThread()->hasActiveCascade()
+        ? m_room.getThread()->cascadeId() : 0;
+    if (cascade) {
+        auto &receipts = m_cascadeReceipts[cascade];
+        receipts.drawReservations.insert(id, {isTop, ++receipts.reservationOrder});
+    }
+    return id;
+}
+
+void CardMovementService::beginJudgement() { ++m_judgementDepth; }
+void CardMovementService::endJudgement() { --m_judgementDepth; }
+
+void CardMovementService::retainJudgeSnapshot(Card *card)
+{
+    const quint64 cascade = m_room.getThread() && m_room.getThread()->hasActiveCascade()
+        ? m_room.getThread()->cascadeId() : 0;
+    if (cascade && card) m_cascadeReceipts[cascade].judgeSnapshots.append(card);
+}
+
+void CardMovementService::releaseJudgeSnapshot(Card *card)
+{
+    for (auto &receipts : m_cascadeReceipts)
+        receipts.judgeSnapshots.removeAll(QPointer<Card>(card));
+}
+
+void CardMovementService::finishTriggerCascade(quint64 cascadeId, bool cancelled, quint64 parentId)
+{
+    if (!m_cascadeReceipts.contains(cascadeId)) return;
+    // Detach before callbacks/commits can update other active parent ledgers.
+    const CascadeReceipts receipts = m_cascadeReceipts.take(cascadeId);
+    if (!cancelled && parentId && parentId != cascadeId
+        && (!receipts.drawReservations.isEmpty() || !receipts.transientCards.isEmpty()
+            || !receipts.judgeSnapshots.isEmpty())) {
+        auto &parent = m_cascadeReceipts[parentId];
+        QList<QPair<int, DrawReservation>> ordered;
+        for (auto it = receipts.drawReservations.cbegin(); it != receipts.drawReservations.cend(); ++it)
+            ordered.append({it.key(), it.value()});
+        std::sort(ordered.begin(), ordered.end(), [](const auto &left, const auto &right) {
+            return left.second.order < right.second.order;
+        });
+        for (const auto &receipt : ordered)
+            parent.drawReservations.insert(receipt.first, {receipt.second.top, ++parent.reservationOrder});
+        parent.transientCards.unite(receipts.transientCards);
+        parent.judgeSnapshots.append(receipts.judgeSnapshots);
+        return;
+    }
+    if (cancelled) for (const QPointer<Card> &snapshot : receipts.judgeSnapshots)
+        if (snapshot) snapshot->deleteLater();
+    if (cancelled) {
+        QList<QPair<int, DrawReservation>> reserved;
+        for (auto it = receipts.drawReservations.cbegin(); it != receipts.drawReservations.cend(); ++it)
+            if (getCardPlace(it.key()) == Player::DrawPile && !m_drawPile->contains(it.key()))
+                reserved.append({it.key(), it.value()});
+        std::sort(reserved.begin(), reserved.end(), [](const auto &left, const auto &right) {
+            return left.second.order > right.second.order;
+        });
+        for (const auto &receipt : reserved) {
+            if (receipt.second.top) m_drawPile->prepend(receipt.first);
+            else m_drawPile->append(receipt.first);
+        }
+        if (!reserved.isEmpty()) {
+            m_room.roomRuntime()->advanceStateRevision(RoomRuntime::CardsMoved);
+            m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
+        }
+        // Copy before moving: the authoritative mapping callback retires each
+        // receipt. Never take back a card already awarded to a stable zone.
+        const QSet<int> transient = receipts.transientCards;
+        QList<CardsMoveStruct> abandoned;
+        for (int id : transient) {
+            const Player::Place place = getCardPlace(id);
+            if (place != Player::PlaceJudge && place != Player::PlaceTable) continue;
+            abandoned << CardsMoveStruct(id, getCardOwner(id), nullptr, place,
+                Player::DiscardPile, CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER,
+                                                    QString(), QString(), "cascade_cancelled"));
+        }
+        if (!abandoned.isEmpty()) moveCardsAtomic(abandoned, true, false);
+    }
+    m_cascadeReceipts.remove(cascadeId);
 }
 
 void CardMovementService::swapPile()
@@ -1293,6 +1384,24 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
                                       const std::function<void()> &notifyGain,
                                       const std::function<void(int)> &insertIntoDrawPile)
 {
+    QVariant result;
+    {
+        RoomThread::NativeCommitScope commit(*m_room.getThread());
+        result = commitMovesInternal(cardsMoves, visible, guanxing, historyGuard,
+                                     notify, origins, notifyGain, insertIntoDrawPile);
+    }
+    m_room.getThread()->checkCascadeCancellation();
+    return result;
+}
+
+QVariant CardMovementService::commitMovesInternal(QList<CardsMoveStruct> cardsMoves,
+                                      bool visible, bool guanxing,
+                                      ResolutionHistoryEventGuard &historyGuard,
+                                      bool notify,
+                                      const QMap<int, CardsMoveStruct> *origins,
+                                      const std::function<void()> &notifyGain,
+                                      const std::function<void(int)> &insertIntoDrawPile)
+{
     // Temporary 10P diagnosis: bracket the initial hand move and luck-card gate.
     const bool lagProbe = qgetenv("QSAN_10P_LAG_PROBE") == "1"
         && !cardsMoves.isEmpty()
@@ -1310,6 +1419,11 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
     // Capture values before removeCard/onUninstall or wrapped-card filtering.
     // Each commit owns its snapshots, so nested moves cannot overwrite them.
     const auto cardsBefore = snapshotCardsBeforeMove(m_room, cardsMoves);
+    const auto optionalCallback = [&](const std::function<void()> &callback) {
+        if (RoomThread *thread = m_room.getThread()) return thread->invokeStructuralCallback(callback);
+        callback();
+        return true;
+    };
     QMap<int, QPair<QString, QString>> equipmentSourcesBefore;
     for (const CardsMoveStruct &move : cardsMoves) {
         if (!move.from || move.from_place != Player::PlaceEquip) continue;
@@ -1398,10 +1512,10 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
                     move.reason.m_playerId);
                 if (!from) from = static_cast<ServerPlayer *>(move.from);
                 if (from && from->isAlive()) {
-                    m_room.askForGuanxing(from,
+                    optionalCallback([&] { m_room.askForGuanxing(from,
                         getNCards(move.card_ids.length(), false, move.to_place != Player::DrawPileBottom),
                         move.to_place == Player::DrawPileBottom ? Room::GuanxingDownOnly : Room::GuanxingUpOnly,
-                        false);
+                        false); });
                 }
             }
         }
@@ -1409,7 +1523,7 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
 
     if (cardsMoves.first().reason.m_skillName == "InitialHandCards"
         && cardsMoves.first().reason.m_reason == CardMoveReason::S_REASON_DRAW)
-        m_room.askForLuckCard(cardsMoves);
+        optionalCallback([&] { m_room.askForLuckCard(cardsMoves); });
     if (lagProbe)
         qWarning().noquote() << "[LAG_PROBE] after luck_card"
                              << lagTimer.elapsed() << "ms";
@@ -1492,11 +1606,33 @@ QVariant CardMovementService::commitMoves(QList<CardsMoveStruct> cardsMoves,
                                            QList<CardsMoveStruct>()
                                            << invalidEquipMoves.last(), removalBefore);
                 } else {
-                    const int cardId = m_room.askForCardChosen(
+                    int cardId = equipIds.first();
+                    const bool choiceCompleted = optionalCallback([&] { cardId = m_room.askForCardChosen(
                         target, target, "e",
                         "@replace-equip:" + QString::number(slot), false,
-                        Card::MethodDiscard, QList<int>());
-                    if (cardId > 0 && !selectedToDiscard.contains(cardId)) {
+                        Card::MethodDiscard, QList<int>()); });
+                    // After an interrupted optional choice, finish the physical
+                    // slot constraint using its stable native order.
+                    if (!choiceCompleted) {
+                        // The choice callback may have committed another move
+                        // before cancellation. Re-read the physical slot instead
+                        // of discarding a card now awarded to a stable zone.
+                        QList<int> currentSlotIds;
+                        for (const Card *current : target->getEquips()) {
+                            const auto *currentEquip = qobject_cast<const EquipCard *>(current->getRealCard());
+                            const int currentId = current->getEffectiveId();
+                            if (currentEquip && currentEquip->getOccupyLocations().contains(slot)
+                                && m_room.getCardOwner(currentId) == target
+                                && m_room.getCardPlace(currentId) == Player::PlaceEquip)
+                                currentSlotIds << currentId;
+                        }
+                        if (currentSlotIds.size() <= target->getEquipArea(slot)) continue;
+                        cardId = -1;
+                        for (int currentId : currentSlotIds)
+                            if (!selectedToDiscard.contains(currentId)) { cardId = currentId; break; }
+                    }
+                    if ((choiceCompleted ? cardId > 0 : cardId >= 0)
+                        && !selectedToDiscard.contains(cardId)) {
                         selectedToDiscard.append(cardId);
                         const QMap<int, QVariantMap> removalBefore{{cardId, m_room.historyCardSnapshot(Sanguosha->getCard(cardId))}};
                         target->removeCard(cardId, Player::PlaceEquip);
