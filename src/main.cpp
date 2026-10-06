@@ -15,6 +15,10 @@
 #include "widget-accessibility.h"
 #endif
 #include "settings.h"
+#if QSAN_CONTROLLER_ENABLED
+#include "controller-service.h"
+#include "controller-router.h"
+#endif
 #include "banpair.h"
 #include "server.h"
 #include "engine.h"
@@ -184,6 +188,11 @@ int main(int argc, char *argv[]) {
     } else if (headlessApp)
         new QCoreApplication(argc, argv);
     else {
+#if QSAN_CONTROLLER_ENABLED
+        // Native platform file pickers do not expose a Qt focus/control tree.
+        // Controller builds use Qt's widget picker and on-screen text entry.
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+#endif
         new QApplication(argc, argv);
         // Qt's 10 MB default evicts decoded skin and emotion frames, forcing slow PNG decoding on the GUI thread.
 #ifdef Q_OS_ANDROID
@@ -201,8 +210,8 @@ int main(int argc, char *argv[]) {
 #ifdef Q_OS_ANDROID
     AndroidContentStore androidContent;
 #endif
-    const auto releaseEffectsApplication = qScopeGuard([effectsSmoke]() {
-        if (effectsSmoke) {
+    const auto releaseSmokeApplication = qScopeGuard([effectsSmoke, multimediaSmoke]() {
+        if (effectsSmoke || multimediaSmoke) {
             // The smoke releases its window/controller first. QApplication
             // must then release shared GL/thread resources before Qt statics,
             // including on argument, initialization and timeout failures.
@@ -395,6 +404,12 @@ int main(int argc, char *argv[]) {
 #endif
     startupPhase.next("main.settings");
     Config.init();
+#if QSAN_CONTROLLER_ENABLED
+    if (qobject_cast<QApplication *>(qApp)) {
+        auto *controllers = new ControllerService(qApp);
+        new ControllerRouter(controllers, qApp);
+    }
+#endif
     // Resolve the effects profile before creating UI objects that consult the policy during construction.
     startupPhase.next("main.effects_settings");
     G_EFFECTS.initialize(qApp->arguments());

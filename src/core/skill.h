@@ -349,6 +349,10 @@ public:
     // target rules; no suit/number inheritance, equipment cost or selection side effect.
     // Implementations must have contract tests before returning true.
     virtual bool hasIndependentAIConversion() const { return false; }
+    // Explicit offline-planning contract. Empty means unsupported. The order is
+    // owned by the skill; planners must not assume every skill is material-first.
+    // This first protocol supports exact one-card, fixed-output conversions only.
+    virtual QStringList aiConversionStages() const { return {}; }
     virtual bool willThrowSelectedCards() const;
     virtual bool cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const;
     virtual bool pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const;

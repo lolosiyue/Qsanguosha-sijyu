@@ -1911,6 +1911,8 @@ private:
 class Wusheng : public ViewAsSkillV2 {
 public:
     Wusheng() : ViewAsSkillV2("wusheng", 1) { setResponseOrUse(true); }
+    QStringList aiConversionStages() const override
+    { return {"material", "output", "targets"}; }
     bool canActivate(const ActiveSkillRequest &request) const override
     {
         if (!request.initiator) return false;

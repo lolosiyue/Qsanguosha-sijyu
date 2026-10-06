@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 import QtQuick.Layouts
+import QtQuick.Window
 import QSanguosha.HomeFx 1.0
 import "."
 
@@ -11,6 +12,21 @@ Item {
     focus: true
 
     Keys.onPressed: function(event) {
+        if (event.accepted)
+            return
+        if (HomeTheme.tvMode && (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown)) {
+            root.cycleTvTab(event.key === Qt.Key_PageDown ? 1 : -1)
+            event.accepted = true
+            return
+        }
+        if (HomeTheme.tvMode && root.subPageOpen
+                && (event.key === Qt.Key_Escape || event.key === Qt.Key_Backspace)) {
+            if (!root.isEditableTextFocused()) {
+                homeController.openHome()
+                event.accepted = true
+            }
+            return
+        }
         if (root.subPageOpen)
             return
         switch (event.key) {
@@ -27,6 +43,19 @@ Item {
             event.accepted = true;
             break;
         }
+    }
+
+    Shortcut {
+        enabled: HomeTheme.tvMode
+        autoRepeat: false
+        sequence: "PgUp"
+        onActivated: root.cycleTvTab(-1)
+    }
+    Shortcut {
+        enabled: HomeTheme.tvMode
+        autoRepeat: false
+        sequence: "PgDown"
+        onActivated: root.cycleTvTab(1)
     }
 
     property string visualMode: homeController ? homeController.visualMode : "normal"
@@ -51,6 +80,8 @@ Item {
     property bool replaysMounted: false
     property bool worksMounted: false
     property bool serverMounted: false
+    property bool tvKeepTabFocus: false
+    property double tvTabCycleAt: 0
     readonly property bool generalPageBusy: {
         if (!generalsOpen)
             return false
@@ -331,7 +362,8 @@ Item {
                     if (status === Loader.Ready && generalPage.item) {
                         if (root.generalsOpen) {
                             root.applyGeneralsNavGraph()
-                            generalPage.item.takeKeyboard()
+                            if (!root.tvKeepTabFocus)
+                                generalPage.item.takeKeyboard()
                         }
                     }
                 }
@@ -608,7 +640,8 @@ Item {
                         }
                         if (root.cardsOpen) {
                             root.applyCardsNavGraph()
-                            cardPage.item.takeKeyboard()
+                            if (!root.tvKeepTabFocus)
+                                cardPage.item.takeKeyboard()
                         }
                     }
                 }
@@ -646,7 +679,8 @@ Item {
                 onLoaded: {
                     if (root.settingsOpen) {
                         root.applySettingsNavGraph()
-                        settingsPage.item.takeKeyboard()
+                        if (!root.tvKeepTabFocus)
+                            settingsPage.item.takeKeyboard()
                     }
                 }
             }
@@ -683,7 +717,8 @@ Item {
                 onLoaded: {
                     if (root.replaysOpen) {
                         root.applyReplaysNavGraph()
-                        replaysPage.item.takeKeyboard()
+                        if (!root.tvKeepTabFocus)
+                            replaysPage.item.takeKeyboard()
                     }
                 }
             }
@@ -1038,7 +1073,10 @@ Item {
             else if (root.replaysOpen) applyReplaysNavGraph()
             else if (root.worksOpen) applyWorksNavGraph()
             else if (root.serverOpen) applyServerNavGraph()
-            root.navBar.homeBtn.forceActiveFocus()
+            if (HomeTheme.tvMode && compactShell.quickJoinBtn && !root.subPageOpen)
+                compactShell.quickJoinBtn.forceActiveFocus()
+            else
+                root.navBar.homeBtn.forceActiveFocus()
             return
         }
         applyHomeNavGraph()
@@ -1046,6 +1084,67 @@ Item {
             actionPanel.quickJoinBtn.forceActiveFocus()
         else
             root.navBar.homeBtn.forceActiveFocus()
+    }
+
+    function isEditableTextFocused() {
+        var win = Window.window
+        var item = win ? win.activeFocusItem : null
+        while (item) {
+            if (item instanceof TextInput || item instanceof TextEdit)
+                return true
+            item = item.parent
+        }
+        return false
+    }
+
+    function currentTvTabIndex() {
+        var idx = root.navBar.currentIndex
+        if (idx >= 0 && idx <= 4)
+            return idx
+        if (root.generalsOpen)
+            return 1
+        if (root.cardsOpen)
+            return 2
+        if (root.replaysOpen)
+            return 3
+        if (root.settingsOpen)
+            return 4
+        return 0
+    }
+
+    function cycleTvTab(delta) {
+        var now = Date.now()
+        if (now - root.tvTabCycleAt < 80)
+            return
+        root.tvTabCycleAt = now
+        var next = (currentTvTabIndex() + delta + 5) % 5
+        var bar = root.navBar
+        var buttons = [bar.homeBtn, bar.generalsBtn, bar.cardsBtn, bar.replaysBtn, bar.settingsBtn]
+        var btn = buttons[next]
+        root.tvKeepTabFocus = true
+        bar.currentIndex = next
+        switch (next) {
+        case 1:
+            homeController.openGenerals()
+            break
+        case 2:
+            homeController.openCards()
+            break
+        case 3:
+            homeController.openReplays()
+            break
+        case 4:
+            homeController.openSettings()
+            break
+        default:
+            homeController.openHome()
+            break
+        }
+        Qt.callLater(function() {
+            if (btn)
+                btn.forceActiveFocus()
+            root.tvKeepTabFocus = false
+        })
     }
 
     function applyCompactCatalogNav(entry, endpoint) {
@@ -1147,7 +1246,10 @@ Item {
             serverMounted = true
         applyHomeNavGraph()
         attachPopupOverlayEffect()
-        actionPanel.quickJoinBtn.forceActiveFocus()
+        if (HomeTheme.tvMode)
+            Qt.callLater(root.restoreHomeKeyboard)
+        else
+            actionPanel.quickJoinBtn.forceActiveFocus()
         enterAnim.start()
         generalPrefetchStart.start()
     }
@@ -1155,39 +1257,47 @@ Item {
     Connections {
         target: homeController
         function onCurrentPageChanged() {
-            bottomBar.currentIndex = root.generalsOpen ? 1 : root.cardsOpen ? 2
-                                     : root.replaysOpen ? 3 : root.settingsOpen ? 4 : 0
+            if (!root.tvKeepTabFocus) {
+                bottomBar.currentIndex = root.generalsOpen ? 1 : root.cardsOpen ? 2
+                                         : root.replaysOpen ? 3 : root.settingsOpen ? 4 : 0
+            }
             if (root.generalsOpen) {
                 if (generalPage.item) {
                     root.applyGeneralsNavGraph()
-                    generalPage.item.takeKeyboard()
+                    if (!root.tvKeepTabFocus)
+                        generalPage.item.takeKeyboard()
                 }
             } else if (root.cardsOpen) {
                 if (cardPage.item) {
                     root.applyCardsNavGraph()
-                    cardPage.item.takeKeyboard()
+                    if (!root.tvKeepTabFocus)
+                        cardPage.item.takeKeyboard()
                 }
             } else if (root.settingsOpen) {
                 if (settingsPage.item) {
                     root.applySettingsNavGraph()
-                    settingsPage.item.takeKeyboard()
+                    if (!root.tvKeepTabFocus)
+                        settingsPage.item.takeKeyboard()
                 }
             } else if (root.replaysOpen) {
                 if (replaysPage.item) {
                     root.applyReplaysNavGraph()
-                    replaysPage.item.takeKeyboard()
+                    if (!root.tvKeepTabFocus)
+                        replaysPage.item.takeKeyboard()
                 }
             } else if (root.worksOpen) {
                 if (worksPage.item) {
                     root.applyWorksNavGraph()
-                    worksPage.item.takeKeyboard()
+                    if (!root.tvKeepTabFocus)
+                        worksPage.item.takeKeyboard()
                 }
             } else if (root.serverOpen) {
                 if (serverPage.item) {
                     root.applyServerNavGraph()
-                    serverPage.item.takeKeyboard()
+                    if (!root.tvKeepTabFocus)
+                        serverPage.item.takeKeyboard()
                 }
-            } else {
+            } else if (!root.tvKeepTabFocus) {
                 Qt.callLater(root.restoreHomeKeyboard)
             }
         }

@@ -1,0 +1,12 @@
+{
+    "format": 1,
+    "id": "demo-jade",
+    "name": "示範：翠銀（局部）",
+    "author": "QSanguosha",
+    "version": "1.0.0",
+    "description": "只換 CardContainer 背景同戰報邊框嘅局部主題，用嚟示範疊加：放喺赤金上面時呢兩個槽用翠銀，其餘槽照用赤金或預設。",
+    "slots": {
+        "card-container-bg": "card-container.png",
+        "log-box-bg": "log-border.png"
+    }
+}

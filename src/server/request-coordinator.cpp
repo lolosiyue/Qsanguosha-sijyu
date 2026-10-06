@@ -9,6 +9,7 @@
 #include "roomthread.h"
 #include "serverplayer.h"
 #include "settings.h"
+#include "controller-input-diagnostics.h"
 
 #include <QDeadlineTimer>
 #include <QElapsedTimer>
@@ -618,6 +619,12 @@ void RequestCoordinator::processResponse(
             emit m_room.room_message(m_room.tr("Invalid interaction reply: %1")
                                      .arg(decodeError));
     }
+
+    writeControllerServerEvidence(QStringLiteral("server-envelope-validated"),
+        {{"player", player ? player->objectName() : QString()},
+         {"reply_to", QString::number(message.replyTo)},
+         {"message_id", QString::number(message.messageId)},
+         {"command", message.command}, {"accepted", success}});
 
     if (success) {
         player->setClientReply(reply);

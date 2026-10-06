@@ -4318,6 +4318,53 @@ Recent events:</source>
     </message>
 </context>
 <context>
+    <name>GeneralInfoCard</name>
+    <message>
+        <source>Compulsory</source>
+        <translation>锁定技</translation>
+    </message>
+    <message>
+        <source>Limited</source>
+        <translation>限定技</translation>
+    </message>
+    <message>
+        <source>Wake</source>
+        <translation>觉醒技</translation>
+    </message>
+    <message>
+        <source>Mission</source>
+        <translation>使命技</translation>
+    </message>
+    <message>
+        <source>Lord</source>
+        <translation>主公技</translation>
+    </message>
+    <message>
+        <source>Switch</source>
+        <translation>转换技</translation>
+    </message>
+    <message>
+        <source>Hidden</source>
+        <translation>隐匿技</translation>
+    </message>
+    <message>
+        <source>Club</source>
+        <translation>社团技</translation>
+    </message>
+    <message>
+        <source>Derived</source>
+        <translation>衍生</translation>
+    </message>
+    <message>
+        <source>Head general</source>
+        <translation>主将</translation>
+    </message>
+    <message>
+        <source>Deputy general</source>
+        <translation>副将</translation>
+    </message>
+</context>
+<context>
     <name>GeneralOverview</name>
     <message>
         <location filename="../src/dialog/generaloverview.ui" line="282"/>

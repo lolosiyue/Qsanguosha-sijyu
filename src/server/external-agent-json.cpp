@@ -102,6 +102,7 @@ QJsonValue json(const AICardConversionView &v) {
         {"costCount", json(v.costCount)},
         {"eligibleSubcardIds", json(v.eligibleSubcardIds)},
         {"subcardIds", json(v.subcardIds)},
+        {"selectionStages", json(v.selectionStages)},
         {"available", json(v.available)},
         {"targetFixed", json(v.targetFixed)},
         {"feasibleWithNoTarget", json(v.feasibleWithNoTarget)},
@@ -264,7 +265,8 @@ QJsonValue json(const AIRequest &v) {
         {"choiceOptions", json(v.choiceOptions)},
         {"cardCandidates", json(v.cardCandidates)},
         {"cardConversions", json(v.cardConversions)},
-        {"conversionsEnumerated", json(v.conversionsEnumerated)}
+        {"conversionsEnumerated", json(v.conversionsEnumerated)},
+        {"stagedActionsComplete", json(v.stagedActionsComplete)}
     };
 }
 bool fields(const QJsonObject &o, const QSet<QString> &allowed) {

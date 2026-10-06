@@ -8,6 +8,7 @@
 #include "scenario-overview.h"
 #include "window.h"
 #include "pixmapanimation.h"
+#include "theme-pack-dialog.h"
 #include "record-analysis.h"
 #include "banipdialog.h"
 #ifdef Q_OS_ANDROID
@@ -395,6 +396,7 @@ MainWindow::MainWindow(QWidget *parent)
 		PackageManagerDialog::openManager(QSanRuntimePaths::assetRoot(),
 			QSanRuntimePaths::userDataRoot(), this);
 	});
+	packageMenu->addAction(tr("主題包管理…"), this, [this]() { ThemePackDialog::openManager(this); });
 #endif
 
 	connect(ui->actionRestart_Game, &QAction::triggered, this, [this]() {
@@ -2089,8 +2091,9 @@ void MainWindow::networkError(const QString &error_msg)
 void BackLoader::preload()
 {
 	foreach (QString emotion, G_ROOM_SKIN.getAnimationFileNames()) {
+		const QString directory = PixmapAnimation::EmotionDirectory(emotion);
 		for (int i = 0; i < PixmapAnimation::GetFrameCount(emotion); i++)
-			G_ROOM_SKIN.getPixmapFromFileName(QString("image/system/emotion/%1/%2.png").arg(emotion).arg(i), true);
+			G_ROOM_SKIN.getPixmapFromFileName(directory + QString::number(i) + QStringLiteral(".png"), true);
 	}
 }
 
