@@ -305,8 +305,10 @@ QStringList ServerPlayer::getPendingAnytimeSkills() const
 
 void ServerPlayer::addPendingAnytimeSkill(const QString &skill_name)
 {
-	if (!m_pendingAnytimeSkills.contains(skill_name))
+	if (!m_pendingAnytimeSkills.contains(skill_name)) {
 		m_pendingAnytimeSkills << skill_name;
+		if (room && room->getThread()) room->getThread()->recordDeferredAnytime(this, skill_name);
+	}
 }
 
 void ServerPlayer::removePendingAnytimeSkill(const QString &skill_name)
@@ -835,8 +837,16 @@ QString ServerPlayer::reportHeader() const
 
 void ServerPlayer::removeCard(int id, Place place)
 {
-	if(place==PlaceEquip)
-		qobject_cast<const EquipCard *>(Sanguosha->getCard(id)->getRealCard())->onUninstall(this);
+	if(place==PlaceEquip) {
+		const Card *definition = Sanguosha->getCard(id)->getRealCard();
+        const auto token = globalCardLifetimeManager().liveToken(definition);
+		const auto callback = [&] {
+			qobject_cast<const EquipCard *>(Sanguosha->getCard(id)->getRealCard())->onUninstall(this);
+		};
+		if (room->getThread()) room->getThread()->invokeStructuralCallback(callback,
+            definition, QStringLiteral("equip-uninstall/%1/%2").arg(id).arg(token ? token->generation : 0), this);
+		else callback();
+	}
 	Player::removeCard(id, place);
 	/*switch (place) {
 	case PlaceHand: {
@@ -884,8 +894,16 @@ void ServerPlayer::addCard(int id, Place place, const std::function<void()> &aft
 	Player::addCard(id, place);
 	if (afterMutation)
 		afterMutation();
-	if(place==PlaceEquip)
-		qobject_cast<const EquipCard *>(Sanguosha->getCard(id)->getRealCard())->onInstall(this);
+	if(place==PlaceEquip) {
+		const Card *definition = Sanguosha->getCard(id)->getRealCard();
+        const auto token = globalCardLifetimeManager().liveToken(definition);
+		const auto callback = [&] {
+			qobject_cast<const EquipCard *>(Sanguosha->getCard(id)->getRealCard())->onInstall(this);
+		};
+		if (room->getThread()) room->getThread()->invokeStructuralCallback(callback,
+            definition, QStringLiteral("equip-install/%1/%2").arg(id).arg(token ? token->generation : 0), this);
+		else callback();
+	}
 	/*switch (place) {
 	case PlaceHand: {
 		handcards << card;
@@ -3089,7 +3107,10 @@ void ServerPlayer::showGeneral(bool head_general, bool trigger_event, bool sendL
         const QString pendingKey = "HegemonyPendingReveals:" + objectName();
         QStringList revealSlots = room->getTag(pendingKey).toStringList();
         const QString slotName = head_general ? "head" : "deputy";
-        if (!revealSlots.contains(slotName)) revealSlots << slotName;
+        if (!revealSlots.contains(slotName)) {
+            revealSlots << slotName;
+            room->getThread()->recordDeferredReveal(this, slotName);
+        }
         room->setTag(pendingKey, revealSlots);
         QVariant shown = head_general;
         room->getThread()->trigger(GeneralShown, room, this, shown);

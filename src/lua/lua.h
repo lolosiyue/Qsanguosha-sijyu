@@ -105,6 +105,13 @@ typedef LUA_KCONTEXT lua_KContext;
 */
 typedef int (*lua_CFunction) (lua_State *L);
 
+/* Optional host exception transport. Mode 0 runs a protected callback and
+** returns a Lua status; mode 1 queries pending cancellation; mode 2 propagates
+** it only after the protected boundary has restored VM bookkeeping. */
+typedef int (*lua_ProtectedBridge) (lua_State *L,
+                                  void (*f)(lua_State *, void *),
+                                  void *ud, void *host, int mode);
+
 /*
 ** Type for continuation functions
 */
@@ -169,6 +176,8 @@ LUA_API int        (lua_closethread) (lua_State *L, lua_State *from);
 LUA_API int        (lua_resetthread) (lua_State *L);  /* Deprecated! */
 
 LUA_API lua_CFunction (lua_atpanic) (lua_State *L, lua_CFunction panicf);
+LUA_API void (lua_setprotectedbridge) (lua_State *L,
+                                     lua_ProtectedBridge bridge, void *host);
 
 
 LUA_API lua_Number (lua_version) (lua_State *L);

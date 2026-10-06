@@ -139,7 +139,11 @@ int luaD_rawrunprotected (lua_State *L, Pfunc f, void *ud) {
   lj.previous = L->errorJmp;  /* chain new error handler */
   L->errorJmp = &lj;
   LUAI_TRY(L, &lj,
-    (*f)(L, ud);
+    if (G(L)->protectedbridge)
+      lj.status = G(L)->protectedbridge(L, f, ud,
+                                       G(L)->protectedbridgehost, 0);
+    else
+      (*f)(L, ud);
   );
   L->errorJmp = lj.previous;  /* restore old error handler */
   L->nCcalls = oldnCcalls;
@@ -831,6 +835,9 @@ static void resume (lua_State *L, void *ud) {
 static int precover (lua_State *L, int status) {
   CallInfo *ci;
   while (errorstatus(status) && (ci = findpcall(L)) != NULL) {
+    if (G(L)->protectedbridge &&
+        G(L)->protectedbridge(L, NULL, NULL, G(L)->protectedbridgehost, 1))
+      break;  /* do not resume author error-catching continuations */
     L->ci = ci;  /* go down to recovery functions */
     setcistrecst(ci, status);  /* status to finish 'pcall' */
     status = luaD_rawrunprotected(L, unroll, NULL);
@@ -870,6 +877,8 @@ LUA_API int lua_resume (lua_State *L, lua_State *from, int nargs,
   *nresults = (status == LUA_YIELD) ? L->ci->u2.nyield
                                     : cast_int(L->top.p - (L->ci->func.p + 1));
   lua_unlock(L);
+  if (G(L)->protectedbridge)
+    G(L)->protectedbridge(L, NULL, NULL, G(L)->protectedbridgehost, 2);
   return status;
 }
 
@@ -970,6 +979,10 @@ int luaD_pcall (lua_State *L, Pfunc func, void *u,
     luaD_shrinkstack(L);   /* restore stack size in case of overflow */
   }
   L->errfunc = old_errfunc;
+  /* A host cancellation cannot be consumed by an author pcall. The native
+  ** callback has unwound and VM stack/call/error state is restored here. */
+  if (G(L)->protectedbridge)
+    G(L)->protectedbridge(L, NULL, NULL, G(L)->protectedbridgehost, 2);
   return status;
 }
 
@@ -1031,5 +1044,3 @@ int luaD_protectedparser (lua_State *L, ZIO *z, const char *name,
   decnny(L);
   return status;
 }
-
-
