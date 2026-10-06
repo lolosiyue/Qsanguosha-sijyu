@@ -1,4 +1,5 @@
 #include "client-core.h"
+#include "controller-interaction-contract.h"
 
 #include <QElapsedTimer>
 #include <QLoggingCategory>
@@ -337,8 +338,17 @@ InteractionValidation ClientCore::validateAgainst(const InteractionRequest &requ
             QStringLiteral("reply carries no answer"));
     }
 
-    // An empty answer is always treated as "cancel", whether the view sends Cancel or an
-    // empty selection: a non-cancelable request must not slip through that way.
+    // Explicit cancellation is governed by cancelability itself. Some request
+    // payloads have no required selection dimension (minSelection() == 0), but
+    // that does not make a Cancel response legal for a mandatory prompt.
+    if (response.kind == InteractionResponseKind::Cancel && !request.cancelable) {
+        return InteractionValidation::fail(InteractionRejection::NotCancelable,
+            QStringLiteral("request %1 is not cancelable").arg(request.requestId));
+    }
+
+    // For a required selection, an empty structured answer is equivalent to cancel.
+    // At minSelection() == 0, an empty selection can be a legitimate answer; the
+    // explicit Cancel case was checked independently above.
     if (isEmptyAnswer(response) && request.minSelection() > 0) {
         if (!request.cancelable) {
             return InteractionValidation::fail(InteractionRejection::NotCancelable,
@@ -348,10 +358,6 @@ InteractionValidation ClientCore::validateAgainst(const InteractionRequest &requ
     }
 
     if (response.kind == InteractionResponseKind::Cancel) {
-        if (!request.cancelable && request.minSelection() > 0) {
-            return InteractionValidation::fail(InteractionRejection::NotCancelable,
-                QStringLiteral("request %1 is not cancelable").arg(request.requestId));
-        }
         return InteractionValidation::ok();
     }
 
@@ -684,6 +690,13 @@ InteractionValidation ClientCore::validateCustom(const InteractionRequest &reque
     if (answer->schemaVersion != payload->schemaVersion || answer->typeName != payload->typeName) {
         return InteractionValidation::fail(InteractionRejection::MalformedResponse,
             QStringLiteral("custom response schema does not match the active request"));
+    }
+    const QJsonObject contract = payload->payload.value(QStringLiteral("parameters")).toObject()
+        .value(QStringLiteral("controller_ui")).toObject();
+    if (!contract.isEmpty()) {
+        QString error;
+        if (!ControllerInteractionContract::validateResponse(contract, answer->value, &error))
+            return InteractionValidation::fail(InteractionRejection::MalformedResponse, error);
     }
     return InteractionValidation::ok();
 }

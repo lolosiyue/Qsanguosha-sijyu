@@ -1,4 +1,5 @@
 #include "protocol-interaction-request-builder.h"
+#include "controller-interaction-contract.h"
 
 #include "core/client-game-state.h"
 #include "core/custom-interaction-registry.h"
@@ -271,7 +272,9 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         break;
     }
     case S_COMMAND_RESPONSE_CARD: {
-        CardInteractionPayload value = cardPayload(knownSelfCards(state, false), 0, 1, false);
+        // Match the desktop descriptor: optional empty answers are handled by
+        // cancelability; a mandatory trailing '!' still requires one card.
+        CardInteractionPayload value = cardPayload(knownSelfCards(state, false), 1, 1, false);
         value.selection.pattern = object.value(QStringLiteral("pattern")).toString();
         value.selection.handlingMethod = object.value(QStringLiteral("handling_method"), -1).toInt();
         value.cardTextAllowed = true;
@@ -379,7 +382,7 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         const QString zoneFlags = object.value(QStringLiteral("zone_flags")).toString();
         const bool handCardsVisible = object.value(QStringLiteral("hand_cards_visible")).toBool();
         CardInteractionPayload value = cardPayload(
-            knownZoneCards(state, sourcePlayer, zoneFlags, handCardsVisible), 0, 1, false);
+            knownZoneCards(state, sourcePlayer, zoneFlags, handCardsVisible), cancelable ? 0 : 1, 1, false);
         value.sourcePlayer = sourcePlayer;
         value.zoneFlags = zoneFlags;
         value.handCardsVisible = handCardsVisible;
@@ -442,6 +445,9 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         value.payload = QJsonObject::fromVariantMap(interaction.value(QStringLiteral("payload")).toMap());
         value.responseSchema = QJsonObject::fromVariantMap(
             interaction.value(QStringLiteral("response_schema")).toMap());
+        const QJsonObject contract = value.payload.value(QStringLiteral("parameters")).toObject()
+            .value(QStringLiteral("controller_ui")).toObject();
+        if (!contract.isEmpty()) cancelable = contract.value(QStringLiteral("can_cancel")).toBool();
         payload = value;
         break;
     }
