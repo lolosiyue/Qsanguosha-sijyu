@@ -1768,6 +1768,9 @@ if(QSAN_BUILD_GUI)
                 qml/home/HomeBottomBar.qml
                 qml/home/HomeNavButton.qml
                 qml/home/HomeSideBar.qml
+                qml/home/HomeLayoutControls.qml
+                qml/home/HomeCompactShell.qml
+                qml/home/CatalogPaneBar.qml
                 qml/home/GeneralScene.qml
                 qml/home/CardScene.qml
                 qml/home/CardBrowserTile.qml
@@ -1776,8 +1779,10 @@ if(QSAN_BUILD_GUI)
                 qml/home/CardTagChip.qml
                 qml/home/CardDetailPanel.qml
                 qml/home/CardVariantList.qml
-                qml/home/CardPagination.qml
                 qml/home/SettingsScene.qml
+                qml/home/RecordScene.qml
+                qml/home/ScenarioWorksScene.qml
+                qml/home/ServerScene.qml
                 qml/home/HomeTheme.qml
                 ui-script/game/chongxu/chongxu.qml
         )

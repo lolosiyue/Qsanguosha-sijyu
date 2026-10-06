@@ -59,7 +59,7 @@ Item {
     Text {
         anchors.centerIn: pages
         visible: shell.subPageOpen && shell.pageLoading
-        text: qsTr("少女祈禱中…")
+        text: qsTr("Now loading...")
         color: HomeTheme.btnSecondaryText
         font.pixelSize: HomeTheme.compactText
     }
@@ -125,6 +125,7 @@ Item {
         function onCurrentPageChanged() {
             dock.currentIndex = homeController.currentPage === "generals" ? 1
                                 : homeController.currentPage === "cards" ? 2
+                                : homeController.currentPage === "replays" ? 3
                                 : homeController.currentPage === "settings" ? 4 : 0
         }
     }

@@ -11,6 +11,7 @@ Item {
     property var cardModel
     property bool compact: false
     property var detail: ({})
+    signal cardLinkActivated(string objectName)
     readonly property int cardId: detail && detail.cardId !== undefined ? detail.cardId : -1
     readonly property var firstVisibleAction: cardId >= 0 ? detailScroll : null
     readonly property var lastVisibleAction: effectAudio.visible ? effectAudio
@@ -271,7 +272,8 @@ Item {
                     persistentSelection: true
                     cursorVisible: activeFocus
                     text: root.detail.description
-                          || homeController.qtTranslate("CardScene", "No description available")
+                          ? HomeTheme.styleCardLinks(root.detail.description)
+                          : homeController.qtTranslate("CardScene", "No description available")
                     textFormat: TextEdit.RichText
                     color: HomeTheme.cardTextSecondary
                     selectedTextColor: HomeTheme.cardTextPrimary
@@ -300,7 +302,25 @@ Item {
                         }
                     }
                     onActiveFocusChanged: if (activeFocus) root.revealItem(effectText)
-                    onLinkActivated: function(link) {}
+                    onLinkActivated: function(link) {
+                        if (link.startsWith("card:"))
+                            root.cardLinkActivated(link.substring(5))
+                    }
+                    // Keyboard users move the caret onto a card link and press Enter to follow it.
+                    function followLinkAtCaret(event) {
+                        var caret = effectText.positionToRectangle(effectText.selectionStart)
+                        var link = effectText.linkAt(caret.x + 1, caret.y + caret.height / 2)
+                        if (link.startsWith("card:"))
+                            root.cardLinkActivated(link.substring(5))
+                        else
+                            event.accepted = false
+                    }
+                    Keys.onReturnPressed: function(event) { effectText.followLinkAtCaret(event) }
+                    Keys.onEnterPressed: function(event) { effectText.followLinkAtCaret(event) }
+
+                    HoverHandler {
+                        cursorShape: effectText.hoveredLink.length > 0 ? Qt.PointingHandCursor : Qt.IBeamCursor
+                    }
                 }
             }
 

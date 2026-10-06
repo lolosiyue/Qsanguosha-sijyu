@@ -16,6 +16,8 @@ Item {
     readonly property int compactText: 16
     readonly property int compactRadius: 8
     readonly property int compactHandWidth: 360
+    // Icon-over-text footer tiles; matches the compact home action tiles.
+    readonly property int compactActionTileHeight: 84
     readonly property int catalogCompactHeaderHeight: 124
     readonly property int catalogGeneralTileWidth: 108
     readonly property int catalogCardTileWidth: 140
@@ -156,6 +158,10 @@ Item {
     readonly property color cardBadgeEquip: isDark ? "#3D7FC7" : "#2D6FAF"
     readonly property color cardBadgeSkill: isDark ? "#B06A9B" : "#95527F"
     readonly property color cardBadgeText: "#FFFFFF"
+    // Status badge fills under cardBadgeText; the dark status text colours are too light to fill behind white.
+    readonly property color cardBadgePositive: isDark ? "#1F7A4D" : "#23794A"
+    readonly property color cardBadgeNeutral: "#5E6E7A"
+    readonly property color cardBadgeInfo: isDark ? "#1E6A94" : "#126F9B"
     readonly property color cardSuitRed: isDark ? "#FF7E8A" : "#B82437"
     readonly property color cardSuitBlack: isDark ? "#DCE8F0" : "#182632"
     readonly property color cardPositive: isDark ? "#72D6A1" : "#23794A"
@@ -205,12 +211,8 @@ Item {
     readonly property int cardCountBadgeHPadding: 14
     readonly property int cardCountBadgeHeight: 38
     readonly property int cardSortWidth: 170
-    readonly property int cardGridBottomInset: 4
-    readonly property int cardPaginationBottomInset: 7
-    readonly property int cardPaginationHeight: 48
-    readonly property int cardPaginationButtonWidth: 54
-    readonly property int cardPaginationLabelWidth: 150
-    readonly property int cardPaginationFontSize: 15
+    // Fixed row height so the grid scrolls; the next row peeks below three full rows at 1080p.
+    readonly property int cardTileHeight: 240
     readonly property int cardEmptyFontSize: 17
     readonly property int cardTileAccentWidth: 5
     readonly property int cardTileAccentRadius: 3
@@ -286,8 +288,15 @@ Item {
     readonly property int generalCellMinWidth: 122
     readonly property int generalGridMinColumns: 5
     readonly property int generalGridMaxColumns: 9
-    readonly property int generalTableRowHeight: 30
-    readonly property int generalTableHeaderHeight: 28
+    readonly property int generalTableRowHeight: 36
+    readonly property int generalTableHeaderHeight: 32
+    readonly property int generalTableFontSize: 15
+    readonly property int generalTableHeaderFontSize: 13
+    readonly property int generalTableCellPadding: 10
+    // The canvas scales down with the window; these floors keep 8-column tiles readable at 1280x720.
+    readonly property int generalTileNameMinFontSize: 13
+    readonly property int generalTileCompanionMinFontSize: 12
+    readonly property int generalTileAccentWidth: 4
     readonly property real generalCellAspect: 1.50
     readonly property int generalCellInset: 2
 
@@ -317,5 +326,12 @@ Item {
 
     function generalCellColumns(gridWidth, columns) {
         return resolvedGridColumns(gridWidth, columns)
+    }
+
+    // Rich text paints links in the application palette colour, which is unreadable on the dark
+    // panels; recolour the card:<name> links the catalog adds to descriptions.
+    function styleCardLinks(html) {
+        return String(html || "").replace(/<a href="card:/g,
+                                          '<a style="color:' + cardInteractive + '" href="card:')
     }
 }

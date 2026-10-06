@@ -28,7 +28,7 @@ class Select3v3GeneralDialog : public QDialog
     Q_OBJECT
 
 public:
-    Select3v3GeneralDialog(QDialog *parent);
+    Select3v3GeneralDialog(QWidget *parent);
 
 private:
     QTabWidget *tab_widget;

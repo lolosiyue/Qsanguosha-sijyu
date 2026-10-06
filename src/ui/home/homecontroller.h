@@ -146,6 +146,8 @@ public:
     Q_INVOKABLE void openScenarioWorks();
     Q_PROPERTY(bool scenarioWorksAvailable READ scenarioWorksAvailable CONSTANT)
     bool scenarioWorksAvailable() const;
+    // MainWindow shows the works page after preparing the shared work library.
+    void openScenarioWorksPage();
 
     Q_INVOKABLE void openHome();
     Q_INVOKABLE void openGenerals();
@@ -154,6 +156,19 @@ public:
     Q_INVOKABLE void openSettings();
     Q_INVOKABLE void openAbout();
     Q_INVOKABLE void checkUpdates();
+
+    // Replays page: manages the replay files directly inside the record directory.
+    Q_INVOKABLE QString recordFolder() const;
+    Q_INVOKABLE QVariantList replayFiles() const;
+    Q_INVOKABLE QVariantMap replayDetails(const QString &path) const;
+    Q_INVOKABLE void playReplay(const QString &path);
+    // Opens the legacy file dialog for a replay outside the record directory.
+    Q_INVOKABLE void browseReplay();
+    Q_INVOKABLE void openRecordFolder() const;
+    // Each returns the resulting path, or an empty string on failure.
+    Q_INVOKABLE QString convertReplay(const QString &path) const;
+    Q_INVOKABLE QString renameReplay(const QString &path, const QString &name) const;
+    Q_INVOKABLE bool deleteReplay(const QString &path) const;
 
     Q_INVOKABLE QString translate(const QString &key) const;
     Q_INVOKABLE QString qtTranslate(const QString &context, const QString &source) const;
@@ -201,12 +216,12 @@ signals:
     void videoStatusChanged();
     void quickJoinRequested();
     void joinGameRequested();
-    void startServerRequested();
     void scenarioWorksRequested();
 
     void generalsRequested();
     void cardsRequested();
     void replaysRequested();
+    void replayFileRequested(const QString &path);
     void aboutRequested();
     void updateCheckRequested();
 

@@ -302,6 +302,33 @@ Item {
     property int hpMin: 0
     property int hpMax: 0
     property var genderFilter: []
+    readonly property var genderOptions: [
+        { key: "male", label: ui("GeneralSearch", "Male") },
+        { key: "female", label: ui("GeneralSearch", "Female") },
+        { key: "neuter", label: ui("GeneralSearch", "Neuter") },
+        { key: "sexless", label: ui("GeneralSearch", "Sexless") },
+        { key: "nogender", label: ui("GeneralSearch", "NoGender") }
+    ]
+    // Filter-panel conditions in effect, shown as removable chips above the list.
+    readonly property var activeFilters: {
+        var list = []
+        if (!includeHidden)
+            list.push({ key: "hidden", label: qsTranslate("GeneralOverview", "Hidden generals excluded") })
+        if (nicknameFilter.length > 0)
+            list.push({ key: "nickname", label: qsTranslate("GeneralOverview", "Nickname: %1").arg(nicknameFilter) })
+        for (var i = 0; i < genderOptions.length; ++i) {
+            if (genderFilter.indexOf(genderOptions[i].key) >= 0)
+                list.push({ key: "gender:" + genderOptions[i].key, label: genderOptions[i].label })
+        }
+        if (hpMin > 0 || hpMax > 0) {
+            // The model raises an upper bound below the lower one to the lower bound.
+            var upper = Math.max(hpMin, hpMax)
+            list.push({ key: "hp", label: hpMin === upper
+                        ? qsTranslate("GeneralOverview", "MaxHP %1").arg(upper)
+                        : qsTranslate("GeneralOverview", "MaxHP %1-%2").arg(hpMin).arg(upper) })
+        }
+        return list
+    }
     property string navGroup: ""
     property string navPackage: ""
     readonly property var navPackageEntries: {
@@ -321,7 +348,11 @@ Item {
         ? Math.max(2, Math.floor(generalGrid.width / HomeTheme.catalogGeneralTileWidth)) : gridColumns
     readonly property var navigationEntry: searchField
     readonly property var navigationExit: compact && compactPane === 0 ? generalGrid : banBtn
+    // List content starts below the active-filter chips.
+    readonly property int listTopMargin: HomeTheme.generalGridMargin
+        + (activeFilterBar.visible ? activeFilterBar.height + HomeTheme.generalGridMargin / 2 : 0)
     signal navigationEndpointChanged()
+    signal cardLinkActivated(string objectName)
     onNavigationExitChanged: navigationEndpointChanged()
     function showCompactPane(pane) {
         compactPane = pane
@@ -480,6 +511,19 @@ Item {
         return groups
     }
 
+    function clearFilter(key) {
+        if (key === "hidden")
+            includeHidden = true
+        else if (key === "nickname")
+            nicknameFilter = ""
+        else if (key === "hp") {
+            hpMin = 0
+            hpMax = 0
+        } else if (key.indexOf("gender:") === 0)
+            genderFilter = toggleIn(genderFilter, key.substring(7))
+        rebuild()
+    }
+
     function toggleIn(list, key) {
         var copy = (list || []).slice()
         var idx = copy.indexOf(key)
@@ -588,6 +632,12 @@ Item {
     Timer {
         id: catalogLoadTimer
         interval: 32
+        onTriggered: root.rebuild()
+    }
+
+    Timer {
+        id: nicknameDebounce
+        interval: 160
         onTriggered: root.rebuild()
     }
 
@@ -844,7 +894,9 @@ Item {
                     id: filterBtn
                     // Compact opens the same panel from the pane bar's filter tab.
                     visible: !root.compact
-                    text: root.ui("GeneralOverview", "Search...")
+                    text: root.activeFilters.length > 0
+                          ? qsTranslate("GeneralOverview", "Filters (%1)").arg(root.activeFilters.length)
+                          : qsTranslate("GeneralOverview", "Filters")
                     implicitWidth: root.compact ? 100 : 140
                     Layout.fillWidth: root.compact
                     onClicked: filterPanel.visible = !filterPanel.visible
@@ -854,7 +906,7 @@ Item {
 
                 Text {
                     visible: !root.compact
-                    text: String(catalog ? catalog.count : 0)
+                    text: qsTranslate("GeneralOverview", "%1 generals").arg(catalog ? catalog.count : 0)
                     color: HomeTheme.btnSecondaryText
                     font.pixelSize: 22
                     font.bold: true
@@ -950,6 +1002,7 @@ Item {
                 height: visible ? HomeTheme.compactTouch : 0
                 currentIndex: filterPanel.visible ? 2 : root.compactPane
                 itemCount: root.catalog ? root.catalog.count : 0
+                filterCount: root.activeFilters.length
                 detailsEnabled: root.selectedName.length > 0 || root.sameNameFilter.length > 0
                 onActivated: function(index) {
                     if (index === 2) filterPanel.visible = true
@@ -1060,11 +1113,79 @@ Item {
                 borderColor: HomeTheme.baDockBorder
                 shadowColor: HomeTheme.baDockShadow
 
+                Flow {
+                    id: activeFilterBar
+                    visible: root.activeFilters.length > 0
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: HomeTheme.generalGridMargin
+                    height: visible ? implicitHeight : 0
+                    spacing: HomeTheme.generalGridMargin / 2
+
+                    Repeater {
+                        model: root.activeFilters
+                        delegate: Rectangle {
+                            id: filterChip
+                            required property var modelData
+                            width: filterChipRow.implicitWidth + 24
+                            height: root.compact ? HomeTheme.compactTouch : 32
+                            radius: height / 2
+                            color: filterChipMouse.containsMouse ? HomeTheme.navBgHover : HomeTheme.btnSecondary
+                            border.width: 1
+                            border.color: HomeTheme.baSky
+                            Accessible.role: Accessible.Button
+                            Accessible.name: modelData.label
+
+                            Row {
+                                id: filterChipRow
+                                anchors.centerIn: parent
+                                spacing: 6
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: filterChip.modelData.label
+                                    color: HomeTheme.btnSecondaryText
+                                    font.pixelSize: 14
+                                }
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "×"
+                                    color: HomeTheme.btnSecondaryText
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+                            }
+
+                            MouseArea {
+                                id: filterChipMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.clearFilter(filterChip.modelData.key)
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !root.catalogPending && root.catalog.count === 0
+                    width: parent.width * 0.72
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    text: qsTranslate("GeneralOverview", "No generals are found")
+                    color: HomeTheme.pillText
+                    font.pixelSize: 17
+                }
+
                 GridView {
                     id: generalGrid
                     visible: !root.tableMode
                     anchors.fill: parent
                     anchors.margins: HomeTheme.generalGridMargin
+                    anchors.topMargin: root.listTopMargin
                     anchors.bottomMargin: 22
                     clip: true
                     focus: !root.tableMode
@@ -1157,10 +1278,11 @@ Item {
                             color: root.selectedName === delegateRoot.name
                                    ? HomeTheme.navBgActive
                                    : HomeTheme.btnSecondary
-                            border.width: root.selectedName === delegateRoot.name ? 2 : 1
+                            // Artwork covers the fill, so hover and selection show on the border and accent bar.
+                            border.width: root.selectedName === delegateRoot.name || tileMouse.containsMouse ? 2 : 1
                             border.color: root.selectedName === delegateRoot.name
                                           ? HomeTheme.focusBorderHigh
-                                          : HomeTheme.btnSecondaryBorder
+                                          : (tileMouse.containsMouse ? HomeTheme.baSky : HomeTheme.btnSecondaryBorder)
 
                             Image {
                                 id: listFullskin
@@ -1188,6 +1310,16 @@ Item {
                                 anchors.top: parent.top
                                 anchors.rightMargin: 6
                                 anchors.topMargin: 6
+                                z: 2
+                            }
+
+                            Rectangle {
+                                visible: root.selectedName === delegateRoot.name
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: HomeTheme.generalTileAccentWidth
+                                color: HomeTheme.baSky
                                 z: 2
                             }
 
@@ -1237,7 +1369,8 @@ Item {
                                         text: delegateRoot.displayName
                                         elide: Text.ElideRight
                                         color: HomeTheme.onArtText
-                                        font.pixelSize: Math.max(10, Math.round(delegateRoot.width / 10))
+                                        font.pixelSize: Math.max(HomeTheme.generalTileNameMinFontSize,
+                                                                 Math.round(delegateRoot.width / 10))
                                         font.bold: true
                                     }
 
@@ -1249,12 +1382,14 @@ Item {
                                         elide: Text.ElideRight
                                         color: HomeTheme.onArtText
                                         opacity: 0.9
-                                        font.pixelSize: Math.max(9, Math.round(delegateRoot.width / 12))
+                                        font.pixelSize: Math.max(HomeTheme.generalTileCompanionMinFontSize,
+                                                                 Math.round(delegateRoot.width / 12))
                                     }
                                 }
                             }
 
                             MouseArea {
+                                id: tileMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
@@ -1272,6 +1407,7 @@ Item {
                     visible: root.tableMode
                     anchors.fill: parent
                     anchors.margins: HomeTheme.generalGridMargin
+                    anchors.topMargin: root.listTopMargin
                     anchors.bottomMargin: 22
                     spacing: 0
 
@@ -1280,14 +1416,15 @@ Item {
                         width: parent.width
                         height: HomeTheme.generalTableHeaderHeight
 
+                        // Text columns align left and numbers right, matching the rows below.
                         Repeater {
                             model: [
-                                { share: 0.20, label: qsTranslate("GeneralOverview", "Nick") },
-                                { share: 0.22, label: qsTranslate("GeneralOverview", "General") },
-                                { share: 0.16, label: qsTranslate("GeneralOverview", "Kingdom") },
-                                { share: 0.12, label: qsTranslate("GeneralOverview", "Gender") },
-                                { share: 0.10, label: qsTranslate("GeneralOverview", "MaxHP") },
-                                { share: 0.20, label: qsTranslate("GeneralOverview", "Package") }
+                                { share: 0.20, align: Text.AlignLeft, label: qsTranslate("GeneralOverview", "Nick") },
+                                { share: 0.22, align: Text.AlignLeft, label: qsTranslate("GeneralOverview", "General") },
+                                { share: 0.16, align: Text.AlignLeft, label: qsTranslate("GeneralOverview", "Kingdom") },
+                                { share: 0.12, align: Text.AlignLeft, label: qsTranslate("GeneralOverview", "Gender") },
+                                { share: 0.10, align: Text.AlignRight, label: qsTranslate("GeneralOverview", "MaxHP") },
+                                { share: 0.20, align: Text.AlignLeft, label: qsTranslate("GeneralOverview", "Package") }
                             ]
                             delegate: Text {
                                 required property var modelData
@@ -1295,10 +1432,12 @@ Item {
                                 height: tableHeader.height
                                 text: modelData.label
                                 elide: Text.ElideRight
-                                horizontalAlignment: Text.AlignHCenter
+                                horizontalAlignment: modelData.align
                                 verticalAlignment: Text.AlignVCenter
+                                leftPadding: HomeTheme.generalTableCellPadding
+                                rightPadding: HomeTheme.generalTableCellPadding
                                 color: HomeTheme.pillText
-                                font.pixelSize: 12
+                                font.pixelSize: HomeTheme.generalTableHeaderFontSize
                                 font.bold: true
                             }
                         }
@@ -1369,13 +1508,15 @@ Item {
                                         height: parent.height
                                         text: tableRow.nickname
                                         elide: Text.ElideRight
-                                        horizontalAlignment: Text.AlignHCenter
+                                        horizontalAlignment: Text.AlignLeft
+                                        leftPadding: HomeTheme.generalTableCellPadding
+                                        rightPadding: HomeTheme.generalTableCellPadding
                                         verticalAlignment: Text.AlignVCenter
                                         color: root.selectedName === tableRow.name
                                                ? HomeTheme.tableRowSelectedText
                                                : (tableRow.hidden ? HomeTheme.tableRowHiddenText
                                                                   : HomeTheme.btnSecondaryText)
-                                        font.pixelSize: 12
+                                        font.pixelSize: HomeTheme.generalTableFontSize
                                     }
                                     Text {
                                         width: parent.width * 0.22
@@ -1384,13 +1525,15 @@ Item {
                                                                              tableRow.companions,
                                                                              tableRow.companionLabel)
                                         elide: Text.ElideRight
-                                        horizontalAlignment: Text.AlignHCenter
+                                        horizontalAlignment: Text.AlignLeft
+                                        leftPadding: HomeTheme.generalTableCellPadding
+                                        rightPadding: HomeTheme.generalTableCellPadding
                                         verticalAlignment: Text.AlignVCenter
                                         color: root.selectedName === tableRow.name
                                                ? HomeTheme.tableRowSelectedText
                                                : (tableRow.hidden ? HomeTheme.tableRowHiddenText
                                                                   : HomeTheme.btnSecondaryText)
-                                        font.pixelSize: 12
+                                        font.pixelSize: HomeTheme.generalTableFontSize
                                         font.bold: true
                                     }
                                     Text {
@@ -1398,52 +1541,60 @@ Item {
                                         height: parent.height
                                         text: tableRow.kingdomDisplay
                                         elide: Text.ElideRight
-                                        horizontalAlignment: Text.AlignHCenter
+                                        horizontalAlignment: Text.AlignLeft
+                                        leftPadding: HomeTheme.generalTableCellPadding
+                                        rightPadding: HomeTheme.generalTableCellPadding
                                         verticalAlignment: Text.AlignVCenter
                                         color: root.selectedName === tableRow.name
                                                ? HomeTheme.tableRowSelectedText
                                                : (tableRow.hidden ? HomeTheme.tableRowHiddenText
                                                                   : HomeTheme.btnSecondaryText)
-                                        font.pixelSize: 12
+                                        font.pixelSize: HomeTheme.generalTableFontSize
                                     }
                                     Text {
                                         width: parent.width * 0.12
                                         height: parent.height
                                         text: tableRow.genderDisplay
                                         elide: Text.ElideRight
-                                        horizontalAlignment: Text.AlignHCenter
+                                        horizontalAlignment: Text.AlignLeft
+                                        leftPadding: HomeTheme.generalTableCellPadding
+                                        rightPadding: HomeTheme.generalTableCellPadding
                                         verticalAlignment: Text.AlignVCenter
                                         color: root.selectedName === tableRow.name
                                                ? HomeTheme.tableRowSelectedText
                                                : (tableRow.hidden ? HomeTheme.tableRowHiddenText
                                                                   : HomeTheme.btnSecondaryText)
-                                        font.pixelSize: 12
+                                        font.pixelSize: HomeTheme.generalTableFontSize
                                     }
                                     Text {
                                         width: parent.width * 0.10
                                         height: parent.height
                                         text: root.hpText(tableRow.startHp, tableRow.maxHp)
                                         elide: Text.ElideRight
-                                        horizontalAlignment: Text.AlignHCenter
+                                        horizontalAlignment: Text.AlignRight
+                                        leftPadding: HomeTheme.generalTableCellPadding
+                                        rightPadding: HomeTheme.generalTableCellPadding
                                         verticalAlignment: Text.AlignVCenter
                                         color: root.selectedName === tableRow.name
                                                ? HomeTheme.tableRowSelectedText
                                                : (tableRow.hidden ? HomeTheme.tableRowHiddenText
                                                                   : HomeTheme.btnSecondaryText)
-                                        font.pixelSize: 12
+                                        font.pixelSize: HomeTheme.generalTableFontSize
                                     }
                                     Text {
                                         width: parent.width * 0.20
                                         height: parent.height
                                         text: tableRow.packageName
                                         elide: Text.ElideRight
-                                        horizontalAlignment: Text.AlignHCenter
+                                        horizontalAlignment: Text.AlignLeft
+                                        leftPadding: HomeTheme.generalTableCellPadding
+                                        rightPadding: HomeTheme.generalTableCellPadding
                                         verticalAlignment: Text.AlignVCenter
                                         color: root.selectedName === tableRow.name
                                                ? HomeTheme.tableRowSelectedText
                                                : (tableRow.hidden ? HomeTheme.tableRowHiddenText
                                                                   : HomeTheme.btnSecondaryText)
-                                        font.pixelSize: 12
+                                        font.pixelSize: HomeTheme.generalTableFontSize
                                     }
                                 }
 
@@ -1462,6 +1613,7 @@ Item {
                     id: listSkeleton
                     anchors.fill: parent
                     anchors.margins: HomeTheme.generalGridMargin
+                    anchors.topMargin: root.listTopMargin
                     visible: root.catalogPending
 
                     property int cellW: HomeTheme.generalCellWidth(width, root.gridColumns)
@@ -1754,11 +1906,6 @@ Item {
                                 visible: String(details.designer || "").length > 0
                                 label: root.ui("GeneralOverview", "Designer") + " " + (details.designer || "")
                             }
-
-                            MetaBadge {
-                                visible: String(details.companions || "").length > 0
-                                label: details.companionLabel + ": " + (details.companions || "")
-                            }
                         }
 
                         Row {
@@ -1902,11 +2049,21 @@ Item {
                                                 }
 
                                                 CopyableText {
+                                                    id: skillDescription
                                                     width: parent.width
-                                                    text: modelData.description || ""
+                                                    text: HomeTheme.styleCardLinks(modelData.description)
                                                     textFormat: TextEdit.RichText
                                                     color: HomeTheme.btnSecondaryText
                                                     font.pixelSize: 15
+                                                    onLinkActivated: function(link) {
+                                                        if (link.startsWith("card:"))
+                                                            root.cardLinkActivated(link.substring(5))
+                                                    }
+
+                                                    HoverHandler {
+                                                        cursorShape: skillDescription.hoveredLink.length > 0
+                                                                     ? Qt.PointingHandCursor : Qt.IBeamCursor
+                                                    }
                                                 }
 
                                                 CopyableText {
@@ -2326,7 +2483,7 @@ Item {
 
                     Text {
                         visible: !root.compact
-                        text: root.ui("GeneralOverview", "Search...")
+                        text: qsTranslate("GeneralOverview", "Filters")
                         color: HomeTheme.btnSecondaryText
                         font.pixelSize: 24
                         font.bold: true
@@ -2336,7 +2493,10 @@ Item {
                         id: hiddenBox
                         text: root.ui("GeneralSearch", "Include hidden generals")
                         checked: root.includeHidden
-                        onToggled: root.includeHidden = checked
+                        onToggled: {
+                            root.includeHidden = checked
+                            root.rebuild()
+                        }
                     }
 
                     Row {
@@ -2353,7 +2513,10 @@ Item {
                                                              : Math.min(280, filterColumn.width - 102))
                             placeholderText: "?, *"
                             text: root.nicknameFilter
-                            onTextChanged: root.nicknameFilter = text
+                            onTextEdited: {
+                                root.nicknameFilter = text
+                                nicknameDebounce.restart()
+                            }
                         }
                     }
 
@@ -2367,18 +2530,15 @@ Item {
                         width: parent.width
                         spacing: 16
                         Repeater {
-                            model: [
-                                { key: "male", label: root.ui("GeneralSearch", "Male") },
-                                { key: "female", label: root.ui("GeneralSearch", "Female") },
-                                { key: "neuter", label: root.ui("GeneralSearch", "Neuter") },
-                                { key: "sexless", label: root.ui("GeneralSearch", "Sexless") },
-                                { key: "nogender", label: root.ui("GeneralSearch", "NoGender") }
-                            ]
+                            model: root.genderOptions
                             ThemeCheckBox {
                                 required property var modelData
                                 text: modelData.label
                                 checked: root.genderFilter.indexOf(modelData.key) >= 0
-                                onToggled: root.genderFilter = root.toggleIn(root.genderFilter, modelData.key)
+                                onToggled: {
+                                    root.genderFilter = root.toggleIn(root.genderFilter, modelData.key)
+                                    root.rebuild()
+                                }
                             }
                         }
                     }
@@ -2406,7 +2566,10 @@ Item {
                             palette.button: HomeTheme.btnSecondary
                             palette.buttonText: HomeTheme.btnSecondaryText
                             palette.highlight: HomeTheme.baSky
-                            onValueModified: root.hpMin = value
+                            onValueModified: {
+                                root.hpMin = value
+                                root.rebuild()
+                            }
                         }
                         Text {
                             Layout.alignment: Qt.AlignVCenter
@@ -2426,7 +2589,10 @@ Item {
                             palette.button: HomeTheme.btnSecondary
                             palette.buttonText: HomeTheme.btnSecondaryText
                             palette.highlight: HomeTheme.baSky
-                            onValueModified: root.hpMax = value
+                            onValueModified: {
+                                root.hpMax = value
+                                root.rebuild()
+                            }
                         }
                     }
 
@@ -2434,25 +2600,22 @@ Item {
                         spacing: 16
                         BAToolButton {
                             text: root.ui("GeneralSearch", "Clear")
+                            // The controls bind to these properties, so resetting them resets the form.
                             onClicked: {
-                                hiddenBox.checked = true
                                 root.includeHidden = true
-                                nicknameField.text = ""
                                 root.nicknameFilter = ""
                                 root.sameNameFilter = ""
                                 root.genderFilter = []
-                                hpMinBox.value = 0
-                                hpMaxBox.value = 0
                                 root.hpMin = 0
                                 root.hpMax = 0
-                            }
-                        }
-                        BAToolButton {
-                            text: qsTranslate("GeneralOverview", "OK")
-                            onClicked: {
-                                filterPanel.visible = false
+                                nicknameDebounce.stop()
                                 root.rebuild()
                             }
+                        }
+                        // Every change applies at once; this only closes the panel.
+                        BAToolButton {
+                            text: qsTranslate("GeneralOverview", "OK")
+                            onClicked: filterPanel.visible = false
                         }
                     }
                 }
@@ -2463,7 +2626,7 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: HomeTheme.compactMargin + HomeTheme.compactGap
                 anchors.verticalCenter: compactFilterBack.verticalCenter
-                text: qsTr("篩選")
+                text: qsTranslate("GeneralOverview", "Filters")
                 color: HomeTheme.btnSecondaryText
                 font.pixelSize: HomeTheme.cardSectionTitleFontSize
                 font.bold: true
@@ -2475,10 +2638,9 @@ Item {
                 anchors.right: parent.right
                 anchors.margins: HomeTheme.compactMargin
                 implicitHeight: HomeTheme.compactTouch
-                text: qsTr("返回一覽")
+                text: qsTranslate("GeneralOverview", "Back to list")
                 onClicked: {
                     filterPanel.visible = false
-                    root.rebuild()
                     root.showCompactPane(0)
                 }
             }

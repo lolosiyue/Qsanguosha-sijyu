@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QRegularExpression>
 #include <QSet>
 
 #include <algorithm>
@@ -39,9 +40,6 @@ const char *const cardSceneTranslations[] = {
     QT_TRANSLATE_NOOP("CardScene", "Tags"),
     QT_TRANSLATE_NOOP("CardScene", "%1 card types found"),
     QT_TRANSLATE_NOOP("CardScene", "Reset filters"),
-    QT_TRANSLATE_NOOP("CardScene", "Previous page"),
-    QT_TRANSLATE_NOOP("CardScene", "Page %1 of %2"),
-    QT_TRANSLATE_NOOP("CardScene", "Next page"),
     QT_TRANSLATE_NOOP("CardScene", "Back"),
     QT_TRANSLATE_NOOP("CardScene", "Card Overview"),
     QT_TRANSLATE_NOOP("CardScene", "Browse card types and their physical variants"),
@@ -192,13 +190,12 @@ int HomeCardModel::rowCount(const QModelIndex &parent) const
 {
     if (parent.isValid())
         return 0;
-    const int first = m_pageIndex * pageSize();
-    return qMax(0, qMin(pageSize(), m_filtered.size() - first));
+    return m_filtered.size();
 }
 
 QVariant HomeCardModel::data(const QModelIndex &index, int role) const
 {
-    const Row *row = pageRow(index.row());
+    const Row *row = filteredRow(index.row());
     if (!row)
         return {};
     switch (role) {
@@ -267,21 +264,6 @@ int HomeCardModel::filteredCount() const
     return m_filtered.size();
 }
 
-int HomeCardModel::pageIndex() const
-{
-    return m_pageIndex;
-}
-
-int HomeCardModel::pageCount() const
-{
-    return qMax(1, (m_filtered.size() + pageSize() - 1) / pageSize());
-}
-
-int HomeCardModel::pageSize() const
-{
-    return 12;
-}
-
 bool HomeCardModel::isLoaded() const
 {
     return m_loaded;
@@ -329,8 +311,8 @@ void HomeCardModel::reload()
     m_all.clear();
     m_filtered.clear();
     m_idToRow.clear();
+    m_cardNameIndex.clear();
     m_physicalCount = 0;
-    m_pageIndex = 0;
 
     const QList<const Card *> cards = CardOverviewData::collectCards();
     const QList<CardOverviewData::CardGroup> groups = CardOverviewData::groupCardsByObjectName(cards);
@@ -440,7 +422,6 @@ void HomeCardModel::reload()
     rebuildOptions();
     emit catalogChanged();
     emit filterChanged();
-    emit pageChanged();
 }
 
 bool HomeCardModel::applyFilter(const QVariantMap &filters)
@@ -448,27 +429,14 @@ bool HomeCardModel::applyFilter(const QVariantMap &filters)
     ensureLoaded();
     m_filters = filters;
     QVector<int> next = filteredRows();
-    // Same rows on the first page: skip the reset so tiles and their images stay put.
-    if (next == m_filtered && m_pageIndex == 0)
+    // Same rows: skip the reset so tiles and their images stay put.
+    if (next == m_filtered)
         return false;
     beginResetModel();
     m_filtered = std::move(next);
-    m_pageIndex = 0;
     endResetModel();
     emit filterChanged();
-    emit pageChanged();
     return true;
-}
-
-void HomeCardModel::setPageIndex(int pageIndex)
-{
-    const int bounded = qBound(0, pageIndex, pageCount() - 1);
-    if (m_pageIndex == bounded)
-        return;
-    beginResetModel();
-    m_pageIndex = bounded;
-    endResetModel();
-    emit pageChanged();
 }
 
 bool HomeCardModel::containsCardId(int cardId) const
@@ -478,7 +446,7 @@ bool HomeCardModel::containsCardId(int cardId) const
 
 int HomeCardModel::cardIdAt(int row) const
 {
-    const Row *item = pageRow(row);
+    const Row *item = filteredRow(row);
     return item ? item->cardId : -1;
 }
 
@@ -494,9 +462,18 @@ int HomeCardModel::indexOfCardId(int cardId) const
     return -1;
 }
 
+int HomeCardModel::cardIdForName(const QString &objectName) const
+{
+    for (const Row &row : m_all) {
+        if (row.objectName == objectName)
+            return row.cardId;
+    }
+    return -1;
+}
+
 QVariantMap HomeCardModel::cardAt(int row) const
 {
-    const Row *item = pageRow(row);
+    const Row *item = filteredRow(row);
     return item ? rowMap(*item) : QVariantMap();
 }
 
@@ -509,7 +486,7 @@ QVariantMap HomeCardModel::cardDetails(int cardId) const
     if (!card || card->getId() != row->cardId)
         return {};
     QVariantMap detail = rowMap(*row);
-    detail.insert(QStringLiteral("description"), card->getDescription());
+    detail.insert(QStringLiteral("description"), linkCardNames(card->getDescription()));
     detail.insert(QStringLiteral("hasMaleAudio"), card->getTypeId() != Card::TypeEquip);
     detail.insert(QStringLiteral("hasFemaleAudio"), card->getTypeId() != Card::TypeEquip);
     detail.insert(QStringLiteral("hasEffectAudio"), card->getTypeId() == Card::TypeEquip);
@@ -522,12 +499,44 @@ QUrl HomeCardModel::cardImage(int cardId) const
     return row ? row->imageUrl : QUrl();
 }
 
-const HomeCardModel::Row *HomeCardModel::pageRow(int row) const
+QString HomeCardModel::linkCardNames(const QString &html) const
 {
-    const int filteredIndex = m_pageIndex * pageSize() + row;
-    if (row < 0 || filteredIndex < 0 || filteredIndex >= m_filtered.size())
+    // The new anchors would nest inside an existing one; leave such text untouched.
+    if (html.isEmpty() || html.contains(QLatin1String("<a ")) || !Sanguosha)
+        return html;
+    // Index every catalog card, not only the loaded one, so general pages link before Card Overview opens.
+    if (m_cardNameIndex.isEmpty()) {
+        const QList<const Card *> cards = CardOverviewData::collectCards();
+        for (const Card *card : cards) {
+            const QString name = Sanguosha->translate(card->objectName());
+            if (name != card->objectName() && !m_cardNameIndex.contains(name))
+                m_cardNameIndex.insert(name, card->objectName());
+        }
+    }
+
+    static const QRegularExpression bracketed(QStringLiteral("【([^【】<>]+)】"));
+    QString linked;
+    qsizetype copied = 0;
+    QRegularExpressionMatchIterator it = bracketed.globalMatch(html);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch match = it.next();
+        const auto found = m_cardNameIndex.constFind(match.captured(1));
+        if (found == m_cardNameIndex.cend())
+            continue;
+        linked += html.mid(copied, match.capturedStart() - copied);
+        linked += QStringLiteral("<a href=\"card:%1\">%2</a>").arg(found.value(), match.captured(0));
+        copied = match.capturedEnd();
+    }
+    if (copied == 0)
+        return html;
+    return linked + html.mid(copied);
+}
+
+const HomeCardModel::Row *HomeCardModel::filteredRow(int row) const
+{
+    if (row < 0 || row >= m_filtered.size())
         return nullptr;
-    return &m_all.at(m_filtered.at(filteredIndex));
+    return &m_all.at(m_filtered.at(row));
 }
 
 const HomeCardModel::Row *HomeCardModel::rowForId(int cardId) const
@@ -632,7 +641,6 @@ void HomeCardModel::rebuildOptions()
 void HomeCardModel::resetFilter()
 {
     m_filtered = filteredRows();
-    m_pageIndex = 0;
 }
 
 QVector<int> HomeCardModel::filteredRows() const
