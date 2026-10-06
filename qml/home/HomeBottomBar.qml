@@ -53,7 +53,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 4
+        anchors.bottomMargin: HomeTheme.tvMode ? 24 : 4
 
         spacing: root.compact ? 0 : 28
 
@@ -166,5 +166,12 @@ Item {
             KeyNavigation.tab: homeBtn
             KeyNavigation.backtab: replaysBtn
         }
+    }
+
+    HomeButtonLegend {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 22
     }
 }

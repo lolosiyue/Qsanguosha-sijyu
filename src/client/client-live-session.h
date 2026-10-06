@@ -73,6 +73,8 @@ signals:
     void connectionChanged(const QString &state);
     void sessionActive(bool reconnected);
     void protocolMessageReceived(const QSanProtocol::ProtocolMessage &message);
+    // Passive diagnostic observation after the encoded frame reaches the socket.
+    void protocolMessageSent(const QSanProtocol::ProtocolMessage &message);
     void frontendMessageReceived(const QSanProtocol::ProtocolMessage &message);
     void stateChanged();
     void interactionRequested(const QSanProtocol::ProtocolMessage &message);

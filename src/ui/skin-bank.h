@@ -97,6 +97,11 @@ public:
     QStringList getAudioFileNames(const QString &key) const;
     QString getRandomAudioFileName(const QString &key) const;
     bool isImageKeyDefined(const QString &key) const;
+    // Theme-pack slots (skins/theme-slots.json): enabled theme packs, then this skin's
+    // image keys for the slot, then the slot's built-in file. Empty when the room draws
+    // the slot itself (no file anywhere); getSlotPixmap() is then a null pixmap.
+    QString getSlotFileName(const QString &slotId) const;
+    QPixmap getSlotPixmap(const QString &slotId, bool cache = false) const;
     quint64 visualRevision() const { return m_visualRevision; }
     QStringList getAnimationFileNames() const;
 

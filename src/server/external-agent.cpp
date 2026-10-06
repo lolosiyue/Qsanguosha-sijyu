@@ -29,7 +29,8 @@ bool ExternalAgentEndpoint::pending(AIRequest &request) const
     QMutexLocker lock(&m_mutex);
     if (m_hybridBounded && m_pending && m_requestTimer.elapsed() >= m_hybridDeadlineMs)
         return false;
-    if (!m_pending || m_submitted || m_localRequested || !m_connected || m_cancelled) return false;
+    if (!m_pending || m_submitted || m_localRequested || !m_connected || m_cancelled
+        || m_planInvalidated) return false;
     request = m_request;
     return true;
 }
@@ -46,7 +47,8 @@ bool ExternalAgentEndpoint::submit(const AIResult &result, QString *error)
         return false;
     }
     QString reason;
-    if (m_cancelled || !m_connected || !m_pending) reason = QStringLiteral("not-waiting");
+    if (m_planInvalidated) reason = QStringLiteral("stale-session");
+    else if (m_cancelled || !m_connected || !m_pending) reason = QStringLiteral("not-waiting");
     else if (m_submitted || m_localRequested) reason = QStringLiteral("duplicate");
     else if (result.decisionId != m_request.decisionId
              || result.stateRevision != m_request.stateRevision) reason = QStringLiteral("stale");
@@ -76,7 +78,8 @@ bool ExternalAgentEndpoint::requestLocal(quint64 decisionId, quint64 stateRevisi
         return false;
     }
     QString reason;
-    if (m_cancelled || !m_connected || !m_pending) reason = QStringLiteral("not-waiting");
+    if (m_planInvalidated) reason = QStringLiteral("stale-session");
+    else if (m_cancelled || !m_connected || !m_pending) reason = QStringLiteral("not-waiting");
     else if (m_submitted || m_localRequested) reason = QStringLiteral("duplicate");
     else if (decisionId != m_request.decisionId || stateRevision != m_request.stateRevision)
         reason = QStringLiteral("stale");
@@ -106,6 +109,7 @@ void ExternalAgentEndpoint::begin(const AIRequest &request)
     m_pending = true;
     m_submitted = false;
     m_localRequested = false;
+    m_planInvalidated = false;
     m_result = AIResult();
     m_error.clear();
 }
@@ -116,6 +120,7 @@ ExternalAgentEndpoint::Outcome ExternalAgentEndpoint::awaitReply(AIResult &resul
     // Opt-in room adapters must never hold a game worker forever if their
     // process or provider stalls. Other external sessions retain their policy.
     while (!m_cancelled) {
+        if (m_planInvalidated) return Fallback;
         if (m_hybridBounded && m_requestTimer.elapsed() >= m_hybridDeadlineMs) {
             m_connected = false;
             m_submitted = false;
@@ -173,6 +178,9 @@ void ExternalAgentEndpoint::disconnect()
 {
     QMutexLocker lock(&m_mutex);
     m_connected = false;
+    // An opted-in staged plan cannot survive a transport session. Reconnect
+    // must not make its old decision ticket usable again; the room takes SmartAI.
+    if (m_hybridBounded && m_pending && !m_localRequested) m_planInvalidated = true;
     m_submitted = false;
     m_changed.wakeAll();
 }
@@ -196,6 +204,7 @@ QString ExternalAgentEndpoint::status() const
     QMutexLocker lock(&m_mutex);
     if (m_cancelled) return QStringLiteral("cancelled");
     if (m_localRequested) return QStringLiteral("local-queued");
+    if (m_planInvalidated) return QStringLiteral("smart-ai-fallback");
     if (!m_connected) return m_policy == Pause ? QStringLiteral("paused-disconnected")
                                              : QStringLiteral("smart-ai-fallback");
     if (m_submitted) return QStringLiteral("validating");

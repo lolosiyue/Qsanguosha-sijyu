@@ -49,6 +49,7 @@
 | [ask-for-qml.md](ask-for-qml.md) | `askForQml` 通用 QML 互動鏈（結構化 payload、overlay 契約） |
 | [hero-skin-guide.md](hero-skin-guide.md) | 皮膚系統完整文檔（資源查找、翻譯、Spine、GIF 動圖） |
 | [dynamic-skin-guide.md](dynamic-skin-guide.md) | Spine 動態皮膚與 `skin=` lightbox 用法 |
+| [theme-pack-guide.md](theme-pack-guide.md) | 主題包（牌背、指示線、emotion、dashboard 等素材槽）自製與疊加 |
 | [Aura光環系統說明.md](Aura光環系統說明.md) | Aura（`lani`）光環系統與 `changeBGM`／`changeBackground` |
 | [../DESIGN.md](../DESIGN.md) | 首頁與卡牌總覽設計規範 |
 

@@ -1,0 +1,19 @@
+{
+    "format": 1,
+    "id": "demo-crimson",
+    "name": "示範：赤金",
+    "author": "QSanguosha",
+    "version": "1.0.0",
+    "description": "最小示範主題包：牌背、指示線、桃嘅 emotion、dashboard 三塊底圖、戰報邊框同 CardContainer 背景。圖由 tools/themes/make-demo-theme.py 生成。",
+    "preview": "preview.png",
+    "slots": {
+        "card-back": "card-back.png",
+        "indicator-line": "indicator-line.png",
+        "emotion": "emotion/",
+        "dashboard-equip": "dashboard/equip.png",
+        "dashboard-hand": "dashboard/hand.png",
+        "dashboard-avatar": "dashboard/avatar.png",
+        "log-box-bg": "log-border.png",
+        "card-container-bg": "card-container.png"
+    }
+}

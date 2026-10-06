@@ -2,7 +2,7 @@
 #include "qt-collection-utils.h"
 //#include "general.h"
 #include "engine.h"
-#include "oracle_helper.h"
+#include "general-info-card.h"
 #include "client.h"
 //#include "settings.h"
 //#include "protocol.h"
@@ -106,7 +106,7 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
             button->setIcon(QIcon(G_ROOM_SKIN.getGeneralPixmap(general->objectName(), icon_type)));
             button->setIconSize(icon_size);
         }
-        button->setToolTip(buildOracleTooltip(general->getOracleText(), general->getSkillDescription(true)));
+        button->setToolTip(GeneralInfoCard::forGeneral(general));
         buttons << button;
 
         if (!view_only) {
@@ -138,7 +138,7 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
             QLabel *label = new QLabel;
             label->setPixmap(G_ROOM_SKIN.getGeneralPixmap(lord_name, icon_type));
             const General *lord = Sanguosha->getGeneral(lord_name);
-            label->setToolTip(buildOracleTooltip(lord ? lord->getOracleText() : QString(), lord ? lord->getSkillDescription(true) : QString()));
+            label->setToolTip(GeneralInfoCard::forGeneral(lord));
             layout->addWidget(label);
         }
 
@@ -152,7 +152,7 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
             QLabel *label = new QLabel;
             label->setPixmap(G_ROOM_SKIN.getCardMainPixmap(lord_name));
             const General *lord = Sanguosha->getGeneral(lord_name);
-            label->setToolTip(buildOracleTooltip(lord ? lord->getOracleText() : QString(), lord ? lord->getSkillDescription(true) : QString()));
+            label->setToolTip(GeneralInfoCard::forGeneral(lord));
             lord_layout->addWidget(label);
         }
         lord_layout->addStretch();
@@ -369,7 +369,7 @@ void FreeChooseDialog::onAvatarHoverEnter()
 {
 	QAbstractButton *button = (QAbstractButton *)sender();
     const General *g = Sanguosha->getGeneral(button->objectName());
-    button->setToolTip(buildOracleTooltip(g ? g->getOracleText() : QString(), g ? g->getSkillDescription(true) : QString()));
+    button->setToolTip(GeneralInfoCard::forGeneral(g));
 }
 
 QWidget *FreeChooseDialog::createTab(const QList<const General *> &generals)
@@ -392,7 +392,8 @@ QWidget *FreeChooseDialog::createTab(const QList<const General *> &generals)
 			button = new QCheckBox(text);
 
         button->setObjectName(generals[i]->objectName());
-        button->setToolTip(buildOracleTooltip(generals[i]->getOracleText(), generals[i]->getSkillDescription(true)));
+        // Built on first hover: formatting every general up front slowed opening the dialog.
+        GeneralInfoCard::setLazyToolTip(button, generals[i]->objectName());
 		//connect(button, SIGNAL(hover_enter()), this, SLOT(onAvatarHoverEnter()));
 
         if (generals[i]->isLord())
