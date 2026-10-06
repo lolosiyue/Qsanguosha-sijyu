@@ -13,6 +13,8 @@ Item {
     property alias cardsBtn: dock.cardsBtn
     property alias replaysBtn: dock.replaysBtn
     property alias settingsBtn: dock.settingsBtn
+    property alias currentIndex: dock.currentIndex
+    property alias quickJoinBtn: actions.quickJoinBtn
 
     // Portrait rearranges the native home components, including their artwork and skin.
     HomePlayerInfo {

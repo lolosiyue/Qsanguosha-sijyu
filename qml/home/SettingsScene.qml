@@ -150,6 +150,8 @@ Item {
             stepSize: sliderRow.stepSize
             snapMode: Slider.SnapAlways
             value: Number(root.values[sliderRow.key])
+            focusPolicy: Qt.StrongFocus
+            activeFocusOnTab: true
             onMoved: root.set(sliderRow.key, value)
             onActiveFocusChanged: if (activeFocus) root.reveal(sliderRow)
             Accessible.name: sliderRow.accessibleName
@@ -502,6 +504,12 @@ Item {
                                         { "value": "highcontrast", "label": qsTranslate("ConfigDialog", "High contrast") }
                                     ]
                                 }
+                            }
+
+                            GroupTitle { text: qsTr("大屏模式") }
+                            SettingCheck {
+                                key: "BigPicture/Enabled"
+                                text: qsTr("啟用大屏模式（重新啟動後完全生效）")
                             }
 
                             GroupTitle { text: qsTranslate("ConfigDialog", "Font setup") }

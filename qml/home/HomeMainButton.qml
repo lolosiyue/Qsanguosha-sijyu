@@ -28,7 +28,8 @@ AbstractButton {
                      : control.text
     Accessible.description: Accessible.name
 
-    scale: control.down ? 0.91 : 1.0
+    scale: control.down ? 0.91
+           : (HomeTheme.tvMode && control.activeFocus ? HomeTheme.focusScale : 1.0)
 
     transform: Translate {
         y: control.hovered && !control.down ? -3 : 0
@@ -51,12 +52,23 @@ AbstractButton {
     background: Item {
         Rectangle {
             anchors.fill: parent
+            anchors.margins: HomeTheme.tvMode ? -HomeTheme.focusGlowRadius : -6
+            radius: 16
+            color: HomeTheme.tvMode && control.activeFocus ? HomeTheme.focusGlow : "transparent"
+            visible: HomeTheme.tvMode && control.activeFocus
+        }
+
+        Rectangle {
+            anchors.fill: parent
             anchors.margins: -6
 
             radius: 12
             color: "transparent"
 
-            border.width: control.activeFocus ? (control.highContrast ? 4 : 2) : 0
+            border.width: control.activeFocus
+                          ? (HomeTheme.tvMode ? HomeTheme.focusBorderWidth
+                             : (control.highContrast ? 4 : 2))
+                          : 0
             border.color: control.activeFocus
                           ? (control.highContrast ? HomeTheme.focusBorderHigh : HomeTheme.baFocusRing)
                           : "transparent"
