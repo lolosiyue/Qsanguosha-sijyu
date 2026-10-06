@@ -178,4 +178,114 @@ if [ "$LEAKED" -ne 0 ]; then
     exit 1
 fi
 
+# A passing result marker cannot override a crash during process teardown.
+# Keep the original log/report/validation and only reproduce signal exits under
+# GDB when package CI explicitly opts in. This diagnostic cannot make CI pass.
+if [ "${QSAN_MULTIMEDIA_CRASH_DIAGNOSTICS:-0}" = 1 ] \
+    && { [ "$STATUS" -eq 134 ] || [ "$STATUS" -eq 139 ]; }; then
+    DEBUG_LOG="$ARTIFACT_DIR/multimedia-gdb-$LABEL.log"
+    DEBUG_META="$ARTIFACT_DIR/multimedia-gdb-$LABEL-metadata.txt"
+    DEBUG_REPORT="$ARTIFACT_DIR/multimedia-gdb-$LABEL.json"
+    DEBUG_ARGS=("${APP_ARGS[@]}")
+    for ((i = 0; i < ${#DEBUG_ARGS[@]} - 1; ++i)); do
+        if [ "${DEBUG_ARGS[$i]}" = --multimedia-report ]; then
+            DEBUG_ARGS[$((i + 1))]="$DEBUG_REPORT"
+            break
+        fi
+    done
+    {
+        echo "original_exit_code=$STATUS"
+        echo "original_validation_exit_code=$VALIDATION"
+        echo "executable=$EXECUTABLE"
+        printf 'diagnostic_arguments:'
+        printf ' %q' "${DEBUG_ARGS[@]}"
+        printf '\n'
+        uname -a
+        sha256sum "$EXECUTABLE"
+        # Whitelist runtime paths/backend/rendering settings; never dump env.
+        for name in QT_QPA_PLATFORM QT_QUICK_BACKEND LIBGL_ALWAYS_SOFTWARE \
+            QT_MEDIA_BACKEND QT_ROOT_DIR QT_PLUGIN_PATH QML2_IMPORT_PATH \
+            LD_LIBRARY_PATH XDG_RUNTIME_DIR DISPLAY; do
+            printf '%s=%s\n' "$name" "${!name-<unset>}"
+        done
+        ldd "$EXECUTABLE"
+        readelf -n "$EXECUTABLE"
+        readelf -d "$EXECUTABLE"
+    } >"$DEBUG_META" 2>&1
+
+    GDB_ARGS=(--nx --quiet --batch --return-child-result
+        -ex 'set pagination off' -ex 'set confirm off'
+        -ex 'set debuginfod enabled off' -ex 'set print elements 32'
+        -ex 'set print max-depth 3')
+    # Shipping binaries are stripped. Use the build's matching symbols without
+    # executing the build-tree binary or changing the package's Qt/plugin paths.
+    SYMBOL_FILE="${QSAN_MULTIMEDIA_DEBUG_SYMBOLS:-}"
+    if [ -n "$SYMBOL_FILE" ] && [ -f "$SYMBOL_FILE" ]; then
+        PACKAGE_BUILD_ID=$(readelf -n "$EXECUTABLE" 2>/dev/null | awk '/Build ID:/ { print $3; exit }')
+        SYMBOL_BUILD_ID=$(readelf -n "$SYMBOL_FILE" 2>/dev/null | awk '/Build ID:/ { print $3; exit }')
+        if [ -n "$PACKAGE_BUILD_ID" ] && [ "$PACKAGE_BUILD_ID" = "$SYMBOL_BUILD_ID" ]; then
+            # --args resets GDB's symbol argument. Load symbols as a command
+            # after option parsing, while retaining the package as exec-file.
+            GDB_SYMBOL_PATH="${SYMBOL_FILE//\\/\\\\}"
+            GDB_SYMBOL_PATH="${GDB_SYMBOL_PATH//\"/\\\"}"
+            GDB_ARGS+=(-ex "symbol-file \"$GDB_SYMBOL_PATH\"")
+            printf 'symbol_file=%s\nbuild_id=%s\n' "$SYMBOL_FILE" "$PACKAGE_BUILD_ID" >>"$DEBUG_META"
+        else
+            echo 'symbol_file_skipped=build_id_mismatch' >>"$DEBUG_META"
+        fi
+    fi
+    GDB_ARGS+=(-ex run -ex 'info files' -ex 'info sharedlibrary'
+        -ex 'info proc mappings' -ex 'thread apply all bt full')
+
+    if command -v gdb >/dev/null 2>&1 && [ -n "$SETSID" ]; then
+        echo "Capturing failure-only multimedia GDB diagnostics: $DEBUG_LOG"
+        if [ "$USE_XVFB" -eq 1 ]; then
+            $SETSID timeout --kill-after=10s "${PROCESS_TIMEOUT}s" \
+                xvfb-run -a -s '-screen 0 1280x720x24' \
+                gdb "${GDB_ARGS[@]}" --args "$EXECUTABLE" "${DEBUG_ARGS[@]}" \
+                >"$DEBUG_LOG" 2>&1 &
+        else
+            $SETSID timeout --kill-after=10s "${PROCESS_TIMEOUT}s" \
+                gdb "${GDB_ARGS[@]}" --args "$EXECUTABLE" "${DEBUG_ARGS[@]}" \
+                >"$DEBUG_LOG" 2>&1 &
+        fi
+        DEBUG_CHILD=$!
+        wait "$DEBUG_CHILD"
+        DEBUG_STATUS=$?
+        echo "debugger_exit_code=$DEBUG_STATUS" >>"$DEBUG_META"
+        # GDB gives its inferior a separate process group. Both remain in the
+        # isolated setsid session, so clean that session, not just GDB's group.
+        live_debug_session_pids() {
+            ps -eo pid=,sid=,stat= | awk -v session="$DEBUG_CHILD" \
+                '$2 == session && $3 !~ /^[ZX]/ { print $1 }'
+        }
+        if [ -n "$(live_debug_session_pids)" ]; then
+            ps -o pid,ppid,pgid,sid,comm -s "$DEBUG_CHILD" >>"$DEBUG_META" 2>&1
+            mapfile -t DEBUG_PIDS < <(live_debug_session_pids)
+            if [ "${#DEBUG_PIDS[@]}" -gt 0 ]; then
+                kill -TERM "${DEBUG_PIDS[@]}" 2>/dev/null
+            fi
+            sleep 2
+            mapfile -t DEBUG_PIDS < <(live_debug_session_pids)
+            if [ "${#DEBUG_PIDS[@]}" -gt 0 ]; then
+                kill -KILL "${DEBUG_PIDS[@]}" 2>/dev/null
+            fi
+            for _ in $(seq 1 20); do
+                [ -n "$(live_debug_session_pids)" ] || break
+                sleep 0.1
+            done
+        fi
+        # Unreaped zombies are already dead and cannot be killed again. Report
+        # live survivors separately rather than misclassifying a dead inferior.
+        if [ -n "$(live_debug_session_pids)" ]; then
+            echo 'diagnostic_session_cleanup_failed=1' >>"$DEBUG_META"
+        else
+            echo 'diagnostic_session_live_remaining=0' >>"$DEBUG_META"
+        fi
+        tail -n 80 "$DEBUG_LOG"
+    else
+        echo 'gdb or setsid is unavailable; original smoke failure remains authoritative.' >"$DEBUG_LOG"
+    fi
+fi
+
 exit "$VALIDATION"
