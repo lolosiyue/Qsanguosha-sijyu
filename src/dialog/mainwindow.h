@@ -20,6 +20,7 @@ class QTextEdit;
 class ConnectionDialog;
 class ConfigDialog;
 class SettingsSession;
+class ServerSetupSession;
 class QStackedWidget;
 class QLabel;
 class QProgressBar;
@@ -33,6 +34,7 @@ class PointerEffectOverlay;
 class Replayer;
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
 struct ScenarioWorkSessionState;
+class ScenarioWorkLibrary;
 namespace ScenarioWork { struct WorkLaunch; struct StageRunResult; }
 #endif
 #ifdef Q_OS_ANDROID
@@ -145,6 +147,7 @@ private:
     void decorateScenarioWorkResult(QDialog *dialog);
     void leaveScenarioWork(const std::function<void()> &after = std::function<void()>());
     std::unique_ptr<ScenarioWorkSessionState> m_scenarioWork;
+    ScenarioWorkLibrary *m_scenarioWorkLibrary = nullptr;
 #endif
 #if QSAN_ENABLE_QML
     QQmlContext *homeRootContext() const;
@@ -170,6 +173,7 @@ private:
     ConnectionDialog *connection_dialog = nullptr;
     ConfigDialog *config_dialog = nullptr;
     SettingsSession *settingsSession = nullptr;
+    ServerSetupSession *serverSetupSession = nullptr;
     QSystemTrayIcon *systray = nullptr;
     Server *server = nullptr;
 #ifdef QSAN_XP_LEGACY
@@ -243,9 +247,13 @@ private:
                            QString *error) const;
     bool stopReplayForTakeover(Replayer *replayer, QString *error) const;
     void startConnectionWithReconnect(bool reconnectRequested);
+    void launchServer(int accept_type);
     void rollbackTakeover(const QString &reason);
     void reopenReplay(const ReplayRestoreState &state);
     void applyReplayRestoreState(const ReplayRestoreState &state);
+#if QSAN_ENABLE_QML
+    void playReplayFile(const QString &filename);
+#endif
 
     ReplayRestoreState m_replayRestoreState;
     bool m_takeoverInProgress = false;

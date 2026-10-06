@@ -6,7 +6,7 @@ import "."
 BAToolButton {
     id: launcher
     property var safeInsets: ({left: 0, top: 0, right: 0, bottom: 0})
-    text: qsTr("版面與單手操作")
+    text: qsTr("Layout and one-handed use")
     iconSource: "qrc:/QSanguosha/Home/icons/settings.svg"
     implicitWidth: 200
     objectName: "homeLayoutSettings"
@@ -42,13 +42,13 @@ BAToolButton {
                 width: layoutPopup.availableWidth
                 spacing: HomeTheme.compactGap
                 Label {
-                    text: qsTr("首頁、對話框與牌桌共用")
+                    text: qsTr("Applies to the home page, dialogs and the game table")
                     color: HomeTheme.btnSecondaryText
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
                 }
                 HomeMainButton {
-                    text: Config.responsiveUiEnabled ? qsTr("自適應版面：開") : qsTr("自適應版面：關")
+                    text: Config.responsiveUiEnabled ? qsTr("Adaptive layout: On") : qsTr("Adaptive layout: Off")
                     Layout.fillWidth: true
                     implicitHeight: 56
                     compact: true
@@ -57,7 +57,7 @@ BAToolButton {
                     onClicked: Config.responsiveUiEnabled = !Config.responsiveUiEnabled
                 }
                 Repeater {
-                    model: [qsTr("雙手／無偏好"), qsTr("左手操作"), qsTr("右手操作")]
+                    model: [qsTr("Both hands / no preference"), qsTr("Left-handed"), qsTr("Right-handed")]
                     HomeMainButton {
                         required property int index
                         required property string modelData
@@ -75,7 +75,7 @@ BAToolButton {
                     }
                 }
                 HomeMainButton {
-                    text: qsTr("完成")
+                    text: qsTr("Done")
                     implicitHeight: 56
                     compact: true
                     iconSource: "qrc:/QSanguosha/Home/icons/home.svg"

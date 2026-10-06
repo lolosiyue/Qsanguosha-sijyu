@@ -13,6 +13,7 @@ GridLayout {
     property alias aboutBtn: aboutBtn
     property alias updateBtn: updateBtn
     property alias themeToggle: themeToggle
+    property alias layoutBtn: layoutBtn
 
     signal settingsClicked()
     signal aboutClicked()
@@ -87,7 +88,7 @@ GridLayout {
         onClicked: panel.settingsClicked()
 
         KeyNavigation.tab: aboutBtn
-        KeyNavigation.backtab: updateBtn
+        KeyNavigation.backtab: layoutBtn
     }
 
     BAToolButton {
@@ -124,7 +125,19 @@ GridLayout {
 
         onClicked: panel.updateClicked()
 
-        KeyNavigation.tab: panel.portraitRail ? themeToggle : settingsBtn
+        KeyNavigation.tab: panel.portraitRail ? themeToggle : layoutBtn
         KeyNavigation.backtab: aboutBtn
+    }
+
+    // Portrait reaches these options from the Settings page.
+    HomeLayoutControls {
+        id: layoutBtn
+        visible: !panel.portraitRail
+
+        Layout.alignment: Qt.AlignHCenter
+        implicitWidth: 124
+
+        KeyNavigation.tab: settingsBtn
+        KeyNavigation.backtab: updateBtn
     }
 }

@@ -1,6 +1,6 @@
 # 場景作品：Scene／Stage
 
-作品層把既有小型場景整理為可分享、可遊玩的內容。首版入口為桌面首頁及「遊戲 → 場景作品」，使用 Qt Widgets 製作、單人與 SmartAI 遊玩。它不提供線上上傳、多人闖關、局內精確續玩，亦未開放 XP／Android／Web／TUI 的作品介面。
+作品層把既有小型場景整理為可分享、可遊玩的內容。入口為桌面首頁及「遊戲 → 場景作品」，兩者都開啟首頁內的作品頁（`ScenarioWorksScene.qml`）；無 QML 的建置改用 Qt Widgets 作品庫。作品頁與作品庫共用 `ScenarioWorkLibrary`，編輯器仍是 Qt Widgets 對話框。單人與 SmartAI 遊玩。它不提供線上上傳、多人闖關、局內精確續玩，亦未開放 XP／Android／Web／TUI 的作品介面。
 
 參考來源為本機 `L:\无名杀-win32-x64\resources\app\mode\brawl.js`：單一 scene 與 stage 分存、有序場景、通關解鎖、接續與不攜帶玩家進度的匯出。此實作使用 QSanguosha 自身資料及執行流程，不執行無名殺的匯出 JavaScript。
 

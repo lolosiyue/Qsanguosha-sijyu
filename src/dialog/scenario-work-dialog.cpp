@@ -1,5 +1,6 @@
 #include "scenario-work-dialog.h"
 #include "customassigndialog.h"
+#include "scenario-work-library.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -13,14 +14,11 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QInputDialog>
-#include <QJsonArray>
-#include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QSaveFile>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QTableWidget>
@@ -29,21 +27,6 @@
 #include <QVBoxLayout>
 
 namespace {
-QString requiredExtensionNames(const QJsonObject &compatibility)
-{
-    QStringList names;
-    // Display the work's saved requirements, including incompatible imports.
-    for (const auto &value : compatibility.value(QStringLiteral("extensions")).toArray())
-        if (value.isString())
-            names << value.toString();
-    return names.join(QStringLiteral(", "));
-}
-
-QString kindText(ScenarioWork::WorkKind kind)
-{
-    return kind == ScenarioWork::WorkKind::Stage ? QObject::tr("Stage") : QObject::tr("Scene");
-}
-
 QComboBox *predicateTypeBox(QWidget *parent)
 {
     auto *box = new QComboBox(parent);
@@ -219,7 +202,7 @@ void ScenarioWorkEditorDialog::setWork(const ScenarioWork::WorkDefinition &work)
 {
     m_work = work;
     m_rule->setText(work.rule);
-    m_requiredExtensions->setText(requiredExtensionNames(work.compatibility));
+    m_requiredExtensions->setText(ScenarioWorkLibrary::requiredExtensionNames(work.compatibility));
     m_title->setText(work.title);
     m_author->setText(work.author);
     m_intro->setPlainText(work.intro);
@@ -740,30 +723,28 @@ void ScenarioWorkEditorDialog::rebindCompatibility()
         }
     }
     m_work.compatibility = m_runtimeCompatibility;
-    m_requiredExtensions->setText(requiredExtensionNames(m_work.compatibility));
+    m_requiredExtensions->setText(ScenarioWorkLibrary::requiredExtensionNames(m_work.compatibility));
 }
-ScenarioWorkLibraryDialog::ScenarioWorkLibraryDialog(
-    const QString &libraryRoot, const QJsonObject &compatibility, QWidget *parent)
+ScenarioWorkLibraryDialog::ScenarioWorkLibraryDialog(ScenarioWorkLibrary *library, QWidget *parent)
     : QDialog(parent)
-    , m_libraryRoot(libraryRoot)
-    , m_runtimeCompatibility(compatibility)
+    , m_library(library)
 {
     setWindowTitle(tr("Work library"));
     resize(900, 600);
     m_list = new QListWidget;
     auto *newScene = new QPushButton(tr("New scene work"));
     auto *newStage = new QPushButton(tr("New stage work"));
-    m_edit = new QPushButton(tr("Edit"));
-    m_duplicate = new QPushButton(tr("Duplicate"));
+    auto *edit = new QPushButton(tr("Edit"));
+    auto *duplicate = new QPushButton(tr("Duplicate"));
     auto *import = new QPushButton(tr("Import"));
-    m_export = new QPushButton(tr("Export"));
-    m_play = new QPushButton(tr("Play"));
-    m_continue = new QPushButton(tr("Continue"));
+    auto *exportButton = new QPushButton(tr("Export"));
+    auto *play = new QPushButton(tr("Play"));
+    auto *continueButton = new QPushButton(tr("Continue"));
     auto *history = new QPushButton(tr("History"));
     auto *close = new QPushButton(tr("Close"));
     auto *actions = new QHBoxLayout;
     for (auto *button :
-        { newScene, newStage, m_edit, m_duplicate, import, m_export, m_play, m_continue, history })
+        { newScene, newStage, edit, duplicate, import, exportButton, play, continueButton, history })
         actions->addWidget(button);
     actions->addStretch();
     actions->addWidget(close);
@@ -774,278 +755,102 @@ ScenarioWorkLibraryDialog::ScenarioWorkLibraryDialog(
     layout->addWidget(details, 1);
     layout->addLayout(actions);
     connect(m_list, &QListWidget::currentRowChanged, this, [this, details] {
-        bool ok = false;
-        const auto work = currentWork(&ok);
-        if (!ok) {
+        const QVariantMap work = m_library->details(selectedPath());
+        if (work.isEmpty()) {
             details->clear();
             return;
         }
         QString text = tr("Title: %1\nAuthor: %2\nRevision: %3\n\n%4")
-                           .arg(work.title, work.author, work.revision, work.intro);
+                           .arg(work.value(QStringLiteral("title")).toString(),
+                               work.value(QStringLiteral("author")).toString(),
+                               work.value(QStringLiteral("revision")).toString(),
+                               work.value(QStringLiteral("intro")).toString());
         text += QStringLiteral("\n\n")
             + tr("Rule: %1\nRequired extensions: %2")
-                  .arg(work.rule, requiredExtensionNames(work.compatibility));
-        for (const auto &entry : work.entries) {
-            text += QStringLiteral("\n\n") + entry.title + QLatin1Char('\n') + entry.intro;
-            for (const auto &scene : work.scenes)
-                if (scene.id == entry.sceneId && scene.revision == entry.sceneRevision) {
-                    text += QLatin1Char('\n') + scene.intro;
-                    break;
-                }
+                  .arg(work.value(QStringLiteral("rule")).toString(),
+                      work.value(QStringLiteral("extensions")).toString());
+        for (const auto &value : work.value(QStringLiteral("entries")).toList()) {
+            const QVariantMap entry = value.toMap();
+            text += QStringLiteral("\n\n") + entry.value(QStringLiteral("title")).toString() + QLatin1Char('\n')
+                + entry.value(QStringLiteral("intro")).toString();
+            const QString sceneIntro = entry.value(QStringLiteral("sceneIntro")).toString();
+            if (!sceneIntro.isEmpty())
+                text += QLatin1Char('\n') + sceneIntro;
         }
         details->setPlainText(text);
     });
     connect(close, &QPushButton::clicked, this, &QDialog::reject);
-    connect(newScene, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::newSceneWork);
-    connect(newStage, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::newStageWork);
-    connect(m_edit, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::editWork);
-    connect(m_duplicate, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::duplicateWork);
-    connect(import, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::importWork);
-    connect(m_export, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::exportWork);
-    connect(m_play, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::playWork);
-    connect(m_continue, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::continueWork);
-    connect(history, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::chooseHistory);
+    connect(newScene, &QPushButton::clicked, m_library, &ScenarioWorkLibrary::newSceneWork);
+    connect(newStage, &QPushButton::clicked, m_library, &ScenarioWorkLibrary::newStageWork);
+    connect(edit, &QPushButton::clicked, this, [this] { m_library->editWork(selectedPath()); });
+    connect(duplicate, &QPushButton::clicked, this, [this] { m_library->duplicateWork(selectedPath()); });
+    connect(import, &QPushButton::clicked, m_library, &ScenarioWorkLibrary::importWork);
+    connect(exportButton, &QPushButton::clicked, this, [this] { m_library->exportWork(selectedPath()); });
+    connect(play, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::playWork);
+    connect(continueButton, &QPushButton::clicked, this, [this] { m_library->continueWork(selectedPath()); });
+    connect(history, &QPushButton::clicked, this, &ScenarioWorkLibraryDialog::playWork);
+    connect(m_library, &ScenarioWorkLibrary::worksChanged, this, &ScenarioWorkLibraryDialog::refresh);
     refresh();
 }
 
 void ScenarioWorkLibraryDialog::refresh()
 {
     m_list->clear();
-    QString error;
-    for (const auto &info : ScenarioWork::listWorks(m_libraryRoot, &error)) {
-        auto *item = new QListWidgetItem(
-            QStringLiteral("%1  [%2]  %3").arg(info.title, kindText(info.kind), info.revision.left(12)),
+    for (const auto &value : m_library->works()) {
+        const QVariantMap info = value.toMap();
+        auto *item = new QListWidgetItem(QStringLiteral("%1  [%2]  %3")
+                                             .arg(info.value(QStringLiteral("title")).toString(),
+                                                 info.value(QStringLiteral("kind")).toString(),
+                                                 info.value(QStringLiteral("revision")).toString().left(12)),
             m_list);
-        item->setData(Qt::UserRole, info.path);
+        item->setData(Qt::UserRole, info.value(QStringLiteral("path")));
     }
 }
+
 QString ScenarioWorkLibraryDialog::selectedPath() const
 {
     auto *item = m_list->currentItem();
     return item ? item->data(Qt::UserRole).toString() : QString();
 }
-ScenarioWork::WorkDefinition ScenarioWorkLibraryDialog::currentWork(bool *ok) const
-{
-    ScenarioWork::WorkDefinition work;
-    QString error;
-    const bool good = !selectedPath().isEmpty() && ScenarioWork::readWork(selectedPath(), &work, &error);
-    if (ok)
-        *ok = good;
-    return work;
-}
-bool ScenarioWorkLibraryDialog::writeWork(const ScenarioWork::WorkDefinition &work)
-{
-    QString error;
-    if (!ScenarioWork::writeWork(m_libraryRoot, work, &error)) {
-        QMessageBox::warning(this, tr("Cannot save work"), error);
-        return false;
-    }
-    refresh();
-    return true;
-}
-void ScenarioWorkLibraryDialog::openEditor(ScenarioWork::WorkDefinition work)
-{
-    ScenarioWorkEditorDialog dialog(this, m_runtimeCompatibility, work.rules);
-    dialog.setWork(work);
-    connect(&dialog, &ScenarioWorkEditorDialog::workSaved, this,
-        [this, &dialog](const auto &saved) { dialog.setProperty("saveSucceeded", writeWork(saved)); });
-    bool trialRequested = false;
-    connect(&dialog, &ScenarioWorkEditorDialog::playRequested, this,
-        [this, &trialRequested](const ScenarioWork::WorkLaunch &launch) {
-            trialRequested = true;
-            m_trialDraft = launch.work;
-            m_hasTrialDraft = true;
-            emit playRequested(launch);
-        });
-    dialog.exec();
-    if (!trialRequested)
-        m_hasTrialDraft = false;
-}
-void ScenarioWorkLibraryDialog::newSceneWork()
-{
-    auto work = ScenarioWork::defaultWork();
-    work.compatibility = m_runtimeCompatibility;
-    openEditor(work);
-}
-void ScenarioWorkLibraryDialog::newStageWork()
-{
-    auto work = ScenarioWork::defaultWork();
-    work.compatibility = m_runtimeCompatibility;
-    work.kind = ScenarioWork::WorkKind::Stage;
-    openEditor(work);
-}
-void ScenarioWorkLibraryDialog::editWork()
-{
-    bool ok = false;
-    auto work = currentWork(&ok);
-    if (ok)
-        openEditor(work);
-}
-void ScenarioWorkLibraryDialog::duplicateWork()
-{
-    bool ok = false;
-    auto work = currentWork(&ok);
-    if (!ok)
-        return;
-    work.id = QUuid::createUuid().toString().mid(1, 36);
-    work.revision.clear();
-    work.title += tr(" (Copy)");
-    writeWork(work);
-}
-void ScenarioWorkLibraryDialog::importWork()
-{
-    const QString path
-        = QFileDialog::getOpenFileName(this, tr("Import work"), QString(), tr("Work files (*.qswork.json)"));
-    if (path.isEmpty())
-        return;
-    ScenarioWork::WorkDefinition work;
-    QString error;
-    if (!ScenarioWork::readWork(path, &work, &error)) {
-        QMessageBox::warning(this, tr("Invalid work"), error);
-        return;
-    }
-    writeWork(work);
-}
-void ScenarioWorkLibraryDialog::exportWork()
-{
-    bool ok = false;
-    auto work = currentWork(&ok);
-    if (!ok)
-        return;
-    const QString path
-        = QFileDialog::getSaveFileName(this, tr("Export work"), QString(), tr("Work files (*.qswork.json)"));
-    if (path.isEmpty())
-        return;
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly)) {
-        QMessageBox::warning(this, tr("Cannot export work"), file.errorString());
-        return;
-    }
-    const QByteArray bytes = QJsonDocument(ScenarioWork::workToJson(work)).toJson(QJsonDocument::Indented);
-    if (file.write(bytes) != bytes.size() || !file.commit())
-        QMessageBox::warning(this, tr("Cannot export work"), file.errorString());
-}
-QString ScenarioWorkLibraryDialog::compatibilityError(const ScenarioWork::WorkDefinition &work) const
-{
-    if (work.compatibility == m_runtimeCompatibility)
-        return QString();
-    return tr("This work was created for a different runtime manifest or card catalog. Saved "
-              "compatibility:\n%1\nCurrent compatibility:\n%2")
-        .arg(QString::fromUtf8(QJsonDocument(work.compatibility).toJson(QJsonDocument::Indented)),
-            QString::fromUtf8(QJsonDocument(m_runtimeCompatibility).toJson(QJsonDocument::Indented)));
-}
-void ScenarioWorkLibraryDialog::launchWork(const ScenarioWork::WorkDefinition &work, const QString &entryId,
-    const ScenarioWork::CarryState &carry, bool trial)
-{
-    if (entryId.isEmpty())
-        return;
-    ScenarioWork::WorkLaunch launch;
-    launch.work = work;
-    launch.entryId = entryId;
-    launch.carry = carry;
-    launch.trial = trial;
-    hide();
-    emit playRequested(launch);
-}
-void ScenarioWorkLibraryDialog::chooseEntryState(const ScenarioWork::WorkDefinition &work,
-    const QString &entryId, const ScenarioWork::WorkProgress &progress)
-{
-    const QString reason = compatibilityError(work);
-    if (!reason.isEmpty()) {
-        QMessageBox::warning(this, tr("Incompatible work"), reason);
-        return;
-    }
-    if (!ScenarioWork::canPlayEntry(work, progress, entryId)) {
-        QMessageBox::warning(this, tr("Entry locked"), tr("Complete the preceding stage first."));
-        return;
-    }
-    QStringList choices { tr("Original entry") };
-    QList<ScenarioWork::CarryState> states { ScenarioWork::CarryState() };
-    const ScenarioWork::ProgressSnapshot *latest = nullptr;
-    for (const auto &snapshot : progress.snapshots)
-        if (snapshot.entryId == entryId && (!latest || snapshot.createdAt >= latest->createdAt))
-            latest = &snapshot;
-    if (latest) {
-        choices << tr("Latest snapshot (%1)").arg(latest->createdAt.toString(Qt::ISODate));
-        states << latest->carry;
-    }
-    for (const auto &snapshot : progress.snapshots) {
-        if (snapshot.entryId != entryId)
-            continue;
-        choices << QStringLiteral("%1  %2").arg(snapshot.createdAt.toString(Qt::ISODate), snapshot.id);
-        states << snapshot.carry;
-    }
-    bool accepted = false;
-    const QString chosen = QInputDialog::getItem(this, tr("Play"),
-        tr("Choose the initial state for this entry"), choices, latest ? 1 : 0, false, &accepted);
-    if (!accepted)
-        return;
-    const int index = choices.indexOf(chosen);
-    if (index >= 0)
-        launchWork(work, entryId, states.at(index), false);
-}
+
 void ScenarioWorkLibraryDialog::playWork()
 {
-    bool ok = false;
-    const auto work = currentWork(&ok);
-    if (!ok)
+    const QVariantMap work = m_library->details(selectedPath());
+    if (work.isEmpty())
         return;
-    ScenarioWork::WorkProgress progress;
-    QString error;
-    if (!ScenarioWork::loadProgress(m_libraryRoot, work, &progress, &error)) {
-        QMessageBox::warning(this, tr("Cannot read progress"), error);
+    const QString progressError = work.value(QStringLiteral("progressError")).toString();
+    if (!progressError.isEmpty()) {
+        QMessageBox::warning(this, tr("Cannot read progress"), progressError);
         return;
     }
+    const QVariantList entries = work.value(QStringLiteral("entries")).toList();
     QStringList choices;
-    for (int i = 0; i < work.entries.size(); ++i)
+    for (int i = 0; i < entries.size(); ++i) {
+        const QVariantMap entry = entries.at(i).toMap();
         choices << QStringLiteral("%1. %2%3")
                        .arg(i + 1)
-                       .arg(work.entries.at(i).title,
-                           ScenarioWork::canPlayEntry(work, progress, work.entries.at(i).id)
-                               ? QString()
-                               : tr(" (Locked)"));
+                       .arg(entry.value(QStringLiteral("title")).toString(),
+                           entry.value(QStringLiteral("locked")).toBool() ? tr(" (Locked)") : QString());
+    }
     bool accepted = false;
     const QString chosen
         = QInputDialog::getItem(this, tr("Play"), tr("Choose entry"), choices, 0, false, &accepted);
-    if (!accepted)
-        return;
     const int index = choices.indexOf(chosen);
-    if (index >= 0)
-        chooseEntryState(work, work.entries.at(index).id, progress);
-}
-void ScenarioWorkLibraryDialog::continueWork()
-{
-    bool ok = false;
-    const auto work = currentWork(&ok);
-    if (!ok)
+    if (!accepted || index < 0)
         return;
-    const QString reason = compatibilityError(work);
-    if (!reason.isEmpty()) {
-        QMessageBox::warning(this, tr("Incompatible work"), reason);
-        return;
+    const QVariantMap entry = entries.at(index).toMap();
+    int state = 0;
+    // An incompatible or locked entry skips the state choice; playEntry() explains the refusal.
+    if (work.value(QStringLiteral("compatibilityError")).toString().isEmpty()
+        && !entry.value(QStringLiteral("locked")).toBool()) {
+        const QStringList states = entry.value(QStringLiteral("states")).toStringList();
+        const QString chosenState = QInputDialog::getItem(this, tr("Play"),
+            tr("Choose the initial state for this entry"), states,
+            entry.value(QStringLiteral("defaultState")).toInt(), false, &accepted);
+        state = states.indexOf(chosenState);
+        if (!accepted || state < 0)
+            return;
     }
-    ScenarioWork::WorkProgress progress;
-    QString error;
-    if (!ScenarioWork::loadProgress(m_libraryRoot, work, &progress, &error)) {
-        QMessageBox::warning(this, tr("Cannot read progress"), error);
-        return;
-    }
-    if (progress.continuationEntryId.isEmpty()) {
-        QMessageBox::information(this, tr("Continue"), tr("No continuation is available."));
-        return;
-    }
-    const ScenarioWork::ProgressSnapshot *latest = nullptr;
-    for (const auto &snapshot : progress.snapshots)
-        if (snapshot.entryId == progress.continuationEntryId
-            && (!latest || snapshot.createdAt >= latest->createdAt))
-            latest = &snapshot;
-    launchWork(
-        work, progress.continuationEntryId, latest ? latest->carry : ScenarioWork::CarryState(), false);
-}
-void ScenarioWorkLibraryDialog::chooseHistory() { playWork(); }
-void ScenarioWorkLibraryDialog::reload() { refresh(); }
-void ScenarioWorkLibraryDialog::resumeTrialDraft()
-{
-    if (m_hasTrialDraft)
-        openEditor(m_trialDraft);
+    m_library->playEntry(
+        work.value(QStringLiteral("path")).toString(), entry.value(QStringLiteral("id")).toString(), state);
 }

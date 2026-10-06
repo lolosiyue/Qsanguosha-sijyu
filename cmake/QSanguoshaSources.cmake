@@ -30,7 +30,9 @@ set(QSAN_SOURCES
     src/dialog/scenario-overview.cpp
     src/dialog/scenario-work-dialog.cpp
     src/dialog/scenario-work-examples.cpp
+    src/dialog/scenario-work-library.cpp
     src/dialog/serverdialog.cpp
+    src/dialog/serversetupsession.cpp
     src/dialog/settingssession.cpp
     src/package/assassins.cpp
     src/package/bgm.cpp
@@ -277,6 +279,8 @@ set(QSAN_MOC_HEADERS
     src/dialog/roleassigndialog.h
     src/dialog/scenario-overview.h
     src/dialog/scenario-work-dialog.h
+    src/dialog/scenario-work-library.h
+    src/dialog/serversetupsession.h
     src/dialog/settingssession.h
     src/package/assassins.h
     src/package/bgm.h
