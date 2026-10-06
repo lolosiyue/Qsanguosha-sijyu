@@ -204,7 +204,7 @@ if [ "${QSAN_MULTIMEDIA_CRASH_DIAGNOSTICS:-0}" = 1 ] \
         sha256sum "$EXECUTABLE"
         # Whitelist runtime paths/backend/rendering settings; never dump env.
         for name in QT_QPA_PLATFORM QT_QUICK_BACKEND LIBGL_ALWAYS_SOFTWARE \
-            QT_MEDIA_BACKEND QT_ROOT_DIR QT_PLUGIN_PATH QML2_IMPORT_PATH \
+            QT_MEDIA_BACKEND QT_ROOT_DIR QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH \
             LD_LIBRARY_PATH XDG_RUNTIME_DIR DISPLAY; do
             printf '%s=%s\n' "$name" "${!name-<unset>}"
         done
@@ -220,33 +220,90 @@ if [ "${QSAN_MULTIMEDIA_CRASH_DIAGNOSTICS:-0}" = 1 ] \
     # Shipping binaries are stripped. Use the build's matching symbols without
     # executing the build-tree binary or changing the package's Qt/plugin paths.
     SYMBOL_FILE="${QSAN_MULTIMEDIA_DEBUG_SYMBOLS:-}"
+    DEBUG_SYMBOL_FILE=""
     if [ -n "$SYMBOL_FILE" ] && [ -f "$SYMBOL_FILE" ]; then
         PACKAGE_BUILD_ID=$(readelf -n "$EXECUTABLE" 2>/dev/null | awk '/Build ID:/ { print $3; exit }')
         SYMBOL_BUILD_ID=$(readelf -n "$SYMBOL_FILE" 2>/dev/null | awk '/Build ID:/ { print $3; exit }')
         if [ -n "$PACKAGE_BUILD_ID" ] && [ "$PACKAGE_BUILD_ID" = "$SYMBOL_BUILD_ID" ]; then
-            # --args resets GDB's symbol argument. Load symbols as a command
-            # after option parsing, while retaining the package as exec-file.
-            GDB_SYMBOL_PATH="${SYMBOL_FILE//\\/\\\\}"
-            GDB_SYMBOL_PATH="${GDB_SYMBOL_PATH//\"/\\\"}"
-            GDB_ARGS+=(-ex "symbol-file \"$GDB_SYMBOL_PATH\"")
+            DEBUG_SYMBOL_FILE="$SYMBOL_FILE"
             printf 'symbol_file=%s\nbuild_id=%s\n' "$SYMBOL_FILE" "$PACKAGE_BUILD_ID" >>"$DEBUG_META"
         else
             echo 'symbol_file_skipped=build_id_mismatch' >>"$DEBUG_META"
         fi
     fi
-    GDB_ARGS+=(-ex run -ex 'info files' -ex 'info sharedlibrary'
+    # Keep the shipping ELF as GDB's main objfile during startup so it can
+    # relocate PIE and discover the dynamic linker before adding debug symbols.
+    # Inspect the stopped process rather than ldd: inherited SDK paths can make
+    # the libraries actually loaded differ from those deployed in the package.
+    GDB_POST_STOP=$(cat <<'PY'
+import gdb, os, subprocess
+
+def record(key, value):
+    with open(os.environ['QSAN_MULTIMEDIA_GDB_METADATA'], 'a') as metadata:
+        metadata.write('{}={}\n'.format(key, value))
+
+try:
+    pid = gdb.selected_inferior().pid
+    if not pid:
+        record('post_stop_capture', 'inferior_not_running')
+    else:
+        with open('/proc/{}/maps'.format(pid)) as process_maps:
+            mappings = [line.split(None, 5) for line in process_maps]
+        paths = {row[5].strip() for row in mappings if len(row) == 6}
+        for path in sorted(paths):
+            if os.path.basename(path).startswith('libQt6Core.so'):
+                record('loaded_qtcore_path', path)
+                notes = subprocess.check_output(['readelf', '-n', path], text=True)
+                build_ids = [line.split('Build ID:', 1)[1].strip()
+                             for line in notes.splitlines() if 'Build ID:' in line]
+                record('loaded_qtcore_build_id', ','.join(build_ids) or 'missing')
+        symbols = os.environ['QSAN_MULTIMEDIA_GDB_SYMBOLS']
+        if symbols:
+            executable = os.path.realpath(os.environ['QSAN_MULTIMEDIA_GDB_EXECUTABLE'])
+            headers = subprocess.check_output(['readelf', '-lW', executable], text=True)
+            loads = [line.split() for line in headers.splitlines()
+                     if line.split() and line.split()[0] == 'LOAD']
+            page_mask = ~(os.sysconf('SC_PAGE_SIZE') - 1)
+            # Later LOAD segments can share a file page with an earlier one
+            # but map it at another address. Anchor to the first LOAD only.
+            load = min(loads, key=lambda item: int(item[1], 16))
+            biases = set()
+            for row in mappings:
+                if len(row) != 6 or os.path.realpath(row[5].strip()) != executable:
+                    continue
+                start = int(row[0].split('-', 1)[0], 16)
+                offset = int(row[2], 16)
+                if int(load[1], 16) & page_mask == offset:
+                    biases.add(start - (int(load[2], 16) & page_mask))
+            if len(biases) != 1:
+                record('symbol_load_skipped', 'ambiguous_runtime_load_bias')
+            else:
+                bias = biases.pop()
+                quoted = '"' + symbols.replace('\\', '\\\\').replace('"', '\\"') + '"'
+                gdb.execute('add-symbol-file {} -o {:#x}'.format(quoted, bias))
+                record('symbol_runtime_load_bias', hex(bias))
+except Exception as error:
+    record('post_stop_capture_error', str(error).replace('\n', ' '))
+    gdb.write('Post-stop diagnostic capture failed: {}\n'.format(error))
+PY
+)
+    GDB_ARGS+=(-ex run -ex $'python\n'"$GDB_POST_STOP"
+        -ex 'info files' -ex 'info sharedlibrary'
         -ex 'info proc mappings' -ex 'thread apply all bt full')
+    GDB_ENV=(env "QSAN_MULTIMEDIA_GDB_METADATA=$DEBUG_META"
+        "QSAN_MULTIMEDIA_GDB_SYMBOLS=$DEBUG_SYMBOL_FILE"
+        "QSAN_MULTIMEDIA_GDB_EXECUTABLE=$EXECUTABLE")
 
     if command -v gdb >/dev/null 2>&1 && [ -n "$SETSID" ]; then
         echo "Capturing failure-only multimedia GDB diagnostics: $DEBUG_LOG"
         if [ "$USE_XVFB" -eq 1 ]; then
             $SETSID timeout --kill-after=10s "${PROCESS_TIMEOUT}s" \
                 xvfb-run -a -s '-screen 0 1280x720x24' \
-                gdb "${GDB_ARGS[@]}" --args "$EXECUTABLE" "${DEBUG_ARGS[@]}" \
+                "${GDB_ENV[@]}" gdb "${GDB_ARGS[@]}" --args "$EXECUTABLE" "${DEBUG_ARGS[@]}" \
                 >"$DEBUG_LOG" 2>&1 &
         else
             $SETSID timeout --kill-after=10s "${PROCESS_TIMEOUT}s" \
-                gdb "${GDB_ARGS[@]}" --args "$EXECUTABLE" "${DEBUG_ARGS[@]}" \
+                "${GDB_ENV[@]}" gdb "${GDB_ARGS[@]}" --args "$EXECUTABLE" "${DEBUG_ARGS[@]}" \
                 >"$DEBUG_LOG" 2>&1 &
         fi
         DEBUG_CHILD=$!
