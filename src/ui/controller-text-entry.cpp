@@ -9,6 +9,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
+#include <QStyle>
 #include <QScrollArea>
 #include <QTextCursor>
 #include <QTextEdit>
@@ -45,6 +46,9 @@ ControllerTextEntry::ControllerTextEntry(QWidget *target, QWidget *parent)
     setObjectName(QStringLiteral("controllerTextEntryDialog"));
     setWindowTitle(tr("On-screen text entry"));
     setModal(true);
+    // Native themes can draw an almost invisible focus cue on these compact
+    // buttons. Give controller navigation an explicit, high-contrast marker.
+    setStyleSheet(QStringLiteral("QPushButton:focus { border: 2px solid #9a6700; background-color: #fff1ad; color: #1a1a1a; }"));
     resize(760, 690);
     QScreen *screen = parent && parent->screen() ? parent->screen() : QGuiApplication::primaryScreen();
     if (screen) {
@@ -76,7 +80,9 @@ ControllerTextEntry::ControllerTextEntry(QWidget *target, QWidget *parent)
     auto *contentLayout = new QVBoxLayout(content);
     auto *bufferLabel = new QLabel(tr("Text buffer (read-only preview)"), this);
     bufferLabel->setObjectName(QStringLiteral("textBufferLabel"));
-    contentLayout->addWidget(bufferLabel);
+    // Keep feedback visible while focus scrolls through the character grid.
+    // Otherwise Unicode controls can scroll the preview's first line away.
+    layout->addWidget(bufferLabel);
 
     m_preview = new QPlainTextEdit(this);
     m_preview->setObjectName(QStringLiteral("textBufferPreview"));
@@ -84,17 +90,17 @@ ControllerTextEntry::ControllerTextEntry(QWidget *target, QWidget *parent)
     m_preview->setTabChangesFocus(true);
     m_preview->setMaximumHeight(76);
     m_preview->setFocusPolicy(Qt::NoFocus);
-    contentLayout->addWidget(m_preview);
+    layout->addWidget(m_preview);
 
     m_cursorStatus = new QLabel(this);
     m_cursorStatus->setObjectName(QStringLiteral("textCursorPosition"));
-    contentLayout->addWidget(m_cursorStatus);
+    layout->addWidget(m_cursorStatus);
     m_validationMessage = new QLabel(this);
     m_validationMessage->setObjectName(QStringLiteral("textValidationMessage"));
     m_validationMessage->setTextFormat(Qt::PlainText);
     m_validationMessage->setWordWrap(true);
     m_validationMessage->hide();
-    contentLayout->addWidget(m_validationMessage);
+    layout->addWidget(m_validationMessage);
 
     auto *cursorControls = new QHBoxLayout;
     auto *left = makeButton(tr("Cursor left"), QStringLiteral("cursorLeftButton"), this);
@@ -133,8 +139,11 @@ ControllerTextEntry::ControllerTextEntry(QWidget *target, QWidget *parent)
         for (int column = 0; column < charactersInRow.size(); ++column) {
             const QChar character = charactersInRow.at(column);
             const QString code = QStringLiteral("character_%1")
-                                     .arg(character.unicode(), 4, 16, QLatin1Char('0'));
-            auto *button = makeButton(QString(character), code, this);
+                                     .arg(static_cast<uint>(character.unicode()), 4, 16, QLatin1Char('0'));
+            // QPushButton uses ampersands for mnemonics; show a literal '&'
+            // without changing the character inserted into the text buffer.
+            const QString label = character == QLatin1Char('&') ? QStringLiteral("&&") : QString(character);
+            auto *button = makeButton(label, code, this);
             button->setMinimumSize(48, 40);
             if (character.isLetter()) m_letterButtons.append(button);
             characters->addWidget(button, row, column);
@@ -365,7 +374,9 @@ void ControllerTextEntry::refreshPreview()
             visibleText.clear();
             hiddenPassword = true;
         } else if (lineEdit->echoMode() != QLineEdit::Normal) {
-            visibleText = QString(m_buffer.size(), lineEdit->echoChar());
+            const auto passwordCharacter = static_cast<ushort>(
+                lineEdit->style()->styleHint(QStyle::SH_LineEdit_PasswordCharacter, nullptr, lineEdit));
+            visibleText = QString(m_buffer.size(), QChar(passwordCharacter));
             hiddenPassword = true;
         }
     }

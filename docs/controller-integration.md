@@ -118,6 +118,23 @@ trace 包含自身可見卡牌／協定資料，只應用於獲授權的本地�
 timeout／supersession、託管、未處理動作、不透明自訂互動、外部滑鼠／鍵盤均使驗收失敗或要求人工判定。
 GUI、遊戲邏輯、SDL 虛擬輸入、實體手掣四種證據分別記錄，不互相代替。
 
-已完成：QtCore 18 項 probe；SDL 虛擬裝置按鍵／死區／重連 smoke；Qt 6.8 相容副本上的第一輪 02p offscreen GUI 對局。
-正式 Qt 6.11.1、有顯示器的完整 GUI、實體手掣、OSK／Lua 替代視窗、50P 與進階技能場景各需獨立驗收。
+已完成：QtCore 18 項 probe；SDL 虛擬裝置按鍵／死區／重連 smoke；Qt 6.8 相容副本上的 02p offscreen GUI 對局。
+其後由 parent 在現有官方 Qt 6.11.1 SDK 驗收實際顯示的桌面、結算、返回主選單、OSK 預覽和焦點。
+固定 02p 對局共有 26 個人類請求、26 次 Core accepted、26 個 wire reply 與 26 次 server validated；
+另有 17 次原生用牌解析，結算／主選單／焦點檢查全數通過，Core probe 為 18/18。
+以合成 incoming request 執行的有時限 fixture 通過 50P 候選 p41 翻頁、強制要求取消阻擋、按住確認、
+OSK 取消保留文字、有限自訂合約的整數／布林／`a&中`／反向選擇順序，以及觀星重排與上下堆分配。
+這些 fixture 是輸入與 GUI 控制項驗證，不能當作完整 50P 對局或所有 Lua 的規則驗收。
+
+parent 驗收包的 Library ID：`libfile_0b0921745e8481918ddcc9976e3f201e`；
+包 SHA256：`816b546a7d9d336ab279f163952b4478697145bc69a77c66f0eb4ac13a6e6476`。
+本工作樹兩次 Library 傳輸失敗，改由已授權 task 訊息取得精確三檔 patch；本地核對解壓 7753 bytes，
+SHA256 `4b3b288da15987c41144096332727ed9344b305b13fc8b93bbebce5bca7e195f`。
+未在此環境重跑 parent 的 GUI；完整驗收包仍由 parent 保留。其凍結 GUI binary SHA256 為
+`8bce100ff20552cbb0814cfa0dfe0513f75b40a03ac846795a93e409cad7ba23`，server binary SHA256 為
+`97965980d9ee4a98298a6a4d6ccd2954c7dbce4f66587ba80d5008f400d086c9`。
+parent 的缺失 home SVG 本地 workaround 沒有納入 patch。
+
+實體手掣、其他 OS、password／mask／validator 的 live OSK、進階分配／KOF／動態技能、
+結算再來一局與存檔仍未驗收；不能宣稱所有 29 類互動已全部通過。
 BP 組只需消費既有 action model／焦點標記與詳情資料；不得把大屏版面重寫納入這個 patch。
