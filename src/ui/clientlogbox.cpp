@@ -67,8 +67,17 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     style.translate = [](const QString &key) { return Sanguosha->translate(key); };
     style.cardLogName = [](const Card *card) { return card->getLogName(); };
     style.playerName = [](const QString &name) { return ClientInstance->getPlayerName(name); };
-    style.wrapFrom = [this](const QString &text) { return bold(text, ThemePacks::color(QStringLiteral("log-from"), Qt::green)); };
-    style.wrapTo = [this](const QString &text) { return bold(text, ThemePacks::color(QStringLiteral("log-to"), Qt::red)); };
+    // Grayscale and high contrast flatten these hues, so the source is underlined and the target
+    // is italic there; the target's red is lightened because pure red turns almost black in grayscale.
+    const bool visualMode = Config.VisualMode != QLatin1String("normal");
+    style.wrapFrom = [this, visualMode](const QString &text) {
+        return bold(visualMode ? QStringLiteral("<u>%1</u>").arg(text) : text,
+            ThemePacks::color(QStringLiteral("log-from"), Qt::green));
+    };
+    style.wrapTo = [this, visualMode](const QString &text) {
+        const QColor color = ThemePacks::color(QStringLiteral("log-to"), visualMode ? QColor(0xff, 0x80, 0x80) : QColor(Qt::red));
+        return bold(visualMode ? QStringLiteral("<i>%1</i>").arg(text) : text, color);
+    };
     style.wrapArg = [this](const QString &text) { return bold(text, ThemePacks::color(QStringLiteral("log-highlight"), Qt::yellow)); };
     style.wrapCard = [this](const QString &text) { return bold(text, ThemePacks::color(QStringLiteral("log-highlight"), Qt::yellow)); };
     style.onUseCardTargets = [](const QString &from, const QStringList &targets) {
