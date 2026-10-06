@@ -8,11 +8,8 @@
 
 依賴文件：
 
-- [TriggerSkillV2 系統說明](TriggerSkillV2系統說明.md)（含技能多實例權威模型；原 `skill-instance-refactor-plan.md` 2026-09-20 併入後刪除）
-- SkillCard V2 Bridge 舊構想（`SkillCard-V2Bridge計劃.md`，2026-09-12 作為存檔文件刪除；需求已併入本文件，原文可自 git 歷史查閱）
+- [TriggerSkillV2 系統說明](TriggerSkillV2系統說明.md)（含技能多實例權威模型）
 - [ViewAsSkillV2 舊技能遷移規範](active-skill-v2-migration-guide.md)
-
-舊 Bridge 構想只作需求來源，不是實作規格。本文件的鎖定規則優先。
 
 ## 2. 目標與非目標
 
@@ -581,55 +578,13 @@ V2 custom proxy：
   `AIRequest.skillActionContext`（型別 `AiSkillActionContext`，見 src/server/ai.h），
   不另建專用 AI request/result 類型，也不把技能名稱或 instance ID 塞入舊字串。
 
-### 14.4 AI VM 與 Gameplay VM 分離
+### 14.4 AI VM、遷移模式與 RoomThread 契約
 
-- 每個 Room 擁有一個 `AiLuaRuntime`；Gameplay Lua VM 不直接暴露給 Isolated AI。Isolated
-  handler 取得可序列化 `AIRequest` 欄位（含完整 `AIWorldView`，經 `AIRequest::worldView`
-  攜帶，由 src/server/ai-runtime.cpp 的 `pushAIWorldView()` 填入）與受控 `AiData`；
-  未遷移 legacy AI 仍留在 Gameplay VM。
-- AI callback 結束前只可產生 value（`CardActionSpec`、target ID、user string）；不得保存
-  `Card*`、`ServerPlayer*`、Lua userdata 或跨 callback 的執行指標。`AIResult` 必須回送同一
-  request 的 `stateRevision`；權威 gameplay revision ledger 已接入——僅權威狀態變更
-  （`CardsMoved`／`PlayerPropertyChanged`）經 `RoomRuntime::advanceStateRevision()` 推進
-  （見 src/server/room-runtime.h、card-movement-service.cpp、player-state-service.cpp），
-  純 request/query 不得自行推進 revision。
-- AI VM 只載入 `AiIsolatedScripts` allowlist 指定的 handler，採 decision-scoped `AiRng`。
-  AI VM 錯誤或 instruction budget 超限時，本次 decision 回到該玩家現有 legacy AI，
-  callback 返回後才重建 VM。
+AI VM 分離、`LegacyDirect`／`LegacyAdapted`／`Isolated` 路由、`AiData`、`AiIsolatedScripts` 與 RoomThread 同步提交契約以 [Lua AI 規範 §15](lua-ai-spec.md#15-ai-執行環境與錯誤處理)為準（Isolated Shadow 雙跑已移除）。與本文件相關的要點：
 
-### 14.5 遷移模式與第一階段 Shadow
-
-| 模式 | 正式用途 | 邊界 |
-|---|---|---|
-| `LegacyDirect` | 過渡期既有 AI | 保留原始 Lua 行為與 callback；不得作為新功能依賴 |
-| `LegacyAdapted` | 官方 AI 遷移路徑 | 將既有 `activate`／`askForUseCard` 回傳複製為 `AIResult`，再走相同 Room 驗證 gate |
-| `Isolated` | 新 AI | 僅使用 `AIRequest`／`AIResult`、標準 observation 與受控 runtime API |
-| `Isolated Shadow` | 第一階段驗證 | 以同一 request 與獨立 deterministic `AiRng` 計算，結果寫入 bounded audit，不改變正式 gameplay |
-
-遷移期間同一 Room 可按 decision/callback 混用 `LegacyAdapted` 與 `Isolated`，並共享由 C++
-管理的 `AiDataStore`。Official
-結果仍由 `RoomThread` 的同步決策點提交；Shadow 結果不得回寫 Room。
-
-`AiData` 檔案讀寫由 C++ `AiDataStore` 收斂到固定路徑，並施加 JSON/大小驗證、
-跨 process lock 與原子寫入；Isolated VM 不暴露 raw `io`、`os` 或 `sgs`，僅保留
-`ai_data.read()`／`ai_data.write(json)`。callback 路由可按 `activate`、
-`askForUseCard` 或 `askForUseCard:skill_name` 配置，Room 初始化後凍結。
-`AiIsolatedScripts` 只載入 `lua/ai/isolated/` 下經檔名驗證的腳本，且 loader 在 sandbox
-安裝後才執行腳本；bootstrap 與 allowlist 腳本的頂層程式碼同樣受獨立 initialization
-instruction budget 保護，超限即停用該 Room 的 Isolated VM、保留 legacy AI。handler 以
-`ai_register_handler()` 註冊。AIResult 入口限制字串長度、牌／目標數量；Shadow audit
-只保留固定數量的 capped value/hash 摘要，不能把 Lua allocator 內的大型 payload 搬到
-未受限 C++ heap。
-
-### 14.6 RoomThread 同步契約
-
-- `RoomThread` 同步執行 gameplay callback 與 `AiLuaRuntime` callback；AI 不建立第二條可
-  非同步提交 gameplay 的執行緒。
-- `activate`／`askForUseCard` 在同一 RoomThread gate 取得 immutable `AIRequest`、執行 AI
-  callback、驗證 `AIResult`，再呼叫既有 `Room::useCard`／response resolver；任何 revision、
-  target、quota 或 callback 錯誤均在 gate 內 fail-closed。
-- Shadow 可在同一同步點取得輸入並產生 audit value，但不得持有 Room lock 等待其他執行緒，
-  也不得在 callback 返回後提交卡牌或修改 Gameplay VM。
+- 每個 Room 一個 `AiLuaRuntime`，Gameplay Lua VM 不暴露給 Isolated AI；callback 只產生 value（`CardActionSpec`、target ID、user string），不保存 `Card*`、`ServerPlayer*`、Lua userdata。
+- `AIResult` 必須回送同一 request 的 `stateRevision`；revision 僅由權威狀態變更（`CardsMoved`／`PlayerPropertyChanged`）經 `RoomRuntime::advanceStateRevision()` 推進，純 request/query 不推進。
+- `activate`／`askForUseCard` 在同一 RoomThread gate 取得 request、執行 callback、驗證 result 後才呼叫既有 `Room::useCard`／response resolver；任何 revision、target、quota 或 callback 錯誤均 fail-closed。AI VM 錯誤或 instruction budget 超限時，本次 decision 回到該玩家現有 legacy AI，callback 返回後才重建 VM。
 
 ## 15. Lua 規則
 
@@ -658,11 +613,3 @@ instruction budget 保護，超限即停用該 Room 的 Isolated VM、保留 leg
 
 `Legacy*Limited` 標記現況：`LegacyOnUseLimited` 為 Card 動態 property（現無 package 設定）、
 `LegacyValidateLimited` 無引擎實作；兩者目前均屬 ticket 分類，見 §9.2／§9.3。
-
-## 17. Ticket 路線圖
-
-分批 ticket 範圍、依賴及交付規劃屬實作期記錄，已隨過程文檔移除。
-
-## 18. 每票通用驗收
-
-原計畫的驗收步驟屬實作期記錄，已隨過程文檔移除。

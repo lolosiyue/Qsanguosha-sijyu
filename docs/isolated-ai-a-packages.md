@@ -9,7 +9,7 @@
 - 詢問上下文新增 `context.player` 及 `context.use`。Native 僅傳玩家 object name、公開牌面（含 subtype）、來源與目標順序；不傳 pointer、支付子牌 ID 或任意 QVariant/tag。Facade 提供 `getDecisionContext()`、`getDecisionData():toPlayer()`／`:toCardUse()`。
 - `ai_skill_*` 使用 isolated ABI。實體回應牌使用 ID／`answer.cards`；主動技能綁定 activation instance，轉化使用 authority-issued conversion ticket。原版需要臨時 `cloneCard` 的策略不能用任意手牌替代。
 - 可見值不足或所需能力尚未投影時使用 `ai_unsupported`；不是確定拒絕，也不算完整覆蓋。舊版 AI 保留供既有 fallback 路徑使用。
-- 排序與價值使用既有 isolated 共用層；保留套件分支順序並不代表與 legacy 的共用評分、隱藏資訊估計完全相同。
+- 排序與價值使用既有 isolated 共用層，共用評分與隱藏資訊估計與 legacy 不盡相同。
 
 ## 覆蓋邊界
 
@@ -22,6 +22,4 @@
 | arknights | 共振、緘默、劍雨、坍縮、止戈、萬象、逐夜、破曉及傷害 hook；過載／追獵主動入口 | 過載缺 Slash conversion ticket、追獵低體力時對手 canSlash、逐夜 view-as 救援計數、耀陽 Qinggang 試算效果 |
 | assassins | 謀潰、藏匿、毒醫、竭緣、斷指等可見資料分支及聲優選項 | 未投影的傷害／Slash helper、身份局勢推測、拼點後續、技能 tag、封印等轉化 |
 
-決策的 `NotCovered` 可走既有 legacy fallback；未移植的事件／意圖 hook 沒有同等 fallback。特別是 `KaiyuanShengshi` 未在 isolated 註冊，不能將其私有角色推論視為已覆蓋。
-
-套件檔存在或 registry 已註冊只表示入口可被發現，不代表每個 callback 在所有局面都能獨立作答。上述邊界以檔內相鄰的 `ai_unsupported` 為準。這批交付只涵蓋來源與靜態檢查；未取得建置、執行期或完整對局證據。
+決策的 `NotCovered` 可走既有 legacy fallback；未移植的事件／意圖 hook 沒有同等 fallback（如 `KaiyuanShengshi` 未在 isolated 註冊）。覆蓋邊界以檔內相鄰的 `ai_unsupported` 為準。本批只涵蓋來源與靜態檢查，未取得建置、執行期或完整對局證據。

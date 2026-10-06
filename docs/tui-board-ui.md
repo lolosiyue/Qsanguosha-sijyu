@@ -354,16 +354,11 @@ Ctrl+Break 經原子旗標交回 Qt event loop；關閉主控台與 fatal signal
 
 ## 7. 驗證方式
 
-> 2026-09-25 倉庫移除所有單元／contract／golden 測試（`720a8df`）。原本規劃的
-> `tests/tui/*-test.cpp` 與 parity 測試已不存在；下列是現行、可執行的驗證。
+> 2026-09-25 倉庫移除所有單元／contract／golden 測試（`720a8df`），以下是現行可執行的驗證。
 
 ### 7.1 不變式 1、2 的現況
 
-parity 測試（對 29 個 interaction request 逐一比對 classic／board 交給
-`ClientCore` 的 `InteractionResponse`）已隨測試移除，**不再有自動化證據**。
-不變式 1、2 現靠結構維持：board 的所有輸入都經 `lineReady(QString)` 進入同一個
-parser，視圖操作不碰 wire；改動 `TuiBoardPresenter`／`TuiLineEditor` 時須以
-`tui_network_smoke.py` 對照 classic 的輸出。
+classic／board 的 parity 測試已隨測試移除，沒有自動化證據。不變式 1、2 現靠結構維持：board 的所有輸入都經 `lineReady(QString)` 進入同一個 parser，視圖操作不碰 wire；改動 `TuiBoardPresenter`／`TuiLineEditor` 時以 `tui_network_smoke.py` 對照 classic 的輸出。
 
 ### 7.2 需要真 pty 的部分
 
@@ -380,33 +375,6 @@ screen → resize 兩次 → 送 SIGINT → 斷言還原序列確實寫出且 te
 `linux-server-ci.yml` 在 main push／手動觸發時執行（classic）；
 `deploy-tui` package smoke 驗成品。這些不得為遷就 board 而修改。
 
-### 7.4 驗收證據紀律
+### 7.4 board 可用性的證據
 
-board 模式在 CI 完全無法執行（無 pty）。「board 可用」此一結論只能由本機 pty
-smoke 與實機操作支撐，**不得以 CI 綠燈冒充**。
-
-## 8. 文件更新
-
-實作完成後須同步：
-
-- `docs/tui-client.md`：新增 `--ui` 選項列、board 模式章節、`/board` 指令，
-  並修正 §4.2 指出的 Ctrl+C 敘述。
-
-## 9. 實作階段
-
-每一階段各自可獨立落地，不留半完成狀態。
-
-| 階段 | 內容 | 完成條件 |
-|---|---|---|
-| P1 | `TuiPresenter` 抽象 + `TuiStreamPresenter`；`Resolvers` 抽出 | `tui_network_smoke.py` 全綠，classic 輸出逐位元組不變 |
-| P2 | `tui-text-width` + `TuiScreen` | 幀緩衝 diff 最小性（未變更 cell 零位元組輸出） |
-| P3 | `TuiTerminal` 與 §4.2 的 SIGINT 修正 | pty smoke 的還原斷言通過；classic 在兩平台共用 `interruptRequested` |
-| P4 | `TuiLineEditor` | 跨 read 斷開的 escape sequence 可正確組回 |
-| P5 | `TuiBoardLayout` 與分頁 | 2–10、20 人與三個尺寸皆可排版 |
-| P6 | `TuiBoardView`、`TuiBoardPresenter`、overlay | 整幅畫面去色後可讀 |
-| P7 | `--ui` 決議、`QSettings`、啟動詢問 | §6.1 決議表逐列驗過 |
-| P8 | pty smoke、文件更新 | §7.2 的還原斷言通過；§8 文件已改 |
-
-P1 是唯一會碰到 classic 程式碼路徑的階段，因此它的驗收標準最嚴：輸出必須
-逐位元組不變。P3 是例外中的例外——它刻意改變 Linux 上 Ctrl+C 的行為，屬 §4.2
-所述的修正。
+board 模式在 CI 無法執行（無 pty），「board 可用」只由本機 pty smoke 與實機操作支撐。

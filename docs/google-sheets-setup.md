@@ -91,9 +91,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File google-sheets/deploy-runtime
 
 使用 Python 3.11+。原生程式需要與目前來源相符的 Qt runtime、Lua、擴展、AI、
 翻譯與素材。`deploy-runtime.ps1` 使用同版 windeployqt 部署 bridge／helper 的 Qt
-依賴及已配置的 FMOD DLL；本次已確認不含 Qt PATH 仍可啟動 bridge。
-`deploy-server` 不能代替 Qt DLL 部署。
-Excel runtime 素材可重用，但 Excel 測試結果不替代 Sheets 驗證。
+依賴及已配置的 FMOD DLL，不含 Qt PATH 仍可啟動 bridge；`deploy-server` 不部署 Qt DLL。Excel runtime 素材可重用。
 
 ```powershell
 # 在倉庫根目錄執行；asset-root 必須是已準備的宣告內容執行期。
@@ -106,14 +104,11 @@ Windows ACL；每個玩家再有自己的 config/data/log，原生 token 只經 
 傳遞，不放命令列或 ready file。請勿把主機 console 中顯示的配對碼貼進公開日誌。
 初次載入全部擴展可能需要時間。Gateway 的 `--startup-timeout` 預設 180 秒，
 用於等待 bridge 啟動；開房 helper 的 `LocalServerController` 另有固定 180 秒
-Initializing 期限，改前者不會延長後者。這些產品限制不代表代理已獲長時間驗證許可。
+Initializing 期限，改前者不會延長後者。
 
 開發工作樹可能含未宣告的 Lua 暫存檔，不能直接用作規則身分驗證的執行期。
 `prepare-runtime.py` 沿用既有 `tools/package-web-solo.py` 準備完整宣告內容，
-再補齊 AI／圖片，目的目錄須不存在或為空；原始 config bytes 與全部配置擴展均保留。
-本次實際配置為 102 個擴展、117 個翻譯、165 個 AI Lua 與 18,233 張圖片。
-原生匯出確認 312 個 package、1,195 張卡與 225 個規則內容檔。
-這項部署整理不修改 config、不刪除外部工作檔，也不放寬原生身分驗證。
+再補齊 AI／圖片，目的目錄須不存在或為空；原始 config bytes 與全部配置擴展均保留，不修改 config、不刪除外部工作檔。
 
 Gateway 僅監聽 `127.0.0.1`。將既有的、由主機管理者控制的 HTTPS 通道指向
 `http://127.0.0.1:8766`；不要把原生 bridge 或 HTTP listener 直接公開到網際網路。
@@ -125,7 +120,6 @@ Apps Script 的 [URL Fetch](https://developers.google.com/apps-script/reference/
 
 ## Sheets 安裝
 
-本次已安裝到使用者指定的 SGS 文件；下列步驟供其他文件安裝使用。
 在自己的 Google Sheets 中開啟「擴充功能 → Apps Script」，加入以下來源：
 
 | Apps Script 檔案 | 倉庫來源 |
@@ -163,9 +157,8 @@ Apps Script 的 [URL Fetch](https://developers.google.com/apps-script/reference/
 不使用需要公開私人圖片 URL 的 `IMAGE()` 公式。
 
 首個驗收目標為 `05p`、一名真人加四名 AI，使用 `OperationNoLimit=true`。
-Apps Script 採短請求及批次更新，背景／關閉側邊欄不視為立即離開；
-Google [執行與服務配額](https://developers.google.com/apps-script/guides/services/quotas)
-仍會限制更新頻率，不承諾固定即時延遲。
+Apps Script 採短請求及批次更新，背景／關閉側邊欄不視為立即離開；更新頻率受 Google
+[執行與服務配額](https://developers.google.com/apps-script/guides/services/quotas)限制。
 
 ## 多玩家及清理
 
@@ -183,10 +176,9 @@ stdin，原生 bridge 會停止並以失敗退出碼回報。明確離開使用 
 可重試讀回同一份清理結果；強制終止不算成功。每個 slot 關閉後不重用其憑證，
 需要新一輪遊玩時重新啟動 gateway。
 
-`exit.json` 記錄 gateway 管理的 bridge exit code、是否強制停止及清理錯誤；
-`native.log` 為私人診斷。子 helper 的正常退出需另有證據，不能以 bridge exit=0
-代替。清理驗收同時核對 helper、埠與 GAME_OVER。
-程式不刪除整個 runtime 或診斷目錄；刪除歷史診斷應由主機管理者決定。
+`exit.json` 記錄 gateway 管理的 bridge exit code、是否強制停止及清理錯誤；`native.log` 為私人診斷。
+清理驗收須同時核對 helper 正常退出（bridge exit=0 不代表 helper 已退出）、埠與 GAME_OVER。
+程式不刪除整個 runtime 或診斷目錄，歷史診斷由主機管理者決定。
 
 ## 已知問題與下次沿用流程
 
@@ -194,40 +186,33 @@ stdin，原生 bridge 會停止並以失敗退出碼回報。明確離開使用 
 
 | 項目 | 已知結果 | 下次起點 |
 |---|---|---|
-| 五檔 Apps Script 與既有 SGS 工作表 | 已線上更新；重新載入後逐檔回讀一致；固定文案、分頁、側欄與舊表標籤已簡體化，原有設定保留 | 先比對目前版本；一致且顯示正確時沿用，不重新貼檔或建置 |
-| 武將 `(lord)` 名稱、描述與圖片查找 | `src/excel/excel-view.cpp` 已分離標記與武將翻譯鍵，原選項 ID 保留；本次未建置／部署此修正 | 仍需使用者許可的 bridge/helper 增量建置與部署，不能聲稱已生效 |
-| Sheets 10P | 開房得到 `startup_timeout`，未進入選將、未送準備；完整局未完成 | 先處理已記錄的 helper 初始化期限；目前只准查原因，不自行修改或重跑 |
-| 關閉與回收 | bridge exit=0，gateway／通道已停止，本輪程序及埠已回收；子 helper 正常退出未有獨立證據 | 保留這個驗收缺口；重新遊玩需要新會話與配對，不能重用已關閉的憑證 |
+| 五檔 Apps Script 與既有 SGS 工作表 | 已線上更新並回讀一致；固定文案、分頁、側欄與舊表標籤已簡體化，原有設定保留 | 先比對目前版本；一致且顯示正確時沿用，不重新貼檔或建置 |
+| 武將 `(lord)` 名稱、描述與圖片查找 | `src/excel/excel-view.cpp` 已分離標記與武將翻譯鍵，原選項 ID 保留；尚未建置／部署 | 需使用者許可的 bridge／helper 增量建置與部署後才生效 |
+| Sheets 10P | 開房得到 `startup_timeout`，未進入選將；完整局未完成 | 先處理 helper 初始化期限；目前只查原因，不自行修改或重跑 |
+| 關閉與回收 | bridge exit=0，gateway／通道已停止，本輪程序及埠已回收；子 helper 正常退出無獨立證據 | 重新遊玩需要新會話與配對，不能重用已關閉的憑證 |
 
-證據保存在倉庫根目錄下：
+證據在 `builds/google-sheets-qa/`（`localization-zh-CN-20261003/`、`acceptance-10p-20261003-001836/summary.md`），為本機產物不進版控；來源或執行期改變後，舊 PASS 須重新判定。
 
-- `builds/google-sheets-qa/localization-zh-CN-20261003/`：`result.json`、`online-*` 五檔回讀、Room／Actions 前後 TSV、`sheets-zh-CN.jpg`。
-- `builds/google-sheets-qa/acceptance-10p-20261003-001836/summary.md`：建置、開房失敗、只讀原因核對、退出與回收的分項結論；詳細日誌在同目錄。
+### 症狀、原因與處理
 
-`builds/` 是本機證據，不進版控；跨工作區應先確認它是否仍存在。舊 PASS 只適用當時的產物，來源或執行期改變後須重新判定受影響的檢查點。
-
-### 症狀、原因與已採用的處理
-
-| 症狀 | 本次查明的原因／限制 | 下次處理 |
+| 症狀 | 原因／限制 | 處理 |
 |---|---|---|
-| 本機文案已轉簡，線上仍顯示繁體 | 線上四個舊檔未更新，而且缺少 `Locale.gs` | 更新四個 `.gs` 與 `Sidebar.html` 共五檔；不只貼主腳本；資訊清單未變時不另改權限 |
-| 點編輯器後 Ctrl+A／貼上無效果 | Monaco 的可存取 textarea 只有極小高度；點擊未取得輸入焦點，Ctrl+A 選到整個網頁 | 對已觀察到的編輯器 textbox 使用 locator `press('Control+a')` 取得焦點，再貼上；回讀確認真正的檔案內容 |
-| 雲端圖示顯示已儲存，但來源不同 | 圖示只能證明目前內容已儲存，不能證明貼入成功；檔案切換與編輯器載入亦需核對 | 儲存後重新載入專案，逐檔 Ctrl+A／Ctrl+C 回讀；只正規化 CRLF/LF 後與本機比較，不忽略其他差異 |
-| 舊表仍有 `option`、`true`、`top/bottom` 或繁體提示 | 更新腳本不會自動重寫所有既有儲存格；固定牌桌、手牌、預檢及右側戰報亦會保留舊字 | 更新後執行一次 `setupWorkbook`；它以 owner metadata 升級舊表，不重設設定與草稿。新版本仍由既有 renderer 更新 |
-| 枚舉改成中文，舊驗證／解析仍讀英文（靜態發現的風險） | 顯示枚舉與協定值不能混用；舊驗證清單仍要求英文值；本次未以實局候選驗收 | 先清除受影響的舊驗證，再寫中文值並重設驗證；`Draft.gs` 把項目類型、身份、牌堆位置轉回原 ID，D 欄保持真正的布林核取方塊 |
-| 說明顯示 `:lookup_key`，主公武將顯示 raw ID | 缺失描述不應當成正文；`(lord)` 被一起拿去查武將翻譯鍵 | 描述沿用原生 `description`／`detail`，缺失保持空白；主公標記在原生呈現層分開翻譯。不要另造遊戲翻譯表或修改回覆 ID |
-| Chrome 重新連接後，既有分頁控制仍逾時 | 重新連接未必能恢復同一分頁；本次同一 Chrome 瀏覽器中新開相同 URL 的分頁可操作 | 先取得最新分頁清單；確認目標後重取 handle。仍失敗時在同一已選瀏覽器開一個目標 URL 分頁；不要沿用舊 tab ID 或反覆盲試 |
-| 側欄 DOM 有中文，但截圖一度空白 | DOM 回讀不代表 iframe 已可見；本次完整視口截圖最終確認內容 | 等待可見載入結果後核對完整視口畫面；保留可辨認的截圖，不拿空白或工具內預覽充當完成證據 |
-| 開房約 191 秒後逾時，Room worker 本身約 126 秒 | helper 的固定 180 秒期限包含前段初始化、規則／AI、交接、發布房間與 ready；progress 不刷新期限，到 Stopping 後不再接受 ready | 先看已保存的時間序列與狀態機；別只延長 gateway timeout、別直接歸因 Cloudflare、也別據此猜某個擴展是慢點 |
+| 本機文案已轉簡，線上仍顯示繁體 | 線上舊檔未更新且缺少 `Locale.gs` | 更新四個 `.gs` 與 `Sidebar.html` 共五檔；資訊清單未變時不另改權限 |
+| 點編輯器後 Ctrl+A／貼上無效果 | Monaco 的 textarea 只有極小高度，點擊未取得輸入焦點 | 對已觀察到的編輯器 textbox 用 locator `press('Control+a')` 取得焦點再貼上；回讀確認真正的檔案內容 |
+| 雲端圖示顯示已儲存，但來源不同 | 圖示不證明貼入成功 | 儲存後重新載入專案，逐檔 Ctrl+A／Ctrl+C 回讀，只正規化 CRLF/LF 後與本機比較 |
+| 舊表仍有 `option`、`true`、`top/bottom` 或繁體提示 | 更新腳本不會自動重寫既有儲存格 | 更新後執行一次 `setupWorkbook`，以 owner metadata 升級舊表，不重設設定與草稿 |
+| 枚舉改成中文，舊驗證／解析仍讀英文（靜態發現的風險，未以實局驗收） | 顯示枚舉與協定值不可混用 | 先清除受影響的舊驗證，再寫中文值並重設驗證；`Draft.gs` 把項目類型、身份、牌堆位置轉回原 ID，D 欄保持布林核取方塊 |
+| 說明顯示 `:lookup_key`，主公武將顯示 raw ID | 缺失描述被當成正文；`(lord)` 被一起拿去查翻譯鍵 | 描述沿用原生 `description`／`detail`，缺失保持空白；主公標記在原生呈現層分開翻譯，不另造翻譯表或改回覆 ID |
+| Chrome 重新連接後，既有分頁控制仍逾時 | 重新連接未必恢復同一分頁 | 重取最新分頁清單與 handle；仍失敗就在同一瀏覽器開一個目標 URL 的新分頁，不沿用舊 tab ID |
+| 側欄 DOM 有中文，但截圖一度空白 | iframe 尚未可見 | 等載入完成後以完整視口截圖確認 |
+| 開房約 191 秒後逾時（Room worker 約 126 秒） | helper 固定 180 秒期限涵蓋初始化、規則／AI、交接、發布房間與 ready；progress 不刷新期限，Stopping 後不再接受 ready | 看已保存的時間序列與狀態機；不只延長 gateway timeout，不直接歸因 Cloudflare 或某個擴展 |
 
 ### 再次更新腳本與工作表
 
-1. 先讀本節與 `memory/learned/web-client.md` 的 Sheets 條目，核對現有線上檔案及工作表。已匹配的檔案不用重新貼；本輪不需要原生變更時，不啟動建置、gateway、通道或對局。
-2. 若需更新，先保存 `QSAN 房间` 的玩家、頭像、伺服器、埠、人數、聊天與房間設定；保存 `QSAN 操作` 的候選及 D–F 草稿。舊版分頁為 `QSAN Room`／`QSAN Actions`。保留公式、識別碼及已有資料，不以重建或清空全表代替升級。
-3. 使用既有綁定的 Apps Script 專案，確認 `Locale.gs`、`Client.gs`、`Table.gs`、`Draft.gs`、`Sidebar.html` 都在。每次切檔先觀察編輯器內容，再取得真正的 textbox 焦點；貼入前核對選中檔，貼入後核對未儲存狀態與全文回讀。
-4. 儲存完成後重新載入專案，逐檔複製全文與本機來源比較。編輯器回讀可用目前可見 textbox 的 `press('Control+a')`，接著複製；不要讀 Monaco 私有模型或只比對畫面可見數行。
-5. 來源已核對後，只有需要升級既有儲存格時才執行一次 `setupWorkbook`。觀察執行記錄完成且無錯誤，再重新載入 Sheets，核對「三国杀」選單與六個專用分頁。這個升級動作不會建立遊戲房間。
-6. 回讀房間設定、牌桌標籤、手牌／預檢／戰報及候選表頭，核對原輸入保留；打開側欄核對中文提示並保存截圖。若尚未有候選，不為了看 checkbox／枚舉而自行開局；候選提交行為仍另列待驗。
-7. 分別報告來源／靜態、線上保存／工作表顯示、原生建置／部署、完整局／勝方、bridge／helper 退出與埠回收。更新腳本成功不等於原生修正已部署或 10P 完成。
+1. 先讀本節與 `memory/learned/web-client.md` 的 Sheets 條目，核對現有線上檔案及工作表；已匹配的檔案不用重貼，無原生變更時不啟動建置、gateway、通道或對局。
+2. 需要更新時，先保存 `QSAN 房间` 的玩家、頭像、伺服器、埠、人數、聊天與房間設定，以及 `QSAN 操作` 的候選與 D–F 草稿（舊版分頁為 `QSAN Room`／`QSAN Actions`）；保留公式、識別碼與既有資料，不以重建或清空全表代替升級。
+3. 在既有綁定的 Apps Script 專案確認五個檔案都在；逐檔貼入前先核對選中檔，貼入後核對未儲存狀態，儲存後重新載入並逐檔全文回讀。
+4. 來源核對後，只有需要升級既有儲存格時才執行一次 `setupWorkbook`（不會建立遊戲房間）；重新載入 Sheets，核對「三国杀」選單、六個專用分頁、房間設定與牌桌標籤是否保留，並打開側欄核對中文提示。
+5. 回報時分列：來源／靜態、線上保存／工作表顯示、原生建置／部署、完整局／勝方、bridge／helper 退出與埠回收。
 
-若日後獲准恢復對局，Cloudflare 臨時通道的先前授權只適用已結束的單局，不當成永久授權。完整局仍須取得 `GAME_OVER`、勝方、客戶端／伺服器正常退出、無 orphan 與埠釋放；初始化再逾時時保存證據並遵守當輪停止條件。
+日後恢復對局時，Cloudflare 臨時通道的先前授權只適用已結束的單局。完整局須取得 `GAME_OVER`、勝方、客戶端／伺服器正常退出、無 orphan 與埠釋放；初始化再逾時時保存證據並遵守當輪停止條件。
