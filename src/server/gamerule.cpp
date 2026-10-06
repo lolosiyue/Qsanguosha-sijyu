@@ -1008,6 +1008,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         // submitting it again fails again. Repeating a failed card during the same round counts as passing.
         QSet<QString> failedPeaches;
         while (dying.who->hasFlag("Global_Dying")) {
+            room->getThread()->settlementStepCheckpoint(dying.who);
             //room->getThread()->trigger(PreventPeach,room,player,data);
 			const Card *peach = room->askForSinglePeach(player,dying.who);
             //room->getThread()->trigger(AfterPreventPeach,room,player,data);

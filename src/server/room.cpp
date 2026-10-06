@@ -1575,6 +1575,8 @@ struct Room::DyingCursor {
     quint64 owner = 0, completedOwner = 0;
     qint64 history = 0;
     bool observersReady = false, resolved = false, retained = false;
+    bool decisionIncomplete = false;
+    bool nativeDecisionStarted = false;
     QVariant saverAtDeferral;
 };
 
@@ -1650,10 +1652,37 @@ void Room::continueDying(const std::shared_ptr<DyingCursor> &cursor)
     current << player->objectName();
     setTag("CurrentDying", current);
     const auto event = [&](TriggerEvent e, ServerPlayer *target) {
-        return thread->invokeDyingEvent(continuation, e, target, cursor->data);
+        if (thread->isSettlementBudgetExhausted()) return false;
+        return thread->invokeDyingEvent(continuation, e, target, cursor->data,
+            e == AskForPeachesDone ? &cursor->nativeDecisionStarted : nullptr);
     };
     try {
         while (cursor->stage != DyingCursor::Finished) {
+            if (!thread->settlementCursorCheckpoint(player)) {
+                // The offending callback has unwound. A retained frame must
+                // wait until its canonical card/container commit is complete.
+                if (thread->isNativeCommitActive() || thread->isDyingEventActive() || m_dyingCursorDepth > 1)
+                    throw TriggerCascadeBreak{thread->cascadeId()};
+                RoomThread::MandatoryCleanupScope canonical(*thread);
+                const quint64 failedContext = thread->cascadeId();
+                finishTriggerCascade(failedContext, true);
+                adoptCancelledDying(failedContext, continuation.cancelledCascadeId()
+                    ? continuation.cancelledCascadeId() : failedContext);
+                const bool unfinished = cursor->stage != DyingCursor::Quit || cursor->decisionIncomplete;
+                const bool forceDeath = unfinished && !cursor->resolved && !cursor->nativeDecisionStarted
+                    && player->isAlive() && player->getHp() <= 0
+                    && player->hasFlag("Global_Dying");
+                cursor->decisionIncomplete = false;
+                cursor->stage = DyingCursor::Quit;
+                if (forceDeath) {
+                    qWarning().noquote() << "ROOMTHREAD_SETTLEMENT_FORCED_DEATH"
+                        << QJsonDocument(QJsonObject{{"room", getId()}, {"player", player->objectName().left(64)},
+                            {"phase", int(player->getPhase())}}).toJson(QJsonDocument::Compact);
+                    // Keep the original cause and existing native death/mode
+                    // settlement. Optional author death/rescue work is cut.
+                    killPlayer(player, reason, hpLost);
+                }
+            }
             switch (cursor->stage) {
             case DyingCursor::Start: {
                 cursor->stage = DyingCursor::Enter;
@@ -1704,7 +1733,11 @@ void Room::continueDying(const std::shared_ptr<DyingCursor> &cursor)
                 break;
             case DyingCursor::PeachesDone:
                 cursor->stage = DyingCursor::Quit;
+                cursor->decisionIncomplete = true;
                 event(AskForPeachesDone, player);
+                if (!thread->isSettlementBudgetExhausted() || cursor->nativeDecisionStarted || !player->isAlive()
+                    || player->getHp() > 0 || !player->hasFlag("Global_Dying"))
+                    cursor->decisionIncomplete = false;
                 break;
             case DyingCursor::Quit: {
                 cursor->stage = DyingCursor::Finished;
@@ -1728,13 +1761,13 @@ void Room::continueDying(const std::shared_ptr<DyingCursor> &cursor)
             }
         }
     } catch (const TriggerCascadeBreak &cancel) {
-        // Only an active physical commit prevents this original frame from
-        // continuing synchronously. Its callback must unwind first; retain
+        // Physical commits and nested total exhaustion must unwind the
+        // offending callback before this original frame can continue. Retain
         // the already-advanced cursor, never replay EnterDying or a saver.
         cursor->owner = cancel.cascadeId;
         cursor->resolved = !player->hasFlag("Global_Dying") || !player->isAlive() || player->getHp() > 0;
         cursor->saverAtDeferral = player->getTag("MyDyingSaver");
-        if (thread->isNativeCommitActive()) {
+        if (thread->isNativeCommitActive() || thread->isSettlementBudgetExhausted()) {
             cursor->retained = true;
             bool queued = false;
             for (const auto &pending : m_pendingDying)

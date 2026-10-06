@@ -567,11 +567,26 @@ TriggerDispatchBudget::Limits triggerDispatchLimits()
     limits.contexts = positive("RoomThreadTriggerMaxContexts", limits.contexts);
     return limits;
 }
+
+TriggerDispatchBudget::Limits settlementDispatchLimits(const TriggerDispatchBudget::Limits &dispatch)
+{
+    TriggerDispatchBudget::Limits limits;
+    limits.enabled = dispatch.enabled;
+    const auto positive = [](const char *key, quint64 fallback) {
+        bool ok = false;
+        const qint64 value = Config.value(key, QVariant::fromValue(qint64(fallback))).toLongLong(&ok);
+        return ok && value > 0 ? quint64(value) : fallback;
+    };
+    limits.events = positive("RoomThreadTriggerMaxSettlementEvents", limits.events);
+    limits.steps = positive("RoomThreadTriggerMaxSettlementSteps", limits.steps);
+    return limits;
+}
 }
 
 RoomThread::RoomThread(Room*room)
 	: room(room),
 	  m_dispatchBudget(triggerDispatchLimits()),
+	  m_settlementLimits(settlementDispatchLimits(m_dispatchBudget.limits())),
 	  m_perfTraceEnabled(Config.value("RoomThreadPerfTrace", false).toBool()),
 	  m_profileRoomId(room ? room->getId() : -1),
 	  m_profileMode(room ? room->getMode() : QString())
@@ -655,9 +670,12 @@ void RoomThread::DyingContinuationScope::resume(const TriggerCascadeBreak &cance
         m_thread.m_cancelledCallbackOrigins[owner].unite(m_thread.m_cancelledCallbackOrigins.take(cancel.cascadeId));
     }
     m_thread.m_settlementOwner = owner;
+    m_thread.m_settlementEpochs[owner];
     m_thread.m_callbackOrigins.clear();
     m_thread.m_dispatchBudget = TriggerDispatchBudget(m_state->budget.limits());
     m_thread.m_dispatchBudget.enter(false);
+    if (m_thread.isSettlementBudgetExhausted())
+        m_thread.m_dispatchBudget.cancel(TriggerDispatchBudget::Failure::Steps);
     ++m_thread.m_budgetGeneration;
     m_thread.m_cascadeId = ++m_thread.m_nextCascadeId;
     m_thread.m_operationParentId = 0;
@@ -713,9 +731,11 @@ void RoomThread::noteDyingNativeRule(TriggerEvent event, ServerPlayer *target, Q
 }
 
 bool RoomThread::invokeDyingEvent(DyingContinuationScope &continuation,
-                                TriggerEvent event, ServerPlayer *target, QVariant &data)
+                                TriggerEvent event, ServerPlayer *target, QVariant &data,
+                                bool *nativeEnteredResult)
 {
     bool nativeEntered = false;
+    const auto nativeResult = qScopeGuard([&] { if (nativeEnteredResult) *nativeEnteredResult = nativeEntered; });
     const bool nestedEvent = !m_dyingRuleFrames.isEmpty();
     try {
         // Join the complete original event, including AskForPeaches' native
@@ -735,8 +755,13 @@ bool RoomThread::invokeDyingEvent(DyingContinuationScope &continuation,
             // Required existing native settlement must still start if the
             // event was interrupted before its rule. An already-entered
             // killPlayer owns continuation of its own original death cursor.
-            if (!nativeEntered && (event == AskForPeachesDone || event == GameOverJudge || event == BuryVictim))
+            if (!isSettlementBudgetExhausted() && !nativeEntered
+                && (event == AskForPeachesDone || event == GameOverJudge || event == BuryVictim))
                 triggerMandatoryGameRule(event, target, data);
+        }
+        if (isSettlementBudgetExhausted()) {
+            room->adoptCancelledDying(cancel.cascadeId, m_settlementOwner);
+            return false;
         }
         continuation.resume(cancel);
         room->adoptCancelledDying(cancel.cascadeId, continuation.cancelledCascadeId());
@@ -759,6 +784,10 @@ bool RoomThread::invokeDyingCallback(DyingContinuationScope &continuation,
             MandatoryCleanupScope cleanup(*this);
             room->finishTriggerCascade(cancel.cascadeId, true);
         }
+        if (isSettlementBudgetExhausted()) {
+            room->adoptCancelledDying(cancel.cascadeId, m_settlementOwner);
+            return false;
+        }
         continuation.resume(cancel);
         room->adoptCancelledDying(cancel.cascadeId, continuation.cancelledCascadeId());
         return false;
@@ -769,8 +798,13 @@ bool RoomThread::triggerMandatoryGameRule(TriggerEvent event, ServerPlayer *targ
 {
     Q_ASSERT(isMandatoryCleanup());
     for (TriggerSkill *skill : skill_table[event]) {
-        if (auto *rule = qobject_cast<GameRule *>(skill))
+        if (auto *rule = qobject_cast<GameRule *>(skill)) {
+            if (event != BuryVictim) return rule->trigger(event, room, target, data);
+            NativeCommitScope commit(*this);
+            ++m_nativeDeathCommitDepth;
+            const auto deathCommit = qScopeGuard([&] { --m_nativeDeathCommitDepth; });
             return rule->trigger(event, room, target, data);
+        }
     }
     return false;
 }
@@ -789,6 +823,47 @@ bool RoomThread::enterCallbackOrigin(const void *definition, TriggerEvent event,
 void RoomThread::retireCancelledCallbackOrigins(quint64 owner)
 {
     m_cancelledCallbackOrigins.remove(owner);
+    m_settlementEpochs.remove(owner);
+}
+
+bool RoomThread::isSettlementBudgetExhausted() const
+{
+    return m_settlementOwner && m_settlementEpochs.value(m_settlementOwner).exhausted;
+}
+
+bool RoomThread::chargeSettlementWork(bool event, TriggerEvent triggerEvent, ServerPlayer *target)
+{
+    if (!m_settlementOwner || !m_settlementLimits.enabled || isMandatoryCleanup()) return true;
+    SettlementEpoch &epoch = m_settlementEpochs[m_settlementOwner];
+    quint64 &work = event ? epoch.events : epoch.steps;
+    const quint64 ceiling = event ? m_settlementLimits.events : m_settlementLimits.steps;
+    if (!epoch.exhausted && work < ceiling) { ++work; return true; }
+    if (!epoch.exhausted) {
+        epoch.exhausted = true;
+        const QJsonObject diagnostic{{"room", m_profileRoomId}, {"owner", QString::number(m_settlementOwner)},
+            {"event", int(triggerEvent)}, {"player", target ? target->objectName().left(64) : QString()},
+            {"phase", target ? int(target->getPhase()) : -1},
+            {"events", double(epoch.events)}, {"steps", double(epoch.steps)},
+            {"max_events", double(m_settlementLimits.events)}, {"max_steps", double(m_settlementLimits.steps)}};
+        qWarning().noquote() << "ROOMTHREAD_SETTLEMENT_LIMIT"
+            << QJsonDocument(diagnostic).toJson(QJsonDocument::Compact);
+    }
+    m_dispatchBudget.cancel(event ? TriggerDispatchBudget::Failure::Events : TriggerDispatchBudget::Failure::Steps);
+    return false;
+}
+
+bool RoomThread::settlementCursorCheckpoint(ServerPlayer *player)
+{
+    const bool allowed = chargeSettlementWork(false, Dying, player);
+    if (!allowed && (m_nativeCommitDepth || m_authorCallbackDepth || m_joinOnlyDepth))
+        throw TriggerCascadeBreak{m_cascadeId};
+    return allowed;
+}
+
+void RoomThread::settlementStepCheckpoint(ServerPlayer *player)
+{
+    if (!chargeSettlementWork(false, AskForPeaches, player))
+        abortTriggerDispatch(AskForPeaches, player, QString());
 }
 
 bool RoomThread::invokeStructuralCallback(const std::function<void()> &callback,
@@ -954,6 +1029,8 @@ bool RoomThread::invokeAuthorCallback(const std::function<void()> &callback, boo
 void RoomThread::beginTriggerDispatch(TriggerEvent event, ServerPlayer *target, bool countEvent)
 {
     checkTriggerDispatchAbort();
+    if (countEvent && !chargeSettlementWork(true, event, target))
+        abortTriggerDispatch(event, target, QString());
     if (m_dispatchBudget.depth() == 0) {
         m_dispatchRecent.clear();
         m_dispatchAbortReported = false;
@@ -972,6 +1049,8 @@ void RoomThread::triggerDispatchStep(TriggerEvent event, ServerPlayer *target, c
 {
     if (suppressOptionalDispatch()) return;
     checkTriggerDispatchAbort();
+    if (!chargeSettlementWork(false, event, target))
+        abortTriggerDispatch(event, target, skill);
     if (m_dispatchBudget.limits().enabled && !skill.isEmpty()) {
         if (m_dispatchRecent.size() == 32) m_dispatchRecent.removeFirst();
         m_dispatchRecent << DispatchBreadcrumb{int(event), target ? target->objectName().left(64) : QString(),

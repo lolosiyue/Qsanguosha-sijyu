@@ -12,22 +12,29 @@ consume cancellation. `judge()` never returns a fabricated successful result
 from an interrupted judgement. Native TurnStart and phase drivers have separate
 recovery ownership, since TurnStart encloses the whole turn.
 
-## Draft settlement blocker
+## Settlement exhaustion policy
 
-This branch is not ready to publish. Exact causal callback quarantine now follows
-one original cancelled owner across retained native dying/death cursors. The
-native repeating-generation fixture terminates naturally, while an unrelated
-original death-prevention observer remains available.
+The first recovery continuation receives one fixed settlement allowance under
+its original cancelled cascade owner. All retained dying/death frames, new
+continuation contexts and native rescue retries share those counters. Resetting
+a local dispatch budget or changing callback identities cannot reset that
+allowance. Ordinary original rescue and conversion remain available until it
+is exhausted.
 
-Continuation contexts still obtain fresh event/step counters. Quarantine is
-bounded and cannot prove termination when causal definitions, sources or targets
-continually change. One cumulative settlement budget needs an explicit exhaustion
-outcome for unfinished original cursors. Silently passing remaining rescuers can
-change a survivable original settlement into death. That fallback has not been
-selected or implemented. Retaining the cursor and suspending the affected room,
-or aborting that room without declaring a winner, require an explicit lifecycle
-choice. The PR remains draft; the dispatch guarantees below do not yet cover
-arbitrary deferred settlement generations.
+The user selected forced death for an unfinished dying decision at exhaustion.
+After the offending callback unwinds and any canonical physical commit finishes,
+the current original victim is killed through the existing native mode/death
+flow only if alive, still at HP zero or below, still dying, and unresolved.
+Remaining optional rescue/death callbacks in that cascade are cut. Native seat,
+role, victory and burial work completes; the owning operation then returns so
+the room continues, unless ordinary victory ends the game. Already dead,
+recovered and completed death-prevention victims are not killed again, and
+unrelated players are not selected by a room-wide HP-zero scan. An already
+started original death cursor completes its remaining native work once.
+
+This fallback deliberately ends remaining rescue eligibility only at the total
+settlement ceiling. It is a gameplay policy for runaway exhaustion, not a claim
+that interrupted arbitrary skill mutations can be rolled back.
 
 ## Configuration
 
@@ -40,6 +47,8 @@ Settings are read once when each RoomThread is constructed.
 | `RoomThreadTriggerMaxEvents` | `1000000` | Event entries within one cascade. |
 | `RoomThreadTriggerMaxSteps` | `10000000` | Dispatch scan, retry and expansion steps. |
 | `RoomThreadTriggerMaxContexts` | `65536` | V2 contexts materialized in one dispatch scan. |
+| `RoomThreadTriggerMaxSettlementEvents` | `1000000` | Total recovery event entries under the original cancelled owner. |
+| `RoomThreadTriggerMaxSettlementSteps` | `10000000` | Total recovery dispatch, native stage and rescue-retry work under that owner. |
 
 Zero, negative and invalid numeric limits use the defaults. Disabling the
 guard removes its ceilings; it does not revoke cancellation already in
@@ -129,8 +138,11 @@ the same game VM remains usable afterward.
 On the first limit in a cascade, `ROOMTHREAD_CASCADE_BREAK` emits a server-only
 JSON diagnostic with room/cascade ID, numeric event and phase, bounded player
 and skill names, configured ceilings, counters, and the latest 32 entries.
-It contains no event payload, private hand/card identities, roles or hidden
-general names, and is not sent to other players. Successful dispatch adds
+`ROOMTHREAD_SETTLEMENT_LIMIT` reports the original owner and cumulative recovery
+counters once at exhaustion; `ROOMTHREAD_SETTLEMENT_FORCED_DEATH` records only
+the affected room, victim and phase when the fallback actually kills. These
+diagnostics contain no event payload, private hand/card identities, roles or hidden
+general names, and are not sent to other players. Successful dispatch adds
 bounded counter/ring bookkeeping and callback scope overhead; no wall-time
 performance improvement or numerical overhead claim is implied.
 
@@ -147,5 +159,8 @@ exception cleanup, TurnBroken retry cleanup, disabled/invalid settings, a
 50-seat 50,000-event chain, another live room, and reusable Lua after recursive
 and protected-call cancellation. Native lifecycle fixtures exercise Draw/Judge,
 reservation conservation, preserved awards and committed draws, physical move
-commit, deferred work, and rescue/death. These are short synthetic fixtures,
+commit, deferred work, original virtual/skill rescue, and rescue/death. Settlement
+ceiling cases check current-victim death, same-room continuation, recovered and
+completed HP-zero prevention, and completion of already-started death without
+a second kill. These are short synthetic fixtures,
 not a concurrent-network stress test or a complete 50-player match.
