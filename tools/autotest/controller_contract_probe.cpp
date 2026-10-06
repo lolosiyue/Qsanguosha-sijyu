@@ -161,6 +161,40 @@ int main(int argc, char **argv)
           !ControllerInteractionContract::validateResponse(descriptor,
               QVariant(QStringLiteral("ABORTED")), &error));
 
+    QJsonObject numericStringCancel = descriptor;
+    numericStringCancel.insert(QStringLiteral("cancel_value"), QStringLiteral("0"));
+    check("numeric string cancel_value accepts its exact string",
+          ControllerInteractionContract::validateResponse(numericStringCancel,
+              QVariant(QStringLiteral("0")), &error));
+    check("numeric string cancel_value rejects a coerced number",
+          !ControllerInteractionContract::validateResponse(numericStringCancel,
+              QVariant(0), &error));
+    QJsonObject numericCancel = descriptor;
+    numericCancel.insert(QStringLiteral("cancel_value"), 0);
+    check("numeric cancel_value accepts an integer JSON number",
+          ControllerInteractionContract::validateResponse(numericCancel, QVariant(0), &error));
+    check("numeric cancel_value rejects a coerced string",
+          !ControllerInteractionContract::validateResponse(numericCancel,
+              QVariant(QStringLiteral("0")), &error));
+    check("numeric cancel_value rejects a boolean",
+          !ControllerInteractionContract::validateResponse(numericCancel, QVariant(false), &error));
+
+    QJsonObject nestedCancel = descriptor;
+    nestedCancel.insert(QStringLiteral("cancel_value"), QJsonObject{
+        {QStringLiteral("status"), QJsonArray{QStringLiteral("0"), false}}
+    });
+    const QVariantMap exactNestedCancel{{QStringLiteral("status"),
+        QVariantList{QStringLiteral("0"), false}}};
+    check("nested cancel_value accepts exact JSON types",
+          ControllerInteractionContract::validateResponse(nestedCancel, exactNestedCancel, &error));
+    const QVariantMap coercedNestedCancel{{QStringLiteral("status"), QVariantList{0, false}}};
+    check("nested cancel_value rejects numeric string coercion",
+          !ControllerInteractionContract::validateResponse(nestedCancel, coercedNestedCancel, &error));
+    const QVariantMap reorderedNestedCancel{{QStringLiteral("status"),
+        QVariantList{false, QStringLiteral("0")}}};
+    check("nested cancel_value preserves array order",
+          !ControllerInteractionContract::validateResponse(nestedCancel, reorderedNestedCancel, &error));
+
     QVariantMap wrongType = answer;
     wrongType.insert(QStringLiteral("enabled"), QStringLiteral("true"));
     check("wrong boolean type rejected",
