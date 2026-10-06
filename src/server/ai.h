@@ -123,6 +123,8 @@ struct AICardConversionView {
     QList<int> eligibleSubcardIds;
     // The exact cost cards this conversion was enumerated with, in order.
     QList<int> subcardIds;
+    // Skill-owned order, empty for families outside the staged protocol.
+    QStringList selectionStages;
     // The same target description a physical candidate carries, so that one planning
     // algorithm serves both instead of a second one growing for converted cards.
     bool available;
@@ -364,6 +366,9 @@ struct AIRequest {
     // "no conversion is available" - the planner must answer unsupported rather than
     // read an empty or partial list as an absence.
     bool conversionsEnumerated;
+    // Stronger than conversionsEnumerated: every available skill action belongs
+    // to an explicitly supported staged conversion family (no omitted proxies).
+    bool stagedActionsComplete = false;
 
     AIRequest()
         : kind(UseCard), decisionId(0), stateRevision(0),
