@@ -992,6 +992,11 @@ class GongqiRange : public AttackRangeSkillV2
 {
 public:
     GongqiRange() : AttackRangeSkillV2("#gongqi-range") { setHolderSelector(CorrectSkill_System); }
+    CorrectSkillResult getCorrection(const CorrectSkillContext &) const override
+    {
+        // A fixed range effect must not inherit the default additive bonus.
+        return CorrectSkillResult::noEffect();
+    }
     CorrectSkillResult getFixedValue(const CorrectSkillContext &ctx) const override
     {
         if (ctx.primary)
