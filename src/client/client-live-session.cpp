@@ -498,6 +498,7 @@ bool ClientLiveSession::writeFrame(const ProtocolMessage &message, QString *erro
     if (m_socket == nullptr || !m_socket->isConnected())
         return reject(error, QStringLiteral("socket write failed"));
     m_socket->send(frame);
+    emit protocolMessageSent(message);
     return true;
 }
 

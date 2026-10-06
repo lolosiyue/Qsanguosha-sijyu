@@ -703,6 +703,8 @@ set(QSAN_CLIENT_CORE_SOURCES
     src/client/core/interaction-model.cpp
     src/client/core/interaction-model.h
     src/client/core/custom-interaction-registry.h
+    src/client/core/controller-interaction-contract.h
+    src/client/core/controller-interaction-contract.cpp
     src/client/core/client-move-log.cpp
     src/client/core/client-move-log.h
     src/client/core/client-prompt.cpp
@@ -1334,6 +1336,54 @@ if(QSAN_BUILD_GUI)
         )
     endif()
     set_target_properties(${QSAN_GUI_TARGET} PROPERTIES FOLDER "Clients")
+
+    # Qt owns windows and input focus; SDL is a GUI-only gamepad backend. Android
+    # QtActivity and the XP toolchain need their own validated platform adapter.
+    option(QSAN_ENABLE_CONTROLLER "Enable desktop SDL3 controller input" ON)
+    option(QSAN_FETCH_SDL3 "Fetch the pinned official SDL3 source if no package is installed" ON)
+    if(QSAN_ENABLE_CONTROLLER AND NOT ANDROID AND NOT QSAN_BUILD_XP_LEGACY)
+        find_package(SDL3 3.4.18 CONFIG QUIET)
+        if(NOT SDL3_FOUND)
+            if(NOT QSAN_FETCH_SDL3)
+                message(FATAL_ERROR "Controller input requires SDL3 >= 3.4.18; set SDL3_DIR or enable QSAN_FETCH_SDL3")
+            endif()
+            include(FetchContent)
+            set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+            set(SDL_STATIC ON CACHE BOOL "" FORCE)
+            set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+            set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
+            set(SDL_VIDEO OFF CACHE BOOL "" FORCE)
+            set(SDL_AUDIO OFF CACHE BOOL "" FORCE)
+            set(SDL_RENDER OFF CACHE BOOL "" FORCE)
+            set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
+            FetchContent_Declare(qsan_sdl3
+                URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
+                URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
+                DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+            FetchContent_MakeAvailable(qsan_sdl3)
+        endif()
+        target_sources(${QSAN_GUI_TARGET} PRIVATE
+            src/ui/controller-action.h
+            src/ui/controller-service.h src/ui/controller-service.cpp
+            src/ui/controller-router.h src/ui/controller-router.cpp
+            src/ui/controller-custom-dialog.h src/ui/controller-custom-dialog.cpp
+            src/ui/controller-text-entry.h src/ui/controller-text-entry.cpp)
+        target_compile_definitions(${QSAN_GUI_TARGET} PRIVATE QSAN_CONTROLLER_ENABLED=1)
+        # Prefer the static target so Qt's deployment graph needs no new DLL. A
+        # system shared package still uses CMake's imported runtime dependency.
+        if(TARGET SDL3::SDL3-static)
+            target_link_libraries(${QSAN_GUI_TARGET} PRIVATE SDL3::SDL3-static)
+        else()
+            target_link_libraries(${QSAN_GUI_TARGET} PRIVATE SDL3::SDL3)
+        endif()
+        install(FILES docs/controller-SDL-LICENSE.txt
+            DESTINATION "${CMAKE_INSTALL_DOCDIR}" COMPONENT qsan_data)
+    else()
+        target_compile_definitions(${QSAN_GUI_TARGET} PRIVATE QSAN_CONTROLLER_ENABLED=0)
+        if(QSAN_ENABLE_CONTROLLER)
+            message(STATUS "Controller backend unavailable for Android/XP: platform adapter is not yet certified")
+        endif()
+    endif()
 
     target_sources(${QSAN_GUI_TARGET} PRIVATE
         src/dialog/android-dialog-fit.cpp

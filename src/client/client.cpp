@@ -1,4 +1,5 @@
 #include "client.h"
+#include "controller-interaction-contract.h"
 #include "client-core.h"
 #include "client-prompt.h"
 #include "client-live-session.h"
@@ -3681,8 +3682,10 @@ void Client::askForQml(const QVariant &arg)
 		return;
 	}
 
+	const QJsonObject contract = payload.payload.value(QStringLiteral("parameters")).toObject()
+		.value(QStringLiteral("controller_ui")).toObject();
 	InteractionRequest request = makeInteractionRequest(
-		InteractionType::QmlInteract, payload, true);
+		InteractionType::QmlInteract, payload, contract.isEmpty() ? true : contract.value(QStringLiteral("can_cancel")).toBool());
 	request.prompt = payload.title;
 	beginInteraction(request);
 }
