@@ -636,6 +636,7 @@ int HomeGeneralModel::indexOfName(const QString &name) const
 
 HomeController::HomeController(QObject *parent)
     : QObject(parent)
+    , m_tvMode(Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool())
 {
     // Write a definite state before any QML verdict arrives, so the ambiguous
     // "nobody reported anything" blank can never appear.
@@ -1435,8 +1436,18 @@ QString HomeController::visualMode() const
     return Config.VisualMode;
 }
 
+bool HomeController::tvMode() const
+{
+    return m_tvMode;
+}
+
 void HomeController::notifyVisualSettings()
 {
+    const bool next = Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool();
+    if (m_tvMode != next) {
+        m_tvMode = next;
+        emit tvModeChanged();
+    }
     emit visualSettingsChanged();
 }
 

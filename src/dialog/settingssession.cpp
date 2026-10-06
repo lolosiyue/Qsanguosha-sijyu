@@ -102,6 +102,8 @@ void SettingsSession::load()
     v.insert(QStringLiteral("TextEditColor"), UiConfig.TextEditColor);
     v.insert(QStringLiteral("EnableAutoBackgroundChange"), Config.EnableAutoBackgroundChange);
     v.insert(QStringLiteral("EnableBackgroundVideo"), Config.EnableBackgroundVideo);
+    v.insert(QStringLiteral("BigPicture/Enabled"),
+             Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool());
 
 
     v.insert(QStringLiteral("BackgroundMusic"), Config.value("BackgroundMusic", kDefaultMusic).toString());
@@ -254,6 +256,7 @@ void SettingsSession::commit()
     Config.setValue("AudioMuted", Config.AudioMuted);
     Config.EnableBackgroundVideo = flag("EnableBackgroundVideo");
     Config.setValue("EnableBackgroundVideo", Config.EnableBackgroundVideo);
+    Config.setValue(QStringLiteral("BigPicture/Enabled"), flag("BigPicture/Enabled"));
 
     Config.EnableEffects = flag("EnableEffects");
     Config.setValue("EnableEffects", Config.EnableEffects);

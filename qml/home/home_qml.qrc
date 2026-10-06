@@ -23,6 +23,7 @@
     <file alias="HomeMainButton.qml">HomeMainButton.qml</file>
     <file alias="MainActionPanel.qml">MainActionPanel.qml</file>
     <file alias="HomeBottomBar.qml">HomeBottomBar.qml</file>
+    <file alias="HomeButtonLegend.qml">HomeButtonLegend.qml</file>
     <file alias="HomeNavButton.qml">HomeNavButton.qml</file>
     <file alias="BASlantedPanel.qml">BASlantedPanel.qml</file>
     <file alias="BAToolButton.qml">BAToolButton.qml</file>
