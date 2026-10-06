@@ -41,6 +41,8 @@ public:
     Q_INVOKABLE void chooseAppFont(QWidget *parent = nullptr);
     Q_INVOKABLE void chooseTextEditFont(QWidget *parent = nullptr);
     Q_INVOKABLE void chooseTextEditColor(QWidget *parent = nullptr);
+    // Theme packs save on their own Apply, outside this session's preview and revert.
+    Q_INVOKABLE void openThemePacks(QWidget *parent = nullptr);
 
     static QString fontLabel(const QFont &font);
 

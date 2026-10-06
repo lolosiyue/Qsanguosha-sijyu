@@ -88,6 +88,9 @@ Item {
         spacing: 10
         checked: root.values[key] === true
         onToggled: root.set(key, checked)
+        // Accessible toggle otherwise only changes checked, bypassing the draft.
+        Accessible.onToggleAction: check.click()
+        Accessible.onPressAction: check.click()
         onActiveFocusChanged: if (activeFocus) root.reveal(check)
         Keys.onShortcutOverride: function(event) {
             if (event.key === Qt.Key_Space)
@@ -150,6 +153,8 @@ Item {
             stepSize: sliderRow.stepSize
             snapMode: Slider.SnapAlways
             value: Number(root.values[sliderRow.key])
+            focusPolicy: Qt.StrongFocus
+            activeFocusOnTab: true
             onMoved: root.set(sliderRow.key, value)
             onActiveFocusChanged: if (activeFocus) root.reveal(sliderRow)
             Accessible.name: sliderRow.accessibleName
@@ -399,6 +404,14 @@ Item {
                                 }
                             }
                             SettingRow {
+                                SettingLabel { text: qsTranslate("ConfigDialog", "主題包") }
+                                FormButton {
+                                    objectName: "themePackButton"
+                                    text: qsTranslate("ConfigDialog", "主題包管理…")
+                                    onClicked: Qt.callLater(function() { settingsSession.openThemePacks() })
+                                }
+                            }
+                            SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "界面缩放") }
                                 SettingSlider {
                                     key: "UIScale"
@@ -494,6 +507,12 @@ Item {
                                         { "value": "highcontrast", "label": qsTranslate("ConfigDialog", "High contrast") }
                                     ]
                                 }
+                            }
+
+                            GroupTitle { text: qsTr("大屏模式") }
+                            SettingCheck {
+                                key: "BigPicture/Enabled"
+                                text: qsTr("啟用大屏模式（重新啟動後完全生效）")
                             }
 
                             GroupTitle { text: qsTranslate("ConfigDialog", "Font setup") }

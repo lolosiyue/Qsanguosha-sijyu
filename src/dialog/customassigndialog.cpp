@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "engine.h"
 #include "oracle_helper.h"
+#include "general-info-card.h"
 #include "standard.h"
 #include <QSaveFile>
 #include <QTemporaryFile>
@@ -1964,7 +1965,8 @@ QWidget *GeneralAssignDialog::createTab(const QList<const General *> &generals)
 
         QString package_name = Sanguosha->translate(generals[i]->getPackage());
         QAbstractButton *button = new QRadioButton(QString("%1[%2]").arg(generals[i]->getBriefName()).arg(package_name));
-        button->setToolTip(buildOracleTooltip(generals[i]->getOracleText(), generals[i]->getSkillDescription(true)));
+        // Built on first hover: formatting every general up front slowed opening the dialog.
+        GeneralInfoCard::setLazyToolTip(button, generals[i]->objectName());
         if (generals[i]->isLord()) button->setIcon(lord_icon);
         button->setObjectName(generals[i]->objectName());
         button->setProperty("searchText", QString("%1 %2 %3 %4")

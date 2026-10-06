@@ -251,9 +251,9 @@ void GraphicsPixmapHoverItem::stopChangeHeroSkinAnimation()
 void GraphicsPixmapHoverItem::initSkinChangingFrames()
 {
     m_skinChangingFrameCount = PixmapAnimation::GetFrameCount(CHANGE_SKIN_EMOTION_NAME);
+    const QString directory = PixmapAnimation::EmotionDirectory(CHANGE_SKIN_EMOTION_NAME);
     for (int i = 0; i < m_skinChangingFrameCount; ++i) {
-        QString fileName = QString("image/system/emotion/%1/%2.png")
-            .arg(CHANGE_SKIN_EMOTION_NAME).arg(QString::number(i));
+        const QString fileName = directory + QString::number(i) + QStringLiteral(".png");
 
         QPixmap framePixmap = G_ROOM_SKIN.getPixmapFromFileName(fileName);
         m_skinChangingFrames << framePixmap.scaled(framePixmap.width() + 15,

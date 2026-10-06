@@ -1,5 +1,6 @@
 #include "indicatoritem.h"
 #include "engine.h"
+#include "skin-bank.h"
 #include "effects/effects-policy.h"
 #include "effects/effects-completion.h"
 
@@ -12,6 +13,7 @@ IndicatorItem::IndicatorItem(const QPointF &start, const QPointF &real_finish, P
 		color = QColor(Sanguosha->getKingdomColor(player->getKingdom()));
 		if(player->isLord()) width = 8;
 	}
+	linePixmap = G_ROOM_SKIN.getSlotPixmap(QStringLiteral("indicator-line"), true);
 }
 
 void IndicatorItem::doAnimation()
@@ -60,6 +62,24 @@ void IndicatorItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, Q
 {
     painter->setRenderHint(QPainter::Antialiasing);
 
+    if (!linePixmap.isNull()) {
+        // Lay the art along the full line and reveal it as the line grows.
+        const QPointF from = mapFromScene(start);
+        const QLineF line(from, mapFromScene(finish));
+        const qreal fullLength = QLineF(start, real_finish).length();
+        if (line.length() < 1 || fullLength < 1)
+            return;
+        const qreal height = linePixmap.height() / linePixmap.devicePixelRatio();
+        painter->save();
+        painter->setRenderHint(QPainter::SmoothPixmapTransform);
+        painter->translate(from);
+        painter->rotate(-line.angle());
+        painter->setClipRect(QRectF(0, -height / 2, line.length(), height));
+        painter->drawPixmap(QRectF(0, -height / 2, fullLength, height), linePixmap, QRectF(linePixmap.rect()));
+        painter->restore();
+        return;
+    }
+
     QPen pen(color);
     pen.setWidthF(width);
 
@@ -87,6 +107,8 @@ QRectF IndicatorItem::boundingRect() const
 {
     qreal width = qAbs(start.x() - real_finish.x());
     qreal height = qAbs(start.y() - real_finish.y());
-    return QRectF(0, 0, width, height).adjusted(-2, -2, 2, 2);
+    // Line art can be thicker than the drawn line; leave room for half of it on each side.
+    const qreal margin = linePixmap.isNull() ? 2 : linePixmap.height() / linePixmap.devicePixelRatio() / 2 + 2;
+    return QRectF(0, 0, width, height).adjusted(-margin, -margin, margin, margin);
 }
 

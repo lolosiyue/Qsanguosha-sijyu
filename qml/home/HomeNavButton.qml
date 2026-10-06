@@ -30,7 +30,8 @@ AbstractButton {
     Accessible.name: control.text
     Accessible.description: control.text
 
-    scale: control.down ? 0.92 : 1.0
+    scale: control.down ? 0.92
+           : (HomeTheme.tvMode && control.activeFocus ? HomeTheme.focusScale : 1.0)
 
     Behavior on scale {
         NumberAnimation {
@@ -60,12 +61,21 @@ AbstractButton {
     background: Item {
         Rectangle {
             anchors.fill: parent
+            anchors.margins: HomeTheme.tvMode ? -HomeTheme.focusGlowRadius : -5
+            radius: 16
+            color: HomeTheme.tvMode && control.activeFocus ? HomeTheme.focusGlow : "transparent"
+            visible: HomeTheme.tvMode && control.activeFocus
+        }
+
+        Rectangle {
+            anchors.fill: parent
             anchors.margins: -5
 
             radius: 12
             color: "transparent"
 
-            border.width: control.highContrast ? 3 : 2
+            border.width: HomeTheme.tvMode ? HomeTheme.focusBorderWidth
+                          : (control.highContrast ? 3 : 2)
             border.color: control.activeFocus
                           ? (control.highContrast ? HomeTheme.focusBorderHigh : HomeTheme.baFocusRing)
                           : "transparent"

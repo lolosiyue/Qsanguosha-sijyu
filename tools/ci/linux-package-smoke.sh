@@ -74,6 +74,66 @@ echo "kind             : $KIND"
 echo "platform         : $PLATFORM"
 echo "effects profiles : $PROFILES"
 
+# Compare the inherited CI runtime with the package on the same executable.
+# Baseline results are diagnostic; the isolated package checks below remain
+# authoritative, including their exit-status and process-cleanup requirements.
+RUNTIME_COMPARISON=""
+if [ "${QSAN_MULTIMEDIA_CRASH_DIAGNOSTICS:-0}" = 1 ] \
+    && [ "$KIND" = portable ] && [ "$SKIP_MULTIMEDIA" -eq 0 ]; then
+    RUNTIME_COMPARISON="$ARTIFACT_DIR/package-runtime-comparison-$LABEL.txt"
+    {
+        echo "executable=$CLIENT"
+        sha256sum "$CLIENT"
+        echo "sdk_prefix=${QT_ROOT_DIR:-<unset>}"
+    } >"$RUNTIME_COMPARISON"
+    bash "$SCRIPT_DIR/linux-gui-multimedia-smoke.sh" "$CLIENT" "$ARTIFACT_DIR" \
+        --platform "$PLATFORM" --label "pkg-$LABEL-sdk-baseline" $XVFB_ARG \
+        --expect-backend qt --timeout-ms 90000 --process-timeout "$PROCESS_TIMEOUT"
+    echo "inherited_multimedia_validation=$?" >>"$RUNTIME_COMPARISON"
+    bash "$SCRIPT_DIR/linux-gui-multimedia-smoke.sh" "$CLIENT" "$ARTIFACT_DIR" \
+        --platform "$PLATFORM" --label "pkg-$LABEL-sdk-video-baseline" $XVFB_ARG \
+        --expect-backend qt --video-source tools/ci/fixtures/media/no-such-clip.mp4 \
+        --expect-video-reason asset_missing \
+        --timeout-ms 90000 --process-timeout "$PROCESS_TIMEOUT"
+    echo "inherited_video_validation=$?" >>"$RUNTIME_COMPARISON"
+fi
+
+# setup-qt exports SDK search paths that take precedence over the package's
+# RUNPATH and qt.conf. Remove only entries inside that SDK, retaining explicit
+# bundle paths and other caller-provided entries.
+remove_sdk_search_paths() {
+    local sdk="${QT_ROOT_DIR:-}" name entry remaining kept removed has_kept
+    [ -n "$sdk" ] || return 0
+    sdk="${sdk%/}"
+    [ -n "$sdk" ] || return 0
+    for name in LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH; do
+        [ -v "$name" ] || continue
+        remaining="${!name}"
+        kept="" removed=0 has_kept=0
+        while :; do
+            entry="${remaining%%:*}"
+            case "$entry" in
+                "$sdk"|"$sdk"/*) removed=1 ;;
+                *)
+                    if [ "$has_kept" -eq 0 ]; then kept="$entry"; else kept+=":$entry"; fi
+                    has_kept=1 ;;
+            esac
+            [[ "$remaining" = *:* ]] || break
+            remaining="${remaining#*:}"
+        done
+        if [ "$removed" -eq 1 ]; then
+            if [ -n "$kept" ]; then export "$name=$kept"; else unset "$name"; fi
+        fi
+    done
+}
+remove_sdk_search_paths
+{
+    for name in LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH; do
+        printf '%s=%s\n' "$name" "${!name-<unset>}"
+    done
+    ldd "$CLIENT"
+} >"$ARTIFACT_DIR/package-runtime-$LABEL.txt" 2>&1
+
 # Verify package metadata before running binaries.
 # ---------------------------------------------------------------------------
 echo
@@ -132,8 +192,10 @@ if [ "$SKIP_MULTIMEDIA" -eq 0 ]; then
     echo "-- M2B-A multimedia smoke --"
     bash "$SCRIPT_DIR/linux-gui-multimedia-smoke.sh" "$CLIENT" "$ARTIFACT_DIR" \
         --platform "$PLATFORM" --label "pkg-$LABEL-multimedia" $XVFB_ARG \
-        --expect-backend qt --timeout-ms 90000 --process-timeout "$PROCESS_TIMEOUT" \
-        || note_failure "multimedia smoke from the package"
+        --expect-backend qt --timeout-ms 90000 --process-timeout "$PROCESS_TIMEOUT"
+    MULTIMEDIA_STATUS=$?
+    [ -z "$RUNTIME_COMPARISON" ] || echo "isolated_multimedia_validation=$MULTIMEDIA_STATUS" >>"$RUNTIME_COMPARISON"
+    [ "$MULTIMEDIA_STATUS" -eq 0 ] || note_failure "multimedia smoke from the package"
 
     echo
     echo "-- M2B-A video fallback --"
@@ -141,8 +203,10 @@ if [ "$SKIP_MULTIMEDIA" -eq 0 ]; then
         --platform "$PLATFORM" --label "pkg-$LABEL-video-missing" $XVFB_ARG \
         --expect-backend qt --video-source tools/ci/fixtures/media/no-such-clip.mp4 \
         --expect-video-reason asset_missing \
-        --timeout-ms 90000 --process-timeout "$PROCESS_TIMEOUT" \
-        || note_failure "video fallback from the package"
+        --timeout-ms 90000 --process-timeout "$PROCESS_TIMEOUT"
+    VIDEO_STATUS=$?
+    [ -z "$RUNTIME_COMPARISON" ] || echo "isolated_video_validation=$VIDEO_STATUS" >>"$RUNTIME_COMPARISON"
+    [ "$VIDEO_STATUS" -eq 0 ] || note_failure "video fallback from the package"
 fi
 
 for profile in $PROFILES; do

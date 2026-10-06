@@ -13,6 +13,7 @@
 #include "runtime-paths.h"
 #include "package-catalog.h"
 #include "procedural-skin.h"
+#include "theme-pack.h"
 #include <QScreen>
 
 using namespace JsonUtils;
@@ -197,6 +198,8 @@ bool IQSanComponentSkin::QSanShadowTextFont::tryParse(const QVariant &arg)
 
 bool IQSanComponentSkin::isImageKeyDefined(const QString &key) const
 {
+	if (!ThemePacks::overrideForKey(key).isEmpty())
+		return true;
 	const QVariant &val = _m_imageConfig[key];
 	return JsonUtils::isArray(val) || JsonUtils::isString(val);
 }
@@ -889,6 +892,10 @@ QString IQSanComponentSkin::_readImageConfig(const QString &key, QRect &rect,
 {
 	clipping = false;
 	scaled = false;
+	// A theme pack replaces the whole image, so the skin's clip and scale do not apply.
+	const QString themed = ThemePacks::overrideForKey(key);
+	if (!themed.isEmpty())
+		return themed;
 	if (_m_imageConfig.isEmpty())
 		return defaultValue;
 	const QVariant &val = _m_imageConfig[key];
@@ -1062,16 +1069,51 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 
 QPixmap IQSanComponentSkin::getPixmapFileName(const QString &key) const
 {
+	const QString themed = ThemePacks::overrideForKey(key);
+	if (!themed.isEmpty())
+		return getPixmapFromFileName(themed);
 	return _readConfig(_m_imageConfig, key);
+}
+
+QString IQSanComponentSkin::getSlotFileName(const QString &slotId) const
+{
+    const QString themed = ThemePacks::overrideForSlot(slotId);
+    if (!themed.isEmpty())
+        return themed;
+    const ThemePacks::Slot *slot = ThemePacks::findSlot(slotId);
+    if (!slot)
+        return QString();
+    for (const QString &key : slot->skinKeys) {
+        if (!_m_imageConfig.contains(key))
+            continue;
+        QRect clipRegion;
+        QSize scaleRegion;
+        bool clipping = false, scaled = false;
+        const QString fileName = _readImageConfig(key, clipRegion, clipping, scaleRegion, scaled);
+        if (!fileName.isEmpty())
+            return fileName;
+    }
+    return slot->defaultPath;
+}
+
+QPixmap IQSanComponentSkin::getSlotPixmap(const QString &slotId, bool cache) const
+{
+    const QString fileName = getSlotFileName(slotId);
+    // No file means the room draws this slot itself; a 1x1 placeholder would hide that.
+    if (fileName.isEmpty())
+        return QPixmap();
+    return getPixmapFromFileName(fileName, cache);
 }
 
 QString IQSanComponentSkin::pixmapFileCacheKey(const QString &sourceFileName) const
 {
+    // Key themed files by the file actually read, so a prewarm of the legacy path matches.
+    const QString themed = ThemePacks::overrideForFile(sourceFileName);
     const QString assetRoot = QSanRuntimePaths::assetRoot();
     const QString root = assetRoot.isEmpty() ? QDir::currentPath() : assetRoot;
-    return QStringLiteral("skin-file:%1:%2:%3:%4:%5")
-        .arg(QSanPackages::catalogRevision()).arg(m_visualRevision)
-        .arg(root.size()).arg(root).arg(sourceFileName);
+    return QStringLiteral("skin-file:%1:%2:%3:%4:%5:%6")
+        .arg(QSanPackages::catalogRevision()).arg(m_visualRevision).arg(ThemePacks::revision())
+        .arg(root.size()).arg(root).arg(themed.isEmpty() ? sourceFileName : themed);
 }
 
 QString IQSanComponentSkin::_generatedFileUri(const QString &fileName) const
@@ -1096,11 +1138,14 @@ QString IQSanComponentSkin::_generatedFileUri(const QString &fileName) const
 
 bool IQSanComponentSkin::generatesFile(const QString &fileName) const
 {
-    return !_generatedFileUri(fileName).isEmpty();
+    return ThemePacks::overrideForFile(fileName).isEmpty() && !_generatedFileUri(fileName).isEmpty();
 }
 
 bool IQSanComponentSkin::loadPixmap(QPixmap &pixmap, const QString &fileName) const
 {
+    const QString themed = ThemePacks::overrideForFile(fileName);
+    if (!themed.isEmpty())
+        return pixmap.load(themed);
     const QString generated = _generatedFileUri(fileName);
     if (generated.isEmpty())
         return pixmap.load(fileName);
@@ -1110,6 +1155,9 @@ bool IQSanComponentSkin::loadPixmap(QPixmap &pixmap, const QString &fileName) co
 
 QString IQSanComponentSkin::plainPixmapFile(const QString &sourceFileName) const
 {
+    const QString themed = ThemePacks::overrideForFile(sourceFileName);
+    if (!themed.isEmpty())
+        return plainPixmapFile(themed);
     if (!_generatedFileUri(sourceFileName).isEmpty())
         return QString();
     const QString fileName = QSanRuntimePaths::assetPath(sourceFileName);
@@ -1126,6 +1174,10 @@ QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &sourceFileName,
 {
     if (sourceFileName == "deprecated" || sourceFileName.isEmpty())
         return QPixmap(1, 1);
+    // Theme packs come first: they replace the skin's file and any art it generates for it.
+    const QString themed = ThemePacks::overrideForFile(sourceFileName);
+    if (!themed.isEmpty())
+        return getPixmapFromFileName(themed, cache);
     const QString generated = _generatedFileUri(sourceFileName);
     if (!generated.isEmpty())
         return getPixmapFromFileName(generated, cache);
@@ -1805,6 +1857,8 @@ QSanSkinFactory::QSanSkinFactory(const char *fileName)
 	JsonDocument doc = JsonDocument::fromFilePath(fileName);
 	_m_skinList = doc.object();
 	_m_skinName = "";
+	// Theme overrides must be in place before any skin art is read and cached.
+	ThemePacks::reload();
 	switchSkin(Config.value("RoomSkin", S_DEFAULT_SKIN_NAME).toString());
 }
 
