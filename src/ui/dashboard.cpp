@@ -354,7 +354,7 @@ void Dashboard::showControlButtons()
 void Dashboard::showProgressBar(QSanProtocol::Countdown countdown)
 {
     _m_progressBar->setCountdown(countdown);
-    connect(_m_progressBar, SIGNAL(timedOut()), this, SIGNAL(progressBarTimedOut()));
+    connect(_m_progressBar, SIGNAL(timedOut()), this, SIGNAL(progressBarTimedOut()), Qt::UniqueConnection);
     _m_progressBar->show();
 }
 
