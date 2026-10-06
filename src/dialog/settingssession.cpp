@@ -6,6 +6,7 @@
 #include "engine.h"
 #include "clientstruct.h"
 #include "skin-bank.h"
+#include "theme-pack-dialog.h"
 #include "effects/effects-policy.h"
 #include "effects/effects-profile.h"
 #ifdef AUDIO_SUPPORT
@@ -405,4 +406,9 @@ void SettingsSession::chooseTextEditColor(QWidget *parent)
     UiConfig.TextEditColor = color;
     Config.setValue("TextEditColor", color);
     updateValue(QStringLiteral("TextEditColor"), color);
+}
+
+void SettingsSession::openThemePacks(QWidget *parent)
+{
+    ThemePackDialog::openManager(dialogParent(parent));
 }

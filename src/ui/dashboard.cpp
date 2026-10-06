@@ -1536,7 +1536,7 @@ void Dashboard::_createEquipBorderAnimations()
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         _m_equipBorders[i] = new PixmapAnimation();
         _m_equipBorders[i]->setParentItem(_getEquipParent());
-        _m_equipBorders[i]->setPath("image/system/emotion/equipborder/");
+        _m_equipBorders[i]->setPath(PixmapAnimation::EmotionDirectory(QStringLiteral("equipborder")));
         if (!_m_equipBorders[i]->valid()) {
             delete _m_equipBorders[i];
             _m_equipBorders[i] = nullptr;

@@ -717,6 +717,10 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	log_box = new ClientLogBox;
 	log_box->setObjectName("log_box");
 	log_box->setTextColor(UiConfig.TextEditColor);
+	// Without a "log-box-bg" theme slot or skin key the log keeps the global QTextEdit border.
+	const QString logBorder = G_ROOM_SKIN.getSlotFileName(QStringLiteral("log-box-bg"));
+	if (!logBorder.isEmpty())
+		log_box->setStyleSheet(QStringLiteral("QTextEdit#log_box { border-image: url(\"%1\") 10 10 10 10; }").arg(logBorder));
 
 	log_box_widget = addWidget(log_box);
 	log_box_widget->setZValue(8);
