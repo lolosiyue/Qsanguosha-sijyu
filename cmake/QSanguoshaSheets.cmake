@@ -19,7 +19,7 @@ set(qsan_sheets_sources
     legacy/xp/src/local-server-controller.h
     src/server/server-config.cpp src/server/server-config.h)
 
-add_executable(qsanguosha_sheets_bridge ${qsan_sheets_sources})
+add_executable(qsanguosha_sheets_bridge ${qsan_sheets_sources} resource/icon.rc)
 set_target_properties(qsanguosha_sheets_bridge PROPERTIES
     OUTPUT_NAME QSanguoshaSheetsBridge FOLDER "Clients"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/excel-debug"

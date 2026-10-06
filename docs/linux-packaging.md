@@ -52,7 +52,6 @@ python3 tools/packaging/build-linux-packages.py \
 <prefix>/share/qsanguosha/assets-manifest.json
 <prefix>/share/applications/qsanguosha.desktop
 <prefix>/share/icons/hicolor/{16..512}x*/apps/qsanguosha.png
-<prefix>/share/icons/hicolor/scalable/apps/qsanguosha.svg
 <prefix>/share/doc/QSanguosha/
 ```
 
@@ -292,12 +291,12 @@ rolling "continuous" release 重新 build 之後 job 會立即紅燈 —— 要�
 ## 8. Desktop 整合
 
 `packaging/linux/qsanguosha.desktop`，安裝到 `share/applications/`。
-圖示安裝到 hicolor theme：8 個尺寸的 PNG（16–512）加一個 SVG。
+圖示安裝到 hicolor theme：8 個尺寸的 PNG（16–512）。
 
-Windows 的 `resource/icon/sgs.ico` 只有 32x32／16x16 8-bit，`sgs.icns` 裡
-只有一張 JPEG 2000 —— 兩個都不可以做 Linux 圖示。Linux 一套由
-`tools/packaging/make-linux-icons.py` 由同一份幾何定義同時輸出 SVG 與各尺寸
-PNG（純標準庫，因為 build 機與 CI 都沒有 PIL／librsvg／ImageMagick）。
+所有平台的圖示（Windows `sgs.ico`、macOS `sgs.icns`、Linux 各尺寸 PNG、
+Android launcher、網頁版 favicon）都由 `tools/packaging/make-icons.py` 從透明母圖
+`resource/icon/qsanguosha.png`（1024x1024）產生並提交；腳本需要 Pillow，
+只在開發機執行，build 與 CI 不跑它。
 
 驗證：CI 跑真正的 `desktop-file-validate`；
 `tools/packaging/validate-desktop-entry.py` 是本機用的同等檢查

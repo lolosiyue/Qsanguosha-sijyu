@@ -249,8 +249,6 @@ jobs:
             icon="$root/share/icons/hicolor/${size}x${size}/apps/qsanguosha.png"
             [ -f "$icon" ] || { echo "missing icon: $icon" >&2; exit 1; }
           done
-          [ -f "$root/share/icons/hicolor/scalable/apps/qsanguosha.svg" ] \
-            || { echo "missing scalable icon" >&2; exit 1; }
           echo "desktop integration OK"
 
       - name: A server-only install pulls in no GUI Qt and no GUI assets
