@@ -3397,7 +3397,8 @@ int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fi
 
     bool locked = lua_mutex.tryLock();
     if (!locked) {
-        if (target && target->inherits("ClientPlayer")) return 0;
+        // No fixed correction is -1; zero would replace the client's base range of 1.
+        if (target && target->inherits("ClientPlayer")) return fixed ? -1 : 0;
         lua_mutex.lock();
         locked = true;
     }
