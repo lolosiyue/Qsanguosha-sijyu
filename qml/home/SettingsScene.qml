@@ -399,6 +399,14 @@ Item {
                                 }
                             }
                             SettingRow {
+                                SettingLabel { text: qsTranslate("ConfigDialog", "主題包") }
+                                FormButton {
+                                    objectName: "themePackButton"
+                                    text: qsTranslate("ConfigDialog", "主題包管理…")
+                                    onClicked: Qt.callLater(function() { settingsSession.openThemePacks() })
+                                }
+                            }
+                            SettingRow {
                                 SettingLabel { text: qsTranslate("ConfigDialog", "界面缩放") }
                                 SettingSlider {
                                     key: "UIScale"

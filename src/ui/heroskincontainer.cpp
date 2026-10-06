@@ -4,6 +4,7 @@
 #include "settings.h"
 #include "generic-cardcontainer-ui.h"
 #include "engine.h"
+#include "skin-bank.h"
 
 #include <QPainter>
 #include <QCursor>
@@ -34,7 +35,7 @@ QMap<QString, bool> HeroSkinContainer::m_generalToHasSkin;
 HeroSkinContainer::HeroSkinContainer(const QString &generalName,
     const QString &kingdom, QGraphicsItem *parent/* = 0*/)
     : QGraphicsObject(parent), m_generalName(generalName),
-    m_backgroundPixmap("image/system/heroskin-container.png"),
+    m_backgroundPixmap(G_ROOM_SKIN.getSlotPixmap(QStringLiteral("heroskin-container-bg"))),
     m_vScrollBar(NULL), m_oldScrollValue(0)
 {
     setFlag(ItemIsMovable);
