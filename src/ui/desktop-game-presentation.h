@@ -4,6 +4,7 @@
 #include "game-action-model.h"
 #include "game-event-stream.h"
 #include "game-view-state.h"
+#include "controller-action.h"
 #include <QObject>
 #include <QPointer>
 #include <QHash>
@@ -34,6 +35,9 @@ public:
     void showControls();
     // Native table navigation uses the same draft/intents without opening a panel.
     bool handleTableKey(QKeyEvent *event);
+    bool handleControllerAction(ControllerAction action);
+    GameActionModel currentActions();
+    QString controllerFocus() const { return m_keyboardKind + ':' + m_keyboardId; }
     void clearKeyboardCursor();
 
 signals:
@@ -48,6 +52,7 @@ private:
     QString playerLabel(const QString &name) const;
     QString cardLabel(int id) const;
     void updateKeyboardCursor();
+    void showControllerDetails();
     void applyIntent(const QString &kind, const QString &id, bool selected,
                      quint64 generation, quint64 revision, quint64 requestId);
     RoomScene *m_scene;
@@ -71,6 +76,8 @@ private:
     bool m_forcePresentation = false;
     QString m_keyboardKind;
     QString m_keyboardId;
+    bool m_controllerNavigation = false;
+    QString m_controllerPlayer;
     QPointer<QGraphicsObject> m_keyboardMarker;
 };
 
