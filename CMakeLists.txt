@@ -1925,6 +1925,18 @@ if(QSAN_TEST_EXTERNAL_AGENTS)
     target_link_libraries(qsanguosha_external_agent_tests PRIVATE
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
     qsan_link_websocket_gateway(qsanguosha_external_agent_tests)
+    add_executable(qsanguosha_hybrid50_projection_tests tests/hybrid50-projection-test.cpp)
+    target_compile_definitions(qsanguosha_hybrid50_projection_tests PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
+    target_include_directories(qsanguosha_hybrid50_projection_tests PRIVATE ${qsan_external_test_includes})
+    target_link_libraries(qsanguosha_hybrid50_projection_tests PRIVATE
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
+    qsan_link_websocket_gateway(qsanguosha_hybrid50_projection_tests)
+    add_test(NAME hybrid50_projection COMMAND qsanguosha_hybrid50_projection_tests)
+    add_test(NAME hybrid50_target_projection COMMAND qsanguosha_external_agent_tests --target50-benchmark)
+    set_tests_properties(hybrid50_projection hybrid50_target_projection PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 180
+        FIXTURES_REQUIRED external_agent_runtime RUN_SERIAL TRUE
+        ENVIRONMENT "QSAN_ASSET_ROOT=${qsan_external_runtime};QSAN_USER_DATA_ROOT=${qsan_external_runtime}")
     add_test(NAME external_agent_contract COMMAND qsanguosha_external_agent_tests)
     set_tests_properties(external_agent_contract PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 60)

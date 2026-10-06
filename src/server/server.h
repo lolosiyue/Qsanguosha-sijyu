@@ -131,6 +131,7 @@ private:
     QSpinBox *nullification_spinbox;
     QCheckBox *minimize_dialog_checkbox;
     QCheckBox *ai_enable_checkbox;
+    QCheckBox *jev_hybrid_50p_checkbox;
     QCheckBox *ai_chat_checkbox;
     QCheckBox *ai_humanized_checkbox;
     QSpinBox *ai_delay_spinbox;

@@ -653,6 +653,18 @@ QWidget *ServerDialog::createMiscTab()
 
 	ai_enable_checkbox = new QCheckBox(tr("Enable AI"));
 	ai_enable_checkbox->setChecked(Config.EnableAI);
+	jev_hybrid_50p_checkbox = new QCheckBox(tr("JEV hybrid for 50-player AI seats (paid, max $0.10 per game)"));
+	jev_hybrid_50p_checkbox->setChecked(Config.value("JevHybrid50P", false).toBool());
+	jev_hybrid_50p_checkbox->setToolTip(tr("Uses JEV only for supported robot decisions. SmartAI handles all other decisions and any provider or budget failure."));
+	const auto updateJevHybridAvailability = [this] {
+		const auto checked = mode_group->checkedButton();
+		jev_hybrid_50p_checkbox->setEnabled(ai_enable_checkbox->isChecked()
+			&& checked && checked->objectName() == QStringLiteral("50p"));
+	};
+	connect(ai_enable_checkbox, &QCheckBox::toggled, this, updateJevHybridAvailability);
+	connect(mode_group, QOverload<QAbstractButton *>::of(&QButtonGroup::buttonClicked),
+		this, updateJevHybridAvailability);
+	updateJevHybridAvailability();
 	//ai_enable_checkbox->setEnabled(false); // Force to enable AI for disabling it causes crashes!!
 
 	ai_chat_checkbox = new QCheckBox(tr("AI Chat"));
@@ -689,6 +701,7 @@ QWidget *ServerDialog::createMiscTab()
 
 	//layout->addLayout(HLay(ai_enable_checkbox, ai_chat_checkbox));
 	layout->addLayout(HLay(ai_enable_checkbox, ai_humanized_checkbox));
+	layout->addWidget(jev_hybrid_50p_checkbox);
 	layout->addLayout(HLay(new QLabel(tr("AI delay")), ai_delay_spinbox));
 	layout->addWidget(ai_delay_altered_checkbox);
 	layout->addLayout(HLay(new QLabel(tr("AI delay After Death")), ai_delay_ad_spinbox));
@@ -1658,6 +1671,9 @@ int ServerDialog::config()
 	Config.setValue("NullificationCountDown", nullification_spinbox->value());
 	Config.setValue("EnableMinimizeDialog", Config.EnableMinimizeDialog);
 	Config.setValue("EnableAI", Config.EnableAI);
+	// Remember the player's preference even while another mode temporarily
+	// disables the control; the room gate applies it only to AI-enabled 50p.
+	Config.setValue("JevHybrid50P", jev_hybrid_50p_checkbox->isChecked());
 	Config.setValue("AIChat", ai_chat_checkbox->isChecked());
 	Config.setValue("AIHumanized", ai_humanized_checkbox->isChecked());
 	Config.setValue("OriginAIDelay", Config.OriginAIDelay);
