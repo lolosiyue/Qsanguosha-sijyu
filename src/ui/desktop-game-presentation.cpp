@@ -140,6 +140,7 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
 
 DesktopGamePresentation::~DesktopGamePresentation()
 {
+    clearKeyboardCursor();
     // These are parented to the main window, whose lifetime exceeds RoomScene.
     delete m_panel;
     delete m_snapshot;
@@ -151,15 +152,31 @@ void DesktopGamePresentation::clearKeyboardCursor()
     m_keyboardKind.clear();
     m_keyboardId.clear();
     if (m_keyboardMarker) m_keyboardMarker->hide();
+    if (m_scene->mainWindow()) {
+        auto *status = m_scene->mainWindow()->statusBar();
+        if (status->property("controllerHintStyled").toBool()) {
+            status->setStyleSheet(status->property("controllerHintOriginalStyle").toString());
+            status->setProperty("controllerHintStyled", false);
+            status->setProperty("controllerHintOriginalStyle", QVariant());
+            status->clearMessage();
+        }
+    }
 }
 
 void DesktopGamePresentation::updateKeyboardCursor()
 {
-    if (m_controllerNavigation && m_scene->mainWindow()) {
+    if (m_controllerNavigation && !m_keyboardKind.isEmpty() && m_scene->mainWindow()) {
+        auto *status = m_scene->mainWindow()->statusBar();
+        if (!status->property("controllerHintStyled").toBool()) {
+            const QString original = status->styleSheet();
+            status->setProperty("controllerHintOriginalStyle", original);
+            status->setProperty("controllerHintStyled", true);
+            status->setStyleSheet(original + QStringLiteral("\nQStatusBar { color: #ffffff; background-color: #222222; }"));
+        }
         QString label = m_keyboardId;
         for (const auto &entries : {m_model.cards, m_model.players, m_model.skills, m_model.actions})
             for (const auto &entry : entries) if (entry.id == m_keyboardId) label = entry.label;
-        m_scene->mainWindow()->statusBar()->showMessage(tr("Controller focus: %1 — South: select; West: confirm; East: back").arg(label));
+        status->showMessage(tr("Controller focus: %1 — South: select; West: confirm; East: back").arg(label));
     }
     QGraphicsObject *item = nullptr;
     Dashboard *dashboard = m_scene->dashboard;

@@ -185,6 +185,10 @@ void ControllerRouter::moveFocus(QWidget *scope, ControllerAction action)
             if (!eligible(candidate, scope) || !(candidate->focusPolicy() & Qt::TabFocus)
                 || qobject_cast<QLabel *>(candidate) || candidate->isAncestorOf(focused)) continue;
             candidate->setFocus(Qt::OtherFocusReason);
+            // Composite controls can redirect focus to the same owner (for
+            // example a QSpinBox's private QLineEdit). Keep traversing instead
+            // of trapping every shoulder press inside that control.
+            if (QApplication::focusWidget() == focused) continue;
             for (auto *scroll : scope->findChildren<QScrollArea *>())
                 if (scroll->isAncestorOf(QApplication::focusWidget())) scroll->ensureWidgetVisible(QApplication::focusWidget());
             return;
