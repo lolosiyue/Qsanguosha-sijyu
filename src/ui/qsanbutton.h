@@ -119,6 +119,7 @@ public:
     virtual void setSkill(const Skill *skill);
     void setPreshowEnabled(const QString &skillName, bool enabled, bool preshowed);
     void setPreshowState(bool preshowed);
+    bool preshowEnabled() const { return _m_preshowEnabled; }
     void setDisplayName(const QString &name);
     inline virtual const Skill *getSkill() const
     {
@@ -251,4 +252,3 @@ signals:
 };
 
 #endif
-

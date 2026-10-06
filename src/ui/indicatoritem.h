@@ -24,6 +24,8 @@ private:
     QPointF start, finish, real_finish;
     QColor color;
     qreal width;
+    // Art from the "indicator-line" theme slot; null means the line is drawn in color.
+    QPixmap linePixmap;
 };
 
 #endif

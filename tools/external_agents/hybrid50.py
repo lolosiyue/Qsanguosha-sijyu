@@ -1,8 +1,8 @@
 """ONE 50-seat game with explicit local/JEV decisions and durable paid budget.
 
 No secret/capability/request-body logging. All model state is rebuilt from a
-whitelist of native seat-visible fields. Incomplete or oversized action spaces
-go whole to native SmartAI; legal choices are never truncated for inference.
+whitelist of native seat-visible fields. Complete supported spaces may use bounded
+stages; incomplete spaces go whole to native SmartAI without truncation.
 """
 import argparse
 import collections
@@ -20,17 +20,20 @@ import time
 
 import game_client as g
 import providers as p
+import staged50 as staged
 
 LIMIT = 255
 POLICY = {
-    'version': 2, 'all_seats': 50, 'sole_complete_choice': 'local_forced',
+    'version': 3, 'all_seats': 50, 'sole_complete_choice': 'local_forced',
     'native_projection': 'explicit LocalDecisions; JEV and CardChosen retain full view',
-    'jev': ['complete standard printed-card Activate/UseCard',
+    'jev': ['complete known printed-card Activate/UseCard',
+            'native-complete staged Wusheng and printed-card Activate/UseCard',
             'complete PlayerChosen/PlayersChosen with at least 8 options'],
-    'local': ['simple decisions', 'skill conversions', 'unknown card effects',
-              'incomplete native candidates', 'over 255 complete options',
-              'over 16384 encoded input bytes'],
+    'local': ['simple decisions', 'unsupported skill conversions', 'unknown card effects',
+              'incomplete native candidates', 'over 255 options in a stage',
+              'over 16384 encoded bytes in a stage'],
     'failure': 'cancel, preserve evidence, no retry',
+    'opening': 'explicit local_native preamble until first native Activate, then normal hybrid policy',
     'local_native_before_jev': False,
     'model': 'jev-1.13.0', 'max_requests': 20_000,
     'internal_cap_usd': 1.5, 'user_cap_usd': 2,
@@ -73,6 +76,13 @@ EFFECTS = {
     'zhuahuangfeidian': 'Defensive horse.', 'chitu': 'Offensive horse.',
     'dayuan': 'Offensive horse.', 'zixing': 'Offensive horse.',
     'hualiu': 'Defensive horse.',
+    # Full-pack Shijia equips the lord with this real treasure at GameStart.
+    # Native definitions: extensions/Shijia.lua ChuanShiYuXi/JunLinTianXia.
+    'ChuanShiYuXi': 'Giftable treasure. Installing makes the wearer use cancellable '
+        'JunLinTianXia: on resolution gain 1 max HP; if no lord lives, become lord, '
+        'loyalists become renegades and rebels may choose renegade. Extra lord edicts: '
+        'others may Slash a chosen rebel and draw; a dead role becomes loyalist; '
+        'nonrebels give the wearer one card.',
 }
 RULES = (
     'Synthetic Qsanguosha 50-player identity game. Only supplied complete native-legal '
@@ -216,6 +226,12 @@ def route(q, adapter):
     try:
         answers, descriptions = actions(q)
     except LocalRequired as e:
+        if q['kind'] in (0, 1):
+            try:
+                plan = staged.Plan(q, envelope(q), EFFECTS, adapter)
+                return 'jev_staged', 'complete_native_staged_category', None, plan
+            except staged.Unsupported as unsupported:
+                return 'local_native', str(unsupported), None, None
         return 'local_native', str(e), None, None
     if len(answers) == 1:
         return 'local_forced', 'sole_complete_legal_action', answers, None
@@ -227,6 +243,12 @@ def route(q, adapter):
         adapter.prepare_payload('jev', state, descriptions)
     except p.DecisionError as e:
         if str(e) == 'input_too_large':
+            if q['kind'] in (0, 1):
+                try:
+                    plan = staged.Plan(q, state, EFFECTS, adapter)
+                    return 'jev_staged', 'complete_native_staged_category', None, plan
+                except staged.Unsupported as unsupported:
+                    return 'local_native', str(unsupported), None, None
             return 'local_native', 'model_input_limit', None, None
         raise
     return 'jev', 'complete_expensive_category', answers, (state, descriptions)
@@ -326,7 +348,20 @@ def play(bootstrap, adapter, host, out, live, max_seconds):
                         ack = client.call({'op': 'local', 'decisionId': q['decisionId'],
                                            'stateRevision': q['stateRevision']})
                     else:
-                        if chosen_route == 'local_forced':
+                        if chosen_route == 'jev_staged':
+                            try:
+                                result = data.choose(client, adapter, paid=live,
+                                                     cancelled=cancellation.is_set)
+                                row['stage_visits'] = data.visits
+                                row['stage_calls'] = data.calls
+                                row['selected_action'] = result
+                                ack = client.call({'op': 'submit', 'result': result})
+                            except staged.Unsupported as e:
+                                row['route'], row['reason'] = 'local_native', str(e)
+                                chosen_route, reason = 'local_native', str(e)
+                                ack = client.call({'op': 'local', 'decisionId': q['decisionId'],
+                                                   'stateRevision': q['stateRevision']})
+                        elif chosen_route == 'local_forced':
                             choice = next(iter(answers))
                         elif live:
                             before = api_wait
@@ -334,8 +369,9 @@ def play(bootstrap, adapter, host, out, live, max_seconds):
                             row['api_wait_ms'] = (api_wait - before) * 1000
                         else:
                             choice = next((k for k in answers if answers[k]['kind'] != 'pass'), next(iter(answers)))
-                        row['selected_action'] = answers[choice]
-                        ack = client.call({'op': 'submit', 'result': answers[choice]})
+                        if chosen_route != 'jev_staged' and answers is not None:
+                            row['selected_action'] = answers[choice]
+                            ack = client.call({'op': 'submit', 'result': answers[choice]})
                     if not ack.get('ok'):
                         raise p.DecisionError('native_queue_rejected')
                     row['client_route_ms'] = (time.monotonic() - begin) * 1000

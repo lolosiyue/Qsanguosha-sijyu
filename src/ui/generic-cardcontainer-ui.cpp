@@ -1,6 +1,7 @@
 #include "generic-cardcontainer-ui.h"
 #include "engine.h"
 #include "oracle_helper.h"
+#include "general-info-card.h"
 #include "standard.h"
 #include "graphicspixmaphoveritem.h"
 #include "roomscene.h"
@@ -482,7 +483,7 @@ void PlayerCardContainer::updateSmallAvatar()
 		QString tooltip;
 		const General *general2 = m_player ? m_player->getGeneral2() : nullptr;
 		if (general2)
-			tooltip = buildOracleTooltip(general2->getOracleText(), general2->getSkillDescription(true));
+			tooltip = GeneralInfoCard::forGeneral(general2);
 		else
 			tooltip = Sanguosha->translate(name);
 		QGraphicsPixmapItem *smallAvatarIconTmp = _m_smallAvatarIcon;
@@ -648,13 +649,15 @@ void PlayerCardContainer::updateGeneralPile(const QString &pile_name)
         text.append(QString("(%1)").arg(generals.length()));
         button->setText(text);
         menu->setProperty("general_pile", "true");
+        // QMenu hides action tooltips by default, so the general cards never showed.
+        menu->setToolTipsVisible(true);
 
         foreach(const QString &general_name, generals) {
             const General *general = Sanguosha->getGeneral(general_name);
             if (general) {
                 QAction *action = menu->addAction(QIcon(G_ROOM_SKIN.getGeneralPixmap(general_name, QSanRoomSkin::S_GENERAL_ICON_SIZE_TINY)),
                                                 Sanguosha->translate(general_name));
-                action->setToolTip(general->getSkillDescription(true));
+                action->setToolTip(GeneralInfoCard::forGeneral(general));
                 action->setData(general_name);
             }
         }
@@ -2282,19 +2285,15 @@ void PlayerCardContainer::updateAvatarTooltip()
         return;
     }
     if (m_player) {
-        const General *general = m_player->getGeneral();
-        QString oracle = general ? general->getOracleText() : QString();
-        QString description = m_player->getSkillDescription(Self);
-        QString fullTooltip = buildOracleTooltip(oracle, description);
-        _m_avatarArea->setToolTip(fullTooltip);
+        // One description pass feeds both avatars; the deputy card only changes focus.
+        const GeneralInfoCard::AvatarCards cards
+            = GeneralInfoCard::forPlayerAvatars(m_player, m_player->getSkillDescription(Self));
+        _m_avatarArea->setToolTip(cards.head);
         if (_m_avatarIcon)
-            _m_avatarIcon->setToolTip(fullTooltip);
+            _m_avatarIcon->setToolTip(cards.head);
 
-        QString deputyTooltip;
-        const General *general2 = m_player->getGeneral2();
-        if (general2)
-            deputyTooltip = buildOracleTooltip(general2->getOracleText(), description);
-        else if (m_player->property("avatarIcon2").toString() != "")
+        QString deputyTooltip = cards.deputy;
+        if (deputyTooltip.isEmpty() && m_player->property("avatarIcon2").toString() != "")
             deputyTooltip = Sanguosha->translate(m_player->property("avatarIcon2").toString());
 
         _m_smallAvatarArea->setToolTip(deputyTooltip);
