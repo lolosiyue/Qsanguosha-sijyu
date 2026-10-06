@@ -1081,16 +1081,33 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
 {
     request.cardConversions.clear();
     request.conversionsEnumerated = false;
+    request.stagedActionsComplete = false;
     if (!player) return false;
     EngineRuntimeContextScope contextScope(*Sanguosha, &m_room);
     LuaRuntime::Binding luaBinding(m_room.roomRuntime()->lua(), false);
     bool enumerated = true;
+    bool staged = !request.hasSkillActionContext;
     int probesLeft = 512;
+
+    // The UI expands response-accessible hand piles and offers equipment view-as
+    // buttons outside Player SkillInstances. This prototype does not ticket those
+    // sources. Their absence from the lists must never imply complete coverage.
+    if (!player->getHandPile().isEmpty()
+        || !player->property("View_As_Equips_List").toString().isEmpty())
+        enumerated = false;
+    foreach (const Card *equip, player->getEquips()) {
+        const auto *realEquip = equip ? qobject_cast<const EquipCard *>(equip->getRealCard()) : nullptr;
+        const Skill *equipSkill = realEquip ? Sanguosha->getSkill(realEquip) : nullptr;
+        if (equipSkill && ViewAsSkill::parseViewAsSkill(equipSkill)) enumerated = false;
+    }
 
     // V1 view-as skills are not represented by skillActions. Their absence from
     // that list cannot prove that no conversion exists for this response/play.
     for (const SkillInstance &instance : player->getSkillInstances()) {
+        if (dynamic_cast<const ViewAsEquipSkill *>(Sanguosha->getSkill(instance.skillName)))
+            enumerated = false;
         const ViewAsSkill *skill = Sanguosha->getViewAsSkill(instance.skillName);
+        if (skill && !skill->getExpandPile().isEmpty()) enumerated = false;
         if (skill && !dynamic_cast<const ViewAsSkillV2 *>(skill)
             && !player->isSkillInvalid(instance.skillName, instance.instanceID)
             // V1 response availability has separate nullification hooks and legacy
@@ -1114,6 +1131,10 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             enumerated = false;
             continue;
         }
+        const QStringList stages = skill->aiConversionStages();
+        if (skill->getN() != 1 || skill->declaresCardName()
+            || stages != QStringList({"material", "output", "targets"}))
+            staged = false;
         const int cost = skill->getN();
         const bool parameterized = cost >= 2 && skill->hasIndependentAIConversion();
         if (cost < 0 || cost > 8 || (cost > 1 && !parameterized)) {
@@ -1162,6 +1183,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             // conversion: it is already carried by the skill action path and its
             // selected cards. Skipping it is classification, not a coverage gap.
             if (produced->objectName().isEmpty()) {
+                staged = false;
                 const_cast<Card *>(produced)->deleteLater();
                 continue;
             }
@@ -1177,6 +1199,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
             view.activationQuotaAvailable = action.activationQuotaAvailable;
             view.sourceQuotaAvailable = action.sourceQuotaAvailable;
             view.subcardIds = selection;
+            view.selectionStages = stages;
             view.costCount = parameterized ? cost : 0;
             view.eligibleSubcardIds = eligible;
             const AICardCandidateView candidate = makeAICardCandidate(m_room, player,
@@ -1198,6 +1221,7 @@ bool AiDecisionCoordinator::buildCardConversions(ServerPlayer *player,
         }
     }
     request.conversionsEnumerated = enumerated;
+    request.stagedActionsComplete = enumerated && staged;
     return enumerated;
 }
 
