@@ -312,10 +312,9 @@ cd /d "%QSAN_ASSET_ROOT%"
 
 Keep the dedicated server's validated INI separate from the GUI's persisted INI.
 The GUI adds preferences which are not part of the server configuration schema.
-The rejected preflight used `AIDelay`, `UserName` and a zero
-`NullificationCountDown`; use `--ai-delay`, leave GUI-only keys out, and validate
-the server's accepted values before launching the single game. The completed
-run used this command pair, with a separate `data\server-valid.ini`:
+Use `--ai-delay` rather than the GUI-only `AIDelay`/`UserName` keys, avoid a zero
+`NullificationCountDown`, and validate the server's accepted values before launching
+the game. Command pair (with a separate `data\server-valid.ini`):
 
 ```bat
 QSanguoshaXPServer.exe --config "%QAROOT%\data\server-valid.ini" --asset-root "%QSAN_ASSET_ROOT%" --game-mode 05p --seed 20261003 --port 19527 --bind-address 127.0.0.1 --ai on --ai-delay 0 --operation-timeout 10 --autotest-log "%QAROOT%\server-autotest.log"
@@ -332,65 +331,46 @@ listener. PID 0 `TIME_WAIT` entries do not mean the listener is still bound.
 ### Credential-free fallback and known host/guest traps
 
 If the ignored Guest Control credential is unavailable, keep the guest security
-settings intact. The 2026-10-03 run used the existing logged-in desktop, ISO
-delivery, native CMD and VirtualBox keyboard commands. Share only a newly
-created, empty result directory through a transient `QSANQAResults` share;
-guest output goes to `\\vboxsrv\QSANQAResults`. Do not share the whole checkout,
-payload or artifact directory. Copy the payload with `xcopy /E /I /Y` into the
-new isolated guest directory: the canonical `INSTALL.CMD` cleans the existing
-`C:\QSanguoshaXP` installation and is unsuitable when that installation must be
-preserved.
+settings intact and use the logged-in desktop, ISO delivery, native CMD and
+VirtualBox keyboard commands. Share only a newly created, empty result directory
+through a transient `QSANQAResults` share (guest output goes to
+`\vboxsrv\QSANQAResults`), never the whole checkout, payload or artifact directory.
+Copy the payload with `xcopy /E /I /Y` into a new isolated guest directory: the
+canonical `INSTALL.CMD` cleans the existing `C:\QSanguoshaXP` installation.
 
 | Symptom | Cause / next-run action |
 |---|---|
-| One VBoxManage invocation reports `poweroff` while the desktop is running | In this host session, normal and elevated invocations reached different VBoxSVC contexts. Use the same approved elevation context for start, status, media, keyboard, screenshots and shutdown; cross-check VM logs before concluding it stopped. |
-| VM launch appears stalled | The observed host hardening/start phase took minutes. Retain `VBox.log` and `VBoxHardening.log`, check the same control context, and avoid duplicate launches. |
+| One VBoxManage invocation reports `poweroff` while the desktop is running | Normal and elevated invocations can reach different VBoxSVC contexts. Use the same approved elevation context for start, status, media, keyboard, screenshots and shutdown; cross-check VM logs before concluding it stopped. |
+| VM launch appears stalled | The host hardening/start phase can take minutes. Retain `VBox.log` and `VBoxHardening.log`, check the same control context, and avoid duplicate launches. |
 | The start of a typed command disappears | Win+R / CMD was not ready. Open Run, wait about 1.5 seconds, type `cmd`, press Enter, wait again, then type the command. Use bounded keyboard injection, not guessed mouse coordinates. |
-| `cscript` refuses to run | Windows Script Host is disabled in this guest. Use native `.cmd`, `wmic`, `netstat` and a stdin producer for `shutdown`; do not enable WSH merely to run acceptance. |
+| `cscript` refuses to run | Windows Script Host is disabled in the guest. Use native `.cmd`, `wmic`, `netstat` and a stdin producer for `shutdown`; do not enable WSH. |
 | An exit record says only `exit=` | In CMD, an adjacent digit can become a redirection descriptor. Save `%errorlevel%` immediately and write `echo exit=%QARC% >exit.txt` with a space before `>`. |
 | QA files exist in the staging directory but not in the ISO | IMAPI had already enumerated the root before those files were added. Finish staging before image creation and verify the completed ISO's root; otherwise rebuild or use a separate small helper ISO. |
-| ISO creation is quiet for several minutes | `AddTree` for the full asset tree took about ten minutes in this run. Quiet output alone is not proof of a hang. |
+| ISO creation is quiet for several minutes | `AddTree` for the full asset tree takes about ten minutes; quiet output is not a hang. |
 | The small helper ISO builder fails compiling `ComStreamCopy.cs` | The artifact-local helper hit diagnostic CS9191 under PowerShell 7. Use Windows PowerShell 5.1 for that preserved helper; the canonical ISO entry remains `legacy/xp/tools/new-xp-iso.ps1`. |
 | Old DVD restoration refers to a missing file | Record the original medium UUID and attachment before changing it. Restore that original configuration and report any pre-existing missing file separately. Do not invent a replacement or treat restoration as repairing the old media. |
-| Server has a winner but GUI reports `FAIL_timeout` | Compare the two event timelines. This run's server completed roughly 33 seconds before the GUI deadline; do not call it a server gameplay timeout or infer a diagnosed product cause. Preserve evidence and obtain new scope before debugging or retrying. |
+| Server has a winner but GUI reports `FAIL_timeout` | Compare the two event timelines (in the 2026-10-03 run the server finished about 33 seconds before the GUI deadline, cause undiagnosed). Preserve evidence and obtain new scope before debugging or retrying. |
 
-The preserved native-CMD fallback consists of `QA_RUN.cmd`, `QA_SERVER.cmd` and
-`QA_WAIT.cmd` under
-`builds/xp-vm-acceptance-20261003-001328/vm/qa-helper/`. Before reuse, replace the
-run-specific directory, seed, port and result share, require a fresh directory,
-and remove reliance on stale stop/done markers. These are run artifacts, not a
-second supported build entry. Keep the VM's network/audio and existing user
-settings intact; after the run, shut down through ACPI, restore the original DVD
-attachment and verify the transient share is gone.
+The native-CMD fallback helpers (`QA_RUN.cmd`, `QA_SERVER.cmd`, `QA_WAIT.cmd`) are preserved under
+`builds/xp-vm-acceptance-20261003-001328/vm/qa-helper/`; before reuse replace the run-specific
+directory, seed, port and result share, require a fresh directory, and drop reliance on stale
+stop/done markers. They are not a second supported build entry. After a run, shut down through
+ACPI, restore the original DVD attachment and verify the transient share is gone.
 
-### Completed execution record — 2026-10-03
+### Last execution record — 2026-10-03
 
-The user closed this execution as a completed full test. This records completion
-of the requested build and single VM game, with the observed gate results below;
-it does not convert failed or unrun gates to PASS. No rerun is pending merely to
-finish this task.
+Evidence is indexed by `builds/xp-vm-acceptance-20261003-001328/summary.md` and `summary.json`. Only one formal game ran; preflights without `GAME_STARTED` were setup failures.
 
 | Gate | Observed result |
 |---|---|
 | Paired XP Release build/deploy, PE/import checks, guest executable hashes and build identity | PASS |
 | Five-player 05P, seed 20261003 | Server reached `game_over`, winner `lord+loyalist`, after about 541 seconds |
-| GUI acceptance | `GAME_STARTED players=5`, then `FAIL_timeout`; no GUI `GAME_OVER`, natural exit code 1. Cause not diagnosed. |
-| Cleanup | Server console `shutdown`, exit 0; `CARD_LIFETIME_ZERO`; no orphan or listener; VM cleanly powered off and original DVD restored |
-| Later font fix | Source/static checks completed; build and guest visual check NOT RUN |
-| Replay warnings | `TrickEffectData` / `NullifyingEffect` snapshot serialization warnings remain undiagnosed; the server's completed game does not validate replay |
+| GUI acceptance | `GAME_STARTED players=5`, then `FAIL_timeout`; no GUI `GAME_OVER`, natural exit code 1; cause undiagnosed |
+| Cleanup | Server `shutdown` exit 0; `CARD_LIFETIME_ZERO`; no orphan or listener; VM powered off and original DVD restored |
+| Later font fix | Source/static checks only; build and guest visual check NOT RUN |
+| Replay warnings | `TrickEffectData`／`NullifyingEffect` snapshot serialization warnings undiagnosed |
 
-Evidence, exact payload identity, event timelines and preflight logs are indexed
-by `builds/xp-vm-acceptance-20261003-001328/summary.md` and `summary.json`.
-Preflights with no `GAME_STARTED` were setup failures; only one formal game ran.
-Manual GUI/focus, reconnect, replay takeover/rollback, management, audible audio,
-other platforms and CI were not exercised. Later concurrent source changes are
-not covered by that payload's acceptance.
-
-For the next requested use, read this section first, choose the credential or
-CMD route immediately, finish all ISO staging before image creation, use the XP
-driver and separate server INI, and keep build identity with the evidence.
-An updated source/runtime snapshot needs its own authorized build or acceptance;
-neither this completed record nor its reusable setup grants a new long-game run.
+Not exercised: manual GUI/focus, reconnect, replay takeover/rollback, management, audible audio, other platforms and CI. Changes made after that payload need their own authorized build or acceptance; this record grants no new long-game run.
 
 ## Residual support limits
 
@@ -401,13 +381,7 @@ memory/load behavior remain outside the compatibility commitment. Individual
 third-party extension behavior still requires gameplay coverage for the exact
 deployed snapshot.
 
-The split-process Replay takeover/rollback, reconnect and management GUI flows
-have not completed XP guest acceptance; a missing PASS there is an open
-acceptance gate rather than a confirmed product defect.
-
-Win7-specific regressions (DPI, UAC, audio device enumeration) are tracked
-separately from XP SP3 acceptance; passing XP acceptance does not by itself
-close the Win7 x86 gate.
+The split-process Replay takeover/rollback, reconnect and management GUI flows have not completed XP guest acceptance (an open gate, not a confirmed defect). Win7-specific regressions (DPI, UAC, audio device enumeration) are tracked separately from XP SP3 acceptance.
 
 The per-game snapshot directory warning repeats on XP under the `NetworkService`
 profile after general selection. It is a separate diagnostic item and not the

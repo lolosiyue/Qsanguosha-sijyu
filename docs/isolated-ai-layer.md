@@ -2,7 +2,7 @@
 
 Isolated AI 按 Room 與觀察者隔離狀態；本文件說明各層責任與純值邊界。共用策略契約見[共用層對照](isolated-ai-common-layer.md)。
 
-目前移植驗收與缺口見[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)；執行後續 SmartAI 移植請按[遵循文件](isolated-ai-migration-playbook.md)建立逐分支帳與分級證據。
+驗收與缺口見[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)；後續移植按[遵循文件](isolated-ai-migration-playbook.md)。
 
 ## 分層
 
@@ -17,7 +17,7 @@ Isolated AI 按 Room 與觀察者隔離狀態；本文件說明各層責任與�
 
 ## 目前接線
 
-- standard mode loader 在 `room-runtime.cpp` 建立 mode AI 後註冊 standard mode AI；isolated mode 以 `modeAIUsesIsolatedEvents` 接入 event path。這是 new architecture source 證據，不能以 SmartAI fallback 代替。
+- standard mode loader 在 `room-runtime.cpp` 建立 mode AI 後註冊 standard mode AI；isolated mode 以 `modeAIUsesIsolatedEvents` 接入 event path。這是 new architecture source 證據。
 - `ask-for-choice.lua` 與 `ask-for-use-card.lua` 已提供 ask-for defaults；`respond_card` 會消費純值 request 與 conversion proposal。
 - C++ response conversion 使用實際 active skill instance 建立 authority ticket。Lua 的 `card_spec` 回答需回到 native 端核對 request kind、conversion identity、activation/source identity、cost 與 offered cards；show/pindian 不接受 spec。
 - `decision-core.lua` 已消費 `ai_suit_priority`、`ai_card_priority`、`ai_chaofeng`、`ai_weapon_value`、`ai_armor_value`、`ai_skill_defense`、`ai_NeedPeach`，以及 dynamic damage/value inputs；draw/discard/damage/best-damage wrappers 只在 projected candidates 上工作。
@@ -25,10 +25,10 @@ Isolated AI 按 Room 與觀察者隔離狀態；本文件說明各層責任與�
 
 ## bounded policy
 
-state 掃描是每 viewer `O(n + visible state)`，排序是 `O(n log n)`，全 observer event 約 `O(v(n + visible state))`；包作者 hook 的成本另計。目標／成本投影預算由 [AiDecisionCoordinator::makeRequest](../src/server/ai-decision-coordinator.cpp) 設定；轉化探測與數量限制見同檔 `buildCardConversions`，事件紀錄上限見 `AiEventLogLimit`，單事件 delta 上限見 [AiMaxIntentionDeltas](../src/server/ai-runtime.cpp)。超出上限會保留 incomplete/unknown，不能當作沒有候選或合法性已知。
+state 掃描是每 viewer `O(n + visible state)`，排序是 `O(n log n)`，全 observer event 約 `O(v(n + visible state))`；包作者 hook 的成本另計。目標／成本投影預算由 [AiDecisionCoordinator::makeRequest](../src/server/ai-decision-coordinator.cpp) 設定；轉化探測與數量限制見同檔 `buildCardConversions`，事件紀錄上限見 `AiEventLogLimit`，單事件 delta 上限見 [AiMaxIntentionDeltas](../src/server/ai-runtime.cpp)。超出上限保留 incomplete/unknown。
 
 ## 明確未完成項
 
-完整 legacy V1 view-as/轉化 callback、個別 skill hook 的 native API、完整 cardEffect/prohibition/distance/range/usage legality、秘密資訊與所有逐武將策略，仍是 native/coverage debt。逐武將策略與完整對局驗收尚未完成。
+完整 legacy V1 view-as/轉化 callback、個別 skill hook 的 native API、完整 cardEffect/prohibition/distance/range/usage legality、秘密資訊與逐武將策略，仍是 native/coverage debt；完整對局驗收尚未完成。
 
 共用層 contract 與 API 見[共用層對照](isolated-ai-common-layer.md)；新增技能見[撰寫指南](isolated-ai-authoring-guide.md)。

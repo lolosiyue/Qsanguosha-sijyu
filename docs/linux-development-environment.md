@@ -16,31 +16,19 @@ Server 使用 `QCoreApplication`，不需要 X11／Wayland、FMOD 或任何 GUI�
 | Linux GUI M2B-B（效果 profile：Spine／GIF／動畫降級） | **Complete** — `linux-package-ci.yml` 由成品跑 `--effects-smoke` full／reduced／none 三個 profile（見 [§4.8](#48-linux-gui-m2b-b-effects-smoke)） |
 | Linux packaging（portable tar.zst／AppImage／desktop entry） | **Complete**（M3）；`.deb` 延後至 M3.1 |
 
-M0 的定義固定為 **configure ＋ compile ＋ link**，加上一個 binary capability smoke。
-M1 的定義固定為 **真正執行完一次 GUI startup path 然後自動正常退出**。
-M2B-A 的定義固定為 **audio backend 與 QML media component 建立得起、能接收 media
-source、缺資產／缺裝置有明確降級、清理得乾淨**；它**不包括**「真的聽到聲音」——
-CI runner 沒有音訊裝置。
-M2B-B 的定義固定為 **一個 client 三個效果 profile（full／reduced／none）執行同一
-條集中 policy、動畫 completion 保證 exactly once、缺／壞資產降級成靜態 UI、
-NONE 不建立 Spine／QMovie／video object**；它**不包括**「畫面看起來一樣」——
-CI runner 沒有正式美術資產，pixel diff 不會做 blocking gate。
+各階段的完成定義：
 
-仍未完成，不在 M0／M1／M2／M2B-A／M2B-B 範圍：
+- **M0**：configure ＋ compile ＋ link，加一個 binary capability smoke。
+- **M1**：真正執行完一次 GUI startup path 後自動正常退出。
+- **M2B-A**：audio backend 與 QML media component 建得起、能接收 media source、缺資產／缺裝置有明確降級、清理乾淨（不含「真的聽到聲音」，CI runner 沒有音訊裝置）。
+- **M2B-B**：同一個 client 的三個效果 profile（full／reduced／none）走同一條集中 policy，動畫 completion exactly once，缺／壞資產降級成靜態 UI，NONE 不建立 Spine／QMovie／video object（不含 pixel diff，CI runner 沒有正式美術資產）。
 
-```text
-Linux .deb packaging（M3.1；deferred，見 linux-packaging.md）
-直版（portrait）UI
-```
+未完成：Linux `.deb` packaging（M3.1，見 [linux-packaging.md](linux-packaging.md)）、直版（portrait）UI。
 
 > Android 原生執行期與 Web／solo 的 WASM 建置入口均已落地，見 [`android-build.md`](android-build.md)／[`android-extension-runtime.md`](android-extension-runtime.md) 與 [`web-client-wasm-runtime.md`](web-client-wasm-runtime.md)／[`browser-solo.md`](browser-solo.md)；兩者不在未完成清單。
 
-> ⚠️ `--local-response-ui-capabilities` 在建立 `QApplication` 之前就直接回傳 JSON，所以它是
-> **binary capability smoke**，不是 GUI／offscreen startup smoke。真正的 `QApplication`／
-> `MainWindow`／`HomeScene` 啟動驗證是 M1 的 `--ui-startup-smoke`（見 [§4.5](#45-linux-gui-m1-startup-smoke)）。
+> `--local-response-ui-capabilities` 在建立 `QApplication` 之前就回傳 JSON，只是 binary capability smoke；GUI 啟動驗證是 M1 的 `--ui-startup-smoke`（[§4.5](#45-linux-gui-m1-startup-smoke)）。
 
-- Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete；Linux GUI M2（network game）Complete；Linux GUI M2B-A（multimedia）Complete；Linux GUI M2B-B（effects profiles）Complete
-- Last Updated: 2026-09-30
 - 對應 Windows 開發環境請見 [`windows-build.md`](windows-build.md)。
 
 ## 1. 平台基線
@@ -251,9 +239,7 @@ M0 的 binary capability smoke：
 # {"schema_version":1,"auto":true,"show":true,"inspect":true}
 ```
 
-> 這個 flag 在建立 `QApplication` 之前就回傳，所以毋須 `QT_QPA_PLATFORM=offscreen`，
-> 亦不算 GUI startup 驗證。以上全部只驗證 configure／compile／link 與 binary 可執行。
-> 真正的 GUI 啟動驗證見下面 4.5。
+> 這個 flag 在建立 `QApplication` 之前就回傳，毋須 `QT_QPA_PLATFORM=offscreen`；GUI 啟動驗證見 4.5。
 
 ## 4.5 Linux GUI M1 startup smoke
 
@@ -296,17 +282,7 @@ report 的 `home_scene.render_host`、`root_width`、`root_height` 可確認實�
 
 ### Stage 與結果 marker
 
-每個 stage 一行 `UI_STARTUP_STAGE`，最後一定有一行 `UI_STARTUP_RESULT`：
-
-```text
-UI_STARTUP_STAGE {"schema_version":1,"stage":"application","ok":true,...}
-UI_STARTUP_STAGE {"schema_version":1,"stage":"engine","ok":true,...}
-UI_STARTUP_STAGE {"schema_version":1,"stage":"main_window","ok":true,...}
-UI_STARTUP_STAGE {"schema_version":1,"stage":"event_loop","ok":true,...}
-UI_STARTUP_STAGE {"schema_version":1,"stage":"home_scene","ok":true,...}
-UI_STARTUP_STAGE {"schema_version":1,"stage":"shutdown","ok":true,...}
-UI_STARTUP_RESULT {"schema_version":1,"ok":true,"stage":"shutdown","reason":"ok","exit_code":0,...}
-```
+每個 stage 一行 `UI_STARTUP_STAGE {"schema_version":1,"stage":"<name>","ok":true,...}`，依序為 `application`、`engine`、`main_window`、`event_loop`、`home_scene`、`shutdown`；最後一定有一行 `UI_STARTUP_RESULT {"ok":true,"stage":"shutdown","reason":"ok","exit_code":0,...}`。
 
 失敗時 `ok` 為 `false`，`stage` 指出失敗在哪一步，`reason` 分辨 `stage_failed`
 與 `timeout`，並帶 `error` 文字。任何退出路徑（包括舊有 `exit(1)`）都會補一行
@@ -415,21 +391,8 @@ trustee，而且一定會在 report 記下 `trustee_fallback`，不會假裝成�
 
 ### Stage 與結果 marker
 
-```
-NETWORK_UI_STAGE {"schema_version":1,"stage":"connected","ok":true,...}
-NETWORK_UI_STAGE {"schema_version":1,"stage":"signed_up","ok":true,...}
-NETWORK_UI_STAGE {"schema_version":1,"stage":"room_scene","ok":true,...}
-NETWORK_UI_STAGE {"schema_version":1,"stage":"dashboard","ok":true,...}
-NETWORK_UI_STAGE {"schema_version":1,"stage":"general_selected","ok":true,...}
-NETWORK_UI_STAGE {"schema_version":1,"stage":"game_started","ok":true,...}
-NETWORK_UI_STAGE {"schema_version":1,"stage":"game_over","ok":true,...}
-NETWORK_UI_STAGE {"schema_version":1,"stage":"shutdown","ok":true,...}
-NETWORK_UI_RESULT {"schema_version":1,"ok":true,"stage":"shutdown","exit_code":0,"reason":"ok",...}
-```
-
-次序與任務書列出的稍有不同，是**刻意**跟產品真實流程：RoomScene 在 client 收到
-setup 之後立即由 `MainWindow::enterRoom()` 建立，早於選將請求，所以
-`room_scene`／`dashboard` 排在 `general_selected` 之前。
+每個 stage 一行 `NETWORK_UI_STAGE {"schema_version":1,"stage":"<name>","ok":true,...}`，依序為 `connected`、`signed_up`、`room_scene`、`dashboard`、`general_selected`、`game_started`、`game_over`、`shutdown`；最後是 `NETWORK_UI_RESULT {"ok":true,"stage":"shutdown","exit_code":0,"reason":"ok",...}`。
+`room_scene`／`dashboard` 排在 `general_selected` 之前是跟產品真實流程：RoomScene 在 client 收到 setup 後立即由 `MainWindow::enterRoom()` 建立。
 
 ### Exit code：每種故障有自己的編號
 
@@ -489,19 +452,10 @@ Runner 負責：
 
 ### 已修的 base 缺陷
 
-以下兩個崩潰曾由 M2 runner 揭出，現已修好。**新見到的崩潰不要假設是它們，要當新缺陷查。**
+以下兩個崩潰曾由 M2 runner 揭出，現已修好；**新見到的崩潰要當新缺陷查，不要假設是它們**。
 
-* **`server-teardown-crash`**（對局打完後 server 拆房時 SIGSEGV／SIGABRT）：兩個收尾
-  use-after-free 已修——`a234944`（`GameSnapshot` 共同持有已退役的 `Card`）與
-  `73eb98b`（Lua state 活過 worker 收尾）。runner 仍保留
-  `--known-base-defect server-teardown-crash` 降級開關：它**只在**偵測到崩潰、
-  server 已寫出帶勝方的 game over 且 client exit 0 之後才降級，崩潰照樣印出並寫入
-  `summary["known_base_defects"]`；連續多局都沒觸發就可以拿掉。
-* **05p client 繪製崩潰**（`QGraphicsScene` 的 BSP index 留住已銷毀 item 指針）：
-  已修（`1eb3f76`、`d5e62de`），`RoomScene` 改用
-  `setItemIndexMethod(QGraphicsScene::NoIndex)`。**不准改回 Qt 預設的
-  `BspTreeIndex`**——只修 `PlayerCardContainer::updateMark()` 等同步 `delete`
-  proxy widget 的位置並不夠，真 allocator 下仍有未識別的殘留來源。
+* **`server-teardown-crash`**（對局後 server 拆房時 SIGSEGV／SIGABRT）：已修 `a234944`（`GameSnapshot` 共同持有已退役的 `Card`）與 `73eb98b`（Lua state 活過 worker 收尾）。runner 仍保留 `--known-base-defect server-teardown-crash` 降級開關，僅在偵測到崩潰、server 已寫出帶勝方的 game over 且 client exit 0 時降級，並寫入 `summary["known_base_defects"]`；連續多局都沒觸發即可移除。
+* **05p client 繪製崩潰**（`QGraphicsScene` 的 BSP index 留住已銷毀 item 指針）：已修（`1eb3f76`、`d5e62de`），`RoomScene` 使用 `setItemIndexMethod(QGraphicsScene::NoIndex)`。**不准改回 Qt 預設的 `BspTreeIndex`**——只修 `PlayerCardContainer::updateMark()` 等同步 `delete` proxy widget 的位置並不夠。
 
 ### 素材
 
@@ -614,19 +568,7 @@ bash tools/ci/linux-gui-multimedia-smoke.sh ./relwithdebinfo/QSanguosha artifact
     --multimedia-report artifacts/multimedia.json
 ```
 
-輸出 marker：
-
-```text
-MULTIMEDIA_STAGE {"stage":"backend","ok":true,...}
-MULTIMEDIA_STAGE {"stage":"ui_effect","ok":true,...}
-MULTIMEDIA_STAGE {"stage":"voice","ok":true,...}
-MULTIMEDIA_STAGE {"stage":"bgm","ok":true,...}
-MULTIMEDIA_STAGE {"stage":"missing_asset","ok":true,...}
-VIDEO_BACKEND_RESULT {...}
-MULTIMEDIA_STAGE {"stage":"video","ok":true,...}
-MULTIMEDIA_STAGE {"stage":"shutdown","ok":true,...}
-MULTIMEDIA_RESULT {"schema_version":1,"ok":true,...}
-```
+輸出 marker：`MULTIMEDIA_STAGE {"stage":"<name>","ok":true,...}`，依序為 `backend`、`ui_effect`、`voice`、`bgm`、`missing_asset`、`video`（前有一行 `VIDEO_BACKEND_RESULT`）、`shutdown`；最後是 `MULTIMEDIA_RESULT`。
 
 exit code：`0` pass、`1` GUI setup、`2` audio stage、`3` video stage、
 `4` app 內部 timeout、`5` 參數錯、`6` internal。app 內部 timeout **一定**會回傳
@@ -742,19 +684,7 @@ bash tools/ci/linux-gui-effects-smoke.sh ./relwithdebinfo/QSanguosha artifacts \
     --effects-timeout-ms 60000 --effects-report artifacts/effects.json
 ```
 
-輸出 marker：
-
-```text
-EFFECTS_PROFILE_RESULT {"profile":"none","source":"cli",...}
-EFFECTS_STAGE {"stage":"policy","ok":true,...}
-EFFECTS_STAGE {"stage":"completion","ok":true,...}
-EFFECTS_STAGE {"stage":"animation","ok":true,...}
-EFFECTS_STAGE {"stage":"gif","ok":true,...}
-EFFECTS_STAGE {"stage":"spine","ok":true,...}
-EFFECTS_STAGE {"stage":"budget","ok":true,...}
-EFFECTS_STAGE {"stage":"shutdown","ok":true,...}
-EFFECTS_RESULT {"schema_version":1,"ok":true,...}
-```
+輸出 marker：先 `EFFECTS_PROFILE_RESULT {"profile":"none","source":"cli",...}`，再依序 `EFFECTS_STAGE` 的 `policy`、`completion`、`animation`、`gif`、`spine`、`budget`、`shutdown`，最後 `EFFECTS_RESULT`。
 
 exit code：`0` pass、`1` GUI setup、`2` policy、`3` completion、
 `4` asset fallback、`5` budget／shutdown、`6` app 內部 timeout、`7` 參數錯、
@@ -794,51 +724,16 @@ Runner 會驗 client 真的由 CLI 解析出要求的那個 profile，而 `none`
 portable 與 AppImage 成品各跑 full／reduced／none profile；這個是成品 gate，
 不會因一般 GUI source 改動而單獨觸發。
 
-成品 smoke 只用 `tools/ci/fixtures/effects/`（按需生成、不入庫）的合成 fixture（4x4 GIF、幾張
-8x8 PNG、一個特意弄壞的 Spine 目錄），全部由
-`tools/ci/make-effects-fixtures.py` 用標準庫生成，不是遊戲資產。
-**備齊正式資產的 production smoke 不會成為 clean checkout 的 blocker。**
-沒有合法 Spine fixture 是刻意的：Spine 階段只驗「載入失敗要降級、不可崩潰」與 REDUCED／NONE 不建立 `SpineGlItem`。
-
-驗的是行為，不是 pixel。screenshot 只作 failure artifact。
+成品 smoke 只用 `tools/ci/fixtures/effects/`（由 `tools/ci/make-effects-fixtures.py` 按需生成、不入庫）的合成 fixture（4x4 GIF、幾張 8x8 PNG、一個特意弄壞的 Spine 目錄）。沒有合法 Spine fixture 是刻意的：Spine 階段只驗「載入失敗要降級、不可崩潰」與 REDUCED／NONE 不建立 `SpineGlItem`。驗行為，不驗 pixel；screenshot 只作 failure artifact。
 
 ### 順手修好的缺資產處理
 
-**`PixmapAnimation::valid()` 以前永遠都是 true。** `setPath()` 用 `do`-`while`，
-也就是在未驗證 frame 0 是否存在之前就已經 append 了一格；而
-`getPixmapFromFileName()` 缺檔案時回傳的是一張 1x1 佔位圖（**不是** null pixmap）。
-所以 `frames` 永遠不會空，`valid()` 永遠 true，全部「缺資產就不要播」的分支
-根本從來沒有執行過：
+`PixmapAnimation::valid()` 以前永遠是 true（`setPath()` 的 `do`-`while` 在驗證 frame 0 前就 append，而缺檔時 `getPixmapFromFileName()` 回傳 1x1 佔位圖而非 null），所以所有「缺資產就不要播」的分支從未執行。現已改成普通 `while`，只讀真正存在的 frame（資產齊全時行為不變）。`valid()` 變誠實後補了以下守衛：
 
-* `GetPixmapAnimation()` 從來沒有執行過 `else { delete pma; return nullptr; }`，
-  所以查 `nullptr` 的 caller（例如 `doPindianAnimation()` 的
-  `else pindian_box->disappear()`）從來沒有收到過；
-* `_createEquipBorderAnimations()` 從來沒有執行過 `!valid()`，`_m_equipBorders[i]`
-  從來沒有被設為 `nullptr`。
-
-沒有資產時真正發生的是：每個動畫多一個看不到的 1x1 sprite 加一個 20Hz timer。
-不是 crash，但 fallback 從來沒跑過 —— REDUCED／NONE 一旦開始靠它們，就正是
-最不想見到的狀態。`setPath()` 改成普通 `while`，只讀真正存在的 frame。
-資產齊全時行為完全一樣（loop 條件本來就是同一個 `QFile::exists()`）。
-
-`valid()` 回復誠實之後，以下三條路由「不可達」變成「可達」，所以要補守衛：
-
-* **永久黑幕**：`doLightboxAnimation()` 的 `anim=` 分支建立了一塊 80% 不透明的
-  rect，只在 `PixmapAnimation::finished()` 才拆除。現在
-  `GetPixmapAnimation()` 真的會回傳 `nullptr`，這塊 rect 就會永遠留在畫面 ——
-  遊戲還能玩但什麼都看不到。已改成立即拆除並且 warn。
-* **裝備牌 nullptr deref**：`_setEquipBorderAnimation()` 用 `Q_ASSERT` 守住
-  `_m_equipBorders[index]`，但 `Q_ASSERT` 在 Release／RelWithDebInfo 是 no-op。
-  已改成真 null check。
-* **`PixmapAnimation` 自己**：`_m_timerId`／`current`／`off_x`／`off_y` 都未
-  初始化（未 `start()` 就 `stop()` 會殺一個垃圾 timer id），而
-  `paint()`／`boundingRect()`／`advance()` 都沒有檢查 `frames` 是否為空。四樣都
-  補上了。
-
-同上面無關、獨立的一個：
-
-* **動態立繪 nullptr deref**：`GraphicsPixmapHoverItem` 在 item 未進入 scene
-  時 `m_proxyWidget` 會留下 null，接著照 `->show()`。已改成落回靜態立繪。
+* **永久黑幕**：`doLightboxAnimation()` 的 `anim=` 分支建立的 80% 不透明 rect 只在 `PixmapAnimation::finished()` 拆除；`GetPixmapAnimation()` 回傳 `nullptr` 時改為立即拆除並 warn。
+* **裝備牌 nullptr deref**：`_setEquipBorderAnimation()` 的 `Q_ASSERT` 在 Release 是 no-op，改成真 null check。
+* **`PixmapAnimation` 本身**：`_m_timerId`／`current`／`off_x`／`off_y` 初始化，`paint()`／`boundingRect()`／`advance()` 檢查 `frames` 是否為空。
+* **動態立繪 nullptr deref**（獨立）：`GraphicsPixmapHoverItem` 在 item 未進入 scene 時 `m_proxyWidget` 為 null，改為落回靜態立繪。
 
 ### 設定
 
@@ -851,8 +746,7 @@ Key 名 Windows／Linux 共用；舊設定檔沒有這個 key 或值無法識別
 
 ## 4.9 WSLg 手動驗證
 
-Xvfb CI 通過**不可以**取代 WSLg 手動驗證：Xvfb 沒有 compositor，亦不會執行 WSLg 的
-Wayland／X11 橋接。在 WSLg 下重複以下步驟：
+Xvfb 沒有 compositor，不經過 WSLg 的 Wayland／X11 橋接，所以 WSLg 另需手動驗證：
 
 ```bash
 CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64 cmake --preset linux-gui-gcc-debug
@@ -1120,13 +1014,7 @@ M1 startup、M2B-A multimedia 與 M2B-B full／reduced／none。這個 workflow 
 packaging 路徑、相關 PR、`push main`、tag 或手動 dispatch 觸發，不是一般 GUI
 compile CI。
 
-> **M2 的 network game job 已經由 CI 移除。** runner 沒有美術／音訊
-> 資產，在無資產環境下 client 與 server 打完一局之後會一起 SIGSEGV；同一個
-> binary 在資產齊全的本機是 8/8 PASS。Windows 環境同樣有這個問題，headless mode
-> 閃退本身也是遊戲中已有現象。所以 `gui_network_smoke.py` 改為**本機 gate**，
-> 見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)。
-
-成品 workflow **刻意不做**：visible startup、Wayland、pixel screenshot gate。
+M2 的 network game job 不在 CI 跑（原因與本機 gate 見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)）。成品 workflow 刻意不做 visible startup、Wayland、pixel screenshot gate。
 
 Linux Server CI 繼續用 distro Qt，不會受 GUI 的 Qt 6.11 baseline 影響。
 

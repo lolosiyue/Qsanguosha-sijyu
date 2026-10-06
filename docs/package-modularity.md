@@ -1,17 +1,15 @@
 # Lua package modularity: source contracts and lifecycle
 
-This document records the source interfaces for the first two package
-milestones. It does not claim that native installation, Android import, Web
-runtime execution, or a complete game has passed acceptance.
+This document records the source interfaces for the first two package milestones.
 
 ## Phase boundaries
 
-| Phase | Scope | Evidence boundary |
-| --- | --- | --- |
-| 1 | Native desktop package catalog and Lua/media loading; directory/ZIP install, remove, update and rollback UI; safe migration tools | Source implementation and written migration contracts do not prove GUI acceptance or successful rollback. |
-| 2 | Import modular ZIPs and bundled packages into Android's existing snapshots; same-origin Web package loading; Browser Solo package distribution | Packaging structure and local URLs do not prove Android import, browser gameplay, or a clean full game. |
-| 3 | Remote package index, PAD/CDN delivery, updater | Not implemented here. |
-| 4 | Workshop | Not implemented here. |
+| Phase | Scope |
+| --- | --- |
+| 1 | Native desktop package catalog and Lua/media loading; directory/ZIP install, remove, update and rollback UI; safe migration tools |
+| 2 | Import modular ZIPs and bundled packages into Android's existing snapshots; same-origin Web package loading; Browser Solo package distribution |
+| 3 | Remote package index, PAD/CDN delivery, updater (not implemented) |
+| 4 | Workshop (not implemented) |
 
 Phase 1 uses `manifest.json` as the package metadata filename. Phase 2's
 Browser Solo package descriptor is carried as `content` in the Solo runtime

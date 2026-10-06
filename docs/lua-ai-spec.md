@@ -716,16 +716,14 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 
 ### 15.2 AI VM 分離與遷移模式
 
-- Isolated 是獨立的新架構。SmartAI 的函式與 hook 契約只作行為參考，不能作為
-  isolated 決策的依賴；C++ 既有 legacy fallback 僅為故障保底，觸發即代表新版驗收失敗。
-  本節較早的逐批遷移紀錄保留作歷史背景，不能以「舊 AI 接手」宣稱新版能力已完成。
+- Isolated 是獨立的新架構。SmartAI 的函式與 hook 契約只作行為參考，不是 isolated 決策的依賴；
+  C++ 既有 legacy fallback 僅為故障保底，觸發即代表新版驗收失敗。
 - 每個 Room 的 `AiLuaRuntime` 與 Gameplay Lua VM 分離；Isolated handler 只取得
   value-only request、viewer-scoped `AIWorldView`、decision-scoped `AiRng` 與 `AiData`。
 - `LegacyDirect` 僅供過渡；`LegacyAdapted` 將既有 `activate`／`askForUseCard` 結果複製成
   `AIResult`，再走通用 Room 驗證 gate。
-- 決策預設走 `Isolated`：handler 必須透過純值 request 自主作答。未覆蓋、無法作答、
-  過期或出錯均為待補缺口，不能依靠保底形成策略流程。既有路由仍可按 callback 選擇
-  `LegacyAdapted`／`LegacyDirect`，但這些路由的結果不計入 isolated 驗收。
+- 決策預設走 `Isolated`：handler 必須透過純值 request 自主作答；未覆蓋、無法作答、過期或出錯均為待補缺口。
+  既有路由仍可按 callback 選擇 `LegacyAdapted`／`LegacyDirect`，其結果不計入 isolated 驗收。
 - `AiData` 持久化由 C++ `AiDataStore` 管理固定路徑、JSON/大小驗證、process lock 與
   原子寫入；Isolated VM 不取得 raw `io`、`os`、`coroutine` 或 native `sgs` binding，
   只可呼叫 `ai_data.read()`／`ai_data.write(json)`。C++ 會重建只含 primitive enum 的安全
@@ -745,8 +743,7 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   instruction budget 保護，超限時只停用該 Room 的 Isolated VM，不阻塞 Room 建立。
 - `AiIsolatedScripts` 只接受 `lua/ai/isolated/` 下的單一 `.lua` 檔名；腳本在 mandatory
   runtime 層就緒後由 C++ loader 載入。
-- 所有 decision kind 預設 `Isolated` 路由，unhandled 表示新版尚未完成該題。
-  `ask-for-use-card.lua` 只提供 use-card pattern／skill registry 與
+- `ask-for-use-card.lua` 只提供 use-card pattern／skill registry 與
   decision-specific dispatch；pattern handler 使用
   `ai_skill_use[pattern] = function(self, prompt, request)` 註冊，legacy 形狀的
   callback 另由 `ai_skill_use_legacy` 註冊（§15.2.3）。`PlayerView`
@@ -761,7 +758,6 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   handler 透過 `self.player` 與 C++ 注入的 `sgs.Player_Play` 判斷，不含 phase magic number；
   需要 move/effect userdata 或友方排序的其餘分支維持 `NotCovered`。
 - 覆蓋狀態以 `ai_coverage` 申報與決策結果共同觀察；登記 registry 不等於實際作答。
-  任一未覆蓋、結果過期、執行錯誤或權威驗證失敗，均不能被保底答案抵銷。
 - `AIResult` boundary 限制單字串 64 KiB、選牌 2048 張、目標 64 名，避免 payload 從 Lua
   allocator 放大到 C++ heap。
 - AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI fallback；
@@ -844,14 +840,8 @@ array 與 string-key table 讀取 snapshot。
 | `SmartAIView:hasSkills(names, playerOrList)` | 省略第二參數時查自身；單一 PlayerView 回 boolean（資料未知回 nil）；玩家集合回第一個匹配的 PlayerView 或 nil。拒絕非玩家／混合集合 |
 | 副本／未知 | 名單修改不改 snapshot 順序；卡牌／技能集合元素也複製 DTO，避免透過 `_view` 改原輸入。缺少 equips／judging_area／skills 投影回 nil；這不是所有代理的深度防寫保證 |
 
-本批僅接入 `SmartAIView:hasSkills` 共用 helper。舊 SmartAI 的 getDisplayCards／getKnownCards／
-isCard／aiUseCard 等 userdata guard 與 native 查詢仍待後續分批處理（回呼 ABI 與結果轉換見 §15.2.3），
-不能直接把 PlayerView 傳入這些舊入口。未暴露 `sgs.SPlayerList/CardList` 原生建構器。
-
-此檢查點只擴充共用轉接層，不新增技能 handler、不切換 Isolated／Shadow 路由，
-也不宣稱整份 SmartAI 可直接在 sandbox 執行。原本的 `isolated-adapter-contract.lua` 與
-room-runtime-isolation suite（C++ 順序投影、序列化及 activate／use_card 共用入口）
-已隨全部測試於 2026-09-25 移除。
+目前僅 `SmartAIView:hasSkills` 是共用 helper；舊 SmartAI 的 getDisplayCards／getKnownCards／isCard／aiUseCard 等
+userdata guard 與 native 查詢尚不能接受 PlayerView（回呼 ABI 與結果轉換見 §15.2.3）。未暴露 `sgs.SPlayerList/CardList` 原生建構器。
 
 `PlayerView:getSkills()` 一個可見 instance 對應一個 `SkillView`，保留同名多實例與
 `instance_id`；`hasSkill("name#instance")` 可精確查詢，invalid instance 不算持有。
@@ -918,9 +908,6 @@ legacy callback 的第五參數是 `AILegacyRequest`，只在 request 帶 `skill
 沙箱 `sgs` 另反射 `Card::HandlingMethod`（`sgs.Card_MethodUse` 等），讓 legacy callback 的第三
 參數可以比對；其餘 enum 與 `string:split/contains/startsWith` 等工具仍未提供。
 
-此檢查點只定義回呼 ABI、分派與結果轉換，不新增技能 handler、不改路由、不擴大
-DecisionKind。原契約案例（request view 與 normalize、分派與轉換的端到端）已隨測試移除。
-
 #### 15.2.4 共用入口的型別邊界（legacy 側）
 
 `smart-ai.lua` 的共用入口原本以 `type(x)=="userdata"` 當唯一判斷：不是 userdata 就回空集合、
@@ -952,10 +939,7 @@ DecisionKind。原契約案例（request view 與 normalize、分派與轉換的
 仍以舊 guard 判斷的 `evaluateWeapon`（`type(card)~="userdata"` 回 -1）與 `needToThrowArmor`
 （回 false）屬傷害／防禦族，依盤點要整族一起做值型投影，不在本批。
 
-原契約案例（`value-boundary-contract.lua`，以獨立 Lua state 載入、不啟動 Room、也不載
-Engine）已隨測試移除；它涵蓋的是沒有 facade 時的原生分支、代理辨識、卡牌／技能身份與
-未支援訊息。`lua/ai/smart-ai.lua` 與 `lua/ai/value-boundary.lua`
-都不在主倉庫版本控制內。
+`lua/ai/smart-ai.lua` 與 `lua/ai/value-boundary.lua` 都不在主倉庫版本控制內。
 
 #### 15.2.5 值型詢問：請求種類、候選與答案
 
@@ -1058,8 +1042,7 @@ instance、成本、pattern／method 與 revision 後重建。show／pindian 仍
 
 至此二十個 AI 公開入口都走同一條通路：`activate`／`askForUseCard` 用出牌結果，其餘用值型
 答案。部分 V2 轉化與型別化事件上下文已有純值投影；未覆蓋的 V1 view-as、成本／合法性或
-任意 `QVariant data` 操作仍是缺口。handler 未處理或 native 拒絕可觸發舊 AI 保底，不能
-據此宣稱策略已移植。事件另核對 `event-intention.lua` 的實際 consumer 與 ABI。
+任意 `QVariant data` 操作仍是缺口。事件另核對 `event-intention.lua` 的實際 consumer 與 ABI。
 
 #### 15.2.6 牌區投影：可見牌、牌堆與位置索引
 
@@ -1330,33 +1313,20 @@ VM，這一層不變。
 `ai_coverage.covers(kind[, key])`、`describe()` 與 `summary()` 回報目前這個 VM 接得住什麼。
 申報清單只描述接線；實際作答、缺口紀錄與權威端驗證也必須通過才能算覆蓋。
 
-隔離 handler 回 unhandled、結果過期或執行出錯均為新版失敗。權威端雖保留故障保底，
-但不能以其答案作為策略出口、覆蓋率或完成證據。
-
 #### 15.2.17 切換與驗收程序
 
 Shadow 雙跑比對已移除；完成標準採獨立新版。一般未設定的 kind／callback 預設
 `Isolated`；`EnableHegemony` 仍先採 `LegacyAdapted` 預設，再套顯式 route override。
 `AiLegacyDirectCallbacks`／`AiLegacyAdaptedCallbacks` 是相容選項，其執行結果不屬於新版驗收。
 
-建議的驗收門檻（需另獲建置與執行授權）：
+驗收門檻（需另獲建置與執行授權）：
 
-1. 驗收範圍內的決策全部由 isolated 產生且通過權威端驗證；任何 SmartAI 保底觸發均失敗。
-   舊 `ai-common` fixture 已移除，不能當成可執行入口。現有 coordinator 尚缺逐題路由、native
-   接受／拒絕及 fallback 的完整觀測；只有完局或無 error log 時，此項仍是 BLOCKED。
-2. 隔離性：VM 分離、沙箱封鎖、可見性、代理契約、值型詢問、候選授權、決策核心與覆蓋率報告
-   （原由 room-runtime-isolation suite 驗證；該 suite 已於 2026-09-25 移除，現無自動化覆蓋）。
-3. 重建：指令／記憶體上限觸發後 VM 重建，`ai_memory` 歸零而決策仍能繼續；舊案例
-   `aiInstructionLimitRebuildsRuntime` 僅是歷史參考，當前沒有該自動化 gate。
-4. 效能：現有 `QSAN_AI_PROBE=1` 在 request 建立後才開始計時，且可包含 SmartAI fallback，
-   不能直接表示含快照的 isolated 全流程或純策略耗時。量測須另有來源與階段證據，
-   O(n) 掃描與 O(n log n) 排序分別列明。
+1. 驗收範圍內的決策全部由 isolated 產生且通過權威端驗證；任何 SmartAI 保底觸發均失敗。現有 coordinator 尚缺逐題路由、native 接受／拒絕及 fallback 的觀測，只有完局或無 error log 時此項仍是 BLOCKED。
+2. 隔離性（VM 分離、沙箱封鎖、可見性、代理契約、值型詢問、候選授權、決策核心與覆蓋率報告）與 VM 重建（指令／記憶體上限觸發後 `ai_memory` 歸零而決策繼續）目前沒有自動化覆蓋（測試套件已於 2026-09-25 移除）。
+3. 效能：`QSAN_AI_PROBE=1` 在 request 建立後才計時且可含 SmartAI fallback，量測須另有來源與階段證據，O(n) 掃描與 O(n log n) 排序分別列明。
 
-這一節描述的是程序與門檻。實際跑完整對局與量效能需要建置與執行授權，在此之前不宣稱
-任何入口已完成驗收。
-
-執行移植請按[遵循文件](isolated-ai-migration-playbook.md)逐分支記錄；目前來源與驗收缺口見
-[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)。不新增已被移除的測試套件或 fixture。
+執行移植按[遵循文件](isolated-ai-migration-playbook.md)逐分支記錄；目前來源與缺口見
+[2026-10-03 驗收](isolated-ai-acceptance-20261003.md)。
 
 ### 15.3 RoomThread 邊界
 
