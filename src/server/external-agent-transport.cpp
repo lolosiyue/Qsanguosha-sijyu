@@ -12,6 +12,14 @@ bool only(const QJsonObject &o, const QSet<QString> &keys) {
     for (auto it = o.begin(); it != o.end(); ++it) if (!keys.contains(it.key())) return false;
     return true;
 }
+bool stamp(const QJsonValue &value, quint64 &result) {
+    if (!value.isString()) return false;
+    const auto text = value.toString();
+    if (text.isEmpty() || text.size() > 20) return false;
+    bool ok = false;
+    result = text.toULongLong(&ok);
+    return ok && QString::number(result) == text;
+}
 }
 
 ExternalAgentLocalTransport::ExternalAgentLocalTransport(
@@ -126,6 +134,14 @@ void ExternalAgentLocalTransport::message(QTcpSocket *socket, const QJsonObject 
             error = "invalid-result";
         else accepted = m_endpoint->submit(result,&error);
         send(socket,{{"ok",accepted},{"queued",accepted},{"error",error}});
+    } else if (op == "local" && only(o,{"op","decisionId","stateRevision"})) {
+        quint64 decisionId = 0, stateRevision = 0;
+        QString error;
+        bool accepted = false;
+        if (!stamp(o["decisionId"],decisionId) || !stamp(o["stateRevision"],stateRevision))
+            error = "invalid-local";
+        else accepted = m_endpoint->requestLocal(decisionId,stateRevision,&error);
+        send(socket,{{"ok",accepted},{"queued",accepted},{"route","local"},{"error",error}});
     } else if (op == "cancel" && only(o,{"op"})) {
         m_endpoint->cancel(); send(socket,{{"ok",true},{"status","cancelled"}});
     } else send(socket,{{"ok",false},{"error","unknown-operation"}});

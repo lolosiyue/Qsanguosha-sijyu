@@ -12,8 +12,11 @@
 #include "settings.h"
 #include "skill-runtime-coordinator.h"
 #include "standard.h"
+#include "maneuvering.h"
+#include "wrapped-card.h"
 
 #include <cmath>
+#include <typeinfo>
 #include <QJsonArray>
 #include "ai-probe.h"
 #include "skill-set-generation.h"
@@ -162,32 +165,83 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
                                 QMap<QString, int> &maxVotes,
                                 QList<QStringList> &combinations, int &requestBudget)
 {
+    const auto projectionRevision = room.roomRuntime()->stateRevision();
+    const auto projectionSkillGeneration = SkillSet::generation();
+    const auto projectionDefinitions = room.roomRuntime()->definitions().skillDefinitionVersion();
+    const auto alive = room.getAlivePlayers();
+    const auto sourceFlags = player->getFlagList();
+    QList<QStringList> aliveFlags;
+    for (const auto *target : alive) aliveFlags << target->getFlagList();
+    const Card *real = card->getRealCard();
+    const auto cardFlags = card->getFlags();
+    const auto realFlags = real ? real->getFlags() : QStringList();
+    const auto stableProjection = [&]() {
+        if (room.roomRuntime()->stateRevision() != projectionRevision
+            || SkillSet::generation() != projectionSkillGeneration
+            || room.roomRuntime()->definitions().skillDefinitionVersion() != projectionDefinitions
+            || room.getAlivePlayers() != alive || player->getFlagList() != sourceFlags
+            || card->getRealCard() != real || card->getFlags() != cardFlags
+            || (real && real->getFlags() != realFlags)) return false;
+        for (int i = 0; i < alive.size(); ++i)
+            if (alive.at(i)->getFlagList() != aliveFlags.at(i)) return false;
+        return true;
+    };
     targetFixed = card->targetFixed();
     completeCoverage = false;
     legalTargets.clear();
+    maxVotes.clear();
     combinations.clear();
     // Operators/tests may lower the budget; the hard ceiling cannot be raised.
     int probesLeft = qBound(1, Config.value(QStringLiteral("AiTargetProjectionBudget"), 2048).toInt(), 2048);
     const auto spend = [&]() { return --probesLeft >= 0 && --requestBudget >= 0; };
     if (!spend()) return;
     feasibleWithNoTarget = card->targetsFeasible({}, player);
+    if (!stableProjection()) return;
     if (targetFixed) {
         if (feasibleWithNoTarget) combinations << QStringList();
         completeCoverage = true;
         return;
     }
-    const auto alive = room.getAlivePlayers();
+    // Only these exact native implementations share Slash::targetFilter. A
+    // subclass can override it while retaining the printed name and QObject
+    // metadata, so neither name nor qobject_cast alone proves a terminal prefix.
+    const bool nativeWrapper = card == real || typeid(*card) == typeid(WrappedCard);
+    const bool nativeSlash = nativeWrapper && real && (typeid(*real) == typeid(Slash)
+        || typeid(*real) == typeid(NatureSlash) || typeid(*real) == typeid(FireSlash)
+        || typeid(*real) == typeid(ThunderSlash));
+    qint64 terminalCount = -1;
+    if (nativeSlash) {
+        // Slash may gain global or candidate-specific V2 extra targets. Query
+        // the same authority for every possible next target before pruning;
+        // prefix-dependent prohibitions and ordinary filters still run below.
+        if (!spend()) return;
+        const qint64 globalCount = qint64(1)
+            + Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, player, real);
+        if (!stableProjection()) return;
+        terminalCount = qMax(qint64(0),globalCount);
+        for (ServerPlayer *target : alive) {
+            if (!spend()) return;
+            const qint64 candidateCount = qint64(1)
+                + Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, player, real, target);
+            terminalCount = qMax(terminalCount,candidateCount);
+            if (!stableProjection()) return;
+        }
+    }
     QList<const Player *> prefix;
     QStringList names;
     // Preserve order. Two individually legal first targets need not form a legal pair.
     // Current submit protocol rejects repeated names, so vote-repeating cards stay
     // unsupported instead of claiming their distinct-name subset is complete.
     std::function<bool()> visit = [&]() {
+        if (!stableProjection()) return false;
         if (!spend()) return false;
         if (card->targetsFeasible(prefix, player)) {
             if (combinations.size() >= 128) return false;
             combinations << names;
         }
+        // Beyond this exact native upper bound, every next target is rejected.
+        // Avoid rescanning all 50 seats at each otherwise terminal leaf.
+        if (terminalCount >= 0 && prefix.size() >= terminalCount) return true;
         foreach (ServerPlayer *target, alive) {
             if (!spend()) return false;
             int votes = 0;
@@ -208,7 +262,7 @@ static void describeCardTargets(Room &room, ServerPlayer *player, const Card *ca
         }
         return true;
     };
-    completeCoverage = visit();
+    completeCoverage = visit() && stableProjection();
     if (!completeCoverage) combinations.clear();
 }
 
@@ -970,7 +1024,20 @@ AIRequest AiDecisionCoordinator::makeRequest(ServerPlayer *player,
     // existing event snapshot contract: public/private facts and mode policy,
     // without eagerly evaluating every viewer distance or copying card history.
     // Unsupported isolated callbacks still fall back through runAnswer.
-    request.worldView = buildWorldView(player, true, kind == AIRequest::TriggerOrder);
+    const auto endpoint = player ? m_room.externalAgent(player->objectName()) : nullptr;
+    if (endpoint && !endpoint->requiresWorldView(kind)) {
+        // An explicitly opted-in local adapter needs the decision's authority
+        // tickets, not a board observation. Native fallback reads the live Room.
+        // Ordinary external and isolated requests retain their complete projection.
+        request.worldView.modeId = m_room.getMode();
+        request.worldView.revision = request.stateRevision;
+        request.worldView.self.objectName = request.viewerObjectName;
+        request.worldView.distanceScope = QStringLiteral("none");
+        request.worldView.modePolicy.insert(QStringLiteral("projection_scope"),
+                                            QStringLiteral("local_decision"));
+    } else {
+        request.worldView = buildWorldView(player, true, kind == AIRequest::TriggerOrder);
+    }
     if (lagProbe)
         qWarning().noquote() << "[LAG_PROBE] world request" << request.decisionId
                              << lagTimer.elapsed() << "ms";
@@ -1557,6 +1624,14 @@ static bool hasLegacyReasonHook(LuaRuntime &runtime, const QString &callbackName
     return false;
 }
 
+static void logExternalNativeDuration(const ServerPlayer *player, const AIRequest &request,
+                                     const QElapsedTimer &timer)
+{
+    qInfo() << "[EXTERNAL_AGENT] native callback done" << player->objectName()
+            << "decision" << request.decisionId << "kind" << int(request.kind)
+            << "elapsed_ns" << timer.nsecsElapsed();
+}
+
 bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest &request,
     AIResult &result, const std::function<bool(const AIResult &)> &validate) const
 {
@@ -1567,7 +1642,8 @@ bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest
         const auto outcome = endpoint->awaitReply(result);
         if (outcome == ExternalAgentEndpoint::Fallback) {
             endpoint->finish();
-            qInfo() << "[EXTERNAL_AGENT] explicit SmartAI fallback" << player->objectName();
+            qInfo() << "[EXTERNAL_AGENT] disconnect SmartAI fallback" << player->objectName()
+                    << "decision" << request.decisionId << "kind" << int(request.kind);
             return false;
         }
         if (outcome == ExternalAgentEndpoint::Cancelled) {
@@ -1578,14 +1654,31 @@ bool AiDecisionCoordinator::externalAnswer(ServerPlayer *player, const AIRequest
         if (request.stateRevision != m_room.roomRuntime()->stateRevision()) {
             // Never restamp a snapshot or silently choose for an obsolete prompt.
             endpoint->reject(QStringLiteral("stale-world"));
+            if (endpoint->boundedHybrid()) {
+                endpoint->disconnect();
+                endpoint->finish();
+                return false;
+            }
             endpoint->cancel();
             continue;
+        }
+        if (outcome == ExternalAgentEndpoint::Local) {
+            endpoint->finish();
+            qInfo() << "[EXTERNAL_AGENT] explicit local SmartAI route" << player->objectName()
+                    << "decision" << request.decisionId << "kind" << int(request.kind)
+                    << "revision" << request.stateRevision;
+            return false; // the existing caller executes its native legacy callback once
         }
         if (validate(result)) {
             endpoint->finish();
             return true;
         }
         endpoint->reject(QStringLiteral("illegal-action"));
+        if (endpoint->boundedHybrid()) {
+            endpoint->disconnect();
+            endpoint->finish();
+            return false;
+        }
     }
 }
 
@@ -1606,7 +1699,10 @@ bool AiDecisionCoordinator::runAnswer(ServerPlayer *player, const AIRequest &req
         : AiRouteLegacyDirect;
     bool isolatedAnswer = false;
     if (m_room.externalAgent(player->objectName())) {
+        QElapsedTimer nativeTimer;
+        nativeTimer.start();
         result = legacy(request);
+        logExternalNativeDuration(player, request, nativeTimer);
     } else if (route == AiRouteIsolated) {
         // Isolated reason handlers still answer first; only its shared default
         // steps aside, so the refusal reaches SmartAI's hook below.
@@ -2381,7 +2477,13 @@ const Card *AiDecisionCoordinator::decideResponse(ServerPlayer *player, const AI
             externalCard = responseCard(player, request, answer);
             return externalCard != nullptr;
         })) return externalCard;
-    if (m_room.externalAgent(player->objectName())) return legacy();
+    if (m_room.externalAgent(player->objectName())) {
+        QElapsedTimer nativeTimer;
+        nativeTimer.start();
+        const Card *card = legacy();
+        logExternalNativeDuration(player, request, nativeTimer);
+        return card;
+    }
     const AiRoute route = Config.EnableAI
         ? m_room.roomRuntime()->ai().routes().routeFor(
             request.kind, callbackName, request.choiceOptions.reason)
@@ -2658,6 +2760,8 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
     if (route == AiRouteLegacyDirect) {
         if (request.hasSkillActionContext)
             return false;
+        QElapsedTimer nativeTimer;
+        if (m_room.externalAgent(player->objectName())) nativeTimer.start();
         CardUseStruct directUse = cardUse;
         directUse.from = player;
         directUse.card = nullptr;
@@ -2671,6 +2775,7 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
                 directUse.parse(answer, &m_room);
         }
         cardUse = directUse;
+        if (nativeTimer.isValid()) logExternalNativeDuration(player, request, nativeTimer);
         return true;
     }
 
