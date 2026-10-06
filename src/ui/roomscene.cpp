@@ -10,6 +10,7 @@
 #include "kof-arrange-controller.h"
 #include "room-replay-controller.h"
 #include "dashboard.h"
+#include "general-info-card.h"
 #include "table-pile.h"
 #include "ui-rng.h"
 #include "carditem.h"
@@ -48,6 +49,12 @@
 #include "clientlogbox.h"
 #include "chatwidget.h"
 #include "room-input-router.h"
+#include <QPushButton>
+#include <QVBoxLayout>
+#if QSAN_CONTROLLER_ENABLED
+#include "controller-router.h"
+#include "controller-custom-dialog.h"
+#endif
 #include "room-chat-controller.h"
 #include "emotionpanel.h"
 #include "gifchatbox.h"
@@ -710,6 +717,10 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	log_box = new ClientLogBox;
 	log_box->setObjectName("log_box");
 	log_box->setTextColor(UiConfig.TextEditColor);
+	// Without a "log-box-bg" theme slot or skin key the log keeps the global QTextEdit border.
+	const QString logBorder = G_ROOM_SKIN.getSlotFileName(QStringLiteral("log-box-bg"));
+	if (!logBorder.isEmpty())
+		log_box->setStyleSheet(QStringLiteral("QTextEdit#log_box { border-image: url(\"%1\") 10 10 10 10; }").arg(logBorder));
 
 	log_box_widget = addWidget(log_box);
 	log_box_widget->setZValue(8);
@@ -2341,6 +2352,91 @@ bool RoomScene::handleNativeKey(QKeyEvent *event)
     return handled;
 }
 
+bool RoomScene::controllerOwnsDialog(const QWidget *dialog) const
+{
+    return dialog && dialog == m_choiceDialog;
+}
+
+void RoomScene::showControllerMenu()
+{
+    auto *dialog = new QDialog(main_window);
+    dialog->setObjectName(QStringLiteral("controllerGameMenu"));
+    dialog->setWindowTitle(tr("Controller game menu"));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setProperty("controllerLocalDialog", true);
+    auto *layout = new QVBoxLayout(dialog);
+    const auto add = [this, dialog, layout](const QString &id, const QString &label,
+                                         bool enabled, std::function<void()> action) {
+        auto *button = new QPushButton(label, dialog);
+        button->setObjectName(id);
+        button->setAutoDefault(false);
+        button->setEnabled(enabled);
+        layout->addWidget(button);
+        connect(button, &QPushButton::clicked, dialog, [this, dialog, action]() {
+            dialog->close();
+            // Defer until the local menu relinquishes focus; never send a key
+            // release into a newly opened gameplay request.
+            QTimer::singleShot(0, this, action);
+        });
+    };
+    const bool connected = ClientInstance && !ClientInstance->getReplayer();
+    add("controllerControls", tr("Selections and commands"), connected, [this]() { showGameControlPanel(); });
+    add("controllerSnapshot", tr("Cards, skills and game details"), true, [this]() { showGameStateSnapshot(); });
+    const auto *core = connected ? ClientInstance->interactionCore() : nullptr;
+    if (core && core->hasActiveRequest()) {
+        const auto type = core->activeRequest().type;
+        if (type == InteractionType::AmazingGrace || type == InteractionType::ArrangeGeneral
+            || type == InteractionType::AskGeneral || type == InteractionType::ChooseCard) {
+            add("controllerNativeConfirm", tr("Confirm current choice / arrangement"), true, [this]() {
+                QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+                handleNativeKey(&press);
+                QKeyEvent release(QEvent::KeyRelease, Qt::Key_Return, Qt::NoModifier);
+                handleNativeKey(&release);
+            });
+        }
+        if (type == InteractionType::ArrangeGeneral) {
+            for (bool earlier : {true, false})
+                add(earlier ? "controllerOrderEarlier" : "controllerOrderLater",
+                    earlier ? tr("Move focused general earlier") : tr("Move focused general later"), true,
+                    [this, earlier]() {
+                        const int key = earlier ? Qt::Key_Left : Qt::Key_Right;
+                        QKeyEvent press(QEvent::KeyPress, key, Qt::AltModifier);
+                        handleNativeKey(&press);
+                        QKeyEvent release(QEvent::KeyRelease, key, Qt::AltModifier);
+                        handleNativeKey(&release);
+                    });
+        }
+    }
+    for (auto *skillButton : m_skillButtons) {
+        if (!skillButton || !skillButton->getSkill() || !skillButton->isVisibleTo(dashboard)
+            || (!skillButton->preshowEnabled() && !skillButton->getSkill()->inherits("AnytimeSkill"))) continue;
+        const QPointer<QSanSkillButton> button = skillButton;
+        add("controllerSkill_" + skillButton->objectName(), Sanguosha->translate(skillButton->objectName()),
+            skillButton->isEnabled(), [button]() { if (button && button->isEnabled()) button->click(); });
+    }
+    add("controllerSort", tr("Sort hand cards"), dashboard != nullptr, [this]() { dashboard->beginSorting(); });
+    add("controllerAddOneRobot", tr("Add one robot"), connected && add_robot && add_robot->isVisible(),
+        []() { if (ClientInstance) ClientInstance->addRobot(1); });
+    add("controllerStartGame", tr("Fill vacant seats and start"), connected && start_game && start_game->isVisible(),
+        [this]() { fillRobots(); });
+    bool mayPause = connected && Self && Self->isOwner()
+        && ClientInstance->getPlayers().size() >= Sanguosha->getPlayerCount(ServerInfo.GameMode);
+    if (mayPause) for (const auto *player : ClientInstance->getPlayers())
+        if (player != Self && player->isAlive() && player->getState() != "robot") mayPause = false;
+    add("controllerPause", tr("Pause / resume"), mayPause, [this]() { pause(); });
+    add("controllerSurrender", tr("Surrender..."), connected && game_started, [this]() { surrender(); });
+    add("controllerChat", tr("Chat"), connected && chat_edit, [this]() {
+        setChatBoxVisible(true); chat_edit->setFocus(Qt::OtherFocusReason);
+    });
+    add("controllerTrust", tr("Toggle trustee (leaves controller-only play)"),
+        connected && trust_button && trust_button->isEnabled(), [this]() { trust(); });
+    auto *back = new QPushButton(tr("Return to game"), dialog);
+    back->setObjectName(QStringLiteral("controllerMenuBack"));
+    layout->addWidget(back);
+    connect(back, &QPushButton::clicked, dialog, &QDialog::close);
+    dialog->open();
+}
+
 void RoomScene::keyReleaseEvent(QKeyEvent*event)
 {
     if (handleNativeKey(event)) return;
@@ -3835,10 +3931,20 @@ void RoomScene::doTimeout()
 		break;
 	}
 	case Client::Responding:
-	case Client::Discarding:
-	case Client::Exchanging:
 	case Client::ExecDialog:
 	case Client::AskForShowOrPindian: {
+		doCancelButton();
+		break;
+	}
+	case Client::Discarding:
+	case Client::Exchanging: {
+		const ClientCore *core = ClientInstance->interactionCore();
+		const InteractionType type = (ClientInstance->getStatus() & Client::ClientStatusBasicMask) == Client::Exchanging
+			? InteractionType::ExchangeCard : InteractionType::DiscardCard;
+		// Mandatory requests use the server's existing timeout selection. Preserve
+		// the local draft until the server advances instead of submitting an illegal Cancel.
+		if (core != nullptr && core->hasActiveRequest(type) && !core->activeRequest().cancelable)
+			break;
 		doCancelButton();
 		break;
 	}
@@ -4393,7 +4499,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 	if(newStatus!=Client::NotActive&&newStatus!=oldStatus){
 		QApplication::alert(main_window);
-		connect(dashboard,SIGNAL(progressBarTimedOut()),this,SLOT(doTimeout()));
+		connect(dashboard,SIGNAL(progressBarTimedOut()),this,SLOT(doTimeout()),Qt::UniqueConnection);
 		dashboard->showProgressBar(ClientInstance->getCountdown());
 	}
 }
@@ -4473,6 +4579,15 @@ void RoomScene::onAnytimeSkillDone(const QString &skill_name)
 #if QSAN_ENABLE_QML
 void RoomScene::onQmlInteract(const QString &qmlPath, const QVariantMap &params)
 {
+#if QSAN_CONTROLLER_ENABLED
+    QString coverageError;
+    if (presentControllerCustomInteraction(this, params, &coverageError)) return;
+    if (ControllerRouter::isControllerOnlyRun() || ControllerRouter::hasConnectedController()) {
+        if (coverageError.isEmpty()) coverageError = tr("Missing controller_ui version 1 descriptor: %1").arg(qmlPath);
+        showControllerCoverageFailure(this, coverageError);
+        return;
+    }
+#endif
 	EmbeddedQmlLoader *loader = new EmbeddedQmlLoader(this);
 	connect(loader, &EmbeddedQmlLoader::qmlResultReady, this, &RoomScene::onQmlResultReady);
 
@@ -5614,7 +5729,7 @@ void KOFOrderBox::revealGeneral(const QString&name)
 		avatars[revealed]->setObjectName(name);
 		const General*general = Sanguosha->getGeneral(name);
 		if(general)
-			avatars[revealed]->setToolTip(buildOracleTooltip(general->getOracleText(), general->getSkillDescription(true)));
+			avatars[revealed]->setToolTip(GeneralInfoCard::forGeneral(general));
 		revealed++;
 	}
 }
@@ -5668,6 +5783,9 @@ void RoomScene::onGameStart()
 
 
 	if (isAutoTestClient() && !NetworkUiSmokeResponder::isActive()
+#if QSAN_CONTROLLER_ENABLED
+        && !ControllerRouter::isControllerOnlyRun()
+#endif
 		&& Self && Self->getState() != "trust") {
 		QTimer::singleShot(500, this, [this]() {
 			if (Self && Self->getState() != "trust")

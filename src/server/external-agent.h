@@ -65,6 +65,7 @@ private:
     bool m_connected = true;
     bool m_cancelled = false;
     bool m_hybridBounded = false;
+    bool m_planInvalidated = false;
     int m_hybridDeadlineMs = 30000;
     QElapsedTimer m_requestTimer;
     QString m_error;

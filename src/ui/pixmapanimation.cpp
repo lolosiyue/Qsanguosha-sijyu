@@ -1,5 +1,6 @@
 #include "pixmapanimation.h"
 #include "skin-bank.h"
+#include "theme-pack.h"
 
 #include <QCoreApplication>
 #include <QImage>
@@ -173,7 +174,7 @@ PixmapAnimation *PixmapAnimation::GetPixmapAnimation(QGraphicsItem *parent, cons
         return nullptr;
 
     PixmapAnimation *pma = new PixmapAnimation();
-    pma->setPath(QString("image/system/emotion/%1/").arg(emotion));
+    pma->setPath(EmotionDirectory(emotion));
     if (pma->valid()) {
         if (emotion == "no-success") {
             pma->moveBy(pma->boundingRect().width() * 0.25, pma->boundingRect().height() * 0.25);
@@ -224,8 +225,9 @@ void PixmapAnimation::PrewarmEmotions(QObject *context, const QStringList &emoti
         return;
     QList<PrewarmJob> jobs;
     for (const QString &emotion : emotions) {
+        const QString directory = EmotionDirectory(emotion);
         for (int i = 0;; ++i) {
-            const QString source = QString("image/system/emotion/%1/%2.png").arg(emotion).arg(i);
+            const QString source = directory + QString::number(i) + QStringLiteral(".png");
             if (!QFile::exists(source))
                 break;
             const QString key = G_ROOM_SKIN.pixmapFileCacheKey(source);
@@ -251,9 +253,26 @@ void PixmapAnimation::PrewarmEmotions(QObject *context, const QStringList &emoti
 
 int PixmapAnimation::GetFrameCount(const QString &emotion)
 {
-    QString path = QString("image/system/emotion/%1/").arg(emotion);
-    QDir dir(path);
+    QDir dir(EmotionDirectory(emotion));
     dir.setNameFilters(QStringList("*.png"));
     return dir.entryList(QDir::Files | QDir::NoDotAndDotDot).count();
 }
 
+
+static QString emotionBase()
+{
+    const ThemePacks::Slot *slot = ThemePacks::findSlot(QStringLiteral("emotion"));
+    return slot ? slot->defaultPath : QString();
+}
+
+QString PixmapAnimation::EmotionDirectory(const QString &emotion)
+{
+    return ThemePacks::resolveDirectory(emotionBase() + emotion + QLatin1Char('/'));
+}
+
+QString PixmapAnimation::EmotionFile(const QString &emotion)
+{
+    const QString fileName = emotionBase() + emotion + QStringLiteral(".png");
+    const QString themed = ThemePacks::overrideForFile(fileName);
+    return themed.isEmpty() ? fileName : themed;
+}

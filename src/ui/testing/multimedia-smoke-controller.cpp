@@ -18,6 +18,7 @@
 #include <QMutexLocker>
 #include <QQuickItem>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QTimer>
 #include <QVariantMap>
 #include <QWindow>
@@ -105,8 +106,12 @@ MultimediaSmokeController::MultimediaSmokeController(QObject *parent)
 MultimediaSmokeController::~MultimediaSmokeController()
 {
     QMutexLocker locker(&multimediaSmokeMessageMutex);
-    if (s_active == this)
+    if (s_active == this) {
         s_active = nullptr;
+        // Qt may log during static/thread-local teardown, after the optional
+        // asset-warning matchers have died. Stop intercepting before that point.
+        qInstallMessageHandler(multimediaSmokePreviousHandler);
+    }
 }
 
 bool MultimediaSmokeController::isRequested(const QStringList &arguments)
@@ -189,7 +194,9 @@ int MultimediaSmokeController::run()
             MultimediaSmokeReport::InternalError));
         return MultimediaSmokeReport::InternalError;
     }
-    return controller->execute();
+    const int exitCode = controller->execute();
+    delete controller;
+    return exitCode;
 }
 
 QJsonObject MultimediaSmokeController::environmentDetails() const
@@ -245,6 +252,12 @@ int MultimediaSmokeController::execute()
     MainWindow *window = new MainWindow;
     m_mainWindow = window;
     Sanguosha->setParent(window);
+    const auto releaseWindow = qScopeGuard([this]() {
+        // Match normal GUI/effects-smoke ownership: Engine must outlive UI
+        // cleanup. Cover failures before exec() as well as the success path.
+        Sanguosha->setParent(nullptr);
+        delete m_mainWindow.data();
+    });
     window->show();
 
     if (failIfDeadlineExceeded(QStringLiteral("main_window")))
@@ -276,11 +289,7 @@ int MultimediaSmokeController::execute()
             QStringLiteral("event loop exited before the multimedia smoke completed"),
             MultimediaSmokeReport::SetupFailed);
     }
-    // Same shutdown race as the effects smoke: destroy the window, and with it the
-    // QQuickWidget's QML engine, while QApplication still exists.  A QML load still in
-    // flight otherwise crashes in the type loader thread inside
-    // QStandardPaths::writableLocation() after main() returns.
-    delete m_mainWindow.data();
+    // releaseWindow destroys the QML host while QApplication is still alive.
     return m_exitCode != MultimediaSmokeReport::Passed ? m_exitCode : rc;
 }
 

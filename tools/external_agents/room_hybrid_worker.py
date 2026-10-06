@@ -5,6 +5,7 @@ native endpoint's SmartAI fallback; this process never retries a paid request.
 """
 import json
 import os
+import re
 import select
 import sys
 import time
@@ -24,21 +25,63 @@ def local(client, request):
                         'stateRevision': request['stateRevision']})
 
 
-def decide(client, request, adapter, paid_disabled):
+def route_diagnostic(request, route, reason):
+    """Bounded routing metadata; never include cards, roles, or packet contents."""
+    def name(value):
+        return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_#-]{1,80}', value) else 'unknown'
+    own = request.get('worldView', {}).get('self', {})
+    skills = sorted({name(s.get('skillName')) for s in own.get('skills', [])
+                     if isinstance(s, dict) and not s.get('invalid')})
+    return {'route': name(route), 'reason': name(reason),
+            'conversions_enumerated': bool(request.get('conversionsEnumerated')),
+            'staged_actions_complete': bool(request.get('stagedActionsComplete')),
+            'has_skill_action_context': bool(request.get('hasSkillActionContext')),
+            'skill_action_count': min(len(request.get('skillActions', [])), 65535),
+            'conversion_count': min(len(request.get('cardConversions', [])), 65535),
+            'candidate_count': min(len(request.get('cardCandidates', [])), 65535),
+            'viewer_skills': skills[:64], 'viewer_skills_truncated': len(skills) > 64}
+
+
+def decide(client, request, adapter, paid_disabled, observe=None):
     """Queue one exact native ticket; return (ack, route, disable_paid, notice)."""
+    def report(route, reason):
+        if observe is not None:
+            # Optional diagnostics cannot change native routing or authority.
+            try:
+                observe(route_diagnostic(request, route, reason))
+            except Exception:
+                pass
     if paid_disabled:
+        report('local_native', 'paid_disabled')
         return local(client, request), 'local_native', True, None
-    route, _, answers, data = h.route(request, adapter)
+    if getattr(adapter, 'native_opening_pending', False):
+        if request['kind'] == 0:  # Native Activate starts the ordinary Play policy.
+            adapter.native_opening_pending = False
+        else:
+            report('local_native', 'native_opening_preamble')
+            return local(client, request), 'local_native', paid_disabled, None
+    route, reason, answers, data = h.route(request, adapter)
+    report(route, reason)
     if route == 'local_native':
         return local(client, request), 'local_native', paid_disabled, None
     if route == 'local_forced':
         choice = next(iter(answers))
     else:
         try:
+            if route == 'jev_staged':
+                result = data.choose(client, adapter)
+                return client.call({'op': 'submit', 'result': result}), route, paid_disabled, None
             choice = adapter.choose('jev', *data)
+        except h.staged.Invalidated:
+            raise  # The caller closes this seat; never restamp or submit Local to a stale plan.
+        except h.staged.Unsupported as error:
+            report('local_native', str(error))
+            return local(client, request), 'local_native', paid_disabled, None
         except p.BudgetExhausted:
+            report('local_native', 'budget')
             return local(client, request), 'local_native', True, 'budget'
         except p.DecisionError:
+            report('local_native', 'provider')
             return local(client, request), 'local_native', True, 'provider'
     # Exact result produced from native legal candidates. No stale re-stamping.
     return client.call({'op': 'submit', 'result': answers[choice]}), route, paid_disabled, None
@@ -73,6 +116,10 @@ def main():
                         adapter = p.ProviderAdapters(
                             p.BudgetLedger(max_requests=h.POLICY['max_requests']),
                             allowed_providers=('jev',), game_id=game_id)
+                        # General selection, native initial draws and start/turn
+                        # prompts run once through native AI before the first Play
+                        # ticket. All fifty capabilities remain connected.
+                        adapter.native_opening_pending = True
                     elif message.get('op') == 'seat' and adapter is not None:
                         seat = message['bootstrap']
                         name = seat['objectName']

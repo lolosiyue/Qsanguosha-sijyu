@@ -35,6 +35,17 @@ static QStringList extractConcepts(const QString &html) {
     return concepts;
 }
 
+QStringList oracleConcepts(const QStringList &htmlSources)
+{
+    QStringList concepts;
+    if (!Config.value("EnableOracleConcepts", true).toBool()) return concepts;
+    foreach (const QString &html, htmlSources) {
+        foreach (const QString &concept, extractConcepts(html))
+            if (!concepts.contains(concept)) concepts.append(concept);
+    }
+    return concepts;
+}
+
 QString buildOracleTooltip(const QString &oracleText, const QString &skillDescription) {
     if (oracleText.isEmpty() && skillDescription.isEmpty()) return QString();
 

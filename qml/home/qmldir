@@ -1,1 +1,2 @@
 singleton HomeTheme 1.0 HomeTheme.qml
+HomeButtonLegend 1.0 HomeButtonLegend.qml
