@@ -17,7 +17,7 @@ set(qsan_excel_sources
     legacy/xp/src/local-server-controller.h
     src/server/server-config.cpp src/server/server-config.h)
 
-add_executable(qsanguosha_excel_bridge ${qsan_excel_sources})
+add_executable(qsanguosha_excel_bridge ${qsan_excel_sources} resource/icon.rc)
 set_target_properties(qsanguosha_excel_bridge PROPERTIES
     OUTPUT_NAME QSanguoshaExcelBridge FOLDER "Clients")
 target_include_directories(qsanguosha_excel_bridge PRIVATE
@@ -107,7 +107,7 @@ else()
         qsanguosha_excel_control "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
 
     add_executable(qsanguosha_excel_server
-        legacy/xp/src/xp-server-main.cpp ${QSAN_DEDICATED_ENTRY_SOURCES})
+        legacy/xp/src/xp-server-main.cpp ${QSAN_DEDICATED_ENTRY_SOURCES} resource/icon.rc)
     set_target_properties(qsanguosha_excel_server PROPERTIES
         OUTPUT_NAME QSanguoshaExcelServer FOLDER "Servers"
         RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/excel-debug"

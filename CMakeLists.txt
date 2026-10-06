@@ -933,6 +933,7 @@ if(QSAN_BUILD_TUI)
     )
     # TUI is a TCP client. Do not qsan_link_websocket_gateway() here.
     if(WIN32)
+        target_sources(qsanguosha_tui PRIVATE resource/icon.rc)
         # crash handler (crashhandler.cpp, Release only) needs dbghelp
         target_link_libraries(qsanguosha_tui PRIVATE
             "$<$<CONFIG:Release>:dbghelp>"
@@ -1052,6 +1053,7 @@ if(QSAN_BUILD_SERVER)
     )
     qsan_link_websocket_gateway(qsanguosha_server)
     if(WIN32)
+        target_sources(qsanguosha_server PRIVATE resource/icon.rc)
         target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
         # The Release crash handler needs the Windows DbgHelp library.
         target_link_libraries(qsanguosha_server PRIVATE
@@ -1315,6 +1317,7 @@ if(QSAN_BUILD_GUI)
         set(QSAN_GUI_TARGET QSanguoshaXP)
         add_executable(${QSAN_GUI_TARGET} WIN32
             ${QSAN_GUI_SOURCES}
+            resource/icon.rc
         )
     elseif(WIN32)
         set(QSAN_GUI_TARGET QSanguosha)
@@ -1914,10 +1917,6 @@ if(UNIX AND NOT ANDROID AND QSAN_BUILD_GUI)
     )
     install(FILES packaging/linux/qsanguosha.desktop
         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
-        COMPONENT qsan_gui
-    )
-    install(FILES resource/icon/linux/qsanguosha.svg
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
         COMPONENT qsan_gui
     )
     foreach(qsan_icon_size 16 24 32 48 64 128 256 512)

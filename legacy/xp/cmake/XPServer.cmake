@@ -48,7 +48,7 @@ qsan_xp_target(qsan_xp_control)
 target_link_libraries(qsan_xp_control PUBLIC Qt5::Core Qt5::Network advapi32)
 
 add_executable(QSanguoshaXPServer
-    legacy/xp/src/xp-server-main.cpp ${QSAN_DEDICATED_ENTRY_SOURCES})
+    legacy/xp/src/xp-server-main.cpp ${QSAN_DEDICATED_ENTRY_SOURCES} resource/icon.rc)
 qsan_xp_target(QSanguoshaXPServer)
 target_compile_definitions(QSanguoshaXPServer PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
 target_link_libraries(QSanguoshaXPServer PRIVATE qsanguosha_engine qsan_xp_control
