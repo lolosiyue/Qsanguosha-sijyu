@@ -12,9 +12,6 @@ class HomeCardModel final : public QAbstractListModel
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY filterChanged)
     Q_PROPERTY(int filteredCount READ filteredCount NOTIFY filterChanged)
-    Q_PROPERTY(int pageIndex READ pageIndex WRITE setPageIndex NOTIFY pageChanged)
-    Q_PROPERTY(int pageCount READ pageCount NOTIFY filterChanged)
-    Q_PROPERTY(int pageSize READ pageSize CONSTANT)
     Q_PROPERTY(bool loaded READ isLoaded NOTIFY catalogChanged)
     Q_PROPERTY(int physicalCount READ physicalCount NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList typeOptions READ typeOptions NOTIFY catalogChanged)
@@ -65,9 +62,6 @@ public:
 
     int count() const;
     int filteredCount() const;
-    int pageIndex() const;
-    int pageCount() const;
-    int pageSize() const;
     bool isLoaded() const;
     int physicalCount() const;
     QVariantList typeOptions() const;
@@ -80,18 +74,20 @@ public:
     Q_INVOKABLE void reload();
     // Returns false when the visible result did not change, so the view can keep its selection.
     Q_INVOKABLE bool applyFilter(const QVariantMap &filters);
-    Q_INVOKABLE void setPageIndex(int pageIndex);
     Q_INVOKABLE bool containsCardId(int cardId) const;
     Q_INVOKABLE int cardIdAt(int row) const;
     Q_INVOKABLE int indexOfCardId(int cardId) const;
+    // Representative card ID of the catalog entry named objectName, or -1.
+    Q_INVOKABLE int cardIdForName(const QString &objectName) const;
     Q_INVOKABLE QVariantMap cardAt(int row) const;
     Q_INVOKABLE QVariantMap cardDetails(int cardId) const;
     Q_INVOKABLE QUrl cardImage(int cardId) const;
+    // Wraps each 【name】 that names a catalog card in a card:<objectName> link.
+    QString linkCardNames(const QString &html) const;
 
 signals:
     void catalogChanged();
     void filterChanged();
-    void pageChanged();
 
 private:
     struct Row {
@@ -131,7 +127,7 @@ private:
         QString searchText;
     };
 
-    const Row *pageRow(int row) const;
+    const Row *filteredRow(int row) const;
     const Row *rowForId(int cardId) const;
     QVariantMap rowMap(const Row &row) const;
     void rebuildOptions();
@@ -147,7 +143,8 @@ private:
     QVariantList m_suitOptions;
     QVariantList m_packageOptions;
     QVariantList m_tagOptions;
+    // Translated card name -> objectName; built on first use, independent of the loaded catalog.
+    mutable QHash<QString, QString> m_cardNameIndex;
     int m_physicalCount = 0;
-    int m_pageIndex = 0;
     bool m_loaded = false;
 };

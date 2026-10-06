@@ -14,11 +14,11 @@ Use the application font. The hierarchy is 28-32 px page titles, 18-22 px sectio
 
 ## 4. Layout and spacing
 
-The home scene is composed on the existing 1920 x 1080 canvas. Embedded subpages reserve 148 px for the persistent bottom dock. Card Overview uses a header, a left filter rail, a 4 x 3 card-type grid, and a right detail panel with 16 px primary gaps and 8 px compact gaps. The grid contains one tile per stable card `objectName`; the first engine card is the representative artwork and copy. Physical cards are exposed only in the detail panel, grouped into suit + number + package rows with their IDs merged in engine order.
+The home scene is composed on the existing 1920 x 1080 canvas. Embedded subpages reserve 148 px for the persistent bottom dock. Card Overview uses a header, a left filter rail, a vertically scrolling four-column card-type grid, and a right detail panel with 16 px primary gaps and 8 px compact gaps. The grid contains one tile per stable card `objectName`; the first engine card is the representative artwork and copy. Physical cards are exposed only in the detail panel, grouped into suit + number + package rows with their IDs merged in engine order.
 
 ## 5. Components and states
 
-`BASlantedPanel`, `BAToolButton`, and `HomeScrollBar` remain the base primitives. Card-specific components are `CardFilterPanel`, `CardTagChip`, `CardBrowserTile`, `CardDetailPanel`, `CardVariantList`, and `CardPagination`. `CardTagChip` is a checkbox-like multi-select control with an explicit mark, selected fill, pointer feedback, and a high-contrast focus ring. Every interactive component exposes idle, hover, pressed, selected, disabled, and keyboard-focus states where applicable.
+`BASlantedPanel`, `BAToolButton`, and `HomeScrollBar` remain the base primitives. Card-specific components are `CardFilterPanel`, `CardTagChip`, `CardBrowserTile`, `CardDetailPanel`, and `CardVariantList`. Type and suit are single-select chip rows inside `CardFilterPanel`; kind and package stay combo boxes. `CardTagChip` is a checkbox-like multi-select control with an explicit mark, selected fill, pointer feedback, and a high-contrast focus ring. Every interactive component exposes idle, hover, pressed, selected, disabled, and keyboard-focus states where applicable.
 
 The tag facet contains only stable catalog traits: damage, single-target, recastable, translated YingBian effects, and translated character tags. Selecting several tags uses OR inside the tag facet; that result is combined with text, type, kind, suit, and package filters using AND.
 
@@ -32,8 +32,8 @@ Glass panels use a tonal fill plus one semantic border. Shadows are limited to m
 
 ## 8. Accessibility
 
-All Card Overview actions support Tab, Backtab, arrow keys, Enter/Space, and Escape. Tab order runs from the header into search, single-select filters, tag chips, reset, the card grid, details/audio, pagination, and the persistent dock; Backtab reverses that route. Tag chips use checkbox accessibility semantics and announce their checked state. Focus rings remain visible at high contrast, controls use descriptive accessible names, and CJK labels elide or wrap deliberately.
+All Card Overview actions support Tab, Backtab, arrow keys, Enter/Space, and Escape. Tab order runs from the header into search, single-select filters, tag chips, reset, the card grid, details/audio, and the persistent dock; Backtab reverses that route. Tag chips use checkbox accessibility semantics and announce their checked state. Focus rings remain visible at high contrast, controls use descriptive accessible names, and CJK labels elide or wrap deliberately.
 
-The card grid keeps arrow navigation inside the grid, then transfers focus at its four boundaries: left/up return to filtering, right enters details, and down enters pagination. Tab and Backtab always leave the grid. Card-effect copy is a read-only selectable text surface that supports mouse selection, Shift+arrow keyboard selection, and normal Tab traversal before audio and physical variants.
+The card grid keeps arrow navigation inside the grid and scrolls with it, then transfers focus at three boundaries: left/up return to filtering and right enters details. Tab and Backtab always leave the grid. Card-effect copy is a read-only selectable text surface that supports mouse selection, Shift+arrow keyboard selection, and normal Tab traversal before audio and physical variants. A bracketed card name in card or skill text is a link that selects that card in Card Overview.
 
 The complete surface must remain legible in light and dark color schemes and under the existing grayscale and high-contrast post-processing modes. Component colors come from semantic `HomeTheme.card*` tokens; high contrast increases focus-border width and never relies on hue alone.

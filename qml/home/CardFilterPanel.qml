@@ -9,12 +9,13 @@ Item {
     id: root
 
     property var cardModel
+    property bool compact: false
     property string sortKey: "engine"
+    property string typeKey: "all"
+    property string suitKey: "all"
     property var selectedTagKeys: []
     property alias searchField: searchInput
-    property alias typeControl: typeBox
     property alias kindControl: kindBox
-    property alias suitControl: suitBox
     property alias packageControl: packageBox
     property alias resetButton: resetButton
     readonly property var firstTag: tagRepeater.count > 0 ? tagRepeater.itemAt(0) : null
@@ -22,12 +23,94 @@ Item {
     signal filtersChanged(var filters)
     signal navigationChanged()
 
+    // Single-select facet with few options: one chip each, so a pick is one click instead of a popup.
+    component FacetChips: Flow {
+        id: facet
+        property var options: []
+        property string currentKey: "all"
+        property string accessibleLabel: ""
+        property Item tabTarget: null
+        property Item backtabTarget: null
+        readonly property Item firstChip: chipRepeater.count > 0 ? chipRepeater.itemAt(0) : null
+        readonly property Item lastChip: chipRepeater.count > 0 ? chipRepeater.itemAt(chipRepeater.count - 1) : null
+        signal picked(string key)
+
+        spacing: HomeTheme.cardTagGap
+
+        Repeater {
+            id: chipRepeater
+            model: facet.options
+
+            Rectangle {
+                id: chip
+                required property int index
+                required property var modelData
+                readonly property bool checked: facet.currentKey === String(modelData.key)
+                readonly property Item nextChip: index + 1 < chipRepeater.count ? chipRepeater.itemAt(index + 1) : facet.tabTarget
+                readonly property Item previousChip: index > 0 ? chipRepeater.itemAt(index - 1) : facet.backtabTarget
+
+                function pick() {
+                    facet.picked(String(modelData.key))
+                }
+
+                width: chipLabel.implicitWidth + HomeTheme.cardTagHPadding * 2
+                // These chips replaced 42 px combo boxes; keep a full touch target in portrait.
+                height: root.compact ? HomeTheme.compactTouch : HomeTheme.cardTagHeight
+                radius: height / 2
+                color: checked ? HomeTheme.cardTagChecked
+                               : (chipPointer.containsMouse ? HomeTheme.cardTagHover : HomeTheme.cardTagFill)
+                border.width: activeFocus
+                              ? (homeController.visualMode === "highcontrast"
+                                 ? HomeTheme.cardHighContrastFocusBorderWidth
+                                 : HomeTheme.cardFocusBorderWidth)
+                              : (checked ? HomeTheme.cardSelectedBorderWidth : HomeTheme.cardBorderWidth)
+                border.color: activeFocus ? HomeTheme.focusBorderHigh
+                                          : (checked ? HomeTheme.cardInteractive : HomeTheme.cardTileBorder)
+                activeFocusOnTab: true
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: facet.accessibleLabel + ": " + chipLabel.text
+                Accessible.checked: checked
+                KeyNavigation.tab: nextChip
+                KeyNavigation.right: nextChip
+                KeyNavigation.backtab: previousChip
+                KeyNavigation.left: previousChip
+                Keys.onReturnPressed: chip.pick()
+                Keys.onEnterPressed: chip.pick()
+                Keys.onSpacePressed: function(event) {
+                    chip.pick()
+                    event.accepted = true
+                }
+                onActiveFocusChanged: if (activeFocus) root.revealItem(chip)
+
+                Text {
+                    id: chipLabel
+                    anchors.centerIn: parent
+                    text: String(chip.modelData.label)
+                    color: chip.checked ? HomeTheme.cardBadgeText : HomeTheme.cardTextPrimary
+                    font.pixelSize: HomeTheme.cardControlFontSize
+                    font.bold: chip.checked
+                }
+
+                MouseArea {
+                    id: chipPointer
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        chip.forceActiveFocus()
+                        chip.pick()
+                    }
+                }
+            }
+        }
+    }
+
     function applyNow() {
         filtersChanged({
             "query": searchInput.text,
-            "type": typeBox.currentValue || "all",
+            "type": root.typeKey,
             "kind": kindBox.currentValue || "all",
-            "suit": suitBox.currentValue || "all",
+            "suit": root.suitKey,
             "package": packageBox.currentValue || "all",
             "tags": selectedTagKeys,
             "sort": root.sortKey
@@ -36,9 +119,9 @@ Item {
 
     function reset() {
         searchInput.clear()
-        typeBox.currentIndex = 0
+        typeKey = "all"
         kindBox.currentIndex = 0
-        suitBox.currentIndex = 0
+        suitKey = "all"
         packageBox.currentIndex = 0
         selectedTagKeys = []
         applyNow()
@@ -70,29 +153,23 @@ Item {
     }
 
     function applyLocalNavGraph() {
-        searchInput.KeyNavigation.tab = typeBox
-        typeBox.backtabTarget = searchInput
-        typeBox.tabTarget = kindBox
-        kindBox.backtabTarget = typeBox
-        kindBox.tabTarget = suitBox
-        suitBox.backtabTarget = kindBox
-        suitBox.tabTarget = packageBox
-        packageBox.backtabTarget = suitBox
+        var typeFirst = typeFacet.firstChip || kindBox
+        var typeLast = typeFacet.lastChip || searchInput
+        var suitFirst = suitFacet.firstChip || packageBox
+        var suitLast = suitFacet.lastChip || kindBox
+        searchInput.KeyNavigation.tab = typeFirst
+        kindBox.backtabTarget = typeLast
+        kindBox.tabTarget = suitFirst
+        packageBox.backtabTarget = suitLast
         packageBox.tabTarget = firstTag || resetButton
         resetButton.KeyNavigation.backtab = lastTag || packageBox
 
-        searchInput.KeyNavigation.down = typeBox
-        typeBox.KeyNavigation.up = searchInput
-        typeBox.leftTarget = searchInput
-        typeBox.rightTarget = kindBox
-        kindBox.KeyNavigation.up = typeBox
-        kindBox.leftTarget = typeBox
-        kindBox.rightTarget = suitBox
-        suitBox.KeyNavigation.up = kindBox
-        suitBox.leftTarget = kindBox
-        suitBox.rightTarget = packageBox
-        packageBox.KeyNavigation.up = suitBox
-        packageBox.leftTarget = suitBox
+        searchInput.KeyNavigation.down = typeFirst
+        kindBox.KeyNavigation.up = typeFirst
+        kindBox.leftTarget = typeLast
+        kindBox.rightTarget = suitFirst
+        packageBox.KeyNavigation.up = suitFirst
+        packageBox.leftTarget = suitLast
         packageBox.rightTarget = firstTag || resetButton
         resetButton.KeyNavigation.up = lastTag || packageBox
         resetButton.KeyNavigation.left = lastTag || packageBox
@@ -174,17 +251,21 @@ Item {
             }
 
             Text { text: homeController.qtTranslate("CardScene", "Type"); color: HomeTheme.cardTextSecondary; font.pixelSize: HomeTheme.cardCaptionFontSize }
-            CardComboBox {
-                id: typeBox
+            FacetChips {
+                id: typeFacet
                 Layout.fillWidth: true
-                Layout.preferredHeight: HomeTheme.cardControlHeight
-                model: root.cardModel ? root.cardModel.typeOptions : []
-                textRole: "label"
-                valueRole: "key"
+                Layout.preferredHeight: childrenRect.height
+                options: root.cardModel ? root.cardModel.typeOptions : []
+                currentKey: root.typeKey
                 accessibleLabel: homeController.qtTranslate("CardScene", "Type")
-                activeFocusOnTab: true
-                onActivated: root.applyNow()
-                onActiveFocusChanged: if (activeFocus) root.revealItem(typeBox)
+                tabTarget: kindBox
+                backtabTarget: searchInput
+                onPicked: function(key) {
+                    root.typeKey = key
+                    root.applyNow()
+                }
+                onFirstChipChanged: Qt.callLater(root.applyLocalNavGraph)
+                onLastChipChanged: Qt.callLater(root.applyLocalNavGraph)
             }
 
             Text { text: homeController.qtTranslate("CardScene", "Kind"); color: HomeTheme.cardTextSecondary; font.pixelSize: HomeTheme.cardCaptionFontSize }
@@ -202,17 +283,21 @@ Item {
             }
 
             Text { text: homeController.qtTranslate("CardScene", "Suit"); color: HomeTheme.cardTextSecondary; font.pixelSize: HomeTheme.cardCaptionFontSize }
-            CardComboBox {
-                id: suitBox
+            FacetChips {
+                id: suitFacet
                 Layout.fillWidth: true
-                Layout.preferredHeight: HomeTheme.cardControlHeight
-                model: root.cardModel ? root.cardModel.suitOptions : []
-                textRole: "label"
-                valueRole: "key"
+                Layout.preferredHeight: childrenRect.height
+                options: root.cardModel ? root.cardModel.suitOptions : []
+                currentKey: root.suitKey
                 accessibleLabel: homeController.qtTranslate("CardScene", "Suit")
-                activeFocusOnTab: true
-                onActivated: root.applyNow()
-                onActiveFocusChanged: if (activeFocus) root.revealItem(suitBox)
+                tabTarget: packageBox
+                backtabTarget: kindBox
+                onPicked: function(key) {
+                    root.suitKey = key
+                    root.applyNow()
+                }
+                onFirstChipChanged: Qt.callLater(root.applyLocalNavGraph)
+                onLastChipChanged: Qt.callLater(root.applyLocalNavGraph)
             }
 
             Text { text: homeController.qtTranslate("CardScene", "Package"); color: HomeTheme.cardTextSecondary; font.pixelSize: HomeTheme.cardCaptionFontSize }

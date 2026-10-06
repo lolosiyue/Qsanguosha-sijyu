@@ -22,6 +22,7 @@
 #include "connectiondialog.h"
 #include "configdialog.h"
 #include "settingssession.h"
+#include "serversetupsession.h"
 #include "clientstruct.h"
 #include "client.h"
 #ifdef Q_OS_ANDROID
@@ -38,7 +39,7 @@
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
 #include "package-manager-dialog.h"
 #include "scenario-work-dialog.h"
-#include "scenario-work-examples.h"
+#include "scenario-work-library.h"
 #include "work-scenario.h"
 #include "scenario-work.h"
 #include <QDialogButtonBox>
@@ -302,6 +303,16 @@ MainWindow::MainWindow(QWidget *parent)
 	// Without the QML home, "reloading" the home page refits the start scene.
 	connect(settingsSession, &SettingsSession::backgroundChanged, this, &MainWindow::reloadHomePage);
 #endif
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	// The home works page and the library dialog are views over one library.
+	m_scenarioWorkLibrary = new ScenarioWorkLibrary(scenarioWorkLibraryRoot(), this);
+	connect(m_scenarioWorkLibrary, &ScenarioWorkLibrary::playRequested, this,
+		[this](const ScenarioWork::WorkLaunch &launch) {
+			if (auto *library = findChild<ScenarioWorkLibraryDialog *>(QStringLiteral("scenarioWorkLibrary")))
+				library->close();
+			startScenarioWork(launch);
+		}, Qt::QueuedConnection);
+#endif
 
 	connect(ui->actionAbout_Qt, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
 
@@ -312,6 +323,10 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(settingsSession, &SettingsSession::visualModeChanged, homeController, &HomeController::notifyVisualSettings);
 	connect(settingsSession, &SettingsSession::themeChanged, homeController, &HomeController::themeChanged);
 	connect(settingsSession, &SettingsSession::backgroundChanged, homeController, &HomeController::backgroundChanged);
+	// Queued: the home server page starts from inside its own QML click handler.
+	serverSetupSession = new ServerSetupSession(this);
+	connect(serverSetupSession, &ServerSetupSession::startRequested,
+		this, &MainWindow::launchServer, Qt::QueuedConnection);
 	m_homeRenderHost = requestedHomeRenderHost();
 	if (m_homeRenderHost == QLatin1String("view")) {
 		homeWindow = new QQuickView;
@@ -441,6 +456,12 @@ void MainWindow::setupHomePage()
 		QStringLiteral("Config"), &Config);
 	homeRootContext()->setContextProperty(
 		QStringLiteral("settingsSession"), settingsSession);
+	homeRootContext()->setContextProperty(
+		QStringLiteral("serverSetup"), serverSetupSession);
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+	homeRootContext()->setContextProperty(
+		QStringLiteral("scenarioWorkLibrary"), m_scenarioWorkLibrary);
+#endif
 
 	// QT_QML_IMPORT_PATH is the build machine's Qt qml/ directory.  A packaged layout
 	// ships its own QML modules behind bin/qt.conf; adding the build path there makes the
@@ -470,14 +491,14 @@ void MainWindow::setupHomePage()
 #endif
 	connect(homeController, &HomeController::joinGameRequested,
 		ui->actionStart_Game, &QAction::trigger);
-	connect(homeController, &HomeController::startServerRequested,
-		ui->actionStart_Server, &QAction::trigger);
 	connect(homeController, &HomeController::generalsRequested,
 		ui->actionGeneral_Overview, &QAction::trigger);
 	connect(homeController, &HomeController::cardsRequested,
 		ui->actionCard_Overview, &QAction::trigger);
 	connect(homeController, &HomeController::replaysRequested,
 		ui->actionReplay, &QAction::trigger);
+	connect(homeController, &HomeController::replayFileRequested,
+		this, &MainWindow::playReplayFile);
 	connect(homeController, &HomeController::aboutRequested,
 		ui->actionAbout, &QAction::trigger);
 
@@ -1425,7 +1446,12 @@ void MainWindow::on_actionStart_Server_triggered()
 	int accept_type = dialog->config();
 	if (accept_type == 0)
 		return;
+	launchServer(accept_type);
+}
 
+// accept_type follows ServerDialog::config(): -1 starts a console game, 1 hosts a server.
+void MainWindow::launchServer(int accept_type)
+{
 #ifdef QSAN_XP_LEGACY
 	showLocalLoadingPage(tr("Starting local server..."));
 	GameSessionConfig session;
@@ -1982,6 +2008,24 @@ void MainWindow::on_actionReplay_triggered()
 	client->signup();
 }
 
+#if QSAN_ENABLE_QML
+// The home replays page has already picked the file, so this skips the legacy file dialog.
+void MainWindow::playReplayFile(const QString &filename)
+{
+	Client *client = new Client(this, filename);
+	Replayer *replayer = client->getReplayer();
+	if (replayer == nullptr || !replayer->isValid()) {
+		const QString detail = replayer != nullptr
+			? replayer->errorString() : tr("Replay loader is unavailable");
+		QMessageBox::warning(this, tr("Replay error"), detail);
+		delete client;
+		return;
+	}
+	connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
+	client->signup();
+}
+#endif
+
 void MainWindow::networkError(const QString &error_msg)
 {
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
@@ -2406,37 +2450,20 @@ void MainWindow::openScenarioWorks()
             tr("Return to the home page before opening the work library."));
         return;
     }
+    m_scenarioWorkLibrary->open();
+#if QSAN_ENABLE_QML
+    homeController->openScenarioWorksPage();
+#else
     if (auto *existing = findChild<ScenarioWorkLibraryDialog *>(QStringLiteral("scenarioWorkLibrary"))) {
-        existing->show();
         existing->raise();
         existing->activateWindow();
-        QTimer::singleShot(0, existing, [existing]() { existing->resumeTrialDraft(); });
         return;
     }
-    const QString root = scenarioWorkLibraryRoot();
-    const QJsonObject compatibility = QSanWorks::currentCompatibility();
-    if (ScenarioWork::listWorks(root).isEmpty()) {
-        for (const auto &example : scenarioWorkExamples(compatibility)) {
-            QString error;
-            if (!ScenarioWork::writeWork(root, example, &error)) {
-                QMessageBox::warning(this, tr("Cannot save example work"), error);
-                break;
-            }
-        }
-    }
-    auto *library = new ScenarioWorkLibraryDialog(root, compatibility, this);
+    auto *library = new ScenarioWorkLibraryDialog(m_scenarioWorkLibrary, this);
     library->setObjectName(QStringLiteral("scenarioWorkLibrary"));
     library->setAttribute(Qt::WA_DeleteOnClose);
-    QPointer<ScenarioWorkLibraryDialog> guardedLibrary(library);
-    connect(library, &ScenarioWorkLibraryDialog::playRequested, this,
-        [this, guardedLibrary](const ScenarioWork::WorkLaunch &launch) {
-            if (!guardedLibrary) return;
-            auto *library = guardedLibrary.data();
-            if (launch.trial) library->hide();
-            else library->close();
-            startScenarioWork(launch);
-        }, Qt::QueuedConnection);
     library->show();
+#endif
 }
 
 void MainWindow::startScenarioWork(const ScenarioWork::WorkLaunch &requested)
@@ -2650,6 +2677,8 @@ void MainWindow::leaveScenarioWork(const std::function<void()> &after)
         if (stoppingServer) delete stoppingServer.data();
         server = nullptr;
         m_scenarioWork.reset();
+        // The stage may have recorded progress; refresh lock and continuation state.
+        m_scenarioWorkLibrary->reload();
         showHomePage();
         if (after) QTimer::singleShot(0, this, after);
     });

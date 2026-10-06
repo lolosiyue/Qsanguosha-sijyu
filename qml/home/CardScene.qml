@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import "."
 
@@ -23,6 +24,8 @@ Item {
     }
     readonly property var cardModel: homeController.cardModel
     property int selectedCardId: -1
+    // Card a description link asked for; selectFirst() lands on it instead of the first tile.
+    property int pendingCardId: -1
     property var selectedDetail: ({})
     property string sortKey: "engine"
     readonly property int modelCount: cardModel ? cardModel.filteredCount : 0
@@ -39,8 +42,8 @@ Item {
     property alias reloadButton: reloadButton
     readonly property var lastControl: compact
         ? (compactPane === 2 ? filters.resetButton : compactPane === 1
-           ? (details.lastVisibleAction || compactBar.detailButton) : (pagination.lastEnabledButton || cardGrid))
-        : (pagination.lastEnabledButton || details.lastVisibleAction || cardGrid)
+           ? (details.lastVisibleAction || compactBar.detailButton) : cardGrid)
+        : (details.lastVisibleAction || cardGrid)
     signal navigationEndpointChanged()
 
     focus: true
@@ -66,8 +69,25 @@ Item {
             selectedDetail = ({})
             return
         }
-        cardGrid.currentIndex = 0
-        selectCard(cardModel.cardIdAt(0))
+        var index = pendingCardId >= 0 ? Math.max(0, cardModel.indexOfCardId(pendingCardId)) : 0
+        pendingCardId = -1
+        cardGrid.currentIndex = index
+        cardGrid.positionViewAtIndex(index, GridView.Contain)
+        selectCard(cardModel.cardIdAt(index))
+    }
+
+    // Opens the catalog entry named objectName, clearing filters that hide it.
+    function showCard(objectName) {
+        cardModel.ensureLoaded()
+        var cardId = cardModel.cardIdForName(objectName)
+        if (cardId < 0)
+            return
+        pendingCardId = cardId
+        if (cardModel.indexOfCardId(cardId) < 0)
+            filters.reset()
+        Qt.callLater(selectFirst)
+        if (compact)
+            showCompactPane(1)
     }
 
     function takeKeyboard() {
@@ -126,37 +146,20 @@ Item {
         filters.resetButton.KeyNavigation.tab = cardGrid
         filters.resetButton.KeyNavigation.right = cardGrid
         filters.resetButton.KeyNavigation.down = cardGrid
-        var pageFirst = pagination.firstEnabledButton
         var actions = details.visibleActions
         if (actions.length > 0) {
             actions[0].KeyNavigation.backtab = cardGrid
             for (var i = 0; i < actions.length; ++i) {
                 actions[i].KeyNavigation.left = i > 0 ? actions[i - 1] : cardGrid
-                actions[i].KeyNavigation.right = i + 1 < actions.length
-                                                   ? actions[i + 1] : (pageFirst || cardGrid)
+                actions[i].KeyNavigation.right = i + 1 < actions.length ? actions[i + 1] : cardGrid
                 actions[i].KeyNavigation.up = cardGrid
-                actions[i].KeyNavigation.down = pageFirst || cardGrid
+                actions[i].KeyNavigation.down = cardGrid
                 if (i + 1 < actions.length) {
                     actions[i].KeyNavigation.tab = actions[i + 1]
                     actions[i + 1].KeyNavigation.backtab = actions[i]
                 }
             }
-            if (pageFirst) {
-                actions[actions.length - 1].KeyNavigation.tab = pageFirst
-                pageFirst.KeyNavigation.backtab = actions[actions.length - 1]
-            }
-        } else {
-            if (pageFirst)
-                pageFirst.KeyNavigation.backtab = cardGrid
         }
-        pagination.previousButton.KeyNavigation.up = actions.length > 0
-                                                       ? actions[actions.length - 1] : cardGrid
-        pagination.nextButton.KeyNavigation.up = actions.length > 0
-                                                   ? actions[actions.length - 1] : cardGrid
-        pagination.previousButton.KeyNavigation.right = pagination.nextButton.enabled
-                                                          ? pagination.nextButton : cardGrid
-        pagination.nextButton.KeyNavigation.left = pagination.previousButton.enabled
-                                                     ? pagination.previousButton : cardGrid
     }
 
     onSelectedDetailChanged: Qt.callLater(applyInternalNavGraph)
@@ -179,7 +182,7 @@ Item {
 
     Connections {
         target: root.cardModel
-        function onPageChanged() {
+        function onFilterChanged() {
             Qt.callLater(root.selectFirst)
             Qt.callLater(root.applyInternalNavGraph)
         }
@@ -334,6 +337,7 @@ Item {
                 visible: !root.compact || root.compactPane === 2
                 width: root.compact ? parent.width : HomeTheme.cardFilterWidth
                 height: parent.height
+                compact: root.compact
                 cardModel: root.cardModel
                 sortKey: root.sortKey
                 onFiltersChanged: function(values) { root.applyFilter(values) }
@@ -360,29 +364,25 @@ Item {
 
                 GridView {
                     id: cardGrid
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.bottom: pagination.top
+                    anchors.fill: parent
                     anchors.margins: HomeTheme.cardGridGap
-                    anchors.bottomMargin: HomeTheme.cardGridBottomInset
                     clip: true
                     model: root.cardModel
                     cellWidth: Math.floor(width / (root.compact ? Math.max(2, Math.floor(width / HomeTheme.catalogCardTileWidth)) : 4))
-                    cellHeight: root.compact ? cellWidth * 1.4 + HomeTheme.catalogCardMetaHeight : Math.floor(height / 3)
+                    cellHeight: root.compact ? cellWidth * 1.4 + HomeTheme.catalogCardMetaHeight : HomeTheme.cardTileHeight
                     keyNavigationWraps: false
                     activeFocusOnTab: true
                     reuseItems: false
                     highlightFollowsCurrentItem: false
                     boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: HomeScrollBar { }
                     Accessible.role: Accessible.List
                     Accessible.name: homeController.qtTranslate("CardScene", "Card grid")
                     // GridView consumes navigation keys itself, so only boundary exits
                     // are accepted here; interior arrows continue to move the selection.
                     Keys.priority: Keys.BeforeItem
                     Keys.onTabPressed: function(event) {
-                        root.transferKeyboardFocus(root.compact ? compactBar.detailButton : details.firstVisibleAction
-                                                   || pagination.firstEnabledButton,
+                        root.transferKeyboardFocus(root.compact ? compactBar.detailButton : details.firstVisibleAction,
                                                    event, Qt.TabFocusReason)
                     }
                     Keys.onBacktabPressed: function(event) {
@@ -402,8 +402,7 @@ Item {
                         if (currentIndex >= 0
                                 && (currentIndex % columns === columns - 1
                                     || currentIndex === count - 1)) {
-                            root.transferKeyboardFocus(details.firstVisibleAction
-                                                       || pagination.firstEnabledButton,
+                            root.transferKeyboardFocus(details.firstVisibleAction,
                                                        event, Qt.TabFocusReason)
                         } else {
                             event.accepted = false
@@ -416,16 +415,6 @@ Item {
                                                        Qt.BacktabFocusReason)
                         else
                             event.accepted = false
-                    }
-                    Keys.onDownPressed: function(event) {
-                        var columns = Math.max(1, Math.round(width / cellWidth))
-                        if (currentIndex >= 0 && currentIndex + columns >= count) {
-                            root.transferKeyboardFocus(pagination.firstEnabledButton
-                                                       || details.firstVisibleAction,
-                                                       event, Qt.TabFocusReason)
-                        } else {
-                            event.accepted = false
-                        }
                     }
                     Keys.onReturnPressed: root.openCard(root.cardModel.cardIdAt(currentIndex))
                     Keys.onEnterPressed: root.openCard(root.cardModel.cardIdAt(currentIndex))
@@ -491,9 +480,9 @@ Item {
                     }
                 }
 
-                // Compact rows scroll; fade the cut-off row so it reads as more content.
+                // Fade the cut-off row so it reads as more content.
                 Rectangle {
-                    visible: root.compact && !cardGrid.atYEnd
+                    visible: !cardGrid.atYEnd
                     anchors.left: cardGrid.left
                     anchors.right: cardGrid.right
                     anchors.bottom: cardGrid.bottom
@@ -507,22 +496,6 @@ Item {
                         GradientStop { position: 1; color: HomeTheme.cardPanelBottom }
                     }
                 }
-
-                CardPagination {
-                    id: pagination
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.leftMargin: HomeTheme.cardGridGap
-                    anchors.rightMargin: HomeTheme.cardGridGap
-                    anchors.bottomMargin: HomeTheme.cardPaginationBottomInset
-                    height: HomeTheme.cardPaginationHeight
-                    pageIndex: root.cardModel ? root.cardModel.pageIndex : 0
-                    pageCount: root.cardModel ? root.cardModel.pageCount : 1
-                    onPageRequested: function(pageIndex) {
-                        root.cardModel.setPageIndex(pageIndex)
-                    }
-                }
             }
 
             CardDetailPanel {
@@ -533,6 +506,7 @@ Item {
                 height: parent.height
                 cardModel: root.cardModel
                 detail: root.selectedDetail
+                onCardLinkActivated: function(objectName) { root.showCard(objectName) }
             }
         }
     }
