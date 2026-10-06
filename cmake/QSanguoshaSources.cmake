@@ -15,6 +15,7 @@ set(QSAN_SOURCES
     src/dialog/cardoverview.cpp
     src/dialog/choosegeneraldialog.cpp
     src/dialog/configdialog.cpp
+    src/dialog/theme-pack-dialog.cpp
     src/dialog/connectiondialog.cpp
     src/dialog/customassigndialog.cpp
     src/dialog/dialogslsettings.cpp
@@ -181,6 +182,7 @@ set(QSAN_SOURCES
     src/ui/game-control-panel.h
     src/ui/procedural-skin.cpp
     src/ui/skin-bank.cpp
+    src/ui/theme-pack.cpp
     src/ui/skill-dialog-registry.cpp
     src/ui/SpineAnimationManager.cpp
     src/ui/SpineEffectWidget.cpp
@@ -263,6 +265,7 @@ set(QSAN_MOC_HEADERS
     src/dialog/cardoverview.h
     src/dialog/choosegeneraldialog.h
     src/dialog/configdialog.h
+    src/dialog/theme-pack-dialog.h
     src/dialog/connectiondialog.h
     src/dialog/customassigndialog.h
     src/dialog/dialogslsettings.h
@@ -396,6 +399,7 @@ set(QSAN_MOC_HEADERS
     src/ui/room-replay-controller.h
     src/ui/procedural-skin.h
     src/ui/skin-bank.h
+    src/ui/theme-pack.h
     src/ui/SpineAnimationManager.h
     src/ui/SpineEffectWidget.h
     src/ui/SpineGlItem.h

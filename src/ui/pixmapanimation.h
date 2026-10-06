@@ -25,6 +25,11 @@ public:
     static PixmapAnimation *GetPixmapAnimation(QGraphicsItem *parent, const QString & emotion);
     static QPixmap GetFrameFromCache(const QString &filename);
     static int GetFrameCount(const QString &emotion);
+    // Emotion art comes from the "emotion" theme slot: the folder holding one animation's
+    // frames (ending in '/'), taken whole from one theme pack or the default art.
+    static QString EmotionDirectory(const QString &emotion);
+    // The file of a single-image emotion, such as the pindian question mark.
+    static QString EmotionFile(const QString &emotion);
     // Predecode common emotion frames off-thread into QPixmapCache; context destruction cancels the work.
     static void PrewarmEmotions(QObject *context, const QStringList &emotions);
 

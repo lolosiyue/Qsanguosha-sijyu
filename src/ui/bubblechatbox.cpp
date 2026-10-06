@@ -13,7 +13,7 @@ static const int BoxFrameHeight = 28;
 static const int AnimationDuration = 500;
 
 BubbleChatBox::BubbleChatBox(const QRect &area, QGraphicsItem *parent)
-    : QGraphicsObject(parent), backgroundPixmap(G_ROOM_SKIN.getPixmapFromFileName("image/system/bubble.png")),
+    : QGraphicsObject(parent), backgroundPixmap(G_ROOM_SKIN.getSlotPixmap(QStringLiteral("bubble-chat-bg"))),
     rect(backgroundPixmap.rect()), area(area), chatLabel(new BubbleChatLabel(this)),
     appearAndDisappear(new QPropertyAnimation(this, "opacity", this))
 {
