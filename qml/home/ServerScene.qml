@@ -19,6 +19,11 @@ Item {
     property bool miniCustom: false
     property var packageSections: []
     property var packageChecks: ({})
+    // Hundreds of package checkboxes are added in short slices after the page opens, so neither
+    // entering the page nor its package tab stalls. Packages only change after a restart.
+    property int packageCount: 0
+    property int packagesBuilt: 0
+    readonly property bool packagesLoading: packagesBuilt < packageCount
     readonly property bool highContrast: homeController.visualMode === "highcontrast"
     readonly property var navigationEntry: sectionTabs.count > 0 ? sectionTabs.itemAt(0) : null
     readonly property var lastControl: serverButton
@@ -75,9 +80,11 @@ Item {
 
         var sections = serverSetup.packageSections()
         var checks = {}
+        var count = 0
         for (var s = 0; s < sections.length; ++s) {
             for (var p = 0; p < sections[s].packages.length; ++p)
                 checks[sections[s].packages[p].name] = sections[s].packages[p].checked
+            count += sections[s].packages.length
         }
 
         values = loaded
@@ -87,8 +94,25 @@ Item {
         miniCustom = false
         packageSections = sections
         packageChecks = checks
+        packageCount = count
         section = 0
         formView.contentY = 0
+        packageFeed.start()
+    }
+    // Adds one section header or checkbox at a time until the slice's time runs out.
+    function buildPackages(deadline) {
+        while (Date.now() < deadline) {
+            var last = sectionRepeater.count > 0 ? sectionRepeater.itemAt(sectionRepeater.count - 1) : null
+            if (last && last.rows.count < last.modelData.packages.length) {
+                last.rows.append({ "packageIndex": last.rows.count })
+                ++packagesBuilt
+            } else if (sectionRows.count < packageSections.length) {
+                sectionRows.append({ "sectionIndex": sectionRows.count })
+            } else {
+                packageFeed.stop()
+                return
+            }
+        }
     }
     function cancel() {
         homeController.openHome()
@@ -398,6 +422,25 @@ Item {
         implicitHeight: root.compact ? HomeTheme.compactTouch : HomeTheme.cardControlHeight + 4
         Layout.fillWidth: root.compact
         onActiveFocusChanged: if (activeFocus) root.reveal(formButton)
+    }
+
+    // One tooltip serves every package checkbox; package contents can be long, so they wrap.
+    Basic.ToolTip {
+        id: packageTip
+        property Item check: null
+        parent: check
+        visible: check !== null && check.hovered && text !== ""
+        delay: 500
+        width: Math.min(implicitWidth, 560)
+        text: check ? serverSetup.packageTooltip(check.modelData.name) : ""
+    }
+
+    ListModel { id: sectionRows }
+    Timer {
+        id: packageFeed
+        interval: 16
+        repeat: true
+        onTriggered: root.buildPackages(Date.now() + 12)
     }
 
     ColumnLayout {
@@ -772,14 +815,44 @@ Item {
                                 }
                             }
 
+                            // Progress, not a looping animation: see SkeletonBlock.qml.
+                            ColumnLayout {
+                                visible: root.packagesLoading
+                                Layout.fillWidth: true
+                                spacing: HomeTheme.compactGap
+                                Text {
+                                    text: qsTranslate("HomeCompactShell", "Now loading...") + "  "
+                                          + root.packagesBuilt + "/" + root.packageCount
+                                    color: HomeTheme.cardTextSecondary
+                                    font.pixelSize: HomeTheme.settingsFontSize
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 4
+                                    radius: 2
+                                    color: HomeTheme.cardInputFill
+                                    Rectangle {
+                                        width: parent.width * root.packagesBuilt / Math.max(1, root.packageCount)
+                                        height: parent.height
+                                        radius: parent.radius
+                                        color: HomeTheme.cardInteractive
+                                    }
+                                }
+                            }
+
                             Repeater {
-                                model: root.packageSections
+                                id: sectionRepeater
+                                model: sectionRows
                                 ColumnLayout {
                                     id: packageSection
-                                    required property var modelData
+                                    required property int sectionIndex
+                                    readonly property var modelData: root.packageSections[sectionIndex]
+                                    property alias rows: packageRows
                                     property bool expanded: true
                                     Layout.fillWidth: true
                                     spacing: HomeTheme.compactGap
+
+                                    ListModel { id: packageRows }
 
                                     GridLayout {
                                         Layout.fillWidth: true
@@ -821,10 +894,11 @@ Item {
                                         rowSpacing: 0
 
                                         Repeater {
-                                            model: packageSection.expanded ? packageSection.modelData.packages : []
+                                            model: packageSection.expanded ? packageRows : null
                                             FormCheck {
                                                 id: packageCheck
-                                                required property var modelData
+                                                required property int packageIndex
+                                                readonly property var modelData: packageSection.modelData.packages[packageIndex]
                                                 Layout.preferredWidth: 1
                                                 text: modelData.label
                                                 enabled: modelData.enabled
@@ -834,14 +908,7 @@ Item {
                                                     next[modelData.name] = checked
                                                     root.packageChecks = next
                                                 }
-                                                // Package contents can be long; wrap them instead of the shared one-line tooltip.
-                                                Basic.ToolTip {
-                                                    parent: packageCheck
-                                                    visible: packageCheck.hovered && packageCheck.modelData.tooltip !== ""
-                                                    delay: 500
-                                                    width: Math.min(implicitWidth, 560)
-                                                    text: packageCheck.modelData.tooltip
-                                                }
+                                                onHoveredChanged: if (hovered) packageTip.check = packageCheck
                                             }
                                         }
                                     }
