@@ -6121,12 +6121,12 @@ Waiting for %1 to respond</source>
     <message>
         <location filename="../src/dialog/mainwindow.cpp" line="393"/>
         <source>Packages</source>
-        <translation type="unfinished">包</translation>
+        <translation>包</translation>
     </message>
     <message>
         <location filename="../src/dialog/mainwindow.cpp" line="394"/>
         <source>Manage packages...</source>
-        <translation type="unfinished"></translation>
+        <translation>管理包……</translation>
     </message>
     <message>
         <location filename="../src/dialog/mainwindow.cpp" line="675"/>
@@ -6708,99 +6708,125 @@ Waiting for %1 to respond</source>
     <name>PackageManagerDialog</name>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="23"/>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="150"/>
         <source>Package manager</source>
-        <translation type="unfinished"></translation>
+        <translation>包管理器</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="26"/>
         <source>Package changes take effect after restarting the game.</source>
-        <translation type="unfinished"></translation>
+        <translation>包的变更将在重新启动游戏后生效。</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="30"/>
         <source>Install folder…</source>
-        <translation type="unfinished"></translation>
+        <translation>从文件夹安装……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="31"/>
         <source>Install ZIP…</source>
-        <translation type="unfinished"></translation>
+        <translation>从 ZIP 安装……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="32"/>
         <source>Remove</source>
-        <translation type="unfinished"></translation>
+        <translation>移除</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="33"/>
         <source>Restore previous</source>
-        <translation type="unfinished"></translation>
+        <translation>恢复上一版本</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="34"/>
         <source>Close</source>
-        <translation type="unfinished">关闭</translation>
+        <translation>关闭</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="49"/>
         <source>Select package folder</source>
-        <translation type="unfinished"></translation>
+        <translation>选择包文件夹</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="51"/>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="58"/>
         <source>Installing package…</source>
-        <translation type="unfinished"></translation>
+        <translation>正在安装包……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="56"/>
         <source>Select package ZIP</source>
-        <translation type="unfinished"></translation>
+        <translation>选择包 ZIP 文件</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="56"/>
         <source>ZIP archives (*.zip)</source>
-        <translation type="unfinished"></translation>
+        <translation>ZIP 压缩包 (*.zip)</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="70"/>
         <source>Scheduling package removal…</source>
-        <translation type="unfinished"></translation>
+        <translation>正在安排移除包……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="77"/>
         <source>Scheduling restore…</source>
-        <translation type="unfinished"></translation>
+        <translation>正在安排恢复……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="114"/>
         <source>Pending package change discarded: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>已取消待生效的包变更：%1</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="117"/>
         <source> (removal pending)</source>
-        <translation type="unfinished"></translation>
+        <translation> （待移除）</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="119"/>
         <source> (update pending: %1)</source>
-        <translation type="unfinished"></translation>
+        <translation> （待更新：%1）</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="120"/>
         <source> · previous available</source>
-        <translation type="unfinished"></translation>
+        <translation> · 可恢复上一版本</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="125"/>
         <source>No installed packages</source>
-        <translation type="unfinished"></translation>
+        <translation>没有已安装的包</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="127"/>
         <source>Missing package asset: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>包资源缺失：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="61"/>
+        <source>Cannot open the selected archive.</source>
+        <translation>无法打开所选压缩包。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="152"/>
+        <source>Package operation failed</source>
+        <translation>包操作失败</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="153"/>
+        <source>The package operation failed.</source>
+        <translation>包操作失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="156"/>
+        <source>Restart required</source>
+        <translation>需要重新启动</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="157"/>
+        <source>The change is staged and will take effect after restarting the game.</source>
+        <translation>变更已暂存，将在重新启动游戏后生效。</translation>
     </message>
 </context>
 <context>
@@ -7194,36 +7220,6 @@ Waiting for %1 to respond</source>
         <location filename="../src/dialog/scenario-work-dialog.cpp" line="47"/>
         <source>≥</source>
         <translation>≥</translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="61"/>
-        <source>Cannot open the selected archive.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="150"/>
-        <source>Package manager</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="152"/>
-        <source>Package operation failed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="153"/>
-        <source>The package operation failed.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="156"/>
-        <source>Restart required</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="157"/>
-        <source>The change is staged and will take effect after restarting the game.</source>
-        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>

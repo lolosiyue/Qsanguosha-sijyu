@@ -58,7 +58,7 @@ PackageManagerDialog::PackageManagerDialog(const QString &runtimeRoot, const QSt
         runOperation(tr("Installing package…"), [store = m_store, path](QString *error) {
             QFile file(path);
             if (!file.open(QIODevice::ReadOnly)) {
-                if (error) *error = QObject::tr("Cannot open the selected archive.");
+                if (error) *error = PackageManagerDialog::tr("Cannot open the selected archive.");
                 return false;
             }
             return store->stageArchive(file, error);
@@ -147,14 +147,14 @@ void PackageManagerDialog::runOperation(const QString &workingText, const std::f
                 delete worker;
             }
             dialog->setEnabled(true);
-            dialog->setWindowTitle(QObject::tr("Package manager"));
+            dialog->setWindowTitle(PackageManagerDialog::tr("Package manager"));
             if (!succeeded)
-                QMessageBox::warning(dialog, QObject::tr("Package operation failed"), error.isEmpty()
-                                     ? QObject::tr("The package operation failed.") : error);
+                QMessageBox::warning(dialog, PackageManagerDialog::tr("Package operation failed"), error.isEmpty()
+                                     ? PackageManagerDialog::tr("The package operation failed.") : error);
             else {
                 dialog->refresh();
-                QMessageBox::information(dialog, QObject::tr("Restart required"),
-                                         QObject::tr("The change is staged and will take effect after restarting the game."));
+                QMessageBox::information(dialog, PackageManagerDialog::tr("Restart required"),
+                                         PackageManagerDialog::tr("The change is staged and will take effect after restarting the game."));
             }
             Q_UNUSED(workingText);
         }, Qt::QueuedConnection);
