@@ -374,6 +374,7 @@ CommonTranslationTable = {
 	["EquipArea3"] = "-1坐骑栏",
 	["EquipArea4"] = "宝物栏",
 	["EquipAreaX"] = "已废除",
+	["EquipAreaCovered"] = "此格盖住了空的%1",
 	["kill"] = "",
 
 	["use upon"] = "对",

@@ -152,46 +152,195 @@ QList<int> getEquipDisplaySearchOrder(int primary_slot)
     return order;
 }
 
-QMap<int, int> getEquipDisplaySlotsById(const ClientPlayer *player)
+bool equipSlotNarrow(const QSanRoomSkin::PlayerCardContainerLayout *layout, int slot)
 {
-    QMap<int, int> display_slots;
-    if (player == nullptr)
-        return display_slots;
+    if (layout == nullptr)
+        return slot == 2 || slot == 3;
+    const int width = layout->m_equipAreas[slot].width();
+    return width > 0 ? width < 80 : (slot == 2 || slot == 3);
+}
 
-    QSet<int> reserved_visual_slots;
-    foreach (int card_id, player->getEquipsId()) {
-        const Card *card = Sanguosha->getCard(card_id);
+QList<int> equipOverflowCandidates(const ClientPlayer *player,
+                                   const QSanRoomSkin::PlayerCardContainerLayout *layout,
+                                   int logical, bool cardIsHorse, bool abolishedOnly,
+                                   const QSet<int> &reserved)
+{
+    QList<int> abolished, horses, wide, narrow;
+    foreach (int candidate, getEquipDisplaySearchOrder(logical)) {
+        if (candidate == logical || reserved.contains(candidate))
+            continue;
+        if (candidate < 0 || candidate >= S_EQUIP_AREA_LENGTH)
+            continue;
+        const bool gone = player == nullptr || !player->hasEquipArea(candidate);
+        if (gone) {
+            abolished << candidate;
+            continue;
+        }
+        if (abolishedOnly)
+            continue;
+        if (cardIsHorse && (candidate == 2 || candidate == 3))
+            horses << candidate;
+        else if (!equipSlotNarrow(layout, candidate))
+            wide << candidate;
+        else
+            narrow << candidate;
+    }
+    QList<int> order;
+    order << abolished;
+    if (cardIsHorse)
+        order << horses;
+    order << wide << narrow;
+    QList<int> unique;
+    foreach (int slot, order) {
+        if (!unique.contains(slot))
+            unique << slot;
+    }
+    return unique;
+}
+
+struct EquipVisualPlan
+{
+    QMap<int, int> displayById;
+    QMap<int, int> shadowOwnerId;
+    QMap<int, QList<int>> sharedIds;
+    QMap<int, int> extraEmptyLogical;
+    QMap<int, int> logicalByVisual;
+    QMap<int, int> equipsOfType;
+    QSet<int> coveredLive;
+    QSet<int> reserved;
+};
+
+struct EquipVisualRow
+{
+    int id = -1;
+    int primary = 0;
+    QList<int> realSlots;
+    bool horse = false;
+};
+
+void reserveEquipShadows(EquipVisualPlan &plan, const EquipVisualRow &row, int display)
+{
+    if (!row.realSlots.contains(display))
+        return;
+    foreach (int slot, row.realSlots) {
+        if (slot == display || plan.reserved.contains(slot))
+            continue;
+        if (slot < 0 || slot >= S_EQUIP_AREA_LENGTH)
+            continue;
+        plan.reserved.insert(slot);
+        plan.shadowOwnerId.insert(slot, row.id);
+        plan.logicalByVisual.insert(slot, slot);
+    }
+}
+
+int shareEquipVisual(const EquipVisualPlan &plan, int logical)
+{
+    for (int visual = 0; visual < S_EQUIP_AREA_LENGTH; ++visual) {
+        if (plan.shadowOwnerId.contains(visual))
+            continue;
+        if (plan.logicalByVisual.value(visual, -1) == logical)
+            return visual;
+    }
+    return qBound(0, logical, S_EQUIP_AREA_LENGTH - 1);
+}
+
+EquipVisualPlan planRealEquipVisuals(const ClientPlayer *player,
+                                      const QSanRoomSkin::PlayerCardContainerLayout *layout,
+                                      const QList<int> &cardIds)
+{
+    EquipVisualPlan plan;
+    if (player == nullptr)
+        return plan;
+
+    QList<EquipVisualRow> rows;
+    foreach (int cardId, cardIds) {
+        const Card *card = Sanguosha->getCard(cardId);
         if (card == nullptr)
             continue;
+        EquipVisualRow row;
+        row.id = card->getEffectiveId();
+        row.primary = getEquipPrimarySlot(card, player);
+        row.realSlots = player->getEquipRealSlots(row.id);
+        if (row.realSlots.isEmpty())
+            row.realSlots << row.primary;
+        row.horse = qobject_cast<const Horse *>(card->getRealCard()) != nullptr;
+        rows << row;
+        plan.equipsOfType[row.primary] = plan.equipsOfType.value(row.primary) + 1;
+    }
 
-        int primary_slot = getEquipPrimarySlot(card, player);
-        QList<int> real_slots = player->getEquipRealSlots(card->getEffectiveId());
-        if (real_slots.isEmpty())
-            real_slots << primary_slot;
-
-        int display_slot = -1;
-        foreach (int candidate, getEquipDisplaySearchOrder(primary_slot)) {
-            if (reserved_visual_slots.contains(candidate))
-                continue;
-            display_slot = candidate;
-            break;
-        }
-
-        if (display_slot < 0)
-            display_slot = primary_slot;
-
-        display_slots[card->getEffectiveId()] = display_slot;
-        reserved_visual_slots.insert(display_slot);
-
-        if (real_slots.contains(display_slot)) {
-            foreach (int slot, real_slots) {
-                if (slot != display_slot)
-                    reserved_visual_slots.insert(slot);
-            }
+    QList<EquipVisualRow> overflow;
+    foreach (const EquipVisualRow &row, rows) {
+        if (row.primary >= 0 && row.primary < S_EQUIP_AREA_LENGTH && !plan.reserved.contains(row.primary)) {
+            plan.displayById.insert(row.id, row.primary);
+            plan.reserved.insert(row.primary);
+            plan.logicalByVisual.insert(row.primary, row.primary);
+            reserveEquipShadows(plan, row, row.primary);
+        } else {
+            overflow << row;
         }
     }
 
-    return display_slots;
+    foreach (const EquipVisualRow &row, overflow) {
+        int chosen = -1;
+        foreach (int candidate, equipOverflowCandidates(player, layout, row.primary, row.horse, false, plan.reserved)) {
+            chosen = candidate;
+            break;
+        }
+        if (chosen < 0) {
+            const int share = shareEquipVisual(plan, row.primary);
+            plan.sharedIds[share] << row.id;
+            if (!plan.logicalByVisual.contains(share))
+                plan.logicalByVisual.insert(share, row.primary);
+            continue;
+        }
+        plan.displayById.insert(row.id, chosen);
+        plan.reserved.insert(chosen);
+        plan.logicalByVisual.insert(chosen, row.primary);
+        if (player->hasEquipArea(chosen) && chosen != row.primary)
+            plan.coveredLive.insert(chosen);
+        reserveEquipShadows(plan, row, chosen);
+    }
+    return plan;
+}
+
+void placeEmptyEquipAreas(EquipVisualPlan &plan, const ClientPlayer *player,
+                           const QSanRoomSkin::PlayerCardContainerLayout *layout)
+{
+    if (player == nullptr)
+        return;
+    for (int slot = 0; slot < S_EQUIP_AREA_LENGTH; ++slot) {
+        const int areas = player->getEquipArea(slot);
+        const int placeholder = (player->hasEquipArea(slot) && !plan.reserved.contains(slot)) ? 1 : 0;
+        if (placeholder > 0)
+            plan.reserved.insert(slot);
+        const int shadowRepresents = (plan.shadowOwnerId.contains(slot) && player->hasEquipArea(slot)) ? 1 : 0;
+        int extra = areas - plan.equipsOfType.value(slot) - placeholder - shadowRepresents;
+        while (extra > 0) {
+            int display = -1;
+            foreach (int candidate, equipOverflowCandidates(player, layout, slot, slot == 2 || slot == 3, true, plan.reserved)) {
+                display = candidate;
+                break;
+            }
+            if (display < 0)
+                break;
+            plan.extraEmptyLogical.insert(display, slot);
+            plan.logicalByVisual.insert(display, slot);
+            plan.reserved.insert(display);
+            --extra;
+        }
+    }
+}
+
+QMap<int, int> getEquipDisplaySlotsById(const ClientPlayer *player,
+                                         const QSanRoomSkin::PlayerCardContainerLayout *layout)
+{
+    EquipVisualPlan plan = planRealEquipVisuals(player, layout, player ? player->getEquipsId() : QList<int>());
+    QMap<int, int> displaySlots = plan.displayById;
+    for (auto it = plan.sharedIds.constBegin(); it != plan.sharedIds.constEnd(); ++it) {
+        foreach (int id, it.value())
+            displaySlots.insert(id, it.key());
+    }
+    return displaySlots;
 }
 
 }
@@ -994,159 +1143,119 @@ void PlayerCardContainer::updateMarks()
 
 void PlayerCardContainer::_updateEquips()
 {
-    if(!m_player) return;
+    if (!m_player || _m_layout == nullptr)
+        return;
 
-    QMap<int, CardItem *> equip_items_by_id;
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i] == nullptr)
+    QMap<int, CardItem *> equipItemsById;
+    auto considerItem = [&](CardItem *item) {
+        if (item == nullptr || item->getCard() == nullptr)
+            return;
+        equipItemsById.insert(item->getCard()->getEffectiveId(), item);
+    };
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i)
+        considerItem(_m_equipCards[i]);
+    foreach (CardItem *item, _m_extraEquipCards)
+        considerItem(item);
+
+    EquipVisualPlan plan = planRealEquipVisuals(m_player, _m_layout, m_player->getEquipsId());
+    QMap<int, Card *> simulatedEquips;
+    QMap<int, QString> simulatedSkills;
+    QMap<int, const Card *> shadowCards;
+    foreach (int visual, plan.shadowOwnerId.keys()) {
+        if (plan.shadowOwnerId.value(visual) < 0)
             continue;
-        const Card *card = _m_equipCards[i]->getCard();
-        if (card == nullptr)
-            continue;
-        equip_items_by_id[card->getEffectiveId()] = _m_equipCards[i];
+        const Card *card = Sanguosha->getCard(plan.shadowOwnerId.value(visual));
+        if (card != nullptr)
+            shadowCards.insert(visual, card);
     }
 
-    QMap<int, CardItem *> normalized_equip_cards;
-    QMap<int, const Card *> displayed_real_equips;
-    QMap<int, const Card *> shadow_slots;
-    QMap<int, int> real_equip_counts;
-    QSet<int> reserved_visual_slots;
-
-    foreach (int card_id, m_player->getEquipsId()) {
-        const Card *card = Sanguosha->getCard(card_id);
-        if (card == nullptr)
-            continue;
-
-        int primary_slot = getEquipPrimarySlot(card, m_player);
-        QList<int> real_slots = m_player->getEquipRealSlots(card->getEffectiveId());
-        if (real_slots.isEmpty())
-            real_slots << primary_slot;
-
-        int display_slot = -1;
-        foreach (int candidate, getEquipDisplaySearchOrder(primary_slot)) {
-            if (reserved_visual_slots.contains(candidate))
-                continue;
-            display_slot = candidate;
-            break;
+    auto tryAddSimulated = [&](Card *ec, const QString &skillName) {
+        const EquipCard *equip = qobject_cast<const EquipCard *>(ec);
+        if (equip == nullptr) {
+            ec->deleteLater();
+            return;
         }
-
-        if (display_slot < 0)
-            display_slot = primary_slot;
-
-        displayed_real_equips[display_slot] = card;
-        reserved_visual_slots.insert(display_slot);
-        real_equip_counts[primary_slot] = real_equip_counts.value(primary_slot) + 1;
-
-        if (equip_items_by_id.contains(card->getEffectiveId()))
-            normalized_equip_cards[display_slot] = equip_items_by_id.value(card->getEffectiveId());
-
-        if (real_slots.contains(display_slot)) {
-            foreach (int slot, real_slots) {
-                if (slot == display_slot)
-                    continue;
-                shadow_slots[slot] = card;
-                reserved_visual_slots.insert(slot);
+        QList<int> realSlots = equip->getOccupyLocations();
+        int primary = realSlots.isEmpty() ? equip->location() : realSlots.first();
+        if (primary < 0 || primary >= S_EQUIP_AREA_LENGTH) {
+            ec->deleteLater();
+            return;
+        }
+        const bool horse = qobject_cast<const Horse *>(equip) != nullptr;
+        int chosen = plan.reserved.contains(primary) ? -1 : primary;
+        if (chosen < 0) {
+            foreach (int candidate, equipOverflowCandidates(m_player, _m_layout, primary, horse, false, plan.reserved)) {
+                chosen = candidate;
+                break;
             }
         }
-    }
-
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++)
-        _m_equipCards[i] = normalized_equip_cards.value(i, nullptr);
-
-    QMap<int, Card *> simulated_equips;
-    QMap<int, QString> simulated_equip_skills;
-    QMap<int, QList<int> > simulated_equip_real_slots;
-    QMap<int, int> simulated_equip_counts;
-
-    auto try_add_simulated_equip = [&](Card *ec, const QString &skill_name) {
-        const EquipCard *equip = qobject_cast<const EquipCard *>(ec);
-        if (!equip) {
+        if (chosen < 0) {
             ec->deleteLater();
             return;
         }
-
-        QList<int> real_slots = equip->getOccupyLocations();
-        int display_slot = equip->location();
-        if (!real_slots.isEmpty()) display_slot = real_slots.first();
-
-        if (simulated_equips.contains(display_slot)
-            || displayed_real_equips.contains(display_slot)
-            || shadow_slots.contains(display_slot)) {
-            ec->deleteLater();
-            return;
-        }
-
-        foreach (int slot, real_slots) {
-            if (displayed_real_equips.contains(slot)
-                || shadow_slots.contains(slot)
-                || simulated_equips.contains(slot)) {
+        foreach (int slot, realSlots) {
+            if (slot != chosen && plan.reserved.contains(slot)) {
                 ec->deleteLater();
                 return;
             }
         }
-
-        simulated_equips[display_slot] = ec;
-        simulated_equip_skills[display_slot] = skill_name;
-        simulated_equip_real_slots[display_slot] = real_slots;
-        simulated_equip_counts[equip->location()] = simulated_equip_counts.value(equip->location()) + 1;
-
-        if (real_slots.contains(display_slot)) {
-            foreach (int slot, real_slots) {
-                if (slot == display_slot)
+        simulatedEquips.insert(chosen, ec);
+        simulatedSkills.insert(chosen, skillName);
+        plan.reserved.insert(chosen);
+        plan.logicalByVisual.insert(chosen, primary);
+        plan.equipsOfType[primary] = plan.equipsOfType.value(primary) + 1;
+        if (m_player->hasEquipArea(chosen) && chosen != primary)
+            plan.coveredLive.insert(chosen);
+        if (realSlots.contains(chosen)) {
+            foreach (int slot, realSlots) {
+                if (slot == chosen || plan.reserved.contains(slot) || slot < 0 || slot >= S_EQUIP_AREA_LENGTH)
                     continue;
-                shadow_slots[slot] = ec;
+                plan.reserved.insert(slot);
+                plan.shadowOwnerId.insert(slot, -1);
+                plan.logicalByVisual.insert(slot, slot);
+                shadowCards.insert(slot, ec);
             }
         }
     };
 
-    QStringList property_equips = m_player->property("View_As_Equips_List").toString().split("+", Qt::SkipEmptyParts);
-    foreach (QString eq_name, property_equips) {
-        Card *ec = Sanguosha->cloneCard(eq_name);
-        if (ec) try_add_simulated_equip(ec, QString());
+    const QStringList propertyEquips = m_player->property("View_As_Equips_List").toString().split(QStringLiteral("+"), Qt::SkipEmptyParts);
+    foreach (const QString &name, propertyEquips) {
+        if (Card *ec = Sanguosha->cloneCard(name))
+            tryAddSimulated(ec, QString());
     }
-    const QStringList &vae_tag = m_player->uiState().viewAsEquipSkills;
-    foreach (QString entry, vae_tag) {
-        QStringList parts = entry.split("^"); // Split on '^'.
+    foreach (const QString &entry, m_player->uiState().viewAsEquipSkills) {
+        const QStringList parts = entry.split(QStringLiteral("^"));
         if (parts.length() >= 2) {
-            Card *ec = Sanguosha->cloneCard(parts[0]);
-            if (ec) try_add_simulated_equip(ec, parts[1]);
+            if (Card *ec = Sanguosha->cloneCard(parts.at(0)))
+                tryAddSimulated(ec, parts.at(1));
         }
     }
 
-    QSet<int> reserved_display_slots = reserved_visual_slots;
-    foreach (int slot, simulated_equips.keys())
-        reserved_display_slots.insert(slot);
-    foreach (int slot, shadow_slots.keys())
-        reserved_display_slots.insert(slot);
+    placeEmptyEquipAreas(plan, m_player, _m_layout);
 
-    QMap<int, int> extra_empty_slots;
-    for (int slot = 0; slot < S_EQUIP_AREA_LENGTH; ++slot) {
-        bool primary_slot_reserved = reserved_display_slots.contains(slot);
-        int primary_placeholder_count = (m_player->hasEquipArea(slot) && !primary_slot_reserved) ? 1 : 0;
-        if (primary_placeholder_count > 0)
-            reserved_display_slots.insert(slot);
-
-        int extra_needed = m_player->getEquipArea(slot)
-            - real_equip_counts.value(slot)
-            - simulated_equip_counts.value(slot)
-            - primary_placeholder_count;
-        while (extra_needed > 0) {
-            int display_slot = -1;
-            foreach (int candidate, getEquipDisplaySearchOrder(slot)) {
-                if (reserved_display_slots.contains(candidate))
-                    continue;
-                display_slot = candidate;
-                break;
-            }
-
-            if (display_slot < 0)
-                break;
-
-            extra_empty_slots[display_slot] = slot;
-            reserved_display_slots.insert(display_slot);
-            --extra_needed;
+    auto areaName = [](int slot) {
+        return Sanguosha->translate(QStringLiteral("EquipArea%1").arg(slot));
+    };
+    auto logicalOf = [&](int visual) {
+        return plan.extraEmptyLogical.contains(visual)
+            ? plan.extraEmptyLogical.value(visual)
+            : plan.logicalByVisual.value(visual, visual);
+    };
+    auto decorateTooltip = [&](QString tooltip, int visual) {
+        const int logical = logicalOf(visual);
+        const bool borrowed = logical != visual;
+        const bool covered = plan.coveredLive.contains(visual);
+        if (!borrowed && !covered)
+            return tooltip;
+        QString head = QStringLiteral("<b>%1</b>").arg(areaName(logical));
+        if (covered) {
+            head += QStringLiteral("<br/>")
+                + Sanguosha->translate(QStringLiteral("EquipAreaCovered")).arg(areaName(visual));
         }
-    }
+        if (!tooltip.isEmpty())
+            head += QStringLiteral("<br/>") + tooltip;
+        return head;
+    };
 
     const PlayerUIState &uiState = m_player->uiState();
     const int off_dist = uiState.offensiveDistance;
@@ -1156,87 +1265,120 @@ void PlayerCardContainer::_updateEquips()
     // The horse slot is narrower than weapon and armor in the compact Photo layout; scale the label accordingly.
     const int distFontPx = qBound(8, _m_layout->m_horsePointArea.height(), 14);
 
+    auto paintDistance = [&](QPixmap &pixmap, int skillDist, const QStringList &skills, QString &tooltip, bool centered, bool horseSlot) {
+        if (skillDist == 0 || pixmap.isNull())
+            return;
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QString skillValue = (skillDist > 0 ? QStringLiteral("+") : QString()) + QString::number(skillDist);
+        const QRect pointArea = horseSlot ? _m_layout->m_horsePointArea : _m_layout->m_equipPointArea;
+        const int logicalHeight = qRound(equipPixmapLogicalSize(pixmap).height());
+        const int logicalWidth = qRound(equipPixmapLogicalSize(pixmap).width());
+        const QRect overlay = centered
+            ? QRect(0, 0, logicalWidth, logicalHeight)
+            : QRect(0, 0, qMax(0, pointArea.left() - 3), logicalHeight);
+        QFont boldFont;
+        boldFont.setPixelSize(distFontPx);
+        boldFont.setBold(true);
+        painter.setFont(boldFont);
+        const QColor mainColor = (skillDist > 0) ? QColor(255, 220, 0) : QColor(255, 80, 80);
+        const int align = centered ? (Qt::AlignCenter) : (Qt::AlignRight | Qt::AlignVCenter);
+        painter.setPen(QColor(0, 0, 0, 210));
+        for (int dx = -1; dx <= 1; ++dx) {
+            for (int dy = -1; dy <= 1; ++dy) {
+                if (dx || dy)
+                    painter.drawText(overlay.translated(dx, dy), align, skillValue);
+            }
+        }
+        painter.setPen(mainColor);
+        painter.drawText(overlay, align, skillValue);
+        QStringList translated;
+        foreach (const QString &skill, skills)
+            translated << Sanguosha->translate(skill);
+        if (!tooltip.isEmpty())
+            tooltip += QStringLiteral("<br/><hr/>");
+        tooltip += Sanguosha->translate(QStringLiteral("UI_DIST_SkillMod")).arg(translated.join(QStringLiteral("、"))).arg(skillValue);
+    };
+
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        bool is_def = (i == 2);
-        bool is_off = (i == 3);
-        int skill_dist = is_def ? def_dist : (is_off ? off_dist : 0);
-        QStringList skills = is_def ? def_skills : off_skills;
+        const bool isDef = i == 2;
+        const bool isOff = i == 3;
+        const int skillDist = isDef ? def_dist : (isOff ? off_dist : 0);
+        const QStringList skills = isDef ? def_skills : off_skills;
+        _m_equipRowItems[i].clear();
+
+        QList<int> faceIds;
+        for (auto it = plan.displayById.constBegin(); it != plan.displayById.constEnd(); ++it) {
+            if (it.value() == i)
+                faceIds << it.key();
+        }
+        foreach (int id, plan.sharedIds.value(i)) {
+            if (!faceIds.contains(id))
+                faceIds << id;
+        }
 
         QPixmap pixmap;
         QString tooltip;
-        float opacity = 1.0;
-        bool has_card_image = false;
+        float opacity = 1.0f;
+        bool painted = false;
 
-        if (displayed_real_equips.contains(i)) {
-            const Card *card = displayed_real_equips[i];
-            pixmap = _getEquipPixmap(card, i);
-            tooltip = card ? card->getDescription(m_player) : QString();
-            opacity = 1.0;
-            has_card_image = true;
-        }
-
-        else if (_m_equipCards[i]) {
-            const Card *card = _m_equipCards[i]->getCard();
-            pixmap = _getEquipPixmap(card, i);
-            tooltip = card ? card->getDescription(m_player) : QString();
-            opacity = 1.0;
-            has_card_image = true;
-        }
-
-        else if (shadow_slots.contains(i)) {
-            const Card *occupying_card = shadow_slots[i];
-            pixmap = _getEquipPixmap(occupying_card, i);
-            tooltip = occupying_card ? occupying_card->getDescription(m_player) : QString();
-            opacity = 1.0;
-            has_card_image = true;
-        }
-        else if (simulated_equips.contains(i)) {
-            const Card *card = simulated_equips[i];
-            QString skill_name = simulated_equip_skills[i];
-            pixmap = _getEquipPixmap(card, i);
-
-            QString skillText;
-            if (skill_name.isEmpty()) skillText = Sanguosha->translate("skill_transform");
-            else skillText = Sanguosha->translate("skill_transform_from").arg(Sanguosha->translate(skill_name));
-
-            tooltip = QString("<b>【%1】</b> (%2)<br/>%3")
-                          .arg(Sanguosha->translate(card->objectName()))
-                          .arg(skillText)
-                          .arg(card->getDescription(m_player));
-            opacity = 0.8f;
-            has_card_image = true;
-        } 
-
-        if (has_card_image) {
-            if (skill_dist != 0) {
+        if (!faceIds.isEmpty()) {
+            if (faceIds.size() == 1) {
+                const Card *card = Sanguosha->getCard(faceIds.first());
+                pixmap = _getEquipPixmap(card, i);
+                tooltip = card ? card->getDescription(m_player) : QString();
+                if (CardItem *item = equipItemsById.value(faceIds.first()))
+                    _m_equipRowItems[i] << item;
+            } else {
+                const QSize slotSize = _m_layout->m_equipAreas[i].size();
+                const int supersample = getUITextSupersample();
+                pixmap = QPixmap(slotSize * supersample);
+                pixmap.fill(Qt::transparent);
+                pixmap.setDevicePixelRatio(supersample);
                 QPainter painter(&pixmap);
-                painter.setRenderHint(QPainter::Antialiasing);
-                QString skill_val_str = (skill_dist > 0 ? "+" : "") + QString::number(skill_dist);
-                QRect pointArea = (is_def || is_off) ? _m_layout->m_horsePointArea : _m_layout->m_equipPointArea;
-                const int logicalHeight = qRound(equipPixmapLogicalSize(pixmap).height());
-                QRect overlayArea(0, 0, qMax(0, pointArea.left() - 3), logicalHeight);
-                QFont boldFont;
-                boldFont.setPixelSize(distFontPx);
-                boldFont.setBold(true);
-                painter.setFont(boldFont);
-                QColor mainColor = (skill_dist > 0) ? QColor(255, 220, 0) : QColor(255, 80, 80);
-                painter.setPen(QColor(0, 0, 0, 210));
-                for (int ddx = -1; ddx <= 1; ddx++)
-                    for (int ddy = -1; ddy <= 1; ddy++)
-                        if (ddx || ddy)
-                            painter.drawText(overlayArea.translated(ddx, ddy), Qt::AlignRight | Qt::AlignVCenter, skill_val_str);
-                painter.setPen(mainColor);
-                painter.drawText(overlayArea, Qt::AlignRight | Qt::AlignVCenter, skill_val_str);
-
-                QStringList translated_skills;
-                foreach (QString sk, skills) translated_skills << Sanguosha->translate(sk);
-
-                if (!tooltip.isEmpty()) tooltip += "<br/><hr/>";
-                tooltip += Sanguosha->translate("UI_DIST_SkillMod")
-                               .arg(translated_skills.join("、"))
-                               .arg(skill_val_str);
+                const int gap = 1;
+                const int cellWidth = qMax(1, (slotSize.width() - gap * (faceIds.size() - 1)) / faceIds.size());
+                for (int part = 0; part < faceIds.size(); ++part) {
+                    const Card *card = Sanguosha->getCard(faceIds.at(part));
+                    const QPixmap cell = _getEquipPixmap(card, i, QSize(cellWidth, slotSize.height()));
+                    painter.drawPixmap(QPointF(part * (cellWidth + gap), 0), cell);
+                    if (CardItem *item = equipItemsById.value(faceIds.at(part)))
+                        _m_equipRowItems[i] << item;
+                    if (!tooltip.isEmpty())
+                        tooltip += QStringLiteral("<br/><hr/>");
+                    if (card != nullptr)
+                        tooltip += QStringLiteral("<b>【%1】</b><br/>%2")
+                                       .arg(Sanguosha->translate(card->objectName()), card->getDescription(m_player));
+                }
             }
+            tooltip = decorateTooltip(tooltip, i);
+            painted = true;
+        } else if (simulatedEquips.contains(i)) {
+            const Card *card = simulatedEquips.value(i);
+            const QString skillName = simulatedSkills.value(i);
+            pixmap = _getEquipPixmap(card, i);
+            const QString skillText = skillName.isEmpty()
+                ? Sanguosha->translate(QStringLiteral("skill_transform"))
+                : Sanguosha->translate(QStringLiteral("skill_transform_from")).arg(Sanguosha->translate(skillName));
+            tooltip = QStringLiteral("<b>【%1】</b> (%2)<br/>%3")
+                          .arg(Sanguosha->translate(card->objectName()), skillText, card->getDescription(m_player));
+            tooltip = decorateTooltip(tooltip, i);
+            opacity = 0.8f;
+            painted = true;
+        } else if (shadowCards.contains(i)) {
+            const Card *card = shadowCards.value(i);
+            pixmap = _getEquipPixmap(card, i);
+            tooltip = decorateTooltip(card->getDescription(m_player), i);
+            opacity = 0.92f;
+            painted = true;
+        } else if (plan.extraEmptyLogical.contains(i)) {
+            pixmap = _paintEquipCaptionRow(i, areaName(plan.extraEmptyLogical.value(i)));
+            tooltip = decorateTooltip(QString(), i);
+            painted = true;
+        }
 
+        if (painted) {
+            paintDistance(pixmap, skillDist, skills, tooltip, false, isDef || isOff);
             _m_equipRegions[i]->setPixmap(pixmap);
             _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
             _m_equipRegions[i]->setToolTip(tooltip);
@@ -1246,41 +1388,24 @@ void PlayerCardContainer::_updateEquips()
         }
 
         if (m_player->hasEquipArea(i)) {
-            if (skill_dist != 0) {
-                QPixmap empty_pixmap(_m_layout->m_equipAreas[i].size());
-                empty_pixmap.fill(Qt::transparent);
-                QPainter painter(&empty_pixmap);
-                painter.setRenderHint(QPainter::Antialiasing);
-                QString val_str = (skill_dist > 0 ? "+" : "") + QString::number(skill_dist);
-                QRect textArea(0, 0, empty_pixmap.width(), empty_pixmap.height());
-                QFont boldFont;
-                boldFont.setPixelSize(distFontPx);
-                boldFont.setBold(true);
-                painter.setFont(boldFont);
-                QColor mainColor = (skill_dist > 0) ? QColor(255, 220, 0) : QColor(255, 80, 80);
-                painter.setPen(QColor(0, 0, 0, 210));
-                for (int ddx = -1; ddx <= 1; ddx++)
-                    for (int ddy = -1; ddy <= 1; ddy++)
-                        if (ddx || ddy)
-                            painter.drawText(textArea.translated(ddx, ddy), Qt::AlignCenter, val_str);
-                painter.setPen(mainColor);
-                painter.drawText(textArea, Qt::AlignCenter, val_str);
-
-                _m_equipRegions[i]->setPixmap(empty_pixmap);
+            if (skillDist != 0) {
+                QPixmap emptyPixmap(_m_layout->m_equipAreas[i].size());
+                emptyPixmap.fill(Qt::transparent);
+                QString emptyTooltip;
+                paintDistance(emptyPixmap, skillDist, skills, emptyTooltip, true, isDef || isOff);
+                QStringList translated;
+                foreach (const QString &skill, skills)
+                    translated << Sanguosha->translate(skill);
+                const QString value = (skillDist > 0 ? QStringLiteral("+") : QString()) + QString::number(skillDist);
+                const QString distLine = isDef
+                    ? Sanguosha->translate(QStringLiteral("UI_DIST_Defend")).arg(value)
+                    : Sanguosha->translate(QStringLiteral("UI_DIST_Offense")).arg(value);
+                emptyTooltip = QStringLiteral("<b>%1</b><br/>%2")
+                                   .arg(Sanguosha->translate(QStringLiteral("UI_DIST_SkillTitle")).arg(translated.join(QStringLiteral("、"))),
+                                        distLine);
+                _m_equipRegions[i]->setPixmap(emptyPixmap);
                 _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
-
-                QStringList translated_skills;
-                foreach (QString sk, skills) translated_skills << Sanguosha->translate(sk);
-
-                const QString distLine = is_def
-                    ? Sanguosha->translate("UI_DIST_Defend").arg(val_str)
-                    : Sanguosha->translate("UI_DIST_Offense").arg(val_str);
-                QString empty_tooltip = QString("<b>%1</b><br/>%2")
-                                            .arg(Sanguosha->translate("UI_DIST_SkillTitle")
-                                                     .arg(translated_skills.join("、")))
-                                            .arg(distLine);
-
-                _m_equipRegions[i]->setToolTip(empty_tooltip);
+                _m_equipRegions[i]->setToolTip(emptyTooltip);
                 _m_equipRegions[i]->setOpacity(1.0);
                 _m_equipRegions[i]->show();
             } else {
@@ -1289,13 +1414,30 @@ void PlayerCardContainer::_updateEquips()
         } else {
             _m_equipRegions[i]->setPixmap(_getEquipPixmap(nullptr, i));
             _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
-            _m_equipRegions[i]->setToolTip("");
+            _m_equipRegions[i]->setToolTip(QString());
             _m_equipRegions[i]->setOpacity(1.0);
             _m_equipRegions[i]->show();
         }
     }
 
-    foreach (Card *ec, simulated_equips.values()) ec->deleteLater();
+    _m_extraEquipCards.clear();
+    QSet<CardItem *> kept;
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+        _m_equipCards[i] = _m_equipRowItems[i].isEmpty() ? nullptr : _m_equipRowItems[i].first();
+        if (_m_equipCards[i] != nullptr)
+            kept.insert(_m_equipCards[i]);
+        for (int part = 1; part < _m_equipRowItems[i].size(); ++part) {
+            _m_extraEquipCards << _m_equipRowItems[i].at(part);
+            kept.insert(_m_equipRowItems[i].at(part));
+        }
+    }
+    for (auto it = equipItemsById.constBegin(); it != equipItemsById.constEnd(); ++it) {
+        if (it.value() != nullptr && !kept.contains(it.value()))
+            _m_extraEquipCards << it.value();
+    }
+
+    foreach (Card *ec, simulatedEquips)
+        ec->deleteLater();
 }
 
 void PlayerCardContainer::_paintGeneralIndicators()
@@ -1444,10 +1586,21 @@ void PlayerCardContainer::repaintAll(bool all)
 				delete _m_equipCards[i];
 			}
 			_m_equipCards[i] = nullptr;
+            _m_equipRowItems[i].clear();
 			_m_equipRegions[i]->setPixmap(QPixmap(_m_layout->m_equipAreas[i].size()));
 			_m_equipRegions[i]->setOpacity(0);
 			_m_equipRegions[i]->hide();
 		}
+        foreach (CardItem *equip, _m_extraEquipCards) {
+            bool primary = false;
+            for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+                if (_m_equipCards[i] == equip)
+                    primary = true;
+            }
+            if (!primary)
+                delete equip;
+        }
+        _m_extraEquipCards.clear();
 		QList<CardItem *> card_items = _createCards(m_player->getEquipsId());
 		addEquips(card_items);
 		for (int i = 0; i < _m_judgeIcons.length(); i++){
@@ -1852,15 +2005,57 @@ namespace {
     }
 }
 
-QPixmap PlayerCardContainer::_getEquipPixmap(const Card *equip, int slot)
+QPixmap PlayerCardContainer::_getEquipPixmap(const Card *equip, int slot, const QSize &forcedSize)
 {
     // Vector equip row: beige fill, thin black edge, cropped card art, and a clerical name.
     // Dashboard and Photo both crop the card art. A Photo horse shows +1/-1 and omits the name.
     const int supersample = getUITextSupersample();
-    const QSize slotSize = _m_layout->m_equipAreas[slot].size();
+    const QSize naturalSize = _m_layout->m_equipAreas[slot].size();
+    const QSize slotSize = forcedSize.isValid() ? forcedSize : naturalSize;
     QPixmap equipIcon(slotSize * supersample);
     equipIcon.fill(Qt::transparent);
     equipIcon.setDevicePixelRatio(supersample);
+
+    const bool cardIsHorse = equip != nullptr && qobject_cast<const Horse *>(equip->getRealCard()) != nullptr;
+    const bool subCell = forcedSize.isValid() && naturalSize.width() > forcedSize.width() + 2;
+    const bool foreignOnHorse = equip != nullptr && (slot == 2 || slot == 3) && !cardIsHorse;
+    if (equip != nullptr && (subCell || foreignOnHorse)) {
+        QPainter painter(&equipIcon);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.setRenderHint(QPainter::TextAntialiasing);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const bool isDashboard = getResourceKeyName() == QSanRoomSkin::S_SKIN_KEY_DASHBOARD;
+        if (isDashboard) {
+            painter.fillRect(QRectF(0, 0, slotSize.width(), slotSize.height()), QColor(0, 0, 0));
+            const qreal inset = qMax(1.0, slotSize.height() * 0.08);
+            painter.fillRect(QRectF(0, inset, qMax(1.0, slotSize.width() - inset), qMax(1.0, slotSize.height() - inset * 2.0)),
+                             QColor(217, 212, 190));
+        } else {
+            paintEquipRowBg(painter, QRectF(0, 1, slotSize.width(), qMax(1.0, slotSize.height() - 2.0)));
+        }
+        const qreal iconHeight = qMax(1.0, slotSize.height() - 4.0);
+        const qreal iconWidth = qMin(iconHeight * 275.0 / 211.0, slotSize.width() * 0.42);
+        const QRectF iconBox(2, (slotSize.height() - iconHeight) / 2.0, iconWidth, iconHeight);
+        paintEquipCardArtIcon(painter, iconBox, equip->objectName(), supersample);
+        const qreal textLeft = iconBox.right() + 2.0;
+        const QRectF textRect(textLeft, 0, qMax(8.0, slotSize.width() - textLeft - 1.0), slotSize.height());
+        const QColor textColor(38, 30, 16);
+        QString shown;
+        if (cardIsHorse) {
+            const Horse *horse = qobject_cast<const Horse *>(equip->getRealCard());
+            const int correct = horse ? horse->getCorrect(m_player) : 0;
+            shown = (correct > 0 ? QStringLiteral("+") : QString()) + QString::number(correct);
+        } else if (const Weapon *weapon = qobject_cast<const Weapon *>(equip->getRealCard())) {
+            shown = chineseNumeral(weapon->getRange(m_player)) + QStringLiteral(" ")
+                + Sanguosha->translate(equip->objectName());
+        } else {
+            shown = Sanguosha->translate(equip->objectName());
+        }
+        painter.setPen(textColor);
+        painter.setFont(equipNameFontFit(qMax(8, qRound(slotSize.height() * 0.7)), shown, textRect.width()));
+        painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, shown);
+        return equipIcon;
+    }
 
     const bool isHorse = slot == 2 || slot == 3;
     const bool isDashboard = getResourceKeyName() == QSanRoomSkin::S_SKIN_KEY_DASHBOARD;
@@ -2029,6 +2224,43 @@ QPixmap PlayerCardContainer::_getEquipPixmap(const Card *equip, int slot)
     return equipIcon;
 }
 
+QPixmap PlayerCardContainer::_paintEquipCaptionRow(int slot, const QString &label)
+{
+    // Same beige equip row as a real card. An extra empty area keeps its own name
+    // and does not reuse the abolished "× 已废除" row.
+    const int supersample = getUITextSupersample();
+    const QSize slotSize = _m_layout->m_equipAreas[slot].size();
+    QPixmap icon(slotSize * supersample);
+    icon.fill(Qt::transparent);
+    icon.setDevicePixelRatio(supersample);
+    QPainter painter(&icon);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    const bool isDashboard = getResourceKeyName() == QSanRoomSkin::S_SKIN_KEY_DASHBOARD;
+    const QColor textColor(38, 30, 16);
+    if (isDashboard) {
+        const qreal scale = slotSize.width() / 298.0;
+        const QRectF outer(0, 0, slotSize.width(), slotSize.height());
+        painter.fillRect(outer, QColor(0, 0, 0));
+        const QRectF inner = outer.adjusted(0.0, 4.0 * scale, -4.0 * scale, -4.0 * scale);
+        painter.fillRect(inner, QColor(217, 212, 190));
+        const qreal nameLeft = 16.0 * scale;
+        const QRectF nameRect(nameLeft, inner.top(), qMax(8.0, inner.right() - 4.0 - nameLeft), inner.height());
+        const int fontPx = qMax(8, qRound(inner.height() * 0.84) - 3);
+        painter.setFont(equipNameFontFit(fontPx, label, nameRect.width()));
+        drawGlowText(painter, nameRect, Qt::AlignVCenter | Qt::AlignLeft, label, textColor, QColor(255, 253, 228));
+        return icon;
+    }
+
+    const QRectF panel(0, 1, slotSize.width(), qMax(1.0, slotSize.height() - 3.0));
+    paintEquipRowBg(painter, panel);
+    const QRectF nameRect(4, panel.top(), qMax(8.0, panel.width() - 6.0), panel.height());
+    painter.setPen(textColor);
+    painter.setFont(equipNameFontFit(qMax(8, qRound(panel.height() * 0.84)), label, nameRect.width()));
+    painter.drawText(nameRect, Qt::AlignVCenter | Qt::AlignLeft, label);
+    return icon;
+}
+
 void PlayerCardContainer::setFloatingArea(QRect rect)
 {
     _m_floatingAreaRect = rect;
@@ -2048,7 +2280,7 @@ void PlayerCardContainer::addEquips(QList<CardItem *> &equips)
 
         int index = getEquipPrimarySlot(card, m_player);
         if (m_player != nullptr && card != nullptr) {
-            QMap<int, int> display_slots = getEquipDisplaySlotsById(m_player);
+            QMap<int, int> display_slots = getEquipDisplaySlotsById(m_player, _m_layout);
             if (display_slots.contains(card->getEffectiveId()))
                 index = display_slots.value(card->getEffectiveId());
         }
@@ -2059,7 +2291,10 @@ void PlayerCardContainer::addEquips(QList<CardItem *> &equips)
         QPointF homePos = mapFromItem(_getEquipParent(), equipAreaCenter);
         equip->setHomePos(homePos);
         equip->setHomeOpacity(0.0);
-        _m_equipCards[index] = equip;
+        if (_m_equipCards[index] != nullptr && _m_equipCards[index] != equip)
+            _m_extraEquipCards << equip;
+        else
+            _m_equipCards[index] = equip;
         QString description = card->getDescription(m_player);
         _m_equipRegions[index]->setToolTip(description);
 		
@@ -2162,8 +2397,37 @@ QList<CardItem *> PlayerCardContainer::removeEquips(const QList<int> &cardIds)
 			_m_equipCards[index] = nullptr;
 		}
 	}
+    for (int index = _m_extraEquipCards.size() - 1; index >= 0; --index) {
+        CardItem *equip = _m_extraEquipCards.at(index);
+        if (equip == nullptr || equip->getCard() == nullptr
+            || !cardIds.contains(equip->getCard()->getEffectiveId()))
+            continue;
+        equip->setHomeOpacity(0.0);
+        result.append(equip);
+        _m_extraEquipCards.removeAt(index);
+    }
     _updateEquips();
     return result;
+}
+
+QList<CardItem *> PlayerCardContainer::equipCardItems() const
+{
+    QList<CardItem *> items;
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+        if (!_m_equipRowItems[i].isEmpty()) {
+            foreach (CardItem *item, _m_equipRowItems[i]) {
+                if (item != nullptr && !items.contains(item))
+                    items << item;
+            }
+        } else if (_m_equipCards[i] != nullptr && !items.contains(_m_equipCards[i])) {
+            items << _m_equipCards[i];
+        }
+    }
+    foreach (CardItem *item, _m_extraEquipCards) {
+        if (item != nullptr && !items.contains(item))
+            items << item;
+    }
+    return items;
 }
 
 void PlayerCardContainer::startHuaShen(QString generalName, QString skillName)

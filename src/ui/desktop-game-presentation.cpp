@@ -237,7 +237,7 @@ void DesktopGamePresentation::updateKeyboardCursor()
     if (m_keyboardKind == QLatin1String("card")) {
         if (m_keyboardId.startsWith(QLatin1String("equip:"))) {
             const int id = m_keyboardId.mid(6).toInt();
-            for (auto *equip : dashboard->_m_equipCards)
+            for (auto *equip : dashboard->equipCardItems())
                 if (equip && equip->getId() == id) item = equip;
         } else {
             for (CardItem *card : dashboard->getHandCards())
@@ -925,8 +925,7 @@ GameActionModel DesktopGamePresentation::actionModel() const
             model.cards.append({QString::number(item->getId()), orderedCardLabel(item->getId(), cardLabel(item->getId())),
                 enabled, item->isSelected(), enabled ? QString() : tr("This card cannot currently be selected")});
         }
-        for (int slot = 0; slot < S_EQUIP_AREA_LENGTH; ++slot) {
-            CardItem *item = dashboard->_m_equipCards[slot];
+        for (CardItem *item : dashboard->equipCardItems()) {
             if (!item) continue;
             const bool enabled = item->isMarkable() || item->isMarked();
             model.cards.append({QStringLiteral("equip:") + QString::number(item->getId()),
@@ -1144,8 +1143,7 @@ void DesktopGamePresentation::applyIntent(const QString &kind, const QString &id
             m_scene->card_container->selectGongxinCard(id.toInt(), selected);
         } else if (id.startsWith(QLatin1String("equip:"))) {
             const int cardId = id.mid(6).toInt();
-            for (int slot = 0; slot < S_EQUIP_AREA_LENGTH; ++slot) {
-                CardItem *item = dashboard->_m_equipCards[slot];
+            for (CardItem *item : dashboard->equipCardItems()) {
                 if (item && item->getId() == cardId && item->isMarked() != selected) item->mark(selected);
             }
         } else {

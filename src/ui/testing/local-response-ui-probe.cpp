@@ -123,8 +123,8 @@ QJsonObject LocalResponseUiProbe::snapshot() const
     };
     for (CardItem *item : m_scene->dashboard->getHandCards())
         appendCard(item, QStringLiteral("hand"));
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i)
-        appendCard(m_scene->dashboard->_m_equipCards[i], QStringLiteral("equip"));
+    for (CardItem *item : m_scene->dashboard->equipCardItems())
+        appendCard(item, QStringLiteral("equip"));
     root.insert(QStringLiteral("cards"), cards);
 
     QJsonArray surfaceCards;
@@ -272,8 +272,7 @@ CardItem *LocalResponseUiProbe::findCard(const QString &alias) const
         if (item->getCard() && item->getCard()->getEffectiveId() == id)
             return item;
     }
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
-        CardItem *item = m_scene->dashboard->_m_equipCards[i];
+    for (CardItem *item : m_scene->dashboard->equipCardItems()) {
         if (item && item->getCard() && item->getCard()->getEffectiveId() == id)
             return item;
     }
