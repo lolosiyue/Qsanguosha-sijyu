@@ -313,7 +313,7 @@ spectator path or online clients. Its production statistics lifecycle carries
 An unfinished lab only leaves a timeline fence; it is never submitted as a
 completed match. The console reports the statistics path, shared root/generation
 and pending durable-receipt status. Its application data location is separate
-from the normal client; tests use disposable XDG profiles.
+from the normal client.
 
 The console permits at most 128 turn advances and 128 successful restores per
 process, independent of undo. These bounds also limit retained journal growth in
@@ -322,86 +322,6 @@ Lua closures, restore general/skill topology, or make unsupported card-effect
 tags serializable. Unknown state still rejects capability validation. In
 particular, the legacy GlobalSnapshot `TrickEffectData`/`NullifyingEffect`
 CardEffectStruct problem is not claimed fixed by this basic-card profile.
-
-The opt-in CTest `qsanguosha_rewind_lab` drives this real executable through stdin,
-checks both anchors and repeated restores through generation 7, compares history,
-RNG/cards after continued play, crosses deck reshuffles, exhausts the eight-turn
-retention window, and checks post-commit observer counts and clean worker shutdown.
-Focused Room/request/client tests cover native publication, retained socket
-objects and reducer generation fencing. The newer network integration described
-below additionally uses live TCP connections and the production session controller;
-full Qt 6.11 GUI rendering/controller-device QA remains a separate check.
-
-The combined statistics tests use the production Room lifecycle, direct restore
-hook, background writer and SQLite reader. They publish terminal fixture
-projections at generations 0, 1 and 2, compare the stored history byte-for-byte
-to the effective Room history, and require one root/match. Full-round undo
-removes the abandoned turn's events and facts. A real journal lock makes the
-postcommit receipt fail: the committed game generation remains, the previous
-terminal row is quarantined, exact-generation retry succeeds after unlocking,
-and continued play plus a new terminal projection uses only current facts.
-These terminal fixture captures deliberately keep the native GameSession live;
-they are not a claim that a naturally ended game/closed worker can be resurrected.
-The real console test independently confirms both worker-thread restores reach
-the production writer with matching root/generation and an unfinished-match
-fence. The ordinary statistics contract suite continues to cover durability,
-read-only SQLite failures and restart/recovery behavior.
-
-## Focused validation
-
-Configure with `-DQSAN_TEST_GAME_STATE_CONTRACT=ON`, build
-`qsanguosha_game_state_contract_tests`, `qsanguosha_managed_state_lua_tests`,
-`qsanguosha_game_state_runtime_values_tests`, `qsanguosha_room_managed_state_tests`,
-`qsanguosha_room_managed_turn_tests` and `qsanguosha_managed_client_sync_tests`, then
-run `ctest --test-dir <build> -L state-contract --output-on-failure`.
-The production test requires the normal engine Qt dependencies (including
-WebSockets) and the companion extensions checkout at `../extensions`, overridable
-with `QSAN_EXTENSIONS_SOURCE_DIR`. CTest stages a separate code-only runtime; it
-does not edit the companion checkout or start a long game.
-For an environment with only QtCore installed, use the independent entry instead:
-
-```sh
-cmake -S tests/game-state-contract -B build/state-contract -G Ninja
-cmake --build build/state-contract --parallel 4
-ctest --test-dir build/state-contract --output-on-failure
-```
-
-The tests use the repository's Lua dialect, with no media downloads, paid APIs
-or long game runs. See the test sources for the exercised coverage.
-
-Validated in the isolated worktree based on `77926a851cb008399d54f44ef3aa3a9226a0980e`:
-the production Debug engine/static-library and test executables build successfully.
-The previously missing Qt6 WebSockets component was obtained from the same official
-Debian source as the existing Qt setup (89 KB), without reducing repository Qt
-requirements. The complete `state-contract` CTest selection includes core, Lua,
-runtime staging and production Room tests. The latter exercises two real Rooms,
-their Game/AI VMs, a recording socket, successful/repeated publication, stale and
-throwing provider rejection, native userdata rejection, and world isolation.
-The fixture uses about 15 MB of code/configuration; no media payload is needed.
-Final focused validation passed **7/7 tests in 2.19 seconds**: 154 value-contract
-checks, 28 prepared RNG/history checks, Lua contract tests, runtime staging,
-88 setup Room checks, 381 running GameRule checks and 21 client-sync checks.
-The running fixture executes the production `stepNormalTurn()` with real
-`GameRule::TurnStart`, player phases, physical card use/movement and requests.
-It restores `previous_player_turn` at generation 1 and `full_round` at generation
-2, then continues play, repeats restores through generation 4, rejects throwing
-and wrong-type providers without changing the live root/revisions, and closes
-the Room with clean lifetime gauges. It does not exercise lobby boot, an actual
-worker-thread launch, a full GUI build, or ordinary shipped character packages.
-
-A read-only inventory at both restored checkpoint boundaries reports no
-unsupported value/reference leaves. The persistent native types in that short
-match are `CardTagOwner`, `RecoverStruct`, `CardUseStruct`, pure fixture reference
-maps, integer round/turn counters and an invalid `ren_pile` QVariant. Dynamic
-properties are only empty `Suijiyingbian` strings and integer client distance
-caches. All 24 active physical cards and both fixture skill-instance IDs are
-enumerated in the test log. `UseHistory` fields/references remain present.
-
-The engine and client-core targets were built in Debug with GUI/TUI/server
-executables disabled. After a damaged Ninja dependency log repeatedly triggered
-unrelated rebuilds, final changed translation units were compiled and the
-affected targets relinked using CMake's exact generated commands, with a single
-build owner. The final CTest run used these refreshed executables.
 
 
 ## Explicit native GUI / TCP debug entry
@@ -458,13 +378,3 @@ clears unsent frames from the old transport, and schedules a fresh private snaps
 on the game worker. Socket availability and owner authority are not game-undo
 state. The room retains the existing lobby/reconnect identity model; this feature
 does not introduce new spectator access or authenticate a different external user.
-
-`qsanguosha_managed_rewind_network_tests` launches the actual production Server,
-Native TCP sockets, ClientSessionController and ClientGameStateReducer. It checks
-two peers across both anchors and subsequent play, HP/max-HP/phase/public turn
-progress, self-hand restoration and absence of opponent hand IDs, root/connection
-continuity, repeated/stale/foreign/unauthorized/malformed requests, cancellation,
-owner disconnect/reconnect, recipient-only resync, and refusal by a new ordinary
-server. It does not instantiate the full desktop GUI. Run with the other
-state-contract tests; the sandbox must permit loopback listening. Qt 6.11 remains
-the unchanged production GUI requirement.

@@ -99,23 +99,7 @@ that bypass `AiDecisionCoordinator` before claiming full coverage of that packag
 
 `mockExternalAgentAnswer` is deterministic and value-only. It passes play and
 optional prompts and picks the first offered mandatory choices. It deliberately
-has no competitive strategy or fallback. `tests/external-agent-test.cpp` polls it
-from a timer while a two-player room runs with a SmartAI opponent.
-
-```sh
-cmake -S . -B build -DQSAN_BUILD_GUI=OFF -DQSAN_TEST_EXTERNAL_AGENTS=ON
-cmake --build build --parallel 4
-ctest --test-dir build -R external_agent --output-on-failure
-```
-
-CTest stages an isolated runtime from this engine and the sibling `extensions`
-checkout; override `QSAN_EXTENSIONS_SOURCE_DIR` if it lives elsewhere. The fixture
-keeps the native package bundle, includes `addFunction`, and excludes optional Lua
-expansion packages. It uses an explicit sufficient native general pool. Tests
-cover seat visibility, bounded/validated replies,
-asynchronous waiting, native no-clock waits, cancellation, disconnect/reconnect,
-explicit fallback and a complete game with cleanup. They do not establish
-provider integration, every extension's strategy coverage, or restart recovery.
+has no competitive strategy or fallback.
 
 ## Separate-process local transport (version 1)
 
@@ -200,25 +184,16 @@ signals with bounded work per event-loop turn.
 `--exercise` makes the separate mock client test wrong-capability rejection,
 seat-selection rejection, disconnect/reconnect with an identical pending snapshot,
 stale IDs/revisions, malformed replies and duplicate submissions before finishing
-the game. `--cancel` exercises cancellation from the separate client. CTest runs
-both and checks zero callback errors, no fallback, distinct process IDs and clean
-worker/room teardown. The mock's 120-second watchdog is a test/client budget, not
-an engine game timer. Durable server-restart persistence remains deferred.
+the game. `--cancel` exercises cancellation from the separate client. The mock's
+120-second watchdog is a test/client budget, not an engine game timer. Durable server-restart persistence remains deferred.
 
 ## Lua compatibility regression
 
-Use the engine-linked `qsanguosha_external_agent_tests --lua-parse FILE...` for
-this fork's dialect. The engine embeds modified Lua 5.4.8 and deliberately accepts
+The engine embeds modified Lua 5.4.8 and deliberately accepts
 unreachable statements after `return` in `src/lua/lparser.c::statlist`, as well as
 other dialect extensions. A stock/setup Lua 5.2.4 parser incorrectly reports the
 consecutive returns in the base `sgs10th.lua:602–603` (603–604 with the history-key
 repair) as an engine syntax failure.
 
 The separate SWIG compatibility repair exposes the already-existing
-`CorrectSkillResult::noEffect()` and `useAmount(int)` factories. The focused
-`external_agent_lua_corrections` test executes the actual `ny_10th_jieling_target`
-callback extracted from the companion source and checks both matching/nonmatching
-Residue and DistanceLimit branches with the real bound return objects.
-`external_agent_prior_repairs` additionally checks payload-sharing ON/OFF typed
-semantics and snapshot isolation, 31+23 companion history keys, and the actual
-`ov_enyuan` input-handling callback.
+`CorrectSkillResult::noEffect()` and `useAmount(int)` factories.

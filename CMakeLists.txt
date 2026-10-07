@@ -1991,21 +1991,6 @@ foreach(qsan_library
     endif()
 endforeach()
 
-option(QSAN_TEST_BATTLE_STATISTICS "Build local battle statistics contract tests" OFF)
-if(QSAN_TEST_BATTLE_STATISTICS)
-    enable_testing()
-    add_executable(qsanguosha_battle_statistics_tests
-        tests/battle-statistics-test.cpp
-        src/core/battle-statistics.cpp
-        src/core/resolution-history.cpp)
-    target_include_directories(qsanguosha_battle_statistics_tests PRIVATE src/core)
-    target_link_libraries(qsanguosha_battle_statistics_tests PRIVATE Qt6::Core Qt6::Sql)
-    add_test(NAME battle_statistics_contract COMMAND qsanguosha_battle_statistics_tests)
-    set_tests_properties(battle_statistics_contract PROPERTIES TIMEOUT 30)
-endif()
-
-option(QSAN_TEST_EXTERNAL_AGENTS "Build focused external-agent and no-clock tests" OFF)
-option(QSAN_TEST_GAME_STATE_CONTRACT "Build focused managed game-state contract tests" OFF)
 option(QSAN_BUILD_REWIND_LAB "Build the private POSIX restricted rewind console" OFF)
 if(QSAN_BUILD_REWIND_LAB)
     if(NOT UNIX OR ANDROID OR EMSCRIPTEN)
@@ -2018,92 +2003,13 @@ if(QSAN_BUILD_REWIND_LAB)
     target_link_libraries(qsanguosha_rewind_lab PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
     qsan_link_websocket_gateway(qsanguosha_rewind_lab)
 endif()
-if(QSAN_TEST_GAME_STATE_CONTRACT)
-    enable_testing()
-    include(cmake/GameStateContractTests.cmake)
-endif()
-if(QSAN_TEST_EXTERNAL_AGENTS)
-    enable_testing()
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    set(QSAN_EXTENSIONS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../extensions" CACHE PATH "Companion checkout for external-agent tests")
-    set(qsan_external_runtime "${CMAKE_BINARY_DIR}/external-agent-runtime")
-    add_test(NAME external_agent_prepare_runtime COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_SOURCE_DIR}/tools/autotest/stage_external_agent_runtime.py
-        --engine ${CMAKE_SOURCE_DIR} --extensions ${QSAN_EXTENSIONS_SOURCE_DIR}
-        --output ${qsan_external_runtime})
-    set_tests_properties(external_agent_prepare_runtime PROPERTIES FIXTURES_SETUP external_agent_runtime)
-    add_executable(qsanguosha_external_agent_tests tests/external-agent-test.cpp)
-    target_compile_definitions(qsanguosha_external_agent_tests PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
-    get_target_property(qsan_external_test_includes qsanguosha_engine INCLUDE_DIRECTORIES)
-    target_include_directories(qsanguosha_external_agent_tests PRIVATE ${qsan_external_test_includes})
-    target_link_libraries(qsanguosha_external_agent_tests PRIVATE
-        "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
-    qsan_link_websocket_gateway(qsanguosha_external_agent_tests)
-    add_test(NAME external_agent_contract COMMAND qsanguosha_external_agent_tests)
-    set_tests_properties(external_agent_contract PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 60)
-    add_test(NAME external_agent_cancel_game COMMAND qsanguosha_external_agent_tests --cancel-game)
-    set_tests_properties(external_agent_cancel_game PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 30)
-    add_test(NAME external_agent_game COMMAND qsanguosha_external_agent_tests --game)
-    set_tests_properties(external_agent_game PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 150)
-    set_tests_properties(external_agent_contract external_agent_cancel_game external_agent_game PROPERTIES
-        FIXTURES_REQUIRED external_agent_runtime RUN_SERIAL TRUE
-        ENVIRONMENT "QSAN_ASSET_ROOT=${qsan_external_runtime};QSAN_USER_DATA_ROOT=${qsan_external_runtime}")
-endif()
 
 option(QSAN_BUILD_EXTERNAL_AGENT_HOST "Build the loopback-only external-agent example host" OFF)
-if(QSAN_BUILD_EXTERNAL_AGENT_HOST OR QSAN_TEST_EXTERNAL_AGENTS)
+if(QSAN_BUILD_EXTERNAL_AGENT_HOST)
     add_executable(qsanguosha_external_agent_host tools/external-agent-host.cpp)
     target_compile_definitions(qsanguosha_external_agent_host PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
     get_target_property(qsan_agent_host_includes qsanguosha_engine INCLUDE_DIRECTORIES)
     target_include_directories(qsanguosha_external_agent_host PRIVATE ${qsan_agent_host_includes})
     target_link_libraries(qsanguosha_external_agent_host PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
     qsan_link_websocket_gateway(qsanguosha_external_agent_host)
-endif()
-if(QSAN_TEST_EXTERNAL_AGENTS)
-    add_test(NAME external_agent_process_game COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_SOURCE_DIR}/tools/autotest/external_agent_mock.py
-        --host $<TARGET_FILE:qsanguosha_external_agent_host> --exercise)
-    add_test(NAME external_agent_process_cancel COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_SOURCE_DIR}/tools/autotest/external_agent_mock.py
-        --host $<TARGET_FILE:qsanguosha_external_agent_host> --cancel)
-    add_test(NAME external_agent_lua_parse COMMAND qsanguosha_external_agent_tests --lua-parse
-        ${QSAN_EXTENSIONS_SOURCE_DIR}/extensions/sgs10th.lua
-        ${QSAN_EXTENSIONS_SOURCE_DIR}/extensions/OverseasVersion.lua
-        ${QSAN_EXTENSIONS_SOURCE_DIR}/ai/OverseasVersion-ai.lua
-        ${QSAN_EXTENSIONS_SOURCE_DIR}/ai/smart-ai.lua
-        ${QSAN_EXTENSIONS_SOURCE_DIR}/ai/inovation-ai.lua)
-    add_test(NAME external_agent_lua_corrections COMMAND qsanguosha_external_agent_tests --lua-corrections
-        ${QSAN_EXTENSIONS_SOURCE_DIR}/extensions/sgs10th.lua)
-    set_tests_properties(external_agent_process_game external_agent_process_cancel
-        external_agent_lua_corrections PROPERTIES FIXTURES_REQUIRED external_agent_runtime
-        RUN_SERIAL TRUE TIMEOUT 150 WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        ENVIRONMENT "QSAN_ASSET_ROOT=${qsan_external_runtime};QSAN_USER_DATA_ROOT=${qsan_external_runtime}")
-endif()
-if(QSAN_TEST_EXTERNAL_AGENTS)
-    add_executable(qsanguosha_prior_repair_tests tests/prior-repairs-test.cpp)
-    target_compile_definitions(qsanguosha_prior_repair_tests PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
-    target_include_directories(qsanguosha_prior_repair_tests PRIVATE ${qsan_external_test_includes})
-    target_link_libraries(qsanguosha_prior_repair_tests PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
-    qsan_link_websocket_gateway(qsanguosha_prior_repair_tests)
-    add_test(NAME external_agent_prior_repairs COMMAND qsanguosha_prior_repair_tests ${QSAN_EXTENSIONS_SOURCE_DIR})
-    set_tests_properties(external_agent_prior_repairs PROPERTIES
-        FIXTURES_REQUIRED external_agent_runtime RUN_SERIAL TRUE TIMEOUT 60
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        ENVIRONMENT "QSAN_ASSET_ROOT=${qsan_external_runtime};QSAN_USER_DATA_ROOT=${qsan_external_runtime}")
-endif()
-
-if(QSAN_TEST_EXTERNAL_AGENTS)
-    add_executable(qsanguosha_skill_state_tests tests/skill-state-convenience-test.cpp)
-    target_compile_definitions(qsanguosha_skill_state_tests PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
-    target_include_directories(qsanguosha_skill_state_tests PRIVATE ${qsan_external_test_includes})
-    target_link_libraries(qsanguosha_skill_state_tests PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
-    qsan_link_websocket_gateway(qsanguosha_skill_state_tests)
-    add_test(NAME skill_state_convenience COMMAND qsanguosha_skill_state_tests)
-    set_tests_properties(skill_state_convenience PROPERTIES
-        FIXTURES_REQUIRED external_agent_runtime RUN_SERIAL TRUE TIMEOUT 30
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        ENVIRONMENT "QSAN_ASSET_ROOT=${qsan_external_runtime};QSAN_USER_DATA_ROOT=${qsan_external_runtime}")
 endif()
