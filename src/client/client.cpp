@@ -130,6 +130,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_callbacks[S_COMMAND_SET_EMOTION] = &Client::setEmotion;
 	m_callbacks[S_COMMAND_CHANGE_TABLE_BG] = &Client::changeTableBg;
 	m_callbacks[S_COMMAND_SET_UI_THEME] = &Client::setUiTheme;
+	m_callbacks[S_COMMAND_QML_ELEMENT] = &Client::handleQmlElement;
 	m_callbacks[S_COMMAND_INVOKE_SKILL] = &Client::skillInvoked;
 	m_callbacks[S_COMMAND_SHOW_ALL_CARDS] = &Client::showAllCards;
 	m_callbacks[S_COMMAND_SKILL_GONGXIN] = &Client::askForGongxin;
@@ -2585,6 +2586,8 @@ void Client::setMark(const QVariant &mark_var)
 
 	ClientPlayer *player = getPlayer(who);
 	player->setMark(mark, value);
+	if (Sanguosha->isQmlMark(mark))
+		emit qml_mark_changed(who, mark, value);
 
 	// Refresh only actions whose presentation depends on this token, including
 	// its removal. Ownership stays intact for response and server validation.
@@ -3405,6 +3408,11 @@ void Client::setUiTheme(const QVariant &arg)
 		emit ui_theme_changed(kind, id);
 	else if (!error.isEmpty())
 		qWarning().noquote() << "Room UI theme" << kind << id << "ignored:" << error;
+}
+
+void Client::handleQmlElement(const QVariant &arg)
+{
+	emit qml_element_received(arg.toMap());
 }
 
 void Client::skillInvoked(const QVariant &arg)
