@@ -163,7 +163,7 @@ if(QSAN_BUILD_XP_LEGACY)
 endif()
 
 # Keep one product-layered Qt component list to prevent platform lists from drifting.
-set(QSAN_QT_COMPONENTS Core Network)
+set(QSAN_QT_COMPONENTS Core Network Sql)
 if(QSAN_ENABLE_WEBSOCKETS)
     list(APPEND QSAN_QT_COMPONENTS WebSockets)
 endif()
@@ -229,7 +229,7 @@ if(ANDROID)
     include(cmake/QSanguoshaAndroid.cmake)
 endif()
 
-set(QSAN_ENGINE_QT_LIBS Qt6::Core Qt6::Network)
+set(QSAN_ENGINE_QT_LIBS Qt6::Core Qt6::Network Qt6::Sql)
 
 if(ANDROID)
     # SWIG is a host executable even while the generated wrapper is compiled
@@ -428,6 +428,8 @@ add_library(qsanguosha_engine STATIC
     src/core/skill-instance-utils.h
     src/core/resolution-history.cpp
     src/core/resolution-history.h
+    src/core/battle-statistics.cpp
+    src/core/battle-statistics.h
     src/core/skill.h
     src/core/structs.cpp
     src/core/structs.h
@@ -1961,6 +1963,19 @@ foreach(qsan_library
         set_property(TARGET ${qsan_library} PROPERTY FOLDER "Libraries")
     endif()
 endforeach()
+
+option(QSAN_TEST_BATTLE_STATISTICS "Build local battle statistics contract tests" OFF)
+if(QSAN_TEST_BATTLE_STATISTICS)
+    enable_testing()
+    add_executable(qsanguosha_battle_statistics_tests
+        tests/battle-statistics-test.cpp
+        src/core/battle-statistics.cpp
+        src/core/resolution-history.cpp)
+    target_include_directories(qsanguosha_battle_statistics_tests PRIVATE src/core)
+    target_link_libraries(qsanguosha_battle_statistics_tests PRIVATE Qt6::Core Qt6::Sql)
+    add_test(NAME battle_statistics_contract COMMAND qsanguosha_battle_statistics_tests)
+    set_tests_properties(battle_statistics_contract PROPERTIES TIMEOUT 30)
+endif()
 
 option(QSAN_TEST_EXTERNAL_AGENTS "Build focused external-agent and no-clock tests" OFF)
 if(QSAN_TEST_EXTERNAL_AGENTS)

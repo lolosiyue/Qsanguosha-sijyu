@@ -2,6 +2,403 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>BattleStatisticsDialog</name>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="61"/>
+        <source>Control</source>
+        <translation>控制</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="62"/>
+        <source>Slash offense</source>
+        <translation>菜刀</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="63"/>
+        <source>Tank</source>
+        <translation>坦克</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="64"/>
+        <source>Damage-triggered benefits</source>
+        <translation>卖血</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="65"/>
+        <source>Support</source>
+        <translation>辅助</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="66"/>
+        <source>Burst</source>
+        <translation>爆发</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="67"/>
+        <source>Card cycling</source>
+        <translation>过牌</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="68"/>
+        <source>Area damage</source>
+        <translation>AOE</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="69"/>
+        <source>Quick finish</source>
+        <translation>速战速决</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="70"/>
+        <source>Prolonged game</source>
+        <translation>拉长战线</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="71"/>
+        <source>Development</source>
+        <translation>发育</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="38"/>
+        <source>Provisional (too few samples)</source>
+        <translation>暂定（样本不足）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="39"/>
+        <source>Unknown (insufficient data)</source>
+        <translation>未知（资料不足）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="40"/>
+        <source>Isolated (not classified)</source>
+        <translation>隔离（不分类）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="41"/>
+        <source>Observed in matches</source>
+        <translation>实战观察</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="46"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="50"/>
+        <source>Human controlled</source>
+        <translation>人工操作</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="51"/>
+        <source>AI self-play</source>
+        <translation>纯 AI 自战</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="52"/>
+        <source>AI opponents in human games</source>
+        <translation>真人局 AI 对手</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="53"/>
+        <source>Mixed control / changed generals</source>
+        <translation>混合控制／换将</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="54"/>
+        <source>Excluded games</source>
+        <translation>排除局</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="80"/>
+        <source>Damage dealt (HP + armor)</source>
+        <translation>造成伤害（体力＋护甲）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="80"/>
+        <source>HP damage dealt</source>
+        <translation>造成体力伤害</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="81"/>
+        <source>Armor damage dealt</source>
+        <translation>造成护甲伤害</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="81"/>
+        <source>Damage received</source>
+        <translation>承受伤害</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="82"/>
+        <source>Actual recovery caused</source>
+        <translation>造成实际回复</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="82"/>
+        <source>Recovery for others</source>
+        <translation>为他人回复</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="83"/>
+        <source>Cards used (excluding skill cards)</source>
+        <translation>使用牌数（不含技能牌）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="83"/>
+        <source>Slash uses</source>
+        <translation>使用杀次数</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="84"/>
+        <source>Slash damage</source>
+        <translation>杀造成伤害</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="84"/>
+        <source>AOE damage</source>
+        <translation>AOE 造成伤害</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="85"/>
+        <source>AOE uses</source>
+        <translation>使用 AOE 次数</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="85"/>
+        <source>Completed normal own turns</source>
+        <translation>完整本人正常回合</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="86"/>
+        <source>Extra own turns</source>
+        <translation>本人额外回合</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="86"/>
+        <source>Truncated normal own turns</source>
+        <translation>本人截短正常回合</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="94"/>
+        <source>%1 · %2 players · %3 · %4 · %5</source>
+        <translation>%1 · %2 人 · %3 · %4 · %5</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="99"/>
+        <source>With extra turns</source>
+        <translation>有额外回合</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="99"/>
+        <source>Without extra turns</source>
+        <translation>无额外回合</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="126"/>
+        <source>Local match statistics and general classification</source>
+        <translation>本机实战统计与武将分类</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="129"/>
+        <source>Classification uses completed matches, grouped separately by mode, player count, role, version and general pair.
+Human play and AI self-play use separate datasets; mixed control, takeovers and other excluded games do not enter formal classification.</source>
+        <translation>分类来自已完成的实际对局；模式、人数、身份、版本及双将组合分开计算。
+人工与 AI 自战使用独立数据集；托管、接管及其他排除局不参与正式分类。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="134"/>
+        <source>Dataset</source>
+        <translation>数据集</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="137"/>
+        <source>General internal name (leave empty to show all)</source>
+        <translation>武将内部名称（留空显示全部）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="138"/>
+        <source>General filter</source>
+        <translation>武将筛选</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="139"/>
+        <source>Refresh</source>
+        <translation>重新读取</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="148"/>
+        <source>General / second general</source>
+        <translation>武将／副将</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="149"/>
+        <source>Games in the same environment</source>
+        <translation>同环境局数</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="149"/>
+        <source>Status</source>
+        <translation>状态</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="149"/>
+        <source>Observed labels</source>
+        <translation>实战标签</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="150"/>
+        <source>Damage variance</source>
+        <translation>伤害方差</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="150"/>
+        <source>Development data</source>
+        <translation>发育数据</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="150"/>
+        <source>Environment</source>
+        <translation>环境</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="158"/>
+        <source>Sample metrics and data coverage</source>
+        <translation>样本数值与资料覆盖</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="160"/>
+        <source>Local data: </source>
+        <translation>本机数据：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="186"/>
+        <source>Required event coverage: </source>
+        <translation>必要事件覆盖：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="187"/>
+        <source>Complete</source>
+        <translation>完整</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="187"/>
+        <source>Insufficient; classification unknown</source>
+        <translation>不足，分类未知</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="188"/>
+        <source>Mean damage across games in the same environment: </source>
+        <translation>同环境跨局伤害平均：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="189"/>
+        <source>Damage variance across games in the same environment: </source>
+        <translation>同环境跨局伤害方差：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="190"/>
+        <source>Unknown (insufficient samples or data)</source>
+        <translation>未知（样本或资料不足）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="191"/>
+        <source>Labels without sufficient indicators: </source>
+        <translation>尚无充分指标的标签：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="192"/>
+        <source>Development: %1; %2 / %3 observable games, %4 completed normal own turns</source>
+        <translation>发育：%1；可观测 %2 / %3 局，%4 个完整本人正常回合</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="196"/>
+        <source>Trend slopes per own turn: hand cards %1; maximum HP %2; own-turn damage %3</source>
+        <translation>每本人回合的趋势斜率：手牌 %1；体力上限 %2；本人回合伤害 %3</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="200"/>
+        <source>Development trends only cover turns observed while alive with complete data, so they have survival bias; they do not imply improved survival. Unobserved resources are not filled with zeros.</source>
+        <translation>发育趋势仅涵盖存活且资料完整的回合，存在存活偏差；不代表提高生存率。未观测的资源不补零。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="201"/>
+        <source>Analysis version: </source>
+        <translation>分析版本：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="202"/>
+        <source>Fraction of completed normal own turns with at least 3 damage: </source>
+        <translation>正常完整本人回合中，伤害至少 3 的比例：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="203"/>
+        <source>75th percentile damage in completed normal own turns: </source>
+        <translation>正常完整本人回合伤害第 75 百分位：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="204"/>
+        <source>Variance uses per-game damage in the same environment; duplicate seats with the same general in one game are averaged first. Classification thresholds are first-version observation rules.</source>
+        <translation>方差以同环境每局伤害计算；同局同将重复座位先取平均。分类门槛为第一版观察规则。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="206"/>
+        <source>Event coverage is insufficient; complete-game metrics are withheld and missing data is not treated as zero.</source>
+        <translation>事件覆盖不足，不显示完整对局数值，缺失资料不视为零。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="210"/>
+        <source>Cumulative values for this sample group:</source>
+        <translation>以下为此组样本的累计值：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="223"/>
+        <source>All datasets (calculated separately)</source>
+        <translation>所有数据集（各自计算）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="226"/>
+        <source>Statistics changed; refreshing…</source>
+        <translation>统计已更新，正在重新读取…</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="252"/>
+        <source>No local match data to display yet. Complete a game, wait for background saving, then refresh.</source>
+        <translation>尚无可显示的本机实战资料。完成对局并等待后台保存后重新读取。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="253"/>
+        <source>%1 sample groups. Classification requires at least %2 games; no label does not mean zero or balanced ability.</source>
+        <translation>共 %1 组样本。至少 %2 局才评估分类；没有标签不代表能力为零或均衡。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="256"/>
+        <source>Statistics updating / awaiting verification: %1 games are isolated; only verified samples are shown. Restore saving and recompute from valid match data.
+</source>
+        <translation>统计更新中／待核实：%1 局已隔离，仅显示已核实样本。需恢复保存并以有效对局资料重算。
+</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="258"/>
+        <source>Some data is uncertain / could not be read: </source>
+        <translation>部分资料状态不确定／读取失败：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="266"/>
+        <source>Reading local data…</source>
+        <translation>正在读取本机资料…</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="279"/>
+        <source>Statistics updating; verifying the timeline…</source>
+        <translation>统计更新中，正在核实时间线…</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/battle-statistics-dialog.cpp" line="165"/>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+</context>
+<context>
     <name>AndroidContentDialog</name>
     <message>
         <location filename="../src/dialog/android-content-dialog.cpp" line="119"/>
@@ -4374,6 +4771,11 @@ Recent events:</source>
 </context>
 <context>
     <name>GeneralOverview</name>
+    <message>
+        <location filename="../src/dialog/generaloverview.cpp" line="308"/>
+        <source>Local match statistics</source>
+        <translation>本机实战统计</translation>
+    </message>
     <message>
         <location filename="../src/dialog/generaloverview.ui" line="282"/>
         <location filename="../src/dialog/generaloverview.cpp" line="359"/>

@@ -1543,6 +1543,8 @@ void RoomThread::run()
 			globalCardLifetimeManager().endTurnReclamation(room->roomRuntime());
 	});
 	auto workerFinal = qScopeGuard([this]() {
+        // Nested resolution RAII has now committed final damage and unwound.
+        room->freezeBattleStatistics();
 		// finalizeWorker() closes the room's Lua states, so the crash handler
 		// has to drop its lua_State before that and not after.
 		CrashHandler::setLuaState(nullptr);
@@ -1607,6 +1609,7 @@ void RoomThread::run()
 			}
 		}
 		room->removeDerivativeCards();
+		room->beginBattleStatistics();
 		room->beginNumericStateHistory();
 		constructTriggerTable();
 		trigger(GameReady, room, nullptr);

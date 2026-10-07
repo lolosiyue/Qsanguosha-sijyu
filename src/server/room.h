@@ -6,6 +6,8 @@
 #include "skill-instance-attachment-registry.h"
 #include "skill-execution-registry.h"
 #include "resolution-history.h"
+#include "battle-statistics.h"
+#include <QMutex>
 #include "room-runtime.h"
 #include "game-session-config.h"
 #include "scenario-work.h"
@@ -126,6 +128,20 @@ public:
     ResolutionHistoryService &resolutionHistory() { return m_resolutionHistory; }
     const ResolutionHistoryService &resolutionHistory() const { return m_resolutionHistory; }
     bool historyRecordingEnabled() const { return !m_takeoverRestoring; }
+    // Statistics observes an effective timeline; it never performs rule restore.
+    void beginBattleStatistics();
+    void markBattleStatisticsTerminal(const QString &winner, int terminationCause);
+    void freezeBattleStatistics();
+    QString statisticsRootMatchId() const;
+    quint64 statisticsGeneration() const;
+    // Call only after a SUCCESSFUL global restore. anchorKind is
+    // previous_player_turn or full_round; anchorId identifies its history anchor.
+    // True means the independent generation journal is durable; SQLite updates
+    // asynchronously. False retains uncertainty and permits same-generation
+    // retry. It does not undo the already successful game restore.
+    bool commitStatisticsTimelineRestore(quint64 generation, const QString &branchId,
+                                         const QString &anchorKind, qint64 anchorId);
+
     qint64 currentHistoryEventId() const;
     QVariantMap historyEvent(qint64 id) const;
     QVariantMap historyParent(qint64 id, const QString &kind, bool includeSelf = false) const;
@@ -1026,6 +1042,11 @@ private:
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
     ResolutionHistoryService m_resolutionHistory;
+    mutable QMutex m_statisticsMutex;
+    BattleStatistics::Match m_statisticsMatch;
+    bool m_statisticsFrozen = false;
+    bool m_statisticsStarted = false;
+    bool m_statisticsInvalidationPending = false;
     std::unique_ptr<RoomRuntime> m_runtime;
     std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
     std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;

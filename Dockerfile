@@ -72,6 +72,7 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         libqt6network6 \
         libqt6websockets6 \
+        libqt6sql6-sqlite \
         zlib1g \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 9527 qsanguosha \
