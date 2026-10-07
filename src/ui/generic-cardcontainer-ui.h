@@ -98,6 +98,7 @@ public:
     }
     int maxVotes() const { return _m_maxVotes; }
     bool changeVotes(int delta);
+    QList<CardItem *> equipCardItems() const;
     // See _m_floatingArea for more information
     inline QRect getFloatingArea() const
     {
@@ -197,7 +198,8 @@ protected:
     void _clearPixmap(QGraphicsPixmapItem *item);
     QPixmap _getPixmap(const QString &key, bool cache = false);
     QPixmap _getPixmap(const QString &key, const QString &arg, bool cache = false);
-    QPixmap _getEquipPixmap(const Card *equip, int slot);
+    QPixmap _getEquipPixmap(const Card *equip, int slot, const QSize &forcedSize = QSize());
+    QPixmap _paintEquipCaptionRow(int slot, const QString &label);
     virtual void _adjustComponentZValues(bool killed = false);
     void _updateFloatingArea();
     // We use QList of cards instead of a single card as parameter here, just in case
@@ -253,6 +255,9 @@ protected:
 
     EquipPixmapItem *_m_equipRegions[S_EQUIP_AREA_LENGTH];
     CardItem *_m_equipCards[S_EQUIP_AREA_LENGTH];
+    // Cards that share a visual row when every other equip row is already taken.
+    QList<CardItem *> _m_extraEquipCards;
+    QList<CardItem *> _m_equipRowItems[S_EQUIP_AREA_LENGTH];
     QParallelAnimationGroup *_m_equipAnim[S_EQUIP_AREA_LENGTH];
     QMutex _mutexEquipAnim;
 

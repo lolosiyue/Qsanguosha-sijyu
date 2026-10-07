@@ -325,7 +325,14 @@ QSanSkillButton *Dashboard::_getEquipSkillButton(const CardItem *equip) const
 void Dashboard::_setEquipSkillHighlight(const QString &skillName, bool turnOn)
 {
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
-        if (_m_equipCards[i] != nullptr && _m_equipCards[i]->objectName() == skillName)
+        bool match = _m_equipCards[i] != nullptr && _m_equipCards[i]->objectName() == skillName;
+        if (!match) {
+            foreach (CardItem *item, _m_equipRowItems[i]) {
+                if (item != nullptr && item->objectName() == skillName)
+                    match = true;
+            }
+        }
+        if (match)
             _setEquipBorderAnimation(i, turnOn);
     }
 }
@@ -643,10 +650,8 @@ void Dashboard::setApplicationSuspended(bool suspended, bool offline)
         if (card)
             card->cancelTouchPreview();
     }
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
-        if (_m_equipCards[i])
-            _m_equipCards[i]->cancelTouchPreview();
-    }
+    foreach (CardItem *equip, equipCardItems())
+        equip->cancelTouchPreview();
 }
 
 void Dashboard::_updateFrames()
@@ -1035,17 +1040,29 @@ void Dashboard::selectCard(const QString &pattern, bool forward, bool multiple)
 void Dashboard::selectEquip(int position)
 {
     int i = position - 1;
-    if (i < 0 || i >= S_EQUIP_AREA_LENGTH || _m_equipCards[i] == nullptr)
+    if (i < 0 || i >= S_EQUIP_AREA_LENGTH)
         return;
 
-    QSanSkillButton *equipSkillButton = _getEquipSkillButton(_m_equipCards[i]);
+    CardItem *toSelect = nullptr;
+    foreach (CardItem *item, _m_equipRowItems[i]) {
+        if (item != nullptr && item->isMarkable()) {
+            toSelect = item;
+            break;
+        }
+    }
+    if (toSelect == nullptr)
+        toSelect = _m_equipCards[i];
+    if (toSelect == nullptr)
+        return;
+
+    QSanSkillButton *equipSkillButton = _getEquipSkillButton(toSelect);
     if (equipSkillButton != nullptr && equipSkillButton->isEnabled()) {
         equipSkillButton->click();
         return;
     }
 
-    if (_m_equipCards[i]->isMarkable()) {
-        _m_equipCards[i]->mark(!_m_equipCards[i]->isMarked());
+    if (toSelect->isMarkable()) {
+        toSelect->mark(!toSelect->isMarked());
         update();
     }
 }
@@ -1072,19 +1089,18 @@ void Dashboard::selectOnlyCard(bool need_only)
 		return;
 	}
 
-    QList<int> equip_pos;
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i] && _m_equipCards[i]->isMarkable()) {
-            equip_pos << i;
-            if (need_only && equip_pos.length()>1)
-				return;
+    QList<CardItem *> equipItems;
+    foreach (CardItem *item, equipCardItems()) {
+        if (item != nullptr && item->isMarkable()) {
+            equipItems << item;
+            if (need_only && equipItems.length() > 1)
+                return;
         }
     }
-	if(equip_pos.length()>0){
-		int pos = equip_pos.first();
-		_m_equipCards[pos]->mark(!_m_equipCards[pos]->isMarked());
-		update();
-	}
+    if (!equipItems.isEmpty()) {
+        equipItems.first()->mark(!equipItems.first()->isMarked());
+        update();
+    }
 }
 
 const Card *Dashboard::getSelected() const
@@ -1120,9 +1136,9 @@ void Dashboard::unselectAll(const CardItem *except)
     }
 
     adjustCards(true);
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i] && _m_equipCards[i] != except)
-            _m_equipCards[i]->mark(false);
+    foreach (CardItem *item, equipCardItems()) {
+        if (item != except)
+            item->mark(false);
     }
     if (view_as_skill) {
         pendings.clear();
@@ -1149,7 +1165,16 @@ QSanSkillButton *Dashboard::addSkillButton(const QString &skillName, bool isPrim
     _mutexEquipAnim.lock();
     int existingSkillIndex = _findEquipSkillButtonIndex(skillName);
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i] && _m_equipCards[i]->objectName() == skillName) {
+        bool skillOnRow = _m_equipCards[i] != nullptr && _m_equipCards[i]->objectName() == skillName;
+        if (!skillOnRow) {
+            foreach (CardItem *item, _m_equipRowItems[i]) {
+                if (item != nullptr && item->objectName() == skillName) {
+                    skillOnRow = true;
+                    break;
+                }
+            }
+        }
+        if (skillOnRow) {
             if (_m_equipSkillBtns[i] != nullptr) {
                 if (_m_equipSkillBtns[i]->objectName() == skillName) {
                     _mutexEquipAnim.unlock();
@@ -1494,10 +1519,22 @@ void Dashboard::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
     int i;
 	CardItem *to_select = nullptr;
     for (i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipRegions[i]->isUnderMouse()) {
-            to_select = _m_equipCards[i];
-            break;
+        if (!_m_equipRegions[i]->isUnderMouse())
+            continue;
+        QList<CardItem *> row = _m_equipRowItems[i];
+        if (row.isEmpty() && _m_equipCards[i] != nullptr)
+            row << _m_equipCards[i];
+        if (row.isEmpty())
+            return;
+        if (row.size() == 1) {
+            to_select = row.first();
+        } else {
+            const QPointF local = _m_equipRegions[i]->mapFromScene(mouseEvent->scenePos());
+            const qreal width = qMax<qreal>(1.0, _m_equipRegions[i]->boundingRect().width());
+            const int part = qBound(0, int(local.x() / (width / row.size())), row.size() - 1);
+            to_select = row.at(part);
         }
+        break;
     }
     if (!to_select) return;
     QSanSkillButton *equipSkillButton = _getEquipSkillButton(to_select);
@@ -1525,10 +1562,17 @@ void Dashboard::_onEquipSelectChanged()
         // be implemented.
         Q_ASSERT(equip);
         for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-            if (_m_equipCards[i] == equip) {
-                _setEquipBorderAnimation(i, equip->isMarked());
-                break;
+            const QList<CardItem *> row = _m_equipRowItems[i].isEmpty()
+                ? (QList<CardItem *>() << _m_equipCards[i]) : _m_equipRowItems[i];
+            if (!row.contains(equip))
+                continue;
+            bool marked = false;
+            foreach (CardItem *item, row) {
+                if (item != nullptr && item->isMarked())
+                    marked = true;
             }
+            _setEquipBorderAnimation(i, marked);
+            break;
         }
     }
 }
@@ -2230,10 +2274,8 @@ void Dashboard::startPending(const ViewAsSkill *skill, int instanceId)
             expandPileCards(pile_name);
         }
     }
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i] != nullptr)
-            connect(_m_equipCards[i], SIGNAL(mark_changed()), this, SLOT(onMarkChanged()));
-    }
+    foreach (CardItem *item, equipCardItems())
+        connect(item, SIGNAL(mark_changed()), this, SLOT(onMarkChanged()));
 
     updatePending();
     m_mutexEnableCards.unlock();
@@ -2266,15 +2308,14 @@ void Dashboard::stopPending()
         animations->effectOut(item);
     }
 
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i]) {
-            _m_equipCards[i]->mark(false);
-            _m_equipCards[i]->setMarkable(false);
-            _m_equipRegions[i]->setOpacity(1.0);
-            _m_equipCards[i]->setEnabled(false);
-            disconnect(_m_equipCards[i], SIGNAL(mark_changed()));
-        }
+    foreach (CardItem *item, equipCardItems()) {
+        item->mark(false);
+        item->setMarkable(false);
+        item->setEnabled(false);
+        disconnect(item, SIGNAL(mark_changed()));
     }
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++)
+        _m_equipRegions[i]->setOpacity(1.0);
     pendings.clear();
     adjustCards(true);
     m_mutexEnableCards.unlock();
@@ -2417,18 +2458,25 @@ void Dashboard::updatePending()
     }
 
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i]) {
-            if(!_m_equipCards[i]->isMarked())
-				_m_equipCards[i]->setMarkable(activeSkill
-					? activeSkill->canSelectCard(activeRequest, _m_equipCards[i]->getCard())
-					: view_as_skill->viewFilter(pended, _m_equipCards[i]->getCard()));
-
-			QSanSkillButton *equipSkillButton = _getEquipSkillButton(_m_equipCards[i]);
-			if(_m_equipCards[i]->isMarkable()||(equipSkillButton&&equipSkillButton->isEnabled()))
-                _m_equipRegions[i]->setOpacity(1.0);
-			else
-                _m_equipRegions[i]->setOpacity(0.7);
+        QList<CardItem *> row = _m_equipRowItems[i];
+        if (row.isEmpty() && _m_equipCards[i] != nullptr)
+            row << _m_equipCards[i];
+        if (row.isEmpty())
+            continue;
+        bool interactive = false;
+        foreach (CardItem *item, row) {
+            if (item == nullptr)
+                continue;
+            if (!item->isMarked()) {
+                item->setMarkable(activeSkill
+                    ? activeSkill->canSelectCard(activeRequest, item->getCard())
+                    : view_as_skill->viewFilter(pended, item->getCard()));
+            }
+            QSanSkillButton *equipSkillButton = _getEquipSkillButton(item);
+            if (item->isMarkable() || (equipSkillButton != nullptr && equipSkillButton->isEnabled()))
+                interactive = true;
         }
+        _m_equipRegions[i]->setOpacity(interactive ? 1.0 : 0.7);
     }
 
     const Card *new_pending_card = activeSkill
