@@ -276,6 +276,7 @@ protected:
 
 private:
     friend class Room;
+    friend class RoomManagedState;
     friend class WrappedCard;
     // Native authority only: neither card strings nor ordinary tags can mint this receipt.
     QVariantMap m_appliedPhysicalEffectSource;

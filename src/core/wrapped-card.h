@@ -22,6 +22,7 @@ class QThread;
 
 class WrappedCard : public Card
 {
+    friend class RoomManagedState;
     Q_OBJECT
 
 signals:

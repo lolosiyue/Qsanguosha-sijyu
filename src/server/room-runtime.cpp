@@ -2,6 +2,7 @@
 
 #include "engine.h"
 #include "room.h"
+#include "room-managed-state.h"
 #include "card-lifetime-manager.h"
 #include "lua.hpp"
 #include "runtime-paths.h"
@@ -253,6 +254,8 @@ quint64 RoomRuntime::drainShutdownStage(const char *stage)
 
 void RoomRuntime::releaseShutdownRoots()
 {
+    if (m_room && m_room->m_managedState)
+        m_room->m_managedState->releaseOwnedCardsForShutdown();
     CardLifetimeManager &manager = globalCardLifetimeManager();
     manager.releaseEventPayloads(this);
     manager.releaseVariantTags(this);

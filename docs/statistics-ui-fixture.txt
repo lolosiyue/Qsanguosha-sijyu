@@ -1,0 +1,66 @@
+Synthetic battle statistics UI fixture
+=======================================
+
+Linux only.
+
+This fixture is opt-in and writes only beneath a new directory you choose.
+It refuses relative paths, an existing fixture root, and any symlinked path
+component. It does not use or modify your normal profile.
+
+Generate a fresh fixture with:
+
+  /path/to/qsanguosha_battle_statistics_tests --statistics-ui-fixture /absolute/new/statistics-demo
+
+The command creates:
+
+  /absolute/new/statistics-demo/data/QSanguosha/battle-statistics.sqlite
+  /absolute/new/statistics-demo/config/
+  /absolute/new/statistics-demo/cache/
+
+All match roots, general names, and modes are marked SYNTHETIC. The database
+contains five human-versus-AI roots and five AI-self-play roots, with enough
+completed turns for UI sample summaries. A separate synthetic root is left
+in an active restored-timeline state so a fresh GUI process can show the
+pending-statistics warning.
+
+Expect four ordinary summary rows: one human row, two AI-self-play rows
+(separated by the participants' roles), and one human-versus-AI-opponent row.
+The pending restore contributes no named summary row; it should show one
+pending-statistics warning.
+
+Launch the normal GUI executable in a fresh process with the fixture's XDG
+locations. The executable must be named QSanguosha so Qt's application-local
+data directory matches the fixture path:
+
+  XDG_DATA_HOME=/absolute/new/statistics-demo/data \
+  XDG_CONFIG_HOME=/absolute/new/statistics-demo/config \
+  XDG_CACHE_HOME=/absolute/new/statistics-demo/cache \
+  /path/to/QSanguosha
+
+Use a fresh, local fixture directory for each run. Do not distribute a
+prebuilt database: its sidecar journals are bound to the normalized database
+path and local lifecycle owner tokens. Regenerate the fixture on the machine
+where it will be viewed. The fixture command does not generate or change .qm
+translation files; stale translation-resource issues are separate.
+
+Build and UI entry (use the private patched checkout/build, not the stable client):
+
+  cmake -S . -B <private-gui-build> -DQSAN_TEST_BATTLE_STATISTICS=ON
+  cmake --build <private-gui-build> \
+    --target QSanguosha QSanguosha_lrelease qsanguosha_battle_statistics_tests
+
+Keep the existing Qt 6.11 toolchain/cache settings. The fixture generator is the
+existing qsanguosha_battle_statistics_tests target; there is no new game target,
+Python runtime, API call or gameplay run. Its fixture writes use the production
+BattleStatistics writer and journal lifecycle, not SQL inserts in a test script.
+
+Open Tools -> General overview (Ctrl+E) -> 本机实战统计. Clear the general-name
+filter inherited from the selected real general to display the SYNTHETIC rows.
+Switch datasets and check the expected row counts above, select a row for details,
+then exercise refresh, 关闭, reopen and Escape. Data and mode names deliberately
+remain marked SYNTHETIC: these are fabricated QA records, not actual matches.
+
+The desktop build emits sanguosha.qm from builds/sanguosha.ts. Ensure the private
+test client's asset tree uses this regenerated catalog. Its translations/sanguosha.qm
+path takes precedence over the asset-root sanguosha.qm, so a stale installed copy
+can hide new translations. Do not replace the stable client's catalog or profile.

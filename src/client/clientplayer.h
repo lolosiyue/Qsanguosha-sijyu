@@ -56,6 +56,9 @@ public:
     const PlayerUIState &uiState() const;
     void setUIState(const PlayerUIState &state);
     void setMark(const QString &mark, int value);
+    // Replace this live client's mutable gameplay projection while preserving
+    // its QObject, screen identity, signup avatar and Client::Self pointer.
+    void resetForManagedSync();
 
 private:
     bool useExactHandInfo() const;
@@ -78,4 +81,3 @@ extern ClientPlayer *Self;
 #endif
 
 #endif
-

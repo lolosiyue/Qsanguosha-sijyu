@@ -1221,6 +1221,17 @@ bool ResolutionHistoryService::restore(const ResolutionHistorySnapshot &snapshot
     return true;
 }
 
+bool ResolutionHistoryService::hasActiveContext() const
+{
+    return !d || !d->journal || d->journal->contextEventId != 0;
+}
+
+void ResolutionHistoryService::swap(ResolutionHistoryService &prepared) noexcept
+{
+    if (this != &prepared)
+        d.swap(prepared.d);
+}
+
 struct ResolutionHistoryContextGuard::Data {
     QSharedPointer<Journal> journal;
     QVector<qint64> previousActive;

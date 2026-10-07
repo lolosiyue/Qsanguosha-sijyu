@@ -27,6 +27,9 @@ public:
     };
 
     GameRule(QObject *parent);
+    // Shared with the outer-turn checkpoint executor. This is exactly the
+    // predicate used by TurnStart before it opens a real round scope.
+    static bool beginsNormalRound(Room *room, ServerPlayer *player);
     virtual bool triggerable(const ServerPlayer *target) const;
     virtual int getPriority(TriggerEvent triggerEvent) const;
     virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data = _dummy_variant) const;

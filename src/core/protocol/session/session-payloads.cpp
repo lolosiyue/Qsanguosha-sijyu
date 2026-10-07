@@ -144,10 +144,21 @@ bool EmptyPayload::parse(const QVariant &value, EmptyPayload *payload, QString *
 
 QVariantMap StateSyncPayload::toVariant() const
 {
-    return {{QStringLiteral("schema_version"), SchemaVersion},
-            {QStringLiteral("sync_id"), syncId},
-            {QStringLiteral("phase"), phase},
-            {QStringLiteral("reconnect"), reconnect}};
+    QVariantMap result{{QStringLiteral("schema_version"), SchemaVersion},
+                       {QStringLiteral("sync_id"), syncId},
+                       {QStringLiteral("phase"), phase},
+                       {QStringLiteral("reconnect"), reconnect}};
+    if (managedTimelineRestore)
+        result.insert(QStringLiteral("managed_timeline_restore"), true);
+    if (!rootGameId.isEmpty()) {
+        result.insert(QStringLiteral("root_game_id"), rootGameId);
+        result.insert(QStringLiteral("world_id"), worldId);
+        result.insert(QStringLiteral("timeline_generation"), timelineGeneration);
+    }
+    if (!currentPlayer.isEmpty()) result.insert(QStringLiteral("current_player"), currentPlayer);
+    if (hasRound)
+        result.insert(QStringLiteral("round"), round);
+    return result;
 }
 
 bool StateSyncPayload::parse(const QVariant &value, StateSyncPayload *payload,
@@ -166,6 +177,35 @@ bool StateSyncPayload::parse(const QVariant &value, StateSyncPayload *payload,
                          QStringLiteral("StateSyncPayload"), error)) {
         return false;
     }
+    if (!optionalBool(object, QStringLiteral("managed_timeline_restore"), false,
+                      &parsed.managedTimelineRestore,
+                      QStringLiteral("StateSyncPayload"), error)) {
+        return false;
+    }
+    if (object.contains(QStringLiteral("root_game_id")) || object.contains(QStringLiteral("world_id"))
+        || object.contains(QStringLiteral("timeline_generation"))) {
+        if (!requiredString(object, "root_game_id", &parsed.rootGameId, "StateSyncPayload", error)
+            || !requiredString(object, "world_id", &parsed.worldId, "StateSyncPayload", error)
+            || !requiredString(object, "timeline_generation", &parsed.timelineGeneration, "StateSyncPayload", error)
+            || parsed.rootGameId.isEmpty() || parsed.worldId.isEmpty()
+            || (parsed.timelineGeneration != QLatin1String("0") && !isCanonicalPositiveDecimal(parsed.timelineGeneration)))
+            return fail(error, QStringLiteral("invalid state sync timeline identity"));
+    }
+    if (object.contains(QStringLiteral("round"))) {
+        if (!requiredInt(object, QStringLiteral("round"), &parsed.round,
+                         QStringLiteral("StateSyncPayload"), error)) {
+            return false;
+        }
+        if (parsed.round < 0) {
+            return fail(error, QStringLiteral("StateSyncPayload.round must be a nonnegative integer"));
+        }
+        parsed.hasRound = true;
+        if (parsed.phase != QLatin1String("end"))
+            return fail(error, QStringLiteral("StateSyncPayload.round is only valid at sync end"));
+    }
+    if (!optionalString(object, "current_player", &parsed.currentPlayer, "StateSyncPayload", error)) return false;
+    if (!parsed.currentPlayer.isEmpty() && parsed.phase != QLatin1String("end"))
+        return fail(error, QStringLiteral("current_player is only valid at sync end"));
     if (!isCanonicalPositiveDecimal(parsed.syncId))
         return fail(error, QStringLiteral("StateSyncPayload.sync_id must be a canonical positive decimal string"));
     if (parsed.phase != QLatin1String("begin") && parsed.phase != QLatin1String("end"))

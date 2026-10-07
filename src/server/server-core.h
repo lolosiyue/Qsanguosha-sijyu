@@ -107,6 +107,7 @@ private:
     quint64 m_nextConnectionGeneration = 1;
     QThread *m_roomPreparationThread = nullptr;
     bool m_shuttingDown = false;
+    bool m_restrictedRewindLab = false;
 
     static bool s_hasGameSeed;
     static quint64 s_gameSeedBase;

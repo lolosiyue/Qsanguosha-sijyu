@@ -615,9 +615,12 @@ void ServerPlayer::setSocket(ClientSocket *socket)
 void ServerPlayer::adoptProtocolConnectionState(
 	const ProtocolConnectionState &state)
 {
-	m_connectionGeneration = state.generation;
 	m_lastIncomingMessageId = state.lastIncomingMessageId;
 	QMutexLocker outboundLocker(&m_outboundMutex);
+    m_connectionGeneration = state.generation;
+    // Frames numbered for a disconnected transport must never cross into its
+    // replacement. Its handshake established a different message-id sequence.
+    m_outboundFrames.clear();
 	if (!m_protocolMessageIds.setNextValue(state.nextOutgoingMessageId))
 		m_protocolMessageIds.reset();
 }

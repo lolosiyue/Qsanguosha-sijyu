@@ -38,8 +38,11 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QDateTime>
+#include <QCoreApplication>
 #include <QFile>
 #include <QTextStream>
+#include <QTimer>
+#include <limits>
 
 using namespace std;
 using namespace QSanProtocol;
@@ -74,6 +77,45 @@ static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 	return player;
 }
 
+static int compareDecimalStrings(const QString &left, const QString &right)
+{
+	if (left.size() != right.size())
+		return left.size() < right.size() ? -1 : 1;
+	const int lexical = QString::compare(left, right, Qt::CaseSensitive);
+	return lexical < 0 ? -1 : lexical > 0 ? 1 : 0;
+}
+
+static bool decimalStringAtLeast(const QString &left, const QString &right)
+{
+	return compareDecimalStrings(left, right) >= 0;
+}
+
+static QString localizedManagedRewindMessage(const QString &message)
+{
+	static const QHash<QString, const char *> knownMessages {
+		{QStringLiteral("Waiting for owner to start the two-seat restricted room"),
+			"Waiting for owner to start the two-seat restricted room"},
+		{QStringLiteral("A peer disconnected"), "A peer disconnected"},
+		{QStringLiteral("Stale or foreign room, connection or timeline"),
+			"Stale or foreign room, connection or timeline"},
+		{QStringLiteral("Repeated or out-of-order control sequence"),
+			"Repeated or out-of-order control sequence"},
+		{QStringLiteral("No pending control belongs to this connection"),
+			"No pending control belongs to this connection"},
+		{QStringLiteral("Execution already started; resynchronize to observe its result"),
+			"Execution already started; resynchronize to observe its result"},
+		{QStringLiteral("Restricted game has not started"), "Restricted game has not started"},
+		{QStringLiteral("Another control is in progress; wait for state synchronization"),
+			"Another control is in progress; wait for state synchronization"},
+		{QStringLiteral("State synchronization is rate limited; retry shortly"),
+			"State synchronization is rate limited; retry shortly"},
+		{QStringLiteral("Only the cheat-enabled room owner may advance or rewind"),
+			"Only the cheat-enabled room owner may advance or rewind"}
+	};
+	const auto it = knownMessages.constFind(message);
+	return it == knownMessages.cend() ? message : QCoreApplication::translate("Client", it.value());
+}
+
 Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedSocket,
                bool takeoverRecord, bool initialReconnectRequested, bool fallbackToFreshSignup)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
@@ -83,6 +125,9 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_dispatchingRequestId(0)
 {
 	ClientInstance = this;
+	m_managedRewindTimer = new QTimer(this);
+	m_managedRewindTimer->setSingleShot(true);
+	connect(m_managedRewindTimer, &QTimer::timeout, this, &Client::managedRewindTimeout);
 	// A GUI host runs its Server on this very thread, so the Room's RoomRuntime
 	// claims the thread's card-lifetime domain when it is constructed and holds it
 	// until the Room dies. Client-side cards outlive the Room they happen to be
@@ -120,6 +165,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_callbacks[S_COMMAND_UPDATE_PLAYER_UI_STATE] = &Client::updatePlayerUIState;
 	m_callbacks[S_COMMAND_STATE_SYNC] = &Client::stateSync;
 	m_callbacks[S_COMMAND_RESOLUTION_STATE] = &Client::stateSync;
+	m_callbacks[S_COMMAND_MANAGED_REWIND_STATE] = &Client::managedRewindState;
 	m_callbacks[S_COMMAND_UPDATE_CARD] = &Client::updateCard;
 	m_callbacks[S_COMMAND_SET_MARK] = &Client::setMark;
 	m_callbacks[S_COMMAND_LOG_SKILL] = &Client::log;
@@ -238,12 +284,15 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 		replayer = nullptr;
 		m_liveSession = new ClientLiveSession(m_interactionCore, this);
+		connect(m_liveSession, &ClientLiveSession::sessionActive,
+			this, [this](bool) { resetManagedRewindState(); });
 		connect(m_liveSession, &ClientLiveSession::transportConnected,
 			this, &Client::socket_connected);
 		connect(m_liveSession, &ClientLiveSession::frontendMessageReceived,
 			this, &Client::processLiveProtocolMessage);
 		connect(m_liveSession, &ClientLiveSession::disconnected, this, [this]() {
 			m_isDisconnected = true;
+			resetManagedRewindState();
 			emit socket_disconnected();
 		});
 		connect(m_liveSession, &ClientLiveSession::fatalError, this,
@@ -501,6 +550,8 @@ void Client::setup(const QVariant &setup_json)
 	}
 
 	emit server_connected();
+	if (m_liveSession != nullptr && m_liveSession->isActive())
+		requestManagedRewindStatus(QStringLiteral("status"));
 }
 
 void Client::disconnectFromHost()
@@ -512,6 +563,7 @@ void Client::disconnectFromHost()
 		m_liveSession->disconnectGracefully();
 		m_isDisconnected = true;
 	}
+	resetManagedRewindState();
 }
 
 void Client::processReplayMessage(const ProtocolMessage &message)
@@ -624,15 +676,413 @@ bool Client::dispatchProtocolMessage(const ProtocolMessage &message, bool replay
 	return replayInput && message.type == ProtocolMessageType::Request;
 }
 
-void Client::stateSync(const QVariant &)
+void Client::stateSync(const QVariant &payload)
 {
+    StateSyncPayload sync;
+    QString error;
+    if (payload.toMap().contains(QStringLiteral("sync_id"))
+        && StateSyncPayload::parse(payload, &sync, &error)) {
+        if (sync.phase == QLatin1String("begin")) {
+            if (sync.managedTimelineRestore
+                && (sync.rootGameId.isEmpty() || sync.worldId.isEmpty()
+                    || sync.timelineGeneration.isEmpty())) {
+                failProtocol(QStringLiteral("managed STATE_SYNC begin is missing timeline identity"));
+                return;
+            }
+            m_managedRewindSnapshotActive = !sync.rootGameId.isEmpty()
+                || !sync.worldId.isEmpty() || !sync.timelineGeneration.isEmpty();
+            m_managedSnapshotRootId = sync.rootGameId;
+            m_managedSnapshotWorldId = sync.worldId;
+            m_managedSnapshotGeneration = sync.timelineGeneration;
+            if (sync.managedTimelineRestore) {
+                emit managedTimelineSnapshotStarting();
+                owner_map.clear();
+                place_map.clear();
+                discarded_list.clear();
+                // The reducer's staging copy is empty at begin, but the GUI
+                // still holds long-lived ClientPlayer QObject projections.
+                // Clear those mutable projections before replaying the full
+                // authoritative snapshot while preserving Self and avatars.
+                for (const ClientPlayer *player : m_players) {
+                    if (player)
+                        const_cast<ClientPlayer *>(player)->resetForManagedSync();
+                }
+            }
+        } else if (sync.phase == QLatin1String("end")) {
+            if (sync.hasRound) {
+                add_round = sync.round;
+                updatePileNum();
+            }
+            const bool hasTimelineIdentity = !sync.rootGameId.isEmpty()
+                && !sync.worldId.isEmpty() && !sync.timelineGeneration.isEmpty();
+            if (sync.managedTimelineRestore && !hasTimelineIdentity) {
+                failProtocol(QStringLiteral("managed STATE_SYNC end is missing timeline identity"));
+                return;
+            }
+            if (m_managedRewindSnapshotActive
+                && (!hasTimelineIdentity || sync.rootGameId != m_managedSnapshotRootId
+                    || sync.worldId != m_managedSnapshotWorldId
+                    || sync.timelineGeneration != m_managedSnapshotGeneration)) {
+                failProtocol(QStringLiteral("managed timeline identity changed inside STATE_SYNC"));
+                return;
+            }
+            if (hasTimelineIdentity) {
+                m_managedTimelineRootId = sync.rootGameId;
+                m_managedTimelineWorldId = sync.worldId;
+                m_managedTimelineGeneration = sync.timelineGeneration;
+                m_hasManagedTimelineIdentity = true;
+            }
+            if (sync.managedTimelineRestore) {
+                if (m_managedCommittedSnapshotSerial == std::numeric_limits<quint64>::max()) {
+                    failProtocol(QStringLiteral("managed snapshot receipt serial exhausted"));
+                    return;
+                }
+                ++m_managedCommittedSnapshotSerial;
+                m_hasCommittedManagedSnapshot = true;
+                m_managedCommittedRootId = sync.rootGameId;
+                m_managedCommittedWorldId = sync.worldId;
+                m_managedCommittedGeneration = sync.timelineGeneration;
+            }
+            m_managedRewindSnapshotActive = false;
+            m_managedSnapshotRootId.clear();
+            m_managedSnapshotWorldId.clear();
+            m_managedSnapshotGeneration.clear();
+
+            if (m_hasStagedManagedRewindStatus
+                && m_stagedManagedRewindStatus.rootGameId == m_managedTimelineRootId
+                && m_stagedManagedRewindStatus.worldId == m_managedTimelineWorldId
+                && m_stagedManagedRewindStatus.generation == m_managedTimelineGeneration) {
+                const RewindStatusPayload staged = m_stagedManagedRewindStatus;
+                m_hasStagedManagedRewindStatus = false;
+                acceptManagedRewindStatus(staged);
+            } else {
+                m_hasStagedManagedRewindStatus = false;
+                if (m_hasManagedRewindStatus
+                    && (m_managedRewindStatus.rootGameId != m_managedTimelineRootId
+                        || m_managedRewindStatus.worldId != m_managedTimelineWorldId
+                        || m_managedRewindStatus.generation != m_managedTimelineGeneration))
+                    requestManagedRewindStatus(QStringLiteral("resync"));
+            }
+            if (m_managedRewindPending && m_hasManagedRewindStatus
+                && !m_managedRewindStatus.busy
+                && m_managedRewindStatus.rootGameId == m_managedCommittedRootId
+                && m_managedRewindStatus.worldId == m_managedCommittedWorldId
+                && m_managedRewindStatus.generation == m_managedCommittedGeneration)
+                acceptManagedRewindStatus(m_managedRewindStatus);
+        }
+    } else if (payload.toMap().contains(QStringLiteral("sync_id")) && !error.isEmpty()) {
+        failProtocol(error);
+        return;
+    }
     // Shared reducer commits the snapshot atomically before GUI presentation callbacks run.
-    if (!m_stateSyncActive) emit gamePresentationStateChanged();
+    if (!m_stateSyncActive) {
+        emit managedRewindStateChanged();
+        emit gamePresentationStateChanged();
+    }
 }
 
 bool Client::isPresentationStateSyncActive() const
 {
     return m_stateSyncActive || (m_liveSession && m_liveSession->isStateSyncActive());
+}
+
+bool Client::canRequestManagedRewind() const
+{
+	if (replayer || !m_liveSession || !m_liveSession->isActive() || m_isGameOver
+		|| !m_managedRewindGameStarted
+		|| !Self || !Self->isOwner() || !m_hasManagedRewindStatus
+		|| m_hasStagedManagedRewindStatus || m_managedRewindPending
+		|| m_managedRewindSnapshotActive || isPresentationStateSyncActive()
+		|| !m_hasManagedTimelineIdentity || !m_hasCommittedManagedSnapshot)
+		return false;
+	return m_managedRewindStatus.supported && m_managedRewindStatus.authorized
+		&& !m_managedRewindStatus.busy
+		&& !m_managedRewindStatus.token.isEmpty()
+		&& m_managedRewindStatus.profile == QLatin1String("restricted_trust_02p")
+		&& m_managedRewindStatus.rootGameId == m_managedCommittedRootId
+		&& m_managedRewindStatus.worldId == m_managedCommittedWorldId
+		&& m_managedRewindStatus.generation == m_managedCommittedGeneration;
+}
+
+QString Client::managedRewindStatusText() const
+{
+	const QString serverMessage = localizedManagedRewindMessage(m_managedRewindStatus.message);
+	if (m_managedRewindSnapshotActive || m_hasStagedManagedRewindStatus)
+		return tr("Managed rewind is synchronizing; controls are temporarily disabled.");
+	if (!m_hasManagedRewindStatus)
+		return tr("This server has not reported managed rewind support.");
+	if (!m_managedRewindStatus.supported || m_managedRewindStatus.profile != QLatin1String("restricted_trust_02p"))
+		return serverMessage.isEmpty()
+			? tr("Managed rewind is not supported in this room.") : serverMessage;
+	if (!m_managedRewindStatus.authorized || !Self || !Self->isOwner())
+		return serverMessage.isEmpty()
+			? tr("Only the room owner is authorized to control managed rewind.") : serverMessage;
+	if (!m_managedRewindGameStarted)
+		return tr("Managed rewind controls become available after the game starts.");
+	if (m_managedRewindPending || m_managedRewindStatus.busy)
+		return serverMessage.isEmpty()
+			? tr("Managed rewind is processing; wait for the state sync to finish.") : serverMessage;
+	if (!m_hasManagedTimelineIdentity
+		|| m_managedRewindStatus.token.isEmpty()
+		|| !m_hasCommittedManagedSnapshot
+		|| m_managedRewindStatus.rootGameId != m_managedCommittedRootId
+		|| m_managedRewindStatus.worldId != m_managedCommittedWorldId
+		|| m_managedRewindStatus.generation != m_managedCommittedGeneration)
+		return tr("Waiting for the current room timeline status.");
+	return serverMessage.isEmpty()
+		? tr("Restricted managed rewind is ready.") : serverMessage;
+}
+
+bool Client::requestManagedRewind(const QString &operation)
+{
+	if (operation != QLatin1String("step") && operation != QLatin1String("turn")
+		&& operation != QLatin1String("round"))
+		return false;
+	if (!canRequestManagedRewind() || m_managedRewindSequence == std::numeric_limits<quint64>::max())
+		return false;
+
+	RewindControlPayload control;
+	control.rootGameId = m_managedTimelineRootId;
+	control.worldId = m_managedTimelineWorldId;
+	control.generation = m_managedTimelineGeneration;
+	control.token = m_managedRewindStatus.token;
+	control.sequence = QString::number(++m_managedRewindSequence);
+	control.operation = operation;
+	m_managedRewindPending = true;
+	m_managedRewindPendingSequence = control.sequence;
+	m_managedRewindPendingOperation = operation;
+	m_managedPendingSnapshotSerial = m_managedCommittedSnapshotSerial;
+	if (!m_liveSession->sendControl(S_COMMAND_MANAGED_REWIND, control.toVariant())) {
+		m_managedRewindPending = false;
+		m_managedRewindPendingSequence.clear();
+		m_managedRewindPendingOperation.clear();
+		m_managedPendingSnapshotSerial = 0;
+		m_managedRewindTimer->stop();
+		emit managedRewindStateChanged();
+		return false;
+	}
+	m_managedRewindTimer->start(8000);
+	emit managedRewindStateChanged();
+	return true;
+}
+
+bool Client::canRequestManagedRewindCancel() const
+{
+	return m_managedRewindPending && !m_managedRewindSnapshotActive
+		&& !isPresentationStateSyncActive() && !replayer && m_liveSession
+		&& m_liveSession->isActive() && m_hasManagedRewindStatus
+		&& m_hasManagedTimelineIdentity
+		&& !m_managedRewindStatus.token.isEmpty()
+		&& m_managedRewindStatus.rootGameId == m_managedTimelineRootId
+		&& m_managedRewindStatus.worldId == m_managedTimelineWorldId
+		&& m_managedRewindStatus.generation == m_managedTimelineGeneration;
+}
+
+bool Client::requestManagedRewindCancel()
+{
+	if (!canRequestManagedRewindCancel()
+		|| m_managedRewindSequence == std::numeric_limits<quint64>::max())
+		return false;
+	RewindControlPayload control;
+	control.rootGameId = m_managedTimelineRootId;
+	control.worldId = m_managedTimelineWorldId;
+	control.generation = m_managedTimelineGeneration;
+	control.token = m_managedRewindStatus.token;
+	control.sequence = QString::number(++m_managedRewindSequence);
+	control.operation = QStringLiteral("cancel");
+	if (!m_liveSession->sendControl(S_COMMAND_MANAGED_REWIND, control.toVariant()))
+		return false;
+	// Cancel only asks the server to withdraw a request it has not claimed. Keep
+	// the original mutation pending until a correlated idle status proves its fate.
+	m_managedRewindTimer->start(8000);
+	emit managedRewindStateChanged();
+	return true;
+}
+
+void Client::requestManagedRewindStatus(const QString &operation)
+{
+	if (!m_liveSession || !m_liveSession->isActive()
+		|| (operation != QLatin1String("status") && operation != QLatin1String("resync"))
+		|| m_managedRewindSequence == std::numeric_limits<quint64>::max())
+		return;
+	if (operation == QLatin1String("resync")
+		&& (!m_hasManagedRewindStatus || m_managedRewindStatus.token.isEmpty()))
+		return;
+	RewindControlPayload control;
+	control.operation = operation;
+	control.sequence = QString::number(++m_managedRewindSequence);
+	const bool hasCompleteIdentity = m_hasManagedRewindStatus
+		&& !m_managedRewindStatus.rootGameId.isEmpty()
+		&& !m_managedRewindStatus.worldId.isEmpty()
+		&& !m_managedRewindStatus.generation.isEmpty()
+		&& !m_managedRewindStatus.token.isEmpty();
+	if (hasCompleteIdentity) {
+		control.rootGameId = m_managedRewindStatus.rootGameId;
+		control.worldId = m_managedRewindStatus.worldId;
+		control.generation = m_managedRewindStatus.generation;
+		control.token = m_managedRewindStatus.token;
+	} else if (operation == QLatin1String("resync")) {
+		return;
+	} else {
+		control.operation = QStringLiteral("status");
+	}
+	if (!m_liveSession->sendControl(S_COMMAND_MANAGED_REWIND, control.toVariant()))
+		return;
+	if (m_managedRewindPending)
+		m_managedRewindTimer->start(10000);
+}
+
+void Client::managedRewindState(const QVariant &payload)
+{
+	RewindStatusPayload status;
+	QString error;
+	if (!RewindStatusPayload::parse(payload, &status, &error)) {
+		failProtocol(QStringLiteral("invalid managed rewind state: %1").arg(error));
+		return;
+	}
+	const bool matchesSnapshot = m_managedRewindSnapshotActive
+		&& status.rootGameId == m_managedSnapshotRootId
+		&& status.worldId == m_managedSnapshotWorldId
+		&& status.generation == m_managedSnapshotGeneration;
+	const bool matchesCurrent = m_hasManagedTimelineIdentity
+		&& status.rootGameId == m_managedTimelineRootId
+		&& status.worldId == m_managedTimelineWorldId
+		&& status.generation == m_managedTimelineGeneration;
+	const bool unsupportedWithoutIdentity = !status.supported
+		&& status.rootGameId.isEmpty() && status.worldId.isEmpty();
+	if (unsupportedWithoutIdentity) {
+		if (!status.token.isEmpty() && m_hasManagedRewindStatus
+			&& status.token == m_managedRewindStatus.token
+			&& status.ackSequence != QLatin1String("0")
+			&& !(m_managedRewindPending && status.ackSequence == m_managedRewindPendingSequence)
+			&& compareDecimalStrings(status.ackSequence, m_managedRewindLastAckSequence) < 0)
+			return;
+		acceptManagedRewindStatus(status);
+		return;
+	}
+	if (m_hasManagedTimelineIdentity && !matchesCurrent && !matchesSnapshot) {
+		if (status.rootGameId == m_managedTimelineRootId
+			&& status.worldId == m_managedTimelineWorldId
+			&& compareDecimalStrings(status.generation, m_managedTimelineGeneration) < 0)
+			return;
+		m_stagedManagedRewindStatus = status;
+		m_hasStagedManagedRewindStatus = true;
+		emit managedRewindStateChanged();
+		return;
+	}
+	if (m_hasManagedRewindStatus && !status.token.isEmpty()
+		&& status.token != m_managedRewindStatus.token) {
+		m_managedRewindPending = false;
+		m_managedRewindPendingSequence.clear();
+		m_managedRewindPendingOperation.clear();
+		m_managedPendingSnapshotSerial = 0;
+		m_managedRewindTimer->stop();
+		m_managedRewindSequence = 0;
+		m_managedRewindLastAckSequence = QStringLiteral("0");
+		m_hasStagedManagedRewindStatus = false;
+	}
+	if (m_hasManagedRewindStatus && status.token == m_managedRewindStatus.token
+		&& status.ackSequence != QLatin1String("0")
+		&& !(m_managedRewindPending && status.ackSequence == m_managedRewindPendingSequence)
+		&& compareDecimalStrings(status.ackSequence, m_managedRewindLastAckSequence) < 0)
+		return;
+	bool ackOk = false;
+	const quint64 acknowledged = status.ackSequence.toULongLong(&ackOk);
+	if (ackOk && status.ackSequence != QLatin1String("0"))
+		m_managedRewindSequence = qMax(m_managedRewindSequence, acknowledged);
+
+	if (!m_hasManagedTimelineIdentity && !status.rootGameId.isEmpty()
+		&& !status.worldId.isEmpty() && !status.generation.isEmpty()) {
+		m_managedTimelineRootId = status.rootGameId;
+		m_managedTimelineWorldId = status.worldId;
+		m_managedTimelineGeneration = status.generation;
+		m_hasManagedTimelineIdentity = true;
+		acceptManagedRewindStatus(status);
+		return;
+	}
+	if (matchesCurrent || matchesSnapshot) {
+		acceptManagedRewindStatus(status);
+		return;
+	}
+	if (m_hasManagedTimelineIdentity
+		&& status.rootGameId == m_managedTimelineRootId
+		&& status.worldId == m_managedTimelineWorldId
+		&& compareDecimalStrings(status.generation, m_managedTimelineGeneration) < 0)
+		return;
+	m_stagedManagedRewindStatus = status;
+	m_hasStagedManagedRewindStatus = true;
+	emit managedRewindStateChanged();
+}
+
+void Client::acceptManagedRewindStatus(const RewindStatusPayload &status)
+{
+	m_managedRewindStatus = status;
+	m_hasManagedRewindStatus = true;
+	m_hasStagedManagedRewindStatus = false;
+	if (status.ackSequence != QLatin1String("0")
+		&& compareDecimalStrings(status.ackSequence, m_managedRewindLastAckSequence) >= 0)
+		m_managedRewindLastAckSequence = status.ackSequence;
+	const bool matchesCommittedSnapshot = m_hasCommittedManagedSnapshot
+		&& status.rootGameId == m_managedCommittedRootId
+		&& status.worldId == m_managedCommittedWorldId
+		&& status.generation == m_managedCommittedGeneration;
+	const bool committedReceiptAfterRequest = matchesCommittedSnapshot
+		&& m_managedCommittedSnapshotSerial > m_managedPendingSnapshotSerial;
+	const bool rejectedWithoutTimelineChange = matchesCommittedSnapshot
+		&& !status.message.isEmpty()
+		&& status.generation == m_managedCommittedGeneration;
+	if (m_managedRewindPending && !status.busy
+		&& decimalStringAtLeast(status.ackSequence, m_managedRewindPendingSequence)
+		&& (committedReceiptAfterRequest || rejectedWithoutTimelineChange)) {
+		m_managedRewindPending = false;
+		m_managedRewindPendingSequence.clear();
+		m_managedRewindPendingOperation.clear();
+		m_managedPendingSnapshotSerial = 0;
+		m_managedRewindTimer->stop();
+	}
+	emit managedRewindStateChanged();
+	emit gamePresentationStateChanged();
+}
+
+void Client::managedRewindTimeout()
+{
+	if (!m_managedRewindPending)
+		return;
+	requestManagedRewindStatus(QStringLiteral("resync"));
+	if (m_managedRewindPending)
+		m_managedRewindTimer->start(10000);
+	emit managedRewindStateChanged();
+}
+
+void Client::resetManagedRewindState()
+{
+	if (m_managedRewindTimer)
+		m_managedRewindTimer->stop();
+	m_managedRewindStatus = RewindStatusPayload();
+	m_stagedManagedRewindStatus = RewindStatusPayload();
+	m_hasManagedRewindStatus = false;
+	m_hasStagedManagedRewindStatus = false;
+	m_managedRewindPending = false;
+	m_managedRewindGameStarted = false;
+	m_managedRewindSnapshotActive = false;
+	m_hasManagedTimelineIdentity = false;
+	m_hasCommittedManagedSnapshot = false;
+	m_managedRewindSequence = 0;
+	m_managedCommittedSnapshotSerial = 0;
+	m_managedPendingSnapshotSerial = 0;
+	m_managedRewindPendingSequence.clear();
+	m_managedRewindPendingOperation.clear();
+	m_managedRewindLastAckSequence = QStringLiteral("0");
+	m_managedTimelineRootId.clear();
+	m_managedTimelineWorldId.clear();
+	m_managedTimelineGeneration.clear();
+	m_managedCommittedRootId.clear();
+	m_managedCommittedWorldId.clear();
+	m_managedCommittedGeneration.clear();
+	m_managedSnapshotRootId.clear();
+	m_managedSnapshotWorldId.clear();
+	m_managedSnapshotGeneration.clear();
+	emit managedRewindStateChanged();
 }
 
 void Client::failProtocol(const QString &detail)
@@ -1041,6 +1491,14 @@ void Client::addPlayer(const QVariant &player_info)
 	QString name = info.value(QStringLiteral("player_name")).toString();
 	QString screen_name = info.value(QStringLiteral("screen_name")).toString();
 	QString avatar = info.value(QStringLiteral("avatar")).toString();
+
+	if (m_managedRewindSnapshotActive) {
+		if (ClientPlayer *existing = getPlayer(name)) {
+			existing->setScreenName(screen_name);
+			existing->setProperty("avatar", avatar);
+			return;
+		}
+	}
 
 	ClientPlayer *player = new ClientPlayer(this);
 	player->setObjectName(name);
@@ -1479,6 +1937,8 @@ void Client::startGame(const QVariant &pile)
 	// A rematch builds its Room after this Client, reclaiming the thread's domain.
 	CardLifetimeManager::setCurrentDomain(nullptr);
 	_m_roomState.reset();
+	m_managedRewindGameStarted = true;
+	emit managedRewindStateChanged();
 
 	setAvailableCards(pile.toMap());
 	//alive_count = findChildren<ClientPlayer *>().count();

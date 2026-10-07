@@ -102,6 +102,7 @@ struct SkillInstance {
 
 private:
     friend class Player;
+    friend class RoomManagedState;
     // Private logical state is server-authoritative and synchronized only to its owner; see Room::notifySkillInstanceState.
     QVariantMap state;
 };

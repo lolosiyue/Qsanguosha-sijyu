@@ -6,6 +6,7 @@
 #include "protocol/arrange-seats-message.h"
 #include "protocol/switch-context-message.h"
 #include "room.h"
+#include "room-managed-state.h"
 #include "roomthread.h"
 #include "serverplayer.h"
 #include "settings.h"
@@ -109,6 +110,7 @@ void RequestCoordinator::initializeCallbacks()
     m_requestResponsePairs[S_COMMAND_EXCHANGE_CARD] = S_COMMAND_DISCARD_CARD;
 
     m_callbacks[S_COMMAND_SURRENDER] = &Room::processRequestSurrender;
+    m_callbacks[S_COMMAND_MANAGED_REWIND] = &Room::managedRewindCommand;
     m_callbacks[S_COMMAND_CHEAT] = &Room::processRequestCheat;
     m_callbacks[S_COMMAND_READY] = &Room::setReadyCommand;
     m_callbacks[S_COMMAND_ADD_ROBOT] = &Room::addRobotCommand;
@@ -192,11 +194,21 @@ void RequestCoordinator::clearDualControlRequest(ServerPlayer *player, bool rest
 bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
                                  const QVariant &arg, time_t timeOut, bool wait)
 {
+    return requestImpl(player, command, arg, timeOut, wait, true);
+}
+
+bool RequestCoordinator::requestImpl(ServerPlayer *player, CommandType command,
+                                     const QVariant &arg, time_t timeOut, bool wait,
+                                     bool trackManagedDecision)
+{
     if (m_room.getThread()) m_room.getThread()->refreshSkillDescriptions();
     ServerPlayer *actual = m_room.getActualController(player);
     ServerPlayer *target = requestTarget(player);
     bool redirectedToController = actual != nullptr && target == actual && actual != player
         && actual->isOnline();
+    auto *managed = m_room.m_managedState.get();
+    if (managed && managed->running() && redirectedToController)
+        m_room.getThread()->invalidateManagedTurns(QStringLiteral("controller redirection is not yet an audited decision continuation"));
     ScopedCallback restoreContextGuard([this, player, wait, redirectedToController]() {
         if (wait && redirectedToController)
             clearDualControlRequest(player);
@@ -209,7 +221,8 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
             setViewerHandcardVisible(m_room, onsole, visibleMark, true);
             syncKnownHandcards(m_room, onsole, player);
             m_room.setPlayerProperty(onsole, "onsole_target", player->objectName());
-            bool hasResult = request(onsole, command, arg, timeOut, wait);
+            bool hasResult = requestImpl(onsole, command, arg, timeOut, wait,
+                                         trackManagedDecision);
             m_room.setPlayerProperty(onsole, "onsole_target", "");
             setViewerHandcardVisible(m_room, onsole, visibleMark, false);
             player->setClientReply(onsole->getClientReply());
@@ -234,6 +247,7 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
     target->setClientReply(QVariant());
     target->setClientReplyString("");
     target->m_isWaitingReply = true;
+    target->m_expectedReplyMessageId = 0;
     target->m_expectedReplyCommand = expectedReply;
     target->releaseLock(ServerPlayer::SEMA_MUTEX);
 
@@ -251,6 +265,7 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
         player->setClientReply(QVariant());
         player->setClientReplyString("");
         player->m_isWaitingReply = true;
+        player->m_expectedReplyMessageId = 0;
         player->m_expectedReplyCommand = expectedReply;
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
 
@@ -269,11 +284,38 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
 
     // The expected id has to be visible before the frame leaves, otherwise a
     // reply that comes back fast enough is rejected for answering id 0.
+    GameTimeline::RequestToken managedToken;
+    bool duplicateManagedRequest = false;
+    if (trackManagedDecision && managed && managed->running()) {
+        QMutexLocker locker(&m_mutex);
+        const QString resultTargetName = resultTarget->objectName();
+        if (m_managedRequests.contains(resultTargetName)) {
+            // A second outstanding request for the same result owner would
+            // overwrite the first token and make it impossible to consume both.
+            duplicateManagedRequest = true;
+        } else {
+            managedToken = managed->m_store->timeline().issueRequest(
+                player->objectName(), QString::number(command));
+            m_managedRequests.insert(resultTargetName, {managedToken, 0});
+        }
+    }
+    if (duplicateManagedRequest && m_room.getThread())
+        m_room.getThread()->invalidateManagedTurns(
+            QStringLiteral("overlapping managed requests for one reply owner are unsupported"));
     target->sendProtocolMessage(requestMessage,
-        [target, player, redirectedToController](quint64 requestMessageId) {
+        [this, target, player, resultTarget, redirectedToController,
+         managedRequestSerial = managedToken.serial](quint64 requestMessageId) {
             target->m_expectedReplyMessageId = requestMessageId;
             if (redirectedToController)
                 player->m_expectedReplyMessageId = requestMessageId;
+            if (managedRequestSerial != 0) {
+                QMutexLocker locker(&m_mutex);
+                auto found = m_managedRequests.find(resultTarget->objectName());
+                if (found != m_managedRequests.end()
+                    && found->token.serial == managedRequestSerial) {
+                    found->messageId = requestMessageId;
+                }
+            }
         });
     return !wait || getResult(resultTarget, timeOut);
 }
@@ -326,6 +368,8 @@ ServerPlayer *RequestCoordinator::raceRequest(QList<ServerPlayer *> players,
                                               ResponseVerifyFunction validateFunc,
                                               void *funcArg)
 {
+    if (m_room.m_managedState && m_room.m_managedState->running())
+        m_room.getThread()->invalidateManagedTurns(QStringLiteral("race request acceptance is not yet audited for managed restore"));
     if (m_room.getThread()) m_room.getThread()->refreshSkillDescriptions();
     QMap<ServerPlayer *, QList<ServerPlayer *> > controllerMap;
     foreach (ServerPlayer *player, players)
@@ -368,7 +412,11 @@ ServerPlayer *RequestCoordinator::raceRequest(QList<ServerPlayer *> players,
             m_room.notifyMoveFocus(activePlayers, command, countdown);
 
         foreach (ServerPlayer *player, activePlayers)
-            request(player, command, player->m_commandArgs, remainTime, false);
+            // Race replies are resolved by getRaceResult(), which deliberately
+            // does not consume per-player getResult() tokens. These decision
+            // paths already disable managed restore at raceRequest() entry.
+            requestImpl(player, command, player->m_commandArgs, remainTime,
+                        false, false);
 
         ServerPlayer *winner = getRaceResult(activePlayers, command, remainTime,
                                              &Room::verifyRaceReply, &context);
@@ -478,7 +526,38 @@ bool RequestCoordinator::getResult(ServerPlayer *player, time_t timeOut)
     player->releaseLock(ServerPlayer::SEMA_MUTEX);
     if (!redirectedTargetName.isEmpty())
         clearDualControlRequest(player);
+    // Socket callbacks only decode and wake. The game owner records acceptance
+    // after consuming the result; timeline data is never mutated by I/O threads.
+    ManagedRequest managedRequest;
+    {
+        QMutexLocker locker(&m_mutex);
+        managedRequest = m_managedRequests.take(player->objectName());
+    }
+    if (managedRequest.token.serial && m_room.m_managedState) {
+        auto &timeline = m_room.m_managedState->m_store->timeline();
+        QString journalError;
+        const QVariantMap payload{{"reply", player->getClientReply()},
+            {"message_id", QString::number(managedRequest.messageId)}, {"stage", QStringLiteral("transport-consumed")}};
+        const bool recorded = validResult
+            ? timeline.acceptDecision(managedRequest.token, payload, QStringLiteral("client"), &journalError)
+            : timeline.acceptTimeout(managedRequest.token, {{"stage", QStringLiteral("transport-timeout")}}, &journalError);
+        if (!recorded) m_room.getThread()->invalidateManagedTurns(journalError);
+    }
     return validResult && !player->getClientReply().isNull();
+}
+
+void RequestCoordinator::commitManagedGeneration(quint64 generation) noexcept
+{
+    // Publication is allowed only with no requests in flight. Wire message IDs
+    // remain monotonic, and this generation additionally fences delayed input.
+    m_managedGeneration.store(generation, std::memory_order_release);
+}
+
+bool RequestCoordinator::hasManagedPendingRequests() const
+{
+    QMutexLocker locker(&m_mutex);
+    return !m_managedRequests.isEmpty() || m_raceStarted
+        || !m_dualControlReplyOwners.isEmpty() || !m_dualControlRequestTargets.isEmpty();
 }
 
 bool RequestCoordinator::waitsAborted() const
@@ -581,6 +660,7 @@ void RequestCoordinator::processClientPacket(
 void RequestCoordinator::processResponse(
     ServerPlayer *player, const ProtocolMessage &message)
 {
+    if (!player) return;
     player->acquireLock(ServerPlayer::SEMA_MUTEX);
     bool success = false;
     QString replyOwnerName;
@@ -603,12 +683,22 @@ void RequestCoordinator::processResponse(
         emit m_room.room_message(m_room.tr("Reply command should be %1 instead of %2")
                                  .arg(player->m_expectedReplyCommand)
                                  .arg(message.command));
-    else if (message.replyTo != player->m_expectedReplyMessageId)
+    else if (player->m_expectedReplyMessageId.load(std::memory_order_acquire) == 0
+             || message.replyTo != player->m_expectedReplyMessageId)
         emit m_room.room_message(m_room.tr("Reply message id should be %1 instead of %2")
                                  .arg(player->m_expectedReplyMessageId.load())
                                  .arg(message.replyTo));
     else
         success = true;
+
+    if (success) {
+        QMutexLocker locker(&m_mutex);
+        const auto found = m_managedRequests.constFind(replyOwner->objectName());
+        if (found != m_managedRequests.cend()
+            && (found->messageId != message.replyTo
+                || found->token.generation != m_managedGeneration.load(std::memory_order_acquire)))
+            success = false;
+    }
 
     QVariant reply;
     if (success) {

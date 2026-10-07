@@ -530,9 +530,20 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         state->setGameValue(QStringLiteral("started"), true);
         state->setGameValue(QStringLiteral("game_over"), false);
         state->setGameValue(QStringLiteral("status"), QStringLiteral("active"));
-        state->setGameValue(QStringLiteral("draw_pile"), object.value(QStringLiteral("card_ids")));
-        state->setGameValue(QStringLiteral("draw_pile_count"),
-                            object.value(QStringLiteral("card_ids")).toList().size());
+        if (state->connectionValue(QStringLiteral("managed_timeline_restore")).toBool()) {
+            // GAME_START carries the active card universe, not the hidden draw
+            // order. Keep the known pool separate and leave pile contents
+            // unknown; UPDATE_PILE supplies the authoritative count later.
+            state->setGameValue(QStringLiteral("available_cards"),
+                                object.value(QStringLiteral("card_ids")));
+            state->setGameValue(QStringLiteral("draw_pile"), QVariantList());
+            state->setGameValue(QStringLiteral("draw_pile_count"),
+                                object.value(QStringLiteral("card_ids")).toList().size());
+        } else {
+            state->setGameValue(QStringLiteral("draw_pile"), object.value(QStringLiteral("card_ids")));
+            state->setGameValue(QStringLiteral("draw_pile_count"),
+                                object.value(QStringLiteral("card_ids")).toList().size());
+        }
         break;
     case S_COMMAND_GAME_OVER:
         state->setGameValue(QStringLiteral("active_resolutions"), QVariantList());
@@ -1091,6 +1102,18 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
     case S_COMMAND_STATE_SYNC:
         state->setConnectionValue(QStringLiteral("sync_id"), object.value(QStringLiteral("sync_id")));
         state->setConnectionValue(QStringLiteral("sync_phase"), object.value(QStringLiteral("phase")));
+        if (object.value(QStringLiteral("phase")) == QLatin1String("begin")) {
+            state->setConnectionValue(QStringLiteral("managed_timeline_restore"),
+                object.value(QStringLiteral("managed_timeline_restore"), false));
+        } else {
+            if (object.contains(QStringLiteral("round")))
+                state->setGameValue(QStringLiteral("round"), object.value(QStringLiteral("round")));
+            if (object.contains(QStringLiteral("current_player")))
+                state->setGameValue(QStringLiteral("current_player"), object.value(QStringLiteral("current_player")));
+            for (const auto &key : {QStringLiteral("root_game_id"), QStringLiteral("world_id"), QStringLiteral("timeline_generation")})
+                if (object.contains(key)) state->setConnectionValue(key, object.value(key));
+            state->setConnectionValue(QStringLiteral("managed_timeline_restore"), false);
+        }
         break;
     case S_COMMAND_NETWORK_DELAY_TEST:
         state->setConnectionValue(QStringLiteral("delay_nonce"),

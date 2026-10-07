@@ -16,6 +16,7 @@ class WrappedCard;
 
 class RoomState
 {
+    friend class RoomManagedState;
 public:
     inline RoomState(bool isClient, std::function<void()> identityChanged = {})
         : m_isClient(isClient), m_ownerThread(QThread::currentThread()),
@@ -83,9 +84,9 @@ protected:
     bool m_isClient;
     QThread *m_ownerThread;
     std::function<void()> m_identityChanged;
-    Player *m_currentPlayer;
+    Player *m_currentPlayer = nullptr;
     QString m_currentCardUsePattern;
-    CardUseStruct::CardUseReason m_currentCardUseReason;
+    CardUseStruct::CardUseReason m_currentCardUseReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
     QHash<QString, QStringList> m_flags;
 };
 

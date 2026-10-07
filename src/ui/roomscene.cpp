@@ -68,6 +68,7 @@
 #include "SpineGlItem.h"
 #endif
 #include <QRegularExpression>
+#include <QAbstractAnimation>
 #include "graphicspixmaphoveritem.h"
 #include "choosegeneraldialog.h"
 #include "cardoverview.h"
@@ -459,6 +460,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	// do signal-slot connections
 	connect(ClientInstance,SIGNAL(player_added(ClientPlayer*)),SLOT(addPlayer(ClientPlayer*)));
+	connect(ClientInstance, &Client::managedTimelineSnapshotStarting,
+		this, &RoomScene::resetManagedTimelinePresentation);
 	connect(ClientInstance,SIGNAL(player_removed(QString)),SLOT(removePlayer(QString)));
 	connect(ClientInstance,SIGNAL(generals_got(QStringList)),this,SLOT(chooseGeneral(QStringList)));
 	connect(ClientInstance, &Client::hegemony_generals_got, this, &RoomScene::chooseHegemonyGenerals);
@@ -1976,6 +1979,55 @@ void RoomScene::addPlayer(ClientPlayer*player)
         Sanguosha->playSystemAudioEffect("add-player",false);
 }
 
+void RoomScene::resetManagedTimelinePresentation()
+{
+	auto retireCardItems = [](const QList<CardItem *> &items) {
+		QSet<CardItem *> retired;
+		for (CardItem *item : items) {
+			if (!item || retired.contains(item)) continue;
+			retired.insert(item);
+			if (QAbstractAnimation *animation = item->getCurrentAnimation(false))
+				animation->stop();
+			item->setEnabled(false);
+			item->hide();
+			item->deleteLater();
+		}
+	};
+
+	if (dashboard) {
+		QList<int> handIds;
+		for (CardItem *item : dashboard->getHandCards())
+			if (item && item->getId() >= 0 && !handIds.contains(item->getId()))
+				handIds.append(item->getId());
+		retireCardItems(dashboard->removeCardItems(handIds, Player::PlaceHand));
+		if (Self) {
+			retireCardItems(dashboard->removeCardItems(Self->getEquipsId(), Player::PlaceEquip));
+			retireCardItems(dashboard->removeCardItems(Self->getJudgingAreaID(), Player::PlaceDelayedTrick));
+		}
+		dashboard->clearPendings();
+		dashboard->unselectAll();
+		dashboard->updateRenPileButton(QList<int>());
+	}
+
+	for (Photo *photo : photos) {
+		const ClientPlayer *player = photo ? photo->getPlayer() : nullptr;
+		if (!photo || !player || player == Self) continue;
+		retireCardItems(photo->removeCardItems(player->getEquipsId(), Player::PlaceEquip));
+		retireCardItems(photo->removeCardItems(player->getJudgingAreaID(), Player::PlaceDelayedTrick));
+	}
+
+	for (auto move = _m_cardsMoveStash.begin(); move != _m_cardsMoveStash.end(); ++move)
+		for (const QList<CardItem *> &batch : move.value())
+			retireCardItems(batch);
+	_m_cardsMoveStash.clear();
+	m_move_cache.clear();
+	RenPile.clear();
+	if (m_tablePile) m_tablePile->resetForManagedSync();
+	if (card_container) card_container->clear();
+	if (pileContainer) pileContainer->clear();
+	if (log_box) log_box->clear();
+}
+
 void RoomScene::removePlayer(const QString&player_name)
 {
 	Photo*photo = name2photo.value(player_name, nullptr);
@@ -2367,7 +2419,7 @@ void RoomScene::showControllerMenu()
     dialog->setProperty("controllerLocalDialog", true);
     auto *layout = new QVBoxLayout(dialog);
     const auto add = [this, dialog, layout](const QString &id, const QString &label,
-                                         bool enabled, std::function<void()> action) {
+                                         bool enabled, std::function<void()> action) -> QPushButton * {
         auto *button = new QPushButton(label, dialog);
         button->setObjectName(id);
         button->setAutoDefault(false);
@@ -2379,10 +2431,52 @@ void RoomScene::showControllerMenu()
             // release into a newly opened gameplay request.
             QTimer::singleShot(0, this, action);
         });
+        return button;
     };
     const bool connected = ClientInstance && !ClientInstance->getReplayer();
     add("controllerControls", tr("Selections and commands"), connected, [this]() { showGameControlPanel(); });
     add("controllerSnapshot", tr("Cards, skills and game details"), true, [this]() { showGameStateSnapshot(); });
+    auto *rewindStatus = new QLabel(dialog);
+    rewindStatus->setObjectName(QStringLiteral("controllerManagedRewindStatus"));
+    rewindStatus->setTextFormat(Qt::PlainText);
+    rewindStatus->setWordWrap(true);
+    layout->addWidget(rewindStatus);
+    const auto rewindAction = [this](const QString &operation) {
+        if (ClientInstance)
+            ClientInstance->requestManagedRewind(operation);
+    };
+    QPushButton *rewindStep = add("controllerManagedStep", tr("Step one turn"), false,
+        [rewindAction]() { rewindAction(QStringLiteral("step")); });
+    QPushButton *rewindTurn = add("controllerManagedRewindTurn", tr("Rewind previous player turn"), false,
+        [rewindAction]() { rewindAction(QStringLiteral("turn")); });
+    QPushButton *rewindRound = add("controllerManagedRewindRound", tr("Rewind previous full round"), false,
+        [rewindAction]() { rewindAction(QStringLiteral("round")); });
+    QPushButton *rewindCancel = add("controllerManagedRewindCancel", tr("Cancel waiting rewind"), false,
+        [this]() { if (ClientInstance) ClientInstance->requestManagedRewindCancel(); });
+    rewindCancel->setToolTip(tr(
+        "Cancels only a queued request. If execution has started, the server reports status and the rewind continues."));
+    const auto refreshManagedRewind = [this, connected, rewindStatus, rewindStep, rewindTurn,
+                                       rewindRound, rewindCancel]() {
+        if (!rewindStatus || !rewindStep || !rewindTurn || !rewindRound || !rewindCancel)
+            return;
+        rewindStatus->setText(connected && ClientInstance
+            ? ClientInstance->managedRewindStatusText()
+            : tr("Managed rewind is not available while viewing a replay."));
+        const bool enabled = connected && ClientInstance
+            && ClientInstance->canRequestManagedRewind();
+        rewindStep->setEnabled(enabled);
+        rewindTurn->setEnabled(enabled);
+        rewindRound->setEnabled(enabled);
+        rewindCancel->setEnabled(connected && ClientInstance
+            && ClientInstance->canRequestManagedRewindCancel());
+    };
+    refreshManagedRewind();
+    if (connected && ClientInstance) {
+        connect(ClientInstance, &Client::managedRewindStateChanged,
+                dialog, refreshManagedRewind);
+        connect(ClientInstance, &Client::gamePresentationStateChanged,
+                dialog, refreshManagedRewind);
+    }
     const auto *core = connected ? ClientInstance->interactionCore() : nullptr;
     if (core && core->hasActiveRequest()) {
         const auto type = core->activeRequest().type;

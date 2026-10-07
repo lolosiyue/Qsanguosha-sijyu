@@ -9,6 +9,7 @@
 #include "protocol/protocol-message.h"
 //#include "skill.h"
 #include "room-state.h"
+#include "protocol/session/managed-rewind-payloads.h"
 //#include "protocol.h"
 // Client signals and slots use ClientPlayer pointer types and lists. Qt's
 // generated metatype array requires complete types (Q_DECLARE_METATYPE(T*)
@@ -25,6 +26,7 @@ class DesktopInteractionView;
 class QTextDocument;
 class ClientSocket;
 class ClientLiveSession;
+class QTimer;
 
 class Client : public QObject, public EngineRuntimeContext,
     public IClientInteractionPresenter
@@ -190,6 +192,7 @@ public:
     void setShownHandCards(const QVariant &arg);
     void setBrokenEquips(const QVariant &arg);
     void preshow(const QVariant &arg);
+    void managedRewindState(const QVariant &payload);
 
     void askForQml(const QVariant &arg);
     void replyQml(const QVariant &result);
@@ -312,6 +315,14 @@ public:
     ClientCore *interactionCore() const { return m_interactionCore; }
     ClientLiveSession *liveSession() const { return m_liveSession; }
     bool isPresentationStateSyncActive() const;
+    bool hasManagedRewindStatus() const { return m_hasManagedRewindStatus; }
+    bool canRequestManagedRewind() const;
+    QString managedRewindStatusText() const;
+    bool requestManagedRewind(const QString &operation);
+    bool canRequestManagedRewindCancel() const;
+    bool requestManagedRewindCancel();
+    const QSanProtocol::RewindStatusPayload &managedRewindStatus() const
+    { return m_managedRewindStatus; }
     QJsonArray interactionInventory() const;
 
     // Presentation ports used by DesktopInteractionView. Each one is the last line or two
@@ -409,6 +420,31 @@ private:
     ClientGameState m_pendingStateSyncState;
     bool m_stateSyncActive = false;
     QString m_stateSyncId;
+    QSanProtocol::RewindStatusPayload m_managedRewindStatus;
+    QSanProtocol::RewindStatusPayload m_stagedManagedRewindStatus;
+    bool m_hasManagedRewindStatus = false;
+    bool m_hasStagedManagedRewindStatus = false;
+    bool m_managedRewindPending = false;
+    bool m_managedRewindGameStarted = false;
+    bool m_managedRewindSnapshotActive = false;
+    bool m_hasManagedTimelineIdentity = false;
+    bool m_hasCommittedManagedSnapshot = false;
+    quint64 m_managedRewindSequence = 0;
+    quint64 m_managedCommittedSnapshotSerial = 0;
+    quint64 m_managedPendingSnapshotSerial = 0;
+    QString m_managedRewindPendingSequence;
+    QString m_managedRewindPendingOperation;
+    QString m_managedRewindLastAckSequence = QStringLiteral("0");
+    QString m_managedTimelineRootId;
+    QString m_managedTimelineWorldId;
+    QString m_managedTimelineGeneration;
+    QString m_managedCommittedRootId;
+    QString m_managedCommittedWorldId;
+    QString m_managedCommittedGeneration;
+    QString m_managedSnapshotRootId;
+    QString m_managedSnapshotWorldId;
+    QString m_managedSnapshotGeneration;
+    QTimer *m_managedRewindTimer = nullptr;
     int m_lastReplayPairIndex = -1;
     qint64 m_lastReplayElapsedMs = 0;
 
@@ -420,6 +456,10 @@ private:
         InteractionPayload payload, bool cancelable = false) const;
     void cancelInteraction(InteractionType type, InteractionCancelReason reason);
     void syncInteractionState();
+    void requestManagedRewindStatus(const QString &operation);
+    void resetManagedRewindState();
+    void acceptManagedRewindStatus(const QSanProtocol::RewindStatusPayload &status);
+    void managedRewindTimeout();
 
     void updatePileNum();
     // The request builder has already written prompt_doc.
@@ -455,6 +495,7 @@ public slots:
 
 signals:
     void gamePresentationStateChanged();
+    void managedTimelineSnapshotStarting();
     void replayStateCaptureReady(quint64 requestId,
                                  const QJsonObject &clientCore,
                                  int lastAppliedPairIndex,
@@ -473,6 +514,7 @@ signals:
     void player_added(ClientPlayer *new_player);
     void player_removed(const QString &player_name);
     void boss_level_changed();
+    void managedRewindStateChanged();
     void add_equip_area(const QString &area);
     void card_description_updated(const QString &player_name, const QString &card_name);
     // choice signal
