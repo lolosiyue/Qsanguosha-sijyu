@@ -324,6 +324,7 @@ void RoomOverlayHost::updateMask()
     // An empty mask means no mask, so let clicks fall through instead.
     setAttribute(Qt::WA_TransparentForMouseEvents, region.isEmpty());
     setMask(region);
+    emit nativeRegionChanged(region.translated(geometry().topLeft()));
 }
 
 void RoomOverlayHost::resizeEvent(QResizeEvent *event)

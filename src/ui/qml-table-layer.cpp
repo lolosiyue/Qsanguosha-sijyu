@@ -206,6 +206,8 @@ void QmlTableLayer::addElement(const QString &key, Element element)
             item->setParentItem(frame);
             element.frame = frame;
             element.item = item;
+            connect(item, &QQuickItem::implicitWidthChanged, this, &QmlTableLayer::scheduleRelayout);
+            connect(item, &QQuickItem::implicitHeightChanged, this, &QmlTableLayer::scheduleRelayout);
         }
     } else {
         element.error = QStringLiteral("table layer failed to load");
@@ -305,15 +307,32 @@ QJsonObject QmlTableLayer::snapshot() const
     return result;
 }
 
+void QmlTableLayer::setOccludedRegion(const QRegion &region)
+{
+    if (region == m_occluded)
+        return;
+    m_occluded = region;
+    scheduleRelayout();
+}
+
 void QmlTableLayer::relayout()
 {
     if (!m_view || !m_content)
         return;
     QList<QmlSeatGeometry> seats;
     QmlTableGeometry table;
+    const bool mounted = !m_elements.isEmpty();
     if (m_provider)
-        m_provider(&seats, &table);
+        m_provider(mounted ? &seats : nullptr, &table);
     m_table = table;
+    if (!mounted) {
+        m_interactiveRects.clear();
+        if (m_reportPending) {
+            m_reportPending = false;
+            emit elementsChanged();
+        }
+        return;
+    }
     const auto map = [this](const QRectF &rect) {
         return rect.isValid() ? QRectF(m_view->mapFromScene(rect).boundingRect()) : QRectF();
     };
@@ -361,7 +380,7 @@ void QmlTableLayer::relayout()
             // Ribbon seats are too small for rows outside them: every non-centred seat anchor
             // becomes one row along the inside bottom of the seat.
             group = element.player + QLatin1Char('|')
-                + (table.compactSeats && !centered ? QStringLiteral("compact") : (centered ? QStringLiteral("center") : element.anchor));
+                + (table.compactSeats && !seat->self && !centered ? QStringLiteral("compact") : (centered ? QStringLiteral("center") : element.anchor));
         }
         groups[group].append({&element, size * scale, scale});
     }
@@ -413,16 +432,19 @@ void QmlTableLayer::relayout()
         qreal x = origin.x();
         for (const Placement &p : row) {
             Element &element = *p.element;
-            QRectF box(QPointF(x, origin.y()), p.size);
+            const QRectF fullBox(QPointF(x, origin.y()), p.size);
+            QRectF box = fullBox;
             x += p.size.width() + kGap;
             if (clipToSeat)
                 box = box.intersected(seat);
+            if (!box.isEmpty() && !m_occluded.isEmpty() && m_occluded.intersects(box.toAlignedRect()))
+                box = QRectF();
             element.frame->setPosition(box.topLeft());
             element.frame->setSize(box.size());
             element.frame->setClip(clipToSeat);
             element.item->setTransformOrigin(QQuickItem::TopLeft);
             element.item->setScale(p.scale);
-            element.item->setPosition(QPointF(0, 0));
+            element.item->setPosition(QPointF(fullBox.left() - box.left(), fullBox.top() - box.top()));
             element.frame->setVisible(!box.isEmpty());
             element.visible = !box.isEmpty();
             element.viewRect = box;

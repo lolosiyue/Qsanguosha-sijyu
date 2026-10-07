@@ -37,6 +37,8 @@ public:
 signals:
     void layoutPreferencesChanged();
     void responsiveEnabledChanged(bool enabled);
+    // Native controls (seat scroller, inspector) in the parent's coordinates.
+    void nativeRegionChanged(const QRegion &region);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

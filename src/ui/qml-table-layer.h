@@ -53,6 +53,8 @@ public:
 
     void setGeometryProvider(GeometryProvider provider);
     void setVisualMode(qreal saturation, qreal contrast);
+    // Viewport area covered by native controls; elements overlapping it are hidden.
+    void setOccludedRegion(const QRegion &region);
     // Smoke-test evidence: every live element with its view geometry and data.
     QJsonObject snapshot() const;
 
@@ -101,6 +103,7 @@ private:
     QList<QRectF> m_interactiveRects;
     QTimer *m_relayoutTimer = nullptr;
     QmlTableGeometry m_table;
+    QRegion m_occluded;
     bool m_reportPending = false;
     bool m_forwarding = false;
 };

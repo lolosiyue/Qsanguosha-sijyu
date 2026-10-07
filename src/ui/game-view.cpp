@@ -372,6 +372,7 @@ void FitView::ensureRoomOverlay(RoomScene *room)
     // Below the overlay host: the inspector and seat scroller cover extension elements.
     m_qmlLayer->stackUnder(m_overlay);
     room->attachQmlLayer(m_qmlLayer);
+    connect(m_overlay, &RoomOverlayHost::nativeRegionChanged, m_qmlLayer, &QmlTableLayer::setOccludedRegion);
     connect(room, &QObject::destroyed, m_qmlLayer, &QObject::deleteLater);
     m_qmlLayer->show();
 #endif
