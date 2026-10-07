@@ -107,9 +107,6 @@ private:
     bool m_reportPending = false;
     bool m_forwarding = false;
     bool m_dispatching = false; // An event is being delivered to the layer; do not forward it again.
-    bool m_ignoredValid = false; // The layer got a pointer event directly and QML ignored it.
-    QEvent::Type m_ignoredType = QEvent::None;
-    ulong m_ignoredStamp = 0;
 };
 
 #endif

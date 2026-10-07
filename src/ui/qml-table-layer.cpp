@@ -104,6 +104,7 @@ QmlTableLayer::QmlTableLayer(QGraphicsView *view, QWidget *parent)
     m_relayoutTimer->setInterval(16); // At most one relayout per frame.
     connect(m_relayoutTimer, &QTimer::timeout, this, &QmlTableLayer::relayout);
 
+    setAttribute(Qt::WA_NoMousePropagation, true); // Ignored input goes to the table by hand.
     setPassThrough(true);
     if (m_view) {
         m_view->viewport()->installEventFilter(this);
@@ -522,19 +523,21 @@ bool QmlTableLayer::event(QEvent *event)
     if (!isPointerEventType(event->type()))
         return QQuickWidget::event(event);
 
-    // An event that reached the layer directly and that QML ignores is propagated by Qt to the
-    // parent viewport after this returns; remember it so the viewport filter lets that copy through
-    // to the table instead of forwarding it back. Forwarded events are covered by m_dispatching.
-    const bool direct = !m_dispatching;
+    // Reached the layer directly (hover-first path): if QML ignores it, hand it to the table via the
+    // viewport. The layer has WA_NoMousePropagation, so Qt does not do that itself; the guard makes
+    // the viewport filter let the re-sent event through instead of forwarding it back.
+    if (m_dispatching)
+        return QQuickWidget::event(event);
     bool handled;
     {
         QScopedValueRollback<bool> guard(m_dispatching, true);
         handled = QQuickWidget::event(event);
-    }
-    if (direct && !event->isAccepted()) {
-        m_ignoredType = event->type();
-        m_ignoredStamp = static_cast<QInputEvent *>(event)->timestamp();
-        m_ignoredValid = true;
+        if (!event->isAccepted() && m_view) {
+            QCoreApplication::sendEvent(m_view->viewport(), event);
+            if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick
+                || event->type() == QEvent::TouchBegin)
+                setPassThrough(true);
+        }
     }
     return handled;
 }
@@ -559,13 +562,7 @@ bool QmlTableLayer::eventFilter(QObject *watched, QEvent *event)
 
     if (isPointerEventType(event->type()) || qsanIsPointerHoverEvent(event->type())) {
         if (m_dispatching)
-            return false; // Propagated copy of an event the layer already saw: the table gets it.
-        if (m_ignoredValid && isPointerEventType(event->type())
-            && event->type() == m_ignoredType
-            && static_cast<QInputEvent *>(event)->timestamp() == m_ignoredStamp) {
-            m_ignoredValid = false;
-            return false;
-        }
+            return false; // Event the layer already saw (or is re-sending): the table gets it.
     }
 
     switch (event->type()) {
