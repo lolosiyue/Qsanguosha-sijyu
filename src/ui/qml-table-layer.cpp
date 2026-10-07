@@ -1,14 +1,17 @@
 #include "qml-table-layer.h"
 
 #include "engine.h"
+#include "pointer-hover-delivery.h"
 #include "qml-element-path.h"
 #include "runtime-paths.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QGraphicsView>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMouseEvent>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QQmlComponent>
@@ -16,6 +19,7 @@
 #include <QQmlNetworkAccessManagerFactory>
 #include <QQuickItem>
 #include <QTimer>
+#include <QTouchEvent>
 #include <QDebug>
 
 namespace {
@@ -459,22 +463,111 @@ void QmlTableLayer::relayout()
     }
 }
 
-bool QmlTableLayer::interactiveAt(const QPointF &) const
+bool QmlTableLayer::interactiveAt(const QPointF &pos) const
 {
+    for (const QRectF &rect : m_interactiveRects)
+        if (rect.contains(pos))
+            return true;
     return false;
 }
 
 void QmlTableLayer::setPassThrough(bool passThrough)
 {
-    setAttribute(Qt::WA_TransparentForMouseEvents, passThrough);
+    if (testAttribute(Qt::WA_TransparentForMouseEvents) != passThrough)
+        setAttribute(Qt::WA_TransparentForMouseEvents, passThrough);
 }
 
+// While the pointer is over an interactive element the layer takes input itself;
+// leaving it hands the next events back to the table.
 bool QmlTableLayer::event(QEvent *event)
 {
+    switch (event->type()) {
+    case QEvent::MouseMove:
+        if (!m_forwarding && !interactiveAt(static_cast<QMouseEvent *>(event)->position()))
+            setPassThrough(true);
+        break;
+    case QEvent::HoverMove:
+        if (!m_forwarding && !interactiveAt(static_cast<QHoverEvent *>(event)->position()))
+            setPassThrough(true);
+        break;
+    case QEvent::Leave:
+        if (!m_forwarding)
+            setPassThrough(true);
+        break;
+    default:
+        break;
+    }
     return QQuickWidget::event(event);
 }
 
 bool QmlTableLayer::eventFilter(QObject *watched, QEvent *event)
 {
+    if (!m_view || watched != m_view->viewport())
+        return QQuickWidget::eventFilter(watched, event);
+    switch (event->type()) {
+    case QEvent::Resize:
+        setGeometry(m_view->viewport()->rect());
+        scheduleRelayout();
+        break;
+    case QEvent::MouseMove:
+    case QEvent::HoverEnter:
+    case QEvent::HoverMove: {
+        const QPointF pos = event->type() == QEvent::MouseMove
+            ? static_cast<QMouseEvent *>(event)->position() : static_cast<QHoverEvent *>(event)->position();
+        if (m_forwarding) {
+            QCoreApplication::sendEvent(this, event);
+            return true;
+        }
+        if (interactiveAt(pos)) {
+            setPassThrough(false);
+            // Wayland may send hover without a mouse move; QQuickWidget only maps mouse moves.
+            qsanForwardPointerHoverAsMouseMove(this, event);
+        }
+        break;
+    }
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonDblClick:
+        // A click that reached the viewport first (no hover before it) is handed over whole.
+        if (interactiveAt(static_cast<QMouseEvent *>(event)->position())) {
+            m_forwarding = true;
+            setPassThrough(false);
+            QCoreApplication::sendEvent(this, event);
+            return true;
+        }
+        break;
+    case QEvent::MouseButtonRelease:
+        if (m_forwarding) {
+            QCoreApplication::sendEvent(this, event);
+            m_forwarding = false;
+            return true;
+        }
+        break;
+    case QEvent::TouchBegin: {
+        const auto *touch = static_cast<QTouchEvent *>(event);
+        if (!touch->points().isEmpty() && interactiveAt(touch->points().first().position())) {
+            m_forwarding = true;
+            setPassThrough(false);
+            QCoreApplication::sendEvent(this, event);
+            return true;
+        }
+        break;
+    }
+    case QEvent::TouchUpdate:
+        if (m_forwarding) {
+            QCoreApplication::sendEvent(this, event);
+            return true;
+        }
+        break;
+    case QEvent::TouchEnd:
+    case QEvent::TouchCancel:
+        if (m_forwarding) {
+            QCoreApplication::sendEvent(this, event);
+            m_forwarding = false;
+            return true;
+        }
+        break;
+    default:
+        break;
+    }
     return QQuickWidget::eventFilter(watched, event);
 }
