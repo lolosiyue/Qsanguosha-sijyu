@@ -561,7 +561,11 @@ void DesktopGamePresentation::updateFocusLayer()
         if (!m_keyboardKind.isEmpty()) m_autoFocusRequest = m_model.requestId;
     }
     updateKeyboardCursor();
-    if (!m_tvFocus) return;
+    // The TV legend belongs to BP only; native controller hints remain available.
+    if (!m_tvFocus) {
+        if (m_legend) m_legend->hide();
+        return;
+    }
     const bool keyboard = tracker && tracker->mode() == InputModeTracker::Mode::Keyboard;
     QList<TableButtonLegend::Entry> entries;
     entries.append({keyboard ? QStringLiteral("← / →") : QStringLiteral("D-pad"), tr("Move")});
