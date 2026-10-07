@@ -989,6 +989,12 @@ QStringList Engine::getModScenarioNames() const
 
 void Engine::addScenario(Scenario*scenario)
 {
+    // Lua definitions are loaded again for each room. Keep their scenarios in
+    // that room's package registry; the lobby catalogue outlives those objects.
+    if (currentRoomRuntime()) {
+        addPackage(scenario);
+        return;
+    }
     m_scenarios[scenario->objectName()] = scenario;
     addPackage(scenario);
 }
@@ -997,6 +1003,13 @@ const Scenario*Engine::getScenario(const QString &name) const
 {
 	if (name == "test_scenario" && m_testScene)
 		return m_testScene;
+    if (RoomRuntime *runtime = currentRoomRuntime()) {
+        if (const Scenario *scenario = qobject_cast<const Scenario *>(runtime->package(name)))
+            return scenario;
+        // A room must not execute callbacks from the bootstrap Lua VM.
+        if (m_luaPackageNames.contains(name))
+            return nullptr;
+    }
 	if (m_scenarios.contains(name))
 		return m_scenarios[name];
 	else if (m_miniScenes.contains(name))

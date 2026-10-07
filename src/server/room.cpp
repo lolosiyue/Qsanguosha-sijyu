@@ -1087,6 +1087,10 @@ bool Room::completeRuntimeInitialization(bool runtimeReady, const QString &runti
 	GameRng::Binding rngBinding(m_runtime->rng());
 	LuaRuntime::Binding luaBinding(m_runtime->lua());
 	EngineRuntimeContextScope contextScope(*Sanguosha, this);
+	// Construction sees the bootstrap catalogue before room Lua definitions
+	// exist. Bind the room's own scenario now, preserving takeover/work ownership.
+	if (!m_ownedScenario)
+		scenario = Sanguosha->getScenario(mode);
 	m_cardMovement->drawPile() = Sanguosha->getRandomCards(true);
 	return true;
 }
