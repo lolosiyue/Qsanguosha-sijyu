@@ -1,0 +1,65 @@
+{
+// BP-1d big-picture font overlay for fulldefaultSkinAlt (Linux font families).
+// Same sizes as fulldefaultSkin.tv.layout.json; see that file for the rationale.
+// Loaded on top of fulldefaultSkinAlt.layout.json only in big-picture mode.
+"common":
+{
+    "cardFootnoteFont": ["simsun", [18, 18, 1], 0, [228, 213, 160, 255], 1, 10, [0, 0], [20, 20, 20, 255]],
+    "playerCardBoxPlaceNameText": ["@simhei", 18, 0, [255, 255, 255, 255]],
+    "magatamaFont": [
+        ["DroidSansFallback", [18, 18, -2], 80, [233, 0, 0, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["DroidSansFallback", [18, 18, -2], 80, [233, 34, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["DroidSansFallback", [18, 18, -2], 80, [233, 116, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["DroidSansFallback", [18, 18, -2], 80, [195, 195, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["DroidSansFallback", [18, 18, -2], 80, [141, 195, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["DroidSansFallback", [18, 18, -2], 80, [66, 174, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]]
+    ]
+},
+"photo":
+{
+    "handCardFont": ["DroidSansFallback", [18, 18, -1], 20, [255, 255, 255, 255], 1, 30, [0, 0], [20, 20, 20, 200]],
+    "equipPointFontBlack": ["DroidSansFallback", [18, 18, 3], 20, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["DroidSansFallback", [18, 18, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "screenNameFont": ["simsun", 18, 0, [255, 255, 255, 255], 0, 10, [0, 0], [20, 20, 20, 155]],
+    "onlineStatusFont": ["simsun", 18, 0, [255, 255, 255, 255], 3, 10, [0, 0], [20, 20, 20, 155]],
+    "extraSkillFont": ["simli", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+},
+"dashboard":
+{
+    "handCardFont": ["DroidSansFallback", [18, 18, -2], 20, [255, 255, 255, 255], 1, 30, [0, 0], [20, 20, 20, 200]],
+    "equipPointFontBlack": ["DroidSansFallback", [18, 18, 3], 20, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["DroidSansFallback", [18, 18, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "screenNameFont": ["simsun", 18, 0, [255, 255, 255, 255], 2, 10, [0, 0], [0, 0, 0, 224]],
+    "extraSkillFont": ["simli", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+},
+"dashboardDouble":
+{
+    "handCardFont": ["DroidSansFallback", [18, 18, -2], 20, [255, 255, 255, 255], 1, 30, [0, 0], [20, 20, 20, 200]],
+    "equipPointFontBlack": ["DroidSansFallback", [18, 18, 3], 20, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["DroidSansFallback", [18, 18, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "screenNameFont": ["simsun", 18, 0, [255, 255, 255, 255], 2, 10, [0, 0], [0, 0, 0, 224]],
+    "extraSkillFont": ["simli", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+},
+"skillButton":
+{
+    "textFont": [["simkai", [18, 18, 2], 50, [0, 0, 0, 255], 1, 1, [0, 0], [255, 255, 190, 128]],
+                 ["simkai", [18, 18, 1], 50, [0, 0, 0, 255], 1, 1, [0, 0], [255, 255, 190, 128]],
+                 ["simkai", [18, 18, 0], 50, [0, 0, 0, 255], 1, 1, [0, 0], [255, 255, 190, 128]]]
+},
+"photoSmall":
+{
+    "handCardFont": ["DroidSansFallback", [18, 18, -1], 20, [255, 255, 255, 255], 1, 30, [0, 0], [20, 20, 20, 200]],
+    "equipPointFontBlack": ["DroidSansFallback", [18, 18, 3], 20, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["DroidSansFallback", [18, 18, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "screenNameFont": ["simsun", 18, 0, [255, 255, 255, 255], 0, 10, [0, 0], [20, 20, 20, 155]],
+    "onlineStatusFont": ["simsun", 18, 0, [255, 255, 255, 255], 3, 10, [0, 0], [20, 20, 20, 155]],
+    "extraSkillFont": ["simli", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+},
+"photoBig":
+{
+    "equipPointFontBlack": ["DroidSansFallback", [18, 18, 4], 30, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["DroidSansFallback", [18, 18, 4], 30, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "onlineStatusFont": ["simsun", 18, 0, [255, 255, 255, 255], 3, 10, [0, 0], [20, 20, 20, 155]],
+    "extraSkillFont": ["simli", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+}
+}

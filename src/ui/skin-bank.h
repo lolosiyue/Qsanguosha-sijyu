@@ -82,7 +82,8 @@ public:
     static const char *S_SKIN_KEY_DEFAULT;
     static const char *S_SKIN_KEY_DEFAULT_SECOND;
     bool load(const QString &layoutConfigFileName, const QString &imageConfigFileName,
-        const QString &audioConfigFileName, const QString &animationConfigFileName);
+        const QString &audioConfigFileName, const QString &animationConfigFileName,
+        const QString &layoutOverlayFileName = QString());
     QPixmap getPixmap(const QString &key, const QString &arg = "", bool cache = false) const;
     QPixmap getPixmapFileName(const QString &key) const;
     QPixmap getPixmapFromFileName(const QString &fileName, bool cache = false) const;

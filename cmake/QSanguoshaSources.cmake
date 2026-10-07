@@ -164,6 +164,8 @@ set(QSAN_SOURCES
     src/ui/general-info-card.cpp
     src/ui/graphicspixmaphoveritem.cpp
     src/ui/indicatoritem.cpp
+    src/ui/input/spatial-focus-filter.cpp
+    src/ui/input/spatial-focus-filter.h
     src/ui/magatamas-item.cpp
     src/ui/photo.cpp
     src/ui/pixmapanimation.cpp
@@ -181,6 +183,10 @@ set(QSAN_SOURCES
     src/ui/room-layout-engine.h
     src/ui/desktop-game-presentation.cpp
     src/ui/desktop-game-presentation.h
+    src/ui/table-button-legend.cpp
+    src/ui/table-button-legend.h
+    src/ui/input/input-mode-tracker.cpp
+    src/ui/input/input-mode-tracker.h
     src/ui/game-control-panel.cpp
     src/ui/game-control-panel.h
     src/ui/procedural-skin.cpp

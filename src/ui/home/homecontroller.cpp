@@ -646,7 +646,7 @@ int HomeGeneralModel::indexOfName(const QString &name) const
 
 HomeController::HomeController(QObject *parent)
     : QObject(parent)
-    , m_tvMode(Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool())
+    , m_tvMode(qsanBigPictureModeActive())
     , m_bootSplashActive(BootSplash::isCovering())
 {
     // Write a definite state before any QML verdict arrives, so the ambiguous
@@ -1645,7 +1645,9 @@ bool HomeController::tvMode() const
 
 void HomeController::notifyVisualSettings()
 {
-    const bool next = Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool();
+    // Visual previews and reverts must retain the launch's CLI/environment BP
+    // resolution, just like the native TV presentation.
+    const bool next = qsanBigPictureModeActive();
     if (m_tvMode != next) {
         m_tvMode = next;
         emit tvModeChanged();
