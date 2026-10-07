@@ -124,7 +124,8 @@ export const Command = {
   CARD_PROVENANCE: 131,
   UPDATE_PLAYER_UI_STATE: 132,
   STATE_SYNC: 133,
-  RESOLUTION_STATE: 134
+  RESOLUTION_STATE: 134,
+  SET_UI_THEME: 135
 } as const;
 
 export type CardUseMode = "play" | "response" | "discard" | "free";

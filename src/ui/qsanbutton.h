@@ -126,6 +126,8 @@ public:
         return _m_skill;
     }
     virtual void setEnabled(bool enabled);
+    // Reloads the button art, e.g. after a theme override changed it mid-game.
+    void refreshArt() { _repaint(); update(); }
     QSanSkillButton(QGraphicsItem *parent = nullptr);
     inline const ViewAsSkill *getViewAsSkill() const
     {

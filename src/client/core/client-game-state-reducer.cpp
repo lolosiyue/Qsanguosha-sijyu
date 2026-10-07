@@ -349,6 +349,7 @@ ClientFlowDisposition ClientGameStateReducer::classifyNotification(int command)
     case S_COMMAND_LOG_EVENT:
     case S_COMMAND_SET_EMOTION:
     case S_COMMAND_CHANGE_TABLE_BG:
+    case S_COMMAND_SET_UI_THEME:
     case S_COMMAND_INVOKE_SKILL:
         return ClientFlowDisposition::PresentationEvent;
     case S_COMMAND_ANIMATE:

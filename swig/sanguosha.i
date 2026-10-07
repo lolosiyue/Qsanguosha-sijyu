@@ -2564,6 +2564,12 @@ public:
 	void removeAkarinEffect(ServerPlayer*player, ServerPlayer*to = nullptr);
 	bool isAkarin(ServerPlayer*player, ServerPlayer*to = nullptr) const;
 	void changeTableBg(const char*tableBg);
+	void setUiElement(const char*kind, const char*id, const char*value, ServerPlayer*player = nullptr);
+	void setUiSlot(const char*slot, const char*path, ServerPlayer*player = nullptr);
+	void setUiColor(const char*colorId, const char*color, ServerPlayer*player = nullptr);
+	void setUiFile(const char*imagePath, const char*path, ServerPlayer*player = nullptr);
+	void setUiThemePack(const char*packId, bool enabled = true, ServerPlayer*player = nullptr);
+	void resetUi(ServerPlayer*player = nullptr);
 	void changeBackground(const char*name, QList<ServerPlayer*> players = QList<ServerPlayer*>());
 	void reversePlayOrder();
 	bool isPlayOrderReversed() const;

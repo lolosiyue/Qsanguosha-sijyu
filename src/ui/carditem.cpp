@@ -9,6 +9,7 @@
 #include "effects/effects-policy.h"
 #include "package-catalog.h"
 #include "runtime-paths.h"
+#include "theme-pack.h"
 
 #include <QPainterPath>
 #include <QDir>
@@ -409,8 +410,10 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
             const QString root = assetRoot.isEmpty() ? QDir::currentPath() : assetRoot;
             const quint64 skinRevision = G_ROOM_SKIN.visualRevision();
             const quint64 catalogRevision = QSanPackages::catalogRevision();
+            const quint64 themeRevision = ThemePacks::revision();
             const bool assetsChanged = m_faceAssetRoot != root
-                || m_faceSkinRevision != skinRevision || m_faceCatalogRevision != catalogRevision;
+                || m_faceSkinRevision != skinRevision || m_faceCatalogRevision != catalogRevision
+                || m_faceThemeRevision != themeRevision;
             if (assetsChanged) {
                 m_suitPixmap = QPixmap();
                 m_numberPixmap = QPixmap();
@@ -421,6 +424,7 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
                 m_faceAssetRoot = root;
                 m_faceSkinRevision = skinRevision;
                 m_faceCatalogRevision = catalogRevision;
+                m_faceThemeRevision = themeRevision;
             }
             painter->drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, m_facePixmap);
         } else {

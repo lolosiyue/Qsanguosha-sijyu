@@ -83,6 +83,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_dispatchingRequestId(0)
 {
 	ClientInstance = this;
+	ThemePacks::clearRuntime();
 	// A GUI host runs its Server on this very thread, so the Room's RoomRuntime
 	// claims the thread's card-lifetime domain when it is constructed and holds it
 	// until the Room dies. Client-side cards outlive the Room they happen to be
@@ -128,6 +129,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_callbacks[S_COMMAND_MOVE_FOCUS] = &Client::moveFocus;
 	m_callbacks[S_COMMAND_SET_EMOTION] = &Client::setEmotion;
 	m_callbacks[S_COMMAND_CHANGE_TABLE_BG] = &Client::changeTableBg;
+	m_callbacks[S_COMMAND_SET_UI_THEME] = &Client::setUiTheme;
 	m_callbacks[S_COMMAND_INVOKE_SKILL] = &Client::skillInvoked;
 	m_callbacks[S_COMMAND_SHOW_ALL_CARDS] = &Client::showAllCards;
 	m_callbacks[S_COMMAND_SKILL_GONGXIN] = &Client::askForGongxin;
@@ -291,6 +293,8 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 Client::~Client()
 {
+	// In-game theme overrides belong to this room; the next one starts from the player's packs.
+	ThemePacks::clearRuntime();
 	// The view must die before the core: the core must not present into a dead object.
 	delete m_desktopInteractionView;
 	m_desktopInteractionView = nullptr;
@@ -3389,6 +3393,18 @@ void Client::setEmotion(const QVariant &set_str)
 void Client::changeTableBg(const QVariant &set_str)
 {
 	emit change_table_bg(set_str.toMap().value(QStringLiteral("path")).toString());
+}
+
+void Client::setUiTheme(const QVariant &arg)
+{
+	const QVariantMap payload = arg.toMap();
+	const QString kind = payload.value(QStringLiteral("kind")).toString();
+	const QString id = payload.value(QStringLiteral("id")).toString();
+	QString error;
+	if (ThemePacks::setRuntimeOverride(kind, id, payload.value(QStringLiteral("value")).toString(), &error))
+		emit ui_theme_changed(kind, id);
+	else if (!error.isEmpty())
+		qWarning().noquote() << "Room UI theme" << kind << id << "ignored:" << error;
 }
 
 void Client::skillInvoked(const QVariant &arg)

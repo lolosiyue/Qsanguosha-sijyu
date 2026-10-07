@@ -6854,6 +6854,56 @@ void Room::changeTableBg(const QString&tableBg)
 	doBroadcastNotify(S_COMMAND_CHANGE_TABLE_BG, arg);
 }
 
+void Room::setUiElement(const QString &kind, const QString &id, const QString &value, ServerPlayer *player)
+{
+	static const QStringList kinds{QStringLiteral("slot"), QStringLiteral("color"), QStringLiteral("file"),
+		QStringLiteral("pack"), QStringLiteral("reset")};
+	if (!kinds.contains(kind)) {
+		qWarning().noquote() << "Room::setUiElement: unknown kind" << kind;
+		return;
+	}
+	if (kind != QLatin1String("reset") && id.isEmpty()) {
+		qWarning().noquote() << "Room::setUiElement:" << kind << "needs an id";
+		return;
+	}
+	JsonArray arg;
+	arg << kind << id << value;
+	const QString receiver = player ? player->objectName() : QString();
+	// A reset for everyone makes every earlier change moot for reconnecting players.
+	if (kind == QLatin1String("reset") && !player)
+		m_uiThemeHistory.clear();
+	m_uiThemeHistory.append(qMakePair(receiver, QVariant(arg)));
+	if (player)
+		doNotify(player, S_COMMAND_SET_UI_THEME, arg);
+	else
+		doBroadcastNotify(S_COMMAND_SET_UI_THEME, arg);
+}
+
+void Room::setUiSlot(const QString &slot, const QString &path, ServerPlayer *player)
+{
+	setUiElement(QStringLiteral("slot"), slot, path, player);
+}
+
+void Room::setUiColor(const QString &colorId, const QString &color, ServerPlayer *player)
+{
+	setUiElement(QStringLiteral("color"), colorId, color, player);
+}
+
+void Room::setUiFile(const QString &imagePath, const QString &path, ServerPlayer *player)
+{
+	setUiElement(QStringLiteral("file"), imagePath, path, player);
+}
+
+void Room::setUiThemePack(const QString &packId, bool enabled, ServerPlayer *player)
+{
+	setUiElement(QStringLiteral("pack"), packId, enabled ? QStringLiteral("1") : QString(), player);
+}
+
+void Room::resetUi(ServerPlayer *player)
+{
+	setUiElement(QStringLiteral("reset"), QString(), QString(), player);
+}
+
 void Room::changeBackground(const QString name, QList<ServerPlayer *> players)
 {
 	if (players.isEmpty()) players = getPlayers();

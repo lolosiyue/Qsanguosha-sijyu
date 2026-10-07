@@ -145,6 +145,7 @@ private:
     QString m_faceAssetRoot;
     quint64 m_faceSkinRevision = 0;
     quint64 m_faceCatalogRevision = 0;
+    quint64 m_faceThemeRevision = 0;
     QString m_footnoteText;
     QString m_yingbianText;
     quint64 m_footnoteSkinRevision = 0;
