@@ -141,6 +141,7 @@ bool SpatialFocusFilter::handleDialogKey(QDialog *dialog, QKeyEvent *event)
     }
     case Qt::Key_Return:
     case Qt::Key_Enter: {
+        if (event->isAutoRepeat()) return true;
         if (focusKeepsKeys)
             return false;
         if (QAbstractButton *button = qobject_cast<QAbstractButton *>(focus)) {

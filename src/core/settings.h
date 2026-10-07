@@ -148,8 +148,8 @@ public:
     int BubbleChatBoxKeepTime;
     qreal UIScale;
     QString VisualMode;
-    // Persisted 10-foot mode toggle ("BigPicture/Enabled"), read in init() for
-    // the settings UI. Whether the mode is active this run is decided by
+    // Persisted 10-foot mode key ("BigPicture/Enabled"), read in init().
+    // Whether the mode is active this run is decided by
     // qsanBigPictureModeActive() (--big-picture / QSAN_BIG_PICTURE / this key).
     bool BigPictureEnabled;
 

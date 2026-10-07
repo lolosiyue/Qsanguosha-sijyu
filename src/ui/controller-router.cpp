@@ -1,6 +1,8 @@
 #include "controller-router.h"
 
 #include "controller-service.h"
+#include "input/input-mode-tracker.h"
+#include "settings.h"
 #include "controller-text-entry.h"
 #include "desktop-game-presentation.h"
 #include "roomscene.h"
@@ -67,6 +69,8 @@ ControllerRouter::ControllerRouter(ControllerService *service, QObject *parent)
     : QObject(parent), m_service(service)
 {
     qRegisterMetaType<ControllerAction>();
+    if (qsanBigPictureModeActive())
+        InputModeTracker::instance()->setHideCursorInGamepadMode(true);
     // The SDL timer must return before a widget opens a nested dialog loop.
     connect(service, &ControllerService::action, this, [this](ControllerAction action, quint64 epoch, bool repeat) {
         const QPointer<QWidget> scope = widgetScope();
@@ -119,6 +123,7 @@ void ControllerRouter::sendKey(QWidget *target, int key, Qt::KeyboardModifiers m
     const QPointer<QWidget> parentWindow = window && window->parentWidget()
         ? window->parentWidget()->window() : nullptr;
     trace(QStringLiteral("native-key"), {{"key", key}, {"target", target->objectName()}});
+    InputModeTracker::SyntheticInputScope synthetic;
     QKeyEvent press(QEvent::KeyPress, key, modifiers);
     QApplication::sendEvent(target, &press);
     // Modal closure may destroy the recipient; never deliver release to its successor.
@@ -330,7 +335,9 @@ void ControllerRouter::dispatch(ControllerAction action, quint64 epoch, bool rep
     // SDL emits edges, so a held activation cannot cross into a nested dialog.
     // Queued delivery keeps subsequent presses available inside exec() loops.
     if (epoch != m_service->deviceEpoch() || QGuiApplication::applicationState() != Qt::ApplicationActive) return;
-    QWidget *scope = widgetScope();
+    InputModeTracker::instance()->noteGamepadInput();
+    InputModeTracker::SyntheticInputScope synthetic;
+    const QPointer<QWidget> scope = widgetScope();
     QPointer<RoomScene> room = RoomSceneInstance;
     bool handled = false;
     QString focus;

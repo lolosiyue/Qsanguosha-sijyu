@@ -796,8 +796,24 @@ bool IQSanComponentSkin::_loadImageConfig(const QVariant &config)
 	return false;
 }
 
+// Merge before parsing: layout parsers reset some defaults and derive compact
+// photo/dashboard variants, so parsing a partial overlay a second time loses
+// base skin values. Arrays (fonts/colors) replace atomically.
+static JsonObject mergeLayoutOverlay(JsonObject base, const JsonObject &overlay)
+{
+    for (auto it = overlay.cbegin(); it != overlay.cend(); ++it) {
+        if (it.value().userType() == QMetaType::QVariantMap
+            && base.value(it.key()).userType() == QMetaType::QVariantMap)
+            base[it.key()] = mergeLayoutOverlay(base.value(it.key()).toMap(), it.value().toMap());
+        else
+            base[it.key()] = it.value();
+    }
+    return base;
+}
+
 bool IQSanComponentSkin::load(const QString &layoutConfigName, const QString &imageConfigName,
-	const QString &audioConfigName, const QString &animationConfigName)
+	const QString &audioConfigName, const QString &animationConfigName,
+    const QString &layoutOverlayName)
 {
     // A reload can change fonts, image selection and layout even on partial failure.
     m_visualRevision = ++g_skinVisualRevision;
@@ -806,7 +822,19 @@ bool IQSanComponentSkin::load(const QString &layoutConfigName, const QString &im
 	if (!layoutConfigName.isEmpty()) {
 		JsonDocument layoutDoc = JsonDocument::fromFilePath(layoutConfigName);
 		if (layoutDoc.isValid()&&layoutDoc.isObject()) {
-			success = _loadLayoutConfig(layoutDoc.toVariant());
+            JsonObject layout = layoutDoc.object();
+            if (!layoutOverlayName.isEmpty()) {
+                const JsonDocument overlay = JsonDocument::fromFilePath(layoutOverlayName);
+                if (overlay.isValid() && overlay.isObject())
+                    layout = mergeLayoutOverlay(layout, overlay.object());
+                else {
+                    QMessageBox::warning(nullptr, "Config Error",
+                        QString("Error when reading layout overlay file \"%1\": \n%2")
+                            .arg(layoutOverlayName, overlay.errorString()));
+                    success = false;
+                }
+            }
+            success = _loadLayoutConfig(layout) && success;
 		}else{
 			QString errorMsg = QString("Error when reading layout config file \"%1\": \n%2").arg(layoutConfigName).arg(layoutDoc.errorString());
 			QMessageBox::warning(nullptr, "Config Error", errorMsg);
@@ -1787,16 +1815,14 @@ bool QSanSkinScheme::load(const QVariant &configs)
 	QString imageFile = config["roomImageConfigFile"].toString();
 	QString audioFile = config["roomAudioConfigFile"].toString();
 	QString animFile = config["roomAnimationConfigFile"].toString();
-	bool success = _m_roomSkin.load(layoutFile, imageFile, audioFile, animFile);
-	// Big-picture sessions merge an optional "<name>.tv.layout.json" sibling on
-	// top of the base layout; only the keys it carries (TV font sizes) change.
-	if (qsanBigPictureModeActive() && !layoutFile.isEmpty()) {
-		QString tvLayoutFile = layoutFile;
-		tvLayoutFile.replace(QStringLiteral(".layout.json"), QStringLiteral(".tv.layout.json"));
-		if (tvLayoutFile != layoutFile && QFile::exists(tvLayoutFile))
-			success = _m_roomSkin.load(tvLayoutFile, QString(), QString(), QString()) && success;
-	}
-	return success;
+    QString tvLayoutFile;
+    if (qsanBigPictureModeActive() && layoutFile.endsWith(QStringLiteral(".layout.json"))) {
+        tvLayoutFile = layoutFile;
+        tvLayoutFile.chop(QStringLiteral(".layout.json").size());
+        tvLayoutFile += QStringLiteral(".tv.layout.json");
+        if (!QFile::exists(tvLayoutFile)) tvLayoutFile.clear();
+    }
+    return _m_roomSkin.load(layoutFile, imageFile, audioFile, animFile, tvLayoutFile);
 }
 
 const QSanRoomSkin &QSanSkinScheme::getRoomSkin() const
