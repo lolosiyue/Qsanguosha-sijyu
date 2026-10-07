@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/QSanguosha/Table">
+    <file alias="TableLayer.qml">TableLayer.qml</file>
+  </qresource>
+</RCC>

@@ -220,6 +220,7 @@ if(ANDROID)
 endif()
 
 list(APPEND QSAN_SOURCES
+    src/ui/qml-table-layer.cpp
     src/ui/room-overlay-host.cpp
     src/ui/room-overlay-host.h
     src/ui/large-room-overview.cpp
@@ -387,6 +388,7 @@ set(QSAN_MOC_HEADERS
     src/ui/home/homecardmodel.h
     src/ui/home/skin-image-provider.h
     src/ui/EmbeddedQmlLoader.h
+    src/ui/qml-table-layer.h
     src/ui/emotionpanel.h
     src/ui/generic-cardcontainer-ui.h
     src/ui/gifchatbox.h
