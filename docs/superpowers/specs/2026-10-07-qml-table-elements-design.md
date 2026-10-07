@@ -74,6 +74,8 @@ room:clearQmlElements(player)
 | `qs.data` | 路線一為 `{mark, value}`；路線二為 `data` |
 | `qs.player` | `{objectName, general, seat, kingdom, alive, self}`；桌面與螢幕元件為 `null` |
 | `qs.scale` | 目前的 UI 縮放倍率 |
+| `qs.profile` | 版面類型，見「直向與響應式版面」 |
+| `qs.compact` | 座位為帶狀精簡排列時為真 |
 
 - 元件尺寸取根物件的 `implicitWidth`、`implicitHeight`。
 - 根物件宣告 `property bool qsInteractive: true` 才接收滑鼠事件；未宣告的元件，點擊一律落到牌桌。
@@ -193,6 +195,60 @@ GL viewport 的灰階、高對比濾鏡不會套用到這個圖層。根 QML 外
 `PlayerCardContainer::updateMark`（`src/ui/generic-cardcontainer-ui.cpp`）遇到符合 `Engine`
 登記表的標記時，不建立 `QPushButton` 代理，改為發出 `qmlMarkChanged(player, mark, value)`
 交給圖層；值為 0 時移除元件。斷線重連與觀戰時收到的標記同樣經由此路徑。
+
+## 直向與響應式版面
+
+響應式版面（`Config.responsiveUiEnabled()`）在直向時採用 `Profile::CompactPortrait`：座位改為
+`SeatPresentation::Ribbon` 帶狀排列並分頁，dashboard 改用 `setResponsiveGeometry` 重新排版，
+另有 header、安全區與螢幕鍵盤造成的可用高度縮減。圖層依下列規則處理。
+
+### 版面資料來源
+
+`RoomScene` 每次套用 `RoomLayoutEngine::ResponsiveResult` 時，同步交給圖層（與
+`RoomOverlayHost::setLayoutResult` 同一時點）。未啟用響應式版面時，圖層退回以 viewport 與座位
+矩形計算。
+
+### 座位可見性
+
+直向分頁時，不在目前頁面的座位是以 `setOpacity(0.0)` 隱藏，`isVisible()` 仍為真。圖層判斷座位
+是否可見時，必須同時檢查 `isVisible()` 與 `effectiveOpacity() > 0`。
+
+### 座位元件縮放與精簡模式
+
+- 座位元件依座位實際顯示尺寸縮放：以座位對映後矩形寬度除以座位原生寬度，作為容器的縮放倍率。
+- `qs` 增加兩個欄位：`qs.profile`（`landscape`、`portrait`、`large-room` 等，對應
+  `Profile`）與 `qs.compact`（帶狀座位時為真）。
+- `qs.compact` 為真時，`top`、`bottom`、`mark-area` 三種座位錨點一律改為座位矩形內的底部列，
+  並裁切在座位矩形之內，避免壓到相鄰座位或 header。元件可依 `qs.compact` 切換為精簡外觀。
+
+### 自己的座位
+
+自己座位的錨點矩形一律取 dashboard 的頭像區，而不是整個 dashboard。直向時 dashboard 橫跨全寬，
+以整個 dashboard 為錨點會讓元件落在手牌上。
+
+### 桌面與螢幕錨點
+
+- `table-center` 取 `ResponsiveResult::tableCenter`。
+- `screen-top` 取 header 下緣；`screen-bottom` 取 `interactionRect` 上緣，不得覆蓋手牌區與
+  操作按鈕。
+- 四個角落限定在 `mainRect` 之內，並扣除 `FitView` 的安全區邊距。
+- 螢幕鍵盤彈出時，底部錨點依縮短後的可用區重新計算。
+
+### 疊放順序
+
+圖層位於 `RoomOverlayHost` 之下。直向開啟玩家檢視面板（inspector）或座位捲動列時，這些原生
+控制項自然蓋在 QML 元件之上，不另做處理。
+
+### 觸控
+
+直向主要用於觸控裝置。視埠事件過濾器除滑鼠事件外，也處理觸控事件：觸點落在 `qsInteractive`
+元件矩形內時交給圖層。觸控沒有懸停，擴展文件須提醒作者以 `TapHandler` 取代懸停互動，並讓可互動
+範圍不小於 `ResponsiveInput::minimumTouchTarget`（48 邏輯像素）。
+
+### 旋轉
+
+直向、橫向互換時，版面重算會觸發 `QGraphicsScene::changed`，圖層據此重新定位，並推送新的
+`qs.profile` 與 `qs.compact`。元件本身不重建，內部狀態（例如已展開）得以保留。
 
 ## 未決事項
 
