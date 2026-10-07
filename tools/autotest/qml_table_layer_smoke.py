@@ -46,7 +46,7 @@ end
 
 local function otherSeat(room, human)
 	for _, p in sgs.qlist(room:getPlayers()) do
-		if p ~= human then return p end
+		if p:objectName() ~= human:objectName() then return p end
 	end
 	return nil
 end
@@ -75,7 +75,8 @@ local probe = sgs.CreateTriggerSkill {
 					room:addQmlElement("follow", "qmlprobe/Board.qml", "seat:" .. other:objectName(), { round = 9 })
 				end
 			end
-			room:addQmlElement("nofile", "qmlprobe/Missing.qml", "screen-bottom", {})
+			room:addQmlElement("bottom", "qmlprobe/Board.qml", "screen-bottom", { round = 3 })
+			room:addQmlElement("nofile", "qmlprobe/Missing.qml", "screen-top-right", {})
 			-- Outside the game folder: the server must refuse it and the client never sees it.
 			room:addQmlElement("outside", "../qmlprobe-outside.qml", "table-center", {})
 		elseif step == 2 then
@@ -99,6 +100,7 @@ return { extension }
 MARK_QML = '''import QtQuick
 Rectangle {
     property var qs
+    property bool qsInteractive: false
     implicitWidth: 24
     implicitHeight: 24
     radius: 12
@@ -222,10 +224,14 @@ def evaluate(stages, orientation):
             problems.append("all/board failed to load: %s" % board["error"])
         if not board.get("visible"):
             problems.append("all/board is not visible")
-        elif not inside(center(board["rect"]), {"x": stage["table_center"]["x"] - 2,
-                                                "y": stage["table_center"]["y"] - 2, "w": 4, "h": 4}):
-            problems.append("all/board center %r is not at the table center %r"
-                            % (center(board["rect"]), stage["table_center"]))
+        else:
+            table_center = stage.get("table_center") if stage else None
+            if table_center is None:
+                problems.append("all/board: stage has no table_center")
+            elif not inside(center(board["rect"]), {"x": table_center.get("x", 0) - 2,
+                                                    "y": table_center.get("y", 0) - 2, "w": 4, "h": 4}):
+                problems.append("all/board center %r is not at the table center %r"
+                                % (center(board["rect"]), table_center))
 
     # Targeted board: appears for the human, then removed.
     if "player/mine" not in seen:
@@ -233,17 +239,28 @@ def evaluate(stages, orientation):
     elif any(e["key"] == "player/mine" for e in stages[-1].get("elements", [])):
         problems.append("player/mine is still shown after removeQmlElement")
     else:
-        _, mine = seen["player/mine"][-1]
-        header = stages[-1].get("header_rect")
-        if header and mine.get("visible") and intersects(mine["rect"], header):
-            problems.append("player/mine overlaps the header")
+        # Check last visible occurrence for position.
+        visible_mines = [(s, e) for s, e in seen.get("player/mine", []) if e.get("visible")]
+        if visible_mines:
+            _, mine = visible_mines[-1]
+            header = stages[-1].get("header_rect")
+            if header and intersects(mine["rect"], header):
+                problems.append("player/mine overlaps the header")
 
     # Seat-following board: centered inside its seat.
     _, follow = last("all/follow")
     if follow is None:
         problems.append("all/follow never appeared")
-    elif follow.get("visible") and not inside(center(follow["rect"]), follow["seat_rect"]):
-        problems.append("all/follow center %r is outside its seat %r" % (center(follow["rect"]), follow["seat_rect"]))
+    else:
+        # Check last visible occurrence for position.
+        visible_follows = [(s, e) for s, e in seen.get("all/follow", []) if e.get("visible")]
+        if visible_follows:
+            _, follow_visible = visible_follows[-1]
+            seat_rect = follow_visible.get("seat_rect")
+            if seat_rect is None:
+                problems.append("all/follow has no seat_rect")
+            elif not inside(center(follow_visible["rect"]), seat_rect):
+                problems.append("all/follow center %r is outside its seat %r" % (center(follow_visible["rect"]), seat_rect))
 
     # Missing file: reported, never created, game continues.
     _, missing = last("all/nofile")
@@ -260,11 +277,46 @@ def evaluate(stages, orientation):
         _, mark = seen[mark_keys[0]][0]
         if mark.get("data", {}).get("value") != 2:
             problems.append("mark element data is %r, expected value 2" % mark.get("data"))
-        if mark.get("visible") and not inside(center(mark["rect"]), mark["seat_rect"]):
-            problems.append("mark element center %r is outside the avatar area %r"
-                            % (center(mark["rect"]), mark["seat_rect"]))
+        # Check last visible occurrence for position.
+        visible_marks = [(s, e) for s, e in seen.get(mark_keys[0], []) if e.get("visible")]
+        if visible_marks:
+            _, mark_visible = visible_marks[-1]
+            seat_rect = mark_visible.get("seat_rect")
+            if seat_rect is None:
+                problems.append("mark element has no seat_rect")
+            elif not inside(center(mark_visible["rect"]), seat_rect):
+                problems.append("mark element center %r is outside the avatar area %r"
+                                % (center(mark_visible["rect"]), seat_rect))
+            # Portrait check: avatar area should be less than 60% of interaction area.
+            if orientation == "portrait" and visible_marks:
+                stage_of_mark = visible_marks[-1][0]
+                interaction = stage_of_mark.get("interaction_rect")
+                if interaction and seat_rect and seat_rect.get("w") is not None:
+                    if seat_rect["w"] >= 0.6 * interaction.get("w", float('inf')):
+                        problems.append("portrait: mark's seat_rect width %r >= 0.6 * interaction width %r (avatar area too large)"
+                                        % (seat_rect["w"], interaction.get("w")))
         if any(e["key"] == mark_keys[0] for e in stages[-1].get("elements", [])):
             problems.append("the mark element is still shown after the mark dropped to 0")
+
+    # Screen-bottom element: must appear, have no error, and be visible at least once.
+    _, bottom = last("all/bottom")
+    if bottom is None:
+        problems.append("all/bottom never appeared")
+    else:
+        if bottom.get("error"):
+            problems.append("all/bottom failed to load: %s" % bottom["error"])
+        if not any(e.get("visible") for _, e in seen.get("all/bottom", [])):
+            problems.append("all/bottom never showed visible: true")
+
+    # Board must be interactive; mark must not be.
+    _, board_last = last("all/board")
+    if board_last and board_last.get("visible") and not board_last.get("qsInteractive"):
+        problems.append("all/board is not marked qsInteractive: true")
+    mark_keys_for_interactive = [k for k in seen if k.startswith("mark/") and k.endswith("/@qmlprobe_star")]
+    if mark_keys_for_interactive:
+        _, mark_last = last(mark_keys_for_interactive[0])
+        if mark_last and mark_last.get("visible") and mark_last.get("qsInteractive"):
+            problems.append("mark element should have qsInteractive: false")
 
     # Table and screen elements never cover the hand / dashboard area.
     for stage in stages:
@@ -272,7 +324,7 @@ def evaluate(stages, orientation):
         for element in stage.get("elements", []):
             if element.get("player") or not element.get("visible") or not interaction:
                 continue
-            if element["anchor"] in ("table-center", "screen-top") and intersects(element["rect"], interaction):
+            if element["anchor"] in ("table-center", "screen-top", "screen-bottom") and intersects(element["rect"], interaction):
                 problems.append("%s overlaps the dashboard area in %s" % (element["key"], stage["stage"]))
 
     if orientation == "portrait":
