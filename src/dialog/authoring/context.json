@@ -1,0 +1,102 @@
+{
+  "contract_version": 1,
+  "baseline": "548b5c45",
+  "scope": "MVP: local CreateTriggerSkillV2 definitions only. No generic upstream APIs; no convenience helpers from feature/lua-state-convenience. Unsupported skills require manual authoring or a future verified contract expansion.",
+  "globals": [
+    "CreateTriggerSkillV2",
+    "EventPhaseStart",
+    "EventPhaseEnd",
+    "GameStart",
+    "TurnStart",
+    "DamageCaused",
+    "DamageInflicted",
+    "Damaged",
+    "Damage",
+    "Skill_NotFrequent",
+    "Skill_Frequent",
+    "Skill_Compulsory",
+    "Player_Start",
+    "Player_Draw",
+    "Player_Play",
+    "Player_Finish",
+    "Player_NotActive"
+  ],
+  "methods": [
+    "objectName",
+    "getHp",
+    "getMaxHp",
+    "getLostHp",
+    "isWounded",
+    "getPhase",
+    "isAlive",
+    "isDead",
+    "hasSkill",
+    "getMark",
+    "getRole",
+    "drawCards",
+    "askForSkillInvoke",
+    "askForChoice",
+    "sendCompulsoryTriggerLog",
+    "broadcastSkillInvoke",
+    "setPlayerMark",
+    "loseHp",
+    "getAlivePlayers",
+    "length",
+    "toDamage",
+    "toInt",
+    "toBool",
+    "setValue"
+  ],
+  "lua_functions": [
+    "pairs",
+    "ipairs",
+    "tonumber",
+    "tostring",
+    "type",
+    "assert",
+    "error",
+    "select",
+    "next"
+  ],
+  "library_functions": {
+    "math": [
+      "abs",
+      "ceil",
+      "floor",
+      "max",
+      "min"
+    ],
+    "string": [
+      "format",
+      "sub",
+      "find",
+      "gsub",
+      "match",
+      "lower",
+      "upper",
+      "len"
+    ],
+    "table": [
+      "concat",
+      "insert",
+      "remove",
+      "sort"
+    ]
+  },
+  "sources": {
+    "swig/sanguosha.i": "8d9212f430865e22c41ec41918236804763d4638d502511b30ef08b0fc24b6f0",
+    "swig/qvariant.i": "5280d3f2756b8436cfd6509d1362de28648f4cb8ee49a118160731a0a2b25c8b",
+    "swig/list.i": "4d529fb90bb647bed0d12a7f9f458e6ef92f1c0f05a05bb626f61909e4d02a71",
+    "swig/native.i": "a8e81662d3c8040062da2303367526615142999df1bada28ee2a28b29f1de47d",
+    "lua/sgs_ex.lua": "26445717639068578986fefa44c396f40426b155410b47c3538e450794e4aece",
+    "extensions/AIgeneral.lua": "efd27a4d54d1f971214654a78072ac76de291bbd33b404c353b656fc6d71fe73"
+  },
+  "references": {
+    "lua/sgs_ex.lua:80 (CreateTriggerSkillV2)": "function sgs.CreateTriggerSkillV2(spec)\n\tassert(type(spec.name)==\"string\")\n\tif spec.frequency then assert(type(spec.frequency)==\"number\") end\n\tif spec.limit_mark then assert(type(spec.limit_mark)==\"string\") end\n\tif spec.waked_skills then assert(type(spec.waked_skills)==\"string\") end\n\tif spec.change_skill then assert(type(spec.change_skill)==\"boolean\") end\n\tif spec.hide_skill then assert(type(spec.hide_skill)==\"boolean\") end\n\tlocal frequency = spec.frequency or sgs.Skill_NotFrequent\n\tlocal limit_mark = spec.limit_mark or \"\"\n\tlocal skill = sgs.LuaTriggerSkillV2(spec.name, frequency, limit_mark)\n\tif type(spec.guhuo_type)==\"string\" and spec.guhuo_type~=\"\" then skill:setGuhuoDialog(spec.guhuo_type) end\n\tif type(spec.juguan_type)==\"string\" and spec.juguan_type~=\"\" then skill:setJuguanDialog(spec.juguan_type) end\n\tif type(spec.tiansuan_type)==\"string\" and spec.tiansuan_type~=\"\" then skill:setTiansuanDialog(spec.tiansuan_type) end\n\tif type(spec.events)==\"number\" then\n\t\tskill:addEvent(spec.events)\n\telseif type(spec.events)==\"table\" then\n\t\tfor _,event in ipairs(spec.events)do\n\t\t\tskill:addEvent(event)\n\t\tend\n\tend\n\tif type(spec.global)==\"boolean\" then skill:setGlobal(spec.global) end\n\tif spec.on_cost then skill.on_cost = spec.on_cost end\n\tif spec.on_pay then skill.on_pay = spec.on_pay end\n\tif spec.on_effect then skill.on_effect = spec.on_effect end\n\tif spec.on_effect_target then skill.on_effect_target = spec.on_effect_target end\n\tif spec.on_record then skill.on_record = spec.on_record end\n\tif spec.on_turn_broken then skill.on_turn_broken = spec.on_turn_broken end\n\tif spec.can_trigger then skill.can_trigger = spec.can_trigger end\n\tif spec.check_custom_usage then skill.check_custom_usage = spec.check_custom_usage end\n\tif spec.on_add_usage then skill.on_add_usage = spec.on_add_usage end\n\tif spec.view_as_skill then skill:setViewAsSkill(spec.view_as_skill) end\n\tif type(spec.priority)==\"number\" then skill.priority = spec.priority\n\telseif type(spec.priority)==\"table\" then\n\t\tif type(spec.events)==\"table\" then\n\t\t\tfor i = 1,#spec.events do\n\t\t\t\tif i>#spec.priority then break end\n\t\t\t\tskill:insertPriorityTable(spec.events[i],spec.priority[i])\n\t\t\tend\n\t\telseif type(spec.events)==\"number\" then\n\t\t\tskill:insertPriorityTable(spec.events,spec.priority[1])\n\t\tend\n\tend\n\tif type(spec.base_amount)==\"number\" then skill:setBaseAmount(spec.base_amount) end\n\tconfigureUsage(skill, spec)\n\tif type(spec.max_usage_limit)==\"number\" then skill:setMaxUsageLimit(spec.max_usage_limit) end\n\tif type(spec.phase_name)==\"string\" then skill:setPhaseNameStr(spec.phase_name) end\n\tif spec.dynamic_frequency then skill.dynamic_frequency = spec.dynamic_frequency end\n\tif type(spec.shiming_skill)==\"boolean\" then skill:setShimingSkill(spec.shiming_skill) end\n\tif spec.on_shiming_success then skill.on_shiming_success = spec.on_shiming_success end\n\tif spec.on_shiming_fail then skill.on_shiming_fail = spec.on_shiming_fail end\n\tif type(spec.waked_skills)==\"string\" then skill:setWakedSkills(spec.waked_skills) end\n\tif type(spec.change_skill)==\"boolean\" then skill:setChangeSkill(spec.change_skill) end\n\tif type(spec.hide_skill)==\"boolean\" then skill:setHideSkill(spec.hide_skill) end\n\treturn skill\nend\n",
+    "swig/sanguosha.i + swig/qvariant.i (selected exposed signatures)": "QObject::objectName(): QString (swig/sanguosha.i:106)\nint getHp() const;\nint getMaxHp() const;\nint getMaxHp() const;\nint getLostHp() const;\nbool isWounded() const;\nPhase getPhase() const;\nbool isAlive() const;\nbool isDead() const;\nbool hasSkill(const char*skill_name, bool related = false) const;\nbool hasSkill(const char*skill_name, bool include_lose = false) const;\nbool hasSkill(const Skill*skill, bool include_lose = false) const;\nint getMark(const char*mark) const;\nint getMark(const char*mark) const;\nQString getRole() const;\nvoid drawCards(int n, const char*reason = nullptr, bool isTop = true, bool visible = false);\nvoid drawCards(ServerPlayer*player, int n, const char*reason = nullptr, bool isTop = true, bool visible = false);\nvoid drawCards(QList<ServerPlayer*> players, int n, const char*reason = nullptr, bool isTop = true, bool visible = false);\nbool askForSkillInvoke(const char*skill_name, const QVariant&data = QVariant(), bool notify = true);\nbool askForSkillInvoke(const Skill*skill, const QVariant&data = QVariant(), bool notify = true);\nbool askForSkillInvoke(const char*skill_name, ServerPlayer*player, bool notify = true);\nQString askForChoice(ServerPlayer*player, const char*skill_name, const char*choices, const QVariant&data = QVariant(),\nvoid sendCompulsoryTriggerLog(ServerPlayer*player, const char*skill_name, bool notify_skill = true, bool broadcast = false, int type = -1);\nvoid sendCompulsoryTriggerLog(ServerPlayer*player, const Skill*skill, int type = -1);\nvoid broadcastSkillInvoke(const Card*card) const;\nvoid broadcastSkillInvoke(const char*card_name) const;\nvoid broadcastSkillInvoke(const char*skillName, const ServerPlayer*player = nullptr);\nvoid setPlayerMark(ServerPlayer*player, const char*mark, int value, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());\nvoid loseHp(ServerPlayer*victim, int lose = 1, bool ignore_hujia = true, ServerPlayer*from = nullptr, const char*reason = nullptr);\nvoid loseHp(const HpLostStruct&data);\nQList<ServerPlayer*> getAlivePlayers() const;\nQList::length(): int (swig/list.i)\nDamageStruct toDamage() const{\nint toInt() const;\nresult.append(qv.toInt());\nif(Config.value(\"DebugOutput\", false).toBool())\nif(Config.value(\"DebugOutput\", false).toBool())\nbool toBool() const;\nvoid setValue(int value) {\n$self->setValue(QVariant::fromValue(value));\nvoid setValue(const char *value) {",
+    "swig/sanguosha.i:159 (General constructor)": "General(Package*, const char* name, const char* kingdom, int max_hp=4, bool male=true, bool hidden=false, bool never_shown=false, int start_hp=INT_MAX, int start_hujia=0);",
+    "extensions/AIgeneral.lua:14-32 (actual V2 can_trigger and on_cost callbacks)": "\tcan_trigger = function(skill, event, room, player, data)\n\t\tif not (player and player:isAlive() and player:hasSkill(skill:objectName())) then\n\t\t\treturn false\n\t\tend\n\t\tlocal damage = data:toDamage()\n\t\t-- 检查是否已经对该角色使用过技能\n\t\tif damage.to:getMark(\"shensikao_used_\" .. player:objectName()) > 0 then\n\t\t\treturn false\n\t\tend\n\t\treturn skill:objectName()\n\tend,\n\n\ton_cost = function(skill, event, room, player, ctx)\n\t\t-- 提示玩家选择是否发动技能\n\t\treturn room:askForSkillInvoke(player, skill:objectName(), ctx.original_data)\n\tend,\n\n\ton_effect = function(skill, event, room, player, ctx)\n\t\tlocal damage = ctx.original_data:toDamage()",
+    "extensions/AIgeneral.lua:48-52 (on_effect excerpt; ctx.original_data used above)": "\t\t\tplayer:drawCards(x, skill:objectName())\n\t\t\troom:sendCompulsoryTriggerLog(player, skill:objectName(), true)\n\t\t\troom:broadcastSkillInvoke(skill:objectName(), 1) -- 播放成功音效\n\t\telse\n\t\t\t-- 推测错误，无效果"
+  },
+  "callback_contract": "can_trigger(skill,event,room,player,data) returns skill:objectName() or false. on_cost(skill,event,room,player,ctx) returns boolean; on_effect receives ctx.original_data, not legacy data. Event actor and payload depend on event; guard nil player and check player:hasSkill(skill:objectName()) for owned trigger skills. Start-of-turn draw skills can use EventPhaseStart and Player_Start. Do not invent local helper call names; declare any local functions explicitly. Never fabricate methods, contexts or enum names. Return notes for unsupported behavior. Use only globals/methods in this contract; helpers implementation internals are reference, not additional permitted APIs."
+}

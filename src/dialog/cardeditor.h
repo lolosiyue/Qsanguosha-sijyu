@@ -9,6 +9,7 @@ class BlackEdgeTextItem : public QGraphicsObject
 
 public:
     BlackEdgeTextItem();
+    QString getText() const { return text; }
     void setColor(const QColor &color);
     void setOutline(int outline);
     void toCenter(const QRectF &rect);
@@ -53,6 +54,8 @@ public:
     void setTextEditable(bool editable);
     void addSkill(const QString &text);
     SkillTitle *getFocusTitle() const;
+    QStringList getSkillTitles() const;
+    QString getSkillDescription() const;
 
     virtual QRectF boundingRect() const;
 
@@ -182,6 +185,7 @@ private slots:
     void saveAvatar(const QRectF &rect);
     void addSkill();
     void editSkill();
+    void authorPlayableGeneral();
 };
 
 #endif // CARDEDITOR_H
