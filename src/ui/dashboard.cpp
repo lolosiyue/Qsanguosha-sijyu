@@ -438,7 +438,9 @@ void Dashboard::repaintAll(bool all)
     updateScreenName(m_player->screenName());
 
     PlayerCardContainer::repaintAll(all);
-    if (!m_responsiveSize.isEmpty())
+    // _paintRightFrame() parks the avatar frame at x = 0; _updateFrames() moves it back to
+    // the right edge, so skipping it drops the portrait onto the equipment area.
+    if (!all)
         _updateFrames();
 	if(all){
 		QList<CardItem *> card_items = _createCards(m_player->handCards());
