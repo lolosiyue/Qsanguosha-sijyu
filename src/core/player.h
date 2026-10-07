@@ -239,6 +239,12 @@ public:
     virtual void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value);
     QVariant getSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &defaultValue = QVariant()) const;
     virtual void removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key);
+    // Private state conveniences. Mutations use virtual setters so ServerPlayer
+    // retains owner-only synchronization; no new visibility or lifetime policy.
+    QStringList getSkillInstanceStateStringList(const QString &skillName, int instanceID, const QString &key) const;
+    bool setSkillInstanceStateStringList(const QString &skillName, int instanceID,
+                                         const QString &key, QStringList values);
+    int removeSkillInstanceStateKeys(const QString &skillName, int instanceID, QStringList keys);
     bool hasSkillInstanceAmountOverride(const QString &skillName, int instanceID) const;
     int getSkillInstanceAmountOverride(const QString &skillName, int instanceID) const;
     bool setSkillInstanceAmountOverride(const QString &skillName, int instanceID, int amount);

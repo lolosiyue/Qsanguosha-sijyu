@@ -2035,3 +2035,16 @@ if(QSAN_TEST_EXTERNAL_AGENTS)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         ENVIRONMENT "QSAN_ASSET_ROOT=${qsan_external_runtime};QSAN_USER_DATA_ROOT=${qsan_external_runtime}")
 endif()
+
+if(QSAN_TEST_EXTERNAL_AGENTS)
+    add_executable(qsanguosha_skill_state_tests tests/skill-state-convenience-test.cpp)
+    target_compile_definitions(qsanguosha_skill_state_tests PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
+    target_include_directories(qsanguosha_skill_state_tests PRIVATE ${qsan_external_test_includes})
+    target_link_libraries(qsanguosha_skill_state_tests PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
+    qsan_link_websocket_gateway(qsanguosha_skill_state_tests)
+    add_test(NAME skill_state_convenience COMMAND qsanguosha_skill_state_tests)
+    set_tests_properties(skill_state_convenience PROPERTIES
+        FIXTURES_REQUIRED external_agent_runtime RUN_SERIAL TRUE TIMEOUT 30
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        ENVIRONMENT "QSAN_ASSET_ROOT=${qsan_external_runtime};QSAN_USER_DATA_ROOT=${qsan_external_runtime}")
+endif()
