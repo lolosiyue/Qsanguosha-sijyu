@@ -61,7 +61,9 @@ room:clearQmlElements(player)
 ```
 
 - 錨點：`table-center`；`screen-top`、`screen-bottom` 與四個角落；`seat:<objectName>`（跟隨指定座位）。
-- `data` 為 Lua table，沿用 `askForQml` 的 `QVariantMap` typemap。
+- `data` 為 Lua table（字串鍵；值可為 nil、布林、數字、字串或巢狀 table，深度上限 8），由新增的
+  `swig/qml-element.i` typemap 轉為 `QVariantMap`。`askForQml` 的 `QVariantMap` 參數在 Lua 端只接受
+  userdata，沒有可沿用的 table 轉換。
 - 省略 `player` 時廣播給所有人（包括觀戰者）；指定 `player` 時只送給該玩家，規則與
   `setUiElement` 相同。
 
@@ -104,6 +106,7 @@ QML 路徑只能位於素材根目錄或 `extensions/` 之下，不接受絕對�
 | `qml` | QML 路徑（僅 `add`） |
 | `anchor` | 錨點（僅 `add`） |
 | `data` | `add` 為完整資料，`update` 為要合併的欄位 |
+| `scope` | `all`（廣播）或 `player`（只送給該玩家）；客戶端以 `scope/id` 區分元件 |
 
 需要登記或修改的位置：
 
@@ -121,6 +124,9 @@ QML 路徑只能位於素材根目錄或 `extensions/` 之下，不接受絕對�
 
 - `update` 直接合併進已保存的 `data`。
 - `remove` 刪除單一項目；`clear` 刪除該 receiver 的全部項目。
+- 省略 `player` 的 `update`、`remove`、`clear` 只作用於 `scope=all` 的元件；指定 `player` 時只作用於
+  該玩家的 `scope=player` 元件。客戶端收到 `clear` 時，同樣只清除對應 scope 的元件，伺服器與客戶端
+  的狀態因此保持一致。
 
 理由：計分板一類的元件可能每回合更新一次，保存歷史會無限增長，重連時也需要整串重播。這一點
 與 `m_uiThemeHistory` 的做法不同。
@@ -129,7 +135,8 @@ QML 路徑只能位於素材根目錄或 `extensions/` 之下，不接受絕對�
 
 - 斷線重連：在 `player-lifecycle-service.cpp` 補送 `m_uiThemeHistory` 之後，對該玩家逐一送出
   `add`。送出的範圍是全體元件，加上 receiver 為該玩家本人的元件，`data` 為目前值。
-- 觀戰：若觀戰者加入時走另一條路徑，同樣補送全體元件。實作時須先確認觀戰加入的路徑。
+- 觀戰：本倉伺服器沒有獨立的觀戰加入路徑（`room.h`、`protocol.h` 均無觀戰 API），`marshal` 即涵蓋所有
+  重新同步的情況。
 - 錄影重播：通知本身會寫入錄影，重播時依序收到 `add`、`update`、`remove`，不另做處理。
 
 ### 其他客戶端
@@ -151,8 +158,12 @@ GUI 客戶端顯示，不可用來承載遊戲必要的資訊。此點須寫入�
   的子元件，位於 `RoomOverlayHost` 之下，生命週期比照 `FitView::m_overlay`：每個 `RoomScene`
   建立一次，離開房間時銷毀。
 - 整層共用一個 `QQmlEngine`，元件以 QML 路徑為鍵快取 `QQmlComponent`。
-- 根 QML 為內建的 `qrc:/QSanguosha/Table/TableLayer.qml`，內含一個 `Repeater`，為每個元件套上
-  一個定位用的容器。
+- 根 QML 為內建的 `qrc:/QSanguosha/Table/TableLayer.qml`，只提供一個 `content` 容器。元件由 C++
+  以 `QQmlComponent::beginCreate` 逐一建立，各自包一層定位用的 `QQuickItem`。不使用 `Repeater`：
+  模型重設會重建所有委派，元件內部狀態（例如已展開）會遺失。
+- 同一錨點有多個元件時，依元件鍵（`scope/id`）排序後排成一列，因此重連後的順序與原本一致。
+- 圖層解構時先刪除所有元件與 `QQmlComponent`，再交由 `QQuickWidget` 銷毀引擎；否則子物件
+  `QQmlComponent` 會在引擎銷毀後才被刪除。
 - `QSAN_ENABLE_QML=0` 的建置不建立此圖層；已登記的標記退回原本的文字按鈕。
 
 ### 資料一律為快照
@@ -187,8 +198,9 @@ GL viewport 的灰階、高對比濾鏡不會套用到這個圖層。根 QML 外
 ### 錯誤處理與安全
 
 - 元件載入失敗時，同一路徑只記錄一次警告，並略過該元件，不中斷對局。
-- 引擎安裝一個拒絕所有請求的 network access manager factory；import 路徑只包含素材根目錄。
-  擴展的 QML 不能連網，也不能從外部載入程式碼。
+- 引擎安裝一個 network access manager factory，只放行 `file:` 與 `qrc:`，其他 scheme 一律失敗。
+  擴展的 QML 因此不能連網，也不能從遠端載入程式碼。import 路徑為 Qt 預設路徑加素材根目錄。
+- 軟體 scene graph 後端不支援 `MultiEffect`，此時不套用灰階與高對比，元件照常顯示。
 
 ### 標記綁定的接入點
 
@@ -252,4 +264,4 @@ GL viewport 的灰階、高對比濾鏡不會套用到這個圖層。根 QML 外
 
 ## 未決事項
 
-- 觀戰者加入房間時的補送路徑，需於實作前確認。
+無。
