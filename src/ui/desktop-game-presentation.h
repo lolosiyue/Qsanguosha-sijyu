@@ -17,6 +17,7 @@ class QAbstractButton;
 class QKeyEvent;
 class QGraphicsObject;
 class QStatusBar;
+class TableButtonLegend;
 
 // The Qt desktop/Android adapter projects existing RoomScene/Dashboard selections. It owns
 // no second card draft, rule engine or interaction session.
@@ -53,6 +54,7 @@ private:
     QString playerLabel(const QString &name) const;
     QString cardLabel(int id) const;
     void updateKeyboardCursor();
+    void updateFocusLayer();
     void showControllerDetails();
     void applyIntent(const QString &kind, const QString &id, bool selected,
                      quint64 generation, quint64 revision, quint64 requestId);
@@ -78,6 +80,10 @@ private:
     QString m_keyboardKind;
     QString m_keyboardId;
     bool m_controllerNavigation = false;
+    bool m_tvFocus = false;
+    bool m_autoFocusSuppressed = false;
+    quint64 m_autoFocusRequest = 0;
+    QPointer<TableButtonLegend> m_legend;
     QString m_controllerPlayer;
     QPointer<QGraphicsObject> m_keyboardMarker;
     QPointer<QStatusBar> m_keyboardStatusBar;

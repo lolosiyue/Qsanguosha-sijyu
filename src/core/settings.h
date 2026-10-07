@@ -148,6 +148,10 @@ public:
     int BubbleChatBoxKeepTime;
     qreal UIScale;
     QString VisualMode;
+    // Persisted 10-foot mode key ("BigPicture/Enabled"), read in init().
+    // Whether the mode is active this run is decided by
+    // qsanBigPictureModeActive() (--big-picture / QSAN_BIG_PICTURE / this key).
+    bool BigPictureEnabled;
 
     // Theme: 0 follows the system, 1 is light, and 2 is dark (Qt::ColorScheme values).
     int ColorScheme;
@@ -201,6 +205,13 @@ void applyColorScheme(int scheme);
 // Grayscale and highcontrast transform the base theme;
 // normal restores the base palette.
 void applyVisualMode(const QString &mode);
+
+// True while this process runs in big-picture (10-foot) mode: the
+// QSAN_BIG_PICTURE environment variable (a "0"/"false" value forces off),
+// --big-picture (main.cpp normalizes it into the env var before
+// QApplication), or the persisted BigPicture/Enabled key. Safe to call before
+// QApplication exists.
+bool qsanBigPictureModeActive();
 
 // Format the current Config state as UTF-8 for CrashHandler::setGameConfig().
 // Settings::init() calls this at the end so crash reports use current settings.
