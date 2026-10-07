@@ -269,6 +269,11 @@ public:
     void killPlayer(ServerPlayer*victim, DamageStruct*reason = nullptr, HpLostStruct*hplost = nullptr);
     void revivePlayer(ServerPlayer*player, bool sendlog = true, bool throw_mark = true, bool visible_only = false);
     void restPlayer(ServerPlayer*player, const QString&reason = QString(), bool discard_cards = false);
+    // Reihou stores a borrowed general. Reihou2 is the yaodao copy.
+    // attach grants one acquired instance of each visible skill. remove drops
+    // those instances. Innate copies stay. Only Reihou changes the avatar.
+    void attachReihouCard(ServerPlayer *player, const QString &generalName, bool isYaodao = false);
+    void removeReihouCard(ServerPlayer *player, bool isYaodao = false);
     void directRestPlayer(ServerPlayer*player, const QString&reason = QString(), bool discard_cards = false);
     void unrestPlayer(ServerPlayer*player, bool restore_full_hp = true, bool restore_original_skills = false);
     bool isRest(ServerPlayer*player) const;

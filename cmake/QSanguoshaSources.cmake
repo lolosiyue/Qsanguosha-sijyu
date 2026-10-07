@@ -104,6 +104,7 @@ set(QSAN_SOURCES
     src/package/yingbian.cpp
     src/package/yinhu.cpp
     src/package/yitian.cpp
+    src/package/tenshi-reihou.cpp
     src/package/yjcm.cpp
     src/package/yjcm2012.cpp
     src/package/yjcm2013.cpp
