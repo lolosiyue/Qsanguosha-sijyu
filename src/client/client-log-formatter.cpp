@@ -468,6 +468,7 @@ QString formatClientPresentationText(int command, const QString &fallbackText,
     case QSanProtocol::S_COMMAND_INVOKE_SKILL:
     case QSanProtocol::S_COMMAND_CHANGE_TABLE_BG:
     case QSanProtocol::S_COMMAND_SET_UI_THEME:
+    case QSanProtocol::S_COMMAND_QML_ELEMENT:
         return QString();
     default:
         return fallbackText;
