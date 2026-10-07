@@ -157,6 +157,17 @@ void applyVisualMode(const QString &mode)
 }
 #endif
 
+bool qsanBigPictureModeActive()
+{
+    const QByteArray env = qgetenv("QSAN_BIG_PICTURE");
+    if (!env.isEmpty())
+        return env != "0" && env.compare("false", Qt::CaseInsensitive) != 0;
+    // main.cpp normalizes --big-picture and this stored key into the env var on
+    // the GUI path; reading the key here keeps the check correct for callers
+    // that never passed through that normalization (tests, embedded runs).
+    return Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool();
+}
+
 // Settings files may be hand-edited: non-numeric, negative or >1 values must be clamped to
 // a safe value instead of handing 0/NaN straight to the audio backend.
 static float clampVolume(const QVariant &raw, float fallback)
@@ -467,6 +478,10 @@ void Settings::init()
         VisualMode = "normal";
 
     ColorScheme = qBound(0, value("ColorScheme", 0).toInt(), 2);
+
+    // Settings UI mirror of the persisted 10-foot toggle; activation is still
+    // qsanBigPictureModeActive() (--big-picture and QSAN_BIG_PICTURE override).
+    BigPictureEnabled = value("BigPicture/Enabled", false).toBool();
 
 
     //hulao_ban = GetConfigFromLuaState(lua, "hulao_ban").toStringList();
