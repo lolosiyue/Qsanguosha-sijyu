@@ -192,6 +192,10 @@ room:clearPlayerCardLimitation(player, false)
 | `getSkillInstanceStateValue(name, id, key, def)` | `getSkillInstanceStateValue` |
 | `removeSkillInstanceState(Value)` | `removeSkillInstanceStateValue` |
 
+Lua 的字串清單讀寫、指定鍵清理及子修正技同步，另見
+[共用 state 便利接口](lua-skill-state-conveniences.md)。這些接口沿用現有私有 state／
+correctState 投影，不新增公開資料或自動到期規則。
+
 介面投影：state 的 key 可用翻譯 `<key>.type = player|players` 把 objectName 顯示為玩家名、
 `<key>.value.<v>` 顯示自訂文案（`player.cpp` 的 descriptionStateValue／readableState）。
 

@@ -608,6 +608,14 @@ public:
     bool removeSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
                                          const QString &key);
     bool clearSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref);
+    // Direct SourceHelper children on this owner only. Existing correct-state
+    // validation/projection applies; returns the number of successful writes.
+    int setChildSkillInstanceCorrectState(ServerPlayer *owner, const QString &parentSkillName,
+                                          int parentInstanceID, const QString &childSkillName,
+                                          const QString &key, const QVariant &value);
+    int removeChildSkillInstanceCorrectState(ServerPlayer *owner, const QString &parentSkillName,
+                                             int parentInstanceID, const QString &childSkillName,
+                                             const QString &key);
     void addSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId = 0);
     void removeSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId = 0);
     void clearSkillInvalidityBySource(ServerPlayer *source);

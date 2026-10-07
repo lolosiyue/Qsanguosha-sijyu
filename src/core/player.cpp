@@ -2519,6 +2519,35 @@ void Player::removeSkillInstanceStateValue(const QString &skillName, int instanc
         emit skill_state_changed();
 }
 
+QStringList Player::getSkillInstanceStateStringList(const QString &skillName, int instanceID,
+                                                    const QString &key) const
+{
+    const QVariant value = getSkillInstanceStateValue(skillName, instanceID, key);
+    // Do not reinterpret scalar strings (including legacy delimiter records).
+    return value.userType() == QMetaType::QStringList ? value.toStringList() : QStringList();
+}
+
+bool Player::setSkillInstanceStateStringList(const QString &skillName, int instanceID,
+                                             const QString &key, QStringList values)
+{
+    if (key.isEmpty() || !findSkillInstance(skillName, instanceID)) return false;
+    if (values.isEmpty()) removeSkillInstanceStateValue(skillName, instanceID, key);
+    else setSkillInstanceStateValue(skillName, instanceID, key, QVariant(values));
+    return true;
+}
+
+int Player::removeSkillInstanceStateKeys(const QString &skillName, int instanceID, QStringList keys)
+{
+    if (!findSkillInstance(skillName, instanceID)) return 0;
+    int removed = 0;
+    for (const QString &key : keys) {
+        if (key.isEmpty() || !getSkillInstanceState(skillName, instanceID).contains(key)) continue;
+        removeSkillInstanceStateValue(skillName, instanceID, key);
+        ++removed;
+    }
+    return removed;
+}
+
 bool Player::hasSkillInstanceAmountOverride(const QString &skillName, int instanceID) const
 {
     const SkillInstance *instance = findSkillInstance(skillName, instanceID);

@@ -5832,6 +5832,40 @@ bool Room::clearSkillInstanceCorrectState(ServerPlayer *source, const SkillInsta
 	return m_skillRuntime->clearSkillInstanceCorrectState(source, ref);
 }
 
+int Room::setChildSkillInstanceCorrectState(ServerPlayer *owner, const QString &parentSkillName,
+                                            int parentInstanceID, const QString &childSkillName,
+                                            const QString &key, const QVariant &value)
+{
+    if (!owner || findPlayerByObjectName(owner->objectName(), true) != owner
+        || !owner->hasSkillInstance(parentSkillName, parentInstanceID)
+        || childSkillName.isEmpty() || key.isEmpty()) return 0;
+    int updated = 0;
+    const auto children = owner->getChildSkillInstanceKeys(SkillInstanceKey(parentSkillName, parentInstanceID));
+    for (const SkillInstanceKey &child : children) {
+        if (child.skillName == childSkillName
+            && setSkillInstanceCorrectState(owner, SkillInstanceRef(owner->objectName(), child), key, value))
+            ++updated;
+    }
+    return updated;
+}
+
+int Room::removeChildSkillInstanceCorrectState(ServerPlayer *owner, const QString &parentSkillName,
+                                               int parentInstanceID, const QString &childSkillName,
+                                               const QString &key)
+{
+    if (!owner || findPlayerByObjectName(owner->objectName(), true) != owner
+        || !owner->hasSkillInstance(parentSkillName, parentInstanceID)
+        || childSkillName.isEmpty() || key.isEmpty()) return 0;
+    int removed = 0;
+    const auto children = owner->getChildSkillInstanceKeys(SkillInstanceKey(parentSkillName, parentInstanceID));
+    for (const SkillInstanceKey &child : children) {
+        if (child.skillName == childSkillName
+            && removeSkillInstanceCorrectState(owner, SkillInstanceRef(owner->objectName(), child), key))
+            ++removed;
+    }
+    return removed;
+}
+
 bool Room::hasPendingSummons() const
 {
 	return m_playerLifecycle->hasPendingSummons();
