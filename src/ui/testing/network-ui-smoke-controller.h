@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QPointer>
+#include <QSize>
 #include <QStringList>
 
 class MainWindow;
@@ -66,6 +67,8 @@ private slots:
     void onGameStarted();
     void onGameOver();
     void onUiThemeChanged(const QString &kind, const QString &id);
+    void onQmlElementsChanged();
+    void attachQmlLayer();
     void onSettled();
     void onTimeout();
 
@@ -88,6 +91,8 @@ private:
     int m_stallMs = NetworkUiSmokeReport::defaultStallMs();
     QString m_resultPath;
     QString m_screenshotPath;
+    QSize m_windowSize;
+    int m_qmlSnapshots = 0;
 
     QPointer<MainWindow> m_mainWindow;
     QPointer<RoomScene> m_roomScene;

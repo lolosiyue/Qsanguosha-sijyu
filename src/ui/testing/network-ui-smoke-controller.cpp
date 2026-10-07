@@ -16,6 +16,10 @@
 #include "theme-pack.h"
 #include "effects/effects-completion.h"
 #include "effects/effects-policy.h"
+#include "game-view.h"
+#if QSAN_ENABLE_QML
+#include "qml-table-layer.h"
+#endif
 
 #include <QApplication>
 #include <QDir>
@@ -121,12 +125,15 @@ bool NetworkUiSmokeController::configure(const QStringList &arguments, QString *
         return false;
     m_resultPath = NetworkUiSmokeReport::parseResultPath(arguments);
     m_screenshotPath = NetworkUiSmokeReport::parseScreenshotPath(arguments);
+    m_windowSize = NetworkUiSmokeReport::parseWindowSize(arguments);
     return true;
 }
 
 void NetworkUiSmokeController::attach(MainWindow *mainWindow)
 {
     m_mainWindow = mainWindow;
+    if (mainWindow && m_windowSize.isValid())
+        mainWindow->resize(m_windowSize);
 
     connect(ClientInstance, &Client::socket_connected,
         this, &NetworkUiSmokeController::onSocketConnected);
@@ -221,6 +228,17 @@ void NetworkUiSmokeController::onRoomSceneCreated(RoomScene *scene)
         return;
     m_roomScene = scene;
     m_roomSceneReady = true;
+    // A portrait window only becomes the portrait table with the responsive layout on.
+    // FitView has no Q_OBJECT, so findChild is unavailable; reach it through the scene.
+    if (m_windowSize.isValid() && m_windowSize.height() > m_windowSize.width()) {
+        for (QGraphicsView *candidate : scene->views()) {
+            if (FitView *view = dynamic_cast<FitView *>(candidate))
+                view->setResponsiveRoomEnabled(true);
+        }
+    }
+    connect(scene, &RoomScene::qmlLayerAttached, this, &NetworkUiSmokeController::attachQmlLayer,
+            Qt::UniqueConnection);
+    attachQmlLayer();
     emitStage(QLatin1String(NetworkUiSmokeReport::StageRoomScene), true, QJsonObject{
         {QStringLiteral("photo_count"), scene->photos.size()},
         {QStringLiteral("scene_width"), scene->width()},
@@ -400,6 +418,27 @@ void NetworkUiSmokeController::failStage(const QString &stage, const QString &er
         return;
     emitStage(stage, false, QJsonObject{{QStringLiteral("error"), error}});
     complete(false, stage, error, exitCode);
+}
+
+void NetworkUiSmokeController::attachQmlLayer()
+{
+#if QSAN_ENABLE_QML
+    if (m_roomScene.isNull() || !m_roomScene->qmlLayer())
+        return;
+    connect(m_roomScene->qmlLayer(), &QmlTableLayer::elementsChanged,
+            this, &NetworkUiSmokeController::onQmlElementsChanged, Qt::UniqueConnection);
+#endif
+}
+
+// Evidence, not a gate: qml_table_layer_smoke.py judges these snapshots.
+void NetworkUiSmokeController::onQmlElementsChanged()
+{
+#if QSAN_ENABLE_QML
+    if (m_finished || m_roomScene.isNull() || !m_roomScene->qmlLayer())
+        return;
+    emitStage(QStringLiteral("qml_elements:%1").arg(++m_qmlSnapshots), true,
+              m_roomScene->qmlLayer()->snapshot());
+#endif
 }
 
 void NetworkUiSmokeController::emitStage(const QString &stage, bool ok,

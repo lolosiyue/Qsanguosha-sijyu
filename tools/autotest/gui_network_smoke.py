@@ -200,9 +200,15 @@ def build_client_command(args, client_exe, port, result_path, screenshot_path):
         command += ["--test-general", args.general]
     if args.effects_profile:
         command += ["--effects-profile", args.effects_profile]
+    if getattr(args, "client_window", None):
+        command += ["--network-ui-smoke-window", args.client_window]
     if args.xvfb:
+        screen = "1280x720"
+        if getattr(args, "client_window", None):
+            width, height = (int(v) for v in args.client_window.split("x"))
+            screen = "%dx%d" % (max(1280, width), max(720, height))
         # -a picks a free display number automatically so parallel CI jobs do not fight over the same :99.
-        command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24"] + command
+        command = ["xvfb-run", "-a", "-s", "-screen 0 %sx24" % screen] + command
     return command
 
 
@@ -370,6 +376,8 @@ def main():
                         help="必須經真 UI 覆過的互動名, 逗號分隔")
     parser.add_argument("--allow-trustee-fallback", action="store_true",
                         help="容許 responder 中途切 trustee (預設: 視為失敗)")
+    parser.add_argument("--client-window", default=None,
+                        help="client window size WxH; taller than wide turns on the portrait (responsive) table")
     parser.add_argument("--effects-profile", default=None,
                         choices=("full", "reduced", "none"),
                         help="M2B-B: which effects profile to run this game with. The three"

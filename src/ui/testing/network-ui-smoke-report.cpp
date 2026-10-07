@@ -142,6 +142,7 @@ const char *const NetworkUiSmokeReport::FlagResultPath = "--network-ui-smoke-res
 const char *const NetworkUiSmokeReport::FlagTimeoutMs = "--network-ui-smoke-timeout-ms";
 const char *const NetworkUiSmokeReport::FlagStallMs = "--network-ui-smoke-stall-ms";
 const char *const NetworkUiSmokeReport::FlagScreenshotPath = "--network-ui-smoke-screenshot";
+const char *const NetworkUiSmokeReport::FlagWindowSize = "--network-ui-smoke-window";
 
 const char *const NetworkUiSmokeReport::ReasonOk = "ok";
 const char *const NetworkUiSmokeReport::ReasonStageFailed = "stage_failed";
@@ -230,6 +231,16 @@ bool NetworkUiSmokeReport::parseStallMs(const QStringList &arguments, int *stall
 {
     return parseBoundedInt(arguments, FlagStallMs, kMinimumStallMs, kMaximumStallMs,
         kDefaultStallMs, stallMs, error);
+}
+
+QSize NetworkUiSmokeReport::parseWindowSize(const QStringList &arguments)
+{
+    bool found = false;
+    const QString value = flagValue(arguments, QLatin1String(FlagWindowSize), &found);
+    const QStringList parts = value.split(QLatin1Char('x'));
+    if (!found || parts.size() != 2)
+        return QSize();
+    return QSize(parts.at(0).toInt(), parts.at(1).toInt());
 }
 
 QString NetworkUiSmokeReport::parseResultPath(const QStringList &arguments)
