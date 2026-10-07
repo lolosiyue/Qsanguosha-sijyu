@@ -2,6 +2,7 @@
 #define NETWORK_UI_SMOKE_REPORT_H
 
 #include <QJsonObject>
+#include <QSize>
 #include <QString>
 #include <QStringList>
 
@@ -69,6 +70,7 @@ public:
     static const char *const FlagTimeoutMs;         // "--network-ui-smoke-timeout-ms"
     static const char *const FlagStallMs;           // "--network-ui-smoke-stall-ms"
     static const char *const FlagScreenshotPath;    // "--network-ui-smoke-screenshot"
+    static const char *const FlagWindowSize;        // "--network-ui-smoke-window" (WxH)
 
     static int defaultTimeoutMs();
     static int minimumTimeoutMs();
@@ -84,6 +86,7 @@ public:
     static bool parseStallMs(const QStringList &arguments, int *stallMs, QString *error);
     static QString parseResultPath(const QStringList &arguments);
     static QString parseScreenshotPath(const QStringList &arguments);
+    static QSize parseWindowSize(const QStringList &arguments);
 
     // Failure reason. timeout / disconnect share the stage name with "stage itself failed"; this field tells them apart.
     static const char *const ReasonOk;                  // "ok"
