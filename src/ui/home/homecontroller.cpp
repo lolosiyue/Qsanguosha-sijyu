@@ -684,8 +684,20 @@ QUrl HomeController::backgroundImage() const
         QDir::current().absoluteFilePath(path));
 }
 
+QString HomeController::homeCharacter() const
+{
+    return Config.value(QStringLiteral("Home/Character")).toString();
+}
+
 QUrl HomeController::characterImage() const
 {
+    const QString chosen = homeCharacter();
+    if (!chosen.isEmpty()) {
+        const QUrl full = generalFullImage(chosen);
+        if (!full.isEmpty())
+            return full;
+    }
+
     const QString absPath = QDir::current().absoluteFilePath(
         QStringLiteral("image/home/character.png"));
 
@@ -695,6 +707,28 @@ QUrl HomeController::characterImage() const
     QUrl url = QUrl::fromLocalFile(absPath);
     url.setQuery(QStringLiteral("v=%1").arg(m_characterVersion));
     return url;
+}
+
+bool HomeController::setHomeCharacter(const QString &generalName)
+{
+    if (generalName.isEmpty() || !Sanguosha || !Sanguosha->getGeneral(generalName))
+        return false;
+    if (generalFullImage(generalName).isEmpty())
+        return false;
+    if (homeCharacter() == generalName)
+        return true;
+
+    Config.setValue(QStringLiteral("Home/Character"), generalName);
+    emit characterImageChanged();
+    return true;
+}
+
+void HomeController::clearHomeCharacter()
+{
+    if (homeCharacter().isEmpty())
+        return;
+    Config.remove(QStringLiteral("Home/Character"));
+    emit characterImageChanged();
 }
 
 QUrl HomeController::logoImage() const
@@ -1443,6 +1477,7 @@ QVariantMap HomeController::generalDetails(const QString &generalName) const
     result.insert(QStringLiteral("banned"),
                   Config.value(QStringLiteral("Banlist/Roles")).toStringList().contains(generalName));
     result.insert(QStringLiteral("isAvatar"), Config.UserAvatar == generalName);
+    result.insert(QStringLiteral("isHomeCharacter"), homeCharacter() == generalName);
     result.insert(QStringLiteral("skinIndex"), skinIndex);
     result.insert(QStringLiteral("nickname"), nicknameOf(generalName));
     result.insert(QStringLiteral("lord"), general->isLord());
@@ -1717,6 +1752,8 @@ void HomeController::setHeroSkin(const QString &generalName, int skinIndex)
     emit artRevisionChanged();
     if (Config.UserAvatar == generalName)
         emit playerInfoChanged();
+    if (homeCharacter() == generalName)
+        emit characterImageChanged();
 }
 
 QVariantList HomeController::heroSkinList(const QString &generalName) const

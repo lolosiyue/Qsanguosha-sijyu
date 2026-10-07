@@ -2203,8 +2203,28 @@ Item {
                                 if (root.compact && root.catalog && root.catalog.count > 0)
                                     root.showCompactPane(0)
                             }
-                            KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
+                            KeyNavigation.tab: homeCharBtn.visible ? homeCharBtn
+                                              : (skinBtn.visible ? skinBtn : avatarBtn)
                             KeyNavigation.backtab: root.tableMode ? generalTable : generalGrid
+                        }
+
+                        BAToolButton {
+                            id: homeCharBtn
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: visible ? 48 : 0
+                            implicitHeight: 48
+                            visible: root.detailsReady
+                            enabled: details.isHomeCharacter !== true
+                            text: details.isHomeCharacter === true
+                                  ? qsTranslate("GeneralOverview", "Current home character")
+                                  : qsTranslate("GeneralOverview", "Set as home character")
+                            onActiveFocusChanged: if (activeFocus) root.revealDetailControl(this)
+                            onClicked: {
+                                if (homeController.setHomeCharacter(root.shownName))
+                                    homeController.openHome()
+                            }
+                            KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
+                            KeyNavigation.backtab: sameNameBtn
                         }
 
                         RowLayout {
@@ -2223,7 +2243,7 @@ Item {
                                 text: root.ui("GeneralOverview", "changeHeroSkin")
                                 onClicked: skinPanel.open()
                                 KeyNavigation.tab: avatarBtn
-                                KeyNavigation.backtab: sameNameBtn
+                                KeyNavigation.backtab: homeCharBtn
                             }
 
                             BAToolButton {
@@ -2241,7 +2261,7 @@ Item {
                                     root.reloadDetails()
                                 }
                                 KeyNavigation.tab: banBtn
-                                KeyNavigation.backtab: skinBtn.visible ? skinBtn : sameNameBtn
+                                KeyNavigation.backtab: skinBtn.visible ? skinBtn : homeCharBtn
                             }
 
                             BAToolButton {

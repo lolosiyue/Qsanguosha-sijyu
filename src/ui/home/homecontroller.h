@@ -90,6 +90,7 @@ class HomeController final : public QObject
     Q_PROPERTY(QUrl backgroundImage READ backgroundImage NOTIFY backgroundChanged)
     Q_PROPERTY(QUrl portraitBackgroundImage READ portraitBackgroundImage NOTIFY backgroundChanged)
     Q_PROPERTY(QUrl characterImage READ characterImage NOTIFY characterImageChanged)
+    Q_PROPERTY(QString homeCharacter READ homeCharacter NOTIFY characterImageChanged)
     Q_PROPERTY(QUrl logoImage READ logoImage CONSTANT)
     Q_PROPERTY(bool hasVideoSupport READ hasVideoSupport CONSTANT)
     // User setting for the video background; when off, no QML Video component is created at all.
@@ -120,6 +121,9 @@ public:
     QUrl backgroundImage() const;
     QUrl portraitBackgroundImage() const;
     QUrl characterImage() const;
+    QString homeCharacter() const;
+    Q_INVOKABLE bool setHomeCharacter(const QString &generalName);
+    Q_INVOKABLE void clearHomeCharacter();
     QUrl logoImage() const;
     bool hasVideoSupport() const;
     bool videoBackgroundEnabled() const;

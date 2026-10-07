@@ -1,7 +1,7 @@
 import QtQuick
 import "."
 
-// Top-left player info: avatar and name, shared with Quick Join; display only.
+// Top-left player info. The character actions sit under the name, off the artwork.
 Item {
     id: root
 
@@ -57,6 +57,7 @@ Item {
         anchors.left: avatarCircle.right
         anchors.leftMargin: 14
         anchors.verticalCenter: parent.verticalCenter
+        spacing: 2
         width: root.compact ? Math.max(0, root.width - avatarCircle.width - 14) : implicitWidth
 
         Text {
@@ -73,6 +74,45 @@ Item {
             font.weight: Font.DemiBold
             elide: Text.ElideRight
             maximumLineCount: 1
+        }
+
+        Row {
+            spacing: 12
+
+            Text {
+                text: homeController.qtTranslate("HomeScene", "Change character")
+                color: changeArea.containsMouse ? HomeTheme.navTextActive : HomeTheme.pillText
+                font.pixelSize: root.compact ? 13 : 14
+                style: Text.Outline
+                styleColor: HomeTheme.onArtScrim
+
+                MouseArea {
+                    id: changeArea
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: homeController.openGenerals()
+                }
+            }
+
+            Text {
+                visible: homeController.homeCharacter.length > 0
+                text: homeController.qtTranslate("HomeScene", "Restore default character")
+                color: restoreArea.containsMouse ? HomeTheme.navTextActive : HomeTheme.pillText
+                font.pixelSize: root.compact ? 13 : 14
+                style: Text.Outline
+                styleColor: HomeTheme.onArtScrim
+
+                MouseArea {
+                    id: restoreArea
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: homeController.clearHomeCharacter()
+                }
+            }
         }
     }
 }

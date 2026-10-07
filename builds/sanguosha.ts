@@ -4636,6 +4636,16 @@ Recent events:</source>
         <translation>设为头像</translation>
     </message>
     <message>
+        <location filename="../qml/home/GeneralScene.qml"/>
+        <source>Set as home character</source>
+        <translation>设为主页角色</translation>
+    </message>
+    <message>
+        <location filename="../qml/home/GeneralScene.qml"/>
+        <source>Current home character</source>
+        <translation>已是主页角色</translation>
+    </message>
+    <message>
         <location filename="../qml/home/GeneralScene.qml" line="2353"/>
         <location filename="../qml/home/GeneralScene.qml" line="2617"/>
         <source>OK</source>
@@ -4981,6 +4991,16 @@ Recent events:</source>
         <location filename="../qml/home/ScenarioWorksScene.qml" line="198"/>
         <source>Scenario Works</source>
         <translation>剧情作品</translation>
+    </message>
+    <message>
+        <location filename="../qml/home/HomePlayerInfo.qml"/>
+        <source>Change character</source>
+        <translation>更换角色</translation>
+    </message>
+    <message>
+        <location filename="../qml/home/HomePlayerInfo.qml"/>
+        <source>Restore default character</source>
+        <translation>恢复默认</translation>
     </message>
 </context>
 <context>
