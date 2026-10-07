@@ -1,4 +1,5 @@
 #include "client.h"
+#include "build-features.h"
 #include "controller-interaction-contract.h"
 #include "client-core.h"
 #include "client-prompt.h"
@@ -2586,8 +2587,10 @@ void Client::setMark(const QVariant &mark_var)
 
 	ClientPlayer *player = getPlayer(who);
 	player->setMark(mark, value);
+#if QSAN_ENABLE_QML
 	if (Sanguosha->isQmlMark(mark))
 		emit qml_mark_changed(who, mark, value);
+#endif
 
 	// Refresh only actions whose presentation depends on this token, including
 	// its removal. Ownership stays intact for response and server validation.

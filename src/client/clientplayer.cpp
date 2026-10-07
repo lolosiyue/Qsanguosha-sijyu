@@ -2,6 +2,7 @@
 #include "client.h"
 #include "engine.h"
 #include "clientstruct.h"
+#include "build-features.h"
 #include <QFile>
 
 ClientPlayer *Self = nullptr;
@@ -374,7 +375,12 @@ void ClientPlayer::setMark(const QString &mark, int value)
 		}
 		QString text;
 		foreach (QString key, keys) {
+#if QSAN_ENABLE_QML
+			// A QML-bound mark is drawn by QmlTableLayer; builds without QML keep the stock text.
 			if (key.startsWith("@")&&marks[key]>0&&!Sanguosha->isQmlMark(key)) {
+#else
+			if (key.startsWith("@")&&marks[key]>0) {
+#endif
 				QString filename = QString("image/mark/%1.png").arg(key);
 				if (!QFile::exists(filename))
 					filename = QString("image/mark/@default.png");
