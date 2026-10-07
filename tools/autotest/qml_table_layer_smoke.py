@@ -122,7 +122,7 @@ Rectangle {
         color: "white"
         text: "round " + (qs && qs.data ? qs.data.round : "?")
     }
-    TapHandler { onTapped: parent.clicks += 1 }
+    MouseArea { anchors.fill: parent; onClicked: parent.clicks += 1 }
 }
 '''
 
