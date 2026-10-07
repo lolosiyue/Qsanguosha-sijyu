@@ -1761,6 +1761,73 @@ void Room::restPlayer(ServerPlayer *player, const QString &reason, bool discard_
 	m_playerLifecycle->restPlayer(player, reason, discard_cards);
 }
 
+void Room::attachReihouCard(ServerPlayer *player, const QString &generalName, bool isYaodao)
+{
+	if (!player || generalName.isEmpty())
+		return;
+	const General *general = Sanguosha->getGeneral(generalName);
+	if (!general)
+		return;
+	const QString tagName = isYaodao ? QStringLiteral("Reihou2") : QStringLiteral("Reihou");
+	const QString current = player->getTag(tagName).toString();
+	if (current == generalName)
+		return;
+	if (!current.isEmpty())
+		removeReihouCard(player, isYaodao);
+	if (!isYaodao) {
+		JsonArray args;
+		args << static_cast<int>(QSanProtocol::S_GAME_EVENT_HUASHEN)
+		     << player->objectName()
+		     << generalName
+		     << QString();
+		doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+	}
+	player->setTag(tagName, generalName);
+	QStringList skills;
+	for (const Skill *skill : general->getVisibleSkillList())
+		skills << skill->objectName();
+	if (!skills.isEmpty())
+		handleAcquireDetachSkills(player, skills, true, true);
+}
+
+void Room::removeReihouCard(ServerPlayer *player, bool isYaodao)
+{
+	if (!player)
+		return;
+	QString old = player->getTag(QStringLiteral("Reihou")).toString();
+	if (old.isEmpty())
+		isYaodao = true;
+	if (isYaodao)
+		old = player->getTag(QStringLiteral("Reihou2")).toString();
+	const General *general = Sanguosha->getGeneral(old);
+	if (!general)
+		return;
+	player->removeTag(isYaodao ? QStringLiteral("Reihou2") : QStringLiteral("Reihou"));
+	for (const Skill *skill : general->getVisibleSkillList()) {
+		const QString name = skill->objectName();
+		int instanceId = 0;
+		for (int id : player->getSkillInstanceIds(name)) {
+			const SkillInstance *instance = player->findSkillInstance(name, id);
+			if (instance && instance->source == SourceAcquired) {
+				instanceId = id;
+				break;
+			}
+		}
+		if (instanceId <= 0)
+			continue;
+		detachSkillFromPlayer(player, SkillInstanceUtils::formatName(name, instanceId),
+		                      false, true, true);
+	}
+	if (isYaodao)
+		return;
+	JsonArray args;
+	args << static_cast<int>(QSanProtocol::S_GAME_EVENT_HUASHEN)
+	     << player->objectName()
+	     << player->getGeneralName()
+	     << QString();
+	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+}
+
 void Room::directRestPlayer(ServerPlayer *player, const QString &reason, bool discard_cards)
 {
 	m_playerLifecycle->directRestPlayer(player, reason, discard_cards);
