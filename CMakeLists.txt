@@ -284,6 +284,7 @@ if(QSAN_BUILD_XP_LEGACY)
         src/main.cpp
         src/ui/CharacterSpineActionController.cpp
         src/ui/EmbeddedQmlLoader.cpp
+        src/ui/qml-table-layer.cpp
         src/ui/pointer-effect-overlay.cpp
         src/ui/SpineAnimationManager.cpp
         src/ui/SpineEffectWidget.cpp
@@ -298,6 +299,7 @@ if(QSAN_BUILD_XP_LEGACY)
     list(REMOVE_ITEM QSAN_MOC_HEADERS
         src/ui/CharacterSpineActionController.h
         src/ui/EmbeddedQmlLoader.h
+        src/ui/qml-table-layer.h
         src/ui/pointer-effect-overlay.h
         src/ui/SpineAnimationManager.h
         src/ui/SpineEffectWidget.h
@@ -1411,6 +1413,7 @@ if(QSAN_BUILD_GUI)
     if(NOT QSAN_BUILD_XP_LEGACY)
         target_sources(${QSAN_GUI_TARGET} PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_qml.qrc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/qml/table/table_qml.qrc"
             "${CMAKE_CURRENT_SOURCE_DIR}/resource/icon/app-icon.qrc"
         )
 
