@@ -4,6 +4,7 @@
 #include <QRandomGenerator>
 
 #include <QString>
+#include <memory>
 
 class GameRng
 {
@@ -22,6 +23,10 @@ public:
     };
 
     GameRng();
+    GameRng(const GameRng &) = delete;
+    GameRng &operator=(const GameRng &) = delete;
+    GameRng(GameRng &&) = delete;
+    GameRng &operator=(GameRng &&) = delete;
 
     void seed(quint64 seed);
     quint32 generate();
@@ -29,6 +34,11 @@ public:
 
     State exportState() const;
     bool restoreState(const State &state, QString *error = nullptr);
+
+    // Exchanges the already prepared deterministic stream without replacing
+    // this GameRng object (other runtime components may hold its address).
+    // The caller must serialize access and prepare the target stream first.
+    void swapState(GameRng &prepared) noexcept;
 
     // Short aliases keep callers from depending on the serialization name.
     State state() const { return exportState(); }
@@ -54,7 +64,9 @@ public:
     };
 
 private:
-    QRandomGenerator m_generator;
+    // Keep the public GameRng object's address stable while allowing an
+    // allocation-free pointer swap at a coordinated world publication point.
+    std::unique_ptr<QRandomGenerator> m_generator;
     quint64 m_seed;
     quint64 m_drawCount;
 };

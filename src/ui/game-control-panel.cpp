@@ -52,6 +52,39 @@ GameControlPanel::GameControlPanel(QWidget *parent) : QDialog(parent)
     m_reason->setTextFormat(Qt::PlainText);
     m_reason->setWordWrap(true);
     m_contentLayout->addWidget(m_reason);
+    auto *rewindGroup = new QGroupBox(tr("Managed rewind"), this);
+    rewindGroup->setObjectName(QStringLiteral("managedRewindControls"));
+    auto *rewindLayout = new QVBoxLayout(rewindGroup);
+    m_managedRewindStatus = new QLabel(rewindGroup);
+    m_managedRewindStatus->setObjectName(QStringLiteral("managedRewindStatus"));
+    m_managedRewindStatus->setTextFormat(Qt::PlainText);
+    m_managedRewindStatus->setWordWrap(true);
+    rewindLayout->addWidget(m_managedRewindStatus);
+    m_managedRewindStep = new QPushButton(tr("Step one turn"), rewindGroup);
+    m_managedRewindStep->setObjectName(QStringLiteral("managedRewindStep"));
+    m_managedRewindTurn = new QPushButton(tr("Rewind previous player turn"), rewindGroup);
+    m_managedRewindTurn->setObjectName(QStringLiteral("managedRewindTurn"));
+    m_managedRewindRound = new QPushButton(tr("Rewind previous full round"), rewindGroup);
+    m_managedRewindRound->setObjectName(QStringLiteral("managedRewindRound"));
+    m_managedRewindCancel = new QPushButton(tr("Cancel waiting rewind"), rewindGroup);
+    m_managedRewindCancel->setObjectName(QStringLiteral("managedRewindCancel"));
+    m_managedRewindCancel->setToolTip(tr(
+        "Cancels only a queued request. If execution has started, the server reports status and the rewind continues."));
+    for (QPushButton *button : {m_managedRewindStep, m_managedRewindTurn,
+                                m_managedRewindRound, m_managedRewindCancel}) {
+        button->setAutoDefault(false);
+        button->setEnabled(false);
+        rewindLayout->addWidget(button);
+    }
+    connect(m_managedRewindStep, &QPushButton::clicked, this,
+            [this]() { emit managedRewindRequested(QStringLiteral("step")); });
+    connect(m_managedRewindTurn, &QPushButton::clicked, this,
+            [this]() { emit managedRewindRequested(QStringLiteral("turn")); });
+    connect(m_managedRewindRound, &QPushButton::clicked, this,
+            [this]() { emit managedRewindRequested(QStringLiteral("round")); });
+    connect(m_managedRewindCancel, &QPushButton::clicked, this,
+            [this]() { emit managedRewindRequested(QStringLiteral("cancel")); });
+    m_contentLayout->addWidget(rewindGroup);
     m_actions = makeList(tr("Actions and options"), QStringLiteral("option"));
     m_skills = makeList(tr("Skills"), QStringLiteral("skill"));
     m_cards = makeList(tr("Cards"), QStringLiteral("card"));
@@ -236,6 +269,14 @@ void GameControlPanel::setModel(const GameActionModel &model)
     m_finish->setEnabled(model.supported && model.canFinish);
     if (hadPanelFocus && (!previousFocus || !previousFocus->isVisible() || !previousFocus->isEnabled()))
         focusPrimaryControl();
+}
+
+void GameControlPanel::setManagedRewindState(const QString &status, bool enabled, bool canCancel)
+{
+    m_managedRewindStatus->setText(status);
+    for (QPushButton *button : {m_managedRewindStep, m_managedRewindTurn, m_managedRewindRound})
+        button->setEnabled(enabled);
+    m_managedRewindCancel->setEnabled(canCancel);
 }
 
 bool GameControlPanel::eventFilter(QObject *object, QEvent *event)

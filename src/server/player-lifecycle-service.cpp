@@ -1,3 +1,4 @@
+#include "managed-rewind-lab.h"
 #include "player-lifecycle-service.h"
 
 #include "card-movement-service.h"
@@ -5,6 +6,7 @@
 #include "event-dispatcher.h"
 #include "gamerule.h"
 #include "room.h"
+#include "room-managed-state.h"
 #include "room-notifier.h"
 #include "room-roster.h"
 #include "roomthread.h"
@@ -17,11 +19,13 @@
 #include "protocol/arrange-seats-message.h"
 #include "protocol/switch-context-message.h"
 #include "protocol/session/session-payloads.h"
+#include "game-state-contract.h"
 #include "settings.h"
 #include "standard.h"
 
 #include <QSet>
 
+#include <algorithm>
 #include <limits>
 
 using namespace QSanProtocol;
@@ -894,12 +898,13 @@ void PlayerLifecycleService::reconnect(ServerPlayer *player, ClientSocket *socke
 {
     if (socket != nullptr)
         player->setSocket(socket);
+    if (auto *lab = m_room.restrictedRewind()) { lab->connected(player); return; }
     player->setState("online");
     marshal(player);
     m_room.broadcastProperty(player, "state");
 }
 
-void PlayerLifecycleService::marshal(ServerPlayer *player)
+void PlayerLifecycleService::marshal(ServerPlayer *player, bool managedTimelineRestore)
 {
     const QString syncId = QString::number(m_nextStateSyncId);
     m_nextStateSyncId = m_nextStateSyncId == std::numeric_limits<quint64>::max()
@@ -908,6 +913,13 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
     sync.syncId = syncId;
     sync.phase = QStringLiteral("begin");
     sync.reconnect = true;
+    sync.managedTimelineRestore = managedTimelineRestore;
+    if (managedTimelineRestore) {
+        const auto &timeline = m_room.gameTimeline();
+        sync.rootGameId = timeline.rootGameId();
+        sync.worldId = timeline.worldId();
+        sync.timelineGeneration = QString::number(timeline.generation());
+    }
     m_notifier.doNotify(player, S_COMMAND_STATE_SYNC, sync.toVariant());
 
     m_room.notifyProperty(player, player, "objectName");
@@ -942,7 +954,25 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
         m_room.notifyProperty(player, existing, "RestPlayer");
     }
 
-    if (m_room.hasGameStarted())
+    if (m_room.hasGameStarted() && managedTimelineRestore) {
+        // The managed world owns the active card universe. Send its stable,
+        // sorted IDs as the available-card pool without sampling/shuffling the
+        // restored RNG or disclosing the restored draw-pile order.
+        QList<int> catalogue;
+        const auto *worldStore = m_room.managedState().worldStore();
+        Q_ASSERT_X(worldStore != nullptr, "PlayerLifecycleService::marshal",
+                   "managed timeline restore requires its enrolled world");
+        if (worldStore != nullptr) {
+            for (const QString &stableId : worldStore->state().cards.keys()) {
+                bool ok = false;
+                const int id = stableId.toInt(&ok);
+                if (ok && id >= 0)
+                    catalogue << id;
+            }
+        }
+        std::sort(catalogue.begin(), catalogue.end());
+        m_notifier.doNotify(player, S_COMMAND_GAME_START, JsonUtils::toJsonArray(catalogue));
+    } else if (m_room.hasGameStarted())
         m_notifier.doNotify(player, S_COMMAND_GAME_START,
                             JsonUtils::toJsonArray(Sanguosha->getRandomCards()));
 
@@ -1030,7 +1060,24 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
                             JsonUtils::toJsonArray(m_cardMovement.discardPile()));
     }
 
+    if (managedTimelineRestore) {
+        for (auto *existing : m_roster.players()) {
+            for (const auto *property : {"phase", "faceup", "chained", "owner"})
+                m_room.notifyProperty(player, existing, property);
+            // These counters are public turn progress; private skill marks keep
+            // their normal recipient-specific visibility policy above.
+            for (const auto &mark : {QStringLiteral("Global_TurnCount"), QStringLiteral("Global_TurnCount2")}) {
+                JsonArray value; value << existing->objectName() << mark << existing->getMark(mark);
+                m_notifier.doNotify(player, S_COMMAND_SET_MARK, value);
+            }
+        }
+        if (m_room.getCurrent()) sync.currentPlayer = m_room.getCurrent()->objectName();
+    }
     sync.phase = QStringLiteral("end");
+    if (m_room.hasGameStarted()) {
+        sync.hasRound = true;
+        sync.round = m_room.getTag("TurnLengthCount").toInt();
+    }
     // This snapshot remains staged until STATE_SYNC end commits it atomically.
     m_room.notifyResolutionState(QStringLiteral("reset"), player);
     m_notifier.doNotify(player, S_COMMAND_STATE_SYNC, sync.toVariant());

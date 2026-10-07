@@ -56,6 +56,7 @@ private:
     void updateKeyboardCursor();
     void updateFocusLayer();
     void showControllerDetails();
+    void refreshManagedRewindControls();
     void applyIntent(const QString &kind, const QString &id, bool selected,
                      quint64 generation, quint64 revision, quint64 requestId);
     RoomScene *m_scene;

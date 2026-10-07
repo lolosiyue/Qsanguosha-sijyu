@@ -61,6 +61,7 @@ public:
     bool makeSurrender(ServerPlayer *initiator);
 
 private:
+    friend class ManagedRewindLab;
     friend struct GameSessionControllerTestAccess;
     friend struct PlayerDecisionServiceTestAccess;
 

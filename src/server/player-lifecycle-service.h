@@ -29,7 +29,7 @@ public:
     void signup(ServerPlayer *player, const QString &screenName,
                 const QString &avatar, bool isRobot);
     void reconnect(ServerPlayer *player, ClientSocket *socket);
-    void marshal(ServerPlayer *player);
+    void marshal(ServerPlayer *player, bool managedTimelineRestore = false);
 
     void killPlayer(ServerPlayer *victim, DamageStruct *reason, HpLostStruct *hpLost);
     bool hasActiveDeathCursor() const { return m_deathCursorDepth != 0; }

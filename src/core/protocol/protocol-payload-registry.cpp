@@ -6,6 +6,7 @@
 #include "protocol.h"
 #include "protocol-message-utils.h"
 #include "session/session-payloads.h"
+#include "session/managed-rewind-payloads.h"
 #include "skill-instance-message.h"
 #include "state/player-ui-state.h"
 #include "switch-context-message.h"
@@ -572,6 +573,10 @@ bool validateKnownSchema(const QString &schema, const QVariant &value,
         return validateTypedPayload<SetupPayload>(value, error);
     if (schema == QLatin1String("ReadyPayload"))
         return validateTypedPayload<ReadyPayload>(value, error);
+    if (schema == QLatin1String("RewindControlPayload"))
+        return validateTypedPayload<RewindControlPayload>(value, error);
+    if (schema == QLatin1String("RewindStatusPayload"))
+        return validateTypedPayload<RewindStatusPayload>(value, error);
     if (schema == QLatin1String("StateSyncPayload"))
         return validateTypedPayload<StateSyncPayload>(value, error);
     if (schema == QLatin1String("ResolutionStatePayload"))
@@ -1188,6 +1193,8 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     ROOM_NOTIFICATION(S_COMMAND_SHOW_VIRTUAL_CARD, "Client::showVirtualCard", "ShowVirtualCardPayload");
     ROOM_NOTIFICATION(S_COMMAND_CARD_PROVENANCE, "Client::cardProvenance", "CardProvenancePayload");
     ROOM_NOTIFICATION(S_COMMAND_UPDATE_PLAYER_UI_STATE, "Client::updatePlayerUIState", "PlayerUiStatePayload");
+    addRoomNotification(result, S_COMMAND_MANAGED_REWIND_STATE, "S_COMMAND_MANAGED_REWIND_STATE",
+        "Client::managedRewindState", "RewindStatusPayload", ProtocolReplayPolicy::Excluded);
     ROOM_NOTIFICATION(S_COMMAND_STATE_SYNC, "ClientLiveSession", "StateSyncPayload");
     ROOM_NOTIFICATION(S_COMMAND_RESOLUTION_STATE, "ClientGameStateReducer", "ResolutionStatePayload");
     ROOM_NOTIFICATION(S_COMMAND_UPDATE_CARD, "Client::updateCard", "UpdateCardPayload");
@@ -1323,6 +1330,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
                        ProtocolEndpoint::Room, command, #command, consumer, schema, \
                        ProtocolReplayPolicy::Excluded, ProtocolCorrelationPolicy::None, \
                        "complete"))
+    CLIENT_CONTROL(S_COMMAND_MANAGED_REWIND, "Room::managedRewindCommand", "RewindControlPayload");
     CLIENT_CONTROL(S_COMMAND_ADD_ROBOT, "Room::addRobotCommand", "AddRobotPayload");
     CLIENT_CONTROL(S_COMMAND_TRUST, "Room::trustCommand", "TrustPayload");
     CLIENT_CONTROL(S_COMMAND_PAUSE, "Room::pauseCommand", "PausePayload");
@@ -1358,6 +1366,8 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     });
 
     const QHash<QString, QStringList> requiredBySchema {
+        {QStringLiteral("RewindControlPayload"), {"root_game_id","world_id","generation","token","sequence","operation"}},
+        {QStringLiteral("RewindStatusPayload"), {"root_game_id","world_id","generation","token","ack_sequence","message","profile","supported","authorized","busy"}},
         {QStringLiteral("ServerHelloPayload"), {QStringLiteral("game_version"), QStringLiteral("mod_name"), QStringLiteral("card_count")}},
         {QStringLiteral("SignupRequestPayload"), {QStringLiteral("reconnect_requested"), QStringLiteral("screen_name"), QStringLiteral("avatar")}},
         {QStringLiteral("SignupReplyPayload"), {QStringLiteral("accepted")}},
@@ -1457,6 +1467,11 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
         // direction became protocol state still carries.
         if (descriptor.targetSchema == QLatin1String("ArrangeSeatsPayload"))
             descriptor.optionalFields.append(QStringLiteral("play_order_reversed"));
+        if (descriptor.targetSchema == QLatin1String("StateSyncPayload"))
+            descriptor.optionalFields << QStringLiteral("managed_timeline_restore")
+                                      << QStringLiteral("round")
+                                      << QStringLiteral("root_game_id") << QStringLiteral("world_id")
+                                      << QStringLiteral("timeline_generation") << QStringLiteral("current_player");
         descriptor.currentPayloadShape = QStringLiteral("typed_object");
         descriptor.parser = descriptor.targetSchema == QLatin1String("InteractionRequestPayload")
             || descriptor.targetSchema == QLatin1String("InteractionReplyPayload")

@@ -108,6 +108,13 @@ struct StateSyncPayload
     QString syncId;
     QString phase;
     bool reconnect = true;
+    // Managed timeline restores keep the active card universe separate from
+    // the hidden draw-pile order. This optional marker brackets that snapshot.
+    bool managedTimelineRestore = false;
+    QString rootGameId, worldId, timelineGeneration;
+    QString currentPlayer;
+    bool hasRound = false;
+    int round = 0;
 
     QVariantMap toVariant() const;
     static bool parse(const QVariant &value, StateSyncPayload *payload,

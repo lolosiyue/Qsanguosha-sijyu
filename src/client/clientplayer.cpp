@@ -4,6 +4,7 @@
 #include "clientstruct.h"
 #include "build-features.h"
 #include <QFile>
+#include <QSet>
 
 ClientPlayer *Self = nullptr;
 
@@ -402,3 +403,60 @@ void ClientPlayer::setMark(const QString &mark, int value)
 		emit Mark_changed(mark, value);
 }
 
+void ClientPlayer::resetForManagedSync()
+{
+	// Replace card zones without letting ClientPlayer interpret the old hand as
+	// incremental card losses while the authoritative snapshot is replayed.
+	QSet<int> oldHand;
+	for (const Card *card : Player::getHandcards())
+		if (card) oldHand.insert(card->getId());
+	for (int id : hand_ids) oldHand.insert(id);
+	for (int id : oldHand) Player::removeCard(id, PlaceHand);
+	handcard_num = 0;
+	hand_ids.clear();
+	known_cards.clear();
+	for (int id : getEquipsId()) Player::removeCard(id, PlaceEquip);
+	for (int id : getJudgingAreaID()) Player::removeCard(id, PlaceDelayedTrick);
+	const QStringList oldPiles = piles.keys();
+	for (const QString &pile : oldPiles)
+		for (int id : piles.value(pile)) Player::removeCard(id, PlaceSpecial);
+	for (const QString &pile : oldPiles) Player::setPileOpen(pile, QStringLiteral("."));
+	piles.clear();
+	for (const QString &pile : oldPiles)
+		if (!pile.startsWith(QLatin1Char('#'))) emit pile_changed(pile);
+
+	const QStringList oldGeneralPiles = general_piles.keys();
+	general_piles.clear();
+	general_pile_open.clear();
+	for (const QString &pile : oldGeneralPiles)
+		if (!pile.startsWith(QLatin1Char('#'))) emit general_pile_changed(pile);
+	for (const QString &mark : marks.keys()) setMark(mark, 0);
+	marks.clear();
+	mark_doc->clear();
+	history.clear();
+	clearFlags();
+	clearTags();
+	clearCardLimitation();
+	clearSkillInstances();
+	setSkillDescriptionState({}, {}, {});
+	description_s2k2v.clear();
+	card_description_swaps.clear();
+	m_skillValidityCache.clear();
+
+	QList<int> empty;
+	setShownHandcards(empty);
+	setBrokenEquips(empty);
+	setUIState(PlayerUIState());
+
+	// Dynamic gameplay properties are replayed by the following complete
+	// ServerPlayer::marshal projection. Keep the signup avatar as connection
+	// identity; the rest belongs to the timeline.
+	for (const QByteArray &name : dynamicPropertyNames()) {
+		if (name == "avatar" || name == "avatarIcon" || name == "avatarIcon2") continue;
+		QObject::setProperty(name.constData(), QVariant());
+	}
+	emit state_changed();
+	emit skill_state_changed();
+	emit mark_changed();
+	emit gameplay_property_changed();
+}

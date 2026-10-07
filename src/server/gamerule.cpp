@@ -27,6 +27,14 @@ static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
 	context.invoker = acceptedInvoker;
 }
 
+bool GameRule::beginsNormalRound(Room *room, ServerPlayer *player)
+{
+    return room && player && !room->getAlivePlayers().isEmpty()
+        && !room->getTag("Global_ExtraTurn" + player->objectName()).toBool()
+        && player == room->getAlivePlayers().first()
+        && player->getMark("TurnLengthCount") < room->getTag("TurnLengthCount").toInt() + 1;
+}
+
 GameRule::GameRule(QObject *)
     : TriggerSkill("game_rule")
 {
@@ -360,7 +368,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			room->addPlayerMark(player,"@extra_turn");
 		else if(player==room->getAlivePlayers().first()) {
 			QVariant rsdata = room->getTag("TurnLengthCount").toInt()+1;
-			if(player->getMark("TurnLengthCount")<rsdata.toInt()){
+            if(beginsNormalRound(room, player)){
 				room->setTag("TurnLengthCount",rsdata);
 				room->doBroadcastNotify(QSanProtocol::S_COMMAND_ADD_ROUND,rsdata);
 				// Register the number of rounds played.

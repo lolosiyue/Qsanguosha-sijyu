@@ -165,7 +165,9 @@ DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     if (!m_client) return;
     connect(m_client->getPromptDoc(), &QTextDocument::contentsChanged, this, [this]() { scheduleRefresh(); });
     connect(m_client, &Client::gamePresentationStateChanged, this,
-        [this]() { m_stateDirty = true; scheduleRefresh(); });
+        [this]() { m_stateDirty = true; scheduleRefresh(); refreshManagedRewindControls(); });
+    connect(m_client, &Client::managedRewindStateChanged, this,
+        [this]() { refreshManagedRewindControls(); });
     connect(m_client, &Client::status_changed, this, [this]() {
         clearKeyboardCursor();
         m_stateDirty = true;
@@ -1096,10 +1098,32 @@ void DesktopGamePresentation::showControls()
         m_panel = new GameControlPanel(m_scene->mainWindow());
         connect(m_panel, &GameControlPanel::intentRequested, this, &DesktopGamePresentation::applyIntent,
                 Qt::QueuedConnection);
+        connect(m_panel, &GameControlPanel::managedRewindRequested, this, [this](const QString &operation) {
+            if (!m_client)
+                return;
+            if (operation == QLatin1String("cancel"))
+                m_client->requestManagedRewindCancel();
+            else
+                m_client->requestManagedRewind(operation);
+        });
     }
     refresh();
     m_panel->setModel(m_model);
+    refreshManagedRewindControls();
     m_panel->openPanel();
+}
+
+void DesktopGamePresentation::refreshManagedRewindControls()
+{
+    if (!m_panel)
+        return;
+    if (!m_client || m_client->getReplayer()) {
+        m_panel->setManagedRewindState(tr("Managed rewind is not available while viewing a replay."), false, false);
+        return;
+    }
+    m_panel->setManagedRewindState(m_client->managedRewindStatusText(),
+                                   m_client->canRequestManagedRewind(),
+                                   m_client->canRequestManagedRewindCancel());
 }
 
 void DesktopGamePresentation::applyIntent(const QString &kind, const QString &id, bool selected,

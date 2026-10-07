@@ -591,6 +591,7 @@ protected:
 
 private:
     friend class PlayerStateService;
+    friend class RoomManagedState;
     // Commit receipts before mark_changed can re-enter game rules.
     void setMarkWithReceipt(const QString &mark, int value,
                             const std::function<void(const QString &, int, int)> &committed);
