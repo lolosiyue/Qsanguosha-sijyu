@@ -256,6 +256,7 @@ private:
     DesktopGamePresentation *m_gamePresentation = nullptr;
     QPointer<RoomOverlayHost> m_overlayHost;
     QPointer<QmlTableLayer> m_qmlLayer;
+    QMetaObject::Connection m_qmlSceneChanged; // changed -> relayout, only while the layer has elements.
     bool m_responsiveEnabled = false;
     bool m_legacyPromptVisible = false;
     RoomLayoutEngine::ResponsiveInput m_responsiveInput;

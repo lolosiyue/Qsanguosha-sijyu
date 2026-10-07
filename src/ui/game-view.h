@@ -45,6 +45,9 @@ private:
     GameViewGlFilter *m_glFilter = nullptr;
 #endif
     void ensureRoomOverlay(RoomScene *room);
+#if QSAN_ENABLE_QML
+    void retireQmlLayer();
+#endif
     QPointer<RoomOverlayHost> m_overlay;
     QPointer<QmlTableLayer> m_qmlLayer;
     QPointer<RoomScene> m_overlayRoom;

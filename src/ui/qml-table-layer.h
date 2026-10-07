@@ -66,6 +66,9 @@ public slots:
 signals:
     // Emitted after a relayout that follows an element being added, updated or removed.
     void elementsChanged();
+    // The first element was mounted (true) or the last one removed (false). The layer is
+    // hidden while it has no element; listeners that drive relayouts only need to run while active.
+    void activeChanged(bool active);
 
 protected:
     bool event(QEvent *event) override;
@@ -93,6 +96,7 @@ private:
     void relayout();
     bool interactiveAt(const QPointF &pos) const;
     void setPassThrough(bool passThrough);
+    void syncActive();
 
     QPointer<QGraphicsView> m_view;
     GeometryProvider m_provider;
@@ -105,6 +109,7 @@ private:
     QmlTableGeometry m_table;
     QRegion m_occluded;
     bool m_reportPending = false;
+    bool m_active = false;
     bool m_forwarding = false;
     bool m_dispatching = false; // An event is being delivered to the layer; do not forward it again.
 };

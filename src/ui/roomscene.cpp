@@ -1473,7 +1473,15 @@ void RoomScene::attachQmlLayer(QmlTableLayer *layer)
         if (self && ClientInstance)
             self->collectQmlGeometry(seats, table);
     });
-    connect(this, &QGraphicsScene::changed, layer, &QmlTableLayer::scheduleRelayout);
+    // Scene changes fire every animation frame; follow them only while an element is mounted.
+    QObject::disconnect(m_qmlSceneChanged);
+    connect(layer, &QmlTableLayer::activeChanged, this, [this, layer](bool active) {
+        if (layer != m_qmlLayer)
+            return; // A retired layer that is still waiting for deletion.
+        QObject::disconnect(m_qmlSceneChanged);
+        if (active)
+            m_qmlSceneChanged = connect(this, &QGraphicsScene::changed, layer, &QmlTableLayer::scheduleRelayout);
+    });
     connect(this, &RoomScene::responsiveGeometryChanged, layer, &QmlTableLayer::scheduleRelayout);
     if (ClientInstance) {
         connect(ClientInstance, &Client::qml_element_received, layer, &QmlTableLayer::handleElement);
