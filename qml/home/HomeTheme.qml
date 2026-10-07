@@ -207,6 +207,9 @@ Item {
     readonly property int cardCaptionFontSize: tvMode ? Math.round(13 * tvFontScale) : 13
     readonly property int cardMetaFontSize: tvMode ? Math.round(12 * tvFontScale) : 12
     readonly property int cardControlFontSize: tvMode ? Math.round(13 * tvFontScale) : 13
+    // BAToolButton labels; scale with the rest of the text in TV mode.
+    readonly property int toolButtonFontSize: tvMode ? Math.round(12 * tvFontScale) : 12
+    readonly property int toolButtonHighContrastFontSize: tvMode ? Math.round(14 * tvFontScale) : 14
     readonly property int cardBorderWidth: 1
     readonly property int cardSelectedBorderWidth: 2
     readonly property int cardFocusBorderWidth: 3

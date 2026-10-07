@@ -8,7 +8,10 @@ AbstractButton {
     property url iconSource: ""
     property bool highContrast: homeController && homeController.visualMode === "highcontrast"
 
-    implicitWidth: control.text.length > 0 ? 124 : 72
+    // Grow past the default for TV-scaled labels; the slanted panel needs side room.
+    implicitWidth: control.text.length > 0
+                   ? Math.max(124, label.implicitWidth + 32 + (iconImage.visible ? iconImage.width + 8 : 0))
+                   : 72
     implicitHeight: 56
 
     hoverEnabled: true
@@ -94,12 +97,17 @@ AbstractButton {
             }
 
             Text {
+                id: label
                 anchors.verticalCenter: parent.verticalCenter
                 visible: control.text.length > 0
+                // Layouts that pin a narrower width elide instead of spilling past the panel.
+                width: Math.min(implicitWidth, control.width - 24 - (iconImage.visible ? iconImage.width + 8 : 0))
+                elide: Text.ElideRight
 
                 text: control.text
                 color: HomeTheme.baNavy
-                font.pixelSize: control.highContrast ? 14 : 12
+                font.pixelSize: control.highContrast ? HomeTheme.toolButtonHighContrastFontSize
+                                                     : HomeTheme.toolButtonFontSize
                 font.weight: control.highContrast ? Font.Bold : Font.Medium
             }
         }
