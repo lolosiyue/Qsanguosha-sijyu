@@ -1787,7 +1787,16 @@ bool QSanSkinScheme::load(const QVariant &configs)
 	QString imageFile = config["roomImageConfigFile"].toString();
 	QString audioFile = config["roomAudioConfigFile"].toString();
 	QString animFile = config["roomAnimationConfigFile"].toString();
-	return _m_roomSkin.load(layoutFile, imageFile, audioFile, animFile);
+	bool success = _m_roomSkin.load(layoutFile, imageFile, audioFile, animFile);
+	// Big-picture sessions merge an optional "<name>.tv.layout.json" sibling on
+	// top of the base layout; only the keys it carries (TV font sizes) change.
+	if (qsanBigPictureModeActive() && !layoutFile.isEmpty()) {
+		QString tvLayoutFile = layoutFile;
+		tvLayoutFile.replace(QStringLiteral(".layout.json"), QStringLiteral(".tv.layout.json"));
+		if (tvLayoutFile != layoutFile && QFile::exists(tvLayoutFile))
+			success = _m_roomSkin.load(tvLayoutFile, QString(), QString(), QString()) && success;
+	}
+	return success;
 }
 
 const QSanRoomSkin &QSanSkinScheme::getRoomSkin() const

@@ -413,6 +413,16 @@ MainWindow::MainWindow(QWidget *parent)
 		showHomePage();
 	});
 
+	// Big-picture sessions launch fullscreen like Steam Big Picture. The saved
+	// WindowState is left untouched; closeEvent skips persisting the forced flag.
+	if (qsanBigPictureModeActive()) {
+		setWindowState(windowState() | Qt::WindowFullScreen);
+		// The EWMH hint needs a window manager; without one (bare Xvfb, SteamOS
+		// game-mode edge cases) the flag alone leaves the window unresized.
+		if (QScreen *screen = QGuiApplication::primaryScreen())
+			setGeometry(screen->geometry());
+	}
+
 	systray = nullptr;
 }
 
@@ -1304,10 +1314,13 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 	CrashHandler::beginShutdown();
 
-	const QRect placed = placedOnScreen(size(), pos());
-	Config.setValue("WindowSize", placed.size());
-	Config.setValue("WindowPosition", placed.topLeft());
-	Config.setValue("WindowState", (int)windowState());
+	// A forced TV fullscreen session must not overwrite desktop geometry/state.
+	if (!qsanBigPictureModeActive()) {
+		const QRect placed = placedOnScreen(size(), pos());
+		Config.setValue("WindowSize", placed.size());
+		Config.setValue("WindowPosition", placed.topLeft());
+		Config.setValue("WindowState", (int)windowState());
+	}
 
 	QMainWindow::closeEvent(event);
 	qApp->quit();

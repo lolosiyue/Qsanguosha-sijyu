@@ -1,7 +1,9 @@
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <QTimer>
 #include <QDir>
+#include <QEvent>
 #include <QFile>
 #include <QLoggingCategory>
 #include <QApplication>
@@ -9,11 +11,15 @@
 #include <QCoreApplication>
 #include <QStringList>
 #include <QScopeGuard>
+#if defined(Q_OS_WIN) && !defined(QSAN_XP_LEGACY)
+#include <windows.h>
+#endif
 
 #include "mainwindow.h"
 #include "boot-splash.h"
 #if !defined(QSAN_XP_LEGACY)
 #include "widget-accessibility.h"
+#include "input/spatial-focus-filter.h"
 #endif
 #include "settings.h"
 #if QSAN_CONTROLLER_ENABLED
@@ -55,6 +61,112 @@
 #include <QMessageBox>
 #endif
 
+// Eats QEvent::ToolTip (and context-help tooltip requests) at application
+// scope so nothing in big-picture mode can pop hover help. Installed only
+// while the mode is active; normal runs are untouched.
+class BigPictureTooltipFilter : public QObject
+{
+public:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::ToolTip
+            || event->type() == QEvent::WhatsThis)
+            return true;
+        return QObject::eventFilter(watched, event);
+    }
+};
+
+// Best-effort primary-screen pixel height probed before QApplication exists;
+// returns 0 when the screen cannot be measured (no display server reachable).
+static int probeScreenPixelHeight()
+{
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+    // xdpyinfo reports the X screen's raw pixel dimensions; under XWayland it
+    // reports the compositor size, still the right "logical height" here.
+    // Only runs in big-picture mode, so the fork cost is paid once per launch.
+    if (FILE *fp = popen("xdpyinfo 2>/dev/null", "r")) {
+        char line[256];
+        int height = 0;
+        while (fgets(line, sizeof(line), fp)) {
+            const char *dim = strstr(line, "dimensions:");
+            if (dim) {
+                unsigned w = 0, h = 0;
+                if (sscanf(dim + 11, "%ux%u", &w, &h) == 2)
+                    height = static_cast<int>(h);
+                break;
+            }
+        }
+        pclose(fp);
+        return height;
+    }
+    return 0;
+#elif defined(Q_OS_WIN) && !defined(QSAN_XP_LEGACY)
+    return GetSystemMetrics(SM_CYSCREEN);
+#else
+    return 0;
+#endif
+}
+
+// Estimate what QScreen::devicePixelRatio() will report before the platform
+// plugin exists. A value > 1.0 means the platform already scales and
+// QT_SCALE_FACTOR must not be forced on top.
+static qreal estimateScreenDpr()
+{
+    // Explicit user/app scale settings always win and already settle the DPR.
+    if (qEnvironmentVariableIsSet("QT_SCALE_FACTOR")
+        || qEnvironmentVariableIsSet("QT_SCREEN_SCALE_FACTORS"))
+        return 2.0;
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+    // Qt on X11/XWayland reports DPR 1 for unscaled sessions; Wayland-owned
+    // fractional scaling reaches Qt through the env vars checked above.
+    if (qEnvironmentVariableIsSet("WAYLAND_DISPLAY"))
+        return 2.0; // Compositor scaling cannot be measured before QApplication.
+    return 1.0;
+#elif defined(Q_OS_WIN) && !defined(QSAN_XP_LEGACY)
+    using GetDpiForSystem_t = UINT(WINAPI *)();
+    static const GetDpiForSystem_t getDpiForSystem = reinterpret_cast<GetDpiForSystem_t>(
+        reinterpret_cast<void *>(GetProcAddress(
+            GetModuleHandleW(L"user32.dll"), "GetDpiForSystem")));
+    if (getDpiForSystem)
+        return getDpiForSystem() / 96.0;
+    return 1.0;
+#else
+    return 1.0;
+#endif
+}
+
+// REPORT §3.1: a 4K panel without OS scaling (logical height > 1440, DPR 1 —
+// typical on Linux/X11 and Windows at 100 %) leaves QWidget dialogs and the
+// table unreadably small. Force QT_SCALE_FACTOR=2 so the session runs as
+// 1080p logical with DPR 2. Must run before QApplication is constructed.
+static void applyBigPictureScaleFactor()
+{
+    if (qgetenv("QT_ENABLE_HIGHDPI_SCALING") == "0")
+        return; // High-DPI disabled outright; a forced factor is ignored anyway.
+    if (estimateScreenDpr() > 1.0)
+        return;
+    if (probeScreenPixelHeight() > 1440)
+        qputenv("QT_SCALE_FACTOR", "2");
+}
+
+// Base stylesheet plus the TV overlay (>=64px buttons, visible focus ring)
+// only while big-picture mode is active. Normal sessions get byte-identical
+// styling to before.
+static void applyQsanStyleSheet(bool bigPictureMode)
+{
+    QString style;
+    QFile file(QStringLiteral("qss/sanguosha.qss"));
+    if (file.open(QIODevice::ReadOnly))
+        style += QTextStream(&file).readAll();
+    if (bigPictureMode) {
+        QFile tvFile(QStringLiteral("qss/bigpicture_tv.qss"));
+        if (tvFile.open(QIODevice::ReadOnly))
+            style += QTextStream(&tvFile).readAll();
+    }
+    if (!style.isEmpty())
+        qApp->setStyleSheet(style);
+}
+
 int main(int argc, char *argv[]) {
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
     // Under WSLg/XWayland, XI2 sends clicks to the window frame but not the QQuickWidget/QOpenGLWidget client area.
@@ -94,6 +206,25 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[i], "--seed") == 0) {
             qputenv("QT_HASH_SEED", "0");
             break;
+        }
+    }
+
+    // Big-picture (10-foot) mode: --big-picture, the persisted BigPicture/Enabled
+    // key, or a preset QSAN_BIG_PICTURE env var. Normalize the first two into the
+    // env var now so every later stage only checks qsanBigPictureModeActive().
+    bool bigPictureMode = false;
+    {
+        const QByteArray bigPictureEnv = qgetenv("QSAN_BIG_PICTURE");
+        if (!bigPictureEnv.isEmpty()) {
+            // An explicit off value overrides CLI and persisted settings too.
+            bigPictureMode = qsanBigPictureModeActive();
+        } else {
+            for (int i = 1; i < argc; ++i)
+                if (strcmp(argv[i], "--big-picture") == 0)
+                    bigPictureMode = true;
+            bigPictureMode = bigPictureMode
+                || Config.value(QStringLiteral("BigPicture/Enabled"), false).toBool();
+            qputenv("QSAN_BIG_PICTURE", bigPictureMode ? "1" : "0");
         }
     }
 
@@ -194,6 +325,8 @@ int main(int argc, char *argv[]) {
         // Controller builds use Qt's widget picker and on-screen text entry.
         QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 #endif
+        if (bigPictureMode)
+            applyBigPictureScaleFactor();
         new QApplication(argc, argv);
         // Qt's 10 MB default evicts decoded skin and emotion frames, forcing slow PNG decoding on the GUI thread.
 #ifdef Q_OS_ANDROID
@@ -206,6 +339,16 @@ int main(int argc, char *argv[]) {
 #endif
         // The home page uses custom contentItem and indicator controls unsupported by the Windows native style.
         QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+        if (bigPictureMode) {
+            // Hover tooltips are a desktop concept; suppress them on TV.
+            static BigPictureTooltipFilter tooltipFilter;
+            qApp->installEventFilter(&tooltipFilter);
+#if !defined(QSAN_XP_LEGACY)
+            // Spatial arrow/Enter/Esc navigation plus modal scrims in dialogs.
+            qApp->installEventFilter(new SpatialFocusFilter(qApp));
+#endif
+        }
     }
 
 #ifdef Q_OS_ANDROID
@@ -545,11 +688,7 @@ int main(int argc, char *argv[]) {
         Server *server = new Server(qApp);
 
         if (!headless) {
-            QFile file("qss/sanguosha.qss");
-            if (file.open(QIODevice::ReadOnly)) {
-                QTextStream stream(&file);
-                qApp->setStyleSheet(stream.readAll());
-            }
+            applyQsanStyleSheet(bigPictureMode);
 
             MainWindow *main_window = new MainWindow;
             Sanguosha->setParent(main_window);
@@ -583,11 +722,7 @@ int main(int argc, char *argv[]) {
     }
 
     startupPhase.next("main.stylesheet");
-    QFile file("qss/sanguosha.qss");
-    if (file.open(QIODevice::ReadOnly)) {
-        QTextStream stream(&file);
-        qApp->setStyleSheet(stream.readAll());
-    }
+    applyQsanStyleSheet(bigPictureMode);
 
     startupPhase.finish();
     startupTotal.finish();

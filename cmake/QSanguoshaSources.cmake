@@ -164,6 +164,8 @@ set(QSAN_SOURCES
     src/ui/general-info-card.cpp
     src/ui/graphicspixmaphoveritem.cpp
     src/ui/indicatoritem.cpp
+    src/ui/input/spatial-focus-filter.cpp
+    src/ui/input/spatial-focus-filter.h
     src/ui/magatamas-item.cpp
     src/ui/photo.cpp
     src/ui/pixmapanimation.cpp
