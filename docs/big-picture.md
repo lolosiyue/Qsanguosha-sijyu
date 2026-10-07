@@ -2,8 +2,7 @@
 
 Big-picture mode is a TV/controller-oriented session flag: fullscreen window,
 no hover tooltips, larger skin fonts, a keyboard-focusable dialog layer, and a
-gamepad story that starts with Steam Input keyboard emulation and grows into a
-native gamepad service. Design rationale and phased plan:
+native SDL3 input path shared with controller-only gameplay. Design rationale and phased plan:
 `qsanguosha-task-briefs/evidence/BP-big-picture-research-20261006/REPORT.md`
 (scheme C; section 3.1 covers the 4K scale rule, 4.6 the Steam Input mapping,
 7 the BP-0/BP-1 breakdown).
@@ -13,7 +12,7 @@ native gamepad service. Design rationale and phased plan:
 | Mechanism | Effect |
 | --- | --- |
 | Command line `QSanguosha --big-picture` | Enables the mode for this launch. |
-| Settings key `BigPicture/Enabled = true` (in `config.ini` / `QSanguosha.conf`) | Persists the mode across launches; written by the settings UI. |
+| Settings key `BigPicture/Enabled = true` (in `config.ini` / `QSanguosha.conf`) | Persists the mode across launches; currently set by editing QSettings. |
 | Environment `QSAN_BIG_PICTURE=1` | Force-enables; `QSAN_BIG_PICTURE=0` force-disables, overriding both of the above. |
 
 `--big-picture` is parsed before `QApplication` exists and normalizes to
@@ -33,16 +32,28 @@ When the mode is on:
 - The room skin loads `skins/<name>.tv.layout.json` on top of the regular
   layout file when present (`fulldefaultSkin.tv.layout.json` and
   `fulldefaultSkinAlt.tv.layout.json` — the Linux skin list — ship font
-  bumps to >= 18 skin px, i.e. >= 27 px at 1080p). Scene sizes are unchanged.
+  bumps to >= 18 skin px, i.e. >= 27 px at 1080p). Base and overlay are merged
+  before parsing, preserving base colors, derived variants and layout geometry.
 - `qss/bigpicture_tv.qss` is appended to the application stylesheet
   (>= 64 px buttons, visible focus ring).
-- `SpatialFocusFilter` is installed application-wide: arrow keys navigate
-  modal dialogs spatially, Enter activates, Escape/Backspace backs out,
-  PageUp/PageDown cycle focus groups (LB/RB stand-ins), and a translucent
-  scrim dims the window behind each modal dialog.
+- Physical keyboard/Steam keyboard events use `SpatialFocusFilter` for modal
+  spatial navigation. Controls retain their own editing/list keys; acceptance
+  and cancellation retain the native mandatory-choice contract. SDL actions
+  and their synthetic keys are handled exclusively by `ControllerRouter`.
+  A translucent, pointer-transparent scrim dims each modal dialog's host.
+- The existing table adapter adds a solid focus ring and contextual button
+  legend. New requests can acquire visible enabled focus after gamepad use;
+  an input that first reveals missing focus does not immediately select it.
+  BP target Left/Right traversal follows visible seat geometry; Up/Down and
+  shoulders retain the controller-only group/command navigation.
+- Gamepad use hides the pointer in BP; deliberate mouse motion, a mouse button
+  or physical keyboard input restores it. Synthetic keys do not switch modes.
+- Closing a BP session preserves the saved desktop window size, position and
+  state.
 
-With the mode off none of the above is installed or read; behavior and
-appearance are unchanged.
+With BP off, TV styling, skin overrides, fullscreen, tooltip suppression,
+modal scrims and the TV legend are disabled. The existing controller input
+remains available; its shared mode tracker does not hide the pointer.
 
 ## Keyboard contract
 
@@ -56,7 +67,7 @@ and the `key_press` names in
 | D-pad / left stick | Arrow keys | Move focus / browse current group |
 | A | Space | Toggle the focused item (card, target, option) |
 | Start | Enter | Confirm the current draft / invoke "yes" |
-| B | Escape or Backspace | Cancel / back (when the request allows) |
+| B | Escape | Cancel / back (when the request allows) |
 | LB / RB | PageUp / PageDown (Steam: Shift+Tab / Tab) | Previous / next focus group |
 | Y | Ctrl+Shift+I | Game-state snapshot |
 | View | F6 | Return focus to the current request dialog or the table |
@@ -70,8 +81,15 @@ honours `Tab`/`Shift+Tab` natively.
 
 ## Steam Input
 
-`docs/steam-input/qsanguosha-bigpicture.vdf` is a bundled Steam Input
-template (zero-code fallback). It maps:
+The default desktop input is the existing native SDL3 controller path; use a
+Steam **gamepad** layout for it. `docs/controller-integration.md` defines its
+South/West/East/North and Start mappings.
+
+`docs/steam-input/qsanguosha-bigpicture.vdf` is an optional keyboard-emulation
+fallback. It must be paired with `--controller-keyboard-fallback`, which
+skips native SDL polling for the entire process. Do not use the keyboard VDF
+with the default native-input launch. Builds configured with
+`QSAN_ENABLE_CONTROLLER=OFF` also have only the keyboard ingress. It maps:
 
 | Pad | Emitted key |
 | --- | --- |
@@ -94,7 +112,9 @@ Install (Steam Deck or desktop Big Picture):
    select it under Controller -> Layouts -> Templates, or recreate the
    bindings manually in the controller configurator — every binding above is
    a plain `key_press`.
-3. Launch the game with `--big-picture` (or enable `BigPicture/Enabled`).
+3. Launch with `--big-picture --controller-keyboard-fallback`. This is an
+   exclusive keyboard-emulation session: the native SDL service/router is not
+   created, preventing a single pad press from also entering the SDL path.
 
 X is intentionally unbound (reserved for "end turn/discard"); the left
 joystick, triggers and trackpads keep their default passthrough.
@@ -122,18 +142,17 @@ by the spatial filter.
 
 ## Known limits (BP-1 scope)
 
-- `askForQml` and Lua-authored custom dialogs do not follow the spatial
-  focus filter; they keep their own keyboard handling (virtual cursor is
-  Phase-2 work).
-- The table's `TenFoot` layout profile, seat-card simplification, focus
-  ring upgrade, on-table button legend and info card are BP-2 work; the TV
-  layout file only bumps fonts.
+- Custom QML remains subject to the existing `controller_ui` contract in
+  native controller sessions; arbitrary QML is not automatically navigable.
+- The table's `TenFoot` layout profile and seat-card simplification remain
+  future work; this integration adds the ring and legend to the current layout.
+  Details and game menus retain the existing controller-only implementations.
 - `PageUp`/`PageDown` group semantics are stubs (focus cycling) until
   per-request zones exist.
 - The pre-`QApplication` screen probe for the 4K rule reads `xdpyinfo`
   (X11/XWayland) or `GetSystemMetrics`+`GetDpiForSystem` (Windows). On a
-  session where neither reports the true physical panel (nested compositors,
-  remote desktops) the automatic `QT_SCALE_FACTOR=2` may not trigger; set it
-  manually in that case.
-- Changing `BigPicture/Enabled` takes effect on the next launch, like Steam's
-  own Big Picture toggle.
+  native Wayland session, compositor scaling is left untouched. Where neither
+  probe reports the true physical panel (nested compositors, remote desktops),
+  automatic `QT_SCALE_FACTOR=2` may not trigger; set it manually if needed.
+- `BigPicture/Enabled` is currently a QSettings/config-file key, not a visible
+  settings-page toggle. Changing it takes effect on the next launch.

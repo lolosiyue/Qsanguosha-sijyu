@@ -16,6 +16,9 @@
 #include "roomscene.h"
 #include "skill.h"
 #include "large-room-overview.h"
+#include "settings.h"
+#include "table-button-legend.h"
+#include "input/input-mode-tracker.h"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -27,6 +30,8 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QStatusBar>
+#include <QScopedValueRollback>
+#include <QtMath>
 #include <algorithm>
 
 void RoomScene::showGameStateSnapshot()
@@ -46,14 +51,24 @@ namespace {
 class TableKeyboardMarker final : public QGraphicsObject
 {
 public:
-    QRectF boundingRect() const override { return m_rect; }
+    QRectF boundingRect() const override { return boundingRectFor(); }
     void locate(const QRectF &rect) {
         if (m_rect == rect) return;
         prepareGeometryChange();
         m_rect = rect;
         update();
     }
+    void setTvStyle(bool tv) {
+        if (m_tv == tv) return;
+        prepareGeometryChange();
+        m_tv = tv;
+        update();
+    }
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) override {
+        if (m_tv) {
+            paintTv(painter);
+            return;
+        }
         QPen pen(QApplication::palette().color(QPalette::Highlight), 3, Qt::DashLine);
         pen.setCosmetic(true);
         painter->setPen(pen);
@@ -61,7 +76,32 @@ public:
         painter->drawRect(m_rect.adjusted(2, 2, -2, -2));
     }
 private:
+    // Big-picture ring: a solid outline outside the item plus a soft glow. Widths
+    // are in item units, so the ring grows with the scene on 1080p and 4K.
+    static constexpr qreal kTvOutset = 5;
+    static constexpr qreal kTvGlow = 9;
+    QRectF tvRect() const { return m_rect.adjusted(-kTvOutset, -kTvOutset, kTvOutset, kTvOutset); }
+    QRectF boundingRectFor() const {
+        return m_tv ? tvRect().adjusted(-kTvGlow, -kTvGlow, kTvGlow, kTvGlow) : m_rect;
+    }
+    void paintTv(QPainter *painter) {
+        const QColor accent(255, 200, 61);
+        const QRectF ring = tvRect();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setBrush(Qt::NoBrush);
+        for (int i = 3; i >= 1; --i) {
+            QColor glow = accent;
+            glow.setAlpha(36 + (3 - i) * 28);
+            painter->setPen(QPen(glow, 4 + i * 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter->drawRoundedRect(ring, 8, 8);
+        }
+        painter->setPen(QPen(accent, 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter->drawRoundedRect(ring, 8, 8);
+        painter->setPen(QPen(QColor(255, 255, 255, 220), 1.5));
+        painter->drawRoundedRect(ring.adjusted(3, 3, -3, -3), 6, 6);
+    }
     QRectF m_rect;
+    bool m_tv = false;
 };
 
 QString plain(const QString &text)
@@ -91,6 +131,14 @@ bool cardInteraction(InteractionType type)
 DesktopGamePresentation::DesktopGamePresentation(RoomScene *scene)
     : QObject(scene), m_scene(scene), m_client(ClientInstance)
 {
+    m_tvFocus = qsanBigPictureModeActive();
+    if (auto *tracker = InputModeTracker::instance()) {
+        connect(tracker, &InputModeTracker::modeChanged, this, [this](InputModeTracker::Mode mode) {
+            if (mode != InputModeTracker::Mode::Gamepad) clearKeyboardCursor();
+            scheduleRefresh();
+        });
+    }
+    connect(scene, &QGraphicsScene::sceneRectChanged, this, [this]() { scheduleRefresh(); });
     qRegisterMetaType<GameViewState>();
     qRegisterMetaType<GameActionModel>();
     // Queue publication until the existing signal chain has finished updating
@@ -145,6 +193,7 @@ DesktopGamePresentation::~DesktopGamePresentation()
     delete m_panel;
     delete m_snapshot;
     delete m_keyboardMarker;
+    delete m_legend;
 }
 
 void DesktopGamePresentation::clearKeyboardCursor()
@@ -152,6 +201,7 @@ void DesktopGamePresentation::clearKeyboardCursor()
     m_keyboardKind.clear();
     m_keyboardId.clear();
     if (m_keyboardMarker) m_keyboardMarker->hide();
+    if (m_legend) m_legend->hide();
     // The parent QMainWindow may already be in QWidget destruction when its
     // RoomScene child is deleted. Never call its statusBar() factory then.
     if (auto *status = m_keyboardStatusBar.data()) {
@@ -166,7 +216,9 @@ void DesktopGamePresentation::clearKeyboardCursor()
 
 void DesktopGamePresentation::updateKeyboardCursor()
 {
-    if (m_controllerNavigation && !m_keyboardKind.isEmpty() && m_scene->mainWindow()) {
+    const auto *tracker = InputModeTracker::existing();
+    const bool gamepad = tracker && tracker->mode() == InputModeTracker::Mode::Gamepad;
+    if ((m_controllerNavigation || gamepad) && !m_keyboardKind.isEmpty() && m_scene->mainWindow()) {
         auto *status = m_scene->mainWindow()->statusBar();
         m_keyboardStatusBar = status;
         if (!status->property("controllerHintStyled").toBool()) {
@@ -222,6 +274,7 @@ void DesktopGamePresentation::updateKeyboardCursor()
     // Follow the item's movement/scale (hand selection, target rows and reflow).
     // QPointer clears if that item's destruction also destroys the outline.
     m_keyboardMarker->setParentItem(item);
+    static_cast<TableKeyboardMarker *>(m_keyboardMarker.data())->setTvStyle(m_tvFocus);
     static_cast<TableKeyboardMarker *>(m_keyboardMarker.data())->locate(item->boundingRect());
     m_keyboardMarker->show();
 }
@@ -299,6 +352,39 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
         }
         if (groupIndex < 0) groupIndex = 0;
         const auto &entries = groups.at(groupIndex).entries;
+        // BP targets follow the visible seat ring, while Up/Down and shoulders
+        // keep the existing group navigation (including commands and votes).
+        if (m_tvFocus && m_controllerNavigation && !tab
+            && (key == Qt::Key_Left || key == Qt::Key_Right)
+            && groups.at(groupIndex).kind == QLatin1String("player") && entryIndex >= 0) {
+            QList<QPair<qreal, QString>> ring;
+            QList<QPair<QPointF, QString>> anchors;
+            QPointF center;
+            for (const auto &entry : entries) {
+                QGraphicsObject *item = nullptr;
+                if (m_scene->m_largeRoomOverview && m_scene->m_largeRoomOverview->isVisible())
+                    item = m_scene->m_largeRoomOverview->keyboardTarget(entry.id);
+                else for (auto it = m_scene->item2player.cbegin(); it != m_scene->item2player.cend(); ++it)
+                    if (it.value() && it.value()->objectName() == entry.id) item = it.key();
+                if (!item || !item->isVisible()) continue;
+                const QPointF anchor = item->sceneBoundingRect().center();
+                anchors.append({anchor, entry.id});
+                center += anchor;
+            }
+            if (!anchors.isEmpty()) center /= anchors.size();
+            for (const auto &anchor : anchors) {
+                const QPointF delta = anchor.first - center;
+                ring.append({qAtan2(-delta.x(), delta.y()), anchor.second});
+            }
+            std::sort(ring.begin(), ring.end());
+            for (int i = 0; i < ring.size(); ++i) {
+                if (ring.at(i).second != m_keyboardId) continue;
+                m_keyboardId = ring.at((i + direction + ring.size()) % ring.size()).second;
+                m_controllerPlayer = m_keyboardId;
+                updateKeyboardCursor();
+                return true;
+            }
+        }
         entryIndex = entryIndex < 0 ? (backward ? entries.size() - 1 : 0)
             : (entryIndex + direction + entries.size()) % entries.size();
         m_keyboardKind = groups.at(groupIndex).kind;
@@ -349,6 +435,9 @@ bool DesktopGamePresentation::handleTableKey(QKeyEvent *event)
 
 GameActionModel DesktopGamePresentation::currentActions()
 {
+    // Merely querying actions during dispatch must not create a default that
+    // the same press immediately activates before it has been painted.
+    const QScopedValueRollback<bool> suppressAutoFocus(m_autoFocusSuppressed, true);
     refresh();
     return m_model;
 }
@@ -379,6 +468,7 @@ void DesktopGamePresentation::showControllerDetails()
 
 bool DesktopGamePresentation::handleControllerAction(ControllerAction action)
 {
+    const QScopedValueRollback<bool> suppressAutoFocus(m_autoFocusSuppressed, true);
     refresh();
     if (!m_model.supported) return false;
     // The existing widget projection exposes pile movement as explicit buttons.
@@ -406,7 +496,7 @@ bool DesktopGamePresentation::handleControllerAction(ControllerAction action)
         m_controllerNavigation = true;
         handleTableKey(&recover);
         m_controllerNavigation = false;
-        if (key == Qt::Key_Space) return true; // First press establishes visible focus.
+        return true; // First press establishes visible focus without advancing past it.
     }
     const int count = action == ControllerAction::PreviousPage || action == ControllerAction::NextPage ? 10 : 1;
     m_controllerNavigation = true;
@@ -416,6 +506,90 @@ bool DesktopGamePresentation::handleControllerAction(ControllerAction action)
     }
     m_controllerNavigation = false;
     return true;
+}
+
+void DesktopGamePresentation::updateFocusLayer()
+{
+    const auto *tracker = InputModeTracker::existing();
+    const bool gamepad = tracker && tracker->mode() == InputModeTracker::Mode::Gamepad;
+    const bool tableVisible = !QApplication::activeModalWidget() && !QApplication::activePopupWidget()
+        && m_scene->mainWindow() && m_scene->mainWindow()->isVisible();
+    if (!m_model.supported || !tableVisible || m_model.arrangingCards) {
+        if (m_legend) m_legend->hide();
+        if (m_keyboardMarker) m_keyboardMarker->hide();
+        return;
+    }
+    if (!m_keyboardKind.isEmpty()) {
+        const auto contains = [this](const QList<GameActionEntry> &entries) {
+            return std::any_of(entries.cbegin(), entries.cend(), [this](const GameActionEntry &entry) {
+                return entry.enabled && entry.id == m_keyboardId;
+            });
+        };
+        const bool valid = m_keyboardKind == QLatin1String("card") ? contains(m_model.cards)
+            : m_keyboardKind == QLatin1String("player") ? contains(m_model.players)
+            : m_keyboardKind == QLatin1String("skill") ? contains(m_model.skills)
+            : m_keyboardKind == QLatin1String("option") ? contains(m_model.actions)
+            : m_keyboardKind == QLatin1String("command") && (
+                (m_keyboardId == QLatin1String("confirm") && m_model.canConfirm)
+                || (m_keyboardId == QLatin1String("cancel") && m_model.canCancel)
+                || (m_keyboardId == QLatin1String("finish") && m_model.canFinish)
+                || m_keyboardId.startsWith(QLatin1String("controller-")));
+        if (!valid) clearKeyboardCursor();
+    }
+    if (gamepad && !m_autoFocusSuppressed && m_keyboardKind.isEmpty()
+        && m_autoFocusRequest != m_model.requestId) {
+        const auto choose = [this](const QString &kind, const QList<GameActionEntry> &entries) {
+            for (const auto &entry : entries) {
+                if (!entry.enabled) continue;
+                m_keyboardKind = kind;
+                m_keyboardId = entry.id;
+                return true;
+            }
+            return false;
+        };
+        bool chosen = false;
+        if (m_model.actionContext == QLatin1String("skill-dialog"))
+            chosen = choose(QStringLiteral("option"), m_model.actions);
+        if (!chosen) chosen = choose(QStringLiteral("card"), m_model.cards);
+        if (!chosen) chosen = choose(QStringLiteral("player"), m_model.players);
+        if (!chosen) chosen = choose(QStringLiteral("option"), m_model.actions);
+        if (!chosen) chosen = choose(QStringLiteral("skill"), m_model.skills);
+        if (!chosen && m_model.canConfirm) {
+            m_keyboardKind = QStringLiteral("command");
+            m_keyboardId = QStringLiteral("confirm");
+        }
+        if (!m_keyboardKind.isEmpty()) m_autoFocusRequest = m_model.requestId;
+    }
+    updateKeyboardCursor();
+    if (!m_tvFocus) return;
+    const bool keyboard = tracker && tracker->mode() == InputModeTracker::Mode::Keyboard;
+    QList<TableButtonLegend::Entry> entries;
+    entries.append({keyboard ? QStringLiteral("← / →") : QStringLiteral("D-pad"), tr("Move")});
+    if (!m_model.cards.isEmpty() || !m_model.players.isEmpty() || !m_model.actions.isEmpty() || !m_model.skills.isEmpty())
+        entries.append({keyboard ? QStringLiteral("Space") : QStringLiteral("South"), tr("Select")});
+    if (m_model.canConfirm)
+        entries.append({keyboard ? QStringLiteral("Enter") : QStringLiteral("West"), tr("Confirm")});
+    if (m_model.canCancel)
+        entries.append({keyboard ? QStringLiteral("Esc") : QStringLiteral("East"), tr("Cancel")});
+    entries.append({keyboard ? QStringLiteral("Tab") : QStringLiteral("LB / RB"), tr("Switch group")});
+    if (!keyboard) entries.append({QStringLiteral("Start"), tr("Game menu")});
+    if (!m_legend) {
+        auto *legend = new TableButtonLegend;
+        legend->setZValue(10001);
+        m_scene->addItem(legend);
+        m_legend = legend;
+    }
+    m_legend->setEntries(entries);
+    const QRectF scene = m_scene->sceneRect();
+    const QRectF size = m_legend->boundingRect();
+    qreal bottom = scene.bottom() - 8;
+    if (m_scene->dashboard && m_scene->dashboard->isVisible())
+        bottom = qMin(bottom, m_scene->dashboard->sceneBoundingRect().top() - 24);
+    // Long localized legends fit the current table width, including small windows.
+    const qreal scale = qMin(qreal(1), qMax(qreal(0.1), (scene.width() - 16) / qMax(qreal(1), size.width())));
+    m_legend->setScale(scale);
+    m_legend->setPos(scene.center().x() - size.width() * scale / 2, bottom - size.height() * scale);
+    m_legend->show();
 }
 
 void DesktopGamePresentation::setLiveConsumer(QObject *consumer, bool live)
@@ -459,7 +633,9 @@ void DesktopGamePresentation::submitIntent(const QString &kind, const QString &i
 
 void DesktopGamePresentation::scheduleRefresh()
 {
-    if ((m_liveConsumers.isEmpty() && (!m_panel || !m_panel->isVisible())) || m_refreshPending) return;
+    const auto *tracker = InputModeTracker::existing();
+    const bool focusLayer = m_tvFocus || (tracker && tracker->mode() == InputModeTracker::Mode::Gamepad);
+    if ((m_liveConsumers.isEmpty() && (!m_panel || !m_panel->isVisible()) && !focusLayer) || m_refreshPending) return;
     m_refreshPending = true;
     QTimer::singleShot(0, this, [this]() {
         m_refreshPending = false;
@@ -801,6 +977,7 @@ void DesktopGamePresentation::refresh()
     const quint64 generation = session ? session->generation() : 0;
     const quint64 request = m_client->interactionCore()->activeRequestId();
     if (request != m_draftRequest || generation != m_draftGeneration) {
+        if (generation != m_draftGeneration) m_autoFocusRequest = 0;
         clearKeyboardCursor();
         m_option.clear();
         m_draftRequest = request;
@@ -838,6 +1015,7 @@ void DesktopGamePresentation::refresh()
             emit presentationChanged(m_cachedView, m_model);
         }
     }
+    updateFocusLayer();
 }
 
 GameViewState DesktopGamePresentation::viewState() const

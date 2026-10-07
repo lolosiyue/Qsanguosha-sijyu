@@ -479,7 +479,7 @@ void Settings::init()
 
     ColorScheme = qBound(0, value("ColorScheme", 0).toInt(), 2);
 
-    // Settings UI mirror of the persisted 10-foot toggle; activation is still
+    // Mirror of the persisted 10-foot key; activation is still
     // qsanBigPictureModeActive() (--big-picture and QSAN_BIG_PICTURE override).
     BigPictureEnabled = value("BigPicture/Enabled", false).toBool();
 

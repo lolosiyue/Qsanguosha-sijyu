@@ -20,6 +20,7 @@
 #if !defined(QSAN_XP_LEGACY)
 #include "widget-accessibility.h"
 #include "input/spatial-focus-filter.h"
+#include "input/input-mode-tracker.h"
 #endif
 #include "settings.h"
 #if QSAN_CONTROLLER_ENABLED
@@ -347,6 +348,7 @@ int main(int argc, char *argv[]) {
 #if !defined(QSAN_XP_LEGACY)
             // Spatial arrow/Enter/Esc navigation plus modal scrims in dialogs.
             qApp->installEventFilter(new SpatialFocusFilter(qApp));
+            InputModeTracker::instance()->setHideCursorInGamepadMode(true);
 #endif
         }
     }
@@ -561,7 +563,8 @@ int main(int argc, char *argv[]) {
     startupPhase.next("main.settings");
     Config.init();
 #if QSAN_CONTROLLER_ENABLED
-    if (qobject_cast<QApplication *>(qApp)) {
+    if (qobject_cast<QApplication *>(qApp)
+        && !qApp->arguments().contains(QStringLiteral("--controller-keyboard-fallback"))) {
         auto *controllers = new ControllerService(qApp);
         new ControllerRouter(controllers, qApp);
     }
