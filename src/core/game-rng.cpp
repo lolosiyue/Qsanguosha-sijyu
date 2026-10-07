@@ -1,5 +1,7 @@
 #include "game-rng.h"
 
+#include <utility>
+
 namespace {
 
 thread_local GameRng *currentGameRng = nullptr;
@@ -8,16 +10,17 @@ thread_local GameRng fallbackRng;
 }
 
 GameRng::GameRng()
-    : m_generator(), m_seed(QRandomGenerator::system()->generate64()), m_drawCount(0)
+    : m_seed(QRandomGenerator::system()->generate64()), m_drawCount(0)
 {
     const quint32 seedWords[] = { quint32(m_seed), quint32(m_seed >> 32) };
-    m_generator = QRandomGenerator(seedWords);
+    m_generator = std::make_unique<QRandomGenerator>(seedWords);
 }
 
 void GameRng::seed(quint64 seed)
 {
     const quint32 seedWords[] = { quint32(seed), quint32(seed >> 32) };
-    m_generator = QRandomGenerator(seedWords);
+    auto generator = std::make_unique<QRandomGenerator>(seedWords);
+    m_generator.swap(generator);
     m_seed = seed;
     m_drawCount = 0;
 }
@@ -25,7 +28,7 @@ void GameRng::seed(quint64 seed)
 quint32 GameRng::generate()
 {
     ++m_drawCount;
-    return m_generator.generate();
+    return m_generator->generate();
 }
 
 int GameRng::bounded(int upperExclusive)
@@ -62,12 +65,21 @@ bool GameRng::restoreState(const State &state, QString *error)
     }
 
     const quint32 seedWords[] = { quint32(state.seed), quint32(state.seed >> 32) };
-    QRandomGenerator restored(seedWords);
-    restored.discard(state.drawCount);
-    m_generator = restored;
+    auto restored = std::make_unique<QRandomGenerator>(seedWords);
+    restored->discard(state.drawCount);
+    m_generator.swap(restored);
     m_seed = state.seed;
     m_drawCount = state.drawCount;
     return true;
+}
+
+void GameRng::swapState(GameRng &prepared) noexcept
+{
+    if (this == &prepared)
+        return;
+    m_generator.swap(prepared.m_generator);
+    std::swap(m_seed, prepared.m_seed);
+    std::swap(m_drawCount, prepared.m_drawCount);
 }
 
 GameRng *GameRng::current()

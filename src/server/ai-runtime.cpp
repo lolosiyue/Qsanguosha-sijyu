@@ -791,6 +791,11 @@ bool AiLuaRuntime::restoreRngState(const GameRng::State &state, QString *error)
     return m_rng.restoreState(state, error);
 }
 
+void AiLuaRuntime::commitPreparedRng(GameRng &prepared) noexcept
+{
+    m_rng.swapState(prepared);
+}
+
 AIResult AiLuaRuntime::decideIsolated(const AIRequest &request)
 {
     AIResult result;

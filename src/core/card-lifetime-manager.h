@@ -105,6 +105,7 @@ struct CardLifetimeToken {
 
 class CardLifetimeManager final
 {
+    friend class RoomManagedState;
 public:
     explicit CardLifetimeManager(CardLifetimeMode mode = defaultCardLifetimeMode(),
                                  QThread *ownerThread = nullptr,

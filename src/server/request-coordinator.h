@@ -10,6 +10,8 @@
 
 #include "protocol.h"
 #include "protocol/protocol-message.h"
+#include "game-timeline.h"
+#include <atomic>
 
 #include <ctime>
 
@@ -32,6 +34,8 @@ public:
                               ResponseVerifyFunction validateFunc = nullptr,
                               void *funcArg = nullptr);
     bool getResult(ServerPlayer *player, time_t timeOut);
+    void commitManagedGeneration(quint64 generation) noexcept;
+    bool hasManagedPendingRequests() const;
 
 private:
     friend class Room;
@@ -57,6 +61,9 @@ private:
     bool waitsAborted() const;
     bool acquireInteractive(ServerPlayer *player, time_t timeOut);
     bool acquireRaceSignal(time_t timeOut);
+    bool requestImpl(ServerPlayer *player, QSanProtocol::CommandType command,
+                     const QVariant &arg, time_t timeOut, bool wait,
+                     bool trackManagedDecision);
 
     Room &m_room;
     QSemaphore m_raceRequestSemaphore;
@@ -69,6 +76,12 @@ private:
     ServerPlayer *m_raceWinner;
     mutable QMutex m_mutex;
     bool m_waitsAborted = false;
+    struct ManagedRequest {
+        GameTimeline::RequestToken token;
+        quint64 messageId = 0;
+    };
+    QHash<QString, ManagedRequest> m_managedRequests;
+    std::atomic<quint64> m_managedGeneration{0};
 };
 
 #endif

@@ -163,7 +163,7 @@ if(QSAN_BUILD_XP_LEGACY)
 endif()
 
 # Keep one product-layered Qt component list to prevent platform lists from drifting.
-set(QSAN_QT_COMPONENTS Core Network)
+set(QSAN_QT_COMPONENTS Core Network Sql)
 if(QSAN_ENABLE_WEBSOCKETS)
     list(APPEND QSAN_QT_COMPONENTS WebSockets)
 endif()
@@ -229,7 +229,7 @@ if(ANDROID)
     include(cmake/QSanguoshaAndroid.cmake)
 endif()
 
-set(QSAN_ENGINE_QT_LIBS Qt6::Core Qt6::Network)
+set(QSAN_ENGINE_QT_LIBS Qt6::Core Qt6::Network Qt6::Sql)
 
 if(ANDROID)
     # SWIG is a host executable even while the generated wrapper is compiled
@@ -321,6 +321,8 @@ set_source_files_properties(src/server/server.cpp PROPERTIES
 )
 
 add_library(qsanguosha_engine STATIC
+    src/server/managed-rewind-lab.cpp
+    src/server/managed-rewind-lab.h
     src/core/replay-takeover-validation.cpp
     src/core/replay-takeover-validation.h
     src/core/banpair.cpp
@@ -366,6 +368,12 @@ add_library(qsanguosha_engine STATIC
     src/core/general.h
     src/core/game-rng.cpp
     src/core/game-rng.h
+    src/core/game-state-contract.cpp
+    src/core/game-state-contract.h
+    src/core/game-timeline.cpp
+    src/core/game-timeline.h
+    src/core/managed-state-lua-bridge.cpp
+    src/core/managed-state-lua-bridge.h
     src/core/lua-runtime.cpp
     src/core/lua-runtime.h
     src/core/lua-wrapper.cpp
@@ -432,6 +440,8 @@ add_library(qsanguosha_engine STATIC
     src/core/skill-instance-utils.h
     src/core/resolution-history.cpp
     src/core/resolution-history.h
+    src/core/battle-statistics.cpp
+    src/core/battle-statistics.h
     src/core/skill.h
     src/core/structs.cpp
     src/core/structs.h
@@ -479,6 +489,8 @@ add_library(qsanguosha_engine STATIC
     src/server/room-roster.cpp
     src/server/room-roster.h
     src/server/room-runtime.cpp
+    src/server/room-managed-state.cpp
+    src/server/room-managed-state.h
     src/server/room-runtime.h
     src/server/player-lifecycle-service.cpp
     src/server/player-lifecycle-service.h
@@ -1979,7 +1991,37 @@ foreach(qsan_library
     endif()
 endforeach()
 
+option(QSAN_TEST_BATTLE_STATISTICS "Build local battle statistics contract tests" OFF)
+if(QSAN_TEST_BATTLE_STATISTICS)
+    enable_testing()
+    add_executable(qsanguosha_battle_statistics_tests
+        tests/battle-statistics-test.cpp
+        src/core/battle-statistics.cpp
+        src/core/resolution-history.cpp)
+    target_include_directories(qsanguosha_battle_statistics_tests PRIVATE src/core)
+    target_link_libraries(qsanguosha_battle_statistics_tests PRIVATE Qt6::Core Qt6::Sql)
+    add_test(NAME battle_statistics_contract COMMAND qsanguosha_battle_statistics_tests)
+    set_tests_properties(battle_statistics_contract PROPERTIES TIMEOUT 30)
+endif()
+
 option(QSAN_TEST_EXTERNAL_AGENTS "Build focused external-agent and no-clock tests" OFF)
+option(QSAN_TEST_GAME_STATE_CONTRACT "Build focused managed game-state contract tests" OFF)
+option(QSAN_BUILD_REWIND_LAB "Build the private POSIX restricted rewind console" OFF)
+if(QSAN_BUILD_REWIND_LAB)
+    if(NOT UNIX OR ANDROID OR EMSCRIPTEN)
+        message(FATAL_ERROR "The restricted rewind console currently requires a POSIX desktop")
+    endif()
+    add_executable(qsanguosha_rewind_lab src/rewind-lab-main.cpp)
+    target_compile_definitions(qsanguosha_rewind_lab PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
+    get_target_property(qsan_rewind_includes qsanguosha_engine INCLUDE_DIRECTORIES)
+    target_include_directories(qsanguosha_rewind_lab PRIVATE ${qsan_rewind_includes} src)
+    target_link_libraries(qsanguosha_rewind_lab PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
+    qsan_link_websocket_gateway(qsanguosha_rewind_lab)
+endif()
+if(QSAN_TEST_GAME_STATE_CONTRACT)
+    enable_testing()
+    include(cmake/GameStateContractTests.cmake)
+endif()
 if(QSAN_TEST_EXTERNAL_AGENTS)
     enable_testing()
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

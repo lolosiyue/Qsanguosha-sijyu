@@ -325,6 +325,8 @@ bool ClientLiveSession::dispatchMessage(const ProtocolMessage &message)
                      QStringLiteral("a state snapshot is already active"));
                 return false;
             }
+            if (sync.managedTimelineRestore)
+                m_core->cancelActiveRequest(InteractionCancelReason::Abandoned);
             m_pendingState = *target;
             m_pendingState.resetGameplayState();
             m_pendingPresentationEvents.clear();

@@ -323,6 +323,7 @@ protected:
 
 private:
     friend class Room;
+    friend class RoomManagedState;
     friend class PlayerLifecycleService;
     // Tears the connection down on the socket's own thread. Room-thread callers
     // must never touch QAbstractSocket directly.

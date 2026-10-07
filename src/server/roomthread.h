@@ -4,6 +4,7 @@
 #include "structs.h"
 #include "trigger-cascade-break.h"
 #include "trigger-dispatch-budget.h"
+#include "game-state-contract.h"
 
 #include <QHash>
 #include <QSet>
@@ -11,6 +12,7 @@
 #include <functional>
 
 class GameRule;
+class ManagedRewindLab;
 struct SkillContext;
 
 // Opt-in attached legacy skills use this only around an accepted effect. The
@@ -216,6 +218,17 @@ public:
     ServerPlayer *findHulaoPassNext(ServerPlayer *shenlvbu, QList<ServerPlayer *> league, int stage);
     void actionNormal(GameRule *game_rule);
 
+    // Opt-in audited normal games only. Configuration is frozen on enrollment.
+    bool enableManagedTurns(const GameState::ProviderRegistry &registry, QString *error = nullptr);
+    bool setManagedLuaProviders(const QString &gameProvider, const QString &aiProvider);
+    bool requestManagedRestore(GameTimeline::AnchorKind kind, QString *error = nullptr);
+    // The production loop and focused tests both execute this entire native turn.
+    bool stepNormalTurn(GameRule *gameRule, QString *error = nullptr, bool executeTurn = true);
+    bool isManagedTurnBoundary() const;
+    void invalidateManagedTurns(const QString &reason);
+    using TimelineCommitObserver = std::function<void(const GameTimeline &, const GameTimeline::Anchor &)>;
+    void setTimelineCommitObserver(TimelineCommitObserver observer);
+
     const QList<EventTriplet> *getEventStack() const;
 
 protected:
@@ -223,6 +236,9 @@ protected:
 
 private:
     friend class LegacySkillActivation;
+    friend class ManagedRewindLab;
+    ManagedRewindLab *m_managedLab = nullptr;
+    bool m_managedRestoredBoundary = false;
     friend struct RoomTestAccess;
     struct LegacyExecutionFrame {
         QString skillName;
@@ -277,6 +293,16 @@ private:
     const QByteArray &distancePropertyName(const ServerPlayer *player);
 
     Room *room;
+    std::unique_ptr<GameState::ProviderRegistry> m_managedRegistry;
+    bool m_managedBoundary = false;
+    bool m_managedRestorePending = false;
+    GameTimeline::AnchorKind m_managedRestoreKind = GameTimeline::AnchorKind::PlayerTurn;
+    QString m_managedRestoreAnchor;
+    quint64 m_managedTurnSerial = 0;
+    QString m_managedFailure;
+    QString m_managedGameProvider;
+    QString m_managedAiProvider;
+    TimelineCommitObserver m_timelineCommitObserver;
     TriggerDispatchBudget m_dispatchBudget;
     quint64 m_budgetGeneration = 1;
     quint64 m_nextCascadeId = 0;

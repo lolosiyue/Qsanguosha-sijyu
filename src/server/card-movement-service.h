@@ -16,6 +16,7 @@ class ResolutionHistoryEventGuard;
 
 class CardLocationIndex
 {
+    friend class RoomManagedState;
 public:
     void set(int cardId, ServerPlayer *owner, Player::Place place);
     ServerPlayer *owner(int cardId) const;
@@ -135,6 +136,7 @@ public:
 
 private:
     friend class Room;
+    friend class RoomManagedState;
     friend struct CardMovementServiceTestAccess;
 
     struct _MoveSourceClassifier

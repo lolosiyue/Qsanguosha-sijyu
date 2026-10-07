@@ -8,6 +8,7 @@
 #include <QHash>
 
 class Room;
+class RoomManagedState;
 struct lua_Debug;
 
 enum AiRoute {
@@ -72,6 +73,13 @@ public:
                       LuaRuntime &modeRuntime, QString *error = nullptr);
 
 private:
+    friend class RoomManagedState;
+
+    // Called only by RoomManagedState after the AI VM is quiescent and a
+    // detached RNG candidate has been fully prepared. Keeps m_rng's address
+    // stable and performs no allocation or Lua calls.
+    void commitPreparedRng(GameRng &prepared) noexcept;
+
     class ExecutionBinding
     {
     public:

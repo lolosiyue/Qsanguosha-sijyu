@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.28)
+project(QSanguoshaGameStateContract LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+enable_testing()
+find_package(Qt6 REQUIRED COMPONENTS Core)
+get_filename_component(qsan_contract_root "../.." ABSOLUTE)
+file(GLOB QSAN_LUA_SOURCES CONFIGURE_DEPENDS
+    RELATIVE ${qsan_contract_root} "${qsan_contract_root}/src/lua/*.c")
+include(../../cmake/GameStateContractTests.cmake)

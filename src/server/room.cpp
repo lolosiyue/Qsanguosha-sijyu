@@ -1,6 +1,8 @@
+#include "managed-rewind-lab.h"
 #include "external-agent.h"
 #include "external-agent-transport.h"
 #include "room.h"
+#include "room-managed-state.h"
 #include "controller-input-diagnostics.h"
 #include "qml-element-path.h"
 #include <QJsonArray>
@@ -35,6 +37,8 @@
 #include "ai.h"
 #include "card-lifetime-manager.h"
 #include "scenario.h"
+#include <QUuid>
+#include <QMutexLocker>
 #include "takeover-scenario.h"
 #include "gamerule.h"
 #include "hegemony-mode.h"
@@ -268,6 +272,189 @@ void recordDirectHistoryMove(Room &room, qint64 eventId, int cardId,
     data.insert(QStringLiteral("card"), room.historyCardSnapshot(Sanguosha->getCard(cardId)));
     room.resolutionHistory().appendFact(eventId, QStringLiteral("move"), data);
 }
+}
+
+namespace {
+QString statisticsGeneral(const ServerPlayer *player, bool second)
+{
+    const QString actual = second ? player->getActualGeneral2Name() : player->getActualGeneral1Name();
+    const QString visible = second ? player->getGeneral2Name() : player->getGeneralName();
+    return visible == "anjiang" && !actual.isEmpty() ? actual : visible;
+}
+}
+
+void Room::beginBattleStatistics(const QString &excludedReason)
+{
+    QMutexLocker lock(&m_statisticsMutex);
+    if (m_statisticsStarted) return;
+    m_statisticsStarted = true;
+    m_statisticsMatch.rootMatchId = gameTimeline().rootGameId();
+    m_statisticsMatch.generation = gameTimeline().generation();
+    m_statisticsMatch.branchId = gameTimeline().branchId();
+    auto &metadata = m_statisticsMatch.metadata;
+    metadata = {{"mode", getMode()}, {"player_count", getPlayers().size()},
+        {"rules_version", Sanguosha->rulesBundleIdentity().toVariantMap()},
+        {"engine_version", Sanguosha->getVersionNumber()}, {"hegemony", Config.EnableHegemony},
+        {"second_general_enabled", Config.Enable2ndGeneral}, {"terminal", false}};
+    if (!excludedReason.isEmpty()) metadata["excluded_reason"] = excludedReason;
+    else if (isTakeoverSession()) metadata["excluded_reason"] = "replay_takeover";
+    else if (isWorkSession()) metadata["excluded_reason"] = "work";
+    else if (scenario || mode.contains("_mini_") || mode.contains("scenario")
+             || Sanguosha->isCustomGameMode(mode)) metadata["excluded_reason"] = "scenario_or_custom";
+    QVariantList participants;
+    for (ServerPlayer *player : getPlayers()) {
+        const QString state = player->getState();
+        const QString control = m_externalAgents.contains(player->objectName()) ? QStringLiteral("external")
+            : state == "robot" ? QStringLiteral("robot") : state == "online" ? QStringLiteral("human") : QStringLiteral("mixed");
+        if (control == "mixed" || control == "external") metadata["mixed_control"] = true;
+        participants << QVariantMap{{"player", player->objectName()}, {"general", statisticsGeneral(player, false)},
+            {"general2", statisticsGeneral(player, true)}, {"role", player->getRole()},
+            {"control", control}, {"last_state", state}, {"control_history", QVariantList{state}},
+            {"identity_changed", false}};
+        // A state signal is also emitted for unrelated changes. Only actual
+        // controller transitions quarantine the game; reconnect cannot undo it.
+        auto observe = [this, player, lastState = state,
+                        lastGeneral = statisticsGeneral(player, false), lastGeneral2 = statisticsGeneral(player, true),
+                        lastRole = player->getRole()]() mutable {
+            const QString stateNow = player->getState(), generalNow = statisticsGeneral(player, false),
+                general2Now = statisticsGeneral(player, true), roleNow = player->getRole();
+            if (lastState == stateNow && lastGeneral == generalNow && lastGeneral2 == general2Now && lastRole == roleNow) return;
+            lastState = stateNow; lastGeneral = generalNow; lastGeneral2 = general2Now; lastRole = roleNow;
+            QMutexLocker guard(&m_statisticsMutex);
+            if (!m_statisticsStarted || m_statisticsFrozen) return;
+            QVariantList roster = m_statisticsMatch.metadata.value("participants").toList();
+            for (int i = 0; i < roster.size(); ++i) {
+                auto p = roster[i].toMap();
+                if (p.value("player").toString() != player->objectName()) continue;
+                bool changed = false;
+                if (p.value("last_state").toString() != player->getState()) {
+                    auto provenance = p.value("control_history").toList(); provenance << player->getState();
+                    p["control_history"] = provenance; p["last_state"] = player->getState();
+                    m_statisticsMatch.metadata["mixed_control"] = true; changed = true;
+                }
+                if (p.value("general").toString() != statisticsGeneral(player, false)
+                    || p.value("general2").toString() != statisticsGeneral(player, true)
+                    || p.value("role").toString() != player->getRole()) {
+                    p["identity_changed"] = true;
+                    const QVariantMap segment{{"general", statisticsGeneral(player, false)},
+                        {"general2", statisticsGeneral(player, true)}, {"role", player->getRole()}};
+                    auto segments = p.value("identity_segments").toList();
+                    if (segments.isEmpty() || segments.last().toMap() != segment) segments << segment;
+                    p["identity_segments"] = segments; changed = true;
+                }
+                if (changed) { roster[i] = p; m_statisticsMatch.metadata["participants"] = roster; }
+                break;
+            }
+        };
+        connect(player, &Player::state_changed, this, observe, Qt::DirectConnection);
+        connect(player, &Player::general_changed, this, observe, Qt::DirectConnection);
+        connect(player, &Player::general2_changed, this, observe, Qt::DirectConnection);
+        connect(player, &Player::role_changed, this, observe, Qt::DirectConnection);
+        connect(player, &Player::gameplay_property_changed, this, observe, Qt::DirectConnection);
+    }
+    metadata["participants"] = participants;
+    QString journalError;
+    if (!BattleStatistics::armMatch(m_statisticsMatch, BattleStatistics::defaultDatabasePath(), &journalError)) {
+        metadata["statistics_uncertain"] = true;
+        qWarning().noquote() << "Battle statistics disabled: active lifecycle could not be armed:" << journalError;
+    }
+}
+
+void Room::markBattleStatisticsTerminal(const QString &winner, int terminationCause)
+{
+    QMutexLocker lock(&m_statisticsMutex);
+    if (!m_statisticsStarted) return;
+    m_statisticsMatch.metadata["terminal"] = true;
+    m_statisticsMatch.metadata["winner"] = winner;
+    m_statisticsMatch.metadata["termination_cause"] = terminationCause;
+    if ((winner.isEmpty() || winner == "."
+         || (terminationCause != int(GameSessionController::TerminationCause::GameOver)
+             && terminationCause != int(GameSessionController::TerminationCause::Surrender)))
+        && m_statisticsMatch.metadata.value("excluded_reason").toString().isEmpty())
+        m_statisticsMatch.metadata["excluded_reason"] = "terminal_abort";
+}
+
+void Room::freezeBattleStatistics()
+{
+    BattleStatistics::Match match;
+    {
+        QMutexLocker lock(&m_statisticsMutex);
+        if (!m_statisticsStarted || m_statisticsFrozen || !m_statisticsMatch.metadata.value("terminal").toBool()) return;
+        m_statisticsFrozen = true;
+        match = m_statisticsMatch;
+    }
+    // This is a history-only persistent value snapshot. No GameSnapshot
+    // serialization, Lua state, live player, or Card pointer leaves the worker.
+    match.history = m_resolutionHistory.snapshot();
+    BattleStatistics::submit(match);
+}
+
+QString Room::statisticsRootMatchId() const
+{
+    return gameTimeline().rootGameId();
+}
+quint64 Room::statisticsGeneration() const
+{
+    return gameTimeline().generation();
+}
+bool Room::statisticsRestorePending() const
+{
+    QMutexLocker lock(&m_statisticsMutex); return m_statisticsInvalidationPending;
+}
+bool Room::retryStatisticsTimelineRestore()
+{
+    BattleStatistics::Match pending;
+    {
+        QMutexLocker lock(&m_statisticsMutex);
+        if (!m_statisticsInvalidationPending) return true;
+        pending = m_statisticsMatch;
+    }
+    return commitStatisticsTimelineRestore(pending.generation, pending.branchId,
+        pending.metadata.value("restore_anchor_kind").toString(),
+        pending.metadata.value("restore_anchor_id").toString().toLongLong());
+}
+bool Room::commitStatisticsTimelineRestore(quint64 generation, const QString &branchId,
+    const QString &anchorKind, qint64 anchorId)
+{
+    // This observer acknowledges an already published game generation. It may
+    // neither choose a new generation nor make an arbitrary skill-local undo
+    // invalidate the whole match. All callers run on the game-owner thread.
+    if (generation != gameTimeline().generation() || branchId != gameTimeline().branchId()) return false;
+    BattleStatistics::Match fence;
+    bool retry = false;
+    {
+        QMutexLocker lock(&m_statisticsMutex);
+        if (!m_statisticsStarted || generation < m_statisticsMatch.generation
+            || generation > quint64(std::numeric_limits<qint64>::max()) || anchorId <= 0
+            || (anchorKind != "previous_player_turn" && anchorKind != "full_round")) return false;
+        if (generation == m_statisticsMatch.generation
+            && (!m_statisticsInvalidationPending || branchId != m_statisticsMatch.branchId
+                || anchorKind != m_statisticsMatch.metadata.value("restore_anchor_kind").toString()
+                || QString::number(anchorId) != m_statisticsMatch.metadata.value("restore_anchor_id").toString())) return false;
+        retry = m_statisticsInvalidationPending && generation == m_statisticsMatch.generation;
+        m_statisticsInvalidationPending = true;
+        m_statisticsMatch.generation = generation; m_statisticsMatch.branchId = branchId;
+        m_statisticsMatch.metadata["restore_anchor_kind"] = anchorKind;
+        m_statisticsMatch.metadata["restore_anchor_id"] = QString::number(anchorId);
+        m_statisticsMatch.metadata["terminal"] = false;
+        m_statisticsMatch.metadata.remove("winner");
+        if (m_statisticsMatch.metadata.value("excluded_reason") == "terminal_abort")
+            m_statisticsMatch.metadata.remove("excluded_reason");
+        m_statisticsFrozen = false;
+        fence = m_statisticsMatch;
+    }
+    // Persist only the independent tiny generation journal here. SQLite
+    // invalidation runs in the statistics worker and never blocks the Room.
+    QString error;
+    const bool durable = BattleStatistics::notifyTimelineRestore(
+        fence, BattleStatistics::defaultDatabasePath(), &error, retry);
+    if (!durable) {
+        qWarning().noquote() << "Statistics timeline remains uncertain; active marker retained for restart:" << error;
+    } else {
+        QMutexLocker lock(&m_statisticsMutex);
+        if (m_statisticsMatch.generation == generation) m_statisticsInvalidationPending = false;
+    }
+    return durable;
 }
 
 void Room::beginNumericStateHistory()
@@ -1108,6 +1295,10 @@ Room::~Room()
 			.arg(getId()).arg(stopped ? "true" : "false");
 	if (!stopped)
 		qFatal("Room worker did not stop before runtime destruction");
+    // No worker can now restore or append another terminal projection. The
+    // private FIFO saver seals active only after its queued DB writes caught up.
+    if (m_statisticsStarted)
+        BattleStatistics::closeMatch(m_statisticsMatch.rootMatchId, m_statisticsMatch.generation);
 	m_playerLifecycle->clearCancelledDeaths();
 	m_pendingDying.clear();
 	m_cancelledHpCauses.clear();
@@ -1119,6 +1310,7 @@ Room::~Room()
 		if (shutdownTraceEnabled())
 			qInfo().noquote() << QStringLiteral("shutdown_trace room=%1 event=shutdownFinal_exit").arg(getId());
 	}
+    m_rewindLab.reset();
 	delete thread_3v3.data();
 	delete thread_xmode.data();
 	delete thread_1v1.data();
@@ -1133,6 +1325,31 @@ Room::~Room()
 		delete thread;
 	if (shutdownTraceEnabled())
 		qInfo().noquote() << QStringLiteral("shutdown_trace room=%1 event=dtor_exit").arg(getId());
+}
+
+bool Room::prepareRestrictedRewind(QString *error)
+{
+    if (m_rewindLab) return false;
+    auto lab = std::make_unique<ManagedRewindLab>();
+    if (!lab->attach(this, error)) return false;
+    m_rewindLab = std::move(lab);
+    return true;
+}
+
+void Room::managedRewindCommand(ServerPlayer *player, const QVariant &payload)
+{
+    if (m_rewindLab) { m_rewindLab->control(player, payload); return; }
+    QSanProtocol::RewindStatusPayload status;
+    QSanProtocol::RewindControlPayload control;
+    if (QSanProtocol::RewindControlPayload::parse(payload, &control)) status.ackSequence = control.sequence;
+    status.message = QStringLiteral("Rewind is supported only in an explicitly enabled restricted debug room");
+    doNotify(player, QSanProtocol::S_COMMAND_MANAGED_REWIND_STATE, status.toVariant());
+}
+
+RoomManagedState &Room::managedState()
+{
+    if (!m_managedState) m_managedState = std::make_unique<RoomManagedState>(*this);
+    return *m_managedState;
 }
 
 bool Room::dispatch(TriggerEvent event, ServerPlayer *target, QVariant &data)
@@ -1178,6 +1395,7 @@ bool Room::stopGameThreads(int timeoutMs)
 
 void Room::requestStopGameThreads()
 {
+    if (m_rewindLab) m_rewindLab->stop();
 	QList<QThread *> workers;
 	workers << thread_3v3.data() << thread_xmode.data() << thread_1v1.data()
 		<< thread_hegemony.data() << thread << this;
@@ -3389,6 +3607,7 @@ void Room::reportDisconnection()
 {
 	ServerPlayer*player = qobject_cast<ServerPlayer*>(sender());
 	if (player == nullptr) return;
+    if (m_rewindLab) { m_rewindLab->disconnected(player); if (getThread()) return; }
 	clearControllerRelation(player);
 
 	// send disconnection message to server log
@@ -3587,6 +3806,11 @@ void Room::processClientPacket(
 		}
 		return;
 	}
+    if (m_rewindLab && message.command != S_COMMAND_MANAGED_REWIND
+        && message.command != S_COMMAND_READY && message.command != S_COMMAND_NETWORK_DELAY_TEST) {
+        m_rewindLab->sendStatus(player, QStringLiteral("This action is unsupported in the restricted rewind profile"));
+        return;
+    }
 	m_requests->processClientPacket(player, message, request);
 }
 
@@ -3656,12 +3880,20 @@ ServerPlayer*Room::getOwner() const
 	return nullptr;
 }
 
-void Room::setReadyCommand(ServerPlayer *, const QVariant &payload)
+void Room::setReadyCommand(ServerPlayer *player, const QVariant &payload)
 {
     ReadyPayload readyPayload;
     if (!ReadyPayload::parse(payload, &readyPayload))
         return;
 
+    if (m_rewindLab) {
+        QString error;
+        if (!player || !player->isOwner() || !Config.EnableCheat)
+            error = QStringLiteral("Only the cheat-enabled room owner may start this room");
+        else if (readyPayload.ready) m_rewindLab->startAttached(&error);
+        m_rewindLab->sendStatus(player, error);
+        return;
+    }
 	if (readyPayload.ready && isFull() && m_gameSession->requestStart())
 		start();
 }
@@ -3674,6 +3906,7 @@ void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&
 		m_hybrid50->add(player);
 	}
 	m_playerLifecycle->signup(player, screen_name, avatar, is_robot);
+    if (m_rewindLab) m_rewindLab->connected(player);
 }
 
 

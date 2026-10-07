@@ -6,6 +6,9 @@
 #include "skill-instance-attachment-registry.h"
 #include "skill-execution-registry.h"
 #include "resolution-history.h"
+#include "battle-statistics.h"
+#include "game-timeline.h"
+#include <QMutex>
 #include "room-runtime.h"
 #include "game-session-config.h"
 #include "scenario-work.h"
@@ -24,6 +27,8 @@ class Scenario;
 class TakeoverScenario;
 class TrickCard;
 class GameSnapshot;
+class RoomManagedState;
+class ManagedRewindLab;
 
 struct lua_State;
 struct LogMessage;
@@ -91,6 +96,8 @@ public:
     friend class GameSessionController;
     friend class Server;
     friend class RoomRuntime;
+    friend class RoomManagedState;
+    friend class ManagedRewindLab;
     friend struct RoomTestAccess;
     friend struct PlayerLifecycleServiceTestAccess;
     friend struct PlayerDecisionServiceTestAccess;
@@ -107,6 +114,9 @@ public:
                   const GameSessionConfig &sessionConfig = GameSessionConfig(),
                   RuntimeInitializationPolicy runtimePolicy = RuntimeInitializationPolicy::Immediate);
     ~Room();
+    RoomManagedState &managedState();
+    bool prepareRestrictedRewind(QString *error = nullptr);
+    ManagedRewindLab *restrictedRewind() const { return m_rewindLab.get(); }
     ServerPlayer*addSocket(ClientSocket*socket);
     ServerPlayer*addAIPlayer();
     inline int getId() const
@@ -126,6 +136,24 @@ public:
     ResolutionHistoryService &resolutionHistory() { return m_resolutionHistory; }
     const ResolutionHistoryService &resolutionHistory() const { return m_resolutionHistory; }
     bool historyRecordingEnabled() const { return !m_takeoverRestoring; }
+    // Statistics observes an effective timeline; it never performs rule restore.
+    GameTimeline &gameTimeline() const { return *m_gameTimeline; } // Game-owner thread only.
+    void beginBattleStatistics(const QString &excludedReason = QString());
+    void markBattleStatisticsTerminal(const QString &winner, int terminationCause);
+    void freezeBattleStatistics();
+    QString statisticsRootMatchId() const;
+    quint64 statisticsGeneration() const;
+    bool retryStatisticsTimelineRestore();
+    bool statisticsRestorePending() const;
+    // Call only after a SUCCESSFUL global restore. anchorKind is
+    // previous_player_turn or full_round; anchorId is its GameTimeline checkpoint
+    // ID, never a reused ResolutionHistory local event ID.
+    // True means the independent generation journal is durable; SQLite updates
+    // asynchronously. False retains uncertainty and permits same-generation
+    // retry. It does not undo the already successful game restore.
+    bool commitStatisticsTimelineRestore(quint64 generation, const QString &branchId,
+                                         const QString &anchorKind, qint64 anchorId);
+
     qint64 currentHistoryEventId() const;
     QVariantMap historyEvent(qint64 id) const;
     QVariantMap historyParent(qint64 id, const QString &kind, bool includeSelf = false) const;
@@ -1060,6 +1088,15 @@ private:
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
     ResolutionHistoryService m_resolutionHistory;
+    std::shared_ptr<GameTimeline> m_gameTimeline = std::make_shared<GameTimeline>();
+    mutable QMutex m_statisticsMutex;
+    BattleStatistics::Match m_statisticsMatch; // Projection receipt, never the game authority.
+    bool m_statisticsFrozen = false;
+    bool m_statisticsStarted = false;
+    bool m_statisticsInvalidationPending = false;
+    // Declared before the VMs so managed bridge roots outlive VM shutdown/GC.
+    std::unique_ptr<RoomManagedState> m_managedState;
+    std::unique_ptr<ManagedRewindLab> m_rewindLab;
     std::unique_ptr<RoomRuntime> m_runtime;
     std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
     std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;
@@ -1197,6 +1234,7 @@ private:
     QString askForRole(ServerPlayer*player, const QStringList&roles, const QString&scheme);
 
     //process client requests
+    void managedRewindCommand(ServerPlayer *player, const QVariant &payload);
     void processRequestCheat(ServerPlayer*player, const QVariant&arg);
     void processRequestSurrender(ServerPlayer*player, const QVariant&arg);
     void processRequestPreshow(ServerPlayer *player, const QVariant &arg);
