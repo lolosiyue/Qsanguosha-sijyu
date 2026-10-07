@@ -132,8 +132,11 @@ bool NetworkUiSmokeController::configure(const QStringList &arguments, QString *
 void NetworkUiSmokeController::attach(MainWindow *mainWindow)
 {
     m_mainWindow = mainWindow;
-    if (mainWindow && m_windowSize.isValid())
+    if (mainWindow && m_windowSize.isValid()) {
+        // A saved maximized/fullscreen state would otherwise override the requested size.
+        mainWindow->showNormal();
         mainWindow->resize(m_windowSize);
+    }
 
     connect(ClientInstance, &Client::socket_connected,
         this, &NetworkUiSmokeController::onSocketConnected);
@@ -233,7 +236,7 @@ void NetworkUiSmokeController::onRoomSceneCreated(RoomScene *scene)
     if (m_windowSize.isValid() && m_windowSize.height() > m_windowSize.width()) {
         for (QGraphicsView *candidate : scene->views()) {
             if (FitView *view = dynamic_cast<FitView *>(candidate))
-                view->setResponsiveRoomEnabled(true);
+                view->setResponsiveRoomEnabled(true, false); // Do not save it to the user's config.
         }
     }
     connect(scene, &RoomScene::qmlLayerAttached, this, &NetworkUiSmokeController::attachQmlLayer,

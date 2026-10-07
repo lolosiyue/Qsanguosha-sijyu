@@ -240,7 +240,13 @@ QSize NetworkUiSmokeReport::parseWindowSize(const QStringList &arguments)
     const QStringList parts = value.split(QLatin1Char('x'));
     if (!found || parts.size() != 2)
         return QSize();
-    return QSize(parts.at(0).toInt(), parts.at(1).toInt());
+    bool widthOk = false;
+    bool heightOk = false;
+    const int width = parts.at(0).toInt(&widthOk);
+    const int height = parts.at(1).toInt(&heightOk);
+    if (!widthOk || !heightOk || width <= 0 || height <= 0)
+        return QSize();
+    return QSize(width, height);
 }
 
 QString NetworkUiSmokeReport::parseResultPath(const QStringList &arguments)

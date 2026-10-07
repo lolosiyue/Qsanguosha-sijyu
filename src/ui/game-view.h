@@ -25,7 +25,8 @@ public:
     void setScene(QGraphicsScene *scene);
     void showPlayerInspector();
     RoomOverlayHost *roomOverlay();
-    void setResponsiveRoomEnabled(bool enabled);
+    // persist=false changes this view only and leaves the saved preference alone (smoke runs).
+    void setResponsiveRoomEnabled(bool enabled, bool persist = true);
 
     void setUiScale(qreal scale);
     void refit();
