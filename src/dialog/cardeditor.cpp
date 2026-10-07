@@ -1,4 +1,9 @@
 #include "cardeditor.h"
+#include "general-authoring-dialog.h"
+#include "general.h"
+#include "package-catalog.h"
+#include <QBuffer>
+#include <QJsonArray>
 #include "mainwindow.h"
 #include "engine.h"
 #include "settings.h"
@@ -296,6 +301,18 @@ void SkillBox::addSkill(const QString &text)
 	skill_titles << skill_title;
 
 	scene()->addItem(skill_title);
+}
+
+QStringList SkillBox::getSkillTitles() const
+{
+    QStringList titles;
+    for (const auto *item : skill_titles) titles << item->text();
+    return titles;
+}
+
+QString SkillBox::getSkillDescription() const
+{
+    return skill_description->toPlainText();
 }
 
 SkillTitle *SkillBox::getFocusTitle() const
@@ -846,6 +863,11 @@ QMainWindow(parent)
 	connect(edit_skill, SIGNAL(triggered()), this, SLOT(editSkill()));
 	tool_menu->addAction(edit_skill);
 
+    QAction *author_general = new QAction(tr("Author playable general ..."), tool_menu);
+    author_general->setShortcut(QKeySequence("Alt+G"));
+    connect(author_general, &QAction::triggered, this, &CardEditor::authorPlayableGeneral);
+    tool_menu->addAction(author_general);
+
 	tool_menu->addSeparator();
 
 	QAction *making_big = new QAction(tr("Make big avatar"), tool_menu);
@@ -1191,3 +1213,34 @@ void MainWindow::on_actionCard_editor_triggered()
 	editor->show();
 }
 
+
+
+void CardEditor::authorPlayableGeneral()
+{
+    auto spec = GeneralAuthoring::defaultSpec();
+    spec["display_name"] = card_scene->getNameItem()->getText();
+    spec["title"] = card_scene->getTitleItem()->getText();
+    spec["kingdom"] = kingdom_ComboBox->currentData().toString();
+    const int hp = qMax(1, Config.value("CardEditor/MaxHP", 4).toInt());
+    spec["max_hp"] = hp; spec["start_hp"] = hp; spec["lord"] = lord_checkbox->isChecked();
+    const auto titles = card_scene->getSkillBox()->getSkillTitles();
+    if (!titles.isEmpty()) {
+        QJsonArray skills;
+        for (int i = 0; i < titles.size() && i < 8; ++i)
+            skills.append(QJsonObject{{"id", QString("diy_demo_hero_skill%1").arg(i + 1)},
+                {"title", titles[i]}, {"description", i == 0 ? card_scene->getSkillBox()->getSkillDescription() : QString()}});
+        spec["skills"] = skills;
+    }
+    QSet<QString> occupied;
+    for (const auto &name : Sanguosha->getExtensions()) occupied.insert(name.toLower());
+    for (const auto &name : Sanguosha->getSkillNames()) occupied.insert(name.toLower());
+    for (const auto *general : Sanguosha->getAllGenerals()) occupied.insert(general->objectName().toLower());
+    for (const auto &package : QSanPackages::activeCatalog().packages) occupied.insert(package.id.toLower());
+    // Capture the existing card image export surface; the scene/layout/art are unchanged.
+    card_scene->clearFocus();
+    QByteArray png;
+    QBuffer buffer(&png); buffer.open(QIODevice::WriteOnly);
+    card_scene->views().first()->grab().save(&buffer, "PNG");
+    GeneralAuthoringDialog dialog(this, spec, occupied, Sanguosha->getKingdoms(), png);
+    dialog.exec();
+}

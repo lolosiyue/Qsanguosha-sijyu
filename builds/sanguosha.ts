@@ -1312,6 +1312,11 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
         <source>Edit skill title</source>
         <translation>编辑技能标题</translation>
     </message>
+    <message>
+        <location filename="../src/dialog/cardeditor.cpp" line="875"/>
+        <source>Author playable general ...</source>
+        <translation>编写可玩武将……</translation>
+    </message>
 </context>
 <context>
     <name>CardOverview</name>
@@ -12063,6 +12068,623 @@ Changes:
         <location filename="../src/core/package-store.cpp"/>
         <source>Unsafe package storage path.</source>
         <translation>内容包存储路径不安全。</translation>
+    </message>
+</context>
+<context>
+    <name>GeneralAuthoring</name>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="163"/>
+        <source>New general</source>
+        <translation>新武将</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="165"/>
+        <source>New skill</source>
+        <translation>新技能</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="165"/>
+        <source>At the start of your turn, you may draw one card.</source>
+        <translation>你的回合开始时，你可以摸一张牌。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="171"/>
+        <source>Specification fields do not match schema 1.</source>
+        <translation>武将规格字段不符合格式版本 1。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="177"/>
+        <source>Invalid or colliding identifier: %1</source>
+        <translation>标识符无效或与已有名称冲突：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="181"/>
+        <source>General and skill identifiers must use their parent identifier as a prefix.</source>
+        <translation>武将标识符须以扩展包标识符为前缀，技能标识符须以武将标识符为前缀。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="183"/>
+        <source>Invalid text metadata: %1</source>
+        <translation>文字信息无效：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="185"/>
+        <source>A display name and a valid kingdom are required.</source>
+        <translation>请填写武将名称和有效的势力。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="189"/>
+        <source>HP and armor must be integers within the supported range.</source>
+        <translation>体力和护甲须为支持范围内的整数。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="191"/>
+        <source>Starting HP exceeds maximum HP.</source>
+        <translation>初始体力不能超过体力上限。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="192"/>
+        <source>Gender and lord fields must be booleans.</source>
+        <translation>性别和主公字段须为布尔值。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="194"/>
+        <source>Specify between one and eight skills.</source>
+        <translation>请填写 1 至 8 个技能。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="200"/>
+        <source>Invalid skill specification: %1</source>
+        <translation>技能规格无效：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="208"/>
+        <source>Code exceeds the size limit.</source>
+        <translation>代码超过大小限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="209"/>
+        <location filename="../src/dialog/general-authoring.cpp" line="325"/>
+        <source>The engine API context is unavailable.</source>
+        <translation>引擎 API 参考内容不可用。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="211"/>
+        <source>Metadata scaffold changed. Edit metadata in the specification, then regenerate.</source>
+        <translation>武将信息框架已被修改。请在规格中修改武将信息后重新生成。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="214"/>
+        <source>Cannot allocate the syntax checker.</source>
+        <translation>无法为语法检查器分配内存。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="218"/>
+        <source>Lua syntax: %1</source>
+        <translation>Lua 语法：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="223"/>
+        <source>Undeclared engine API: %1</source>
+        <translation>未声明的引擎 API：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="226"/>
+        <source>Undeclared engine method: %1</source>
+        <translation>未声明的引擎方法：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="234"/>
+        <source>Undeclared Lua function: %1</source>
+        <translation>未声明的 Lua 函数：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="237"/>
+        <source>Undeclared library function: %1</source>
+        <translation>未声明的库函数：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="239"/>
+        <source>External loading, host access and dynamic engine lookup are outside this authoring contract.</source>
+        <translation>本编写流程不支持外部加载、主机访问和动态引擎 API 查找。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="243"/>
+        <source>Missing literal V2 skill binding: %1</source>
+        <translation>缺少明确的 V2 技能绑定：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="327"/>
+        <source>Model, instruction or code exceeds the supported limits.</source>
+        <translation>模型、指令或代码超过支持的限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="335"/>
+        <source>Request exceeds the size limit. Shorten the code or descriptions.</source>
+        <translation>请求超过大小限制，请缩短代码或描述。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="336"/>
+        <source>A credential appears in authoring content. Remove it before continuing.</source>
+        <translation>编写内容中出现了密钥，请移除后继续。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="347"/>
+        <source>Cancelled or superseded response ignored.</source>
+        <translation>已忽略取消或被新请求替代的响应。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="349"/>
+        <source>The document changed during the request. Response ignored; manual edits are preserved.</source>
+        <translation>请求期间文档已发生变化。已忽略响应并保留手动修改。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="350"/>
+        <source>Response is too large or contains a credential.</source>
+        <translation>响应过大或包含密钥。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="353"/>
+        <source>Provider returned an incomplete or invalid response.</source>
+        <translation>服务商返回了不完整或无效的响应。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="355"/>
+        <source>Provider response content must be JSON text.</source>
+        <translation>服务商的响应内容须为 JSON 文本。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="359"/>
+        <source>Generated response does not match schema 1.</source>
+        <translation>生成结果不符合格式版本 1。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="365"/>
+        <source>Candidate is stale. Review a new request before applying.</source>
+        <translation>候选代码已过期。请重新请求并审阅后应用。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="376"/>
+        <location filename="../src/dialog/general-authoring.cpp" line="381"/>
+        <source>Project is too large or contains a credential.</source>
+        <translation>工程过大或包含密钥。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="386"/>
+        <source>Project does not match schema 1.</source>
+        <translation>工程不符合格式版本 1。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="391"/>
+        <source>Invalid history version.</source>
+        <translation>历史版本无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="407"/>
+        <source>Choose a separate staging directory outside packages and extensions, without symlinks.</source>
+        <translation>请选择 packages 和 extensions 之外的独立暂存目录，路径不能包含符号链接。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="411"/>
+        <source>Cannot create export staging directory.</source>
+        <translation>无法创建导出暂存目录。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="430"/>
+        <source>Inert authoring export. This directory is not installed or enabled. Review Lua and test manually in a disposable runtime before using Packages &gt; Manage packages on the child package directory. Static checks are not a security guarantee.</source>
+        <translation>这是未启用的编写导出文件，尚未安装或启用。请先审阅 Lua，并在可丢弃的独立运行环境中手动测试，再通过“扩展包 → 管理扩展包”安装子目录中的包。静态检查不保证代码安全。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring.cpp" line="433"/>
+        <source>Export failed; no existing package was replaced.</source>
+        <translation>导出失败，未替换任何已有扩展包。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-provider.cpp" line="28"/>
+        <source>Invalid endpoint, credential or request payload.</source>
+        <translation>地址、密钥或请求内容无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-provider.cpp" line="30"/>
+        <source>Credentials must contain printable ASCII without spaces.</source>
+        <translation>密钥只能包含不带空格的可打印 ASCII 字符。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-provider.cpp" line="61"/>
+        <source>Provider response exceeds the size limit.</source>
+        <translation>服务商响应超过大小限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-provider.cpp" line="62"/>
+        <source>Provider request timed out.</source>
+        <translation>服务商请求超时。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-provider.cpp" line="63"/>
+        <source>Provider redirects are refused. Enter the final HTTPS endpoint.</source>
+        <translation>不允许服务商重定向，请填写最终的 HTTPS 地址。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-provider.cpp" line="65"/>
+        <source>Provider request failed (HTTP %1). Check endpoint and credentials locally.</source>
+        <translation>服务商请求失败（HTTP %1）。请在本地检查地址和密钥。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-provider.cpp" line="66"/>
+        <source>Provider response contained a credential and was discarded.</source>
+        <translation>服务商响应包含密钥，已丢弃。</translation>
+    </message>
+</context>
+<context>
+    <name>GeneralAuthoringDialog</name>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="39"/>
+        <source>Playable general authoring</source>
+        <translation>可玩武将编写</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="42"/>
+        <source>Generate and review Lua for this engine. Static checks do not establish safety. Code is never executed here; exports remain outside the installed package roots.</source>
+        <translation>为本引擎生成并审阅 Lua。静态检查不保证安全。本窗口不会执行代码，导出文件保存在已安装扩展包目录之外。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="44"/>
+        <source>OpenAI-compatible provider</source>
+        <translation>兼容 OpenAI 接口的服务商</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="52"/>
+        <source>HTTPS chat-completions endpoint</source>
+        <translation>HTTPS 聊天补全接口地址</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="53"/>
+        <source>API key (memory only)</source>
+        <translation>API 密钥（仅保存在内存中）</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="54"/>
+        <source>Model</source>
+        <translation>模型</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="58"/>
+        <source>The key is masked, kept in memory for this dialog, and never saved in settings, projects, history or exports. OS credential storage is not available in this editor. Redirects are refused.</source>
+        <translation>密钥以隐藏方式显示，仅保存在本窗口的内存中，不写入设置、工程、历史或导出文件。此编辑器暂不提供操作系统密钥存储，并拒绝重定向。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="72"/>
+        <source>Male</source>
+        <translation>男性</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="72"/>
+        <source>Lord</source>
+        <translation>主公</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="73"/>
+        <source>Package identifier</source>
+        <translation>扩展包标识符</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="73"/>
+        <source>General identifier</source>
+        <translation>武将标识符</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="74"/>
+        <source>Display name</source>
+        <translation>显示名称</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="74"/>
+        <source>Kingdom</source>
+        <translation>势力</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="75"/>
+        <source>Maximum HP</source>
+        <translation>体力上限</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="76"/>
+        <source>Starting HP</source>
+        <translation>初始体力</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="77"/>
+        <source>Armor</source>
+        <translation>护甲</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="78"/>
+        <source>General properties</source>
+        <translation>武将属性</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="78"/>
+        <source>Title</source>
+        <translation>称号</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="78"/>
+        <source>Designer</source>
+        <translation>设计者</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="80"/>
+        <source>Use lowercase letters, digits and underscores. General identifiers start with package_id_; skill identifiers start with general_id_. Existing names are rejected. Imported card descriptions may combine several skills; assign each description to its matching row before sending.</source>
+        <translation>请使用小写字母、数字和下划线。武将标识符以 package_id_ 开头，技能标识符以 general_id_ 开头，不得与已有名称冲突。导入的卡牌描述可能包含多个技能，请在发送前将各技能描述分配到对应行。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="82"/>
+        <source>Skill identifier</source>
+        <translation>技能标识符</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="82"/>
+        <source>Skill title</source>
+        <translation>技能名称</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="82"/>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="98"/>
+        <source>Skill description</source>
+        <translation>技能描述</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="83"/>
+        <source>Skills</source>
+        <translation>技能</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="86"/>
+        <source>Add skill</source>
+        <translation>添加技能</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="86"/>
+        <source>Remove selected skill</source>
+        <translation>删除选中的技能</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="92"/>
+        <source>New skill</source>
+        <translation>新技能</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="95"/>
+        <source>Edit selected description</source>
+        <translation>编辑选中的描述</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="107"/>
+        <source>Specification</source>
+        <translation>武将规格</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="109"/>
+        <source>Edit skills between BEGIN SKILLS and END SKILLS. The specification owns metadata, registration and translations. Save a project to preserve your edits and versions.</source>
+        <translation>请在 BEGIN SKILLS 与 END SKILLS 之间编辑技能代码。武将信息、注册和翻译由规格生成。保存工程可保留修改和版本。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="112"/>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="113"/>
+        <source>Reviewed code</source>
+        <translation>已审阅代码</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="115"/>
+        <source>Review the candidate and comparison before applying. You can edit the candidate. Applying updates this document only and never installs or runs Lua.</source>
+        <translation>应用前请审阅候选代码及差异，可以直接编辑候选代码。应用仅更新当前文档，不会安装或运行 Lua。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="118"/>
+        <source>Candidate code</source>
+        <translation>候选代码</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="118"/>
+        <source>Code comparison</source>
+        <translation>代码差异</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="120"/>
+        <source>Candidate and diff</source>
+        <translation>候选代码与差异</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="122"/>
+        <source>The last 16 checkpoints are kept in projects. Restore or undo a version to recover reviewed manual edits.</source>
+        <translation>工程保留最近 16 个检查点。恢复或撤销版本可找回已审阅的手动修改。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="123"/>
+        <source>Version code</source>
+        <translation>版本代码</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="125"/>
+        <source>Restore selected version</source>
+        <translation>恢复选中的版本</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="132"/>
+        <source>History</source>
+        <translation>历史版本</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="134"/>
+        <source>Generation or correction instructions</source>
+        <translation>生成或修正指令</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="137"/>
+        <source>Describe what to generate or correct. The request includes the original specification, current metadata, reviewed code and diagnostics.</source>
+        <translation>请描述要生成或修正的内容。请求将包含原始规格、当前武将信息、已审阅代码和诊断结果。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="139"/>
+        <source>Validation and request status</source>
+        <translation>检查结果与请求状态</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="142"/>
+        <source>Preview request</source>
+        <translation>预览请求</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="142"/>
+        <source>Cancel request</source>
+        <translation>取消请求</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="143"/>
+        <source>Validate code</source>
+        <translation>检查代码</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="143"/>
+        <source>Apply reviewed candidate</source>
+        <translation>应用已审阅的候选代码</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="144"/>
+        <source>Undo version</source>
+        <translation>撤销版本</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="147"/>
+        <source>Static checks passed. This does not establish safety or gameplay correctness. Test manually in a disposable runtime after review.</source>
+        <translation>静态检查通过，但不保证安全或游戏逻辑正确。审阅后请在可丢弃的独立运行环境中手动测试。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="148"/>
+        <source>Candidate applied to the document. Lua was not run or installed.</source>
+        <translation>候选代码已应用到文档，未运行或安装 Lua。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="151"/>
+        <source>Save project</source>
+        <translation>保存工程</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="151"/>
+        <source>Open project</source>
+        <translation>打开工程</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="151"/>
+        <source>Export disabled package</source>
+        <translation>导出未启用的扩展包</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="152"/>
+        <source>Include current card artwork snapshot</source>
+        <translation>包含当前卡牌画面快照</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="153"/>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="166"/>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="189"/>
+        <source>Document changed; the pending response will be ignored to preserve your edits.</source>
+        <translation>文档已修改，待返回的响应将被忽略，以保留你的修改。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="213"/>
+        <source>Version %1 — %2</source>
+        <translation>版本 %1 — %2</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="220"/>
+        <source>A credential appears in authoring content. Remove it before continuing.</source>
+        <translation>编写内容中出现了密钥，请移除后继续。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="226"/>
+        <source>Enter the final HTTPS chat-completions endpoint without credentials, query or fragment.</source>
+        <translation>请填写最终的 HTTPS 聊天补全接口地址，不得包含密钥、查询参数或片段。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="229"/>
+        <source>Review data sent to the provider</source>
+        <translation>审阅发送给服务商的数据</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="230"/>
+        <source>Send to %1 using model %2. Only the text below is sent as model content; artwork and local file paths are excluded.</source>
+        <translation>使用模型 %2 发送至 %1。仅将下方文本作为模型内容发送，不包含图片和本地文件路径。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="233"/>
+        <source>Send request</source>
+        <translation>发送请求</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="237"/>
+        <source>Waiting for provider. You can cancel; edits made now will invalidate the response.</source>
+        <translation>正在等待服务商响应，可以取消。此时修改文档将使响应失效。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="243"/>
+        <source>Candidate ready. Review the code and diff, then apply explicitly. Static checks do not establish safety.</source>
+        <translation>候选代码已就绪。请审阅代码和差异，再手动应用。静态检查不保证安全。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="249"/>
+        <source>Request cancelled. Reviewed edits are preserved.</source>
+        <translation>请求已取消，保留已审阅的修改。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="256"/>
+        <source>Save authoring project</source>
+        <translation>保存武将编写工程</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="256"/>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="264"/>
+        <source>Authoring projects (*.json)</source>
+        <translation>武将编写工程 (*.json)</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="258"/>
+        <source>Cannot save the project.</source>
+        <translation>无法保存工程。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="259"/>
+        <source>Project saved without credentials. Artwork remains in the card editor; export can include the current snapshot.</source>
+        <translation>工程已保存，不包含密钥。图片仍在卡牌编辑器中，导出时可包含当前快照。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="264"/>
+        <source>Open authoring project</source>
+        <translation>打开武将编写工程</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="266"/>
+        <source>Cannot read the project or it exceeds the size limit.</source>
+        <translation>无法读取工程，或工程超过大小限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="271"/>
+        <source>Project opened as text. Lua was not run. Validate the reviewed code before exporting.</source>
+        <translation>工程已作为文本打开，未运行 Lua。导出前请检查已审阅代码。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="277"/>
+        <source>Choose a separate disabled export directory</source>
+        <translation>选择独立的未启用导出目录</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="280"/>
+        <source>Disabled export saved to %1. No package was installed or enabled. Review and test manually in a disposable runtime before explicitly installing the child package directory.</source>
+        <translation>未启用的导出文件已保存至 %1，未安装或启用任何扩展包。请先审阅并在可丢弃的独立运行环境中手动测试，再明确安装子目录中的包。</translation>
     </message>
 </context>
 </TS>

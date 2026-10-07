@@ -12,6 +12,10 @@ set(QSAN_SOURCES
     src/core/settings-gui.cpp
     src/dialog/banipdialog.cpp
     src/dialog/cardeditor.cpp
+    src/dialog/general-authoring.cpp
+    src/dialog/general-authoring-provider.cpp
+    src/dialog/general-authoring-dialog.cpp
+    src/dialog/general-authoring.qrc
     src/dialog/cardoverview.cpp
     src/dialog/choosegeneraldialog.cpp
     src/dialog/configdialog.cpp
@@ -272,6 +276,7 @@ set(QSAN_MOC_HEADERS
     src/core/record-analysis.h
     src/dialog/banipdialog.h
     src/dialog/cardeditor.h
+    src/dialog/general-authoring-dialog.h
     src/dialog/cardoverview.h
     src/dialog/choosegeneraldialog.h
     src/dialog/configdialog.h
