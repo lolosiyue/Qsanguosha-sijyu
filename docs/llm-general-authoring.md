@@ -66,7 +66,6 @@ such content is blocked from saving/sending rather than automatically rewritten.
 | `general-authoring-provider.cpp/.h` | Injectable asynchronous Qt transport; HTTPS, no redirects/cookies/cache, request/body/time bounds and generic redacted failures. |
 | `src/dialog/authoring/context.json` | Embedded, bounded engine contract, exact selected SWIG signatures, helper source, actual extension callback excerpts and source hashes. |
 | `tools/authoring/build_context.py` | Deterministic refresh from this checkout without evaluating Lua. |
-| `tests/general-authoring` | Standalone native document/transport/UI mock regression harness. |
 
 The MVP supports local `sgs.CreateTriggerSkillV2` definitions with name as their
 first field. It deliberately has a bounded list of events, player/room/variant
@@ -210,5 +209,4 @@ manager's explicit next-start lifecycle and is not triggered by this editor.
   acceptance, isolated gameplay run or paid provider request is claimed.
 
 See [the Qt 6.11 QA guide](llm-general-authoring-qt611-qa.md) for the remaining
-application acceptance work and [the test README](../tests/general-authoring/README.md)
-for the focused harness.
+application acceptance work.

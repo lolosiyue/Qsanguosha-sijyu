@@ -94,18 +94,3 @@ player:removeSkillInstanceStateKeys("s4_cloud_yingzi", instance_id,
 
 The four representative skills change 17 added/61 removed lines; no skill
 effects, marks, expiry callbacks or full-package state refactor are included.
-
-## Focused validation
-
-Configure with `QSAN_TEST_EXTERNAL_AGENTS=ON` and point
-`QSAN_EXTENSIONS_SOURCE_DIR` at the companion checkout. Build
-`qsanguosha_skill_state_tests` and run `ctest -R '^skill_state_convenience$'`.
-The shared native-role fixture supplies the real Lua/SWIG runtime; this test
-does not play a game, use an external API or run a 50-player benchmark.
-
-Coverage: typed empty/wrong-type defaults, list delimiters/Unicode, strict Lua
-array rejection without mutation, false/zero selective cleanup, exact parent
-and owner isolation, correction definition rejection, existing recipient gates,
-external-agent private-state exclusion, concealed Hegemony helper exclusion,
-Room detach cleanup and fresh instance isolation. Parse the migrated Scarlet
-with the engine's Lua parser as an additional syntax check.

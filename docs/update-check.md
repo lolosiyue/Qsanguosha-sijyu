@@ -189,40 +189,24 @@ of the trusted install path.
 
 ## Focused offline validation
 
-Build the standalone focused targets with a Qt development kit and zlib:
+Run the package-tool checks:
 
 ```sh
-cmake -S tests/updates -B /tmp/qsan-update-tests -DCMAKE_PREFIX_PATH=/path/to/Qt
-cmake --build /tmp/qsan-update-tests --parallel 3
-QT_QPA_PLATFORM=offscreen ctest --test-dir /tmp/qsan-update-tests --output-on-failure
 python3 tools/packages/tests/test_package_tool.py
 python3 tools/packages/tests/test_package_web_solo.py
 python3 -m unittest tools.packages.tests.test_generate_update_manifest
 ```
 
-These tests use fake HTTPS replies and tiny generated ZIP fixtures. They cover
-catalog/version/channel/platform gates, response bounds, HTTPS redirects,
-range restart/resume, hash errors, offline partial preservation, keyboard
-cancellation, opt-in downloads, restart staging, archive/identity rejection and
-rollback, aggregate quotas, overflow and same/split-volume free-space boundaries.
-Metadata and sparse fixtures cover GB-scale bounds without fetching a library.
-No production assets, bucket writes, paid calls or real installers
-are used. Standalone widget tests can run with Qt 6.8; the full application
-continues to require Qt 6.11 and needs validation with that official GUI kit.
-
 
 ## Official Qt 6.11.1 GUI QA handoff
 
 Run on the intended desktop using the official Qt 6.11.1 kit; do not lower the
-application's Qt minimum. Point `CMAKE_PREFIX_PATH` at that kit and build both
-GUI and focused tests in separate local build directories:
+application's Qt minimum. Point `CMAKE_PREFIX_PATH` at that kit and build the
+GUI in a separate local build directory:
 
 ```sh
 cmake -S . -B build-update-gui -DCMAKE_PREFIX_PATH=/path/to/Qt/6.11.1/platform -DQSAN_BUILD_GUI=ON -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_TUI=OFF -DQSAN_AUDIO_BACKEND=QT
 cmake --build build-update-gui --parallel 3
-cmake -S tests/updates -B build-update-tests -DCMAKE_PREFIX_PATH=/path/to/Qt/6.11.1/platform
-cmake --build build-update-tests --parallel 3
-ctest --test-dir build-update-tests --output-on-failure
 ```
 
 Use a temporary user-data profile and the repository's normal runtime-assets

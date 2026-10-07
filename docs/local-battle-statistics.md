@@ -197,14 +197,6 @@ this local journal's guarantees.
 
 ## Focused verification
 
-Configure with `-DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_SERVER=OFF
--DQSAN_BUILD_TUI=OFF -DQSAN_TEST_BATTLE_STATISTICS=ON`, build
-`qsanguosha_battle_statistics_tests`, and run
-`ctest --test-dir <build> -R battle_statistics_contract --output-on-failure`.
-The target compiles the production collector/projection and history service
-directly, with Qt Core/Sql only, and does not stage game assets or run long games.
-Production server compilation separately checks Room/lifecycle integration.
-
 Full Qt 6.11 GUI/platform packaging and the external rewind task's eventual call
 site require integration QA. The first version does not auto-migrate old schema
 formats, recover abruptly killed games, calibrate population-relative thresholds,

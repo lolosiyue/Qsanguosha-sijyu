@@ -11,8 +11,8 @@ Production CMake correctly rejects Qt 6.8.2 and still requires Qt 6.11.
 Use the parent machine's complete Qt 6.11 SDK and normal repository build
 prerequisites. Work on `feature/llm-general-authoring` based on debug `548b5c45`.
 No helper/updater/stats/rewind branches need to be merged for this feature. Do not
-use a real key or a paid API call for acceptance; the native harness supplies an
-in-process mocked network manager. No generated code should be installed in the
+use a real key or a paid API call for acceptance; inject an in-process mocked
+network manager instead. No generated code should be installed in the
 ordinary desktop runtime as a shortcut to testing.
 
 ## Build and focused automated checks
@@ -29,23 +29,6 @@ available host presets. On Linux, configure with `linux-gui-gcc-debug` and the
 Qt 6.11 SDK prefix, then build `linux-gui-debug`. Keep all production version
 requirements and normal audio/QML configuration in place. Verify the application
 links the new resource and that the authoring action opens from the card editor.
-
-The independent harness can be built with that same SDK, without requiring the
-whole engine or loading extensions:
-
-```sh
-cmake -S tests/general-authoring -B build/general-authoring-qa \
-  -DCMAKE_PREFIX_PATH=/absolute/path/to/Qt/6.11/compiler-prefix
-cmake --build build/general-authoring-qa --config Debug
-ctest --test-dir build/general-authoring-qa -C Debug --output-on-failure
-```
-
-On Windows, ensure Qt's bin directory is on PATH when running the test. The
-harness constructs native widgets offscreen and injects `ScriptedManager`; it
-never reaches a provider. It exercises schemas and API lint, correction payloads,
-manual edits, versioning, parse-only malicious inputs, cancellation, response
-order, privacy, export and focused UI control behavior. CTest bounds the
-parse-only infinite-loop fixture so accidental evaluation becomes a failure.
 
 Check the embedded context is fresh without executing Lua:
 
@@ -79,12 +62,10 @@ Simplified Chinese translations.
 | Close during request | Request aborts, key field clears, no late callback changes a reopened document. |
 | Simplified Chinese UI | New controls and messages are translated, placeholders/IDs preserve their technical meaning. |
 
-For native request/apply/correction/cancel acceptance use the harness's injected
-mock transport, not a public provider. If manual interactive mock exercises are
-needed, instantiate `GeneralAuthoringDialog` with a test `QNetworkAccessManager`
-as its final constructor argument. The production default remains the normal
-Qt HTTPS transport. Existing `ScriptedReply` and `apiResponse` in the test source
-show the required mock envelope and timing controls.
+For native request/apply/correction/cancel acceptance use a mock transport, not a
+public provider: instantiate `GeneralAuthoringDialog` with a mock
+`QNetworkAccessManager` as its final constructor argument. The production default
+remains the normal Qt HTTPS transport.
 
 Use mock response variants: valid V2 skill, malformed JSON/schema, missing binding,
 unknown method/function, invalid syntax, incomplete `finish_reason`, provider
@@ -144,7 +125,7 @@ card editor's avatar export tools and require explicit asset mappings if desired
 ## Sign-off record
 
 Record the exact base/patch hash, Qt version, host/compiler, preset/build result,
-focused harness result, language, keyboard/controller hardware and the desktop
+language, keyboard/controller hardware and the desktop
 matrix outcomes. List skipped checks individually. Runtime testing needs its
 sandbox details and resource limits; otherwise label it unverified. Do not claim
 full GUI or gameplay QA based on the Qt 6.8.2 cloud run.
