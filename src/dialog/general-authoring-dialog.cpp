@@ -102,6 +102,8 @@ GeneralAuthoringDialog::GeneralAuthoringDialog(QWidget *parent, const QJsonObjec
         text->setPlainText(m_skills->item(row, 2) ? m_skills->item(row, 2)->text() : QString());
         text->setTabChangesFocus(true); layout->addWidget(text);
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel); layout->addWidget(buttons);
+        buttons->button(QDialogButtonBox::Ok)->setText(tr("OK"));
+        buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
         connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept); connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
         if (dialog.exec() == QDialog::Accepted) m_skills->setItem(row, 2, new QTableWidgetItem(text->toPlainText()));
     });
@@ -235,6 +237,7 @@ void GeneralAuthoringDialog::previewRequest()
     target->setWordWrap(true); layout->addWidget(target);
     auto *content = codeEdit(nullptr, true); content->setPlainText(QString::fromUtf8(payload)); layout->addWidget(content);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel); auto *send = buttons->addButton(tr("Send request"), QDialogButtonBox::AcceptRole);
+    buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
     send->setAutoDefault(false); connect(send, &QPushButton::clicked, &preview, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &preview, &QDialog::reject); layout->addWidget(buttons);
     content->setFocus(); if (preview.exec() != QDialog::Accepted) return;

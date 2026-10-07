@@ -12759,6 +12759,17 @@ Changes:
 <context>
     <name>GeneralAuthoringDialog</name>
     <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="105"/>
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="106"/>
+        <location filename="../src/dialog/general-authoring-dialog.cpp" line="240"/>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/general-authoring-dialog.cpp" line="39"/>
         <source>Playable general authoring</source>
         <translation>可玩武将编写</translation>
