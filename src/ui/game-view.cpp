@@ -8,6 +8,9 @@
 #include "startscene.h"
 #include "room-overlay-host.h"
 #include "room-window-posture.h"
+#if QSAN_ENABLE_QML
+#include "qml-table-layer.h"
+#endif
 
 #if !QSAN_USE_RASTER_VIEWPORT
 #include <QDebug>
@@ -258,6 +261,12 @@ void FitView::applyVisualMode()
     // The GL viewport is post-processed in drawForeground(); composite the QWidget overlay separately.
     if (m_overlay)
         m_overlay->setGraphicsEffect(active ? new VisualModeEffect(isGrayscaleMode()) : nullptr);
+#if QSAN_ENABLE_QML
+    // The QML layer is a separate GPU surface; its root applies the same filter itself.
+    if (m_qmlLayer)
+        m_qmlLayer->setVisualMode(active && isGrayscaleMode() ? -1.0 : 0.0,
+                                  active && !isGrayscaleMode() ? 0.35 : 0.0);
+#endif
 #endif
     viewport()->update();
 }
@@ -301,6 +310,9 @@ void FitView::setScene(QGraphicsScene *next)
         if (m_posture) m_posture->setResponsivePreview(m_responsiveEnabled);
         delete m_overlay;
         m_overlay = nullptr;
+#if QSAN_ENABLE_QML
+        delete m_qmlLayer;
+#endif
         m_overlayRoom = nullptr;
         m_hasPreviousProfile = false;
     }
@@ -354,6 +366,15 @@ void FitView::ensureRoomOverlay(RoomScene *room)
     if (m_posture) m_posture->setResponsivePreview(m_responsiveEnabled);
     m_overlay->setResponsiveEnabled(m_responsiveEnabled);
     room->attachOverlay(m_overlay);
+#if QSAN_ENABLE_QML
+    delete m_qmlLayer;
+    m_qmlLayer = new QmlTableLayer(this, viewport());
+    // Below the overlay host: the inspector and seat scroller cover extension elements.
+    m_qmlLayer->stackUnder(m_overlay);
+    room->attachQmlLayer(m_qmlLayer);
+    connect(room, &QObject::destroyed, m_qmlLayer, &QObject::deleteLater);
+    m_qmlLayer->show();
+#endif
     connect(room, &RoomScene::seatCountChanged, this, &FitView::refit, Qt::QueuedConnection);
     connect(m_overlay, &RoomOverlayHost::responsiveEnabledChanged, this,
             [this](bool enabled) { setResponsiveRoomEnabled(enabled); });
@@ -428,6 +449,12 @@ void FitView::resizeEvent(QResizeEvent *event)
 {
     QGraphicsView::resizeEvent(event);
     fitCurrentScene(viewport()->size());
+#if QSAN_ENABLE_QML
+    if (m_qmlLayer) {
+        m_qmlLayer->setGeometry(viewport()->rect());
+        m_qmlLayer->scheduleRelayout();
+    }
+#endif
 }
 
 void FitView::fitCurrentScene(const QSize &viewportSize)
@@ -519,6 +546,13 @@ void FitView::fitCurrentScene(const QSize &viewportSize)
             m_overlay->setLayoutResult(overlayLayout);
         }
         m_overlay->raise();
+#if QSAN_ENABLE_QML
+        if (m_qmlLayer) {
+            m_qmlLayer->setGeometry(viewport()->rect());
+            m_qmlLayer->stackUnder(m_overlay);
+            m_qmlLayer->scheduleRelayout();
+        }
+#endif
         m_fitting = false;
         return;
     }

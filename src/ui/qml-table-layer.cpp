@@ -53,6 +53,24 @@ QJsonObject rectJson(const QRectF &rect)
                        {QStringLiteral("w"), rect.width()}, {QStringLiteral("h"), rect.height()}};
 }
 
+QString profileName(RoomLayoutEngine::Profile profile)
+{
+    switch (profile) {
+    case RoomLayoutEngine::Profile::CompactPortrait: return QStringLiteral("portrait");
+    case RoomLayoutEngine::Profile::CompactLandscape: return QStringLiteral("compact-landscape");
+    case RoomLayoutEngine::Profile::Medium: return QStringLiteral("medium");
+    case RoomLayoutEngine::Profile::ExpandedSplit: return QStringLiteral("split");
+    case RoomLayoutEngine::Profile::Book: return QStringLiteral("book");
+    case RoomLayoutEngine::Profile::Tabletop: return QStringLiteral("tabletop");
+    case RoomLayoutEngine::Profile::LargeRoom: return QStringLiteral("large-room");
+    case RoomLayoutEngine::Profile::LegacyLandscape: break;
+    }
+    return QStringLiteral("landscape");
+}
+
+constexpr qreal kGap = 4.0;
+constexpr qreal kEdge = 8.0;
+
 }
 
 QmlTableLayer::QmlTableLayer(QGraphicsView *view, QWidget *parent)
@@ -273,7 +291,7 @@ QJsonObject QmlTableLayer::snapshot() const
         return m_view && rect.isValid() ? QRectF(m_view->mapFromScene(rect).boundingRect()) : QRectF();
     };
     QJsonObject result{{QStringLiteral("elements"), elements},
-                       {QStringLiteral("profile"), QString()},
+                       {QStringLiteral("profile"), profileName(m_table.profile)},
                        {QStringLiteral("compact"), m_table.compactSeats}};
     if (m_view) {
         const QPointF center = m_view->mapFromScene(m_table.tableCenter);
@@ -289,6 +307,130 @@ QJsonObject QmlTableLayer::snapshot() const
 
 void QmlTableLayer::relayout()
 {
+    if (!m_view || !m_content)
+        return;
+    QList<QmlSeatGeometry> seats;
+    QmlTableGeometry table;
+    if (m_provider)
+        m_provider(&seats, &table);
+    m_table = table;
+    const auto map = [this](const QRectF &rect) {
+        return rect.isValid() ? QRectF(m_view->mapFromScene(rect).boundingRect()) : QRectF();
+    };
+    const qreal viewScale = m_view->transform().m11();
+    const QRectF main = table.mainRect.isValid() ? map(table.mainRect) : QRectF(rect());
+    const QRectF header = map(table.headerRect);
+    const QRectF interaction = map(table.interactionRect);
+    QHash<QString, const QmlSeatGeometry *> seatByPlayer;
+    for (const QmlSeatGeometry &seat : seats)
+        seatByPlayer.insert(seat.player, &seat);
+
+    // Group elements that share an anchor; each group is laid out as one row.
+    struct Placement { Element *element; QSizeF size; qreal scale; };
+    QMap<QString, QList<Placement>> groups;
+    for (auto it = m_elements.begin(); it != m_elements.end(); ++it) {
+        Element &element = *it;
+        element.visible = false;
+        if (!element.frame || !element.item) {
+            element.viewRect = QRectF();
+            continue;
+        }
+        const QmlSeatGeometry *seat = element.player.isEmpty() ? nullptr : seatByPlayer.value(element.player);
+        if (!element.player.isEmpty() && (!seat || !seat->visible)) {
+            element.frame->setVisible(false);
+            element.viewRect = QRectF();
+            continue;
+        }
+        const qreal scale = seat ? viewScale * seat->itemScale : viewScale;
+        QVariantMap qs{{QStringLiteral("data"), element.data},
+                       {QStringLiteral("player"), seat ? QVariant(seat->snapshot) : QVariant()},
+                       {QStringLiteral("scale"), scale},
+                       {QStringLiteral("profile"), profileName(table.profile)},
+                       {QStringLiteral("compact"), table.compactSeats}};
+        if (qs != element.lastQs) {
+            element.item->setProperty("qs", qs);
+            element.lastQs = qs;
+        }
+        QSizeF size(element.item->implicitWidth(), element.item->implicitHeight());
+        if (size.isEmpty())
+            size = element.item->size();
+        element.seatRect = seat ? map(seat->sceneRect) : QRectF();
+        QString group = element.anchor;
+        if (seat) {
+            const bool centered = element.anchor == QLatin1String("avatar") || element.anchor.startsWith(QLatin1String("seat:"));
+            // Ribbon seats are too small for rows outside them: every non-centred seat anchor
+            // becomes one row along the inside bottom of the seat.
+            group = element.player + QLatin1Char('|')
+                + (table.compactSeats && !centered ? QStringLiteral("compact") : (centered ? QStringLiteral("center") : element.anchor));
+        }
+        groups[group].append({&element, size * scale, scale});
+    }
+
+    m_interactiveRects.clear();
+    for (auto group = groups.begin(); group != groups.end(); ++group) {
+        const QList<Placement> &row = group.value();
+        qreal width = -kGap, height = 0;
+        for (const Placement &p : row) {
+            width += p.size.width() + kGap;
+            height = qMax(height, p.size.height());
+        }
+        const QString kind = group.key().section(QLatin1Char('|'), -1);
+        const Element *first = row.first().element;
+        const QRectF seat = first->seatRect;
+        QPointF origin;
+        bool clipToSeat = false;
+        if (!first->player.isEmpty()) {
+            if (kind == QLatin1String("center"))
+                origin = QPointF(seat.center().x() - width / 2, seat.center().y() - height / 2);
+            else if (kind == QLatin1String("compact")) {
+                origin = QPointF(seat.left() + 2, seat.bottom() - height - 2);
+                clipToSeat = true;
+            } else if (kind == QLatin1String("top"))
+                origin = QPointF(seat.left(), seat.top() - height - 2);
+            else if (kind == QLatin1String("bottom"))
+                origin = QPointF(seat.left(), seat.bottom() + 2);
+            else // mark-area
+                origin = QPointF(seat.left() + 2, seat.top() + 2);
+        } else if (kind == QLatin1String("table-center")) {
+            const QPointF center = m_view->mapFromScene(table.tableCenter);
+            origin = QPointF(center.x() - width / 2, center.y() - height / 2);
+        } else if (kind == QLatin1String("screen-top")) {
+            const qreal top = header.isValid() ? header.bottom() + kEdge : main.top() + kEdge;
+            origin = QPointF(main.center().x() - width / 2, top);
+        } else if (kind == QLatin1String("screen-bottom")) {
+            const qreal bottom = interaction.isValid() ? interaction.top() - kEdge : main.bottom() - kEdge;
+            origin = QPointF(main.center().x() - width / 2, bottom - height);
+        } else if (kind == QLatin1String("screen-top-left")) {
+            origin = QPointF(main.left() + kEdge, (header.isValid() ? header.bottom() : main.top()) + kEdge);
+        } else if (kind == QLatin1String("screen-top-right")) {
+            origin = QPointF(main.right() - kEdge - width, (header.isValid() ? header.bottom() : main.top()) + kEdge);
+        } else if (kind == QLatin1String("screen-bottom-left")) {
+            origin = QPointF(main.left() + kEdge, (interaction.isValid() ? interaction.top() : main.bottom()) - kEdge - height);
+        } else { // screen-bottom-right
+            origin = QPointF(main.right() - kEdge - width, (interaction.isValid() ? interaction.top() : main.bottom()) - kEdge - height);
+        }
+
+        qreal x = origin.x();
+        for (const Placement &p : row) {
+            Element &element = *p.element;
+            QRectF box(QPointF(x, origin.y()), p.size);
+            x += p.size.width() + kGap;
+            if (clipToSeat)
+                box = box.intersected(seat);
+            element.frame->setPosition(box.topLeft());
+            element.frame->setSize(box.size());
+            element.frame->setClip(clipToSeat);
+            element.item->setTransformOrigin(QQuickItem::TopLeft);
+            element.item->setScale(p.scale);
+            element.item->setPosition(QPointF(0, 0));
+            element.frame->setVisible(!box.isEmpty());
+            element.visible = !box.isEmpty();
+            element.viewRect = box;
+            if (element.visible && element.item->property("qsInteractive").toBool())
+                m_interactiveRects.append(box);
+        }
+    }
+
     if (m_reportPending) {
         m_reportPending = false;
         emit elementsChanged();
