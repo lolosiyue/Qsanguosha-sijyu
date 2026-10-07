@@ -1,4 +1,5 @@
 #include "generaloverview.h"
+#include "battle-statistics-dialog.h"
 #include "qt-collection-utils.h"
 #include <QtGlobal>
 #include "ui_generaloverview.h"
@@ -304,6 +305,14 @@ GeneralOverview::GeneralOverview(QWidget *parent)
     general_search = new GeneralSearch(this);
     connect(ui->searchButton, SIGNAL(clicked()), general_search, SLOT(show()));
     ui->returnButton->hide();
+    auto *statisticsButton = new QPushButton(tr("Local match statistics"), this);
+    statisticsButton->setObjectName(QStringLiteral("battleStatisticsButton"));
+    ui->verticalLayout_2->addWidget(statisticsButton);
+    connect(statisticsButton, &QPushButton::clicked, this, [this]() {
+        const auto *item = ui->tableWidget->item(ui->tableWidget->currentRow(), 0);
+        BattleStatisticsDialog dialog(item ? item->data(Qt::UserRole).toString() : QString(), this);
+        dialog.exec();
+    });
     connect(ui->returnButton, SIGNAL(clicked()), this, SLOT(fillAllGenerals()));
     connect(ui->sameNameButton, &QPushButton::clicked, this, [this]() {
         if (same_name_filter.isEmpty()) {
@@ -330,6 +339,8 @@ void GeneralOverview::setPreviewMode(bool preview)
         ui->untieGeneral->hide();
         ui->searchButton->hide(); // Hide the search button with the search controls.
         ui->sameNameButton->hide();
+        if (auto *button = findChild<QPushButton *>(QStringLiteral("battleStatisticsButton")))
+            button->hide();
     }
 }
 
@@ -1040,4 +1051,3 @@ void GeneralOverview::fillAllGenerals()
     setWindowTitle(origin_window_title);
     fillGenerals(all_generals, false);
 }
-

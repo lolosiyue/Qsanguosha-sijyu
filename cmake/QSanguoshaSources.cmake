@@ -21,6 +21,8 @@ set(QSAN_SOURCES
     src/dialog/dialogslsettings.cpp
     src/dialog/distanceviewdialog.cpp
     src/dialog/generaloverview.cpp
+    src/dialog/battle-statistics-dialog.cpp
+    src/dialog/battle-statistics-dialog.h
     src/dialog/mainwindow.cpp
     src/dialog/widget-accessibility.cpp
     src/dialog/widget-accessibility.h
