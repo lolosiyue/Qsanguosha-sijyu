@@ -697,6 +697,9 @@ void PlayerCardContainer::updateGeneralPile(const QString &pile_name)
 
 void PlayerCardContainer::updateMark(const QString &mark_name, int mark_num)
 {
+    // A QML-bound mark is drawn by QmlTableLayer instead of a pile button.
+    if (Sanguosha->isQmlMark(mark_name))
+        return;
     /*ClientPlayer *player = (ClientPlayer *)sender();
     if (!player) player = m_player;
     if (!player) return;*/

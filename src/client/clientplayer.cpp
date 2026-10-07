@@ -374,7 +374,7 @@ void ClientPlayer::setMark(const QString &mark, int value)
 		}
 		QString text;
 		foreach (QString key, keys) {
-			if (key.startsWith("@")&&marks[key]>0) {
+			if (key.startsWith("@")&&marks[key]>0&&!Sanguosha->isQmlMark(key)) {
 				QString filename = QString("image/mark/%1.png").arg(key);
 				if (!QFile::exists(filename))
 					filename = QString("image/mark/@default.png");

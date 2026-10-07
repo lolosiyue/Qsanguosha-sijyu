@@ -164,6 +164,7 @@ public:
     void setEmotion(const QVariant &set_str);
     void changeTableBg(const QVariant &set_str);
     void setUiTheme(const QVariant &arg);
+    void handleQmlElement(const QVariant &arg);
     void skillInvoked(const QVariant &invoke_str);
     void animate(const QVariant &animate_str);
     void cardLimitation(const QVariant &limit);
@@ -516,6 +517,10 @@ signals:
     void change_table_bg(const QString &tableBg);
     // A room changed a theme slot, color or file for this game (Room::setUiElement).
     void ui_theme_changed(const QString &kind, const QString &id);
+    // Room::addQmlElement and friends: {op, id, qml, anchor, data, scope}.
+    void qml_element_received(const QVariantMap &payload);
+    // A mark bound by Engine::addQmlMark changed; value 0 removes it.
+    void qml_mark_changed(const QString &player, const QString &mark, int value);
     void skill_invoked(const QString &who, const QString &skill_name);
     void skill_acquired(const ClientPlayer *player, const QString &skill_name);
     void animated(int name, const QStringList &args);
