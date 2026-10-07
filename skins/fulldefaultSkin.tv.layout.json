@@ -1,0 +1,85 @@
+{
+// BP-1d big-picture font overlay for fulldefaultSkin.
+// QSanSkinScheme::load applies this file on top of fulldefaultSkin.layout.json
+// only when big-picture mode is active; every key it carries replaces the base
+// value while everything absent stays inherited. All fonts are >= 18 skin px
+// so at 1080p (scene scale 1.5) they render >= 27 px, clearing the XAG 101
+// console floor of 26 px. Scene sizes are deliberately NOT overridden here:
+// the TenFoot layout profile is BP-2 work.
+"common":
+{
+    // was [12, 12, 1]
+    "cardFootnoteFont": ["SimSun", [18, 18, 1], 0, [228, 213, 160, 255], 1, 10, [0, 0], [20, 20, 20, 255]],
+    // was 14
+    "playerCardBoxPlaceNameText": ["@SimHei", 18, 0, [255, 255, 255, 255]],
+    // was [15, 15, -2] per tier
+    "magatamaFont": [
+        ["Arial", [18, 18, -2], 80, [233, 0, 0, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["Arial", [18, 18, -2], 80, [233, 34, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["Arial", [18, 18, -2], 80, [233, 116, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["Arial", [18, 18, -2], 80, [195, 195, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["Arial", [18, 18, -2], 80, [141, 195, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]],
+        ["Arial", [18, 18, -2], 80, [66, 174, 34, 255], 2, 10, [0, 0], [20, 20, 20, 155]]
+    ]
+},
+"photo":
+{
+    // was [12, 12, -1]
+    "handCardFont": ["Arial", [18, 18, -1], 20, [255, 255, 255, 255], 1, 30, [0, 0], [20, 20, 20, 200]],
+    // was [14, 14, 3]
+    "equipPointFontBlack": ["Arial", [18, 18, 3], 20, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["Arial", [18, 18, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    // was 12
+    "screenNameFont": ["SimSun", 18, 0, [255, 255, 255, 255], 0, 10, [0, 0], [20, 20, 20, 155]],
+    "onlineStatusFont": ["SimSun", 18, 0, [255, 255, 255, 255], 3, 10, [0, 0], [20, 20, 20, 155]],
+    // was [16, 16, 3]
+    "extraSkillFont": ["SimLi", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+},
+"dashboard":
+{
+    // was [16, 16, -2]
+    "handCardFont": ["Arial", [18, 18, -2], 20, [255, 255, 255, 255], 1, 30, [0, 0], [20, 20, 20, 200]],
+    // was [14, 14, 3]
+    "equipPointFontBlack": ["Arial", [18, 18, 3], 20, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["Arial", [18, 18, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    // was 12
+    "screenNameFont": ["SimSun", 18, 0, [255, 255, 255, 255], 2, 10, [0, 0], [0, 0, 0, 224]],
+    // was [16, 16, 3]
+    "extraSkillFont": ["SimLi", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+},
+"dashboardDouble":
+{
+    // Dashboard-double re-derives from the TV dashboard layout first; these
+    // keep its own overrides at the same >=18 skin px floor.
+    "handCardFont": ["Arial", [18, 18, -2], 20, [255, 255, 255, 255], 1, 30, [0, 0], [20, 20, 20, 200]],
+    "equipPointFontBlack": ["Arial", [18, 18, 3], 20, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["Arial", [18, 18, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "screenNameFont": ["SimSun", 18, 0, [255, 255, 255, 255], 2, 10, [0, 0], [0, 0, 0, 224]],
+    "extraSkillFont": ["SimLi", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+},
+"skillButton":
+{
+    // was [13, 13, 2]/[13, 13, 1]/[13, 13, 0]
+    "textFont": [["simkai", [18, 18, 2], 50, [0, 0, 0, 255], 1, 1, [0, 0], [255, 255, 190, 128]],
+                 ["simkai", [18, 18, 1], 50, [0, 0, 0, 255], 1, 1, [0, 0], [255, 255, 190, 128]],
+                 ["simkai", [18, 18, 0], 50, [0, 0, 0, 255], 1, 1, [0, 0], [255, 255, 190, 128]]]
+},
+"photoSmall":
+{
+    // Same bumps as photo: was [12, 12, -1] / [14, 14, 3] / 12 / [16, 16, 3].
+    "handCardFont": ["Arial", [18, 18, -1], 20, [255, 255, 255, 255], 1, 30, [0, 0], [20, 20, 20, 200]],
+    "equipPointFontBlack": ["Arial", [18, 18, 3], 20, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["Arial", [18, 18, 3], 20, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "screenNameFont": ["SimSun", 18, 0, [255, 255, 255, 255], 0, 10, [0, 0], [20, 20, 20, 155]],
+    "onlineStatusFont": ["SimSun", 18, 0, [255, 255, 255, 255], 3, 10, [0, 0], [20, 20, 20, 155]],
+    "extraSkillFont": ["SimLi", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+},
+"photoBig":
+{
+    // was [16, 16, 4] / 12 / [16, 16, 3]
+    "equipPointFontBlack": ["Arial", [18, 18, 4], 30, [0, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "equipPointFontRed": ["Arial", [18, 18, 4], 30, [164, 0, 0, 255], 1, 0, [0, 0], [240, 240, 240, 200]],
+    "onlineStatusFont": ["SimSun", 18, 0, [255, 255, 255, 255], 3, 10, [0, 0], [20, 20, 20, 155]],
+    "extraSkillFont": ["SimLi", [18, 18, 3], 0, [255, 255, 255, 255], 2, 100, [0, 0], [102, 16, 120, 255]]
+}
+}

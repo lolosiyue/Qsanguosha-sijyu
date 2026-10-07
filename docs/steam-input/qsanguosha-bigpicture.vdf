@@ -1,0 +1,333 @@
+// QSanguosha "Big Picture" Steam Input template (keyboard emulation).
+//
+// Zero-code gamepad path: Steam Input turns pad input into the keyboard
+// events the client already understands (see docs/big-picture.md and
+// docs/client-core-interaction-model.md, "Native askFor keyboard support").
+//
+//   D-pad      -> arrow keys         (focus move / browse)
+//   A          -> SPACE              (toggle / select focused item)
+//   B          -> ESCAPE             (cancel / back, when the request allows)
+//   Start      -> RETURN             (confirm draft / invoke "yes")
+//   LB / RB    -> Shift+TAB / TAB    (previous / next focus group)
+//   Y          -> CTRL+SHIFT+I       (game-state snapshot)
+//   View (⧉)   -> F6                 (return focus to request dialog / table)
+//
+// Multi-key chords are expressed as several "binding" lines inside one
+// Full_Press block (all listed keys are pressed together, e.g. LB emits
+// Shift+TAB). Chords are listed modifier-first, matching Steam exports.
+//
+// The file follows the standard "controller_mappings" schema (version 3)
+// used by Steam Deck ("controller_neptune") layout exports. To install:
+// see docs/big-picture.md, section "Steam Input".
+//
+// Left joystick, triggers, trackpads and gyro are intentionally unbound:
+// without bindings they pass through as ordinary gamepad input, which the
+// client ignores until the native gamepad service (BP-1a) lands.
+
+"controller_mappings"
+{
+	"version"		"3"
+	"revision"		"1"
+	"title"		"QSanguosha Big Picture (keyboard)"
+	"description"		"Keyboard-emulation layout for QSanguosha big-picture / 10-foot mode. D-pad = arrows, A = Space, B = Esc, Start = Enter, LB/RB = Shift+Tab/Tab, Y = Ctrl+Shift+I, View = F6."
+	"creator"		""
+	"progenitor"		""
+	"url"		""
+	"export_type"		"personal_local"
+	"controller_type"		"controller_neptune"
+	"controller_caps"		"23117823"
+	"major_revision"		"1"
+	"minor_revision"		"0"
+	"Timestamp"		"0"
+	"actions"
+	{
+	}
+	"action_layers"
+	{
+	}
+	"localization"
+	{
+	}
+	"group"
+	{
+		"id"		"0"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		"Face buttons"
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press SPACE, Select / toggle, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press ESCAPE, Cancel / back, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press LEFT_CONTROL, Game state snapshot, , "
+							"binding"		"key_press LEFT_SHIFT, Game state snapshot, , "
+							"binding"		"key_press I, Game state snapshot, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"button_size"		"17994"
+			"button_dist"		"19994"
+		}
+	}
+	"group"
+	{
+		"id"		"1"
+		"mode"		"switches"
+		"name"		""
+		"description"		"Start / View / shoulder buttons"
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press RETURN, Confirm, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_menu"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press F6, Return focus to dialog / table, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press LEFT_SHIFT, Previous group, , "
+							"binding"		"key_press TAB, Previous group, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press TAB, Next group, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"2"
+		"mode"		"dpad"
+		"name"		""
+		"description"		"D-pad as arrow keys"
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press UP_ARROW, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press DOWN_ARROW, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press RIGHT_ARROW, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press LEFT_ARROW, , "
+						}
+						"settings"
+						{
+							"repeat_rate"		"99"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+		}
+	}
+	"preset"
+	{
+		"id"		"0"
+		"name"		"Default"
+		"group_source_bindings"
+		{
+			"0"		"button_diamond active"
+			"1"		"switch active"
+			"2"		"dpad active"
+		}
+	}
+	"settings"
+	{
+		"left_trackpad_mode"		"0"
+		"right_trackpad_mode"		"0"
+	}
+}
