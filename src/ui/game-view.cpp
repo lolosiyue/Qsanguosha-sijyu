@@ -357,10 +357,11 @@ void FitView::retireQmlLayer()
 }
 #endif
 
-void FitView::setResponsiveRoomEnabled(bool enabled)
+void FitView::setResponsiveRoomEnabled(bool enabled, bool persist)
 {
     m_responsiveEnabled = enabled;
-    Config.setResponsiveUiEnabled(enabled);
+    if (persist)
+        Config.setResponsiveUiEnabled(enabled);
     if (m_posture) m_posture->setResponsivePreview(enabled);
     m_hasPreviousProfile = false;
     if (m_overlay && m_overlay->responsiveEnabled() != enabled)
@@ -390,8 +391,12 @@ void FitView::ensureRoomOverlay(RoomScene *room)
     // No show(): the layer shows itself while it has elements.
 #endif
     connect(room, &RoomScene::seatCountChanged, this, &FitView::refit, Qt::QueuedConnection);
-    connect(m_overlay, &RoomOverlayHost::responsiveEnabledChanged, this,
-            [this](bool enabled) { setResponsiveRoomEnabled(enabled); });
+    // Only a change made on the overlay itself is the user's choice; the echo of
+    // setResponsiveRoomEnabled() (possibly persist=false) must not save the setting.
+    connect(m_overlay, &RoomOverlayHost::responsiveEnabledChanged, this, [this](bool enabled) {
+        if (enabled != m_responsiveEnabled)
+            setResponsiveRoomEnabled(enabled);
+    });
     connect(m_overlay, &RoomOverlayHost::layoutPreferencesChanged, this, [this]() { refit(); });
     connect(room, &RoomScene::responsiveGeometryChanged, m_overlay, [this, room]() {
         if (m_overlay && (m_responsiveEnabled || room->largeRoomRequired()))
