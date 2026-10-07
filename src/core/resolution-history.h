@@ -63,6 +63,14 @@ public:
     ResolutionHistorySnapshot snapshot() const;
     bool restore(const ResolutionHistorySnapshot &snapshot, QString *error = nullptr);
 
+    // True only for the temporary context used while attributing exception
+    // cleanup; active event/round ancestry can still be part of a valid snapshot.
+    bool hasActiveContext() const;
+
+    // Allocation-free publication primitive. The caller must serialize access
+    // and ensure no transient context/RAII event operation is active.
+    void swap(ResolutionHistoryService &prepared) noexcept;
+
 private:
     struct Data;
     QSharedDataPointer<Data> d;

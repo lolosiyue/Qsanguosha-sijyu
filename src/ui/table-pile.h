@@ -40,6 +40,7 @@ public:
     void adjustCards();
     virtual QRectF boundingRect() const;
     void showJudgeResult(int cardId, bool takeEffect);
+    void resetForManagedSync();
     void setConvertedSubcardName(const QList<int> &cardIds, const QString &cardObjectName,
         const QString &name);
 
@@ -64,4 +65,3 @@ protected:
 };
 
 #endif
-

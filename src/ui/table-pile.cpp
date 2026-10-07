@@ -4,6 +4,7 @@
 #include "structs.h"
 #include "carditem.h"
 #include "effects/effects-policy.h"
+#include <QAbstractAnimation>
 
 QList<CardItem *> TablePile::removeCardItems(const QList<int> &card_ids, Player::Place)
 {
@@ -73,6 +74,24 @@ void TablePile::clear(bool delayRequest)
 	}
 
 	_m_mutex_pileCards.unlock();
+}
+
+void TablePile::resetForManagedSync()
+{
+	QList<CardItem *> oldCards;
+	_m_mutex_pileCards.lock();
+	oldCards.swap(m_visibleCards);
+	m_convertedCards.clear();
+	_m_mutex_pileCards.unlock();
+	for (CardItem *item : oldCards) {
+		if (!item) continue;
+		if (QAbstractAnimation *animation = item->getCurrentAnimation(false))
+			animation->stop();
+		item->setEnabled(false);
+		item->hide();
+		item->deleteLater();
+	}
+	updateContainer();
 }
 
 void TablePile::setConvertedSubcardName(const QList<int> &cardIds, const QString &cardObjectName,
@@ -221,4 +240,3 @@ void TablePile::adjustCards()
 	G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
 	animation->start();
 }
-

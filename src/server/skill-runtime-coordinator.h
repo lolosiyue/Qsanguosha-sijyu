@@ -12,6 +12,7 @@ class Room;
 
 class SkillRuntimeCoordinator
 {
+    friend class RoomManagedState;
 public:
     explicit SkillRuntimeCoordinator(Room &room);
     static bool canReceiveSkillInstance(const Room &room, const ServerPlayer *receiver,

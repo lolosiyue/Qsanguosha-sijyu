@@ -15,6 +15,7 @@ class SkillRuntimeCoordinator;
 
 class AiDecisionCoordinator
 {
+    friend class RoomManagedState;
 public:
     AiDecisionCoordinator(Room &room, SkillRuntimeCoordinator &skillRuntime);
 

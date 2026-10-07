@@ -487,6 +487,7 @@ private:
 
 private slots:
     void fillCards(const QList<int> &card_ids, const QList<int> &disabled_ids = QList<int>());
+    void resetManagedTimelinePresentation();
     void acquireSkill(const ClientPlayer *player, const QString &skill_name);
     void updateSelectedTargets();
     void updateTrustButton();

@@ -1,8 +1,11 @@
 #include "roomthread.h"
+#include "managed-rewind-lab.h"
 #include <QScopedValueRollback>
 #include "card-lifetime-manager.h"
 #include "lua.hpp"
 #include "room.h"
+#include "room-managed-state.h"
+#include "request-coordinator.h"
 #include "engine.h"
 #include "gamerule.h"
 #include "settings.h"
@@ -1452,6 +1455,210 @@ void RoomThread::_handleTurnBrokenHulaoPass(ServerPlayer*shenlvbu, QList<ServerP
     actionHulaoPass(shenlvbu, league, game_rule, stage);
 }
 
+bool RoomThread::enableManagedTurns(const GameState::ProviderRegistry &registry, QString *error)
+{
+    if (isRunning() || m_managedRegistry || room->managedState().worldStore()) {
+        if (error) *error = QStringLiteral("managed turn configuration must precede enrollment and worker start");
+        return false;
+    }
+    m_managedRegistry = std::make_unique<GameState::ProviderRegistry>(registry);
+    return true;
+}
+
+bool RoomThread::isManagedTurnBoundary() const
+{
+    return m_managedBoundary && event_stack.isEmpty() && !hasActiveCascade()
+        && !isNativeCommitActive() && !isDyingEventActive()
+        && !m_authorCallbackDepth && !m_operationRootActive && !m_joinOnlyDepth
+        && !m_interruptedTurnEventId && !m_interruptedPhaseEventId
+        && m_deferredAnytime.isEmpty() && m_deferredReveals.isEmpty()
+        && room->roomRuntime()->lua().isCurrentThreadOwner();
+}
+
+bool RoomThread::setManagedLuaProviders(const QString &gameProvider, const QString &aiProvider)
+{
+    if (isRunning() || room->managedState().worldStore()) return false;
+    m_managedGameProvider = gameProvider;
+    m_managedAiProvider = aiProvider;
+    return true;
+}
+
+void RoomThread::invalidateManagedTurns(const QString &reason)
+{
+    if (m_managedRegistry && m_managedFailure.isEmpty()) m_managedFailure = reason;
+}
+
+void RoomThread::setTimelineCommitObserver(TimelineCommitObserver observer)
+{
+    // Configure before the worker starts. Consumers must retry durable writes
+    // against this generation; failure cannot undo an already committed game.
+    if (!isRunning()) m_timelineCommitObserver = std::move(observer);
+}
+
+bool RoomThread::requestManagedRestore(GameTimeline::AnchorKind kind, QString *error)
+{
+    if (!m_managedRegistry || !room->roomRuntime()->lua().isCurrentThreadOwner()
+        || (kind != GameTimeline::AnchorKind::PlayerTurn && kind != GameTimeline::AnchorKind::FullRound)
+        || !m_managedFailure.isEmpty()) {
+        if (error) *error = m_managedFailure.isEmpty()
+            ? QStringLiteral("restore requires an enrolled normal game and its owner thread") : m_managedFailure;
+        return false;
+    }
+    auto &managed = room->managedState();
+    if (m_managedRestorePending) {
+        if (error) *error = QStringLiteral("a managed restore is already pending");
+        return false;
+    }
+    if (!managed.running() || !managed.worldStore()) {
+        if (error) *error = QStringLiteral("managed game has not reached its first turn boundary");
+        return false;
+    }
+    const auto &timeline = managed.worldStore()->timeline();
+    GameTimeline::Anchor target;
+    // Resolve against the request's time, not the later boundary where its
+    // native stack finally unwinds. Between turns the latest completed turn
+    // (or just-completed round) is already the preceding scope.
+    const bool betweenTurns = event_stack.isEmpty();
+    const bool useLatest = betweenTurns && !m_managedRestoredBoundary && (kind == GameTimeline::AnchorKind::PlayerTurn
+        || GameRule::beginsNormalRound(room, room->getCurrent()));
+    if (useLatest) {
+        for (auto it = timeline.anchors().crbegin(); it != timeline.anchors().crend(); ++it)
+            if (it->kind == kind && it->rewindable) { target = *it; break; }
+    } else target = kind == GameTimeline::AnchorKind::PlayerTurn
+        ? timeline.previousPlayerTurn() : timeline.previousFullRound();
+    if (target.id.isEmpty()) {
+        if (error) *error = QStringLiteral("requested earlier turn/round is not available");
+        return false;
+    }
+    m_managedRestoreKind = kind;
+    m_managedRestoreAnchor = target.id;
+    m_managedRestorePending = true;
+    return true;
+}
+
+bool RoomThread::stepNormalTurn(GameRule *gameRule, QString *error, bool executeTurn)
+{
+    if (!room->roomRuntime()->lua().isCurrentThreadOwner()) {
+        if (error) *error = QStringLiteral("normal turn executor requires its game owner thread");
+        return false;
+    }
+    // Once the owner attempts execution, consume this request even when an
+    // early precondition fails. It must never surprise a later ordinary step.
+    auto clearPendingRestore = qScopeGuard([&] {
+        m_managedRestorePending = false;
+        m_managedRestoreAnchor.clear();
+    });
+    if (!executeTurn && (!m_managedRegistry || !m_managedRestorePending)) {
+        if (error) *error = QStringLiteral("restore-only entry requires an accepted managed restore");
+        return false;
+    }
+    if (!gameRule || !room->getCurrent() || !event_stack.isEmpty() || hasActiveCascade()
+        || !room->roomRuntime()->lua().isCurrentThreadOwner()) {
+        if (error) *error = QStringLiteral("normal turn executor requires an idle game owner and current player");
+        return false;
+    }
+    if (m_managedRegistry) {
+        // Same explicit ownership handoff as RoomThread::run's Game VM binding.
+        LuaRuntime::Binding aiBinding(room->roomRuntime()->ai().lua());
+        QScopedValueRollback<bool> boundary(m_managedBoundary, true);
+        if (!isManagedTurnBoundary()) {
+            if (error) *error = QStringLiteral("managed turn executor requires a fully unwound worker boundary");
+            return false;
+        }
+        if (!m_managedFailure.isEmpty()) {
+            if (error) *error = m_managedFailure;
+            return false;
+        }
+        if (Config.EnableHegemony || room->getMode() != QStringLiteral("02p")
+            || typeid(*gameRule) != typeid(GameRule)) {
+            if (error) *error = QStringLiteral("managed turns currently admit only audited 02p normal GameRule games");
+            return false;
+        }
+        QSet<QString> audited;
+        for (const auto &provider : m_managedRegistry->providers())
+            for (const auto &definition : provider.skillDefinitions) audited.insert(definition);
+        for (int event = 0; event < NumOfEvents; ++event) {
+            for (const auto *definition : skill_table[event]) {
+                if (definition != gameRule && !audited.contains(definition->objectName())) {
+                    if (error) *error = QStringLiteral("unaudited active trigger: ") + definition->objectName();
+                    return false;
+                }
+            }
+            for (const auto *definition : v2_skill_table[event]) {
+                if (!audited.contains(definition->objectName())) {
+                    if (error) *error = QStringLiteral("unaudited active v2 trigger: ") + definition->objectName();
+                    return false;
+                }
+            }
+        }
+        auto &managed = room->managedState();
+        if (!managed.worldStore()) {
+            if (!managed.initializeRunning(*m_managedRegistry, error)) return false;
+            if ((!m_managedGameProvider.isEmpty()
+                 && !managed.installLuaProvider(room->roomRuntime()->lua(), m_managedGameProvider, error))
+                || (!m_managedAiProvider.isEmpty()
+                 && !managed.installLuaProvider(room->roomRuntime()->ai().lua(), m_managedAiProvider, error))) {
+                m_managedFailure = error ? *error : QStringLiteral("managed Lua installation failed");
+                return false;
+            }
+        }
+        if (m_managedRestorePending) {
+            m_managedRestorePending = false;
+            const auto &timeline = managed.worldStore()->timeline();
+            const auto anchor = timeline.anchor(m_managedRestoreAnchor);
+            if (anchor.id.isEmpty() || anchor.kind != m_managedRestoreKind) {
+                if (error) *error = QStringLiteral("requested earlier turn/round is not available");
+                return false;
+            }
+            auto candidate = managed.prepareRestore(anchor.id, error);
+            if (!candidate || !managed.publish(std::move(*candidate), error)) return false;
+            m_managedRestoredBoundary = !executeTurn;
+            room->m_requests->commitManagedGeneration(timeline.generation());
+            if (room->m_statisticsStarted && !room->commitStatisticsTimelineRestore(
+                timeline.generation(), timeline.branchId(),
+                anchor.kind == GameTimeline::AnchorKind::PlayerTurn
+                    ? QStringLiteral("previous_player_turn") : QStringLiteral("full_round"),
+                anchor.id.toLongLong()))
+                emit room->room_message(QStringLiteral("Game restored; statistics are quarantined pending durable timeline retry"));
+            markDistanceCacheDirty();
+            markSkillDescriptionsDirty();
+            m_playerUiStateDirty = true;
+            // Side effects are strictly after native + Game/AI state publication.
+            // A statistics observer failure does not revert the game generation.
+            if (m_timelineCommitObserver) {
+                try { m_timelineCommitObserver(timeline, anchor); }
+                catch (...) { emit room->room_message(QStringLiteral("Timeline consumer failed after commit; retry this generation")); }
+            }
+            for (auto *player : room->getPlayers())
+                if (player->isOnline()) room->m_playerLifecycle->marshal(player, true);
+            if (!executeTurn) return true;
+        } else if (m_managedRestoredBoundary) {
+            // This restored anchor already represents the not-yet-played turn.
+            if (!managed.quiescent(error)) return false;
+            m_managedRestoredBoundary = false;
+        } else {
+            const bool beginsRound = GameRule::beginsNormalRound(room, room->getCurrent());
+            const QString turnScope = QStringLiteral("turn:%1").arg(++m_managedTurnSerial);
+            const QString roundScope = beginsRound
+                ? QStringLiteral("round:%1").arg(turnScope)
+                : managed.worldStore()->state().turn.roundScopeId;
+            if (!managed.checkpointTurn(turnScope, roundScope, beginsRound, error)) return false;
+        }
+    }
+    m_managedRestorePending = false;
+    m_managedRestoreAnchor.clear();
+    clearPendingRestore.dismiss(); // In-turn requests belong to the next boundary.
+    // Retrying persistence never restores the game again or increments its
+    // generation. A failed journal must not prevent ordinary continued play.
+    if (room->statisticsRestorePending() && !room->retryStatisticsTimelineRestore())
+        emit room->room_message(QStringLiteral("Statistics timeline retry remains pending"));
+    if (m_managedLab) m_managedLab->beforeTurn();
+    room->saveSnapshot("turn");
+    trigger(TurnStart, room, room->getCurrent());
+    if (!room->isFinished()) room->setCurrent(room->getCurrent()->getNextGamePlayer());
+    return true;
+}
+
 void RoomThread::actionNormal(GameRule*game_rule)
 {
 	try {
@@ -1460,10 +1667,17 @@ void RoomThread::actionNormal(GameRule*game_rule)
 			// the previous turn is fully quiescent, immediately before the
 			// complete top-level TurnStart dispatch. Extra turns enter TurnStart
 			// from GameRule and therefore never pass through this hook.
-			room->saveSnapshot("turn");
-			trigger(TurnStart, room, room->getCurrent());
+			QString error;
+			if (!stepNormalTurn(game_rule, &error)) {
+                emit room->room_message(error);
+                // A rejected candidate/capability must not shut down this
+                // worker (which would close both VMs). Keep playing the live
+                // world, with no generation change or partial restoration.
+                room->saveSnapshot("turn");
+                trigger(TurnStart, room, room->getCurrent());
+                if (!room->isFinished()) room->setCurrent(room->getCurrent()->getNextGamePlayer());
+            }
 			if (room->isFinished()) break;
-			room->setCurrent(room->getCurrent()->getNextGamePlayer());
 		}
 	}catch (TriggerEvent triggerEvent) {
 		if (triggerEvent == TurnBroken)
@@ -1543,6 +1757,8 @@ void RoomThread::run()
 			globalCardLifetimeManager().endTurnReclamation(room->roomRuntime());
 	});
 	auto workerFinal = qScopeGuard([this]() {
+        // Nested resolution RAII has now committed final damage and unwound.
+        room->freezeBattleStatistics();
 		// finalizeWorker() closes the room's Lua states, so the crash handler
 		// has to drop its lua_State before that and not after.
 		CrashHandler::setLuaState(nullptr);
@@ -1556,6 +1772,10 @@ void RoomThread::run()
 		return;
 	}
     try {
+	if (m_managedLab) {
+        m_managedLab->run(*this);
+        return;
+    }
 	if (room->getPlayers().size() > 20 && room->getLuaState()) {
 		// Large rooms create many short-lived Lua argument wrappers. Collect them
 		// during play instead of leaving a long finalizer backlog for lua_close.
@@ -1607,6 +1827,7 @@ void RoomThread::run()
 			}
 		}
 		room->removeDerivativeCards();
+		room->beginBattleStatistics();
 		room->beginNumericStateHistory();
 		constructTriggerTable();
 		trigger(GameReady, room, nullptr);
@@ -3121,6 +3342,17 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 			}
 		}
 		checkTriggerDispatchAbort();
+        if (triggerEvent == ChoiceMade && room->m_managedState && room->m_managedState->running()) {
+            auto &store = *room->m_managedState->m_store;
+            QString journalError;
+            if (GameState::validateValue(data, store.state(), &journalError)) {
+                auto &timeline = store.timeline();
+                const auto token = timeline.issueRequest(target ? target->objectName() : QStringLiteral("room"),
+                                                          QStringLiteral("ChoiceMade"));
+                if (!timeline.acceptDecision(token, {{"value", data}}, QStringLiteral("game-accepted"), &journalError))
+                    invalidateManagedTurns(journalError);
+            } else invalidateManagedTurns(journalError);
+        }
 		room->recordAiEvent(int(triggerEvent), target, data);
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		stacked = false;

@@ -174,6 +174,7 @@ struct TargetModRevealState {
 };
 
 struct CardUseStruct {
+    friend class RoomManagedState;
     enum CardUseReason
     {
         CARD_USE_REASON_UNKNOWN = 0x00,

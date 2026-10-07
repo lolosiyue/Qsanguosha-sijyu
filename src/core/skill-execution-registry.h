@@ -15,6 +15,7 @@ enum SkillExecutionResult {
 
 class SkillExecutionRegistry
 {
+    friend class RoomManagedState;
 public:
     struct Entry {
         Entry(qint64 id, const QVariant &data) : executionID(id), backingData(data), finished(false), result(SkillExecutionNoResult) {}

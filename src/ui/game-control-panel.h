@@ -21,11 +21,13 @@ class GameControlPanel : public QDialog
 public:
     explicit GameControlPanel(QWidget *parent = nullptr);
     void setModel(const GameActionModel &model);
+    void setManagedRewindState(const QString &status, bool enabled, bool canCancel);
     void openPanel();
 
 signals:
     void intentRequested(const QString &kind, const QString &id, bool selected,
                          quint64 generation, quint64 revision, quint64 requestId);
+    void managedRewindRequested(const QString &operation);
 
 private:
     bool eventFilter(QObject *object, QEvent *event) override;
@@ -40,6 +42,11 @@ private:
     QVBoxLayout *m_contentLayout;
     QLabel *m_prompt;
     QLabel *m_reason;
+    QLabel *m_managedRewindStatus;
+    QPushButton *m_managedRewindStep;
+    QPushButton *m_managedRewindTurn;
+    QPushButton *m_managedRewindRound;
+    QPushButton *m_managedRewindCancel;
     QListWidget *m_actions;
     QListWidget *m_skills;
     QListWidget *m_cards;

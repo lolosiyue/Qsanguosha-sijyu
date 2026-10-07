@@ -185,6 +185,7 @@ void GameSessionController::gameOver(const QString &winner, TerminationCause cau
         emitWorkResult = true;
     }
 
+    m_room.markBattleStatisticsTerminal(winner, int(cause));
     m_room.thread->trigger(GameOver, &m_room, target, data);
 
 	if (transitionTo(State::Finished))

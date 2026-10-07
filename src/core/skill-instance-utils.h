@@ -75,6 +75,7 @@ namespace SkillInstanceUtils {
         bool reserve(const QString &key, int committedUsage, int maxUsage);
         bool release(const QString &key);
         int count(const QString &key) const;
+        bool isEmpty() const { return m_counts.isEmpty(); }
 
     private:
         QHash<QString, int> m_counts;

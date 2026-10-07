@@ -13,6 +13,7 @@
 #include "build-features.h"
 #include "qt-collection-utils.h"
 #include "nativesocket.h"
+#include "managed-rewind-lab.h"
 #include "websocket-gateway.h"
 #include "banpair.h"
 #include "server-info.h"
@@ -456,6 +457,11 @@ QWidget *ServerDialog::createAdvancedTab()
 	enable_cheat_checkbox->setToolTip(tr("This option enables the cheat menu"));
 	enable_cheat_checkbox->setChecked(Config.EnableCheat);
 
+	restricted_rewind_lab_checkbox = new QCheckBox(tr("Enable restricted rewind lab (02p; native TrustAI/basic cards only)"));
+	restricted_rewind_lab_checkbox->setChecked(false);
+	restricted_rewind_lab_checkbox->setToolTip(tr(
+		"Opt in to the owner-controlled restricted profile. It uses native TrustAI and standard physical cards, with no general skills or ordinary room modes. It requires 02p, cheat enabled, and AI disabled. Previously revealed information cannot be forgotten; use only in an authorized debug room."));
+
 	free_choose_checkbox = new QCheckBox(tr("Choose generals and cards freely"));
 	free_choose_checkbox->setChecked(Config.FreeChoose);
 	free_choose_checkbox->setVisible(Config.EnableCheat);
@@ -573,6 +579,7 @@ QWidget *ServerDialog::createAdvancedTab()
 	layout->addLayout(HLay(new QLabel(tr("Upperlimit for general")), maxchoice_spinbox));
 	layout->addLayout(HLay(pile_swapping_label, pile_swapping_spinbox));
 	layout->addWidget(enable_cheat_checkbox);
+	layout->addWidget(restricted_rewind_lab_checkbox);
 	layout->addWidget(free_choose_checkbox);
 	layout->addLayout(HLay(free_assign_checkbox, free_assign_self_checkbox));
 	layout->addWidget(second_general_checkbox);
@@ -1338,14 +1345,40 @@ void ServerDialog::onDetectButtonClicked()
 
 void ServerDialog::onConsoleButtonClicked()
 {
+	if (restricted_rewind_lab_checkbox->isChecked()) {
+		QMessageBox::warning(this, tr("Restricted rewind lab"),
+			tr("Restricted rewind lab requires a normal TCP server and two clients. Choose Start Server."));
+		return;
+	}
 	accept_type = -1;
 	accept();
 }
 
 void ServerDialog::onServerButtonClicked()
 {
+	const QString profileError = restrictedRewindLabValidationError();
+	if (!profileError.isEmpty()) {
+		QMessageBox::warning(this, tr("Restricted rewind lab"), profileError);
+		return;
+	}
 	accept_type = 1;
 	accept();
+}
+
+QString ServerDialog::restrictedRewindLabValidationError() const
+{
+	if (!restricted_rewind_lab_checkbox->isChecked())
+		return QString();
+	const QAbstractButton *selectedMode = mode_group ? mode_group->checkedButton() : nullptr;
+	if (!selectedMode || selectedMode->objectName() != QLatin1String("02p"))
+		return tr("Restricted rewind lab requires the 02p game mode.");
+	if (!enable_cheat_checkbox->isChecked())
+		return tr("Restricted rewind lab requires Enable cheat.");
+	if (ai_enable_checkbox->isChecked())
+		return tr("Restricted rewind lab requires AI to be disabled.");
+	if (!Sanguosha || Sanguosha->getPlayerCount(QStringLiteral("02p")) != 2)
+		return tr("Restricted rewind lab requires a two-player 02p mode.");
+	return QString();
 }
 
 Select3v3GeneralDialog::Select3v3GeneralDialog(QWidget *parent)
@@ -1587,8 +1620,10 @@ int ServerDialog::config()
 {
 	exec();
 
-	if (result() != Accepted)
+	if (result() != Accepted) {
+		restricted_rewind_lab_checkbox->setChecked(false);
 		return 0;
+	}
 
 	QVariantMap values;
 	values.insert("ServerName", server_name_edit->text());
@@ -1671,6 +1706,9 @@ int ServerDialog::config()
 	values.insert("BanPackages", banPackages);
 
 	ServerSetupSession::commit(values);
+	if (qApp)
+		qApp->setProperty("restrictedRewindLabRequested", restricted_rewind_lab_checkbox->isChecked());
+	restricted_rewind_lab_checkbox->setChecked(false);
 	return accept_type;
 }
 
@@ -1689,6 +1727,9 @@ Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig,
 		qFatal("XP GUI attempted to construct a Server runtime");
 	qInfo("XP server runtime created pid=%lld", QCoreApplication::applicationPid());
 #endif
+    m_restrictedRewindLab = qApp && qApp->property("restrictedRewindLabRequested").toBool();
+    if (qApp) qApp->setProperty("restrictedRewindLabRequested", QVariant());
+    if (m_restrictedRewindLab) qInfo("Restricted rewind profile explicitly enabled for this server (TrustAI 02p)");
 	m_uptimeTimer.start();
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	if (injectedSocket != nullptr) {
@@ -1977,7 +2018,17 @@ Room *Server::createNewRoom()
 		return nullptr;
 	const GameSessionConfig sessionConfig = takeNextGameSessionConfig();
 	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
-	Room *room = new Room(this, Config.GameMode.mode_id, sessionConfig);
+    const bool rewind = m_restrictedRewindLab;
+    Room *room = new Room(this, Config.GameMode.mode_id, sessionConfig,
+        rewind ? Room::RuntimeInitializationPolicy::Deferred : Room::RuntimeInitializationPolicy::Immediate);
+    if (rewind) {
+        QString error;
+        if (!room->prepareRestrictedRewind(&error)) {
+            qWarning().noquote() << error;
+            delete room;
+            return nullptr;
+        }
+    }
 	if (!room->hasLuaRuntime() || !room->isTakeoverReady() || !room->workError().isEmpty()) {
 		if (!room->takeoverError().isEmpty())
 			qWarning().noquote() << "Cannot create takeover room:" << room->takeoverError();
@@ -2063,6 +2114,14 @@ bool Server::prepareInitialRoomAsync(QString *error)
 			*error = detail;
 		return false;
 	}
+
+    if (m_restrictedRewindLab) {
+        if (!room->prepareRestrictedRewind(error)) { delete room; return false; }
+        publishRoom(room);
+        created_successfully = true;
+        QTimer::singleShot(0, this, &Server::initialRoomReady);
+        return true;
+    }
 
 	RoomInitializationThread *worker = new RoomInitializationThread(
 		room->roomRuntime(), thread(), this);
@@ -2250,7 +2309,9 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 			if (player) {
 				has = true;
 				QString state = player->getState();
-				if (state != "offline" && state != "robot") continue;
+				if (auto *lab = player->getRoom()->restrictedRewind()) {
+                    if (lab->isConnected(player)) continue;
+                } else if (state != "offline" && state != "robot") continue;
 				if (player->getRoom()->isFinished()) continue;
 				if (signup.hasMaxPlayers && signup.maxPlayers > 0
 					&& Sanguosha->getPlayerCount(player->getRoom()->getMode()) > signup.maxPlayers) {
