@@ -1,6 +1,7 @@
 #ifndef QSAN_PACKAGE_MANAGER_DIALOG_H
 #define QSAN_PACKAGE_MANAGER_DIALOG_H
 
+#include <QCoreApplication>
 #include <QDialog>
 #include <QSharedPointer>
 
@@ -13,6 +14,7 @@ class QThread;
 
 class PackageManagerDialog : public QDialog
 {
+    Q_DECLARE_TR_FUNCTIONS(PackageManagerDialog)
 public:
     explicit PackageManagerDialog(const QString &runtimeRoot, const QString &userDataRoot,
                                   QWidget *parent = nullptr);

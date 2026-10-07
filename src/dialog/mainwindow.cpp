@@ -39,11 +39,15 @@
 #include "runtime-paths.h"
 #if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
 #include "package-manager-dialog.h"
+#include "update-dialog.h"
+#include "update-build.h"
+#include "version.h"
 #include "scenario-work-dialog.h"
 #include "scenario-work-library.h"
 #include "work-scenario.h"
 #include "scenario-work.h"
 #include <QDialogButtonBox>
+#include <QDesktopServices>
 #include <QPointer>
 #include <QUuid>
 #include <QMenu>
@@ -57,6 +61,9 @@
 #include "button.h"
 #include "build-features.h"
 #include "android-dialog-fit.h"
+#ifdef Q_OS_ANDROID
+#include <QDesktopServices>
+#endif
 #if QSAN_ENABLE_QML
 #include "homecontroller.h"
 #include "pointer-effect-overlay.h"
@@ -513,6 +520,18 @@ void MainWindow::setupHomePage()
 		this, &MainWindow::playReplayFile);
 	connect(homeController, &HomeController::aboutRequested,
 		ui->actionAbout, &QAction::trigger);
+	connect(homeController, &HomeController::updateCheckRequested, this, [this]() {
+#if !defined(Q_OS_ANDROID) && !defined(QSAN_XP_LEGACY)
+		UpdateDialog dialog(QSanRuntimePaths::assetRoot(), QSanRuntimePaths::userDataRoot(),
+			QString::fromLatin1(QSanVersion::Number), QString::fromLatin1(QSAN_UPDATE_COMMIT),
+			QSAN_UPDATE_CLEAN_BUILD != 0, &Config, this);
+		dialog.exec();
+#else
+		QMessageBox::information(this, tr("Check for updates"),
+			tr("Use the project release page to download a compatible build, then exit and install it using your platform tools. Online material installation is currently available on desktop only."));
+		QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/lolosiyue/Qsanguosha-sijyu/releases")));
+#endif
+	});
 
 	// Queued: the home settings page commits from inside its own QML click handler,
 	// and the reload replaces that scene.

@@ -1407,7 +1407,18 @@ if(QSAN_BUILD_GUI)
     endif()
     if(NOT ANDROID AND NOT QSAN_BUILD_XP_LEGACY)
         target_sources(${QSAN_GUI_TARGET} PRIVATE
-            src/dialog/package-manager-dialog.cpp src/dialog/package-manager-dialog.h)
+            src/dialog/package-manager-dialog.cpp src/dialog/package-manager-dialog.h
+            src/dialog/update-dialog.cpp src/dialog/update-dialog.h
+            src/core/update-catalog.cpp src/core/update-catalog.h
+            src/core/update-transfer.cpp src/core/update-transfer.h)
+        add_custom_target(qsan_update_build_identity
+            COMMAND "${CMAKE_COMMAND}" "-DROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/update-build.h"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/UpdateBuildIdentity.cmake"
+            BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/update-build.h"
+            VERBATIM)
+        add_dependencies(${QSAN_GUI_TARGET} qsan_update_build_identity)
+        target_include_directories(${QSAN_GUI_TARGET} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
     endif()
 
     if(NOT QSAN_BUILD_XP_LEGACY)

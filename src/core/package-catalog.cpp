@@ -3,6 +3,7 @@
 #include "runtime-paths.h"
 
 #include <QCryptographicHash>
+#include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -504,6 +505,10 @@ Package parsePackage(const QString &directory, QString *error, bool verifyFiles,
         return package;
     }
     QFile manifestFile(QDir(root).filePath(QStringLiteral("manifest.json")));
+    if (manifestFile.size() > 16 * 1024 * 1024) {
+        *failure = QCoreApplication::translate("PackageStore", "Package manifest exceeds the size limit.");
+        return package;
+    }
     if (QFileInfo(manifestFile.fileName()).isSymLink()) {
         *failure = QStringLiteral("manifest.json must not be a symlink in %1").arg(root);
         return package;
@@ -513,7 +518,12 @@ Package parsePackage(const QString &directory, QString *error, bool verifyFiles,
         return package;
     }
     QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(manifestFile.readAll(), &parseError);
+    const QByteArray manifestBytes = manifestFile.read(16 * 1024 * 1024 + 1);
+    if (manifestBytes.size() > 16 * 1024 * 1024) {
+        *failure = QCoreApplication::translate("PackageStore", "Package manifest exceeds the size limit.");
+        return package;
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(manifestBytes, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         *failure = QStringLiteral("invalid manifest.json: %1").arg(parseError.errorString());
         return package;
