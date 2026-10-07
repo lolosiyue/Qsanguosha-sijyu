@@ -378,6 +378,8 @@ Item {
                         placeholderText: qsTr("Search replay names")
                         color: HomeTheme.cardTextPrimary
                         placeholderTextColor: HomeTheme.cardTextMuted
+                        font.pixelSize: HomeTheme.settingsFontSize
+                        verticalAlignment: Text.AlignVCenter
                         selectByMouse: true
                         Accessible.name: qsTr("Search replay names")
                         onTextChanged: root.query = text
@@ -827,6 +829,8 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: HomeTheme.cardControlHeight
                 color: HomeTheme.cardTextPrimary
+                font.pixelSize: HomeTheme.settingsFontSize
+                verticalAlignment: Text.AlignVCenter
                 selectByMouse: true
                 Accessible.name: qsTr("New name")
                 onAccepted: renameDialog.accept()
