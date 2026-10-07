@@ -1,4 +1,5 @@
 #include "generic-cardcontainer-ui.h"
+#include "build-features.h"
 #include "engine.h"
 #include "oracle_helper.h"
 #include "general-info-card.h"
@@ -846,9 +847,11 @@ void PlayerCardContainer::updateGeneralPile(const QString &pile_name)
 
 void PlayerCardContainer::updateMark(const QString &mark_name, int mark_num)
 {
+#if QSAN_ENABLE_QML
     // A QML-bound mark is drawn by QmlTableLayer instead of a pile button.
     if (Sanguosha->isQmlMark(mark_name))
         return;
+#endif
     /*ClientPlayer *player = (ClientPlayer *)sender();
     if (!player) player = m_player;
     if (!player) return;*/

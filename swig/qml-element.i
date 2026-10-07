@@ -44,6 +44,8 @@ bool readQmlDataValue(lua_State *L, int index, QVariant &out, int depth)
 // A table with only string keys becomes a map; a sequence 1..n becomes a list; mixed tables are refused.
 bool readQmlDataTable(lua_State *L, int index, QVariant &out, int depth)
 {
+    // Each nesting level pushes a key and a value; grow the stack beyond LUA_MINSTACK.
+    luaL_checkstack(L, 3, "QML element data nested too deeply");
     if (depth > kQmlDataMaxDepth)
         return false;
     const int table = lua_absindex(L, index);
