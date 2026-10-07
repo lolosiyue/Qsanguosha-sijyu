@@ -341,6 +341,8 @@ add_library(qsanguosha_engine STATIC
     src/core/package-runtime.h
     src/core/runtime-paths.cpp
     src/core/runtime-paths.h
+    src/core/qml-element-path.cpp
+    src/core/qml-element-path.h
     src/core/engine.cpp
     src/core/engine.h
     src/core/engine-translation-catalog.cpp

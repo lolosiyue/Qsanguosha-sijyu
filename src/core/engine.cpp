@@ -8,6 +8,7 @@
 #include "rules-bundle-exporter.h"
 #include "qt-collection-utils.h"
 #include "runtime-paths.h"
+#include "qml-element-path.h"
 #include "package-runtime.h"
 #include "version.h"
 #include "ai-data-store.h"
@@ -28,6 +29,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QDebug>
 //#include "protocol.h"
 #include "lua-wrapper.h"
 //#include "room-state.h"
@@ -3501,6 +3503,54 @@ QStringList Engine::getResourceAliasList(const QString &category, const QString 
             return categoryMap[original];
     }
     return QStringList();
+}
+
+void Engine::addQmlMark(const QString &pattern, const QString &qmlPath, const QString &anchor)
+{
+    static const QStringList anchors{QStringLiteral("mark-area"), QStringLiteral("avatar"),
+        QStringLiteral("top"), QStringLiteral("bottom")};
+    QString error;
+    if (pattern.isEmpty() || pattern == QLatin1String("*")) {
+        qWarning().noquote() << "Engine::addQmlMark: a mark name or prefix is required";
+        return;
+    }
+    if (!anchors.contains(anchor)) {
+        qWarning().noquote() << "Engine::addQmlMark:" << pattern << "unknown anchor" << anchor;
+        return;
+    }
+    if (!QmlElementPath::isAllowed(qmlPath, &error)) {
+        qWarning().noquote() << "Engine::addQmlMark:" << pattern << error;
+        return;
+    }
+    for (QmlMarkBinding &binding : m_qmlMarks) {
+        if (binding.pattern == pattern) {
+            binding.qmlPath = qmlPath;
+            binding.anchor = anchor;
+            return;
+        }
+    }
+    m_qmlMarks.append({pattern, qmlPath, anchor});
+}
+
+QmlMarkBinding Engine::qmlMarkFor(const QString &mark) const
+{
+    // Exact names win; otherwise the longest matching prefix.
+    const QmlMarkBinding *best = nullptr;
+    for (const QmlMarkBinding &binding : m_qmlMarks) {
+        if (binding.pattern == mark)
+            return binding;
+        if (binding.pattern.endsWith(QLatin1Char('*'))) {
+            const QString prefix = binding.pattern.chopped(1);
+            if (mark.startsWith(prefix) && (!best || prefix.size() > best->pattern.size() - 1))
+                best = &binding;
+        }
+    }
+    return best ? *best : QmlMarkBinding();
+}
+
+bool Engine::isQmlMark(const QString &mark) const
+{
+    return !m_qmlMarks.isEmpty() && qmlMarkFor(mark).isValid();
 }
 
 TransferSkill *Engine::getTransfer()

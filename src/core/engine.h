@@ -45,6 +45,14 @@ class EngineRuntimeContextScope;
 class Package;
 using EnginePackageFactory = Package *(*)();
 
+struct QmlMarkBinding
+{
+    QString pattern;
+    QString qmlPath;
+    QString anchor;
+    bool isValid() const { return !qmlPath.isEmpty(); }
+};
+
 // Read-only replay of target selection. Restrict hidden V2 instances and record
 // contributions; no scope may outlive a query or enclose a prompt/reveal.
 class TargetModSkillQueryScope final {
@@ -304,6 +312,13 @@ public:
     void addResourceAliasList(const QString &category, const QString &original, const QString &alias);
     QStringList getResourceAliasList(const QString &category, const QString &original) const;
 
+    // QML mark bindings: a mark named `pattern` (or starting with it, when it ends in '*')
+    // is drawn by `qmlPath` on its seat instead of the stock mark text or button.
+    void addQmlMark(const QString &pattern, const QString &qmlPath,
+                    const QString &anchor = QStringLiteral("mark-area"));
+    QmlMarkBinding qmlMarkFor(const QString &mark) const;
+    bool isQmlMark(const QString &mark) const;
+
     inline QMultiMap<QString, QString> spConvertPairs() const
     {
         return sp_convert_pairs;
@@ -342,6 +357,7 @@ private:
     QHash<QString, QList<int> > audio_type;
     QHash<QString, QHash<QString, QString> > m_resourceAliases;
     QHash<QString, QHash<QString, QStringList> > m_resourceAliasLists;
+    QList<QmlMarkBinding> m_qmlMarks;
     QStringList m_skipGeneralModes;
     QStringList m_showRoleModes;
     QMap<QString, QStringList> m_modeGroups;

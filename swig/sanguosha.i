@@ -2013,6 +2013,8 @@ public:
 	// Resource Alias System
 	void addResourceAlias(const char*category, const char*original, const char*alias);
 	QString getResourceAlias(const char*category, const char*original) const;
+	// QML mark binding: the mark is drawn by qmlPath on its seat (see docs/qml-table-elements.md).
+	void addQmlMark(const char*pattern, const char*qmlPath, const char*anchor = "mark-area");
 };
 
 %extend Engine {
