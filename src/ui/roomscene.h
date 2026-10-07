@@ -55,6 +55,9 @@ class ChatWidget;
 class EmotionPanel;
 class GifChatBox;
 class RoomOverlayHost;
+class QmlTableLayer;
+struct QmlSeatGeometry;
+struct QmlTableGeometry;
 class KofArrangeController;
 class RoomReplayController;
 class QSanSelectableItem;
@@ -123,6 +126,9 @@ public:
     void adjustItems();
     void adjustItems(const QSizeF &viewportSize);
     void attachOverlay(RoomOverlayHost *overlay);
+    void attachQmlLayer(QmlTableLayer *layer);
+    QmlTableLayer *qmlLayer() const;
+    void collectQmlGeometry(QList<QmlSeatGeometry> *seats, QmlTableGeometry *table) const;
     void setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled);
     const RoomLayoutEngine::ResponsiveResult &responsiveLayout() const { return m_responsiveLayout; }
     bool largeRoomRequired() const { return photos.size() >= 20 && photos.size() <= 49; }
@@ -249,6 +255,7 @@ private:
     QSet<int> m_nativeKeysDown;
     DesktopGamePresentation *m_gamePresentation = nullptr;
     QPointer<RoomOverlayHost> m_overlayHost;
+    QPointer<QmlTableLayer> m_qmlLayer;
     bool m_responsiveEnabled = false;
     bool m_legacyPromptVisible = false;
     RoomLayoutEngine::ResponsiveInput m_responsiveInput;
@@ -578,6 +585,7 @@ signals:
     void presentationDraftChanged();
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
     void responsiveGeometryChanged();
+    void qmlLayerAttached();
     void seatCountChanged();
     void restart();
     void return_to_start();

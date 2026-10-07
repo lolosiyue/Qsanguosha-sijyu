@@ -63,6 +63,7 @@
 #include "sprite.h"
 #if QSAN_ENABLE_QML
 #include "EmbeddedQmlLoader.h"
+#include "qml-table-layer.h"
 #endif
 #if QSAN_ENABLE_SPINE
 #include "SpineGlItem.h"
@@ -1461,6 +1462,100 @@ void RoomScene::attachOverlay(RoomOverlayHost *overlay)
 {
     m_overlayHost = overlay;
     overlay->setPresentation(gamePresentation());
+}
+
+void RoomScene::attachQmlLayer(QmlTableLayer *layer)
+{
+#if QSAN_ENABLE_QML
+    m_qmlLayer = layer;
+    QPointer<RoomScene> self(this);
+    layer->setGeometryProvider([self](QList<QmlSeatGeometry> *seats, QmlTableGeometry *table) {
+        if (self)
+            self->collectQmlGeometry(seats, table);
+    });
+    connect(this, &QGraphicsScene::changed, layer, &QmlTableLayer::scheduleRelayout);
+    connect(this, &RoomScene::responsiveGeometryChanged, layer, &QmlTableLayer::scheduleRelayout);
+    connect(ClientInstance, &Client::qml_element_received, layer, &QmlTableLayer::handleElement);
+    connect(ClientInstance, &Client::qml_mark_changed, layer, &QmlTableLayer::setMark);
+    // Marks that arrived before this layer existed (reconnect, rebuilt scene).
+    for (const ClientPlayer *player : ClientInstance->getPlayers()) {
+        for (const QString &mark : player->getMarkNames()) {
+            if (Sanguosha->isQmlMark(mark))
+                layer->setMark(player->objectName(), mark, player->getMark(mark));
+        }
+    }
+    emit qmlLayerAttached();
+#else
+    Q_UNUSED(layer)
+#endif
+}
+
+void RoomScene::collectQmlGeometry(QList<QmlSeatGeometry> *seats, QmlTableGeometry *table) const
+{
+#if QSAN_ENABLE_QML
+    const auto snapshotOf = [](const ClientPlayer *player, bool self) {
+        return QVariantMap{
+            {QStringLiteral("objectName"), player->objectName()},
+            {QStringLiteral("general"), player->getGeneralName()},
+            {QStringLiteral("seat"), player->getSeat()},
+            {QStringLiteral("kingdom"), player->getKingdom()},
+            {QStringLiteral("alive"), player->isAlive()},
+            {QStringLiteral("self"), self}};
+    };
+    // Paged-out seats keep isVisible() but drop to opacity 0.
+    const auto shown = [](const QGraphicsItem *item) {
+        return item->isVisible() && item->effectiveOpacity() > 0.0;
+    };
+    if (dashboard && dashboard->getPlayer()) {
+        const ClientPlayer *player = dashboard->getPlayer();
+        QmlSeatGeometry seat;
+        seat.player = player->objectName();
+        // The avatar area, not the whole dashboard: in portrait the dashboard spans the hand row.
+        seat.sceneRect = dashboard->getAvatarAreaSceneBoundingRect();
+        seat.itemScale = dashboard->sceneTransform().m11();
+        seat.visible = shown(dashboard);
+        seat.self = true;
+        seat.snapshot = snapshotOf(player, true);
+        seats->append(seat);
+    }
+    for (Photo *photo : photos) {
+        const ClientPlayer *player = photo->getPlayer();
+        if (!player)
+            continue;
+        QmlSeatGeometry seat;
+        seat.player = player->objectName();
+        seat.sceneRect = photo->sceneBoundingRect();
+        seat.itemScale = photo->sceneTransform().m11();
+        seat.visible = shown(photo);
+        seat.snapshot = snapshotOf(player, false);
+        seats->append(seat);
+    }
+    if (m_responsiveEnabled && m_responsiveLayout.valid) {
+        const auto &layout = m_responsiveLayout;
+        table->mainRect = layout.mainRect;
+        table->headerRect = layout.headerRect;
+        table->interactionRect = layout.interactionRect;
+        table->tableCenter = layout.tableCenter;
+        table->profile = layout.profile;
+        table->compactSeats = layout.seatPresentation == RoomLayoutEngine::SeatPresentation::Ribbon;
+    } else {
+        table->mainRect = sceneRect();
+        table->interactionRect = dashboard ? dashboard->sceneBoundingRect() : QRectF();
+        table->tableCenter = m_tablePile ? m_tablePile->sceneBoundingRect().center() : sceneRect().center();
+    }
+#else
+    Q_UNUSED(seats)
+    Q_UNUSED(table)
+#endif
+}
+
+QmlTableLayer *RoomScene::qmlLayer() const
+{
+#if QSAN_ENABLE_QML
+    return m_qmlLayer.data();
+#else
+    return nullptr;
+#endif
 }
 
 void RoomScene::setResponsiveLayout(const RoomLayoutEngine::ResponsiveInput &input, bool enabled)

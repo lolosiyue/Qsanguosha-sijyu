@@ -10,6 +10,7 @@
 
 class RoomScene;
 class RoomOverlayHost;
+class QmlTableLayer;
 class RoomWindowPosture;
 #if !QSAN_USE_RASTER_VIEWPORT
 class GameViewGlFilter;
@@ -45,6 +46,7 @@ private:
 #endif
     void ensureRoomOverlay(RoomScene *room);
     QPointer<RoomOverlayHost> m_overlay;
+    QPointer<QmlTableLayer> m_qmlLayer;
     QPointer<RoomScene> m_overlayRoom;
     RoomWindowPosture *m_posture = nullptr;
     RoomLayoutEngine::Profile m_previousProfile = RoomLayoutEngine::Profile::LegacyLandscape;
