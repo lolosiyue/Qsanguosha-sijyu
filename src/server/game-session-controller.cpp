@@ -1216,7 +1216,8 @@ void GameSessionController::startGame()
 	m_room.m_roster->resetAliveToPlayers();
 	const QList<ServerPlayer *> players = m_room.getPlayers();
 	m_room.m_chatHistory.clear();
-	m_room.m_uiThemeHistory.clear();/*
+	m_room.m_uiThemeHistory.clear();
+	m_room.m_qmlElements.clear();/*
 	if (mode == "08_defense"){
 		QList<int> next_list;
 		next_list << 0 << 7 << 1 << 6 << 2 << 5 << 3 << 4;

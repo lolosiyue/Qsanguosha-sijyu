@@ -680,6 +680,13 @@ public:
     void setUiFile(const QString &imagePath, const QString &path, ServerPlayer *player = nullptr);
     void setUiThemePack(const QString &packId, bool enabled = true, ServerPlayer *player = nullptr);
     void resetUi(ServerPlayer *player = nullptr);
+    // Extension QML elements on the table (docs/qml-table-elements.md). Without `player`
+    // they address the elements everyone sees; with it, only that player's own elements.
+    void addQmlElement(const QString &id, const QString &qmlPath, const QString &anchor,
+                       const QVariantMap &qmlData = QVariantMap(), ServerPlayer *player = nullptr);
+    void updateQmlElement(const QString &id, const QVariantMap &qmlData, ServerPlayer *player = nullptr);
+    void removeQmlElement(const QString &id, ServerPlayer *player = nullptr);
+    void clearQmlElements(ServerPlayer *player = nullptr);
     void changeBackground(const QString name, QList<ServerPlayer *> players = QList<ServerPlayer *>());
     void setAura(ServerPlayer* player, QString aura);
     bool hasAura();
@@ -1084,6 +1091,16 @@ private:
     QVariantList m_chatHistory;
     // setUiElement calls in order: receiver name ("" for everyone) and payload.
     QList<QPair<QString, QVariant>> m_uiThemeHistory;
+    struct QmlElementState
+    {
+        QString qml;
+        QString anchor;
+        QVariantMap data;
+    };
+    // Live QML elements: receiver name ("" for everyone) -> id -> current state.
+    // Reconnecting players get the current state, not every update that led to it.
+    QHash<QString, QMap<QString, QmlElementState>> m_qmlElements;
+    void sendQmlElement(ServerPlayer *player, const QVariantList &arg);
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
