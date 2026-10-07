@@ -67,7 +67,8 @@ QmlTableLayer::QmlTableLayer(QGraphicsView *view, QWidget *parent)
     setFocusPolicy(Qt::NoFocus);
     setResizeMode(QQuickWidget::SizeRootObjectToView);
     setMouseTracking(true);
-    engine()->setNetworkAccessManagerFactory(new LocalOnlyNetworkFactory);
+    static LocalOnlyNetworkFactory networkFactory; // QQmlEngine does not own the factory.
+    engine()->setNetworkAccessManagerFactory(&networkFactory);
     engine()->addImportPath(QSanRuntimePaths::assetPath(QStringLiteral(".")));
     setSource(QUrl(QStringLiteral("qrc:/QSanguosha/Table/TableLayer.qml")));
     if (QQuickItem *root = rootObject())
@@ -203,8 +204,10 @@ void QmlTableLayer::removeElement(const QString &key)
     auto it = m_elements.find(key);
     if (it == m_elements.end())
         return;
-    if (it->frame)
+    if (it->frame) {
+        it->frame->setVisible(false);
         it->frame->deleteLater();
+    }
     m_elements.erase(it);
 }
 
@@ -228,13 +231,20 @@ QQuickItem *QmlTableLayer::createItem(Element &element)
         return nullptr;
     }
     QObject *object = component->beginCreate(engine()->rootContext());
+    if (!object) {
+        element.error = component->errorString().isEmpty()
+            ? QStringLiteral("\"%1\" could not be created").arg(element.source)
+            : component->errorString();
+        return nullptr;
+    }
+    // Always complete, so the cached component never stays "completion pending".
+    component->completeCreate();
     auto *item = qobject_cast<QQuickItem *>(object);
     if (!item) {
         delete object;
         element.error = QStringLiteral("\"%1\" root is not an Item").arg(element.source);
         return nullptr;
     }
-    component->completeCreate();
     return item;
 }
 
