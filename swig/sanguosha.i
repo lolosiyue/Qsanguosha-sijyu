@@ -26,6 +26,46 @@ extern Player *Self;
 %include "qvariant.i"
 %include "list.i"
 
+// These state conveniences accept a dense array of strings, with no delimiter
+// encoding or numeric coercion. Leave existing QStringList bindings unchanged.
+%typemap(in, checkfn = "lua_istable") QStringList stateStrings
+%{
+{
+    const size_t count = lua_rawlen(L, $input);
+    size_t entries = 0;
+    lua_pushnil(L);
+    while (lua_next(L, $input)) {
+        if (!lua_isinteger(L, -2) || lua_tointeger(L, -2) < 1
+            || static_cast<size_t>(lua_tointeger(L, -2)) > count
+            || lua_type(L, -1) != LUA_TSTRING) {
+            lua_pop(L, 2);
+            SWIG_fail_arg("$symname", $argnum, "dense string array");
+        }
+        ++entries;
+        lua_pop(L, 1);
+    }
+    if (entries != count) SWIG_fail_arg("$symname", $argnum, "dense string array");
+    for (size_t i = 0; i < count; ++i) {
+        lua_rawgeti(L, $input, i + 1);
+        size_t length = 0;
+        const char *value = lua_tolstring(L, -1, &length);
+        $1 << QString::fromUtf8(value, static_cast<int>(length));
+        lua_pop(L, 1);
+    }
+}
+%}
+
+%typemap(out) QStringList Player::getSkillInstanceStateStringList
+%{
+    lua_createtable(L, $1.size(), 0);
+    for (int i = 0; i < $1.size(); ++i) {
+        const QByteArray value = $1.at(i).toUtf8();
+        lua_pushlstring(L, value.constData(), value.size());
+        lua_rawseti(L, -2, i + 1);
+    }
+    SWIG_arg++;
+%}
+
 // World views cross Lua boundaries as owned primitive tables, never userdata.
 %typemap(out) AIWorldView %{
     AiLuaRuntime::pushWorldView(L, $1);
@@ -545,6 +585,9 @@ public:
 	void setSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key, const QVariant &value);
 	QVariant getSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key, const QVariant &defaultValue = QVariant()) const;
 	void removeSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key);
+	QStringList getSkillInstanceStateStringList(const char *skillName, int instanceID, const char *key) const;
+	bool setSkillInstanceStateStringList(const char *skillName, int instanceID, const char *key, QStringList stateStrings);
+	int removeSkillInstanceStateKeys(const char *skillName, int instanceID, QStringList stateStrings);
 
 static bool isNostalGeneral(const Player*p, const char*general_name);
     bool hasLordSkillKingdom(const char*kingdom, const Player*player = nullptr) const;
@@ -2517,6 +2560,12 @@ public:
 	bool removeSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
 	                                     const char *key);
 	bool clearSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref);
+	int setChildSkillInstanceCorrectState(ServerPlayer *owner, const char *parentSkillName,
+	                                      int parentInstanceID, const char *childSkillName,
+	                                      const char *key, const QVariant &value);
+	int removeChildSkillInstanceCorrectState(ServerPlayer *owner, const char *parentSkillName,
+	                                         int parentInstanceID, const char *childSkillName,
+	                                         const char *key);
 	void addSkillInvalidity(ServerPlayer *target, const char *skillName,
 	                       const char *sourceName, const char *reason, int instanceId = 0);
 	void removeSkillInvalidity(ServerPlayer *target, const char *skillName,
