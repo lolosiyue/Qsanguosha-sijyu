@@ -1703,6 +1703,11 @@ void HomeController::setBootSplashActive(bool active)
     emit bootSplashActiveChanged();
 }
 
+void HomeController::reportBootProgress(qreal done)
+{
+    emit bootProgress(done);
+}
+
 void HomeController::reportBootPagesReady()
 {
     emit bootPagesReady();

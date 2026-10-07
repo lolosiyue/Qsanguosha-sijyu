@@ -223,6 +223,8 @@ public:
 
     bool bootSplashActive() const;
     void setBootSplashActive(bool active);
+    // HomeScene: the share of catalog pages under the boot splash done so far (0-1).
+    Q_INVOKABLE void reportBootProgress(qreal done);
     // HomeScene: the catalog pages under the boot splash have loaded and drawn once.
     Q_INVOKABLE void reportBootPagesReady();
 
@@ -251,6 +253,7 @@ signals:
     void visualSettingsChanged();
     void tvModeChanged();
     void bootSplashActiveChanged();
+    void bootProgress(qreal done);
     void bootPagesReady();
 
 private:

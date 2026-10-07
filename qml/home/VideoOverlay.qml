@@ -10,6 +10,8 @@ Item {
     id: root
 
     property url source: ""
+    // Loaded but paused while set, so a held backdrop starts at once when released.
+    property bool held: false
     // Use the same result labels as MultimediaSmokeReport.
     signal videoReady()
     signal failed(string reason, string message)
@@ -48,7 +50,9 @@ Item {
         }
 
         // Call play() when the source is ready; Qt 6 Video does not autoplay.
-        Component.onCompleted: player.play()
-        onSourceChanged: player.play()
+        Component.onCompleted: if (!root.held) player.play()
+        onSourceChanged: if (!root.held) player.play()
     }
+
+    onHeldChanged: if (!held) player.play()
 }
