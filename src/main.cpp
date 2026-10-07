@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QLoggingCategory>
 #include <QApplication>
+#include <QIcon>
 #include <QPixmapCache>
 #include <QCoreApplication>
 #include <QStringList>
@@ -53,6 +54,20 @@
 #include "android-content-dialog.h"
 #include "android-dialog-fit.h"
 #include <QMessageBox>
+#endif
+
+#if !defined(QSAN_XP_LEGACY)
+// Windows reads icon.rc. Linux has no executable icon resource, so an unset
+// window icon stays the window manager's default even after the hicolor files change.
+static void installApplicationIcon()
+{
+    QIcon icon;
+    const int sizes[] = {16, 24, 32, 48, 64, 128, 256, 512};
+    for (int size : sizes)
+        icon.addFile(QStringLiteral(":/QSanguosha/AppIcon/%1.png").arg(size));
+    if (!icon.isNull())
+        QApplication::setWindowIcon(icon);
+}
 #endif
 
 int main(int argc, char *argv[]) {
@@ -194,7 +209,13 @@ int main(int argc, char *argv[]) {
         // Controller builds use Qt's widget picker and on-screen text entry.
         QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 #endif
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+        QGuiApplication::setDesktopFileName(QStringLiteral("qsanguosha"));
+#endif
         new QApplication(argc, argv);
+#if !defined(QSAN_XP_LEGACY)
+        installApplicationIcon();
+#endif
         // Qt's 10 MB default evicts decoded skin and emotion frames, forcing slow PNG decoding on the GUI thread.
 #ifdef Q_OS_ANDROID
         QPixmapCache::setCacheLimit(128 * 1024);

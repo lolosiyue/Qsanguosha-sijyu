@@ -1409,6 +1409,7 @@ if(QSAN_BUILD_GUI)
     if(NOT QSAN_BUILD_XP_LEGACY)
         target_sources(${QSAN_GUI_TARGET} PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_qml.qrc"
+            "${CMAKE_CURRENT_SOURCE_DIR}/resource/icon/app-icon.qrc"
         )
 
         # Include local home icons in the QRC only when present, so CI can build without them.
