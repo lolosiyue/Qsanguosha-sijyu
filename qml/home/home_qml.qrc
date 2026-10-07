@@ -3,6 +3,10 @@
     <file alias="CatalogPaneBar.qml">CatalogPaneBar.qml</file>
     <file alias="HomeScene.qml">HomeScene.qml</file>
     <file alias="BootSplash.qml">BootSplash.qml</file>
+    <file alias="shaders/boot-video.vert.qsb">shaders/boot-video.vert.qsb</file>
+    <file alias="shaders/boot-video.frag.qsb">shaders/boot-video.frag.qsb</file>
+    <file alias="shaders/boot-cosmos.vert.qsb">shaders/boot-cosmos.vert.qsb</file>
+    <file alias="shaders/boot-cosmos.frag.qsb">shaders/boot-cosmos.frag.qsb</file>
     <file alias="HomeLayoutControls.qml">HomeLayoutControls.qml</file>
     <file alias="HomeCompactShell.qml">HomeCompactShell.qml</file>
 

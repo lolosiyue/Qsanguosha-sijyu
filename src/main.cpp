@@ -546,7 +546,7 @@ int main(int argc, char *argv[]) {
     // Windows marks a window that stops reading messages for 5 s as hung and may freeze
     // it behind a ghost copy; the Lua extensions alone take longer than that.
     if (bootSplash)
-        Engine::setLoadPulse([] { QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents); });
+        Engine::setLoadPulse(&BootSplash::pulse);
 #endif
 
 #ifdef Q_OS_ANDROID
@@ -811,10 +811,22 @@ int main(int argc, char *argv[]) {
 #ifdef AUDIO_SUPPORT
     Audio::init();
 	Config.FrontBGMVolume = Config.value("FrontBGMVolume", 1.0f).toFloat();
-	if (Config.FrontBGMVolume>0&&QFile::exists("audio/system/BGM/front-bgm.ogg")){
-		Audio::playBGM("audio/system/BGM/front-bgm.ogg");
-		Audio::setBGMVolume(Config.FrontBGMVolume);
+	const auto playFrontBgm = [] {
+		if (Config.FrontBGMVolume>0&&QFile::exists("audio/system/BGM/front-bgm.ogg")){
+			Audio::playBGM("audio/system/BGM/front-bgm.ogg");
+			Audio::setBGMVolume(Config.FrontBGMVolume);
+		}
+	};
+	bool frontBgmWaits = false;
+#if QSAN_ENABLE_QML && !defined(Q_OS_ANDROID)
+	// The BGM starts once the boot clip and its sound have faded out.
+	if (bootSplash) {
+		QObject::connect(bootSplash, &QObject::destroyed, qApp, playFrontBgm);
+		frontBgmWaits = true;
 	}
+#endif
+	if (!frontBgmWaits)
+		playFrontBgm();
 #endif
 
     foreach (QString arg, qApp->arguments()) {

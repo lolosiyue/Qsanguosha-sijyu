@@ -76,6 +76,8 @@ Item {
             active: isVideo
             sourceComponent: VideoOverlay {
                 source: backdropSource
+                // The boot splash decodes its clip meanwhile; the backdrop waits for it to leave.
+                held: homeController.bootSplashActive
 
                 onVideoReady: homeController.reportVideoStatus("ok", "")
                 onFailed: function(reason, message) {

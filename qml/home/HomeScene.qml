@@ -1279,6 +1279,7 @@ Item {
         ++bootStep
         bootStepStart = now
         bootReadyAt = 0
+        homeController.reportBootProgress(bootStep / 3)
         if (bootStep === 1) {
             homeController.openCards()
         } else if (bootStep === 2) {
