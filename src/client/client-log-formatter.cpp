@@ -467,6 +467,7 @@ QString formatClientPresentationText(int command, const QString &fallbackText,
     // transcript shows the reducer's own debug text ("sgs2 invoked eight_diagram").
     case QSanProtocol::S_COMMAND_INVOKE_SKILL:
     case QSanProtocol::S_COMMAND_CHANGE_TABLE_BG:
+    case QSanProtocol::S_COMMAND_SET_UI_THEME:
         return QString();
     default:
         return fallbackText;

@@ -38,6 +38,10 @@ struct State
     QHash<QString, QColor> colorOverrides;
     // Highest pack first; within each pack manifest files precede slot redirects.
     QList<FileLayer> fileLayers;
+    // Pushed by the running room: packs stacked over the enabled ones (lowest first), then
+    // the room's own overrides above everything. Never saved.
+    QStringList runtimePacks;
+    Pack runtime;
 };
 
 QReadWriteLock g_lock;
@@ -170,6 +174,46 @@ void prependLayer(State &state, FileLayer layer)
     state.fileLayers.prepend(layer);
 }
 
+// Layers one pack over everything applied before it.
+void applyPackLocked(State &state, const Pack *pack)
+{
+    FileLayer slotLayer, fileLayer;
+    for (auto it = pack->slotFiles.constBegin(); it != pack->slotFiles.constEnd(); ++it) {
+        const Slot *slot = findSlot(it.key());
+        if (!slot)
+            continue;
+        state.slotOverrides.insert(slot->id, it.value());
+        if (slot->directory) {
+            if (!slot->defaultPath.isEmpty())
+                addFolderOverride(slotLayer, slot->defaultPath, it.value());
+            continue;
+        }
+        for (const QString &key : slot->skinKeys)
+            state.keyOverrides.insert(key, it.value());
+        if (slot->redirect && !slot->defaultPath.isEmpty())
+            slotLayer.exact.insert(normalizeLegacy(slot->defaultPath), it.value());
+    }
+    for (auto it = pack->colors.constBegin(); it != pack->colors.constEnd(); ++it)
+        state.colorOverrides.insert(it.key(), it.value());
+    for (auto it = pack->files.constBegin(); it != pack->files.constEnd(); ++it) {
+        if (it.key().endsWith(QLatin1Char('/')))
+            addFolderOverride(fileLayer, it.key(), it.value());
+        else
+            fileLayer.exact.insert(it.key(), it.value());
+    }
+    prependLayer(state, slotLayer);
+    prependLayer(state, fileLayer);
+}
+
+const Pack *findPackLocked(const State &state, const QString &id)
+{
+    for (const Pack &pack : state.packs) {
+        if (pack.id == id)
+            return &pack;
+    }
+    return nullptr;
+}
+
 void rebuildLocked(State &state)
 {
     state.slotOverrides.clear();
@@ -177,41 +221,15 @@ void rebuildLocked(State &state)
     state.colorOverrides.clear();
     state.fileLayers.clear();
 
-    QHash<QString, const Pack *> byId;
-    for (const Pack &pack : state.packs)
-        byId.insert(pack.id, &pack);
-
     for (int i = state.enabled.size() - 1; i >= 0; --i) {
-        const Pack *pack = byId.value(state.enabled.at(i));
-        if (!pack)
-            continue;
-        FileLayer slotLayer, fileLayer;
-        for (auto it = pack->slotFiles.constBegin(); it != pack->slotFiles.constEnd(); ++it) {
-            const Slot *slot = findSlot(it.key());
-            if (!slot)
-                continue;
-            state.slotOverrides.insert(slot->id, it.value());
-            if (slot->directory) {
-                if (!slot->defaultPath.isEmpty())
-                    addFolderOverride(slotLayer, slot->defaultPath, it.value());
-                continue;
-            }
-            for (const QString &key : slot->skinKeys)
-                state.keyOverrides.insert(key, it.value());
-            if (slot->redirect && !slot->defaultPath.isEmpty())
-                slotLayer.exact.insert(normalizeLegacy(slot->defaultPath), it.value());
-        }
-        for (auto it = pack->colors.constBegin(); it != pack->colors.constEnd(); ++it)
-            state.colorOverrides.insert(it.key(), it.value());
-        for (auto it = pack->files.constBegin(); it != pack->files.constEnd(); ++it) {
-            if (it.key().endsWith(QLatin1Char('/')))
-                addFolderOverride(fileLayer, it.key(), it.value());
-            else
-                fileLayer.exact.insert(it.key(), it.value());
-        }
-        prependLayer(state, slotLayer);
-        prependLayer(state, fileLayer);
+        if (const Pack *pack = findPackLocked(state, state.enabled.at(i)))
+            applyPackLocked(state, pack);
     }
+    for (const QString &id : state.runtimePacks) {
+        if (const Pack *pack = findPackLocked(state, id))
+            applyPackLocked(state, pack);
+    }
+    applyPackLocked(state, &state.runtime);
 
     {
         QMutexLocker locker(&g_folderCacheMutex);
@@ -268,6 +286,138 @@ QString resolveFile(const QString &legacyPath, bool foldersOnly)
     QMutexLocker locker(&g_folderCacheMutex);
     g_folderCache.insert(cacheKey, result);
     return result;
+}
+
+// An asset-relative file or folder a room names at runtime; empty when it escapes the
+// asset root or is missing.
+QString runtimeAsset(const QString &value, bool folder, QString *error)
+{
+    const QString clean = QDir::cleanPath(QDir::fromNativeSeparators(value));
+    if (QDir::isAbsolutePath(clean) || clean == QLatin1String("..") || clean.startsWith(QLatin1String("../"))) {
+        if (error) *error = QStringLiteral("\"%1\" must be a path inside the game folder").arg(value);
+        return QString();
+    }
+    const QFileInfo info(QSanRuntimePaths::assetPath(clean));
+    if (!info.exists() || info.isDir() != folder) {
+        if (error) *error = (folder ? QStringLiteral("folder \"%1\" not found") : QStringLiteral("file \"%1\" not found")).arg(value);
+        return QString();
+    }
+    return folder ? info.absoluteFilePath() + QLatin1Char('/') : info.absoluteFilePath();
+}
+
+// "theme:<id>" names an installed pack; returns it, or null with *error set.
+const Pack *runtimePackRef(const State &state, const QString &value, QString *error)
+{
+    const QString id = value.mid(6).trimmed();
+    const Pack *pack = findPackLocked(state, id);
+    if (!pack && error)
+        *error = QStringLiteral("theme pack \"%1\" is not installed").arg(id);
+    return pack;
+}
+
+bool isThemeRef(const QString &value)
+{
+    return value.startsWith(QLatin1String("theme:"));
+}
+
+// Applies one runtime request to state.runtime / state.runtimePacks; false when rejected.
+bool applyRuntimeLocked(State &state, const QString &kind, const QString &id, const QString &value, QString *error)
+{
+    if (kind == QLatin1String("reset")) {
+        state.runtimePacks.clear();
+        state.runtime = Pack();
+        return true;
+    }
+    if (id.isEmpty()) {
+        if (error) *error = QStringLiteral("%1: missing id").arg(kind);
+        return false;
+    }
+    if (kind == QLatin1String("pack")) {
+        if (value.isEmpty()) {
+            state.runtimePacks.removeAll(id);
+            return true;
+        }
+        if (!findPackLocked(state, id)) {
+            if (error) *error = QStringLiteral("theme pack \"%1\" is not installed").arg(id);
+            return false;
+        }
+        state.runtimePacks.removeAll(id);
+        state.runtimePacks.append(id);
+        return true;
+    }
+    if (kind == QLatin1String("slot")) {
+        const Slot *slot = findSlot(id);
+        if (!slot) {
+            if (error) *error = QStringLiteral("unknown slot \"%1\"").arg(id);
+            return false;
+        }
+        if (value.isEmpty()) {
+            state.runtime.slotFiles.remove(id);
+            return true;
+        }
+        QString target;
+        if (isThemeRef(value)) {
+            const Pack *pack = runtimePackRef(state, value, error);
+            if (!pack)
+                return false;
+            target = pack->slotFiles.value(id);
+            if (target.isEmpty()) {
+                if (error) *error = QStringLiteral("theme pack \"%1\" has no slot \"%2\"").arg(pack->id, id);
+                return false;
+            }
+        } else {
+            target = runtimeAsset(value, slot->directory, error);
+            if (target.isEmpty())
+                return false;
+        }
+        state.runtime.slotFiles.insert(id, target);
+        return true;
+    }
+    if (kind == QLatin1String("color")) {
+        const bool known = std::any_of(colorTable().cbegin(), colorTable().cend(),
+            [&](const ColorSlot &slot) { return slot.id == id; });
+        if (!known) {
+            if (error) *error = QStringLiteral("unknown color \"%1\"").arg(id);
+            return false;
+        }
+        if (value.isEmpty()) {
+            state.runtime.colors.remove(id);
+            return true;
+        }
+        QColor color;
+        if (isThemeRef(value)) {
+            const Pack *pack = runtimePackRef(state, value, error);
+            if (!pack)
+                return false;
+            color = pack->colors.value(id);
+        } else {
+            color = QColor(value);
+        }
+        if (!color.isValid()) {
+            if (error) *error = QStringLiteral("color \"%1\": \"%2\" is not a valid color").arg(id, value);
+            return false;
+        }
+        state.runtime.colors.insert(id, color);
+        return true;
+    }
+    if (kind == QLatin1String("file")) {
+        const QString legacy = normalizeLegacy(id);
+        if (!legacy.startsWith(QLatin1String("image/"))) {
+            if (error) *error = QStringLiteral("file \"%1\" is not an image/ path").arg(id);
+            return false;
+        }
+        if (value.isEmpty()) {
+            state.runtime.files.remove(legacy);
+            return true;
+        }
+        const QString target = runtimeAsset(value, legacy.endsWith(QLatin1Char('/')), error);
+        if (target.isEmpty())
+            return false;
+        state.runtime.files.insert(legacy, target);
+        return true;
+    }
+    if (error) *error = QStringLiteral("unknown kind \"%1\"").arg(kind);
+    return false;
 }
 
 QList<Pack> scan()
@@ -550,5 +700,41 @@ QString resolveDirectory(const QString &legacyDir, const QString &probe)
     if (themed.isEmpty())
         return legacyDir;
     return themed.left(themed.size() - probe.size());
+}
+
+bool setRuntimeOverride(const QString &kind, const QString &id, const QString &value, QString *error)
+{
+    if (error)
+        error->clear();
+    ensureLoaded();
+    QWriteLocker locker(&g_lock);
+    const QStringList packsBefore = g_state.runtimePacks;
+    const QMap<QString, QString> slotsBefore = g_state.runtime.slotFiles, filesBefore = g_state.runtime.files;
+    const QMap<QString, QColor> colorsBefore = g_state.runtime.colors;
+    if (!applyRuntimeLocked(g_state, kind, id.trimmed(), value.trimmed(), error))
+        return false;
+    if (g_state.runtimePacks == packsBefore && g_state.runtime.slotFiles == slotsBefore
+        && g_state.runtime.files == filesBefore && g_state.runtime.colors == colorsBefore)
+        return false;
+    rebuildLocked(g_state);
+    return true;
+}
+
+void clearRuntime()
+{
+    QWriteLocker locker(&g_lock);
+    if (g_state.runtimePacks.isEmpty() && g_state.runtime.slotFiles.isEmpty()
+        && g_state.runtime.files.isEmpty() && g_state.runtime.colors.isEmpty())
+        return;
+    g_state.runtimePacks.clear();
+    g_state.runtime = Pack();
+    rebuildLocked(g_state);
+}
+
+bool hasRuntimeOverrides()
+{
+    QReadLocker locker(&g_lock);
+    return !g_state.runtimePacks.isEmpty() || !g_state.runtime.slotFiles.isEmpty()
+        || !g_state.runtime.files.isEmpty() || !g_state.runtime.colors.isEmpty();
 }
 }

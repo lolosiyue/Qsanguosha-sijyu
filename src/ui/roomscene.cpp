@@ -491,6 +491,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(focus_moved(QStringList,QSanProtocol::Countdown,int)),this,SLOT(moveFocus(QStringList,QSanProtocol::Countdown,int)));
 	connect(ClientInstance,SIGNAL(emotion_set(QString,QString)),this,SLOT(setEmotion(QString,QString)));
 	connect(ClientInstance,SIGNAL(change_table_bg(QString)),this,SLOT(changeTableBg(QString)));
+	connect(ClientInstance, &Client::ui_theme_changed, this, &RoomScene::refreshThemedElements);
 	connect(ClientInstance,SIGNAL(skill_invoked(QString,QString)),this,SLOT(showSkillInvocation(QString,QString)));
 	connect(ClientInstance,SIGNAL(skill_acquired(const ClientPlayer*,QString)),this,SLOT(acquireSkill(const ClientPlayer*,QString)));
 	connect(ClientInstance,SIGNAL(animated(int,QStringList)),this,SLOT(doAnimation(int,QStringList)));
@@ -676,7 +677,6 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	chat_box_widget->setObjectName("chat_box_widget");
 	chat_box_widget->setZValue(7);
 	chat_box->setReadOnly(true);
-	chat_box->setStyleSheet(QString("QTextEdit { color: %1;}").arg(ThemePacks::color(QStringLiteral("table-text"), UiConfig.TextEditColor).name()));
 	connect(ClientInstance,SIGNAL(line_spoken(QString)),chat_box,SLOT(append(QString)));
 	connect(ClientInstance,SIGNAL(player_speak(const QString&,const QString&)),
 		this,SLOT(showBubbleChatBox(const QString&,const QString&)));
@@ -717,11 +717,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	// log box
 	log_box = new ClientLogBox;
 	log_box->setObjectName("log_box");
-	log_box->setTextColor(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor));
-	// Without a "log-box-bg" theme slot or skin key the log keeps the global QTextEdit border.
-	const QString logBorder = G_ROOM_SKIN.getSlotFileName(QStringLiteral("log-box-bg"));
-	if (!logBorder.isEmpty())
-		log_box->setStyleSheet(QStringLiteral("QTextEdit#log_box { border-image: url(\"%1\") 10 10 10 10; }").arg(logBorder));
+	applyThemedText();
 
 	log_box_widget = addWidget(log_box);
 	log_box_widget->setZValue(8);
@@ -5979,6 +5975,42 @@ void RoomScene::changeTableBg(const QString&tableBg)
 			m_pixmapDeviceScale);
 		m_tableBg->setPixmap(m_tableBgPixmap);
 	}
+}
+
+void RoomScene::applyThemedText()
+{
+	chat_box->setStyleSheet(QString("QTextEdit { color: %1;}").arg(ThemePacks::color(QStringLiteral("table-text"), UiConfig.TextEditColor).name()));
+	log_box->setTextColor(ThemePacks::color(QStringLiteral("log-text"), UiConfig.TextEditColor));
+	// Without a "log-box-bg" theme slot or skin key the log keeps the global QTextEdit border.
+	const QString logBorder = G_ROOM_SKIN.getSlotFileName(QStringLiteral("log-box-bg"));
+	log_box->setStyleSheet(logBorder.isEmpty() ? QString()
+		: QStringLiteral("QTextEdit#log_box { border-image: url(\"%1\") 10 10 10 10; }").arg(logBorder));
+}
+
+void RoomScene::refreshThemedElements(const QString &kind, const QString &id)
+{
+	applyThemedText();
+
+	// Kingdom and skill backdrops replace tableBg during a game; only take it back when
+	// the theme really speaks about the table, or undoes an earlier themed table.
+	const bool tableSlotThemed = !ThemePacks::overrideForSlot(QStringLiteral("table-bg")).isEmpty();
+	const bool tableTouched = (kind == QLatin1String("slot") && id == QLatin1String("table-bg"))
+		|| (kind == QLatin1String("file") && id.startsWith(QLatin1String("image/system/backdrop/"), Qt::CaseInsensitive))
+		|| ((kind == QLatin1String("pack") || kind == QLatin1String("reset")) && (m_themedTableBg || tableSlotThemed));
+	if (tableTouched) {
+		changeTableBg(QSanRoomSkin::S_SKIN_KEY_TABLE_BG);
+		m_themedTableBg = tableSlotThemed;
+	}
+
+	// Seats, the dashboard and their buttons cache their art; repaint them from the
+	// new tables. Cards, emotions and indicator lines pick it up on their next paint.
+	if (dashboard)
+		dashboard->repaintAll();
+	foreach (Photo *photo, photos)
+		photo->repaintAll();
+	foreach (QSanSkillButton *button, m_skillButtons)
+		button->refreshArt();
+	update();
 }
 
 void RoomScene::showSkillInvocation(const QString&who,const QString&skill_name)

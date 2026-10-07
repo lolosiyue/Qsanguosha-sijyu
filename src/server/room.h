@@ -670,6 +670,16 @@ public:
     bool isAkarin(ServerPlayer*player, ServerPlayer*to = nullptr) const;
 
     void changeTableBg(const QString&tableBg);
+    // Changes room art or text color for this game only, over each client's own theme
+    // packs. kind is "slot", "color", "file", "pack" or "reset" (see ThemePacks::
+    // setRuntimeOverride); an empty value undoes that one change. player == nullptr sends
+    // to everyone. Reconnecting players get the same changes again.
+    void setUiElement(const QString &kind, const QString &id, const QString &value, ServerPlayer *player = nullptr);
+    void setUiSlot(const QString &slot, const QString &path, ServerPlayer *player = nullptr);
+    void setUiColor(const QString &colorId, const QString &color, ServerPlayer *player = nullptr);
+    void setUiFile(const QString &imagePath, const QString &path, ServerPlayer *player = nullptr);
+    void setUiThemePack(const QString &packId, bool enabled = true, ServerPlayer *player = nullptr);
+    void resetUi(ServerPlayer *player = nullptr);
     void changeBackground(const QString name, QList<ServerPlayer *> players = QList<ServerPlayer *>());
     void setAura(ServerPlayer* player, QString aura);
     bool hasAura();
@@ -1072,6 +1082,8 @@ private:
     QPointer<RoomThread1v1> thread_1v1;
     QPointer<RoomThreadHegemony> thread_hegemony;
     QVariantList m_chatHistory;
+    // setUiElement calls in order: receiver name ("" for everyone) and payload.
+    QList<QPair<QString, QVariant>> m_uiThemeHistory;
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.

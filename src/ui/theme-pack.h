@@ -97,6 +97,19 @@ QString resolveDirectory(const QString &legacyDir, const QString &probe = QStrin
 
 // Parses one pack folder; exposed for the manager page and tests.
 Pack parsePack(const QString &directory, QString *error);
+
+// In-game overrides a room pushes while it runs (Room::setUiElement). They sit above every
+// enabled pack, are never saved, and clearRuntime() drops them when the room closes.
+//   kind "slot":  id is a slot id, value an asset path ("image/...") or "theme:<pack id>"
+//   kind "color": id is a color id, value a color name or "theme:<pack id>"
+//   kind "file":  id is a legacy "image/..." path (folder when it ends in '/'), value an asset path
+//   kind "pack":  id is an installed pack id stacked over the enabled ones; value "" removes it
+//   kind "reset": drops every runtime override
+// An empty value clears that one override. Returns true when anything changed; a rejected
+// request leaves the tables alone and explains itself in *error.
+bool setRuntimeOverride(const QString &kind, const QString &id, const QString &value, QString *error = nullptr);
+void clearRuntime();
+bool hasRuntimeOverrides();
 }
 
 #endif

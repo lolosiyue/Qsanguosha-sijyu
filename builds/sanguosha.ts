@@ -11336,6 +11336,70 @@ P = 你自己, R = 你所在的房间</translation>
         <translation>牌桌背景</translation>
     </message>
     <message>
+        <source>HP magatamas</source>
+        <translation>体力勾玉</translation>
+    </message>
+    <message>
+        <source>Phase icons</source>
+        <translation>阶段图标</translation>
+    </message>
+    <message>
+        <source>Seat highlight frames</source>
+        <translation>座位高亮框</translation>
+    </message>
+    <message>
+        <source>Hand count badges</source>
+        <translation>手牌数底图</translation>
+    </message>
+    <message>
+        <source>Kingdom frames</source>
+        <translation>势力边框</translation>
+    </message>
+    <message>
+        <source>Kingdom icons</source>
+        <translation>势力图标</translation>
+    </message>
+    <message>
+        <source>Chain icon</source>
+        <translation>横置图标</translation>
+    </message>
+    <message>
+        <source>Turned-over mask</source>
+        <translation>翻面遮罩</translation>
+    </message>
+    <message>
+        <source>Dying icon</source>
+        <translation>濒死图标</translation>
+    </message>
+    <message>
+        <source>Death icons</source>
+        <translation>阵亡图标</translation>
+    </message>
+    <message>
+        <source>Judge area icons</source>
+        <translation>判定区图标</translation>
+    </message>
+    <message>
+        <source>Skill buttons</source>
+        <translation>技能按钮</translation>
+    </message>
+    <message>
+        <source>Confirm, cancel and discard buttons</source>
+        <translation>确定、取消与弃牌按钮</translation>
+    </message>
+    <message>
+        <source>Card suits</source>
+        <translation>卡牌花色</translation>
+    </message>
+    <message>
+        <source>Red card numbers</source>
+        <translation>红色点数</translation>
+    </message>
+    <message>
+        <source>Black card numbers</source>
+        <translation>黑色点数</translation>
+    </message>
+    <message>
         <source>Unknown author</source>
         <translation>未知作者</translation>
     </message>

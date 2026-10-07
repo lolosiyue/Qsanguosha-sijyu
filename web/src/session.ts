@@ -542,6 +542,12 @@ export class LiveSession {
         const path = imagePathToUrl(asString(message.payload.path));
         if (path) this.tableBackground = path;
       }
+      // Room::setUiElement: the SPA has no theme packs, so only the table slot applies.
+      if (message.command === Command.SET_UI_THEME) {
+        const kind = asString(message.payload.kind);
+        if (kind === "reset" || (kind === "slot" && asString(message.payload.id) === "table-bg"))
+          this.tableBackground = kind === "reset" ? null : imagePathToUrl(asString(message.payload.value)) || null;
+      }
       if (message.command === Command.ANIMATE && isLightbox(asNumber(message.payload.animation))) {
         const path = lightboxBackgroundUrl(asString(message.payload.first_argument));
         if (path !== undefined) this.tableBackground = path;

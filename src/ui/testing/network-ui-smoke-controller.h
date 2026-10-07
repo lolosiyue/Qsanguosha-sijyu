@@ -65,6 +65,7 @@ private slots:
     void onServerReply(int commandType);
     void onGameStarted();
     void onGameOver();
+    void onUiThemeChanged(const QString &kind, const QString &id);
     void onSettled();
     void onTimeout();
 
@@ -107,6 +108,7 @@ private:
     QJsonArray m_errors;
     QJsonObject m_result;
     QJsonObject m_lastUiState;
+    int m_uiThemeChanges = 0;
 };
 
 #endif

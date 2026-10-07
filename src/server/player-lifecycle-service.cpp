@@ -998,6 +998,10 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
 
     foreach (const QVariant &chatMessage, m_room.m_chatHistory)
         m_notifier.doNotify(player, S_COMMAND_SPEAK, chatMessage);
+    for (const auto &change : std::as_const(m_room.m_uiThemeHistory)) {
+        if (change.first.isEmpty() || change.first == player->objectName())
+            m_notifier.doNotify(player, S_COMMAND_SET_UI_THEME, change.second);
+    }
 
     m_room.notifyProperty(player, player, "flags", "-marshalling");
     SwitchContextMessage contextMessage;

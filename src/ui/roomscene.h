@@ -347,6 +347,9 @@ private:
     QGraphicsPixmapItem *m_tableBg;
     QPixmap m_tableBgPixmap;
     QPixmap m_tableBgPixmapOrig;
+    // True once a mid-game theme override has set the table background.
+    bool m_themedTableBg = false;
+    void applyThemedText();
     qreal m_pixmapDeviceScale;
     int m_tablew;
     int m_tableh;
@@ -508,6 +511,8 @@ private slots:
     void moveFocus(const QStringList &who, QSanProtocol::Countdown, int command);
     void setEmotion(const QString &who, const QString &emotion);
     void changeTableBg(const QString &tableBg);
+    // Redraws what a mid-game theme override (Client::ui_theme_changed) may have replaced.
+    void refreshThemedElements(const QString &kind, const QString &id);
     void showSkillInvocation(const QString &who, const QString &skill_name);
     void doAnimation(int name, const QStringList &args);
     void showOwnerButtons(bool owner);

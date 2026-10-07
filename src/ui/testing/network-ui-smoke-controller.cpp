@@ -12,6 +12,8 @@
 #include "protocol.h"
 #include "roomscene.h"
 #include "settings.h"
+#include "skin-bank.h"
+#include "theme-pack.h"
 #include "effects/effects-completion.h"
 #include "effects/effects-policy.h"
 
@@ -19,6 +21,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QImage>
+#include <QPainter>
 #include <QPixmap>
 #include <QSaveFile>
 #include <QTimer>
@@ -138,6 +142,8 @@ void NetworkUiSmokeController::attach(MainWindow *mainWindow)
         this, &NetworkUiSmokeController::onGameStarted);
     connect(ClientInstance, &Client::game_over,
         this, &NetworkUiSmokeController::onGameOver);
+    connect(ClientInstance, &Client::ui_theme_changed,
+        this, &NetworkUiSmokeController::onUiThemeChanged);
     // A standoff (draw) also means the game ran to completion; it must not be treated as "game over never reached".
     connect(ClientInstance, &Client::standoff,
         this, &NetworkUiSmokeController::onGameOver);
@@ -333,6 +339,58 @@ void NetworkUiSmokeController::onTimeout()
     complete(false, stage,
         QStringLiteral("the network UI smoke timed out after %1ms").arg(m_timeoutMs),
         NetworkUiSmokeReport::Timeout);
+}
+
+// A mid-game theme override (Room::setUiElement) is evidence, not a gate: each one is
+// reported as its own "ui_theme_changed:<n>" stage with what the client now resolves,
+// and, when a screenshot path was given, a "<path>-ui-theme-<n>.png" of the redrawn room.
+void NetworkUiSmokeController::onUiThemeChanged(const QString &kind, const QString &id)
+{
+    if (m_finished)
+        return;
+    const int index = ++m_uiThemeChanges;
+    QJsonObject details{{QStringLiteral("kind"), kind}, {QStringLiteral("id"), id}};
+    if (kind == QLatin1String("slot")) {
+        details.insert(QStringLiteral("resolved"), G_ROOM_SKIN.getSlotFileName(id));
+    } else if (kind == QLatin1String("color")) {
+        details.insert(QStringLiteral("resolved"), ThemePacks::color(id, QColor()).name());
+    } else if (kind == QLatin1String("file")) {
+        details.insert(QStringLiteral("resolved"), ThemePacks::overrideForFile(id));
+    }
+    details.insert(QStringLiteral("runtime_active"), ThemePacks::hasRuntimeOverrides());
+    // The avatar frame must stay at the dashboard's right edge after the repaint.
+    if (!m_roomScene.isNull() && m_roomScene->dashboard) {
+        Dashboard *dashboard = m_roomScene->dashboard;
+        if (QGraphicsItem *avatar = dashboard->getMouseClickReceiver()) {
+            const QRectF frame = avatar->mapRectToItem(dashboard, avatar->boundingRect());
+            details.insert(QStringLiteral("avatar_frame_right"), frame.right());
+            details.insert(QStringLiteral("dashboard_width"), dashboard->boundingRect().width());
+        }
+    }
+    emitStage(QStringLiteral("ui_theme_changed:%1").arg(index), true, details);
+    if (m_screenshotPath.isEmpty())
+        return;
+    // Let RoomScene repaint first; it reacts to the same signal.
+    QTimer::singleShot(300, this, [this, index]() {
+        if (m_roomScene.isNull())
+            return;
+        QString path = m_screenshotPath;
+        if (path.endsWith(QLatin1String(".png"), Qt::CaseInsensitive))
+            path.chop(4);
+        path += QStringLiteral("-ui-theme-%1.png").arg(index);
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        // Render the scene itself: grabbing the window misses the view's GPU-backed viewport.
+        const QRectF rect = m_roomScene->sceneRect();
+        QImage shot(rect.size().toSize(), QImage::Format_ARGB32_Premultiplied);
+        if (shot.isNull())
+            return;
+        shot.fill(Qt::black);
+        QPainter painter(&shot);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        m_roomScene->render(&painter, QRectF(), rect);
+        painter.end();
+        shot.save(path, "PNG");
+    });
 }
 
 void NetworkUiSmokeController::failStage(const QString &stage, const QString &error,

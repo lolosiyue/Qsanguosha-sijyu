@@ -163,6 +163,7 @@ public:
     void moveFocus(const QVariant &focus);
     void setEmotion(const QVariant &set_str);
     void changeTableBg(const QVariant &set_str);
+    void setUiTheme(const QVariant &arg);
     void skillInvoked(const QVariant &invoke_str);
     void animate(const QVariant &animate_str);
     void cardLimitation(const QVariant &limit);
@@ -513,6 +514,8 @@ signals:
     void focus_moved(const QStringList &focus, QSanProtocol::Countdown countdown, int command);
     void emotion_set(const QString &target, const QString &emotion);
     void change_table_bg(const QString &tableBg);
+    // A room changed a theme slot, color or file for this game (Room::setUiElement).
+    void ui_theme_changed(const QString &kind, const QString &id);
     void skill_invoked(const QString &who, const QString &skill_name);
     void skill_acquired(const ClientPlayer *player, const QString &skill_name);
     void animated(int name, const QStringList &args);
