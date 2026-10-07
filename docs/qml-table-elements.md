@@ -16,7 +16,7 @@
 撰寫元件前請先確認以下限制，詳細說明見 §7。
 
 - 元件只在 GUI 客戶端顯示。TUI、Web、Excel、Sheets 客戶端收到相關通知時一律安靜忽略，**不可用元件承載遊戲必要的資訊**。
-- 元件不能連網，也不能向伺服器回傳資料。需要玩家作答時，改用 `askForQml`（見 §8）。
+- 元件不應連網（圖層封鎖 `file:`、`qrc:` 以外的 URL，例外見 §7），也不能向伺服器回傳資料。需要玩家作答時，改用 `askForQml`（見 §8）。
 - 圖層永遠位於所有牌桌物件之上，飛行中的卡牌會從元件底下經過。
 - 玩家檢視面板（inspector）開啟，或座位捲動列出現（帶狀座位分頁時）時，與這些控制項重疊的元件會暫時隱藏。
 
@@ -46,9 +46,9 @@ room:setPlayerMark(player, "@jl_zhanyi", 0)  -- remove the element
 ```
 
 - 標記值大於 0 時顯示，等於 0 時移除。標記值變動時，既有元件不會重建，只更新 `qs.data.value`，元件內部狀態（例如已展開）得以保留。
-- 符合登記的標記不再繪製為原本的文字按鈕，改由 QML 元件呈現。沒有登記的客戶端照舊顯示文字按鈕。
+- 符合登記的標記不再繪製為原本的文字按鈕，改由 QML 元件呈現。沒有登記的客戶端，以及未啟用 QML 的建置（例如 XP 版），照舊顯示文字按鈕。
 - 標記值只能是整數。需要傳遞複雜資料時，改用路線二。
-- 斷線重連與觀戰時，標記經由同一個同步機制送達，元件會自動恢復，不需額外處理。
+- 斷線重連與觀戰時，伺服器只重送名稱以 `@` 或 `&` 開頭的標記（`ServerPlayer::marshal`）。綁定的標記請使用這兩種前綴之一，元件才會自動恢復；其他名稱的標記在重連後不會出現，直到下一次 `setPlayerMark`。
 
 ### 2.2 路線二：Room 指令
 
@@ -173,9 +173,10 @@ Item {
         }
     }
 
-    // Tap, not hover: touch screens have no hover.
-    TapHandler {
-        onTapped: root.expanded = !root.expanded
+    // Click, not hover: touch screens have no hover.
+    MouseArea {
+        anchors.fill: parent
+        onClicked: root.expanded = !root.expanded
     }
 }
 ```
@@ -222,10 +223,12 @@ Item {
 ## 5. 互動與觸控
 
 - 元件需要接收指標事件時，必須宣告 `qsInteractive: true`。游標或觸點進入元件可見矩形時，圖層才接收事件；離開後事件重新落到牌桌，因此元件之外的牌桌操作不受影響。
-- QML 沒有接受的點擊，會落到牌桌。例如元件內有 `MouseArea` 或 `TapHandler` 只處理部分區域，其餘區域的點擊仍由牌桌處理。
-- **觸控沒有懸停**。不要把重要操作放在 `HoverHandler` 或 `hoverEnabled` 的 `MouseArea` 上；改用 `TapHandler` 或 `MouseArea.onClicked`。懸停只適合作為滑鼠使用者的額外提示。
-- 可互動範圍不小於 48 邏輯像素（對應 `ResponsiveInput::minimumTouchTarget`）。元件本身較小時，請在根物件內加大可點擊的區域，例如以 `TapHandler` 附在一個 48 像素以上的透明 `Item` 上。
-- 目前預期觸控主要以合成的滑鼠事件送達 QML（Qt 的「觸控轉滑鼠」），所以 `TapHandler`、`MouseArea` 的點擊與拖曳應可使用。多點觸控手勢（例如 `PinchHandler`）尚未驗證，請勿依賴。
+- 建議以 `MouseArea`（`onClicked`）處理點擊。圖層依 QML 是否接受按下事件來決定點擊由元件或牌桌處理，`MouseArea` 會明確接受它所覆蓋區域內的按下事件。
+- 使用 `TapHandler` 時，必須設定 `gesturePolicy: TapHandler.ReleaseWithinBounds`（取得獨占抓取）。預設的手勢策略只取得被動抓取，按下事件可能被回報為未接受，點擊會同時落到牌桌。此做法目前尚未經執行期驗證，優先使用 `MouseArea`。
+- QML 沒有接受的點擊，會落到牌桌。例如元件內的 `MouseArea` 只覆蓋部分區域，其餘區域的點擊仍由牌桌處理。
+- **觸控沒有懸停**。不要把重要操作放在 `HoverHandler` 或 `hoverEnabled` 的 `MouseArea` 上；改用 `MouseArea.onClicked`。懸停只適合作為滑鼠使用者的額外提示。
+- 可互動範圍不小於 48 邏輯像素（對應 `ResponsiveInput::minimumTouchTarget`）。元件本身較小時，請在根物件內加大可點擊的區域，例如在一個 48 像素以上的透明 `Item` 內放置填滿它的 `MouseArea`。
+- 目前預期觸控主要以合成的滑鼠事件送達 QML（Qt 的「觸控轉滑鼠」），所以 `MouseArea` 的點擊與拖曳應可使用（`TapHandler` 的條件見上）。多點觸控手勢（例如 `PinchHandler`）尚未驗證，請勿依賴。
 - 旋轉裝置或版面改變時，版面重算會觸發圖層重新定位，並推送新的 `qs.profile` 與 `qs.compact`。元件本身不重建，內部狀態保留。
 - 被原生控制項蓋住的部分不會接收事件，見 §7。
 
@@ -245,7 +248,7 @@ QML 檔案不存在或編譯失敗時，同一路徑只記錄一次警告，並�
 ## 7. 限制
 
 - **只在 GUI 客戶端顯示。** TUI、Web、Excel、Sheets 不顯示，也不輸出日誌。元件只能作為裝飾與輔助顯示，遊戲規則需要的資訊（點數、可選項、倒數）必須同時以原有的協議顯示。
-- **不能連網。** 圖層只放行 `file:` 與 `qrc:` 兩種 scheme，其他一律失敗。QML 因此不能請求遠端資源，也不能載入遠端程式碼。
+- **不應連網。** 圖層的網路存取只放行 `file:` 與 `qrc:` 兩種 scheme，其他一律失敗，因此 `XMLHttpRequest`、`Image` 與 `Loader` 等經由 QML 引擎發出的 URL 請求不能取得遠端資源，也不能載入遠端程式碼。自行開啟 socket 的 QML 模組（例如部署了 QtWebSockets 時的 `WebSocket`）不經過這道限制，圖層無法攔截；擴展不得依賴或使用這類模組連網。
 - **沒有回傳通道。** 元件的狀態只存在於本機。
 - **資料上限。** 單一元件的 `data` 序列化後不超過 16 KB；每個 receiver（全體或單一玩家）最多 64 個元件。`update` 合併後的結果也受 16 KB 上限約束。超過上限時伺服器拒絕送出，並在伺服器日誌記錄一行警告，不向 Lua 拋出錯誤。
 - **位於所有牌桌物件之上。** 圖層疊在牌桌之上、原生浮層之下，所以飛行中的卡牌會從元件底下經過。
