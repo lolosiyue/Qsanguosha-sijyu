@@ -246,6 +246,8 @@ def evaluate(stages, orientation):
             header = stages[-1].get("header_rect")
             if header and intersects(mine["rect"], header):
                 problems.append("player/mine overlaps the header")
+        else:
+            problems.append("player/mine was never visible")
 
     # Seat-following board: centered inside its seat.
     _, follow = last("all/follow")
@@ -261,6 +263,8 @@ def evaluate(stages, orientation):
                 problems.append("all/follow has no seat_rect")
             elif not inside(center(follow_visible["rect"]), seat_rect):
                 problems.append("all/follow center %r is outside its seat %r" % (center(follow_visible["rect"]), seat_rect))
+        else:
+            problems.append("all/follow was never visible")
 
     # Missing file: reported, never created, game continues.
     _, missing = last("all/nofile")
@@ -295,6 +299,8 @@ def evaluate(stages, orientation):
                     if seat_rect["w"] >= 0.6 * interaction.get("w", float('inf')):
                         problems.append("portrait: mark's seat_rect width %r >= 0.6 * interaction width %r (avatar area too large)"
                                         % (seat_rect["w"], interaction.get("w")))
+        else:
+            problems.append("the @qmlprobe_star mark was never visible")
         if any(e["key"] == mark_keys[0] for e in stages[-1].get("elements", [])):
             problems.append("the mark element is still shown after the mark dropped to 0")
 
@@ -308,15 +314,17 @@ def evaluate(stages, orientation):
         if not any(e.get("visible") for _, e in seen.get("all/bottom", [])):
             problems.append("all/bottom never showed visible: true")
 
-    # Board must be interactive; mark must not be.
+    # Board must be interactive; mark must not be (check on last occurrence regardless of visibility).
     _, board_last = last("all/board")
-    if board_last and board_last.get("visible") and not board_last.get("qsInteractive"):
-        problems.append("all/board is not marked qsInteractive: true")
+    if board_last is not None:
+        if board_last.get("interactive") is not True:
+            problems.append("all/board last occurrence: interactive must be True, got %r" % board_last.get("interactive"))
     mark_keys_for_interactive = [k for k in seen if k.startswith("mark/") and k.endswith("/@qmlprobe_star")]
     if mark_keys_for_interactive:
         _, mark_last = last(mark_keys_for_interactive[0])
-        if mark_last and mark_last.get("visible") and mark_last.get("qsInteractive"):
-            problems.append("mark element should have qsInteractive: false")
+        if mark_last is not None:
+            if mark_last.get("interactive") is not False:
+                problems.append("mark element last occurrence: interactive must be False, got %r" % mark_last.get("interactive"))
 
     # Table and screen elements never cover the hand / dashboard area.
     for stage in stages:
