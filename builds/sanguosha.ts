@@ -6141,12 +6141,12 @@ Waiting for %1 to respond</source>
     <message>
         <location filename="../src/dialog/mainwindow.cpp" line="393"/>
         <source>Packages</source>
-        <translation type="unfinished">包</translation>
+        <translation>包</translation>
     </message>
     <message>
         <location filename="../src/dialog/mainwindow.cpp" line="394"/>
         <source>Manage packages...</source>
-        <translation type="unfinished"></translation>
+        <translation>管理包……</translation>
     </message>
     <message>
         <location filename="../src/dialog/mainwindow.cpp" line="675"/>
@@ -6594,6 +6594,16 @@ Waiting for %1 to respond</source>
         <source>Manage theme packs...</source>
         <translation>主题包管理…</translation>
     </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp"/>
+        <source>Check for updates</source>
+        <translation>检查更新</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/mainwindow.cpp"/>
+        <source>Use the project release page to download a compatible build, then exit and install it using your platform tools. Online material installation is currently available on desktop only.</source>
+        <translation>请前往项目发布页面下载兼容的构建，再退出游戏并使用平台工具安装。目前仅桌面版支持在线素材安装。</translation>
+    </message>
 </context>
 <context>
     <name>MainWindowServerList</name>
@@ -6728,99 +6738,125 @@ Waiting for %1 to respond</source>
     <name>PackageManagerDialog</name>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="23"/>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="150"/>
         <source>Package manager</source>
-        <translation type="unfinished"></translation>
+        <translation>包管理器</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="26"/>
         <source>Package changes take effect after restarting the game.</source>
-        <translation type="unfinished"></translation>
+        <translation>包的变更将在重新启动游戏后生效。</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="30"/>
         <source>Install folder…</source>
-        <translation type="unfinished"></translation>
+        <translation>从文件夹安装……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="31"/>
         <source>Install ZIP…</source>
-        <translation type="unfinished"></translation>
+        <translation>从 ZIP 安装……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="32"/>
         <source>Remove</source>
-        <translation type="unfinished"></translation>
+        <translation>移除</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="33"/>
         <source>Restore previous</source>
-        <translation type="unfinished"></translation>
+        <translation>恢复上一版本</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="34"/>
         <source>Close</source>
-        <translation type="unfinished">关闭</translation>
+        <translation>关闭</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="49"/>
         <source>Select package folder</source>
-        <translation type="unfinished"></translation>
+        <translation>选择包文件夹</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="51"/>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="58"/>
         <source>Installing package…</source>
-        <translation type="unfinished"></translation>
+        <translation>正在安装包……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="56"/>
         <source>Select package ZIP</source>
-        <translation type="unfinished"></translation>
+        <translation>选择包 ZIP 文件</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="56"/>
         <source>ZIP archives (*.zip)</source>
-        <translation type="unfinished"></translation>
+        <translation>ZIP 压缩包 (*.zip)</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="70"/>
         <source>Scheduling package removal…</source>
-        <translation type="unfinished"></translation>
+        <translation>正在安排移除包……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="77"/>
         <source>Scheduling restore…</source>
-        <translation type="unfinished"></translation>
+        <translation>正在安排恢复……</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="114"/>
         <source>Pending package change discarded: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>已取消待生效的包变更：%1</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="117"/>
         <source> (removal pending)</source>
-        <translation type="unfinished"></translation>
+        <translation> （待移除）</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="119"/>
         <source> (update pending: %1)</source>
-        <translation type="unfinished"></translation>
+        <translation> （待更新：%1）</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="120"/>
         <source> · previous available</source>
-        <translation type="unfinished"></translation>
+        <translation> · 可恢复上一版本</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="125"/>
         <source>No installed packages</source>
-        <translation type="unfinished"></translation>
+        <translation>没有已安装的包</translation>
     </message>
     <message>
         <location filename="../src/dialog/package-manager-dialog.cpp" line="127"/>
         <source>Missing package asset: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>包资源缺失：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="61"/>
+        <source>Cannot open the selected archive.</source>
+        <translation>无法打开所选压缩包。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="152"/>
+        <source>Package operation failed</source>
+        <translation>包操作失败</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="153"/>
+        <source>The package operation failed.</source>
+        <translation>包操作失败。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="156"/>
+        <source>Restart required</source>
+        <translation>需要重新启动</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/package-manager-dialog.cpp" line="157"/>
+        <source>The change is staged and will take effect after restarting the game.</source>
+        <translation>变更已暂存，将在重新启动游戏后生效。</translation>
     </message>
 </context>
 <context>
@@ -7214,36 +7250,6 @@ Waiting for %1 to respond</source>
         <location filename="../src/dialog/scenario-work-dialog.cpp" line="47"/>
         <source>≥</source>
         <translation>≥</translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="61"/>
-        <source>Cannot open the selected archive.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="150"/>
-        <source>Package manager</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="152"/>
-        <source>Package operation failed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="153"/>
-        <source>The package operation failed.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="156"/>
-        <source>Restart required</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../src/dialog/package-manager-dialog.cpp" line="157"/>
-        <source>The change is staged and will take effect after restarting the game.</source>
-        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -11606,6 +11612,457 @@ P = 你自己, R = 你所在的房间</translation>
         <location filename="../ui-script/game/chongxu/chongxu.qml" line="69"/>
         <source>Game over! Score: %1</source>
         <translation>游戏结束！得分: %1</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateCatalog</name>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>A package change is already pending. Restart or manage packages first.</source>
+        <translation>此内容包已有待应用的更改。请先重启游戏或打开内容包管理。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>Installed version is current or newer.</source>
+        <translation>已安装的版本为最新版或更高版本。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>Invalid material package entry.</source>
+        <translation>素材内容包条目无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>Invalid or oversized material catalog.</source>
+        <translation>素材目录无效或超过大小限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>Invalid or oversized release catalog.</source>
+        <translation>版本目录无效或超过大小限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>Invalid release entry.</source>
+        <translation>版本条目无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>No compatible verified download. Use the release page for manual installation.</source>
+        <translation>没有兼容且可验证的下载。请前往发布页面手动安装。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>The installed version cannot be compared safely.</source>
+        <translation>无法安全比较已安装的版本。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-catalog.cpp"/>
+        <source>This package requires a different game version.</source>
+        <translation>此内容包需要其他游戏版本。</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateTransfer</name>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Cancelled. Partial downloads are kept for the next attempt.</source>
+        <translation>已取消。已下载的部分将保留，供下次继续下载。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Cannot create a safe download directory.</source>
+        <translation>无法创建安全的下载目录。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Cannot open the partial download.</source>
+        <translation>无法打开未完成的下载文件。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Cannot publish the verified download.</source>
+        <translation>无法保存已验证的下载文件。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Cannot reset the partial download.</source>
+        <translation>无法重置未完成的下载文件。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Cannot write the download. Check available disk space.</source>
+        <translation>无法写入下载文件。请检查磁盘可用空间。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The SHA-256 or size check failed. The untrusted download was discarded.</source>
+        <translation>SHA-256 或大小校验失败。已丢弃不可信的下载文件。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The download descriptor is invalid.</source>
+        <translation>下载信息无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The download exceeds its declared size.</source>
+        <translation>下载文件超过声明的大小。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The download filename is unsafe.</source>
+        <translation>下载文件名不安全。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The download is incomplete. Try again to resume.</source>
+        <translation>下载尚未完成。请重试以继续下载。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The download path is unsafe.</source>
+        <translation>下载路径不安全。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The server returned an invalid download range.</source>
+        <translation>服务器返回的下载范围无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The update catalog exceeds the size limit.</source>
+        <translation>更新目录超过大小限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The update request failed. Check your connection and try again.</source>
+        <translation>更新请求失败。请检查网络连接后重试。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The update request timed out. Try again to resume the download.</source>
+        <translation>更新请求超时。请重试以继续下载。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The update response has an invalid size or encoding.</source>
+        <translation>更新响应的大小或编码无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The update service refused the request or reached its rate limit. Try again later.</source>
+        <translation>更新服务拒绝了请求，或已达到请求频率限制。请稍后重试。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>The update service returned HTTP %1.</source>
+        <translation>更新服务返回 HTTP %1。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>This download is already in use.</source>
+        <translation>此下载任务已被占用。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Unsafe or excessive update redirects.</source>
+        <translation>更新请求的重定向不安全或次数过多。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Update endpoints and redirects must use HTTPS without credentials.</source>
+        <translation>更新地址及重定向必须使用不含凭据的 HTTPS 地址。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/update-transfer.cpp"/>
+        <source>Insufficient free space for the download and safety reserve.</source>
+        <translation>没有足够的可用空间来下载文件并保留安全余量。</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateDialog</name>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>%1
+Current: %2
+Latest: %3
+Download size: %4 MiB
+
+Changes:
+%5</source>
+        <translation>%1
+当前：%2
+最新：%3
+下载大小：%4 MiB
+
+更新内容：
+%5</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>%1 · Current: %2 · Latest: %3</source>
+        <translation>%1 · 当前：%2 · 最新：%3</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>A package change is already pending. Restart or manage packages first.</source>
+        <translation>此内容包已有待应用的更改。请先重启游戏或打开内容包管理。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Available game and material versions</source>
+        <translation>可用的游戏及素材版本</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Before downloading, GitHub must confirm that this release is newer than your build. Install it manually after exiting; platform labels do not guarantee OS or driver compatibility.</source>
+        <translation>下载前，GitHub 必须确认此发布版本比当前构建更新。请退出游戏后手动安装；平台标签无法保证操作系统或驱动兼容性。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Cancel operation</source>
+        <translation>取消操作</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Cancelling extraction. If staging has already begun, its atomic operation will finish safely.</source>
+        <translation>正在取消解压。如果已开始暂存，原子操作将安全完成。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Cannot read the downloaded package.</source>
+        <translation>无法读取下载的内容包。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Check again</source>
+        <translation>重新检查</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Check for updates</source>
+        <translation>检查更新</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Checking GitHub Releases…</source>
+        <translation>正在检查 GitHub 发布版本…</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Checking material catalog…</source>
+        <translation>正在检查素材目录…</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Current game: %1 · Commit: %2 · Platform: %3</source>
+        <translation>当前游戏：%1 · 提交：%2 · 平台：%3</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Download selected</source>
+        <translation>下载所选更新</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Downloading the selected update…</source>
+        <translation>正在下载所选更新…</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Downloading: %1 / %2 MiB. You can cancel and resume later.</source>
+        <translation>正在下载：%1 / %2 MiB。可以取消，稍后继续下载。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Enter a public HTTPS manifest URL without credentials or a fragment.</source>
+        <translation>请输入公开的 HTTPS 清单地址，不能包含凭据或片段标识。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Game download ready</source>
+        <translation>游戏下载已就绪</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Game downloads require manual installation after exiting. Material packages are applied on the next launch; active files remain in use until then.</source>
+        <translation>游戏下载完成后，请退出游戏再手动安装。素材内容包将在下次启动时应用，此前继续使用当前文件。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Include prereleases</source>
+        <translation>包含预发布版本</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Latest comparable game release: %1</source>
+        <translation>可比较的最新游戏发布版本：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Material packages checked: %1</source>
+        <translation>已检查的素材内容包：%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Material staging failed; active packages were preserved.
+%1</source>
+        <translation>素材暂存失败；已保留当前内容包。
+%1</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Material updates are not configured. Supply the public R2 manifest URL.</source>
+        <translation>尚未配置素材更新。请提供公开的 R2 清单地址。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>No comparable game release was found in the latest 100 releases.</source>
+        <translation>在最近 100 个发布版本中未找到可安全比较的游戏版本。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>No release notes supplied.</source>
+        <translation>未提供更新说明。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Not installed</source>
+        <translation>未安装</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Open download folder</source>
+        <translation>打开下载文件夹</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Open release page</source>
+        <translation>打开发布页面</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Public material manifest URL (HTTPS):</source>
+        <translation>公开的素材清单地址（HTTPS）：</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Release ancestry verified. Downloading the selected build…</source>
+        <translation>已验证发布版本的提交关系。正在下载所选构建…</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>The material update is staged. Restart the game to apply it. Use Package manager to restore the previous version if needed.</source>
+        <translation>素材更新已暂存。请重启游戏以应用更新。如有需要，可通过内容包管理恢复上一版本。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>The release is not newer than this build, or its ancestry could not be verified. Use the release page to review it manually.</source>
+        <translation>此发布版本并非比当前构建更新，或无法验证其提交关系。请前往发布页面手动查看。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>This build has local changes or unknown commit identity. Review releases manually to avoid replacing a newer development build.</source>
+        <translation>此构建包含本地更改，或提交信息未知。请手动查看发布版本，避免替换较新的开发构建。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Update details</source>
+        <translation>更新详情</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Validating and staging the material package for the next launch…</source>
+        <translation>正在验证并暂存素材内容包，将于下次启动时应用…</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Verified download saved to %1. Exit the game, then install or extract it into a separate location and restart. The updater will not run an installer or replace the running executable.</source>
+        <translation>已验证的下载文件保存在 %1。请退出游戏，再安装或解压到其他位置后重新启动。更新功能不会运行安装程序或替换正在运行的可执行文件。</translation>
+    </message>
+    <message>
+        <location filename="../src/dialog/update-dialog.cpp"/>
+        <source>Verifying that the selected release is newer than this build…</source>
+        <translation>正在验证所选发布版本是否比当前构建更新…</translation>
+    </message>
+</context>
+<context>
+    <name>PackageStore</name>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Downloaded package identity does not match the catalog.</source>
+        <translation>下载内容包的标识或版本与目录不符。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Package extraction cancelled.</source>
+        <translation>已取消内容包解压。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Package manifest exceeds the size limit.</source>
+        <translation>内容包清单超过大小限制。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>This package already has a pending change.</source>
+        <translation>此内容包已有待应用的更改。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Installed package byte quota exceeded.</source>
+        <translation>已安装内容包的总大小超过配额。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Installed package entry quota exceeded.</source>
+        <translation>已安装内容包的文件数量超过配额。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Insufficient free space for package staging and rollback.</source>
+        <translation>没有足够的可用空间来暂存内容包并保留回滚副本。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Invalid package storage budget.</source>
+        <translation>内容包存储预算无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Invalid package storage limits configuration.</source>
+        <translation>内容包存储限制配置无效。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Package file changed during copy.</source>
+        <translation>内容包文件在复制期间发生了变化。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Package storage budget overflow.</source>
+        <translation>内容包存储预算溢出。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Package storage is unavailable or read-only.</source>
+        <translation>内容包存储不可用或为只读。</translation>
+    </message>
+    <message>
+        <location filename="../src/core/package-store.cpp"/>
+        <source>Unsafe package storage path.</source>
+        <translation>内容包存储路径不安全。</translation>
     </message>
 </context>
 </TS>
