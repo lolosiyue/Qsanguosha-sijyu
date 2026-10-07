@@ -180,7 +180,8 @@ namespace QSanProtocol {
         S_COMMAND_UPDATE_PLAYER_UI_STATE = 132,
         S_COMMAND_STATE_SYNC = 133,
         S_COMMAND_RESOLUTION_STATE = 134,
-        S_COMMAND_SET_UI_THEME = 135
+        S_COMMAND_SET_UI_THEME = 135,
+        S_COMMAND_QML_ELEMENT = 136
     };
 
     enum GuanxingStepType

@@ -849,6 +849,8 @@ bool encodeRoomNotificationPayload(int command, const QVariant &value,
     case S_COMMAND_CHANGE_TABLE_BG: return scalarPayload(value, "path", output);
     case S_COMMAND_SET_UI_THEME:
         return positionalPayload(value, {"kind", "id", "value"}, output, error);
+    case S_COMMAND_QML_ELEMENT:
+        return positionalPayload(value, {"op", "id", "qml", "anchor", "data", "scope"}, output, error);
     case S_COMMAND_NULLIFICATION_ASKED: return scalarPayload(value, "trick_name", output);
     case S_COMMAND_ENABLE_SURRENDER: return scalarPayload(value, "enabled", output);
     case S_COMMAND_UPDATE_BOSS_LEVEL: return scalarPayload(value, "level", output);
@@ -1197,6 +1199,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     ROOM_NOTIFICATION(S_COMMAND_SET_EMOTION, "Client::setEmotion", "EmotionPayload");
     ROOM_NOTIFICATION(S_COMMAND_CHANGE_TABLE_BG, "Client::changeTableBg", "TableBackgroundPayload");
     ROOM_NOTIFICATION(S_COMMAND_SET_UI_THEME, "Client::setUiTheme", "UiThemePayload");
+    ROOM_NOTIFICATION(S_COMMAND_QML_ELEMENT, "Client::handleQmlElement", "QmlElementPayload");
     ROOM_NOTIFICATION(S_COMMAND_INVOKE_SKILL, "Client::skillInvoked", "SkillInvokedPayload");
     ROOM_NOTIFICATION(S_COMMAND_SHOW_ALL_CARDS, "Client::showAllCards", "ShowAllCardsPayload");
     ROOM_NOTIFICATION(S_COMMAND_SKILL_GONGXIN, "Client::askForGongxin", "GongxinNotificationPayload");
@@ -1394,6 +1397,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
         {QStringLiteral("EmotionPayload"), {QStringLiteral("player_name"), QStringLiteral("emotion")}},
         {QStringLiteral("TableBackgroundPayload"), {QStringLiteral("path")}},
         {QStringLiteral("UiThemePayload"), {QStringLiteral("kind"), QStringLiteral("id"), QStringLiteral("value")}},
+        {QStringLiteral("QmlElementPayload"), {QStringLiteral("op"), QStringLiteral("id"), QStringLiteral("qml"), QStringLiteral("anchor"), QStringLiteral("data"), QStringLiteral("scope")}},
         {QStringLiteral("SkillInvokedPayload"), {QStringLiteral("player_name"), QStringLiteral("skill_name")}},
         {QStringLiteral("ShowAllCardsPayload"), {QStringLiteral("player_name"), QStringLiteral("card_ids")}},
         {QStringLiteral("GongxinNotificationPayload"), {QStringLiteral("player"), QStringLiteral("enable_heart"), QStringLiteral("card_ids"), QStringLiteral("enabled_card_ids")}},

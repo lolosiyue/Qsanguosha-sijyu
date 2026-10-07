@@ -352,10 +352,10 @@ ClientFlowDisposition ClientGameStateReducer::classifyNotification(int command)
     case S_COMMAND_SET_UI_THEME:
     case S_COMMAND_INVOKE_SKILL:
         return ClientFlowDisposition::PresentationEvent;
+    case S_COMMAND_QML_ELEMENT:
     case S_COMMAND_ANIMATE:
     case S_COMMAND_PLAY_AUDIO:
-        // Both drive desktop presentation only; a text transcript has nothing
-        // to say about an animation or a sound.
+        // These drive desktop presentation only (animations, sounds, mounted QML); a text transcript has nothing to say about them.
         return ClientFlowDisposition::ExplicitTextIrrelevant;
     case S_COMMAND_ADD_PLAYER:
     case S_COMMAND_ADD_PLAYER_DYNAMIC:
