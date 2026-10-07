@@ -210,8 +210,9 @@ GL viewport 的灰階、高對比濾鏡不會套用到這個圖層。根 QML 外
 
 ## 直向與響應式版面
 
-響應式版面（`Config.responsiveUiEnabled()`）在直向時採用 `Profile::CompactPortrait`：座位改為
-`SeatPresentation::Ribbon` 帶狀排列並分頁，dashboard 改用 `setResponsiveGeometry` 重新排版，
+響應式版面（`Config.responsiveUiEnabled()`）在直向時採用 `Profile::CompactPortrait`：座位通常排成
+馬蹄形；人數多或畫面太小而放不下時，才退回 `SeatPresentation::Ribbon` 帶狀排列並分頁。dashboard
+改用 `setResponsiveGeometry` 重新排版，
 另有 header、安全區與螢幕鍵盤造成的可用高度縮減。圖層依下列規則處理。
 
 ### 版面資料來源
