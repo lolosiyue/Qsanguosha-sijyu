@@ -12,12 +12,15 @@ native SDL3 input path shared with controller-only gameplay. Design rationale an
 | Mechanism | Effect |
 | --- | --- |
 | Command line `QSanguosha --big-picture` | Enables the mode for this launch. |
-| Settings key `BigPicture/Enabled = true` (in `config.ini` / `QSanguosha.conf`) | Persists the mode across launches; currently set by editing QSettings. |
+| Home Settings → 大屏模式 (`BigPicture/Enabled`) | Save persists the mode for the next launch; Cancel discards the draft. |
 | Environment `QSAN_BIG_PICTURE=1` | Force-enables; `QSAN_BIG_PICTURE=0` force-disables, overriding both of the above. |
 
 `--big-picture` is parsed before `QApplication` exists and normalizes to
 `QSAN_BIG_PICTURE=1`; the persisted key is read with the same early lightweight
 `QSettings` path `Config` uses later.
+The home page uses this same resolved launch mode, including CLI and environment
+overrides. Ordinary visual settings retain their immediate preview and Cancel
+behavior; changing the saved BP toggle does not replace a launch override.
 
 When the mode is on:
 
@@ -154,5 +157,5 @@ by the spatial filter.
   native Wayland session, compositor scaling is left untouched. Where neither
   probe reports the true physical panel (nested compositors, remote desktops),
   automatic `QT_SCALE_FACTOR=2` may not trigger; set it manually if needed.
-- `BigPicture/Enabled` is currently a QSettings/config-file key, not a visible
-  settings-page toggle. Changing it takes effect on the next launch.
+- The Settings BP toggle is saved for the next launch. Fullscreen, application
+  scaling, skin overlays and the home TV mode stay consistent during this launch.
