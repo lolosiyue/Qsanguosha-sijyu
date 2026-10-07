@@ -418,6 +418,129 @@ local actual = sgs.NotARealEvent
           "source exceeding the byte limit is refused before lexical linting");
 }
 
+void testLuaKeywordCallRecognition()
+{
+    const Context context = bundledContext();
+    const QString keywordForms = QString::fromUtf8(R"lua(
+local direct = not(true)
+local spaced = not (true)
+local nested = not (not(not (false)))
+local line_break = not
+    (true)
+local comment_gap = not -- a line comment between unary operator and operand
+    (true)
+local long_comment_gap = not --[=[ a long comment between unary operator and operand ]=] (true)
+local conjunction = true and (not(false))
+local disjunction = false or (true)
+if (true) then
+    local branch = true
+elseif (false) then
+    local other_branch = false
+end
+while (false) do
+    break
+end
+repeat
+    local body = true
+until (true)
+local function return_parenthesized()
+    return (true)
+end
+local returned = return_parenthesized()
+local string_decoy = "unknownFunction() not (unknownFunction()) if (unknownFunction())"
+-- unknownFunction() and not (unknownFunction()) if (unknownFunction())
+--[=[ unknownFunction() and not (unknownFunction()) until (unknownFunction()) ]=]
+)lua");
+    const auto keywordErrors = validateCode(defaultSpec(), assemble(defaultSpec(), skillBody(defaultSpec()) + keywordForms), context);
+    check(keywordErrors.isEmpty(),
+          "Lua reserved keywords/operators before parentheses are not linted as function calls");
+
+    const QString prefixSimilarCall = skillBody(defaultSpec())
+        + QStringLiteral("\nnotAFunction(true)\n");
+    const auto prefixSimilarErrors = validateCode(
+        defaultSpec(), assemble(defaultSpec(), prefixSimilarCall), context);
+    check(prefixSimilarErrors.contains("Undeclared Lua function: notAFunction"),
+          "keyword matching does not exempt prefix-similar ordinary function names");
+
+    const QJsonObject sampleSpec{
+        {"package_id", "diy_deepseek_qa"}, {"general_id", "diy_deepseek_qa_hero"},
+        {"display_name", "Fictional QA Hero"}, {"kingdom", "wei"}, {"max_hp", 4},
+        {"start_hp", 4}, {"armor", 0}, {"male", true}, {"lord", false},
+        {"title", "Test fixture"}, {"designer", "Automated fictional QA"},
+        {"skills", QJsonArray{QJsonObject{
+            {"id", "diy_deepseek_qa_hero_finish"}, {"title", "Finish Draw"},
+            {"description", "At the start of your Finish phase, you may draw one card."}
+        }}}
+    };
+    // Deterministic copy of the fictional saved stage-one response's skills_lua.
+    const QString rawDeepSeekSkills = QString::fromUtf8(R"lua(
+local diy_deepseek_qa_hero_finish = sgs.CreateTriggerSkillV2 {
+    name = "diy_deepseek_qa_hero_finish",
+    events = EventPhaseStart,
+    frequency = Skill_NotFrequent,
+    can_trigger = function(skill, event, room, player, data)
+        if not (player and player:isAlive() and player:hasSkill(skill:objectName())) then
+            return false
+        end
+        if player:getPhase() ~= Player_Finish then
+            return false
+        end
+        return skill:objectName()
+    end,
+    on_cost = function(skill, event, room, player, ctx)
+        return room:askForSkillInvoke(player, skill:objectName(), ctx.original_data)
+    end,
+    on_effect = function(skill, event, room, player, ctx)
+        player:drawCards(1, skill:objectName())
+        return false
+    end,
+}
+)lua");
+    check(rawDeepSeekSkills.contains("if not (")
+              && rawDeepSeekSkills.contains("events = EventPhaseStart")
+              && rawDeepSeekSkills.contains("frequency = Skill_NotFrequent")
+              && rawDeepSeekSkills.contains("~= Player_Finish"),
+          "saved fictional sample retains its original condition and bare enum spellings");
+    const QString rawSampleErrors = validateCode(sampleSpec, assemble(sampleSpec, rawDeepSeekSkills), context).join('\n');
+    check(!rawSampleErrors.contains("Undeclared Lua function: not"),
+          "saved DeepSeek `not (` guard is accepted by function-call lint");
+
+    QString qualifiedSample = rawDeepSeekSkills;
+    qualifiedSample.replace("events = EventPhaseStart", "events = { sgs.EventPhaseStart }");
+    qualifiedSample.replace("frequency = Skill_NotFrequent", "frequency = sgs.Skill_NotFrequent");
+    qualifiedSample.replace("~= Player_Finish", "~= sgs.Player_Finish");
+    check(qualifiedSample.contains("if not (")
+              && validateCode(sampleSpec, assemble(sampleSpec, qualifiedSample), context).isEmpty(),
+          "enum-qualified saved sample validates without rewriting its legal `not (` expression");
+
+    const QString invalidReservedForm = skillBody(defaultSpec())
+        + QStringLiteral("\nlocal invalid = if (true) then true end\n");
+    const auto invalidErrors = validateCode(defaultSpec(), assemble(defaultSpec(), invalidReservedForm), context);
+    check(invalidErrors.join('\n').contains("Lua syntax"),
+          "reserved-keyword call-like text that is invalid Lua still receives a syntax diagnostic");
+
+    const QJsonObject spec = defaultSpec();
+    const QString keywordStatement = QStringLiteral("do local condition = not (true) end\n");
+    const QString unknownAndForbidden = QStringLiteral(
+        "nonexistentFunction()\nos.execute(\"not executed\")\n");
+    const int fixedBytes = assemble(spec, skillBody(spec) + unknownAndForbidden).toUtf8().size();
+    const int keywordCount = qMax(0, (MaxCodeBytes - fixedBytes) / keywordStatement.toUtf8().size());
+    const QString manyKeywords = keywordStatement.repeated(keywordCount);
+    const QString nearLimitValid = codeAtSize(spec, skillBody(spec) + manyKeywords, MaxCodeBytes);
+    const auto manyKeywordErrors = validateCode(spec, nearLimitValid, context);
+    check(nearLimitValid.toUtf8().size() == MaxCodeBytes && manyKeywordErrors.isEmpty(),
+          "near-limit source with many valid `not (` expressions has no false function diagnostics");
+
+    const QString nearLimitMixed = codeAtSize(
+        spec, skillBody(spec) + manyKeywords + unknownAndForbidden, MaxCodeBytes);
+    const auto mixedErrors = validateCode(spec, nearLimitMixed, context);
+    check(nearLimitMixed.toUtf8().size() == MaxCodeBytes
+              && mixedErrors.contains("Undeclared Lua function: nonexistentFunction")
+              && mixedErrors.contains("External loading, host access and dynamic engine lookup are outside this authoring contract.")
+              && !mixedErrors.contains("Undeclared Lua function: not"),
+          "near-limit mixed source still rejects unknown and unsafe calls without keyword false positives");
+}
+
 void testDocumentRequestsAndHistory()
 {
     Document document;
@@ -1044,6 +1167,12 @@ void benchmarkLexicalValidation()
         while (assemble(spec, manyCalls + call).toUtf8().size() <= target) manyCalls += call;
         measure(QStringLiteral("many-calls"), codeAtSize(spec, manyCalls, target), target);
 
+        QString manyNotExpressions = skillBody(spec);
+        const QString notExpression = QStringLiteral("do local condition = not (true) end\n");
+        while (assemble(spec, manyNotExpressions + notExpression).toUtf8().size() <= target)
+            manyNotExpressions += notExpression;
+        measure(QStringLiteral("many-not-keywords"), codeAtSize(spec, manyNotExpressions, target), target);
+
         const int baseBytes = assemble(spec, skillBody(spec)).toUtf8().size();
         const QString longComment = longDelimiterComment(target - baseBytes);
         measure(QStringLiteral("long-delimiter-decoys"),
@@ -1061,6 +1190,7 @@ int main(int argc, char **argv)
     }
     testSpecAndCodeContracts();
     testLuaLexicalMasking();
+    testLuaKeywordCallRecognition();
     testDocumentRequestsAndHistory();
     testCorrectionPayloadAndProjects();
     testDisabledExportSafety();

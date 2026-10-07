@@ -254,7 +254,13 @@ QStringList validateCode(const QJsonObject &spec, const QString &code, const Con
     refs = method.globalMatch(lint);
     while (refs.hasNext()) { auto name = refs.next().captured(1); if (!context.methods.contains(name)) errors << QCoreApplication::translate("GeneralAuthoring", "Undeclared engine method: %1").arg(name); }
     auto functions = context.luaFunctions;
-    functions.insert("function"); // Anonymous callback syntax.
+    // Reserved words from this engine's src/lua/llex.c are syntax, not calls.
+    // The compile-only check above still rejects invalid uses of these words.
+    static const QSet<QString> keywords{
+        "and", "break", "do", "else", "elseif", "end", "false", "for",
+        "function", "goto", "if", "in", "local", "nil", "not", "or",
+        "repeat", "return", "then", "true", "until", "while", "continue"
+    };
     QRegularExpression localFunction(QStringLiteral("\\blocal\\s+(?:function\\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*function)"));
     refs = localFunction.globalMatch(lint);
     while (refs.hasNext()) { auto match = refs.next(); functions.insert(match.captured(1).isEmpty() ? match.captured(2) : match.captured(1)); }
@@ -266,7 +272,7 @@ QStringList validateCode(const QJsonObject &spec, const QString &code, const Con
         while (preceding > 0 && lint.at(preceding - 1).isSpace()) --preceding;
         if (preceding > 0 && (lint.at(preceding - 1) == ':' || lint.at(preceding - 1) == '.')) continue;
         const auto name = match.captured(1);
-        if (!functions.contains(name)) errors << QCoreApplication::translate("GeneralAuthoring", "Undeclared Lua function: %1").arg(name);
+        if (!keywords.contains(name) && !functions.contains(name)) errors << QCoreApplication::translate("GeneralAuthoring", "Undeclared Lua function: %1").arg(name);
     }
     QRegularExpression dotCall(QStringLiteral("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\("));
     refs = dotCall.globalMatch(lint);
