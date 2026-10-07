@@ -2,6 +2,7 @@
 #include "external-agent-transport.h"
 #include "room.h"
 #include "controller-input-diagnostics.h"
+#include "qml-element-path.h"
 #include <QJsonArray>
 #include "game-rng.h"
 #include "protocol/resolution-state-message.h"
@@ -64,6 +65,7 @@
 #include <QProcess>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QStandardPaths>
 #include <vector>
 #include <type_traits>
@@ -6906,6 +6908,104 @@ void Room::setUiThemePack(const QString &packId, bool enabled, ServerPlayer *pla
 void Room::resetUi(ServerPlayer *player)
 {
 	setUiElement(QStringLiteral("reset"), QString(), QString(), player);
+}
+
+namespace {
+constexpr int kMaxQmlDataBytes = 16 * 1024;
+constexpr int kMaxQmlElementsPerReceiver = 64;
+
+bool isQmlElementAnchor(const QString &anchor)
+{
+    static const QStringList anchors{QStringLiteral("table-center"), QStringLiteral("screen-top"),
+        QStringLiteral("screen-bottom"), QStringLiteral("screen-top-left"), QStringLiteral("screen-top-right"),
+        QStringLiteral("screen-bottom-left"), QStringLiteral("screen-bottom-right")};
+    return anchors.contains(anchor)
+        || (anchor.startsWith(QLatin1String("seat:")) && anchor.size() > 5);
+}
+
+int qmlDataBytes(const QVariantMap &data)
+{
+    return QJsonDocument(QJsonObject::fromVariantMap(data)).toJson(QJsonDocument::Compact).size();
+}
+
+QVariantList qmlElementArg(const QString &op, const QString &id, const QString &qml, const QString &anchor,
+                           const QVariantMap &data, bool targeted)
+{
+    return QVariantList{op, id, qml, anchor, QVariant(data),
+        targeted ? QStringLiteral("player") : QStringLiteral("all")};
+}
+}
+
+void Room::sendQmlElement(ServerPlayer *player, const QVariantList &arg)
+{
+    if (player)
+        doNotify(player, S_COMMAND_QML_ELEMENT, arg);
+    else
+        doBroadcastNotify(S_COMMAND_QML_ELEMENT, arg);
+}
+
+void Room::addQmlElement(const QString &id, const QString &qmlPath, const QString &anchor,
+                         const QVariantMap &qmlData, ServerPlayer *player)
+{
+    QString error;
+    if (id.isEmpty()) {
+        qWarning().noquote() << "Room::addQmlElement: an id is required";
+        return;
+    }
+    if (!QmlElementPath::isAllowed(qmlPath, &error)) {
+        qWarning().noquote() << "Room::addQmlElement:" << id << error;
+        return;
+    }
+    if (!isQmlElementAnchor(anchor)) {
+        qWarning().noquote() << "Room::addQmlElement:" << id << "unknown anchor" << anchor;
+        return;
+    }
+    if (qmlDataBytes(qmlData) > kMaxQmlDataBytes) {
+        qWarning().noquote() << "Room::addQmlElement:" << id << "data exceeds" << kMaxQmlDataBytes << "bytes";
+        return;
+    }
+    auto &elements = m_qmlElements[player ? player->objectName() : QString()];
+    if (!elements.contains(id) && elements.size() >= kMaxQmlElementsPerReceiver) {
+        qWarning().noquote() << "Room::addQmlElement:" << id << "exceeds" << kMaxQmlElementsPerReceiver << "elements";
+        return;
+    }
+    elements.insert(id, {qmlPath, anchor, qmlData});
+    sendQmlElement(player, qmlElementArg(QStringLiteral("add"), id, qmlPath, anchor, qmlData, player));
+}
+
+void Room::updateQmlElement(const QString &id, const QVariantMap &qmlData, ServerPlayer *player)
+{
+    const QString receiver = player ? player->objectName() : QString();
+    auto scope = m_qmlElements.find(receiver);
+    if (scope == m_qmlElements.end() || !scope->contains(id)) {
+        qWarning().noquote() << "Room::updateQmlElement: no element" << id;
+        return;
+    }
+    QVariantMap merged = scope->value(id).data;
+    for (auto it = qmlData.cbegin(); it != qmlData.cend(); ++it)
+        merged.insert(it.key(), it.value());
+    if (qmlDataBytes(merged) > kMaxQmlDataBytes) {
+        qWarning().noquote() << "Room::updateQmlElement:" << id << "data exceeds" << kMaxQmlDataBytes << "bytes";
+        return;
+    }
+    (*scope)[id].data = merged;
+    sendQmlElement(player, qmlElementArg(QStringLiteral("update"), id, QString(), QString(), qmlData, player));
+}
+
+void Room::removeQmlElement(const QString &id, ServerPlayer *player)
+{
+    const QString receiver = player ? player->objectName() : QString();
+    auto scope = m_qmlElements.find(receiver);
+    if (scope == m_qmlElements.end() || scope->remove(id) == 0)
+        return;
+    sendQmlElement(player, qmlElementArg(QStringLiteral("remove"), id, QString(), QString(), QVariantMap(), player));
+}
+
+void Room::clearQmlElements(ServerPlayer *player)
+{
+    if (m_qmlElements.remove(player ? player->objectName() : QString()) == 0)
+        return;
+    sendQmlElement(player, qmlElementArg(QStringLiteral("clear"), QString(), QString(), QString(), QVariantMap(), player));
 }
 
 void Room::changeBackground(const QString name, QList<ServerPlayer *> players)

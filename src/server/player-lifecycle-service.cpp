@@ -1002,6 +1002,16 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
         if (change.first.isEmpty() || change.first == player->objectName())
             m_notifier.doNotify(player, S_COMMAND_SET_UI_THEME, change.second);
     }
+    for (auto scope = m_room.m_qmlElements.cbegin(); scope != m_room.m_qmlElements.cend(); ++scope) {
+        const bool targeted = !scope.key().isEmpty();
+        if (targeted && scope.key() != player->objectName())
+            continue;
+        for (auto it = scope.value().cbegin(); it != scope.value().cend(); ++it) {
+            const QVariantList arg{QStringLiteral("add"), it.key(), it->qml, it->anchor, QVariant(it->data),
+                targeted ? QStringLiteral("player") : QStringLiteral("all")};
+            m_notifier.doNotify(player, S_COMMAND_QML_ELEMENT, arg);
+        }
+    }
 
     m_room.notifyProperty(player, player, "flags", "-marshalling");
     SwitchContextMessage contextMessage;

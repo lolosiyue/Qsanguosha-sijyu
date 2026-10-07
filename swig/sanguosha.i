@@ -2332,6 +2332,7 @@ public:
 
 // Declare history result helpers before SWIG emits Room's extension bodies.
 %include "resolution-history.i"
+%include "qml-element.i"
 
 class Room: public QThread {
 public:
@@ -2572,6 +2573,10 @@ public:
 	void setUiFile(const char*imagePath, const char*path, ServerPlayer*player = nullptr);
 	void setUiThemePack(const char*packId, bool enabled = true, ServerPlayer*player = nullptr);
 	void resetUi(ServerPlayer*player = nullptr);
+	void addQmlElement(const char*id, const char*qmlPath, const char*anchor, const QVariantMap &qmlData = QVariantMap(), ServerPlayer*player = nullptr);
+	void updateQmlElement(const char*id, const QVariantMap &qmlData, ServerPlayer*player = nullptr);
+	void removeQmlElement(const char*id, ServerPlayer*player = nullptr);
+	void clearQmlElements(ServerPlayer*player = nullptr);
 	void changeBackground(const char*name, QList<ServerPlayer*> players = QList<ServerPlayer*>());
 	void reversePlayOrder();
 	bool isPlayOrderReversed() const;
