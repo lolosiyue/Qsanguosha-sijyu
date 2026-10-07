@@ -12,7 +12,7 @@
 #include <QStringList>
 #include <QScopeGuard>
 #if defined(Q_OS_WIN) && !defined(QSAN_XP_LEGACY)
-#include <windows.h>
+#include <qt_windows.h>
 #endif
 
 #include "mainwindow.h"
