@@ -311,7 +311,7 @@ void FitView::setScene(QGraphicsScene *next)
         delete m_overlay;
         m_overlay = nullptr;
 #if QSAN_ENABLE_QML
-        delete m_qmlLayer;
+        retireQmlLayer();
 #endif
         m_overlayRoom = nullptr;
         m_hasPreviousProfile = false;
@@ -344,6 +344,19 @@ RoomOverlayHost *FitView::roomOverlay()
     return nullptr;
 }
 
+#if QSAN_ENABLE_QML
+// Never delete the layer synchronously: this can run inside one of its own event handlers
+// (a click that ends the game and returns to the home page).
+void FitView::retireQmlLayer()
+{
+    if (!m_qmlLayer)
+        return;
+    m_qmlLayer->hide();
+    m_qmlLayer->deleteLater();
+    m_qmlLayer = nullptr;
+}
+#endif
+
 void FitView::setResponsiveRoomEnabled(bool enabled)
 {
     m_responsiveEnabled = enabled;
@@ -367,14 +380,14 @@ void FitView::ensureRoomOverlay(RoomScene *room)
     m_overlay->setResponsiveEnabled(m_responsiveEnabled);
     room->attachOverlay(m_overlay);
 #if QSAN_ENABLE_QML
-    delete m_qmlLayer;
+    retireQmlLayer();
     m_qmlLayer = new QmlTableLayer(this, viewport());
     // Below the overlay host: the inspector and seat scroller cover extension elements.
     m_qmlLayer->stackUnder(m_overlay);
     room->attachQmlLayer(m_qmlLayer);
     connect(m_overlay, &RoomOverlayHost::nativeRegionChanged, m_qmlLayer, &QmlTableLayer::setOccludedRegion);
     connect(room, &QObject::destroyed, m_qmlLayer, &QObject::deleteLater);
-    m_qmlLayer->show();
+    // No show(): the layer shows itself while it has elements.
 #endif
     connect(room, &RoomScene::seatCountChanged, this, &FitView::refit, Qt::QueuedConnection);
     connect(m_overlay, &RoomOverlayHost::responsiveEnabledChanged, this,

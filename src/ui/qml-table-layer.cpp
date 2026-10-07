@@ -18,7 +18,7 @@
 #include <QQmlEngine>
 #include <QQmlNetworkAccessManagerFactory>
 #include <QQuickItem>
-#include <QScopedValueRollback>
+#include <QSurfaceFormat>
 #include <QTimer>
 #include <QTouchEvent>
 #include <QDebug>
@@ -86,6 +86,10 @@ QmlTableLayer::QmlTableLayer(QGraphicsView *view, QWidget *parent)
     setAttribute(Qt::WA_AlwaysStackOnTop, true);
     setAttribute(Qt::WA_ShowWithoutActivating, true);
     setAttribute(Qt::WA_AcceptTouchEvents, true);
+    // Alpha-capable render format, as EmbeddedQmlLoader uses for its transparent overlays.
+    QSurfaceFormat surfaceFormat = format();
+    surfaceFormat.setAlphaBufferSize(8);
+    setFormat(surfaceFormat);
     setClearColor(Qt::transparent);
     setFocusPolicy(Qt::NoFocus);
     setResizeMode(QQuickWidget::SizeRootObjectToView);
@@ -110,6 +114,7 @@ QmlTableLayer::QmlTableLayer(QGraphicsView *view, QWidget *parent)
         m_view->viewport()->installEventFilter(this);
         setGeometry(m_view->viewport()->rect());
     }
+    hide(); // Shown when the first element is mounted; an empty layer costs nothing.
 }
 
 QmlTableLayer::~QmlTableLayer()
@@ -176,6 +181,7 @@ void QmlTableLayer::handleElement(const QVariantMap &payload)
     }
     m_reportPending = true;
     scheduleRelayout();
+    syncActive();
 }
 
 void QmlTableLayer::setMark(const QString &player, const QString &mark, int value)
@@ -198,6 +204,25 @@ void QmlTableLayer::setMark(const QString &player, const QString &mark, int valu
     }
     m_reportPending = true;
     scheduleRelayout();
+    syncActive();
+}
+
+void QmlTableLayer::syncActive()
+{
+    const bool active = !m_elements.isEmpty();
+    if (active == m_active)
+        return;
+    m_active = active;
+    if (active) {
+        show();
+    } else {
+        // Input routing restarts from a clean state the next time an element appears.
+        m_forwarding = false;
+        m_interactiveRects.clear();
+        setPassThrough(true);
+        hide();
+    }
+    emit activeChanged(active);
 }
 
 void QmlTableLayer::addElement(const QString &key, Element element)
@@ -492,6 +517,7 @@ bool isPointerEventType(QEvent::Type type)
     case QEvent::TouchUpdate:
     case QEvent::TouchEnd:
     case QEvent::TouchCancel:
+    case QEvent::Wheel: // WA_NoMousePropagation also stops wheel events.
         return true;
     default:
         return false;
@@ -526,19 +552,24 @@ bool QmlTableLayer::event(QEvent *event)
     // Reached the layer directly (hover-first path): if QML ignores it, hand it to the table via the
     // viewport. The layer has WA_NoMousePropagation, so Qt does not do that itself; the guard makes
     // the viewport filter let the re-sent event through instead of forwarding it back.
+    // Either delivery may tear the room down and delete the layer, so no member is touched
+    // once `self` is null (m_dispatching is reset by hand for the same reason).
     if (m_dispatching)
         return QQuickWidget::event(event);
-    bool handled;
-    {
-        QScopedValueRollback<bool> guard(m_dispatching, true);
-        handled = QQuickWidget::event(event);
-        if (!event->isAccepted() && m_view) {
-            QCoreApplication::sendEvent(m_view->viewport(), event);
-            if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick
-                || event->type() == QEvent::TouchBegin)
-                setPassThrough(true);
-        }
+    QPointer<QmlTableLayer> self(this);
+    m_dispatching = true;
+    const bool handled = QQuickWidget::event(event);
+    if (!self)
+        return handled;
+    if (!event->isAccepted() && m_view) {
+        QCoreApplication::sendEvent(m_view->viewport(), event);
+        if (!self)
+            return handled;
+        if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick
+            || event->type() == QEvent::TouchBegin)
+            setPassThrough(true);
     }
+    m_dispatching = false;
     return handled;
 }
 
@@ -547,12 +578,21 @@ bool QmlTableLayer::eventFilter(QObject *watched, QEvent *event)
     if (!m_view || watched != m_view->viewport())
         return QQuickWidget::eventFilter(watched, event);
 
-    // Delivers `event` to the layer; the guard keeps an ignored event, which Qt propagates to the
-    // viewport, from being forwarded again. Returns whether QML took it.
-    const auto deliver = [this](QEvent *e) {
-        QScopedValueRollback<bool> guard(m_dispatching, true);
+    // An empty layer is hidden and takes no part in input; only keep its geometry in sync.
+    if (isHidden() && event->type() != QEvent::Resize)
+        return false;
+
+    // A delivery to the layer may tear the room down and delete it: after each one, no member is
+    // touched once `self` is null.
+    QPointer<QmlTableLayer> self(this);
+    // Delivers `event` to the layer; m_dispatching keeps an ignored event, which Qt propagates to
+    // the viewport, from being forwarded again. Returns whether QML took it.
+    const auto deliver = [this, &self](QEvent *e) {
+        m_dispatching = true;
         e->accept();
         QCoreApplication::sendEvent(this, e);
+        if (self)
+            m_dispatching = false;
         return e->isAccepted();
     };
     const auto releaseForwarding = [this] {
@@ -586,8 +626,11 @@ bool QmlTableLayer::eventFilter(QObject *watched, QEvent *event)
         if (interactiveAt(pos)) {
             setPassThrough(false);
             // Wayland may send hover without a mouse move; QQuickWidget only maps mouse moves.
-            QScopedValueRollback<bool> guard(m_dispatching, true);
+            m_dispatching = true;
             qsanForwardPointerHoverAsMouseMove(this, event);
+            if (!self)
+                return false;
+            m_dispatching = false;
         }
         break;
     }
@@ -599,7 +642,8 @@ bool QmlTableLayer::eventFilter(QObject *watched, QEvent *event)
             setPassThrough(false);
             if (deliver(event))
                 return true;
-            releaseForwarding(); // QML has no handler there: the table takes the click.
+            if (self)
+                releaseForwarding(); // QML has no handler there: the table takes the click.
             return false;
         }
         if (m_forwarding)
@@ -619,7 +663,8 @@ bool QmlTableLayer::eventFilter(QObject *watched, QEvent *event)
             setPassThrough(false);
             if (deliver(event))
                 return true;
-            releaseForwarding();
+            if (self)
+                releaseForwarding();
             return false;
         }
         if (m_forwarding)
