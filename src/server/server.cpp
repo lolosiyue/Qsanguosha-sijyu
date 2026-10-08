@@ -40,6 +40,7 @@
 #include "qtupnpportmapping.h"
 #include "defines.h"
 
+#include <memory>
 #include <QFile>
 #include <QTextStream>
 #include <QDateTime>
@@ -2254,6 +2255,11 @@ Room *Server::publishRoom(Room *room)
 				emit server_message(message);
 		});
 	connect(createdRoom, SIGNAL(game_over(QString)), this, SLOT(gameOver()));
+	connect(createdRoom, &Room::preparation_failed, this,
+		[this, createdRoom](const QString &reason) {
+			emit server_message(reason);
+			retireRoom(createdRoom, true);
+		});
 	connect(createdRoom, &Room::game_start, this, [this, createdRoom]() {
 		emit roomGameStarted(createdRoom->getId(), createdRoom->getMode());
 	});
@@ -2991,6 +2997,23 @@ void Server::startHeadlessGame()
 
     QPointer<Room> roomPtr(room);
     int currentGameCount = gameCount;
+    connect(room, &Room::preparation_failed, this, [this, roomPtr, currentGameCount](const QString &reason) {
+        Server::writeHeadlessLog(QString("ERROR: Game %1 preparation failed: %2").arg(currentGameCount).arg(reason));
+        // Preparation runs in Room itself. Dispose only after its worker has returned.
+        auto disposed = std::make_shared<bool>(false);
+        auto finishFailure = [roomPtr, disposed]() {
+            if (*disposed) return;
+            *disposed = true;
+            if (!roomPtr) { qApp->exit(1); return; }
+            QObject::connect(roomPtr.data(), &QObject::destroyed, qApp, []() { qApp->exit(1); });
+            roomPtr->deleteLater();
+        };
+        // Connect first so a worker finishing concurrently cannot leave us waiting forever.
+        if (roomPtr)
+            connect(roomPtr.data(), &QThread::finished, this, finishFailure, Qt::QueuedConnection);
+        if (!roomPtr || !roomPtr->isRunning())
+            finishFailure();
+    });
     connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount, gameLimit](const QString &winner) {
         Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 

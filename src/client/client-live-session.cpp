@@ -332,6 +332,11 @@ bool ClientLiveSession::dispatchMessage(const ProtocolMessage &message)
                 m_core->cancelActiveRequest(InteractionCancelReason::Abandoned);
             m_pendingState = *target;
             m_pendingState.resetGameplayState();
+            // Marshal introduces the other players, but does not echo our own
+            // signup name. Rebuild that public identity inside the staged state.
+            if (!m_pendingState.selfName().isEmpty() && !m_options.screenName.isEmpty())
+                m_pendingState.setPlayerValue(m_pendingState.selfName(),
+                    QStringLiteral("screen_name"), m_options.screenName);
             m_pendingPresentationEvents.clear();
             m_pendingFrontendMessages.clear();
             m_syncActive = true;

@@ -2580,8 +2580,9 @@ QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, c
     godLottery(all_generals);
     qsanShuffle(all_generals);
 
-	bool ban = false;
 	foreach (QString general_name, all_generals) {
+		// Exclusions belong to this candidate, not the preceding duplicate.
+		bool ban = false;
 		foreach (QString bn, ban_set){
 			ban = sameNameWith(bn,general_name);
 			if(ban) break;

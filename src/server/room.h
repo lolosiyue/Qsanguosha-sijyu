@@ -1277,6 +1277,7 @@ private slots:
 signals:
     void room_message(const QString&msg);
     void game_start();
+    void preparation_failed(const QString &reason);
     void game_over(const QString&winner);
     void takeover_ready();
     void takeover_failed(const QString &error);
