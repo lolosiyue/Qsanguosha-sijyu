@@ -93,6 +93,8 @@ public:
     void setStatus(Status status);
     Status getStatus() const;
     int alivePlayerCount() const;
+    QList<int> rememberedDrawPileTop() const;
+    QList<int> rememberedDrawPileBottom() const;
     void onPlayerInvokeSkill(bool invoke);
     void onPlayerDiscardCards(const Card *card);
     void onPlayerReplyYiji(const Card *card, const Player *to);
@@ -403,7 +405,8 @@ private:
     Recorder *recorder;
     Replayer *replayer;
     QTextDocument *lines_doc, *prompt_doc;
-    int pile_num;
+    int pile_num = 0;
+    ClientCardMemory::Deck m_drawPileMemory;
     QString skill_to_invoke;
     QString skill_to_invoke_data;
     QList<int> available_cards;

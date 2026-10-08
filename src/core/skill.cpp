@@ -40,6 +40,16 @@ const Skill *SkillTriggerScope::current()
     return g_skillTriggerScope;
 }
 
+bool Skill::setTargetTipRules(const QString &json)
+{
+    return m_targetTipRules.setJson(json);
+}
+
+QString Skill::targetTip(const TargetTipQuery &query) const
+{
+    return m_targetTipRules.targetTip(query);
+}
+
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
 	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$"))

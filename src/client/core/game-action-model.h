@@ -16,6 +16,7 @@ struct GameActionEntry
     QString reason;
     int selectedVotes = 0;
     int maxVotes = 0;
+    QString targetTip; // Advisory text; never a legality or submission field.
 
     QJsonObject toJson() const;
 };

@@ -330,6 +330,10 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 		replayer = new Replayer(this, filename);
 		connect(replayer, &Replayer::seek_started, this, [this] {
+            m_drawPileMemory.clear();
+            updatePileNum();
+            for (const ClientPlayer *player : m_players)
+                if (player) const_cast<ClientPlayer *>(player)->clearCardMemory();
 			ClientGameState *state = m_interactionCore->state();
 			state->setGameValue(QStringLiteral("active_resolutions"), QVariantList());
 			state->setGameValue(QStringLiteral("resolution_available"), false);
@@ -373,6 +377,8 @@ void Client::setSelf(ClientPlayer *newSelf)
 		oldSelf->retainVisibleKnownHandcards();
 
 	if (oldSelf != nullptr && oldSelf != newSelf) {
+        m_drawPileMemory.clear();
+        updatePileNum();
 		disconnect(oldSelf, SIGNAL(phase_changed()), this, SLOT(alertFocus()));
 		disconnect(oldSelf, SIGNAL(role_changed(QString)), this, SLOT(notifyRoleChange(QString)));
 	}
@@ -626,6 +632,14 @@ void Client::processLiveProtocolMessage(const ProtocolMessage &message)
 
 bool Client::dispatchProtocolMessage(const ProtocolMessage &message, bool replayInput)
 {
+    // A private rearrangement log is committed only by its immediately following
+    // pile update. Other traffic cannot accidentally confirm an old proposal.
+    const QString memoryLogType = message.payload.toMap().value(QStringLiteral("log_type")).toString();
+    if (message.command != S_COMMAND_UPDATE_PILE
+        && !(message.command == S_COMMAND_LOG_SKILL
+            && (memoryLogType == QLatin1String("$GuanxingTop")
+                || memoryLogType == QLatin1String("$GuanxingBottom"))))
+        m_drawPileMemory.discardPending();
 	if (message.type == ProtocolMessageType::Notification) {
 		if (replayInput && message.source == ProtocolEndpoint::Room
 			&& message.destination == ProtocolEndpoint::Client) {
@@ -690,6 +704,10 @@ void Client::stateSync(const QVariant &payload)
     if (payload.toMap().contains(QStringLiteral("sync_id"))
         && StateSyncPayload::parse(payload, &sync, &error)) {
         if (sync.phase == QLatin1String("begin")) {
+            m_drawPileMemory.clear();
+            updatePileNum();
+            for (const ClientPlayer *player : m_players)
+                if (player) const_cast<ClientPlayer *>(player)->clearCardMemory();
             if (sync.managedTimelineRestore
                 && (sync.rootGameId.isEmpty() || sync.worldId.isEmpty()
                     || sync.timelineGeneration.isEmpty())) {
@@ -1661,6 +1679,15 @@ void Client::getCards(const QVariant &arg)
 			ClientPlayer *to = getPlayer(move.to_player_name);
 			move.from = getPlayer(move.from_player_name);
 			move.to = to;
+            // Visible destination disproves historical membership elsewhere.
+            for (int id : actual_card_ids) {
+                if (id < 0) continue;
+                for (const ClientPlayer *player : m_players)
+                    if (player && (player != to || move.to_place != Player::PlaceHand))
+                        const_cast<ClientPlayer *>(player)->forgetKnownCard(id);
+            }
+            if (move.to_place == Player::DrawPile || move.to_place == Player::DrawPileBottom)
+                m_drawPileMemory.clear(); // wire canonicalization erases insertion direction
 			if (move.to_place == Player::PlaceHand && to == Self)
 				move.card_ids = actual_card_ids;
 			if (move.to_place == Player::PlaceSpecial)
@@ -1717,6 +1744,8 @@ void Client::loseCards(const QVariant &arg)
 			ClientPlayer *to = getPlayer(move.to_player_name);
 			move.from = from;
 			move.to = to;
+            if (move.from_place == Player::DrawPile || move.from_place == Player::DrawPileBottom)
+                m_drawPileMemory.lose(ClientCardMemory::Ids(actual_card_ids.begin(), actual_card_ids.end()));
 			if (move.from_place == Player::PlaceHand && from == Self)
 				move.card_ids = actual_card_ids;
 			if (move.from_place == Player::PlaceSpecial)
@@ -1724,13 +1753,11 @@ void Client::loseCards(const QVariant &arg)
 			else {
 				bool SWAP = move.reason.m_reason==CardMoveReason::S_REASON_SWAP
 					&& move.from_place==Player::PlaceHand
-					&& move.card_ids.length()==from->getHandcardNum();
+					&& from && to && move.card_ids.length()==from->getHandcardNum();
 				if(SWAP){
 					from->setFlags("S_REASON_SWAP");
 					if(i==0){
-						QList<const Card*>fcards = from->getKnownCards(),tcards = to->getKnownCards();
-						from->setKnownCards(tcards);
-						to->setKnownCards(fcards);
+						from->swapKnownCards(to);
 					}
 				}
 				foreach (int card_id, move.card_ids){
@@ -2084,9 +2111,7 @@ void Client::exchangeKnownCards(const QVariant &players)
 	ClientPlayer *a = getPlayer(wire.value(QStringLiteral("first_player")).toString());
 	ClientPlayer *b = getPlayer(wire.value(QStringLiteral("second_player")).toString());
 	if (a == nullptr || b == nullptr) return;
-	QList<const Card *> a_known = a->getKnownCards(), b_known = b->getKnownCards();
-	a->setKnownCards(b_known);
-	b->setKnownCards(a_known);
+	a->swapKnownCards(b);
 }
 
 void Client::setKnownCards(const QVariant &set_str)
@@ -2578,6 +2603,7 @@ QTextDocument *Client::getPromptDoc() const
 
 void Client::resetPiles(const QVariant &arg)
 {
+    m_drawPileMemory.clear();
 	discarded_list.clear();
 	swap_pile = arg.toMap().value(QStringLiteral("swap_count")).toInt();
 	updatePileNum();
@@ -2587,6 +2613,7 @@ void Client::resetPiles(const QVariant &arg)
 void Client::setPileNumber(const QVariant &pile_str)
 {
 	pile_num = pile_str.toMap().value(QStringLiteral("count")).toInt();
+    m_drawPileMemory.confirmCount(pile_num);
 	updatePileNum();
 }
 
@@ -2658,10 +2685,31 @@ void Client::setCardFlag(const QVariant &pattern_str)
 	}
 }
 
+QList<int> Client::rememberedDrawPileTop() const
+{
+    return QList<int>(m_drawPileMemory.top.begin(), m_drawPileMemory.top.end());
+}
+
+QList<int> Client::rememberedDrawPileBottom() const
+{
+    return QList<int>(m_drawPileMemory.bottom.begin(), m_drawPileMemory.bottom.end());
+}
+
 void Client::updatePileNum()
 {
 	QString pile_str = tr("Draw pile: <b>%1</b>, discard pile: <b>%2</b>, swap times: <b>%3</b>, round times: <b>%4</b>")
 		.arg(pile_num).arg(discarded_list.length()).arg(swap_pile).arg(add_round);
+    const auto edgeNames = [](const QList<int> &ids) {
+        QStringList names;
+        for (int id : ids)
+            if (const Card *card = Sanguosha->getCard(id))
+                names << card->getFullName(true).toHtmlEscaped();
+        return names.join(QStringLiteral(" → "));
+    };
+    if (!m_drawPileMemory.top.empty())
+        pile_str += tr("<br/>Remembered top (next first): %1").arg(edgeNames(rememberedDrawPileTop()));
+    if (!m_drawPileMemory.bottom.empty())
+        pile_str += tr("<br/>Remembered bottom (bottommost first): %1").arg(edgeNames(rememberedDrawPileBottom()));
 	if (ServerInfo.GameMode == "04_boss")
 		pile_str.prepend(tr("Level: <b>%1</b>,").arg(m_bossLevel + 1));
 
@@ -3812,6 +3860,23 @@ void Client::log(const QVariant &log_str)
 			object.value(QStringLiteral("card_string")).toString()
 		};
 		log.append(arguments);
+        if (log.first() == QLatin1String("#GuanxingResult")) {
+            m_drawPileMemory.clear();
+            updatePileNum();
+        } else if (log.first() == QLatin1String("$GuanxingTop")
+                   || log.first() == QLatin1String("$GuanxingBottom")) {
+            ClientCardMemory::Ids observed;
+            bool valid = true;
+            for (const QString &part : log.at(3).split(QLatin1Char('+'), Qt::SkipEmptyParts)) {
+                bool ok = false;
+                const int id = part.toInt(&ok);
+                if (!ok || id < 0 || !Sanguosha->getCard(id)) { valid = false; break; }
+                observed.push_back(id);
+            }
+            if (valid) m_drawPileMemory.stage(observed, log.first() == QLatin1String("$GuanxingTop"));
+            else m_drawPileMemory.clear();
+            updatePileNum();
+        }
 		if (log.first().contains("#HegemonyReveal"))
 			Sanguosha->playSystemAudioEffect("choose-item");
 		else if (log.first() == "#Zombify") {

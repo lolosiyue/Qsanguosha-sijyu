@@ -1,4 +1,6 @@
 #include "photo.h"
+#include <QGraphicsSimpleTextItem>
+#include <QFontMetricsF>
 #include "magatamas-item.h"
 //#include "clientplayer.h"
 //#include "settings.h"
@@ -210,6 +212,7 @@ void Photo::_applyLayoutTransform(const QSanRoomSkin::PhotoLayout *layout)
 	setTransform(QTransform(_m_scale, 0.0, 0.0, _m_scale,
 		-layout->m_normalWidth * _m_scale / 2.0,
 		-layout->m_normalHeight * _m_scale / 2.0));
+    if (m_targetTipItem) setTargetTip(m_targetTip);
 }
 
 void Photo::repaintAll(bool all)
@@ -436,6 +439,30 @@ void Photo::updatePhase()
         setFrame(S_FRAME_PLAYING);
     else
         setFrame(S_FRAME_NO_FRAME);
+}
+
+void Photo::setTargetTip(const QString &tip)
+{
+    m_targetTip = tip;
+    if (tip.isEmpty() && !m_targetTipItem) return;
+    if (!m_targetTipItem) {
+        m_targetTipItem = new QGraphicsSimpleTextItem(this);
+        m_targetTipItem->setAcceptedMouseButtons(Qt::NoButton);
+        m_targetTipItem->setFlag(QGraphicsItem::ItemIgnoresParentOpacity);
+        m_targetTipItem->setZValue(10000);
+        m_targetTipItem->setBrush(QColor(255, 235, 160));
+        m_targetTipItem->setPen(QPen(QColor(30, 20, 0), 0.4));
+        QFont font;
+        font.setPointSize(10);
+        font.setBold(true);
+        m_targetTipItem->setFont(font);
+    }
+    const QFontMetricsF metrics(m_targetTipItem->font());
+    m_targetTipItem->setText(metrics.elidedText(tip, Qt::ElideRight, qMax(1.0, boundingRect().width() - 8)));
+    m_targetTipItem->setToolTip(tip.toHtmlEscaped());
+    // Leave the top row to the existing role/status controls.
+    m_targetTipItem->setPos(4, 24);
+    m_targetTipItem->setVisible(!tip.isEmpty());
 }
 
 void Photo::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)

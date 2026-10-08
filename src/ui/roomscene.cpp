@@ -1,3 +1,4 @@
+#include "runtime/client-target-tip.h"
 #include "roomscene.h"
 #include "game-view.h"
 #include "runtime-paths.h"
@@ -2291,8 +2292,15 @@ void RoomScene::mouseMoveEvent(QGraphicsSceneMouseEvent*event)
 	}
 }
 
+QString RoomScene::targetTipFor(const ClientPlayer *candidate, bool selectable) const
+{
+    return ClientRules::targetTip(dashboard->getSelected(), selected_targets,
+        getCurrentOperationPlayer(dashboard), candidate, Self, selectable);
+}
+
 void RoomScene::enableTargets(const Card*card)
 {
+    for (Photo *photo : photos) photo->setTargetTip(QString());
     // Receivers queue projection until this draft mutation has completed.
     emit presentationDraftChanged();
 	Client::Status status = ClientInstance->getStatus();
@@ -2396,6 +2404,8 @@ void RoomScene::updateTargetsEnablity(const Card*card)
 			card->targetFilter(selected_targets,item2player[item],activePlayer,maxVotes);
 			item->setMaxVotes(maxVotes);
 		}
+        if (Photo *photo = qobject_cast<Photo *>(item))
+            photo->setTargetTip(card ? targetTipFor(photo->getPlayer(), item->isSelected() || maxVotes > 0) : QString());
 		if(item->isSelected()) continue;
 		QGraphicsItem*animationTarget = item->getMouseClickReceiver();
 		if(!card||maxVotes > 0)
@@ -4357,6 +4367,7 @@ void RoomScene::switchControlContext(const QString &target_name)
 
 void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 {
+    for (Photo *photo : photos) photo->setTargetTip(QString());
 	ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	ClientCore *interactionCore = ClientInstance->interactionCore();
 	const InteractionRequest *activeRequest = interactionCore != nullptr

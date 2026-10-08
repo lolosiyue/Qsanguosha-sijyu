@@ -16,6 +16,7 @@ QJsonObject GameActionEntry::toJson() const
     return {{QStringLiteral("id"), id}, {QStringLiteral("label"), label},
             {QStringLiteral("enabled"), enabled}, {QStringLiteral("selected"), selected},
             {QStringLiteral("reason"), reason},
+            {QStringLiteral("target_tip"), targetTip},
             {QStringLiteral("selected_votes"), selectedVotes},
             {QStringLiteral("max_votes"), maxVotes}};
 }

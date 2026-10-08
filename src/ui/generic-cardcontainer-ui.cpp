@@ -3059,6 +3059,8 @@ void PlayerCardContainer::showHandcardViewer()
     QString title = QString("%1%2").arg(m_player->getLogName()).arg(tr("'s Handcards"));
     Window *handcardWindow = new Window(title, QSize(800, 500));
     m_handcardWindow = handcardWindow;
+    connect(m_player, &ClientPlayer::card_memory_changed, this,
+        &PlayerCardContainer::updateHandcardViewer, Qt::UniqueConnection);
 
     connect(handcardWindow, &QObject::destroyed, this, [this]() {
         m_handcardWindow = nullptr;
@@ -3125,6 +3127,13 @@ void PlayerCardContainer::updateHandcardViewer()
         known_cards = m_player->getKnownCards();
     }
 
+    const QList<const Card *> uncertain_cards = canSeeExactHandcards
+        ? QList<const Card *>() : m_player->getUncertainCards();
+    if (m_totalText) {
+        m_totalText->setPlainText(tr("Total: %1 · Certain: %2 · Possible memories: %3")
+            .arg(total_handcard_num).arg(known_cards.size()).arg(uncertain_cards.size()));
+        m_totalText->setToolTip(tr("Possible memories were previously observed and may have left the hand."));
+    }
     QList<const Card *> sorted_known = known_cards;
     std::sort(sorted_known.begin(), sorted_known.end(), [](const Card *a, const Card *b) {
         if (a->getSuit() != b->getSuit())
@@ -3173,6 +3182,7 @@ void PlayerCardContainer::updateHandcardViewer()
         painter.drawPixmap(G_COMMON_LAYOUT.m_cardNumberArea, G_ROOM_SKIN.getCardNumberPixmap(card->getNumber(), card->isBlack()));
         painter.end();
 
+        cardItem->setOpacity(1.0);
         cardItem->setPixmap(cardPixmap);
         cardItem->setPos(x, y);
         cardItem->setToolTip(buildOracleTooltip(QString(), card->getDescription(m_player)));
@@ -3190,6 +3200,7 @@ void PlayerCardContainer::updateHandcardViewer()
 
     for (int i = 0; i < unknown_count; i++) {
         QGraphicsPixmapItem *cardItem = getOrMakeItem();
+        cardItem->setOpacity(1.0);
         cardItem->setPixmap(unknownPixmap);
         cardItem->setPos(x, y);
         cardItem->setToolTip(buildOracleTooltip(QString(), tr("Unknown Card")));
@@ -3202,9 +3213,47 @@ void PlayerCardContainer::updateHandcardViewer()
         }
     }
 
+    // Historical candidates are extra memories, never replacements for backs.
+    // Their label/opacity stays distinct even when items are reused on refresh.
+    for (const Card *card : uncertain_cards) {
+        QGraphicsPixmapItem *cardItem = getOrMakeItem();
+        QPixmap pixmap(cardWidth, cardHeight);
+        pixmap.fill(Qt::transparent);
+        QPainter painter(&pixmap);
+        painter.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
+        painter.drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, G_ROOM_SKIN.getCardMainPixmap(card->objectName()));
+        painter.drawPixmap(G_COMMON_LAYOUT.m_cardSuitArea, G_ROOM_SKIN.getCardSuitPixmap(card->getSuit()));
+        painter.drawPixmap(G_COMMON_LAYOUT.m_cardNumberArea, G_ROOM_SKIN.getCardNumberPixmap(card->getNumber(), card->isBlack()));
+        painter.fillRect(0, cardHeight - 28, cardWidth, 28, QColor(45, 32, 0, 235));
+        painter.setPen(QColor(255, 213, 100));
+        painter.drawText(QRect(0, cardHeight - 28, cardWidth, 28), Qt::AlignCenter, tr("Possible ?"));
+        painter.end();
+        cardItem->setPixmap(pixmap);
+        cardItem->setOpacity(0.65);
+        cardItem->setPos(x, y);
+        cardItem->setToolTip(buildOracleTooltip(QString(),
+            tr("Previously observed; may no longer be in this hand.") + QStringLiteral("<br/>")
+            + card->getDescription(m_player)));
+        ++count;
+        x += cardWidth + horizontalSpacing;
+        if (count % cardsPerRow == 0) {
+            x = startX;
+            y += cardHeight + verticalSpacing;
+        }
+    }
+
     while (itemIndex < existingCount) {
         existingItems[itemIndex]->hide();
         itemIndex++;
+    }
+
+    const qreal contentHeight = ((count + cardsPerRow - 1) / cardsPerRow)
+        * (cardHeight + verticalSpacing);
+    const qreal memoryScale = contentHeight > 390 ? 390.0 / contentHeight : 1.0;
+    for (QGraphicsItem *item : m_handcardContainer->childItems()) {
+        if (!item->isVisible()) continue;
+        item->setScale(memoryScale);
+        item->setPos(item->pos() * memoryScale);
     }
 
     if (total_handcard_num == 0) {

@@ -57,12 +57,10 @@ bool ClientPlayer::useExactHandInfo() const
 
 void ClientPlayer::addKnownHandCard(const Card *card)
 {
-	if (card == nullptr) return;
-	foreach (const Card *kc, known_cards) {
-		if(kc->getId()==card->getId())
-			return;
-	}
-	known_cards << card;
+    if (!card) return;
+    const auto previous = m_cardMemory.known;
+    m_cardMemory.observe(card->getId());
+    if (previous != m_cardMemory.known) emit card_memory_changed();
 }
 
 void ClientPlayer::addCard(int id, Place place)
@@ -173,22 +171,59 @@ QList<int> ClientPlayer::handCards() const
 
 QList<const Card *> ClientPlayer::getKnownCards() const
 {
-	return known_cards;
+    QList<const Card *> cards;
+    for (int id : m_cardMemory.known)
+        if (const Card *card = Sanguosha->getCard(id)) cards << card;
+    return cards;
+}
+
+QList<const Card *> ClientPlayer::getUncertainCards() const
+{
+    QList<const Card *> cards;
+    for (int id : m_cardMemory.uncertain)
+        if (const Card *card = Sanguosha->getCard(id)) cards << card;
+    return cards;
+}
+
+void ClientPlayer::forgetKnownCard(int id)
+{
+    const auto known = m_cardMemory.known;
+    const auto uncertain = m_cardMemory.uncertain;
+    m_cardMemory.forget(id);
+    if (known != m_cardMemory.known || uncertain != m_cardMemory.uncertain)
+        emit card_memory_changed();
+}
+
+void ClientPlayer::clearCardMemory()
+{
+    if (m_cardMemory.known.empty() && m_cardMemory.uncertain.empty()) return;
+    m_cardMemory.clear();
+    emit card_memory_changed();
+}
+
+void ClientPlayer::swapKnownCards(ClientPlayer *other)
+{
+    if (!other) return;
+    std::swap(m_cardMemory, other->m_cardMemory);
+    // Match setKnownCards' projection for non-self players. Candidates remain
+    // memory-only, while Self's actual hand is owned by movement notifications.
+    for (ClientPlayer *player : {this, other}) {
+        if (player == Self) continue;
+        player->hand_ids = QList<int>(player->m_cardMemory.known.begin(), player->m_cardMemory.known.end());
+        if (player->hand_ids.size() > 1) qsanShuffle(player->hand_ids);
+    }
+    emit card_memory_changed();
+    emit other->card_memory_changed();
 }
 
 void ClientPlayer::retainVisibleKnownHandcards()
 {
-	QList<const Card *> visible_cards;
-	foreach (const Card *card, known_cards) {
-		if (card == nullptr)
-			continue;
-		if (!hand_ids.contains(card->getId()))
-			continue;
-		if (!card->hasFlag("visible"))
-			continue;
-		visible_cards << card;
-	}
-	known_cards = visible_cards;
+    ClientCardMemory::Ids visible;
+    for (const Card *card : getKnownCards())
+        if (hand_ids.contains(card->getId()) && card->hasFlag("visible"))
+            visible.push_back(card->getId());
+    m_cardMemory.replace(visible);
+    emit card_memory_changed();
 }
 
 void ClientPlayer::addHandIds(const QList<int> &card_ids)
@@ -205,64 +240,68 @@ void ClientPlayer::addHandIds(const QList<int> &card_ids)
 		if(hand_ids.contains(id)) continue;
 		hand_ids << id;
 	}
+    m_cardMemory.lose({}, {}, handcard_num);
+    emit card_memory_changed();
 	if (hand_ids.size()>1)
 		qsanShuffle(hand_ids);
 }
 
 void ClientPlayer::removeHandIds(const QList<int> &card_ids)
 {
-	foreach(int id, card_ids){
-		if (id < Card::S_UNKNOWN_CARD_ID) continue;
-		handcard_num = qMax(0, handcard_num - 1);
-		if (id == Card::S_UNKNOWN_CARD_ID) {
-			// An unidentified loss invalidates exact membership; retain only the count.
-			foreach (const Card *card, Player::getHandcards()) {
-				if (card) Player::removeCard(card->getId(), PlaceHand);
-			}
-			hand_ids.clear();
-			if (!hasFlag("S_REASON_SWAP")) known_cards.clear();
-			continue;
-		}
-		Player::removeCard(id,PlaceHand);
-		hand_ids.removeAll(id);
-		known_cards.removeAll(Sanguosha->getCard(id));
-	}
-	if(handcard_num == 0&&!hasFlag("S_REASON_SWAP"))
-		known_cards.clear();
+    const bool swapping = hasFlag("S_REASON_SWAP");
+    ClientCardMemory::Ids visible;
+    for (const Card *card : getKnownCards())
+        if (card->hasFlag("visible")) visible.push_back(card->getId());
+    for (int id : card_ids) {
+        if (id < Card::S_UNKNOWN_CARD_ID) continue;
+        handcard_num = qMax(0, handcard_num - 1);
+        if (id == Card::S_UNKNOWN_CARD_ID) {
+            // Keep public cards exact; remembered concealed cards may have left.
+            for (const Card *card : Player::getHandcards()) {
+                if (card && !card->hasFlag("visible"))
+                    Player::removeCard(card->getId(), PlaceHand);
+            }
+            for (int previous : QList<int>(hand_ids))
+                if (std::find(visible.begin(), visible.end(), previous) == visible.end())
+                    hand_ids.removeAll(previous);
+        } else {
+            Player::removeCard(id, PlaceHand);
+            hand_ids.removeAll(id);
+        }
+    }
+    if (!swapping)
+        m_cardMemory.lose(ClientCardMemory::Ids(card_ids.begin(), card_ids.end()), visible, handcard_num);
+    // A now-empty hand cannot retain public pointers either.
+    if (handcard_num == 0) {
+        for (const Card *card : Player::getHandcards())
+            if (card) Player::removeCard(card->getId(), PlaceHand);
+        hand_ids.clear();
+    }
+    emit card_memory_changed();
 }
 
 void ClientPlayer::setKnownCards(QList<int> card_ids)
 {
-	known_cards.clear();
-	QList<int> exact_ids;
-	foreach(int cardId, card_ids){
-		if(cardId < 0) continue;
-		const Card *card = Sanguosha->getCard(cardId);
-		if (card == nullptr) continue;
-		known_cards << card;
-		exact_ids << cardId;
-	}
-	if (this == Self)
-		return;
-	hand_ids = exact_ids;
-	if (hand_ids.size() > 1)
-		qsanShuffle(hand_ids);
+    m_cardMemory.clear();
+    QList<int> exact_ids;
+    for (int id : card_ids) {
+        if (id < 0 || !Sanguosha->getCard(id) || exact_ids.contains(id)) continue;
+        m_cardMemory.observe(id);
+        exact_ids << id;
+    }
+    if (this != Self) {
+        hand_ids = exact_ids;
+        if (hand_ids.size() > 1) qsanShuffle(hand_ids);
+    }
+    emit card_memory_changed();
 }
 
 void ClientPlayer::setKnownCards(QList<const Card*> cards)
 {
-	known_cards.clear();
-	QList<int> exact_ids;
-	foreach (const Card *card, cards) {
-		if (card == nullptr || card->getId() < 0) continue;
-		known_cards << card;
-		exact_ids << card->getId();
-	}
-	if (this == Self)
-		return;
-	hand_ids = exact_ids;
-	if (hand_ids.size() > 1)
-		qsanShuffle(hand_ids);
+    QList<int> ids;
+    for (const Card *card : cards)
+        if (card) ids << card->getId();
+    setKnownCards(ids);
 }
 
 QTextDocument *ClientPlayer::getMarkDoc() const
@@ -414,7 +453,7 @@ void ClientPlayer::resetForManagedSync()
 	for (int id : oldHand) Player::removeCard(id, PlaceHand);
 	handcard_num = 0;
 	hand_ids.clear();
-	known_cards.clear();
+	m_cardMemory.clear();
 	for (int id : getEquipsId()) Player::removeCard(id, PlaceEquip);
 	for (int id : getJudgingAreaID()) Player::removeCard(id, PlaceDelayedTrick);
 	const QStringList oldPiles = piles.keys();
@@ -459,4 +498,5 @@ void ClientPlayer::resetForManagedSync()
 	emit skill_state_changed();
 	emit mark_changed();
 	emit gameplay_property_changed();
+    emit card_memory_changed();
 }

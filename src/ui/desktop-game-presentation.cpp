@@ -948,6 +948,8 @@ GameActionModel DesktopGamePresentation::actionModel() const
         // Dead Hulao players reuse getVotes() for their reform countdown.
         entry.selectedVotes = item->isSelected() ? qMax(item->getVotes(), 1) : 0;
         entry.maxVotes = item->maxVotes();
+        if (dashboard->getSelected())
+            entry.targetTip = m_scene->targetTipFor(player, enabled);
         model.players.append(entry);
     }
     // Stable seat order, independent of the QMap's graphics-object addresses.
@@ -1000,6 +1002,12 @@ void DesktopGamePresentation::refresh()
     if (changed) ++m_revision;
     next.presentationRevision = m_revision;
     m_model = next;
+    // State changes can alter a tip without changing the current selection.
+    // Project the same model to native portraits; omitted targets clear stale tips.
+    QHash<QString, QString> targetTips;
+    for (const GameActionEntry &entry : m_model.players) targetTips.insert(entry.id, entry.targetTip);
+    for (Photo *photo : m_scene->photos)
+        photo->setTargetTip(photo->getPlayer() ? targetTips.value(photo->getPlayer()->objectName()) : QString());
     if (m_panel && (changed || m_panel->isVisible())) m_panel->setModel(m_model);
     if (!m_liveConsumers.isEmpty()) {
         const auto *operating = m_scene->getDashboardPlayer();

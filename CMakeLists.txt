@@ -1157,6 +1157,7 @@ if(UNIX AND NOT ANDROID)
         lua/config.lua
         lua/sanguosha.lua
         lua/sgs_ex.lua
+        lua/skill_assembly.lua
         lua/utilities.lua
         lua/chat_config.lua
         lua/lib

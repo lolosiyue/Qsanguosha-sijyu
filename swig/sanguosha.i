@@ -2264,6 +2264,7 @@ bool isHideSkill() const;
 	QString getDescription(const Player*target = nullptr) const;
 	QString getNotice(int index) const;
 	bool isVisible() const;
+	bool setTargetTipRules(const QString &json);
 
 	virtual int getEffectIndex(const ServerPlayer*player, const Card*card) const;
 	virtual SkillDialogInfo getDialogInfo() const;

@@ -2,6 +2,7 @@
 #define _CLIENT_PLAYER_H
 
 #include "player.h"
+#include "card-memory.h"
 //#include "clientstruct.h"
 #include "json.h"
 #include "protocol/state/player-ui-state.h"
@@ -34,6 +35,10 @@ public:
     void setKnownCards(QList<int> card_ids);
     void setKnownCards(QList<const Card*> cards);
     QList<const Card *> getKnownCards() const;
+    QList<const Card *> getUncertainCards() const;
+    void forgetKnownCard(int id);
+    void clearCardMemory();
+    void swapKnownCards(ClientPlayer *other);
     void retainVisibleKnownHandcards();
     QTextDocument *getMarkDoc() const;
     void changePile(const QString &name, bool add, QList<int> card_ids);
@@ -63,12 +68,13 @@ public:
 private:
     bool useExactHandInfo() const;
     int handcard_num; // Movement count, including cards whose identity is hidden.
-    QList<const Card *> known_cards;
+    ClientCardMemory::Hand m_cardMemory;
     QList<int> hand_ids;
     QTextDocument *mark_doc;
     PlayerUIState m_uiState;
 
 signals:
+    void card_memory_changed();
     void pile_changed(const QString &name);
     void general_pile_changed(const QString &name);
     void drank_changed();
