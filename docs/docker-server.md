@@ -70,8 +70,11 @@ with `-p 9527:9527 -p 9528:9528`; host networking and privileged mode are not re
   identity, whose content scan rejects symlinks. Volumes created by earlier
   images, which held symlinks here, are migrated automatically. These names are
   reserved: an unmanaged file or directory at one of them stops the container.
-- The server image leaves out `lua/chat_config.lua` (GUI chat phrases) and the
-  unused `lua/lib/sqlite3.lua`, because `lua/config.lua` does not declare them.
+- The server image leaves out `lua/chat_config.lua` (GUI chat phrases), the
+  unused `lua/lib/sqlite3.lua`, and the standalone `lua/game-state-contract.lua`
+  example module, because `lua/config.lua` does not declare them. Production
+  managed Room state uses the native `ManagedStateLuaBridge`; the standalone
+  module remains available in the source tree.
 - `HOME` and `XDG_CONFIG_HOME` also resolve under `/data`, keeping runtime state
   in the persistent volume. Because the asset root is explicit, per-user data
   such as `record/` and AI data lives under `/data/.local/share/QSanguosha`.

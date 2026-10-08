@@ -58,9 +58,11 @@ RUN cmake -S /src -B /build -G Ninja \
     && ! ldd /staging/opt/qsanguosha/bin/qsanguosha_server | grep -q 'not found'
 
 # The Web admission gate (declared-v2) rejects Lua that lua/config.lua does not
-# declare. chat_config.lua only feeds the GUI chat panel and lib/sqlite3.lua has
-# no caller, so the dedicated server image leaves both out.
+# declare. chat_config.lua only feeds the GUI chat panel; lib/sqlite3.lua and
+# game-state-contract.lua have no production caller (managed Room state uses
+# the native bridge), so the dedicated server image leaves these files out.
 RUN rm /staging/opt/qsanguosha/share/qsanguosha/lua/chat_config.lua \
+        /staging/opt/qsanguosha/share/qsanguosha/lua/game-state-contract.lua \
         /staging/opt/qsanguosha/share/qsanguosha/lua/lib/sqlite3.lua
 
 
