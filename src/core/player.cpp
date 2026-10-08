@@ -129,6 +129,13 @@ bool Player::isWounded() const
 				return true;
 		}
 	}
+	if (getKingdom() == "kaze"){
+		// 归命's TouhouTripleSha counterpart (ikai-sui ikguiming).
+		foreach(const Player *p, getAliveSiblings()){
+			if (p->hasFlag("CurrentPlayer") && p->getHp() <= 2 && p->hasSkill("ikguiming"))
+				return true;
+		}
+	}
     return hp < 0 || hp < max_hp;
 }
 

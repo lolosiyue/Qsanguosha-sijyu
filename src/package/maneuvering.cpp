@@ -509,8 +509,15 @@ void FireAttack::onEffect(CardEffectStruct &effect) const
     QString suit_str_png = suit_str;
     if (card->hasSuit()) suit_str_png = "<img src='image/system/cardsuit/" + suit_str + ".png' height=17/>";
     QString prompt = QString("@fire-attack:%1::%2").arg(effect.to->objectName()).arg(suit_str_png);
+    QString pattern = QString(".%1").arg(suit_str.at(0).toUpper());
+    // TouhouTripleSha thyanlun: a hand card of the shown card's color also answers.
+    if (effect.from->hasSkill("thyanlun") && (card->isRed() || card->isBlack())) {
+        const QString color = card->isRed() ? "red" : "black";
+        pattern = ".|" + color + "|.|hand";
+        prompt = QString("@fire-attackex:%1::%2").arg(effect.to->objectName()).arg(color);
+    }
     if (effect.from->isAlive()) {
-        if (room->askForCard(effect.from, QString(".%1").arg(suit_str.at(0).toUpper()), prompt, QVariant::fromValue(effect)))
+        if (room->askForCard(effect.from, pattern, prompt, QVariant::fromValue(effect)))
             room->damage(DamageStruct(this, effect.from, effect.to, 1, DamageStruct::Fire));
         else
             effect.from->setFlags("FireAttackFailed_" + effect.to->objectName()); // For AI
