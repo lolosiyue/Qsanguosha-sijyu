@@ -10,8 +10,8 @@
 
 using namespace TouhouUtils;
 
-// TouhouTripleSha's 异界·土. Skills that match a local one are reused by name; the
-// lord skills differ from their 三国 originals only by kingdom.
+// TouhouTripleSha's 异界·土. The lord skills differ from their 三国 originals only by
+// kingdom.
 
 namespace {
 
@@ -291,99 +291,87 @@ public:
     }
 };
 
-// ---------------------------------------------------------------- wind006
-
-// Per target: its non-locked skills stop until the turn ends, then it discards a card of the
-// judge suit or cannot dodge.
-class IkYufeng : public TriggerSkillV2
+class IkYipao : public TargetModSkillV2
 {
 public:
-    IkYufeng() : TriggerSkillV2("ikyufeng")
-    {
-        events << TargetSpecified << EventPhaseChanging;
-        frequency = Frequent;
-    }
+    IkYipao() : TargetModSkillV2("ikyipao") { frequency = NotCompulsory; }
 
-    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
     {
-        if (event != EventPhaseChanging || data.value<PhaseChangeStruct>().to != Player::NotActive)
-            return false;
-        foreach (ServerPlayer *p, room->getAllPlayers(true)) {
-            const QStringList blocked = p->getTag("IkYufengBlocked").toStringList();
-            if (blocked.isEmpty())
-                continue;
-            p->removeTag("IkYufengBlocked");
-            foreach (const QString &entry, blocked) {
-                const QStringList parts = entry.split("|");
-                if (parts.size() == 2)
-                    room->removeSkillInvalidity(p, parts.first(), parts.last(), objectName());
-            }
-        }
-        return false;
-    }
-
-    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
-    {
-        if (event != TargetSpecified)
-            return TriggerList();
-        const CardUseStruct use = data.value<CardUseStruct>();
-        if (!player || use.from != player || !player->isAlive() || !player->hasSkill(objectName()) || !use.card
-            || !use.card->isKindOf("Slash") || use.to.isEmpty())
-            return TriggerList();
-        return TriggerList{{player, {objectName()}}};
-    }
-
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const override { return true; }
-
-    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
-    {
-        ServerPlayer *player = ctx.owner;
-        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
-        bool changed = false;
-        foreach (ServerPlayer *target, use.to) {
-            if (!player->isAlive() || !target->isAlive()
-                || !player->askForSkillInvoke(objectName(), QVariant::fromValue(target)))
-                continue;
-            room->broadcastSkillInvoke(objectName());
-            QStringList blocked = target->getTag("IkYufengBlocked").toStringList();
-            foreach (const Skill *skill, target->getVisibleSkillList()) {
-                if (skill->getFrequency() == Skill::Compulsory)
-                    continue;
-                const QString entry = skill->objectName() + "|" + player->objectName();
-                if (blocked.contains(entry))
-                    continue;
-                room->addSkillInvalidity(target, skill->objectName(), player->objectName(), objectName());
-                blocked << entry;
-            }
-            target->setTag("IkYufengBlocked", blocked);
-            JudgeStruct judge;
-            judge.pattern = ".";
-            judge.good = true;
-            judge.reason = objectName();
-            judge.who = player;
-            judge.play_animation = false;
-            room->judge(judge);
-            const QString suit = judge.card ? judge.card->getSuitString() : QString();
-            if (target->isAlive() && target->canDiscard(target, "he") && !suit.isEmpty()
-                && room->askForCard(target, ".|" + suit, "@ikyufeng-discard:::" + suit, *ctx.original_data,
-                                    Card::MethodDiscard))
-                continue;
-            if (!use.no_respond_list.contains(target->objectName())) {
-                LogMessage log;
-                log.type = "#NoJink";
-                log.from = target;
-                room->sendLog(log);
-                use.no_respond_list << target->objectName();
-                changed = true;
-            }
-        }
-        if (changed)
-            *ctx.original_data = QVariant::fromValue(use);
-        return false;
+        return ctx.modType == TargetModSkill::Residue ? CorrectSkillResult::unlimitedResidue()
+                                                      : CorrectSkillResult::noEffect();
     }
 };
 
 // ---------------------------------------------------------------- wind042
+
+bool dealtDamageThisTurn(Room *room, const ServerPlayer *player)
+{
+    const QVariant turn = room->historyScopes().value("turn_id");
+    if (turn.toLongLong() == 0)
+        return false;
+    QVariantMap filter{{"turn_id", turn}, {"from", player->objectName()}};
+    for (;;) {
+        const QVariantMap page = room->queryActualDamage(filter);
+        if (!page.value("complete").toBool() || !page.value("attribution_complete").toBool())
+            return false;
+        foreach (const QVariant &entry, page.value("items").toList())
+            if (entry.toMap().value("data").toMap().value("amount").toInt() > 0)
+                return true;
+        if (!page.value("has_more").toBool())
+            return false;
+        filter.insert("after", page.value("next_after"));
+        filter.insert("watermark", page.value("watermark"));
+    }
+}
+
+// A 杀 at any distance against a turn player who dealt damage this turn.
+class IkBaoou : public TriggerSkillV2
+{
+public:
+    IkBaoou() : TriggerSkillV2("ikbaoou") { events << EventPhaseStart << PreCardUsed; }
+
+    // The accepted 杀 is announced when it is actually used.
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        if (event != PreCardUsed || !player || !player->hasFlag("IkBaoouSlash"))
+            return false;
+        player->setFlags("-IkBaoouSlash");
+        room->broadcastSkillInvoke(objectName());
+        room->notifySkillInvoked(player, objectName());
+        LogMessage log;
+        log.type = "#InvokeSkill";
+        log.from = player;
+        log.arg = objectName();
+        room->sendLog(log);
+        return false;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        TriggerList result;
+        if (event != EventPhaseStart || !player || !player->isAlive() || player->getPhase() != Player::Finish)
+            return result;
+        foreach (ServerPlayer *p, room->getOtherPlayers(player))
+            if (p->hasSkill(objectName()) && p->canSlash(player, false))
+                result[p] << objectName();
+        if (!result.isEmpty() && !dealtDamageThisTurn(room, player))
+            result.clear();
+        return result;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        ServerPlayer *owner = ctx.owner;
+        if (!player->isAlive() || !owner->canSlash(player, false))
+            return false;
+        owner->setFlags("IkBaoouSlash");
+        room->askForUseSlashTo(owner, player, QString("@ikbaoou-slash:%1:%2").arg(owner->objectName(), player->objectName()),
+                               false);
+        owner->setFlags("-IkBaoouSlash");
+        return false;
+    }
+};
 
 class IkYehua : public WakeSkill
 {
@@ -615,6 +603,136 @@ public:
     }
 };
 
+class IkTiansuo : public TriggerSkillV2
+{
+public:
+    IkTiansuo() : TriggerSkillV2("iktiansuo") { events << AskForRetrial; }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        JudgeStruct *judge = data.value<JudgeStruct *>();
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || player->isNude() || !judge || !judge->who)
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
+        if (!judge || player->isNude())
+            return false;
+        const QString prompt = QStringList{"@iktiansuo-card", judge->who->objectName(), objectName(), judge->reason,
+                                           QString::number(judge->card->getEffectiveId())}.join(":");
+        const Card *card = room->askForCard(player, "..", prompt, *ctx.original_data, Card::MethodResponse, judge->who, true);
+        if (!card)
+            return false;
+        ctx.extra_data = card->getEffectiveId();
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        JudgeStruct *judge = ctx.original_data->value<JudgeStruct *>();
+        const int id = ctx.extra_data.toInt();
+        if (!judge || room->getCardOwner(id) != player
+            || (room->getCardPlace(id) != Player::PlaceHand && room->getCardPlace(id) != Player::PlaceEquip))
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        room->retrial(Sanguosha->getCard(id), player, judge, objectName());
+        return false;
+    }
+};
+
+// One trigger per point of damage taken.
+TriggerList perDamagePoint(const QString &skill, ServerPlayer *player, const DamageStruct &damage)
+{
+    if (!player || damage.to != player || !player->isAlive() || !player->hasSkill(skill))
+        return TriggerList();
+    QStringList times;
+    for (int i = 0; i < damage.damage; ++i)
+        times << skill;
+    return TriggerList{{player, times}};
+}
+
+class IkHuanji : public TriggerSkillV2
+{
+public:
+    IkHuanji() : TriggerSkillV2("ikhuanji") { events << Damaged; }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        const DamageStruct damage = data.value<DamageStruct>();
+        if (!damage.from || damage.from->isAllNude())
+            return TriggerList();
+        return perDamagePoint(objectName(), player, damage);
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *from = ctx.original_data->value<DamageStruct>().from;
+        if (!from || from->isAllNude() || !ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(from)))
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *from = ctx.original_data->value<DamageStruct>().from;
+        if (!from || from->isAllNude())
+            return false;
+        const int id = room->askForCardChosen(ctx.owner, from, "hej", objectName());
+        if (id < 0)
+            return false;
+        room->obtainCard(ctx.owner, Sanguosha->getCard(id),
+                         CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, ctx.owner->objectName()),
+                         room->getCardPlace(id) != Player::PlaceHand);
+        return false;
+    }
+};
+
+// ---------------------------------------------------------------- bloom006
+
+// Per point: draw two, then hand at most two hand cards to other characters.
+class IkYumeng : public TriggerSkillV2
+{
+public:
+    IkYumeng() : TriggerSkillV2("ikyumeng")
+    {
+        events << Damaged;
+        frequency = Frequent;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        return perDamagePoint(objectName(), player, data.value<DamageStruct>());
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data))
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.owner;
+        player->drawCards(2, objectName());
+        int remaining = 2;
+        while (remaining > 0 && player->isAlive() && !player->isKongcheng()) {
+            QList<int> hand = player->handCards();
+            const CardsMoveStruct given = room->askForYijiStruct(player, hand, objectName(), false, false, true, remaining,
+                                                                 room->getOtherPlayers(player));
+            if (!given.to || given.card_ids.isEmpty())
+                break;
+            remaining -= given.card_ids.size();
+        }
+        return false;
+    }
+};
+
 // ---------------------------------------------------------------- snow003
 
 class IkBiju : public MaxCardsSkillV2
@@ -768,6 +886,39 @@ public:
 
 // ---------------------------------------------------------------- snow004 / snow007
 
+class IkKurou : public ViewAsSkillV2
+{
+public:
+    IkKurou() : ViewAsSkillV2("ikkurou") {}
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        return cardSelectionFeasible(request) ? ViewAsSkillV2::createCard(request) : nullptr;
+    }
+
+    TargetMode targetMode() const override { return NoTarget; }
+
+    bool pay(Room *room, SkillContext &ctx, const ActiveSkillRequest &) const override
+    {
+        if (!ctx.invoker || !ctx.invoker->isAlive())
+            return false;
+        room->loseHp(ctx.invoker, 1, true, ctx.invoker, objectName());
+        return true;
+    }
+
+    EffectFlow effect(SkillContext &ctx) const override
+    {
+        if (ctx.invoker && ctx.invoker->isAlive())
+            ctx.invoker->drawCards(2, objectName());
+        return FinishSkill;
+    }
+};
+
 class IkZaiqi : public TriggerSkillV2
 {
 public:
@@ -797,6 +948,39 @@ public:
     {
         const int n = qMax(1, ctx.original_data->value<RecoverStruct>().recover);
         ctx.owner->drawCards(n, objectName());
+        return false;
+    }
+};
+
+class IkWujie : public TriggerSkillV2
+{
+public:
+    IkWujie() : TriggerSkillV2("ikwujie")
+    {
+        events << CardsMoveOneTime;
+        frequency = Frequent;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || move.from != player
+            || !move.from_places.contains(Player::PlaceHand) || !move.is_last_handcard)
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data))
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ctx.owner->drawCards(1, objectName());
         return false;
     }
 };
@@ -864,7 +1048,68 @@ public:
     }
 };
 
-// ---------------------------------------------------------------- luna002 / luna034
+// ---------------------------------------------------------------- luna002 / luna018 / luna034
+
+// A 杀 needs two 闪; each 杀 answering the owner's 决斗 needs a second one.
+class IkWushuang : public TriggerSkillV2
+{
+public:
+    IkWushuang() : TriggerSkillV2("ikwushuang")
+    {
+        events << TargetSpecified << CardResponded;
+        frequency = Compulsory;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        if (!player || !player->isAlive())
+            return TriggerList();
+        if (event == TargetSpecified) {
+            const CardUseStruct use = data.value<CardUseStruct>();
+            if (use.from != player || !player->hasSkill(objectName()) || !use.card || !use.card->isKindOf("Slash")
+                || use.to.isEmpty())
+                return TriggerList();
+            return TriggerList{{player, {objectName()}}};
+        }
+        const CardResponseStruct response = data.value<CardResponseStruct>();
+        ServerPlayer *owner = response.m_who;
+        if (!owner || owner == player || !owner->isAlive() || !owner->hasSkill(objectName()) || !response.m_toCard
+            || !response.m_toCard->isKindOf("Duel") || player->getTag("IkWushuangResponding").toBool())
+            return TriggerList();
+        return TriggerList{{owner, {objectName()}}};
+    }
+
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        room->sendCompulsoryTriggerLog(ctx.owner, objectName());
+        room->broadcastSkillInvoke(objectName());
+        if (event == TargetSpecified) {
+            const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+            const QString key = "Jink_" + use.card->toString();
+            QVariantList jinks = use.from->getTag(key).toList();
+            for (int i = 0; i < jinks.size(); ++i)
+                if (jinks.at(i).toInt() > 0)
+                    jinks[i] = qMax(jinks.at(i).toInt(), 2);
+            use.from->setTag(key, jinks);
+            return false;
+        }
+        CardResponseStruct response = ctx.original_data->value<CardResponseStruct>();
+        CardEffectStruct effect;
+        effect.card = response.m_toCard;
+        effect.from = ctx.owner;
+        effect.to = player;
+        player->setTag("IkWushuangResponding", true);
+        const Card *second = room->askForCard(player, "slash", "@ikwushuang-slash-2:" + ctx.owner->objectName(),
+                                              QVariant::fromValue(effect), Card::MethodResponse, ctx.owner, false, "",
+                                              false, response.m_toCard);
+        player->removeTag("IkWushuangResponding");
+        if (!second) {
+            response.nullified = true;
+            *ctx.original_data = QVariant::fromValue(response);
+        }
+        return false;
+    }
+};
 
 class IkWudi : public ViewAsSkillV2
 {
@@ -913,6 +1158,27 @@ public:
     }
 
     QString historyKey(const ActiveSkillRequest &) const override { return "IkWudiCard"; }
+};
+
+// Above 2 HP the owner reaches others at -1; at 2 or less others reach the owner at +1.
+class IkZhuji : public DistanceSkillV2
+{
+public:
+    IkZhuji() : DistanceSkillV2("ikzhuji")
+    {
+        frequency = Compulsory;
+        setHolderSelector(CorrectSkill_Participants);
+    }
+
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+    {
+        int correct = 0;
+        if (ctx.holder == ctx.primary && ctx.primary->getHp() > 2)
+            correct -= ctx.currentAmount;
+        if (ctx.holder == ctx.secondary && ctx.secondary->getHp() <= 2)
+            correct += ctx.currentAmount;
+        return correct != 0 ? CorrectSkillResult::useAmount(correct) : CorrectSkillResult::noEffect();
+    }
 };
 
 class IkGuijiao : public TriggerSkillV2
@@ -996,29 +1262,18 @@ IkYuanheCard::IkYuanheCard() { setSkillName("ikyuanhe"); mute = true; }
 IkaiDoPackage::IkaiDoPackage()
     : Package("ikai-do")
 {
-    // 神爱 is OL 仁德; 心契 is 激将 for kaze.
-    General *wind001 = new General(this, "wind001$", "kaze");
-    wind001->addSkill("olrende");
-    wind001->addSkill(new IkXinqi);
-
     General *wind002 = new General(this, "wind002", "kaze");
     wind002->addSkill("ikchilian");
     wind002->addSkill(new IkZhenhong);
     wind002->addSkill(new IkZhenhongTargetMod);
     related_skills.insert("ikzhenhong", "#ikzhenhong-target");
 
-    // 翼咆 is 咆哮.
     General *wind003 = new General(this, "wind003", "kaze");
-    wind003->addSkill("paoxiao");
+    wind003->addSkill(new IkYipao);
     wind003->addSkill(new IkShijiu);
 
-    General *wind006 = new General(this, "wind006", "kaze");
-    wind006->addSkill("mashu");
-    wind006->addSkill(new IkYufeng);
-
-    // 暴殴 is 诛害.
     General *wind042 = new General(this, "wind042", "kaze");
-    wind042->addSkill("zhuhai");
+    wind042->addSkill(new IkBaoou);
     wind042->addSkill(new IkYehua);
     wind042->addRelateSkill("ikxingyu");
 
@@ -1026,21 +1281,14 @@ IkaiDoPackage::IkaiDoPackage()
     bloom001->addSkill(new IkJiaoman);
     bloom001->addSkill(new IkHuanwei);
 
-    // 天锁 is 鬼才; 幻姬 is 反馈.
     General *bloom002 = new General(this, "bloom002", "hana", 3);
-    bloom002->addSkill("guicai");
-    bloom002->addSkill("fankui");
+    bloom002->addSkill(new IkTiansuo);
+    bloom002->addSkill(new IkHuanji);
     bloom002->addSkill(new IkZhimen);
 
-    // 羽梦 is 十周年 遗计.
     General *bloom006 = new General(this, "bloom006", "hana", 3);
     bloom006->addSkill("iktiandu");
-    bloom006->addSkill("tenyearyiji");
-
-    // 制衡 is 十周年 制衡.
-    General *snow001 = new General(this, "snow001$", "yuki");
-    snow001->addSkill("tenyearzhiheng");
-    snow001->addSkill(new IkJiyuan);
+    bloom006->addSkill(new IkYumeng);
 
     General *snow003 = new General(this, "snow003", "yuki");
     snow003->addSkill(new IkBiju);
@@ -1049,21 +1297,20 @@ IkaiDoPackage::IkaiDoPackage()
     snow003->addSkill(new IkPojian);
 
     General *snow004 = new General(this, "snow004", "yuki");
-    snow004->addSkill("noskurou");
+    snow004->addSkill(new IkKurou);
     snow004->addSkill(new IkZaiqi);
 
-    // 无竭 is the old 连营.
     General *snow007 = new General(this, "snow007", "yuki", 3);
-    snow007->addSkill("noslianying");
+    snow007->addSkill(new IkWujie);
     snow007->addSkill(new IkYuanhe);
 
     General *luna002 = new General(this, "luna002", "tsuki");
-    luna002->addSkill("wushuang");
+    luna002->addSkill(new IkWushuang);
     luna002->addSkill(new IkWudi);
 
     // 本音 needs upstream's 紫莲圣咏, which has no local card.
     General *luna018 = new General(this, "luna018", "tsuki", 3);
-    luna018->addSkill("yicong");
+    luna018->addSkill(new IkZhuji);
     luna018->addSkill(new PendingSkill("ikbenyin"));
 
     General *luna034 = new General(this, "luna034", "tsuki");
@@ -1072,7 +1319,8 @@ IkaiDoPackage::IkaiDoPackage()
     related_skills.insert("ikguijiao", "#ikguijiao");
     luna034->addSkill("ikjinlian");
 
-    skills << new IkXingyu;
+    // No general here holds 心契 or 济援, but 若愚 and 至尊 grant them.
+    skills << new IkXingyu << new IkXinqi << new IkJiyuan;
 
     addMetaObject<IkXingyuCard>();
     addMetaObject<IkYuanheCard>();
