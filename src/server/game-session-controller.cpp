@@ -8,6 +8,7 @@
 #include "gamerule.h"
 #include "generalselector.h"
 #include "protocol/gameplay/simple-choice-payloads.h"
+#include "protocol/session/session-payloads.h"
 #include "lua-runtime.h"
 #include "lua-wrapper.h"
 #include "miniscenarios.h"
@@ -769,6 +770,19 @@ void GameSessionController::chooseGenerals(QList<ServerPlayer *> players)
 		else
 			chosen = m_room._chooseDefaultGeneral(player);
 
+		if (chosen.isEmpty() || !Sanguosha->getGeneral(chosen)) {
+			const QString reason = QStringLiteral("No legal general candidate for %1").arg(player->objectName());
+			m_room.output(QStringLiteral("ERROR: General selection failed: ") + reason);
+			DiagnosticPayload diagnostic;
+			diagnostic.code = QStringLiteral("general_selection_failed");
+			diagnostic.message = reason;
+			diagnostic.fatal = true;
+			m_room.doBroadcastNotify(S_COMMAND_WARN, diagnostic.toVariant());
+			abort(TerminationCause::InitializationFailure);
+			emit m_room.preparation_failed(reason);
+			return;
+		}
+
 		if (!playerChose)
 			triggerGeneralNotChosen(player, player->getSelected(), chosen, "for_general");
 
@@ -938,7 +952,9 @@ void GameSessionController::run()
 	prepareForStart();
 	if (m_room.isFinished())
 		return;
-	if (m_room.property("to_test").toString() == QLatin1String("headless")) {
+	// These drafts assign their own roles; initialize SmartAI in startGame after the draft.
+	const bool draftAssignsRoles = m_room.mode == "06_3v3" || m_room.mode == "06_XMode" || m_room.mode == "02_1v1";
+	if (m_room.property("to_test").toString() == QLatin1String("headless") && !draftAssignsRoles) {
 		// SmartAI needs the complete roster and assigned roles before its first query.
 		int smartAiCount = 0;
 		const QList<ServerPlayer *> players = m_room.getPlayers();
@@ -1269,6 +1285,15 @@ void GameSessionController::startGame()
 		m_room.ais << ai;
 		player->setAI(ai);
 	}
+	if (m_room.property("to_test").toString() == QLatin1String("headless")
+		&& (m_room.mode == "06_3v3" || m_room.mode == "06_XMode" || m_room.mode == "02_1v1")) {
+		int smartAiCount = 0;
+		foreach (ServerPlayer *player, players)
+			if (dynamic_cast<LuaAI *>(player->getSmartAI())) ++smartAiCount;
+		Server::writeHeadlessLog(QString("[AUTOTEST] pre-game AI: SmartAI=%1 fallback=%2 (after mode draft)")
+			.arg(smartAiCount).arg(players.size() - smartAiCount));
+	}
+
 
 	if(!m_room.thread) m_room.thread = new RoomThread(&m_room);
 

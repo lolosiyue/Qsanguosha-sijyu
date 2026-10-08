@@ -3546,8 +3546,11 @@ void Room::resetAI(ServerPlayer*player)
 	if (smart_ai){
 		index = ais.indexOf(smart_ai);
 		ais.removeOne(smart_ai);
-		// Deleting smart_ai here crashes because changeHero may run off the main thread.
-		smart_ai->deleteLater();
+		// LuaAI remains owned by its SWIG userdata and callback roots until Lua closes.
+		// A native deferred delete leaves that owned userdata pointing at a freed object.
+		// Native fallback AIs still need deletion on their QObject owner thread.
+		if (!dynamic_cast<LuaAI *>(smart_ai))
+			smart_ai->deleteLater();
 	}
 	AI*new_ai = cloneAI(player);
 	player->setAI(new_ai);

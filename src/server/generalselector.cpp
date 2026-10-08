@@ -31,6 +31,10 @@ GeneralSelector::GeneralSelector()
 
 QString GeneralSelector::selectFirst(ServerPlayer *player, const QStringList &candidates)
 {
+    if (candidates.isEmpty()) {
+        qWarning("Cannot select a general: candidate list is empty for %s", qUtf8Printable(player->objectName()));
+        return QString();
+    }
     QMap<QString, qreal> values;
     QString role = player->getRole();
     ServerPlayer *lord = player->getRoom()->getLord();

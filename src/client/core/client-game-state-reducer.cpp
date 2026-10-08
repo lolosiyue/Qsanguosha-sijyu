@@ -268,8 +268,14 @@ void applyPlayerProperty(ClientGameState *state, const QVariantMap &object)
 
     state->setPlayerValue(player, stateKey, projected);
     if (property == QLatin1String("phase")) {
-        state->setGameValue(QStringLiteral("current_phase"), projected);
-        state->setGameValue(QStringLiteral("current_player"), player);
+        const bool active = projected.toString() != QLatin1String("not_active");
+        // A snapshot also contains inactive players' phases. They must not
+        // replace the turn player, but its own end-of-turn phase still applies.
+        if (active
+            || state->gameValue(QStringLiteral("current_player")).toString() == player)
+            state->setGameValue(QStringLiteral("current_phase"), projected);
+        if (active)
+            state->setGameValue(QStringLiteral("current_player"), player);
     }
 }
 
@@ -952,7 +958,8 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
                             object.value(QStringLiteral("timeout_ms")));
         break;
     case S_COMMAND_SWITCH_CONTEXT:
-        state->setGameValue(QStringLiteral("current_player"), resolvePlayerName(
+        // Control can switch independently of whose turn is in progress.
+        state->setGameValue(QStringLiteral("operating_player"), resolvePlayerName(
             state, object.value(QStringLiteral("player_name"))));
         break;
     case S_COMMAND_VIEW_GENERALS:

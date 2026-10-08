@@ -186,7 +186,14 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         QStringList values = strings(object.value(QStringLiteral("candidates")));
         if (values.isEmpty())
             values = strings(message.payload);
-        OptionInteractionPayload value = optionPayload(values);
+        QStringList disabled;
+        for (const QString &candidate : values) {
+            // The server appends the current lord as information, outside the
+            // selectable general pool, just as the desktop dialog does.
+            if (candidate.endsWith(QStringLiteral("(lord)")))
+                disabled.append(candidate);
+        }
+        OptionInteractionPayload value = optionPayload(values, disabled);
         // PlayerDecisionService::askForGeneral() takes any general name under
         // these three, so the candidate list is a menu rather than the legal
         // set; enumerating it would make ClientCore reject the reply first.
