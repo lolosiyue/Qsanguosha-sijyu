@@ -342,6 +342,7 @@ ClientFlowDisposition ClientGameStateReducer::classifyNotification(int command)
     case S_COMMAND_NETWORK_DELAY_TEST:
     case S_COMMAND_OPERATION_TIMEOUT:
     case S_COMMAND_STATE_SYNC:
+    case S_COMMAND_MANAGED_REWIND_STATE:
         return ClientFlowDisposition::SessionControl;
     case S_COMMAND_WARN:
     case S_COMMAND_SPEAK:

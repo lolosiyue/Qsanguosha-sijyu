@@ -5,6 +5,7 @@
 #include "interaction-command-registry.h"
 #include "interaction-reply-coordinator.h"
 #include "protocol/session/session-payloads.h"
+#include "protocol/session/managed-rewind-payloads.h"
 #include "protocol/rules-bundle-identity.h"
 #include "nativesocket.h"
 #include "socket.h"
@@ -47,6 +48,7 @@ void ClientLiveSession::beginConnection(bool reconnectRequested,
 {
     m_shuttingDown = false;
     m_failureEmitted = false;
+    m_managedStartPending = false;
     m_reconnectAttempt = reconnectRequested;
     m_phaseTimer.stop();
     m_pendingRequests.clear();
@@ -111,6 +113,7 @@ void ClientLiveSession::beginConnection(bool reconnectRequested,
         if (currentGeneration != m_session.generation())
             return;
         m_phaseTimer.stop();
+        m_managedStartPending = false;
         m_syncActive = false;
         m_syncId.clear();
         m_pendingPresentationEvents.clear();
@@ -351,6 +354,11 @@ bool ClientLiveSession::dispatchMessage(const ProtocolMessage &message)
         fail(4, QStringLiteral("state_reducer"), reduction.detail);
         return false;
     }
+    if (message.command == S_COMMAND_MANAGED_REWIND_STATE) {
+        RewindStatusPayload status;
+        if (RewindStatusPayload::parse(message.payload, &status) && !status.busy)
+            m_managedStartPending = false;
+    }
     if (!reduction.eventText.isEmpty()) {
         if (m_syncActive)
             m_pendingPresentationEvents.append(
@@ -363,6 +371,7 @@ bool ClientLiveSession::dispatchMessage(const ProtocolMessage &message)
     if (message.command == S_COMMAND_STATE_SYNC && sync.phase == QLatin1String("end")) {
         *m_core->state() = m_pendingState;
         m_syncActive = false;
+        m_managedStartPending = false;
         m_syncId.clear();
         const QList<PendingPresentationEvent> committedEvents = m_pendingPresentationEvents;
         m_pendingPresentationEvents.clear();
@@ -405,6 +414,37 @@ bool ClientLiveSession::requestSignup(QString *error)
         return false;
     }
     startPhaseTimeout(QStringLiteral("signup"), m_options.handshakeTimeoutMs);
+    return true;
+}
+
+bool ClientLiveSession::canStartManagedGame() const
+{
+    if (!isActive() || !m_core || m_syncActive || m_managedStartPending)
+        return false;
+    const ClientGameState &state = *m_core->state();
+    RewindStatusPayload status;
+    if (!RewindStatusPayload::parse(state.latestPayload(S_COMMAND_MANAGED_REWIND_STATE), &status)
+        || status.profile != QLatin1String("restricted_trust_02p") || !status.authorized
+        || !status.startAllowed || status.busy || status.rootGameId.isEmpty() || status.worldId.isEmpty()
+        || status.token.isEmpty() || state.gameValue(QStringLiteral("started")).toBool()
+        || state.playerNames().size() != 2)
+        return false;
+    return !state.selfName().isEmpty()
+        && state.playerValue(state.selfName(), QStringLiteral("owner")).toBool();
+}
+
+bool ClientLiveSession::requestManagedGameStart(QString *error)
+{
+    if (!canStartManagedGame())
+        return reject(error, QStringLiteral("Only the waiting restricted room owner with two seats may start"));
+    ReadyPayload ready;
+    ready.managedGameStart = true;
+    m_managedStartPending = true;
+    if (!sendControl(S_COMMAND_READY, ready.toVariant(), error)) {
+        m_managedStartPending = false;
+        return false;
+    }
+    emit stateChanged();
     return true;
 }
 

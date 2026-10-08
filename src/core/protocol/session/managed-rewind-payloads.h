@@ -13,13 +13,16 @@ inline bool decimal(const QString &text, bool positive = false) {
     for (QChar ch : text) if (ch < QLatin1Char('0') || ch > QLatin1Char('9')) return false;
     bool ok = false; const auto number = text.toULongLong(&ok); return ok && (!positive || number > 0);
 }
-inline bool object(const QVariant &value, const QStringList &keys, QVariantMap *out, QString *error) {
+inline bool object(const QVariant &value, const QStringList &keys, QVariantMap *out, QString *error,
+                   const QStringList &optionalKeys = {}) {
     if (value.metaType().id() != QMetaType::QVariantMap) return reject(error, QStringLiteral("rewind payload must be an object"));
     const auto map = value.toMap();
     const auto schema = map.value(QStringLiteral("schema_version"));
     const bool numeric = schema.metaType().id() == QMetaType::Int || schema.metaType().id() == QMetaType::LongLong
         || schema.metaType().id() == QMetaType::Double;
-    if (map.size() != keys.size() + 1 || !numeric || schema.toDouble() != 1.0)
+    qsizetype expectedSize = keys.size() + 1;
+    for (const auto &key : optionalKeys) if (map.contains(key)) ++expectedSize;
+    if (map.size() != expectedSize || !numeric || schema.toDouble() != 1.0)
         return reject(error, QStringLiteral("invalid rewind schema or fields"));
     for (const auto &key : keys) if (!map.contains(key)) return reject(error, QStringLiteral("missing rewind field: ") + key);
     *out = map; return true;
@@ -57,18 +60,20 @@ struct RewindControlPayload {
 struct RewindStatusPayload {
     QString rootGameId, worldId, generation = QStringLiteral("0"), token;
     QString ackSequence = QStringLiteral("0"), message, profile;
-    bool supported = false, authorized = false, busy = false;
+    bool supported = false, authorized = false, busy = false, startAllowed = false;
     QVariantMap toVariant() const {
-        return {{"schema_version",1}, {"root_game_id",rootGameId}, {"world_id",worldId},
+        QVariantMap object{{"schema_version",1}, {"root_game_id",rootGameId}, {"world_id",worldId},
                 {"generation",generation}, {"token",token}, {"ack_sequence",ackSequence},
                 {"message",message}, {"profile",profile}, {"supported",supported},
                 {"authorized",authorized}, {"busy",busy}};
+        if (startAllowed) object.insert("start_allowed", true);
+        return object;
     }
     static bool parse(const QVariant &value, RewindStatusPayload *out, QString *error = nullptr) {
         using namespace RewindPayloadDetail;
         if (!out) return reject(error, QStringLiteral("null rewind status output"));
         QVariantMap map; RewindStatusPayload p;
-        if (!object(value,{"root_game_id","world_id","generation","token","ack_sequence","message","profile","supported","authorized","busy"},&map,error)) return false;
+        if (!object(value,{"root_game_id","world_id","generation","token","ack_sequence","message","profile","supported","authorized","busy"},&map,error,{"start_allowed"})) return false;
         if (!string(map,"root_game_id",&p.rootGameId) || !string(map,"world_id",&p.worldId)
             || !string(map,"generation",&p.generation) || !string(map,"token",&p.token)
             || !string(map,"ack_sequence",&p.ackSequence) || !string(map,"message",&p.message)
@@ -76,6 +81,11 @@ struct RewindStatusPayload {
             return reject(error,QStringLiteral("invalid rewind status fields"));
         for (const auto &key : {"supported","authorized","busy"})
             if (map.value(key).metaType().id() != QMetaType::Bool) return reject(error,QStringLiteral("invalid rewind status boolean"));
+        if (map.contains("start_allowed")) {
+            if (map.value("start_allowed").metaType().id() != QMetaType::Bool)
+                return reject(error,QStringLiteral("invalid rewind start boolean"));
+            p.startAllowed=map.value("start_allowed").toBool();
+        }
         p.supported=map.value("supported").toBool(); p.authorized=map.value("authorized").toBool(); p.busy=map.value("busy").toBool();
         *out=p; return true;
     }

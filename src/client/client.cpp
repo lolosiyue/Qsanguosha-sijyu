@@ -4,6 +4,7 @@
 #include "client-core.h"
 #include "client-prompt.h"
 #include "client-live-session.h"
+#include "managed-rewind-sync-policy.h"
 #include "client-game-state-reducer.h"
 #include "desktop-interaction-view.h"
 #include "interaction-command-registry.h"
@@ -764,9 +765,9 @@ void Client::stateSync(const QVariant &payload)
             } else {
                 m_hasStagedManagedRewindStatus = false;
                 if (m_hasManagedRewindStatus
-                    && (m_managedRewindStatus.rootGameId != m_managedTimelineRootId
-                        || m_managedRewindStatus.worldId != m_managedTimelineWorldId
-                        || m_managedRewindStatus.generation != m_managedTimelineGeneration))
+                    && ManagedRewindSyncPolicy::needsResyncAfterSnapshot(sync.managedTimelineRestore,
+                        m_managedRewindStatus, m_managedTimelineRootId, m_managedTimelineWorldId,
+                        m_managedTimelineGeneration))
                     requestManagedRewindStatus(QStringLiteral("resync"));
             }
             if (m_managedRewindPending && m_hasManagedRewindStatus
@@ -810,6 +811,21 @@ bool Client::canRequestManagedRewind() const
 		&& m_managedRewindStatus.generation == m_managedCommittedGeneration;
 }
 
+bool Client::canStartManagedRewindGame() const
+{
+    return !replayer && !m_isGameOver && !m_isDisconnected && Self && Self->isOwner()
+        && m_liveSession && m_liveSession->canStartManagedGame();
+}
+
+bool Client::requestManagedRewindGameStart()
+{
+    if (!canStartManagedRewindGame())
+        return false;
+    const bool sent = m_liveSession->requestManagedGameStart();
+    emit managedRewindStateChanged();
+    return sent;
+}
+
 QString Client::managedRewindStatusText() const
 {
 	const QString serverMessage = localizedManagedRewindMessage(m_managedRewindStatus.message);
@@ -817,6 +833,15 @@ QString Client::managedRewindStatusText() const
 		return tr("Managed rewind is synchronizing; controls are temporarily disabled.");
 	if (!m_hasManagedRewindStatus)
 		return tr("This server has not reported managed rewind support.");
+	if (!m_managedRewindGameStarted
+		&& m_managedRewindStatus.profile == QLatin1String("restricted_trust_02p")) {
+		if (m_managedRewindStatus.busy)
+			return tr("Managed rewind is processing; wait for the state sync to finish.");
+		if (m_liveSession && m_liveSession->canStartManagedGame())
+			return tr("Two seats are ready. Start the restricted game to enable rewind.");
+		return serverMessage.isEmpty()
+			? tr("Waiting for two connected seats and the room owner to start.") : serverMessage;
+	}
 	if (!m_managedRewindStatus.supported || m_managedRewindStatus.profile != QLatin1String("restricted_trust_02p"))
 		return serverMessage.isEmpty()
 			? tr("Managed rewind is not supported in this room.") : serverMessage;
@@ -1514,6 +1539,7 @@ void Client::addPlayer(const QVariant &player_info)
 	m_players << player;
 	//alive_count++;
 	emit player_added(player);
+	emit managedRewindStateChanged();
 }
 
 void Client::onPlayerAddedMidGame(const QVariant &player_info)
@@ -1565,6 +1591,7 @@ void Client::updateProperty(const QVariant &arg)
 		const QString propName = object.value(QStringLiteral("property_name")).toString();
 		player->setProperty(propName.toLatin1().constData(),
 			object.value(QStringLiteral("string_value")).toString());
+		if (propName == QLatin1String("owner")) emit managedRewindStateChanged();
 		if(propName.endsWith("area")){
 			emit update_areas(object.value(QStringLiteral("player_name")).toString());
 		}
@@ -1608,6 +1635,7 @@ void Client::removePlayer(const QVariant &player_name)
 		player->deleteLater();
 		//alive_count--;
 		emit player_removed(playerName);
+		emit managedRewindStateChanged();
 	}
 }
 

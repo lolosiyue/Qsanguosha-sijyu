@@ -21,7 +21,7 @@ class GameControlPanel : public QDialog
 public:
     explicit GameControlPanel(QWidget *parent = nullptr);
     void setModel(const GameActionModel &model);
-    void setManagedRewindState(const QString &status, bool enabled, bool canCancel);
+    void setManagedRewindState(const QString &status, bool enabled, bool canCancel, bool canStart = false);
     void openPanel();
 
 signals:
@@ -43,6 +43,7 @@ private:
     QLabel *m_prompt;
     QLabel *m_reason;
     QLabel *m_managedRewindStatus;
+    QPushButton *m_managedRewindStart;
     QPushButton *m_managedRewindStep;
     QPushButton *m_managedRewindTurn;
     QPushButton *m_managedRewindRound;

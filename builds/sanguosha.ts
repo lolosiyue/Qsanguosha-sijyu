@@ -2452,6 +2452,14 @@ Only import Lua you trust: scripts have full Lua access and can read and write a
     <message><source>Another control is in progress; wait for state synchronization</source><translation>另一个控制请求正在处理，请等待状态同步。</translation></message>
     <message><source>State synchronization is rate limited; retry shortly</source><translation>状态同步请求受到频率限制，请稍后重试。</translation></message>
     <message><source>Only the cheat-enabled room owner may advance or rewind</source><translation>只有启用作弊房间的房主可以前进或回溯。</translation></message>
+    <message>
+        <source>Two seats are ready. Start the restricted game to enable rewind.</source>
+        <translation>两席已就绪。请开始受限游戏以启用回溯。</translation>
+    </message>
+    <message>
+        <source>Waiting for two connected seats and the room owner to start.</source>
+        <translation>等待两席连接后由房主开始游戏。</translation>
+    </message>
 </context>
 <context>
     <name>ClientLogBox</name>
@@ -4572,6 +4580,10 @@ Recent events:</source>
     <message><source>Managed rewind is not available while viewing a replay.</source><translation>观看录像时无法使用全局回溯。</translation></message>
     <message><source>Cancel waiting rewind</source><translation>取消等待中的回溯</translation></message>
     <message><source>Cancels only a queued request. If execution has started, the server reports status and the rewind continues.</source><translation>仅撤回尚未开始执行的排队请求；如果操作已经开始，服务器会报告状态且回溯继续执行。</translation></message>
+    <message>
+        <source>Start restricted game</source>
+        <translation>开始受限游戏</translation>
+    </message>
 </context>
 <context>
     <name>GameTextSnapshotDialog</name>
@@ -9063,6 +9075,10 @@ diagnostics.json：%3
     <message><source>Managed rewind is not available while viewing a replay.</source><translation>观看录像时无法使用全局回溯。</translation></message>
     <message><source>Cancel waiting rewind</source><translation>取消等待中的回溯</translation></message>
     <message><source>Cancels only a queued request. If execution has started, the server reports status and the rewind continues.</source><translation>仅撤回尚未开始执行的排队请求；如果操作已经开始，服务器会报告状态且回溯继续执行。</translation></message>
+    <message>
+        <source>Start restricted game</source>
+        <translation>开始受限游戏</translation>
+    </message>
 </context>
 <context>
     <name>ScenarioOverview</name>

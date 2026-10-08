@@ -1101,7 +1101,9 @@ void DesktopGamePresentation::showControls()
         connect(m_panel, &GameControlPanel::managedRewindRequested, this, [this](const QString &operation) {
             if (!m_client)
                 return;
-            if (operation == QLatin1String("cancel"))
+            if (operation == QLatin1String("start"))
+                m_client->requestManagedRewindGameStart();
+            else if (operation == QLatin1String("cancel"))
                 m_client->requestManagedRewindCancel();
             else
                 m_client->requestManagedRewind(operation);
@@ -1123,7 +1125,8 @@ void DesktopGamePresentation::refreshManagedRewindControls()
     }
     m_panel->setManagedRewindState(m_client->managedRewindStatusText(),
                                    m_client->canRequestManagedRewind(),
-                                   m_client->canRequestManagedRewindCancel());
+                                   m_client->canRequestManagedRewindCancel(),
+                                   m_client->canStartManagedRewindGame());
 }
 
 void DesktopGamePresentation::applyIntent(const QString &kind, const QString &id, bool selected,
