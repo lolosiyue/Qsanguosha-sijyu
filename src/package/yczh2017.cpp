@@ -286,6 +286,8 @@ public:
                 || receipt.value("choice").toString() != (event == DrawNCards ? "draw" : "target")) continue;
             SkillContext ctx; ctx.skill_name = objectName(); ctx.instanceID = receipt.value("serial").toInt(); ctx.invoker = player; ctx.initiator = player;
             ctx.owner = room->findPlayerByObjectName(receipt.value("owner").toString(), true); ctx.targets = {player}; ctx.extra_data = receipt; ctx.amount = receipt.value("amount").toInt();
+            // Collected contexts bypass the dispatcher's own setup; effectTarget reads the event payload.
+            ctx.original_data = &data; ctx.current_event = event;
             ctx.sourceRef = SkillInstanceRef(receipt.value("source_owner").toString(), SkillInstanceKey(receipt.value("source_skill").toString(), receipt.value("source_id").toInt())); contexts << ctx;
         }
         return true;
