@@ -36,6 +36,8 @@ public:
     void setEmotion(const QString &emotion, bool permanent = false);
     void tremble();
     void showSkillName(const QString &skill_name);
+    void setTargetTip(const QString &tip);
+    QString targetTip() const { return m_targetTip; }
 
     enum FrameType
     {
@@ -129,6 +131,8 @@ protected:
     QGraphicsRectItem *_m_duanchangMask;
 
 private:
+    QString m_targetTip;
+    QGraphicsSimpleTextItem *m_targetTipItem = nullptr;
     QString m_overviewGeneral;
     QString m_overviewKingdom;
     QString m_overviewAssetRoot;

@@ -21,6 +21,7 @@ private:
 };
 
 #include "skill-dialog-info.h"
+#include "target-tip.h"
 #include "structs.h"
 #include "scenario.h"
 
@@ -211,6 +212,10 @@ public:
     // Presentation only: rule actions keep their ownership and response legality.
     bool isVisibleForPlayer(const Player *player) const;
 
+    // Advisory only: data rules cannot invoke callbacks or change legality.
+    bool setTargetTipRules(const QString &json);
+    QString targetTip(const TargetTipQuery &query) const;
+
     virtual int getEffectIndex(const ServerPlayer *player, const Card *card) const;
     virtual SkillDialogInfo getDialogInfo() const;
     // Shared declaration hooks keep specialised candidate and eligibility
@@ -272,6 +277,7 @@ private:
     friend class Room;
     friend class SkillRuntimeCoordinator;
 
+    TargetTipRules m_targetTipRules;
     bool lord_skill;
     QStringList sources;
     mutable QHash<QString, QStringList> skinSourceHash;
