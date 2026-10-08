@@ -60,6 +60,8 @@ GameControlPanel::GameControlPanel(QWidget *parent) : QDialog(parent)
     m_managedRewindStatus->setTextFormat(Qt::PlainText);
     m_managedRewindStatus->setWordWrap(true);
     rewindLayout->addWidget(m_managedRewindStatus);
+    m_managedRewindStart = new QPushButton(tr("Start restricted game"), rewindGroup);
+    m_managedRewindStart->setObjectName(QStringLiteral("managedRewindStart"));
     m_managedRewindStep = new QPushButton(tr("Step one turn"), rewindGroup);
     m_managedRewindStep->setObjectName(QStringLiteral("managedRewindStep"));
     m_managedRewindTurn = new QPushButton(tr("Rewind previous player turn"), rewindGroup);
@@ -70,12 +72,14 @@ GameControlPanel::GameControlPanel(QWidget *parent) : QDialog(parent)
     m_managedRewindCancel->setObjectName(QStringLiteral("managedRewindCancel"));
     m_managedRewindCancel->setToolTip(tr(
         "Cancels only a queued request. If execution has started, the server reports status and the rewind continues."));
-    for (QPushButton *button : {m_managedRewindStep, m_managedRewindTurn,
+    for (QPushButton *button : {m_managedRewindStart, m_managedRewindStep, m_managedRewindTurn,
                                 m_managedRewindRound, m_managedRewindCancel}) {
         button->setAutoDefault(false);
         button->setEnabled(false);
         rewindLayout->addWidget(button);
     }
+    connect(m_managedRewindStart, &QPushButton::clicked, this,
+            [this]() { emit managedRewindRequested(QStringLiteral("start")); });
     connect(m_managedRewindStep, &QPushButton::clicked, this,
             [this]() { emit managedRewindRequested(QStringLiteral("step")); });
     connect(m_managedRewindTurn, &QPushButton::clicked, this,
@@ -271,9 +275,10 @@ void GameControlPanel::setModel(const GameActionModel &model)
         focusPrimaryControl();
 }
 
-void GameControlPanel::setManagedRewindState(const QString &status, bool enabled, bool canCancel)
+void GameControlPanel::setManagedRewindState(const QString &status, bool enabled, bool canCancel, bool canStart)
 {
     m_managedRewindStatus->setText(status);
+    m_managedRewindStart->setEnabled(canStart);
     for (QPushButton *button : {m_managedRewindStep, m_managedRewindTurn, m_managedRewindRound})
         button->setEnabled(enabled);
     m_managedRewindCancel->setEnabled(canCancel);
@@ -320,7 +325,8 @@ void GameControlPanel::openPanel()
 
 void GameControlPanel::focusPrimaryControl()
 {
-    if (m_model.arrangingCards) m_orderList->setFocus();
+    if (m_managedRewindStart->isEnabled()) m_managedRewindStart->setFocus();
+    else if (m_model.arrangingCards) m_orderList->setFocus();
     else if (m_cards->count()) m_cards->setFocus();
     else if (m_actions->count()) m_actions->setFocus();
     else if (m_players->count()) m_players->setFocus();

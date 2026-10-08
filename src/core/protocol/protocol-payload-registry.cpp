@@ -1195,6 +1195,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     ROOM_NOTIFICATION(S_COMMAND_UPDATE_PLAYER_UI_STATE, "Client::updatePlayerUIState", "PlayerUiStatePayload");
     addRoomNotification(result, S_COMMAND_MANAGED_REWIND_STATE, "S_COMMAND_MANAGED_REWIND_STATE",
         "Client::managedRewindState", "RewindStatusPayload", ProtocolReplayPolicy::Excluded);
+    result.last().optionalFields << QStringLiteral("start_allowed");
     ROOM_NOTIFICATION(S_COMMAND_STATE_SYNC, "ClientLiveSession", "StateSyncPayload");
     ROOM_NOTIFICATION(S_COMMAND_RESOLUTION_STATE, "ClientGameStateReducer", "ResolutionStatePayload");
     ROOM_NOTIFICATION(S_COMMAND_UPDATE_CARD, "Client::updateCard", "UpdateCardPayload");
@@ -1325,6 +1326,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
                        "ReadyPayload", ProtocolReplayPolicy::Excluded,
                        ProtocolCorrelationPolicy::None, "complete"));
     result.last().requiredFields << QStringLiteral("ready");
+    result.last().optionalFields << QStringLiteral("managed_game_start");
 #define CLIENT_CONTROL(command, consumer, schema) \
     result.append(flow(ProtocolMessageType::Notification, ProtocolEndpoint::Client, \
                        ProtocolEndpoint::Room, command, #command, consumer, schema, \

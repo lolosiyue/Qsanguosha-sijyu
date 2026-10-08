@@ -318,6 +318,8 @@ public:
     ClientLiveSession *liveSession() const { return m_liveSession; }
     bool isPresentationStateSyncActive() const;
     bool hasManagedRewindStatus() const { return m_hasManagedRewindStatus; }
+    bool canStartManagedRewindGame() const;
+    bool requestManagedRewindGameStart();
     bool canRequestManagedRewind() const;
     QString managedRewindStatusText() const;
     bool requestManagedRewind(const QString &operation);

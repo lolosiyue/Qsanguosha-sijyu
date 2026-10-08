@@ -3954,10 +3954,14 @@ void Room::setReadyCommand(ServerPlayer *player, const QVariant &payload)
         return;
 
     if (m_rewindLab) {
+        if (!readyPayload.ready || !readyPayload.managedGameStart) {
+            m_rewindLab->sendStatus(player);
+            return;
+        }
         QString error;
         if (!player || !player->isOwner() || !Config.EnableCheat)
             error = QStringLiteral("Only the cheat-enabled room owner may start this room");
-        else if (readyPayload.ready) m_rewindLab->startAttached(&error);
+        else m_rewindLab->startAttached(&error);
         m_rewindLab->sendStatus(player, error);
         return;
     }

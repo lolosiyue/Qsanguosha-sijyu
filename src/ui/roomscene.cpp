@@ -318,6 +318,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 		}, [this]() { dashboard->beginSorting(); }, [this]() { dashboard->reverseSelection(); },
 		[this]() { adjustItems(); }, [this](bool control) {
 			if (control) { if (add_robot && add_robot->isVisible()) ClientInstance->addRobot(1); }
+			else if (ClientInstance && ClientInstance->canStartManagedRewindGame())
+				ClientInstance->requestManagedRewindGameStart();
 			else if (start_game && start_game->isVisible())
 				ClientInstance->addRobot(Sanguosha->getPlayerCount(ServerInfo.GameMode)
 					- ClientInstance->getPlayers().length());
@@ -463,6 +465,12 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(player_added(ClientPlayer*)),SLOT(addPlayer(ClientPlayer*)));
 	connect(ClientInstance, &Client::managedTimelineSnapshotStarting,
 		this, &RoomScene::resetManagedTimelinePresentation);
+	connect(ClientInstance, &Client::managedRewindStateChanged, this, [this]() {
+		if (managed_start_game) showOwnerButtons(Self && Self->isOwner());
+	});
+	connect(ClientInstance, &Client::gamePresentationStateChanged, this, [this]() {
+		if (managed_start_game) showOwnerButtons(Self && Self->isOwner());
+	});
 	connect(ClientInstance,SIGNAL(player_removed(QString)),SLOT(removePlayer(QString)));
 	connect(ClientInstance,SIGNAL(generals_got(QStringList)),this,SLOT(chooseGeneral(QStringList)));
 	connect(ClientInstance, &Client::hegemony_generals_got, this, &RoomScene::chooseHegemonyGenerals);
@@ -820,6 +828,18 @@ RoomScene::RoomScene(QMainWindow*main_window)
 		connect(start_game,SIGNAL(clicked()),this,SLOT(fillRobots()));
 		connect(Self,SIGNAL(owner_changed(bool)),this,SLOT(showOwnerButtons(bool)));
 	}
+
+	managed_start_game = new Button(tr("Start restricted game"));
+	managed_start_game->setObjectName(QStringLiteral("managedStartGame"));
+	managed_start_game->setParentItem(control_panel);
+	managed_start_game->setTransform(QTransform::fromTranslate(-managed_start_game->boundingRect().width()/2,
+		-managed_start_game->boundingRect().height()/2), true);
+	managed_start_game->setPos(0,0);
+	managed_start_game->hide();
+	connect(managed_start_game, &Button::clicked, this, [this]() {
+		if (ClientInstance) ClientInstance->requestManagedRewindGameStart();
+	});
+	showOwnerButtons(Self && Self->isOwner());
 
 	return_to_main_menu = new Button(tr("Return to main menu"));
 	return_to_main_menu->setParentItem(control_panel);
@@ -2544,6 +2564,8 @@ void RoomScene::showControllerMenu()
     rewindStatus->setTextFormat(Qt::PlainText);
     rewindStatus->setWordWrap(true);
     layout->addWidget(rewindStatus);
+    QPushButton *rewindStart = add("controllerManagedStartGame", tr("Start restricted game"), false,
+        []() { if (ClientInstance) ClientInstance->requestManagedRewindGameStart(); });
     const auto rewindAction = [this](const QString &operation) {
         if (ClientInstance)
             ClientInstance->requestManagedRewind(operation);
@@ -2558,7 +2580,7 @@ void RoomScene::showControllerMenu()
         [this]() { if (ClientInstance) ClientInstance->requestManagedRewindCancel(); });
     rewindCancel->setToolTip(tr(
         "Cancels only a queued request. If execution has started, the server reports status and the rewind continues."));
-    const auto refreshManagedRewind = [this, connected, rewindStatus, rewindStep, rewindTurn,
+    const auto refreshManagedRewind = [this, connected, rewindStatus, rewindStart, rewindStep, rewindTurn,
                                        rewindRound, rewindCancel]() {
         if (!rewindStatus || !rewindStep || !rewindTurn || !rewindRound || !rewindCancel)
             return;
@@ -2567,6 +2589,7 @@ void RoomScene::showControllerMenu()
             : tr("Managed rewind is not available while viewing a replay."));
         const bool enabled = connected && ClientInstance
             && ClientInstance->canRequestManagedRewind();
+        rewindStart->setEnabled(connected && ClientInstance && ClientInstance->canStartManagedRewindGame());
         rewindStep->setEnabled(enabled);
         rewindTurn->setEnabled(enabled);
         rewindRound->setEnabled(enabled);
@@ -4975,6 +4998,7 @@ void RoomScene::startInXs()
 {
 	if(add_robot) add_robot->hide();
 	if(start_game) start_game->hide();
+	if(managed_start_game) managed_start_game->hide();
 	if(return_to_main_menu) return_to_main_menu->hide();
 }
 
@@ -5865,6 +5889,9 @@ void RoomScene::hidePile()
 
 void RoomScene::showOwnerButtons(bool owner)
 {
+	if (managed_start_game)
+		managed_start_game->setVisible(owner && !game_started && ClientInstance
+			&& ClientInstance->canStartManagedRewindGame());
 	if(add_robot&&start_game&&!game_started&&ServerInfo.EnableAI){
 		add_robot->setVisible(owner);
 		start_game->setVisible(owner);

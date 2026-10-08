@@ -277,6 +277,7 @@ private:
     GenericCardContainer *_getGenericCardContainer(Player::Place place, const Player *player = nullptr);
     QMap<int, QList<QList<CardItem *> > > _m_cardsMoveStash;
     Button *add_robot, *start_game, *return_to_main_menu;
+    Button *managed_start_game = nullptr;
     QList<Photo *> photos;
     QMap<QString, Photo *> name2photo;
     Dashboard *dashboard;

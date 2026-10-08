@@ -55,6 +55,8 @@ public:
     void disconnectGracefully();
     bool isActive() const;
     bool isStateSyncActive() const { return m_syncActive; }
+    bool canStartManagedGame() const;
+    bool requestManagedGameStart(QString *error = nullptr);
     quint64 generation() const;
     ClientLiveSessionOptions options() const { return m_options; }
 
@@ -117,6 +119,7 @@ private:
     bool m_reconnectAttempt = false;
     bool m_shuttingDown = false;
     bool m_failureEmitted = false;
+    bool m_managedStartPending = false;
 };
 
 #endif

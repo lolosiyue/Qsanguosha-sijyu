@@ -96,6 +96,8 @@ struct ReadyPayload
 {
     static constexpr int SchemaVersion = 1;
     bool ready = true;
+    // An explicit owner action, separate from the automatic transport handshake.
+    bool managedGameStart = false;
 
     QVariantMap toVariant() const;
     static bool parse(const QVariant &value, ReadyPayload *payload,

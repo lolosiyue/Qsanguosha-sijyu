@@ -305,6 +305,7 @@ void ManagedRewindLab::run(RoomThread &worker)
 void ManagedRewindLab::connected(ServerPlayer *player)
 {
     if (!m_network || !player || player->getRoom() != m_room) return;
+    QList<ServerPlayer *> recipients;
     {
         QMutexLocker lock(&m_mutex);
         auto &peer = m_peers[player];
@@ -322,8 +323,10 @@ void ManagedRewindLab::connected(ServerPlayer *player)
             m_busy = true;
             m_wake.wakeOne();
         }
+        for (auto it = m_peers.cbegin(); it != m_peers.cend(); ++it)
+            if (it.value().connected) recipients.append(it.key());
     }
-    sendStatus(player);
+    for (auto *recipient : recipients) sendStatus(recipient);
 }
 
 void ManagedRewindLab::disconnected(ServerPlayer *player)
@@ -370,6 +373,11 @@ void ManagedRewindLab::sendStatus(ServerPlayer *player, const QString &message, 
         status.supported = m_started && m_failure.isEmpty();
         status.authorized = peer.owner && Config.EnableCheat;
         status.busy = m_busy;
+        status.startAllowed = !m_started && m_failure.isEmpty() && !m_busy
+            && status.authorized && m_room && m_room->getPlayers().size() == 2;
+        if (status.startAllowed)
+            for (auto *seat : m_room->getPlayers())
+                if (!m_peers.value(seat).connected) status.startAllowed = false;
         status.ackSequence = ack;
         status.profile = QStringLiteral("restricted_trust_02p");
         status.message = !m_failure.isEmpty() ? m_failure.left(256)

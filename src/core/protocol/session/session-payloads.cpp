@@ -462,8 +462,11 @@ bool SetupPayload::parse(const QVariant &value, SetupPayload *payload, QString *
 
 QVariantMap ReadyPayload::toVariant() const
 {
-    return {{QStringLiteral("schema_version"), SchemaVersion},
-            {QStringLiteral("ready"), ready}};
+    QVariantMap object{{QStringLiteral("schema_version"), SchemaVersion},
+                       {QStringLiteral("ready"), ready}};
+    if (managedGameStart)
+        object.insert(QStringLiteral("managed_game_start"), true);
+    return object;
 }
 
 bool ReadyPayload::parse(const QVariant &value, ReadyPayload *payload, QString *error)
@@ -477,6 +480,12 @@ bool ReadyPayload::parse(const QVariant &value, ReadyPayload *payload, QString *
                          QStringLiteral("ReadyPayload"), error)) {
         return false;
     }
+    if (object.contains(QStringLiteral("managed_game_start"))
+        && !requiredBool(object, QStringLiteral("managed_game_start"), &parsed.managedGameStart,
+                         QStringLiteral("ReadyPayload"), error))
+        return false;
+    if (parsed.managedGameStart && !parsed.ready)
+        return fail(error, QStringLiteral("Managed game start requires READY"));
     *payload = parsed;
     return true;
 }
