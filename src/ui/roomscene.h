@@ -121,6 +121,7 @@ public:
     void showGameControlPanel();
     void showControllerMenu();
     bool controllerOwnsDialog(const QWidget *dialog) const;
+    bool nativeKeyboardAvailable() const;
     bool handleNativeKey(QKeyEvent *event);
     void changeTextEditBackground();
     void adjustItems();

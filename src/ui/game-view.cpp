@@ -285,6 +285,25 @@ void FitView::drawForeground(QPainter *painter, const QRectF &rect)
 
 bool FitView::event(QEvent *event)
 {
+    if (event->type() == QEvent::ShortcutOverride) {
+        auto *key = static_cast<QKeyEvent *>(event);
+        auto *room = qobject_cast<RoomScene *>(scene());
+        if (room && room->nativeKeyboardAvailable()
+            && !(key->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
+            switch (key->key()) {
+            case Qt::Key_Tab: case Qt::Key_Backtab:
+            case Qt::Key_Left: case Qt::Key_Right: case Qt::Key_Up: case Qt::Key_Down:
+            case Qt::Key_Return: case Qt::Key_Enter: case Qt::Key_Space: case Qt::Key_Escape:
+            case Qt::Key_F2: case Qt::Key_Plus: case Qt::Key_Minus:
+                // Reserve the key from descriptive menu shortcuts. Dispatch
+                // only on KeyPress, never during this preflight event.
+                event->accept();
+                return true;
+            default:
+                break;
+            }
+        }
+    }
     // QWidget consumes Tab before keyPressEvent. Route native gameplay keys
     // here so the table stays operable without opening the widget action panel.
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
