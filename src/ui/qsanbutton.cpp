@@ -507,10 +507,28 @@ void QSanInvokeSkillButton::_repaint()
         QString skillName = _m_displayName.isEmpty()
             ? Sanguosha->translate(_m_skill->objectName()) : _m_displayName;
         if (_m_enumWidth != S_WIDTH_WIDE) skillName = skillName.left(4);
-        font.paintText(&painter,
-            (ButtonState)i == S_STATE_DOWN ? G_DASHBOARD_LAYOUT.m_skillTextAreaDown[_m_enumWidth] :
-            G_DASHBOARD_LAYOUT.m_skillTextArea[_m_enumWidth],
-            Qt::AlignCenter, skillName);
+        const QRect textArea = (ButtonState)i == S_STATE_DOWN
+            ? G_DASHBOARD_LAYOUT.m_skillTextAreaDown[_m_enumWidth]
+            : G_DASHBOARD_LAYOUT.m_skillTextArea[_m_enumWidth];
+#ifndef Q_OS_ANDROID
+        // The text skin also works without the release's font/ assets.
+        // FreeType cannot paint a missing face; let Qt resolve a system font.
+        const QSanSkinFactory &factory = QSanSkinFactory::getInstance();
+        if (!font.m_fontFace && factory.getCurrentSkinName() == factory.S_TEXT_SKIN_NAME) {
+            const QRect area = textArea.intersected(_m_bgPixmap[i].rect());
+            QFont fallback(QStringLiteral("Microsoft YaHei"));
+            fallback.setStyleHint(QFont::SansSerif);
+            int pixelSize = font.m_fontSize.height();
+            fallback.setPixelSize(pixelSize);
+            while (pixelSize > 6 && QFontMetrics(fallback).boundingRect(skillName).width() > area.width())
+                fallback.setPixelSize(--pixelSize);
+            painter.setFont(fallback);
+            painter.setPen(font.m_color);
+            painter.setRenderHint(QPainter::TextAntialiasing);
+            painter.drawText(area, Qt::AlignCenter, skillName);
+        } else
+#endif
+            font.paintText(&painter, textArea, Qt::AlignCenter, skillName);
 
     }
     setSize(_m_bgPixmap[0].size());
