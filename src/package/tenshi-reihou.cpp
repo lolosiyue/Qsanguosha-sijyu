@@ -6,6 +6,7 @@
 #include "skill-instance-types.h"
 #include "standard.h"
 #include "maneuvering.h"
+#include "h-strategic-advantage.h"
 
 namespace {
 
@@ -566,16 +567,24 @@ class RhXuesha : public TriggerSkillV2
 public:
 	RhXuesha() : TriggerSkillV2("rhxuesha")
 	{
-		events << DamageInflicted << TargetSpecified;
+		events << DamageInflicted << DamageDone << TargetSpecified;
 		frequency = Compulsory;
+	}
+
+	// Count damage taken this turn; the mark resets at NotActive through "-Clear".
+	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+	{
+		if (event == DamageDone && room && player && player->hasSkill(objectName()))
+			room->addPlayerMark(player, "rhxuesha_damaged-Clear");
+		return false;
 	}
 
 	TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
 	{
-		if (!player || !player->isAlive() || !player->hasSkill(objectName()))
+		if (event == DamageDone || !player || !player->isAlive() || !player->hasSkill(objectName()))
 			return TriggerList();
 		if (event == DamageInflicted)
-			return player->getMark("ikguijing") > 0 && player->isWounded()
+			return player->getMark("rhxuesha_damaged-Clear") > 0 && player->isWounded()
 				? TriggerList{{player, QStringList(objectName())}} : TriggerList();
 		const CardUseStruct use = data.value<CardUseStruct>();
 		if (use.card && use.card->isKindOf("Slash") && use.card->isRed())
@@ -1629,6 +1638,55 @@ public:
 	}
 };
 
+// Keeps "hand count < 2" players inside each rhmangti holder's attack range.
+// The pairs this skill added are remembered per holder, so other skills' pairs stay.
+void reihouSyncMangti(Room *room)
+{
+	foreach (ServerPlayer *p, room->getAllPlayers(true)) {
+		const QStringList had = p->getTag("RhMangtiPairs").toStringList();
+		QStringList want;
+		if (p->isAlive() && p->hasSkill("rhmangti")) {
+			foreach (ServerPlayer *q, room->getOtherPlayers(p)) {
+				if (q->getHandcardNum() < 2)
+					want << q->objectName();
+			}
+		}
+		if (had == want)
+			continue;
+		foreach (const QString &name, had) {
+			ServerPlayer *q = room->findPlayerByObjectName(name, true);
+			if (q && !want.contains(name))
+				room->removeAttackRangePair(p, q);
+		}
+		foreach (const QString &name, want) {
+			ServerPlayer *q = room->findPlayerByObjectName(name, true);
+			if (q && !had.contains(name))
+				room->insertAttackRangePair(p, q);
+		}
+		if (want.isEmpty())
+			p->removeTag("RhMangtiPairs");
+		else
+			p->setTag("RhMangtiPairs", want);
+	}
+}
+
+class RhMangtiRange : public TriggerSkillV2
+{
+public:
+	RhMangtiRange() : TriggerSkillV2("#rhmangti")
+	{
+		events << CardsMoveOneTime << EventAcquireSkill << EventLoseSkill << Death;
+		frequency = Compulsory;
+	}
+
+	bool recordEvent(TriggerEvent, Room *room, ServerPlayer *, QVariant &) const override
+	{
+		if (room)
+			reihouSyncMangti(room);
+		return false;
+	}
+};
+
 class RhWangzhong : public TriggerSkillV2
 {
 public:
@@ -1892,7 +1950,7 @@ public:
 			if (p->getMark(objectName()) <= 0)
 				continue;
 			room->setPlayerMark(p, objectName(), 0);
-			room->detachSkillFromPlayer(p, "ikwushuang", false, true);
+			room->detachSkillFromPlayer(p, "wushuang", false, true);
 		}
 		return false;
 	}
@@ -1919,9 +1977,9 @@ public:
 	{
 		if (!player || !room || !ctx.original_data)
 			return false;
-		if (!player->hasSkill("ikwushuang")) {
+		if (!player->hasSkill("wushuang")) {
 			room->addPlayerMark(player, objectName());
-			room->acquireSkill(player, "ikwushuang");
+			room->acquireSkill(player, "wushuang");
 		}
 		const DamageStruct damage = ctx.original_data->value<DamageStruct>();
 		if (!damage.from || !damage.from->isAlive())
@@ -2368,11 +2426,11 @@ public:
 	}
 };
 
+// cloneCard("lure_tiger") is null outside hegemony; construct the class directly.
 Card *reihouLureTiger()
 {
-	Card *card = Sanguosha->cloneCard("lure_tiger", Card::NoSuit, 0);
-	if (card)
-		card->setSkillName("_rhwuyin");
+	Card *card = new HLureTiger(Card::NoSuit, 0);
+	card->setSkillName("_rhwuyin");
 	return card;
 }
 
@@ -3859,6 +3917,50 @@ public:
 	}
 };
 
+// Peach from rhchuilu: during play it may target another wounded player.
+// Rescue uses keep the target fixed, like an ordinary Peach.
+class RhChuiluPeach : public Peach
+{
+public:
+	RhChuiluPeach(Card::Suit suit, int number) : Peach(suit, number) { target_fixed = false; }
+
+	static bool responseUse()
+	{
+		RoomState *state = Sanguosha->currentRoomState();
+		return state && state->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+	}
+
+	bool targetFixed() const override { return responseUse(); }
+
+	bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const override
+	{
+		if (responseUse())
+			return Peach::targetFilter(targets, to_select, Self);
+		const int limit = 1 + Sanguosha->correctCardTarget(TargetModSkill::ExtraTarget, Self, this);
+		return targets.length() < limit && to_select->isWounded() && !Self->isProhibited(to_select, this, targets);
+	}
+
+	bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override
+	{
+		if (responseUse())
+			return true;
+		return !targets.isEmpty() || (Self && Self->isWounded() && !Self->isProhibited(Self, this));
+	}
+
+	bool isAvailable(const Player *player) const override
+	{
+		if (!player || !BasicCard::isAvailable(player))
+			return false;
+		QList<const Player *> candidates = player->getAliveSiblings();
+		candidates << player;
+		foreach (const Player *p, candidates) {
+			if (p->isWounded() && !player->isProhibited(p, this))
+				return true;
+		}
+		return false;
+	}
+};
+
 class RhChuilu : public ViewAsSkillV2
 {
 public:
@@ -3871,9 +3973,7 @@ public:
 		if (!request.initiator || !request.activationRef.isValid() || !reihouHasRed(request.initiator))
 			return false;
 		if (request.reason == CardUseStruct::CARD_USE_REASON_PLAY) {
-			Card *peach = Sanguosha->cloneCard("peach", Card::NoSuit, 0);
-			if (!peach)
-				return false;
+			RhChuiluPeach *peach = new RhChuiluPeach(Card::NoSuit, 0);
 			peach->setSkillName(objectName());
 			const bool available = peach->isAvailable(request.initiator);
 			delete peach;
@@ -3896,9 +3996,7 @@ public:
 		const Card *origin = Sanguosha->getCard(request.selectedCardIds.first());
 		if (!origin)
 			return nullptr;
-		Card *peach = Sanguosha->cloneCard("peach", origin->getSuit(), origin->getNumber());
-		if (!peach)
-			return nullptr;
+		Card *peach = new RhChuiluPeach(origin->getSuit(), origin->getNumber());
 		peach->setSkillName(objectName());
 		peach->addSubcard(origin);
 		return peach;
@@ -4637,6 +4735,8 @@ TenshiReihouPackage::TenshiReihouPackage()
 
 	General *reihou018 = new General(this, "reihou018", "rei", 4, true, true);
 	reihou018->addSkill(new RhMangti);
+	reihou018->addSkill(new RhMangtiRange);
+	related_skills.insert("rhmangti", "#rhmangti");
 	reihou018->addSkill(new RhLingwei);
 
 	General *reihou019 = new General(this, "reihou019", "rei", 4, true, true);
