@@ -105,6 +105,19 @@ set(QSAN_SOURCES
     src/package/yinhu.cpp
     src/package/yitian.cpp
     src/package/tenshi-reihou.cpp
+    src/package/touhou-kaze.cpp
+    src/package/touhou-hana.cpp
+    src/package/touhou-yuki.cpp
+    src/package/touhou-tsuki.cpp
+    src/package/touhou-bangai.cpp
+    src/package/touhou-kami.cpp
+    src/package/touhou-sp.cpp
+    src/package/touhou-shin.cpp
+    src/package/ikai-do.cpp
+    src/package/ikai-ka.cpp
+    src/package/ikai-kin.cpp
+    src/package/ikai-moku.cpp
+    src/package/ikai-sui.cpp
     src/package/yjcm.cpp
     src/package/yjcm2012.cpp
     src/package/yjcm2013.cpp

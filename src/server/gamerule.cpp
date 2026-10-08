@@ -1370,7 +1370,8 @@ case BuryVictim: {
             return false;
         room->clearSkillInvalidityBySource(player);
         ServerPlayer *killer = death.damage ? death.damage->from : nullptr;
-        //if(killer)
+        // ikai-sui iktianzuoyounai: its owner's kills carry no reward or penalty.
+        if(!killer || !killer->hasSkill("iktianzuoyounai"))
             rewardAndPunish(killer,player);
 		if(room->getMode()=="06_ol"){
 			if(player->getGeneralName()=="zhuyin"&&killer&&killer->getRole()=="rebel"){
