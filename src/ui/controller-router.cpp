@@ -484,6 +484,11 @@ void ControllerRouter::observe()
         auto *presentation = RoomSceneInstance->gamePresentation();
         observation.insert("actions", presentation->currentActions().toJson());
         observation.insert("table_focus", presentation->controllerFocus());
+        observation.insert("native_keyboard_ready", RoomSceneInstance->nativeKeyboardAvailable());
+        QGraphicsItem *sceneFocus = RoomSceneInstance->focusItem();
+        auto *focusObject = dynamic_cast<QGraphicsObject *>(sceneFocus);
+        observation.insert("scene_focus", focusObject ? focusObject->objectName() : QString());
+        observation.insert("scene_focus_type", sceneFocus ? sceneFocus->type() : -1);
         observation.insert("unsupported_controller_interaction", RoomSceneInstance->mainWindow()->property("controllerUnsupported").toString());
     }
     trace("observation", observation);

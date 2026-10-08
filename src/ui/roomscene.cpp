@@ -2443,6 +2443,34 @@ void RoomScene::updateSelectedTargets()
 	updateTargetsEnablity(card);
 }
 
+bool RoomScene::nativeKeyboardAvailable() const
+{
+    if (!ClientInstance || QApplication::activeModalWidget()) return false;
+    const auto visibleOwner = [](const QGraphicsItem *item) {
+        return item && item->isVisible() && item->isEnabled() && item->effectiveOpacity() > 0.0;
+    };
+    if (chat_edit && chat_edit->hasFocus() && visibleOwner(chat_edit_widget)) return false;
+    for (QGraphicsItem *item = focusItem(); item; item = item->parentItem()) {
+        if (!visibleOwner(item)) continue;
+        if (auto *proxy = dynamic_cast<QGraphicsProxyWidget *>(item)) {
+            // A view can retain a proxy as its scene focus item without the
+            // embedded widget owning keyboard focus (for example the log).
+            // Protect actual widget input, not that stale graphics focus.
+            QWidget *widget = proxy->widget();
+            QWidget *focus = widget ? widget->focusWidget() : nullptr;
+            if (widget && (widget->hasFocus() || (focus && focus->hasFocus()))) return false;
+        }
+        if (auto *text = dynamic_cast<QGraphicsTextItem *>(item))
+            if (text->textInteractionFlags() != Qt::NoTextInteraction) return false;
+    }
+    ClientCore *core = ClientInstance->interactionCore();
+    const auto *session = ClientInstance->liveSession();
+    return core && core->hasActiveRequest() && !ClientInstance->getReplayer()
+        && !ClientInstance->isPresentationStateSyncActive() && session && session->isActive()
+        && !session->isStateSyncActive() && !core->activeRequest().isExpired(core->now())
+        && core->activeRequest().type != InteractionType::QmlInteract;
+}
+
 bool RoomScene::handleNativeKey(QKeyEvent *event)
 {
     const int key = event->key();
@@ -2457,19 +2485,8 @@ bool RoomScene::handleNativeKey(QKeyEvent *event)
         event->accept(); // One activation per physical key press, even across requests.
         return true;
     }
-    if (!ClientInstance || QApplication::activeModalWidget()
-        || (chat_edit && chat_edit->hasFocus())) return false;
-    for (QGraphicsItem *item = focusItem(); item; item = item->parentItem()) {
-        if (dynamic_cast<QGraphicsProxyWidget *>(item)) return false;
-        if (auto *text = dynamic_cast<QGraphicsTextItem *>(item))
-            if (text->textInteractionFlags() != Qt::NoTextInteraction) return false;
-    }
+    if (!nativeKeyboardAvailable()) return false;
     ClientCore *core = ClientInstance->interactionCore();
-    const auto *session = ClientInstance->liveSession();
-    if (!core || !core->hasActiveRequest() || ClientInstance->getReplayer()
-        || ClientInstance->isPresentationStateSyncActive() || !session || !session->isActive()
-        || session->isStateSyncActive() || core->activeRequest().isExpired(core->now())
-        || core->activeRequest().type == InteractionType::QmlInteract) return false;
 
     // Reserve the key before callbacks: opening a skill dialog may run a nested
     // event loop before this handler returns.
