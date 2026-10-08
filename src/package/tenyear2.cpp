@@ -34101,7 +34101,7 @@ public:
 	{
 		if(event==Death){
 			DeathStruct death = data.value<DeathStruct>();
-			if(death.damage&&death.damage->from==player&&death.damage->card->getSkillNames().contains(objectName())){
+			if(death.damage&&death.damage->from==player&&death.damage->card&&death.damage->card->getSkillNames().contains(objectName())){
 				foreach(int id,player->drawCardsList(player->getMaxHp()-player->getHandcardNum(),objectName())){
 					if(player->hasCard(id))room->setCardTip(id,"shouhu");
 				}
