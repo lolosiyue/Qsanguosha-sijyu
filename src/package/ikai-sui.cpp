@@ -5626,11 +5626,6 @@ IkaiSuiPackage::IkaiSuiPackage()
     wind046->addSkill(new IkDuanmengEffect);
     related_skills.insert("ikduanmeng", "#ikduanmeng");
 
-    // 反塚 is 散谣; 元缘 is 制蛮.
-    General *wind049 = new General(this, "wind049", "kaze", 3);
-    wind049->addSkill("sanyao");
-    wind049->addSkill("zhiman");
-
     // 殇蚀 is 残蚀; 惆海 is 惆海.
     General *wind052 = new General(this, "wind052", "kaze", 5);
     wind052->addSkill("canshi");
@@ -5678,10 +5673,6 @@ IkaiSuiPackage::IkaiSuiPackage()
     wind061->addSkill(new IkGuangyou);
     wind061->addSkill(new IkGuangyouMax);
     related_skills.insert("ikguangyou", "#ikguangyou");
-
-    // 霸守 is 骁果.
-    General *bloom023 = new General(this, "bloom023", "hana");
-    bloom023->addSkill("xiaoguo");
 
     General *bloom024 = new General(this, "bloom024", "hana");
     bloom024->addSkill(new IkXinban);
@@ -5734,22 +5725,12 @@ IkaiSuiPackage::IkaiSuiPackage()
     related_skills.insert("ikzhiyu", "#ikzhiyu");
     related_skills.insert("ikzhiyu", "#ikzhiyu-tar");
 
-    // 陈情 is 陈情; 默憬 is 默识.
-    General *bloom058 = new General(this, "bloom058", "hana", 3, false);
-    bloom058->addSkill("chenqing");
-    bloom058->addSkill("mozhi");
-
     General *bloom059 = new General(this, "bloom059", "hana", 3);
     bloom059->addSkill(new IkSuzhong);
     bloom059->addSkill(new IkYunhua);
 
     General *bloom060 = new General(this, "bloom060", "hana");
     bloom060->addSkill(new IkYongye);
-
-    // 纵啼 is 鼓舌; 鸣冲 is 激词.
-    General *bloom061 = new General(this, "bloom061", "hana", 3);
-    bloom061->addSkill("gushe");
-    bloom061->addSkill("jici");
 
     General *bloom062 = new General(this, "bloom062", "hana");
     bloom062->addSkill(new IkShemou);
@@ -5787,11 +5768,6 @@ IkaiSuiPackage::IkaiSuiPackage()
     General *snow044 = new General(this, "snow044", "yuki");
     snow044->addSkill(new IkLunke);
     snow044->addSkill(new IkCangmie);
-
-    // 鳞步 is 魅步; 穆穆 is 穆穆.
-    General *snow047 = new General(this, "snow047", "yuki", 3, false);
-    snow047->addSkill("meibu");
-    snow047->addSkill("mumu");
 
     // 摇音 is 去疾.
     General *snow050 = new General(this, "snow050", "yuki", 3);
@@ -5864,11 +5840,6 @@ IkaiSuiPackage::IkaiSuiPackage()
     General *luna026 = new General(this, "luna026", "tsuki", 3);
     luna026->addSkill("bifa");
     luna026->addSkill(new IkJiaojin);
-
-    // 慑切 is 谋诛; 延咒 is 延祸.
-    General *luna035 = new General(this, "luna035", "tsuki");
-    luna035->addSkill("mouzhu");
-    luna035->addSkill("yanhuo");
 
     // 逆蹴 is 逆乱.
     General *luna040 = new General(this, "luna040", "tsuki", 3);
