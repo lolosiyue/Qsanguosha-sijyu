@@ -8972,6 +8972,8 @@ QList<int> Room::getAvailableCardList(ServerPlayer*player, const QString&flags, 
 			||c->objectName().startsWith("_")||ban.contains(c->getPackage())) continue;
 		if (flags.contains(c->getType())){
 			Card*dc = Sanguosha->cloneCard(c->objectName());
+			// Hegemony-only cards do not clone outside hegemony mode.
+			if (!dc) continue;
 			if (card) dc->addSubcard(card);
 			dc->setSkillName(skill_name);
 			if (dc->isAvailable(player)){
