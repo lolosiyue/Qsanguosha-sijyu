@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import socket
@@ -175,6 +176,35 @@ def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
             raise SmokeFailure(f"server cannot admit Web clients: rules_bundle={rules_bundle!r}")
         if rules_bundle.get("content_profile") != "declared-v2" or not rules_bundle.get("bundle_id"):
             raise SmokeFailure(f"hello rules_bundle is not a sealed declared-v2 identity: {rules_bundle!r}")
+
+        # The assembly library must be delivered and hashed as shared rules;
+        # its opt-in example must not become part of the Docker rules profile.
+        content = hello_payload.get("rules_content")
+        if not isinstance(content, dict) or content.get("schema_version") != 2 \
+                or content.get("profile") != "declared-v2":
+            raise SmokeFailure("hello is missing the declared-v2 content manifest")
+        runtime = content.get("runtime_content")
+        entries = runtime.get("extensions") if isinstance(runtime, dict) else None
+        files = content.get("files")
+        if not isinstance(runtime, dict) or runtime.get("schema_version") != 2 \
+                or runtime.get("profile") != "declared-v2" \
+                or not isinstance(entries, list) or not isinstance(files, list):
+            raise SmokeFailure("hello content manifest is missing extensions or files")
+        library = "lua/skill_assembly.lua"
+        if sum(isinstance(entry, dict) and isinstance(entry.get("libs"), list)
+               and library in entry["libs"]
+               for entry in entries) != 1:
+            raise SmokeFailure("assembly library is not declared exactly once")
+        library_entries = [entry for entry in files
+                           if isinstance(entry, dict) and entry.get("path") == library]
+        library_bytes = (Path(__file__).resolve().parents[2] / library).read_bytes()
+        expected_library = {"path": library, "role": "rules", "size": len(library_bytes),
+                            "sha256": hashlib.sha256(library_bytes).hexdigest()}
+        if library_entries != [expected_library]:
+            raise SmokeFailure("assembly library rules content does not match the source")
+        if any(isinstance(entry, dict) and entry.get("path") == "lua/skill_assembly_example.lua"
+               for entry in files):
+            raise SmokeFailure("opt-in assembly example leaked into rules content")
 
         signup_id = stream.send(
             "request",

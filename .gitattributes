@@ -8,3 +8,4 @@ lua/sanguosha.lua text eol=lf
 lua/utilities.lua text eol=lf
 lua/sgs_ex.lua text eol=lf
 lua/lib/json.lua text eol=lf
+lua/skill_assembly.lua text eol=lf

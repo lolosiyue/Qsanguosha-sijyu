@@ -60,9 +60,12 @@ RUN cmake -S /src -B /build -G Ninja \
 # The Web admission gate (declared-v2) rejects Lua that lua/config.lua does not
 # declare. chat_config.lua only feeds the GUI chat panel; lib/sqlite3.lua and
 # game-state-contract.lua have no production caller (managed Room state uses
-# the native bridge), so the dedicated server image leaves these files out.
+# the native bridge). skill_assembly_example.lua is opt-in authoring content,
+# so the dedicated server image leaves these files out. The declared assembly
+# library remains available to extension packages and Web rules clients.
 RUN rm /staging/opt/qsanguosha/share/qsanguosha/lua/chat_config.lua \
         /staging/opt/qsanguosha/share/qsanguosha/lua/game-state-contract.lua \
+        /staging/opt/qsanguosha/share/qsanguosha/lua/skill_assembly_example.lua \
         /staging/opt/qsanguosha/share/qsanguosha/lua/lib/sqlite3.lua
 
 
