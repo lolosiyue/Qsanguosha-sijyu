@@ -105,11 +105,14 @@ docker run --rm --entrypoint /bin/sh "$image" -ec '
     test "$(id -u)" -eq 9527
     test "$(id -g)" -eq 9527
     test -f /opt/qsanguosha/lua/sanguosha.lua
+    test -f /opt/qsanguosha/lua/skill_assembly.lua
     test -f /opt/qsanguosha/lua/ai/smart-ai.lua
     test -f /opt/qsanguosha/lua/ai/isolated/ask-for-use-card.lua
     test -d /opt/qsanguosha/extensions
     test -f /opt/qsanguosha/lang/zh_CN/Common.lua
     test ! -e /opt/qsanguosha/lua/chat_config.lua
+    test ! -e /opt/qsanguosha/lua/game-state-contract.lua
+    test ! -e /opt/qsanguosha/lua/skill_assembly_example.lua
     test ! -e /opt/qsanguosha/lua/lib/sqlite3.lua
     test ! -w /opt/qsanguosha/lang
     extension_count=0
