@@ -551,7 +551,7 @@ public:
         ServerPlayer *from = damage.from;
         if (!from || !from->isAlive() || !from->hasSkill(objectName()) || from->getPhase() != Player::Play || !damage.card
             || !damage.card->isKindOf("Slash") || damage.card->getSkillName() != objectName()
-            || (from->hasSkill("ikchilian", true) && from->hasSkill("paoxiao", true)))
+            || (from->hasSkill("ikchilian", true) && from->hasSkill("ikyipao", true)))
             return TriggerList();
         return TriggerList{{from, {objectName()}}};
     }
@@ -560,7 +560,7 @@ public:
     {
         room->sendCompulsoryTriggerLog(ctx.owner, objectName());
         grantTracked(room, ctx.owner, "IkLichiSkills", "ikchilian");
-        grantTracked(room, ctx.owner, "IkLichiSkills", "paoxiao");
+        grantTracked(room, ctx.owner, "IkLichiSkills", "ikyipao");
         return false;
     }
 };
@@ -2945,7 +2945,7 @@ IkaiKinPackage::IkaiKinPackage()
     General *wind032 = new General(this, "wind032", "kaze");
     wind032->addSkill(new IkLichi);
     wind032->addRelateSkill("ikchilian");
-    wind032->addRelateSkill("paoxiao");
+    wind032->addRelateSkill("ikyipao");
 
     General *wind037 = new General(this, "wind037", "kaze", 4, true, true);
     wind037->addSkill(new IkXuanren);

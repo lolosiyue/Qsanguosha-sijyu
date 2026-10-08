@@ -209,8 +209,7 @@ public:
         room->setPlayerMark(player, objectName(), 1);
         if (room->changeMaxHpForAwakenSkill(player, -1, objectName())) {
             room->acquireSkillFromEffect(player, "thhuanfa", ctx);
-            // Upstream grants its own 祝祭; the local 义从 is the same rule.
-            room->acquireSkillFromEffect(player, "yicong", ctx);
+            room->acquireSkillFromEffect(player, "ikzhuji", ctx);
         }
         return false;
     }
@@ -2344,7 +2343,7 @@ TouhouYukiPackage::TouhouYukiPackage()
     yuki001->addSkill(new ThErchong);
     yuki001->addSkill(new ThChundu);
     yuki001->addRelateSkill("thhuanfa");
-    yuki001->addRelateSkill("yicong");
+    yuki001->addRelateSkill("ikzhuji");
 
     General *yuki002 = new General(this, "yuki002", "yuki");
     yuki002->addSkill(new ThZuishang);
