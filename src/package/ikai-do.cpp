@@ -1012,19 +1012,9 @@ IkaiDoPackage::IkaiDoPackage()
     wind003->addSkill("paoxiao");
     wind003->addSkill(new IkShijiu);
 
-    // 虚视 is 观星; 静幽 is 空城.
-    General *wind004 = new General(this, "wind004", "kaze", 3);
-    wind004->addSkill("guanxing");
-    wind004->addSkill("kongcheng");
-
     General *wind006 = new General(this, "wind006", "kaze");
     wind006->addSkill("mashu");
     wind006->addSkill(new IkYufeng);
-
-    // 慧泉 is the old 集智; 疾智 with 弧顾 is 奇才.
-    General *wind007 = new General(this, "wind007", "kaze", 3, false);
-    wind007->addSkill("nosjizhi");
-    wind007->addSkill("qicai");
 
     // 暴殴 is 诛害.
     General *wind042 = new General(this, "wind042", "kaze");
@@ -1042,41 +1032,15 @@ IkaiDoPackage::IkaiDoPackage()
     bloom002->addSkill("fankui");
     bloom002->addSkill(new IkZhimen);
 
-    // 傲戾 is 刚烈; 清俭 is 清俭.
-    General *bloom003 = new General(this, "bloom003", "hana");
-    bloom003->addSkill("ganglie");
-    bloom003->addSkill("qingjian");
-
-    // 赤宝 is 突袭.
-    General *bloom004 = new General(this, "bloom004", "hana");
-    bloom004->addSkill("tuxi");
-
-    General *bloom005 = new General(this, "bloom005", "hana");
-    bloom005->addSkill("luoyi");
-
     // 羽梦 is 十周年 遗计.
     General *bloom006 = new General(this, "bloom006", "hana", 3);
     bloom006->addSkill("iktiandu");
     bloom006->addSkill("tenyearyiji");
 
-    // 濛漾 is 洛神; 重岩 is 倾国.
-    General *bloom007 = new General(this, "bloom007", "hana", 3, false);
-    bloom007->addSkill("luoshen");
-    bloom007->addSkill("qingguo");
-
-    General *bloom042 = new General(this, "bloom042", "hana", 3);
-    bloom042->addSkill("xunxun");
-    bloom042->addSkill("wangxi");
-
     // 制衡 is 十周年 制衡.
     General *snow001 = new General(this, "snow001$", "yuki");
     snow001->addSkill("tenyearzhiheng");
     snow001->addSkill(new IkJiyuan);
-
-    // 窥破 is 奇袭; 诡思 is 奋威.
-    General *snow002 = new General(this, "snow002", "yuki");
-    snow002->addSkill("qixi");
-    snow002->addSkill("fenwei");
 
     General *snow003 = new General(this, "snow003", "yuki");
     snow003->addSkill(new IkBiju);
@@ -1088,43 +1052,14 @@ IkaiDoPackage::IkaiDoPackage()
     snow004->addSkill("noskurou");
     snow004->addSkill(new IkZaiqi);
 
-    // 鬼灯 is 反间; 沉红 is 英姿.
-    General *snow005 = new General(this, "snow005", "yuki", 3);
-    snow005->addSkill("fanjian");
-    snow005->addSkill("yingzi");
-
-    // 婉媚 is 国色; 眩惑 is 流离.
-    General *snow006 = new General(this, "snow006", "yuki", 3, false);
-    snow006->addSkill("guose");
-    snow006->addSkill("liuli");
-
     // 无竭 is the old 连营.
     General *snow007 = new General(this, "snow007", "yuki", 3);
     snow007->addSkill("noslianying");
     snow007->addSkill(new IkYuanhe);
 
-    // 浣露 is 结姻; 苍幽 is 枭姬.
-    General *snow008 = new General(this, "snow008", "yuki", 3, false);
-    snow008->addSkill("jieyin");
-    snow008->addSkill("xiaoji");
-
-    // 自戕 is 苦肉; 零式 is 诈降.
-    General *snow042 = new General(this, "snow042", "yuki");
-    snow042->addSkill("kurou");
-    snow042->addSkill("zhaxiang");
-
     General *luna002 = new General(this, "luna002", "tsuki");
     luna002->addSkill("wushuang");
     luna002->addSkill(new IkWudi);
-
-    // 倾国 is the old 离间.
-    General *luna003 = new General(this, "luna003", "tsuki", 3, false);
-    luna003->addSkill("noslijian");
-    luna003->addSkill("biyue");
-
-    General *luna006 = new General(this, "luna006", "tsuki", 3, true, true);
-    luna006->addSkill("jijiu");
-    luna006->addSkill("qingnang");
 
     // 本音 needs upstream's 紫莲圣咏, which has no local card.
     General *luna018 = new General(this, "luna018", "tsuki", 3);
@@ -1136,11 +1071,6 @@ IkaiDoPackage::IkaiDoPackage()
     luna034->addSkill(new IkGuijiaoMaxCards);
     related_skills.insert("ikguijiao", "#ikguijiao");
     luna034->addSkill("ikjinlian");
-
-    // 药割 is 除疠.
-    General *luna042 = new General(this, "luna042", "tsuki", 3);
-    luna042->addSkill("jijiu");
-    luna042->addSkill("chuli");
 
     skills << new IkXingyu;
 

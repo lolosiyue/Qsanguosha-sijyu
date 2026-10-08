@@ -2909,10 +2909,6 @@ IkJunanCard::IkJunanCard() { setSkillName("ikjunan"); mute = true; }
 IkaiKinPackage::IkaiKinPackage()
     : Package("ikai-kin")
 {
-    // 惑吻 is 眩惑; 恩怨 is 恩怨.
-    General *wind016 = new General(this, "wind016", "kaze", 3);
-    wind016->addSkill("xuanhuo");
-    wind016->addSkill("enyuan");
 
     General *wind017 = new General(this, "wind017", "kaze", 3);
     wind017->addSkill(new IkXinchao);
@@ -2940,19 +2936,6 @@ IkaiKinPackage::IkaiKinPackage()
     wind021->addSkill(new IkZuyaoTargetMod);
     related_skills.insert("ikzuyao", "#ikzuyao-record");
     related_skills.insert("ikzuyao", "#ikzuyao-target");
-
-    // 陷瑜 is 陷嗣.
-    General *wind026 = new General(this, "wind026", "kaze");
-    wind026->addSkill("xiansi");
-
-    // 奇志 is 巧说; 纵适 is 纵适.
-    General *wind027 = new General(this, "wind027", "kaze", 3);
-    wind027->addSkill("qiaoshui");
-    wind027->addSkill("zongshih");
-
-    // 荒轮 is 龙吟.
-    General *wind028 = new General(this, "wind028", "kaze");
-    wind028->addSkill("longyin");
 
     // 疾步 is 马术.
     General *wind031 = new General(this, "wind031", "kaze");
@@ -2987,15 +2970,6 @@ IkaiKinPackage::IkaiKinPackage()
     wind055->addSkill(new IkZangyu);
     wind055->addSkill("shizhi");
 
-    // 丧绝 is 战绝.
-    General *wind056 = new General(this, "wind056", "kaze");
-    wind056->addSkill("zhanjue");
-
-    // 绀碧 is 樵拾; 廻涛 is 燕语 (空 is the local male flag).
-    General *wind058 = new General(this, "wind058", "kaze", 3, false);
-    wind058->addSkill("qiaoshi");
-    wind058->addSkill("yjyanyu");
-
     General *wind062 = new General(this, "wind062", "kaze", 3, false);
     wind062->addSkill(new IkShitie);
     wind062->addSkill(new IkShitieDraw);
@@ -3010,38 +2984,9 @@ IkaiKinPackage::IkaiKinPackage()
     General *bloom017 = new General(this, "bloom017", "hana");
     bloom017->addSkill(new IkPiaohu);
 
-    // 虚无 is 绝情; 娇恋 is 伤逝.
-    General *bloom018 = new General(this, "bloom018", "hana", 3, false);
-    bloom018->addSkill("jueqing");
-    bloom018->addSkill("shangshi");
-
-    // 崩殇 is 权计; 暗魂 is 自立 (诛异 is 排异).
-    General *bloom019 = new General(this, "bloom019", "hana");
-    bloom019->addSkill("quanji");
-    bloom019->addSkill("zili");
-    bloom019->addRelateSkill("paiyi");
-
-    // 谜策 is 奇策; 禁慧 is 智愚.
-    General *bloom020 = new General(this, "bloom020", "hana", 3);
-    bloom020->addSkill("qice");
-    bloom020->addSkill("zhiyu");
-
-    // 冠铳 is 将驰.
-    General *bloom021 = new General(this, "bloom021", "hana");
-    bloom021->addSkill("jiangchi");
-
     General *bloom022 = new General(this, "bloom022", "hana", 3, false);
     bloom022->addSkill(new IkLundao);
     bloom022->addSkill(new IkXuanwu);
-
-    // 星筮 is 称象; 虚逆 is 仁心.
-    General *bloom025 = new General(this, "bloom025", "hana", 3);
-    bloom025->addSkill("chengxiang");
-    bloom025->addSkill("renxin");
-
-    // 精策 is 十周年 精策.
-    General *bloom026 = new General(this, "bloom026", "hana");
-    bloom026->addSkill("tenyearjingce");
 
     // 雪涟 is 御策.
     General *bloom027 = new General(this, "bloom027", "hana", 3);
@@ -3062,26 +3007,11 @@ IkaiKinPackage::IkaiKinPackage()
     bloom038->addSkill(new IkDingpin);
     bloom038->addSkill("faen");
 
-    // 华岸 is 慎断; 心决 is 勇略.
-    General *bloom039 = new General(this, "bloom039", "hana");
-    bloom039->addSkill("shenduan");
-    bloom039->addSkill("yonglve");
-
-    // 祈墨 is 活墨; 心佐 is 佐定.
-    General *bloom055 = new General(this, "bloom055", "hana", 3);
-    bloom055->addSkill("huomo");
-    bloom055->addSkill("zuoding");
-
     General *bloom057 = new General(this, "bloom057", "hana");
     bloom057->addSkill(new IkLingxun);
 
     General *snow016 = new General(this, "snow016", "yuki");
     snow016->addSkill(new IkNilan);
-
-    // 源法 is 补益; 观剧 is 甘露.
-    General *snow017 = new General(this, "snow017", "yuki", 3, false);
-    snow017->addSkill("buyi");
-    snow017->addSkill("ganlu");
 
     General *snow018 = new General(this, "snow018", "yuki");
     snow018->addSkill(new IkZhongqu);
@@ -3090,11 +3020,6 @@ IkaiKinPackage::IkaiKinPackage()
     General *snow019 = new General(this, "snow019", "yuki");
     snow019->addSkill("lihuo");
     snow019->addSkill(new IkXiaozui);
-
-    // 安恤 is 安恤; 追忆 is 追忆.
-    General *snow020 = new General(this, "snow020", "yuki", 3, false);
-    snow020->addSkill("anxu");
-    snow020->addSkill("zhuiyi");
 
     General *snow021 = new General(this, "snow021", "yuki");
     snow021->addSkill("ikxuanren");
@@ -3105,19 +3030,9 @@ IkaiKinPackage::IkaiKinPackage()
     snow023->addSkill(new IkQianbian);
     snow023->addSkill(new IkHuanzhou);
 
-    // 萌境 is 弓骑; 止战 is 解烦.
-    General *snow024 = new General(this, "snow024", "yuki");
-    snow024->addSkill("gongqi");
-    snow024->addSkill("jiefan");
-
     General *snow026 = new General(this, "snow026", "yuki");
     snow026->addSkill(new IkDuoren);
     snow026->addSkill(new IkAnju);
-
-    // 纵玄 is 纵玄; 直策 is 直言.
-    General *snow027 = new General(this, "snow027", "yuki", 3);
-    snow027->addSkill("zongxuan");
-    snow027->addSkill("zhiyan");
 
     General *snow028 = new General(this, "snow028", "yuki");
     snow028->addSkill(new IkYinzhai);
@@ -3126,32 +3041,6 @@ IkaiKinPackage::IkaiKinPackage()
     General *snow037 = new General(this, "snow037", "yuki", 4, false);
     snow037->addSkill("zenhui");
     snow037->addSkill(new IkLinghuang);
-
-    // 怪盗 is 诱敌.
-    General *snow038 = new General(this, "snow038", "yuki");
-    snow038->addSkill("youdi");
-
-    // 慎行 is 慎行; 祥昭 is 秉壹.
-    General *snow039 = new General(this, "snow039", "yuki", 3);
-    snow039->addSkill("shenxing");
-    snow039->addSkill("bingyi");
-
-    // 幽弹 is 胆守.
-    General *snow041 = new General(this, "snow041", "yuki");
-    snow041->addSkill("danshou");
-
-    // 易身 is 振赡.
-    General *snow056 = new General(this, "snow056", "yuki");
-    snow056->addSkill("zhenshan");
-
-    // 繁祟 is 宴诛; 神敕 is 兴学.
-    General *snow058 = new General(this, "snow058", "yuki");
-    snow058->addSkill("yanzhu");
-    snow058->addSkill("xingxue");
-
-    // 结弼 is 匡弼.
-    General *snow060 = new General(this, "snow060", "yuki");
-    snow060->addSkill("kuangbi");
 
     // 憎鬼 is 急寓 (the upstream show of the usable card is dropped).
     General *snow062 = new General(this, "snow062", "yuki", 3, false);
@@ -3166,16 +3055,6 @@ IkaiKinPackage::IkaiKinPackage()
     related_skills.insert("iklvdong", "#iklvdong");
     related_skills.insert("iklvdong", "#iklvdong-target");
     luna010->addSkill("jinjiu");
-
-    // 明策 is 明策; 智迟 is 智迟.
-    General *luna013 = new General(this, "luna013", "tsuki", 3);
-    luna013->addSkill("mingce");
-    luna013->addSkill("zhichi");
-
-    // 茧居 is 宗室; 描欲 is 自守.
-    General *luna015 = new General(this, "luna015", "tsuki", 3);
-    luna015->addSkill("zongshi");
-    luna015->addSkill("zishou");
 
     General *luna016 = new General(this, "luna016", "tsuki", 6);
     luna016->addSkill("ikxinshang");
@@ -3198,11 +3077,6 @@ IkaiKinPackage::IkaiKinPackage()
     General *luna038 = new General(this, "luna038", "tsuki", 3);
     luna038->addSkill("jianying");
     luna038->addSkill(new IkGuijing);
-
-    // 阑幻 is 窃听; 素铃 is 献州.
-    General *luna039 = new General(this, "luna039", "tsuki", 3, false);
-    luna039->addSkill("qieting");
-    luna039->addSkill("xianzhou");
 
     // 狱锁 is 灭计; 崩焰 is 焚城.
     General *luna041 = new General(this, "luna041", "tsuki", 3);

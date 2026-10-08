@@ -1927,22 +1927,11 @@ IkaiMokuPackage::IkaiMokuPackage()
     wind008->addSkill(new IkLiegong);
     wind008->addSkill(new IkHuanghun);
 
-    // 狂骨 is 十周年 狂骨; 疾步 is 马术.
-    General *wind009 = new General(this, "wind009", "kaze");
-    wind009->addSkill("tenyearkuanggu");
-    wind009->addSkill("mashu");
-
     General *wind010 = new General(this, "wind010", "kaze", 3);
     wind010->addSkill(new IkFuhua);
     wind010->addSkill(new IkFuhuaDraw);
     related_skills.insert("ikfuhua", "#ikfuhua");
     wind010->addSkill(new IkSuinie);
-
-    // 净涅 is 八阵; 歼焰 is 火计; 绚影 is 看破.
-    General *wind011 = new General(this, "wind011", "kaze", 3);
-    wind011->addSkill("bazhen");
-    wind011->addSkill("huoji");
-    wind011->addSkill("kanpo");
 
     // 挑衅 is 挑衅.
     General *wind012 = new General(this, "wind012", "kaze");
@@ -1981,40 +1970,20 @@ IkaiMokuPackage::IkaiMokuPackage()
     General *bloom008 = new General(this, "bloom008", "hana");
     bloom008->addSkill(new IkXunyu);
 
-    // 曼才 is 巧变.
-    General *bloom009 = new General(this, "bloom009", "hana");
-    bloom009->addSkill("qiaobian");
-
     General *bloom010 = new General(this, "bloom010", "hana");
     bloom010->addSkill(new IkKujie);
     bloom010->addSkill(new IkJieying);
     bloom010->addSkill(new IkJieyingTargetMod);
     related_skills.insert("ikjieying", "#ikjieying");
 
-    // 宅魂 is 据守; 佛脚 is 解围.
-    General *bloom011 = new General(this, "bloom011", "hana");
-    bloom011->addSkill("jushou");
-    bloom011->addSkill("jiewei");
-
     General *bloom012 = new General(this, "bloom012", "hana");
     bloom012->addSkill(new IkQiangxi);
-
-    // 御神 is 驱虎; 节命 is 节命.
-    General *bloom013 = new General(this, "bloom013", "hana", 3);
-    bloom013->addSkill("quhu");
-    bloom013->addSkill("jieming");
 
     // 叹惋 is 行殇; 闭锁 is 放逐.
     General *bloom014 = new General(this, "bloom014$", "hana", 3);
     bloom014->addSkill("xingshang");
     bloom014->addSkill("fangzhu");
     bloom014->addSkill(new IkSongwei);
-
-    // 隐蝶 is 屯田; 鬼月 is 凿险 (幻舞 is 急袭).
-    General *bloom015 = new General(this, "bloom015", "hana");
-    bloom015->addSkill("tuntian");
-    bloom015->addSkill("zaoxian");
-    bloom015->addRelateSkill("jixi");
 
     General *bloom029 = new General(this, "bloom029", "hana", 3);
     bloom029->addSkill(new IkYihuo);
@@ -2035,15 +2004,6 @@ IkaiMokuPackage::IkaiMokuPackage()
     snow010->addSkill("haoshi");
     snow010->addSkill(new IkYuanjie);
 
-    // 知惠 is 天香; 赤秋 is 红颜.
-    General *snow011 = new General(this, "snow011", "yuki", 3, false);
-    snow011->addSkill("tianxiang");
-    snow011->addSkill("hongyan");
-
-    // 歼略 is 天义.
-    General *snow012 = new General(this, "snow012", "yuki");
-    snow012->addSkill("tianyi");
-
     // 苏生 is 不屈.
     General *snow013 = new General(this, "snow013", "yuki");
     snow013->addSkill("buqu");
@@ -2056,21 +2016,6 @@ IkaiMokuPackage::IkaiMokuPackage()
     snow014->addSkill(new IkBiansheng);
     snow014->addRelateSkill("yingzi");
     snow014->addRelateSkill("ikliangban");
-
-    // 羁绊 is 直谏; 箕箒 is 固政.
-    General *snow015 = new General(this, "snow015", "yuki", 3);
-    snow015->addSkill("zhijian");
-    snow015->addSkill("guzheng");
-
-    // 略决 is 涉猎; 灵视 is 攻心.
-    General *snow029 = new General(this, "snow029", "yuki", 3);
-    snow029->addSkill("shelie");
-    snow029->addSkill("gongxin");
-
-    // 龙息 is 琴音; 业焰 is 业炎.
-    General *snow030 = new General(this, "snow030", "yuki");
-    snow030->addSkill("qinyin");
-    snow030->addSkill("yeyan");
 
     // 腐生 is 腐生; 崩坏 is 崩坏.
     General *luna001 = new General(this, "luna001$", "tsuki", 8);
@@ -2089,43 +2034,16 @@ IkaiMokuPackage::IkaiMokuPackage()
     luna005->addSkill(new IkJingfa);
     luna005->addSkill("shuangxiong");
 
-    // 死噬 is 完杀; 文乐 is 乱武; 墨羽 is 帷幕.
-    General *luna007 = new General(this, "luna007", "tsuki", 3);
-    luna007->addSkill("wansha");
-    luna007->addSkill("luanwu");
-    luna007->addSkill("weimu");
-
     // 疾步 is 马术.
     General *luna008 = new General(this, "luna008", "tsuki");
     luna008->addSkill("mashu");
     luna008->addSkill(new IkKongsa);
-
-    // 幻身 is 化身; 灵契 is 新生.
-    General *luna009 = new General(this, "luna009", "tsuki", 3);
-    luna009->addSkill("huashen");
-    luna009->addSkill("xinsheng");
-
-    // 诡惑 is the old 蛊惑.
-    General *luna011 = new General(this, "luna011", "tsuki");
-    luna011->addSkill("nosguhuo");
-
-    // 辉耀 is 悲歌; 淒煌 is 断肠.
-    General *luna012 = new General(this, "luna012", "tsuki", 3, false);
-    luna012->addSkill("beige");
-    luna012->addSkill("duanchang");
 
     // 雷击 is 十周年 雷击; 天势 is 鬼道.
     General *luna014 = new General(this, "luna014$", "tsuki", 3);
     luna014->addSkill("tenyearleiji");
     luna014->addSkill("guidao");
     luna014->addSkill(new IkYuji);
-
-    // 拙火 is 狂暴; 无谋 is 无谋; 碎空 is 无前; 天舞 is 神愤.
-    General *luna029 = new General(this, "luna029", "tsuki", 5);
-    luna029->addSkill("kuangbao");
-    luna029->addSkill("wumou");
-    luna029->addSkill("wuqian");
-    luna029->addSkill("shenfen");
 
     skills << new IkMohua << new IkYihuoViewAs << new IkJilve << new IkBianshengPindian << new IkYujiGive;
 
