@@ -109,8 +109,11 @@ in this MVP. Strings are emitted as UTF-8 Lua literals with escaped quotes,
 backslashes and decimal byte escapes for controls. Translations cover the
 package, general, display alias, title, designer, skill names and descriptions.
 
-Requests use non-streaming `messages` with a system contract and a JSON user
-content object. The provider must return one chat choice with
+Requests use non-streaming `messages`: the fixed system instructions, a stable
+JSON user message containing the full engine contract and its version/hash, then
+a JSON user message containing the changing specification, code and corrections.
+Static contract objects are explicitly canonicalized; semantic array order is
+preserved. See [prefix caching and usage](llm-prefix-cache.md). The provider must return one chat choice with
 `finish_reason: "stop"`; its message content is exactly this JSON object:
 
 ```json

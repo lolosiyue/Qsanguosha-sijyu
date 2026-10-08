@@ -25,6 +25,9 @@ QString assemble(const QJsonObject &spec, const QString &skills);
 QStringList validateCode(const QJsonObject &spec, const QString &code, const Context &context);
 QString comparison(const QString &before, const QString &after);
 bool validEndpoint(const QUrl &url);
+// Sanitized provider-reported counters; absent/unsupported is JSON null, not 0.
+// No prices or billed-cost estimates are derived from these counters.
+QJsonObject responseUsage(const QJsonObject &envelope);
 
 // All state is inert text. No engine Lua state, evaluation or package-store action.
 class Document {
@@ -49,10 +52,12 @@ public:
     QByteArray project(QString *error) const;
     bool importProject(const QByteArray &bytes, QString *error);
     bool exportDisabled(const QString &parent, const QByteArray &cardPng, QString *path, QString *error) const;
+    QJsonObject lastUsage() const { return m_usage; }
     bool busy() const { return m_pending != 0; }
 private:
     quint64 m_serial = 0, m_pending = 0, m_revision = 0, m_requestRevision = 0, m_candidateRevision = 0;
     QStringList m_secrets;
+    QJsonObject m_usage = responseUsage({});
 };
 }
 #endif

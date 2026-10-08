@@ -66,3 +66,11 @@ seats made paid choices. Standard Wusheng's issued conversion and complete stage
 traversal passed offline validation; a paid Wusheng conversion was not observed
 in that run. GUI rendering and packaged deployment remain unverified. The run
 stopped at its time cap and does not establish a full-game duration improvement.
+
+## Stable prefixes and usage
+
+Provider serialization explicitly places rules and reusable observation schema
+before the changing seat snapshot and legal choices. A versioned SHA-256
+fingerprint covers only that static contract. No decisions are cached or reused
+across seats. See [prefix caching and usage](../../docs/llm-prefix-cache.md) for
+provider capabilities, counter semantics and local verification commands.
