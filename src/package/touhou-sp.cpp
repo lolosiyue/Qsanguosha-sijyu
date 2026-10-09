@@ -263,8 +263,10 @@ public:
                 room->throwCard(card, toPile, nullptr);
                 break;
             }
+            player->setTag("ThJiefanId", card->getEffectiveId());
             ServerPlayer *target = room->askForPlayerChosen(player, room->getAlivePlayers(), objectName(),
                                                             "@thjiefan-give");
+            player->removeTag("ThJiefanId");
             if (room->getCardPlace(card->getEffectiveId()) == Player::PlaceTable)
                 room->obtainCard(target ? target : player, card);
             if (!player->isAlive() || !player->askForSkillInvoke(objectName()))
@@ -297,7 +299,10 @@ public:
 
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data))
+        ctx.owner->setTag("ThChuangshiData", *ctx.original_data);
+        const bool invoked = ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data);
+        ctx.owner->removeTag("ThChuangshiData");
+        if (!invoked)
             return false;
         room->broadcastSkillInvoke(objectName());
         return true;
@@ -554,7 +559,9 @@ public:
         const QStringList choices = areas(player, target);
         if (choices.isEmpty())
             return true;
+        player->setTag("ThModaoData", QVariant::fromValue(target));
         const QString choice = room->askForChoice(player, objectName(), choices.join("+"), QVariant::fromValue(target));
+        player->removeTag("ThModaoData");
         QList<int> mine;
         QList<int> theirs;
         Player::Place place = Player::PlaceHand;
@@ -1024,7 +1031,10 @@ public:
         }
         if (spades.isEmpty())
             return FinishSkill;
+        DummyCard shown(spades);
+        source->setTag("ThZhaoguoData", QVariant::fromValue<const Card *>(&shown));
         ServerPlayer *target = room->askForPlayerChosen(source, room->getOtherPlayers(source), objectName(), "@thzhaoguo");
+        source->removeTag("ThZhaoguoData");
         QList<int> rest;
         foreach (int id, spades)
             if (room->getCardPlace(id) == Player::PlaceTable)
@@ -1256,9 +1266,11 @@ public:
     {
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         room->setPlayerMark(ctx.owner, "thshushu", use.card->getNumber());
+        ctx.owner->setTag("ThShushuData", *ctx.original_data);
         const Card *card = room->askForCard(ctx.owner, "@@thshushu",
                                             QString("@thshushu:::%1:%2").arg(use.card->objectName()).arg(use.card->getNumber()),
                                             *ctx.original_data, Card::MethodNone);
+        ctx.owner->removeTag("ThShushuData");
         room->setPlayerMark(ctx.owner, "thshushu", 0);
         if (!card)
             return false;
@@ -1689,8 +1701,10 @@ public:
         ServerPlayer *target = sourceOf(event, ctx.owner, *ctx.original_data);
         if (!target)
             return false;
+        ctx.owner->setTag("ThHuanghuTarget", QVariant::fromValue(target));
         const Card *card = room->askForExchange(ctx.owner, objectName(), 998, 1, false, "@thhuanghu:" + target->objectName(),
                                                 true);
+        ctx.owner->removeTag("ThHuanghuTarget");
         if (!card || card->getSubcards().isEmpty())
             return false;
         LogMessage log;

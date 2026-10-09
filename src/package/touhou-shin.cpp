@@ -472,7 +472,10 @@ public:
         owner->drawCards(1, objectName());
         if (!player->isAlive() || player->isKongcheng())
             return false;
-        if (room->askForChoice(player, objectName(), "show+cancel", QVariant::fromValue(owner)) == "show") {
+        player->setTag("ThXinqiTarget", QVariant::fromValue(owner));
+        const QString choice = room->askForChoice(player, objectName(), "show+cancel", *ctx.original_data);
+        player->removeTag("ThXinqiTarget");
+        if (choice == "show") {
             room->showAllCards(player, owner);
             return false;
         }
@@ -1100,7 +1103,9 @@ public:
             foreach (ServerPlayer *p, room->getOtherPlayers(player))
                 if (p->getHandcardNum() <= p->getMaxHp())
                     targets << p;
+            player->setTag("ThWangyuSlash", *ctx.original_data);
             ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "@thwangyu", true, true);
+            player->removeTag("ThWangyuSlash");
             if (!target)
                 return false;
             ctx.extra_data = target->objectName();

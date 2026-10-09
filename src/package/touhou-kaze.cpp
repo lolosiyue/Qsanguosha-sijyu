@@ -258,6 +258,7 @@ public:
                 }
             }
         }
+        player->setTag("ThJilanwenJudge", QVariant::fromValue(&judge));
         ServerPlayer *target = targets.isEmpty()
             ? nullptr : room->askForPlayerChosen(player, targets, objectName(), "thjilanwen-choose", true);
         if (target) {
@@ -271,6 +272,7 @@ public:
         } else if (inDiscardPile(room, judge.card)) {
             room->obtainCard(player, judge.card);
         }
+        player->removeTag("ThJilanwenJudge");
         return false;
     }
 
@@ -2755,7 +2757,9 @@ public:
                 victims << p;
         if (victims.isEmpty())
             return ContinueEffects;
+        source->setTag("ThXinhuaLord", QVariant::fromValue(lord));
         ServerPlayer *victim = room->askForPlayerChosen(source, victims, "thxinhua", "@thxinhua-view:" + lord->objectName());
+        source->removeTag("ThXinhuaLord");
         if (!victim)
             return ContinueEffects;
         LogMessage log;

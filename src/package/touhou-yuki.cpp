@@ -631,7 +631,10 @@ public:
     {
         if (event == BeforeCardsMove)
             return true;
-        if (!ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(ctx.invoker)))
+        ctx.owner->setTag("ThZhancaoData", *ctx.original_data);
+        const bool invoked = ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(ctx.invoker));
+        ctx.owner->removeTag("ThZhancaoData");
+        if (!invoked)
             return false;
         room->broadcastSkillInvoke(objectName());
         return true;
@@ -804,7 +807,9 @@ public:
                 source->drawCards(2, objectName());
         } else if (card->isRed() == (suit == Card::Heart || suit == Card::Diamond)
                    && (card->isRed() || card->isBlack())) {
+            source->setTag("ThYuanqiCards", QVariant(ListI2V(ids)));
             ServerPlayer *target = room->askForPlayerChosen(source, room->getAlivePlayers(), objectName(), "@thyuanqi", true);
+            source->removeTag("ThYuanqiCards");
             if (target && room->getCardPlace(ids.first()) == Player::PlaceTable) {
                 CardMoveReason give(CardMoveReason::S_REASON_GIVE, source->objectName(), target->objectName(), objectName(),
                                     QString());
@@ -874,9 +879,11 @@ public:
     {
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
         QList<ServerPlayer *> chosen;
+        ctx.owner->setTag("ThQingmingUse", *ctx.original_data);
         foreach (ServerPlayer *to, targets(ctx.owner, use))
             if (ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(to)))
                 chosen << to;
+        ctx.owner->removeTag("ThQingmingUse");
         if (chosen.isEmpty())
             return false;
         room->broadcastSkillInvoke(objectName());
@@ -1144,8 +1151,10 @@ public:
             foreach (ServerPlayer *p, room->getAlivePlayers())
                 if (p->isWounded())
                     wounded << p;
+            player->setTag("ThChuijiTarget", "recover");
             ServerPlayer *target = wounded.isEmpty()
                 ? nullptr : room->askForPlayerChosen(player, wounded, objectName(), "@thchuiji-recover");
+            player->removeTag("ThChuijiTarget");
             if (target)
                 room->recover(target, RecoverStruct(objectName(), player));
         } else if (judge.card->isBlack()) {
@@ -1153,8 +1162,10 @@ public:
             foreach (ServerPlayer *p, room->getOtherPlayers(player))
                 if (player->canDiscard(p, "he"))
                     victims << p;
+            player->setTag("ThChuijiTarget", "discard");
             ServerPlayer *target = victims.isEmpty()
                 ? nullptr : room->askForPlayerChosen(player, victims, objectName(), "@thchuiji-discard");
+            player->removeTag("ThChuijiTarget");
             if (target) {
                 const int id = room->askForCardChosen(player, target, "he", objectName(), false, Card::MethodDiscard);
                 if (id >= 0)
@@ -1235,8 +1246,10 @@ public:
         if (!isUsable(ctx))
             return false;
         const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        ctx.owner->setTag("ThHeimuCardUse", *ctx.original_data);
         ServerPlayer *target = room->askForPlayerChosen(ctx.owner, candidates(room, ctx.owner, use), objectName(),
                                                         "@thheimu", true, true);
+        ctx.owner->removeTag("ThHeimuCardUse");
         if (!target)
             return false;
         room->broadcastSkillInvoke(objectName());

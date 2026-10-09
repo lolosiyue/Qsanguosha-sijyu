@@ -485,7 +485,9 @@ public:
             return false;
         QList<int> ids = room->getNCards(2, false);
         room->fillAG(ids, player);
+        player->setTag("ThKaiyunJudge", *ctx.original_data);
         const int id = room->askForAG(player, ids, false, objectName());
+        player->removeTag("ThKaiyunJudge");
         room->clearAG(player);
         const int chosen = ids.contains(id) ? id : ids.first();
         ids.removeOne(chosen);
@@ -772,7 +774,12 @@ public:
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
         const DamageStruct damage = ctx.original_data->value<DamageStruct>();
-        if (!isUsable(ctx) || !ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(damage.from)))
+        if (!isUsable(ctx))
+            return false;
+        ctx.owner->setTag("ThYuhuoDamage", *ctx.original_data);
+        const bool invoked = ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(damage.from));
+        ctx.owner->removeTag("ThYuhuoDamage");
+        if (!invoked)
             return false;
         room->broadcastSkillInvoke(objectName());
         return true;
@@ -1980,8 +1987,12 @@ public:
 
     bool cost(TriggerEvent event, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (event == Predamage)
-            return ctx.owner->askForSkillInvoke(objectName(), "losehp");
+        if (event == Predamage) {
+            ctx.owner->setTag("ThShenyouDamage", *ctx.original_data);
+            const bool invoked = ctx.owner->askForSkillInvoke(objectName(), "losehp");
+            ctx.owner->removeTag("ThShenyouDamage");
+            return invoked;
+        }
         ServerPlayer *target = room->askForPlayerChosen(ctx.owner, candidates(room, ctx.owner), objectName(),
                                                         "@thshenyou-invoke", true, true);
         if (!target)
@@ -2171,7 +2182,9 @@ public:
         }
         if (receivers.isEmpty())
             return ContinueEffects;
+        owner->setTag("ThGuixuTarget", QVariant::fromValue(from));
         ServerPlayer *to = room->askForPlayerChosen(owner, receivers, objectName(), "@thguixu-to:::" + card->objectName());
+        owner->removeTag("ThGuixuTarget");
         if (to)
             room->moveCardTo(card, from, to, place,
                              CardMoveReason(CardMoveReason::S_REASON_TRANSFER, owner->objectName(), objectName(), QString()));

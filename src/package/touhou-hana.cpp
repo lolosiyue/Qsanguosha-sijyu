@@ -1131,9 +1131,11 @@ public:
             if (canAdd(use, p))
                 available << p;
         const int max = qMax(ctx.owner->getLostHp(), 1);
+        ctx.owner->setTag("ThYingdengUse", *ctx.original_data);
         const QList<ServerPlayer *> chosen = room->askForPlayersChosen(
             ctx.owner, available, objectName(), 0, max,
             QString("@thyingdeng:::%1:%2").arg(use.card->objectName()).arg(max), true);
+        ctx.owner->removeTag("ThYingdengUse");
         if (chosen.isEmpty())
             return false;
         room->broadcastSkillInvoke(objectName());
@@ -2076,7 +2078,9 @@ public:
             const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
             foreach (ServerPlayer *p, use.to)
                 room->setPlayerFlag(p, "liuzhenold");
+            player->setTag("thliuzhen_carduse", *ctx.original_data);
             const bool used = room->askForUseCard(player, "@@thliuzhen", "@thliuzhen", -1, Card::MethodNone) != nullptr;
+            player->removeTag("thliuzhen_carduse");
             foreach (ServerPlayer *p, use.to)
                 room->setPlayerFlag(p, "-liuzhenold");
             if (used) {

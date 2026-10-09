@@ -329,7 +329,9 @@ public:
                 targets << p;
         if (targets.isEmpty())
             return false;
+        player->setTag("ThZhiyueSlash", QVariant::fromValue(use.card));
         ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "@thzhiyue");
+        player->removeTag("ThZhiyueSlash");
         if (!target)
             return false;
         use.to << target;
@@ -458,7 +460,9 @@ public:
         foreach (int id, ids)
             if (Sanguosha->getCard(id)->getType() == type && room->getCardPlace(id) == Player::PlaceTable)
                 gain << id;
+        source->setTag("ThXumeiDummy", QVariant(ListI2V(gain)));
         ServerPlayer *target = room->askForPlayerChosen(source, room->getAlivePlayers(), objectName(), "@thxumei:::" + type);
+        source->removeTag("ThXumeiDummy");
         if (target && !gain.isEmpty()) {
             DummyCard dummy(gain);
             room->obtainCard(target, &dummy);
@@ -538,7 +542,9 @@ public:
         const QList<int> hand = judge->who->handCards();
         room->showAllCards(judge->who);
         room->fillAG(hand, player);
+        player->setTag("ThXijingJudge", *ctx.original_data);
         int id = room->askForAG(player, hand, false, objectName());
+        player->removeTag("ThXijingJudge");
         room->clearAG(player);
         if (!hand.contains(id))
             id = hand.at(qsanRandomBounded(hand.length()));
@@ -1097,7 +1103,10 @@ public:
                 log.from = owner;
                 log.to << victim;
                 room->sendLog(log);
-                if (room->askForChoice(player, objectName(), "discard+cancel", QVariant::fromValue(victim)) == "discard") {
+                player->setTag("ThQiongfaSource", QVariant::fromValue(owner));
+                const QString choice = room->askForChoice(player, objectName(), "discard+cancel", QVariant::fromValue(victim));
+                player->removeTag("ThQiongfaSource");
+                if (choice == "discard") {
                     const int id = room->askForCardChosen(player, victim, "he", objectName(), false, Card::MethodDiscard);
                     if (id >= 0) {
                         room->throwCard(id, victim, player);
@@ -1142,7 +1151,9 @@ public:
         ServerPlayer *player = ctx.owner;
         const QList<int> ids = room->getNCards(2, false);
         room->fillAG(ids, player);
+        player->setTag("ThWeide", QVariant(ListI2V(ids)));
         ServerPlayer *target = room->askForPlayerChosen(player, room->getAlivePlayers(), objectName(), "@thweide-give");
+        player->removeTag("ThWeide");
         room->clearAG(player);
         if (!target)
             target = player;

@@ -229,7 +229,9 @@ public:
                 victims << p;
         if (victims.isEmpty() || !source->isAlive() || !target->isAlive())
             return ContinueEffects;
+        source->setTag("ThShenfengTarget", QVariant::fromValue(target));
         ServerPlayer *victim = room->askForPlayerChosen(source, victims, objectName(), "@thshenfeng:" + target->objectName());
+        source->removeTag("ThShenfengTarget");
         if (!victim)
             victim = victims.first();
         room->damage(DamageStruct(objectName(), target, victim));
@@ -1097,7 +1099,10 @@ public:
 
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data))
+        ctx.owner->setTag("ThYoushangData", *ctx.original_data);
+        const bool invoked = ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data);
+        ctx.owner->removeTag("ThYoushangData");
+        if (!invoked)
             return false;
         room->broadcastSkillInvoke(objectName());
         return true;
@@ -1752,7 +1757,10 @@ public:
 
     bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
-        if (!ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data))
+        ctx.owner->setTag("ThXujingTarget", *ctx.original_data);
+        const bool invoked = ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data);
+        ctx.owner->removeTag("ThXujingTarget");
+        if (!invoked)
             return false;
         room->broadcastSkillInvoke(objectName());
         return true;
