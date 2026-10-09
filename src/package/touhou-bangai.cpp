@@ -253,6 +253,17 @@ private:
 
 // ---------------------------------------------------------------- bangai003
 
+// Upstream's copy of 马术, kept separate from mashu.
+class ThJibu : public DistanceSkillV2
+{
+public:
+    ThJibu() : DistanceSkillV2("thjibu")
+    {
+        setBaseAmount(-1);
+        setHolderSelector(CorrectSkill_Primary);
+    }
+};
+
 class ThZhiyue : public TriggerSkillV2
 {
 public:
@@ -1524,6 +1535,9 @@ TouhouBangaiPackage::TouhouBangaiPackage()
 
     General *bangai012 = new General(this, "bangai012", "tsuki");
     bangai012->addSkill(new ThKongxiang);
+
+    // 疾步 has no owner here; ikai-moku's luna008 uses it.
+    skills << new ThJibu;
 
     addMetaObject<ThMiqiCard>();
     addMetaObject<ThXumeiCard>();

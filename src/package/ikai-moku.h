@@ -22,20 +22,12 @@ public:
     Q_INVOKABLE IkHuanghunCard();
 };
 
-class IkSuinieCard : public SkillCard
+class IkTiaoxinCard : public SkillCard
 {
     Q_OBJECT
 
 public:
-    Q_INVOKABLE IkSuinieCard();
-};
-
-class IkQiangxiCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE IkQiangxiCard();
+    Q_INVOKABLE IkTiaoxinCard();
 };
 
 class IkYihuoCard : public SkillCard
@@ -46,28 +38,12 @@ public:
     Q_INVOKABLE IkYihuoCard();
 };
 
-class IkJilveCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE IkJilveCard();
-};
-
 class IkYuanjieCard : public SkillCard
 {
     Q_OBJECT
 
 public:
     Q_INVOKABLE IkYuanjieCard();
-};
-
-class IkBianshengCard : public SkillCard
-{
-    Q_OBJECT
-
-public:
-    Q_INVOKABLE IkBianshengCard();
 };
 
 class IkXuzhaoCard : public SkillCard

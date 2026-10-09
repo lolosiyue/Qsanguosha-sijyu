@@ -33,6 +33,8 @@ return {
 	["designer:bangai003"] = "桃花僧",
 	["illustrator:bangai003"] = "TID",
 	["cv:bangai003"] = "暂无",
+	["thjibu"] = "疾步",
+	[":thjibu"] = "锁定技，当你计算与其他角色的距离时，始终-1。",
 	["thzhiyue"] = "织月",
 	[":thzhiyue"] = "每当你使用【杀】时，你可以进行一次判定，若为黑色，为此【杀】额外指定一个目标；若为红色，此【杀】指定目标后，弃置目标角色一张牌。",
 	["#ThZhiyue"] = "%from 发动了“%arg”，为【%arg2】额外指定了一个目标 %to",

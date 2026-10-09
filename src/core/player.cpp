@@ -129,13 +129,6 @@ bool Player::isWounded() const
 				return true;
 		}
 	}
-	if (getKingdom() == "kaze"){
-		// 归命's TouhouTripleSha counterpart (ikai-sui ikguiming).
-		foreach(const Player *p, getAliveSiblings()){
-			if (p->hasFlag("CurrentPlayer") && p->getHp() <= 2 && p->hasSkill("ikguiming"))
-				return true;
-		}
-	}
     return hp < 0 || hp < max_hp;
 }
 
@@ -762,7 +755,7 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 		||Config.value("WithoutLordskill").toBool()) return false;
 		return hasSkill(skill_name,include_lose);
 	}else{
-		if (hasSkill("weidi")){
+		if (hasSkill("weidi") || hasSkill("ikshengzun")){
 			foreach(const Player *player, getAliveSiblings()){
 				if (player->isLord()&&player->hasLordSkill(skill_name,true))
 					return true;
