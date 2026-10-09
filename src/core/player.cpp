@@ -755,10 +755,15 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 		||Config.value("WithoutLordskill").toBool()) return false;
 		return hasSkill(skill_name,include_lose);
 	}else{
-		if (hasSkill("weidi") || hasSkill("ikshengzun")){
-			foreach(const Player *player, getAliveSiblings()){
-				if (player->isLord()&&player->hasLordSkill(skill_name,true))
-					return true;
+		// A held skill with HolderSharesLordSkills (帷帝、圣尊) lends the lord's lord skills.
+		for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
+			const Skill *holder = it->isEmpty() ? nullptr : Sanguosha->getSkill(it.key());
+			if (holder && holder->property("HolderSharesLordSkills").toBool() && hasSkill(it.key())) {
+				foreach(const Player *player, getAliveSiblings()){
+					if (player->isLord()&&player->hasLordSkill(skill_name,true))
+						return true;
+				}
+				break;
 			}
 		}
 		return hasAcquiredSkill(skill_name)&&hasSkill(skill_name,include_lose);

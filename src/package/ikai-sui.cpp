@@ -3118,12 +3118,13 @@ public:
     }
 };
 
-// Player::hasLordSkill lends the lord's lord skills; the lord's view-as ones are attached under each 圣尊 instance.
+// HolderSharesLordSkills lends the lord's lord skills; the lord's view-as ones are attached under each 圣尊 instance.
 class IkShengzun : public TriggerSkillV2
 {
 public:
     IkShengzun() : TriggerSkillV2("ikshengzun")
     {
+        setProperty("HolderSharesLordSkills", true);
         events << GameStart << EventAcquireSkill << EventLoseSkill << DFDebut << Death << GeneralShown << GeneralHidden;
         frequency = Compulsory;
         global = true;

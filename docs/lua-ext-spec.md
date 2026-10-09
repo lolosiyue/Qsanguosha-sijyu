@@ -1519,6 +1519,7 @@ player:getMark("internal_flag")
 | `HandPile:<pile>` | 玩家旗標 | `<pile>` 中的牌視為其手牌，語法同 `expand_pile`；`HandPile:%pile` 指其他角色的同名牌堆 |
 | `IgnoreInvalidity` | 技能屬性 | 本技能不會無效 |
 | `HolderIgnoresInvaliditySkills` | 技能屬性 | 持有者的非裝備技能不受 InvaliditySkill 影響 |
+| `HolderSharesLordSkills` | 技能屬性 | 持有者不是主公時，視為擁有主公的主公技（帷帝、圣尊） |
 
 `cardIgnoreLegality` 不改變 `isAvailable()`。要讓平時因目標條件不能用的牌（如滿體力時的【桃】）可用，以 `askForUseCard` 的 `MethodUse` 詢問，並在 pattern 中排除次數已用完的【杀】、【酒】；筹策（`thchouce`）與张弛（`rhzhangchiv`）即如此實作。
 
