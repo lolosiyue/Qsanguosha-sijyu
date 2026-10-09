@@ -584,7 +584,7 @@ public:
 class ThDaojian : public ViewAsEquipSkill
 {
 public:
-    ThDaojian() : ViewAsEquipSkill("thdaojian") { frequency = Compulsory; }
+    ThDaojian() : ViewAsEquipSkill("thdaojian") { frequency = Compulsory; markOwnerOnly(this); }
 
     QString viewAsEquip(const Player *target) const override
     {
@@ -926,6 +926,141 @@ private:
                 && !result.contains(to))
                 result << to;
         return result;
+    }
+};
+
+// ---------------------------------------------------------------- yuki007
+
+// The card is asked for under the generic cardIgnoreLegality flag, so its first target may be
+// any character. A response use keeps the server from re-checking isAvailable(), whose target
+// conditions the flag lifts; the pattern keeps the 杀 and 酒 use limits and the number rule.
+// #thchouce clears the flag at PreCardUsed. ThChouceUse marks the request for #thchouce.
+class ThChouce : public ViewAsSkillV2
+{
+public:
+    ThChouce() : ViewAsSkillV2("thchouce") { setPhaseName("Play"); }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        const Player *self = request.initiator;
+        return self && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+            && self->getMark("thchouce_number-PlayClear") < 13 && !self->hasFlag("Global_ThChouceFailed");
+    }
+
+    TargetMode targetMode() const override { return NoTarget; }
+
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
+    {
+        return selected.isEmpty();
+    }
+
+    EffectFlow effect(SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.invoker;
+        if (!player || !player->isAlive())
+            return FinishSkill;
+        Room *room = player->getRoom();
+        room->setPlayerFlag(player, "ThChouceUse");
+        room->setPlayerFlag(player, "cardIgnoreLegality");
+        QString pattern = "^Jink+^Nullification";
+        if (!player->canSlashWithoutCrossbow())
+            pattern.append("+^Slash");
+        if (!Analeptic::IsAvailable(player))
+            pattern.append("+^Analeptic");
+        // Only the first card of the phase, or one above the previous card's number.
+        const int last = player->getMark("thchouce_number-PlayClear");
+        QString prompt = "@thchouce";
+        if (last > 0) {
+            pattern.append(QString("|.|%1~").arg(last + 1));
+            prompt = QString("@thchouce-number:::%1").arg(last);
+        }
+        room->askForUseCard(player, pattern, prompt);
+        if (player->hasFlag("ThChouceUse")) {
+            room->setPlayerFlag(player, "-ThChouceUse");
+            room->setPlayerFlag(player, "-cardIgnoreLegality");
+            room->setPlayerFlag(player, "Global_ThChouceFailed");
+        }
+        return FinishSkill;
+    }
+};
+
+// Records the number of each card the owner uses in its play phase, how many were 筹策 uses,
+// and whether any was not (for 占筮).
+class ThChouceRecord : public TriggerSkillV2
+{
+public:
+    ThChouceRecord() : TriggerSkillV2("#thchouce")
+    {
+        events << PreCardUsed << PreCardResponded;
+        frequency = Compulsory;
+    }
+
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const Card *card = nullptr;
+        if (event == PreCardUsed) {
+            card = data.value<CardUseStruct>().card;
+        } else {
+            const CardResponseStruct resp = data.value<CardResponseStruct>();
+            if (resp.m_isUse)
+                card = resp.m_card;
+        }
+        if (!card || card->getTypeId() == Card::TypeSkill || !player || player->getPhase() != Player::Play)
+            return true;
+        if (event == PreCardUsed && player->hasFlag("ThChouceUse")) {
+            room->setPlayerFlag(player, "-ThChouceUse");
+            room->setPlayerFlag(player, "-cardIgnoreLegality");
+            room->addPlayerMark(player, "thchouce_count-PlayClear");
+        } else if (player->hasSkill("thchouce")) {
+            room->setPlayerMark(player, "thchouce_broken-PlayClear", 1);
+        } else {
+            return true;
+        }
+        room->setPlayerMark(player, "thchouce_number-PlayClear", card->getNumber());
+        return true;
+    }
+};
+
+class ThZhanshi : public TriggerSkillV2
+{
+public:
+    ThZhanshi() : TriggerSkillV2("thzhanshi")
+    {
+        events << EventPhaseEnd << EventPhaseStart << EventPhaseChanging;
+        frequency = Compulsory;
+    }
+
+    // 幻葬 lasts for the extra turn only, even if 占筮 is lost meanwhile.
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (!player)
+            return false;
+        if (event == EventPhaseStart && player->getPhase() == Player::RoundStart
+            && player->getMark("thzhanshi_pending") > 0) {
+            room->setPlayerMark(player, "thzhanshi_pending", 0);
+            grantTracked(room, player, "thzhanshi_grants", "thhuanzang");
+        } else if (event == EventPhaseChanging && data.value<PhaseChangeStruct>().to == Player::NotActive) {
+            revokeTracked(room, player, "thzhanshi_grants");
+        }
+        return false;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
+    {
+        if (event != EventPhaseEnd || !player || !player->isAlive() || !player->hasSkill(objectName())
+            || player->getPhase() != Player::Play || player->getMark("thchouce_count-PlayClear") < 3
+            || player->getMark("thchouce_broken-PlayClear") > 0)
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        room->sendCompulsoryTriggerLog(player, objectName());
+        room->broadcastSkillInvoke(objectName());
+        room->setPlayerMark(player, "thzhanshi_pending", 1);
+        room->scheduleExtraTurn(player, ctx.sourceRef);
+        return false;
     }
 };
 
@@ -1955,7 +2090,7 @@ public:
 class ThYinbi : public TriggerSkillV2
 {
 public:
-    ThYinbi() : TriggerSkillV2("thyinbi") { events << HpChanged; }
+    ThYinbi() : TriggerSkillV2("thyinbi") { events << HpChanged; markOwnerOnly(this); }
 
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
@@ -2368,8 +2503,10 @@ TouhouYukiPackage::TouhouYukiPackage()
     yuki006->addSkill(new ThQingming);
 
     General *yuki007 = new General(this, "yuki007", "yuki", 3);
-    yuki007->addSkill(new PendingSkill("thchouce"));
-    yuki007->addSkill(new PendingSkill("thzhanshi"));
+    yuki007->addSkill(new ThChouce);
+    yuki007->addSkill(new ThChouceRecord);
+    yuki007->addSkill(new ThZhanshi);
+    related_skills.insert("thchouce", "#thchouce");
 
     General *yuki008 = new General(this, "yuki008", "yuki", 3);
     yuki008->addSkill(new ThZiyun);

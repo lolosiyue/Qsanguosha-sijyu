@@ -39,6 +39,14 @@ public:
     Q_INVOKABLE ThEnanCard();
 };
 
+class ThMicaiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ThMicaiCard();
+};
+
 class ThQiaogongCard : public SkillCard
 {
     Q_OBJECT

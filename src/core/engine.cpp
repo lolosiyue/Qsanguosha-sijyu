@@ -2779,6 +2779,11 @@ const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, con
     // A null card can never be prohibited; ProhibitSkill implementations deref
     // it unconditionally (cf. MobileYongFangzong AV from a stale tag toCard()).
     if (!card) return nullptr;
+    // Under cardIgnoreLegality the user's non-skill cards ignore every ProhibitSkill
+    // (cardIgnoreLegality:adjacent: towards the user's neighbours).
+    if (from && to && card->getTypeId() != Card::TypeSkill
+        && (from->hasFlag("cardIgnoreLegality")
+            || (from->hasFlag("cardIgnoreLegality:adjacent") && to->isAdjacentTo(from)))) return nullptr;
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (from && from->inherits("ClientPlayer")) return nullptr;

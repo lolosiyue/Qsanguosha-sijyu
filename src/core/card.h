@@ -191,6 +191,11 @@ public:
     // @todo: the following two functions should be merged into one.
     virtual bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     virtual bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self, int &maxVotes) const;
+    // The rules above as a use by `user` sees them, with the cardIgnoreLegality hook applied
+    // (docs/lua-ext-spec.md §16.6). Target selection and the server's target check use these.
+    bool targetFixedFor(const Player *user) const;
+    bool targetsFeasibleFor(const QList<const Player *> &targets, const Player *user) const;
+    bool targetFilterFor(const QList<const Player *> &targets, const Player *to_select, const Player *user, int &maxVotes) const;
     virtual bool isAvailable(const Player *player) const;
 
     inline virtual const Card *getRealCard() const

@@ -1093,6 +1093,75 @@ public:
     }
 };
 
+class ThYingdeng : public TriggerSkillV2
+{
+public:
+    ThYingdeng() : TriggerSkillV2("thyingdeng") { events << TargetCanceled; }
+
+    static bool canAdd(const CardUseStruct &use, ServerPlayer *p)
+    {
+        if (use.to.contains(p))
+            return false;
+        return use.card->isKindOf("Slash") ? use.from->canSlash(p, use.card, false) : !use.from->isProhibited(p, use.card);
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const override
+    {
+        TriggerList result;
+        const CardUseStruct use = data.value<CardUseStruct>();
+        if (!use.card || !use.from
+            || !(use.card->isKindOf("BasicCard") || (use.card->isNDTrick() && !use.card->isKindOf("Collateral"))))
+            return result;
+        bool any = false;
+        foreach (ServerPlayer *p, room->getAlivePlayers())
+            any = any || canAdd(use, p);
+        if (!any)
+            return result;
+        foreach (ServerPlayer *p, room->getAlivePlayers())
+            if (p->hasSkill(objectName()) && !usedThisPhase(room, p, objectName()))
+                result.insert(p, {objectName()});
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        QList<ServerPlayer *> available;
+        foreach (ServerPlayer *p, room->getAlivePlayers())
+            if (canAdd(use, p))
+                available << p;
+        const int max = qMax(ctx.owner->getLostHp(), 1);
+        const QList<ServerPlayer *> chosen = room->askForPlayersChosen(
+            ctx.owner, available, objectName(), 0, max,
+            QString("@thyingdeng:::%1:%2").arg(use.card->objectName()).arg(max), true);
+        if (chosen.isEmpty())
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        markUsedThisPhase(room, ctx.owner, objectName());
+        ctx.targets = chosen;
+        return true;
+    }
+
+    bool effectTarget(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        if (!canAdd(use, target))
+            return false;
+        use.to << target;
+        room->sortByActionOrder(use.to);
+        LogMessage log;
+        log.type = "#ThYongyeAdd";
+        log.from = ctx.owner;
+        log.to << target;
+        log.card_str = use.card->toString();
+        log.arg = objectName();
+        room->sendLog(log);
+        room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, use.from->objectName(), target->objectName());
+        *ctx.original_data = QVariant::fromValue(use);
+        return false;
+    }
+};
+
 // ---------------------------------------------------------------- hana011
 
 class ThYachuiViewAs : public ViewAsSkillV2
@@ -1385,6 +1454,7 @@ public:
     {
         events << DamageInflicted << EventPhaseStart;
         frequency = Compulsory;
+        markOwnerOnly(this);
     }
 
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
@@ -2231,7 +2301,7 @@ TouhouHanaPackage::TouhouHanaPackage()
 
     General *hana010 = new General(this, "hana010", "hana", 3);
     hana010->addSkill(new ThZheyin);
-    hana010->addSkill(new PendingSkill("thyingdeng"));
+    hana010->addSkill(new ThYingdeng);
 
     General *hana011 = new General(this, "hana011", "hana", 3);
     hana011->addSkill(new ThYachui);

@@ -4446,7 +4446,7 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 	}
 
 	QList<const Player *> selected;
-	if (use.card->targetFixed())
+	if (use.card->targetFixedFor(use.from))
 		return use.to.isEmpty() && use.card->targetsFeasible(selected, use.from);
 
 	foreach (ServerPlayer *target, use.to) {
@@ -4454,12 +4454,12 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 		int maxVotes = 0;
 		// Match client selection: Collateral reports capacity through maxVotes
 		// even when targetFilter returns false. Count repeated target votes too.
-		use.card->targetFilter(selected, target, use.from, maxVotes);
+		use.card->targetFilterFor(selected, target, use.from, maxVotes);
 		if (maxVotes <= selected.count(target))
 			return false;
 		selected << target;
 	}
-	return use.card->targetsFeasible(selected, use.from);
+	return use.card->targetsFeasibleFor(selected, use.from);
 }
 
 const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
@@ -9651,6 +9651,10 @@ void Room::cancelTarget(CardUseStruct &use, ServerPlayer *player)
             if (bladeUses.isEmpty()) removePlayerDisableShow(player, "Blade");
         }
     }
+    // Handlers may add targets (thyingdeng); callers write `use` back to their event data.
+    QVariant data = QVariant::fromValue(use);
+    thread->trigger(TargetCanceled, this, player, data);
+    use = data.value<CardUseStruct>();
 }
 
 void Room::moveCards(QList<CardsMoveStruct> moves, bool visible, bool enforceOrigin)

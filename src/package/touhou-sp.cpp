@@ -1186,6 +1186,138 @@ public:
     }
 };
 
+class ThShushuViewAs : public ViewAsSkillV2
+{
+public:
+    ThShushuViewAs() : ViewAsSkillV2("thshushu") {}
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.pattern == "@@thshushu";
+    }
+
+    // The numbers must add up to the "thshushu" mark ThShushu sets while asking.
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        if (!ownsCard(request.initiator, card) || request.initiator->isJilei(card) || card->getNumber() <= 0)
+            return false;
+        int sum = 0;
+        foreach (int id, request.selectedCardIds)
+            sum += Sanguosha->getCard(id)->getNumber();
+        return sum + card->getNumber() <= request.initiator->getMark("thshushu");
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        int sum = 0;
+        foreach (int id, request.selectedCardIds) {
+            const Card *card = Sanguosha->getCard(id);
+            if (!ownsCard(request.initiator, card))
+                return false;
+            sum += card->getNumber();
+        }
+        return !request.selectedCardIds.isEmpty() && sum == request.initiator->getMark("thshushu");
+    }
+
+    bool willThrowSelectedCards() const override { return false; }
+    TargetMode targetMode() const override { return NoTarget; }
+
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
+    {
+        return selected.isEmpty();
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "DummyCard"; }
+};
+
+class ThShushu : public TriggerSkillV2
+{
+public:
+    ThShushu() : TriggerSkillV2("thshushu")
+    {
+        events << TargetSpecifying << TargetConfirming;
+        view_as_skill = new ThShushuViewAs;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const CardUseStruct use = data.value<CardUseStruct>();
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || !use.card
+            || (event == TargetSpecifying ? use.from != player : !use.to.contains(player))
+            || !(use.card->isKindOf("BasicCard") || (use.card->isNDTrick() && use.card->isBlack())))
+            return TriggerList();
+        const QList<int> ids = use.card->isVirtualCard() ? use.card->getSubcards() : QList<int>{use.card->getId()};
+        if (ids.isEmpty() || room->getCardIdsOnTable(ids).size() != ids.size() || !canReach(player, use.card->getNumber()))
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        const CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        room->setPlayerMark(ctx.owner, "thshushu", use.card->getNumber());
+        const Card *card = room->askForCard(ctx.owner, "@@thshushu",
+                                            QString("@thshushu:::%1:%2").arg(use.card->objectName()).arg(use.card->getNumber()),
+                                            *ctx.original_data, Card::MethodNone);
+        room->setPlayerMark(ctx.owner, "thshushu", 0);
+        if (!card)
+            return false;
+        QVariantList ids;
+        foreach (int id, card->getSubcards())
+            ids << id;
+        ctx.extra_data = ids;
+        room->broadcastSkillInvoke(objectName());
+        return true;
+    }
+
+    // The chosen cards take the card's place on the table and the owner gets the card;
+    // the use goes on as the same card (name, suit, number) made of the chosen cards.
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.owner;
+        CardUseStruct use = ctx.original_data->value<CardUseStruct>();
+        QList<int> ids;
+        foreach (const QVariant &id, ctx.extra_data.toList())
+            ids << id.toInt();
+
+        LogMessage log;
+        log.type = "$ThShushu";
+        log.from = player;
+        log.arg = objectName();
+        log.card_str = ListI2S(ids).join("+");
+        room->sendLog(log);
+
+        CardMoveReason reason(CardMoveReason::S_REASON_OVERRIDE, player->objectName(), objectName(), QString());
+        QList<CardsMoveStruct> moves;
+        moves << CardsMoveStruct(ids, nullptr, Player::PlaceTable, reason)
+              << CardsMoveStruct(room->getCardIdsOnTable(use.card), player, Player::PlaceHand, reason);
+        room->moveCardsAtomic(moves, true);
+
+        Card *card = Sanguosha->cloneCard(use.card->objectName(), use.card->getSuit(), use.card->getNumber());
+        card->addSubcards(ids);
+        card->setSkillName(objectName());
+        use.changeCard(card);
+        use.setOwnedCard(card);
+        // A replacement, not a conversion: the old card's skills no longer apply to it.
+        card->change_cards.clear();
+        *ctx.original_data = QVariant::fromValue(use);
+        return false;
+    }
+
+private:
+    // Whether some of the player's cards have numbers adding up to `number`.
+    static bool canReach(const ServerPlayer *player, int number)
+    {
+        if (number <= 0 || number >= 64)
+            return false;
+        quint64 sums = 1;
+        foreach (const Card *card, player->getCards("he"))
+            if (!card->hasFlag("using") && !player->isJilei(card) && card->getNumber() > 0 && card->getNumber() <= number)
+                sums |= sums << card->getNumber();
+        return sums >> number & 1;
+    }
+};
+
 class ThFenglingViewAs : public ViewAsSkillV2
 {
 public:
@@ -1417,6 +1549,120 @@ public:
             room->obtainCard(ctx.owner, id, false);
         if (player->isAlive())
             player->drawCards(1, objectName());
+        return false;
+    }
+};
+
+// The 杀 request runs under the generic cardIgnoreLegality flag, so its first target may
+// be any character. #thxuyou clears the flag at PreCardUsed, after the server's target
+// check. ThXuyouUse marks the request for #thxuyou.
+class ThXuyou : public ViewAsSkillV2
+{
+public:
+    ThXuyou() : ViewAsSkillV2("thxuyou") { setPhaseName("Play"); }
+
+    LimitScope getLimitScope() const override { return Limit_Phase; }
+
+    // The 杀 still counts toward the use limit; only its targets ignore legality.
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        const Player *self = request.initiator;
+        if (!self || request.reason != CardUseStruct::CARD_USE_REASON_PLAY)
+            return false;
+        Slash slash(Card::NoSuit, 0);
+        return self->canSlashWithoutCrossbow(&slash);
+    }
+
+    TargetMode targetMode() const override { return NoTarget; }
+
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
+    {
+        return selected.isEmpty();
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "ThXuyouCard"; }
+
+    EffectFlow effect(SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.invoker;
+        if (!player || !player->isAlive())
+            return FinishSkill;
+        Room *room = player->getRoom();
+        room->setPlayerFlag(player, "ThXuyouUse");
+        room->setPlayerFlag(player, "cardIgnoreLegality");
+        room->askForUseCard(player, "slash", "@thxuyou");
+        if (player->hasFlag("ThXuyouUse")) {
+            room->setPlayerFlag(player, "-ThXuyouUse");
+            room->setPlayerFlag(player, "-cardIgnoreLegality");
+        }
+        return FinishSkill;
+    }
+};
+
+// Each damage of the 虚遊 杀 draws one card; a 杀 that dealt none discards one card
+// from each character adjacent to the user.
+class ThXuyouEffect : public TriggerSkillV2
+{
+public:
+    ThXuyouEffect() : TriggerSkillV2("#thxuyou")
+    {
+        events << PreCardUsed << PreDamageDone << Damage << CardFinished;
+        frequency = Compulsory;
+    }
+
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
+    {
+        if (event == PreCardUsed) {
+            const CardUseStruct use = data.value<CardUseStruct>();
+            if (use.from && use.from->hasFlag("ThXuyouUse") && use.card && use.card->isKindOf("Slash")) {
+                room->setPlayerFlag(use.from, "-ThXuyouUse");
+                room->setPlayerFlag(use.from, "-cardIgnoreLegality");
+                room->setCardFlag(use.card, "thxuyou_slash");
+            }
+        } else if (event == PreDamageDone) {
+            const DamageStruct damage = data.value<DamageStruct>();
+            if (damage.card && damage.card->hasFlag("thxuyou_slash"))
+                room->setCardFlag(damage.card, "thxuyou_damage");
+        }
+        return false;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (!player || !player->isAlive())
+            return TriggerList();
+        if (event == Damage) {
+            const DamageStruct damage = data.value<DamageStruct>();
+            if (damage.from == player && damage.card && damage.card->hasFlag("thxuyou_slash"))
+                return TriggerList{{player, {objectName()}}};
+        } else if (event == CardFinished) {
+            const CardUseStruct use = data.value<CardUseStruct>();
+            if (use.from != player || !use.card || !use.card->hasFlag("thxuyou_slash")
+                || use.card->hasFlag("thxuyou_damage"))
+                return TriggerList();
+            foreach (ServerPlayer *p, room->getOtherPlayers(player))
+                if (player->isAdjacentTo(p) && player->canDiscard(p, "he"))
+                    return TriggerList{{player, {objectName()}}};
+        }
+        return TriggerList();
+    }
+
+    bool effect(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &) const override
+    {
+        room->sendCompulsoryTriggerLog(player, "thxuyou");
+        room->broadcastSkillInvoke("thxuyou");
+        if (event == Damage) {
+            player->drawCards(1, "thxuyou");
+            return false;
+        }
+        foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
+            if (!player->isAlive())
+                break;
+            if (player->isAdjacentTo(p) && player->canDiscard(p, "he")) {
+                const int id = room->askForCardChosen(player, p, "he", "thxuyou", false, Card::MethodDiscard);
+                room->throwCard(id, p, player);
+            }
+        }
         return false;
     }
 };
@@ -2548,7 +2794,7 @@ TouhouSPPackage::TouhouSPPackage()
 
     General *sp011 = new General(this, "sp011", "yuki");
     sp011->addSkill(new ThJiuzhang);
-    sp011->addSkill(new PendingSkill("thshushu"));
+    sp011->addSkill(new ThShushu);
     sp011->addSkill(new ThFengling);
 
     General *sp012 = new General(this, "sp012", "tsuki");
@@ -2561,7 +2807,9 @@ TouhouSPPackage::TouhouSPPackage()
 
     General *sp013 = new General(this, "sp013", "kaze", 3, false);
     sp013->addSkill(new ThYimeng);
-    sp013->addSkill(new PendingSkill("thxuyou"));
+    sp013->addSkill(new ThXuyou);
+    sp013->addSkill(new ThXuyouEffect);
+    related_skills.insert("thxuyou", "#thxuyou");
 
     General *sp014 = new General(this, "sp014", "hana", 3);
     sp014->addSkill(new ThHuanghu);

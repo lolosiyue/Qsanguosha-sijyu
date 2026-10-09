@@ -2336,7 +2336,7 @@ void RoomScene::enableTargets(const Card*card)
 		ok_button->setEnabled(false);
 		return;
 	}
-	if(card->targetFixed()||((status&Client::ClientStatusBasicMask)==Client::Responding
+	if(card->targetFixedFor(activePlayer)||((status&Client::ClientStatusBasicMask)==Client::Responding
 		&&(status==Client::Responding||(card->getTypeId()!=Card::TypeSkill&&status!=Client::RespondingUse)))
 		|| status==Client::AskForShowOrPindian){
 		foreach (PlayerCardContainer*item,item2player.keys()){
@@ -2358,7 +2358,7 @@ void RoomScene::enableTargets(const Card*card)
 				}
 			}
 		} else if(Config.EnableAutoTarget){
-			if(activePlayer != nullptr && !card->targetsFeasible(selected_targets, activePlayer)){
+			if(activePlayer != nullptr && !card->targetsFeasibleFor(selected_targets, activePlayer)){
 				unselectAllTargets();
 				int count = 0;
 				foreach(Photo*photo,photos)
@@ -2371,7 +2371,7 @@ void RoomScene::enableTargets(const Card*card)
 			}
 		}
 	}
-	ok_button->setEnabled(activePlayer != nullptr && card->targetsFeasible(selected_targets, activePlayer));
+	ok_button->setEnabled(activePlayer != nullptr && card->targetsFeasibleFor(selected_targets, activePlayer));
 }
 
 void RoomScene::updateTargetsEnablity(const Card*card)
@@ -2401,7 +2401,7 @@ void RoomScene::updateTargetsEnablity(const Card*card)
 	foreach (PlayerCardContainer*item,item2player.keys()){
 		int maxVotes = 0;
 		if(card){
-			card->targetFilter(selected_targets,item2player[item],activePlayer,maxVotes);
+			card->targetFilterFor(selected_targets,item2player[item],activePlayer,maxVotes);
 			item->setMaxVotes(maxVotes);
 		}
         if (Photo *photo = qobject_cast<Photo *>(item))
@@ -2441,13 +2441,14 @@ void RoomScene::updateSelectedTargets()
 			foreach (const Player*cp,selected_targets){
 				QList<const Player*> tempPlayers = QList<const Player*>(selected_targets);
 				tempPlayers.removeAll(cp);
-				if(card->targetFilter(tempPlayers,cp,activePlayer)) continue;
+				int votes = 0;
+				if(card->targetFilterFor(tempPlayers,cp,activePlayer,votes)||votes>0) continue;
 				selected_targets.clear();
 				unselectAllTargets();
 				return;
 			}
 		}
-		ok_button->setEnabled(activePlayer != nullptr && card->targetsFeasible(selected_targets, activePlayer));
+		ok_button->setEnabled(activePlayer != nullptr && card->targetsFeasibleFor(selected_targets, activePlayer));
 	} else
 		selected_targets.clear();
 	updateTargetsEnablity(card);
@@ -3852,7 +3853,7 @@ void RoomScene::activateSkill(const ViewAsSkill *skill, int instanceId)
 	}
 
 	const Card *card = dashboard->pendingCard();
-	if (card && activePlayer != nullptr && card->targetFixed() && card->isAvailable(activePlayer)) {
+	if (card && activePlayer != nullptr && card->targetFixedFor(activePlayer) && card->isAvailable(activePlayer)) {
 		if (!skill->inherits("ZeroCardViewAsSkill")) {
 			foreach (const Card *c, activePlayer->getKnownCards()) {
 				if (skill->viewFilter(QList<const Card *>(), c))
@@ -4066,10 +4067,8 @@ void RoomScene::useSelectedCard()
 		const Player *activePlayer = getCurrentOperationPlayer(dashboard);
 		if (activePlayer == nullptr)
 			return;
-		foreach (const QString&pile,activePlayer->getPileNames()){
-			if(pile.startsWith("&")||pile=="wooden_ox")
-				dashboard->retractPileCards(pile);
-		}
+		foreach (const QString&pile,activePlayer->getHandPileNames())
+			dashboard->retractPileCards(pile);
 	}
 }
 
@@ -4087,7 +4086,7 @@ void RoomScene::onEnabledChange()
 void RoomScene::useCard(const Card*card)
 {
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
-	if(activePlayer != nullptr && (card->targetFixed()||card->targetsFeasible(selected_targets,activePlayer)))
+	if(activePlayer != nullptr && (card->targetFixedFor(activePlayer)||card->targetsFeasibleFor(selected_targets,activePlayer)))
 		ClientInstance->onPlayerResponseCard(card,selected_targets);
 	enableTargets(nullptr);
 }

@@ -815,6 +815,38 @@ bool Card::targetFilter(const QList<const Player*> &targets, const Player*to_sel
 	return canSelect;
 }
 
+// cardIgnoreLegality: the first target of the user's non-skill card ignores legality and may be
+// any character (cardIgnoreLegality:adjacent: a neighbour). A target-fixed card takes only that
+// target; any other card picks its further targets by its own rules.
+static bool ignoresLegality(const Card *card, const Player *user)
+{
+	return user && card->getTypeId() != Card::TypeSkill
+		&& (user->hasFlag("cardIgnoreLegality") || user->hasFlag("cardIgnoreLegality:adjacent"));
+}
+
+bool Card::targetFixedFor(const Player *user) const
+{
+	return !ignoresLegality(this, user) && targetFixed();
+}
+
+bool Card::targetsFeasibleFor(const QList<const Player*> &targets, const Player *user) const
+{
+	if (ignoresLegality(this, user) && (targets.isEmpty() || targetFixed()))
+		return targets.length() == 1;
+	return targetsFeasible(targets, user);
+}
+
+bool Card::targetFilterFor(const QList<const Player*> &targets, const Player *to_select, const Player *user, int &maxVotes) const
+{
+	if (ignoresLegality(this, user) && (targets.isEmpty() || targetFixed())) {
+		const bool canSelect = targets.isEmpty() && to_select->isAlive()
+			&& (user->hasFlag("cardIgnoreLegality") || to_select->isAdjacentTo(user));
+		maxVotes = canSelect ? 1 : 0;
+		return canSelect;
+	}
+	return targetFilter(targets, to_select, user, maxVotes);
+}
+
 void Card::doPreAction(Room*, const CardUseStruct &) const
 {
 }

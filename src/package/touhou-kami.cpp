@@ -279,6 +279,7 @@ public:
     {
         events << GameStart << EventPhaseStart;
         frequency = Compulsory;
+        markOwnerOnly(this);
     }
 
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
@@ -520,6 +521,7 @@ public:
     {
         events << Damage;
         frequency = Compulsory;
+        markOwnerOnly(this);
     }
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
@@ -630,6 +632,7 @@ public:
     {
         events << HpChanged;
         frequency = Compulsory;
+        markOwnerOnly(this);
     }
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
@@ -1044,7 +1047,7 @@ public:
 class ThFanhun : public TriggerSkillV2
 {
 public:
-    ThFanhun() : TriggerSkillV2("thfanhun") { events << AskForPeaches; }
+    ThFanhun() : TriggerSkillV2("thfanhun") { events << AskForPeaches; markOwnerOnly(this); }
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -1081,7 +1084,7 @@ public:
 class ThYoushang : public TriggerSkillV2
 {
 public:
-    ThYoushang() : TriggerSkillV2("thyoushang") { events << DamageCaused; }
+    ThYoushang() : TriggerSkillV2("thyoushang") { events << DamageCaused; markOwnerOnly(this); }
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
     {
@@ -2161,7 +2164,7 @@ public:
 class ThSisui : public TriggerSkillV2
 {
 public:
-    ThSisui() : TriggerSkillV2("thsisui") { events << EventPhaseStart; }
+    ThSisui() : TriggerSkillV2("thsisui") { events << EventPhaseStart; markOwnerOnly(this); }
 
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
@@ -3011,6 +3014,7 @@ public:
     {
         events << GameStart << CardFinished << CardsMoveOneTime << HpRecover << Damaged;
         frequency = Compulsory;
+        markOwnerOnly(this);
     }
 
     TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
@@ -3318,6 +3322,7 @@ public:
     {
         events << GameStart << EventPhaseStart << EventPhaseChanging;
         frequency = Compulsory;
+        markOwnerOnly(this);
     }
 
     bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
@@ -3557,7 +3562,7 @@ TouhouKamiPackage::TouhouKamiPackage()
 
     General *kami002 = new General(this, "kami002", "god", 4);
     kami002->addSkill(new ThTianbao);
-    kami002->addSkill(new PendingSkill("thyanmeng"));
+    kami002->addSkill("thyanmeng");
 
     General *kami003 = new General(this, "kami003", "god", 8);
     kami003->addSkill(new ThWudao);

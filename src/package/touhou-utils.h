@@ -103,16 +103,18 @@ inline const Player *attachedParentOwner(const ActiveSkillRequest &request, cons
     return nullptr;
 }
 
-// Upstream "专属技" (owner-only) skills: no skill may copy them. The engine has no
-// such attribute, so the upstream list is kept here by name.
+// "专属技" (owner-only), stricter than upstream: it ignores invalidity like 持恒技,
+// and only a player whose general carries it may gain it (SkillRuntimeCoordinator).
+inline void markOwnerOnly(Skill *skill)
+{
+    skill->setProperty("IgnoreInvalidity", true);
+    skill->setProperty("OwnerOnly", true);
+}
+
 inline bool isOwnerOnlySkill(const QString &name)
 {
-    static const QSet<QString> names = {
-        "ikhuoshou", "ikjingnie", "iklinglong", "iklingqi", "iklixin", "ikmoshan", "iksheluo", "ikyouji",
-        "ikzuiyan", "thdaojian", "thdongxi", "thfanhun", "thfenlang", "thhouzhi", "thkuangmo", "thmicai",
-        "thsanjie", "thshouye", "thsilian", "thsisui", "thtianbao", "thyinbi", "thyoushang", "thyuexiang",
-    };
-    return names.contains(name);
+    const Skill *skill = Sanguosha->getSkill(name);
+    return skill && skill->property("OwnerOnly").toBool();
 }
 
 // canWake() consumes the grant and logs it; eligibility checks may only look.
