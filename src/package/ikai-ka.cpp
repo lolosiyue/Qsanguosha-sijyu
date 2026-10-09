@@ -1607,7 +1607,7 @@ public:
 class IkZuiyan : public TriggerSkillV2
 {
 public:
-    IkZuiyan() : TriggerSkillV2("ikzuiyan") { events << EventPhaseStart; }
+    IkZuiyan() : TriggerSkillV2("ikzuiyan") { events << EventPhaseStart; markOwnerOnly(this); }
 
     TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &) const override
     {
@@ -2400,7 +2400,7 @@ QString actingPhaseClearSuffix(const Player *self)
 class IkLixin : public ViewAsSkillV2
 {
 public:
-    IkLixin() : ViewAsSkillV2("iklixin", 2) {}
+    IkLixin() : ViewAsSkillV2("iklixin", 2) { markOwnerOnly(this); }
 
     SkillDialogInfo getDialogInfo() const override { return SkillDialogInfo::guhuo(objectName(), true, false, false, false); }
 
@@ -4095,6 +4095,7 @@ public:
         events << BeforeCardsMove;
         frequency = Compulsory;
         view_as_skill = new IkMoshanFilter;
+        markOwnerOnly(this);
     }
 
     static int armorLeaving(Room *room, ServerPlayer *player, const CardsMoveOneTimeStruct &move)
@@ -5267,6 +5268,7 @@ public:
     {
         events << MarkChanged << SwappedPile;
         frequency = Compulsory;
+        markOwnerOnly(this);
     }
 
     TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override

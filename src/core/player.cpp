@@ -785,8 +785,19 @@ bool Player::isSkillInvalid(const Skill *skill, int instanceId) const
     if (skill->property("IgnoreInvalidity").toBool())
         return false;
 
-    if (!Sanguosha->correctSkillValidity(this, skill))
-        return true;
+    if (!Sanguosha->correctSkillValidity(this, skill)) {
+        // A held skill with HolderIgnoresInvaliditySkills (衍梦) lifts every InvaliditySkill
+        // from the holder's general skills. Checked only after a rejection, which is rare.
+        bool shielded = false;
+        if (!skill->isEquipSkill()) {
+            for (auto it = m_skillInstances.constBegin(); !shielded && it != m_skillInstances.constEnd(); ++it) {
+                const Skill *holder = it->isEmpty() ? nullptr : Sanguosha->getSkill(it.key());
+                shielded = holder && holder->property("HolderIgnoresInvaliditySkills").toBool();
+            }
+        }
+        if (!shielded)
+            return true;
+    }
 
     QStringList records = this->tag["SkillInvalidityRecords"].toStringList();
 
@@ -2010,12 +2021,32 @@ void Player::removePileOpen(const QString &pile_name, const QString &player)
     pile_open[pile_name].removeOne(player);
 }
 
+// In expand-pile syntax: the own "wooden_ox" and "&" piles, plus the pile named by each
+// "HandPile:<pile>" flag, where "%pile" means the other players' piles (宝锤).
+QStringList Player::getHandPileNames() const
+{
+    QStringList names;
+    foreach (const QString &pile, getPileNames()) {
+        if (pile == "wooden_ox" || pile.startsWith("&"))
+            names << pile;
+    }
+    foreach (const QString &flag, flags) {
+        if (flag.startsWith("HandPile:"))
+            names << flag.mid(9);
+    }
+    return names;
+}
+
 QList<int> Player::getHandPile() const
 {
     QList<int> result;
-    foreach(QString pile, getPileNames()){
-        if (pile=="wooden_ox"||pile.startsWith("&"))
-			result << getPile(pile);
+    foreach (const QString &pile, getHandPileNames()) {
+        if (pile.startsWith("%")) {
+            foreach (const Player *p, getAliveSiblings())
+                result << p->getPile(pile.mid(1));
+        } else {
+            result << getPile(pile);
+        }
     }
     return result;
 }

@@ -650,6 +650,154 @@ private:
 
 // ---------------------------------------------------------------- kaze006
 
+// The living lender behind the holder's first 迷彩 grant, and that grant.
+const Player *micaiLender(const Player *holder, SkillInstanceRef *grant = nullptr)
+{
+    foreach (const SkillInstance &instance, holder->getSkillInstances()) {
+        if (instance.skillName != "thmicaiv")
+            continue;
+        foreach (const Player *p, holder->getAliveSiblings()) {
+            if (p->objectName() != instance.parentRef.ownerObjectName)
+                continue;
+            if (grant)
+                *grant = SkillInstanceRef(holder->objectName(), instance.key());
+            return p;
+        }
+    }
+    return nullptr;
+}
+
+// Held under 迷彩: the lender's weapon and armor, each while the holder's own slot
+// is empty and the holder has no 专属技. It stays in force through skill invalidity.
+class ThMicaiLoan : public ViewAsEquipSkill
+{
+public:
+    ThMicaiLoan() : ViewAsEquipSkill("thmicaiv") { setProperty("IgnoreInvalidity", true); }
+
+    QString viewAsEquip(const Player *target) const override
+    {
+        const Player *lender = micaiLender(target);
+        if (!lender)
+            return QString();
+        foreach (const SkillInstance &instance, target->getSkillInstances())
+            if (isOwnerOnlySkill(instance.skillName))
+                return QString();
+        QStringList names;
+        if (target->hasEquipArea(0) && !target->getWeapon() && lender->getWeapon())
+            names << lender->getWeapon()->objectName();
+        if (target->hasEquipArea(1) && !target->getArmor() && lender->getArmor())
+            names << lender->getArmor()->objectName();
+        return names.join(",");
+    }
+};
+
+// Keeps the view-as half of the loaned equipment (丈八蛇矛…) attached under the
+// grant, and the holder's equip area current.
+void syncMicaiLoan(Room *room, ServerPlayer *holder)
+{
+    SkillInstanceRef grant;
+    micaiLender(holder, &grant);
+    const QString loaned = grant.isValid() ? Sanguosha->getViewAsEquipSkill("thmicaiv")->viewAsEquip(holder) : QString();
+    QStringList wanted;
+    foreach (const QString &name, loaned.split(",", Qt::SkipEmptyParts))
+        if (Sanguosha->getViewAsSkill(name))
+            wanted << name;
+    foreach (const SkillInstance &entry, holder->getSkillInstances()) {
+        if (entry.source != SourceAttached || entry.parentRef.ownerObjectName != holder->objectName()
+            || entry.parentRef.key.skillName != "thmicaiv")
+            continue;
+        if (entry.parentRef != grant || !wanted.removeOne(entry.skillName))
+            room->detachAttachedSkill(SkillInstanceRef(holder->objectName(), entry.key()));
+    }
+    foreach (const QString &name, wanted)
+        room->attachSkillToPlayer(holder, name, grant);
+    holder->refreshUIState();
+}
+
+class ThMicaiViewAs : public ViewAsSkillV2
+{
+public:
+    ThMicaiViewAs() : ViewAsSkillV2("thmicai") { setPhaseName("Play"); }
+
+    LimitScope getLimitScope() const override { return Limit_Phase; }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
+    }
+
+    TargetMode targetMode() const override { return SelectTargets; }
+
+    bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                         const Player *to) const override
+    {
+        return request.initiator && selected.isEmpty() && to && to != request.initiator;
+    }
+
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
+    {
+        return selected.length() == 1;
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "ThMicaiCard"; }
+
+    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+    {
+        if (!target || !target->isAlive())
+            return ContinueEffects;
+        Room *room = target->getRoom();
+        if (room->attachSkillToPlayer(target, "thmicaiv", ctx.activationRef).isValid())
+            syncMicaiLoan(room, target);
+        return ContinueEffects;
+    }
+};
+
+// The grants hang under this instance: losing 迷彩 takes them along. They also end
+// when the lender's next turn starts or the lender dies; equipment moves re-sync them.
+class ThMicai : public TriggerSkillV2
+{
+public:
+    ThMicai() : TriggerSkillV2("thmicai")
+    {
+        events << EventPhaseStart << Death << CardsMoveOneTime;
+        view_as_skill = new ThMicaiViewAs;
+        markOwnerOnly(this);
+    }
+
+    void record(TriggerEvent event, Room *room, ServerPlayer *player, SkillContext &ctx) const override
+    {
+        if (!player || !ctx.owner || !ctx.original_data)
+            return;
+        bool expire = false;
+        if (event == EventPhaseStart) {
+            expire = player == ctx.owner && player->getPhase() == Player::RoundStart;
+        } else if (event == Death) {
+            expire = ctx.original_data->value<DeathStruct>().who == ctx.owner;
+        } else {
+            const CardsMoveOneTimeStruct move = ctx.original_data->value<CardsMoveOneTimeStruct>();
+            if (!(move.from == player && move.from_places.contains(Player::PlaceEquip))
+                && !(move.to == player && move.to_place == Player::PlaceEquip))
+                return;
+        }
+        if (event != CardsMoveOneTime && !expire)
+            return;
+        foreach (ServerPlayer *holder, room->getAllPlayers(true)) {
+            bool held = false;
+            foreach (const SkillInstance &entry, holder->getSkillInstances()) {
+                if (entry.skillName != "thmicaiv" || entry.parentRef != ctx.activationRef)
+                    continue;
+                held = true;
+                if (expire)
+                    room->detachAttachedSkill(SkillInstanceRef(holder->objectName(), entry.key()));
+            }
+            if (held && holder->isAlive() && (expire || player == ctx.owner || player == holder))
+                syncMicaiLoan(room, holder);
+        }
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
+};
+
 class ThQiaogong : public ViewAsSkillV2
 {
 public:
@@ -2374,7 +2522,7 @@ public:
 class ThDongxi : public TriggerSkillV2
 {
 public:
-    ThDongxi() : TriggerSkillV2("thdongxi") { events << EventPhaseStart; }
+    ThDongxi() : TriggerSkillV2("thdongxi") { events << EventPhaseStart; markOwnerOnly(this); }
 
     TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
@@ -2664,6 +2812,7 @@ public:
 ThJiyiCard::ThJiyiCard() { setSkillName("thjiyi"); mute = true; }
 ThNiankeCard::ThNiankeCard() { setSkillName("thnianke"); mute = true; }
 ThEnanCard::ThEnanCard() { setSkillName("thenan"); mute = true; }
+ThMicaiCard::ThMicaiCard() { setSkillName("thmicai"); mute = true; }
 ThQiaogongCard::ThQiaogongCard() { setSkillName("thqiaogong"); mute = true; }
 ThQianyiCard::ThQianyiCard() { setSkillName("thqianyi"); mute = true; }
 ThKunyiCard::ThKunyiCard() { setSkillName("thkunyi"); mute = true; }
@@ -2703,7 +2852,7 @@ TouhouKazePackage::TouhouKazePackage()
     kaze005->addSkill(new ThBeiyun);
 
     General *kaze006 = new General(this, "kaze006", "kaze");
-    kaze006->addSkill(new PendingSkill("thmicai"));
+    kaze006->addSkill(new ThMicai);
     kaze006->addSkill(new ThQiaogong);
 
     General *kaze007 = new General(this, "kaze007", "kaze");
@@ -2761,12 +2910,13 @@ TouhouKazePackage::TouhouKazePackage()
     kaze018->addSkill(new ThSangzhi);
     kaze018->addSkill(new ThXinhua);
 
-    skills << new ThHuazhi << new ThHuaimie << new ThHuaimieFilter << new ThYanlun << new ThHeyu
+    skills << new ThHuazhi << new ThMicaiLoan << new ThHuaimie << new ThHuaimieFilter << new ThYanlun << new ThHeyu
            << new ThXinhuaViewAs;
 
     addMetaObject<ThJiyiCard>();
     addMetaObject<ThNiankeCard>();
     addMetaObject<ThEnanCard>();
+    addMetaObject<ThMicaiCard>();
     addMetaObject<ThQiaogongCard>();
     addMetaObject<ThQianyiCard>();
     addMetaObject<ThKunyiCard>();

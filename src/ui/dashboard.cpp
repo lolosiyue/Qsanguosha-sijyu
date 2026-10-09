@@ -1478,10 +1478,8 @@ void Dashboard::_onDialogOptionClicked(const QString &optionName)
 
 void Dashboard::selectAll()
 {
-    foreach (const QString &pile, m_player->getPileNames()) {
-        if (pile == "wooden_ox" || pile.startsWith("&"))
-            retractPileCards(pile);
-    }
+    foreach (const QString &pile, m_player->getHandPileNames())
+        retractPileCards(pile);
     if (view_as_skill) {
         unselectAll();
         foreach (CardItem *card_item, m_handCards) {
@@ -2202,10 +2200,8 @@ void Dashboard::disableAllCards()
 void Dashboard::enableCards()
 {
     m_mutexEnableCards.lock();
-    foreach (const QString &pile, m_player->getPileNames()) {
-        if (pile == "wooden_ox" || pile.startsWith("&"))
-            expandPileCards(pile);
-    }
+    foreach (const QString &pile, m_player->getHandPileNames())
+        expandPileCards(pile);
     {
         // isAvailable() checks targetFilter for every other player; compute shared card modifiers once.
         TargetModMemoScope targetModMemo;
@@ -2261,11 +2257,9 @@ void Dashboard::startPending(const ViewAsSkill *skill, int instanceId)
     }
 
     retractAllSkillPileCards();
-	foreach (const QString &pile, m_player->getPileNames()) {
-		if (pile == "wooden_ox" || pile.startsWith("&")){
-			if(expand) expandPileCards(pile);
-			else retractPileCards(pile);
-		}
+	foreach (const QString &pile, m_player->getHandPileNames()) {
+		if(expand) expandPileCards(pile);
+		else retractPileCards(pile);
 	}
 
     if (skill && !skill->getExpandPile().isEmpty()) {
@@ -2297,10 +2291,8 @@ void Dashboard::stopPending()
     view_as_skill = nullptr;
     m_viewAsSkillInstanceID = 0;
     pending_card = nullptr;
-    foreach (const QString &pile, m_player->getPileNames()) {
-        if (pile == "wooden_ox" || pile.startsWith("&"))
-            retractPileCards(pile);
-    }
+    foreach (const QString &pile, m_player->getHandPileNames())
+        retractPileCards(pile);
     emit card_selected(nullptr);
 
     foreach (CardItem *item, m_handCards) {

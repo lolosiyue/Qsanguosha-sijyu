@@ -340,6 +340,18 @@ int SkillRuntimeCoordinator::chooseSkillInstance(ServerPlayer *chooser, ServerPl
     return candidateIds.contains(selectedId) ? selectedId : candidateIds.first();
 }
 
+namespace {
+QVariant skillChangeData(const SkillInstance &instance)
+{
+    SkillChangeStruct change(instance.skillName, instance.instanceID);
+    change.source = instance.source;
+    change.parentSkillName = instance.parent.skillName;
+    change.parentInstanceID = instance.parent.instanceID;
+    change.visible = instance.visible;
+    return change.toVariant();
+}
+}
+
 bool SkillRuntimeCoordinator::removeSkillInstanceFromPlayer(
     ServerPlayer *owner, const QString &skillName, int instanceId,
     bool isEquip, bool eventAndLog)
@@ -349,6 +361,15 @@ bool SkillRuntimeCoordinator::removeSkillInstanceFromPlayer(
     const SkillInstance *instance = owner->findSkillInstance(skillName, instanceId);
     if (!instance)
         return false;
+    if (eventAndLog) {
+        // A handler may refuse the loss (衍梦) or change the registry; look it up again.
+        QVariant data = skillChangeData(*instance);
+        if (m_room.thread->trigger(EventLosingSkill, &m_room, owner, data))
+            return false;
+        instance = owner->findSkillInstance(skillName, instanceId);
+        if (!instance)
+            return false;
+    }
 
     const SkillInstance removed = *instance;
     QList<ServerPlayer *> lossLogReceivers;
@@ -383,12 +404,7 @@ bool SkillRuntimeCoordinator::removeSkillInstanceFromPlayer(
     }
 
     if (eventAndLog) {
-        SkillChangeStruct change(skillName, instanceId);
-        change.source = removed.source;
-        change.parentSkillName = removed.parent.skillName;
-        change.parentInstanceID = removed.parent.instanceID;
-        change.visible = removed.visible;
-        QVariant data = change.toVariant();
+        QVariant data = skillChangeData(removed);
         m_room.thread->trigger(EventLoseSkill, &m_room, owner, data);
     }
 
@@ -545,6 +561,13 @@ int SkillRuntimeCoordinator::acquireSkillInternal(ServerPlayer *player, const QS
     const Skill *skill = Sanguosha->getSkill(skillName);
     if (!player || !skill)
         return 0;
+    // An owner-only skill (专属技) cannot be copied: only its own generals may grant it.
+    if (skill->property("OwnerOnly").toBool()) {
+        const General *general1 = player->getGeneral(), *general2 = player->getGeneral2();
+        if (!(general1 && general1->hasSkill(skillName, true))
+            && !(general2 && general2->hasSkill(skillName, true)))
+            return 0;
+    }
 
     const int instanceId = player->acquireSkill(skillName, head, -1,
         accepted ? accepted->sourceRef : SkillInstanceRef(),

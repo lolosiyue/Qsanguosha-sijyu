@@ -561,6 +561,73 @@ public:
 
 // ---------------------------------------------------------------- tsuki005
 
+class ThShouye : public TriggerSkillV2
+{
+public:
+    ThShouye() : TriggerSkillV2("thshouye")
+    {
+        events << DrawNCards << EventPhaseStart;
+        markOwnerOnly(this);
+    }
+
+    // At the invoker's turn end each chosen character runs a draw phase without becoming
+    // current (as 明鉴 does). The award outlives the skill, so this is a record.
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        if (event != EventPhaseStart)
+            return false;
+        if (!player || player->getPhase() != Player::NotActive)
+            return true;
+        const QStringList targets = player->getTag("ThShouyeTargets").toStringList();
+        player->removeTag("ThShouyeTargets"); // Consume before the phases can recurse.
+        foreach (const QString &name, targets) {
+            ServerPlayer *target = room->findPlayerByObjectName(name);
+            if (!target || !target->isAlive())
+                continue;
+            target->changePhase(target->getPhase(), Player::Draw);
+            if (target->getPhase() != Player::NotActive)
+                target->changePhase(target->getPhase(), Player::NotActive);
+        }
+        return true;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const DrawStruct draw = data.value<DrawStruct>();
+        if (!player || !player->isAlive() || !player->hasSkill(objectName()) || draw.reason != "draw_phase" || draw.num < 1
+            || room->getOtherPlayers(player).isEmpty())
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *target = room->askForPlayerChosen(ctx.owner, room->getOtherPlayers(ctx.owner), objectName(),
+                                                        "@thshouye", true, true);
+        if (!target)
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        ctx.targets << target;
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    {
+        DrawStruct draw = ctx.original_data->value<DrawStruct>();
+        draw.num = qMax(0, draw.num - 1);
+        *ctx.original_data = QVariant::fromValue(draw);
+        return false;
+    }
+
+    bool effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx, ServerPlayer *target) const override
+    {
+        QStringList targets = ctx.owner->getTag("ThShouyeTargets").toStringList();
+        targets << target->objectName();
+        ctx.owner->setTag("ThShouyeTargets", targets);
+        return false;
+    }
+};
+
 class ThXushi : public TriggerSkillV2
 {
 public:
@@ -2486,7 +2553,7 @@ TouhouTsukiPackage::TouhouTsukiPackage()
     tsuki004->addSkill(new ThJiaotu);
 
     General *tsuki005 = new General(this, "tsuki005", "tsuki", 3);
-    tsuki005->addSkill(new PendingSkill("thshouye"));
+    tsuki005->addSkill(new ThShouye);
     tsuki005->addSkill(new ThXushi);
 
     General *tsuki006 = new General(this, "tsuki006", "tsuki", 3);

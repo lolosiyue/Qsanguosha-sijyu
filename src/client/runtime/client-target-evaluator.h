@@ -49,7 +49,7 @@ inline int voteLimit(const Card *card, const QList<const Player *> &chosen,
                      const Player *toSelect, const Player *self)
 {
     int maxVotes = 0;
-    card->targetFilter(chosen, toSelect, self, maxVotes);
+    card->targetFilterFor(chosen, toSelect, self, maxVotes);
     return maxVotes;
 }
 
@@ -64,7 +64,7 @@ inline TargetStep targetStep(const Card *card, const QStringList &chosen,
         return step;
 
     step.known = true;
-    if (card->targetFixed()) {
+    if (card->targetFixedFor(self)) {
         step.fixed = true;
         step.feasible = true;
         return step;
@@ -80,7 +80,7 @@ inline TargetStep targetStep(const Card *card, const QStringList &chosen,
         spent[name] = spent.value(name) + 1;
     }
 
-    step.feasible = card->targetsFeasible(picked, self);
+    step.feasible = card->targetsFeasibleFor(picked, self);
 
     for (const QString &name : pool) {
         const Player *player = lookup(name);
@@ -108,7 +108,7 @@ inline TargetValidation validateTargets(const Card *card,
         return result;
 
     result.known = true;
-    if (card->targetFixed())
+    if (card->targetFixedFor(self))
         return result;
 
     QList<const Player *> picked;
@@ -134,7 +134,7 @@ inline TargetValidation validateTargets(const Card *card,
         spent[name] = already + 1;
     }
 
-    if (!card->targetsFeasible(picked, self)) {
+    if (!card->targetsFeasibleFor(picked, self)) {
         result.valid = false;
         result.incomplete = true;
         result.reason = picked.isEmpty()

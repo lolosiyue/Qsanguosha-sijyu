@@ -352,6 +352,7 @@ public:
     bool pileOpen(const QString &pile_name, const QString &player) const;
     void setPileOpen(const QString &pile_name, const QString &player);
     void removePileOpen(const QString &pile_name, const QString &player);
+    QStringList getHandPileNames() const;
     virtual QList<int> getHandPile() const;
 
     QStringList getGeneralPile(const QString &pile_name) const;

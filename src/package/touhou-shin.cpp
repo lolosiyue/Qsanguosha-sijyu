@@ -576,6 +576,99 @@ public:
     }
 };
 
+// ---------------------------------------------------------------- shin006
+
+// The generic "HandPile:%currency" flag makes the lent pile the borrower's hand pile
+// (Player::getHandPileNames) until this play phase ends.
+class ThBaochui : public TriggerSkillV2
+{
+public:
+    ThBaochui() : TriggerSkillV2("thbaochui") { events << EventPhaseStart; }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        TriggerList result;
+        if (!player || !player->isAlive() || player->getPhase() != Player::Play || player->isKongcheng())
+            return result;
+        foreach (ServerPlayer *owner, room->getOtherPlayers(player))
+            if (owner->hasSkill(objectName()) && !owner->isKongcheng() && owner->getHandcardNum() <= 3)
+                result[owner] << objectName();
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner->askForSkillInvoke(objectName(), QVariant::fromValue(ctx.invoker)))
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *owner = ctx.owner, *player = ctx.invoker;
+        if (!player || !player->isAlive())
+            return false;
+        if (!player->isKongcheng()) {
+            const Card *card = room->askForExchange(player, objectName(), 1, 1, false,
+                                                    "@thbaochui:" + owner->objectName(), false);
+            if (card && !card->getSubcards().isEmpty())
+                room->giveCard(player, owner, card, objectName());
+        }
+        if (!owner->isAlive() || owner->isKongcheng())
+            return false;
+        owner->addToPile("currency", owner->handCards());
+        owner->setTag("ThBaochuiBorrower", player->objectName());
+        room->setPlayerFlag(player, "HandPile:%currency");
+        return false;
+    }
+};
+
+// The pile returns when that play phase ends, even if the lender lost 宝锤.
+class ThBaochuiReturn : public TriggerSkillV2
+{
+public:
+    ThBaochuiReturn() : TriggerSkillV2("#thbaochui")
+    {
+        events << EventPhaseEnd;
+        frequency = Compulsory;
+        global = true;
+    }
+
+    bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        if (player && player->getPhase() == Player::Play && player->hasFlag("HandPile:%currency"))
+            room->setPlayerFlag(player, "-HandPile:%currency");
+        return false;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        TriggerList result;
+        if (!player || player->getPhase() != Player::Play)
+            return result;
+        foreach (ServerPlayer *lender, room->getOtherPlayers(player))
+            if (lender->getTag("ThBaochuiBorrower").toString() == player->objectName())
+                result[lender] << objectName();
+        return result;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *lender = ctx.owner;
+        lender->removeTag("ThBaochuiBorrower");
+        const QList<int> pile = lender->getPile("currency");
+        if (!pile.isEmpty()) {
+            DummyCard dummy(pile);
+            CardMoveReason reason(CardMoveReason::S_REASON_EXCHANGE_FROM_PILE, lender->objectName(), "thbaochui",
+                                  QString());
+            room->obtainCard(lender, &dummy, reason);
+        }
+        lender->drawCards(1, "thbaochui");
+        return false;
+    }
+};
+
 // ---------------------------------------------------------------- shin007
 
 class ThMoju : public TriggerSkillV2
@@ -644,6 +737,63 @@ public:
         if (horses == 0)
             return CorrectSkillResult::noEffect();
         return CorrectSkillResult::useAmount(horses);
+    }
+};
+
+class ThGuzhen : public TriggerSkillV2
+{
+public:
+    ThGuzhen() : TriggerSkillV2("thguzhen")
+    {
+        events << CardsMoveOneTime << EventPhaseStart;
+        frequency = Compulsory;
+    }
+
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        if (event == EventPhaseStart && player && player->getPhase() == Player::RoundStart
+            && player->getMark("thguzhen_active") > 0)
+            room->setPlayerMark(player, "thguzhen_active", 0);
+        return false;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event != CardsMoveOneTime || !player || !player->isAlive() || !player->hasSkill(objectName())
+            || player->getMark("thguzhen_active") > 0)
+            return TriggerList();
+        const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        if ((move.from == player && move.from_places.contains(Player::PlaceEquip))
+            || (move.to == player && move.to_place == Player::PlaceEquip))
+            return TriggerList{{player, {objectName()}}};
+        return TriggerList();
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        room->sendCompulsoryTriggerLog(ctx.owner, objectName());
+        room->broadcastSkillInvoke(objectName());
+        room->setPlayerMark(ctx.owner, "thguzhen_active", 1);
+        return false;
+    }
+};
+
+class ThGuzhenLimit : public CardLimitSkill
+{
+public:
+    ThGuzhenLimit() : CardLimitSkill("#thguzhen") {}
+
+    QString limitList(const Player *) const override { return "discard"; }
+
+    QString limitPattern(const Player *target, const Card *card) const override
+    {
+        if (card->isKindOf("Treasure"))
+            return QString();
+        foreach (const Player *p, target->getAliveSiblings())
+            if (p->getMark("thguzhen_active") > 0 && p->getEquipsId().contains(card->getId())
+                && p->hasSkill("thguzhen"))
+                return card->toString();
+        return QString();
     }
 };
 
@@ -4175,14 +4325,18 @@ TouhouShinPackage::TouhouShinPackage()
     shin005->addSkill(new ThNengwu);
 
     General *shin006 = new General(this, "shin006", "hana", 3, false);
-    shin006->addSkill(new PendingSkill("thbaochui"));
+    shin006->addSkill(new ThBaochui);
+    shin006->addSkill(new ThBaochuiReturn);
+    related_skills.insert("thbaochui", "#thbaochui");
     shin006->addSkill(new PendingSkill("thyishi"));
 
     General *shin007 = new General(this, "shin007", "yuki");
     shin007->addSkill(new ThMoju);
     shin007->addSkill(new ThMojuMaxCards);
     related_skills.insert("thmoju", "#thmoju");
-    shin007->addSkill(new PendingSkill("thguzhen"));
+    shin007->addSkill(new ThGuzhen);
+    shin007->addSkill(new ThGuzhenLimit);
+    related_skills.insert("thguzhen", "#thguzhen");
 
     General *shin008 = new General(this, "shin008", "tsuki");
     shin008->addSkill(new ThLianying);

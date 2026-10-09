@@ -977,10 +977,7 @@ bool OneCardViewAsSkill::viewFilter(const Card *to_select) const
 	} else if (isResponseOrUse() && pat.contains("hand")) {
 		QStringList handlist;
 		handlist.append("hand");
-		foreach (const QString &pile, Self->getPileNames()) {
-			if (pile.startsWith("&") || pile == "wooden_ox")
-				handlist.append(pile);
-		}
+		handlist << Self->getHandPileNames();
 		pat.replace("hand", handlist.join(","));
 	}
 	return Sanguosha->matchExpPattern(pat, Self, to_select);

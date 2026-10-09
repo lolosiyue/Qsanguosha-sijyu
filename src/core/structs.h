@@ -990,6 +990,9 @@ enum TriggerEvent {
     PreCardsMoveBatch,
     CardsMoveBatch,
 
+    TargetCanceled, // Room::cancelTarget removed the target; data is the updated CardUseStruct.
+    EventLosingSkill, // An instance is about to be removed; data is its SkillChangeStruct. Return true to keep it.
+
     NumOfEvents
 };
 

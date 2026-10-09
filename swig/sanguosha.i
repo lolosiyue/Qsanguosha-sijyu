@@ -1420,6 +1420,9 @@ enum TriggerEvent {
     PreCardsMoveBatch,
     CardsMoveBatch,
 
+    TargetCanceled,
+    EventLosingSkill,
+
 	NumOfEvents
 };
 

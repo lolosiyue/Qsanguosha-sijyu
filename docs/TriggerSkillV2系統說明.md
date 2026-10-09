@@ -227,6 +227,7 @@ struct SkillChangeStruct {
 ```
 
 - C++ `data.toString()` 與 Lua `data:toString()` 永遠回傳基礎技能名；C++ 新碼用 `data.value<SkillChangeStruct>()`，Lua 新碼用 `data:toSkillChange()`。
+- 帶事件的移除（`event_and_log = true`）先觸發 `EventLosingSkill`，data 同為 `SkillChangeStruct`；回傳 `true` 保留該實例，不移除也不觸發 `EventLoseSkill`。
 - 舊監聽者會在每次實例獲得／失去時執行，語意不正確者列入人工審核（原盤點文件 `skill-instance-callsite-audit.md` 已刪除，見 git 歷史）。
 
 #### 客戶端 UI
@@ -1096,6 +1097,7 @@ local baGua = sgs.CreateTriggerSkillV2 {
 本系統與 `InvaliditySkill`（透過 `Engine::correctSkillValidity()`）並行運作：
 - `isSkillInvalid()` 同時檢查兩者
 - `IgnoreInvalidity` 屬性可跳過本系統檢查
+- 持有帶 `HolderIgnoresInvaliditySkills` 屬性的技能時，持有者的非裝備技能不受 `InvaliditySkill` 影響；記錄型無效化仍由 `EventSkillInvalidated` 決定
 
 ### 資料結構
 

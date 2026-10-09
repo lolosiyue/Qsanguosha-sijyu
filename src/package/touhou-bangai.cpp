@@ -592,7 +592,7 @@ public:
 class ThSilian : public FilterSkill
 {
 public:
-    ThSilian() : FilterSkill("thsilian") {}
+    ThSilian() : FilterSkill("thsilian") { markOwnerOnly(this); }
 
     bool viewFilter(const Card *to_select) const override
     {
@@ -766,6 +766,62 @@ public:
         judge.reason = objectName();
         room->judge(judge);
         return false;
+    }
+};
+
+// As upstream, HolderIgnoresInvaliditySkills lifts every InvaliditySkill from the holder's
+// general skills; recorded invalidity and loss caused by another player are refused at
+// EventSkillInvalidated / EventLosingSkill. 衍梦 itself is never invalid.
+class ThYanmeng : public TriggerSkillV2
+{
+public:
+    ThYanmeng() : TriggerSkillV2("thyanmeng")
+    {
+        events << EventSkillInvalidated << EventLosingSkill;
+        frequency = Compulsory;
+        setProperty("IgnoreInvalidity", true);
+        setProperty("HolderIgnoresInvaliditySkills", true);
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (!player || !player->hasSkill(objectName()))
+            return TriggerList();
+        QString skillName;
+        if (event == EventLosingSkill) {
+            // Grants keep their own lifecycle; only the general's own skills are shielded.
+            const SkillChangeStruct change = data.value<SkillChangeStruct>();
+            if (change.source != SourceInnate)
+                return TriggerList();
+            skillName = change.skillName;
+        } else {
+            SkillInstanceUtils::parseName(data.toString(), skillName);
+        }
+        const Skill *skill = Sanguosha->getSkill(skillName); // null for "all"
+        if ((skill && skill->isEquipSkill()) || !causedByOther(room, player))
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        room->sendCompulsoryTriggerLog(ctx.owner, objectName(), true, true);
+        return true;
+    }
+
+private:
+    // The innermost active skill event names who acts. As in Room::historyCause,
+    // a skill that inserted the current turn is not its cause.
+    static bool causedByOther(Room *room, const ServerPlayer *player)
+    {
+        const QVariantMap event = room->historyParent(room->currentHistoryEventId(), "skill", true);
+        if (event.value("turn_id") != room->historyScopes().value("turn_id"))
+            return false;
+        const QVariantMap identity = event.value("data").toMap();
+        QString actor = identity.value("activation_owner").toString();
+        if (actor.isEmpty())
+            actor = identity.value("skill_owner").toString();
+        return !actor.isEmpty() && actor != player->objectName();
     }
 };
 
@@ -1445,7 +1501,7 @@ TouhouBangaiPackage::TouhouBangaiPackage()
     related_skills.insert("thsilian", "#thsilian");
     related_skills.insert("thsilian", "#thsilian-blade");
     bangai006->addSkill(new ThLingzhan);
-    bangai006->addSkill(new PendingSkill("thyanmeng"));
+    bangai006->addSkill(new ThYanmeng);
 
     General *bangai007 = new General(this, "bangai007", "yuki");
     bangai007->addSkill(new ThQinshao);
