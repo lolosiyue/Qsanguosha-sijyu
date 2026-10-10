@@ -430,28 +430,31 @@ Catalog catalogForRoot(const QString &root)
     return loaded;
 }
 
-QString assetTarget(const Catalog &catalog, const QString &legacy, bool *collision)
+// Every skill probes its audio through resolve() at startup, so aliases are
+// indexed once per catalog instead of scanned per lookup.
+void indexAssetTargets(Catalog &catalog)
 {
-    QString result;
-    *collision = false;
+    catalog.assetTargets.clear();
     for (const Package &package : catalog.packages) {
         const QJsonObject assets = package.manifest.value(QStringLiteral("assets")).toObject();
-        QString target;
         for (auto it = assets.constBegin(); it != assets.constEnd(); ++it) {
-            if (it.key().toCaseFolded() == legacy) {
-                target = it.value().toString();
-                break;
-            }
+            const QString target = it.value().toString();
+            if (target.isEmpty())
+                continue;
+            const QString key = it.key().toCaseFolded();
+            const QString path = QDir::cleanPath(package.root + QLatin1Char('/') + target);
+            const auto existing = catalog.assetTargets.constFind(key);
+            catalog.assetTargets.insert(key, existing == catalog.assetTargets.cend()
+                                                 || existing.value() == path ? path : QString());
         }
-        if (target.isEmpty())
-            continue;
-        if (!result.isEmpty() && result != QDir::cleanPath(package.root + QLatin1Char('/') + target)) {
-            *collision = true;
-            return QString();
-        }
-        result = QDir::cleanPath(package.root + QLatin1Char('/') + target);
     }
-    return result;
+}
+
+QString assetTarget(const Catalog &catalog, const QString &legacy, bool *collision)
+{
+    const auto it = catalog.assetTargets.constFind(legacy);
+    *collision = it != catalog.assetTargets.cend() && it.value().isEmpty();
+    return it == catalog.assetTargets.cend() ? QString() : it.value();
 }
 
 QString containedExistingFile(const QString &base, const QString &relative, QString *error)
@@ -651,6 +654,7 @@ Catalog loadCatalog(const QString &runtimeRoot, bool verifyFiles, bool inspectFi
             owners.insert(key, package.id);
         }
     }
+    indexAssetTargets(catalog);
     return catalog;
 }
 
@@ -697,6 +701,8 @@ void installCatalog(const Catalog &catalog)
 {
     QWriteLocker locker(&g_catalogLock);
     g_activeCatalog = catalog;
+    // The Web runtime installs catalogs it built from a descriptor, not loadCatalog().
+    indexAssetTargets(g_activeCatalog);
     g_activeRoot = packageRoot(catalog);
     g_lazyCatalogs.clear();
     g_rootPaths.clear();

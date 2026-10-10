@@ -1,6 +1,7 @@
 #ifndef QSAN_PACKAGE_CATALOG_H
 #define QSAN_PACKAGE_CATALOG_H
 
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
@@ -22,6 +23,8 @@ struct Catalog
 {
     QList<Package> packages;
     QString error;
+    // Case-folded legacy alias -> absolute package file; an empty value marks a collision.
+    QHash<QString, QString> assetTargets;
 
     bool isValid() const { return error.isEmpty(); }
 };
