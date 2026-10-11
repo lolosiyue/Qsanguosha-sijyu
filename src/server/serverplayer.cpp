@@ -2682,7 +2682,10 @@ QList<ServerPlayer *> ServerPlayer::getRandomTargets(const Card *card, QList<Ser
 	QList<const Player *> tos;
 	for (int i = 0; i < players.length(); i++) {
 		int x = 0;
-		if(card->targetFilter(tos,players.at(i),this,x)||x>0){
+		const bool canSelect = card->targetFilter(tos,players.at(i),this,x);
+		// Re-pick a player only within its votes; a filter that keeps accepting while
+		// targetsFeasible never holds (e.g. after a response ask) would loop forever.
+		if((canSelect||x>0)&&tos.count(players.at(i))<qMax(x,1)){
 			tos << players.at(i);
 			if(card->targetsFeasible(tos,this))
 				break;
@@ -2690,6 +2693,8 @@ QList<ServerPlayer *> ServerPlayer::getRandomTargets(const Card *card, QList<Ser
 		}
 	}
 	QList<ServerPlayer *> targets;
+	if (!card->targetsFeasible(tos, this))
+		return targets;
 	foreach (const Player *p, tos)
 		targets << (ServerPlayer *)p;
 	return targets;
