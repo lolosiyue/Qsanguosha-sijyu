@@ -108,7 +108,8 @@ bool Skill::canPreshow() const
 {
     if (inherits("TriggerSkill")) {
         const TriggerSkill *triskill = qobject_cast<const TriggerSkill *>(this);
-        return triskill && triskill->getViewAsSkill() == nullptr;
+        // Global rule timing has no general to preshow.
+        return triskill && !triskill->isGlobal() && triskill->getViewAsSkill() == nullptr;
     }
     return false;
 }

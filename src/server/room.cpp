@@ -6783,6 +6783,15 @@ void Room::showGeneral(ServerPlayer *player, const QString &position)
 	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
 }
 
+// A global trigger skill listed on a general is rule timing, not that general's
+// skill: it never binds, conceals or reveals a hegemony general.
+static bool bindsHegemonyGeneral(const SkillInstance *instance)
+{
+	if (!instance || instance->source != SourceInnate) return false;
+	const TriggerSkill *trigger = Sanguosha->getTriggerSkill(instance->skillName);
+	return !trigger || !trigger->isGlobal();
+}
+
 bool Room::isGeneralHiddenForSkill(const SkillInstanceRef &ref) const
 {
 	if (!Config.EnableHegemony || !ref.isValid()) return false;
@@ -6792,7 +6801,7 @@ bool Room::isGeneralHiddenForSkill(const SkillInstanceRef &ref) const
 	const SkillInstance *instance = owner
 		? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
 	// Helpers and attachments follow their exact root, never a same-name copy.
-	return instance && instance->source == SourceInnate
+	return bindsHegemonyGeneral(instance)
 		&& HegemonyMode::innateGeneralConcealed(owner, instance->bindHead);
 }
 
@@ -6815,7 +6824,7 @@ bool Room::canShowGeneralForSkill(const SkillInstanceRef &ref) const
 	const SkillInstance *instance = owner
 		? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
 	if (!instance || owner->isSkillInvalid(root.key.skillName, root.key.instanceID)) return false;
-	if (instance->source != SourceInnate) return true;
+	if (!bindsHegemonyGeneral(instance)) return true;
 	const int slot = instance->bindHead;
 	if (slot != 1 && slot != 2) return false;
 	if (HegemonyMode::innateGeneralShown(owner, slot)) return true;
@@ -6846,7 +6855,7 @@ bool Room::showGeneralForSkill(const SkillInstanceRef &ref)
 	if (!root.isValid()) return true; // Continuation was checked above; no general remains to reveal.
 	ServerPlayer *owner = findPlayerByObjectName(root.ownerObjectName, true);
 	const SkillInstance *instance = owner->findSkillInstance(root.key.skillName, root.key.instanceID);
-	if (instance->source != SourceInnate) return true;
+	if (!bindsHegemonyGeneral(instance)) return true;
 	const bool head = instance->bindHead == 1;
 	if (head ? owner->hasShownGeneral() : owner->hasShownGeneral2()) return true;
 	// Reveal the paid instance's source, never another same-named instance.
