@@ -150,9 +150,13 @@ def _backup_runtime_files(workdir, run_dir, run_id):
             log("  [WARN] 複製 %s 失敗: %s" % (os.path.basename(src), e))
 
 
+# Extra server arguments shared by every job (e.g. --force-general), set from main().
+SERVER_EXTRA_ARGS = []
+
+
 def server_command(server_exe, mode, marker_file, port):
     return [server_exe, "--port", str(port), "--websocket-port", "0",
-            "--game-mode", mode, "--autotest-log", marker_file]
+            "--game-mode", mode, "--autotest-log", marker_file] + SERVER_EXTRA_ARGS
 
 
 def restart_server(args, exe_root, workdir, mode, proc, marker_file, server_log, server_exe, reason,
@@ -214,6 +218,15 @@ def run_mode(args, exe_root, workdir, mode, runs, general, port, geometry=None, 
             if getattr(args, "general2", ""):
                 client_cmd += ["--test-general2", args.general2]
             client_cmd += ["--auto-robots"]
+            if getattr(args, "ui_responder", False):
+                # The smoke responder answers through the real UI and keeps trustee off, so the
+                # server sees a human seat (hegemony preshow applies); a stall fallback is recorded.
+                client_cmd += ["--network-ui-smoke", "--network-ui-smoke-timeout-ms", "3600000",
+                               "--network-ui-smoke-result", os.path.join(run_dir, "run%d-ui.json" % run_id)]
+                if args.preshow:
+                    client_cmd += ["--network-ui-smoke-preshow", args.preshow]
+                if args.stay_hidden:
+                    client_cmd += ["--network-ui-smoke-stay-hidden"]
             if geometry:
                 # Parallel tiles: N clients must not all play BGM, sounds and animations.
                 client_cmd += ["--window-geometry=" + geometry, "--mute", "--effects-profile=none"]
@@ -385,6 +398,16 @@ def main():
                              " 02_1v1 請用 x0; 預設 zhenji)")
     parser.add_argument("--general2", default="",
                         help="雙將模式副將 (空 = server 清單隨機)")
+    parser.add_argument("--force-general", default="",
+                        help="server 開局時把房主 (client) 換成此武將, 任何模式皆生效 (武將驗收用)")
+    parser.add_argument("--ui-responder", action="store_true",
+                        help="client 以 --network-ui-smoke 經真實 UI 作答且不托管 (server 視為真人席位); 結果寫 run<N>-ui.json")
+    parser.add_argument("--preshow", default="",
+                        help="搭配 --ui-responder: 開局後經 Dashboard 技能按鈕預亮這些技能 (逗號分隔, 國戰)")
+    parser.add_argument("--stay-hidden", action="store_true",
+                        help="搭配 --ui-responder: 國戰回合開始的明置詢問一律取消, 武將只靠技能 (預亮) 或規則亮出")
+    parser.add_argument("--server-config", default="",
+                        help="server --config 覆蓋檔 (只在 server 記憶體生效, 不寫回 config.ini), 例: EnableHegemony=true")
     parser.add_argument("--port", type=int, default=DEFAULT_SERVER_PORT,
                         help="server 監聽 port (預設 %d); --parallel 時第 i 個 slot 用 port+i"
                              % DEFAULT_SERVER_PORT)
@@ -394,6 +417,10 @@ def main():
     parser.add_argument("--console", action="store_true",
                         help="server stdout 同步顯示在終端 (不寫 server.log, 標記檔照常)")
     args = parser.parse_args()
+    if args.force_general:
+        SERVER_EXTRA_ARGS[:] = ["--force-general", args.force_general]
+    if args.server_config:
+        SERVER_EXTRA_ARGS.extend(["--config", os.path.abspath(args.server_config)])
 
     modes = [m.strip() for m in args.modes.split(",") if m.strip()]
     if not modes:

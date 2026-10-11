@@ -74,6 +74,9 @@ NetworkUiSmokeResponder::NetworkUiSmokeResponder(RoomScene *scene, int stallMs, 
             this, &NetworkUiSmokeResponder::onServerRequest);
         connect(ClientInstance, &Client::server_reply,
             this, &NetworkUiSmokeResponder::onServerReply);
+        // Emitted before the ExecDialog status change that makes the responder answer.
+        connect(ClientInstance, &Client::options_got, this,
+            [this](const QString &skillName) { m_choiceReason = skillName; });
     }
 }
 
@@ -465,6 +468,15 @@ bool NetworkUiSmokeResponder::stepExecDialog()
     // buttons whose objectName carries meaning; press the first enabled one,
     // reproducible under a fixed seed.
     const QList<QAbstractButton *> buttons = dialog->findChildren<QAbstractButton *>();
+    if (m_stayHidden && m_choiceReason == QLatin1String("HegemonyReveal")) {
+        for (QAbstractButton *button : buttons) {
+            if (button && button->objectName() == QLatin1String("cancel") && button->isEnabled()) {
+                button->click();
+                recordAction(QLatin1String(NetworkUiSmokeReport::ActionDecline));
+                return true;
+            }
+        }
+    }
     for (QAbstractButton *button : buttons) {
         if (button == nullptr || !button->isEnabled() || !button->isVisible())
             continue;

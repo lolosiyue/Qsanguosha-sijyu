@@ -81,6 +81,7 @@ private:
     void complete(bool ok, const QString &stage, const QString &error,
         NetworkUiSmokeReport::ExitCode exitCode);
     void captureFailureEvidence();
+    void preshowSkills();
     void writeResultFile();
     QJsonObject environmentDetails() const;
 
@@ -92,6 +93,10 @@ private:
     QString m_resultPath;
     QString m_screenshotPath;
     QSize m_windowSize;
+    QStringList m_preshowRequested; // skills to pre-show through their Dashboard buttons
+    QStringList m_preshowConfirmed; // instance names the server confirmed as pre-shown
+    int m_preshowAttempts = 0;
+    bool m_stayHidden = false;
     int m_qmlSnapshots = 0;
 
     QPointer<MainWindow> m_mainWindow;

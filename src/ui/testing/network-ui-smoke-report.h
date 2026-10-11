@@ -71,6 +71,8 @@ public:
     static const char *const FlagStallMs;           // "--network-ui-smoke-stall-ms"
     static const char *const FlagScreenshotPath;    // "--network-ui-smoke-screenshot"
     static const char *const FlagWindowSize;        // "--network-ui-smoke-window" (WxH)
+    static const char *const FlagPreshow;           // "--network-ui-smoke-preshow" (skill,skill)
+    static const char *const FlagStayHidden;        // "--network-ui-smoke-stay-hidden"
 
     static int defaultTimeoutMs();
     static int minimumTimeoutMs();
@@ -87,6 +89,7 @@ public:
     static QString parseResultPath(const QStringList &arguments);
     static QString parseScreenshotPath(const QStringList &arguments);
     static QSize parseWindowSize(const QStringList &arguments);
+    static QStringList parsePreshowSkills(const QStringList &arguments);
 
     // Failure reason. timeout / disconnect share the stage name with "stage itself failed"; this field tells them apart.
     static const char *const ReasonOk;                  // "ok"

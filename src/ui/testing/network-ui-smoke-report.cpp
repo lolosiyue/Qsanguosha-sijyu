@@ -143,6 +143,8 @@ const char *const NetworkUiSmokeReport::FlagTimeoutMs = "--network-ui-smoke-time
 const char *const NetworkUiSmokeReport::FlagStallMs = "--network-ui-smoke-stall-ms";
 const char *const NetworkUiSmokeReport::FlagScreenshotPath = "--network-ui-smoke-screenshot";
 const char *const NetworkUiSmokeReport::FlagWindowSize = "--network-ui-smoke-window";
+const char *const NetworkUiSmokeReport::FlagPreshow = "--network-ui-smoke-preshow";
+const char *const NetworkUiSmokeReport::FlagStayHidden = "--network-ui-smoke-stay-hidden";
 
 const char *const NetworkUiSmokeReport::ReasonOk = "ok";
 const char *const NetworkUiSmokeReport::ReasonStageFailed = "stage_failed";
@@ -247,6 +249,13 @@ QSize NetworkUiSmokeReport::parseWindowSize(const QStringList &arguments)
     if (!widthOk || !heightOk || width <= 0 || height <= 0)
         return QSize();
     return QSize(width, height);
+}
+
+QStringList NetworkUiSmokeReport::parsePreshowSkills(const QStringList &arguments)
+{
+    bool found = false;
+    const QString value = flagValue(arguments, QLatin1String(FlagPreshow), &found);
+    return found ? value.split(QLatin1Char(','), Qt::SkipEmptyParts) : QStringList();
 }
 
 QString NetworkUiSmokeReport::parseResultPath(const QStringList &arguments)

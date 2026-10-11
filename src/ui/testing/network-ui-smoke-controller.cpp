@@ -4,13 +4,16 @@
 #include "network-ui-smoke-responder.h"
 
 #include "client.h"
+#include "clientplayer.h"
 #include "clientstruct.h"
 #include "dashboard.h"
 #include "engine.h"
 #include "local-response-ui-probe.h"
 #include "mainwindow.h"
 #include "protocol.h"
+#include "qsanbutton.h"
 #include "roomscene.h"
+#include "skill-instance-utils.h"
 #include "settings.h"
 #include "skin-bank.h"
 #include "theme-pack.h"
@@ -24,6 +27,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QImage>
 #include <QPainter>
@@ -50,6 +54,10 @@ void writeMarker(const QString &line)
     fwrite(utf8.constData(), 1, static_cast<size_t>(utf8.size()), stdout);
     fputc('\n', stdout);
     fflush(stdout);
+#ifdef Q_OS_ANDROID
+    // Android drops stdout; logcat carries the markers when run-as cannot read the result file.
+    qInfo().noquote() << line;
+#endif
 }
 
 QString environmentValue(const char *name)
@@ -126,6 +134,8 @@ bool NetworkUiSmokeController::configure(const QStringList &arguments, QString *
     m_resultPath = NetworkUiSmokeReport::parseResultPath(arguments);
     m_screenshotPath = NetworkUiSmokeReport::parseScreenshotPath(arguments);
     m_windowSize = NetworkUiSmokeReport::parseWindowSize(arguments);
+    m_preshowRequested = NetworkUiSmokeReport::parsePreshowSkills(arguments);
+    m_stayHidden = arguments.contains(QLatin1String(NetworkUiSmokeReport::FlagStayHidden));
     return true;
 }
 
@@ -266,6 +276,7 @@ void NetworkUiSmokeController::onRoomSceneCreated(RoomScene *scene)
     // connection has to run after RoomScene::updateStatus so that it sees the
     // button state RoomScene has already laid out.
     m_responder = new NetworkUiSmokeResponder(scene, m_stallMs, this);
+    m_responder->setStayHidden(m_stayHidden);
 }
 
 void NetworkUiSmokeController::onServerReply(int commandType)
@@ -301,6 +312,38 @@ void NetworkUiSmokeController::onGameStarted()
     if (ClientInstance)
         details.insert(QStringLiteral("players"), ClientInstance->getPlayers().size());
     emitStage(QLatin1String(NetworkUiSmokeReport::StageGameStarted), true, details);
+    if (!m_preshowRequested.isEmpty())
+        QTimer::singleShot(0, this, &NetworkUiSmokeController::preshowSkills);
+}
+
+// Pre-shows the requested skills through their real Dashboard buttons, as a player would.
+// The button only changes after the server confirms, so retry until every skill is confirmed.
+void NetworkUiSmokeController::preshowSkills()
+{
+    if (m_finished || !m_roomScene || !Self)
+        return;
+    bool pending = false;
+    for (const QString &name : m_preshowRequested) {
+        bool confirmed = false;
+        for (int id : Self->getSkillInstanceIds(name)) {
+            const QString instance = SkillInstanceUtils::formatName(name, id);
+            if (!Self->hasPreshowedSkill(instance))
+                continue;
+            confirmed = true;
+            if (!m_preshowConfirmed.contains(instance))
+                m_preshowConfirmed << instance;
+        }
+        if (confirmed)
+            continue;
+        pending = true;
+        for (QSanSkillButton *button : m_roomScene->m_skillButtons) {
+            if (button->getSkill() && button->getSkill()->objectName() == name
+                && button->preshowEnabled() && !button->isDown())
+                button->click();
+        }
+    }
+    if (pending && ++m_preshowAttempts < 40)
+        QTimer::singleShot(250, this, &NetworkUiSmokeController::preshowSkills);
 }
 
 void NetworkUiSmokeController::onGameOver()
@@ -496,6 +539,10 @@ void NetworkUiSmokeController::complete(bool ok, const QString &stage, const QSt
     details.insert(QStringLiteral("game_started"), m_gameStarted);
     details.insert(QStringLiteral("game_over"), m_gameOver);
     details.insert(QStringLiteral("elapsed_ms"), static_cast<int>(m_elapsed.elapsed()));
+    if (!m_preshowRequested.isEmpty()) {
+        details.insert(QStringLiteral("preshow_requested"), QJsonArray::fromStringList(m_preshowRequested));
+        details.insert(QStringLiteral("preshow_confirmed"), QJsonArray::fromStringList(m_preshowConfirmed));
+    }
     if (m_responder) {
         details.insert(QStringLiteral("trustee_engaged"), m_responder->trusteeEngaged());
         details.insert(QStringLiteral("interactions"),
