@@ -41,7 +41,7 @@ python tools\autotest\headless_runner.py `
 + `<mode>[-N]-headless.log`; 彙總表 `summary-headless-<時間>.csv` 在
 `autotest-logs\` 根目錄。
 
-## network_runner.py — 真實網路測試 (串行)
+## network_runner.py — 真實網路測試 (可平行)
 
 `qsanguosha_server` 常駐 + 每局重啟 GUI client; client 自動選將、
 自動填 AI 開局、自動托管, 由 client 參數驅動:
@@ -65,7 +65,19 @@ python tools\autotest\network_runner.py `
 + `summary-network-<時間>.csv` (彙總表在 `autotest-logs\` 根目錄)。
 模式、局數與選將預設值見 [`network_runner.py` 的 `main()`](network_runner.py) 及 `common_args()`。
 
-`--port` 可指定 server 監聽 port (預設 9527); 平行跑多份時各自指定。
+`--port` 可指定 server 監聽 port (預設 9527)。
+
+`--general` 可逗號分隔多個武將, 每個模式 × 每個武將是一個 job。`--parallel N`
+同時跑 N 個 job: 第 i 個 slot 用 port `--port`+i, client 以
+`--window-geometry=WxH+X+Y` 平鋪成 N 格小窗 (不寫回 config.ini 的視窗大小),
+並帶 `--mute --effects-profile=none` 關閉 BGM、音效與動畫特效。
+多武將時 log 目錄為 `<mode>-<general>`, 彙總表多一欄 `general`。
+
+```powershell
+python tools\autotest\network_runner.py `
+    --exe-root . --modes 05p --runs 1 `
+    --general zhenji,caocao,liubei,sunquan --parallel 4
+```
 
 本 runner 的責任是 **soak**: 連跑多局、閃退就重啟重試、以通過率作結論。
 要驗「一局固定 seed 的合約」請改用下面的 `gui_network_smoke.py`。
@@ -173,7 +185,7 @@ QML 疊層／video object 全部為 0。
 | 檔案 | 用途 | 頂部變數 |
 |---|---|---|
 | `run_headless.bat` | headless 壓力測試 | `MODES/GAMES/PARALLEL/GENERAL/GENERAL2/SPAWNDELAY/LOG_DIR/LABEL`（`EXE`/`SEED` 具預設，可覆寫） |
-| `run_network.bat` | 真實網路測試 | `MODES/RUNS/GENERAL/GENERAL2/CONSOLE/LOG_DIR/LABEL` |
+| `run_network.bat` | 真實網路測試 | `MODES/RUNS/GENERAL/GENERAL2/PARALLEL/CONSOLE/LOG_DIR/LABEL` |
 
 例: 08p 一局、主將 s4_huangzhong、副將隨機 → 改 `run_network.bat` 頂部
 `MODES=08p RUNS=1 GENERAL=s4_huangzhong GENERAL2=` 後直接執行。
@@ -187,6 +199,9 @@ QML 疊層／video object 全部為 0。
 | `--test-general <名>` | QSanguosha.exe | 自動選將 (FreeChoose; 1v1 用 x0) |
 | `--test-general2 <名>` | QSanguosha.exe | 雙將模式自動選副將 |
 | `--auto-robots` | QSanguosha.exe | owner 進房自動填 AI 並開局 |
+| `--window-geometry=WxH+X+Y` | QSanguosha.exe | 固定主視窗大小與位置, 關閉時不寫回 config.ini |
+| `--mute` | QSanguosha.exe | 使用靜音音訊後端 (BGM/音效全關, 不改設定的音量) |
+| `--effects-profile=none` | QSanguosha.exe | 動畫特效全關 (不寫回設定) |
 | stdout `[AUTOTEST] game start/over <winner>` | qsanguosha_server.exe | runner 結束偵測 |
 
 ## 注意
