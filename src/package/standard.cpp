@@ -521,7 +521,8 @@ void DelayedTrick::onEffect(CardEffectStruct &effect) const
     judge_struct.who = effect.to;
     room->judge(judge_struct);
 
-    if (judge_struct.isBad()) {
+    // A beneficial trick clears judge.negative and takes effect on a good result.
+    if (judge_struct.isEffected()) {
         takeEffect(effect.to);
         if (room->getCardPlace(getEffectiveId()) == Player::PlaceTable)
             room->throwCard(this, CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER, effect.to->objectName()), nullptr);
