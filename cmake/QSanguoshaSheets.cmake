@@ -66,3 +66,5 @@ elseif(TARGET qsan_xp_control)
 endif()
 add_dependencies(qsanguosha_sheets_bridge qsanguosha_excel_server)
 target_link_libraries(qsanguosha_sheets_bridge PRIVATE Ws2_32 IPHLPAPI)
+# The engine's Release crash handler uses MiniDumpWriteDump, as in the Excel client.
+target_link_libraries(qsanguosha_sheets_bridge PRIVATE "$<$<CONFIG:Release>:dbghelp>")
