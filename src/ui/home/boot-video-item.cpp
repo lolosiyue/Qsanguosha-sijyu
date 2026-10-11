@@ -19,6 +19,20 @@
 #include <atomic>
 #include <cstring>
 
+// GLES2 headers (Android) lack the GLES3 single/two-channel formats.
+#ifndef GL_RED
+#define GL_RED 0x1903
+#endif
+#ifndef GL_RG
+#define GL_RG 0x8227
+#endif
+#ifndef GL_R8
+#define GL_R8 0x8229
+#endif
+#ifndef GL_RG8
+#define GL_RG8 0x822B
+#endif
+
 namespace {
 
 // One decoded frame. YUV420P and NV12 keep their 8-bit planes and are converted by a

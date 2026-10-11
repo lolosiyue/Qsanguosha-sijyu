@@ -535,8 +535,8 @@ Android Debug／Release preset、CMake Android 預設與 `tools/build-android.ps
 的音訊預設不變。Qt Multimedia 仍供其他介面／影片功能使用；影片音軌不走
 `AudioBridge`。
 
-不需 FMOD SDK、不更換第三方庫、不把 OGG 轉成 WAV。API 29 起短音效用 `SoundPool.load(String)`；
-API 28 的載入留在 `AudioBridge.loadEffectSample()` 的 `SDK_INT` 分支，目前該分支不播放短音效。出聲尚未在模擬器或實機驗收。
+不需 FMOD SDK、不更換第三方庫、不把 OGG 轉成 WAV。短音效用 `SoundPool.load(String, int)`（API 1 起提供），
+API 28 與新版走同一路徑。出聲尚未在模擬器或實機驗收。
 
 Android 啟動改用 Qt Quick `software` 後端及既有 raster 牌桌 viewport，避免模擬器上的 OpenGL 破圖與前後景 EGL context 失效；
 選擇在第一個 Quick window 建立前完成，Windows／Linux 維持 OpenGL。這是相容性繞過，GPU shader 特效與影片顯示可能受限
