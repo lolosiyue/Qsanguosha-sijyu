@@ -35,6 +35,12 @@ constexpr quint64 kReserve = 64 * 1024 * 1024;
 // 3 refreshes lua/ai/mode-ai.lua. The room calls sgs.registerStandardModeAI after loading it.
 constexpr int kBootstrapVersion = 3;
 constexpr int kPresentationVersion = 1;
+#ifdef QSAN_ANDROID_DEV_CONTENT_SYNC
+// Development builds track the APK: every non-media baseline file follows its revision.
+constexpr bool kDevContentSync = true;
+#else
+constexpr bool kDevContentSync = false;
+#endif
 bool cancelled(AndroidContentStore::Cancelled *cancel, QString *error);
 bool fail(QString *error, const QString &message)
 {
@@ -600,7 +606,8 @@ bool AndroidContentStore::prepareStartup(QString *error)
         || base.value("bootstrap_version").toInt() != kBootstrapVersion
         || base.value("presentation_version").toInt() != kPresentationVersion
         || base.value("revision").toString().isEmpty() || needsRecovery()
-        || !QFileInfo(m_baseRoot).isDir();
+        || !QFileInfo(m_baseRoot).isDir()
+        || (kDevContentSync && !base.value("dev_content_sync").toBool());
     // Missing-only deployment is needed on installation/upgrade/recovery,
     // not on every unchanged boot. Existing user's CP1 files stay untouched.
     const QString deployed = m_appDataRoot + "/runtime";
@@ -710,6 +717,7 @@ bool AndroidContentStore::prepareStartup(QString *error)
     // APK upgrades extend the original tree; the APK-owned core Lua files
     // follows the APK revision. Snapshot copies and captured user edits remain
     // independent. Publish the revision after all replacements/copies finish.
+    // Development builds replace every non-media baseline file the same way.
     if (refreshBaseline) {
         QVariantMap currentDescriptor;
         if (!jsonRead(":/assets/runtime-content-base.json", &currentDescriptor, error)) return false;
@@ -733,6 +741,9 @@ bool AndroidContentStore::prepareStartup(QString *error)
         if (!incomingCatalog.isValid()) return fail(error, incomingCatalog.error);
         bool baselineChanged = base.value("revision").toString().isEmpty()
             || base.value("presentation_version").toInt() != kPresentationVersion;
+        const bool apkChanged = base.value("apk_revision").toString() != apkRevision
+            || base.value("bootstrap_version").toInt() != kBootstrapVersion;
+        const bool devRefresh = kDevContentSync && (apkChanged || !base.value("dev_content_sync").toBool());
         QStringList knownResources = base.value("resource_paths").toStringList();
         QSet<QString> knownResourceSet(knownResources.cbegin(), knownResources.cend());
         for (const QString &path : currentFiles) {
@@ -742,9 +753,7 @@ bool AndroidContentStore::prepareStartup(QString *error)
                 knownResourceSet.insert(path); knownResources << path; baselineChanged = true;
             }
             const QString target = m_baseRoot + '/' + path;
-            if (coreLuaPath(path)
-                && (base.value("apk_revision").toString() != apkRevision
-                    || base.value("bootstrap_version").toInt() != kBootstrapVersion)) {
+            if ((coreLuaPath(path) && apkChanged) || (devRefresh && !mediaPath(path))) {
                 // Core helpers must match the APIs and packages shipped by this
                 // APK. QSaveFile replaces only the baseline file atomically;
                 // advancing its revision composes a new immutable active snapshot.
@@ -856,6 +865,7 @@ bool AndroidContentStore::prepareStartup(QString *error)
         }
         if (baselineChanged || base.value("apk_revision").toString() != apkRevision) {
             base.insert("apk_revision", apkRevision);
+            if (kDevContentSync) base.insert("dev_content_sync", true);
             // Metadata-only migration marker also repairs old baselines whose
             // failed launch already recorded this same APK resource revision.
             base.insert("bootstrap_version", kBootstrapVersion);

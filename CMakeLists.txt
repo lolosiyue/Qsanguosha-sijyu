@@ -554,6 +554,9 @@ if(ANDROID)
         src/core/android-zip-reader.h
     )
     target_link_libraries(qsanguosha_engine PUBLIC z)
+    if(QSAN_ANDROID_DEV_CONTENT_SYNC)
+        target_compile_definitions(qsanguosha_engine PRIVATE QSAN_ANDROID_DEV_CONTENT_SYNC)
+    endif()
 endif()
 
 # Desktop package installation uses the same bounded ZIP reader as Android.

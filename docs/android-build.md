@@ -50,6 +50,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 ```
 
 此通用腳本會 reconfigure 既有 preset，不另建 cache；Qt／NDK／FreeType 路徑沿用固定工具鏈。
+雷電14（x86_64）與雷電9（ARMv7）都是開發環境：腳本預設開啟 `QSAN_ANDROID_DEV_CONTENT_SYNC`，
+`install -r` 後首次啟動即把裝置上的技能／武將 Lua、翻譯與 UI 腳本換成本次 APK 版本
+（[開發版內容同步](android-extension-runtime.md#實體目錄與版本)）。建置前先依 `AGENTS.md` §9 從 H 權威倉庫同步 L 的 `extensions/`。
 cache 設定未變時，可在已設定 Android 環境的 shell 執行 `cmake --build builds/android-x86_64-debug --target apk --parallel 8`
 （不要用桌面 Qt 或未設定 JAVA_HOME／GRADLE_USER_HOME 的 shell）。
 PowerShell 把原生命令的 stderr warning 升格為 `NativeCommandError` 時，核對實際退出碼，不要清除建置樹。
@@ -61,7 +64,7 @@ PowerShell 把原生命令的 stderr warning 升格為 `NativeCommandError` 時�
 | 變更 | 日常處理 |
 |---|---|
 | 只有 C++／UI，APK 資源名稱與內容不變 | 增量建置、`install -r`；沿用媒體與啟動快取 |
-| Lua／翻譯／APK 內建資源變動 | 先對齊來源再建置；保留已匯入媒體，只處理必要的規則／UI 版本切換，不掃描或雜湊聲畫 |
+| Lua／翻譯／APK 內建資源變動 | 先對齊來源再建置；開發版內容同步會換上新版規則／UI 檔，保留已匯入媒體，不掃描或雜湊聲畫 |
 | 使用者確實要更新媒體 | 更新媒體；APK 新增圖片不自動觸發重匯，也不因圖片缺檔擋局 |
 | 資料被清除、媒體損壞、升級衝突 | 保存錯誤並判斷原因；不自動清除資料或重匯整包 |
 
