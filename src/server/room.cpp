@@ -66,7 +66,9 @@
 #include <QDir>
 #include <QSet>
 #include <QScopeGuard>
+#ifndef Q_OS_WASM
 #include <QProcess>
+#endif
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -111,6 +113,7 @@ auto runRecoverableCascade(Room &room, RoomThread *thread, Function &&function, 
 // This object lives with the room on the server thread. Its subprocess sees
 // only loopback seat capabilities passed through stdin, and never a Room or
 // human-controlled seat. Any setup/process failure leaves native SmartAI live.
+#ifndef Q_OS_WASM
 class RoomHybrid50 final : public QObject
 {
 public:
@@ -229,6 +232,15 @@ private:
     std::vector<std::shared_ptr<ExternalAgentEndpoint>> m_endpoints;
     std::vector<std::unique_ptr<ExternalAgentLocalTransport>> m_transports;
 };
+#else
+// Browsers cannot launch the external adapter; keep the existing SmartAI fallback.
+class RoomHybrid50 final : public QObject
+{
+public:
+    RoomHybrid50(Room *room, QString) : QObject(room) {}
+    void add(ServerPlayer *) {}
+};
+#endif
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
