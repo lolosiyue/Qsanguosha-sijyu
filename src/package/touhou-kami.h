@@ -3,6 +3,7 @@
 
 #include "card.h"
 #include "package.h"
+#include "standard.h"
 
 class TouhouKamiPackage : public Package
 {
@@ -124,6 +125,16 @@ class ThBingzhangCard : public SkillCard
 
 public:
     Q_INVOKABLE ThBingzhangCard();
+};
+
+// 空观剑. Only 冥刃 makes it; no deck holds it.
+class Kuukanken : public Weapon
+{
+    Q_OBJECT
+    Q_CLASSINFO("CardName", "kuukanken")
+
+public:
+    Q_INVOKABLE Kuukanken(Card::Suit suit, int number);
 };
 
 #endif

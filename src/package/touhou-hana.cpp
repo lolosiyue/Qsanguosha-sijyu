@@ -1552,6 +1552,115 @@ public:
 
 // ---------------------------------------------------------------- hana014
 
+// Paid with one discarded card, or with 1 HP when no card is chosen.
+class ThXianfaViewAs : public PlayOncePerPhaseSkill
+{
+public:
+    ThXianfaViewAs() : PlayOncePerPhaseSkill("thxianfa", 1) {}
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        if (!request.initiator || !request.selectedCardIds.isEmpty() || !card || card->hasFlag("using"))
+            return false;
+        const int id = card->getEffectiveId();
+        return (request.initiator->handCards().contains(id) || request.initiator->getEquipsId().contains(id))
+            && request.initiator->canDiscard(request.initiator, id);
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        return request.selectedCardIds.size() <= 1;
+    }
+
+    bool canSelectTarget(const ActiveSkillRequest &, const QList<const Player *> &selected, const Player *to) const override
+    {
+        return selected.isEmpty() && to;
+    }
+
+    QString historyKey(const ActiveSkillRequest &) const override { return "ThXianfaCard"; }
+
+    EffectFlow effectOnTarget(SkillContext &ctx, ServerPlayer *target) const override
+    {
+        ServerPlayer *source = ctx.invoker;
+        if (!source || !target)
+            return ContinueEffects;
+        Room *room = source->getRoom();
+        if (!ctx.use_card || ctx.use_card->subcardsLength() == 0)
+            room->loseHp(source, 1, true, source, objectName());
+        if (!source->isAlive())
+            return ContinueEffects;
+        source->setTag("ThXianfaTarget", QVariant::fromValue(target));
+        const QString choice = room->askForChoice(source, objectName(), "start+judge+draw+discard+finish",
+                                                  QVariant::fromValue(target));
+        source->removeTag("ThXianfaTarget");
+        LogMessage log;
+        log.type = "#ThXianfaChoose";
+        log.from = source;
+        log.arg = objectName() + ":" + choice;
+        room->sendLog(log);
+        QVariantList pending = source->getTag("ThXianfaPending").toList();
+        pending << QVariantMap{{"target", target->objectName()}, {"phase", choice}};
+        source->setTag("ThXianfaPending", pending);
+        return ContinueEffects;
+    }
+};
+
+// After the user's discard phase the chosen character runs the phase without becoming
+// current, as upstream does. The award outlives the skill, so this is a record.
+class ThXianfa : public TriggerSkillV2
+{
+public:
+    ThXianfa() : TriggerSkillV2("thxianfa")
+    {
+        events << EventPhaseChanging;
+        view_as_skill = new ThXianfaViewAs;
+    }
+
+    bool recordEvent(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        const PhaseChangeStruct change = data.value<PhaseChangeStruct>();
+        if (!player || (change.from != Player::Discard && change.to != Player::NotActive))
+            return true;
+        const QVariantList pending = player->getTag("ThXianfaPending").toList();
+        player->removeTag("ThXianfaPending"); // Consume before the phases can recurse.
+        if (change.from != Player::Discard)
+            return true;
+        static const QMap<QString, Player::Phase> phases{{"start", Player::Start}, {"judge", Player::Judge},
+                                                         {"draw", Player::Draw}, {"discard", Player::Discard},
+                                                         {"finish", Player::Finish}};
+        foreach (const QVariant &entry, pending) {
+            const QVariantMap map = entry.toMap();
+            ServerPlayer *target = room->findPlayerByObjectName(map.value("target").toString());
+            const QString choice = map.value("phase").toString();
+            if (!target || !target->isAlive() || !phases.contains(choice))
+                continue;
+            LogMessage log;
+            log.type = "#ThXianfaDo";
+            log.from = target;
+            log.arg = objectName();
+            log.arg2 = objectName() + ":" + choice;
+            room->sendLog(log);
+
+            const Player::Phase origin = target->getPhase();
+            PhaseChangeStruct extra;
+            extra.from = origin;
+            extra.to = phases.value(choice);
+            QVariant phaseData = QVariant::fromValue(extra);
+            target->setPhase(extra.to);
+            room->broadcastProperty(target, "phase");
+            RoomThread *thread = room->getThread();
+            if (!thread->trigger(EventPhaseStart, room, target, phaseData))
+                thread->trigger(EventPhaseProceeding, room, target, phaseData);
+            thread->trigger(EventPhaseEnd, room, target, phaseData);
+            target->setPhase(origin);
+            room->broadcastProperty(target, "phase");
+        }
+        return true;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return TriggerList(); }
+};
+
 class ThWendao : public WakeSkill
 {
 public:
@@ -2252,6 +2361,7 @@ ThGuaitanCard::ThGuaitanCard() { setSkillName("thguaitan"); mute = true; }
 ThDujiaCard::ThDujiaCard() { setSkillName("thdujia"); mute = true; }
 ThLeishiCard::ThLeishiCard() { setSkillName("thleishi"); mute = true; }
 ThLiuzhenCard::ThLiuzhenCard() { setSkillName("thliuzhen"); mute = true; }
+ThXianfaCard::ThXianfaCard() { setSkillName("thxianfa"); mute = true; }
 
 TouhouHanaPackage::TouhouHanaPackage()
     : Package("touhou-hana")
@@ -2323,7 +2433,7 @@ TouhouHanaPackage::TouhouHanaPackage()
     hana013->addSkill(new ThDujia);
 
     General *hana014 = new General(this, "hana014", "hana", 4, false);
-    hana014->addSkill(new PendingSkill("thxianfa"));
+    hana014->addSkill(new ThXianfa);
     hana014->addSkill(new ThWendao);
 
     General *hana015 = new General(this, "hana015", "hana", 3);
@@ -2354,6 +2464,7 @@ TouhouHanaPackage::TouhouHanaPackage()
     addMetaObject<ThDujiaCard>();
     addMetaObject<ThLeishiCard>();
     addMetaObject<ThLiuzhenCard>();
+    addMetaObject<ThXianfaCard>();
 }
 
 ADD_PACKAGE(TouhouHana)

@@ -85,8 +85,8 @@ config = {
 			"Happy2v2,JianGeDefense,BossMode",
 		h_other = "Miscellaneous,Doudizhu,Assassins,Godlailailai,HulaoPass,"..
 			"TaiwanSP,TaiwanYJCM,BGM,BGMDIY,Test,Wisdom,Ling,Yitian,Yinhu,Maotu,Zombine,Dream,"..
-			"Hayate,Inovation,TenshiReihou",
-		i_touhou = "TouhouKaze,TouhouHana,TouhouYuki,TouhouTsuki,TouhouBangai,TouhouKami,TouhouSP,TouhouShin",
+			"Hayate,Inovation",
+		i_touhou = "TouhouKaze,TouhouHana,TouhouYuki,TouhouTsuki,TouhouBangai,TouhouKami,TouhouSP,TouhouShin,TenshiReihou",
 		j_ikai = "IkaiDo,IkaiKa,IkaiKin,IkaiMoku,IkaiSui",
 	},
 

@@ -3233,6 +3233,97 @@ public:
     }
 };
 
+// Upstream's 楼观剑 is the local 青釭剑. EquipCard::use keeps the converted weapon equipped as such.
+class ThMingren : public ViewAsSkillV2
+{
+public:
+    ThMingren() : ViewAsSkillV2("thmingren", 1) {}
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY && !request.initiator->getWeapon();
+    }
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        return request.selectedCardIds.isEmpty() && ownsHandCard(request.initiator, card) && (card->isBlack() || card->isRed());
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1)
+            return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request))
+            return nullptr;
+        const Card *material = Sanguosha->getCard(request.selectedCardIds.first());
+        Card *card = Sanguosha->cloneCard(material->isBlack() ? "qinggang_sword" : "kuukanken", material->getSuit(),
+                                          material->getNumber());
+        if (!card)
+            return nullptr;
+        card->addSubcard(material);
+        card->setSkillName(objectName());
+        return card;
+    }
+};
+
+// A single-target Slash without nature allows one more Slash this turn.
+class KuukankenSkill : public WeaponSkillV2
+{
+public:
+    KuukankenSkill() : WeaponSkillV2("kuukanken", "kuukanken")
+    {
+        events << CardFinished;
+        frequency = Compulsory;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        const CardUseStruct use = data.value<CardUseStruct>();
+        if (!player || use.from != player || !player->isAlive() || !WeaponSkillV2::triggerable(player) || !use.card
+            || !use.card->isKindOf("Slash") || use.card->isKindOf("NatureSlash") || use.to.length() != 1)
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        room->sendCompulsoryTriggerLog(ctx.owner, objectName());
+        room->addPlayerMark(ctx.owner, "kuukanken-Clear");
+        return false;
+    }
+};
+
+class KuukankenTargetMod : public TargetModSkillV2
+{
+public:
+    bool isEquipSkill() const override { return true; }
+
+    KuukankenTargetMod() : TargetModSkillV2("#kuukanken")
+    {
+        frequency = Compulsory;
+        setHolderSelector(CorrectSkill_System);
+    }
+
+    CorrectSkillResult getCorrection(const CorrectSkillContext &ctx) const override
+    {
+        const Player *from = ctx.primary;
+        if (!from || !from->hasWeapon("kuukanken"))
+            return CorrectSkillResult::noEffect();
+        if (ctx.modType == TargetModSkill::ExtraTarget)
+            return CorrectSkillResult::useAmount(1);
+        if (ctx.modType == TargetModSkill::Residue && from->getMark("kuukanken-Clear") > 0)
+            return CorrectSkillResult::useAmount(from->getMark("kuukanken-Clear"));
+        return CorrectSkillResult::noEffect();
+    }
+};
+
 class ThChuntie : public TriggerSkillV2
 {
 public:
@@ -3560,6 +3651,8 @@ ThShuangfengCard::ThShuangfengCard() { setSkillName("thshuangfeng"); mute = true
 ThJieshaCard::ThJieshaCard() { setSkillName("thjiesha"); mute = true; }
 ThBingzhangCard::ThBingzhangCard() { setSkillName("thbingzhang"); mute = true; }
 
+Kuukanken::Kuukanken(Suit suit, int number) : Weapon(suit, number, 2) { setObjectName("kuukanken"); }
+
 TouhouKamiPackage::TouhouKamiPackage()
     : Package("touhou-kami")
 {
@@ -3677,7 +3770,7 @@ TouhouKamiPackage::TouhouKamiPackage()
 
     General *kami019 = new General(this, "kami019", "god");
     kami019->addSkill(new ThJiesha);
-    kami019->addSkill(new PendingSkill("thmingren"));
+    kami019->addSkill(new ThMingren);
     kami019->addSkill(new ThChuntie);
 
     General *kami020 = new General(this, "kami020", "god", 3);
@@ -3689,6 +3782,7 @@ TouhouKamiPackage::TouhouKamiPackage()
     kami020->addSkill(new ThMishu);
 
     skills << new ThKuangmo << new IkTiandu << new ThJifeng << new ThHuanzang << new IkXinshang << new IkJinlian;
+    skills << new KuukankenSkill << new KuukankenTargetMod;
 
     addMetaObject<ThShenfengCard>();
     addMetaObject<ThGugaoCard>();
@@ -3704,6 +3798,7 @@ TouhouKamiPackage::TouhouKamiPackage()
     addMetaObject<ThShuangfengCard>();
     addMetaObject<ThJieshaCard>();
     addMetaObject<ThBingzhangCard>();
+    addMetaObject<Kuukanken>();
 }
 
 ADD_PACKAGE(TouhouKami)

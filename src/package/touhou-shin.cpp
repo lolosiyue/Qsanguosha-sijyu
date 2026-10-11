@@ -672,6 +672,60 @@ public:
     }
 };
 
+// A card used out of someone's 宝 pile as itself carries "thyishi_<lender>" until it resolves.
+class ThYishi : public TriggerSkillV2
+{
+public:
+    ThYishi() : TriggerSkillV2("thyishi")
+    {
+        events << CardsMoveOneTime << CardFinished << CardEffected;
+        frequency = Compulsory;
+    }
+
+    bool recordEvent(TriggerEvent event, Room *, ServerPlayer *, QVariant &data) const override
+    {
+        if (event == CardFinished) {
+            const Card *card = data.value<CardUseStruct>().card;
+            if (card)
+                foreach (const QString &flag, card->getFlags())
+                    if (flag.startsWith("thyishi_"))
+                        card->setFlags("-" + flag);
+            return true;
+        }
+        if (event != CardsMoveOneTime)
+            return false;
+        const CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        if ((move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) != CardMoveReason::S_REASON_USE || !move.from
+            || !move.from_pile_names.contains("currency"))
+            return true;
+        const Card *card = move.reason.m_extraData.value<const Card *>();
+        if (card && (!card->isVirtualCard()
+                     || (card->subcardsLength() == 1 && card->getSubcards() == move.card_ids
+                         && card->getClassName() == Sanguosha->getCard(move.card_ids.first())->getClassName())))
+            card->setFlags("thyishi_" + move.from->objectName());
+        return true;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *player, QVariant &data) const override
+    {
+        const CardEffectStruct effect = data.value<CardEffectStruct>();
+        if (!player || effect.to != player || !player->isAlive() || !player->hasSkill(objectName()) || !effect.card
+            || effect.nullified || !effect.card->hasFlag("thyishi_" + player->objectName()))
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        room->sendCompulsoryTriggerLog(ctx.owner, objectName());
+        room->broadcastSkillInvoke(objectName());
+        CardEffectStruct effect = ctx.original_data->value<CardEffectStruct>();
+        effect.nullified = true;
+        *ctx.original_data = QVariant::fromValue(effect);
+        return false;
+    }
+};
+
 // ---------------------------------------------------------------- shin007
 
 class ThMoju : public TriggerSkillV2
@@ -3231,6 +3285,205 @@ public:
     }
 };
 
+// ---------------------------------------------------------------- shin027
+
+// The owner tag "ThMinwangFeeds" maps each dead character's object name to its generals
+// and its 供养, which lie in the "feed" pile.
+static QVariantMap minwangFeeds(const ServerPlayer *owner)
+{
+    QVariantMap feeds;
+    const QList<int> pile = owner->getPile("feed");
+    const QVariantMap stored = owner->getTag("ThMinwangFeeds").toMap();
+    foreach (const QString &victim, stored.keys()) {
+        QVariantMap entry = stored.value(victim).toMap();
+        QVariantList cards;
+        foreach (const QVariant &id, entry.value("cards").toList())
+            if (pile.contains(id.toInt()))
+                cards << id;
+        if (cards.isEmpty())
+            continue;
+        entry["cards"] = cards;
+        feeds.insert(victim, entry);
+    }
+    return feeds;
+}
+
+class ThMinwang : public TriggerSkillV2
+{
+public:
+    ThMinwang() : TriggerSkillV2("thminwang") { events << Death; }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *, QVariant &data) const override
+    {
+        TriggerList result;
+        const DeathStruct death = data.value<DeathStruct>();
+        if (!death.who)
+            return result;
+        foreach (ServerPlayer *owner, room->getAlivePlayers())
+            if (owner != death.who && owner->hasSkill(objectName()))
+                result[owner] << objectName();
+        return result;
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner->askForSkillInvoke(objectName(), *ctx.original_data))
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        return true;
+    }
+
+    // Up to three cards of different numbers from the top three and the hand; at least one, as upstream.
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *owner = ctx.owner;
+        ServerPlayer *victim = ctx.original_data->value<DeathStruct>().who;
+        if (!owner || !owner->isAlive() || !victim)
+            return false;
+        const QList<int> viewed = room->getNCards(3, false);
+        const QList<int> candidates = viewed + owner->handCards();
+        QList<int> chosen;
+        while (owner->isAlive() && chosen.length() < 3) {
+            QList<int> shown, selectable, disabled;
+            foreach (int id, candidates) {
+                if (chosen.contains(id))
+                    continue;
+                bool clash = false;
+                foreach (int picked, chosen)
+                    if (Sanguosha->getCard(picked)->getNumber() == Sanguosha->getCard(id)->getNumber())
+                        clash = true;
+                shown << id;
+                (clash ? disabled : selectable) << id;
+            }
+            if (selectable.isEmpty())
+                break;
+            room->fillAG(shown, owner, disabled);
+            const int id = room->askForAG(owner, shown, !chosen.isEmpty(), objectName(), "@thminwang");
+            room->clearAG(owner);
+            if (!selectable.contains(id)) {
+                if (chosen.isEmpty())
+                    chosen << selectable.first();
+                break;
+            }
+            chosen << id;
+        }
+        QList<int> rest = viewed;
+        foreach (int id, chosen)
+            rest.removeOne(id);
+        if (owner->isAlive())
+            owner->addToPile("feed", chosen);
+        else
+            rest = viewed;
+        if (!rest.isEmpty()) {
+            DummyCard dummy(rest);
+            room->throwCard(&dummy, CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER, QString(), objectName(), QString()),
+                            nullptr);
+        }
+        if (!owner->isAlive())
+            return false;
+
+        QVariantMap feeds = owner->getTag("ThMinwangFeeds").toMap();
+        QVariantMap entry = feeds.value(victim->objectName()).toMap();
+        QStringList generals{victim->getGeneralName()};
+        if (!victim->getGeneral2Name().isEmpty())
+            generals << victim->getGeneral2Name();
+        entry["generals"] = generals;
+        entry["cards"] = entry.value("cards").toList() + ListI2V(chosen);
+        feeds[victim->objectName()] = entry;
+        owner->setTag("ThMinwangFeeds", feeds);
+        return false;
+    }
+};
+
+// The chosen dead character's 供养 replace the hand for this play phase, played with that
+// character's skills; the hand waits in the hidden "#thlingbo" pile.
+class ThLingbo : public TriggerSkillV2
+{
+public:
+    ThLingbo() : TriggerSkillV2("thlingbo") { events << EventPhaseStart << EventPhaseChanging; }
+
+    // The swap ends with that play phase, even if 灵薄 was lost meanwhile.
+    bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
+    {
+        if (event != EventPhaseChanging)
+            return false;
+        if (!player || data.value<PhaseChangeStruct>().from != Player::Play || !player->hasFlag("ThLingboUsed"))
+            return true;
+        room->setPlayerFlag(player, "-ThLingboUsed");
+        revokeTracked(room, player, "ThLingboSkills");
+        if (!player->isKongcheng()) {
+            DummyCard dummy(player->handCards());
+            room->throwCard(&dummy, CardMoveReason(CardMoveReason::S_REASON_PUT, player->objectName(), objectName(), QString()),
+                            nullptr);
+        }
+        const QList<int> stash = player->getPile("#thlingbo");
+        if (!stash.isEmpty()) {
+            DummyCard dummy(stash);
+            room->obtainCard(player, &dummy, CardMoveReason(CardMoveReason::S_REASON_EXCHANGE_FROM_PILE, player->objectName()),
+                             false);
+        }
+        return true;
+    }
+
+    TriggerList triggerable(TriggerEvent event, Room *, ServerPlayer *player, QVariant &) const override
+    {
+        if (event != EventPhaseStart || !player || !player->isAlive() || player->getPhase() != Player::Play
+            || !player->hasSkill(objectName()) || minwangFeeds(player).isEmpty())
+            return TriggerList();
+        return TriggerList{{player, {objectName()}}};
+    }
+
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        if (!ctx.owner->askForSkillInvoke(objectName()))
+            return false;
+        room->broadcastSkillInvoke(objectName());
+        return true;
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
+    {
+        ServerPlayer *player = ctx.owner;
+        const QVariantMap feeds = minwangFeeds(player);
+        if (feeds.isEmpty())
+            return false;
+        QStringList choices;
+        QMap<QString, QString> victimOf;
+        foreach (const QString &victim, feeds.keys()) {
+            const QString general = feeds.value(victim).toMap().value("generals").toStringList().value(0);
+            if (!victimOf.contains(general)) {
+                victimOf.insert(general, victim);
+                choices << general;
+            }
+        }
+        QString general = choices.length() == 1 ? choices.first()
+                                                : room->askForGeneral(player, choices, choices.first(), objectName());
+        if (!victimOf.contains(general))
+            general = choices.first();
+        const QString victim = victimOf.value(general);
+        const QVariantMap entry = feeds.value(victim).toMap();
+        QVariantMap stored = player->getTag("ThMinwangFeeds").toMap();
+        stored.remove(victim);
+        player->setTag("ThMinwangFeeds", stored);
+
+        room->setPlayerFlag(player, "ThLingboUsed");
+        if (!player->isKongcheng())
+            player->addToPile("#thlingbo", player->handCards(), false);
+        DummyCard dummy(ListV2I(entry.value("cards").toList()));
+        room->obtainCard(player, &dummy,
+                         CardMoveReason(CardMoveReason::S_REASON_EXCHANGE_FROM_PILE, player->objectName(), objectName(), QString()));
+        foreach (const QString &name, entry.value("generals").toStringList()) {
+            const General *dead = Sanguosha->getGeneral(name);
+            if (!dead)
+                continue;
+            foreach (const Skill *skill, dead->getVisibleSkillList())
+                if (skill->getFrequency() != Skill::Wake)
+                    grantTracked(room, player, "ThLingboSkills", skill->objectName());
+        }
+        return false;
+    }
+};
+
 // ---------------------------------------------------------------- shin028
 
 class ThYuguang : public ViewAsSkillV2
@@ -4333,7 +4586,7 @@ TouhouShinPackage::TouhouShinPackage()
     shin006->addSkill(new ThBaochui);
     shin006->addSkill(new ThBaochuiReturn);
     related_skills.insert("thbaochui", "#thbaochui");
-    shin006->addSkill(new PendingSkill("thyishi"));
+    shin006->addSkill(new ThYishi);
 
     General *shin007 = new General(this, "shin007", "yuki");
     shin007->addSkill(new ThMoju);
@@ -4425,8 +4678,8 @@ TouhouShinPackage::TouhouShinPackage()
     shin026->addSkill(new ThLingwei);
 
     General *shin027 = new General(this, "shin027", "yuki", 4, false);
-    shin027->addSkill(new PendingSkill("thminwang"));
-    shin027->addSkill(new PendingSkill("thlingbo"));
+    shin027->addSkill(new ThMinwang);
+    shin027->addSkill(new ThLingbo);
 
     General *shin028 = new General(this, "shin028", "tsuki", 3);
     shin028->addSkill(new ThYuguang);

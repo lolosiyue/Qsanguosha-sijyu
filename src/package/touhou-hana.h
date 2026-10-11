@@ -86,4 +86,12 @@ public:
     Q_INVOKABLE ThLiuzhenCard();
 };
 
+class ThXianfaCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ThXianfaCard();
+};
+
 #endif

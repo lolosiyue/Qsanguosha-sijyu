@@ -1181,6 +1181,82 @@ public:
     }
 };
 
+class IkBenyin : public ViewAsSkillV2
+{
+public:
+    IkBenyin() : ViewAsSkillV2("ikbenyin", 1)
+    {
+        setResponseOrUse(true);
+        setPhaseName("Play");
+    }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.initiator && request.reason == CardUseStruct::CARD_USE_REASON_PLAY;
+    }
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *card) const override
+    {
+        if (!request.selectedCardIds.isEmpty() || !card || card->getTypeId() != Card::TypeBasic || !card->isRed()
+            || card->hasFlag("using"))
+            return false;
+        return ownsCard(request.initiator, card) || request.initiator->getHandPile().contains(card->getEffectiveId());
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        if (request.selectedCardIds.size() != 1)
+            return false;
+        ActiveSkillRequest selection = request;
+        selection.selectedCardIds.clear();
+        return canSelectCard(selection, Sanguosha->getCard(request.selectedCardIds.first()));
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        if (!cardSelectionFeasible(request))
+            return nullptr;
+        const Card *material = Sanguosha->getCard(request.selectedCardIds.first());
+        PurpleSong *card = new PurpleSong(material->getSuit(), material->getNumber());
+        card->addSubcard(material);
+        card->setSkillName(objectName());
+        return card;
+    }
+};
+
+// 紫莲圣咏's two cards come once the turn has ended.
+class PurpleSongDraw : public TriggerSkillV2
+{
+public:
+    PurpleSongDraw() : TriggerSkillV2("#purple_song")
+    {
+        events << EventPhaseStart;
+        frequency = Compulsory;
+        global = true;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        if (!player || player->getPhase() != Player::NotActive)
+            return TriggerList();
+        foreach (ServerPlayer *p, room->getAllPlayers())
+            if (p->getMark("purple_song") > 0)
+                return TriggerList{{player, {objectName()}}};
+        return TriggerList();
+    }
+
+    bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &) const override
+    {
+        foreach (ServerPlayer *p, room->getAllPlayers()) {
+            while (p->isAlive() && p->getMark("purple_song") > 0) {
+                room->removePlayerMark(p, "purple_song");
+                p->drawCards(2, "purple_song");
+            }
+        }
+        return false;
+    }
+};
+
 class IkGuijiao : public TriggerSkillV2
 {
 public:
@@ -1259,6 +1335,29 @@ public:
 IkXingyuCard::IkXingyuCard() { setSkillName("ikxingyu"); mute = true; }
 IkYuanheCard::IkYuanheCard() { setSkillName("ikyuanhe"); mute = true; }
 
+PurpleSong::PurpleSong(Suit suit, int number)
+    : DelayedTrick(suit, number)
+{
+    setObjectName("purple_song");
+
+    // Anything but a diamond is good for the target, and the good result takes effect.
+    judge.pattern = ".|diamond";
+    judge.good = false;
+    judge.negative = false;
+    judge.reason = objectName();
+}
+
+bool PurpleSong::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
+{
+    return targets.isEmpty() && to_select != Self && DelayedTrick::targetFilter(targets, to_select, Self);
+}
+
+void PurpleSong::takeEffect(ServerPlayer *target) const
+{
+    target->skip(Player::Discard);
+    target->getRoom()->addPlayerMark(target, "purple_song");
+}
+
 IkaiDoPackage::IkaiDoPackage()
     : Package("ikai-do")
 {
@@ -1308,10 +1407,9 @@ IkaiDoPackage::IkaiDoPackage()
     luna002->addSkill(new IkWushuang);
     luna002->addSkill(new IkWudi);
 
-    // 本音 needs upstream's 紫莲圣咏, which has no local card.
     General *luna018 = new General(this, "luna018", "tsuki", 3);
     luna018->addSkill(new IkZhuji);
-    luna018->addSkill(new PendingSkill("ikbenyin"));
+    luna018->addSkill(new IkBenyin);
 
     General *luna034 = new General(this, "luna034", "tsuki");
     luna034->addSkill(new IkGuijiao);
@@ -1320,10 +1418,11 @@ IkaiDoPackage::IkaiDoPackage()
     luna034->addSkill("ikjinlian");
 
     // No general here holds 心契 or 济援, but 若愚 and 至尊 grant them.
-    skills << new IkXingyu << new IkXinqi << new IkJiyuan;
+    skills << new IkXingyu << new IkXinqi << new IkJiyuan << new PurpleSongDraw;
 
     addMetaObject<IkXingyuCard>();
     addMetaObject<IkYuanheCard>();
+    addMetaObject<PurpleSong>();
 }
 
 ADD_PACKAGE(IkaiDo)

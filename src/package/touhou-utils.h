@@ -172,14 +172,6 @@ inline void revokeTracked(Room *room, ServerPlayer *player, const QString &key, 
         player->setTag(key, map);
 }
 
-// A skill whose upstream mechanic needs an engine decision first. It carries the
-// name and description only; its translation says it is not implemented here.
-class PendingSkill : public Skill
-{
-public:
-    explicit PendingSkill(const QString &name) : Skill(name, NotFrequent) {}
-};
-
 // A wake skill: once per game per instance, at a timing the subclass names.
 // Subclasses supply the timing, the natural condition and the awakening.
 class WakeSkill : public TriggerSkillV2
