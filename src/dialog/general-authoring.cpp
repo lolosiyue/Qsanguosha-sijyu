@@ -547,7 +547,7 @@ bool Document::exportDisabled(const QString &parent, const QByteArray &png, QStr
         *error = QCoreApplication::translate("GeneralAuthoring", "Choose a separate staging directory outside packages and extensions, without symlinks."); return false;
     }
     const QString id = spec.value("package_id").toString(), general = spec.value("general_id").toString();
-    const QString staging = QDir(absolute).filePath(".authoring-" + QUuid::createUuid().toString(QUuid::WithoutBraces));
+    const QString staging = QDir(absolute).filePath(".authoring-" + QUuid::createUuid().toString().mid(1, 36));
     if (!QDir().mkdir(staging) || !QDir(staging).mkdir(id) || !QDir(staging + "/" + id).mkdir("lua")) { *error = QCoreApplication::translate("GeneralAuthoring", "Cannot create export staging directory."); return false; }
     const QString root = staging + "/" + id, script = "lua/" + id + ".lua";
     QJsonArray files;
@@ -568,7 +568,7 @@ bool Document::exportDisabled(const QString &parent, const QByteArray &png, QStr
     ok = ok && writeFile(root + "/manifest.json", QJsonDocument(manifest).toJson());
     ok = ok && writeFile(staging + "/authoring.json", projectBytes);
     ok = ok && writeFile(staging + "/DISABLED.txt", QCoreApplication::translate("GeneralAuthoring", "Inert authoring export. This directory is not installed or enabled. Review Lua and test manually in a disposable runtime before using Packages > Manage packages on the child package directory. Static checks are not a security guarantee.").toUtf8());
-    const QString final = QDir(absolute).filePath(id + "-disabled-" + QUuid::createUuid().toString(QUuid::WithoutBraces));
+    const QString final = QDir(absolute).filePath(id + "-disabled-" + QUuid::createUuid().toString().mid(1, 36));
     if (!ok || QFileInfo::exists(final) || !QDir().rename(staging, final)) {
         QDir(staging).removeRecursively(); *error = QCoreApplication::translate("GeneralAuthoring", "Export failed; no existing package was replaced."); return false;
     }

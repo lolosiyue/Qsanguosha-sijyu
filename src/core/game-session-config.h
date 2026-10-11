@@ -18,13 +18,13 @@ struct GameSessionConfig
 {
     GameSessionConfig()
         : seed(QRandomGenerator::system()->generate64()),
-          hybridGameId(QUuid::createUuid().toString(QUuid::WithoutBraces))
+          hybridGameId(QUuid::createUuid().toString().mid(1, 36))
     {
     }
 
     explicit GameSessionConfig(quint64 seed)
         : seed(seed),
-          hybridGameId(QUuid::createUuid().toString(QUuid::WithoutBraces))
+          hybridGameId(QUuid::createUuid().toString().mid(1, 36))
     {
     }
 

@@ -3358,7 +3358,7 @@ QList<const Player *> Player::getSiblings(bool include_self) const
             it = cache.insert(owner, CachedSiblings());
         }
         if (it->generation != generation || it->childCount != childCount) {
-            it->players = owner->findChildren<const Player *>(Qt::FindDirectChildrenOnly);
+            it->players = owner->findChildren<const Player *>(QString(), Qt::FindDirectChildrenOnly);
             it->generation = generation;
             it->childCount = childCount;
         }

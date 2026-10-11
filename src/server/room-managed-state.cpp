@@ -477,12 +477,12 @@ std::unique_ptr<RoomManagedState::NativeSlice> RoomManagedState::captureNative(Q
         it.value()=wire;
     }
     for(auto it=roomTags.cbegin();it!=roomTags.cend();++it) if(!GameState::validateValue(it.value(),index,error)) {
-        if(error) *error=QStringLiteral("room tag %1 [%2]: %3").arg(it.key(),QString::fromLatin1(it.value().metaType().name()),*error);return {};
+        if(error) *error=QStringLiteral("room tag %1 [%2]: %3").arg(it.key(),QString::fromLatin1(it.value().typeName()),*error);return {};
     }
     for (const auto *player : m_room.getPlayers()) {
         const auto tags=normalizedTags.value(player);
         for(auto it=tags.cbegin();it!=tags.cend();++it) if(!GameState::validateValue(it.value(),index,error)) {
-            if(error) *error=QStringLiteral("player %1 tag %2 [%3]: %4").arg(player->objectName(),it.key(),QString::fromLatin1(it.value().metaType().name()),*error);return {};
+            if(error) *error=QStringLiteral("player %1 tag %2 [%3]: %4").arg(player->objectName(),it.key(),QString::fromLatin1(it.value().typeName()),*error);return {};
         }
         for (const auto &instances : player->m_skillInstances)
             for (const auto &skill : instances)
@@ -622,7 +622,7 @@ std::unique_ptr<RoomManagedState::NativeSlice> RoomManagedState::captureNative(Q
         result->markViewers=m_room.m_aiDecisions->m_markViewers; result->movementId=m_room._m_lastMovementId;
         const auto wire=runningWire(*result);
         for(auto it=wire.cbegin();it!=wire.cend();++it) if(!GameState::validateValue(it.value(),index,error)) {
-            if(error) *error=QStringLiteral("native %1 [%2]: %3").arg(it.key(),QString::fromLatin1(it.value().metaType().name()),*error);return {};
+            if(error) *error=QStringLiteral("native %1 [%2]: %3").arg(it.key(),QString::fromLatin1(it.value().typeName()),*error);return {};
         }
     } else {
         topologyValue.insert("game_rng",rngValue(m_room.roomRuntime()->rng().state()));
@@ -714,7 +714,7 @@ bool RoomManagedState::restoreRunningWire(NativeSlice &native,const QVariantMap 
         s.piles.clear();const auto piles=v["piles"].toMap();for(auto it=piles.cbegin();it!=piles.cend();++it) s.piles.insert(it.key(),readIntegers(it.value()));
         s.pileOpen.clear();const auto open=v["pile_open"].toMap();for(auto it=open.cbegin();it!=open.cend();++it) s.pileOpen.insert(it.key(),readStrings(it.value()));
         s.history.clear();const auto history=v["history"].toMap();for(auto it=history.cbegin();it!=history.cend();++it) s.history.insert(it.key(),it.value().toInt());
-        const auto flags=readStrings(v["flags"]);s.flags=QSet<QString>(flags.begin(),flags.end());
+        const auto flags=readStrings(v["flags"]);s.flags.clear();for(const auto &flag:flags) s.flags.insert(flag);
         s.shown=readIntegers(v["shown"]);s.broken=readIntegers(v["broken"]);s.phases.clear();s.phaseState.clear();
         for(int phase:readIntegers(v["phases"])) s.phases<<Player::Phase(phase);
         for(const auto &entry:v["phase_state"].toList()) { const auto p=entry.toMap();PhaseStruct phase;phase.phase=Player::Phase(p["phase"].toInt());phase.skipped=p["skipped"].toInt();s.phaseState<<phase; }
@@ -739,7 +739,7 @@ bool RoomManagedState::restoreRunningWire(NativeSlice &native,const QVariantMap 
     native.gameRng=readRng(wire["game_rng"]);native.aiRng=readRng(wire["ai_rng"]);
     native.aiEvents.clear();for(const auto &e:wire["ai_events"].toList()) native.aiEvents<<readEvent(e.toMap());
     native.aiSequence=wire["ai_sequence"].toString().toULongLong();native.markViewers.clear();
-    const auto viewers=wire["mark_viewers"].toMap();for(auto it=viewers.cbegin();it!=viewers.cend();++it) {const auto ids=readStrings(it.value());native.markViewers.insert(it.key(),QSet<QString>(ids.begin(),ids.end()));}
+    const auto viewers=wire["mark_viewers"].toMap();for(auto it=viewers.cbegin();it!=viewers.cend();++it) {QSet<QString> ids;for(const auto &id:readStrings(it.value())) ids.insert(id);native.markViewers.insert(it.key(),ids);}
     native.movementId=wire["movement_id"].toInt();
     if(!valid) return fail(error,QStringLiteral("unresolved native player/card reference"));
     native.preparedGameRng=std::make_unique<GameRng>();native.preparedAiRng=std::make_unique<GameRng>();

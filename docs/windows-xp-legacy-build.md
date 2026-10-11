@@ -194,6 +194,15 @@ Keep the shared source compatible with the actual Qt 5.6 headers:
 | `findChildren(options)` has no matching overload | Pass the empty name explicitly: `findChildren<T *>(QString(), options)` | `src/core/engine.cpp` |
 | `QFileInfo::metadataChangeTime()` is unavailable | Keep the change-time digest cache on Qt 6; rehash on Qt 5 instead of trusting size and modification time alone | `src/core/rules-bundle-exporter.cpp` |
 | Queued `QMetaObject::invokeMethod(context, lambda, ...)` is unavailable | Use `QTimer::singleShot(0, context, lambda)` to retain execution on the context object's thread | `src/ui/pixmapanimation.cpp` |
+| `QUuid::WithoutBraces` is unavailable | `QUuid::toString().mid(1, 36)` | `src/core/game-session-config.h` |
+| `QVariant::metaType()` is unavailable | `userType()` for the id, `typeName()` for the name | `src/core/protocol/session/managed-rewind-payloads.h` |
+| `QMetaType::Nullptr` is unavailable | Guard the case with `QT_VERSION >= 6.0` | `src/client/core/controller-interaction-contract.cpp` |
+| `qScopeGuard` is undeclared | Include `<QScopeGuard>` explicitly; Qt 6 headers only pull it in transitively | `src/server/player-lifecycle-service.cpp` |
+| `QString::front()`, `chopped()`, `QByteArray::compare()`, `QJsonValue::toInteger()` are unavailable | `at(0)`, `left(size() - 1)`, `toLower()` comparison, `qint64(toDouble())` | — |
+| `QList`/`QSet` iterator-range constructors are unavailable | Insert in a loop | `src/client/card-memory.h` |
+| `QWidget::screen()` is unavailable | `widgetScreen()` falls back to `QDesktopWidget::screenNumber()` | `src/dialog/android-dialog-fit.cpp` |
+| `QNetworkRequest` redirect policy / `setTransferTimeout()` are unavailable | Guard them; Qt 5.6 does not follow redirects by default and the request already has its own abort timer | `src/dialog/general-authoring-provider.cpp` |
+| A parameter named `small` fails to parse | Windows headers `#define small char`; use another name | `src/ui/general-info-card.cpp` |
 
 The XP UI default now registers the bundled `font/simsun.ttf` and selects its
 regular face without inherited underline for menus and text edits. Normal

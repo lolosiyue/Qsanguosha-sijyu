@@ -214,7 +214,9 @@ bool isJsonVariant(const QVariant &value)
 {
     switch (value.userType()) {
     case QMetaType::UnknownType:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     case QMetaType::Nullptr:
+#endif
     case QMetaType::QString:
     case QMetaType::Bool:
         return true;

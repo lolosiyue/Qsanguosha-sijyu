@@ -3558,7 +3558,7 @@ QmlMarkBinding Engine::qmlMarkFor(const QString &mark) const
         if (binding.pattern == mark)
             return binding;
         if (binding.pattern.endsWith(QLatin1Char('*'))) {
-            const QString prefix = binding.pattern.chopped(1);
+            const QString prefix = binding.pattern.left(binding.pattern.size() - 1);
             if (mark.startsWith(prefix) && (!best || prefix.size() > best->pattern.size() - 1))
                 best = &binding;
         }

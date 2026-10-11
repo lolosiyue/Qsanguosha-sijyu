@@ -2687,12 +2687,12 @@ void Client::setCardFlag(const QVariant &pattern_str)
 
 QList<int> Client::rememberedDrawPileTop() const
 {
-    return QList<int>(m_drawPileMemory.top.begin(), m_drawPileMemory.top.end());
+    return ClientCardMemory::toList(m_drawPileMemory.top);
 }
 
 QList<int> Client::rememberedDrawPileBottom() const
 {
-    return QList<int>(m_drawPileMemory.bottom.begin(), m_drawPileMemory.bottom.end());
+    return ClientCardMemory::toList(m_drawPileMemory.bottom);
 }
 
 void Client::updatePileNum()

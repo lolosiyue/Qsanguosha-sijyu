@@ -309,7 +309,7 @@ void ManagedRewindLab::connected(ServerPlayer *player)
     {
         QMutexLocker lock(&m_mutex);
         auto &peer = m_peers[player];
-        peer.token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        peer.token = QUuid::createUuid().toString().mid(1, 36);
         peer.sequence = 0;
         peer.connected = true;
         peer.owner = player->isOwner();

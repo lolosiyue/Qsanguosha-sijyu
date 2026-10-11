@@ -209,7 +209,7 @@ void ClientPlayer::swapKnownCards(ClientPlayer *other)
     // memory-only, while Self's actual hand is owned by movement notifications.
     for (ClientPlayer *player : {this, other}) {
         if (player == Self) continue;
-        player->hand_ids = QList<int>(player->m_cardMemory.known.begin(), player->m_cardMemory.known.end());
+        player->hand_ids = ClientCardMemory::toList(player->m_cardMemory.known);
         if (player->hand_ids.size() > 1) qsanShuffle(player->hand_ids);
     }
     emit card_memory_changed();

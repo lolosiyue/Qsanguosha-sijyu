@@ -253,7 +253,7 @@ void GeneralAuthoringDialog::previewRequest()
         const auto usage = m_document.lastUsage();
         auto tokens = [&usage](const char *name) {
             const auto value = usage.value(QLatin1String(name));
-            return value.isDouble() ? QString::number(value.toInteger()) : tr("unknown");
+            return value.isDouble() ? QString::number(qint64(value.toDouble())) : tr("unknown");
         };
         message += "\n" + tr("Provider-reported tokens: input %1, output %2, cache read %3, cache write %4. This is not a bill.")
             .arg(tokens("input_tokens"), tokens("output_tokens"), tokens("cache_read_tokens"), tokens("cache_write_tokens"));

@@ -97,11 +97,11 @@ QString skillHeading(const QString &name, const QString &chips, const QString &c
     return heading;
 }
 
-QString mutedParagraph(const QString &html, bool small = false)
+QString mutedParagraph(const QString &html, bool compact = false)
 {
     const GeneralInfoCard::Palette &p = GeneralInfoCard::palette();
     return QStringLiteral("<p style=\"margin-top:2px; margin-bottom:4px; color:%1;%2\">%3</p>")
-        .arg(p.muted, small ? QStringLiteral(" font-size:8pt;") : QString(), html);
+        .arg(p.muted, compact ? QStringLiteral(" font-size:8pt;") : QString(), html);
 }
 
 QString generalTitle(const QString &generalName)

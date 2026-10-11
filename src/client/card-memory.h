@@ -1,12 +1,16 @@
 #ifndef QSAN_CLIENT_CARD_MEMORY_H
 #define QSAN_CLIENT_CARD_MEMORY_H
 
+#include <QList>
+
 #include <algorithm>
 #include <vector>
 
 // Recipient-side observations only. No authoritative deck/hand is consulted.
 namespace ClientCardMemory {
 using Ids = std::vector<int>;
+// Qt 5.6 QList has no iterator-range constructor.
+inline QList<int> toList(const Ids &ids) { QList<int> list; for (int id : ids) list << id; return list; }
 inline void erase(Ids &ids, int id) { ids.erase(std::remove(ids.begin(), ids.end(), id), ids.end()); }
 inline void insert(Ids &ids, int id) {
     if (id >= 0 && std::find(ids.begin(), ids.end(), id) == ids.end()) ids.push_back(id);
