@@ -25,6 +25,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 `
 
 腳本的 `Configuration`、`QtRoot`、`CMakeExe`、`Deploy` 與 `FmodRuntime` 參數定義於檔案開頭；`Test-CMake42Plus` 檢查 CMake 版本。
 
+### 只編譯部分 package
+
+開發迴圈可用 `QSAN_PACKAGE_SUBSET` 只編譯列出的 `src/package` 來源，以檔名主幹列出、分號分隔；`package.cpp` 與 `src/scenario/` 固定編譯。引擎啟動時按名稱查 `PackageAdder` 工廠，未編譯的 package 只記錄 `Package xxx cannot be loaded!`。
+
+```powershell
+cmake --preset vs2026-x64 -DQSAN_PACKAGE_SUBSET="standard;standard-cards;standard-generals;maneuvering;exppattern;h-rule-cards;h-strategic-advantage;h-standard-tricks;h-standard-package;wind;sp;mountain;thicket;yjcm2013"
+cmake --build --preset debug
+```
+
+上列集合是 server、TUI 與 GUI 可連結的最小集合；在其後追加要開發的 package 及其 include 的其他 package，連結錯誤即表示缺少依賴。恢復全量建置時傳 `-DQSAN_PACKAGE_SUBSET=`。rules bundle identity 仍以整個 `src/package` 計算，子集建置只供本機開發，不用於發行或 Web admission。
+
 <a id="runtime-deployment"></a>
 ## 執行期部署與內容
 

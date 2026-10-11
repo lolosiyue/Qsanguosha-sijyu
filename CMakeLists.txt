@@ -315,6 +315,25 @@ set(QSAN_ENGINE_PACKAGE_MOC_HEADERS ${QSAN_MOC_HEADERS})
 list(FILTER QSAN_ENGINE_PACKAGE_MOC_HEADERS INCLUDE REGEX "^src/(package|scenario)/.*\\.h$")
 list(REMOVE_ITEM QSAN_MOC_HEADERS ${QSAN_ENGINE_PACKAGE_MOC_HEADERS})
 
+# Developer builds can compile only some content packages. The engine looks
+# packages up by name at run time (PackageAdder), so a package left out of the
+# build is only reported as unloadable at startup. Entries are src/package
+# stems; package.cpp and every scenario always build. Empty keeps all packages.
+set(QSAN_PACKAGE_SUBSET "" CACHE STRING
+    "src/package stems to compile, semicolon separated (empty = all)")
+if(QSAN_PACKAGE_SUBSET)
+    foreach(qsan_package_stem IN LISTS QSAN_PACKAGE_SUBSET)
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/package/${qsan_package_stem}.cpp")
+            message(FATAL_ERROR "QSAN_PACKAGE_SUBSET: src/package/${qsan_package_stem}.cpp does not exist")
+        endif()
+    endforeach()
+    list(JOIN QSAN_PACKAGE_SUBSET "|" qsan_package_subset_regex)
+    list(FILTER QSAN_ENGINE_PACKAGE_SOURCES INCLUDE REGEX
+        "^src/scenario/|^src/package/(package|${qsan_package_subset_regex})\\.cpp$")
+    list(LENGTH QSAN_ENGINE_PACKAGE_SOURCES qsan_package_unit_count)
+    message(STATUS "QSAN_PACKAGE_SUBSET: compiling ${qsan_package_unit_count} package/scenario units")
+endif()
+
 set_source_files_properties(src/server/server.cpp PROPERTIES
     COMPILE_DEFINITIONS QSAN_SERVER_CORE_ONLY
     SKIP_AUTOMOC ON
