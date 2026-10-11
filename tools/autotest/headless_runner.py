@@ -38,6 +38,11 @@ FALLBACK_REAL_MODES: Final[frozenset[str]] = frozenset({
     "05_ol", "05p", "06_3v3", "06_XMode", "06_ol", "06p", "06pd", "07p",
     "08_defense", "08p", "08pd", "08pz", "09p", "10p", "10pd", "10pz", "20p", "50p",
 })
+# Scenario modes (Engine::_loadModScenarios) are not in the mode registry, but
+# Engine::getGameMode resolves them, so headless runs accept them.
+SCENARIO_MODES: Final[frozenset[str]] = frozenset({
+    "guandu", "couple", "fancheng", "zombie_mode", "impasse_fight", "challengedeveloper",
+})
 
 
 def registered_real_modes(exe_root: str) -> frozenset[str]:
@@ -409,6 +414,8 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         cmd += ["--test-general", args.general]
     if getattr(args, "general2", ""):
         cmd += ["--test-general2", args.general2]
+    if getattr(args, "force_general", ""):
+        cmd += ["--force-general", args.force_general]
     proc = spawn(cmd, workdir, log_path, env=qt_console_env())
     timeout = games * PER_GAME_TIMEOUT + 120
     deadline = time.time() + timeout
@@ -504,6 +511,8 @@ def main():
                         help="指定主公武將, 反覆測試同武將找 bug (空 = 隨機)")
     parser.add_argument("--general2", default="",
                         help="雙將模式指定主公副將 (空 = 隨機)")
+    parser.add_argument("--force-general", default="",
+                        help="開局時把第 0 席 (owner) 換成此武將, 任何模式皆生效 (武將驗收用)")
     parser.add_argument("--spawn-delay", type=int, default=0,
                         help="多份 process 的啟動間隔秒數 (0 = 同時啟動)")
     parser.add_argument("--mode", default=None)
@@ -525,7 +534,7 @@ def main():
 
     # Engine registers experimental 50p; qsanguosha_server --list-game-modes may
     # omit it (QSAN_XP_LEGACY GUI filter). Union with FALLBACK so headless soaks work.
-    known_modes = registered_real_modes(args.exe_root) | FALLBACK_REAL_MODES
+    known_modes = registered_real_modes(args.exe_root) | FALLBACK_REAL_MODES | SCENARIO_MODES
     illegal_modes = sorted(set(modes) - known_modes)
     if illegal_modes:
         print(

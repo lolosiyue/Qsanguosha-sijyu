@@ -23,6 +23,7 @@ struct ServerCommandLineOptions
     std::optional<QString> bindAddress;
     std::optional<QString> gameMode;
     std::optional<QString> serverName;
+    std::optional<QString> forceGeneral;
     std::optional<QString> autotestLog;
     std::optional<QString> configFile;
     std::optional<QString> logLevel;

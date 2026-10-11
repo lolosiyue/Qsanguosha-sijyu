@@ -109,6 +109,13 @@ bool applyCommandLineOptions(const ServerCommandLineOptions &options, QString &e
         Config.BindAddress = *options.bindAddress;
     if (options.serverName)
         Config.ServerName = *options.serverName;
+    if (options.forceGeneral) {
+        if (!Sanguosha->getGeneral(*options.forceGeneral)) {
+            error = QStringLiteral("unknown general '%1'").arg(*options.forceGeneral);
+            return false;
+        }
+        Server::forcedGeneral = *options.forceGeneral;
+    }
     if (options.operationTimeout) {
         Config.OperationNoLimit = *options.operationTimeout == 0;
         if (*options.operationTimeout > 0)

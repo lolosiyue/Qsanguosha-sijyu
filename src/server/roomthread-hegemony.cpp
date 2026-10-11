@@ -16,6 +16,7 @@
 #include "settings.h"
 #include "util.h"
 
+#include <QDebug>
 #include <QSet>
 
 using namespace QSanProtocol;
@@ -69,8 +70,14 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
         return first && first->canPairForHegemony(Sanguosha->getGeneral(deputy));
     };
 
-    const QString forcedHead = Server::isHeadlessMode ? Server::forcedHeadlessGeneral : QString();
+    // Headless fixtures force seat 0's pair. --force-general (general acceptance) forces the room
+    // owner's head general; its deputy follows the pairing rules.
+    const bool headlessFixture = Server::isHeadlessMode && !Server::forcedHeadlessGeneral.isEmpty();
+    const QString forcedHead = headlessFixture ? Server::forcedHeadlessGeneral : Server::forcedGeneral;
     const QString forcedDeputy = Server::isHeadlessMode ? Server::forcedHeadlessGeneral2 : QString();
+    const int forcedSeat = headlessFixture ? 0 : qMax(0, players.indexOf(room->getOwner()));
+    if (!forcedHead.isEmpty() && !admitted.contains(forcedHead))
+        qWarning().noquote() << "HEG forced general" << forcedHead << "is not in the hegemony pool.";
     QList<QStringList> pools;
     const int choiceCount = qMin(qBound(2, Config.value("HegemonyMaxChoice", 7).toInt(), 21),
                                 int(available.size() / players.size()));
@@ -79,9 +86,9 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
     for (int seat = 0; seat < players.size(); ++seat) {
         QStringList pair;
         foreach (const QString &head, available) {
-            if (seat == 0 && !forcedHead.isEmpty() && head != forcedHead) continue;
+            if (seat == forcedSeat && !forcedHead.isEmpty() && head != forcedHead) continue;
             foreach (const QString &deputy, available) {
-                if (seat == 0 && !forcedDeputy.isEmpty() && deputy != forcedDeputy) continue;
+                if (seat == forcedSeat && !forcedDeputy.isEmpty() && deputy != forcedDeputy) continue;
                 if (legalPair(head, deputy)) {
                     pair << head << deputy;
                     break;
@@ -114,9 +121,9 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
         foreach (const QString &name, request.candidates)
             player->addToSelected(name);
         foreach (const QString &head, pools.at(seat)) {
-            if (seat == 0 && !forcedHead.isEmpty() && head != forcedHead) continue;
+            if (seat == forcedSeat && !forcedHead.isEmpty() && head != forcedHead) continue;
             foreach (const QString &deputy, pools.at(seat)) {
-                if (seat == 0 && !forcedDeputy.isEmpty() && deputy != forcedDeputy) continue;
+                if (seat == forcedSeat && !forcedDeputy.isEmpty() && deputy != forcedDeputy) continue;
                 if (legalPair(head, deputy)) {
                     request.hegemonyPairs << head + "+" + deputy;
                 }
@@ -147,8 +154,8 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
         // Keep the ordered-pair rules and explicit headless fixture constraints.
         const bool freePair = Config.FreeChoose && freeHead
             && freeHead->canPairForHegemony(Sanguosha->getGeneral(proposed.last()))
-            && (seat != 0 || forcedHead.isEmpty() || proposed.first() == forcedHead)
-            && (seat != 0 || forcedDeputy.isEmpty() || proposed.last() == forcedDeputy);
+            && (seat != forcedSeat || forcedHead.isEmpty() || proposed.first() == forcedHead)
+            && (seat != forcedSeat || forcedDeputy.isEmpty() || proposed.last() == forcedDeputy);
         if (!legalPairs.at(seat).contains(reply) && !freePair)
             reply = legalPairs.at(seat).first();
         const QStringList names = reply.split('+');
@@ -176,6 +183,8 @@ void RoomThreadHegemony::chooseGenerals(Room *room)
         ServerPlayer *player = players.at(seat);
         const General *head = Sanguosha->getGeneral(heads.at(seat));
         const QStringList names{heads.at(seat), deputies.at(seat)};
+        if (seat == forcedSeat && !forcedHead.isEmpty() && names.first() == forcedHead)
+            qInfo().noquote() << "[AUTOTEST] force general" << player->objectName() << names.first();
         player->setActualGeneral1Name(names.first());
         player->setActualGeneral2Name(names.last());
         player->setGeneralName("anjiang");
