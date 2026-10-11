@@ -1043,6 +1043,24 @@ target_compile_definitions(h50p_distance_probe PRIVATE QSAN_ENGINE_BUILD QSAN_SE
 target_link_libraries(h50p_distance_probe PRIVATE
     "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>" ${QSAN_ENGINE_QT_LIBS})
 qsan_link_websocket_gateway(h50p_distance_probe)
+# Headless skill scenario host for tools/autotest/skill_scenario_runner.py; built on request.
+add_executable(qsanguosha_skill_scenario EXCLUDE_FROM_ALL tools/skill-scenario-host.cpp)
+target_include_directories(qsanguosha_skill_scenario PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario)
+target_compile_definitions(qsanguosha_skill_scenario PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
+target_link_libraries(qsanguosha_skill_scenario PRIVATE
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>" ${QSAN_ENGINE_QT_LIBS})
+qsan_link_websocket_gateway(qsanguosha_skill_scenario)
+if(WIN32)
+    # The Release crash handler needs the Windows DbgHelp library.
+    target_link_libraries(qsanguosha_skill_scenario PRIVATE "$<$<CONFIG:Release>:dbghelp>")
+endif()
+set_target_properties(qsanguosha_skill_scenario PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo")
 
 if(QSAN_BUILD_SERVER)
     add_executable(qsanguosha_server ${QSAN_DEDICATED_ENTRY_SOURCES})
