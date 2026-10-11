@@ -6435,8 +6435,25 @@ void Room::removeDerivativeCards()
 	m_cardMovement->removeDerivativeCards();
 }
 
+// A card that EquipCard::use turned into other equipment.
+static bool isConvertedEquip(int cardId)
+{
+	const WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
+	const Card *engineCard = Sanguosha->getEngineCard(cardId);
+	return wrapped && engineCard && wrapped->isModified() && wrapped->getTypeId() == Card::TypeEquip
+		&& wrapped->getClassName() != engineCard->getClassName();
+}
+
 void Room::updateCardsChange(const CardsMoveStruct&move)
 {
+	// Converted equipment turns back into its own card once it leaves the equip areas.
+	if(move.from_place==Player::PlaceEquip&&move.to_place!=Player::PlaceEquip){
+		foreach(int cardId, move.card_ids){
+			if (isConvertedEquip(cardId))
+				broadcastResetCard(getPlayers(), cardId);
+		}
+	}
+
 	// The area loses a card.
 	if(move.from_place==Player::PlaceTable){
 		QVariantList ren = tag["ren_pile"].toList();
@@ -6480,10 +6497,15 @@ void Room::updateCardsChange(const CardsMoveStruct&move)
 			}*/
 		}
 	}else if(move.to){
-		QList<const Card*> cards;
-		foreach(int cardId, move.card_ids)
-			cards.append(Sanguosha->getCard(cardId));
+		QList<const Card*> cards, converted;
+		foreach(int cardId, move.card_ids){
+			if (move.to_place == Player::PlaceEquip && isConvertedEquip(cardId))
+				converted.append(Sanguosha->getCard(cardId));
+			else
+				cards.append(Sanguosha->getCard(cardId));
+		}
 		filterCards((ServerPlayer*)move.to, cards, true);
+		filterCards((ServerPlayer*)move.to, converted, false);
 		if(move.to_place == Player::PlaceJudge){
 			LogMessage log;
 			log.type = "#FilterJudge";

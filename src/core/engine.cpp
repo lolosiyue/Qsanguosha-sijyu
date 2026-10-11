@@ -1137,6 +1137,16 @@ QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
                                runtime ? runtime->prohibitPindianSkills() : QList<const ProhibitPindianSkill *>());
 }
 
+// A card class that no deck holds declares Q_CLASSINFO("CardName", "<object name>"), so that
+// cloneCard() and Card::Parse() also find it by the name its cards carry.
+static void addCardNameMetaObject(QHash<QString, const QMetaObject *> &metaobjects, const QMetaObject *meta)
+{
+	const int info = meta->indexOfClassInfo("CardName");
+	if (info < meta->classInfoOffset()) return;
+	const QString name = QString::fromLatin1(meta->classInfo(info).value());
+	if (!metaobjects.contains(name)) metaobjects.insert(name, meta);
+}
+
 void Engine::addPackage(Package*package)
 {
     markPackageSkillContracts(package);
@@ -1245,6 +1255,7 @@ void Engine::addPackage(Package*package)
     foreach(const QMetaObject*meta, package->getMetaObjects()){
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
 		metaobjects.insert(meta->className(), meta);
+		addCardNameMetaObject(metaobjects, meta);
 	}
 }
 
@@ -1398,6 +1409,7 @@ void Engine::setPackage(Package*package)
 		if(metaobjects.contains(meta->className())) continue;
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
 		metaobjects.insert(meta->className(), meta);
+		addCardNameMetaObject(metaobjects, meta);
 	}
 }
 

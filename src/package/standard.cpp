@@ -207,7 +207,13 @@ void EquipCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &tar
 				}
 			}
 		}
-		
+
+		// A card used as other equipment is that equipment while it stays in equip areas.
+		if (isVirtualCard() && subcardsLength() == 1) {
+			WrappedCard *wrapped = Sanguosha->getWrappedCard(getEffectiveId());
+			wrapped->takeOver(Sanguosha->cloneCard(this));
+			room->broadcastUpdateCard(room->getPlayers(), wrapped->getId(), wrapped);
+		}
         CardsMoveStruct move1(getEffectiveId(), to, Player::PlaceEquip,
             CardMoveReason(CardMoveReason::S_REASON_USE, to->objectName(), getSkillName(), QString()));
         exchangeMove.append(move1);
