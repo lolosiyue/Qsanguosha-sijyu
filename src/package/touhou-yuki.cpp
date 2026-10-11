@@ -125,7 +125,7 @@ public:
     {
         events << PreCardUsed << EventPhaseStart << EventPhaseChanging << EventSkillInvoking;
         frequency = Wake;
-        waked_skills = "thhuanfa,yicong";
+        waked_skills = "thhuanfa,ikzhuji";
     }
 
     LimitScope getLimitScope() const override { return Limit_Game; }
