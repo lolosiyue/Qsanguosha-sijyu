@@ -87,8 +87,10 @@ $inputs = @(
     [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "bin\Qt5Core${debugSuffix}.dll")); RequireXpHeader = $false },
     [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "bin\Qt5Gui${debugSuffix}.dll")); RequireXpHeader = $false },
     [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "bin\Qt5Network${debugSuffix}.dll")); RequireXpHeader = $false },
+    [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "bin\Qt5Sql${debugSuffix}.dll")); RequireXpHeader = $false },
     [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "bin\Qt5Widgets${debugSuffix}.dll")); RequireXpHeader = $false },
-    [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "plugins\platforms\qwindows${debugSuffix}.dll")); RequireXpHeader = $false }
+    [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "plugins\platforms\qwindows${debugSuffix}.dll")); RequireXpHeader = $false },
+    [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "plugins\sqldrivers\qsqlite${debugSuffix}.dll")); RequireXpHeader = $false }
 )
 if (![string]::IsNullOrWhiteSpace($FmodRuntime)) {
     $inputs += [pscustomobject]@{
