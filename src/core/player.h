@@ -416,7 +416,7 @@ public:
     void setJudgeArea(bool flag);
     bool canPindian(const Player *target = nullptr, bool except_self = true) const;
 
-    QHash<QString, int> getHistory() const { return history; }
+    QHash<QString, int> getHistory() const;
     //bool canPindian(bool except_self = true) const;
     bool canBePindianed(bool except_self = true) const;
     bool isYourFriend(const Player *fri) const;

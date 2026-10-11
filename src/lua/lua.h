@@ -56,6 +56,60 @@
 
 typedef struct lua_State lua_State;
 
+/* Native-only finite table access witness. No Lua-visible registration.
+** Callback must not execute Lua, allocate Lua objects, throw, or retain key data.
+** Identities are borrowed only until LUA_TABLE_OBSERVER_FREE. */
+/* Finite native bootstrap proof: exact standard require/searcher/upvalue
+** graph and pristine module cache/preload cells. Metadata only, no Lua call. */
+LUA_API int luaQsgsStandardRequireGraph(lua_State *, int, const char *module);
+#define LUA_TABLE_OBSERVER_WRITE 1
+#define LUA_TABLE_OBSERVER_METATABLE 2
+#define LUA_TABLE_OBSERVER_FREE 3
+#define LUA_TABLE_OBSERVER_READ 4
+#define LUA_TABLE_OBSERVER_ENUMERATE 5
+#define LUA_TABLE_OBSERVER_VM_SLOW 1
+#define LUA_TABLE_OBSERVER_VM_FAST 2
+typedef struct lua_TableObservation {
+  int event;
+  unsigned int flags;  /* VM_SLOW or VM_FAST only at an actual Lua VM write */
+  const void *table_identity;
+  const void *lua_function_identity; /* actual Lua writer only; no stack push */
+  int lua_instruction_index; /* trusted VM write instruction, or -1 for non-VM writes */
+  const char *string_key;
+  size_t string_key_length;
+  int value_type;
+  const void *value_table_identity;
+} lua_TableObservation;
+typedef void (*lua_TableObserver)(lua_State *, const lua_TableObservation *, void *);
+/* identity must be a live table received through lua_topointer on a table or
+** value_table_identity in the synchronous observer callback. Not a script handle.
+** Up to 32 native subscriptions per table; identical callback/userdata is idempotent.
+** Dispatch follows registration order. Removal takes effect immediately, including
+** during dispatch; subscriptions added during dispatch start at the next event.
+** Return 0 on allocation/capacity failure or registration during FREE notification.
+** Callback/userdata lifetime must extend until unregistration or FREE. */
+LUA_API int lua_observetableidentity(lua_State *, const void *identity,
+                                   lua_TableObserver, void *userdata);
+LUA_API int lua_unobservetableidentity(lua_State *, const void *identity,
+                                     lua_TableObserver, void *userdata);
+
+
+/* Optional native-only allocation receipt. Called exactly after a new table
+** is initialized empty, before exposure or population. Cannot execute Lua,
+** allocate Lua objects, throw, or retain anything except the borrowed identity
+** until its FREE observation. Up to 32 native subscribers per global state.
+** Identical callback/host is idempotent. Registration-order delivery; removal
+** is immediate; additions during an event begin with the next event. Host
+** lifetime must extend through its callback/unregistration. Subscription
+** sequence never wraps; exhaustion permanently refuses new registrations. */
+typedef struct lua_TableBirthObservation {
+  const void *table_identity;
+  const void *lua_function_identity; /* borrowed live closure, VM birth only */
+  int lua_instruction_index; /* exact OP_NEWTABLE PC, -1 for native birth */
+} lua_TableBirthObservation;
+typedef void (*lua_TableBirthObserver)(lua_State *, const lua_TableBirthObservation *, void *);
+LUA_API int lua_observetablebirth(lua_State *,lua_TableBirthObserver,void *);
+LUA_API int lua_unobservetablebirth(lua_State *,lua_TableBirthObserver,void *);
 
 /*
 ** basic types

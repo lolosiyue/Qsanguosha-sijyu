@@ -1,5 +1,6 @@
 #ifndef _CARD_H
 #define _CARD_H
+#include <atomic>
 
 class Room;
 class Player;
@@ -109,6 +110,9 @@ public:
     QString getName() const;
     int nameLength() const;
     QString getSkillName(bool removePrefix = true) const;
+    // Native raw field view, without SkillCard fallback or prefix stripping.
+    // Not exported by SWIG. Same-pointer compiled BasicCards use Room storage.
+    QString rawSkillName() const;
     virtual void setSkillName(const QString &skill_name);
     void setSkillInstanceId(int id) { m_skillInstanceId = id; }
     int getSkillInstanceId() const { return m_skillInstanceId; }
@@ -236,6 +240,8 @@ public:
     static bool CompareBySuit(const Card *a, const Card *b);
     static bool CompareByType(const Card *a, const Card *b);
     static Card *Clone(const Card *card);
+    // Native readonly evaluator only. Does not copy payment authority.
+    static Card *CloneReadonlyPhysicalPolicy(const Card *source);
     static QString Suit2String(Suit suit);
     static const int S_UNKNOWN_CARD_ID;
 
@@ -243,7 +249,20 @@ public:
     virtual QString toString(bool hidden = false) const;
 
     mutable QVariantMap tag;
-    mutable QList<const Card *> change_cards;
+    // Source-history facts only. Not metadata effects, branch permission, or a
+    // claim about QObject::objectName, virtual dispatch, lookup or live values.
+    // 1: constructor-empty subcards; 2: constructor-empty change-card edges;
+    // 4: constructor-original m_suit; 8: m_number; 16: m_id. Only clear bits.
+    unsigned aiRound56OriginalRecursiveFieldOrigins() const noexcept;
+    quint64 aiRound56IdWriteEpoch() const noexcept;
+    quint64 aiRound56MaterialWriteEpoch() const noexcept;
+    quint64 aiRound56ScalarWriteEpoch() const noexcept;
+    bool aiRound56OriginalPhysicalDefinitionMaterialsOrigin() const noexcept;
+    bool aiRound56OriginalPhysicalDefinitionIndex(int *index) const noexcept;
+    void retireAIRound56RecursiveFieldOrigins(unsigned fields) const noexcept;
+    const QList<const Card *> &getChangeCards() const noexcept { return change_cards; }
+    void clearChangeCards() const;
+
 
 protected:
     // Shared completion keeps custom onUse paths safe when a hook interrupts.
@@ -275,8 +294,26 @@ protected:
     mutable QStringList flags;
 
 private:
+    // No mutable list/iterator/reference is exported. Event append preserves
+    // its old direct-list/lifetime semantics; addChange retains its own manager
+    // semantics. Both retire source ancestry before attempting the write.
+    friend struct CardUseStruct;
+    friend struct CardResponseStruct;
+    void appendChangeCardForEvent(const Card *card);
+    mutable QList<const Card *> change_cards;
+    mutable std::atomic<unsigned> m_aiRound56RecursiveFieldOrigins{31u};
+    mutable std::atomic<quint64> m_aiRound56IdWriteEpoch{0};
+    mutable std::atomic<quint64> m_aiRound56MaterialWriteEpoch{0};
+    mutable std::atomic<quint64> m_aiRound56ScalarWriteEpoch{0};
+    std::atomic<int> m_aiRound56PhysicalDefinitionIndex{-2};
+    friend class Engine;
+    friend class RoomDefinitionRegistry;
+    void aiRound56RecordPhysicalDefinitionIndexSource(int index) noexcept;
     friend class Room;
     friend class RoomManagedState;
+    friend class AIRound47XiedouObservation;
+    // Native-only observation epoch, never copied as gameplay card state.
+    mutable quint64 m_aiXiedouNosJiefanEpoch = 0;
     friend class WrappedCard;
     // Native authority only: neither card strings nor ordinary tags can mint this receipt.
     QVariantMap m_appliedPhysicalEffectSource;

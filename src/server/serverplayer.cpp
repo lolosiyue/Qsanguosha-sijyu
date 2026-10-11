@@ -1,4 +1,8 @@
 #include "serverplayer.h"
+#include "player-initial-source-origin.h"
+#include "ai-strategy-round53-ainoto.h"
+#include "ai-strategy-round41-context.h"
+#include "ai-strategy-flag-lifecycle.h"
 #include "protocol/gameplay/protocol-gameplay-payload-registry.h"
 #include "protocol/protocol-payload-registry.h"
 #include "protocol/protocol-v2-codec.h"
@@ -142,6 +146,8 @@ ServerPlayer::ServerPlayer(Room *room)
 	socket(nullptr), room(room), ai(nullptr), trust_ai(new BasicAI(this)),
 	recordBuffer(nullptr), _m_phases_index(NotActive), next(nullptr)
 {
+	initializeAIRound41SkillFlags(*room, this);
+    createdAIRound53AiNoTo(*room, this);
 	qRegisterMetaType<ProtocolMessage>("QSanProtocol::ProtocolMessage");
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
 	// SEMA_MUTEX guards member access and must behave like an unlocked mutex
@@ -225,8 +231,16 @@ ServerPlayer::~ServerPlayer()
 
 void ServerPlayer::setTag(const QString &key, const QVariant &value)
 {
-	if (!tag.contains(key) && !value.isValid()) return;
-	if (tag.contains(key) && tag.value(key) == value) return;
+	if ((!tag.contains(key) && !value.isValid())
+        || (tag.contains(key) && tag.value(key) == value)) {
+        // These two observer slots preserve the AI source's persistent setTag
+        // prefix. Even a native equal/absent write supersedes that observation.
+        // The base performs canonical retain validation, records write intent,
+        // then returns on equality without changing tag, revision or UI state.
+        if (key == QLatin1String("JincanmouData") || key == QLatin1String("yb_zhuzhan2_data") || key == QLatin1String("yb_fujia2_data"))
+            Player::setTag(key, value);
+        return;
+    }
 	Player::setTag(key, value);
 	if (!room) return;
     if (room->getThread()) room->getThread()->markSkillDescriptionsDirty();
@@ -483,16 +497,19 @@ void ServerPlayer::throwAllMarks(bool visible_only)
 		}
 		room->setPlayerMark(this, m, 0);
 	}
+    if (!visible_only) recordAIStrategyAllMarksCleared(*room, this);
 }
 
 void ServerPlayer::clearOnePrivatePile(const QString &pile_name)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
 	if (piles.contains(pile_name))
 		room->throwCard(piles[pile_name], CardMoveReason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, objectName()), nullptr);
 }
 
 void ServerPlayer::clearPrivatePiles()
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
 	foreach(QString pile_name, piles.keys())
 		clearOnePrivatePile(pile_name);
 }
@@ -807,6 +824,8 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message,
 
 void ServerPlayer::disconnectSocketFromOwnerThread()
 {
+    // Unconditional before socket existence or controller cleanup selection.
+    if (room) room->roomRuntime()->revokeXufaTransportContinuity();
 	if (socket == nullptr)
 		return;
 	// A QAbstractSocket may only be touched from the thread that owns it, and
@@ -840,6 +859,8 @@ QString ServerPlayer::reportHeader() const
 
 void ServerPlayer::removeCard(int id, Place place)
 {
+    if (place == PlaceEquip || place == PlaceDelayedTrick || place == PlaceSpecial)
+        retireAIRound56PlayerPublicCardsOrigin(this);
 	if(place==PlaceEquip) {
 		const Card *definition = Sanguosha->getCard(id)->getRealCard();
         const auto token = globalCardLifetimeManager().liveToken(definition);
@@ -889,11 +910,15 @@ void ServerPlayer::removeCard(int id, Place place)
 
 void ServerPlayer::addCard(int id, Place place)
 {
+    if (place == PlaceEquip || place == PlaceDelayedTrick || place == PlaceSpecial)
+        retireAIRound56PlayerPublicCardsOrigin(this);
 	addCard(id, place, std::function<void()>());
 }
 
 void ServerPlayer::addCard(int id, Place place, const std::function<void()> &afterMutation)
 {
+    if (place == PlaceEquip || place == PlaceDelayedTrick || place == PlaceSpecial)
+        retireAIRound56PlayerPublicCardsOrigin(this);
 	Player::addCard(id, place);
 	if (afterMutation)
 		afterMutation();
@@ -1947,6 +1972,7 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 
 void ServerPlayer::addToPile(const QString &pile_name, const Card *card, bool open, QList<ServerPlayer *> open_players)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
 	QList<int> card_ids;
 	if (card->isVirtualCard())
 		card_ids = card->getSubcards();
@@ -1956,17 +1982,20 @@ void ServerPlayer::addToPile(const QString &pile_name, const Card *card, bool op
 
 void ServerPlayer::addToPile(const QString &pile_name, int card_id, bool open, QList<ServerPlayer *> open_players)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
 	return addToPile(pile_name, QList<int>()<<card_id, open, open_players);
 }
 
 void ServerPlayer::addToPile(const QString &pile_name, QList<int> card_ids, bool open, QList<ServerPlayer *> open_players)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
 	return addToPile(pile_name, card_ids, open, open_players, CardMoveReason());
 }
 
 void ServerPlayer::addToPile(const QString &pile_name, QList<int> card_ids,
 	bool open, QList<ServerPlayer *> open_players, CardMoveReason reason)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
 	if(card_ids.isEmpty()) return;
 	if(open)
 		open_players = room->getAlivePlayers();

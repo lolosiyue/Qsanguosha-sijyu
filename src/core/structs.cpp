@@ -20,9 +20,14 @@ static struct SkillInstanceMetaRegistrar {
 } _sir;
 
 namespace {
-void releaseOwnedCard(Card *card)
+void releaseOwnedCard(Card *card, const QPointer<Card> &object,
+                      const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    if (card)
+    // A Lua-owned QVariant may outlive releaseEventPayloads()/preclose drain.
+    // Never re-observe its raw address: it may already be destroyed or reused.
+    // This weak guard adds no lease and leaves normal deleteLater timing intact.
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    if (object.data() == card && card && manager.isLive(token))
         card->deleteLater();
 }
 
@@ -80,7 +85,11 @@ void CardUseStruct::OwnedCardPtr::reset(Card *card)
         m_ptr.clear();
         return;
     }
-    m_ptr = QSharedPointer<Card>(card, &releaseOwnedCard);
+    const QPointer<Card> object(card);
+    const auto token = globalCardLifetimeManager().observeCard(card);
+    m_ptr = QSharedPointer<Card>(card, [object, token](Card *owned) {
+        releaseOwnedCard(owned, object, token);
+    });
 }
 
 CardMoveReason::CardMoveReason(const CardMoveReason &other) { *this = other; }

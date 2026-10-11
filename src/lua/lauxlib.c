@@ -25,6 +25,7 @@
 #include "lua.h"
 
 #include "lauxlib.h"
+#include "lstate.h"
 
 
 #if !defined(MAX_SIZET)
@@ -1134,3 +1135,10 @@ LUALIB_API void luaL_checkversion_ (lua_State *L, lua_Number ver, size_t sz) {
                   (LUAI_UACNUMBER)ver, (LUAI_UACNUMBER)v);
 }
 
+
+/* All built-in warning states only write stderr/change their own warning
+   state. User-installed warning callbacks are an unproved capability. */
+int luaQsgsStandardWarningSink(lua_State*L) {
+ return G(L)->warnf==NULL||((G(L)->warnf==warnfoff||G(L)->warnf==warnfon
+      ||G(L)->warnf==warnfcont)&&G(L)->ud_warn==L);
+}

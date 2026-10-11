@@ -857,6 +857,10 @@ public:
 %{
 
 #include "lua-wrapper.h"
+#include "ai-strategy-round52-rangyi.h"
+#include "ai-strategy-round43-response.h"
+#include "ai-strategy-round50-planning.h"
+#include "ai-strategy-round50-htms-events.h"
 #include "clientplayer.h"
 #include "gamerule.h"
 #include "room.h"
@@ -1082,6 +1086,9 @@ int LuaTriggerSkillV2::getMaxUsageLimit(const SkillContext &) const
 
 bool LuaTriggerSkillV2::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
+    AIRound43GoddessScope goddess(*room,this,player,int(triggerEvent),ctx,true);
+    AIRound50YuxinScope yuxin(*room,this,player,int(triggerEvent),ctx,false);
+    AIRound50HTMSFrame htmsEvents(*room,this,player,int(triggerEvent),ctx,true);
 	if (on_cost == 0)
 		return TriggerSkillV2::cost(triggerEvent, room, player, ctx);
 	try {
@@ -1164,6 +1171,9 @@ bool LuaTriggerSkillV2::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 
 bool LuaTriggerSkillV2::effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
+    AIRound43GoddessScope goddess(*room,this,player,int(triggerEvent),ctx,false);
+    AIRound50YuxinScope yuxin(*room,this,player,int(triggerEvent),ctx,true);
+    AIRound50HTMSFrame htmsEvents(*room,this,player,int(triggerEvent),ctx,false);
 	if (on_effect == 0)
 		return TriggerSkillV2::effect(triggerEvent, room, player, ctx);
 
@@ -2589,6 +2599,7 @@ void LuaSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	lua_State*L = LuaRuntime::currentState();
 
 	on_use.push(L);
+	AIRound52RangyiCallback rangyiCallback(*room,L,-1,this,source,targets);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, source, SWIGTYPE_p_ServerPlayer, 0);

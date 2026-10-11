@@ -3193,3 +3193,50 @@ BGMDIYPackage::BGMDIYPackage()
     addMetaObject<DIYYicongCard>();
 }
 ADD_PACKAGE(BGMDIY)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_bgm_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(Kuiwei)), 2u);
+ types.emplace(std::type_index(typeid(Yanzheng)), 2u);
+ types.emplace(std::type_index(typeid(Manjuan)), 2u);
+ types.emplace(std::type_index(typeid(Zuixiang)), 2u);
+ types.emplace(std::type_index(typeid(ZuixiangClear)), 3u);
+ types.emplace(std::type_index(typeid(Jie)), 2u);
+ types.emplace(std::type_index(typeid(DaheViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Dahe)), 2u);
+ types.emplace(std::type_index(typeid(TanhuViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Tanhu)), 2u);
+ types.emplace(std::type_index(typeid(Mouduan)), 2u);
+ types.emplace(std::type_index(typeid(Zhaolie)), 2u);
+ types.emplace(std::type_index(typeid(ShichouViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Shichou)), 2u);
+ types.emplace(std::type_index(typeid(ShichouEffect)), 2u);
+ types.emplace(std::type_index(typeid(YanxiaoViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Yanxiao)), 2u);
+ types.emplace(std::type_index(typeid(Anxian)), 2u);
+ types.emplace(std::type_index(typeid(Yinling)), 2u);
+ types.emplace(std::type_index(typeid(JunweiVS)), 2u);
+ types.emplace(std::type_index(typeid(Junwei)), 2u);
+ types.emplace(std::type_index(typeid(JunweiGot)), 2u);
+ types.emplace(std::type_index(typeid(Fenyong)), 2u);
+ types.emplace(std::type_index(typeid(FenyongDetach)), 2u);
+ types.emplace(std::type_index(typeid(Xuehen)), 2u);
+ types.emplace(std::type_index(typeid(LihunSelect)), 2u);
+ types.emplace(std::type_index(typeid(Lihun)), 2u);
+ types.emplace(std::type_index(typeid(Chongzhen)), 2u);
+ types.emplace(std::type_index(typeid(ZhaoxinViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Zhaoxin)), 2u);
+ types.emplace(std::type_index(typeid(Langgu)), 2u);
+ types.emplace(std::type_index(typeid(Fuluan)), 2u);
+ types.emplace(std::type_index(typeid(Shude)), 2u);
+ types.emplace(std::type_index(typeid(HuangenViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Huangen)), 2u);
+ types.emplace(std::type_index(typeid(HantongViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Hantong)), 2u);
+ types.emplace(std::type_index(typeid(DIYYicongViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(DIYYicong)), 2u);
+ types.emplace(std::type_index(typeid(DIYYicongDistance)), 3u);
+ types.emplace(std::type_index(typeid(Tuqi)), 2u);
+ types.emplace(std::type_index(typeid(TuqiDistance)), 3u);
+}

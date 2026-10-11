@@ -436,3 +436,48 @@ ZombinePackage::ZombinePackage()
 }
 
 ADD_PACKAGE(Zombine)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_zombine_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(ZbGanran)), 2u);
+ types.recordActivateSource<ZbGanran>(2826u); AI_R56_REQUIRE_DECLARATION(ZbGanran, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbGanran, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ZbGanran, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(ZbXunmeng)), 2u);
+ types.recordActivateSource<ZbXunmeng>(2827u); AI_R56_REQUIRE_DECLARATION(ZbXunmeng, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbXunmeng, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbXunmeng, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(ZbZaibian)), 2u);
+ types.recordActivateSource<ZbZaibian>(2828u); AI_R56_REQUIRE_DECLARATION(ZbZaibian, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbZaibian, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbZaibian, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(ZbDanyu)), 2u);
+ types.recordActivateSource<ZbDanyu>(2829u); AI_R56_REQUIRE_DECLARATION(ZbDanyu, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbDanyu, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbDanyu, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(ZbDanyuRevive)), 2u);
+ types.recordActivateSource<ZbDanyuRevive>(2830u); AI_R56_REQUIRE_DECLARATION(ZbDanyuRevive, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbDanyuRevive, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbDanyuRevive, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(ZbWansha)), 2u);
+ types.recordActivateSource<ZbWansha>(2831u); AI_R56_REQUIRE_DECLARATION(ZbWansha, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ZbWansha, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbWansha, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(ZbWanshaLimit)), 3u);
+ types.recordActivateSource<ZbWanshaLimit>(2832u); AI_R56_REQUIRE_DECLARATION(ZbWanshaLimit, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZbWanshaLimit, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Cee)), 2u);
+ types.recordActivateSource<Cee>(2833u); AI_R56_REQUIRE_DECLARATION(Cee, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Cee, getLimitScope, Cee); AI_R56_REQUIRE_DECLARATION(Cee, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(Cee, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Cee, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Cee, isResponseOrUse, ViewAsSkill);
+}
+
+// Exact source-local type receipt; no gameplay virtual method is invoked.
+#include "ai-strategy-round56-card-metadata-types.h"
+#include <type_traits>
+unsigned aiRound56CardMetadataLocalZombineSourceEffects(const std::type_info &type) noexcept
+{
+    static_assert(std::is_same<decltype(&ZbDanyuCard::getClassName), decltype(&Card::getClassName)>::value, "R56 metadata ZbDanyuCard::getClassName declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::getKindOfNames), decltype(&Card::getKindOfNames)>::value, "R56 metadata ZbDanyuCard::getKindOfNames declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::isVirtualCard), decltype(&Card::isVirtualCard)>::value, "R56 metadata ZbDanyuCard::isVirtualCard declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::isKindOf), decltype(&Card::isKindOf)>::value, "R56 metadata ZbDanyuCard::isKindOf declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::getRealCard), decltype(&Card::getRealCard)>::value, "R56 metadata ZbDanyuCard::getRealCard declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::getTypeId), decltype(&SkillCard::getTypeId)>::value, "R56 metadata ZbDanyuCard::getTypeId declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::willThrow), decltype(&Card::willThrow)>::value, "R56 metadata ZbDanyuCard::willThrow declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::canRecast), decltype(&Card::canRecast)>::value, "R56 metadata ZbDanyuCard::canRecast declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::getHandlingMethod), decltype(&Card::getHandlingMethod)>::value, "R56 metadata ZbDanyuCard::getHandlingMethod declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::getSubcards), decltype(&Card::getSubcards)>::value, "R56 metadata ZbDanyuCard::getSubcards declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::toString), decltype(&SkillCard::toString)>::value, "R56 metadata ZbDanyuCard::toString declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::isDamageCard), decltype(&Card::isDamageCard)>::value, "R56 metadata ZbDanyuCard::isDamageCard declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::isSingleTargetCard), decltype(&Card::isSingleTargetCard)>::value, "R56 metadata ZbDanyuCard::isSingleTargetCard declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::targetFixed), decltype(&Card::targetFixed)>::value, "R56 metadata ZbDanyuCard::targetFixed declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::metaObject), decltype(&SkillCard::metaObject)>::value, "R56 metadata ZbDanyuCard::metaObject declaring owner changed");
+    static_assert(std::is_same<decltype(&ZbDanyuCard::setId), decltype(&Card::setId)>::value, "R56 physical definition ZbDanyuCard::setId declaring owner changed");
+    return type == typeid(ZbDanyuCard) ? 3u : 0u;
+}

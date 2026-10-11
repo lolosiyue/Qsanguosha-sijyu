@@ -1,4 +1,11 @@
+#include "ai-strategy-round47-xufa-query-scope.h"
+#include "ai-strategy-round45-continuity.h"
+#include "ai-owner-range-query-scope.h"
 #include "engine.h"
+#include "standard.h"
+#include "maneuvering.h"
+#include <typeinfo>
+#include "room-definition-registry.h"
 #include "invalidity-gate.h"
 #include "distance-skill-cache.h"
 #include "hegemony-mode.h"
@@ -69,7 +76,7 @@ TargetModMemoScope::~TargetModMemoScope() { s_current = m_previous; }
 
 TargetModMemoScope *TargetModMemoScope::active()
 {
-    if (!s_current || TargetModSkillQueryScope::isActive()) return nullptr;
+    if (!s_current || AIOwnerRangeQueryScope::isActive() || TargetModSkillQueryScope::isActive() || AIHistoryQueryScope::isActive() || AIMarkQueryScope::isActive() || AITagQueryScope::isActive() || AITianyiQueryScope::isActive()) return nullptr;
     if (s_current->m_revision) {
         const quint64 revision = s_current->m_revision();
         if (revision != s_current->m_seenRevision) {
@@ -77,7 +84,81 @@ TargetModMemoScope *TargetModMemoScope::active()
             s_current->m_seenRevision = revision;
         }
     }
+    EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
+    RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
+    const QString definitionKey = QStringLiteral("printed:%1:%2|").arg(quintptr(runtime))
+        .arg(runtime ? runtime->definitions().printedSkillGeneration() : 0);
+    if (definitionKey != s_current->m_printedDefinitionKey) {
+        s_current->m_values.clear();
+        s_current->m_printedDefinitionKey = definitionKey;
+    }
     return s_current;
+}
+
+thread_local AIHistoryQueryScope *AIHistoryQueryScope::s_current = nullptr;
+AIHistoryQueryScope::AIHistoryQueryScope(const Player *owner, const QString &key, int offset)
+    : m_owner(owner), m_key(key), m_offset(offset), m_previous(s_current) { s_current = this; }
+AIHistoryQueryScope::~AIHistoryQueryScope() { s_current = m_previous; }
+int AIHistoryQueryScope::value(const Player *owner, const QString &key, int actual)
+{
+    for (auto *scope = s_current; scope; scope = scope->m_previous)
+        if (scope->m_owner == owner && scope->m_key == key) return actual + scope->m_offset;
+    return actual;
+}
+
+QHash<QString, int> AIHistoryQueryScope::project(const Player *owner, QHash<QString, int> actual)
+{
+    QSet<QString> seen;
+    for (auto *scope = s_current; scope; scope = scope->m_previous) {
+        if (scope->m_owner != owner || seen.contains(scope->m_key)) continue;
+        actual.insert(scope->m_key, actual.value(scope->m_key) + scope->m_offset);
+        seen.insert(scope->m_key);
+    }
+    return actual;
+}
+thread_local AIMarkQueryScope *AIMarkQueryScope::s_current = nullptr;
+AIMarkQueryScope::AIMarkQueryScope(const Player *owner, const QString &key, int value)
+    : m_owner(owner), m_key(key), m_value(value), m_previous(s_current) { s_current = this; }
+AIMarkQueryScope::~AIMarkQueryScope() { s_current = m_previous; }
+int AIMarkQueryScope::value(const Player *owner, const QString &key, int actual)
+{
+    for (auto *scope = s_current; scope; scope = scope->m_previous)
+        if (scope->m_owner == owner && scope->m_key == key) return scope->m_value;
+    return actual;
+}
+QStringList AIMarkQueryScope::names(const Player *owner, QStringList actual)
+{
+    for (auto *scope = s_current; scope; scope = scope->m_previous)
+        if (scope->m_owner == owner && !actual.contains(scope->m_key)) actual.append(scope->m_key);
+    actual.sort(); return actual;
+}
+
+thread_local AITianyiQueryScope *AITianyiQueryScope::s_current = nullptr;
+AITianyiQueryScope::AITianyiQueryScope(const Player *owner, const Card *card, int extraTargets, bool noDistance)
+    : m_owner(owner), m_card(card), m_extraTargets(extraTargets), m_noDistance(noDistance), m_previous(s_current) { s_current = this; }
+AITianyiQueryScope::~AITianyiQueryScope() { s_current = m_previous; }
+bool AITianyiQueryScope::noDistance(const Player *owner)
+{
+    for (auto *scope = s_current; scope; scope = scope->m_previous)
+        if (scope->m_owner == owner && scope->m_noDistance) return true;
+    return false;
+}
+int AITianyiQueryScope::extraTarget(const Player *owner, const Card *card)
+{
+    for (auto *scope = s_current; scope; scope = scope->m_previous)
+        if (scope->m_owner == owner && scope->m_card == card) return scope->m_extraTargets;
+    return 0;
+}
+
+thread_local AITagQueryScope *AITagQueryScope::s_current = nullptr;
+AITagQueryScope::AITagQueryScope(const Player *owner, const QString &key, const QVariant &value)
+    : m_owner(owner), m_key(key), m_value(value), m_previous(s_current) { s_current = this; }
+AITagQueryScope::~AITagQueryScope() { s_current = m_previous; }
+QVariant AITagQueryScope::value(const Player *owner, const QString &key, const QVariant &actual)
+{
+    for (auto *scope = s_current; scope; scope = scope->m_previous)
+        if (scope->m_owner == owner && scope->m_key == key) return scope->m_value;
+    return actual;
 }
 
 TargetModSkillQueryScope::TargetModSkillQueryScope(const Player *owner,
@@ -92,6 +173,7 @@ TargetModSkillQueryScope::~TargetModSkillQueryScope() { s_current = m_previous; 
 
 int TargetModSkillQueryScope::historyValue(const Player *owner, const QString &key, int value)
 {
+    value = AIHistoryQueryScope::value(owner, key, value);
     // A later explicit target selection may be planned after this use was
     // counted. Discount only that increment in queries, never in real history.
     return s_current && s_current->m_owner == owner && !s_current->m_historyKey.isEmpty()
@@ -1159,7 +1241,9 @@ void Engine::addPackage(Package*package)
     related_skills.unite(package->getRelatedSkills());
 
 	foreach (Card*card, package->findChildren<Card*>()) {
-        card->setId(cards.length());
+        const int physicalDefinitionIndex = cards.length();
+        card->setId(physicalDefinitionIndex);
+        card->aiRound56RecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
         cards << card;
 		m_packageCardIds[package->objectName()] << card->getId();
 		if (m_loadingLuaDefinitions) {
@@ -1317,7 +1401,9 @@ void Engine::setPackage(Package*package)
 
     foreach (Card*card, package->findChildren<Card*>()) {
         if (card->getId()>=0||cards.contains(card)) continue;
-		card->setId(cards.length());
+		const int physicalDefinitionIndex = cards.length();
+		card->setId(physicalDefinitionIndex);
+		card->aiRound56RecordPhysicalDefinitionIndexSource(physicalDefinitionIndex);
         cards << card;
 		m_packageCardIds[package->objectName()] << card->getId();
 		if (m_loadingLuaDefinitions) {
@@ -1767,6 +1853,42 @@ Card*Engine::cloneCard(const Card*card) const
 		result->setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
 	}
     return result;
+}
+
+// Native-only factory metadata proof. Never constructs a card or calls an
+// authored clone. All alternatives are public registered definitions.
+bool Engine::aiRound56StandardCloneFactory(const QString &name) const
+{
+ RoomRuntime *runtime=currentRoomRuntime();
+ if(HegemonyMode::enabledForCatalog(runtime!=nullptr))return false;
+ // Bootstrap can fall back to the earlier Engine catalogue before the Room
+ // has created its own horse definitions. Prove BOTH public global factory
+ // alternatives for the complete finite horse-name family; never inspect a
+ // Lua correct_func, hidden card, or selected private bootstrap branch.
+ const QMetaObject *horseMeta=nullptr;const std::type_info *horseType=nullptr;
+ if(name==QStringLiteral("OffensiveHorse")){horseMeta=&OffensiveHorse::staticMetaObject;horseType=&typeid(OffensiveHorse);}
+ if(name==QStringLiteral("DefensiveHorse")){horseMeta=&DefensiveHorse::staticMetaObject;horseType=&typeid(DefensiveHorse);}
+ if(horseMeta){
+  const Card *globalTemplate=name2cards.value(name,nullptr);
+  const QMetaObject *globalFactory=metaobjects.value(name,nullptr);
+  if(globalTemplate&&(typeid(*globalTemplate)!=*horseType||globalTemplate->metaObject()!=horseMeta))return false;
+  if(globalFactory&&globalFactory!=horseMeta)return false;
+  return globalTemplate||globalFactory;
+ }
+ const Card *c=runtime?runtime->cardTemplate(name):nullptr;
+ if(!c)c=name2cards.value(name,nullptr);
+ const QMetaObject *expected=nullptr;const std::type_info *type=nullptr;
+#define R56_FACTORY(N,T) if(name==QStringLiteral(N)){expected=&T::staticMetaObject;type=&typeid(T);}
+ R56_FACTORY("jink",Jink) R56_FACTORY("slash",Slash) R56_FACTORY("peach",Peach)
+ R56_FACTORY("fire_slash",FireSlash) R56_FACTORY("thunder_slash",ThunderSlash) R56_FACTORY("analeptic",Analeptic)
+ R56_FACTORY("dismantlement",Dismantlement)
+#undef R56_FACTORY
+ if(!expected)return false;
+ // Exact outer type makes the following metaObject/getPackage dispatch fixed.
+ // Rejecting a heg overlay is conservative: normal cloneCard would fall back.
+ if(c)return typeid(*c)==*type&&c->metaObject()==expected
+  &&!isOriginalHegemonyCardPackage(c->getPackage());
+ return metaobjects.value(name,nullptr)==expected;
 }
 
 Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const QStringList &flags) const
@@ -2600,7 +2722,7 @@ QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, c
     return general_list;
 }
 
-QList<int> Engine::getRandomCards(bool derivative) const
+QList<int> Engine::getDeckCardIds(bool derivative) const
 {
 	const bool hegemony = HegemonyMode::enabledForCatalog(currentRoomRuntime() != nullptr);
     bool exclude_disaster = !hegemony && Config.GameMode.mode_id == "04_1v3", using_2012_3v3 = false,
@@ -2655,6 +2777,12 @@ QList<int> Engine::getRandomCards(bool derivative) const
         list.removeOne(98);
     }else if(using_2012_3v3)
         list.removeOne(98);
+    return list;
+}
+
+QList<int> Engine::getRandomCards(bool derivative) const
+{
+    QList<int> list = getDeckCardIds(derivative);
     qsanShuffle(list);
     return list;
 }
@@ -2776,6 +2904,7 @@ const CardLimitSkill*Engine::getCardLimitSkill(const QString &skill_name) const
 
 const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, const Card*card, const QList<const Player*> &others) const
 {
+    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true);
     // A null card can never be prohibited; ProhibitSkill implementations deref
     // it unconditionally (cf. MobileYongFangzong AV from a stale tag toCard()).
     if (!card) return nullptr;
@@ -2822,6 +2951,7 @@ const ProhibitPindianSkill*Engine::isPindianProhibited(const Player*from, const 
 
 const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card, Card::HandlingMethod method, bool isHandcard) const
 {
+    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true,false,false,true);
     static QMap<Card::HandlingMethod, QString> method_map;
     if (method_map.isEmpty()) {
         method_map.insert(Card::MethodUse, "use");
@@ -3111,10 +3241,11 @@ QString findLegacySkillHolderName(const Player *anchor, const QString &skillName
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
+    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     AiProbe::ScopedProbe probe(AiProbe::Slot_correctDistance);
     // Distance ignores cards; hand refreshes recalculate each Slash against every player.
     TargetModMemoScope *memo = TargetModMemoScope::active();
-    const QString memoKey = memo ? QStringLiteral("distance|%1|%2|%3").arg(quintptr(from))
+    const QString memoKey = memo ? memo->m_printedDefinitionKey + QStringLiteral("distance|%1|%2|%3").arg(quintptr(from))
         .arg(quintptr(to)).arg(int(fixed)) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
@@ -3155,6 +3286,7 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 
 int Engine::correctMaxCards(const Player*target, bool fixed, MaxCardsType::MaxCardsCount type) const
 {
+    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (target && target->inherits("ClientPlayer")) return 0;
@@ -3275,9 +3407,10 @@ QList<SkillUIContribution> Engine::listMaxCardsSkillContributions(const MaxCards
 int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*from, const Card*card, const Player*to) const
 {
     if (!from || !card) return 0;
+    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom(),card,true);
 
     TargetModMemoScope *memo = TargetModMemoScope::active();
-    const QString memoKey = memo ? QStringLiteral("%1|%2|%3|%4|%5").arg(int(type))
+    const QString memoKey = memo ? memo->m_printedDefinitionKey + QStringLiteral("%1|%2|%3|%4|%5").arg(int(type))
         .arg(quintptr(from)).arg(quintptr(to)).arg(quintptr(card)).arg(card->toString()) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
@@ -3347,6 +3480,7 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         }
     }
     if (locked) lua_mutex.unlock();
+    if (type == TargetModSkill::ExtraTarget) x += AITianyiQueryScope::extraTarget(from, card);
     if (memo) memo->m_values.insert(memoKey, x);
     return x;
 }
@@ -3397,6 +3531,7 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
 
 bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 {
+    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_correctSkillValidity);
     if (player && player->isClientPlayer()) {
         return true; 
@@ -3422,9 +3557,10 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
+    AIRound47XufaQueryScope xufaQuery(const_cast<Engine *>(this)->currentRoom());
     // Attack range depends only on the source; target selection asks again for each candidate.
     TargetModMemoScope *memo = TargetModMemoScope::active();
-    const QString memoKey = memo ? QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
+    const QString memoKey = memo ? memo->m_printedDefinitionKey + QStringLiteral("range|%1|%2|%3").arg(quintptr(target))
         .arg(int(include_weapon)).arg(int(fixed)) : QString();
     if (memo) {
         const auto cached = memo->m_values.constFind(memoKey);
@@ -3608,3 +3744,41 @@ bool Engine::setAiData(const QString &json) const
 {
     return AiDataStore::write(json);
 }
+
+#include "ai-strategy-round56-card-metadata-types.inc"
+
+// Complete PUBLIC physical definition alternatives, before card/owner selection.
+// This proves reviewed implementation classes and original definition field/index
+// sources. Live holder ancestry and clone/construction effects need separate proof.
+bool Engine::aiRound56PublicPhysicalMetadataDefinitions(QString *why) const
+{
+    const auto fail = [why](const char *message) {
+        if (why) *why = QString::fromLatin1(message);
+        return false;
+    };
+    if (!hasAIRound56EngineSelfNullSourceOrigin())
+        return fail("public metadata engine Self source origin unavailable");
+    const auto known = [](const Card *definition, int publicIndex) {
+        if (!definition) return true; // Sparse PUBLIC definition slot.
+        const unsigned mask = aiRound56CardMetadataSourceEffects(typeid(*definition));
+        if ((mask & 3u) != 3u || (mask & 8u) != 0) return false;
+        // Source registration fact + unchanged writer epoch; never getId().
+        int assignedIndex = -1;
+        return definition->aiRound56OriginalPhysicalDefinitionIndex(&assignedIndex)
+            && assignedIndex == publicIndex
+            && definition->aiRound56OriginalPhysicalDefinitionMaterialsOrigin()
+            && (definition->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
+    };
+    // Include global fallback even when a runtime definition overlays it.
+    for (int id = 0; id < cards.size(); ++id)
+        if (!known(cards.at(id), id))
+            return fail("global physical metadata definition/index source unavailable");
+    // Public runtime indices include runtime overlays, Lua additions and the
+    // original global fallback. No player/container/card selection is read.
+    for (int id = 0; id < getCardCount(); ++id)
+        if (!known(getEngineCard(id), id))
+            return fail("runtime physical metadata definition/index source unavailable");
+    return true;
+}
+
+#include "ai-strategy-round56-factory-source.inc"

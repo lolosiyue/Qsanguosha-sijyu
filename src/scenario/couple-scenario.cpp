@@ -329,3 +329,10 @@ QMap<QString, QString> CoupleScenario::getOriginalMap(bool isHusband) const
     return isHusband ? original_husband_map : original_wife_map;
 }
 
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_scenario_couple_scenario_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(CoupleScenarioRule)), 2u);
+ types.recordActivateSource<CoupleScenarioRule>(2910u); AI_R56_REQUIRE_DECLARATION(CoupleScenarioRule, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(CoupleScenarioRule, getMaxUsageLimit, Skill);
+}

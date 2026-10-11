@@ -6,16 +6,43 @@ class ResponseSkill;
 struct lua_State;
 
 #include "card.h"
+#include "ai-strategy-readonly-card-store.h"
 #include "lua-runtime.h"
 #include "structs.h"
 
 #include <QJsonObject>
+#include <QJsonArray>
+#include <QSharedPointer>
+
+struct CardLifetimeToken;
 
 struct AICardView {
+    std::shared_ptr<const CardLifetimeToken> nativeIdentity; // Never serialized.
+    QString legacyIdentityToken;
+    QString legacyStringKey;
+    QString legacySortKey;
+    int nameLength = -1; // Native translated name length; Slash family is one.
     int cardId;
     int effectiveId;
     QString objectName;
     QString className;
+    QString engineClassName; // Known only for a concrete, viewer-visible card.
+    QString sourceSkillName;
+    bool willThrow = false;
+    QJsonObject knownFlags;
+    // Finite native tip predicates; currently own current hand tanban/default split only.
+    QJsonObject knownTips;
+    bool flagsComplete = false;
+    bool canRecast = false;
+    bool usingCard = false;
+    bool killOff = false;
+    bool ownerStateKnown = false;
+    bool locked = false;
+    bool jilei = false;
+    QStringList skillNames;
+    bool skillNamesComplete = false; // Full chain requires viewer-owned card authority.
+    QList<int> equipOccupyLocations;
+    QMap<QString, int> targetResidue;
     int suit;
     int number;
     QString skillName;
@@ -27,6 +54,7 @@ struct AICardView {
     bool virtualCard;
     bool targetFixed;
     bool damageCard;
+    bool singleTarget = false;
     QList<int> subcardIds;
     bool red;
     bool black;
@@ -61,6 +89,12 @@ struct AICardPileView {
 // with nothing else selected yet; picking one may narrow the rest, which is why
 // targetCombinations carries the ordered action space when completeCoverage is true.
 struct AICardCandidateView {
+    QJsonObject historyAvailable;
+    bool extraTargetKnown = false;
+    int extraTargetCount = 0;
+    QMap<QString, int> extraTargetByPlayer;
+    QMap<QString, bool> targetFilterEmpty;
+    QMap<QString, bool> canUseTargets;
     // Request-local authorization token. It is valid only for the decisionId and the
     // state revision that issued it, and an answer must name one this request actually
     // offered - holding a card is not by itself permission to play it in answer to
@@ -103,6 +137,52 @@ struct AICardCandidateView {
 // and the authority rebuilds the same card from its own record. A card name, a
 // class_name or a skill name supplied by an author is a request, never a permission.
 struct AICardConversionView {
+    // Explicit native-question authority; never impersonates a SkillInstance.
+    // Native-only finite fixed Manjuan raw-source receipt. Never decoded from a DTO.
+    bool manjuanRawSource = false;
+    int manjuanRawSelectedId = -1;
+    bool zhifengQuestion = false;
+    quint64 zhifengQuestionSerial = 0;
+    bool rangyiQuestion = false; // Native raw-source question receipt, not a V2 conversion.
+    quint64 rangyiQuestionSerial = 0;
+    bool jieyinghQuestion = false;
+    quint64 jieyinghQuestionSerial = 0;
+    // Native-only selected inputs can differ from product payment (MR_zhizhe).
+    bool hasSelectedMaterials = false;
+    QList<int> selectedMaterialIds;
+    bool generatedHandPayment = false; // Native-only; selection is empty, payment remains full hand.
+    QString legacyIdentityToken;
+    QString legacyStringKey;
+    QString legacySortKey;
+    int nameLength = -1; // Native translated name length; Slash family is one.
+    int producerVersion = 2;
+    CardUseStruct::CardUseReason producerReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+    QString producerPattern;
+    QString declaredName;
+    // Native-only generated Skin output; never serialized as a policy declaration.
+    bool skinGeneratedDeclaration = false;
+    QString skinGeneratedUserString;
+    QString policyClass;
+    bool sortingOnly = false;
+    QJsonObject responsePlanning;
+    QJsonObject responseClassPlanning;
+    QMap<QString, int> targetResidue;
+    QJsonObject cardRules;
+    int handlingMethod = int(Card::MethodNone);
+    int typeId = 0;
+    bool canRecast = false;
+    bool willThrow = false;
+    bool locked = false;
+    bool usingCard = false;
+    bool containsJinchantuoqiao = false;
+    bool matchesResponsePattern = false;
+    bool extraTargetKnown = false;
+    int extraTargetCount = 0;
+    QMap<QString, int> extraTargetByPlayer;
+    QMap<QString, bool> targetFilterEmpty;
+    QString skillName;
+    bool damageCard = false, red = false, black = false;
+    bool singleTarget = false;
     int conversionId;
     // The produced card, taken from the skill's own createCard() and that card's
     // meta-object chain - the controlled catalogue, not anything the AI supplied.
@@ -144,7 +224,7 @@ struct AICardConversionView {
           available(false), targetFixed(false), feasibleWithNoTarget(false),
           completeCoverage(false) {}
 
-    bool isValid() const { return conversionId >= 0 && !name.isEmpty(); }
+    bool isValid() const { return conversionId >= 0; }
 };
 
 struct AISkillView {
@@ -156,6 +236,10 @@ struct AISkillView {
     int amount;
     bool hasPrivateState;
     bool hasViewAsSkill = false;
+    bool retrialTrigger = false;
+    bool loseEquipDescriptionTrigger = false;
+    QString description;
+    QList<int> triggerEvents;
     // Skill classification: the native class chain from the leaf up, so a legacy
     // inherits("FilterSkill") check becomes a value comparison.
     QStringList skillClasses;
@@ -197,6 +281,7 @@ struct AIPlayerView {
     QList<AICardView> equips;
     QList<AICardView> judgingArea;
     QMap<QString, int> publicMarks;
+    bool marksComplete = false;
     QList<AISkillView> skills;
     // Hand cards of another player that this viewer may see. The viewer's own hand is
     // world.handCards; handVisible says the whole hand is open, so a card missing from
@@ -206,6 +291,15 @@ struct AIPlayerView {
     // Only the viewer receives private flags and future phase-skip decisions.
     QStringList privateFlags;
     bool privateFlagsVisible = false;
+    bool inYinniState = false; // Disclosed only with owner-private player state.
+    bool skillsComplete = true;
+    int handPileCount = 0;
+    bool aiNoTo = false;
+    bool shuangxiongColors = false;
+    QString playerState;
+    QJsonObject canDiscard;
+    QJsonObject usedHistory;
+    QJsonObject cardRules;
     QMap<int, bool> skippedPhases;
     QString activeArmorName;
     bool armorEffectKnown = false;
@@ -215,6 +309,7 @@ struct AIPlayerView {
     int maxCards;
     int hujia;
     int attackRange;
+    int attackRangeWithoutWeapon = 1;
     int gender;
     bool lord;
     // Equip slot index -> occupying card id; a free slot is simply absent.
@@ -264,7 +359,21 @@ struct AIEventView {
 };
 
 struct AIWorldView {
+    // Native-only optimistic Weapon scalar receipt, not a source/lifetime grant.
+    bool weaponRangeTracked = false;
+    quint64 weaponRangeRevision = 0;
     quint64 revision;
+    int turnCount = 0; // Same public RoundStart counter consumed by SmartAI.
+    QJsonObject responsePolicy;
+    QJsonObject decisionContext;
+    QJsonObject evaluationCards;
+    QJsonObject strategyFacts;
+    QJsonObject roleCounts;
+    bool roleCountsKnown = false;
+    bool enableHegemony = false;
+    bool aiHumanized = false;
+    bool aiChatEnabled = false;
+    QString duelRule;
     QString modeId;
     bool customRoles = false;
     QJsonObject modePolicy;
@@ -334,6 +443,25 @@ struct AIChoiceOptions {
         : hasDefaultChoice(false), optional(false), minCount(1), maxCount(1) {}
 };
 
+struct AIHandSampleReceipt {
+    quint64 decisionId = 0;
+    quint64 revision = 0;
+    QString viewer, target;
+    QList<int> domain;
+    int selectedId = -1;
+    bool consumed = false;
+};
+
+struct AIConversionLedger {
+    // Exact native producer custody; never serialized and never grants payment.
+    QMap<int, AIReadonlyCardLease> observedProducts;
+    QList<AICardConversionView> tickets;
+    int queryCount = 0;
+    QMap<QString, AIHandSampleReceipt> handSampleReceipts;
+    QMap<int, AiSkillActionContext> previewPhysicalReceipts;
+    QMap<int,QJsonObject> round45PhysicalWrites; // Native-only same-request reached Danlve writes; no conversion receipt.
+};
+
 struct AIRequest {
     enum DecisionKind {
         Activate, UseCard, SkillInvoke, Choice, Suit, Kingdom, General,
@@ -344,6 +472,21 @@ struct AIRequest {
     DecisionKind kind;
     quint64 decisionId;
     quint64 stateRevision;
+    // Native-only current FC dispatch seal. Never serialize to either Lua VM.
+    // Native-only lexical source-frame seal; never serialized into Lua.
+    quint64 round53CollateralQuestionSerial = 0; // Native-only actual Collateral effect inquiry.
+    quint64 round51CollateralQuestionSerial = 0; // Native-only lexical question witness.
+    bool round50YuriFrameBound = false;
+    quint64 round50YuriFrameSerial = 0;
+    bool round45NewgeneralsFrameBound = false;
+    quint64 round45NewgeneralsFrameSerial = 0;
+    bool round49NotifiedBound = false;
+    QJsonObject round49NotifiedWitness; // Native-only, never serialized.
+    QMap<int,QString> round49NotifiedIdentities;
+    bool round45NewgeneralsNotificationBound = false;
+    QJsonObject round45NewgeneralsNotificationWitness; // Native-only, never serialized.
+    bool round44FCUseFrameBound = false;
+    quint64 round44FCUseFrameSerial = 0;
     QString viewerObjectName;
     CardUseStruct::CardUseReason reason;
     QString pattern;
@@ -356,6 +499,9 @@ struct AIRequest {
     // skillActionContext above stays the one the request was built for, if any.
     QList<AiSkillActionContext> skillActions;
     AIChoiceOptions choiceOptions;
+    quint64 round52RangyiQuestionSerial = 0; // Native-only actual source callback/question witness.
+    quint64 jieyinghQuestionSerial = 0; // Native-only real question witness, never JSON input.
+    quint64 zhifengQuestionSerial = 0; // Native-only ThWeijing recipient frame, never caller input.
     // Only the card decisions carry candidates; the other kinds leave this empty.
     QList<AICardCandidateView> cardCandidates;
     // Conversions this request authorizes, built by the authority from the skills the
@@ -365,6 +511,17 @@ struct AIRequest {
     // enumerate every conversion available here, which is a different statement from
     // "no conversion is available" - the planner must answer unsupported rather than
     // read an empty or partial list as an absence.
+    QSharedPointer<AIConversionLedger> conversionLedger = QSharedPointer<AIConversionLedger>::create();
+    // Native-only opaque-choice authorization; never serialized to Lua or external JSON.
+    QMap<QString, QList<int>> randomCardChoices;
+    // Native-only literal response observation. Never accept it from the Lua DTO,
+    // or serialize the ambient pattern (which can contain private card IDs).
+    QJsonObject originalAocaiPattern;
+    QJsonObject conversionPolicy;
+    // Native-only original response authority retained when an audited question
+    // also runs a readonly Play forecast. Never serialize these as Play scopes.
+    QJsonObject readonlyParentConversionPolicy;
+    QList<AiSkillActionContext> readonlyParentSkillActions;
     bool conversionsEnumerated;
     // Stronger than conversionsEnumerated: every available skill action belongs
     // to an explicitly supported staged conversion family (no omitted proxies).
@@ -440,11 +597,13 @@ struct AICardSpec {
     int conversionId;
 
     AICardSpec() : suit(int(Card::SuitToBeDecided)), number(0), conversionId(-1) {}
-    bool isValid() const { return !name.isEmpty(); }
+    bool isValid() const { return !name.isEmpty() || conversionId >= 0; }
 };
 
 struct CardActionSpec {
     QString legacyCardString;
+    QJsonObject randomCardChoice;
+    bool randomCardChoiceResolved = false;
     // The candidate ticket this answer claims, or -1 when it claims none. An answer
     // that does name one must name a candidate this request actually offered.
     int candidateId;
@@ -476,6 +635,17 @@ struct AIResult {
     quint64 stateRevision;
     CardActionSpec action;
     QString errorCode;
+    QJsonArray knowledgeEstimates;
+    QJsonArray strategyEffects;
+    bool originalDiscardError = false; // Runtime-issued native forceToDiscard witness only.
+    int originalDiscardMinimum=0, originalDiscardMaximum=0;
+    bool originalDiscardOptional=false, originalDiscardIncludeEquip=false, originalDiscardExchange=false;
+    QString originalDiscardPattern, originalDiscardReason, originalDiscardViewer;
+    bool originalSuitResult = false; // Exact runtime-issued Original Suit result.
+    int originalSuitValue = int(Card::NoSuit);
+    bool hasOriginalResponseWire = false;
+    QString originalResponseWire; // Finite source representation; never a conversion ticket.
+    bool originalEmptyChoice = false; // Native parser witness; never inferred from mode alone.
 
     AIResult() : kind(Pass), handled(false), decisionId(0), stateRevision(0) {}
 };

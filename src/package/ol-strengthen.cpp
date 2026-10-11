@@ -1,3 +1,5 @@
+#include "ai-strategy-round54-shebian.h"
+#include "ai-strategy-round54-jijiang.h"
 #include "ol-strengthen.h"
 #include "skill-instance-utils.h"
 //#include "settings.h"
@@ -380,6 +382,7 @@ public:
             return ctx.owner && ctx.invoker && ctx.owner->isAlive() && ctx.invoker->isAlive()
                 && ctx.owner->hasLordSkill(this) && ctx.owner->getMark("oljijiang-Clear") <= 0
                 && !ctx.invoker->hasFlag("CurrentPlayer") && ctx.invoker->getKingdom() == "shu";
+        AIRound54JijiangScope sourceCost(*room,ctx,int(event),false);
         return canAsk(room, liubei, *ctx.original_data)
             && (liubei->hasFlag("qinwangjijiang") || room->askForSkillInvoke(liubei, objectName(), *ctx.original_data));
     }
@@ -411,6 +414,7 @@ public:
             if (amount > 0) drawer->drawCards(amount, objectName());
             return false;
         }
+        AIRound54JijiangScope sourceEffect(*room,ctx,int(event),true);
         const auto requestScope = olRequestScope();
         if (!liubei->isLord() && liubei->hasSkill("weidi"))
             room->broadcastSkillInvoke("weidi");
@@ -423,6 +427,7 @@ public:
             room->broadcastSkillInvoke("jijiang", r);
         }
         foreach (ServerPlayer *liege, room->getLieges("shu", liubei)) {
+            AIRound54JijiangLiege sourceLiege(*room,liege);
             const Card *slash = room->askForCard(liege, "slash", "@oljijiang-slash:" + liubei->objectName(),
                 QVariant::fromValue(liubei), Card::MethodResponse, liubei, false, "", true);
             if (!slash) continue;
@@ -1494,12 +1499,14 @@ public:
         if (player && player->isAlive() && player->hasSkill(this) && room->canMoveField("e")) result[player] << objectName();
         return result;
     }
-    bool cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &ctx) const override
+    bool cost(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        AIRound54ShebianScope sourceScope(*room,ctx,false);
         return ctx.invoker->askForSkillInvoke(this);
     }
     bool effect(TriggerEvent, Room *room, ServerPlayer *, SkillContext &ctx) const override
     {
+        AIRound54ShebianScope sourceScope(*room,ctx,true);
         room->broadcastSkillInvoke(objectName());
         for (int i = 0; i < getEffectiveAmount(ctx) && ctx.invoker->isAlive() && room->canMoveField("e"); ++i)
             room->moveField(ctx.invoker, objectName(), false, "e");
@@ -9344,3 +9351,144 @@ OLStYC2016Package::OLStYC2016Package()
 
 }
 ADD_PACKAGE(OLStYC2016)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_ol_strengthen_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(OLCardConversion)), 2u);
+ types.emplace(std::type_index(typeid(OLHujia)), 2u);
+ types.emplace(std::type_index(typeid(OLHujiaDraw)), 2u);
+ types.emplace(std::type_index(typeid(OLJijiangVS)), 2u);
+ types.emplace(std::type_index(typeid(OLJijiang)), 2u);
+ types.emplace(std::type_index(typeid(OLPaoxiao)), 2u);
+ types.emplace(std::type_index(typeid(OLPaoxiaoMod)), 3u);
+ types.emplace(std::type_index(typeid(OLTishen)), 2u);
+ types.emplace(std::type_index(typeid(OLLongdan)), 2u);
+ types.emplace(std::type_index(typeid(OLYajiao)), 2u);
+ types.emplace(std::type_index(typeid(OLLeiji)), 2u);
+ types.emplace(std::type_index(typeid(OLGuidao)), 2u);
+ types.emplace(std::type_index(typeid(OLLordAttachment)), 2u);
+ types.emplace(std::type_index(typeid(OLHuangtianViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(OLHuangtian)), 2u);
+ types.emplace(std::type_index(typeid(OLGuhuo)), 2u);
+ types.emplace(std::type_index(typeid(OLShebian)), 2u);
+ types.emplace(std::type_index(typeid(OLQimou)), 2u);
+ types.emplace(std::type_index(typeid(OLTianxiang)), 2u);
+ types.emplace(std::type_index(typeid(OLHongyan)), 2u);
+ types.emplace(std::type_index(typeid(OLHongyanKeep)), 3u);
+ types.emplace(std::type_index(typeid(OLPiaoling)), 2u);
+ types.emplace(std::type_index(typeid(OLLuanjiVS)), 2u);
+ types.emplace(std::type_index(typeid(OLLuanji)), 2u);
+ types.emplace(std::type_index(typeid(OLXueyi)), 2u);
+ types.emplace(std::type_index(typeid(OLXueyiKeep)), 3u);
+ types.emplace(std::type_index(typeid(OLHuojiVs)), 2u);
+ types.emplace(std::type_index(typeid(OLHuoji)), 2u);
+ types.emplace(std::type_index(typeid(OLKanpoVs)), 2u);
+ types.emplace(std::type_index(typeid(OLKanpo)), 2u);
+ types.emplace(std::type_index(typeid(OLCangzhuo)), 2u);
+ types.emplace(std::type_index(typeid(OLLianhuan)), 2u);
+ types.emplace(std::type_index(typeid(OLLianhuanMod)), 3u);
+ types.emplace(std::type_index(typeid(OLNiepan)), 2u);
+ types.emplace(std::type_index(typeid(OLJianchu)), 2u);
+ types.emplace(std::type_index(typeid(OLHanzhan)), 2u);
+ types.emplace(std::type_index(typeid(SecondOLHanzhanVS)), 2u);
+ types.emplace(std::type_index(typeid(SecondOLHanzhan)), 2u);
+ types.emplace(std::type_index(typeid(OLWulie)), 2u);
+ types.emplace(std::type_index(typeid(OLFangquan)), 2u);
+ types.emplace(std::type_index(typeid(OLRuoyu)), 2u);
+ types.emplace(std::type_index(typeid(OLSishu)), 2u);
+ types.emplace(std::type_index(typeid(OLZhibaAction)), 2u);
+ types.emplace(std::type_index(typeid(OLZhibaVS)), 2u);
+ types.emplace(std::type_index(typeid(OLZhibaPindian)), 2u);
+ types.emplace(std::type_index(typeid(OLZhiba)), 2u);
+ types.emplace(std::type_index(typeid(OLQiaomeng)), 2u);
+ types.emplace(std::type_index(typeid(OLYicong)), 3u);
+ types.emplace(std::type_index(typeid(OLYicongEffect)), 2u);
+ types.emplace(std::type_index(typeid(OLHuashen)), 2u);
+ types.emplace(std::type_index(typeid(OLHuashenSelect)), 2u);
+ types.emplace(std::type_index(typeid(OLHuashenClear)), 2u);
+ types.emplace(std::type_index(typeid(OLJiuchiVS)), 2u);
+ types.emplace(std::type_index(typeid(OLJiuchi)), 2u);
+ types.emplace(std::type_index(typeid(OLJiuchiTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(OLBaonue)), 2u);
+ types.emplace(std::type_index(typeid(OLJiuyuan)), 2u);
+ types.emplace(std::type_index(typeid(OLBotu)), 2u);
+ types.emplace(std::type_index(typeid(OLBotuMark)), 2u);
+ types.emplace(std::type_index(typeid(OLTuntian)), 2u);
+ types.emplace(std::type_index(typeid(OLTuntianDistance)), 3u);
+ types.emplace(std::type_index(typeid(OLZaoxian)), 2u);
+ types.emplace(std::type_index(typeid(OLZaoxianExtraTurn)), 2u);
+ types.emplace(std::type_index(typeid(OLChangbiaoVS)), 2u);
+ types.emplace(std::type_index(typeid(OLChangbiao)), 2u);
+ types.emplace(std::type_index(typeid(OLTiaoxin)), 2u);
+ types.emplace(std::type_index(typeid(OLZhiji)), 2u);
+ types.emplace(std::type_index(typeid(OLZaiqi)), 2u);
+ types.emplace(std::type_index(typeid(OLDuanliang)), 2u);
+ types.emplace(std::type_index(typeid(OLDuanliangTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(OLDuanliangHistory)), 2u);
+ types.emplace(std::type_index(typeid(OLJiezi)), 2u);
+ types.emplace(std::type_index(typeid(OLQiaobianVS)), 2u);
+ types.emplace(std::type_index(typeid(OLQiaobian)), 2u);
+ types.emplace(std::type_index(typeid(OLQiaobianGameStart)), 2u);
+ types.emplace(std::type_index(typeid(OLQiaobianMark)), 2u);
+ types.emplace(std::type_index(typeid(OLBeige)), 2u);
+ types.emplace(std::type_index(typeid(OLJieming)), 2u);
+ types.emplace(std::type_index(typeid(OLJiemingDeath)), 2u);
+ types.emplace(std::type_index(typeid(OLQiangxi)), 2u);
+ types.emplace(std::type_index(typeid(OLQiangxiRecord)), 2u);
+ types.emplace(std::type_index(typeid(OLNinge)), 2u);
+ types.emplace(std::type_index(typeid(OLJianmie)), 2u);
+ types.emplace(std::type_index(typeid(OLMieji)), 2u);
+ types.emplace(std::type_index(typeid(OLLihuo)), 2u);
+ types.emplace(std::type_index(typeid(OLChunlaoViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(OLChunlao)), 2u);
+ types.emplace(std::type_index(typeid(OLRenxin)), 2u);
+ types.emplace(std::type_index(typeid(OLChengxiang)), 2u);
+ types.emplace(std::type_index(typeid(OLGanlu)), 2u);
+ types.emplace(std::type_index(typeid(OLBuyi)), 2u);
+ types.emplace(std::type_index(typeid(OLQieting)), 2u);
+ types.emplace(std::type_index(typeid(OLZhijian)), 2u);
+ types.emplace(std::type_index(typeid(OLGuzheng)), 2u);
+ types.emplace(std::type_index(typeid(OLJiushiVs)), 2u);
+ types.emplace(std::type_index(typeid(OLJiushi)), 2u);
+ types.emplace(std::type_index(typeid(OLJizhi)), 2u);
+ types.emplace(std::type_index(typeid(OLQicai)), 3u);
+ types.emplace(std::type_index(typeid(OLJiushiTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(OLQicaiLimit)), 3u);
+ types.emplace(std::type_index(typeid(OL2HuojiVs)), 2u);
+ types.emplace(std::type_index(typeid(OL2Huoji)), 2u);
+ types.emplace(std::type_index(typeid(OL2KanpoVs)), 2u);
+ types.emplace(std::type_index(typeid(OL2Kanpo)), 2u);
+ types.emplace(std::type_index(typeid(OLJiang)), 2u);
+ types.emplace(std::type_index(typeid(OLHunzi)), 2u);
+ types.emplace(std::type_index(typeid(OLHunziFinish)), 2u);
+ types.emplace(std::type_index(typeid(OLEnyuan)), 2u);
+ types.emplace(std::type_index(typeid(OLXuanhuo)), 2u);
+ types.emplace(std::type_index(typeid(OLDangxian)), 2u);
+ types.emplace(std::type_index(typeid(OLFuli)), 2u);
+ types.emplace(std::type_index(typeid(OLJiangchi)), 2u);
+ types.emplace(std::type_index(typeid(OLZongxuan)), 2u);
+ types.emplace(std::type_index(typeid(OLZhiyan)), 2u);
+ types.emplace(std::type_index(typeid(OLJieZishou)), 2u);
+ types.emplace(std::type_index(typeid(OLZongshi)), 2u);
+ types.emplace(std::type_index(typeid(OLZongshiMax)), 3u);
+ types.emplace(std::type_index(typeid(OLZhuikong)), 2u);
+ types.emplace(std::type_index(typeid(OLQiuyuan)), 2u);
+ types.emplace(std::type_index(typeid(OLJieJingce)), 2u);
+ types.emplace(std::type_index(typeid(OLQingjian)), 2u);
+ types.emplace(std::type_index(typeid(OLFuhunVS)), 2u);
+ types.emplace(std::type_index(typeid(OLFuhun)), 2u);
+ types.emplace(std::type_index(typeid(OLZenhui)), 2u);
+ types.emplace(std::type_index(typeid(OLJiaojin)), 2u);
+ types.emplace(std::type_index(typeid(OLJieQianxi)), 2u);
+ types.emplace(std::type_index(typeid(OLJieQianxiLimit)), 3u);
+ types.emplace(std::type_index(typeid(OLJiaozhaoVS)), 2u);
+ types.emplace(std::type_index(typeid(OLJiaozhao)), 2u);
+ types.emplace(std::type_index(typeid(OLJiaozhaoProhibit)), 3u);
+ types.emplace(std::type_index(typeid(OLDanxin)), 2u);
+ types.emplace(std::type_index(typeid(OLJieZhenjun)), 2u);
+ types.emplace(std::type_index(typeid(OLJieYizhong)), 2u);
+ types.emplace(std::type_index(typeid(OLJieJieyong)), 2u);
+ types.emplace(std::type_index(typeid(OLJieQiangshi)), 2u);
+ types.emplace(std::type_index(typeid(OLJieXiantu)), 2u);
+}

@@ -191,7 +191,7 @@ QJsonValue json(const AIEventView &v) {
         {"chain", json(v.chain)},
         {"transfer", json(v.transfer)},
         {"byUser", json(v.byUser)},
-        {"intentionSuppressed", json(v.intentionSuppressed)},
+        {"intentionSuppressed", v.details.value("intention_suppression_known").toBool() ? json(v.intentionSuppressed) : QJsonValue::Null},
         {"details", json(v.details)},
         {"reason", json(v.reason)},
         {"cardIds", json(v.cardIds)},

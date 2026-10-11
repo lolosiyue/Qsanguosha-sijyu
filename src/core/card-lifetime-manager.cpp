@@ -1259,6 +1259,17 @@ bool CardLifetimeManager::retainVariantTag(const void *container, const QByteArr
     return true;
 }
 
+QList<std::shared_ptr<const CardLifetimeToken>> CardLifetimeManager::variantTagTokens(const void *container) const
+{
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
+    QList<std::shared_ptr<const CardLifetimeToken>> tokens;
+    const auto outer = m_variantTags.constFind(container);
+    if (outer != m_variantTags.cend())
+        for (auto inner = outer->cbegin(); inner != outer->cend(); ++inner)
+            tokens.append(inner.value());
+    return tokens;
+}
+
 void CardLifetimeManager::releaseVariantTag(const void *container, const QByteArray &key)
 {
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;

@@ -919,6 +919,11 @@ static void GCTM (lua_State *L) {
     L->allowhook = 0;  /* stop debug hooks during GC metamethod */
     setobj2s(L, L->top.p++, tm);  /* push finalizer... */
     setobj2s(L, L->top.p++, &v);  /* ... and its argument */
+    /* The existing host bridge observes asynchronous author entry before it
+       can read/write retained AI state. This does not run another finalizer,
+       change the pending list, suppress hooks, or alter error handling. */
+    if (g->protectedbridge)
+      g->protectedbridge(L, NULL, NULL, g->protectedbridgehost, 3);
     L->ci->callstatus |= CIST_FIN;  /* will run a finalizer */
     status = luaD_pcall(L, dothecall, NULL, savestack(L, L->top.p - 2), 0);
     L->ci->callstatus &= ~CIST_FIN;  /* not running a finalizer anymore */

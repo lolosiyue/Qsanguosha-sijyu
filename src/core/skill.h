@@ -92,6 +92,19 @@ struct ActiveSkillRequest {
 
     // Preserve proxy declarations; ordinary conversions carry their canonical card name.
     void setCardSelection(const Card *card);
+    // Native-only generated-payment contract. No Lua setters or serialized authority.
+    bool generatedCardSelectionValid() const;
+    bool generatedCardProductMatches(const Card *card) const;
+private:
+    friend class AIRound47FateUseAccess;
+    std::shared_ptr<const AIRound47FateUseProof> m_aiRound47FateUse;
+    bool generatedHandPayment = false;
+    bool generatedHandFaceValid = false;
+    QList<int> generatedHandCosts;
+    int generatedHandSuit = -1;
+    int generatedHandNumber = -1;
+public:
+
 
     CardUseStruct::CardUseReason getReason() const { return reason; }
     QString getPattern() const { return pattern; }

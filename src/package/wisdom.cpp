@@ -1165,3 +1165,56 @@ WisdomPackage::WisdomPackage()
 	addMetaObject<ShouyeCard>();
 }
 ADD_PACKAGE(Wisdom)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_wisdom_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(JuaoViewAsSkill)), 2u);
+ types.recordActivateSource<JuaoViewAsSkill>(2458u); AI_R56_REQUIRE_DECLARATION(JuaoViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(JuaoViewAsSkill, getLimitScope, JuaoViewAsSkill); AI_R56_REQUIRE_DECLARATION(JuaoViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(JuaoViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(JuaoViewAsSkill, targetMode, JuaoViewAsSkill); AI_R56_REQUIRE_DECLARATION(JuaoViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Juao)), 2u);
+ types.recordActivateSource<Juao>(2459u); AI_R56_REQUIRE_DECLARATION(Juao, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Juao, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Juao, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Tanlan)), 2u);
+ types.recordActivateSource<Tanlan>(2460u); AI_R56_REQUIRE_DECLARATION(Tanlan, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Tanlan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Tanlan, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Shicai)), 2u);
+ types.recordActivateSource<Shicai>(2461u); AI_R56_REQUIRE_DECLARATION(Shicai, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Shicai, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Shicai, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Yicai)), 2u);
+ types.recordActivateSource<Yicai>(2462u); AI_R56_REQUIRE_DECLARATION(Yicai, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Yicai, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Yicai, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Beifa)), 2u);
+ types.recordActivateSource<Beifa>(2463u); AI_R56_REQUIRE_DECLARATION(Beifa, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Beifa, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Beifa, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Houyuan)), 2u);
+ types.recordActivateSource<Houyuan>(2464u); AI_R56_REQUIRE_DECLARATION(Houyuan, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Houyuan, getLimitScope, Houyuan); AI_R56_REQUIRE_DECLARATION(Houyuan, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(Houyuan, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Houyuan, targetMode, Houyuan); AI_R56_REQUIRE_DECLARATION(Houyuan, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Chouliang)), 2u);
+ types.recordActivateSource<Chouliang>(2465u); AI_R56_REQUIRE_DECLARATION(Chouliang, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Chouliang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Chouliang, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(BawangViewAsSkill)), 2u);
+ types.recordActivateSource<BawangViewAsSkill>(2466u); AI_R56_REQUIRE_DECLARATION(BawangViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(BawangViewAsSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(BawangViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(BawangViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(BawangViewAsSkill, targetMode, BawangViewAsSkill); AI_R56_REQUIRE_DECLARATION(BawangViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Bawang)), 2u);
+ types.recordActivateSource<Bawang>(2467u); AI_R56_REQUIRE_DECLARATION(Bawang, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Bawang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Bawang, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Weidai)), 2u);
+ types.recordActivateSource<Weidai>(2468u); AI_R56_REQUIRE_DECLARATION(Weidai, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Weidai, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Weidai, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(Weidai, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Weidai, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Weidai, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(WeidaiCleanup)), 2u);
+ types.recordActivateSource<WeidaiCleanup>(2469u); AI_R56_REQUIRE_DECLARATION(WeidaiCleanup, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(WeidaiCleanup, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(WeidaiCleanup, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Longluo)), 2u);
+ types.recordActivateSource<Longluo>(2470u); AI_R56_REQUIRE_DECLARATION(Longluo, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Longluo, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Longluo, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(FuzuoViewAsSkill)), 2u);
+ types.recordActivateSource<FuzuoViewAsSkill>(2471u); AI_R56_REQUIRE_DECLARATION(FuzuoViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(FuzuoViewAsSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(FuzuoViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(FuzuoViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(FuzuoViewAsSkill, targetMode, FuzuoViewAsSkill); AI_R56_REQUIRE_DECLARATION(FuzuoViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Fuzuo)), 2u);
+ types.recordActivateSource<Fuzuo>(2472u); AI_R56_REQUIRE_DECLARATION(Fuzuo, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Fuzuo, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Fuzuo, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Jincui)), 2u);
+ types.recordActivateSource<Jincui>(2473u); AI_R56_REQUIRE_DECLARATION(Jincui, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Jincui, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Jincui, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Badao)), 2u);
+ types.recordActivateSource<Badao>(2474u); AI_R56_REQUIRE_DECLARATION(Badao, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Badao, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Badao, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Wenjiu)), 2u);
+ types.recordActivateSource<Wenjiu>(2475u); AI_R56_REQUIRE_DECLARATION(Wenjiu, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Wenjiu, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Wenjiu, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Shipo)), 2u);
+ types.recordActivateSource<Shipo>(2476u); AI_R56_REQUIRE_DECLARATION(Shipo, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Shipo, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Shipo, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Gushou)), 2u);
+ types.recordActivateSource<Gushou>(2477u); AI_R56_REQUIRE_DECLARATION(Gushou, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Gushou, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Gushou, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Yuwen)), 2u);
+ types.recordActivateSource<Yuwen>(2478u); AI_R56_REQUIRE_DECLARATION(Yuwen, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Yuwen, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Yuwen, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Shouye)), 2u);
+ types.recordActivateSource<Shouye>(2479u); AI_R56_REQUIRE_DECLARATION(Shouye, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Shouye, getLimitScope, Shouye); AI_R56_REQUIRE_DECLARATION(Shouye, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Shouye, targetMode, Shouye); AI_R56_REQUIRE_DECLARATION(Shouye, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Jiehuo)), 2u);
+ types.recordActivateSource<Jiehuo>(2480u); AI_R56_REQUIRE_DECLARATION(Jiehuo, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Jiehuo, getLimitScope, Jiehuo); AI_R56_REQUIRE_DECLARATION(Jiehuo, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Shien)), 2u);
+ types.recordActivateSource<Shien>(2481u); AI_R56_REQUIRE_DECLARATION(Shien, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Shien, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Shien, getMaxUsageLimit, Skill);
+}

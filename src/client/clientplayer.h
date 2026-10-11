@@ -16,7 +16,7 @@ using ClientPlayer = Player;
 // does not, so the engine definition must be namespaced to avoid a duplicate
 // symbol with the GUI's ClientPlayer *Self.
 namespace QSanEngine {
-extern Player *Self;
+extern thread_local Player *Self;
 }
 using QSanEngine::Self;
 #else

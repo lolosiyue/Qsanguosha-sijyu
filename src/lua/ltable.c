@@ -8,6 +8,7 @@
 #define LUA_CORE
 
 #include "lprefix.h"
+#include <stdlib.h>
 
 
 /*
@@ -623,19 +624,216 @@ static void rehash (lua_State *L, Table *t, const TValue *ek) {
 */
 
 
-Table *luaH_new (lua_State *L) {
+/* Native subscriptions remain bounded and ordered. Tombstones keep callback
+** removal safe during nested dispatch; new subscriptions wait for the next event. */
+#define LUA_TABLE_WATCH_LIMIT 32
+struct lua_TableWatchEntry {
+  lua_TableObserver callback;
+  void *userdata;
+  struct lua_TableWatchEntry *next;
+};
+struct lua_TableWatch {
+  struct lua_TableWatchEntry *first, *last;
+  unsigned int depth, count;
+  int freeing;
+};
+
+static void clearwatch (Table *t) {
+  struct lua_TableWatch *watch = t->nativewatch;
+  struct lua_TableWatchEntry *entry, *next;
+  if (!watch) return;
+  for (entry = watch->first; entry; entry = next) {
+    next = entry->next;
+    free(entry);
+  }
+  free(watch);
+  t->nativewatch = NULL;
+}
+
+static void sweepwatch (Table *t) {
+  struct lua_TableWatch *watch = t->nativewatch;
+  struct lua_TableWatchEntry **link, *entry;
+  if (!watch || watch->depth) return;
+  link = &watch->first;
+  watch->last = NULL;
+  while ((entry = *link) != NULL) {
+    if (!entry->callback) {
+      *link = entry->next;
+      free(entry);
+      --watch->count;
+    }
+    else {
+      watch->last = entry;
+      link = &entry->next;
+    }
+  }
+  if (!watch->first) clearwatch(t);
+}
+
+LUA_API int lua_observetableidentity(lua_State *L, const void *identity,
+                                    lua_TableObserver callback, void *userdata) {
+  Table *t = (Table *)identity;
+  struct lua_TableWatch *watch;
+  struct lua_TableWatchEntry *entry;
+  (void)L;
+  if (!t || !callback) return 0;
+  watch = t->nativewatch;
+  if (watch) {
+    if (watch->freeing) return 0;
+    for (entry = watch->first; entry; entry = entry->next)
+      if (entry->callback == callback && entry->userdata == userdata) return 1;
+    if (watch->count >= LUA_TABLE_WATCH_LIMIT) return 0;
+  }
+  entry = (struct lua_TableWatchEntry *)malloc(sizeof(*entry));
+  if (!entry) return 0;
+  if (!watch) {
+    watch = (struct lua_TableWatch *)calloc(1, sizeof(*watch));
+    if (!watch) { free(entry); return 0; }
+    t->nativewatch = watch;
+  }
+  entry->callback = callback; entry->userdata = userdata; entry->next = NULL;
+  if (watch->last) watch->last->next = entry;
+  else watch->first = entry;
+  watch->last = entry;
+  ++watch->count;
+  return 1;
+}
+LUA_API int lua_unobservetableidentity(lua_State *L, const void *identity,
+                                      lua_TableObserver callback, void *userdata) {
+  Table *t = (Table *)identity;
+  struct lua_TableWatchEntry *entry;
+  (void)L;
+  if (!t || !t->nativewatch || !callback) return 0;
+  for (entry = t->nativewatch->first; entry; entry = entry->next) {
+    if (entry->callback == callback && entry->userdata == userdata) {
+      entry->callback = NULL;
+      sweepwatch(t);
+      return 1;
+    }
+  }
+  return 0;
+}
+static void observewrite(lua_State *L, Table *t, const TValue *key,
+                         const TValue *value, int event, unsigned int flags,
+                         const Instruction *nextpc) {
+  struct lua_TableWatch *watch = t->nativewatch;
+  struct lua_TableWatchEntry *entry, *last;
+  lua_TableObservation observation;
+  if (!watch) return;
+  observation.event = event; observation.flags = flags; observation.table_identity = t;
+  observation.lua_function_identity = nextpc && isLua(L->ci)
+    ? clLvalue(s2v(L->ci->func.p)) : NULL;
+  observation.lua_instruction_index = -1;
+  if (observation.lua_function_identity) {
+    const Proto *p = ((const LClosure *)observation.lua_function_identity)->p;
+    if (nextpc > p->code && nextpc <= p->code + p->sizecode)
+      observation.lua_instruction_index = (int)(nextpc - p->code) - 1;
+  }
+  observation.string_key = key && ttisstring(key) ? getstr(tsvalue(key)) : NULL;
+  observation.string_key_length = key && ttisstring(key) ? tsslen(tsvalue(key)) : 0;
+  observation.value_type = value ? ttype(value) : LUA_TNONE;
+  observation.value_table_identity = value && ttistable(value) ? hvalue(value) : NULL;
+  if (event == LUA_TABLE_OBSERVER_FREE) watch->freeing = 1;
+  last = watch->last;
+  ++watch->depth;
+  for (entry = watch->first; entry; entry = entry->next) {
+    if (entry->callback) entry->callback(L, &observation, entry->userdata);
+    if (entry == last) break;
+  }
+  --watch->depth;
+  sweepwatch(t);
+}
+
+void luaH_observewrite(lua_State *L, Table *t, const TValue *key,
+                      const TValue *value, int event, unsigned int flags) {
+  observewrite(L,t,key,value,event,flags,
+    (flags & LUA_TABLE_OBSERVER_VM_SLOW) && isLua(L->ci) ? L->ci->u.l.savedpc : NULL);
+}
+void luaH_observefastwrite(lua_State *L, Table *t, const TValue *key,
+                         const TValue *value, const Instruction *nextpc) {
+  observewrite(L,t,key,value,LUA_TABLE_OBSERVER_WRITE,LUA_TABLE_OBSERVER_VM_FAST,nextpc);
+}
+
+void luaH_observereadstr(lua_State *L, Table *t, TString *key) {
+  TValue k; setsvalue(L, &k, key);
+  luaH_observewrite(L, t, &k, NULL, LUA_TABLE_OBSERVER_READ, 0);
+}
+void luaH_observereadi(lua_State *L, Table *t, lua_Integer key) {
+  TValue k; setivalue(&k, key);
+  luaH_observewrite(L, t, &k, NULL, LUA_TABLE_OBSERVER_READ, 0);
+}
+
+LUA_API int lua_observetablebirth(lua_State *L,lua_TableBirthObserver cb,void *host) {
+  global_State *g=G(L);int i,free_slot=-1;
+  if (!cb) return 0;
+  for (i=0;i<LUA_TABLE_BIRTH_SLOTS;++i) {
+    TableBirthWatch *watch=&g->tablebirthwatch[i];
+    if (watch->callback==cb && watch->host==host) return 1;
+    if (!watch->callback && free_slot<0) free_slot=i;
+  }
+  if (free_slot<0 || g->tablebirthserial==UINT_MAX) return 0;
+  g->tablebirthwatch[free_slot].callback=cb;
+  g->tablebirthwatch[free_slot].host=host;
+  g->tablebirthwatch[free_slot].serial=++g->tablebirthserial;
+  ++g->tablebirthcount;return 1;
+}
+LUA_API int lua_unobservetablebirth(lua_State *L,lua_TableBirthObserver cb,void *host) {
+  global_State *g=G(L);int i;if (!cb) return 0;
+  for (i=0;i<LUA_TABLE_BIRTH_SLOTS;++i) {
+    TableBirthWatch *watch=&g->tablebirthwatch[i];
+    if (watch->callback==cb && watch->host==host) {
+      watch->callback=NULL;watch->host=NULL;watch->serial=0;
+      --g->tablebirthcount;return 1;
+    }
+  }
+  return 0;
+}
+static void dispatchtablebirth(lua_State *L,const lua_TableBirthObservation *event) {
+  global_State *g=G(L);const unsigned int cutoff=g->tablebirthserial;
+  unsigned int previous=0;
+  for (;;) {
+    int i,selected=-1;unsigned int next=UINT_MAX;
+    /* Re-select each live subscription: a removed host is never retained or
+       called. New subscriptions have serial>cutoff, including slot reuse. */
+    for (i=0;i<LUA_TABLE_BIRTH_SLOTS;++i) {
+      const TableBirthWatch *w=&g->tablebirthwatch[i];
+      if (w->callback && w->serial>previous && w->serial<=cutoff
+          && (selected<0 || w->serial<next)) {selected=i;next=w->serial;}
+    }
+    if (selected<0) break;
+    previous=next;
+    g->tablebirthwatch[selected].callback(L,event,g->tablebirthwatch[selected].host);
+  }
+}
+
+Table *luaH_newsource (lua_State *L, const Instruction *birthpc) {
   GCObject *o = luaC_newobj(L, LUA_VTABLE, sizeof(Table));
   Table *t = gco2t(o);
   t->metatable = NULL;
+  t->nativewatch = NULL;
   t->flags = cast_byte(maskflags);  /* table has no metamethod fields */
   t->array = NULL;
   t->alimit = 0;
   setnodevector(L, t, 0);
+  if (G(L)->tablebirthcount) {
+    lua_TableBirthObservation event;
+    event.table_identity=t;event.lua_function_identity=NULL;event.lua_instruction_index=-1;
+    if (birthpc && isLua(L->ci)) {
+      const LClosure *closure=clLvalue(s2v(L->ci->func.p));
+      event.lua_function_identity=closure;
+      event.lua_instruction_index=cast_int(birthpc-closure->p->code);
+    }
+    dispatchtablebirth(L,&event);
+  }
   return t;
 }
 
 
+Table *luaH_new (lua_State *L) { return luaH_newsource(L,NULL); }
+
 void luaH_free (lua_State *L, Table *t) {
+  luaH_notifywrite(L, t, NULL, NULL, LUA_TABLE_OBSERVER_FREE);
+  clearwatch(t);
   freehash(L, t);
   luaM_freearray(L, t->array, luaH_realasize(t));
   luaM_free(L, t);

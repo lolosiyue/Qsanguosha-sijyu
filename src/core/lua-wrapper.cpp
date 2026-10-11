@@ -753,3 +753,5 @@ LuaScenarioRule::LuaScenarioRule(Scenario *scenario)
     //events << GameReady << EventPhaseStart << FetchDrawPileCard;
 }
 
+
+#include "ai-strategy-round56-lua-skill-factory-source.inc"

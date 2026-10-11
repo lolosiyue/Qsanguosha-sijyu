@@ -795,3 +795,14 @@ JoyEquipPackage::JoyEquipPackage()
 ADD_PACKAGE(Joy)
 ADD_PACKAGE(Disaster)
 ADD_PACKAGE(JoyEquip)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_joy_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(ShitEffect)), 2u);
+ types.emplace(std::type_index(typeid(GrabPeach)), 2u);
+ types.emplace(std::type_index(typeid(GaleShellSkill)), 2u);
+ types.emplace(std::type_index(typeid(FiveLinesVS)), 2u);
+ types.emplace(std::type_index(typeid(FiveLinesSkill)), 2u);
+ types.emplace(std::type_index(typeid(YxSwordSkill)), 2u);
+}

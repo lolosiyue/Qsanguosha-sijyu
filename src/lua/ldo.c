@@ -360,6 +360,10 @@ void luaD_hook (lua_State *L, int event, int line,
       ci->top.p = L->top.p + LUA_MINSTACK;
     L->allowhook = 0;  /* cannot call hooks inside a hook */
     ci->callstatus |= mask;
+    /* Debug hooks can execute author Lua without a host protectedCall.
+       Invalidate through the same host observer before entering the hook. */
+    if (G(L)->protectedbridge)
+      G(L)->protectedbridge(L, NULL, NULL, G(L)->protectedbridgehost, 4);
     lua_unlock(L);
     (*hook)(L, &ar);
     lua_lock(L);

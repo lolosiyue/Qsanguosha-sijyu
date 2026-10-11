@@ -1874,3 +1874,45 @@ OLStYinPackage::OLStYinPackage()
     addMetaObject<OLZhenliangCard>();
 }
 ADD_PACKAGE(OLStYin)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_yin_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(YinAllowances)), 2u);
+ types.emplace(std::type_index(typeid(Juzhan)), 2u);
+ types.emplace(std::type_index(typeid(JuzhanPro)), 3u);
+ types.emplace(std::type_index(typeid(Feijun)), 2u);
+ types.emplace(std::type_index(typeid(Binglve)), 2u);
+ types.emplace(std::type_index(typeid(Huaiju)), 2u);
+ types.emplace(std::type_index(typeid(HuaijuDeath)), 2u);
+ types.emplace(std::type_index(typeid(Weili)), 2u);
+ types.emplace(std::type_index(typeid(Zhenglun)), 2u);
+ types.emplace(std::type_index(typeid(KuizhuViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Kuizhu)), 2u);
+ types.emplace(std::type_index(typeid(Chezheng)), 2u);
+ types.emplace(std::type_index(typeid(ChezhengPro)), 3u);
+ types.emplace(std::type_index(typeid(Lijun)), 2u);
+ types.emplace(std::type_index(typeid(OLLijunTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(Qizhi)), 2u);
+ types.emplace(std::type_index(typeid(Jinqu)), 2u);
+ types.emplace(std::type_index(typeid(Jianxiang)), 2u);
+ types.emplace(std::type_index(typeid(ShenshiVS)), 2u);
+ types.emplace(std::type_index(typeid(Shenshi)), 2u);
+ types.emplace(std::type_index(typeid(ShenshiEffect)), 2u);
+ types.emplace(std::type_index(typeid(Chenglve)), 2u);
+ types.emplace(std::type_index(typeid(ChenglveTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(YinShicai)), 2u);
+ types.emplace(std::type_index(typeid(Cunmu)), 2u);
+ types.emplace(std::type_index(typeid(Mingren)), 2u);
+ types.emplace(std::type_index(typeid(ZhenliangVS)), 2u);
+ types.emplace(std::type_index(typeid(Zhenliang)), 2u);
+ types.emplace(std::type_index(typeid(OLMingren)), 2u);
+ types.emplace(std::type_index(typeid(OLZhenliang)), 2u);
+ types.emplace(std::type_index(typeid(Longnu)), 2u);
+ types.emplace(std::type_index(typeid(LongnuTarget)), 3u);
+ types.emplace(std::type_index(typeid(Jieying)), 2u);
+ types.emplace(std::type_index(typeid(JieyingKeep)), 3u);
+ types.emplace(std::type_index(typeid(Junlve)), 2u);
+ types.emplace(std::type_index(typeid(Cuike)), 2u);
+ types.emplace(std::type_index(typeid(Zhanhuo)), 2u);
+}

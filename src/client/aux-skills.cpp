@@ -321,3 +321,20 @@ bool TransferSkill::isAvailable(const Player *player, const Card *card) const
         && player->hasSkill(objectName())
         && (!card || (card->isTransferable() && player->handCards().contains(card->getEffectiveId())));
 }
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_client_aux_skills_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(DiscardSkill)), 2u);
+ types.recordActivateSource<DiscardSkill>(0u); AI_R56_REQUIRE_DECLARATION(DiscardSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(DiscardSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(DiscardSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(ResponseSkill)), 2u);
+ types.recordActivateSource<ResponseSkill>(1u); AI_R56_REQUIRE_DECLARATION(ResponseSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ResponseSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ResponseSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(ShowOrPindianSkill)), 2u);
+ types.recordActivateSource<ShowOrPindianSkill>(2u); AI_R56_REQUIRE_DECLARATION(ShowOrPindianSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ShowOrPindianSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ShowOrPindianSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(NosYijiViewAsSkill)), 2u);
+ types.recordActivateSource<NosYijiViewAsSkill>(3u); AI_R56_REQUIRE_DECLARATION(NosYijiViewAsSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(NosYijiViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(NosYijiViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(ChoosePlayerSkill)), 2u);
+ types.recordActivateSource<ChoosePlayerSkill>(4u); AI_R56_REQUIRE_DECLARATION(ChoosePlayerSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ChoosePlayerSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ChoosePlayerSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(TransferSkill)), 2u);
+ types.recordActivateSource<TransferSkill>(5u); AI_R56_REQUIRE_DECLARATION(TransferSkill, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(TransferSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(TransferSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(TransferSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(TransferSkill, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(TransferSkill, isResponseOrUse, ViewAsSkill);
+}

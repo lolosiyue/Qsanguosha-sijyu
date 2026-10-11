@@ -85,8 +85,6 @@ public:
 	virtual void onInstall(ServerPlayer *player) const;
 	virtual void onUninstall(ServerPlayer *player) const;
 
-protected:
-	int range;
 };
 
 class Armor: public EquipCard {

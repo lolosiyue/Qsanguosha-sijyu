@@ -19,7 +19,7 @@ class ClientPlayerModel;
 // through setEngineSelf(). Runtime frontends use this bridge instead of the
 // desktop ClientPlayer global.
 namespace QSanEngine {
-extern Player *Self;
+extern thread_local Player *Self;
 }
 
 // Keep this exact global Qt meta-object name. Engine client-side branches use

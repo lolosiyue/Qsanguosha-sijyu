@@ -1,4 +1,5 @@
 #include "wrapped-card.h"
+#include "ai-strategy-round47-xiedou.h"
 #include "card-lifetime-manager.h"
 
 #include <QMetaObject>
@@ -75,9 +76,62 @@ WrappedCard::WrappedCard(Card *card)
       m_adoptionOwnerThread(QThread::currentThread())
 {
     if (card) {
+        retireAIRound56RecursiveFieldOrigins(16u);
         m_id = card->getId();
         copyEverythingFrom(card);
     }
+}
+
+// Private, once per object, and called only by the public-definition factory
+// loop. A generic constructor/adoption never obtains this structural receipt.
+WrappedCard::WrappedCard(PhysicalCloneBirth, Card *clone, int definitionId, QThread *ownerThread,
+                         bool originalDefinitionSource)
+    : WrappedCard(nullptr)
+{
+    // The actual public factory source, not a later selected-object scan.
+    const bool originalClone = originalDefinitionSource && clone
+        && clone->aiRound56IdWriteEpoch() == 1
+        && clone->aiRound56MaterialWriteEpoch() == 1
+        && (clone->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
+    setAdoptionOwnerThread(ownerThread);
+    copyEverythingFrom(clone);
+    // Exact writer postcondition, not a scan/regrant of an existing instance.
+    if (clone && m_card == clone) {
+        m_aiRound56BornInnerType = &typeid(*clone);
+        m_aiRound56BornDefinitionId = definitionId;
+        m_aiRound56BornInnerLifetime = globalCardLifetimeManager().liveToken(clone);
+        m_aiRound56OriginalCloneIdentity = originalClone && m_aiRound56BornInnerLifetime
+            && aiRound56IdWriteEpoch() == 1 && aiRound56MaterialWriteEpoch() == 1
+            && clone->aiRound56IdWriteEpoch() == 2 && clone->aiRound56MaterialWriteEpoch() == 2
+            && aiRound56ScalarWriteEpoch() == 2
+            && (aiRound56OriginalRecursiveFieldOrigins() & 2u) == 2u
+            && (clone->aiRound56OriginalRecursiveFieldOrigins() & 14u) == 14u;
+        m_aiRound56PhysicalCloneBirth.store(true, std::memory_order_release);
+    }
+}
+
+bool WrappedCard::aiRound56PhysicalCloneBirthOrigin(int *definitionId,
+                                                   const std::type_info **innerType) const noexcept
+{
+    if (!m_aiRound56PhysicalCloneBirth.load(std::memory_order_acquire)) return false;
+    if (definitionId) *definitionId = m_aiRound56BornDefinitionId;
+    if (innerType) *innerType = m_aiRound56BornInnerType;
+    return true;
+}
+
+bool WrappedCard::aiRound56PhysicalCloneIdentityOrigin(int *definitionId) const noexcept
+{
+    if (!m_aiRound56PhysicalCloneBirth.load(std::memory_order_acquire)
+        || !m_aiRound56OriginalCloneIdentity || !m_aiRound56BornInnerLifetime
+        || !globalCardLifetimeManager().isLive(m_aiRound56BornInnerLifetime)) return false;
+    const auto *inner = static_cast<const Card *>(m_aiRound56BornInnerLifetime->address);
+    if (aiRound56IdWriteEpoch() != 1 || aiRound56MaterialWriteEpoch() != 1
+        || inner->aiRound56IdWriteEpoch() != 2 || inner->aiRound56MaterialWriteEpoch() != 2
+        || aiRound56ScalarWriteEpoch() != 2 || (aiRound56OriginalRecursiveFieldOrigins() & 2u) != 2u
+        || (inner->aiRound56OriginalRecursiveFieldOrigins() & 14u) != 14u)
+        return false;
+    if (definitionId) *definitionId = m_aiRound56BornDefinitionId;
+    return true;
 }
 
 WrappedCard::~WrappedCard()
@@ -102,6 +156,8 @@ void WrappedCard::setAdoptionOwnerThread(QThread *thread)
 
 void WrappedCard::adoptCard(Card *card, bool requireId)
 {
+    // Even null, equal, failed ownership or failed id attempts retire forever.
+    m_aiRound56PhysicalCloneBirth.store(false, std::memory_order_release);
     if (!card || card == this || m_card == card || (requireId && card->getId() < 0))
         return;
 
@@ -169,8 +225,10 @@ void WrappedCard::adoptCard(Card *card, bool requireId)
     setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
     setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
     setObjectName(card->objectName());
-    if (requireId)
+    if (requireId) {
+        invalidateAIRound47XiedouFlags(this);
         flags = card->getFlags();
+    }
     // Both takeOver and copyEverythingFrom/reset converge here. Failed and
     // same-inner-card adoptions returned above; initial construction has no
     // previous live identity. A new inner instance can have different behavior

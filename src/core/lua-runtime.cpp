@@ -1,3 +1,5 @@
+#include "ai-strategy-round56-async.h"
+#include "ai-strategy-round56-bootstrap-source.h"
 #include "lua-runtime.h"
 #include "card-lifetime-manager.h"
 
@@ -11,6 +13,7 @@
 #include <QHash>
 #include <QMutexLocker>
 #include <QSet>
+#include <QScopedValueRollback>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -21,6 +24,10 @@
 #include <limits>
 #include <utility>
 #include <exception>
+
+// Defined beside the exact compiled SWIG descriptor arrays. It never inspects
+// a current namespace value and cannot independently mint a source origin.
+bool aiRound56NativeNamespaceBirthDescriptors() noexcept;
 
 namespace {
 
@@ -50,6 +57,16 @@ thread_local ProtectedTransport *protectedTransport = nullptr;
 int protectedBridge(lua_State *state, void (*callback)(lua_State *, void *),
                     void *argument, void *host, int mode)
 {
+    if (mode == 5 || mode == 6) {
+        static_cast<LuaRuntime *>(host)->notifyLoadedChunk(state, mode);
+        return LUA_OK;
+    }
+    if (mode == 3 || mode == 4 || mode == 7) {
+        // No new observer and no path-sensitive post-call restoration. The
+        // same protected-entry owner sees an unclassified asynchronous entry.
+        static_cast<LuaRuntime *>(host)->notifyUnclassifiedLuaEntry(state, mode);
+        return LUA_OK;
+    }
     ProtectedTransport *transport = protectedTransport;
     while (transport && transport->runtime != host) transport = transport->previous;
     if (mode == 1) return transport && bool(transport->exception);
@@ -450,6 +467,69 @@ void LuaRuntime::shutdown()
                                                   previousContext.state);
 }
 
+LuaRuntime::NativeNamespaceBirth::NativeNamespaceBirth(
+    LuaRuntime &runtime, const void *globals, const void *space) noexcept
+    : m_runtime(&runtime), m_state(runtime.rawState()),
+      m_generation(runtime.generation()), m_globals(globals), m_space(space)
+{
+}
+
+bool LuaRuntime::NativeNamespaceBirth::isCurrent() const noexcept
+{
+    return m_runtime && m_runtime->m_activeNativeBirth == this
+        && m_runtime->rawState() == m_state
+        && m_runtime->generation() == m_generation
+        && m_runtime->lifecycle() == Lifecycle::Running
+        && m_runtime->isCurrentThreadOwner() && m_globals && m_space;
+}
+
+bool LuaRuntime::installNativeNamespaceBirthObserver(const void *owner,
+    std::function<void(const NativeNamespaceBirth &)> observer)
+{
+    QMutexLocker lock(&m_executionMutex);
+    if (!owner || !observer || m_state || m_nativeBirthOffered
+        || m_nativeBirthOwner || lifecycle() != Lifecycle::Running)
+        return false;
+    m_nativeBirthOwner = owner;
+    m_nativeBirthObserver = std::move(observer);
+    return true;
+}
+
+void LuaRuntime::notifyNativeNamespaceBirth() noexcept
+{
+    // The only call site is the lexical tail of FIRST successful initialize.
+    // Mark offered even when no observer exists: late installation never mints
+    // provenance from a previously initialized (or subsequently reused) state.
+    if (m_nativeBirthOffered) return;
+    m_nativeBirthOffered = true;
+    auto observer = std::move(m_nativeBirthObserver);
+    m_nativeBirthObserver = {};
+    m_nativeBirthOwner = nullptr;
+#ifdef QSAN_XP_LEGACY
+    // XpLuaPaths installs an additional native capability graph. It is outside
+    // this fixed bootstrap proof; do not infer anything from its current state.
+    return;
+#endif
+    if (!observer || !m_state || !aiRound56NativeNamespaceBirthDescriptors()
+        || !lua_checkstack(m_state, 4)) return;
+    const int top = lua_gettop(m_state);
+    lua_pushglobaltable(m_state);
+    const void *globals = lua_topointer(m_state, -1);
+    lua_pushliteral(m_state, "sgs");
+    lua_rawget(m_state, -2);
+    const void *space = lua_istable(m_state, -1)
+        ? lua_topointer(m_state, -1) : nullptr;
+    lua_settop(m_state, top);
+    if (!globals || !space) return;
+    NativeNamespaceBirth birth(*this, globals, space);
+    m_activeNativeBirth = &birth;
+    // No configured source, loadfile, require, input callback or caller-selected
+    // path intervenes between CreateLuaState and this source-birth notification.
+    // The observer is noexcept metadata/observer registration only, not Lua.
+    observer(birth);
+    m_activeNativeBirth = nullptr;
+}
+
 bool LuaRuntime::initialize(QString *error)
 {
     QMutexLocker executionLock(&m_executionMutex);
@@ -477,6 +557,20 @@ bool LuaRuntime::initialize(QString *error)
 
     lua_setprotectedbridge(m_state, &protectedBridge, this);
 
+    // Capture the native namespace lookup before any package/AI script runs.
+    // Readonly registry inspection can then recognize the exact SWIG lookup
+    // without invoking a mutable __index function or a namespace getter.
+    const int bootstrapTop = lua_gettop(m_state);
+    lua_getglobal(m_state, "sgs");
+    if (lua_istable(m_state, -1) && lua_getmetatable(m_state, -1)) {
+        lua_pushliteral(m_state, "__index"); lua_rawget(m_state, -2);
+        if (lua_iscfunction(m_state, -1)) {
+            lua_pushvalue(m_state, -1);
+            lua_setfield(m_state, LUA_REGISTRYINDEX, "qsan.native_sgs_namespace_index");
+        }
+    }
+    lua_settop(m_state, bootstrapTop);
+
     m_generation = nextGeneration().fetchAndAddRelaxed(1) + 1;
     m_owner = QThread::currentThread();
     {
@@ -489,6 +583,7 @@ bool LuaRuntime::initialize(QString *error)
     // wrapper around this runtime-local function.
     lua_pushcfunction(m_state, &LuaRuntime::luaRegisterTakeoverStateProvider);
     lua_setglobal(m_state, "__qsan_register_takeover_state_provider");
+    notifyNativeNamespaceBirth();
     return true;
 }
 
@@ -798,6 +893,75 @@ lua_State *LuaRuntime::currentState()
     return currentRuntime ? currentRuntime->state() : nullptr;
 }
 
+bool LuaRuntime::installProtectedEntryObserver(const void *owner,
+    std::function<void(lua_State *, int)> observer)
+{
+    if (!owner || !observer || (m_protectedEntryOwner && m_protectedEntryOwner != owner))
+        return false;
+    m_protectedEntryOwner = owner;
+    m_protectedEntryObserver = std::move(observer);
+    return true;
+}
+
+bool LuaRuntime::installLoadedChunkObserver(const void *owner,
+    std::function<void(lua_State *, int)> observer)
+{
+    if (!owner || !observer || (m_loadedChunkOwner && m_loadedChunkOwner != owner))
+        return false;
+    m_loadedChunkOwner = owner;
+    m_loadedChunkObserver = std::move(observer);
+    return true;
+}
+
+void LuaRuntime::removeLoadedChunkObserver(const void *owner) noexcept
+{
+    if (owner != m_loadedChunkOwner) return;
+    m_loadedChunkObserver = {};
+    m_loadedChunkOwner = nullptr;
+}
+
+void LuaRuntime::notifyLoadedChunk(lua_State *state, int kind) noexcept
+{
+    if (m_loadedChunkObserver) m_loadedChunkObserver(state, kind);
+}
+
+bool LuaRuntime::installBootstrapAsyncObserver(const void *owner,
+    std::function<void(lua_State *, int)> observer)
+{
+    if (!owner || !observer || (m_bootstrapAsyncOwner && m_bootstrapAsyncOwner != owner))
+        return false;
+    m_bootstrapAsyncOwner = owner;
+    m_bootstrapAsyncObserver = std::move(observer);
+    return true;
+}
+
+void LuaRuntime::removeBootstrapAsyncObserver(const void *owner) noexcept
+{
+    if (owner != m_bootstrapAsyncOwner) return;
+    m_bootstrapAsyncObserver = {};
+    m_bootstrapAsyncOwner = nullptr;
+}
+
+thread_local LuaRuntime::InstructionBudgetScope *LuaRuntime::InstructionBudgetScope::s_current=nullptr;
+LuaRuntime::InstructionBudgetScope::InstructionBudgetScope(lua_State *state,lua_Hook hook) noexcept
+    :m_state(state),m_hook(hook),m_previous(s_current) { s_current=this; }
+LuaRuntime::InstructionBudgetScope::~InstructionBudgetScope() { s_current=m_previous; }
+bool LuaRuntime::InstructionBudgetScope::matches(lua_State *state) noexcept
+{
+    // Innermost only: a nested unrelated hook scope cannot borrow its parent.
+    return s_current && state==s_current->m_state && s_current->m_hook
+        && lua_gethook(state)==s_current->m_hook;
+}
+void LuaRuntime::notifyUnclassifiedLuaEntry(lua_State *state,int asyncKind) noexcept
+{
+    if (m_bootstrapAsyncObserver) m_bootstrapAsyncObserver(state, asyncKind);
+    if (asyncKind==4 && InstructionBudgetScope::matches(state)) return;
+    if (acceptAIRound56BootstrapAsyncEntry(state,asyncKind)
+        || acceptAIRound56AsyncEntry(state,asyncKind)) return;
+    if (m_protectedEntryObserver)
+        m_protectedEntryObserver(state, -1);
+}
+
 int LuaRuntime::protectedCall(lua_State *state, int argumentCount,
                               int resultCount, int errorFunction)
 {
@@ -808,14 +972,36 @@ int LuaRuntime::protectedCall(lua_State *state, int argumentCount,
     if (!runtime)
         return lua_pcall(state, argumentCount, resultCount, errorFunction);
 
+    const auto invoke = [&]() {
+        // Independent bootstrap provenance retires before any native-to-Lua
+        // entry, including entries into functions that were parsed earlier.
+        // Negative -(argc+1) distinguishes synchronous entries from VM async
+        // kinds 3/4/7. The observer must not mutate the invocation stack.
+        if (runtime->m_bootstrapAsyncObserver)
+            runtime->m_bootstrapAsyncObserver(state,
+                argumentCount >= 0 && argumentCount < lua_gettop(state) ? -argumentCount - 1 : 0);
+        observeAIRound56AsyncProtectedEntry(state);
+        if (runtime->m_protectedEntryObserver) {
+            const bool inspectionStack = lua_checkstack(state, 8192) != 0;
+            runtime->m_protectedEntryObserver(state, inspectionStack ? argumentCount : -1);
+        }
+        const int depth = runtime->m_protectedCallDepth + 1;
+        QScopedValueRollback<int> callDepth(runtime->m_protectedCallDepth, depth);
+        const int status = protectedCallWithTransport(state, runtime, argumentCount, resultCount, errorFunction);
+        if (status != LUA_OK) {
+            ++runtime->m_protectedCallFailures;
+            ++runtime->m_protectedCallFailuresByDepth[depth];
+        }
+        return status;
+    };
     if (currentRuntime == runtime) {
         LuaInvocationScope invocation(*runtime);
-        return protectedCallWithTransport(state, runtime, argumentCount, resultCount, errorFunction);
+        return invoke();
     }
 
     Binding binding(*runtime, false);
     LuaInvocationScope invocation(*runtime);
-    return protectedCallWithTransport(state, runtime, argumentCount, resultCount, errorFunction);
+    return invoke();
 }
 
 void LuaRuntime::setCurrentForThread(LuaRuntime *runtime)

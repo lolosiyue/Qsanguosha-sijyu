@@ -478,3 +478,16 @@ void HStandardPackage::addWuGenerals()
     dingfeng->addSkill("duanbing");
     dingfeng->addSkill("fenxun");
 }
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_h_standard_wu_generals_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(HMouduan)), 2u);
+ types.emplace(std::type_index(typeid(HZhiheng)), 2u);
+ types.emplace(std::type_index(typeid(HZhihengCount)), 2u);
+ types.emplace(std::type_index(typeid(HDuoshi)), 2u);
+ types.emplace(std::type_index(typeid(HKurou)), 2u);
+ types.emplace(std::type_index(typeid(HKurouTarget)), 3u);
+ types.emplace(std::type_index(typeid(HKurouClear)), 2u);
+ types.emplace(std::type_index(typeid(HQianxun)), 2u);
+}

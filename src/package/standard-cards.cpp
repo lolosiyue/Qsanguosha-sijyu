@@ -1,4 +1,6 @@
+#include "ai-strategy-round56-projection.h"
 //#include "standard.h"
+#include "ai-strategy-round53-collateral.h"
 #include "standard-cards.h"
 //#include "maneuvering.h"
 //#include "general.h"
@@ -28,7 +30,7 @@ Slash::Slash(Suit suit, int number) : BasicCard(suit, number)
 bool Slash::IsAvailable(const Player *player, const Card *slash, bool)
 {
     Card *temporary = slash ? nullptr : new Slash(Card::NoSuit, 0);
-    if (temporary) slash = temporary;
+    if (temporary) { slash = temporary; if(auto*r=Sanguosha->currentRoom())recordAIRound56ProjectionSourceCard(*r,temporary,QStringLiteral("slash")); }
     // Lua target queries may drain managed cards; retain the probe until return.
     CardLifetimeManager &manager = globalCardLifetimeManager();
     CardLifetimeLease lease(manager, manager.observeCard(const_cast<Card *>(slash)));
@@ -1172,6 +1174,7 @@ void Collateral::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &ta
 
 bool Collateral::doCollateral(Room *room, ServerPlayer *killer, ServerPlayer *victim, const QString &prompt, ServerPlayer *user) const
 {
+    AIRound53CollateralEffect collateralEffect(*room,killer,victim,user,this,prompt);
     bool useSlash = false;
     if (killer->canSlash(victim, nullptr, false))
         useSlash = room->askForUseSlashTo(killer, victim, prompt, true, false, false, user, this);
@@ -2150,3 +2153,40 @@ LimitationBrokenPackage::LimitationBrokenPackage()
 ADD_PACKAGE(StandardCard)
 ADD_PACKAGE(StandardExCard)
 ADD_PACKAGE(LimitationBroken)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_standard_cards_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(CrossbowSkill)), 3u);
+ types.recordActivateSource<CrossbowSkill>(2068u); AI_R56_REQUIRE_DECLARATION(CrossbowSkill, getBaseAmount, TargetModSkillV2); AI_R56_REQUIRE_DECLARATION(CrossbowSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(CrossbowSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(DoubleSwordSkill)), 2u);
+ types.recordActivateSource<DoubleSwordSkill>(2069u); AI_R56_REQUIRE_DECLARATION(DoubleSwordSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(DoubleSwordSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(DoubleSwordSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(QinggangSwordSkill)), 2u);
+ types.recordActivateSource<QinggangSwordSkill>(2070u); AI_R56_REQUIRE_DECLARATION(QinggangSwordSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(QinggangSwordSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(QinggangSwordSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(BladeSkill)), 2u);
+ types.recordActivateSource<BladeSkill>(2071u); AI_R56_REQUIRE_DECLARATION(BladeSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(BladeSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(BladeSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(SpearViewAsSkill)), 2u);
+ types.recordActivateSource<SpearViewAsSkill>(2072u); AI_R56_REQUIRE_DECLARATION(SpearViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(SpearViewAsSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(SpearViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(SpearViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(SpearViewAsSkill, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(SpearViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(SpearSkill)), 2u);
+ types.recordActivateSource<SpearSkill>(2073u); AI_R56_REQUIRE_DECLARATION(SpearSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(SpearSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(SpearSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(AxeViewAsSkill)), 2u);
+ types.recordActivateSource<AxeViewAsSkill>(2074u); AI_R56_REQUIRE_DECLARATION(AxeViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(AxeViewAsSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(AxeViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(AxeViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(AxeViewAsSkill, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(AxeViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(AxeSkill)), 2u);
+ types.recordActivateSource<AxeSkill>(2075u); AI_R56_REQUIRE_DECLARATION(AxeSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(AxeSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(AxeSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(HalberdSkill)), 3u);
+ types.recordActivateSource<HalberdSkill>(2076u); AI_R56_REQUIRE_DECLARATION(HalberdSkill, getBaseAmount, TargetModSkillV2); AI_R56_REQUIRE_DECLARATION(HalberdSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HalberdSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(KylinBowSkill)), 2u);
+ types.recordActivateSource<KylinBowSkill>(2077u); AI_R56_REQUIRE_DECLARATION(KylinBowSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(KylinBowSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(KylinBowSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(EightDiagramSkill)), 2u);
+ types.recordActivateSource<EightDiagramSkill>(2078u); AI_R56_REQUIRE_DECLARATION(EightDiagramSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(EightDiagramSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(EightDiagramSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(IceSwordSkill)), 2u);
+ types.recordActivateSource<IceSwordSkill>(2079u); AI_R56_REQUIRE_DECLARATION(IceSwordSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(IceSwordSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(IceSwordSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(RenwangShieldSkill)), 2u);
+ types.recordActivateSource<RenwangShieldSkill>(2080u); AI_R56_REQUIRE_DECLARATION(RenwangShieldSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(RenwangShieldSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(RenwangShieldSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(HorseSkill)), 3u);
+ types.recordActivateSource<HorseSkill>(2081u); AI_R56_REQUIRE_DECLARATION(HorseSkill, getBaseAmount, DistanceSkillV2); AI_R56_REQUIRE_DECLARATION(HorseSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(HorseSkill, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(WoodenOxViewAsSkill)), 2u);
+ types.recordActivateSource<WoodenOxViewAsSkill>(2082u); AI_R56_REQUIRE_DECLARATION(WoodenOxViewAsSkill, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(WoodenOxViewAsSkill, getLimitScope, WoodenOxViewAsSkill); AI_R56_REQUIRE_DECLARATION(WoodenOxViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(WoodenOxViewAsSkill, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(WoodenOxViewAsSkill, targetMode, WoodenOxViewAsSkill); AI_R56_REQUIRE_DECLARATION(WoodenOxViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(WoodenOxSkill)), 2u);
+ types.recordActivateSource<WoodenOxSkill>(2083u); AI_R56_REQUIRE_DECLARATION(WoodenOxSkill, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(WoodenOxSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(WoodenOxSkill, getMaxUsageLimit, Skill);
+}

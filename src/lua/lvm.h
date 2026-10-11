@@ -101,13 +101,36 @@ typedef enum {
       !isempty(slot)))  /* result not empty? */
 
 
+/* Read variants are deliberately separate from fastget: setters also use
+** fastget to find slots, and those internal probes must not count as reads.
+** Observe before copying a result or consulting __index, including misses. */
+#define luaV_readget(L,t,k,slot,f) \
+  ((void)(ttistable(t) && hvalue(t)->nativewatch && \
+    (luaH_observewrite(L,hvalue(t),k,NULL,LUA_TABLE_OBSERVER_READ,0),1)), \
+   luaV_fastget(L,t,k,slot,f))
+#define luaV_readgetstr(L,t,k,slot,f) \
+  ((void)(ttistable(t) && hvalue(t)->nativewatch && \
+    (luaH_observereadstr(L,hvalue(t),k),1)), \
+   luaV_fastget(L,t,k,slot,f))
+#define luaV_readgeti(L,t,k,slot) \
+  ((void)(ttistable(t) && hvalue(t)->nativewatch && \
+    (luaH_observereadi(L,hvalue(t),k),1)), \
+   luaV_fastgeti(L,t,k,slot))
+
 /*
 ** Finish a fast set operation (when fast get succeeds). In that case,
 ** 'slot' points to the place to put the value.
 */
-#define luaV_finishfastset(L,t,slot,v) \
+#define luaV_finishfastset(L,t,k,slot,v) \
     { setobj2t(L, cast(TValue *,slot), v); \
-      luaC_barrierback(L, gcvalue(t), v); }
+      luaC_barrierback(L, gcvalue(t), v); \
+      luaH_notifywrite(L, hvalue(t), k, v, LUA_TABLE_OBSERVER_WRITE); }
+/* VM op sites provide their actual pc without modifying savedpc, installing a
+** debug hook, or exposing the written value. API/native setters keep no writer. */
+#define luaV_finishfastsetatpc(L,t,k,slot,v,pc) \
+    { setobj2t(L, cast(TValue *,slot), v); \
+      luaC_barrierback(L, gcvalue(t), v); \
+      if (hvalue(t)->nativewatch) luaH_observefastwrite(L,hvalue(t),k,v,pc); }
 
 
 /*

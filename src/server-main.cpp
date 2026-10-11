@@ -1,3 +1,4 @@
+#include "ai-strategy-round56-host.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -194,6 +195,7 @@ int qsanStandaloneServerMain(int argc, char **argv)
 int main(int argc, char **argv)
 #endif
 {
+    initializeAIRound56DefaultMessageSink();
     // QHash may initialize while parsing the command line. Select deterministic
     // hashing before QCoreApplication whenever a game seed was requested.
     for (int i = 1; i < argc; ++i) {
@@ -403,6 +405,7 @@ int main(int argc, char **argv)
             });
         shutdownTimer.start();
 #endif
+        { AIRound56ReviewedLogConnect reviewed(&server);
         QObject::connect(&server, &Server::logMessage, &app,
             [&console, &logger](const QString &message) {
                 logger.info(QStringLiteral("server"), message);
@@ -415,6 +418,7 @@ int main(int argc, char **argv)
                 if (console.isInteractive())
                     console.writeLog(message);
             });
+        }
         QObject::connect(&server, &Server::playerJoined, &app,
             [&logger](const QString &playerId, const QString &playerName, int roomId) {
                 logger.info(QStringLiteral("player"), QStringLiteral("joined"), roomId,

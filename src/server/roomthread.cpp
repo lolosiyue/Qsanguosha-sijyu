@@ -1,4 +1,13 @@
+#include "ai-strategy-round54-shebian.h"
+#include "ai-strategy-round54-jijiang.h"
+#include "ai-strategy-round47-xufa-event-scope.h"
+#include "ai-strategy-response-observer.h"
 #include "roomthread.h"
+#include "ai-strategy-round45-natural-event.h"
+#include "ai-strategy-round44-fc-frame.h"
+#include "ai-strategy-round45-context.h"
+#include "ai-strategy-round39-context.h"
+#include "ai-strategy-round50-yuri-events.h"
 #include "managed-rewind-lab.h"
 #include <QScopedValueRollback>
 #include "card-lifetime-manager.h"
@@ -287,6 +296,8 @@ CardUseStruct &CardUseStruct::operator=(const CardUseStruct &other)
 	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
     m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
+    m_aiRound33PhysicalUse=other.m_aiRound33PhysicalUse;
+    m_aiRound47FateUse=other.m_aiRound47FateUse;
     physicalEquipSource=other.physicalEquipSource;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=other.m_ownedCard;
 	targetModReveal=other.targetModReveal;
@@ -303,6 +314,8 @@ CardUseStruct &CardUseStruct::operator=(CardUseStruct &&other) noexcept
 	extra_use=other.extra_use; bypass_cost=other.bypass_cost; skipSkillEffect=other.skipSkillEffect; cardFinished=other.cardFinished;
 	hasSkillActivationRequest=other.hasSkillActivationRequest; sourceRef=other.sourceRef; activationRef=other.activationRef;
     m_acceptedSkillEffectCard=other.m_acceptedSkillEffectCard;
+    m_aiRound33PhysicalUse=std::move(other.m_aiRound33PhysicalUse);
+    m_aiRound47FateUse=std::move(other.m_aiRound47FateUse);
     physicalEquipSource=other.physicalEquipSource;
 	skillExecutionID=other.skillExecutionID; m_ownedCard=std::move(other.m_ownedCard);
 	targetModReveal=std::move(other.targetModReveal);
@@ -317,6 +330,8 @@ CardUseStruct::~CardUseStruct() { globalCardLifetimeManager().releaseEventPayloa
 
 void CardUseStruct::replaceCard(const Card *newCard, Card *ownedCard)
 {
+    m_aiRound33PhysicalUse.reset(); // Replacements/parse cannot inherit an AI admission.
+    m_aiRound47FateUse.reset();
 	Q_ASSERT(!ownedCard || ownedCard == newCard);
 	CardLifetimeManager &manager = globalCardLifetimeManager();
 	CardLifetimeLease replacementLease(manager, manager.liveToken(newCard));
@@ -439,6 +454,7 @@ void CardUseStruct::clientReply()
 
 void CardUseStruct::changeCard(Card*newcard)
 {
+    newcard->retireAIRound56RecursiveFieldOrigins(2u);
 	globalCardLifetimeManager().releaseEventPayload(this);
 	const bool replacingOwnedCard = !m_ownedCard.isNull() && m_ownedCard.data() == card;
 	QVariantMap tag = newcard->tag;
@@ -451,7 +467,7 @@ void CardUseStruct::changeCard(Card*newcard)
 	if (sourceRef.isValid())
 		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 	if (!replacingOwnedCard)
-		newcard->change_cards << card;
+		newcard->appendChangeCardForEvent(card);
 	replaceCard(newcard);
 	if (from) {
 		Room *room = from->getRoom();
@@ -519,6 +535,7 @@ CardResponseStruct::~CardResponseStruct() { globalCardLifetimeManager().releaseE
 
 void CardResponseStruct::changeCard(Card*newcard)
 {
+    newcard->retireAIRound56RecursiveFieldOrigins(2u);
 	globalCardLifetimeManager().releaseEventPayload(this);
 	QVariantMap tag = newcard->tag;
 	for (auto it = m_card->tag.cbegin(); it != m_card->tag.cend(); ++it)
@@ -529,7 +546,7 @@ void CardResponseStruct::changeCard(Card*newcard)
 		newcard->setActivationSkill(activationRef.key.skillName, activationRef.key.instanceID);
 	if (sourceRef.isValid())
 		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
-	newcard->change_cards << m_card;
+	newcard->appendChangeCardForEvent(m_card);
 	m_card = newcard;
 	globalCardLifetimeManager().retainEventPayload(this, {m_card, m_toCard});
 }
@@ -1830,6 +1847,9 @@ void RoomThread::run()
 		room->beginBattleStatistics();
 		room->beginNumericStateHistory();
 		constructTriggerTable();
+        if (!room->isRestoringTakeoverSnapshot())
+            for (ServerPlayer *observer : room->getAllPlayers(true))
+                initializeAIResponseObservations(*room, observer, true);
 		trigger(GameReady, room, nullptr);
 		room->markGameReadyCompleted();
 		if (room->getMode() == "06_3v3") {
@@ -2603,6 +2623,8 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 		// Format 2: use selected_ctx->owner (the skill owner) as the player for cost.
 		Room::ResolutionScope resolution(*room, skillName);
+        AIRound39WendaoScope wendaoScope(*room, v2, selected_ctx);
+        AIRound50YuriScope yuriScope(*room,v2,selected_ctx,int(triggerEvent));
 		ResolutionHistoryEventGuard skillHistory(
 			room->resolutionHistory(), QStringLiteral("skill"),
 			room->historySkillContext(*selected_ctx), room->historyRecordingEnabled());
@@ -2734,7 +2756,11 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
             continue;
         }
         if (!skip_effect) {
-            if (!invokeAuthorCallback([&]() { broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx); })) return false;
+            if (!invokeAuthorCallback([&]() {
+                AIResponseObservationScope observation(*room, v2->objectName(), skill_owner, triggerEvent, *selected_ctx);
+                broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx);
+                observation.commit();
+            })) return false;
             checkTriggerDispatchAbort();
             restoreIdentity();
             selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
@@ -2743,7 +2769,13 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
                 foreach (ServerPlayer *t, selected_ctx->targets) {
                     triggerDispatchStep(triggerEvent, t, v2->objectName());
                     bool target_broken = false;
-                    if (!invokeAuthorCallback([&]() { target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t); })) return false;
+                    if (!invokeAuthorCallback([&]() {
+                        // Target interception is a nested notification boundary,
+                        // not this audited skill's on_effect completion.
+                        AIResponseObservationScope observation(*room, QString(), skill_owner, triggerEvent, *selected_ctx);
+                        target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t);
+                        observation.commit();
+                    })) return false;
                     checkTriggerDispatchAbort();
                     restoreIdentity();
                     selected_ctx->physicalEquipSource = sourceContext.physicalEquipSource;
@@ -2944,6 +2976,10 @@ void recordTurnHpSnapshot(Room *room, qint64 turnId, const QString &boundary, co
 }
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
+    // Before any private trigger eligibility; a declined nested turnover must
+    // revoke the previous Shebian plan exactly as an accepted one does.
+    if(room&&triggerEvent==TurnedOver)invalidateAIRound54Shebian(*room);
+    if(room)enterAIRound54JijiangEvent(*room,int(triggerEvent),target);
     if (isMandatoryCleanup() && (triggerEvent == GameOverJudge || triggerEvent == BuryVictim))
         return triggerMandatoryGameRule(triggerEvent, target, data);
     if (suppressOptionalDispatch()) return false;
@@ -3061,6 +3097,8 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
             room->resolutionHistory().appendFact(eventId, QStringLiteral("target_confirmed"), fact);
         }
     }
+	AIRound44FCUseFrame fcUseFrame(*room, int(triggerEvent), target, data);
+    AIRound45NewgeneralsFrame newgeneralsFrame(*room,int(triggerEvent),target,data);
 	try {
 		broken = dispatchTrigger(triggerEvent, room, target, data);
 	} catch (TriggerEvent) {
@@ -3274,6 +3312,8 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 					room->resolutionHistory(), QStringLiteral("skill"), legacySkillData,
 					room->historyRecordingEnabled() && !isRule);
                 LegacyExecutionFrame legacyFrame;
+                legacyFrame.serial = ++m_legacyFrameSerial;
+                legacyFrame.producer = ts;
                 legacyFrame.skillName = ts->objectName();
                 legacyFrame.event = triggerEvent;
                 legacyFrame.target = target;
@@ -3353,8 +3393,15 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
                     invalidateManagedTurns(journalError);
             } else invalidateManagedTurns(journalError);
         }
+		{ AIRound54JijiangEvent jijiangEvent(*room,int(triggerEvent),target,data);
+          AIRound47XufaEventScope xufaEvent(*room,int(triggerEvent),target,data);
 		room->recordAiEvent(int(triggerEvent), target, data);
-		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
+		if (target) {
+                AI *observerAI = target->getSmartAI();
+                AIRound45NaturalFilterDispatch naturalFilterDispatch(*room, observerAI, target, int(triggerEvent), data);
+                observerAI->filterEvent(triggerEvent, target, data);
+            }
+		}
 		stacked = false;
 		event_stack.pop_back();// pop event stack
 		flushOutermostDeferredWork(room);
@@ -3398,8 +3445,14 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
         checkTriggerDispatchAbort();
         if (!stacked) throw;
         try {
+            { AIRound47XufaEventScope xufaEvent(*room,int(triggerEvent),target,data);
             room->recordAiEvent(int(triggerEvent), target, data);
-            if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
+            if (target) {
+                AI *observerAI = target->getSmartAI();
+                AIRound45NaturalFilterDispatch naturalFilterDispatch(*room, observerAI, target, int(triggerEvent), data);
+                observerAI->filterEvent(triggerEvent, target, data);
+            }
+            }
             checkTriggerDispatchAbort();
             stacked = false;
             event_stack.pop_back();
@@ -3414,6 +3467,28 @@ bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPla
 	//room->tryPause();
     checkTriggerDispatchAbort();
 	return broken;
+}
+
+bool RoomThread::currentThWeijingQuestion(ServerPlayer *viewer, quint64 &serial) const
+{
+    if (!viewer || m_legacyExecutionFrames.isEmpty()) return false;
+    const auto &frame=m_legacyExecutionFrames.last();
+    if (frame.skillName!="thweijing" || frame.producer!=Sanguosha->getTriggerSkill("thweijing")
+        || frame.event!=EventPhaseChanging || frame.target!=viewer || !frame.data
+        || !frame.data->canConvert<PhaseChangeStruct>() || viewer->getKingdom()!="wu"
+        || frame.data->value<PhaseChangeStruct>().from!=Player::NotActive) return false;
+    serial=frame.serial; return true;
+}
+
+bool RoomThread::currentJieyinghQuestionUse(ServerPlayer *viewer, CardUseStruct &use, quint64 &serial) const
+{
+    if (!viewer || m_legacyExecutionFrames.isEmpty()) return false;
+    const auto &frame = m_legacyExecutionFrames.last();
+    if (frame.skillName != "jieyingh" || frame.producer != Sanguosha->getTriggerSkill("jieyingh")
+        || frame.event != PreCardUsed || frame.target != viewer || !frame.data
+        || !frame.data->canConvert<CardUseStruct>()) return false;
+    use = frame.data->value<CardUseStruct>(); serial = frame.serial;
+    return use.from == viewer && use.card && !use.to.isEmpty();
 }
 
 bool RoomThread::isLegacySkillActivationActive(const SkillInstanceRef &source) const

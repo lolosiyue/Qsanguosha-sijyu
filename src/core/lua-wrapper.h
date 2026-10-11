@@ -900,7 +900,7 @@ public:
     }
     inline int getRange() const
     {
-        return range;
+        return Weapon::getRange();
     }
     inline bool isKindOf(const char *cardType) const
     {

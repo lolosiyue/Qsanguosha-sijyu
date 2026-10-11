@@ -1,3 +1,5 @@
+#include "skill-generated-card.h"
+#include "ai-strategy-yczh2016.h"
 #include "skill.h"
 #include "skill-declaration.h"
 #include <QEvent>
@@ -545,11 +547,84 @@ QList<int> ViewAsSkill::getExpandPileCardIds(const Player *player) const
     return uniqueResult;
 }
 
+namespace {
+bool zhangwuGeneratedScope(const ActiveSkillRequest &request)
+{
+    return request.initiator && request.activationRef.ownerObjectName == request.initiator->objectName()
+        && request.activationRef.key.skillName == "lxtx_zhangwu"
+        && request.reason == CardUseStruct::CARD_USE_REASON_PLAY
+        && request.initiator->hasSkill("lxtx_zhangwu")
+        && request.initiator->getMark("lxtx_jiangchi_recast-Clear") <= 0;
+}
+QList<int> zhangwuGeneratedCosts(const ActiveSkillRequest &request)
+{
+    QList<int> costs;
+    if (!zhangwuGeneratedScope(request)) return costs;
+    const bool draw=request.initiator->getMark("lxtx_jiangchi_draw-Clear")>0;
+    for (const Card *card : request.initiator->getHandcards())
+        if (card && (!draw || (card->isKindOf("BasicCard") && !card->isKindOf("Peach")
+            && !card->isKindOf("Analeptic")) || card->isKindOf("EquipCard"))) costs << card->getEffectiveId();
+    return costs;
+}
+}
 void ActiveSkillRequest::setCardSelection(const Card *card)
 {
+    m_aiRound47FateUse.reset(); // A new selection never inherits a preview receipt.
     selectedCardIds = card ? card->getSubcards() : QList<int>();
+    if (card && !card->isVirtualCard()
+        && isNotifiedPhysicalCardSkill(activationRef.key.skillName, reason, pattern))
+        selectedCardIds = {card->getEffectiveId()};
+    if (card && !card->isVirtualCard()
+        && isMarkedPhysicalCardSkill(activationRef.key.skillName, reason, pattern)) selectedCardIds.clear();
+    generatedHandPayment = activationRef.key.skillName == "chopper" || activationRef.key.skillName == "tiaojiaoCMT" || zhangwuGeneratedScope(*this);
+    generatedHandFaceValid = false;
+    generatedHandCosts.clear();
+    if (generatedHandPayment) {
+        generatedHandCosts = selectedCardIds;
+        generatedHandFaceValid = card && card->isVirtualCard() && card->objectName() == "slash"
+            && card->getSkillName(false) == "chopper" && card->getTypeId() == Card::TypeBasic
+            && card->isKindOf("Slash");
+        if (activationRef.key.skillName == "tiaojiaoCMT")
+            generatedHandFaceValid = card && card->isVirtualCard() && card->objectName() == "tiaojiaoCMTCard"
+                && card->isKindOf("SkillCard") && reason == CardUseStruct::CARD_USE_REASON_PLAY;
+        if (activationRef.key.skillName == "lxtx_zhangwu")
+            generatedHandFaceValid = card && card->isVirtualCard() && card->objectName() == "slash"
+                && card->isKindOf("Slash") && card->getSkillName(false) == "lxtx_zhangwuu";
+        generatedHandSuit = card ? int(card->getSuit()) : -1;
+        generatedHandNumber = card ? card->getNumber() : -1;
+        // Chopper chooses zero cards; its native create_card supplies the whole
+        // hand as payment. Keep those payments on Card, never erase subcards.
+        selectedCardIds.clear();
+    }
     const SkillCard *proxy = card ? qobject_cast<const SkillCard *>(card->getRealCard()) : nullptr;
     userString = proxy ? proxy->getUserString() : (card ? card->objectName() : QString());
+}
+
+bool ActiveSkillRequest::generatedCardSelectionValid() const
+{
+    if (!generatedHandPayment) return true;
+    if (activationRef.key.skillName == "lxtx_zhangwu")
+        return generatedHandFaceValid && sourceRef.isValid() && zhangwuGeneratedScope(*this)
+            && !generatedHandCosts.isEmpty() && generatedHandCosts == zhangwuGeneratedCosts(*this)
+            && selectedCardIds.isEmpty();
+    return generatedHandFaceValid && initiator && sourceRef.isValid()
+        && activationRef.ownerObjectName == initiator->objectName()
+        && ((activationRef.key.skillName == "chopper" && !generatedHandCosts.isEmpty())
+            || (activationRef.key.skillName == "tiaojiaoCMT" && reason == CardUseStruct::CARD_USE_REASON_PLAY))
+        && generatedHandCosts == initiator->handCards() && selectedCardIds.isEmpty();
+}
+
+bool ActiveSkillRequest::generatedCardProductMatches(const Card *card) const
+{
+    if (!generatedHandPayment) return true;
+    return generatedCardSelectionValid() && card && card->isVirtualCard()
+        && (activationRef.key.skillName == "lxtx_zhangwu"
+            ? card->objectName() == "slash" && card->getSkillName(false) == "lxtx_zhangwuu" && card->isKindOf("Slash")
+            : activationRef.key.skillName == "chopper"
+                ? card->objectName() == "slash" && card->getSkillName(false) == "chopper"
+                : card->objectName() == "tiaojiaoCMTCard" && card->isKindOf("SkillCard"))
+        && card->getSubcards() == generatedHandCosts && int(card->getSuit()) == generatedHandSuit
+        && card->getNumber() == generatedHandNumber;
 }
 
 ViewAsSkillV2::ViewAsSkillV2(const QString &name, int n)
@@ -755,6 +830,7 @@ ViewAsSkillV2::EffectFlow ViewAsSkillV2::skillEffect(SkillContext &context, Serv
 
     // Manual traversal obeys the same cancellation and post-hook liveness gate.
     if (skipped || context.is_canceled || !target->isAlive()) return ContinueEffects;
+    witnessAIStrategyJiaozhaoDeclaration(*target->getRoom(), context, target);
     return effectOnTarget(context, target);
 }
 

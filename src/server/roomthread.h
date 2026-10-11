@@ -207,6 +207,9 @@ public:
     // A nested card can continue an accepted legacy effect without consuming
     // the same attached source a second time.
     bool isLegacySkillActivationActive(const SkillInstanceRef &source) const;
+    // Finite native question proof; never a public arbitrary frame/tag reader.
+    bool currentJieyinghQuestionUse(ServerPlayer *, CardUseStruct &, quint64 &serial) const;
+    bool currentThWeijingQuestion(ServerPlayer *, quint64 &serial) const;
 
     void addPlayerSkills(ServerPlayer *player, bool invoke_game_start = false);
 
@@ -241,6 +244,8 @@ private:
     bool m_managedRestoredBoundary = false;
     friend struct RoomTestAccess;
     struct LegacyExecutionFrame {
+        quint64 serial = 0;
+        const TriggerSkill *producer = nullptr;
         QString skillName;
         TriggerEvent event;
         ServerPlayer *target = nullptr;
@@ -248,6 +253,7 @@ private:
         QHash<QString, QList<SkillInstanceRef>> sources;
     };
     QList<LegacyExecutionFrame> m_legacyExecutionFrames;
+    quint64 m_legacyFrameSerial = 0;
     QList<SkillInstanceRef> m_activeLegacySources;
 
     struct TriggerDispatchProfile {

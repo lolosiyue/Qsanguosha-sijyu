@@ -413,3 +413,28 @@ void FanchengScenario::onTagSet(Room *room, const QString &key) const
     }
 }
 
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_scenario_fancheng_scenario_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(Guagu)), 2u);
+ types.recordActivateSource<Guagu>(2911u); AI_R56_REQUIRE_DECLARATION(Guagu, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Guagu, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(DujiangViewAsSkill)), 2u);
+ types.recordActivateSource<DujiangViewAsSkill>(2912u); AI_R56_REQUIRE_DECLARATION(DujiangViewAsSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(DujiangViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(DujiangViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Dujiang)), 2u);
+ types.recordActivateSource<Dujiang>(2913u); AI_R56_REQUIRE_DECLARATION(Dujiang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Dujiang, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Flood)), 2u);
+ types.recordActivateSource<Flood>(2914u); AI_R56_REQUIRE_DECLARATION(Flood, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Flood, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(Flood, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(TaichenFight)), 2u);
+ types.recordActivateSource<TaichenFight>(2915u); AI_R56_REQUIRE_DECLARATION(TaichenFight, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(TaichenFight, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(TaichenFight, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Xiansheng)), 2u);
+ types.recordActivateSource<Xiansheng>(2916u); AI_R56_REQUIRE_DECLARATION(Xiansheng, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Xiansheng, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(ZhiyuanViewAsSkill)), 2u);
+ types.recordActivateSource<ZhiyuanViewAsSkill>(2917u); AI_R56_REQUIRE_DECLARATION(ZhiyuanViewAsSkill, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ZhiyuanViewAsSkill, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(ZhiyuanViewAsSkill, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Zhiyuan)), 2u);
+ types.recordActivateSource<Zhiyuan>(2918u); AI_R56_REQUIRE_DECLARATION(Zhiyuan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Zhiyuan, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(FanchengRule)), 2u);
+ types.recordActivateSource<FanchengRule>(2919u); AI_R56_REQUIRE_DECLARATION(FanchengRule, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(FanchengRule, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(CaorenMaxCards)), 3u);
+ types.recordActivateSource<CaorenMaxCards>(2920u); AI_R56_REQUIRE_DECLARATION(CaorenMaxCards, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(CaorenMaxCards, getMaxUsageLimit, Skill);
+}

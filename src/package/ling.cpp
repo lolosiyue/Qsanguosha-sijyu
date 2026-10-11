@@ -437,3 +437,24 @@ LingPackage::LingPackage()
 }
 
 ADD_PACKAGE(Ling)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_ling_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(NeoLuoyi)), 2u);
+ types.recordActivateSource<NeoLuoyi>(937u); AI_R56_REQUIRE_DECLARATION(NeoLuoyi, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(NeoLuoyi, getLimitScope, NeoLuoyi); AI_R56_REQUIRE_DECLARATION(NeoLuoyi, getMaxUsageLimit, NeoLuoyi); AI_R56_REQUIRE_DECLARATION(NeoLuoyi, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(NeoLuoyi, targetMode, NeoLuoyi); AI_R56_REQUIRE_DECLARATION(NeoLuoyi, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(NeoLuoyiBuff)), 2u);
+ types.recordActivateSource<NeoLuoyiBuff>(938u); AI_R56_REQUIRE_DECLARATION(NeoLuoyiBuff, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(NeoLuoyiBuff, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(NeoLuoyiBuff, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(NeoFanjian)), 2u);
+ types.recordActivateSource<NeoFanjian>(939u); AI_R56_REQUIRE_DECLARATION(NeoFanjian, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(NeoFanjian, getLimitScope, NeoFanjian); AI_R56_REQUIRE_DECLARATION(NeoFanjian, getMaxUsageLimit, NeoFanjian); AI_R56_REQUIRE_DECLARATION(NeoFanjian, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(NeoFanjian, targetMode, NeoFanjian); AI_R56_REQUIRE_DECLARATION(NeoFanjian, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Yishi)), 2u);
+ types.recordActivateSource<Yishi>(940u); AI_R56_REQUIRE_DECLARATION(Yishi, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Yishi, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Yishi, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Zhulou)), 2u);
+ types.recordActivateSource<Zhulou>(941u); AI_R56_REQUIRE_DECLARATION(Zhulou, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Zhulou, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Zhulou, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Tannang)), 3u);
+ types.recordActivateSource<Tannang>(942u); AI_R56_REQUIRE_DECLARATION(Tannang, getBaseAmount, DistanceSkillV2); AI_R56_REQUIRE_DECLARATION(Tannang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Tannang, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(NeoJushou)), 2u);
+ types.recordActivateSource<NeoJushou>(943u); AI_R56_REQUIRE_DECLARATION(NeoJushou, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(NeoJushou, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(NeoJushou, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(NeoGanglie)), 2u);
+ types.recordActivateSource<NeoGanglie>(944u); AI_R56_REQUIRE_DECLARATION(NeoGanglie, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(NeoGanglie, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(NeoGanglie, getMaxUsageLimit, Skill);
+}

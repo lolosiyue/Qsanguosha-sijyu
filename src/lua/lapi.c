@@ -647,7 +647,7 @@ LUA_API int lua_pushthread (lua_State *L) {
 l_sinline int auxgetstr (lua_State *L, const TValue *t, const char *k) {
   const TValue *slot;
   TString *str = luaS_new(L, k);
-  if (luaV_fastget(L, t, str, slot, luaH_getstr)) {
+  if (luaV_readgetstr(L, t, str, slot, luaH_getstr)) {
     setobj2s(L, L->top.p, slot);
     api_incr_top(L);
   }
@@ -684,7 +684,7 @@ LUA_API int lua_gettable (lua_State *L, int idx) {
   TValue *t;
   lua_lock(L);
   t = index2value(L, idx);
-  if (luaV_fastget(L, t, s2v(L->top.p - 1), slot, luaH_get)) {
+  if (luaV_readget(L, t, s2v(L->top.p - 1), slot, luaH_get)) {
     setobj2s(L, L->top.p - 1, slot);
   }
   else
@@ -705,7 +705,7 @@ LUA_API int lua_geti (lua_State *L, int idx, lua_Integer n) {
   const TValue *slot;
   lua_lock(L);
   t = index2value(L, idx);
-  if (luaV_fastgeti(L, t, n, slot)) {
+  if (luaV_readgeti(L, t, n, slot)) {
     setobj2s(L, L->top.p, slot);
   }
   else {
@@ -743,6 +743,7 @@ LUA_API int lua_rawget (lua_State *L, int idx) {
   lua_lock(L);
   api_checknelems(L, 1);
   t = gettable(L, idx);
+  luaH_notifywrite(L, t, s2v(L->top.p - 1), NULL, LUA_TABLE_OBSERVER_READ);
   val = luaH_get(t, s2v(L->top.p - 1));
   L->top.p--;  /* remove key */
   return finishrawget(L, val);
@@ -753,6 +754,7 @@ LUA_API int lua_rawgeti (lua_State *L, int idx, lua_Integer n) {
   Table *t;
   lua_lock(L);
   t = gettable(L, idx);
+  if (t->nativewatch) luaH_observereadi(L, t, n);
   return finishrawget(L, luaH_getint(t, n));
 }
 
@@ -763,6 +765,7 @@ LUA_API int lua_rawgetp (lua_State *L, int idx, const void *p) {
   lua_lock(L);
   t = gettable(L, idx);
   setpvalue(&k, cast_voidp(p));
+  luaH_notifywrite(L, t, &k, NULL, LUA_TABLE_OBSERVER_READ);
   return finishrawget(L, luaH_get(t, &k));
 }
 
@@ -839,7 +842,8 @@ static void auxsetstr (lua_State *L, const TValue *t, const char *k) {
   TString *str = luaS_new(L, k);
   api_checknelems(L, 1);
   if (luaV_fastget(L, t, str, slot, luaH_getstr)) {
-    luaV_finishfastset(L, t, slot, s2v(L->top.p - 1));
+    TValue key; setsvalue(L, &key, str);
+    luaV_finishfastset(L, t, &key, slot, s2v(L->top.p - 1));
     L->top.p--;  /* pop value */
   }
   else {
@@ -867,7 +871,7 @@ LUA_API void lua_settable (lua_State *L, int idx) {
   api_checknelems(L, 2);
   t = index2value(L, idx);
   if (luaV_fastget(L, t, s2v(L->top.p - 2), slot, luaH_get)) {
-    luaV_finishfastset(L, t, slot, s2v(L->top.p - 1));
+    luaV_finishfastset(L, t, s2v(L->top.p - 2), slot, s2v(L->top.p - 1));
   }
   else
     luaV_finishset(L, t, s2v(L->top.p - 2), s2v(L->top.p - 1), slot);
@@ -889,7 +893,8 @@ LUA_API void lua_seti (lua_State *L, int idx, lua_Integer n) {
   api_checknelems(L, 1);
   t = index2value(L, idx);
   if (luaV_fastgeti(L, t, n, slot)) {
-    luaV_finishfastset(L, t, slot, s2v(L->top.p - 1));
+    TValue key; setivalue(&key, n);
+    luaV_finishfastset(L, t, &key, slot, s2v(L->top.p - 1));
   }
   else {
     TValue aux;
@@ -907,6 +912,7 @@ static void aux_rawset (lua_State *L, int idx, TValue *key, int n) {
   api_checknelems(L, n);
   t = gettable(L, idx);
   luaH_set(L, t, key, s2v(L->top.p - 1));
+  luaH_notifywrite(L, t, key, s2v(L->top.p - 1), LUA_TABLE_OBSERVER_WRITE);
   invalidateTMcache(t);
   luaC_barrierback(L, obj2gco(t), s2v(L->top.p - 1));
   L->top.p -= n;
@@ -932,6 +938,8 @@ LUA_API void lua_rawseti (lua_State *L, int idx, lua_Integer n) {
   api_checknelems(L, 1);
   t = gettable(L, idx);
   luaH_setint(L, t, n, s2v(L->top.p - 1));
+  { TValue key; setivalue(&key, n);
+    luaH_notifywrite(L, t, &key, s2v(L->top.p - 1), LUA_TABLE_OBSERVER_WRITE); }
   luaC_barrierback(L, obj2gco(t), s2v(L->top.p - 1));
   L->top.p--;
   lua_unlock(L);
@@ -953,6 +961,7 @@ LUA_API int lua_setmetatable (lua_State *L, int objindex) {
   switch (ttype(obj)) {
     case LUA_TTABLE: {
       hvalue(obj)->metatable = mt;
+      luaH_notifywrite(L, hvalue(obj), NULL, NULL, LUA_TABLE_OBSERVER_METATABLE);
       if (mt) {
         luaC_objbarrier(L, gcvalue(obj), mt);
         luaC_checkfinalizer(L, gcvalue(obj), mt);
@@ -1109,6 +1118,11 @@ LUA_API int lua_load (lua_State *L, lua_Reader reader, void *data,
       setobj(L, f->upvals[0]->v.p, gt);
       luaC_barrier(L, f->upvals[0], gt);
     }
+    /* Observation only. This covers nested dofile/loadfile/require chunks,
+       which need not enter through the host's protectedCall wrapper. The
+       host sees the actual compiled closure on top of the existing stack. */
+    if (G(L)->protectedbridge)
+      G(L)->protectedbridge(L, NULL, NULL, G(L)->protectedbridgehost, 5);
   }
   lua_unlock(L);
   return status;
@@ -1264,6 +1278,7 @@ LUA_API int lua_next (lua_State *L, int idx) {
   lua_lock(L);
   api_checknelems(L, 1);
   t = gettable(L, idx);
+  luaH_notifywrite(L, t, NULL, NULL, LUA_TABLE_OBSERVER_ENUMERATE);
   more = luaH_next(L, t, L->top.p - 1);
   if (more) {
     api_incr_top(L);

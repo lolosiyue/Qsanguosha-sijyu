@@ -1,7 +1,16 @@
 #include <QScopeGuard>
+#include "ai-strategy-round47b-fate-receipt.h"
 #include "player-decision-service.h"
+#include "ai-strategy-round53-collateral.h"
+#include "ai-strategy-round53-xufa-response.h"
+#include "ai-strategy-round53-xuanzhu-response.h"
+#include "ai-strategy-round47-fengyi.h"
+#include "ai-strategy-choice-continuity.h"
+#include "ai-strategy-round27-jieyingh.h"
+#include "ai-strategy-round29-response.h"
 
 #include "ai.h"
+#include "ai-strategy-animecard.h"
 #include "engine.h"
 #include "qt-collection-utils.h"
 #include "event-dispatcher.h"
@@ -68,6 +77,7 @@ QVariant PlayerDecisionService::findTestOverride(ServerPlayer *player, const QSt
 bool PlayerDecisionService::askForSkillInvoke(ServerPlayer *player, const QString &skill_name,
                                               const QVariant &data, bool notify)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room, "invoke", player, skill_name);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
     QString skillName = skill_name;
     if (skill_name.contains("$"))
@@ -134,6 +144,7 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
                                             const QString &choices, const QVariant &data,
                                             const QString &except_choices, const QString &tip)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room, "choice", player, skill_name);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
 
@@ -203,6 +214,7 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
 
 Card::Suit PlayerDecisionService::askForSuit(ServerPlayer *player, const QString &reason)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_SUIT);
@@ -231,6 +243,7 @@ Card::Suit PlayerDecisionService::askForSuit(ServerPlayer *player, const QString
 QString PlayerDecisionService::askForKingdom(ServerPlayer *player, const QString &reason,
                                              QStringList kingdoms, bool send_log)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_KINGDOM);
@@ -281,6 +294,7 @@ QString PlayerDecisionService::askForKingdom(ServerPlayer *player, const QString
 QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QStringList &generals,
                                              const QString &default_choice, const QString &reason)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_GENERAL);
@@ -351,6 +365,7 @@ QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QString
 
 QString PlayerDecisionService::askForOrder(ServerPlayer *player, const QString &default_choice)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_ORDER);
@@ -366,6 +381,7 @@ QString PlayerDecisionService::askForOrder(ServerPlayer *player, const QString &
 QString PlayerDecisionService::askForRole(ServerPlayer *player, const QStringList &roles,
                                           const QString &scheme)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_ROLE_3V3);
@@ -387,6 +403,7 @@ int PlayerDecisionService::askForAG(ServerPlayer *player, const QList<int> &card
                                     bool refusable, const QString &reason,
                                     const QString &prompt)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_AMAZING_GRACE);
@@ -425,6 +442,7 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
     const QString &skillName, const QString &prompt, bool optional,
     bool notify_skill)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room,"player_chosen",player,skillName);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     // Empty candidate sets are resolved server-side and must not leave clients
     // focused on a request that will never arrive.
@@ -491,6 +509,8 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
         QVariant data = QString("playerChosen:%1:%2").arg(log.arg).arg(choice->objectName());
         m_eventDispatcher.dispatch(ChoiceMade, player, data);
     }
+    if (log.arg == QStringLiteral("reijyuu"))
+        witnessAIStrategyReijyuuChoice(m_room, player, targets.contains(choice) ? choice : nullptr);
     return choice;
 }
 
@@ -499,6 +519,7 @@ QList<ServerPlayer *> PlayerDecisionService::askForPlayersChosen(
     const QString &skillName, int min_num, int max_num, const QString &prompt,
     bool notify_skill, bool sort_ActionOrder)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     // Apply the same no-request contract to multi-select after Akarin filtering.
     if (targets.isEmpty())
@@ -579,6 +600,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
                                             bool handcard_visible, Card::HandlingMethod method,
                                             const QList<int> &disabled_ids, bool can_cancel)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room,"card_chosen",player,reason);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_CARD);
@@ -630,7 +652,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
             QElapsedTimer timer;
             timer.start();
             player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-            m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
+            m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id, handcard_visible);
             if (Config.AIDelay > timer.elapsed())
                 m_room.thread->delay(Config.AIDelay - timer.elapsed());
         } else {
@@ -649,7 +671,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
                 ai = player->getAI();
                 if (ai) {
                     player->setTag("cardChosenForAI", ListI2V(disabled_ids));
-                    m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id);
+                    m_room.decideAiCardChosen(player, who, flags_copy, reason, method, card_id, handcard_visible);
                 }
             }
         }
@@ -683,6 +705,7 @@ int PlayerDecisionService::askForCardChosen(ServerPlayer *player, ServerPlayer *
 const Card *PlayerDecisionService::askForCardShow(ServerPlayer *player, ServerPlayer *requestor,
                                                   const QString &reason)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_SHOW_CARD);
@@ -714,6 +737,7 @@ const Card *PlayerDecisionService::askForCardShow(ServerPlayer *player, ServerPl
 const Card *PlayerDecisionService::askForPindian(ServerPlayer *player, ServerPlayer *from,
                                                  const QString &reason)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     if (!from->isAlive() || !player->isAlive())
         return nullptr;
@@ -749,6 +773,7 @@ const Card *PlayerDecisionService::askForPindian(ServerPlayer *player, ServerPla
 QList<const Card *> PlayerDecisionService::askForPindianRace(ServerPlayer *from, ServerPlayer *to,
                                                              const QString &reason)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     if (!from->isAlive() || !to->isAlive())
         return QList<const Card *>() << nullptr << nullptr;
@@ -846,6 +871,7 @@ static bool hasGenericActiveSkillUsage(const ViewAsSkillV2 *skill)
 QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QString&reason, QList<SkillContext> &contexts,
                                bool optional, const QVariant&data)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_TRIGGER_ORDER);
@@ -1001,6 +1027,7 @@ bool PlayerDecisionService::verifyNullificationResponse(ServerPlayer *player, co
 
 const Card* PlayerDecisionService::askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	/*_NullificationAiHelper aiHelper;
 	aiHelper.m_from = from;
@@ -1011,6 +1038,7 @@ const Card* PlayerDecisionService::askForNullification(const Card*trick, ServerP
 
 const Card* PlayerDecisionService::_askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	m_room.tryPause();
 	CardUseStruct card_use = m_room.getTag("UseHistory"+trick->toString()).value<CardUseStruct>();
 	if (card_use.no_respond_list.contains("_ALL_TARGETS")||card_use.no_offset_list.contains("_ALL_TARGETS")) return nullptr;
@@ -1164,6 +1192,8 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 	const QVariant&data, Card::HandlingMethod method, ServerPlayer*m_who, bool isRetrial, const QString&skill_name,
 	bool isProvision, const Card*m_toCard)
 {
+    AIRound47FengyiQuestion fengyiQuestion(m_room,player,pattern,prompt,data,int(method),isRetrial);
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	//Q_ASSERT(pattern != "slash" || method != Card::MethodUse); // use askForUseSlashTo instead
 	if (!player->isAlive()) return nullptr;
@@ -1586,8 +1616,10 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 			request.pattern = _pattern;
 			request.initiator = responseCtx.initiator;
             request.activationRef = responseCtx.activationRef;
+            request.sourceRef = responseCtx.sourceRef;
             request.setCardSelection(resp.m_card);
-			const bool paidCost = responseActiveSkill->cost(&m_room, responseCtx, request);
+			const bool paidCost = request.generatedCardSelectionValid()
+                && responseActiveSkill->cost(&m_room, responseCtx, request);
             restoreSkillContextIdentity(responseCtx, responseIdentity);
             responseCtx.invoker = responseIdentity.invoker;
             if (!paidCost) {
@@ -1657,8 +1689,10 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 			request.pattern = _pattern;
 			request.initiator = responseCtx.initiator;
             request.activationRef = responseCtx.activationRef;
+            request.sourceRef = responseCtx.sourceRef;
             request.setCardSelection(resp.m_card);
-			const bool paid = responseActiveSkill->pay(&m_room, responseCtx, request);
+			const bool paid = request.generatedCardSelectionValid()
+                && responseActiveSkill->pay(&m_room, responseCtx, request);
             restoreSkillContextIdentity(responseCtx, responseIdentity);
             responseCtx.invoker = responseInvoker;
 			if (!paid || responseCtx.is_canceled) {
@@ -1828,6 +1862,7 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
                 request.pattern = _pattern;
                 request.initiator = player;
                 request.activationRef = resp.activationRef;
+                request.sourceRef = resp.sourceRef;
                 request.setCardSelection(resp.m_card);
                 historyKey = historySkill->historyKey(request);
             }
@@ -1940,6 +1975,11 @@ const Card* PlayerDecisionService::askForCard(ServerPlayer*player, const QString
 CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, const QString&pattern, const QString&prompt, int notice_index,
 	Card::HandlingMethod method, bool addHistory, ServerPlayer*who, const Card*whocard, QString flag)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
+    AIRound53XufaInquiryScope xufaInquiry(m_room,player,pattern,prompt,int(method));
+    AIRound53XuanzhuInquiryScope xuanzhuInquiry(m_room,player,pattern,prompt,int(method));
+    AIRound53CollateralQuestion collateralQuestion(m_room,player,pattern,prompt,int(method));
+    AIRound47FateInquiry fateInquiry(m_room,player,pattern);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	//Q_ASSERT(method != Card::MethodResponse);
 	if (!player->isAlive()) return CardUseStruct();
@@ -1952,6 +1992,9 @@ CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, co
 	}else
 		m_room.m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
 	
+	// Native observer only: no tag, skill, rule, RNG or revision write.
+	AIRound27JieyinghQuestion jieyinghQuestion(m_room, player, pattern, prompt, int(method));
+    AIRound29ZhifengQuestion zhifengQuestion(m_room, player, pattern, prompt, int(method));
 	QStringList asked;
 	asked << pattern << prompt << "use";
 	if (whocard){
@@ -2018,6 +2061,7 @@ CardUseStruct PlayerDecisionService::askForUseCardStruct(ServerPlayer*player, co
 CardUseStruct PlayerDecisionService::askForUseSlashToStruct(ServerPlayer*slasher, QList<ServerPlayer*> victims, const QString&prompt,
 	bool distance_limit, bool disable_extra, bool addHistory, ServerPlayer*who, const Card*whocard, QString flag)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	// The realization of this function in the Slash::onUse and Slash::targetFilter.
 	m_room.setPlayerFlag(slasher, "slashTargetFix");
@@ -2041,6 +2085,7 @@ CardUseStruct PlayerDecisionService::askForUseSlashToStruct(ServerPlayer*slasher
 
 const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, ServerPlayer*dying)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	QSet<QString> rejected;
 	forever {
 		m_room.getThread()->settlementStepCheckpoint(dying);
@@ -2099,6 +2144,7 @@ const Card* PlayerDecisionService::askForSinglePeach(ServerPlayer*player, Server
 
 void PlayerDecisionService::activate(ServerPlayer*player, CardUseStruct&card_use)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room, "activate", player);
 	m_room.tryPause();
 
 	QVariant playPhaseData;
@@ -2168,6 +2214,7 @@ void PlayerDecisionService::activate(ServerPlayer*player, CardUseStruct&card_use
 Card* PlayerDecisionService::askForDiscard(ServerPlayer*player, const QString&reason, int discard_num, int min_num,
 	bool optional, bool include_equip, const QString&prompt, const QString&pattern, const QString&skill_name)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	if (!player->isAlive())
 		return nullptr;
@@ -2277,6 +2324,7 @@ Card* PlayerDecisionService::askForDiscard(ServerPlayer*player, const QString&re
 Card* PlayerDecisionService::askForExchange(ServerPlayer*player, const QString&reason, int exchange_num, int min_num,
 	bool include_equip, const QString&prompt, bool optional, const QString&pattern)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	if (!player->isAlive())
 		return nullptr;
@@ -2295,7 +2343,14 @@ Card* PlayerDecisionService::askForExchange(ServerPlayer*player, const QString&r
 		}
 	}
 	if(to_exchange.length()>min_num||(optional&&to_exchange.length()==min_num)){
-		const QList<int> ai_candidates = to_exchange;
+		// The preliminary min-count scan above is only an inquiry gate.  The AI
+		// exchange answer may legally contain any matching owned HE card, so the
+		// isolated offered-ID authority must contain that complete same domain.
+		QList<int> ai_candidates;
+		foreach (const Card *candidate, cards) {
+			if (Sanguosha->matchExpPattern(pattern, player, candidate))
+				ai_candidates << candidate->getId();
+		}
 		AI*ai = player->getAI();
 		player->setFlags("Global_AIDiscardExchanging");
 		if (ai){// share the same callback interface
@@ -2344,6 +2399,7 @@ Card* PlayerDecisionService::askForExchange(ServerPlayer*player, const QString&r
 
 PlayerDecisionService::GuanxingSelection PlayerDecisionService::askForGuanxingSelection(ServerPlayer *zhuge, const QList<int> &cards, int guanxing_type)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
     CardLifetimeScope cardScope(globalCardLifetimeManager());
 	m_room.tryPause();
 	m_room.notifyMoveFocus(zhuge, S_COMMAND_SKILL_GUANXING);
@@ -2398,6 +2454,7 @@ CardsMoveStruct PlayerDecisionService::askForYijiStruct(ServerPlayer*guojia, QLi
 	bool is_preview, bool visible, bool optional, int max_num, QList<ServerPlayer*> players,
 	CardMoveReason reason, const QString&prompt, bool notify_skill, bool get)
 {
+    AIChoiceContinuityInquiry scalarContinuity(m_room);
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	CardsMoveStruct move;
 	if (max_num == -1) max_num = cards.length();

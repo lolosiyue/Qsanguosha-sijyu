@@ -77,6 +77,25 @@ public:
     quint64 nextDecisionId() { return ++m_nextDecisionId; }
     quint64 stateRevision() const { return m_stateRevision.load(std::memory_order_relaxed); }
     void advanceStateRevision(StateMutation mutation);
+    // Native transport interruption only. Safe from socket/owner threads:
+    // no Lua, QObject traversal, ledger mutation, allocation or notification.
+    quint64 xufaTransportEpoch() const noexcept {
+        return m_xufaTransportEpoch.load(std::memory_order_acquire);
+    }
+    void revokeXufaTransportContinuity() noexcept {
+        quint64 old = m_xufaTransportEpoch.load(std::memory_order_relaxed);
+        while (old != 0 && !m_xufaTransportEpoch.compare_exchange_weak(
+            old, old == quint64(-1) ? 0 : old + 1,
+            std::memory_order_acq_rel, std::memory_order_relaxed)) {}
+        // Zero is an exhausted tombstone; never wrap back to a valid stamp.
+    }
+    // AI source priority provenance only; no Lua/data inspection in invalidation.
+    quint64 prioritySourceEpoch() const noexcept { return m_prioritySourceEpoch.load(std::memory_order_acquire); }
+    void revokePrioritySource() noexcept {
+        quint64 old=m_prioritySourceEpoch.load(std::memory_order_relaxed);
+        while(old!=0&&!m_prioritySourceEpoch.compare_exchange_weak(old,old==quint64(-1)?0:old+1,
+            std::memory_order_acq_rel,std::memory_order_relaxed)) {}
+    }
     void seedRandom(quint64 seed);
 
     void addPackage(Package *package);
@@ -144,6 +163,8 @@ private:
     bool m_definitionsLoaded;
     quint64 m_nextDecisionId;
     std::atomic<quint64> m_stateRevision;
+    std::atomic<quint64> m_xufaTransportEpoch {1};
+    std::atomic<quint64> m_prioritySourceEpoch {1};
     std::atomic<ShutdownState> m_shutdownState {ShutdownState::Running};
     bool m_finalMarkerEmitted = false;
     const void *m_previousDomain = nullptr;

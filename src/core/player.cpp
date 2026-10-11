@@ -1,4 +1,16 @@
+#include "ai-strategy-round56-projection.h"
+#include "ai-strategy-round47-xufa-query-scope.h"
+#include "ai-strategy-round54-public-skill.h"
+#include "ai-strategy-round45-continuity.h"
+#include "ai-strategy-round26-helpers.h"
 #include "player.h"
+#include "player-initial-source-origin.h"
+#include <map>
+#include <mutex>
+#include "player-armor-effect-domain.h"
+#include "equipment-name-cache.h"
+#include "ai-owner-range-query-scope.h"
+#include "notified-pile-query-scope.h"
 #include "hegemony-mode.h"
 #include "engine.h"
 #include "qt-collection-utils.h"
@@ -27,6 +39,61 @@ namespace {
 std::atomic<quint64> g_playerGeneration{1};
 }
 
+namespace {
+// Only the real Player constructor issues these receipts. No gameplay value or
+// map occupancy is ever examined; a mutation attempt cannot restore a receipt.
+struct InitialPlayerOrigin { bool marks=true,skills=true,publicCards=true; };
+struct InitialPlayerOrigins {
+ std::mutex mutex;std::map<const Player*,InitialPlayerOrigin> entries;
+};
+std::atomic<bool> initialPlayerOriginsHealthy{true};
+InitialPlayerOrigins &initialPlayerOrigins(){static InitialPlayerOrigins x;return x;}
+void bornInitialPlayerOrigin(const Player*p)noexcept{
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  x.entries.insert_or_assign(p,InitialPlayerOrigin{});
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+void clearInitialPlayerOrigin(const Player*p)noexcept{
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);x.entries.erase(p);
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+bool initialPlayerOrigin(const Player*p,bool marks)noexcept{
+ if(!p||!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return false;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  auto i=x.entries.find(p);return i!=x.entries.end()&&(marks?i->second.marks:i->second.skills);
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);return false;}
+}
+void retireInitialPlayerOrigin(const Player*p,bool marks)noexcept{
+ if(!p||!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  auto i=x.entries.find(p);if(i!=x.entries.end())(marks?i->second.marks:i->second.skills)=false;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+}
+bool hasAIRound56PlayerEmptyMarksOrigin(const Player&p)noexcept{
+ return !AIMarkQueryScope::isActive()&&initialPlayerOrigin(&p,true);
+}
+bool hasAIRound56PlayerEmptySkillsOrigin(const Player&p)noexcept{return initialPlayerOrigin(&p,false);}
+void retireAIRound56PlayerMarksOrigin(const Player*p)noexcept{retireInitialPlayerOrigin(p,true);}
+void retireAIRound56PlayerSkillsOrigin(const Player*p)noexcept{retireInitialPlayerOrigin(p,false);}
+// This bit covers the original default-constructed equipment, judging and pile
+// containers jointly. No occupancy/card/value read can issue or restore it.
+bool hasAIRound56PlayerEmptyPublicCardsOrigin(const Player&p)noexcept{
+ if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return false;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  auto i=x.entries.find(&p);return i!=x.entries.end()&&i->second.publicCards;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);return false;}
+}
+void retireAIRound56PlayerPublicCardsOrigin(const Player*p)noexcept{
+ if(!p||!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
+ try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);
+  auto i=x.entries.find(p);if(i!=x.entries.end())i->second.publicCards=false;
+ }catch(...){initialPlayerOriginsHealthy.store(false,std::memory_order_release);}
+}
+
+
 Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
     actual_general1(nullptr), actual_general2(nullptr),
@@ -37,6 +104,7 @@ Player::Player(QObject *parent)
     hasjudgearea(true),
     role_shown(false)
 {
+    bornInitialPlayerOrigin(this);
 	equip_area << 0 << 1 << 2 << 3 << 4;
 	static QList<const char*> areas;
 	if(areas.isEmpty()) areas << "weapon_area" << "armor_area" << "defensive_horse_area" << "offensive_horse_area" << "treasure_area";
@@ -173,6 +241,7 @@ void Player::setSeat(int seat)
 
 Player::~Player()
 {
+    clearInitialPlayerOrigin(this);
     g_playerGeneration.fetch_add(1, std::memory_order_acq_rel);
     clearTags();
 }
@@ -266,6 +335,9 @@ void Player::setFlags(const QString &flag)
 
 bool Player::hasFlag(const QString &flag) const
 {
+    bool hypothetical;
+    if (AIOwnerRangeQueryScope::lookup(this, flag, hypothetical)) return hypothetical;
+    if (flag == QLatin1String("slashNoDistanceLimit") && AITianyiQueryScope::noDistance(this)) return true;
     return flags.contains(flag);
 }
 
@@ -295,6 +367,7 @@ bool playerMayHaveVirtualEquip(const Player *player)
 
 int Player::getAttackRange(bool include_weapon) const
 {
+    AIRound47XufaQueryScope xufaQuery(Sanguosha->currentRoom());
     if (hasFlag("InfinityAttackRange"))
         return 999;
 
@@ -393,6 +466,7 @@ void Player::removeAttackRangePair(const Player *player)
 
 int Player::distanceTo(const Player *other, int distance_fix) const
 {
+    AIRound47XufaQueryScope xufaQuery(Sanguosha->currentRoom());
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_distanceTo);
 	if (!other || this == other)
 		return 0;
@@ -623,6 +697,9 @@ const Player *Player::getLord(bool include_death) const
 
 bool Player::hasSkill(const QString &skill_name, bool include_lose) const
 {
+    // R54 aiNoTo nonwriter proof: An explicit include_lose query reads only the SSOT map; empty names return immediately. This is selected before inspecting private ownership.
+    const bool sourceNonwriter = !include_lose && !skill_name.isEmpty() && aiRound54PublicHasSkill(skill_name);
+    AIRound47XufaQueryScope xufaQuery((include_lose || skill_name.isEmpty()) ? nullptr : Sanguosha->currentRoom(), nullptr, false, sourceNonwriter, sourceNonwriter);
     AiProbe::ScopedProbe probe(AiProbe::Slot_hasSkill);
     if(skill_name.isEmpty()) return false;
 
@@ -692,6 +769,10 @@ bool Player::ownsSkill(const QString &skill_name) const
 
 bool Player::hasSkill(const Skill *skill, bool include_lose) const
 {
+    // R55: a public non-lord definition with include_lose reaches only the SSOT
+    // map. Lord definitions still require the unproved hasLordSkill call tree.
+    const bool sourceNonwriter = aiRound54PublicHasSkill(skill, include_lose);
+    AIRound47XufaQueryScope xufaQuery((!skill) ? nullptr : Sanguosha->currentRoom(), nullptr, false, sourceNonwriter, sourceNonwriter);
     if (!skill) return false;
     if (skill->isLordSkill() && !hasLordSkill(skill->objectName())) return false;
     return hasSkill(skill->objectName(), include_lose);
@@ -699,6 +780,9 @@ bool Player::hasSkill(const Skill *skill, bool include_lose) const
 
 bool Player::hasSkills(const QString &skill_name, bool include_lose) const
 {
+    // R54 aiNoTo nonwriter proof: All disjuncts use the non-virtual QString overload. With include_lose, every possible ownership branch is a map read only.
+    const bool sourceNonwriter = !include_lose && !skill_name.isEmpty() && aiRound54PublicHasSkill(skill_name, true);
+    AIRound47XufaQueryScope xufaQuery((include_lose || skill_name.isEmpty()) ? nullptr : Sanguosha->currentRoom(), nullptr, false, sourceNonwriter, sourceNonwriter);
     foreach(QString skill, skill_name.split("|")){
         bool checkpoint = true;
         foreach(QString sk, skill.split("+")){
@@ -745,6 +829,7 @@ bool Player::ownSkill(const Skill *skill) const
 
 bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 {
+    AIRound47XufaQueryScope xufaQuery(Sanguosha->currentRoom());
     if (Config.EnableHegemony) {
         const Skill *skill = Sanguosha->getSkill(skill_name);
         return skill && skill->isLordSkill() && isLord() && hasSkill(skill_name, include_lose);
@@ -767,11 +852,14 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 
 bool Player::hasLordSkill(const Skill *skill, bool include_lose) const
 {
+    AIRound47XufaQueryScope xufaQuery(Sanguosha->currentRoom());
     return skill&&hasLordSkill(skill->objectName(), include_lose);
 }
 
 bool Player::isSkillInvalid(const Skill *skill, int instanceId) const
 {
+    const bool sourceNonwriter = aiRound54PublicIsSkillInvalid(skill);
+    AIRound47XufaQueryScope xufaQuery(Sanguosha->currentRoom(), nullptr, false, sourceNonwriter, sourceNonwriter);
     if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_isSkillInvalid);
     if (!skill) return false;
 
@@ -809,6 +897,8 @@ bool Player::isSkillInvalid(const Skill *skill, int instanceId) const
 
 bool Player::isSkillInvalid(const QString &skill_name, int instanceId) const
 {
+    const bool sourceNonwriter = aiRound54PublicIsSkillInvalid(skill_name);
+    AIRound47XufaQueryScope xufaQuery(Sanguosha->currentRoom(), nullptr, false, sourceNonwriter, sourceNonwriter);
     const Skill *skill = Sanguosha->getSkill(skill_name);
     if (!skill) return false;
     return isSkillInvalid(skill, instanceId);
@@ -816,6 +906,7 @@ bool Player::isSkillInvalid(const QString &skill_name, int instanceId) const
 
 int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     return acquireSkill(skill_name, head, instanceId, SkillInstanceRef(), SkillInstanceRef());
 }
 
@@ -823,6 +914,7 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId,
                          const SkillInstanceRef &frozenSource,
                          const SkillInstanceRef &grantActivation)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     return acquireSkill(skill_name, head, instanceId, frozenSource, grantActivation, false);
 }
 
@@ -830,6 +922,7 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId,
                          const SkillInstanceRef &frozenSource,
                          const SkillInstanceRef &grantActivation, bool unbound)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     return acquireSkill(skill_name, head, instanceId, frozenSource, grantActivation, unbound, {});
 }
 
@@ -838,6 +931,7 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId,
                          const SkillInstanceRef &grantActivation, bool unbound,
                          const std::function<void(int)> &committed)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     bool createdDirectly = false;
     int lastId = m_nextSkillInstanceIds.value(skill_name, 0);
     // Install frozen provenance before the first skill_set_changed signal.
@@ -887,6 +981,7 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId,
 
 void Player::detachSkill(const QString &skill_name)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     QString base;
     int instId = SkillInstanceUtils::parseName(skill_name, base);
     if (instId == 0) {
@@ -913,6 +1008,7 @@ void Player::detachSkill(const QString &skill_name)
 
 void Player::detachSkill(const QString &skill_name, bool head)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     QSet<QString> &targetSet = head ? head_acquired_skills : deputy_acquired_skills;
 
     QString base;
@@ -949,6 +1045,7 @@ void Player::detachSkill(const QString &skill_name, bool head)
 
 void Player::detachAllSkills()
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     const bool changed = !m_skillInstances.isEmpty() || !acquired_skills.isEmpty()
         || !head_acquired_skills.isEmpty() || !deputy_acquired_skills.isEmpty();
     m_skillInstances.clear();
@@ -963,6 +1060,7 @@ void Player::detachAllSkills()
 
 void Player::addSkill(const QString &skill_name)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     if (!skills.contains(skill_name))
         skills << skill_name;
     // Each acquisition creates a distinct native instance; head and deputy copies differ.
@@ -973,6 +1071,7 @@ void Player::addSkill(const QString &skill_name)
 
 void Player::addSkill(const QString &skill_name, bool head_skill)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     const Skill *skill = Sanguosha->getSkill(skill_name);
     if (!skill) return;
 
@@ -997,6 +1096,7 @@ void Player::addSkill(const QString &skill_name, bool head_skill)
 
 void Player::loseSkill(const QString &skill_name)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     const bool removedLegacySkill = skills.removeOne(skill_name);
     // Remove the lowest-ID native instance (source=SourceInnate).
     auto outerIt = m_skillInstances.find(skill_name);
@@ -1026,6 +1126,7 @@ void Player::loseSkill(const QString &skill_name)
 
 void Player::loseSkill(const QString &skill_name, bool head)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     const bool removedLegacySkill = head
         ? head_skills.remove(skill_name) > 0
         : deputy_skills.remove(skill_name) > 0;
@@ -1102,6 +1203,7 @@ static bool CompareByLocation(const WrappedCard *a, const WrappedCard *b)
 
 void Player::setEquip(const Card *equip)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
     //const EquipCard *card = qobject_cast<const EquipCard *>(equip->getRealCard());
     //Q_ASSERT(card != nullptr);
 	const WrappedCard *outer = qobject_cast<const WrappedCard *>(Sanguosha->getCard(equip->getId()));
@@ -1120,6 +1222,7 @@ void Player::setEquip(const Card *equip)
 
 void Player::removeEquip(const Card *equip)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
     //const EquipCard *card = qobject_cast<const EquipCard *>(Sanguosha->getEngineCard(equip->getId()));
     //const EquipCard *card = qobject_cast<const EquipCard *>(equip->getRealCard());
     //Q_ASSERT(card != nullptr);
@@ -1429,6 +1532,21 @@ static bool matchesPhysicalEquipName(const EquipCard *equip, const QString &name
     return actual.compare(requested, Qt::CaseInsensitive) == 0;
 }
 
+namespace {
+// Process-wide first-nonempty snapshots, just like the original lazy lists.
+// Namespace initialization avoids XP's disabled thread-safe local-static guards.
+EquipmentNameCache weaponNames, armorNames, defensiveHorseNames;
+EquipmentNameCache offensiveHorseNames, treasureNames, equipSkillNames;
+
+template<typename T> QStringList collectEquipmentNames()
+{
+    QStringList names;
+    for (const T *equip : Sanguosha->findChildren<const T *>())
+        names.append(equip->objectName());
+    return names;
+}
+}
+
 bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, bool need_area) const
 {
     if (!alive||(need_area&&getMark("IgnoreArea0")<1&&!hasEquipArea(0))) return false;
@@ -1437,11 +1555,7 @@ bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, b
         if (weapon->inherits("Weapon") && matchesPhysicalEquipName(weapon, weapon_name)
             && !isEquipsNullified(weapon, sourcePlayer)) return true;
     }
-	static QStringList w_equips;
-	if(w_equips.isEmpty()){
-		foreach(const Weapon*w,Sanguosha->findChildren<const Weapon*>())
-			w_equips << w->objectName();
-	}
+    const QStringList w_equips = weaponNames.getOrPopulate(collectEquipmentNames<Weapon>);
 	if(w_equips.contains(weapon_name)){
 		foreach(const WrappedCard *outer,equips){
 			const EquipCard *w = realEquip(outer);
@@ -1463,6 +1577,17 @@ bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, b
 	return false;
 }
 
+bool isPlayerArmorEffectNamePossible(const QString &name)
+{
+    const QStringList names = armorNames.snapshot();
+    if (!names.isEmpty()) return names.contains(name);
+    // Empty is exactly the source's "rebuild on next reached call" state.
+    // Observe its prospective public domain without eagerly filling the cache.
+    for (const Armor *armor : Sanguosha->findChildren<const Armor *>())
+        if (armor->objectName() == name) return true;
+    return false;
+}
+
 bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlayer, bool need_area) const
 {
 	if (!alive||(need_area&&getMark("IgnoreArea1")<1&&!hasEquipArea(1)))
@@ -1474,11 +1599,7 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
                 && !isEquipsNullified(armor, sourcePlayer)) return true;
         }
     }
-	static QStringList a_equips;
-	if(a_equips.isEmpty()){
-		foreach(const Armor*a,Sanguosha->findChildren<const Armor*>())
-			a_equips << a->objectName();
-	}
+    const QStringList a_equips = armorNames.getOrPopulate(collectEquipmentNames<Armor>);
     if (armor_name.isEmpty()){
 		foreach(const WrappedCard *outer,equips){
 			const EquipCard *a = realEquip(outer);
@@ -1520,11 +1641,7 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
 bool Player::hasDefensiveHorse(const QString &horse_name, bool need_area) const
 {
     if (!alive||(need_area&&getMark("IgnoreArea2")<1&&!hasEquipArea(2))) return false;
-	static QStringList d_equips;
-	if(d_equips.isEmpty()){
-		foreach(const DefensiveHorse*d,Sanguosha->findChildren<const DefensiveHorse*>())
-			d_equips << d->objectName();
-	}
+    const QStringList d_equips = defensiveHorseNames.getOrPopulate(collectEquipmentNames<DefensiveHorse>);
 	if(d_equips.contains(horse_name)){
 		foreach(const WrappedCard *outer,equips){
 			const EquipCard *h = realEquip(outer);
@@ -1543,11 +1660,7 @@ bool Player::hasDefensiveHorse(const QString &horse_name, bool need_area) const
 bool Player::hasOffensiveHorse(const QString &horse_name, bool need_area) const
 {
     if (!alive||(need_area&&getMark("IgnoreArea3")<1&&!hasEquipArea(3))) return false;
-	static QStringList o_equips;
-	if(o_equips.isEmpty()){
-		foreach(const OffensiveHorse*o,Sanguosha->findChildren<const OffensiveHorse*>())
-			o_equips << o->objectName();
-	}
+    const QStringList o_equips = offensiveHorseNames.getOrPopulate(collectEquipmentNames<OffensiveHorse>);
 	if(o_equips.contains(horse_name)){
 		foreach(const WrappedCard *outer,equips){
 			const EquipCard *h = realEquip(outer);
@@ -1566,11 +1679,7 @@ bool Player::hasOffensiveHorse(const QString &horse_name, bool need_area) const
 bool Player::hasTreasure(const QString &treasure_name, bool need_area) const
 {
     if (!alive||(need_area&&getMark("IgnoreArea4")<1&&!hasEquipArea(4))) return false;
-	static QStringList t_equips;
-	if(t_equips.isEmpty()){
-		foreach(const Treasure*t,Sanguosha->findChildren<const Treasure*>())
-			t_equips << t->objectName();
-	}
+    const QStringList t_equips = treasureNames.getOrPopulate(collectEquipmentNames<Treasure>);
 	if(t_equips.contains(treasure_name)){
 		foreach(const WrappedCard *outer,equips){
 			const EquipCard *t = realEquip(outer);
@@ -1812,11 +1921,13 @@ bool Player::canGet(int card_id, const Player *to) const
 
 void Player::addDelayedTrick(const Card *trick)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
     judging_area << trick;
 }
 
 void Player::removeDelayedTrick(const Card *trick)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
     foreach(const Card *j, judging_area){
         if (j->getId() == trick->getId())
             judging_area.removeOne(j);
@@ -1847,22 +1958,26 @@ void Player::setChained(bool chained)
 
 void Player::addMark(const QString &mark, int add_num)
 {
+    retireAIRound56PlayerMarksOrigin(this);
     setMark(mark, getMark(mark)+add_num);
 }
 
 void Player::removeMark(const QString &mark, int remove_num)
 {
+    retireAIRound56PlayerMarksOrigin(this);
     setMark(mark, qMax(0, getMark(mark)-remove_num));
 }
 
 void Player::setMark(const QString &mark, int value)
 {
+    retireAIRound56PlayerMarksOrigin(this);
     setMarkWithReceipt(mark, value, {});
 }
 
 void Player::setMarkWithReceipt(const QString &mark, int value,
                                const std::function<void(const QString &, int, int)> &committed)
 {
+    retireAIRound56PlayerMarksOrigin(this);
     const int before = getMark(mark);
     if (before == value) return;
     if (value == 0) marks.remove(mark);
@@ -1874,7 +1989,7 @@ void Player::setMarkWithReceipt(const QString &mark, int value,
 
 int Player::getMark(const QString &mark) const
 {
-    return marks.value(mark, 0);
+    return AIMarkQueryScope::value(this, mark, marks.value(mark, 0));
 }
 
 int Player::getHujia() const
@@ -1884,7 +1999,7 @@ int Player::getHujia() const
 
 QStringList Player::getMarkNames() const
 {
-    return marks.keys();
+    return AIMarkQueryScope::names(this, marks.keys());
 }
 
 bool Player::hasClub(const QString &club_name) const
@@ -1911,8 +2026,10 @@ bool Player::canSlash(const Player *other, const Card *slash, bool distance_limi
 {
 	if (!other || !other->isAlive())
 		return false;
+	std::unique_ptr<AIRound47XufaCanSlashCard> xufaFreshSlash;
 	if (!slash){
 		Slash *newslash = new Slash(Card::NoSuit, 0);
+        xufaFreshSlash.reset(new AIRound47XufaCanSlashCard(Sanguosha->currentRoom(),newslash));
 		newslash->deleteLater();
 		slash = newslash;
 	}
@@ -1940,11 +2057,14 @@ int Player::getCardCount(bool include_equip, bool include_judging) const
 
 QList<int> Player::getPile(const QString &pile_name) const
 {
+    QList<int> notified;
+    if (NotifiedPileQueryScope::pile(this, pile_name, &notified)) return notified;
     return piles[pile_name];
 }
 
 void Player::setPileCardPresent(const QString &pileName, int cardId, bool present)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
     if (pileName.isEmpty() || cardId < 0) return;
     // Reconcile one named destination reservation without touching other piles
     // or emitting a second physical move; CardMovementService owns that commit.
@@ -1968,6 +2088,8 @@ QStringList Player::getPileNames() const
 
 QString Player::getPileName(int card_id) const
 {
+    QString notified;
+    if (NotifiedPileQueryScope::pileName(this, card_id, &notified)) return notified;
     foreach(QString pile_name, piles.keys()){
         if (piles[pile_name].contains(card_id))
             return pile_name;
@@ -2045,6 +2167,11 @@ void Player::setGeneralPileOpen(const QString &pile_name, const QString &player)
         general_pile_open[pile_name].append(player);
 }
 
+QHash<QString, int> Player::getHistory() const
+{
+    return AIHistoryQueryScope::project(this, history);
+}
+
 void Player::addHistory(const QString &name, int times)
 {
     history[name] += times;
@@ -2091,13 +2218,14 @@ int Player::usedTimes(const QString &card_class, bool actual) const
 
 bool Player::hasEquipSkill(const QString &skill_name) const
 {
-	static QStringList equipsName;
-	if(equipsName.isEmpty()){
-		foreach(const EquipCard*ec, Sanguosha->findChildren<const EquipCard*>()){
-			if(equipsName.contains(ec->objectName())||Sanguosha->getSkill(ec)==nullptr) continue;
-			equipsName.append(ec->objectName());
-		}
-	}
+    const QStringList equipsName = equipSkillNames.getOrPopulate([] {
+        QStringList names;
+        for (const EquipCard *equip : Sanguosha->findChildren<const EquipCard *>()) {
+            if (names.contains(equip->objectName()) || Sanguosha->getSkill(equip) == nullptr) continue;
+            names.append(equip->objectName());
+        }
+        return names;
+    });
     return equipsName.contains(skill_name) && (ownsSkill(skill_name) || viewAsEquip(skill_name));
 }
 
@@ -2283,11 +2411,13 @@ bool Player::isSkillInstanceEffectAvailable(const QString &skillName, int instan
 // ========================================
 int Player::createSkillInstance(const QString &skillName, SkillInstanceSource source, bool visible)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     return createSkillInstance(skillName, source, QString(), 0, visible);
 }
 
 int Player::createSkillInstance(const QString &skillName, SkillInstanceSource source, const QString &parentSkillName, int parentInstanceID, bool visible)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     int nextId = m_nextSkillInstanceIds.value(skillName, 0) + 1;
     m_nextSkillInstanceIds[skillName] = nextId;
 
@@ -2307,6 +2437,7 @@ int Player::createSkillInstance(const QString &skillName, SkillInstanceSource so
 
 int Player::createSkillInstance(const QString &skillName, SkillInstanceSource source, const SkillInstanceRef &parentRef, bool visible)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     int instanceId = createSkillInstance(skillName, source, parentRef.key.skillName,
                                          parentRef.key.instanceID, visible);
     m_skillInstances[skillName][instanceId].parentRef = parentRef;
@@ -2315,6 +2446,7 @@ int Player::createSkillInstance(const QString &skillName, SkillInstanceSource so
 
 bool Player::removeSkillInstance(const QString &skillName, int instanceID)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     if (instanceID <= 0) return false;
     auto outerIt = m_skillInstances.find(skillName);
     if (outerIt == m_skillInstances.end()) return false;
@@ -2404,6 +2536,7 @@ QList<SkillInstance> Player::getSkillInstances() const
 
 void Player::clearSkillInstances()
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     {
         QMutexLocker locker(&m_preshowMutex);
         m_preshowedSkillInstances.clear();
@@ -2432,6 +2565,7 @@ void Player::reserveSkillInstanceId(const QString &skillName, int instanceID)
 
 void Player::upsertSkillInstance(const SkillInstance &instance)
 {
+    retireAIRound56PlayerSkillsOrigin(this);
     if (instance.skillName.isEmpty() || instance.instanceID <= 0) return;
     m_skillInstances[instance.skillName][instance.instanceID] = instance;
     m_nextSkillInstanceIds[instance.skillName] = qMax(m_nextSkillInstanceIds.value(instance.skillName, 0),
@@ -3089,6 +3223,10 @@ bool Player::canSlashWithoutCrossbow(const Card *slash) const
 {
 	if(!slash){
 		Slash *newslash = new Slash(Card::NoSuit, 0);
+        // Source birth, before copying own equipment and before any private
+        // target-mod applicability. No existing/foreign card is adopted.
+        if(auto*r=Sanguosha->currentRoom())
+            recordAIRound56ProjectionOwnerSourceCard(*r,this,newslash,QStringLiteral("slash"));
 		newslash->addSubcards(getEquips(0));
 		newslash->deleteLater();
 		slash = newslash;
@@ -3261,6 +3399,9 @@ void Player::removeQinggangTag(const Card *card)
 
 void Player::copyFrom(Player *p)
 {
+    retireAIRound56PlayerPublicCardsOrigin(this);
+    retireAIRound56PlayerMarksOrigin(this);
+    retireAIRound56PlayerSkillsOrigin(this);
     marks = QMap<QString, int>(p->marks);
     piles = QMap<QString, QList<int> >(p->piles);
     general_piles = QMap<QString, QStringList>(p->general_piles);
@@ -3668,6 +3809,8 @@ QString Player::getLogName() const
 
 void Player::removeCard(int id, Place place)
 {
+    if (place == PlaceEquip || place == PlaceDelayedTrick || place == PlaceSpecial)
+        retireAIRound56PlayerPublicCardsOrigin(this);
     // Unknown client cards have no physical Card instance to remove.
     if (id < 0) return;
     switch (place){
@@ -3708,6 +3851,8 @@ QList<const Card *> Player::getHandcards() const
 
 void Player::addCard(int id, Place place)
 {
+    if (place == PlaceEquip || place == PlaceDelayedTrick || place == PlaceSpecial)
+        retireAIRound56PlayerPublicCardsOrigin(this);
     // Keep the shared physical-card collections free of hidden/unresolved cards.
     if (id < 0) return;
     const Card *card = Sanguosha->getCard(id);
@@ -3874,21 +4019,24 @@ void Player::setTag(const QString &key, const QVariant &value) {
         qWarning("Player tag '%s' rejected: %s", qPrintable(key), error.constData());
         return;
     }
+    noteAIRound26DelegateTagWrite(this, key);
     if (tag.value(key) == value) return;
     tag[key] = value;
     emit gameplay_property_changed();
 }
 
 QVariant Player::getTag(const QString &key, const QVariant &defaultValue) const {
-    return tag.value(key, defaultValue);
+    return AITagQueryScope::value(this, key, tag.value(key, defaultValue));
 }
 
 void Player::removeTag(const QString &key) {
+    noteAIRound26DelegateTagWrite(this, key);
     globalCardLifetimeManager().releaseVariantTag(this, key.toUtf8());
     if (tag.remove(key)) emit gameplay_property_changed();
 }
 
 void Player::clearTags() {
+    noteAIRound26DelegateTagsClear(this);
     globalCardLifetimeManager().releaseVariantTags(this);
     if (tag.isEmpty()) return;
     tag.clear();

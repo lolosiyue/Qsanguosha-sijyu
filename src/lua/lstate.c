@@ -387,6 +387,12 @@ static lua_State *newstate (lua_Alloc f, void *ud,
   g->strt.hash = NULL;
   setnilvalue(&g->l_registry);
   g->panic = NULL;
+  g->tablebirthserial = g->tablebirthcount = 0;
+  for (i=0;i<LUA_TABLE_BIRTH_SLOTS;++i) {
+    g->tablebirthwatch[i].callback=NULL;
+    g->tablebirthwatch[i].host=NULL;
+    g->tablebirthwatch[i].serial=0;
+  }
   g->protectedbridge = NULL;
   g->protectedbridgehost = NULL;
   g->gcstate = GCSpause;

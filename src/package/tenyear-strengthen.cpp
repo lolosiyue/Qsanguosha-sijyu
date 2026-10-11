@@ -1,4 +1,5 @@
 #include "tenyear-strengthen.h"
+#include "ai-strategy-round51-collateral.h"
 #include "settings.h"
 #include <QScopeGuard>
 #include <memory>
@@ -3963,7 +3964,10 @@ public:
 							tos << t->objectName();
 						tos << objectName();
 						room->setPlayerProperty(player, "extra_collateral", tos.join("+"));
-						room->askForUseCard(player, "@@tenyearbenxi!", "@tenyearbenxi-extra:" + use.card->objectName());
+						{
+							AIRound51CollateralSource collateralSource(*room,player,use);
+							room->askForUseCard(player, "@@tenyearbenxi!", "@tenyearbenxi-extra:" + use.card->objectName());
+						}
 						target = player->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
 						player->removeTag("ExtraCollateralTarget");
 						if (!target) {
@@ -10529,3 +10533,172 @@ TenyearStYJ2015Package::TenyearStYJ2015Package()
 
 }
 ADD_PACKAGE(TenyearStYJ2015)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_tenyear_strengthen_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(TenyearZhiheng)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiuyuan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJieyin)), 2u);
+ types.emplace(std::type_index(typeid(TenyearRendeVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearRende)), 2u);
+ types.emplace(std::type_index(typeid(TenyearWusheng)), 2u);
+ types.emplace(std::type_index(typeid(TenyearWushengMod)), 3u);
+ types.emplace(std::type_index(typeid(TenyearYijueVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYijue)), 2u);
+ types.emplace(std::type_index(typeid(TenyearPaoxiao)), 3u);
+ types.emplace(std::type_index(typeid(TenyearTishen)), 2u);
+ types.emplace(std::type_index(typeid(TenyearGuanxing)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYajiao)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJizhi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJianxiong)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQingjianVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQingjian)), 2u);
+ types.emplace(std::type_index(typeid(TenyearLuoyi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearLuoyiBuff)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYiji)), 2u);
+ types.emplace(std::type_index(typeid(TenyearLuoshen)), 2u);
+ types.emplace(std::type_index(typeid(TenyearTuxi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQingnangVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQingnang)), 2u);
+ types.emplace(std::type_index(typeid(TenyearLiyu)), 2u);
+ types.emplace(std::type_index(typeid(TenyearBiyue)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYaowu)), 2u);
+ types.emplace(std::type_index(typeid(TenyearLiegong)), 2u);
+ types.emplace(std::type_index(typeid(TenyearLiegongDamage)), 2u);
+ types.emplace(std::type_index(typeid(TenyearLiegongMod)), 3u);
+ types.emplace(std::type_index(typeid(TenyearKuanggu)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQimou)), 2u);
+ types.emplace(std::type_index(typeid(TenyearShensuViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(TenyearShensu)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJushou)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJieweiVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiewei)), 2u);
+ types.emplace(std::type_index(typeid(TenyearTianxiangViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(TenyearTianxiang)), 2u);
+ types.emplace(std::type_index(typeid(TenyearSanyao)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhiman)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhenjun)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearZhenjun)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJingce)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearJingce)), 2u);
+ types.emplace(std::type_index(typeid(TenyearDangxian)), 2u);
+ types.emplace(std::type_index(typeid(TenyearFuli)), 2u);
+ types.emplace(std::type_index(typeid(TenyearChunlaoViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(TenyearChunlao)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearLihuoViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearLihuo)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearLihuoTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(SecondTenyearChunlao)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiangchiVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiangchi)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearJiangchi)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearJiangchiClear)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearJiangchiMod)), 3u);
+ types.emplace(std::type_index(typeid(TenyearWurong)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearShizhi)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearShizhiTrigger)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYaoming)), 2u);
+ types.emplace(std::type_index(typeid(TenyearDanshou)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZenhui)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiaojin)), 2u);
+ types.emplace(std::type_index(typeid(TenyearBenxiVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearBenxi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearPojun)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYanzhuVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYanzhu)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXingxueVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXingxue)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQingxi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQingxiDamage)), 2u);
+ types.emplace(std::type_index(typeid(TenyearDuodao)), 2u);
+ types.emplace(std::type_index(typeid(TenyearAnjian)), 2u);
+ types.emplace(std::type_index(typeid(TenyearAnjianEffect)), 2u);
+ types.emplace(std::type_index(typeid(TenyearShenduanVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearShenduan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearShenduanTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(TenyearYonglve)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQiaoshuiVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQiaoshui)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQiaoshuiTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(TenyearXianzhenViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXianzhen)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXianzhenSlash)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXianzhenTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(SecondTenyearJinjiu)), 2u);
+ types.emplace(std::type_index(typeid(SecondTenyearJinjiuLimit)), 3u);
+ types.emplace(std::type_index(typeid(TenyearZishouVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZishou)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZongshi)), 3u);
+ types.emplace(std::type_index(typeid(TenyearZongshiProtect)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXuanfeng)), 2u);
+ types.emplace(std::type_index(typeid(Tenyearyongjin)), 2u);
+ types.emplace(std::type_index(typeid(TenyearEnyuan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXuanhuoVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXuanhuo)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhuikong)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhuikongProhibit)), 3u);
+ types.emplace(std::type_index(typeid(TenyearQiuyuan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearSidiVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearSidi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearSidiLimit)), 3u);
+ types.emplace(std::type_index(typeid(TenyearHuaiyi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearHuaiyiQuota)), 2u);
+ types.emplace(std::type_index(typeid(Tenyearjueqing)), 2u);
+ types.emplace(std::type_index(typeid(TenyearjueqingComplete)), 2u);
+ types.emplace(std::type_index(typeid(TenyearGongqi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearGongqiTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(TenyearJiefanVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiefan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhongyong)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJigong)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJigongMax)), 3u);
+ types.emplace(std::type_index(typeid(TenyearJigongRecover)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiezhong)), 2u);
+ types.emplace(std::type_index(typeid(TenyearLongyin)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQieting)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXianzhou)), 2u);
+ types.emplace(std::type_index(typeid(TenyearShenxing)), 2u);
+ types.emplace(std::type_index(typeid(TenyearShenxingRecord)), 2u);
+ types.emplace(std::type_index(typeid(TenyearBingyiViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(TenyearBingyi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZongxuanVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZongxuan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhiyan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQiaoshi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYjYanyuVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearYjYanyu)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQianxi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQianxiDraw)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQianxiLimit)), 3u);
+ types.emplace(std::type_index(typeid(TenyearJiaozhaoVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiaozhao)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJiaozhaoPro)), 3u);
+ types.emplace(std::type_index(typeid(TenyearDanxin)), 2u);
+ types.emplace(std::type_index(typeid(TenyearGanlu)), 2u);
+ types.emplace(std::type_index(typeid(TenyearBuyi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhuhai)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQianxin)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJianyan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJianyanQuota)), 2u);
+ types.emplace(std::type_index(typeid(TenyearAnxu)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhuiyi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearJianying)), 2u);
+ types.emplace(std::type_index(typeid(TenyearShibei)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhanjueVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhanjue)), 2u);
+ types.emplace(std::type_index(typeid(TenyearQinwang)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXiansiViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXiansi)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXiansiAttach)), 2u);
+ types.emplace(std::type_index(typeid(TenyearXiansiSlashViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(TenyearFenli)), 2u);
+ types.emplace(std::type_index(typeid(TenyearPingkou)), 2u);
+ types.emplace(std::type_index(typeid(TenyearFencheng)), 2u);
+ types.emplace(std::type_index(typeid(TenyearMieji)), 2u);
+ types.emplace(std::type_index(typeid(TenyearMiejiDiscard)), 2u);
+ types.emplace(std::type_index(typeid(TenyearActiveMetadata)), 2u);
+ types.emplace(std::type_index(typeid(TenyearMingceVS)), 2u);
+ types.emplace(std::type_index(typeid(TenyearMingce)), 2u);
+ types.emplace(std::type_index(typeid(TenyearZhiyu)), 2u);
+}

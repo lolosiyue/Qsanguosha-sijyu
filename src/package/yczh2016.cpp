@@ -1855,3 +1855,35 @@ YCZH2016Package::YCZH2016Package()
 }
 
 ADD_PACKAGE(YCZH2016)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_yczh2016_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(JiaozhaoVS)), 2u);
+ types.emplace(std::type_index(typeid(Jiaozhao)), 2u);
+ types.emplace(std::type_index(typeid(JiaozhaoPro)), 3u);
+ types.emplace(std::type_index(typeid(Danxin)), 2u);
+ types.emplace(std::type_index(typeid(DanxinFuture)), 2u);
+ types.emplace(std::type_index(typeid(Guizao)), 2u);
+ types.emplace(std::type_index(typeid(Jiyu)), 2u);
+ types.emplace(std::type_index(typeid(JiyuRecord)), 2u);
+ types.emplace(std::type_index(typeid(DuliangViewAsSkill)), 2u);
+ types.emplace(std::type_index(typeid(Duliang)), 2u);
+ types.emplace(std::type_index(typeid(Fulin)), 2u);
+ types.emplace(std::type_index(typeid(FulinBF)), 2u);
+ types.emplace(std::type_index(typeid(QinqingVS)), 2u);
+ types.emplace(std::type_index(typeid(Qinqing)), 2u);
+ types.emplace(std::type_index(typeid(HuishengVS)), 2u);
+ types.emplace(std::type_index(typeid(Huisheng)), 2u);
+ types.emplace(std::type_index(typeid(KuangbiVS)), 2u);
+ types.emplace(std::type_index(typeid(Kuangbi)), 2u);
+ types.emplace(std::type_index(typeid(JisheVS)), 2u);
+ types.emplace(std::type_index(typeid(Jishe)), 2u);
+ types.emplace(std::type_index(typeid(Lianhuo)), 2u);
+ types.emplace(std::type_index(typeid(Zhige)), 2u);
+ types.emplace(std::type_index(typeid(Zongzuo)), 2u);
+ types.emplace(std::type_index(typeid(ZongzuoDeath)), 2u);
+ types.emplace(std::type_index(typeid(TaoluanVS)), 2u);
+ types.emplace(std::type_index(typeid(Taoluan)), 2u);
+ types.emplace(std::type_index(typeid(TenyearTaoluan)), 2u);
+}

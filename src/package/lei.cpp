@@ -2508,3 +2508,56 @@ MobileStLeiPackage::MobileStLeiPackage()
     addMetaObject<MobileHongjuCard>();
 }
 ADD_PACKAGE(MobileStLei)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_lei_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(Wanglie)), 2u);
+ types.emplace(std::type_index(typeid(WanglieMod)), 3u);
+ types.emplace(std::type_index(typeid(Zuilun)), 2u);
+ types.emplace(std::type_index(typeid(Fuyin)), 2u);
+ types.emplace(std::type_index(typeid(Liangyin)), 2u);
+ types.emplace(std::type_index(typeid(Kongsheng)), 2u);
+ types.emplace(std::type_index(typeid(QianjieChain)), 2u);
+ types.emplace(std::type_index(typeid(Qianjie)), 3u);
+ types.emplace(std::type_index(typeid(QianjiePindianPro)), 2u);
+ types.emplace(std::type_index(typeid(Jueyan)), 2u);
+ types.emplace(std::type_index(typeid(JueyanClear)), 2u);
+ types.emplace(std::type_index(typeid(JueyanTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(Poshi)), 2u);
+ types.emplace(std::type_index(typeid(Huairou)), 2u);
+ types.emplace(std::type_index(typeid(Zhengu)), 2u);
+ types.emplace(std::type_index(typeid(ZhenguEffect)), 2u);
+ types.emplace(std::type_index(typeid(Zhengrong)), 2u);
+ types.emplace(std::type_index(typeid(HongjuVS)), 2u);
+ types.emplace(std::type_index(typeid(Hongju)), 2u);
+ types.emplace(std::type_index(typeid(Qingce)), 2u);
+ types.emplace(std::type_index(typeid(Leiyongsi)), 2u);
+ types.emplace(std::type_index(typeid(LeiyongsiMaxCards)), 3u);
+ types.emplace(std::type_index(typeid(Leiweidi)), 2u);
+ types.emplace(std::type_index(typeid(Congjian)), 2u);
+ types.emplace(std::type_index(typeid(Xiongluan)), 2u);
+ types.emplace(std::type_index(typeid(XiongluanTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(XiongluanClear)), 2u);
+ types.emplace(std::type_index(typeid(OLZhengrong)), 2u);
+ types.emplace(std::type_index(typeid(OLHongjuVS)), 2u);
+ types.emplace(std::type_index(typeid(OLHongju)), 2u);
+ types.emplace(std::type_index(typeid(OLQingce)), 2u);
+ types.emplace(std::type_index(typeid(MobileZhengrong)), 2u);
+ types.emplace(std::type_index(typeid(MobileHongjuVS)), 2u);
+ types.emplace(std::type_index(typeid(MobileHongju)), 2u);
+ types.emplace(std::type_index(typeid(Duorui)), 2u);
+ types.emplace(std::type_index(typeid(DuoruiClear)), 2u);
+ types.emplace(std::type_index(typeid(DuoruiInvalidity)), 3u);
+ types.emplace(std::type_index(typeid(Zhiti)), 3u);
+ types.emplace(std::type_index(typeid(ZhitiEffect)), 2u);
+ types.emplace(std::type_index(typeid(Poxi)), 2u);
+ types.emplace(std::type_index(typeid(Jieyingg)), 2u);
+ types.emplace(std::type_index(typeid(jieyinggEffect)), 2u);
+ types.emplace(std::type_index(typeid(JieyinggKeep)), 3u);
+ types.emplace(std::type_index(typeid(JieyinggTargetMod)), 3u);
+ types.emplace(std::type_index(typeid(OLDuorui)), 2u);
+ types.emplace(std::type_index(typeid(OLDuoruiClear)), 2u);
+ types.emplace(std::type_index(typeid(OLZhiti)), 3u);
+ types.emplace(std::type_index(typeid(OLZhitiEffect)), 2u);
+}

@@ -9,6 +9,9 @@
 #include <QObject>
 #include <QSet>
 
+struct AIRound56FactorySourceReport;
+class Room;
+
 class DistanceSkillCache;
 struct DefinitionListCaches;
 class Card;
@@ -49,6 +52,13 @@ public:
 
     const Card *engineCard(int id) const;
     bool isEngineCard(const Card *card) const;
+    // Native-only Room storage for a shared compiled BasicCard's attribution.
+    // Pointer identity remains the Engine definition, including existing aliases.
+    bool printedSkillName(const Card *card, QString *value) const;
+    bool setPrintedSkillName(const Card *card, const QString &value);
+    quint64 printedSkillGeneration() const { return m_printedSkillGeneration; }
+    QMap<int, QString> printedSkillSnapshot() const;
+    bool restorePrintedSkillSnapshot(const QMap<int, QString> &snapshot, QString *error = nullptr);
     const Card *cardTemplate(const QString &name) const;
     int cardCount(int bootstrapCount) const;
 
@@ -74,6 +84,8 @@ public:
     const LuaSkillCard *luaSkillCard(const QString &name) const;
 
 private:
+    friend AIRound56FactorySourceReport inspectAIRound56PublicFactorySources(Room &);
+    friend void appendAIRound56LuaSkillFactorySources(const RoomDefinitionRegistry &, AIRound56FactorySourceReport &);
     void indexPackage(Package *package);
 
     Engine &m_engine;
@@ -89,6 +101,8 @@ private:
     int m_cardSpan = 0;
     QHash<const Card *, int> m_cardIds;
     QHash<QString, const Card *> m_cardTemplates;
+    QHash<const Card *, QString> m_printedSkillNames;
+    quint64 m_printedSkillGeneration = 0;
 
     QMap<QString, const CardPattern *> m_patterns;
     QMultiMap<QString, QString> m_relatedSkills;

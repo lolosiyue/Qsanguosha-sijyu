@@ -5,6 +5,7 @@
 #include "structs.h"
 #include <QThread>
 #include <functional>
+#include <atomic>
 //#include "wrapped-card.h"
 
 class Player;
@@ -78,6 +79,15 @@ public:
     // Reset all cards, generals' states of the room instance
     void reset();
     void clear();
+    // Whole canonical map source proof. No selected card, ID value, owner or
+    // applicability reads. Requires normal native thread/lifetime confinement.
+    bool aiRound56PhysicalMapSourceOrigin() const noexcept;
+
+private:
+    void clearCardsForSourceReset();
+    std::atomic<bool> m_aiRound56MapSourceAlive{true};
+    std::atomic<bool> m_aiRound56MapSourceComplete{true};
+
 
 protected:
     QHash<int, WrappedCard *> m_cards;

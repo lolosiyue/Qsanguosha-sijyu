@@ -477,3 +477,10 @@ TestScenario::TestScenario(const QString &filePath)
     rule->loadSetting(filePath);
 }
 
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_scenario_miniscenarios_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(MiniSceneRule)), 2u);
+ types.recordActivateSource<MiniSceneRule>(2928u); AI_R56_REQUIRE_DECLARATION(MiniSceneRule, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(MiniSceneRule, getMaxUsageLimit, Skill);
+}

@@ -2,6 +2,10 @@
 #define _WRAPPED_CARD_H
 
 #include "card.h"
+#include <atomic>
+#include <typeinfo>
+#include <memory>
+struct CardLifetimeToken;
 
 class QThread;
 
@@ -23,6 +27,7 @@ class QThread;
 class WrappedCard : public Card
 {
     friend class RoomManagedState;
+    friend class RoomState;
     Q_OBJECT
 
 signals:
@@ -32,8 +37,21 @@ public:
     Q_INVOKABLE WrappedCard(Card *card);
     ~WrappedCard();
 
+    // Structural ancestry only: the exact clone born in RoomState::reset was
+    // this wrapper's first adoption. This grants NO scalar/targetFixed effects,
+    // material/change edges, catalogue validity, or private-card eligibility.
+    // Outputs are immutable facts recorded at actual birth, never live fields.
+    bool aiRound56PhysicalCloneBirthOrigin(int *definitionId,
+                                          const std::type_info **innerType) const noexcept;
+    // Complete original factory identity/material lineage, never a comparison
+    // of live card IDs/values. Does not itself grant virtual effects or a scope.
+    bool aiRound56PhysicalCloneIdentityOrigin(int *definitionId) const noexcept;
+
+
+
     inline void setId(int id)
     {
+        retireAIRound56RecursiveFieldOrigins(16u);
         m_id = id;
         //Q_ASSERT(m_card != nullptr);
         m_card->setId(id);
@@ -41,6 +59,7 @@ public:
 
     inline void setNumber(int number)
     {
+        retireAIRound56RecursiveFieldOrigins(8u);
         m_number = number;
         //Q_ASSERT(m_card != nullptr);
         m_card->setNumber(number);
@@ -48,6 +67,7 @@ public:
 
     inline void setSuit(Suit suit)
     {
+        retireAIRound56RecursiveFieldOrigins(4u);
         m_suit = suit;
         //Q_ASSERT(m_card != nullptr);
         m_card->setSuit(suit);
@@ -156,18 +176,22 @@ public:
     void setFlags(const QString &flag) const;
     inline void addSubcard(int)
     {
+        retireAIRound56RecursiveFieldOrigins(1u);
         Q_ASSERT(false);
     }
     inline void addSubcard(const Card *)
     {
+        retireAIRound56RecursiveFieldOrigins(1u);
         Q_ASSERT(false);
     }
     inline void addSubcards(const QList<const Card *> &)
     {
+        retireAIRound56RecursiveFieldOrigins(1u);
         Q_ASSERT(false);
     }
     inline void addSubcards(const QList<int> &)
     {
+        retireAIRound56RecursiveFieldOrigins(1u);
         Q_ASSERT(false);
     }
     // inline QList<int> getSubcards() const;
@@ -292,6 +316,16 @@ public:
     {
         return m_card ? m_card->getKindOfNames() : Card::getKindOfNames();
     }
+
+private:
+    struct PhysicalCloneBirth {};
+    WrappedCard(PhysicalCloneBirth, Card *clone, int definitionId, QThread *ownerThread,
+                bool originalDefinitionSource);
+    std::atomic<bool> m_aiRound56PhysicalCloneBirth{false};
+    const std::type_info *m_aiRound56BornInnerType = nullptr;
+    int m_aiRound56BornDefinitionId = -1;
+    bool m_aiRound56OriginalCloneIdentity = false;
+    std::shared_ptr<const CardLifetimeToken> m_aiRound56BornInnerLifetime;
 
 protected:
     void adoptCard(Card *card, bool requireId);

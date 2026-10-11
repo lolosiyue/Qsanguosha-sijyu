@@ -1,4 +1,50 @@
+#include "ai-strategy-round56-connection-cache.h"
+#include "ai-strategy-round56-bootstrap-source.h"
+#include "ai-strategy-round56-projection-lineage.h"
+#include "ai-strategy-round56-priority-bootstrap.h"
+#include "ai-strategy-round56-mode-evaluation.h"
+#include "ai-strategy-round56-clone-proof.h"
+#include "ai-strategy-round56-async.h"
+#include "ai-strategy-round54-priority.h"
+#include "ai-strategy-round54-shebian.h"
+#include "ai-strategy-round54-jijiang.h"
+#include "ai-strategy-round53-pingjian.h"
+#include "ai-strategy-round47-heqia.h"
+#include "ai-strategy-round47b-leiluan.h"
+#include "ai-strategy-round46-jianman.h"
+#include "ai-strategy-round45-xufa-slot.h"
+#include "ai-strategy-round53-xuanzhu-slot.h"
+#include "ai-strategy-round45-faqi-slot.h"
+#include "ai-strategy-round41-response.h"
+#include "ai-strategy-round45-continuity.h"
+#include "ai-strategy-round45-native-seal.h"
+#include "ai-strategy-round45-code-seal.h"
+#include "ai-strategy-round40-context.h"
+#include "ai-strategy-round29-choice.h"
+#include "ai-strategy-round30-choice.h"
+#include "ai-strategy-round44-focus.h"
+#include "ai-strategy-round30-planning.h"
 #include "room-runtime.h"
+#include "ai-strategy-round56-clone-lineage.h"
+#include "ai-strategy-round52-rangyi.h"
+#include "ai-strategy-round53-registry.h"
+#include "ai-strategy-round53-lianzhan.h"
+#include "ai-strategy-round54-cardchoice.h"
+#include "ai-strategy-round53-mingfa.h"
+#include "ai-strategy-round53-gengdu.h"
+#include "ai-strategy-round53-zhuning.h"
+#include "ai-strategy-round53-diou.h"
+#include "ai-strategy-round53-tyfenwu.h"
+#include "ai-strategy-round53-tyqingkou.h"
+#include "ai-strategy-round53-tychende.h"
+#include "ai-strategy-round50-yuri-events.h"
+#include "ai-strategy-round50-htms-events.h"
+#include "ai-strategy-round50-planning.h"
+#include "ai-strategy-round47-planning-slots.h"
+#include "ai-strategy-round46-planning-slots.h"
+#include "ai-strategy-round45-goutong.h"
+#include "ai-strategy-round45-inovation-state.h"
+#include "ai-strategy-round45-slot-bindings.h"
 
 #include "engine.h"
 #include "room.h"
@@ -103,8 +149,17 @@ void RoomRuntime::finalizeWorker()
     // deleters pointing at freed Cards. Close the room's Lua states here so the
     // finalizers hand ownership back while the Cards are still alive.
     m_ai.shutdown();
+    if (m_room) clearAIRound50HTMSWitnesses(*m_room);
     trace("ai_stopped");
+    if (m_room) { clearAIRound53DiouSlots(*m_room); clearAIRound53TyfenwuSlots(*m_room); clearAIRound53TyqingkouSlots(*m_room); clearAIRound53TychendeSlots(*m_room); clearAIRound53ZhuningSlots(*m_room); clearAIRound53GengduSlots(*m_room); clearAIRound53MingfaSlots(*m_room); clearAIRound53Pingjian(*m_room); clearAIRound53LianzhanSlots(*m_room); clearAIRound54Priority(*m_room); clearAIRound53Registry(*m_room); clearAIRound54Shebian(*m_room); clearAIRound54Jijiang(*m_room); clearAIRound47OlClanSlots(*m_room); clearAIRound46PlanningSlots(*m_room); clearAIRound47HeqiaSlots(*m_room); clearAIRound47BLeiluanSlots(*m_room); clearAIRound46JianmanSlots(*m_room); clearAIRound45FaqiSlots(*m_room); clearAIRound41FaqiPlans(*m_room); clearAIRound45XufaSlots(*m_room); clearAIRound53XuanzhuSlots(*m_room); clearAIRound45ContinuityCertificate(*m_room); clearAIRound45NativeBindings(*m_room); clearAIRound45Goutong(*m_room); clearAIRound45InovationState(*m_room); clearAIRound45PinnedSources(*m_room); }
+    if (m_room) clearAIRound56BootstrapSourceBoundary(*m_room);
+    if (m_room) clearAIRound56ProjectionLineage(*m_room);
+    if (m_room) clearAIRound56PriorityBootstrap(*m_room);
+    if (m_room) clearAIRound56ModeEvaluationLineage(*m_room);
+    if (m_room) clearAIRound56ConnectionCache(*m_room);
+    if (m_room) clearAIRound56CloneInputLineage(*m_room);
     m_lua.shutdown();
+    clearAIRound53LianzhanBindings(m_lua); clearAIRound45GoutongBindings(m_lua); clearAIRound45SlotBindings(m_lua); // normal after-close native list custody cleanup
     trace("lua_stopped");
     releaseShutdownRoots();
     trace("roots_released");
@@ -160,7 +215,16 @@ void RoomRuntime::shutdownFinal()
     }
 
     m_ai.shutdown();
+    if (m_room) clearAIRound50HTMSWitnesses(*m_room);
+    if (m_room) { clearAIRound53DiouSlots(*m_room); clearAIRound53TyfenwuSlots(*m_room); clearAIRound53TyqingkouSlots(*m_room); clearAIRound53TychendeSlots(*m_room); clearAIRound53ZhuningSlots(*m_room); clearAIRound53GengduSlots(*m_room); clearAIRound53MingfaSlots(*m_room); clearAIRound53Pingjian(*m_room); clearAIRound53LianzhanSlots(*m_room); clearAIRound54Priority(*m_room); clearAIRound53Registry(*m_room); clearAIRound54Shebian(*m_room); clearAIRound54Jijiang(*m_room); clearAIRound47OlClanSlots(*m_room); clearAIRound46PlanningSlots(*m_room); clearAIRound47HeqiaSlots(*m_room); clearAIRound47BLeiluanSlots(*m_room); clearAIRound46JianmanSlots(*m_room); clearAIRound45FaqiSlots(*m_room); clearAIRound41FaqiPlans(*m_room); clearAIRound45XufaSlots(*m_room); clearAIRound53XuanzhuSlots(*m_room); clearAIRound45ContinuityCertificate(*m_room); clearAIRound45NativeBindings(*m_room); clearAIRound45Goutong(*m_room); clearAIRound45InovationState(*m_room); clearAIRound45PinnedSources(*m_room); }
+    if (m_room) clearAIRound56BootstrapSourceBoundary(*m_room);
+    if (m_room) clearAIRound56ProjectionLineage(*m_room);
+    if (m_room) clearAIRound56PriorityBootstrap(*m_room);
+    if (m_room) clearAIRound56ModeEvaluationLineage(*m_room);
+    if (m_room) clearAIRound56ConnectionCache(*m_room);
+    if (m_room) clearAIRound56CloneInputLineage(*m_room);
     m_lua.shutdown();
+    clearAIRound53LianzhanBindings(m_lua); clearAIRound45GoutongBindings(m_lua); clearAIRound45SlotBindings(m_lua); // normal after-close native list custody cleanup
     globalCardLifetimeManager().releaseWrapperBindings(this);
     drainShutdownStage("lua-close");
 
@@ -173,6 +237,20 @@ void RoomRuntime::shutdownFinal()
                                                   previousContext.generation,
                                                   previousContext.state);
     releaseShutdownRoots();
+    // A Room used synchronously may never enter finalizeWorker(). Its Lua
+    // callbacks can still create non-owning SWIG cloneCard results that omit
+    // deleteLater(). Reclaim these same-domain, unretained native transients
+    // with the existing worker finalizer before invalidating their tokens.
+    // Token invalidation alone cannot destroy a still-live QObject.
+    quint64 canonicalRetired = 0;
+    if (!globalCardLifetimeManager().finalizeWorkerDomain(this, &canonicalRetired)) {
+        globalCardLifetimeManager().dumpDomain(this);
+        failShutdown("canonical-final", globalCardLifetimeManager().gauge());
+        return;
+    }
+    std::fprintf(stdout, "CARD_LIFETIME_CANONICAL_FINAL retired=%llu\n",
+                 static_cast<unsigned long long>(canonicalRetired));
+    std::fflush(stdout);
     invalidateOrphanedRuntimeEntries();
     drainShutdownStage("postclose");
     const CardLifetimeGauge gauge = globalCardLifetimeManager().gauge();
@@ -195,7 +273,16 @@ void RoomRuntime::shutdownForInitFailure()
         return;
 
     m_ai.shutdown();
+    if (m_room) clearAIRound50HTMSWitnesses(*m_room);
+    if (m_room) { clearAIRound53DiouSlots(*m_room); clearAIRound53TyfenwuSlots(*m_room); clearAIRound53TyqingkouSlots(*m_room); clearAIRound53TychendeSlots(*m_room); clearAIRound53ZhuningSlots(*m_room); clearAIRound53GengduSlots(*m_room); clearAIRound53MingfaSlots(*m_room); clearAIRound53Pingjian(*m_room); clearAIRound53LianzhanSlots(*m_room); clearAIRound54Priority(*m_room); clearAIRound53Registry(*m_room); clearAIRound54Shebian(*m_room); clearAIRound54Jijiang(*m_room); clearAIRound47OlClanSlots(*m_room); clearAIRound46PlanningSlots(*m_room); clearAIRound47HeqiaSlots(*m_room); clearAIRound47BLeiluanSlots(*m_room); clearAIRound46JianmanSlots(*m_room); clearAIRound45FaqiSlots(*m_room); clearAIRound41FaqiPlans(*m_room); clearAIRound45XufaSlots(*m_room); clearAIRound53XuanzhuSlots(*m_room); clearAIRound45ContinuityCertificate(*m_room); clearAIRound45NativeBindings(*m_room); clearAIRound45Goutong(*m_room); clearAIRound45InovationState(*m_room); clearAIRound45PinnedSources(*m_room); }
+    if (m_room) clearAIRound56BootstrapSourceBoundary(*m_room);
+    if (m_room) clearAIRound56ProjectionLineage(*m_room);
+    if (m_room) clearAIRound56PriorityBootstrap(*m_room);
+    if (m_room) clearAIRound56ModeEvaluationLineage(*m_room);
+    if (m_room) clearAIRound56ConnectionCache(*m_room);
+    if (m_room) clearAIRound56CloneInputLineage(*m_room);
     m_lua.shutdown();
+    clearAIRound53LianzhanBindings(m_lua); clearAIRound45GoutongBindings(m_lua); clearAIRound45SlotBindings(m_lua); // normal after-close native list custody cleanup
     const CardLifetimeRuntimeContext previousContext =
         CardLifetimeManager::setCurrentRuntimeContext(this, nullptr, 0, nullptr);
     m_roomState.clear();
@@ -265,6 +352,7 @@ void RoomRuntime::releaseShutdownRoots()
     manager.releaseVariantTags(&m_ai);
     if (m_room) {
         manager.releaseVariantTags(m_room);
+        observeAIRound45XinyangTagRestore(*m_room);
         m_room->tag.clear();
         for (ServerPlayer *player : m_room->getPlayers())
             player->clearTags();
@@ -531,26 +619,50 @@ bool RoomRuntime::initialize(QString *error)
         phaseTimer.start();
     };
     const auto failPhase = [&]() {
+        if (m_room) retireAIRound56BootstrapSourceBoundary(*m_room);
         logInitializationPhase(phase, "failed", phaseTimer.elapsed());
         return false;
     };
     beginPhase("rules");
+    // Optional source provenance begins at the original native namespace birth.
+    // Failure does not change ordinary rules/AI bootstrap behavior.
+    installAIRound56BootstrapSourceBoundary(*m_room);
     if (!m_lua.initialize(error))
         return failPhase();
     m_gameRuntimeIdentity = &m_lua;
     m_gameRuntimeGeneration = m_lua.generation();
     m_gameRuntimeState = m_lua.rawState();
     LuaRuntime::Binding luaBinding(m_lua);
+    EngineRuntimeContextScope contextScope(*Sanguosha, this);
+    captureAIRound45NativeBindings(*m_room, m_lua.state());
+    prepareAIRound56BootstrapSourceBoundary(*m_room, m_lua.state());
     if (!m_lua.addPackagePath(QStringLiteral("./lua/?.lua"), error)
         || !m_lua.addPackagePath(QStringLiteral("./lua/?/init.lua"), error))
         return failPhase();
-    EngineRuntimeContextScope contextScope(*Sanguosha, this);
     m_loadingDefinitions = true;
     const bool loaded = m_lua.loadScript(QStringLiteral("lua/config.lua"), error)
         && m_lua.loadScript(QStringLiteral("lua/sanguosha.lua"), error);
     m_loadingDefinitions = false;
     if (!loaded)
         return failPhase();
+    registerAIRound50YuriSource(*m_room,m_lua.state());
+    registerAIRound52RangyiSource(*m_room,m_lua.state());
+    // Fixed source pin is optional capability; mismatches remain unsupported.
+    registerAIRound50HTMSSource(*m_room, m_lua.state());
+    // Yuxin full-Proto producer proof is independent of optional AI continuity.
+    registerAIRound50PlanningSources(*m_room, m_lua.state());
+    registerAIRound53LianzhanSources(*m_room,m_lua.state());
+    registerAIRound54CardChoiceSource(*m_room,m_lua.state());
+    registerAIRound53MingfaSources(*m_room, m_lua.state());
+    registerAIRound53GengduSources(*m_room, m_lua.state());
+    registerAIRound53ZhuningSources(*m_room, m_lua.state());
+    registerAIRound53DiouSources(*m_room, m_lua.state());
+    registerAIRound53TyfenwuSources(*m_room, m_lua.state());
+    registerAIRound53TyqingkouSources(*m_room, m_lua.state());
+    registerAIRound53TychendeSources(*m_room, m_lua.state());
+    registerAIRound53XuanzhuSlotSources(*m_room, m_lua.state());
+    // Xufa saved-slot source pins are independent of optional continuity certificates.
+    registerAIRound45XufaSlotSources(*m_room, m_lua.state());
     logInitializationPhase(phase, "end", phaseTimer.elapsed());
     beginPhase("mode_ai");
     if (!m_lua.loadScript(QStringLiteral("lua/ai/mode-ai.lua"), error))
@@ -567,7 +679,8 @@ bool RoomRuntime::initialize(QString *error)
         lua_pushstring(state, m_room->getMode().toUtf8().constData());
         lua_pushboolean(state, isNormalGameMode(m_room->getMode(), Config.EnableHegemony));
         lua_pushboolean(state, Config.EnableHegemony);
-        if (LuaRuntime::protectedCall(state, 3, 0, 0) != LUA_OK) {
+        lua_pushboolean(state, m_room->getScenario() != nullptr);
+        if (LuaRuntime::protectedCall(state, 4, 0, 0) != LUA_OK) {
             if (error) *error = QString::fromUtf8(lua_tostring(state, -1));
             lua_pop(state, 1);
             return failPhase();
@@ -584,6 +697,7 @@ bool RoomRuntime::initialize(QString *error)
         beginPhase("smart_ai");
         if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
             return failPhase();
+        clearAIRound40TargetHistory(*m_room);
         for (const QString &path : Sanguosha->rulesDeclaredList(QStringLiteral("package_ai"))) {
             lua_State *state = m_lua.state();
             lua_getglobal(state, "sgs");
@@ -596,6 +710,13 @@ bool RoomRuntime::initialize(QString *error)
                 return failPhase();
             }
         }
+        installAIRound44FocusCallbacks(*m_room);
+        initializeAIRound45ContinuityCertificate(*m_room);
+        captureAIRound29ChoicePriorities(*m_room);
+        captureAIRound30TargetCache(*m_room);
+        initializeAIRound30TargetRevises(*m_room);
+        // Fixed-source catalog capture is independent of optional R37 continuity.
+        initializeAIRound53Pingjian(*m_room, m_lua.state());
         logInitializationPhase(phase, "end", phaseTimer.elapsed());
     }
 
@@ -630,6 +751,13 @@ bool RoomRuntime::initialize(QString *error)
         lua_pop(state, 1);
         logInitializationPhase(phase, "end", phaseTimer.elapsed());
     }
+    // Source registration is not async authority. The complete bootstrap
+    // source-union owner must issue and consume its one-use native token here
+    // before any private selection; a post-bootstrap heap scan cannot seed it.
+    if (Config.EnableAI && lua_checkstack(m_lua.state(),16)) {
+        registerAIRound56CloneSources(*m_room,m_lua.state());
+    }
+    completeAIRound56BootstrapSourceBoundary(*m_room,m_lua.state());
     return true;
 }
 

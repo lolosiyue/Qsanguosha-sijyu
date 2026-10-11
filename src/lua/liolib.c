@@ -21,6 +21,7 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
+#include "lqsgsasync.h"
 
 
 
@@ -839,3 +840,19 @@ LUAMOD_API int luaopen_io (lua_State *L) {
   return 1;
 }
 
+
+/* R56 fixed-source union: closed, standard, and ordinary fopen streams.
+   f_gc -> aux_close -> io_fclose -> fclose/luaL_fileresult has no authored
+   callback or named source write. Both successful/open and closed/error arms
+   belong to the prior source proof; private file outcomes never grant it.
+   popen and foreign native FILE/close-function injection remain excluded. */
+int luaQsgsStandardIoFinalizer(lua_State *L,int function,int object) {
+ const TValue*v=qsgs_async_value(L,object);const TValue*registry= &G(L)->l_registry;
+ const TValue*mt;
+ if(!qsgs_async_cfunction(qsgs_async_value(L,function),f_gc)||!ttisfulluserdata(v)
+    ||uvalue(v)->len!=sizeof(LStream)||!ttistable(registry))return 0;
+ mt=qsgs_async_field(hvalue(registry),LUA_FILEHANDLE);
+ if(!mt||!ttistable(mt)||uvalue(v)->metatable!=hvalue(mt))return 0;
+ {const LStream*p=(const LStream*)getudatamem(uvalue(v));
+  return p->closef==NULL||p->closef==io_noclose||p->closef==io_fclose;}
+}

@@ -1393,3 +1393,46 @@ YJCM2022Package::YJCM2022Package()
 }
 
 ADD_PACKAGE(YJCM2022)
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_package_yjcm2022_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(Liandui)), 2u);
+ types.recordActivateSource<Liandui>(2795u); AI_R56_REQUIRE_DECLARATION(Liandui, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Liandui, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Liandui, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(BiejunGive)), 2u);
+ types.recordActivateSource<BiejunGive>(2796u); AI_R56_REQUIRE_DECLARATION(BiejunGive, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(BiejunGive, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(BiejunGive, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(Biejun)), 2u);
+ types.recordActivateSource<Biejun>(2797u); AI_R56_REQUIRE_DECLARATION(Biejun, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Biejun, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Sangu)), 2u);
+ types.recordActivateSource<Sangu>(2798u); AI_R56_REQUIRE_DECLARATION(Sangu, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Sangu, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Yizu)), 2u);
+ types.recordActivateSource<Yizu>(2799u); AI_R56_REQUIRE_DECLARATION(Yizu, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Yizu, getLimitScope, Yizu); AI_R56_REQUIRE_DECLARATION(Yizu, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(BushiLK)), 2u);
+ types.recordActivateSource<BushiLK>(2800u); AI_R56_REQUIRE_DECLARATION(BushiLK, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(BushiLK, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(BushiLK, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(BushiLKTargetMod)), 3u);
+ types.recordActivateSource<BushiLKTargetMod>(2801u); AI_R56_REQUIRE_DECLARATION(BushiLKTargetMod, getBaseAmount, TargetModSkillV2); AI_R56_REQUIRE_DECLARATION(BushiLKTargetMod, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(BushiLKTargetMod, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Zhongzhuang)), 2u);
+ types.recordActivateSource<Zhongzhuang>(2802u); AI_R56_REQUIRE_DECLARATION(Zhongzhuang, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Zhongzhuang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Zhongzhuang, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Koujing)), 2u);
+ types.recordActivateSource<Koujing>(2803u); AI_R56_REQUIRE_DECLARATION(Koujing, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Koujing, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(KoujingTargetMod)), 3u);
+ types.recordActivateSource<KoujingTargetMod>(2804u); AI_R56_REQUIRE_DECLARATION(KoujingTargetMod, getBaseAmount, TargetModSkillV2); AI_R56_REQUIRE_DECLARATION(KoujingTargetMod, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(KoujingTargetMod, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Diezhang)), 2u);
+ types.recordActivateSource<Diezhang>(2805u); AI_R56_REQUIRE_DECLARATION(Diezhang, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Diezhang, getLimitScope, Diezhang); AI_R56_REQUIRE_DECLARATION(Diezhang, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Duanwan)), 2u);
+ types.recordActivateSource<Duanwan>(2806u); AI_R56_REQUIRE_DECLARATION(Duanwan, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Duanwan, getLimitScope, Duanwan); AI_R56_REQUIRE_DECLARATION(Duanwan, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Duwang)), 2u);
+ types.recordActivateSource<Duwang>(2807u); AI_R56_REQUIRE_DECLARATION(Duwang, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Duwang, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Duwang, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(DuwangBf)), 3u);
+ types.recordActivateSource<DuwangBf>(2808u); AI_R56_REQUIRE_DECLARATION(DuwangBf, getBaseAmount, DistanceSkillV2); AI_R56_REQUIRE_DECLARATION(DuwangBf, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(DuwangBf, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Cibei)), 2u);
+ types.recordActivateSource<Cibei>(2809u); AI_R56_REQUIRE_DECLARATION(Cibei, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(Cibei, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Cibei, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(CibeiLimit)), 3u);
+ types.recordActivateSource<CibeiLimit>(2810u); AI_R56_REQUIRE_DECLARATION(CibeiLimit, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(CibeiLimit, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(CibeiMod)), 3u);
+ types.recordActivateSource<CibeiMod>(2811u); AI_R56_REQUIRE_DECLARATION(CibeiMod, getBaseAmount, TargetModSkillV2); AI_R56_REQUIRE_DECLARATION(CibeiMod, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(CibeiMod, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Shujian)), 2u);
+ types.recordActivateSource<Shujian>(2812u); AI_R56_REQUIRE_DECLARATION(Shujian, getBaseAmount, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Shujian, getLimitScope, Shujian); AI_R56_REQUIRE_DECLARATION(Shujian, getMaxUsageLimit, Skill); AI_R56_REQUIRE_DECLARATION(Shujian, hasIndependentAIConversion, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Shujian, targetMode, ViewAsSkillV2); AI_R56_REQUIRE_DECLARATION(Shujian, isResponseOrUse, ViewAsSkill);
+ types.emplace(std::type_index(typeid(ShujianRecord)), 2u);
+ types.recordActivateSource<ShujianRecord>(2813u); AI_R56_REQUIRE_DECLARATION(ShujianRecord, getBaseAmount, TriggerSkillV2); AI_R56_REQUIRE_DECLARATION(ShujianRecord, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ShujianRecord, getMaxUsageLimit, Skill);
+}

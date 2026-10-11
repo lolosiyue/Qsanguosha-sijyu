@@ -102,6 +102,8 @@ void RoomDefinitionRegistry::clear()
         qFatal("Room definition root retained children after shutdown");
     m_packages.clear();
     m_generals.clear();
+    m_printedSkillNames.clear();
+    ++m_printedSkillGeneration;
     m_cards.clear();
     m_cardSpan = 0;
     m_cardIds.clear();
@@ -153,6 +155,7 @@ void RoomDefinitionRegistry::indexPackage(Package *package)
             id = m_nextCardId++;
         }
         card->setId(id);
+        card->aiRound56RecordPhysicalDefinitionIndexSource(id);
         m_cards.insert(id, card);
         m_cardSpan = qMax(m_cardSpan, id + 1);
         m_cardIds.insert(card, id);
@@ -270,6 +273,53 @@ const Card *RoomDefinitionRegistry::engineCard(int id) const
 bool RoomDefinitionRegistry::isEngineCard(const Card *card) const
 {
     return card && m_engine.cards.contains(const_cast<Card *>(card));
+}
+
+bool RoomDefinitionRegistry::printedSkillName(const Card *card, QString *value) const
+{
+    const auto it = m_printedSkillNames.constFind(card);
+    if (it == m_printedSkillNames.cend()) return false;
+    if (value) *value = it.value();
+    return true;
+}
+
+bool RoomDefinitionRegistry::setPrintedSkillName(const Card *card, const QString &value)
+{
+    // This is not an arbitrary-card mutation API: it only stores the existing
+    // compiled BasicCard field. Owned definitions/clones keep ordinary storage.
+    if (!card || !isEngineCard(card) || card->getTypeId() != Card::TypeBasic) return false;
+    const auto it = m_printedSkillNames.constFind(card);
+    if (it == m_printedSkillNames.cend() || it.value() != value) {
+        m_printedSkillNames.insert(card, value);
+        ++m_printedSkillGeneration;
+    }
+    return true;
+}
+
+QMap<int, QString> RoomDefinitionRegistry::printedSkillSnapshot() const
+{
+    QMap<int, QString> result;
+    for (auto it = m_printedSkillNames.cbegin(); it != m_printedSkillNames.cend(); ++it)
+        result.insert(it.key()->getId(), it.value());
+    return result;
+}
+
+bool RoomDefinitionRegistry::restorePrintedSkillSnapshot(const QMap<int, QString> &snapshot, QString *error)
+{
+    QHash<const Card *, QString> prepared;
+    for (auto it = snapshot.cbegin(); it != snapshot.cend(); ++it) {
+        const Card *card = m_engine.cards.value(it.key(), nullptr);
+        if (!card || card->getId() != it.key() || card->getTypeId() != Card::TypeBasic) {
+            if (error) *error = QStringLiteral("invalid compiled BasicCard attribution identity");
+            return false;
+        }
+        prepared.insert(card, it.value());
+    }
+    // Full validation precedes mutation; underscore and explicit empty strings
+    // are raw field values, not normalized getSkillName() results.
+    m_printedSkillNames.swap(prepared);
+    ++m_printedSkillGeneration;
+    return true;
 }
 
 const Card *RoomDefinitionRegistry::cardTemplate(const QString &name) const

@@ -1,7 +1,25 @@
+#include "ai-strategy-round56-host.h"
+#include <QMetaMethod>
+#include "ai-strategy-round44-response.h"
+#include "ai-strategy-round47b-fate-receipt.h"
+#include "ai-strategy-round34-choice.h"
+#include "ai-strategy-round29-original.h"
+#include "ai-strategy-choice-context.h"
+#include "ai-strategy-retrial-context.h"
+#include "ai-strategy-public-action-flags.h"
+#include "ai-strategy-public-disclosure.h"
+#include "notified-pile-query-scope.h"
+#include "skill-generated-card.h"
+#include "ai-card-query-scope.h"
 #include "managed-rewind-lab.h"
 #include "external-agent.h"
 #include "external-agent-transport.h"
 #include "room.h"
+#include "ai-strategy-round51-collateral.h"
+#include "ai-strategy-round52-rangyi.h"
+#include "ai-strategy-round50-htms-events.h"
+#include "ai-strategy-round45-inovation-state.h"
+#include "ai-strategy-round28-common.h"
 #include "room-managed-state.h"
 #include "controller-input-diagnostics.h"
 #include "qml-element-path.h"
@@ -12,6 +30,7 @@
 #include "runtime-paths.h"
 #include "card-lifetime-manager.h"
 #include "ai-decision-coordinator.h"
+#include "ai-strategy-projection.h"
 #include "card-movement-service.h"
 #include "card-state-service.h"
 #include "extra-turn-scheduler.h"
@@ -66,6 +85,8 @@
 #include <QDir>
 #include <QSet>
 #include <QScopeGuard>
+
+namespace QSanEngine { extern thread_local Player *Self; }
 #include <QProcess>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -3020,6 +3041,8 @@ const Card*Room::askForUseCard(ServerPlayer*player, const QString&pattern, const
 CardUseStruct Room::askForUseCardStruct(ServerPlayer*player, const QString&pattern, const QString&prompt, int notice_index,
 	Card::HandlingMethod method, bool addHistory, ServerPlayer*who, const Card*whocard, QString flag)
 {
+	AIRound52RangyiQuestion rangyiQuestion(*this,player,pattern,prompt,int(method));
+	AIRound51CollateralQuestion collateralQuestion(*this,player,pattern,prompt,int(method));
 	return m_playerDecisions->askForUseCardStruct(player, pattern, prompt, notice_index, method,
 		addHistory, who, whocard, flag);
 }
@@ -3260,21 +3283,25 @@ void Room::setCardMark(int card_id, const QString&mark, int value, ServerPlayer*
 void Room::setCardFlag(const Card*card, const QString&flag, ServerPlayer*who)
 {
 	m_cardState->setCardFlag(card, flag, who);
+	if (!who && card && !card->isVirtualCard()) recordAIStrategyPublicCardFlag(*this, card, flag);
 }
 
 void Room::setCardFlag(int card_id, const QString&flag, ServerPlayer*who)
 {
 	m_cardState->setCardFlag(card_id, flag, who);
+	if (!who) recordAIStrategyPublicCardFlag(*this, Sanguosha->getCard(card_id), flag);
 }
 
 void Room::clearCardFlag(const Card*card, ServerPlayer*who)
 {
 	m_cardState->clearCardFlag(card, who);
+	if (!who && card && !card->isVirtualCard()) recordAIStrategyPublicCardFlag(*this, card, ".");
 }
 
 void Room::clearCardFlag(int card_id, ServerPlayer*who)
 {
 	m_cardState->clearCardFlag(card_id, who);
+	if (!who) recordAIStrategyPublicCardFlag(*this, Sanguosha->getCard(card_id), ".");
 }
 
 void Room::setCardTip(int card_id, const QString&tip)
@@ -3583,7 +3610,9 @@ void Room::setFixedDistance(Player*from, const Player*to, int distance)
 
 	JsonArray arg;
 	arg << from->objectName() << to->objectName() << distance << true;
-	doBroadcastNotify(S_COMMAND_FIXED_DISTANCE, arg);
+	const auto distanceRecipients = getPlayers();
+	doBroadcastNotify(distanceRecipients, S_COMMAND_FIXED_DISTANCE, arg);
+	observeAIRound34FixedDistance(*this, from, to, distance, true, distanceRecipients);
 }
 
 void Room::removeFixedDistance(Player*from, const Player*to, int distance)
@@ -3594,7 +3623,9 @@ void Room::removeFixedDistance(Player*from, const Player*to, int distance)
 
 	JsonArray arg;
 	arg << from->objectName() << to->objectName() << distance << false;
-	doBroadcastNotify(S_COMMAND_FIXED_DISTANCE, arg);
+	const auto distanceRecipients = getPlayers();
+	doBroadcastNotify(distanceRecipients, S_COMMAND_FIXED_DISTANCE, arg);
+	observeAIRound34FixedDistance(*this, from, to, distance, false, distanceRecipients);
 }
 
 void Room::insertAttackRangePair(Player*from, const Player*to)
@@ -3675,6 +3706,8 @@ void Room::prepareForStart()
 
 void Room::reportDisconnection()
 {
+    // This entry can run outside the gameplay thread. Atomic revoke only.
+    roomRuntime()->revokeXufaTransportContinuity();
 	ServerPlayer*player = qobject_cast<ServerPlayer*>(sender());
 	if (player == nullptr) return;
     if (m_rewindLab) { m_rewindLab->disconnected(player); if (getThread()) return; }
@@ -4099,6 +4132,16 @@ bool Room::_setPlayerGeneral(ServerPlayer*player, const QString&generalName, boo
 	return false;
 }
 
+void Room::publishAIStrategySpeech(ServerPlayer *player, const QString &text)
+{
+    // AI presentation is text, not a client command channel. In particular an
+    // isolated policy cannot invoke cheat commands through a chat payload.
+    if (!player || player->getRoom() != this) return;
+    const QVariantMap body = makeChatMessage(player->objectName(), text);
+    m_chatHistory << body;
+    doBroadcastNotify(S_COMMAND_SPEAK, body);
+}
+
 void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 {
 #define _NO_BROADCAST_SPEAKING {\
@@ -4467,6 +4510,7 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 {
 	if (!player || !skill || request.initiator != player)
 		return nullptr;
+    NotifiedPileQueryScope notifiedPile(request, skill);
 	const bool equipmentActivation = skill->isEquipSkill()
 		&& request.activationRef.key.instanceID == 0;
 	SkillContext equipmentSource;
@@ -4487,7 +4531,31 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 		|| request.activationRef.key.skillName != skill->objectName()
 		|| (!equipmentActivation && !hasActivationInstance && !continuesViewAsEffect))
 		return nullptr;
-	if (!skill->canActivateRequest(request) || !skill->cardSelectionFeasible(request))
+    // These two fixed native selectors evaluate the original physical card
+    // through sgs.Self. The coordinator's readonly/selected query scope ends
+    // before this independent final rebuild; bind the authenticated initiator
+    // here too, and restore the enclosing native context on every exit.
+    const QString physicalSkill = request.activationRef.key.skillName;
+    const bool round45PhysicalSelector = request.reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
+        && ((physicalSkill == "keolzhuri" && request.pattern == "@@keolzhuri")
+            || (physicalSkill == "keolsaoguslash" && request.pattern == "@@keolsaoguslash"));
+    if (round45PhysicalSelector && (player->getRoom() != this || !m_runtime
+        || m_runtime->isClosing() || findPlayerByObjectName(player->objectName(), true) != player))
+        return nullptr;
+    Player *const priorSelf = QSanEngine::Self;
+    Player *const priorCurrentPlayer = round45PhysicalSelector ? m_runtime->state().getCurrentPlayer() : nullptr;
+    const auto restorePhysicalSelector = qScopeGuard([&] {
+        if (round45PhysicalSelector) {
+            m_runtime->state().setCurrentPlayer(priorCurrentPlayer);
+            setEngineSelf(priorSelf);
+        }
+    });
+    if (round45PhysicalSelector) {
+        setEngineSelf(player);
+        m_runtime->state().setCurrentPlayer(player);
+    }
+	if (!request.generatedCardSelectionValid()
+        || !skill->canActivateRequest(request) || !skill->cardSelectionFeasible(request))
 		return nullptr;
 	{
 		// Enforce the limit_scope quota before create; relying only on reserve is too late,
@@ -4514,6 +4582,7 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	}
 	foreach (int id, skill->getExpandPileCardIds(player))
 		selectable.insert(id);
+    if (!AIRound47FateUseAccess::extend(*this,player,skill,request,selectable)) return nullptr;
 	ActiveSkillRequest checked = request;
 	checked.selectedCardIds.clear();
 	foreach (int id, request.selectedCardIds) {
@@ -4525,19 +4594,50 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	}
 	const Card *card = skill->createCard(checked);
 	if (!card) return nullptr;
+    if (!request.generatedCardProductMatches(card)) {
+        if (card->isVirtualCard()) const_cast<Card *>(card)->deleteLater();
+        return nullptr;
+    }
+    const bool physicalProduct = isAuditedPhysicalCardSkill(checked.activationRef.key.skillName,
+        checked.reason, checked.pattern);
+    if (physicalProduct) {
+        if (card->isVirtualCard()) return nullptr;
+        if (isMarkedPhysicalCardSkill(checked.activationRef.key.skillName, checked.reason, checked.pattern)) {
+            const bool printed = checked.activationRef.key.skillName == "kezumingjiemark";
+            const int id = player->getMark(printed ? "kezumingjie-PlayClear" : "kezulilunuse");
+            if (!checked.selectedCardIds.isEmpty() || id < 0 || id >= Sanguosha->getCardCount()
+                || card != (printed ? Sanguosha->getEngineCard(id) : Sanguosha->getCard(id))) return nullptr;
+        } else if (checked.selectedCardIds.size() != 1
+            || card != Sanguosha->getCard(checked.selectedCardIds.first())) return nullptr;
+    }
 	Card *mutableCard = const_cast<Card *>(card);
-	mutableCard->setActivationSkill(checked.activationRef.key.skillName,
-		checked.activationRef.key.instanceID);
+    if (!physicalProduct)
+	    mutableCard->setActivationSkill(checked.activationRef.key.skillName,
+		    checked.activationRef.key.instanceID);
 	SkillInstanceRef sourceRef = equipmentActivation ? equipmentSource.sourceRef
 		: resolveSkillInstanceRootRef(checked.activationRef);
 	if (!sourceRef.isValid() && continuesViewAsEffect)
 		sourceRef = checked.activationRef;
 	if (!sourceRef.isValid() && !equipmentActivation) return nullptr;
+    if ((request.activationRef.key.skillName == "chopper" || request.activationRef.key.skillName == "tiaojiaoCMT"
+        || request.activationRef.key.skillName == "lxtx_zhangwu") && request.sourceRef.isValid()
+        && request.sourceRef != sourceRef) {
+        if (card->isVirtualCard()) mutableCard->deleteLater();
+        return nullptr;
+    }
+    if (physicalProduct) {
+        if (request.sourceRef != sourceRef) return nullptr;
+        return card; // Original physical face/flags stay unchanged; refs belong to CardUseStruct.
+    }
 	mutableCard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 
 	// Ordinary cards use areCardTargetsLegal() at the client/AI submission gate.
 	// Pure responses have no targets; server-created uses may supply authoritative
 	// targets even for target-fixed cards (for example Peach during rescue).
+    if (!AIRound47FateUseAccess::finish(*this,request,card)) {
+        if (card->isVirtualCard()) mutableCard->deleteLater();
+        return nullptr;
+    }
 	const bool proxy = qobject_cast<const ActiveSkillCard *>(card->getRealCard()) != nullptr;
 	if (!proxy) return card;
 	if (skill->targetMode() == ViewAsSkillV2::NoTarget)
@@ -4649,9 +4749,9 @@ bool Room::decideAiAmazingGrace(ServerPlayer *player, const QList<int> &cardIds,
 
 bool Room::decideAiCardChosen(ServerPlayer *player, ServerPlayer *who, const QString &flags,
                               const QString &reason, Card::HandlingMethod method,
-                              int &cardId) const
+                              int &cardId, bool handcardVisible) const
 {
-	return m_aiDecisions->decideCardChosen(player, who, flags, reason, method, cardId);
+	return m_aiDecisions->decideCardChosen(player, who, flags, reason, method, cardId, handcardVisible);
 }
 
 bool Room::decideAiYiji(ServerPlayer *player, const QList<int> &cards, const QString &reason,
@@ -5218,9 +5318,11 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 			request.pattern = m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = skillCardCtx.initiator;
 			request.activationRef = skillCardCtx.activationRef;
+            request.sourceRef = skillCardCtx.sourceRef;
 			request.setCardSelection(use.card);
 			foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
-			const bool paidCost = activeSkill->cost(this, skillCardCtx, request);
+			const bool paidCost = request.generatedCardSelectionValid()
+                && activeSkill->cost(this, skillCardCtx, request);
 			restoreSkillCardIdentity(skillCardCtx);
 			skillCardCtx.invoker = skillCardIdentity.invoker;
 			if (!paidCost) {
@@ -5282,12 +5384,14 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 			request.pattern = m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = skillCardCtx.initiator;
 			request.activationRef = skillCardCtx.activationRef;
+            request.sourceRef = skillCardCtx.sourceRef;
 			request.setCardSelection(use.card);
 			foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
 			// Payment metadata belongs to this execution's admitted CardUseStruct.
 			SkillExecutionRegistry::Entry *entry = skillExecution.get();
 			skillCardCtx.original_data = entry ? &entry->backingData : nullptr;
-			const bool paid = activeSkill->pay(this, skillCardCtx, request);
+			const bool paid = request.generatedCardSelectionValid()
+                && activeSkill->pay(this, skillCardCtx, request);
 			restoreSkillCardIdentity(skillCardCtx);
 			skillCardCtx.invoker = skillCardInvoker;
 			if (!paid || skillCardCtx.is_canceled) {
@@ -5455,6 +5559,7 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 		request.pattern = m_runtime->state().getCurrentCardUsePattern();
 		request.initiator = use.from;
 		request.activationRef = use.activationRef;
+        request.sourceRef = use.sourceRef;
 		request.setCardSelection(use.card);
 		foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
 		key = historySkill->historyKey(request);
@@ -5537,12 +5642,14 @@ bool Room::resolveCardUse(CardUseStruct &use, bool add_history, const SkillConte
 			}
 			if (!skipOnUse) {
 				cardProcessingStarted = true;
+				AIRound52RangyiUse rangyiUse(*this,use);
 				use.card->onUse(this, use);
 			}
 		} else {
 			use.card = card;
 			if (!skipOnUse) {
 				cardProcessingStarted = true;
+				AIRound52RangyiUse rangyiUse(*this,use);
 				use.card->onUse(this, use);
 			}
 		}
@@ -5934,6 +6041,7 @@ void Room::resolveDamage(DamageStruct damage)
 
 	const int previousDepth = m_damageStack.size();
 	const QVariant previousDamage = getTag("CurrentDamageStruct");
+	AIRound50DamageScope htmsDamageScope(*this);
 	QHash<ServerPlayer *, QVariant> previousTransfers;
 	for (ServerPlayer *player : getPlayers()) previousTransfers.insert(player, player->getTag("TransferDamage"));
 	try {
@@ -5968,7 +6076,7 @@ void Room::resolveDamage(DamageStruct damage)
 			prevented = false;
 			resolution.update(damage.from, damage.to);
 			m_damageStack.push_back(damage);
-			setTag("CurrentDamageStruct", data);
+			{ AIRound50DamageTagWrite witness(*this, data, 0); setTag("CurrentDamageStruct", data); }
 
 			//thread->trigger(PreDamageDone, this, damage.to, data);
 
@@ -6009,12 +6117,12 @@ void Room::resolveDamage(DamageStruct damage)
 		if (!prevented){
 			m_damageStack.pop();
 			if (m_damageStack.isEmpty()) removeTag("CurrentDamageStruct");
-			else setTag("CurrentDamageStruct", QVariant::fromValue(m_damageStack.first()));
+			else { const QVariant current = QVariant::fromValue(m_damageStack.first()); AIRound50DamageTagWrite witness(*this, current, 1); setTag("CurrentDamageStruct", current); }
 		}
 	} catch (const TriggerCascadeBreak &) {
 		const auto restoreDamage = qScopeGuard([&] {
 			while (m_damageStack.size() > previousDepth) m_damageStack.pop();
-			if (previousDamage.isValid()) setTag("CurrentDamageStruct", previousDamage);
+			if (previousDamage.isValid()) { AIRound50DamageTagWrite witness(*this, previousDamage, 2); setTag("CurrentDamageStruct", previousDamage); }
 			else removeTag("CurrentDamageStruct");
 			for (auto previous = previousTransfers.cbegin(); previous != previousTransfers.cend(); ++previous) {
 				// A consumed transfer is a completed effect; never resurrect it.
@@ -6239,7 +6347,9 @@ bool Room::broadcastProperty(ServerPlayer*owner, const char*property_name, const
 		m_playerState->revealRole(owner, value);
 		return true;
 	}
-	return m_playerState->broadcastProperty(owner, property_name, value);
+	const bool sent = m_playerState->broadcastProperty(owner, property_name, value);
+	if (sent) recordAIRound28PublicGeneralSlot(*this, owner, property_name, value);
+	return sent;
 }
 
 bool Room::isRoleRevealed(const ServerPlayer *player) const
@@ -6508,7 +6618,7 @@ bool Room::notifyMoveCards(bool isLostPhase, QList<CardsMoveStruct>&moves, bool 
 	//Q_ASSERT(_m_lastMovementId >= 0);
 	if (players.isEmpty()) players = getPlayers();
 	foreach(ServerPlayer*player, players){
-		if (player->isOffline()) continue;
+		QList<CardsMoveStruct> recipientMoves;
 		JsonArray arg;
 		arg << moveId;
 		for (int i = 0; i < moves.length(); i++){
@@ -6526,9 +6636,20 @@ bool Room::notifyMoveCards(bool isLostPhase, QList<CardsMoveStruct>&moves, bool 
 						cardId = Card::S_UNKNOWN_CARD_ID;
 				}
 			}
+			recipientMoves.append(recipientMove);
 			arg << recipientMove.toVariant();
 		}
+		if (player->isOffline()) {
+			// The named recipient has the same redacted preview input even when
+			// no network client is attached. Keep this finite AI observation
+			// separate from socket delivery and from other preview observers.
+			if (player->getState() == "robot")
+				recordAIStrategyRetrialPreview(*this, player, recipientMoves, isLostPhase);
+			continue;
+		}
 		doNotify(player, isLostPhase ? S_COMMAND_LOSE_CARD : S_COMMAND_GET_CARD, arg);
+		recordAIStrategyRetrialPreview(*this, player, recipientMoves, isLostPhase);
+		recordAIRound29ShicaiPreview(*this, player, recipientMoves, isLostPhase);
 	}
 	return true;
 }
@@ -6608,7 +6729,9 @@ void Room::notifySkillInvoked(ServerPlayer*player, const QString&skill_name)
 	}
 	QVariant data = "notifyInvoked:"+skill_name;
 	thread->trigger(ChoiceMade, this, player, data);
-	tag[data.toString()] = true;
+	const QString invokedTagKey=data.toString(); // same one source conversion after ChoiceMade
+	observeAIRound45XinyangTagWrite(*this,invokedTagKey);
+	tag[invokedTagKey] = true;
 }
 
 void Room::broadcastSkillInvoke(const QString&skill_name, const QString&category)
@@ -6953,8 +7076,46 @@ void Room::transformDeputyGeneral(ServerPlayer *player, const QString &requested
 void Room::flushHegemonyReveals()
 {
     if (!Config.EnableHegemony || getTag("HegemonyFlushingReveals").toBool() || isFinished()) return;
-    setTag("HegemonyFlushingReveals", true);
-    auto restore = qScopeGuard([&]() { removeTag("HegemonyFlushingReveals"); });
+    // This exact native reentrancy marker is transient coordination state,
+    // not a gameplay mutation. It is absent again when this scope completes.
+    // Preserve setTag's lifetime bookkeeping and synchronous scenario callback:
+    // a scenario may make REAL changes here, which must still revoke snapshots.
+    // In particular do not skip an empty flush or suppress deferred dispatch.
+    const QString flushGuardKey = QStringLiteral("HegemonyFlushingReveals");
+    const bool transientFlushGuard = !tag.contains(flushGuardKey);
+    const auto setFlushGuard = [&]() {
+        // A pre-existing explicit false/non-boolean value is external state;
+        // retain the public setter's normal revision semantics in that case.
+        if (!transientFlushGuard) { setTag(flushGuardKey, true); return; }
+        QByteArray error;
+        if (!globalCardLifetimeManager().retainVariantTag(this, flushGuardKey.toUtf8(), true, &error)) {
+            qWarning("Room tag '%s' rejected: %s", qPrintable(flushGuardKey), error.constData());
+            return;
+        }
+        tag.insert(flushGuardKey, true);
+        if (scenario && !(thread && thread->isMandatoryCleanup())) scenario->onTagSet(this, flushGuardKey);
+    };
+    try {
+        setFlushGuard();
+    } catch (...) {
+        // The original setter callback precedes installation of cleanup. If it
+        // throws, the guard may persist; such a prefix is no longer transient.
+        if (transientFlushGuard && roomRuntime())
+            roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+        throw;
+    }
+    // Keep the original boundary: an exception in onTagSet above precedes
+    // installation of this cleanup guard. Do not silently repair donor errors.
+    auto restore = qScopeGuard([&]() {
+        const QVariant current = tag.value(flushGuardKey);
+        if (!transientFlushGuard || current.userType() != QMetaType::Bool || !current.toBool()) {
+            // Scenario/public writes to the same key are never exempted.
+            removeTag(flushGuardKey);
+            return;
+        }
+        globalCardLifetimeManager().releaseVariantTag(this, flushGuardKey.toUtf8());
+        tag.remove(flushGuardKey);
+    });
     // Consume each batch before dispatch; nested reveals enqueue the next batch.
     bool pending = true;
     while (pending && !isFinished()) {
@@ -7183,6 +7344,8 @@ void Room::setTag(const QString&key, const QVariant&value)
 		qWarning("Room tag '%s' rejected: %s", qPrintable(key), error.constData());
 		return;
 	}
+	observeAIRound45XinyangTagWrite(*this,key); // reached retained write, including equal value
+	observeAIRound50DamageTag(*this,key,&value);
 	const bool changed = !tag.contains(key) || tag.value(key) != value;
 	tag.insert(key, value);
 	if (changed && roomRuntime())
@@ -7197,6 +7360,8 @@ QVariant Room::getTag(const QString&key) const
 
 void Room::removeTag(const QString&key)
 {
+	observeAIRound45XinyangTagWrite(*this,key); // even removal of an absent key invalidates
+	observeAIRound50DamageTag(*this,key,nullptr);
 	globalCardLifetimeManager().releaseVariantTag(this, key.toUtf8());
 	if (tag.remove(key) && roomRuntime())
 		roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
@@ -8110,12 +8275,12 @@ void Room::setCardMapping(int card_id, ServerPlayer*owner, Player::Place place)
 
 ServerPlayer*Room::getCardOwner(int card_id) const
 {
-	return m_cardMovement->getCardOwner(card_id);
+	return AICardQueryScope::owner(this, card_id, m_cardMovement->getCardOwner(card_id));
 }
 
 Player::Place Room::getCardPlace(int card_id) const
 {
-	return m_cardMovement->getCardPlace(card_id);
+	return Player::Place(AICardQueryScope::place(this, card_id, m_cardMovement->getCardPlace(card_id)));
 }
 
 ServerPlayer*Room::getLord() const
@@ -8447,8 +8612,15 @@ void Room::fillAG(const QList<int>&card_ids, ServerPlayer*who, const QList<int>&
 {
 	m_fillAGarg.clear();
 	m_fillAGarg << JsonUtils::toJsonArray(card_ids) << JsonUtils::toJsonArray(disabled_ids);
+    QJsonObject disclosed;
+    for (int id : card_ids) if (id >= 0) disclosed.insert(QString::number(id), "ag");
+    const QList<ServerPlayer *> recipients = who ? QList<ServerPlayer *>{who} : getPlayers();
+    for (ServerPlayer *recipient : recipients)
+        recordAIStrategyNotifiedPile(*this, recipient, "#ai_current_ag", disclosed, true);
 	if (who) doNotify(who, S_COMMAND_FILL_AMAZING_GRACE, m_fillAGarg);
 	else doBroadcastNotify(S_COMMAND_FILL_AMAZING_GRACE, m_fillAGarg);
+    for (ServerPlayer *recipient : recipients)
+        recordAIStrategyChoiceAGDisclosure(*this, recipient, card_ids);
 }
 
 void Room::takeAG(ServerPlayer*player, int card_id, bool move_cards, QList<ServerPlayer*> to_notify)
@@ -8520,6 +8692,9 @@ void Room::takeAG(ServerPlayer*player, int card_id, bool move_cards, QList<Serve
 
 void Room::clearAG(ServerPlayer*player)
 {
+    const QList<ServerPlayer *> recipients = player ? QList<ServerPlayer *>{player} : getPlayers();
+    for (ServerPlayer *recipient : recipients)
+        recordAIStrategyNotifiedPile(*this, recipient, "#ai_current_ag", {}, false);
 	m_fillAGarg.clear();
 	m_takeAGargs.clear();
 	if (player) doNotify(player, S_COMMAND_CLEAR_AMAZING_GRACE, QVariant());
@@ -8549,6 +8724,7 @@ void Room::sendLog(const LogMessage&log, QList<ServerPlayer*>players)
 {
 	m_notifier->sendLog(log, players);
     if (!players.isEmpty()) return; // Private logs never broaden the public stack.
+    recordAIStrategyPublicCoupleLog(*this, log);
     if (log.type == QLatin1String("#TriggerSkill") && log.from) {
         for (int i = m_pendingResolutionScopes.size() - 1; i >= 0; --i)
             if (m_pendingResolutionScopes[i]->discloseSkill(log.arg, log.from)) break;
@@ -9341,8 +9517,18 @@ void Room::notifyMoveToPile(ServerPlayer*player, const QList<int>&cards, const Q
 	}
 	QList<ServerPlayer*> v_player;
 	v_player << player;
+    QJsonObject disclosedLocations;
+    if (in) {
+        for (const auto &move : moves) {
+            if (move.to != player || move.to_place != Player::PlaceSpecial) continue;
+            for (int id : move.card_ids) disclosedLocations.insert(QString::number(id), QJsonObject{
+                {"owner", move.from ? move.from->objectName() : QString()}, {"place", int(move.from_place)}});
+        }
+    }
+    recordAIStrategyNotifiedPile(*this, player, "#" + reason, disclosedLocations, in, cards, true);
 	notifyMoveCards(true, moves, visible, v_player);
 	notifyMoveCards(false, moves, visible, v_player);
+    recordAIRound44PoxiNotification(*this,player,cards,reason,in);
 }
 
 QString Room::ZhizheCardViewAsEquip(const Card*card)
@@ -9690,4 +9876,26 @@ QList<int> Room::getCardIdsOnTable(const Card *card) const
 {
     if (!card) return QList<int>();
     return getCardIdsOnTable(card->isVirtualCard() ? card->getSubcards() : QList<int>{card->getId()});
+}
+
+// Only exact source-owned logging registrations are admitted. Unknown connects
+// and disconnects poison monotonically; no current receiver count is sampled.
+void Room::connectNotify(const QMetaMethod &signal)
+{
+    if (signal == QMetaMethod::fromSignal(&Room::room_message)
+        && !AIRound56ReviewedLogConnect::matches(this))
+        m_round56LogConnectionsReviewed.store(false);
+    QThread::connectNotify(signal);
+}
+void Room::disconnectNotify(const QMetaMethod &signal)
+{
+    if (!signal.isValid() || signal == QMetaMethod::fromSignal(&Room::room_message))
+        m_round56LogConnectionsReviewed.store(false);
+    QThread::disconnectNotify(signal);
+}
+bool Room::round56LogConnectionsReviewed() const noexcept
+{
+    return m_round56LogConnectionsReviewed.load()
+        && (!m_round56LogServerAttached || (m_round56LogServer
+            && m_round56LogServer->round56LogConnectionsReviewed()));
 }

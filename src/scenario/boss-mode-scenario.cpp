@@ -563,3 +563,24 @@ ImpasseScenario::ImpasseScenario()
 
 }
 
+
+// R56 exact source-owned native type registrations. No callback executes.
+#include "ai-strategy-round56-native-types.h"
+void registerAIRound56NativeTypes_src_scenario_boss_mode_scenario_cpp(AIRound56NativeTypes&types){
+ types.emplace(std::type_index(typeid(Silue)), 2u);
+ types.recordActivateSource<Silue>(2834u); AI_R56_REQUIRE_DECLARATION(Silue, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Silue, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Kedi)), 2u);
+ types.recordActivateSource<Kedi>(2835u); AI_R56_REQUIRE_DECLARATION(Kedi, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Kedi, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Jishi)), 2u);
+ types.recordActivateSource<Jishi>(2836u); AI_R56_REQUIRE_DECLARATION(Jishi, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Jishi, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Daji)), 2u);
+ types.recordActivateSource<Daji>(2837u); AI_R56_REQUIRE_DECLARATION(Daji, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Daji, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Guzhan)), 2u);
+ types.recordActivateSource<Guzhan>(2838u); AI_R56_REQUIRE_DECLARATION(Guzhan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Guzhan, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Jizhan)), 2u);
+ types.recordActivateSource<Jizhan>(2839u); AI_R56_REQUIRE_DECLARATION(Jizhan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Jizhan, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(Duduan)), 3u);
+ types.recordActivateSource<Duduan>(2840u); AI_R56_REQUIRE_DECLARATION(Duduan, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(Duduan, getMaxUsageLimit, Skill);
+ types.emplace(std::type_index(typeid(ImpasseRule)), 2u);
+ types.recordActivateSource<ImpasseRule>(2841u); AI_R56_REQUIRE_DECLARATION(ImpasseRule, getLimitScope, Skill); AI_R56_REQUIRE_DECLARATION(ImpasseRule, getMaxUsageLimit, Skill);
+}
