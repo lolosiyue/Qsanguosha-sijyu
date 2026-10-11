@@ -15,6 +15,7 @@ import {
 import { isRulesIdentity, rulesCompatibilityError, rulesErrorMessage } from "./rules-identity";
 import { ClientGameState, type PresentationEvent } from "./state";
 import { autoTableBgUrl, imagePathToUrl, isLightbox, lightboxBackgroundUrl } from "./backdrop";
+import { playNotificationAudio } from "./audio";
 
 export type SessionPhase =
   | "idle"
@@ -536,6 +537,9 @@ export class LiveSession {
     }
 
     if (message.type === "notification") {
+      // A STATE_SYNC replay restores the table silently, like the desktop "marshalling" flag.
+      if (!this.syncActive)
+        playNotificationAudio(message.command, message.payload, this.state);
       if (message.command === Command.GAME_START)
         this.tableBackground = null;
       if (message.command === Command.CHANGE_TABLE_BG) {

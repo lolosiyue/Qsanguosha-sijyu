@@ -79,6 +79,15 @@ only): it renders the in-room UI with simulated data through
 [`web/src/ui-preview.ts`](../web/src/ui-preview.ts) — no socket, Worker or
 server is started — for styling and layout iteration.
 
+The live Worker also fetches `/rules/content/<sha256>`. Publish the exact Lua
+and translation bytes from the isolated server runtime into
+`web/public/rules/content/<sha256>` before the frontend build, preserving
+existing immutable hashes. Exclude server-only AI files. Packaging the three
+WASM files alone does not publish this content. A missing hash that falls
+through to SPA HTML fails content verification as `rules_reload_required`
+at `fetch content`; this is a deployment failure before gameplay. Use the
+existing Vite preview for image/audio/package routes as well.
+
 `npm run build` runs the Protocol V2 drift check
 ([`web/scripts/check-protocol-sync.mjs`](../web/scripts/check-protocol-sync.mjs)),
 a `translations.json` freshness check against `lang/zh_CN/*.lua`, a seat-ring sync
@@ -103,7 +112,8 @@ command above.
 
 ### Reuse order
 
-1. **先核對，符合才重用。** 沿用 `builds/repository-review-wasm` 的增量快取、
+1. **先核對，符合才重用。** Web 是開發環境，一律跑最新技能／武將：先依 `AGENTS.md` §9
+   從 H 權威倉庫同步 L 的 `extensions/`，再以同步後的內容比對。沿用 `builds/repository-review-wasm` 的增量快取、
    同一套 `.mjs`／`.wasm`／`.bundle.json` 和已準備的隔離 runtime。
    比對本局 artifact manifest、目前來源／內容與 server 的 rules identity；
    來源、內容或產物不符才處理受影響步驟。保留其他工作的 dirty 修改，
@@ -266,12 +276,18 @@ back to TypeScript skill-card guesses. The Room remains authoritative.
 Unknown commands are shown as a visible failure plus cancel.
 
 Vite serves the local `image/` tree at
-`/assets/` (dev and preview). Hand and prompt cards use
+`/assets/` and the local `audio/` tree at `/audio/` (dev and preview); the
+offline package lays both out the same way. Hand and prompt cards use
 `image/card/<object_name>.jpg` with `unknown.jpg` fallback; hidden cards use
 `image/system/card-back.png`; seats, waiting-room avatars, and choose-general
 use `image/generals/card/<name>.jpg` (then png/webp). Game Photos and the
-Dashboard avatar use `image/fullskin/generals/full/<name>.jpg` first. Spine, hero-skin
-composite, and audio are not loaded. Layout is one component tree; CSS reflows
+Dashboard avatar use `image/fullskin/generals/full/<name>.jpg` first. Spine and hero-skin
+composite are not loaded. [`web/src/audio.ts`](../web/src/audio.ts) plays what
+RoomScene plays: `PLAY_AUDIO` paths, `PLAY_EFFECT` skill/card voices
+(`audio/skill/<skill><n>.ogg` enumerated by HEAD probes, then the
+`defaultSkin.audio.json` category defaults), chain/equip emotions, death lines
+and the win/lose result. Package `audio/` aliases take precedence over the
+local tree; a `STATE_SYNC` replay stays silent. Layout is one component tree; CSS reflows
 portrait and landscape. The `image/` directory is gitignored; a checkout
 without local art falls back to unknown / text.
 
