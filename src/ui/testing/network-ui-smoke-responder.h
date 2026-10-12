@@ -42,6 +42,10 @@ public:
     static NetworkUiSmokeResponder *instance();
     static bool isActive();
 
+    // Answer the hegemony round-start reveal question with cancel, so generals reveal only
+    // through their skills (preshow) or the rules.
+    void setStayHidden(bool stayHidden) { m_stayHidden = stayHidden; }
+
     // Choose the first server-provided general for reproducible smoke runs.
     // If the list is empty, leave the original FreeChooseDialog flow intact.
 
@@ -109,6 +113,8 @@ private:
     bool m_requestPending = false;
     bool m_trusteeEngaged = false;
     QString m_trusteeReason;
+    bool m_stayHidden = false;
+    QString m_choiceReason; // skill name of the latest option choice
     QString m_pendingInteraction;
 
     QHash<QString, int> m_interactionCounts;

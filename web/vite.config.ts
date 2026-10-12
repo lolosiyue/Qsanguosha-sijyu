@@ -8,6 +8,7 @@ import { defineConfig, type Plugin } from "vite";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(root, "..");
 const imageRoot = path.resolve(repoRoot, "image");
+const audioRoot = path.resolve(repoRoot, "audio");
 // Runtime package trees are supplied at launch; source defaults keep local dev simple.
 const runtimeRoot = path.resolve(process.env.QSAN_RUNTIME_ROOT ?? repoRoot);
 const packageRoot = path.resolve(runtimeRoot, "packages");
@@ -99,6 +100,21 @@ function serveLocalImage(req: IncomingMessage, res: ServerResponse, next: () => 
   fs.createReadStream(file).pipe(res);
 }
 
+function serveLocalAudio(req: IncomingMessage, res: ServerResponse): void {
+  // Audio misses must stay HTTP errors: the client probes skill voice variants with HEAD.
+  const relative = assetRelativePath(req);
+  const file = path.resolve(audioRoot, relative);
+  const ext = path.extname(file).toLowerCase();
+  if (!relative || relative.includes("..") || !isInsideRoot(file, audioRoot) || !MIME[ext]?.startsWith("audio/")
+      || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    res.statusCode = 404;
+    res.end();
+    return;
+  }
+  res.setHeader("Content-Type", MIME[ext]);
+  fs.createReadStream(file).pipe(res);
+}
+
 function iniValue(text: string, key: string, fallback: string): string {
   const match = text.match(new RegExp(`^${key}=(.*)$`, "m"));
   return match ? match[1].trim() : fallback;
@@ -159,6 +175,7 @@ function localImagePlugin(): Plugin {
         next();
       });
       server.middlewares.use("/assets", serveLocalImage);
+      server.middlewares.use("/audio", serveLocalAudio);
       server.middlewares.use("/packages", servePackageFile);
     },
     configurePreviewServer(server) {
@@ -170,6 +187,7 @@ function localImagePlugin(): Plugin {
         next();
       });
       server.middlewares.use("/assets", serveLocalImage);
+      server.middlewares.use("/audio", serveLocalAudio);
       server.middlewares.use("/packages", servePackageFile);
     }
   };

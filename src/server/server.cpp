@@ -2886,6 +2886,7 @@ bool Server::isHeadlessMode = false;
 int Server::headlessGameLimit = 10000;
 QString Server::forcedHeadlessGeneral;
 QString Server::forcedHeadlessGeneral2;
+QString Server::forcedGeneral;
 bool Server::s_hasGameSeed = false;
 quint64 Server::s_gameSeedBase = 0;
 static QString s_headlessLogFile;

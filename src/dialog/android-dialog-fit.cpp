@@ -29,6 +29,15 @@
 
 namespace {
 
+QScreen *widgetScreen(QWidget *widget)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+    return widget->screen();
+#else
+    return QGuiApplication::screens().value(QApplication::desktop()->screenNumber(widget));
+#endif
+}
+
 class AndroidDialogFitFilter final : public QObject
 {
 public:
@@ -98,11 +107,7 @@ private:
 
     static QRect availableGeometry(QDialog *dialog)
     {
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
-        QScreen *screen = dialog->screen();
-#else
-        QScreen *screen = QGuiApplication::screens().value(QApplication::desktop()->screenNumber(dialog));
-#endif
+        QScreen *screen = widgetScreen(dialog);
         if (!screen)
             screen = QGuiApplication::primaryScreen();
         if (!screen)
@@ -117,8 +122,8 @@ private:
         }
         // A dialog already nudged onto the next monitor must not follow itself.
         // Fit against the main window's screen, then clip to that window.
-        if (mainWindow && mainWindow->screen())
-            screen = mainWindow->screen();
+        if (mainWindow && widgetScreen(mainWindow))
+            screen = widgetScreen(mainWindow);
         QRect available = screen->availableGeometry();
 #ifndef Q_OS_ANDROID
         if (Config.responsiveUiEnabled() && mainWindow) {
@@ -245,10 +250,10 @@ private:
             : Config.oneHandedness() == 1 ? available.left()
             : Config.oneHandedness() == 2 ? available.right() - placedWidth + 1
             : available.center().x() - placedWidth / 2;
-        QScreen *screen = dialog->screen();
+        QScreen *screen = widgetScreen(dialog);
         for (QWidget *owner = dialog->parentWidget(); owner; owner = owner->parentWidget()) {
-            if (auto *window = qobject_cast<QMainWindow *>(owner); window && window->screen()) {
-                screen = window->screen();
+            if (auto *window = qobject_cast<QMainWindow *>(owner); window && widgetScreen(window)) {
+                screen = widgetScreen(window);
                 break;
             }
         }

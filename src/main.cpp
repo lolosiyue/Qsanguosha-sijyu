@@ -673,8 +673,11 @@ int main(int argc, char *argv[]) {
             else
                 Server::forcedHeadlessGeneral = value;
         }
-        Server::writeHeadlessLog(QString("[AUTOTEST] forced general: main='%1' deputy='%2'")
-            .arg(Server::forcedHeadlessGeneral, Server::forcedHeadlessGeneral2));
+        const int forceIdx = args.indexOf("--force-general");
+        if (forceIdx >= 0 && forceIdx + 1 < args.size() && !args.at(forceIdx + 1).startsWith("-"))
+            Server::forcedGeneral = args.at(forceIdx + 1);
+        Server::writeHeadlessLog(QString("[AUTOTEST] forced general: main='%1' deputy='%2' owner='%3'")
+            .arg(Server::forcedHeadlessGeneral, Server::forcedHeadlessGeneral2, Server::forcedGeneral));
         Server *server = new Server(qApp);
         qDebug() << ">>> Headless Mode: Starting stress test with"
                  << Server::headlessGameLimit << "games, mode" << Config.GameMode.mode_id << "<<<";

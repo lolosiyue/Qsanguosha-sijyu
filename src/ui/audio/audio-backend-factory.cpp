@@ -1,6 +1,7 @@
 #include "audio-backend.h"
 #include "null-audio-backend.h"
 
+#include <QCoreApplication>
 #include <QFileInfo>
 
 #ifdef QSAN_AUDIO_BACKEND_FMOD
@@ -25,6 +26,9 @@
 
 IAudioBackend *createConfiguredAudioBackend()
 {
+    // --mute silences BGM and effects without touching the saved volumes (parallel test runners).
+    if (QCoreApplication::arguments().contains(QStringLiteral("--mute")))
+        return new NullAudioBackend;
 #if defined(QSAN_AUDIO_BACKEND_FMOD)
     return new FmodAudioBackend;
 #elif defined(QSAN_AUDIO_BACKEND_QT)

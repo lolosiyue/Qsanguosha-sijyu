@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Real-network test runner (serial).
+"""Real-network test runner (serial, or parallel with --parallel).
 
 Flow (per mode):
   1. Start qsanguosha_server.exe --game-mode <mode> --autotest-log <file> once (persistent)
@@ -8,6 +8,11 @@ Flow (per mode):
      (the client picks a general, fills the AI lobby and enables trust on its own)
   3. Detect game start/end from the server's [AUTOTEST] marker files, kill the client by PID
   4. After a mode finishes, kill the server and move on to the next mode
+
+With --parallel N, each (mode, general) job runs on one of N slots. A slot owns
+its own server port (--port + slot index) and a tiled client window cell, so N
+small client windows can be watched side by side. Parallel clients run with
+--mute and --effects-profile=none (no BGM, sounds or animations).
 
 Cross-platform: executable names, process spawn/cleanup and exit-code
 interpretation all go through runner_common, so the same runner works on
@@ -18,12 +23,17 @@ gui_network_smoke.py instead — this runner's job is soak.
 Usage:
     python network_runner.py --exe-root L:\\finaldebug\\QSanguosha-v2 ^
         --modes 10p,20p,02_1v1,05p --runs 2 --general zhenji
+    python network_runner.py --modes 05p --runs 1 --parallel 4 ^
+        --general zhenji,caocao,liubei,sunquan
 """
 import argparse
 import os
 import shutil
+import queue
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Final
 
 from runner_common import (MARK_GAME_OVER, MARK_GAME_START, common_args,
@@ -42,6 +52,46 @@ GAME_TIMEOUT: Final[int] = int(
 CLIENT_JOIN_TIMEOUT = 120     # Wait for client connection and game start.
 MAX_START_RETRIES = 2         # Maximum retries when the server crashes before game start.
 CLIENT_EXIT_GRACE = 10        # Grace period for the game-over marker after client exit.
+TILE_TITLE_BAR = 32           # Frame height left above each tiled client area.
+
+_log_tag = threading.local()
+_live_procs = set()  # Servers and clients still open; Ctrl+C kills them in parallel runs.
+
+
+def spawn_tracked(*args, **kwargs):
+    proc = spawn(*args, **kwargs)
+    _live_procs.add(proc)
+    return proc
+
+
+def log(msg):
+    """print with the current job tag, so parallel jobs stay readable."""
+    tag = getattr(_log_tag, "value", "")
+    print("[%s] %s" % (tag, msg) if tag else msg, flush=True)
+
+
+def screen_work_area():
+    """Primary work area (x, y, w, h) in logical pixels; Qt uses the same units."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+        rect = wintypes.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
+            return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+    return 0, 0, 1920, 1080
+
+
+def tile_geometries(count):
+    """Split the work area into a near-square grid of count client windows."""
+    x0, y0, width, height = screen_work_area()
+    cols = 1
+    while cols * cols < count:
+        cols += 1
+    rows = (count + cols - 1) // cols
+    cell_w, cell_h = width // cols, height // rows
+    return ["%dx%d+%d+%d" % (cell_w, cell_h - TILE_TITLE_BAR,
+                             x0 + (i % cols) * cell_w, y0 + (i // cols) * cell_h)
+            for i in range(count)]
 
 
 def read_markers(log_path, offset):
@@ -97,37 +147,41 @@ def _backup_runtime_files(workdir, run_dir, run_id):
             if os.path.isfile(src) and os.path.getsize(src) > 0:
                 shutil.copy2(src, dst)
         except OSError as e:
-            print("  [WARN] 複製 %s 失敗: %s" % (os.path.basename(src), e))
+            log("  [WARN] 複製 %s 失敗: %s" % (os.path.basename(src), e))
+
+
+# Extra server arguments shared by every job (e.g. --force-general), set from main().
+SERVER_EXTRA_ARGS = []
 
 
 def server_command(server_exe, mode, marker_file, port):
     return [server_exe, "--port", str(port), "--websocket-port", "0",
-            "--game-mode", mode, "--autotest-log", marker_file]
+            "--game-mode", mode, "--autotest-log", marker_file] + SERVER_EXTRA_ARGS
 
 
-def restart_server(args, exe_root, workdir, mode, proc, marker_file, server_log, server_exe, reason):
+def restart_server(args, exe_root, workdir, mode, proc, marker_file, server_log, server_exe, reason,
+                   port):
     """重啟常駐 server, 回傳新 proc。reason 用於 log 說明。"""
     exit_code = proc.poll()
-    print("  %s (server exit=%s %s)" % (
+    log("  %s (server exit=%s %s)" % (
         reason, exit_code, describe_exit(exit_code) if exit_code is not None else ""))
     terminate_tree(proc)
     close_proc(proc)
     if os.path.isfile(marker_file):
         os.remove(marker_file)  # Marker files append data, so start each server with a clean file.
-    port = args.port
-    proc = spawn(server_command(server_exe, mode, marker_file, port),
+    proc = spawn_tracked(server_command(server_exe, mode, marker_file, port),
                  workdir, server_log,
                  console=getattr(args, "console", False))
     if not wait_port(port, SERVER_STARTUP_TIMEOUT, proc=proc):
-        print("  [FAIL] %s: 重啟 server 未就緒" % mode)
+        log("  [FAIL] %s: 重啟 server 未就緒" % mode)
         return None
-    print("  server 已重啟 (port %d)" % port)
+    log("  server 已重啟 (port %d)" % port)
     return proc
 
 
-def run_mode(args, exe_root, workdir, mode, runs, general):
-    # Use a unique timestamped directory for each run.
-    run_dir = os.path.join(log_dir_for(args), "network", stamp(), mode)
+def run_mode(args, exe_root, workdir, mode, runs, general, port, geometry=None, run_name=None):
+    # Jobs of one invocation share its timestamped batch directory.
+    run_dir = os.path.join(args.batch_dir, run_name or mode)
     os.makedirs(run_dir, exist_ok=True)
     marker_file = os.path.join(run_dir, "autotest.log")
 
@@ -136,17 +190,16 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
 
     results = []
     server_log = os.path.join(run_dir, "server.log")
-    port = args.port
-    print("=== 模式 %s: 啟動 server ===" % mode)
-    proc = spawn(server_command(server_exe, mode, marker_file, port),
+    log("=== 模式 %s: 啟動 server ===" % mode)
+    proc = spawn_tracked(server_command(server_exe, mode, marker_file, port),
                  workdir, server_log,
                  console=getattr(args, "console", False))
     try:
         if not wait_port(port, SERVER_STARTUP_TIMEOUT, proc=proc):
             code = wait_exit(proc, 5)
-            print("[FAIL] %s: server 未就緒 (exit=%s)" % (mode, code))
+            log("[FAIL] %s: server 未就緒 (exit=%s)" % (mode, code))
             return [{"run": "-", "ok": False, "note": "server startup failed"}]
-        print("  server 就緒 (port %d)" % port)
+        log("  server 就緒 (port %d)" % port)
 
         marker_offset = 0
         run_id = 0
@@ -159,14 +212,26 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 run_id, "-retry%d" % start_retries if start_retries else ""))
             # A crashed game may have no complete record; preserve its live debug and AI logs before the next game overwrites them.
             _backup_runtime_files(workdir, run_dir, run_id)
-            print("  局 %d/%d: 啟動 client" % (run_id, runs))
+            log("  局 %d/%d: 啟動 client" % (run_id, runs))
             client_cmd = [client_exe, "-connect:127.0.0.1:%d" % port,
                           "--test-general", general]
             if getattr(args, "general2", ""):
                 client_cmd += ["--test-general2", args.general2]
             client_cmd += ["--auto-robots"]
+            if getattr(args, "ui_responder", False):
+                # The smoke responder answers through the real UI and keeps trustee off, so the
+                # server sees a human seat (hegemony preshow applies); a stall fallback is recorded.
+                client_cmd += ["--network-ui-smoke", "--network-ui-smoke-timeout-ms", "3600000",
+                               "--network-ui-smoke-result", os.path.join(run_dir, "run%d-ui.json" % run_id)]
+                if args.preshow:
+                    client_cmd += ["--network-ui-smoke-preshow", args.preshow]
+                if args.stay_hidden:
+                    client_cmd += ["--network-ui-smoke-stay-hidden"]
+            if geometry:
+                # Parallel tiles: N clients must not all play BGM, sounds and animations.
+                client_cmd += ["--window-geometry=" + geometry, "--mute", "--effects-profile=none"]
             # Route GUI client diagnostics to the per-run log.
-            client = spawn(client_cmd, workdir, client_log, env=qt_console_env())
+            client = spawn_tracked(client_cmd, workdir, client_log, env=qt_console_env())
 
             start_line, marker_offset = wait_for_marker(
                 marker_file, lambda l: MARK_GAME_START in l,
@@ -178,7 +243,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 close_proc(client)
                 ctx = tail_lines(marker_file, 20)
                 for line in ctx:
-                    print("          %s" % line)
+                    log("          %s" % line)
                 results.append({"run": run_id, "ok": False,
                                 "note": "server crashed before game start (attempt %d)"
                                         % (start_retries + 1),
@@ -189,10 +254,10 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                         start_retries, MAX_START_RETRIES)
                 else:
                     start_retries = 0
-                    print("  [FAIL] 局 %d: server 開局前連續閃退, 放棄本局" % run_id)
+                    log("  [FAIL] 局 %d: server 開局前連續閃退, 放棄本局" % run_id)
                     reason = "server 開局前連續閃退, 重啟後繼續下一局"
                 proc = restart_server(args, exe_root, workdir, mode, proc,
-                                      marker_file, server_log, server_exe, reason)
+                                      marker_file, server_log, server_exe, reason, port)
                 if proc is None:
                     break
                 marker_offset = 0
@@ -208,10 +273,10 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                     ccode, describe_exit(ccode) if ccode is not None else "")
                 results.append({"run": run_id, "ok": False,
                                 "note": note, "exit_name": describe_exit(ccode)})
-                print("  [FAIL] 局 %d: 未偵測到開局 (client exit=%s)" % (run_id, ccode))
+                log("  [FAIL] 局 %d: 未偵測到開局 (client exit=%s)" % (run_id, ccode))
                 proc = restart_server(args, exe_root, workdir, mode, proc,
                                       marker_file, server_log, server_exe,
-                                      "未開局, 重啟 server 後繼續")
+                                      "未開局, 重啟 server 後繼續", port)
                 if proc is None:
                     break
                 marker_offset = 0
@@ -227,7 +292,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 # The server may finish a game after a client disconnect; wait before starting another client to avoid a room collision.
                 lost_code = client.poll()
                 lost_note = "client 局中退出 exit=%s %s" % (lost_code, describe_exit(lost_code))
-                print("  [WARN] 局 %d: %s, 等 server 打完本局" % (run_id, lost_note))
+                log("  [WARN] 局 %d: %s, 等 server 打完本局" % (run_id, lost_note))
                 remaining = max(1, GAME_TIMEOUT - (time.time() - game_started_at))
                 over_line, marker_offset = wait_for_marker(
                     marker_file, lambda l: MARK_GAME_OVER.search(l),
@@ -238,14 +303,14 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 close_proc(client)
                 ctx = tail_lines(marker_file, 20)
                 for line in ctx:
-                    print("          %s" % line)
+                    log("          %s" % line)
                 results.append({"run": run_id, "ok": False,
                                 "note": "; ".join(n for n in ("server crashed mid-game", lost_note) if n),
                                 "exit_name": "server"})
-                print("  [FAIL] 局 %d: server 局中閃退" % run_id)
+                log("  [FAIL] 局 %d: server 局中閃退" % run_id)
                 proc = restart_server(args, exe_root, workdir, mode, proc,
                                       marker_file, server_log, server_exe,
-                                      "server 閃退, 重啟後繼續")
+                                      "server 閃退, 重啟後繼續", port)
                 if proc is None:
                     break
                 marker_offset = 0
@@ -262,7 +327,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 results.append({"run": run_id, "ok": False,
                                 "note": "; ".join(n for n in ("game timeout", lost_note) if n),
                                 "exit_name": describe_exit(ccode)})
-                print("  [FAIL] 局 %d: 對局逾時 (%ds), 已殺 client" % (run_id, GAME_TIMEOUT))
+                log("  [FAIL] 局 %d: 對局逾時 (%ds), 已殺 client" % (run_id, GAME_TIMEOUT))
             else:
                 m = MARK_GAME_OVER.search(over_line)
                 winner = m.group(1) or "none"
@@ -270,27 +335,27 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                     results.append({"run": run_id, "ok": False,
                                     "note": "winner=%s; %s" % (winner, lost_note),
                                     "exit_name": describe_exit(ccode)})
-                    print("  [FAIL] 局 %d: 結束 winner=%s, 但 %s" % (run_id, winner, lost_note))
+                    log("  [FAIL] 局 %d: 結束 winner=%s, 但 %s" % (run_id, winner, lost_note))
                 elif crashed:
                     results.append({"run": run_id, "ok": False,
                                     "note": "winner=%s; client 閃退 %s" % (winner, describe_exit(ccode)),
                                     "exit_name": describe_exit(ccode)})
-                    print("  [FAIL] 局 %d: 結束 winner=%s, 但 client 閃退 %s"
+                    log("  [FAIL] 局 %d: 結束 winner=%s, 但 client 閃退 %s"
                           % (run_id, winner, describe_exit(ccode)))
                 else:
                     results.append({"run": run_id, "ok": True, "note": "winner=%s" % winner,
                                     "exit_name": ""})
-                    print("  [PASS] 局 %d: 結束, winner=%s" % (run_id, winner))
+                    log("  [PASS] 局 %d: 結束, winner=%s" % (run_id, winner))
             if crashed or over_line is None:
                 for line in ctx:
-                    print("          %s" % line)
+                    log("          %s" % line)
                 # A timed-out room keeps running on the server with the killed client's
                 # seat held for reconnect, so the next client's signup is rejected as a
                 # duplicate screen name until that room ends. Restart the server instead.
                 reason = ("client 閃退, 重啟 server 後繼續" if crashed
                           else "對局逾時, 重啟 server 後繼續")
                 proc = restart_server(args, exe_root, workdir, mode, proc,
-                                      marker_file, server_log, server_exe, reason)
+                                      marker_file, server_log, server_exe, reason, port)
                 if proc is None:
                     break
                 marker_offset = 0
@@ -298,11 +363,11 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 continue
             # A SmartAI load failure can leave the resident Lua VM unusable; delay, then restart the server.
             if log_has_smart_ai_failure(marker_file) or log_has_smart_ai_failure(server_log):
-                print("  smart-ai 載入失敗, delay 10s 後重啟 server 再開下局")
+                log("  smart-ai 載入失敗, delay 10s 後重啟 server 再開下局")
                 time.sleep(10)
                 proc = restart_server(args, exe_root, workdir, mode, proc,
                                       marker_file, server_log, server_exe,
-                                      "smart-ai 載入失敗")
+                                      "smart-ai 載入失敗", port)
                 if proc is None:
                     break
                 marker_offset = 0
@@ -316,6 +381,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
 
 def close_proc(proc):
     from runner_common import close_proc as _cp
+    _live_procs.discard(proc)
     _cp(proc)
 
 
@@ -328,39 +394,100 @@ def main():
     parser.set_defaults(modes="10p,20p,02_1v1,05p,06_3v3,04_1v3")
     parser.add_argument("--runs", type=int, default=2, help="每個模式要跑的局數 (預設 2)")
     parser.add_argument("--general", default="zhenji",
-                        help="client 自動選將主將 (02_1v1 請用 x0; 預設 zhenji)")
+                        help="client 自動選將主將, 逗號分隔可列多個 (每個模式 × 每個武將各一個 job;"
+                             " 02_1v1 請用 x0; 預設 zhenji)")
     parser.add_argument("--general2", default="",
                         help="雙將模式副將 (空 = server 清單隨機)")
+    parser.add_argument("--force-general", default="",
+                        help="server 開局時把房主 (client) 換成此武將, 任何模式皆生效 (武將驗收用)")
+    parser.add_argument("--ui-responder", action="store_true",
+                        help="client 以 --network-ui-smoke 經真實 UI 作答且不托管 (server 視為真人席位); 結果寫 run<N>-ui.json")
+    parser.add_argument("--preshow", default="",
+                        help="搭配 --ui-responder: 開局後經 Dashboard 技能按鈕預亮這些技能 (逗號分隔, 國戰)")
+    parser.add_argument("--stay-hidden", action="store_true",
+                        help="搭配 --ui-responder: 國戰回合開始的明置詢問一律取消, 武將只靠技能 (預亮) 或規則亮出")
+    parser.add_argument("--server-config", default="",
+                        help="server --config 覆蓋檔 (只在 server 記憶體生效, 不寫回 config.ini), 例: EnableHegemony=true")
     parser.add_argument("--port", type=int, default=DEFAULT_SERVER_PORT,
-                        help="server 監聽 port (預設 %d); 平行執行時請各自指定"
+                        help="server 監聽 port (預設 %d); --parallel 時第 i 個 slot 用 port+i"
                              % DEFAULT_SERVER_PORT)
+    parser.add_argument("--parallel", type=int, default=1,
+                        help="同時執行的 job 數 (預設 1 = 串行); >1 時 client 視窗依 slot 平鋪成小窗,"
+                             " 並關閉 BGM、音效與動畫特效")
     parser.add_argument("--console", action="store_true",
                         help="server stdout 同步顯示在終端 (不寫 server.log, 標記檔照常)")
     args = parser.parse_args()
+    if args.force_general:
+        SERVER_EXTRA_ARGS[:] = ["--force-general", args.force_general]
+    if args.server_config:
+        SERVER_EXTRA_ARGS.extend(["--config", os.path.abspath(args.server_config)])
 
     modes = [m.strip() for m in args.modes.split(",") if m.strip()]
     if not modes:
         print("錯誤: 沒有指定模式", file=sys.stderr)
         return 1
 
+    generals = [g.strip() for g in args.general.split(",") if g.strip()]
+    if not generals:
+        print("錯誤: 沒有指定武將", file=sys.stderr)
+        return 1
+
     exe_root = args.exe_root
     workdir = resolve_workdir(exe_root)
+    args.batch_dir = os.path.join(log_dir_for(args), "network", stamp())
+    jobs = [(mode, general) for mode in modes for general in generals]
+    parallel = max(1, min(args.parallel, len(jobs)))
     print("cwd   : %s" % workdir)
-    print("模式  : %s, 每模式 %d 局, 武將: %s" % (", ".join(modes), args.runs, args.general))
+    print("模式  : %s, 每模式 %d 局, 武將: %s, 平行: %d"
+          % (", ".join(modes), args.runs, ", ".join(generals), parallel))
+    for mode, general in jobs:
+        if mode == "02_1v1" and general != "x0":
+            print("提示: 02_1v1 模式建議 --general x0 (KOF 佔位選將), 目前用 %s" % general)
 
-    all_results = []
-    for mode in modes:
-        if mode == "02_1v1" and args.general != "x0":
-            print("提示: 02_1v1 模式建議 --general x0 (KOF 佔位選將), 目前用 %s" % args.general)
-        results = run_mode(args, exe_root, workdir, mode, args.runs, args.general)
+    # Each slot owns one port and one window cell; a job borrows a slot for its whole run.
+    geometries = tile_geometries(parallel) if parallel > 1 else [None]
+    slots = queue.Queue()
+    for i in range(parallel):
+        slots.put((args.port + i, geometries[i]))
+
+    def run_job(mode, general):
+        port, geometry = slots.get()
+        _log_tag.value = "%s %s" % (mode, general) if parallel > 1 else ""
+        run_name = mode if len(generals) == 1 else "%s-%s" % (mode, general)
+        try:
+            results = run_mode(args, exe_root, workdir, mode, args.runs, general,
+                               port, geometry, run_name)
+        finally:
+            slots.put((port, geometry))
         for r in results:
             r["mode"] = mode
-            all_results.append(r)
+            r["general"] = general
+        return results
+
+    all_results = []
+    if parallel == 1:
+        for job in jobs:
+            all_results.extend(run_job(*job))
+    else:
+        pool = ThreadPoolExecutor(max_workers=parallel)
+        futures = [pool.submit(run_job, *job) for job in jobs]
+        try:
+            # Poll so Ctrl+C reaches the main thread instead of blocking in a future wait.
+            while not all(f.done() for f in futures):
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            print("中斷: 結束所有 server/client")
+            for proc in list(_live_procs):
+                terminate_tree(proc, graceful_timeout=2)
+            os._exit(130)
+        pool.shutdown()
+        for f in futures:
+            all_results.extend(f.result())
 
     csv_path = os.path.join(log_dir_for(args), "summary-network-%s.csv" % stamp())
-    header = ["mode", "run", "ok", "note", "exit_name"]
+    header = ["mode", "general", "run", "ok", "note", "exit_name"]
     write_csv(csv_path, header, [
-        [r.get("mode"), r.get("run"), r.get("ok"), r.get("note"),
+        [r.get("mode"), r.get("general"), r.get("run"), r.get("ok"), r.get("note"),
          r.get("exit_name", "")]
         for r in all_results
     ])

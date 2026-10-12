@@ -4,18 +4,14 @@
 
 QStringList filterGeneralVersionsForMode(const QStringList &names, bool hegemony)
 {
-    QSet<QString> preferredCharacters;
-    foreach (const QString &name, names) {
-        if (name.startsWith(QLatin1String("heg_")) == hegemony)
-            preferredCharacters.insert(name.section('_', -1));
-    }
-
+    const QSet<QString> pool(names.cbegin(), names.cend());
     QStringList kept;
     foreach (const QString &name, names) {
-        // Compare the complete character suffix, not substrings: a two-character
-        // general such as liushanliubei must not suppress liubei (or vice versa).
-        if (name.startsWith(QLatin1String("heg_")) == hegemony
-            || !preferredCharacters.contains(name.section('_', -1)))
+        // heg_X is the hegemony version of exactly X: heg_huangzhong replaces huangzhong only,
+        // never other versions such as s4_cloud_huangzhong or ol_huangzhong.
+        const bool hegemonyVersion = name.startsWith(QLatin1String("heg_"));
+        const QString counterpart = hegemonyVersion ? name.mid(4) : QStringLiteral("heg_") + name;
+        if (hegemonyVersion == hegemony || !pool.contains(counterpart))
             kept << name;
     }
     return kept;

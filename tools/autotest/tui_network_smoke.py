@@ -177,6 +177,8 @@ def parse_args(argv=None):
     parser.add_argument("--general", default="",
                         help="自由選將: server 開 EnableCheat+FreeChoose, TUI 親自回答"
                              " choose_general 後才開 trust (空 = AI 自選)")
+    parser.add_argument("--force-general", default="",
+                        help="server gives the TUI player (room owner) this general in any mode")
     parser.add_argument("--reconnect", action="store_true")
     parser.add_argument("--connection-only", action="store_true",
                         help="short real-TCP signup/setup/ready smoke; never full-game evidence")
@@ -263,6 +265,8 @@ def main(argv=None):
         "--ai", "off" if args.connection_only else "on",
         "--log-level", "debug",
     ]
+    if args.force_general:
+        server_cmd += ["--force-general", args.force_general]
     tui_cmd = [
         tui_exe,
         "--host", "127.0.0.1",

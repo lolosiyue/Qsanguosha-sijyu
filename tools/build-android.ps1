@@ -14,7 +14,9 @@ param(
     [ValidateSet('QT', 'ANDROID', 'NULL')]
     [string]$AudioBackend = 'ANDROID',
     [ValidateRange(1, 32)]
-    [int]$Parallel = 8
+    [int]$Parallel = 8,
+    # Development devices track the APK's rule content; this keeps the product missing-only rule.
+    [switch]$PreserveDeviceContent
 )
 
 $ErrorActionPreference = 'Stop'
@@ -113,7 +115,8 @@ try {
     }
     $preset = "android-$abiTag-$($Configuration.ToLowerInvariant())"
     $configureArguments = @('--preset', $preset, "-DCMAKE_MAKE_PROGRAM=$NinjaExe",
-        "-DQSAN_AUDIO_BACKEND=$AudioBackend")
+        "-DQSAN_AUDIO_BACKEND=$AudioBackend",
+        "-DQSAN_ANDROID_DEV_CONTENT_SYNC=$(if ($PreserveDeviceContent) { 'OFF' } else { 'ON' })")
     Invoke-CMake -CMakeArguments $configureArguments
     Invoke-CMake -CMakeArguments @('--build', '--preset', "$preset-apk", '--parallel', "$Parallel")
 } finally {

@@ -201,8 +201,9 @@ void GameControlPanel::updateList(QListWidget *list, const QList<GameActionEntry
         if (found == list->count()) list->insertItem(row, new QListWidgetItem);
         else if (found != row) list->insertItem(row, list->takeItem(found));
         QListWidgetItem *item = list->item(row);
-        const QString text = entry.reason.isEmpty() ? entry.label
+        QString text = entry.reason.isEmpty() ? entry.label
             : tr("%1; %2").arg(entry.label, entry.reason);
+        if (!entry.targetTip.isEmpty()) text = tr("%1; %2").arg(text, entry.targetTip);
         item->setData(Qt::UserRole, entry.id);
         item->setText(text);
         item->setData(Qt::AccessibleTextRole, text);

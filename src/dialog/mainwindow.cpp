@@ -1256,6 +1256,20 @@ static void bringClientAreaOnScreen(QWidget *window, bool followPrimary)
 #endif
 }
 
+// --window-geometry=WxH+X+Y lets test runners tile several clients; the forced
+// geometry is neither clamped to 640x480 nor persisted on close.
+static QRect commandLineWindowGeometry()
+{
+	static const QRegularExpression spec(QStringLiteral(R"(^--window-geometry=(\d+)x(\d+)\+(\d+)\+(\d+)$)"));
+	foreach (const QString &arg, qApp->arguments()) {
+		const QRegularExpressionMatch m = spec.match(arg);
+		if (m.hasMatch())
+			return QRect(m.captured(3).toInt(), m.captured(4).toInt(),
+				m.captured(1).toInt(), m.captured(2).toInt());
+	}
+	return QRect();
+}
+
 void MainWindow::restoreFromConfig()
 {
 	const QSize requested = Config.value("WindowSize", QSize(1366, 706)).toSize();
@@ -1273,6 +1287,12 @@ void MainWindow::restoreFromConfig()
 #endif
 	if (window_state != Qt::WindowMinimized)
 		setWindowState(window_state);
+	const QRect forced = commandLineWindowGeometry();
+	if (forced.isValid()) {
+		setWindowState(Qt::WindowNoState);
+		resize(forced.size());
+		move(forced.topLeft());
+	}
 
 	QFont font;
 	if (UiConfig.UIFont != font)
@@ -1334,7 +1354,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
 	CrashHandler::beginShutdown();
 
 	// A forced TV fullscreen session must not overwrite desktop geometry/state.
-	if (!qsanBigPictureModeActive()) {
+	if (!qsanBigPictureModeActive() && !commandLineWindowGeometry().isValid()) {
 		const QRect placed = placedOnScreen(size(), pos());
 		Config.setValue("WindowSize", placed.size());
 		Config.setValue("WindowPosition", placed.topLeft());

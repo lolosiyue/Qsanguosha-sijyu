@@ -5,7 +5,22 @@ local function validLimitScope(scope)
 		and scope >= sgs.Skill_Limit_None and scope <= sgs.Skill_Limit_Custom
 end
 
+-- Declarative, viewer-only hints. No Lua callback is run while selecting targets.
+local function configureTargetTip(skill, spec)
+	if spec.target_tip == nil then return end
+	assert(type(spec.target_tip) == "table", "target_tip must be a rule array")
+	local count = #spec.target_tip
+	for key in pairs(spec.target_tip) do
+		assert(type(key) == "number" and key >= 1 and key <= count and key == math.floor(key),
+			"target_tip must be a dense rule array")
+	end
+	local encoder = json or require("json")
+	local encoded = count == 0 and "[]" or encoder.encode(spec.target_tip)
+	assert(skill:setTargetTipRules(encoded), "invalid target_tip rules")
+end
+
 local function configureUsage(skill, spec)
+	configureTargetTip(skill, spec)
 	if spec.limit_scope ~= nil then
 		assert(validLimitScope(spec.limit_scope), "limit_scope must be a valid sgs.Skill_Limit_* value")
 		skill:setLimitScope(spec.limit_scope)
@@ -157,6 +172,7 @@ function sgs.CreateEquipSkillV2(spec)
     assert(spec.on_trigger == nil, "CreateEquipSkillV2 requires V2 lifecycle callbacks")
     local skill = sgs.LuaEquipSkillV2(spec.name, spec.equipment, spec.equipment_type,
         spec.frequency or sgs.Skill_NotFrequent)
+    configureTargetTip(skill, spec)
     skill:setGlobal(spec.global ~= false)
     local events = type(spec.events) == "table" and spec.events or { spec.events }
     for i, event in ipairs(events) do
@@ -359,6 +375,7 @@ function sgs.CreateDistanceSkill(spec)
 end
 
 local function configureCorrectSkillV2(skill, spec)
+	configureTargetTip(skill, spec)
 	skill:setBaseAmount(spec.base_amount or 1)
 	skill:setHolderSelector(spec.holder_selector or sgs.CorrectSkill_Primary)
 	if type(spec.correct_func) == "function" then

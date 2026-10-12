@@ -193,6 +193,8 @@ CommonTranslationTable = {
 	["f_hegemony"] = "国战",
 	["g_special_play"] = "特殊玩法",
 	["h_other"] = "其他",
+	["i_touhou"] = "东方",
+	["j_ikai"] = "异界",
 	["lua_package"] = "扩展将包",
 	["lua_card"] = "扩展卡牌",
 
@@ -401,6 +403,10 @@ CommonTranslationTable = {
 	["wu"] = "吴",
 	["qun"] = "群",
 	["jin"] = "晋",
+	["kaze"] = "风",
+	["hana"] = "花",
+	["yuki"] = "雪",
+	["tsuki"] = "月",
 	["careerist"] = "野心家",
 
 	["1_num"] = "①",

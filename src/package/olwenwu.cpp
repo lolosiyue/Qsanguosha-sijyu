@@ -764,7 +764,9 @@ public:
         foreach (ServerPlayer *other, room->getAlivePlayers())
             if (ctx.invoker->inMyAttackRange(other) && target->canSlash(other, slash, false)) candidates << other;
         if (candidates.isEmpty()) return false;
+        ctx.invoker->setTag("xianzhu_slash_from", QVariant::fromValue(target));
         ServerPlayer *victim = room->askForPlayerChosen(ctx.invoker, candidates, "xianzhu_target", "@xianzhu-target");
+        ctx.invoker->removeTag("xianzhu_slash_from");
         if (!victim || !victim->isAlive() || !target->isAlive() || !ctx.invoker->inMyAttackRange(victim)
             || !target->canSlash(victim, slash, false)) return false;
         use.to << victim;

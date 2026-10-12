@@ -161,7 +161,7 @@ bool qsanBigPictureModeActive()
 {
     const QByteArray env = qgetenv("QSAN_BIG_PICTURE");
     if (!env.isEmpty())
-        return env != "0" && env.compare("false", Qt::CaseInsensitive) != 0;
+        return env != "0" && env.toLower() != "false";
     // main.cpp normalizes --big-picture and this stored key into the env var on
     // the GUI path; reading the key here keeps the check correct for callers
     // that never passed through that normalization (tests, embedded runs).

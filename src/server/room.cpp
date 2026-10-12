@@ -87,7 +87,9 @@
 #include <QScopeGuard>
 
 namespace QSanEngine { extern thread_local Player *Self; }
+#ifndef Q_OS_WASM
 #include <QProcess>
+#endif
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -132,6 +134,7 @@ auto runRecoverableCascade(Room &room, RoomThread *thread, Function &&function, 
 // This object lives with the room on the server thread. Its subprocess sees
 // only loopback seat capabilities passed through stdin, and never a Room or
 // human-controlled seat. Any setup/process failure leaves native SmartAI live.
+#ifndef Q_OS_WASM
 class RoomHybrid50 final : public QObject
 {
 public:
@@ -250,6 +253,15 @@ private:
     std::vector<std::shared_ptr<ExternalAgentEndpoint>> m_endpoints;
     std::vector<std::unique_ptr<ExternalAgentLocalTransport>> m_transports;
 };
+#else
+// Browsers cannot launch the external adapter; keep the existing SmartAI fallback.
+class RoomHybrid50 final : public QObject
+{
+public:
+    RoomHybrid50(Room *room, QString) : QObject(room) {}
+    void add(ServerPlayer *) {}
+};
+#endif
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -4489,7 +4501,7 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 	}
 
 	QList<const Player *> selected;
-	if (use.card->targetFixed())
+	if (use.card->targetFixedFor(use.from))
 		return use.to.isEmpty() && use.card->targetsFeasible(selected, use.from);
 
 	foreach (ServerPlayer *target, use.to) {
@@ -4497,12 +4509,12 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 		int maxVotes = 0;
 		// Match client selection: Collateral reports capacity through maxVotes
 		// even when targetFilter returns false. Count repeated target votes too.
-		use.card->targetFilter(selected, target, use.from, maxVotes);
+		use.card->targetFilterFor(selected, target, use.from, maxVotes);
 		if (maxVotes <= selected.count(target))
 			return false;
 		selected << target;
 	}
-	return use.card->targetsFeasible(selected, use.from);
+	return use.card->targetsFeasibleFor(selected, use.from);
 }
 
 const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
@@ -6545,8 +6557,25 @@ void Room::removeDerivativeCards()
 	m_cardMovement->removeDerivativeCards();
 }
 
+// A card that EquipCard::use turned into other equipment.
+static bool isConvertedEquip(int cardId)
+{
+	const WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
+	const Card *engineCard = Sanguosha->getEngineCard(cardId);
+	return wrapped && engineCard && wrapped->isModified() && wrapped->getTypeId() == Card::TypeEquip
+		&& wrapped->getClassName() != engineCard->getClassName();
+}
+
 void Room::updateCardsChange(const CardsMoveStruct&move)
 {
+	// Converted equipment turns back into its own card once it leaves the equip areas.
+	if(move.from_place==Player::PlaceEquip&&move.to_place!=Player::PlaceEquip){
+		foreach(int cardId, move.card_ids){
+			if (isConvertedEquip(cardId))
+				broadcastResetCard(getPlayers(), cardId);
+		}
+	}
+
 	// The area loses a card.
 	if(move.from_place==Player::PlaceTable){
 		QVariantList ren = tag["ren_pile"].toList();
@@ -6590,10 +6619,15 @@ void Room::updateCardsChange(const CardsMoveStruct&move)
 			}*/
 		}
 	}else if(move.to){
-		QList<const Card*> cards;
-		foreach(int cardId, move.card_ids)
-			cards.append(Sanguosha->getCard(cardId));
+		QList<const Card*> cards, converted;
+		foreach(int cardId, move.card_ids){
+			if (move.to_place == Player::PlaceEquip && isConvertedEquip(cardId))
+				converted.append(Sanguosha->getCard(cardId));
+			else
+				cards.append(Sanguosha->getCard(cardId));
+		}
 		filterCards((ServerPlayer*)move.to, cards, true);
+		filterCards((ServerPlayer*)move.to, converted, false);
 		if(move.to_place == Player::PlaceJudge){
 			LogMessage log;
 			log.type = "#FilterJudge";
@@ -6884,6 +6918,15 @@ void Room::showGeneral(ServerPlayer *player, const QString &position)
 	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
 }
 
+// A global trigger skill listed on a general is rule timing, not that general's
+// skill: it never binds, conceals or reveals a hegemony general.
+static bool bindsHegemonyGeneral(const SkillInstance *instance)
+{
+	if (!instance || instance->source != SourceInnate) return false;
+	const TriggerSkill *trigger = Sanguosha->getTriggerSkill(instance->skillName);
+	return !trigger || !trigger->isGlobal();
+}
+
 bool Room::isGeneralHiddenForSkill(const SkillInstanceRef &ref) const
 {
 	if (!Config.EnableHegemony || !ref.isValid()) return false;
@@ -6893,7 +6936,7 @@ bool Room::isGeneralHiddenForSkill(const SkillInstanceRef &ref) const
 	const SkillInstance *instance = owner
 		? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
 	// Helpers and attachments follow their exact root, never a same-name copy.
-	return instance && instance->source == SourceInnate
+	return bindsHegemonyGeneral(instance)
 		&& HegemonyMode::innateGeneralConcealed(owner, instance->bindHead);
 }
 
@@ -6916,7 +6959,7 @@ bool Room::canShowGeneralForSkill(const SkillInstanceRef &ref) const
 	const SkillInstance *instance = owner
 		? owner->findSkillInstance(root.key.skillName, root.key.instanceID) : nullptr;
 	if (!instance || owner->isSkillInvalid(root.key.skillName, root.key.instanceID)) return false;
-	if (instance->source != SourceInnate) return true;
+	if (!bindsHegemonyGeneral(instance)) return true;
 	const int slot = instance->bindHead;
 	if (slot != 1 && slot != 2) return false;
 	if (HegemonyMode::innateGeneralShown(owner, slot)) return true;
@@ -6947,7 +6990,7 @@ bool Room::showGeneralForSkill(const SkillInstanceRef &ref)
 	if (!root.isValid()) return true; // Continuation was checked above; no general remains to reveal.
 	ServerPlayer *owner = findPlayerByObjectName(root.ownerObjectName, true);
 	const SkillInstance *instance = owner->findSkillInstance(root.key.skillName, root.key.instanceID);
-	if (instance->source != SourceInnate) return true;
+	if (!bindsHegemonyGeneral(instance)) return true;
 	const bool head = instance->bindHead == 1;
 	if (head ? owner->hasShownGeneral() : owner->hasShownGeneral2()) return true;
 	// Reveal the paid instance's source, never another same-named instance.
@@ -9837,6 +9880,10 @@ void Room::cancelTarget(CardUseStruct &use, ServerPlayer *player)
             if (bladeUses.isEmpty()) removePlayerDisableShow(player, "Blade");
         }
     }
+    // Handlers may add targets (thyingdeng); callers write `use` back to their event data.
+    QVariant data = QVariant::fromValue(use);
+    thread->trigger(TargetCanceled, this, player, data);
+    use = data.value<CardUseStruct>();
 }
 
 void Room::moveCards(QList<CardsMoveStruct> moves, bool visible, bool enforceOrigin)

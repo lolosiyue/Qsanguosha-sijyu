@@ -4429,7 +4429,7 @@ class RhZhangchi : public TriggerSkillV2
 public:
 	RhZhangchi() : TriggerSkillV2("rhzhangchi")
 	{
-		events << EventAcquireSkill << EventLoseSkill << ChoiceMade;
+		events << EventAcquireSkill << EventLoseSkill << PreCardUsed;
 	}
 
 	bool recordEvent(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const override
@@ -4446,7 +4446,8 @@ public:
 			}
 			return true;
 		}
-		if (event == ChoiceMade && player->hasFlag("RhZhangchiUsed") && data.canConvert<CardUseStruct>()) {
+		if (event == PreCardUsed && player->hasFlag("RhZhangchiUsed")
+			&& data.value<CardUseStruct>().card->getTypeId() != Card::TypeSkill) {
 			room->broadcastSkillInvoke(objectName());
 			room->notifySkillInvoked(player, objectName());
 			LogMessage log;
@@ -4455,6 +4456,7 @@ public:
 			log.arg = objectName();
 			room->sendLog(log);
 			room->setPlayerFlag(player, "-RhZhangchiUsed");
+			room->setPlayerFlag(player, "-cardIgnoreLegality:adjacent");
 		}
 		return false;
 	}
@@ -4541,19 +4543,22 @@ public:
 			return FinishSkill;
 		const CardUseStruct::CardUseReason previousReason = state->getCurrentCardUseReason();
 		const QString previousPattern = state->getCurrentCardUsePattern();
-		state->setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
+		// The neighbour target comes from the cardIgnoreLegality:adjacent hook. A response use
+		// keeps the server from re-checking isAvailable(), whose target conditions it lifts.
+		room->setPlayerFlag(player, "RhZhangchiUsed");
+		room->setPlayerFlag(player, "cardIgnoreLegality:adjacent");
 		QString pattern = "^Jink+^Nullification";
-		if (!Slash::IsAvailable(player))
+		if (!player->canSlashWithoutCrossbow())
 			pattern.append("+^Slash");
 		if (!Analeptic::IsAvailable(player))
 			pattern.append("+^Analeptic");
-		room->setPlayerFlag(player, "RhZhangchiUsed");
-		const Card *used = room->askForUseCard(player, pattern, "@rhzhangchi-use", -1, Card::MethodPlay);
+		const Card *used = room->askForUseCard(player, pattern, "@rhzhangchi-use");
 		state->setCurrentCardUseReason(previousReason);
 		state->setCurrentCardUsePattern(previousPattern);
 		if (!used) {
 			room->setPlayerFlag(player, "Global_RhZhangchiFailed");
 			room->setPlayerFlag(player, "-RhZhangchiUsed");
+			room->setPlayerFlag(player, "-cardIgnoreLegality:adjacent");
 		}
 		return FinishSkill;
 	}

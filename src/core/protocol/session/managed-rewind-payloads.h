@@ -9,17 +9,17 @@ namespace QSanProtocol {
 namespace RewindPayloadDetail {
 inline bool reject(QString *error, const QString &text) { if (error) *error = text; return false; }
 inline bool decimal(const QString &text, bool positive = false) {
-    if (text.isEmpty() || (text.size() > 1 && text.front() == QLatin1Char('0'))) return false;
+    if (text.isEmpty() || (text.size() > 1 && text.at(0) == QLatin1Char('0'))) return false;
     for (QChar ch : text) if (ch < QLatin1Char('0') || ch > QLatin1Char('9')) return false;
     bool ok = false; const auto number = text.toULongLong(&ok); return ok && (!positive || number > 0);
 }
 inline bool object(const QVariant &value, const QStringList &keys, QVariantMap *out, QString *error,
                    const QStringList &optionalKeys = {}) {
-    if (value.metaType().id() != QMetaType::QVariantMap) return reject(error, QStringLiteral("rewind payload must be an object"));
+    if (value.userType() != QMetaType::QVariantMap) return reject(error, QStringLiteral("rewind payload must be an object"));
     const auto map = value.toMap();
     const auto schema = map.value(QStringLiteral("schema_version"));
-    const bool numeric = schema.metaType().id() == QMetaType::Int || schema.metaType().id() == QMetaType::LongLong
-        || schema.metaType().id() == QMetaType::Double;
+    const bool numeric = schema.userType() == QMetaType::Int || schema.userType() == QMetaType::LongLong
+        || schema.userType() == QMetaType::Double;
     qsizetype expectedSize = keys.size() + 1;
     for (const auto &key : optionalKeys) if (map.contains(key)) ++expectedSize;
     if (map.size() != expectedSize || !numeric || schema.toDouble() != 1.0)
@@ -29,7 +29,7 @@ inline bool object(const QVariant &value, const QStringList &keys, QVariantMap *
 }
 inline bool string(const QVariantMap &map, const QString &key, QString *out) {
     const auto value = map.value(key);
-    if (value.metaType().id() != QMetaType::QString || value.toString().size() > 256) return false;
+    if (value.userType() != QMetaType::QString || value.toString().size() > 256) return false;
     *out = value.toString(); return true;
 }
 }
@@ -80,9 +80,9 @@ struct RewindStatusPayload {
             || !string(map,"profile",&p.profile) || !decimal(p.generation) || !decimal(p.ackSequence))
             return reject(error,QStringLiteral("invalid rewind status fields"));
         for (const auto &key : {"supported","authorized","busy"})
-            if (map.value(key).metaType().id() != QMetaType::Bool) return reject(error,QStringLiteral("invalid rewind status boolean"));
+            if (map.value(key).userType() != QMetaType::Bool) return reject(error,QStringLiteral("invalid rewind status boolean"));
         if (map.contains("start_allowed")) {
-            if (map.value("start_allowed").metaType().id() != QMetaType::Bool)
+            if (map.value("start_allowed").userType() != QMetaType::Bool)
                 return reject(error,QStringLiteral("invalid rewind start boolean"));
             p.startAllowed=map.value("start_allowed").toBool();
         }

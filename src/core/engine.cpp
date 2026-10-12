@@ -1352,6 +1352,16 @@ QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
                                runtime ? runtime->prohibitPindianSkills() : QList<const ProhibitPindianSkill *>());
 }
 
+// A card class that no deck holds declares Q_CLASSINFO("CardName", "<object name>"), so that
+// cloneCard() and Card::Parse() also find it by the name its cards carry.
+static void addCardNameMetaObject(QHash<QString, const QMetaObject *> &metaobjects, const QMetaObject *meta)
+{
+	const int info = meta->indexOfClassInfo("CardName");
+	if (info < meta->classInfoOffset()) return;
+	const QString name = QString::fromLatin1(meta->classInfo(info).value());
+	if (!metaobjects.contains(name)) metaobjects.insert(name, meta);
+}
+
 void Engine::addPackage(Package*package)
 {
     if (!currentRoomRuntime()) observeGlobalFactoryWriter(this);
@@ -1472,6 +1482,7 @@ void Engine::addPackage(Package*package)
         QMutexLocker factoryMapLock(&globalFactoryRegistrySource().mutex);
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
 		metaobjects.insert(meta->className(), meta);
+		addCardNameMetaObject(metaobjects, meta);
 	}
     // Later native catalogue additions publish only after their own assembly.
     // Bootstrap packages are sealed together after all authored Lua setup.
@@ -1646,6 +1657,7 @@ void Engine::setPackage(Package*package)
 		if(metaobjects.contains(meta->className())) continue;
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
 		metaobjects.insert(meta->className(), meta);
+		addCardNameMetaObject(metaobjects, meta);
 	}
     // Later native catalogue additions publish only after their own assembly.
     // Bootstrap packages are sealed together after all authored Lua setup.
@@ -3100,6 +3112,11 @@ const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, con
     // A null card can never be prohibited; ProhibitSkill implementations deref
     // it unconditionally (cf. MobileYongFangzong AV from a stale tag toCard()).
     if (!card) return nullptr;
+    // Under cardIgnoreLegality the user's non-skill cards ignore every ProhibitSkill
+    // (cardIgnoreLegality:adjacent: towards the user's neighbours).
+    if (from && to && card->getTypeId() != Card::TypeSkill
+        && (from->hasFlag("cardIgnoreLegality")
+            || (from->hasFlag("cardIgnoreLegality:adjacent") && to->isAdjacentTo(from)))) return nullptr;
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (from && from->inherits("ClientPlayer")) return nullptr;
@@ -3869,7 +3886,7 @@ QmlMarkBinding Engine::qmlMarkFor(const QString &mark) const
         if (binding.pattern == mark)
             return binding;
         if (binding.pattern.endsWith(QLatin1Char('*'))) {
-            const QString prefix = binding.pattern.chopped(1);
+            const QString prefix = binding.pattern.left(binding.pattern.size() - 1);
             if (mark.startsWith(prefix) && (!best || prefix.size() > best->pattern.size() - 1))
                 best = &binding;
         }

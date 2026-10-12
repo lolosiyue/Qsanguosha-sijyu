@@ -50,6 +50,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed; do not install an older APK.' }
 ```
 
 此通用腳本會 reconfigure 既有 preset，不另建 cache；Qt／NDK／FreeType 路徑沿用固定工具鏈。
+雷電14（x86_64）與雷電9（ARMv7）都是開發環境：腳本預設開啟 `QSAN_ANDROID_DEV_CONTENT_SYNC`，
+`install -r` 後首次啟動即把裝置上的技能／武將 Lua、翻譯與 UI 腳本換成本次 APK 版本
+（[開發版內容同步](android-extension-runtime.md#實體目錄與版本)）。建置前先依 `AGENTS.md` §9 從 H 權威倉庫同步 L 的 `extensions/`。
 cache 設定未變時，可在已設定 Android 環境的 shell 執行 `cmake --build builds/android-x86_64-debug --target apk --parallel 8`
 （不要用桌面 Qt 或未設定 JAVA_HOME／GRADLE_USER_HOME 的 shell）。
 PowerShell 把原生命令的 stderr warning 升格為 `NativeCommandError` 時，核對實際退出碼，不要清除建置樹。
@@ -61,7 +64,7 @@ PowerShell 把原生命令的 stderr warning 升格為 `NativeCommandError` 時�
 | 變更 | 日常處理 |
 |---|---|
 | 只有 C++／UI，APK 資源名稱與內容不變 | 增量建置、`install -r`；沿用媒體與啟動快取 |
-| Lua／翻譯／APK 內建資源變動 | 先對齊來源再建置；保留已匯入媒體，只處理必要的規則／UI 版本切換，不掃描或雜湊聲畫 |
+| Lua／翻譯／APK 內建資源變動 | 先對齊來源再建置；開發版內容同步會換上新版規則／UI 檔，保留已匯入媒體，不掃描或雜湊聲畫 |
 | 使用者確實要更新媒體 | 更新媒體；APK 新增圖片不自動觸發重匯，也不因圖片缺檔擋局 |
 | 資料被清除、媒體損壞、升級衝突 | 保存錯誤並判斷原因；不自動清除資料或重匯整包 |
 
@@ -532,8 +535,8 @@ Android Debug／Release preset、CMake Android 預設與 `tools/build-android.ps
 的音訊預設不變。Qt Multimedia 仍供其他介面／影片功能使用；影片音軌不走
 `AudioBridge`。
 
-不需 FMOD SDK、不更換第三方庫、不把 OGG 轉成 WAV。API 29 起短音效用 `SoundPool.load(String)`；
-API 28 的載入留在 `AudioBridge.loadEffectSample()` 的 `SDK_INT` 分支，目前該分支不播放短音效。出聲尚未在模擬器或實機驗收。
+不需 FMOD SDK、不更換第三方庫、不把 OGG 轉成 WAV。短音效用 `SoundPool.load(String, int)`（API 1 起提供），
+API 28 與新版走同一路徑。出聲尚未在模擬器或實機驗收。
 
 Android 啟動改用 Qt Quick `software` 後端及既有 raster 牌桌 viewport，避免模擬器上的 OpenGL 破圖與前後景 EGL context 失效；
 選擇在第一個 Quick window 建立前完成，Windows／Linux 維持 OpenGL。這是相容性繞過，GPU shader 特效與影片顯示可能受限

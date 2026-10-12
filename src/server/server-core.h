@@ -46,6 +46,8 @@ public:
     // Automated testing: fixed lord and deputy generals in headless mode (--test-general/--test-general2; empty means random).
     static QString forcedHeadlessGeneral;
     static QString forcedHeadlessGeneral2;
+    // Acceptance runs (--force-general): the room owner, else the lord, plays this general in every mode.
+    static QString forcedGeneral;
     static bool configureGameSeed(const QString &seedText, QString *error = nullptr);
 
     void broadcast(const QString &msg);

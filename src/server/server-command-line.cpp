@@ -27,6 +27,9 @@ void configureParser(QCommandLineParser &parser)
         QStringLiteral("Use game mode <id> for this run."), QStringLiteral("id")));
     parser.addOption(QCommandLineOption({QStringLiteral("n"), QStringLiteral("server-name")},
         QStringLiteral("Advertise <name> as the server name."), QStringLiteral("name")));
+    parser.addOption(QCommandLineOption(QStringLiteral("force-general"),
+        QStringLiteral("Give general <name> to the room owner (else the lord) in every game (acceptance runs)."),
+        QStringLiteral("name")));
     parser.addOption(QCommandLineOption(QStringLiteral("operation-timeout"),
         QStringLiteral("Set the operation timeout in seconds; 0 disables it."),
         QStringLiteral("seconds")));
@@ -236,6 +239,7 @@ ServerCommandLineResult parseServerCommandLine(const QStringList &arguments)
     };
     if (!parseNonEmptyText(QStringLiteral("game-mode"), result.options.gameMode)
         || !parseNonEmptyText(QStringLiteral("server-name"), result.options.serverName)
+        || !parseNonEmptyText(QStringLiteral("force-general"), result.options.forceGeneral)
         || !parseNonEmptyText(QStringLiteral("autotest-log"), result.options.autotestLog)
         || !parseNonEmptyText(QStringLiteral("config"), result.options.configFile)
         || !parseNonEmptyText(QStringLiteral("log-file"), result.options.logFile)

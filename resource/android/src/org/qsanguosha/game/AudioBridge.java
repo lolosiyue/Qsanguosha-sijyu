@@ -21,8 +21,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Game audio that stays inside the Android framework.
  * Qt Multimedia's AAudio data callback crashes under ARM translation, so this
- * bridge never registers a native callback. API 28 file loading is a later
- * {@code SDK_INT} branch inside {@link #loadEffectSample(String)}.
+ * bridge never registers a native callback.
  */
 public final class AudioBridge {
     private static final int VOICE_SLOTS = 8;
@@ -324,13 +323,8 @@ public final class AudioBridge {
         }
     }
 
-    /** API 29+ path load. Older SoundPool overloads belong in the else branch. */
     private static int loadEffectSample(String path) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            return effects.load(path, 1);
-        }
-        lastError = "effect file load requires API 29";
-        return 0;
+        return effects.load(path, 1);
     }
 
     private static void playLoadedEffect(String path, int sampleId, boolean superpose) {

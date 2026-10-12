@@ -23,6 +23,7 @@
 #include "settings.h"
 #include "standard.h"
 
+#include <QScopeGuard>
 #include <QSet>
 
 #include <algorithm>

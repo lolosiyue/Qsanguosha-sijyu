@@ -923,10 +923,15 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 		||Config.value("WithoutLordskill").toBool()) return false;
 		return hasSkill(skill_name,include_lose);
 	}else{
-		if (hasSkill("weidi")){
-			foreach(const Player *player, getAliveSiblings()){
-				if (player->isLord()&&player->hasLordSkill(skill_name,true))
-					return true;
+		// A held skill with HolderSharesLordSkills (帷帝、圣尊) lends the lord's lord skills.
+		for (auto it = m_skillInstances.constBegin(); it != m_skillInstances.constEnd(); ++it) {
+			const Skill *holder = it->isEmpty() ? nullptr : Sanguosha->getSkill(it.key());
+			if (holder && holder->property("HolderSharesLordSkills").toBool() && hasSkill(it.key())) {
+				foreach(const Player *player, getAliveSiblings()){
+					if (player->isLord()&&player->hasLordSkill(skill_name,true))
+						return true;
+				}
+				break;
 			}
 		}
 		return hasAcquiredSkill(skill_name)&&hasSkill(skill_name,include_lose);
@@ -949,8 +954,19 @@ bool Player::isSkillInvalid(const Skill *skill, int instanceId) const
     if (skill->property("IgnoreInvalidity").toBool())
         return false;
 
-    if (!Sanguosha->correctSkillValidity(this, skill))
-        return true;
+    if (!Sanguosha->correctSkillValidity(this, skill)) {
+        // A held skill with HolderIgnoresInvaliditySkills (衍梦) lifts every InvaliditySkill
+        // from the holder's general skills. Checked only after a rejection, which is rare.
+        bool shielded = false;
+        if (!skill->isEquipSkill()) {
+            for (auto it = m_skillInstances.constBegin(); !shielded && it != m_skillInstances.constEnd(); ++it) {
+                const Skill *holder = it->isEmpty() ? nullptr : Sanguosha->getSkill(it.key());
+                shielded = holder && holder->property("HolderIgnoresInvaliditySkills").toBool();
+            }
+        }
+        if (!shielded)
+            return true;
+    }
 
     QStringList records = this->tag["SkillInvalidityRecords"].toStringList();
 
@@ -2214,12 +2230,32 @@ void Player::removePileOpen(const QString &pile_name, const QString &player)
     pile_open[pile_name].removeOne(player);
 }
 
+// In expand-pile syntax: the own "wooden_ox" and "&" piles, plus the pile named by each
+// "HandPile:<pile>" flag, where "%pile" means the other players' piles (宝锤).
+QStringList Player::getHandPileNames() const
+{
+    QStringList names;
+    foreach (const QString &pile, getPileNames()) {
+        if (pile == "wooden_ox" || pile.startsWith("&"))
+            names << pile;
+    }
+    foreach (const QString &flag, flags) {
+        if (flag.startsWith("HandPile:"))
+            names << flag.mid(9);
+    }
+    return names;
+}
+
 QList<int> Player::getHandPile() const
 {
     QList<int> result;
-    foreach(QString pile, getPileNames()){
-        if (pile=="wooden_ox"||pile.startsWith("&"))
-			result << getPile(pile);
+    foreach (const QString &pile, getHandPileNames()) {
+        if (pile.startsWith("%")) {
+            foreach (const Player *p, getAliveSiblings())
+                result << p->getPile(pile.mid(1));
+        } else {
+            result << getPile(pile);
+        }
     }
     return result;
 }
@@ -3559,7 +3595,7 @@ QList<const Player *> Player::getSiblings(bool include_self) const
             it = cache.insert(owner, CachedSiblings());
         }
         if (it->generation != generation || it->childCount != childCount) {
-            it->players = owner->findChildren<const Player *>(Qt::FindDirectChildrenOnly);
+            it->players = owner->findChildren<const Player *>(QString(), Qt::FindDirectChildrenOnly);
             it->generation = generation;
             it->childCount = childCount;
         }

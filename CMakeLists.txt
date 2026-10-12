@@ -315,6 +315,25 @@ set(QSAN_ENGINE_PACKAGE_MOC_HEADERS ${QSAN_MOC_HEADERS})
 list(FILTER QSAN_ENGINE_PACKAGE_MOC_HEADERS INCLUDE REGEX "^src/(package|scenario)/.*\\.h$")
 list(REMOVE_ITEM QSAN_MOC_HEADERS ${QSAN_ENGINE_PACKAGE_MOC_HEADERS})
 
+# Developer builds can compile only some content packages. The engine looks
+# packages up by name at run time (PackageAdder), so a package left out of the
+# build is only reported as unloadable at startup. Entries are src/package
+# stems; package.cpp and every scenario always build. Empty keeps all packages.
+set(QSAN_PACKAGE_SUBSET "" CACHE STRING
+    "src/package stems to compile, semicolon separated (empty = all)")
+if(QSAN_PACKAGE_SUBSET)
+    foreach(qsan_package_stem IN LISTS QSAN_PACKAGE_SUBSET)
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/package/${qsan_package_stem}.cpp")
+            message(FATAL_ERROR "QSAN_PACKAGE_SUBSET: src/package/${qsan_package_stem}.cpp does not exist")
+        endif()
+    endforeach()
+    list(JOIN QSAN_PACKAGE_SUBSET "|" qsan_package_subset_regex)
+    list(FILTER QSAN_ENGINE_PACKAGE_SOURCES INCLUDE REGEX
+        "^src/scenario/|^src/package/(package|${qsan_package_subset_regex})\\.cpp$")
+    list(LENGTH QSAN_ENGINE_PACKAGE_SOURCES qsan_package_unit_count)
+    message(STATUS "QSAN_PACKAGE_SUBSET: compiling ${qsan_package_unit_count} package/scenario units")
+endif()
+
 set_source_files_properties(src/server/server.cpp PROPERTIES
     COMPILE_DEFINITIONS QSAN_SERVER_CORE_ONLY
     SKIP_AUTOMOC ON
@@ -808,6 +827,9 @@ if(ANDROID)
         src/core/android-zip-reader.h
     )
     target_link_libraries(qsanguosha_engine PUBLIC z)
+    if(QSAN_ANDROID_DEV_CONTENT_SYNC)
+        target_compile_definitions(qsanguosha_engine PRIVATE QSAN_ANDROID_DEV_CONTENT_SYNC)
+    endif()
 endif()
 
 # Desktop package installation uses the same bounded ZIP reader as Android.
@@ -1316,6 +1338,24 @@ target_compile_definitions(h50p_distance_probe PRIVATE QSAN_ENGINE_BUILD QSAN_SE
 target_link_libraries(h50p_distance_probe PRIVATE
     "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>" ${QSAN_ENGINE_QT_LIBS})
 qsan_link_websocket_gateway(h50p_distance_probe)
+# Headless skill scenario host for tools/autotest/skill_scenario_runner.py; built on request.
+add_executable(qsanguosha_skill_scenario EXCLUDE_FROM_ALL tools/skill-scenario-host.cpp)
+target_include_directories(qsanguosha_skill_scenario PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario)
+target_compile_definitions(qsanguosha_skill_scenario PRIVATE QSAN_ENGINE_BUILD QSAN_SERVER_CORE_ONLY)
+target_link_libraries(qsanguosha_skill_scenario PRIVATE
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>" ${QSAN_ENGINE_QT_LIBS})
+qsan_link_websocket_gateway(qsanguosha_skill_scenario)
+if(WIN32)
+    # The Release crash handler needs the Windows DbgHelp library.
+    target_link_libraries(qsanguosha_skill_scenario PRIVATE "$<$<CONFIG:Release>:dbghelp>")
+endif()
+set_target_properties(qsanguosha_skill_scenario PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo")
 
 if(QSAN_BUILD_SERVER)
     add_executable(qsanguosha_server ${QSAN_DEDICATED_ENTRY_SOURCES})
@@ -1430,6 +1470,7 @@ if(UNIX AND NOT ANDROID)
         lua/config.lua
         lua/sanguosha.lua
         lua/sgs_ex.lua
+        lua/skill_assembly.lua
         lua/utilities.lua
         lua/chat_config.lua
         lua/lib

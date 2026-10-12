@@ -746,6 +746,8 @@ card = sgs.CreateTrickCard {
 
 ### 6.3 EquipCard（裝備牌）
 
+將一張牌當裝備牌使用（一張子卡的虛擬裝備）時，該實體牌在裝備區內即為所當的裝備，在裝備區之間移動時保持不變；移到裝備區以外時恢復原牌。冥刃（`thmingren`）即如此將手牌當【青釭剑】或【空观剑】使用。
+
 #### Weapon（武器）
 
 ```lua
@@ -1011,6 +1013,7 @@ if sgs.Sanguosha:getModeGroup(room:getMode()) == "世家模式" then ... end
 | `sgs.BeforeCardsMove` | `sgs.QVariant` → `sgs.CardsMoveOneTimeStruct` | 卡牌移動前 |
 | `sgs.TurnStart` | — | 回合開始 |
 | `sgs.EventLoseSkill` | `sgs.QVariant` → `string` | 失去技能 |
+| `sgs.EventLosingSkill` | `sgs.QVariant` → `sgs.SkillChangeStruct` | 即將失去技能；回傳 `true` 保留該實例 |
 | `sgs.EventAcquireSkill` | `sgs.QVariant` → `string` | 獲得技能 |
 | `sgs.TargetConfirming` | `sgs.QVariant` → `sgs.CardUseStruct` | 目標確認中 |
 | `sgs.TargetConfirmed` | `sgs.QVariant` → `sgs.CardUseStruct` | 目標已確認 |
@@ -1505,6 +1508,24 @@ player:getMark("@my_mark")
 room:setPlayerMark(player, "internal_flag", 1)
 player:getMark("internal_flag")
 ```
+
+### 16.6 引擎識別的旗標與屬性
+
+改寫規則的技能透過下列名稱掛入引擎，不需要修改 C++ 核心。玩家旗標以 `room:setPlayerFlag` 設定，由設定者負責移除。
+
+| 名稱 | 種類 | 效果 |
+|------|------|------|
+| `slashNoDistanceLimit` | 玩家旗標 | 其【杀】無距離限制 |
+| `cardIgnoreLegality` | 玩家旗標 | 其非技能牌的第一個目標無視合法性，可為任意角色（含自己）；目標固定的牌只指定這一名角色，其他牌的其餘目標仍依牌面規則；其牌不受 ProhibitSkill 限制 |
+| `cardIgnoreLegality:adjacent` | 玩家旗標 | 同上，但第一個目標限其上家或下家，ProhibitSkill 也只對二者失效 |
+| `HandPile:<pile>` | 玩家旗標 | `<pile>` 中的牌視為其手牌，語法同 `expand_pile`；`HandPile:%pile` 指其他角色的同名牌堆 |
+| `IgnoreInvalidity` | 技能屬性 | 本技能不會無效 |
+| `HolderIgnoresInvaliditySkills` | 技能屬性 | 持有者的非裝備技能不受 InvaliditySkill 影響 |
+| `HolderSharesLordSkills` | 技能屬性 | 持有者不是主公時，視為擁有主公的主公技（帷帝、圣尊） |
+
+`cardIgnoreLegality` 不改變 `isAvailable()`。要讓平時因目標條件不能用的牌（如滿體力時的【桃】）可用，以 `askForUseCard` 的 `MethodUse` 詢問，並在 pattern 中排除次數已用完的【杀】、【酒】；筹策（`thchouce`）與张弛（`rhzhangchiv`）即如此實作。
+
+記錄型無效化與失去技能分別在 `EventSkillInvalidated`、`EventLosingSkill` 回傳 `true` 拒絕；衍夢（`thyanmeng`）即以上述屬性加這兩個事件實作。
 
 ---
 

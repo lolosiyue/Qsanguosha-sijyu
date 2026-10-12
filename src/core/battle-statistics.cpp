@@ -55,7 +55,7 @@ struct TimelineJournal {
 QMap<QString,QMap<QString,TimelineJournal>> knownJournals;
 QMap<QString,QSet<QString>> armedRoots,uncertainHashes,blockedRoots;
 QSet<QString> scannedPaths;
-QString processOwner() { static const QString owner=QUuid::createUuid().toString(QUuid::WithoutBraces);return owner; }
+QString processOwner() { static const QString owner=QUuid::createUuid().toString().mid(1, 36);return owner; }
 QString digest(const QString &value) { return QString::fromLatin1(QCryptographicHash::hash(value.toUtf8(),QCryptographicHash::Sha256).toHex()); }
 QString journalDirectory(const QString &path) { return normalizedPath(path)+QStringLiteral(".timeline"); }
 QString journalFile(const QString &path,const QString &root) { return QDir(journalDirectory(path)).filePath(digest(root)+QStringLiteral(".json")); }
@@ -96,8 +96,8 @@ bool readJournalFile(const QString &path,const QString &fileName,TimelineJournal
         ||!object.value("branch").isString()||branch.isEmpty()||branch.size()>256
         ||!object.value("generation").isString()||!numberValid||QString::number(generation)!=text
         ||generation>quint64(std::numeric_limits<qint64>::max())
-        ||!object.value("owner").isString()||QUuid(owner).isNull()||QUuid(owner).toString(QUuid::WithoutBraces)!=owner
-        ||!object.value("publication").isString()||QUuid(publication).isNull()||QUuid(publication).toString(QUuid::WithoutBraces)!=publication
+        ||!object.value("owner").isString()||QUuid(owner).isNull()||QUuid(owner).toString().mid(1, 36)!=owner
+        ||!object.value("publication").isString()||QUuid(publication).isNull()||QUuid(publication).toString().mid(1, 36)!=publication
         ||!object.value("database").isString()||object.value("database").toString()!=digest(normalizedPath(path))
         ||!object.value("active").isBool()||!object.value("dirty").isBool()
         ||QDir::cleanPath(fileName)!=journalFile(path,root)) {
@@ -381,7 +381,7 @@ static bool persistMatch(const Match &match,const QString &requestedPath,QString
     auto prepareJournal=[&]() {
         if(recovery) {
             journal.active=true;journal.owner=processOwner();
-            journal.publication=QUuid::createUuid().toString(QUuid::WithoutBraces);
+            journal.publication=QUuid::createUuid().toString().mid(1, 36);
             QMutexLocker lock(&fenceMutex);armedRoots[path].insert(match.rootMatchId);
         }
         journal.generation=match.generation;journal.branch=match.branchId;journal.dirty=true;
@@ -400,7 +400,7 @@ static bool persistMatch(const Match &match,const QString &requestedPath,QString
         QSqlQuery check(db);check.prepare("SELECT 1 FROM battle_matches WHERE root=?");check.addBindValue(match.rootMatchId);
         if(!check.exec()) {if(error)*error=check.lastError().text();return false;}
         if(check.next()) {uncertain(path,match.rootMatchId);if(error)*error="Existing match has no timeline journal; refusing implicit repair";return false;}
-        journal={match.rootMatchId,match.branchId,processOwner(),match.generation,false,true,QUuid::createUuid().toString(QUuid::WithoutBraces)};
+        journal={match.rootMatchId,match.branchId,processOwner(),match.generation,false,true,QUuid::createUuid().toString().mid(1, 36)};
     }
     if(!markerExists&&!prepareJournal())return false;
     QSqlQuery begin(db); if(!begin.exec("BEGIN IMMEDIATE")){if(error)*error=begin.lastError().text();return false;}
@@ -496,7 +496,7 @@ bool armMatch(const Match &match,const QString &requestedPath,QString *error)
                 if(existing.next())return fail("Existing match has no timeline journal; refusing implicit repair");
             }
         }
-        journal={match.rootMatchId,match.branchId,processOwner(),match.generation,true,false,QUuid::createUuid().toString(QUuid::WithoutBraces)};
+        journal={match.rootMatchId,match.branchId,processOwner(),match.generation,true,false,QUuid::createUuid().toString().mid(1, 36)};
     }
     journal.active=true;journal.owner=processOwner();
     QString detail;if(!writeJournal(path,journal,&detail))return fail(detail);

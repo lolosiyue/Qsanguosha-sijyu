@@ -42,6 +42,16 @@ const Skill *SkillTriggerScope::current()
     return g_skillTriggerScope;
 }
 
+bool Skill::setTargetTipRules(const QString &json)
+{
+    return m_targetTipRules.setJson(json);
+}
+
+QString Skill::targetTip(const TargetTipQuery &query) const
+{
+    return m_targetTipRules.targetTip(query);
+}
+
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
 	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$"))
@@ -100,7 +110,8 @@ bool Skill::canPreshow() const
 {
     if (inherits("TriggerSkill")) {
         const TriggerSkill *triskill = qobject_cast<const TriggerSkill *>(this);
-        return triskill && triskill->getViewAsSkill() == nullptr;
+        // Global rule timing has no general to preshow.
+        return triskill && !triskill->isGlobal() && triskill->getViewAsSkill() == nullptr;
     }
     return false;
 }
@@ -1050,10 +1061,7 @@ bool OneCardViewAsSkill::viewFilter(const Card *to_select) const
 	} else if (isResponseOrUse() && pat.contains("hand")) {
 		QStringList handlist;
 		handlist.append("hand");
-		foreach (const QString &pile, Self->getPileNames()) {
-			if (pile.startsWith("&") || pile == "wooden_ox")
-				handlist.append(pile);
-		}
+		handlist << Self->getHandPileNames();
 		pat.replace("hand", handlist.join(","));
 	}
 	return Sanguosha->matchExpPattern(pat, Self, to_select);

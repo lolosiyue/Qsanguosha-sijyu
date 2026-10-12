@@ -63,7 +63,7 @@ file(REMOVE
     "${qsan_output_dir}/xp-build-identity.txt"
     "${qsan_output_dir}/xp-executables.sha256"
     "${qsan_output_dir}/xp-executables.sha256.partial")
-set(qsan_qt_libraries Core Gui Network Widgets)
+set(qsan_qt_libraries Core Gui Network Sql Widgets)
 foreach(qsan_qt_library IN LISTS qsan_qt_libraries)
     set(qsan_qt_dll
         "${QSAN_QT_ROOT}/bin/Qt5${qsan_qt_library}${qsan_debug_suffix}.dll")
@@ -80,6 +80,7 @@ set(qsan_qt_plugins
     "imageformats/qgif${qsan_debug_suffix}.dll"
     "imageformats/qico${qsan_debug_suffix}.dll"
     "imageformats/qjpeg${qsan_debug_suffix}.dll"
+    "sqldrivers/qsqlite${qsan_debug_suffix}.dll"
     "bearer/qgenericbearer${qsan_debug_suffix}.dll"
     "bearer/qnativewifibearer${qsan_debug_suffix}.dll")
 foreach(qsan_qt_plugin IN LISTS qsan_qt_plugins)

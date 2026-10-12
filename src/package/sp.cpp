@@ -663,6 +663,7 @@ class Weidi : public TriggerSkillV2
 public:
     Weidi() : TriggerSkillV2("weidi")
     {
+        setProperty("HolderSharesLordSkills", true);
         frequency = Compulsory;
         events << GameStart << EventAcquireSkill << EventLoseSkill << DFDebut << Death << GeneralShown << GeneralHidden;
         global = true;

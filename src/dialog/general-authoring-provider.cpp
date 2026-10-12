@@ -32,12 +32,16 @@ void Provider::send(const QUrl &endpoint, const QString &key, const QByteArray &
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("Accept", "application/json");
     if (!key.isEmpty()) request.setRawHeader("Authorization", "Bearer " + key.toUtf8());
+#if QT_VERSION >= QT_VERSION_CHECK(5, 9, 0)
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
+#endif
     request.setAttribute(QNetworkRequest::CookieLoadControlAttribute, QNetworkRequest::Manual);
     request.setAttribute(QNetworkRequest::CookieSaveControlAttribute, QNetworkRequest::Manual);
     request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
     request.setAttribute(QNetworkRequest::CacheSaveControlAttribute, false);
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
     request.setTransferTimeout(60000);
+#endif
     auto *reply = m_manager->post(request, payload);
     m_reply = reply;
     reply->setReadBufferSize(512 * 1024 + 1);

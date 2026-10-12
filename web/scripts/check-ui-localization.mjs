@@ -97,7 +97,8 @@ export function findHardcodedUiText({ root = repoRoot, files = UI_FILES } = {}) 
 function xmlSources(file) {
   if (!fs.existsSync(file)) return new Map();
   const map = new Map();
-  const text = fs.readFileSync(file, "utf8");
+  // XML normalizes line endings; match multiline C++ keys on Windows as well.
+  const text = fs.readFileSync(file, "utf8").replace(/\r\n?/g, "\n");
   const decode = (value) => value.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&apos;/g, "'").replace(/&quot;/g, '"');
   const re = /<context>[\s\S]*?<name>([^<]+)<\/name>([\s\S]*?)(?=<\/context>)/g;
   let m;

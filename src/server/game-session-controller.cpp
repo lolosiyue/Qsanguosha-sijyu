@@ -1234,7 +1234,21 @@ void GameSessionController::startGame()
 	const QList<ServerPlayer *> players = m_room.getPlayers();
 	m_room.m_chatHistory.clear();
 	m_room.m_uiThemeHistory.clear();
-	m_room.m_qmlElements.clear();/*
+	m_room.m_qmlElements.clear();
+	// Every mode has finished choosing generals here, and skills attach later in preparePlayers().
+	// Hegemony forces the hidden head general while dealing pairs (RoomThreadHegemony::chooseGenerals).
+	if (const General *forced = Config.EnableHegemony ? nullptr : Sanguosha->getGeneral(Server::forcedGeneral)) {
+		ServerPlayer *target = m_room.getOwner();
+		if (!target || !players.contains(target)) target = m_room.getLord();
+		if (!target && !players.isEmpty()) target = players.first();
+		if (target && target->getGeneral() != forced) {
+			target->setGeneral(forced);
+			target->setKingdom(forced->getKingdom());
+			m_room.broadcastProperty(target, "kingdom");
+		}
+		if (target)
+			qInfo().noquote() << "[AUTOTEST] force general" << target->objectName() << forced->objectName();
+	}/*
 	if (mode == "08_defense"){
 		QList<int> next_list;
 		next_list << 0 << 7 << 1 << 6 << 2 << 5 << 3 << 4;

@@ -110,6 +110,7 @@ class RoomScene : public QGraphicsScene
     friend class NetworkUiSmokeResponder;
 
 public:
+    QString targetTipFor(const ClientPlayer *candidate, bool selectable) const;
     enum ShefuAskState
     {
         ShefuAskAll, ShefuAskNecessary, ShefuAskNone

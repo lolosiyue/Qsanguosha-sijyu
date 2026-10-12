@@ -10,6 +10,7 @@
 | APK 來源 | `lua/`、`extensions/`、`lang/`、QML、皮膚設定、基本字型及翻譯，以 Qt resources 放在 `:/assets/`；外部擴展副本不納入主倉庫。 |
 | 舊版釋出 | `<AppDataLocation>/runtime` 在首次安裝、APK 資源變更及失敗回復時只補缺檔，已有同名檔不覆寫。CP1 留下的使用者修改另保留於初始內容快照。 |
 | 隨包原版 | `content/baseline` 從 APK 保存原版，與使用者修改分開；APK 新增檔及宣告以 revision 日誌追加。 |
+| 開發版內容同步 | `QSAN_ANDROID_DEV_CONTENT_SYNC=ON`（`tools/build-android.ps1` 預設）時，APK revision 一變就把 baseline 的全部非聲畫檔（`lua/`、`extensions/`、`lang/`、`ui-script/`、`qss/`、`skins/` 等）換成 APK 版本，並重組快照；首次以此設定啟動也刷新一次。聲畫、字型與使用者匯入的整包不動。`-PreserveDeviceContent` 建出只補缺檔的產品行為。 |
 | 核心 Lua 升級 | `lua/config.lua`、`lua/sanguosha.lua`、`lua/utilities.lua`、`lua/sgs_ex.lua`、`lua/lib/json.lua`、`lua/ai/mode-ai.lua` 的 baseline 隨 APK revision 更新。bootstrap migration version 3 會換上含 `registerStandardModeAI` 的 mode AI；version 2 修復相同資源 revision 下的舊部署。成功後重組新快照，舊快照及已捕捉的使用者覆蓋保留，聲畫沿用原 blob。啟動失敗仍先走回復介面，不自動跳過。 |
 | Engine 來源 | `content/versions/<id>/runtime` 保留完整相對路徑；Lua／規則是版本獨立實體檔，聲畫引用私有 blob。建立 Engine 前設定 runtime root，既有 `image/`／`audio/`／`font/` 消費端不變。 |
 | 套用變更 | 完成解壓與版本組合後寫 pending；重新啟動才切換 active，上一 active 保留為 previous。不做資源雜湊或啟動聲畫全掃描。 |

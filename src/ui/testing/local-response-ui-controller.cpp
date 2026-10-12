@@ -1008,6 +1008,13 @@ bool LocalResponseUiController::runAction(int index, QString *error)
         if (!ok)
             actionError = QStringLiteral("action assertion failed");
     } else if (type == QStringLiteral("take_screenshot")) {
+        // settle_ms lets animations such as the prompt box fade-in finish before the capture.
+        const int settleMs = action.value(QStringLiteral("settle_ms")).toInt(0);
+        if (settleMs > 0) {
+            QEventLoop loop;
+            QTimer::singleShot(settleMs, &loop, &QEventLoop::quit);
+            loop.exec();
+        }
         ok = !captureScreenshot(action.value(QStringLiteral("name"))
             .toString(QStringLiteral("action_%1").arg(index))).isEmpty();
         if (!ok)

@@ -35,7 +35,7 @@ bool journalValue(const QVariant &value, int depth = 0)
     default: return false;
     }
 }
-QString newId() { return QUuid::createUuid().toString(QUuid::WithoutBraces); }
+QString newId() { return QUuid::createUuid().toString().mid(1, 36); }
 }
 
 GameTimeline::GameTimeline(const QString &rootGameId, const QString &worldId)
