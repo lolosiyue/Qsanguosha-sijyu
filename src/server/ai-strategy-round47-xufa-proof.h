@@ -3,8 +3,24 @@
 #include <QString>
 #include <QSet>
 #include <QList>
+#include <memory>
 class LuaCallbackRef;
-class Room;class Card;struct lua_State;
+class Room;class Card;class ServerPlayer;struct lua_State;
+// Exact Xufa native-query lifetime. The source-only metadata check below is
+// insufficient without this complete correction/allocation/notification scope.
+// It never admits a TriggerSkill, move event, inquiry or event snapshot.
+class AIRound56XufaCorrectionScope final {
+ friend class AIRound47XufaQueryScope;
+ AIRound56XufaCorrectionScope(Room &,ServerPlayer *,lua_State *);
+public:
+ ~AIRound56XufaCorrectionScope();
+ bool accepted() const noexcept;
+ AIRound56XufaCorrectionScope(const AIRound56XufaCorrectionScope &)=delete;
+ AIRound56XufaCorrectionScope &operator=(const AIRound56XufaCorrectionScope &)=delete;
+private:
+ struct Data;std::unique_ptr<Data>d;
+ friend bool proveAIRound47XufaCorrectionUnion(Room &,lua_State *,QString *);
+};
 // Xufa-only nonwriter proof. This does not authorize a saved value, a move,
 // an event, private knowledge, payment, or preservation of another ledger.
 bool registerAIRound47XufaGetterSources(Room&,lua_State*,QString*reason=nullptr);

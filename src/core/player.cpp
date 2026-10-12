@@ -53,7 +53,16 @@ struct InitialPlayerOrigins {
  std::mutex mutex;std::map<const Player*,InitialPlayerOrigin> entries;
 };
 std::atomic<bool> initialPlayerOriginsHealthy{true};
-InitialPlayerOrigins &initialPlayerOrigins(){static InitialPlayerOrigins x;return x;}
+#ifdef QSAN_XP_LEGACY
+// Preserve lazy construction independently of XP's disabled local-static guard.
+QBasicMutex initialPlayerOriginsInitializationMutex;
+#endif
+InitialPlayerOrigins &initialPlayerOrigins(){
+#ifdef QSAN_XP_LEGACY
+ QMutexLocker lock(&initialPlayerOriginsInitializationMutex);
+#endif
+ static InitialPlayerOrigins x;return x;
+}
 void bornInitialPlayerOrigin(const Player*p)noexcept{
  if(!initialPlayerOriginsHealthy.load(std::memory_order_acquire))return;
  try{auto&x=initialPlayerOrigins();std::lock_guard<std::mutex>l(x.mutex);

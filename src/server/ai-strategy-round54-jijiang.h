@@ -25,3 +25,7 @@ void enterAIRound54JijiangFilter(Room&,int,ServerPlayer*,const QVariant&);
 void clearAIRound54Jijiang(Room&);
 bool initializeAIRound54Jijiang(Room&,lua_State*);
 QJsonObject queryAIRound54Jijiang(Room&,const AIRequest&,ServerPlayer*,const QString&,const QString&);
+
+// Runs before an unproved gameplay entry; target provenance is never revived
+// by equal values or by observing which private callback actually wrote.
+void observeAIRound54JijiangEntry(Room&,lua_State*,int arguments) noexcept;

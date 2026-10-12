@@ -1,4 +1,6 @@
 #include "ai-strategy-round56-async.h"
+#include "ai-strategy-round56-maxcards.h"
+#include "ai-strategy-round56-native-types.h"
 #include "ai-strategy-round47-xufa-proof.h"
 #include "ai-strategy-round45-code-seal.h"
 #include "ai-strategy-round45-native-seal.h"
@@ -431,13 +433,81 @@ bool certifyAIRound47XufaPatternsEntry(Room&r,lua_State*L,int nargs,QString*why)
  return currentAIRound47XufaContinuityWriter(r)!=nullptr;
 }
 
-// The source-independent metadata union is necessary but not the native
-// effect closure. Caishi/Yin/Zhuikong notifications reach controller cleanup,
-// which may dispatch MarkChange/MarkChanged or Scenario hooks. Until that
-// complete fixed transport graph is connected, deny BEFORE private holder or
-// mark applicability; never rely on a later conditional observer clear.
+namespace {
+thread_local AIRound56XufaCorrectionScope *xufaCorrection=nullptr;
+bool xufaNotificationMetadata(Room&r,lua_State*L,QString*why){
+ const auto fail=[&](const char*s){if(why)*why=QString::fromLatin1(s);return false;};
+ auto*rt=r.roomRuntime();
+ if(!rt||rt->isClosing()||!L||rt->lua().rawState()!=L
+  ||LuaRuntime::current()!=&rt->lua()||!rt->lua().isCurrentThreadOwner()
+  ||!Sanguosha||Sanguosha->currentRoom()!=&r)
+  return fail("Xufa notification current Game VM unavailable");
+ // Complete public metadata domain BEFORE a controller, holder, mark or UI
+ // visibility branch. Bit2 closes the fixed frequency/equipment/quota bodies;
+ // the independently compiler-bound amount row closes describeSkillUsage.
+ for(const QString&name:Sanguosha->getSkillNames()){
+  const Skill*s=Sanguosha->getSkill(name);
+  if(!s||(aiRound56NativeEffectClass(s)&2u)==0)
+   return fail("Xufa notification native metadata body unreviewed");
+  if(dynamic_cast<const AmountSkillV2*>(s)){
+   const auto*source=aiRound56ActivateNativeTypeSource(s);bool amount=false;
+   if(source)for(unsigned i=0;i<source->methodCount;++i)
+    if(!std::strcmp(source->methods[i].method,"getBaseAmount"))amount=source->methods[i].scalarBodyProved;
+   if(!amount)return fail("Xufa notification amount body unreviewed");
+  }
+  if(const auto*x=dynamic_cast<const LuaTriggerSkillV2*>(s))if(x->get_usage_ref!=0)
+   return fail("Xufa notification trigger usage-ref callback unproved");
+  if(const auto*x=dynamic_cast<const LuaViewAsSkillV2*>(s))if(x->get_usage_ref!=0)
+   return fail("Xufa notification active usage-ref callback unproved");
+ }
+ return true;
+}
+}
+struct AIRound56XufaCorrectionScope::Data {
+ Room&room;lua_State*L;ServerPlayer*writer;AIRound56XufaCorrectionScope*previous;
+ quint64 generation=0,transport=0,serial=0;QString why;
+ std::unique_ptr<AIRound56OwnerCardRulesScope>corrections;
+ Data(Room&r,ServerPlayer*p,lua_State*l):room(r),L(l),writer(p),previous(xufaCorrection){}
+};
+AIRound56XufaCorrectionScope::AIRound56XufaCorrectionScope(Room&r,ServerPlayer*p,lua_State*L):d(new Data(r,p,L)){
+ xufaCorrection=this;
+ try{
+  if(!p||currentAIRound47XufaContinuityWriter(r)!=p||!xufaNotificationMetadata(r,L,&d->why))return;
+  auto*rt=r.roomRuntime();d->generation=rt->lua().generation();
+  d->transport=rt->xufaTransportEpoch();d->serial=currentAIRound47XufaWriteSerial(r);
+  // Reuse R56's complete correction/native-type/capture-origin/factory and
+  // canonical receiver proof, plus its full lexical Card lifetime and async
+  // scope. A momentary metadata boolean must not outlive these capabilities.
+  d->corrections.reset(new AIRound56OwnerCardRulesScope(r,p,L));
+  if(!accepted())d->why=QStringLiteral("Xufa complete correction source lifetime unavailable");
+ }catch(...){d->why=QStringLiteral("Xufa correction preflight allocation failure");}
+}
+AIRound56XufaCorrectionScope::~AIRound56XufaCorrectionScope(){
+ if(d->serial&&!accepted())interruptAIRound47XufaContinuity(d->room);
+ d->corrections.reset();xufaCorrection=d->previous;
+}
+bool AIRound56XufaCorrectionScope::accepted()const noexcept{
+ auto*rt=d->room.roomRuntime();
+ return xufaCorrection==this&&d->corrections&&d->corrections->accepted()
+  &&rt&&rt->lua().rawState()==d->L&&rt->lua().generation()==d->generation
+  &&d->transport&&rt->xufaTransportEpoch()==d->transport
+  &&d->serial&&currentAIRound47XufaWriteSerial(d->room)==d->serial
+  &&currentAIRound47XufaContinuityWriter(d->room)==d->writer;
+}
+// The fixed correction setters only publish seven named dynamic properties
+// and fixed distance. Their native notification descendants reach controller
+// cleanup, whose constructed marks always contain sys_; setPlayerMark therefore
+// cannot dispatch MarkChange/MarkChanged. Player::removeTag is not Room::setTag
+// and cannot call Scenario. UI refresh rejoins the complete correction and
+// quota graph above. Disconnection revokes the atomic transport generation
+// before controller/socket selection. None of these facts uses a current tag,
+// flag, mark, socket or private applicability result as proof authority.
 bool proveAIRound47XufaCorrectionUnion(Room&r,lua_State*L,QString*why){
- Q_UNUSED(r);Q_UNUSED(L);
- if(why)*why=QStringLiteral("Xufa native notification/controller effect union not yet certified");
- return false;
+ const auto*scope=xufaCorrection;
+ if(!scope||&scope->d->room!=&r||scope->d->L!=L||!scope->accepted()){
+  if(why)*why=scope&&!scope->d->why.isEmpty()?scope->d->why:
+   QStringLiteral("Xufa exact correction source scope absent or retired");
+  return false;
+ }
+ if(why)why->clear();return true;
 }

@@ -56,8 +56,12 @@ public:
     static void evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world,
                                    bool viewerOnly = false);
     void shutdown();
+    void projectDefenseHistory(AIWorldView &world);
     // Exact live processEvent request; never a zero-ID decision exemption.
     bool currentOLJijiangInvokeEvent(const AIRequest &, const ServerPlayer *) const;
+    bool currentOLJijiangResponseEvent(const AIRequest &, const ServerPlayer *, const QString &payload) const;
+    bool currentOLJijiangPlanningRequest(const AIRequest &, const ServerPlayer *) const;
+    bool currentXufaChoiceRequest(const AIRequest &, const ServerPlayer *) const;
     // Native audited producers transfer the exact detached product, never a Lua spec.
     QString issueReadonlyCard(const AIRequest &, ServerPlayer *, std::unique_ptr<Card>, const QString &sourceKey);
     QString issueBorrowedReadonlyCard(const AIRequest &, ServerPlayer *, const Card *, const QString &sourceKey);
@@ -189,6 +193,8 @@ private:
     static int luaModeObjective(lua_State *state);
     static int luaModeRefresh(lua_State *state);
     static int luaModeUpdatePlayers(lua_State *state);
+    static int luaRegisterDefenseWriter(lua_State *state);
+    static int luaPublishDefenseSnapshot(lua_State *state);
     static int luaRefreshDiscardPreferences(lua_State *state);
     QJsonObject queryStandardMode(LuaRuntime &modeRuntime, const AIRequest &request,
                                  const QString &target, int toUseCount, bool refresh,
@@ -214,6 +220,10 @@ private:
     bool parseResult(lua_State *state, AIResult &result, const AIRequest &request) const;
 
     QJsonObject m_speechCounters;
+    QHash<QString,QJsonObject> m_defenseHistory;
+    QJsonObject m_pendingDefenseHistory;
+    int m_defenseWriterRef = -2; // LUA_NOREF, retained only for this auxiliary VM
+
     Room *m_room;
     const AIRequest *m_activeRequest = nullptr;
     bool m_originalDiscardResultReady=false;

@@ -27,7 +27,7 @@ void raw(lua_State*L,int i,const char*k){AIRound45Inspect::field(L,i,k);}
 bool plain(lua_State*L,int i){if(!lua_istable(L,i))return false;if(lua_getmetatable(L,i)){lua_pop(L,1);return false;}return true;}
 const Proto*proto(lua_State*L,int i){return lua_isfunction(L,i)&&!lua_iscfunction(L,i)?static_cast<const LClosure*>(lua_topointer(L,i))->p:nullptr;}
 struct Source{const char*path;const char*sha;};
-constexpr Source modeSource{"lua/ai/mode-ai.lua","5a36ef4194b804790c0bb8c897a7e40ccba26e107b7e0e2965f6fe513eecd9c1"};
+constexpr Source modeSource{"lua/ai/mode-ai.lua","cd0a6fa3b6de7e90db276846f04fe54b01199c28a1d68df3c452f6b14b8ac3e5"};
 bool inModeScope(const Room&,lua_State*)noexcept;
 struct State;void observeRoot(lua_State*,const lua_TableObservation*,void*)noexcept;
 void observeBirth(lua_State*,const lua_TableBirthObservation*,void*)noexcept;
@@ -52,7 +52,7 @@ struct State final:QObject {
  }
 };
 State*find(const Room&r){for(auto*c:r.children())if(auto*s=dynamic_cast<State*>(c))return s;return nullptr;}
-const QList<int>modeAnchors={10,24,40,49,59,209,221,240,250,310,317,321,327,333,360,621,627,636,846,860,1027,1158,1234,1240,1252,1262,1286,1307,1346,1364,1538,1549,1576,1594,1602};
+const QList<int>modeAnchors={10,24,40,49,59,209,221,240,250,310,317,321,327,338,395,656,662,671,889,903,1067,1198,1274,1280,1292,1302,1326,1347,1386,1404,1586,1597,1624,1642,1650};
 thread_local AIRound56ModeEvaluationScope*active=nullptr;
 thread_local Room*activeRoom=nullptr;thread_local lua_State*activeLua=nullptr;
 struct NativeWorld{Room*r;lua_State*L;CallInfo*frame;int depth;NativeWorld*previous;const void*root=nullptr;};
@@ -117,8 +117,8 @@ void observeBirth(lua_State*L,const lua_TableBirthObservation*e,void*u)noexcept{
    // Original standard_query_result creates these two tables once per call.
    // Full Proto + independent instruction map, never a live source hint.
    const void**role=nullptr;
-   if(matchAIRound56PinnedInstruction(s.room,L,e->lua_function_identity,e->lua_instruction_index,modeSource.path,1549,1572,1566))role=&objectiveReceipt->result;
-   else if(matchAIRound56PinnedInstruction(s.room,L,e->lua_function_identity,e->lua_instruction_index,modeSource.path,1549,1572,1567))role=&objectiveReceipt->token;
+   if(matchAIRound56PinnedInstruction(s.room,L,e->lua_function_identity,e->lua_instruction_index,modeSource.path,1597,1620,1614))role=&objectiveReceipt->result;
+   else if(matchAIRound56PinnedInstruction(s.room,L,e->lua_function_identity,e->lua_instruction_index,modeSource.path,1597,1620,1615))role=&objectiveReceipt->token;
    if(role){if(*role){s.retire();return;}*role=e->table_identity;}
   }
   if((source||native)&&!s.watch(e->table_identity))s.retire();
@@ -211,7 +211,7 @@ struct Check {
   for(const char*k:{"roles","teams"}){raw(L,p,k);if(!plain(L,-1))return false;lua_pushnil(L);
    if(AIRound45Inspect::next(L,-2))return no("02p","author role/team override");lua_pop(L,1);}
   struct Hook{const char*name;int first,last;};
-  for(const Hook &h: {Hook{"relation",1027,1037},Hook{"objective",846,855},Hook{"gameProcess",333,358},Hook{"rolePredictable",627,632}}){
+  for(const Hook &h: {Hook{"relation",1067,1077},Hook{"objective",889,898},Hook{"gameProcess",338,393},Hook{"rolePredictable",662,667}}){
    raw(L,p,h.name);if(!matchAIRound45PinnedFunction(c.room,L,-1,modeSource.path,h.first,h.last)||!function(-1,QString::fromLatin1(h.name),0))return no(h.name,"public standard hook provider changed");lua_pop(L,1);
   }
   return true;
@@ -281,7 +281,7 @@ bool graph(State&s,QString*why){
  const int ns=lua_absindex(s.L,-1);
  if(!check.primitiveMetatables()){if(why)*why=check.failure;return false;}
  struct Root{const char*name;int first,last;};
- for(const auto&root:{Root{"evaluateModeAI",1364,1530},Root{"prepareStandardObjective",1594,1600},Root{"prepareStandardRelations",1602,1607},Root{"commitStandardObjective",1576,1592}}){
+ for(const auto&root:{Root{"evaluateModeAI",1404,1578},Root{"prepareStandardObjective",1642,1648},Root{"prepareStandardRelations",1650,1655},Root{"commitStandardObjective",1624,1640}}){
   Stack item(s.L);raw(s.L,ns,root.name);
   if(!matchAIRound45PinnedFunction(s.room,s.L,-1,modeSource.path,root.first,root.last)||!check.function(-1,QString::fromLatin1(root.name),0)){
    if(why)*why=check.failure.isEmpty()?QStringLiteral("mode root source differs: ")+QString::fromLatin1(root.name):check.failure;return false;

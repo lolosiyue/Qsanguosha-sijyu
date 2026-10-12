@@ -253,3 +253,18 @@ bool matchAIRound56PinnedAuxiliaryRoot(Room &room,lua_State *auxiliary,const QSt
  try{return signature(actual,signatureBytes)&&signatureBytes==it->bodies.value(anchor);}
  catch(const std::bad_alloc &){return false;}
 }
+
+bool matchAIRound56PinnedAuxiliaryFunction(Room &room,lua_State *L,int index,
+ const QString &path,int first,int last) {
+ auto *runtime=room.roomRuntime();auto *seals=get(room);
+ if(!runtime||!seals||!L||runtime->ai().lua().rawState()!=L
+   ||!runtime->ai().lua().isCurrentThreadOwner()||!runtime->lua().isCurrentThreadOwner()
+   ||seals->state!=runtime->lua().rawState()||seals->generation!=runtime->lua().generation())return false;
+ const auto it=seals->sources.constFind(path);if(it==seals->sources.cend())return false;
+ const auto anchor=key(first,last);const Proto *actual=getProto(L,index);
+ if(!actual||actual->linedefined!=first||actual->lastlinedefined!=last
+   ||it->ambiguous.contains(anchor)||!it->bodies.contains(anchor))return false;
+ QByteArray body;
+ try{return signature(actual,body)&&body==it->bodies.value(anchor);}
+ catch(const std::bad_alloc &){return false;}
+}

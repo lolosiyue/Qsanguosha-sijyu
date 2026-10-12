@@ -7,6 +7,11 @@ class Room;class ServerPlayer;struct AIRequest;struct lua_State;
 // Requires native observer fanout; no replacement of another observer.
 bool initializeAIRound53Registry(Room&,lua_State*,QString*error=nullptr);
 void clearAIRound53Registry(Room&);
+// Source receipts for the actual R53 writer. Never import a registry value or
+// renew a retired stamp. These replace the obsolete shadow-ledger Xufa token.
+ServerPlayer *currentAIRound53XufaWriter(Room&) noexcept;
+quint64 currentAIRound53XufaSerial(Room&) noexcept;
+void retireAIRound53Registry(Room&) noexcept;
 // Call BEFORE private applicability/selection at every admitted source policy
 // entry. Unknown/foreign actor and nested/reentrant entry revoke unconditionally.
 // An outer operation's public actor alone is NOT proof of an inner AI's actor.

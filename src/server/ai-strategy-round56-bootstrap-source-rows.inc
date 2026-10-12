@@ -351,7 +351,7 @@
 {"lua/ai/meow-ai.lua","3afb534b43b74491c20d41ce153f0f0fb8b3d57d2dc932401c6b6e275be8554f"},
 {"lua/ai/mobile-ai.lua","db956d5318d5ba84a699d1ba8b26049f5105bf2758f7c2d5e5bb96310e26a537"},
 {"lua/ai/mobile_st_standard-ai.lua","2dd9670c9854b7af0543d3a3230ae8c9587974933d8a8f5ec83e08dd71174196"},
-{"lua/ai/mode-ai.lua","5a36ef4194b804790c0bb8c897a7e40ccba26e107b7e0e2965f6fe513eecd9c1"},
+{"lua/ai/mode-ai.lua","cd0a6fa3b6de7e90db276846f04fe54b01199c28a1d68df3c452f6b14b8ac3e5"},
 {"lua/ai/mojiang-ai.lua","412949f02ff924026e3755d4d3ca7412de03795347e04635fa5f88a8af26d365"},
 {"lua/ai/mojiangprevious-ai.lua","1c4f794ad4ef5dc527e55cb97cc351c8cd2552917a571687da7d3db30cd9bc57"},
 {"lua/ai/moshen-ai.lua","acfd454ad4fa64dcfcd301b0f95c806ad5eef3778aa417c1628e360d4fdc4135"},

@@ -2664,6 +2664,7 @@ AIWorldView AiDecisionCoordinator::projectWorldView(const PublicBoard &board, Se
     // Build every relation row from THIS observer's already filtered world and
     // policy mind; never transpose a viewer row or read another actor's mind.
     // Compact non-hegemony requests retain their existing projection contract.
+    m_room.roomRuntime()->ai().projectDefenseHistory(world);
     AiLuaRuntime::evaluateModePolicy(m_room.roomRuntime()->lua(), world,
         compactPolicy && !world.enableHegemony);
     return world;

@@ -363,6 +363,7 @@ void initializeAIRound41ChoiceTables(Room&r,lua_State*L,bool isolated){
    // Each R56 certifier is a complete native/source lexical entry proof. Try
    // their union before any legacy partial/current-shape observer can revoke
    // or preserve another source. Unknown entries retire before execution.
+   observeAIRound54JijiangEntry(guard->room,state,arguments);
    bool round56=false;
    if(arguments>=0)try{
     round56=acceptAIRound56BootstrapProtectedEntry(guard->room,state,arguments)
@@ -430,9 +431,13 @@ void initializeAIRound41ChoiceTables(Room&r,lua_State*L,bool isolated){
   valid=watch(l,lua_topointer(L,table),{kind,nullptr,isolated},L)&&valid;lua_pop(L,1);
  }
  initializeAIChoiceContinuityRoots(r,isolated,valid,initial,xufaTransportStamp,xufaGenerationStamp);
- // Independent finite observer subscription. No continuation grant: coverage
- // stays disabled until the complete native pre-entry mapping is accepted.
- if(!isolated&&valid){initializeAIRound53Registry(r,L);initializeAIRound54Shebian(r,L);initializeAIRound54Jijiang(r,L);}
+ // The actual R53 writer now shares the existing pre-entry/query revocation
+ // routes. Every native trigger is revoked BEFORE private selection; this
+ // enables only uninterrupted proved source intervals, never move events.
+ if(!isolated&&valid){
+  if(initializeAIRound53Registry(r,L))enableAIRound53RegistryEntryCoverage(r,true);
+  initializeAIRound54Shebian(r,L);initializeAIRound54Jijiang(r,L);
+ }
 }
 void initializeAIRound37OriginalTurnUse(Room&r){
  auto*l=ledger(r);if(l->initialized)return;l->initialized=true;

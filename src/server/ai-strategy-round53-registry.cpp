@@ -1,6 +1,7 @@
 #include "ai-strategy-round53-registry.h"
 #include "ai-strategy-round44-certificate.h"
 #include "ai.h"
+#include "ai-runtime.h"
 #include "card.h"
 #include "card-lifetime-manager.h"
 #include "engine.h"
@@ -25,7 +26,7 @@ public:
   // Lua closes; no dead table address is passed to the observer API.
   for(auto id:{globals,space,choices})if(id)lua_unobservetableidentity(L,id,observe,this);
  }
- Room&room;lua_State*L=nullptr;quint64 generation=0,epoch=1,stamp=0;
+ Room&room;lua_State*L=nullptr;quint64 generation=0,epoch=1,stamp=0,transport=0;
  const void*globals=nullptr,*space=nullptr,*choices=nullptr;
  bool valid=false,coverage=false,exhausted=false,pending=false,expected=false;
  unsigned writes=0;
@@ -63,6 +64,7 @@ bool live(State*s){auto*rt=s?s->room.roomRuntime():nullptr;return rt&&!rt->isClo
 bool current(Room&r,ServerPlayer*p,const AIRequest&q){return p&&p->getRoom()==&r&&q.decisionId
  &&q.viewerObjectName==p->objectName()&&q.worldView.self.objectName==p->objectName()
  &&r.findPlayerByObjectName(p->objectName(),true)==p&&aiRound44RangeRequestCurrent(r,q,p)
+ &&r.roomRuntime()->ai().currentXufaChoiceRequest(q,p)
  &&Sanguosha&&Sanguosha->currentRoom()==&r;}
 bool roots(State*s){Stack st(s->L);auto*L=s->L;AIRound45Inspect::globals(L);if(lua_topointer(L,-1)!=s->globals)return false;
  AIRound45Inspect::field(L,-1,"sgs");if(!lua_istable(L,-1)||lua_topointer(L,-1)!=s->space)return false;
@@ -86,18 +88,24 @@ bool disclosedName(Room&r,ServerPlayer*p,const AIRequest&q,const QString&name){
  for(const auto&pile:q.worldView.self.piles)for(const auto&v:pile.cards)if(test(v))return true;
  return false;
 }
-struct Write {State*s;Room*r;ServerPlayer*p;const AIRequest*q;QByteArray value;quint64 before=0;bool reached=false;};
+struct Write {State*s;Room*r;ServerPlayer*p;const AIRequest*q;QByteArray value;quint64 before=0,transport=0;bool reached=false;};
 int assign(lua_State*L){
  if(!lua_checkstack(L,256))return luaL_error(L,"R53 registry assignment stack unavailable");
  auto*w=static_cast<Write*>(lua_touserdata(L,2));
  if(!w||!live(w->s)||!current(*w->r,w->p,*w->q)||!roots(w->s)
   ||lua_topointer(L,1)!=w->s->choices)
   return luaL_error(L,"R53 registry assignment context changed");
+ // Entry revocation belongs to the reached prefix before this new source
+ // assignment. Capture once here, before allocation; reads and continuation
+ // never resample an interrupted source's transport generation.
+ w->transport=w->r->roomRuntime()->xufaTransportEpoch();
+ if(!w->transport)return luaL_error(L,"R53 source transport unavailable");
  // Any Lua allocation stays inside this game-VM protected C frame. No error
  // may jump from the game VM through the outer isolated host frame.
  lua_pushlstring(L,w->value.constData(),size_t(w->value.size()));
  lua_pushliteral(L,"xufa");lua_pushvalue(L,-2);
- if(!live(w->s)||!current(*w->r,w->p,*w->q)||!roots(w->s))
+ if(!live(w->s)||w->r->roomRuntime()->xufaTransportEpoch()!=w->transport
+  ||!current(*w->r,w->p,*w->q)||!roots(w->s))
   return luaL_error(L,"R53 registry assignment changed during allocation");
  // All allocation / protected-entry observers before this point belong to the
  // reached prefix. Arm only at the exact ordinary source assignment.
@@ -127,6 +135,18 @@ bool initializeAIRound53Registry(Room&r,lua_State*L,QString*error){
  if(error)error->clear();return true;
 }
 void clearAIRound53Registry(Room&r){delete state(r);}
+void retireAIRound53Registry(Room&r)noexcept{
+ if(auto*s=state(r)){s->pending=false;s->revoke();}
+}
+ServerPlayer*currentAIRound53XufaWriter(Room&r)noexcept{
+ auto*s=state(r);
+ return live(s)&&s->coverage&&s->stamp&&s->stamp==s->epoch&&s->writer
+  &&s->writer->getRoom()==&r&&s->transport&&s->transport==r.roomRuntime()->xufaTransportEpoch()
+  ?s->writer.data():nullptr;
+}
+quint64 currentAIRound53XufaSerial(Room&r)noexcept{
+ auto*s=state(r);return currentAIRound53XufaWriter(r)&&s?s->stamp:0;
+}
 void enableAIRound53RegistryEntryCoverage(Room&r,bool complete){auto*s=state(r);if(!s)return;s->revoke();s->coverage=complete;}
 void enterAIRound53RegistryPolicy(Room&r,ServerPlayer*actor,bool reentrant){auto*s=state(r);if(!s)return;
  if(reentrant||!actor||actor->getRoom()!=&r||(s->writer&&s->writer!=actor)){s->pending=false;s->revoke();}
@@ -138,26 +158,28 @@ QJsonObject writeAIRound53XufaChoice(Room&r,ServerPlayer*p,const AIRequest&q,con
  if(!L||!lua_checkstack(L,512)||!live(s))return unknown();Stack st(L);
  if(!roots(s))return unknown();
  AIRound45Inspect::globals(L);AIRound45Inspect::field(L,-1,"sgs");AIRound45Inspect::field(L,-1,"ai_skill_choice");const int registry=lua_absindex(L,-1);
- const auto bytes=name.toUtf8();Write w{s,&r,p,&q,bytes};lua_pushcfunction(L,assign);lua_pushvalue(L,registry);lua_pushlightuserdata(L,&w);
+ const auto bytes=name.toUtf8();Write w{s,&r,p,&q,bytes};
+ lua_pushcfunction(L,assign);lua_pushvalue(L,registry);lua_pushlightuserdata(L,&w);
  const int status=LuaRuntime::protectedCall(L,2,0,0);
  const bool own=w.reached&&s->pending&&s->writes==1&&w.before<std::numeric_limits<quint64>::max()&&s->epoch==w.before+1;
  s->pending=false;s->expected=false;
- if(status!=LUA_OK||!own||!live(s)||!current(r,p,q)||!roots(s))return unknown();
+ if(status!=LUA_OK||!own||!live(s)||!w.transport||rt->xufaTransportEpoch()!=w.transport
+  ||!current(r,p,q)||!roots(s))return unknown();
  AIRound45Inspect::field(L,registry,"xufa");size_t length=0;const char*value=lua_type(L,-1)==LUA_TSTRING?lua_tolstring(L,-1,&length):nullptr;
  if(!value||length!=size_t(bytes.size())||std::memcmp(value,bytes.constData(),length))return unknown();
- s->writer=p;s->stamp=s->epoch;
+ s->writer=p;s->stamp=s->epoch;s->transport=w.transport;
  // Successful actual prefix is independent of whether later continuity has a
  // complete entry proof. No value copy is retained in native or isolated VM.
  return{{"known",true},{"recorded",true}};
 }
 QJsonObject readAIRound53XufaChoice(Room&r,ServerPlayer*p,const AIRequest&q){
- auto*s=state(r);if(!live(s)||!s->coverage||!s->stamp||s->stamp!=s->epoch||s->writer!=p||!current(r,p,q)
+ auto*s=state(r);if(currentAIRound53XufaWriter(r)!=p||!p||!current(r,p,q)
   ||q.kind!=AIRequest::Choice||q.choiceOptions.reason!="xufa")return unknown();
  auto*rt=r.roomRuntime();LuaRuntime::Binding binding(rt->lua(),false);auto*L=rt->lua().state();if(!L||!lua_checkstack(L,64))return unknown();Stack st(L);
  if(!roots(s))return unknown();const auto stamp=s->stamp;
  AIRound45Inspect::globals(L);AIRound45Inspect::field(L,-1,"sgs");AIRound45Inspect::field(L,-1,"ai_skill_choice");AIRound45Inspect::field(L,-1,"xufa");
  if(lua_type(L,-1)!=LUA_TSTRING)return unknown();size_t n=0;const char*text=lua_tolstring(L,-1,&n);
  const QString value=QString::fromUtf8(text,int(n));
- if(!live(s)||s->stamp!=stamp||s->epoch!=stamp||s->writer!=p||!current(r,p,q))return unknown();
+ if(currentAIRound53XufaWriter(r)!=p||s->stamp!=stamp||s->epoch!=stamp||!current(r,p,q))return unknown();
  return{{"known",true},{"present",true},{"value",value}};
 }

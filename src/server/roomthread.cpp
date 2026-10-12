@@ -1,6 +1,7 @@
 #include "ai-strategy-round54-shebian.h"
 #include "ai-strategy-round54-jijiang.h"
 #include "ai-strategy-round47-xufa-event-scope.h"
+#include "ai-strategy-round53-registry.h"
 #include "ai-strategy-response-observer.h"
 #include "roomthread.h"
 #include "ai-strategy-round45-natural-event.h"
@@ -2976,6 +2977,10 @@ void recordTurnHpSnapshot(Room *room, qint64 turnId, const QString &boundary, co
 }
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
+    // Xufa's actual R53 source is not yet proved across trigger dispatch.
+    // Revoke before sorting, records, private eligibility, optional suppression
+    // and every early return; the later move observer cannot restore a receipt.
+    if(room)retireAIRound53Registry(*room);
     // Before any private trigger eligibility; a declined nested turnover must
     // revoke the previous Shebian plan exactly as an accepted one does.
     if(room&&triggerEvent==TurnedOver)invalidateAIRound54Shebian(*room);

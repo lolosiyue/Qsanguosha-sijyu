@@ -273,7 +273,7 @@ bool synchronous(State &s,lua_State *L,int argc) {
   return false;
  }
  if(argc==4){
-  const auto *row=closureRow("lua/ai/mode-ai.lua",1177,1232);
+  const auto *row=closureRow("lua/ai/mode-ai.lua",1217,1272);
   const TValue *registration=rawField(static_cast<const Table *>(s.space),"registerModeAI");
   const auto *registerRow=closureRow("lua/ai/mode-ai.lua",175,204);
   const bool captures=row&&registerRow&&graph.check(cl,*row)&&registration&&ttisLclosure(registration)

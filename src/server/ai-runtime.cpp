@@ -1,3 +1,4 @@
+#include "ai-strategy-round56-bootstrap-capture-metadata.h"
 #include "ai-strategy-round56-connection-cache.h"
 #include "ai-strategy-round56-mode-evaluation.h"
 #include "ai-strategy-round56-projection.h"
@@ -1231,6 +1232,122 @@ void AiLuaRuntime::pushWorldView(lua_State *state, const AIWorldView &world)
     pushAIWorldView(state, world);
 }
 
+void AiLuaRuntime::projectDefenseHistory(AIWorldView &world)
+{
+    const QString viewer=world.self.objectName;
+    if (!m_room || viewer.isEmpty()) return;
+    QJsonObject source = m_pendingDefenseHistory.value("observer").toString()==viewer
+        ? m_pendingDefenseHistory : m_defenseHistory.value(viewer);
+    if (source.isEmpty()) {
+        QJsonObject values, estimates;
+        // This is explicitly a late seed, not a reconstructed birth receipt.
+        // Keep Room's roster iteration order; never sort by current seat.
+        int index=0;
+        for (const ServerPlayer *p : m_room->getPlayers()) {
+            values.insert(p->objectName(),index++);
+            estimates.insert(p->objectName(),QJsonArray{"defense.late_initialization_roster_prior","defense.unobserved_cross_observer_sort_writers"});
+        }
+        source={{"observer",viewer},{"revision",QString::number(world.revision)},{"sequence",0},
+            {"sort_clock",world.strategyFacts.value("clock_seconds")},
+            {"origin","late_roster_prior"},{"baselines",values},{"estimates",estimates}};
+        m_defenseHistory.insert(viewer,source);
+    }
+    world.strategyFacts.insert("defense_history",source);
+}
+
+int AiLuaRuntime::luaRegisterDefenseWriter(lua_State *state)
+{
+    auto *runtime=fromUpvalue(state);
+    if (!runtime || !runtime->m_room || current()!=runtime || runtime->m_activeRequest || runtime->m_activeEventRequest || runtime->m_defenseWriterRef!=LUA_NOREF
+        || lua_gettop(state)!=1 || !lua_isfunction(state,1) || lua_iscfunction(state,1))
+        return luaL_error(state,"defense writer registration is unavailable");
+    lua_Debug caller;
+    if (!lua_getstack(state,1,&caller) || !lua_getinfo(state,"f",&caller))
+        return luaL_error(state,"defense writer has no bootstrap caller");
+    const bool root=matchAIRound56PinnedAuxiliaryFunction(*runtime->m_room,state,-1,
+        "lua/ai/isolated/event-intention.lua",0,0);
+    lua_pop(state,1);
+    if (!root || !matchAIRound56PinnedAuxiliaryFunction(*runtime->m_room,state,1,
+        "lua/ai/isolated/event-intention.lua",410,481))
+        return luaL_error(state,"defense writer bootstrap source is not authenticated");
+    lua_pushvalue(state,1);runtime->m_defenseWriterRef=luaL_ref(state,LUA_REGISTRYINDEX);
+    return 0;
+}
+
+int AiLuaRuntime::luaPublishDefenseSnapshot(lua_State *state)
+{
+    auto *runtime=fromUpvalue(state);
+    if (!runtime || current()!=runtime || !runtime->m_room || lua_gettop(state)>1
+        || runtime->m_defenseWriterRef==LUA_NOREF)
+        return luaL_error(state,"defense publication is outside its producer");
+    const AIRequest *request=runtime->m_activeEventRequest?runtime->m_activeEventRequest:runtime->m_activeRequest;
+    if (!request || !aiRound44RangeRequestCurrent(*runtime->m_room,*request))
+        return luaL_error(state,"defense publication has no current observer request");
+    const QString viewer=request->viewerObjectName;
+    const auto previous=runtime->m_pendingDefenseHistory.value("observer").toString()==viewer
+        ? runtime->m_pendingDefenseHistory : runtime->m_defenseHistory.value(viewer);
+    if (previous.isEmpty()) return luaL_error(state,"defense observer history is unavailable");
+    if (lua_gettop(state)==0) { pushAIJsonValue(state,previous);return 1; }
+    lua_Debug caller;
+    if (!lua_getstack(state,1,&caller) || !lua_getinfo(state,"f",&caller))
+        return luaL_error(state,"defense publication writer is unknown");
+    lua_rawgeti(state,LUA_REGISTRYINDEX,runtime->m_defenseWriterRef);
+    const bool writer=lua_rawequal(state,-1,-2);lua_pop(state,2);
+    if (!writer) return luaL_error(state,"defense publication writer is unknown");
+    QJsonValue value;int budget=32768;
+    if (!readAIJson(state,1,value,budget) || !value.isObject())
+        return luaL_error(state,"defense publication is not a scalar DTO");
+    auto dto=value.toObject();
+    const QSet<QString> fields{"observer","revision","sequence","sort_clock","origin","baselines","estimates"};
+    if (dto.size()!=fields.size()) return luaL_error(state,"defense publication has unknown fields");
+    for (auto it=dto.begin();it!=dto.end();++it)
+        if (!fields.contains(it.key())) return luaL_error(state,"defense publication has unknown fields");
+    if (previous.isEmpty() || dto.value("observer").toString()!=viewer
+        || dto.value("revision").toString()!=QString::number(request->stateRevision)
+        || dto.value("sequence")!=previous.value("sequence") || dto.value("origin")!=previous.value("origin")
+        || dto.value("sort_clock")!=request->worldView.strategyFacts.value("clock_seconds")
+        || dto.value("sort_clock").toDouble()-previous.value("sort_clock").toDouble()<=1)
+        return luaL_error(state,"defense publication observer, sequence or clock is stale");
+    const auto baselines=dto.value("baselines").toObject();
+    auto estimates=dto.value("estimates").toObject();
+    const auto old=previous.value("baselines").toObject();
+    if (baselines.keys()!=old.keys() || estimates.keys()!=old.keys())
+        return luaL_error(state,"defense publication roster changed");
+    for (auto it=baselines.begin();it!=baselines.end();++it) {
+        if (estimates.value(it.key()).isObject() && estimates.value(it.key()).toObject().isEmpty())
+            estimates.insert(it.key(),QJsonArray());
+        if (!it.value().isDouble() || !std::isfinite(it.value().toDouble()) || !estimates.value(it.key()).isArray())
+            return luaL_error(state,"defense publication cell is invalid");
+        const auto dependencies=estimates.value(it.key()).toArray();
+        if (!request->worldView.aiHumanized || request->worldView.turnCount<1) {
+            const AIPlayerView *player=it.key()==request->worldView.self.objectName?&request->worldView.self:nullptr;
+            for (const auto &p:request->worldView.players) if (p.objectName==it.key()) player=&p;
+            if (!player) return luaL_error(state,"defense cell is outside observer roster");
+            const double before=old.value(it.key()).toDouble(), after=it.value().toDouble();
+            const double v=player->hp*2+player->handcardCount+player->handPileCount;
+            if (after!=before && after!=before+v)
+                return luaL_error(state,"defense accumulation differs from native V plus retained baseline");
+            for (const auto &basis:previous.value("estimates").toObject().value(it.key()).toArray())
+                if (!dependencies.contains(basis)) return luaL_error(state,"defense accumulation dropped a dependency");
+        }
+        if (dependencies.size()>256) return luaL_error(state,"defense dependency limit");
+        for (const auto &basis:dependencies) if (!basis.isString() || basis.toString().isEmpty() || basis.toString().size()>512)
+            return luaL_error(state,"defense dependency is invalid");
+    }
+    const double next=previous.value("sequence").toDouble()+1;
+    if (next>=9007199254740991.0) return luaL_error(state,"defense writer sequence exhausted");
+    for (auto it=estimates.begin();it!=estimates.end();++it) {
+        auto dependencies=it.value().toArray();
+        if (!dependencies.contains("defense.unobserved_cross_observer_sort_writers"))
+            dependencies.append("defense.unobserved_cross_observer_sort_writers");
+        it.value()=dependencies;
+    }
+    dto.insert("sequence",next);dto.insert("estimates",estimates);
+    if (runtime->m_activeEventRequest) runtime->m_pendingDefenseHistory=dto;
+    else runtime->m_defenseHistory.insert(viewer,dto);
+    lua_pushnumber(state,next);return 1;
+}
+
 void AiLuaRuntime::evaluateModePolicy(LuaRuntime &runtime, AIWorldView &world, bool viewerOnly)
 {
     world.modePolicy = QJsonObject{{"managed", world.customRoles},
@@ -1527,6 +1644,7 @@ bool AiLuaRuntime::initialize(QString *error)
 
 void AiLuaRuntime::shutdown()
 {
+    m_defenseHistory.clear(); m_pendingDefenseHistory={}; m_defenseWriterRef=LUA_NOREF;
     if (m_room) clearAIStrategyRound24Response(*m_room);
     if(m_room)invalidateAIRound44RangeDecision(*m_room);
     m_sourceCompatibility.reset();
@@ -1796,7 +1914,9 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
     m_instructionLimitExceeded = false;
     int eventQueryAbort = LUA_NOREF;
     bool eventQuerySession = false;
+    m_pendingDefenseHistory={};
     const auto abortQueries = qScopeGuard([&] {
+        m_pendingDefenseHistory={};
         m_activeEventRequest = nullptr;
         m_activePeiqiEvent = nullptr;
         m_activeEventMode = nullptr;
@@ -1859,6 +1979,9 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
         luaL_unref(memoryState, LUA_REGISTRYINDEX, memoryCommit);
         luaL_unref(memoryState, LUA_REGISTRYINDEX, memoryAbort);
         memoryCommit = memoryAbort = LUA_NOREF;
+        if (commit && ok && !m_pendingDefenseHistory.isEmpty())
+            m_defenseHistory.insert(world.self.objectName,m_pendingDefenseHistory);
+        m_pendingDefenseHistory={};
         return ok;
     };
     {
@@ -1890,7 +2013,8 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
             finishMemory(false);
             return fail(QStringLiteral("AI_EVENT_UNHANDLED"));
         }
-        pushAIWorldView(state, world);
+        AIWorldView defenseWorld=world; projectDefenseHistory(defenseWorld);
+        pushAIWorldView(state, defenseWorld);
         pushAIEvent(state, event);
         lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
         eventRequest.choiceOptions.context.insert("target_recommend_event_actor", event.details.value("player"));
@@ -2031,7 +2155,8 @@ bool AiLuaRuntime::processEvent(const AIWorldView &world, const AIEventView &eve
         finishMemory(false);
         return fail(QStringLiteral("AI_EVENT_MODE_UNAVAILABLE"));
     }
-    pushAIWorldView(state, world);
+    AIWorldView defenseWorld=world; projectDefenseHistory(defenseWorld);
+    pushAIWorldView(state, defenseWorld);
     lua_createtable(state, deltas.size(), 0);
     for (int index = 0; index < deltas.size(); ++index) {
         const AiIntentionDelta &delta = deltas.at(index);
@@ -2610,6 +2735,16 @@ int AiLuaRuntime::luaEvaluateResponsePolicy(lua_State *L)
         {"class_name",className},{"scope_id",scope},{"registry",registry},{"hook_key",hookKey},
         {"spec",spec},{"attach_request",bool(lua_toboolean(L,6))}}));
     return 1;
+}
+
+bool AiLuaRuntime::currentXufaChoiceRequest(const AIRequest &q,const ServerPlayer *p) const
+{
+ return current()==this&&m_room&&p&&p->getRoom()==m_room
+  &&m_activeRequest==&q&&!m_activeEventRequest&&q.decisionId!=0
+  &&(q.kind==AIRequest::Activate||(q.kind==AIRequest::Choice&&q.choiceOptions.reason=="xufa"))
+  &&q.viewerObjectName==p->objectName()&&q.worldView.self.objectName==p->objectName();
+ // The R53 caller separately checks the original range/revision certificate;
+ // sanctioned owner-range writes must not be replaced by a raw equality test.
 }
 
 int AiLuaRuntime::luaChoiceContinuity(lua_State *state)
@@ -3347,6 +3482,41 @@ bool AiLuaRuntime::currentOLJijiangInvokeEvent(const AIRequest &q, const ServerP
   &&projected==QJsonObject({{"writer","invoke"},{"actor",p->objectName()},{"sequence",QString::number(e.sequence)}});
 }
 
+bool AiLuaRuntime::currentOLJijiangResponseEvent(const AIRequest &q, const ServerPlayer *p, const QString &payload) const
+{
+ // This is the answering actor's exact sanitized event, never a reconstructed
+ // event or a copied zero-ID request. The raw response stays in native custody.
+ if(current()!=this||!m_room||!p||p->getRoom()!=m_room||m_activeRequest
+  ||m_activeEventRequest!=&q||!m_activePeiqiEvent)return false;
+ const auto &e=*m_activePeiqiEvent;
+ const auto fields=e.details.value("prompt_list").toArray();
+ if(fields.size()<5||fields.at(0)!="cardResponded"||fields.at(1)!="slash"
+  ||fields.at(2)!="@oljijiang-slash"||fields!=QJsonArray::fromStringList(payload.split(':')))return false;
+ const auto projected=q.choiceOptions.context.value("r40_oljijiang_event").toObject();
+ return q.decisionId==0&&q.kind==AIRequest::UseCard
+  &&q.reason==CardUseStruct::CARD_USE_REASON_UNKNOWN&&q.handlingMethod==Card::MethodUse
+  &&q.prompt.isEmpty()&&q.pattern.isEmpty()
+  &&q.viewerObjectName==p->objectName()&&q.worldView.self.objectName==p->objectName()
+  &&q.stateRevision==m_room->roomRuntime()->stateRevision()&&q.worldView.revision==q.stateRevision
+  &&e.sequence!=0&&e.revision==q.stateRevision&&e.triggerEvent==int(ChoiceMade)
+  &&e.kind=="choice"&&e.reason=="slash"&&e.from==p->objectName()&&e.to==p->objectName()
+  &&e.privateEvent&&e.privateViewer.isEmpty()
+  &&e.details.value("player")==p->objectName()&&e.details.value("choice_kind")=="cardResponded"
+  &&projected==QJsonObject({{"writer","respond"},{"actor",p->objectName()},
+      {"sequence",QString::number(e.sequence)},{"answer_nonempty",!fields.last().toString().isEmpty()}});
+}
+
+bool AiLuaRuntime::currentOLJijiangPlanningRequest(const AIRequest &q, const ServerPlayer *p) const
+{
+ // Typed table effects belong to this exact active owner question. A copied
+ // request, an event pseudo-question and another observer have no authority.
+ return current()==this&&m_room&&p&&p->getRoom()==m_room
+  &&m_activeRequest==&q&&!m_activeEventRequest&&q.decisionId!=0
+  &&(q.kind==AIRequest::Activate||q.kind==AIRequest::UseCard||q.kind==AIRequest::RespondCard)
+  &&q.viewerObjectName==p->objectName()&&q.worldView.self.objectName==p->objectName();
+ // planningRequest separately validates the original range/revision receipt.
+}
+
 int AiLuaRuntime::luaOLJijiangState(lua_State *L)
 {
  auto *runtime=fromUpvalue(L);
@@ -3592,11 +3762,13 @@ QJsonObject AiLuaRuntime::queryStandardMode(LuaRuntime &modeRuntime, const AIReq
     const auto clearActive = qScopeGuard([mode] {
         lua_pushboolean(mode, false); lua_setfield(mode, LUA_REGISTRYINDEX, "qsan.mode_ai.active");
     });
+    AIWorldView defenseWorld=request.worldView;
+    projectDefenseHistory(defenseWorld);
     if (objectiveSource && objectiveSource->accepted()) {
         AIRound56ModeWorldSource worldSource(*modeRoom, mode);
-        pushAIWorldView(mode, request.worldView);
+        pushAIWorldView(mode, defenseWorld);
     } else {
-        pushAIWorldView(mode, request.worldView);
+        pushAIWorldView(mode, defenseWorld);
     }
     if (refresh) {
         if (toUseCount < 0) lua_pushnil(mode);
@@ -4309,6 +4481,12 @@ bool AiLuaRuntime::installSandbox(QString *error)
     lua_pushlightuserdata(state, this);
     lua_pushcclosure(state, &AiLuaRuntime::luaModeUpdatePlayers, 1);
     lua_setglobal(state, "ai_mode_update_players");
+    lua_pushlightuserdata(state,this);
+    lua_pushcclosure(state,&AiLuaRuntime::luaRegisterDefenseWriter,1);
+    lua_setglobal(state,"ai_register_defense_writer");
+    lua_pushlightuserdata(state,this);
+    lua_pushcclosure(state,&AiLuaRuntime::luaPublishDefenseSnapshot,1);
+    lua_setglobal(state,"ai_publish_defense_snapshot");
     lua_pushlightuserdata(state, this);
     lua_pushcclosure(state, &AiLuaRuntime::luaRefreshDiscardPreferences, 1);
     lua_setglobal(state, "ai_refresh_discard_preferences");

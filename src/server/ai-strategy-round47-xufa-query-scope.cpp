@@ -105,7 +105,9 @@ AIRound47XufaSourceCard::AIRound47XufaSourceCard(Room&r,const AIRequest&q,Server
  d->valid=typeid(*c)==typeid(XufaCard)&&c->getId()<0&&d->writeSerial&&d->writeSerial==currentAIRound47XufaWriteSerial(r);
 }
 AIRound47XufaSourceCard::~AIRound47XufaSourceCard(){auto i=sourceCards.find(d->room);if(i==sourceCards.end())return;i->removeAll(this);if(i->isEmpty())sourceCards.erase(i);}
-struct AIRound47XufaQueryScope::Data{Room*room=nullptr;QPointer<ServerPlayer>writer;quint64 writeSerial=0;bool admitted=false;};
+struct AIRound47XufaQueryScope::Data{Room*room=nullptr;QPointer<ServerPlayer>writer;quint64 writeSerial=0;bool admitted=false;
+ std::unique_ptr<AIRound56XufaCorrectionScope>corrections;
+};
 struct AIRound47XufaQueryAccess{
  static AIRound47XufaQueryScope::Data*top(Room*r){auto i=queries.constFind(r);return i==queries.cend()||i->isEmpty()?nullptr:i->last()->d.get();}
 };
@@ -137,16 +139,21 @@ AIRound47XufaQueryScope::AIRound47XufaQueryScope(Room*r,const Card*c,bool requir
  d->writer=currentAIRound47XufaContinuityWriter(*r);d->writeSerial=currentAIRound47XufaWriteSerial(*r);
  // No current known row: this path must never create/revive one.
  if(!d->writer){observeAIRound45UnprovedNativeQuery(r,preserveAiNoTo);queries[r].append(this);return;}
- bool ok=false;try {ok=!required||custody(*r,d->writer,c);
+ bool ok=false;try {
  // v2 deliberately does not reuse a parent's proof until epoch, generation
  // and native registry/source witnesses are all installed. Never reuse based
  // solely on equality of the writer pointer after an interruption/rewrite.
- if(ok){
+ {
   auto*rt=r->roomRuntime();LuaRuntime::Binding binding(rt->lua(),false);auto*L=rt->lua().state();
   // This is normal synchronous native code, before observer/protectedCall.
   // Reservation here is allowed; the entry proof itself never allocates stack.
-  ok=L&&lua_checkstack(L,8192)&&proveAIRound47XufaCorrectionUnion(*r,L);
+  if(L&&lua_checkstack(L,8192)){
+   d->corrections.reset(new AIRound56XufaCorrectionScope(*r,d->writer,L));
+   ok=proveAIRound47XufaCorrectionUnion(*r,L);
+  }
  }
+ // Complete source union precedes even the original card-custody selection.
+ if(ok)ok=!required||custody(*r,d->writer,c);
  }catch(...){ok=false;}
  // Nested proof allocation or native reentry can only revoke, never reseed.
  ok=ok&&d->writeSerial&&currentAIRound47XufaWriteSerial(*r)==d->writeSerial&&currentAIRound47XufaContinuityWriter(*r)==d->writer;

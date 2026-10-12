@@ -16,4 +16,8 @@ bool hasAIRound56BootstrapModeTableOrigin(const Room &,lua_State *,const void *)
 // compiled/pinned earlier in the Room VM. Does not borrow Room binding or
 // mutate either stack; both runtimes must retain their original generation.
 bool matchAIRound56PinnedAuxiliaryRoot(Room &,lua_State *auxiliary,const QString &path);
+// Isolated source registration only: executable identity against the already
+// pinned Room source, with both live runtime generations checked. No scope grant.
+bool matchAIRound56PinnedAuxiliaryFunction(Room &,lua_State *,int functionIndex,
+ const QString &path,int firstLine,int lastLine);
 #endif

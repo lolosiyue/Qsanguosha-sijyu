@@ -4,6 +4,7 @@
 #include "ai-strategy-round47-xufa-event-scope.h"
 #include "ai-strategy-choice-continuity.h"
 #include "ai-strategy-round53-globals.h"
+#include "ai-strategy-round53-registry.h"
 #include "ai-strategy-round53-priority.h"
 #include "ai-strategy-round53-overseas-prefix.h"
 #include "ai-strategy-round45-inovation-state.h"
@@ -23,7 +24,8 @@
 namespace {
 struct Row {QPointer<ServerPlayer>writer;QJsonObject value;bool known=false,diverged=false;quint64 epoch=0;quint64 xufaTransportEpoch=0,xufaWriteSerial=0,xufaGeneration=0;};
 struct Continuity:QObject {
- explicit Continuity(Room&r):QObject(&r){}
+ explicit Continuity(Room&r):QObject(&r),room(r){}
+ Room&room;
  quint64 epoch=1;bool exhausted=false;
  quint64 serial=0;bool legacyReady=false,isolatedReady=false,entered=false;
  QString lastViewer;QHash<QString,Row>rows;
@@ -34,7 +36,7 @@ const QStringList keys{"xuhe","olxuhe","xufa","olshebian_from","olshebian_to","o
 QString registry(const QString&k){return k=="olshebian"?"ai_skill_cardchosen":k.startsWith("olshebian_")?"ai_skill_playerchosen":"ai_skill_choice";}
 int domain(const QString&k){return k=="olshebian"?4:k.startsWith("olshebian_")?3:2;}
 void forget(Row&r){r.known=false;r.value={};r.writer=nullptr;r.diverged=false;}
-void hard(Continuity*s){if(s->xufaWriteGuard)*s->xufaWriteGuard=true;for(auto i=s->rows.begin();i!=s->rows.end();++i)forget(*i);}
+void hard(Continuity*s){retireAIRound53Registry(s->room);if(s->xufaWriteGuard)*s->xufaWriteGuard=true;for(auto i=s->rows.begin();i!=s->rows.end();++i)forget(*i);}
 thread_local AIChoiceContinuityInquiry*active=nullptr;
 QJsonObject unknown(){return{{"known",false}};}
 QString questionKind(const AIRequest&r){switch(r.kind){case AIRequest::SkillInvoke:return"invoke";case AIRequest::Choice:return"choice";case AIRequest::Activate:return"activate";case AIRequest::PlayerChosen:return"player_chosen";case AIRequest::CardChosen:return"card_chosen";default:return{};}}
@@ -158,28 +160,20 @@ bool actualXufaGlobalMatches(Room&room,const QJsonObject&row){
 }
 }
 AIChoiceContinuityInquiry::AIChoiceContinuityInquiry(Room&r,const QString&k,ServerPlayer*p,const QString&why)
- :room(&r),kind(k),reason(why),viewer(p),previous(active){enterAIRound54ShebianInquiry(r,p,k,why);serial=++ledger(r)->serial;active=this;}
+ :room(&r),kind(k),reason(why),viewer(p),previous(active){enterAIRound53RegistryPolicy(r,p,active!=nullptr);enterAIRound54ShebianInquiry(r,p,k,why);serial=++ledger(r)->serial;active=this;}
 AIChoiceContinuityInquiry::~AIChoiceContinuityInquiry(){active=previous;}
 void invalidateAIChoiceContinuity(Room&r){auto*s=ledger(r);s->entered=true;hard(s);}
 
 ServerPlayer*currentAIRound47XufaContinuityWriter(Room&r) noexcept {
- auto*rt=r.roomRuntime();if(!liveXufaGame(r))return nullptr;
- for(auto*c:r.children())if(auto*s=dynamic_cast<Continuity*>(c)){
-  if(s->exhausted||!s->legacyReady||!s->isolatedReady||s->xufaWriteGuard)return nullptr;
-  auto i=s->rows.constFind(QStringLiteral("xufa"));
-  return i!=s->rows.cend()&&i->known&&i->epoch==s->epoch&&!i->diverged&&i->writer
-   &&s->nextXufaWriteSerial&&i->xufaWriteSerial
-   &&i->xufaGeneration&&i->xufaGeneration==s->xufaRootGeneration&&i->xufaGeneration==rt->lua().generation()
-   &&i->xufaTransportEpoch&&i->xufaTransportEpoch==r.roomRuntime()->xufaTransportEpoch()
-   &&i->writer->getRoom()==&r?i->writer.data():nullptr;
- }return nullptr;
+ // Runtime's Xufa producer/consumer use R53's actual observed registry. The
+ // earlier copied row is not the producer and cannot authorize this scope.
+ return currentAIRound53XufaWriter(r);
 }
 quint64 currentAIRound47XufaWriteSerial(Room&r) noexcept {
- if(!currentAIRound47XufaContinuityWriter(r))return 0;
- for(auto*c:r.children())if(auto*s=dynamic_cast<Continuity*>(c))return s->rows.constFind(QStringLiteral("xufa"))->xufaWriteSerial;
- return 0;
+ return currentAIRound53XufaSerial(r);
 }
 void interruptAIRound47XufaContinuity(Room&r) {
+ retireAIRound53Registry(r);
  for(auto*c:r.children())if(auto*s=dynamic_cast<Continuity*>(c)){
   if(s->xufaWriteGuard)*s->xufaWriteGuard=true;
   auto i=s->rows.find(QStringLiteral("xufa"));if(i!=s->rows.end())forget(*i);return;
@@ -192,6 +186,7 @@ void interruptAIChoiceContinuityExceptXufa(Room&r){invalidateAIRound53Goodatwep(
 
 void interruptAIChoiceContinuity(Room&r){invalidateAIRound53Goodatwep(r);auto*s=ledger(r);s->entered=true;hard(s);}
 void interruptAIChoiceContinuityAsync(Room&r)noexcept{
+ retireAIRound53Registry(r);
  invalidateAIRound53Goodatwep(r);
  // Lookup only. No QObject creation, container detach, value/lease destruction,
  // Lua access or notification. A fresh observed write receives the new epoch;
@@ -205,6 +200,7 @@ void interruptAIChoiceContinuityAsync(Room&r)noexcept{
  }
 }
 void beginAIChoiceContinuityPolicy(Room&r,const QString&viewer){
+ enterAIRound53RegistryPolicy(r,r.findPlayerByObjectName(viewer,true),false);
  enterAIRound53Goodatwep(r,viewer);
  auto*s=ledger(r);s->entered=true;
  if(pendingAIRound47XufaEvent(r)){interruptAIChoiceContinuityExceptXufa(r);return;}
@@ -252,6 +248,7 @@ void observeAIChoiceContinuityTable(Room&r,int d,bool isolated,const lua_TableOb
  }catch(...){/* No exception crosses Lua's observer boundary. */try{auto*s=ledger(r);s->legacyReady=false;s->isolatedReady=false;hard(s);}catch(...){}}
 }
 void observeAIChoiceContinuityDecision(Room&r,const AIRequest&q){auto*s=ledger(r);s->entered=true;
+ enterAIRound53RegistryPolicy(r,r.findPlayerByObjectName(q.viewerObjectName,true),pendingAIRound47XufaEvent(r));
  if(pendingAIRound47XufaEvent(r))hard(s); // Reentrant decision never inherits event custody.
  if(!s->lastViewer.isEmpty()&&s->lastViewer!=q.viewerObjectName)hard(s);s->lastViewer=q.viewerObjectName;
  if(!active||active->room!=&r||!active->viewer||q.viewerObjectName!=active->viewer->objectName()

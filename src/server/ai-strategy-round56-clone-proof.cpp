@@ -59,13 +59,13 @@ struct Check {
   if(!ok)return false;lua_replace(L,top+1);lua_settop(L,top+1);return true;
  }
  bool modeEnabled(int i){
-  i=lua_absindex(L,i);if(!closure(i,mode,2288,2305,{"standard_modes","policies","managed_rooms"}))return false;
+  i=lua_absindex(L,i);if(!closure(i,mode,2336,2353,{"standard_modes","policies","managed_rooms"}))return false;
   // Only standard_modes[public Room mode] is reached. Neither policies nor
   // managed_rooms is read on this public branch, regardless of hidden roles.
   Stack z(L);if(!capture(i,"standard_modes")||!plain(L,-1))return no("standard mode public table");standardModes=lua_topointer(L,-1);protectedRoots.insert(standardModes);field(L,-1,"02p");return (lua_type(L,-1)==LUA_TSTRING||lua_type(L,-1)==LUA_TBOOLEAN)&&lua_toboolean(L,-1)||no("02p public mode registration");
  }
- bool policy(int i){return closure(i,mode,2314,2318);}
- bool currentAI(int i){return closure(i,mode,2280,2285);}
+ bool policy(int i){return closure(i,mode,2362,2366);}
+ bool currentAI(int i){return closure(i,mode,2328,2333);}
  bool sourceGraph(){
   if(!fieldClosure(env,"CloneAI",smart,23,25))return false;
   if(!lua_getmetatable(L,cls))return no("class metatable");field(L,-1,"__call");if(!closure(-1,middle,44,44))return false;lua_pop(L,2);
@@ -77,11 +77,11 @@ struct Check {
   // returns unless its publicly gated loader sets original_hegemony_ai_loading.
   {Stack z(L);if(!lookup(dict,"initialize")||!closure(-1,smart,339,429,{"version"}))return false;
    if(!capture(-1,"version")||lua_type(L,-1)!=LUA_TSTRING)return no("version scalar");}
-  {Stack z(L);if(!lookup(dict,"updatePlayers")||!closure(-1,mode,2342,2355,{"policy","update"}))return false;const int f=lua_absindex(L,-1);
+  {Stack z(L);if(!lookup(dict,"updatePlayers")||!closure(-1,mode,2390,2403,{"policy","update"}))return false;const int f=lua_absindex(L,-1);
    if(!capturedClosure(f,"update",smart,2118,2180)||!capture(f,"policy")||!policy(-1))return false;}
   {Stack z(L);field(L,ns,"modeAIEnabled");if(!modeEnabled(-1))return false;}
   {Stack z(L);field(L,env,"isRolePredictable");const int f=lua_absindex(L,-1);
-   if(!closure(f,mode,2385,2394,{"current_ai","policy","policies","standard_modes","predictable"})
+   if(!closure(f,mode,2433,2442,{"current_ai","policy","policies","standard_modes","predictable"})
     ||!capturedClosure(f,"predictable",smart,1425,1437))return false;
    {Stack a(L);if(!capture(f,"policy")||!policy(-1))return false;}
    {Stack a(L);if(!capture(f,"current_ai")||!currentAI(-1))return false;}
@@ -90,7 +90,7 @@ struct Check {
    for(const char*k:{"policies","standard_modes"}){Stack a(L);if(!capture(f,k)||!plain(L,-1))return no("predictable mode table");protectedRoots.insert(lua_topointer(L,-1));if(!std::strcmp(k,"standard_modes")&&lua_topointer(L,-1)!=standardModes)return no("mode registration capture alias changed");}
   }
   {Stack z(L);field(L,env,"updateAlivePlayerRoles");const int f=lua_absindex(L,-1);
-   if(!closure(f,mode,2410,2418,{"current_ai","policy","counts"})||!capturedClosure(f,"counts",smart,2105,2116))return false;
+   if(!closure(f,mode,2458,2466,{"current_ai","policy","counts"})||!capturedClosure(f,"counts",smart,2105,2116))return false;
    {Stack a(L);if(!capture(f,"policy")||!policy(-1))return false;}{Stack a(L);if(!capture(f,"current_ai")||!currentAI(-1))return false;}}
   if(!fieldClosure(ns,"qlist_cached",smart,443,454)||!fieldClosure(ns,"QList2Table",utility,44,51)
    ||!fieldClosure(ns,"getValue",smart,560,563)||!fieldClosure(ns,"getDefense",smart,574,709))return false;
@@ -138,7 +138,7 @@ struct Check {
 bool registerAIRound56CloneSources(Room&r,lua_State*L,QString*why){
  struct Source{const char*path;const char*hash;};const Source sources[]={
   {smart,"f92033319db3c6aac3504b4b6ddccf5edb4403fb120679b303dedfe673a3efe5"},
-  {mode,"5a36ef4194b804790c0bb8c897a7e40ccba26e107b7e0e2965f6fe513eecd9c1"},
+  {mode,"cd0a6fa3b6de7e90db276846f04fe54b01199c28a1d68df3c452f6b14b8ac3e5"},
   {middle,"32938b2068cb9b8a5b6a8d734bce0a6c73020f6a128e9cf9bfca200490cedf6e"},
   {utility,"b76cdc44c0fec46f1e10d918c6e0676c5e301ed92cd5b0e35da882606a7d4d3a"},
   {heg,"9ad128880b7876a95d022551533a8168ef924173a29d704af837cd5edb98ff7f"}};
